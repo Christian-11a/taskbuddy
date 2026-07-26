@@ -12,7 +12,6 @@
 
 import React, { useState } from 'react';
 import {
-  ActivityIndicator,
   ScrollView,
   StyleSheet,
   Text,
@@ -26,11 +25,13 @@ import {
   ArrowRightLeft,
   CircleDollarSign,
   Package,
+  WalletCards,
 } from 'lucide-react-native';
 import { Colors, Radii, Shadows, Sizes, Spacing } from '../../../src/constants/theme';
 import { useAsyncData } from '../../../src/hooks/useAsyncData';
 import { api } from '../../../src/lib/api';
 import { peso, shortDate } from '../../../src/lib/format';
+import ScreenSkeleton from '../../../src/components/ScreenSkeleton';
 
 interface HOWalletScreenProps {
   onBack?: () => void;
@@ -45,6 +46,8 @@ export default function HOWalletScreen({ onBack }: HOWalletScreenProps) {
     activeTab === 'all'
       ? transactions
       : transactions.filter((t) => t.direction === activeTab);
+
+  if (loading) return <ScreenSkeleton variant="dashboard" />;
 
   return (
     <View style={styles.screen}>
@@ -123,10 +126,13 @@ export default function HOWalletScreen({ onBack }: HOWalletScreenProps) {
 
         <Text style={styles.sectionTitle}>Transaction History</Text>
 
-        {loading && <ActivityIndicator style={{ marginTop: 20 }} color={Colors.brandTeal} />}
         {!!error && !loading && <Text style={styles.stateText}>{error}</Text>}
         {!loading && !error && filtered.length === 0 && (
-          <Text style={styles.stateText}>No transactions yet.</Text>
+          <View style={styles.emptyState}>
+            <WalletCards size={40} color={Colors.brandTeal} />
+            <Text style={styles.emptyTitle}>No transactions yet</Text>
+            <Text style={styles.stateText}>Your payments and wallet activity will appear here.</Text>
+          </View>
         )}
 
         {filtered.map((txn) => {
@@ -213,6 +219,8 @@ const styles = StyleSheet.create({
 
   sectionTitle: { color: Colors.brandDark, fontSize: 16, fontWeight: '800', fontFamily: 'Inter', marginBottom: 14 },
   stateText: { color: Colors.slate, fontSize: 14, fontFamily: 'Inter', textAlign: 'center', marginTop: 20 },
+  emptyState: { alignItems: 'center', paddingVertical: 44, paddingHorizontal: 24 },
+  emptyTitle: { color: Colors.brandDark, fontSize: 17, fontWeight: '800', fontFamily: 'Inter', marginTop: 12 },
 
   txnCard: {
     backgroundColor: Colors.white, borderRadius: Radii.card,

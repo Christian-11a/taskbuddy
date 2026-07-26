@@ -140,7 +140,7 @@ export default function LoginScreen({
         style={styles.flex}
         // Resize the available layout space so all of the login content
         // reflows together without translating the form past the screen.
-        behavior="height"
+        behavior={Platform.OS === 'ios' ? 'height' : undefined}
       >
         <View
           style={styles.loginContent}
