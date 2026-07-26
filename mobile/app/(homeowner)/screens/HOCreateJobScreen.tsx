@@ -68,6 +68,7 @@ export default function HOCreateJobScreen({ onBack, onSuccess }: HOCreateJobScre
   const [date, setDate] = useState('');
   const [time, setTime] = useState('');
   const [budget, setBudget] = useState('');
+  const [focusedField, setFocusedField] = useState<string | null>(null);
   const [isUrgent, setIsUrgent] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -231,22 +232,26 @@ export default function HOCreateJobScreen({ onBack, onSuccess }: HOCreateJobScre
             <View style={styles.inputGroup}>
               <Text style={styles.inputLabel}>Job Title</Text>
               <TextInput
-                style={styles.input}
+                style={[styles.input, focusedField === 'title' && styles.inputFocused]}
                 placeholder="e.g. 3-bedroom apartment deep clean"
                 placeholderTextColor={Colors.muted}
                 value={title}
                 onChangeText={setTitle}
+                onFocus={() => setFocusedField('title')}
+                onBlur={() => setFocusedField(null)}
               />
             </View>
 
             <View style={styles.inputGroup}>
               <Text style={styles.inputLabel}>Description</Text>
               <TextInput
-                style={[styles.input, styles.textArea]}
+                style={[styles.input, styles.textArea, focusedField === 'description' && styles.inputFocused]}
                 placeholder="Describe the job in detail..."
                 placeholderTextColor={Colors.muted}
                 value={description}
                 onChangeText={setDescription}
+                onFocus={() => setFocusedField('description')}
+                onBlur={() => setFocusedField(null)}
                 multiline
                 numberOfLines={4}
               />
@@ -255,11 +260,13 @@ export default function HOCreateJobScreen({ onBack, onSuccess }: HOCreateJobScre
             <View style={styles.inputGroup}>
               <Text style={styles.inputLabel}>Location</Text>
               <TextInput
-                style={styles.input}
+                style={[styles.input, focusedField === 'location' && styles.inputFocused]}
                 placeholder="Brgy. Sampaguita, Lipa City"
                 placeholderTextColor={Colors.muted}
                 value={location}
                 onChangeText={setLocation}
+                onFocus={() => setFocusedField('location')}
+                onBlur={() => setFocusedField(null)}
               />
             </View>
 
@@ -288,22 +295,26 @@ export default function HOCreateJobScreen({ onBack, onSuccess }: HOCreateJobScre
             <View style={styles.inputGroup}>
               <Text style={styles.inputLabel}>Preferred Date</Text>
               <TextInput
-                style={styles.input}
+                style={[styles.input, focusedField === 'date' && styles.inputFocused]}
                 placeholder="e.g. May 20, 2026"
                 placeholderTextColor={Colors.muted}
                 value={date}
                 onChangeText={setDate}
+                onFocus={() => setFocusedField('date')}
+                onBlur={() => setFocusedField(null)}
               />
             </View>
 
             <View style={styles.inputGroup}>
               <Text style={styles.inputLabel}>Preferred Time</Text>
               <TextInput
-                style={styles.input}
+                style={[styles.input, focusedField === 'time' && styles.inputFocused]}
                 placeholder="e.g. 10:00 AM"
                 placeholderTextColor={Colors.muted}
                 value={time}
                 onChangeText={setTime}
+                onFocus={() => setFocusedField('time')}
+                onBlur={() => setFocusedField(null)}
               />
             </View>
 
@@ -323,7 +334,7 @@ export default function HOCreateJobScreen({ onBack, onSuccess }: HOCreateJobScre
             <Text style={styles.stepTitle}>Budget</Text>
             <Text style={styles.stepSubtitle}>Set your budget for this job</Text>
 
-            <View style={styles.budgetCard}>
+            <View style={[styles.budgetCard, focusedField === 'budget' && styles.budgetCardFocused]}>
               <Text style={styles.budgetCurrency}>₱</Text>
               <TextInput
                 style={styles.budgetInput}
@@ -331,6 +342,8 @@ export default function HOCreateJobScreen({ onBack, onSuccess }: HOCreateJobScre
                 placeholderTextColor={Colors.muted}
                 value={budget}
                 onChangeText={setBudget}
+                onFocus={() => setFocusedField('budget')}
+                onBlur={() => setFocusedField(null)}
                 keyboardType="numeric"
               />
             </View>
@@ -454,6 +467,7 @@ const styles = StyleSheet.create({
     fontFamily: 'Inter', fontSize: 15, color: Colors.brandDark,
     ...Shadows.input,
   },
+  inputFocused: { borderColor: Colors.brandTeal, borderWidth: 2 },
   textArea: { height: 100, textAlignVertical: 'top' },
 
   urgentToggle: {
@@ -485,8 +499,9 @@ const styles = StyleSheet.create({
   budgetCard: {
     backgroundColor: Colors.white, borderRadius: 20, padding: 24,
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-    marginBottom: 12, ...Shadows.card,
+    marginBottom: 12, borderWidth: 1, borderColor: 'transparent', ...Shadows.card,
   },
+  budgetCardFocused: { borderColor: Colors.brandTeal, borderWidth: 2 },
   budgetCurrency: { color: Colors.brandDark, fontSize: 32, fontWeight: '800', fontFamily: 'Inter', marginRight: 4 },
   budgetInput: { fontSize: 48, fontWeight: '800', fontFamily: 'Inter', color: Colors.brandDark, minWidth: 120 },
   budgetHint: { color: Colors.muted, fontSize: 13, fontFamily: 'Inter', textAlign: 'center', marginBottom: 20 },
@@ -508,7 +523,7 @@ const styles = StyleSheet.create({
   termsRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 12 },
   termsCheck: { width: 20, height: 20, borderRadius: 6, borderWidth: 1, borderColor: 'rgba(144,153,184,0.4)', backgroundColor: Colors.white, marginTop: 2 },
   termsText: { flex: 1, color: Colors.slate, fontSize: 13, fontFamily: 'Inter', lineHeight: 20 },
-  termsLink: { color: Colors.brandTeal, fontWeight: '700' },
+  termsLink: { color: Colors.brandTeal, fontWeight: '700', textDecorationLine: 'underline' },
 
   footer: { paddingHorizontal: Spacing.screenH, paddingVertical: 16, backgroundColor: Colors.white, borderTopWidth: 1, borderTopColor: 'rgba(144,153,184,0.15)' },
   primaryBtn: {

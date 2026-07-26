@@ -14,6 +14,7 @@ const REASONS = ['Service not completed', 'Poor service quality', 'Incorrect cha
 export default function HODisputeFilingScreen({ onBack, onSubmitted }: HODisputeFilingScreenProps) {
   const [reason, setReason] = useState(REASONS[0]);
   const [details, setDetails] = useState('');
+  const [detailsFocused, setDetailsFocused] = useState(false);
   const [showConfirmation, setShowConfirmation] = useState(false);
 
   return (
@@ -53,13 +54,15 @@ export default function HODisputeFilingScreen({ onBack, onSubmitted }: HODispute
         <View style={styles.card}>
           <Text style={styles.label}>Describe the issue</Text>
           <TextInput
-            style={styles.detailsInput}
+            style={[styles.detailsInput, detailsFocused && styles.detailsInputFocused]}
             value={details}
             onChangeText={setDetails}
             multiline
             textAlignVertical="top"
             placeholder="Tell us what happened and include any relevant details."
             placeholderTextColor={Colors.muted}
+            onFocus={() => setDetailsFocused(true)}
+            onBlur={() => setDetailsFocused(false)}
           />
         </View>
 
@@ -101,6 +104,7 @@ const styles = StyleSheet.create({
   radioDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: Colors.brandTeal },
   reasonText: { color: Colors.slate, fontSize: 14, fontFamily: 'Inter' },
   detailsInput: { minHeight: 130, borderRadius: 12, backgroundColor: Colors.backgroundAlt, borderWidth: 1, borderColor: 'rgba(144,153,184,0.3)', padding: 14, color: Colors.brandDark, fontFamily: 'Inter', fontSize: 14 },
+  detailsInputFocused: { borderColor: Colors.brandTeal, borderWidth: 2 },
   submitButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: Colors.error, borderRadius: 24, paddingVertical: 15, marginTop: 4 },
   submitText: { color: Colors.white, fontSize: 15, fontWeight: '700', fontFamily: 'Inter' },
 });

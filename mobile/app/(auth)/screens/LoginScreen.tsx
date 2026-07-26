@@ -24,6 +24,7 @@ import React, { useState } from 'react';
 import {
   ActivityIndicator,
   Dimensions,
+  Keyboard,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -103,6 +104,7 @@ export default function LoginScreen({
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+  const [passwordFocused, setPasswordFocused] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -136,9 +138,16 @@ export default function LoginScreen({
 
       <KeyboardAvoidingView
         style={styles.flex}
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        // Resize the available layout space so all of the login content
+        // reflows together without translating the form past the screen.
+        behavior="height"
       >
-        <View style={styles.loginContent}>
+        <View
+          style={styles.loginContent}
+          // Dismiss on any background/form-area tap while allowing child
+          // controls (including TextInputs) to handle the same touch.
+          onTouchStart={Keyboard.dismiss}
+        >
           {/* Logo */}
           <View style={styles.logoSection}>
             {/* Logo mark */}
@@ -181,7 +190,7 @@ export default function LoginScreen({
                 <Text style={styles.forgotText}>Forgot Password?</Text>
               </TouchableOpacity>
             </View>
-            <View style={styles.inputBox}>
+            <View style={[styles.inputBox, passwordFocused && styles.inputBoxFocused]}>
               <TextInput
                 testID="input-password"
                 style={[styles.inputText, styles.flex]}
@@ -192,6 +201,8 @@ export default function LoginScreen({
                 secureTextEntry={!showPassword}
                 autoCapitalize="none"
                 autoCorrect={false}
+                onFocus={() => setPasswordFocused(true)}
+                onBlur={() => setPasswordFocused(false)}
               />
               <TouchableOpacity
                 onPress={() => setShowPassword((s) => !s)}
@@ -366,7 +377,7 @@ const styles = StyleSheet.create({
   // Password
   passwordSection: { marginBottom: 18 },
   passwordLabelRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
-  forgotText: { fontFamily: 'Inter', fontSize: 13, fontWeight: '700', color: C.brandTeal },
+  forgotText: { fontFamily: 'Inter', fontSize: 13, fontWeight: '700', color: C.brandTeal, textDecorationLine: 'underline' },
   eyeBtn: { paddingLeft: 8 },
   eyeIcon: { fontSize: 16 },
 
@@ -412,6 +423,6 @@ const styles = StyleSheet.create({
   // Sign Up
   signUpRow: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center' },
   signUpPrompt: { fontFamily: 'Inter', fontSize: 14, fontWeight: '500', color: C.muted },
-  signUpLink: { fontFamily: 'Roboto', fontSize: 14, fontWeight: '700', color: C.brandTeal },
+  signUpLink: { fontFamily: 'Roboto', fontSize: 14, fontWeight: '700', color: C.brandTeal, textDecorationLine: 'underline' },
 
 });
