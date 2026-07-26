@@ -71,6 +71,7 @@ export default function HOCreateJobScreen({ onBack, onSuccess }: HOCreateJobScre
   const [location, setLocation] = useState('');
   const [date, setDate] = useState<Date | null>(null);
   const [time, setTime] = useState<Date | null>(null);
+  const [tempTime, setTempTime] = useState<Date | null>(null);
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [showTimePicker, setShowTimePicker] = useState(false);
   const [budget, setBudget] = useState('');
@@ -316,22 +317,15 @@ export default function HOCreateJobScreen({ onBack, onSuccess }: HOCreateJobScre
               <Text style={styles.inputLabel}>Preferred Time</Text>
               <TouchableOpacity
                 style={[styles.input, styles.pickerInput, showTimePicker && styles.inputFocused]}
-                onPress={() => { setShowDatePicker(false); setShowTimePicker((shown) => !shown); }}
+                onPress={() => {
+                  setShowDatePicker(false);
+                  setTempTime(time ?? new Date());
+                  setShowTimePicker(true);
+                }}
                 activeOpacity={0.8}
               >
                 <Text style={[styles.pickerText, !time && styles.pickerPlaceholder]}>{timeLabel || 'Select a time'}</Text>
               </TouchableOpacity>
-              {showTimePicker && (
-                <DateTimePicker
-                  value={time ?? new Date()}
-                  mode="time"
-                  display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-                  onChange={(_, selectedTime) => {
-                    if (Platform.OS !== 'ios') setShowTimePicker(false);
-                    if (selectedTime) setTime(selectedTime);
-                  }}
-                />
-              )}
             </View>
 
             <Text style={styles.inputLabel}>Flexibility</Text>
@@ -453,6 +447,43 @@ export default function HOCreateJobScreen({ onBack, onSuccess }: HOCreateJobScre
               markedDates={date ? { [dateKey(date)]: { selected: true, selectedColor: Colors.brandTeal } } : undefined}
               theme={{ todayTextColor: Colors.brandTeal, arrowColor: Colors.brandTeal, selectedDayBackgroundColor: Colors.brandTeal }}
             />
+          </View>
+        </View>
+      </Modal>
+      <Modal
+        visible={showTimePicker}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowTimePicker(false)}
+      >
+        <View style={styles.calendarOverlay}>
+          <View style={styles.calendarModal}>
+            <View style={styles.calendarHeader}>
+              <Text style={styles.calendarTitle}>Select a time</Text>
+              <TouchableOpacity onPress={() => setShowTimePicker(false)} hitSlop={10}>
+                <Text style={styles.calendarClose}>Close</Text>
+              </TouchableOpacity>
+            </View>
+
+            <DateTimePicker
+              value={tempTime ?? new Date()}
+              mode="time"
+              display="spinner"
+              onChange={(_, selectedTime) => {
+                if (selectedTime) setTempTime(selectedTime);
+              }}
+            />
+
+            <TouchableOpacity
+              style={[styles.primaryBtn, { marginTop: 16 }]}
+              onPress={() => {
+                if (tempTime) setTime(tempTime);
+                setShowTimePicker(false);
+              }}
+              activeOpacity={0.85}
+            >
+              <Text style={styles.primaryBtnText}>Done</Text>
+            </TouchableOpacity>
           </View>
         </View>
       </Modal>
