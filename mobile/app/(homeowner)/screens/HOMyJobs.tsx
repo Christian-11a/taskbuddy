@@ -11,23 +11,19 @@
 
 import React, { useState } from 'react';
 import {
-  ActivityIndicator,
   ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
 } from 'react-native';
-import {
-  CalendarDays,
-  MapPin,
-  Plus,
-} from 'lucide-react-native';
+import { CalendarDays, ClipboardList, MapPin, Plus } from 'lucide-react-native';
 import { Colors, Radii, Shadows, Sizes, Spacing } from '../../../src/constants/theme';
 import { HOScreen } from '../../../src/types/navigation';
 import { useAsyncData } from '../../../src/hooks/useAsyncData';
 import { api } from '../../../src/lib/api';
 import { jobFilterBucket, jobStatusMeta, shortDate } from '../../../src/lib/format';
+import ScreenSkeleton from '../../../src/components/ScreenSkeleton';
 
 const FILTER_TABS = ['All', 'Active', 'Pending', 'Completed'];
 
@@ -44,6 +40,8 @@ export default function MyJobs({ onNavigate }: MyJobsProps) {
     activeFilter === 'All'
       ? jobs
       : jobs.filter((j) => jobFilterBucket(j.status) === activeFilter);
+
+  if (loading) return <ScreenSkeleton variant="list" />;
 
   return (
     <View style={styles.screen}>
@@ -86,12 +84,13 @@ export default function MyJobs({ onNavigate }: MyJobsProps) {
         contentContainerStyle={styles.bodyContent}
         showsVerticalScrollIndicator={false}
       >
-        {loading && <ActivityIndicator style={{ marginTop: 30 }} color={Colors.brandTeal} />}
         {!!error && !loading && <Text style={styles.stateText}>{error}</Text>}
         {!loading && !error && filtered.length === 0 && (
-          <Text style={styles.stateText}>
-            {jobs.length === 0 ? 'You haven\'t posted any jobs yet.' : 'No jobs in this filter.'}
-          </Text>
+          <View style={styles.emptyState}>
+            <ClipboardList size={40} color={Colors.brandTeal} />
+            <Text style={styles.emptyTitle}>{jobs.length === 0 ? 'No jobs yet' : 'No matching jobs'}</Text>
+            <Text style={styles.stateText}>{jobs.length === 0 ? 'Post a job to find the right service provider.' : 'Try another filter to see your jobs.'}</Text>
+          </View>
         )}
         {filtered.map((job) => {
           const meta = jobStatusMeta(job.status);
@@ -201,6 +200,8 @@ const styles = StyleSheet.create({
   jobProvider: { color: Colors.muted, fontSize: 12, fontFamily: 'Inter' },
   jobUrgency: { color: Colors.brandTeal, fontSize: 12, fontWeight: '700', fontFamily: 'Inter', textTransform: 'capitalize' },
   stateText: { color: Colors.slate, fontSize: 14, fontFamily: 'Inter', textAlign: 'center', marginTop: 30 },
+  emptyState: { alignItems: 'center', paddingVertical: 48, paddingHorizontal: 24 },
+  emptyTitle: { color: Colors.brandDark, fontSize: 17, fontWeight: '800', fontFamily: 'Inter', marginTop: 12 },
 
   fab: {
     position: 'absolute', bottom: 24, right: Spacing.screenH,

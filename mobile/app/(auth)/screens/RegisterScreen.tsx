@@ -17,6 +17,7 @@
 import React, { useState } from 'react';
 import {
   ActivityIndicator,
+  Keyboard,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -58,6 +59,16 @@ interface RegisterScreenContentProps extends RegisterScreenProps {
   onViewTerms: () => void;
   termsAccepted: boolean;
   onToggleTermsAccepted: () => void;
+  name: string;
+  onNameChange: (value: string) => void;
+  email: string;
+  onEmailChange: (value: string) => void;
+  password: string;
+  onPasswordChange: (value: string) => void;
+  confirmPassword: string;
+  onConfirmPasswordChange: (value: string) => void;
+  role: MobileRole;
+  onRoleChange: (value: MobileRole) => void;
 }
 
 interface InputProps {
@@ -99,12 +110,17 @@ function RegisterScreenContent({
   onViewTerms,
   termsAccepted,
   onToggleTermsAccepted,
+  name,
+  onNameChange,
+  email,
+  onEmailChange,
+  password,
+  onPasswordChange,
+  confirmPassword,
+  onConfirmPasswordChange,
+  role,
+  onRoleChange,
 }: RegisterScreenContentProps) {
-  const [name, setName] = useState('');
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
-  const [role, setRole] = useState<MobileRole>('homeowner');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [confirmationSent, setConfirmationSent] = useState(false);
@@ -182,6 +198,10 @@ function RegisterScreenContent({
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
+          // iOS does not dismiss the keyboard when an unfocused area of a
+          // ScrollView is tapped by default. Dismissing at the scroll view
+          // level preserves every form control's own press behavior.
+          onTouchStart={Platform.OS === 'ios' ? Keyboard.dismiss : undefined}
         >
           {/* Top section with back + logo placeholder */}
           <View style={styles.topSection}>
@@ -201,7 +221,7 @@ function RegisterScreenContent({
                 <TouchableOpacity
                   key={r}
                   style={[styles.roleBtn, role === r && styles.roleBtnActive]}
-                  onPress={() => setRole(r)}
+                  onPress={() => onRoleChange(r)}
                   activeOpacity={0.8}
                 >
                   <Text style={[styles.roleBtnText, role === r && styles.roleBtnTextActive]}>
@@ -215,27 +235,27 @@ function RegisterScreenContent({
               label="Full Name"
               placeholder="Alex Chen"
               value={name}
-              onChangeText={setName}
+              onChangeText={onNameChange}
             />
             <FormInput
               label="Email Address"
               placeholder="alex@example.com"
               value={email}
-              onChangeText={setEmail}
+              onChangeText={onEmailChange}
               keyboardType="email-address"
             />
             <FormInput
               label="Password"
               placeholder="••••••••"
               value={password}
-              onChangeText={setPassword}
+              onChangeText={onPasswordChange}
               secureTextEntry
             />
             <FormInput
               label="Confirm Password"
               placeholder="••••••••"
               value={confirmPassword}
-              onChangeText={setConfirmPassword}
+              onChangeText={onConfirmPasswordChange}
               secureTextEntry
             />
 
@@ -318,6 +338,11 @@ function RegisterScreenContent({
 export default function RegisterScreen({ onRegister, onLogin }: RegisterScreenProps) {
   const [showTerms, setShowTerms] = useState(false);
   const [termsAccepted, setTermsAccepted] = useState(false);
+  const [name, setName] = useState('');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [role, setRole] = useState<MobileRole>('homeowner');
 
   if (showTerms) {
     return (
@@ -335,6 +360,16 @@ export default function RegisterScreen({ onRegister, onLogin }: RegisterScreenPr
       onViewTerms={() => setShowTerms(true)}
       termsAccepted={termsAccepted}
       onToggleTermsAccepted={() => setTermsAccepted((value) => !value)}
+      name={name}
+      onNameChange={setName}
+      email={email}
+      onEmailChange={setEmail}
+      password={password}
+      onPasswordChange={setPassword}
+      confirmPassword={confirmPassword}
+      onConfirmPasswordChange={setConfirmPassword}
+      role={role}
+      onRoleChange={setRole}
     />
   );
 }
@@ -431,6 +466,7 @@ const styles = StyleSheet.create({
   termsLink: {
     color: C.brandTeal,
     fontWeight: '700',
+    textDecorationLine: 'underline',
   },
   requiredHint: {
     color: C.muted,

@@ -23,6 +23,7 @@ import {
   ArrowRight,
   Bell,
   BrushCleaning,
+  ClipboardList,
   Hammer,
   Hand,
   MapPin,
@@ -37,6 +38,7 @@ import { useAuth } from '../../../src/context/AuthContext';
 import { useAsyncData } from '../../../src/hooks/useAsyncData';
 import { api } from '../../../src/lib/api';
 import { initials, jobStatusMeta, peso, shortDate } from '../../../src/lib/format';
+import ScreenSkeleton from '../../../src/components/ScreenSkeleton';
 
 const CATEGORY_ICON: Record<string, typeof Wrench> = {
   Plumbing: Wrench,
@@ -54,7 +56,7 @@ interface HOHomeScreenProps {
 
 export default function HOHomeScreen({ onNavigate }: HOHomeScreenProps) {
   const { profile } = useAuth();
-  const { data } = useAsyncData(async () => {
+  const { data, loading } = useAsyncData(async () => {
     const [wallet, jobs, cats, notifs] = await Promise.all([
       api.wallet(),
       api.myJobs(),
@@ -73,6 +75,8 @@ export default function HOHomeScreen({ onNavigate }: HOHomeScreenProps) {
   const unread = data?.notifs?.length ?? 0;
   const location =
     [profile?.city, profile?.address].filter(Boolean).join(', ') || 'Set your location';
+
+  if (loading) return <ScreenSkeleton variant="dashboard" />;
 
   return (
     <View style={styles.screen}>
@@ -185,7 +189,11 @@ export default function HOHomeScreen({ onNavigate }: HOHomeScreenProps) {
         </View>
 
         {activeJobs.length === 0 && (
-          <Text style={styles.emptyText}>No active jobs. Tap a service above to post one.</Text>
+          <View style={styles.emptyState}>
+            <ClipboardList size={36} color={Colors.brandTeal} />
+            <Text style={styles.emptyTitle}>No active jobs</Text>
+            <Text style={styles.emptyText}>Tap a service above to post a job and start receiving offers.</Text>
+          </View>
         )}
 
         {activeJobs.map((job) => {
@@ -340,6 +348,8 @@ const styles = StyleSheet.create({
   jobFooter: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   jobAmount: { color: Colors.brandDark, fontSize: 22, fontWeight: '800', fontFamily: 'Inter' },
   emptyText: { color: Colors.slate, fontSize: 14, fontFamily: 'Inter', textAlign: 'center', paddingVertical: 16 },
+  emptyState: { alignItems: 'center', paddingVertical: 30, paddingHorizontal: 24 },
+  emptyTitle: { color: Colors.brandDark, fontSize: 16, fontWeight: '800', fontFamily: 'Inter', marginTop: 10 },
   viewBtn: {
     backgroundColor: Colors.brandTeal, borderRadius: 14,
     paddingHorizontal: 14, paddingVertical: 8,

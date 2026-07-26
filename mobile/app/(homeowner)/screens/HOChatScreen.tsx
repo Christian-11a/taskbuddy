@@ -47,6 +47,7 @@ export default function HOChatScreen({ jobId, onBack, onViewJob }: HOChatScreenP
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [text, setText] = useState('');
+  const [inputFocused, setInputFocused] = useState(false);
   const [sending, setSending] = useState(false);
   const listRef = useRef<FlatList>(null);
 
@@ -164,13 +165,15 @@ export default function HOChatScreen({ jobId, onBack, onViewJob }: HOChatScreenP
             <Paperclip size={20} color={Colors.brandDark} />
           </TouchableOpacity>
           <TextInput
-            style={styles.chatInput}
+            style={[styles.chatInput, inputFocused && styles.chatInputFocused]}
             placeholder="Type a message..."
             placeholderTextColor={Colors.muted}
             value={text}
             onChangeText={setText}
             multiline
             maxLength={500}
+            onFocus={() => setInputFocused(true)}
+            onBlur={() => setInputFocused(false)}
           />
           <TouchableOpacity
             style={[styles.sendBtn, !text.trim() && styles.sendBtnDisabled]}
@@ -271,6 +274,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16, paddingVertical: 10, maxHeight: 100,
     fontFamily: 'Inter', fontSize: 14, color: Colors.brandDark,
   },
+  chatInputFocused: { borderWidth: 1.5, borderColor: Colors.brandTeal },
   sendBtn: {
     width: 40, height: 40, borderRadius: 20,
     backgroundColor: Colors.brandTeal, alignItems: 'center', justifyContent: 'center',

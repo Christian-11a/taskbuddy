@@ -20,6 +20,8 @@ import {
   TextInput,
   TouchableOpacity,
   View,
+  Platform,
+  Modal,
 } from 'react-native';
 import {
   AlertTriangle,
@@ -32,6 +34,8 @@ import {
   Sparkles,
   Wrench,
 } from 'lucide-react-native';
+import DateTimePicker from '@react-native-community/datetimepicker';
+import { Calendar } from 'react-native-calendars';
 import { Colors, Radii, Shadows, Sizes, Spacing } from '../../../src/constants/theme';
 import { useAuth } from '../../../src/context/AuthContext';
 import { useAsyncData } from '../../../src/hooks/useAsyncData';
@@ -65,14 +69,21 @@ export default function HOCreateJobScreen({ onBack, onSuccess }: HOCreateJobScre
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [location, setLocation] = useState('');
-  const [date, setDate] = useState('');
-  const [time, setTime] = useState('');
+  const [date, setDate] = useState<Date | null>(null);
+  const [time, setTime] = useState<Date | null>(null);
+  const [tempTime, setTempTime] = useState<Date | null>(null);
+  const [showDatePicker, setShowDatePicker] = useState(false);
+  const [showTimePicker, setShowTimePicker] = useState(false);
   const [budget, setBudget] = useState('');
+  const [focusedField, setFocusedField] = useState<string | null>(null);
   const [isUrgent, setIsUrgent] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const totalSteps = 5;
+  const dateLabel = date?.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) ?? '';
+  const timeLabel = time?.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' }) ?? '';
+  const dateKey = (value: Date) => `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, '0')}-${String(value.getDate()).padStart(2, '0')}`;
 
   const validateStep = (): string | null => {
     if (step === 1 && !categoryId) return 'Please select a service.';
@@ -231,22 +242,26 @@ export default function HOCreateJobScreen({ onBack, onSuccess }: HOCreateJobScre
             <View style={styles.inputGroup}>
               <Text style={styles.inputLabel}>Job Title</Text>
               <TextInput
-                style={styles.input}
+                style={[styles.input, focusedField === 'title' && styles.inputFocused]}
                 placeholder="e.g. 3-bedroom apartment deep clean"
                 placeholderTextColor={Colors.muted}
                 value={title}
                 onChangeText={setTitle}
+                onFocus={() => setFocusedField('title')}
+                onBlur={() => setFocusedField(null)}
               />
             </View>
 
             <View style={styles.inputGroup}>
               <Text style={styles.inputLabel}>Description</Text>
               <TextInput
-                style={[styles.input, styles.textArea]}
+                style={[styles.input, styles.textArea, focusedField === 'description' && styles.inputFocused]}
                 placeholder="Describe the job in detail..."
                 placeholderTextColor={Colors.muted}
                 value={description}
                 onChangeText={setDescription}
+                onFocus={() => setFocusedField('description')}
+                onBlur={() => setFocusedField(null)}
                 multiline
                 numberOfLines={4}
               />
@@ -255,11 +270,13 @@ export default function HOCreateJobScreen({ onBack, onSuccess }: HOCreateJobScre
             <View style={styles.inputGroup}>
               <Text style={styles.inputLabel}>Location</Text>
               <TextInput
-                style={styles.input}
+                style={[styles.input, focusedField === 'location' && styles.inputFocused]}
                 placeholder="Brgy. Sampaguita, Lipa City"
                 placeholderTextColor={Colors.muted}
                 value={location}
                 onChangeText={setLocation}
+                onFocus={() => setFocusedField('location')}
+                onBlur={() => setFocusedField(null)}
               />
             </View>
 
@@ -287,24 +304,28 @@ export default function HOCreateJobScreen({ onBack, onSuccess }: HOCreateJobScre
 
             <View style={styles.inputGroup}>
               <Text style={styles.inputLabel}>Preferred Date</Text>
-              <TextInput
-                style={styles.input}
-                placeholder="e.g. May 20, 2026"
-                placeholderTextColor={Colors.muted}
-                value={date}
-                onChangeText={setDate}
-              />
+              <TouchableOpacity
+                style={[styles.input, styles.pickerInput, showDatePicker && styles.inputFocused]}
+                onPress={() => { setShowTimePicker(false); setShowDatePicker(true); }}
+                activeOpacity={0.8}
+              >
+                <Text style={[styles.pickerText, !date && styles.pickerPlaceholder]}>{dateLabel || 'Select a date'}</Text>
+              </TouchableOpacity>
             </View>
 
             <View style={styles.inputGroup}>
               <Text style={styles.inputLabel}>Preferred Time</Text>
-              <TextInput
-                style={styles.input}
-                placeholder="e.g. 10:00 AM"
-                placeholderTextColor={Colors.muted}
-                value={time}
-                onChangeText={setTime}
-              />
+              <TouchableOpacity
+                style={[styles.input, styles.pickerInput, showTimePicker && styles.inputFocused]}
+                onPress={() => {
+                  setShowDatePicker(false);
+                  setTempTime(time ?? new Date());
+                  setShowTimePicker(true);
+                }}
+                activeOpacity={0.8}
+              >
+                <Text style={[styles.pickerText, !time && styles.pickerPlaceholder]}>{timeLabel || 'Select a time'}</Text>
+              </TouchableOpacity>
             </View>
 
             <Text style={styles.inputLabel}>Flexibility</Text>
@@ -323,7 +344,7 @@ export default function HOCreateJobScreen({ onBack, onSuccess }: HOCreateJobScre
             <Text style={styles.stepTitle}>Budget</Text>
             <Text style={styles.stepSubtitle}>Set your budget for this job</Text>
 
-            <View style={styles.budgetCard}>
+            <View style={[styles.budgetCard, focusedField === 'budget' && styles.budgetCardFocused]}>
               <Text style={styles.budgetCurrency}>₱</Text>
               <TextInput
                 style={styles.budgetInput}
@@ -331,6 +352,8 @@ export default function HOCreateJobScreen({ onBack, onSuccess }: HOCreateJobScre
                 placeholderTextColor={Colors.muted}
                 value={budget}
                 onChangeText={setBudget}
+                onFocus={() => setFocusedField('budget')}
+                onBlur={() => setFocusedField(null)}
                 keyboardType="numeric"
               />
             </View>
@@ -360,8 +383,8 @@ export default function HOCreateJobScreen({ onBack, onSuccess }: HOCreateJobScre
                 { label: 'Service', value: categoryName || 'Not selected' },
                 { label: 'Title', value: title || 'Untitled' },
                 { label: 'Location', value: location || 'Not set' },
-                { label: 'Date', value: date || 'Flexible' },
-                { label: 'Time', value: time || 'Flexible' },
+                { label: 'Date', value: dateLabel || 'Flexible' },
+                { label: 'Time', value: timeLabel || 'Flexible' },
                 { label: 'Budget', value: budget ? peso(budget) : 'Not set' },
                 { label: 'Urgent', value: isUrgent ? 'Yes' : 'No' },
               ].map((item) => (
@@ -398,6 +421,72 @@ export default function HOCreateJobScreen({ onBack, onSuccess }: HOCreateJobScre
           </Text>
         </TouchableOpacity>
       </View>
+
+      <Modal
+        visible={showDatePicker}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowDatePicker(false)}
+      >
+        <View style={styles.calendarOverlay}>
+          <View style={styles.calendarModal}>
+            <View style={styles.calendarHeader}>
+              <Text style={styles.calendarTitle}>Select a date</Text>
+              <TouchableOpacity onPress={() => setShowDatePicker(false)} hitSlop={10}>
+                <Text style={styles.calendarClose}>Close</Text>
+              </TouchableOpacity>
+            </View>
+            <Calendar
+              current={date ? dateKey(date) : undefined}
+              minDate={dateKey(new Date())}
+              onDayPress={(day) => {
+                const [year, month, dayOfMonth] = day.dateString.split('-').map(Number);
+                setDate(new Date(year, month - 1, dayOfMonth));
+                setShowDatePicker(false);
+              }}
+              markedDates={date ? { [dateKey(date)]: { selected: true, selectedColor: Colors.brandTeal } } : undefined}
+              theme={{ todayTextColor: Colors.brandTeal, arrowColor: Colors.brandTeal, selectedDayBackgroundColor: Colors.brandTeal }}
+            />
+          </View>
+        </View>
+      </Modal>
+      <Modal
+        visible={showTimePicker}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowTimePicker(false)}
+      >
+        <View style={styles.calendarOverlay}>
+          <View style={styles.calendarModal}>
+            <View style={styles.calendarHeader}>
+              <Text style={styles.calendarTitle}>Select a time</Text>
+              <TouchableOpacity onPress={() => setShowTimePicker(false)} hitSlop={10}>
+                <Text style={styles.calendarClose}>Close</Text>
+              </TouchableOpacity>
+            </View>
+
+            <DateTimePicker
+              value={tempTime ?? new Date()}
+              mode="time"
+              display="spinner"
+              onChange={(_, selectedTime) => {
+                if (selectedTime) setTempTime(selectedTime);
+              }}
+            />
+
+            <TouchableOpacity
+              style={[styles.primaryBtn, { marginTop: 16 }]}
+              onPress={() => {
+                if (tempTime) setTime(tempTime);
+                setShowTimePicker(false);
+              }}
+              activeOpacity={0.85}
+            >
+              <Text style={styles.primaryBtnText}>Done</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -454,6 +543,15 @@ const styles = StyleSheet.create({
     fontFamily: 'Inter', fontSize: 15, color: Colors.brandDark,
     ...Shadows.input,
   },
+  inputFocused: { borderColor: Colors.brandTeal, borderWidth: 2 },
+  pickerInput: { justifyContent: 'center', minHeight: 48 },
+  pickerText: { color: Colors.brandDark, fontFamily: 'Inter', fontSize: 15 },
+  pickerPlaceholder: { color: Colors.muted },
+  calendarOverlay: { flex: 1, backgroundColor: 'rgba(15,23,42,0.45)', justifyContent: 'center', padding: 20 },
+  calendarModal: { backgroundColor: Colors.white, borderRadius: 24, padding: 20, ...Shadows.card },
+  calendarHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 },
+  calendarTitle: { color: Colors.brandDark, fontSize: 18, fontWeight: '800', fontFamily: 'Inter' },
+  calendarClose: { color: Colors.brandTeal, fontSize: 14, fontWeight: '700', fontFamily: 'Inter' },
   textArea: { height: 100, textAlignVertical: 'top' },
 
   urgentToggle: {
@@ -485,8 +583,9 @@ const styles = StyleSheet.create({
   budgetCard: {
     backgroundColor: Colors.white, borderRadius: 20, padding: 24,
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-    marginBottom: 12, ...Shadows.card,
+    marginBottom: 12, borderWidth: 1, borderColor: 'transparent', ...Shadows.card,
   },
+  budgetCardFocused: { borderColor: Colors.brandTeal, borderWidth: 2 },
   budgetCurrency: { color: Colors.brandDark, fontSize: 32, fontWeight: '800', fontFamily: 'Inter', marginRight: 4 },
   budgetInput: { fontSize: 48, fontWeight: '800', fontFamily: 'Inter', color: Colors.brandDark, minWidth: 120 },
   budgetHint: { color: Colors.muted, fontSize: 13, fontFamily: 'Inter', textAlign: 'center', marginBottom: 20 },
@@ -508,7 +607,7 @@ const styles = StyleSheet.create({
   termsRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 12 },
   termsCheck: { width: 20, height: 20, borderRadius: 6, borderWidth: 1, borderColor: 'rgba(144,153,184,0.4)', backgroundColor: Colors.white, marginTop: 2 },
   termsText: { flex: 1, color: Colors.slate, fontSize: 13, fontFamily: 'Inter', lineHeight: 20 },
-  termsLink: { color: Colors.brandTeal, fontWeight: '700' },
+  termsLink: { color: Colors.brandTeal, fontWeight: '700', textDecorationLine: 'underline' },
 
   footer: { paddingHorizontal: Spacing.screenH, paddingVertical: 16, backgroundColor: Colors.white, borderTopWidth: 1, borderTopColor: 'rgba(144,153,184,0.15)' },
   primaryBtn: {
