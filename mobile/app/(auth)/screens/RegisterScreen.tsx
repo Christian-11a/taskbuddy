@@ -449,7 +449,9 @@ const styles = StyleSheet.create({
     borderColor: C.brandTeal,
   },
   checkboxDisabled: {
-    opacity: 0.65,
+    opacity: 1,
+    backgroundColor: '#CBD5E1',
+    borderColor: '#64748B',
   },
   checkboxMark: {
     color: C.white,
