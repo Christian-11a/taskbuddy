@@ -10,6 +10,25 @@
  * Step 4: Budget / pricing
  * Step 5: Review & post
  * Success: Confirmation screen
+ *
+ * NOTE (Android/iOS time picker fix):
+ * @react-native-community/datetimepicker behaves very differently per platform:
+ *  - iOS: `display="spinner"` renders as a true inline view. It never closes on
+ *    its own and just streams onChange events as the user scrolls the wheel,
+ *    which is why wrapping it in our own bottom-sheet Modal with a "Done"
+ *    button works well.
+ *  - Android: mounting <DateTimePicker> triggers the OS's own native imperative
+ *    dialog (with its own baked-in OK/Cancel), regardless of the `display`
+ *    prop. That dialog expects the component to be UNMOUNTED after the user
+ *    responds. If we keep it mounted (e.g. inside a Modal whose `visible` stays
+ *    true), Android reopens the native dialog on every re-render, causing the
+ *    "keeps popping back up" loop on both OK and Cancel.
+ *
+ * Fix: branch by Platform.OS.
+ *  - Android: render <DateTimePicker> bare (no wrapping custom Modal), and
+ *    unmount it (setShowTimePicker(false)) immediately inside onChange,
+ *    regardless of whether the event was 'set' (OK) or 'dismissed' (Cancel).
+ *  - iOS: keep the existing custom Modal + spinner + Done button flow.
  */
 
 import React, { useState } from 'react';
@@ -34,7 +53,9 @@ import {
   Sparkles,
   Wrench,
 } from 'lucide-react-native';
-import DateTimePicker from '@react-native-community/datetimepicker';
+import DateTimePicker, {
+  DateTimePickerEvent,
+} from '@react-native-community/datetimepicker';
 import { Calendar } from 'react-native-calendars';
 import { Colors, Radii, Shadows, Sizes, Spacing } from '../../../src/constants/theme';
 import { useAuth } from '../../../src/context/AuthContext';
@@ -140,6 +161,31 @@ export default function HOCreateJobScreen({ onBack, onSuccess }: HOCreateJobScre
     } else {
       setStep((s) => s - 1);
     }
+  };
+
+  const openTimePicker = () => {
+    setShowDatePicker(false);
+    setTempTime(time ?? new Date());
+    setShowTimePicker(true);
+  };
+
+  // Single onChange handler for both platforms.
+  // Android: the native dialog is imperative and self-closing — we must
+  // unmount (setShowTimePicker(false)) on ANY response (OK or Cancel),
+  // otherwise the dialog re-triggers itself on every re-render.
+  // iOS: the spinner is an inline view that stays open and just streams
+  // intermediate values until the user taps our own "Done" button.
+  const handleTimeChange = (event: DateTimePickerEvent, selectedTime?: Date) => {
+    if (Platform.OS === 'android') {
+      setShowTimePicker(false);
+      if (event.type === 'set' && selectedTime) {
+        setTime(selectedTime);
+      }
+      // event.type === 'dismissed' -> user tapped Cancel/back; keep old time.
+      return;
+    }
+    // iOS
+    if (selectedTime) setTempTime(selectedTime);
   };
 
   if (step === 6) {
@@ -317,11 +363,7 @@ export default function HOCreateJobScreen({ onBack, onSuccess }: HOCreateJobScre
               <Text style={styles.inputLabel}>Preferred Time</Text>
               <TouchableOpacity
                 style={[styles.input, styles.pickerInput, showTimePicker && styles.inputFocused]}
-                onPress={() => {
-                  setShowDatePicker(false);
-                  setTempTime(time ?? new Date());
-                  setShowTimePicker(true);
-                }}
+                onPress={openTimePicker}
                 activeOpacity={0.8}
               >
                 <Text style={[styles.pickerText, !time && styles.pickerPlaceholder]}>{timeLabel || 'Select a time'}</Text>
@@ -450,43 +492,68 @@ export default function HOCreateJobScreen({ onBack, onSuccess }: HOCreateJobScre
           </View>
         </View>
       </Modal>
-      <Modal
-        visible={showTimePicker}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setShowTimePicker(false)}
-      >
-        <View style={styles.calendarOverlay}>
-          <View style={styles.calendarModal}>
-            <View style={styles.calendarHeader}>
-              <Text style={styles.calendarTitle}>Select a time</Text>
-              <TouchableOpacity onPress={() => setShowTimePicker(false)} hitSlop={10}>
-                <Text style={styles.calendarClose}>Close</Text>
+
+      {/*
+        TIME PICKER — platform-specific rendering.
+
+        Android: DateTimePicker itself opens the native OS dialog imperatively
+        as soon as it mounts. We render it bare (no custom Modal wrapper) and
+        conditionally mount it only while showTimePicker is true. The
+        handleTimeChange handler unmounts it (setShowTimePicker(false)) the
+        instant it receives ANY event — 'set' (OK) or 'dismissed' (Cancel) —
+        which is what prevents the native dialog from reappearing.
+      */}
+      {Platform.OS === 'android' && showTimePicker && (
+        <DateTimePicker
+          value={tempTime ?? new Date()}
+          mode="time"
+          display="spinner"
+          onChange={handleTimeChange}
+        />
+      )}
+
+      {/*
+        iOS: the spinner is an inline view that never closes itself, so we
+        keep it inside our own bottom-sheet Modal with a "Done" button that
+        commits tempTime -> time.
+      */}
+      {Platform.OS === 'ios' && (
+        <Modal
+          visible={showTimePicker}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setShowTimePicker(false)}
+        >
+          <View style={styles.calendarOverlay}>
+            <View style={styles.calendarModal}>
+              <View style={styles.calendarHeader}>
+                <Text style={styles.calendarTitle}>Select a time</Text>
+                <TouchableOpacity onPress={() => setShowTimePicker(false)} hitSlop={10}>
+                  <Text style={styles.calendarClose}>Close</Text>
+                </TouchableOpacity>
+              </View>
+
+              <DateTimePicker
+                value={tempTime ?? new Date()}
+                mode="time"
+                display="spinner"
+                onChange={handleTimeChange}
+              />
+
+              <TouchableOpacity
+                style={[styles.primaryBtn, { marginTop: 16 }]}
+                onPress={() => {
+                  if (tempTime) setTime(tempTime);
+                  setShowTimePicker(false);
+                }}
+                activeOpacity={0.85}
+              >
+                <Text style={styles.primaryBtnText}>Done</Text>
               </TouchableOpacity>
             </View>
-
-            <DateTimePicker
-              value={tempTime ?? new Date()}
-              mode="time"
-              display="spinner"
-              onChange={(_, selectedTime) => {
-                if (selectedTime) setTempTime(selectedTime);
-              }}
-            />
-
-            <TouchableOpacity
-              style={[styles.primaryBtn, { marginTop: 16 }]}
-              onPress={() => {
-                if (tempTime) setTime(tempTime);
-                setShowTimePicker(false);
-              }}
-              activeOpacity={0.85}
-            >
-              <Text style={styles.primaryBtnText}>Done</Text>
-            </TouchableOpacity>
           </View>
-        </View>
-      </Modal>
+        </Modal>
+      )}
     </View>
   );
 }
