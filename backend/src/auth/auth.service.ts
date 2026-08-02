@@ -5,7 +5,12 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { SupabaseService } from '../supabase/supabase.service';
-import { ChangePasswordDto, LoginDto, RefreshDto, RegisterDto } from './dto/auth.dto';
+import {
+  ChangePasswordDto,
+  LoginDto,
+  RefreshDto,
+  RegisterDto,
+} from './dto/auth.dto';
 import type { Profile } from '../common/types';
 
 @Injectable()
@@ -53,7 +58,7 @@ export class AuthService {
     // guard on later requests (story #29, TC-ADM-006).
     const { data: profile } = await this.supabase.admin
       .from('profiles')
-      .select('deactivated_at')
+      .select('deactivated_at, full_name, role')
       .eq('id', data.user.id)
       .maybeSingle();
     if (profile?.deactivated_at) {
@@ -62,7 +67,14 @@ export class AuthService {
     }
 
     return {
-      user: { id: data.user.id, email: data.user.email },
+      // full_name and role come free from the suspension lookup above. Without
+      // them the web admin console had nothing to show but the email address.
+      user: {
+        id: data.user.id,
+        email: data.user.email,
+        full_name: profile?.full_name ?? null,
+        role: profile?.role ?? null,
+      },
       session: {
         access_token: data.session.access_token,
         refresh_token: data.session.refresh_token,
@@ -103,15 +115,20 @@ export class AuthService {
     const email = authData?.user?.email;
     if (!email) throw new BadRequestException('Account has no email on file');
 
-    const { error: reauthError } = await this.supabase.anon.auth.signInWithPassword({
-      email,
-      password: dto.current_password,
-    });
-    if (reauthError) throw new UnauthorizedException('Current password is incorrect');
+    const { error: reauthError } =
+      await this.supabase.anon.auth.signInWithPassword({
+        email,
+        password: dto.current_password,
+      });
+    if (reauthError)
+      throw new UnauthorizedException('Current password is incorrect');
 
-    const { error } = await this.supabase.admin.auth.admin.updateUserById(user.id, {
-      password: dto.new_password,
-    });
+    const { error } = await this.supabase.admin.auth.admin.updateUserById(
+      user.id,
+      {
+        password: dto.new_password,
+      },
+    );
     if (error) throw new BadRequestException(error.message);
     return { success: true };
   }
@@ -125,8 +142,7 @@ export class AuthService {
     );
     const profile = { ...user, email: authData?.user?.email ?? null };
 
-    if (user.role !== 'provider')
-      return { profile, provider_profile: null };
+    if (user.role !== 'provider') return { profile, provider_profile: null };
     const { data } = await this.supabase.admin
       .from('provider_profiles')
       .select('*, service_categories(name)')

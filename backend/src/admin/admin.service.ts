@@ -165,15 +165,16 @@ export class AdminService {
         ? ratings.reduce((sum, r) => sum + r, 0) / ratings.length
         : null;
 
-    // Platform revenue (story #32) — completed, job-linked wallet credits
-    // (job payouts/fees). Top-ups and withdrawals carry no job_id and aren't
-    // platform revenue, so they're excluded.
+    // Platform revenue (story #32) — completed provider payouts, and nothing
+    // else. Filtering on `kind` rather than direction+job_id matters since
+    // migration 0009: escrow refunds are *also* credits carrying a job_id, and
+    // counting them would inflate revenue by the value of every cancelled or
+    // disputed job. Top-ups and withdrawals are excluded for the same reason.
     const { data: revenueTxns, error: revenueError } = await this.supabase.admin
       .from('wallet_transactions')
       .select('amount, created_at')
-      .eq('direction', 'credit')
-      .eq('status', 'completed')
-      .not('job_id', 'is', null);
+      .eq('kind', 'payout')
+      .eq('status', 'completed');
     if (revenueError) throw new BadRequestException(revenueError.message);
 
     const revenueByMonth: Record<string, number> = {};
@@ -200,6 +201,12 @@ export class AdminService {
       if (day) trendByDay[day] = (trendByDay[day] ?? 0) + 1;
     }
 
+    // Drives the dashboard stat card and the sidebar badge (migration 0008).
+    const { count: pendingVerifications } = await this.supabase.admin
+      .from('provider_verifications')
+      .select('id', { count: 'exact', head: true })
+      .eq('status', 'pending');
+
     const allUsers = users ?? [];
     return {
       totals: {
@@ -211,6 +218,7 @@ export class AdminService {
         avg_rating: avgRating,
         total_revenue: round2(totalRevenue),
         monthly_revenue: round2(monthlyRevenue),
+        pending_verifications: pendingVerifications ?? 0,
       },
       bookings_by_status: jobsByStatus,
       bookings_by_category: jobsByCategory,

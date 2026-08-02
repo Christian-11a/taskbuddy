@@ -13,6 +13,7 @@ export type ApplicationStatus =
 export type WalletTxnDirection = 'credit' | 'debit';
 export type WalletTxnStatus = 'pending' | 'completed' | 'failed';
 export type BookingStatus = 'scheduled' | 'completed' | 'cancelled';
+export type VerificationStatus = 'pending' | 'approved' | 'rejected';
 
 export interface Profile {
   id: string;

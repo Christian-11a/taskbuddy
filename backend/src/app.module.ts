@@ -16,6 +16,9 @@ import { AdminModule } from './admin/admin.module';
 import { WalletModule } from './wallet/wallet.module';
 import { ChatModule } from './chat/chat.module';
 import { CalendarModule } from './calendar/calendar.module';
+import { UploadsModule } from './uploads/uploads.module';
+import { VerificationsModule } from './verifications/verifications.module';
+import { EscrowModule } from './escrow/escrow.module';
 
 @Module({
   imports: [
@@ -36,6 +39,9 @@ import { CalendarModule } from './calendar/calendar.module';
     WalletModule,
     ChatModule,
     CalendarModule,
+    UploadsModule,
+    VerificationsModule,
+    EscrowModule,
   ],
 })
 export class AppModule {}

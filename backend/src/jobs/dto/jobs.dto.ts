@@ -1,11 +1,16 @@
 import { Type } from 'class-transformer';
 import {
+  ArrayMaxSize,
+  IsArray,
   IsIn,
   IsInt,
+  IsISO8601,
   IsLatitude,
   IsLongitude,
   IsNotEmpty,
+  IsNumber,
   IsOptional,
+  IsPositive,
   IsString,
   Length,
 } from 'class-validator';
@@ -40,6 +45,26 @@ export class CreateJobDto {
   @IsLongitude()
   @Type(() => Number)
   longitude!: number;
+
+  // Client's budget in PHP. Optional — jobs posted without one behave as before.
+  @IsOptional()
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @IsPositive()
+  @Type(() => Number)
+  budget?: number;
+
+  // Preferred start time. When set, accepting an application auto-creates the
+  // provider's booking (trigger handle_application_accepted, migration 0007).
+  @IsOptional()
+  @IsISO8601()
+  scheduled_at?: string;
+
+  // Storage object paths returned by POST /uploads/signed-url, not URLs.
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(6)
+  @IsString({ each: true })
+  photo_urls?: string[];
 }
 
 export class BrowseJobsQueryDto {

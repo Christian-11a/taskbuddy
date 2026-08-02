@@ -13,8 +13,14 @@ function createSupabaseMock(options: {
   deactivatedAt?: string | null;
 }) {
   const signOut = jest.fn().mockResolvedValue({ error: null });
+  // login() reads full_name/role off the same suspension lookup, so the web
+  // admin console has a display name without a second round trip.
   const maybeSingle = jest.fn().mockResolvedValue({
-    data: { deactivated_at: options.deactivatedAt ?? null },
+    data: {
+      deactivated_at: options.deactivatedAt ?? null,
+      full_name: 'Ana Cruz',
+      role: 'client',
+    },
     error: null,
   });
   const supabase = {
@@ -54,7 +60,12 @@ describe('AuthService.login', () => {
 
     const result = await service.login(dto);
 
-    expect(result.user).toEqual({ id: 'u1', email: 'user@test.io' });
+    expect(result.user).toEqual({
+      id: 'u1',
+      email: 'user@test.io',
+      full_name: 'Ana Cruz',
+      role: 'client',
+    });
     expect(result.session).toEqual(SESSION);
   });
 
