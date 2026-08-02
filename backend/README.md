@@ -62,7 +62,7 @@ Job lifecycle: `open → recommending → assigned → in_progress → completed
 
 1. Create a project at [supabase.com](https://supabase.com).
 2. Apply **every** migration in [`supabase/migrations/`](./supabase/migrations) **in order**
-   (0001 → 0009), either by pasting each file into the SQL Editor or with the CLI:
+   (0001 → 0010), either by pasting each file into the SQL Editor or with the CLI:
 
    ```bash
    supabase link --project-ref <your-project-ref>
@@ -80,6 +80,7 @@ Job lifecycle: `open → recommending → assigned → in_progress → completed
    | `0007_job_pricing_schedule_photos.sql` | `jobs.budget`, `jobs.scheduled_at`, `jobs.photo_urls`; creates the public `job-photos` Storage bucket; extends `handle_application_accepted()` to auto-create the `bookings` row. See `BACKEND_SCHEMA.md` §16. |
    | `0008_provider_verifications.sql` | `provider_verifications` + `provider_profiles.is_verified`; creates the **private** `verification-docs` Storage bucket. Backs the admin Verification queue. See `BACKEND_SCHEMA.md` §17. |
    | `0009_escrow_and_disputes.sql` | `escrow_transactions` + `disputes`. Backs the admin Transactions page and the mobile dispute screen. See `BACKEND_SCHEMA.md` §18. |
+   | `0010_wallet_txn_kind.sql` | `wallet_transactions.kind`, so platform revenue counts payouts without also counting escrow refunds. Split out of 0009 because that file had already been applied. Safely re-runnable. |
 
    > Migrations 0008 and 0009 each run `alter type notification_type add value`.
    > Postgres allows this inside a transaction as long as the new value isn't
