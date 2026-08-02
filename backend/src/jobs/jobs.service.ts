@@ -5,16 +5,30 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { SupabaseService } from '../supabase/supabase.service';
+import { UploadsService } from '../uploads/uploads.service';
+import { EscrowService } from '../escrow/escrow.service';
 import { BrowseJobsQueryDto, CreateJobDto } from './dto/jobs.dto';
 import type { Profile } from '../common/types';
 
-const JOB_SELECT = '*, service_categories(name)';
+// The assigned-provider embed needs the FK hint: jobs has two FKs to profiles
+// (client_id and assigned_provider_id). Mobile's My Jobs list renders this name.
+// Keep this a single string literal — concatenating widens the type to `string`
+// and supabase-js can no longer infer the row shape from it.
+const JOB_SELECT =
+  '*, service_categories(name), assigned_provider:profiles!jobs_assigned_provider_id_fkey(id, full_name)';
 
 @Injectable()
 export class JobsService {
-  constructor(private readonly supabase: SupabaseService) {}
+  constructor(
+    private readonly supabase: SupabaseService,
+    private readonly uploads: UploadsService,
+    private readonly escrow: EscrowService,
+  ) {}
 
   async create(user: Profile, dto: CreateJobDto) {
+    if (dto.photo_urls?.length) {
+      this.uploads.assertOwnedPaths(user, dto.photo_urls);
+    }
     const { data, error } = await this.supabase.admin
       .from('jobs')
       .insert({
@@ -26,6 +40,9 @@ export class JobsService {
         address: dto.address,
         latitude: dto.latitude,
         longitude: dto.longitude,
+        budget: dto.budget ?? null,
+        scheduled_at: dto.scheduled_at ?? null,
+        photo_urls: dto.photo_urls ?? [],
         // recommendation_deadline is filled in by the DB trigger; the column is
         // NOT NULL so send a placeholder the trigger overwrites.
         recommendation_deadline: new Date().toISOString(),
@@ -93,6 +110,8 @@ export class JobsService {
       );
     }
     const updated = await this.setStatus(jobId, 'cancelled');
+    // Release the hold. A disputed escrow is left for an admin to resolve.
+    await this.escrow.cancelForJob(jobId);
     if (job.assigned_provider_id) {
       await this.notify(
         job.assigned_provider_id,
@@ -136,6 +155,9 @@ export class JobsService {
       );
     }
     const updated = await this.setStatus(jobId, 'completed');
+    // Pay the provider out of escrow. No-ops when the job had no budget, and
+    // deliberately skips a disputed escrow — that needs an admin decision.
+    await this.escrow.release(jobId);
     await this.notify(job.assigned_provider_id, 'job_update', 'Job completed', {
       body: `The client marked "${job.title}" as completed.`,
       job_id: jobId,

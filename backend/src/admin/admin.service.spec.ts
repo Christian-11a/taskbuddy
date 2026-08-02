@@ -284,6 +284,7 @@ describe('AdminService', () => {
           { data: ratedProviders, error: null },
         ],
         wallet_transactions: [{ data: revenueTxns, error: null }],
+        provider_verifications: [{ data: null, error: null, count: 2 }],
       });
       const service = new AdminService(supabase);
 
@@ -298,6 +299,7 @@ describe('AdminService', () => {
         avg_rating: 4.5,
         total_revenue: 150.5,
         monthly_revenue: 50.5,
+        pending_verifications: 2,
       });
       expect(result.bookings_by_status).toEqual({ completed: 1, open: 2 });
       expect(result.bookings_by_category).toEqual({

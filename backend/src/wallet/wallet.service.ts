@@ -60,15 +60,32 @@ export class WalletService {
   }
 
   /**
-   * Records a ledger entry (e.g. top-up, withdrawal, job payout). There is no
-   * real payment gateway, so entries are recorded as 'completed' immediately.
+   * Records a user-initiated ledger entry — topping up or withdrawing. There is
+   * no real payment gateway, so entries are recorded as 'completed' immediately.
+   *
+   * `kind` is derived here and deliberately not accepted from the client: a
+   * caller who could set `kind = 'payout'` could inflate platform revenue on the
+   * admin dashboard just by topping up. Escrow writes its own rows (see
+   * EscrowService) and is the only thing that can create a payout.
    */
   async create(user: Profile, dto: CreateWalletTxnDto) {
+    const kind = dto.direction === 'credit' ? 'topup' : 'withdrawal';
+
+    if (dto.direction === 'debit') {
+      const balance = await this.balanceFor(user.id);
+      if (balance < dto.amount) {
+        throw new BadRequestException(
+          `Insufficient wallet balance: ${dto.amount} requested, ${balance} available`,
+        );
+      }
+    }
+
     const { data, error } = await this.supabase.admin
       .from('wallet_transactions')
       .insert({
         profile_id: user.id,
         direction: dto.direction,
+        kind,
         amount: dto.amount,
         title: dto.title,
         job_id: dto.job_id ?? null,
@@ -78,6 +95,26 @@ export class WalletService {
       .single();
     if (error) throw new BadRequestException(error.message);
     return data;
+  }
+
+  /** Derived balance: completed credits minus completed debits. */
+  async balanceFor(profileId: string): Promise<number> {
+    const { data, error } = await this.supabase.admin
+      .from('wallet_transactions')
+      .select('direction, amount')
+      .eq('profile_id', profileId)
+      .eq('status', 'completed');
+    if (error) throw new BadRequestException(error.message);
+
+    return round2(
+      (data ?? []).reduce(
+        (sum, t) =>
+          t.direction === 'credit'
+            ? sum + Number(t.amount)
+            : sum - Number(t.amount),
+        0,
+      ),
+    );
   }
 }
 

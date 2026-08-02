@@ -5,12 +5,16 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { SupabaseService } from '../supabase/supabase.service';
+import { EscrowService } from '../escrow/escrow.service';
 import { ApplyDto } from './dto/applications.dto';
 import type { Profile } from '../common/types';
 
 @Injectable()
 export class ApplicationsService {
-  constructor(private readonly supabase: SupabaseService) {}
+  constructor(
+    private readonly supabase: SupabaseService,
+    private readonly escrow: EscrowService,
+  ) {}
 
   async apply(user: Profile, jobId: string, dto: ApplyDto) {
     const { data: job } = await this.supabase.admin
@@ -128,6 +132,9 @@ export class ApplicationsService {
     }
 
     const updated = await this.setStatus(applicationId, 'accepted');
+    // Hold the client's budget against the job. No-ops for jobs posted without
+    // one (everything created before migration 0007).
+    await this.escrow.hold(application.job_id, application.provider_id);
     await this.notifyProvider(
       application,
       'Application accepted',
