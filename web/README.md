@@ -1,13 +1,13 @@
 # TaskBuddy Admin Console
 
-The admin dashboard for the TaskBuddy platform (`web/` in the repo). Next.js 16 App Router, TypeScript, Tailwind CSS v4, Lucide React, and Recharts. Login, Users, Bookings, and all of Reports/Analytics (including revenue and the activity feed) run against the live backend. Verifications and the Transactions page still run on mock data via a built-in data seam — **not because of anything missing on the web side, but because the backend features they depend on haven't been built yet.** See [What's Still Needed From the Backend](#whats-still-needed-from-the-backend) — that section is written for whoever picks up that work next.
+The admin dashboard for the TaskBuddy platform (`web/` in the repo). Next.js 16 App Router, TypeScript, Tailwind CSS v4, Lucide React, and Recharts. **Every page now runs against the live backend** — Verifications and Transactions were the last mock holdouts, and backend migrations 0008 (provider verifications) and 0009 (escrow + disputes) gave them real tables. The in-memory mock DB has been deleted.
 
 ## Live Deployment
 
 - **URL**: https://taskbuddy-nine-zeta.vercel.app
 - **Backend**: https://taskbuddy-1d48.onrender.com (Render, free plan)
 - **Database/Auth**: Supabase project `TaskBuddy` (`axtizgnurqnjzfjrngvd`)
-- **Env vars set on Vercel**: `NEXT_PUBLIC_USE_MOCK=false`, `NEXT_PUBLIC_API_URL=https://taskbuddy-1d48.onrender.com`
+- **Env vars set on Vercel**: `NEXT_PUBLIC_API_URL=https://taskbuddy-1d48.onrender.com` (the old `NEXT_PUBLIC_USE_MOCK` is no longer read and can be removed)
 - **Admin login**: `admin@taskbuddy.com` (real Supabase account, Email auth provider — ask Eduard or Christian for the password)
 
 ## Tech Stack
@@ -24,9 +24,9 @@ The admin dashboard for the TaskBuddy platform (`web/` in the repo). Next.js 16 
 
 - 🔐 Login / Auth Screen (real Supabase Email auth — see [Live Deployment](#live-deployment) for the admin login)
 - 📊 Dashboard Overview — live stats, revenue chart, category breakdown, activity feed
-- 🛡️ Provider Verification Queue — approve/reject with live state (mock data — see [What's Still Needed From the Backend](#whats-still-needed-from-the-backend))
+- 🛡️ Provider Verification Queue — review provider ID/selfie submissions, approve/reject
 - 👥 User Management — searchable table with role/status badges
-- 💳 Transaction Monitoring — full log with status colors (mock data — see [What's Still Needed From the Backend](#whats-still-needed-from-the-backend))
+- 💳 Transaction Monitoring — escrow log with status colors (In Escrow / Completed / Disputed / Refunded)
 - 📅 Booking Tracker — search and filter
 - 📈 Reports & Analytics — area chart, pie chart, bar chart, top providers
 - ⚙️ Settings — account, notifications, platform, appearance
@@ -40,11 +40,13 @@ npm run dev
 ```
 
 Open [http://localhost:3000](http://localhost:3000). By default this points at
-`http://localhost:3001` (a local `backend/` instance). To hit the live Render
-backend instead, create `.env.local`:
+`http://localhost:3001` for the API. Note the backend listens on **3000** unless
+told otherwise, and Next.js has already taken that port — so run the backend as
+`PORT=3001 npm run start:dev`, or point the web app at wherever it actually is.
+
+To hit the live Render backend instead, create `.env.local`:
 
 ```bash
-NEXT_PUBLIC_USE_MOCK=false
 NEXT_PUBLIC_API_URL=https://taskbuddy-1d48.onrender.com
 ```
 
@@ -75,92 +77,77 @@ src/
 │   └── AppContext.tsx           # App state: session, data, mutations, persisted preferences
 └── lib/
     ├── domain.ts                # Backend-shaped domain types (shared platform contracts + admin types)
-    ├── mock/db.ts               # In-memory mock database (Verifications + Transactions only — see below)
     ├── services/                # THE DATA SEAM — pages/context only ever call these
     ├── adapters/                # Domain → display-row mapping, formatting (+ unit tests)
-    └── api/client.ts            # Fetch client for the real backend
+    └── api/
+        ├── client.ts            # Fetch client for the real backend (+ token refresh)
+        ├── session.ts           # localStorage session (access + refresh token)
+        └── types.ts             # Exact wire shapes the backend returns
 ```
 
 ## Data Flow (the seam)
 
 ```
-pages/context → services (async fns) → api/client.ts (real backend — most data)
-                                     → mock/db.ts     (Verifications + Transactions only)
+pages/context → services (async fns) → api/client.ts → backend
 ```
 
 - **Pages and `AppContext` never touch data sources directly** — they call `lib/services` functions and render the display rows produced by `lib/adapters`.
-- Verifications and Transactions simulate ~150ms latency (`simulate()` in `lib/services/index.ts`) so their loading states stay genuinely exercised while they're still mock-backed; real backend calls have their own network latency.
+- The seam is still worth keeping: it's where snake_case wire rows become camelCase domain objects, and where backend enums are mapped to display labels (e.g. escrow `held` → `IN_ESCROW`).
+- `/admin/analytics/summary` backs five different dashboard values. Overlapping callers share one in-flight request (`getAnalyticsSummary`), so a page load makes one call instead of five — this matters on Render's free tier, which cold-starts for 30–60s.
+- An expired access token is refreshed once via `POST /auth/refresh` and the request retried, instead of dumping the admin back to the login screen.
 
 ## Real Backend Integration
 
-Login, Users, Bookings, and Reports/Analytics — including total/monthly
-revenue, the revenue chart, and the Recent Activity feed — all call the
-live backend (`https://taskbuddy-1d48.onrender.com` by default — override
-with `NEXT_PUBLIC_API_URL`). Verifications and the Transactions page still
-run on mock data (`src/lib/mock/db.ts`) — see
-[What's Still Needed From the Backend](#whats-still-needed-from-the-backend)
-below for exactly why and what would unblock them. Background/history:
-`docs/superpowers/specs/2026-07-20-web-backend-integration-design.md` (kept
-locally, not committed to this repo).
+Every page calls the live backend (`https://taskbuddy-1d48.onrender.com` by
+default — override with `NEXT_PUBLIC_API_URL`). There is no mock data path
+left: `src/lib/mock/` has been deleted along with the artificial-latency
+`simulate()` helper.
 
 To run against a different backend URL (e.g. a local `backend/` instance):
 
 ```bash
-NEXT_PUBLIC_USE_MOCK=false
-NEXT_PUBLIC_API_URL=http://localhost:3001
+NEXT_PUBLIC_API_URL=http://localhost:3000
 ```
 
+> The old `NEXT_PUBLIC_USE_MOCK` flag is gone. It was already dead — nothing
+> read it — and there is no mock source left for it to select.
+
 Domain types in `lib/domain.ts` mirror the backend's real enums (`user_role`,
-`job_status` — see `backend/BACKEND_SCHEMA.md` §4). The Bookings page's
-`amount` column is still a fixed placeholder — the `jobs` table has no
-price/amount field (pricing is a separate, still out-of-scope concern from
-the revenue figures below, which now come from the real wallet ledger).
+`job_status` — see `backend/BACKEND_SCHEMA.md` §4).
 
-## What's Still Needed From the Backend
+### Where each page's data comes from
 
-Everything on this page is wired to real data **except** Verifications and
-the Transactions page. Both are blocked on backend/database work, not
-anything in `web/` — here's exactly what's missing, for whoever picks these
-up next:
+| Page | Endpoint(s) |
+|---|---|
+| Login | `POST /auth/login` (now returns `full_name`, so the header shows a name, not an email) |
+| Dashboard | `GET /admin/analytics/summary`, `GET /admin/activity` |
+| Verifications | `GET /admin/verifications`, `POST /admin/verifications/:id/approve` · `/reject` |
+| Users | `GET /admin/users`, `POST /admin/users/:id/suspend` · `/reinstate` |
+| Transactions | `GET /admin/transactions` (escrow records — backend migration 0009) |
+| Bookings | `GET /admin/bookings`, `POST /admin/bookings/:id/cancel` |
+| Reports | `GET /admin/analytics/summary` |
+| Settings | `POST /auth/change-password` (everything else on that page is a local preference) |
 
-### 1. Verifications (provider ID/selfie approval queue)
+### Two mappings worth knowing
 
-No table exists for this at all — there's nothing to query. To make this
-real, the backend needs:
+- **Verification status.** The backend uses lowercase (`pending`/`approved`/`rejected`)
+  to match `job_status` and `user_role`; the services layer uppercases it for display.
+- **Transaction status.** The Transactions page predates escrow, so its labels are
+  mapped from `escrow_status`: `held`→`IN_ESCROW`, `released`→`COMPLETED`,
+  `disputed`→`DISPUTED`, `refunded`→`REFUNDED`. A `cancelled` hold also reads as
+  `REFUNDED` — there is no separate UI state for it.
 
-- A table for verification submissions (provider id, document/selfie file
-  references, status, submitted/reviewed timestamps, reviewed-by admin)
-- File storage for the uploaded documents (a Supabase Storage bucket)
-- Endpoints to submit (mobile provider-side), list, approve, and reject
+### Bookings amount
 
-This is backlog stories **#9** (provider submits ID/selfie) and **#28**
-(admin verification queue) — both still "New" on the board.
+The Bookings `amount` column shows the real `jobs.budget` (backend migration
+0007), replacing the old fixed ₱0 placeholder. Jobs posted before pricing
+existed have no budget and still show ₱0.
 
-### 2. Transactions page (escrow / disputes)
+### Notification bell
 
-A real `wallet_transactions` table already exists (added alongside the
-mobile app's Wallet screens) and **is** used for the real revenue figures
-above. But it's a simple per-user credit/debit ledger — it has no concept
-of escrow holds or disputes. The Transactions page's UI, on the other hand,
-expects a two-party record (customer + provider + service) with statuses
-like "In Escrow," "Disputed," and "Refunded." None of that exists in the
-data model, so there's nothing honest to map it to without an actual
-escrow/dispute system:
-
-- Payment held in escrow when a booking is made
-- Escrow released to the provider on job completion
-- A dispute flow (raise, review, resolve/refund)
-
-This is backlog stories **#17** (escrow hold), **#18** (escrow
-release/payout), and **#20** (dispute resolution) — all still "New."
-
-### Notification bell — not a third item
-
-The bell in the header (`Header.tsx`) isn't its own feature — it just reads
-from the Verifications and Transactions lists to decide what to show
-(pending verifications, disputed transactions). It has no backend of its
-own, so it doesn't need separate work: it becomes real automatically once
-#1 and #2 above are built.
+The bell in the header (`Header.tsx`) derives from the Verifications and
+Transactions lists — pending verifications and disputed transactions. Now that
+both lists are real, so is the bell; it never needed a backend of its own.
 
 ## npm audit note
 
