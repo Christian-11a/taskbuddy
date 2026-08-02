@@ -6,7 +6,13 @@
 // lib/services should import from here.
 
 export interface LoginApiResponse {
-  user: { id: string; email: string };
+  user: {
+    id: string;
+    email: string;
+    // Added so the console can show a name instead of an email address.
+    full_name: string | null;
+    role: "client" | "provider" | "admin" | null;
+  };
   session: { access_token: string; refresh_token: string; expires_at: number };
 }
 
@@ -39,6 +45,8 @@ export interface AdminBookingApiRow {
   id: string;
   status: JobStatusApi;
   posted_at: string;
+  /** Client-set budget in PHP (migration 0007). Null on pre-pricing jobs. */
+  budget: number | string | null;
   service_categories: { name: string } | null;
   client: { id: string; full_name: string } | null;
   provider: { id: string; full_name: string } | null;
@@ -59,6 +67,8 @@ export interface AnalyticsSummaryApiResponse {
     avg_rating: number | null;
     total_revenue: number;
     monthly_revenue: number;
+    /** Submissions awaiting admin review (migration 0008). */
+    pending_verifications: number;
   };
   bookings_by_status: Record<string, number>;
   bookings_by_category: Record<string, number>;
@@ -72,6 +82,56 @@ export interface AnalyticsSummaryApiResponse {
     profiles: { full_name: string } | null;
     service_categories: { name: string } | null;
   }[];
+}
+
+// ─── Verifications (migration 0008) ───────────────────────────────────────────
+// Backend enums are lowercase, matching job_status/user_role; the adapters
+// uppercase them for display.
+
+export type VerificationStatusApi = "pending" | "approved" | "rejected";
+
+export interface AdminVerificationApiRow {
+  id: string;
+  provider_id: string;
+  full_name: string | null;
+  email: string | null;
+  status: VerificationStatusApi;
+  submitted_at: string;
+  reviewed_at: string | null;
+  rejection_reason: string | null;
+  /** Short-lived signed URLs — the documents bucket is private. */
+  documents: string[];
+}
+
+export interface ListVerificationsApiResponse {
+  verifications: AdminVerificationApiRow[];
+  total: number;
+}
+
+// ─── Escrow transactions (migration 0009) ─────────────────────────────────────
+
+export type EscrowStatusApi =
+  | "held"
+  | "released"
+  | "disputed"
+  | "refunded"
+  | "cancelled";
+
+export interface AdminTransactionApiRow {
+  id: string;
+  job_id: string;
+  /** Postgres numeric arrives as a string over PostgREST. */
+  amount: number | string;
+  status: EscrowStatusApi;
+  held_at: string;
+  jobs: { title: string; service_categories: { name: string } | null } | null;
+  client: { id: string; full_name: string } | null;
+  provider: { id: string; full_name: string } | null;
+}
+
+export interface ListTransactionsApiResponse {
+  transactions: AdminTransactionApiRow[];
+  total: number;
 }
 
 export interface AdminActivityApiRow {

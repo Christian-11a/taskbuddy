@@ -19,6 +19,7 @@ const SUMMARY: AnalyticsSummaryApiResponse = {
     avg_rating: 4.5,
     total_revenue: 1500,
     monthly_revenue: 600,
+    pending_verifications: 2,
   },
   bookings_by_status: { completed: 3, open: 2 },
   bookings_by_category: { Plumbing: 3, Cleaning: 1 },

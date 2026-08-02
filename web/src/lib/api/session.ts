@@ -5,6 +5,8 @@
 
 export interface StoredSession {
   accessToken: string;
+  /** Kept so an expired access token can be renewed instead of forcing a logout. */
+  refreshToken?: string;
   adminProfile: { name: string; email: string };
 }
 
