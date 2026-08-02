@@ -46,6 +46,7 @@ import SPJobDetailScreen from './app/(provider)/screens/SPJobDetailScreen';
 import SPChatScreen from './app/(provider)/screens/SPChatScreen';
 import SPNotificationsScreen from './app/(provider)/screens/SPNotificationsScreen';
 import SPEditProfileScreen from './app/(provider)/screens/SPEditProfileScreen';
+import SPVerificationScreen from './app/(provider)/screens/SPVerificationScreen';
 
 // ── Shared navigation components ──────────────────────────────────────────────
 import BottomNavBar, { BottomNavItem } from './src/components/BottomNavBar';
@@ -218,7 +219,7 @@ function AppContent() {
     if (hoScreen === 'Dispute Filing') {
       return (
         <View style={styles.screen}>
-          <HODisputeFilingScreen onBack={hoBack} onSubmitted={hoBack} />
+          <HODisputeFilingScreen jobId={hoJobId} onBack={hoBack} onSubmitted={hoBack} />
         </View>
       );
     }
@@ -319,6 +320,13 @@ function AppContent() {
     return (
       <View style={styles.screen}>
         <SPEditProfileScreen onBack={spBack} onSave={spBack} />
+      </View>
+    );
+  }
+  if (spScreen === 'Verification') {
+    return (
+      <View style={styles.screen}>
+        <SPVerificationScreen onBack={spBack} />
       </View>
     );
   }

@@ -124,15 +124,44 @@ export interface Job {
   longitude: number;
   posted_at: string;
   assigned_provider_id: string | null;
-  /** Optional scheduling/pricing fields supplied by the mobile job form. */
-  date?: string;
-  time?: string;
-  budget?: number;
-  photo_uris?: string[];
-  assigned_provider?: { full_name: string } | null;
+  assigned_at: string | null;
+  completed_at: string | null;
+  /** Pricing/scheduling/photos — backend columns, migration 0007. */
+  budget: number | null;
+  /** Client's preferred start (ISO). Null = ASAP. */
+  scheduled_at: string | null;
+  /** Storage object paths in the public `job-photos` bucket. */
+  photo_urls: string[];
   created_at: string;
   service_categories?: { name: string } | null;
+  assigned_provider?: { full_name: string } | null;
   [key: string]: unknown;
+}
+
+export interface SignedUpload {
+  bucket: string;
+  path: string;
+  upload_url: string;
+  token: string;
+}
+
+export interface Verification {
+  id: string;
+  provider_id: string;
+  status: 'pending' | 'approved' | 'rejected';
+  submitted_at: string;
+  reviewed_at: string | null;
+  rejection_reason: string | null;
+}
+
+export interface Dispute {
+  id: string;
+  job_id: string;
+  reason: string;
+  details: string | null;
+  status: 'open' | 'resolved' | 'cancelled';
+  resolution: 'released_to_provider' | 'refunded_to_client' | null;
+  created_at: string;
 }
 
 export interface WalletTransaction {
@@ -201,6 +230,18 @@ export class ApiError extends Error {
     super(message);
     this.name = 'ApiError';
   }
+}
+
+/**
+ * The upload endpoint only accepts jpeg/png/webp. Expo's image picker hands back
+ * a file URI whose extension reflects the original asset; anything unexpected is
+ * treated as JPEG, which is what the camera and library produce by default.
+ */
+function contentTypeFor(uri: string): string {
+  const ext = uri.split('?')[0].split('.').pop()?.toLowerCase();
+  if (ext === 'png') return 'image/png';
+  if (ext === 'webp') return 'image/webp';
+  return 'image/jpeg';
 }
 
 // ── Auth token registry (wired by AuthContext) ─────────────────────────────────
@@ -371,10 +412,15 @@ export const api = {
     address: string;
     latitude: number;
     longitude: number;
-    date: string;
-    time: string;
-    budget: number;
-    photo_uris?: string[];
+    budget?: number;
+    /**
+     * Single ISO instant. The form collects a date and a time separately and
+     * combines them here — two fields for one instant is timezone-ambiguous,
+     * and the backend column is a `timestamptz`.
+     */
+    scheduled_at?: string;
+    /** Storage paths from `uploadImage`, not device URIs. */
+    photo_urls?: string[];
   }) {
     return authRequest<Job>('/jobs', { method: 'POST', body: input });
   },
@@ -463,6 +509,67 @@ export const api = {
     return authRequest<{ success: boolean }>('/notifications/read-all', {
       method: 'POST',
     });
+  },
+
+  /** Server-side count — `notifications()` is capped at 50, so counting it caps the badge. */
+  unreadNotificationCount() {
+    return authRequest<{ count: number }>('/notifications/unread-count');
+  },
+
+  // ── Uploads ───────────────────────────────────────────────────────────────
+  /**
+   * Two steps: ask the API for a signed URL, then PUT the bytes straight to
+   * Supabase Storage. The file never passes through the API. Returns the
+   * storage *path*, which is what job/verification payloads carry.
+   */
+  async uploadImage(
+    bucket: 'job-photos' | 'verification-docs',
+    uri: string,
+  ): Promise<string> {
+    const contentType = contentTypeFor(uri);
+    const signed = await authRequest<SignedUpload>('/uploads/signed-url', {
+      method: 'POST',
+      body: { bucket, content_type: contentType },
+    });
+
+    // React Native turns a file:// URI into a Blob via fetch().
+    const blob = await (await fetch(uri)).blob();
+    const res = await fetch(signed.upload_url, {
+      method: 'PUT',
+      headers: { 'Content-Type': contentType },
+      body: blob,
+    });
+    if (!res.ok) {
+      throw new ApiError('Could not upload the image. Try again.', res.status);
+    }
+    return signed.path;
+  },
+
+  // ── Verifications ─────────────────────────────────────────────────────────
+  submitVerification(input: {
+    id_document_path: string;
+    selfie_path: string;
+  }) {
+    return authRequest<Verification>('/verifications', {
+      method: 'POST',
+      body: input,
+    });
+  },
+
+  myVerification() {
+    return authRequest<Verification | null>('/verifications/me');
+  },
+
+  // ── Disputes ──────────────────────────────────────────────────────────────
+  raiseDispute(jobId: string, input: { reason: string; details?: string }) {
+    return authRequest<Dispute>(`/jobs/${jobId}/disputes`, {
+      method: 'POST',
+      body: input,
+    });
+  },
+
+  jobDispute(jobId: string) {
+    return authRequest<Dispute | null>(`/jobs/${jobId}/disputes`);
   },
 
   // ── Wallet ──────────────────────────────────────────────────────────────────

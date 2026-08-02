@@ -1,21 +1,55 @@
-import React, { useState } from 'react';
-import { ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import React, { useCallback, useState } from 'react';
+import { ActivityIndicator, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { ArrowLeft, CircleAlert, FileWarning } from 'lucide-react-native';
 import ConfirmationModal from '../../../src/components/ConfirmationModal';
 import { Colors, Radii, Shadows, Sizes, Spacing } from '../../../src/constants/theme';
+import { api } from '../../../src/lib/api';
+import { useAsyncData } from '../../../src/hooks/useAsyncData';
 
 interface HODisputeFilingScreenProps {
+  jobId: string | null;
   onBack: () => void;
   onSubmitted: () => void;
 }
 
 const REASONS = ['Service not completed', 'Poor service quality', 'Incorrect charge', 'Other'];
 
-export default function HODisputeFilingScreen({ onBack, onSubmitted }: HODisputeFilingScreenProps) {
+export default function HODisputeFilingScreen({ jobId, onBack, onSubmitted }: HODisputeFilingScreenProps) {
   const [reason, setReason] = useState(REASONS[0]);
   const [details, setDetails] = useState('');
   const [detailsFocused, setDetailsFocused] = useState(false);
   const [showConfirmation, setShowConfirmation] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const { data: job } = useAsyncData(
+    useCallback(
+      () => (jobId ? api.getJob(jobId) : Promise.resolve(null)),
+      [jobId],
+    ),
+  );
+
+  // Falls back to the plain title until the job loads; never a placeholder name.
+  const subtitle = job
+    ? [job.title, job.assigned_provider?.full_name].filter(Boolean).join(' · ')
+    : 'Loading job…';
+
+  const submitDispute = async () => {
+    if (!jobId) return;
+    setSubmitting(true);
+    setError(null);
+    try {
+      await api.raiseDispute(jobId, {
+        reason,
+        details: details.trim() || undefined,
+      });
+      onSubmitted();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not file the dispute.');
+    } finally {
+      setSubmitting(false);
+    }
+  };
 
   return (
     <View style={styles.screen}>
@@ -27,7 +61,7 @@ export default function HODisputeFilingScreen({ onBack, onSubmitted }: HODispute
           <Text style={styles.headerTitle}>File a Dispute</Text>
           <View style={styles.headerSpacer} />
         </View>
-        <Text style={styles.headerSubtitle}>Home Deep Clean · Juan dela Cruz</Text>
+        <Text style={styles.headerSubtitle}>{subtitle}</Text>
       </View>
 
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
@@ -66,9 +100,22 @@ export default function HODisputeFilingScreen({ onBack, onSubmitted }: HODispute
           />
         </View>
 
-        <TouchableOpacity style={styles.submitButton} onPress={() => setShowConfirmation(true)} activeOpacity={0.85}>
-          <FileWarning size={18} color={Colors.white} />
-          <Text style={styles.submitText}>Submit Dispute Report</Text>
+        {error && <Text style={styles.errorText}>{error}</Text>}
+
+        <TouchableOpacity
+          style={[styles.submitButton, (submitting || !jobId) && styles.submitButtonDisabled]}
+          onPress={() => setShowConfirmation(true)}
+          disabled={submitting || !jobId}
+          activeOpacity={0.85}
+        >
+          {submitting ? (
+            <ActivityIndicator color={Colors.white} />
+          ) : (
+            <>
+              <FileWarning size={18} color={Colors.white} />
+              <Text style={styles.submitText}>Submit Dispute Report</Text>
+            </>
+          )}
         </TouchableOpacity>
       </ScrollView>
 
@@ -78,7 +125,7 @@ export default function HODisputeFilingScreen({ onBack, onSubmitted }: HODispute
         message="You are about to file this dispute for review. You can add more information when our support team contacts you."
         confirmLabel="Submit Report"
         onCancel={() => setShowConfirmation(false)}
-        onConfirm={() => { setShowConfirmation(false); onSubmitted(); }}
+        onConfirm={() => { setShowConfirmation(false); void submitDispute(); }}
       />
     </View>
   );
@@ -106,5 +153,7 @@ const styles = StyleSheet.create({
   detailsInput: { minHeight: 130, borderRadius: 12, backgroundColor: Colors.backgroundAlt, borderWidth: 1, borderColor: 'rgba(144,153,184,0.3)', padding: 14, color: Colors.brandDark, fontFamily: 'Inter', fontSize: 14 },
   detailsInputFocused: { borderColor: Colors.brandTeal, borderWidth: 2 },
   submitButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: Colors.error, borderRadius: 24, paddingVertical: 15, marginTop: 4 },
+  submitButtonDisabled: { opacity: 0.6 },
   submitText: { color: Colors.white, fontSize: 15, fontWeight: '700', fontFamily: 'Inter' },
+  errorText: { color: Colors.error, fontFamily: 'Inter', fontSize: 13, textAlign: 'center' },
 });
