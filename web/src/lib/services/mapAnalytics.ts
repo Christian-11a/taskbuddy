@@ -5,8 +5,8 @@
 // from services/index.ts so the mapping logic is unit-testable without
 // mocking fetch.
 
-import type { AnalyticsSummaryApiResponse } from "@/lib/api/types";
-import type { CategoryShare, MonthlyPoint, TopProvider } from "@/lib/domain";
+import type { AdminActivityApiRow, AnalyticsSummaryApiResponse } from "@/lib/api/types";
+import type { ActivityEvent, ActivityType, CategoryShare, MonthlyPoint, TopProvider } from "@/lib/domain";
 
 const MONTH_LABELS = [
   "Jan", "Feb", "Mar", "Apr", "May", "Jun",
@@ -53,4 +53,50 @@ export function mapTopProviders(summary: AnalyticsSummaryApiResponse): TopProvid
     jobs: p.cached_completed_jobs ?? 0,
     rating: p.cached_avg_rating ?? 0,
   }));
+}
+
+/** revenue_trend entries (already monthly) mapped to the chart's display shape. */
+export function mapRevenueSeries(summary: AnalyticsSummaryApiResponse): MonthlyPoint[] {
+  return summary.revenue_trend.map(({ month, amount }) => {
+    const monthIndex = Number(month.slice(5, 7)) - 1;
+    return { month: MONTH_LABELS[monthIndex] ?? month, value: amount };
+  });
+}
+
+const activityTypeFor = (status: string): ActivityType => {
+  if (status === "completed") return "tx";
+  if (status === "cancelled" || status === "expired") return "alert";
+  return "user";
+};
+
+/** Coarse "Xm/h/d ago" — matches the mock data's granularity; no need for
+ *  anything more precise on an admin activity feed. */
+function formatRelativeTime(iso: string): string {
+  const diffMs = Date.now() - new Date(iso).getTime();
+  const minutes = Math.max(0, Math.round(diffMs / 60000));
+  if (minutes < 1) return "just now";
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.round(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.round(hours / 24);
+  return `${days}d ago`;
+}
+
+/** job_status_history rows (the existing audit trail) turned into the
+ *  dashboard's activity feed — no new table needed. */
+export function mapActivity(rows: AdminActivityApiRow[]): ActivityEvent[] {
+  return rows.map((row) => {
+    const title = row.jobs?.title ?? "a job";
+    const text =
+      row.new_status === "completed"
+        ? `Booking "${title}" was completed`
+        : row.new_status === "cancelled"
+          ? `Booking "${title}" was cancelled`
+          : `Booking "${title}" moved to ${row.new_status.replace("_", " ")}`;
+    return {
+      time: formatRelativeTime(row.changed_at),
+      text,
+      type: activityTypeFor(row.new_status),
+    };
+  });
 }

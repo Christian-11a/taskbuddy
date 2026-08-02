@@ -167,14 +167,24 @@ describe("cancelBooking", () => {
 });
 
 describe("getDashboardStats", () => {
-  it("mixes real totals/completion-rate with mocked revenue/rating", async () => {
+  it("uses real totals/completion-rate/revenue/rating from the summary", async () => {
     global.fetch = vi.fn(() =>
       Promise.resolve(
         jsonResponse({
-          totals: { users: 10, clients: 6, providers: 4, suspended: 1, bookings: 5 },
+          totals: {
+            users: 10,
+            clients: 6,
+            providers: 4,
+            suspended: 1,
+            bookings: 5,
+            avg_rating: 4.2,
+            total_revenue: 1500,
+            monthly_revenue: 600,
+          },
           bookings_by_status: { completed: 3, open: 2 },
           bookings_by_category: {},
           booking_trend: [],
+          revenue_trend: [],
           top_providers: [],
         }),
       ),
@@ -186,7 +196,36 @@ describe("getDashboardStats", () => {
     expect(stats.activeProviders).toBe(4);
     expect(stats.totalBookings).toBe(5);
     expect(stats.completionRate).toBe(60);
-    expect(typeof stats.totalRevenue).toBe("number");
+    expect(stats.totalRevenue).toBe(1500);
+    expect(stats.monthlyRevenue).toBe(600);
+    expect(stats.avgRating).toBe(4.2);
+  });
+
+  it("falls back to the mocked avgRating when no provider has been rated", async () => {
+    global.fetch = vi.fn(() =>
+      Promise.resolve(
+        jsonResponse({
+          totals: {
+            users: 1,
+            clients: 1,
+            providers: 0,
+            suspended: 0,
+            bookings: 0,
+            avg_rating: null,
+            total_revenue: 0,
+            monthly_revenue: 0,
+          },
+          bookings_by_status: {},
+          bookings_by_category: {},
+          booking_trend: [],
+          revenue_trend: [],
+          top_providers: [],
+        }),
+      ),
+    ) as unknown as typeof fetch;
+
+    const stats = await services.getDashboardStats();
+
     expect(typeof stats.avgRating).toBe("number");
   });
 });
