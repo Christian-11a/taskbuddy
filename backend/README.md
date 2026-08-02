@@ -61,8 +61,8 @@ Job lifecycle: `open → recommending → assigned → in_progress → completed
 ### 1. Supabase project
 
 1. Create a project at [supabase.com](https://supabase.com).
-2. Apply the migrations in [`supabase/migrations/`](./supabase/migrations) **in order**
-   (0001 → 0004), either by pasting each file into the SQL Editor or with the CLI:
+2. Apply **every** migration in [`supabase/migrations/`](./supabase/migrations) **in order**
+   (0001 → 0009), either by pasting each file into the SQL Editor or with the CLI:
 
    ```bash
    supabase link --project-ref <your-project-ref>
@@ -77,6 +77,20 @@ Job lifecycle: `open → recommending → assigned → in_progress → completed
    | `0004_seed.sql` | 5 categories + urgency timeouts |
    | `0005_admin_role.sql` | adds `'admin'` to `user_role` enum + `admin_user_overview` view (profiles ⋈ `auth.users` email, service-role only) for the Admin Dashboard (#29/#31/#32). Admins can't self-register — promote a user manually after this migration (see the comment at the end of the file). |
    | `0006_wallet_chat_calendar.sql` | app-support subsystems (`wallet_transactions`, `conversations` + `messages`, `bookings`) backing the mobile Wallet/Chat/Calendar screens. Additive; not part of the ML flow. See `BACKEND_SCHEMA.md` §15. |
+   | `0007_job_pricing_schedule_photos.sql` | `jobs.budget`, `jobs.scheduled_at`, `jobs.photo_urls`; creates the public `job-photos` Storage bucket; extends `handle_application_accepted()` to auto-create the `bookings` row. See `BACKEND_SCHEMA.md` §16. |
+   | `0008_provider_verifications.sql` | `provider_verifications` + `provider_profiles.is_verified`; creates the **private** `verification-docs` Storage bucket. Backs the admin Verification queue. See `BACKEND_SCHEMA.md` §17. |
+   | `0009_escrow_and_disputes.sql` | `escrow_transactions` + `disputes`. Backs the admin Transactions page and the mobile dispute screen. See `BACKEND_SCHEMA.md` §18. |
+
+   > Migrations 0008 and 0009 each run `alter type notification_type add value`.
+   > Postgres allows this inside a transaction as long as the new value isn't
+   > *used* in the same transaction — neither file inserts a notification, so
+   > applying each file in one go is safe.
+
+   The two Storage buckets are created by the migrations themselves
+   (`insert into storage.buckets ... on conflict do nothing`), so there is no
+   separate dashboard step. `job-photos` is public-read; `verification-docs`
+   is private and is only ever read through short-lived signed URLs the API
+   generates for admins.
 
 3. (Development) In Authentication → Providers → Email, consider disabling
    "Confirm email" so `POST /auth/register` returns a session immediately.
@@ -149,10 +163,11 @@ All bodies are JSON. 🔒 = requires auth; (client) / (provider) = role-restrict
 | Method & path | Description |
 |---|---|
 | `POST /auth/register` | `{ email, password, role, full_name, phone? }` |
-| `POST /auth/login` | `{ email, password }` → session tokens |
+| `POST /auth/login` | `{ email, password }` → `{ user: { id, email, full_name, role }, session }` |
 | `POST /auth/refresh` | `{ refresh_token }` → new session |
 | `POST /auth/logout` 🔒 | revoke the session |
 | `GET /auth/me` 🔒 | `{ profile, provider_profile }` |
+| `POST /auth/change-password` 🔒 | `{ current_password, new_password }` — re-authenticates first |
 
 **Profiles & providers**
 
@@ -169,7 +184,7 @@ All bodies are JSON. 🔒 = requires auth; (client) / (provider) = role-restrict
 
 | Method & path | Description |
 |---|---|
-| `POST /jobs` 🔒 (client) | `{ category_id, title (5–120), description (20–750), urgency?, address, latitude, longitude }` |
+| `POST /jobs` 🔒 (client) | `{ category_id, title (5–120), description (20–750), urgency?, address, latitude, longitude, budget?, scheduled_at?, photo_urls? }` |
 | `GET /jobs?category_id=&limit=&offset=` 🔒 (provider) | browse `open`/`recommending` jobs |
 | `GET /jobs/mine` 🔒 (client) | own jobs |
 | `GET /jobs/assigned` 🔒 (provider) | jobs assigned to me |
@@ -186,7 +201,7 @@ All bodies are JSON. 🔒 = requires auth; (client) / (provider) = role-restrict
 | `POST /jobs/:jobId/applications` 🔒 (provider) | `{ cover_message? (≤300) }` — one per job |
 | `GET /jobs/:jobId/applications` 🔒 (client) | applicants for own job |
 | `GET /applications/mine` 🔒 (provider) | my applications with job info |
-| `POST /applications/:id/accept` 🔒 (client) | hire this provider — assigns the job, auto-rejects everyone else |
+| `POST /applications/:id/accept` 🔒 (client) | hire this provider — assigns the job, auto-rejects everyone else, and holds the budget in escrow (400 if the wallet can't cover it) |
 | `POST /applications/:id/reject` 🔒 (client) | decline |
 | `POST /applications/:id/withdraw` 🔒 (provider) | retract a pending application |
 
@@ -196,6 +211,7 @@ All bodies are JSON. 🔒 = requires auth; (client) / (provider) = role-restrict
 |---|---|
 | `POST /jobs/:jobId/review` 🔒 (client) | `{ rating: 1–5, comment? (≤500) }` — once per completed job |
 | `GET /notifications?unread=true` 🔒 | newest 50 |
+| `GET /notifications/unread-count` 🔒 | `{ count }` — server-side count, not capped at 50 |
 | `POST /notifications/:id/read` 🔒 | mark one read |
 | `POST /notifications/read-all` 🔒 | mark all read |
 
@@ -204,7 +220,7 @@ All bodies are JSON. 🔒 = requires auth; (client) / (provider) = role-restrict
 | Method & path | Description |
 |---|---|
 | `GET /wallet` 🔒 | `{ balance, total_credited, total_debited, pending, transactions[] }` (balance derived from the ledger) |
-| `POST /wallet/transactions` 🔒 | record `{ direction: credit/debit, amount, title, job_id? }` |
+| `POST /wallet/transactions` 🔒 | top up / withdraw: `{ direction: credit/debit, amount, title, job_id? }`. A debit larger than the balance is refused. `kind` is derived (`topup`/`withdrawal`) and cannot be set by the caller. |
 | `GET /conversations` 🔒 | caller's conversations (counterpart name + last-message time) |
 | `POST /conversations` 🔒 | get-or-create for `{ job_id }` — job must have an assigned provider |
 | `GET /conversations/:id/messages` 🔒 | messages, oldest first |
@@ -213,6 +229,38 @@ All bodies are JSON. 🔒 = requires auth; (client) / (provider) = role-restrict
 | `GET /calendar/bookings?from=&to=` 🔒 | caller's bookings (provider or client side), with job + counterpart |
 | `POST /calendar/bookings` 🔒 (provider) | `{ job_id, scheduled_at, duration_minutes?, notes? }` — schedule an assigned job |
 | `PATCH /calendar/bookings/:id` 🔒 (provider) | `{ scheduled_at?, duration_minutes?, status?, notes? }` |
+
+**Uploads** (🔒 — migration 0007/0008)
+
+| Method & path | Description |
+|---|---|
+| `POST /uploads/signed-url` 🔒 | `{ bucket: 'job-photos' \| 'verification-docs', content_type }` → `{ bucket, path, upload_url, token }` |
+
+The object path is generated **server-side** as `<profile id>/<uuid>.<ext>` — a
+client-supplied path would let one user overwrite another's ID documents. Upload
+the file straight to `upload_url` with a `PUT`, then send the returned `path`
+(not a URL) to `POST /jobs` or `POST /verifications`. Only `image/jpeg`,
+`image/png` and `image/webp` are accepted, and `verification-docs` is
+provider-only. Bytes never pass through the API — the Render free tier would
+have to buffer every image.
+
+**Verifications** (migration 0008)
+
+| Method & path | Description |
+|---|---|
+| `POST /verifications` 🔒 (provider) | `{ id_document_path, selfie_path }` — 400 if one is already pending |
+| `GET /verifications/me` 🔒 (provider) | latest submission + status |
+
+Approval flips `provider_profiles.is_verified`. That flag is a **badge only** —
+applying to jobs is deliberately *not* gated on it, since gating would lock out
+every provider who signed up before verification existed.
+
+**Disputes** (migration 0009)
+
+| Method & path | Description |
+|---|---|
+| `POST /jobs/:jobId/disputes` 🔒 (client) | `{ reason (1–200), details? (≤1000) }` — the job's escrow must still be `held` |
+| `GET /jobs/:jobId/disputes` 🔒 | the job's latest dispute (client or assigned provider) |
 
 **Admin** (🔒 admin role only — 401 without a token, 403 for non-admins)
 
@@ -224,16 +272,45 @@ All bodies are JSON. 🔒 = requires auth; (client) / (provider) = role-restrict
 | `POST /admin/users/:id/reinstate` | reactivate a suspended account |
 | `GET /admin/bookings?status=&category_id=&limit=&offset=` | platform-wide bookings view (story #31) |
 | `POST /admin/bookings/:id/cancel` | force-cancel a booking — refuses if already `completed`/`cancelled`/`expired` |
-| `GET /admin/analytics/summary` | totals (users/clients/providers/suspended/bookings), bookings by status/category, daily booking trend, top 10 providers by completed jobs (story #32) |
+| `GET /admin/analytics/summary` | totals (users/clients/providers/suspended/bookings/avg_rating/revenue/`pending_verifications`), bookings by status/category, daily booking trend, revenue trend, top 10 providers by completed jobs (story #32) |
+| `GET /admin/activity` | newest 20 job-status transitions, as a **bare array** (not `{ items, total }`) |
+| `GET /admin/verifications?status=&limit=&offset=` | review queue; rows carry provider name, email, and short-lived signed document URLs |
+| `POST /admin/verifications/:id/approve` | approve → sets `provider_profiles.is_verified` |
+| `POST /admin/verifications/:id/reject` | `{ reason? }` |
+| `GET /admin/transactions?status=&limit=&offset=` | escrow records with both parties + service name (story #17/#18) |
+| `GET /admin/disputes?status=&limit=&offset=` | dispute queue |
+| `POST /admin/disputes/:id/resolve` | `{ resolution: 'released_to_provider' \| 'refunded_to_client', note? }` (story #20) |
 
 Admin accounts can't self-register (`POST /auth/register` only allows
 `client`/`provider`) and log in through the same `POST /auth/login` as
 everyone else — there's no separate admin login endpoint. See
 `0005_admin_role.sql` above for how to promote an account to `admin`.
 
-**Not yet implemented on the admin side:** a change-password endpoint (the
-admin web console still mocks this), and anything for Verifications or
-Transactions — those have no backing tables yet.
+**Not yet implemented on the admin side:** an *admin-resets-another-user's*
+password endpoint. (Admins can rotate their own password via
+`POST /auth/change-password`.) Verifications and Transactions are now real —
+see migrations 0008 and 0009.
+
+### Escrow, in one paragraph
+
+There is **no payment gateway** — the `wallet_transactions` ledger is the only
+account of record. When a client accepts an application on a job with a
+`budget`, the client is **debited** and an `escrow_transactions` row is created
+as `held`. On completion it becomes `released` and the provider is **credited**.
+Cancelling returns the money to the client; a dispute freezes it until an admin
+resolves it either way (release → provider, refund → client).
+
+Because a hold needs real funds, **`POST /applications/:id/accept` returns 400
+`Insufficient wallet balance`** when the client can't cover the budget — the job
+stays `open`. Clients top up with `POST /wallet/transactions`
+(`direction: 'credit'`), which is what mobile's Add Money button does.
+
+Every ledger row carries a `kind`, and **platform revenue is `kind = 'payout'`**.
+This matters: a payout and a refund are both credits with a `job_id`, so the old
+`direction + job_id` rule would have counted refunds as revenue. `kind` is
+derived server-side and never read from the request body — otherwise anyone
+could inflate reported revenue by topping up. See `BACKEND_SCHEMA.md` §18,
+including the documented concurrency caveat on the balance check.
 
 ### Errors
 
@@ -289,7 +366,13 @@ backend/
     ├── jobs/                    # posting, browsing, lifecycle transitions
     ├── applications/            # apply / accept / reject / withdraw
     ├── reviews/  notifications/
-    └── recommendations/         # scoring service + every-minute scheduler
+    ├── recommendations/         # scoring service + every-minute scheduler
+    ├── wallet/  chat/  calendar/  # app-support subsystems (migration 0006)
+    ├── uploads/                 # signed Storage upload URLs (0007/0008)
+    ├── verifications/           # provider ID/selfie submissions (0008)
+    ├── escrow/                  # escrow lifecycle + disputes (0009)
+    └── admin/                   # admin console: users, bookings, analytics,
+                                 # verification queue, transactions, disputes
 ```
 
 ## Scripts

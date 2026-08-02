@@ -28,6 +28,10 @@ recommendation model (see [Recommendation Engine Integration](#9-recommendation-
 12. [Seed Data](#12-seed-data)
 13. [Retraining Data Export](#13-retraining-data-export)
 14. [Out of Scope](#14-out-of-scope)
+15. [App-Support Subsystems (migration 0006)](#15-app-support-subsystems-migration-0006)
+16. [Job Pricing, Scheduling & Photos (migration 0007)](#16-job-pricing-scheduling--photos-migration-0007)
+17. [Provider Verification (migration 0008)](#17-provider-verification-migration-0008)
+18. [Escrow & Disputes (migration 0009)](#18-escrow--disputes-migration-0009)
 
 ---
 
@@ -119,6 +123,12 @@ create type notification_type  as enum ('recommendation_invite', 'application_up
 
 > Note: the enum labels `urgent | normal | flexible` must match the model's training values
 > for the `job_urgency` feature exactly (lowercase).
+
+> **Later migrations extend two of these**, and the block above shows the original 0001 values only:
+> `user_role` gains `'admin'` (0005); `notification_type` gains `'verification_update'` (0008) and
+> `'dispute_update'` (0009). Migrations 0006, 0008 and 0009 also add their own enums —
+> `wallet_txn_direction`, `wallet_txn_status`, `booking_status` (§15); `verification_status` (§17);
+> `escrow_status`, `dispute_status`, `dispute_resolution` (§18).
 
 ---
 
@@ -656,7 +666,7 @@ Retraining then reuses the ML repository's `run_training.py` methodology (GroupS
 Do **not** design or implement the following (deliberately deferred; adding them now would
 bloat the schema beyond the validated recommendation flow):
 
-- Provider portfolios, certifications, or document verification
+- Provider portfolios and certifications
 - Multi-category providers (one category per provider for now — matches the model)
 - Push-notification delivery infrastructure (the `notifications` table is the source of truth;
   delivery transport is a later concern)
@@ -666,6 +676,12 @@ bloat the schema beyond the validated recommendation flow):
 > the mobile app's Wallet, Chat, and Calendar screens — and are documented in [Section 15](#15-app-support-subsystems-migration-0006).
 > They are **not** part of the ML recommendation flow and feed no model features. Admin
 > dashboard/moderation tables were likewise added later (migration 0005).
+
+> **Scope note (migrations 0007–0009):** *Document verification* was also on this list and has
+> since been added (§17), along with job pricing/scheduling/photos (§16) and escrow/disputes
+> (§18). Like §15, none of these feed model features or the retraining export. The driver was
+> the same in every case: the mobile and web UIs already collected or displayed this data and
+> had nowhere to put it.
 
 ---
 
@@ -683,7 +699,8 @@ A per-user ledger. **There is no real payment gateway**; entries are recorded di
 balance is *derived* (never stored): `sum(completed credits) − sum(completed debits)`. Enums:
 `wallet_txn_direction ('credit','debit')`, `wallet_txn_status ('pending','completed','failed')`.
 `amount` is always positive; `direction` carries the sign. An optional `job_id` links a payout /
-fee to the job that produced it.
+hold / refund to the job that produced it. Migration 0009 adds a `kind` column — see §18; revenue
+is `kind = 'payout'`, not merely "a credit with a job_id".
 
 - `GET /wallet` → `{ balance, total_credited, total_debited, pending, transactions[] }`
 - `POST /wallet/transactions` → record `{ direction, amount, title, job_id? }`
@@ -708,3 +725,113 @@ Enum `booking_status ('scheduled','completed','cancelled')`. One booking per job
 - `GET /calendar/bookings?from=&to=` → the caller's bookings (provider or client side)
 - `POST /calendar/bookings` 🔒(provider) → schedule an assigned job
 - `PATCH /calendar/bookings/:id` 🔒(provider) → reschedule / update status / notes
+
+---
+
+## 16. Job Pricing, Scheduling & Photos (migration 0007)
+
+The mobile job-creation flow always collected a budget, a preferred date/time, and photos, but
+`submitJob()` dropped them — there were no columns. The web admin console's Bookings "Amount"
+column was a hardcoded placeholder for the same reason. Three additive columns on `jobs`:
+
+| Column | Type | Notes |
+|---|---|---|
+| `budget` | `numeric(12,2)` null, `> 0` | Client-set, in PHP. Null on every job posted before this migration. Seeds `escrow_transactions.amount` (§18). |
+| `scheduled_at` | `timestamptz` null | Client's preferred start. Null = ASAP, the pre-existing behaviour. |
+| `photo_urls` | `text[]` not null default `'{}'`, ≤ 6 | Storage object **paths** in the public `job-photos` bucket — not URLs, so the bucket can be re-pointed without rewriting rows. |
+
+**No provider bidding.** Pricing is a single client-set budget; `job_applications` carries no
+amount. This matches the mobile UI and keeps the ML flow's unpriced-application assumption intact.
+
+**Auto-booking.** `handle_application_accepted()` (originally 0002) is replaced. It still assigns
+the job and auto-rejects sibling applications, and now also inserts the `bookings` row when
+`jobs.scheduled_at` is set, `on conflict (job_id) do nothing`. Before this, nothing in the product
+ever created a booking, so the provider calendar was permanently empty.
+
+**Uploads.** `POST /uploads/signed-url` returns a signed Storage upload URL; the device uploads
+directly. Paths are generated server-side as `<profile id>/<uuid>.<ext>` and the API rejects any
+submitted path that doesn't carry the caller's prefix.
+
+---
+
+## 17. Provider Verification (migration 0008)
+
+Backs backlog stories #9 (provider submits ID + selfie) and #28 (admin review queue). Documents
+live in the **private** `verification-docs` bucket; admins read them through short-lived signed
+URLs generated by the API. These are government IDs — never make this bucket public.
+
+`provider_verifications`: `id`, `provider_id`, `id_document_path`, `selfie_path`,
+`status verification_status ('pending','approved','rejected')`, `submitted_at`, `reviewed_at`,
+`reviewed_by`, `rejection_reason` (≤500), timestamps.
+
+- Partial unique index on `(provider_id) where status = 'pending'` — a provider may resubmit
+  after a rejection, but only one review can be open at a time.
+- `provider_profiles.is_verified` flips on approval.
+
+**`is_verified` is a badge, not a gate.** Applying to jobs is deliberately not restricted by it;
+enforcing it would lock out every provider who signed up before verification existed. Revisit only
+as an explicit product decision.
+
+---
+
+## 18. Escrow & Disputes (migration 0009)
+
+`wallet_transactions` (§15.1) is a one-party ledger. The admin Transactions page needs the
+opposite — a two-party record with escrow and dispute states — and the mobile dispute screen had
+no backend at all. Backlog stories #17, #18, #20.
+
+`escrow_transactions`: `id`, `job_id` (unique), `client_id`, `provider_id`, `amount numeric(12,2)`,
+`status escrow_status ('held','released','disputed','refunded','cancelled')`, `held_at`,
+`released_at`, `refunded_at`, timestamps.
+
+`disputes`: `id`, `escrow_id`, `job_id`, `raised_by`, `reason` (1–200), `details` (≤1000),
+`status dispute_status ('open','resolved','cancelled')`,
+`resolution dispute_resolution ('released_to_provider','refunded_to_client')`, `resolution_note`,
+`resolved_by`, `resolved_at`, timestamps. A CHECK keeps `status`/`resolution` consistent, and a
+partial unique index on `(escrow_id) where status = 'open'` allows only one live dispute.
+
+### Lifecycle
+
+| Event | Escrow | Wallet movement |
+|---|---|---|
+| Application accepted, `jobs.budget` not null | → `held` | client **debit** (`escrow_hold`) |
+| Job completed | → `released` | provider **credit** (`payout`) |
+| Job cancelled | → `cancelled` | client **credit** (`refund`) |
+| Client raises a dispute | → `disputed` | none — funds frozen |
+| Admin resolves `released_to_provider` | → `released` | provider **credit** (`payout`) |
+| Admin resolves `refunded_to_client` | → `refunded` | client **credit** (`refund`) |
+
+Jobs with no budget get no escrow, and every step above no-ops for them.
+
+### Funding a hold
+
+You cannot hold money that isn't there. `POST /applications/:id/accept` therefore fails with
+**400 `Insufficient wallet balance`** when the client's derived balance is below the job budget —
+the job stays `open` and nobody is hired. Clients add funds through
+`POST /wallet/transactions` (`direction: 'credit'`), which is what mobile's Add Money button does.
+
+There is still no payment gateway: the ledger is the only account of record, and a top-up is
+simply a recorded credit.
+
+### `wallet_transactions.kind` — why direction isn't enough
+
+A payout and a refund are **both credits carrying a `job_id`**. The pre-0009 revenue query
+(`direction = 'credit' AND job_id IS NOT NULL`) would have counted refunds as revenue, inflating
+the admin dashboard by the value of every cancelled or disputed job.
+
+So every ledger row now carries a `wallet_txn_kind`, and **platform revenue is defined as
+`kind = 'payout'`** and nothing else. The migration backfills existing job-linked credits to
+`'payout'`, which is exactly what the old query counted — so revenue figures carry over unchanged.
+
+`kind` is derived server-side and never accepted from a request body: a caller able to set
+`kind = 'payout'` could inflate reported revenue just by topping up. `POST /wallet/transactions`
+only ever produces `topup` or `withdrawal`; `payout`, `refund` and `escrow_hold` are written
+exclusively by `EscrowService`.
+
+### Known limitation
+
+The balance check and the debit are two separate statements, not one transaction. Two concurrent
+accepts for the same client could both pass the check and overdraw. In practice a client accepting
+two jobs in the same instant is vanishingly rare, and the per-job `unique (job_id)` on
+`escrow_transactions` still prevents double-holding a single job. Closing it properly means moving
+hold into a SQL function with `select ... for update` — worth doing if real money is ever involved.
