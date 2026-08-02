@@ -1,20 +1,27 @@
 // ─── Services: the data seam ──────────────────────────────────────────────────
 // Pages/context call these and never know where data comes from.
-// Login, Users, Bookings, and Reports/Analytics call the real backend (see
-// lib/api/client.ts). Verifications and Transactions still read the
-// in-memory mock DB — no backend tables exist for those yet; see
+// Login, Users, Bookings, and Reports/Analytics (including revenue and
+// recent activity) call the real backend (see lib/api/client.ts).
+// Verifications and the Transactions *page* still read the in-memory mock
+// DB — Verifications has no backend table yet; Transactions has a real
+// wallet_transactions ledger, but it's a per-user credit/debit ledger, not
+// the two-party escrow model the Transactions page's UI assumes (no escrow/
+// dispute system exists), so it stays mocked until that's reconciled. See
 // docs/superpowers/specs/2026-07-20-web-backend-integration-design.md.
 
 import * as db from "@/lib/mock/db";
 import { ApiError, client } from "@/lib/api/client";
 import { clearStoredSession, getStoredSession, setStoredSession } from "@/lib/api/session";
 import {
+  mapActivity,
   mapBookingsByCategory,
   mapBookingsSeries,
   mapCompletionRate,
+  mapRevenueSeries,
   mapTopProviders,
 } from "./mapAnalytics";
 import type {
+  AdminActivityApiRow,
   AdminBookingApiRow,
   AdminUserApiRow,
   AnalyticsSummaryApiResponse,
@@ -109,10 +116,15 @@ export async function logout(): Promise<void> {
 }
 
 export async function changePassword(current: string, next: string): Promise<boolean> {
-  // No backend endpoint exists for this yet — kept mocked.
-  if (current !== db.credentials.password) return simulate(false);
-  db.credentials.password = next;
-  return simulate(true);
+  try {
+    await client.post("/auth/change-password", {
+      current_password: current,
+      new_password: next,
+    });
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 // ─── Reads ────────────────────────────────────────────────────────────────────
@@ -146,17 +158,15 @@ export async function getDashboardStats(): Promise<DashboardStats> {
     activeProviders: summary.totals.providers,
     totalBookings: summary.totals.bookings,
     pendingVerifications: db.verifications.filter((v) => v.status === "PENDING").length,
-    totalRevenue: db.stats.totalRevenue,
-    monthlyRevenue: db.stats.monthlyRevenue,
+    totalRevenue: summary.totals.total_revenue,
+    monthlyRevenue: summary.totals.monthly_revenue,
     completionRate: mapCompletionRate(summary),
-    // No platform-wide average-rating figure exists server-side (only the
-    // top-10 providers carry cached ratings) — kept mocked.
-    avgRating: db.stats.avgRating,
+    avgRating: summary.totals.avg_rating ?? db.stats.avgRating,
   };
 }
 
 export async function getRevenueSeries(): Promise<MonthlyPoint[]> {
-  return simulate([...db.revenueSeries]);
+  return mapRevenueSeries(await getAnalyticsSummary());
 }
 
 export async function getBookingsSeries(): Promise<MonthlyPoint[]> {
@@ -168,7 +178,8 @@ export async function getBookingsByCategory(): Promise<CategoryShare[]> {
 }
 
 export async function getRecentActivity(): Promise<ActivityEvent[]> {
-  return simulate([...db.recentActivity]);
+  const rows = await client.get<AdminActivityApiRow[]>("/admin/activity");
+  return mapActivity(rows);
 }
 
 export async function getTopProviders(): Promise<TopProvider[]> {

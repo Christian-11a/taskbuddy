@@ -56,10 +56,14 @@ export interface AnalyticsSummaryApiResponse {
     providers: number;
     suspended: number;
     bookings: number;
+    avg_rating: number | null;
+    total_revenue: number;
+    monthly_revenue: number;
   };
   bookings_by_status: Record<string, number>;
   bookings_by_category: Record<string, number>;
   booking_trend: { date: string; count: number }[];
+  revenue_trend: { month: string; amount: number }[];
   top_providers: {
     profile_id: string;
     cached_avg_rating: number | null;
@@ -68,4 +72,13 @@ export interface AnalyticsSummaryApiResponse {
     profiles: { full_name: string } | null;
     service_categories: { name: string } | null;
   }[];
+}
+
+export interface AdminActivityApiRow {
+  id: number;
+  old_status: JobStatusApi | null;
+  new_status: JobStatusApi;
+  changed_at: string;
+  jobs: { title: string } | null;
+  changed_by: { full_name: string } | null;
 }

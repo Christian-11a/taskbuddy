@@ -1,21 +1,9 @@
 // ─── Mock database ────────────────────────────────────────────────────────────
 // An in-memory stand-in for data with no real backend yet. Only consumed by
-// the services layer for Verifications/Transactions, revenue, and a few
-// dashboard-only figures — everything else (Users, Bookings, most of
-// analytics) now reads the real backend; see lib/services/index.ts.
+// the services layer for Verifications and the Transactions page — see the
+// note at the top of lib/services/index.ts for why those two remain mocked.
 
-import type {
-  ActivityEvent,
-  MonthlyPoint,
-  TopProvider,
-  Transaction,
-  Verification,
-} from "@/lib/domain";
-
-export const credentials = {
-  email: "admin@taskbuddy.io",
-  password: "Admin123!",
-};
+import type { TopProvider, Transaction, Verification } from "@/lib/domain";
 
 export const verifications: Verification[] = [
   { id: "vr-001", providerId: "u-001", name: "Morgan Lee",   email: "morgan@example.com", submittedAt: "2026-05-02", status: "PENDING",  documents: ["Gov ID", "Service Cert"] },
@@ -38,32 +26,12 @@ export const transactions: Transaction[] = [
 ];
 
 // Revenue/rating figures with no real backend source (no payments system —
-// BACKEND_SCHEMA.md §14). Kept as fixed mock values, not zeroed, so the
-// still-mocked revenue chart series below stays visually consistent with
-// these stat-tile numbers.
+// BACKEND_SCHEMA.md §14). No platform-wide average-rating figure exists
+// server-side when no provider has been rated yet — this is the fallback
+// for that case (see getDashboardStats in lib/services/index.ts).
 export const stats = {
-  totalRevenue: 2_400_000,
-  monthlyRevenue: 184_200,
   avgRating: 4.8,
 };
-
-export const revenueSeries: MonthlyPoint[] = [
-  { month: "Oct", value: 82000 },
-  { month: "Nov", value: 95000 },
-  { month: "Dec", value: 128000 },
-  { month: "Jan", value: 91000 },
-  { month: "Feb", value: 143000 },
-  { month: "Mar", value: 167000 },
-  { month: "Apr", value: 184200 },
-];
-
-export const recentActivity: ActivityEvent[] = [
-  { time: "2m ago",  text: "Morgan Lee submitted verification docs",   type: "verif" },
-  { time: "15m ago", text: "Transaction TXN-007 marked Completed",     type: "tx" },
-  { time: "1h ago",  text: "New user Alex Chen registered",            type: "user" },
-  { time: "2h ago",  text: "Dispute raised on TXN-004",                type: "alert" },
-  { time: "5h ago",  text: "Pat Morgan completed 25th job",            type: "user" },
-];
 
 export const topProviders: TopProvider[] = [
   { name: "Marcus Rivera",  jobs: 38, rating: 4.9 },

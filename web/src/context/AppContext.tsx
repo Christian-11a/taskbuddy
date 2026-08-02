@@ -142,15 +142,28 @@ const STATUS_TO_DOMAIN: Record<"Active" | "Suspended", UserStatus> = {
 };
 
 export function AppProvider({ children }: { children: ReactNode }) {
-  // session / navigation — lazily restored from a stored token on first
-  // render (same SSR-safe pattern as loadStoredPrefs() below: null on the
-  // server, resolved on the client, no hydration mismatch since neither
-  // ever renders before login).
-  const [isLoggedIn, setIsLoggedIn] = useState(() => services.restoreSession() !== null);
+  // session / navigation — unlike loadStoredPrefs() below (which only ever
+  // affects className/style, not which branch renders), isLoggedIn gates
+  // <LoginPage /> vs the dashboard in AppShell. Resolving it from
+  // localStorage during the initial render would make the server (always
+  // logged-out) and the client's first render (logged-in, if a session
+  // exists) produce different trees — a hydration mismatch. So both start
+  // logged-out, and a real session is restored after mount instead (see
+  // the effect below).
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [activePage, setActivePage] = useState<Page>("dashboard");
-  const [adminProfile, setAdminProfile] = useState<AdminProfile>(
-    () => services.restoreSession() ?? { name: "Super Admin", email: "admin@taskbuddy.io" },
-  );
+  const [adminProfile, setAdminProfile] = useState<AdminProfile>({
+    name: "Super Admin",
+    email: "admin@taskbuddy.io",
+  });
+
+  useEffect(() => {
+    const session = services.restoreSession();
+    if (session) {
+      setAdminProfile(session);
+      setIsLoggedIn(true);
+    }
+  }, []);
 
   // domain data
   const [loading, setLoading] = useState(true);

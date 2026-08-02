@@ -52,4 +52,9 @@ export class AdminController {
   analyticsSummary() {
     return this.adminService.analyticsSummary();
   }
+
+  @Get('activity')
+  recentActivity() {
+    return this.adminService.recentActivity();
+  }
 }

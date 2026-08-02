@@ -5,7 +5,7 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { SupabaseService } from '../supabase/supabase.service';
-import { LoginDto, RefreshDto, RegisterDto } from './dto/auth.dto';
+import { ChangePasswordDto, LoginDto, RefreshDto, RegisterDto } from './dto/auth.dto';
 import type { Profile } from '../common/types';
 
 @Injectable()
@@ -91,6 +91,28 @@ export class AuthService {
 
   async logout(accessToken: string) {
     await this.supabase.admin.auth.admin.signOut(accessToken);
+    return { success: true };
+  }
+
+  /** Re-authenticates with the current password before rotating it, so a
+   *  hijacked session can't silently lock the real owner out. */
+  async changePassword(user: Profile, dto: ChangePasswordDto) {
+    const { data: authData } = await this.supabase.admin.auth.admin.getUserById(
+      user.id,
+    );
+    const email = authData?.user?.email;
+    if (!email) throw new BadRequestException('Account has no email on file');
+
+    const { error: reauthError } = await this.supabase.anon.auth.signInWithPassword({
+      email,
+      password: dto.current_password,
+    });
+    if (reauthError) throw new UnauthorizedException('Current password is incorrect');
+
+    const { error } = await this.supabase.admin.auth.admin.updateUserById(user.id, {
+      password: dto.new_password,
+    });
+    if (error) throw new BadRequestException(error.message);
     return { success: true };
   }
 

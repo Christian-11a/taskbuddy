@@ -16,6 +16,10 @@ const BOOKING_SELECT =
   'client:profiles!jobs_client_id_fkey(id, full_name), ' +
   'provider:profiles!jobs_assigned_provider_id_fkey(id, full_name)';
 
+const ACTIVITY_SELECT =
+  'id, old_status, new_status, changed_at, ' +
+  'jobs(title), changed_by:profiles(full_name)';
+
 @Injectable()
 export class AdminService {
   constructor(private readonly supabase: SupabaseService) {}
@@ -144,6 +148,45 @@ export class AdminService {
       .limit(10);
     if (providersError) throw new BadRequestException(providersError.message);
 
+    // Platform-wide average rating (story #32) — every rated provider counts
+    // equally; unrated providers (no cached_avg_rating yet) are excluded
+    // rather than dragging the average toward zero.
+    const { data: ratedProviders, error: ratingsError } =
+      await this.supabase.admin
+        .from('provider_profiles')
+        .select('cached_avg_rating')
+        .not('cached_avg_rating', 'is', null);
+    if (ratingsError) throw new BadRequestException(ratingsError.message);
+    const ratings = (ratedProviders ?? [])
+      .map((p) => p.cached_avg_rating as number)
+      .filter((r) => r != null);
+    const avgRating =
+      ratings.length > 0
+        ? ratings.reduce((sum, r) => sum + r, 0) / ratings.length
+        : null;
+
+    // Platform revenue (story #32) — completed, job-linked wallet credits
+    // (job payouts/fees). Top-ups and withdrawals carry no job_id and aren't
+    // platform revenue, so they're excluded.
+    const { data: revenueTxns, error: revenueError } = await this.supabase.admin
+      .from('wallet_transactions')
+      .select('amount, created_at')
+      .eq('direction', 'credit')
+      .eq('status', 'completed')
+      .not('job_id', 'is', null);
+    if (revenueError) throw new BadRequestException(revenueError.message);
+
+    const revenueByMonth: Record<string, number> = {};
+    let totalRevenue = 0;
+    for (const txn of revenueTxns ?? []) {
+      const amount = Number(txn.amount);
+      totalRevenue += amount;
+      const month = (txn.created_at ?? '').slice(0, 7); // "YYYY-MM"
+      if (month) revenueByMonth[month] = (revenueByMonth[month] ?? 0) + amount;
+    }
+    const currentMonth = new Date().toISOString().slice(0, 7);
+    const monthlyRevenue = revenueByMonth[currentMonth] ?? 0;
+
     const jobsByStatus: Record<string, number> = {};
     const jobsByCategory: Record<string, number> = {};
     const trendByDay: Record<string, number> = {};
@@ -165,14 +208,33 @@ export class AdminService {
         providers: allUsers.filter((u) => u.role === 'provider').length,
         suspended: allUsers.filter((u) => u.deactivated_at).length,
         bookings: (jobs ?? []).length,
+        avg_rating: avgRating,
+        total_revenue: round2(totalRevenue),
+        monthly_revenue: round2(monthlyRevenue),
       },
       bookings_by_status: jobsByStatus,
       bookings_by_category: jobsByCategory,
       booking_trend: Object.entries(trendByDay)
         .sort(([a], [b]) => a.localeCompare(b))
         .map(([date, count]) => ({ date, count })),
+      revenue_trend: Object.entries(revenueByMonth)
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([month, amount]) => ({ month, amount: round2(amount) })),
       top_providers: providers ?? [],
     };
+  }
+
+  /** Recent platform events for the dashboard's activity feed (story #32) —
+   *  sourced from job_status_history, the existing audit trail of job
+   *  lifecycle transitions (no new table needed). */
+  async recentActivity(limit = 20) {
+    const { data, error } = await this.supabase.admin
+      .from('job_status_history')
+      .select(ACTIVITY_SELECT)
+      .order('changed_at', { ascending: false })
+      .limit(limit);
+    if (error) throw new BadRequestException(error.message);
+    return data ?? [];
   }
 
   private async findProfile(userId: string) {
@@ -196,4 +258,8 @@ export class AdminService {
     if (error) throw new BadRequestException(error.message);
     return data;
   }
+}
+
+function round2(n: number): number {
+  return Math.round(n * 100) / 100;
 }
