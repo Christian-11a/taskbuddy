@@ -247,7 +247,10 @@ function AppContent() {
       return (
         <View style={styles.screen}>
           <HOCreateJobScreen
-            onBack={hoBack}
+            onBack={() => {
+              setHOTab('Home');
+              setHOScreen('Home');
+            }}
             onSuccess={() => {
               setHOTab('My Jobs');
               setHOScreen('My Jobs');

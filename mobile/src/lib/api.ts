@@ -124,6 +124,12 @@ export interface Job {
   longitude: number;
   posted_at: string;
   assigned_provider_id: string | null;
+  /** Optional scheduling/pricing fields supplied by the mobile job form. */
+  date?: string;
+  time?: string;
+  budget?: number;
+  photo_uris?: string[];
+  assigned_provider?: { full_name: string } | null;
   created_at: string;
   service_categories?: { name: string } | null;
   [key: string]: unknown;
@@ -365,6 +371,10 @@ export const api = {
     address: string;
     latitude: number;
     longitude: number;
+    date: string;
+    time: string;
+    budget: number;
+    photo_uris?: string[];
   }) {
     return authRequest<Job>('/jobs', { method: 'POST', body: input });
   },

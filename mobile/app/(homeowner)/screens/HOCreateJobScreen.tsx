@@ -10,6 +10,25 @@
  * Step 4: Budget / pricing
  * Step 5: Review & post
  * Success: Confirmation screen
+ *
+ * NOTE (Android/iOS time picker fix):
+ * @react-native-community/datetimepicker behaves very differently per platform:
+ *  - iOS: `display="spinner"` renders as a true inline view. It never closes on
+ *    its own and just streams onChange events as the user scrolls the wheel,
+ *    which is why wrapping it in our own bottom-sheet Modal with a "Done"
+ *    button works well.
+ *  - Android: mounting <DateTimePicker> triggers the OS's own native imperative
+ *    dialog (with its own baked-in OK/Cancel), regardless of the `display`
+ *    prop. That dialog expects the component to be UNMOUNTED after the user
+ *    responds. If we keep it mounted (e.g. inside a Modal whose `visible` stays
+ *    true), Android reopens the native dialog on every re-render, causing the
+ *    "keeps popping back up" loop on both OK and Cancel.
+ *
+ * Fix: branch by Platform.OS.
+ *  - Android: render <DateTimePicker> bare (no wrapping custom Modal), and
+ *    unmount it (setShowTimePicker(false)) immediately inside onChange,
+ *    regardless of whether the event was 'set' (OK) or 'dismissed' (Cancel).
+ *  - iOS: keep the existing custom Modal + spinner + Done button flow.
  */
 
 import React, { useState } from 'react';
@@ -22,6 +41,7 @@ import {
   View,
   Platform,
   Modal,
+  Image,
 } from 'react-native';
 import {
   AlertTriangle,
@@ -33,14 +53,20 @@ import {
   Palette,
   Sparkles,
   Wrench,
+  Check,
 } from 'lucide-react-native';
-import DateTimePicker from '@react-native-community/datetimepicker';
+import DateTimePicker, {
+  DateTimePickerEvent,
+} from '@react-native-community/datetimepicker';
 import { Calendar } from 'react-native-calendars';
+import * as ImagePicker from 'expo-image-picker';
 import { Colors, Radii, Shadows, Sizes, Spacing } from '../../../src/constants/theme';
 import { useAuth } from '../../../src/context/AuthContext';
 import { useAsyncData } from '../../../src/hooks/useAsyncData';
 import { api } from '../../../src/lib/api';
 import { peso } from '../../../src/lib/format';
+import TermsAndConditions from '../../(auth)/screens/TermsAndConditions';
+import ConfirmationModal from '../../../src/components/ConfirmationModal';
 
 // Icon + blurb per real service category (the 5 seeded in the DB).
 const CATEGORY_META: Record<string, { icon: typeof Wrench; desc: string }> = {
@@ -75,6 +101,12 @@ export default function HOCreateJobScreen({ onBack, onSuccess }: HOCreateJobScre
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [showTimePicker, setShowTimePicker] = useState(false);
   const [budget, setBudget] = useState('');
+  const [photos, setPhotos] = useState<ImagePicker.ImagePickerAsset[]>([]);
+  const [flexibility, setFlexibility] = useState('Exact time');
+  const [paymentType, setPaymentType] = useState('Fixed Price');
+  const [showTerms, setShowTerms] = useState(false);
+  const [termsAccepted, setTermsAccepted] = useState(false);
+  const [showExitConfirmation, setShowExitConfirmation] = useState(false);
   const [focusedField, setFocusedField] = useState<string | null>(null);
   const [isUrgent, setIsUrgent] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -85,6 +117,16 @@ export default function HOCreateJobScreen({ onBack, onSuccess }: HOCreateJobScre
   const timeLabel = time?.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' }) ?? '';
   const dateKey = (value: Date) => `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, '0')}-${String(value.getDate()).padStart(2, '0')}`;
 
+  const isValidBudget = (value: string) => {
+    const normalized = value.trim().replace(/,/g, '');
+    return normalized !== '' && Number.isFinite(Number(normalized)) && Number(normalized) > 0;
+  };
+
+  const formatBudget = () => {
+    if (!isValidBudget(budget)) return;
+    setBudget(Number(budget.replace(/,/g, '')).toFixed(2));
+  };
+
   const validateStep = (): string | null => {
     if (step === 1 && !categoryId) return 'Please select a service.';
     if (step === 2) {
@@ -93,7 +135,36 @@ export default function HOCreateJobScreen({ onBack, onSuccess }: HOCreateJobScre
         return 'Description must be at least 20 characters.';
       if (!location.trim()) return 'Please enter a location.';
     }
+    if (step === 3) {
+      if (!date) return 'Please select a preferred date.';
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      if (date < today) return 'Preferred date cannot be before today.';
+      if (!time) return 'Please select a preferred time.';
+    }
+    if (step === 4) {
+      if (!budget.trim()) return 'Please enter a budget.';
+      if (!isValidBudget(budget)) return 'Please enter a valid budget greater than 0.';
+    }
     return null;
+  };
+
+  const pickPhotos = async () => {
+    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!permission.granted) {
+      setError('Allow photo library access to add job photos.');
+      return;
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'],
+      allowsMultipleSelection: true,
+      selectionLimit: 10,
+      quality: 0.8,
+    });
+    if (!result.canceled) {
+      setPhotos((current) => [...current, ...result.assets].slice(0, 10));
+      setError(null);
+    }
   };
 
   const submitJob = async () => {
@@ -108,6 +179,10 @@ export default function HOCreateJobScreen({ onBack, onSuccess }: HOCreateJobScre
         address: location.trim(),
         latitude: profile?.latitude ?? FALLBACK_COORDS.latitude,
         longitude: profile?.longitude ?? FALLBACK_COORDS.longitude,
+        date: dateKey(date!),
+        time: time!.toISOString(),
+        budget: Number(budget.replace(/,/g, '')),
+        photo_uris: photos.map((photo) => photo.uri),
       });
       setStep(6); // success
     } catch (e) {
@@ -131,16 +206,57 @@ export default function HOCreateJobScreen({ onBack, onSuccess }: HOCreateJobScre
     }
   };
 
-  const handleBack = () => {
+  const hasProgress = Boolean(
+    categoryId || title.trim() || description.trim() || location.trim() || date || time ||
+    budget.trim() || photos.length || isUrgent || termsAccepted,
+  );
+
+  const handleStepBack = () => {
     setError(null);
-    if (step === 1) {
-      onBack();
-    } else if (step === 6) {
-      onSuccess();
-    } else {
-      setStep((s) => s - 1);
-    }
+    if (step > 1 && step <= totalSteps) setStep((s) => s - 1);
   };
+
+  const handleExit = () => {
+    if (hasProgress) {
+      setShowExitConfirmation(true);
+      return;
+    }
+    onBack();
+  };
+
+  const openTimePicker = () => {
+    setShowDatePicker(false);
+    setTempTime(time ?? new Date());
+    setShowTimePicker(true);
+  };
+
+  // Single onChange handler for both platforms.
+  // Android: the native dialog is imperative and self-closing — we must
+  // unmount (setShowTimePicker(false)) on ANY response (OK or Cancel),
+  // otherwise the dialog re-triggers itself on every re-render.
+  // iOS: the spinner is an inline view that stays open and just streams
+  // intermediate values until the user taps our own "Done" button.
+  const handleTimeChange = (event: DateTimePickerEvent, selectedTime?: Date) => {
+    if (Platform.OS === 'android') {
+      setShowTimePicker(false);
+      if (event.type === 'set' && selectedTime) {
+        setTime(selectedTime);
+      }
+      // event.type === 'dismissed' -> user tapped Cancel/back; keep old time.
+      return;
+    }
+    // iOS
+    if (selectedTime) setTempTime(selectedTime);
+  };
+
+  if (showTerms) {
+    return (
+      <TermsAndConditions
+        onBack={() => setShowTerms(false)}
+        onAccept={() => setTermsAccepted(true)}
+      />
+    );
+  }
 
   if (step === 6) {
     // Success screen
@@ -171,7 +287,7 @@ export default function HOCreateJobScreen({ onBack, onSuccess }: HOCreateJobScre
           <TouchableOpacity style={styles.primaryBtn} onPress={onSuccess} activeOpacity={0.85}>
             <Text style={styles.primaryBtnText}>View My Jobs</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.secondaryBtn} onPress={handleBack} activeOpacity={0.8}>
+          <TouchableOpacity style={styles.secondaryBtn} onPress={() => setStep(1)} activeOpacity={0.8}>
             <Text style={styles.secondaryBtnText}>Post Another Job</Text>
           </TouchableOpacity>
         </View>
@@ -184,7 +300,7 @@ export default function HOCreateJobScreen({ onBack, onSuccess }: HOCreateJobScre
       {/* Header */}
       <View style={styles.header}>
         <View style={styles.headerTopRow}>
-          <TouchableOpacity style={styles.backBtn} onPress={handleBack} activeOpacity={0.8}>
+          <TouchableOpacity style={styles.backBtn} onPress={handleExit} activeOpacity={0.8}>
             <ArrowLeft size={20} color={Colors.white} />
           </TouchableOpacity>
           <Text style={styles.headerTitle}>Post a Job</Text>
@@ -206,7 +322,7 @@ export default function HOCreateJobScreen({ onBack, onSuccess }: HOCreateJobScre
       >
         {step === 1 && (
           <View>
-            <Text style={styles.stepTitle}>Select a Service</Text>
+            <Text style={styles.stepTitle}>Select a Service<Text style={styles.requiredAsterisk}> *</Text></Text>
             <Text style={styles.stepSubtitle}>What service do you need?</Text>
             {categories.loading && <Text style={styles.serviceDesc}>Loading services…</Text>}
             {!!categories.error && <Text style={styles.errorText}>{categories.error}</Text>}
@@ -240,7 +356,7 @@ export default function HOCreateJobScreen({ onBack, onSuccess }: HOCreateJobScre
             <Text style={styles.stepSubtitle}>Tell us more about the job</Text>
 
             <View style={styles.inputGroup}>
-              <Text style={styles.inputLabel}>Job Title</Text>
+              <Text style={styles.inputLabel}>Job Title<Text style={styles.requiredAsterisk}> *</Text></Text>
               <TextInput
                 style={[styles.input, focusedField === 'title' && styles.inputFocused]}
                 placeholder="e.g. 3-bedroom apartment deep clean"
@@ -253,7 +369,31 @@ export default function HOCreateJobScreen({ onBack, onSuccess }: HOCreateJobScre
             </View>
 
             <View style={styles.inputGroup}>
-              <Text style={styles.inputLabel}>Description</Text>
+              <Text style={styles.inputLabel}>Photos (optional)</Text>
+              <TouchableOpacity style={styles.photoPicker} onPress={() => void pickPhotos()} activeOpacity={0.8}>
+                <Text style={styles.photoPickerTitle}>Add photos</Text>
+                <Text style={styles.photoPickerHint}>Select up to 10 images to help providers understand the job.</Text>
+              </TouchableOpacity>
+              {photos.length > 0 && (
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.photoList}>
+                  {photos.map((photo, index) => (
+                    <View key={`${photo.uri}-${index}`} style={styles.photoPreview}>
+                      <Image source={{ uri: photo.uri }} style={styles.photoImage} />
+                      <TouchableOpacity
+                        style={styles.removePhoto}
+                        onPress={() => setPhotos((current) => current.filter((_, photoIndex) => photoIndex !== index))}
+                        accessibilityLabel={`Remove photo ${index + 1}`}
+                      >
+                        <Text style={styles.removePhotoText}>×</Text>
+                      </TouchableOpacity>
+                    </View>
+                  ))}
+                </ScrollView>
+              )}
+            </View>
+
+            <View style={styles.inputGroup}>
+              <Text style={styles.inputLabel}>Description<Text style={styles.requiredAsterisk}> *</Text></Text>
               <TextInput
                 style={[styles.input, styles.textArea, focusedField === 'description' && styles.inputFocused]}
                 placeholder="Describe the job in detail..."
@@ -268,7 +408,7 @@ export default function HOCreateJobScreen({ onBack, onSuccess }: HOCreateJobScre
             </View>
 
             <View style={styles.inputGroup}>
-              <Text style={styles.inputLabel}>Location</Text>
+              <Text style={styles.inputLabel}>Location<Text style={styles.requiredAsterisk}> *</Text></Text>
               <TextInput
                 style={[styles.input, focusedField === 'location' && styles.inputFocused]}
                 placeholder="Brgy. Sampaguita, Lipa City"
@@ -303,7 +443,7 @@ export default function HOCreateJobScreen({ onBack, onSuccess }: HOCreateJobScre
             <Text style={styles.stepSubtitle}>When do you need this done?</Text>
 
             <View style={styles.inputGroup}>
-              <Text style={styles.inputLabel}>Preferred Date</Text>
+              <Text style={styles.inputLabel}>Preferred Date<Text style={styles.requiredAsterisk}> *</Text></Text>
               <TouchableOpacity
                 style={[styles.input, styles.pickerInput, showDatePicker && styles.inputFocused]}
                 onPress={() => { setShowTimePicker(false); setShowDatePicker(true); }}
@@ -314,14 +454,10 @@ export default function HOCreateJobScreen({ onBack, onSuccess }: HOCreateJobScre
             </View>
 
             <View style={styles.inputGroup}>
-              <Text style={styles.inputLabel}>Preferred Time</Text>
+              <Text style={styles.inputLabel}>Preferred Time<Text style={styles.requiredAsterisk}> *</Text></Text>
               <TouchableOpacity
                 style={[styles.input, styles.pickerInput, showTimePicker && styles.inputFocused]}
-                onPress={() => {
-                  setShowDatePicker(false);
-                  setTempTime(time ?? new Date());
-                  setShowTimePicker(true);
-                }}
+                onPress={openTimePicker}
                 activeOpacity={0.8}
               >
                 <Text style={[styles.pickerText, !time && styles.pickerPlaceholder]}>{timeLabel || 'Select a time'}</Text>
@@ -331,8 +467,13 @@ export default function HOCreateJobScreen({ onBack, onSuccess }: HOCreateJobScre
             <Text style={styles.inputLabel}>Flexibility</Text>
             <View style={styles.flexibilityRow}>
               {['Exact time', 'Morning', 'Afternoon', 'Evening', 'Flexible'].map((opt) => (
-                <TouchableOpacity key={opt} style={styles.flexChip} activeOpacity={0.8}>
-                  <Text style={styles.flexChipText}>{opt}</Text>
+                <TouchableOpacity
+                  key={opt}
+                  style={[styles.flexChip, flexibility === opt && styles.flexChipActive]}
+                  onPress={() => setFlexibility(opt)}
+                  activeOpacity={0.8}
+                >
+                  <Text style={[styles.flexChipText, flexibility === opt && styles.flexChipTextActive]}>{opt}</Text>
                 </TouchableOpacity>
               ))}
             </View>
@@ -341,7 +482,7 @@ export default function HOCreateJobScreen({ onBack, onSuccess }: HOCreateJobScre
 
         {step === 4 && (
           <View>
-            <Text style={styles.stepTitle}>Budget</Text>
+            <Text style={styles.stepTitle}>Budget<Text style={styles.requiredAsterisk}> *</Text></Text>
             <Text style={styles.stepSubtitle}>Set your budget for this job</Text>
 
             <View style={[styles.budgetCard, focusedField === 'budget' && styles.budgetCardFocused]}>
@@ -353,8 +494,8 @@ export default function HOCreateJobScreen({ onBack, onSuccess }: HOCreateJobScre
                 value={budget}
                 onChangeText={setBudget}
                 onFocus={() => setFocusedField('budget')}
-                onBlur={() => setFocusedField(null)}
-                keyboardType="numeric"
+                onBlur={() => { setFocusedField(null); formatBudget(); }}
+                keyboardType="decimal-pad"
               />
             </View>
 
@@ -365,8 +506,13 @@ export default function HOCreateJobScreen({ onBack, onSuccess }: HOCreateJobScre
             <Text style={styles.inputLabel}>Payment Type</Text>
             <View style={styles.paymentOptions}>
               {['Fixed Price', 'Hourly Rate', 'Negotiable'].map((opt) => (
-                <TouchableOpacity key={opt} style={styles.paymentChip} activeOpacity={0.8}>
-                  <Text style={styles.paymentChipText}>{opt}</Text>
+                <TouchableOpacity
+                  key={opt}
+                  style={[styles.paymentChip, paymentType === opt && styles.paymentChipActive]}
+                  onPress={() => setPaymentType(opt)}
+                  activeOpacity={0.8}
+                >
+                  <Text style={[styles.paymentChipText, paymentType === opt && styles.paymentChipTextActive]}>{opt}</Text>
                 </TouchableOpacity>
               ))}
             </View>
@@ -385,7 +531,10 @@ export default function HOCreateJobScreen({ onBack, onSuccess }: HOCreateJobScre
                 { label: 'Location', value: location || 'Not set' },
                 { label: 'Date', value: dateLabel || 'Flexible' },
                 { label: 'Time', value: timeLabel || 'Flexible' },
+                { label: 'Flexibility', value: flexibility },
                 { label: 'Budget', value: budget ? peso(budget) : 'Not set' },
+                { label: 'Payment Type', value: paymentType },
+                { label: 'Photos', value: photos.length ? `${photos.length} selected` : 'None' },
                 { label: 'Urgent', value: isUrgent ? 'Yes' : 'No' },
               ].map((item) => (
                 <View key={item.label} style={styles.reviewRow}>
@@ -396,9 +545,11 @@ export default function HOCreateJobScreen({ onBack, onSuccess }: HOCreateJobScre
             </View>
 
             <View style={styles.termsRow}>
-              <View style={styles.termsCheck} />
+              <View style={[styles.termsCheck, termsAccepted && styles.termsCheckAccepted]}>
+                {termsAccepted && <Check size={14} color={Colors.white} />}
+              </View>
               <Text style={styles.termsText}>
-                I agree to the <Text style={styles.termsLink}>Terms & Conditions</Text> and understand that TaskBuddy holds payment until job completion.
+                I agree to the <Text style={styles.termsLink} onPress={() => setShowTerms(true)}>Terms & Conditions</Text> and understand that TaskBuddy holds payment until job completion.
               </Text>
             </View>
           </View>
@@ -410,17 +561,42 @@ export default function HOCreateJobScreen({ onBack, onSuccess }: HOCreateJobScre
       {/* Footer */}
       <View style={styles.footer}>
         {!!error && <Text style={styles.errorText}>{error}</Text>}
-        <TouchableOpacity
-          style={[styles.primaryBtn, submitting && styles.primaryBtnDisabled]}
-          onPress={handleNext}
-          activeOpacity={0.85}
-          disabled={submitting}
-        >
-          <Text style={styles.primaryBtnText}>
-            {submitting ? 'Posting…' : step === totalSteps ? 'Post Job' : 'Next'}
-          </Text>
-        </TouchableOpacity>
+        <View style={styles.footerActions}>
+          {step > 1 && (
+            <TouchableOpacity style={styles.previousBtn} onPress={handleStepBack} activeOpacity={0.85} disabled={submitting}>
+              <Text style={styles.previousBtnText}>Back</Text>
+            </TouchableOpacity>
+          )}
+          <TouchableOpacity
+            style={[
+              styles.primaryBtn,
+              step === 1 && styles.primaryBtnFullWidth,
+              step > 1 && styles.primaryBtnWithBack,
+              submitting && styles.primaryBtnDisabled,
+            ]}
+            onPress={handleNext}
+            activeOpacity={0.85}
+            disabled={submitting}
+          >
+            <Text style={styles.primaryBtnText}>
+              {submitting ? 'Posting…' : step === totalSteps ? 'Post Job' : 'Next'}
+            </Text>
+          </TouchableOpacity>
+        </View>
       </View>
+
+      <ConfirmationModal
+        visible={showExitConfirmation}
+        title="Discard job draft?"
+        message="Returning to the home screen will delete the job details you have entered."
+        confirmLabel="Discard & Exit"
+        cancelLabel="Keep Editing"
+        onCancel={() => setShowExitConfirmation(false)}
+        onConfirm={() => {
+          setShowExitConfirmation(false);
+          onBack();
+        }}
+      />
 
       <Modal
         visible={showDatePicker}
@@ -450,43 +626,68 @@ export default function HOCreateJobScreen({ onBack, onSuccess }: HOCreateJobScre
           </View>
         </View>
       </Modal>
-      <Modal
-        visible={showTimePicker}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setShowTimePicker(false)}
-      >
-        <View style={styles.calendarOverlay}>
-          <View style={styles.calendarModal}>
-            <View style={styles.calendarHeader}>
-              <Text style={styles.calendarTitle}>Select a time</Text>
-              <TouchableOpacity onPress={() => setShowTimePicker(false)} hitSlop={10}>
-                <Text style={styles.calendarClose}>Close</Text>
+
+      {/*
+        TIME PICKER — platform-specific rendering.
+
+        Android: DateTimePicker itself opens the native OS dialog imperatively
+        as soon as it mounts. We render it bare (no custom Modal wrapper) and
+        conditionally mount it only while showTimePicker is true. The
+        handleTimeChange handler unmounts it (setShowTimePicker(false)) the
+        instant it receives ANY event — 'set' (OK) or 'dismissed' (Cancel) —
+        which is what prevents the native dialog from reappearing.
+      */}
+      {Platform.OS === 'android' && showTimePicker && (
+        <DateTimePicker
+          value={tempTime ?? new Date()}
+          mode="time"
+          display="spinner"
+          onChange={handleTimeChange}
+        />
+      )}
+
+      {/*
+        iOS: the spinner is an inline view that never closes itself, so we
+        keep it inside our own bottom-sheet Modal with a "Done" button that
+        commits tempTime -> time.
+      */}
+      {Platform.OS === 'ios' && (
+        <Modal
+          visible={showTimePicker}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setShowTimePicker(false)}
+        >
+          <View style={styles.calendarOverlay}>
+            <View style={styles.calendarModal}>
+              <View style={styles.calendarHeader}>
+                <Text style={styles.calendarTitle}>Select a time</Text>
+                <TouchableOpacity onPress={() => setShowTimePicker(false)} hitSlop={10}>
+                  <Text style={styles.calendarClose}>Close</Text>
+                </TouchableOpacity>
+              </View>
+
+              <DateTimePicker
+                value={tempTime ?? new Date()}
+                mode="time"
+                display="spinner"
+                onChange={handleTimeChange}
+              />
+
+              <TouchableOpacity
+                style={[styles.primaryBtn, { marginTop: 16 }]}
+                onPress={() => {
+                  if (tempTime) setTime(tempTime);
+                  setShowTimePicker(false);
+                }}
+                activeOpacity={0.85}
+              >
+                <Text style={styles.primaryBtnText}>Done</Text>
               </TouchableOpacity>
             </View>
-
-            <DateTimePicker
-              value={tempTime ?? new Date()}
-              mode="time"
-              display="spinner"
-              onChange={(_, selectedTime) => {
-                if (selectedTime) setTempTime(selectedTime);
-              }}
-            />
-
-            <TouchableOpacity
-              style={[styles.primaryBtn, { marginTop: 16 }]}
-              onPress={() => {
-                if (tempTime) setTime(tempTime);
-                setShowTimePicker(false);
-              }}
-              activeOpacity={0.85}
-            >
-              <Text style={styles.primaryBtnText}>Done</Text>
-            </TouchableOpacity>
           </View>
-        </View>
-      </Modal>
+        </Modal>
+      )}
     </View>
   );
 }
@@ -544,6 +745,7 @@ const styles = StyleSheet.create({
     ...Shadows.input,
   },
   inputFocused: { borderColor: Colors.brandTeal, borderWidth: 2 },
+  requiredAsterisk: { color: Colors.error, fontWeight: '800' },
   pickerInput: { justifyContent: 'center', minHeight: 48 },
   pickerText: { color: Colors.brandDark, fontFamily: 'Inter', fontSize: 15 },
   pickerPlaceholder: { color: Colors.muted },
@@ -553,6 +755,17 @@ const styles = StyleSheet.create({
   calendarTitle: { color: Colors.brandDark, fontSize: 18, fontWeight: '800', fontFamily: 'Inter' },
   calendarClose: { color: Colors.brandTeal, fontSize: 14, fontWeight: '700', fontFamily: 'Inter' },
   textArea: { height: 100, textAlignVertical: 'top' },
+  photoPicker: {
+    backgroundColor: Colors.white, borderRadius: 12, padding: 16,
+    borderWidth: 1, borderStyle: 'dashed', borderColor: Colors.brandTeal,
+  },
+  photoPickerTitle: { color: Colors.brandTeal, fontSize: 15, fontWeight: '700', fontFamily: 'Inter', marginBottom: 4 },
+  photoPickerHint: { color: Colors.slate, fontSize: 12, fontFamily: 'Inter', lineHeight: 18 },
+  photoList: { gap: 10, paddingTop: 12 },
+  photoPreview: { width: 72, height: 72, borderRadius: 10, overflow: 'visible' },
+  photoImage: { width: 72, height: 72, borderRadius: 10, backgroundColor: '#E2E8F0' },
+  removePhoto: { position: 'absolute', top: -6, right: -6, width: 22, height: 22, borderRadius: 11, backgroundColor: Colors.error, alignItems: 'center', justifyContent: 'center' },
+  removePhotoText: { color: Colors.white, fontSize: 18, lineHeight: 20, fontWeight: '700' },
 
   urgentToggle: {
     flexDirection: 'row', alignItems: 'center', backgroundColor: Colors.white,
@@ -578,7 +791,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16, paddingVertical: 10, borderRadius: 999,
     backgroundColor: Colors.white, borderWidth: 1, borderColor: 'rgba(144,153,184,0.3)',
   },
+  flexChipActive: { backgroundColor: Colors.brandTeal, borderColor: Colors.brandTeal },
   flexChipText: { color: Colors.brandDark, fontSize: 13, fontWeight: '600', fontFamily: 'Inter' },
+  flexChipTextActive: { color: Colors.white },
 
   budgetCard: {
     backgroundColor: Colors.white, borderRadius: 20, padding: 24,
@@ -594,7 +809,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 18, paddingVertical: 10, borderRadius: 999,
     backgroundColor: Colors.white, borderWidth: 1, borderColor: 'rgba(144,153,184,0.3)',
   },
+  paymentChipActive: { backgroundColor: Colors.brandTeal, borderColor: Colors.brandTeal },
   paymentChipText: { color: Colors.brandDark, fontSize: 13, fontWeight: '600', fontFamily: 'Inter' },
+  paymentChipTextActive: { color: Colors.white },
 
   reviewCard: { backgroundColor: Colors.white, borderRadius: 20, padding: 20, marginBottom: 16, ...Shadows.card },
   reviewRow: {
@@ -605,17 +822,23 @@ const styles = StyleSheet.create({
   reviewValue: { color: Colors.brandDark, fontSize: 14, fontWeight: '700', fontFamily: 'Inter', maxWidth: '55%', textAlign: 'right' },
 
   termsRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 12 },
-  termsCheck: { width: 20, height: 20, borderRadius: 6, borderWidth: 1, borderColor: 'rgba(144,153,184,0.4)', backgroundColor: Colors.white, marginTop: 2 },
+  termsCheck: { width: 20, height: 20, borderRadius: 6, borderWidth: 1, borderColor: '#64748B', backgroundColor: '#CBD5E1', marginTop: 2, alignItems: 'center', justifyContent: 'center' },
+  termsCheckAccepted: { backgroundColor: Colors.brandTeal, borderColor: Colors.brandTeal },
   termsText: { flex: 1, color: Colors.slate, fontSize: 13, fontFamily: 'Inter', lineHeight: 20 },
   termsLink: { color: Colors.brandTeal, fontWeight: '700', textDecorationLine: 'underline' },
 
   footer: { paddingHorizontal: Spacing.screenH, paddingVertical: 16, backgroundColor: Colors.white, borderTopWidth: 1, borderTopColor: 'rgba(144,153,184,0.15)' },
+  footerActions: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'stretch' },
+  previousBtn: { width: '48%', height: 50, borderWidth: 1, borderColor: Colors.brandTeal, borderRadius: 24, backgroundColor: Colors.white, alignItems: 'center', justifyContent: 'center' },
+  previousBtnText: { color: Colors.brandTeal, fontSize: 15, fontWeight: '700', fontFamily: 'Inter' },
   primaryBtn: {
     backgroundColor: Colors.brandTeal, borderRadius: 24, paddingVertical: 15,
     alignItems: 'center',
     shadowColor: Colors.brandTeal, shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.35, shadowRadius: 12, elevation: 5,
   },
+  primaryBtnFullWidth: { width: '100%' },
+  primaryBtnWithBack: { width: '48%', height: 50, paddingVertical: 0, justifyContent: 'center' },
   primaryBtnText: { color: Colors.white, fontSize: 15, fontWeight: '600', fontFamily: 'Inter', letterSpacing: 0.3 },
   primaryBtnDisabled: { opacity: 0.7 },
   errorText: { color: Colors.error, fontSize: 13, fontFamily: 'Inter', marginBottom: 10, textAlign: 'center' },

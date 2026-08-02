@@ -17,12 +17,12 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import { CalendarDays, ClipboardList, MapPin, Plus } from 'lucide-react-native';
+import { CalendarDays, ClipboardList, MapPin, Plus, UserRound, WalletCards } from 'lucide-react-native';
 import { Colors, Radii, Shadows, Sizes, Spacing } from '../../../src/constants/theme';
 import { HOScreen } from '../../../src/types/navigation';
 import { useAsyncData } from '../../../src/hooks/useAsyncData';
 import { api } from '../../../src/lib/api';
-import { jobFilterBucket, jobStatusMeta, shortDate } from '../../../src/lib/format';
+import { jobFilterBucket, jobStatusMeta, peso, timeAgo } from '../../../src/lib/format';
 import ScreenSkeleton from '../../../src/components/ScreenSkeleton';
 
 const FILTER_TABS = ['All', 'Active', 'Pending', 'Completed'];
@@ -115,9 +115,19 @@ export default function MyJobs({ onNavigate }: MyJobsProps) {
                   <Text style={styles.jobLocation}>{job.address}</Text>
                 </View>
                 <View style={styles.jobFooter}>
-                  <View style={styles.jobMetaItem}>
-                    <CalendarDays size={13} color={Colors.slate} />
-                    <Text style={styles.jobMeta}>Posted {shortDate(job.posted_at)}</Text>
+                  <View style={styles.jobDetails}>
+                    <View style={styles.jobMetaItem}>
+                      <CalendarDays size={13} color={Colors.slate} />
+                      <Text style={styles.jobMeta}>{timeAgo(job.posted_at)}</Text>
+                    </View>
+                    <View style={styles.jobMetaItem}>
+                      <WalletCards size={13} color={Colors.slate} />
+                      <Text style={styles.jobMeta}>{job.budget != null ? peso(job.budget) : 'Budget not set'}</Text>
+                    </View>
+                    <View style={styles.jobMetaItem}>
+                      <UserRound size={13} color={Colors.slate} />
+                      <Text style={styles.jobMeta}>{job.assigned_provider?.full_name ?? 'No provider assigned yet'}</Text>
+                    </View>
                   </View>
                   <Text style={styles.jobUrgency}>{job.urgency}</Text>
                 </View>
@@ -195,7 +205,8 @@ const styles = StyleSheet.create({
   jobMetaRow: { marginBottom: 10 },
   jobMetaItem: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   jobMeta: { color: Colors.slate, fontSize: 12, fontFamily: 'Inter' },
-  jobFooter: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  jobFooter: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end' },
+  jobDetails: { gap: 5, flex: 1, marginRight: 8 },
   jobProviderRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   jobProvider: { color: Colors.muted, fontSize: 12, fontFamily: 'Inter' },
   jobUrgency: { color: Colors.brandTeal, fontSize: 12, fontWeight: '700', fontFamily: 'Inter', textTransform: 'capitalize' },
