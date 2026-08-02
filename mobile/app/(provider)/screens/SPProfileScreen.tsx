@@ -11,7 +11,7 @@
 
 import React from 'react';
 import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import { BadgeCheck, CreditCard, Edit3, LogOut, Mail, MapPin, Phone, Bell, CalendarDays, Wallet as WalletIcon, ChevronRight } from 'lucide-react-native';
+import { BadgeCheck, CreditCard, Edit3, LogOut, Mail, MapPin, Phone, Bell, CalendarDays, ShieldCheck, Wallet as WalletIcon, ChevronRight } from 'lucide-react-native';
 import { Colors, Radii, Shadows, Sizes, Spacing } from '../../../src/constants/theme';
 import { SPScreen } from '../../../src/types/navigation';
 import { useAuth } from '../../../src/context/AuthContext';
@@ -114,6 +114,7 @@ export default function SPProfileScreen({ onNavigate, onLogout }: SPProfileScree
         <View style={styles.card}>
           {[
             { label: 'Edit Profile', icon: Edit3, screen: 'Edit Profile' as SPScreen },
+            { label: 'Get Verified', icon: ShieldCheck, screen: 'Verification' as SPScreen },
             { label: 'Wallet', icon: WalletIcon, screen: 'Wallet' as SPScreen },
             { label: 'Notifications', icon: Bell, screen: 'Notifications' as SPScreen },
             { label: 'Calendar', icon: CalendarDays, screen: 'Calendar' as SPScreen },

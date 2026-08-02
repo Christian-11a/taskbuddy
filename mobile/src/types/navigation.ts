@@ -50,7 +50,8 @@ export type SPScreen =
   | 'Urgent Job'
   | 'Chat'
   | 'Notifications'
-  | 'Edit Profile';
+  | 'Edit Profile'
+  | 'Verification';
 
 export const DEFAULT_ROLE: Role = 'homeowner';
 

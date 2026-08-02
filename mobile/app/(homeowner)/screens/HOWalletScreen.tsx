@@ -12,9 +12,12 @@
 
 import React, { useState } from 'react';
 import {
+  ActivityIndicator,
+  Modal,
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
@@ -39,7 +42,42 @@ interface HOWalletScreenProps {
 
 export default function HOWalletScreen({ onBack }: HOWalletScreenProps) {
   const [activeTab, setActiveTab] = useState<'all' | 'credit' | 'debit'>('all');
-  const { data, loading, error } = useAsyncData(() => api.wallet(), []);
+  const { data, loading, error, reload } = useAsyncData(() => api.wallet(), []);
+
+  // Add Money: hiring holds the job budget in escrow, so a client needs a
+  // funded wallet before they can accept an application.
+  const [showAddMoney, setShowAddMoney] = useState(false);
+  const [amount, setAmount] = useState('');
+  const [adding, setAdding] = useState(false);
+  const [addError, setAddError] = useState<string | null>(null);
+
+  const parsedAmount = Number(amount.replace(/,/g, ''));
+  const isValidAmount = Number.isFinite(parsedAmount) && parsedAmount > 0;
+
+  const closeAddMoney = () => {
+    setShowAddMoney(false);
+    setAmount('');
+    setAddError(null);
+  };
+
+  const addMoney = async () => {
+    if (!isValidAmount) return;
+    setAdding(true);
+    setAddError(null);
+    try {
+      await api.createWalletTransaction({
+        direction: 'credit',
+        amount: parsedAmount,
+        title: 'Added money',
+      });
+      closeAddMoney();
+      reload();
+    } catch (e) {
+      setAddError(e instanceof Error ? e.message : 'Could not add money.');
+    } finally {
+      setAdding(false);
+    }
+  };
 
   const transactions = data?.transactions ?? [];
   const filtered =
@@ -70,7 +108,11 @@ export default function HOWalletScreen({ onBack }: HOWalletScreenProps) {
             {data ? peso(data.balance) : '—'}
           </Text>
           <View style={styles.quickActions}>
-            <TouchableOpacity style={styles.quickActionBtn} activeOpacity={0.8}>
+            <TouchableOpacity
+              style={styles.quickActionBtn}
+              onPress={() => setShowAddMoney(true)}
+              activeOpacity={0.8}
+            >
               <ArrowUpRight size={22} color={Colors.white} />
               <Text style={styles.quickActionText}>Add Money</Text>
             </TouchableOpacity>
@@ -159,6 +201,65 @@ export default function HOWalletScreen({ onBack }: HOWalletScreenProps) {
         })}
         <View style={{ height: 20 }} />
       </ScrollView>
+
+      <Modal
+        visible={showAddMoney}
+        transparent
+        animationType="fade"
+        onRequestClose={closeAddMoney}
+      >
+        <View style={styles.modalBackdrop}>
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>Add Money</Text>
+            <Text style={styles.modalBody}>
+              Funds are held in escrow when you hire a provider, and released to
+              them when you mark the job complete.
+            </Text>
+
+            <View style={styles.amountRow}>
+              <Text style={styles.amountCurrency}>₱</Text>
+              <TextInput
+                style={styles.amountInput}
+                value={amount}
+                onChangeText={setAmount}
+                keyboardType="decimal-pad"
+                placeholder="0.00"
+                placeholderTextColor={Colors.muted}
+                autoFocus
+              />
+            </View>
+
+            {addError && <Text style={styles.modalError}>{addError}</Text>}
+
+            <View style={styles.modalActions}>
+              <TouchableOpacity
+                style={[styles.modalBtn, styles.modalCancel]}
+                onPress={closeAddMoney}
+                disabled={adding}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.modalCancelText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[
+                  styles.modalBtn,
+                  styles.modalConfirm,
+                  (!isValidAmount || adding) && styles.modalBtnDisabled,
+                ]}
+                onPress={addMoney}
+                disabled={!isValidAmount || adding}
+                activeOpacity={0.85}
+              >
+                {adding ? (
+                  <ActivityIndicator color={Colors.white} />
+                ) : (
+                  <Text style={styles.modalConfirmText}>Add Money</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -238,4 +339,21 @@ const styles = StyleSheet.create({
   txnAmount: { fontSize: 15, fontWeight: '800', fontFamily: 'Inter' },
   txnCredit: { color: '#22C55E' },
   txnDebit: { color: Colors.brandDark },
+
+  // Add Money modal
+  modalBackdrop: { flex: 1, backgroundColor: 'rgba(15,23,42,0.5)', alignItems: 'center', justifyContent: 'center', padding: 28 },
+  modalCard: { width: '100%', backgroundColor: Colors.white, borderRadius: Radii.card, padding: 22 },
+  modalTitle: { color: Colors.brandDark, fontSize: 18, fontWeight: '800', fontFamily: 'Inter' },
+  modalBody: { color: Colors.slate, fontSize: 13, fontFamily: 'Inter', lineHeight: 19, marginTop: 6 },
+  amountRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginTop: 18, marginBottom: 6 },
+  amountCurrency: { color: Colors.brandDark, fontSize: 28, fontWeight: '800', fontFamily: 'Inter', marginRight: 4 },
+  amountInput: { fontSize: 40, fontWeight: '800', fontFamily: 'Inter', color: Colors.brandDark, minWidth: 120, textAlign: 'center' },
+  modalError: { color: Colors.error, fontSize: 13, fontFamily: 'Inter', textAlign: 'center', marginTop: 4 },
+  modalActions: { flexDirection: 'row', gap: 10, marginTop: 18 },
+  modalBtn: { flex: 1, alignItems: 'center', justifyContent: 'center', borderRadius: 20, paddingVertical: 13 },
+  modalBtnDisabled: { opacity: 0.5 },
+  modalCancel: { backgroundColor: Colors.backgroundAlt },
+  modalCancelText: { color: Colors.slate, fontSize: 14, fontWeight: '700', fontFamily: 'Inter' },
+  modalConfirm: { backgroundColor: Colors.brandTeal },
+  modalConfirmText: { color: Colors.white, fontSize: 14, fontWeight: '700', fontFamily: 'Inter' },
 });

@@ -167,10 +167,31 @@ export default function HOCreateJobScreen({ onBack, onSuccess }: HOCreateJobScre
     }
   };
 
+  /**
+   * The picker collects a date and a time as two separate Date objects; the
+   * backend stores one `timestamptz`. Combine them in the device's own time
+   * zone so "9:00 AM" means 9:00 AM where the client is.
+   */
+  const combineDateAndTime = (day: Date, clock: Date) =>
+    new Date(
+      day.getFullYear(),
+      day.getMonth(),
+      day.getDate(),
+      clock.getHours(),
+      clock.getMinutes(),
+      0,
+      0,
+    ).toISOString();
+
   const submitJob = async () => {
     setSubmitting(true);
     setError(null);
     try {
+      // Upload first: a failed upload should not leave a job with dead photos.
+      const photo_urls = await Promise.all(
+        photos.map((photo) => api.uploadImage('job-photos', photo.uri)),
+      );
+
       await api.createJob({
         category_id: categoryId!,
         title: title.trim(),
@@ -179,10 +200,9 @@ export default function HOCreateJobScreen({ onBack, onSuccess }: HOCreateJobScre
         address: location.trim(),
         latitude: profile?.latitude ?? FALLBACK_COORDS.latitude,
         longitude: profile?.longitude ?? FALLBACK_COORDS.longitude,
-        date: dateKey(date!),
-        time: time!.toISOString(),
         budget: Number(budget.replace(/,/g, '')),
-        photo_uris: photos.map((photo) => photo.uri),
+        scheduled_at: combineDateAndTime(date!, time!),
+        photo_urls,
       });
       setStep(6); // success
     } catch (e) {
