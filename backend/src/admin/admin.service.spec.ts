@@ -267,10 +267,23 @@ describe('AdminService', () => {
         },
       ];
       const providers = [{ profile_id: 'u2', cached_completed_jobs: 5 }];
+      const ratedProviders = [
+        { cached_avg_rating: 4 },
+        { cached_avg_rating: 5 },
+      ];
+      const currentMonth = new Date().toISOString().slice(0, 7);
+      const revenueTxns = [
+        { amount: 100, created_at: '2026-06-15T00:00:00Z' },
+        { amount: 50.5, created_at: `${currentMonth}-01T00:00:00Z` },
+      ];
       const { supabase } = createSupabaseMock({
         jobs: [{ data: jobs, error: null }],
         profiles: [{ data: users, error: null }],
-        provider_profiles: [{ data: providers, error: null }],
+        provider_profiles: [
+          { data: providers, error: null },
+          { data: ratedProviders, error: null },
+        ],
+        wallet_transactions: [{ data: revenueTxns, error: null }],
       });
       const service = new AdminService(supabase);
 
@@ -282,6 +295,9 @@ describe('AdminService', () => {
         providers: 1,
         suspended: 1,
         bookings: 3,
+        avg_rating: 4.5,
+        total_revenue: 150.5,
+        monthly_revenue: 50.5,
       });
       expect(result.bookings_by_status).toEqual({ completed: 1, open: 2 });
       expect(result.bookings_by_category).toEqual({
@@ -292,7 +308,50 @@ describe('AdminService', () => {
         { date: '2026-07-10', count: 2 },
         { date: '2026-07-11', count: 1 },
       ]);
+      expect(result.revenue_trend).toEqual(
+        [
+          { month: '2026-06', amount: 100 },
+          { month: currentMonth, amount: 50.5 },
+        ].sort((a, b) => a.month.localeCompare(b.month)),
+      );
       expect(result.top_providers).toEqual(providers);
+    });
+  });
+
+  describe('recentActivity', () => {
+    it('returns job_status_history rows ordered by most recent', async () => {
+      const rows = [
+        {
+          id: 1,
+          old_status: 'open',
+          new_status: 'cancelled',
+          changed_at: '2026-07-26T10:00:00Z',
+          jobs: { title: '3 bedroom clean' },
+          changed_by: { full_name: 'Georgina Ramos' },
+        },
+      ];
+      const { supabase, calls } = createSupabaseMock({
+        job_status_history: [{ data: rows, error: null }],
+      });
+      const service = new AdminService(supabase);
+
+      const result = await service.recentActivity();
+
+      expect(result).toEqual(rows);
+      expect(calls.some((c) => c.method === 'limit' && c.args[0] === 20)).toBe(
+        true,
+      );
+    });
+
+    it('throws BadRequestException on query error', async () => {
+      const { supabase } = createSupabaseMock({
+        job_status_history: [{ data: null, error: { message: 'boom' } }],
+      });
+      const service = new AdminService(supabase);
+
+      await expect(service.recentActivity()).rejects.toThrow(
+        BadRequestException,
+      );
     });
   });
 

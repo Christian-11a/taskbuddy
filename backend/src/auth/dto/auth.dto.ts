@@ -42,3 +42,13 @@ export class RefreshDto {
   @IsNotEmpty()
   refresh_token!: string;
 }
+
+export class ChangePasswordDto {
+  @IsString()
+  @IsNotEmpty()
+  current_password!: string;
+
+  @IsString()
+  @MinLength(8)
+  new_password!: string;
+}
