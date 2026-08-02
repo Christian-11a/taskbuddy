@@ -40,40 +40,11 @@ create type dispute_resolution as enum (
 -- about ALTER TYPE ... ADD VALUE inside a transaction — nothing here uses it.
 alter type notification_type add value if not exists 'dispute_update';
 
--- What a ledger row represents. Direction alone is no longer enough to tell
--- them apart: a payout and a refund are both credits carrying a job_id, and
--- counting a refund as revenue would inflate every figure on the admin
--- dashboard. Revenue is now defined as `kind = 'payout'`, nothing else.
-create type wallet_txn_kind as enum (
-    'topup',        -- client adds funds
-    'withdrawal',   -- funds taken out
-    'escrow_hold',  -- client debited when a job is assigned
-    'payout',       -- provider credited when escrow is released  ← revenue
-    'refund',       -- client credited when escrow is cancelled or refunded
-    'adjustment'    -- anything else (manual corrections)
-);
+-- Classifying ledger rows (wallet_transactions.kind) lives in migration 0010,
+-- not here — this file had already been applied when that need surfaced.
 
 -- ===========================================================================
--- 2. Classify wallet ledger rows
--- ===========================================================================
-alter table wallet_transactions
-    add column kind wallet_txn_kind not null default 'adjustment';
-
--- Before this migration the only job-linked credits the API ever wrote were
--- provider payouts, and that is exactly what the analytics query counted. Tag
--- them so existing revenue figures survive the switch to `kind = 'payout'`.
-update wallet_transactions
-   set kind = 'payout'
- where direction = 'credit'
-   and job_id is not null;
-
-create index idx_wallet_txn_kind on wallet_transactions (kind, created_at);
-
-comment on column wallet_transactions.kind is
-    'Row purpose. Platform revenue = completed rows where kind = ''payout''.';
-
--- ===========================================================================
--- 3. Escrow — one record per job that had a budget when it was assigned.
+-- 2. Escrow — one record per job that had a budget when it was assigned.
 -- ===========================================================================
 create table escrow_transactions (
     id          uuid primary key default gen_random_uuid(),
@@ -98,7 +69,7 @@ create trigger trg_escrow_updated_at
     for each row execute function set_updated_at();
 
 -- ===========================================================================
--- 4. Disputes
+-- 3. Disputes
 -- ===========================================================================
 create table disputes (
     id          uuid primary key default gen_random_uuid(),
@@ -134,7 +105,7 @@ create trigger trg_disputes_updated_at
     for each row execute function set_updated_at();
 
 -- ===========================================================================
--- 5. Row Level Security (defense-in-depth; API uses the service-role key)
+-- 4. Row Level Security (defense-in-depth; API uses the service-role key)
 -- ===========================================================================
 alter table escrow_transactions enable row level security;
 

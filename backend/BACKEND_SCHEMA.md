@@ -31,7 +31,7 @@ recommendation model (see [Recommendation Engine Integration](#9-recommendation-
 15. [App-Support Subsystems (migration 0006)](#15-app-support-subsystems-migration-0006)
 16. [Job Pricing, Scheduling & Photos (migration 0007)](#16-job-pricing-scheduling--photos-migration-0007)
 17. [Provider Verification (migration 0008)](#17-provider-verification-migration-0008)
-18. [Escrow & Disputes (migration 0009)](#18-escrow--disputes-migration-0009)
+18. [Escrow & Disputes (migrations 0009-0010)](#18-escrow--disputes-migrations-0009-0010)
 
 ---
 
@@ -128,7 +128,7 @@ create type notification_type  as enum ('recommendation_invite', 'application_up
 > `user_role` gains `'admin'` (0005); `notification_type` gains `'verification_update'` (0008) and
 > `'dispute_update'` (0009). Migrations 0006, 0008 and 0009 also add their own enums —
 > `wallet_txn_direction`, `wallet_txn_status`, `booking_status` (§15); `verification_status` (§17);
-> `escrow_status`, `dispute_status`, `dispute_resolution` (§18).
+> `escrow_status`, `dispute_status`, `dispute_resolution` (§18); `wallet_txn_kind` (0010, §18).
 
 ---
 
@@ -699,7 +699,7 @@ A per-user ledger. **There is no real payment gateway**; entries are recorded di
 balance is *derived* (never stored): `sum(completed credits) − sum(completed debits)`. Enums:
 `wallet_txn_direction ('credit','debit')`, `wallet_txn_status ('pending','completed','failed')`.
 `amount` is always positive; `direction` carries the sign. An optional `job_id` links a payout /
-hold / refund to the job that produced it. Migration 0009 adds a `kind` column — see §18; revenue
+hold / refund to the job that produced it. Migration 0010 adds a `kind` column — see §18; revenue
 is `kind = 'payout'`, not merely "a credit with a job_id".
 
 - `GET /wallet` → `{ balance, total_credited, total_debited, pending, transactions[] }`
@@ -774,7 +774,7 @@ as an explicit product decision.
 
 ---
 
-## 18. Escrow & Disputes (migration 0009)
+## 18. Escrow & Disputes (migrations 0009-0010)
 
 `wallet_transactions` (§15.1) is a one-party ledger. The admin Transactions page needs the
 opposite — a two-party record with escrow and dispute states — and the mobile dispute screen had
@@ -815,7 +815,7 @@ simply a recorded credit.
 
 ### `wallet_transactions.kind` — why direction isn't enough
 
-A payout and a refund are **both credits carrying a `job_id`**. The pre-0009 revenue query
+A payout and a refund are **both credits carrying a `job_id`**. The pre-0010 revenue query
 (`direction = 'credit' AND job_id IS NOT NULL`) would have counted refunds as revenue, inflating
 the admin dashboard by the value of every cancelled or disputed job.
 
