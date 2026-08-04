@@ -10,13 +10,13 @@ interface HeaderProps {
 }
 
 export function Header({ title, onOpenDrawer }: HeaderProps) {
-  const { verifications, transactions, navigate } = useApp();
+  const { verifications, disputes, navigate } = useApp();
   const [notifOpen, setNotifOpen] = useState(false);
   const notifRef = useRef<HTMLDivElement>(null);
 
   const pendingVerifs = verifications.filter((v) => v.status === "pending");
-  const disputedTxns = transactions.filter((t) => t.status === "Disputed");
-  const notifCount = pendingVerifs.length + disputedTxns.length;
+  const openDisputes = disputes.filter((d) => d.isOpen);
+  const notifCount = pendingVerifs.length + openDisputes.length;
 
   const today = new Date().toLocaleDateString("en-US", {
     weekday: "long", year: "numeric", month: "long", day: "numeric",
@@ -96,7 +96,7 @@ export function Header({ title, onOpenDrawer }: HeaderProps) {
 
               {/* Items */}
               <div style={{ maxHeight: 360, overflowY: "auto" }}>
-                {pendingVerifs.length === 0 && disputedTxns.length === 0 && (
+                {pendingVerifs.length === 0 && openDisputes.length === 0 && (
                   <div className="text-center py-8" style={{ fontSize: 12, color: "var(--text-muted)" }}>All caught up!</div>
                 )}
 
@@ -115,20 +115,20 @@ export function Header({ title, onOpenDrawer }: HeaderProps) {
                         </div>
                         <div className="flex-1 min-w-0">
                           <div className="text-white font-medium" style={{ fontSize: 11.4 }}>{v.name} needs verification</div>
-                          <div style={{ fontSize: 9.8, color: "var(--text-muted)", marginTop: 2 }}>{v.docs} · Submitted {v.date}</div>
+                          <div style={{ fontSize: 9.8, color: "var(--text-muted)", marginTop: 2 }}>{v.documents.length} document{v.documents.length === 1 ? "" : "s"} · Submitted {v.date}</div>
                         </div>
                       </button>
                     ))}
                   </div>
                 )}
 
-                {disputedTxns.length > 0 && (
+                {openDisputes.length > 0 && (
                   <div>
-                    <div className="px-4 py-2 uppercase" style={{ fontSize: 8, color: "#4b5563", fontWeight: 600, letterSpacing: "0.8px" }}>Disputed Transactions</div>
-                    {disputedTxns.map((t) => (
+                    <div className="px-4 py-2 uppercase" style={{ fontSize: 8, color: "#4b5563", fontWeight: 600, letterSpacing: "0.8px" }}>Open Disputes</div>
+                    {openDisputes.map((d) => (
                       <button
-                        key={t.id}
-                        onClick={() => { navigate("transactions"); setNotifOpen(false); }}
+                        key={d.id}
+                        onClick={() => { navigate("disputes"); setNotifOpen(false); }}
                         className="w-full flex items-start gap-3 px-4 py-3 text-left transition-colors hover:bg-white/5"
                         style={{ background: "none", border: "none", cursor: "pointer", borderBottom: "1px solid var(--border)" }}
                       >
@@ -136,8 +136,8 @@ export function Header({ title, onOpenDrawer }: HeaderProps) {
                           <AlertTriangle size={13} style={{ color: "var(--danger-text)" }} />
                         </div>
                         <div className="flex-1 min-w-0">
-                          <div className="text-white font-medium" style={{ fontSize: 11.4 }}>{t.id} — Dispute raised</div>
-                          <div style={{ fontSize: 9.8, color: "var(--text-muted)", marginTop: 2 }}>{t.customer} · {t.amount} · {t.date}</div>
+                          <div className="text-white font-medium" style={{ fontSize: 11.4 }}>{d.jobTitle} — Dispute raised</div>
+                          <div style={{ fontSize: 9.8, color: "var(--text-muted)", marginTop: 2 }}>{d.clientName} · {d.amount} · {d.createdAt}</div>
                         </div>
                       </button>
                     ))}

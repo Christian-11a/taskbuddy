@@ -12,10 +12,12 @@ import {
 import * as services from "@/lib/services";
 import {
   toBookingRow,
+  toDisputeRow,
   toTransactionRow,
   toUserRow,
   toVerificationRow,
   type BookingRow,
+  type DisputeRow,
   type TransactionRow,
   type UserRow,
   type VerificationRow,
@@ -26,6 +28,8 @@ import type {
   AdminUser,
   CategoryShare,
   DashboardStats,
+  Dispute,
+  DisputeResolution,
   MonthlyPoint,
   Page,
   TopProvider,
@@ -103,7 +107,7 @@ interface AppState {
   login: (email: string, password: string) => Promise<boolean>;
   logout: () => void;
   navigate: (page: Page) => void;
-  updateAdminProfile: (profile: AdminProfile) => void;
+  updateDisplayName: (name: string) => Promise<boolean>;
   changePassword: (current: string, next: string) => Promise<boolean>;
 
   // data (display rows — adapters applied)
@@ -111,6 +115,7 @@ interface AppState {
   verifications: VerificationRow[];
   users: UserRow[];
   transactions: TransactionRow[];
+  disputes: DisputeRow[];
   bookings: BookingRow[];
   dashboardStats: DashboardStats | null;
   revenueSeries: MonthlyPoint[];
@@ -122,8 +127,12 @@ interface AppState {
   // mutations
   approveVerification: (id: string) => Promise<void>;
   rejectVerification: (id: string) => Promise<void>;
+  bulkApproveVerifications: (ids: string[]) => Promise<void>;
+  bulkRejectVerifications: (ids: string[]) => Promise<void>;
   setUserStatus: (id: string, status: "Active" | "Suspended") => Promise<void>;
+  bulkSetUserStatus: (ids: string[], status: "Active" | "Suspended") => Promise<void>;
   cancelBooking: (id: string) => Promise<void>;
+  resolveDispute: (id: string, resolution: DisputeResolution, note?: string) => Promise<void>;
 
   // preferences
   darkMode: boolean;
@@ -170,6 +179,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [domainUsers, setDomainUsers] = useState<AdminUser[]>([]);
   const [domainVerifications, setDomainVerifications] = useState<Verification[]>([]);
   const [domainTransactions, setDomainTransactions] = useState<Transaction[]>([]);
+  const [domainDisputes, setDomainDisputes] = useState<Dispute[]>([]);
   const [domainBookings, setDomainBookings] = useState<AdminBooking[]>([]);
   const [dashboardStats, setDashboardStats] = useState<DashboardStats | null>(null);
   const [revenueSeries, setRevenueSeries] = useState<MonthlyPoint[]>([]);
@@ -198,11 +208,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
     (async () => {
       setLoading(true);
       try {
-        const [users, verifs, txns, bookings, stats, revenue, bookVol, categories, activity, providers] =
+        const [users, verifs, txns, disputes, bookings, stats, revenue, bookVol, categories, activity, providers] =
           await Promise.all([
             services.getUsers(),
             services.getVerifications(),
             services.getTransactions(),
+            services.getDisputes(),
             services.getBookings(),
             services.getDashboardStats(),
             services.getRevenueSeries(),
@@ -215,6 +226,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         setDomainUsers(users);
         setDomainVerifications(verifs);
         setDomainTransactions(txns);
+        setDomainDisputes(disputes);
         setDomainBookings(bookings);
         setDashboardStats(stats);
         setRevenueSeries(revenue);
@@ -268,7 +280,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const navigate = useCallback((page: Page) => setActivePage(page), []);
 
-  const updateAdminProfile = useCallback((profile: AdminProfile) => setAdminProfile(profile), []);
+  /** Persists the display name to the backend, then mirrors it locally.
+   *  Email isn't settable — it lives on auth.users with no endpoint to change it. */
+  const updateDisplayName = useCallback(async (name: string) => {
+    const ok = await services.updateDisplayName(name);
+    if (ok) setAdminProfile((prev) => ({ ...prev, name }));
+    return ok;
+  }, []);
 
   const changePassword = useCallback(
     (current: string, next: string) => services.changePassword(current, next),
@@ -296,6 +314,22 @@ export function AppProvider({ children }: { children: ReactNode }) {
     [refreshStats],
   );
 
+  const bulkApproveVerifications = useCallback(
+    async (ids: string[]) => {
+      setDomainVerifications(await services.bulkApproveVerifications(ids));
+      await refreshStats();
+    },
+    [refreshStats],
+  );
+
+  const bulkRejectVerifications = useCallback(
+    async (ids: string[]) => {
+      setDomainVerifications(await services.bulkRejectVerifications(ids));
+      await refreshStats();
+    },
+    [refreshStats],
+  );
+
   const setUserStatus = useCallback(
     async (id: string, status: "Active" | "Suspended") => {
       setDomainUsers(await services.setUserStatus(id, STATUS_TO_DOMAIN[status]));
@@ -303,9 +337,23 @@ export function AppProvider({ children }: { children: ReactNode }) {
     [],
   );
 
+  const bulkSetUserStatus = useCallback(
+    async (ids: string[], status: "Active" | "Suspended") => {
+      setDomainUsers(await services.bulkSetUserStatus(ids, STATUS_TO_DOMAIN[status]));
+    },
+    [],
+  );
+
   const cancelBooking = useCallback(async (id: string) => {
     setDomainBookings(await services.cancelBooking(id));
   }, []);
+
+  const resolveDispute = useCallback(
+    async (id: string, resolution: DisputeResolution, note?: string) => {
+      setDomainDisputes(await services.resolveDispute(id, resolution, note));
+    },
+    [],
+  );
 
   // ── preferences setters ──
   const setDarkMode = useCallback((val: boolean) => setDarkModeState(val), []);
@@ -319,18 +367,21 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const users = useMemo(() => domainUsers.map(toUserRow), [domainUsers]);
   const verifications = useMemo(() => domainVerifications.map(toVerificationRow), [domainVerifications]);
   const transactions = useMemo(() => domainTransactions.map(toTransactionRow), [domainTransactions]);
+  const disputes = useMemo(() => domainDisputes.map(toDisputeRow), [domainDisputes]);
   const bookings = useMemo(() => domainBookings.map(toBookingRow), [domainBookings]);
 
   return (
     <AppContext.Provider
       value={{
         isLoggedIn, activePage, adminProfile,
-        login, logout, navigate, updateAdminProfile, changePassword,
+        login, logout, navigate, updateDisplayName, changePassword,
         loading,
-        verifications, users, transactions, bookings,
+        verifications, users, transactions, disputes, bookings,
         dashboardStats, revenueSeries, bookingsSeries, bookingsByCategory,
         recentActivity, topProviders,
-        approveVerification, rejectVerification, setUserStatus, cancelBooking,
+        approveVerification, rejectVerification,
+        bulkApproveVerifications, bulkRejectVerifications,
+        setUserStatus, bulkSetUserStatus, cancelBooking, resolveDispute,
         darkMode, setDarkMode,
         sidebarCollapsed, setSidebarCollapsed,
         settings, updateSettings,

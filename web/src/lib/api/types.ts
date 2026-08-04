@@ -25,6 +25,11 @@ export interface AdminUserApiRow {
   created_at: string;
   cached_avg_rating: number | null;
   cached_completed_jobs: number | null;
+  // Already present on the admin_user_overview view (migration 0005) — the list
+  // endpoint selects `*`, so these come back for free with no extra request.
+  phone: string | null;
+  city: string | null;
+  category_name: string | null;
 }
 
 export interface ListUsersApiResponse {
@@ -131,6 +136,33 @@ export interface AdminTransactionApiRow {
 
 export interface ListTransactionsApiResponse {
   transactions: AdminTransactionApiRow[];
+  total: number;
+}
+
+// ─── Disputes (migration 0009) ─────────────────────────────────────────────────
+
+export type DisputeStatusApi = "open" | "resolved" | "cancelled";
+export type DisputeResolutionApi = "released_to_provider" | "refunded_to_client";
+
+export interface AdminDisputeApiRow {
+  id: string;
+  job_id: string;
+  reason: string;
+  details: string | null;
+  status: DisputeStatusApi;
+  resolution: DisputeResolutionApi | null;
+  resolution_note: string | null;
+  created_at: string;
+  resolved_at: string | null;
+  jobs: { title: string; service_categories: { name: string } | null } | null;
+  /** Postgres numeric arrives as a string over PostgREST. */
+  escrow_transactions: { amount: number | string; status: EscrowStatusApi } | null;
+  /** The client who raised it — only clients can (backend `@Roles('client')`). */
+  raised_by_profile: { id: string; full_name: string } | null;
+}
+
+export interface ListDisputesApiResponse {
+  disputes: AdminDisputeApiRow[];
   total: number;
 }
 

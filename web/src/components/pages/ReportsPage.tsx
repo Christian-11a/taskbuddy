@@ -13,8 +13,10 @@ import {
   Pie,
   Cell,
 } from "recharts";
+import { Download } from "lucide-react";
 import { useApp } from "@/context/AppContext";
 import { formatCurrency, formatCurrencyCompact } from "@/lib/adapters";
+import { datedFilename, downloadCsv, toCsv } from "@/lib/export/csv";
 
 const PIE_COLORS = ["#6366f1", "#8b5cf6", "#22c55e", "#f59e0b", "#ef4444", "#60a5fa"];
 
@@ -37,21 +39,59 @@ export function ReportsPage() {
   }
 
   const maxProviderJobs = Math.max(...topProviders.map((p) => p.jobs), 1);
+  // Captured after the null guard above so the export closure keeps the narrowing.
+  const stats = dashboardStats;
+
+  /**
+   * One CSV covering every section on this page. A dashboard mixes several
+   * unrelated tables, so each is emitted as its own labelled block rather than
+   * forcing them into one incompatible header row.
+   */
+  function exportCsv() {
+    const blocks = [
+      toCsv(["Metric", "Value"], [
+        ["Total revenue", stats.totalRevenue],
+        ["Revenue this month", stats.monthlyRevenue],
+        ["Completion rate (%)", stats.completionRate],
+        ["Average provider rating", stats.avgRating],
+        ["Total users", stats.totalUsers],
+        ["Active providers", stats.activeProviders],
+        ["Total bookings", stats.totalBookings],
+      ]),
+      toCsv(["Month", "Revenue"], revenueSeries.map((r) => [r.month, r.value])),
+      toCsv(["Month", "Bookings"], bookingsSeries.map((b) => [b.month, b.value])),
+      toCsv(["Category", "Share (%)"], bookingsByCategory.map((c) => [c.label, c.value])),
+      toCsv(["Provider", "Completed jobs", "Rating"], topProviders.map((p) => [p.name, p.jobs, p.rating])),
+    ];
+    const labels = ["SUMMARY", "REVENUE TREND", "MONTHLY BOOKINGS", "BOOKINGS BY CATEGORY", "TOP PROVIDERS"];
+    const csv = blocks.map((b, i) => `${labels[i]}\r\n${b}`).join("\r\n\r\n");
+    downloadCsv(datedFilename("taskbuddy-analytics"), csv);
+  }
 
   return (
     <div>
-      <div className="mb-4">
-        <div className="text-white font-bold" style={{ fontSize: 18 }}>Reports & Analytics</div>
-        <div style={{ fontSize: 13, color: "var(--text-muted)", marginTop: 4 }}>
-          Platform performance metrics and business intelligence
+      <div className="flex items-start justify-between flex-wrap gap-3 mb-4">
+        <div>
+          <div className="text-white font-bold" style={{ fontSize: 18 }}>Reports & Analytics</div>
+          <div style={{ fontSize: 13, color: "var(--text-muted)", marginTop: 4 }}>
+            Platform performance metrics and business intelligence
+          </div>
         </div>
+        <button
+          onClick={exportCsv}
+          title="Download every section on this page as one CSV"
+          className="flex items-center gap-1.5 font-semibold transition-opacity hover:opacity-80"
+          style={{ background: "var(--chip-bg)", border: "1px solid var(--border-md)", borderRadius: 11, padding: "7px 13px", fontSize: 11.4, color: "var(--text-light)", cursor: "pointer", fontFamily: "inherit" }}
+        >
+          <Download size={12} /> Export CSV
+        </button>
       </div>
 
       {/* Top stats */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
         {[
           { label: "Total Revenue", val: formatCurrencyCompact(dashboardStats.totalRevenue), sub: "All time" },
-          { label: "This Month", val: formatCurrency(dashboardStats.monthlyRevenue), sub: "+10.2% MoM" },
+          { label: "This Month", val: formatCurrency(dashboardStats.monthlyRevenue), sub: "Current month" },
           { label: "Completion Rate", val: `${dashboardStats.completionRate}%`, sub: "Platform avg" },
           { label: "Avg Rating", val: `⭐ ${dashboardStats.avgRating}`, sub: "Provider avg" },
         ].map((s) => (

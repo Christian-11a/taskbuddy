@@ -6,7 +6,7 @@ vi.mock("@/lib/api/session", () => ({
   clearStoredSession: vi.fn(),
 }));
 
-import { clearStoredSession, setStoredSession } from "@/lib/api/session";
+import { clearStoredSession, getStoredSession, setStoredSession } from "@/lib/api/session";
 import * as services from "./index";
 
 function jsonResponse(body: unknown, status = 200): Response {
@@ -106,8 +106,8 @@ describe("getUsers", () => {
       Promise.resolve(
         jsonResponse({
           users: [
-            { id: "u1", email: "a@b.c", full_name: "Alice", role: "client", deactivated_at: null, created_at: "2026-01-01", cached_avg_rating: null, cached_completed_jobs: null },
-            { id: "u2", email: "b@b.c", full_name: "Bob", role: "provider", deactivated_at: "2026-02-01", created_at: "2026-01-02", cached_avg_rating: 4.5, cached_completed_jobs: 9 },
+            { id: "u1", email: "a@b.c", full_name: "Alice", role: "client", deactivated_at: null, created_at: "2026-01-01", cached_avg_rating: null, cached_completed_jobs: null, phone: null, city: null, category_name: null },
+            { id: "u2", email: "b@b.c", full_name: "Bob", role: "provider", deactivated_at: "2026-02-01", created_at: "2026-01-02", cached_avg_rating: 4.5, cached_completed_jobs: 9, phone: "0917 555 0101", city: "Cebu", category_name: "Plumbing" },
           ],
           total: 2,
         }),
@@ -117,8 +117,8 @@ describe("getUsers", () => {
     const users = await services.getUsers();
 
     expect(users).toEqual([
-      { id: "u1", email: "a@b.c", role: "client", createdAt: "2026-01-01", name: "Alice", status: "ACTIVE", jobsCompleted: 0, rating: null },
-      { id: "u2", email: "b@b.c", role: "provider", createdAt: "2026-01-02", name: "Bob", status: "SUSPENDED", jobsCompleted: 9, rating: 4.5 },
+      { id: "u1", email: "a@b.c", role: "client", createdAt: "2026-01-01", name: "Alice", status: "ACTIVE", jobsCompleted: 0, rating: null, phone: null, city: null, categoryName: null },
+      { id: "u2", email: "b@b.c", role: "provider", createdAt: "2026-01-02", name: "Bob", status: "SUSPENDED", jobsCompleted: 9, rating: 4.5, phone: "0917 555 0101", city: "Cebu", categoryName: "Plumbing" },
     ]);
   });
 });
@@ -274,6 +274,175 @@ describe("getTransactions", () => {
       service: "Cleaning",
       amount: 1200.5,
     });
+  });
+});
+
+describe("updateDisplayName", () => {
+  it("patches the profile and mirrors the new name into the stored session", async () => {
+    vi.mocked(getStoredSession).mockReturnValue({
+      accessToken: "tok",
+      adminProfile: { name: "Old Name", email: "admin@taskbuddy.io" },
+    });
+    const fetchMock = vi.fn(() => Promise.resolve(jsonResponse({ id: "u1", full_name: "New Name" })));
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    const ok = await services.updateDisplayName("New Name");
+
+    expect(ok).toBe(true);
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining("/profiles/me"),
+      expect.objectContaining({ method: "PATCH", body: JSON.stringify({ full_name: "New Name" }) }),
+    );
+    expect(setStoredSession).toHaveBeenCalledWith(
+      expect.objectContaining({ adminProfile: { name: "New Name", email: "admin@taskbuddy.io" } }),
+    );
+  });
+
+  it("returns false when the request fails", async () => {
+    vi.mocked(getStoredSession).mockReturnValue(null);
+    global.fetch = vi.fn(() => Promise.resolve(jsonResponse({ message: "nope" }, 400))) as unknown as typeof fetch;
+
+    expect(await services.updateDisplayName("New Name")).toBe(false);
+  });
+});
+
+describe("getDisputes", () => {
+  it("cross-references Transactions by job id to fill in the provider name", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockImplementationOnce(() =>
+        Promise.resolve(
+          jsonResponse({
+            disputes: [
+              {
+                id: "d1",
+                job_id: "job-1",
+                reason: "Never showed up",
+                details: "Waited 2 hours.",
+                status: "open",
+                resolution: null,
+                resolution_note: null,
+                created_at: "2026-08-01",
+                resolved_at: null,
+                jobs: { title: "Fix sink", service_categories: { name: "Plumbing" } },
+                escrow_transactions: { amount: "500.00", status: "disputed" },
+                raised_by_profile: { id: "c1", full_name: "Alice" },
+              },
+            ],
+            total: 1,
+          }),
+        ),
+      )
+      .mockImplementationOnce(() =>
+        Promise.resolve(
+          jsonResponse({
+            transactions: [
+              {
+                id: "t1",
+                job_id: "job-1",
+                amount: "500.00",
+                status: "disputed",
+                held_at: "2026-08-01",
+                jobs: { title: "Fix sink", service_categories: { name: "Plumbing" } },
+                client: { id: "c1", full_name: "Alice" },
+                provider: { id: "p1", full_name: "Bob" },
+              },
+            ],
+            total: 1,
+          }),
+        ),
+      );
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    const disputes = await services.getDisputes();
+
+    expect(disputes).toEqual([
+      {
+        id: "d1",
+        jobId: "job-1",
+        jobTitle: "Fix sink",
+        service: "Plumbing",
+        clientName: "Alice",
+        providerName: "Bob",
+        amount: 500,
+        reason: "Never showed up",
+        details: "Waited 2 hours.",
+        status: "OPEN",
+        resolution: null,
+        resolutionNote: null,
+        createdAt: "2026-08-01",
+        resolvedAt: null,
+      },
+    ]);
+  });
+});
+
+describe("resolveDispute", () => {
+  it("posts the backend resolution enum then refetches disputes", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockImplementationOnce(() => Promise.resolve(jsonResponse({ id: "d1", status: "resolved" })))
+      .mockImplementationOnce(() => Promise.resolve(jsonResponse({ disputes: [], total: 0 })))
+      .mockImplementationOnce(() => Promise.resolve(jsonResponse({ transactions: [], total: 0 })));
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    await services.resolveDispute("d1", "REFUNDED_TO_CLIENT", "Confirmed no-show");
+
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      1,
+      expect.stringContaining("/admin/disputes/d1/resolve"),
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({ resolution: "refunded_to_client", note: "Confirmed no-show" }),
+      }),
+    );
+  });
+});
+
+describe("bulk actions", () => {
+  it("bulkSetUserStatus fires one request per id then refetches users", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockImplementationOnce(() => Promise.resolve(jsonResponse({ id: "u1" })))
+      .mockImplementationOnce(() => Promise.resolve(jsonResponse({ id: "u2" })))
+      .mockImplementationOnce(() => Promise.resolve(jsonResponse({ users: [], total: 0 })));
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    await services.bulkSetUserStatus(["u1", "u2"], "SUSPENDED");
+
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(fetchMock.mock.calls[0][0]).toContain("/admin/users/u1/suspend");
+    expect(fetchMock.mock.calls[1][0]).toContain("/admin/users/u2/suspend");
+  });
+
+  it("bulkSetUserStatus tolerates a per-id failure and still refetches", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockImplementationOnce(() => Promise.resolve(jsonResponse({ message: "cannot suspend admin" }, 400)))
+      .mockImplementationOnce(() => Promise.resolve(jsonResponse({ id: "u2" })))
+      .mockImplementationOnce(() => Promise.resolve(jsonResponse({ users: [], total: 0 })));
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    await expect(services.bulkSetUserStatus(["u1", "u2"], "SUSPENDED")).resolves.toEqual([]);
+  });
+
+  it("bulkApproveVerifications and bulkRejectVerifications post per id then refetch", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockImplementationOnce(() => Promise.resolve(jsonResponse({ id: "v1" })))
+      .mockImplementationOnce(() => Promise.resolve(jsonResponse({ verifications: [], total: 0 })));
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    await services.bulkApproveVerifications(["v1"]);
+    expect(fetchMock.mock.calls[0][0]).toContain("/admin/verifications/v1/approve");
+
+    fetchMock.mockClear();
+    fetchMock
+      .mockImplementationOnce(() => Promise.resolve(jsonResponse({ id: "v2" })))
+      .mockImplementationOnce(() => Promise.resolve(jsonResponse({ verifications: [], total: 0 })));
+
+    await services.bulkRejectVerifications(["v2"]);
+    expect(fetchMock.mock.calls[0][0]).toContain("/admin/verifications/v2/reject");
   });
 });
 

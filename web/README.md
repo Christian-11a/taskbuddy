@@ -24,11 +24,14 @@ The admin dashboard for the TaskBuddy platform (`web/` in the repo). Next.js 16 
 
 - 🔐 Login / Auth Screen (real Supabase Email auth — see [Live Deployment](#live-deployment) for the admin login)
 - 📊 Dashboard Overview — live stats, revenue chart, category breakdown, activity feed
-- 🛡️ Provider Verification Queue — review provider ID/selfie submissions, approve/reject
-- 👥 User Management — searchable table with role/status badges
-- 💳 Transaction Monitoring — escrow log with status colors (In Escrow / Completed / Disputed / Refunded)
-- 📅 Booking Tracker — search and filter
+- 🛡️ Provider Verification Queue — approve/reject, bulk actions, ID/selfie image preview
+- 👥 User Management — searchable table, row drill-down, bulk suspend/reinstate
+- 💳 Transaction Monitoring — escrow log with per-row detail (In Escrow / Completed / Disputed / Refunded)
+- ⚠️ Disputes — review and resolve, releasing escrow to the provider or refunding the client
+- 📅 Booking Tracker — search, filter, cancel, row drill-down
+- 🕓 Activity Log — booking status transitions with search, type filter, sort
 - 📈 Reports & Analytics — area chart, pie chart, bar chart, top providers
+- 📤 CSV export on Users, Transactions, Bookings, Activity Log, and Reports
 - ⚙️ Settings — account, notifications, platform, appearance
 - 🌙 Dark & light themes (persisted), collapsible sidebar, SPA navigation
 
@@ -72,13 +75,14 @@ src/
 │   │   ├── AppShell.tsx         # Login gate + sidebar/header/page routing
 │   │   ├── Sidebar.tsx          # Collapsible navigation sidebar
 │   │   └── Header.tsx           # Top bar + notifications dropdown
-│   └── pages/                   # One component per admin page (7 pages + login)
+│   └── pages/                   # One component per admin page (9 pages + login)
 ├── context/
 │   └── AppContext.tsx           # App state: session, data, mutations, persisted preferences
 └── lib/
     ├── domain.ts                # Backend-shaped domain types (shared platform contracts + admin types)
     ├── services/                # THE DATA SEAM — pages/context only ever call these
     ├── adapters/                # Domain → display-row mapping, formatting (+ unit tests)
+    ├── export/csv.ts            # Client-side CSV generation + download (+ unit tests)
     └── api/
         ├── client.ts            # Fetch client for the real backend (+ token refresh)
         ├── session.ts           # localStorage session (access + refresh token)
@@ -124,9 +128,20 @@ Domain types in `lib/domain.ts` mirror the backend's real enums (`user_role`,
 | Verifications | `GET /admin/verifications`, `POST /admin/verifications/:id/approve` · `/reject` |
 | Users | `GET /admin/users`, `POST /admin/users/:id/suspend` · `/reinstate` |
 | Transactions | `GET /admin/transactions` (escrow records — backend migration 0009) |
+| Disputes | `GET /admin/disputes`, `POST /admin/disputes/:id/resolve` |
 | Bookings | `GET /admin/bookings`, `POST /admin/bookings/:id/cancel` |
+| Activity Log | `GET /admin/activity` (same source as the dashboard feed) |
 | Reports | `GET /admin/analytics/summary` |
-| Settings | `POST /auth/change-password` (everything else on that page is a local preference) |
+| Settings | `PATCH /profiles/me` (display name), `POST /auth/change-password`. Email is read-only and the remaining toggles are local-only — see [What's Still Needed](#whats-still-needed-from-the-backend) |
+
+Bulk actions call the existing single-item endpoints once per selected id in
+parallel; a per-id failure is swallowed so one refusal (e.g. suspending an
+admin) can't abort the rest, and the list is refetched afterwards so the table
+shows exactly what actually changed.
+
+CSV export is entirely client-side — every table is already fully loaded in the
+browser, so exporting needs no endpoint. Exports respect the current search and
+filter, and are written UTF-8 with a BOM so Excel doesn't mangle the peso sign.
 
 ### Two mappings worth knowing
 
@@ -148,6 +163,107 @@ existed have no budget and still show ₱0.
 The bell in the header (`Header.tsx`) derives from the Verifications and
 Transactions lists — pending verifications and disputed transactions. Now that
 both lists are real, so is the bell; it never needed a backend of its own.
+
+## What's Still Needed From the Backend
+
+Everything currently on this console runs on real data. The items below are
+features we deliberately **did not** build in `web/` because they need backend
+work first — building the UI now would mean shipping buttons that call
+endpoints that don't exist. They're written as API requests so they can be
+implemented directly from this list.
+
+Ordered by how much they'd improve the console per unit of work.
+
+### 1. Timed suspensions (with a reason)
+
+Today `POST /admin/users/:id/suspend` is permanent-until-manually-reversed, and
+records no reason. A suspension nobody can explain six months later isn't much
+use, and "suspend forever or not at all" is a blunt instrument for moderation.
+
+- `profiles` needs `suspended_until timestamptz null` and `suspension_reason text null`
+- `POST /admin/users/:id/suspend` accepts `{ duration_days?: number, reason: string }`
+  — omit `duration_days` for an indefinite suspension
+- Expiry can be checked at login (`deactivated_at is not null and (suspended_until is null or suspended_until > now())`)
+  rather than needing a cron job
+- Return `suspended_until` and `suspension_reason` on `admin_user_overview` so
+  the Users table can show "Suspended until Aug 12" instead of just "Suspended"
+
+### 2. Admin-triggered password reset
+
+There's no way for an admin to help a user who's locked out. Supabase Auth
+already provides the mechanism (`resetPasswordForEmail`); this is a thin
+wrapper, not a new subsystem.
+
+- `POST /admin/users/:id/send-password-reset` → `{ sent: true }`
+- Should refuse for `role = 'admin'` targets, matching how `suspend` already does
+
+### 3. Booking detail endpoint
+
+The Bookings table can expand a row, but only shows what the list already
+returns. The job's description, address, `scheduled_at`, and `photo_urls` are
+all on the `jobs` row and never reach the console.
+
+- `GET /admin/bookings/:id` → the full job, plus client/provider/category joins
+  and the escrow record if one exists
+
+### 4. Activity Log pagination and date filtering
+
+`GET /admin/activity` is hardcoded to the newest 20 rows with no query params,
+so the Activity Log page can only ever show those 20. This is a change to an
+existing endpoint, not a new feature.
+
+- `GET /admin/activity?limit=&offset=&from=&to=` → `{ items, total }`
+  (note: it currently returns a **bare array**, so this is a breaking shape
+  change — worth doing now while the only consumer is this console)
+
+### 5. Real admin audit log
+
+The Activity Log page shows *booking* status transitions, sourced from
+`job_status_history`. There is no record anywhere of **admin** actions — who
+approved a verification, who suspended an account, who resolved a dispute and
+which way. That's the one gap most likely to be asked about in review.
+
+- A table along the lines of `admin_actions (id, actor_id, action, target_type,
+  target_id, metadata jsonb, created_at)`
+- Written from `admin.service.ts` (suspend/reinstate/cancel),
+  `verifications.service.ts` (approve/reject), `disputes.service.ts` (resolve)
+- `GET /admin/audit?action=&actor_id=&from=&to=&limit=&offset=`
+
+### 6. Admin read-only access to a job's chat
+
+When resolving a dispute, the client and provider's conversation is the primary
+evidence and there's no way to see it. The `conversations`/`messages` tables
+already exist (migration 0006) — this only needs a read endpoint.
+
+- `GET /admin/jobs/:jobId/conversation` → messages with sender names, oldest first
+- Read-only: admins should never be able to post into a user conversation
+
+### 7. Verification submission pre-check
+
+Not identity verification — just a usability guard so admins don't open blank
+or corrupt submissions. On `POST /verifications`, reject obviously unusable
+uploads (missing object, zero-byte, not a decodable image) with a clear message
+so the provider can resubmit immediately instead of waiting for a rejection.
+
+### Deliberately not planned
+
+- **AI / automated identity verification.** Real KYC (Onfido, Persona, Sumsub)
+  is a compliance product, not a feature to approximate. A homegrown
+  "AI approves the ID" step would look worse under scrutiny than honest manual
+  review, and manual review is what the queue is already built for.
+- **A support-ticket inbox.** A user↔admin messaging subsystem is its own
+  product surface (tickets, assignment, statuses, SLAs). Item 6 above covers the
+  actual operational need — seeing conversation context during a dispute.
+- **Making the inert Settings toggles real.** Notifications, Platform, and Data
+  & Privacy are marked "Saved on this device only" in the UI. Wiring them up
+  means an email service and a retention job — real infrastructure for little
+  demonstrable gain. Better honest than falsely functional.
+
+### Also worth knowing
+
+`PATCH /profiles/me` accepts `full_name` but there is **no endpoint to change a
+user's email** — email lives on `auth.users`, not `profiles`. The Settings page
+therefore shows Email as read-only rather than pretending to save it.
 
 ## npm audit note
 

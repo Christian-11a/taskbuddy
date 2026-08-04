@@ -1,7 +1,7 @@
 "use client";
 
 import {
-  ShieldCheck, Users, CreditCard, CalendarDays,
+  ShieldCheck, Users, CreditCard, CalendarDays, AlertTriangle, History,
   BarChart3, Settings, LogOut, LayoutDashboard, ChevronLeft, ChevronRight,
 } from "lucide-react";
 import type { Page } from "@/lib/domain";
@@ -19,9 +19,12 @@ interface SidebarProps {
 }
 
 export function Sidebar({ activePage, onNavigate, onLogout, collapsed, onToggleCollapse, drawerOpen }: SidebarProps) {
-  const { verifications, adminProfile, settings } = useApp();
+  const { verifications, disputes, adminProfile, settings } = useApp();
   const pendingCount = settings.activityBadge
     ? verifications.filter((v) => v.status === "pending").length
+    : 0;
+  const openDisputeCount = settings.activityBadge
+    ? disputes.filter((d) => d.isOpen).length
     : 0;
 
   const NAV_ITEMS: { id: Page; label: string; icon: React.ReactNode; badge?: number }[] = [
@@ -29,7 +32,9 @@ export function Sidebar({ activePage, onNavigate, onLogout, collapsed, onToggleC
     { id: "verifications", label: "Verifications", icon: <ShieldCheck size={15} />, badge: pendingCount || undefined },
     { id: "users", label: "User Management", icon: <Users size={15} /> },
     { id: "transactions", label: "Transactions", icon: <CreditCard size={15} /> },
+    { id: "disputes", label: "Disputes", icon: <AlertTriangle size={15} />, badge: openDisputeCount || undefined },
     { id: "bookings", label: "Bookings", icon: <CalendarDays size={15} /> },
+    { id: "activity-log", label: "Activity Log", icon: <History size={15} /> },
     { id: "reports", label: "Reports", icon: <BarChart3 size={15} /> },
   ];
 

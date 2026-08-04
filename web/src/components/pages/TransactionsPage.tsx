@@ -1,8 +1,9 @@
 "use client";
 
-import { useState } from "react";
-import { Search } from "lucide-react";
+import { Fragment, useState } from "react";
+import { Search, ChevronDown, Download } from "lucide-react";
 import { useApp } from "@/context/AppContext";
+import { datedFilename, downloadCsv, toCsv } from "@/lib/export/csv";
 import clsx from "clsx";
 
 type StatusFilter = "all" | "Completed" | "In Escrow" | "Disputed" | "Refunded";
@@ -11,6 +12,7 @@ export function TransactionsPage() {
   const { transactions } = useApp();
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
+  const [expandedId, setExpandedId] = useState<string | null>(null);
 
   const filtered = transactions.filter((t) => {
     const matchSearch =
@@ -23,11 +25,31 @@ export function TransactionsPage() {
 
   const total = transactions.reduce((s, t) => s + t.amountValue, 0);
 
+  /** Exports what's on screen (current search + status filter), not the whole ledger. */
+  function exportCsv() {
+    const csv = toCsv(
+      ["Escrow ID", "Job ID", "Customer", "Provider", "Service", "Amount", "Status", "Date"],
+      filtered.map((t) => [t.id, t.jobId, t.customer, t.provider, t.service, t.amountValue, t.status, t.date]),
+    );
+    downloadCsv(datedFilename("taskbuddy-transactions"), csv);
+  }
+
   return (
     <div>
-      <div className="mb-4">
-        <div className="text-white font-bold" style={{ fontSize: "clamp(15px, 1.5vw, 18px)" }}>Transactions</div>
-        <div style={{ fontSize: 13, color: "var(--text-muted)", marginTop: 4 }}>Monitor all platform transactions and escrow payments</div>
+      <div className="flex items-start justify-between flex-wrap gap-3 mb-4">
+        <div>
+          <div className="text-white font-bold" style={{ fontSize: "clamp(15px, 1.5vw, 18px)" }}>Transactions</div>
+          <div style={{ fontSize: 13, color: "var(--text-muted)", marginTop: 4 }}>Monitor all platform transactions and escrow payments</div>
+        </div>
+        <button
+          onClick={exportCsv}
+          disabled={filtered.length === 0}
+          title="Download the rows currently shown"
+          className="flex items-center gap-1.5 font-semibold transition-opacity hover:opacity-80 disabled:opacity-40"
+          style={{ background: "var(--chip-bg)", border: "1px solid var(--border-md)", borderRadius: 11, padding: "7px 13px", fontSize: 11.4, color: "var(--text-light)", cursor: "pointer", fontFamily: "inherit" }}
+        >
+          <Download size={12} /> Export CSV
+        </button>
       </div>
 
       <div className="flex gap-2.5 flex-wrap mb-4">
@@ -79,19 +101,55 @@ export function TransactionsPage() {
                 <th>Amount</th>
                 <th>Status</th>
                 <th className="hidden md:table-cell">Date</th>
+                <th style={{ width: 40 }}></th>
               </tr>
             </thead>
             <tbody>
               {filtered.map((t) => (
-                <tr key={t.id}>
-                  <td style={{ color: "var(--indigo-light)", fontFamily: "monospace", fontSize: 11 }}>{t.id}</td>
-                  <td className="text-white">{t.customer}</td>
-                  <td className="hidden md:table-cell" style={{ color: "var(--text-light)" }}>{t.provider}</td>
-                  <td className="hidden lg:table-cell" style={{ color: "var(--text-light)" }}>{t.service}</td>
-                  <td className="text-white font-semibold">{t.amount}</td>
-                  <td><span className={clsx("badge", t.statusClass)}>{t.status}</span></td>
-                  <td className="hidden md:table-cell" style={{ color: "var(--text-light)" }}>{t.date}</td>
-                </tr>
+                <Fragment key={t.id}>
+                  <tr>
+                    <td style={{ color: "var(--indigo-light)", fontFamily: "monospace", fontSize: 11 }}>{t.id}</td>
+                    <td className="text-white">{t.customer}</td>
+                    <td className="hidden md:table-cell" style={{ color: "var(--text-light)" }}>{t.provider}</td>
+                    <td className="hidden lg:table-cell" style={{ color: "var(--text-light)" }}>{t.service}</td>
+                    <td className="text-white font-semibold">{t.amount}</td>
+                    <td><span className={clsx("badge", t.statusClass)}>{t.status}</span></td>
+                    <td className="hidden md:table-cell" style={{ color: "var(--text-light)" }}>{t.date}</td>
+                    <td>
+                      <button
+                        title="View details"
+                        onClick={() => setExpandedId(expandedId === t.id ? null : t.id)}
+                        className="flex items-center justify-center rounded-lg transition-all hover:bg-white/10"
+                        style={{ width: 26, height: 26, background: "transparent", border: "none", cursor: "pointer", color: "var(--text-muted)", transform: expandedId === t.id ? "rotate(180deg)" : "none" }}
+                      >
+                        <ChevronDown size={12} />
+                      </button>
+                    </td>
+                  </tr>
+                  {expandedId === t.id && (
+                    <tr>
+                      <td colSpan={8} style={{ background: "var(--chip-bg)", padding: "12px 16px" }}>
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-3" style={{ fontSize: 11.4 }}>
+                          {[
+                            ["ESCROW ID", t.id],
+                            ["JOB ID", t.jobId],
+                            ["CUSTOMER", t.customer],
+                            ["PROVIDER", t.provider],
+                            ["SERVICE", t.service],
+                            ["AMOUNT HELD", t.amount],
+                            ["STATUS", t.status],
+                            ["HELD SINCE", t.date],
+                          ].map(([label, value]) => (
+                            <div key={label}>
+                              <div style={{ fontSize: 9.8, color: "var(--text-muted)", marginBottom: 3 }}>{label}</div>
+                              <div className="text-white" style={{ wordBreak: "break-all" }}>{value}</div>
+                            </div>
+                          ))}
+                        </div>
+                      </td>
+                    </tr>
+                  )}
+                </Fragment>
               ))}
             </tbody>
           </table>

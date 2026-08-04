@@ -8,10 +8,13 @@ import clsx from "clsx";
 type Filter = "all" | "pending" | "approved" | "rejected";
 
 export function VerificationsPage() {
-  const { verifications, approveVerification, rejectVerification } = useApp();
+  const { verifications, approveVerification, rejectVerification, bulkApproveVerifications, bulkRejectVerifications } = useApp();
   const [filter, setFilter] = useState<Filter>("pending");
   const [search, setSearch] = useState("");
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [preview, setPreview] = useState<{ label: string; url: string } | null>(null);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [bulkBusy, setBulkBusy] = useState(false);
 
   const filtered = verifications.filter((v) => {
     const matchFilter = filter === "all" || v.status === filter;
@@ -27,6 +30,36 @@ export function VerificationsPage() {
     approved: verifications.filter((v) => v.status === "approved").length,
     rejected: verifications.filter((v) => v.status === "rejected").length,
   };
+
+  const pendingInView = filtered.filter((v) => v.status === "pending");
+  const selectedPending = pendingInView.filter((v) => selected.has(v.id));
+  const allPendingSelected = pendingInView.length > 0 && selectedPending.length === pendingInView.length;
+
+  function toggleOne(id: string) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function toggleAllPending() {
+    setSelected(allPendingSelected ? new Set() : new Set(pendingInView.map((v) => v.id)));
+  }
+
+  async function runBulk(action: "approve" | "reject") {
+    const ids = [...selected];
+    if (ids.length === 0) return;
+    setBulkBusy(true);
+    try {
+      if (action === "approve") await bulkApproveVerifications(ids);
+      else await bulkRejectVerifications(ids);
+      setSelected(new Set());
+    } finally {
+      setBulkBusy(false);
+    }
+  }
 
   return (
     <div>
@@ -63,6 +96,36 @@ export function VerificationsPage() {
         </div>
       </div>
 
+      {pendingInView.length > 0 && (
+        <div className="flex items-center gap-3 mb-3 flex-wrap" style={{ fontSize: 11.4 }}>
+          <label className="flex items-center gap-2 cursor-pointer" style={{ color: "var(--text-muted)" }}>
+            <input type="checkbox" checked={allPendingSelected} onChange={toggleAllPending} />
+            Select all pending ({pendingInView.length})
+          </label>
+          {selected.size > 0 && (
+            <>
+              <span style={{ color: "var(--text-muted)" }}>{selected.size} selected</span>
+              <button
+                onClick={() => runBulk("approve")}
+                disabled={bulkBusy}
+                className="flex items-center gap-1.5 font-semibold transition-colors disabled:opacity-40"
+                style={{ background: "rgba(34,197,94,0.15)", border: "1px solid rgba(34,197,94,0.2)", borderRadius: 9, padding: "4px 12px", fontSize: 11, color: "var(--success-text)", cursor: "pointer", fontFamily: "inherit" }}
+              >
+                <Check size={11} /> Approve selected
+              </button>
+              <button
+                onClick={() => runBulk("reject")}
+                disabled={bulkBusy}
+                className="flex items-center gap-1.5 font-semibold transition-colors disabled:opacity-40"
+                style={{ background: "rgba(239,68,68,0.15)", border: "1px solid rgba(239,68,68,0.2)", borderRadius: 9, padding: "4px 12px", fontSize: 11, color: "var(--danger-text)", cursor: "pointer", fontFamily: "inherit" }}
+              >
+                <X size={11} /> Reject selected
+              </button>
+            </>
+          )}
+        </div>
+      )}
+
       <div>
         {filtered.length === 0 && (
           <div className="text-center py-12" style={{ color: "var(--text-muted)", fontSize: 13 }}>No records found.</div>
@@ -72,6 +135,14 @@ export function VerificationsPage() {
           return (
             <div key={v.id} className="rounded-xl mb-2.5" style={{ background: "var(--card-bg)", border: "1px solid var(--card-border)" }}>
               <div className="flex items-center gap-3 flex-wrap" style={{ padding: 13 }}>
+                {v.status === "pending" && (
+                  <input
+                    type="checkbox"
+                    checked={selected.has(v.id)}
+                    onChange={() => toggleOne(v.id)}
+                    className="flex-shrink-0"
+                  />
+                )}
                 <div className="flex items-center justify-center flex-shrink-0 font-bold" style={{ width: 36, height: 36, borderRadius: 13, background: "rgba(99,102,241,0.2)", color: "var(--indigo-light)", fontSize: 11.4 }}>{v.initials}</div>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 font-semibold flex-wrap" style={{ fontSize: 13 }}>
@@ -116,10 +187,18 @@ export function VerificationsPage() {
                     <div className="col-span-2">
                       <div style={{ fontSize: 9.8, color: "var(--text-muted)", marginBottom: 6 }}>SUBMITTED DOCUMENTS</div>
                       <div className="flex gap-2 flex-wrap">
-                        {v.docs.split(" · ").map((doc) => (
-                          <span key={doc} className="flex items-center gap-1.5 font-medium" style={{ background: "rgba(99,102,241,0.12)", border: "1px solid rgba(99,102,241,0.2)", borderRadius: 8, padding: "4px 10px", fontSize: 10.5, color: "var(--indigo-light)" }}>
-                            {doc}
-                          </span>
+                        {v.documents.length === 0 && (
+                          <span style={{ fontSize: 10.5, color: "var(--text-muted)" }}>No documents available</span>
+                        )}
+                        {v.documents.map((doc) => (
+                          <button
+                            key={doc.label}
+                            onClick={() => setPreview(doc)}
+                            className="flex items-center gap-1.5 font-medium transition-opacity hover:opacity-80"
+                            style={{ background: "rgba(99,102,241,0.12)", border: "1px solid rgba(99,102,241,0.2)", borderRadius: 8, padding: "4px 10px", fontSize: 10.5, color: "var(--indigo-light)", cursor: "pointer", fontFamily: "inherit" }}
+                          >
+                            {doc.label}
+                          </button>
                         ))}
                       </div>
                     </div>
@@ -130,6 +209,34 @@ export function VerificationsPage() {
           );
         })}
       </div>
+
+      {/* Document lightbox */}
+      {preview && (
+        <div
+          className="fixed inset-0 flex items-center justify-center"
+          style={{ background: "rgba(0,0,0,0.75)", zIndex: 100 }}
+          onClick={() => setPreview(null)}
+        >
+          <div
+            className="rounded-xl overflow-hidden"
+            style={{ background: "var(--panel-bg)", border: "1px solid var(--panel-border)", maxWidth: "min(600px, 90vw)", maxHeight: "85vh" }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between px-4 py-3" style={{ borderBottom: "1px solid var(--border)" }}>
+              <span className="text-white font-semibold" style={{ fontSize: 13 }}>{preview.label}</span>
+              <button onClick={() => setPreview(null)} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-muted)" }}>
+                <X size={16} />
+              </button>
+            </div>
+            {/* eslint-disable-next-line @next/next/no-img-element -- short-lived signed Storage URL, not an optimizable static asset */}
+            <img
+              src={preview.url}
+              alt={preview.label}
+              style={{ display: "block", maxWidth: "100%", maxHeight: "70vh", objectFit: "contain", margin: "0 auto" }}
+            />
+          </div>
+        </div>
+      )}
     </div>
   );
 }
