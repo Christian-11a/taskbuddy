@@ -46,6 +46,11 @@ export interface RegisterResponse {
   session: Session | null; // null when email confirmation is required
 }
 
+export interface GoogleSignInResponse {
+  user: AuthUser;
+  session: Session;
+}
+
 export interface LoginResponse {
   user: AuthUser;
   session: Session;
@@ -357,6 +362,17 @@ export const api = {
 
   me(accessToken: string) {
     return request<MeResponse>('/auth/me', { accessToken });
+  },
+
+  /**
+   * Returns the backend URL that kicks off the server-side Google OAuth flow.
+   * The browser (via WebBrowser.openAuthSessionAsync) opens this URL; the
+   * backend redirects to Google, handles the callback, and finally redirects
+   * back to appRedirect with session tokens in the query string.
+   */
+  getGoogleAuthorizeUrl(appRedirect: string): string {
+    const encoded = encodeURIComponent(appRedirect);
+    return `${API_BASE_URL}/auth/google/authorize?app_redirect=${encoded}`;
   },
 
   // ── Profiles & providers ────────────────────────────────────────────────────

@@ -4,7 +4,7 @@
  * Replaces the old DEMO-mode navigation (which picked a role without auth).
  * Holds the Supabase session tokens (persisted with AsyncStorage so the user
  * stays logged in across app restarts) plus the resolved profile, and exposes
- * signIn / signUp / signOut for the auth screens to call.
+ * signIn / signUp / signOut / signInWithGoogle for the auth screens to call.
  */
 
 import React, {
@@ -17,6 +17,8 @@ import React, {
   useState,
 } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as WebBrowser from 'expo-web-browser';
+import * as AuthSession from 'expo-auth-session';
 import {
   api,
   ApiError,
@@ -28,6 +30,14 @@ import {
   type ProviderProfile,
   type Session,
 } from '../lib/api';
+
+// Required for expo-auth-session to complete the OAuth flow on Android
+WebBrowser.maybeCompleteAuthSession();
+
+// ── Google OAuth configuration ────────────────────────────────────────────────
+// Replace EXPO_PUBLIC_GOOGLE_CLIENT_ID with your actual Web Client ID from the
+// Google Cloud Console (OAuth 2.0 > Web application client).
+const GOOGLE_CLIENT_ID = process.env.EXPO_PUBLIC_GOOGLE_CLIENT_ID ?? '';
 
 const SESSION_KEY = 'taskbuddy.session';
 
@@ -50,6 +60,8 @@ interface AuthContextValue {
     role: MobileRole;
     phone?: string;
   }) => Promise<{ needsEmailConfirmation: boolean }>;
+  /** Initiates the Google OAuth browser flow and signs the user in on success. */
+  signInWithGoogle: () => Promise<void>;
   signOut: () => Promise<void>;
 }
 
@@ -200,6 +212,60 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     [persistSession],
   );
 
+  // ── Google OAuth (server-side flow) ────────────────────────────────────────
+  //
+  // Flow:
+  //   1. App opens the backend /auth/google/authorize URL in a browser.
+  //   2. Backend redirects to Google (HTTPS callback — Google accepts it).
+  //   3. Google redirects to the backend callback, which exchanges the code
+  //      for an id_token, calls Supabase signInWithIdToken, then redirects
+  //      the browser to appRedirect with session tokens in the query string.
+  //   4. WebBrowser.openAuthSessionAsync intercepts the redirect back to the
+  //      app scheme (exp:// in Expo Go, taskbuddy:// in builds) and resolves.
+  //
+  // Google never sees the app deep-link — only the backend HTTPS callback —
+  // so exp:// and taskbuddy:// both work without any Google Console changes.
+  const signInWithGoogle = useCallback(async () => {
+    // appRedirect is exp://[ip]:8081 in Expo Go, taskbuddy:// in a real build.
+    const appRedirect = AuthSession.makeRedirectUri({ scheme: 'taskbuddy' });
+    const authorizeUrl = api.getGoogleAuthorizeUrl(appRedirect);
+
+    const result = await WebBrowser.openAuthSessionAsync(
+      authorizeUrl,
+      appRedirect,
+    );
+
+    if (result.type !== 'success') {
+      if (result.type === 'cancel' || result.type === 'dismiss') return;
+      throw new Error('Google sign-in was unsuccessful. Please try again.');
+    }
+
+    // Parse session tokens from the redirect URL query string.
+    const query = result.url.split('?')[1] ?? '';
+    const params = new URLSearchParams(query);
+
+    const googleError = params.get('google_error');
+    if (googleError) throw new Error(googleError);
+
+    const accessToken = params.get('access_token');
+    const refreshToken = params.get('refresh_token');
+    const expiresAt = params.get('expires_at');
+    if (!accessToken || !refreshToken || !expiresAt) {
+      throw new Error('Google sign-in did not return a valid session.');
+    }
+
+    const next: Session = {
+      access_token: accessToken,
+      refresh_token: refreshToken,
+      expires_at: Number(expiresAt),
+    };
+
+    const me = await api.me(next.access_token);
+    await persistSession(next);
+    setProfile(me.profile);
+    setProviderProfile(me.provider_profile);
+  }, [persistSession]);
+
   const signOut = useCallback(async () => {
     const token = session?.access_token;
     setProfile(null);
@@ -222,6 +288,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       refreshProfile,
       signIn,
       signUp,
+      signInWithGoogle,
       signOut,
     }),
     [
@@ -232,6 +299,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       refreshProfile,
       signIn,
       signUp,
+      signInWithGoogle,
       signOut,
     ],
   );

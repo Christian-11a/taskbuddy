@@ -1,37 +1,45 @@
 # TaskBuddy Mobile
 
 The Expo / React Native app for **TaskBuddy**, a Philippine home-services
-marketplace. This is the marketplace itself — clients post jobs, providers apply
-and complete them. (The `web/` app is an admin console only; it has no client or
-provider surface.)
+marketplace. Clients post jobs, providers apply and complete them.
+(The `web/` app is an admin console only; it has no client or provider surface.)
 
 Everything on screen reads from the real NestJS API — there is no mock data
 layer. See [What's not wired yet](#whats-not-wired-yet) for the honest list of
 buttons that still do nothing.
 
+---
+
 ## Tech Stack
 
-- **Expo** SDK 54 / **React Native** 0.81 / **React** 19
-- **TypeScript**
-- **lucide-react-native** icons, **react-native-calendars**, **expo-image-picker**
-- **AsyncStorage** for session persistence
-- No navigation library — see [Navigation](#navigation-there-is-no-router)
+| Layer | Choice |
+|-------|--------|
+| Runtime | **Expo SDK 54** / **React Native 0.81** / **React 19** |
+| Language | **TypeScript** |
+| Auth | **AuthContext** backed by the NestJS API (JWT + Supabase sessions) |
+| Storage | **AsyncStorage** — session persistence only |
+| Icons | **lucide-react-native** |
+| UI extras | **react-native-calendars**, **expo-image-picker** |
+| Navigation | Custom `useState` in `App.tsx` — no router library |
+
+---
 
 ## Getting Started
 
 ```bash
+cd mobile
 npm install
-npm start          # then press a / i / w, or scan the QR code
+npm start          # then press 'a' for Android / 'i' for iOS / scan QR for Expo Go
 ```
 
 By default the app talks to the deployed backend at
-`https://taskbuddy-1d48.onrender.com`, so it works with no setup.
+`https://taskbuddy-1d48.onrender.com`, so it works with no local setup.
 
-To run against a backend on your own machine, copy `.env.example` to `.env` and
-point it at your computer's **LAN IP** — not `localhost`, which on a phone or
-emulator means the device itself:
+To run against a local backend, copy `.env.example` to `.env` and set your
+machine's **LAN IP** — not `localhost`, which on a phone/emulator refers to the
+device itself:
 
-```bash
+```env
 EXPO_PUBLIC_API_URL=http://192.168.1.20:3000
 ```
 
@@ -39,15 +47,18 @@ Only `EXPO_PUBLIC_*` variables reach the app at build time. Restart the dev
 server after changing `.env`.
 
 > **Free-tier note:** the Render backend spins down after ~15 minutes idle, so
-> the first request can take 30–60 s. If the splash screen seems stuck, it's a
-> cold start, not a crash.
+> the first request can take 30–60 s. If the splash screen seems stuck, that's
+> a cold start, not a crash.
 
 Other scripts:
 
 ```bash
 npm run typecheck   # tsc --noEmit
-npm run android     # / npm run ios / npm run web
+npm run android     # expo start --android
+npm run ios         # expo start --ios
 ```
+
+---
 
 ## Project Structure
 
@@ -55,16 +66,17 @@ npm run android     # / npm run ios / npm run web
 mobile/
 ├── App.tsx                     # Root: session gate + all navigation state
 ├── index.ts                    # Expo entry point
+├── app.json                    # Expo config (scheme: taskbuddy, package: com.taskbuddy.app)
 ├── app/
 │   ├── layout.tsx              # 600px max-width centred frame
 │   ├── SplashScreen.tsx
-│   ├── (auth)/screens/         # Onboarding, Login, Register, Forgot password, T&C
+│   ├── (auth)/screens/         # Onboarding, Login, Register, ForgotPassword, T&C
 │   ├── (homeowner)/screens/    # Client-side screens (HO*)
 │   └── (provider)/screens/     # Provider-side screens (SP*)
 └── src/
     ├── lib/api.ts              # THE API CLIENT — every network call lives here
     ├── lib/format.ts           # peso(), shortDate(), timeAgo(), jobStatusMeta()…
-    ├── context/AuthContext.tsx # Session, profile, role
+    ├── context/AuthContext.tsx # Session, profile, role, signInWithGoogle
     ├── hooks/useAsyncData.ts   # { data, loading, error, reload }
     ├── components/             # AppHeader, bottom nav bars, modals, skeletons
     ├── constants/theme.ts      # Colors, Radii, Shadows, Sizes, Spacing
@@ -72,8 +84,10 @@ mobile/
 ```
 
 > The `app/(auth)`, `app/(homeowner)`, `app/(provider)` folders look like
-> Expo Router groups but **aren't** — expo-router isn't a dependency. The
-> parenthesised names are a naming convention only.
+> Expo Router groups but **aren't** — expo-router is not a dependency.
+> The parenthesised names are a naming convention only.
+
+---
 
 ## Navigation: there is no router
 
@@ -81,119 +95,184 @@ All navigation is `useState` in `App.tsx`. It tracks the current tab and screen
 per role, plus a selected `jobId` threaded through
 `hoNavigate(screen, jobId?)` / `spNavigate(screen, jobId?)`.
 
-`App.tsx` picks what to render from `AuthContext`:
+`App.tsx` picks what to render based on `AuthContext`:
 
 ```
-initializing → SplashScreen
-not authenticated → Onboarding / Login / Register
-authenticated + role 'homeowner' → HO tabs
-authenticated + role 'provider'  → SP tabs
+initializing         → SplashScreen
+not authenticated    → Onboarding → Login / Register
+role 'homeowner'     → HO tab bar (Home, My Jobs, Create, Wallet, Profile)
+role 'provider'      → SP tab bar (Home, My Jobs, Calendar, Wallet, Profile)
 ```
 
-Adding a screen means three edits: add the key to `src/types/navigation.ts`,
-render it in `App.tsx`, and navigate to it via `onNavigate`.
+Adding a new screen requires three edits: add the key to
+`src/types/navigation.ts`, render it in `App.tsx`, and navigate to it via
+`onNavigate`.
 
-## Talking to the backend
+---
+
+## Talking to the Backend
 
 **Every network call goes through `src/lib/api.ts`.** Nothing else calls `fetch`.
-Changing the base URL, auth scheme, or field casing is a one-file change.
 
-- **Casing is snake_case in both directions** — request bodies and responses
-  mirror the Postgres columns. Don't camelCase a request body.
-- **The backend validates with `forbidNonWhitelisted`**, so sending a field it
-  doesn't declare is a hard `400`, not a silently ignored extra.
+- **Casing is `snake_case` in both directions** — request bodies and responses
+  mirror Postgres column names. Do not camelCase a request body.
+- **The backend validates with `forbidNonWhitelisted`**, so sending an undeclared
+  field returns a hard `400`, not a silently ignored extra.
 - **Roles differ from the UI vocabulary.** The wire uses `client`; the UI says
-  `homeowner`. `toBackendRole` / `toMobileRole` in `api.ts` translate.
-- `authRequest()` attaches the bearer token and, on a `401`, refreshes once and
-  retries. `ApiError` carries `status` and the backend's message (unwrapping
-  class-validator's `message[]` array), so screens can show it directly.
+  `homeowner`. `toBackendRole` / `toMobileRole` in `api.ts` translate between them.
+- `authRequest()` attaches the Bearer token and, on a `401`, refreshes once and
+  retries. `ApiError` carries `status` and the backend's message string
+  (unwrapping class-validator's `message[]` array), so screens can display it directly.
 
-### Auth flow
+---
+
+## Authentication
 
 `src/context/AuthContext.tsx` owns the session and registers the token accessor
 with `api.ts` via `configureApiAuth`.
 
-1. `POST /auth/login` → `GET /auth/me` for the profile + provider profile.
-2. The session is persisted to AsyncStorage under `taskbuddy.session`.
-3. On boot the stored session is restored and validated with `/auth/me`;
+### Email / Password
+
+1. `POST /auth/login` → `GET /auth/me` for profile + provider profile.
+2. Session is persisted to AsyncStorage under `taskbuddy.session`.
+3. On boot the stored session is restored and re-validated with `GET /auth/me`;
    a `401` triggers `POST /auth/refresh` and one retry.
 4. `signOut()` clears local state first, then fires `POST /auth/logout`.
 
 Registration returns `session: null` when the Supabase project has email
-confirmation enabled — the Register screen then shows a "check your email"
-state instead of signing in.
+confirmation enabled — the Register screen shows a "check your email" state instead.
+
+### Google Sign-In (server-side OAuth)
+
+The Google flow runs entirely through the backend so it works in both **Expo Go**
+and production builds without needing to register `exp://` or `taskbuddy://`
+as a redirect URI in Google Cloud Console.
+
+```
+App  →  WebBrowser.openAuthSessionAsync(GET /auth/google/authorize?app_redirect=<deep-link>)
+          Backend  →  302 to Google consent screen
+            Google →  302 to https://taskbuddy-1d48.onrender.com/auth/google/callback
+              Backend  →  exchanges code for id_token (server-to-server)
+                       →  signInWithIdToken via Supabase
+                       →  302 to <deep-link>?access_token=...&refresh_token=...
+App  →  parses tokens from URL, calls GET /auth/me, user is signed in
+```
+
+Google never sees the app deep-link — only the backend HTTPS callback URL.
+**For backend setup steps** (Google Cloud Console, Supabase provider, Render env
+vars) see [`docs/google-auth-setup.md`](../docs/google-auth-setup.md).
 
 ### Uploads
 
-Images never pass through the API. `api.uploadImage(bucket, uri)` asks the
-backend for a signed Storage URL (`POST /uploads/signed-url`), `PUT`s the file
-straight to Supabase Storage, and returns the storage **path**. That path — not
-a device URI — is what job creation and verification submit.
+Images never pass through the NestJS API.
+`api.uploadImage(bucket, uri)` asks the backend for a signed Supabase Storage
+URL (`POST /uploads/signed-url`), `PUT`s the file straight to Supabase Storage,
+and returns the storage **path**. That path — not a device URI — is what job
+creation and verification endpoints submit.
+
+---
 
 ## Screens
 
-### Client (homeowner)
+### Auth flow
 
-| Screen | What it needs |
-|---|---|
-| Home | `/wallet`, `/jobs/mine`, `/categories`, unread notifications |
-| My Jobs | `/jobs/mine`, filtered client-side |
-| Create Job | `/categories`, image upload, `POST /jobs` — 5-step wizard collecting category, details, schedule, budget, photos |
-| Job Detail | `/jobs/:id`, `/providers/:id`; complete / cancel |
-| Chat | `POST /conversations` then messages |
-| Wallet | `/wallet`; **Add Money** posts a credit to `/wallet/transactions` |
-| Dispute Filing | `POST /jobs/:jobId/disputes` |
-| Profile / Edit Profile | `PATCH /profiles/me`, then `refreshProfile()` |
-| Notifications | `/notifications`, mark read / read-all |
-| Settings | nothing — local toggles only |
+| Screen | Purpose |
+|--------|---------|
+| `OnboardingScreen` | Welcome carousel, routes to Login or Register |
+| `LoginScreen` | Email/password + **Continue with Google** |
+| `RegisterScreen` | Role selection (Homeowner / Provider), email/password + Google |
+| `ForgotPasswordScreen` | UI only — no reset endpoint yet |
+| `TermsAndConditions` | Static T&C display |
 
-### Provider
+### Client (Homeowner — `HO*`)
 
-| Screen | What it needs |
-|---|---|
-| Dashboard | `/wallet`, `/jobs`, `/jobs/assigned`, availability toggle |
-| My Jobs | `/jobs/assigned` |
-| Job Detail | `/jobs/:id`; apply, or start work if assigned |
-| Calendar | `/calendar/bookings?from=&to=` for the current month |
-| Chat / Wallet / Notifications | as above |
-| Get Verified | uploads ID + selfie, `POST /verifications`, shows review status |
-| Profile / Edit Profile | `PATCH /profiles/me` then `PUT /profiles/me/provider` |
+| Screen | Key API calls |
+|--------|--------------|
+| `HOHomeScreen` | `GET /wallet`, `GET /jobs/mine`, `GET /categories`, unread notification count |
+| `HOMyJobs` | `GET /jobs/mine`, filtered client-side by status |
+| `HOCreateJobScreen` | `GET /categories`, image upload, `POST /jobs` — 5-step wizard |
+| `HOJobDetailScreen` | `GET /jobs/:id`, `GET /providers/:id`; complete / cancel actions |
+| `HOChatScreen` | `POST /conversations` then message listing |
+| `HOWalletScreen` | `GET /wallet`; **Add Money** posts `POST /wallet/transactions` |
+| `HODisputeFilingScreen` | `POST /jobs/:jobId/disputes` |
+| `HOProfile` | Displays profile data |
+| `HOEditProfileScreen` | `PATCH /profiles/me`, then `refreshProfile()` |
+| `HONotificationsScreen` | `GET /notifications`; mark read / read-all |
+| `HOSettingsScreen` | Local-only toggles (nothing persisted) |
 
-## Money, briefly
+### Provider (Service Provider — `SP*`)
 
-Hiring holds the job budget in escrow, so a client's wallet must cover it:
-`POST /applications/:id/accept` returns **400 `Insufficient wallet balance`**
-otherwise. That's what the Wallet screen's **Add Money** button is for. Funds are
-released to the provider when the client marks the job complete, and returned to
-the client if the job is cancelled or a dispute is refunded.
+| Screen | Key API calls |
+|--------|--------------|
+| `SPHomeScreen` | `GET /wallet`, `GET /jobs`, `GET /jobs/assigned`; availability toggle |
+| `SPMyJobsScreen` | `GET /jobs/assigned` |
+| `SPJobDetailScreen` | `GET /jobs/:id`; apply, or start/complete if assigned |
+| `SPCalendarScreen` | `GET /calendar/bookings?from=&to=` for the current month |
+| `SPChatScreen` | Messaging (same flow as HO) |
+| `SPWalletScreen` | `GET /wallet` |
+| `SPNotificationsScreen` | `GET /notifications` |
+| `SPVerificationScreen` | ID + selfie upload, `POST /verifications`, shows review status |
+| `SPProfileScreen` | Displays profile + provider-specific data |
+| `SPEditProfileScreen` | `PATCH /profiles/me` + `PUT /profiles/me/provider` |
+
+---
+
+## Money, Briefly
+
+Hiring holds the job budget in escrow so the client's wallet must cover it:
+`POST /applications/:id/accept` returns `400 Insufficient wallet balance` otherwise.
+That is what the Wallet screen's **Add Money** button is for.
+Funds are released to the provider when the client marks the job complete, and
+returned to the client if the job is cancelled or a dispute is resolved in the
+client's favour.
 
 There is no payment gateway — the wallet ledger is the only account of record.
 Full rules: `backend/BACKEND_SCHEMA.md` §18.
 
-## What's not wired yet
+---
 
-Honest list of things that look interactive but aren't:
+## Current State of the App
 
-- **No applicant list.** Providers can apply, but there is no client-side screen
-  to view or accept applications, so `POST /applications/:id/accept` — and
-  therefore the whole escrow flow — can't be triggered from the app yet. This is
-  the biggest gap.
-- **No review submission.** `api.reviewJob` exists; nothing calls it. Ratings are
-  only ever displayed.
-- **Wallet Withdraw / Transfer** buttons have no handler (only Add Money does).
-- **Forgot password** is UI only — there's no reset endpoint.
-- **"Continue with Google"** isn't OAuth; Register's button runs the normal
-  email/password path.
-- **Chat** has no realtime or polling — messages refresh on mount. The call and
-  attachment buttons are inert.
-- **Avatar upload** — "Change Photo" does nothing; `avatar_url` is never sent.
-- **Settings** toggles are local `useState`; nothing persists.
-- **Provider calendar is read-only** — bookings are created by the backend when a
-  job with a preferred date is assigned, not from this screen.
+### ✅ Fully working
+
+- Email/password register, login, logout
+- Google Sign-In (server-side OAuth — works in Expo Go and production builds)
+- Session persistence across app restarts (AsyncStorage)
+- Token refresh (silent retry on `401`)
+- Role-based navigation (homeowner vs provider)
+- Job creation wizard (5 steps — category, details, schedule, budget, photos)
+- Job listing and filtering by status
+- Job detail with complete / cancel actions
+- Provider application to jobs
+- Wallet balance display and Add Money flow
+- Notifications (listing + mark read)
+- Profile view and edit (both roles)
+- Provider verification submission
+- Dispute filing
+- Image upload (via Supabase Storage signed URLs)
+- Provider calendar (read-only view of bookings)
+- Chat (polling on mount — no realtime)
+
+### ⚠️ What's Not Wired Yet
+
+| Thing | Status |
+|-------|--------|
+| **Applicant list for clients** | No screen to view / accept provider applications — the biggest functional gap; `POST /applications/:id/accept` and the full escrow flow can't be triggered from the app |
+| **Review submission** | `api.reviewJob` exists; nothing calls it — ratings are displayed only |
+| **Wallet Withdraw / Transfer** | Buttons are present but have no handler |
+| **Forgot password** | UI only — no backend reset endpoint |
+| **Realtime chat** | Messages only refresh on mount; call and attachment buttons are inert |
+| **Avatar / photo upload** | "Change Photo" does nothing; `avatar_url` is never sent |
+| **Settings persistence** | Toggles are local `useState`; nothing is saved |
+| **Provider calendar write** | Bookings are created by the backend when a job is assigned, not from this screen |
+
+---
 
 ## Notes
 
-- `@supabase/supabase-js` is still in `package.json` but **unused** — the app
-  talks only to the NestJS API. Safe to remove.
+- `@supabase/supabase-js` is listed in `package.json` but **unused** — the app
+  talks only to the NestJS API. Safe to remove when convenient.
 - The backend has no push-notification transport. The `notifications` table is
   the source of truth and the app polls it; nothing is delivered via FCM/APNs.
+- `expo-crypto` remains in `package.json` but is no longer imported — nonce
+  generation for Google auth moved to the backend. Safe to remove.

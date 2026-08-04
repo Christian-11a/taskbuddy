@@ -1,12 +1,17 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Get,
   HttpCode,
   Post,
+  Query,
+  Redirect,
   Req,
+  Res,
   UseGuards,
 } from '@nestjs/common';
+import type { Response } from 'express';
 import { AuthService } from './auth.service';
 import {
   ChangePasswordDto,
@@ -31,6 +36,56 @@ export class AuthController {
   @HttpCode(200)
   login(@Body() dto: LoginDto) {
     return this.authService.login(dto);
+  }
+
+  /** Step 1 — redirect the browser to Google's consent screen. */
+  @Get('google/authorize')
+  @Redirect()
+  googleAuthorize(@Query('app_redirect') appRedirect: string) {
+    if (!appRedirect) throw new BadRequestException('app_redirect is required');
+    const url = this.authService.buildGoogleAuthUrl(appRedirect);
+    return { url, statusCode: 302 };
+  }
+
+  /**
+   * Step 2 — Google redirects here after the user consents.
+   *
+   * The backend exchanges the code for an id_token, signs in with Supabase,
+   * then redirects the browser to the app's deep link (appRedirect from state)
+   * with the session tokens in the query string.
+   *
+   * On any error that occurs after the state is parsed, the browser is
+   * redirected to appRedirect?google_error=<message> so the app can
+   * surface a user-friendly error instead of a blank browser screen.
+   */
+  @Get('google/callback')
+  async googleCallback(
+    @Query('code') code: string,
+    @Query('state') state: string,
+    @Res() res: Response,
+  ) {
+    try {
+      const { appRedirect, session } =
+        await this.authService.handleGoogleCallback(code, state);
+      const params = new URLSearchParams({
+        access_token: session.access_token,
+        refresh_token: session.refresh_token,
+        expires_at: String(session.expires_at),
+      });
+      return res.redirect(`${appRedirect}?${params.toString()}`);
+    } catch (err: any) {
+      // Try to send the error back to the app rather than leaving the user
+      // staring at a browser error page.
+      const appRedirect = this.authService.tryParseAppRedirect(state ?? '');
+      if (appRedirect) {
+        const msg = encodeURIComponent(
+          err?.message ?? 'Google sign-in failed',
+        );
+        return res.redirect(`${appRedirect}?google_error=${msg}`);
+      }
+      // State was completely unparseable — fall through to NestJS error handler.
+      throw err;
+    }
   }
 
   @Post('refresh')

@@ -43,6 +43,8 @@ const C = Colors;
 interface LoginScreenProps {
   /** Authenticate with the backend. Should reject with an Error on failure. */
   onLogin: (email: string, password: string) => Promise<void>;
+  /** Initiate Google OAuth. Should reject with an Error on failure. */
+  onGoogleSignIn: () => Promise<void>;
   onSignUp: () => void;
   onForgotPassword?: () => void;
 }
@@ -98,6 +100,7 @@ function InputField({
 // ─── Main screen ──────────────────────────────────────────────────────────────
 export default function LoginScreen({
   onLogin,
+  onGoogleSignIn,
   onSignUp,
   onForgotPassword,
 }: LoginScreenProps) {
@@ -106,6 +109,7 @@ export default function LoginScreen({
   const [showPassword, setShowPassword] = useState(false);
   const [passwordFocused, setPasswordFocused] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [googleLoading, setGoogleLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const handleSignIn = async () => {
@@ -125,6 +129,19 @@ export default function LoginScreen({
       setError(e instanceof Error ? e.message : 'Unable to sign in.');
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const handleGoogleSignIn = async () => {
+    if (googleLoading || submitting) return;
+    setError(null);
+    setGoogleLoading(true);
+    try {
+      await onGoogleSignIn();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Google sign-in failed.');
+    } finally {
+      setGoogleLoading(false);
     }
   };
 
@@ -246,14 +263,21 @@ export default function LoginScreen({
           {/* Google */}
           <TouchableOpacity
             testID="btn-google"
-            style={styles.googleBtn}
+            style={[styles.googleBtn, googleLoading && styles.primaryBtnDisabled]}
             activeOpacity={0.85}
-            onPress={handleSignIn}
+            onPress={handleGoogleSignIn}
+            disabled={googleLoading || submitting}
           >
-            <View style={styles.googleIcon}>
-              <Text style={styles.googleIconText}>G</Text>
-            </View>
-            <Text style={styles.googleBtnText}>Continue with Google</Text>
+            {googleLoading ? (
+              <ActivityIndicator color={C.brandTeal} />
+            ) : (
+              <>
+                <View style={styles.googleIcon}>
+                  <Text style={styles.googleIconText}>G</Text>
+                </View>
+                <Text style={styles.googleBtnText}>Continue with Google</Text>
+              </>
+            )}
           </TouchableOpacity>
 
           {/* Sign Up */}

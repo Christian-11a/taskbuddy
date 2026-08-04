@@ -52,6 +52,8 @@ interface RegisterScreenProps {
     fullName: string;
     role: MobileRole;
   }) => Promise<{ needsEmailConfirmation: boolean }>;
+  /** Initiate Google OAuth. Should reject with an Error on failure. */
+  onGoogleSignIn: () => Promise<void>;
   onLogin: () => void;
 }
 
@@ -107,6 +109,7 @@ function FormInput({ label, placeholder, value, onChangeText, secureTextEntry, k
 function RegisterScreenContent({
   onRegister,
   onLogin,
+  onGoogleSignIn,
   onViewTerms,
   termsAccepted,
   onToggleTermsAccepted,
@@ -122,6 +125,7 @@ function RegisterScreenContent({
   onRoleChange,
 }: RegisterScreenContentProps) {
   const [submitting, setSubmitting] = useState(false);
+  const [googleLoading, setGoogleLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [confirmationSent, setConfirmationSent] = useState(false);
 
@@ -153,6 +157,19 @@ function RegisterScreenContent({
       setError(e instanceof Error ? e.message : 'Unable to create account.');
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const handleGoogleSignIn = async () => {
+    if (googleLoading || submitting) return;
+    setError(null);
+    setGoogleLoading(true);
+    try {
+      await onGoogleSignIn();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Google sign-in failed.');
+    } finally {
+      setGoogleLoading(false);
     }
   };
 
@@ -306,11 +323,22 @@ function RegisterScreenContent({
             </View>
 
             {/* Google */}
-            <TouchableOpacity style={styles.googleBtn} onPress={handleSignUp} activeOpacity={0.85}>
-              <View style={styles.googleIcon}>
-                <Text style={styles.googleIconText}>G</Text>
-              </View>
-              <Text style={styles.googleBtnText}>Continue with Google</Text>
+            <TouchableOpacity
+              style={[styles.googleBtn, googleLoading && styles.primaryBtnDisabled]}
+              onPress={handleGoogleSignIn}
+              activeOpacity={0.85}
+              disabled={googleLoading || submitting}
+            >
+              {googleLoading ? (
+                <ActivityIndicator color={C.brandTeal} />
+              ) : (
+                <>
+                  <View style={styles.googleIcon}>
+                    <Text style={styles.googleIconText}>G</Text>
+                  </View>
+                  <Text style={styles.googleBtnText}>Continue with Google</Text>
+                </>
+              )}
             </TouchableOpacity>
 
             {/* Progress dots */}
@@ -335,7 +363,7 @@ function RegisterScreenContent({
   );
 }
 
-export default function RegisterScreen({ onRegister, onLogin }: RegisterScreenProps) {
+export default function RegisterScreen({ onRegister, onLogin, onGoogleSignIn }: RegisterScreenProps) {
   const [showTerms, setShowTerms] = useState(false);
   const [termsAccepted, setTermsAccepted] = useState(false);
   const [name, setName] = useState('');
@@ -357,6 +385,7 @@ export default function RegisterScreen({ onRegister, onLogin }: RegisterScreenPr
     <RegisterScreenContent
       onRegister={onRegister}
       onLogin={onLogin}
+      onGoogleSignIn={onGoogleSignIn}
       onViewTerms={() => setShowTerms(true)}
       termsAccepted={termsAccepted}
       onToggleTermsAccepted={() => setTermsAccepted((value) => !value)}

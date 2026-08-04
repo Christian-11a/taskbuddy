@@ -82,7 +82,7 @@ ExpoSplashScreen.preventAutoHideAsync().catch(() => {});
 type PreAuthScreen = 'onboarding' | 'login' | 'forgotPassword' | 'register';
 
 function AppContent() {
-  const { initializing, isAuthenticated, role, signIn, signUp, signOut } = useAuth();
+  const { initializing, isAuthenticated, role, signIn, signUp, signOut, signInWithGoogle } = useAuth();
 
   // Which pre-auth screen to show while the user is signed out.
   const [preAuth, setPreAuth] = useState<PreAuthScreen>('onboarding');
@@ -172,6 +172,7 @@ function AppContent() {
       return (
         <LoginScreen
           onLogin={signIn}
+          onGoogleSignIn={signInWithGoogle}
           onSignUp={() => setPreAuth('register')}
           onForgotPassword={() => setPreAuth('forgotPassword')}
         />
@@ -191,6 +192,7 @@ function AppContent() {
     return (
       <RegisterScreen
         onRegister={signUp}
+        onGoogleSignIn={signInWithGoogle}
         onLogin={() => setPreAuth('login')}
       />
     );
