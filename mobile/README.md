@@ -276,3 +276,53 @@ Full rules: `backend/BACKEND_SCHEMA.md` §18.
   the source of truth and the app polls it; nothing is delivered via FCM/APNs.
 - `expo-crypto` remains in `package.json` but is no longer imported — nonce
   generation for Google auth moved to the backend. Safe to remove.
+
+---
+
+## Additional To-Do Items
+
+### User Experience and Interface
+
+- Add a calendar view to the homeowner **My Jobs** screen, alongside or instead
+  of the current list-only view.
+- Apply appropriate animations throughout the app.
+- Review all empty states and make their design and messaging consistent.
+- Review all error modals and make their design, behaviour, and messaging
+  consistent.
+- Review the chat interface.
+- Add a properly functioning animated splash screen.
+- Create a dark-mode color palette.
+- Replace inline screen-header filter options with a filter button that opens a
+  modal containing the available filters.
+- Add consistent skeleton loading states throughout the app.
+- Add empty and skeleton loading states to the notification screens.
+
+### Onboarding and Registration
+
+- Show onboarding screens after a newly registered user successfully logs in.
+- Do not show onboarding screens again after the user has completed them.
+- Add email verification during registration by sending an OTP to the email
+  address supplied by the user.
+- Identify the user's location during registration and display it on the
+  corresponding role home screen after registration is complete.
+- Create the automated email content, including OTP emails and related messages.
+
+### Jobs and Location
+
+- Enable geolocation to make location selection easier in the homeowner job
+  creation flow.
+- When a homeowner accesses **Create New Job** from the **Book a Job** section
+  of `HOHomeScreen`, open `HOCreateJobScreen` directly at step 2 rather than
+  asking for the service type again in step 1.
+- Verify whether urgency has multiple levels and implement the appropriate
+  options if needed.
+- Add a loading state for each step of `HOCreateJobScreen`.
+- Make the Flexibility Pill Options and Budget Pill Options clickable.
+
+### Notifications, Permissions, and Payments
+
+- Ensure notifications are delivered and that their messages appear correctly.
+- Implement and clearly request the required app permissions, including access
+  to the gallery/files, location, camera, and notification delivery.
+- Integrate Stripe for both user roles, including Stripe Identity Verification
+  (IDV) for service-provider verification.
