@@ -1,16 +1,20 @@
 "use client";
 
-import { useState } from "react";
-import { Search, CheckCircle, PauseCircle } from "lucide-react";
+import { Fragment, useState } from "react";
+import { Search, CheckCircle, PauseCircle, ChevronDown, Download } from "lucide-react";
 import { useApp } from "@/context/AppContext";
+import { datedFilename, downloadCsv, toCsv } from "@/lib/export/csv";
 import clsx from "clsx";
 
 type RoleFilter = "all" | "provider" | "customer";
 
 export function UsersPage() {
-  const { users, setUserStatus } = useApp();
+  const { users, setUserStatus, bulkSetUserStatus } = useApp();
   const [search, setSearch] = useState("");
   const [roleFilter, setRoleFilter] = useState<RoleFilter>("all");
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [bulkBusy, setBulkBusy] = useState(false);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
 
   const filtered = users.filter((u) => {
     const matchSearch =
@@ -23,15 +27,64 @@ export function UsersPage() {
     return matchSearch && matchRole;
   });
 
+  // Admins can't be suspended (backend refuses it) — leave them out of bulk selection.
+  const selectable = filtered.filter((u) => u.rolePlain !== "Admin");
+  const allSelected = selectable.length > 0 && selectable.every((u) => selected.has(u.id));
+
+  function toggleOne(id: string) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function toggleAll() {
+    setSelected(allSelected ? new Set() : new Set(selectable.map((u) => u.id)));
+  }
+
+  async function runBulk(status: "Active" | "Suspended") {
+    const ids = [...selected];
+    if (ids.length === 0) return;
+    setBulkBusy(true);
+    try {
+      await bulkSetUserStatus(ids, status);
+      setSelected(new Set());
+    } finally {
+      setBulkBusy(false);
+    }
+  }
+
+  /** Exports what's on screen (current search + role filter), not the whole table. */
+  function exportCsv() {
+    const csv = toCsv(
+      ["Name", "Email", "Phone", "Role", "Category", "City", "Status", "Joined", "Jobs completed", "Rating"],
+      filtered.map((u) => [u.name, u.email, u.phone, u.rolePlain, u.category, u.city, u.status, u.joined, u.jobsCompleted, u.ratingValue]),
+    );
+    downloadCsv(datedFilename("taskbuddy-users"), csv);
+  }
+
   const total = users.length;
   const providers = users.filter((u) => u.isProvider).length;
   const customers = users.filter((u) => !u.isProvider).length;
 
   return (
     <div>
-      <div className="mb-4">
-        <div className="text-white font-bold" style={{ fontSize: "clamp(15px, 1.5vw, 18px)" }}>User Management</div>
-        <div style={{ fontSize: 13, color: "var(--text-muted)", marginTop: 4 }}>View, manage, and moderate all registered users</div>
+      <div className="flex items-start justify-between flex-wrap gap-3 mb-4">
+        <div>
+          <div className="text-white font-bold" style={{ fontSize: "clamp(15px, 1.5vw, 18px)" }}>User Management</div>
+          <div style={{ fontSize: 13, color: "var(--text-muted)", marginTop: 4 }}>View, manage, and moderate all registered users</div>
+        </div>
+        <button
+          onClick={exportCsv}
+          disabled={filtered.length === 0}
+          title="Download the rows currently shown"
+          className="flex items-center gap-1.5 font-semibold transition-opacity hover:opacity-80 disabled:opacity-40"
+          style={{ background: "var(--chip-bg)", border: "1px solid var(--border-md)", borderRadius: 11, padding: "7px 13px", fontSize: 11.4, color: "var(--text-light)", cursor: "pointer", fontFamily: "inherit" }}
+        >
+          <Download size={12} /> Export CSV
+        </button>
       </div>
 
       <div className="flex gap-2.5 flex-wrap mb-4">
@@ -79,11 +132,36 @@ export function UsersPage() {
         </div>
       </div>
 
+      {selected.size > 0 && (
+        <div className="flex items-center gap-3 mb-3 flex-wrap" style={{ fontSize: 11.4 }}>
+          <span style={{ color: "var(--text-muted)" }}>{selected.size} selected</span>
+          <button
+            onClick={() => runBulk("Active")}
+            disabled={bulkBusy}
+            className="flex items-center gap-1.5 font-semibold transition-colors disabled:opacity-40"
+            style={{ background: "rgba(34,197,94,0.15)", border: "1px solid rgba(34,197,94,0.2)", borderRadius: 9, padding: "4px 12px", fontSize: 11, color: "var(--success-text)", cursor: "pointer", fontFamily: "inherit" }}
+          >
+            <CheckCircle size={11} /> Activate selected
+          </button>
+          <button
+            onClick={() => runBulk("Suspended")}
+            disabled={bulkBusy}
+            className="flex items-center gap-1.5 font-semibold transition-colors disabled:opacity-40"
+            style={{ background: "rgba(245,158,11,0.15)", border: "1px solid rgba(245,158,11,0.2)", borderRadius: 9, padding: "4px 12px", fontSize: 11, color: "#f59e0b", cursor: "pointer", fontFamily: "inherit" }}
+          >
+            <PauseCircle size={11} /> Suspend selected
+          </button>
+        </div>
+      )}
+
       <div className="rounded-xl overflow-hidden" style={{ background: "var(--card-bg)", border: "1px solid var(--card-border)" }}>
         <div className="overflow-x-auto">
           <table className="data-table">
             <thead>
               <tr>
+                <th style={{ width: 30 }}>
+                  <input type="checkbox" checked={allSelected} onChange={toggleAll} disabled={selectable.length === 0} />
+                </th>
                 <th>User</th>
                 <th>Role</th>
                 <th>Status</th>
@@ -94,7 +172,13 @@ export function UsersPage() {
             </thead>
             <tbody>
               {filtered.map((u) => (
-                <tr key={u.id}>
+                <Fragment key={u.id}>
+                <tr>
+                  <td>
+                    {u.rolePlain !== "Admin" && (
+                      <input type="checkbox" checked={selected.has(u.id)} onChange={() => toggleOne(u.id)} />
+                    )}
+                  </td>
                   <td>
                     <div className="flex items-center gap-2.5">
                       <div
@@ -142,9 +226,41 @@ export function UsersPage() {
                       >
                         <PauseCircle size={12} />
                       </button>
+                      <button
+                        title="View details"
+                        onClick={() => setExpandedId(expandedId === u.id ? null : u.id)}
+                        className="flex items-center justify-center rounded-lg transition-all hover:bg-white/10"
+                        style={{ width: 26, height: 26, background: "transparent", border: "none", cursor: "pointer", color: "var(--text-muted)", transform: expandedId === u.id ? "rotate(180deg)" : "none" }}
+                      >
+                        <ChevronDown size={12} />
+                      </button>
                     </div>
                   </td>
                 </tr>
+                {expandedId === u.id && (
+                  <tr>
+                    <td colSpan={7} style={{ background: "var(--chip-bg)", padding: "12px 16px" }}>
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-3" style={{ fontSize: 11.4 }}>
+                        {[
+                          ["EMAIL", u.email],
+                          ["PHONE", u.phone],
+                          ["CITY", u.city],
+                          ["SERVICE CATEGORY", u.category],
+                          ["JOINED", u.joined],
+                          ["JOBS COMPLETED", String(u.jobsCompleted)],
+                          ["RATING", u.rating],
+                          ["ACCOUNT STATUS", u.status],
+                        ].map(([label, value]) => (
+                          <div key={label}>
+                            <div style={{ fontSize: 9.8, color: "var(--text-muted)", marginBottom: 3 }}>{label}</div>
+                            <div className="text-white">{value}</div>
+                          </div>
+                        ))}
+                      </div>
+                    </td>
+                  </tr>
+                )}
+                </Fragment>
               ))}
             </tbody>
           </table>

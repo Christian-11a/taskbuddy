@@ -17,12 +17,15 @@ import {
 import type {
   AdminActivityApiRow,
   AdminBookingApiRow,
+  AdminDisputeApiRow,
   AdminTransactionApiRow,
   AdminUserApiRow,
   AdminVerificationApiRow,
   AnalyticsSummaryApiResponse,
+  DisputeResolutionApi,
   EscrowStatusApi,
   ListBookingsApiResponse,
+  ListDisputesApiResponse,
   ListTransactionsApiResponse,
   ListUsersApiResponse,
   ListVerificationsApiResponse,
@@ -34,6 +37,9 @@ import type {
   AdminUser,
   CategoryShare,
   DashboardStats,
+  Dispute,
+  DisputeResolution,
+  DisputeStatus,
   MonthlyPoint,
   TopProvider,
   Transaction,
@@ -59,6 +65,9 @@ function mapUserRow(row: AdminUserApiRow): AdminUser {
     status: row.deactivated_at ? "SUSPENDED" : "ACTIVE",
     jobsCompleted: row.cached_completed_jobs ?? 0,
     rating: row.cached_avg_rating,
+    phone: row.phone ?? null,
+    city: row.city ?? null,
+    categoryName: row.category_name ?? null,
   };
 }
 
@@ -100,12 +109,52 @@ const TRANSACTION_STATUS: Record<EscrowStatusApi, TransactionStatus> = {
 function mapTransactionRow(row: AdminTransactionApiRow): Transaction {
   return {
     id: row.id,
+    jobId: row.job_id,
     customerName: row.client?.full_name ?? "Unknown client",
     providerName: row.provider?.full_name ?? "Unassigned",
     service: row.jobs?.service_categories?.name ?? row.jobs?.title ?? "Uncategorized",
     amount: Number(row.amount),
     status: TRANSACTION_STATUS[row.status],
     date: row.held_at,
+  };
+}
+
+const DISPUTE_STATUS: Record<string, DisputeStatus> = {
+  open: "OPEN",
+  resolved: "RESOLVED",
+  cancelled: "CANCELLED",
+};
+
+const DISPUTE_RESOLUTION: Record<DisputeResolutionApi, DisputeResolution> = {
+  released_to_provider: "RELEASED_TO_PROVIDER",
+  refunded_to_client: "REFUNDED_TO_CLIENT",
+};
+
+/**
+ * The disputes endpoint doesn't join the provider's name (only the client who
+ * raised it, via `raised_by_profile`) — so we cross-reference the already-loaded
+ * Transactions list by job id to fill in the provider and a client fallback.
+ */
+function mapDisputeRow(
+  row: AdminDisputeApiRow,
+  txnByJob: Map<string, Transaction>,
+): Dispute {
+  const linked = txnByJob.get(row.job_id);
+  return {
+    id: row.id,
+    jobId: row.job_id,
+    jobTitle: row.jobs?.title ?? linked?.service ?? "Unknown job",
+    service: row.jobs?.service_categories?.name ?? linked?.service ?? "Uncategorized",
+    clientName: row.raised_by_profile?.full_name ?? linked?.customerName ?? "Unknown client",
+    providerName: linked?.providerName ?? "Unknown provider",
+    amount: Number(row.escrow_transactions?.amount ?? linked?.amount ?? 0),
+    reason: row.reason,
+    details: row.details,
+    status: DISPUTE_STATUS[row.status] ?? "OPEN",
+    resolution: row.resolution ? DISPUTE_RESOLUTION[row.resolution] : null,
+    resolutionNote: row.resolution_note,
+    createdAt: row.created_at,
+    resolvedAt: row.resolved_at,
   };
 }
 
@@ -143,6 +192,22 @@ export async function logout(): Promise<void> {
   }
 }
 
+/**
+ * Persists the admin's display name. Email is deliberately not settable: it
+ * lives on `auth.users`, not `profiles`, and no endpoint exposes changing it —
+ * the Settings field is read-only for that reason.
+ */
+export async function updateDisplayName(name: string): Promise<boolean> {
+  try {
+    await client.patch("/profiles/me", { full_name: name });
+    const session = getStoredSession();
+    if (session) setStoredSession({ ...session, adminProfile: { ...session.adminProfile, name } });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export async function changePassword(current: string, next: string): Promise<boolean> {
   try {
     await client.post("/auth/change-password", {
@@ -174,6 +239,16 @@ export async function getTransactions(): Promise<Transaction[]> {
     `/admin/transactions?limit=${LIST_PAGE_SIZE}`,
   );
   return res.transactions.map(mapTransactionRow);
+}
+
+/** Cross-references Transactions (for provider name + amount fallback) — see mapDisputeRow. */
+export async function getDisputes(): Promise<Dispute[]> {
+  const [res, txns] = await Promise.all([
+    client.get<ListDisputesApiResponse>(`/admin/disputes?limit=${LIST_PAGE_SIZE}`),
+    getTransactions(),
+  ]);
+  const txnByJob = new Map(txns.map((t) => [t.jobId, t] as const));
+  return res.disputes.map((row) => mapDisputeRow(row, txnByJob));
 }
 
 export async function getBookings(): Promise<AdminBooking[]> {
@@ -248,6 +323,17 @@ export async function rejectVerification(id: string): Promise<Verification[]> {
   return getVerifications();
 }
 
+/** See bulkSetUserStatus — same per-id-with-swallowed-failure pattern. */
+export async function bulkApproveVerifications(ids: string[]): Promise<Verification[]> {
+  await Promise.all(ids.map((id) => client.post(`/admin/verifications/${id}/approve`).catch(() => null)));
+  return getVerifications();
+}
+
+export async function bulkRejectVerifications(ids: string[]): Promise<Verification[]> {
+  await Promise.all(ids.map((id) => client.post(`/admin/verifications/${id}/reject`).catch(() => null)));
+  return getVerifications();
+}
+
 export async function setUserStatus(id: string, status: UserStatus): Promise<AdminUser[]> {
   await client.post(
     status === "SUSPENDED" ? `/admin/users/${id}/suspend` : `/admin/users/${id}/reinstate`,
@@ -255,7 +341,36 @@ export async function setUserStatus(id: string, status: UserStatus): Promise<Adm
   return getUsers();
 }
 
+/**
+ * No bulk endpoint exists — fires the existing single-user endpoint per id in
+ * parallel. A per-id failure (e.g. the backend refuses to suspend an admin) is
+ * swallowed rather than aborting the rest: the final refetch reflects exactly
+ * what actually changed, so the UI stays honest even when some ids fail.
+ */
+export async function bulkSetUserStatus(ids: string[], status: UserStatus): Promise<AdminUser[]> {
+  await Promise.all(
+    ids.map((id) =>
+      client
+        .post(status === "SUSPENDED" ? `/admin/users/${id}/suspend` : `/admin/users/${id}/reinstate`)
+        .catch(() => null),
+    ),
+  );
+  return getUsers();
+}
+
 export async function cancelBooking(id: string): Promise<AdminBooking[]> {
   await client.post(`/admin/bookings/${id}/cancel`);
   return getBookings();
+}
+
+export async function resolveDispute(
+  id: string,
+  resolution: DisputeResolution,
+  note?: string,
+): Promise<Dispute[]> {
+  await client.post(`/admin/disputes/${id}/resolve`, {
+    resolution: resolution === "RELEASED_TO_PROVIDER" ? "released_to_provider" : "refunded_to_client",
+    note,
+  });
+  return getDisputes();
 }

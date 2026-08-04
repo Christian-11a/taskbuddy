@@ -10,6 +10,8 @@ export type Page =
   | "verifications"
   | "users"
   | "transactions"
+  | "disputes"
+  | "activity-log"
   | "bookings"
   | "reports"
   | "settings";
@@ -34,6 +36,10 @@ export interface AdminUser {
   jobsCompleted: number;
   /** Provider average rating; null for clients. */
   rating: number | null;
+  phone: string | null;
+  city: string | null;
+  /** The provider's service category; null for clients. */
+  categoryName: string | null;
 }
 
 // ─── Verifications ────────────────────────────────────────────────────────────
@@ -57,12 +63,37 @@ export type TransactionStatus = "COMPLETED" | "IN_ESCROW" | "DISPUTED" | "REFUND
 
 export interface Transaction {
   id: string;
+  jobId: string;
   customerName: string;
   providerName: string;
   service: string;
   amount: number;
   status: TransactionStatus;
   date: string; // ISO date
+}
+
+// ─── Disputes ─────────────────────────────────────────────────────────────────
+
+export type DisputeStatus = "OPEN" | "RESOLVED" | "CANCELLED";
+export type DisputeResolution = "RELEASED_TO_PROVIDER" | "REFUNDED_TO_CLIENT";
+
+export interface Dispute {
+  id: string;
+  jobId: string;
+  jobTitle: string;
+  service: string;
+  /** Always the client — only clients can raise a dispute (backend `@Roles('client')`). */
+  clientName: string;
+  /** Cross-referenced from the Transactions list by job id — "Unknown provider" if not found. */
+  providerName: string;
+  amount: number;
+  reason: string;
+  details: string | null;
+  status: DisputeStatus;
+  resolution: DisputeResolution | null;
+  resolutionNote: string | null;
+  createdAt: string; // ISO date
+  resolvedAt: string | null;
 }
 
 // ─── Bookings ─────────────────────────────────────────────────────────────────

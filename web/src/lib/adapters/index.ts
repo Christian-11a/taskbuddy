@@ -8,6 +8,9 @@ import type {
   AdminBooking,
   AdminUser,
   BookingStatus,
+  Dispute,
+  DisputeResolution,
+  DisputeStatus,
   Transaction,
   TransactionStatus,
   UserStatus,
@@ -78,6 +81,17 @@ export function isCancellableBooking(status: BookingStatus): boolean {
   return status === "open" || status === "recommending" || status === "assigned" || status === "in_progress";
 }
 
+export const DISPUTE_STATUS_DISPLAY: Record<DisputeStatus, { label: string; badgeClass: string }> = {
+  OPEN:      { label: "Open",     badgeClass: "badge-pending" },
+  RESOLVED:  { label: "Resolved", badgeClass: "badge-completed" },
+  CANCELLED: { label: "Cancelled", badgeClass: "badge-cancelled" },
+};
+
+export const DISPUTE_RESOLUTION_LABEL: Record<DisputeResolution, string> = {
+  RELEASED_TO_PROVIDER: "Released to provider",
+  REFUNDED_TO_CLIENT: "Refunded to client",
+};
+
 // ─── Display row types (what components render) ───────────────────────────────
 
 export interface UserRow {
@@ -86,12 +100,30 @@ export interface UserRow {
   avClass: "av-indigo" | "av-green" | "av-violet";
   name: string;
   email: string;
+  /** Display label, emoji-prefixed (e.g. "🔧 Provider"). Use `rolePlain` for exports. */
   role: string;
+  /** Same role without the emoji — CSV exports and any non-visual consumer. */
+  rolePlain: string;
   isProvider: boolean;
   status: string;
   statusClass: string;
   joined: string;
   activity: string;
+  // Detail-view fields (already on admin_user_overview — no extra request).
+  phone: string;
+  city: string;
+  category: string;
+  jobsCompleted: number;
+  /** Display string, e.g. "⭐ 4.5" or "Not yet rated". */
+  rating: string;
+  /** Raw value for exports and sorting; null when the provider has no ratings. */
+  ratingValue: number | null;
+}
+
+export interface VerificationDocument {
+  label: string;
+  /** Short-lived signed Storage URL — treat as an image src, not a permanent link. */
+  url: string;
 }
 
 export interface VerificationRow {
@@ -101,11 +133,31 @@ export interface VerificationRow {
   email: string;
   date: string;
   status: "pending" | "approved" | "rejected";
-  docs: string;
+  documents: VerificationDocument[];
+}
+
+export interface DisputeRow {
+  id: string;
+  jobTitle: string;
+  service: string;
+  clientName: string;
+  providerName: string;
+  amount: string;
+  reason: string;
+  details: string | null;
+  status: string;
+  statusClass: string;
+  resolution: string | null;
+  resolutionNote: string | null;
+  createdAt: string;
+  resolvedAt: string | null;
+  isOpen: boolean;
 }
 
 export interface TransactionRow {
   id: string;
+  /** The job this escrow belongs to — shown in the detail view. */
+  jobId: string;
   customer: string;
   provider: string;
   service: string;
@@ -146,13 +198,24 @@ export function toUserRow(u: AdminUser): UserRow {
     name: u.name,
     email: u.email,
     role: isProvider ? "🔧 Provider" : u.role === "admin" ? "🛡️ Admin" : "👤 Customer",
+    rolePlain: isProvider ? "Provider" : u.role === "admin" ? "Admin" : "Customer",
     isProvider,
     status: display.label,
     statusClass: display.badgeClass,
     joined: formatDate(u.createdAt),
     activity: `${u.jobsCompleted} job${u.jobsCompleted === 1 ? "" : "s"}${u.rating ? ` ⭐${u.rating}` : ""}`,
+    phone: u.phone ?? "—",
+    city: u.city ?? "—",
+    category: u.categoryName ?? "—",
+    jobsCompleted: u.jobsCompleted,
+    rating: u.rating ? `⭐ ${u.rating}` : "Not yet rated",
+    ratingValue: u.rating,
   };
 }
+
+/** Backend always signs [id_document_path, selfie_path] in that order (verifications.service.ts `shape()`);
+ *  a doc is dropped from the array entirely if its signed URL failed to generate. */
+const DOCUMENT_LABELS = ["Government ID", "Selfie"];
 
 export function toVerificationRow(v: Verification): VerificationRow {
   return {
@@ -162,7 +225,7 @@ export function toVerificationRow(v: Verification): VerificationRow {
     email: v.email,
     date: formatDate(v.submittedAt),
     status: v.status.toLowerCase() as VerificationRow["status"],
-    docs: v.documents.join(" · "),
+    documents: v.documents.map((url, i) => ({ label: DOCUMENT_LABELS[i] ?? `Document ${i + 1}`, url })),
   };
 }
 
@@ -170,6 +233,7 @@ export function toTransactionRow(t: Transaction): TransactionRow {
   const display = TRANSACTION_STATUS_DISPLAY[t.status];
   return {
     id: t.id,
+    jobId: t.jobId,
     customer: t.customerName,
     provider: t.providerName,
     service: t.service,
@@ -178,6 +242,27 @@ export function toTransactionRow(t: Transaction): TransactionRow {
     status: display.label,
     statusClass: display.badgeClass,
     date: formatDate(t.date),
+  };
+}
+
+export function toDisputeRow(d: Dispute): DisputeRow {
+  const display = DISPUTE_STATUS_DISPLAY[d.status];
+  return {
+    id: d.id,
+    jobTitle: d.jobTitle,
+    service: d.service,
+    clientName: d.clientName,
+    providerName: d.providerName,
+    amount: formatCurrency(d.amount),
+    reason: d.reason,
+    details: d.details,
+    status: display.label,
+    statusClass: display.badgeClass,
+    resolution: d.resolution ? DISPUTE_RESOLUTION_LABEL[d.resolution] : null,
+    resolutionNote: d.resolutionNote,
+    createdAt: formatDate(d.createdAt),
+    resolvedAt: d.resolvedAt ? formatDate(d.resolvedAt) : null,
+    isOpen: d.status === "OPEN",
   };
 }
 

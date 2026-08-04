@@ -58,8 +58,8 @@ const StatCard = ({
     <div>
       <div className="text-white font-extrabold" style={{ fontSize: 24 }}>{value}</div>
       {sub && (
-        <div className="flex items-center gap-1 mt-1" style={{ fontSize: 10, color: "var(--success-text)" }}>
-          <TrendingUp size={10} /> {sub}
+        <div className="mt-1" style={{ fontSize: 10, color: "var(--text-muted)" }}>
+          {sub}
         </div>
       )}
     </div>
@@ -77,7 +77,8 @@ const activityIcon = (type: string) => {
 };
 
 export function DashboardPage({ onNavigate }: DashboardPageProps) {
-  const { dashboardStats, revenueSeries, bookingsByCategory, recentActivity, loading } = useApp();
+  const { dashboardStats, revenueSeries, bookingsByCategory, recentActivity, disputes, loading } = useApp();
+  const openDisputes = disputes.filter((d) => d.isOpen).length;
 
   if (loading || !dashboardStats) {
     return (
@@ -122,28 +123,28 @@ export function DashboardPage({ onNavigate }: DashboardPageProps) {
           icon={<Users size={14} />}
           label="Total Users"
           value={dashboardStats.totalUsers.toLocaleString()}
-          sub="+8.3% this month"
+          sub="Registered accounts"
           accent="#6366f1"
         />
         <StatCard
           icon={<ShieldCheck size={14} />}
           label="Active Providers"
           value={dashboardStats.activeProviders}
-          sub="+12 new this week"
+          sub="Currently active"
           accent="#8b5cf6"
         />
         <StatCard
           icon={<CalendarDays size={14} />}
           label="Total Bookings"
           value={dashboardStats.totalBookings.toLocaleString()}
-          sub="+3.1% this week"
+          sub="All-time total"
           accent="#22c55e"
         />
         <StatCard
           icon={<CreditCard size={14} />}
           label="Monthly Revenue"
           value={formatCurrency(dashboardStats.monthlyRevenue)}
-          sub="+10.2% vs last month"
+          sub="Current month"
           accent="#f59e0b"
         />
       </div>
@@ -161,6 +162,23 @@ export function DashboardPage({ onNavigate }: DashboardPageProps) {
           </div>
           <button
             onClick={() => onNavigate("verifications")}
+            className="ml-auto flex items-center gap-1 font-medium transition-opacity hover:opacity-75"
+            style={{ fontSize: 10, color: "var(--indigo-light)", background: "none", border: "none", cursor: "pointer" }}
+          >
+            Review <ArrowUpRight size={10} />
+          </button>
+        </div>
+        <div
+          className="flex items-center gap-3 px-4 py-3 rounded-xl flex-1"
+          style={{ background: "var(--card-bg)", border: "1px solid var(--card-border)" }}
+        >
+          <AlertTriangle size={16} style={{ color: "var(--danger-text)" }} />
+          <div>
+            <div className="text-white font-bold" style={{ fontSize: 18 }}>{openDisputes}</div>
+            <div style={{ fontSize: 10, color: "var(--text-muted)" }}>Open Disputes</div>
+          </div>
+          <button
+            onClick={() => onNavigate("disputes")}
             className="ml-auto flex items-center gap-1 font-medium transition-opacity hover:opacity-75"
             style={{ fontSize: 10, color: "var(--indigo-light)", background: "none", border: "none", cursor: "pointer" }}
           >

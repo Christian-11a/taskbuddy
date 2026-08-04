@@ -15,15 +15,23 @@ interface FieldErrors {
   supportEmail?: string;
 }
 
-const Section = ({ title, icon, children }: { title: string; icon: React.ReactNode; children: React.ReactNode }) => (
+const Section = ({ title, icon, note, children }: { title: string; icon: React.ReactNode; note?: string; children: React.ReactNode }) => (
   <div className="rounded-xl p-5 mb-4" style={{ background: "var(--card-bg)", border: "1px solid var(--card-border)" }}>
-    <div className="flex items-center gap-2 mb-4" style={{ borderBottom: "1px solid var(--border)", paddingBottom: 12 }}>
-      <span style={{ color: "var(--indigo-light)" }}>{icon}</span>
-      <div className="text-white font-semibold" style={{ fontSize: 14 }}>{title}</div>
+    <div className="mb-4" style={{ borderBottom: "1px solid var(--border)", paddingBottom: 12 }}>
+      <div className="flex items-center gap-2">
+        <span style={{ color: "var(--indigo-light)" }}>{icon}</span>
+        <div className="text-white font-semibold" style={{ fontSize: 14 }}>{title}</div>
+      </div>
+      {note && <div style={{ fontSize: 10, color: "var(--warning-text)", marginTop: 6 }}>{note}</div>}
     </div>
     {children}
   </div>
 );
+
+/** Sections below this line only write to localStorage — nothing reaches the
+ *  backend yet. Labelled rather than hidden so the intent stays visible, and so
+ *  nobody mistakes a saved toggle for a working feature. */
+const LOCAL_ONLY_NOTE = "Saved on this device only — not yet connected to the backend.";
 
 function Toggle({ label, sub, value, onChange }: { label: string; sub?: string; value: boolean; onChange: (v: boolean) => void }) {
   return (
@@ -82,14 +90,13 @@ function Field({
 
 export function SettingsPage() {
   const {
-    adminProfile, updateAdminProfile, changePassword,
+    adminProfile, updateDisplayName, changePassword,
     darkMode, setDarkMode,
     sidebarCollapsed, setSidebarCollapsed,
     settings, updateSettings,
   } = useApp();
 
   const [name, setName] = useState(adminProfile.name);
-  const [email, setEmail] = useState(adminProfile.email);
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -106,7 +113,6 @@ export function SettingsPage() {
     // Validate everything up front so all problems show at once.
     const errors: FieldErrors = {
       name: validateName(name, "Display name") ?? undefined,
-      email: validateEmail(email, "Email address") ?? undefined,
       platformName: validateName(settings.platformName, "Platform name") ?? undefined,
       supportEmail: validateEmail(settings.supportEmail, "Support email") ?? undefined,
     };
@@ -133,7 +139,14 @@ export function SettingsPage() {
       setConfirmPassword("");
     }
 
-    updateAdminProfile({ name: name.trim(), email: email.trim() });
+    if (name.trim() !== adminProfile.name) {
+      const ok = await updateDisplayName(name.trim());
+      if (!ok) {
+        setError("Could not save your display name. Please try again.");
+        return;
+      }
+    }
+
     setSaved(true);
     setTimeout(() => setSaved(false), 2500);
   };
@@ -160,12 +173,13 @@ export function SettingsPage() {
         <div>
           <Section title="Account" icon={<Shield size={15} />}>
             <Field label="Display Name" value={name} onChange={setName} error={fieldErrors.name} />
-            <Field label="Email Address" value={email} type="email" onChange={setEmail} error={fieldErrors.email} />
+            {/* Email lives on auth.users, not profiles — no endpoint exposes changing it. */}
+            <Field label="Email Address" value={adminProfile.email} type="email" disabled />
             <Field label="Current Password" value={currentPassword} type="password" onChange={setCurrentPassword} placeholder="Required to change password" error={fieldErrors.currentPassword} />
             <Field label="New Password" value={newPassword} type="password" onChange={setNewPassword} placeholder="Min. 8 characters, letters & numbers" error={fieldErrors.newPassword} />
             <Field label="Confirm New Password" value={confirmPassword} type="password" onChange={setConfirmPassword} placeholder="Re-enter the new password" error={fieldErrors.confirmPassword} />
           </Section>
-          <Section title="Notifications" icon={<Bell size={15} />}>
+          <Section title="Notifications" icon={<Bell size={15} />} note={LOCAL_ONLY_NOTE}>
             <Toggle label="Email alerts for new verifications" value={settings.emailAlerts} onChange={setToggle("emailAlerts")} />
             <Toggle label="Notify on disputed transactions" value={settings.disputeNotify} onChange={setToggle("disputeNotify")} />
             <Toggle label="Daily summary report" sub="Sent every morning at 8 AM" value={settings.dailySummary} onChange={setToggle("dailySummary")} />
@@ -173,7 +187,7 @@ export function SettingsPage() {
           </Section>
         </div>
         <div>
-          <Section title="Platform" icon={<Globe size={15} />}>
+          <Section title="Platform" icon={<Globe size={15} />} note={LOCAL_ONLY_NOTE}>
             <Field label="Platform Name" value={settings.platformName} onChange={(v) => updateSettings({ platformName: v })} error={fieldErrors.platformName} />
             <Field label="Support Email" value={settings.supportEmail} type="email" onChange={(v) => updateSettings({ supportEmail: v })} error={fieldErrors.supportEmail} />
             <Field label="Base Currency" value="PHP (₱)" disabled />
@@ -184,7 +198,7 @@ export function SettingsPage() {
             <Toggle label="Compact sidebar" sub="Collapse the sidebar to icons only" value={sidebarCollapsed} onChange={setSidebarCollapsed} />
             <Toggle label="Show activity badge" sub="Pending count on the Verifications nav item" value={settings.activityBadge} onChange={setToggle("activityBadge")} />
           </Section>
-          <Section title="Data & Privacy" icon={<Database size={15} />}>
+          <Section title="Data & Privacy" icon={<Database size={15} />} note={LOCAL_ONLY_NOTE}>
             <Toggle label="Auto-purge inactive accounts (1 year)" value={settings.autoPurge} onChange={setToggle("autoPurge")} />
             <Toggle label="Anonymize exported reports" value={settings.anonymizeExports} onChange={setToggle("anonymizeExports")} />
             <Toggle label="Audit log retention (90 days)" value={settings.auditLog} onChange={setToggle("auditLog")} />

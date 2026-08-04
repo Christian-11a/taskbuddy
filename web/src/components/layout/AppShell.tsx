@@ -9,7 +9,9 @@ import { DashboardPage } from "@/components/pages/DashboardPage";
 import { VerificationsPage } from "@/components/pages/VerificationsPage";
 import { UsersPage } from "@/components/pages/UsersPage";
 import { TransactionsPage } from "@/components/pages/TransactionsPage";
+import { DisputesPage } from "@/components/pages/DisputesPage";
 import { BookingsPage } from "@/components/pages/BookingsPage";
+import { ActivityLogPage } from "@/components/pages/ActivityLogPage";
 import { ReportsPage } from "@/components/pages/ReportsPage";
 import { SettingsPage } from "@/components/pages/SettingsPage";
 import type { Page } from "@/lib/domain";
@@ -19,7 +21,9 @@ const PAGE_TITLES: Record<Page, string> = {
   verifications: "Verifications",
   users: "User Management",
   transactions: "Transactions",
+  disputes: "Disputes",
   bookings: "Bookings",
+  "activity-log": "Activity Log",
   reports: "Reports & Analytics",
   settings: "Settings",
 };
@@ -66,7 +70,9 @@ export function AppShell() {
           {activePage === "verifications" && <VerificationsPage />}
           {activePage === "users" && <UsersPage />}
           {activePage === "transactions" && <TransactionsPage />}
+          {activePage === "disputes" && <DisputesPage />}
           {activePage === "bookings" && <BookingsPage />}
+          {activePage === "activity-log" && <ActivityLogPage />}
           {activePage === "reports" && <ReportsPage />}
           {activePage === "settings" && <SettingsPage />}
         </main>
