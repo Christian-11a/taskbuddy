@@ -2,10 +2,24 @@ import {
   BadRequestException,
   ForbiddenException,
   Injectable,
+  MessageEvent,
   NotFoundException,
 } from '@nestjs/common';
+import { concatMap, from, interval, mergeMap, switchMap } from 'rxjs';
+import type { Observable } from 'rxjs';
 import { SupabaseService } from '../supabase/supabase.service';
 import type { Profile } from '../common/types';
+
+/**
+ * How often an open stream looks for new messages. Two seconds reads as
+ * instant in a chat while keeping one idle conversation under a thousand
+ * queries an hour — the API runs on Render's free tier and each open stream
+ * holds a request for as long as the screen is open.
+ */
+const STREAM_POLL_MS = 2000;
+
+/** Cap per tick, so a long backlog can't be emitted as one unbounded burst. */
+const STREAM_BATCH = 50;
 
 interface ConversationRow {
   id: string;
@@ -67,7 +81,8 @@ export class ChatService {
       .select(CONVERSATION_SELECT)
       .eq('job_id', jobId)
       .maybeSingle();
-    if (existing.data) return this.shape(existing.data as ConversationRow, user);
+    if (existing.data)
+      return this.shape(existing.data as ConversationRow, user);
 
     const { data: created, error: createError } = await this.supabase.admin
       .from('conversations')
@@ -91,6 +106,65 @@ export class ChatService {
       .order('created_at', { ascending: true });
     if (error) throw new BadRequestException(error.message);
     return data ?? [];
+  }
+
+  /**
+   * Live message feed for one conversation, as Server-Sent Events.
+   *
+   * The transport is SSE rather than Supabase Realtime because of a rule the
+   * app holds to: the device talks to this API and nothing else (mobile/README
+   * — "Every network call goes through src/lib/api.ts"). Realtime would mean
+   * shipping Supabase credentials to the client and giving it a second, RLS-
+   * governed path to the same rows.
+   *
+   * Underneath it is still polling — just moved off the device, where it cost a
+   * screen-wake and a cold-start-prone round trip per tick, to a `created_at >
+   * cursor` query on an already-warm connection. Consumers see push semantics.
+   *
+   * Participation is checked once, before the stream opens. That is sufficient:
+   * a conversation's participants are fixed at creation and only ever grow
+   * stale in the direction of the job ending, and the guard has already
+   * authenticated the token behind this request.
+   */
+  streamMessages(
+    user: Profile,
+    conversationId: string,
+    since?: string,
+  ): Observable<MessageEvent> {
+    return from(this.assertParticipant(user, conversationId)).pipe(
+      switchMap(() => {
+        // Anything created at or before the client's last known message is
+        // already on screen. Absent a cursor, start from "now" — the app has
+        // just fetched the backlog through GET /messages.
+        let cursor = since ?? new Date().toISOString();
+
+        return interval(STREAM_POLL_MS).pipe(
+          concatMap(async (): Promise<MessageEvent[]> => {
+            const { data, error } = await this.supabase.admin
+              .from('messages')
+              .select('*')
+              .eq('conversation_id', conversationId)
+              .gt('created_at', cursor)
+              .order('created_at', { ascending: true })
+              .limit(STREAM_BATCH);
+            // A transient DB error must not tear the connection down; the next
+            // tick retries from the same cursor.
+            if (error) return [];
+
+            const rows = (data ?? []) as { created_at: string }[];
+            if (rows.length === 0) {
+              // A comment-only event keeps proxies (Render's included) from
+              // closing a connection they consider idle.
+              return [{ type: 'ping', data: {} }];
+            }
+
+            cursor = rows[rows.length - 1].created_at;
+            return rows.map((row) => ({ type: 'message', data: row }));
+          }),
+          mergeMap((events) => events),
+        );
+      }),
+    );
   }
 
   async sendMessage(user: Profile, conversationId: string, body: string) {
