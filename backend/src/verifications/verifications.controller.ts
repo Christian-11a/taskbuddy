@@ -1,4 +1,11 @@
-import { Body, Controller, Get, Post, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  HttpCode,
+  Post,
+  UseGuards,
+} from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { Roles } from '../auth/roles.decorator';
 import { CurrentUser } from '../auth/current-user.decorator';
@@ -16,6 +23,17 @@ export class VerificationsController {
   @Post()
   submit(@CurrentUser() user: Profile, @Body() dto: SubmitVerificationDto) {
     return this.verificationsService.submit(user, dto);
+  }
+
+  /**
+   * Starts a Stripe Identity session instead of uploading documents here.
+   * Returns what the mobile SDK needs to present the verification sheet; the
+   * result arrives later by webhook, so the app should poll GET /verifications/me.
+   */
+  @Post('identity-session')
+  @HttpCode(200)
+  startIdentity(@CurrentUser() user: Profile) {
+    return this.verificationsService.startIdentitySession(user);
   }
 
   @Get('me')
