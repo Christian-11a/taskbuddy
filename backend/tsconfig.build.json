@@ -1,4 +1,9 @@
 {
   "extends": "./tsconfig.json",
+  // Its own cache file: this config excludes the spec files that tsconfig.json
+  // includes, so sharing one would make each run invalidate the other's.
+  "compilerOptions": {
+    "tsBuildInfoFile": "./dist/tsconfig.build.tsbuildinfo"
+  },
   "exclude": ["node_modules", "test", "dist", "**/*spec.ts"]
 }

@@ -2,6 +2,7 @@ import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { VerificationsService } from './verifications.service';
 import type { SupabaseService } from '../supabase/supabase.service';
 import type { UploadsService } from '../uploads/uploads.service';
+import type { StripeService } from '../payments/stripe.service';
 import type { Profile } from '../common/types';
 
 type QueryResult = {
@@ -55,6 +56,20 @@ function createUploadsMock(): UploadsService {
   } as unknown as UploadsService;
 }
 
+/**
+ * The manual-review paths under test never reach Stripe. Methods are stubbed
+ * to throw so a test that unexpectedly takes the Identity route fails loudly
+ * instead of quietly passing against an undefined.
+ */
+function createStripeMock(): StripeService {
+  return {
+    get stripe(): never {
+      throw new Error('Stripe should not be reached on the manual path');
+    },
+    publishableKey: 'pk_test_stub',
+  } as unknown as StripeService;
+}
+
 const provider = { id: 'p1', role: 'provider' } as Profile;
 const admin = { id: 'a1', role: 'admin' } as Profile;
 
@@ -66,7 +81,11 @@ describe('VerificationsService', () => {
           { data: null, error: { message: 'duplicate', code: '23505' } },
         ],
       });
-      const service = new VerificationsService(supabase, createUploadsMock());
+      const service = new VerificationsService(
+        supabase,
+        createUploadsMock(),
+        createStripeMock(),
+      );
 
       await expect(
         service.submit(provider, {
@@ -82,7 +101,11 @@ describe('VerificationsService', () => {
         throw new BadRequestException('Upload path does not belong');
       });
       const { supabase } = createSupabaseMock({});
-      const service = new VerificationsService(supabase, uploads);
+      const service = new VerificationsService(
+        supabase,
+        uploads,
+        createStripeMock(),
+      );
 
       await expect(
         service.submit(provider, {
@@ -110,7 +133,11 @@ describe('VerificationsService', () => {
         provider_profiles: [{ data: null, error: null }],
         notifications: [{ data: null, error: null }],
       });
-      const service = new VerificationsService(supabase, createUploadsMock());
+      const service = new VerificationsService(
+        supabase,
+        createUploadsMock(),
+        createStripeMock(),
+      );
 
       const result = await service.approve(admin, 'v1');
 
@@ -133,7 +160,11 @@ describe('VerificationsService', () => {
           },
         ],
       });
-      const service = new VerificationsService(supabase, createUploadsMock());
+      const service = new VerificationsService(
+        supabase,
+        createUploadsMock(),
+        createStripeMock(),
+      );
 
       await expect(service.approve(admin, 'v1')).rejects.toThrow(
         BadRequestException,
@@ -144,7 +175,11 @@ describe('VerificationsService', () => {
       const { supabase } = createSupabaseMock({
         provider_verifications: [{ data: null, error: null }],
       });
-      const service = new VerificationsService(supabase, createUploadsMock());
+      const service = new VerificationsService(
+        supabase,
+        createUploadsMock(),
+        createStripeMock(),
+      );
 
       await expect(service.approve(admin, 'v1')).rejects.toThrow(
         NotFoundException,
@@ -162,7 +197,11 @@ describe('VerificationsService', () => {
         ],
         notifications: [{ data: null, error: null }],
       });
-      const service = new VerificationsService(supabase, createUploadsMock());
+      const service = new VerificationsService(
+        supabase,
+        createUploadsMock(),
+        createStripeMock(),
+      );
 
       await service.reject(admin, 'v1', { reason: 'Blurry photo' });
 
@@ -204,7 +243,11 @@ describe('VerificationsService', () => {
           { data: [{ id: 'p1', email: 'juan@test.com' }], error: null },
         ],
       });
-      const service = new VerificationsService(supabase, createUploadsMock());
+      const service = new VerificationsService(
+        supabase,
+        createUploadsMock(),
+        createStripeMock(),
+      );
 
       const result = await service.list({});
 

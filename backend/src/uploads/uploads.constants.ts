@@ -5,12 +5,18 @@
  * - `verification-docs` — PRIVATE; referenced by provider_verifications (migration 0008).
  *   Never build a public URL for this bucket — admins read it through short-lived
  *   signed download URLs instead.
+ * - `avatars`           — public read; referenced by profiles.avatar_url (migration 0011).
  */
-export const UPLOAD_BUCKETS = ['job-photos', 'verification-docs'] as const;
+export const UPLOAD_BUCKETS = [
+  'job-photos',
+  'verification-docs',
+  'avatars',
+] as const;
 export type UploadBucket = (typeof UPLOAD_BUCKETS)[number];
 
 export const JOB_PHOTOS_BUCKET: UploadBucket = 'job-photos';
 export const VERIFICATION_DOCS_BUCKET: UploadBucket = 'verification-docs';
+export const AVATARS_BUCKET: UploadBucket = 'avatars';
 
 /** Images only — these are job photos and ID/selfie captures. */
 export const UPLOAD_CONTENT_TYPES = [

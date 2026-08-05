@@ -12,9 +12,11 @@ import { SupabaseService } from '../supabase/supabase.service';
 import { isAllowedAppRedirect } from './google-redirect';
 import {
   ChangePasswordDto,
+  ForgotPasswordDto,
   LoginDto,
   RefreshDto,
   RegisterDto,
+  ResetPasswordDto,
 } from './dto/auth.dto';
 import type { Profile } from '../common/types';
 
@@ -189,6 +191,81 @@ export class AuthService implements OnModuleInit {
     );
     if (error) throw new BadRequestException(error.message);
     return { success: true };
+  }
+
+  /**
+   * Step 1 of the reset — mails a recovery code to the address.
+   *
+   * Always reports success. Whether an address has an account is not something
+   * an unauthenticated caller gets to learn: returning 404 for unknown emails
+   * turns this endpoint into a membership oracle anyone can enumerate. Real
+   * failures (Supabase's per-hour email rate limit, SMTP misconfiguration) are
+   * logged here instead, since the caller must not be able to tell those apart
+   * from "no such user" either.
+   *
+   * This delivers a CODE, not a link — see docs/password-reset-setup.md for the
+   * required Supabase email-template change. A mobile app cannot usefully
+   * receive the default link: it lands in the phone's browser, not the app.
+   */
+  async forgotPassword(dto: ForgotPasswordDto) {
+    const { error } = await this.supabase.anon.auth.resetPasswordForEmail(
+      dto.email,
+    );
+    if (error) {
+      this.logger.warn(
+        `Password reset email not sent for ${dto.email}: ${error.message}`,
+      );
+    }
+    return { success: true };
+  }
+
+  /**
+   * Step 2 — exchanges the emailed code for a session, then rotates the
+   * password.
+   *
+   * Verifying the code first is what authenticates the request: only the holder
+   * of the mailbox can produce it, and Supabase enforces its single use and
+   * expiry. The returned session is handed back so the app can drop the user
+   * straight into the signed-in state rather than bouncing them to Login with a
+   * password they just typed twice.
+   */
+  async resetPassword(dto: ResetPasswordDto) {
+    const { data, error } = await this.supabase.anon.auth.verifyOtp({
+      email: dto.email,
+      token: dto.token,
+      type: 'recovery',
+    });
+    if (error || !data.session || !data.user) {
+      throw new UnauthorizedException(
+        error?.message ?? 'That reset code is invalid or has expired',
+      );
+    }
+
+    // Suspended accounts must be rejected here too, consistent with login():
+    // otherwise a reset is a way back in for an account an admin closed.
+    const { data: profile } = await this.supabase.admin
+      .from('profiles')
+      .select('deactivated_at')
+      .eq('id', data.user.id)
+      .maybeSingle();
+    if (profile?.deactivated_at) {
+      await this.supabase.admin.auth.admin.signOut(data.session.access_token);
+      throw new ForbiddenException('Account suspended');
+    }
+
+    const { error: updateError } =
+      await this.supabase.admin.auth.admin.updateUserById(data.user.id, {
+        password: dto.new_password,
+      });
+    if (updateError) throw new BadRequestException(updateError.message);
+
+    return {
+      session: {
+        access_token: data.session.access_token,
+        refresh_token: data.session.refresh_token,
+        expires_at: data.session.expires_at,
+      },
+    };
   }
 
   // ── Google server-side OAuth ───────────────────────────────────────────────

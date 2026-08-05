@@ -32,6 +32,10 @@ recommendation model (see [Recommendation Engine Integration](#9-recommendation-
 16. [Job Pricing, Scheduling & Photos (migration 0007)](#16-job-pricing-scheduling--photos-migration-0007)
 17. [Provider Verification (migration 0008)](#17-provider-verification-migration-0008)
 18. [Escrow & Disputes (migrations 0009-0010)](#18-escrow--disputes-migrations-0009-0010)
+19. [Avatars & User Settings (migration 0011)](#19-avatars--user-settings-migration-0011)
+20. [Push Notifications (migration 0012)](#20-push-notifications-migration-0012)
+21. [Stripe Payments & Identity (migration 0013)](#21-stripe-payments--identity-migration-0013)
+22. [Password Reset](#22-password-reset)
 
 ---
 
@@ -125,10 +129,12 @@ create type notification_type  as enum ('recommendation_invite', 'application_up
 > for the `job_urgency` feature exactly (lowercase).
 
 > **Later migrations extend two of these**, and the block above shows the original 0001 values only:
-> `user_role` gains `'admin'` (0005); `notification_type` gains `'verification_update'` (0008) and
-> `'dispute_update'` (0009). Migrations 0006, 0008 and 0009 also add their own enums —
+> `user_role` gains `'admin'` (0005); `notification_type` gains `'verification_update'` (0008),
+> `'dispute_update'` (0009) and `'payment_update'` (0013). Migrations 0006, 0008, 0009, 0012 and
+> 0013 also add their own enums —
 > `wallet_txn_direction`, `wallet_txn_status`, `booking_status` (§15); `verification_status` (§17);
-> `escrow_status`, `dispute_status`, `dispute_resolution` (§18); `wallet_txn_kind` (0010, §18).
+> `escrow_status`, `dispute_status`, `dispute_resolution` (§18); `wallet_txn_kind` (0010, §18);
+> `device_platform` (§20); `verification_method` (§21).
 
 ---
 
@@ -835,3 +841,205 @@ accepts for the same client could both pass the check and overdraw. In practice 
 two jobs in the same instant is vanishingly rare, and the per-job `unique (job_id)` on
 `escrow_transactions` still prevents double-holding a single job. Closing it properly means moving
 hold into a SQL function with `select ... for update` — worth doing if real money is ever involved.
+
+---
+
+## 19. Avatars & User Settings (migration 0011)
+
+Two gaps mobile/README.md lists under "What's Not Wired Yet".
+
+### `avatars` Storage bucket
+
+`profiles.avatar_url` has existed since 0001, but no bucket was registered for it, so the API
+would not issue an upload URL and the app's "Change Photo" button had nowhere to put the file.
+The bucket is **public**, like `job-photos` and unlike `verification-docs`: an avatar appears on
+every job card and chat header, and signing each one would cost a round-trip per row.
+
+`PATCH /profiles/me` accepts either shape in `avatar_url` and normalises both:
+
+| Sent | Stored |
+|------|--------|
+| `u1/9f3c….jpg` (Storage path from `POST /uploads/signed-url`) | the bucket's public URL |
+| `https://lh3.googleusercontent.com/…` (what Google sign-in supplies) | unchanged |
+| `""` | `NULL` |
+
+Paths are ownership-checked before conversion, and plaintext `http://` is rejected — otherwise a
+profile could beacon every viewer to a third-party server.
+
+### `user_settings`
+
+One row per profile, holding the Settings screen's five toggles: `push_enabled`, `email_enabled`,
+`sms_enabled`, `location_sharing`, `dark_mode`.
+
+**A missing row means "all defaults", not "no settings".** Most users never open the screen, so
+`GET /settings` creates the row on first read with no columns beyond the key — the DDL defaults
+are the single definition of what a default is. `PATCH /settings` upserts, so the first
+interaction can be a toggle rather than a read.
+
+Only `push_enabled` is enforced today (§20). The email and SMS flags are stored so the screen
+round-trips honestly; no transport reads them yet.
+
+**Endpoints:** `GET /settings`, `PATCH /settings`
+
+---
+
+## 20. Push Notifications (migration 0012)
+
+Before this, `notifications` *was* the notification system: rows written by triggers and services,
+polled by the app. mobile/README.md: "The backend has no push-notification transport."
+
+### `device_tokens`
+
+Expo push tokens, **unique on `token`, not per profile**. Reinstalling or signing in as someone
+else on the same handset produces the same token, and the row must follow the current owner
+rather than leaving the previous account receiving that phone's notifications. `POST /devices`
+upserts on it, which is what performs the handover.
+
+Expo rather than FCM/APNs directly: the app ships through Expo Go and EAS builds, so Expo tokens
+are what a device can produce, and going direct would mean provisioning an APNs key and an FCM
+server key for a project that has neither.
+
+### Delivery
+
+`notifications.pushed_at` marks a row as handed to the transport. `NULL` means pending, indexed
+with a partial index so the scan stays proportional to the backlog rather than to a table that
+only ever grows.
+
+`PushScheduler` sweeps every 30 s — an in-process `@Cron`, consistent with
+`RecommendationsScheduler` and for the same reason (no pg_cron/pg_net in this project). A sweep
+is used rather than a call at each write site because rows come from DB triggers as well as
+services, and a trigger has no API request to hang a push off.
+
+Each tick **claims before sending** (stamps `pushed_at`, then delivers), mirroring the status flip
+in `RecommendationsScheduler`. The trade is asymmetric: claiming first can drop a *banner* if the
+send then fails, while sending first can re-push the whole backlog if the stamp fails. Either way
+the row survives — the app reads notifications from the table, not from the push.
+
+Recipients who set `push_enabled = false` are filtered out; a user with no settings row counts as
+opted in (§19). Tokens Expo rejects as `DeviceNotRegistered` are deleted — they are permanently
+undeliverable and would otherwise waste a slot in every future batch.
+
+Delivery is **best-effort**. `notifications` remains the source of truth; a push that never
+arrives costs a banner, never a record.
+
+**Endpoints:** `POST /devices`, `DELETE /devices/:token`
+
+**Env:** `EXPO_ACCESS_TOKEN` (optional — only needed once push security is enabled on the Expo project)
+
+### Realtime chat
+
+`GET /conversations/:id/stream` is a Server-Sent Events feed of one conversation, emitting
+`message` events carrying a full message row plus periodic `ping` events that stop proxies
+reaping the connection as idle. `?since=<created_at>` resumes from the client's newest message.
+
+SSE rather than Supabase Realtime because of a rule the app holds to — the device talks to this
+API and nothing else. Realtime would mean shipping Supabase credentials to the client and giving
+it a second, RLS-governed path to the same rows.
+
+Underneath it is still polling, just moved off the device (where each tick cost a screen-wake and
+a cold-start-prone round trip) onto an already-warm connection. Authentication is the usual
+`Authorization` header, so a browser's built-in `EventSource` cannot open it; the app needs a
+client that sends headers.
+
+---
+
+## 21. Stripe Payments & Identity (migration 0013)
+
+§18 says the wallet ledger is the only account of record and there is no payment gateway. The
+first half stays true — balances are still derived from `wallet_transactions` and nothing else —
+but **topping up stops being an unbacked insert the client asks for**. A `topup` row now exists
+only because Stripe said, on its own webhook, that money moved.
+
+### Funding flow
+
+```
+App  →  POST /payments/topup { amount }
+          Backend  →  creates (or reuses) a Stripe Customer      → profiles.stripe_customer_id
+                   →  ephemeral key + PaymentIntent(metadata: profile_id, purpose)
+App  →  presents PaymentSheet with those parameters
+          Stripe  →  POST /payments/webhook  payment_intent.succeeded
+            Backend  →  inserts wallet_transactions (kind 'topup', stripe_payment_intent_id)
+                     →  inserts a 'payment_update' notification
+```
+
+**The wallet is never credited by the request that opens the sheet.** A PaymentIntent means the
+user opened it, nothing more; a client that reported its own success could mint balance, and
+balance buys labour through escrow. `kind` is `'topup'`, set server-side — the same rule §18
+states, since a row tagged `'payout'` would register as platform revenue.
+
+### Idempotency
+
+Stripe retries until it gets a 2xx, so every handler must be safely repeatable. Two mechanisms:
+
+- `wallet_transactions.stripe_payment_intent_id` is **partial-unique**. A redelivered
+  `payment_intent.succeeded` collides on insert, and that collision *is* the check — it is logged
+  and swallowed, not raised.
+- `stripe_events` records every event id already processed, for handlers with no natural unique
+  column to collide on.
+
+**Events are recorded after the work, never before.** A crash in between means Stripe retries and
+the work is redone — safe, by the two mechanisms above. Recording first would make the opposite
+failure — work never done, event marked handled — permanent and silent.
+
+A real (non-collision) failure is raised, producing a non-2xx so Stripe retries: money reached us
+and the ledger row is not optional.
+
+### Webhook authentication
+
+`POST /payments/webhook` has no JWT — Stripe has no session. It is authenticated by the signature
+over the **raw** request body, which is why `main.ts` sets `rawBody: true`; a body that has been
+through `JSON.parse` and re-encoded will not match. Without that check the endpoint is an
+unauthenticated "credit my wallet" API.
+
+### Stripe Identity
+
+A second route to a verified badge alongside the manual ID + selfie queue from §17. Documents go
+to Stripe and never reach us — this server stops holding government IDs for providers who take
+this route, and the decision arrives by webhook instead of waiting on an admin.
+
+`provider_verifications` gains `method` (`'manual' | 'stripe_identity'`) and `stripe_session_id`.
+The document paths become nullable, with a CHECK keeping the manual route as strict as it was:
+a `'manual'` row still cannot exist without both paths. `uq_provider_verifications_one_pending`
+continues to allow only one open review per provider, whichever route it came in by.
+
+`identity.verification_session.verified` approves and sets `provider_profiles.is_verified`;
+`requires_input` is treated as a rejection carrying Stripe's reason, so the provider's status
+screen stops saying "under review". `reviewed_by` is `NULL` on these rows — no admin made the call.
+
+**Endpoints:** `POST /payments/config`, `POST /payments/topup`, `POST /payments/webhook`,
+`POST /verifications/identity-session`
+
+**Env:** `STRIPE_SECRET_KEY`, `STRIPE_PUBLISHABLE_KEY`, `STRIPE_WEBHOOK_SECRET`,
+`STRIPE_MOBILE_API_VERSION` (optional)
+
+Missing Stripe config warns at boot and returns **503** at the point of use, matching the Google
+OAuth pattern — a developer working on jobs or chat has no reason to hold Stripe keys.
+
+Setup: [`docs/stripe-setup.md`](../docs/stripe-setup.md).
+
+---
+
+## 22. Password Reset
+
+`ForgotPasswordScreen` was UI-only: mobile/README.md, "no backend reset endpoint yet".
+
+Reset is a **code**, not a link. The default Supabase recovery email sends a link, which lands in
+the phone's browser rather than the app and is useless to a React Native client with no deep-link
+handler for it. The template must be changed to emit `{{ .Token }}` — see
+[`docs/password-reset-setup.md`](../docs/password-reset-setup.md).
+
+```
+POST /auth/forgot-password { email }             → { success: true }, always
+POST /auth/reset-password  { email, token, new_password } → { session }
+```
+
+`forgot-password` **always** reports success, including for an address with no account. Returning
+404 for unknown emails would make it a membership oracle anyone could enumerate; real failures
+(Supabase's hourly email cap, SMTP misconfiguration) are logged server-side instead, since the
+caller must not be able to tell those apart either.
+
+`reset-password` verifies the code first — that is what authenticates the request, since only the
+mailbox holder can produce it, and Supabase enforces single use and expiry. Suspended accounts are
+rejected here as they are at login: otherwise a reset is a way back into an account an admin
+closed. The session is returned so the app can land the user signed in rather than bouncing them
+to Login with a password they just typed twice.

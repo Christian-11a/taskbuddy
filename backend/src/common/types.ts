@@ -14,6 +14,8 @@ export type WalletTxnDirection = 'credit' | 'debit';
 export type WalletTxnStatus = 'pending' | 'completed' | 'failed';
 export type BookingStatus = 'scheduled' | 'completed' | 'cancelled';
 export type VerificationStatus = 'pending' | 'approved' | 'rejected';
+export type VerificationMethod = 'manual' | 'stripe_identity';
+export type DevicePlatform = 'ios' | 'android' | 'web';
 
 export interface Profile {
   id: string;
