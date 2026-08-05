@@ -16,6 +16,12 @@
     "rootDir": "./src",
     "types": ["node", "jest"],
     "incremental": true,
+    // Keep the incremental cache inside the output directory. nest-cli.json sets
+    // `deleteOutDir: true`, so `nest start --watch` wipes dist/ on every launch —
+    // with the cache at the project root it survives that wipe, tsc concludes the
+    // deleted output is still current, emits nothing, and `node dist/main` fails
+    // with MODULE_NOT_FOUND. Inside dist/ the two are deleted together.
+    "tsBuildInfoFile": "./dist/tsconfig.tsbuildinfo",
     "skipLibCheck": true,
     "strictNullChecks": true,
     "forceConsistentCasingInFileNames": true,
