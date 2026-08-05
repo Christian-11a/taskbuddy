@@ -169,12 +169,14 @@ All bodies are JSON. 🔒 = requires auth; (client) / (provider) = role-restrict
 | `POST /auth/logout` 🔒 | revoke the session |
 | `GET /auth/me` 🔒 | `{ profile, provider_profile }` |
 | `POST /auth/change-password` 🔒 | `{ current_password, new_password }` — re-authenticates first |
+| `POST /auth/forgot-password` | `{ email }` → mails a 6-digit code. **Always** `{ success: true }`, even for an unknown address — otherwise it's an email-enumeration oracle |
+| `POST /auth/reset-password` | `{ email, token, new_password }` → `{ session }`. Needs the Supabase template to emit `{{ .Token }}` — see [`docs/password-reset-setup.md`](../docs/password-reset-setup.md) |
 
 **Profiles & providers**
 
 | Method & path | Description |
 |---|---|
-| `PATCH /profiles/me` 🔒 | update `full_name, phone, avatar_url, address, city, latitude, longitude` |
+| `PATCH /profiles/me` 🔒 | update `full_name, phone, avatar_url, address, city, latitude, longitude`. `avatar_url` takes either an `avatars` Storage path (converted to a public URL) or an `https://` URL; `""` clears it |
 | `PUT /profiles/me/provider` 🔒 (provider) | `{ category_id, bio (20–400 chars), years_experience?, service_radius_km? }` |
 | `PATCH /profiles/me/provider/availability` 🔒 (provider) | `{ is_available: boolean }` |
 | `GET /providers/:id` 🔒 | public provider card (bio, category, rating, completed jobs) |
@@ -227,6 +229,7 @@ All bodies are JSON. 🔒 = requires auth; (client) / (provider) = role-restrict
 | `GET /conversations/:id/messages` 🔒 | messages, oldest first |
 | `POST /conversations/:id/messages` 🔒 | send `{ body (1–1000) }` |
 | `POST /conversations/:id/read` 🔒 | mark the other participant's messages read |
+| `GET /conversations/:id/stream?since=` 🔒 | **SSE.** `message` events carrying a full message row, plus `ping` keep-alives. `since` = `created_at` of the newest message the client already has. Needs a client that sends an `Authorization` header — browser `EventSource` cannot |
 | `GET /calendar/bookings?from=&to=` 🔒 | caller's bookings (provider or client side), with job + counterpart |
 | `POST /calendar/bookings` 🔒 (provider) | `{ job_id, scheduled_at, duration_minutes?, notes? }` — schedule an assigned job |
 | `PATCH /calendar/bookings/:id` 🔒 (provider) | `{ scheduled_at?, duration_minutes?, status?, notes? }` |
@@ -235,7 +238,7 @@ All bodies are JSON. 🔒 = requires auth; (client) / (provider) = role-restrict
 
 | Method & path | Description |
 |---|---|
-| `POST /uploads/signed-url` 🔒 | `{ bucket: 'job-photos' \| 'verification-docs', content_type }` → `{ bucket, path, upload_url, token }` |
+| `POST /uploads/signed-url` 🔒 | `{ bucket: 'job-photos' \| 'verification-docs' \| 'avatars', content_type }` → `{ bucket, path, upload_url, token }` |
 
 The object path is generated **server-side** as `<profile id>/<uuid>.<ext>` — a
 client-supplied path would let one user overwrite another's ID documents. Upload
@@ -250,7 +253,12 @@ have to buffer every image.
 | Method & path | Description |
 |---|---|
 | `POST /verifications` 🔒 (provider) | `{ id_document_path, selfie_path }` — 400 if one is already pending |
+| `POST /verifications/identity-session` 🔒 (provider) | starts a **Stripe Identity** session instead → `{ verification, session_id, ephemeral_key_secret, url, publishable_key }`. Documents go to Stripe and never reach this server; the result arrives by webhook, so poll `GET /verifications/me` |
 | `GET /verifications/me` 🔒 (provider) | latest submission + status |
+
+Two routes, one queue: a `manual` row carries document paths and waits for an
+admin, a `stripe_identity` row carries none and is resolved by webhook. Only one
+review may be open per provider, whichever route it came in by.
 
 Approval flips `provider_profiles.is_verified`. That flag is a **badge only** —
 applying to jobs is deliberately *not* gated on it, since gating would lock out
@@ -262,6 +270,45 @@ every provider who signed up before verification existed.
 |---|---|
 | `POST /jobs/:jobId/disputes` 🔒 (client) | `{ reason (1–200), details? (≤1000) }` — the job's escrow must still be `held` |
 | `GET /jobs/:jobId/disputes` 🔒 | the job's latest dispute (client or assigned provider) |
+
+**Settings** (🔒 — migration 0011)
+
+| Method & path | Description |
+|---|---|
+| `GET /settings` 🔒 | `{ push_enabled, email_enabled, sms_enabled, location_sharing, dark_mode }` — creates the row with DDL defaults on first read |
+| `PATCH /settings` 🔒 | any subset of those five booleans; upserts, so a toggle works before any read |
+
+Only `push_enabled` is enforced today. The email and SMS flags are stored so the
+screen round-trips honestly; no transport reads them yet.
+
+**Push notifications** (🔒 — migration 0012)
+
+| Method & path | Description |
+|---|---|
+| `POST /devices` 🔒 | `{ token: 'ExponentPushToken[...]', platform: ios/android/web }` — upserts on `token`, so a handset that changes hands follows its new owner |
+| `DELETE /devices/:token` 🔒 | unregister on sign-out. Scoped to the caller's own rows |
+
+Delivery is a 30-second `@Cron` sweep of `notifications` where `pushed_at is
+null`, filtered by each recipient's `push_enabled`. Best-effort: `notifications`
+stays the source of truth, and a push that never lands costs a banner, not a
+record. Tokens Expo rejects as `DeviceNotRegistered` are deleted.
+
+**Payments** (migration 0013 — [`docs/stripe-setup.md`](../docs/stripe-setup.md))
+
+| Method & path | Description |
+|---|---|
+| `POST /payments/config` 🔒 | `{ publishable_key }` — served rather than compiled in, so test↔live is a backend env change |
+| `POST /payments/topup` 🔒 | `{ amount }` (₱20–₱100,000) → PaymentSheet parameters: `{ payment_intent_client_secret, ephemeral_key_secret, customer_id, publishable_key, amount, currency }` |
+| `POST /payments/webhook` | Stripe only. No JWT — authenticated by the signature over the **raw** body |
+
+**The wallet is credited by the webhook, never by `POST /payments/topup`.** That
+call only opens the sheet; a client that reported its own success could mint
+balance, and balance buys labour through escrow. Refresh `GET /wallet` after the
+sheet closes — on a slow webhook the balance can lag a second or two.
+
+Redelivery is safe: `wallet_transactions.stripe_payment_intent_id` is
+partial-unique and the collision *is* the idempotency check. Without Stripe env
+vars these endpoints return **503** and the rest of the API is unaffected.
 
 **Admin** (🔒 admin role only — 401 without a token, 403 for non-admins)
 
