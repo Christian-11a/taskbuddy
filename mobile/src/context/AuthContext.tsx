@@ -34,10 +34,8 @@ import {
 // Required for expo-auth-session to complete the OAuth flow on Android
 WebBrowser.maybeCompleteAuthSession();
 
-// ── Google OAuth configuration ────────────────────────────────────────────────
-// Replace EXPO_PUBLIC_GOOGLE_CLIENT_ID with your actual Web Client ID from the
-// Google Cloud Console (OAuth 2.0 > Web application client).
-const GOOGLE_CLIENT_ID = process.env.EXPO_PUBLIC_GOOGLE_CLIENT_ID ?? '';
+// Google OAuth is driven entirely by the backend (see signInWithGoogle below),
+// so the app holds no client ID or secret of its own.
 
 const SESSION_KEY = 'taskbuddy.session';
 
