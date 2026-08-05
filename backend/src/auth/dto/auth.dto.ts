@@ -52,3 +52,22 @@ export class ChangePasswordDto {
   @MinLength(8)
   new_password!: string;
 }
+
+export class ForgotPasswordDto {
+  @IsEmail()
+  email!: string;
+}
+
+export class ResetPasswordDto {
+  @IsEmail()
+  email!: string;
+
+  /** The recovery code from the email. Supabase issues 6 digits. */
+  @IsString()
+  @IsNotEmpty()
+  token!: string;
+
+  @IsString()
+  @MinLength(8)
+  new_password!: string;
+}

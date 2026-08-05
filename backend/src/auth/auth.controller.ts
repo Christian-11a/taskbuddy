@@ -16,9 +16,11 @@ import type { Response } from 'express';
 import { AuthService } from './auth.service';
 import {
   ChangePasswordDto,
+  ForgotPasswordDto,
   LoginDto,
   RefreshDto,
   RegisterDto,
+  ResetPasswordDto,
 } from './dto/auth.dto';
 import { appendRedirectParams } from './google-redirect';
 import { JwtAuthGuard } from './jwt-auth.guard';
@@ -89,6 +91,20 @@ export class AuthController {
       // No usable redirect — fall through to NestJS's error handler.
       throw err;
     }
+  }
+
+  /** Mails a recovery code. Always 200, even for an address with no account. */
+  @Post('forgot-password')
+  @HttpCode(200)
+  forgotPassword(@Body() dto: ForgotPasswordDto) {
+    return this.authService.forgotPassword(dto);
+  }
+
+  /** Exchanges that code for a session and sets the new password. */
+  @Post('reset-password')
+  @HttpCode(200)
+  resetPassword(@Body() dto: ResetPasswordDto) {
+    return this.authService.resetPassword(dto);
   }
 
   @Post('refresh')

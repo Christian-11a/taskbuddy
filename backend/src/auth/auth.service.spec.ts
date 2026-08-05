@@ -330,3 +330,113 @@ describe('AuthService Google OAuth', () => {
     });
   });
 });
+
+describe('AuthService password reset', () => {
+  function createResetSupabaseMock(options: {
+    resetError?: { message: string } | null;
+    verifyError?: { message: string } | null;
+    deactivatedAt?: string | null;
+    updateError?: { message: string } | null;
+  }) {
+    const resetPasswordForEmail = jest
+      .fn()
+      .mockResolvedValue({ error: options.resetError ?? null });
+    const verifyOtp = jest.fn().mockResolvedValue(
+      options.verifyError
+        ? { data: {}, error: options.verifyError }
+        : {
+            data: { user: { id: 'u1' }, session: SESSION },
+            error: null,
+          },
+    );
+    const updateUserById = jest
+      .fn()
+      .mockResolvedValue({ error: options.updateError ?? null });
+    const signOut = jest.fn().mockResolvedValue({ error: null });
+
+    const supabase = {
+      anon: { auth: { resetPasswordForEmail, verifyOtp } },
+      admin: {
+        auth: { admin: { updateUserById, signOut } },
+        from: jest.fn(() => ({
+          select: jest.fn().mockReturnThis(),
+          eq: jest.fn().mockReturnThis(),
+          maybeSingle: jest.fn().mockResolvedValue({
+            data: { deactivated_at: options.deactivatedAt ?? null },
+            error: null,
+          }),
+        })),
+      },
+    } as unknown as SupabaseService;
+    return { supabase, resetPasswordForEmail, verifyOtp, updateUserById };
+  }
+
+  describe('forgotPassword', () => {
+    it('reports success for an address that has no account', () => {
+      // Anything else turns this endpoint into a membership oracle: an
+      // unauthenticated caller could enumerate which emails are registered.
+      const { supabase } = createResetSupabaseMock({
+        resetError: { message: 'User not found' },
+      });
+      const service = new AuthService(supabase);
+
+      return expect(
+        service.forgotPassword({ email: 'nobody@test.io' }),
+      ).resolves.toEqual({ success: true });
+    });
+
+    it('reports success identically when the email actually sends', async () => {
+      const { supabase, resetPasswordForEmail } = createResetSupabaseMock({});
+      const service = new AuthService(supabase);
+
+      await expect(
+        service.forgotPassword({ email: 'user@test.io' }),
+      ).resolves.toEqual({ success: true });
+      expect(resetPasswordForEmail).toHaveBeenCalledWith('user@test.io');
+    });
+  });
+
+  describe('resetPassword', () => {
+    const dto = {
+      email: 'user@test.io',
+      token: '123456',
+      new_password: 'newsecret123',
+    };
+
+    it('rotates the password and returns a session', async () => {
+      const { supabase, updateUserById } = createResetSupabaseMock({});
+      const service = new AuthService(supabase);
+
+      await expect(service.resetPassword(dto)).resolves.toEqual({
+        session: SESSION,
+      });
+      expect(updateUserById).toHaveBeenCalledWith('u1', {
+        password: 'newsecret123',
+      });
+    });
+
+    it('rejects an expired or wrong code', async () => {
+      const { supabase, updateUserById } = createResetSupabaseMock({
+        verifyError: { message: 'Token has expired' },
+      });
+      const service = new AuthService(supabase);
+
+      await expect(service.resetPassword(dto)).rejects.toThrow(
+        UnauthorizedException,
+      );
+      expect(updateUserById).not.toHaveBeenCalled();
+    });
+
+    it('refuses a suspended account, so reset is not a way back in', async () => {
+      const { supabase, updateUserById } = createResetSupabaseMock({
+        deactivatedAt: '2026-01-01T00:00:00Z',
+      });
+      const service = new AuthService(supabase);
+
+      await expect(service.resetPassword(dto)).rejects.toThrow(
+        ForbiddenException,
+      );
+      expect(updateUserById).not.toHaveBeenCalled();
+    });
+  });
+});
