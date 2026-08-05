@@ -4,6 +4,7 @@ import {
   Controller,
   Get,
   HttpCode,
+  HttpException,
   Post,
   Query,
   Redirect,
@@ -19,6 +20,7 @@ import {
   RefreshDto,
   RegisterDto,
 } from './dto/auth.dto';
+import { appendRedirectParams } from './google-redirect';
 import { JwtAuthGuard } from './jwt-auth.guard';
 import { CurrentUser } from './current-user.decorator';
 import type { AuthenticatedRequest, Profile } from '../common/types';
@@ -72,18 +74,19 @@ export class AuthController {
         refresh_token: session.refresh_token,
         expires_at: String(session.expires_at),
       });
-      return res.redirect(`${appRedirect}?${params.toString()}`);
-    } catch (err: any) {
+      return res.redirect(appendRedirectParams(appRedirect, params));
+    } catch (err: unknown) {
       // Try to send the error back to the app rather than leaving the user
-      // staring at a browser error page.
+      // staring at a browser error page. tryParseAppRedirect enforces the
+      // redirect allowlist, so a forged state can't aim this at a third party.
       const appRedirect = this.authService.tryParseAppRedirect(state ?? '');
       if (appRedirect) {
-        const msg = encodeURIComponent(
-          err?.message ?? 'Google sign-in failed',
-        );
-        return res.redirect(`${appRedirect}?google_error=${msg}`);
+        const message =
+          err instanceof HttpException ? err.message : 'Google sign-in failed';
+        const params = new URLSearchParams({ google_error: message });
+        return res.redirect(appendRedirectParams(appRedirect, params));
       }
-      // State was completely unparseable — fall through to NestJS error handler.
+      // No usable redirect — fall through to NestJS's error handler.
       throw err;
     }
   }
