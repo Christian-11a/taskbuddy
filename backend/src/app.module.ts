@@ -19,6 +19,9 @@ import { CalendarModule } from './calendar/calendar.module';
 import { UploadsModule } from './uploads/uploads.module';
 import { VerificationsModule } from './verifications/verifications.module';
 import { EscrowModule } from './escrow/escrow.module';
+import { SettingsModule } from './settings/settings.module';
+import { PushModule } from './push/push.module';
+import { PaymentsModule } from './payments/payments.module';
 
 @Module({
   imports: [
@@ -42,6 +45,9 @@ import { EscrowModule } from './escrow/escrow.module';
     UploadsModule,
     VerificationsModule,
     EscrowModule,
+    SettingsModule,
+    PushModule,
+    PaymentsModule,
   ],
 })
 export class AppModule {}
