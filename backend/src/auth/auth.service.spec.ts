@@ -1,4 +1,9 @@
-import { ForbiddenException, UnauthorizedException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ForbiddenException,
+  ServiceUnavailableException,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { AuthService } from './auth.service';
 import type { SupabaseService } from '../supabase/supabase.service';
 
@@ -87,5 +92,241 @@ describe('AuthService.login', () => {
     const service = new AuthService(supabase);
 
     await expect(service.login(dto)).rejects.toThrow(UnauthorizedException);
+  });
+});
+
+// ── Google server-side OAuth ─────────────────────────────────────────────────
+
+const GOOGLE_ENV = {
+  GOOGLE_CLIENT_ID: 'client-id.apps.googleusercontent.com',
+  GOOGLE_CLIENT_SECRET: 'client-secret',
+  GOOGLE_CALLBACK_URL: 'https://api.test/auth/google/callback',
+  GOOGLE_STATE_SECRET: 'a'.repeat(64),
+};
+
+const APP_REDIRECT = 'exp://192.168.1.42:8081/--/';
+
+function createGoogleSupabaseMock(
+  options: {
+    idTokenError?: { message: string } | null;
+    deactivatedAt?: string | null;
+  } = {},
+) {
+  const signOut = jest.fn().mockResolvedValue({ error: null });
+  const supabase = {
+    anon: {
+      auth: {
+        signInWithIdToken: jest.fn().mockResolvedValue(
+          options.idTokenError
+            ? { data: {}, error: options.idTokenError }
+            : {
+                data: { user: { id: 'u1' }, session: SESSION },
+                error: null,
+              },
+        ),
+      },
+    },
+    admin: {
+      auth: { admin: { signOut } },
+      from: jest.fn(() => ({
+        select: jest.fn().mockReturnThis(),
+        eq: jest.fn().mockReturnThis(),
+        maybeSingle: jest.fn().mockResolvedValue({
+          data: { deactivated_at: options.deactivatedAt ?? null },
+          error: null,
+        }),
+      })),
+    },
+  } as unknown as SupabaseService;
+  return { supabase, signOut };
+}
+
+/** Runs the real buildGoogleAuthUrl and pulls the signed state back out. */
+function issueState(service: AuthService, appRedirect = APP_REDIRECT): string {
+  const url = new URL(service.buildGoogleAuthUrl(appRedirect));
+  return url.searchParams.get('state')!;
+}
+
+function mockGoogleTokenEndpoint(body: Record<string, unknown>) {
+  const fetchMock = jest
+    .fn()
+    .mockResolvedValue({ json: () => Promise.resolve(body) });
+  global.fetch = fetchMock;
+  return fetchMock;
+}
+
+describe('AuthService Google OAuth', () => {
+  const originalEnv = process.env;
+  const originalFetch = global.fetch;
+
+  beforeEach(() => {
+    process.env = { ...originalEnv, ...GOOGLE_ENV };
+  });
+
+  afterEach(() => {
+    process.env = originalEnv;
+    global.fetch = originalFetch;
+  });
+
+  describe('buildGoogleAuthUrl', () => {
+    it('sends the hashed nonce to Google and keeps the raw nonce in state', () => {
+      const service = new AuthService(createGoogleSupabaseMock().supabase);
+
+      const url = new URL(service.buildGoogleAuthUrl(APP_REDIRECT));
+      const hashedNonce = url.searchParams.get('nonce')!;
+      const state = url.searchParams.get('state')!;
+      const payload = JSON.parse(
+        Buffer.from(
+          state.slice(0, state.lastIndexOf('.')),
+          'base64url',
+        ).toString(),
+      ) as { rawNonce: string; appRedirect: string };
+
+      // Supabase needs the raw nonce; Google must only ever see the hash.
+      expect(hashedNonce).toHaveLength(64);
+      expect(hashedNonce).not.toBe(payload.rawNonce);
+      expect(payload.appRedirect).toBe(APP_REDIRECT);
+      expect(url.searchParams.get('redirect_uri')).toBe(
+        GOOGLE_ENV.GOOGLE_CALLBACK_URL,
+      );
+    });
+
+    it('refuses to issue state for a redirect outside the allowlist', () => {
+      const service = new AuthService(createGoogleSupabaseMock().supabase);
+
+      expect(() => service.buildGoogleAuthUrl('https://evil.example')).toThrow(
+        BadRequestException,
+      );
+    });
+
+    it('reports missing configuration as unavailable rather than a crash', () => {
+      delete process.env.GOOGLE_CLIENT_SECRET;
+      const service = new AuthService(createGoogleSupabaseMock().supabase);
+
+      expect(() => service.buildGoogleAuthUrl(APP_REDIRECT)).toThrow(
+        ServiceUnavailableException,
+      );
+    });
+  });
+
+  describe('handleGoogleCallback', () => {
+    it('exchanges the code and returns the session for a valid state', async () => {
+      const { supabase } = createGoogleSupabaseMock();
+      const service = new AuthService(supabase);
+      const state = issueState(service);
+      mockGoogleTokenEndpoint({ id_token: 'google-id-token' });
+
+      const result = await service.handleGoogleCallback('auth-code', state);
+
+      expect(result.appRedirect).toBe(APP_REDIRECT);
+      expect(result.session).toEqual(SESSION);
+      // The code exchange must happen server-to-server, against the same
+      // redirect_uri Google saw on the authorize call.
+      const sentBody = new URLSearchParams(
+        (global.fetch as jest.Mock).mock.calls[0][1].body as string,
+      );
+      expect(sentBody.get('client_secret')).toBe(
+        GOOGLE_ENV.GOOGLE_CLIENT_SECRET,
+      );
+      expect(sentBody.get('redirect_uri')).toBe(GOOGLE_ENV.GOOGLE_CALLBACK_URL);
+    });
+
+    it('rejects a state whose signature was tampered with', async () => {
+      const service = new AuthService(createGoogleSupabaseMock().supabase);
+      const state = issueState(service);
+      const forged =
+        state.slice(0, state.lastIndexOf('.') + 1) + 'b'.repeat(64);
+
+      await expect(
+        service.handleGoogleCallback('auth-code', forged),
+      ).rejects.toThrow('Invalid state signature');
+    });
+
+    it('rejects a state signed with a different secret', async () => {
+      const service = new AuthService(createGoogleSupabaseMock().supabase);
+      const state = issueState(service);
+      process.env.GOOGLE_STATE_SECRET = 'b'.repeat(64);
+
+      await expect(
+        service.handleGoogleCallback('auth-code', state),
+      ).rejects.toThrow('Invalid state signature');
+    });
+
+    it('rejects a non-hex signature instead of decoding it to a short buffer', async () => {
+      const service = new AuthService(createGoogleSupabaseMock().supabase);
+      const state = issueState(service);
+      const forged = state.slice(0, state.lastIndexOf('.') + 1) + 'zz';
+
+      await expect(
+        service.handleGoogleCallback('auth-code', forged),
+      ).rejects.toThrow('Invalid state signature');
+    });
+
+    it('rejects an expired state', async () => {
+      const service = new AuthService(createGoogleSupabaseMock().supabase);
+      const state = issueState(service);
+      // State carries a 10-minute window.
+      jest.spyOn(Date, 'now').mockReturnValue(Date.now() + 11 * 60 * 1000);
+
+      await expect(
+        service.handleGoogleCallback('auth-code', state),
+      ).rejects.toThrow('State expired');
+
+      jest.spyOn(Date, 'now').mockRestore();
+    });
+
+    it('surfaces a missing id_token from Google', async () => {
+      const service = new AuthService(createGoogleSupabaseMock().supabase);
+      const state = issueState(service);
+      mockGoogleTokenEndpoint({ error_description: 'invalid_client' });
+
+      await expect(
+        service.handleGoogleCallback('auth-code', state),
+      ).rejects.toThrow(UnauthorizedException);
+    });
+
+    it('rejects a suspended account and revokes the fresh session', async () => {
+      const { supabase, signOut } = createGoogleSupabaseMock({
+        deactivatedAt: '2026-07-01T00:00:00Z',
+      });
+      const service = new AuthService(supabase);
+      const state = issueState(service);
+      mockGoogleTokenEndpoint({ id_token: 'google-id-token' });
+
+      await expect(
+        service.handleGoogleCallback('auth-code', state),
+      ).rejects.toThrow(ForbiddenException);
+      expect(signOut).toHaveBeenCalledWith(SESSION.access_token);
+    });
+  });
+
+  describe('tryParseAppRedirect', () => {
+    it('returns the redirect from an allowlisted state', () => {
+      const service = new AuthService(createGoogleSupabaseMock().supabase);
+
+      expect(service.tryParseAppRedirect(issueState(service))).toBe(
+        APP_REDIRECT,
+      );
+    });
+
+    it('returns null for a forged state pointing at a third party', () => {
+      const service = new AuthService(createGoogleSupabaseMock().supabase);
+      // The signature is never checked on this path, so the allowlist is the
+      // only thing preventing an open redirect.
+      const payload = Buffer.from(
+        JSON.stringify({
+          appRedirect: 'https://evil.example',
+          exp: Date.now(),
+        }),
+      ).toString('base64url');
+
+      expect(service.tryParseAppRedirect(`${payload}.deadbeef`)).toBeNull();
+    });
+
+    it('returns null for unparseable state', () => {
+      const service = new AuthService(createGoogleSupabaseMock().supabase);
+
+      expect(service.tryParseAppRedirect('garbage')).toBeNull();
+    });
   });
 });

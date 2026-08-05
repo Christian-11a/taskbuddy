@@ -3,9 +3,13 @@ import {
   BadRequestException,
   ForbiddenException,
   Injectable,
+  Logger,
+  OnModuleInit,
+  ServiceUnavailableException,
   UnauthorizedException,
 } from '@nestjs/common';
 import { SupabaseService } from '../supabase/supabase.service';
+import { isAllowedAppRedirect } from './google-redirect';
 import {
   ChangePasswordDto,
   LoginDto,
@@ -17,9 +21,59 @@ import type { Profile } from '../common/types';
 const GOOGLE_AUTH_URL = 'https://accounts.google.com/o/oauth2/v2/auth';
 const GOOGLE_TOKEN_URL = 'https://oauth2.googleapis.com/token';
 
+const GOOGLE_ENV_KEYS = [
+  'GOOGLE_CLIENT_ID',
+  'GOOGLE_CLIENT_SECRET',
+  'GOOGLE_CALLBACK_URL',
+  'GOOGLE_STATE_SECRET',
+] as const;
+
+interface GoogleConfig {
+  clientId: string;
+  clientSecret: string;
+  callbackUrl: string;
+  stateSecret: string;
+}
+
 @Injectable()
-export class AuthService {
+export class AuthService implements OnModuleInit {
+  private readonly logger = new Logger(AuthService.name);
+
   constructor(private readonly supabase: SupabaseService) {}
+
+  /**
+   * Surfaces missing Google config at boot instead of leaving it to blow up on
+   * a user's first tap. Only a warning — email/password auth and the rest of
+   * the API work fine without Google, so a local dev shouldn't be blocked.
+   */
+  onModuleInit() {
+    const missing = GOOGLE_ENV_KEYS.filter((key) => !process.env[key]);
+    if (missing.length) {
+      this.logger.warn(
+        `Google sign-in is disabled — missing env: ${missing.join(', ')}. ` +
+          'See docs/google-auth-setup.md.',
+      );
+    }
+  }
+
+  /** Reads the Google env vars, failing with a 503 rather than a bare 500. */
+  private googleConfig(): GoogleConfig {
+    const missing = GOOGLE_ENV_KEYS.filter((key) => !process.env[key]);
+    if (missing.length) {
+      this.logger.error(
+        `Google sign-in attempted without config: ${missing.join(', ')}`,
+      );
+      throw new ServiceUnavailableException(
+        'Google sign-in is not configured on this server',
+      );
+    }
+    return {
+      clientId: process.env.GOOGLE_CLIENT_ID!,
+      clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
+      callbackUrl: process.env.GOOGLE_CALLBACK_URL!,
+      stateSecret: process.env.GOOGLE_STATE_SECRET!,
+    };
+  }
 
   /**
    * Creates the auth user with role/full_name metadata; the on_auth_user_created
@@ -148,14 +202,15 @@ export class AuthService {
    * server-side storage.
    *
    * @param appRedirect  The deep-link URI the app passes in — Google never
-   *   sees this, so exp:// and taskbuddy:// both work fine.
+   *   sees this, so exp:// and taskbuddy:// both work fine. It is checked
+   *   against the allowlist here because the callback will later append live
+   *   session tokens to it.
    */
   buildGoogleAuthUrl(appRedirect: string): string {
-    const clientId = process.env.GOOGLE_CLIENT_ID;
-    const callbackUrl = process.env.GOOGLE_CALLBACK_URL;
-    const stateSecret = process.env.GOOGLE_STATE_SECRET;
-    if (!clientId || !callbackUrl || !stateSecret) {
-      throw new Error('Google OAuth environment variables are not configured');
+    const { clientId, callbackUrl, stateSecret } = this.googleConfig();
+
+    if (!isAllowedAppRedirect(appRedirect)) {
+      throw new BadRequestException('app_redirect is not an allowed target');
     }
 
     const rawNonce = crypto.randomUUID();
@@ -175,8 +230,7 @@ export class AuthService {
       .createHmac('sha256', stateSecret)
       .update(payload)
       .digest('hex');
-    const state =
-      Buffer.from(payload).toString('base64url') + '.' + sig;
+    const state = Buffer.from(payload).toString('base64url') + '.' + sig;
 
     const params = new URLSearchParams({
       client_id: clientId,
@@ -192,6 +246,11 @@ export class AuthService {
   /**
    * Attempts to extract appRedirect from a state string without full
    * verification.  Used only for error-redirect fallback in the controller.
+   *
+   * The signature is *not* checked here — by definition this runs when
+   * verification already failed — so an attacker controls the payload. The
+   * allowlist is therefore the only thing standing between this path and an
+   * open redirect, and it is applied before the value is returned.
    */
   tryParseAppRedirect(state: string): string | null {
     try {
@@ -201,7 +260,9 @@ export class AuthService {
         state.substring(0, dotIdx),
         'base64url',
       ).toString();
-      return (JSON.parse(payload) as { appRedirect?: string }).appRedirect ?? null;
+      const { appRedirect } = JSON.parse(payload) as { appRedirect?: string };
+      if (!appRedirect || !isAllowedAppRedirect(appRedirect)) return null;
+      return appRedirect;
     } catch {
       return null;
     }
@@ -219,14 +280,15 @@ export class AuthService {
    *    browser back to the app with the Supabase tokens in the query string.
    */
   async handleGoogleCallback(code: string, state: string) {
-    const stateSecret = process.env.GOOGLE_STATE_SECRET!;
-    const clientId = process.env.GOOGLE_CLIENT_ID!;
-    const clientSecret = process.env.GOOGLE_CLIENT_SECRET!;
-    const callbackUrl = process.env.GOOGLE_CALLBACK_URL!;
+    const { clientId, clientSecret, callbackUrl, stateSecret } =
+      this.googleConfig();
+    if (!code) throw new BadRequestException('Missing authorization code');
+    if (!state) throw new BadRequestException('Missing state parameter');
 
     // ── 1. Verify state ────────────────────────────────────────────────────
     const dotIdx = state.lastIndexOf('.');
-    if (dotIdx === -1) throw new BadRequestException('Malformed state parameter');
+    if (dotIdx === -1)
+      throw new BadRequestException('Malformed state parameter');
 
     const dataPart = state.substring(0, dotIdx);
     const receivedSig = state.substring(dotIdx + 1);
@@ -236,10 +298,19 @@ export class AuthService {
       .update(payload)
       .digest('hex');
 
+    // Reject a malformed signature up front: Buffer.from(_, 'hex') stops at the
+    // first non-hex character, so an unvalidated string can decode to a short
+    // buffer and never reach a meaningful comparison.
+    if (!/^[0-9a-f]{64}$/.test(receivedSig)) {
+      throw new BadRequestException('Invalid state signature');
+    }
     // Constant-time comparison prevents timing attacks.
-    const a = Buffer.from(receivedSig.padEnd(64, '0'), 'hex');
-    const b = Buffer.from(expectedSig.padEnd(64, '0'), 'hex');
-    if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) {
+    if (
+      !crypto.timingSafeEqual(
+        Buffer.from(receivedSig, 'hex'),
+        Buffer.from(expectedSig, 'hex'),
+      )
+    ) {
       throw new BadRequestException('Invalid state signature');
     }
 
@@ -249,6 +320,12 @@ export class AuthService {
       exp: number;
     };
     if (Date.now() > exp) throw new BadRequestException('State expired');
+    // Defence in depth: the signature already proves we issued this redirect,
+    // but re-checking means a leaked GOOGLE_STATE_SECRET still can't be turned
+    // into a token-exfiltration endpoint.
+    if (!isAllowedAppRedirect(appRedirect)) {
+      throw new BadRequestException('app_redirect is not an allowed target');
+    }
 
     // ── 2. Exchange code for id_token ──────────────────────────────────────
     const tokenRes = await fetch(GOOGLE_TOKEN_URL, {

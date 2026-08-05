@@ -27,6 +27,23 @@ The mobile app **never** contacts Google directly. Google only ever sees the
 backend's HTTPS callback URL, which is why it works in both Expo Go and
 production builds.
 
+### Allowed deep-link targets
+
+The final redirect carries a live Supabase session in its query string, so the
+backend only redirects to targets on an allowlist
+(`backend/src/auth/google-redirect.ts`):
+
+| Target | Used by |
+|--------|---------|
+| `taskbuddy://…`, `exp+taskbuddy://…` | standalone and dev-client builds |
+| `exp://<LAN or loopback IP>…`, `exp://….exp.direct` | Expo Go (LAN or tunnel) |
+| `http://localhost:<port>`, `http://127.0.0.1:<port>` | web / local browser dev |
+
+Anything else is rejected with `app_redirect is not an allowed target`. Without
+this, `…/auth/google/authorize?app_redirect=https://attacker.example` would
+deliver a real user's tokens to the attacker. Add new schemes there — not by
+loosening the check.
+
 ---
 
 ## Step 1 — Google Cloud Console
@@ -91,6 +108,8 @@ Once deployed, test the flow end-to-end:
 | `Google did not return an ID token` | Wrong client secret, or client not set to **Web application** type |
 | `Google sign-in failed` | Supabase Google provider not enabled, or wrong Client ID in Supabase dashboard |
 | `Invalid state signature` | `GOOGLE_STATE_SECRET` is missing or mismatched on the server |
+| `Google sign-in is not configured on this server` (503) | One or more `GOOGLE_*` vars missing on Render — the exact names are logged at startup |
+| `app_redirect is not an allowed target` | The app's deep link isn't on the allowlist above (e.g. an Expo tunnel host that isn't `.exp.direct`) |
 
 ---
 
