@@ -129,8 +129,9 @@ interface AppState {
   rejectVerification: (id: string) => Promise<void>;
   bulkApproveVerifications: (ids: string[]) => Promise<void>;
   bulkRejectVerifications: (ids: string[]) => Promise<void>;
-  setUserStatus: (id: string, status: "Active" | "Suspended") => Promise<void>;
-  bulkSetUserStatus: (ids: string[], status: "Active" | "Suspended") => Promise<void>;
+  setUserStatus: (id: string, status: "Active" | "Suspended", suspend?: services.SuspendOptions) => Promise<void>;
+  bulkSetUserStatus: (ids: string[], status: "Active" | "Suspended", suspend?: services.SuspendOptions) => Promise<void>;
+  sendPasswordReset: (id: string) => Promise<boolean>;
   cancelBooking: (id: string) => Promise<void>;
   resolveDispute: (id: string, resolution: DisputeResolution, note?: string) => Promise<void>;
 
@@ -208,7 +209,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     (async () => {
       setLoading(true);
       try {
-        const [users, verifs, txns, disputes, bookings, stats, revenue, bookVol, categories, activity, providers] =
+        const [users, verifs, txns, disputes, bookings, stats, revenue, bookVol, categories, activity, providers, serverDarkMode] =
           await Promise.all([
             services.getUsers(),
             services.getVerifications(),
@@ -221,6 +222,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
             services.getBookingsByCategory(),
             services.getRecentActivity(),
             services.getTopProviders(),
+            services.getDarkModePreference(),
           ]);
         if (cancelled) return;
         setDomainUsers(users);
@@ -234,6 +236,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
         setBookingsByCategory(categories);
         setRecentActivity(activity);
         setTopProviders(providers);
+        // The account's saved preference wins over whatever this device had
+        // cached, so dark mode now follows the admin across devices.
+        if (serverDarkMode !== null) setDarkModeState(serverDarkMode);
         setLoading(false);
       } catch (err) {
         if (cancelled) return;
@@ -331,18 +336,20 @@ export function AppProvider({ children }: { children: ReactNode }) {
   );
 
   const setUserStatus = useCallback(
-    async (id: string, status: "Active" | "Suspended") => {
-      setDomainUsers(await services.setUserStatus(id, STATUS_TO_DOMAIN[status]));
+    async (id: string, status: "Active" | "Suspended", suspend?: services.SuspendOptions) => {
+      setDomainUsers(await services.setUserStatus(id, STATUS_TO_DOMAIN[status], suspend));
     },
     [],
   );
 
   const bulkSetUserStatus = useCallback(
-    async (ids: string[], status: "Active" | "Suspended") => {
-      setDomainUsers(await services.bulkSetUserStatus(ids, STATUS_TO_DOMAIN[status]));
+    async (ids: string[], status: "Active" | "Suspended", suspend?: services.SuspendOptions) => {
+      setDomainUsers(await services.bulkSetUserStatus(ids, STATUS_TO_DOMAIN[status], suspend));
     },
     [],
   );
+
+  const sendPasswordReset = useCallback((id: string) => services.sendPasswordReset(id), []);
 
   const cancelBooking = useCallback(async (id: string) => {
     setDomainBookings(await services.cancelBooking(id));
@@ -356,7 +363,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
   );
 
   // ── preferences setters ──
-  const setDarkMode = useCallback((val: boolean) => setDarkModeState(val), []);
+  const setDarkMode = useCallback((val: boolean) => {
+    setDarkModeState(val);
+    void services.updateDarkModePreference(val);
+  }, []);
   const setSidebarCollapsed = useCallback((val: boolean) => setSidebarCollapsedState(val), []);
   const updateSettings = useCallback(
     (patch: Partial<ConsoleSettings>) => setSettings((prev) => ({ ...prev, ...patch })),
@@ -381,7 +391,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         recentActivity, topProviders,
         approveVerification, rejectVerification,
         bulkApproveVerifications, bulkRejectVerifications,
-        setUserStatus, bulkSetUserStatus, cancelBooking, resolveDispute,
+        setUserStatus, bulkSetUserStatus, sendPasswordReset, cancelBooking, resolveDispute,
         darkMode, setDarkMode,
         sidebarCollapsed, setSidebarCollapsed,
         settings, updateSettings,

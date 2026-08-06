@@ -1,8 +1,10 @@
 "use client";
 
 import { useState } from "react";
-import { Search, ChevronDown, Check, RotateCcw } from "lucide-react";
+import { Search, ChevronDown, Check, RotateCcw, MessagesSquare } from "lucide-react";
 import { useApp } from "@/context/AppContext";
+import * as services from "@/lib/services";
+import type { ConversationMessage } from "@/lib/domain";
 import clsx from "clsx";
 
 type Filter = "all" | "open" | "resolved" | "cancelled";
@@ -14,6 +16,25 @@ export function DisputesPage() {
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [confirming, setConfirming] = useState<{ id: string; resolution: "RELEASED_TO_PROVIDER" | "REFUNDED_TO_CLIENT" } | null>(null);
   const [resolvingId, setResolvingId] = useState<string | null>(null);
+  // GET /admin/jobs/:jobId/conversation (migration 0014) — read-only, fetched
+  // on demand per dispute and cached by job id.
+  const [conversationJobId, setConversationJobId] = useState<string | null>(null);
+  const [conversations, setConversations] = useState<Record<string, ConversationMessage[] | "loading" | "error">>({});
+
+  function toggleConversation(jobId: string) {
+    if (conversationJobId === jobId) {
+      setConversationJobId(null);
+      return;
+    }
+    setConversationJobId(jobId);
+    if (!(jobId in conversations)) {
+      setConversations((prev) => ({ ...prev, [jobId]: "loading" }));
+      services
+        .getJobConversation(jobId)
+        .then((messages) => setConversations((prev) => ({ ...prev, [jobId]: messages })))
+        .catch(() => setConversations((prev) => ({ ...prev, [jobId]: "error" })));
+    }
+  }
 
   const filtered = disputes.filter((d) => {
     const matchFilter = filter === "all" || d.status.toLowerCase() === filter;
@@ -182,6 +203,37 @@ export function DisputesPage() {
                       </div>
                     )}
                   </div>
+
+                  <button
+                    onClick={() => toggleConversation(d.jobId)}
+                    className="flex items-center gap-1.5 font-semibold transition-colors mt-3"
+                    style={{ background: "rgba(99,102,241,0.15)", border: "1px solid rgba(99,102,241,0.25)", borderRadius: 9, padding: "5px 12px", fontSize: 11, color: "var(--indigo-light)", cursor: "pointer", fontFamily: "inherit" }}
+                  >
+                    <MessagesSquare size={11} /> {conversationJobId === d.jobId ? "Hide conversation" : "View conversation"}
+                  </button>
+
+                  {conversationJobId === d.jobId && (
+                    <div className="mt-2 rounded-lg" style={{ background: "var(--card-bg)", border: "1px solid var(--card-border)", padding: 10, maxHeight: 240, overflowY: "auto" }}>
+                      {conversations[d.jobId] === "loading" && (
+                        <div style={{ fontSize: 10.8, color: "var(--text-muted)" }}>Loading conversation…</div>
+                      )}
+                      {conversations[d.jobId] === "error" && (
+                        <div style={{ fontSize: 10.8, color: "var(--danger-text)" }}>Could not load the conversation.</div>
+                      )}
+                      {Array.isArray(conversations[d.jobId]) && (conversations[d.jobId] as ConversationMessage[]).length === 0 && (
+                        <div style={{ fontSize: 10.8, color: "var(--text-muted)" }}>No messages in this job's chat.</div>
+                      )}
+                      {Array.isArray(conversations[d.jobId]) &&
+                        (conversations[d.jobId] as ConversationMessage[]).map((m) => (
+                          <div key={m.id} className="mb-2 last:mb-0" style={{ fontSize: 11 }}>
+                            <div className="text-white font-medium">
+                              {m.senderName} <span style={{ fontSize: 9.8, color: "var(--text-muted)", fontWeight: 400 }}>{new Date(m.createdAt).toLocaleString()}</span>
+                            </div>
+                            <div style={{ color: "var(--text-light)" }}>{m.body}</div>
+                          </div>
+                        ))}
+                    </div>
+                  )}
                 </div>
               )}
             </div>

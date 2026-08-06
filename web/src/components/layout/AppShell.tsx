@@ -12,6 +12,7 @@ import { TransactionsPage } from "@/components/pages/TransactionsPage";
 import { DisputesPage } from "@/components/pages/DisputesPage";
 import { BookingsPage } from "@/components/pages/BookingsPage";
 import { ActivityLogPage } from "@/components/pages/ActivityLogPage";
+import { AuditLogPage } from "@/components/pages/AuditLogPage";
 import { ReportsPage } from "@/components/pages/ReportsPage";
 import { SettingsPage } from "@/components/pages/SettingsPage";
 import type { Page } from "@/lib/domain";
@@ -24,6 +25,7 @@ const PAGE_TITLES: Record<Page, string> = {
   disputes: "Disputes",
   bookings: "Bookings",
   "activity-log": "Activity Log",
+  "audit-log": "Audit Log",
   reports: "Reports & Analytics",
   settings: "Settings",
 };
@@ -73,6 +75,7 @@ export function AppShell() {
           {activePage === "disputes" && <DisputesPage />}
           {activePage === "bookings" && <BookingsPage />}
           {activePage === "activity-log" && <ActivityLogPage />}
+          {activePage === "audit-log" && <AuditLogPage />}
           {activePage === "reports" && <ReportsPage />}
           {activePage === "settings" && <SettingsPage />}
         </main>

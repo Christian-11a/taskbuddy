@@ -118,6 +118,9 @@ export interface UserRow {
   rating: string;
   /** Raw value for exports and sorting; null when the provider has no ratings. */
   ratingValue: number | null;
+  /** "—" when not suspended or the suspension is indefinite (migration 0014). */
+  suspendedUntil: string;
+  suspensionReason: string;
 }
 
 export interface VerificationDocument {
@@ -138,6 +141,7 @@ export interface VerificationRow {
 
 export interface DisputeRow {
   id: string;
+  jobId: string;
   jobTitle: string;
   service: string;
   clientName: string;
@@ -210,6 +214,8 @@ export function toUserRow(u: AdminUser): UserRow {
     jobsCompleted: u.jobsCompleted,
     rating: u.rating ? `⭐ ${u.rating}` : "Not yet rated",
     ratingValue: u.rating,
+    suspendedUntil: u.suspendedUntil ? formatDate(u.suspendedUntil) : "—",
+    suspensionReason: u.suspensionReason ?? "—",
   };
 }
 
@@ -249,6 +255,7 @@ export function toDisputeRow(d: Dispute): DisputeRow {
   const display = DISPUTE_STATUS_DISPLAY[d.status];
   return {
     id: d.id,
+    jobId: d.jobId,
     jobTitle: d.jobTitle,
     service: d.service,
     clientName: d.clientName,

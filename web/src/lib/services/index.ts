@@ -15,8 +15,12 @@ import {
   mapTopProviders,
 } from "./mapAnalytics";
 import type {
+  AdminActionApiRow,
   AdminBookingApiRow,
+  AdminBookingDetailApiResponse,
+  AdminConversationApiResponse,
   AdminDisputeApiRow,
+  AdminMessageApiRow,
   AdminTransactionApiRow,
   AdminUserApiRow,
   AdminVerificationApiRow,
@@ -24,18 +28,23 @@ import type {
   DisputeResolutionApi,
   EscrowStatusApi,
   ListActivityApiResponse,
+  ListAuditApiResponse,
   ListBookingsApiResponse,
   ListDisputesApiResponse,
   ListTransactionsApiResponse,
   ListUsersApiResponse,
   ListVerificationsApiResponse,
   LoginApiResponse,
+  UserSettingsApiResponse,
 } from "@/lib/api/types";
 import type {
   ActivityEvent,
   AdminBooking,
+  AdminBookingDetail,
   AdminUser,
+  AuditAction,
   CategoryShare,
+  ConversationMessage,
   DashboardStats,
   Dispute,
   DisputeResolution,
@@ -68,6 +77,8 @@ function mapUserRow(row: AdminUserApiRow): AdminUser {
     phone: row.phone ?? null,
     city: row.city ?? null,
     categoryName: row.category_name ?? null,
+    suspendedUntil: row.suspended_until ?? null,
+    suspensionReason: row.suspension_reason ?? null,
   };
 }
 
@@ -158,6 +169,27 @@ function mapDisputeRow(
   };
 }
 
+function mapAuditRow(row: AdminActionApiRow): AuditAction {
+  return {
+    id: row.id,
+    actorName: row.actor?.full_name ?? "Unknown admin",
+    action: row.action,
+    targetType: row.target_type,
+    targetId: row.target_id,
+    metadata: row.metadata,
+    createdAt: row.created_at,
+  };
+}
+
+function mapMessageRow(row: AdminMessageApiRow): ConversationMessage {
+  return {
+    id: row.id,
+    senderName: row.sender_name ?? "Unknown",
+    body: row.body,
+    createdAt: row.created_at,
+  };
+}
+
 // ─── Auth ─────────────────────────────────────────────────────────────────────
 
 export async function login(email: string, password: string): Promise<boolean> {
@@ -214,6 +246,30 @@ export async function changePassword(current: string, next: string): Promise<boo
       current_password: current,
       new_password: next,
     });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * The admin's own `dark_mode` preference (migration 0011). This is the only
+ * field on `/settings` with a real admin-console counterpart — the rest
+ * (push/email/sms/location_sharing) belong to the mobile app's Settings
+ * screen, so they aren't read or written here.
+ */
+export async function getDarkModePreference(): Promise<boolean | null> {
+  try {
+    const res = await client.get<UserSettingsApiResponse>("/settings");
+    return res.dark_mode;
+  } catch {
+    return null;
+  }
+}
+
+export async function updateDarkModePreference(darkMode: boolean): Promise<boolean> {
+  try {
+    await client.patch("/settings", { dark_mode: darkMode });
     return true;
   } catch {
     return false;
@@ -315,6 +371,21 @@ export async function getTopProviders(): Promise<TopProvider[]> {
   return mapTopProviders(await getAnalyticsSummary());
 }
 
+/** GET /admin/audit (migration 0014) — the real admin moderation trail. */
+export async function getAuditLog(): Promise<AuditAction[]> {
+  const { actions } = await client.get<ListAuditApiResponse>("/admin/audit?limit=100");
+  return actions.map(mapAuditRow);
+}
+
+/** GET /admin/jobs/:jobId/conversation (migration 0014) — read-only, admins
+ *  can never post into a user conversation. */
+export async function getJobConversation(jobId: string): Promise<ConversationMessage[]> {
+  const { messages } = await client.get<AdminConversationApiResponse>(
+    `/admin/jobs/${jobId}/conversation`,
+  );
+  return messages.map(mapMessageRow);
+}
+
 // ─── Mutations ────────────────────────────────────────────────────────────────
 
 export async function approveVerification(id: string): Promise<Verification[]> {
@@ -338,10 +409,26 @@ export async function bulkRejectVerifications(ids: string[]): Promise<Verificati
   return getVerifications();
 }
 
-export async function setUserStatus(id: string, status: UserStatus): Promise<AdminUser[]> {
-  await client.post(
-    status === "SUSPENDED" ? `/admin/users/${id}/suspend` : `/admin/users/${id}/reinstate`,
-  );
+/** Backend migration 0014 made `reason` required on suspend — omitted only
+ *  when reinstating, which takes no body. */
+export interface SuspendOptions {
+  reason: string;
+  durationDays?: number;
+}
+
+export async function setUserStatus(
+  id: string,
+  status: UserStatus,
+  suspend?: SuspendOptions,
+): Promise<AdminUser[]> {
+  if (status === "SUSPENDED") {
+    await client.post(`/admin/users/${id}/suspend`, {
+      reason: suspend?.reason ?? "",
+      duration_days: suspend?.durationDays,
+    });
+  } else {
+    await client.post(`/admin/users/${id}/reinstate`);
+  }
   return getUsers();
 }
 
@@ -351,20 +438,51 @@ export async function setUserStatus(id: string, status: UserStatus): Promise<Adm
  * swallowed rather than aborting the rest: the final refetch reflects exactly
  * what actually changed, so the UI stays honest even when some ids fail.
  */
-export async function bulkSetUserStatus(ids: string[], status: UserStatus): Promise<AdminUser[]> {
+export async function bulkSetUserStatus(
+  ids: string[],
+  status: UserStatus,
+  suspend?: SuspendOptions,
+): Promise<AdminUser[]> {
   await Promise.all(
     ids.map((id) =>
-      client
-        .post(status === "SUSPENDED" ? `/admin/users/${id}/suspend` : `/admin/users/${id}/reinstate`)
-        .catch(() => null),
+      (status === "SUSPENDED"
+        ? client.post(`/admin/users/${id}/suspend`, {
+            reason: suspend?.reason ?? "",
+            duration_days: suspend?.durationDays,
+          })
+        : client.post(`/admin/users/${id}/reinstate`)
+      ).catch(() => null),
     ),
   );
   return getUsers();
 }
 
+export async function sendPasswordReset(id: string): Promise<boolean> {
+  try {
+    await client.post(`/admin/users/${id}/send-password-reset`);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export async function cancelBooking(id: string): Promise<AdminBooking[]> {
   await client.post(`/admin/bookings/${id}/cancel`);
   return getBookings();
+}
+
+/** GET /admin/bookings/:id (migration 0014) — fetched on demand when a row
+ *  is expanded, not part of the list load. */
+export async function getBookingDetail(id: string): Promise<AdminBookingDetail> {
+  const row = await client.get<AdminBookingDetailApiResponse>(`/admin/bookings/${id}`);
+  return {
+    description: row.description,
+    address: row.address,
+    scheduledAt: row.scheduled_at,
+    photoUrls: row.photo_urls ?? [],
+    escrowStatus: row.escrow ? TRANSACTION_STATUS[row.escrow.status] : null,
+    escrowAmount: row.escrow ? Number(row.escrow.amount) : null,
+  };
 }
 
 export async function resolveDispute(

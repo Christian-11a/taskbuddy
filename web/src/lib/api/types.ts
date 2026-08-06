@@ -5,6 +5,19 @@
 // web/src/lib/domain.ts shapes by the services layer; nothing outside
 // lib/services should import from here.
 
+/** Per-user preferences (migration 0011). Only `dark_mode` has an admin-console
+ *  counterpart today — the rest exist for the mobile app's Settings screen. */
+export interface UserSettingsApiResponse {
+  profile_id: string;
+  push_enabled: boolean;
+  email_enabled: boolean;
+  sms_enabled: boolean;
+  location_sharing: boolean;
+  dark_mode: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface LoginApiResponse {
   user: {
     id: string;
@@ -30,6 +43,9 @@ export interface AdminUserApiRow {
   phone: string | null;
   city: string | null;
   category_name: string | null;
+  /** Added by migration 0014. Null unless the account is under a timed suspension. */
+  suspended_until: string | null;
+  suspension_reason: string | null;
 }
 
 export interface ListUsersApiResponse {
@@ -183,4 +199,46 @@ export interface AdminActivityApiRow {
 export interface ListActivityApiResponse {
   items: AdminActivityApiRow[];
   total: number;
+}
+
+// ─── Admin console follow-ups (migration 0014) ────────────────────────────────
+
+/** GET /admin/bookings/:id — the list row's fields plus whatever `select('*')`
+ *  on `jobs` carries (description, address, scheduled_at, photo_urls), plus
+ *  the linked escrow transaction. */
+export interface AdminBookingDetailApiResponse extends AdminBookingApiRow {
+  description: string | null;
+  address: string | null;
+  scheduled_at: string | null;
+  photo_urls: string[] | null;
+  escrow: { amount: number | string; status: EscrowStatusApi } | null;
+}
+
+export interface AdminActionApiRow {
+  id: string;
+  actor_id: string;
+  action: string;
+  target_type: string;
+  target_id: string;
+  metadata: Record<string, unknown>;
+  created_at: string;
+  actor: { id: string; full_name: string } | null;
+}
+
+export interface ListAuditApiResponse {
+  actions: AdminActionApiRow[];
+  total: number;
+}
+
+export interface AdminMessageApiRow {
+  id: string;
+  sender_id: string;
+  sender_name: string | null;
+  body: string;
+  read_at: string | null;
+  created_at: string;
+}
+
+export interface AdminConversationApiResponse {
+  messages: AdminMessageApiRow[];
 }
