@@ -174,3 +174,13 @@ export interface AdminActivityApiRow {
   jobs: { title: string } | null;
   changed_by: { full_name: string } | null;
 }
+
+/**
+ * GET /admin/activity's response shape as of backend migration 0014
+ * (BACKEND_SCHEMA.md §23.4) — was a bare AdminActivityApiRow[] before
+ * pagination/date-filtering existed.
+ */
+export interface ListActivityApiResponse {
+  items: AdminActivityApiRow[];
+  total: number;
+}

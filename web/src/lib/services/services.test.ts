@@ -192,6 +192,34 @@ describe("getBookings amount", () => {
   });
 });
 
+describe("getRecentActivity", () => {
+  it("unwraps { items, total } into a flat mapped array", async () => {
+    global.fetch = vi.fn(() =>
+      Promise.resolve(
+        jsonResponse({
+          items: [
+            {
+              id: 1,
+              old_status: "in_progress",
+              new_status: "completed",
+              changed_at: new Date().toISOString(),
+              jobs: { title: "Fix sink" },
+              changed_by: { full_name: "Bob" },
+            },
+          ],
+          total: 1,
+        }),
+      ),
+    ) as unknown as typeof fetch;
+
+    const activity = await services.getRecentActivity();
+
+    expect(activity).toEqual([
+      { time: "just now", text: 'Booking "Fix sink" was completed', type: "tx" },
+    ]);
+  });
+});
+
 describe("getVerifications", () => {
   it("maps rows and uppercases the backend's lowercase status", async () => {
     global.fetch = vi.fn(() =>
