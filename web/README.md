@@ -30,6 +30,7 @@ The admin dashboard for the TaskBuddy platform (`web/` in the repo). Next.js 16 
 - ⚠️ Disputes — review and resolve, releasing escrow to the provider or refunding the client
 - 📅 Booking Tracker — search, filter, cancel, row drill-down
 - 🕓 Activity Log — booking status transitions with search, type filter, sort
+- 📜 Audit Log — every admin moderation action (suspend, reinstate, cancel, dispute resolution) with who and why
 - 📈 Reports & Analytics — area chart, pie chart, bar chart, top providers
 - 📤 CSV export on Users, Transactions, Bookings, Activity Log, and Reports
 - ⚙️ Settings — account, notifications, platform, appearance
@@ -126,13 +127,14 @@ Domain types in `lib/domain.ts` mirror the backend's real enums (`user_role`,
 | Login | `POST /auth/login` (now returns `full_name`, so the header shows a name, not an email) |
 | Dashboard | `GET /admin/analytics/summary`, `GET /admin/activity` |
 | Verifications | `GET /admin/verifications`, `POST /admin/verifications/:id/approve` · `/reject` |
-| Users | `GET /admin/users`, `POST /admin/users/:id/suspend` · `/reinstate` |
+| Users | `GET /admin/users`, `POST /admin/users/:id/suspend` (reason + optional duration) · `/reinstate` · `/send-password-reset` |
 | Transactions | `GET /admin/transactions` (escrow records — backend migration 0009) |
-| Disputes | `GET /admin/disputes`, `POST /admin/disputes/:id/resolve` |
-| Bookings | `GET /admin/bookings`, `POST /admin/bookings/:id/cancel` |
+| Disputes | `GET /admin/disputes`, `POST /admin/disputes/:id/resolve`, `GET /admin/jobs/:jobId/conversation` (read-only, on demand) |
+| Bookings | `GET /admin/bookings`, `POST /admin/bookings/:id/cancel`, `GET /admin/bookings/:id` (row expansion, on demand) |
 | Activity Log | `GET /admin/activity` (same source as the dashboard feed) |
+| Audit Log | `GET /admin/audit` — every admin moderation action, who did it, and why |
 | Reports | `GET /admin/analytics/summary` |
-| Settings | `PATCH /profiles/me` (display name), `POST /auth/change-password`. Email is read-only and the remaining toggles are local-only — see [What's Still Needed](#whats-still-needed-from-the-backend) |
+| Settings | `PATCH /profiles/me` (display name), `POST /auth/change-password`, `GET`/`PATCH /settings` (dark mode, migration 0011). Email is read-only and the Notifications/Platform/Data & Privacy toggles are still local-only — see [What's Still Needed](#whats-still-needed-from-the-backend) |
 
 Bulk actions call the existing single-item endpoints once per selected id in
 parallel; a per-id failure is swallowed so one refusal (e.g. suspending an
@@ -166,68 +168,41 @@ both lists are real, so is the bell; it never needed a backend of its own.
 
 ## What's Still Needed From the Backend
 
-**Status: all seven items below now have a real backend** (migration 0014 +
-service/controller changes) — see `backend/BACKEND_SCHEMA.md` §23 for the
-authoritative contracts. This section is kept as a record of what shipped and,
-for most items, **what the console still needs to actually call the new
-endpoint** — the backend work didn't include new UI beyond the one breaking
-change (#4) that an existing screen already depended on.
+**Status: all seven items are done, backend and UI.** Migration 0014 shipped
+the backend (see `backend/BACKEND_SCHEMA.md` §23), and the console now calls
+every one of these endpoints.
 
-Ordered by how much they'd improve the console per unit of work.
-
-### 1. Timed suspensions (with a reason) — backend done, UI not wired
-
-`POST /admin/users/:id/suspend` now accepts `{ duration_days?: number, reason: string }`
-(omit `duration_days` for indefinite) and `admin_user_overview` returns
-`suspended_until`/`suspension_reason`. Expiry is lifted lazily wherever
-`deactivated_at` is already checked (login) — no cron job. **Not yet done:** the
-Suspend button/modal in Users still calls the old no-body form; it needs a
-reason field (and optionally a duration picker) before this is usable.
-
-### 2. Admin-triggered password reset — backend done, UI not wired
-
-`POST /admin/users/:id/send-password-reset` → `{ sent: true }`, refusing
-`role = 'admin'` targets. **Not yet done:** no button/action exists on the
-Users page or a user's detail view to call it.
-
-### 3. Booking detail endpoint — backend done, UI not wired
-
-`GET /admin/bookings/:id` → the full job plus its escrow record if one exists.
-**Not yet done:** the Bookings row expansion still renders only what the list
-endpoint already returned; it isn't calling this endpoint for the extra fields
-(description, address, `scheduled_at`, `photo_urls`) yet.
-
-### 4. Activity Log pagination and date filtering — done, wired
-
-`GET /admin/activity?limit=&offset=&from=&to=` now returns `{ items, total }`
-(was a bare array). Both existing consumers (`getRecentActivity()` in
-`lib/services/index.ts`, used by both the Dashboard feed and the Activity Log
-page) were updated to unwrap `.items`, so nothing broke. Neither page paginates
-yet, though — both still just render the same list the backend used to return
-by default (newest 20). Actually building pagination/date-range controls into
-the Activity Log page is separate frontend work.
-
-### 5. Real admin audit log — backend done, UI not wired
-
-New `admin_actions` table, written from `AdminService.suspend/reinstate/cancelBooking`,
-`VerificationsService.approve/reject`, and `DisputesService.resolve`.
-`GET /admin/audit?action=&actor_id=&from=&to=&limit=&offset=` → `{ actions, total }`.
-**Not yet done:** there is no Audit Log page or panel in the console — this
-endpoint has no UI consumer at all yet.
-
-### 6. Admin read-only access to a job's chat — backend done, UI not wired
-
-`GET /admin/jobs/:jobId/conversation` → `{ messages: [{ ...message, sender_name }] }`,
-oldest first; returns an empty list rather than 404 for a job with no
-conversation yet. **Not yet done:** the Disputes detail view doesn't render
-this — an admin resolving a dispute still can't see the conversation from
-the console.
-
-### 7. Verification submission pre-check — done, transparent to the UI
-
-`POST /verifications` now rejects a missing/zero-byte/non-image upload before
-inserting the row. This is mobile-side (the provider's submission flow, not
-`web/`), so there's nothing for the admin console to wire up.
+1. **Timed suspensions, with a reason.** The Suspend action in Users (single
+   and bulk) now opens an inline prompt requiring a reason and taking an
+   optional duration in days — `POST /admin/users/:id/suspend` refuses an
+   empty reason, matching backend validation. A suspended user's detail row
+   shows `suspended_until`/`suspension_reason` from `admin_user_overview`.
+2. **Admin-triggered password reset.** A user's expanded detail row (Users
+   page) has a "Send password reset" button calling
+   `POST /admin/users/:id/send-password-reset`; hidden for admin accounts,
+   which the backend refuses anyway.
+3. **Booking detail endpoint.** Expanding a Bookings row now fetches
+   `GET /admin/bookings/:id` on demand (cached per id) and renders
+   description, address, scheduled time, escrow status, and job photos below
+   the fields the list already had.
+4. **Activity Log pagination and date filtering.** `GET /admin/activity`
+   returns `{ items, total }`; `getRecentActivity()` unwraps `.items`. The
+   Dashboard feed and Activity Log page both still render the default
+   newest-20 window — building actual pagination/date-range controls into the
+   Activity Log page is left as further UI work, since the backend already
+   accepts `limit/offset/from/to` whenever that's wanted.
+5. **Real admin audit log.** A new **Audit Log** page (own sidebar entry)
+   lists `admin_actions` — every suspend/reinstate/cancel/verification
+   decision/dispute resolution — with the acting admin, target, reason (from
+   metadata), and timestamp, via `GET /admin/audit`.
+6. **Admin read-only access to a job's chat.** Each dispute's expanded row has
+   a "View conversation" toggle that fetches
+   `GET /admin/jobs/:jobId/conversation` on demand and renders the messages
+   oldest-first, read-only.
+7. **Verification submission pre-check.** `POST /verifications` now rejects a
+   missing/zero-byte/non-image upload before inserting the row. This is
+   mobile-side (the provider's submission flow), so there was nothing for the
+   admin console to wire up.
 
 ### Deliberately not planned
 
@@ -238,10 +213,13 @@ inserting the row. This is mobile-side (the provider's submission flow, not
 - **A support-ticket inbox.** A user↔admin messaging subsystem is its own
   product surface (tickets, assignment, statuses, SLAs). Item 6 above covers the
   actual operational need — seeing conversation context during a dispute.
-- **Making the inert Settings toggles real.** Notifications, Platform, and Data
-  & Privacy are marked "Saved on this device only" in the UI. Wiring them up
-  means an email service and a retention job — real infrastructure for little
-  demonstrable gain. Better honest than falsely functional.
+- **Making the remaining inert Settings toggles real.** Dark Mode now persists
+  server-side via `GET`/`PATCH /settings` (backend migration 0011 added a
+  `dark_mode` column). Notifications, Platform, and Data & Privacy are still
+  marked "Saved on this device only" — that backend table has no fields for
+  them (it's the mobile app's settings screen, sharing the same per-user
+  table), and wiring them for real still means an email service and a
+  retention job. Better honest than falsely functional.
 
 ### Also worth knowing
 

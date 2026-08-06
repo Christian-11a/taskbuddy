@@ -117,8 +117,8 @@ describe("getUsers", () => {
     const users = await services.getUsers();
 
     expect(users).toEqual([
-      { id: "u1", email: "a@b.c", role: "client", createdAt: "2026-01-01", name: "Alice", status: "ACTIVE", jobsCompleted: 0, rating: null, phone: null, city: null, categoryName: null },
-      { id: "u2", email: "b@b.c", role: "provider", createdAt: "2026-01-02", name: "Bob", status: "SUSPENDED", jobsCompleted: 9, rating: 4.5, phone: "0917 555 0101", city: "Cebu", categoryName: "Plumbing" },
+      { id: "u1", email: "a@b.c", role: "client", createdAt: "2026-01-01", name: "Alice", status: "ACTIVE", jobsCompleted: 0, rating: null, phone: null, city: null, categoryName: null, suspendedUntil: null, suspensionReason: null },
+      { id: "u2", email: "b@b.c", role: "provider", createdAt: "2026-01-02", name: "Bob", status: "SUSPENDED", jobsCompleted: 9, rating: 4.5, phone: "0917 555 0101", city: "Cebu", categoryName: "Plumbing", suspendedUntil: null, suspensionReason: null },
     ]);
   });
 });

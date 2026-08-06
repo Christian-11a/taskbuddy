@@ -12,6 +12,7 @@ export type Page =
   | "transactions"
   | "disputes"
   | "activity-log"
+  | "audit-log"
   | "bookings"
   | "reports"
   | "settings";
@@ -40,6 +41,9 @@ export interface AdminUser {
   city: string | null;
   /** The provider's service category; null for clients. */
   categoryName: string | null;
+  /** Null unless the account is under a timed suspension (migration 0014). */
+  suspendedUntil: string | null;
+  suspensionReason: string | null;
 }
 
 // ─── Verifications ────────────────────────────────────────────────────────────
@@ -122,6 +126,38 @@ export interface AdminBooking {
    *  out of scope). Not sourced from the backend; see the design spec's
    *  non-goals. */
   amount: number;
+}
+
+/** GET /admin/bookings/:id (migration 0014) — fetched on demand when a row
+ *  is expanded, not part of the list. */
+export interface AdminBookingDetail {
+  description: string | null;
+  address: string | null;
+  scheduledAt: string | null;
+  photoUrls: string[];
+  escrowStatus: TransactionStatus | null;
+  escrowAmount: number | null;
+}
+
+// ─── Admin audit log (migration 0014) ─────────────────────────────────────────
+
+export interface AuditAction {
+  id: string;
+  actorName: string;
+  action: string;
+  targetType: string;
+  targetId: string;
+  metadata: Record<string, unknown>;
+  createdAt: string;
+}
+
+// ─── Admin read-only chat (migration 0014) ────────────────────────────────────
+
+export interface ConversationMessage {
+  id: string;
+  senderName: string;
+  body: string;
+  createdAt: string;
 }
 
 // ─── Analytics / dashboard ────────────────────────────────────────────────────

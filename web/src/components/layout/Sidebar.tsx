@@ -2,7 +2,7 @@
 
 import {
   ShieldCheck, Users, CreditCard, CalendarDays, AlertTriangle, History,
-  BarChart3, Settings, LogOut, LayoutDashboard, ChevronLeft, ChevronRight,
+  BarChart3, Settings, LogOut, LayoutDashboard, ChevronLeft, ChevronRight, ScrollText,
 } from "lucide-react";
 import type { Page } from "@/lib/domain";
 import { useApp } from "@/context/AppContext";
@@ -35,6 +35,7 @@ export function Sidebar({ activePage, onNavigate, onLogout, collapsed, onToggleC
     { id: "disputes", label: "Disputes", icon: <AlertTriangle size={15} />, badge: openDisputeCount || undefined },
     { id: "bookings", label: "Bookings", icon: <CalendarDays size={15} /> },
     { id: "activity-log", label: "Activity Log", icon: <History size={15} /> },
+    { id: "audit-log", label: "Audit Log", icon: <ScrollText size={15} /> },
     { id: "reports", label: "Reports", icon: <BarChart3 size={15} /> },
   ];
 

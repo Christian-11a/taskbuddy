@@ -1,7 +1,7 @@
 "use client";
 
 import { Fragment, useState } from "react";
-import { Search, CheckCircle, PauseCircle, ChevronDown, Download } from "lucide-react";
+import { Search, CheckCircle, PauseCircle, ChevronDown, Download, KeyRound } from "lucide-react";
 import { useApp } from "@/context/AppContext";
 import { datedFilename, downloadCsv, toCsv } from "@/lib/export/csv";
 import clsx from "clsx";
@@ -9,12 +9,19 @@ import clsx from "clsx";
 type RoleFilter = "all" | "provider" | "customer";
 
 export function UsersPage() {
-  const { users, setUserStatus, bulkSetUserStatus } = useApp();
+  const { users, setUserStatus, bulkSetUserStatus, sendPasswordReset } = useApp();
   const [search, setSearch] = useState("");
   const [roleFilter, setRoleFilter] = useState<RoleFilter>("all");
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [bulkBusy, setBulkBusy] = useState(false);
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  // Backend migration 0014 made `reason` required on suspend — a prompt
+  // rather than a modal since this is a one-off admin action, not a form.
+  const [suspending, setSuspending] = useState<{ id: string; bulk: boolean } | null>(null);
+  const [suspendReason, setSuspendReason] = useState("");
+  const [suspendDays, setSuspendDays] = useState("");
+  const [resetBusyId, setResetBusyId] = useState<string | null>(null);
+  const [resetSentId, setResetSentId] = useState<string | null>(null);
 
   const filtered = users.filter((u) => {
     const matchSearch =
@@ -44,15 +51,58 @@ export function UsersPage() {
     setSelected(allSelected ? new Set() : new Set(selectable.map((u) => u.id)));
   }
 
-  async function runBulk(status: "Active" | "Suspended") {
+  async function activateSelected() {
     const ids = [...selected];
     if (ids.length === 0) return;
     setBulkBusy(true);
     try {
-      await bulkSetUserStatus(ids, status);
+      await bulkSetUserStatus(ids, "Active");
       setSelected(new Set());
     } finally {
       setBulkBusy(false);
+    }
+  }
+
+  function openSuspendPrompt(id: string) {
+    setSuspendReason("");
+    setSuspendDays("");
+    setSuspending({ id, bulk: false });
+  }
+
+  function openBulkSuspendPrompt() {
+    if (selected.size === 0) return;
+    setSuspendReason("");
+    setSuspendDays("");
+    setSuspending({ id: "", bulk: true });
+  }
+
+  async function confirmSuspend() {
+    if (!suspending || !suspendReason.trim()) return;
+    const days = suspendDays.trim() ? Number(suspendDays) : undefined;
+    setBulkBusy(true);
+    try {
+      if (suspending.bulk) {
+        await bulkSetUserStatus([...selected], "Suspended", { reason: suspendReason.trim(), durationDays: days });
+        setSelected(new Set());
+      } else {
+        await setUserStatus(suspending.id, "Suspended", { reason: suspendReason.trim(), durationDays: days });
+      }
+      setSuspending(null);
+    } finally {
+      setBulkBusy(false);
+    }
+  }
+
+  async function handleSendReset(id: string) {
+    setResetBusyId(id);
+    try {
+      const ok = await sendPasswordReset(id);
+      if (ok) {
+        setResetSentId(id);
+        setTimeout(() => setResetSentId((cur) => (cur === id ? null : cur)), 3000);
+      }
+    } finally {
+      setResetBusyId(null);
     }
   }
 
@@ -136,7 +186,7 @@ export function UsersPage() {
         <div className="flex items-center gap-3 mb-3 flex-wrap" style={{ fontSize: 11.4 }}>
           <span style={{ color: "var(--text-muted)" }}>{selected.size} selected</span>
           <button
-            onClick={() => runBulk("Active")}
+            onClick={activateSelected}
             disabled={bulkBusy}
             className="flex items-center gap-1.5 font-semibold transition-colors disabled:opacity-40"
             style={{ background: "rgba(34,197,94,0.15)", border: "1px solid rgba(34,197,94,0.2)", borderRadius: 9, padding: "4px 12px", fontSize: 11, color: "var(--success-text)", cursor: "pointer", fontFamily: "inherit" }}
@@ -144,13 +194,55 @@ export function UsersPage() {
             <CheckCircle size={11} /> Activate selected
           </button>
           <button
-            onClick={() => runBulk("Suspended")}
+            onClick={openBulkSuspendPrompt}
             disabled={bulkBusy}
             className="flex items-center gap-1.5 font-semibold transition-colors disabled:opacity-40"
             style={{ background: "rgba(245,158,11,0.15)", border: "1px solid rgba(245,158,11,0.2)", borderRadius: 9, padding: "4px 12px", fontSize: 11, color: "#f59e0b", cursor: "pointer", fontFamily: "inherit" }}
           >
             <PauseCircle size={11} /> Suspend selected
           </button>
+        </div>
+      )}
+
+      {suspending && (
+        <div className="rounded-xl mb-3 flex flex-col gap-2" style={{ background: "rgba(245,158,11,0.08)", border: "1px solid rgba(245,158,11,0.25)", padding: "12px 14px" }}>
+          <div className="text-white font-semibold" style={{ fontSize: 12 }}>
+            {suspending.bulk ? `Suspend ${selected.size} selected user(s)` : "Suspend this user"}
+          </div>
+          <input
+            autoFocus
+            placeholder="Reason (required)"
+            value={suspendReason}
+            onChange={(e) => setSuspendReason(e.target.value)}
+            className="text-white outline-none"
+            style={{ background: "var(--input-bg)", border: "1px solid var(--border-md)", borderRadius: 9, padding: "7px 11px", fontSize: 11.4, fontFamily: "inherit" }}
+          />
+          <input
+            placeholder="Duration in days (blank = indefinite)"
+            type="number"
+            min={1}
+            value={suspendDays}
+            onChange={(e) => setSuspendDays(e.target.value)}
+            className="text-white outline-none"
+            style={{ background: "var(--input-bg)", border: "1px solid var(--border-md)", borderRadius: 9, padding: "7px 11px", fontSize: 11.4, fontFamily: "inherit", maxWidth: 240 }}
+          />
+          <div className="flex items-center gap-2 mt-1">
+            <button
+              onClick={confirmSuspend}
+              disabled={bulkBusy || !suspendReason.trim()}
+              className="font-semibold transition-colors disabled:opacity-40"
+              style={{ background: "rgba(245,158,11,0.2)", border: "1px solid rgba(245,158,11,0.3)", borderRadius: 9, padding: "5px 14px", fontSize: 11, color: "#f59e0b", cursor: "pointer", fontFamily: "inherit" }}
+            >
+              {bulkBusy ? "Suspending…" : "Confirm suspend"}
+            </button>
+            <button
+              onClick={() => setSuspending(null)}
+              className="font-semibold transition-colors"
+              style={{ background: "transparent", border: "1px solid var(--border-md)", borderRadius: 9, padding: "5px 14px", fontSize: 11, color: "var(--text-muted)", cursor: "pointer", fontFamily: "inherit" }}
+            >
+              Cancel
+            </button>
+          </div>
         </div>
       )}
 
@@ -219,7 +311,7 @@ export function UsersPage() {
                       </button>
                       <button
                         title="Suspend"
-                        onClick={() => setUserStatus(u.id, "Suspended")}
+                        onClick={() => openSuspendPrompt(u.id)}
                         disabled={u.status === "Suspended"}
                         className="flex items-center justify-center rounded-lg transition-colors hover:bg-white/10 disabled:opacity-30"
                         style={{ width: 26, height: 26, background: "transparent", border: "none", cursor: u.status === "Suspended" ? "default" : "pointer", color: "#f59e0b" }}
@@ -250,6 +342,12 @@ export function UsersPage() {
                           ["JOBS COMPLETED", String(u.jobsCompleted)],
                           ["RATING", u.rating],
                           ["ACCOUNT STATUS", u.status],
+                          ...(u.status === "Suspended"
+                            ? [
+                                ["SUSPENDED UNTIL", u.suspendedUntil === "—" ? "Indefinite" : u.suspendedUntil],
+                                ["SUSPENSION REASON", u.suspensionReason],
+                              ]
+                            : []),
                         ].map(([label, value]) => (
                           <div key={label}>
                             <div style={{ fontSize: 9.8, color: "var(--text-muted)", marginBottom: 3 }}>{label}</div>
@@ -257,6 +355,19 @@ export function UsersPage() {
                           </div>
                         ))}
                       </div>
+                      {u.rolePlain !== "Admin" && (
+                        <div className="mt-3">
+                          <button
+                            onClick={() => handleSendReset(u.id)}
+                            disabled={resetBusyId === u.id}
+                            className="flex items-center gap-1.5 font-semibold transition-colors disabled:opacity-40"
+                            style={{ background: "rgba(99,102,241,0.15)", border: "1px solid rgba(99,102,241,0.25)", borderRadius: 9, padding: "5px 12px", fontSize: 11, color: "var(--indigo-light)", cursor: "pointer", fontFamily: "inherit" }}
+                          >
+                            <KeyRound size={11} />
+                            {resetSentId === u.id ? "Reset email sent" : resetBusyId === u.id ? "Sending…" : "Send password reset"}
+                          </button>
+                        </div>
+                      )}
                     </td>
                   </tr>
                 )}
