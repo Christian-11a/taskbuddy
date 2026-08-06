@@ -252,7 +252,7 @@ have to buffer every image.
 
 | Method & path | Description |
 |---|---|
-| `POST /verifications` 🔒 (provider) | `{ id_document_path, selfie_path }` — 400 if one is already pending |
+| `POST /verifications` 🔒 (provider) | `{ id_document_path, selfie_path }` — 400 if one is already pending, or if either upload fails the pre-check (missing/zero-byte/non-image object; migration 0014) |
 | `POST /verifications/identity-session` 🔒 (provider) | starts a **Stripe Identity** session instead → `{ verification, session_id, ephemeral_key_secret, url, publishable_key }`. Documents go to Stripe and never reach this server; the result arrives by webhook, so poll `GET /verifications/me` |
 | `GET /verifications/me` 🔒 (provider) | latest submission + status |
 
@@ -316,12 +316,16 @@ vars these endpoints return **503** and the rest of the API is unaffected.
 |---|---|
 | `GET /admin/users?search=&role=&status=&limit=&offset=` | search/filter users (`role`: client/provider/admin, `status`: active/suspended) |
 | `GET /admin/users/:id` | single user detail (from `admin_user_overview`) |
-| `POST /admin/users/:id/suspend` | deactivate an account (blocks their login) — refuses if already suspended or if the target is an admin |
+| `POST /admin/users/:id/suspend` | `{ duration_days?, reason }` — refuses if already suspended or if the target is an admin. Omit `duration_days` for indefinite; otherwise the suspension lifts itself the next time `deactivated_at` is checked (login), no cron job |
 | `POST /admin/users/:id/reinstate` | reactivate a suspended account |
+| `POST /admin/users/:id/send-password-reset` | admin-triggered password reset email — refuses admin targets (migration 0014) |
 | `GET /admin/bookings?status=&category_id=&limit=&offset=` | platform-wide bookings view (story #31) |
+| `GET /admin/bookings/:id` | one booking's full detail, plus its escrow record if one exists (migration 0014) |
 | `POST /admin/bookings/:id/cancel` | force-cancel a booking — refuses if already `completed`/`cancelled`/`expired` |
 | `GET /admin/analytics/summary` | totals (users/clients/providers/suspended/bookings/avg_rating/revenue/`pending_verifications`), bookings by status/category, daily booking trend, revenue trend, top 10 providers by completed jobs (story #32) |
-| `GET /admin/activity` | newest 20 job-status transitions, as a **bare array** (not `{ items, total }`) |
+| `GET /admin/activity?limit=&offset=&from=&to=` | job-status transitions → `{ items, total }` (migration 0014 — was a bare array of the newest 20) |
+| `GET /admin/audit?action=&actor_id=&from=&to=&limit=&offset=` | the admin action audit trail → `{ actions, total }` (migration 0014) — see below |
+| `GET /admin/jobs/:jobId/conversation` | read-only view of a job's chat, oldest first, for dispute review (migration 0014) |
 | `GET /admin/verifications?status=&limit=&offset=` | review queue; rows carry provider name, email, and short-lived signed document URLs |
 | `POST /admin/verifications/:id/approve` | approve → sets `provider_profiles.is_verified` |
 | `POST /admin/verifications/:id/reject` | `{ reason? }` |
@@ -334,10 +338,12 @@ Admin accounts can't self-register (`POST /auth/register` only allows
 everyone else — there's no separate admin login endpoint. See
 `0005_admin_role.sql` above for how to promote an account to `admin`.
 
-**Not yet implemented on the admin side:** an *admin-resets-another-user's*
-password endpoint. (Admins can rotate their own password via
-`POST /auth/change-password`.) Verifications and Transactions are now real —
-see migrations 0008 and 0009.
+**Admin audit trail** (migration 0014, `admin_actions` table, service-role only
+— never client-readable outside `GET /admin/audit`): every `suspend`,
+`reinstate`, `bookings/:id/cancel`, verification `approve`/`reject`, and
+dispute `resolve` writes a row (`actor_id`, `action` like `user.suspend`,
+`target_type`, `target_id`, `metadata`). Distinct from `job_status_history`,
+which audits job lifecycle transitions, not the admin behind a decision.
 
 ### Escrow, in one paragraph
 
