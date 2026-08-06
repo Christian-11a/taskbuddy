@@ -166,84 +166,68 @@ both lists are real, so is the bell; it never needed a backend of its own.
 
 ## What's Still Needed From the Backend
 
-Everything currently on this console runs on real data. The items below are
-features we deliberately **did not** build in `web/` because they need backend
-work first — building the UI now would mean shipping buttons that call
-endpoints that don't exist. They're written as API requests so they can be
-implemented directly from this list.
+**Status: all seven items below now have a real backend** (migration 0014 +
+service/controller changes) — see `backend/BACKEND_SCHEMA.md` §23 for the
+authoritative contracts. This section is kept as a record of what shipped and,
+for most items, **what the console still needs to actually call the new
+endpoint** — the backend work didn't include new UI beyond the one breaking
+change (#4) that an existing screen already depended on.
 
 Ordered by how much they'd improve the console per unit of work.
 
-### 1. Timed suspensions (with a reason)
+### 1. Timed suspensions (with a reason) — backend done, UI not wired
 
-Today `POST /admin/users/:id/suspend` is permanent-until-manually-reversed, and
-records no reason. A suspension nobody can explain six months later isn't much
-use, and "suspend forever or not at all" is a blunt instrument for moderation.
+`POST /admin/users/:id/suspend` now accepts `{ duration_days?: number, reason: string }`
+(omit `duration_days` for indefinite) and `admin_user_overview` returns
+`suspended_until`/`suspension_reason`. Expiry is lifted lazily wherever
+`deactivated_at` is already checked (login) — no cron job. **Not yet done:** the
+Suspend button/modal in Users still calls the old no-body form; it needs a
+reason field (and optionally a duration picker) before this is usable.
 
-- `profiles` needs `suspended_until timestamptz null` and `suspension_reason text null`
-- `POST /admin/users/:id/suspend` accepts `{ duration_days?: number, reason: string }`
-  — omit `duration_days` for an indefinite suspension
-- Expiry can be checked at login (`deactivated_at is not null and (suspended_until is null or suspended_until > now())`)
-  rather than needing a cron job
-- Return `suspended_until` and `suspension_reason` on `admin_user_overview` so
-  the Users table can show "Suspended until Aug 12" instead of just "Suspended"
+### 2. Admin-triggered password reset — backend done, UI not wired
 
-### 2. Admin-triggered password reset
+`POST /admin/users/:id/send-password-reset` → `{ sent: true }`, refusing
+`role = 'admin'` targets. **Not yet done:** no button/action exists on the
+Users page or a user's detail view to call it.
 
-There's no way for an admin to help a user who's locked out. Supabase Auth
-already provides the mechanism (`resetPasswordForEmail`); this is a thin
-wrapper, not a new subsystem.
+### 3. Booking detail endpoint — backend done, UI not wired
 
-- `POST /admin/users/:id/send-password-reset` → `{ sent: true }`
-- Should refuse for `role = 'admin'` targets, matching how `suspend` already does
+`GET /admin/bookings/:id` → the full job plus its escrow record if one exists.
+**Not yet done:** the Bookings row expansion still renders only what the list
+endpoint already returned; it isn't calling this endpoint for the extra fields
+(description, address, `scheduled_at`, `photo_urls`) yet.
 
-### 3. Booking detail endpoint
+### 4. Activity Log pagination and date filtering — done, wired
 
-The Bookings table can expand a row, but only shows what the list already
-returns. The job's description, address, `scheduled_at`, and `photo_urls` are
-all on the `jobs` row and never reach the console.
+`GET /admin/activity?limit=&offset=&from=&to=` now returns `{ items, total }`
+(was a bare array). Both existing consumers (`getRecentActivity()` in
+`lib/services/index.ts`, used by both the Dashboard feed and the Activity Log
+page) were updated to unwrap `.items`, so nothing broke. Neither page paginates
+yet, though — both still just render the same list the backend used to return
+by default (newest 20). Actually building pagination/date-range controls into
+the Activity Log page is separate frontend work.
 
-- `GET /admin/bookings/:id` → the full job, plus client/provider/category joins
-  and the escrow record if one exists
+### 5. Real admin audit log — backend done, UI not wired
 
-### 4. Activity Log pagination and date filtering
+New `admin_actions` table, written from `AdminService.suspend/reinstate/cancelBooking`,
+`VerificationsService.approve/reject`, and `DisputesService.resolve`.
+`GET /admin/audit?action=&actor_id=&from=&to=&limit=&offset=` → `{ actions, total }`.
+**Not yet done:** there is no Audit Log page or panel in the console — this
+endpoint has no UI consumer at all yet.
 
-`GET /admin/activity` is hardcoded to the newest 20 rows with no query params,
-so the Activity Log page can only ever show those 20. This is a change to an
-existing endpoint, not a new feature.
+### 6. Admin read-only access to a job's chat — backend done, UI not wired
 
-- `GET /admin/activity?limit=&offset=&from=&to=` → `{ items, total }`
-  (note: it currently returns a **bare array**, so this is a breaking shape
-  change — worth doing now while the only consumer is this console)
+`GET /admin/jobs/:jobId/conversation` → `{ messages: [{ ...message, sender_name }] }`,
+oldest first; returns an empty list rather than 404 for a job with no
+conversation yet. **Not yet done:** the Disputes detail view doesn't render
+this — an admin resolving a dispute still can't see the conversation from
+the console.
 
-### 5. Real admin audit log
+### 7. Verification submission pre-check — done, transparent to the UI
 
-The Activity Log page shows *booking* status transitions, sourced from
-`job_status_history`. There is no record anywhere of **admin** actions — who
-approved a verification, who suspended an account, who resolved a dispute and
-which way. That's the one gap most likely to be asked about in review.
-
-- A table along the lines of `admin_actions (id, actor_id, action, target_type,
-  target_id, metadata jsonb, created_at)`
-- Written from `admin.service.ts` (suspend/reinstate/cancel),
-  `verifications.service.ts` (approve/reject), `disputes.service.ts` (resolve)
-- `GET /admin/audit?action=&actor_id=&from=&to=&limit=&offset=`
-
-### 6. Admin read-only access to a job's chat
-
-When resolving a dispute, the client and provider's conversation is the primary
-evidence and there's no way to see it. The `conversations`/`messages` tables
-already exist (migration 0006) — this only needs a read endpoint.
-
-- `GET /admin/jobs/:jobId/conversation` → messages with sender names, oldest first
-- Read-only: admins should never be able to post into a user conversation
-
-### 7. Verification submission pre-check
-
-Not identity verification — just a usability guard so admins don't open blank
-or corrupt submissions. On `POST /verifications`, reject obviously unusable
-uploads (missing object, zero-byte, not a decodable image) with a clear message
-so the provider can resubmit immediately instead of waiting for a rejection.
+`POST /verifications` now rejects a missing/zero-byte/non-image upload before
+inserting the row. This is mobile-side (the provider's submission flow, not
+`web/`), so there's nothing for the admin console to wire up.
 
 ### Deliberately not planned
 
