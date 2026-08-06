@@ -7,6 +7,7 @@ import {
 import { SupabaseService } from '../supabase/supabase.service';
 import { UploadsService } from '../uploads/uploads.service';
 import { StripeService } from '../payments/stripe.service';
+import { AdminActionsService } from '../admin/admin-actions.service';
 import { VERIFICATION_DOCS_BUCKET } from '../uploads/uploads.constants';
 import {
   ListVerificationsQueryDto,
@@ -50,6 +51,7 @@ export class VerificationsService {
     private readonly supabase: SupabaseService,
     private readonly uploads: UploadsService,
     private readonly stripe: StripeService,
+    private readonly adminActions: AdminActionsService,
   ) {}
 
   // ── Provider side ─────────────────────────────────────────────────────────
@@ -58,6 +60,15 @@ export class VerificationsService {
     this.uploads.assertOwnedPaths(user, [
       dto.id_document_path,
       dto.selfie_path,
+    ]);
+    // Usability guard (§23.7) — catch a missing/empty/non-image upload here
+    // rather than making the provider wait for a manual rejection.
+    await Promise.all([
+      this.uploads.assertValidImage(
+        VERIFICATION_DOCS_BUCKET,
+        dto.id_document_path,
+      ),
+      this.uploads.assertValidImage(VERIFICATION_DOCS_BUCKET, dto.selfie_path),
     ]);
 
     const { data, error } = await this.supabase.admin
@@ -250,6 +261,12 @@ export class VerificationsService {
       .update({ is_verified: true })
       .eq('profile_id', row.provider_id);
 
+    await this.adminActions.record(
+      admin,
+      'verification.approve',
+      'provider_verifications',
+      id,
+    );
     await this.notify(
       row.provider_id,
       'Verification approved',
@@ -268,6 +285,13 @@ export class VerificationsService {
       rejection_reason: dto.reason ?? null,
     });
 
+    await this.adminActions.record(
+      admin,
+      'verification.reject',
+      'provider_verifications',
+      id,
+      { reason: dto.reason ?? null },
+    );
     await this.notify(
       row.provider_id,
       'Verification rejected',

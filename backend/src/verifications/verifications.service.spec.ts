@@ -3,6 +3,7 @@ import { VerificationsService } from './verifications.service';
 import type { SupabaseService } from '../supabase/supabase.service';
 import type { UploadsService } from '../uploads/uploads.service';
 import type { StripeService } from '../payments/stripe.service';
+import type { AdminActionsService } from '../admin/admin-actions.service';
 import type { Profile } from '../common/types';
 
 type QueryResult = {
@@ -51,6 +52,7 @@ function createSupabaseMock(resultsByTable: Record<string, QueryResult[]>) {
 function createUploadsMock(): UploadsService {
   return {
     assertOwnedPaths: jest.fn(),
+    assertValidImage: jest.fn().mockResolvedValue(undefined),
     signedDownloadUrl: jest.fn(() => Promise.resolve('https://signed/doc')),
     publicUrl: jest.fn(() => 'https://public/photo'),
   } as unknown as UploadsService;
@@ -70,6 +72,11 @@ function createStripeMock(): StripeService {
   } as unknown as StripeService;
 }
 
+function createAdminActionsMock() {
+  const record = jest.fn().mockResolvedValue(undefined);
+  return { mock: { record } as unknown as AdminActionsService, record };
+}
+
 const provider = { id: 'p1', role: 'provider' } as Profile;
 const admin = { id: 'a1', role: 'admin' } as Profile;
 
@@ -85,6 +92,7 @@ describe('VerificationsService', () => {
         supabase,
         createUploadsMock(),
         createStripeMock(),
+        createAdminActionsMock().mock,
       );
 
       await expect(
@@ -93,6 +101,57 @@ describe('VerificationsService', () => {
           selfie_path: 'p1/selfie.jpg',
         }),
       ).rejects.toThrow(BadRequestException);
+    });
+
+    it('runs the pre-check on both uploads before inserting', async () => {
+      const uploads = createUploadsMock();
+      const pending = { id: 'v1', provider_id: 'p1', status: 'pending' };
+      const { supabase } = createSupabaseMock({
+        provider_verifications: [{ data: pending, error: null }],
+      });
+      const service = new VerificationsService(
+        supabase,
+        uploads,
+        createStripeMock(),
+        createAdminActionsMock().mock,
+      );
+
+      await service.submit(provider, {
+        id_document_path: 'p1/id.jpg',
+        selfie_path: 'p1/selfie.jpg',
+      });
+
+      expect((uploads.assertValidImage as jest.Mock).mock.calls).toEqual([
+        ['verification-docs', 'p1/id.jpg'],
+        ['verification-docs', 'p1/selfie.jpg'],
+      ]);
+    });
+
+    it('rejects a submission that fails the upload pre-check', async () => {
+      const uploads = createUploadsMock();
+      (uploads.assertValidImage as jest.Mock).mockRejectedValue(
+        new BadRequestException('Uploaded file is empty: p1/id.jpg'),
+      );
+      const { supabase } = createSupabaseMock({});
+      const service = new VerificationsService(
+        supabase,
+        uploads,
+        createStripeMock(),
+        createAdminActionsMock().mock,
+      );
+
+      await expect(
+        service.submit(provider, {
+          id_document_path: 'p1/id.jpg',
+          selfie_path: 'p1/selfie.jpg',
+        }),
+      ).rejects.toThrow('Uploaded file is empty');
+      // Never reaches the insert once the pre-check fails.
+      expect(
+        (supabase.admin.from as jest.Mock).mock.calls.some(
+          (c: unknown[]) => c[0] === 'provider_verifications',
+        ),
+      ).toBe(false);
     });
 
     it('refuses paths belonging to another user', async () => {
@@ -105,6 +164,7 @@ describe('VerificationsService', () => {
         supabase,
         uploads,
         createStripeMock(),
+        createAdminActionsMock().mock,
       );
 
       await expect(
@@ -133,10 +193,12 @@ describe('VerificationsService', () => {
         provider_profiles: [{ data: null, error: null }],
         notifications: [{ data: null, error: null }],
       });
+      const { mock: adminActions, record } = createAdminActionsMock();
       const service = new VerificationsService(
         supabase,
         createUploadsMock(),
         createStripeMock(),
+        adminActions,
       );
 
       const result = await service.approve(admin, 'v1');
@@ -149,6 +211,12 @@ describe('VerificationsService', () => {
       expect(
         calls.some((c) => c.table === 'notifications' && c.method === 'insert'),
       ).toBe(true);
+      expect(record).toHaveBeenCalledWith(
+        admin,
+        'verification.approve',
+        'provider_verifications',
+        'v1',
+      );
     });
 
     it('refuses a verification that was already reviewed', async () => {
@@ -164,6 +232,7 @@ describe('VerificationsService', () => {
         supabase,
         createUploadsMock(),
         createStripeMock(),
+        createAdminActionsMock().mock,
       );
 
       await expect(service.approve(admin, 'v1')).rejects.toThrow(
@@ -179,6 +248,7 @@ describe('VerificationsService', () => {
         supabase,
         createUploadsMock(),
         createStripeMock(),
+        createAdminActionsMock().mock,
       );
 
       await expect(service.approve(admin, 'v1')).rejects.toThrow(
@@ -197,10 +267,12 @@ describe('VerificationsService', () => {
         ],
         notifications: [{ data: null, error: null }],
       });
+      const { mock: adminActions, record } = createAdminActionsMock();
       const service = new VerificationsService(
         supabase,
         createUploadsMock(),
         createStripeMock(),
+        adminActions,
       );
 
       await service.reject(admin, 'v1', { reason: 'Blurry photo' });
@@ -214,6 +286,13 @@ describe('VerificationsService', () => {
         reviewed_by: 'a1',
       });
       expect(calls.some((c) => c.table === 'provider_profiles')).toBe(false);
+      expect(record).toHaveBeenCalledWith(
+        admin,
+        'verification.reject',
+        'provider_verifications',
+        'v1',
+        { reason: 'Blurry photo' },
+      );
     });
   });
 
@@ -247,6 +326,7 @@ describe('VerificationsService', () => {
         supabase,
         createUploadsMock(),
         createStripeMock(),
+        createAdminActionsMock().mock,
       );
 
       const result = await service.list({});
