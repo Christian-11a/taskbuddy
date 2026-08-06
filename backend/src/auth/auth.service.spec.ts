@@ -16,18 +16,39 @@ const SESSION = {
 function createSupabaseMock(options: {
   signInError?: { message: string } | null;
   deactivatedAt?: string | null;
+  suspendedUntil?: string | null;
 }) {
   const signOut = jest.fn().mockResolvedValue({ error: null });
-  // login() reads full_name/role off the same suspension lookup, so the web
-  // admin console has a display name without a second round trip.
-  const maybeSingle = jest.fn().mockResolvedValue({
+  const updateCalls: unknown[] = [];
+  const readResult = {
     data: {
       deactivated_at: options.deactivatedAt ?? null,
+      suspended_until: options.suspendedUntil ?? null,
       full_name: 'Ana Cruz',
       role: 'client',
     },
     error: null,
-  });
+  };
+
+  // Chainable + thenable stand-in for the supabase-js query builder — a read
+  // ends in .maybeSingle(), an update (clearing an expired suspension) is
+  // awaited directly off .eq() with no terminal method.
+  function makeBuilder() {
+    const builder: Record<string, unknown> = {};
+    builder.select = jest.fn(() => builder);
+    builder.update = jest.fn((patch: unknown) => {
+      updateCalls.push(patch);
+      return builder;
+    });
+    builder.eq = jest.fn(() => builder);
+    builder.maybeSingle = jest.fn(() => Promise.resolve(readResult));
+    builder.then = (
+      resolve: (value: { error: null }) => unknown,
+      reject?: (reason: unknown) => unknown,
+    ) => Promise.resolve({ error: null }).then(resolve, reject);
+    return builder;
+  }
+
   const supabase = {
     anon: {
       auth: {
@@ -46,14 +67,10 @@ function createSupabaseMock(options: {
     },
     admin: {
       auth: { admin: { signOut } },
-      from: jest.fn(() => ({
-        select: jest.fn().mockReturnThis(),
-        eq: jest.fn().mockReturnThis(),
-        maybeSingle,
-      })),
+      from: jest.fn(() => makeBuilder()),
     },
   } as unknown as SupabaseService;
-  return { supabase, signOut };
+  return { supabase, signOut, updateCalls };
 }
 
 describe('AuthService.login', () => {
@@ -83,6 +100,37 @@ describe('AuthService.login', () => {
     await expect(service.login(dto)).rejects.toThrow(ForbiddenException);
     await expect(service.login(dto)).rejects.toThrow('Account suspended');
     expect(signOut).toHaveBeenCalledWith(SESSION.access_token);
+  });
+
+  it('still rejects a timed suspension that has not expired yet', async () => {
+    const { supabase, signOut } = createSupabaseMock({
+      deactivatedAt: '2026-07-01T00:00:00Z',
+      suspendedUntil: '2099-01-01T00:00:00Z',
+    });
+    const service = new AuthService(supabase);
+
+    await expect(service.login(dto)).rejects.toThrow(ForbiddenException);
+    expect(signOut).toHaveBeenCalledWith(SESSION.access_token);
+  });
+
+  it('lazily lifts an expired timed suspension and allows login through', async () => {
+    const { supabase, signOut, updateCalls } = createSupabaseMock({
+      deactivatedAt: '2026-07-01T00:00:00Z',
+      suspendedUntil: '2020-01-01T00:00:00Z',
+    });
+    const service = new AuthService(supabase);
+
+    const result = await service.login(dto);
+
+    expect(result.session).toEqual(SESSION);
+    expect(signOut).not.toHaveBeenCalled();
+    expect(updateCalls).toEqual([
+      {
+        deactivated_at: null,
+        suspended_until: null,
+        suspension_reason: null,
+      },
+    ]);
   });
 
   it('still rejects bad credentials as unauthorized', async () => {
