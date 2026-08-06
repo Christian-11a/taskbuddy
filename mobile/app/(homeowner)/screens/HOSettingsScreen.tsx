@@ -27,7 +27,6 @@ import {
   KeyRound,
   Link2,
   Lock,
-  LogOut,
   Package,
   Pencil,
   ShieldAlert,
@@ -162,14 +161,6 @@ export default function HOSettingsScreen({ onBack, onLogout }: HOSettingsScreenP
 
         {/* App version */}
         <Text style={styles.version}>TaskBuddy v1.0.0 · Build 100</Text>
-
-        {/* Logout */}
-        <TouchableOpacity style={styles.logoutBtn} onPress={onLogout} activeOpacity={0.85}>
-          <View style={styles.logoutBtnContent}>
-            <LogOut size={16} color={Colors.error} />
-            <Text style={styles.logoutBtnText}>Log Out</Text>
-          </View>
-        </TouchableOpacity>
 
         <View style={{ height: 20 }} />
       </ScrollView>

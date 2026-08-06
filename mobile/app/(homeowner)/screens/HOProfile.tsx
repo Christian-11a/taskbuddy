@@ -10,7 +10,7 @@
  * - Navigation options list (Edit Profile, Payment, Notifications, Settings, Logout)
  */
 
-import React from 'react';
+import React, { useState } from 'react';
 import {
   ScrollView,
   StyleSheet,
@@ -27,6 +27,7 @@ import {
   Settings,
   Wallet as WalletIcon,
 } from 'lucide-react-native';
+import ConfirmationModal from '../../../src/components/ConfirmationModal';
 import { Colors, Radii, Shadows, Sizes, Spacing } from '../../../src/constants/theme';
 import { HOScreen } from '../../../src/types/navigation';
 import { useAuth } from '../../../src/context/AuthContext';
@@ -39,7 +40,6 @@ const MENU_ITEMS: { label: string; icon: typeof Pencil; subtitle: string; screen
   { label: 'Payment Methods', icon: CreditCard, subtitle: 'Manage cards & billing', screen: 'Wallet' },
   { label: 'Notifications', icon: Bell, subtitle: 'Alerts & preferences', screen: 'Notifications' },
   { label: 'App Settings', icon: Settings, subtitle: 'Preferences & display', screen: 'Settings' },
-  { label: 'Logout', icon: LogOut, subtitle: 'Sign out of your account', screen: null },
 ];
 
 interface ProfileProps {
@@ -49,6 +49,7 @@ interface ProfileProps {
 
 export default function Profile({ onNavigate, onLogout }: ProfileProps) {
   const { profile } = useAuth();
+  const [confirmLogoutVisible, setConfirmLogoutVisible] = useState(false);
 
   // Live stats: jobs posted (own jobs) + wallet balance.
   const stats = useAsyncData(async () => {
@@ -133,25 +134,44 @@ export default function Profile({ onNavigate, onLogout }: ProfileProps) {
             <TouchableOpacity
               key={item.label}
               style={[styles.menuItem, i < MENU_ITEMS.length - 1 && styles.menuItemBorder]}
-              onPress={() => {
-                if (item.screen) onNavigate(item.screen);
-                else onLogout();
-              }}
+              onPress={() => onNavigate(item.screen!)}
               activeOpacity={0.8}
             >
               <View style={styles.menuIcon}>
                 <item.icon size={20} color={Colors.brandDark} />
               </View>
               <View style={styles.menuTextGroup}>
-                <Text style={[styles.menuLabel, item.label === 'Logout' && styles.menuLabelLogout]}>
-                  {item.label}
-                </Text>
+                <Text style={styles.menuLabel}>{item.label}</Text>
                 <Text style={styles.menuSubtitle}>{item.subtitle}</Text>
               </View>
               <ChevronRight size={20} color={Colors.muted} />
             </TouchableOpacity>
           ))}
         </View>
+
+        <TouchableOpacity
+          style={styles.logoutBtn}
+          onPress={() => setConfirmLogoutVisible(true)}
+          activeOpacity={0.85}
+        >
+          <View style={styles.logoutBtnContent}>
+            <LogOut size={16} color={Colors.error} />
+            <Text style={styles.logoutBtnText}>Log Out</Text>
+          </View>
+        </TouchableOpacity>
+
+        <ConfirmationModal
+          visible={confirmLogoutVisible}
+          title="Confirm Log Out"
+          message="Are you sure you want to log out?"
+          confirmLabel="Log Out"
+          cancelLabel="Cancel"
+          onConfirm={() => {
+            setConfirmLogoutVisible(false);
+            onLogout();
+          }}
+          onCancel={() => setConfirmLogoutVisible(false)}
+        />
 
         <View style={{ height: 20 }} />
       </ScrollView>
@@ -232,4 +252,14 @@ const styles = StyleSheet.create({
   menuLabelLogout: { color: Colors.error },
   menuSubtitle: { color: Colors.slate, fontSize: 12, fontFamily: 'Inter' },
   menuArrow: { color: Colors.muted, fontSize: 20 },
+  logoutBtn: {
+    borderWidth: 1,
+    borderColor: Colors.error,
+    borderRadius: 24,
+    padding: 16,
+    alignItems: 'center',
+    marginTop: 8,
+  },
+  logoutBtnContent: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  logoutBtnText: { color: Colors.error, fontSize: 15, fontWeight: '700', fontFamily: 'Inter' },
 });

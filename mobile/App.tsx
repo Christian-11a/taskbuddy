@@ -92,6 +92,10 @@ function AppContent() {
   const handleLogout = () => {
     void signOut();
     setPreAuth('login');
+    setHOTab('Home');
+    setHOScreen('Home');
+    setSPTab('Dashboard');
+    setSPScreen('Dashboard');
   };
 
   // ── HO navigation state ───────────────────────────────────────────────────
