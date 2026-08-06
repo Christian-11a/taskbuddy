@@ -108,6 +108,7 @@ export default function HOCreateJobScreen({ onBack, onSuccess }: HOCreateJobScre
   const [termsAccepted, setTermsAccepted] = useState(false);
   const [showExitConfirmation, setShowExitConfirmation] = useState(false);
   const [focusedField, setFocusedField] = useState<string | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<{ title?: string; description?: string; location?: string; date?: string; time?: string; budget?: string }>({});
   const [isUrgent, setIsUrgent] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -119,7 +120,13 @@ export default function HOCreateJobScreen({ onBack, onSuccess }: HOCreateJobScre
 
   const isValidBudget = (value: string) => {
     const normalized = value.trim().replace(/,/g, '');
-    return normalized !== '' && Number.isFinite(Number(normalized)) && Number(normalized) > 0;
+    if (normalized === '') return false;
+    const n = Number(normalized);
+    if (!Number.isFinite(n) || n <= 0) return false;
+    // allow at most 2 decimal places
+    const parts = normalized.split('.');
+    if (parts[1] && parts[1].length > 2) return false;
+    return true;
   };
 
   const formatBudget = () => {
@@ -128,24 +135,55 @@ export default function HOCreateJobScreen({ onBack, onSuccess }: HOCreateJobScre
   };
 
   const validateStep = (): string | null => {
-    if (step === 1 && !categoryId) return 'Please select a service.';
+    const errors: { title?: string; description?: string; location?: string; date?: string; time?: string; budget?: string } = {};
+
+    if (step === 1 && !categoryId) {
+      setFieldErrors({});
+      return 'Please select a service.';
+    }
+
     if (step === 2) {
-      if (title.trim().length < 5) return 'Title must be at least 5 characters.';
-      if (description.trim().length < 20)
-        return 'Description must be at least 20 characters.';
-      if (!location.trim()) return 'Please enter a location.';
+      const t = title.trim();
+      if (t.length < 5) errors.title = 'Title must be at least 5 characters.';
+      else if (t.length > 120) errors.title = 'Title cannot exceed 120 characters.';
+
+      const d = description.trim();
+      if (d.length < 20) errors.description = 'Description must be at least 20 characters.';
+      else if (d.length > 750) errors.description = 'Description cannot exceed 750 characters.';
+
+      if (!location.trim()) errors.location = 'Please enter a location.';
     }
+
     if (step === 3) {
-      if (!date) return 'Please select a preferred date.';
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      if (date < today) return 'Preferred date cannot be before today.';
-      if (!time) return 'Please select a preferred time.';
+      // scheduled_at is optional on backend; only validate if user supplied a date/time
+      if (date) {
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        if (date < today) {
+          errors.date = 'Preferred date cannot be before today.';
+        }
+        if (!time) {
+          errors.time = 'Please select a preferred time.';
+        }
+      } else if (time && !date) {
+        // time provided but no date
+        errors.date = 'Please select a preferred date.';
+      }
     }
+
     if (step === 4) {
-      if (!budget.trim()) return 'Please enter a budget.';
-      if (!isValidBudget(budget)) return 'Please enter a valid budget greater than 0.';
+      if (budget.trim()) {
+        if (!isValidBudget(budget)) errors.budget = 'Please enter a valid budget greater than 0 and up to 2 decimal places.';
+      }
     }
+
+    setFieldErrors(errors);
+
+    if (Object.keys(errors).length > 0) {
+      // return the first error message so callers can optionally use it
+      return Object.values(errors)[0] as string;
+    }
+
     return null;
   };
 
@@ -215,7 +253,6 @@ export default function HOCreateJobScreen({ onBack, onSuccess }: HOCreateJobScre
   const handleNext = () => {
     const validationError = validateStep();
     if (validationError) {
-      setError(validationError);
       return;
     }
     setError(null);
@@ -378,14 +415,21 @@ export default function HOCreateJobScreen({ onBack, onSuccess }: HOCreateJobScre
             <View style={styles.inputGroup}>
               <Text style={styles.inputLabel}>Job Title<Text style={styles.requiredAsterisk}> *</Text></Text>
               <TextInput
-                style={[styles.input, focusedField === 'title' && styles.inputFocused]}
+                style={[styles.input, focusedField === 'title' && styles.inputFocused, fieldErrors.title && styles.inputError]}
                 placeholder="e.g. 3-bedroom apartment deep clean"
                 placeholderTextColor={Colors.muted}
                 value={title}
-                onChangeText={setTitle}
-                onFocus={() => setFocusedField('title')}
+                onChangeText={(value) => {
+                  setTitle(value);
+                  if (fieldErrors.title) setFieldErrors((prev) => ({ ...prev, title: undefined }));
+                }}
+                onFocus={() => {
+                  setFocusedField('title');
+                  if (fieldErrors.title) setFieldErrors((prev) => ({ ...prev, title: undefined }));
+                }}
                 onBlur={() => setFocusedField(null)}
               />
+              {!!fieldErrors.title && <Text style={styles.inputErrorText}>{fieldErrors.title}</Text>}
             </View>
 
             <View style={styles.inputGroup}>
@@ -415,29 +459,43 @@ export default function HOCreateJobScreen({ onBack, onSuccess }: HOCreateJobScre
             <View style={styles.inputGroup}>
               <Text style={styles.inputLabel}>Description<Text style={styles.requiredAsterisk}> *</Text></Text>
               <TextInput
-                style={[styles.input, styles.textArea, focusedField === 'description' && styles.inputFocused]}
+                style={[styles.input, styles.textArea, focusedField === 'description' && styles.inputFocused, fieldErrors.description && styles.inputError]}
                 placeholder="Describe the job in detail..."
                 placeholderTextColor={Colors.muted}
                 value={description}
-                onChangeText={setDescription}
-                onFocus={() => setFocusedField('description')}
+                onChangeText={(value) => {
+                  setDescription(value);
+                  if (fieldErrors.description) setFieldErrors((prev) => ({ ...prev, description: undefined }));
+                }}
+                onFocus={() => {
+                  setFocusedField('description');
+                  if (fieldErrors.description) setFieldErrors((prev) => ({ ...prev, description: undefined }));
+                }}
                 onBlur={() => setFocusedField(null)}
                 multiline
                 numberOfLines={4}
               />
+              {!!fieldErrors.description && <Text style={styles.inputErrorText}>{fieldErrors.description}</Text>}
             </View>
 
             <View style={styles.inputGroup}>
               <Text style={styles.inputLabel}>Location<Text style={styles.requiredAsterisk}> *</Text></Text>
               <TextInput
-                style={[styles.input, focusedField === 'location' && styles.inputFocused]}
+                style={[styles.input, focusedField === 'location' && styles.inputFocused, fieldErrors.location && styles.inputError]}
                 placeholder="Brgy. Sampaguita, Lipa City"
                 placeholderTextColor={Colors.muted}
                 value={location}
-                onChangeText={setLocation}
-                onFocus={() => setFocusedField('location')}
+                onChangeText={(value) => {
+                  setLocation(value);
+                  if (fieldErrors.location) setFieldErrors((prev) => ({ ...prev, location: undefined }));
+                }}
+                onFocus={() => {
+                  setFocusedField('location');
+                  if (fieldErrors.location) setFieldErrors((prev) => ({ ...prev, location: undefined }));
+                }}
                 onBlur={() => setFocusedField(null)}
               />
+              {!!fieldErrors.location && <Text style={styles.inputErrorText}>{fieldErrors.location}</Text>}
             </View>
 
             <TouchableOpacity
@@ -465,23 +523,25 @@ export default function HOCreateJobScreen({ onBack, onSuccess }: HOCreateJobScre
             <View style={styles.inputGroup}>
               <Text style={styles.inputLabel}>Preferred Date<Text style={styles.requiredAsterisk}> *</Text></Text>
               <TouchableOpacity
-                style={[styles.input, styles.pickerInput, showDatePicker && styles.inputFocused]}
-                onPress={() => { setShowTimePicker(false); setShowDatePicker(true); }}
+                style={[styles.input, styles.pickerInput, showDatePicker && styles.inputFocused, fieldErrors.date && styles.inputError]}
+                onPress={() => { setShowTimePicker(false); setShowDatePicker(true); if (fieldErrors.date) setFieldErrors((prev) => ({ ...prev, date: undefined })); }}
                 activeOpacity={0.8}
               >
                 <Text style={[styles.pickerText, !date && styles.pickerPlaceholder]}>{dateLabel || 'Select a date'}</Text>
               </TouchableOpacity>
+              {!!fieldErrors.date && <Text style={styles.inputErrorText}>{fieldErrors.date}</Text>}
             </View>
 
             <View style={styles.inputGroup}>
               <Text style={styles.inputLabel}>Preferred Time<Text style={styles.requiredAsterisk}> *</Text></Text>
               <TouchableOpacity
-                style={[styles.input, styles.pickerInput, showTimePicker && styles.inputFocused]}
-                onPress={openTimePicker}
+                style={[styles.input, styles.pickerInput, showTimePicker && styles.inputFocused, fieldErrors.time && styles.inputError]}
+                onPress={() => { openTimePicker(); if (fieldErrors.time) setFieldErrors((prev) => ({ ...prev, time: undefined })); }}
                 activeOpacity={0.8}
               >
                 <Text style={[styles.pickerText, !time && styles.pickerPlaceholder]}>{timeLabel || 'Select a time'}</Text>
               </TouchableOpacity>
+              {!!fieldErrors.time && <Text style={styles.inputErrorText}>{fieldErrors.time}</Text>}
             </View>
 
             <Text style={styles.inputLabel}>Flexibility</Text>
@@ -505,19 +565,26 @@ export default function HOCreateJobScreen({ onBack, onSuccess }: HOCreateJobScre
             <Text style={styles.stepTitle}>Budget<Text style={styles.requiredAsterisk}> *</Text></Text>
             <Text style={styles.stepSubtitle}>Set your budget for this job</Text>
 
-            <View style={[styles.budgetCard, focusedField === 'budget' && styles.budgetCardFocused]}>
+            <View style={[styles.budgetCard, focusedField === 'budget' && styles.budgetCardFocused, fieldErrors.budget && styles.inputError]}>
               <Text style={styles.budgetCurrency}>₱</Text>
               <TextInput
                 style={styles.budgetInput}
                 placeholder="0.00"
                 placeholderTextColor={Colors.muted}
                 value={budget}
-                onChangeText={setBudget}
-                onFocus={() => setFocusedField('budget')}
+                onChangeText={(value) => {
+                  setBudget(value);
+                  if (fieldErrors.budget) setFieldErrors((prev) => ({ ...prev, budget: undefined }));
+                }}
+                onFocus={() => {
+                  setFocusedField('budget');
+                  if (fieldErrors.budget) setFieldErrors((prev) => ({ ...prev, budget: undefined }));
+                }}
                 onBlur={() => { setFocusedField(null); formatBudget(); }}
                 keyboardType="decimal-pad"
               />
             </View>
+            {!!fieldErrors.budget && <Text style={styles.inputErrorText}>{fieldErrors.budget}</Text>}
 
             <Text style={styles.budgetHint}>
               Suggested: ₱500 – ₱1,200 for {categoryName || 'this service'}
@@ -569,7 +636,7 @@ export default function HOCreateJobScreen({ onBack, onSuccess }: HOCreateJobScre
                 {termsAccepted && <Check size={14} color={Colors.white} />}
               </View>
               <Text style={styles.termsText}>
-                I agree to the <Text style={styles.termsLink} onPress={() => setShowTerms(true)}>Terms & Conditions</Text> and understand that TaskBuddy holds payment until job completion.
+                I agree to the <Text style={styles.termsLink} onPress={() => setShowTerms(true)}>Terms & Conditions</Text><Text style={styles.requiredAsterisk}> *</Text> and understand that TaskBuddy holds payment until job completion.
               </Text>
             </View>
           </View>
@@ -765,6 +832,8 @@ const styles = StyleSheet.create({
     ...Shadows.input,
   },
   inputFocused: { borderColor: Colors.brandTeal, borderWidth: 2 },
+  inputError: { borderColor: Colors.error, borderWidth: 2 },
+  inputErrorText: { color: Colors.error, fontSize: 13, marginTop: 8, fontFamily: 'Inter' },
   requiredAsterisk: { color: Colors.error, fontWeight: '800' },
   pickerInput: { justifyContent: 'center', minHeight: 48 },
   pickerText: { color: Colors.brandDark, fontFamily: 'Inter', fontSize: 15 },
@@ -818,12 +887,12 @@ const styles = StyleSheet.create({
   budgetCard: {
     backgroundColor: Colors.white, borderRadius: 20, padding: 24,
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-    marginBottom: 12, borderWidth: 1, borderColor: 'transparent', ...Shadows.card,
+    marginBottom: 4, borderWidth: 1, borderColor: 'transparent', ...Shadows.card,
   },
   budgetCardFocused: { borderColor: Colors.brandTeal, borderWidth: 2 },
   budgetCurrency: { color: Colors.brandDark, fontSize: 32, fontWeight: '800', fontFamily: 'Inter', marginRight: 4 },
   budgetInput: { fontSize: 48, fontWeight: '800', fontFamily: 'Inter', color: Colors.brandDark, minWidth: 120 },
-  budgetHint: { color: Colors.muted, fontSize: 13, fontFamily: 'Inter', textAlign: 'center', marginBottom: 20 },
+  budgetHint: { color: Colors.muted, fontSize: 13, fontFamily: 'Inter', textAlign: 'center', margin: 20 },
   paymentOptions: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginTop: 8 },
   paymentChip: {
     paddingHorizontal: 18, paddingVertical: 10, borderRadius: 999,

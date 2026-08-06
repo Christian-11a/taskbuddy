@@ -60,6 +60,7 @@ interface InputFieldProps {
   secureTextEntry?: boolean;
   keyboardType?: 'default' | 'email-address';
   error?: string;
+  hasError?: boolean;
   rightElement?: React.ReactNode;
   testID?: string;
 }
@@ -67,7 +68,7 @@ interface InputFieldProps {
 function InputField({
   label, placeholder, value, onChangeText,
   secureTextEntry = false, keyboardType = 'default',
-  error, rightElement, testID,
+  error, hasError, rightElement, testID,
 }: InputFieldProps) {
   const [focused, setFocused] = useState(false);
 
@@ -79,7 +80,7 @@ function InputField({
 
   return (
     <View style={styles.inputGroup}>
-      <Text style={styles.inputLabel}>{label}</Text>
+      {label ? <Text style={styles.inputLabel}>{label}</Text> : null}
       <View style={[
         styles.inputBox,
         focused && styles.inputBoxFocused,
@@ -118,20 +119,40 @@ export default function LoginScreen({
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
-  const [passwordFocused, setPasswordFocused] = useState(false);
+  const [fieldErrors, setFieldErrors] = useState<{ email?: string; password?: string }>({});
   const [submitting, setSubmitting] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const validateFields = () => {
+    const errors: { email?: string; password?: string } = {};
+    const trimmedEmail = email.trim();
+    const validEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmedEmail);
+
+    if (!trimmedEmail) {
+      errors.email = 'Please enter your email address.';
+    } else if (!validEmail) {
+      errors.email = 'Please enter a valid email address.';
+    }
+
+    if (!password) {
+      errors.password = 'Please enter your password.';
+    }
+
+    return errors;
+  };
 
   const handleSignIn = async () => {
     if (submitting) return;
     setError(null);
 
-    if (!email.trim() || !password) {
-      setError('Please enter your email and password.');
+    const errors = validateFields();
+    if (Object.keys(errors).length > 0) {
+      setFieldErrors(errors);
       return;
     }
 
+    setFieldErrors({});
     setSubmitting(true);
     try {
       await onLogin(email, password);
@@ -195,17 +216,25 @@ export default function LoginScreen({
         <Text style={styles.subtitleText}>Sign in to your account</Text>
       </View>
 
-      {/* Email */}
       <InputField
+        label="Email Address"
+        placeholder="alex@example.com"
         testID="input-email"
-        label="Email"
-        placeholder="sample@mail.com"
         value={email}
-        onChangeText={setEmail}
+        onChangeText={(value) => {
+          setEmail(value);
+          if (fieldErrors.email) {
+            const trimmed = value.trim();
+            const validEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed);
+            if (trimmed && validEmail) {
+              setFieldErrors((prev) => ({ ...prev, email: undefined }));
+            }
+          }
+        }}
         keyboardType="email-address"
+        error={fieldErrors.email}
       />
 
-      {/* Password */}
       <View style={styles.passwordSection}>
         <View style={styles.passwordLabelRow}>
           <Text style={styles.inputLabel}>Password</Text>
@@ -213,35 +242,28 @@ export default function LoginScreen({
             <Text style={styles.forgotText}>Forgot Password?</Text>
           </TouchableOpacity>
         </View>
-        <View style={[styles.inputBox, passwordFocused && styles.inputBoxFocused]}>
-          <TextInput
-            testID="input-password"
-            style={[styles.inputText, styles.flex]}
-            placeholder="Password"
-            placeholderTextColor={C.muted}
-            value={password}
-            onChangeText={setPassword}
-            secureTextEntry={!showPassword}
-            autoCapitalize="none"
-            autoCorrect={false}
-            // Removed textContentType="password" — this is what triggers
-            // iOS's "Passwords" AutoFill suggestion strip that was covering
-            // the screen above the keyboard (#3). secureTextEntry alone
-            // still masks the input correctly.
-            autoComplete="off"
-            returnKeyType="done"
-            onFocus={() => setPasswordFocused(true)}
-            onBlur={() => setPasswordFocused(false)}
-            onSubmitEditing={handleSignIn}
-          />
-          <TouchableOpacity
-            onPress={() => setShowPassword((s) => !s)}
-            style={styles.eyeBtn}
-            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-          >
-            {showPassword ? <EyeOff size={18} color={C.muted} /> : <Eye size={18} color={C.muted} />}
-          </TouchableOpacity>
-        </View>
+
+        <InputField
+          label=""
+          placeholder="Password"
+          testID="input-password"
+          value={password}
+          onChangeText={(value) => {
+            setPassword(value);
+            if (fieldErrors.password) setFieldErrors((prev) => ({ ...prev, password: undefined }));
+          }}
+          secureTextEntry={!showPassword}
+          error={fieldErrors.password}
+          rightElement={
+            <TouchableOpacity
+              onPress={() => setShowPassword((s) => !s)}
+              style={styles.eyeBtn}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
+              {showPassword ? <EyeOff size={18} color={C.muted} /> : <Eye size={18} color={C.muted} />}
+            </TouchableOpacity>
+          }
+        />
       </View>
 
       {/* Error */}
@@ -427,7 +449,7 @@ const styles = StyleSheet.create({
   },
 
   // Password
-  passwordSection: { marginBottom: 18 },
+  passwordSection: {},
   passwordLabelRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
   forgotText: { fontFamily: 'Inter', fontSize: 13, fontWeight: '700', color: C.brandTeal, textDecorationLine: 'underline' },
   eyeBtn: { paddingLeft: 8 },

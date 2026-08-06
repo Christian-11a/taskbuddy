@@ -82,12 +82,12 @@ interface InputProps {
   keyboardType?: 'default' | 'email-address';
 }
 
-function FormInput({ label, placeholder, value, onChangeText, secureTextEntry, keyboardType }: InputProps) {
+function FormInput({ label, placeholder, value, onChangeText, secureTextEntry, keyboardType, error }: InputProps & { error?: string }) {
   const [focused, setFocused] = useState(false);
   return (
     <View style={styles.inputGroup}>
       <Text style={styles.inputLabel}>{label}</Text>
-      <View style={[styles.inputBox, focused && styles.inputBoxFocused]}>
+      <View style={[styles.inputBox, focused && styles.inputBoxFocused, error ? styles.inputBoxError : undefined]}>
         <TextInput
           style={styles.inputText}
           placeholder={placeholder}
@@ -102,6 +102,7 @@ function FormInput({ label, placeholder, value, onChangeText, secureTextEntry, k
           onBlur={() => setFocused(false)}
         />
       </View>
+      {!!error && <Text style={styles.inputErrorText}>{error}</Text>}
     </View>
   );
 }
@@ -126,6 +127,7 @@ function RegisterScreenContent({
 }: RegisterScreenContentProps) {
   const [submitting, setSubmitting] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
+  const [fieldErrors, setFieldErrors] = useState<{ name?: string; email?: string; password?: string; confirmPassword?: string; terms?: string }>({});
   const [error, setError] = useState<string | null>(null);
   const [confirmationSent, setConfirmationSent] = useState(false);
 
@@ -133,15 +135,35 @@ function RegisterScreenContent({
     if (submitting) return;
     setError(null);
 
-    if (!name.trim()) return setError('Please enter your full name.');
-    if (!email.trim()) return setError('Please enter your email address.');
-    if (password.length < 8)
-      return setError('Password must be at least 8 characters.');
-    if (password !== confirmPassword)
-      return setError('Passwords do not match.');
-    if (!termsAccepted)
-      return setError('Please accept the Terms and Conditions to continue.');
+      const errors: { name?: string; email?: string; password?: string; confirmPassword?: string; terms?: string } = {};
+    const trimmedName = name.trim();
+    const trimmedEmail = email.trim();
+    const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
+    if (!trimmedName) {
+      errors.name = 'Please enter your full name.';
+    }
+    if (!trimmedEmail) {
+      errors.email = 'Please enter your email address.';
+    } else if (!emailPattern.test(trimmedEmail)) {
+      errors.email = 'Please enter a valid email address.';
+    }
+    if (password.length < 8) {
+      errors.password = 'Password must be at least 8 characters.';
+    }
+    if (password !== confirmPassword) {
+      errors.confirmPassword = 'Passwords do not match.';
+    }
+    if (!termsAccepted) {
+      errors.terms = 'Please accept the Terms and Conditions to continue.';
+    }
+
+    if (Object.keys(errors).length > 0) {
+      setFieldErrors(errors);
+      return;
+    }
+
+    setFieldErrors({});
     setSubmitting(true);
     try {
       const { needsEmailConfirmation } = await onRegister({
@@ -252,28 +274,44 @@ function RegisterScreenContent({
               label="Full Name"
               placeholder="Alex Chen"
               value={name}
-              onChangeText={onNameChange}
+              onChangeText={(value) => {
+                onNameChange(value);
+                if (fieldErrors.name) setFieldErrors((prev) => ({ ...prev, name: undefined }));
+              }}
+              error={fieldErrors.name}
             />
             <FormInput
               label="Email Address"
               placeholder="alex@example.com"
               value={email}
-              onChangeText={onEmailChange}
+              onChangeText={(value) => {
+                onEmailChange(value);
+                if (fieldErrors.email) setFieldErrors((prev) => ({ ...prev, email: undefined }));
+              }}
               keyboardType="email-address"
+              error={fieldErrors.email}
             />
             <FormInput
               label="Password"
               placeholder="••••••••"
               value={password}
-              onChangeText={onPasswordChange}
+              onChangeText={(value) => {
+                onPasswordChange(value);
+                if (fieldErrors.password) setFieldErrors((prev) => ({ ...prev, password: undefined }));
+              }}
               secureTextEntry
+              error={fieldErrors.password}
             />
             <FormInput
               label="Confirm Password"
               placeholder="••••••••"
               value={confirmPassword}
-              onChangeText={onConfirmPasswordChange}
+              onChangeText={(value) => {
+                onConfirmPasswordChange(value);
+                if (fieldErrors.confirmPassword) setFieldErrors((prev) => ({ ...prev, confirmPassword: undefined }));
+              }}
               secureTextEntry
+              error={fieldErrors.confirmPassword}
             />
 
             <View style={styles.termsRow}>
@@ -293,13 +331,7 @@ function RegisterScreenContent({
                 .<Text style={styles.requiredAsterisk}>*</Text>
               </Text>
             </View>
-
-            {/* Error */}
-            {!!error && (
-              <Text testID="register-error" style={styles.errorBanner}>
-                {error}
-              </Text>
-            )}
+            {!!fieldErrors.terms && <Text style={styles.inputErrorText}>{fieldErrors.terms}</Text>}
 
             {/* Sign Up */}
             <TouchableOpacity
@@ -511,7 +543,12 @@ const styles = StyleSheet.create({
     borderWidth: 1, borderColor: C.mutedBorder,
   },
   inputBoxFocused: { borderColor: C.brandTeal },
+  inputBoxError: { borderColor: C.brandRed },
   inputText: { fontFamily: 'Inter', fontSize: 15, color: '#0F172A', padding: 0 },
+  inputErrorText: {
+    fontFamily: 'Inter', fontSize: 13, color: C.brandRed,
+    marginTop: 6, marginLeft: 4, lineHeight: 18,
+  },
 
   primaryBtn: {
     backgroundColor: C.brandTeal, borderRadius: 24, paddingVertical: 15,
