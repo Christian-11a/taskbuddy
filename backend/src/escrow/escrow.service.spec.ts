@@ -3,7 +3,13 @@ import { EscrowService, type EscrowRow } from './escrow.service';
 import { DisputesService } from './disputes.service';
 import type { SupabaseService } from '../supabase/supabase.service';
 import type { WalletService } from '../wallet/wallet.service';
+import type { AdminActionsService } from '../admin/admin-actions.service';
 import type { Profile } from '../common/types';
+
+function createAdminActionsMock() {
+  const record = jest.fn().mockResolvedValue(undefined);
+  return { mock: { record } as unknown as AdminActionsService, record };
+}
 
 type QueryResult = {
   data: unknown;
@@ -296,7 +302,11 @@ describe('DisputesService', () => {
         notifications: [{ data: null, error: null }],
       });
       const escrow = new EscrowService(supabase, createWalletMock().wallet);
-      const service = new DisputesService(supabase, escrow);
+      const service = new DisputesService(
+        supabase,
+        escrow,
+        createAdminActionsMock().mock,
+      );
 
       const result = await service.raise(client, 'j1', { reason: 'No show' });
 
@@ -319,7 +329,11 @@ describe('DisputesService', () => {
         ],
       });
       const escrow = new EscrowService(supabase, createWalletMock().wallet);
-      const service = new DisputesService(supabase, escrow);
+      const service = new DisputesService(
+        supabase,
+        escrow,
+        createAdminActionsMock().mock,
+      );
 
       await expect(
         service.raise(client, 'j1', { reason: 'Too late' }),
@@ -331,7 +345,11 @@ describe('DisputesService', () => {
         escrow_transactions: [{ data: heldEscrow, error: null }],
       });
       const escrow = new EscrowService(supabase, createWalletMock().wallet);
-      const service = new DisputesService(supabase, escrow);
+      const service = new DisputesService(
+        supabase,
+        escrow,
+        createAdminActionsMock().mock,
+      );
 
       await expect(
         service.raise({ id: 'other', role: 'client' } as Profile, 'j1', {
@@ -348,7 +366,11 @@ describe('DisputesService', () => {
         ],
       });
       const escrow = new EscrowService(supabase, createWalletMock().wallet);
-      const service = new DisputesService(supabase, escrow);
+      const service = new DisputesService(
+        supabase,
+        escrow,
+        createAdminActionsMock().mock,
+      );
 
       await expect(
         service.raise(client, 'j1', { reason: 'Again' }),
@@ -375,7 +397,8 @@ describe('DisputesService', () => {
         ],
       });
       const escrow = new EscrowService(supabase, createWalletMock().wallet);
-      const service = new DisputesService(supabase, escrow);
+      const { mock: adminActions, record } = createAdminActionsMock();
+      const service = new DisputesService(supabase, escrow, adminActions);
 
       await service.resolve(admin, 'd1', {
         resolution: 'released_to_provider',
@@ -388,6 +411,13 @@ describe('DisputesService', () => {
           amount: 1500,
         }),
       ]);
+      expect(record).toHaveBeenCalledWith(
+        admin,
+        'dispute.resolve',
+        'disputes',
+        'd1',
+        { resolution: 'released_to_provider', note: null },
+      );
     });
 
     it('returns the money to the client when refunded', async () => {
@@ -408,7 +438,11 @@ describe('DisputesService', () => {
         ],
       });
       const escrow = new EscrowService(supabase, createWalletMock().wallet);
-      const service = new DisputesService(supabase, escrow);
+      const service = new DisputesService(
+        supabase,
+        escrow,
+        createAdminActionsMock().mock,
+      );
 
       await service.resolve(admin, 'd1', { resolution: 'refunded_to_client' });
 
@@ -428,7 +462,11 @@ describe('DisputesService', () => {
         ],
       });
       const escrow = new EscrowService(supabase, createWalletMock().wallet);
-      const service = new DisputesService(supabase, escrow);
+      const service = new DisputesService(
+        supabase,
+        escrow,
+        createAdminActionsMock().mock,
+      );
 
       await expect(
         service.resolve(admin, 'd1', { resolution: 'refunded_to_client' }),
