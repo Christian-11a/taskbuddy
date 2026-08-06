@@ -182,6 +182,42 @@ export class ChatService {
     return data;
   }
 
+  /**
+   * Admin read-only view of a job's conversation (BACKEND_SCHEMA.md §23.6) —
+   * evidence during dispute resolution. No conversation is ever created here;
+   * only a participant opening it via openForJob does that, so a job with no
+   * chat yet (unassigned, or never opened) just returns no messages.
+   */
+  async adminConversationForJob(jobId: string) {
+    const { data: conversation, error } = await this.supabase.admin
+      .from('conversations')
+      .select('id')
+      .eq('job_id', jobId)
+      .maybeSingle();
+    if (error) throw new BadRequestException(error.message);
+    if (!conversation) return { messages: [] };
+
+    const { data, error: messagesError } = await this.supabase.admin
+      .from('messages')
+      .select('*, sender:profiles!messages_sender_id_fkey(full_name)')
+      .eq('conversation_id', conversation.id)
+      .order('created_at', { ascending: true });
+    if (messagesError) throw new BadRequestException(messagesError.message);
+
+    return {
+      messages: (data ?? []).map((m) => ({
+        id: m.id,
+        sender_id: m.sender_id,
+        sender_name:
+          (m.sender as unknown as { full_name: string } | null)?.full_name ??
+          null,
+        body: m.body,
+        read_at: m.read_at,
+        created_at: m.created_at,
+      })),
+    };
+  }
+
   /** Marks messages sent by the other participant as read. */
   async markRead(user: Profile, conversationId: string) {
     await this.assertParticipant(user, conversationId);

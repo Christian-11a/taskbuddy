@@ -82,4 +82,35 @@ export class UploadsService {
       .createSignedUrl(path, SIGNED_DOWNLOAD_TTL_SECONDS);
     return error ? null : data.signedUrl;
   }
+
+  /**
+   * Usability guard for verification uploads (BACKEND_SCHEMA.md §23.7): a
+   * storage.list() metadata check — object exists, non-zero size, image
+   * mimetype — not a full decode. Not identity verification; it exists so a
+   * provider whose upload silently failed learns immediately instead of
+   * waiting for a manual rejection.
+   */
+  async assertValidImage(bucket: UploadBucket, path: string): Promise<void> {
+    const lastSlash = path.lastIndexOf('/');
+    const folder = lastSlash === -1 ? '' : path.slice(0, lastSlash);
+    const filename = lastSlash === -1 ? path : path.slice(lastSlash + 1);
+
+    const { data, error } = await this.supabase.admin.storage
+      .from(bucket)
+      .list(folder, { search: filename, limit: 1 });
+    if (error) throw new BadRequestException(error.message);
+
+    const object = data?.find((o) => o.name === filename);
+    if (!object) {
+      throw new BadRequestException(`Upload not found: ${path}`);
+    }
+    if ((object.metadata?.size ?? 0) <= 0) {
+      throw new BadRequestException(`Uploaded file is empty: ${path}`);
+    }
+    if (!(object.metadata?.mimetype ?? '').startsWith('image/')) {
+      throw new BadRequestException(
+        `Uploaded file is not a recognizable image: ${path}`,
+      );
+    }
+  }
 }

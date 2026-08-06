@@ -36,6 +36,7 @@ recommendation model (see [Recommendation Engine Integration](#9-recommendation-
 20. [Push Notifications (migration 0012)](#20-push-notifications-migration-0012)
 21. [Stripe Payments & Identity (migration 0013)](#21-stripe-payments--identity-migration-0013)
 22. [Password Reset](#22-password-reset)
+23. [Admin Console Follow-ups (migration 0014)](#23-admin-console-follow-ups-migration-0014)
 
 ---
 
@@ -1043,3 +1044,89 @@ mailbox holder can produce it, and Supabase enforces single use and expiry. Susp
 rejected here as they are at login: otherwise a reset is a way back into an account an admin
 closed. The session is returned so the app can land the user signed in rather than bouncing them
 to Login with a password they just typed twice.
+
+---
+
+## 23. Admin Console Follow-ups (migration 0014)
+
+web/README.md "What's Still Needed From the Backend" listed seven gaps the admin console UI was
+already built for but had no API behind. This section documents all seven; only the first and
+fifth needed schema (`supabase/migrations/0014_admin_console_followups.sql`) — the rest reuse
+existing tables.
+
+### 23.1 Timed suspensions with a reason
+
+`profiles` gains `suspended_until timestamptz` (null = indefinite) and `suspension_reason text`
+(≤ 500 chars, nullable — suspensions predating this column have none). `admin_user_overview`
+(§5.1, 0005) now selects both.
+
+```
+POST /admin/users/:id/suspend { duration_days?: number, reason: string } → profile row
+```
+
+Expiry is checked lazily wherever `deactivated_at` already gates access (`AuthService.login`,
+`resetPassword`, `handleGoogleCallback`) rather than by a cron job: if `suspended_until` is in the
+past, the three suspension columns are cleared and the request proceeds as if never suspended. A
+still-active suspension behaves exactly as before (403, session signed out).
+
+### 23.2 Admin-triggered password reset
+
+```
+POST /admin/users/:id/send-password-reset → { sent: true }
+```
+
+A thin wrapper over `supabase.anon.auth.resetPasswordForEmail` — the same primitive
+`POST /auth/forgot-password` (§22) already uses, just admin-initiated instead of self-service.
+Refuses `role = 'admin'` targets, matching `suspend`.
+
+### 23.3 Booking detail endpoint
+
+```
+GET /admin/bookings/:id → { ...job, escrow: EscrowRow | null }
+```
+
+The list endpoint's row shape (`jobs.*` + category + client/provider names) already carries
+`description`, `address`, `scheduled_at`, and `photo_urls` — the "detail" gap was really that the
+console had no way to fetch **one** job by id as an admin, plus its escrow record if one exists.
+
+### 23.4 Activity log pagination and date filtering
+
+```
+GET /admin/activity?limit=&offset=&from=&to= → { items: [...], total }
+```
+
+Breaking shape change from a bare array (was hardcoded to the newest 20 rows). `from`/`to` filter
+on `job_status_history.changed_at`.
+
+### 23.5 Real admin audit log
+
+New table `admin_actions (id, actor_id, action, target_type, target_id, metadata jsonb,
+created_at)` — service-role only (§11 treatment), queried through the API rather than read
+directly. Distinct from `job_status_history` (§5.6), which audits job lifecycle transitions, not
+the admin behind a moderation decision.
+
+Written by: `AdminService.suspend/reinstate/cancelBooking`, `VerificationsService.approve/reject`,
+`DisputesService.resolve`. `action` values are `<domain>.<verb>` (e.g. `user.suspend`,
+`verification.approve`, `dispute.resolve`); `target_type` matches the affected table name.
+
+```
+GET /admin/audit?action=&actor_id=&from=&to=&limit=&offset= → { actions: [...], total }
+```
+
+### 23.6 Admin read-only access to a job's chat
+
+```
+GET /admin/jobs/:jobId/conversation → { messages: [{ ...message, sender_name }] }
+```
+
+Reuses `conversations`/`messages` (§15.2, 0006) with no new write path — an admin can never post
+into a user conversation. A job with no conversation yet (no assigned provider, or one assigned
+but chat never opened) returns an empty `messages` array rather than 404.
+
+### 23.7 Verification submission pre-check
+
+`POST /verifications` now rejects an `id_document_path`/`selfie_path` that doesn't resolve to a
+non-empty image object in the `verification-docs` bucket, via `UploadsService.assertValidImage`
+(a `storage.list()` metadata check — size and `mimetype`, not a full decode) before the row is
+inserted. This is a usability guard, not identity verification: it exists so a provider whose
+upload silently failed learns immediately instead of waiting for a manual rejection.

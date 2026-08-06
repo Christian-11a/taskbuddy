@@ -5,6 +5,15 @@ import {
 } from '@nestjs/common';
 import { AdminService } from './admin.service';
 import type { SupabaseService } from '../supabase/supabase.service';
+import type { AdminActionsService } from './admin-actions.service';
+import type { Profile } from '../common/types';
+
+const admin = { id: 'a1', role: 'admin' } as Profile;
+
+function createAdminActionsMock() {
+  const record = jest.fn().mockResolvedValue(undefined);
+  return { mock: { record } as unknown as AdminActionsService, record };
+}
 
 type QueryResult = {
   data: unknown;
@@ -39,6 +48,8 @@ function createSupabaseMock(resultsByTable: Record<string, QueryResult[]>) {
       'is',
       'not',
       'in',
+      'gte',
+      'lte',
       'order',
       'range',
       'limit',
@@ -53,7 +64,15 @@ function createSupabaseMock(resultsByTable: Record<string, QueryResult[]>) {
     ) => Promise.resolve(result).then(resolve, reject);
     return builder;
   });
-  return { supabase: { admin: { from } } as unknown as SupabaseService, calls };
+  const resetPasswordForEmail = jest.fn().mockResolvedValue({ error: null });
+  return {
+    supabase: {
+      admin: { from },
+      anon: { auth: { resetPasswordForEmail } },
+    } as unknown as SupabaseService,
+    calls,
+    resetPasswordForEmail,
+  };
 }
 
 describe('AdminService', () => {
@@ -63,7 +82,7 @@ describe('AdminService', () => {
       const { supabase, calls } = createSupabaseMock({
         admin_user_overview: [{ data: rows, error: null, count: 1 }],
       });
-      const service = new AdminService(supabase);
+      const service = new AdminService(supabase, createAdminActionsMock().mock);
 
       const result = await service.listUsers({ search: 'ali' });
 
@@ -76,7 +95,7 @@ describe('AdminService', () => {
       const { supabase, calls } = createSupabaseMock({
         admin_user_overview: [{ data: [], error: null, count: 0 }],
       });
-      const service = new AdminService(supabase);
+      const service = new AdminService(supabase, createAdminActionsMock().mock);
 
       await service.listUsers({ status: 'suspended' });
 
@@ -96,14 +115,14 @@ describe('AdminService', () => {
           { data: null, error: { message: 'boom' }, count: null },
         ],
       });
-      const service = new AdminService(supabase);
+      const service = new AdminService(supabase, createAdminActionsMock().mock);
 
       await expect(service.listUsers({})).rejects.toThrow(BadRequestException);
     });
   });
 
   describe('suspend', () => {
-    it('sets deactivated_at on an active client', async () => {
+    it('sets deactivated_at, suspension_reason, and an indefinite suspended_until', async () => {
       const updated = { id: 'u1', deactivated_at: '2026-07-17T00:00:00Z' };
       const { supabase, calls } = createSupabaseMock({
         profiles: [
@@ -114,15 +133,56 @@ describe('AdminService', () => {
           { data: updated, error: null },
         ],
       });
-      const service = new AdminService(supabase);
+      const { mock: adminActions, record } = createAdminActionsMock();
+      const service = new AdminService(supabase, adminActions);
 
-      const result = await service.suspend('u1');
+      const result = await service.suspend(admin, 'u1', {
+        reason: 'Repeated no-shows',
+      });
 
       expect(result).toEqual(updated);
       const updateCall = calls.find((c) => c.method === 'update');
-      expect(
-        (updateCall?.args[0] as { deactivated_at: string }).deactivated_at,
-      ).toBeTruthy();
+      const patch = updateCall?.args[0] as {
+        deactivated_at: string;
+        suspended_until: string | null;
+        suspension_reason: string;
+      };
+      expect(patch.deactivated_at).toBeTruthy();
+      expect(patch.suspended_until).toBeNull();
+      expect(patch.suspension_reason).toBe('Repeated no-shows');
+      expect(record).toHaveBeenCalledWith(
+        admin,
+        'user.suspend',
+        'profiles',
+        'u1',
+        { duration_days: null, reason: 'Repeated no-shows' },
+      );
+    });
+
+    it('computes suspended_until from duration_days', async () => {
+      const { supabase, calls } = createSupabaseMock({
+        profiles: [
+          {
+            data: { id: 'u1', role: 'client', deactivated_at: null },
+            error: null,
+          },
+          { data: { id: 'u1' }, error: null },
+        ],
+      });
+      const service = new AdminService(supabase, createAdminActionsMock().mock);
+
+      await service.suspend(admin, 'u1', {
+        duration_days: 7,
+        reason: 'Cooldown',
+      });
+
+      const updateCall = calls.find((c) => c.method === 'update');
+      const patch = updateCall?.args[0] as { suspended_until: string };
+      const daysAhead =
+        (new Date(patch.suspended_until).getTime() - Date.now()) /
+        (24 * 60 * 60 * 1000);
+      expect(daysAhead).toBeGreaterThan(6.9);
+      expect(daysAhead).toBeLessThan(7.1);
     });
 
     it('refuses to suspend an admin', async () => {
@@ -134,9 +194,11 @@ describe('AdminService', () => {
           },
         ],
       });
-      const service = new AdminService(supabase);
+      const service = new AdminService(supabase, createAdminActionsMock().mock);
 
-      await expect(service.suspend('u1')).rejects.toThrow(ForbiddenException);
+      await expect(
+        service.suspend(admin, 'u1', { reason: 'x' }),
+      ).rejects.toThrow(ForbiddenException);
     });
 
     it('refuses to suspend an already-suspended account', async () => {
@@ -152,23 +214,27 @@ describe('AdminService', () => {
           },
         ],
       });
-      const service = new AdminService(supabase);
+      const service = new AdminService(supabase, createAdminActionsMock().mock);
 
-      await expect(service.suspend('u1')).rejects.toThrow(BadRequestException);
+      await expect(
+        service.suspend(admin, 'u1', { reason: 'x' }),
+      ).rejects.toThrow(BadRequestException);
     });
 
     it('404s on unknown user', async () => {
       const { supabase } = createSupabaseMock({
         profiles: [{ data: null, error: null }],
       });
-      const service = new AdminService(supabase);
+      const service = new AdminService(supabase, createAdminActionsMock().mock);
 
-      await expect(service.suspend('u404')).rejects.toThrow(NotFoundException);
+      await expect(
+        service.suspend(admin, 'u404', { reason: 'x' }),
+      ).rejects.toThrow(NotFoundException);
     });
   });
 
   describe('reinstate', () => {
-    it('clears deactivated_at on a suspended account', async () => {
+    it('clears deactivated_at, suspended_until, and suspension_reason', async () => {
       const updated = { id: 'u1', deactivated_at: null };
       const { supabase, calls } = createSupabaseMock({
         profiles: [
@@ -183,13 +249,24 @@ describe('AdminService', () => {
           { data: updated, error: null },
         ],
       });
-      const service = new AdminService(supabase);
+      const { mock: adminActions, record } = createAdminActionsMock();
+      const service = new AdminService(supabase, adminActions);
 
-      const result = await service.reinstate('u1');
+      const result = await service.reinstate(admin, 'u1');
 
       expect(result).toEqual(updated);
       const updateCall = calls.find((c) => c.method === 'update');
-      expect(updateCall?.args[0]).toEqual({ deactivated_at: null });
+      expect(updateCall?.args[0]).toEqual({
+        deactivated_at: null,
+        suspended_until: null,
+        suspension_reason: null,
+      });
+      expect(record).toHaveBeenCalledWith(
+        admin,
+        'user.reinstate',
+        'profiles',
+        'u1',
+      );
     });
 
     it('rejects reinstating an account that is not suspended', async () => {
@@ -201,10 +278,80 @@ describe('AdminService', () => {
           },
         ],
       });
-      const service = new AdminService(supabase);
+      const service = new AdminService(supabase, createAdminActionsMock().mock);
 
-      await expect(service.reinstate('u1')).rejects.toThrow(
+      await expect(service.reinstate(admin, 'u1')).rejects.toThrow(
         BadRequestException,
+      );
+    });
+  });
+
+  describe('sendPasswordReset', () => {
+    it('sends a reset email for a non-admin user', async () => {
+      const { supabase, resetPasswordForEmail } = createSupabaseMock({
+        admin_user_overview: [
+          {
+            data: { id: 'u1', role: 'client', email: 'user@test.io' },
+            error: null,
+          },
+        ],
+      });
+      const service = new AdminService(supabase, createAdminActionsMock().mock);
+
+      await expect(service.sendPasswordReset('u1')).resolves.toEqual({
+        sent: true,
+      });
+      expect(resetPasswordForEmail).toHaveBeenCalledWith('user@test.io');
+    });
+
+    it('refuses an admin target', async () => {
+      const { supabase, resetPasswordForEmail } = createSupabaseMock({
+        admin_user_overview: [
+          {
+            data: { id: 'a2', role: 'admin', email: 'admin2@test.io' },
+            error: null,
+          },
+        ],
+      });
+      const service = new AdminService(supabase, createAdminActionsMock().mock);
+
+      await expect(service.sendPasswordReset('a2')).rejects.toThrow(
+        ForbiddenException,
+      );
+      expect(resetPasswordForEmail).not.toHaveBeenCalled();
+    });
+
+    it('404s on unknown user', async () => {
+      const { supabase } = createSupabaseMock({
+        admin_user_overview: [{ data: null, error: null }],
+      });
+      const service = new AdminService(supabase, createAdminActionsMock().mock);
+
+      await expect(service.sendPasswordReset('u404')).rejects.toThrow(
+        NotFoundException,
+      );
+    });
+  });
+
+  describe('getBooking', () => {
+    it('returns a booking by id', async () => {
+      const row = { id: 'j1', status: 'assigned' };
+      const { supabase } = createSupabaseMock({
+        jobs: [{ data: row, error: null }],
+      });
+      const service = new AdminService(supabase, createAdminActionsMock().mock);
+
+      await expect(service.getBooking('j1')).resolves.toEqual(row);
+    });
+
+    it('404s on an unknown booking', async () => {
+      const { supabase } = createSupabaseMock({
+        jobs: [{ data: null, error: null }],
+      });
+      const service = new AdminService(supabase, createAdminActionsMock().mock);
+
+      await expect(service.getBooking('j404')).rejects.toThrow(
+        NotFoundException,
       );
     });
   });
@@ -215,7 +362,7 @@ describe('AdminService', () => {
       const { supabase, calls } = createSupabaseMock({
         jobs: [{ data: rows, error: null, count: 1 }],
       });
-      const service = new AdminService(supabase);
+      const service = new AdminService(supabase, createAdminActionsMock().mock);
 
       const result = await service.listBookings({ status: 'completed' });
 
@@ -286,7 +433,7 @@ describe('AdminService', () => {
         wallet_transactions: [{ data: revenueTxns, error: null }],
         provider_verifications: [{ data: null, error: null, count: 2 }],
       });
-      const service = new AdminService(supabase);
+      const service = new AdminService(supabase, createAdminActionsMock().mock);
 
       const result = await service.analyticsSummary();
 
@@ -321,7 +468,7 @@ describe('AdminService', () => {
   });
 
   describe('recentActivity', () => {
-    it('returns job_status_history rows ordered by most recent', async () => {
+    it('returns { items, total } ordered by most recent, defaulting to 20', async () => {
       const rows = [
         {
           id: 1,
@@ -333,32 +480,63 @@ describe('AdminService', () => {
         },
       ];
       const { supabase, calls } = createSupabaseMock({
-        job_status_history: [{ data: rows, error: null }],
+        job_status_history: [{ data: rows, error: null, count: 1 }],
       });
-      const service = new AdminService(supabase);
+      const service = new AdminService(supabase, createAdminActionsMock().mock);
 
-      const result = await service.recentActivity();
+      const result = await service.recentActivity({});
 
-      expect(result).toEqual(rows);
-      expect(calls.some((c) => c.method === 'limit' && c.args[0] === 20)).toBe(
-        true,
-      );
+      expect(result).toEqual({ items: rows, total: 1 });
+      expect(
+        calls.some(
+          (c) => c.method === 'range' && c.args[0] === 0 && c.args[1] === 19,
+        ),
+      ).toBe(true);
+    });
+
+    it('applies from/to as changed_at bounds', async () => {
+      const { supabase, calls } = createSupabaseMock({
+        job_status_history: [{ data: [], error: null, count: 0 }],
+      });
+      const service = new AdminService(supabase, createAdminActionsMock().mock);
+
+      await service.recentActivity({
+        from: '2026-07-01T00:00:00Z',
+        to: '2026-07-31T00:00:00Z',
+      });
+
+      expect(
+        calls.some(
+          (c) =>
+            c.method === 'gte' &&
+            c.args[0] === 'changed_at' &&
+            c.args[1] === '2026-07-01T00:00:00Z',
+        ),
+      ).toBe(true);
+      expect(
+        calls.some(
+          (c) =>
+            c.method === 'lte' &&
+            c.args[0] === 'changed_at' &&
+            c.args[1] === '2026-07-31T00:00:00Z',
+        ),
+      ).toBe(true);
     });
 
     it('throws BadRequestException on query error', async () => {
       const { supabase } = createSupabaseMock({
         job_status_history: [{ data: null, error: { message: 'boom' } }],
       });
-      const service = new AdminService(supabase);
+      const service = new AdminService(supabase, createAdminActionsMock().mock);
 
-      await expect(service.recentActivity()).rejects.toThrow(
+      await expect(service.recentActivity({})).rejects.toThrow(
         BadRequestException,
       );
     });
   });
 
   describe('cancelBooking', () => {
-    it('cancels an open booking', async () => {
+    it('cancels an open booking and records an audit action', async () => {
       const updated = { id: 'j1', status: 'cancelled' };
       const { supabase, calls } = createSupabaseMock({
         jobs: [
@@ -366,22 +544,30 @@ describe('AdminService', () => {
           { data: updated, error: null },
         ],
       });
-      const service = new AdminService(supabase);
+      const { mock: adminActions, record } = createAdminActionsMock();
+      const service = new AdminService(supabase, adminActions);
 
-      const result = await service.cancelBooking('j1');
+      const result = await service.cancelBooking(admin, 'j1');
 
       expect(result).toEqual(updated);
       const updateCall = calls.find((c) => c.method === 'update');
       expect(updateCall?.args[0]).toEqual({ status: 'cancelled' });
+      expect(record).toHaveBeenCalledWith(
+        admin,
+        'booking.cancel',
+        'jobs',
+        'j1',
+        { previous_status: 'open' },
+      );
     });
 
     it('refuses to cancel an already-completed booking', async () => {
       const { supabase } = createSupabaseMock({
         jobs: [{ data: { id: 'j1', status: 'completed' }, error: null }],
       });
-      const service = new AdminService(supabase);
+      const service = new AdminService(supabase, createAdminActionsMock().mock);
 
-      await expect(service.cancelBooking('j1')).rejects.toThrow(
+      await expect(service.cancelBooking(admin, 'j1')).rejects.toThrow(
         BadRequestException,
       );
     });
@@ -390,9 +576,9 @@ describe('AdminService', () => {
       const { supabase } = createSupabaseMock({
         jobs: [{ data: null, error: null }],
       });
-      const service = new AdminService(supabase);
+      const service = new AdminService(supabase, createAdminActionsMock().mock);
 
-      await expect(service.cancelBooking('j404')).rejects.toThrow(
+      await expect(service.cancelBooking(admin, 'j404')).rejects.toThrow(
         NotFoundException,
       );
     });

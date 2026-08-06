@@ -15,7 +15,6 @@ import {
   mapTopProviders,
 } from "./mapAnalytics";
 import type {
-  AdminActivityApiRow,
   AdminBookingApiRow,
   AdminDisputeApiRow,
   AdminTransactionApiRow,
@@ -24,6 +23,7 @@ import type {
   AnalyticsSummaryApiResponse,
   DisputeResolutionApi,
   EscrowStatusApi,
+  ListActivityApiResponse,
   ListBookingsApiResponse,
   ListDisputesApiResponse,
   ListTransactionsApiResponse,
@@ -303,8 +303,12 @@ export async function getBookingsByCategory(): Promise<CategoryShare[]> {
 }
 
 export async function getRecentActivity(): Promise<ActivityEvent[]> {
-  const rows = await client.get<AdminActivityApiRow[]>("/admin/activity");
-  return mapActivity(rows);
+  // Backend migration 0014 (BACKEND_SCHEMA.md §23.4) changed this from a bare
+  // array to { items, total } to support pagination/date filtering. Neither
+  // the Dashboard feed nor the Activity Log page paginate yet — both just
+  // want the list — so this still returns a flat array to its callers.
+  const { items } = await client.get<ListActivityApiResponse>("/admin/activity");
+  return mapActivity(items);
 }
 
 export async function getTopProviders(): Promise<TopProvider[]> {

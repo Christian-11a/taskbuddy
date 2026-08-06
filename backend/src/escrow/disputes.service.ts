@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import { SupabaseService } from '../supabase/supabase.service';
 import { EscrowService } from './escrow.service';
+import { AdminActionsService } from '../admin/admin-actions.service';
 import {
   ListDisputesQueryDto,
   RaiseDisputeDto,
@@ -31,6 +32,7 @@ export class DisputesService {
   constructor(
     private readonly supabase: SupabaseService,
     private readonly escrow: EscrowService,
+    private readonly adminActions: AdminActionsService,
   ) {}
 
   /**
@@ -142,6 +144,14 @@ export class DisputesService {
       .select('*')
       .single();
     if (error) throw new BadRequestException(error.message);
+
+    await this.adminActions.record(
+      admin,
+      'dispute.resolve',
+      'disputes',
+      disputeId,
+      { resolution: dto.resolution, note: dto.note ?? null },
+    );
 
     const outcome =
       dto.resolution === 'released_to_provider'

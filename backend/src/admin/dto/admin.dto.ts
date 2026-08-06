@@ -1,5 +1,15 @@
 import { Type } from 'class-transformer';
-import { IsIn, IsInt, IsOptional, IsString } from 'class-validator';
+import {
+  IsDateString,
+  IsIn,
+  IsInt,
+  IsNotEmpty,
+  IsOptional,
+  IsPositive,
+  IsString,
+  IsUUID,
+  MaxLength,
+} from 'class-validator';
 import type { JobStatus, UserRole } from '../../common/types';
 
 export class ListUsersQueryDto {
@@ -27,6 +37,20 @@ export class ListUsersQueryDto {
   offset?: number;
 }
 
+export class SuspendUserDto {
+  /** Omit for an indefinite suspension. */
+  @IsOptional()
+  @IsInt()
+  @IsPositive()
+  @Type(() => Number)
+  duration_days?: number;
+
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(500)
+  reason!: string;
+}
+
 export class ListBookingsQueryDto {
   @IsOptional()
   @IsIn([
@@ -44,6 +68,54 @@ export class ListBookingsQueryDto {
   @IsInt()
   @Type(() => Number)
   category_id?: number;
+
+  @IsOptional()
+  @IsInt()
+  @Type(() => Number)
+  limit?: number;
+
+  @IsOptional()
+  @IsInt()
+  @Type(() => Number)
+  offset?: number;
+}
+
+export class ListActivityQueryDto {
+  @IsOptional()
+  @IsInt()
+  @Type(() => Number)
+  limit?: number;
+
+  @IsOptional()
+  @IsInt()
+  @Type(() => Number)
+  offset?: number;
+
+  @IsOptional()
+  @IsDateString()
+  from?: string;
+
+  @IsOptional()
+  @IsDateString()
+  to?: string;
+}
+
+export class ListAuditQueryDto {
+  @IsOptional()
+  @IsString()
+  action?: string;
+
+  @IsOptional()
+  @IsUUID()
+  actor_id?: string;
+
+  @IsOptional()
+  @IsDateString()
+  from?: string;
+
+  @IsOptional()
+  @IsDateString()
+  to?: string;
 
   @IsOptional()
   @IsInt()

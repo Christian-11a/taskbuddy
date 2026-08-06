@@ -118,12 +118,15 @@ export class AuthService implements OnModuleInit {
     // guard on later requests (story #29, TC-ADM-006).
     const { data: profile } = await this.supabase.admin
       .from('profiles')
-      .select('deactivated_at, full_name, role')
+      .select('deactivated_at, suspended_until, full_name, role')
       .eq('id', data.user.id)
       .maybeSingle();
-    if (profile?.deactivated_at) {
-      await this.supabase.admin.auth.admin.signOut(data.session.access_token);
-      throw new ForbiddenException('Account suspended');
+    if (profile) {
+      await this.enforceNotSuspended(
+        data.user.id,
+        data.session.access_token,
+        profile,
+      );
     }
 
     return {
@@ -245,12 +248,15 @@ export class AuthService implements OnModuleInit {
     // otherwise a reset is a way back in for an account an admin closed.
     const { data: profile } = await this.supabase.admin
       .from('profiles')
-      .select('deactivated_at')
+      .select('deactivated_at, suspended_until')
       .eq('id', data.user.id)
       .maybeSingle();
-    if (profile?.deactivated_at) {
-      await this.supabase.admin.auth.admin.signOut(data.session.access_token);
-      throw new ForbiddenException('Account suspended');
+    if (profile) {
+      await this.enforceNotSuspended(
+        data.user.id,
+        data.session.access_token,
+        profile,
+      );
     }
 
     const { error: updateError } =
@@ -444,12 +450,15 @@ export class AuthService implements OnModuleInit {
     // Suspended accounts must be rejected here too, consistent with login().
     const { data: profile } = await this.supabase.admin
       .from('profiles')
-      .select('deactivated_at')
+      .select('deactivated_at, suspended_until')
       .eq('id', data.user.id)
       .maybeSingle();
-    if (profile?.deactivated_at) {
-      await this.supabase.admin.auth.admin.signOut(data.session.access_token);
-      throw new ForbiddenException('Account suspended');
+    if (profile) {
+      await this.enforceNotSuspended(
+        data.user.id,
+        data.session.access_token,
+        profile,
+      );
     }
 
     return {
@@ -460,6 +469,43 @@ export class AuthService implements OnModuleInit {
         expires_at: data.session.expires_at,
       },
     };
+  }
+
+  /**
+   * Shared by login/resetPassword/handleGoogleCallback. A timed suspension
+   * (BACKEND_SCHEMA.md §23.1) is lifted lazily right here rather than by a
+   * cron job: once `suspended_until` is in the past, the three suspension
+   * columns are cleared and the caller proceeds as if never suspended. An
+   * indefinite suspension (`suspended_until` null) or one still in effect
+   * signs the session out and blocks the request, as before.
+   */
+  private async enforceNotSuspended(
+    userId: string,
+    accessToken: string,
+    suspension: {
+      deactivated_at: string | null;
+      suspended_until?: string | null;
+    },
+  ): Promise<void> {
+    if (!suspension.deactivated_at) return;
+
+    const expired =
+      suspension.suspended_until != null &&
+      new Date(suspension.suspended_until).getTime() <= Date.now();
+    if (expired) {
+      await this.supabase.admin
+        .from('profiles')
+        .update({
+          deactivated_at: null,
+          suspended_until: null,
+          suspension_reason: null,
+        })
+        .eq('id', userId);
+      return;
+    }
+
+    await this.supabase.admin.auth.admin.signOut(accessToken);
+    throw new ForbiddenException('Account suspended');
   }
 
   /** Profile plus the provider extension when the caller is a provider. */

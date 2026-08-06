@@ -5,7 +5,14 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { SupabaseService } from '../supabase/supabase.service';
-import { ListBookingsQueryDto, ListUsersQueryDto } from './dto/admin.dto';
+import {
+  ListActivityQueryDto,
+  ListBookingsQueryDto,
+  ListUsersQueryDto,
+  SuspendUserDto,
+} from './dto/admin.dto';
+import { AdminActionsService } from './admin-actions.service';
+import type { Profile } from '../common/types';
 
 // admin_user_overview (migration 0005) joins profiles with auth.users email;
 // readable by the service role only.
@@ -22,7 +29,10 @@ const ACTIVITY_SELECT =
 
 @Injectable()
 export class AdminService {
-  constructor(private readonly supabase: SupabaseService) {}
+  constructor(
+    private readonly supabase: SupabaseService,
+    private readonly adminActions: AdminActionsService,
+  ) {}
 
   async listUsers(query: ListUsersQueryDto) {
     const offset = query.offset ?? 0;
@@ -58,7 +68,7 @@ export class AdminService {
     return data;
   }
 
-  async suspend(userId: string) {
+  async suspend(admin: Profile, userId: string, dto: SuspendUserDto) {
     const user = await this.findProfile(userId);
     if (user.role === 'admin') {
       throw new ForbiddenException('Admin accounts cannot be suspended');
@@ -66,15 +76,35 @@ export class AdminService {
     if (user.deactivated_at) {
       throw new BadRequestException('Account is already suspended');
     }
-    return this.setDeactivated(userId, new Date().toISOString());
+    const suspendedUntil = dto.duration_days
+      ? new Date(
+          Date.now() + dto.duration_days * 24 * 60 * 60 * 1000,
+        ).toISOString()
+      : null;
+    const updated = await this.setDeactivated(userId, {
+      deactivated_at: new Date().toISOString(),
+      suspended_until: suspendedUntil,
+      suspension_reason: dto.reason,
+    });
+    await this.adminActions.record(admin, 'user.suspend', 'profiles', userId, {
+      duration_days: dto.duration_days ?? null,
+      reason: dto.reason,
+    });
+    return updated;
   }
 
-  async reinstate(userId: string) {
+  async reinstate(admin: Profile, userId: string) {
     const user = await this.findProfile(userId);
     if (!user.deactivated_at) {
       throw new BadRequestException('Account is not suspended');
     }
-    return this.setDeactivated(userId, null);
+    const updated = await this.setDeactivated(userId, {
+      deactivated_at: null,
+      suspended_until: null,
+      suspension_reason: null,
+    });
+    await this.adminActions.record(admin, 'user.reinstate', 'profiles', userId);
+    return updated;
   }
 
   /** Platform-wide bookings list, filterable by status/category (story #31). */
@@ -94,10 +124,51 @@ export class AdminService {
     return { bookings: data ?? [], total: count ?? 0 };
   }
 
+  /**
+   * Admin-initiated password reset — a thin wrapper over the same primitive
+   * POST /auth/forgot-password uses (Supabase's resetPasswordForEmail), just
+   * triggered by an admin instead of the account holder. Unlike that public
+   * endpoint, this one may surface real errors: the caller already resolved
+   * the target by id, so there is no membership-enumeration concern.
+   */
+  async sendPasswordReset(userId: string) {
+    const user = await this.getUser(userId);
+    if (user.role === 'admin') {
+      throw new ForbiddenException(
+        'Cannot trigger a password reset for an admin account',
+      );
+    }
+    if (!user.email) {
+      throw new BadRequestException('This account has no email on file');
+    }
+    const { error } = await this.supabase.anon.auth.resetPasswordForEmail(
+      user.email as string,
+    );
+    if (error) throw new BadRequestException(error.message);
+    return { sent: true };
+  }
+
+  /** One booking's full detail — the list endpoint's row already carries
+   *  description/address/scheduled_at/photo_urls via `select('*')`, so this
+   *  differs from a list row only by being fetchable one at a time. */
+  async getBooking(jobId: string): Promise<Record<string, unknown>> {
+    const { data, error } = await this.supabase.admin
+      .from('jobs')
+      .select(BOOKING_SELECT)
+      .eq('id', jobId)
+      .maybeSingle();
+    if (error) throw new BadRequestException(error.message);
+    if (!data) throw new NotFoundException('Booking not found');
+    // BOOKING_SELECT is a concatenated (non-literal) string — supabase-js
+    // can't infer a row type from it (same pitfall as JOB_SELECT in
+    // jobs.service.ts), so the cast is explicit rather than accidental.
+    return data as unknown as Record<string, unknown>;
+  }
+
   /** Cancels a booking (story #31 extension) — refuses if it's already in a
    *  terminal state. Relies on the existing `log_job_status_change` trigger
    *  for the `job_status_history` audit row; no migration needed. */
-  async cancelBooking(jobId: string) {
+  async cancelBooking(admin: Profile, jobId: string) {
     const { data: job, error } = await this.supabase.admin
       .from('jobs')
       .select('id, status')
@@ -115,6 +186,9 @@ export class AdminService {
       .select('*')
       .single();
     if (updateError) throw new BadRequestException(updateError.message);
+    await this.adminActions.record(admin, 'booking.cancel', 'jobs', jobId, {
+      previous_status: job.status,
+    });
     return data;
   }
 
@@ -232,17 +306,29 @@ export class AdminService {
     };
   }
 
-  /** Recent platform events for the dashboard's activity feed (story #32) —
-   *  sourced from job_status_history, the existing audit trail of job
-   *  lifecycle transitions (no new table needed). */
-  async recentActivity(limit = 20) {
-    const { data, error } = await this.supabase.admin
+  /**
+   * Recent platform events for the dashboard's activity feed (story #32) and
+   * the Activity Log page — sourced from job_status_history, the existing
+   * audit trail of job lifecycle transitions (no new table needed).
+   *
+   * `{ items, total }` is a breaking shape change from the bare array this
+   * returned before pagination existed (BACKEND_SCHEMA.md §23.4) — worth
+   * doing now while the web admin console is the only consumer.
+   */
+  async recentActivity(query: ListActivityQueryDto = {}) {
+    const offset = query.offset ?? 0;
+    const limit = query.limit ?? 20;
+    let builder = this.supabase.admin
       .from('job_status_history')
-      .select(ACTIVITY_SELECT)
+      .select(ACTIVITY_SELECT, { count: 'exact' })
       .order('changed_at', { ascending: false })
-      .limit(limit);
+      .range(offset, offset + limit - 1);
+    if (query.from) builder = builder.gte('changed_at', query.from);
+    if (query.to) builder = builder.lte('changed_at', query.to);
+
+    const { data, error, count } = await builder;
     if (error) throw new BadRequestException(error.message);
-    return data ?? [];
+    return { items: data ?? [], total: count ?? 0 };
   }
 
   private async findProfile(userId: string) {
@@ -256,10 +342,17 @@ export class AdminService {
     return data;
   }
 
-  private async setDeactivated(userId: string, value: string | null) {
+  private async setDeactivated(
+    userId: string,
+    patch: {
+      deactivated_at: string | null;
+      suspended_until: string | null;
+      suspension_reason: string | null;
+    },
+  ) {
     const { data, error } = await this.supabase.admin
       .from('profiles')
-      .update({ deactivated_at: value })
+      .update(patch)
       .eq('id', userId)
       .select('*')
       .single();
