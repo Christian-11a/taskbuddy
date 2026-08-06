@@ -12,8 +12,15 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { Roles } from '../auth/roles.decorator';
 import { CurrentUser } from '../auth/current-user.decorator';
 import { AdminService } from './admin.service';
+import { AdminActionsService } from './admin-actions.service';
 import { VerificationsService } from '../verifications/verifications.service';
-import { ListBookingsQueryDto, ListUsersQueryDto } from './dto/admin.dto';
+import {
+  ListActivityQueryDto,
+  ListAuditQueryDto,
+  ListBookingsQueryDto,
+  ListUsersQueryDto,
+  SuspendUserDto,
+} from './dto/admin.dto';
 import {
   ListVerificationsQueryDto,
   RejectVerificationDto,
@@ -25,6 +32,7 @@ import {
   ListTransactionsQueryDto,
   ResolveDisputeDto,
 } from '../escrow/dto/escrow.dto';
+import { ChatService } from '../chat/chat.service';
 import type { Profile } from '../common/types';
 
 @Controller('admin')
@@ -33,9 +41,11 @@ import type { Profile } from '../common/types';
 export class AdminController {
   constructor(
     private readonly adminService: AdminService,
+    private readonly adminActionsService: AdminActionsService,
     private readonly verificationsService: VerificationsService,
     private readonly escrowService: EscrowService,
     private readonly disputesService: DisputesService,
+    private readonly chatService: ChatService,
   ) {}
 
   @Get('users')
@@ -49,13 +59,25 @@ export class AdminController {
   }
 
   @Post('users/:id/suspend')
-  suspend(@Param('id', ParseUUIDPipe) id: string) {
-    return this.adminService.suspend(id);
+  suspend(
+    @CurrentUser() admin: Profile,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: SuspendUserDto,
+  ) {
+    return this.adminService.suspend(admin, id, dto);
   }
 
   @Post('users/:id/reinstate')
-  reinstate(@Param('id', ParseUUIDPipe) id: string) {
-    return this.adminService.reinstate(id);
+  reinstate(
+    @CurrentUser() admin: Profile,
+    @Param('id', ParseUUIDPipe) id: string,
+  ) {
+    return this.adminService.reinstate(admin, id);
+  }
+
+  @Post('users/:id/send-password-reset')
+  sendPasswordReset(@Param('id', ParseUUIDPipe) id: string) {
+    return this.adminService.sendPasswordReset(id);
   }
 
   @Get('bookings')
@@ -63,9 +85,21 @@ export class AdminController {
     return this.adminService.listBookings(query);
   }
 
+  @Get('bookings/:id')
+  async getBooking(@Param('id', ParseUUIDPipe) id: string) {
+    const [job, escrow] = await Promise.all([
+      this.adminService.getBooking(id),
+      this.escrowService.findByJob(id),
+    ]);
+    return { ...job, escrow };
+  }
+
   @Post('bookings/:id/cancel')
-  cancelBooking(@Param('id', ParseUUIDPipe) id: string) {
-    return this.adminService.cancelBooking(id);
+  cancelBooking(
+    @CurrentUser() admin: Profile,
+    @Param('id', ParseUUIDPipe) id: string,
+  ) {
+    return this.adminService.cancelBooking(admin, id);
   }
 
   @Get('analytics/summary')
@@ -74,8 +108,18 @@ export class AdminController {
   }
 
   @Get('activity')
-  recentActivity() {
-    return this.adminService.recentActivity();
+  recentActivity(@Query() query: ListActivityQueryDto) {
+    return this.adminService.recentActivity(query);
+  }
+
+  @Get('audit')
+  listAudit(@Query() query: ListAuditQueryDto) {
+    return this.adminActionsService.list(query);
+  }
+
+  @Get('jobs/:jobId/conversation')
+  getJobConversation(@Param('jobId', ParseUUIDPipe) jobId: string) {
+    return this.chatService.adminConversationForJob(jobId);
   }
 
   // ── Provider verification queue (migration 0008) ──────────────────────────
