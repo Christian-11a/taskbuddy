@@ -28,10 +28,12 @@ import {
   KeyboardAvoidingView,
   Platform,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
+  TouchableWithoutFeedback,
   View,
 } from 'react-native';
 import { Eye, EyeOff } from 'lucide-react-native';
@@ -68,6 +70,13 @@ function InputField({
   error, rightElement, testID,
 }: InputFieldProps) {
   const [focused, setFocused] = useState(false);
+
+  // NOTE: previously there was a `keyboardDidShow` listener here that called
+  // `inputRef.current.focus()` again once the keyboard finished animating in.
+  // That forced a *second* focus/measure pass on top of the one RN already
+  // does automatically, which is what produced the "jump to the top, then
+  // slide back down" animation on iOS. Removed — RN handles this on its own.
+
   return (
     <View style={styles.inputGroup}>
       <Text style={styles.inputLabel}>{label}</Text>
@@ -89,6 +98,8 @@ function InputField({
           autoCorrect={false}
           onFocus={() => setFocused(true)}
           onBlur={() => setFocused(false)}
+          onSubmitEditing={Keyboard.dismiss}
+          enablesReturnKeyAutomatically
         />
         {rightElement}
       </View>
@@ -145,6 +156,153 @@ export default function LoginScreen({
     }
   };
 
+  const scrollContent = (
+    <ScrollView
+      style={styles.flex}
+      contentContainerStyle={styles.loginContent}
+      // "handled" lets taps on buttons/links still register while any other
+      // tap outside an input bubbles up and dismisses the keyboard (fixes #4).
+      keyboardShouldPersistTaps="handled"
+      keyboardDismissMode="interactive"
+      showsVerticalScrollIndicator={false}
+      // iOS 17+/RN 0.71+: lets the ScrollView resize its content insets to
+      // match the keyboard smoothly, without a manual KeyboardAvoidingView
+      // fighting it. This removes both the jump (#1) and the extra empty
+      // gap before the keyboard (#3).
+      automaticallyAdjustKeyboardInsets={Platform.OS === 'ios'}
+    >
+      {/* Logo */}
+      <View style={styles.logoSection}>
+        {/* Logo mark */}
+        <View style={styles.logoMark}>
+          <View style={styles.logoRect}>
+            <View style={styles.logoLine} />
+            <View style={[styles.logoLine, { width: 24 }]} />
+            <View style={[styles.logoLine, { width: 20 }]} />
+          </View>
+          <View style={styles.logoFigure}>
+            <View style={styles.logoHead} />
+            <View style={styles.logoBody} />
+          </View>
+        </View>
+        <Text style={styles.logoText}>TaskBuddy</Text>
+        <Text style={styles.tagline}>Hire with confidence, pay with ease.</Text>
+      </View>
+
+      {/* Heading */}
+      <View style={styles.headingSection}>
+        <Text style={styles.welcomeText}>Welcome!</Text>
+        <Text style={styles.subtitleText}>Sign in to your account</Text>
+      </View>
+
+      {/* Email */}
+      <InputField
+        testID="input-email"
+        label="Email"
+        placeholder="sample@mail.com"
+        value={email}
+        onChangeText={setEmail}
+        keyboardType="email-address"
+      />
+
+      {/* Password */}
+      <View style={styles.passwordSection}>
+        <View style={styles.passwordLabelRow}>
+          <Text style={styles.inputLabel}>Password</Text>
+          <TouchableOpacity onPress={onForgotPassword}>
+            <Text style={styles.forgotText}>Forgot Password?</Text>
+          </TouchableOpacity>
+        </View>
+        <View style={[styles.inputBox, passwordFocused && styles.inputBoxFocused]}>
+          <TextInput
+            testID="input-password"
+            style={[styles.inputText, styles.flex]}
+            placeholder="Password"
+            placeholderTextColor={C.muted}
+            value={password}
+            onChangeText={setPassword}
+            secureTextEntry={!showPassword}
+            autoCapitalize="none"
+            autoCorrect={false}
+            // Removed textContentType="password" — this is what triggers
+            // iOS's "Passwords" AutoFill suggestion strip that was covering
+            // the screen above the keyboard (#3). secureTextEntry alone
+            // still masks the input correctly.
+            autoComplete="off"
+            returnKeyType="done"
+            onFocus={() => setPasswordFocused(true)}
+            onBlur={() => setPasswordFocused(false)}
+            onSubmitEditing={handleSignIn}
+          />
+          <TouchableOpacity
+            onPress={() => setShowPassword((s) => !s)}
+            style={styles.eyeBtn}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
+            {showPassword ? <EyeOff size={18} color={C.muted} /> : <Eye size={18} color={C.muted} />}
+          </TouchableOpacity>
+        </View>
+      </View>
+
+      {/* Error */}
+      {!!error && (
+        <Text testID="login-error" style={styles.errorBanner}>
+          {error}
+        </Text>
+      )}
+
+      {/* Sign In */}
+      <TouchableOpacity
+        testID="btn-sign-in"
+        style={[styles.primaryBtn, submitting && styles.primaryBtnDisabled]}
+        activeOpacity={0.85}
+        onPress={handleSignIn}
+        disabled={submitting}
+      >
+        {submitting ? (
+          <ActivityIndicator color={C.white} />
+        ) : (
+          <Text style={styles.primaryBtnText}>Sign In</Text>
+        )}
+      </TouchableOpacity>
+
+      {/* Divider */}
+      <View style={styles.dividerRow}>
+        <View style={styles.dividerLine} />
+        <Text style={styles.dividerText}>or</Text>
+        <View style={styles.dividerLine} />
+      </View>
+
+      {/* Google */}
+      <TouchableOpacity
+        testID="btn-google"
+        style={[styles.googleBtn, googleLoading && styles.primaryBtnDisabled]}
+        activeOpacity={0.85}
+        onPress={handleGoogleSignIn}
+        disabled={googleLoading || submitting}
+      >
+        {googleLoading ? (
+          <ActivityIndicator color={C.brandTeal} />
+        ) : (
+          <>
+            <View style={styles.googleIcon}>
+              <Text style={styles.googleIconText}>G</Text>
+            </View>
+            <Text style={styles.googleBtnText}>Continue with Google</Text>
+          </>
+        )}
+      </TouchableOpacity>
+
+      {/* Sign Up */}
+      <View style={styles.signUpRow}>
+        <Text style={styles.signUpPrompt}>Don't have an account? </Text>
+        <Pressable onPress={onSignUp} testID="btn-signup">
+          <Text style={styles.signUpLink}>Sign Up</Text>
+        </Pressable>
+      </View>
+    </ScrollView>
+  );
+
   return (
     <View style={styles.screen}>
       {/* Background blobs */}
@@ -153,143 +311,22 @@ export default function LoginScreen({
       <View style={styles.blobBottomLeft} pointerEvents="none" />
       <View style={styles.blobBottomRight} pointerEvents="none" />
 
-      <KeyboardAvoidingView
-        style={styles.flex}
-        // Resize the available layout space so all of the login content
-        // reflows together without translating the form past the screen.
-        behavior={Platform.OS === 'ios' ? 'height' : undefined}
-      >
-        <View
-          style={styles.loginContent}
-          // Dismiss on any background/form-area tap while allowing child
-          // controls (including TextInputs) to handle the same touch.
-          onTouchStart={Keyboard.dismiss}
-        >
-          {/* Logo */}
-          <View style={styles.logoSection}>
-            {/* Logo mark */}
-            <View style={styles.logoMark}>
-              <View style={styles.logoRect}>
-                <View style={styles.logoLine} />
-                <View style={[styles.logoLine, { width: 24 }]} />
-                <View style={[styles.logoLine, { width: 20 }]} />
-              </View>
-              <View style={styles.logoFigure}>
-                <View style={styles.logoHead} />
-                <View style={styles.logoBody} />
-              </View>
-            </View>
-            <Text style={styles.logoText}>TaskBuddy</Text>
-            <Text style={styles.tagline}>Hire with confidence, pay with ease.</Text>
-          </View>
-
-          {/* Heading */}
-          <View style={styles.headingSection}>
-            <Text style={styles.welcomeText}>Welcome!</Text>
-            <Text style={styles.subtitleText}>Sign in to your account</Text>
-          </View>
-
-          {/* Email */}
-          <InputField
-            testID="input-email"
-            label="Email"
-            placeholder="sample@mail.com"
-            value={email}
-            onChangeText={setEmail}
-            keyboardType="email-address"
-          />
-
-          {/* Password */}
-          <View style={styles.passwordSection}>
-            <View style={styles.passwordLabelRow}>
-              <Text style={styles.inputLabel}>Password</Text>
-              <TouchableOpacity onPress={onForgotPassword}>
-                <Text style={styles.forgotText}>Forgot Password?</Text>
-              </TouchableOpacity>
-            </View>
-            <View style={[styles.inputBox, passwordFocused && styles.inputBoxFocused]}>
-              <TextInput
-                testID="input-password"
-                style={[styles.inputText, styles.flex]}
-                placeholder="Password"
-                placeholderTextColor={C.muted}
-                value={password}
-                onChangeText={setPassword}
-                secureTextEntry={!showPassword}
-                autoCapitalize="none"
-                autoCorrect={false}
-                onFocus={() => setPasswordFocused(true)}
-                onBlur={() => setPasswordFocused(false)}
-              />
-              <TouchableOpacity
-                onPress={() => setShowPassword((s) => !s)}
-                style={styles.eyeBtn}
-                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-              >
-                {showPassword ? <EyeOff size={18} color={C.muted} /> : <Eye size={18} color={C.muted} />}
-              </TouchableOpacity>
-            </View>
-          </View>
-
-          {/* Error */}
-          {!!error && (
-            <Text testID="login-error" style={styles.errorBanner}>
-              {error}
-            </Text>
-          )}
-
-          {/* Sign In */}
-          <TouchableOpacity
-            testID="btn-sign-in"
-            style={[styles.primaryBtn, submitting && styles.primaryBtnDisabled]}
-            activeOpacity={0.85}
-            onPress={handleSignIn}
-            disabled={submitting}
+      <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
+        {Platform.OS === 'android' ? (
+          // Android doesn't support automaticallyAdjustKeyboardInsets, so it
+          // still needs KeyboardAvoidingView. offset 0 since there's no
+          // fixed header above this screen.
+          <KeyboardAvoidingView
+            style={styles.flex}
+            behavior="height"
+            keyboardVerticalOffset={0}
           >
-            {submitting ? (
-              <ActivityIndicator color={C.white} />
-            ) : (
-              <Text style={styles.primaryBtnText}>Sign In</Text>
-            )}
-          </TouchableOpacity>
-
-          {/* Divider */}
-          <View style={styles.dividerRow}>
-            <View style={styles.dividerLine} />
-            <Text style={styles.dividerText}>or</Text>
-            <View style={styles.dividerLine} />
-          </View>
-
-          {/* Google */}
-          <TouchableOpacity
-            testID="btn-google"
-            style={[styles.googleBtn, googleLoading && styles.primaryBtnDisabled]}
-            activeOpacity={0.85}
-            onPress={handleGoogleSignIn}
-            disabled={googleLoading || submitting}
-          >
-            {googleLoading ? (
-              <ActivityIndicator color={C.brandTeal} />
-            ) : (
-              <>
-                <View style={styles.googleIcon}>
-                  <Text style={styles.googleIconText}>G</Text>
-                </View>
-                <Text style={styles.googleBtnText}>Continue with Google</Text>
-              </>
-            )}
-          </TouchableOpacity>
-
-          {/* Sign Up */}
-          <View style={styles.signUpRow}>
-            <Text style={styles.signUpPrompt}>Don't have an account? </Text>
-            <Pressable onPress={onSignUp} testID="btn-signup">
-              <Text style={styles.signUpLink}>Sign Up</Text>
-            </Pressable>
-          </View>
-        </View>
-      </KeyboardAvoidingView>
-
+            {scrollContent}
+          </KeyboardAvoidingView>
+        ) : (
+          <View style={styles.flex}>{scrollContent}</View>
+        )}
+      </TouchableWithoutFeedback>
     </View>
   );
 }
@@ -322,10 +359,14 @@ const styles = StyleSheet.create({
 
   // Scroll
   loginContent: {
-    flex: 1,
+    flexGrow: 1,
+    // Centers the form vertically when it doesn't fill the screen (fixes #2).
+    // Once the keyboard shrinks available height, the ScrollView scrolls
+    // normally instead of forcing centering.
     justifyContent: 'center',
     paddingHorizontal: 30,
-    paddingVertical: 24,
+    paddingTop: 40,
+    paddingBottom: 24,
   },
 
   // Logo
@@ -359,19 +400,6 @@ const styles = StyleSheet.create({
     color: C.muted, letterSpacing: 0.14,
   },
 
-  // Role selector (DEMO)
-  roleRow: { flexDirection: 'row', gap: 10, marginBottom: 18 },
-  roleChip: {
-    flex: 1, paddingVertical: 10, borderRadius: 20,
-    borderWidth: 1, borderColor: 'rgba(144,153,184,0.4)',
-    backgroundColor: C.white, alignItems: 'center',
-  },
-  roleChipActive: {
-    backgroundColor: C.brandDark, borderColor: C.brandDark,
-  },
-  roleChipText: { fontFamily: 'Inter', fontSize: 13, fontWeight: '600', color: C.muted },
-  roleChipTextActive: { color: C.white },
-
   // Inputs
   inputGroup: { marginBottom: 18 },
   inputLabel: {
@@ -403,7 +431,6 @@ const styles = StyleSheet.create({
   passwordLabelRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
   forgotText: { fontFamily: 'Inter', fontSize: 13, fontWeight: '700', color: C.brandTeal, textDecorationLine: 'underline' },
   eyeBtn: { paddingLeft: 8 },
-  eyeIcon: { fontSize: 16 },
 
   // Primary button
   primaryBtn: {
@@ -448,5 +475,4 @@ const styles = StyleSheet.create({
   signUpRow: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center' },
   signUpPrompt: { fontFamily: 'Inter', fontSize: 14, fontWeight: '500', color: C.muted },
   signUpLink: { fontFamily: 'Roboto', fontSize: 14, fontWeight: '700', color: C.brandTeal, textDecorationLine: 'underline' },
-
 });
