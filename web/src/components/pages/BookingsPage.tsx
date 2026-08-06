@@ -4,6 +4,8 @@ import { Fragment, useState } from "react";
 import { Search, XCircle, ChevronDown, Download } from "lucide-react";
 import { useApp } from "@/context/AppContext";
 import { datedFilename, downloadCsv, toCsv } from "@/lib/export/csv";
+import * as services from "@/lib/services";
+import type { AdminBookingDetail } from "@/lib/domain";
 import clsx from "clsx";
 
 type StatusFilter =
@@ -32,6 +34,24 @@ export function BookingsPage() {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  // GET /admin/bookings/:id (migration 0014) — fetched on demand per row and
+  // cached by id so re-expanding a row doesn't refetch.
+  const [details, setDetails] = useState<Record<string, AdminBookingDetail | "loading" | "error">>({});
+
+  function toggleExpand(id: string) {
+    if (expandedId === id) {
+      setExpandedId(null);
+      return;
+    }
+    setExpandedId(id);
+    if (!(id in details)) {
+      setDetails((prev) => ({ ...prev, [id]: "loading" }));
+      services
+        .getBookingDetail(id)
+        .then((detail) => setDetails((prev) => ({ ...prev, [id]: detail })))
+        .catch(() => setDetails((prev) => ({ ...prev, [id]: "error" })));
+    }
+  }
 
   const filtered = bookings.filter((b) => {
     const matchSearch =
@@ -148,7 +168,7 @@ export function BookingsPage() {
                         )}
                         <button
                           title="View details"
-                          onClick={() => setExpandedId(expandedId === b.id ? null : b.id)}
+                          onClick={() => toggleExpand(b.id)}
                           className="flex items-center justify-center rounded-lg transition-all hover:bg-white/10"
                           style={{ width: 26, height: 26, background: "transparent", border: "none", cursor: "pointer", color: "var(--text-muted)", transform: expandedId === b.id ? "rotate(180deg)" : "none" }}
                         >
@@ -176,9 +196,48 @@ export function BookingsPage() {
                             </div>
                           ))}
                         </div>
-                        <div style={{ fontSize: 9.8, color: "var(--text-muted)", marginTop: 10 }}>
-                          Job description, address and scheduled time need a backend endpoint — see web/README.md.
-                        </div>
+                        {details[b.id] === "loading" && (
+                          <div style={{ fontSize: 10.8, color: "var(--text-muted)", marginTop: 10 }}>Loading job detail…</div>
+                        )}
+                        {details[b.id] === "error" && (
+                          <div style={{ fontSize: 10.8, color: "var(--danger-text)", marginTop: 10 }}>Could not load job detail.</div>
+                        )}
+                        {details[b.id] && typeof details[b.id] === "object" && (() => {
+                          const d = details[b.id] as AdminBookingDetail;
+                          return (
+                            <div className="grid grid-cols-2 md:grid-cols-4 gap-3" style={{ fontSize: 11.4, marginTop: 10, paddingTop: 10, borderTop: "1px solid var(--border)" }}>
+                              <div className="col-span-2">
+                                <div style={{ fontSize: 9.8, color: "var(--text-muted)", marginBottom: 3 }}>DESCRIPTION</div>
+                                <div className="text-white">{d.description ?? "—"}</div>
+                              </div>
+                              <div className="col-span-2">
+                                <div style={{ fontSize: 9.8, color: "var(--text-muted)", marginBottom: 3 }}>ADDRESS</div>
+                                <div className="text-white">{d.address ?? "—"}</div>
+                              </div>
+                              <div>
+                                <div style={{ fontSize: 9.8, color: "var(--text-muted)", marginBottom: 3 }}>SCHEDULED</div>
+                                <div className="text-white">{d.scheduledAt ? new Date(d.scheduledAt).toLocaleString() : "—"}</div>
+                              </div>
+                              <div>
+                                <div style={{ fontSize: 9.8, color: "var(--text-muted)", marginBottom: 3 }}>ESCROW</div>
+                                <div className="text-white">
+                                  {d.escrowStatus ? `${d.escrowStatus.replace("_", " ")} (₱${d.escrowAmount})` : "No escrow hold"}
+                                </div>
+                              </div>
+                              {d.photoUrls.length > 0 && (
+                                <div className="col-span-2 md:col-span-4">
+                                  <div style={{ fontSize: 9.8, color: "var(--text-muted)", marginBottom: 3 }}>PHOTOS</div>
+                                  <div className="flex gap-2 flex-wrap">
+                                    {d.photoUrls.map((url) => (
+                                      // eslint-disable-next-line @next/next/no-img-element
+                                      <img key={url} src={url} alt="Job photo" style={{ width: 60, height: 60, borderRadius: 8, objectFit: "cover" }} />
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })()}
                       </td>
                     </tr>
                   )}

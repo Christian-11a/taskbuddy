@@ -76,6 +76,7 @@ describe("row adapters", () => {
       createdAt: "2024-03-10", name: "Morgan Lee", status: "ACTIVE",
       jobsCompleted: 21, rating: 4.9,
       phone: "0917 555 0101", city: "Quezon City", categoryName: "Plumbing",
+      suspendedUntil: null, suspensionReason: null,
     };
     const row = toUserRow(u);
     expect(row).toMatchObject({
@@ -93,6 +94,7 @@ describe("row adapters", () => {
       id: "u-003", email: "admin@taskbuddy.com", role: "admin",
       createdAt: "2024-01-01", name: "Task Admin", status: "ACTIVE",
       jobsCompleted: 0, rating: null, phone: null, city: null, categoryName: null,
+      suspendedUntil: null, suspensionReason: null,
     };
     const row = toUserRow(u);
     expect(row.rolePlain).toBe("Admin");
@@ -105,6 +107,7 @@ describe("row adapters", () => {
       createdAt: "2024-02-22", name: "Jamie Kim", status: "SUSPENDED",
       jobsCompleted: 0, rating: null,
       phone: null, city: null, categoryName: null,
+      suspendedUntil: null, suspensionReason: null,
     };
     const row = toUserRow(u);
     expect(row.role).toBe("👤 Customer");
