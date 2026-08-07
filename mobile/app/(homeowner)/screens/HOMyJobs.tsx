@@ -9,7 +9,7 @@
  * - Floating action button for creating new job
  */
 
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   ScrollView,
   StyleSheet,
@@ -17,6 +17,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import { Calendar } from 'react-native-calendars';
 import { CalendarDays, ClipboardList, MapPin, Plus, UserRound, WalletCards } from 'lucide-react-native';
 import { Colors, Radii, Shadows, Sizes, Spacing } from '../../../src/constants/theme';
 import { HOScreen } from '../../../src/types/navigation';
@@ -33,6 +34,11 @@ interface MyJobsProps {
 
 export default function MyJobs({ onNavigate }: MyJobsProps) {
   const [activeFilter, setActiveFilter] = useState('All');
+  const todayKey = (() => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  })();
+  const [selectedDate, setSelectedDate] = useState<string>(todayKey);
   const { data, loading, error } = useAsyncData(() => api.myJobs(), []);
   const jobs = data ?? [];
 
@@ -40,6 +46,36 @@ export default function MyJobs({ onNavigate }: MyJobsProps) {
     activeFilter === 'All'
       ? jobs
       : jobs.filter((j) => jobFilterBucket(j.status) === activeFilter);
+
+  // Build markedDates for the calendar from scheduled jobs, excluding cancelled
+  const markedDates = useMemo(() => {
+    const m: Record<string, any> = {};
+    (jobs || []).forEach((job) => {
+      if (!job.scheduled_at) return;
+      if (job.status === 'cancelled') return; // cancelled jobs disappear
+      const d = new Date(job.scheduled_at);
+      if (Number.isNaN(d.getTime())) return;
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+      // mark with a dot; if selected date, the Calendar will override selected styling
+      m[key] = { ...(m[key] || {}), marked: true, dotColor: Colors.brandTeal };
+    });
+    // ensure selected date is highlighted
+    if (selectedDate) {
+      m[selectedDate] = { ...(m[selectedDate] || {}), selected: true, selectedColor: Colors.brandTeal };
+    }
+    return m;
+  }, [jobs, selectedDate]);
+
+  const jobsForSelectedDate = useMemo(() => {
+    return (jobs || []).filter((job) => {
+      if (!job.scheduled_at) return false;
+      if (job.status === 'cancelled') return false;
+      const d = new Date(job.scheduled_at);
+      if (Number.isNaN(d.getTime())) return false;
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+      return key === selectedDate;
+    });
+  }, [jobs, selectedDate]);
 
   if (loading) return <ScreenSkeleton variant="list" />;
 
@@ -78,13 +114,33 @@ export default function MyJobs({ onNavigate }: MyJobsProps) {
         </ScrollView>
       </View>
 
-      {/* Jobs list */}
+      {/* Calendar + Jobs list */}
       <ScrollView
         style={styles.body}
         contentContainerStyle={styles.bodyContent}
         showsVerticalScrollIndicator={false}
       >
+        <View style={styles.calendarWrap}>
+          <Calendar
+            current={selectedDate}
+            onDayPress={(day) => setSelectedDate(day.dateString)}
+            markedDates={markedDates}
+            theme={{
+              todayTextColor: Colors.brandTeal,
+              arrowColor: Colors.brandTeal,
+              selectedDayBackgroundColor: Colors.brandTeal,
+            }}
+          />
+          <View style={styles.selectedDateHeader}>
+            <Text style={styles.selectedDateTitle}>
+              Jobs on {new Date(selectedDate).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
+            </Text>
+            <Text style={styles.selectedDateCount}>{jobsForSelectedDate.length} jobs</Text>
+          </View>
+        </View>
+
         {!!error && !loading && <Text style={styles.stateText}>{error}</Text>}
+
         {!loading && !error && filtered.length === 0 && (
           <View style={styles.emptyState}>
             <ClipboardList size={40} color={Colors.brandTeal} />
@@ -92,49 +148,97 @@ export default function MyJobs({ onNavigate }: MyJobsProps) {
             <Text style={styles.stateText}>{jobs.length === 0 ? 'Post a job to find the right service provider.' : 'Try another filter to see your jobs.'}</Text>
           </View>
         )}
-        {filtered.map((job) => {
-          const meta = jobStatusMeta(job.status);
-          return (
-            <TouchableOpacity
-              key={job.id}
-              style={styles.jobCard}
-              onPress={() => onNavigate('Job Detail', job.id)}
-              activeOpacity={0.9}
-            >
-              <View style={[styles.jobBar, { backgroundColor: meta.color }]} />
-              <View style={styles.jobContent}>
-                <View style={styles.jobCardHeader}>
-                  <Text style={styles.jobTitle}>{job.title}</Text>
-                  <View style={[styles.statusPill, { backgroundColor: meta.bg }]}>
-                    <Text style={[styles.statusPillText, { color: meta.color }]}>{meta.label}</Text>
-                  </View>
-                </View>
-                <Text style={styles.jobCategory}>{job.service_categories?.name ?? ''}</Text>
-                <View style={styles.jobLocationRow}>
-                  <MapPin size={13} color={Colors.slate} />
-                  <Text style={styles.jobLocation}>{job.address}</Text>
-                </View>
-                <View style={styles.jobFooter}>
-                  <View style={styles.jobDetails}>
-                    <View style={styles.jobMetaItem}>
-                      <CalendarDays size={13} color={Colors.slate} />
-                      <Text style={styles.jobMeta}>{timeAgo(job.posted_at)}</Text>
-                    </View>
-                    <View style={styles.jobMetaItem}>
-                      <WalletCards size={13} color={Colors.slate} />
-                      <Text style={styles.jobMeta}>{job.budget != null ? peso(job.budget) : 'Budget not set'}</Text>
-                    </View>
-                    <View style={styles.jobMetaItem}>
-                      <UserRound size={13} color={Colors.slate} />
-                      <Text style={styles.jobMeta}>{job.assigned_provider?.full_name ?? 'No provider assigned yet'}</Text>
+
+        {jobsForSelectedDate.length > 0 ? (
+          jobsForSelectedDate.map((job) => {
+            const meta = jobStatusMeta(job.status);
+            return (
+              <TouchableOpacity
+                key={`sd-${job.id}`}
+                style={styles.jobCard}
+                onPress={() => onNavigate('Job Detail', job.id)}
+                activeOpacity={0.9}
+              >
+                <View style={[styles.jobBar, { backgroundColor: meta.color }]} />
+                <View style={styles.jobContent}>
+                  <View style={styles.jobCardHeader}>
+                    <Text style={styles.jobTitle}>{job.title}</Text>
+                    <View style={[styles.statusPill, { backgroundColor: meta.bg }]}>
+                      <Text style={[styles.statusPillText, { color: meta.color }]}>{meta.label}</Text>
                     </View>
                   </View>
-                  <Text style={styles.jobUrgency}>{job.urgency}</Text>
+                  <Text style={styles.jobCategory}>{job.service_categories?.name ?? ''}</Text>
+                  <View style={styles.jobLocationRow}>
+                    <MapPin size={13} color={Colors.slate} />
+                    <Text style={styles.jobLocation}>{job.address}</Text>
+                  </View>
+                  <View style={styles.jobFooter}>
+                    <View style={styles.jobDetails}>
+                      <View style={styles.jobMetaItem}>
+                        <CalendarDays size={13} color={Colors.slate} />
+                        <Text style={styles.jobMeta}>{timeAgo(job.posted_at)}</Text>
+                      </View>
+                      <View style={styles.jobMetaItem}>
+                        <WalletCards size={13} color={Colors.slate} />
+                        <Text style={styles.jobMeta}>{job.budget != null ? peso(job.budget) : 'Budget not set'}</Text>
+                      </View>
+                      <View style={styles.jobMetaItem}>
+                        <UserRound size={13} color={Colors.slate} />
+                        <Text style={styles.jobMeta}>{job.assigned_provider?.full_name ?? 'No provider assigned yet'}</Text>
+                      </View>
+                    </View>
+                    <Text style={styles.jobUrgency}>{job.urgency}</Text>
+                  </View>
                 </View>
-              </View>
-            </TouchableOpacity>
-          );
-        })}
+              </TouchableOpacity>
+            );
+          })
+        ) : (
+          filtered.map((job) => {
+            const meta = jobStatusMeta(job.status);
+            return (
+              <TouchableOpacity
+                key={job.id}
+                style={styles.jobCard}
+                onPress={() => onNavigate('Job Detail', job.id)}
+                activeOpacity={0.9}
+              >
+                <View style={[styles.jobBar, { backgroundColor: meta.color }]} />
+                <View style={styles.jobContent}>
+                  <View style={styles.jobCardHeader}>
+                    <Text style={styles.jobTitle}>{job.title}</Text>
+                    <View style={[styles.statusPill, { backgroundColor: meta.bg }]}>
+                      <Text style={[styles.statusPillText, { color: meta.color }]}>{meta.label}</Text>
+                    </View>
+                  </View>
+                  <Text style={styles.jobCategory}>{job.service_categories?.name ?? ''}</Text>
+                  <View style={styles.jobLocationRow}>
+                    <MapPin size={13} color={Colors.slate} />
+                    <Text style={styles.jobLocation}>{job.address}</Text>
+                  </View>
+                  <View style={styles.jobFooter}>
+                    <View style={styles.jobDetails}>
+                      <View style={styles.jobMetaItem}>
+                        <CalendarDays size={13} color={Colors.slate} />
+                        <Text style={styles.jobMeta}>{timeAgo(job.posted_at)}</Text>
+                      </View>
+                      <View style={styles.jobMetaItem}>
+                        <WalletCards size={13} color={Colors.slate} />
+                        <Text style={styles.jobMeta}>{job.budget != null ? peso(job.budget) : 'Budget not set'}</Text>
+                      </View>
+                      <View style={styles.jobMetaItem}>
+                        <UserRound size={13} color={Colors.slate} />
+                        <Text style={styles.jobMeta}>{job.assigned_provider?.full_name ?? 'No provider assigned yet'}</Text>
+                      </View>
+                    </View>
+                    <Text style={styles.jobUrgency}>{job.urgency}</Text>
+                  </View>
+                </View>
+              </TouchableOpacity>
+            );
+          })
+        )}
+
         <View style={{ height: 20 }} />
       </ScrollView>
 
@@ -187,6 +291,10 @@ const styles = StyleSheet.create({
 
   body: { flex: 1 },
   bodyContent: { paddingHorizontal: Spacing.screenH, paddingTop: 28, paddingBottom: 80 },
+  calendarWrap: { marginBottom: 18 },
+  selectedDateHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 12, marginBottom: 8 },
+  selectedDateTitle: { color: Colors.brandDark, fontSize: 16, fontWeight: '700', fontFamily: 'Inter' },
+  selectedDateCount: { color: Colors.slate, fontSize: 13, fontFamily: 'Inter' },
 
   jobCard: {
     backgroundColor: Colors.white, borderRadius: Radii.card,

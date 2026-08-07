@@ -193,7 +193,7 @@ creation and verification endpoints submit.
 | `HOCreateJobScreen` | `GET /categories`, image upload, `POST /jobs` — 5-step wizard |
 | `HOJobDetailScreen` | `GET /jobs/:id`, `GET /providers/:id`; complete / cancel actions |
 | `HOChatScreen` | `POST /conversations` then message listing |
-| `HOWalletScreen` | `GET /wallet`; **Add Money** posts `POST /wallet/transactions` |
+| `HOWalletScreen` | `GET /wallet`; **Add Money** posts `POST /wallet/transactions` (payment gateway integration still pending) |
 | `HODisputeFilingScreen` | `POST /jobs/:jobId/disputes` |
 | `HOProfile` | Displays profile data |
 | `HOEditProfileScreen` | `PATCH /profiles/me`, then `refreshProfile()` |
@@ -244,7 +244,7 @@ Full rules: `backend/BACKEND_SCHEMA.md` §18.
 - Job listing and filtering by status
 - Job detail with complete / cancel actions
 - Provider application to jobs
-- Wallet balance display and Add Money flow
+- Wallet balance display and Add Money flow (currently backed by a direct backend wallet transaction call; no Expo-compatible payment gateway is integrated yet)
 - Notifications (listing + mark read)
 - Profile view and edit (both roles)
 - Provider verification submission
@@ -252,6 +252,16 @@ Full rules: `backend/BACKEND_SCHEMA.md` §18.
 - Image upload (via Supabase Storage signed URLs)
 - Provider calendar (read-only view of bookings)
 - Chat (polling on mount — no realtime)
+
+### 🔧 Recent mobile updates
+
+- Removed unsupported `@stripe/stripe-react-native` from the Expo app so the wallet screen compiles and Expo Go can start normally.
+- Fixed `HOWalletScreen.tsx` compile/runtime issues by removing stale Stripe PaymentSheet state and keeping the existing wallet transaction flow.
+- Fixed `HOLeaveReviewScreen.tsx` back button rendering so the back action only appears when provided.
+- Added a date calendar and selected-date filtering to `HOMyJobs`.
+- Added explicit job actions in `HOJobDetailScreen` for viewing applications and leaving a review.
+- Added new `HOJobApplicationsScreen`, `HOLeaveReviewScreen`, and `HOProviderProfileScreen` screen files in the homeowner section.
+- Added new navigation entries for the homeowner job applications, review, and provider profile flows.
 
 ### ⚠️ What's Not Wired Yet
 
@@ -283,8 +293,6 @@ Full rules: `backend/BACKEND_SCHEMA.md` §18.
 
 ### User Experience and Interface
 
-- Add a calendar view to the homeowner **My Jobs** screen, alongside or instead
-  of the current list-only view.
 - Apply appropriate animations throughout the app.
 - Review all empty states and make their design and messaging consistent.
 - Review all error modals and make their design, behaviour, and messaging

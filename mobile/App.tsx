@@ -31,6 +31,9 @@ import HOWalletScreen from './app/(homeowner)/screens/HOWalletScreen';
 import HOCreateJobScreen from './app/(homeowner)/screens/HOCreateJobScreen';
 import HOJobDetailScreen from './app/(homeowner)/screens/HOJobDetailScreen';
 import HOChatScreen from './app/(homeowner)/screens/HOChatScreen';
+import HOJobApplicationsScreen from './app/(homeowner)/screens/HOJobApplicationsScreen';
+import HOProviderProfileScreen from './app/(homeowner)/screens/HOProviderProfileScreen';
+import HOLeaveReviewScreen from './app/(homeowner)/screens/HOLeaveReviewScreen';
 import HONotificationsScreen from './app/(homeowner)/screens/HONotificationsScreen';
 import HOEditProfileScreen from './app/(homeowner)/screens/HOEditProfileScreen';
 import HOSettingsScreen from './app/(homeowner)/screens/HOSettingsScreen';
@@ -101,7 +104,7 @@ function AppContent() {
   // ── HO navigation state ───────────────────────────────────────────────────
   const [hoTab, setHOTab] = useState<HOScreen>('Home');
   const [hoScreen, setHOScreen] = useState<HOScreen>('Home'); // for non-tab sub-screens
-  const [hoJobId, setHOJobId] = useState<string | null>(null); // selected job/chat context
+  const [hoSelectedId, setHOSelectedId] = useState<string | null>(null); // selected job/provider context
 
   // ── SP navigation state ───────────────────────────────────────────────────
   const [spTab, setSPTab] = useState<SPScreen>('Dashboard');
@@ -110,8 +113,8 @@ function AppContent() {
   const [spJobId, setSPJobId] = useState<string | null>(null);
 
   // ── HO helpers ────────────────────────────────────────────────────────────
-  const hoNavigate = (screen: HOScreen, jobId?: string) => {
-    if (jobId !== undefined) setHOJobId(jobId);
+  const hoNavigate = (screen: HOScreen, id?: string) => {
+    if (id !== undefined) setHOSelectedId(id);
     const TAB_SCREENS: HOScreen[] = ['Home', 'My Jobs', 'Wallet', 'Profile'];
     if (TAB_SCREENS.includes(screen)) {
       setHOTab(screen);
@@ -211,21 +214,42 @@ function AppContent() {
     if (hoScreen === 'Job Detail') {
       return (
         <View style={styles.screen}>
-          <HOJobDetailScreen jobId={hoJobId} onBack={hoBack} onNavigate={hoNavigate} />
+          <HOJobDetailScreen jobId={hoSelectedId} onBack={hoBack} onNavigate={hoNavigate} />
+        </View>
+      );
+    }
+    if (hoScreen === 'Job Applications') {
+      return (
+        <View style={styles.screen}>
+          <HOJobApplicationsScreen jobId={hoSelectedId} onBack={hoBack} onNavigate={hoNavigate} />
+        </View>
+      );
+    }
+    if (hoScreen === 'Provider Profile') {
+      return (
+        <View style={styles.screen}>
+          <HOProviderProfileScreen id={hoSelectedId ?? ''} onBack={hoBack} onNavigate={hoNavigate} />
+        </View>
+      );
+    }
+    if (hoScreen === 'Leave Review') {
+      return (
+        <View style={styles.screen}>
+          <HOLeaveReviewScreen jobId={hoSelectedId ?? ''} onSubmitted={hoBack} onBack={hoBack} />
         </View>
       );
     }
     if (hoScreen === 'Chat') {
       return (
         <View style={styles.screen}>
-          <HOChatScreen jobId={hoJobId} onBack={hoBack} onViewJob={() => hoNavigate('Job Detail')} />
+          <HOChatScreen jobId={hoSelectedId} onBack={hoBack} onViewJob={() => hoNavigate('Job Detail')} />
         </View>
       );
     }
     if (hoScreen === 'Dispute Filing') {
       return (
         <View style={styles.screen}>
-          <HODisputeFilingScreen jobId={hoJobId} onBack={hoBack} onSubmitted={hoBack} />
+          <HODisputeFilingScreen jobId={hoSelectedId} onBack={hoBack} onSubmitted={hoBack} />
         </View>
       );
     }
