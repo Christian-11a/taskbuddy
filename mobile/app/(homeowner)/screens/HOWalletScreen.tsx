@@ -64,6 +64,7 @@ export default function HOWalletScreen({ onBack }: HOWalletScreenProps) {
     if (!isValidAmount) return;
     setAdding(true);
     setAddError(null);
+
     try {
       await api.createWalletTransaction({
         direction: 'credit',
@@ -87,7 +88,7 @@ export default function HOWalletScreen({ onBack }: HOWalletScreenProps) {
 
   if (loading) return <ScreenSkeleton variant="dashboard" />;
 
-  return (
+  const content = (
     <View style={styles.screen}>
       {/* Hero Header */}
       <View style={styles.hero}>
@@ -262,6 +263,8 @@ export default function HOWalletScreen({ onBack }: HOWalletScreenProps) {
       </Modal>
     </View>
   );
+
+  return content;
 }
 
 const styles = StyleSheet.create({

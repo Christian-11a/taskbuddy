@@ -148,6 +148,27 @@ export default function HOJobDetailScreen({ jobId, onBack, onNavigate }: HOJobDe
             </View>
           )}
 
+          {job && (
+            <View style={styles.linkGrid}>
+              <TouchableOpacity
+                style={styles.linkCard}
+                onPress={() => onNavigate('Job Applications', job.id)}
+                activeOpacity={0.85}
+              >
+                <Text style={styles.linkCardTitle}>View Offers</Text>
+                <Text style={styles.linkCardSubtitle}>See provider proposals for this job</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.linkCard}
+                onPress={() => onNavigate('Leave Review', job.id)}
+                activeOpacity={0.85}
+              >
+                <Text style={styles.linkCardTitle}>Leave Review</Text>
+                <Text style={styles.linkCardSubtitle}>Submit feedback after work is finished</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+
           {/* Job details */}
           <View style={styles.card}>
             <Text style={styles.cardTitle}>Job Details</Text>
@@ -330,6 +351,16 @@ const styles = StyleSheet.create({
   timelineLabelDone: { color: Colors.brandDark },
   timelineDate: { color: Colors.muted, fontSize: 11, fontFamily: 'Inter' },
 
+  linkGrid: { flexDirection: 'row', gap: 12, marginBottom: 14 },
+  linkCard: {
+    flex: 1,
+    backgroundColor: Colors.white,
+    borderRadius: Radii.card,
+    padding: 16,
+    ...Shadows.card,
+  },
+  linkCardTitle: { color: Colors.brandDark, fontSize: 14, fontWeight: '700', fontFamily: 'Inter', marginBottom: 6 },
+  linkCardSubtitle: { color: Colors.slate, fontSize: 12, fontFamily: 'Inter' },
   chatFullBtn: {
     backgroundColor: Colors.brandTeal, borderRadius: 24, padding: 15,
     alignItems: 'center', marginBottom: 10,

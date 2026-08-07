@@ -31,7 +31,7 @@
  *  - iOS: keep the existing custom Modal + spinner + Done button flow.
  */
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   ScrollView,
   StyleSheet,
@@ -94,6 +94,7 @@ export default function HOCreateJobScreen({ onBack, onSuccess }: HOCreateJobScre
   const [categoryName, setCategoryName] = useState('');
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
+  const [descriptionHeight, setDescriptionHeight] = useState<number | null>(null);
   const [location, setLocation] = useState('');
   const [date, setDate] = useState<Date | null>(null);
   const [time, setTime] = useState<Date | null>(null);
@@ -204,6 +205,20 @@ export default function HOCreateJobScreen({ onBack, onSuccess }: HOCreateJobScre
       setError(null);
     }
   };
+
+  // Pre-request media library permission when entering step 2 so the app
+  // asks for permission before attempting to access files.
+  useEffect(() => {
+    if (step === 2) {
+      void (async () => {
+        try {
+          await ImagePicker.requestMediaLibraryPermissionsAsync();
+        } catch (e) {
+          // ignore
+        }
+      })();
+    }
+  }, [step]);
 
   /**
    * The picker collects a date and a time as two separate Date objects; the
@@ -458,23 +473,39 @@ export default function HOCreateJobScreen({ onBack, onSuccess }: HOCreateJobScre
 
             <View style={styles.inputGroup}>
               <Text style={styles.inputLabel}>Description<Text style={styles.requiredAsterisk}> *</Text></Text>
-              <TextInput
-                style={[styles.input, styles.textArea, focusedField === 'description' && styles.inputFocused, fieldErrors.description && styles.inputError]}
-                placeholder="Describe the job in detail..."
-                placeholderTextColor={Colors.muted}
-                value={description}
-                onChangeText={(value) => {
-                  setDescription(value);
-                  if (fieldErrors.description) setFieldErrors((prev) => ({ ...prev, description: undefined }));
-                }}
-                onFocus={() => {
-                  setFocusedField('description');
-                  if (fieldErrors.description) setFieldErrors((prev) => ({ ...prev, description: undefined }));
-                }}
-                onBlur={() => setFocusedField(null)}
-                multiline
-                numberOfLines={4}
-              />
+              <View style={styles.textAreaWrap}>
+                <TextInput
+                  style={[
+                    styles.input,
+                    styles.textArea,
+                    focusedField === 'description' && styles.inputFocused,
+                    fieldErrors.description && styles.inputError,
+                    descriptionHeight ? { height: descriptionHeight } : {},
+                  ]}
+                  placeholder="Describe the job in detail..."
+                  placeholderTextColor={Colors.muted}
+                  value={description}
+                  onChangeText={(value) => {
+                    setDescription(value);
+                    if (fieldErrors.description) setFieldErrors((prev) => ({ ...prev, description: undefined }));
+                  }}
+                  onFocus={() => {
+                    setFocusedField('description');
+                    if (fieldErrors.description) setFieldErrors((prev) => ({ ...prev, description: undefined }));
+                  }}
+                  onBlur={() => setFocusedField(null)}
+                  multiline
+                  numberOfLines={3}
+                  onContentSizeChange={(e) => {
+                    const h = e.nativeEvent.contentSize.height;
+                    // Ensure minimum height for ~3 lines; avoid shrinking below 3 lines
+                    const minH = 20 * 3; // approx lineHeight 20
+                    setDescriptionHeight(Math.max(h, minH));
+                  }}
+                  maxLength={750}
+                />
+                <Text style={styles.charCount}>{description.length}/750</Text>
+              </View>
               {!!fieldErrors.description && <Text style={styles.inputErrorText}>{fieldErrors.description}</Text>}
             </View>
 
@@ -843,7 +874,9 @@ const styles = StyleSheet.create({
   calendarHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 },
   calendarTitle: { color: Colors.brandDark, fontSize: 18, fontWeight: '800', fontFamily: 'Inter' },
   calendarClose: { color: Colors.brandTeal, fontSize: 14, fontWeight: '700', fontFamily: 'Inter' },
-  textArea: { height: 100, textAlignVertical: 'top' },
+  textArea: { textAlignVertical: 'top', minHeight: 20 * 3 },
+  textAreaWrap: { position: 'relative' },
+  charCount: { position: 'absolute', right: 12, bottom: 8, color: Colors.muted, fontSize: 12 },
   photoPicker: {
     backgroundColor: Colors.white, borderRadius: 12, padding: 16,
     borderWidth: 1, borderStyle: 'dashed', borderColor: Colors.brandTeal,
