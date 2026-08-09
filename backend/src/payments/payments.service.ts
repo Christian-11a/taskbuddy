@@ -3,7 +3,8 @@ import type Stripe from 'stripe';
 import { SupabaseService } from '../supabase/supabase.service';
 import { VerificationsService } from '../verifications/verifications.service';
 import { StripeService } from './stripe.service';
-import { CreateTopupDto } from './dto/payments.dto';
+import { CreateCheckoutSessionDto, CreateTopupDto } from './dto/payments.dto';
+import { isAllowedAppRedirect } from '../auth/google-redirect';
 import type { Profile } from '../common/types';
 
 const CURRENCY = 'php';
@@ -70,6 +71,72 @@ export class PaymentsService {
       amount: dto.amount,
       currency: CURRENCY,
     };
+  }
+
+  /**
+   * A wallet top-up run through Stripe's hosted Checkout page.
+   *
+   * This exists because PaymentSheet is a native module and the app runs in
+   * Expo Go, which cannot load one. Checkout needs nothing but a browser, so
+   * the same flow works in Expo Go, a dev build and the web.
+   *
+   * The wallet is credited by the webhook, exactly as in `createTopupIntent` —
+   * the return redirect only decides which screen the user lands on. A user who
+   * closes the browser after paying still gets their money.
+   *
+   * @param returnBase Public origin of this API, used to build the URLs Stripe
+   *   sends the browser back to. Stripe rejects anything that isn't http(s),
+   *   which is why the deep link can't be handed to it directly.
+   */
+  async createCheckoutSession(
+    user: Profile,
+    dto: CreateCheckoutSessionDto,
+    returnBase: string,
+  ) {
+    // Checked here rather than in a DTO validator because rejecting it is a
+    // security decision, not a formatting one: /payments/return will redirect
+    // a browser to whatever comes back out of the session, so an unvetted
+    // value makes this endpoint an open redirect.
+    if (!isAllowedAppRedirect(dto.app_redirect)) {
+      throw new BadRequestException('app_redirect is not an allowed URI');
+    }
+
+    const stripe = this.stripeService.stripe;
+    const customerId = await this.customerFor(user);
+    const returnUrl = (status: 'success' | 'cancelled') =>
+      `${returnBase}/payments/return?status=${status}` +
+      `&app_redirect=${encodeURIComponent(dto.app_redirect)}`;
+
+    const session = await stripe.checkout.sessions.create({
+      mode: 'payment',
+      customer: customerId,
+      line_items: [
+        {
+          quantity: 1,
+          price_data: {
+            currency: CURRENCY,
+            // Smallest unit, same rounding rule as createTopupIntent.
+            unit_amount: Math.round(dto.amount * 100),
+            product_data: { name: 'TaskBuddy wallet top-up' },
+          },
+        },
+      ],
+      // The metadata goes on the PaymentIntent, not the Session. Session
+      // metadata does not propagate, and it is the PaymentIntent that the
+      // `payment_intent.succeeded` handler reads — putting it here means
+      // Checkout credits the wallet through the exact same code path as
+      // PaymentSheet, with no second handler and no new webhook subscription.
+      payment_intent_data: {
+        metadata: { profile_id: user.id, purpose: TOPUP_PURPOSE },
+      },
+      success_url: returnUrl('success'),
+      cancel_url: returnUrl('cancelled'),
+    });
+
+    if (!session.url) {
+      throw new BadRequestException('Stripe did not return a Checkout URL');
+    }
+    return { url: session.url, session_id: session.id, amount: dto.amount };
   }
 
   /**

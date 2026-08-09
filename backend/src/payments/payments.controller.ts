@@ -2,20 +2,27 @@ import {
   BadRequestException,
   Body,
   Controller,
+  Get,
   Headers,
   HttpCode,
   Logger,
   Post,
+  Query,
   Req,
+  Res,
   UseGuards,
 } from '@nestjs/common';
 import type { RawBodyRequest } from '@nestjs/common';
-import type { Request } from 'express';
+import type { Request, Response } from 'express';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { CurrentUser } from '../auth/current-user.decorator';
 import { PaymentsService } from './payments.service';
 import { StripeService } from './stripe.service';
-import { CreateTopupDto } from './dto/payments.dto';
+import { CreateCheckoutSessionDto, CreateTopupDto } from './dto/payments.dto';
+import {
+  appendRedirectParams,
+  isAllowedAppRedirect,
+} from '../auth/google-redirect';
 import type { Profile } from '../common/types';
 
 @Controller('payments')
@@ -47,6 +54,51 @@ export class PaymentsController {
   }
 
   /**
+   * Opens a wallet top-up on Stripe's hosted Checkout page and returns its URL
+   * for the app to open in a browser. Use this where PaymentSheet is not
+   * available — notably Expo Go, which cannot load native modules.
+   */
+  @Post('checkout-session')
+  @HttpCode(200)
+  @UseGuards(JwtAuthGuard)
+  checkoutSession(
+    @CurrentUser() user: Profile,
+    @Body() dto: CreateCheckoutSessionDto,
+    @Req() req: Request,
+  ) {
+    return this.payments.createCheckoutSession(user, dto, this.originOf(req));
+  }
+
+  /**
+   * Where Stripe sends the browser when Checkout finishes, and the only reason
+   * this endpoint exists: `success_url` must be http(s), so the app's
+   * `taskbuddy://` deep link cannot be given to Stripe directly. This bounces
+   * to it.
+   *
+   * Unauthenticated because it is a plain browser navigation carrying no
+   * session — and it needs none. It reveals nothing and changes nothing; the
+   * wallet is credited by the webhook regardless of whether this is ever hit.
+   */
+  @Get('return')
+  paymentReturn(
+    @Query('app_redirect') appRedirect: string,
+    @Query('status') status: string,
+    @Res() res: Response,
+  ) {
+    // Same allowlist the session creation checked. Re-checked here because this
+    // endpoint is reachable directly: without it, /payments/return is an open
+    // redirect that lends this domain's reputation to a phishing link.
+    if (!isAllowedAppRedirect(appRedirect)) {
+      throw new BadRequestException('app_redirect is not an allowed URI');
+    }
+
+    const params = new URLSearchParams({
+      topup: status === 'success' ? 'success' : 'cancelled',
+    });
+    return res.redirect(appendRedirectParams(appRedirect, params));
+  }
+
+  /**
    * Stripe's webhook. Deliberately unauthenticated in the JWT sense — Stripe
    * has no session — and authenticated instead by the signature over the raw
    * request body, which is why `rawBody: true` is set in main.ts. A parsed and
@@ -73,5 +125,25 @@ export class PaymentsController {
     await this.payments.handleEvent(event);
     this.logger.log(`Handled Stripe event ${event.type} (${event.id})`);
     return { received: true };
+  }
+
+  /**
+   * This API's public origin, for building the URLs Stripe redirects back to.
+   *
+   * Derived from the request so local development works with no configuration,
+   * but `PUBLIC_API_URL` wins where it is set. On Render the request host is
+   * right and the protocol is not — TLS terminates at the proxy, so the app
+   * sees plain http and would hand Stripe an http:// URL that redirects users
+   * out of TLS. `x-forwarded-proto` is what the proxy left behind to say so.
+   */
+  private originOf(req: Request): string {
+    const configured = process.env.PUBLIC_API_URL;
+    if (configured) return configured.replace(/\/+$/, '');
+
+    const forwarded = req.headers['x-forwarded-proto'];
+    const protocol =
+      (Array.isArray(forwarded) ? forwarded[0] : forwarded)?.split(',')[0] ??
+      req.protocol;
+    return `${protocol}://${req.get('host')}`;
   }
 }

@@ -1,5 +1,5 @@
 import { Type } from 'class-transformer';
-import { IsNumber, IsPositive, Max, Min } from 'class-validator';
+import { IsNumber, IsPositive, IsString, Max, Min } from 'class-validator';
 
 /**
  * Bounds are in pesos.
@@ -20,4 +20,18 @@ export class CreateTopupDto {
   @Max(MAX_TOPUP_PHP)
   @Type(() => Number)
   amount!: number;
+}
+
+/**
+ * A top-up run through Stripe's hosted Checkout page instead of PaymentSheet.
+ *
+ * `app_redirect` is where the browser is sent once Stripe is done. Stripe only
+ * accepts http(s) in `success_url`, so it never receives this value directly —
+ * it points at /payments/return, which bounces to the deep link (see the
+ * controller). The URI is checked against the same allowlist as the Google
+ * flow before we agree to redirect anyone to it.
+ */
+export class CreateCheckoutSessionDto extends CreateTopupDto {
+  @IsString()
+  app_redirect!: string;
 }
