@@ -55,26 +55,22 @@ describe('WalletService', () => {
   });
 
   describe('create', () => {
-    it('tags a credit as a top-up, never a payout', async () => {
+    it('refuses a credit — funding may only come from a Stripe webhook', async () => {
       const { supabase, calls } = createSupabaseMock([
         { data: { id: 't1' }, error: null },
       ]);
       const service = new WalletService(supabase);
 
-      await service.create(user, {
-        direction: 'credit',
-        amount: 500,
-        title: 'Add money',
-      });
-
-      const insert = calls.find((c) => c.method === 'insert');
-      // Accepting `kind` from the client would let anyone inflate the admin
-      // dashboard's revenue figure just by topping up.
-      expect(insert?.args[0]).toMatchObject({
-        direction: 'credit',
-        kind: 'topup',
-        status: 'completed',
-      });
+      // Anything else here is free money: this endpoint needs only a valid JWT,
+      // and the balance it would create spends like paid-for balance in escrow.
+      await expect(
+        service.create(user, {
+          direction: 'credit',
+          amount: 500,
+          title: 'Add money',
+        }),
+      ).rejects.toThrow(BadRequestException);
+      expect(calls.some((c) => c.method === 'insert')).toBe(false);
     });
 
     it('tags a debit as a withdrawal when funds allow', async () => {
