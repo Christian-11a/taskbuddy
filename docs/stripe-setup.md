@@ -90,7 +90,33 @@ No warning means the keys were read.
 
 ## Flow reference
 
-### Wallet top-up
+### Wallet top-up — hosted Checkout (what the app uses)
+
+`@stripe/stripe-react-native` ships native code, and the app runs in **Expo Go**, which cannot
+load native modules. Checkout needs only a browser, so this path works in Expo Go, in a dev
+build and on the web.
+
+```
+App  →  POST /payments/checkout-session { amount, app_redirect }
+          ← url  (checkout.stripe.com/...)
+App  →  WebBrowser.openAuthSessionAsync(url, app_redirect)
+          User pays on Stripe's page
+          Stripe →  302 to GET /payments/return?status=success&app_redirect=...
+            Backend → 302 to  <app_redirect>?topup=success   ← browser closes
+          Stripe →  POST /payments/webhook  payment_intent.succeeded
+            Backend → wallet_transactions row (kind 'topup') + 'payment_update' notification
+```
+
+`/payments/return` exists because Stripe accepts only http(s) in `success_url` — the
+`taskbuddy://` deep link cannot be handed to it directly, so the backend does the final hop.
+`app_redirect` is allowlisted (same check as the Google flow) at both ends; without that,
+`/payments/return` would be an open redirect.
+
+**No new Dashboard subscription is needed.** The session sets the payer identity in
+`payment_intent_data.metadata`, so the existing `payment_intent.succeeded` handler credits the
+wallet for Checkout and PaymentSheet alike.
+
+### Wallet top-up — PaymentSheet (needs an EAS dev build)
 
 ```
 App  →  POST /payments/topup { amount }
@@ -100,8 +126,17 @@ App  →  initPaymentSheet(...) / presentPaymentSheet()   (@stripe/stripe-react-
             Backend → wallet_transactions row (kind 'topup') + 'payment_update' notification
 ```
 
-**The app's success callback does not credit the wallet** — the webhook does. Refresh
-`GET /wallet` after the sheet closes; on a slow webhook the balance may lag by a second or two.
+Kept for when the team moves off Expo Go — better UX and saved cards. Nothing in the backend
+has to change to switch.
+
+**Neither path's success callback credits the wallet** — the webhook does, on Stripe's word
+that the charge settled. Refresh `GET /wallet` afterwards; on a slow webhook the balance may
+lag by a second or two, which is why the app polls briefly before giving up.
+
+> `POST /wallet/transactions` refuses `direction: 'credit'`. It used to accept it, back when
+> there was no gateway — which meant any authenticated caller could mint balance for free, and
+> balance buys real labour through escrow. Funding now has exactly one entry point: a signed
+> Stripe webhook. Withdrawals (`direction: 'debit'`) still go through that endpoint.
 
 ### Identity
 

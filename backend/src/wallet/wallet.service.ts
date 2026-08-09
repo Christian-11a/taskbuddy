@@ -60,24 +60,33 @@ export class WalletService {
   }
 
   /**
-   * Records a user-initiated ledger entry — topping up or withdrawing. There is
-   * no real payment gateway, so entries are recorded as 'completed' immediately.
+   * Records a user-initiated withdrawal.
+   *
+   * Credits are refused. This endpoint used to accept them, back when there was
+   * no payment gateway — which meant any authenticated caller could mint
+   * balance for free, and balance buys real labour through escrow (§18). Wallet
+   * funding now has exactly one entry point: a Stripe webhook reporting a
+   * charge that actually settled (see PaymentsService). Nothing a client says
+   * can add money.
    *
    * `kind` is derived here and deliberately not accepted from the client: a
    * caller who could set `kind = 'payout'` could inflate platform revenue on the
-   * admin dashboard just by topping up. Escrow writes its own rows (see
-   * EscrowService) and is the only thing that can create a payout.
+   * admin dashboard. Escrow writes its own rows (see EscrowService) and is the
+   * only thing that can create a payout.
    */
   async create(user: Profile, dto: CreateWalletTxnDto) {
-    const kind = dto.direction === 'credit' ? 'topup' : 'withdrawal';
+    if (dto.direction === 'credit') {
+      throw new BadRequestException(
+        'Wallet top-ups must go through Stripe: POST /payments/checkout-session',
+      );
+    }
+    const kind = 'withdrawal';
 
-    if (dto.direction === 'debit') {
-      const balance = await this.balanceFor(user.id);
-      if (balance < dto.amount) {
-        throw new BadRequestException(
-          `Insufficient wallet balance: ${dto.amount} requested, ${balance} available`,
-        );
-      }
+    const balance = await this.balanceFor(user.id);
+    if (balance < dto.amount) {
+      throw new BadRequestException(
+        `Insufficient wallet balance: ${dto.amount} requested, ${balance} available`,
+      );
     }
 
     const { data, error } = await this.supabase.admin

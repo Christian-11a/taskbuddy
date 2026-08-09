@@ -30,11 +30,25 @@ import {
   Package,
   WalletCards,
 } from 'lucide-react-native';
+import * as AuthSession from 'expo-auth-session';
+import * as WebBrowser from 'expo-web-browser';
 import { Colors, Radii, Shadows, Sizes, Spacing } from '../../../src/constants/theme';
 import { useAsyncData } from '../../../src/hooks/useAsyncData';
-import { api } from '../../../src/lib/api';
+import { api, MIN_TOPUP_PHP } from '../../../src/lib/api';
 import { peso, shortDate } from '../../../src/lib/format';
 import ScreenSkeleton from '../../../src/components/ScreenSkeleton';
+
+/**
+ * How long to wait for the top-up to appear after Stripe says it succeeded.
+ *
+ * The wallet is credited by a webhook to the backend, not by the browser
+ * coming back, so at the moment the sheet closes the balance is usually — but
+ * not always — already updated. Polling covers the gap.
+ */
+const CONFIRM_POLL_ATTEMPTS = 8;
+const CONFIRM_POLL_INTERVAL_MS = 1500;
+
+const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 interface HOWalletScreenProps {
   onBack?: () => void;
@@ -49,10 +63,12 @@ export default function HOWalletScreen({ onBack }: HOWalletScreenProps) {
   const [showAddMoney, setShowAddMoney] = useState(false);
   const [amount, setAmount] = useState('');
   const [adding, setAdding] = useState(false);
+  const [confirming, setConfirming] = useState(false);
   const [addError, setAddError] = useState<string | null>(null);
 
   const parsedAmount = Number(amount.replace(/,/g, ''));
-  const isValidAmount = Number.isFinite(parsedAmount) && parsedAmount > 0;
+  const isValidAmount =
+    Number.isFinite(parsedAmount) && parsedAmount >= MIN_TOPUP_PHP;
 
   const closeAddMoney = () => {
     setShowAddMoney(false);
@@ -60,23 +76,90 @@ export default function HOWalletScreen({ onBack }: HOWalletScreenProps) {
     setAddError(null);
   };
 
+  /**
+   * Re-reads the wallet until the new balance shows up.
+   *
+   * Returns true once it moves. A false here is a slow webhook, not a lost
+   * payment — Stripe retries for days and the ledger row keys off the
+   * PaymentIntent, so the money lands whether or not this poll sees it.
+   */
+  const awaitCredit = async (balanceBefore: number): Promise<boolean> => {
+    for (let attempt = 0; attempt < CONFIRM_POLL_ATTEMPTS; attempt++) {
+      await wait(CONFIRM_POLL_INTERVAL_MS);
+      try {
+        const wallet = await api.wallet();
+        if (wallet.balance > balanceBefore) return true;
+      } catch {
+        // A failed poll is not a failed payment; keep trying.
+      }
+    }
+    return false;
+  };
+
+  /**
+   * Funds the wallet through Stripe's hosted Checkout page.
+   *
+   * Opened in a browser rather than a native payment sheet because the app
+   * runs in Expo Go. `openAuthSessionAsync` closes the browser when the
+   * backend's /payments/return bounces to our deep link — Stripe only accepts
+   * http(s) redirect targets, so that hop happens server-side.
+   */
   const addMoney = async () => {
     if (!isValidAmount) return;
     setAdding(true);
     setAddError(null);
 
+    const balanceBefore = data?.balance ?? 0;
+
     try {
-      await api.createWalletTransaction({
-        direction: 'credit',
+      // exp://[ip]:8081 in Expo Go, taskbuddy:// in a build — the backend
+      // allowlists both.
+      const appRedirect = AuthSession.makeRedirectUri({ scheme: 'taskbuddy' });
+      const session = await api.createCheckoutSession({
         amount: parsedAmount,
-        title: 'Added money',
+        app_redirect: appRedirect,
       });
-      closeAddMoney();
+
+      const result = await WebBrowser.openAuthSessionAsync(
+        session.url,
+        appRedirect,
+      );
+
+      if (result.type !== 'success') {
+        // Dismissing the browser is not proof the payment failed — the user
+        // may have paid and swiped away — so reload rather than assert either.
+        reload();
+        setAdding(false);
+        return;
+      }
+
+      const status = new URLSearchParams(
+        result.url.split('?')[1] ?? '',
+      ).get('topup');
+
+      if (status !== 'success') {
+        setAddError('Payment was cancelled.');
+        setAdding(false);
+        return;
+      }
+
+      setConfirming(true);
+      const credited = await awaitCredit(balanceBefore);
+      setConfirming(false);
+
+      if (!credited) {
+        setAddError(
+          'Payment received. Your balance will update shortly — pull to refresh.',
+        );
+      } else {
+        closeAddMoney();
+      }
       reload();
     } catch (e) {
       setAddError(e instanceof Error ? e.message : 'Could not add money.');
     } finally {
       setAdding(false);
+      setConfirming(false);
     }
   };
 
@@ -213,8 +296,9 @@ export default function HOWalletScreen({ onBack }: HOWalletScreenProps) {
           <View style={styles.modalCard}>
             <Text style={styles.modalTitle}>Add Money</Text>
             <Text style={styles.modalBody}>
-              Funds are held in escrow when you hire a provider, and released to
-              them when you mark the job complete.
+              You'll be taken to Stripe to pay by card. Funds are held in escrow
+              when you hire a provider, and released to them when you mark the
+              job complete.
             </Text>
 
             <View style={styles.amountRow}>
@@ -226,9 +310,16 @@ export default function HOWalletScreen({ onBack }: HOWalletScreenProps) {
                 keyboardType="decimal-pad"
                 placeholder="0.00"
                 placeholderTextColor={Colors.muted}
+                editable={!adding}
                 autoFocus
               />
             </View>
+
+            <Text style={styles.modalHint}>Minimum ₱{MIN_TOPUP_PHP}</Text>
+
+            {confirming && (
+              <Text style={styles.modalHint}>Confirming your payment…</Text>
+            )}
 
             {addError && <Text style={styles.modalError}>{addError}</Text>}
 
@@ -254,7 +345,7 @@ export default function HOWalletScreen({ onBack }: HOWalletScreenProps) {
                 {adding ? (
                   <ActivityIndicator color={Colors.white} />
                 ) : (
-                  <Text style={styles.modalConfirmText}>Add Money</Text>
+                  <Text style={styles.modalConfirmText}>Continue to Payment</Text>
                 )}
               </TouchableOpacity>
             </View>
@@ -352,6 +443,7 @@ const styles = StyleSheet.create({
   amountCurrency: { color: Colors.brandDark, fontSize: 28, fontWeight: '800', fontFamily: 'Inter', marginRight: 4 },
   amountInput: { fontSize: 40, fontWeight: '800', fontFamily: 'Inter', color: Colors.brandDark, minWidth: 120, textAlign: 'center' },
   modalError: { color: Colors.error, fontSize: 13, fontFamily: 'Inter', textAlign: 'center', marginTop: 4 },
+  modalHint: { color: Colors.muted, fontSize: 12, fontFamily: 'Inter', textAlign: 'center', marginTop: 6 },
   modalActions: { flexDirection: 'row', gap: 10, marginTop: 18 },
   modalBtn: { flex: 1, alignItems: 'center', justifyContent: 'center', borderRadius: 20, paddingVertical: 13 },
   modalBtnDisabled: { opacity: 0.5 },

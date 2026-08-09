@@ -188,6 +188,16 @@ export interface WalletOverview {
   transactions: WalletTransaction[];
 }
 
+/** Stripe hosted Checkout session, opened in a browser to fund the wallet. */
+export interface CheckoutSession {
+  url: string;
+  session_id: string;
+  amount: number;
+}
+
+/** Backend rejects a top-up below this (Stripe's own PHP minimum charge). */
+export const MIN_TOPUP_PHP = 20;
+
 export interface Conversation {
   id: string;
   job_id: string;
@@ -593,13 +603,36 @@ export const api = {
     return authRequest<WalletOverview>('/wallet');
   },
 
+  /**
+   * Withdrawals only. Credits are refused by the backend — wallet funding has
+   * to come from a settled Stripe charge, so use `createCheckoutSession`.
+   */
   createWalletTransaction(input: {
-    direction: 'credit' | 'debit';
+    direction: 'debit';
     amount: number;
     title: string;
     job_id?: string;
   }) {
     return authRequest<WalletTransaction>('/wallet/transactions', {
+      method: 'POST',
+      body: input,
+    });
+  },
+
+  /**
+   * Starts a wallet top-up and returns Stripe's hosted Checkout URL for the
+   * app to open in a browser.
+   *
+   * Checkout rather than the native PaymentSheet because the app runs in Expo
+   * Go, which cannot load native modules. Same reasoning as the Google flow:
+   * the browser does the work and comes back through `app_redirect`.
+   *
+   * The returned URL funds nothing on its own — the wallet is credited when
+   * Stripe's webhook reaches the backend, which may land a moment after the
+   * browser closes.
+   */
+  createCheckoutSession(input: { amount: number; app_redirect: string }) {
+    return authRequest<CheckoutSession>('/payments/checkout-session', {
       method: 'POST',
       body: input,
     });

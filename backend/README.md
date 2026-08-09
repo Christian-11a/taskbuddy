@@ -299,12 +299,30 @@ record. Tokens Expo rejects as `DeviceNotRegistered` are deleted.
 |---|---|
 | `POST /payments/config` 🔒 | `{ publishable_key }` — served rather than compiled in, so test↔live is a backend env change |
 | `POST /payments/topup` 🔒 | `{ amount }` (₱20–₱100,000) → PaymentSheet parameters: `{ payment_intent_client_secret, ephemeral_key_secret, customer_id, publishable_key, amount, currency }` |
+| `POST /payments/checkout-session` 🔒 | `{ amount, app_redirect }` → `{ url, session_id, amount }`. Hosted Checkout, for clients that cannot load a native SDK — **this is what the Expo Go app uses** |
+| `GET /payments/return?status=&app_redirect=` | Where Stripe returns the browser. Redirects to the app deep link with `?topup=success\|cancelled`. No JWT — it is a plain browser navigation that reveals and changes nothing |
 | `POST /payments/webhook` | Stripe only. No JWT — authenticated by the signature over the **raw** body |
 
-**The wallet is credited by the webhook, never by `POST /payments/topup`.** That
-call only opens the sheet; a client that reported its own success could mint
-balance, and balance buys labour through escrow. Refresh `GET /wallet` after the
-sheet closes — on a slow webhook the balance can lag a second or two.
+**The wallet is credited by the webhook, never by `POST /payments/topup`, and
+never by the browser returning from Checkout.** Those only open the payment UI;
+a client that reported its own success could mint balance, and balance buys
+labour through escrow. Refresh `GET /wallet` afterwards — on a slow webhook the
+balance can lag a second or two.
+
+Both routes converge on one handler: the Checkout session puts the payer
+identity in `payment_intent_data.metadata`, so `payment_intent.succeeded`
+credits the wallet whether the charge came from PaymentSheet or Checkout. No
+second handler, and no extra Dashboard subscription.
+
+`app_redirect` is checked against the same allowlist as the Google OAuth flow
+(`isAllowedAppRedirect`) at both session creation and return. Stripe accepts
+only http(s) in `success_url`, which is the whole reason `/payments/return`
+exists — and without that check it would be an open redirect.
+
+`GET /payments/return` builds its URLs from `PUBLIC_API_URL`, falling back to
+the request's host and `x-forwarded-proto`. On Render TLS terminates at the
+proxy, so the raw protocol would be `http` and users would be bounced out of
+TLS mid-payment.
 
 Redelivery is safe: `wallet_transactions.stripe_payment_intent_id` is
 partial-unique and the collision *is* the idempotency check. Without Stripe env

@@ -4,6 +4,7 @@ import { PaymentsService } from './payments.service';
 import type { SupabaseService } from '../supabase/supabase.service';
 import type { StripeService } from './stripe.service';
 import type { VerificationsService } from '../verifications/verifications.service';
+import type { Profile } from '../common/types';
 
 type QueryResult = {
   data: unknown;
@@ -40,6 +41,37 @@ function createSupabaseMock(resultsByTable: Record<string, QueryResult[]>) {
 
 function createStripeMock(): StripeService {
   return { publishableKey: 'pk_test' } as unknown as StripeService;
+}
+
+/** The subset of Checkout session params these tests assert on. */
+type CheckoutParams = {
+  mode: string;
+  customer: string;
+  success_url: string;
+  cancel_url: string;
+  line_items: { price_data: { currency: string; unit_amount: number } }[];
+  payment_intent_data: { metadata: Record<string, string> };
+};
+
+/** A StripeService whose client records the Checkout session it was asked for. */
+function createCheckoutStripeMock() {
+  const create = jest.fn((_params: CheckoutParams) =>
+    Promise.resolve({
+      id: 'cs_1',
+      url: 'https://checkout.stripe.com/c/pay/cs_1',
+    }),
+  );
+  const stripe = {
+    checkout: { sessions: { create } },
+    customers: { create: jest.fn(() => Promise.resolve({ id: 'cus_1' })) },
+  };
+  return {
+    service: {
+      publishableKey: 'pk_test',
+      stripe,
+    } as unknown as StripeService,
+    create,
+  };
 }
 
 function createVerificationsMock() {
@@ -186,6 +218,110 @@ describe('PaymentsService', () => {
       expect(
         calls.some((c) => c.table === 'stripe_events' && c.method === 'upsert'),
       ).toBe(false);
+    });
+  });
+
+  describe('createCheckoutSession', () => {
+    const user = { id: 'u1', full_name: 'Ana Cruz' } as Profile;
+
+    /** Supabase with the customer id already on the profile, so no customer is created. */
+    const withExistingCustomer = () =>
+      createSupabaseMock({
+        profiles: [{ data: { stripe_customer_id: 'cus_1' }, error: null }],
+      });
+
+    it('puts the payer identity on the PaymentIntent, not the session', async () => {
+      const { supabase } = withExistingCustomer();
+      const { service: stripe, create } = createCheckoutStripeMock();
+      const payments = new PaymentsService(
+        supabase,
+        stripe,
+        createVerificationsMock(),
+      );
+
+      await payments.createCheckoutSession(
+        user,
+        { amount: 500, app_redirect: 'taskbuddy://wallet' },
+        'https://api.example.com',
+      );
+
+      // Session metadata does not reach the PaymentIntent, and the webhook
+      // reads the PaymentIntent — put it in the wrong place and the charge
+      // settles with nobody to credit.
+      expect(create.mock.calls[0][0]).toMatchObject({
+        mode: 'payment',
+        customer: 'cus_1',
+        payment_intent_data: {
+          metadata: { profile_id: 'u1', purpose: 'wallet_topup' },
+        },
+      });
+    });
+
+    it('charges the amount in centavos', async () => {
+      const { supabase } = withExistingCustomer();
+      const { service: stripe, create } = createCheckoutStripeMock();
+      const payments = new PaymentsService(
+        supabase,
+        stripe,
+        createVerificationsMock(),
+      );
+
+      await payments.createCheckoutSession(
+        user,
+        { amount: 500.5, app_redirect: 'taskbuddy://wallet' },
+        'https://api.example.com',
+      );
+
+      expect(create.mock.calls[0][0].line_items[0].price_data).toMatchObject({
+        currency: 'php',
+        unit_amount: 50050,
+      });
+    });
+
+    it('sends Stripe back to this API, carrying the deep link', async () => {
+      const { supabase } = withExistingCustomer();
+      const { service: stripe, create } = createCheckoutStripeMock();
+      const payments = new PaymentsService(
+        supabase,
+        stripe,
+        createVerificationsMock(),
+      );
+
+      await payments.createCheckoutSession(
+        user,
+        { amount: 500, app_redirect: 'taskbuddy://wallet' },
+        'https://api.example.com',
+      );
+
+      // Stripe rejects non-http(s) urls, so the deep link travels as a
+      // parameter and /payments/return does the final hop.
+      const { success_url, cancel_url } = create.mock.calls[0][0];
+      expect(success_url).toBe(
+        'https://api.example.com/payments/return?status=success' +
+          '&app_redirect=taskbuddy%3A%2F%2Fwallet',
+      );
+      expect(cancel_url).toContain('status=cancelled');
+    });
+
+    it('refuses a redirect target that is not this app', async () => {
+      const { supabase } = withExistingCustomer();
+      const { service: stripe, create } = createCheckoutStripeMock();
+      const payments = new PaymentsService(
+        supabase,
+        stripe,
+        createVerificationsMock(),
+      );
+
+      // /payments/return redirects a browser to whatever comes back out, so an
+      // unvetted value here turns this API into an open redirect.
+      await expect(
+        payments.createCheckoutSession(
+          user,
+          { amount: 500, app_redirect: 'https://evil.example' },
+          'https://api.example.com',
+        ),
+      ).rejects.toThrow(BadRequestException);
+      expect(create).not.toHaveBeenCalled();
     });
   });
 
