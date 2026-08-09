@@ -193,7 +193,7 @@ creation and verification endpoints submit.
 | `HOCreateJobScreen` | `GET /categories`, image upload, `POST /jobs` — 5-step wizard |
 | `HOJobDetailScreen` | `GET /jobs/:id`, `GET /providers/:id`; complete / cancel actions |
 | `HOChatScreen` | `POST /conversations` then message listing |
-| `HOWalletScreen` | `GET /wallet`; **Add Money** posts `POST /wallet/transactions` (payment gateway integration still pending) |
+| `HOWalletScreen` | `GET /wallet`; **Add Money** posts `POST /payments/checkout-session` and opens Stripe Checkout in a browser |
 | `HODisputeFilingScreen` | `POST /jobs/:jobId/disputes` |
 | `HOProfile` | Displays profile data |
 | `HOEditProfileScreen` | `PATCH /profiles/me`, then `refreshProfile()` |
@@ -244,7 +244,9 @@ Full rules: `backend/BACKEND_SCHEMA.md` §18.
 - Job listing and filtering by status
 - Job detail with complete / cancel actions
 - Provider application to jobs
-- Wallet balance display and Add Money flow (currently backed by a direct backend wallet transaction call; no Expo-compatible payment gateway is integrated yet)
+- Wallet balance display and Add Money via **Stripe hosted Checkout**, opened in
+  a browser with `expo-web-browser` — works in Expo Go, no native module and no
+  dev build required
 - Notifications (listing + mark read)
 - Profile view and edit (both roles)
 - Provider verification submission
@@ -255,8 +257,14 @@ Full rules: `backend/BACKEND_SCHEMA.md` §18.
 
 ### 🔧 Recent mobile updates
 
-- Removed unsupported `@stripe/stripe-react-native` from the Expo app so the wallet screen compiles and Expo Go can start normally.
-- Fixed `HOWalletScreen.tsx` compile/runtime issues by removing stale Stripe PaymentSheet state and keeping the existing wallet transaction flow.
+- Wired **Add Money** to Stripe hosted Checkout: `POST /payments/checkout-session`
+  then `WebBrowser.openAuthSessionAsync`, returning through the app's deep link.
+  This replaces the direct `POST /wallet/transactions` credit, which the backend
+  now refuses — that call minted wallet balance with no payment behind it, and
+  wallet balance pays for real work through escrow.
+  The wallet is credited by Stripe's webhook, so the screen polls `GET /wallet`
+  briefly after the browser closes rather than assuming the balance moved.
+- Removed unsupported `@stripe/stripe-react-native` from the Expo app so the wallet screen compiles and Expo Go can start normally. Checkout needs no native module; PaymentSheet stays available on the backend for when the team moves to an EAS dev build.
 - Fixed `HOLeaveReviewScreen.tsx` back button rendering so the back action only appears when provided.
 - Added a date calendar and selected-date filtering to `HOMyJobs`.
 - Added explicit job actions in `HOJobDetailScreen` for viewing applications and leaving a review.

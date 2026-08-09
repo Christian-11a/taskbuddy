@@ -968,6 +968,40 @@ user opened it, nothing more; a client that reported its own success could mint 
 balance buys labour through escrow. `kind` is `'topup'`, set server-side — the same rule §18
 states, since a row tagged `'payout'` would register as platform revenue.
 
+The corollary, enforced since the app was wired up: **`POST /wallet/transactions` refuses
+`direction: 'credit'`.** That endpoint needs only a valid JWT, so while it accepted credits any
+authenticated user could mint unlimited balance and spend it on real labour. Funding has exactly
+one entry point — a signed Stripe webhook. Withdrawals still go through it.
+
+### Funding flow — hosted Checkout
+
+PaymentSheet is a native module and the app runs in Expo Go, which cannot load one. Checkout
+needs only a browser, so it is the path the app actually uses; PaymentSheet remains for a future
+dev build, and both are served by the same webhook handler.
+
+```
+App  →  POST /payments/checkout-session { amount, app_redirect }
+          Backend  →  reuses the same Stripe Customer
+                   →  Checkout Session, payment_intent_data.metadata: profile_id, purpose
+          ← url
+App  →  opens url in a browser (WebBrowser.openAuthSessionAsync)
+          Stripe  →  302  GET /payments/return?status=success&app_redirect=...
+            Backend  →  302  <app_redirect>?topup=success        ← browser closes
+          Stripe  →  POST /payments/webhook  payment_intent.succeeded
+            Backend  →  same handler as above
+```
+
+The metadata goes on the **PaymentIntent**, not the Session — Session metadata does not
+propagate, and the webhook reads the PaymentIntent. Putting it there means Checkout needs no
+second handler and no additional Dashboard subscription.
+
+`/payments/return` exists only because Stripe requires http(s) in `success_url`, so a
+`taskbuddy://` deep link cannot be given to it directly. `app_redirect` is validated by
+`isAllowedAppRedirect` — the allowlist §19 introduced for Google OAuth — when the session is
+created *and* again on return, since the endpoint is reachable directly and would otherwise be
+an open redirect. The return hop is cosmetic: it decides which screen the user lands on, while
+the webhook decides whether the money arrived.
+
 ### Idempotency
 
 Stripe retries until it gets a 2xx, so every handler must be safely repeatable. Two mechanisms:
@@ -1007,11 +1041,14 @@ continues to allow only one open review per provider, whichever route it came in
 `requires_input` is treated as a rejection carrying Stripe's reason, so the provider's status
 screen stops saying "under review". `reviewed_by` is `NULL` on these rows — no admin made the call.
 
-**Endpoints:** `POST /payments/config`, `POST /payments/topup`, `POST /payments/webhook`,
+**Endpoints:** `POST /payments/config`, `POST /payments/topup`,
+`POST /payments/checkout-session`, `GET /payments/return`, `POST /payments/webhook`,
 `POST /verifications/identity-session`
 
 **Env:** `STRIPE_SECRET_KEY`, `STRIPE_PUBLISHABLE_KEY`, `STRIPE_WEBHOOK_SECRET`,
-`STRIPE_MOBILE_API_VERSION` (optional)
+`STRIPE_MOBILE_API_VERSION` (optional), `PUBLIC_API_URL` (optional — this API's public origin
+for Checkout return URLs; derived from the request and `x-forwarded-proto` when unset, since
+Render terminates TLS at the proxy)
 
 Missing Stripe config warns at boot and returns **503** at the point of use, matching the Google
 OAuth pattern — a developer working on jobs or chat has no reason to hold Stripe keys.
