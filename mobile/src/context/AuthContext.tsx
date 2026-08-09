@@ -226,7 +226,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const signInWithGoogle = useCallback(async () => {
     // appRedirect is exp://[ip]:8081 in Expo Go, taskbuddy:// in a real build.
     const appRedirect = AuthSession.makeRedirectUri({ scheme: 'taskbuddy' });
-    const authorizeUrl = api.getGoogleAuthorizeUrl(appRedirect);
+    const authorizeUrl = await api.getGoogleAuthorizeUrl(appRedirect);
 
     const result = await WebBrowser.openAuthSessionAsync(
       authorizeUrl,
