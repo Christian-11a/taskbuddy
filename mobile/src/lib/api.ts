@@ -3,17 +3,131 @@
  *
  * Per the backend architecture, the mobile app talks ONLY to the NestJS API
  * (not to Supabase directly). NestJS wraps Supabase Auth + Postgres and returns
- * plain JSON. The base URL can be overridden with EXPO_PUBLIC_API_URL (set it to
- * your machine's LAN IP, e.g. http://192.168.1.20:3000, when running the backend
- * locally); otherwise it falls back to the deployed Render instance.
+ * plain JSON.
+ *
+ * Base URL: EXPO_PUBLIC_API_URL is the primary and defaults to the deployed
+ * Render instance. EXPO_PUBLIC_API_URL_FALLBACK, when set, is used only if the
+ * primary fails a health check at startup — so a laptop can keep working
+ * against a local backend when the deployed one is down, without editing files.
  *
  * Auth: AuthContext registers a token accessor + refresher via configureApiAuth().
  * Authenticated calls attach the bearer token automatically and retry once after
  * refreshing on a 401, so screens never handle tokens themselves.
  */
 
-const API_BASE_URL =
+const PRIMARY_API_URL =
   process.env.EXPO_PUBLIC_API_URL ?? 'https://taskbuddy-1d48.onrender.com';
+
+/** Optional second choice, tried only when the primary is unreachable. */
+const FALLBACK_API_URL = process.env.EXPO_PUBLIC_API_URL_FALLBACK ?? null;
+
+/**
+ * How long to wait before concluding the primary is merely *slow* rather than
+ * down. Render's free tier sleeps and a cold start has been measured at ~55s,
+ * so a timeout here is NOT evidence of an outage — see `probe`.
+ */
+const PRIMARY_PROBE_TIMEOUT_MS = 10000;
+const FALLBACK_PROBE_TIMEOUT_MS = 2500;
+
+/**
+ * The URL in force. Starts as the primary so anything reading it before the
+ * probe finishes reports the intended backend rather than a guess.
+ */
+let activeBaseUrl = PRIMARY_API_URL;
+
+/** Memoised so the probe runs once per app launch, not once per request. */
+let resolution: Promise<string> | null = null;
+
+/** True when the app is running against the fallback — surfaced for display. */
+export function isUsingFallbackApi(): boolean {
+  return activeBaseUrl !== PRIMARY_API_URL;
+}
+
+/** The base URL currently in use. Meaningful only after the first request. */
+export function getApiBaseUrl(): string {
+  return activeBaseUrl;
+}
+
+/**
+ * 'slow' is the interesting one. A sleeping Render instance accepts the
+ * connection and holds it open while it wakes, so it presents as a timeout,
+ * whereas a backend that is genuinely absent — wrong URL, no server, no route
+ * to host — fails fast with a network error. Treating those two the same is
+ * what would send every cold start to the fallback.
+ */
+type ProbeResult = 'ok' | 'slow' | 'unreachable';
+
+async function probe(baseUrl: string, timeoutMs: number): Promise<ProbeResult> {
+  const controller = new AbortController();
+  let timedOut = false;
+  const timer = setTimeout(() => {
+    timedOut = true;
+    controller.abort();
+  }, timeoutMs);
+  try {
+    const response = await fetch(`${baseUrl}/health`, {
+      signal: controller.signal,
+    });
+    return response.ok ? 'ok' : 'unreachable';
+  } catch {
+    return timedOut ? 'slow' : 'unreachable';
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/**
+ * Chooses the backend for this app launch.
+ *
+ * Deliberately loud and one-shot. Silently drifting between backends is how you
+ * end up testing code you did not deploy, so the choice is made once, logged,
+ * and never revisited mid-session. Falling back is a development convenience,
+ * not a high-availability mechanism — both backends share one Supabase project,
+ * so this changes which API serves the data, never which data exists.
+ */
+async function resolveBaseUrl(): Promise<string> {
+  if (!FALLBACK_API_URL) return PRIMARY_API_URL;
+
+  const primary = await probe(PRIMARY_API_URL, PRIMARY_PROBE_TIMEOUT_MS);
+
+  if (primary === 'ok') {
+    console.log(`[api] using ${PRIMARY_API_URL}`);
+    return PRIMARY_API_URL;
+  }
+
+  if (primary === 'slow') {
+    // Almost certainly a cold start, not an outage. Stay put and let the first
+    // real request wait it out — switching here would silently move a whole
+    // session onto the local backend just because Render had gone to sleep.
+    console.log(
+      `[api] ${PRIMARY_API_URL} slow to answer (likely a cold start) — staying on it`,
+    );
+    return PRIMARY_API_URL;
+  }
+
+  if ((await probe(FALLBACK_API_URL, FALLBACK_PROBE_TIMEOUT_MS)) === 'ok') {
+    console.warn(
+      `[api] ${PRIMARY_API_URL} unreachable — falling back to ${FALLBACK_API_URL}`,
+    );
+    return FALLBACK_API_URL;
+  }
+
+  // Neither answered. Stay on the primary so errors name the backend the app is
+  // actually meant to be talking to.
+  console.warn(
+    `[api] neither ${PRIMARY_API_URL} nor ${FALLBACK_API_URL} answered — staying on primary`,
+  );
+  return PRIMARY_API_URL;
+}
+
+/** Resolves the base URL, probing once and reusing the answer thereafter. */
+export async function ensureApiBaseUrl(): Promise<string> {
+  resolution ??= resolveBaseUrl().then((url) => {
+    activeBaseUrl = url;
+    return url;
+  });
+  return resolution;
+}
 
 // ── Backend role vocabulary ↔ mobile role vocabulary ───────────────────────────
 // The backend calls homeowners "client"; the mobile UI calls them "homeowner".
@@ -283,9 +397,13 @@ async function rawRequest<T>(
 ): Promise<T> {
   const { method = 'GET', body, accessToken } = options;
 
+  // Resolves on the first call of the app's life, then returns a settled
+  // promise — so this costs one probe, not one per request.
+  const baseUrl = await ensureApiBaseUrl();
+
   let response: Response;
   try {
-    response = await fetch(`${API_BASE_URL}${path}`, {
+    response = await fetch(`${baseUrl}${path}`, {
       method,
       headers: {
         'Content-Type': 'application/json',
@@ -380,9 +498,12 @@ export const api = {
    * backend redirects to Google, handles the callback, and finally redirects
    * back to appRedirect with session tokens in the query string.
    */
-  getGoogleAuthorizeUrl(appRedirect: string): string {
+  async getGoogleAuthorizeUrl(appRedirect: string): Promise<string> {
+    // Async so sign-in cannot open the browser against one backend while the
+    // rest of the app has resolved to the other.
+    const baseUrl = await ensureApiBaseUrl();
     const encoded = encodeURIComponent(appRedirect);
-    return `${API_BASE_URL}/auth/google/authorize?app_redirect=${encoded}`;
+    return `${baseUrl}/auth/google/authorize?app_redirect=${encoded}`;
   },
 
   // ── Profiles & providers ────────────────────────────────────────────────────
@@ -705,4 +826,4 @@ export const api = {
   },
 };
 
-export { API_BASE_URL };
+export { PRIMARY_API_URL, FALLBACK_API_URL };
