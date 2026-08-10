@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useId, useState } from "react";
 import { Save, Bell, Shield, Globe, Palette, Database, Check, AlertCircle } from "lucide-react";
 import { useApp, type ConsoleSettings } from "@/context/AppContext";
 import { validateEmail, validateName, validatePasswordChange } from "@/lib/validation";
@@ -33,6 +33,13 @@ const Section = ({ title, icon, note, children }: { title: string; icon: React.R
  *  nobody mistakes a saved toggle for a working feature. */
 const LOCAL_ONLY_NOTE = "Saved on this device only — not yet connected to the backend.";
 
+/**
+ * The visible label is a sibling `<div>`, not a `<label htmlFor>`, so the
+ * button had no accessible name at all — a screen reader announced a bare
+ * "button" with no indication of what it controlled or whether it was on.
+ * `role="switch"` + `aria-checked` gives it both, and `aria-label` names it
+ * from the same string that's rendered.
+ */
 function Toggle({ label, sub, value, onChange }: { label: string; sub?: string; value: boolean; onChange: (v: boolean) => void }) {
   return (
     <div className="flex items-center justify-between py-2">
@@ -41,6 +48,10 @@ function Toggle({ label, sub, value, onChange }: { label: string; sub?: string; 
         {sub && <div style={{ fontSize: 10, color: "var(--text-muted)" }}>{sub}</div>}
       </div>
       <button
+        type="button"
+        role="switch"
+        aria-checked={value}
+        aria-label={label}
         onClick={() => onChange(!value)}
         style={{ width: 36, height: 20, borderRadius: 999, background: value ? "var(--indigo)" : "var(--track-bg)", transition: "background 0.2s", border: "none", cursor: "pointer", flexShrink: 0, position: "relative" }}
       >
@@ -50,6 +61,16 @@ function Toggle({ label, sub, value, onChange }: { label: string; sub?: string; 
   );
 }
 
+/**
+ * `useId` rather than a hand-rolled counter: it's stable across the server and
+ * client render, so the `htmlFor`/`id` pair doesn't cause a hydration
+ * mismatch. Without the association the visible label was decoration — a
+ * screen reader announced the input with no name at all.
+ *
+ * `aria-describedby` ties the validation message to the field, and
+ * `aria-invalid` marks the field itself as failing, so the error is announced
+ * on focus rather than only being visible.
+ */
 function Field({
   label,
   value,
@@ -67,22 +88,27 @@ function Field({
   placeholder?: string;
   error?: string;
 }) {
+  const id = useId();
+  const errorId = `${id}-error`;
   return (
     <div className="mb-3">
-      <label className="block font-medium" style={{ fontSize: 11, color: "#9ca3af", marginBottom: 6 }}>
+      <label htmlFor={id} className="block font-medium" style={{ fontSize: 11, color: "#9ca3af", marginBottom: 6 }}>
         {label}{disabled && <span style={{ opacity: 0.6 }}> (read-only)</span>}
       </label>
       <input
+        id={id}
         type={type}
         value={value}
         disabled={disabled}
         placeholder={placeholder}
+        aria-invalid={error ? true : undefined}
+        aria-describedby={error ? errorId : undefined}
         onChange={(e) => onChange?.(e.target.value)}
         className="w-full text-white outline-none"
         style={{ background: "var(--input-bg)", border: `1px solid ${error ? "rgba(239,68,68,0.5)" : "var(--border-md)"}`, borderRadius: 11, padding: "9px 13px", fontSize: 12, fontFamily: "inherit", opacity: disabled ? 0.55 : 1, cursor: disabled ? "not-allowed" : "text" }}
       />
       {error && (
-        <div style={{ fontSize: 10.5, color: "var(--danger-text)", marginTop: 4 }}>{error}</div>
+        <div id={errorId} style={{ fontSize: 10.5, color: "var(--danger-text)", marginTop: 4 }}>{error}</div>
       )}
     </div>
   );
@@ -94,6 +120,7 @@ export function SettingsPage() {
     darkMode, setDarkMode,
     sidebarCollapsed, setSidebarCollapsed,
     settings, updateSettings,
+    maintenanceMode, setMaintenanceMode,
   } = useApp();
 
   const [name, setName] = useState(adminProfile.name);
@@ -103,6 +130,14 @@ export function SettingsPage() {
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState("");
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
+  const [maintenanceBusy, setMaintenanceBusy] = useState(false);
+
+  const handleMaintenanceToggle = async (enabled: boolean) => {
+    setMaintenanceBusy(true);
+    const ok = await setMaintenanceMode(enabled);
+    setMaintenanceBusy(false);
+    if (!ok) setError("Could not update maintenance mode. Please try again.");
+  };
 
   const setToggle = (key: keyof ConsoleSettings) => (val: boolean) =>
     updateSettings({ [key]: val });
@@ -160,7 +195,7 @@ export function SettingsPage() {
 
       {saved && (
         <div className="flex items-center gap-2 rounded-xl mb-4" style={{ background: "rgba(34,197,94,0.12)", border: "1px solid rgba(34,197,94,0.2)", padding: "10px 14px", fontSize: 12, color: "var(--success-text)" }}>
-          <Check size={13} /> Settings saved successfully.
+          <Check size={13} /> Account changes saved.
         </div>
       )}
       {error && (
@@ -191,7 +226,19 @@ export function SettingsPage() {
             <Field label="Platform Name" value={settings.platformName} onChange={(v) => updateSettings({ platformName: v })} error={fieldErrors.platformName} />
             <Field label="Support Email" value={settings.supportEmail} type="email" onChange={(v) => updateSettings({ supportEmail: v })} error={fieldErrors.supportEmail} />
             <Field label="Base Currency" value="PHP (₱)" disabled />
-            <Toggle label="Maintenance Mode" sub="Temporarily disable user access" value={settings.maintenanceMode} onChange={setToggle("maintenanceMode")} />
+          </Section>
+          <Section
+            title="Maintenance"
+            icon={<Shield size={15} />}
+            note={maintenanceMode ? "Live: everyone but admins is currently blocked from the app." : undefined}
+          >
+            <Toggle
+              label="Maintenance Mode"
+              sub="Blocks all non-admin access to the app immediately"
+              value={maintenanceMode}
+              onChange={handleMaintenanceToggle}
+            />
+            {maintenanceBusy && <div style={{ fontSize: 10, color: "var(--text-muted)" }}>Saving…</div>}
           </Section>
           <Section title="Appearance" icon={<Palette size={15} />}>
             <Toggle label="Dark Mode" value={darkMode} onChange={setDarkMode} />
@@ -206,13 +253,21 @@ export function SettingsPage() {
         </div>
       </div>
 
-      <div className="flex justify-end mt-2">
+      {/* Only the Account section needs an explicit save — every toggle and
+          field elsewhere on this page persists the moment it changes (to this
+          device, or to the backend for Maintenance Mode). Labelling the button
+          "Save Changes" implied it was committing the whole page, including
+          the platform settings that aren't wired to a backend at all. */}
+      <div className="flex items-center justify-end gap-3 mt-2 flex-wrap">
+        <span style={{ fontSize: 10.5, color: "var(--text-muted)" }}>
+          Everything else on this page saves as you change it.
+        </span>
         <button
           onClick={handleSave}
           className="flex items-center gap-2 font-semibold transition-opacity hover:opacity-90"
           style={{ background: "linear-gradient(172deg, #6363f1 0%, #8b5cf6 100%)", color: "#fff", borderRadius: 11, padding: "10px 20px", fontSize: 13, border: "none", cursor: "pointer", fontFamily: "inherit" }}
         >
-          <Save size={14} /> Save Changes
+          <Save size={14} /> Save account changes
         </button>
       </div>
     </div>

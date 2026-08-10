@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useId, useState } from "react";
 import { Mail, Lock, Shield, AlertCircle } from "lucide-react";
 import { useApp } from "@/context/AppContext";
 import { validateEmail, validateRequired } from "@/lib/validation";
@@ -11,6 +11,10 @@ export function LoginPage() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  // Stable across server/client render, so htmlFor/id can be wired without
+  // a hydration mismatch. The labels were visual only before this.
+  const emailId = useId();
+  const passwordId = useId();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -84,10 +88,11 @@ export function LoginPage() {
 
           <form onSubmit={handleSubmit} noValidate>
             <div style={{ marginBottom: 20 }}>
-              <label className="block font-medium" style={{ fontSize: 11.4, color: "#9ca3af", marginBottom: 7 }}>Admin Email</label>
+              <label htmlFor={emailId} className="block font-medium" style={{ fontSize: 11.4, color: "#9ca3af", marginBottom: 7 }}>Admin Email</label>
               <div className="relative">
                 <span className="absolute top-1/2 -translate-y-1/2 left-3.5 opacity-50"><Mail size={14} color="#6b7280" /></span>
                 <input
+                  id={emailId}
                   type="email"
                   placeholder="admin@taskbuddy.io"
                   value={email}
@@ -99,10 +104,11 @@ export function LoginPage() {
             </div>
 
             <div style={{ marginBottom: 24 }}>
-              <label className="block font-medium" style={{ fontSize: 11.4, color: "#9ca3af", marginBottom: 7 }}>Password</label>
+              <label htmlFor={passwordId} className="block font-medium" style={{ fontSize: 11.4, color: "#9ca3af", marginBottom: 7 }}>Password</label>
               <div className="relative">
                 <span className="absolute top-1/2 -translate-y-1/2 left-3.5 opacity-50"><Lock size={14} color="#6b7280" /></span>
                 <input
+                  id={passwordId}
                   type="password"
                   placeholder="••••••••"
                   value={password}

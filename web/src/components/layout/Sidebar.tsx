@@ -1,5 +1,7 @@
 "use client";
 
+import { useState } from "react";
+import Link from "next/link";
 import {
   ShieldCheck, Users, CreditCard, CalendarDays, AlertTriangle, History,
   BarChart3, Settings, LogOut, LayoutDashboard, ChevronLeft, ChevronRight, ScrollText,
@@ -7,11 +9,15 @@ import {
 import type { Page } from "@/lib/domain";
 import { useApp } from "@/context/AppContext";
 import { initials } from "@/lib/adapters";
+import { pageToPath } from "@/lib/routes";
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import clsx from "clsx";
 
 interface SidebarProps {
-  activePage: Page;
-  onNavigate: (page: Page) => void;
+  /** Null on any route that isn't an admin page — nothing is highlighted then. */
+  activePage: Page | null;
+  /** Fired after a nav item is followed, so the mobile drawer can close. */
+  onNavigate: () => void;
   onLogout: () => void;
   collapsed: boolean;
   onToggleCollapse: () => void;
@@ -20,6 +26,7 @@ interface SidebarProps {
 
 export function Sidebar({ activePage, onNavigate, onLogout, collapsed, onToggleCollapse, drawerOpen }: SidebarProps) {
   const { verifications, disputes, adminProfile, settings } = useApp();
+  const [confirmingLogout, setConfirmingLogout] = useState(false);
   const pendingCount = settings.activityBadge
     ? verifications.filter((v) => v.status === "pending").length
     : 0;
@@ -63,6 +70,7 @@ export function Sidebar({ activePage, onNavigate, onLogout, collapsed, onToggleC
         {/* Collapse toggle — desktop only */}
         <button
           onClick={onToggleCollapse}
+          aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
           className="hidden lg:flex absolute items-center justify-center rounded-full transition-colors hover:bg-white/10"
           style={{ right: -10, top: "50%", transform: "translateY(-50%)", width: 20, height: 20, background: "var(--bg-main)", border: "1px solid var(--border)", color: "var(--text-muted)", zIndex: 10, cursor: "pointer" }}
         >
@@ -70,16 +78,19 @@ export function Sidebar({ activePage, onNavigate, onLogout, collapsed, onToggleC
         </button>
       </div>
 
-      {/* Nav */}
-      <nav className="flex-1 overflow-y-auto px-2 py-3.5">
+      {/* Nav — real links, so ctrl/middle-click opens a page in a new tab and
+          Next.js can prefetch the route on hover. */}
+      <nav className="flex-1 overflow-y-auto px-2 py-3.5" aria-label="Main navigation">
         {!collapsed && (
           <div className="uppercase font-semibold px-2.5 mb-2" style={{ fontSize: 8, color: "#4b5563", letterSpacing: "0.8px" }}>Navigation</div>
         )}
         {NAV_ITEMS.map((item) => (
-          <button
+          <Link
             key={item.id}
-            onClick={() => onNavigate(item.id)}
+            href={pageToPath(item.id)}
+            onClick={onNavigate}
             title={collapsed ? item.label : undefined}
+            aria-current={activePage === item.id ? "page" : undefined}
             className={clsx(
               "w-full flex items-center gap-2.5 px-3 py-2 rounded-xl mb-0.5 text-left relative transition-all duration-150 text-sm font-medium cursor-pointer",
               collapsed && "justify-center",
@@ -96,15 +107,17 @@ export function Sidebar({ activePage, onNavigate, onLogout, collapsed, onToggleC
             {collapsed && item.badge && (
               <span className="absolute rounded-full" style={{ top: 4, right: 4, width: 6, height: 6, background: "var(--red)" }} />
             )}
-          </button>
+          </Link>
         ))}
       </nav>
 
       {/* Footer */}
       <div style={{ borderTop: "1px solid var(--border)", padding: collapsed ? "14px 8px" : "14px 13px" }}>
-        <button
-          onClick={() => onNavigate("settings")}
+        <Link
+          href={pageToPath("settings")}
+          onClick={onNavigate}
           title={collapsed ? "Settings" : undefined}
+          aria-current={activePage === "settings" ? "page" : undefined}
           className={clsx(
             "w-full flex items-center gap-2.5 px-3 py-2 rounded-xl mb-2 text-left transition-all duration-150",
             collapsed && "justify-center",
@@ -114,7 +127,7 @@ export function Sidebar({ activePage, onNavigate, onLogout, collapsed, onToggleC
         >
           <Settings size={15} style={{ opacity: 0.8, flexShrink: 0 }} />
           {!collapsed && <span style={{ fontSize: 13, fontWeight: 500 }}>Settings</span>}
-        </button>
+        </Link>
 
         <div
           className={clsx("flex items-center rounded-xl", collapsed ? "justify-center px-1 py-2" : "gap-2.5")}
@@ -127,13 +140,26 @@ export function Sidebar({ activePage, onNavigate, onLogout, collapsed, onToggleC
                 <div className="text-white font-semibold truncate" style={{ fontSize: 11 }}>{adminProfile.name}</div>
                 <div style={{ fontSize: 9.8, color: "var(--text-muted)" }}>{adminProfile.email}</div>
               </div>
-              <button onClick={onLogout} className="text-gray-500 hover:text-red-400 transition-colors p-1" title="Sign out" style={{ background: "none", border: "none", cursor: "pointer" }}>
+              <button onClick={() => setConfirmingLogout(true)} className="text-gray-500 hover:text-red-400 transition-colors p-1" title="Sign out" aria-label="Sign out" style={{ background: "none", border: "none", cursor: "pointer" }}>
                 <LogOut size={11} />
               </button>
             </>
           )}
         </div>
       </div>
+
+      <ConfirmDialog
+        open={confirmingLogout}
+        title="Sign out?"
+        message={`You'll need to sign back in as ${adminProfile.email} to continue.`}
+        confirmLabel="Sign out"
+        cancelLabel="Stay signed in"
+        onConfirm={() => {
+          setConfirmingLogout(false);
+          onLogout();
+        }}
+        onCancel={() => setConfirmingLogout(false)}
+      />
     </aside>
   );
 }

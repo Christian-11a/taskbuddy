@@ -5,6 +5,7 @@ import {
   validateName,
   validatePassword,
   validatePasswordChange,
+  validateDurationDays,
 } from "./validation";
 
 describe("validateRequired", () => {
@@ -40,7 +41,7 @@ describe("validateName", () => {
   it("rejects empty, too-short, and too-long values", () => {
     expect(validateName("")).toBe("Name is required.");
     expect(validateName("A")).toBe("Name must be at least 2 characters.");
-    expect(validateName("x".repeat(61))).toBe("Name must be 60 characters or fewer.");
+    expect(validateName("x".repeat(121))).toBe("Name must be 120 characters or fewer.");
   });
   it("accepts a normal name", () => {
     expect(validateName("Super Admin")).toBeNull();
@@ -78,5 +79,28 @@ describe("validatePasswordChange", () => {
   });
   it("passes a valid change", () => {
     expect(validatePasswordChange("Admin123!", "NewPass123!", "NewPass123!")).toEqual({});
+  });
+});
+
+describe("validateDurationDays", () => {
+  it("treats empty/whitespace as valid (indefinite)", () => {
+    expect(validateDurationDays("")).toBeNull();
+    expect(validateDurationDays("   ")).toBeNull();
+  });
+  it("accepts a normal positive integer", () => {
+    expect(validateDurationDays("7")).toBeNull();
+    expect(validateDurationDays("3650")).toBeNull();
+  });
+  it("rejects zero and negative values", () => {
+    expect(validateDurationDays("0")).toBe("Duration must be at least 1 day.");
+    expect(validateDurationDays("-5")).toBe("Duration must be at least 1 day.");
+  });
+  it("rejects non-integer values, including scientific notation a number input accepts", () => {
+    expect(validateDurationDays("1.5")).toBe("Duration must be a whole number of days.");
+    expect(validateDurationDays("1e5")).toBe("Duration must be 3650 days or fewer.");
+    expect(validateDurationDays("abc")).toBe("Duration must be a whole number of days.");
+  });
+  it("rejects values past the sanity ceiling", () => {
+    expect(validateDurationDays("3651")).toBe("Duration must be 3650 days or fewer.");
   });
 });

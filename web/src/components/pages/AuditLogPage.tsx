@@ -22,6 +22,8 @@ export function AuditLogPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
 
+  /** The Refresh button's handler. Safe to set state synchronously here —
+   *  it runs from an event, not from an effect. */
   async function load() {
     setLoading(true);
     setError(false);
@@ -34,8 +36,25 @@ export function AuditLogPage() {
     }
   }
 
+  // The mount fetch is written out rather than calling load(), so no state is
+  // set synchronously in the effect body, and so an unmount mid-request can't
+  // set state on a gone component.
   useEffect(() => {
-    void load();
+    let cancelled = false;
+    services
+      .getAuditLog()
+      .then((rows) => {
+        if (!cancelled) setActions(rows);
+      })
+      .catch(() => {
+        if (!cancelled) setError(true);
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   return (

@@ -15,6 +15,8 @@ import type {
   TransactionStatus,
   UserStatus,
   Verification,
+  WalletTransaction,
+  WalletTxnKind,
 } from "@/lib/domain";
 
 // ─── Pure helpers ─────────────────────────────────────────────────────────────
@@ -90,6 +92,15 @@ export const DISPUTE_STATUS_DISPLAY: Record<DisputeStatus, { label: string; badg
 export const DISPUTE_RESOLUTION_LABEL: Record<DisputeResolution, string> = {
   RELEASED_TO_PROVIDER: "Released to provider",
   REFUNDED_TO_CLIENT: "Refunded to client",
+};
+
+export const WALLET_KIND_DISPLAY: Record<WalletTxnKind, { label: string; badgeClass: string }> = {
+  topup:        { label: "Top-up",      badgeClass: "badge-completed" },
+  withdrawal:   { label: "Withdrawal",  badgeClass: "badge-processing" },
+  escrow_hold:  { label: "Escrow hold", badgeClass: "badge-pending" },
+  payout:       { label: "Payout",      badgeClass: "badge-active" },
+  refund:       { label: "Refund",      badgeClass: "badge-refunded" },
+  adjustment:   { label: "Adjustment",  badgeClass: "badge-cancelled" },
 };
 
 // ─── Display row types (what components render) ───────────────────────────────
@@ -171,6 +182,19 @@ export interface TransactionRow {
   status: string;
   statusClass: string;
   date: string;
+}
+
+export interface WalletTxnRow {
+  id: string;
+  profileName: string;
+  kindLabel: string;
+  kindClass: string;
+  /** "+" for credits, "-" for debits, so the sign reads without a legend. */
+  amount: string;
+  amountValue: number;
+  direction: "credit" | "debit";
+  title: string;
+  createdAt: string;
 }
 
 export interface BookingRow {
@@ -270,6 +294,22 @@ export function toDisputeRow(d: Dispute): DisputeRow {
     createdAt: formatDate(d.createdAt),
     resolvedAt: d.resolvedAt ? formatDate(d.resolvedAt) : null,
     isOpen: d.status === "OPEN",
+  };
+}
+
+export function toWalletTxnRow(t: WalletTransaction): WalletTxnRow {
+  const display = WALLET_KIND_DISPLAY[t.kind];
+  const sign = t.direction === "credit" ? "+" : "-";
+  return {
+    id: t.id,
+    profileName: t.profileName,
+    kindLabel: display.label,
+    kindClass: display.badgeClass,
+    amount: `${sign}${formatCurrency(t.amount)}`,
+    amountValue: t.amount,
+    direction: t.direction,
+    title: t.title,
+    createdAt: formatDate(t.createdAt),
   };
 }
 
