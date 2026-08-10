@@ -1167,3 +1167,53 @@ non-empty image object in the `verification-docs` bucket, via `UploadsService.as
 (a `storage.list()` metadata check — size and `mimetype`, not a full decode) before the row is
 inserted. This is a usability guard, not identity verification: it exists so a provider whose
 upload silently failed learns immediately instead of waiting for a manual rejection.
+
+## 24. Maintenance Mode (migration 0015)
+
+The admin console's Settings page has had a "Maintenance Mode" toggle since it was first built,
+but it only ever wrote to the admin's own browser `localStorage` — flipping it changed nothing.
+This migration gives it a real, shared switch.
+
+New single-row table `platform_settings (id boolean primary key default true check (id),
+maintenance_mode boolean, maintenance_message text, updated_at, updated_by)` — service-role only
+(§11 treatment), same as `admin_actions`. The `id boolean check (id)` trick keeps the table at
+exactly one row: a second insert violates the primary key.
+
+```
+GET   /admin/maintenance → { maintenance_mode, maintenance_message, updated_at }
+PATCH /admin/maintenance { maintenance_mode: boolean, maintenance_message?: string } → same shape
+```
+
+`MaintenanceMiddleware` (`src/common/maintenance.middleware.ts`) runs globally ahead of every
+route except `/admin/*`, `/auth/*`, and `/health` — an admin can always sign in and always reach
+the admin API to turn maintenance back off, and everyone can still reach `/auth/*` to sign in (the
+block is on *using* the app, not on authenticating). While `maintenance_mode` is true, every other
+request gets `503 { message: maintenance_message ?? <default> }` before it reaches its controller.
+Toggling it writes an `admin_actions` row (`platform.maintenance_toggle`) via the same audit path
+as §23.5.
+
+The other admin-console "Platform" settings (Platform Name, Support Email) and the Notifications /
+Data & Privacy sections remain local-only — see web/README.md's backend backlog. They stayed out
+of scope here because, unlike maintenance mode, nothing reads them: there's no page that renders a
+configurable platform name, no email pipeline maintenance mode's toggle to wire "email alerts"
+into. Building the toggle without the thing it controls would be the same theater this migration
+exists to fix.
+
+## 25. Admin Wallet Visibility (migration 0015)
+
+Escrow transactions (`GET /admin/transactions`, §18) and wallet transactions
+(`wallet_transactions`, §15.2) are different ledgers: escrow is money held for a specific job,
+the wallet ledger is a user's running balance (top-ups, withdrawals, and the payout/refund rows
+escrow itself writes into it). Before this, an admin had no way to see wallet activity at all —
+not even the Stripe Checkout top-ups added alongside PR #35, which were visible only in Stripe's
+own dashboard.
+
+```
+GET /admin/wallet-transactions?kind=&direction=&status=&limit=&offset=
+  → { transactions: [{ ...wallet_transactions row, profile: { id, full_name } }], total }
+```
+
+`WalletService.listForAdmin` (`src/wallet/wallet.service.ts`), exposed through `AdminController`
+— `WalletModule` already exported `WalletService` for `EscrowService`'s balance checks, so
+`AdminModule` just adds it as a second consumer. No new table; this is read-only visibility over
+data that already existed.

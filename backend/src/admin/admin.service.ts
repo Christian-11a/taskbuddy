@@ -10,6 +10,7 @@ import {
   ListBookingsQueryDto,
   ListUsersQueryDto,
   SuspendUserDto,
+  UpdateMaintenanceDto,
 } from './dto/admin.dto';
 import { AdminActionsService } from './admin-actions.service';
 import type { Profile } from '../common/types';
@@ -329,6 +330,49 @@ export class AdminService {
     const { data, error, count } = await builder;
     if (error) throw new BadRequestException(error.message);
     return { items: data ?? [], total: count ?? 0 };
+  }
+
+  /**
+   * The single `platform_settings` row (migration 0015) — created by the
+   * migration's seed insert, so this should never miss, but `.single()`
+   * still surfaces a clear error rather than a silent undefined if it does.
+   */
+  async getMaintenance() {
+    const { data, error } = await this.supabase.admin
+      .from('platform_settings')
+      .select('maintenance_mode, maintenance_message, updated_at')
+      .eq('id', true)
+      .single();
+    if (error) throw new BadRequestException(error.message);
+    return data;
+  }
+
+  /**
+   * Flips the shared maintenance switch `MaintenanceMiddleware` checks on
+   * every request. Logged to admin_actions (§23.5) since this affects every
+   * user on the platform at once — the audit trail should show who did it.
+   */
+  async setMaintenance(admin: Profile, dto: UpdateMaintenanceDto) {
+    const { data, error } = await this.supabase.admin
+      .from('platform_settings')
+      .update({
+        maintenance_mode: dto.maintenance_mode,
+        maintenance_message: dto.maintenance_message ?? null,
+        updated_at: new Date().toISOString(),
+        updated_by: admin.id,
+      })
+      .eq('id', true)
+      .select('maintenance_mode, maintenance_message, updated_at')
+      .single();
+    if (error) throw new BadRequestException(error.message);
+    await this.adminActions.record(
+      admin,
+      'platform.maintenance_toggle',
+      'platform_settings',
+      admin.id,
+      { maintenance_mode: dto.maintenance_mode },
+    );
+    return data;
   }
 
   private async findProfile(userId: string) {

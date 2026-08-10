@@ -1,6 +1,7 @@
 import { Type } from 'class-transformer';
 import {
   IsIn,
+  IsInt,
   IsNumber,
   IsOptional,
   IsPositive,
@@ -26,4 +27,35 @@ export class CreateWalletTxnDto {
   @IsOptional()
   @IsUUID()
   job_id?: string;
+}
+
+export class ListWalletTxnQueryDto {
+  @IsOptional()
+  @IsIn(['credit', 'debit'])
+  direction?: WalletTxnDirection;
+
+  @IsOptional()
+  @IsIn([
+    'topup',
+    'withdrawal',
+    'escrow_hold',
+    'payout',
+    'refund',
+    'adjustment',
+  ])
+  kind?: string;
+
+  @IsOptional()
+  @IsIn(['pending', 'completed', 'failed'])
+  status?: string;
+
+  @IsOptional()
+  @IsInt()
+  @Type(() => Number)
+  limit?: number;
+
+  @IsOptional()
+  @IsInt()
+  @Type(() => Number)
+  offset?: number;
 }

@@ -3,7 +3,11 @@ import { WalletService } from './wallet.service';
 import type { SupabaseService } from '../supabase/supabase.service';
 import type { Profile } from '../common/types';
 
-type QueryResult = { data: unknown; error: { message: string } | null };
+type QueryResult = {
+  data: unknown;
+  error: { message: string } | null;
+  count?: number | null;
+};
 
 /** Same chainable stand-in as admin.service.spec.ts — results consumed per `.from()`. */
 function createSupabaseMock(results: QueryResult[]) {
@@ -19,7 +23,7 @@ function createSupabaseMock(results: QueryResult[]) {
         calls.push({ method, args });
         return builder;
       });
-    for (const method of ['select', 'insert', 'eq', 'order']) {
+    for (const method of ['select', 'insert', 'eq', 'order', 'range']) {
       builder[method] = chain(method);
     }
     builder.single = jest.fn(() => Promise.resolve(result));
@@ -104,6 +108,72 @@ describe('WalletService', () => {
         }),
       ).rejects.toThrow(BadRequestException);
       expect(calls.some((c) => c.method === 'insert')).toBe(false);
+    });
+  });
+
+  describe('listForAdmin', () => {
+    it('returns rows and total, filtered by kind/direction/status', async () => {
+      const rows = [
+        {
+          id: 't1',
+          kind: 'topup',
+          direction: 'credit',
+          amount: '1000.00',
+          profile: { id: 'u1', full_name: 'Eduard' },
+        },
+      ];
+      const { supabase, calls } = createSupabaseMock([
+        { data: rows, error: null, count: 1 },
+      ]);
+      const service = new WalletService(supabase);
+
+      const result = await service.listForAdmin({
+        kind: 'topup',
+        direction: 'credit',
+        status: 'completed',
+      });
+
+      expect(result).toEqual({ transactions: rows, total: 1 });
+      expect(
+        calls.some(
+          (c) => c.method === 'eq' && c.args[0] === 'kind' && c.args[1] === 'topup',
+        ),
+      ).toBe(true);
+      expect(
+        calls.some(
+          (c) =>
+            c.method === 'eq' && c.args[0] === 'direction' && c.args[1] === 'credit',
+        ),
+      ).toBe(true);
+      expect(
+        calls.some(
+          (c) =>
+            c.method === 'eq' && c.args[0] === 'status' && c.args[1] === 'completed',
+        ),
+      ).toBe(true);
+    });
+
+    it('defaults to no filters and total 0 on an empty ledger', async () => {
+      const { supabase } = createSupabaseMock([
+        { data: [], error: null, count: 0 },
+      ]);
+      const service = new WalletService(supabase);
+
+      await expect(service.listForAdmin({})).resolves.toEqual({
+        transactions: [],
+        total: 0,
+      });
+    });
+
+    it('throws BadRequestException on query error', async () => {
+      const { supabase } = createSupabaseMock([
+        { data: null, error: { message: 'boom' } },
+      ]);
+      const service = new WalletService(supabase);
+
+      await expect(service.listForAdmin({})).rejects.toThrow(
+        BadRequestException,
+      );
     });
   });
 });

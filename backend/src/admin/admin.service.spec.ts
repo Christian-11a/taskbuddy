@@ -535,6 +535,85 @@ describe('AdminService', () => {
     });
   });
 
+  describe('getMaintenance', () => {
+    it('returns the single platform_settings row', async () => {
+      const row = {
+        maintenance_mode: false,
+        maintenance_message: null,
+        updated_at: '2026-08-01T00:00:00Z',
+      };
+      const { supabase } = createSupabaseMock({
+        platform_settings: [{ data: row, error: null }],
+      });
+      const service = new AdminService(supabase, createAdminActionsMock().mock);
+
+      await expect(service.getMaintenance()).resolves.toEqual(row);
+    });
+
+    it('throws BadRequestException on query error', async () => {
+      const { supabase } = createSupabaseMock({
+        platform_settings: [{ data: null, error: { message: 'boom' } }],
+      });
+      const service = new AdminService(supabase, createAdminActionsMock().mock);
+
+      await expect(service.getMaintenance()).rejects.toThrow(
+        BadRequestException,
+      );
+    });
+  });
+
+  describe('setMaintenance', () => {
+    it('updates the row and records an audit action', async () => {
+      const updated = {
+        maintenance_mode: true,
+        maintenance_message: 'Back soon',
+        updated_at: '2026-08-10T00:00:00Z',
+      };
+      const { supabase, calls } = createSupabaseMock({
+        platform_settings: [{ data: updated, error: null }],
+      });
+      const { mock: adminActions, record } = createAdminActionsMock();
+      const service = new AdminService(supabase, adminActions);
+
+      const result = await service.setMaintenance(admin, {
+        maintenance_mode: true,
+        maintenance_message: 'Back soon',
+      });
+
+      expect(result).toEqual(updated);
+      const updateCall = calls.find((c) => c.method === 'update');
+      expect(updateCall?.args[0]).toMatchObject({
+        maintenance_mode: true,
+        maintenance_message: 'Back soon',
+        updated_by: admin.id,
+      });
+      expect(record).toHaveBeenCalledWith(
+        admin,
+        'platform.maintenance_toggle',
+        'platform_settings',
+        admin.id,
+        { maintenance_mode: true },
+      );
+    });
+
+    it('defaults maintenance_message to null when omitted', async () => {
+      const { supabase, calls } = createSupabaseMock({
+        platform_settings: [
+          { data: { maintenance_mode: false }, error: null },
+        ],
+      });
+      const service = new AdminService(supabase, createAdminActionsMock().mock);
+
+      await service.setMaintenance(admin, { maintenance_mode: false });
+
+      const updateCall = calls.find((c) => c.method === 'update');
+      expect(
+        (updateCall?.args[0] as { maintenance_message: unknown })
+          .maintenance_message,
+      ).toBeNull();
+    });
+  });
+
   describe('cancelBooking', () => {
     it('cancels an open booking and records an audit action', async () => {
       const updated = { id: 'j1', status: 'cancelled' };
