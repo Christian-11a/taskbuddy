@@ -230,6 +230,41 @@ export interface ListAuditApiResponse {
   total: number;
 }
 
+/** GET/PATCH /admin/maintenance (migration 0015). */
+export interface MaintenanceApiResponse {
+  maintenance_mode: boolean;
+  maintenance_message: string | null;
+  updated_at: string;
+}
+
+/** GET /admin/wallet-transactions (migration 0015) — the wallet ledger, distinct
+ *  from escrow (AdminTransactionApiRow above): a user's running balance rather
+ *  than money held for one job. Includes Stripe Checkout top-ups (PR #35). */
+export type WalletTxnKindApi =
+  | "topup"
+  | "withdrawal"
+  | "escrow_hold"
+  | "payout"
+  | "refund"
+  | "adjustment";
+
+export interface AdminWalletTxnApiRow {
+  id: string;
+  direction: "credit" | "debit";
+  status: "pending" | "completed" | "failed";
+  kind: WalletTxnKindApi;
+  /** Postgres numeric arrives as a string over PostgREST. */
+  amount: number | string;
+  title: string;
+  created_at: string;
+  profile: { id: string; full_name: string } | null;
+}
+
+export interface ListWalletTxnApiResponse {
+  transactions: AdminWalletTxnApiRow[];
+  total: number;
+}
+
 export interface AdminMessageApiRow {
   id: string;
   sender_id: string;

@@ -1,8 +1,10 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
+import Link from "next/link";
 import { Bell, Menu, ShieldCheck, AlertTriangle, X } from "lucide-react";
 import { useApp } from "@/context/AppContext";
+import { pageToPath } from "@/lib/routes";
 
 interface HeaderProps {
   title: string;
@@ -10,7 +12,7 @@ interface HeaderProps {
 }
 
 export function Header({ title, onOpenDrawer }: HeaderProps) {
-  const { verifications, disputes, navigate } = useApp();
+  const { verifications, disputes } = useApp();
   const [notifOpen, setNotifOpen] = useState(false);
   const notifRef = useRef<HTMLDivElement>(null);
 
@@ -41,6 +43,7 @@ export function Header({ title, onOpenDrawer }: HeaderProps) {
       <div className="flex items-center gap-3">
         <button
           onClick={onOpenDrawer}
+          aria-label="Open navigation menu"
           className="lg:hidden flex items-center justify-center rounded-lg"
           style={{ width: 32, height: 32, background: "var(--input-bg)", border: "none", cursor: "pointer", color: "var(--text-muted)" }}
         >
@@ -59,6 +62,8 @@ export function Header({ title, onOpenDrawer }: HeaderProps) {
         <div className="relative" ref={notifRef}>
           <button
             onClick={() => setNotifOpen((o) => !o)}
+            aria-label={notifCount > 0 ? `Notifications (${notifCount} unread)` : "Notifications"}
+            aria-expanded={notifOpen}
             className="flex items-center justify-center"
             style={{ width: 29, height: 29, background: "var(--input-bg)", borderRadius: 11, border: "none", cursor: "pointer", color: "var(--text-muted)" }}
           >
@@ -88,7 +93,7 @@ export function Header({ title, onOpenDrawer }: HeaderProps) {
                       {notifCount} new
                     </span>
                   )}
-                  <button onClick={() => setNotifOpen(false)} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-muted)", padding: 2 }}>
+                  <button onClick={() => setNotifOpen(false)} aria-label="Close notifications" style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-muted)", padding: 2 }}>
                     <X size={13} />
                   </button>
                 </div>
@@ -104,11 +109,12 @@ export function Header({ title, onOpenDrawer }: HeaderProps) {
                   <div>
                     <div className="px-4 py-2 uppercase" style={{ fontSize: 8, color: "#4b5563", fontWeight: 600, letterSpacing: "0.8px" }}>Pending Verifications</div>
                     {pendingVerifs.map((v) => (
-                      <button
+                      <Link
                         key={v.email}
-                        onClick={() => { navigate("verifications"); setNotifOpen(false); }}
+                        href={pageToPath("verifications")}
+                        onClick={() => setNotifOpen(false)}
                         className="w-full flex items-start gap-3 px-4 py-3 text-left transition-colors hover:bg-white/5"
-                        style={{ background: "none", border: "none", cursor: "pointer", borderBottom: "1px solid var(--border)" }}
+                        style={{ borderBottom: "1px solid var(--border)", textDecoration: "none" }}
                       >
                         <div className="flex items-center justify-center flex-shrink-0 rounded-lg" style={{ width: 28, height: 28, background: "rgba(245,158,11,0.15)", marginTop: 1 }}>
                           <ShieldCheck size={13} style={{ color: "#f59e0b" }} />
@@ -117,7 +123,7 @@ export function Header({ title, onOpenDrawer }: HeaderProps) {
                           <div className="text-white font-medium" style={{ fontSize: 11.4 }}>{v.name} needs verification</div>
                           <div style={{ fontSize: 9.8, color: "var(--text-muted)", marginTop: 2 }}>{v.documents.length} document{v.documents.length === 1 ? "" : "s"} · Submitted {v.date}</div>
                         </div>
-                      </button>
+                      </Link>
                     ))}
                   </div>
                 )}
@@ -126,11 +132,12 @@ export function Header({ title, onOpenDrawer }: HeaderProps) {
                   <div>
                     <div className="px-4 py-2 uppercase" style={{ fontSize: 8, color: "#4b5563", fontWeight: 600, letterSpacing: "0.8px" }}>Open Disputes</div>
                     {openDisputes.map((d) => (
-                      <button
+                      <Link
                         key={d.id}
-                        onClick={() => { navigate("disputes"); setNotifOpen(false); }}
+                        href={pageToPath("disputes")}
+                        onClick={() => setNotifOpen(false)}
                         className="w-full flex items-start gap-3 px-4 py-3 text-left transition-colors hover:bg-white/5"
-                        style={{ background: "none", border: "none", cursor: "pointer", borderBottom: "1px solid var(--border)" }}
+                        style={{ borderBottom: "1px solid var(--border)", textDecoration: "none" }}
                       >
                         <div className="flex items-center justify-center flex-shrink-0 rounded-lg" style={{ width: 28, height: 28, background: "rgba(239,68,68,0.15)", marginTop: 1 }}>
                           <AlertTriangle size={13} style={{ color: "var(--danger-text)" }} />
@@ -139,21 +146,25 @@ export function Header({ title, onOpenDrawer }: HeaderProps) {
                           <div className="text-white font-medium" style={{ fontSize: 11.4 }}>{d.jobTitle} — Dispute raised</div>
                           <div style={{ fontSize: 9.8, color: "var(--text-muted)", marginTop: 2 }}>{d.clientName} · {d.amount} · {d.createdAt}</div>
                         </div>
-                      </button>
+                      </Link>
                     ))}
                   </div>
                 )}
               </div>
 
-              {/* Footer */}
+              {/* Footer — points at whichever queue this dropdown is actually
+                  showing. It used to always say "View all verifications" even
+                  when every notification was a dispute, sending the admin to
+                  an empty page. */}
               <div style={{ borderTop: "1px solid var(--border)", padding: "10px 16px" }}>
-                <button
-                  onClick={() => { navigate("verifications"); setNotifOpen(false); }}
-                  className="w-full text-center font-medium transition-opacity hover:opacity-75"
-                  style={{ background: "none", border: "none", cursor: "pointer", fontSize: 11.4, color: "var(--indigo-light)" }}
+                <Link
+                  href={pageToPath(pendingVerifs.length > 0 ? "verifications" : "disputes")}
+                  onClick={() => setNotifOpen(false)}
+                  className="block w-full text-center font-medium transition-opacity hover:opacity-75"
+                  style={{ fontSize: 11.4, color: "var(--indigo-light)", textDecoration: "none" }}
                 >
-                  View all verifications
-                </button>
+                  {pendingVerifs.length > 0 ? "View all verifications" : "View all disputes"}
+                </Link>
               </div>
             </div>
           )}

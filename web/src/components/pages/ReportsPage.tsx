@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import {
   AreaChart,
   Area,
@@ -17,6 +18,7 @@ import { Download } from "lucide-react";
 import { useApp } from "@/context/AppContext";
 import { formatCurrency, formatCurrencyCompact } from "@/lib/adapters";
 import { datedFilename, downloadCsv, toCsv } from "@/lib/export/csv";
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 
 const PIE_COLORS = ["#6366f1", "#8b5cf6", "#22c55e", "#f59e0b", "#ef4444", "#60a5fa"];
 
@@ -29,6 +31,7 @@ export function ReportsPage() {
     topProviders,
     loading,
   } = useApp();
+  const [confirmingExport, setConfirmingExport] = useState(false);
 
   if (loading || !dashboardStats) {
     return (
@@ -78,7 +81,7 @@ export function ReportsPage() {
           </div>
         </div>
         <button
-          onClick={exportCsv}
+          onClick={() => setConfirmingExport(true)}
           title="Download every section on this page as one CSV"
           className="flex items-center gap-1.5 font-semibold transition-opacity hover:opacity-80"
           style={{ background: "var(--chip-bg)", border: "1px solid var(--border-md)", borderRadius: 11, padding: "7px 13px", fontSize: 11.4, color: "var(--text-light)", cursor: "pointer", fontFamily: "inherit" }}
@@ -116,32 +119,41 @@ export function ReportsPage() {
         >
           <div className="font-semibold text-white mb-1" style={{ fontSize: 14 }}>Revenue Trend</div>
           <div style={{ fontSize: 11.4, color: "var(--text-muted)", marginBottom: 16 }}>Monthly earnings over time</div>
-          <ResponsiveContainer width="100%" height={150}>
-            <AreaChart data={revenueSeries}>
-              <defs>
-                <linearGradient id="rev" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="#6366f1" stopOpacity={0.3} />
-                  <stop offset="95%" stopColor="#6366f1" stopOpacity={0} />
-                </linearGradient>
-              </defs>
-              <XAxis dataKey="month" tick={{ fill: "#6b7280", fontSize: 10 }} axisLine={false} tickLine={false} />
-              <YAxis hide />
-              <Tooltip
-                cursor={{ stroke: "var(--indigo)", strokeWidth: 1, strokeDasharray: "3 3" }}
-                contentStyle={{
-                  background: "var(--panel-bg)",
-                  border: "1px solid var(--panel-border)",
-                  borderRadius: 8,
-                  boxShadow: "0 8px 24px rgba(0,0,0,0.25)",
-                  padding: "8px 12px",
-                }}
-                labelStyle={{ color: "var(--text-muted)", fontSize: 10, marginBottom: 2 }}
-                itemStyle={{ color: "var(--text-white)", fontSize: 12, fontWeight: 600, padding: 0 }}
-                formatter={(v: number) => [formatCurrency(v), "Revenue"]}
-              />
-              <Area type="monotone" dataKey="value" stroke="#6366f1" fill="url(#rev)" strokeWidth={2} />
-            </AreaChart>
-          </ResponsiveContainer>
+          {revenueSeries.length === 0 ? (
+            <div
+              className="flex items-center justify-center"
+              style={{ height: 150, fontSize: 11.4, color: "var(--text-muted)", textAlign: "center" }}
+            >
+              No revenue yet — this fills in once a job&apos;s escrow is released to a provider.
+            </div>
+          ) : (
+            <ResponsiveContainer width="100%" height={150}>
+              <AreaChart data={revenueSeries}>
+                <defs>
+                  <linearGradient id="rev" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#6366f1" stopOpacity={0.3} />
+                    <stop offset="95%" stopColor="#6366f1" stopOpacity={0} />
+                  </linearGradient>
+                </defs>
+                <XAxis dataKey="month" tick={{ fill: "#6b7280", fontSize: 10 }} axisLine={false} tickLine={false} />
+                <YAxis hide />
+                <Tooltip
+                  cursor={{ stroke: "var(--indigo)", strokeWidth: 1, strokeDasharray: "3 3" }}
+                  contentStyle={{
+                    background: "var(--panel-bg)",
+                    border: "1px solid var(--panel-border)",
+                    borderRadius: 8,
+                    boxShadow: "0 8px 24px rgba(0,0,0,0.25)",
+                    padding: "8px 12px",
+                  }}
+                  labelStyle={{ color: "var(--text-muted)", fontSize: 10, marginBottom: 2 }}
+                  itemStyle={{ color: "var(--text-white)", fontSize: 12, fontWeight: 600, padding: 0 }}
+                  formatter={(v: number) => [formatCurrency(v), "Revenue"]}
+                />
+                <Area type="monotone" dataKey="value" stroke="#6366f1" fill="url(#rev)" strokeWidth={2} />
+              </AreaChart>
+            </ResponsiveContainer>
+          )}
         </div>
 
         {/* Pie chart */}
@@ -259,6 +271,19 @@ export function ReportsPage() {
           </ResponsiveContainer>
         </div>
       </div>
+
+      <ConfirmDialog
+        open={confirmingExport}
+        danger={false}
+        title="Export to CSV?"
+        message="This downloads every section on this page — summary, revenue trend, monthly bookings, categories, and top providers — as one .csv file to your device."
+        confirmLabel="Export"
+        onConfirm={() => {
+          setConfirmingExport(false);
+          exportCsv();
+        }}
+        onCancel={() => setConfirmingExport(false)}
+      />
     </div>
   );
 }

@@ -1,5 +1,7 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
-
+/* Inter is loaded via next/font/google in app/layout.tsx, which self-hosts it
+   at build time — no runtime request to fonts.googleapis.com, no flash of
+   unstyled text, and no third-party origin to allow through the CSP. The old
+   `@import url(...)` here did the opposite on all three counts. */
 @import "tailwindcss";
 
 :root {
@@ -145,7 +147,7 @@ body {
 }
 
 body {
-  font-family: 'Inter', system-ui, sans-serif;
+  font-family: var(--font-inter), system-ui, sans-serif;
   background: var(--bg-main);
   color: var(--text-white);
 }

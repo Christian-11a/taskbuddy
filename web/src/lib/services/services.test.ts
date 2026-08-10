@@ -303,6 +303,156 @@ describe("getTransactions", () => {
       amount: 1200.5,
     });
   });
+
+  it("shares one in-flight request between overlapping callers", async () => {
+    // AppContext's initial load fires getTransactions() and getDisputes() in
+    // the same Promise.all, and getDisputes() needs this list too — without
+    // dedup that was two identical round trips per login.
+    const fetchMock = vi.fn(() =>
+      Promise.resolve(jsonResponse({ transactions: [], total: 0 })),
+    );
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    const [a, b] = await Promise.all([services.getTransactions(), services.getTransactions()]);
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(a).toEqual(b);
+  });
+
+  it("fetches again once the in-flight request has settled", async () => {
+    // In-flight only, no TTL — a resolved dispute must not render from cache.
+    const fetchMock = vi.fn(() =>
+      Promise.resolve(jsonResponse({ transactions: [], total: 0 })),
+    );
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    await services.getTransactions();
+    await services.getTransactions();
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("getWalletTransactions", () => {
+  it("maps wallet ledger rows, keeping direction/kind/amount as numbers", async () => {
+    global.fetch = vi.fn(() =>
+      Promise.resolve(
+        jsonResponse({
+          transactions: [
+            {
+              id: "wt1",
+              direction: "credit",
+              status: "completed",
+              kind: "topup",
+              amount: "1000.00",
+              title: "TaskBuddy wallet top-up",
+              created_at: "2026-08-09T16:47:00Z",
+              profile: { id: "u1", full_name: "Eduard" },
+            },
+          ],
+          total: 1,
+        }),
+      ),
+    ) as unknown as typeof fetch;
+
+    const txns = await services.getWalletTransactions();
+
+    expect(txns).toEqual([
+      {
+        id: "wt1",
+        profileName: "Eduard",
+        direction: "credit",
+        kind: "topup",
+        status: "completed",
+        amount: 1000,
+        title: "TaskBuddy wallet top-up",
+        createdAt: "2026-08-09T16:47:00Z",
+      },
+    ]);
+  });
+
+  it("falls back to 'Unknown user' when the profile join is missing", async () => {
+    global.fetch = vi.fn(() =>
+      Promise.resolve(
+        jsonResponse({
+          transactions: [
+            {
+              id: "wt2",
+              direction: "debit",
+              status: "completed",
+              kind: "withdrawal",
+              amount: "50.00",
+              title: "Cash out",
+              created_at: "2026-08-09T16:47:00Z",
+              profile: null,
+            },
+          ],
+          total: 1,
+        }),
+      ),
+    ) as unknown as typeof fetch;
+
+    const [txn] = await services.getWalletTransactions();
+
+    expect(txn.profileName).toBe("Unknown user");
+  });
+});
+
+describe("maintenance mode", () => {
+  it("getMaintenanceStatus maps the API response to domain shape", async () => {
+    global.fetch = vi.fn(() =>
+      Promise.resolve(
+        jsonResponse({
+          maintenance_mode: true,
+          maintenance_message: "Back at 9am",
+          updated_at: "2026-08-10T00:00:00Z",
+        }),
+      ),
+    ) as unknown as typeof fetch;
+
+    await expect(services.getMaintenanceStatus()).resolves.toEqual({
+      enabled: true,
+      message: "Back at 9am",
+      updatedAt: "2026-08-10T00:00:00Z",
+    });
+  });
+
+  it("getMaintenanceStatus falls back to 'off' instead of throwing (e.g. route not deployed yet)", async () => {
+    global.fetch = vi.fn(() =>
+      Promise.resolve(jsonResponse({ message: "Not Found" }, 404)),
+    ) as unknown as typeof fetch;
+
+    // Must not reject — this call sits inside AppContext's initial-load
+    // Promise.all, and a throw here would abort every other fetch in that
+    // batch, not just this one value.
+    await expect(services.getMaintenanceStatus()).resolves.toEqual({
+      enabled: false,
+      message: null,
+      updatedAt: null,
+    });
+  });
+
+  it("setMaintenanceStatus PATCHes and returns the updated status", async () => {
+    // Typed via the generic rather than unused params, so `mock.calls[0]`
+    // still destructures to [url, init] below.
+    const fetchMock = vi.fn<(url: string, init?: RequestInit) => Promise<Response>>(() =>
+      Promise.resolve(
+        jsonResponse({
+          maintenance_mode: false,
+          maintenance_message: null,
+          updated_at: "2026-08-10T00:05:00Z",
+        }),
+      ),
+    );
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    const result = await services.setMaintenanceStatus(false);
+
+    expect(result).toEqual({ enabled: false, message: null, updatedAt: "2026-08-10T00:05:00Z" });
+    const [, init] = fetchMock.mock.calls[0];
+    expect(init?.method).toBe("PATCH");
+    expect(JSON.parse(init?.body as string)).toEqual({ maintenance_mode: false, maintenance_message: undefined });
+  });
 });
 
 describe("updateDisplayName", () => {
@@ -443,7 +593,7 @@ describe("bulk actions", () => {
     expect(fetchMock.mock.calls[1][0]).toContain("/admin/users/u2/suspend");
   });
 
-  it("bulkSetUserStatus tolerates a per-id failure and still refetches", async () => {
+  it("bulkSetUserStatus tolerates a per-id failure, still refetches, and reports the counts", async () => {
     const fetchMock = vi
       .fn()
       .mockImplementationOnce(() => Promise.resolve(jsonResponse({ message: "cannot suspend admin" }, 400)))
@@ -451,7 +601,28 @@ describe("bulk actions", () => {
       .mockImplementationOnce(() => Promise.resolve(jsonResponse({ users: [], total: 0 })));
     global.fetch = fetchMock as unknown as typeof fetch;
 
-    await expect(services.bulkSetUserStatus(["u1", "u2"], "SUSPENDED")).resolves.toEqual([]);
+    // The counts are the point: one id failing used to be swallowed entirely,
+    // so the admin was never told their bulk action only partly worked.
+    await expect(services.bulkSetUserStatus(["u1", "u2"], "SUSPENDED")).resolves.toEqual({
+      rows: [],
+      succeeded: 1,
+      failed: 1,
+    });
+  });
+
+  it("bulkApproveVerifications reports counts when every id succeeds", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockImplementationOnce(() => Promise.resolve(jsonResponse({ id: "v1" })))
+      .mockImplementationOnce(() => Promise.resolve(jsonResponse({ id: "v2" })))
+      .mockImplementationOnce(() => Promise.resolve(jsonResponse({ verifications: [], total: 0 })));
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    await expect(services.bulkApproveVerifications(["v1", "v2"])).resolves.toEqual({
+      rows: [],
+      succeeded: 2,
+      failed: 0,
+    });
   });
 
   it("bulkApproveVerifications and bulkRejectVerifications post per id then refetch", async () => {
@@ -471,6 +642,32 @@ describe("bulk actions", () => {
 
     await services.bulkRejectVerifications(["v2"]);
     expect(fetchMock.mock.calls[0][0]).toContain("/admin/verifications/v2/reject");
+  });
+
+  it("rejectVerification sends the reason in the request body when given", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockImplementationOnce(() => Promise.resolve(jsonResponse({ id: "v3" })))
+      .mockImplementationOnce(() => Promise.resolve(jsonResponse({ verifications: [], total: 0 })));
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    await services.rejectVerification("v3", "Blurry ID photo");
+
+    const [, init] = fetchMock.mock.calls[0];
+    expect(JSON.parse(init.body as string)).toEqual({ reason: "Blurry ID photo" });
+  });
+
+  it("rejectVerification sends no body when no reason is given", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockImplementationOnce(() => Promise.resolve(jsonResponse({ id: "v4" })))
+      .mockImplementationOnce(() => Promise.resolve(jsonResponse({ verifications: [], total: 0 })));
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    await services.rejectVerification("v4");
+
+    const [, init] = fetchMock.mock.calls[0];
+    expect(init.body).toBeUndefined();
   });
 });
 

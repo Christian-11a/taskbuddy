@@ -1,232 +1,273 @@
 # TaskBuddy Admin Console
 
-The admin dashboard for the TaskBuddy platform (`web/` in the repo). Next.js 16 App Router, TypeScript, Tailwind CSS v4, Lucide React, and Recharts. **Every page now runs against the live backend** — Verifications and Transactions were the last mock holdouts, and backend migrations 0008 (provider verifications) and 0009 (escrow + disputes) gave them real tables. The in-memory mock DB has been deleted.
+The internal admin dashboard for the TaskBuddy platform — user moderation,
+provider verification, escrow/wallet monitoring, disputes, and analytics.
+Next.js 16 (App Router) + TypeScript, talking to the NestJS backend in
+`../backend`.
 
-## Live Deployment
+**Live:** https://taskbuddy-nine-zeta.vercel.app · **Sign in:**
+`admin@taskbuddy.com` (ask the team for the password)
 
-- **URL**: https://taskbuddy-nine-zeta.vercel.app
-- **Backend**: https://taskbuddy-1d48.onrender.com (Render, free plan)
-- **Database/Auth**: Supabase project `TaskBuddy` (`axtizgnurqnjzfjrngvd`)
-- **Env vars set on Vercel**: `NEXT_PUBLIC_API_URL=https://taskbuddy-1d48.onrender.com` (the old `NEXT_PUBLIC_USE_MOCK` is no longer read and can be removed)
-- **Admin login**: `admin@taskbuddy.com` (real Supabase account, Email auth provider — ask Eduard or Christian for the password)
+> **Status:** all admin console features are built, wired to the real backend,
+> and verified — lint, type-check, 93 tests and a production build all pass.
+>
+> **Two items need backend changes before this is production-ready** and are
+> the main things to review: session tokens are held in `localStorage` rather
+> than an httpOnly cookie, and list pagination is blocked on missing `search`
+> params. Both are specified in
+> **[Needs backend work (for review)](#needs-backend-work-for-review)**.
 
-## Tech Stack
+---
 
-- **Framework**: Next.js 16 (App Router)
-- **Language**: TypeScript
-- **Styling**: Tailwind CSS v4 + CSS variables (dark & light themes)
-- **Icons**: Lucide React
-- **Charts**: Recharts
-- **Runtime**: React 19
-- **Tests**: Vitest (adapter + validation unit tests)
-
-## Features
-
-- 🔐 Login / Auth Screen (real Supabase Email auth — see [Live Deployment](#live-deployment) for the admin login)
-- 📊 Dashboard Overview — live stats, revenue chart, category breakdown, activity feed
-- 🛡️ Provider Verification Queue — approve/reject, bulk actions, ID/selfie image preview
-- 👥 User Management — searchable table, row drill-down, bulk suspend/reinstate
-- 💳 Transaction Monitoring — escrow log with per-row detail (In Escrow / Completed / Disputed / Refunded)
-- ⚠️ Disputes — review and resolve, releasing escrow to the provider or refunding the client
-- 📅 Booking Tracker — search, filter, cancel, row drill-down
-- 🕓 Activity Log — booking status transitions with search, type filter, sort
-- 📜 Audit Log — every admin moderation action (suspend, reinstate, cancel, dispute resolution) with who and why
-- 📈 Reports & Analytics — area chart, pie chart, bar chart, top providers
-- 📤 CSV export on Users, Transactions, Bookings, Activity Log, and Reports
-- ⚙️ Settings — account, notifications, platform, appearance
-- 🌙 Dark & light themes (persisted), collapsible sidebar, SPA navigation
-
-## Getting Started
+## Quick start
 
 ```bash
 npm install
-npm run dev
+npm run dev          # http://localhost:3000
 ```
 
-Open [http://localhost:3000](http://localhost:3000). By default this points at
-`http://localhost:3001` for the API. Note the backend listens on **3000** unless
-told otherwise, and Next.js has already taken that port — so run the backend as
-`PORT=3001 npm run start:dev`, or point the web app at wherever it actually is.
+By default this hits the deployed backend, so you can sign in immediately with
+no local backend running.
 
-To hit the live Render backend instead, create `.env.local`:
+To point at a local backend instead, create `.env.local`:
 
 ```bash
-NEXT_PUBLIC_API_URL=https://taskbuddy-1d48.onrender.com
+NEXT_PUBLIC_API_URL=http://localhost:3001
 ```
 
-Other scripts:
+…then start the backend on that port — it defaults to 3000, which Next.js has
+already taken:
 
 ```bash
-npm run build   # production build
-npm start       # serve the production build
-npm run lint    # eslint
-npm test        # vitest unit tests
+cd ../backend && PORT=3001 npm run start:dev
 ```
 
-## Project Structure
+| Script | What it does |
+|---|---|
+| `npm run dev` | Dev server with hot reload |
+| `npm run build` | Production build (also type-checks) |
+| `npm start` | Serve the production build |
+| `npm run lint` | ESLint |
+| `npm test` | Vitest unit tests |
+
+---
+
+## Troubleshooting
+
+**First load after a while takes 30–60 seconds.** The backend is on Render's
+free tier and sleeps when idle. The first request wakes it. Not a bug — later
+requests are fast.
+
+**`GET /admin/maintenance` 404s in the console.** That route exists locally but
+hasn't been deployed to Render yet. The app handles it gracefully (falls back
+to "maintenance off"); it'll stop once the backend redeploys.
+
+**Backend won't start / port already in use.** Both the backend and Next.js
+default to port 3000. Run the backend with `PORT=3001`.
+
+**Hydration warning mentioning `data-gr-ext-installed`.** That's the Grammarly
+browser extension editing `<body>` before React hydrates, not app code. Already
+suppressed via `suppressHydrationWarning` on `<body>`.
+
+**Everything renders empty / all zeroes.** Check for a red banner at the top of
+the page — a failed data load shows there with a Retry button. If there's no
+banner, the platform genuinely has no data yet.
+
+---
+
+## Architecture
+
+```
+pages → context/AppContext → lib/services → lib/api/client → backend
+                                   ↓
+                             lib/adapters (display formatting)
+```
+
+- **Pages never call the backend directly.** They read from `AppContext` and
+  render rows produced by `lib/adapters`.
+- **`lib/services` is the seam.** It's where snake_case wire types become
+  camelCase domain objects, and backend enums become display labels
+  (escrow `held` → `IN_ESCROW`).
+- **`AppProvider` lives in the root layout**, so session and loaded data survive
+  client-side navigation — sidebar clicks don't refetch, a hard refresh does.
+- **Overlapping requests are deduped.** `/admin/analytics/summary` backs five
+  dashboard values, and `getTransactions()` is needed by both the Transactions
+  page and the dispute cross-reference; both share one in-flight request rather
+  than firing duplicates. This matters on a free-tier backend.
+- **An expired token is refreshed once** via `POST /auth/refresh` and the
+  request retried, instead of bouncing the admin to the login screen.
 
 ```
 src/
 ├── app/
-│   ├── globals.css              # Theme CSS variables (dark defaults, light overrides), badges, table styles
-│   ├── layout.tsx               # Root layout + metadata
-│   └── page.tsx                 # Entry point (AppProvider + AppShell)
+│   ├── layout.tsx            # <html>, Inter via next/font, ToastProvider + AppProvider
+│   ├── page.tsx              # "/" → redirects to /dashboard or /login
+│   ├── error.tsx             # Error boundary
+│   ├── not-found.tsx         # Custom 404
+│   ├── robots.ts             # Disallow all — this console holds real user PII
+│   ├── login/page.tsx
+│   └── (admin)/              # Route group: URLs stay /users, not /admin/users
+│       ├── layout.tsx        # Auth gate + sidebar/header + load-error banner
+│       └── <page>/page.tsx   # One folder per page, each sets its own <title>
 ├── components/
-│   ├── layout/
-│   │   ├── AppShell.tsx         # Login gate + sidebar/header/page routing
-│   │   ├── Sidebar.tsx          # Collapsible navigation sidebar
-│   │   └── Header.tsx           # Top bar + notifications dropdown
-│   └── pages/                   # One component per admin page (9 pages + login)
-├── context/
-│   └── AppContext.tsx           # App state: session, data, mutations, persisted preferences
+│   ├── layout/               # Sidebar, Header
+│   ├── pages/                # One component per admin page
+│   └── ui/                   # ConfirmDialog, Toast
+├── context/AppContext.tsx    # Session, data, mutations, preferences
 └── lib/
-    ├── domain.ts                # Backend-shaped domain types (shared platform contracts + admin types)
-    ├── services/                # THE DATA SEAM — pages/context only ever call these
-    ├── adapters/                # Domain → display-row mapping, formatting (+ unit tests)
-    ├── export/csv.ts            # Client-side CSV generation + download (+ unit tests)
-    └── api/
-        ├── client.ts            # Fetch client for the real backend (+ token refresh)
-        ├── session.ts           # localStorage session (access + refresh token)
-        └── types.ts             # Exact wire shapes the backend returns
+    ├── domain.ts             # Backend-shaped domain types
+    ├── routes.ts             # Page id ↔ URL + page titles
+    ├── validation.ts         # Shared rules, mirroring backend DTO limits
+    ├── services/             # THE DATA SEAM
+    ├── adapters/             # Domain → display rows
+    ├── export/csv.ts         # Client-side CSV
+    └── api/                  # client.ts, session.ts, types.ts
 ```
 
-## Data Flow (the seam)
+### Routing
 
-```
-pages/context → services (async fns) → api/client.ts → backend
-```
+Every page has a real URL (`/dashboard`, `/users`, …), so refresh, bookmarks,
+deep links and the back button all work.
 
-- **Pages and `AppContext` never touch data sources directly** — they call `lib/services` functions and render the display rows produced by `lib/adapters`.
-- The seam is still worth keeping: it's where snake_case wire rows become camelCase domain objects, and where backend enums are mapped to display labels (e.g. escrow `held` → `IN_ESCROW`).
-- `/admin/analytics/summary` backs five different dashboard values. Overlapping callers share one in-flight request (`getAnalyticsSummary`), so a page load makes one call instead of five — this matters on Render's free tier, which cold-starts for 30–60s.
-- An expired access token is refreshed once via `POST /auth/refresh` and the request retried, instead of dumping the admin back to the login screen.
+The auth gate in `(admin)/layout.tsx` waits on `sessionRestored` before
+redirecting — `isLoggedIn` is false on the server and on the client's first
+render, so redirecting without that check would bounce a signed-in admin to
+`/login` on every refresh.
 
-## Real Backend Integration
+---
 
-Every page calls the live backend (`https://taskbuddy-1d48.onrender.com` by
-default — override with `NEXT_PUBLIC_API_URL`). There is no mock data path
-left: `src/lib/mock/` has been deleted along with the artificial-latency
-`simulate()` helper.
-
-To run against a different backend URL (e.g. a local `backend/` instance):
-
-```bash
-NEXT_PUBLIC_API_URL=http://localhost:3000
-```
-
-> The old `NEXT_PUBLIC_USE_MOCK` flag is gone. It was already dead — nothing
-> read it — and there is no mock source left for it to select.
-
-Domain types in `lib/domain.ts` mirror the backend's real enums (`user_role`,
-`job_status` — see `backend/BACKEND_SCHEMA.md` §4).
-
-### Where each page's data comes from
+## Where each page's data comes from
 
 | Page | Endpoint(s) |
 |---|---|
-| Login | `POST /auth/login` (now returns `full_name`, so the header shows a name, not an email) |
+| Login | `POST /auth/login` |
 | Dashboard | `GET /admin/analytics/summary`, `GET /admin/activity` |
-| Verifications | `GET /admin/verifications`, `POST /admin/verifications/:id/approve` · `/reject` |
-| Users | `GET /admin/users`, `POST /admin/users/:id/suspend` (reason + optional duration) · `/reinstate` · `/send-password-reset` |
-| Transactions | `GET /admin/transactions` (escrow records — backend migration 0009) |
-| Disputes | `GET /admin/disputes`, `POST /admin/disputes/:id/resolve`, `GET /admin/jobs/:jobId/conversation` (read-only, on demand) |
-| Bookings | `GET /admin/bookings`, `POST /admin/bookings/:id/cancel`, `GET /admin/bookings/:id` (row expansion, on demand) |
-| Activity Log | `GET /admin/activity` (same source as the dashboard feed) |
-| Audit Log | `GET /admin/audit` — every admin moderation action, who did it, and why |
+| Verifications | `GET /admin/verifications`, `POST .../approve` · `/reject` (accepts a reason) |
+| Users | `GET /admin/users`, `POST .../suspend` (reason + optional duration) · `/reinstate` · `/send-password-reset` |
+| Transactions | **Escrow:** `GET /admin/transactions` · **Wallet:** `GET /admin/wallet-transactions` (fetched when the tab opens) |
+| Disputes | `GET /admin/disputes`, `POST .../resolve` (accepts a note), `GET /admin/jobs/:jobId/conversation` (on demand) |
+| Bookings | `GET /admin/bookings`, `POST .../cancel`, `GET /admin/bookings/:id` (on row expand) |
+| Activity Log | `GET /admin/activity` |
+| Audit Log | `GET /admin/audit` |
 | Reports | `GET /admin/analytics/summary` |
-| Settings | `PATCH /profiles/me` (display name), `POST /auth/change-password`, `GET`/`PATCH /settings` (dark mode, migration 0011). Email is read-only and the Notifications/Platform/Data & Privacy toggles are still local-only — see [What's Still Needed](#whats-still-needed-from-the-backend) |
+| Settings | `PATCH /profiles/me`, `POST /auth/change-password`, `GET`/`PATCH /settings`, `GET`/`PATCH /admin/maintenance` |
 
-Bulk actions call the existing single-item endpoints once per selected id in
-parallel; a per-id failure is swallowed so one refusal (e.g. suspending an
-admin) can't abort the rest, and the list is refetched afterwards so the table
-shows exactly what actually changed.
+Bulk actions call the single-item endpoint once per id in parallel. A per-id
+failure doesn't abort the rest — the counts come back so the UI can say
+"Suspended 3 of 5" rather than implying all 5 worked.
 
-CSV export is entirely client-side — every table is already fully loaded in the
-browser, so exporting needs no endpoint. Exports respect the current search and
-filter, and are written UTF-8 with a BOM so Excel doesn't mangle the peso sign.
+CSV export is entirely client-side. It respects the current search/filter (and
+checkbox selection on Users), and is written UTF-8 with a BOM so Excel doesn't
+mangle the peso sign.
 
-### Two mappings worth knowing
+---
 
-- **Verification status.** The backend uses lowercase (`pending`/`approved`/`rejected`)
-  to match `job_status` and `user_role`; the services layer uppercases it for display.
-- **Transaction status.** The Transactions page predates escrow, so its labels are
-  mapped from `escrow_status`: `held`→`IN_ESCROW`, `released`→`COMPLETED`,
-  `disputed`→`DISPUTED`, `refunded`→`REFUNDED`. A `cancelled` hold also reads as
-  `REFUNDED` — there is no separate UI state for it.
+## How backend data maps to the UI
 
-### Bookings amount
+- **Verification status** is lowercase on the backend (`pending`/`approved`/
+  `rejected`) to match `job_status` and `user_role`; the services layer
+  uppercases it for display.
+- **Transaction status** is mapped from `escrow_status`: `held`→`IN_ESCROW`,
+  `released`→`COMPLETED`, `disputed`→`DISPUTED`, `refunded`→`REFUNDED`. A
+  `cancelled` hold also reads as `REFUNDED` — there's no separate UI state.
+- **Bookings amount** is the real `jobs.budget`. Jobs posted before pricing
+  existed (migration 0007) have none and show ₱0.
+- **The notification bell** derives from the Verifications and Disputes lists.
+  It never needed a backend of its own.
+- **Escrow ≠ wallet.** Escrow is money held for one job; the wallet ledger is a
+  user's running balance (top-ups, withdrawals, payouts, refunds). Separate
+  tables, separate tabs.
+- **⚠️ Validation limits are duplicated on both sides.** `REASON_MAX_LENGTH` =
+  500, `NOTE_MAX_LENGTH` = 1000, name ≤ 120 — these mirror the backend DTOs.
+  **Change a limit on one side and it must change on the other**, or the UI
+  will either reject valid input or let through what the API rejects.
 
-The Bookings `amount` column shows the real `jobs.budget` (backend migration
-0007), replacing the old fixed ₱0 placeholder. Jobs posted before pricing
-existed have no budget and still show ₱0.
+---
 
-### Notification bell
+## Needs backend work (for review)
 
-The bell in the header (`Header.tsx`) derives from the Verifications and
-Transactions lists — pending verifications and disputed transactions. Now that
-both lists are real, so is the bell; it never needed a backend of its own.
+**These two cannot be fixed from `web/`.** Both are written up with the
+specific change required, so they can be picked up without re-diagnosing.
 
-## What's Still Needed From the Backend
+### 1. Auth tokens are stored in `localStorage` (security)
 
-**Status: all seven items are done, backend and UI.** Migration 0014 shipped
-the backend (see `backend/BACKEND_SCHEMA.md` §23), and the console now calls
-every one of these endpoints.
+`lib/api/session.ts` keeps the access *and* refresh token where any injected
+script can read them.
 
-1. **Timed suspensions, with a reason.** The Suspend action in Users (single
-   and bulk) now opens an inline prompt requiring a reason and taking an
-   optional duration in days — `POST /admin/users/:id/suspend` refuses an
-   empty reason, matching backend validation. A suspended user's detail row
-   shows `suspended_until`/`suspension_reason` from `admin_user_overview`.
-2. **Admin-triggered password reset.** A user's expanded detail row (Users
-   page) has a "Send password reset" button calling
-   `POST /admin/users/:id/send-password-reset`; hidden for admin accounts,
-   which the backend refuses anyway.
-3. **Booking detail endpoint.** Expanding a Bookings row now fetches
-   `GET /admin/bookings/:id` on demand (cached per id) and renders
-   description, address, scheduled time, escrow status, and job photos below
-   the fields the list already had.
-4. **Activity Log pagination and date filtering.** `GET /admin/activity`
-   returns `{ items, total }`; `getRecentActivity()` unwraps `.items`. The
-   Dashboard feed and Activity Log page both still render the default
-   newest-20 window — building actual pagination/date-range controls into the
-   Activity Log page is left as further UI work, since the backend already
-   accepts `limit/offset/from/to` whenever that's wanted.
-5. **Real admin audit log.** A new **Audit Log** page (own sidebar entry)
-   lists `admin_actions` — every suspend/reinstate/cancel/verification
-   decision/dispute resolution — with the acting admin, target, reason (from
-   metadata), and timestamp, via `GET /admin/audit`.
-6. **Admin read-only access to a job's chat.** Each dispute's expanded row has
-   a "View conversation" toggle that fetches
-   `GET /admin/jobs/:jobId/conversation` on demand and renders the messages
-   oldest-first, read-only.
-7. **Verification submission pre-check.** `POST /verifications` now rejects a
-   missing/zero-byte/non-image upload before inserting the row. This is
-   mobile-side (the provider's submission flow), so there was nothing for the
-   admin console to wire up.
+**Needed on the backend:** issue the session as an
+`httpOnly; Secure; SameSite` cookie instead, enable CORS credentials, and add
+CSRF protection on state-changing routes. The web side then stops handling
+tokens entirely.
 
-### Deliberately not planned
+### 2. Pagination is blocked on missing `search` params
 
-- **AI / automated identity verification.** Real KYC (Onfido, Persona, Sumsub)
-  is a compliance product, not a feature to approximate. A homegrown
-  "AI approves the ID" step would look worse under scrutiny than honest manual
-  review, and manual review is what the queue is already built for.
-- **A support-ticket inbox.** A user↔admin messaging subsystem is its own
-  product surface (tickets, assignment, statuses, SLAs). Item 6 above covers the
-  actual operational need — seeing conversation context during a dispute.
-- **Making the remaining inert Settings toggles real.** Dark Mode now persists
-  server-side via `GET`/`PATCH /settings` (backend migration 0011 added a
-  `dark_mode` column). Notifications, Platform, and Data & Privacy are still
-  marked "Saved on this device only" — that backend table has no fields for
-  them (it's the mobile app's settings screen, sharing the same per-user
-  table), and wiring them for real still means an email service and a
-  retention job. Better honest than falsely functional.
+Every list requests a flat 200 rows, so row 201 is invisible. `limit`/`offset`
+already exist — **the blocker is search.** Bookings, Transactions and Activity
+Log filter client-side over the rows already loaded, and their query DTOs take
+no `search` param. Paginating them as they stand would make the search box
+quietly search only the current page, which is worse than the 200-row cap it
+replaced.
 
-### Also worth knowing
+**Needed on the backend:** add a `search` string to `ListBookingsQueryDto`,
+`ListTransactionsQueryDto` and `ListActivityQueryDto`, matched against the same
+columns the UI filters on today — customer/provider/service, customer/provider/
+id, and job title respectively.
 
-`PATCH /profiles/me` accepts `full_name` but there is **no endpoint to change a
-user's email** — email lives on `auth.users`, not `profiles`. The Settings page
-therefore shows Email as read-only rather than pretending to save it.
+`ListUsersQueryDto` already accepts `search`/`role`/`status`, so Users could be
+paged immediately. Worth shipping all four together so paging behaves the same
+everywhere.
 
-## npm audit note
+---
 
-After `npm install` you may see **2 moderate** warnings about `postcss`. These are a **known npm false positive** — npm is flagging a copy of PostCSS that is *bundled inside* Next.js 16 itself (in `node_modules/next/node_modules/postcss`). Next.js controls that copy and never passes user-provided HTML through it, so it does not affect your app. The only "fix" npm offers would downgrade you to Next.js 9, which is obviously wrong. You can safely ignore these warnings.
+## Deliberate tradeoffs (no action needed)
+
+Called out because a reviewer will spot them and should know they were chosen,
+not missed.
+
+- **Mutations refetch the whole list** rather than patching from the response.
+  Costs a small request; buys a table that stays correct when a bulk action
+  partly fails.
+- **One `AppContext` rather than split auth/UI/data contexts.** The value is
+  `useMemo`'d, which removes the needless re-renders. A full split is real
+  boilerplate for no measurable gain at this data volume.
+- **CSP is report-only.** Every component styles inline, so an enforcing policy
+  needs `'unsafe-inline'` for styles anyway, and Next injects inline hydration
+  scripts. Tighten once the violation report is clean.
+- **Inert Settings toggles are labelled, not removed.** Notifications, Platform
+  and Data & Privacy save to this device only and say so. An honestly labelled
+  non-functional toggle documents intent; a deleted one loses the requirement.
+
+---
+
+## Not yet built
+
+- **Component tests.** The 93 tests all cover `lib/`. Page behaviour — confirm
+  dialogs, error toasts, loading vs empty states — has been verified by hand in
+  a browser, but nothing re-runs it. Vitest and jsdom are already set up, so
+  this is mostly adding React Testing Library. Clearest next step.
+- **Fee/commission model, category management, a second admin account, and
+  notification broadcast.** None have backend support today — see
+  `backend/BACKEND_SCHEMA.md`. Each needs a schema decision before any UI.
+
+---
+
+## Decided against (out of scope)
+
+- **AI/automated identity verification.** Real KYC (Onfido, Persona, Sumsub) is
+  a compliance product, not something to approximate. A homegrown "AI approves
+  the ID" step would look worse under scrutiny than honest manual review — and
+  manual review is what the queue is built for.
+- **A support-ticket inbox.** User↔admin messaging is its own product surface
+  (tickets, assignment, SLAs). Read-only chat access during a dispute covers the
+  actual operational need.
+
+---
+
+
+## Project history
+
+Detailed change history — what shipped in each pass and why — lives in
+[`CHANGELOG.md`](./CHANGELOG.md). Short version: the console started on mock
+data, moved onto the real backend across migrations 0008–0015, then went
+through hardening passes covering routing, security headers, destructive-action
+confirmations, error handling, and accessibility.

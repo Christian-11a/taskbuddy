@@ -1,5 +1,6 @@
 import { Type } from 'class-transformer';
 import {
+  IsBoolean,
   IsDateString,
   IsIn,
   IsInt,
@@ -98,6 +99,17 @@ export class ListActivityQueryDto {
   @IsOptional()
   @IsDateString()
   to?: string;
+}
+
+export class UpdateMaintenanceDto {
+  @IsBoolean()
+  maintenance_mode!: boolean;
+
+  /** Shown to blocked users in place of the default message. */
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  maintenance_message?: string;
 }
 
 export class ListAuditQueryDto {

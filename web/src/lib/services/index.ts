@@ -24,6 +24,7 @@ import type {
   AdminTransactionApiRow,
   AdminUserApiRow,
   AdminVerificationApiRow,
+  AdminWalletTxnApiRow,
   AnalyticsSummaryApiResponse,
   DisputeResolutionApi,
   EscrowStatusApi,
@@ -34,7 +35,9 @@ import type {
   ListTransactionsApiResponse,
   ListUsersApiResponse,
   ListVerificationsApiResponse,
+  ListWalletTxnApiResponse,
   LoginApiResponse,
+  MaintenanceApiResponse,
   UserSettingsApiResponse,
 } from "@/lib/api/types";
 import type {
@@ -49,6 +52,7 @@ import type {
   Dispute,
   DisputeResolution,
   DisputeStatus,
+  MaintenanceStatus,
   MonthlyPoint,
   TopProvider,
   Transaction,
@@ -56,6 +60,7 @@ import type {
   UserStatus,
   Verification,
   VerificationStatus,
+  WalletTransaction,
 } from "@/lib/domain";
 
 export { ApiError };
@@ -169,6 +174,19 @@ function mapDisputeRow(
   };
 }
 
+function mapWalletTxnRow(row: AdminWalletTxnApiRow): WalletTransaction {
+  return {
+    id: row.id,
+    profileName: row.profile?.full_name ?? "Unknown user",
+    direction: row.direction,
+    kind: row.kind,
+    status: row.status,
+    amount: Number(row.amount),
+    title: row.title,
+    createdAt: row.created_at,
+  };
+}
+
 function mapAuditRow(row: AdminActionApiRow): AuditAction {
   return {
     id: row.id,
@@ -276,6 +294,44 @@ export async function updateDarkModePreference(darkMode: boolean): Promise<boole
   }
 }
 
+/**
+ * GET /admin/maintenance (migration 0015) — the real, shared switch behind
+ * Settings' "Maintenance Mode" toggle.
+ *
+ * Swallows failure and falls back to "off", matching getDarkModePreference
+ * above: this is one of several calls in the initial-load Promise.all, and an
+ * unguarded throw here (e.g. this route not existing yet on a backend that
+ * hasn't been redeployed) would abort that whole batch and strand the
+ * dashboard on "Loading dashboard…" forever, not just this one value.
+ */
+export async function getMaintenanceStatus(): Promise<MaintenanceStatus> {
+  try {
+    const res = await client.get<MaintenanceApiResponse>("/admin/maintenance");
+    return {
+      enabled: res.maintenance_mode,
+      message: res.maintenance_message,
+      updatedAt: res.updated_at,
+    };
+  } catch {
+    return { enabled: false, message: null, updatedAt: null };
+  }
+}
+
+export async function setMaintenanceStatus(
+  enabled: boolean,
+  message?: string,
+): Promise<MaintenanceStatus> {
+  const res = await client.patch<MaintenanceApiResponse>("/admin/maintenance", {
+    maintenance_mode: enabled,
+    maintenance_message: message,
+  });
+  return {
+    enabled: res.maintenance_mode,
+    message: res.maintenance_message,
+    updatedAt: res.updated_at,
+  };
+}
+
 // ─── Reads ────────────────────────────────────────────────────────────────────
 
 export async function getUsers(): Promise<AdminUser[]> {
@@ -290,11 +346,39 @@ export async function getVerifications(): Promise<Verification[]> {
   return res.verifications.map(mapVerificationRow);
 }
 
+/**
+ * Escrow transactions, with overlapping callers sharing one request — same
+ * in-flight dedup as getAnalyticsSummary below, and for the same reason.
+ *
+ * AppContext's initial load calls `getTransactions()` and `getDisputes()` in
+ * the same Promise.all, and `getDisputes()` needs this list too (to fill in
+ * provider names the disputes endpoint doesn't join). Without dedup that's two
+ * identical `/admin/transactions?limit=200` round trips on every login and
+ * every hard refresh — confirmed in a network capture before this was added.
+ *
+ * In-flight only, no TTL: once the batch settles the next call fetches fresh,
+ * so a resolved dispute or released escrow never renders from a stale cache.
+ */
+let transactionsInFlight: Promise<Transaction[]> | null = null;
+
 export async function getTransactions(): Promise<Transaction[]> {
-  const res = await client.get<ListTransactionsApiResponse>(
-    `/admin/transactions?limit=${LIST_PAGE_SIZE}`,
+  transactionsInFlight ??= client
+    .get<ListTransactionsApiResponse>(`/admin/transactions?limit=${LIST_PAGE_SIZE}`)
+    .then((res) => res.transactions.map(mapTransactionRow))
+    .finally(() => {
+      transactionsInFlight = null;
+    });
+  return transactionsInFlight;
+}
+
+/** GET /admin/wallet-transactions (migration 0015) — the wallet ledger tab on
+ *  the Transactions page, separate from escrow above. Fetched on demand when
+ *  the tab is opened, not part of the initial page load. */
+export async function getWalletTransactions(): Promise<WalletTransaction[]> {
+  const res = await client.get<ListWalletTxnApiResponse>(
+    `/admin/wallet-transactions?limit=${LIST_PAGE_SIZE}`,
   );
-  return res.transactions.map(mapTransactionRow);
+  return res.transactions.map(mapWalletTxnRow);
 }
 
 /** Cross-references Transactions (for provider name + amount fallback) — see mapDisputeRow. */
@@ -393,20 +477,49 @@ export async function approveVerification(id: string): Promise<Verification[]> {
   return getVerifications();
 }
 
-export async function rejectVerification(id: string): Promise<Verification[]> {
-  await client.post(`/admin/verifications/${id}/reject`);
+export async function rejectVerification(id: string, reason?: string): Promise<Verification[]> {
+  await client.post(`/admin/verifications/${id}/reject`, reason ? { reason } : undefined);
   return getVerifications();
 }
 
-/** See bulkSetUserStatus — same per-id-with-swallowed-failure pattern. */
-export async function bulkApproveVerifications(ids: string[]): Promise<Verification[]> {
-  await Promise.all(ids.map((id) => client.post(`/admin/verifications/${id}/approve`).catch(() => null)));
-  return getVerifications();
+/**
+ * How many ids a bulk action actually changed. There is no bulk endpoint —
+ * these fire the single-item endpoint per id in parallel, and one id failing
+ * (the backend refusing to suspend an admin, say) must not abort the rest.
+ * The count is returned rather than swallowed so the caller can tell the
+ * admin "3 of 5 succeeded" instead of silently implying all 5 did.
+ */
+export interface BulkCounts {
+  succeeded: number;
+  failed: number;
 }
 
-export async function bulkRejectVerifications(ids: string[]): Promise<Verification[]> {
-  await Promise.all(ids.map((id) => client.post(`/admin/verifications/${id}/reject`).catch(() => null)));
-  return getVerifications();
+export interface BulkResult<T> extends BulkCounts {
+  rows: T[];
+}
+
+/** Runs `op` for every id, tolerating individual failures, and counts them. */
+async function runBulk(ids: string[], op: (id: string) => Promise<unknown>) {
+  const results = await Promise.all(ids.map((id) => op(id).then(() => true).catch(() => false)));
+  const succeeded = results.filter(Boolean).length;
+  return { succeeded, failed: results.length - succeeded };
+}
+
+export async function bulkApproveVerifications(ids: string[]): Promise<BulkResult<Verification>> {
+  const { succeeded, failed } = await runBulk(ids, (id) =>
+    client.post(`/admin/verifications/${id}/approve`),
+  );
+  return { rows: await getVerifications(), succeeded, failed };
+}
+
+export async function bulkRejectVerifications(
+  ids: string[],
+  reason?: string,
+): Promise<BulkResult<Verification>> {
+  const { succeeded, failed } = await runBulk(ids, (id) =>
+    client.post(`/admin/verifications/${id}/reject`, reason ? { reason } : undefined),
+  );
+  return { rows: await getVerifications(), succeeded, failed };
 }
 
 /** Backend migration 0014 made `reason` required on suspend — omitted only
@@ -434,27 +547,24 @@ export async function setUserStatus(
 
 /**
  * No bulk endpoint exists — fires the existing single-user endpoint per id in
- * parallel. A per-id failure (e.g. the backend refuses to suspend an admin) is
- * swallowed rather than aborting the rest: the final refetch reflects exactly
- * what actually changed, so the UI stays honest even when some ids fail.
+ * parallel. A per-id failure (e.g. the backend refuses to suspend an admin)
+ * doesn't abort the rest: the final refetch reflects exactly what actually
+ * changed, and the counts let the caller say how many didn't.
  */
 export async function bulkSetUserStatus(
   ids: string[],
   status: UserStatus,
   suspend?: SuspendOptions,
-): Promise<AdminUser[]> {
-  await Promise.all(
-    ids.map((id) =>
-      (status === "SUSPENDED"
-        ? client.post(`/admin/users/${id}/suspend`, {
-            reason: suspend?.reason ?? "",
-            duration_days: suspend?.durationDays,
-          })
-        : client.post(`/admin/users/${id}/reinstate`)
-      ).catch(() => null),
-    ),
+): Promise<BulkResult<AdminUser>> {
+  const { succeeded, failed } = await runBulk(ids, (id) =>
+    status === "SUSPENDED"
+      ? client.post(`/admin/users/${id}/suspend`, {
+          reason: suspend?.reason ?? "",
+          duration_days: suspend?.durationDays,
+        })
+      : client.post(`/admin/users/${id}/reinstate`),
   );
-  return getUsers();
+  return { rows: await getUsers(), succeeded, failed };
 }
 
 export async function sendPasswordReset(id: string): Promise<boolean> {

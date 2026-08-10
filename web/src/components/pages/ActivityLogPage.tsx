@@ -5,6 +5,7 @@ import { Search, Clock, CreditCard, AlertTriangle, UserPlus, ShieldCheck, CheckC
 import { useApp } from "@/context/AppContext";
 import { datedFilename, downloadCsv, toCsv } from "@/lib/export/csv";
 import type { ActivityType } from "@/lib/domain";
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import clsx from "clsx";
 
 type Filter = "all" | ActivityType;
@@ -27,10 +28,11 @@ function activityIcon(type: ActivityType) {
 }
 
 export function ActivityLogPage() {
-  const { recentActivity } = useApp();
+  const { recentActivity, loading } = useApp();
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<Filter>("all");
   const [oldestFirst, setOldestFirst] = useState(false);
+  const [confirmingExport, setConfirmingExport] = useState(false);
 
   const matched = recentActivity.filter((a) => {
     const matchFilter = filter === "all" || a.type === filter;
@@ -67,7 +69,7 @@ export function ActivityLogPage() {
             <ArrowUpDown size={12} /> {oldestFirst ? "Oldest first" : "Newest first"}
           </button>
           <button
-            onClick={exportCsv}
+            onClick={() => setConfirmingExport(true)}
             disabled={filtered.length === 0}
             className="flex items-center gap-1.5 font-semibold transition-opacity hover:opacity-80 disabled:opacity-40"
             style={{ background: "var(--chip-bg)", border: "1px solid var(--border-md)", borderRadius: 11, padding: "7px 13px", fontSize: 11.4, color: "var(--text-light)", cursor: "pointer", fontFamily: "inherit" }}
@@ -83,6 +85,7 @@ export function ActivityLogPage() {
           <input
             className="w-full text-white outline-none"
             placeholder="Search by job title…"
+            aria-label="Search activity by job title"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             style={{ background: "var(--input-bg)", border: "1px solid var(--border-md)", borderRadius: 11, padding: "8px 13px 8px 32px", fontSize: 11.4, fontFamily: "inherit", color: "var(--text-white)" }}
@@ -102,7 +105,13 @@ export function ActivityLogPage() {
 
       <div className="rounded-xl p-5" style={{ background: "var(--card-bg)", border: "1px solid var(--card-border)" }}>
         {filtered.length === 0 && (
-          <div className="text-center py-12" style={{ color: "var(--text-muted)", fontSize: 13 }}>No matching events.</div>
+          <div className="text-center py-12" style={{ color: "var(--text-muted)", fontSize: 13 }}>
+            {loading
+              ? "Loading activity…"
+              : recentActivity.length === 0
+                ? "No platform activity yet."
+                : "No events match this search or filter."}
+          </div>
         )}
         <div className="flex flex-col gap-3">
           {filtered.map((a, i) => (
@@ -121,6 +130,19 @@ export function ActivityLogPage() {
           ))}
         </div>
       </div>
+
+      <ConfirmDialog
+        open={confirmingExport}
+        danger={false}
+        title="Export to CSV?"
+        message={`This downloads ${filtered.length} row${filtered.length === 1 ? "" : "s"} as a .csv file to your device.`}
+        confirmLabel="Export"
+        onConfirm={() => {
+          setConfirmingExport(false);
+          exportCsv();
+        }}
+        onCancel={() => setConfirmingExport(false)}
+      />
     </div>
   );
 }

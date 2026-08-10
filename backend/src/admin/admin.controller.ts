@@ -4,6 +4,7 @@ import {
   Get,
   Param,
   ParseUUIDPipe,
+  Patch,
   Post,
   Query,
   UseGuards,
@@ -20,6 +21,7 @@ import {
   ListBookingsQueryDto,
   ListUsersQueryDto,
   SuspendUserDto,
+  UpdateMaintenanceDto,
 } from './dto/admin.dto';
 import {
   ListVerificationsQueryDto,
@@ -33,6 +35,8 @@ import {
   ResolveDisputeDto,
 } from '../escrow/dto/escrow.dto';
 import { ChatService } from '../chat/chat.service';
+import { WalletService } from '../wallet/wallet.service';
+import { ListWalletTxnQueryDto } from '../wallet/dto/wallet.dto';
 import type { Profile } from '../common/types';
 
 @Controller('admin')
@@ -46,6 +50,7 @@ export class AdminController {
     private readonly escrowService: EscrowService,
     private readonly disputesService: DisputesService,
     private readonly chatService: ChatService,
+    private readonly walletService: WalletService,
   ) {}
 
   @Get('users')
@@ -115,6 +120,28 @@ export class AdminController {
   @Get('audit')
   listAudit(@Query() query: ListAuditQueryDto) {
     return this.adminActionsService.list(query);
+  }
+
+  // ── Platform maintenance mode (migration 0015) ────────────────────────────
+
+  @Get('maintenance')
+  getMaintenance() {
+    return this.adminService.getMaintenance();
+  }
+
+  @Patch('maintenance')
+  setMaintenance(
+    @CurrentUser() admin: Profile,
+    @Body() dto: UpdateMaintenanceDto,
+  ) {
+    return this.adminService.setMaintenance(admin, dto);
+  }
+
+  // ── Wallet ledger visibility (migration 0015) ─────────────────────────────
+
+  @Get('wallet-transactions')
+  listWalletTransactions(@Query() query: ListWalletTxnQueryDto) {
+    return this.walletService.listForAdmin(query);
   }
 
   @Get('jobs/:jobId/conversation')

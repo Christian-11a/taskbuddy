@@ -12,8 +12,9 @@ import {
   toTransactionRow,
   toUserRow,
   toVerificationRow,
+  toWalletTxnRow,
 } from "./index";
-import type { AdminBooking, AdminUser, Dispute, Transaction, Verification } from "@/lib/domain";
+import type { AdminBooking, AdminUser, Dispute, Transaction, Verification, WalletTransaction } from "@/lib/domain";
 
 describe("initials", () => {
   it("takes first and last name initials", () => {
@@ -185,6 +186,28 @@ describe("row adapters", () => {
     expect(row.isOpen).toBe(false);
     expect(row.resolution).toBe("Refunded to client");
     expect(row.resolvedAt).toBe("May 3, 2026");
+  });
+
+  it("maps a wallet top-up with a + sign", () => {
+    const t: WalletTransaction = {
+      id: "wt-1", profileName: "Eduard", direction: "credit", kind: "topup",
+      status: "completed", amount: 1000, title: "Stripe Checkout top-up",
+      createdAt: "2026-08-09",
+    };
+    const row = toWalletTxnRow(t);
+    expect(row.amount).toBe("+₱1,000");
+    expect(row.kindLabel).toBe("Top-up");
+  });
+
+  it("maps a wallet withdrawal with a - sign", () => {
+    const t: WalletTransaction = {
+      id: "wt-2", profileName: "Jamie Kim", direction: "debit", kind: "withdrawal",
+      status: "completed", amount: 250, title: "Cash out",
+      createdAt: "2026-08-09",
+    };
+    const row = toWalletTxnRow(t);
+    expect(row.amount).toBe("-₱250");
+    expect(row.kindLabel).toBe("Withdrawal");
   });
 
   it("maps bookings with cancellability", () => {

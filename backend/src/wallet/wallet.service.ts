@@ -1,7 +1,10 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { SupabaseService } from '../supabase/supabase.service';
-import { CreateWalletTxnDto } from './dto/wallet.dto';
+import { CreateWalletTxnDto, ListWalletTxnQueryDto } from './dto/wallet.dto';
 import type { Profile } from '../common/types';
+
+const ADMIN_WALLET_SELECT =
+  '*, profile:profiles!wallet_transactions_profile_id_fkey(id, full_name)';
 
 export interface WalletTransaction {
   id: string;
@@ -104,6 +107,30 @@ export class WalletService {
       .single();
     if (error) throw new BadRequestException(error.message);
     return data;
+  }
+
+  /**
+   * Every wallet ledger row platform-wide, for the admin console's "Wallet"
+   * tab (Transactions page) — distinct from escrow, which is money held for
+   * one job (see EscrowService.listForAdmin). This is the only place a top-up
+   * from Stripe Checkout (PR #35) becomes visible outside Stripe's own
+   * dashboard.
+   */
+  async listForAdmin(query: ListWalletTxnQueryDto) {
+    const offset = query.offset ?? 0;
+    const limit = query.limit ?? 50;
+    let builder = this.supabase.admin
+      .from('wallet_transactions')
+      .select(ADMIN_WALLET_SELECT, { count: 'exact' })
+      .order('created_at', { ascending: false })
+      .range(offset, offset + limit - 1);
+    if (query.direction) builder = builder.eq('direction', query.direction);
+    if (query.kind) builder = builder.eq('kind', query.kind);
+    if (query.status) builder = builder.eq('status', query.status);
+
+    const { data, error, count } = await builder;
+    if (error) throw new BadRequestException(error.message);
+    return { transactions: data ?? [], total: count ?? 0 };
   }
 
   /** Derived balance: completed credits minus completed debits. */

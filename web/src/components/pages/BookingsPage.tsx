@@ -6,6 +6,8 @@ import { useApp } from "@/context/AppContext";
 import { datedFilename, downloadCsv, toCsv } from "@/lib/export/csv";
 import * as services from "@/lib/services";
 import type { AdminBookingDetail } from "@/lib/domain";
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
+import { useToast } from "@/components/ui/Toast";
 import clsx from "clsx";
 
 type StatusFilter =
@@ -30,13 +32,31 @@ const STATUS_ACCENTS: Record<StatusFilter, string> = {
 };
 
 export function BookingsPage() {
-  const { bookings, cancelBooking } = useApp();
+  const { bookings, cancelBooking, loading } = useApp();
+  const { showToast } = useToast();
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [expandedId, setExpandedId] = useState<string | null>(null);
   // GET /admin/bookings/:id (migration 0014) — fetched on demand per row and
   // cached by id so re-expanding a row doesn't refetch.
   const [details, setDetails] = useState<Record<string, AdminBookingDetail | "loading" | "error">>({});
+  const [cancelTarget, setCancelTarget] = useState<{ id: string } | null>(null);
+  const [cancelingId, setCancelingId] = useState<string | null>(null);
+  const [confirmingExport, setConfirmingExport] = useState(false);
+
+  async function confirmCancel() {
+    if (!cancelTarget) return;
+    setCancelingId(cancelTarget.id);
+    try {
+      await cancelBooking(cancelTarget.id);
+      setCancelTarget(null);
+      showToast("Booking cancelled.");
+    } catch {
+      showToast("Could not cancel that booking. It may already be completed.", "error");
+    } finally {
+      setCancelingId(null);
+    }
+  }
 
   function toggleExpand(id: string) {
     if (expandedId === id) {
@@ -90,7 +110,7 @@ export function BookingsPage() {
           <div style={{ fontSize: 13, color: "var(--text-muted)", marginTop: 4 }}>Track all service bookings across the platform</div>
         </div>
         <button
-          onClick={exportCsv}
+          onClick={() => setConfirmingExport(true)}
           disabled={filtered.length === 0}
           title="Download the rows currently shown"
           className="flex items-center gap-1.5 font-semibold transition-opacity hover:opacity-80 disabled:opacity-40"
@@ -121,6 +141,7 @@ export function BookingsPage() {
           <input
             className="w-full text-white outline-none"
             placeholder="Search by booking ID, customer, or service…"
+            aria-label="Search bookings"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             style={{ background: "var(--input-bg)", border: "1px solid var(--border-md)", borderRadius: 11, padding: "8px 13px 8px 32px", fontSize: 11.4, fontFamily: "inherit" }}
@@ -158,17 +179,20 @@ export function BookingsPage() {
                       <div className="flex items-center gap-1">
                         {b.cancellable && (
                           <button
-                            onClick={() => cancelBooking(b.id)}
+                            onClick={() => setCancelTarget({ id: b.id })}
+                            disabled={cancelingId === b.id}
                             title="Cancel booking"
-                            className="flex items-center gap-1 font-medium transition-colors hover:opacity-80"
-                            style={{ background: "rgba(239,68,68,0.12)", border: "1px solid rgba(239,68,68,0.2)", borderRadius: 8, padding: "4px 10px", fontSize: 10, color: "var(--danger-text)", cursor: "pointer", fontFamily: "inherit" }}
+                            className="flex items-center gap-1 font-medium transition-colors hover:opacity-80 disabled:opacity-40"
+                            style={{ background: "rgba(239,68,68,0.12)", border: "1px solid rgba(239,68,68,0.2)", borderRadius: 8, padding: "4px 10px", fontSize: 10, color: "var(--danger-text)", cursor: cancelingId === b.id ? "default" : "pointer", fontFamily: "inherit" }}
                           >
-                            <XCircle size={10} /> Cancel
+                            <XCircle size={10} /> {cancelingId === b.id ? "Cancelling…" : "Cancel"}
                           </button>
                         )}
                         <button
                           title="View details"
                           onClick={() => toggleExpand(b.id)}
+                        aria-label={`${expandedId === b.id ? "Hide" : "Show"} details for ${b.id}`}
+                        aria-expanded={expandedId === b.id}
                           className="flex items-center justify-center rounded-lg transition-all hover:bg-white/10"
                           style={{ width: 26, height: 26, background: "transparent", border: "none", cursor: "pointer", color: "var(--text-muted)", transform: expandedId === b.id ? "rotate(180deg)" : "none" }}
                         >
@@ -243,10 +267,45 @@ export function BookingsPage() {
                   )}
                 </Fragment>
               ))}
+              {filtered.length === 0 && (
+                <tr>
+                  <td colSpan={8} className="text-center py-12" style={{ color: "var(--text-muted)", fontSize: 13 }}>
+                    {loading
+                      ? "Loading bookings…"
+                      : bookings.length === 0
+                        ? "No bookings yet."
+                        : "No bookings match this search or filter."}
+                  </td>
+                </tr>
+              )}
             </tbody>
           </table>
         </div>
       </div>
+
+      <ConfirmDialog
+        open={cancelTarget !== null}
+        title="Cancel this booking?"
+        message={cancelTarget ? `Booking ${cancelTarget.id} will be marked cancelled. This can't be undone from here.` : ""}
+        confirmLabel="Cancel booking"
+        cancelLabel="Keep booking"
+        busy={cancelingId !== null}
+        onConfirm={confirmCancel}
+        onCancel={() => setCancelTarget(null)}
+      />
+
+      <ConfirmDialog
+        open={confirmingExport}
+        danger={false}
+        title="Export to CSV?"
+        message={`This downloads ${filtered.length} row${filtered.length === 1 ? "" : "s"} as a .csv file to your device.`}
+        confirmLabel="Export"
+        onConfirm={() => {
+          setConfirmingExport(false);
+          exportCsv();
+        }}
+        onCancel={() => setConfirmingExport(false)}
+      />
     </div>
   );
 }

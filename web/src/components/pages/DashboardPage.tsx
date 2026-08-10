@@ -1,33 +1,20 @@
 "use client";
 
+import Link from "next/link";
 import {
   Users,
   ShieldCheck,
   CreditCard,
   CalendarDays,
-  TrendingUp,
-  Star,
   ArrowUpRight,
   Clock,
   AlertTriangle,
   CheckCircle,
   UserPlus,
 } from "lucide-react";
-import {
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  Tooltip,
-  ResponsiveContainer,
-} from "recharts";
 import { useApp } from "@/context/AppContext";
-import { formatCurrency, formatCurrencyCompact } from "@/lib/adapters";
-import type { Page } from "@/lib/domain";
-
-interface DashboardPageProps {
-  onNavigate: (page: Page) => void;
-}
+import { formatCurrency } from "@/lib/adapters";
+import { pageToPath } from "@/lib/routes";
 
 const StatCard = ({
   icon,
@@ -76,8 +63,8 @@ const activityIcon = (type: string) => {
   }
 };
 
-export function DashboardPage({ onNavigate }: DashboardPageProps) {
-  const { dashboardStats, revenueSeries, bookingsByCategory, recentActivity, disputes, loading } = useApp();
+export function DashboardPage() {
+  const { dashboardStats, recentActivity, disputes, loading } = useApp();
   const openDisputes = disputes.filter((d) => d.isOpen).length;
 
   if (loading || !dashboardStats) {
@@ -149,7 +136,11 @@ export function DashboardPage({ onNavigate }: DashboardPageProps) {
         />
       </div>
 
-      {/* Secondary Stat Row */}
+      {/* Secondary Stat Row — actionable items only. Completion rate, avg
+          rating, and total revenue duplicated Reports & Analytics, which
+          already covers them (and more); trimmed so Dashboard stays a quick
+          glance + what needs your attention right now, not a second Reports
+          page. */}
       <div className="flex gap-3 mb-4 flex-wrap">
         <div
           className="flex items-center gap-3 px-4 py-3 rounded-xl flex-1"
@@ -160,13 +151,13 @@ export function DashboardPage({ onNavigate }: DashboardPageProps) {
             <div className="text-white font-bold" style={{ fontSize: 18 }}>{dashboardStats.pendingVerifications}</div>
             <div style={{ fontSize: 10, color: "var(--text-muted)" }}>Pending Verifications</div>
           </div>
-          <button
-            onClick={() => onNavigate("verifications")}
+          <Link
+            href={pageToPath("verifications")}
             className="ml-auto flex items-center gap-1 font-medium transition-opacity hover:opacity-75"
-            style={{ fontSize: 10, color: "var(--indigo-light)", background: "none", border: "none", cursor: "pointer" }}
+            style={{ fontSize: 10, color: "var(--indigo-light)", textDecoration: "none" }}
           >
             Review <ArrowUpRight size={10} />
-          </button>
+          </Link>
         </div>
         <div
           className="flex items-center gap-3 px-4 py-3 rounded-xl flex-1"
@@ -177,106 +168,13 @@ export function DashboardPage({ onNavigate }: DashboardPageProps) {
             <div className="text-white font-bold" style={{ fontSize: 18 }}>{openDisputes}</div>
             <div style={{ fontSize: 10, color: "var(--text-muted)" }}>Open Disputes</div>
           </div>
-          <button
-            onClick={() => onNavigate("disputes")}
+          <Link
+            href={pageToPath("disputes")}
             className="ml-auto flex items-center gap-1 font-medium transition-opacity hover:opacity-75"
-            style={{ fontSize: 10, color: "var(--indigo-light)", background: "none", border: "none", cursor: "pointer" }}
+            style={{ fontSize: 10, color: "var(--indigo-light)", textDecoration: "none" }}
           >
             Review <ArrowUpRight size={10} />
-          </button>
-        </div>
-        <div
-          className="flex items-center gap-3 px-4 py-3 rounded-xl flex-1"
-          style={{ background: "var(--card-bg)", border: "1px solid var(--card-border)" }}
-        >
-          <CheckCircle size={16} style={{ color: "var(--success-text)" }} />
-          <div>
-            <div className="text-white font-bold" style={{ fontSize: 18 }}>{dashboardStats.completionRate}%</div>
-            <div style={{ fontSize: 10, color: "var(--text-muted)" }}>Job Completion Rate</div>
-          </div>
-        </div>
-        <div
-          className="flex items-center gap-3 px-4 py-3 rounded-xl flex-1"
-          style={{ background: "var(--card-bg)", border: "1px solid var(--card-border)" }}
-        >
-          <Star size={16} style={{ color: "var(--warning-text)" }} />
-          <div>
-            <div className="text-white font-bold" style={{ fontSize: 18 }}>{dashboardStats.avgRating}</div>
-            <div style={{ fontSize: 10, color: "var(--text-muted)" }}>Avg Provider Rating</div>
-          </div>
-        </div>
-        <div
-          className="flex items-center gap-3 px-4 py-3 rounded-xl flex-1"
-          style={{ background: "var(--card-bg)", border: "1px solid var(--card-border)" }}
-        >
-          <TrendingUp size={16} style={{ color: "#a5b4fc" }} />
-          <div>
-            <div className="text-white font-bold" style={{ fontSize: 18 }}>{formatCurrencyCompact(dashboardStats.totalRevenue)}</div>
-            <div style={{ fontSize: 10, color: "var(--text-muted)" }}>Total Revenue (All Time)</div>
-          </div>
-        </div>
-      </div>
-
-      {/* Charts Row */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
-        {/* Revenue Chart */}
-        <div
-          className="rounded-xl p-5"
-          style={{ background: "var(--card-bg)", border: "1px solid var(--card-border)" }}
-        >
-          <div className="font-semibold text-white mb-1" style={{ fontSize: 14 }}>Monthly Revenue</div>
-          <div style={{ fontSize: 11.4, color: "var(--text-muted)", marginBottom: 16 }}>Last 7 months</div>
-          <ResponsiveContainer width="100%" height={140}>
-            <BarChart data={revenueSeries} barSize={22}>
-              <XAxis
-                dataKey="month"
-                tick={{ fill: "#6b7280", fontSize: 10 }}
-                axisLine={false}
-                tickLine={false}
-              />
-              <YAxis hide />
-              <Tooltip
-                cursor={{ fill: "var(--track-bg)", radius: 4 }}
-                contentStyle={{
-                  background: "var(--panel-bg)",
-                  border: "1px solid var(--panel-border)",
-                  borderRadius: 8,
-                  boxShadow: "0 8px 24px rgba(0,0,0,0.25)",
-                  padding: "8px 12px",
-                }}
-                labelStyle={{ color: "var(--text-muted)", fontSize: 10, marginBottom: 2 }}
-                itemStyle={{ color: "var(--text-white)", fontSize: 12, fontWeight: 600, padding: 0 }}
-                formatter={(v: number) => [formatCurrency(v), "Revenue"]}
-              />
-              <Bar dataKey="value" fill="#6366f1" radius={[4, 4, 0, 0]} />
-            </BarChart>
-          </ResponsiveContainer>
-        </div>
-
-        {/* Bookings by Category */}
-        <div
-          className="rounded-xl p-5"
-          style={{ background: "var(--card-bg)", border: "1px solid var(--card-border)" }}
-        >
-          <div className="font-semibold text-white mb-1" style={{ fontSize: 14 }}>Bookings by Category</div>
-          <div style={{ fontSize: 11.4, color: "var(--text-muted)", marginBottom: 16 }}>Current month breakdown</div>
-          <div className="flex flex-col gap-2">
-            {bookingsByCategory.map((cat) => (
-              <div key={cat.label} className="flex items-center gap-2">
-                <span style={{ fontSize: 10, color: "var(--text-muted)", width: 60 }}>{cat.label}</span>
-                <div className="flex-1 rounded-full overflow-hidden" style={{ height: 6, background: "var(--track-bg)" }}>
-                  <div
-                    className="h-full rounded-full"
-                    style={{
-                      width: `${cat.value * 2.5}%`,
-                      background: "linear-gradient(90deg, #6366f1, #8b5cf6)",
-                    }}
-                  />
-                </div>
-                <span style={{ fontSize: 10, color: "var(--text-light)", width: 30, textAlign: "right" }}>{cat.value}%</span>
-              </div>
-            ))}
-          </div>
+          </Link>
         </div>
       </div>
 

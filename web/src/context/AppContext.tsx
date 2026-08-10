@@ -31,7 +31,6 @@ import type {
   Dispute,
   DisputeResolution,
   MonthlyPoint,
-  Page,
   TopProvider,
   Transaction,
   UserStatus,
@@ -45,7 +44,6 @@ export interface ConsoleSettings {
   disputeNotify: boolean;
   dailySummary: boolean;
   newUserNotify: boolean;
-  maintenanceMode: boolean;
   activityBadge: boolean;
   autoPurge: boolean;
   anonymizeExports: boolean;
@@ -59,7 +57,6 @@ const DEFAULT_SETTINGS: ConsoleSettings = {
   disputeNotify: true,
   dailySummary: false,
   newUserNotify: false,
-  maintenanceMode: false,
   activityBadge: true,
   autoPurge: false,
   anonymizeExports: true,
@@ -100,18 +97,28 @@ interface AdminProfile {
 }
 
 interface AppState {
-  // session / navigation
+  // session
   isLoggedIn: boolean;
-  activePage: Page;
+  /**
+   * False until the stored session has been checked after mount. Routes gate
+   * on this before redirecting: without it, every protected page would bounce
+   * to /login for one render on a hard refresh, because `isLoggedIn` starts
+   * false on the server and stays false until the effect below runs.
+   */
+  sessionRestored: boolean;
   adminProfile: AdminProfile;
   login: (email: string, password: string) => Promise<boolean>;
   logout: () => void;
-  navigate: (page: Page) => void;
   updateDisplayName: (name: string) => Promise<boolean>;
   changePassword: (current: string, next: string) => Promise<boolean>;
 
   // data (display rows — adapters applied)
   loading: boolean;
+  /** Non-null when the initial data load failed for a reason other than an
+   *  expired session (which redirects to /login instead). */
+  loadError: string | null;
+  /** Re-runs the initial data load — wired to the error banner's Retry. */
+  retryLoad: () => void;
   verifications: VerificationRow[];
   users: UserRow[];
   transactions: TransactionRow[];
@@ -126,11 +133,12 @@ interface AppState {
 
   // mutations
   approveVerification: (id: string) => Promise<void>;
-  rejectVerification: (id: string) => Promise<void>;
-  bulkApproveVerifications: (ids: string[]) => Promise<void>;
-  bulkRejectVerifications: (ids: string[]) => Promise<void>;
+  rejectVerification: (id: string, reason?: string) => Promise<void>;
+  /** Resolve with per-id counts so the caller can report partial failures. */
+  bulkApproveVerifications: (ids: string[]) => Promise<services.BulkCounts>;
+  bulkRejectVerifications: (ids: string[], reason?: string) => Promise<services.BulkCounts>;
   setUserStatus: (id: string, status: "Active" | "Suspended", suspend?: services.SuspendOptions) => Promise<void>;
-  bulkSetUserStatus: (ids: string[], status: "Active" | "Suspended", suspend?: services.SuspendOptions) => Promise<void>;
+  bulkSetUserStatus: (ids: string[], status: "Active" | "Suspended", suspend?: services.SuspendOptions) => Promise<services.BulkCounts>;
   sendPasswordReset: (id: string) => Promise<boolean>;
   cancelBooking: (id: string) => Promise<void>;
   resolveDispute: (id: string, resolution: DisputeResolution, note?: string) => Promise<void>;
@@ -142,6 +150,12 @@ interface AppState {
   setSidebarCollapsed: (val: boolean) => void;
   settings: ConsoleSettings;
   updateSettings: (patch: Partial<ConsoleSettings>) => void;
+
+  // platform-wide (migration 0015) — real, shared across every admin, unlike
+  // the localStorage-only settings above.
+  maintenanceMode: boolean;
+  maintenanceMessage: string | null;
+  setMaintenanceMode: (enabled: boolean, message?: string) => Promise<boolean>;
 }
 
 const AppContext = createContext<AppState | null>(null);
@@ -152,31 +166,43 @@ const STATUS_TO_DOMAIN: Record<"Active" | "Suspended", UserStatus> = {
 };
 
 export function AppProvider({ children }: { children: ReactNode }) {
-  // session / navigation — unlike loadStoredPrefs() below (which only ever
-  // affects className/style, not which branch renders), isLoggedIn gates
-  // <LoginPage /> vs the dashboard in AppShell. Resolving it from
-  // localStorage during the initial render would make the server (always
-  // logged-out) and the client's first render (logged-in, if a session
-  // exists) produce different trees — a hydration mismatch. So both start
-  // logged-out, and a real session is restored after mount instead (see
-  // the effect below).
+  // session — unlike loadStoredPrefs() below (which only ever affects
+  // className/style, not which branch renders), isLoggedIn gates whether a
+  // protected route renders at all. Resolving it from localStorage during the
+  // initial render would make the server (always logged-out) and the client's
+  // first render (logged-in, if a session exists) produce different trees — a
+  // hydration mismatch. So both start logged-out, and a real session is
+  // restored after mount instead (see the effect below). `sessionRestored`
+  // tells routes when that check has finished, so they don't redirect on the
+  // strength of a not-yet-restored session.
   const [isLoggedIn, setIsLoggedIn] = useState(false);
-  const [activePage, setActivePage] = useState<Page>("dashboard");
+  const [sessionRestored, setSessionRestored] = useState(false);
   const [adminProfile, setAdminProfile] = useState<AdminProfile>({
     name: "Super Admin",
     email: "admin@taskbuddy.io",
   });
 
+  /* eslint-disable react-hooks/set-state-in-effect --
+     Syncing from an external store is the documented exception to this rule,
+     and localStorage is one the server cannot read. The only hydration-safe
+     order is: render once without it, then adopt it after mount. Reading it
+     during render — what the rule otherwise pushes toward — is the actual bug
+     (a server/client tree mismatch), not the fix. */
   useEffect(() => {
     const session = services.restoreSession();
     if (session) {
       setAdminProfile(session);
       setIsLoggedIn(true);
     }
+    setSessionRestored(true);
   }, []);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   // domain data
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  /** Bumped by retryLoad() to re-run the initial-load effect. */
+  const [reloadNonce, setReloadNonce] = useState(0);
   const [domainUsers, setDomainUsers] = useState<AdminUser[]>([]);
   const [domainVerifications, setDomainVerifications] = useState<Verification[]>([]);
   const [domainTransactions, setDomainTransactions] = useState<Transaction[]>([]);
@@ -188,6 +214,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [bookingsByCategory, setBookingsByCategory] = useState<CategoryShare[]>([]);
   const [recentActivity, setRecentActivity] = useState<ActivityEvent[]>([]);
   const [topProviders, setTopProviders] = useState<TopProvider[]>([]);
+  const [maintenanceMode, setMaintenanceModeState] = useState(false);
+  const [maintenanceMessage, setMaintenanceMessageState] = useState<string | null>(null);
 
   // preferences — lazily hydrated from localStorage on the client
   const [darkMode, setDarkModeState] = useState(() => loadStoredPrefs()?.darkMode ?? true);
@@ -200,6 +228,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }));
 
   // ── initial load — only once a session exists ──
+  /* eslint-disable react-hooks/set-state-in-effect --
+     Fetching on mount is the other documented exception: the backend is an
+     external system, and a loading flag has to be flipped somewhere. Every
+     setState that carries fetched data already happens in an async
+     continuation, guarded by `cancelled`. */
   useEffect(() => {
     if (!isLoggedIn) {
       setLoading(false);
@@ -208,8 +241,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
     let cancelled = false;
     (async () => {
       setLoading(true);
+      setLoadError(null);
       try {
-        const [users, verifs, txns, disputes, bookings, stats, revenue, bookVol, categories, activity, providers, serverDarkMode] =
+        const [users, verifs, txns, disputes, bookings, stats, revenue, bookVol, categories, activity, providers, serverDarkMode, maintenance] =
           await Promise.all([
             services.getUsers(),
             services.getVerifications(),
@@ -223,6 +257,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
             services.getRecentActivity(),
             services.getTopProviders(),
             services.getDarkModePreference(),
+            services.getMaintenanceStatus(),
           ]);
         if (cancelled) return;
         setDomainUsers(users);
@@ -239,6 +274,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
         // The account's saved preference wins over whatever this device had
         // cached, so dark mode now follows the admin across devices.
         if (serverDarkMode !== null) setDarkModeState(serverDarkMode);
+        setMaintenanceModeState(maintenance.enabled);
+        setMaintenanceMessageState(maintenance.message);
         setLoading(false);
       } catch (err) {
         if (cancelled) return;
@@ -246,6 +283,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
         // to the login screen instead of showing an empty dashboard.
         if (err instanceof services.ApiError && (err.status === 401 || err.status === 403)) {
           setIsLoggedIn(false);
+        } else {
+          // Anything else (backend down, Render cold-start timeout, a 500)
+          // used to be swallowed here: loading simply stopped and every page
+          // rendered empty, indistinguishable from "the platform has no data".
+          // Surfaced now so the admin knows to retry rather than trusting a
+          // dashboard full of zeroes.
+          setLoadError(
+            err instanceof services.ApiError
+              ? `Could not load console data (${err.status}).`
+              : "Could not reach the backend.",
+          );
         }
         setLoading(false);
       }
@@ -253,7 +301,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     return () => {
       cancelled = true;
     };
-  }, [isLoggedIn]);
+  }, [isLoggedIn, reloadNonce]);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   // ── preferences: persist on change ──
   useEffect(() => {
@@ -277,13 +326,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
     return ok;
   }, []);
 
+  /** The admin layout's auth gate sends the browser to /login once this flips. */
   const logout = useCallback(() => {
     void services.logout();
     setIsLoggedIn(false);
-    setActivePage("dashboard");
   }, []);
-
-  const navigate = useCallback((page: Page) => setActivePage(page), []);
 
   /** Persists the display name to the backend, then mirrors it locally.
    *  Email isn't settable — it lives on auth.users with no endpoint to change it. */
@@ -299,6 +346,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
   );
 
   // ── mutations (update domain state from the service's response) ──
+  const retryLoad = useCallback(() => setReloadNonce((n) => n + 1), []);
+
   const refreshStats = useCallback(async () => {
     setDashboardStats(await services.getDashboardStats());
   }, []);
@@ -312,8 +361,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
   );
 
   const rejectVerification = useCallback(
-    async (id: string) => {
-      setDomainVerifications(await services.rejectVerification(id));
+    async (id: string, reason?: string) => {
+      setDomainVerifications(await services.rejectVerification(id, reason));
       await refreshStats();
     },
     [refreshStats],
@@ -321,16 +370,20 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const bulkApproveVerifications = useCallback(
     async (ids: string[]) => {
-      setDomainVerifications(await services.bulkApproveVerifications(ids));
+      const { rows, ...counts } = await services.bulkApproveVerifications(ids);
+      setDomainVerifications(rows);
       await refreshStats();
+      return counts;
     },
     [refreshStats],
   );
 
   const bulkRejectVerifications = useCallback(
-    async (ids: string[]) => {
-      setDomainVerifications(await services.bulkRejectVerifications(ids));
+    async (ids: string[], reason?: string) => {
+      const { rows, ...counts } = await services.bulkRejectVerifications(ids, reason);
+      setDomainVerifications(rows);
       await refreshStats();
+      return counts;
     },
     [refreshStats],
   );
@@ -344,7 +397,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const bulkSetUserStatus = useCallback(
     async (ids: string[], status: "Active" | "Suspended", suspend?: services.SuspendOptions) => {
-      setDomainUsers(await services.bulkSetUserStatus(ids, STATUS_TO_DOMAIN[status], suspend));
+      const { rows, ...counts } = await services.bulkSetUserStatus(ids, STATUS_TO_DOMAIN[status], suspend);
+      setDomainUsers(rows);
+      return counts;
     },
     [],
   );
@@ -373,6 +428,19 @@ export function AppProvider({ children }: { children: ReactNode }) {
     [],
   );
 
+  /** Returns whether the write actually succeeded, so the Settings toggle can
+   *  snap back rather than show a state the backend never applied. */
+  const setMaintenanceMode = useCallback(async (enabled: boolean, message?: string) => {
+    try {
+      const result = await services.setMaintenanceStatus(enabled, message);
+      setMaintenanceModeState(result.enabled);
+      setMaintenanceMessageState(result.message);
+      return true;
+    } catch {
+      return false;
+    }
+  }, []);
+
   // ── display rows (adapters applied once per data change) ──
   const users = useMemo(() => domainUsers.map(toUserRow), [domainUsers]);
   const verifications = useMemo(() => domainVerifications.map(toVerificationRow), [domainVerifications]);
@@ -380,26 +448,52 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const disputes = useMemo(() => domainDisputes.map(toDisputeRow), [domainDisputes]);
   const bookings = useMemo(() => domainBookings.map(toBookingRow), [domainBookings]);
 
-  return (
-    <AppContext.Provider
-      value={{
-        isLoggedIn, activePage, adminProfile,
-        login, logout, navigate, updateDisplayName, changePassword,
-        loading,
-        verifications, users, transactions, disputes, bookings,
-        dashboardStats, revenueSeries, bookingsSeries, bookingsByCategory,
-        recentActivity, topProviders,
-        approveVerification, rejectVerification,
-        bulkApproveVerifications, bulkRejectVerifications,
-        setUserStatus, bulkSetUserStatus, sendPasswordReset, cancelBooking, resolveDispute,
-        darkMode, setDarkMode,
-        sidebarCollapsed, setSidebarCollapsed,
-        settings, updateSettings,
-      }}
-    >
-      {children}
-    </AppContext.Provider>
+  /**
+   * Memoised so the context value isn't a brand-new object on every render.
+   * Inline, it re-rendered *every* `useApp()` consumer — Sidebar, Header,
+   * layout and the current page — on any state change at all, including ones
+   * they don't read (collapsing the sidebar re-rendered the whole users
+   * table). The callbacks are already `useCallback`-stable, so in practice
+   * this now only changes when data the consumers actually use changes.
+   *
+   * A fuller fix is splitting this into auth / UI / data contexts so a
+   * sidebar toggle can't touch data consumers at all — noted in the README
+   * backlog; this is the cheap 90% of the win without a restructure.
+   */
+  const value = useMemo<AppState>(
+    () => ({
+      isLoggedIn, sessionRestored, adminProfile,
+      login, logout, updateDisplayName, changePassword,
+      loading, loadError, retryLoad,
+      verifications, users, transactions, disputes, bookings,
+      dashboardStats, revenueSeries, bookingsSeries, bookingsByCategory,
+      recentActivity, topProviders,
+      approveVerification, rejectVerification,
+      bulkApproveVerifications, bulkRejectVerifications,
+      setUserStatus, bulkSetUserStatus, sendPasswordReset, cancelBooking, resolveDispute,
+      darkMode, setDarkMode,
+      sidebarCollapsed, setSidebarCollapsed,
+      settings, updateSettings,
+      maintenanceMode, maintenanceMessage, setMaintenanceMode,
+    }),
+    [
+      isLoggedIn, sessionRestored, adminProfile,
+      login, logout, updateDisplayName, changePassword,
+      loading, loadError, retryLoad,
+      verifications, users, transactions, disputes, bookings,
+      dashboardStats, revenueSeries, bookingsSeries, bookingsByCategory,
+      recentActivity, topProviders,
+      approveVerification, rejectVerification,
+      bulkApproveVerifications, bulkRejectVerifications,
+      setUserStatus, bulkSetUserStatus, sendPasswordReset, cancelBooking, resolveDispute,
+      darkMode, setDarkMode,
+      sidebarCollapsed, setSidebarCollapsed,
+      settings, updateSettings,
+      maintenanceMode, maintenanceMessage, setMaintenanceMode,
+    ],
   );
+
+  return <AppContext.Provider value={value}>{children}</AppContext.Provider>;
 }
 
 export function useApp(): AppState {
