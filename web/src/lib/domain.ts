@@ -139,6 +139,38 @@ export interface AdminBookingDetail {
   escrowAmount: number | null;
 }
 
+// ─── Platform maintenance mode (migration 0015) ───────────────────────────────
+
+export interface MaintenanceStatus {
+  enabled: boolean;
+  message: string | null;
+  updatedAt: string | null;
+}
+
+// ─── Admin wallet visibility (migration 0015) ─────────────────────────────────
+// A user's running balance ledger (top-ups, withdrawals, escrow payouts/refunds)
+// — distinct from Transaction above, which is money held for one job.
+
+export type WalletTxnKind =
+  | "topup"
+  | "withdrawal"
+  | "escrow_hold"
+  | "payout"
+  | "refund"
+  | "adjustment";
+export type WalletTxnStatus = "pending" | "completed" | "failed";
+
+export interface WalletTransaction {
+  id: string;
+  profileName: string;
+  direction: "credit" | "debit";
+  kind: WalletTxnKind;
+  status: WalletTxnStatus;
+  amount: number;
+  title: string;
+  createdAt: string; // ISO date
+}
+
 // ─── Admin audit log (migration 0014) ─────────────────────────────────────────
 
 export interface AuditAction {
