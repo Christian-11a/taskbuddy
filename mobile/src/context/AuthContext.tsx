@@ -220,17 +220,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       consentedDataCollection?: boolean;
       consentedBiometric?: boolean;
     }) => {
+      // Step 1 — Register the core fields only.
+      // Consent + category fields are sent in a follow-up call (step 2) once we
+      // have a JWT, because the current Render deployment doesn't accept them on
+      // POST /auth/register yet (forbidNonWhitelisted). This will be collapsed
+      // back into a single call once Render deploys the updated backend.
       const res = await api.register({
         email: input.email.trim(),
         password: input.password,
         role: toBackendRole(input.role),
         full_name: input.fullName.trim(),
         phone: input.phone?.trim() || undefined,
-        category_id: input.categoryId,
-        consented_terms: input.consentedTerms,
-        consented_privacy: input.consentedPrivacy,
-        consented_data_collection: input.consentedDataCollection,
-        consented_biometric: input.consentedBiometric,
       });
 
       // If the project has email confirmation disabled, register returns a
@@ -240,12 +240,35 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         await persistSession(res.session);
         setProfile(me.profile);
         setProviderProfile(me.provider_profile);
+
+        // Step 2 — Persist consents + category now that we have a JWT.
+        // Uses the complete-google-profile endpoint which accepts these fields
+        // and is guarded by JWT. Fire-and-forget; failure is non-fatal for the
+        // user (they can still log in; consents will be re-prompted if needed).
+        if (
+          input.consentedTerms ||
+          input.consentedPrivacy ||
+          input.consentedDataCollection ||
+          input.consentedBiometric ||
+          input.categoryId
+        ) {
+          api.completeGoogleProfile(res.session.access_token, {
+            role: toBackendRole(input.role),
+            category_id: input.categoryId,
+            consented_terms: input.consentedTerms,
+            consented_privacy: input.consentedPrivacy,
+            consented_data_collection: input.consentedDataCollection,
+            consented_biometric: input.consentedBiometric,
+          }).catch(() => {/* best-effort; non-fatal */});
+        }
+
         return { needsEmailConfirmation: false };
       }
       return { needsEmailConfirmation: true };
     },
     [persistSession],
   );
+
 
   // ── Google OAuth (server-side flow) ────────────────────────────────────────
   //
