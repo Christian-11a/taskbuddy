@@ -333,7 +333,7 @@ export class AdminService {
   }
 
   /**
-   * The single `platform_settings` row (migration 0015) — created by the
+   * The single `platform_settings` row (migration 0017) — created by the
    * migration's seed insert, so this should never miss, but `.single()`
    * still surfaces a clear error rather than a silent undefined if it does.
    */

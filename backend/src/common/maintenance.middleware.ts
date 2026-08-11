@@ -7,7 +7,7 @@ const DEFAULT_MESSAGE =
 
 /**
  * Blocks every request with 503 while `platform_settings.maintenance_mode`
- * is on (migration 0015) — registered globally in AppModule, excluding
+ * is on (migration 0017) — registered globally in AppModule, excluding
  * `/admin/*`, `/auth/*`, and `/health` so an admin can always sign in and
  * always reach the endpoint that turns this back off, and everyone can still
  * authenticate (the block is on *using* the app, not on signing in).

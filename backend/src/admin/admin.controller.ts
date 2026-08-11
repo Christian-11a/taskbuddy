@@ -122,7 +122,7 @@ export class AdminController {
     return this.adminActionsService.list(query);
   }
 
-  // ── Platform maintenance mode (migration 0015) ────────────────────────────
+  // ── Platform maintenance mode (migration 0017) ────────────────────────────
 
   @Get('maintenance')
   getMaintenance() {
@@ -137,7 +137,7 @@ export class AdminController {
     return this.adminService.setMaintenance(admin, dto);
   }
 
-  // ── Wallet ledger visibility (migration 0015) ─────────────────────────────
+  // ── Wallet ledger visibility (migration 0017) ─────────────────────────────
 
   @Get('wallet-transactions')
   listWalletTransactions(@Query() query: ListWalletTxnQueryDto) {
