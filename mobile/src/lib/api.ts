@@ -182,15 +182,25 @@ export interface Profile {
   latitude: number | null;
   longitude: number | null;
   created_at: string;
+  // Signup consent timestamps (null for pre-migration accounts)
+  consented_terms_at: string | null;
+  consented_privacy_at: string | null;
+  consented_data_collection_at: string | null;
+  consented_biometric_at: string | null;
+  // Category stored at SP signup before provider_profiles row exists
+  signup_category_id: number | null;
+  // True for new Google OAuth users until they complete role selection
+  google_signup_pending: boolean;
   [key: string]: unknown;
 }
 
 export interface ProviderProfile {
   profile_id: string;
   category_id: number;
-  bio: string;
+  bio: string | null;
   years_experience: number;
   is_available: boolean;
+  is_verified: boolean;
   service_radius_km: number;
   cached_avg_rating: number | null;
   cached_ratings_count: number;
@@ -463,9 +473,38 @@ export const api = {
     role: 'client' | 'provider';
     full_name: string;
     phone?: string;
+    /** Skill category (providers only). */
+    category_id?: number;
+    /** Consent flags — backend converts to timestamptz on the profiles row. */
+    consented_terms?: boolean;
+    consented_privacy?: boolean;
+    consented_data_collection?: boolean;
+    consented_biometric?: boolean;
   }) {
     return request<RegisterResponse>('/auth/register', {
       method: 'POST',
+      body: input,
+    });
+  },
+
+  /**
+   * Completes the profile for a new Google OAuth user after they pick their role
+   * and (for providers) fill in extra details.
+   */
+  completeGoogleProfile(
+    token: string,
+    input: {
+      role: 'client' | 'provider';
+      category_id?: number;
+      consented_terms?: boolean;
+      consented_privacy?: boolean;
+      consented_data_collection?: boolean;
+      consented_biometric?: boolean;
+    },
+  ) {
+    return request<{ success: true }>('/auth/complete-google-profile', {
+      method: 'POST',
+      accessToken: token,
       body: input,
     });
   },

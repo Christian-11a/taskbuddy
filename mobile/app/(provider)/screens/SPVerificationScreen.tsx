@@ -16,6 +16,7 @@ import {
   CircleAlert,
   Clock,
   IdCard,
+  ImageIcon,
   ShieldCheck,
 } from 'lucide-react-native';
 import { api } from '../../../src/lib/api';
@@ -54,12 +55,44 @@ export default function SPVerificationScreen({ onBack }: SPVerificationScreenPro
     }
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ['images'],
-      quality: 0.8,
+      quality: 0.85,
     });
     if (result.canceled) return;
+    const asset = result.assets[0];
+
+    // TC-AUTH-007: enforce 5 MB cap
+    if (asset.fileSize && asset.fileSize > 5 * 1024 * 1024) {
+      setError('File is too large. Please choose an image under 5 MB.');
+      return;
+    }
+
     setError(null);
-    if (slot === 'id') setIdAsset(result.assets[0]);
-    else setSelfieAsset(result.assets[0]);
+    if (slot === 'id') setIdAsset(asset);
+    else setSelfieAsset(asset);
+  };
+
+  /** Camera capture — used for the selfie slot to encourage a live shot. */
+  const takeSelfie = async () => {
+    const permission = await ImagePicker.requestCameraPermissionsAsync();
+    if (!permission.granted) {
+      setError('Allow camera access to take your selfie.');
+      return;
+    }
+    const result = await ImagePicker.launchCameraAsync({
+      mediaTypes: ['images'],
+      quality: 0.85,
+      cameraType: ImagePicker.CameraType.front,
+    });
+    if (result.canceled) return;
+    const asset = result.assets[0];
+
+    if (asset.fileSize && asset.fileSize > 5 * 1024 * 1024) {
+      setError('Photo is too large. Please retake under 5 MB.');
+      return;
+    }
+
+    setError(null);
+    setSelfieAsset(asset);
   };
 
   const submit = async () => {
@@ -140,21 +173,64 @@ export default function SPVerificationScreen({ onBack }: SPVerificationScreenPro
     <View style={styles.card}>
       <Text style={styles.label}>{label}</Text>
       <Text style={styles.hint}>{hint}</Text>
-      <TouchableOpacity
-        style={styles.dropzone}
-        onPress={() => pick(slot)}
-        disabled={isPending || isApproved}
-        activeOpacity={0.8}
-      >
-        {asset ? (
-          <Image source={{ uri: asset.uri }} style={styles.preview} resizeMode="cover" />
-        ) : (
-          <>
-            <Icon size={26} color={Colors.brandTeal} />
-            <Text style={styles.dropzoneText}>Tap to choose a photo</Text>
-          </>
-        )}
-      </TouchableOpacity>
+      {slot === 'selfie' ? (
+        // Selfie: show camera (primary) + gallery (secondary) options
+        <View style={styles.selfieActions}>
+          <TouchableOpacity
+            style={[styles.dropzone, styles.selfieDropzonePrimary]}
+            onPress={takeSelfie}
+            disabled={isPending || isApproved}
+            activeOpacity={0.8}
+          >
+            {selfieAsset ? (
+              <Image source={{ uri: selfieAsset.uri }} style={styles.preview} resizeMode="cover" />
+            ) : (
+              <>
+                <Camera size={26} color={Colors.brandTeal} />
+                <Text style={styles.dropzoneText}>Take a selfie</Text>
+              </>
+            )}
+          </TouchableOpacity>
+          {!selfieAsset && (
+            <TouchableOpacity
+              style={styles.galleryBtn}
+              onPress={() => pick('selfie')}
+              disabled={isPending || isApproved}
+              activeOpacity={0.8}
+            >
+              <ImageIcon size={16} color={Colors.muted} />
+              <Text style={styles.galleryBtnText}>Choose from gallery</Text>
+            </TouchableOpacity>
+          )}
+          {selfieAsset && (
+            <TouchableOpacity
+              style={styles.galleryBtn}
+              onPress={() => setSelfieAsset(null)}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.galleryBtnText}>Retake</Text>
+            </TouchableOpacity>
+          )}
+        </View>
+      ) : (
+        // Govt ID: gallery only
+        <TouchableOpacity
+          style={styles.dropzone}
+          onPress={() => pick(slot)}
+          disabled={isPending || isApproved}
+          activeOpacity={0.8}
+        >
+          {asset ? (
+            <Image source={{ uri: asset.uri }} style={styles.preview} resizeMode="cover" />
+          ) : (
+            <>
+              <Icon size={26} color={Colors.brandTeal} />
+              <Text style={styles.dropzoneText}>Tap to choose a photo</Text>
+              <Text style={styles.dropzoneSubtext}>Max 5 MB · JPG, PNG</Text>
+            </>
+          )}
+        </TouchableOpacity>
+      )}
     </View>
   );
 
@@ -311,4 +387,30 @@ const styles = StyleSheet.create({
   submitButtonDisabled: { opacity: 0.5 },
   submitText: { color: Colors.white, fontSize: 15, fontWeight: '700', fontFamily: 'Inter' },
   errorText: { color: Colors.error, fontFamily: 'Inter', fontSize: 13, textAlign: 'center' },
+
+  // Selfie slot extras
+  selfieActions: { gap: 8 },
+  selfieDropzonePrimary: { height: 160 },
+  galleryBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 10,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: 'rgba(144,153,184,0.3)',
+    backgroundColor: Colors.backgroundAlt,
+  },
+  galleryBtnText: {
+    color: Colors.muted,
+    fontFamily: 'Inter',
+    fontSize: 13,
+  },
+  dropzoneSubtext: {
+    color: Colors.muted,
+    fontFamily: 'Inter',
+    fontSize: 11,
+    marginTop: 2,
+  },
 });

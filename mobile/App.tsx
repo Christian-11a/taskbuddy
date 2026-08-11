@@ -13,6 +13,7 @@
 import React, { useEffect, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 import * as ExpoSplashScreen from 'expo-splash-screen';
+import * as WebBrowser from 'expo-web-browser';
 import { CalendarDays, CirclePlus, ClipboardList, Home, LayoutDashboard, UserRound, Wallet } from 'lucide-react-native';
 import RootLayout from './app/layout';
 
@@ -22,6 +23,8 @@ import OnboardingScreen from './app/(auth)/screens/OnboardingScreen';
 import LoginScreen from './app/(auth)/screens/LoginScreen';
 import ForgotPasswordScreen from './app/(auth)/screens/ForgotPasswordScreen';
 import RegisterScreen from './app/(auth)/screens/RegisterScreen';
+import GoogleRoleSelectionScreen from './app/(auth)/screens/GoogleRoleSelectionScreen';
+import GoogleSPDetailsScreen from './app/(auth)/screens/GoogleSPDetailsScreen';
 
 // ── Homeowner screens ─────────────────────────────────────────────────────────
 import HOHomeScreen from './app/(homeowner)/screens/HOHomeScreen';
@@ -85,12 +88,18 @@ ExpoSplashScreen.preventAutoHideAsync().catch(() => {});
 type PreAuthScreen = 'onboarding' | 'login' | 'forgotPassword' | 'register';
 
 function AppContent() {
-  const { initializing, isAuthenticated, role, signIn, signUp, signOut, signInWithGoogle } = useAuth();
+  const {
+    initializing, isAuthenticated, isVerified, isGoogleSignupPending,
+    role, profile,
+    signIn, signUp, signOut, signInWithGoogle, completeGoogleProfile,
+  } = useAuth();
 
   // Which pre-auth screen to show while the user is signed out.
   const [preAuth, setPreAuth] = useState<PreAuthScreen>('onboarding');
   // The splash plays for a minimum duration; we also wait for session restore.
   const [minSplashDone, setMinSplashDone] = useState(false);
+  // Sub-screen within the Google signup pending gate (role → SP details)
+  const [googleSubScreen, setGoogleSubScreen] = useState<'role' | 'sp-details'>('role');
 
   const handleLogout = () => {
     void signOut();
@@ -147,12 +156,20 @@ function AppContent() {
   };
 
   useEffect(() => {
+    // Pre-warm the browser on Android so Google OAuth opens instantly.
+    WebBrowser.warmUpAsync().catch(() => {});
+
+    // 500 ms is enough to show the splash brand mark; session restore
+    // runs in parallel and will hold the gate if it takes longer.
     const splashTimer = setTimeout(() => {
       setMinSplashDone(true);
       ExpoSplashScreen.hideAsync().catch(() => {});
-    }, 2200);
+    }, 500);
 
-    return () => clearTimeout(splashTimer);
+    return () => {
+      clearTimeout(splashTimer);
+      WebBrowser.coolDownAsync().catch(() => {});
+    };
   }, []);
 
   // ─────────────────────────────────────────────────────────────────────────
@@ -198,9 +215,69 @@ function AppContent() {
     // preAuth === 'register'
     return (
       <RegisterScreen
-        onRegister={signUp}
+        onRegister={(input) => signUp({
+          email: input.email,
+          password: input.password,
+          fullName: input.fullName,
+          role: input.role,
+          categoryId: input.categoryId,
+          consentedTerms: input.consentedTerms,
+          consentedPrivacy: input.consentedPrivacy,
+          consentedDataCollection: input.consentedDataCollection,
+          consentedBiometric: input.consentedBiometric,
+        })}
         onGoogleSignIn={signInWithGoogle}
         onLogin={() => setPreAuth('login')}
+      />
+    );
+  }
+
+  // ── Google signup pending gate ────────────────────────────────────
+  // New Google OAuth users haven't chosen a role yet. Show the role selection
+  // screen (and SP details screen if they pick Service Provider) before any
+  // dashboard routing. Once completeGoogleProfile() clears the flag the gate
+  // disappears automatically.
+  if (isAuthenticated && isGoogleSignupPending) {
+    if (googleSubScreen === 'sp-details') {
+      return (
+        <GoogleSPDetailsScreen
+          onBack={() => setGoogleSubScreen('role')}
+          onComplete={async (input) => {
+            await completeGoogleProfile({
+              role: 'provider',
+              categoryId: input.categoryId,
+              consentedTerms: input.consentedTerms,
+              consentedPrivacy: input.consentedPrivacy,
+              consentedDataCollection: input.consentedDataCollection,
+              consentedBiometric: input.consentedBiometric,
+            });
+            // After success the flag is cleared; the SP verification gate
+            // (below) will take over automatically via re-render.
+          }}
+        />
+      );
+    }
+
+    return (
+      <GoogleRoleSelectionScreen
+        email={profile?.email as string | null | undefined}
+        onSelectHomeowner={async () => {
+          await completeGoogleProfile({ role: 'homeowner' });
+        }}
+        onSelectProvider={() => setGoogleSubScreen('sp-details')}
+      />
+    );
+  }
+
+  // ── Service Provider: verification gate ─────────────────────────────────
+  // SPs who have not yet been verified by an admin see the verification
+  // screen instead of the tabbed app. Once the admin approves (is_verified
+  // flips to true on the next /auth/me call via refreshProfile), the gate
+  // disappears automatically.
+  if (role === 'provider' && !isVerified) {
+    return (
+      <SPVerificationScreen
+        onBack={handleLogout}
       />
     );
   }

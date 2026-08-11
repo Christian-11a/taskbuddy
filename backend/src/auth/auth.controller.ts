@@ -16,6 +16,7 @@ import type { Response } from 'express';
 import { AuthService } from './auth.service';
 import {
   ChangePasswordDto,
+  CompleteGoogleProfileDto,
   ForgotPasswordDto,
   LoginDto,
   RefreshDto,
@@ -131,5 +132,22 @@ export class AuthController {
   @UseGuards(JwtAuthGuard)
   changePassword(@CurrentUser() user: Profile, @Body() dto: ChangePasswordDto) {
     return this.authService.changePassword(user, dto);
+  }
+
+  /**
+   * Completes the profile for a new Google OAuth user.
+   *
+   * Called after the user picks their role on GoogleRoleSelectionScreen (and,
+   * for providers, fills in category + consents on GoogleSPDetailsScreen).
+   * Clears the google_signup_pending flag so subsequent requests route normally.
+   */
+  @Post('complete-google-profile')
+  @HttpCode(200)
+  @UseGuards(JwtAuthGuard)
+  completeGoogleProfile(
+    @CurrentUser() user: Profile,
+    @Body() dto: CompleteGoogleProfileDto,
+  ) {
+    return this.authService.completeGoogleProfile(user, dto);
   }
 }

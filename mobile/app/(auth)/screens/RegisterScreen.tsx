@@ -8,13 +8,19 @@
  * - "Create account" — Roboto 700 30px #1E1E1E
  * - "Let's get started!" — Roboto 400 13px #757575
  * - Name, Email, Password, Confirm Password inputs
+ * - Role selector: Homeowner / Service Provider
+ * - Homeowner: T&C + Privacy Policy + Data Collection consent checkboxes
+ * - Provider: above + RA 10173 biometric consent + Skill category picker
  * - "Sign Up" primary button (teal, radius 24)
  * - "or" divider
  * - "Continue with Google" outline button
- * - Dot progress indicators (step 1 of 4)
+ *
+ * TC-AUTH-001B: T&C checkbox is mandatory and blocks submit.
+ * Privacy Policy and Data Collection consents are also mandatory.
+ * RA 10173 biometric consent is mandatory for Service Providers only.
  */
 
-import React, { useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Keyboard,
@@ -28,9 +34,10 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import { ArrowLeft, Check, MailCheck } from 'lucide-react-native';
+import { ArrowLeft, Check, ChevronDown, MailCheck } from 'lucide-react-native';
 import { Colors } from '../../../src/constants/theme';
 import TermsAndConditions from './TermsAndConditions';
+import { api } from '../../../src/lib/api';
 import type { MobileRole } from '../../../src/lib/api';
 
 const C = {
@@ -40,6 +47,14 @@ const C = {
   slate: '#757575',
   mutedBorder: 'rgba(144,153,184,0.3)',
 } as const;
+
+const SKILL_CATEGORIES = [
+  { id: 1, name: 'Plumbing' },
+  { id: 2, name: 'Cleaning' },
+  { id: 3, name: 'Handyman' },
+  { id: 4, name: 'Manicure' },
+  { id: 5, name: 'Pedicure' },
+] as const;
 
 interface RegisterScreenProps {
   /**
@@ -51,27 +66,20 @@ interface RegisterScreenProps {
     password: string;
     fullName: string;
     role: MobileRole;
+    categoryId?: number;
+    consentedTerms: boolean;
+    consentedPrivacy: boolean;
+    consentedDataCollection: boolean;
+    consentedBiometric?: boolean;
   }) => Promise<{ needsEmailConfirmation: boolean }>;
   /** Initiate Google OAuth. Should reject with an Error on failure. */
   onGoogleSignIn: () => Promise<void>;
   onLogin: () => void;
 }
 
-interface RegisterScreenContentProps extends RegisterScreenProps {
-  onViewTerms: () => void;
-  termsAccepted: boolean;
-  onToggleTermsAccepted: () => void;
-  name: string;
-  onNameChange: (value: string) => void;
-  email: string;
-  onEmailChange: (value: string) => void;
-  password: string;
-  onPasswordChange: (value: string) => void;
-  confirmPassword: string;
-  onConfirmPasswordChange: (value: string) => void;
-  role: MobileRole;
-  onRoleChange: (value: MobileRole) => void;
-}
+// ─────────────────────────────────────────────────────────────────────────────
+// Helpers
+// ─────────────────────────────────────────────────────────────────────────────
 
 interface InputProps {
   label: string;
@@ -80,9 +88,13 @@ interface InputProps {
   onChangeText: (v: string) => void;
   secureTextEntry?: boolean;
   keyboardType?: 'default' | 'email-address';
+  error?: string;
 }
 
-function FormInput({ label, placeholder, value, onChangeText, secureTextEntry, keyboardType, error }: InputProps & { error?: string }) {
+function FormInput({
+  label, placeholder, value, onChangeText,
+  secureTextEntry, keyboardType, error,
+}: InputProps) {
   const [focused, setFocused] = useState(false);
   return (
     <View style={styles.inputGroup}>
@@ -107,57 +119,147 @@ function FormInput({ label, placeholder, value, onChangeText, secureTextEntry, k
   );
 }
 
-function RegisterScreenContent({
-  onRegister,
-  onLogin,
-  onGoogleSignIn,
-  onViewTerms,
-  termsAccepted,
-  onToggleTermsAccepted,
-  name,
-  onNameChange,
-  email,
-  onEmailChange,
-  password,
-  onPasswordChange,
-  confirmPassword,
-  onConfirmPasswordChange,
-  role,
-  onRoleChange,
-}: RegisterScreenContentProps) {
+interface ConsentCheckboxProps {
+  checked: boolean;
+  onPress: () => void;
+  label: React.ReactNode;
+  error?: string;
+  testID?: string;
+}
+
+function ConsentCheckbox({ checked, onPress, label, error, testID }: ConsentCheckboxProps) {
+  return (
+    <View style={styles.consentItem}>
+      <View style={styles.consentRow}>
+        <TouchableOpacity
+          testID={testID}
+          style={[styles.checkbox, checked && styles.checkboxChecked]}
+          onPress={onPress}
+          activeOpacity={0.7}
+        >
+          {checked ? <Check size={13} color={C.white} /> : null}
+        </TouchableOpacity>
+        <Text style={styles.termsText}>{label}</Text>
+      </View>
+      {!!error && <Text style={styles.inputErrorText}>{error}</Text>}
+    </View>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Main component
+// ─────────────────────────────────────────────────────────────────────────────
+
+type TermsMode = 'terms' | 'privacy' | null;
+
+type FieldErrors = {
+  name?: string;
+  email?: string;
+  password?: string;
+  confirmPassword?: string;
+  category?: string;
+  terms?: string;
+  privacy?: string;
+  dataCollection?: string;
+  biometric?: string;
+};
+
+export default function RegisterScreen({ onRegister, onLogin, onGoogleSignIn }: RegisterScreenProps) {
+  // Which terms/policy modal to show
+  const [termsMode, setTermsMode] = useState<TermsMode>(null);
+
+  // Consent flags
+  const [termsAccepted, setTermsAccepted] = useState(false);
+  const [privacyAccepted, setPrivacyAccepted] = useState(false);
+  const [dataCollectionAccepted, setDataCollectionAccepted] = useState(false);
+  const [biometricAccepted, setBiometricAccepted] = useState(false);
+
+  // Core fields
+  const [name, setName] = useState('');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [role, setRole] = useState<MobileRole>('homeowner');
+
+  // SP-only: category
+  const [categoryId, setCategoryId] = useState<number | null>(null);
+  const [categoryOpen, setCategoryOpen] = useState(false);
+
+  // Form state
   const [submitting, setSubmitting] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
-  const [fieldErrors, setFieldErrors] = useState<{ name?: string; email?: string; password?: string; confirmPassword?: string; terms?: string }>({});
+  const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
   const [error, setError] = useState<string | null>(null);
   const [confirmationSent, setConfirmationSent] = useState(false);
+
+  // Fetch real categories from backend (falls back to static list on error)
+  const [categories, setCategories] = useState(SKILL_CATEGORIES as readonly { id: number; name: string }[]);
+  useEffect(() => {
+    // Categories endpoint requires auth — use static list at signup.
+    // (The static list mirrors the backend seed data from migration 0004.)
+  }, []);
+
+  // Reset SP fields when role changes
+  useEffect(() => {
+    if (role === 'homeowner') {
+      setCategoryId(null);
+      setBiometricAccepted(false);
+    }
+  }, [role]);
+
+  if (termsMode !== null) {
+    return (
+      <TermsAndConditions
+        mode={termsMode}
+        onBack={() => setTermsMode(null)}
+        onAccept={() => {
+          if (termsMode === 'terms') setTermsAccepted(true);
+          else if (termsMode === 'privacy') setPrivacyAccepted(true);
+          setTermsMode(null);
+        }}
+      />
+    );
+  }
+
+  // ── Validation ─────────────────────────────────────────────────────────────
+
+  const validate = (): FieldErrors => {
+    const errors: FieldErrors = {};
+    const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+    if (!name.trim()) errors.name = 'Please enter your full name.';
+    if (!email.trim()) {
+      errors.email = 'Please enter your email address.';
+    } else if (!emailPattern.test(email.trim())) {
+      errors.email = 'Please enter a valid email address.';
+    }
+    if (password.length < 8) errors.password = 'Password must be at least 8 characters.';
+    if (password !== confirmPassword) errors.confirmPassword = 'Passwords do not match.';
+
+    if (role === 'provider' && !categoryId) {
+      errors.category = 'Please select your skill category.';
+    }
+
+    if (!termsAccepted)         errors.terms          = 'Please accept the Terms & Conditions to continue.';
+    if (!privacyAccepted)       errors.privacy        = 'Please accept the Privacy Policy to continue.';
+    if (!dataCollectionAccepted) errors.dataCollection = 'Please accept the Data Collection consent to continue.';
+    if (role === 'provider' && !biometricAccepted) {
+      errors.biometric = 'Please accept the biometric data processing consent to continue.';
+    }
+
+    return errors;
+  };
+
+  const clearError = <K extends keyof FieldErrors>(key: K) =>
+    setFieldErrors((prev) => ({ ...prev, [key]: undefined }));
+
+  // ── Handlers ───────────────────────────────────────────────────────────────
 
   const handleSignUp = async () => {
     if (submitting) return;
     setError(null);
 
-      const errors: { name?: string; email?: string; password?: string; confirmPassword?: string; terms?: string } = {};
-    const trimmedName = name.trim();
-    const trimmedEmail = email.trim();
-    const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
-    if (!trimmedName) {
-      errors.name = 'Please enter your full name.';
-    }
-    if (!trimmedEmail) {
-      errors.email = 'Please enter your email address.';
-    } else if (!emailPattern.test(trimmedEmail)) {
-      errors.email = 'Please enter a valid email address.';
-    }
-    if (password.length < 8) {
-      errors.password = 'Password must be at least 8 characters.';
-    }
-    if (password !== confirmPassword) {
-      errors.confirmPassword = 'Passwords do not match.';
-    }
-    if (!termsAccepted) {
-      errors.terms = 'Please accept the Terms and Conditions to continue.';
-    }
-
+    const errors = validate();
     if (Object.keys(errors).length > 0) {
       setFieldErrors(errors);
       return;
@@ -171,9 +273,12 @@ function RegisterScreenContent({
         password,
         fullName: name,
         role,
+        categoryId: role === 'provider' ? (categoryId ?? undefined) : undefined,
+        consentedTerms: termsAccepted,
+        consentedPrivacy: privacyAccepted,
+        consentedDataCollection: dataCollectionAccepted,
+        consentedBiometric: role === 'provider' ? biometricAccepted : undefined,
       });
-      // When confirmation is off, the parent switches to the authenticated
-      // experience automatically; otherwise we show the "check your email" state.
       if (needsEmailConfirmation) setConfirmationSent(true);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Unable to create account.');
@@ -194,6 +299,8 @@ function RegisterScreenContent({
       setGoogleLoading(false);
     }
   };
+
+  // ── Email confirmation sent state ──────────────────────────────────────────
 
   if (confirmationSent) {
     return (
@@ -223,9 +330,12 @@ function RegisterScreenContent({
     );
   }
 
+  // ── Form ───────────────────────────────────────────────────────────────────
+
+  const selectedCategory = categories.find((c) => c.id === categoryId);
+
   return (
     <View style={styles.screen}>
-      {/* Dark teal header bg */}
       <View style={styles.headerBg} />
 
       <KeyboardAvoidingView
@@ -237,12 +347,9 @@ function RegisterScreenContent({
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
-          // iOS does not dismiss the keyboard when an unfocused area of a
-          // ScrollView is tapped by default. Dismissing at the scroll view
-          // level preserves every form control's own press behavior.
           onTouchStart={Platform.OS === 'ios' ? Keyboard.dismiss : undefined}
         >
-          {/* Top section with back + logo placeholder */}
+          {/* Top section */}
           <View style={styles.topSection}>
             <TouchableOpacity style={styles.backBtn} onPress={onLogin} activeOpacity={0.8}>
               <ArrowLeft size={20} color={C.white} />
@@ -260,7 +367,7 @@ function RegisterScreenContent({
                 <TouchableOpacity
                   key={r}
                   style={[styles.roleBtn, role === r && styles.roleBtnActive]}
-                  onPress={() => onRoleChange(r)}
+                  onPress={() => setRole(r)}
                   activeOpacity={0.8}
                 >
                   <Text style={[styles.roleBtnText, role === r && styles.roleBtnTextActive]}>
@@ -270,24 +377,19 @@ function RegisterScreenContent({
               ))}
             </View>
 
+            {/* Shared fields */}
             <FormInput
               label="Full Name"
               placeholder="Alex Chen"
               value={name}
-              onChangeText={(value) => {
-                onNameChange(value);
-                if (fieldErrors.name) setFieldErrors((prev) => ({ ...prev, name: undefined }));
-              }}
+              onChangeText={(v) => { setName(v); clearError('name'); }}
               error={fieldErrors.name}
             />
             <FormInput
               label="Email Address"
               placeholder="alex@example.com"
               value={email}
-              onChangeText={(value) => {
-                onEmailChange(value);
-                if (fieldErrors.email) setFieldErrors((prev) => ({ ...prev, email: undefined }));
-              }}
+              onChangeText={(v) => { setEmail(v); clearError('email'); }}
               keyboardType="email-address"
               error={fieldErrors.email}
             />
@@ -295,10 +397,7 @@ function RegisterScreenContent({
               label="Password"
               placeholder="••••••••"
               value={password}
-              onChangeText={(value) => {
-                onPasswordChange(value);
-                if (fieldErrors.password) setFieldErrors((prev) => ({ ...prev, password: undefined }));
-              }}
+              onChangeText={(v) => { setPassword(v); clearError('password'); }}
               secureTextEntry
               error={fieldErrors.password}
             />
@@ -306,32 +405,155 @@ function RegisterScreenContent({
               label="Confirm Password"
               placeholder="••••••••"
               value={confirmPassword}
-              onChangeText={(value) => {
-                onConfirmPasswordChange(value);
-                if (fieldErrors.confirmPassword) setFieldErrors((prev) => ({ ...prev, confirmPassword: undefined }));
-              }}
+              onChangeText={(v) => { setConfirmPassword(v); clearError('confirmPassword'); }}
               secureTextEntry
               error={fieldErrors.confirmPassword}
             />
 
-            <View style={styles.termsRow}>
-              <TouchableOpacity
-                style={[styles.checkbox, termsAccepted && styles.checkboxChecked, !termsAccepted && styles.checkboxDisabled]}
-                onPress={onToggleTermsAccepted}
-                activeOpacity={0.8}
-                disabled={!termsAccepted}
-              >
-                {termsAccepted ? <Check size={14} color={C.white} /> : null}
-              </TouchableOpacity>
-              <Text style={styles.termsText}>
-                I have read and agree with the{' '}
-                <Text style={styles.termsLink} onPress={onViewTerms}>
-                  Terms and Conditions
-                </Text>
-                .<Text style={styles.requiredAsterisk}>*</Text>
+            {/* SP-only: skill category */}
+            {role === 'provider' && (
+              <View style={styles.inputGroup}>
+                <Text style={styles.inputLabel}>Skill Category</Text>
+                <TouchableOpacity
+                  style={[
+                    styles.inputBox,
+                    styles.categoryPicker,
+                    fieldErrors.category ? styles.inputBoxError : undefined,
+                  ]}
+                  onPress={() => setCategoryOpen((o) => !o)}
+                  activeOpacity={0.8}
+                >
+                  <Text style={selectedCategory ? styles.inputText : styles.categoryPlaceholder}>
+                    {selectedCategory ? selectedCategory.name : 'Select your skill…'}
+                  </Text>
+                  <ChevronDown
+                    size={16}
+                    color={C.muted}
+                    style={{ transform: [{ rotate: categoryOpen ? '180deg' : '0deg' }] }}
+                  />
+                </TouchableOpacity>
+                {categoryOpen && (
+                  <View style={styles.categoryDropdown}>
+                    {categories.map((cat) => (
+                      <TouchableOpacity
+                        key={cat.id}
+                        style={[
+                          styles.categoryOption,
+                          cat.id === categoryId && styles.categoryOptionActive,
+                        ]}
+                        onPress={() => {
+                          setCategoryId(cat.id);
+                          setCategoryOpen(false);
+                          clearError('category');
+                        }}
+                        activeOpacity={0.75}
+                      >
+                        <Text
+                          style={[
+                            styles.categoryOptionText,
+                            cat.id === categoryId && styles.categoryOptionTextActive,
+                          ]}
+                        >
+                          {cat.name}
+                        </Text>
+                        {cat.id === categoryId && <Check size={14} color={C.brandTeal} />}
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                )}
+                {!!fieldErrors.category && (
+                  <Text style={styles.inputErrorText}>{fieldErrors.category}</Text>
+                )}
+              </View>
+            )}
+
+            {/* ── Consent section ────────────────────────────────────────── */}
+            <View style={styles.consentSection}>
+              <Text style={styles.consentSectionTitle}>Consents & Agreements</Text>
+
+              {/* T&C */}
+              <ConsentCheckbox
+                testID="chk-terms"
+                checked={termsAccepted}
+                onPress={() => {
+                  if (!termsAccepted) setTermsMode('terms');
+                  else setTermsAccepted(false);
+                }}
+                label={
+                  <Text style={styles.termsText}>
+                    I have read and agree to the{' '}
+                    <Text style={styles.termsLink} onPress={() => setTermsMode('terms')}>
+                      Terms & Conditions
+                    </Text>
+                    <Text style={styles.requiredAsterisk}>*</Text>
+                  </Text>
+                }
+                error={fieldErrors.terms}
+              />
+
+              {/* Privacy Policy */}
+              <ConsentCheckbox
+                testID="chk-privacy"
+                checked={privacyAccepted}
+                onPress={() => {
+                  if (!privacyAccepted) setTermsMode('privacy');
+                  else setPrivacyAccepted(false);
+                }}
+                label={
+                  <Text style={styles.termsText}>
+                    I have read and agree to the{' '}
+                    <Text style={styles.termsLink} onPress={() => setTermsMode('privacy')}>
+                      Privacy Policy
+                    </Text>
+                    <Text style={styles.requiredAsterisk}>*</Text>
+                  </Text>
+                }
+                error={fieldErrors.privacy}
+              />
+
+              {/* Data Collection */}
+              <ConsentCheckbox
+                testID="chk-data-collection"
+                checked={dataCollectionAccepted}
+                onPress={() => setDataCollectionAccepted((v) => !v)}
+                label={
+                  <Text style={styles.termsText}>
+                    I consent to the collection and use of my personal data to
+                    provide and improve TaskBuddy services.
+                    <Text style={styles.requiredAsterisk}>*</Text>
+                  </Text>
+                }
+                error={fieldErrors.dataCollection}
+              />
+
+              {/* RA 10173 Biometric consent — SP only */}
+              {role === 'provider' && (
+                <ConsentCheckbox
+                  testID="chk-biometric"
+                  checked={biometricAccepted}
+                  onPress={() => setBiometricAccepted((v) => !v)}
+                  label={
+                    <Text style={styles.termsText}>
+                      I consent to the processing of my government-issued ID and
+                      biometric data for identity verification purposes, in
+                      accordance with the{' '}
+                      <Text style={styles.termsLink}>
+                        Data Privacy Act of 2012 (RA 10173)
+                      </Text>
+                      .<Text style={styles.requiredAsterisk}>*</Text>
+                    </Text>
+                  }
+                  error={fieldErrors.biometric}
+                />
+              )}
+
+              <Text style={styles.requiredHint}>
+                <Text style={styles.requiredAsterisk}>*</Text> Required to create your account
               </Text>
             </View>
-            {!!fieldErrors.terms && <Text style={styles.inputErrorText}>{fieldErrors.terms}</Text>}
+
+            {/* Global error banner */}
+            {!!error && <Text style={styles.errorBanner}>{error}</Text>}
 
             {/* Sign Up */}
             <TouchableOpacity
@@ -390,48 +612,7 @@ function RegisterScreenContent({
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
-
     </View>
-  );
-}
-
-export default function RegisterScreen({ onRegister, onLogin, onGoogleSignIn }: RegisterScreenProps) {
-  const [showTerms, setShowTerms] = useState(false);
-  const [termsAccepted, setTermsAccepted] = useState(false);
-  const [name, setName] = useState('');
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
-  const [role, setRole] = useState<MobileRole>('homeowner');
-
-  if (showTerms) {
-    return (
-      <TermsAndConditions
-        onBack={() => setShowTerms(false)}
-        onAccept={() => setTermsAccepted(true)}
-      />
-    );
-  }
-
-  return (
-    <RegisterScreenContent
-      onRegister={onRegister}
-      onLogin={onLogin}
-      onGoogleSignIn={onGoogleSignIn}
-      onViewTerms={() => setShowTerms(true)}
-      termsAccepted={termsAccepted}
-      onToggleTermsAccepted={() => setTermsAccepted((value) => !value)}
-      name={name}
-      onNameChange={setName}
-      email={email}
-      onEmailChange={setEmail}
-      password={password}
-      onPasswordChange={setPassword}
-      confirmPassword={confirmPassword}
-      onConfirmPasswordChange={setConfirmPassword}
-      role={role}
-      onRoleChange={setRole}
-    />
   );
 }
 
@@ -458,7 +639,6 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.2)',
     alignItems: 'center', justifyContent: 'center',
   },
-  backIcon: { color: C.white, fontSize: 20, fontWeight: '700' },
 
   card: {
     backgroundColor: C.white,
@@ -487,57 +667,6 @@ const styles = StyleSheet.create({
 
   inputGroup: { marginBottom: 16 },
   inputLabel: { fontFamily: 'Inter', fontSize: 13, fontWeight: '600', color: C.brandDark, marginBottom: 6 },
-  termsRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    marginBottom: 6,
-    marginTop: 4,
-    gap: 10,
-  },
-  checkbox: {
-    width: 22,
-    height: 22,
-    borderRadius: 6,
-    borderWidth: 1,
-    borderColor: C.mutedBorder,
-    backgroundColor: C.white,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 2,
-  },
-  checkboxChecked: {
-    backgroundColor: C.brandTeal,
-    borderColor: C.brandTeal,
-  },
-  checkboxDisabled: {
-    opacity: 1,
-    backgroundColor: '#CBD5E1',
-    borderColor: '#64748B',
-  },
-  checkboxMark: {
-    color: C.white,
-    fontSize: 13,
-    fontWeight: '700',
-  },
-  termsText: {
-    flex: 1,
-    color: C.slate,
-    fontSize: 13,
-    fontFamily: 'Inter',
-    lineHeight: 20,
-  },
-  termsLink: {
-    color: C.brandTeal,
-    fontWeight: '700',
-    textDecorationLine: 'underline',
-  },
-  requiredHint: {
-    color: C.muted,
-    fontSize: 12,
-    fontFamily: 'Inter',
-    marginBottom: 16,
-    marginLeft: 32,
-  },
   inputBox: {
     backgroundColor: '#F8FAFC', borderRadius: 12, paddingHorizontal: 16, paddingVertical: 13,
     borderWidth: 1, borderColor: C.mutedBorder,
@@ -546,8 +675,64 @@ const styles = StyleSheet.create({
   inputBoxError: { borderColor: C.brandRed },
   inputText: { fontFamily: 'Inter', fontSize: 15, color: '#0F172A', padding: 0 },
   inputErrorText: {
+    fontFamily: 'Inter', fontSize: 12, color: C.brandRed,
+    marginTop: 5, marginLeft: 2, lineHeight: 17,
+  },
+
+  // Category picker
+  categoryPicker: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+  },
+  categoryPlaceholder: { fontFamily: 'Inter', fontSize: 15, color: C.muted, padding: 0 },
+  categoryDropdown: {
+    marginTop: 4, borderRadius: 12, borderWidth: 1, borderColor: C.mutedBorder,
+    backgroundColor: C.white, overflow: 'hidden',
+  },
+  categoryOption: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    paddingHorizontal: 16, paddingVertical: 13,
+    borderBottomWidth: 1, borderBottomColor: '#F1F5F9',
+  },
+  categoryOptionActive: { backgroundColor: 'rgba(9,110,139,0.06)' },
+  categoryOptionText: { fontFamily: 'Inter', fontSize: 14, color: C.dark },
+  categoryOptionTextActive: { color: C.brandTeal, fontWeight: '700' },
+
+  // Consent section
+  consentSection: {
+    marginTop: 4,
+    marginBottom: 8,
+    borderTopWidth: 1,
+    borderTopColor: '#F1F5F9',
+    paddingTop: 16,
+    gap: 2,
+  },
+  consentSectionTitle: {
+    fontFamily: 'Inter',
+    fontSize: 12,
+    fontWeight: '700',
+    color: C.brandDark,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginBottom: 10,
+  },
+  consentItem: { marginBottom: 10 },
+  consentRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 10 },
+  checkbox: {
+    width: 22, height: 22, borderRadius: 6, borderWidth: 1.5,
+    borderColor: C.mutedBorder, backgroundColor: C.white,
+    alignItems: 'center', justifyContent: 'center', marginTop: 1, flexShrink: 0,
+  },
+  checkboxChecked: { backgroundColor: C.brandTeal, borderColor: C.brandTeal },
+  termsText: { flex: 1, color: C.slate, fontSize: 13, fontFamily: 'Inter', lineHeight: 20 },
+  termsLink: { color: C.brandTeal, fontWeight: '700', textDecorationLine: 'underline' },
+  requiredAsterisk: { color: C.brandRed, fontWeight: '700' },
+  requiredHint: {
+    color: C.muted, fontSize: 11, fontFamily: 'Inter', marginTop: 4, lineHeight: 16,
+  },
+
+  errorBanner: {
     fontFamily: 'Inter', fontSize: 13, color: C.brandRed,
-    marginTop: 6, marginLeft: 4, lineHeight: 18,
+    marginBottom: 12, lineHeight: 18,
   },
 
   primaryBtn: {
@@ -558,11 +743,6 @@ const styles = StyleSheet.create({
   },
   primaryBtnDisabled: { opacity: 0.7 },
   primaryBtnText: { color: C.white, fontFamily: 'Inter', fontSize: 15, fontWeight: '600', letterSpacing: 0.3 },
-
-  errorBanner: {
-    fontFamily: 'Inter', fontSize: 13, color: C.brandRed,
-    marginBottom: 12, lineHeight: 18,
-  },
 
   // Email-confirmation success state
   confirmWrap: { flex: 1, justifyContent: 'center', paddingHorizontal: 20 },
@@ -605,6 +785,4 @@ const styles = StyleSheet.create({
   signInRow: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', marginTop: 4 },
   signInPrompt: { fontFamily: 'Inter', fontSize: 14, color: C.muted },
   signInLink: { fontFamily: 'Roboto', fontSize: 14, fontWeight: '700', color: C.brandTeal },
-
-  requiredAsterisk: { color: C.brandRed, fontWeight: '700' },
 });

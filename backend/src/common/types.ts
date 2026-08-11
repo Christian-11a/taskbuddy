@@ -30,6 +30,15 @@ export interface Profile {
   deactivated_at: string | null;
   created_at: string;
   updated_at: string;
+  // Signup consents (nullable — NULL for accounts before migration 0015)
+  consented_terms_at: string | null;
+  consented_privacy_at: string | null;
+  consented_data_collection_at: string | null;
+  consented_biometric_at: string | null;
+  // Category chosen at SP signup before provider_profiles row exists
+  signup_category_id: number | null;
+  // Set true for new Google OAuth users until they complete role selection
+  google_signup_pending: boolean;
 }
 
 export interface AuthenticatedRequest extends Request {

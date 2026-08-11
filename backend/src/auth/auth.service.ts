@@ -12,6 +12,7 @@ import { SupabaseService } from '../supabase/supabase.service';
 import { isAllowedAppRedirect } from './google-redirect';
 import {
   ChangePasswordDto,
+  CompleteGoogleProfileDto,
   ForgotPasswordDto,
   LoginDto,
   RefreshDto,
@@ -94,6 +95,51 @@ export class AuthService implements OnModuleInit {
       },
     });
     if (error) throw new BadRequestException(error.message);
+
+    const userId = data.user?.id;
+
+    // ── Persist consent timestamps + signup_category_id ────────────────────
+    // The on_auth_user_created trigger already created the profiles row.
+    // We update it immediately with consent timestamps (if the client sent
+    // them) and the category bridge column. We use the admin client so this
+    // works even when email confirmation is enabled (no user session yet).
+    if (userId) {
+      const now = new Date().toISOString();
+      const consentPatch: Record<string, string | number | null> = {};
+      if (dto.consented_terms)           consentPatch.consented_terms_at           = now;
+      if (dto.consented_privacy)         consentPatch.consented_privacy_at         = now;
+      if (dto.consented_data_collection) consentPatch.consented_data_collection_at = now;
+      if (dto.consented_biometric)       consentPatch.consented_biometric_at       = now;
+      if (dto.category_id)               consentPatch.signup_category_id           = dto.category_id;
+
+      if (Object.keys(consentPatch).length > 0) {
+        await this.supabase.admin
+          .from('profiles')
+          .update(consentPatch)
+          .eq('id', userId);
+      }
+
+      // ── Seed provider_profiles at signup ───────────────────────────────
+      // Creates the row with a NULL bio so the provider is visible to the
+      // matching system immediately but must complete their profile before
+      // applying to jobs (the Edit Profile screen enforces bio in UX).
+      if (dto.role === 'provider' && dto.category_id) {
+        await this.supabase.admin
+          .from('provider_profiles')
+          .upsert(
+            {
+              profile_id: userId,
+              category_id: dto.category_id,
+              bio: null,
+              years_experience: 0,
+              is_available: false,
+              service_radius_km: 15,
+            },
+            { onConflict: 'profile_id', ignoreDuplicates: true },
+          );
+      }
+    }
+
     return {
       user: { id: data.user?.id, email: data.user?.email },
       // Session is null when email confirmation is enabled on the Supabase project.
@@ -106,6 +152,7 @@ export class AuthService implements OnModuleInit {
         : null,
     };
   }
+
 
   async login(dto: LoginDto) {
     const { data, error } = await this.supabase.anon.auth.signInWithPassword({
@@ -524,5 +571,62 @@ export class AuthService implements OnModuleInit {
       .eq('profile_id', user.id)
       .maybeSingle();
     return { profile, provider_profile: data };
+  }
+
+  /**
+   * Called by new Google OAuth users after they pick their role on the
+   * GoogleRoleSelectionScreen.  The user is already authenticated — the JWT
+   * guard puts their Profile on the request before this runs.
+   *
+   * Steps:
+   *   1. Patch profiles: set real role + consent timestamps.
+   *   2. Clear google_signup_pending.
+   *   3. If role='provider' and category_id given, seed provider_profiles.
+   */
+  async completeGoogleProfile(
+    user: Profile,
+    dto: CompleteGoogleProfileDto,
+  ): Promise<{ success: true }> {
+    if (!user.google_signup_pending) {
+      // Idempotent: if the flag is already cleared, treat as success.
+      return { success: true };
+    }
+
+    const now = new Date().toISOString();
+    const patch: Record<string, unknown> = {
+      role: dto.role,
+      google_signup_pending: false,
+    };
+    if (dto.consented_terms)           patch.consented_terms_at           = now;
+    if (dto.consented_privacy)         patch.consented_privacy_at         = now;
+    if (dto.consented_data_collection) patch.consented_data_collection_at = now;
+    if (dto.consented_biometric)       patch.consented_biometric_at       = now;
+    if (dto.category_id)               patch.signup_category_id           = dto.category_id;
+
+    const { error } = await this.supabase.admin
+      .from('profiles')
+      .update(patch)
+      .eq('id', user.id);
+    if (error) throw new BadRequestException(error.message);
+
+    // Seed provider_profiles when the user chose Service Provider and supplied
+    // a category.  Mirrors the same step in register() from migration 0015.
+    if (dto.role === 'provider' && dto.category_id) {
+      await this.supabase.admin
+        .from('provider_profiles')
+        .upsert(
+          {
+            profile_id: user.id,
+            category_id: dto.category_id,
+            bio: null,
+            years_experience: 0,
+            is_available: false,
+            service_radius_km: 15,
+          },
+          { onConflict: 'profile_id', ignoreDuplicates: true },
+        );
+    }
+
+    return { success: true };
   }
 }

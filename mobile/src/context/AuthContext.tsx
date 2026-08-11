@@ -47,6 +47,16 @@ interface AuthContextValue {
   providerProfile: ProviderProfile | null;
   role: MobileRole | null;
   isAuthenticated: boolean;
+  /**
+   * True when the authenticated provider has been verified by an admin.
+   * Always false for homeowners and unauthenticated users.
+   */
+  isVerified: boolean;
+  /**
+   * True when the signed-in user came via Google OAuth and hasn't yet picked
+   * their role on GoogleRoleSelectionScreen.
+   */
+  isGoogleSignupPending: boolean;
   /** Re-fetch /auth/me (e.g. after editing the profile). */
   refreshProfile: () => Promise<void>;
   signIn: (email: string, password: string) => Promise<void>;
@@ -57,9 +67,26 @@ interface AuthContextValue {
     fullName: string;
     role: MobileRole;
     phone?: string;
+    categoryId?: number;
+    consentedTerms?: boolean;
+    consentedPrivacy?: boolean;
+    consentedDataCollection?: boolean;
+    consentedBiometric?: boolean;
   }) => Promise<{ needsEmailConfirmation: boolean }>;
   /** Initiates the Google OAuth browser flow and signs the user in on success. */
   signInWithGoogle: () => Promise<void>;
+  /**
+   * Completes the profile for a new Google OAuth user after role selection.
+   * Clears the google_signup_pending flag and refreshes the local profile.
+   */
+  completeGoogleProfile: (input: {
+    role: MobileRole;
+    categoryId?: number;
+    consentedTerms?: boolean;
+    consentedPrivacy?: boolean;
+    consentedDataCollection?: boolean;
+    consentedBiometric?: boolean;
+  }) => Promise<void>;
   signOut: () => Promise<void>;
 }
 
@@ -187,6 +214,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       fullName: string;
       role: MobileRole;
       phone?: string;
+      categoryId?: number;
+      consentedTerms?: boolean;
+      consentedPrivacy?: boolean;
+      consentedDataCollection?: boolean;
+      consentedBiometric?: boolean;
     }) => {
       const res = await api.register({
         email: input.email.trim(),
@@ -194,6 +226,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         role: toBackendRole(input.role),
         full_name: input.fullName.trim(),
         phone: input.phone?.trim() || undefined,
+        category_id: input.categoryId,
+        consented_terms: input.consentedTerms,
+        consented_privacy: input.consentedPrivacy,
+        consented_data_collection: input.consentedDataCollection,
+        consented_biometric: input.consentedBiometric,
       });
 
       // If the project has email confirmation disabled, register returns a
@@ -275,6 +312,36 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, [persistSession, session]);
 
+  /**
+   * Called after role selection for a new Google OAuth user. Calls the backend
+   * to set the real role + consent timestamps, then refreshes /auth/me so the
+   * local profile reflects the cleared google_signup_pending flag and any new
+   * role-based routing kicks in immediately.
+   */
+  const completeGoogleProfile = useCallback(
+    async (input: {
+      role: MobileRole;
+      categoryId?: number;
+      consentedTerms?: boolean;
+      consentedPrivacy?: boolean;
+      consentedDataCollection?: boolean;
+      consentedBiometric?: boolean;
+    }) => {
+      if (!session) throw new Error('Not authenticated');
+      await api.completeGoogleProfile(session.access_token, {
+        role: toBackendRole(input.role),
+        category_id: input.categoryId,
+        consented_terms: input.consentedTerms,
+        consented_privacy: input.consentedPrivacy,
+        consented_data_collection: input.consentedDataCollection,
+        consented_biometric: input.consentedBiometric,
+      });
+      // Refresh the profile so the gate clears without requiring a re-login.
+      await refreshProfile();
+    },
+    [session, refreshProfile],
+  );
+
   const value = useMemo<AuthContextValue>(
     () => ({
       initializing,
@@ -283,10 +350,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       providerProfile,
       role: profile ? toMobileRole(profile.role) : null,
       isAuthenticated: !!session && !!profile,
+      isVerified: !!(providerProfile?.is_verified),
+      isGoogleSignupPending: !!(profile?.google_signup_pending),
       refreshProfile,
       signIn,
       signUp,
       signInWithGoogle,
+      completeGoogleProfile,
       signOut,
     }),
     [
@@ -298,6 +368,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       signIn,
       signUp,
       signInWithGoogle,
+      completeGoogleProfile,
       signOut,
     ],
   );
