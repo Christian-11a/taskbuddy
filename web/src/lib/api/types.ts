@@ -230,14 +230,14 @@ export interface ListAuditApiResponse {
   total: number;
 }
 
-/** GET/PATCH /admin/maintenance (migration 0015). */
+/** GET/PATCH /admin/maintenance (migration 0017). */
 export interface MaintenanceApiResponse {
   maintenance_mode: boolean;
   maintenance_message: string | null;
   updated_at: string;
 }
 
-/** GET /admin/wallet-transactions (migration 0015) — the wallet ledger, distinct
+/** GET /admin/wallet-transactions (migration 0017) — the wallet ledger, distinct
  *  from escrow (AdminTransactionApiRow above): a user's running balance rather
  *  than money held for one job. Includes Stripe Checkout top-ups (PR #35). */
 export type WalletTxnKindApi =

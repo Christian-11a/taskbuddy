@@ -295,7 +295,7 @@ export async function updateDarkModePreference(darkMode: boolean): Promise<boole
 }
 
 /**
- * GET /admin/maintenance (migration 0015) — the real, shared switch behind
+ * GET /admin/maintenance (migration 0017) — the real, shared switch behind
  * Settings' "Maintenance Mode" toggle.
  *
  * Swallows failure and falls back to "off", matching getDarkModePreference
@@ -371,7 +371,7 @@ export async function getTransactions(): Promise<Transaction[]> {
   return transactionsInFlight;
 }
 
-/** GET /admin/wallet-transactions (migration 0015) — the wallet ledger tab on
+/** GET /admin/wallet-transactions (migration 0017) — the wallet ledger tab on
  *  the Transactions page, separate from escrow above. Fetched on demand when
  *  the tab is opened, not part of the initial page load. */
 export async function getWalletTransactions(): Promise<WalletTransaction[]> {

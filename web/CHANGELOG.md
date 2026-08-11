@@ -107,14 +107,16 @@ something already handled. Grouped by what changed, not when.
 
 ---
 
-## Backend follow-ups (migrations 0014–0015)
+## Backend follow-ups (migrations 0014, 0017)
 
 **All nine items below are shipped and wired up** — nothing here is
 outstanding; it's kept as a record of what closed. For what's still missing,
 see [Backend Requests to Evaluate](./README.md#needs-backend-work-for-review).
 
-Migrations 0014 and 0015 shipped the backend (`backend/BACKEND_SCHEMA.md`
-§23–25), and the console calls every one of these endpoints.
+Migrations 0014 and 0017 shipped the backend (`backend/BACKEND_SCHEMA.md`
+§23–25), and the console calls every one of these endpoints. (0017 was
+renumbered from 0015 after a teammate's signup/OAuth work claimed 0015–0016
+first — no schema change, filename only.)
 
 1. **Timed suspensions, with a reason.** The Suspend action in Users (single
    and bulk) now opens an inline prompt requiring a reason and taking an
@@ -149,14 +151,14 @@ Migrations 0014 and 0015 shipped the backend (`backend/BACKEND_SCHEMA.md`
    admin console to wire up.
 8. **Real Maintenance Mode.** The Settings toggle used to only flip a
    `localStorage` flag — turning it on did nothing to the actual app. It now
-   calls `GET`/`PATCH /admin/maintenance` (migration 0015), and a global
+   calls `GET`/`PATCH /admin/maintenance` (migration 0017), and a global
    `MaintenanceMiddleware` blocks every non-admin, non-auth request with 503
    while it's on. The toggle lives in its own **Maintenance** section on
    Settings, separate from the still-fake Platform/Notifications/Data &
    Privacy sections below, and shows a live warning banner while active.
 9. **Admin wallet visibility.** The Transactions page has a second tab,
    **Wallet**, alongside the existing **Escrow** tab. It calls
-   `GET /admin/wallet-transactions` (migration 0015) and shows every top-up,
+   `GET /admin/wallet-transactions` (migration 0017) and shows every top-up,
    withdrawal, and escrow payout/refund — including Stripe Checkout top-ups
    (PR #35), which before this were visible only in Stripe's own dashboard,
    not anywhere in TaskBuddy itself.

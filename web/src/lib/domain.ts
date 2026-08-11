@@ -139,7 +139,7 @@ export interface AdminBookingDetail {
   escrowAmount: number | null;
 }
 
-// ─── Platform maintenance mode (migration 0015) ───────────────────────────────
+// ─── Platform maintenance mode (migration 0017) ───────────────────────────────
 
 export interface MaintenanceStatus {
   enabled: boolean;
@@ -147,7 +147,7 @@ export interface MaintenanceStatus {
   updatedAt: string | null;
 }
 
-// ─── Admin wallet visibility (migration 0015) ─────────────────────────────────
+// ─── Admin wallet visibility (migration 0017) ─────────────────────────────────
 // A user's running balance ledger (top-ups, withdrawals, escrow payouts/refunds)
 // — distinct from Transaction above, which is money held for one job.
 

@@ -1168,7 +1168,7 @@ non-empty image object in the `verification-docs` bucket, via `UploadsService.as
 inserted. This is a usability guard, not identity verification: it exists so a provider whose
 upload silently failed learns immediately instead of waiting for a manual rejection.
 
-## 24. Maintenance Mode (migration 0015)
+## 24. Maintenance Mode (migration 0017)
 
 The admin console's Settings page has had a "Maintenance Mode" toggle since it was first built,
 but it only ever wrote to the admin's own browser `localStorage` — flipping it changed nothing.
@@ -1199,7 +1199,7 @@ configurable platform name, no email pipeline maintenance mode's toggle to wire 
 into. Building the toggle without the thing it controls would be the same theater this migration
 exists to fix.
 
-## 25. Admin Wallet Visibility (migration 0015)
+## 25. Admin Wallet Visibility (migration 0017)
 
 Escrow transactions (`GET /admin/transactions`, §18) and wallet transactions
 (`wallet_transactions`, §15.2) are different ledgers: escrow is money held for a specific job,

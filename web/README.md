@@ -268,6 +268,6 @@ not missed.
 
 Detailed change history — what shipped in each pass and why — lives in
 [`CHANGELOG.md`](./CHANGELOG.md). Short version: the console started on mock
-data, moved onto the real backend across migrations 0008–0015, then went
+data, moved onto the real backend across migrations 0008–0014 and 0017, then went
 through hardening passes covering routing, security headers, destructive-action
 confirmations, error handling, and accessibility.
