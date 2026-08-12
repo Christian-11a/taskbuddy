@@ -58,10 +58,6 @@ cd ../backend && PORT=3001 npm run start:dev
 free tier and sleeps when idle. The first request wakes it. Not a bug — later
 requests are fast.
 
-**`GET /admin/maintenance` 404s in the console.** That route exists locally but
-hasn't been deployed to Render yet. The app handles it gracefully (falls back
-to "maintenance off"); it'll stop once the backend redeploys.
-
 **Backend won't start / port already in use.** Both the backend and Next.js
 default to port 3000. Run the backend with `PORT=3001`.
 
@@ -156,9 +152,10 @@ Bulk actions call the single-item endpoint once per id in parallel. A per-id
 failure doesn't abort the rest — the counts come back so the UI can say
 "Suspended 3 of 5" rather than implying all 5 worked.
 
-CSV export is entirely client-side. It respects the current search/filter (and
-checkbox selection on Users), and is written UTF-8 with a BOM so Excel doesn't
-mangle the peso sign.
+CSV export is entirely client-side. It respects the current search/filter, and
+on Users, Bookings, and Transactions (both tabs) also respects row-selection
+checkboxes — checked rows export instead of the whole filtered set when any
+are checked. Written UTF-8 with a BOM so Excel doesn't mangle the peso sign.
 
 ---
 
@@ -268,6 +265,8 @@ not missed.
 
 Detailed change history — what shipped in each pass and why — lives in
 [`CHANGELOG.md`](./CHANGELOG.md). Short version: the console started on mock
-data, moved onto the real backend across migrations 0008–0014 and 0017, then went
+data, moved onto the real backend across migrations 0008–0014 and 0017, went
 through hardening passes covering routing, security headers, destructive-action
-confirmations, error handling, and accessibility.
+confirmations, error handling, and accessibility, then had its visual design
+and interaction patterns (pagination, row-selection, scoped CSV export)
+ported from a design mockup to match it exactly.

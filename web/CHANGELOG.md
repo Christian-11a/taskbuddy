@@ -5,6 +5,59 @@ app works today; this file covers how it got there and why. Newest first.
 
 ---
 
+## Visual/UX port from the design mockup
+
+The console's visual design and several interaction patterns were ported from
+a static HTML mockup (`web-admin-taskbuddy.html` / `TaskBuddyCompleteRefinement.md`,
+both outside `web/`) into the real app, matching it exactly rather than
+approximating — spacing, colors, button sizing, terminology, and behavior.
+
+- **Terminology:** "Customer" → "Homeowner" everywhere it's user-facing copy
+  (labels, filters, CSV headers). Backend-contract values (`role: "client"`,
+  `clientName` fields) are untouched — those are wire identifiers, not display
+  text.
+- **Dashboard KPIs are computed from real data, not copied from the mockup's
+  example numbers.** "New users this month", "active provider share", and
+  "bookings this month" are all derived from `AppContext` data (real date
+  math against `createdAt`, real ratios) rather than the mockup's static
+  placeholders. Recent Activity is capped to the latest 7 with a "View
+  activity" link to the full log, instead of dumping the whole feed inline.
+- **Global header is static** ("TaskBuddy Admin"), not a per-page title — the
+  page's own heading already says what page it is, so the header no longer
+  duplicated it.
+- **Client-side pagination** (`components/ui/Pagination.tsx`, 7 rows/page)
+  added to Users, Bookings, Transactions (both tabs), Activity Log, and Audit
+  Log — previously these rendered every row from the 200-row fetch in one
+  unbroken list.
+- **Row-selection + scoped CSV export** on Users, Bookings, and Transactions
+  (both Escrow and Wallet tabs): checkboxes are hidden by default and reveal
+  on row hover (pure CSS, `.row-checkbox` / `.always-visible` in
+  `globals.css`) so they don't clutter the table until the admin starts
+  selecting. "Select all" covers every row matching the current search/filter,
+  not just the visible page. Export downloads the checked rows when any are
+  checked, otherwise everything currently filtered — the button label and
+  confirm-dialog row count always say which. Verifications got an "Export
+  queue" button but deliberately **no** row selection — per the mockup doc's
+  explicit "no bulk actions on Verifications" rule (§28), it stayed a
+  one-at-a-time review queue.
+- **Shared `ReviewDrawer` component** (`components/ui/ReviewDrawer.tsx`)
+  replaces the old inline row-expand pattern on Users, Verifications, and
+  Disputes — a slide-out panel matching the mockup, with focus-trap + Escape
+  handling modeled on `ConfirmDialog`.
+- Exact visual fixes caught by direct comparison against the mockup: a
+  missing `border` property on `.badge` was silently nullifying every
+  per-instance badge color override; the Users drawer's "Close" button was
+  missing `flex-1` so it rendered tiny next to a stretched "Suspend Account";
+  Suspend Account was amber instead of the mockup's solid maroon (`#8b3b3b`).
+- Search boxes capped to the mockup's `max-width: 360px` (Bookings intentionally
+  stays full-width, matching the mockup's own override).
+
+Verified after every change: `tsc --noEmit`, `npm test` (93 tests), and live
+browser checks (screenshots + `getComputedStyle` opacity checks for the
+hover-reveal checkboxes, not just visual inspection).
+
+---
+
 ## Hardening passes
 
 Kept short on purpose — the point is that a later audit doesn't re-flag
@@ -97,8 +150,9 @@ something already handled. Grouped by what changed, not when.
   banner + retry, toasts, loading states). There are still **no component
   tests** — the 93 automated tests all cover `lib/`. Adding React Testing
   Library is the obvious next step.
-- No pagination UI — a flat 200 rows per list, so row 201 is invisible.
-  Mostly blocked on backend `search` params, not on this side; see
+- Pagination UI now exists client-side (see the mockup-port pass below), but
+  it still pages over a flat 200-row fetch, so row 201 is invisible. Blocked
+  on backend `search` params; see
   [Backend Requests to Evaluate](./README.md#needs-backend-work-for-review).
 - Mutations refetch the whole list rather than patching state from the
   response. Deliberate — it's what keeps a table honest when a bulk action
@@ -133,10 +187,10 @@ first — no schema change, filename only.)
    the fields the list already had.
 4. **Activity Log pagination and date filtering.** `GET /admin/activity`
    returns `{ items, total }`; `getRecentActivity()` unwraps `.items`. The
-   Dashboard feed and Activity Log page both still render the default
-   newest-20 window — building actual pagination/date-range controls into the
-   Activity Log page is left as further UI work, since the backend already
-   accepts `limit/offset/from/to` whenever that's wanted.
+   Dashboard feed shows the latest 7 with a link to the full log; the Activity
+   Log page itself now has client-side pagination (see the mockup-port pass
+   below) over everything the backend returned. Date-range filtering
+   (`from`/`to`, already accepted by the backend) isn't wired to any UI yet.
 5. **Real admin audit log.** A new **Audit Log** page (own sidebar entry)
    lists `admin_actions` — every suspend/reinstate/cancel/verification
    decision/dispute resolution — with the acting admin, target, reason (from
