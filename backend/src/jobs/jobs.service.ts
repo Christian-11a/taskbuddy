@@ -7,8 +7,34 @@ import {
 import { SupabaseService } from '../supabase/supabase.service';
 import { UploadsService } from '../uploads/uploads.service';
 import { EscrowService } from '../escrow/escrow.service';
-import { BrowseJobsQueryDto, CreateJobDto } from './dto/jobs.dto';
+import { BrowseJobsQueryDto, CreateJobDto, DeclineJobDto } from './dto/jobs.dto';
 import type { Profile } from '../common/types';
+
+const URGENCY_RANK: Record<string, number> = {
+  urgent: 0,
+  normal: 1,
+  flexible: 2,
+};
+
+const DEFAULT_RADIUS_KM = 50;
+const EARTH_RADIUS_KM = 6371;
+
+/** Great-circle distance in km between two lat/lng points. */
+function haversineKm(
+  lat1: number,
+  lon1: number,
+  lat2: number,
+  lon2: number,
+): number {
+  const dLat = ((lat2 - lat1) * Math.PI) / 180;
+  const dLon = ((lon2 - lon1) * Math.PI) / 180;
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos((lat1 * Math.PI) / 180) *
+      Math.cos((lat2 * Math.PI) / 180) *
+      Math.sin(dLon / 2) ** 2;
+  return EARTH_RADIUS_KM * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
 
 // The assigned-provider embed needs the FK hint: jobs has two FKs to profiles
 // (client_id and assigned_provider_id). Mobile's My Jobs list renders this name.
@@ -53,19 +79,75 @@ export class JobsService {
     return data;
   }
 
-  /** Provider browse: open/recommending jobs, newest first. */
+  /**
+   * Provider browse: open/recommending jobs, filtered to those within
+   * `radius_km` of the provider's location (when lat/lng are given) and
+   * sorted by urgency then distance, newest first as the final tie-break.
+   * Filtering/sorting happens in JS since distance isn't a plain column.
+   */
   async browse(query: BrowseJobsQueryDto) {
     let builder = this.supabase.admin
       .from('jobs')
       .select(JOB_SELECT)
       .in('status', ['open', 'recommending'])
-      .order('posted_at', { ascending: false })
-      .range(query.offset ?? 0, (query.offset ?? 0) + (query.limit ?? 20) - 1);
+      .order('posted_at', { ascending: false });
     if (query.category_id)
       builder = builder.eq('category_id', query.category_id);
     const { data, error } = await builder;
     if (error) throw new BadRequestException(error.message);
-    return data;
+    const jobs = data ?? [];
+
+    const hasLocation = query.latitude != null && query.longitude != null;
+    const radiusKm = query.radius_km ?? DEFAULT_RADIUS_KM;
+
+    const withDistance = jobs.map((job: any) => ({
+      job,
+      distanceKm: hasLocation && job.latitude != null && job.longitude != null
+        ? haversineKm(
+            query.latitude!,
+            query.longitude!,
+            job.latitude,
+            job.longitude,
+          )
+        : null,
+    }));
+
+    const filtered = hasLocation
+      ? withDistance.filter(
+          (j) => j.distanceKm === null || j.distanceKm <= radiusKm,
+        )
+      : withDistance;
+
+    filtered.sort((a, b) => {
+      const urgencyDiff =
+        (URGENCY_RANK[a.job.urgency] ?? 1) - (URGENCY_RANK[b.job.urgency] ?? 1);
+      if (urgencyDiff !== 0) return urgencyDiff;
+      if (a.distanceKm !== null && b.distanceKm !== null) {
+        const distDiff = a.distanceKm - b.distanceKm;
+        if (distDiff !== 0) return distDiff;
+      }
+      return (
+        new Date(b.job.posted_at).getTime() -
+        new Date(a.job.posted_at).getTime()
+      );
+    });
+
+    const summary = {
+      open_count: filtered.length,
+      urgent_count: filtered.filter((j) => j.job.urgency === 'urgent').length,
+      potential_payout: filtered.reduce(
+        (sum, j) => sum + (j.job.budget ?? 0),
+        0,
+      ),
+    };
+
+    const offset = query.offset ?? 0;
+    const limit = query.limit ?? 20;
+    const page = filtered
+      .slice(offset, offset + limit)
+      .map((j) => ({ ...j.job, distance_km: j.distanceKm }));
+
+    return { jobs: page, summary };
   }
 
   async mine(user: Profile) {
@@ -140,6 +222,32 @@ export class JobsService {
     const updated = await this.setStatus(jobId, 'in_progress');
     await this.notify(job.client_id, 'job_update', 'Work started', {
       body: `${user.full_name} started working on "${job.title}".`,
+      job_id: jobId,
+    });
+    return updated;
+  }
+
+  /**
+   * Assigned provider declines a booking before starting work — the mirror
+   * of `cancel()` but provider-initiated and reason-required. Only valid
+   * pre-start (`assigned`); once work has started, cancellation goes through
+   * the client (a dispute, if contested).
+   */
+  async decline(user: Profile, jobId: string, dto: DeclineJobDto) {
+    const job = await this.findJob(jobId);
+    if (job.assigned_provider_id !== user.id) {
+      throw new ForbiddenException('You are not assigned to this job');
+    }
+    if (job.status !== 'assigned') {
+      throw new BadRequestException(
+        `Cannot decline a job in status '${job.status}'`,
+      );
+    }
+    const updated = await this.setStatus(jobId, 'cancelled');
+    // Release the hold back to the client, same as a client-initiated cancel.
+    await this.escrow.cancelForJob(jobId);
+    await this.notify(job.client_id, 'job_update', 'Booking declined', {
+      body: `${user.full_name} declined "${job.title}": ${dto.reason}`,
       job_id: jobId,
     });
     return updated;

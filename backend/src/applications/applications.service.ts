@@ -31,12 +31,17 @@ export class ApplicationsService {
 
     const { data: providerProfile } = await this.supabase.admin
       .from('provider_profiles')
-      .select('profile_id')
+      .select('profile_id, is_verified')
       .eq('profile_id', user.id)
       .maybeSingle();
     if (!providerProfile) {
       throw new BadRequestException(
         'Set up your provider profile before applying',
+      );
+    }
+    if (!providerProfile.is_verified) {
+      throw new ForbiddenException(
+        'Verify your identity before applying to jobs',
       );
     }
 

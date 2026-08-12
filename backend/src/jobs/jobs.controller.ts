@@ -12,7 +12,7 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { Roles } from '../auth/roles.decorator';
 import { CurrentUser } from '../auth/current-user.decorator';
 import { JobsService } from './jobs.service';
-import { BrowseJobsQueryDto, CreateJobDto } from './dto/jobs.dto';
+import { BrowseJobsQueryDto, CreateJobDto, DeclineJobDto } from './dto/jobs.dto';
 import type { Profile } from '../common/types';
 
 @Controller('jobs')
@@ -62,6 +62,16 @@ export class JobsController {
   @Roles('provider')
   start(@CurrentUser() user: Profile, @Param('id', ParseUUIDPipe) id: string) {
     return this.jobsService.start(user, id);
+  }
+
+  @Post(':id/decline')
+  @Roles('provider')
+  decline(
+    @CurrentUser() user: Profile,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: DeclineJobDto,
+  ) {
+    return this.jobsService.decline(user, id, dto);
   }
 
   @Post(':id/complete')

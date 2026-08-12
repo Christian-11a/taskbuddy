@@ -82,4 +82,29 @@ export class BrowseJobsQueryDto {
   @IsInt()
   @Type(() => Number)
   offset?: number;
+
+  // Provider's current location, used to filter the feed to nearby jobs.
+  // Both must be present together for the filter to apply.
+  @IsOptional()
+  @IsLatitude()
+  @Type(() => Number)
+  latitude?: number;
+
+  @IsOptional()
+  @IsLongitude()
+  @Type(() => Number)
+  longitude?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @IsPositive()
+  @Type(() => Number)
+  radius_km?: number;
+}
+
+export class DeclineJobDto {
+  // Mirrors escrow's RaiseDisputeDto reason bounds (schema §21 precedent).
+  @IsString()
+  @Length(1, 200)
+  reason!: string;
 }

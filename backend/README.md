@@ -188,12 +188,13 @@ All bodies are JSON. 🔒 = requires auth; (client) / (provider) = role-restrict
 | Method & path | Description |
 |---|---|
 | `POST /jobs` 🔒 (client) | `{ category_id, title (5–120), description (20–750), urgency?, address, latitude, longitude, budget?, scheduled_at?, photo_urls? }` |
-| `GET /jobs?category_id=&limit=&offset=` 🔒 (provider) | browse `open`/`recommending` jobs |
+| `GET /jobs?category_id=&limit=&offset=&latitude=&longitude=&radius_km=` 🔒 (provider) | browse `open`/`recommending` jobs, sorted by urgency then distance/newest; `latitude`+`longitude` (both required together) filter to `radius_km` (default 50km) of the provider; returns `{ jobs, summary: { open_count, urgent_count, potential_payout } }` |
 | `GET /jobs/mine` 🔒 (client) | own jobs |
 | `GET /jobs/assigned` 🔒 (provider) | jobs assigned to me |
 | `GET /jobs/:id` 🔒 | job detail |
 | `POST /jobs/:id/cancel` 🔒 (client) | any pre-completion state → `cancelled` |
 | `POST /jobs/:id/start` 🔒 (provider) | `assigned` → `in_progress` |
+| `POST /jobs/:id/decline` 🔒 (provider) | `{ reason (1–200) }` — assigned provider declines before starting; `assigned` → `cancelled`, refunds escrow, notifies client |
 | `POST /jobs/:id/complete` 🔒 (client) | `in_progress` → `completed` |
 | `POST /jobs/:id/recommendations/trigger` 🔒 (client) | manually re-run the recommendation engine |
 

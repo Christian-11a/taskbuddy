@@ -68,6 +68,12 @@ dist/
 web-build/
 expo-env.d.ts
 
+# Maestro UI tests
+mobile/Maestro/
+mobile/.maestro/
+.maestro/
+Maestro/
+
 # Native
 .kotlin/
 *.orig.*
