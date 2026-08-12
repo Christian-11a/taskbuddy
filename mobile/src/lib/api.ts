@@ -611,13 +611,26 @@ export const api = {
     return authRequest<Job>('/jobs', { method: 'POST', body: input });
   },
 
-  browseJobs(params: { category_id?: number; limit?: number; offset?: number } = {}) {
+  browseJobs(params: {
+    category_id?: number;
+    limit?: number;
+    offset?: number;
+    latitude?: number;
+    longitude?: number;
+    radius_km?: number;
+  } = {}) {
     const q = new URLSearchParams();
     if (params.category_id != null) q.set('category_id', String(params.category_id));
     if (params.limit != null) q.set('limit', String(params.limit));
     if (params.offset != null) q.set('offset', String(params.offset));
+    if (params.latitude != null) q.set('latitude', String(params.latitude));
+    if (params.longitude != null) q.set('longitude', String(params.longitude));
+    if (params.radius_km != null) q.set('radius_km', String(params.radius_km));
     const qs = q.toString();
-    return authRequest<Job[]>(`/jobs${qs ? `?${qs}` : ''}`);
+    return authRequest<{
+      jobs: Job[];
+      summary: { open_count: number; urgent_count: number; potential_payout: number };
+    }>(`/jobs${qs ? `?${qs}` : ''}`);
   },
 
   myJobs() {
@@ -638,6 +651,13 @@ export const api = {
 
   startJob(id: string) {
     return authRequest<Job>(`/jobs/${id}/start`, { method: 'POST' });
+  },
+
+  declineJob(id: string, reason: string) {
+    return authRequest<Job>(`/jobs/${id}/decline`, {
+      method: 'POST',
+      body: { reason },
+    });
   },
 
   completeJob(id: string) {

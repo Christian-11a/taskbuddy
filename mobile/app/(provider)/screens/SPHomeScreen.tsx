@@ -28,6 +28,8 @@ import {
   CircleAlert,
   Wallet,
   RefreshCw,
+  ShieldCheck,
+  ChevronRight,
 } from 'lucide-react-native';
 import { Colors, Radii, Shadows, Sizes, Spacing } from '../../../src/constants/theme';
 import { SPScreen } from '../../../src/types/navigation';
@@ -41,15 +43,19 @@ interface SPHomeScreenProps {
 }
 
 export default function SPHomeScreen({ onNavigate }: SPHomeScreenProps) {
-  const { profile, providerProfile } = useAuth();
+  const { profile, providerProfile, isVerified } = useAuth();
   const { data } = useAsyncData(async () => {
-    const [wallet, jobs, assigned] = await Promise.all([
+    const [wallet, feed, assigned] = await Promise.all([
       api.wallet(),
-      api.browseJobs({ limit: 20 }),
+      api.browseJobs({
+        limit: 20,
+        latitude: profile?.latitude ?? undefined,
+        longitude: profile?.longitude ?? undefined,
+      }),
       api.assignedJobs(),
     ]);
-    return { wallet, jobs, assigned };
-  }, []);
+    return { wallet, jobs: feed.jobs, summary: feed.summary, assigned };
+  }, [profile?.latitude, profile?.longitude]);
 
   const [available, setAvailable] = useState(providerProfile?.is_available ?? true);
   const [togglingAvail, setTogglingAvail] = useState(false);
@@ -169,6 +175,44 @@ export default function SPHomeScreen({ onNavigate }: SPHomeScreenProps) {
             <Text style={styles.locationText}>{location}</Text>
           </View>
         </View>
+
+        {/* Verification prompt — unverified providers can browse but can't apply */}
+        {!isVerified && (
+          <TouchableOpacity
+            style={styles.verifyBanner}
+            onPress={() => onNavigate('Verification')}
+            activeOpacity={0.85}
+          >
+            <View style={styles.verifyIconCircle}>
+              <ShieldCheck size={20} color={Colors.white} />
+            </View>
+            <View style={styles.verifyTextBox}>
+              <Text style={styles.verifyTitle}>Get Verified</Text>
+              <Text style={styles.verifyBody}>
+                Submit your ID to start applying for jobs and getting hired.
+              </Text>
+            </View>
+            <ChevronRight size={20} color={Colors.brandTeal} />
+          </TouchableOpacity>
+        )}
+
+        {/* Feed summary: open / urgent / potential payout */}
+        {data?.summary && (
+          <View style={styles.summaryRow}>
+            <View style={styles.summaryCard}>
+              <Text style={styles.summaryValue}>{data.summary.open_count}</Text>
+              <Text style={styles.summaryLabel}>Open</Text>
+            </View>
+            <View style={styles.summaryCard}>
+              <Text style={[styles.summaryValue, { color: '#EF4444' }]}>{data.summary.urgent_count}</Text>
+              <Text style={styles.summaryLabel}>Urgent</Text>
+            </View>
+            <View style={styles.summaryCard}>
+              <Text style={styles.summaryValue}>{peso(data.summary.potential_payout)}</Text>
+              <Text style={styles.summaryLabel}>Payout</Text>
+            </View>
+          </View>
+        )}
 
         {/* Available jobs */}
         <View style={styles.sectionHeaderRow}>
@@ -304,6 +348,28 @@ const styles = StyleSheet.create({
   locationTextRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   locationText: { color: Colors.slate, fontSize: 13, fontFamily: 'Inter' },
   radiusText: { color: Colors.brandTeal, fontSize: 13, fontWeight: '700', fontFamily: 'Inter' },
+
+  verifyBanner: {
+    flexDirection: 'row', alignItems: 'center', gap: 12,
+    backgroundColor: Colors.white, borderRadius: Radii.card,
+    padding: 14, marginBottom: 16, ...Shadows.card,
+    borderWidth: 1, borderColor: 'rgba(6,61,77,0.08)',
+  },
+  verifyIconCircle: {
+    width: 40, height: 40, borderRadius: 12,
+    backgroundColor: Colors.brandTeal, alignItems: 'center', justifyContent: 'center',
+  },
+  verifyTextBox: { flex: 1 },
+  verifyTitle: { color: Colors.brandDark, fontSize: 14, fontWeight: '800', fontFamily: 'Inter' },
+  verifyBody: { color: Colors.slate, fontSize: 12, fontFamily: 'Inter', marginTop: 2, lineHeight: 16 },
+
+  summaryRow: { flexDirection: 'row', gap: 10, marginBottom: 20 },
+  summaryCard: {
+    flex: 1, backgroundColor: Colors.white, borderRadius: Radii.card,
+    paddingVertical: 14, alignItems: 'center', ...Shadows.card,
+  },
+  summaryValue: { color: Colors.brandDark, fontSize: 18, fontWeight: '800', fontFamily: 'Inter' },
+  summaryLabel: { color: Colors.muted, fontSize: 11, fontWeight: '600', fontFamily: 'Inter', marginTop: 2 },
 
   sectionHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 },
   sectionTitle: { color: Colors.brandDark, fontSize: 18, fontWeight: '800', fontFamily: 'Inter' },

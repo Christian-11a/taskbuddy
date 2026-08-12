@@ -26,6 +26,12 @@ import { Colors, Radii, Shadows, Sizes, Spacing } from '../../../src/constants/t
 
 interface SPVerificationScreenProps {
   onBack: () => void;
+  /**
+   * Called when the provider taps through after being approved — refreshes the
+   * auth profile (so the dashboard's "Get Verified" banner disappears) and
+   * returns to the dashboard.
+   */
+  onVerified?: () => Promise<void>;
 }
 
 type Slot = 'id' | 'selfie';
@@ -35,11 +41,12 @@ type Slot = 'id' | 'selfie';
  * `verification-docs` bucket via signed upload URLs; the API only ever sees the
  * resulting storage paths. An admin reviews them in the web console.
  */
-export default function SPVerificationScreen({ onBack }: SPVerificationScreenProps) {
+export default function SPVerificationScreen({ onBack, onVerified }: SPVerificationScreenProps) {
   const [idAsset, setIdAsset] = useState<ImagePicker.ImagePickerAsset | null>(null);
   const [selfieAsset, setSelfieAsset] = useState<ImagePicker.ImagePickerAsset | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [continuing, setContinuing] = useState(false);
 
   const {
     data: verification,
@@ -163,6 +170,35 @@ export default function SPVerificationScreen({ onBack }: SPVerificationScreenPro
     );
   };
 
+  const renderApprovedContinue = () => {
+    if (!isApproved || !onVerified) return null;
+    const goToDashboard = async () => {
+      setContinuing(true);
+      setError(null);
+      try {
+        await onVerified();
+      } catch (e) {
+        setError(e instanceof Error ? e.message : 'Could not refresh your profile. Try again.');
+      } finally {
+        setContinuing(false);
+      }
+    };
+    return (
+      <TouchableOpacity
+        style={styles.submitButton}
+        onPress={goToDashboard}
+        disabled={continuing}
+        activeOpacity={0.85}
+      >
+        {continuing ? (
+          <ActivityIndicator color={Colors.white} />
+        ) : (
+          <Text style={styles.submitText}>Go to Dashboard</Text>
+        )}
+      </TouchableOpacity>
+    );
+  };
+
   const renderSlot = (
     slot: Slot,
     label: string,
@@ -261,6 +297,9 @@ export default function SPVerificationScreen({ onBack }: SPVerificationScreenPro
                 reviewing your account.
               </Text>
             </View>
+
+            {renderApprovedContinue()}
+            {isApproved && error && <Text style={styles.errorText}>{error}</Text>}
 
             {!isApproved && !isPending && (
               <>

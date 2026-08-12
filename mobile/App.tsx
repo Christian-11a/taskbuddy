@@ -89,9 +89,10 @@ type PreAuthScreen = 'onboarding' | 'login' | 'forgotPassword' | 'register';
 
 function AppContent() {
   const {
-    initializing, isAuthenticated, isVerified, isGoogleSignupPending,
+    initializing, isAuthenticated, isGoogleSignupPending,
     role, profile,
     signIn, signUp, signOut, signInWithGoogle, completeGoogleProfile,
+    refreshProfile,
   } = useAuth();
 
   // Which pre-auth screen to show while the user is signed out.
@@ -269,19 +270,6 @@ function AppContent() {
     );
   }
 
-  // ── Service Provider: verification gate ─────────────────────────────────
-  // SPs who have not yet been verified by an admin see the verification
-  // screen instead of the tabbed app. Once the admin approves (is_verified
-  // flips to true on the next /auth/me call via refreshProfile), the gate
-  // disappears automatically.
-  if (role === 'provider' && !isVerified) {
-    return (
-      <SPVerificationScreen
-        onBack={handleLogout}
-      />
-    );
-  }
-
   // ─────────────────────────────────────────────────────────────────────────
   // Authenticated — Homeowner
   // ─────────────────────────────────────────────────────────────────────────
@@ -433,7 +421,13 @@ function AppContent() {
   if (spScreen === 'Verification') {
     return (
       <View style={styles.screen}>
-        <SPVerificationScreen onBack={spBack} />
+        <SPVerificationScreen
+          onBack={spBack}
+          onVerified={async () => {
+            await refreshProfile();
+            spBack();
+          }}
+        />
       </View>
     );
   }

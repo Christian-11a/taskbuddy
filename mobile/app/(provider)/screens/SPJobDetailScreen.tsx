@@ -6,8 +6,8 @@
  */
 
 import React, { useState } from 'react';
-import { ActivityIndicator, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import { AlertTriangle, ArrowLeft, AlignLeft, CalendarDays, MapPin, MessageCircle, MoreVertical, TriangleAlert, Wrench } from 'lucide-react-native';
+import { ActivityIndicator, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { AlertTriangle, ArrowLeft, AlignLeft, CalendarDays, Check, MapPin, MessageCircle, MoreVertical, ShieldCheck, TriangleAlert, Wrench, X } from 'lucide-react-native';
 import { Colors, Radii, Shadows, Sizes, Spacing } from '../../../src/constants/theme';
 import { SPScreen } from '../../../src/types/navigation';
 import { useAuth } from '../../../src/context/AuthContext';
@@ -23,7 +23,7 @@ interface SPJobDetailScreenProps {
 }
 
 export default function SPJobDetailScreen({ jobId, onBack, onNavigate }: SPJobDetailScreenProps) {
-  const { profile } = useAuth();
+  const { profile, isVerified } = useAuth();
   const { data: job, loading, error, reload } = useAsyncData(() => {
     if (!jobId) return Promise.reject(new Error('No job selected.'));
     return api.getJob(jobId);
@@ -31,12 +31,23 @@ export default function SPJobDetailScreen({ jobId, onBack, onNavigate }: SPJobDe
 
   const [busy, setBusy] = useState(false);
   const [actionMsg, setActionMsg] = useState<string | null>(null);
+  const [declineOpen, setDeclineOpen] = useState(false);
+  const [declineReason, setDeclineReason] = useState('');
 
   const isAssignedToMe = job?.assigned_provider_id === profile?.id;
   const canApply = job && ['open', 'recommending'].includes(job.status) && !isAssignedToMe;
   const canStart = isAssignedToMe && job?.status === 'assigned';
+  const canDecline = isAssignedToMe && job?.status === 'assigned';
+  const showProgress = isAssignedToMe && !!job && ['assigned', 'in_progress', 'completed'].includes(job.status);
   const urgent = job?.urgency === 'urgent';
   const meta = job ? jobStatusMeta(job.status) : null;
+
+  const PROGRESS_STEPS = [
+    { key: 'assigned', label: 'Booking Confirmed' },
+    { key: 'in_progress', label: 'Work In Progress' },
+    { key: 'completed', label: 'Job Completed' },
+  ] as const;
+  const progressIndex = job ? PROGRESS_STEPS.findIndex((s) => s.key === job.status) : -1;
 
   const runAction = async (fn: () => Promise<unknown>, successMsg: string) => {
     setBusy(true);
@@ -50,6 +61,13 @@ export default function SPJobDetailScreen({ jobId, onBack, onNavigate }: SPJobDe
     } finally {
       setBusy(false);
     }
+  };
+
+  const submitDecline = async () => {
+    if (!job || !declineReason.trim()) return;
+    setDeclineOpen(false);
+    await runAction(() => api.declineJob(job.id, declineReason.trim()), 'Booking declined.');
+    setDeclineReason('');
   };
 
   return (
@@ -109,6 +127,27 @@ export default function SPJobDetailScreen({ jobId, onBack, onNavigate }: SPJobDe
             ))}
           </View>
 
+          {/* Post-accept progress / task list */}
+          {showProgress && (
+            <View style={styles.card}>
+              <Text style={styles.cardTitle}>Job Progress</Text>
+              {PROGRESS_STEPS.map((step, i) => {
+                const reached = i <= progressIndex;
+                const current = i === progressIndex;
+                return (
+                  <View key={step.key} style={styles.progressRow}>
+                    <View style={[styles.progressDot, reached && styles.progressDotDone, current && styles.progressDotCurrent]}>
+                      {reached && <Check size={12} color={Colors.white} />}
+                    </View>
+                    <Text style={[styles.progressLabel, reached && styles.progressLabelDone]}>
+                      {step.label}
+                    </Text>
+                  </View>
+                );
+              })}
+            </View>
+          )}
+
           {!!actionMsg && <Text style={styles.actionMsg}>{actionMsg}</Text>}
 
           {/* Actions */}
@@ -132,7 +171,29 @@ export default function SPJobDetailScreen({ jobId, onBack, onNavigate }: SPJobDe
             </TouchableOpacity>
           )}
 
-          {canApply && (
+          {canDecline && (
+            <TouchableOpacity
+              style={styles.declineBtnFull}
+              onPress={() => setDeclineOpen(true)}
+              activeOpacity={0.85}
+              disabled={busy}
+            >
+              <Text style={styles.declineBtnText}>Decline Booking</Text>
+            </TouchableOpacity>
+          )}
+
+          {canApply && !isVerified && (
+            <TouchableOpacity
+              style={styles.verifyPromptBtn}
+              onPress={() => onNavigate('Verification')}
+              activeOpacity={0.85}
+            >
+              <ShieldCheck size={16} color={Colors.white} />
+              <Text style={styles.acceptBtnText}>Get Verified to Apply</Text>
+            </TouchableOpacity>
+          )}
+
+          {canApply && isVerified && (
             <TouchableOpacity
               style={[styles.acceptBtnFull, urgent && styles.urgentClaimBtn]}
               onPress={() => runAction(() => api.applyToJob(job.id), 'Application sent!')}
@@ -148,6 +209,45 @@ export default function SPJobDetailScreen({ jobId, onBack, onNavigate }: SPJobDe
           <View style={{ height: 20 }} />
         </ScrollView>
       )}
+
+      {/* Decline reason modal */}
+      <Modal visible={declineOpen} transparent animationType="fade" onRequestClose={() => setDeclineOpen(false)}>
+        <Pressable style={styles.modalOverlay} onPress={() => setDeclineOpen(false)}>
+          <Pressable style={styles.modalDialog} onPress={(e) => e.stopPropagation()}>
+            <View style={styles.modalHeaderRow}>
+              <Text style={styles.modalTitle}>Decline Booking</Text>
+              <TouchableOpacity onPress={() => setDeclineOpen(false)} activeOpacity={0.8}>
+                <X size={20} color={Colors.slate} />
+              </TouchableOpacity>
+            </View>
+            <Text style={styles.modalMessage}>
+              Let the client know why you can't take this job. This cancels the booking and refunds them.
+            </Text>
+            <TextInput
+              style={styles.modalInput}
+              placeholder="Reason for declining"
+              placeholderTextColor={Colors.muted}
+              value={declineReason}
+              onChangeText={setDeclineReason}
+              multiline
+              numberOfLines={3}
+            />
+            <View style={styles.modalActions}>
+              <TouchableOpacity style={styles.modalCancelBtn} onPress={() => setDeclineOpen(false)} activeOpacity={0.8}>
+                <Text style={styles.modalCancelText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.modalConfirmBtn, !declineReason.trim() && styles.modalConfirmBtnDisabled]}
+                onPress={submitDecline}
+                activeOpacity={0.85}
+                disabled={!declineReason.trim()}
+              >
+                <Text style={styles.modalConfirmText}>Decline</Text>
+              </TouchableOpacity>
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
     </View>
   );
 }
@@ -202,4 +302,34 @@ const styles = StyleSheet.create({
   acceptBtnText: { color: Colors.white, fontSize: 15, fontWeight: '700', fontFamily: 'Inter' },
   chatFullBtn: { backgroundColor: Colors.brandTeal, borderRadius: 24, padding: 15, alignItems: 'center', marginBottom: 10 },
   urgentClaimBtn: { backgroundColor: '#EF4444', shadowColor: '#EF4444' },
+  declineBtnFull: { backgroundColor: Colors.white, borderWidth: 1.5, borderColor: '#EF4444', borderRadius: 24, padding: 15, alignItems: 'center', marginBottom: 10 },
+  declineBtnText: { color: '#EF4444', fontSize: 15, fontWeight: '700', fontFamily: 'Inter' },
+  verifyPromptBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
+    backgroundColor: Colors.brandDark, borderRadius: 24, padding: 15, marginBottom: 10,
+  },
+
+  progressRow: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 12 },
+  progressDot: { width: 24, height: 24, borderRadius: 12, borderWidth: 2, borderColor: 'rgba(144,153,184,0.35)', alignItems: 'center', justifyContent: 'center' },
+  progressDotDone: { backgroundColor: Colors.brandTeal, borderColor: Colors.brandTeal },
+  progressDotCurrent: { borderColor: Colors.brandTeal },
+  progressLabel: { color: Colors.muted, fontSize: 14, fontFamily: 'Inter' },
+  progressLabelDone: { color: Colors.brandDark, fontWeight: '700' },
+
+  modalOverlay: { flex: 1, justifyContent: 'center', padding: 24, backgroundColor: 'rgba(6, 61, 77, 0.5)' },
+  modalDialog: { backgroundColor: Colors.white, borderRadius: Radii.card, padding: 22 },
+  modalHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 },
+  modalTitle: { color: Colors.brandDark, fontSize: 18, fontWeight: '800', fontFamily: 'Inter' },
+  modalMessage: { color: Colors.slate, fontSize: 13, fontFamily: 'Inter', lineHeight: 19, marginBottom: 14 },
+  modalInput: {
+    borderWidth: 1, borderColor: 'rgba(144,153,184,0.35)', borderRadius: 12,
+    padding: 12, fontSize: 14, fontFamily: 'Inter', color: Colors.brandDark,
+    minHeight: 80, textAlignVertical: 'top', marginBottom: 18,
+  },
+  modalActions: { flexDirection: 'row', justifyContent: 'flex-end', gap: 10 },
+  modalCancelBtn: { borderWidth: 1, borderColor: 'rgba(144,153,184,0.45)', borderRadius: 12, paddingHorizontal: 16, paddingVertical: 11 },
+  modalCancelText: { color: Colors.slate, fontSize: 14, fontWeight: '700', fontFamily: 'Inter' },
+  modalConfirmBtn: { backgroundColor: '#EF4444', borderRadius: 12, paddingHorizontal: 16, paddingVertical: 11 },
+  modalConfirmBtnDisabled: { opacity: 0.5 },
+  modalConfirmText: { color: Colors.white, fontSize: 14, fontWeight: '700', fontFamily: 'Inter' },
 });
