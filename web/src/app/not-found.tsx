@@ -11,7 +11,7 @@ export default function NotFound() {
     >
       <div
         className="flex items-center justify-center rounded-2xl mb-4"
-        style={{ width: 52, height: 52, background: "rgba(99,102,241,0.12)", border: "1px solid rgba(99,102,241,0.2)" }}
+        style={{ width: 52, height: 52, background: "var(--indigo-dark)", border: "1px solid rgba(34,195,214,0.2)" }}
       >
         <Compass size={22} style={{ color: "var(--indigo-light)" }} />
       </div>
@@ -22,7 +22,7 @@ export default function NotFound() {
       <Link
         href="/dashboard"
         className="font-semibold text-white transition-opacity hover:opacity-90"
-        style={{ background: "linear-gradient(172deg, #6363f1 0%, #8b5cf6 100%)", borderRadius: 11, padding: "9px 18px", fontSize: 13, textDecoration: "none" }}
+        style={{ background: "linear-gradient(172deg, #22c3d6 0%, #38bdf8 100%)", borderRadius: 11, padding: "9px 18px", fontSize: 13, textDecoration: "none" }}
       >
         Back to dashboard
       </Link>

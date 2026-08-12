@@ -1,36 +1,38 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Search, Check, X, ChevronDown } from "lucide-react";
+import { Search, Check, X, FileText, Download } from "lucide-react";
 import { useApp } from "@/context/AppContext";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
+import { ReviewDrawer, DrawerField, DrawerSection } from "@/components/ui/ReviewDrawer";
 import { useToast } from "@/components/ui/Toast";
 import { REASON_MAX_LENGTH } from "@/lib/validation";
+import { datedFilename, downloadCsv, toCsv } from "@/lib/export/csv";
 import clsx from "clsx";
-
-/** Turns bulk counts into one honest sentence — "3 of 5" when some failed. */
-function bulkMessage(verb: string, succeeded: number, failed: number): string {
-  if (failed === 0) return `${verb} ${succeeded} verification${succeeded === 1 ? "" : "s"}.`;
-  return `${verb} ${succeeded} of ${succeeded + failed}. ${failed} failed — they may already be reviewed.`;
-}
 
 type Filter = "all" | "pending" | "approved" | "rejected";
 
+/**
+ * Provider verification is a trust-and-safety decision, not a bulk
+ * housekeeping task — no "select all pending" / "approve selected" here on
+ * purpose. Every provider gets reviewed one at a time via the drawer before
+ * a decision is made. See docs/TaskBuddyCompleteRefinement.md §28.
+ */
 export function VerificationsPage() {
-  const { verifications, approveVerification, rejectVerification, bulkApproveVerifications, bulkRejectVerifications, loading } = useApp();
+  const { verifications, approveVerification, rejectVerification, loading } = useApp();
   const { showToast } = useToast();
   const [filter, setFilter] = useState<Filter>("pending");
   const [search, setSearch] = useState("");
-  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [reviewingId, setReviewingId] = useState<string | null>(null);
   const [preview, setPreview] = useState<{ label: string; url: string } | null>(null);
-  const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [bulkBusy, setBulkBusy] = useState(false);
   const [approveBusyId, setApproveBusyId] = useState<string | null>(null);
-  // Reject always confirms and always offers a reason, single or bulk — the
-  // backend records it on the audit trail (admin_actions), so leaving it
-  // blank in the UI meant every rejection reason was silently lost.
-  const [rejectTarget, setRejectTarget] = useState<{ ids: string[] } | null>(null);
+  const [rejectBusy, setRejectBusy] = useState(false);
+  // Reject always confirms and always offers a reason — the backend records
+  // it on the audit trail (admin_actions), so leaving it blank in the UI
+  // meant every rejection reason was silently lost.
+  const [rejectTargetId, setRejectTargetId] = useState<string | null>(null);
   const [rejectReason, setRejectReason] = useState("");
+  const [confirmingExport, setConfirmingExport] = useState(false);
 
   const filtered = verifications.filter((v) => {
     const matchFilter = filter === "all" || v.status === filter;
@@ -40,6 +42,14 @@ export function VerificationsPage() {
     return matchFilter && matchSearch;
   });
 
+  function exportCsv() {
+    const csv = toCsv(
+      ["Name", "Email", "Status", "Submitted", "Documents"],
+      filtered.map((v) => [v.name, v.email, v.status, v.date, v.documents.length]),
+    );
+    downloadCsv(datedFilename("taskbuddy-verification-queue"), csv);
+  }
+
   const counts = {
     all: verifications.length,
     pending: verifications.filter((v) => v.status === "pending").length,
@@ -47,52 +57,12 @@ export function VerificationsPage() {
     rejected: verifications.filter((v) => v.status === "rejected").length,
   };
 
-  const pendingInView = filtered.filter((v) => v.status === "pending");
-  const selectedPending = pendingInView.filter((v) => selected.has(v.id));
-  const allPendingSelected = pendingInView.length > 0 && selectedPending.length === pendingInView.length;
-
-  function toggleOne(id: string) {
-    setSelected((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  }
-
-  function toggleAllPending() {
-    setSelected(allPendingSelected ? new Set() : new Set(pendingInView.map((v) => v.id)));
-  }
-
-  /**
-   * Bulk actions operate on the id set, not on what's rendered — a selection
-   * surviving a filter change could reject providers the admin can no longer
-   * see, while the bar still claimed "5 selected".
-   */
-  function clearSelectionOnScopeChange() {
-    setSelected((prev) => (prev.size === 0 ? prev : new Set()));
-  }
-
-  async function runApprove() {
-    const ids = [...selected];
-    if (ids.length === 0) return;
-    setBulkBusy(true);
-    try {
-      const { succeeded, failed } = await bulkApproveVerifications(ids);
-      setSelected(new Set());
-      showToast(bulkMessage("Approved", succeeded, failed), failed > 0 ? "error" : "success");
-    } catch {
-      showToast("Could not approve the selected verifications. Please try again.", "error");
-    } finally {
-      setBulkBusy(false);
-    }
-  }
-
   async function handleApproveOne(id: string) {
     setApproveBusyId(id);
     try {
       await approveVerification(id);
       showToast("Verification approved.");
+      setReviewingId(null);
     } catch {
       showToast("Could not approve that verification. Please try again.", "error");
     } finally {
@@ -100,38 +70,31 @@ export function VerificationsPage() {
     }
   }
 
-  function openRejectPrompt(ids: string[]) {
+  function openRejectPrompt(id: string) {
     setRejectReason("");
-    setRejectTarget({ ids });
+    setRejectTargetId(id);
   }
 
   async function confirmReject() {
-    if (!rejectTarget) return;
-    setBulkBusy(true);
+    if (!rejectTargetId) return;
+    setRejectBusy(true);
     try {
-      const reason = rejectReason.trim() || undefined;
-      if (rejectTarget.ids.length === 1) {
-        await rejectVerification(rejectTarget.ids[0], reason);
-        showToast("Verification rejected.");
-      } else {
-        const { succeeded, failed } = await bulkRejectVerifications(rejectTarget.ids, reason);
-        showToast(bulkMessage("Rejected", succeeded, failed), failed > 0 ? "error" : "success");
-      }
-      setSelected(new Set());
-      setRejectTarget(null);
+      await rejectVerification(rejectTargetId, rejectReason.trim() || undefined);
+      showToast("Verification rejected.");
+      setRejectTargetId(null);
+      setReviewingId(null);
     } catch {
       showToast("Could not reject. Please try again.", "error");
     } finally {
-      setBulkBusy(false);
+      setRejectBusy(false);
     }
   }
 
   const rejectReasonTooLong = rejectReason.length > REASON_MAX_LENGTH;
+  const reviewing = verifications.find((v) => v.id === reviewingId) ?? null;
 
   // Same treatment ConfirmDialog gets: Escape to close, Tab kept inside the
-  // dialog (the page behind it stays fully interactive otherwise), and focus
-  // handed back to whatever opened it so a keyboard user doesn't get dumped
-  // at the top of the document.
+  // dialog, and focus handed back to whatever opened it.
   const lightboxRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (!preview) return;
@@ -172,8 +135,8 @@ export function VerificationsPage() {
     <div>
       <div className="flex items-start justify-between flex-wrap gap-3 mb-4">
         <div>
-          <div className="text-white font-bold" style={{ fontSize: "clamp(15px, 1.5vw, 18px)" }}>Provider Verification Queue</div>
-          <div style={{ fontSize: 13, color: "var(--text-muted)", marginTop: 4 }}>Review submitted government IDs and service certificates</div>
+          <div className="text-white font-bold" style={{ fontSize: 22, letterSpacing: "-0.025em" }}>Provider Verification Queue</div>
+          <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 5, lineHeight: 1.45 }}>Review submitted government IDs and service certificates</div>
         </div>
         <div className="flex items-center gap-1.5 font-semibold" style={{ background: "rgba(245,158,11,0.12)", border: "1px solid rgba(245,158,11,0.2)", borderRadius: 11, padding: "7px 11px", fontSize: 11.4, color: "#f59e0b" }}>
           ⚠️ {counts.pending} pending
@@ -181,22 +144,22 @@ export function VerificationsPage() {
       </div>
 
       <div className="flex gap-3 items-center mb-4 flex-wrap">
-        <div className="relative" style={{ flex: "1 1 200px", maxWidth: 313 }}>
+        <div className="relative" style={{ flex: "1 1 200px", maxWidth: 360 }}>
           <Search size={13} className="absolute top-1/2 -translate-y-1/2 left-3 opacity-40" color="currentColor" style={{ color: "var(--text-white)" }} />
           <input
             className="w-full text-white outline-none"
             placeholder="Search by name or email…"
             aria-label="Search verifications by name or email"
             value={search}
-            onChange={(e) => { setSearch(e.target.value); clearSelectionOnScopeChange(); }}
-            style={{ background: "var(--input-bg)", border: "1px solid var(--border-md)", borderRadius: 11, padding: "8px 13px 8px 32px", fontSize: 11.4, fontFamily: "inherit", color: "var(--text-white)" }}
+            onChange={(e) => setSearch(e.target.value)}
+            style={{ background: "var(--input-bg)", border: "1px solid var(--border-md)", height: 38, borderRadius: 9, padding: "0 13px 0 36px", fontSize: 12, fontFamily: "inherit", color: "var(--text-white)" }}
           />
         </div>
-        <div className="inline-flex rounded-xl p-1 gap-1 flex-wrap" style={{ background: "var(--chip-bg)" }}>
+        <div className="inline-flex flex-wrap" style={{ background: "var(--chip-bg)", padding: 3, borderRadius: 9, gap: 2 }}>
           {(["all", "pending", "approved", "rejected"] as Filter[]).map((f) => (
-            <button key={f} onClick={() => { setFilter(f); clearSelectionOnScopeChange(); }}
-              className={clsx("flex items-center gap-1 rounded-lg font-medium cursor-pointer transition-all", filter === f ? "text-indigo-300" : "text-gray-500 hover:text-gray-300")}
-              style={{ padding: "5px 12px", fontSize: 11.4, background: filter === f ? "rgba(99,102,241,0.25)" : "transparent", border: "none", fontFamily: "inherit" }}
+            <button key={f} onClick={() => setFilter(f)}
+              className={clsx("flex items-center gap-1 rounded-lg font-medium cursor-pointer transition-all", filter !== f && "text-gray-500 hover:text-gray-300")}
+              style={{ padding: "7px 11px", fontSize: 11, background: filter === f ? "var(--indigo-dark)" : "transparent", color: filter === f ? "var(--indigo-light)" : undefined, border: "none", fontFamily: "inherit" }}
             >
               {f.charAt(0).toUpperCase() + f.slice(1)} <span style={{ fontSize: 9.8, opacity: 0.7 }}>({counts[f]})</span>
             </button>
@@ -204,35 +167,19 @@ export function VerificationsPage() {
         </div>
       </div>
 
-      {pendingInView.length > 0 && (
-        <div className="flex items-center gap-3 mb-3 flex-wrap" style={{ fontSize: 11.4 }}>
-          <label className="flex items-center gap-2 cursor-pointer" style={{ color: "var(--text-muted)" }}>
-            <input type="checkbox" aria-label="Select all pending verifications" checked={allPendingSelected} onChange={toggleAllPending} />
-            Select all pending ({pendingInView.length})
-          </label>
-          {selected.size > 0 && (
-            <>
-              <span style={{ color: "var(--text-muted)" }}>{selected.size} selected</span>
-              <button
-                onClick={runApprove}
-                disabled={bulkBusy}
-                className="flex items-center gap-1.5 font-semibold transition-colors disabled:opacity-40"
-                style={{ background: "rgba(34,197,94,0.15)", border: "1px solid rgba(34,197,94,0.2)", borderRadius: 9, padding: "4px 12px", fontSize: 11, color: "var(--success-text)", cursor: "pointer", fontFamily: "inherit" }}
-              >
-                <Check size={11} /> Approve selected
-              </button>
-              <button
-                onClick={() => openRejectPrompt([...selected])}
-                disabled={bulkBusy}
-                className="flex items-center gap-1.5 font-semibold transition-colors disabled:opacity-40"
-                style={{ background: "rgba(239,68,68,0.15)", border: "1px solid rgba(239,68,68,0.2)", borderRadius: 9, padding: "4px 12px", fontSize: 11, color: "var(--danger-text)", cursor: "pointer", fontFamily: "inherit" }}
-              >
-                <X size={11} /> Reject selected
-              </button>
-            </>
-          )}
-        </div>
-      )}
+      <div className="flex items-center justify-between gap-3 mb-3 flex-wrap">
+        <span style={{ fontSize: 11.4, color: "var(--text-muted)" }}>
+          Review each submission before approving or rejecting provider access.
+        </span>
+        <button
+          onClick={() => setConfirmingExport(true)}
+          disabled={filtered.length === 0}
+          className="flex items-center gap-1.5 font-semibold transition-opacity hover:opacity-80 disabled:opacity-40"
+          style={{ background: "var(--chip-bg)", border: "1px solid var(--border-md)", borderRadius: 11, padding: "7px 13px", fontSize: 11.4, color: "var(--text-light)", cursor: "pointer", fontFamily: "inherit" }}
+        >
+          <Download size={12} /> Export queue
+        </button>
+      </div>
 
       <div>
         {filtered.length === 0 && (
@@ -244,103 +191,102 @@ export function VerificationsPage() {
                 : "No verifications match this search or filter."}
           </div>
         )}
-        {filtered.map((v) => {
-          const isExpanded = expandedId === v.id;
-          return (
-            <div key={v.id} className="rounded-xl mb-2.5" style={{ background: "var(--card-bg)", border: "1px solid var(--card-border)" }}>
-              <div className="flex items-center gap-3 flex-wrap" style={{ padding: 13 }}>
-                {v.status === "pending" && (
-                  <input
-                    type="checkbox"
-                    aria-label={`Select ${v.name}'s verification`}
-                    checked={selected.has(v.id)}
-                    onChange={() => toggleOne(v.id)}
-                    className="flex-shrink-0"
-                  />
-                )}
-                <div className="flex items-center justify-center flex-shrink-0 font-bold" style={{ width: 36, height: 36, borderRadius: 13, background: "rgba(99,102,241,0.2)", color: "var(--indigo-light)", fontSize: 11.4 }}>{v.initials}</div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 font-semibold flex-wrap" style={{ fontSize: 13 }}>
-                    {v.name}
-                    <span className={clsx("badge", `badge-${v.status}`)}>{v.status.charAt(0).toUpperCase() + v.status.slice(1)}</span>
-                  </div>
-                  <div style={{ fontSize: 9.8, color: "var(--text-muted)", marginTop: 2 }}>{v.email} · Submitted {v.date}</div>
+        {filtered.map((v) => (
+          <div key={v.id} className="rounded-xl mb-2.5" style={{ background: "var(--card-bg)", border: "1px solid var(--card-border)" }}>
+            <div className="flex items-center gap-3 flex-wrap" style={{ padding: 13 }}>
+              <div className="flex items-center justify-center flex-shrink-0 font-bold" style={{ width: 38, height: 38, borderRadius: 13, background: "var(--indigo-dark)", color: "var(--indigo-light)", fontSize: 11.4 }}>{v.initials}</div>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 font-semibold flex-wrap" style={{ fontSize: 13 }}>
+                  {v.name}
+                  <span className={clsx("badge", `badge-${v.status}`)}>{v.status.charAt(0).toUpperCase() + v.status.slice(1)}</span>
                 </div>
-                <div className="flex gap-2 items-center flex-shrink-0">
-                  {v.status === "pending" && (
-                    <>
-                      <button
-                        onClick={() => handleApproveOne(v.id)}
-                        disabled={approveBusyId === v.id}
-                        className="flex items-center gap-1.5 font-semibold transition-colors disabled:opacity-40"
-                        style={{ background: "rgba(34,197,94,0.15)", border: "1px solid rgba(34,197,94,0.2)", borderRadius: 11, padding: "5px 14px", fontSize: 11.4, color: "var(--success-text)", cursor: approveBusyId === v.id ? "default" : "pointer", fontFamily: "inherit" }}
-                      >
-                        <Check size={12} /> {approveBusyId === v.id ? "Approving…" : "Approve"}
-                      </button>
-                      <button
-                        onClick={() => openRejectPrompt([v.id])}
-                        className="flex items-center gap-1.5 font-semibold transition-colors"
-                        style={{ background: "rgba(239,68,68,0.15)", border: "1px solid rgba(239,68,68,0.2)", borderRadius: 11, padding: "5px 14px", fontSize: 11.4, color: "var(--danger-text)", cursor: "pointer", fontFamily: "inherit" }}
-                      >
-                        <X size={12} /> Reject
-                      </button>
-                    </>
-                  )}
-                  <button
-                    onClick={() => setExpandedId(isExpanded ? null : v.id)}
-                        aria-label={`${isExpanded ? "Hide" : "Show"} details for ${v.name}`}
-                        aria-expanded={isExpanded}
-                    className="flex items-center justify-center rounded-lg transition-all hover:bg-white/10"
-                    style={{ width: 26, height: 26, background: "transparent", border: "none", cursor: "pointer", color: "var(--text-muted)", transform: isExpanded ? "rotate(180deg)" : "none" }}
-                  >
-                    <ChevronDown size={14} />
-                  </button>
-                </div>
+                <div style={{ fontSize: 9.8, color: "var(--text-muted)", marginTop: 2 }}>{v.email} · Submitted {v.date} · {v.documents.length} document{v.documents.length === 1 ? "" : "s"}</div>
               </div>
-
-              {/* Expanded detail */}
-              {isExpanded && (
-                <div style={{ borderTop: "1px solid var(--card-border)", padding: "12px 13px 13px", background: "var(--chip-bg)" }}>
-                  <div className="grid grid-cols-2 gap-3" style={{ fontSize: 11.4 }}>
-                    <div>
-                      <div style={{ fontSize: 9.8, color: "var(--text-muted)", marginBottom: 3 }}>EMAIL</div>
-                      <div className="text-white">{v.email}</div>
-                    </div>
-                    <div>
-                      <div style={{ fontSize: 9.8, color: "var(--text-muted)", marginBottom: 3 }}>SUBMITTED</div>
-                      <div className="text-white">{v.date}</div>
-                    </div>
-                    <div className="col-span-2">
-                      <div style={{ fontSize: 9.8, color: "var(--text-muted)", marginBottom: 6 }}>SUBMITTED DOCUMENTS</div>
-                      <div className="flex gap-2 flex-wrap">
-                        {v.documents.length === 0 && (
-                          <span style={{ fontSize: 10.5, color: "var(--text-muted)" }}>No documents available</span>
-                        )}
-                        {v.documents.map((doc) => (
-                          <button
-                            key={doc.label}
-                            onClick={() => setPreview(doc)}
-                            className="flex items-center gap-1.5 font-medium transition-opacity hover:opacity-80"
-                            style={{ background: "rgba(99,102,241,0.12)", border: "1px solid rgba(99,102,241,0.2)", borderRadius: 8, padding: "4px 10px", fontSize: 10.5, color: "var(--indigo-light)", cursor: "pointer", fontFamily: "inherit" }}
-                          >
-                            {doc.label}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              )}
+              <button
+                onClick={() => setReviewingId(v.id)}
+                className="flex items-center gap-1.5 font-semibold transition-colors flex-shrink-0"
+                style={{ background: "var(--indigo-dark)", border: "1px solid rgba(34,195,214,0.3)", borderRadius: 9, padding: "8px 16px", fontSize: 11, color: "var(--indigo-light)", cursor: "pointer", fontFamily: "inherit" }}
+              >
+                Review submission
+              </button>
             </div>
-          );
-        })}
+          </div>
+        ))}
       </div>
+
+      {/* Review drawer — replaces the old inline row expand. */}
+      <ReviewDrawer
+        open={reviewing !== null}
+        onClose={() => setReviewingId(null)}
+        title={reviewing?.name ?? ""}
+        subtitle={reviewing ? `Provider verification · Submitted ${reviewing.date}` : undefined}
+        footer={
+          reviewing?.status === "pending" ? (
+            <>
+              <button
+                onClick={() => reviewing && openRejectPrompt(reviewing.id)}
+                className="flex-1 flex items-center justify-center gap-1.5 font-semibold transition-colors"
+                style={{ background: "transparent", border: "1px solid rgba(239,68,68,0.3)", borderRadius: 9, padding: "9px 14px", fontSize: 12, color: "var(--danger-text)", cursor: "pointer", fontFamily: "inherit" }}
+              >
+                <X size={13} /> Reject
+              </button>
+              <button
+                onClick={() => reviewing && handleApproveOne(reviewing.id)}
+                disabled={approveBusyId === reviewing?.id}
+                className="flex-1 flex items-center justify-center gap-1.5 font-semibold transition-colors disabled:opacity-50"
+                style={{ background: "linear-gradient(172deg, #22c3d6 0%, #38bdf8 100%)", border: "none", borderRadius: 9, padding: "9px 14px", fontSize: 12, color: "#fff", cursor: "pointer", fontFamily: "inherit" }}
+              >
+                <Check size={13} /> {approveBusyId === reviewing?.id ? "Approving…" : "Approve Provider"}
+              </button>
+            </>
+          ) : (
+            <button
+              onClick={() => setReviewingId(null)}
+              className="flex-1 font-semibold transition-colors"
+              style={{ background: "var(--chip-bg)", border: "1px solid var(--border-md)", borderRadius: 9, padding: "9px 14px", fontSize: 12, color: "var(--text-light)", cursor: "pointer", fontFamily: "inherit" }}
+            >
+              Close
+            </button>
+          )
+        }
+      >
+        {reviewing && (
+          <>
+            <DrawerSection>
+              <div className="grid grid-cols-2 gap-3">
+                <DrawerField label="Email" value={reviewing.email} />
+                <DrawerField label="Status" value={<span className={clsx("badge", `badge-${reviewing.status}`)}>{reviewing.status.charAt(0).toUpperCase() + reviewing.status.slice(1)}</span>} />
+                <DrawerField label="Submitted" value={reviewing.date} />
+                <DrawerField label="Documents" value={`${reviewing.documents.length} submitted`} />
+              </div>
+            </DrawerSection>
+            <DrawerSection>
+              <div style={{ fontSize: 9, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 10 }}>Submitted documents</div>
+              <div className="grid grid-cols-2 gap-2">
+                {reviewing.documents.length === 0 && (
+                  <span style={{ fontSize: 10.5, color: "var(--text-muted)" }}>No documents available</span>
+                )}
+                {reviewing.documents.map((doc) => (
+                  <button
+                    key={doc.label}
+                    onClick={() => setPreview(doc)}
+                    className="flex items-center gap-1.5 font-medium transition-opacity hover:opacity-80"
+                    style={{ background: "var(--indigo-dark)", border: "1px solid rgba(34,195,214,0.2)", borderRadius: 8, padding: "6px 10px", fontSize: 10.5, color: "var(--indigo-light)", cursor: "pointer", fontFamily: "inherit" }}
+                  >
+                    <FileText size={12} /> {doc.label}
+                  </button>
+                ))}
+              </div>
+            </DrawerSection>
+          </>
+        )}
+      </ReviewDrawer>
 
       {/* Document lightbox */}
       {preview && (
         <div
           className="fixed inset-0 flex items-center justify-center"
-          style={{ background: "rgba(0,0,0,0.75)", zIndex: 100 }}
+          style={{ background: "rgba(0,0,0,0.75)", zIndex: 200 }}
           onClick={() => setPreview(null)}
         >
           <div
@@ -370,14 +316,14 @@ export function VerificationsPage() {
       )}
 
       <ConfirmDialog
-        open={rejectTarget !== null}
-        title={rejectTarget && rejectTarget.ids.length > 1 ? `Reject ${rejectTarget.ids.length} providers?` : "Reject this verification?"}
+        open={rejectTargetId !== null}
+        title="Reject this verification?"
         message="The provider will need to resubmit their documents. Add a reason so it's on the record."
         confirmLabel="Reject"
-        busy={bulkBusy}
+        busy={rejectBusy}
         confirmDisabled={rejectReasonTooLong}
         onConfirm={confirmReject}
-        onCancel={() => setRejectTarget(null)}
+        onCancel={() => setRejectTargetId(null)}
       >
         <textarea
           autoFocus
@@ -396,6 +342,19 @@ export function VerificationsPage() {
           {rejectReason.length}/{REASON_MAX_LENGTH}
         </div>
       </ConfirmDialog>
+
+      <ConfirmDialog
+        open={confirmingExport}
+        danger={false}
+        title="Export to CSV?"
+        message={`This downloads ${filtered.length} row${filtered.length === 1 ? "" : "s"} as a .csv file to your device.`}
+        confirmLabel="Export"
+        onConfirm={() => {
+          setConfirmingExport(false);
+          exportCsv();
+        }}
+        onCancel={() => setConfirmingExport(false)}
+      />
     </div>
   );
 }

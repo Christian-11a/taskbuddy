@@ -3,7 +3,10 @@
 import { useEffect, useState } from "react";
 import { RefreshCw, ShieldAlert } from "lucide-react";
 import * as services from "@/lib/services";
+import { Pagination } from "@/components/ui/Pagination";
 import type { AuditAction } from "@/lib/domain";
+
+const PAGE_SIZE = 7;
 
 /** Human-readable label for the moderation action codes AdminActionsService
  *  writes (e.g. "user.suspend" — see backend/src/admin/admin-actions.service.ts). */
@@ -21,6 +24,7 @@ export function AuditLogPage() {
   const [actions, setActions] = useState<AuditAction[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
+  const [page, setPage] = useState(1);
 
   /** The Refresh button's handler. Safe to set state synchronously here —
    *  it runs from an event, not from an effect. */
@@ -29,6 +33,7 @@ export function AuditLogPage() {
     setError(false);
     try {
       setActions(await services.getAuditLog());
+      setPage(1);
     } catch {
       setError(true);
     } finally {
@@ -61,8 +66,8 @@ export function AuditLogPage() {
     <div>
       <div className="flex items-start justify-between flex-wrap gap-3 mb-4">
         <div>
-          <div className="text-white font-bold" style={{ fontSize: "clamp(15px, 1.5vw, 18px)" }}>Audit Log</div>
-          <div style={{ fontSize: 13, color: "var(--text-muted)", marginTop: 4 }}>
+          <div className="text-white font-bold" style={{ fontSize: 22, letterSpacing: "-0.025em" }}>Audit Log</div>
+          <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 5, lineHeight: 1.45 }}>
             Every suspend, reinstate, cancel, and dispute resolution — with the admin behind it
           </div>
         </div>
@@ -76,7 +81,8 @@ export function AuditLogPage() {
         </button>
       </div>
 
-      <div className="rounded-xl p-5" style={{ background: "var(--card-bg)", border: "1px solid var(--card-border)" }}>
+      <div className="rounded-xl overflow-hidden" style={{ background: "var(--card-bg)", border: "1px solid var(--card-border)" }}>
+        <div style={{ padding: 20 }}>
         {loading && (
           <div className="text-center py-12" style={{ color: "var(--text-muted)", fontSize: 13 }}>Loading…</div>
         )}
@@ -90,7 +96,7 @@ export function AuditLogPage() {
         )}
         {!loading && !error && actions.length > 0 && (
           <div className="flex flex-col gap-3">
-            {actions.map((a) => (
+            {actions.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE).map((a) => (
               <div key={a.id} className="flex items-start justify-between gap-3" style={{ fontSize: 11.4 }}>
                 <div>
                   <div className="text-white font-medium capitalize">{actionLabel(a.action)}</div>
@@ -104,6 +110,8 @@ export function AuditLogPage() {
             ))}
           </div>
         )}
+        </div>
+        {!loading && !error && <Pagination page={page} pageSize={PAGE_SIZE} total={actions.length} onPageChange={setPage} itemLabel="actions" />}
       </div>
     </div>
   );

@@ -6,7 +6,7 @@ import { AlertTriangle } from "lucide-react";
 import { useApp } from "@/context/AppContext";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { Header } from "@/components/layout/Header";
-import { LOGIN_PATH, PAGE_TITLES, pathToPage } from "@/lib/routes";
+import { LOGIN_PATH, pathToPage } from "@/lib/routes";
 
 /**
  * Chrome + auth gate for every admin page. A route group `(admin)` rather than
@@ -71,15 +71,13 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       />
 
       <div className={`content-area${sidebarCollapsed ? " sidebar-collapsed" : ""} flex flex-col flex-1 overflow-hidden`}>
-        <Header
-          title={activePage ? PAGE_TITLES[activePage] : "TaskBuddy"}
-          onOpenDrawer={() => setDrawerOpen(true)}
-        />
+        <Header onOpenDrawer={() => setDrawerOpen(true)} />
 
         <main
           className="flex-1 overflow-y-auto"
-          style={{ background: "var(--bg-main)", padding: "clamp(12px, 2vw, 20px) clamp(16px, 3vw, 40px)" }}
+          style={{ background: "var(--bg-main)" }}
         >
+          <div style={{ padding: "26px 28px 40px", maxWidth: 1540, width: "100%", margin: "0 auto" }}>
           {/* Sits above every page rather than inside one: a failed load
               leaves *all* of them showing empty tables and zeroed stats, so
               the warning belongs where it's visible regardless of which
@@ -102,6 +100,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
             </div>
           )}
           {children}
+          </div>
         </main>
       </div>
     </div>

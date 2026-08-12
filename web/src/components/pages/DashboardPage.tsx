@@ -64,8 +64,25 @@ const activityIcon = (type: string) => {
 };
 
 export function DashboardPage() {
-  const { dashboardStats, recentActivity, disputes, loading } = useApp();
+  const { dashboardStats, recentActivity, disputes, transactions, bookings, users, bookingsSeries, loading } = useApp();
   const openDisputes = disputes.filter((d) => d.isOpen).length;
+  const escrowUnderReview = transactions.filter((t) => t.status === "IN_ESCROW").length;
+  const escrowHeld = transactions.filter((t) => t.status === "IN_ESCROW").reduce((s, t) => s + t.amountValue, 0);
+  const openJobs = bookings.filter((b) => b.status === "Open").length;
+  const matchingJobs = bookings.filter((b) => b.status === "Matching").length;
+  const disputeRate = dashboardStats ? (dashboardStats.totalBookings > 0 ? (disputes.length / dashboardStats.totalBookings) * 100 : 0) : 0;
+
+  const now = new Date();
+  const newUsersThisMonth = users.filter((u) => {
+    const d = new Date(u.createdAt);
+    return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth();
+  }).length;
+  const activeProviderShare = dashboardStats && dashboardStats.totalUsers > 0
+    ? Math.round((dashboardStats.activeProviders / dashboardStats.totalUsers) * 1000) / 10
+    : 0;
+  // Booking trend is already aggregated server-side and sorted ascending —
+  // the last point is the current month, real data rather than a guess.
+  const bookingsThisMonth = bookingsSeries.length > 0 ? bookingsSeries[bookingsSeries.length - 1].value : 0;
 
   if (loading || !dashboardStats) {
     return (
@@ -80,8 +97,8 @@ export function DashboardPage() {
       {/* Section Header */}
       <div className="flex items-start justify-between mb-4">
         <div>
-          <div className="text-white font-bold" style={{ fontSize: 18 }}>Platform Overview</div>
-          <div style={{ fontSize: 13, color: "var(--text-muted)", marginTop: 4 }}>
+          <div className="text-white font-bold" style={{ fontSize: 22, letterSpacing: "-0.025em" }}>Platform Overview</div>
+          <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 5, lineHeight: 1.45 }}>
             Real-time snapshot of TaskBuddy&apos;s key metrics
           </div>
         </div>
@@ -110,28 +127,28 @@ export function DashboardPage() {
           icon={<Users size={14} />}
           label="Total Users"
           value={dashboardStats.totalUsers.toLocaleString()}
-          sub="Registered accounts"
-          accent="#6366f1"
+          sub={newUsersThisMonth > 0 ? `+${newUsersThisMonth} this month` : "No new signups this month"}
+          accent="#22c3d6"
         />
         <StatCard
           icon={<ShieldCheck size={14} />}
           label="Active Providers"
           value={dashboardStats.activeProviders}
-          sub="Currently active"
-          accent="#8b5cf6"
-        />
-        <StatCard
-          icon={<CalendarDays size={14} />}
-          label="Total Bookings"
-          value={dashboardStats.totalBookings.toLocaleString()}
-          sub="All-time total"
+          sub={`${activeProviderShare}% of registered users`}
           accent="#22c55e"
         />
         <StatCard
+          icon={<CalendarDays size={14} />}
+          label="Bookings This Month"
+          value={bookingsThisMonth.toLocaleString()}
+          sub={`${dashboardStats.completionRate}% completion rate`}
+          accent="#38bdf8"
+        />
+        <StatCard
           icon={<CreditCard size={14} />}
-          label="Monthly Revenue"
+          label="Monthly GMV"
           value={formatCurrency(dashboardStats.monthlyRevenue)}
-          sub="Current month"
+          sub={`${formatCurrency(escrowHeld)} currently held in escrow`}
           accent="#f59e0b"
         />
       </div>
@@ -176,28 +193,84 @@ export function DashboardPage() {
             Review <ArrowUpRight size={10} />
           </Link>
         </div>
+        <div
+          className="flex items-center gap-3 px-4 py-3 rounded-xl flex-1"
+          style={{ background: "var(--card-bg)", border: "1px solid var(--card-border)" }}
+        >
+          <CreditCard size={16} style={{ color: "var(--indigo-light)" }} />
+          <div>
+            <div className="text-white font-bold" style={{ fontSize: 18 }}>{escrowUnderReview}</div>
+            <div style={{ fontSize: 10, color: "var(--text-muted)" }}>Escrow Under Review</div>
+          </div>
+          <Link
+            href={pageToPath("transactions")}
+            className="ml-auto flex items-center gap-1 font-medium transition-opacity hover:opacity-75"
+            style={{ fontSize: 10, color: "var(--indigo-light)", textDecoration: "none" }}
+          >
+            Review <ArrowUpRight size={10} />
+          </Link>
+        </div>
       </div>
 
-      {/* Recent Activity */}
-      <div
-        className="rounded-xl p-5"
-        style={{ background: "var(--card-bg)", border: "1px solid var(--card-border)" }}
-      >
-        <div className="font-semibold text-white mb-1" style={{ fontSize: 14 }}>Recent Activity</div>
-        <div style={{ fontSize: 11.4, color: "var(--text-muted)", marginBottom: 16 }}>Latest platform events</div>
-        <div className="flex flex-col gap-3">
-          {recentActivity.map((a, i) => (
-            <div key={i} className="flex items-center gap-3">
-              <div
-                className="flex items-center justify-center flex-shrink-0 rounded-lg"
-                style={{ width: 26, height: 26, background: "var(--chip-bg)" }}
-              >
-                {activityIcon(a.type)}
+      {/* Recent Activity + Marketplace Health */}
+      <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1.6fr)_minmax(260px,0.8fr)] gap-3">
+        <div
+          className="rounded-xl p-5"
+          style={{ background: "var(--card-bg)", border: "1px solid var(--card-border)" }}
+        >
+          <div className="flex items-start justify-between mb-1 gap-3">
+            <div>
+              <div className="font-semibold text-white" style={{ fontSize: 14 }}>Recent Platform Activity</div>
+              <div style={{ fontSize: 10.5, color: "var(--text-muted)", marginTop: 4 }}>Latest marketplace and administrative events.</div>
+            </div>
+            <Link
+              href={pageToPath("activity-log")}
+              className="flex-shrink-0 font-semibold transition-opacity hover:opacity-80"
+              style={{ background: "var(--chip-bg)", border: "1px solid var(--border-md)", borderRadius: 9, padding: "6px 12px", fontSize: 11, color: "var(--text-light)", textDecoration: "none" }}
+            >
+              View activity
+            </Link>
+          </div>
+          <div className="flex flex-col gap-3" style={{ marginTop: 12 }}>
+            {/* Dashboard is a preview, not the full log — the Activity page is the complete history. */}
+            {recentActivity.slice(0, 7).map((a, i) => (
+              <div key={i} className="flex items-center gap-3">
+                <div
+                  className="flex items-center justify-center flex-shrink-0 rounded-lg"
+                  style={{ width: 26, height: 26, background: "var(--chip-bg)" }}
+                >
+                  {activityIcon(a.type)}
+                </div>
+                <div className="flex-1 text-white" style={{ fontSize: 11.4 }}>{a.text}</div>
+                <div className="flex items-center gap-1 flex-shrink-0" style={{ fontSize: 10, color: "var(--text-muted)" }}>
+                  <Clock size={9} /> {a.time}
+                </div>
               </div>
-              <div className="flex-1 text-white" style={{ fontSize: 11.4 }}>{a.text}</div>
-              <div className="flex items-center gap-1 flex-shrink-0" style={{ fontSize: 10, color: "var(--text-muted)" }}>
-                <Clock size={9} /> {a.time}
-              </div>
+            ))}
+          </div>
+        </div>
+
+        <div
+          className="rounded-xl p-5"
+          style={{ background: "var(--card-bg)", border: "1px solid var(--card-border)" }}
+        >
+          <div className="font-semibold text-white mb-1" style={{ fontSize: 14 }}>Marketplace Health</div>
+          <div style={{ fontSize: 11.4, color: "var(--text-muted)", marginBottom: 12 }}>Current operational signals</div>
+          {[
+            ["Completion rate", `${dashboardStats.completionRate}%`],
+            ["Open jobs", String(openJobs)],
+            ["Jobs matching", String(matchingJobs)],
+            ["Escrow held", formatCurrency(escrowHeld)],
+            ["Dispute rate", `${disputeRate.toFixed(1)}%`],
+            ["Avg provider rating", `${dashboardStats.avgRating} ★`],
+          ].map(([label, value], i, arr) => (
+            <div
+              key={label}
+              className="flex items-center justify-between"
+              style={{ padding: "11px 0", borderBottom: i === arr.length - 1 ? "none" : "1px solid var(--border)" }}
+            >
+              <span style={{ fontSize: 11.4, color: "var(--text-light)" }}>{label}</span>
+              <span className="text-white font-bold" style={{ fontSize: 13 }}>{value}</span>
             </div>
           ))}
         </div>

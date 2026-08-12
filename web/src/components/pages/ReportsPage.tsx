@@ -20,7 +20,7 @@ import { formatCurrency, formatCurrencyCompact } from "@/lib/adapters";
 import { datedFilename, downloadCsv, toCsv } from "@/lib/export/csv";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 
-const PIE_COLORS = ["#6366f1", "#8b5cf6", "#22c55e", "#f59e0b", "#ef4444", "#60a5fa"];
+const PIE_COLORS = ["#22c3d6", "#38bdf8", "#22c55e", "#f59e0b", "#ef4444", "#a78bfa"];
 
 export function ReportsPage() {
   const {
@@ -75,8 +75,8 @@ export function ReportsPage() {
     <div>
       <div className="flex items-start justify-between flex-wrap gap-3 mb-4">
         <div>
-          <div className="text-white font-bold" style={{ fontSize: 18 }}>Reports & Analytics</div>
-          <div style={{ fontSize: 13, color: "var(--text-muted)", marginTop: 4 }}>
+          <div className="text-white font-bold" style={{ fontSize: 22, letterSpacing: "-0.025em" }}>Reports & Analytics</div>
+          <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 5, lineHeight: 1.45 }}>
             Platform performance metrics and business intelligence
           </div>
         </div>
@@ -131,8 +131,8 @@ export function ReportsPage() {
               <AreaChart data={revenueSeries}>
                 <defs>
                   <linearGradient id="rev" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#6366f1" stopOpacity={0.3} />
-                    <stop offset="95%" stopColor="#6366f1" stopOpacity={0} />
+                    <stop offset="5%" stopColor="#22c3d6" stopOpacity={0.3} />
+                    <stop offset="95%" stopColor="#22c3d6" stopOpacity={0} />
                   </linearGradient>
                 </defs>
                 <XAxis dataKey="month" tick={{ fill: "#6b7280", fontSize: 10 }} axisLine={false} tickLine={false} />
@@ -150,7 +150,7 @@ export function ReportsPage() {
                   itemStyle={{ color: "var(--text-white)", fontSize: 12, fontWeight: 600, padding: 0 }}
                   formatter={(v: number) => [formatCurrency(v), "Revenue"]}
                 />
-                <Area type="monotone" dataKey="value" stroke="#6366f1" fill="url(#rev)" strokeWidth={2} />
+                <Area type="monotone" dataKey="value" stroke="#22c3d6" fill="url(#rev)" strokeWidth={2} />
               </AreaChart>
             </ResponsiveContainer>
           )}
@@ -234,7 +234,7 @@ export function ReportsPage() {
                     className="h-full rounded-full"
                     style={{
                       width: `${(p.jobs / maxProviderJobs) * 100}%`,
-                      background: "linear-gradient(90deg, #6366f1, #8b5cf6)",
+                      background: "linear-gradient(90deg, #22c3d6, #38bdf8)",
                     }}
                   />
                 </div>
@@ -266,7 +266,7 @@ export function ReportsPage() {
                 itemStyle={{ color: "var(--text-white)", fontSize: 12, fontWeight: 600, padding: 0 }}
                 formatter={(v: number) => [v, "Bookings"]}
               />
-              <Bar dataKey="value" fill="#8b5cf6" radius={[4, 4, 0, 0]} />
+              <Bar dataKey="value" fill="#38bdf8" radius={[4, 4, 0, 0]} />
             </BarChart>
           </ResponsiveContainer>
         </div>

@@ -6,7 +6,10 @@ import { useApp } from "@/context/AppContext";
 import { datedFilename, downloadCsv, toCsv } from "@/lib/export/csv";
 import type { ActivityType } from "@/lib/domain";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
+import { Pagination } from "@/components/ui/Pagination";
 import clsx from "clsx";
+
+const PAGE_SIZE = 7;
 
 type Filter = "all" | ActivityType;
 
@@ -33,6 +36,7 @@ export function ActivityLogPage() {
   const [filter, setFilter] = useState<Filter>("all");
   const [oldestFirst, setOldestFirst] = useState(false);
   const [confirmingExport, setConfirmingExport] = useState(false);
+  const [page, setPage] = useState(1);
 
   const matched = recentActivity.filter((a) => {
     const matchFilter = filter === "all" || a.type === filter;
@@ -54,8 +58,8 @@ export function ActivityLogPage() {
     <div>
       <div className="flex items-start justify-between flex-wrap gap-3 mb-4">
         <div>
-          <div className="text-white font-bold" style={{ fontSize: "clamp(15px, 1.5vw, 18px)" }}>Activity Log</div>
-          <div style={{ fontSize: 13, color: "var(--text-muted)", marginTop: 4 }}>
+          <div className="text-white font-bold" style={{ fontSize: 22, letterSpacing: "-0.025em" }}>Activity Log</div>
+          <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 5, lineHeight: 1.45 }}>
             Recent booking status transitions across the platform — the latest {recentActivity.length} events
           </div>
         </div>
@@ -80,22 +84,22 @@ export function ActivityLogPage() {
       </div>
 
       <div className="flex gap-3 items-center mb-4 flex-wrap">
-        <div className="relative" style={{ flex: "1 1 200px", maxWidth: 313 }}>
+        <div className="relative" style={{ flex: "1 1 200px", maxWidth: 360 }}>
           <Search size={13} className="absolute top-1/2 -translate-y-1/2 left-3 opacity-40" style={{ color: "var(--text-white)" }} />
           <input
             className="w-full text-white outline-none"
             placeholder="Search by job title…"
             aria-label="Search activity by job title"
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            style={{ background: "var(--input-bg)", border: "1px solid var(--border-md)", borderRadius: 11, padding: "8px 13px 8px 32px", fontSize: 11.4, fontFamily: "inherit", color: "var(--text-white)" }}
+            onChange={(e) => { setSearch(e.target.value); setPage(1); }}
+            style={{ background: "var(--input-bg)", border: "1px solid var(--border-md)", height: 38, borderRadius: 9, padding: "0 13px 0 36px", fontSize: 12, fontFamily: "inherit", color: "var(--text-white)" }}
           />
         </div>
-        <div className="inline-flex rounded-xl p-1 gap-1 flex-wrap" style={{ background: "var(--chip-bg)" }}>
+        <div className="inline-flex flex-wrap" style={{ background: "var(--chip-bg)", padding: 3, borderRadius: 9, gap: 2 }}>
           {(["all", ...typesPresent] as Filter[]).map((f) => (
-            <button key={f} onClick={() => setFilter(f)}
-              className={clsx("rounded-lg font-medium cursor-pointer transition-all", filter === f ? "text-indigo-300" : "text-gray-500 hover:text-gray-300")}
-              style={{ padding: "5px 12px", fontSize: 11.4, background: filter === f ? "rgba(99,102,241,0.25)" : "transparent", border: "none", fontFamily: "inherit" }}
+            <button key={f} onClick={() => { setFilter(f); setPage(1); }}
+              className={clsx("rounded-lg font-medium cursor-pointer transition-all", filter !== f && "text-gray-500 hover:text-gray-300")}
+              style={{ padding: "7px 11px", fontSize: 11, background: filter === f ? "var(--indigo-dark)" : "transparent", color: filter === f ? "var(--indigo-light)" : undefined, border: "none", fontFamily: "inherit" }}
             >
               {f === "all" ? "All" : TYPE_LABEL[f]}
             </button>
@@ -103,7 +107,8 @@ export function ActivityLogPage() {
         </div>
       </div>
 
-      <div className="rounded-xl p-5" style={{ background: "var(--card-bg)", border: "1px solid var(--card-border)" }}>
+      <div className="rounded-xl overflow-hidden" style={{ background: "var(--card-bg)", border: "1px solid var(--card-border)" }}>
+        <div style={{ padding: 20 }}>
         {filtered.length === 0 && (
           <div className="text-center py-12" style={{ color: "var(--text-muted)", fontSize: 13 }}>
             {loading
@@ -114,7 +119,7 @@ export function ActivityLogPage() {
           </div>
         )}
         <div className="flex flex-col gap-3">
-          {filtered.map((a, i) => (
+          {filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE).map((a, i) => (
             <div key={i} className="flex items-center gap-3">
               <div
                 className="flex items-center justify-center flex-shrink-0 rounded-lg"
@@ -129,6 +134,8 @@ export function ActivityLogPage() {
             </div>
           ))}
         </div>
+        </div>
+        <Pagination page={page} pageSize={PAGE_SIZE} total={filtered.length} onPageChange={setPage} itemLabel="events" />
       </div>
 
       <ConfirmDialog

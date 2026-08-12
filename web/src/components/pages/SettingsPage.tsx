@@ -189,8 +189,8 @@ export function SettingsPage() {
   return (
     <div>
       <div className="mb-4">
-        <div className="text-white font-bold" style={{ fontSize: "clamp(15px, 1.5vw, 18px)" }}>Settings</div>
-        <div style={{ fontSize: 13, color: "var(--text-muted)", marginTop: 4 }}>Configure your admin console preferences</div>
+        <div className="text-white font-bold" style={{ fontSize: 22, letterSpacing: "-0.025em" }}>Settings</div>
+        <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 5, lineHeight: 1.45 }}>Configure your admin console preferences</div>
       </div>
 
       {saved && (
@@ -265,7 +265,7 @@ export function SettingsPage() {
         <button
           onClick={handleSave}
           className="flex items-center gap-2 font-semibold transition-opacity hover:opacity-90"
-          style={{ background: "linear-gradient(172deg, #6363f1 0%, #8b5cf6 100%)", color: "#fff", borderRadius: 11, padding: "10px 20px", fontSize: 13, border: "none", cursor: "pointer", fontFamily: "inherit" }}
+          style={{ background: "linear-gradient(172deg, #22c3d6 0%, #38bdf8 100%)", color: "#fff", borderRadius: 11, padding: "10px 20px", fontSize: 13, border: "none", cursor: "pointer", fontFamily: "inherit" }}
         >
           <Save size={14} /> Save account changes
         </button>

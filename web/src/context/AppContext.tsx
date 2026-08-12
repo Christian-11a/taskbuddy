@@ -134,9 +134,6 @@ interface AppState {
   // mutations
   approveVerification: (id: string) => Promise<void>;
   rejectVerification: (id: string, reason?: string) => Promise<void>;
-  /** Resolve with per-id counts so the caller can report partial failures. */
-  bulkApproveVerifications: (ids: string[]) => Promise<services.BulkCounts>;
-  bulkRejectVerifications: (ids: string[], reason?: string) => Promise<services.BulkCounts>;
   setUserStatus: (id: string, status: "Active" | "Suspended", suspend?: services.SuspendOptions) => Promise<void>;
   bulkSetUserStatus: (ids: string[], status: "Active" | "Suspended", suspend?: services.SuspendOptions) => Promise<services.BulkCounts>;
   sendPasswordReset: (id: string) => Promise<boolean>;
@@ -368,26 +365,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
     [refreshStats],
   );
 
-  const bulkApproveVerifications = useCallback(
-    async (ids: string[]) => {
-      const { rows, ...counts } = await services.bulkApproveVerifications(ids);
-      setDomainVerifications(rows);
-      await refreshStats();
-      return counts;
-    },
-    [refreshStats],
-  );
-
-  const bulkRejectVerifications = useCallback(
-    async (ids: string[], reason?: string) => {
-      const { rows, ...counts } = await services.bulkRejectVerifications(ids, reason);
-      setDomainVerifications(rows);
-      await refreshStats();
-      return counts;
-    },
-    [refreshStats],
-  );
-
   const setUserStatus = useCallback(
     async (id: string, status: "Active" | "Suspended", suspend?: services.SuspendOptions) => {
       setDomainUsers(await services.setUserStatus(id, STATUS_TO_DOMAIN[status], suspend));
@@ -469,7 +446,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
       dashboardStats, revenueSeries, bookingsSeries, bookingsByCategory,
       recentActivity, topProviders,
       approveVerification, rejectVerification,
-      bulkApproveVerifications, bulkRejectVerifications,
       setUserStatus, bulkSetUserStatus, sendPasswordReset, cancelBooking, resolveDispute,
       darkMode, setDarkMode,
       sidebarCollapsed, setSidebarCollapsed,
@@ -484,7 +460,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
       dashboardStats, revenueSeries, bookingsSeries, bookingsByCategory,
       recentActivity, topProviders,
       approveVerification, rejectVerification,
-      bulkApproveVerifications, bulkRejectVerifications,
       setUserStatus, bulkSetUserStatus, sendPasswordReset, cancelBooking, resolveDispute,
       darkMode, setDarkMode,
       sidebarCollapsed, setSidebarCollapsed,

@@ -90,7 +90,7 @@ function mapUserRow(row: AdminUserApiRow): AdminUser {
 function mapBookingRow(row: AdminBookingApiRow): AdminBooking {
   return {
     id: row.id,
-    customerName: row.client?.full_name ?? "Unknown client",
+    customerName: row.client?.full_name ?? "Unknown homeowner",
     providerName: row.provider?.full_name ?? "Unassigned",
     service: row.service_categories?.name ?? "Uncategorized",
     status: row.status,
@@ -126,7 +126,7 @@ function mapTransactionRow(row: AdminTransactionApiRow): Transaction {
   return {
     id: row.id,
     jobId: row.job_id,
-    customerName: row.client?.full_name ?? "Unknown client",
+    customerName: row.client?.full_name ?? "Unknown homeowner",
     providerName: row.provider?.full_name ?? "Unassigned",
     service: row.jobs?.service_categories?.name ?? row.jobs?.title ?? "Uncategorized",
     amount: Number(row.amount),
@@ -161,7 +161,7 @@ function mapDisputeRow(
     jobId: row.job_id,
     jobTitle: row.jobs?.title ?? linked?.service ?? "Unknown job",
     service: row.jobs?.service_categories?.name ?? linked?.service ?? "Uncategorized",
-    clientName: row.raised_by_profile?.full_name ?? linked?.customerName ?? "Unknown client",
+    clientName: row.raised_by_profile?.full_name ?? linked?.customerName ?? "Unknown homeowner",
     providerName: linked?.providerName ?? "Unknown provider",
     amount: Number(row.escrow_transactions?.amount ?? linked?.amount ?? 0),
     reason: row.reason,

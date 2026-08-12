@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Image from "next/image";
 import Link from "next/link";
 import {
   ShieldCheck, Users, CreditCard, CalendarDays, AlertTriangle, History,
@@ -34,16 +35,25 @@ export function Sidebar({ activePage, onNavigate, onLogout, collapsed, onToggleC
     ? disputes.filter((d) => d.isOpen).length
     : 0;
 
-  const NAV_ITEMS: { id: Page; label: string; icon: React.ReactNode; badge?: number }[] = [
-    { id: "dashboard", label: "Dashboard", icon: <LayoutDashboard size={15} /> },
-    { id: "verifications", label: "Verifications", icon: <ShieldCheck size={15} />, badge: pendingCount || undefined },
-    { id: "users", label: "User Management", icon: <Users size={15} /> },
-    { id: "transactions", label: "Transactions", icon: <CreditCard size={15} /> },
-    { id: "disputes", label: "Disputes", icon: <AlertTriangle size={15} />, badge: openDisputeCount || undefined },
-    { id: "bookings", label: "Bookings", icon: <CalendarDays size={15} /> },
-    { id: "activity-log", label: "Activity Log", icon: <History size={15} /> },
-    { id: "audit-log", label: "Audit Log", icon: <ScrollText size={15} /> },
-    { id: "reports", label: "Reports", icon: <BarChart3 size={15} /> },
+  type NavItem = { id: Page; label: string; icon: React.ReactNode; badge?: number };
+  const NAV_SECTIONS: { label: string; items: NavItem[] }[] = [
+    { label: "Overview", items: [
+      { id: "dashboard", label: "Dashboard", icon: <LayoutDashboard size={15} /> },
+    ] },
+    { label: "Operations", items: [
+      { id: "verifications", label: "Verifications", icon: <ShieldCheck size={15} />, badge: pendingCount || undefined },
+      { id: "bookings", label: "Bookings", icon: <CalendarDays size={15} /> },
+      { id: "disputes", label: "Disputes", icon: <AlertTriangle size={15} />, badge: openDisputeCount || undefined },
+      { id: "transactions", label: "Transactions", icon: <CreditCard size={15} /> },
+    ] },
+    { label: "People", items: [
+      { id: "users", label: "Users", icon: <Users size={15} /> },
+    ] },
+    { label: "Monitoring", items: [
+      { id: "activity-log", label: "Activity", icon: <History size={15} /> },
+      { id: "audit-log", label: "Audit Log", icon: <ScrollText size={15} /> },
+      { id: "reports", label: "Reports", icon: <BarChart3 size={15} /> },
+    ] },
   ];
 
   return (
@@ -59,12 +69,15 @@ export function Sidebar({ activePage, onNavigate, onLogout, collapsed, onToggleC
       }}
     >
       {/* Logo */}
-      <div className="flex items-center gap-2.5 px-3 py-4 relative" style={{ height: 66, borderBottom: "1px solid var(--border)", minWidth: 0 }}>
-        <div className="flex items-center justify-center flex-shrink-0 font-extrabold text-sm" style={{ width: 33, height: 33, borderRadius: 20, background: "linear-gradient(180deg, #7762f3 0%, #393b8b 72%)", color: "#fff" }}>T</div>
+      <div className="flex items-center gap-2.5 relative" style={{ height: 72, padding: "17px 14px", borderBottom: "1px solid var(--border)", minWidth: 0 }}>
+        {/* alt only carries the brand name when collapsed, since that's the
+            only case where the adjacent "TaskBuddy" text label is hidden —
+            otherwise a screen reader would announce the brand twice. */}
+        <Image src="/taskbuddy-logo.png" alt={collapsed ? "TaskBuddy" : ""} width={36} height={36} className="flex-shrink-0" style={{ borderRadius: 12, objectFit: "cover" }} />
         {!collapsed && (
           <div className="sidebar-label overflow-hidden">
-            <div className="text-white font-bold whitespace-nowrap" style={{ fontSize: 13 }}>TaskBuddy</div>
-            <div style={{ fontSize: 9.8, color: "var(--indigo)" }}>Admin Console</div>
+            <div className="text-white font-bold whitespace-nowrap" style={{ fontSize: 14, letterSpacing: "-0.01em" }}>TaskBuddy</div>
+            <div style={{ fontSize: 10, color: "var(--indigo)" }}>Admin Console</div>
           </div>
         )}
         {/* Collapse toggle — desktop only */}
@@ -80,60 +93,64 @@ export function Sidebar({ activePage, onNavigate, onLogout, collapsed, onToggleC
 
       {/* Nav — real links, so ctrl/middle-click opens a page in a new tab and
           Next.js can prefetch the route on hover. */}
-      <nav className="flex-1 overflow-y-auto px-2 py-3.5" aria-label="Main navigation">
-        {!collapsed && (
-          <div className="uppercase font-semibold px-2.5 mb-2" style={{ fontSize: 8, color: "#4b5563", letterSpacing: "0.8px" }}>Navigation</div>
-        )}
-        {NAV_ITEMS.map((item) => (
-          <Link
-            key={item.id}
-            href={pageToPath(item.id)}
-            onClick={onNavigate}
-            title={collapsed ? item.label : undefined}
-            aria-current={activePage === item.id ? "page" : undefined}
-            className={clsx(
-              "w-full flex items-center gap-2.5 px-3 py-2 rounded-xl mb-0.5 text-left relative transition-all duration-150 text-sm font-medium cursor-pointer",
-              collapsed && "justify-center",
-              activePage === item.id ? "text-indigo-300" : "text-gray-500 hover:bg-white/5 hover:text-gray-300"
+      <nav className="flex-1 overflow-y-auto" style={{ padding: "16px 10px" }} aria-label="Main navigation">
+        {NAV_SECTIONS.map((section, si) => (
+          <div key={section.label}>
+            {!collapsed && (
+              <div className="uppercase font-semibold px-2.5" style={{ fontSize: 9, color: "#516071", letterSpacing: "0.1em", margin: si === 0 ? "2px 0 7px" : "15px 0 7px" }}>{section.label}</div>
             )}
-            style={activePage === item.id ? { background: "var(--indigo-dark)" } : {}}
-          >
-            {activePage === item.id && !collapsed && (
-              <span className="absolute left-0 top-1/2 -translate-y-1/2 rounded-r" style={{ width: 2, height: 20, background: "var(--indigo)" }} />
-            )}
-            <span style={{ opacity: 0.8, flexShrink: 0 }}>{item.icon}</span>
-            {!collapsed && <span className="sidebar-label" style={{ fontSize: 13 }}>{item.label}</span>}
-            {!collapsed && item.badge && <span className="nav-badge">{item.badge}</span>}
-            {collapsed && item.badge && (
-              <span className="absolute rounded-full" style={{ top: 4, right: 4, width: 6, height: 6, background: "var(--red)" }} />
-            )}
-          </Link>
+            {section.items.map((item) => (
+              <Link
+                key={item.id}
+                href={pageToPath(item.id)}
+                onClick={onNavigate}
+                title={collapsed ? item.label : undefined}
+                aria-current={activePage === item.id ? "page" : undefined}
+                className={clsx(
+                  "w-full flex items-center rounded-xl mb-0.5 text-left relative transition-all duration-150 font-medium cursor-pointer",
+                  collapsed && "justify-center",
+                  activePage !== item.id && "text-gray-500 hover:bg-white/5 hover:text-gray-300"
+                )}
+                style={{ padding: "9px 11px", fontSize: 12.5, gap: 11, ...(activePage === item.id ? { background: "var(--indigo-dark)", color: "var(--indigo-light)" } : {}) }}
+              >
+                {activePage === item.id && !collapsed && (
+                  <span className="absolute left-0 top-1/2 -translate-y-1/2 rounded-r" style={{ width: 3, height: 18, background: "var(--indigo)" }} />
+                )}
+                <span style={{ opacity: 0.8, flexShrink: 0, width: 17, display: "inline-flex", justifyContent: "center" }}>{item.icon}</span>
+                {!collapsed && <span className="sidebar-label" style={{ fontSize: 12.5 }}>{item.label}</span>}
+                {!collapsed && item.badge && <span className="nav-badge">{item.badge}</span>}
+                {collapsed && item.badge && (
+                  <span className="absolute rounded-full" style={{ top: 4, right: 4, width: 6, height: 6, background: "var(--red)" }} />
+                )}
+              </Link>
+            ))}
+          </div>
         ))}
       </nav>
 
       {/* Footer */}
-      <div style={{ borderTop: "1px solid var(--border)", padding: collapsed ? "14px 8px" : "14px 13px" }}>
+      <div style={{ borderTop: "1px solid var(--border)", padding: collapsed ? "12px 8px" : "12px 13px 16px" }}>
         <Link
           href={pageToPath("settings")}
           onClick={onNavigate}
           title={collapsed ? "Settings" : undefined}
           aria-current={activePage === "settings" ? "page" : undefined}
           className={clsx(
-            "w-full flex items-center gap-2.5 px-3 py-2 rounded-xl mb-2 text-left transition-all duration-150",
+            "w-full flex items-center gap-2.5 rounded-xl mb-2 text-left transition-all duration-150",
             collapsed && "justify-center",
-            activePage === "settings" ? "text-indigo-300" : "text-gray-500 hover:bg-white/5 hover:text-gray-300"
+            activePage !== "settings" && "text-gray-500 hover:bg-white/5 hover:text-gray-300"
           )}
-          style={activePage === "settings" ? { background: "var(--indigo-dark)" } : {}}
+          style={{ padding: "9px 11px", ...(activePage === "settings" ? { background: "var(--indigo-dark)", color: "var(--indigo-light)" } : {}) }}
         >
           <Settings size={15} style={{ opacity: 0.8, flexShrink: 0 }} />
-          {!collapsed && <span style={{ fontSize: 13, fontWeight: 500 }}>Settings</span>}
+          {!collapsed && <span style={{ fontSize: 12.5, fontWeight: 500 }}>Settings</span>}
         </Link>
 
         <div
           className={clsx("flex items-center rounded-xl", collapsed ? "justify-center px-1 py-2" : "gap-2.5")}
-          style={collapsed ? {} : { background: "var(--card-bg)", padding: "10px 13px" }}
+          style={collapsed ? {} : { background: "var(--card-bg)", border: "1px solid var(--card-border)", padding: "10px 11px", borderRadius: 11 }}
         >
-          <div className="flex items-center justify-center flex-shrink-0 font-bold" style={{ width: 29, height: 29, borderRadius: 11, background: "linear-gradient(135deg, #6366f1, #8b5cf6)", fontSize: 11, color: "#fff" }}>{initials(adminProfile.name)}</div>
+          <div className="flex items-center justify-center flex-shrink-0 font-bold" style={{ width: 29, height: 29, borderRadius: 9, background: "linear-gradient(145deg, #17bfd2, #087d91)", fontSize: 11, color: "#fff" }}>{initials(adminProfile.name)}</div>
           {!collapsed && (
             <>
               <div className="flex-1 min-w-0">
