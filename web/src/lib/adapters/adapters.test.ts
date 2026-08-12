@@ -111,8 +111,7 @@ describe("row adapters", () => {
       suspendedUntil: null, suspensionReason: null,
     };
     const row = toUserRow(u);
-    expect(row.role).toBe("👤 Customer");
-    expect(row.avClass).toBe("av-green");
+    expect(row.role).toBe("👤 Homeowner");
     expect(row.activity).toBe("0 jobs");
     expect(row.statusClass).toBe("badge-suspended");
     // Detail fields fall back to a dash rather than rendering "null".
@@ -184,7 +183,7 @@ describe("row adapters", () => {
     };
     const row = toDisputeRow(d);
     expect(row.isOpen).toBe(false);
-    expect(row.resolution).toBe("Refunded to client");
+    expect(row.resolution).toBe("Refunded to homeowner");
     expect(row.resolvedAt).toBe("May 3, 2026");
   });
 

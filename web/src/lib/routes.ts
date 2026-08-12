@@ -1,25 +1,25 @@
 // ─── Routes ───────────────────────────────────────────────────────────────────
 // The single place that maps a Page id to its URL and back. Every admin page id
-// is already a valid URL slug, so the mapping is mechanical — but keeping it
-// here means the sidebar, the header title, and the active-item highlight all
-// agree, and a new page needs one entry rather than three scattered edits.
+// is already a valid URL slug, so the mapping is mechanical.
 
 import type { Page } from "@/lib/domain";
 
-export const PAGE_TITLES: Record<Page, string> = {
-  dashboard: "Overview",
-  verifications: "Verifications",
-  users: "User Management",
-  transactions: "Transactions",
-  disputes: "Disputes",
-  bookings: "Bookings",
-  "activity-log": "Activity Log",
-  "audit-log": "Audit Log",
-  reports: "Reports & Analytics",
-  settings: "Settings",
-};
-
-const PAGES = Object.keys(PAGE_TITLES) as Page[];
+// Page ids only — the header shows a static "TaskBuddy Admin" brand label
+// rather than a per-page title (each page's own <h1> and browser-tab
+// <title> already say what page it is), so this no longer needs display
+// strings, just the set of valid slugs.
+const PAGES: Page[] = [
+  "dashboard",
+  "verifications",
+  "users",
+  "transactions",
+  "disputes",
+  "bookings",
+  "activity-log",
+  "audit-log",
+  "reports",
+  "settings",
+];
 
 export function pageToPath(page: Page): string {
   return `/${page}`;

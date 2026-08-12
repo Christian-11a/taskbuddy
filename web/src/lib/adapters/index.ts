@@ -91,7 +91,7 @@ export const DISPUTE_STATUS_DISPLAY: Record<DisputeStatus, { label: string; badg
 
 export const DISPUTE_RESOLUTION_LABEL: Record<DisputeResolution, string> = {
   RELEASED_TO_PROVIDER: "Released to provider",
-  REFUNDED_TO_CLIENT: "Refunded to client",
+  REFUNDED_TO_CLIENT: "Refunded to homeowner",
 };
 
 export const WALLET_KIND_DISPLAY: Record<WalletTxnKind, { label: string; badgeClass: string }> = {
@@ -108,7 +108,6 @@ export const WALLET_KIND_DISPLAY: Record<WalletTxnKind, { label: string; badgeCl
 export interface UserRow {
   id: string;
   initials: string;
-  avClass: "av-indigo" | "av-green" | "av-violet";
   name: string;
   email: string;
   /** Display label, emoji-prefixed (e.g. "🔧 Provider"). Use `rolePlain` for exports. */
@@ -119,6 +118,8 @@ export interface UserRow {
   status: string;
   statusClass: string;
   joined: string;
+  /** Raw ISO signup date — `joined` is display-formatted, this is for real date math (e.g. "signups this month"). */
+  createdAt: string;
   activity: string;
   // Detail-view fields (already on admin_user_overview — no extra request).
   phone: string;
@@ -217,20 +218,15 @@ export function toUserRow(u: AdminUser): UserRow {
   return {
     id: u.id,
     initials: initials(u.name),
-    // Customers are green; providers alternate indigo/violet deterministically.
-    avClass: !isProvider
-      ? "av-green"
-      : u.id.charCodeAt(u.id.length - 1) % 2 === 0
-        ? "av-violet"
-        : "av-indigo",
     name: u.name,
     email: u.email,
-    role: isProvider ? "🔧 Provider" : u.role === "admin" ? "🛡️ Admin" : "👤 Customer",
-    rolePlain: isProvider ? "Provider" : u.role === "admin" ? "Admin" : "Customer",
+    role: isProvider ? "🔧 Provider" : u.role === "admin" ? "🛡️ Admin" : "👤 Homeowner",
+    rolePlain: isProvider ? "Provider" : u.role === "admin" ? "Admin" : "Homeowner",
     isProvider,
     status: display.label,
     statusClass: display.badgeClass,
     joined: formatDate(u.createdAt),
+    createdAt: u.createdAt,
     activity: `${u.jobsCompleted} job${u.jobsCompleted === 1 ? "" : "s"}${u.rating ? ` ⭐${u.rating}` : ""}`,
     phone: u.phone ?? "—",
     city: u.city ?? "—",

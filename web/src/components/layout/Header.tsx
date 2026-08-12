@@ -1,20 +1,31 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useMemo } from "react";
 import Link from "next/link";
-import { Bell, Menu, ShieldCheck, AlertTriangle, X } from "lucide-react";
+import { Bell, Menu, ShieldCheck, AlertTriangle, X, Search, Users as UsersIcon, CalendarDays, CreditCard } from "lucide-react";
 import { useApp } from "@/context/AppContext";
 import { pageToPath } from "@/lib/routes";
+import type { Page } from "@/lib/domain";
 
 interface HeaderProps {
-  title: string;
   onOpenDrawer: () => void;
 }
 
-export function Header({ title, onOpenDrawer }: HeaderProps) {
-  const { verifications, disputes } = useApp();
+interface SearchResult {
+  key: string;
+  label: string;
+  sub: string;
+  page: Page;
+  icon: React.ReactNode;
+}
+
+export function Header({ onOpenDrawer }: HeaderProps) {
+  const { verifications, disputes, users, bookings, transactions } = useApp();
   const [notifOpen, setNotifOpen] = useState(false);
   const notifRef = useRef<HTMLDivElement>(null);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchOpen, setSearchOpen] = useState(false);
+  const searchRef = useRef<HTMLDivElement>(null);
 
   const pendingVerifs = verifications.filter((v) => v.status === "pending");
   const openDisputes = disputes.filter((d) => d.isOpen);
@@ -24,11 +35,48 @@ export function Header({ title, onOpenDrawer }: HeaderProps) {
     weekday: "long", year: "numeric", month: "long", day: "numeric",
   });
 
+  // Searches only the records already loaded for their own admin pages (each
+  // capped at LIST_PAGE_SIZE) — not a live backend query. Fine at today's
+  // scale; worth revisiting once real user counts start approaching that cap.
+  const searchResults: SearchResult[] = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    if (q.length < 2) return [];
+    const results: SearchResult[] = [];
+    for (const u of users) {
+      if (results.length >= 6) break;
+      if (u.name.toLowerCase().includes(q) || u.email.toLowerCase().includes(q)) {
+        results.push({ key: `user-${u.id}`, label: u.name, sub: u.email, page: "users", icon: <UsersIcon size={13} /> });
+      }
+    }
+    for (const b of bookings) {
+      if (results.length >= 6) break;
+      if (b.id.toLowerCase().includes(q) || b.customer.toLowerCase().includes(q) || b.provider.toLowerCase().includes(q) || b.service.toLowerCase().includes(q)) {
+        results.push({ key: `booking-${b.id}`, label: `${b.service} — ${b.customer}`, sub: b.id, page: "bookings", icon: <CalendarDays size={13} /> });
+      }
+    }
+    for (const t of transactions) {
+      if (results.length >= 6) break;
+      if (t.id.toLowerCase().includes(q) || t.customer.toLowerCase().includes(q) || t.provider.toLowerCase().includes(q) || t.service.toLowerCase().includes(q)) {
+        results.push({ key: `tx-${t.id}`, label: `${t.service} — ${t.customer}`, sub: t.id, page: "transactions", icon: <CreditCard size={13} /> });
+      }
+    }
+    for (const d of disputes) {
+      if (results.length >= 6) break;
+      if (d.jobTitle.toLowerCase().includes(q) || d.clientName.toLowerCase().includes(q) || d.providerName.toLowerCase().includes(q)) {
+        results.push({ key: `dispute-${d.id}`, label: d.jobTitle, sub: `${d.clientName} vs ${d.providerName}`, page: "disputes", icon: <AlertTriangle size={13} /> });
+      }
+    }
+    return results;
+  }, [searchQuery, users, bookings, transactions, disputes]);
+
   // Close on outside click
   useEffect(() => {
     function handleClick(e: MouseEvent) {
       if (notifRef.current && !notifRef.current.contains(e.target as Node)) {
         setNotifOpen(false);
+      }
+      if (searchRef.current && !searchRef.current.contains(e.target as Node)) {
+        setSearchOpen(false);
       }
     }
     document.addEventListener("mousedown", handleClick);
@@ -38,25 +86,68 @@ export function Header({ title, onOpenDrawer }: HeaderProps) {
   return (
     <header
       className="flex items-center justify-between flex-shrink-0"
-      style={{ background: "var(--bg-header)", borderBottom: "1px solid var(--border)", padding: "13px 20px", height: 69, position: "relative", zIndex: 10 }}
+      style={{ background: "var(--bg-header)", borderBottom: "1px solid var(--border)", padding: "13px 24px", height: 72, position: "sticky", top: 0, zIndex: 35 }}
     >
-      <div className="flex items-center gap-3">
+      <div className="flex items-center" style={{ gap: 14, minWidth: 0 }}>
         <button
           onClick={onOpenDrawer}
           aria-label="Open navigation menu"
-          className="lg:hidden flex items-center justify-center rounded-lg"
+          className="lg:hidden flex items-center justify-center rounded-lg flex-shrink-0"
           style={{ width: 32, height: 32, background: "var(--input-bg)", border: "none", cursor: "pointer", color: "var(--text-muted)" }}
         >
           <Menu size={16} />
         </button>
-        <div>
-          <div className="font-bold" style={{ fontSize: "clamp(15px, 1.5vw, 19.6px)" }}>{title}</div>
-          <div style={{ fontSize: 9.8, color: "var(--text-muted)", marginTop: 4 }}>TaskBuddy Admin Console</div>
+        <span className="hidden md:inline font-bold whitespace-nowrap" style={{ fontSize: 13 }}>TaskBuddy Admin</span>
+        <span className="hidden md:block flex-shrink-0" style={{ width: 1, height: 22, background: "var(--border-md)" }} />
+
+        <div className="relative" style={{ width: "min(420px, 36vw)" }} ref={searchRef}>
+        <span className="absolute top-1/2 -translate-y-1/2 pointer-events-none" style={{ left: 12, opacity: 0.45, display: "flex" }}>
+          <Search size={13} />
+        </span>
+        <input
+          value={searchQuery}
+          onChange={(e) => { setSearchQuery(e.target.value); setSearchOpen(true); }}
+          onFocus={() => setSearchOpen(true)}
+          placeholder="Search users, bookings, transactions…"
+          aria-label="Search"
+          className="w-full outline-none"
+          style={{ height: 38, background: "var(--input-bg)", border: "1px solid var(--border-md)", borderRadius: 10, padding: "0 13px 0 36px", fontSize: 12, color: "var(--text-white)" }}
+        />
+        {searchOpen && searchQuery.trim().length >= 2 && (
+          <div
+            className="absolute left-0 rounded-xl overflow-hidden"
+            style={{ top: 38, width: "100%", minWidth: 280, background: "var(--panel-bg)", border: "1px solid var(--panel-border)", boxShadow: "0 8px 32px rgba(0,0,0,0.4)", zIndex: 50 }}
+          >
+            {searchResults.length === 0 ? (
+              <div className="text-center py-6" style={{ fontSize: 11.4, color: "var(--text-muted)" }}>
+                No matches in currently loaded records.
+              </div>
+            ) : (
+              searchResults.map((r) => (
+                <Link
+                  key={r.key}
+                  href={pageToPath(r.page)}
+                  onClick={() => { setSearchOpen(false); setSearchQuery(""); }}
+                  className="w-full flex items-center gap-3 px-4 py-2.5 text-left transition-colors hover:bg-white/5"
+                  style={{ borderBottom: "1px solid var(--border)", textDecoration: "none" }}
+                >
+                  <div className="flex items-center justify-center flex-shrink-0 rounded-lg" style={{ width: 26, height: 26, background: "var(--indigo-dark)", color: "var(--indigo-light)" }}>
+                    {r.icon}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-white font-medium truncate" style={{ fontSize: 11.4 }}>{r.label}</div>
+                    <div className="truncate" style={{ fontSize: 9.8, color: "var(--text-muted)", marginTop: 1 }}>{r.sub}</div>
+                  </div>
+                </Link>
+              ))
+            )}
+          </div>
+        )}
         </div>
       </div>
 
       <div className="flex items-center gap-3">
-        <span className="hidden md:block" style={{ fontSize: 11.4, color: "var(--text-muted)" }}>{today}</span>
+        <span className="hidden lg:block" style={{ fontSize: 11, color: "var(--text-muted)" }}>{today}</span>
 
         {/* Notification Bell */}
         <div className="relative" ref={notifRef}>
@@ -65,14 +156,14 @@ export function Header({ title, onOpenDrawer }: HeaderProps) {
             aria-label={notifCount > 0 ? `Notifications (${notifCount} unread)` : "Notifications"}
             aria-expanded={notifOpen}
             className="flex items-center justify-center"
-            style={{ width: 29, height: 29, background: "var(--input-bg)", borderRadius: 11, border: "none", cursor: "pointer", color: "var(--text-muted)" }}
+            style={{ width: 36, height: 36, background: "var(--input-bg)", borderRadius: 10, border: "none", cursor: "pointer", color: "var(--text-muted)" }}
           >
             <Bell size={15} />
           </button>
           {notifCount > 0 && (
             <span
               className="absolute flex items-center justify-center font-bold pointer-events-none"
-              style={{ top: -2, right: -2, background: "var(--red)", color: "#fff", fontSize: 7.3, borderRadius: 999, minWidth: 13, height: 13, padding: "0 2px" }}
+              style={{ top: -3, right: -3, background: "var(--red)", color: "#fff", fontSize: 8, borderRadius: 999, minWidth: 16, height: 16, padding: "0 2px", border: "2px solid var(--bg-header)" }}
             >
               {notifCount}
             </span>
@@ -82,7 +173,7 @@ export function Header({ title, onOpenDrawer }: HeaderProps) {
           {notifOpen && (
             <div
               className="absolute right-0 rounded-xl overflow-hidden"
-              style={{ top: 36, width: 320, background: "var(--panel-bg)", border: "1px solid var(--panel-border)", boxShadow: "0 8px 32px rgba(0,0,0,0.4)", zIndex: 50 }}
+              style={{ top: 43, width: 360, background: "var(--panel-bg)", border: "1px solid var(--panel-border)", boxShadow: "0 18px 50px rgba(0,0,0,0.48)", zIndex: 50 }}
             >
               {/* Header */}
               <div className="flex items-center justify-between px-4 py-3" style={{ borderBottom: "1px solid var(--border)" }}>

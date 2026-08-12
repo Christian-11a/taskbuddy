@@ -46,7 +46,7 @@ export default function GlobalError({
         <button
           onClick={reset}
           className="font-semibold text-white transition-opacity hover:opacity-90"
-          style={{ background: "linear-gradient(172deg, #6363f1 0%, #8b5cf6 100%)", borderRadius: 11, padding: "9px 18px", fontSize: 13, border: "none", cursor: "pointer", fontFamily: "inherit" }}
+          style={{ background: "linear-gradient(172deg, #22c3d6 0%, #38bdf8 100%)", borderRadius: 11, padding: "9px 18px", fontSize: 13, border: "none", cursor: "pointer", fontFamily: "inherit" }}
         >
           Try again
         </button>

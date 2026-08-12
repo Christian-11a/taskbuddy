@@ -7,8 +7,11 @@ import { datedFilename, downloadCsv, toCsv } from "@/lib/export/csv";
 import * as services from "@/lib/services";
 import type { AdminBookingDetail } from "@/lib/domain";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
+import { Pagination } from "@/components/ui/Pagination";
 import { useToast } from "@/components/ui/Toast";
 import clsx from "clsx";
+
+const PAGE_SIZE = 7;
 
 type StatusFilter =
   | "all"
@@ -36,6 +39,7 @@ export function BookingsPage() {
   const { showToast } = useToast();
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
+  const [page, setPage] = useState(1);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   // GET /admin/bookings/:id (migration 0014) — fetched on demand per row and
   // cached by id so re-expanding a row doesn't refetch.
@@ -43,6 +47,7 @@ export function BookingsPage() {
   const [cancelTarget, setCancelTarget] = useState<{ id: string } | null>(null);
   const [cancelingId, setCancelingId] = useState<string | null>(null);
   const [confirmingExport, setConfirmingExport] = useState(false);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
 
   async function confirmCancel() {
     if (!cancelTarget) return;
@@ -93,11 +98,37 @@ export function BookingsPage() {
     Expired: bookings.filter((b) => b.status === "Expired").length,
   };
 
-  /** Exports what's on screen (current search + status filter). */
+  const paginated = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+  // "Select all" covers every row matching the current search + filter, not
+  // just the visible page — matches Users, and lets an admin export a whole
+  // filtered set without paging through it first.
+  const allSelected = filtered.length > 0 && filtered.every((b) => selected.has(b.id));
+
+  function toggleOne(id: string) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function toggleAll() {
+    setSelected(allSelected ? new Set() : new Set(filtered.map((b) => b.id)));
+  }
+
+  function clearSelectionOnScopeChange() {
+    setSelected((prev) => (prev.size === 0 ? prev : new Set()));
+    setPage(1);
+  }
+
+  /** Exports the checked rows when any are checked; otherwise everything matching the current search + status filter. */
+  const exportScope = selected.size > 0 ? filtered.filter((b) => selected.has(b.id)) : filtered;
+
   function exportCsv() {
     const csv = toCsv(
-      ["Booking ID", "Customer", "Provider", "Service", "Status", "Posted", "Budget"],
-      filtered.map((b) => [b.id, b.customer, b.provider, b.service, b.status, b.date, b.amount]),
+      ["Booking ID", "Homeowner", "Provider", "Service", "Status", "Posted", "Budget"],
+      exportScope.map((b) => [b.id, b.customer, b.provider, b.service, b.status, b.date, b.amount]),
     );
     downloadCsv(datedFilename("taskbuddy-bookings"), csv);
   }
@@ -106,17 +137,17 @@ export function BookingsPage() {
     <div>
       <div className="flex items-start justify-between flex-wrap gap-3 mb-4">
         <div>
-          <div className="text-white font-bold" style={{ fontSize: "clamp(15px, 1.5vw, 18px)" }}>Bookings</div>
-          <div style={{ fontSize: 13, color: "var(--text-muted)", marginTop: 4 }}>Track all service bookings across the platform</div>
+          <div className="text-white font-bold" style={{ fontSize: 22, letterSpacing: "-0.025em" }}>Bookings</div>
+          <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 5, lineHeight: 1.45 }}>Track all service bookings across the platform</div>
         </div>
         <button
           onClick={() => setConfirmingExport(true)}
-          disabled={filtered.length === 0}
-          title="Download the rows currently shown"
+          disabled={exportScope.length === 0}
+          title={selected.size > 0 ? "Download only the checked rows" : "Download the rows currently shown"}
           className="flex items-center gap-1.5 font-semibold transition-opacity hover:opacity-80 disabled:opacity-40"
           style={{ background: "var(--chip-bg)", border: "1px solid var(--border-md)", borderRadius: 11, padding: "7px 13px", fontSize: 11.4, color: "var(--text-light)", cursor: "pointer", fontFamily: "inherit" }}
         >
-          <Download size={12} /> Export CSV
+          <Download size={12} /> {selected.size > 0 ? `Export ${selected.size} selected` : "Export CSV"}
         </button>
       </div>
 
@@ -124,7 +155,7 @@ export function BookingsPage() {
         {(["all", "Open", "Matching", "Assigned", "In Progress", "Completed", "Cancelled", "Expired"] as StatusFilter[]).map((s) => {
           const accent = STATUS_ACCENTS[s];
           return (
-            <button key={s} onClick={() => setStatusFilter(s)}
+            <button key={s} onClick={() => { setStatusFilter(s); clearSelectionOnScopeChange(); }}
               className="flex items-center gap-2 rounded-xl cursor-pointer transition-opacity hover:opacity-80"
               style={{ padding: "9px 14px", border: `1px solid ${accent}33`, background: statusFilter === s ? `${accent}28` : `${accent}18`, fontSize: 11.4, fontFamily: "inherit", outline: statusFilter === s ? `1px solid ${accent}44` : "none" }}
             >
@@ -140,22 +171,38 @@ export function BookingsPage() {
           <Search size={13} className="absolute top-1/2 -translate-y-1/2 left-3 opacity-40" color="white" />
           <input
             className="w-full text-white outline-none"
-            placeholder="Search by booking ID, customer, or service…"
+            placeholder="Search by booking ID, homeowner, or service…"
             aria-label="Search bookings"
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            style={{ background: "var(--input-bg)", border: "1px solid var(--border-md)", borderRadius: 11, padding: "8px 13px 8px 32px", fontSize: 11.4, fontFamily: "inherit" }}
+            onChange={(e) => { setSearch(e.target.value); clearSelectionOnScopeChange(); }}
+            style={{ background: "var(--input-bg)", border: "1px solid var(--border-md)", height: 38, borderRadius: 9, padding: "0 13px 0 36px", fontSize: 12, fontFamily: "inherit" }}
           />
         </div>
       </div>
+
+      {selected.size > 0 && (
+        <div className="flex items-center gap-3 mb-3 flex-wrap" style={{ fontSize: 11.4, color: "var(--text-muted)" }}>
+          <span>{selected.size} selected</span>
+        </div>
+      )}
 
       <div className="rounded-xl overflow-hidden" style={{ background: "var(--card-bg)", border: "1px solid var(--card-border)" }}>
         <div className="overflow-x-auto">
           <table className="data-table">
             <thead>
               <tr>
+                <th style={{ width: 30 }}>
+                  <input
+                    type="checkbox"
+                    className={clsx("row-checkbox", selected.size > 0 && "always-visible")}
+                    aria-label="Select all bookings"
+                    checked={allSelected}
+                    onChange={toggleAll}
+                    disabled={filtered.length === 0}
+                  />
+                </th>
                 <th>Booking ID</th>
-                <th>Customer</th>
+                <th>Homeowner</th>
                 <th className="hidden md:table-cell">Provider</th>
                 <th className="hidden lg:table-cell">Service</th>
                 <th>Status</th>
@@ -165,9 +212,18 @@ export function BookingsPage() {
               </tr>
             </thead>
             <tbody>
-              {filtered.map((b) => (
+              {paginated.map((b) => (
                 <Fragment key={b.id}>
                   <tr>
+                    <td>
+                      <input
+                        type="checkbox"
+                        className={clsx("row-checkbox", selected.size > 0 && "always-visible")}
+                        aria-label={`Select booking ${b.id}`}
+                        checked={selected.has(b.id)}
+                        onChange={() => toggleOne(b.id)}
+                      />
+                    </td>
                     <td style={{ color: "var(--indigo-light)", fontFamily: "monospace", fontSize: 11 }}>{b.id}</td>
                     <td className="text-white">{b.customer}</td>
                     <td className="hidden md:table-cell" style={{ color: "var(--text-light)" }}>{b.provider}</td>
@@ -203,11 +259,11 @@ export function BookingsPage() {
                   </tr>
                   {expandedId === b.id && (
                     <tr>
-                      <td colSpan={8} style={{ background: "var(--chip-bg)", padding: "12px 16px" }}>
+                      <td colSpan={9} style={{ background: "var(--chip-bg)", padding: "12px 16px" }}>
                         <div className="grid grid-cols-2 md:grid-cols-4 gap-3" style={{ fontSize: 11.4 }}>
                           {[
                             ["BOOKING ID", b.id],
-                            ["CUSTOMER", b.customer],
+                            ["HOMEOWNER", b.customer],
                             ["PROVIDER", b.provider],
                             ["SERVICE", b.service],
                             ["STATUS", b.status],
@@ -269,7 +325,7 @@ export function BookingsPage() {
               ))}
               {filtered.length === 0 && (
                 <tr>
-                  <td colSpan={8} className="text-center py-12" style={{ color: "var(--text-muted)", fontSize: 13 }}>
+                  <td colSpan={9} className="text-center py-12" style={{ color: "var(--text-muted)", fontSize: 13 }}>
                     {loading
                       ? "Loading bookings…"
                       : bookings.length === 0
@@ -281,6 +337,7 @@ export function BookingsPage() {
             </tbody>
           </table>
         </div>
+        <Pagination page={page} pageSize={PAGE_SIZE} total={filtered.length} onPageChange={setPage} itemLabel="bookings" />
       </div>
 
       <ConfirmDialog
@@ -298,7 +355,7 @@ export function BookingsPage() {
         open={confirmingExport}
         danger={false}
         title="Export to CSV?"
-        message={`This downloads ${filtered.length} row${filtered.length === 1 ? "" : "s"} as a .csv file to your device.`}
+        message={`This downloads ${exportScope.length} row${exportScope.length === 1 ? "" : "s"} as a .csv file to your device.`}
         confirmLabel="Export"
         onConfirm={() => {
           setConfirmingExport(false);

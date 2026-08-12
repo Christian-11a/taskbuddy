@@ -119,7 +119,7 @@ export function ConfirmDialog({
   // transformed element.
   return createPortal(
     <div
-      className="fixed inset-0 flex items-center justify-center"
+      className="fixed inset-0 flex items-center justify-center theme-portal"
       style={{ background: "rgba(0,0,0,0.65)", zIndex: 200, padding: 16 }}
       onClick={() => !busy && onCancel()}
     >
@@ -165,7 +165,7 @@ export function ConfirmDialog({
             style={
               danger
                 ? { background: "rgba(239,68,68,0.2)", border: "1px solid rgba(239,68,68,0.35)", borderRadius: 9, padding: "7px 14px", fontSize: 11.4, color: "var(--danger-text)", cursor: busy || confirmDisabled ? "default" : "pointer", fontFamily: "inherit" }
-                : { background: "rgba(99,102,241,0.25)", border: "1px solid rgba(99,102,241,0.4)", borderRadius: 9, padding: "7px 14px", fontSize: 11.4, color: "var(--indigo-light)", cursor: busy || confirmDisabled ? "default" : "pointer", fontFamily: "inherit" }
+                : { background: "var(--indigo-dark)", border: "1px solid rgba(34,195,214,0.4)", borderRadius: 9, padding: "7px 14px", fontSize: 11.4, color: "var(--indigo-light)", cursor: busy || confirmDisabled ? "default" : "pointer", fontFamily: "inherit" }
             }
           >
             {busy ? "Working…" : confirmLabel}
