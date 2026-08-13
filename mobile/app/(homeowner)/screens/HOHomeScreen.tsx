@@ -34,8 +34,9 @@ import { HOScreen } from '../../../src/types/navigation';
 import { useAuth } from '../../../src/context/AuthContext';
 import { useAsyncData } from '../../../src/hooks/useAsyncData';
 import { api } from '../../../src/lib/api';
-import { initials, jobStatusMeta, peso, shortDate } from '../../../src/lib/format';
+import { jobStatusMeta, peso, shortDate } from '../../../src/lib/format';
 import ScreenSkeleton from '../../../src/components/ScreenSkeleton';
+import OwnAvatar from '../../../src/components/OwnAvatar';
 
 const C = V6Colors;
 
@@ -47,7 +48,13 @@ const CATEGORY_ICON: Record<string, typeof Wrench> = {
   Pedicure: Palette,
 };
 
-const ACTIVE_STATUSES = ['open', 'recommending', 'assigned', 'in_progress'];
+const ACTIVE_STATUSES = [
+  'open',
+  'recommending',
+  'assigned',
+  'confirmed',
+  'in_progress',
+];
 
 const ACTIVITY_ICON: Record<string, typeof BriefcaseBusiness> = {
   recommendation_invite: BriefcaseBusiness,
@@ -126,7 +133,7 @@ export default function HOHomeScreen({ onNavigate }: HOHomeScreenProps) {
                 onPress={() => onNavigate('Profile')}
                 activeOpacity={0.8}
               >
-                <Text style={styles.avatarText}>{initials(name)}</Text>
+                <OwnAvatar name={name} textStyle={styles.avatarText} />
               </TouchableOpacity>
             </View>
           </View>
@@ -186,7 +193,9 @@ export default function HOHomeScreen({ onNavigate }: HOHomeScreenProps) {
                   <TouchableOpacity
                     key={cat.id}
                     style={styles.categoryTile}
-                    onPress={() => onNavigate('Create Job')}
+                    // The tapped tile answers the flow's first question, so it
+                    // travels with the navigation and step 1 is skipped.
+                    onPress={() => onNavigate('Create Job', String(cat.id))}
                     activeOpacity={0.85}
                   >
                     <View style={styles.categoryIconWell}>
@@ -322,7 +331,7 @@ const styles = StyleSheet.create({
     width: 40, height: 40, borderRadius: 12,
     backgroundColor: 'rgba(255,255,255,0.16)',
     borderWidth: 1, borderColor: 'rgba(255,255,255,0.12)',
-    alignItems: 'center', justifyContent: 'center',
+    alignItems: 'center', justifyContent: 'center', overflow: 'hidden',
   },
   avatarText: { color: C.white, fontWeight: '800', fontSize: 14.5, fontFamily: 'Inter' },
 

@@ -76,6 +76,15 @@ interface AuthContextValue {
   /** Initiates the Google OAuth browser flow and signs the user in on success. */
   signInWithGoogle: () => Promise<void>;
   /**
+   * Completes a password reset with the emailed code and signs the user in
+   * with the session the backend returns.
+   */
+  resetPassword: (input: {
+    email: string;
+    token: string;
+    newPassword: string;
+  }) => Promise<void>;
+  /**
    * Completes the profile for a new Google OAuth user after role selection.
    * Clears the google_signup_pending flag and refreshes the local profile.
    */
@@ -190,6 +199,26 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const { session: next } = await api.login({
         email: email.trim(),
         password,
+      });
+      const me = await api.me(next.access_token);
+      await persistSession(next);
+      setProfile(me.profile);
+      setProviderProfile(me.provider_profile);
+    },
+    [persistSession],
+  );
+
+  /**
+   * Step 2 of the reset. The backend verifies the emailed code, rotates the
+   * password, and hands back a session — so this ends signed in, rather than
+   * returning to Login to retype a password set seconds ago.
+   */
+  const resetPassword = useCallback(
+    async (input: { email: string; token: string; newPassword: string }) => {
+      const { session: next } = await api.resetPassword({
+        email: input.email.trim(),
+        token: input.token.trim(),
+        new_password: input.newPassword,
       });
       const me = await api.me(next.access_token);
       await persistSession(next);
@@ -379,6 +408,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       signIn,
       signUp,
       signInWithGoogle,
+      resetPassword,
       completeGoogleProfile,
       signOut,
     }),
@@ -391,6 +421,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       signIn,
       signUp,
       signInWithGoogle,
+      resetPassword,
       completeGoogleProfile,
       signOut,
     ],

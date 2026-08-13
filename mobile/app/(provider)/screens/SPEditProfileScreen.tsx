@@ -25,6 +25,7 @@ import {
   View,
 } from 'react-native';
 import { ArrowLeft } from 'lucide-react-native';
+import AvatarPicker from '../../../src/components/AvatarPicker';
 import ConfirmationModal from '../../../src/components/ConfirmationModal';
 import { Sizes, Spacing, V6Colors, V6Radii, V6Shadows } from '../../../src/constants/theme';
 
@@ -32,7 +33,6 @@ const C = V6Colors;
 import { useAuth } from '../../../src/context/AuthContext';
 import { useAsyncData } from '../../../src/hooks/useAsyncData';
 import { api } from '../../../src/lib/api';
-import { initials } from '../../../src/lib/format';
 
 interface SPEditProfileScreenProps {
   onBack: () => void;
@@ -150,15 +150,8 @@ export default function SPEditProfileScreen({ onBack, onSave }: SPEditProfileScr
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
         >
-          {/* Avatar */}
-          <View style={styles.avatarSection}>
-            <View style={styles.avatarCircle}>
-              <Text style={styles.avatarText}>{initials(name)}</Text>
-            </View>
-            <TouchableOpacity activeOpacity={0.7}>
-              <Text style={styles.changePhotoLink}>Change Photo</Text>
-            </TouchableOpacity>
-          </View>
+          {/* Avatar — uploads on its own, independent of the Save button */}
+          <AvatarPicker name={name} />
 
           <FormField label="Full name" value={name} onChangeText={setName} placeholder="Your full name" />
           <FormField label="Email" value={email} placeholder="email@example.com" keyboardType="email-address" editable={false} />
@@ -231,15 +224,6 @@ const styles = StyleSheet.create({
     alignItems: 'center', justifyContent: 'center',
   },
   headerTitle: { flex: 1, color: C.ink900, fontSize: 19.5, fontWeight: '800', fontFamily: 'Inter' },
-
-  avatarSection: { alignItems: 'center', marginBottom: 20 },
-  avatarCircle: {
-    width: 76, height: 76, borderRadius: 38,
-    backgroundColor: C.cyan600, alignItems: 'center', justifyContent: 'center',
-    marginBottom: 8,
-  },
-  avatarText: { color: C.white, fontSize: 26, fontWeight: '800', fontFamily: 'Inter' },
-  changePhotoLink: { fontSize: 14, color: C.cyan700, fontWeight: '700', fontFamily: 'Inter' },
 
   body: { flex: 1 },
   bodyContent: { paddingHorizontal: Spacing.screenH, paddingTop: 20, paddingBottom: 20 },

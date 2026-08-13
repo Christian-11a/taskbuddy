@@ -77,7 +77,11 @@ export default function SPMyJobsScreen({ onNavigate }: SPMyJobsScreenProps) {
     'sp-assigned',
   );
 
-  const activeJobs = (assigned ?? []).filter((j) => ['assigned', 'in_progress'].includes(j.status));
+  // 'assigned' is a booking request awaiting this provider's answer and
+  // 'confirmed' one they accepted — both are live work, so both are Active.
+  const activeJobs = (assigned ?? []).filter((j) =>
+    ['assigned', 'confirmed', 'in_progress'].includes(j.status),
+  );
   const completedJobs = (assigned ?? []).filter((j) => j.status === 'completed');
   const loading = tab === 'Applications' ? loadingApps : loadingAssigned;
 

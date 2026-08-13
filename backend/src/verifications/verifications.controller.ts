@@ -10,7 +10,10 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { Roles } from '../auth/roles.decorator';
 import { CurrentUser } from '../auth/current-user.decorator';
 import { VerificationsService } from './verifications.service';
-import { SubmitVerificationDto } from './dto/verifications.dto';
+import {
+  StartIdentitySessionDto,
+  SubmitVerificationDto,
+} from './dto/verifications.dto';
 import type { Profile } from '../common/types';
 
 /** Provider-facing routes. The admin review queue lives on AdminController. */
@@ -32,8 +35,11 @@ export class VerificationsController {
    */
   @Post('identity-session')
   @HttpCode(200)
-  startIdentity(@CurrentUser() user: Profile) {
-    return this.verificationsService.startIdentitySession(user);
+  startIdentity(
+    @CurrentUser() user: Profile,
+    @Body() dto: StartIdentitySessionDto,
+  ) {
+    return this.verificationsService.startIdentitySession(user, dto);
   }
 
   @Get('me')

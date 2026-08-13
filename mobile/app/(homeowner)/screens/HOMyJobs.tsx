@@ -7,9 +7,14 @@
  * existed in the mockup as its own tab) now lives in HOCalendarScreen.tsx.
  *
  * The mockup's filter tabs (All/Open/Hired/Active/Review/Done) don't map
- * cleanly onto this app's real job-status enum — there's no "hired" or
- * "pending-review" state in the backend — so the tabs here use real buckets
- * (All/Open/Assigned/Active/Completed) with the mockup's exact tab styling.
+ * cleanly onto this app's real job-status enum — there's no "pending-review"
+ * state in the backend — so the tabs here follow the real lifecycle
+ * (All/Open/Awaiting/Confirmed/In Progress/Completed/Cancelled) with the
+ * mockup's exact tab styling.
+ *
+ * Each card carries the seven things a homeowner needs to tell one job from
+ * another without opening it: name, location, status, urgency, price, how
+ * long it has been up, and who is doing it.
  */
 
 import React, { useState } from 'react';
@@ -20,17 +25,25 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import { ClipboardList, MapPin, Plus } from 'lucide-react-native';
+import { ClipboardList, Clock, MapPin, Plus, User } from 'lucide-react-native';
 import { Sizes, Spacing, V6Colors, V6Radii, V6Shadows } from '../../../src/constants/theme';
 import { HOScreen } from '../../../src/types/navigation';
 import { useAsyncData } from '../../../src/hooks/useAsyncData';
 import { api } from '../../../src/lib/api';
-import { jobStatusMeta, peso } from '../../../src/lib/format';
+import { jobStatusMeta, peso, timeAgo, urgencyMeta } from '../../../src/lib/format';
 import ScreenSkeleton from '../../../src/components/ScreenSkeleton';
 
 const C = V6Colors;
 
-const FILTER_TABS = ['All', 'Open', 'Assigned', 'Active', 'Completed'] as const;
+const FILTER_TABS = [
+  'All',
+  'Open',
+  'Awaiting',
+  'Confirmed',
+  'In Progress',
+  'Completed',
+  'Cancelled',
+] as const;
 type FilterTab = (typeof FILTER_TABS)[number];
 
 function matchesFilter(status: string, filter: FilterTab): boolean {
@@ -39,12 +52,17 @@ function matchesFilter(status: string, filter: FilterTab): boolean {
       return true;
     case 'Open':
       return status === 'open' || status === 'recommending';
-    case 'Assigned':
+    // Hired, but the provider has not answered yet.
+    case 'Awaiting':
       return status === 'assigned';
-    case 'Active':
+    case 'Confirmed':
+      return status === 'confirmed';
+    case 'In Progress':
       return status === 'in_progress';
     case 'Completed':
       return status === 'completed';
+    case 'Cancelled':
+      return status === 'cancelled' || status === 'expired';
   }
 }
 
@@ -121,6 +139,7 @@ export default function MyJobs({ onNavigate }: MyJobsProps) {
 
         {filtered.map((job) => {
           const meta = jobStatusMeta(job.status);
+          const urgency = urgencyMeta(job.urgency);
           return (
             <TouchableOpacity
               key={job.id}
@@ -132,18 +151,34 @@ export default function MyJobs({ onNavigate }: MyJobsProps) {
                 <Text style={styles.jobTitle} numberOfLines={1}>{job.title}</Text>
                 {job.budget != null && <Text style={styles.jobPrice}>{peso(job.budget)}</Text>}
               </View>
+
               <View style={styles.jobMetaRow}>
                 <MapPin size={14} color={C.ink400} />
                 <Text style={styles.jobMeta} numberOfLines={1}>{job.address}</Text>
               </View>
-              <View style={styles.jobBottomRow}>
-                <View style={styles.jobStatus}>
+
+              <View style={styles.pillRow}>
+                <View style={[styles.pill, { backgroundColor: meta.bg }]}>
                   <View style={[styles.statusDot, { backgroundColor: meta.color }]} />
-                  <Text style={styles.jobStatusText}>{meta.label}</Text>
+                  <Text style={[styles.pillText, { color: meta.color }]}>{meta.label}</Text>
                 </View>
-                <Text style={styles.jobProvider} numberOfLines={1}>
-                  {job.assigned_provider?.full_name ?? 'Waiting for a provider'}
-                </Text>
+                <View style={[styles.pill, { backgroundColor: urgency.bg }]}>
+                  <Text style={[styles.pillText, { color: urgency.color }]}>{urgency.label}</Text>
+                </View>
+              </View>
+
+              <View style={styles.jobBottomRow}>
+                <View style={styles.jobFootItem}>
+                  <User size={13} color={C.ink400} />
+                  <Text style={styles.jobProvider} numberOfLines={1}>
+                    {job.assigned_provider?.full_name ?? 'No provider yet'}
+                  </Text>
+                </View>
+                <View style={styles.jobFootItem}>
+                  <Clock size={13} color={C.ink400} />
+                  {/* Elapsed since posting — how long this has been waiting. */}
+                  <Text style={styles.jobElapsed}>{timeAgo(job.posted_at)}</Text>
+                </View>
               </View>
             </TouchableOpacity>
           );
@@ -197,13 +232,22 @@ const styles = StyleSheet.create({
   jobTopRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8, marginBottom: 5 },
   jobTitle: { color: C.ink900, fontSize: 15.5, fontWeight: '800', fontFamily: 'Inter', flex: 1 },
   jobPrice: { color: C.ink900, fontSize: 16, fontWeight: '800', fontFamily: 'Inter' },
-  jobMetaRow: { flexDirection: 'row', alignItems: 'center', gap: 5, marginBottom: 11 },
+  jobMetaRow: { flexDirection: 'row', alignItems: 'center', gap: 5, marginBottom: 10 },
   jobMeta: { color: C.ink400, fontSize: 12.5, fontFamily: 'Inter', flex: 1 },
-  jobBottomRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 10 },
-  jobStatus: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  pillRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 11 },
+  pill: {
+    flexDirection: 'row', alignItems: 'center', gap: 5,
+    paddingHorizontal: 9, paddingVertical: 5, borderRadius: 999,
+  },
+  pillText: { fontSize: 11.5, fontWeight: '800', fontFamily: 'Inter' },
+  jobBottomRow: {
+    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 10,
+    borderTopWidth: 1, borderTopColor: '#f1f4f6', paddingTop: 10,
+  },
+  jobFootItem: { flexDirection: 'row', alignItems: 'center', gap: 5, flexShrink: 1 },
   statusDot: { width: 7, height: 7, borderRadius: 4 },
-  jobStatusText: { color: C.ink700, fontSize: 12.5, fontWeight: '700', fontFamily: 'Inter' },
-  jobProvider: { color: C.ink500, fontSize: 12.5, fontWeight: '600', fontFamily: 'Inter' },
+  jobProvider: { color: C.ink500, fontSize: 12.5, fontWeight: '600', fontFamily: 'Inter', flexShrink: 1 },
+  jobElapsed: { color: C.ink400, fontSize: 12, fontFamily: 'Inter' },
 
   stateText: { color: C.ink500, fontSize: 16.5, fontFamily: 'Inter', textAlign: 'center', marginTop: 30 },
   emptyState: { alignItems: 'center', paddingVertical: 48, paddingHorizontal: 24 },

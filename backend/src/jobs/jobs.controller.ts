@@ -4,6 +4,7 @@ import {
   Get,
   Param,
   ParseUUIDPipe,
+  Patch,
   Post,
   Query,
   UseGuards,
@@ -12,7 +13,12 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { Roles } from '../auth/roles.decorator';
 import { CurrentUser } from '../auth/current-user.decorator';
 import { JobsService } from './jobs.service';
-import { BrowseJobsQueryDto, CreateJobDto, DeclineJobDto } from './dto/jobs.dto';
+import {
+  BrowseJobsQueryDto,
+  CreateJobDto,
+  DeclineJobDto,
+  UpdateJobTaskDto,
+} from './dto/jobs.dto';
 import type { Profile } from '../common/types';
 
 @Controller('jobs')
@@ -58,10 +64,29 @@ export class JobsController {
     return this.jobsService.cancel(user, id);
   }
 
+  /** Provider accepts an incoming booking request → 'confirmed'. */
+  @Post(':id/accept')
+  @Roles('provider')
+  accept(@CurrentUser() user: Profile, @Param('id', ParseUUIDPipe) id: string) {
+    return this.jobsService.accept(user, id);
+  }
+
   @Post(':id/start')
   @Roles('provider')
   start(@CurrentUser() user: Profile, @Param('id', ParseUUIDPipe) id: string) {
     return this.jobsService.start(user, id);
+  }
+
+  /** Assigned provider ticks a checklist item off while working. */
+  @Patch(':id/tasks/:taskId')
+  @Roles('provider')
+  updateTask(
+    @CurrentUser() user: Profile,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('taskId', ParseUUIDPipe) taskId: string,
+    @Body() dto: UpdateJobTaskDto,
+  ) {
+    return this.jobsService.updateTask(user, id, taskId, dto);
   }
 
   @Post(':id/decline')

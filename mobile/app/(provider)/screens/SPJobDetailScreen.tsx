@@ -6,19 +6,45 @@
  * bottom-divider only, not a card), .detail-section blocks, and a sticky
  * action bar whose primary button reflects the real job/application state.
  *
- * Deviation: the mockup has a 4-state job lifecycle (hired → in-progress →
- * pending-review → completed) with an explicit "Submit for Review" step.
- * This app's real backend only has 3 states after assignment (assigned →
- * in_progress → completed) — completion is homeowner-triggered, providers
- * have no "submit for review" action — so the in_progress state here shows
- * an informational locked message instead of fabricating a review step that
- * doesn't exist. The real "Decline Booking" feature (not in the mockup, but
- * real functionality via `api.declineJob`) is kept.
+ * The screen has two faces, and which one you get depends on whether this
+ * provider has taken the job on:
+ *
+ *   Claimable — an open job they may propose for, or a booking request a
+ *   homeowner has already made to them (status 'assigned'). The checklist is
+ *   shown read-only: it is the scope of work being offered, not a to-do list
+ *   they own yet. The action bar offers Accept/Decline (a request) or Submit
+ *   Proposal (an open job).
+ *
+ *   In progress — they accepted ('confirmed') or started ('in_progress'). The
+ *   same checklist becomes tappable and gains a progress bar, which is the
+ *   only progress signal this app has: completion is homeowner-triggered, so
+ *   a provider's honest answer to "how far along are you" is which tasks are
+ *   ticked.
+ *
+ * Deviation from the mockup: its 4-state lifecycle has an explicit "Submit for
+ * Review" step. This app's backend has no such action — the homeowner marks a
+ * job complete — so the in_progress state ends in an informational message
+ * rather than a button that would do nothing.
  */
 
 import React, { useState } from 'react';
-import { ActivityIndicator, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
-import { ArrowLeft, Image as ImageIcon, MapPin, MessageCircle, ShieldCheck, X } from 'lucide-react-native';
+import {
+  ActivityIndicator,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+} from 'react-native';
+import {
+  ArrowLeft,
+  Check,
+  Image as ImageIcon,
+  ListChecks,
+  MapPin,
+  MessageCircle,
+  ShieldCheck,
+} from 'lucide-react-native';
 import { CalendarDays } from 'lucide-react-native';
 import { Sizes, Spacing, V6Colors, V6Radii } from '../../../src/constants/theme';
 
@@ -26,8 +52,9 @@ const C = V6Colors;
 import { SPScreen } from '../../../src/types/navigation';
 import { useAuth } from '../../../src/context/AuthContext';
 import { useAsyncData } from '../../../src/hooks/useAsyncData';
-import { api } from '../../../src/lib/api';
-import { shortDate } from '../../../src/lib/format';
+import { api, ApiError, Job, JobTask } from '../../../src/lib/api';
+import { distanceLabel, peso, shortDate } from '../../../src/lib/format';
+import DeclineBookingModal from '../../../src/components/DeclineBookingModal';
 
 interface MyApplication {
   id: string;
@@ -40,6 +67,11 @@ interface SPJobDetailScreenProps {
   onBack: () => void;
   onNavigate: (screen: SPScreen, jobId?: string) => void;
   isUrgent?: boolean;
+}
+
+/** Tasks arrive unordered from the embed — `position` is the client's order. */
+function sortedTasks(job: Job | null): JobTask[] {
+  return [...(job?.job_tasks ?? [])].sort((a, b) => a.position - b.position);
 }
 
 export default function SPJobDetailScreen({ jobId, onBack, onNavigate }: SPJobDetailScreenProps) {
@@ -57,29 +89,76 @@ export default function SPJobDetailScreen({ jobId, onBack, onNavigate }: SPJobDe
 
   const [busy, setBusy] = useState(false);
   const [declineOpen, setDeclineOpen] = useState(false);
-  const [declineReason, setDeclineReason] = useState('');
+  const [actionError, setActionError] = useState<string | null>(null);
+  // Which checklist row is mid-flight, so only that row shows a spinner.
+  const [pendingTaskId, setPendingTaskId] = useState<string | null>(null);
 
   const isAssignedToMe = job?.assigned_provider_id === profile?.id;
+  /** A homeowner hired them and is waiting for an answer. */
+  const isBookingRequest = isAssignedToMe && job?.status === 'assigned';
+  const isConfirmed = isAssignedToMe && job?.status === 'confirmed';
+  const isWorking = isAssignedToMe && job?.status === 'in_progress';
+  const isDone = isAssignedToMe && job?.status === 'completed';
   const canApply = job && ['open', 'recommending'].includes(job.status) && !isAssignedToMe && !myApplication;
-  const canStart = isAssignedToMe && job?.status === 'assigned';
-  const canDecline = isAssignedToMe && job?.status === 'assigned';
   const urgent = job?.urgency === 'urgent';
+
+  const tasks = sortedTasks(job);
+  const doneCount = tasks.filter((t) => t.is_done).length;
+  const progressPct = tasks.length ? Math.round((doneCount / tasks.length) * 100) : 0;
+  // Ticking is only meaningful once the job is theirs and not yet closed.
+  const tasksEditable = isConfirmed || isWorking;
+
+  const errorMessage = (e: unknown) =>
+    e instanceof ApiError ? e.message : 'Something went wrong. Please try again.';
 
   const runAction = async (fn: () => Promise<unknown>) => {
     setBusy(true);
+    setActionError(null);
     try {
       await fn();
       reload();
+    } catch (e) {
+      setActionError(errorMessage(e));
     } finally {
       setBusy(false);
     }
   };
 
-  const submitDecline = async () => {
-    if (!job || !declineReason.trim()) return;
-    setDeclineOpen(false);
-    await runAction(() => api.declineJob(job.id, declineReason.trim()));
-    setDeclineReason('');
+  const submitDecline = async (reason: string) => {
+    if (!job) return;
+    setBusy(true);
+    setActionError(null);
+    try {
+      await api.declineJob(job.id, reason);
+      setDeclineOpen(false);
+      reload();
+    } catch (e) {
+      setActionError(errorMessage(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const toggleTask = async (task: JobTask) => {
+    if (!job || !tasksEditable || pendingTaskId) return;
+    setPendingTaskId(task.id);
+    setActionError(null);
+    try {
+      await api.updateJobTask(job.id, task.id, !task.is_done);
+      reload();
+    } catch (e) {
+      setActionError(errorMessage(e));
+    } finally {
+      setPendingTaskId(null);
+    }
+  };
+
+  const kicker = () => {
+    if (isBookingRequest) return 'BOOKING REQUEST';
+    if (isConfirmed) return 'CONFIRMED BOOKING';
+    if (isWorking) return 'WORK IN PROGRESS';
+    if (isDone) return 'COMPLETED JOB';
+    return `${(job?.service_categories?.name ?? 'JOB').toUpperCase()} OPPORTUNITY`;
   };
 
   return (
@@ -100,12 +179,10 @@ export default function SPJobDetailScreen({ jobId, onBack, onNavigate }: SPJobDe
         <ScrollView style={styles.body} contentContainerStyle={styles.bodyContent} showsVerticalScrollIndicator={false}>
           {/* Hero — matches .detail-hero */}
           <View style={styles.hero}>
-            <Text style={styles.kicker}>
-              {isAssignedToMe ? 'YOUR HIRED JOB' : `${(job.service_categories?.name ?? 'JOB').toUpperCase()} OPPORTUNITY`}
-            </Text>
+            <Text style={styles.kicker}>{kicker()}</Text>
             <View style={styles.heroTitleRow}>
               <Text style={styles.heroTitle}>{job.title}</Text>
-              {job.budget != null && <Text style={styles.heroPrice}>₱{Number(job.budget).toLocaleString()}</Text>}
+              {job.budget != null && <Text style={styles.heroPrice}>{peso(job.budget)}</Text>}
             </View>
             {urgent && <Text style={styles.urgentTag}>URGENT</Text>}
             <View style={styles.factsGrid}>
@@ -114,6 +191,9 @@ export default function SPJobDetailScreen({ jobId, onBack, onNavigate }: SPJobDe
                 <View style={{ flex: 1, minWidth: 0 }}>
                   <Text style={styles.factLabel}>Location</Text>
                   <Text style={styles.factValue} numberOfLines={1}>{job.address}</Text>
+                  {!!distanceLabel(job.distance_km) && (
+                    <Text style={styles.factSub}>{distanceLabel(job.distance_km)}</Text>
+                  )}
                 </View>
               </View>
               <View style={styles.fact}>
@@ -127,6 +207,78 @@ export default function SPJobDetailScreen({ jobId, onBack, onNavigate }: SPJobDe
               </View>
             </View>
           </View>
+
+          {/* A booking request is a decision waiting to be made — say so before
+              the details, not after them. */}
+          {isBookingRequest && (
+            <View style={styles.requestNote}>
+              <Text style={styles.requestNoteText}>
+                <Text style={{ fontWeight: '800' }}>You've been hired for this job.</Text>{' '}
+                Accept to confirm the booking with the homeowner, or decline and tell
+                them why so they can find someone else.
+              </Text>
+            </View>
+          )}
+
+          {/* Progress — only once the job is actually theirs. */}
+          {(isConfirmed || isWorking) && tasks.length > 0 && (
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>Progress</Text>
+              <View style={styles.progressRow}>
+                <View style={styles.progressTrack}>
+                  <View style={[styles.progressFill, { width: `${progressPct}%` }]} />
+                </View>
+                <Text style={styles.progressText}>
+                  {doneCount}/{tasks.length}
+                </Text>
+              </View>
+              <Text style={styles.progressHint}>
+                {doneCount === tasks.length
+                  ? 'All tasks done — the homeowner confirms completion from their side.'
+                  : 'Tick tasks off as you finish them. The homeowner sees this update.'}
+              </Text>
+            </View>
+          )}
+
+          {/* Checklist — read-only while claimable, tappable once it's theirs. */}
+          {tasks.length > 0 && (
+            <View style={styles.section}>
+              <View style={styles.sectionTitleRow}>
+                <ListChecks size={16} color={C.ink900} />
+                <Text style={[styles.sectionTitle, styles.sectionTitleInline]}>
+                  {tasksEditable ? 'Task List' : 'What This Job Includes'}
+                </Text>
+              </View>
+              {tasks.map((task) => (
+                <TouchableOpacity
+                  key={task.id}
+                  style={styles.taskRow}
+                  onPress={() => void toggleTask(task)}
+                  activeOpacity={tasksEditable ? 0.7 : 1}
+                  disabled={!tasksEditable || !!pendingTaskId}
+                  accessibilityRole="checkbox"
+                  accessibilityState={{ checked: task.is_done, disabled: !tasksEditable }}
+                >
+                  <View
+                    style={[
+                      styles.taskBox,
+                      task.is_done && styles.taskBoxDone,
+                      !tasksEditable && styles.taskBoxLocked,
+                    ]}
+                  >
+                    {pendingTaskId === task.id ? (
+                      <ActivityIndicator size="small" color={task.is_done ? C.white : C.cyan700} />
+                    ) : (
+                      task.is_done && <Check size={14} color={C.white} strokeWidth={3} />
+                    )}
+                  </View>
+                  <Text style={[styles.taskLabel, task.is_done && styles.taskLabelDone]}>
+                    {task.label}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          )}
 
           {/* Description */}
           <View style={styles.section}>
@@ -149,7 +301,7 @@ export default function SPJobDetailScreen({ jobId, onBack, onNavigate }: SPJobDe
           </View>
 
           {/* My proposal status (real data, not fabricated) */}
-          {myApplication && (
+          {myApplication && !isAssignedToMe && (
             <View style={styles.trustNote}>
               <Text style={styles.trustNoteText}>
                 <Text style={{ fontWeight: '800' }}>Your proposal</Text>
@@ -163,7 +315,20 @@ export default function SPJobDetailScreen({ jobId, onBack, onNavigate }: SPJobDe
 
           {/* Actions — matches .detail-action-bar */}
           <View style={styles.actionBar}>
-            {isAssignedToMe && job.status === 'assigned' && canStart && (
+            {!!actionError && <Text style={styles.actionError}>{actionError}</Text>}
+
+            {isBookingRequest && (
+              <TouchableOpacity
+                style={styles.primaryBtn}
+                onPress={() => runAction(() => api.acceptJob(job.id))}
+                activeOpacity={0.85}
+                disabled={busy}
+              >
+                <Text style={styles.primaryBtnText}>{busy ? 'Accepting…' : 'Accept Booking'}</Text>
+              </TouchableOpacity>
+            )}
+
+            {isConfirmed && (
               <TouchableOpacity
                 style={styles.primaryBtn}
                 onPress={() => runAction(() => api.startJob(job.id))}
@@ -173,12 +338,13 @@ export default function SPJobDetailScreen({ jobId, onBack, onNavigate }: SPJobDe
                 <Text style={styles.primaryBtnText}>{busy ? 'Starting…' : 'Start Job'}</Text>
               </TouchableOpacity>
             )}
-            {isAssignedToMe && job.status === 'in_progress' && (
+
+            {isWorking && (
               <View style={styles.lockedBtn}>
                 <Text style={styles.lockedBtnText}>Waiting for homeowner to confirm completion</Text>
               </View>
             )}
-            {isAssignedToMe && job.status === 'completed' && (
+            {isDone && (
               <View style={styles.lockedBtn}>
                 <Text style={styles.lockedBtnText}>Job Completed</Text>
               </View>
@@ -224,7 +390,7 @@ export default function SPJobDetailScreen({ jobId, onBack, onNavigate }: SPJobDe
               </TouchableOpacity>
             )}
 
-            {canDecline && (
+            {(isBookingRequest || isConfirmed) && (
               <TouchableOpacity
                 style={styles.outlineDangerBtn}
                 onPress={() => setDeclineOpen(true)}
@@ -240,44 +406,17 @@ export default function SPJobDetailScreen({ jobId, onBack, onNavigate }: SPJobDe
         </ScrollView>
       )}
 
-      {/* Decline reason modal */}
-      <Modal visible={declineOpen} transparent animationType="fade" onRequestClose={() => setDeclineOpen(false)}>
-        <Pressable style={styles.modalOverlay} onPress={() => setDeclineOpen(false)}>
-          <Pressable style={styles.modalDialog} onPress={(e) => e.stopPropagation()}>
-            <View style={styles.modalHeaderRow}>
-              <Text style={styles.modalTitle}>Decline Booking</Text>
-              <TouchableOpacity onPress={() => setDeclineOpen(false)} activeOpacity={0.8}>
-                <X size={22} color={C.ink500} />
-              </TouchableOpacity>
-            </View>
-            <Text style={styles.modalMessage}>
-              Let the client know why you can't take this job. This cancels the booking and refunds them.
-            </Text>
-            <TextInput
-              style={styles.modalInput}
-              placeholder="Reason for declining"
-              placeholderTextColor={C.ink400}
-              value={declineReason}
-              onChangeText={setDeclineReason}
-              multiline
-              numberOfLines={3}
-            />
-            <View style={styles.modalActions}>
-              <TouchableOpacity style={styles.modalCancelBtn} onPress={() => setDeclineOpen(false)} activeOpacity={0.8}>
-                <Text style={styles.modalCancelText}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.modalConfirmBtn, !declineReason.trim() && styles.modalConfirmBtnDisabled]}
-                onPress={submitDecline}
-                activeOpacity={0.85}
-                disabled={!declineReason.trim()}
-              >
-                <Text style={styles.modalConfirmText}>Decline</Text>
-              </TouchableOpacity>
-            </View>
-          </Pressable>
-        </Pressable>
-      </Modal>
+      <DeclineBookingModal
+        visible={declineOpen}
+        jobTitle={job?.title}
+        submitting={busy}
+        error={declineOpen ? actionError : null}
+        onCancel={() => {
+          setDeclineOpen(false);
+          setActionError(null);
+        }}
+        onConfirm={(reason) => void submitDecline(reason)}
+      />
     </View>
   );
 }
@@ -313,10 +452,38 @@ const styles = StyleSheet.create({
   fact: { flex: 1, flexDirection: 'row', alignItems: 'flex-start', gap: 8, padding: 10, backgroundColor: '#f5f8fa', borderRadius: 12 },
   factLabel: { fontSize: 11.5, color: C.ink400, fontFamily: 'Inter' },
   factValue: { fontSize: 13.5, color: C.ink800, fontWeight: '700', fontFamily: 'Inter', marginTop: 1 },
+  factSub: { fontSize: 11.5, color: C.ink400, fontFamily: 'Inter', marginTop: 2 },
+
+  requestNote: {
+    backgroundColor: '#f2fbfd', borderWidth: 1, borderColor: C.cyan100,
+    borderRadius: 14, padding: 13, marginTop: 16,
+  },
+  requestNoteText: { color: C.cyan800, fontSize: 12.5, lineHeight: 17, fontFamily: 'Inter' },
 
   section: { paddingVertical: 18, borderBottomWidth: 1, borderBottomColor: C.line },
+  sectionTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 7, marginBottom: 12 },
   sectionTitle: { fontSize: 14, color: C.ink900, fontWeight: '800', fontFamily: 'Inter', marginBottom: 12 },
+  // The row already spaces itself; the shared title keeps its own margin for
+  // the sections that use it alone.
+  sectionTitleInline: { marginBottom: 0 },
   descText: { fontSize: 14, lineHeight: 21, color: C.ink700, fontFamily: 'Inter' },
+
+  progressRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  progressTrack: { flex: 1, height: 8, borderRadius: 999, backgroundColor: C.ink100, overflow: 'hidden' },
+  progressFill: { height: 8, borderRadius: 999, backgroundColor: C.cyan700 },
+  progressText: { fontSize: 13, fontWeight: '800', color: C.ink900, fontFamily: 'Inter' },
+  progressHint: { fontSize: 12, lineHeight: 16, color: C.ink400, fontFamily: 'Inter', marginTop: 8 },
+
+  taskRow: { flexDirection: 'row', alignItems: 'center', gap: 11, paddingVertical: 9 },
+  taskBox: {
+    width: 22, height: 22, borderRadius: 7,
+    borderWidth: 1.5, borderColor: '#cbd5e1',
+    alignItems: 'center', justifyContent: 'center',
+  },
+  taskBoxDone: { backgroundColor: C.cyan700, borderColor: C.cyan700 },
+  taskBoxLocked: { backgroundColor: C.ink50, borderColor: C.ink200 },
+  taskLabel: { flex: 1, fontSize: 14, lineHeight: 19, color: C.ink800, fontFamily: 'Inter' },
+  taskLabelDone: { color: C.ink400, textDecorationLine: 'line-through' },
 
   detailRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 10 },
   detailIcon: { width: 30, height: 30, borderRadius: 9, backgroundColor: '#f6f8fa', alignItems: 'center', justifyContent: 'center' },
@@ -331,6 +498,7 @@ const styles = StyleSheet.create({
   trustNoteText: { flex: 1, color: C.cyan800, fontSize: 12, lineHeight: 16, fontFamily: 'Inter' },
 
   actionBar: { paddingTop: 16, paddingBottom: 10, gap: 8 },
+  actionError: { color: '#ef4444', fontSize: 13.5, fontFamily: 'Inter', textAlign: 'center' },
   primaryBtn: { backgroundColor: C.cyan700, borderRadius: V6Radii.btn, paddingVertical: 14, alignItems: 'center' },
   primaryBtnContent: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   primaryBtnText: { color: C.white, fontSize: 16.5, fontWeight: '700', fontFamily: 'Inter' },
@@ -340,21 +508,4 @@ const styles = StyleSheet.create({
   outlineDangerBtnText: { color: '#ef4444', fontSize: 16.5, fontWeight: '700', fontFamily: 'Inter' },
   lockedBtn: { backgroundColor: C.ink100, borderRadius: V6Radii.btn, paddingVertical: 14, alignItems: 'center' },
   lockedBtnText: { color: C.ink400, fontSize: 15, fontWeight: '700', fontFamily: 'Inter', textAlign: 'center' },
-
-  modalOverlay: { flex: 1, justifyContent: 'center', padding: 24, backgroundColor: 'rgba(15,23,42,0.5)' },
-  modalDialog: { backgroundColor: C.white, borderRadius: V6Radii.card, padding: 22 },
-  modalHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 },
-  modalTitle: { color: C.ink900, fontSize: 21.5, fontWeight: '800', fontFamily: 'Inter' },
-  modalMessage: { color: C.ink500, fontSize: 15.5, fontFamily: 'Inter', lineHeight: 19, marginBottom: 14 },
-  modalInput: {
-    borderWidth: 1, borderColor: '#dce3e9', borderRadius: 12,
-    padding: 12, fontSize: 16, fontFamily: 'Inter', color: C.ink900,
-    minHeight: 80, textAlignVertical: 'top', marginBottom: 18,
-  },
-  modalActions: { flexDirection: 'row', justifyContent: 'flex-end', gap: 10 },
-  modalCancelBtn: { borderWidth: 1, borderColor: '#dce3e9', borderRadius: 12, paddingHorizontal: 16, paddingVertical: 11 },
-  modalCancelText: { color: C.ink500, fontSize: 16, fontWeight: '700', fontFamily: 'Inter' },
-  modalConfirmBtn: { backgroundColor: '#ef4444', borderRadius: 12, paddingHorizontal: 16, paddingVertical: 11 },
-  modalConfirmBtnDisabled: { opacity: 0.5 },
-  modalConfirmText: { color: C.white, fontSize: 16, fontWeight: '700', fontFamily: 'Inter' },
 });

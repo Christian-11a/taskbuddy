@@ -36,7 +36,8 @@ import { HOScreen } from '../../../src/types/navigation';
 import { useAuth } from '../../../src/context/AuthContext';
 import { useAsyncData } from '../../../src/hooks/useAsyncData';
 import { api } from '../../../src/lib/api';
-import { initials, monthYear, peso } from '../../../src/lib/format';
+import { monthYear, peso } from '../../../src/lib/format';
+import OwnAvatar from '../../../src/components/OwnAvatar';
 
 const MENU_ITEMS: { label: string; icon: typeof Pencil; screen: HOScreen | null }[] = [
   { label: 'Edit Profile', icon: Pencil, screen: 'Edit Profile' },
@@ -87,7 +88,7 @@ export default function Profile({ onNavigate, onLogout, onBack }: ProfileProps) 
         </TouchableOpacity>
 
         <View style={styles.avatarCircle}>
-          <Text style={styles.avatarText}>{initials(name)}</Text>
+          <OwnAvatar name={name} textStyle={styles.avatarText} />
         </View>
         <Text style={styles.profileName}>{name || 'Your Profile'}</Text>
         {!!subtitle && <Text style={styles.profileSubtitle}>{subtitle}</Text>}
@@ -200,7 +201,7 @@ const styles = StyleSheet.create({
   avatarCircle: {
     width: 72, height: 72, borderRadius: 22,
     backgroundColor: 'rgba(255,255,255,0.16)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.15)',
-    alignItems: 'center', justifyContent: 'center', marginBottom: 10,
+    alignItems: 'center', justifyContent: 'center', marginBottom: 10, overflow: 'hidden',
   },
   avatarText: { color: C.white, fontWeight: '800', fontSize: 24, fontFamily: 'Inter' },
   profileName: { color: C.white, fontSize: 19.5, fontWeight: '800', fontFamily: 'Inter' },

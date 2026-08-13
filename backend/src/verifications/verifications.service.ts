@@ -12,6 +12,7 @@ import { VERIFICATION_DOCS_BUCKET } from '../uploads/uploads.constants';
 import {
   ListVerificationsQueryDto,
   RejectVerificationDto,
+  StartIdentitySessionDto,
   SubmitVerificationDto,
 } from './dto/verifications.dto';
 import type { Profile, VerificationMethod } from '../common/types';
@@ -102,9 +103,28 @@ export class VerificationsService {
    *
    * The row is written up front, pending, so the provider's status screen has
    * something to show between opening the sheet and the webhook landing.
+   *
+   * When the caller supplies document paths (the mobile three-step flow does:
+   * ID, then selfie, then this), they are stored on the same row. Stripe still
+   * decides; the images are the fallback that lets an admin finish the review
+   * by hand if Identity never returns a verdict. `method` stays
+   * 'stripe_identity' — the CHECK from 0013 only insists that *manual* rows
+   * carry documents, not that Identity rows carry none.
    */
-  async startIdentitySession(user: Profile) {
+  async startIdentitySession(user: Profile, dto: StartIdentitySessionDto = {}) {
     const stripe = this.stripe.stripe;
+
+    const documentPaths = [dto.id_document_path, dto.selfie_path].filter(
+      (p): p is string => !!p,
+    );
+    if (documentPaths.length > 0) {
+      this.uploads.assertOwnedPaths(user, documentPaths);
+      await Promise.all(
+        documentPaths.map((p) =>
+          this.uploads.assertValidImage(VERIFICATION_DOCS_BUCKET, p),
+        ),
+      );
+    }
 
     const session = await stripe.identity.verificationSessions.create({
       type: 'document',
@@ -123,6 +143,8 @@ export class VerificationsService {
         provider_id: user.id,
         method: 'stripe_identity',
         stripe_session_id: session.id,
+        id_document_path: dto.id_document_path ?? null,
+        selfie_path: dto.selfie_path ?? null,
       })
       .select('*')
       .single();

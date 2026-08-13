@@ -19,9 +19,10 @@ import {
 } from 'react-native';
 import {
   ArrowLeft,
-  AlignLeft,
   CalendarDays,
+  Check,
   CircleAlert,
+  ListChecks,
   MapPin,
   MessageCircle,
   Star,
@@ -31,12 +32,18 @@ import {
 import { Spacing, Sizes, V6Colors } from '../../../src/constants/theme';
 import { HOScreen } from '../../../src/types/navigation';
 import { useAsyncData } from '../../../src/hooks/useAsyncData';
-import { api } from '../../../src/lib/api';
-import { initials, jobStatusMeta, shortDate } from '../../../src/lib/format';
+import { api, ApiError } from '../../../src/lib/api';
+import { initials, jobStatusMeta, peso, shortDate, timeAgo, urgencyMeta } from '../../../src/lib/format';
+import ConfirmationModal from '../../../src/components/ConfirmationModal';
 
 const C = V6Colors;
 
-const JOB_STAGES = ['Posted', 'Hired', 'In Progress', 'Review', 'Done'];
+/**
+ * The real lifecycle, in the homeowner's words. The mockup's "Review" stage
+ * is dropped — there is no such state in the backend; a job goes from work in
+ * progress straight to the homeowner marking it complete.
+ */
+const JOB_STAGES = ['Posted', 'Hired', 'Confirmed', 'In Progress', 'Done'];
 
 function stageIndex(status: string): number {
   switch (status) {
@@ -45,8 +52,10 @@ function stageIndex(status: string): number {
       return 0;
     case 'assigned':
       return 1;
-    case 'in_progress':
+    case 'confirmed':
       return 2;
+    case 'in_progress':
+      return 3;
     case 'completed':
       return 4;
     default:
@@ -71,25 +80,39 @@ export default function HOJobDetailScreen({ jobId, onBack, onNavigate }: HOJobDe
   }, [jobId]);
 
   const [busy, setBusy] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [confirmCancel, setConfirmCancel] = useState(false);
 
   const job = data?.job;
   const provider = data?.provider;
   const meta = job ? jobStatusMeta(job.status) : null;
   const stage = job ? stageIndex(job.status) : 0;
+  const tasks = [...(job?.job_tasks ?? [])].sort((a, b) => a.position - b.position);
+  const doneCount = tasks.filter((t) => t.is_done).length;
 
   const runAction = async (fn: () => Promise<unknown>) => {
     setBusy(true);
+    setActionError(null);
     try {
       await fn();
       reload();
+    } catch (e) {
+      setActionError(
+        e instanceof ApiError ? e.message : 'Something went wrong. Please try again.',
+      );
     } finally {
       setBusy(false);
     }
   };
 
   const canCancel =
-    job && ['open', 'recommending', 'assigned', 'in_progress'].includes(job.status);
+    job &&
+    ['open', 'recommending', 'assigned', 'confirmed', 'in_progress'].includes(job.status);
   const canComplete = job?.status === 'in_progress';
+  // A review needs a finished job and someone to review. The API also rejects a
+  // second review for the same job, but the job payload carries no "already
+  // reviewed" flag, so that one still surfaces as an error on submit.
+  const canReview = job?.status === 'completed' && !!job.assigned_provider_id;
 
   return (
     <View style={styles.screen}>
@@ -165,6 +188,28 @@ export default function HOJobDetailScreen({ jobId, onBack, onNavigate }: HOJobDe
             </View>
           </View>
 
+          {/* Task list — what was asked for, and how much of it the provider
+              has ticked off. Read-only here: only the provider can change it. */}
+          {tasks.length > 0 && (
+            <View style={styles.section}>
+              <View style={styles.sectionTitleRow}>
+                <ListChecks size={16} color={C.ink900} />
+                <Text style={styles.sectionTitleInline}>Tasks</Text>
+                <Text style={styles.taskCounter}>{doneCount}/{tasks.length} done</Text>
+              </View>
+              {tasks.map((task) => (
+                <View key={task.id} style={styles.taskRow}>
+                  <View style={[styles.taskBox, task.is_done && styles.taskBoxDone]}>
+                    {task.is_done && <Check size={13} color={C.white} strokeWidth={3} />}
+                  </View>
+                  <Text style={[styles.taskLabel, task.is_done && styles.taskLabelDone]}>
+                    {task.label}
+                  </Text>
+                </View>
+              ))}
+            </View>
+          )}
+
           {/* Description */}
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Job Description</Text>
@@ -178,6 +223,8 @@ export default function HOJobDetailScreen({ jobId, onBack, onNavigate }: HOJobDe
             {[
               { icon: Wrench, label: 'Service', value: job.service_categories?.name ?? '—' },
               { icon: MapPin, label: 'Location', value: job.address },
+              { icon: TriangleAlert, label: 'Urgency', value: urgencyMeta(job.urgency).label },
+              { icon: CalendarDays, label: 'Posted', value: timeAgo(job.posted_at) },
             ].map((item, i) => (
               <View key={item.label} style={[styles.detailRow, i > 0 && styles.detailRowBorder]}>
                 <View style={styles.detailIcon}>
@@ -239,17 +286,24 @@ export default function HOJobDetailScreen({ jobId, onBack, onNavigate }: HOJobDe
             >
               <Text style={styles.linkRowText}>View Offers</Text>
             </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.linkRow, styles.detailRowBorder]}
-              onPress={() => onNavigate('Leave Review', job.id)}
-              activeOpacity={0.7}
-            >
-              <Text style={styles.linkRowText}>Leave Review</Text>
-            </TouchableOpacity>
+            {/* Only offered once there is something to review. The row used to
+                show on every job, including ones with no provider yet, where
+                POST /jobs/:id/review can only come back as an error. */}
+            {canReview && (
+              <TouchableOpacity
+                style={[styles.linkRow, styles.detailRowBorder]}
+                onPress={() => onNavigate('Leave Review', job.id)}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.linkRowText}>Leave Review</Text>
+              </TouchableOpacity>
+            )}
           </View>
 
           {/* Actions — matches .detail-action-bar */}
           <View style={styles.actionBar}>
+            {!!actionError && <Text style={styles.actionError}>{actionError}</Text>}
+
             {canComplete && (
               <TouchableOpacity
                 style={styles.primaryBtn}
@@ -257,14 +311,32 @@ export default function HOJobDetailScreen({ jobId, onBack, onNavigate }: HOJobDe
                 activeOpacity={0.85}
                 disabled={busy}
               >
-                <Text style={styles.primaryBtnText}>Mark as Completed</Text>
+                <Text style={styles.primaryBtnText}>
+                  {busy ? 'Working…' : 'Mark as Completed'}
+                </Text>
               </TouchableOpacity>
             )}
+
+            {/* Chat is reachable from the provider card too, but only once a
+                provider exists; this is the one that is always where you left
+                it. */}
+            <TouchableOpacity
+              style={styles.outlineBtn}
+              onPress={() => onNavigate('Chat', job.id)}
+              activeOpacity={0.85}
+            >
+              <View style={styles.outlineBtnContent}>
+                <MessageCircle size={17} color={C.ink700} />
+                <Text style={styles.outlineBtnText}>
+                  {provider ? `Message ${provider.profiles?.full_name ?? 'Provider'}` : 'Open Chat'}
+                </Text>
+              </View>
+            </TouchableOpacity>
 
             {canCancel && (
               <TouchableOpacity
                 style={styles.outlineDangerBtn}
-                onPress={() => runAction(async () => { await api.cancelJob(job.id); onBack(); })}
+                onPress={() => setConfirmCancel(true)}
                 activeOpacity={0.85}
                 disabled={busy}
               >
@@ -287,6 +359,30 @@ export default function HOJobDetailScreen({ jobId, onBack, onNavigate }: HOJobDe
           <View style={{ height: 10 }} />
         </ScrollView>
       )}
+
+      {/* Cancelling is irreversible and moves money — ask first. */}
+      <ConfirmationModal
+        visible={confirmCancel}
+        title="Cancel this job?"
+        message={
+          job?.assigned_provider_id
+            ? `This tells your provider the job is off${
+                job?.budget != null ? ` and returns ${peso(job.budget)} to your wallet` : ''
+              }. It cannot be undone.`
+            : 'This takes the job down so providers can no longer apply. It cannot be undone.'
+        }
+        confirmLabel="Cancel Job"
+        cancelLabel="Keep Job"
+        onCancel={() => setConfirmCancel(false)}
+        onConfirm={() => {
+          setConfirmCancel(false);
+          if (!job) return;
+          void runAction(async () => {
+            await api.cancelJob(job.id);
+            onBack();
+          });
+        }}
+      />
     </View>
   );
 }
@@ -329,6 +425,19 @@ const styles = StyleSheet.create({
   // Sections — borderless, bottom-divider only
   section: { paddingVertical: 18, borderBottomWidth: 1, borderBottomColor: C.line },
   sectionTitle: { fontSize: 14, color: C.ink900, fontWeight: '800', fontFamily: 'Inter', marginBottom: 12 },
+  sectionTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 7, marginBottom: 12 },
+  sectionTitleInline: { flex: 1, fontSize: 14, color: C.ink900, fontWeight: '800', fontFamily: 'Inter' },
+  taskCounter: { fontSize: 12, color: C.ink400, fontWeight: '700', fontFamily: 'Inter' },
+  taskRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 7 },
+  taskBox: {
+    width: 20, height: 20, borderRadius: 6,
+    borderWidth: 1.5, borderColor: '#cbd5e1',
+    alignItems: 'center', justifyContent: 'center',
+  },
+  taskBoxDone: { backgroundColor: C.cyan700, borderColor: C.cyan700 },
+  taskLabel: { flex: 1, fontSize: 13.5, lineHeight: 18, color: C.ink800, fontFamily: 'Inter' },
+  taskLabelDone: { color: C.ink400, textDecorationLine: 'line-through' },
+  actionError: { color: '#ef4444', fontSize: 13.5, fontFamily: 'Inter', textAlign: 'center' },
   descText: { fontSize: 14, lineHeight: 21, color: C.ink700, fontFamily: 'Inter' },
 
   // Horizontal timeline

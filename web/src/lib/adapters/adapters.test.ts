@@ -53,7 +53,8 @@ describe("booking status mapping", () => {
   it("maps every real job_status to a distinct label", () => {
     expect(BOOKING_STATUS_DISPLAY.open.label).toBe("Open");
     expect(BOOKING_STATUS_DISPLAY.recommending.label).toBe("Matching");
-    expect(BOOKING_STATUS_DISPLAY.assigned.label).toBe("Assigned");
+    expect(BOOKING_STATUS_DISPLAY.assigned.label).toBe("Awaiting Provider");
+    expect(BOOKING_STATUS_DISPLAY.confirmed.label).toBe("Confirmed");
     expect(BOOKING_STATUS_DISPLAY.in_progress.label).toBe("In Progress");
     expect(BOOKING_STATUS_DISPLAY.completed.label).toBe("Completed");
     expect(BOOKING_STATUS_DISPLAY.cancelled.label).toBe("Cancelled");
@@ -63,6 +64,7 @@ describe("booking status mapping", () => {
     expect(isCancellableBooking("open")).toBe(true);
     expect(isCancellableBooking("recommending")).toBe(true);
     expect(isCancellableBooking("assigned")).toBe(true);
+    expect(isCancellableBooking("confirmed")).toBe(true);
     expect(isCancellableBooking("in_progress")).toBe(true);
     expect(isCancellableBooking("completed")).toBe(false);
     expect(isCancellableBooking("cancelled")).toBe(false);
@@ -216,7 +218,7 @@ describe("row adapters", () => {
       scheduledDate: "2026-04-12", amount: 0,
     };
     const row = toBookingRow(b);
-    expect(row.status).toBe("Assigned");
+    expect(row.status).toBe("Awaiting Provider");
     expect(row.cancellable).toBe(true);
     expect(toBookingRow({ ...b, status: "completed" }).cancellable).toBe(false);
   });

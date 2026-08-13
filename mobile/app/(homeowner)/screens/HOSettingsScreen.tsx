@@ -12,8 +12,13 @@
  * `onLogout` being a prop. Wired it now, with the same confirmation-modal
  * pattern used on the Profile screen.
  *
- * "Dark Mode" is a UI-only placeholder for now — local state, no actual
- * theme switching wired up (left as a follow-up).
+ * All five switches persist for real, through `useSettings` → GET/PATCH
+ * /settings → the `user_settings` row from migration 0011. They used to be
+ * plain `useState` that reset on every mount.
+ *
+ * "Dark Mode" is the one to be careful about: the *preference* is genuinely
+ * stored, but the app still has no theme switching to apply it to, so the row
+ * says as much rather than letting the switch imply a repaint that won't come.
  *
  * Change Password is real (calls the actual `/auth/change-password`
  * endpoint). Language and Delete Account intentionally don't fake real
@@ -49,6 +54,7 @@ import { Sizes, Spacing, V6Colors } from '../../../src/constants/theme';
 
 const C = V6Colors;
 import ConfirmationModal from '../../../src/components/ConfirmationModal';
+import { useSettings } from '../../../src/hooks/useSettings';
 import { api } from '../../../src/lib/api';
 
 const SUPPORT_EMAIL = 'support@taskbuddy.ph';
@@ -59,10 +65,7 @@ interface HOSettingsScreenProps {
 }
 
 export default function HOSettingsScreen({ onBack, onLogout }: HOSettingsScreenProps) {
-  const [darkMode, setDarkMode] = useState(false);
-  const [pushNotifs, setPushNotifs] = useState(true);
-  const [emailNotifs, setEmailNotifs] = useState(true);
-  const [smsNotifs, setSmsNotifs] = useState(false);
+  const { flags, setFlag, loading: settingsLoading, error: settingsError } = useSettings();
   const [confirmLogoutVisible, setConfirmLogoutVisible] = useState(false);
 
   const [showPasswordModal, setShowPasswordModal] = useState(false);
@@ -70,9 +73,9 @@ export default function HOSettingsScreen({ onBack, onLogout }: HOSettingsScreenP
   const [showDeleteModal, setShowDeleteModal] = useState(false);
 
   const toggles = [
-    { key: 'push', label: 'Push Notifications', value: pushNotifs, onChange: setPushNotifs },
-    { key: 'email', label: 'Email Updates', value: emailNotifs, onChange: setEmailNotifs },
-    { key: 'sms', label: 'SMS Alerts', value: smsNotifs, onChange: setSmsNotifs },
+    { key: 'push_enabled' as const, label: 'Push Notifications' },
+    { key: 'email_enabled' as const, label: 'Email Updates' },
+    { key: 'sms_enabled' as const, label: 'SMS Alerts' },
   ];
 
   const accountItems = [
@@ -104,13 +107,19 @@ export default function HOSettingsScreen({ onBack, onLogout }: HOSettingsScreenP
               <Text style={styles.toggleLabel}>Dark Mode</Text>
             </View>
             <Switch
-              value={darkMode}
-              onValueChange={setDarkMode}
+              value={flags.dark_mode}
+              onValueChange={(v) => void setFlag('dark_mode', v)}
+              disabled={settingsLoading}
               trackColor={{ false: C.ink200, true: C.cyan600 }}
               thumbColor={C.white}
               ios_backgroundColor={C.ink200}
             />
           </View>
+          {/* The preference is stored for real; nothing applies it yet. Saying
+              so beats letting the switch imply a theme change that won't come. */}
+          <Text style={styles.rowNote}>
+            Saved to your account. Theme switching isn't available in the app yet.
+          </Text>
         </View>
 
         <Text style={styles.sectionTitle}>Notifications</Text>
@@ -119,8 +128,9 @@ export default function HOSettingsScreen({ onBack, onLogout }: HOSettingsScreenP
             <View key={toggle.key} style={[styles.toggleRow, i < toggles.length - 1 && styles.rowBorder]}>
               <Text style={styles.toggleLabel}>{toggle.label}</Text>
               <Switch
-                value={toggle.value}
-                onValueChange={toggle.onChange}
+                value={flags[toggle.key]}
+                onValueChange={(v) => void setFlag(toggle.key, v)}
+                disabled={settingsLoading}
                 trackColor={{ false: C.ink200, true: C.cyan600 }}
                 thumbColor={C.white}
                 ios_backgroundColor={C.ink200}
@@ -128,6 +138,7 @@ export default function HOSettingsScreen({ onBack, onLogout }: HOSettingsScreenP
             </View>
           ))}
         </View>
+        {!!settingsError && <Text style={styles.settingsError}>{settingsError}</Text>}
 
         <Text style={styles.sectionTitle}>Account</Text>
         <View style={styles.card}>
@@ -384,6 +395,8 @@ const styles = StyleSheet.create({
   toggleRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 14 },
   toggleLabelRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   toggleLabel: { fontSize: 14.5, color: C.ink900, fontWeight: '600', fontFamily: 'Inter' },
+  rowNote: { fontSize: 12.5, color: C.ink400, fontFamily: 'Inter', lineHeight: 17, paddingHorizontal: 16, paddingBottom: 13, marginTop: -4 },
+  settingsError: { color: '#ef4444', fontSize: 13, fontFamily: 'Inter', marginTop: -12, marginBottom: 18 },
 
   navrow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 14, paddingHorizontal: 15 },
   rowIcon: { width: 34, height: 34, borderRadius: 10, backgroundColor: '#f5f8fa', alignItems: 'center', justifyContent: 'center' },

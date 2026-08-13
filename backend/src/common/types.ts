@@ -3,7 +3,10 @@ export type JobUrgency = 'urgent' | 'normal' | 'flexible';
 export type JobStatus =
   | 'open'
   | 'recommending'
+  // 'assigned' = the client hired this provider and is waiting for their
+  // answer; 'confirmed' = the provider accepted the booking (migration 0018).
   | 'assigned'
+  | 'confirmed'
   | 'in_progress'
   | 'completed'
   | 'cancelled'

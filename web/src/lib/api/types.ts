@@ -57,6 +57,7 @@ export type JobStatusApi =
   | "open"
   | "recommending"
   | "assigned"
+  | "confirmed"
   | "in_progress"
   | "completed"
   | "cancelled"

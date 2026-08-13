@@ -233,6 +233,18 @@ export interface Category {
   name: string;
 }
 
+/**
+ * One item of a job's checklist (migration 0019). The client picks these when
+ * posting the job; the assigned provider ticks them off while working.
+ */
+export interface JobTask {
+  id: string;
+  label: string;
+  position: number;
+  is_done: boolean;
+  completed_at: string | null;
+}
+
 export interface Job {
   id: string;
   client_id: string;
@@ -243,7 +255,10 @@ export interface Job {
   status:
     | 'open'
     | 'recommending'
+    // 'assigned' = hired, waiting on the provider's answer; 'confirmed' = the
+    // provider accepted the booking (migration 0018).
     | 'assigned'
+    | 'confirmed'
     | 'in_progress'
     | 'completed'
     | 'cancelled'
@@ -264,7 +279,34 @@ export interface Job {
   created_at: string;
   service_categories?: { name: string } | null;
   assigned_provider?: { full_name: string } | null;
+  /** The job's checklist, unordered — sort by `position` before rendering. */
+  job_tasks?: JobTask[];
+  /** Km from the provider's location. Present only on the browse feed, and
+   *  null there when either side has no coordinates. */
+  distance_km?: number | null;
   [key: string]: unknown;
+}
+
+/**
+ * Per-user preferences (`user_settings`, migration 0011).
+ *
+ * A user who has never opened Settings has no row and is on the DDL defaults;
+ * the backend materialises the row on first read, so this never 404s.
+ *
+ * `push_enabled` is the only flag anything currently consults (the push
+ * scheduler). `email_enabled`/`sms_enabled` are stored honestly but no
+ * transport reads them yet, and `dark_mode` is stored but the app has no
+ * theme switching to apply it to — see mobile/README.md.
+ */
+export interface UserSettings {
+  profile_id: string;
+  push_enabled: boolean;
+  email_enabled: boolean;
+  sms_enabled: boolean;
+  location_sharing: boolean;
+  dark_mode: boolean;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface SignedUpload {
@@ -278,9 +320,25 @@ export interface Verification {
   id: string;
   provider_id: string;
   status: 'pending' | 'approved' | 'rejected';
+  /** 'manual' = an admin reviews the uploaded documents; 'stripe_identity' =
+   *  Stripe decides and the result arrives by webhook (migration 0013). */
+  method: 'manual' | 'stripe_identity';
   submitted_at: string;
   reviewed_at: string | null;
   rejection_reason: string | null;
+}
+
+/**
+ * What the app needs to present a Stripe Identity check. `url` is the hosted
+ * flow, which is what Expo Go can open; `ephemeral_key_secret` is for the
+ * native SDK, which needs a development build to load.
+ */
+export interface IdentitySession {
+  verification: Verification;
+  session_id: string;
+  ephemeral_key_secret: string;
+  url: string | null;
+  publishable_key: string | null;
 }
 
 export interface Dispute {
@@ -539,6 +597,46 @@ export const api = {
   },
 
   /**
+   * Step 1 of a password reset — mails a 6-digit recovery code.
+   *
+   * Always resolves, even for an address with no account: the backend answers
+   * 200 either way so this can't be used to enumerate who has an account here.
+   * That means a success here is "we sent it if it exists", not "that address
+   * is valid", and the UI must not claim otherwise.
+   */
+  forgotPassword(email: string) {
+    return request<{ success: boolean }>('/auth/forgot-password', {
+      method: 'POST',
+      body: { email },
+    });
+  },
+
+  /**
+   * Step 2 — exchanges the emailed code for a session and sets the new
+   * password. Returns a session, so the app signs the user straight in rather
+   * than bouncing them to Login with a password they just typed twice.
+   */
+  resetPassword(input: { email: string; token: string; new_password: string }) {
+    return request<{ session: Session }>('/auth/reset-password', {
+      method: 'POST',
+      body: input,
+    });
+  },
+
+  // ── Settings (per-user preferences, migration 0011) ────────────────────────
+  settings() {
+    return authRequest<UserSettings>('/settings');
+  },
+
+  /**
+   * Every field is optional server-side, so send only the toggle that changed.
+   * Returns the full row as it now stands.
+   */
+  updateSettings(input: Partial<Omit<UserSettings, 'profile_id' | 'created_at' | 'updated_at'>>) {
+    return authRequest<UserSettings>('/settings', { method: 'PATCH', body: input });
+  },
+
+  /**
    * Returns the backend URL that kicks off the server-side Google OAuth flow.
    * The browser (via WebBrowser.openAuthSessionAsync) opens this URL; the
    * backend redirects to Google, handles the callback, and finally redirects
@@ -614,6 +712,12 @@ export const api = {
     scheduled_at?: string;
     /** Storage paths from `uploadImage`, not device URIs. */
     photo_urls?: string[];
+    /**
+     * Checklist labels in display order (step 3 of the guided flow). Stored as
+     * text server-side, so the suggestion catalogue can change without
+     * rewriting jobs already posted.
+     */
+    tasks?: string[];
   }) {
     return authRequest<Job>('/jobs', { method: 'POST', body: input });
   },
@@ -656,8 +760,25 @@ export const api = {
     return authRequest<Job>(`/jobs/${id}/cancel`, { method: 'POST' });
   },
 
+  /**
+   * Provider accepts an incoming booking request: the job moves from
+   * 'assigned' (hired, awaiting their answer) to 'confirmed', and the
+   * homeowner is notified. The mirror of `declineJob`.
+   */
+  acceptJob(id: string) {
+    return authRequest<Job>(`/jobs/${id}/accept`, { method: 'POST' });
+  },
+
   startJob(id: string) {
     return authRequest<Job>(`/jobs/${id}/start`, { method: 'POST' });
+  },
+
+  /** Assigned provider ticks a checklist item off. Returns the updated job. */
+  updateJobTask(jobId: string, taskId: string, is_done: boolean) {
+    return authRequest<Job>(`/jobs/${jobId}/tasks/${taskId}`, {
+      method: 'PATCH',
+      body: { is_done },
+    });
   },
 
   declineJob(id: string, reason: string) {
@@ -736,7 +857,7 @@ export const api = {
    * storage *path*, which is what job/verification payloads carry.
    */
   async uploadImage(
-    bucket: 'job-photos' | 'verification-docs',
+    bucket: 'job-photos' | 'verification-docs' | 'avatars',
     uri: string,
   ): Promise<string> {
     const contentType = contentTypeFor(uri);
@@ -764,6 +885,23 @@ export const api = {
     selfie_path: string;
   }) {
     return authRequest<Verification>('/verifications', {
+      method: 'POST',
+      body: input,
+    });
+  },
+
+  /**
+   * Opens a Stripe Identity check — the automated third step of the
+   * verification flow. The ID and selfie already uploaded travel with it, so
+   * an admin can still finish the review by hand if Stripe never returns a
+   * verdict. The decision arrives by webhook, so the screen polls
+   * `myVerification()` afterwards rather than reading a result here.
+   */
+  startIdentitySession(input: {
+    id_document_path?: string;
+    selfie_path?: string;
+  } = {}) {
+    return authRequest<IdentitySession>('/verifications/identity-session', {
       method: 'POST',
       body: input,
     });

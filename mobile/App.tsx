@@ -2,7 +2,8 @@
  * App.tsx — Root navigation controller
  *
  * Architecture:
- *   not signed in → Onboarding → Login / Register
+ *   not signed in → Login / Register
+ *   just signed in, first time on this account → Onboarding (once)
  *   'homeowner'   → HO screens with the shared BottomNavBar
  *   'provider'    → SP screens with the shared BottomNavBar
  *
@@ -65,6 +66,7 @@ import { HOScreen, SPScreen } from './src/types/navigation';
 
 // ── Auth ───────────────────────────────────────────────────────────────────────
 import { AuthProvider, useAuth } from './src/context/AuthContext';
+import { hasCompletedOnboarding, markOnboardingCompleted } from './src/lib/onboarding';
 
 const HOMEOWNER_TABS: readonly BottomNavItem<HOScreen>[] = [
   { key: 'Home', label: 'Home', icon: Home },
@@ -90,7 +92,7 @@ const PROVIDER_TABS: readonly BottomNavItem<SPScreen>[] = [
 
 ExpoSplashScreen.preventAutoHideAsync().catch(() => {});
 
-type PreAuthScreen = 'onboarding' | 'login' | 'forgotPassword' | 'register';
+type PreAuthScreen = 'login' | 'forgotPassword' | 'register';
 
 /**
  * Both roles' `*Back()` used to just jump to the active bottom-nav tab,
@@ -111,7 +113,9 @@ function AppContent() {
   } = useAuth();
 
   // Which pre-auth screen to show while the user is signed out.
-  const [preAuth, setPreAuth] = useState<PreAuthScreen>('onboarding');
+  const [preAuth, setPreAuth] = useState<PreAuthScreen>('login');
+  // null = still reading the flag for this account; true = show the slides.
+  const [showOnboarding, setShowOnboarding] = useState<boolean | null>(null);
   // The splash plays for a minimum duration; we also wait for session restore.
   const [minSplashDone, setMinSplashDone] = useState(false);
   // Sub-screen within the Google signup pending gate (role → SP details)
@@ -120,6 +124,7 @@ function AppContent() {
   const handleLogout = () => {
     void signOut();
     setPreAuth('login');
+    setShowOnboarding(null);
     setHOTab('Home');
     setHOScreen('Home');
     setHOStack([]);
@@ -158,6 +163,10 @@ function AppContent() {
     }
     if (screen === 'Create Job') {
       setHOStack([]);
+      // `id` here is a category id from Home's "Book a Job" strip. Always
+      // assign it — including clearing it when the flow is opened from the FAB
+      // — so a previous tile's category can't leak into the next job.
+      setHOSelectedId(id ?? null);
       setHOScreen(screen);
       return;
     }
@@ -227,6 +236,29 @@ function AppContent() {
     };
   }, []);
 
+  // Read the onboarding flag for whoever is signed in. Runs on every sign-in
+  // (and on restore of a persisted session), so the slides appear exactly once
+  // per account: right after the first successful login, never again.
+  const profileId = profile?.id ?? null;
+  useEffect(() => {
+    if (!profileId) {
+      setShowOnboarding(null);
+      return;
+    }
+    let mounted = true;
+    void hasCompletedOnboarding(profileId).then((done) => {
+      if (mounted) setShowOnboarding(!done);
+    });
+    return () => {
+      mounted = false;
+    };
+  }, [profileId]);
+
+  const finishOnboarding = () => {
+    if (profileId) void markOnboardingCompleted(profileId);
+    setShowOnboarding(false);
+  };
+
   // ─────────────────────────────────────────────────────────────────────────
   // Auth flow
   // ─────────────────────────────────────────────────────────────────────────
@@ -238,15 +270,6 @@ function AppContent() {
   }
 
   if (!isAuthenticated) {
-    if (preAuth === 'onboarding') {
-      return (
-        <OnboardingScreen
-          onFinish={() => setPreAuth('login')}
-          onLogin={() => setPreAuth('login')}
-        />
-      );
-    }
-
     if (preAuth === 'login') {
       return (
         <LoginScreen
@@ -260,10 +283,10 @@ function AppContent() {
 
     if (preAuth === 'forgotPassword') {
       return (
-        <ForgotPasswordScreen
-          onBackToLogin={() => setPreAuth('login')}
-          onResetPassword={() => setPreAuth('login')}
-        />
+        // A successful reset returns a session, so the screen finishes signed
+        // in and the isAuthenticated branch above takes over — there is no
+        // "done" callback to route on.
+        <ForgotPasswordScreen onBackToLogin={() => setPreAuth('login')} />
       );
     }
 
@@ -322,6 +345,20 @@ function AppContent() {
         onSelectProvider={() => setGoogleSubScreen('sp-details')}
       />
     );
+  }
+
+  // ── First-run onboarding gate ─────────────────────────────────────────────
+  // Placed after the Google gate so an OAuth user picks their role first — the
+  // slides are the last thing between a finished account and its dashboard.
+  // While the flag is still being read we hold on the splash rather than
+  // flashing the dashboard and then covering it with the slides.
+  if (showOnboarding === null) {
+    return <SplashScreenComponent />;
+  }
+  if (showOnboarding) {
+    // Post-login there is nowhere to "skip to" but the dashboard, so Skip and
+    // Get Started do the same thing — both count as having seen them.
+    return <OnboardingScreen onFinish={finishOnboarding} onLogin={finishOnboarding} />;
   }
 
   // ─────────────────────────────────────────────────────────────────────────
@@ -404,6 +441,7 @@ function AppContent() {
       return (
         <View style={styles.screen}>
           <HOCreateJobScreen
+            initialCategoryId={Number.isFinite(Number(hoSelectedId)) ? Number(hoSelectedId) : null}
             onBack={() => {
               setHOTab('Home');
               setHOScreen('Home');

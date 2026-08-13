@@ -1,0 +1,32 @@
+-- TaskBuddy schema — the provider-confirmation step in the job lifecycle
+-- Source of truth: backend/BACKEND_SCHEMA.md §26.
+--
+-- RUN THIS FILE ON ITS OWN, BEFORE 0019.
+--
+-- Postgres will not let a new enum value be *used* in the same transaction
+-- that adds it. 0019 references 'confirmed' in a CHECK constraint, so the two
+-- cannot be pasted into one Supabase SQL-editor run (the editor wraps a script
+-- in a single transaction). Apply this file, wait for it to commit, then apply
+-- 0019.
+--
+-- Why the status exists at all
+-- ----------------------------
+-- Until now, accepting an application moved a job straight to 'assigned' and
+-- the provider's only choices were to start work or decline it. That makes
+-- 'assigned' mean two different things at once: "the client picked you" and
+-- "you agreed to do it". A client had no way to tell a booking a provider had
+-- acknowledged from one they had not yet looked at.
+--
+-- 'confirmed' splits those apart:
+--
+--   open → recommending → assigned → confirmed → in_progress → completed
+--                             │           │
+--                             └───────────┴──→ cancelled  (provider declines,
+--                                                          reason required)
+--
+-- 'assigned' now means "awaiting the provider's answer" — an incoming booking
+-- request. 'confirmed' means the provider accepted it and the client can
+-- expect them. Escrow is untouched by this step: the hold is already placed at
+-- assignment and is released or refunded exactly as before.
+
+alter type job_status add value if not exists 'confirmed' after 'assigned';

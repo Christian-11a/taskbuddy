@@ -2,12 +2,18 @@ import {
   BadRequestException,
   ForbiddenException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { SupabaseService } from '../supabase/supabase.service';
 import { UploadsService } from '../uploads/uploads.service';
 import { EscrowService } from '../escrow/escrow.service';
-import { BrowseJobsQueryDto, CreateJobDto, DeclineJobDto } from './dto/jobs.dto';
+import {
+  BrowseJobsQueryDto,
+  CreateJobDto,
+  DeclineJobDto,
+  UpdateJobTaskDto,
+} from './dto/jobs.dto';
 import type { Profile } from '../common/types';
 
 const URGENCY_RANK: Record<string, number> = {
@@ -40,11 +46,28 @@ function haversineKm(
 // (client_id and assigned_provider_id). Mobile's My Jobs list renders this name.
 // Keep this a single string literal — concatenating widens the type to `string`
 // and supabase-js can no longer infer the row shape from it.
+//
+// job_tasks rides along on every job read: the provider's job screen is the
+// checklist, so fetching it separately would only buy a second round trip.
 const JOB_SELECT =
-  '*, service_categories(name), assigned_provider:profiles!jobs_assigned_provider_id_fkey(id, full_name)';
+  '*, service_categories(name), assigned_provider:profiles!jobs_assigned_provider_id_fkey(id, full_name), job_tasks(id, label, position, is_done, completed_at)';
+
+/** The one status an incoming booking request can be accepted from. */
+const AWAITING_PROVIDER_ANSWER = ['assigned'];
+
+/**
+ * The provider holds the job but has not begun: they may start it or back out
+ * of it. 'assigned' is included alongside 'confirmed' so a provider can start
+ * work in one go without a separate accept, and so jobs assigned before
+ * migration 0018 — which never had a confirmation step to pass through — are
+ * not stranded.
+ */
+const PRE_START = ['assigned', 'confirmed'];
 
 @Injectable()
 export class JobsService {
+  private readonly logger = new Logger(JobsService.name);
+
   constructor(
     private readonly supabase: SupabaseService,
     private readonly uploads: UploadsService,
@@ -76,6 +99,30 @@ export class JobsService {
       .select(JOB_SELECT)
       .single();
     if (error) throw new BadRequestException(error.message);
+
+    if (dto.tasks?.length) {
+      const jobId = (data as { id: string }).id;
+      const { error: taskError } = await this.supabase.admin
+        .from('job_tasks')
+        .insert(
+          dto.tasks.map((label, position) => ({
+            job_id: jobId,
+            label,
+            position,
+          })),
+        );
+      // The job itself posted fine. Failing the whole request now would leave
+      // the client staring at an error for a job that does exist, so the
+      // checklist is dropped and the job comes back as it was truly stored.
+      if (taskError) {
+        this.logger.error(
+          `Job ${jobId} created without its checklist: ${taskError.message}`,
+        );
+        return data;
+      }
+      return this.findJob(jobId);
+    }
+
     return data;
   }
 
@@ -102,14 +149,15 @@ export class JobsService {
 
     const withDistance = jobs.map((job: any) => ({
       job,
-      distanceKm: hasLocation && job.latitude != null && job.longitude != null
-        ? haversineKm(
-            query.latitude!,
-            query.longitude!,
-            job.latitude,
-            job.longitude,
-          )
-        : null,
+      distanceKm:
+        hasLocation && job.latitude != null && job.longitude != null
+          ? haversineKm(
+              query.latitude!,
+              query.longitude!,
+              job.latitude,
+              job.longitude,
+            )
+          : null,
     }));
 
     const filtered = hasLocation
@@ -185,7 +233,13 @@ export class JobsService {
     const job = await this.findJob(jobId);
     if (job.client_id !== user.id) throw new ForbiddenException('Not your job');
     if (
-      !['open', 'recommending', 'assigned', 'in_progress'].includes(job.status)
+      ![
+        'open',
+        'recommending',
+        'assigned',
+        'confirmed',
+        'in_progress',
+      ].includes(job.status)
     ) {
       throw new BadRequestException(
         `Cannot cancel a job in status '${job.status}'`,
@@ -208,13 +262,42 @@ export class JobsService {
     return updated;
   }
 
+  /**
+   * The provider accepts an incoming booking request: 'assigned' (the client
+   * hired them, awaiting an answer) → 'confirmed' (they have agreed to it).
+   * The mirror of `decline()`, and the reason `decline()` needs a reason and
+   * this does not — saying yes explains itself.
+   *
+   * No money moves: escrow was placed when the client hired them and is
+   * released on completion or refunded on cancellation, exactly as before.
+   */
+  async accept(user: Profile, jobId: string) {
+    const job = await this.findJob(jobId);
+    if (job.assigned_provider_id !== user.id) {
+      throw new ForbiddenException('You are not assigned to this job');
+    }
+    if (!AWAITING_PROVIDER_ANSWER.includes(job.status)) {
+      throw new BadRequestException(
+        job.status === 'confirmed'
+          ? 'You have already accepted this booking'
+          : `Cannot accept a job in status '${job.status}'`,
+      );
+    }
+    const updated = await this.setStatus(jobId, 'confirmed');
+    await this.notify(job.client_id, 'job_update', 'Booking confirmed', {
+      body: `${user.full_name} accepted your booking for "${job.title}".`,
+      job_id: jobId,
+    });
+    return updated;
+  }
+
   /** Assigned provider marks work started. */
   async start(user: Profile, jobId: string) {
     const job = await this.findJob(jobId);
     if (job.assigned_provider_id !== user.id) {
       throw new ForbiddenException('You are not assigned to this job');
     }
-    if (job.status !== 'assigned') {
+    if (!PRE_START.includes(job.status)) {
       throw new BadRequestException(
         `Cannot start a job in status '${job.status}'`,
       );
@@ -229,16 +312,18 @@ export class JobsService {
 
   /**
    * Assigned provider declines a booking before starting work — the mirror
-   * of `cancel()` but provider-initiated and reason-required. Only valid
-   * pre-start (`assigned`); once work has started, cancellation goes through
-   * the client (a dispute, if contested).
+   * of `cancel()` but provider-initiated and reason-required. Valid pre-start,
+   * whether or not they had already accepted: plans change between confirming
+   * a job and turning up for it, and a provider who backs out then should say
+   * so here rather than silently not appearing. Once work has started,
+   * cancellation goes through the client (a dispute, if contested).
    */
   async decline(user: Profile, jobId: string, dto: DeclineJobDto) {
     const job = await this.findJob(jobId);
     if (job.assigned_provider_id !== user.id) {
       throw new ForbiddenException('You are not assigned to this job');
     }
-    if (job.status !== 'assigned') {
+    if (!PRE_START.includes(job.status)) {
       throw new BadRequestException(
         `Cannot decline a job in status '${job.status}'`,
       );
@@ -271,6 +356,49 @@ export class JobsService {
       job_id: jobId,
     });
     return updated;
+  }
+
+  /**
+   * The assigned provider ticks a checklist item off (or back on). Returns the
+   * whole job so the caller's screen re-renders from one source of truth
+   * rather than patching a task into a list it already held.
+   *
+   * Allowed from 'confirmed' and 'in_progress' only: before the provider has
+   * accepted there is nothing to report progress on, and after the client has
+   * closed the job the checklist is a record of what happened, not a live
+   * document.
+   */
+  async updateTask(
+    user: Profile,
+    jobId: string,
+    taskId: string,
+    dto: UpdateJobTaskDto,
+  ) {
+    const job = await this.findJob(jobId);
+    if (job.assigned_provider_id !== user.id) {
+      throw new ForbiddenException('You are not assigned to this job');
+    }
+    if (!['confirmed', 'in_progress'].includes(job.status)) {
+      throw new BadRequestException(
+        `Cannot update the checklist of a job in status '${job.status}'`,
+      );
+    }
+
+    const { data, error } = await this.supabase.admin
+      .from('job_tasks')
+      .update({
+        is_done: dto.is_done,
+        // chk_job_tasks_done_timestamp keeps these two in step.
+        completed_at: dto.is_done ? new Date().toISOString() : null,
+      })
+      .eq('id', taskId)
+      .eq('job_id', jobId)
+      .select('id')
+      .maybeSingle();
+    if (error) throw new BadRequestException(error.message);
+    if (!data) throw new NotFoundException('Task not found on this job');
+
+    return this.findJob(jobId);
   }
 
   private async findJob(jobId: string) {

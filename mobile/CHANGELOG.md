@@ -5,6 +5,175 @@ app works today; this file covers how it got there and why. Newest first.
 
 ---
 
+## Settings and password reset stop pretending: five endpoints that were always there
+
+Nothing new was built on the backend for this. `GET`/`PATCH /settings` and
+`POST /auth/forgot-password` / `POST /auth/reset-password` have existed for
+some time — `src/lib/api.ts` simply had no method for any of them, so the
+screens in front of them were local state and placeholder copy. The README had
+recorded all three as "needs backend work", which was wrong; it now says so.
+
+**The Settings switches are a stored row, not `useState`.** All five
+(`push_enabled`, `email_enabled`, `sms_enabled`, `location_sharing`,
+`dark_mode`) round-trip to `user_settings` (migration 0011) through a new
+`useSettings` hook, shared by both roles' screens since they are the same
+screen twice.
+
+Writes are **optimistic**, and deliberately so: a preference switch has to move
+the instant it is touched, and this backend is on a free Render dyno where a
+cold start is 30–60 seconds. The flag flips locally, the PATCH carries only the
+field that changed, and a failure rolls the switch back and says why. A failed
+*read*, by contrast, falls back to the migration's defaults and leaves the
+switches usable — being unable to load your preferences shouldn't freeze the
+controls.
+
+**Dark Mode is now half-real, which is worse to leave unlabelled than fully
+fake.** The preference genuinely persists; nothing applies it, because theme
+switching still doesn't exist. Both screens say that outright under the switch
+rather than letting a saved toggle imply a repaint that never comes. The
+blocker is unchanged: ~40 screens still use inline hex instead of `V6Colors`.
+
+**Forgot Password is a real two-stage flow.** It always was a *code*, never a
+link — the old copy promised a "reset link" that no part of the backend has
+ever sent. Now: email → 6-digit code + new password → signed in, since
+`/auth/reset-password` returns a session and bouncing someone to Login to
+retype a password they chose ten seconds ago is pointless. The password rule
+mirrors the backend's `MinLength(8)`, per the repo's convention that limits are
+defined once server-side and mirrored on each frontend.
+
+The step-2 copy says "if that address has an account" on purpose. The endpoint
+answers 200 for unknown addresses precisely so it can't be used to enumerate
+accounts, and confirming the mail was sent would leak exactly what that 200 is
+hiding.
+
+---
+
+## First-run onboarding, avatar upload, and a shorter path from a category to a job
+
+Five items off the README's to-do list, all of them app-side only. The three
+that turned out to need backend work — and the three the README wrongly called
+blocked when the endpoints already exist — are written up in
+[`docs/backend-handoff-mobile-todo-gaps.md`](../docs/backend-handoff-mobile-todo-gaps.md).
+
+**Onboarding is a first-login gate now, not a pre-auth screen.** It used to
+render before Login while signed out, which meant a returning user saw the
+slides on every cold start and a newly registered user — who lands straight on
+their dashboard — never saw them at all, the exact opposite of the intent. The
+slides now show once per account, after the first successful login, tracked in
+AsyncStorage under `taskbuddy.onboarded.<profile id>` (per account rather than
+per device, since two roles sharing a phone is normal here). It sits after the
+Google role-selection gate, so an OAuth user finishes their account first.
+
+**"Change Photo" uploads a photo.** Both Edit Profile screens had the markup
+with a dead `TouchableOpacity` under it. The backend side was already complete —
+an `avatars` bucket since migration 0011, and `PATCH /profiles/me` converts a
+storage path to a public URL and refuses paths belonging to another profile — so
+this was only ever a missing call. The upload is the same three steps as job
+photos (signed URL → PUT to Storage → send the path) and lives in one shared
+`AvatarPicker`, since the two screens' versions were identical. It saves on
+pick rather than waiting for Save, which is why it carries its own spinner and
+error line. A second small component, `OwnAvatar`, renders the photo in place
+of initials on the four screens showing the signed-in user's own avatar; it
+renders only the circle's *contents*, because each screen's circle differs in
+size and colour and centralising that would fight the v6 styling.
+
+Counterpart avatars (chat, applicants, reviews) still show initials — those
+payloads do carry `avatar_url`, so it is app-side work, just not this change.
+
+**Tapping a category on Home skips the question it just answered.** The "Book a
+Job" tiles all opened the flow at step 1, asking for the service the tap had
+already chosen. The category id now travels with the navigation and the flow
+opens on step 2 with it preselected. Step 1 stays reachable with Back for a
+mis-tap, an unknown id falls back to step 1 rather than posting under nothing,
+and "Post Another Job" starts genuinely blank instead of resurrecting the tile
+tapped several screens ago.
+
+**Loading states on the steps that actually load.** Step 1 shows skeleton tiles
+in the grid's own shape instead of a line of text that then reflows into a
+two-column grid, step 3 says when it is opening the photo library, and the
+submit button distinguishes "Uploading photos…" from "Posting…" because on a
+job with six photos the upload is most of the wait. The other steps are pure
+local input and were left alone — a spinner there would be theatre.
+
+**"Leave Review" only appears when there is something to review.** The row
+showed on every job, including ones with no provider assigned, where
+`POST /jobs/:id/review` could only ever come back as an error. It is now gated
+on a `completed` job with an assigned provider. A *second* review still fails at
+submit time: the job payload carries no "already reviewed" flag, which is item 3
+in the handoff doc.
+
+---
+
+## Booking requests, guided job creation with a task checklist, and three-step verification
+
+Three user stories, one change each side of the wire. The backend half ships
+as migrations 0018/0019 plus new endpoints — see
+[`docs/backend-handoff-booking-tasks-verification.md`](../docs/backend-handoff-booking-tasks-verification.md)
+for what has to be applied and deployed, and `backend/BACKEND_SCHEMA.md` §26
+for the schema reasoning.
+
+**Providers can now answer a booking, not just start it.** `job_status` gained
+`'confirmed'` between `'assigned'` and `'in_progress'`, so `'assigned'` finally
+means one thing: a homeowner hired you and is waiting for your answer.
+
+- `SPHomeScreen` leads with a **Booking Requests** block — Accept and Decline
+  inline, above the feed, because those are commitments with someone on the
+  other end. The hero gained the open/urgent/potential-payout summary the
+  backend had been returning all along and the screen was throwing away, and
+  the feed now sends the provider's own `service_radius_km` instead of the
+  50 km default and shows each job's distance.
+- `SPJobDetailScreen` has two faces: **claimable** before it is theirs (the
+  checklist read-only — it is the scope being offered) and **progress** after
+  (the same checklist tappable, with a done/total bar). The mockup's "Submit
+  for Review" step is still absent, because the backend still has no such
+  action.
+- Declining moved into a shared `DeclineBookingModal` — a reason is required
+  (the API enforces 1–200 chars and repeats it to the homeowner), with quick
+  reasons for the common cases.
+
+**Job creation follows the five steps in the spec.** Service → Location →
+Tasks → Urgency → Review, replacing the old category/details/schedule/budget/
+review split.
+
+- **Tasks** are the new part and are real data: chosen from a per-category
+  suggestion list (or typed), stored as `job_tasks`, and shown to the provider
+  as their task list. The title and description are drafted from the choices
+  until the homeowner edits either — the API needs 5+ and 20+ characters and
+  retyping what the checklist already says is busywork.
+- **Urgency is three-valued now**, not a boolean "mark as urgent" toggle. The
+  three real `job_urgency` values each say what they actually do, since urgency
+  sets how long organic applications get before the ML engine steps in.
+- **A past booking is refused inline.** The calendar already blocked past days;
+  the case it could not catch — today, but a time already gone — now flags the
+  time field. The API rejects the same thing (with five minutes' grace for
+  clock skew), so the two agree.
+- Photo selection dropped from 10 to 6, which is what `CreateJobDto` has always
+  allowed; picking 10 produced a 400 at the end of the flow.
+- Terms acceptance is now actually enforced at Review (the checkbox existed but
+  nothing checked it), cancelling a job asks first, and "Post Another Job"
+  clears the form instead of reusing the last job's answers.
+
+**My Jobs shows the seven things that tell one job from another** — name,
+location, status, urgency, price, time since posting, and provider — with
+filter tabs following the real lifecycle (All / Open / Awaiting / Confirmed /
+In Progress / Completed / Cancelled). `HOJobDetailScreen` gained the read-only
+task checklist with its done count, a Chat action that is always in the same
+place, and a five-stage timeline that no longer invents a "Review" stage the
+backend does not have.
+
+**Verification is a three-step flow ending in an automated check.**
+Government ID → face scan → Stripe Identity, replacing the single-screen
+two-slot upload. The session carries both uploaded images, so one pending
+submission holds Stripe's verdict *and* the documents — if Stripe cannot
+decide, an admin can still review it by hand. If Stripe is not configured the
+API answers 503 before creating anything and the app falls back to the manual
+queue; either way the provider lands on the same PENDING state, and the screen
+polls for the webhook-delivered result. Migration 0019 also puts Row-Level
+Security over the `verification-docs` bucket: providers write only into their
+own folder, and only admins can read.
+
+---
+
 ## Provider Profile/Settings restructure, real Change Password, and a robustness pass
 
 **Profile menus, both roles.** Rows that duplicated an existing entry point

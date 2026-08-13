@@ -46,7 +46,7 @@ import { Sizes, Spacing, V6Colors, V6Radii, V6Shadows } from '../../../src/const
 const C = V6Colors;
 import { SPScreen } from '../../../src/types/navigation';
 import { useAuth } from '../../../src/context/AuthContext';
-import { initials } from '../../../src/lib/format';
+import OwnAvatar from '../../../src/components/OwnAvatar';
 
 const MENU_ITEMS: { label: string; icon: typeof Pencil; screen: SPScreen }[] = [
   { label: 'Edit Profile', icon: Pencil, screen: 'Edit Profile' },
@@ -92,7 +92,7 @@ export default function SPProfileScreen({ onNavigate, onLogout, onBack }: SPProf
         </TouchableOpacity>
 
         <View style={styles.avatarCircle}>
-          <Text style={styles.avatarText}>{initials(name)}</Text>
+          <OwnAvatar name={name} textStyle={styles.avatarText} />
         </View>
         <Text style={styles.profileName}>{name || 'Your Profile'}</Text>
         <Text style={styles.profileSubtitle}>{category ? `${category} · Provider profile` : 'Provider profile'}</Text>
@@ -212,7 +212,7 @@ const styles = StyleSheet.create({
   avatarCircle: {
     width: 72, height: 72, borderRadius: 22,
     backgroundColor: 'rgba(255,255,255,0.16)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.15)',
-    alignItems: 'center', justifyContent: 'center', marginBottom: 10,
+    alignItems: 'center', justifyContent: 'center', marginBottom: 10, overflow: 'hidden',
   },
   avatarText: { color: C.white, fontWeight: '800', fontSize: 24, fontFamily: 'Inter' },
   profileName: { color: C.white, fontSize: 19.5, fontWeight: '800', fontFamily: 'Inter' },

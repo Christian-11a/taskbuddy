@@ -77,8 +77,11 @@ mobile/
     ├── lib/api.ts              # THE API CLIENT — every network call lives here
     ├── lib/format.ts           # peso(), shortDate(), timeAgo(), jobStatusMeta()…
     ├── context/AuthContext.tsx # Session, profile, role, signInWithGoogle
+    ├── lib/onboarding.ts       # "has this account seen the slides?" flag
     ├── hooks/useAsyncData.ts   # { data, loading, error, reload }
-    ├── components/             # BottomNavBar, ConfirmationModal, ScreenSkeleton, HelpSupportScreen
+    ├── hooks/useSettings.ts    # user_settings row, optimistic toggle writes
+    ├── components/             # BottomNavBar, ConfirmationModal, ScreenSkeleton,
+    │                           #   HelpSupportScreen, AvatarPicker, OwnAvatar
     ├── constants/theme.ts      # Colors, Radii, Shadows, Sizes, Spacing
     └── types/navigation.ts     # Screen key unions
 ```
@@ -99,7 +102,8 @@ per role, plus a selected `jobId` threaded through
 
 ```
 initializing         → SplashScreen
-not authenticated    → Onboarding → Login / Register
+not authenticated    → Login / Register / Forgot Password
+first login, once    → Onboarding
 role 'homeowner'     → HO tab bar (Home, My Jobs, Create, Calendar, Wallet)
 role 'provider'      → SP tab bar (Feed, My Work, Calendar, Wallet)
 ```
@@ -189,10 +193,10 @@ creation and verification endpoints submit.
 
 | Screen | Purpose |
 |--------|---------|
-| `OnboardingScreen` | Welcome carousel, routes to Login or Register |
+| `OnboardingScreen` | Welcome carousel. Shown **once per account, after the first successful login** — not before it (see `src/lib/onboarding.ts`) |
 | `LoginScreen` | Email/password + **Continue with Google** |
 | `RegisterScreen` | Role selection (Homeowner / Provider), email/password + Google |
-| `ForgotPasswordScreen` | UI only — no reset endpoint yet |
+| `ForgotPasswordScreen` | Real, two stages: `POST /auth/forgot-password` mails a 6-digit code, `POST /auth/reset-password` exchanges it and returns a session — so a reset ends signed in |
 | `TermsAndConditions` | Static T&C display |
 
 ### Client (Homeowner — `HO*`)
@@ -200,30 +204,30 @@ creation and verification endpoints submit.
 | Screen | Key API calls |
 |--------|--------------|
 | `HOHomeScreen` | `GET /wallet`, `GET /jobs/mine`, `GET /categories`, unread notification count |
-| `HOMyJobs` | `GET /jobs/mine`, filtered client-side by status |
-| `HOCreateJobScreen` | `GET /categories`, image upload, `POST /jobs` — 5-step wizard |
-| `HOJobDetailScreen` | `GET /jobs/:id`, `GET /providers/:id`; complete / cancel actions |
+| `HOMyJobs` | `GET /jobs/mine`, filtered client-side by status (All / Open / Awaiting / Confirmed / In Progress / Completed / Cancelled) |
+| `HOCreateJobScreen` | `GET /categories`, image upload, `POST /jobs` — the guided 5-step flow: service → location → tasks → urgency → review |
+| `HOJobDetailScreen` | `GET /jobs/:id`, `GET /providers/:id`; complete / cancel (confirmed first) / chat; read-only task checklist |
 | `HOChatScreen` | `POST /conversations` then message listing |
 | `HOWalletScreen` | `GET /wallet`; **Add Money** posts `POST /payments/checkout-session` and opens Stripe Checkout in a browser |
 | `HODisputeFilingScreen` | `POST /jobs/:jobId/disputes` |
 | `HOProfile` | Displays profile data; menu is Edit Profile / Settings / Help & Support |
 | `HOEditProfileScreen` | `PATCH /profiles/me`, then `refreshProfile()` |
 | `HONotificationsScreen` | `GET /notifications`; mark read / read-all |
-| `HOSettingsScreen` | `POST /auth/change-password` (real); Dark Mode, notification toggles, Language, Delete Account are all local-only UI — see [What's Not Wired Yet](#whats-not-wired-yet) |
+| `HOSettingsScreen` | `POST /auth/change-password` and all five switches (`GET`/`PATCH /settings`) are real. Dark Mode saves a preference nothing applies yet; Language and Delete Account stay honest placeholders — see [What's Not Wired Yet](#whats-not-wired-yet) |
 | `HelpSupportScreen` (shared, `src/components/`) | Static FAQ + `mailto:` support link — no backend |
 
 ### Provider (Service Provider — `SP*`)
 
 | Screen | Key API calls |
 |--------|--------------|
-| `SPHomeScreen` | `GET /wallet`, `GET /jobs`, `GET /jobs/assigned`; availability toggle |
-| `SPMyJobsScreen` | `GET /jobs/assigned` |
-| `SPJobDetailScreen` | `GET /jobs/:id`; apply, or start/complete if assigned |
+| `SPHomeScreen` | `GET /jobs` (location-filtered feed + summary), `GET /jobs/assigned` (booking requests, with inline accept/decline); availability toggle |
+| `SPMyJobsScreen` | `GET /jobs/assigned`, `GET /applications/mine` |
+| `SPJobDetailScreen` | `GET /jobs/:id`; apply to an open job, or accept / decline / start and tick off the task checklist once it's theirs |
 | `SPCalendarScreen` | `GET /calendar/bookings?from=&to=` for the current month |
 | `SPChatScreen` | Messaging (same flow as HO) |
 | `SPWalletScreen` | `GET /wallet` |
 | `SPNotificationsScreen` | `GET /notifications` |
-| `SPVerificationScreen` | ID + selfie upload, `POST /verifications`, shows review status |
+| `SPVerificationScreen` | 3-step flow — ID upload, face scan, then `POST /verifications/identity-session` (Stripe Identity, opened in a browser); falls back to `POST /verifications` for admin review if Stripe is unavailable |
 | `SPProfileScreen` | Displays profile + provider-specific data + a real verified/unverified badge (`providerProfile.is_verified`); menu is Edit Profile / Get Verified / Settings / Help & Support |
 | `SPEditProfileScreen` | `PATCH /profiles/me` + `PUT /profiles/me/provider` |
 | `SPSettingsScreen` | Mirrors `HOSettingsScreen` — same real/placeholder split |
@@ -244,6 +248,69 @@ Full rules: `backend/BACKEND_SCHEMA.md` §18.
 
 ---
 
+## Requires the current backend
+
+The app now uses endpoints and columns added by backend migrations **0018 and
+0019**: `POST /jobs` sends a `tasks` checklist, `POST /jobs/:id/accept` answers
+a booking request, and `PATCH /jobs/:id/tasks/:taskId` ticks items off.
+
+Against an older deployed API, **posting a job fails with a 400** — the backend
+runs `forbidNonWhitelisted`, so the unknown `tasks` field is a hard rejection,
+not a silently dropped extra. Everything else degrades quietly (no checklists,
+Accept returns 404). What has to be applied and deployed, and by whom, is in
+[`docs/backend-handoff-booking-tasks-verification.md`](../docs/backend-handoff-booking-tasks-verification.md).
+
+> **Note on migrations 0018 and 0019:** These may already have been applied to
+> the Supabase project by the mobile developer via the SQL editor. Before running
+> them, verify in the SQL Editor with the four queries in the handoff doc's
+> "Verify Part A landed" section. If they already exist, skip straight to Part B
+> (Render redeploy).
+
+---
+
+## Backend Handoff Docs
+
+Two handoff documents in [`docs/`](../docs/) are addressed to whoever holds
+backend / Supabase / Render access. They contain everything needed to bring the
+deployed stack up to date with the current codebase — **no new code is needed**,
+only applies and deploys of already-committed work.
+
+### 1. [`docs/backend-handoff-booking-tasks-verification.md`](../docs/backend-handoff-booking-tasks-verification.md)
+
+**The priority one.** Covers what must happen before the mobile app works
+correctly in production:
+
+| Part | What | Needs |
+|------|------|-------|
+| **A** | Apply Supabase migrations 0018 and 0019 | Supabase SQL Editor |
+| **B** | Redeploy the API on Render; confirm Stripe Identity is enabled | Render + Stripe Dashboard |
+
+- **Migration 0018** adds the `'confirmed'` value to the `job_status` enum.
+- **Migration 0019** creates the `job_tasks` checklist table with RLS, and adds
+  four Row-Level Security policies on the `verification-docs` storage bucket.
+- **Render redeploy** is what actually unblocks `POST /jobs` — the API validates
+  request bodies strictly and rejects the new `tasks` field until redeployed.
+
+> Migrations 0018 and 0019 may have already been applied by the mobile developer.
+> Run the verification queries in the doc before applying them.
+
+### 2. [`docs/backend-handoff-mobile-todo-gaps.md`](../docs/backend-handoff-mobile-todo-gaps.md)
+
+**Non-urgent — nothing is currently broken.** Documents every remaining item from
+the mobile to-do list that cannot be finished without an API change first:
+
+| # | Item | Blocking? |
+|---|------|-----------|
+| 1 | Account deletion (`DELETE /profiles/me`) | No — Settings row opens `mailto:` honestly |
+| 2 | Wallet withdrawal / payout rail (Stripe Connect or equivalent) | No — buttons are inert |
+| 3 | `has_review` flag on job payload | No — nice-to-have |
+| 4 | Realtime chat (polling / Supabase Realtime / WebSocket) | No — fetch-on-mount still works |
+| 5 | Email OTP at registration | No — Supabase confirmation already handles this |
+| 6 | Homeowner card-at-hire (vs wallet top-up) | No — product decision |
+| 7 | FCM/APNs push transport | No — app polls the `notifications` table |
+
+---
+
 ## Current State of the App
 
 ### ✅ Fully working
@@ -253,10 +320,11 @@ Full rules: `backend/BACKEND_SCHEMA.md` §18.
 - Session persistence across app restarts (AsyncStorage)
 - Token refresh (silent retry on `401`)
 - Role-based navigation (homeowner vs provider)
-- Job creation wizard (5 steps — category, details, schedule, budget, photos)
+- Guided job creation (5 steps — service, location, task checklist, urgency, review)
 - Job listing and filtering by status
-- Job detail with complete / cancel actions
+- Job detail with complete / cancel actions and a task checklist
 - Provider application to jobs
+- Provider accept / decline of booking requests, and ticking off tasks while working
 - Wallet balance display and Add Money via **Stripe hosted Checkout**, opened in
   a browser with `expo-web-browser` — works in Expo Go, no native module and no
   dev build required
@@ -281,15 +349,13 @@ was trimmed to remove rows that duplicated a bottom-nav tab or a header icon.
 
 | Thing | Status |
 |-------|--------|
-| **Dark Mode** | Toggle exists in both Settings screens and persists nothing — it's local `useState`. No theme-switching is wired up. See [`CHANGELOG.md`](./CHANGELOG.md) for the approach that was built and then deliberately reverted (kept as UI only, on purpose, as a follow-up task) — and the ~40 screens still using inline hex colors instead of `V6Colors` tokens, which is the real blocker before the toggle can do anything |
+| **Dark Mode** | Half done: the *preference* persists (`user_settings.dark_mode` via `PATCH /settings`), but nothing applies it — there is still no theme switching. Both Settings screens say so under the switch rather than implying a repaint that never comes. The blocker is the ~40 screens still using inline hex instead of `V6Colors` tokens; see [`CHANGELOG.md`](./CHANGELOG.md) for the theming approach that was built and then deliberately reverted to leave this open |
 | **Language** | Settings modal states English is the only option — no i18n system exists to back a real picker |
-| **Delete Account** | No self-serve deletion endpoint. The Settings row opens a `mailto:` to support instead of pretending to delete |
-| **Notification toggles** (push/email/SMS) | Local `useState` on both Settings screens; nothing is saved or wired to a real preferences backend |
-| **Review submission** | `api.reviewJob` exists; nothing calls it — ratings are displayed only |
-| **Wallet Withdraw / Transfer** | Buttons are present but have no handler — there's no withdraw endpoint on the backend |
-| **Forgot password** | UI only — no backend reset endpoint |
+| **Delete Account** | No self-serve deletion endpoint. The Settings row opens a `mailto:` to support instead of pretending to delete. What one would have to handle is written up in the [handoff doc](../docs/backend-handoff-mobile-todo-gaps.md) §1 |
+| **Wallet Withdraw / Transfer** | Buttons are present but have no handler. `POST /wallet/transactions` is a bookkeeping primitive, not a withdrawal, and there is no payout rail at all — money can only enter via the Stripe webhook. See the [handoff doc](../docs/backend-handoff-mobile-todo-gaps.md) §2 |
+| **Push delivery** | Notification *preferences* persist (`push_enabled`), but there is no FCM/APNs transport — the `notifications` table is the source of truth and the app polls it. Nothing reaches a lock screen |
 | **Realtime chat** | Messages only refresh on mount; call and attachment buttons are inert |
-| **Avatar / photo upload** | "Change Photo" does nothing; `avatar_url` is never sent |
+| **Counterpart avatars** | Chat, applicant, and review payloads all carry `avatar_url`; those screens still render initials. (The signed-in user's *own* avatar does render — see `OwnAvatar`) |
 | **Provider calendar write** | Bookings are created by the backend when a job is assigned, not from this screen |
 | **Notch/edge-to-edge status-bar spacing** | `Sizes.statusBarHeight` uses `StatusBar.currentHeight` (Android, built-in RN API) as a floor under the previous fixed `52`, which fixes most cases without a new dependency — but it's read once at module load, not on rotation/inset changes, and iOS still uses a fixed estimate. A full fix means adopting `react-native-safe-area-context` (new dependency) and touching header padding in every screen |
 
@@ -330,8 +396,10 @@ was trimmed to remove rows that duplicated a bottom-nav tab or a header icon.
 
 ### Onboarding and Registration
 
-- Show onboarding screens after a newly registered user successfully logs in.
-- Do not show onboarding screens again after the user has completed them.
+- ~~Show onboarding screens after a newly registered user successfully logs in~~
+  and ~~do not show them again after the user has completed them~~ — done: the
+  slides moved from a pre-auth screen to a post-login gate, recorded per account
+  in AsyncStorage (`taskbuddy.onboarded.<profile id>`).
 - Add email verification during registration by sending an OTP to the email
   address supplied by the user.
 - Identify the user's location during registration and display it on the
@@ -342,18 +410,28 @@ was trimmed to remove rows that duplicated a bottom-nav tab or a header icon.
 
 - Enable geolocation to make location selection easier in the homeowner job
   creation flow.
-- When a homeowner accesses **Create New Job** from the **Book a Job** section
-  of `HOHomeScreen`, open `HOCreateJobScreen` directly at step 2 rather than
-  asking for the service type again in step 1.
-- Verify whether urgency has multiple levels and implement the appropriate
-  options if needed.
-- Add a loading state for each step of `HOCreateJobScreen`.
-- Make the Flexibility Pill Options and Budget Pill Options clickable.
+- ~~When a homeowner accesses **Create New Job** from the **Book a Job** section
+  of `HOHomeScreen`, skip the service step for the category they tapped~~ —
+  done: the category id travels with the navigation and the flow opens on
+  step 2, with step 1 still reachable via Back.
+- ~~Add a loading state for each step of `HOCreateJobScreen`~~ — done for the
+  steps that actually wait on something: skeleton service tiles on step 1, a
+  busy photo-picker on step 3, and "Uploading photos…" vs "Posting…" on submit.
+  Steps 2, 4 and 5 are pure local input and were deliberately left alone.
+- ~~Verify whether urgency has multiple levels~~ — done: step 4 offers all
+  three real `job_urgency` values and says what each one does to the
+  recommendation deadline.
+- ~~Make the Flexibility Pill Options and Budget Pill Options clickable~~ —
+  they were removed instead. "Flexibility" and "Payment Type" were selectable
+  but had no backend column to land in, so they changed nothing however they
+  were set. Bring them back with a migration behind them, or not at all.
 
 ### Notifications, Permissions, and Payments
 
 - Ensure notifications are delivered and that their messages appear correctly.
 - Implement and clearly request the required app permissions, including access
   to the gallery/files, location, camera, and notification delivery.
-- Integrate Stripe for both user roles, including Stripe Identity Verification
-  (IDV) for service-provider verification.
+- Integrate Stripe for both user roles. The provider side is done — Stripe
+  Identity is step 3 of `SPVerificationScreen` — and wallet top-ups run through
+  hosted Checkout; what is left is anything a homeowner would pay with directly
+  rather than through the wallet.

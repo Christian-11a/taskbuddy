@@ -106,7 +106,10 @@ export interface Dispute {
 export type BookingStatus =
   | "open"
   | "recommending"
+  // The provider was hired ('assigned') and has accepted ('confirmed') —
+  // migration 0018.
   | "assigned"
+  | "confirmed"
   | "in_progress"
   | "completed"
   | "cancelled"

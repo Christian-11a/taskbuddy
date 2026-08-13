@@ -87,6 +87,18 @@ Job lifecycle: `open → recommending → assigned → in_progress → completed
    > *used* in the same transaction — neither file inserts a notification, so
    > applying each file in one go is safe.
 
+   > **0018 and 0019 must be applied as two separate runs.** 0018 adds
+   > `'confirmed'` to the `job_status` enum and 0019 *uses* that value in a
+   > CHECK constraint, which the same rule forbids inside one transaction (and
+   > the Supabase SQL editor runs a pasted script as one transaction). Run
+   > 0018, let it commit, then run 0019. `supabase db push` applies each file
+   > in its own transaction and needs no special handling.
+   >
+   > The API code that ships with these migrations reads `job_tasks` on every
+   > job query, so **apply 0019 before deploying the API**. Out of order, job
+   > endpoints fail with PostgREST's "Could not find a relationship between
+   > 'jobs' and 'job_tasks'".
+
    The two Storage buckets are created by the migrations themselves
    (`insert into storage.buckets ... on conflict do nothing`), so there is no
    separate dashboard step. `job-photos` is public-read; `verification-docs`
@@ -187,14 +199,16 @@ All bodies are JSON. 🔒 = requires auth; (client) / (provider) = role-restrict
 
 | Method & path | Description |
 |---|---|
-| `POST /jobs` 🔒 (client) | `{ category_id, title (5–120), description (20–750), urgency?, address, latitude, longitude, budget?, scheduled_at?, photo_urls? }` |
+| `POST /jobs` 🔒 (client) | `{ category_id, title (5–120), description (20–750), urgency?, address, latitude, longitude, budget?, scheduled_at?, photo_urls?, tasks? }` — `scheduled_at` in the past is a 400; `tasks` is up to 20 checklist labels (≤120 chars each) stored as `job_tasks` |
 | `GET /jobs?category_id=&limit=&offset=&latitude=&longitude=&radius_km=` 🔒 (provider) | browse `open`/`recommending` jobs, sorted by urgency then distance/newest; `latitude`+`longitude` (both required together) filter to `radius_km` (default 50km) of the provider; returns `{ jobs, summary: { open_count, urgent_count, potential_payout } }` |
 | `GET /jobs/mine` 🔒 (client) | own jobs |
 | `GET /jobs/assigned` 🔒 (provider) | jobs assigned to me |
 | `GET /jobs/:id` 🔒 | job detail |
 | `POST /jobs/:id/cancel` 🔒 (client) | any pre-completion state → `cancelled` |
-| `POST /jobs/:id/start` 🔒 (provider) | `assigned` → `in_progress` |
-| `POST /jobs/:id/decline` 🔒 (provider) | `{ reason (1–200) }` — assigned provider declines before starting; `assigned` → `cancelled`, refunds escrow, notifies client |
+| `POST /jobs/:id/accept` 🔒 (provider) | accept an incoming booking request; `assigned` → `confirmed`, notifies the client (migration 0018) |
+| `POST /jobs/:id/start` 🔒 (provider) | `assigned`/`confirmed` → `in_progress` |
+| `POST /jobs/:id/decline` 🔒 (provider) | `{ reason (1–200) }` — assigned provider declines before starting; `assigned`/`confirmed` → `cancelled`, refunds escrow, notifies client |
+| `PATCH /jobs/:id/tasks/:taskId` 🔒 (provider) | `{ is_done }` — assigned provider ticks a checklist item; allowed while `confirmed`/`in_progress`; returns the whole job (migration 0019) |
 | `POST /jobs/:id/complete` 🔒 (client) | `in_progress` → `completed` |
 | `POST /jobs/:id/recommendations/trigger` 🔒 (client) | manually re-run the recommendation engine |
 

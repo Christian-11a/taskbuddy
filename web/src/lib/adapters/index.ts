@@ -71,7 +71,8 @@ export const TRANSACTION_STATUS_DISPLAY: Record<TransactionStatus, { label: stri
 export const BOOKING_STATUS_DISPLAY: Record<BookingStatus, { label: string; badgeClass: string }> = {
   open:         { label: "Open",        badgeClass: "badge-pending" },
   recommending: { label: "Matching",    badgeClass: "badge-processing" },
-  assigned:     { label: "Assigned",    badgeClass: "badge-active" },
+  assigned:     { label: "Awaiting Provider", badgeClass: "badge-pending" },
+  confirmed:    { label: "Confirmed",   badgeClass: "badge-active" },
   in_progress:  { label: "In Progress", badgeClass: "badge-active" },
   completed:    { label: "Completed",   badgeClass: "badge-completed" },
   cancelled:    { label: "Cancelled",   badgeClass: "badge-cancelled" },
@@ -80,7 +81,13 @@ export const BOOKING_STATUS_DISPLAY: Record<BookingStatus, { label: string; badg
 
 /** Bookings an admin can still cancel — anything not yet in a terminal state. */
 export function isCancellableBooking(status: BookingStatus): boolean {
-  return status === "open" || status === "recommending" || status === "assigned" || status === "in_progress";
+  return (
+    status === "open" ||
+    status === "recommending" ||
+    status === "assigned" ||
+    status === "confirmed" ||
+    status === "in_progress"
+  );
 }
 
 export const DISPUTE_STATUS_DISPLAY: Record<DisputeStatus, { label: string; badgeClass: string }> = {

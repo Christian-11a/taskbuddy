@@ -81,7 +81,11 @@ export function jobStatusMeta(status: string): {
     case 'recommending':
       return { label: 'Finding Provider', color: '#F59E0B', bg: '#FFF7ED' };
     case 'assigned':
-      return { label: 'Assigned', color: '#3B82F6', bg: '#EFF6FF' };
+      // Hired, but the provider has not answered yet — from the homeowner's
+      // side this is a wait, not a settled booking.
+      return { label: 'Awaiting Provider', color: '#F59E0B', bg: '#FFF7ED' };
+    case 'confirmed':
+      return { label: 'Confirmed', color: '#3B82F6', bg: '#EFF6FF' };
     case 'in_progress':
       return { label: 'In Progress', color: '#22C55E', bg: '#F0FDF4' };
     case 'completed':
@@ -95,9 +99,33 @@ export function jobStatusMeta(status: string): {
   }
 }
 
+/** Display label + colors for a job's urgency. */
+export function urgencyMeta(urgency: string): {
+  label: string;
+  color: string;
+  bg: string;
+} {
+  switch (urgency) {
+    case 'urgent':
+      return { label: 'Urgent', color: '#B91C1C', bg: '#FEF2F2' };
+    case 'flexible':
+      return { label: 'Flexible', color: '#0E7490', bg: '#ECFEFF' };
+    default:
+      return { label: 'Normal', color: '#64748B', bg: '#F1F5F9' };
+  }
+}
+
+/** "2.4 km away" / "820 m away". Empty when the distance is unknown. */
+export function distanceLabel(km: number | null | undefined): string {
+  if (km == null || !Number.isFinite(km)) return '';
+  if (km < 1) return `${Math.round(km * 1000)} m away`;
+  return `${km.toFixed(1)} km away`;
+}
+
 /** Which filter bucket a job status falls into (My Jobs tabs). */
 export function jobFilterBucket(status: string): 'Active' | 'Pending' | 'Completed' | 'Other' {
-  if (status === 'assigned' || status === 'in_progress') return 'Active';
+  if (status === 'assigned' || status === 'confirmed' || status === 'in_progress')
+    return 'Active';
   if (status === 'open' || status === 'recommending') return 'Pending';
   if (status === 'completed') return 'Completed';
   return 'Other';

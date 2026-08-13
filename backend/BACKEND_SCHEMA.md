@@ -120,6 +120,8 @@ create type user_role          as enum ('client', 'provider');
 create type job_urgency        as enum ('urgent', 'normal', 'flexible');
 create type job_status         as enum ('open', 'recommending', 'assigned',
                                         'in_progress', 'completed', 'cancelled', 'expired');
+-- migration 0018 adds 'confirmed' after 'assigned' — the provider's answer to
+-- a booking request. See §26.1.
 create type application_status as enum ('pending', 'accepted', 'rejected', 'withdrawn');
 create type application_source as enum ('organic', 'recommended');
 create type recommendation_trigger as enum ('timeout', 'manual');
@@ -428,6 +430,9 @@ Rules:
 - Accepting an application (from either an `open` or `recommending` job) sets
   `jobs.assigned_provider_id`, `assigned_at`, `status = 'assigned'`, and auto-rejects all other
   pending applications for that job.
+- The assigned provider then either accepts (`assigned → confirmed`) or declines with a reason
+  (`→ cancelled`, escrow refunded) — see §26.1. Starting work is allowed from either
+  `assigned` or `confirmed`.
 - Every status change is recorded in `job_status_history` by trigger.
 - On terminal states (`completed`, `cancelled`, `expired`), backfill
   `recommendation_candidates.was_hired` for all candidates of that job:
@@ -1217,3 +1222,127 @@ GET /admin/wallet-transactions?kind=&direction=&status=&limit=&offset=
 — `WalletModule` already exported `WalletService` for `EscrowService`'s balance checks, so
 `AdminModule` just adds it as a second consumer. No new table; this is read-only visibility over
 data that already existed.
+
+## 26. Booking Confirmation, Job Checklists & Verification Storage RLS (migrations 0018–0019)
+
+Three changes that back three user stories: a provider acting on incoming booking requests, a
+homeowner creating a job through a guided flow and tracking it, and a provider submitting ID +
+selfie for automated verification.
+
+> **Apply 0018 and 0019 as two separate runs, and both before deploying the API.** 0018 adds an
+> enum value that 0019 uses in a CHECK constraint — Postgres forbids that inside one transaction.
+> The API's `JOB_SELECT` embeds `job_tasks`, so deploying it against a database without 0019
+> breaks every job endpoint with "Could not find a relationship between 'jobs' and 'job_tasks'".
+
+### 26.1 `'confirmed'` — the provider's answer (migration 0018)
+
+`job_status` gains `'confirmed'`, between `'assigned'` and `'in_progress'`:
+
+```
+open → recommending → assigned → confirmed → in_progress → completed
+                          │           │
+                          └───────────┴──→ cancelled   (provider declines, reason required)
+```
+
+Before this, `'assigned'` meant both "the client hired you" and "you agreed to do it", and a
+client could not tell a booking the provider had acknowledged from one they had not opened. Now
+`'assigned'` is an *incoming booking request* awaiting an answer and `'confirmed'` is one the
+provider accepted.
+
+```
+POST /jobs/:id/accept   🔒 (provider)  assigned → confirmed, notifies the client
+POST /jobs/:id/decline  🔒 (provider)  { reason } — assigned|confirmed → cancelled, refunds escrow
+POST /jobs/:id/start    🔒 (provider)  assigned|confirmed → in_progress
+```
+
+`start` still accepts `'assigned'`: a provider may start work without a separate accept, and jobs
+assigned before this migration never had a confirmation step to pass through. Declining is
+allowed from `'confirmed'` too — plans change between confirming a job and turning up for it, and
+a provider who backs out should say so rather than silently not appearing.
+
+**No money moves at this step.** Escrow is placed when the client accepts the application (§18)
+and is released on completion or refunded on cancellation, exactly as before. `'confirmed'` is
+added to `chk_assignment_consistency`, so a confirmed job still must carry an
+`assigned_provider_id`.
+
+### 26.2 `job_tasks` — the checklist (migration 0019)
+
+```sql
+create table job_tasks (
+    id uuid primary key default gen_random_uuid(),
+    job_id uuid not null references jobs (id) on delete cascade,
+    label text not null check (char_length(label) between 1 and 120),
+    position smallint not null default 0,
+    is_done boolean not null default false,
+    completed_at timestamptz,
+    created_at timestamptz not null default now(),
+    updated_at timestamptz not null default now(),
+    constraint chk_job_tasks_done_timestamp check (is_done = (completed_at is not null))
+);
+```
+
+The client picks the checklist while posting the job (`POST /jobs` accepts `tasks: string[]`, ≤20
+items) and the assigned provider ticks items off while working
+(`PATCH /jobs/:id/tasks/:taskId { is_done }`, allowed while `confirmed` or `in_progress`). Both
+sides read it: `JOB_SELECT` embeds `job_tasks(id, label, position, is_done, completed_at)` on
+every job query, unordered — sort by `position` when rendering.
+
+Two deliberate choices:
+
+- **Labels are text, not references.** The suggestion catalogue the client picks from lives in the
+  mobile app (`TASK_PRESETS` in `HOCreateJobScreen.tsx`) and can be reworded without rewriting
+  jobs already posted. What is stored is the label the client ended up with.
+- **A failed checklist insert does not fail the job.** `JobsService.create` inserts the job first;
+  if the task rows fail it logs and returns the job as stored, rather than showing the client an
+  error for a job that exists.
+
+This is also the app's only progress signal. Completion is homeowner-triggered — a provider has no
+"submit for review" action — so "how far along is it" is answered by which tasks are ticked.
+
+### 26.3 `scheduled_at` cannot be in the past
+
+`CreateJobDto` now rejects a `scheduled_at` earlier than five minutes ago
+(`IsNotPastInstantConstraint`). The grace window absorbs clock skew and the seconds between
+tapping Post and the request landing; without it, a phone with a wrong clock could post a booking
+nobody can turn up for. The mobile flow checks the same rule inline so the homeowner hears it at
+the field rather than after submitting.
+
+### 26.4 Storage RLS over `verification-docs` (migration 0019)
+
+0008 created the bucket private, which stops anonymous reads, but wrote no policies over
+`storage.objects` — nothing in the database itself said who may read a government ID. The API has
+always fronted these with the service-role key (which bypasses RLS by design); 0019 states the
+rule in the database as well, so the objects stay unreachable if anything ever touches Storage
+with a user token.
+
+| Policy | Who | Rule |
+|---|---|---|
+| `verification_docs_owner_insert` | authenticated | may write only into `<own profile id>/…` |
+| `verification_docs_owner_update` | authenticated | may overwrite only their own objects |
+| `verification_docs_admin_read` | authenticated | `is_admin()` only |
+| `verification_docs_admin_delete` | authenticated | `is_admin()` only |
+
+Reads are admins-only — deliberately *not* including the provider who uploaded the file. There is
+no product reason to re-download your own ID, and every extra reader is another way for the
+document to leak; the provider sees the *status* of their submission, never the file. Object paths
+are `<profile id>/<uuid>.<ext>`, generated server-side (`uploads.service.ts`), which is what makes
+the first path segment trustworthy as an owner check.
+
+`is_admin()` is a new `SECURITY DEFINER STABLE` function returning whether `auth.uid()` is an
+admin profile — definer so the policies can read `profiles.role` without the caller needing their
+own privilege on it, and so an RLS check on `profiles` cannot recurse.
+
+### 26.5 Stripe Identity carries the documents
+
+`POST /verifications/identity-session` now accepts an optional
+`{ id_document_path?, selfie_path? }`. The mobile three-step flow (ID → selfie → automated check)
+sends both, so one pending submission holds the Stripe verdict *and* the images: if Stripe cannot
+decide — Identity not enabled on the account, an unsupported document, an abandoned session — an
+admin can still finish the review by hand instead of the provider starting over. `method` stays
+`'stripe_identity'`; the CHECK from §21 only requires that *manual* rows carry documents, not that
+Identity rows carry none. The paths go through the same ownership and image pre-checks as
+`POST /verifications` (§23.7).
+
+The one-open-review index (`uq_provider_verifications_one_pending`) is unchanged, so the flow
+produces exactly one row either way. When Stripe is not configured the API answers 503 *before*
+writing anything, which is what lets the client fall back to a manual submission.
