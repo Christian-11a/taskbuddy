@@ -1,12 +1,10 @@
 /**
  * HOEditProfileScreen.tsx
  *
- * Figma Source: "HO - Edit Profile" (id: 46:922)
- *
- * Design:
- * - Teal header with avatar edit functionality
- * - Form fields: Full Name, Email, Phone, Location, Bio
- * - Save button
+ * v6 design: matches taskbuddy_UI_update.html's #ho-edit-profile screen — a
+ * flat white .topbar (not a colored hero), a circular avatar with a plain
+ * "Change Photo" text link (not a pill button), and a flat flowing list of
+ * .field inputs (no card grouping) ending in one full-width Save button.
  */
 
 import React, { useState } from 'react';
@@ -20,9 +18,11 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import { ArrowLeft, Camera } from 'lucide-react-native';
+import { ArrowLeft } from 'lucide-react-native';
 import ConfirmationModal from '../../../src/components/ConfirmationModal';
-import { Colors, Radii, Shadows, Sizes, Spacing } from '../../../src/constants/theme';
+import { Sizes, Spacing, V6Colors, V6Radii, V6Shadows } from '../../../src/constants/theme';
+
+const C = V6Colors;
 import { useAuth } from '../../../src/context/AuthContext';
 import { api } from '../../../src/lib/api';
 import { initials } from '../../../src/lib/format';
@@ -63,7 +63,7 @@ function FormField({
         value={value}
         onChangeText={onChangeText}
         placeholder={placeholder}
-        placeholderTextColor={Colors.muted}
+        placeholderTextColor={C.ink400}
         multiline={multiline}
         keyboardType={keyboardType}
         editable={editable}
@@ -124,30 +124,13 @@ export default function HOEditProfileScreen({ onBack, onSave }: HOEditProfileScr
 
   return (
     <View style={styles.screen}>
-      {/* Header */}
+      {/* Header — matches .topbar (flat white, not a colored hero) */}
       <View style={styles.header}>
-        <View style={styles.headerRow}>
-          <TouchableOpacity style={styles.backBtn} onPress={onBack} activeOpacity={0.8}>
-            <ArrowLeft size={20} color={Colors.white} />
-          </TouchableOpacity>
-          <Text style={styles.headerTitle}>Edit Profile</Text>
-          <TouchableOpacity onPress={requestSave} activeOpacity={0.8}>
-            <Text style={styles.saveTextBtn}>Save</Text>
-          </TouchableOpacity>
-        </View>
-
-        {/* Avatar */}
-        <View style={styles.avatarSection}>
-          <View style={styles.avatarCircle}>
-            <Text style={styles.avatarText}>{initials(name)}</Text>
-          </View>
-          <TouchableOpacity style={styles.changePhotoBtn} activeOpacity={0.8}>
-            <View style={styles.changePhotoBtnContent}>
-              <Camera size={14} color={Colors.white} />
-              <Text style={styles.changePhotoBtnText}>Change Photo</Text>
-            </View>
-          </TouchableOpacity>
-        </View>
+        <TouchableOpacity style={styles.backBtn} onPress={onBack} activeOpacity={0.8}>
+          <ArrowLeft size={20} color={C.ink700} />
+        </TouchableOpacity>
+        <Text style={styles.headerTitle}>Edit Profile</Text>
+        <View style={{ width: 38 }} />
       </View>
 
       <KeyboardAvoidingView
@@ -160,18 +143,21 @@ export default function HOEditProfileScreen({ onBack, onSave }: HOEditProfileScr
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
         >
-          <View style={styles.card}>
-            <Text style={styles.cardTitle}>Personal Information</Text>
-            <FormField label="Full Name" value={name} onChangeText={setName} placeholder="Your full name" />
-            <FormField label="Email Address" value={email} placeholder="email@example.com" keyboardType="email-address" editable={false} />
-            <FormField label="Phone Number" value={phone} onChangeText={setPhone} placeholder="+63 9XX XXX XXXX" keyboardType="phone-pad" />
+          {/* Avatar */}
+          <View style={styles.avatarSection}>
+            <View style={styles.avatarCircle}>
+              <Text style={styles.avatarText}>{initials(name)}</Text>
+            </View>
+            <TouchableOpacity activeOpacity={0.7}>
+              <Text style={styles.changePhotoLink}>Change Photo</Text>
+            </TouchableOpacity>
           </View>
 
-          <View style={styles.card}>
-            <Text style={styles.cardTitle}>Location</Text>
-            <FormField label="Home Address" value={location} onChangeText={setLocation} placeholder="House no., Barangay, Street" />
-            <FormField label="City" value={city} onChangeText={setCity} placeholder="City / Municipality" />
-          </View>
+          <FormField label="Full name" value={name} onChangeText={setName} placeholder="Your full name" />
+          <FormField label="Email" value={email} placeholder="email@example.com" keyboardType="email-address" editable={false} />
+          <FormField label="Phone" value={phone} onChangeText={setPhone} placeholder="+63 9XX XXX XXXX" keyboardType="phone-pad" />
+          <FormField label="Address" value={location} onChangeText={setLocation} placeholder="House no., Barangay, Street" />
+          <FormField label="City" value={city} onChangeText={setCity} placeholder="City / Municipality" />
 
           {!!error && <Text style={styles.errorText}>{error}</Text>}
 
@@ -201,67 +187,53 @@ export default function HOEditProfileScreen({ onBack, onSave }: HOEditProfileScr
 
 const styles = StyleSheet.create({
   flex: { flex: 1 },
-  screen: { flex: 1, backgroundColor: Colors.background },
+  screen: { flex: 1, backgroundColor: C.canvas },
 
   header: {
-    backgroundColor: Colors.brandDark,
+    flexDirection: 'row', alignItems: 'center', gap: 12,
+    backgroundColor: C.white,
     paddingTop: Sizes.statusBarHeight,
     paddingHorizontal: Spacing.screenH,
-    paddingBottom: 24,
-    borderBottomLeftRadius: 28,
-    borderBottomRightRadius: 28,
+    paddingBottom: 12,
+    borderBottomWidth: 1, borderBottomColor: '#edf1f4',
   },
-  headerRow: {
-    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
-    paddingTop: 12, marginBottom: 20,
-  },
-  headerTitle: { color: Colors.white, fontSize: 20, fontWeight: '700', fontFamily: 'Inter' },
   backBtn: {
-    width: 40, height: 40, borderRadius: 12,
-    backgroundColor: 'rgba(255,255,255,0.15)', alignItems: 'center', justifyContent: 'center',
+    width: 38, height: 38, borderRadius: 12,
+    backgroundColor: C.white, borderWidth: 1, borderColor: '#e8edf2',
+    alignItems: 'center', justifyContent: 'center',
   },
-  backIcon: { color: Colors.white, fontSize: 20, fontWeight: '600' },
-  saveTextBtn: { color: Colors.brandCyan, fontSize: 15, fontWeight: '700', fontFamily: 'Inter' },
+  headerTitle: { flex: 1, color: C.ink900, fontSize: 19.5, fontWeight: '800', fontFamily: 'Inter' },
 
-  avatarSection: { alignItems: 'center', gap: 12 },
+  avatarSection: { alignItems: 'center', marginBottom: 20 },
   avatarCircle: {
-    width: 80, height: 80, borderRadius: 24,
-    backgroundColor: Colors.brandCyan, alignItems: 'center', justifyContent: 'center',
-    borderWidth: 3, borderColor: 'rgba(255,255,255,0.3)',
+    width: 76, height: 76, borderRadius: 38,
+    backgroundColor: C.cyan600, alignItems: 'center', justifyContent: 'center',
+    marginBottom: 8,
   },
-  avatarText: { color: Colors.white, fontSize: 28, fontWeight: '800', fontFamily: 'Inter' },
-  changePhotoBtn: {
-    backgroundColor: 'rgba(255,255,255,0.15)', borderRadius: 20,
-    paddingHorizontal: 16, paddingVertical: 8,
-  },
-  changePhotoBtnContent: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  changePhotoBtnText: { color: Colors.white, fontSize: 13, fontWeight: '600', fontFamily: 'Inter' },
+  avatarText: { color: C.white, fontSize: 26, fontWeight: '800', fontFamily: 'Inter' },
+  changePhotoLink: { fontSize: 14, color: C.cyan700, fontWeight: '700', fontFamily: 'Inter' },
 
   body: { flex: 1 },
   bodyContent: { paddingHorizontal: Spacing.screenH, paddingTop: 20, paddingBottom: 20 },
 
-  card: { backgroundColor: Colors.white, borderRadius: Radii.card, padding: 20, marginBottom: 16, ...Shadows.card },
-  cardTitle: { color: Colors.brandDark, fontSize: 15, fontWeight: '800', fontFamily: 'Inter', marginBottom: 16 },
-
   fieldGroup: { marginBottom: 16 },
-  fieldLabel: { color: Colors.brandDark, fontSize: 13, fontWeight: '600', fontFamily: 'Inter', marginBottom: 6 },
+  fieldLabel: { color: C.ink900, fontSize: 14, fontWeight: '700', fontFamily: 'Inter', marginBottom: 6 },
   fieldInput: {
-    backgroundColor: Colors.backgroundAlt, borderRadius: 12, paddingHorizontal: 16, paddingVertical: 13,
-    borderWidth: 1, borderColor: 'rgba(144,153,184,0.3)',
-    fontFamily: 'Inter', fontSize: 14, color: Colors.brandDark,
+    backgroundColor: C.white, borderRadius: 12, paddingHorizontal: 14, minHeight: 46,
+    borderWidth: 1, borderColor: '#dce3e9',
+    fontFamily: 'Inter', fontSize: 16.5, color: C.ink900,
   },
-  fieldInputMultiline: { height: 90, textAlignVertical: 'top' },
-  fieldInputFocused: { borderColor: Colors.brandTeal },
-  fieldInputDisabled: { color: Colors.muted, backgroundColor: 'rgba(144,153,184,0.08)' },
+  fieldInputMultiline: { height: 90, textAlignVertical: 'top', paddingTop: 12 },
+  fieldInputFocused: { borderColor: C.cyan500 },
+  fieldInputDisabled: { color: C.ink400, backgroundColor: C.ink50 },
 
-  errorText: { color: Colors.error, fontSize: 13, fontFamily: 'Inter', marginBottom: 12, textAlign: 'center' },
+  errorText: { color: '#ef4444', fontSize: 15.5, fontFamily: 'Inter', marginBottom: 12, textAlign: 'center' },
 
   saveBtn: {
-    backgroundColor: Colors.brandTeal, borderRadius: 24, paddingVertical: 15,
+    backgroundColor: C.cyan700, borderRadius: V6Radii.btn, paddingVertical: 14,
     alignItems: 'center', marginTop: 4,
-    shadowColor: Colors.brandTeal, shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.35, shadowRadius: 12, elevation: 5,
+    ...V6Shadows.primaryButton,
   },
   saveBtnDisabled: { opacity: 0.7 },
-  saveBtnText: { color: Colors.white, fontSize: 15, fontWeight: '600', fontFamily: 'Inter', letterSpacing: 0.3 },
+  saveBtnText: { color: C.white, fontSize: 16.5, fontWeight: '700', fontFamily: 'Inter' },
 });

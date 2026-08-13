@@ -19,14 +19,18 @@ import {
 } from 'react-native';
 import { Home, Wrench } from 'lucide-react-native';
 import type { MobileRole } from '../../../src/lib/api';
-import { Colors } from '../../../src/constants/theme';
+import { V6Colors, V6Radii } from '../../../src/constants/theme';
 
 const C = {
-  ...Colors,
-  bg: '#F8FAFC',
-  dark: '#1E1E1E',
-  slate: '#64748B',
-  cardBorder: 'rgba(144,153,184,0.2)',
+  ...V6Colors,
+  bg: V6Colors.canvas,
+  dark: V6Colors.ink900,
+  slate: V6Colors.ink500,
+  muted: V6Colors.ink400,
+  cardBorder: V6Colors.line,
+  brandDark: V6Colors.cyan900,
+  brandTeal: V6Colors.cyan700,
+  brandRed: '#ef4444',
 } as const;
 
 interface GoogleRoleSelectionScreenProps {
@@ -87,7 +91,7 @@ export default function GoogleRoleSelectionScreen({
             activeOpacity={0.85}
           >
             <View style={[styles.iconCircle, styles.iconCircleHO]}>
-              <Home size={28} color={C.brandTeal} />
+              <Home size={31} color={C.brandTeal} />
             </View>
             <Text style={styles.cardTitle}>Homeowner</Text>
             <Text style={styles.cardDesc}>
@@ -110,7 +114,7 @@ export default function GoogleRoleSelectionScreen({
             activeOpacity={0.85}
           >
             <View style={[styles.iconCircle, styles.iconCircleSP]}>
-              <Wrench size={28} color={C.white} />
+              <Wrench size={31} color={C.white} />
             </View>
             <Text style={styles.cardTitle}>Service Provider</Text>
             <Text style={styles.cardDesc}>
@@ -156,7 +160,7 @@ const styles = StyleSheet.create({
   welcomeLabel: {
     color: 'rgba(255,255,255,0.7)',
     fontFamily: 'Inter',
-    fontSize: 13,
+    fontSize: 15.5,
     fontWeight: '500',
     letterSpacing: 0.5,
     marginBottom: 4,
@@ -164,14 +168,14 @@ const styles = StyleSheet.create({
   emailLabel: {
     color: C.white,
     fontFamily: 'Inter',
-    fontSize: 13,
+    fontSize: 15.5,
     marginBottom: 24,
     opacity: 0.85,
   },
   title: {
     color: C.dark,
     fontFamily: 'Inter',
-    fontSize: 26,
+    fontSize: 31.5,
     fontWeight: '700',
     textAlign: 'center',
     marginBottom: 8,
@@ -179,7 +183,7 @@ const styles = StyleSheet.create({
   subtitle: {
     color: C.slate,
     fontFamily: 'Inter',
-    fontSize: 14,
+    fontSize: 16.5,
     textAlign: 'center',
     lineHeight: 21,
   },
@@ -189,13 +193,13 @@ const styles = StyleSheet.create({
   card: {
     flex: 1,
     backgroundColor: C.white,
-    borderRadius: 24,
+    borderRadius: V6Radii.card,
     padding: 20,
     alignItems: 'center',
     borderWidth: 1,
     borderColor: C.cardBorder,
-    shadowColor: '#063D4D',
-    shadowOpacity: 0.08,
+    shadowColor: '#0f172a',
+    shadowOpacity: 0.06,
     shadowOffset: { width: 0, height: 8 },
     shadowRadius: 16,
     elevation: 4,
@@ -214,7 +218,7 @@ const styles = StyleSheet.create({
   cardTitle: {
     color: C.dark,
     fontFamily: 'Inter',
-    fontSize: 15,
+    fontSize: 18.5,
     fontWeight: '700',
     textAlign: 'center',
     marginBottom: 8,
@@ -222,27 +226,27 @@ const styles = StyleSheet.create({
   cardDesc: {
     color: C.slate,
     fontFamily: 'Inter',
-    fontSize: 12,
+    fontSize: 14.5,
     textAlign: 'center',
     lineHeight: 18,
     marginBottom: 16,
   },
 
   cardBadge: {
-    borderRadius: 20,
+    borderRadius: V6Radii.pill,
     paddingHorizontal: 14,
     paddingVertical: 7,
   },
   cardBadgeHO: { backgroundColor: 'rgba(9,110,139,0.10)' },
   cardBadgeSP: { backgroundColor: C.brandTeal },
-  cardBadgeText: { fontFamily: 'Inter', fontSize: 12, fontWeight: '700' },
+  cardBadgeText: { fontFamily: 'Inter', fontSize: 14.5, fontWeight: '700' },
   cardBadgeTextHO: { color: C.brandTeal },
   cardBadgeTextSP: { color: C.white },
 
   errorText: {
-    color: Colors.error ?? Colors.brandRed,
+    color: C.brandRed,
     fontFamily: 'Inter',
-    fontSize: 13,
+    fontSize: 15.5,
     textAlign: 'center',
     marginBottom: 12,
   },
@@ -250,7 +254,7 @@ const styles = StyleSheet.create({
   footerNote: {
     color: C.muted,
     fontFamily: 'Inter',
-    fontSize: 11,
+    fontSize: 13.5,
     textAlign: 'center',
     lineHeight: 17,
     paddingHorizontal: 12,

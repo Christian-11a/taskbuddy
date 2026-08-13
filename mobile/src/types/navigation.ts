@@ -1,35 +1,15 @@
-// Navigation type definitions used across the mobile app
-
-export type Role = 'homeowner' | 'provider';
-
-// Homeowner bottom tab keys
-export type HOTabKey = 'Home' | 'My Jobs' | 'Create' | 'Wallet' | 'Profile';
-
-// Provider bottom tab keys  
-export type SPTabKey = 'Dashboard' | 'My Jobs' | 'Create' | 'Calendar' | 'Profile';
-
-// Legacy alias for backward compatibility
-export type BottomTabParamList = {
-  Home: undefined;
-  'My Jobs': undefined;
-  Wallet: undefined;
-  Profile: undefined;
-};
-
-export type ScreenKey = keyof BottomTabParamList;
-
-export type RootStackParamList = {
-  Splash: undefined;
-  Onboarding: undefined;
-  Auth: undefined;
-  App: { role?: Role } | undefined;
-};
+// Navigation type definitions used across the mobile app.
+//
+// App.tsx drives navigation with plain component state (hoScreen/spScreen +
+// a back-stack), not React Navigation, so the only types anything actually
+// imports are the two screen-key unions below.
 
 // Homeowner screen keys (for sub-navigation)
 export type HOScreen =
   | 'Home'
   | 'My Jobs'
   | 'Create Job'
+  | 'Calendar'
   | 'Wallet'
   | 'Profile'
   | 'Job Detail'
@@ -40,7 +20,8 @@ export type HOScreen =
   | 'Notifications'
   | 'Edit Profile'
   | 'Dispute Filing'
-  | 'Settings';
+  | 'Settings'
+  | 'Help & Support';
 
 // Provider screen keys
 export type SPScreen =
@@ -54,9 +35,6 @@ export type SPScreen =
   | 'Chat'
   | 'Notifications'
   | 'Edit Profile'
-  | 'Verification';
-
-export const DEFAULT_ROLE: Role = 'homeowner';
-
-// Legacy
-export const bottomTabs: ScreenKey[] = ['Home', 'My Jobs', 'Wallet', 'Profile'];
+  | 'Verification'
+  | 'Settings'
+  | 'Help & Support';

@@ -20,9 +20,10 @@
  * RA 10173 biometric consent is mandatory for Service Providers only.
  */
 
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  Animated,
   Keyboard,
   KeyboardAvoidingView,
   Platform,
@@ -35,17 +36,21 @@ import {
   View,
 } from 'react-native';
 import { ArrowLeft, Check, ChevronDown, MailCheck } from 'lucide-react-native';
-import { Colors } from '../../../src/constants/theme';
+import { V6Colors, V6Radii, V6Shadows } from '../../../src/constants/theme';
 import TermsAndConditions from './TermsAndConditions';
 import { api } from '../../../src/lib/api';
 import type { MobileRole } from '../../../src/lib/api';
 
 const C = {
-  ...Colors,
-  bg: '#F8FAFC',
-  dark: '#1E1E1E',
-  slate: '#757575',
-  mutedBorder: 'rgba(144,153,184,0.3)',
+  ...V6Colors,
+  bg: V6Colors.canvas,
+  dark: V6Colors.ink900,
+  slate: V6Colors.ink500,
+  muted: V6Colors.ink400,
+  mutedBorder: '#dce3e9',
+  brandDark: V6Colors.cyan900,
+  brandTeal: V6Colors.cyan700,
+  brandRed: '#ef4444',
 } as const;
 
 const SKILL_CATEGORIES = [
@@ -112,6 +117,8 @@ function FormInput({
           autoCorrect={false}
           onFocus={() => setFocused(true)}
           onBlur={() => setFocused(false)}
+          onSubmitEditing={Keyboard.dismiss}
+          enablesReturnKeyAutomatically
         />
       </View>
       {!!error && <Text style={styles.inputErrorText}>{error}</Text>}
@@ -137,7 +144,7 @@ function ConsentCheckbox({ checked, onPress, label, error, testID }: ConsentChec
           onPress={onPress}
           activeOpacity={0.7}
         >
-          {checked ? <Check size={13} color={C.white} /> : null}
+          {checked ? <Check size={14} color={C.white} /> : null}
         </TouchableOpacity>
         <Text style={styles.termsText}>{label}</Text>
       </View>
@@ -165,6 +172,23 @@ type FieldErrors = {
 };
 
 export default function RegisterScreen({ onRegister, onLogin, onGoogleSignIn }: RegisterScreenProps) {
+  // Entrance transition — matches the mockup's `.screen{animation:fadeIn .22s ease}`
+  // (fade in + slide up 6px). Runs once on mount, when this screen first opens.
+  const entrance = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    Animated.timing(entrance, {
+      toValue: 1,
+      duration: 220,
+      useNativeDriver: true,
+    }).start();
+  }, [entrance]);
+  const entranceStyle = {
+    opacity: entrance,
+    transform: [{
+      translateY: entrance.interpolate({ inputRange: [0, 1], outputRange: [6, 0] }),
+    }],
+  };
+
   // Which terms/policy modal to show
   const [termsMode, setTermsMode] = useState<TermsMode>(null);
 
@@ -305,11 +329,10 @@ export default function RegisterScreen({ onRegister, onLogin, onGoogleSignIn }: 
   if (confirmationSent) {
     return (
       <View style={styles.screen}>
-        <View style={styles.headerBg} />
         <View style={styles.confirmWrap}>
           <View style={styles.confirmCard}>
             <View style={styles.confirmIcon}>
-              <MailCheck size={32} color={C.brandTeal} />
+              <MailCheck size={35} color={C.brandTeal} />
             </View>
             <Text style={styles.title}>Check your email</Text>
             <Text style={styles.confirmText}>
@@ -334,25 +357,25 @@ export default function RegisterScreen({ onRegister, onLogin, onGoogleSignIn }: 
 
   const selectedCategory = categories.find((c) => c.id === categoryId);
 
-  return (
-    <View style={styles.screen}>
-      <View style={styles.headerBg} />
-
-      <KeyboardAvoidingView
-        style={styles.flex}
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      >
-        <ScrollView
-          style={styles.flex}
-          contentContainerStyle={styles.scrollContent}
-          showsVerticalScrollIndicator={false}
-          keyboardShouldPersistTaps="handled"
-          onTouchStart={Platform.OS === 'ios' ? Keyboard.dismiss : undefined}
-        >
+  const scrollContent = (
+    <ScrollView
+      style={styles.flex}
+      contentContainerStyle={styles.scrollContent}
+      showsVerticalScrollIndicator={false}
+      // "handled" lets taps on buttons/links/inputs still register while any
+      // other tap outside an input bubbles up and dismisses the keyboard.
+      // (Replaces the old onTouchStart={Keyboard.dismiss} on this ScrollView,
+      // which fired on every touch — including tapping directly into an
+      // input — and raced against the input's own focus, so the keyboard
+      // sometimes never opened. Same fix as LoginScreen's.)
+      keyboardShouldPersistTaps="always"
+      keyboardDismissMode="none"
+      automaticallyAdjustKeyboardInsets={Platform.OS === 'ios'}
+    >
           {/* Top section */}
           <View style={styles.topSection}>
             <TouchableOpacity style={styles.backBtn} onPress={onLogin} activeOpacity={0.8}>
-              <ArrowLeft size={20} color={C.white} />
+              <ArrowLeft size={21} color={C.ink700} />
             </TouchableOpacity>
           </View>
 
@@ -427,7 +450,7 @@ export default function RegisterScreen({ onRegister, onLogin, onGoogleSignIn }: 
                     {selectedCategory ? selectedCategory.name : 'Select your skill…'}
                   </Text>
                   <ChevronDown
-                    size={16}
+                    size={18}
                     color={C.muted}
                     style={{ transform: [{ rotate: categoryOpen ? '180deg' : '0deg' }] }}
                   />
@@ -456,7 +479,7 @@ export default function RegisterScreen({ onRegister, onLogin, onGoogleSignIn }: 
                         >
                           {cat.name}
                         </Text>
-                        {cat.id === categoryId && <Check size={14} color={C.brandTeal} />}
+                        {cat.id === categoryId && <Check size={15} color={C.brandTeal} />}
                       </TouchableOpacity>
                     ))}
                   </View>
@@ -610,9 +633,29 @@ export default function RegisterScreen({ onRegister, onLogin, onGoogleSignIn }: 
               <Text style={styles.signInLink}>Sign In</Text>
             </Pressable>
           </View>
-        </ScrollView>
+    </ScrollView>
+  );
+
+  return (
+    // Keyboard handling: the ScrollView's keyboardShouldPersistTaps +
+    // keyboardDismissMode handle taps/dismissal; KeyboardAvoidingView on
+    // Android resizes this long form so the focused field scrolls above the
+    // keyboard instead of being hidden behind it (matches this screen's
+    // original working pattern — behavior="height" on Android).
+    //
+    // Note for future edits: do NOT add a shadow/elevation to `inputBoxFocused`
+    // (or any style toggled while a TextInput inside it has focus). On Android
+    // an elevation change re-creates the wrapping view and drops the EditText's
+    // focus, which closes the keyboard the moment it opens. That was the cause
+    // of the "keyboard flashes and focus jumps between fields" bug here.
+    <Animated.View style={[styles.screen, entranceStyle]}>
+      <KeyboardAvoidingView
+        style={styles.flex}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      >
+        {scrollContent}
       </KeyboardAvoidingView>
-    </View>
+    </Animated.View>
   );
 }
 
@@ -620,62 +663,51 @@ const styles = StyleSheet.create({
   flex: { flex: 1 },
   screen: { flex: 1, backgroundColor: C.bg },
 
-  headerBg: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    height: 200,
-    backgroundColor: C.brandDark,
-    borderBottomLeftRadius: 40,
-    borderBottomRightRadius: 40,
-  },
-
   scrollContent: { paddingTop: 56, paddingHorizontal: 20, paddingBottom: 40 },
 
   topSection: { marginBottom: 20, flexDirection: 'row' },
   backBtn: {
-    width: 40, height: 40, borderRadius: 12,
-    backgroundColor: 'rgba(255,255,255,0.2)',
+    width: 38, height: 38, borderRadius: 12,
+    backgroundColor: C.white, borderWidth: 1, borderColor: '#e8edf2',
     alignItems: 'center', justifyContent: 'center',
   },
 
   card: {
     backgroundColor: C.white,
-    borderRadius: 30,
+    borderRadius: V6Radii.card,
     padding: 24,
-    shadowColor: '#063D4D',
-    shadowOpacity: 0.08,
+    shadowColor: '#0f172a',
+    shadowOpacity: 0.06,
     shadowOffset: { width: 0, height: 12 },
     shadowRadius: 25,
     elevation: 6,
     marginBottom: 20,
   },
 
-  title: { color: C.dark, fontSize: 26, fontWeight: '700', fontFamily: 'Inter', marginBottom: 4 },
-  subtitle: { color: C.slate, fontSize: 13, fontFamily: 'Inter', marginBottom: 20 },
+  title: { color: C.dark, fontSize: 31.5, fontWeight: '700', fontFamily: 'Inter', marginBottom: 4 },
+  subtitle: { color: C.slate, fontSize: 15.5, fontFamily: 'Inter', marginBottom: 20 },
 
   roleRow: { flexDirection: 'row', gap: 10, marginBottom: 20 },
   roleBtn: {
-    flex: 1, paddingVertical: 12, borderRadius: 20,
-    borderWidth: 1, borderColor: 'rgba(144,153,184,0.3)',
+    flex: 1, paddingVertical: 12, borderRadius: V6Radii.btn,
+    borderWidth: 1, borderColor: '#dce3e9',
     alignItems: 'center', backgroundColor: C.white,
   },
-  roleBtnActive: { backgroundColor: C.brandDark, borderColor: C.brandDark },
-  roleBtnText: { fontFamily: 'Inter', fontSize: 13, fontWeight: '600', color: C.muted },
+  roleBtnActive: { backgroundColor: C.ink900, borderColor: C.ink900 },
+  roleBtnText: { fontFamily: 'Inter', fontSize: 15.5, fontWeight: '600', color: C.muted },
   roleBtnTextActive: { color: C.white },
 
   inputGroup: { marginBottom: 16 },
-  inputLabel: { fontFamily: 'Inter', fontSize: 13, fontWeight: '600', color: C.brandDark, marginBottom: 6 },
+  inputLabel: { fontFamily: 'Inter', fontSize: 15.5, fontWeight: '600', color: C.brandDark, marginBottom: 6 },
   inputBox: {
     backgroundColor: '#F8FAFC', borderRadius: 12, paddingHorizontal: 16, paddingVertical: 13,
     borderWidth: 1, borderColor: C.mutedBorder,
   },
   inputBoxFocused: { borderColor: C.brandTeal },
   inputBoxError: { borderColor: C.brandRed },
-  inputText: { fontFamily: 'Inter', fontSize: 15, color: '#0F172A', padding: 0 },
+  inputText: { fontFamily: 'Inter', fontSize: 18.5, color: '#0F172A', padding: 0 },
   inputErrorText: {
-    fontFamily: 'Inter', fontSize: 12, color: C.brandRed,
+    fontFamily: 'Inter', fontSize: 14.5, color: C.brandRed,
     marginTop: 5, marginLeft: 2, lineHeight: 17,
   },
 
@@ -683,7 +715,7 @@ const styles = StyleSheet.create({
   categoryPicker: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
   },
-  categoryPlaceholder: { fontFamily: 'Inter', fontSize: 15, color: C.muted, padding: 0 },
+  categoryPlaceholder: { fontFamily: 'Inter', fontSize: 18.5, color: C.muted, padding: 0 },
   categoryDropdown: {
     marginTop: 4, borderRadius: 12, borderWidth: 1, borderColor: C.mutedBorder,
     backgroundColor: C.white, overflow: 'hidden',
@@ -694,7 +726,7 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1, borderBottomColor: '#F1F5F9',
   },
   categoryOptionActive: { backgroundColor: 'rgba(9,110,139,0.06)' },
-  categoryOptionText: { fontFamily: 'Inter', fontSize: 14, color: C.dark },
+  categoryOptionText: { fontFamily: 'Inter', fontSize: 16.5, color: C.dark },
   categoryOptionTextActive: { color: C.brandTeal, fontWeight: '700' },
 
   // Consent section
@@ -708,7 +740,7 @@ const styles = StyleSheet.create({
   },
   consentSectionTitle: {
     fontFamily: 'Inter',
-    fontSize: 12,
+    fontSize: 14.5,
     fontWeight: '700',
     color: C.brandDark,
     textTransform: 'uppercase',
@@ -723,32 +755,31 @@ const styles = StyleSheet.create({
     alignItems: 'center', justifyContent: 'center', marginTop: 1, flexShrink: 0,
   },
   checkboxChecked: { backgroundColor: C.brandTeal, borderColor: C.brandTeal },
-  termsText: { flex: 1, color: C.slate, fontSize: 13, fontFamily: 'Inter', lineHeight: 20 },
+  termsText: { flex: 1, color: C.slate, fontSize: 15.5, fontFamily: 'Inter', lineHeight: 20 },
   termsLink: { color: C.brandTeal, fontWeight: '700', textDecorationLine: 'underline' },
   requiredAsterisk: { color: C.brandRed, fontWeight: '700' },
   requiredHint: {
-    color: C.muted, fontSize: 11, fontFamily: 'Inter', marginTop: 4, lineHeight: 16,
+    color: C.muted, fontSize: 13.5, fontFamily: 'Inter', marginTop: 4, lineHeight: 16,
   },
 
   errorBanner: {
-    fontFamily: 'Inter', fontSize: 13, color: C.brandRed,
+    fontFamily: 'Inter', fontSize: 15.5, color: C.brandRed,
     marginBottom: 12, lineHeight: 18,
   },
 
   primaryBtn: {
-    backgroundColor: C.brandTeal, borderRadius: 24, paddingVertical: 15,
+    backgroundColor: C.brandTeal, borderRadius: V6Radii.btn, paddingVertical: 15,
     alignItems: 'center', marginTop: 4, marginBottom: 18,
-    shadowColor: C.brandTeal, shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.35, shadowRadius: 12, elevation: 5,
+    ...V6Shadows.primaryButton,
   },
   primaryBtnDisabled: { opacity: 0.7 },
-  primaryBtnText: { color: C.white, fontFamily: 'Inter', fontSize: 15, fontWeight: '600', letterSpacing: 0.3 },
+  primaryBtnText: { color: C.white, fontFamily: 'Inter', fontSize: 18.5, fontWeight: '700', letterSpacing: 0.1 },
 
   // Email-confirmation success state
   confirmWrap: { flex: 1, justifyContent: 'center', paddingHorizontal: 20 },
   confirmCard: {
-    backgroundColor: C.white, borderRadius: 30, padding: 28, alignItems: 'center',
-    shadowColor: '#063D4D', shadowOpacity: 0.08, shadowOffset: { width: 0, height: 12 },
+    backgroundColor: C.white, borderRadius: V6Radii.card, padding: 28, alignItems: 'center',
+    shadowColor: '#0f172a', shadowOpacity: 0.06, shadowOffset: { width: 0, height: 12 },
     shadowRadius: 25, elevation: 6,
   },
   confirmIcon: {
@@ -756,33 +787,33 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(9,110,139,0.10)', alignItems: 'center', justifyContent: 'center',
   },
   confirmText: {
-    fontFamily: 'Inter', fontSize: 14, color: C.slate, textAlign: 'center',
+    fontFamily: 'Inter', fontSize: 16.5, color: C.slate, textAlign: 'center',
     lineHeight: 21, marginTop: 8, marginBottom: 24,
   },
   confirmEmail: { color: C.brandDark, fontWeight: '700' },
 
   dividerRow: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 16 },
   dividerLine: { flex: 1, height: 1, backgroundColor: '#E2E8F0' },
-  dividerText: { color: '#B3B3B3', fontSize: 13, fontFamily: 'Roboto' },
+  dividerText: { color: '#B3B3B3', fontSize: 15.5, fontFamily: 'Roboto' },
 
   googleBtn: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-    borderWidth: 1, borderColor: 'rgba(144,153,184,0.4)',
-    borderRadius: 24, paddingVertical: 13, gap: 10, marginBottom: 20,
+    borderWidth: 1, borderColor: '#dce3e9',
+    borderRadius: V6Radii.btn, paddingVertical: 13, gap: 10, marginBottom: 20,
     backgroundColor: C.white,
   },
   googleIcon: {
     width: 20, height: 20, borderRadius: 10,
     backgroundColor: '#EA4335', alignItems: 'center', justifyContent: 'center',
   },
-  googleIconText: { color: C.white, fontSize: 12, fontWeight: '700' },
-  googleBtnText: { fontFamily: 'Inter', fontSize: 14, fontWeight: '500', color: '#757575' },
+  googleIconText: { color: C.white, fontSize: 14.5, fontWeight: '700' },
+  googleBtnText: { fontFamily: 'Inter', fontSize: 16.5, fontWeight: '500', color: '#757575' },
 
   dotsRow: { flexDirection: 'row', justifyContent: 'center', gap: 8 },
   dot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#D9D9D9' },
   dotActive: { backgroundColor: C.brandDark, width: 24, borderRadius: 4 },
 
   signInRow: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', marginTop: 4 },
-  signInPrompt: { fontFamily: 'Inter', fontSize: 14, color: C.muted },
-  signInLink: { fontFamily: 'Roboto', fontSize: 14, fontWeight: '700', color: C.brandTeal },
+  signInPrompt: { fontFamily: 'Inter', fontSize: 16.5, color: C.muted },
+  signInLink: { fontFamily: 'Roboto', fontSize: 16.5, fontWeight: '700', color: C.brandTeal },
 });

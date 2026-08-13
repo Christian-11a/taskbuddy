@@ -1,13 +1,14 @@
 /**
  * HOWalletScreen.tsx
  *
- * Figma Source: "HO - Payment Transactions" (id: 46:958)
+ * v6 design: matches taskbuddy_UI_update.html's #ho-payments screen — flat
+ * white topbar, a small rounded gradient balance card (not a full-bleed dark
+ * hero), an escrow card, a trust-note banner, and a transaction list.
  *
- * Design:
- * - Teal hero with wallet balance prominently displayed
- * - Add Money / Send Money quick action buttons
- * - Transaction history list
- * - Voucher section
+ * Deviation from the mockup, per explicit product decision: the mockup only
+ * shows "+ Deposit Money" for homeowners. This screen keeps all three
+ * existing actions — Add Money, Withdraw, Transfer — restyled onto the new
+ * balance card instead of the old dark hero.
  */
 
 import React, { useState } from 'react';
@@ -23,16 +24,19 @@ import {
 } from 'react-native';
 import {
   ArrowDownLeft,
-  ArrowLeft,
   ArrowUpRight,
   ArrowRightLeft,
   CircleDollarSign,
   Package,
+  Shield,
   WalletCards,
 } from 'lucide-react-native';
+import { LinearGradient } from 'expo-linear-gradient';
 import * as AuthSession from 'expo-auth-session';
 import * as WebBrowser from 'expo-web-browser';
-import { Colors, Radii, Shadows, Sizes, Spacing } from '../../../src/constants/theme';
+import { Sizes, Spacing, V6Colors, V6Radii, V6Shadows } from '../../../src/constants/theme';
+
+const C = V6Colors;
 import { useAsyncData } from '../../../src/hooks/useAsyncData';
 import { api, MIN_TOPUP_PHP } from '../../../src/lib/api';
 import { peso, shortDate } from '../../../src/lib/format';
@@ -50,13 +54,9 @@ const CONFIRM_POLL_INTERVAL_MS = 1500;
 
 const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
-interface HOWalletScreenProps {
-  onBack?: () => void;
-}
-
-export default function HOWalletScreen({ onBack }: HOWalletScreenProps) {
+export default function HOWalletScreen() {
   const [activeTab, setActiveTab] = useState<'all' | 'credit' | 'debit'>('all');
-  const { data, loading, error, reload } = useAsyncData(() => api.wallet(), []);
+  const { data, loading, error, reload } = useAsyncData(() => api.wallet(), [], 'ho-wallet');
 
   // Add Money: hiring holds the job budget in escrow, so a client needs a
   // funded wallet before they can accept an application.
@@ -173,20 +173,23 @@ export default function HOWalletScreen({ onBack }: HOWalletScreenProps) {
 
   const content = (
     <View style={styles.screen}>
-      {/* Hero Header */}
-      <View style={styles.hero}>
-        <View style={styles.heroTopRow}>
-          {onBack && (
-            <TouchableOpacity style={styles.backBtn} onPress={onBack} activeOpacity={0.8}>
-              <ArrowLeft size={20} color={Colors.white} />
-            </TouchableOpacity>
-          )}
-          <Text style={styles.heroTitle}>Wallet</Text>
-          <View style={{ width: 40 }} />
-        </View>
+      {/* Header — matches .topbar (flat white, not a dark hero) */}
+      <View style={styles.header}>
+        <Text style={styles.headerTitle}>Wallet</Text>
+      </View>
 
-        {/* Balance card */}
-        <View style={styles.balanceCard}>
+      <ScrollView
+        style={styles.body}
+        contentContainerStyle={styles.bodyContent}
+        showsVerticalScrollIndicator={false}
+      >
+        {/* Balance card — mockup's linear-gradient(165deg, cyan600, cyan700) */}
+        <LinearGradient
+          colors={[C.cyan600, C.cyan700]}
+          start={{ x: 0.2, y: 0 }}
+          end={{ x: 0.8, y: 1 }}
+          style={styles.balanceCard}
+        >
           <Text style={styles.balanceLabel}>Available Balance</Text>
           <Text style={styles.balanceAmount}>
             {data ? peso(data.balance) : '—'}
@@ -197,43 +200,56 @@ export default function HOWalletScreen({ onBack }: HOWalletScreenProps) {
               onPress={() => setShowAddMoney(true)}
               activeOpacity={0.8}
             >
-              <ArrowUpRight size={22} color={Colors.white} />
+              <ArrowUpRight size={22} color={C.white} />
               <Text style={styles.quickActionText}>Add Money</Text>
             </TouchableOpacity>
             <View style={styles.actionDivider} />
             <TouchableOpacity style={styles.quickActionBtn} activeOpacity={0.8}>
-              <ArrowDownLeft size={22} color={Colors.white} />
+              <ArrowDownLeft size={22} color={C.white} />
               <Text style={styles.quickActionText}>Withdraw</Text>
             </TouchableOpacity>
             <View style={styles.actionDivider} />
             <TouchableOpacity style={styles.quickActionBtn} activeOpacity={0.8}>
-              <ArrowRightLeft size={22} color={Colors.white} />
+              <ArrowRightLeft size={22} color={C.white} />
               <Text style={styles.quickActionText}>Transfer</Text>
             </TouchableOpacity>
           </View>
-        </View>
+        </LinearGradient>
 
-        {/* Stats row */}
-        <View style={styles.statsRow}>
-          {[
-            { label: 'Spent', value: peso(data?.total_debited ?? 0), color: '#F59E0B' },
-            { label: 'Added', value: peso(data?.total_credited ?? 0), color: '#22C55E' },
-            { label: 'Pending', value: peso(data?.pending ?? 0), color: '#94A3B8' },
-          ].map((s) => (
-            <View key={s.label} style={styles.statItem}>
-              <Text style={[styles.statValue, { color: s.color }]}>{s.value}</Text>
-              <Text style={styles.statLabel}>{s.label}</Text>
+        {/* Escrow card */}
+        <View style={styles.escrowCard}>
+          <View style={styles.escrowTopRow}>
+            <View style={styles.escrowCopy}>
+              <Text style={styles.escrowLabel}>IN ESCROW</Text>
+              <Text style={styles.escrowAmount}>{data ? peso(data.pending) : '—'}</Text>
+              <Text style={styles.escrowNote}>Funds held securely until you approve completed work.</Text>
             </View>
-          ))}
+            <Shield size={24} color={C.cyan700} />
+          </View>
         </View>
-      </View>
 
-      {/* Transaction list */}
-      <ScrollView
-        style={styles.body}
-        contentContainerStyle={styles.bodyContent}
-        showsVerticalScrollIndicator={false}
-      >
+        {/* Spent / Added summary */}
+        <View style={styles.statsRow}>
+          <View style={styles.statItem}>
+            <Text style={[styles.statValue, { color: '#f59e0b' }]}>{peso(data?.total_debited ?? 0)}</Text>
+            <Text style={styles.statLabel}>Spent</Text>
+          </View>
+          <View style={styles.statDivider} />
+          <View style={styles.statItem}>
+            <Text style={[styles.statValue, { color: '#22c55e' }]}>{peso(data?.total_credited ?? 0)}</Text>
+            <Text style={styles.statLabel}>Added</Text>
+          </View>
+        </View>
+
+        {/* Trust note */}
+        <View style={styles.trustNote}>
+          <WalletCards size={18} color={C.cyan800} />
+          <Text style={styles.trustNoteText}>
+            Funds are held in escrow when you hire a provider, and released to
+            them once you mark the job complete.
+          </Text>
+        </View>
+
         {/* Filter tabs */}
         <View style={styles.tabRow}>
           {(['all', 'credit', 'debit'] as const).map((t) => (
@@ -255,34 +271,38 @@ export default function HOWalletScreen({ onBack }: HOWalletScreenProps) {
         {!!error && !loading && <Text style={styles.stateText}>{error}</Text>}
         {!loading && !error && filtered.length === 0 && (
           <View style={styles.emptyState}>
-            <WalletCards size={40} color={Colors.brandTeal} />
+            <WalletCards size={30} color={C.ink300} />
             <Text style={styles.emptyTitle}>No transactions yet</Text>
-            <Text style={styles.stateText}>Your payments and wallet activity will appear here.</Text>
+            <Text style={styles.emptyText}>Your payments and wallet activity will appear here.</Text>
           </View>
         )}
 
-        {filtered.map((txn) => {
-          const Icon = txn.direction === 'credit' ? CircleDollarSign : Package;
-          const statusLabel =
-            txn.status.charAt(0).toUpperCase() + txn.status.slice(1);
-          return (
-            <View key={txn.id} style={styles.txnCard}>
-              <View style={styles.txnIcon}>
-                <Icon size={22} color={Colors.brandDark} />
+        {filtered.length > 0 && (
+        <View style={styles.txnList}>
+          {filtered.map((txn, i) => {
+            const Icon = txn.direction === 'credit' ? CircleDollarSign : Package;
+            const statusLabel =
+              txn.status.charAt(0).toUpperCase() + txn.status.slice(1);
+            return (
+              <View key={txn.id} style={[styles.txnRow, i < filtered.length - 1 && styles.txnRowBorder]}>
+                <View style={styles.txnIcon}>
+                  <Icon size={19} color={C.cyan700} />
+                </View>
+                <View style={styles.txnInfo}>
+                  <Text style={styles.txnTitle} numberOfLines={1}>{txn.title}</Text>
+                  <Text style={styles.txnDate}>{shortDate(txn.created_at)} · {statusLabel}</Text>
+                </View>
+                <Text style={[
+                  styles.txnAmount,
+                  txn.direction === 'credit' ? styles.txnCredit : styles.txnDebit,
+                ]}>
+                  {txn.direction === 'debit' ? '-' : '+'}{peso(txn.amount)}
+                </Text>
               </View>
-              <View style={styles.txnInfo}>
-                <Text style={styles.txnTitle}>{txn.title}</Text>
-                <Text style={styles.txnDate}>{shortDate(txn.created_at)} · {statusLabel}</Text>
-              </View>
-              <Text style={[
-                styles.txnAmount,
-                txn.direction === 'credit' ? styles.txnCredit : styles.txnDebit,
-              ]}>
-                {txn.direction === 'debit' ? '-' : '+'}{peso(txn.amount)}
-              </Text>
-            </View>
-          );
-        })}
+            );
+          })}
+        </View>
+        )}
         <View style={{ height: 20 }} />
       </ScrollView>
 
@@ -309,7 +329,7 @@ export default function HOWalletScreen({ onBack }: HOWalletScreenProps) {
                 onChangeText={setAmount}
                 keyboardType="decimal-pad"
                 placeholder="0.00"
-                placeholderTextColor={Colors.muted}
+                placeholderTextColor={C.ink400}
                 editable={!adding}
                 autoFocus
               />
@@ -343,7 +363,7 @@ export default function HOWalletScreen({ onBack }: HOWalletScreenProps) {
                 activeOpacity={0.85}
               >
                 {adding ? (
-                  <ActivityIndicator color={Colors.white} />
+                  <ActivityIndicator color={C.white} />
                 ) : (
                   <Text style={styles.modalConfirmText}>Continue to Payment</Text>
                 )}
@@ -359,96 +379,103 @@ export default function HOWalletScreen({ onBack }: HOWalletScreenProps) {
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: Colors.background },
+  screen: { flex: 1, backgroundColor: C.canvas },
 
-  hero: {
-    backgroundColor: Colors.brandDark,
+  header: {
+    backgroundColor: C.white,
     paddingTop: Sizes.statusBarHeight,
     paddingHorizontal: Spacing.screenH,
-    paddingBottom: 24,
-    borderBottomLeftRadius: 28,
-    borderBottomRightRadius: 28,
+    paddingBottom: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#edf1f4',
   },
-  heroTopRow: {
-    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
-    paddingTop: 12, marginBottom: 20,
-  },
-  heroTitle: { color: Colors.white, fontSize: 20, fontWeight: '700', fontFamily: 'Inter' },
-  backBtn: {
-    width: 40, height: 40, borderRadius: 12,
-    backgroundColor: 'rgba(255,255,255,0.15)', alignItems: 'center', justifyContent: 'center',
-  },
-  backIcon: { color: Colors.white, fontSize: 20, fontWeight: '600' },
-
-  balanceCard: {
-    backgroundColor: 'rgba(255,255,255,0.12)', borderRadius: 20,
-    padding: 20, marginBottom: 16,
-  },
-  balanceLabel: { color: 'rgba(255,255,255,0.7)', fontSize: 13, fontFamily: 'Inter', marginBottom: 4 },
-  balanceAmount: { color: Colors.white, fontSize: 36, fontWeight: '800', fontFamily: 'Inter', marginBottom: 16 },
-  quickActions: { flexDirection: 'row', alignItems: 'center' },
-  quickActionBtn: { flex: 1, alignItems: 'center', paddingVertical: 4 },
-  quickActionIcon: { fontSize: 22, marginBottom: 4 },
-  quickActionText: { color: 'rgba(255,255,255,0.8)', fontSize: 12, fontWeight: '600', fontFamily: 'Inter' },
-  actionDivider: { width: 1, height: 40, backgroundColor: 'rgba(255,255,255,0.2)' },
-
-  statsRow: {
-    flexDirection: 'row', backgroundColor: 'rgba(255,255,255,0.08)',
-    borderRadius: 16, padding: 14,
-  },
-  statItem: { flex: 1, alignItems: 'center' },
-  statValue: { fontSize: 16, fontWeight: '800', fontFamily: 'Inter', marginBottom: 2 },
-  statLabel: { color: 'rgba(255,255,255,0.6)', fontSize: 11, fontFamily: 'Inter' },
+  headerTitle: { color: C.ink900, fontSize: 21.5, fontWeight: '800', fontFamily: 'Inter', letterSpacing: -0.3 },
 
   body: { flex: 1 },
-  bodyContent: { paddingHorizontal: Spacing.screenH, paddingTop: 20, paddingBottom: 20 },
+  bodyContent: { paddingHorizontal: Spacing.screenH, paddingTop: 16, paddingBottom: 20 },
 
-  tabRow: { flexDirection: 'row', gap: 8, marginBottom: 20 },
+  balanceCard: {
+    borderRadius: 18, padding: 20, marginBottom: 14,
+  },
+  balanceLabel: { color: C.cyan100, fontSize: 13, fontFamily: 'Inter', marginBottom: 4 },
+  balanceAmount: { color: C.white, fontSize: 32.5, fontWeight: '800', fontFamily: 'Inter', marginBottom: 16 },
+  quickActions: { flexDirection: 'row', alignItems: 'center' },
+  quickActionBtn: { flex: 1, alignItems: 'center', gap: 4 },
+  quickActionText: { color: 'rgba(255,255,255,0.85)', fontSize: 13.5, fontWeight: '600', fontFamily: 'Inter' },
+  actionDivider: { width: 1, height: 34, backgroundColor: 'rgba(255,255,255,0.2)' },
+
+  escrowCard: {
+    backgroundColor: '#f5fbfc', borderWidth: 1, borderColor: '#d5eef3',
+    borderRadius: 15, padding: 14, marginBottom: 14,
+  },
+  escrowTopRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
+  escrowCopy: { flex: 1, marginRight: 12 },
+  escrowLabel: { fontSize: 11, textTransform: 'uppercase', letterSpacing: 0.6, fontWeight: '800', color: C.cyan700 },
+  escrowAmount: { fontSize: 24, fontWeight: '800', color: C.ink900, marginVertical: 3, fontFamily: 'Inter' },
+  escrowNote: { fontSize: 12, color: C.ink500, lineHeight: 16, fontFamily: 'Inter' },
+
+  statsRow: {
+    flexDirection: 'row', backgroundColor: C.white, borderWidth: 1, borderColor: C.line,
+    borderRadius: 16, padding: 14, marginBottom: 14,
+  },
+  statItem: { flex: 1, alignItems: 'center' },
+  statDivider: { width: 1, backgroundColor: C.line },
+  statValue: { fontSize: 18.5, fontWeight: '800', fontFamily: 'Inter', marginBottom: 2 },
+  statLabel: { color: C.ink400, fontSize: 13, fontFamily: 'Inter' },
+
+  trustNote: {
+    flexDirection: 'row', gap: 9, alignItems: 'flex-start',
+    backgroundColor: '#f5fbfc', borderWidth: 1, borderColor: '#d8f0f4',
+    borderRadius: 13, padding: 12, marginBottom: 18,
+  },
+  trustNoteText: { flex: 1, color: C.cyan800, fontSize: 12, lineHeight: 16, fontFamily: 'Inter' },
+
+  tabRow: { flexDirection: 'row', gap: 8, marginBottom: 18 },
   tab: {
-    paddingHorizontal: 20, paddingVertical: 8, borderRadius: 999,
-    backgroundColor: 'rgba(144,153,184,0.15)',
+    paddingHorizontal: 18, paddingVertical: 7, borderRadius: 999,
+    backgroundColor: C.ink50,
   },
-  tabActive: { backgroundColor: Colors.brandDark },
-  tabText: { color: Colors.muted, fontSize: 13, fontWeight: '600', fontFamily: 'Inter' },
-  tabTextActive: { color: Colors.white },
+  tabActive: { backgroundColor: C.ink900 },
+  tabText: { color: C.ink500, fontSize: 14.5, fontWeight: '600', fontFamily: 'Inter' },
+  tabTextActive: { color: C.white },
 
-  sectionTitle: { color: Colors.brandDark, fontSize: 16, fontWeight: '800', fontFamily: 'Inter', marginBottom: 14 },
-  stateText: { color: Colors.slate, fontSize: 14, fontFamily: 'Inter', textAlign: 'center', marginTop: 20 },
+  sectionTitle: { color: C.ink900, fontSize: 16, fontWeight: '800', fontFamily: 'Inter', marginBottom: 12 },
+  stateText: { color: C.ink500, fontSize: 16.5, fontFamily: 'Inter', textAlign: 'center', marginTop: 20 },
   emptyState: { alignItems: 'center', paddingVertical: 44, paddingHorizontal: 24 },
-  emptyTitle: { color: Colors.brandDark, fontSize: 17, fontWeight: '800', fontFamily: 'Inter', marginTop: 12 },
+  emptyTitle: { color: C.ink800, fontSize: 16, fontWeight: '700', fontFamily: 'Inter', marginTop: 10, marginBottom: 4 },
+  emptyText: { color: C.ink400, fontSize: 14, fontFamily: 'Inter', textAlign: 'center', lineHeight: 17 },
 
-  txnCard: {
-    backgroundColor: Colors.white, borderRadius: Radii.card,
-    padding: 16, marginBottom: 10, flexDirection: 'row', alignItems: 'center',
-    ...Shadows.card,
+  txnList: {
+    backgroundColor: C.white, borderRadius: 16, borderWidth: 1, borderColor: C.line, overflow: 'hidden',
   },
+  txnRow: { flexDirection: 'row', alignItems: 'center', padding: 14 },
+  txnRowBorder: { borderBottomWidth: 1, borderBottomColor: '#f0f3f6' },
   txnIcon: {
-    width: 44, height: 44, borderRadius: 14,
-    backgroundColor: Colors.backgroundAlt, alignItems: 'center', justifyContent: 'center', marginRight: 12,
+    width: 34, height: 34, borderRadius: 12,
+    backgroundColor: '#f7f9fb', alignItems: 'center', justifyContent: 'center', marginRight: 12,
   },
-  txnIconText: { fontSize: 22 },
   txnInfo: { flex: 1 },
-  txnTitle: { color: Colors.brandDark, fontSize: 14, fontWeight: '700', fontFamily: 'Inter', marginBottom: 2 },
-  txnDate: { color: Colors.slate, fontSize: 12, fontFamily: 'Inter' },
-  txnAmount: { fontSize: 15, fontWeight: '800', fontFamily: 'Inter' },
-  txnCredit: { color: '#22C55E' },
-  txnDebit: { color: Colors.brandDark },
+  txnTitle: { color: C.ink900, fontSize: 14.5, fontWeight: '600', fontFamily: 'Inter', marginBottom: 2 },
+  txnDate: { color: C.ink400, fontSize: 12.5, fontFamily: 'Inter' },
+  txnAmount: { fontSize: 14.5, fontWeight: '800', fontFamily: 'Inter' },
+  txnCredit: { color: '#16a34a' },
+  txnDebit: { color: C.ink900 },
 
   // Add Money modal
   modalBackdrop: { flex: 1, backgroundColor: 'rgba(15,23,42,0.5)', alignItems: 'center', justifyContent: 'center', padding: 28 },
-  modalCard: { width: '100%', backgroundColor: Colors.white, borderRadius: Radii.card, padding: 22 },
-  modalTitle: { color: Colors.brandDark, fontSize: 18, fontWeight: '800', fontFamily: 'Inter' },
-  modalBody: { color: Colors.slate, fontSize: 13, fontFamily: 'Inter', lineHeight: 19, marginTop: 6 },
+  modalCard: { width: '100%', backgroundColor: C.white, borderRadius: V6Radii.card, padding: 22 },
+  modalTitle: { color: C.ink900, fontSize: 21.5, fontWeight: '800', fontFamily: 'Inter' },
+  modalBody: { color: C.ink500, fontSize: 15.5, fontFamily: 'Inter', lineHeight: 19, marginTop: 6 },
   amountRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginTop: 18, marginBottom: 6 },
-  amountCurrency: { color: Colors.brandDark, fontSize: 28, fontWeight: '800', fontFamily: 'Inter', marginRight: 4 },
-  amountInput: { fontSize: 40, fontWeight: '800', fontFamily: 'Inter', color: Colors.brandDark, minWidth: 120, textAlign: 'center' },
-  modalError: { color: Colors.error, fontSize: 13, fontFamily: 'Inter', textAlign: 'center', marginTop: 4 },
-  modalHint: { color: Colors.muted, fontSize: 12, fontFamily: 'Inter', textAlign: 'center', marginTop: 6 },
+  amountCurrency: { color: C.ink900, fontSize: 34, fontWeight: '800', fontFamily: 'Inter', marginRight: 4 },
+  amountInput: { fontSize: 48.5, fontWeight: '800', fontFamily: 'Inter', color: C.ink900, minWidth: 120, textAlign: 'center' },
+  modalError: { color: '#ef4444', fontSize: 15.5, fontFamily: 'Inter', textAlign: 'center', marginTop: 4 },
+  modalHint: { color: C.ink400, fontSize: 14.5, fontFamily: 'Inter', textAlign: 'center', marginTop: 6 },
   modalActions: { flexDirection: 'row', gap: 10, marginTop: 18 },
-  modalBtn: { flex: 1, alignItems: 'center', justifyContent: 'center', borderRadius: 20, paddingVertical: 13 },
+  modalBtn: { flex: 1, alignItems: 'center', justifyContent: 'center', borderRadius: V6Radii.btn, paddingVertical: 13 },
   modalBtnDisabled: { opacity: 0.5 },
-  modalCancel: { backgroundColor: Colors.backgroundAlt },
-  modalCancelText: { color: Colors.slate, fontSize: 14, fontWeight: '700', fontFamily: 'Inter' },
-  modalConfirm: { backgroundColor: Colors.brandTeal },
-  modalConfirmText: { color: Colors.white, fontSize: 14, fontWeight: '700', fontFamily: 'Inter' },
+  modalCancel: { backgroundColor: C.ink50 },
+  modalCancelText: { color: C.ink500, fontSize: 16.5, fontWeight: '700', fontFamily: 'Inter' },
+  modalConfirm: { backgroundColor: C.cyan700 },
+  modalConfirmText: { color: C.white, fontSize: 16.5, fontWeight: '700', fontFamily: 'Inter' },
 });

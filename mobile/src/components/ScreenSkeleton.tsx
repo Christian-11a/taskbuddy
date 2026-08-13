@@ -1,6 +1,9 @@
 import React from 'react';
 import { StyleSheet, View } from 'react-native';
-import { Colors, Radii, Spacing } from '../constants/theme';
+import { Spacing, V6Colors, V6Radii } from '../constants/theme';
+
+const Colors = { ...V6Colors, background: V6Colors.canvas } as const;
+const Radii = { card: V6Radii.card };
 
 type SkeletonVariant = 'dashboard' | 'list' | 'detail';
 

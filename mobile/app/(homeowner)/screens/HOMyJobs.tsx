@@ -1,15 +1,18 @@
 /**
- * MyJobs.tsx (HO - My Jobs List)
+ * HOMyJobs.tsx (HO - My Jobs List)
  *
- * Figma Source: "HO - My Jobs List" (id: 46:850)
+ * v6 design: matches taskbuddy_UI_update.html's #ho-myjobs screen — white
+ * topbar with a "+ New" action, underline-style .job-tabs, and .clean-job-card
+ * rows. The calendar that used to be embedded here (before this screen
+ * existed in the mockup as its own tab) now lives in HOCalendarScreen.tsx.
  *
- * Design:
- * - Dark teal header with title "My Jobs" and filter tabs
- * - Job cards list with status indicators
- * - Floating action button for creating new job
+ * The mockup's filter tabs (All/Open/Hired/Active/Review/Done) don't map
+ * cleanly onto this app's real job-status enum — there's no "hired" or
+ * "pending-review" state in the backend — so the tabs here use real buckets
+ * (All/Open/Assigned/Active/Completed) with the mockup's exact tab styling.
  */
 
-import React, { useState, useMemo } from 'react';
+import React, { useState } from 'react';
 import {
   ScrollView,
   StyleSheet,
@@ -17,318 +20,193 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import { Calendar } from 'react-native-calendars';
-import { CalendarDays, ClipboardList, MapPin, Plus, UserRound, WalletCards } from 'lucide-react-native';
-import { Colors, Radii, Shadows, Sizes, Spacing } from '../../../src/constants/theme';
+import { ClipboardList, MapPin, Plus } from 'lucide-react-native';
+import { Sizes, Spacing, V6Colors, V6Radii, V6Shadows } from '../../../src/constants/theme';
 import { HOScreen } from '../../../src/types/navigation';
 import { useAsyncData } from '../../../src/hooks/useAsyncData';
 import { api } from '../../../src/lib/api';
-import { jobFilterBucket, jobStatusMeta, peso, timeAgo } from '../../../src/lib/format';
+import { jobStatusMeta, peso } from '../../../src/lib/format';
 import ScreenSkeleton from '../../../src/components/ScreenSkeleton';
 
-const FILTER_TABS = ['All', 'Active', 'Pending', 'Completed'];
+const C = V6Colors;
+
+const FILTER_TABS = ['All', 'Open', 'Assigned', 'Active', 'Completed'] as const;
+type FilterTab = (typeof FILTER_TABS)[number];
+
+function matchesFilter(status: string, filter: FilterTab): boolean {
+  switch (filter) {
+    case 'All':
+      return true;
+    case 'Open':
+      return status === 'open' || status === 'recommending';
+    case 'Assigned':
+      return status === 'assigned';
+    case 'Active':
+      return status === 'in_progress';
+    case 'Completed':
+      return status === 'completed';
+  }
+}
 
 interface MyJobsProps {
   onNavigate: (screen: HOScreen, jobId?: string) => void;
 }
 
 export default function MyJobs({ onNavigate }: MyJobsProps) {
-  const [activeFilter, setActiveFilter] = useState('All');
-  const todayKey = (() => {
-    const d = new Date();
-    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-  })();
-  const [selectedDate, setSelectedDate] = useState<string>(todayKey);
-  const { data, loading, error } = useAsyncData(() => api.myJobs(), []);
+  const [activeFilter, setActiveFilter] = useState<FilterTab>('All');
+  const { data, loading, error } = useAsyncData(() => api.myJobs(), [], 'ho-jobs');
   const jobs = data ?? [];
 
-  const filtered =
-    activeFilter === 'All'
-      ? jobs
-      : jobs.filter((j) => jobFilterBucket(j.status) === activeFilter);
-
-  // Build markedDates for the calendar from scheduled jobs, excluding cancelled
-  const markedDates = useMemo(() => {
-    const m: Record<string, any> = {};
-    (jobs || []).forEach((job) => {
-      if (!job.scheduled_at) return;
-      if (job.status === 'cancelled') return; // cancelled jobs disappear
-      const d = new Date(job.scheduled_at);
-      if (Number.isNaN(d.getTime())) return;
-      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-      // mark with a dot; if selected date, the Calendar will override selected styling
-      m[key] = { ...(m[key] || {}), marked: true, dotColor: Colors.brandTeal };
-    });
-    // ensure selected date is highlighted
-    if (selectedDate) {
-      m[selectedDate] = { ...(m[selectedDate] || {}), selected: true, selectedColor: Colors.brandTeal };
-    }
-    return m;
-  }, [jobs, selectedDate]);
-
-  const jobsForSelectedDate = useMemo(() => {
-    return (jobs || []).filter((job) => {
-      if (!job.scheduled_at) return false;
-      if (job.status === 'cancelled') return false;
-      const d = new Date(job.scheduled_at);
-      if (Number.isNaN(d.getTime())) return false;
-      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-      return key === selectedDate;
-    });
-  }, [jobs, selectedDate]);
+  const filtered = jobs.filter((j) => matchesFilter(j.status, activeFilter));
 
   if (loading) return <ScreenSkeleton variant="list" />;
 
   return (
     <View style={styles.screen}>
-      {/* Header */}
+      {/* Header — matches .topbar */}
       <View style={styles.header}>
         <View style={styles.headerTopRow}>
-          <View>
-            <Text style={styles.headerSubtitle}>Customer · Calendar</Text>
-            <Text style={styles.headerTitle}>My Jobs</Text>
-          </View>
-          <View style={styles.jobsBadge}>
-            <Text style={styles.jobsBadgeText}>{jobs.length} jobs</Text>
-          </View>
+          <Text style={styles.headerTitle}>My Jobs</Text>
+          <TouchableOpacity
+            style={styles.newBtn}
+            onPress={() => onNavigate('Create Job')}
+            activeOpacity={0.8}
+          >
+            <Plus size={15} color={C.cyan700} strokeWidth={2.5} />
+            <Text style={styles.newBtnText}>New</Text>
+          </TouchableOpacity>
         </View>
+      </View>
 
-        {/* Filter tabs */}
+      {/* Filter tabs — matches .job-tabs (underline style) */}
+      <View style={styles.tabsWrap}>
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.filterTabsContent}
+          contentContainerStyle={styles.tabsContent}
         >
           {FILTER_TABS.map((tab) => (
             <TouchableOpacity
               key={tab}
-              style={[styles.filterTab, activeFilter === tab && styles.filterTabActive]}
+              style={styles.jobTab}
               onPress={() => setActiveFilter(tab)}
-              activeOpacity={0.8}
+              activeOpacity={0.7}
             >
-              <Text style={[styles.filterTabText, activeFilter === tab && styles.filterTabTextActive]}>
+              <Text style={[styles.jobTabText, activeFilter === tab && styles.jobTabTextActive]}>
                 {tab}
               </Text>
+              {activeFilter === tab && <View style={styles.jobTabUnderline} />}
             </TouchableOpacity>
           ))}
         </ScrollView>
       </View>
 
-      {/* Calendar + Jobs list */}
+      {/* Job list */}
       <ScrollView
         style={styles.body}
         contentContainerStyle={styles.bodyContent}
         showsVerticalScrollIndicator={false}
       >
-        <View style={styles.calendarWrap}>
-          <Calendar
-            current={selectedDate}
-            onDayPress={(day) => setSelectedDate(day.dateString)}
-            markedDates={markedDates}
-            theme={{
-              todayTextColor: Colors.brandTeal,
-              arrowColor: Colors.brandTeal,
-              selectedDayBackgroundColor: Colors.brandTeal,
-            }}
-          />
-          <View style={styles.selectedDateHeader}>
-            <Text style={styles.selectedDateTitle}>
-              Jobs on {new Date(selectedDate).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
-            </Text>
-            <Text style={styles.selectedDateCount}>{jobsForSelectedDate.length} jobs</Text>
-          </View>
-        </View>
-
         {!!error && !loading && <Text style={styles.stateText}>{error}</Text>}
 
         {!loading && !error && filtered.length === 0 && (
           <View style={styles.emptyState}>
-            <ClipboardList size={40} color={Colors.brandTeal} />
-            <Text style={styles.emptyTitle}>{jobs.length === 0 ? 'No jobs yet' : 'No matching jobs'}</Text>
-            <Text style={styles.stateText}>{jobs.length === 0 ? 'Post a job to find the right service provider.' : 'Try another filter to see your jobs.'}</Text>
+            <ClipboardList size={30} color={C.ink300} />
+            <Text style={styles.emptyTitle}>{jobs.length === 0 ? 'No jobs here yet' : 'No matching jobs'}</Text>
+            <Text style={styles.emptyText}>
+              {jobs.length === 0 ? 'Post a new job when you need help.' : 'Jobs will appear here as their status changes.'}
+            </Text>
           </View>
         )}
 
-        {jobsForSelectedDate.length > 0 ? (
-          jobsForSelectedDate.map((job) => {
-            const meta = jobStatusMeta(job.status);
-            return (
-              <TouchableOpacity
-                key={`sd-${job.id}`}
-                style={styles.jobCard}
-                onPress={() => onNavigate('Job Detail', job.id)}
-                activeOpacity={0.9}
-              >
-                <View style={[styles.jobBar, { backgroundColor: meta.color }]} />
-                <View style={styles.jobContent}>
-                  <View style={styles.jobCardHeader}>
-                    <Text style={styles.jobTitle}>{job.title}</Text>
-                    <View style={[styles.statusPill, { backgroundColor: meta.bg }]}>
-                      <Text style={[styles.statusPillText, { color: meta.color }]}>{meta.label}</Text>
-                    </View>
-                  </View>
-                  <Text style={styles.jobCategory}>{job.service_categories?.name ?? ''}</Text>
-                  <View style={styles.jobLocationRow}>
-                    <MapPin size={13} color={Colors.slate} />
-                    <Text style={styles.jobLocation}>{job.address}</Text>
-                  </View>
-                  <View style={styles.jobFooter}>
-                    <View style={styles.jobDetails}>
-                      <View style={styles.jobMetaItem}>
-                        <CalendarDays size={13} color={Colors.slate} />
-                        <Text style={styles.jobMeta}>{timeAgo(job.posted_at)}</Text>
-                      </View>
-                      <View style={styles.jobMetaItem}>
-                        <WalletCards size={13} color={Colors.slate} />
-                        <Text style={styles.jobMeta}>{job.budget != null ? peso(job.budget) : 'Budget not set'}</Text>
-                      </View>
-                      <View style={styles.jobMetaItem}>
-                        <UserRound size={13} color={Colors.slate} />
-                        <Text style={styles.jobMeta}>{job.assigned_provider?.full_name ?? 'No provider assigned yet'}</Text>
-                      </View>
-                    </View>
-                    <Text style={styles.jobUrgency}>{job.urgency}</Text>
-                  </View>
+        {filtered.map((job) => {
+          const meta = jobStatusMeta(job.status);
+          return (
+            <TouchableOpacity
+              key={job.id}
+              style={styles.jobCard}
+              onPress={() => onNavigate('Job Detail', job.id)}
+              activeOpacity={0.9}
+            >
+              <View style={styles.jobTopRow}>
+                <Text style={styles.jobTitle} numberOfLines={1}>{job.title}</Text>
+                {job.budget != null && <Text style={styles.jobPrice}>{peso(job.budget)}</Text>}
+              </View>
+              <View style={styles.jobMetaRow}>
+                <MapPin size={14} color={C.ink400} />
+                <Text style={styles.jobMeta} numberOfLines={1}>{job.address}</Text>
+              </View>
+              <View style={styles.jobBottomRow}>
+                <View style={styles.jobStatus}>
+                  <View style={[styles.statusDot, { backgroundColor: meta.color }]} />
+                  <Text style={styles.jobStatusText}>{meta.label}</Text>
                 </View>
-              </TouchableOpacity>
-            );
-          })
-        ) : (
-          filtered.map((job) => {
-            const meta = jobStatusMeta(job.status);
-            return (
-              <TouchableOpacity
-                key={job.id}
-                style={styles.jobCard}
-                onPress={() => onNavigate('Job Detail', job.id)}
-                activeOpacity={0.9}
-              >
-                <View style={[styles.jobBar, { backgroundColor: meta.color }]} />
-                <View style={styles.jobContent}>
-                  <View style={styles.jobCardHeader}>
-                    <Text style={styles.jobTitle}>{job.title}</Text>
-                    <View style={[styles.statusPill, { backgroundColor: meta.bg }]}>
-                      <Text style={[styles.statusPillText, { color: meta.color }]}>{meta.label}</Text>
-                    </View>
-                  </View>
-                  <Text style={styles.jobCategory}>{job.service_categories?.name ?? ''}</Text>
-                  <View style={styles.jobLocationRow}>
-                    <MapPin size={13} color={Colors.slate} />
-                    <Text style={styles.jobLocation}>{job.address}</Text>
-                  </View>
-                  <View style={styles.jobFooter}>
-                    <View style={styles.jobDetails}>
-                      <View style={styles.jobMetaItem}>
-                        <CalendarDays size={13} color={Colors.slate} />
-                        <Text style={styles.jobMeta}>{timeAgo(job.posted_at)}</Text>
-                      </View>
-                      <View style={styles.jobMetaItem}>
-                        <WalletCards size={13} color={Colors.slate} />
-                        <Text style={styles.jobMeta}>{job.budget != null ? peso(job.budget) : 'Budget not set'}</Text>
-                      </View>
-                      <View style={styles.jobMetaItem}>
-                        <UserRound size={13} color={Colors.slate} />
-                        <Text style={styles.jobMeta}>{job.assigned_provider?.full_name ?? 'No provider assigned yet'}</Text>
-                      </View>
-                    </View>
-                    <Text style={styles.jobUrgency}>{job.urgency}</Text>
-                  </View>
-                </View>
-              </TouchableOpacity>
-            );
-          })
-        )}
+                <Text style={styles.jobProvider} numberOfLines={1}>
+                  {job.assigned_provider?.full_name ?? 'Waiting for a provider'}
+                </Text>
+              </View>
+            </TouchableOpacity>
+          );
+        })}
 
         <View style={{ height: 20 }} />
       </ScrollView>
-
-      {/* FAB - Create Job */}
-      <TouchableOpacity
-        style={styles.fab}
-        onPress={() => onNavigate('Create Job')}
-        activeOpacity={0.85}
-      >
-        <Plus size={28} color={Colors.white} />
-      </TouchableOpacity>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: Colors.background },
+  screen: { flex: 1, backgroundColor: C.canvas },
 
   header: {
-    backgroundColor: Colors.brandDark,
+    backgroundColor: C.white,
     paddingTop: Sizes.statusBarHeight,
     paddingHorizontal: Spacing.screenH,
-    paddingBottom: 16,
-    borderBottomLeftRadius: 28,
-    borderBottomRightRadius: 28,
+    paddingBottom: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#edf1f4',
   },
   headerTopRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingTop: 12,
-    marginBottom: 16,
   },
-  headerSubtitle: { color: 'rgba(255,255,255,0.6)', fontSize: 12, fontFamily: 'Inter', marginBottom: 2 },
-  headerTitle: { color: Colors.white, fontSize: 24, fontWeight: '800', fontFamily: 'Inter' },
-  jobsBadge: {
-    backgroundColor: Colors.brandTeal, borderRadius: 16,
-    paddingVertical: 6, paddingHorizontal: 14,
+  headerTitle: { color: C.ink900, fontSize: 21.5, fontWeight: '800', fontFamily: 'Inter', letterSpacing: -0.3 },
+  newBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    paddingVertical: 6, paddingHorizontal: 4,
   },
-  jobsBadgeText: { color: Colors.white, fontWeight: '700', fontSize: 13, fontFamily: 'Inter' },
+  newBtnText: { color: C.cyan700, fontWeight: '700', fontSize: 14.5, fontFamily: 'Inter' },
 
-  filterTabsContent: { gap: 8, paddingRight: 4 },
-  filterTab: {
-    paddingHorizontal: 16, paddingVertical: 8, borderRadius: 999,
-    backgroundColor: 'rgba(255,255,255,0.15)',
-  },
-  filterTabActive: { backgroundColor: Colors.white },
-  filterTabText: { color: 'rgba(255,255,255,0.8)', fontSize: 13, fontWeight: '600', fontFamily: 'Inter' },
-  filterTabTextActive: { color: Colors.brandDark },
+  tabsWrap: { backgroundColor: C.white, borderBottomWidth: 1, borderBottomColor: C.line, paddingHorizontal: Spacing.screenH },
+  tabsContent: { gap: 24 },
+  jobTab: { paddingVertical: 13, alignItems: 'center' },
+  jobTabText: { color: C.ink400, fontSize: 13.5, fontWeight: '600', fontFamily: 'Inter' },
+  jobTabTextActive: { color: C.ink900, fontWeight: '800' },
+  jobTabUnderline: { position: 'absolute', left: 0, right: 0, bottom: 0, height: 2.5, backgroundColor: C.cyan700, borderRadius: 999 },
 
   body: { flex: 1 },
-  bodyContent: { paddingHorizontal: Spacing.screenH, paddingTop: 28, paddingBottom: 80 },
-  calendarWrap: { marginBottom: 18 },
-  selectedDateHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 12, marginBottom: 8 },
-  selectedDateTitle: { color: Colors.brandDark, fontSize: 16, fontWeight: '700', fontFamily: 'Inter' },
-  selectedDateCount: { color: Colors.slate, fontSize: 13, fontFamily: 'Inter' },
+  bodyContent: { paddingHorizontal: Spacing.screenH, paddingTop: 16, paddingBottom: 20 },
 
   jobCard: {
-    backgroundColor: Colors.white, borderRadius: Radii.card,
-    marginBottom: 14, flexDirection: 'row', overflow: 'hidden',
-    ...Shadows.card,
+    backgroundColor: C.white, borderRadius: V6Radii.cardSm,
+    marginBottom: 10, padding: 15,
+    borderWidth: 1, borderColor: C.line,
+    ...V6Shadows.sm,
   },
-  jobBar: { width: 5, borderRadius: 0 },
-  jobContent: { flex: 1, padding: 16 },
-  jobCardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 },
-  jobTitle: { color: Colors.brandDark, fontSize: 15, fontWeight: '700', fontFamily: 'Inter', flex: 1, marginRight: 8 },
-  statusPill: { borderRadius: 999, paddingHorizontal: 10, paddingVertical: 4 },
-  statusPillText: { fontSize: 11, fontWeight: '600', fontFamily: 'Inter' },
-  jobCategory: { color: Colors.brandTeal, fontSize: 12, fontWeight: '600', fontFamily: 'Inter', marginBottom: 4 },
-  jobLocationRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 6 },
-  jobLocation: { color: Colors.slate, fontSize: 12, fontFamily: 'Inter' },
-  jobMetaRow: { marginBottom: 10 },
-  jobMetaItem: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  jobMeta: { color: Colors.slate, fontSize: 12, fontFamily: 'Inter' },
-  jobFooter: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end' },
-  jobDetails: { gap: 5, flex: 1, marginRight: 8 },
-  jobProviderRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  jobProvider: { color: Colors.muted, fontSize: 12, fontFamily: 'Inter' },
-  jobUrgency: { color: Colors.brandTeal, fontSize: 12, fontWeight: '700', fontFamily: 'Inter', textTransform: 'capitalize' },
-  stateText: { color: Colors.slate, fontSize: 14, fontFamily: 'Inter', textAlign: 'center', marginTop: 30 },
-  emptyState: { alignItems: 'center', paddingVertical: 48, paddingHorizontal: 24 },
-  emptyTitle: { color: Colors.brandDark, fontSize: 17, fontWeight: '800', fontFamily: 'Inter', marginTop: 12 },
+  jobTopRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8, marginBottom: 5 },
+  jobTitle: { color: C.ink900, fontSize: 15.5, fontWeight: '800', fontFamily: 'Inter', flex: 1 },
+  jobPrice: { color: C.ink900, fontSize: 16, fontWeight: '800', fontFamily: 'Inter' },
+  jobMetaRow: { flexDirection: 'row', alignItems: 'center', gap: 5, marginBottom: 11 },
+  jobMeta: { color: C.ink400, fontSize: 12.5, fontFamily: 'Inter', flex: 1 },
+  jobBottomRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 10 },
+  jobStatus: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  statusDot: { width: 7, height: 7, borderRadius: 4 },
+  jobStatusText: { color: C.ink700, fontSize: 12.5, fontWeight: '700', fontFamily: 'Inter' },
+  jobProvider: { color: C.ink500, fontSize: 12.5, fontWeight: '600', fontFamily: 'Inter' },
 
-  fab: {
-    position: 'absolute', bottom: 24, right: Spacing.screenH,
-    width: 56, height: 56, borderRadius: 28,
-    backgroundColor: Colors.brandTeal,
-    alignItems: 'center', justifyContent: 'center',
-    shadowColor: Colors.brandTeal, shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.35, shadowRadius: 10, elevation: 8,
-  },
-  fabText: { color: Colors.white, fontSize: 28, fontWeight: '300', lineHeight: 32 },
+  stateText: { color: C.ink500, fontSize: 16.5, fontFamily: 'Inter', textAlign: 'center', marginTop: 30 },
+  emptyState: { alignItems: 'center', paddingVertical: 48, paddingHorizontal: 24 },
+  emptyTitle: { color: C.ink800, fontSize: 16, fontWeight: '700', fontFamily: 'Inter', marginTop: 10, marginBottom: 4 },
+  emptyText: { color: C.ink400, fontSize: 14, fontFamily: 'Inter', textAlign: 'center', lineHeight: 17 },
 });

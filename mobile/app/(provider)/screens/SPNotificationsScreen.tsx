@@ -1,16 +1,34 @@
 /**
  * SPNotificationsScreen.tsx
  *
- * Figma Source: "SP - Notifications" (id: 46:1012)
+ * v6 design: matches taskbuddy_UI_update.html's #sp-notifications screen —
+ * flat white .topbar (not a dark hero), a single bordered .notification-list
+ * card with hairline-divided .notif-row items (no date-group headers — the
+ * mockup renders one flat list), unread rows tinted `#f2fbfd` with a small
+ * dot, read rows plain. Same pattern as HONotificationsScreen.tsx.
  */
 
 import React from 'react';
-import { ActivityIndicator, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import { AlertTriangle, BriefcaseBusiness, CircleCheckBig } from 'lucide-react-native';
-import { Colors, Radii, Shadows, Sizes, Spacing } from '../../../src/constants/theme';
+import {
+  ActivityIndicator,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+} from 'react-native';
+import {
+  AlertTriangle,
+  ArrowLeft,
+  BriefcaseBusiness,
+  CircleCheckBig,
+} from 'lucide-react-native';
+import { Sizes, Spacing, V6Colors } from '../../../src/constants/theme';
+
+const C = V6Colors;
 import { useAsyncData } from '../../../src/hooks/useAsyncData';
 import { api } from '../../../src/lib/api';
-import { dateBucket, timeAgo } from '../../../src/lib/format';
+import { timeAgo } from '../../../src/lib/format';
 
 interface NotificationRow {
   id: string;
@@ -21,10 +39,10 @@ interface NotificationRow {
   created_at: string;
 }
 
-const ICON_BY_TYPE: Record<string, { icon: typeof BriefcaseBusiness; bg: string }> = {
-  recommendation_invite: { icon: BriefcaseBusiness, bg: '#EFF6FF' },
-  application_update: { icon: CircleCheckBig, bg: '#F0FDF4' },
-  job_update: { icon: AlertTriangle, bg: '#FFF5F5' },
+const ICON_BY_TYPE: Record<string, typeof BriefcaseBusiness> = {
+  recommendation_invite: BriefcaseBusiness,
+  application_update: CircleCheckBig,
+  job_update: AlertTriangle,
 };
 
 interface SPNotificationsScreenProps {
@@ -36,58 +54,75 @@ export default function SPNotificationsScreen({ onBack }: SPNotificationsScreenP
     () => api.notifications() as Promise<NotificationRow[]>,
     [],
   );
-  const notifs = data ?? [];
-  const unread = notifs.filter((n) => !n.read_at).length;
+  const notifications = data ?? [];
+  const unreadCount = notifications.filter((n) => !n.read_at).length;
 
   const markAllRead = async () => {
     await api.markAllNotificationsRead();
     reload();
   };
+
   const markRead = async (id: string) => {
     await api.markNotificationRead(id);
     reload();
   };
 
-  const groups: Record<string, NotificationRow[]> = {};
-  notifs.forEach((n) => {
-    const bucket = dateBucket(n.created_at);
-    if (!groups[bucket]) groups[bucket] = [];
-    groups[bucket].push(n);
-  });
-
   return (
     <View style={styles.screen}>
+      {/* Header — matches .topbar (flat white, not a dark hero) */}
       <View style={styles.header}>
-        <View style={styles.headerRow}>
-          <TouchableOpacity style={styles.backBtn} onPress={onBack} activeOpacity={0.8}>
-            <Text style={styles.backIcon}>←</Text>
+        <TouchableOpacity style={styles.backBtn} onPress={onBack} activeOpacity={0.8}>
+          <ArrowLeft size={20} color={C.ink700} />
+        </TouchableOpacity>
+        <Text style={styles.headerTitle}>Notifications</Text>
+        {unreadCount > 0 && (
+          <TouchableOpacity onPress={markAllRead} activeOpacity={0.8}>
+            <Text style={styles.markAllText}>Mark all read</Text>
           </TouchableOpacity>
-          <Text style={styles.headerTitle}>Notifications</Text>
-          {unread > 0
-            ? <TouchableOpacity onPress={markAllRead}><Text style={styles.markAll}>Mark all read</Text></TouchableOpacity>
-            : <View style={{ width: 80 }} />}
-        </View>
-        {unread > 0 && (
-          <View style={styles.unreadBadge}>
-            <Text style={styles.unreadText}>{unread} unread</Text>
-          </View>
         )}
       </View>
 
-      <ScrollView style={styles.body} contentContainerStyle={styles.bodyContent} showsVerticalScrollIndicator={false}>
-        {loading && <ActivityIndicator style={{ marginTop: 20 }} color={Colors.brandTeal} />}
+      <ScrollView
+        style={styles.body}
+        contentContainerStyle={styles.bodyContent}
+        showsVerticalScrollIndicator={false}
+      >
+        {loading && <ActivityIndicator style={{ marginTop: 20 }} color={C.cyan700} />}
         {!!error && !loading && <Text style={styles.stateText}>{error}</Text>}
-        {!loading && !error && notifs.length === 0 && (
+        {!loading && !error && notifications.length === 0 && (
           <Text style={styles.stateText}>You have no notifications yet.</Text>
         )}
-        {Object.entries(groups).map(([date, items]) => (
-          <View key={date}>
-            <Text style={styles.dateLabel}>{date}</Text>
-            {items.map((n) => (
-              <NotificationCard key={n.id} notification={n} onPress={() => !n.read_at && markRead(n.id)} />
-            ))}
+
+        {notifications.length > 0 && (
+          <View style={styles.notificationList}>
+            {notifications.map((notif, i) => {
+              const Icon = ICON_BY_TYPE[notif.type] ?? BriefcaseBusiness;
+              const isUnread = !notif.read_at;
+              return (
+                <TouchableOpacity
+                  key={notif.id}
+                  style={[
+                    styles.notifRow,
+                    i < notifications.length - 1 && styles.notifRowBorder,
+                    isUnread && styles.notifRowUnread,
+                  ]}
+                  activeOpacity={0.85}
+                  onPress={() => isUnread && markRead(notif.id)}
+                >
+                  <View style={[styles.notifIcon, isUnread && styles.notifIconUnread]}>
+                    <Icon size={19} color={C.cyan700} />
+                  </View>
+                  <View style={{ flex: 1, paddingRight: isUnread ? 10 : 0 }}>
+                    <Text style={styles.notifTitle}>{notif.title}</Text>
+                    <Text style={styles.notifBody}>{notif.body}</Text>
+                    <Text style={styles.notifTime}>{timeAgo(notif.created_at)}</Text>
+                  </View>
+                  {isUnread && <View style={styles.unreadDot} />}
+                </TouchableOpacity>
+              );
+            })}
           </View>
-        ))}
+        )}
         <View style={{ height: 20 }} />
       </ScrollView>
     </View>
@@ -95,49 +130,46 @@ export default function SPNotificationsScreen({ onBack }: SPNotificationsScreenP
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: Colors.background },
-  header: { backgroundColor: Colors.brandDark, paddingTop: Sizes.statusBarHeight, paddingHorizontal: Spacing.screenH, paddingBottom: 20, borderBottomLeftRadius: 28, borderBottomRightRadius: 28 },
-  headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingTop: 12, marginBottom: 10 },
-  headerTitle: { color: Colors.white, fontSize: 20, fontWeight: '700', fontFamily: 'Inter' },
-  backBtn: { width: 40, height: 40, borderRadius: 12, backgroundColor: 'rgba(255,255,255,0.15)', alignItems: 'center', justifyContent: 'center' },
-  backIcon: { color: Colors.white, fontSize: 20, fontWeight: '600' },
-  markAll: { color: 'rgba(255,255,255,0.8)', fontSize: 13, fontWeight: '600', fontFamily: 'Inter' },
-  unreadBadge: { alignSelf: 'flex-start', backgroundColor: 'rgba(255,255,255,0.2)', borderRadius: 12, paddingHorizontal: 12, paddingVertical: 4 },
-  unreadText: { color: Colors.white, fontSize: 12, fontWeight: '600', fontFamily: 'Inter' },
+  screen: { flex: 1, backgroundColor: C.canvas },
+
+  header: {
+    flexDirection: 'row', alignItems: 'center', gap: 12,
+    backgroundColor: C.white,
+    paddingTop: Sizes.statusBarHeight,
+    paddingHorizontal: Spacing.screenH,
+    paddingBottom: 12,
+    borderBottomWidth: 1, borderBottomColor: '#edf1f4',
+  },
+  backBtn: {
+    width: 38, height: 38, borderRadius: 12,
+    backgroundColor: C.white, borderWidth: 1, borderColor: '#e8edf2',
+    alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+  },
+  headerTitle: { flex: 1, color: C.ink900, fontSize: 19.5, fontWeight: '800', fontFamily: 'Inter', letterSpacing: -0.27 },
+  markAllText: { color: C.cyan700, fontSize: 14, fontWeight: '700', fontFamily: 'Inter' },
+
   body: { flex: 1 },
-  bodyContent: { paddingHorizontal: Spacing.screenH, paddingTop: 20, paddingBottom: 20 },
-  dateLabel: { color: Colors.muted, fontSize: 12, fontWeight: '700', fontFamily: 'Inter', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 10, marginTop: 4 },
-  stateText: { color: Colors.slate, fontSize: 14, fontFamily: 'Inter', textAlign: 'center', marginTop: 30 },
-  card: { backgroundColor: Colors.white, borderRadius: Radii.card, padding: 16, marginBottom: 10, flexDirection: 'row', alignItems: 'flex-start', ...Shadows.card },
-  cardUnread: { borderLeftWidth: 4, borderLeftColor: Colors.brandTeal },
-  iconWrap: { width: 46, height: 46, borderRadius: 14, alignItems: 'center', justifyContent: 'center', marginRight: 12 },
-  iconText: { fontSize: 22 },
-  content: { flex: 1 },
-  titleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 },
-  title: { color: Colors.brandDark, fontSize: 14, fontWeight: '700', fontFamily: 'Inter', flex: 1 },
-  dot: { width: 8, height: 8, borderRadius: 4, backgroundColor: Colors.brandTeal, marginLeft: 8 },
-  message: { color: Colors.slate, fontSize: 13, fontFamily: 'Inter', lineHeight: 19, marginBottom: 6 },
-  time: { color: Colors.muted, fontSize: 11, fontFamily: 'Inter' },
+  bodyContent: { paddingHorizontal: Spacing.screenH, paddingTop: 14, paddingBottom: 20 },
+
+  stateText: { color: C.ink500, fontSize: 16.5, fontFamily: 'Inter', textAlign: 'center', marginTop: 30 },
+
+  notificationList: {
+    backgroundColor: C.white, borderWidth: 1, borderColor: C.line,
+    borderRadius: 16, overflow: 'hidden',
+  },
+  notifRow: { flexDirection: 'row', gap: 11, padding: 14, position: 'relative' },
+  notifRowBorder: { borderBottomWidth: 1, borderBottomColor: '#f0f3f6' },
+  notifRowUnread: { backgroundColor: '#f2fbfd' },
+  notifIcon: {
+    width: 34, height: 34, borderRadius: 12,
+    backgroundColor: '#f7f9fb', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+  },
+  notifIconUnread: { backgroundColor: C.white },
+  notifTitle: { color: C.ink900, fontSize: 13.5, fontWeight: '700', fontFamily: 'Inter' },
+  notifBody: { color: C.ink500, fontSize: 12.5, fontFamily: 'Inter', lineHeight: 16.5, marginTop: 3 },
+  notifTime: { color: C.ink300, fontSize: 11.5, fontFamily: 'Inter', marginTop: 4 },
+  unreadDot: {
+    position: 'absolute', right: 13, top: 17,
+    width: 7, height: 7, borderRadius: 4, backgroundColor: C.cyan500,
+  },
 });
-
-function NotificationCard({ notification: n, onPress }: { notification: NotificationRow; onPress: () => void }) {
-  const meta = ICON_BY_TYPE[n.type] ?? { icon: BriefcaseBusiness, bg: '#EFF6FF' };
-  const Icon = meta.icon;
-  const isRead = !!n.read_at;
-
-  return (
-    <TouchableOpacity style={[styles.card, !isRead && styles.cardUnread]} activeOpacity={0.85} onPress={onPress}>
-      <View style={[styles.iconWrap, { backgroundColor: meta.bg }]}>
-        <Icon size={22} color={Colors.brandTeal} />
-      </View>
-      <View style={styles.content}>
-        <View style={styles.titleRow}>
-          <Text style={styles.title}>{n.title}</Text>
-          {!isRead && <View style={styles.dot} />}
-        </View>
-        <Text style={styles.message}>{n.body}</Text>
-        <Text style={styles.time}>{timeAgo(n.created_at)}</Text>
-      </View>
-    </TouchableOpacity>
-  );
-}

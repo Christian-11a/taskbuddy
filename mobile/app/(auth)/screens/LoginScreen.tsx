@@ -1,20 +1,8 @@
 /**
  * LoginScreen.tsx
  *
- * Figma Source: "Log In / Sign In Screen" (id: 36:431)
- *
- * Design (from Figma):
- *  - bg: #FFFFFF with 4 blurred teal/cyan ellipses for depth
- *  - Logo: TaskBuddy wordmark (League Spartan Bold 32px #063D4D) + logo mark icon
- *  - Tagline: "Hire with confidence, pay with ease." — Darker Grotesque 800 18px #063E4D
- *  - "Welcome!" — Inter Bold 20px #063D4D
- *  - "Sign in to your account" — Inter Medium 14px #9099B8
- *  - Email + Password inputs (white box, radius 8, 40px height)
- *  - "Forgot Password?" link (Inter Bold 14px #096E8B)
- *  - "Sign In" primary button (teal, radius 24, 48px height)
- *  - "or" divider
- *  - "Continue with Google" outline button
- *  - "Don't have an account? Sign Up"
+ * v6 design: matches taskbuddy_UI_update.html's #login screen (background
+ * gradient #cdeef7 -> white, cyan wordmark, cyan-700 primary button).
  *
  * Sign In authenticates against the backend; the account's role determines
  * which experience (homeowner / provider) is shown.
@@ -23,7 +11,7 @@
 import React, { useState } from 'react';
 import {
   ActivityIndicator,
-  Dimensions,
+  Image,
   Keyboard,
   KeyboardAvoidingView,
   Platform,
@@ -33,13 +21,13 @@ import {
   Text,
   TextInput,
   TouchableOpacity,
-  TouchableWithoutFeedback,
   View,
 } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
 import { Eye, EyeOff } from 'lucide-react-native';
-import { Colors } from '../../../src/constants/theme';
+import { V6Colors, V6Radii, V6Shadows } from '../../../src/constants/theme';
 
-const C = Colors;
+const C = V6Colors;
 
 // ─── Props ────────────────────────────────────────────────────────────────────
 interface LoginScreenProps {
@@ -68,7 +56,7 @@ interface InputFieldProps {
 function InputField({
   label, placeholder, value, onChangeText,
   secureTextEntry = false, keyboardType = 'default',
-  error, hasError, rightElement, testID,
+  error, rightElement, testID,
 }: InputFieldProps) {
   const [focused, setFocused] = useState(false);
 
@@ -90,7 +78,7 @@ function InputField({
           testID={testID}
           style={styles.inputText}
           placeholder={placeholder}
-          placeholderTextColor={C.muted}
+          placeholderTextColor={C.ink400}
           value={value}
           onChangeText={onChangeText}
           secureTextEntry={secureTextEntry}
@@ -183,8 +171,8 @@ export default function LoginScreen({
       contentContainerStyle={styles.loginContent}
       // "handled" lets taps on buttons/links still register while any other
       // tap outside an input bubbles up and dismisses the keyboard (fixes #4).
-      keyboardShouldPersistTaps="handled"
-      keyboardDismissMode="interactive"
+      keyboardShouldPersistTaps="always"
+      keyboardDismissMode="none"
       showsVerticalScrollIndicator={false}
       // iOS 17+/RN 0.71+: lets the ScrollView resize its content insets to
       // match the keyboard smoothly, without a manual KeyboardAvoidingView
@@ -194,18 +182,7 @@ export default function LoginScreen({
     >
       {/* Logo */}
       <View style={styles.logoSection}>
-        {/* Logo mark */}
-        <View style={styles.logoMark}>
-          <View style={styles.logoRect}>
-            <View style={styles.logoLine} />
-            <View style={[styles.logoLine, { width: 24 }]} />
-            <View style={[styles.logoLine, { width: 20 }]} />
-          </View>
-          <View style={styles.logoFigure}>
-            <View style={styles.logoHead} />
-            <View style={styles.logoBody} />
-          </View>
-        </View>
+        <Image source={require('../../../assets/taskbuddy-logo.png')} style={styles.logoMark} resizeMode="contain" />
         <Text style={styles.logoText}>TaskBuddy</Text>
         <Text style={styles.tagline}>Hire with confidence, pay with ease.</Text>
       </View>
@@ -217,8 +194,8 @@ export default function LoginScreen({
       </View>
 
       <InputField
-        label="Email Address"
-        placeholder="alex@example.com"
+        label="Email"
+        placeholder="sample@mail.com"
         testID="input-email"
         value={email}
         onChangeText={(value) => {
@@ -260,7 +237,7 @@ export default function LoginScreen({
               style={styles.eyeBtn}
               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
             >
-              {showPassword ? <EyeOff size={18} color={C.muted} /> : <Eye size={18} color={C.muted} />}
+              {showPassword ? <EyeOff size={20} color={C.ink400} /> : <Eye size={20} color={C.ink400} />}
             </TouchableOpacity>
           }
         />
@@ -304,7 +281,7 @@ export default function LoginScreen({
         disabled={googleLoading || submitting}
       >
         {googleLoading ? (
-          <ActivityIndicator color={C.brandTeal} />
+          <ActivityIndicator color={C.cyan700} />
         ) : (
           <>
             <View style={styles.googleIcon}>
@@ -326,175 +303,151 @@ export default function LoginScreen({
   );
 
   return (
-    <View style={styles.screen}>
-      {/* Background blobs */}
-      <View style={styles.blobTopLeft} pointerEvents="none" />
-      <View style={styles.blobTopRight} pointerEvents="none" />
-      <View style={styles.blobBottomLeft} pointerEvents="none" />
-      <View style={styles.blobBottomRight} pointerEvents="none" />
+    // LinearGradient is the actual container here (not an absolute-fill
+    // overlay sibling with pointerEvents="none") specifically so touches
+    // reach the inputs below it unambiguously — a decorative overlay sibling
+    // has caused touch-passthrough issues on some Android/library versions
+    // even with pointerEvents set, and this sidesteps that class of bug
+    // entirely: children of a normal View-like container always receive
+    // touches, no workaround needed.
+    <LinearGradient
+      colors={['#cdeef7', '#ffffff']}
+      locations={[0, 0.55]}
+      style={styles.screen}
+    >
+      {/* Keyboard handling: the ScrollView's keyboardShouldPersistTaps +
+          keyboardDismissMode handle taps/dismissal; KeyboardAvoidingView on
+          Android resizes the form so the focused field/Sign In button scrolls
+          above the keyboard instead of being hidden behind it (matches this
+          screen's original working pattern — behavior="height" on Android).
 
-      <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
-        {Platform.OS === 'android' ? (
-          // Android doesn't support automaticallyAdjustKeyboardInsets, so it
-          // still needs KeyboardAvoidingView. offset 0 since there's no
-          // fixed header above this screen.
-          <KeyboardAvoidingView
-            style={styles.flex}
-            behavior="height"
-            keyboardVerticalOffset={0}
-          >
-            {scrollContent}
-          </KeyboardAvoidingView>
-        ) : (
-          <View style={styles.flex}>{scrollContent}</View>
-        )}
-      </TouchableWithoutFeedback>
-    </View>
+          The focus/keyboard bug that plagued this screen was NOT caused by
+          this wrapper — it was `inputBoxFocused` adding an Android
+          `elevation` on focus. See the note on that style below. */}
+      {Platform.OS === 'android' ? (
+        <KeyboardAvoidingView style={styles.flex} behavior="height" keyboardVerticalOffset={0}>
+          {scrollContent}
+        </KeyboardAvoidingView>
+      ) : (
+        <View style={styles.flex}>{scrollContent}</View>
+      )}
+    </LinearGradient>
   );
 }
 
 // ─── Styles ───────────────────────────────────────────────────────────────────
-const { width: W } = Dimensions.get('window');
-const BLOB = Math.round(W * 1.1);
-
 const styles = StyleSheet.create({
   flex: { flex: 1 },
-  screen: { flex: 1, backgroundColor: C.background },
-
-  // Blobs
-  blobTopLeft: {
-    position: 'absolute', width: BLOB, height: BLOB, borderRadius: BLOB / 2,
-    backgroundColor: 'rgba(10,162,203,0.18)', top: -BLOB * 0.6, left: -BLOB * 0.55,
-  },
-  blobTopRight: {
-    position: 'absolute', width: BLOB * 0.7, height: BLOB * 0.7, borderRadius: BLOB * 0.35,
-    backgroundColor: 'rgba(9,110,139,0.14)', top: -BLOB * 0.3, right: -BLOB * 0.3,
-  },
-  blobBottomLeft: {
-    position: 'absolute', width: BLOB * 0.7, height: BLOB * 0.7, borderRadius: BLOB * 0.35,
-    backgroundColor: 'rgba(9,110,139,0.10)', bottom: -BLOB * 0.3, left: -BLOB * 0.35,
-  },
-  blobBottomRight: {
-    position: 'absolute', width: BLOB, height: BLOB, borderRadius: BLOB / 2,
-    backgroundColor: 'rgba(10,162,203,0.12)', bottom: -BLOB * 0.62, right: -BLOB * 0.5,
-  },
+  screen: { flex: 1, backgroundColor: C.white },
 
   // Scroll
   loginContent: {
     flexGrow: 1,
-    // Centers the form vertically when it doesn't fill the screen (fixes #2).
-    // Once the keyboard shrinks available height, the ScrollView scrolls
-    // normally instead of forcing centering.
     justifyContent: 'center',
     paddingHorizontal: 30,
-    paddingTop: 40,
-    paddingBottom: 24,
+    paddingTop: 96,
+    paddingBottom: 40,
   },
 
-  // Logo
-  logoSection: { marginBottom: 32, alignItems: 'flex-start' },
-  logoMark: { flexDirection: 'row', alignItems: 'flex-end', gap: 8, marginBottom: 12 },
-  logoRect: {
-    width: 58, height: 70, backgroundColor: C.brandCyan, borderRadius: 8,
-    padding: 10, justifyContent: 'space-around',
-  },
-  logoLine: { height: 4, width: 26, backgroundColor: C.white, borderRadius: 50 },
-  logoFigure: { alignItems: 'center', gap: 4 },
-  logoHead: { width: 16, height: 16, borderRadius: 8, backgroundColor: '#FFEECF' },
-  logoBody: { width: 26, height: 18, backgroundColor: C.brandTeal },
+  // Logo — matches .logo-mark (46x52)
+  logoSection: { marginBottom: 12, alignItems: 'center' },
+  logoMark: { width: 104, height: 117, alignSelf: 'center' },
   logoText: {
-    fontFamily: 'League Spartan', fontSize: 32, fontWeight: '700',
-    color: C.brandDark, letterSpacing: 0.32, marginBottom: 4,
+    fontFamily: 'Inter', fontSize: 31.5, fontWeight: '800',
+    color: C.cyan900, textAlign: 'center', marginTop: 12, marginBottom: 2,
   },
   tagline: {
-    fontFamily: 'Inter', fontSize: 13, fontWeight: '600',
-    color: C.brandDark, opacity: 0.7,
+    fontFamily: 'Inter', fontSize: 18.5, fontWeight: '800',
+    color: C.cyan900, textAlign: 'center',
   },
 
   // Heading
-  headingSection: { marginBottom: 16 },
+  headingSection: { marginTop: 28, marginBottom: 6 },
   welcomeText: {
-    fontFamily: 'Inter', fontSize: 20, fontWeight: '700',
-    color: C.brandDark, letterSpacing: 0.2, marginBottom: 4,
+    fontFamily: 'Inter', fontSize: 23, fontWeight: '800', color: C.ink900,
   },
   subtitleText: {
-    fontFamily: 'Inter', fontSize: 14, fontWeight: '500',
-    color: C.muted, letterSpacing: 0.14,
+    fontFamily: 'Inter', fontSize: 15.5, fontWeight: '400', color: C.ink400, marginTop: 2,
   },
 
-  // Inputs
-  inputGroup: { marginBottom: 18 },
+  // Inputs — matches .field input (v3 cascaded-final)
+  inputGroup: { marginBottom: 16 },
   inputLabel: {
-    fontFamily: 'Inter', fontSize: 15, fontWeight: '600',
-    color: C.brandDark, lineHeight: 21, marginBottom: 8,
+    fontFamily: 'Inter', fontSize: 15.5, fontWeight: '700', color: C.ink900, marginBottom: 6,
   },
   inputBox: {
     flexDirection: 'row', alignItems: 'center',
-    backgroundColor: C.white, borderRadius: 8,
-    paddingHorizontal: 16, paddingVertical: 12,
-    minHeight: 40, borderWidth: 1,
-    borderColor: 'rgba(144,153,184,0.25)',
-    shadowColor: '#063D4D', shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.06, shadowRadius: 6, elevation: 2,
+    backgroundColor: C.white, borderRadius: V6Radii.input,
+    paddingHorizontal: 14, minHeight: 46, borderWidth: 1,
+    borderColor: '#dce3e9',
   },
-  inputBoxFocused: { borderColor: C.brandTeal },
-  inputBoxError: { borderColor: C.error },
+  // Border-colour ONLY — never add a shadow/elevation here.
+  //
+  // The mockup's focus ring is `box-shadow:0 0 0 3px rgba(6,182,212,.12)`, and
+  // porting that as `...V6Shadows.sm` (which carries `elevation: 1`) broke text
+  // entry app-wide on Android: changing `elevation` on the View that *wraps* a
+  // focused TextInput makes Android re-create that view, so the EditText loses
+  // focus and the keyboard closes the instant it opens. Symptom was focus
+  // visibly jumping between fields and the keyboard flashing shut.
+  //
+  // Verified on-device (Pixel emulator, Expo Go): with elevation, tapping Email
+  // left focused=false / mInputShown=false / mServedView=null; without it,
+  // focused=true / mInputShown=true and typing lands in the right field.
+  inputBoxFocused: {
+    borderColor: C.cyan500,
+  },
+  inputBoxError: { borderColor: '#fecaca' },
   inputText: {
-    flex: 1, fontFamily: 'Inter', fontSize: 16, fontWeight: '400',
-    color: C.brandDark, padding: 0, margin: 0,
+    flex: 1, fontFamily: 'Inter', fontSize: 16.5, fontWeight: '400',
+    color: C.ink900, padding: 0, margin: 0,
   },
   inputError: {
-    fontFamily: 'Inter', fontSize: 13, color: C.error,
-    marginTop: 4, lineHeight: 18,
+    fontFamily: 'Inter', fontSize: 14.5, color: '#b91c1c', marginTop: 4,
   },
 
   // Password
   passwordSection: {},
-  passwordLabelRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
-  forgotText: { fontFamily: 'Inter', fontSize: 13, fontWeight: '700', color: C.brandTeal, textDecorationLine: 'underline' },
+  passwordLabelRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 },
+  forgotText: { fontFamily: 'Inter', fontSize: 15.5, fontWeight: '700', color: C.cyan800 },
   eyeBtn: { paddingLeft: 8 },
 
-  // Primary button
+  // Primary button — matches .btn-primary (solid cyan700, v3 cascaded-final)
   primaryBtn: {
-    backgroundColor: C.brandTeal, borderRadius: 24,
-    paddingVertical: 14, alignItems: 'center', marginBottom: 24, minHeight: 48,
-    shadowColor: C.brandTeal, shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.35, shadowRadius: 12, elevation: 5,
+    backgroundColor: C.cyan700, borderRadius: V6Radii.btn,
+    paddingVertical: 14, alignItems: 'center', marginTop: 8, marginBottom: 20, minHeight: 46,
+    ...V6Shadows.primaryButton,
   },
   primaryBtnDisabled: { opacity: 0.7 },
   primaryBtnText: {
-    fontFamily: 'Inter', fontSize: 15, fontWeight: '600',
-    color: C.white, letterSpacing: 0.3,
+    fontFamily: 'Inter', fontSize: 18.5, fontWeight: '700', color: C.white,
   },
   errorBanner: {
-    fontFamily: 'Inter', fontSize: 13, color: C.error,
-    marginBottom: 12, lineHeight: 18,
+    fontFamily: 'Inter', fontSize: 15.5, color: '#b91c1c', marginBottom: 12, lineHeight: 18,
   },
 
   // Divider
-  dividerRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 20, gap: 10 },
-  dividerLine: { flex: 1, height: 1, backgroundColor: C.muted, opacity: 0.4 },
-  dividerText: { fontFamily: 'Roboto', fontSize: 13, color: C.muted },
+  dividerRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 20, gap: 12 },
+  dividerLine: { flex: 1, height: 1, backgroundColor: C.ink100 },
+  dividerText: { fontFamily: 'Inter', fontSize: 15.5, color: C.ink300 },
 
-  // Google
+  // Google — matches .btn-outline
   googleBtn: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-    borderWidth: 1, borderColor: 'rgba(144,153,184,0.5)', borderRadius: 24,
-    paddingVertical: 12, paddingHorizontal: 24, marginBottom: 32, gap: 10,
-    minHeight: 44, backgroundColor: C.white,
+    borderWidth: 1, borderColor: '#dce3e9', borderRadius: V6Radii.btn,
+    paddingVertical: 12, paddingHorizontal: 24, marginBottom: 28, gap: 10,
+    minHeight: 46, backgroundColor: C.white,
   },
   googleIcon: {
     width: 20, height: 20, borderRadius: 10,
     backgroundColor: '#EA4335', alignItems: 'center', justifyContent: 'center',
   },
-  googleIconText: { color: C.white, fontSize: 12, fontWeight: '700' },
+  googleIconText: { color: C.white, fontSize: 14.5, fontWeight: '700' },
   googleBtnText: {
-    fontFamily: 'Inter', fontSize: 14, fontWeight: '500',
-    color: C.googleText, letterSpacing: 0.1,
+    fontFamily: 'Inter', fontSize: 16.5, fontWeight: '600', color: C.ink700,
   },
 
   // Sign Up
   signUpRow: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center' },
-  signUpPrompt: { fontFamily: 'Inter', fontSize: 14, fontWeight: '500', color: C.muted },
-  signUpLink: { fontFamily: 'Roboto', fontSize: 14, fontWeight: '700', color: C.brandTeal, textDecorationLine: 'underline' },
+  signUpPrompt: { fontFamily: 'Inter', fontSize: 15.5, fontWeight: '400', color: C.ink400 },
+  signUpLink: { fontFamily: 'Inter', fontSize: 15.5, fontWeight: '700', color: C.cyan800 },
 });

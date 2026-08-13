@@ -1,14 +1,9 @@
 /**
  * HOHomeScreen.tsx
  *
- * Figma Source: "HO - Main Dashboard" (id: 36:449)
- *
- * Design:
- * - Dark teal hero (264px) with greeting, wallet balance card
- * - Body: #F1F5F9 background
- * - "Book a Service" horizontal scroll of service cards
- * - "Active Jobs" list of job cards
- * - 5-tab bottom nav (see HOBottomNavBar)
+ * v6 design: matches taskbuddy_UI_update.html's #ho-dashboard screen —
+ * hero-clean gradient header with balance strip, primary task card,
+ * category strip, active jobs list.
  */
 
 import React from 'react';
@@ -19,26 +14,30 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
 import {
-  ArrowRight,
   Bell,
+  BriefcaseBusiness,
   BrushCleaning,
+  CheckCircle2,
   ClipboardList,
   Hammer,
   Hand,
   MapPin,
   Palette,
-  Plus,
+  Search,
   Sparkles,
   Wrench,
 } from 'lucide-react-native';
-import { Colors, Radii, Shadows, Sizes, Spacing } from '../../../src/constants/theme';
+import { Sizes, Spacing, V6Colors, V6Radii, V6Shadows } from '../../../src/constants/theme';
 import { HOScreen } from '../../../src/types/navigation';
 import { useAuth } from '../../../src/context/AuthContext';
 import { useAsyncData } from '../../../src/hooks/useAsyncData';
 import { api } from '../../../src/lib/api';
 import { initials, jobStatusMeta, peso, shortDate } from '../../../src/lib/format';
 import ScreenSkeleton from '../../../src/components/ScreenSkeleton';
+
+const C = V6Colors;
 
 const CATEGORY_ICON: Record<string, typeof Wrench> = {
   Plumbing: Wrench,
@@ -50,6 +49,20 @@ const CATEGORY_ICON: Record<string, typeof Wrench> = {
 
 const ACTIVE_STATUSES = ['open', 'recommending', 'assigned', 'in_progress'];
 
+const ACTIVITY_ICON: Record<string, typeof BriefcaseBusiness> = {
+  recommendation_invite: BriefcaseBusiness,
+  application_update: CheckCircle2,
+  job_update: BriefcaseBusiness,
+};
+
+interface NotificationRow {
+  id: string;
+  type: string;
+  title: string;
+  body: string;
+  created_at: string;
+}
+
 interface HOHomeScreenProps {
   onNavigate: (screen: HOScreen, jobId?: string) => void;
 }
@@ -57,303 +70,353 @@ interface HOHomeScreenProps {
 export default function HOHomeScreen({ onNavigate }: HOHomeScreenProps) {
   const { profile } = useAuth();
   const { data, loading } = useAsyncData(async () => {
-    const [wallet, jobs, cats, notifs] = await Promise.all([
+    const [wallet, jobs, cats, notifs, unreadCount] = await Promise.all([
       api.wallet(),
       api.myJobs(),
       api.categories(),
-      api.notifications(true),
+      api.notifications() as Promise<NotificationRow[]>,
+      api.unreadNotificationCount(),
     ]);
-    return { wallet, jobs, cats, notifs };
-  }, []);
+    return { wallet, jobs, cats, notifs, unreadCount };
+  }, [], 'ho-home');
 
   const name = profile?.full_name ?? '';
   const jobs = data?.jobs ?? [];
   const activeJobs = jobs.filter((j) => ACTIVE_STATUSES.includes(j.status));
-  const pendingCount = jobs.filter((j) => ['open', 'recommending'].includes(j.status)).length;
-  const activeCount = jobs.filter((j) => ['assigned', 'in_progress'].includes(j.status)).length;
-  const doneCount = jobs.filter((j) => j.status === 'completed').length;
-  const unread = data?.notifs?.length ?? 0;
+  const recentActivity = (data?.notifs ?? []).slice(0, 3);
+  const unread = data?.unreadCount.count ?? 0;
   const location =
     [profile?.city, profile?.address].filter(Boolean).join(', ') || 'Set your location';
+  const hour = new Date().getHours();
+  const greeting = hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening';
 
   if (loading) return <ScreenSkeleton variant="dashboard" />;
 
   return (
     <View style={styles.screen}>
-      {/* Hero Header */}
-      <View style={styles.hero}>
-        {/* Top row */}
-        <View style={styles.heroTopRow}>
-          <View>
-            <Text style={styles.greeting}>Welcome back!</Text>
-            <Text style={styles.userName}>{name || 'there'}</Text>
-          </View>
-          <View style={styles.heroActions}>
-            <TouchableOpacity
-              style={styles.notifBtn}
-              onPress={() => onNavigate('Notifications')}
-              activeOpacity={0.8}
-            >
-              <Bell size={18} color={Colors.white} />
-              {unread > 0 && (
-                <View style={styles.notifBadge}><Text style={styles.notifBadgeText}>{unread}</Text></View>
-              )}
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.avatarCircle}
-              onPress={() => onNavigate('Profile')}
-              activeOpacity={0.8}
-            >
-              <Text style={styles.avatarText}>{initials(name)}</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-
-        {/* Wallet card inside hero */}
-        <View style={styles.walletCard}>
-          <View style={styles.walletRow}>
-            <View>
-              <Text style={styles.walletLabel}>Wallet Balance</Text>
-              <Text style={styles.walletAmount}>{data ? peso(data.wallet.balance) : '—'}</Text>
-            </View>
-            <TouchableOpacity
-              style={styles.addBtn}
-              onPress={() => onNavigate('Wallet')}
-              activeOpacity={0.8}
-            >
-              <View style={styles.addBtnContent}>
-                <Plus size={14} color={Colors.white} />
-                <Text style={styles.addBtnText}>Wallet</Text>
-              </View>
-            </TouchableOpacity>
-          </View>
-
-          <View style={styles.statusRow}>
-            {[
-              { dot: '#F59E0B', label: `${pendingCount} pending` },
-              { dot: '#22C55E', label: `${activeCount} active` },
-              { dot: '#71C7FF', label: `${doneCount} done` },
-            ].map((s) => (
-              <View key={s.label} style={styles.statusChip}>
-                <View style={[styles.statusDot, { backgroundColor: s.dot }]} />
-                <Text style={styles.statusText}>{s.label}</Text>
-              </View>
-            ))}
-          </View>
-
-          <View style={styles.locationRow}>
-            <View style={styles.locationTextWrap}>
-              <MapPin size={13} color={Colors.slate} />
-              <Text style={styles.locationText} numberOfLines={1}>{location}</Text>
-            </View>
-          </View>
-        </View>
-      </View>
-
-      {/* Body */}
       <ScrollView
-        style={styles.body}
-        contentContainerStyle={styles.bodyContent}
+        style={styles.flex}
         showsVerticalScrollIndicator={false}
       >
-        {/* Book a Service */}
-        <Text style={styles.sectionTitle}>Book a Service</Text>
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          style={styles.servicesScroll}
-          contentContainerStyle={styles.servicesContent}
+        {/* Hero — mockup's final hero-clean gradient: 145deg #078eaa->#0b7288 */}
+        <LinearGradient
+          colors={['#078eaa', '#0b7288']}
+          start={{ x: 0.15, y: 0 }}
+          end={{ x: 0.85, y: 1 }}
+          style={styles.hero}
         >
-          {(data?.cats ?? []).map((cat) => {
-            const Icon = CATEGORY_ICON[cat.name] ?? Hand;
+          <View style={styles.heroTopRow}>
+            <View>
+              <Text style={styles.greeting}>{greeting}</Text>
+              <Text style={styles.userName}>{name || 'there'}</Text>
+            </View>
+            <View style={styles.heroActions}>
+              <TouchableOpacity
+                style={styles.iconBtn}
+                onPress={() => onNavigate('Notifications')}
+                activeOpacity={0.8}
+              >
+                <Bell size={20} color={C.white} />
+                {unread > 0 && (
+                  <View style={styles.notifBadge}><Text style={styles.notifBadgeText}>{unread}</Text></View>
+                )}
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.avatarCircle}
+                onPress={() => onNavigate('Profile')}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.avatarText}>{initials(name)}</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+
+          <View style={styles.balanceStrip}>
+            <View>
+              <Text style={styles.balanceLabel}>Wallet balance</Text>
+              <Text style={styles.balanceAmount}>{data ? peso(data.wallet.balance) : '—'}</Text>
+            </View>
+            <TouchableOpacity onPress={() => onNavigate('Wallet')} activeOpacity={0.8}>
+              <Text style={styles.manageLink}>Manage wallet</Text>
+            </TouchableOpacity>
+          </View>
+        </LinearGradient>
+
+        {/* Body */}
+        <View style={styles.body}>
+          {/* Primary task card */}
+          <TouchableOpacity
+            style={styles.primaryTaskCard}
+            onPress={() => onNavigate('Create Job')}
+            activeOpacity={0.9}
+          >
+            <View style={styles.taskIcon}>
+              <Sparkles size={22} color={C.cyan700} />
+            </View>
+            <View style={styles.taskCopy}>
+              <Text style={styles.taskTitle}>Need something done?</Text>
+              <Text style={styles.taskDesc}>Post a task and connect with a nearby verified provider.</Text>
+            </View>
+            <View style={styles.postBtn}>
+              <Text style={styles.postBtnText}>+ Post</Text>
+            </View>
+          </TouchableOpacity>
+
+          {/* Find a service */}
+          <View style={styles.section}>
+            <View style={styles.sectionHead}>
+              <Text style={styles.sectionTitle}>Find a service</Text>
+            </View>
+            <TouchableOpacity
+              style={styles.scopeSearch}
+              onPress={() => onNavigate('Create Job')}
+              activeOpacity={0.8}
+            >
+              <Search size={19} color={C.ink400} />
+              <Text style={styles.scopeSearchText}>Search services or providers</Text>
+            </TouchableOpacity>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.categoryStrip}
+            >
+              {(data?.cats ?? []).map((cat) => {
+                const Icon = CATEGORY_ICON[cat.name] ?? Hand;
+                return (
+                  <TouchableOpacity
+                    key={cat.id}
+                    style={styles.categoryTile}
+                    onPress={() => onNavigate('Create Job')}
+                    activeOpacity={0.85}
+                  >
+                    <View style={styles.categoryIconWell}>
+                      <Icon size={19} color={C.cyan700} />
+                    </View>
+                    <Text style={styles.categoryLabel}>{cat.name}</Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+          </View>
+
+          {/* Active Jobs */}
+          <View style={styles.sectionHead}>
+            <Text style={styles.sectionTitle}>
+              Active Jobs
+              {activeJobs.length > 0 ? (
+                <Text style={styles.sectionCount}>  {activeJobs.length} active {activeJobs.length === 1 ? 'job' : 'jobs'}</Text>
+              ) : null}
+            </Text>
+            <TouchableOpacity onPress={() => onNavigate('My Jobs')}>
+              <Text style={styles.textLink}>See all</Text>
+            </TouchableOpacity>
+          </View>
+
+          {activeJobs.length === 0 && (
+            <View style={styles.emptyState}>
+              <ClipboardList size={30} color={C.ink300} />
+              <Text style={styles.emptyTitle}>No active jobs</Text>
+              <Text style={styles.emptyText}>Tap a service above to post a job and start receiving offers.</Text>
+            </View>
+          )}
+
+          {activeJobs.map((job) => {
+            const meta = jobStatusMeta(job.status);
             return (
               <TouchableOpacity
-                key={cat.id}
-                style={styles.serviceCard}
-                onPress={() => onNavigate('Create Job')}
-                activeOpacity={0.85}
+                key={job.id}
+                style={styles.jobCard}
+                onPress={() => onNavigate('Job Detail', job.id)}
+                activeOpacity={0.9}
               >
-                <Icon size={28} color={Colors.brandDark} />
-                <Text style={styles.serviceLabel}>{cat.name}</Text>
+                <View style={styles.jobTitleRow}>
+                  <Text style={styles.jobTitle} numberOfLines={1}>{job.title}</Text>
+                </View>
+                <View style={styles.jobMetaRow}>
+                  <MapPin size={13} color={C.ink400} />
+                  <Text style={styles.jobMeta} numberOfLines={1}>{job.address}</Text>
+                </View>
+                <View style={styles.jobBottomRow}>
+                  <View style={styles.jobStatus}>
+                    <View style={[styles.statusDot, { backgroundColor: meta.color }]} />
+                    <Text style={styles.jobStatusText}>{meta.label}</Text>
+                  </View>
+                  <Text style={styles.jobAge}>Posted {shortDate(job.posted_at)}</Text>
+                </View>
               </TouchableOpacity>
             );
           })}
-        </ScrollView>
 
-        {/* Active Jobs */}
-        <View style={styles.sectionHeaderRow}>
-          <Text style={styles.sectionTitle}>Active Jobs</Text>
-          <TouchableOpacity onPress={() => onNavigate('My Jobs')}>
-            <Text style={styles.seeAll}>See all</Text>
-          </TouchableOpacity>
-        </View>
-
-        {activeJobs.length === 0 && (
-          <View style={styles.emptyState}>
-            <ClipboardList size={36} color={Colors.brandTeal} />
-            <Text style={styles.emptyTitle}>No active jobs</Text>
-            <Text style={styles.emptyText}>Tap a service above to post a job and start receiving offers.</Text>
-          </View>
-        )}
-
-        {activeJobs.map((job) => {
-          const meta = jobStatusMeta(job.status);
-          return (
-            <TouchableOpacity
-              key={job.id}
-              style={styles.jobCard}
-              onPress={() => onNavigate('Job Detail', job.id)}
-              activeOpacity={0.9}
-            >
-              <View style={styles.jobCardHeader}>
-                <Text style={styles.jobTitle}>{job.title}</Text>
-                <View style={[styles.statusPill, { backgroundColor: meta.bg }]}>
-                  <Text style={[styles.statusPillText, { color: meta.color }]}>{meta.label}</Text>
-                </View>
-              </View>
-              <View style={styles.jobLocationWrap}>
-                <MapPin size={13} color={Colors.slate} />
-                <Text style={styles.jobLocation}>{job.address}</Text>
-              </View>
-              <View style={styles.jobFooter}>
-                <Text style={styles.ageText}>Posted {shortDate(job.posted_at)}</Text>
-                <TouchableOpacity
-                  style={styles.viewBtn}
-                  onPress={() => onNavigate('Job Detail', job.id)}
-                  activeOpacity={0.8}
-                >
-                  <View style={styles.viewBtnContent}>
-                    <Text style={styles.viewBtnText}>View Job</Text>
-                    <ArrowRight size={14} color={Colors.white} />
-                  </View>
+          {/* Recent Activity */}
+          {recentActivity.length > 0 && (
+            <>
+              <View style={[styles.sectionHead, { marginTop: 22 }]}>
+                <Text style={styles.sectionTitle}>Recent Activity</Text>
+                <TouchableOpacity onPress={() => onNavigate('Notifications')}>
+                  <Text style={styles.textLink}>View all</Text>
                 </TouchableOpacity>
               </View>
-            </TouchableOpacity>
-          );
-        })}
+              <View style={styles.activityList}>
+                {recentActivity.map((n, i) => {
+                  const Icon = ACTIVITY_ICON[n.type] ?? BriefcaseBusiness;
+                  return (
+                    <View
+                      key={n.id}
+                      style={[styles.activityRow, i < recentActivity.length - 1 && styles.activityRowBorder]}
+                    >
+                      <View style={styles.activityIcon}>
+                        <Icon size={19} color={C.cyan700} />
+                      </View>
+                      <View style={styles.activityCopy}>
+                        <Text style={styles.activityTitle} numberOfLines={1}>{n.title}</Text>
+                        <Text style={styles.activityBody} numberOfLines={2}>{n.body}</Text>
+                      </View>
+                    </View>
+                  );
+                })}
+              </View>
+            </>
+          )}
 
-        <View style={{ height: 20 }} />
+          <View style={{ height: 20 }} />
+        </View>
       </ScrollView>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: Colors.background },
+  flex: { flex: 1 },
+  screen: { flex: 1, backgroundColor: C.canvas },
 
-  // Hero
+  // Hero — matches .hero-clean (linear-gradient 165deg cyan600->cyan700, rounded bottom corners)
   hero: {
-    backgroundColor: Colors.brandDark,
     paddingTop: Sizes.statusBarHeight,
     paddingHorizontal: Spacing.screenH,
     paddingBottom: 20,
-    borderBottomLeftRadius: 28,
-    borderBottomRightRadius: 28,
+    borderBottomLeftRadius: 26,
+    borderBottomRightRadius: 26,
   },
   heroTopRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingTop: 12,
-    paddingBottom: 16,
+    marginBottom: 16,
   },
-  greeting: { color: 'rgba(255,255,255,0.7)', fontSize: 14, fontFamily: 'Inter', fontWeight: '500' },
-  userName: { color: Colors.white, fontSize: 22, fontWeight: '800', fontFamily: 'Inter', marginTop: 2 },
-  heroActions: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  notifBtn: {
+  greeting: { color: C.cyan100, fontSize: 14.5, fontFamily: 'Inter', fontWeight: '500' },
+  userName: { color: C.white, fontSize: 24.5, fontWeight: '800', fontFamily: 'Inter', marginTop: 3 },
+  heroActions: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  iconBtn: {
     width: 40, height: 40, borderRadius: 12,
-    backgroundColor: 'rgba(255,255,255,0.15)',
+    backgroundColor: 'rgba(255,255,255,0.12)',
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)',
     alignItems: 'center', justifyContent: 'center', position: 'relative',
   },
   notifBadge: {
-    position: 'absolute', top: 6, right: 6,
+    position: 'absolute', top: -5, right: -4,
     width: 16, height: 16, borderRadius: 8,
-    backgroundColor: '#EF4444', alignItems: 'center', justifyContent: 'center',
+    backgroundColor: '#ef4444', alignItems: 'center', justifyContent: 'center',
   },
-  notifBadgeText: { color: Colors.white, fontSize: 10, fontWeight: '700' },
+  notifBadgeText: { color: C.white, fontSize: 11, fontWeight: '800' },
   avatarCircle: {
     width: 40, height: 40, borderRadius: 12,
-    backgroundColor: Colors.brandCyan,
+    backgroundColor: 'rgba(255,255,255,0.16)',
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.12)',
     alignItems: 'center', justifyContent: 'center',
   },
-  avatarText: { color: Colors.white, fontWeight: '700', fontSize: 14, fontFamily: 'Inter' },
+  avatarText: { color: C.white, fontWeight: '800', fontSize: 14.5, fontFamily: 'Inter' },
 
-  // Wallet card (inside hero)
-  walletCard: {
-    backgroundColor: Colors.white,
-    borderRadius: Radii.card,
-    padding: 20,
-    marginBottom: 0,
-    ...Shadows.card,
-  },
-  walletRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 },
-  walletLabel: { color: Colors.muted, fontSize: 13, fontFamily: 'Inter', marginBottom: 2 },
-  walletAmount: { color: Colors.brandDark, fontSize: 32, fontWeight: '800', fontFamily: 'Inter' },
-  addBtn: {
-    backgroundColor: Colors.brandDark, borderRadius: 16,
-    paddingHorizontal: 16, paddingVertical: 10,
-  },
-  addBtnContent: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  addBtnText: { color: Colors.white, fontWeight: '700', fontFamily: 'Inter', fontSize: 13 },
-
-  statusRow: { flexDirection: 'row', gap: 8, marginBottom: 14, flexWrap: 'wrap' },
-  statusChip: {
-    flexDirection: 'row', alignItems: 'center',
-    backgroundColor: Colors.backgroundAlt,
-    borderRadius: 16, paddingHorizontal: 10, paddingVertical: 5,
-  },
-  statusDot: { width: 8, height: 8, borderRadius: 4, marginRight: 6 },
-  statusText: { color: Colors.slate, fontSize: 12, fontFamily: 'Inter' },
-
-  locationRow: {
+  // Balance strip
+  balanceStrip: {
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
-    borderTopWidth: 1, borderTopColor: 'rgba(144,153,184,0.2)', paddingTop: 12,
+    marginTop: 16, padding: 13,
+    backgroundColor: 'rgba(255,255,255,0.11)',
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.14)',
+    borderRadius: 14,
   },
-  locationTextWrap: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  locationText: { color: Colors.slate, fontSize: 12, fontFamily: 'Inter' },
-  radiusText: { color: Colors.brandTeal, fontSize: 12, fontWeight: '700', fontFamily: 'Inter' },
+  balanceLabel: { color: 'rgba(255,255,255,0.72)', fontSize: 13.5, fontFamily: 'Inter', marginBottom: 2 },
+  balanceAmount: { color: C.white, fontSize: 21.5, fontWeight: '800', fontFamily: 'Inter' },
+  manageLink: { color: C.white, fontSize: 14.5, fontWeight: '700', fontFamily: 'Inter' },
 
   // Body
-  body: { flex: 1 },
-  bodyContent: { paddingHorizontal: Spacing.screenH, paddingTop: 24, paddingBottom: 20 },
+  body: { paddingHorizontal: Spacing.screenH, paddingTop: 18 },
 
-  sectionTitle: { color: Colors.brandDark, fontSize: 18, fontWeight: '800', fontFamily: 'Inter', marginBottom: 14 },
-  sectionHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14, marginTop: 24 },
-  seeAll: { color: Colors.brandTeal, fontSize: 13, fontWeight: '700', fontFamily: 'Inter' },
-
-  servicesScroll: { marginBottom: 0 },
-  servicesContent: { paddingRight: Spacing.screenH },
-  serviceCard: {
-    width: 100, height: 100, borderRadius: 20,
-    marginRight: 12, padding: 14,
-    backgroundColor: '#E8F5F9',
-    justifyContent: 'space-between', alignItems: 'flex-start',
+  primaryTaskCard: {
+    flexDirection: 'row', alignItems: 'center', gap: 13,
+    backgroundColor: C.white, borderColor: C.cyan100, borderWidth: 1,
+    borderRadius: V6Radii.card, padding: 17, marginBottom: 22,
+    ...V6Shadows.sm,
   },
-  serviceLabel: { fontSize: 12, fontWeight: '700', color: Colors.brandDark, fontFamily: 'Inter', lineHeight: 16 },
+  taskIcon: {
+    width: 42, height: 42, borderRadius: 14,
+    backgroundColor: C.white, borderWidth: 1, borderColor: C.cyan100,
+    alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+  },
+  taskCopy: { flex: 1, minWidth: 0 },
+  taskTitle: { fontSize: 16.5, fontWeight: '800', color: C.ink900, fontFamily: 'Inter', marginBottom: 3 },
+  taskDesc: { fontSize: 14, color: C.ink500, fontFamily: 'Inter', lineHeight: 16 },
+  postBtn: { backgroundColor: C.cyan700, borderRadius: V6Radii.btn, paddingHorizontal: 12, paddingVertical: 10 },
+  postBtnText: { color: C.white, fontSize: 14.5, fontWeight: '700', fontFamily: 'Inter' },
+
+  section: { marginBottom: 22 },
+  sectionHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 11 },
+  sectionTitle: { fontSize: 19, fontWeight: '800', color: C.ink900, fontFamily: 'Inter', letterSpacing: -0.15 },
+  sectionCount: { fontWeight: '600', color: C.ink400, fontSize: 13.5 },
+  textLink: { color: C.cyan700, fontSize: 14.5, fontWeight: '700', fontFamily: 'Inter' },
+
+  scopeSearch: {
+    flexDirection: 'row', alignItems: 'center', gap: 9,
+    backgroundColor: C.white, borderWidth: 1, borderColor: C.line,
+    borderRadius: 14, paddingHorizontal: 13, paddingVertical: 11,
+    marginBottom: 12,
+  },
+  scopeSearchText: { fontSize: 13.5, color: C.ink400, fontFamily: 'Inter', flex: 1 },
+
+  categoryStrip: { gap: 9, paddingRight: Spacing.screenH },
+  categoryTile: {
+    alignItems: 'center', width: 76,
+    borderWidth: 1, borderColor: C.line, backgroundColor: C.white,
+    borderRadius: 14, paddingVertical: 11, paddingHorizontal: 6,
+  },
+  categoryIconWell: {
+    width: 34, height: 34, borderRadius: 11,
+    backgroundColor: '#f3f8fa',
+    alignItems: 'center', justifyContent: 'center',
+    marginBottom: 7,
+  },
+  categoryLabel: { fontSize: 11.5, fontWeight: '700', color: C.ink700, fontFamily: 'Inter', textAlign: 'center' },
+
+  emptyState: { alignItems: 'center', paddingVertical: 40, paddingHorizontal: 22 },
+  emptyTitle: { color: C.ink800, fontSize: 16, fontWeight: '700', fontFamily: 'Inter', marginTop: 10, marginBottom: 4 },
+  emptyText: { color: C.ink400, fontSize: 14, fontFamily: 'Inter', textAlign: 'center', lineHeight: 17 },
 
   jobCard: {
-    backgroundColor: Colors.white, borderRadius: Radii.card,
-    padding: 18, marginBottom: 14, ...Shadows.card,
+    backgroundColor: C.white, borderColor: C.line, borderWidth: 1,
+    borderRadius: V6Radii.cardSm, padding: 15, marginBottom: 10,
+    ...V6Shadows.sm,
   },
-  jobCardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
-  jobTitle: { color: Colors.brandDark, fontSize: 16, fontWeight: '700', fontFamily: 'Inter', flex: 1, marginRight: 10 },
-  statusPill: { borderRadius: 999, paddingHorizontal: 10, paddingVertical: 4 },
-  statusPillText: { fontSize: 12, fontWeight: '600', fontFamily: 'Inter' },
-  jobLocationWrap: { flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 12 },
-  jobLocation: { color: Colors.slate, fontSize: 12, fontFamily: 'Inter' },
-  jobMetaRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 },
-  priorityChip: { borderRadius: 16, paddingHorizontal: 10, paddingVertical: 4 },
-  priorityText: { fontSize: 12, fontWeight: '600', fontFamily: 'Inter' },
-  ageText: { color: Colors.slate, fontSize: 12, fontFamily: 'Inter' },
-  jobFooter: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  jobAmount: { color: Colors.brandDark, fontSize: 22, fontWeight: '800', fontFamily: 'Inter' },
-  emptyText: { color: Colors.slate, fontSize: 14, fontFamily: 'Inter', textAlign: 'center', paddingVertical: 16 },
-  emptyState: { alignItems: 'center', paddingVertical: 30, paddingHorizontal: 24 },
-  emptyTitle: { color: Colors.brandDark, fontSize: 16, fontWeight: '800', fontFamily: 'Inter', marginTop: 10 },
-  viewBtn: {
-    backgroundColor: Colors.brandTeal, borderRadius: 14,
-    paddingHorizontal: 14, paddingVertical: 8,
+  jobTitleRow: { marginBottom: 5 },
+  jobTitle: { color: C.ink900, fontSize: 17.5, fontWeight: '800', fontFamily: 'Inter' },
+  jobMetaRow: { flexDirection: 'row', alignItems: 'center', gap: 5, marginBottom: 11 },
+  jobMeta: { color: C.ink400, fontSize: 14, fontFamily: 'Inter', flex: 1 },
+  jobBottomRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  jobStatus: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  statusDot: { width: 7, height: 7, borderRadius: 4 },
+  jobStatusText: { color: C.ink700, fontSize: 14, fontWeight: '700', fontFamily: 'Inter' },
+  jobAge: { color: C.ink400, fontSize: 13.5, fontFamily: 'Inter' },
+
+  // Recent Activity — matches .activity-list/.activity-row
+  activityList: {
+    backgroundColor: C.white, borderWidth: 1, borderColor: C.line,
+    borderRadius: 16, overflow: 'hidden',
   },
-  viewBtnContent: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  viewBtnText: { color: Colors.white, fontSize: 12, fontWeight: '700', fontFamily: 'Inter' },
+  activityRow: { flexDirection: 'row', gap: 11, padding: 14, alignItems: 'flex-start' },
+  activityRowBorder: { borderBottomWidth: 1, borderBottomColor: '#f0f3f6' },
+  activityIcon: {
+    width: 32, height: 32, borderRadius: 11,
+    backgroundColor: '#f3f8fa', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+  },
+  activityCopy: { flex: 1 },
+  activityTitle: { color: C.ink900, fontSize: 13.5, fontWeight: '700', fontFamily: 'Inter', marginBottom: 2 },
+  activityBody: { color: C.ink400, fontSize: 12, fontFamily: 'Inter', lineHeight: 15 },
 });

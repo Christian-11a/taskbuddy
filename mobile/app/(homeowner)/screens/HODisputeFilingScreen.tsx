@@ -1,8 +1,24 @@
+/**
+ * HODisputeFilingScreen.tsx
+ *
+ * v6 design: matches taskbuddy_UI_update.html's #ho-dispute screen — a flat
+ * white .topbar (not a colored hero), flat .field-style inputs with no card
+ * wrapping, and a single flat cyan-700 "Submit Dispute" button (the mockup
+ * does not use a red/danger button here).
+ *
+ * Deviation: kept the reason list as tappable radio rows rather than the
+ * mockup's HTML <select>, since that's the standard RN pattern for this kind
+ * of choice; kept the header subtitle (job title + provider) since it's
+ * real, useful context the mockup's generic demo copy doesn't need.
+ */
+
 import React, { useCallback, useState } from 'react';
 import { ActivityIndicator, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
-import { ArrowLeft, CircleAlert, FileWarning } from 'lucide-react-native';
+import { ArrowLeft } from 'lucide-react-native';
 import ConfirmationModal from '../../../src/components/ConfirmationModal';
-import { Colors, Radii, Shadows, Sizes, Spacing } from '../../../src/constants/theme';
+import { Sizes, Spacing, V6Colors, V6Radii, V6Shadows } from '../../../src/constants/theme';
+
+const C = V6Colors;
 import { api } from '../../../src/lib/api';
 import { useAsyncData } from '../../../src/hooks/useAsyncData';
 
@@ -12,7 +28,7 @@ interface HODisputeFilingScreenProps {
   onSubmitted: () => void;
 }
 
-const REASONS = ['Service not completed', 'Poor service quality', 'Incorrect charge', 'Other'];
+const REASONS = ['Work not completed', 'Work quality issue', 'Provider did not arrive', 'Payment issue', 'Other'];
 
 export default function HODisputeFilingScreen({ jobId, onBack, onSubmitted }: HODisputeFilingScreenProps) {
   const [reason, setReason] = useState(REASONS[0]);
@@ -53,25 +69,20 @@ export default function HODisputeFilingScreen({ jobId, onBack, onSubmitted }: HO
 
   return (
     <View style={styles.screen}>
+      {/* Header — matches .topbar (flat white, not a colored hero) */}
       <View style={styles.header}>
-        <View style={styles.headerRow}>
-          <TouchableOpacity style={styles.backButton} onPress={onBack} activeOpacity={0.8}>
-            <ArrowLeft size={20} color={Colors.white} />
-          </TouchableOpacity>
+        <TouchableOpacity style={styles.backButton} onPress={onBack} activeOpacity={0.8}>
+          <ArrowLeft size={20} color={C.ink700} />
+        </TouchableOpacity>
+        <View style={{ flex: 1 }}>
           <Text style={styles.headerTitle}>File a Dispute</Text>
-          <View style={styles.headerSpacer} />
+          <Text style={styles.headerSubtitle} numberOfLines={1}>{subtitle}</Text>
         </View>
-        <Text style={styles.headerSubtitle}>{subtitle}</Text>
       </View>
 
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-        <View style={styles.notice}>
-          <CircleAlert size={20} color={Colors.error} />
-          <Text style={styles.noticeText}>Provide accurate details. Our team will review your report and contact you with an update.</Text>
-        </View>
-
-        <View style={styles.card}>
-          <Text style={styles.label}>Reason for dispute</Text>
+        <View style={styles.fieldGroup}>
+          <Text style={styles.label}>Issue</Text>
           <View style={styles.reasonList}>
             {REASONS.map((item) => {
               const selected = item === reason;
@@ -85,16 +96,16 @@ export default function HODisputeFilingScreen({ jobId, onBack, onSubmitted }: HO
           </View>
         </View>
 
-        <View style={styles.card}>
-          <Text style={styles.label}>Describe the issue</Text>
+        <View style={styles.fieldGroup}>
+          <Text style={styles.label}>Describe what happened</Text>
           <TextInput
             style={[styles.detailsInput, detailsFocused && styles.detailsInputFocused]}
             value={details}
             onChangeText={setDetails}
             multiline
             textAlignVertical="top"
-            placeholder="Tell us what happened and include any relevant details."
-            placeholderTextColor={Colors.muted}
+            placeholder="Give support enough detail to review the issue…"
+            placeholderTextColor={C.ink400}
             onFocus={() => setDetailsFocused(true)}
             onBlur={() => setDetailsFocused(false)}
           />
@@ -109,12 +120,9 @@ export default function HODisputeFilingScreen({ jobId, onBack, onSubmitted }: HO
           activeOpacity={0.85}
         >
           {submitting ? (
-            <ActivityIndicator color={Colors.white} />
+            <ActivityIndicator color={C.white} />
           ) : (
-            <>
-              <FileWarning size={18} color={Colors.white} />
-              <Text style={styles.submitText}>Submit Dispute Report</Text>
-            </>
+            <Text style={styles.submitText}>Submit Dispute</Text>
           )}
         </TouchableOpacity>
       </ScrollView>
@@ -132,28 +140,47 @@ export default function HODisputeFilingScreen({ jobId, onBack, onSubmitted }: HO
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: Colors.background },
-  header: { backgroundColor: Colors.brandDark, paddingTop: Sizes.statusBarHeight, paddingHorizontal: Spacing.screenH, paddingBottom: 22, borderBottomLeftRadius: 28, borderBottomRightRadius: 28 },
-  headerRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingTop: 12, marginBottom: 12 },
-  backButton: { width: 40, height: 40, borderRadius: 12, backgroundColor: 'rgba(255,255,255,0.15)', alignItems: 'center', justifyContent: 'center' },
-  headerTitle: { color: Colors.white, fontSize: 18, fontWeight: '800', fontFamily: 'Inter' },
-  headerSpacer: { width: 40 },
-  headerSubtitle: { color: 'rgba(255,255,255,0.72)', fontSize: 13, fontFamily: 'Inter' },
-  content: { padding: Spacing.screenH, gap: 16 },
-  notice: { flexDirection: 'row', gap: 10, backgroundColor: '#FEF2F2', borderRadius: 14, padding: 14, borderWidth: 1, borderColor: '#FECACA' },
-  noticeText: { flex: 1, color: Colors.slate, fontFamily: 'Inter', fontSize: 13, lineHeight: 19 },
-  card: { backgroundColor: Colors.white, borderRadius: Radii.card, padding: 18, ...Shadows.card },
-  label: { color: Colors.brandDark, fontFamily: 'Inter', fontSize: 15, fontWeight: '800', marginBottom: 14 },
-  reasonList: { gap: 13 },
+  screen: { flex: 1, backgroundColor: C.canvas },
+  header: {
+    flexDirection: 'row', alignItems: 'center', gap: 12,
+    backgroundColor: C.white,
+    paddingTop: Sizes.statusBarHeight,
+    paddingHorizontal: Spacing.screenH,
+    paddingBottom: 12,
+    borderBottomWidth: 1, borderBottomColor: '#edf1f4',
+  },
+  backButton: {
+    width: 38, height: 38, borderRadius: 12,
+    backgroundColor: C.white, borderWidth: 1, borderColor: '#e8edf2',
+    alignItems: 'center', justifyContent: 'center',
+  },
+  headerTitle: { color: C.ink900, fontSize: 19.5, fontWeight: '800', fontFamily: 'Inter' },
+  headerSubtitle: { color: C.ink500, fontSize: 13.5, fontFamily: 'Inter', marginTop: 1 },
+
+  content: { padding: Spacing.screenH, paddingTop: 18, gap: 16 },
+
+  fieldGroup: { marginBottom: 2 },
+  label: { color: C.ink900, fontSize: 14, fontWeight: '700', fontFamily: 'Inter', marginBottom: 10 },
+  reasonList: { gap: 14 },
   reasonRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  radio: { width: 20, height: 20, borderRadius: 10, borderWidth: 1.5, borderColor: Colors.muted, alignItems: 'center', justifyContent: 'center' },
-  radioSelected: { borderColor: Colors.brandTeal },
-  radioDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: Colors.brandTeal },
-  reasonText: { color: Colors.slate, fontSize: 14, fontFamily: 'Inter' },
-  detailsInput: { minHeight: 130, borderRadius: 12, backgroundColor: Colors.backgroundAlt, borderWidth: 1, borderColor: 'rgba(144,153,184,0.3)', padding: 14, color: Colors.brandDark, fontFamily: 'Inter', fontSize: 14 },
-  detailsInputFocused: { borderColor: Colors.brandTeal, borderWidth: 2 },
-  submitButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: Colors.error, borderRadius: 24, paddingVertical: 15, marginTop: 4 },
+  radio: { width: 20, height: 20, borderRadius: 10, borderWidth: 1.5, borderColor: C.ink300, alignItems: 'center', justifyContent: 'center' },
+  radioSelected: { borderColor: C.cyan700 },
+  radioDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: C.cyan700 },
+  reasonText: { color: C.ink700, fontSize: 15.5, fontFamily: 'Inter' },
+
+  detailsInput: {
+    minHeight: 120, borderRadius: 12, backgroundColor: C.white,
+    borderWidth: 1, borderColor: '#dce3e9',
+    padding: 14, color: C.ink900, fontFamily: 'Inter', fontSize: 15,
+  },
+  detailsInputFocused: { borderColor: C.cyan500 },
+
+  submitButton: {
+    alignItems: 'center', justifyContent: 'center',
+    backgroundColor: C.cyan700, borderRadius: V6Radii.btn, paddingVertical: 14, marginTop: 4,
+    ...V6Shadows.primaryButton,
+  },
   submitButtonDisabled: { opacity: 0.6 },
-  submitText: { color: Colors.white, fontSize: 15, fontWeight: '700', fontFamily: 'Inter' },
-  errorText: { color: Colors.error, fontFamily: 'Inter', fontSize: 13, textAlign: 'center' },
+  submitText: { color: C.white, fontSize: 16.5, fontWeight: '700', fontFamily: 'Inter' },
+  errorText: { color: '#ef4444', fontFamily: 'Inter', fontSize: 15, textAlign: 'center' },
 });

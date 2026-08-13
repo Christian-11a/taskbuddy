@@ -1,24 +1,32 @@
 /**
  * HOLeaveReviewScreen.tsx
  *
- * Small screen to leave a review for a job: rating (1-5) + comment.
- * Calls `api.reviewJob(jobId, { rating, comment })` and invokes `onSubmitted` on success.
+ * v6 design: matches taskbuddy_UI_update.html's #ho-rating screen — a flat
+ * white .topbar (not a dark hero, and using the same icon back-button as
+ * every other screen instead of a text "← Back" link), a centered provider
+ * avatar/name, an amber .star-picker (the mockup's active star color is
+ * amber, not teal), and a flat .field-style textarea.
  */
 
-import React, { useState } from 'react';
+import React, { useCallback, useState } from 'react';
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
-import { Star } from 'lucide-react-native';
-import { Colors, Radii, Shadows, Spacing } from '../../../src/constants/theme';
+import { ArrowLeft, Star } from 'lucide-react-native';
+import { Sizes, Spacing, V6Colors, V6Radii, V6Shadows } from '../../../src/constants/theme';
+
+const C = V6Colors;
 import { api } from '../../../src/lib/api';
+import { useAsyncData } from '../../../src/hooks/useAsyncData';
+import { initials } from '../../../src/lib/format';
 
 interface HOLeaveReviewScreenProps {
   jobId: string;
@@ -31,6 +39,11 @@ export default function HOLeaveReviewScreen({ jobId, onSubmitted, onBack }: HOLe
   const [comment, setComment] = useState<string>('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const { data: job } = useAsyncData(
+    useCallback(() => api.getJob(jobId), [jobId]),
+  );
+  const providerName = job?.assigned_provider?.full_name ?? 'Provider';
 
   const submit = async () => {
     setError(null);
@@ -46,23 +59,29 @@ export default function HOLeaveReviewScreen({ jobId, onSubmitted, onBack }: HOLe
   };
 
   return (
-    <KeyboardAvoidingView
-      behavior={Platform.select({ ios: 'padding', android: undefined })}
-      style={styles.screen}
-    >
+    <View style={styles.screen}>
+      {/* Header — matches .topbar (flat white, icon back button) */}
       <View style={styles.header}>
-        {onBack ? (
-          <TouchableOpacity onPress={onBack} style={styles.backBtn} activeOpacity={0.7}>
-            <Text style={styles.backText}>← Back</Text>
+        {onBack && (
+          <TouchableOpacity style={styles.backBtn} onPress={onBack} activeOpacity={0.8}>
+            <ArrowLeft size={20} color={C.ink700} />
           </TouchableOpacity>
-        ) : null}
-        <Text style={styles.headerTitle}>Leave a Review</Text>
+        )}
+        <Text style={styles.headerTitle}>Rate Your Provider</Text>
       </View>
 
-      <View style={styles.body}>
-        <View style={styles.card}>
-          <Text style={styles.cardTitle}>Rating</Text>
-          <View style={styles.ratingRow}>
+      <KeyboardAvoidingView
+        style={styles.flex}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      >
+        <ScrollView contentContainerStyle={styles.bodyContent} keyboardShouldPersistTaps="handled">
+          <View style={styles.avatar}>
+            <Text style={styles.avatarText}>{initials(providerName)}</Text>
+          </View>
+          <Text style={styles.providerName}>{providerName}</Text>
+          <Text style={styles.prompt}>How was your experience?</Text>
+
+          <View style={styles.starPicker}>
             {[1, 2, 3, 4, 5].map((n) => (
               <TouchableOpacity
                 key={n}
@@ -70,21 +89,24 @@ export default function HOLeaveReviewScreen({ jobId, onSubmitted, onBack }: HOLe
                 activeOpacity={0.85}
                 style={styles.starBtn}
               >
-                <Star size={28} color={n <= rating ? Colors.brandTeal : Colors.slate} fill={n <= rating ? Colors.brandTeal : undefined} />
+                <Star size={33} color={n <= rating ? '#f59e0b' : '#cbd5e1'} fill={n <= rating ? '#f59e0b' : 'none'} />
               </TouchableOpacity>
             ))}
           </View>
 
-          <Text style={[styles.cardTitle, { marginTop: 12 }]}>Comment</Text>
-          <TextInput
-            style={styles.input}
-            value={comment}
-            onChangeText={setComment}
-            placeholder="Tell others about your experience (optional)"
-            multiline
-            numberOfLines={4}
-            textAlignVertical="top"
-          />
+          <View style={styles.fieldGroup}>
+            <Text style={styles.fieldLabel}>Write a review</Text>
+            <TextInput
+              style={styles.input}
+              value={comment}
+              onChangeText={setComment}
+              placeholder="Share what went well or what could improve…"
+              placeholderTextColor={C.ink400}
+              multiline
+              numberOfLines={4}
+              textAlignVertical="top"
+            />
+          </View>
 
           {error && <Text style={styles.errorText}>{error}</Text>}
 
@@ -94,50 +116,59 @@ export default function HOLeaveReviewScreen({ jobId, onSubmitted, onBack }: HOLe
             disabled={busy}
             activeOpacity={0.85}
           >
-            {busy ? <ActivityIndicator color={Colors.white} /> : <Text style={styles.submitText}>Submit Review</Text>}
+            {busy ? <ActivityIndicator color={C.white} /> : <Text style={styles.submitText}>Submit Review</Text>}
           </TouchableOpacity>
-        </View>
-      </View>
-    </KeyboardAvoidingView>
+        </ScrollView>
+      </KeyboardAvoidingView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: Colors.background },
+  flex: { flex: 1 },
+  screen: { flex: 1, backgroundColor: C.canvas },
 
   header: {
+    flexDirection: 'row', alignItems: 'center', gap: 12,
+    backgroundColor: C.white,
+    paddingTop: Sizes.statusBarHeight,
     paddingHorizontal: Spacing.screenH,
-    paddingTop: 18,
     paddingBottom: 12,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
+    borderBottomWidth: 1, borderBottomColor: '#edf1f4',
   },
-  backBtn: { paddingVertical: 6, paddingRight: 8 },
-  backText: { color: Colors.brandDark, fontSize: 15, fontWeight: '600', fontFamily: 'Inter' },
-  headerTitle: { color: Colors.brandDark, fontSize: 20, fontWeight: '800', fontFamily: 'Inter' },
+  backBtn: {
+    width: 38, height: 38, borderRadius: 12,
+    backgroundColor: C.white, borderWidth: 1, borderColor: '#e8edf2',
+    alignItems: 'center', justifyContent: 'center',
+  },
+  headerTitle: { color: C.ink900, fontSize: 19.5, fontWeight: '800', fontFamily: 'Inter' },
 
-  body: { flex: 1, paddingHorizontal: Spacing.screenH },
+  bodyContent: { paddingHorizontal: Spacing.screenH, paddingTop: 22, paddingBottom: 24, alignItems: 'center' },
 
-  card: { backgroundColor: Colors.white, borderRadius: Radii.card, padding: 16, marginTop: 8, ...Shadows.card },
+  avatar: { width: 72, height: 72, borderRadius: 22, backgroundColor: C.cyan700, alignItems: 'center', justifyContent: 'center', marginBottom: 10 },
+  avatarText: { color: C.white, fontSize: 24, fontWeight: '800', fontFamily: 'Inter' },
+  providerName: { color: C.ink900, fontSize: 19.5, fontWeight: '700', fontFamily: 'Inter' },
+  prompt: { color: C.ink400, fontSize: 13, fontFamily: 'Inter', marginTop: 5 },
 
-  cardTitle: { color: Colors.brandDark, fontSize: 14, fontWeight: '800', fontFamily: 'Inter' },
+  starPicker: { flexDirection: 'row', gap: 9, paddingVertical: 18 },
+  starBtn: { padding: 3 },
 
-  ratingRow: { flexDirection: 'row', marginTop: 12, gap: 8 },
-
-  starBtn: { padding: 4 },
-
+  fieldGroup: { width: '100%', marginTop: 4 },
+  fieldLabel: { color: C.ink900, fontSize: 14, fontWeight: '700', fontFamily: 'Inter', marginBottom: 6 },
   input: {
-    borderWidth: 1, borderColor: 'rgba(144,153,184,0.15)', borderRadius: 12,
-    marginTop: 10, padding: 12, minHeight: 90, fontSize: 14, fontFamily: 'Inter', color: Colors.brandDark,
+    width: '100%',
+    borderWidth: 1, borderColor: '#dce3e9', borderRadius: 12,
+    padding: 14, minHeight: 90, fontSize: 16, fontFamily: 'Inter', color: C.ink900,
+    backgroundColor: C.white,
   },
 
   submitBtn: {
-    backgroundColor: Colors.brandTeal, borderRadius: 12, padding: 14, alignItems: 'center', marginTop: 14,
+    width: '100%', backgroundColor: C.cyan700, borderRadius: V6Radii.btn, paddingVertical: 14,
+    alignItems: 'center', marginTop: 18, ...V6Shadows.primaryButton,
   },
-  submitText: { color: Colors.white, fontSize: 15, fontWeight: '700', fontFamily: 'Inter' },
+  submitText: { color: C.white, fontSize: 16.5, fontWeight: '700', fontFamily: 'Inter' },
 
   disabled: { opacity: 0.6 },
 
-  errorText: { color: Colors.error, marginTop: 8 },
+  errorText: { color: '#ef4444', marginTop: 8, fontFamily: 'Inter', fontSize: 15 },
 });
