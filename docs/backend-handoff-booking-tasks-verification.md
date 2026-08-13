@@ -3,18 +3,24 @@
 **Who this is for:** whoever holds Supabase and Render access for TaskBuddy. The two halves are
 split so they can be done by different people, in this order:
 
-| | Task | Needs |
-|---|---|---|
-| **Part A** | Apply migrations 0018 and 0019 | Supabase SQL Editor |
-| **Part B** | Redeploy the API, and check Stripe Identity is on | Render (+ Stripe dashboard) |
+| | Task | Needs | Status |
+|---|---|---|---|
+| **Part A** | Apply migrations 0018 and 0019 | Supabase SQL Editor | ✅ **Done — 2026-08-14** |
+| **Part B** | Redeploy the API, and check Stripe Identity is on | Render (+ Stripe dashboard) | ⬜ **Outstanding** |
+
+> **If you are picking this up: skip to [Part B](#part-b--render-and-stripe).** Part A was applied
+> on 2026-08-14 and verified — all four checks in §3 pass, including the Storage policies (4/4),
+> which are the only ones that can fail quietly. Part A is kept below for the record and because
+> both migrations are idempotent, so re-running them is harmless if you want to confirm for
+> yourself.
 
 Everything described here is **already written and committed** — API code, SQL migrations, mobile
 app, and admin console. Nothing below asks you to write code.
 
-**Part A is safe to do at any time, on its own.** Both migrations are additive, and the currently
-deployed API neither reads `job_tasks` nor ever writes `'confirmed'` — so applying them changes
-nothing observable until Part B lands. There is no window where the database is ahead of the API
-in a way anyone can notice.
+**Part A was safe to do on its own, and was.** Both migrations are additive, and the currently
+deployed API neither reads `job_tasks` nor ever writes `'confirmed'` — so applying them changed
+nothing observable, and nothing will change until Part B lands. There is no window where the
+database is ahead of the API in a way anyone can notice.
 
 **Part B is what unblocks the app.** Until the API is redeployed, **the mobile app cannot post
 jobs** — `POST /jobs` now sends a `tasks` array and the deployed API rejects unknown fields with a
@@ -23,7 +29,7 @@ else in the app degrades quietly in the meantime (no checklists, Accept returns 
 
 ---
 
-## Part A — Supabase (do these in order)
+## Part A — Supabase (done 2026-08-14; kept for the record)
 
 ### 1. Apply migration `0018_job_confirmed_status.sql`
 
@@ -60,8 +66,8 @@ ever hands out short-lived signed URLs to admins.
 
 ### 3. Verify Part A landed
 
-Run all four in the SQL Editor. If each answers as noted, Part A is done and you can hand Part B
-over.
+**All four of these were run on 2026-08-14 and answered as expected**, including #4 at 4/4. They
+are repeatable if you want to confirm the state yourself.
 
 ```sql
 -- 1. the new status exists

@@ -280,10 +280,10 @@ only applies and deploys of already-committed work.
 **The priority one.** Covers what must happen before the mobile app works
 correctly in production:
 
-| Part | What | Needs |
-|------|------|-------|
-| **A** | Apply Supabase migrations 0018 and 0019 | Supabase SQL Editor |
-| **B** | Redeploy the API on Render; confirm Stripe Identity is enabled | Render + Stripe Dashboard |
+| Part | What | Needs | Status |
+|------|------|-------|--------|
+| **A** | Apply Supabase migrations 0018 and 0019 | Supabase SQL Editor | ✅ Done 2026-08-14 |
+| **B** | Redeploy the API on Render; confirm Stripe Identity is enabled | Render + Stripe Dashboard | ⬜ **Outstanding** |
 
 - **Migration 0018** adds the `'confirmed'` value to the `job_status` enum.
 - **Migration 0019** creates the `job_tasks` checklist table with RLS, and adds
@@ -291,8 +291,11 @@ correctly in production:
 - **Render redeploy** is what actually unblocks `POST /jobs` — the API validates
   request bodies strictly and rejects the new `tasks` field until redeployed.
 
-> Migrations 0018 and 0019 may have already been applied by the mobile developer.
-> Run the verification queries in the doc before applying them.
+> **Part A is already done** — both migrations were applied and verified on
+> 2026-08-14 (all four checks pass, including the Storage policies at 4/4).
+> **Only the Render redeploy is outstanding**, and it is what unblocks posting
+> a job. Both migrations are idempotent, so re-running them to confirm the
+> state is harmless if you'd rather see it yourself.
 
 ### 2. [`docs/backend-handoff-mobile-todo-gaps.md`](../docs/backend-handoff-mobile-todo-gaps.md)
 
