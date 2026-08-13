@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import {
+  Keyboard,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
@@ -10,7 +11,9 @@ import {
   View,
 } from 'react-native';
 import { ArrowLeft } from 'lucide-react-native';
-import { Colors } from '../../../src/constants/theme';
+import { V6Colors, V6Radii, V6Shadows } from '../../../src/constants/theme';
+
+const C = V6Colors;
 
 interface ForgotPasswordScreenProps {
   onBackToLogin: () => void;
@@ -21,19 +24,18 @@ export default function ForgotPasswordScreen({ onBackToLogin, onResetPassword }:
   const [email, setEmail] = useState('');
   const [focused, setFocused] = useState(false);
 
-  return (
-    <View style={styles.screen}>
-      <View style={styles.headerBg} />
-      <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
-        <ScrollView
-          style={styles.flex}
-          contentContainerStyle={styles.scrollContent}
-          showsVerticalScrollIndicator={false}
-          keyboardShouldPersistTaps="handled"
-        >
+  const scrollContent = (
+    <ScrollView
+      style={styles.flex}
+      contentContainerStyle={styles.scrollContent}
+      showsVerticalScrollIndicator={false}
+      keyboardShouldPersistTaps="handled"
+      keyboardDismissMode="interactive"
+      automaticallyAdjustKeyboardInsets={Platform.OS === 'ios'}
+    >
           <View style={styles.topSection}>
             <TouchableOpacity style={styles.backButton} onPress={onBackToLogin} activeOpacity={0.8} accessibilityLabel="Return to sign in">
-              <ArrowLeft size={20} color={Colors.white} />
+              <ArrowLeft size={21} color={C.ink700} />
             </TouchableOpacity>
           </View>
 
@@ -47,7 +49,7 @@ export default function ForgotPasswordScreen({ onBackToLogin, onResetPassword }:
                 <TextInput
                   style={styles.inputText}
                   placeholder="sample@mail.com"
-                  placeholderTextColor={Colors.muted}
+                  placeholderTextColor={C.ink400}
                   value={email}
                   onChangeText={setEmail}
                   keyboardType="email-address"
@@ -55,6 +57,8 @@ export default function ForgotPasswordScreen({ onBackToLogin, onResetPassword }:
                   autoCorrect={false}
                   onFocus={() => setFocused(true)}
                   onBlur={() => setFocused(false)}
+                  onSubmitEditing={Keyboard.dismiss}
+                  enablesReturnKeyAutomatically
                 />
               </View>
             </View>
@@ -63,7 +67,21 @@ export default function ForgotPasswordScreen({ onBackToLogin, onResetPassword }:
               <Text style={styles.primaryButtonText}>Send Reset Link</Text>
             </TouchableOpacity>
           </View>
-        </ScrollView>
+    </ScrollView>
+  );
+
+  return (
+    // KeyboardAvoidingView on Android resizes the form so the field scrolls
+    // above the keyboard instead of being hidden behind it (matches this
+    // screen's original working pattern). The earlier keyboard bug here came
+    // from an `elevation` change in the focus style, not from this wrapper —
+    // see inputBoxFocused below.
+    <View style={styles.screen}>
+      <KeyboardAvoidingView
+        style={styles.flex}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      >
+        {scrollContent}
       </KeyboardAvoidingView>
     </View>
   );
@@ -71,19 +89,23 @@ export default function ForgotPasswordScreen({ onBackToLogin, onResetPassword }:
 
 const styles = StyleSheet.create({
   flex: { flex: 1 },
-  screen: { flex: 1, backgroundColor: '#F8FAFC' },
-  headerBg: { position: 'absolute', top: 0, left: 0, right: 0, height: 200, backgroundColor: Colors.brandDark, borderBottomLeftRadius: 40, borderBottomRightRadius: 40 },
+  screen: { flex: 1, backgroundColor: C.canvas },
   scrollContent: { paddingTop: 56, paddingHorizontal: 20, paddingBottom: 40 },
   topSection: { flexDirection: 'row', marginBottom: 20 },
-  backButton: { width: 40, height: 40, borderRadius: 12, backgroundColor: 'rgba(255,255,255,0.2)', alignItems: 'center', justifyContent: 'center' },
-  card: { backgroundColor: Colors.white, borderRadius: 30, padding: 24, shadowColor: '#063D4D', shadowOpacity: 0.08, shadowOffset: { width: 0, height: 12 }, shadowRadius: 25, elevation: 6 },
-  title: { color: '#1E1E1E', fontSize: 26, fontWeight: '700', fontFamily: 'Inter', marginBottom: 4 },
-  subtitle: { color: Colors.muted, fontSize: 13, fontFamily: 'Inter', marginBottom: 20, lineHeight: 20 },
+  backButton: { width: 38, height: 38, borderRadius: 12, backgroundColor: C.white, borderWidth: 1, borderColor: '#e8edf2', alignItems: 'center', justifyContent: 'center' },
+  card: { backgroundColor: C.white, borderRadius: V6Radii.card, padding: 24, shadowColor: '#0f172a', shadowOpacity: 0.06, shadowOffset: { width: 0, height: 12 }, shadowRadius: 25, elevation: 6 },
+  title: { color: C.ink900, fontSize: 31.5, fontWeight: '800', fontFamily: 'Inter', marginBottom: 4 },
+  subtitle: { color: C.ink500, fontSize: 15.5, fontFamily: 'Inter', marginBottom: 20, lineHeight: 20 },
   inputGroup: { marginBottom: 18 },
-  inputLabel: { color: Colors.brandDark, fontFamily: 'Inter', fontSize: 13, fontWeight: '600', marginBottom: 6 },
-  inputBox: { backgroundColor: '#F8FAFC', borderRadius: 12, paddingHorizontal: 16, paddingVertical: 13, borderWidth: 1, borderColor: 'rgba(144,153,184,0.3)' },
-  inputBoxFocused: { borderColor: Colors.brandTeal, borderWidth: 2 },
-  inputText: { color: Colors.brandDark, fontFamily: 'Inter', fontSize: 15, padding: 0 },
-  primaryButton: { backgroundColor: Colors.brandTeal, borderRadius: 24, paddingVertical: 15, alignItems: 'center', shadowColor: Colors.brandTeal, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.35, shadowRadius: 12, elevation: 5 },
-  primaryButtonText: { color: Colors.white, fontFamily: 'Inter', fontSize: 15, fontWeight: '600', letterSpacing: 0.3 },
+  inputLabel: { color: C.ink900, fontFamily: 'Inter', fontSize: 15.5, fontWeight: '700', marginBottom: 6 },
+  inputBox: { backgroundColor: C.white, borderRadius: V6Radii.input, paddingHorizontal: 14, minHeight: 46, justifyContent: 'center', borderWidth: 1, borderColor: '#dce3e9' },
+  // NOTE: deliberately border-colour only. Do NOT add a shadow/elevation to a
+  // focus style that wraps a TextInput: on Android, changing `elevation` on an
+  // ancestor while it holds focus makes the platform re-create that view, which
+  // drops the EditText's focus and dismisses the keyboard the instant it opens.
+  // Verified on-device — see LoginScreen's inputBoxFocused for the same fix.
+  inputBoxFocused: { borderColor: C.cyan500 },
+  inputText: { color: C.ink900, fontFamily: 'Inter', fontSize: 16.5, padding: 0 },
+  primaryButton: { backgroundColor: C.cyan700, borderRadius: V6Radii.btn, paddingVertical: 15, alignItems: 'center', ...V6Shadows.primaryButton },
+  primaryButtonText: { color: C.white, fontFamily: 'Inter', fontSize: 18.5, fontWeight: '700' },
 });

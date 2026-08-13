@@ -14,7 +14,7 @@ import React, { useEffect, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 import * as ExpoSplashScreen from 'expo-splash-screen';
 import * as WebBrowser from 'expo-web-browser';
-import { CalendarDays, CirclePlus, ClipboardList, Home, LayoutDashboard, UserRound, Wallet } from 'lucide-react-native';
+import { CalendarDays, CirclePlus, ClipboardList, Home, Search, Wallet } from 'lucide-react-native';
 import RootLayout from './app/layout';
 
 // ── Auth screens ──────────────────────────────────────────────────────────────
@@ -31,6 +31,7 @@ import HOHomeScreen from './app/(homeowner)/screens/HOHomeScreen';
 import MyJobs from './app/(homeowner)/screens/HOMyJobs';
 import Profile from './app/(homeowner)/screens/HOProfile';
 import HOWalletScreen from './app/(homeowner)/screens/HOWalletScreen';
+import HOCalendarScreen from './app/(homeowner)/screens/HOCalendarScreen';
 import HOCreateJobScreen from './app/(homeowner)/screens/HOCreateJobScreen';
 import HOJobDetailScreen from './app/(homeowner)/screens/HOJobDetailScreen';
 import HOChatScreen from './app/(homeowner)/screens/HOChatScreen';
@@ -53,9 +54,11 @@ import SPChatScreen from './app/(provider)/screens/SPChatScreen';
 import SPNotificationsScreen from './app/(provider)/screens/SPNotificationsScreen';
 import SPEditProfileScreen from './app/(provider)/screens/SPEditProfileScreen';
 import SPVerificationScreen from './app/(provider)/screens/SPVerificationScreen';
+import SPSettingsScreen from './app/(provider)/screens/SPSettingsScreen';
 
 // ── Shared navigation components ──────────────────────────────────────────────
 import BottomNavBar, { BottomNavItem } from './src/components/BottomNavBar';
+import HelpSupportScreen from './src/components/HelpSupportScreen';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 import { HOScreen, SPScreen } from './src/types/navigation';
@@ -67,16 +70,18 @@ const HOMEOWNER_TABS: readonly BottomNavItem<HOScreen>[] = [
   { key: 'Home', label: 'Home', icon: Home },
   { key: 'My Jobs', label: 'My Jobs', icon: ClipboardList },
   { key: 'Create Job', label: 'Create job', icon: CirclePlus, primary: true },
+  { key: 'Calendar', label: 'Calendar', icon: CalendarDays },
   { key: 'Wallet', label: 'Wallet', icon: Wallet },
-  { key: 'Profile', label: 'Profile', icon: UserRound },
 ];
 
+// Matches the mockup's sp-dashboard nav exactly: 4 plain tabs, no FAB (providers
+// browse/claim jobs, they don't post them) and no Profile tab (reached via the
+// avatar button in Feed's header instead, same pattern as the homeowner side).
 const PROVIDER_TABS: readonly BottomNavItem<SPScreen>[] = [
-  { key: 'Dashboard', label: 'Dashboard', icon: LayoutDashboard },
-  { key: 'My Jobs', label: 'My Jobs', icon: ClipboardList },
-  { key: 'Calendar', label: 'Calendar', icon: CalendarDays, primary: true },
+  { key: 'Dashboard', label: 'Feed', icon: Search },
+  { key: 'My Jobs', label: 'My Work', icon: ClipboardList },
+  { key: 'Calendar', label: 'Calendar', icon: CalendarDays },
   { key: 'Wallet', label: 'Wallet', icon: Wallet },
-  { key: 'Profile', label: 'Profile', icon: UserRound },
 ];
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -86,6 +91,16 @@ const PROVIDER_TABS: readonly BottomNavItem<SPScreen>[] = [
 ExpoSplashScreen.preventAutoHideAsync().catch(() => {});
 
 type PreAuthScreen = 'onboarding' | 'login' | 'forgotPassword' | 'register';
+
+/**
+ * Both roles' `*Back()` used to just jump to the active bottom-nav tab,
+ * regardless of how the current screen was reached — so e.g. Profile → Edit
+ * Profile → back landed on the tab (Feed/Home), skipping Profile entirely.
+ * These stacks record the screen (and its selected-id context) navigated
+ * away FROM each time a non-tab screen opens, so back can unwind properly.
+ */
+interface HOStackEntry { screen: HOScreen; id: string | null }
+interface SPStackEntry { screen: SPScreen; id: string | null; urgent: boolean }
 
 function AppContent() {
   const {
@@ -107,53 +122,92 @@ function AppContent() {
     setPreAuth('login');
     setHOTab('Home');
     setHOScreen('Home');
+    setHOStack([]);
     setSPTab('Dashboard');
     setSPScreen('Dashboard');
+    setSPStack([]);
   };
 
   // ── HO navigation state ───────────────────────────────────────────────────
   const [hoTab, setHOTab] = useState<HOScreen>('Home');
   const [hoScreen, setHOScreen] = useState<HOScreen>('Home'); // for non-tab sub-screens
   const [hoSelectedId, setHOSelectedId] = useState<string | null>(null); // selected job/provider context
+  const [hoStack, setHOStack] = useState<HOStackEntry[]>([]); // non-tab screens navigated away from
 
   // ── SP navigation state ───────────────────────────────────────────────────
   const [spTab, setSPTab] = useState<SPScreen>('Dashboard');
   const [spScreen, setSPScreen] = useState<SPScreen>('Dashboard');
   const [spUrgentJob, setSPUrgentJob] = useState(false);
   const [spJobId, setSPJobId] = useState<string | null>(null);
+  const [spStack, setSPStack] = useState<SPStackEntry[]>([]); // non-tab screens navigated away from
+
+  const HO_TAB_SCREENS: HOScreen[] = ['Home', 'My Jobs', 'Calendar', 'Wallet'];
+  const SP_TAB_SCREENS: SPScreen[] = ['Dashboard', 'My Jobs', 'Calendar', 'Wallet'];
 
   // ── HO helpers ────────────────────────────────────────────────────────────
+  // Jumping to a tab (or the Create Job flow, which has its own onBack/onSuccess
+  // that reset the tab directly) is a "root" navigation — it clears the back
+  // stack rather than pushing onto it, same as tapping a tab in a native app.
   const hoNavigate = (screen: HOScreen, id?: string) => {
-    if (id !== undefined) setHOSelectedId(id);
-    const TAB_SCREENS: HOScreen[] = ['Home', 'My Jobs', 'Wallet', 'Profile'];
-    if (TAB_SCREENS.includes(screen)) {
+    if (HO_TAB_SCREENS.includes(screen)) {
+      setHOStack([]);
       setHOTab(screen);
       setHOScreen(screen);
-    } else {
-      setHOScreen(screen);
+      if (id !== undefined) setHOSelectedId(id);
+      return;
     }
+    if (screen === 'Create Job') {
+      setHOStack([]);
+      setHOScreen(screen);
+      return;
+    }
+    setHOStack((prev) => [...prev, { screen: hoScreen, id: hoSelectedId }]);
+    if (id !== undefined) setHOSelectedId(id);
+    setHOScreen(screen);
+  };
+
+  const hoBack = () => {
+    setHOStack((prev) => {
+      if (prev.length === 0) {
+        setHOScreen(hoTab);
+        return prev;
+      }
+      const last = prev[prev.length - 1];
+      setHOScreen(last.screen);
+      setHOSelectedId(last.id);
+      return prev.slice(0, -1);
+    });
   };
 
   // ── SP helpers ────────────────────────────────────────────────────────────
   const spNavigate = (screen: SPScreen, jobId?: string) => {
-    if (jobId !== undefined) setSPJobId(jobId);
-    const TAB_SCREENS: SPScreen[] = ['Dashboard', 'My Jobs', 'Calendar', 'Wallet', 'Profile'];
-    if (TAB_SCREENS.includes(screen)) {
+    if (SP_TAB_SCREENS.includes(screen)) {
+      setSPStack([]);
+      setSPUrgentJob(false);
       setSPTab(screen);
       setSPScreen(screen);
-    } else {
-      if (screen === 'Urgent Job') setSPUrgentJob(true);
-      setSPScreen(screen);
+      if (jobId !== undefined) setSPJobId(jobId);
+      return;
     }
+    setSPStack((prev) => [...prev, { screen: spScreen, id: spJobId, urgent: spUrgentJob }]);
+    if (jobId !== undefined) setSPJobId(jobId);
+    if (screen === 'Urgent Job') setSPUrgentJob(true);
+    setSPScreen(screen);
   };
 
   const spBack = () => {
-    setSPUrgentJob(false);
-    setSPScreen(spTab);
-  };
-
-  const hoBack = () => {
-    setHOScreen(hoTab);
+    setSPStack((prev) => {
+      if (prev.length === 0) {
+        setSPUrgentJob(false);
+        setSPScreen(spTab);
+        return prev;
+      }
+      const last = prev[prev.length - 1];
+      setSPScreen(last.screen);
+      setSPJobId(last.id);
+      setSPUrgentJob(last.urgent);
+      return prev.slice(0, -1);
+    });
   };
 
   useEffect(() => {
@@ -339,6 +393,13 @@ function AppContent() {
         </View>
       );
     }
+    if (hoScreen === 'Help & Support') {
+      return (
+        <View style={styles.screen}>
+          <HelpSupportScreen role="homeowner" onBack={hoBack} />
+        </View>
+      );
+    }
     if (hoScreen === 'Create Job') {
       return (
         <View style={styles.screen}>
@@ -355,6 +416,15 @@ function AppContent() {
         </View>
       );
     }
+    if (hoScreen === 'Profile') {
+      // Not a bottom-nav tab (matches the mockup — Profile is reached via
+      // Home's avatar button, see hero avatarCircle in HOHomeScreen).
+      return (
+        <View style={styles.screen}>
+          <Profile onNavigate={hoNavigate} onLogout={handleLogout} onBack={hoBack} />
+        </View>
+      );
+    }
 
     // Tab screens (with bottom nav)
     const renderHOTabContent = () => {
@@ -363,10 +433,10 @@ function AppContent() {
           return <HOHomeScreen onNavigate={hoNavigate} />;
         case 'My Jobs':
           return <MyJobs onNavigate={hoNavigate} />;
+        case 'Calendar':
+          return <HOCalendarScreen onNavigate={hoNavigate} />;
         case 'Wallet':
           return <HOWalletScreen />;
-        case 'Profile':
-          return <Profile onNavigate={hoNavigate} onLogout={handleLogout} />;
         default:
           return <HOHomeScreen onNavigate={hoNavigate} />;
       }
@@ -418,6 +488,20 @@ function AppContent() {
       </View>
     );
   }
+  if (spScreen === 'Settings') {
+    return (
+      <View style={styles.screen}>
+        <SPSettingsScreen onBack={spBack} onLogout={handleLogout} />
+      </View>
+    );
+  }
+  if (spScreen === 'Help & Support') {
+    return (
+      <View style={styles.screen}>
+        <HelpSupportScreen role="provider" onBack={spBack} />
+      </View>
+    );
+  }
   if (spScreen === 'Verification') {
     return (
       <View style={styles.screen}>
@@ -431,6 +515,15 @@ function AppContent() {
       </View>
     );
   }
+  if (spScreen === 'Profile') {
+    // Not a bottom-nav tab (matches the mockup — Profile is reached via
+    // Feed's avatar button, see hero avatar in SPHomeScreen).
+    return (
+      <View style={styles.screen}>
+        <SPProfileScreen onNavigate={spNavigate} onLogout={handleLogout} onBack={spBack} />
+      </View>
+    );
+  }
 
   // Tab screens (with bottom nav)
   const renderSPTabContent = () => {
@@ -440,11 +533,9 @@ function AppContent() {
       case 'My Jobs':
         return <SPMyJobsScreen onNavigate={spNavigate} />;
       case 'Calendar':
-        return <SPCalendarScreen />;
+        return <SPCalendarScreen onNavigate={spNavigate} />;
       case 'Wallet':
         return <SPWalletScreen />;
-      case 'Profile':
-        return <SPProfileScreen onNavigate={spNavigate} onLogout={handleLogout} />;
       default:
         return <SPHomeScreen onNavigate={spNavigate} />;
     }

@@ -531,6 +531,13 @@ export const api = {
     return request<MeResponse>('/auth/me', { accessToken });
   },
 
+  changePassword(input: { current_password: string; new_password: string }) {
+    return authRequest<{ success: boolean }>('/auth/change-password', {
+      method: 'POST',
+      body: input,
+    });
+  },
+
   /**
    * Returns the backend URL that kicks off the server-side Google OAuth flow.
    * The browser (via WebBrowser.openAuthSessionAsync) opens this URL; the

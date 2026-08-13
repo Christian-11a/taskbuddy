@@ -1,3 +1,17 @@
+/**
+ * SPVerificationScreen.tsx
+ *
+ * v6 design: matches taskbuddy_UI_update.html's #sp-credential screen's flat
+ * white .topbar (not a colored hero).
+ *
+ * Deviation: the mockup drives this screen through a multi-step JS wizard
+ * (`cred-stepper`/`credNext()`) with demo-only step content. This app's real
+ * verification flow is a single-screen 2-slot upload (Government ID +
+ * selfie) backed by a real endpoint (`api.submitVerification`) and real
+ * admin-reviewed status (pending/approved/rejected) — kept as-is since it's
+ * the actual, working flow rather than the mockup's unbacked demo steps.
+ */
+
 import React, { useCallback, useState } from 'react';
 import {
   ActivityIndicator,
@@ -22,7 +36,22 @@ import {
 import { api } from '../../../src/lib/api';
 import { useAsyncData } from '../../../src/hooks/useAsyncData';
 import { shortDate } from '../../../src/lib/format';
-import { Colors, Radii, Shadows, Sizes, Spacing } from '../../../src/constants/theme';
+import { Sizes, Spacing, V6Colors, V6Radii, V6Shadows } from '../../../src/constants/theme';
+
+const Colors = {
+  ...V6Colors,
+  background: V6Colors.canvas,
+  backgroundAlt: V6Colors.ink50,
+  brandDark: V6Colors.ink900,
+  brandTeal: V6Colors.cyan700,
+  slate: V6Colors.ink500,
+  muted: V6Colors.ink400,
+  error: '#ef4444',
+  success: '#22c55e',
+  warning: '#f59e0b',
+} as const;
+const Radii = { card: V6Radii.card };
+const Shadows = { card: V6Shadows.sm };
 
 interface SPVerificationScreenProps {
   onBack: () => void;
@@ -132,7 +161,7 @@ export default function SPVerificationScreen({ onBack, onVerified }: SPVerificat
     if (isApproved) {
       return (
         <View style={[styles.status, styles.statusApproved]}>
-          <BadgeCheck size={20} color={Colors.success} />
+          <BadgeCheck size={22} color={Colors.success} />
           <View style={styles.statusTextBox}>
             <Text style={styles.statusTitle}>You&apos;re verified</Text>
             <Text style={styles.statusBody}>
@@ -145,7 +174,7 @@ export default function SPVerificationScreen({ onBack, onVerified }: SPVerificat
     if (isPending) {
       return (
         <View style={[styles.status, styles.statusPending]}>
-          <Clock size={20} color={Colors.warning} />
+          <Clock size={22} color={Colors.warning} />
           <View style={styles.statusTextBox}>
             <Text style={styles.statusTitle}>Under review</Text>
             <Text style={styles.statusBody}>
@@ -158,7 +187,7 @@ export default function SPVerificationScreen({ onBack, onVerified }: SPVerificat
     }
     return (
       <View style={[styles.status, styles.statusRejected]}>
-        <CircleAlert size={20} color={Colors.error} />
+        <CircleAlert size={22} color={Colors.error} />
         <View style={styles.statusTextBox}>
           <Text style={styles.statusTitle}>Not approved</Text>
           <Text style={styles.statusBody}>
@@ -222,7 +251,7 @@ export default function SPVerificationScreen({ onBack, onVerified }: SPVerificat
               <Image source={{ uri: selfieAsset.uri }} style={styles.preview} resizeMode="cover" />
             ) : (
               <>
-                <Camera size={26} color={Colors.brandTeal} />
+                <Camera size={29} color={Colors.brandTeal} />
                 <Text style={styles.dropzoneText}>Take a selfie</Text>
               </>
             )}
@@ -234,7 +263,7 @@ export default function SPVerificationScreen({ onBack, onVerified }: SPVerificat
               disabled={isPending || isApproved}
               activeOpacity={0.8}
             >
-              <ImageIcon size={16} color={Colors.muted} />
+              <ImageIcon size={18} color={Colors.muted} />
               <Text style={styles.galleryBtnText}>Choose from gallery</Text>
             </TouchableOpacity>
           )}
@@ -260,7 +289,7 @@ export default function SPVerificationScreen({ onBack, onVerified }: SPVerificat
             <Image source={{ uri: asset.uri }} style={styles.preview} resizeMode="cover" />
           ) : (
             <>
-              <Icon size={26} color={Colors.brandTeal} />
+              <Icon size={29} color={Colors.brandTeal} />
               <Text style={styles.dropzoneText}>Tap to choose a photo</Text>
               <Text style={styles.dropzoneSubtext}>Max 5 MB · JPG, PNG</Text>
             </>
@@ -273,14 +302,11 @@ export default function SPVerificationScreen({ onBack, onVerified }: SPVerificat
   return (
     <View style={styles.screen}>
       <View style={styles.header}>
-        <View style={styles.headerRow}>
-          <TouchableOpacity style={styles.backButton} onPress={onBack} activeOpacity={0.8}>
-            <ArrowLeft size={20} color={Colors.white} />
-          </TouchableOpacity>
-          <Text style={styles.headerTitle}>Get Verified</Text>
-          <View style={styles.headerSpacer} />
-        </View>
-        <Text style={styles.headerSubtitle}>Build trust with clients</Text>
+        <TouchableOpacity style={styles.backButton} onPress={onBack} activeOpacity={0.8}>
+          <ArrowLeft size={20} color={Colors.ink700} />
+        </TouchableOpacity>
+        <Text style={styles.headerTitle}>Get Verified</Text>
+        <View style={{ width: 38 }} />
       </View>
 
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
@@ -291,7 +317,7 @@ export default function SPVerificationScreen({ onBack, onVerified }: SPVerificat
             {renderStatus()}
 
             <View style={styles.notice}>
-              <ShieldCheck size={20} color={Colors.brandTeal} />
+              <ShieldCheck size={22} color={Colors.brandTeal} />
               <Text style={styles.noticeText}>
                 Your documents are stored privately and are only visible to TaskBuddy admins
                 reviewing your account.
@@ -345,31 +371,19 @@ export default function SPVerificationScreen({ onBack, onVerified }: SPVerificat
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: Colors.background },
   header: {
-    backgroundColor: Colors.brandDark,
+    flexDirection: 'row', alignItems: 'center', gap: 12,
+    backgroundColor: Colors.white,
     paddingTop: Sizes.statusBarHeight,
     paddingHorizontal: Spacing.screenH,
-    paddingBottom: 22,
-    borderBottomLeftRadius: 28,
-    borderBottomRightRadius: 28,
-  },
-  headerRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingTop: 12,
-    marginBottom: 12,
+    paddingBottom: 12,
+    borderBottomWidth: 1, borderBottomColor: '#edf1f4',
   },
   backButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 12,
-    backgroundColor: 'rgba(255,255,255,0.15)',
-    alignItems: 'center',
-    justifyContent: 'center',
+    width: 38, height: 38, borderRadius: 12,
+    backgroundColor: Colors.white, borderWidth: 1, borderColor: '#e8edf2',
+    alignItems: 'center', justifyContent: 'center',
   },
-  headerTitle: { color: Colors.white, fontSize: 18, fontWeight: '800', fontFamily: 'Inter' },
-  headerSpacer: { width: 40 },
-  headerSubtitle: { color: 'rgba(255,255,255,0.72)', fontSize: 13, fontFamily: 'Inter' },
+  headerTitle: { flex: 1, color: Colors.ink900, fontSize: 19.5, fontWeight: '800', fontFamily: 'Inter' },
   content: { padding: Spacing.screenH, gap: 16 },
   loader: { marginTop: 40 },
   status: {
@@ -386,10 +400,10 @@ const styles = StyleSheet.create({
   statusTitle: {
     color: Colors.brandDark,
     fontFamily: 'Inter',
-    fontSize: 14,
+    fontSize: 16.5,
     fontWeight: '800',
   },
-  statusBody: { color: Colors.slate, fontFamily: 'Inter', fontSize: 13, lineHeight: 19 },
+  statusBody: { color: Colors.slate, fontFamily: 'Inter', fontSize: 15.5, lineHeight: 19 },
   notice: {
     flexDirection: 'row',
     gap: 10,
@@ -397,10 +411,10 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     padding: 14,
   },
-  noticeText: { flex: 1, color: Colors.slate, fontFamily: 'Inter', fontSize: 13, lineHeight: 19 },
+  noticeText: { flex: 1, color: Colors.slate, fontFamily: 'Inter', fontSize: 15.5, lineHeight: 19 },
   card: { backgroundColor: Colors.white, borderRadius: Radii.card, padding: 18, ...Shadows.card },
-  label: { color: Colors.brandDark, fontFamily: 'Inter', fontSize: 15, fontWeight: '800' },
-  hint: { color: Colors.muted, fontFamily: 'Inter', fontSize: 13, marginTop: 4, marginBottom: 14 },
+  label: { color: Colors.brandDark, fontFamily: 'Inter', fontSize: 18.5, fontWeight: '800' },
+  hint: { color: Colors.muted, fontFamily: 'Inter', fontSize: 15.5, marginTop: 4, marginBottom: 14 },
   dropzone: {
     height: 150,
     borderRadius: 12,
@@ -413,7 +427,7 @@ const styles = StyleSheet.create({
     gap: 8,
     overflow: 'hidden',
   },
-  dropzoneText: { color: Colors.muted, fontFamily: 'Inter', fontSize: 13 },
+  dropzoneText: { color: Colors.muted, fontFamily: 'Inter', fontSize: 15.5 },
   preview: { width: '100%', height: '100%' },
   submitButton: {
     alignItems: 'center',
@@ -424,8 +438,8 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   submitButtonDisabled: { opacity: 0.5 },
-  submitText: { color: Colors.white, fontSize: 15, fontWeight: '700', fontFamily: 'Inter' },
-  errorText: { color: Colors.error, fontFamily: 'Inter', fontSize: 13, textAlign: 'center' },
+  submitText: { color: Colors.white, fontSize: 18.5, fontWeight: '700', fontFamily: 'Inter' },
+  errorText: { color: Colors.error, fontFamily: 'Inter', fontSize: 15.5, textAlign: 'center' },
 
   // Selfie slot extras
   selfieActions: { gap: 8 },
@@ -444,12 +458,12 @@ const styles = StyleSheet.create({
   galleryBtnText: {
     color: Colors.muted,
     fontFamily: 'Inter',
-    fontSize: 13,
+    fontSize: 15.5,
   },
   dropzoneSubtext: {
     color: Colors.muted,
     fontFamily: 'Inter',
-    fontSize: 11,
+    fontSize: 13.5,
     marginTop: 2,
   },
 });

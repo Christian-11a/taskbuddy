@@ -1,110 +1,136 @@
 /**
  * SPCalendarScreen.tsx
  *
- * Figma Source: "SP - Calendar View" (id: 305:852 and 46:1066)
+ * v6 design: matches taskbuddy_UI_update.html's #sp-calendar screen — a flat
+ * white .topbar, a full month-grid `.card` (react-native-calendars, same
+ * component the homeowner side's calendar uses, not the old horizontal
+ * day-scroller), and a "Your Schedule" list of flat bordered rows below.
  *
- * Design:
- * - Teal header with month/year navigation
- * - Calendar grid (week view)
- * - Job schedule list below
+ * Deviation: the mockup's schedule list shows all upcoming jobs, un-filtered
+ * by date. This app already had a more useful real feature — filtering
+ * bookings by the calendar's selected day — which is kept, since it's more
+ * capable than what the mockup demo needs to show. Also wired the schedule
+ * rows to actually navigate to Job Detail (`booking.job_id`), which the old
+ * version had a decorative, non-functional arrow for.
  */
 
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { ActivityIndicator, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import { UserRound } from 'lucide-react-native';
-import { Colors, Radii, Shadows, Sizes, Spacing } from '../../../src/constants/theme';
+import { Calendar } from 'react-native-calendars';
+import { CalendarDays, UserRound } from 'lucide-react-native';
+import { Sizes, Spacing, V6Colors, V6Radii, V6Shadows } from '../../../src/constants/theme';
+
+const C = V6Colors;
 import { useAsyncData } from '../../../src/hooks/useAsyncData';
 import { api } from '../../../src/lib/api';
-import { timeOfDay } from '../../../src/lib/format';
-
-const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-const BAR_COLORS = ['#22C55E', '#3B82F6', '#F59E0B', '#8B5CF6'];
+import { jobStatusMeta, timeOfDay } from '../../../src/lib/format';
+import { SPScreen } from '../../../src/types/navigation';
 
 interface SPCalendarScreenProps {
-  onBack?: () => void;
+  onNavigate?: (screen: SPScreen, jobId?: string) => void;
 }
 
-export default function SPCalendarScreen({ onBack }: SPCalendarScreenProps) {
-  const now = new Date();
-  const [selectedDay, setSelectedDay] = useState(now.getDate());
-  const year = now.getFullYear();
-  const month = now.getMonth(); // 0-indexed
-  const daysInMonth = new Date(year, month + 1, 0).getDate();
-  const MONTH_DAYS = Array.from({ length: daysInMonth }, (_, i) => i + 1);
-  const monthLabel = now.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+export default function SPCalendarScreen({ onNavigate }: SPCalendarScreenProps) {
+  const todayKey = (() => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  })();
+  const [selectedDate, setSelectedDate] = useState<string>(todayKey);
 
-  // Fetch this month's bookings once; filter to the selected day client-side.
-  const from = new Date(year, month, 1).toISOString();
-  const to = new Date(year, month + 1, 0, 23, 59, 59).toISOString();
-  const { data, loading } = useAsyncData(() => api.bookings({ from, to }), []);
+  const now = new Date();
+  const from = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
+  const to = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59).toISOString();
+  const { data, loading, error, reload } = useAsyncData(() => api.bookings({ from, to }), []);
   const bookings = data ?? [];
 
+  const dateKey = (iso: string) => {
+    const d = new Date(iso);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  };
+
+  const markedDates = useMemo(() => {
+    const m: Record<string, any> = {};
+    bookings.forEach((b) => {
+      const key = dateKey(b.scheduled_at);
+      m[key] = { ...(m[key] || {}), marked: true, dotColor: C.cyan700 };
+    });
+    if (selectedDate) {
+      m[selectedDate] = { ...(m[selectedDate] || {}), selected: true, selectedColor: C.cyan700 };
+    }
+    return m;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bookings, selectedDate]);
+
   const daySchedule = bookings
-    .filter((b) => new Date(b.scheduled_at).getDate() === selectedDay)
+    .filter((b) => dateKey(b.scheduled_at) === selectedDate)
     .sort((a, b) => a.scheduled_at.localeCompare(b.scheduled_at));
 
   return (
     <View style={styles.screen}>
+      {/* Header — matches .topbar (flat white) */}
       <View style={styles.header}>
-        <View style={styles.headerTopRow}>
-          {onBack && (
-            <TouchableOpacity style={styles.backBtn} onPress={onBack} activeOpacity={0.8}>
-              <Text style={styles.backIcon}>←</Text>
-            </TouchableOpacity>
-          )}
-          <Text style={styles.headerTitle}>My Calendar</Text>
-          <TouchableOpacity style={styles.addBtn} activeOpacity={0.8}>
-            <Text style={styles.addBtnText}>+</Text>
-          </TouchableOpacity>
-        </View>
-        <Text style={styles.monthTitle}>{monthLabel}</Text>
-        <View style={styles.monthNav}>
-          <TouchableOpacity style={styles.navBtn} activeOpacity={0.8}><Text style={styles.navBtnText}>←</Text></TouchableOpacity>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.daysScroll}>
-            {MONTH_DAYS.map((day) => {
-              const isSelected = day === selectedDay;
-              const dayOfWeek = DAYS[new Date(year, month, day).getDay()];
-              return (
-                <TouchableOpacity key={day} style={[styles.dayBtn, isSelected && styles.dayBtnActive]} onPress={() => setSelectedDay(day)} activeOpacity={0.8}>
-                  <Text style={[styles.dayLabel, isSelected && styles.dayLabelActive]}>{dayOfWeek}</Text>
-                  <Text style={[styles.dayNum, isSelected && styles.dayNumActive]}>{day}</Text>
-                </TouchableOpacity>
-              );
-            })}
-          </ScrollView>
-          <TouchableOpacity style={styles.navBtn} activeOpacity={0.8}><Text style={styles.navBtnText}>→</Text></TouchableOpacity>
-        </View>
+        <Text style={styles.headerTitle}>Calendar</Text>
       </View>
 
       <ScrollView style={styles.body} contentContainerStyle={styles.bodyContent} showsVerticalScrollIndicator={false}>
-        <Text style={styles.sectionTitle}>
-          Schedule — {now.toLocaleDateString('en-US', { month: 'short' })} {selectedDay}
-        </Text>
-        {loading && <ActivityIndicator style={{ marginTop: 10 }} color={Colors.brandTeal} />}
-        {!loading && daySchedule.length === 0 && (
-          <View style={styles.emptySlot}>
-            <Text style={styles.emptySlotText}>No bookings scheduled for this day.</Text>
+        <View style={styles.calendarCard}>
+          <Calendar
+            current={selectedDate}
+            onDayPress={(day) => setSelectedDate(day.dateString)}
+            markedDates={markedDates}
+            theme={{
+              todayTextColor: C.cyan700,
+              arrowColor: C.cyan700,
+              selectedDayBackgroundColor: C.cyan700,
+            }}
+          />
+        </View>
+
+        <Text style={styles.sectionTitle}>Your Schedule</Text>
+
+        {loading && <ActivityIndicator style={{ marginTop: 10 }} color={C.cyan700} />}
+
+        {!loading && !!error && (
+          <View style={styles.emptyState}>
+            <CalendarDays size={30} color={C.ink300} />
+            <Text style={styles.emptyTitle}>Couldn't load your schedule</Text>
+            <Text style={styles.emptyText}>{error}</Text>
+            <TouchableOpacity onPress={reload} activeOpacity={0.8}>
+              <Text style={styles.retryLink}>Retry</Text>
+            </TouchableOpacity>
           </View>
         )}
-        {daySchedule.map((booking, i) => {
-          const hrs = booking.duration_minutes / 60;
-          const durationLabel = `${hrs % 1 === 0 ? hrs : hrs.toFixed(1)} hr${hrs === 1 ? '' : 's'}`;
-          const clientName = booking.client?.full_name ?? 'Client';
+
+        {!loading && !error && daySchedule.length === 0 && (
+          <View style={styles.emptyState}>
+            <CalendarDays size={30} color={C.ink300} />
+            <Text style={styles.emptyTitle}>Nothing scheduled</Text>
+            <Text style={styles.emptyText}>Jobs appear here after a homeowner hires you.</Text>
+          </View>
+        )}
+
+        {!loading && !error && daySchedule.map((booking) => {
           return (
-            <View key={booking.id} style={styles.scheduleCard}>
-              <View style={[styles.scheduleBar, { backgroundColor: BAR_COLORS[i % BAR_COLORS.length] }]} />
-              <View style={styles.scheduleContent}>
-                <Text style={styles.scheduleTime}>{timeOfDay(booking.scheduled_at)} · {durationLabel}</Text>
-                <Text style={styles.scheduleTitle}>{booking.jobs?.title ?? 'Booking'}</Text>
+            <TouchableOpacity
+              key={booking.id}
+              style={styles.scheduleCard}
+              onPress={() => onNavigate?.('Job Detail', booking.job_id)}
+              activeOpacity={0.85}
+            >
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <Text style={styles.scheduleTitle} numberOfLines={1}>{booking.jobs?.title ?? 'Booking'}</Text>
+                <Text style={styles.scheduleTime}>{timeOfDay(booking.scheduled_at)}</Text>
                 <View style={styles.scheduleClientRow}>
-                  <UserRound size={13} color={Colors.slate} />
-                  <Text style={styles.scheduleClientLabel}>{clientName}</Text>
+                  <UserRound size={13} color={C.ink400} />
+                  <Text style={styles.scheduleClientLabel}>{booking.client?.full_name ?? 'Client'}</Text>
                 </View>
               </View>
-              <TouchableOpacity style={styles.detailArrow} activeOpacity={0.8}>
-                <Text style={styles.detailArrowText}>›</Text>
-              </TouchableOpacity>
-            </View>
+              <View style={[styles.statusBadge, { backgroundColor: jobStatusMeta(booking.status === 'scheduled' ? 'assigned' : booking.status).bg }]}>
+                <Text style={[styles.statusBadgeText, { color: jobStatusMeta(booking.status === 'scheduled' ? 'assigned' : booking.status).color }]}>
+                  {booking.status === 'scheduled' ? 'Scheduled' : booking.status === 'completed' ? 'Completed' : 'Cancelled'}
+                </Text>
+              </View>
+            </TouchableOpacity>
           );
         })}
 
@@ -115,42 +141,41 @@ export default function SPCalendarScreen({ onBack }: SPCalendarScreenProps) {
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: Colors.background },
+  screen: { flex: 1, backgroundColor: C.canvas },
+
   header: {
-    backgroundColor: Colors.brandDark, paddingTop: Sizes.statusBarHeight,
-    paddingHorizontal: Spacing.screenH, paddingBottom: 16,
-    borderBottomLeftRadius: 28, borderBottomRightRadius: 28,
+    backgroundColor: C.white,
+    paddingTop: Sizes.statusBarHeight,
+    paddingHorizontal: Spacing.screenH,
+    paddingBottom: 12,
+    borderBottomWidth: 1, borderBottomColor: '#edf1f4',
   },
-  headerTopRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingTop: 12, marginBottom: 12 },
-  headerTitle: { color: Colors.white, fontSize: 20, fontWeight: '700', fontFamily: 'Inter' },
-  backBtn: { width: 40, height: 40, borderRadius: 12, backgroundColor: 'rgba(255,255,255,0.15)', alignItems: 'center', justifyContent: 'center' },
-  backIcon: { color: Colors.white, fontSize: 18, fontWeight: '600' },
-  addBtn: { width: 40, height: 40, borderRadius: 12, backgroundColor: 'rgba(255,255,255,0.15)', alignItems: 'center', justifyContent: 'center' },
-  addBtnText: { color: Colors.white, fontSize: 24, fontWeight: '300' },
-  monthTitle: { color: 'rgba(255,255,255,0.7)', fontSize: 13, fontFamily: 'Inter', marginBottom: 10 },
-  monthNav: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  navBtn: { width: 32, height: 32, borderRadius: 10, backgroundColor: 'rgba(255,255,255,0.1)', alignItems: 'center', justifyContent: 'center' },
-  navBtnText: { color: Colors.white, fontSize: 16 },
-  daysScroll: { gap: 4, paddingHorizontal: 4 },
-  dayBtn: { width: 44, alignItems: 'center', paddingVertical: 6, borderRadius: 12 },
-  dayBtnActive: { backgroundColor: Colors.white },
-  dayLabel: { color: 'rgba(255,255,255,0.6)', fontSize: 9, fontFamily: 'Inter', marginBottom: 2 },
-  dayLabelActive: { color: Colors.brandDark },
-  dayNum: { color: Colors.white, fontSize: 16, fontWeight: '700', fontFamily: 'Inter' },
-  dayNumActive: { color: Colors.brandDark },
+  headerTitle: { color: C.ink900, fontSize: 21.5, fontWeight: '800', fontFamily: 'Inter', letterSpacing: -0.3 },
+
   body: { flex: 1 },
-  bodyContent: { paddingHorizontal: Spacing.screenH, paddingTop: 20, paddingBottom: 20 },
-  sectionTitle: { color: Colors.brandDark, fontSize: 16, fontWeight: '800', fontFamily: 'Inter', marginBottom: 14 },
-  scheduleCard: { backgroundColor: Colors.white, borderRadius: Radii.card, flexDirection: 'row', marginBottom: 12, overflow: 'hidden', ...Shadows.card },
-  scheduleBar: { width: 5 },
-  scheduleContent: { flex: 1, padding: 16 },
-  scheduleTime: { color: Colors.muted, fontSize: 12, fontFamily: 'Inter', marginBottom: 4 },
-  scheduleTitle: { color: Colors.brandDark, fontSize: 15, fontWeight: '700', fontFamily: 'Inter', marginBottom: 4 },
-  scheduleClient: { display: 'none' },
-  scheduleClientRow: { flexDirection: 'row', alignItems: 'center', gap: 5 },
-  scheduleClientLabel: { color: Colors.slate, fontSize: 12, fontFamily: 'Inter' },
-  detailArrow: { width: 40, alignItems: 'center', justifyContent: 'center' },
-  detailArrowText: { color: Colors.muted, fontSize: 22 },
-  emptySlot: { backgroundColor: 'rgba(144,153,184,0.1)', borderRadius: 14, padding: 16, alignItems: 'center', borderWidth: 1, borderColor: 'rgba(144,153,184,0.2)', borderStyle: 'dashed' },
-  emptySlotText: { color: Colors.muted, fontSize: 13, fontWeight: '600', fontFamily: 'Inter' },
+  bodyContent: { paddingHorizontal: Spacing.screenH, paddingTop: 16, paddingBottom: 20 },
+
+  calendarCard: {
+    backgroundColor: C.white, borderRadius: V6Radii.card, padding: 4,
+    borderWidth: 1, borderColor: C.line, marginBottom: 20,
+    ...V6Shadows.sm,
+  },
+  sectionTitle: { color: C.ink900, fontSize: 16, fontWeight: '800', fontFamily: 'Inter', marginBottom: 12 },
+
+  emptyState: { alignItems: 'center', paddingVertical: 44, paddingHorizontal: 24 },
+  emptyTitle: { color: C.ink800, fontSize: 16, fontWeight: '700', fontFamily: 'Inter', marginTop: 10, marginBottom: 4 },
+  emptyText: { color: C.ink400, fontSize: 14, fontFamily: 'Inter', textAlign: 'center', lineHeight: 17 },
+  retryLink: { color: C.cyan700, fontSize: 14.5, fontWeight: '700', fontFamily: 'Inter', marginTop: 10 },
+
+  scheduleCard: {
+    backgroundColor: C.white, borderWidth: 1, borderColor: C.line,
+    borderRadius: V6Radii.card, padding: 14, marginBottom: 10,
+    flexDirection: 'row', alignItems: 'center', gap: 10, ...V6Shadows.sm,
+  },
+  scheduleTitle: { color: C.ink900, fontSize: 15, fontWeight: '700', fontFamily: 'Inter' },
+  scheduleTime: { color: C.ink400, fontSize: 13, fontFamily: 'Inter', marginTop: 2 },
+  scheduleClientRow: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 5 },
+  scheduleClientLabel: { color: C.ink500, fontSize: 13.5, fontFamily: 'Inter' },
+  statusBadge: { borderRadius: 999, paddingHorizontal: 10, paddingVertical: 5 },
+  statusBadgeText: { fontSize: 12, fontWeight: '700', fontFamily: 'Inter' },
 });

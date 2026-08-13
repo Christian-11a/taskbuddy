@@ -60,13 +60,25 @@ import DateTimePicker, {
 } from '@react-native-community/datetimepicker';
 import { Calendar } from 'react-native-calendars';
 import * as ImagePicker from 'expo-image-picker';
-import { Colors, Radii, Shadows, Sizes, Spacing } from '../../../src/constants/theme';
+import { Sizes, Spacing, V6Colors, V6Shadows } from '../../../src/constants/theme';
 import { useAuth } from '../../../src/context/AuthContext';
 import { useAsyncData } from '../../../src/hooks/useAsyncData';
 import { api } from '../../../src/lib/api';
 import { peso } from '../../../src/lib/format';
 import TermsAndConditions from '../../(auth)/screens/TermsAndConditions';
 import ConfirmationModal from '../../../src/components/ConfirmationModal';
+
+const Colors = {
+  ...V6Colors,
+  background: V6Colors.canvas,
+  brandDark: V6Colors.cyan900,
+  brandTeal: V6Colors.cyan700,
+  brandCyan: V6Colors.cyan600,
+  slate: V6Colors.ink500,
+  muted: V6Colors.ink400,
+  error: '#ef4444',
+} as const;
+const Shadows = { card: V6Shadows.sm, input: V6Shadows.sm };
 
 // Icon + blurb per real service category (the 5 seeded in the DB).
 const CATEGORY_META: Record<string, { icon: typeof Wrench; desc: string }> = {
@@ -336,7 +348,7 @@ export default function HOCreateJobScreen({ onBack, onSuccess }: HOCreateJobScre
       <View style={styles.screen}>
         <View style={styles.successScreen}>
           <View style={styles.successIcon}>
-            <CheckCircle2 size={44} color={Colors.brandTeal} />
+            <CheckCircle2 size={48} color={Colors.brandTeal} />
           </View>
           <Text style={styles.successTitle}>Job Posted!</Text>
           <Text style={styles.successSubtitle}>
@@ -369,21 +381,20 @@ export default function HOCreateJobScreen({ onBack, onSuccess }: HOCreateJobScre
 
   return (
     <View style={styles.screen}>
-      {/* Header */}
+      {/* Header — matches .topbar (flat white, not a dark hero) */}
       <View style={styles.header}>
-        <View style={styles.headerTopRow}>
-          <TouchableOpacity style={styles.backBtn} onPress={handleExit} activeOpacity={0.8}>
-            <ArrowLeft size={20} color={Colors.white} />
-          </TouchableOpacity>
-          <Text style={styles.headerTitle}>Post a Job</Text>
-          <View style={{ width: 40 }} />
-        </View>
+        <TouchableOpacity style={styles.backBtn} onPress={handleExit} activeOpacity={0.8}>
+          <ArrowLeft size={22} color={Colors.ink700} />
+        </TouchableOpacity>
+        <Text style={styles.headerTitle}>Post a Job</Text>
+        <View style={{ width: 38 }} />
+      </View>
 
-        {/* Progress bar */}
-        <View style={styles.progressBar}>
-          <View style={[styles.progressFill, { width: `${(step / totalSteps) * 100}%` as any }]} />
-        </View>
-        <Text style={styles.stepText}>Step {step} of {totalSteps}</Text>
+      {/* Stepper — matches .stepper/.step: 5 equal pills, filled for done/current */}
+      <View style={styles.stepper}>
+        {Array.from({ length: totalSteps }).map((_, i) => (
+          <View key={i} style={[styles.step, i < step && styles.stepDone]} />
+        ))}
       </View>
 
       <ScrollView
@@ -410,7 +421,7 @@ export default function HOCreateJobScreen({ onBack, onSuccess }: HOCreateJobScre
                     onPress={() => { setCategoryId(cat.id); setCategoryName(cat.name); }}
                     activeOpacity={0.85}
                   >
-                    <Icon size={28} color={active ? Colors.brandTeal : Colors.brandDark} />
+                    <Icon size={31} color={active ? Colors.brandTeal : Colors.brandDark} />
                     <Text style={[styles.serviceLabel, active && styles.serviceLabelActive]}>
                       {cat.name}
                     </Text>
@@ -534,7 +545,7 @@ export default function HOCreateJobScreen({ onBack, onSuccess }: HOCreateJobScre
               onPress={() => setIsUrgent((u) => !u)}
               activeOpacity={0.85}
             >
-              <AlertTriangle size={18} color={isUrgent ? Colors.brandTeal : Colors.slate} />
+              <AlertTriangle size={20} color={isUrgent ? Colors.brandTeal : Colors.slate} />
               <View style={styles.urgentInfo}>
                 <Text style={[styles.urgentLabel, isUrgent && styles.urgentLabelActive]}>Mark as Urgent</Text>
                 <Text style={styles.urgentDesc}>Get faster responses — providers are notified immediately</Text>
@@ -664,7 +675,7 @@ export default function HOCreateJobScreen({ onBack, onSuccess }: HOCreateJobScre
 
             <View style={styles.termsRow}>
               <View style={[styles.termsCheck, termsAccepted && styles.termsCheckAccepted]}>
-                {termsAccepted && <Check size={14} color={Colors.white} />}
+                {termsAccepted && <Check size={15} color={Colors.white} />}
               </View>
               <Text style={styles.termsText}>
                 I agree to the <Text style={styles.termsLink} onPress={() => setShowTerms(true)}>Terms & Conditions</Text><Text style={styles.requiredAsterisk}> *</Text> and understand that TaskBuddy holds payment until job completion.
@@ -814,33 +825,30 @@ const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: Colors.background },
 
   header: {
-    backgroundColor: Colors.brandDark,
+    backgroundColor: Colors.white,
+    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
     paddingTop: Sizes.statusBarHeight,
     paddingHorizontal: Spacing.screenH,
-    paddingBottom: 20,
-    borderBottomLeftRadius: 28,
-    borderBottomRightRadius: 28,
+    paddingBottom: 12,
+    borderBottomWidth: 1, borderBottomColor: '#edf1f4',
   },
-  headerTopRow: {
-    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
-    paddingTop: 12, marginBottom: 16,
-  },
-  headerTitle: { color: Colors.white, fontSize: 20, fontWeight: '700', fontFamily: 'Inter' },
+  headerTitle: { color: Colors.ink900, fontSize: 18.5, fontWeight: '800', fontFamily: 'Inter' },
   backBtn: {
-    width: 40, height: 40, borderRadius: 12,
-    backgroundColor: 'rgba(255,255,255,0.15)', alignItems: 'center', justifyContent: 'center',
+    width: 38, height: 38, borderRadius: 12,
+    backgroundColor: Colors.white, borderWidth: 1, borderColor: '#e8edf2',
+    alignItems: 'center', justifyContent: 'center',
   },
-  backIcon: { color: Colors.white, fontSize: 20, fontWeight: '600' },
 
-  progressBar: { height: 4, backgroundColor: 'rgba(255,255,255,0.2)', borderRadius: 2, marginBottom: 8 },
-  progressFill: { height: 4, backgroundColor: Colors.brandCyan, borderRadius: 2 },
-  stepText: { color: 'rgba(255,255,255,0.7)', fontSize: 12, fontFamily: 'Inter' },
+  // Stepper — matches .stepper/.step (5 equal pills)
+  stepper: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: Spacing.screenH, paddingVertical: 14, backgroundColor: Colors.white },
+  step: { flex: 1, height: 5, borderRadius: 3, backgroundColor: Colors.ink100 },
+  stepDone: { backgroundColor: Colors.cyan600 },
 
   body: { flex: 1 },
   bodyContent: { paddingHorizontal: Spacing.screenH, paddingTop: 24, paddingBottom: 20 },
 
-  stepTitle: { color: Colors.brandDark, fontSize: 22, fontWeight: '800', fontFamily: 'Inter', marginBottom: 4 },
-  stepSubtitle: { color: Colors.muted, fontSize: 14, fontFamily: 'Inter', marginBottom: 20 },
+  stepTitle: { color: Colors.brandDark, fontSize: 26.5, fontWeight: '800', fontFamily: 'Inter', marginBottom: 4 },
+  stepSubtitle: { color: Colors.muted, fontSize: 16.5, fontFamily: 'Inter', marginBottom: 20 },
 
   serviceGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },
   serviceCard: {
@@ -849,45 +857,44 @@ const styles = StyleSheet.create({
     ...Shadows.card,
   },
   serviceCardActive: { borderColor: Colors.brandTeal, backgroundColor: '#F0FAFF' },
-  serviceIcon: { fontSize: 28, marginBottom: 8 },
-  serviceLabel: { color: Colors.brandDark, fontSize: 14, fontWeight: '700', fontFamily: 'Inter', marginBottom: 4 },
+  serviceIcon: { fontSize: 34, marginBottom: 8 },
+  serviceLabel: { color: Colors.brandDark, fontSize: 16.5, fontWeight: '700', fontFamily: 'Inter', marginBottom: 4 },
   serviceLabelActive: { color: Colors.brandTeal },
-  serviceDesc: { color: Colors.slate, fontSize: 12, fontFamily: 'Inter' },
+  serviceDesc: { color: Colors.slate, fontSize: 14.5, fontFamily: 'Inter' },
 
   inputGroup: { marginBottom: 16 },
-  inputLabel: { color: Colors.brandDark, fontSize: 14, fontWeight: '600', fontFamily: 'Inter', marginBottom: 8 },
+  inputLabel: { color: Colors.brandDark, fontSize: 16.5, fontWeight: '600', fontFamily: 'Inter', marginBottom: 8 },
   input: {
-    backgroundColor: Colors.white, borderRadius: 12, paddingHorizontal: 16, paddingVertical: 13,
-    borderWidth: 1, borderColor: 'rgba(144,153,184,0.3)',
-    fontFamily: 'Inter', fontSize: 15, color: Colors.brandDark,
-    ...Shadows.input,
+    backgroundColor: Colors.white, borderRadius: 12, paddingHorizontal: 14, minHeight: 46,
+    borderWidth: 1, borderColor: '#dce3e9',
+    fontFamily: 'Inter', fontSize: 16.5, color: Colors.ink900,
   },
   inputFocused: { borderColor: Colors.brandTeal, borderWidth: 2 },
   inputError: { borderColor: Colors.error, borderWidth: 2 },
-  inputErrorText: { color: Colors.error, fontSize: 13, marginTop: 8, fontFamily: 'Inter' },
+  inputErrorText: { color: Colors.error, fontSize: 15.5, marginTop: 8, fontFamily: 'Inter' },
   requiredAsterisk: { color: Colors.error, fontWeight: '800' },
   pickerInput: { justifyContent: 'center', minHeight: 48 },
-  pickerText: { color: Colors.brandDark, fontFamily: 'Inter', fontSize: 15 },
+  pickerText: { color: Colors.brandDark, fontFamily: 'Inter', fontSize: 18.5 },
   pickerPlaceholder: { color: Colors.muted },
   calendarOverlay: { flex: 1, backgroundColor: 'rgba(15,23,42,0.45)', justifyContent: 'center', padding: 20 },
   calendarModal: { backgroundColor: Colors.white, borderRadius: 24, padding: 20, ...Shadows.card },
   calendarHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 },
-  calendarTitle: { color: Colors.brandDark, fontSize: 18, fontWeight: '800', fontFamily: 'Inter' },
-  calendarClose: { color: Colors.brandTeal, fontSize: 14, fontWeight: '700', fontFamily: 'Inter' },
+  calendarTitle: { color: Colors.brandDark, fontSize: 21.5, fontWeight: '800', fontFamily: 'Inter' },
+  calendarClose: { color: Colors.brandTeal, fontSize: 16.5, fontWeight: '700', fontFamily: 'Inter' },
   textArea: { textAlignVertical: 'top', minHeight: 20 * 3 },
   textAreaWrap: { position: 'relative' },
-  charCount: { position: 'absolute', right: 12, bottom: 8, color: Colors.muted, fontSize: 12 },
+  charCount: { position: 'absolute', right: 12, bottom: 8, color: Colors.muted, fontSize: 14.5 },
   photoPicker: {
     backgroundColor: Colors.white, borderRadius: 12, padding: 16,
     borderWidth: 1, borderStyle: 'dashed', borderColor: Colors.brandTeal,
   },
-  photoPickerTitle: { color: Colors.brandTeal, fontSize: 15, fontWeight: '700', fontFamily: 'Inter', marginBottom: 4 },
-  photoPickerHint: { color: Colors.slate, fontSize: 12, fontFamily: 'Inter', lineHeight: 18 },
+  photoPickerTitle: { color: Colors.brandTeal, fontSize: 18.5, fontWeight: '700', fontFamily: 'Inter', marginBottom: 4 },
+  photoPickerHint: { color: Colors.slate, fontSize: 14.5, fontFamily: 'Inter', lineHeight: 18 },
   photoList: { gap: 10, paddingTop: 12 },
   photoPreview: { width: 72, height: 72, borderRadius: 10, overflow: 'visible' },
   photoImage: { width: 72, height: 72, borderRadius: 10, backgroundColor: '#E2E8F0' },
   removePhoto: { position: 'absolute', top: -6, right: -6, width: 22, height: 22, borderRadius: 11, backgroundColor: Colors.error, alignItems: 'center', justifyContent: 'center' },
-  removePhotoText: { color: Colors.white, fontSize: 18, lineHeight: 20, fontWeight: '700' },
+  removePhotoText: { color: Colors.white, fontSize: 21.5, lineHeight: 20, fontWeight: '700' },
 
   urgentToggle: {
     flexDirection: 'row', alignItems: 'center', backgroundColor: Colors.white,
@@ -895,11 +902,11 @@ const styles = StyleSheet.create({
     ...Shadows.card, gap: 12,
   },
   urgentToggleActive: { borderColor: '#EF4444', backgroundColor: '#FFF5F5' },
-  urgentIcon: { fontSize: 24 },
+  urgentIcon: { fontSize: 29 },
   urgentInfo: { flex: 1 },
-  urgentLabel: { color: Colors.brandDark, fontSize: 14, fontWeight: '700', fontFamily: 'Inter', marginBottom: 2 },
+  urgentLabel: { color: Colors.brandDark, fontSize: 16.5, fontWeight: '700', fontFamily: 'Inter', marginBottom: 2 },
   urgentLabelActive: { color: '#EF4444' },
-  urgentDesc: { color: Colors.slate, fontSize: 12, fontFamily: 'Inter' },
+  urgentDesc: { color: Colors.slate, fontSize: 14.5, fontFamily: 'Inter' },
   toggleSwitch: {
     width: 44, height: 26, borderRadius: 13,
     backgroundColor: 'rgba(144,153,184,0.3)', justifyContent: 'center', paddingHorizontal: 2,
@@ -910,11 +917,11 @@ const styles = StyleSheet.create({
 
   flexibilityRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 8 },
   flexChip: {
-    paddingHorizontal: 16, paddingVertical: 10, borderRadius: 999,
-    backgroundColor: Colors.white, borderWidth: 1, borderColor: 'rgba(144,153,184,0.3)',
+    paddingHorizontal: 14, paddingVertical: 8, borderRadius: 999,
+    backgroundColor: Colors.white, borderWidth: 1.5, borderColor: Colors.ink100,
   },
-  flexChipActive: { backgroundColor: Colors.brandTeal, borderColor: Colors.brandTeal },
-  flexChipText: { color: Colors.brandDark, fontSize: 13, fontWeight: '600', fontFamily: 'Inter' },
+  flexChipActive: { backgroundColor: Colors.ink900, borderColor: Colors.ink900 },
+  flexChipText: { color: Colors.ink500, fontSize: 13.5, fontWeight: '600', fontFamily: 'Inter' },
   flexChipTextActive: { color: Colors.white },
 
   budgetCard: {
@@ -923,16 +930,16 @@ const styles = StyleSheet.create({
     marginBottom: 4, borderWidth: 1, borderColor: 'transparent', ...Shadows.card,
   },
   budgetCardFocused: { borderColor: Colors.brandTeal, borderWidth: 2 },
-  budgetCurrency: { color: Colors.brandDark, fontSize: 32, fontWeight: '800', fontFamily: 'Inter', marginRight: 4 },
-  budgetInput: { fontSize: 48, fontWeight: '800', fontFamily: 'Inter', color: Colors.brandDark, minWidth: 120 },
-  budgetHint: { color: Colors.muted, fontSize: 13, fontFamily: 'Inter', textAlign: 'center', margin: 20 },
+  budgetCurrency: { color: Colors.brandDark, fontSize: 39, fontWeight: '800', fontFamily: 'Inter', marginRight: 4 },
+  budgetInput: { fontSize: 58.5, fontWeight: '800', fontFamily: 'Inter', color: Colors.brandDark, minWidth: 120 },
+  budgetHint: { color: Colors.muted, fontSize: 15.5, fontFamily: 'Inter', textAlign: 'center', margin: 20 },
   paymentOptions: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginTop: 8 },
   paymentChip: {
-    paddingHorizontal: 18, paddingVertical: 10, borderRadius: 999,
-    backgroundColor: Colors.white, borderWidth: 1, borderColor: 'rgba(144,153,184,0.3)',
+    paddingHorizontal: 14, paddingVertical: 8, borderRadius: 999,
+    backgroundColor: Colors.white, borderWidth: 1.5, borderColor: Colors.ink100,
   },
-  paymentChipActive: { backgroundColor: Colors.brandTeal, borderColor: Colors.brandTeal },
-  paymentChipText: { color: Colors.brandDark, fontSize: 13, fontWeight: '600', fontFamily: 'Inter' },
+  paymentChipActive: { backgroundColor: Colors.ink900, borderColor: Colors.ink900 },
+  paymentChipText: { color: Colors.ink500, fontSize: 13.5, fontWeight: '600', fontFamily: 'Inter' },
   paymentChipTextActive: { color: Colors.white },
 
   reviewCard: { backgroundColor: Colors.white, borderRadius: 20, padding: 20, marginBottom: 16, ...Shadows.card },
@@ -940,30 +947,30 @@ const styles = StyleSheet.create({
     flexDirection: 'row', justifyContent: 'space-between',
     paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: 'rgba(144,153,184,0.15)',
   },
-  reviewLabel: { color: Colors.slate, fontSize: 14, fontFamily: 'Inter' },
-  reviewValue: { color: Colors.brandDark, fontSize: 14, fontWeight: '700', fontFamily: 'Inter', maxWidth: '55%', textAlign: 'right' },
+  reviewLabel: { color: Colors.slate, fontSize: 16.5, fontFamily: 'Inter' },
+  reviewValue: { color: Colors.brandDark, fontSize: 16.5, fontWeight: '700', fontFamily: 'Inter', maxWidth: '55%', textAlign: 'right' },
 
   termsRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 12 },
   termsCheck: { width: 20, height: 20, borderRadius: 6, borderWidth: 1, borderColor: '#64748B', backgroundColor: '#CBD5E1', marginTop: 2, alignItems: 'center', justifyContent: 'center' },
   termsCheckAccepted: { backgroundColor: Colors.brandTeal, borderColor: Colors.brandTeal },
-  termsText: { flex: 1, color: Colors.slate, fontSize: 13, fontFamily: 'Inter', lineHeight: 20 },
+  termsText: { flex: 1, color: Colors.slate, fontSize: 15.5, fontFamily: 'Inter', lineHeight: 20 },
   termsLink: { color: Colors.brandTeal, fontWeight: '700', textDecorationLine: 'underline' },
 
-  footer: { paddingHorizontal: Spacing.screenH, paddingVertical: 16, backgroundColor: Colors.white, borderTopWidth: 1, borderTopColor: 'rgba(144,153,184,0.15)' },
+  footer: { paddingHorizontal: Spacing.screenH, paddingVertical: 14, backgroundColor: Colors.white, borderTopWidth: 1, borderTopColor: Colors.ink100 },
   footerActions: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'stretch' },
-  previousBtn: { width: '48%', height: 50, borderWidth: 1, borderColor: Colors.brandTeal, borderRadius: 24, backgroundColor: Colors.white, alignItems: 'center', justifyContent: 'center' },
-  previousBtnText: { color: Colors.brandTeal, fontSize: 15, fontWeight: '700', fontFamily: 'Inter' },
+  previousBtn: { width: '48%', height: 46, borderWidth: 1, borderColor: '#dce3e9', borderRadius: 13, backgroundColor: Colors.white, alignItems: 'center', justifyContent: 'center' },
+  previousBtnText: { color: Colors.ink700, fontSize: 16.5, fontWeight: '700', fontFamily: 'Inter' },
   primaryBtn: {
-    backgroundColor: Colors.brandTeal, borderRadius: 24, paddingVertical: 15,
+    backgroundColor: Colors.cyan700, borderRadius: 13, paddingVertical: 14,
     alignItems: 'center',
-    shadowColor: Colors.brandTeal, shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.35, shadowRadius: 12, elevation: 5,
+    shadowColor: '#0891b2', shadowOffset: { width: 0, height: 5 },
+    shadowOpacity: 0.16, shadowRadius: 14, elevation: 4,
   },
   primaryBtnFullWidth: { width: '100%' },
-  primaryBtnWithBack: { width: '48%', height: 50, paddingVertical: 0, justifyContent: 'center' },
-  primaryBtnText: { color: Colors.white, fontSize: 15, fontWeight: '600', fontFamily: 'Inter', letterSpacing: 0.3 },
+  primaryBtnWithBack: { width: '48%', height: 46, paddingVertical: 0, justifyContent: 'center' },
+  primaryBtnText: { color: Colors.white, fontSize: 16.5, fontWeight: '700', fontFamily: 'Inter', letterSpacing: -0.005 },
   primaryBtnDisabled: { opacity: 0.7 },
-  errorText: { color: Colors.error, fontSize: 13, fontFamily: 'Inter', marginBottom: 10, textAlign: 'center' },
+  errorText: { color: Colors.error, fontSize: 15.5, fontFamily: 'Inter', marginBottom: 10, textAlign: 'center' },
 
   // Success
   successScreen: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 32 },
@@ -971,16 +978,16 @@ const styles = StyleSheet.create({
     width: 100, height: 100, borderRadius: 50,
     backgroundColor: '#F0FDF4', alignItems: 'center', justifyContent: 'center', marginBottom: 24,
   },
-  successIconText: { fontSize: 48 },
-  successTitle: { color: Colors.brandDark, fontSize: 28, fontWeight: '800', fontFamily: 'Inter', marginBottom: 12, textAlign: 'center' },
-  successSubtitle: { color: Colors.slate, fontSize: 14, fontFamily: 'Inter', lineHeight: 22, textAlign: 'center', marginBottom: 28 },
+  successIconText: { fontSize: 58.5 },
+  successTitle: { color: Colors.brandDark, fontSize: 34, fontWeight: '800', fontFamily: 'Inter', marginBottom: 12, textAlign: 'center' },
+  successSubtitle: { color: Colors.slate, fontSize: 16.5, fontFamily: 'Inter', lineHeight: 22, textAlign: 'center', marginBottom: 28 },
   successCard: { backgroundColor: Colors.white, borderRadius: 20, padding: 20, width: '100%', marginBottom: 28, ...Shadows.card },
   successRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: 'rgba(144,153,184,0.15)' },
-  successLabel: { color: Colors.slate, fontSize: 14, fontFamily: 'Inter' },
-  successValue: { color: Colors.brandDark, fontSize: 14, fontWeight: '700', fontFamily: 'Inter' },
+  successLabel: { color: Colors.slate, fontSize: 16.5, fontFamily: 'Inter' },
+  successValue: { color: Colors.brandDark, fontSize: 16.5, fontWeight: '700', fontFamily: 'Inter' },
   secondaryBtn: {
     marginTop: 12, paddingVertical: 14, alignItems: 'center', borderRadius: 24,
     borderWidth: 1, borderColor: Colors.brandTeal, width: '100%',
   },
-  secondaryBtnText: { color: Colors.brandTeal, fontSize: 15, fontWeight: '600', fontFamily: 'Inter' },
+  secondaryBtnText: { color: Colors.brandTeal, fontSize: 18.5, fontWeight: '600', fontFamily: 'Inter' },
 });

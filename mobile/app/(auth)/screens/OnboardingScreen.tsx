@@ -1,19 +1,13 @@
 /**
  * OnboardingScreen.tsx
  *
- * Figma Source: SP - Onboarding 1-5 (IDs: 318:948, 326:1022, 326:1040, 326:1058, 326:1199)
- *
- * Design:
- * - bg: #F1F5F9 (light blue-gray)
- * - Logo: teal square (~73x89, radius 10) with white line icons + taskbuddy person icon
- * - Tagline: "Hire with confidence, pay with ease." — Darker Grotesque 800 18px #063E4D
- * - Illustrations per slide (using colored placeholder blocks)
- * - Bottom nav: dots progress + "Next" button + "Skip"
+ * v6 design: matches taskbuddy_UI_update.html's #onboarding screen — 3 slides
+ * (icon well + title + subtitle + body), dots progress, "Skip" ghost button,
+ * "Continue" / "Get Started" primary button.
  */
 
-import React, { useState, useRef } from 'react';
+import React, { useRef, useState } from 'react';
 import {
-  Animated,
   Dimensions,
   FlatList,
   StyleSheet,
@@ -22,53 +16,45 @@ import {
   View,
   ViewToken,
 } from 'react-native';
-import { Colors, Radii, Shadows, Spacing } from '../../../src/constants/theme';
+import { Shield, Sparkles, Wallet } from 'lucide-react-native';
+import { V6Colors, V6Radii, V6Shadows } from '../../../src/constants/theme';
 
 const { width: W } = Dimensions.get('window');
+const C = V6Colors;
 
 interface Slide {
   id: string;
+  Icon: typeof Sparkles;
   title: string;
+  titleAccent: string;
   subtitle: string;
-  illustrationBg: string;
-  illustrationAccent: string;
+  body: string;
 }
 
 const slides: Slide[] = [
   {
     id: '1',
-    title: 'Hire with\nconfidence, pay\nwith ease.',
-    subtitle: 'Post your job and let skilled workers come to you.',
-    illustrationBg: '#BFE8F5',
-    illustrationAccent: Colors.brandTeal,
+    Icon: Sparkles,
+    title: 'Get trusted help',
+    titleAccent: 'nearby',
+    subtitle: 'Post what you need. We’ll help you find the right person.',
+    body: 'Create a task, set your schedule and budget, then connect with verified local providers.',
   },
   {
     id: '2',
-    title: 'Browse trusted\nservice providers.',
-    subtitle: 'Review profiles, ratings, and past jobs before you hire.',
-    illustrationBg: '#C8F5E0',
-    illustrationAccent: '#22C55E',
+    Icon: Shield,
+    title: 'Hire with',
+    titleAccent: 'confidence',
+    subtitle: 'Know who you’re working with.',
+    body: 'Provider profiles, verification, ratings and clear job status help you make informed decisions.',
   },
   {
     id: '3',
-    title: 'Track every job\nin real time.',
-    subtitle: 'Get updates from posting to completion — all in one place.',
-    illustrationBg: '#FFF3C4',
-    illustrationAccent: '#F59E0B',
-  },
-  {
-    id: '4',
-    title: 'Pay safely\nthrough the app.',
-    subtitle: 'Funds are held securely and released only when you\'re satisfied.',
-    illustrationBg: '#E0D9FF',
-    illustrationAccent: '#8B5CF6',
-  },
-  {
-    id: '5',
-    title: 'Ready to get\nstarted?',
-    subtitle: 'Join thousands of homeowners and skilled providers on TaskBuddy.',
-    illustrationBg: '#FFD9D9',
-    illustrationAccent: '#EF4444',
+    Icon: Wallet,
+    title: 'Pay with',
+    titleAccent: 'peace of mind',
+    subtitle: 'Simple payments, clear progress.',
+    body: 'Keep job communication and payment activity together from posting through completion.',
   },
 ];
 
@@ -103,43 +89,24 @@ export default function OnboardingScreen({ onFinish, onLogin }: OnboardingScreen
 
   const renderSlide = ({ item }: { item: Slide }) => (
     <View style={styles.slide}>
-      {/* Illustration area */}
-      <View style={[styles.illustration, { backgroundColor: item.illustrationBg }]}>
-        {/* Logo mark */}
-        <View style={styles.logoMark}>
-          <View style={styles.logoRect}>
-            <View style={styles.logoLineWhite} />
-            <View style={[styles.logoLineWhite, { width: 24 }]} />
-            <View style={[styles.logoLineWhite, { width: 20 }]} />
-          </View>
-          <View style={styles.logoFigure}>
-            <View style={styles.logoHead} />
-            <View style={styles.logoBody} />
-          </View>
-        </View>
-        {/* Decorative dots */}
-        <View style={[styles.dot1, { backgroundColor: item.illustrationAccent }]} />
-        <View style={[styles.dot2, { backgroundColor: item.illustrationAccent, opacity: 0.4 }]} />
-        <View style={[styles.dot3, { backgroundColor: item.illustrationAccent, opacity: 0.2 }]} />
+      <View style={styles.iconWell}>
+        <item.Icon size={42} color={C.cyan700} strokeWidth={1.7} />
       </View>
-
-      {/* Content */}
-      <View style={styles.content}>
-        {/* TaskBuddy wordmark */}
-        <Text style={styles.wordmark}>TaskBuddy</Text>
-
-        <Text style={styles.title}>{item.title}</Text>
-        <Text style={styles.subtitle}>{item.subtitle}</Text>
-      </View>
+      <Text style={styles.title}>
+        {item.title} <Text style={styles.titleAccent}>{item.titleAccent}</Text>
+      </Text>
+      <Text style={styles.subtitle}>{item.subtitle}</Text>
+      <Text style={styles.body}>{item.body}</Text>
     </View>
   );
 
   return (
     <View style={styles.screen}>
-      {/* Skip button */}
-      <TouchableOpacity style={styles.skipBtn} onPress={handleSkip} activeOpacity={0.8}>
-        <Text style={styles.skipText}>Skip</Text>
-      </TouchableOpacity>
+      <View style={styles.skipRow}>
+        <TouchableOpacity style={styles.skipBtn} onPress={handleSkip} activeOpacity={0.8}>
+          <Text style={styles.skipText}>Skip</Text>
+        </TouchableOpacity>
+      </View>
 
       <FlatList
         ref={flatListRef}
@@ -153,9 +120,7 @@ export default function OnboardingScreen({ onFinish, onLogin }: OnboardingScreen
         viewabilityConfig={{ viewAreaCoveragePercentThreshold: 50 }}
       />
 
-      {/* Bottom controls */}
       <View style={styles.bottomBar}>
-        {/* Dot indicators */}
         <View style={styles.dots}>
           {slides.map((_, i) => (
             <View
@@ -165,14 +130,12 @@ export default function OnboardingScreen({ onFinish, onLogin }: OnboardingScreen
           ))}
         </View>
 
-        {/* Next / Get Started */}
         <TouchableOpacity style={styles.nextBtn} onPress={handleNext} activeOpacity={0.85}>
           <Text style={styles.nextBtnText}>
-            {currentIndex === slides.length - 1 ? 'Get Started' : 'Next'}
+            {currentIndex === slides.length - 1 ? 'Get Started' : 'Continue'}
           </Text>
         </TouchableOpacity>
       </View>
-
     </View>
   );
 }
@@ -180,134 +143,84 @@ export default function OnboardingScreen({ onFinish, onLogin }: OnboardingScreen
 const styles = StyleSheet.create({
   screen: {
     flex: 1,
-    backgroundColor: Colors.background,
+    backgroundColor: C.white,
+  },
+  skipRow: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    paddingHorizontal: 20,
+    paddingTop: 56,
   },
   skipBtn: {
-    position: 'absolute',
-    top: 60,
-    right: Spacing.screenH,
-    zIndex: 10,
-    backgroundColor: 'rgba(144,153,184,0.15)',
-    paddingHorizontal: 16,
+    backgroundColor: C.ink50,
+    paddingHorizontal: 14,
     paddingVertical: 8,
-    borderRadius: 999,
+    borderRadius: V6Radii.pill,
   },
   skipText: {
-    color: Colors.skipText,
-    fontSize: 14,
-    fontWeight: '500',
+    color: C.ink700,
+    fontSize: 15,
+    fontWeight: '600',
     fontFamily: 'Inter',
   },
 
   slide: {
     width: W,
-    flex: 1,
+    paddingHorizontal: 24,
+    paddingTop: 70,
+    alignItems: 'center',
   },
 
-  illustration: {
-    height: 420,
+  iconWell: {
+    width: 92,
+    height: 92,
+    borderRadius: 26,
+    backgroundColor: C.cyan50,
+    borderWidth: 1,
+    borderColor: C.cyan100,
     alignItems: 'center',
     justifyContent: 'center',
-    position: 'relative',
-    overflow: 'hidden',
+    marginBottom: 26,
   },
 
-  logoMark: {
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-    gap: 8,
-  },
-  logoRect: {
-    width: 73,
-    height: 89,
-    backgroundColor: Colors.brandCyan,
-    borderRadius: Radii.logo,
-    padding: 12,
-    justifyContent: 'space-around',
-  },
-  logoLineWhite: {
-    height: 5,
-    width: 33,
-    backgroundColor: Colors.white,
-    borderRadius: 50,
-  },
-  logoFigure: {
-    alignItems: 'center',
-    gap: 4,
-  },
-  logoHead: {
-    width: 22,
-    height: 22,
-    borderRadius: 11,
-    backgroundColor: '#FFEECF',
-  },
-  logoBody: {
-    width: 33,
-    height: 22,
-    backgroundColor: Colors.brandTeal,
-  },
-
-  dot1: {
-    position: 'absolute',
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    top: 40,
-    right: 40,
-    opacity: 0.6,
-  },
-  dot2: {
-    position: 'absolute',
-    width: 50,
-    height: 50,
-    borderRadius: 25,
-    bottom: 60,
-    left: 30,
-  },
-  dot3: {
-    position: 'absolute',
-    width: 120,
-    height: 120,
-    borderRadius: 60,
-    bottom: -30,
-    right: -20,
-  },
-
-  content: {
-    flex: 1,
-    paddingHorizontal: Spacing.screenH,
-    paddingTop: 28,
-  },
-  wordmark: {
-    fontFamily: 'League Spartan',
-    fontSize: 24,
-    fontWeight: '700',
-    color: Colors.brandDark,
-    marginBottom: 16,
-  },
   title: {
     fontFamily: 'Inter',
-    fontSize: 26,
+    fontSize: 32.5,
     fontWeight: '800',
-    color: Colors.brandDark,
-    lineHeight: 34,
-    marginBottom: 12,
+    letterSpacing: -0.81,
+    color: C.ink900,
+    textAlign: 'center',
+    lineHeight: 33,
+  },
+  titleAccent: {
+    color: C.cyan600,
   },
   subtitle: {
     fontFamily: 'Inter',
-    fontSize: 14,
-    fontWeight: '500',
-    color: Colors.muted,
+    fontSize: 19,
+    fontWeight: '700',
+    color: C.cyan900,
     lineHeight: 22,
+    textAlign: 'center',
+    marginTop: 9,
+  },
+  body: {
+    fontFamily: 'Inter',
+    fontSize: 16.5,
+    fontWeight: '400',
+    color: C.ink500,
+    textAlign: 'center',
+    lineHeight: 22,
+    marginTop: 12,
+    maxWidth: 300,
   },
 
   bottomBar: {
-    paddingHorizontal: Spacing.screenH,
-    paddingBottom: 36,
+    paddingHorizontal: 24,
+    paddingBottom: 32,
     paddingTop: 16,
-    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
+    gap: 16,
   },
   dots: {
     flexDirection: 'row',
@@ -317,26 +230,25 @@ const styles = StyleSheet.create({
     width: 8,
     height: 8,
     borderRadius: 4,
-    backgroundColor: '#D9D9D9',
+    backgroundColor: C.ink200,
   },
   dotIndicatorActive: {
     width: 24,
-    backgroundColor: Colors.brandDark,
+    backgroundColor: C.cyan600,
     borderRadius: 4,
   },
   nextBtn: {
-    backgroundColor: Colors.brandTeal,
-    borderRadius: Radii.button,
-    paddingHorizontal: 32,
+    width: '100%',
+    backgroundColor: C.cyan700,
+    borderRadius: V6Radii.btn,
     paddingVertical: 14,
-    ...Shadows.primaryButton,
+    alignItems: 'center',
+    ...V6Shadows.primaryButton,
   },
   nextBtnText: {
-    color: Colors.white,
-    fontSize: 15,
-    fontWeight: '600',
+    color: C.white,
+    fontSize: 18.5,
+    fontWeight: '700',
     fontFamily: 'Inter',
-    letterSpacing: 0.3,
   },
-
 });

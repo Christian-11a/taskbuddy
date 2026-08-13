@@ -66,12 +66,12 @@ const styles = StyleSheet.create({
   },
   logoText: {
     color: '#ffffff',
-    fontSize: 32,
+    fontSize: 34.5,
     fontWeight: '800',
   },
   tagline: {
     color: '#cbd5e1',
-    fontSize: 16,
+    fontSize: 17.5,
     textAlign: 'center',
     lineHeight: 24,
     maxWidth: 280,

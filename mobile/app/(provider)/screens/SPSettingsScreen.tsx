@@ -1,16 +1,11 @@
 /**
- * HOSettingsScreen.tsx
+ * SPSettingsScreen.tsx
  *
- * v6 design: matches taskbuddy_UI_update.html's #ho-settings screen — a flat
- * white .topbar (not a colored hero), a Notifications toggle card (3 native
- * switches, no per-row description text), an Account .navrow card, and a
- * single outline "Log Out" button.
- *
- * Also fixes a real bug found while restyling: the old file defined
- * `logoutBtn` styles but never rendered a logout button in the JSX, so there
- * was previously no way to log out from this screen at all despite
- * `onLogout` being a prop. Wired it now, with the same confirmation-modal
- * pattern used on the Profile screen.
+ * Mirrors HOSettingsScreen.tsx's structure exactly — flat white .topbar, an
+ * Appearance card (Dark Mode), a Notifications toggle card (3 native
+ * switches), an Account .navrow card, and an outline "Log Out" button —
+ * since the mockup never gave providers a Settings screen at all (only
+ * homeowners had #ho-settings) and there's no reason the two should differ.
  *
  * "Dark Mode" is a UI-only placeholder for now — local state, no actual
  * theme switching wired up (left as a follow-up).
@@ -53,12 +48,12 @@ import { api } from '../../../src/lib/api';
 
 const SUPPORT_EMAIL = 'support@taskbuddy.ph';
 
-interface HOSettingsScreenProps {
+interface SPSettingsScreenProps {
   onBack: () => void;
   onLogout: () => void;
 }
 
-export default function HOSettingsScreen({ onBack, onLogout }: HOSettingsScreenProps) {
+export default function SPSettingsScreen({ onBack, onLogout }: SPSettingsScreenProps) {
   const [darkMode, setDarkMode] = useState(false);
   const [pushNotifs, setPushNotifs] = useState(true);
   const [emailNotifs, setEmailNotifs] = useState(true);

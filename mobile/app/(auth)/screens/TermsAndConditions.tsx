@@ -9,14 +9,15 @@ import {
   View,
 } from 'react-native';
 import { ArrowLeft } from 'lucide-react-native';
-import { Colors } from '../../../src/constants/theme';
+import { V6Colors, V6Radii, V6Shadows } from '../../../src/constants/theme';
 
 const C = {
-  ...Colors,
-  bg: '#F8FAFC',
-  dark: '#1E1E1E',
-  slate: '#757575',
-  mutedBorder: 'rgba(144,153,184,0.3)',
+  ...V6Colors,
+  bg: V6Colors.canvas,
+  dark: V6Colors.ink900,
+  slate: V6Colors.ink500,
+  brandDark: V6Colors.cyan900,
+  brandTeal: V6Colors.cyan700,
 } as const;
 
 interface TermsAndConditionsProps {
@@ -102,7 +103,7 @@ export default function TermsAndConditions({
         >
           <View style={styles.topSection}>
             <TouchableOpacity style={styles.backBtn} onPress={onBack} activeOpacity={0.8}>
-              <ArrowLeft size={20} color={C.white} />
+              <ArrowLeft size={22} color={C.white} />
             </TouchableOpacity>
             <Text style={styles.title}>{content.title}</Text>
           </View>
@@ -163,14 +164,14 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  title: { color: C.white, fontSize: 20, fontWeight: '700', fontFamily: 'Inter', flex: 1 },
+  title: { color: C.white, fontSize: 24.5, fontWeight: '700', fontFamily: 'Inter', flex: 1 },
 
   card: {
     backgroundColor: C.white,
-    borderRadius: 30,
+    borderRadius: V6Radii.card,
     padding: 24,
-    shadowColor: '#063D4D',
-    shadowOpacity: 0.08,
+    shadowColor: '#0f172a',
+    shadowOpacity: 0.06,
     shadowOffset: { width: 0, height: 12 },
     shadowRadius: 25,
     elevation: 6,
@@ -180,33 +181,29 @@ const styles = StyleSheet.create({
   section: { marginBottom: 16 },
   sectionTitle: {
     color: C.dark,
-    fontSize: 15,
+    fontSize: 18.5,
     fontWeight: '700',
     fontFamily: 'Inter',
     marginBottom: 6,
   },
   bodyText: {
     color: C.slate,
-    fontSize: 14,
+    fontSize: 16.5,
     fontFamily: 'Inter',
     lineHeight: 22,
   },
 
   primaryBtn: {
     backgroundColor: C.brandTeal,
-    borderRadius: 24,
+    borderRadius: V6Radii.btn,
     paddingVertical: 15,
     alignItems: 'center',
-    shadowColor: C.brandTeal,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.35,
-    shadowRadius: 12,
-    elevation: 5,
+    ...V6Shadows.primaryButton,
   },
   primaryBtnText: {
     color: C.white,
     fontFamily: 'Inter',
-    fontSize: 15,
+    fontSize: 18.5,
     fontWeight: '600',
     letterSpacing: 0.3,
   },

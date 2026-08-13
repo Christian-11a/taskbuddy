@@ -26,15 +26,19 @@ import {
   View,
 } from 'react-native';
 import { ArrowLeft, Check, ChevronDown } from 'lucide-react-native';
-import { Colors } from '../../../src/constants/theme';
+import { V6Colors, V6Radii, V6Shadows } from '../../../src/constants/theme';
 import TermsAndConditions from './TermsAndConditions';
 
 const C = {
-  ...Colors,
-  bg: '#F8FAFC',
-  dark: '#1E1E1E',
-  slate: '#757575',
-  mutedBorder: 'rgba(144,153,184,0.3)',
+  ...V6Colors,
+  bg: V6Colors.canvas,
+  dark: V6Colors.ink900,
+  slate: V6Colors.ink500,
+  muted: V6Colors.ink400,
+  mutedBorder: '#dce3e9',
+  brandDark: V6Colors.cyan900,
+  brandTeal: V6Colors.cyan700,
+  brandRed: '#ef4444',
 } as const;
 
 const SKILL_CATEGORIES = [
@@ -76,7 +80,7 @@ function ConsentCheckbox({ checked, onPress, label, error, testID }: ConsentChec
           onPress={onPress}
           activeOpacity={0.7}
         >
-          {checked ? <Check size={13} color={C.white} /> : null}
+          {checked ? <Check size={14} color={C.white} /> : null}
         </TouchableOpacity>
         <Text style={styles.consentText}>{label}</Text>
       </View>
@@ -186,7 +190,7 @@ export default function GoogleSPDetailsScreen({
           {/* Back button */}
           <View style={styles.topRow}>
             <TouchableOpacity style={styles.backBtn} onPress={onBack} activeOpacity={0.8}>
-              <ArrowLeft size={20} color={C.white} />
+              <ArrowLeft size={22} color={C.white} />
             </TouchableOpacity>
           </View>
 
@@ -212,7 +216,7 @@ export default function GoogleSPDetailsScreen({
                   {selectedCategory ? selectedCategory.name : 'Select your skill…'}
                 </Text>
                 <ChevronDown
-                  size={16}
+                  size={18}
                   color={C.muted}
                   style={{ transform: [{ rotate: categoryOpen ? '180deg' : '0deg' }] }}
                 />
@@ -241,7 +245,7 @@ export default function GoogleSPDetailsScreen({
                       >
                         {cat.name}
                       </Text>
-                      {cat.id === categoryId && <Check size={14} color={C.brandTeal} />}
+                      {cat.id === categoryId && <Check size={15} color={C.brandTeal} />}
                     </TouchableOpacity>
                   ))}
                 </View>
@@ -373,7 +377,7 @@ const styles = StyleSheet.create({
 
   card: {
     backgroundColor: C.white,
-    borderRadius: 30,
+    borderRadius: V6Radii.card,
     padding: 24,
     shadowColor: '#063D4D',
     shadowOpacity: 0.08,
@@ -382,12 +386,12 @@ const styles = StyleSheet.create({
     elevation: 6,
   },
 
-  title: { color: C.dark, fontSize: 24, fontWeight: '700', fontFamily: 'Inter', marginBottom: 4 },
-  subtitle: { color: C.slate, fontSize: 13, fontFamily: 'Inter', marginBottom: 20, lineHeight: 20 },
+  title: { color: C.dark, fontSize: 29, fontWeight: '700', fontFamily: 'Inter', marginBottom: 4 },
+  subtitle: { color: C.slate, fontSize: 15.5, fontFamily: 'Inter', marginBottom: 20, lineHeight: 20 },
 
   fieldGroup: { marginBottom: 20 },
-  fieldLabel: { fontFamily: 'Inter', fontSize: 13, fontWeight: '600', color: C.brandDark, marginBottom: 6 },
-  asterisk: { color: Colors.error ?? Colors.brandRed, fontWeight: '700' },
+  fieldLabel: { fontFamily: 'Inter', fontSize: 15.5, fontWeight: '600', color: C.brandDark, marginBottom: 6 },
+  asterisk: { color: C.brandRed, fontWeight: '700' },
 
   picker: {
     backgroundColor: '#F8FAFC',
@@ -400,9 +404,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
   },
-  pickerError: { borderColor: Colors.error ?? Colors.brandRed },
-  pickerValue: { fontFamily: 'Inter', fontSize: 15, color: '#0F172A' },
-  pickerPlaceholder: { fontFamily: 'Inter', fontSize: 15, color: C.muted },
+  pickerError: { borderColor: C.brandRed },
+  pickerValue: { fontFamily: 'Inter', fontSize: 18.5, color: '#0F172A' },
+  pickerPlaceholder: { fontFamily: 'Inter', fontSize: 18.5, color: C.muted },
 
   dropdown: {
     marginTop: 4, borderRadius: 12, borderWidth: 1,
@@ -414,12 +418,12 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1, borderBottomColor: '#F1F5F9',
   },
   dropdownOptionActive: { backgroundColor: 'rgba(9,110,139,0.06)' },
-  dropdownOptionText: { fontFamily: 'Inter', fontSize: 14, color: C.dark },
+  dropdownOptionText: { fontFamily: 'Inter', fontSize: 16.5, color: C.dark },
   dropdownOptionTextActive: { color: C.brandTeal, fontWeight: '700' },
 
   fieldError: {
-    fontFamily: 'Inter', fontSize: 12,
-    color: Colors.error ?? Colors.brandRed,
+    fontFamily: 'Inter', fontSize: 14.5,
+    color: C.brandRed,
     marginTop: 5, marginLeft: 2, lineHeight: 17,
   },
 
@@ -428,7 +432,7 @@ const styles = StyleSheet.create({
     paddingTop: 16, marginBottom: 8,
   },
   consentSectionTitle: {
-    fontFamily: 'Inter', fontSize: 12, fontWeight: '700',
+    fontFamily: 'Inter', fontSize: 14.5, fontWeight: '700',
     color: C.brandDark, textTransform: 'uppercase',
     letterSpacing: 0.5, marginBottom: 12,
   },
@@ -441,25 +445,24 @@ const styles = StyleSheet.create({
     marginTop: 1, flexShrink: 0,
   },
   checkboxChecked: { backgroundColor: C.brandTeal, borderColor: C.brandTeal },
-  consentText: { flex: 1, color: C.slate, fontSize: 13, fontFamily: 'Inter', lineHeight: 20 },
+  consentText: { flex: 1, color: C.slate, fontSize: 15.5, fontFamily: 'Inter', lineHeight: 20 },
   link: { color: C.brandTeal, fontWeight: '700', textDecorationLine: 'underline' },
-  requiredNote: { color: C.muted, fontSize: 11, fontFamily: 'Inter', marginTop: 4 },
+  requiredNote: { color: C.muted, fontSize: 13.5, fontFamily: 'Inter', marginTop: 4 },
 
   errorBanner: {
-    color: Colors.error ?? Colors.brandRed,
-    fontFamily: 'Inter', fontSize: 13,
+    color: C.brandRed,
+    fontFamily: 'Inter', fontSize: 15.5,
     marginBottom: 12, lineHeight: 18,
   },
 
   primaryBtn: {
-    backgroundColor: C.brandTeal, borderRadius: 24, paddingVertical: 15,
+    backgroundColor: C.brandTeal, borderRadius: V6Radii.btn, paddingVertical: 15,
     alignItems: 'center', marginTop: 8,
-    shadowColor: C.brandTeal, shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.35, shadowRadius: 12, elevation: 5,
+    ...V6Shadows.primaryButton,
   },
   primaryBtnDisabled: { opacity: 0.7 },
   primaryBtnText: {
     color: C.white, fontFamily: 'Inter',
-    fontSize: 15, fontWeight: '600', letterSpacing: 0.3,
+    fontSize: 18.5, fontWeight: '600', letterSpacing: 0.3,
   },
 });

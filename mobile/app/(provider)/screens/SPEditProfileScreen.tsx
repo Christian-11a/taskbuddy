@@ -1,27 +1,59 @@
 /**
  * SPEditProfileScreen.tsx
  *
- * Figma Source: "SP - Edit Profile" (id: 46:1048)
+ * v6 design: matches taskbuddy_UI_update.html's #sp-edit-profile screen — a
+ * flat white .topbar (not a colored hero), a circular avatar with a plain
+ * "Change Photo" text link (not a pill button), and a flat flowing list of
+ * .field inputs (no card grouping) ending in one full-width Save button.
+ *
+ * Deviation: the mockup's "Hourly rate" and "Portfolio" fields have no
+ * backing columns in the real backend (ProviderProfile has no hourly_rate
+ * or portfolio_urls), so they're left out rather than fabricated. "Service
+ * radius" IS a real field (service_radius_km) — kept as a real numeric km
+ * input instead of the mockup's free-text demo string.
  */
 
 import React, { useState } from 'react';
 import {
-  KeyboardAvoidingView, Platform, ScrollView,
-  StyleSheet, Text, TextInput, TouchableOpacity, View,
+  KeyboardAvoidingView,
+  Platform,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from 'react-native';
-import { Camera } from 'lucide-react-native';
+import { ArrowLeft } from 'lucide-react-native';
 import ConfirmationModal from '../../../src/components/ConfirmationModal';
-import { Colors, Radii, Shadows, Sizes, Spacing } from '../../../src/constants/theme';
+import { Sizes, Spacing, V6Colors, V6Radii, V6Shadows } from '../../../src/constants/theme';
+
+const C = V6Colors;
 import { useAuth } from '../../../src/context/AuthContext';
 import { useAsyncData } from '../../../src/hooks/useAsyncData';
 import { api } from '../../../src/lib/api';
 import { initials } from '../../../src/lib/format';
 
-interface SPEditProfileScreenProps { onBack: () => void; onSave: () => void; }
+interface SPEditProfileScreenProps {
+  onBack: () => void;
+  onSave: () => void;
+}
 
-function Field({ label, value, onChange, placeholder, multiline, keyboard, editable = true }: {
-  label: string; value: string; onChange?: (v: string) => void;
-  placeholder?: string; multiline?: boolean; keyboard?: 'default' | 'email-address' | 'phone-pad';
+function FormField({
+  label,
+  value,
+  onChangeText,
+  placeholder,
+  multiline,
+  keyboardType,
+  editable = true,
+}: {
+  label: string;
+  value: string;
+  onChangeText?: (v: string) => void;
+  placeholder?: string;
+  multiline?: boolean;
+  keyboardType?: 'default' | 'email-address' | 'phone-pad' | 'number-pad';
   editable?: boolean;
 }) {
   const [focused, setFocused] = useState(false);
@@ -29,15 +61,20 @@ function Field({ label, value, onChange, placeholder, multiline, keyboard, edita
     <View style={styles.fieldGroup}>
       <Text style={styles.fieldLabel}>{label}</Text>
       <TextInput
-        style={[styles.fieldInput, multiline && styles.fieldInputMulti, focused && styles.fieldInputFocused, !editable && styles.fieldInputDisabled]}
+        style={[
+          styles.fieldInput,
+          multiline && styles.fieldInputMultiline,
+          focused && styles.fieldInputFocused,
+          !editable && styles.fieldInputDisabled,
+        ]}
         value={value}
-        onChangeText={onChange}
+        onChangeText={onChangeText}
         placeholder={placeholder}
-        placeholderTextColor={Colors.muted}
+        placeholderTextColor={C.ink400}
         multiline={multiline}
-        keyboardType={keyboard}
+        keyboardType={keyboardType}
         editable={editable}
-        autoCapitalize={keyboard === 'email-address' ? 'none' : 'words'}
+        autoCapitalize={keyboardType === 'email-address' ? 'none' : 'words'}
         onFocus={() => setFocused(true)}
         onBlur={() => setFocused(false)}
       />
@@ -54,9 +91,8 @@ export default function SPEditProfileScreen({ onBack, onSave }: SPEditProfileScr
   const [location, setLocation] = useState(profile?.address ?? '');
   const [city, setCity] = useState(profile?.city ?? '');
   const [bio, setBio] = useState(providerProfile?.bio ?? '');
-  const [categoryId, setCategoryId] = useState<number | null>(
-    providerProfile?.category_id ?? null,
-  );
+  const [radius, setRadius] = useState(String(providerProfile?.service_radius_km ?? ''));
+  const [categoryId, setCategoryId] = useState<number | null>(providerProfile?.category_id ?? null);
   const [showSaveConfirmation, setShowSaveConfirmation] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -66,8 +102,7 @@ export default function SPEditProfileScreen({ onBack, onSave }: SPEditProfileScr
     setError(null);
     if (!name.trim()) return setError('Full name cannot be empty.');
     if (!categoryId) return setError('Please select the service you offer.');
-    if (bio.trim().length < 20)
-      return setError('Bio must be at least 20 characters.');
+    if (bio.trim().length < 20) return setError('Bio must be at least 20 characters.');
     setShowSaveConfirmation(true);
   };
 
@@ -86,7 +121,7 @@ export default function SPEditProfileScreen({ onBack, onSave }: SPEditProfileScr
         category_id: categoryId!,
         bio: bio.trim(),
         years_experience: providerProfile?.years_experience,
-        service_radius_km: providerProfile?.service_radius_km,
+        service_radius_km: radius.trim() ? Number(radius) : providerProfile?.service_radius_km,
       });
       await refreshProfile();
       onSave();
@@ -99,62 +134,53 @@ export default function SPEditProfileScreen({ onBack, onSave }: SPEditProfileScr
 
   return (
     <View style={styles.screen}>
+      {/* Header — matches .topbar (flat white, not a colored hero) */}
       <View style={styles.header}>
-        <View style={styles.headerRow}>
-          <TouchableOpacity style={styles.backBtn} onPress={onBack} activeOpacity={0.8}>
-            <Text style={styles.backIcon}>←</Text>
-          </TouchableOpacity>
-          <Text style={styles.headerTitle}>Edit Profile</Text>
-          <TouchableOpacity onPress={requestSave} activeOpacity={0.8}>
-            <Text style={styles.saveTextBtn}>Save</Text>
-          </TouchableOpacity>
-        </View>
-        <View style={styles.avatarSection}>
-          <View style={styles.avatarCircle}><Text style={styles.avatarText}>{initials(name)}</Text></View>
-          <TouchableOpacity style={styles.photoBtn} activeOpacity={0.8}>
-            <View style={styles.photoBtnContent}>
-              <Camera size={15} color={Colors.white} />
-              <Text style={styles.photoBtnLabel}>Change Photo</Text>
-            </View>
-            <Text style={styles.photoBtnText}>📷 Change Photo</Text>
-          </TouchableOpacity>
-        </View>
+        <TouchableOpacity style={styles.backBtn} onPress={onBack} activeOpacity={0.8}>
+          <ArrowLeft size={20} color={C.ink700} />
+        </TouchableOpacity>
+        <Text style={styles.headerTitle}>Edit Profile</Text>
+        <View style={{ width: 38 }} />
       </View>
 
       <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
-        <ScrollView style={styles.body} contentContainerStyle={styles.bodyContent} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
-          <View style={styles.card}>
-            <Text style={styles.cardTitle}>Personal Info</Text>
-            <Field label="Full Name" value={name} onChange={setName} />
-            <Field label="Email" value={email} keyboard="email-address" editable={false} />
-            <Field label="Phone" value={phone} onChange={setPhone} keyboard="phone-pad" />
+        <ScrollView
+          style={styles.body}
+          contentContainerStyle={styles.bodyContent}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+        >
+          {/* Avatar */}
+          <View style={styles.avatarSection}>
+            <View style={styles.avatarCircle}>
+              <Text style={styles.avatarText}>{initials(name)}</Text>
+            </View>
+            <TouchableOpacity activeOpacity={0.7}>
+              <Text style={styles.changePhotoLink}>Change Photo</Text>
+            </TouchableOpacity>
           </View>
 
-          <View style={styles.card}>
-            <Text style={styles.cardTitle}>Location</Text>
-            <Field label="Service Area" value={location} onChange={setLocation} placeholder="Barangay, Street" />
-            <Field label="City" value={city} onChange={setCity} placeholder="City / Municipality" />
-          </View>
+          <FormField label="Full name" value={name} onChangeText={setName} placeholder="Your full name" />
+          <FormField label="Email" value={email} placeholder="email@example.com" keyboardType="email-address" editable={false} />
+          <FormField label="Phone" value={phone} onChangeText={setPhone} placeholder="+63 9XX XXX XXXX" keyboardType="phone-pad" />
+          <FormField label="Address" value={location} onChangeText={setLocation} placeholder="House no., Barangay, Street" />
+          <FormField label="City" value={city} onChangeText={setCity} placeholder="City / Municipality" />
+          <FormField label="Bio (min 20 characters)" value={bio} onChangeText={setBio} multiline placeholder="Describe your experience..." />
+          <FormField label="Service radius (km)" value={radius} onChangeText={setRadius} keyboardType="number-pad" placeholder="8" />
 
-          <View style={styles.card}>
-            <Text style={styles.cardTitle}>Professional Bio</Text>
-            <Field label="About You (min 20 characters)" value={bio} onChange={setBio} multiline placeholder="Describe your experience..." />
-          </View>
-
-          <View style={styles.card}>
-            <Text style={styles.cardTitle}>Service Offered</Text>
-            <Text style={styles.cardSub}>Choose the category you work in</Text>
-            <View style={styles.skillsGrid}>
+          <View style={styles.fieldGroup}>
+            <Text style={styles.fieldLabel}>Service offered</Text>
+            <View style={styles.chipGrid}>
               {(categories.data ?? []).map((cat) => {
                 const active = categoryId === cat.id;
                 return (
                   <TouchableOpacity
                     key={cat.id}
-                    style={[styles.skillChip, active && styles.skillChipActive]}
+                    style={[styles.chip, active && styles.chipActive]}
                     onPress={() => setCategoryId(cat.id)}
                     activeOpacity={0.8}
                   >
-                    <Text style={[styles.skillChipText, active && styles.skillChipTextActive]}>{cat.name}</Text>
+                    <Text style={[styles.chipText, active && styles.chipTextActive]}>{cat.name}</Text>
                   </TouchableOpacity>
                 );
               })}
@@ -163,7 +189,12 @@ export default function SPEditProfileScreen({ onBack, onSave }: SPEditProfileScr
 
           {!!error && <Text style={styles.errorText}>{error}</Text>}
 
-          <TouchableOpacity style={[styles.saveBtn, saving && styles.saveBtnDisabled]} onPress={requestSave} activeOpacity={0.85} disabled={saving}>
+          <TouchableOpacity
+            style={[styles.saveBtn, saving && styles.saveBtnDisabled]}
+            onPress={requestSave}
+            activeOpacity={0.85}
+            disabled={saving}
+          >
             <Text style={styles.saveBtnText}>{saving ? 'Saving…' : 'Save Changes'}</Text>
           </TouchableOpacity>
 
@@ -184,38 +215,59 @@ export default function SPEditProfileScreen({ onBack, onSave }: SPEditProfileScr
 
 const styles = StyleSheet.create({
   flex: { flex: 1 },
-  screen: { flex: 1, backgroundColor: Colors.background },
-  header: { backgroundColor: Colors.brandDark, paddingTop: Sizes.statusBarHeight, paddingHorizontal: Spacing.screenH, paddingBottom: 24, borderBottomLeftRadius: 28, borderBottomRightRadius: 28 },
-  headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingTop: 12, marginBottom: 20 },
-  headerTitle: { color: Colors.white, fontSize: 20, fontWeight: '700', fontFamily: 'Inter' },
-  backBtn: { width: 40, height: 40, borderRadius: 12, backgroundColor: 'rgba(255,255,255,0.15)', alignItems: 'center', justifyContent: 'center' },
-  backIcon: { color: Colors.white, fontSize: 20, fontWeight: '600' },
-  saveTextBtn: { color: Colors.brandCyan, fontSize: 15, fontWeight: '700', fontFamily: 'Inter' },
-  avatarSection: { alignItems: 'center', gap: 12 },
-  avatarCircle: { width: 80, height: 80, borderRadius: 24, backgroundColor: Colors.brandCyan, alignItems: 'center', justifyContent: 'center', borderWidth: 3, borderColor: 'rgba(255,255,255,0.3)' },
-  avatarText: { color: Colors.white, fontSize: 28, fontWeight: '800', fontFamily: 'Inter' },
-  photoBtn: { backgroundColor: 'rgba(255,255,255,0.15)', borderRadius: 20, paddingHorizontal: 16, paddingVertical: 8 },
-  photoBtnText: { display: 'none' },
-  photoBtnContent: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  photoBtnLabel: { color: Colors.white, fontSize: 13, fontWeight: '600', fontFamily: 'Inter' },
+  screen: { flex: 1, backgroundColor: C.canvas },
+
+  header: {
+    flexDirection: 'row', alignItems: 'center', gap: 12,
+    backgroundColor: C.white,
+    paddingTop: Sizes.statusBarHeight,
+    paddingHorizontal: Spacing.screenH,
+    paddingBottom: 12,
+    borderBottomWidth: 1, borderBottomColor: '#edf1f4',
+  },
+  backBtn: {
+    width: 38, height: 38, borderRadius: 12,
+    backgroundColor: C.white, borderWidth: 1, borderColor: '#e8edf2',
+    alignItems: 'center', justifyContent: 'center',
+  },
+  headerTitle: { flex: 1, color: C.ink900, fontSize: 19.5, fontWeight: '800', fontFamily: 'Inter' },
+
+  avatarSection: { alignItems: 'center', marginBottom: 20 },
+  avatarCircle: {
+    width: 76, height: 76, borderRadius: 38,
+    backgroundColor: C.cyan600, alignItems: 'center', justifyContent: 'center',
+    marginBottom: 8,
+  },
+  avatarText: { color: C.white, fontSize: 26, fontWeight: '800', fontFamily: 'Inter' },
+  changePhotoLink: { fontSize: 14, color: C.cyan700, fontWeight: '700', fontFamily: 'Inter' },
+
   body: { flex: 1 },
   bodyContent: { paddingHorizontal: Spacing.screenH, paddingTop: 20, paddingBottom: 20 },
-  card: { backgroundColor: Colors.white, borderRadius: Radii.card, padding: 20, marginBottom: 16, ...Shadows.card },
-  cardTitle: { color: Colors.brandDark, fontSize: 15, fontWeight: '800', fontFamily: 'Inter', marginBottom: 4 },
-  cardSub: { color: Colors.muted, fontSize: 12, fontFamily: 'Inter', marginBottom: 14 },
-  fieldGroup: { marginBottom: 14 },
-  fieldLabel: { color: Colors.brandDark, fontSize: 13, fontWeight: '600', fontFamily: 'Inter', marginBottom: 6 },
-  fieldInput: { backgroundColor: Colors.backgroundAlt, borderRadius: 12, paddingHorizontal: 16, paddingVertical: 13, borderWidth: 1, borderColor: 'rgba(144,153,184,0.3)', fontFamily: 'Inter', fontSize: 14, color: Colors.brandDark },
-  fieldInputMulti: { height: 90, textAlignVertical: 'top' },
-  fieldInputFocused: { borderColor: Colors.brandTeal },
-  fieldInputDisabled: { color: Colors.muted, backgroundColor: 'rgba(144,153,184,0.08)' },
-  errorText: { color: Colors.error, fontSize: 13, fontFamily: 'Inter', marginBottom: 12, textAlign: 'center' },
+
+  fieldGroup: { marginBottom: 16 },
+  fieldLabel: { color: C.ink900, fontSize: 14, fontWeight: '700', fontFamily: 'Inter', marginBottom: 6 },
+  fieldInput: {
+    backgroundColor: C.white, borderRadius: 12, paddingHorizontal: 14, minHeight: 46,
+    borderWidth: 1, borderColor: '#dce3e9',
+    fontFamily: 'Inter', fontSize: 16.5, color: C.ink900,
+  },
+  fieldInputMultiline: { height: 90, textAlignVertical: 'top', paddingTop: 12 },
+  fieldInputFocused: { borderColor: C.cyan500 },
+  fieldInputDisabled: { color: C.ink400, backgroundColor: C.ink50 },
+
+  chipGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  chip: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 999, borderWidth: 1, borderColor: '#dce3e9', backgroundColor: C.white },
+  chipActive: { backgroundColor: C.ink900, borderColor: C.ink900 },
+  chipText: { color: C.ink500, fontSize: 14.5, fontWeight: '600', fontFamily: 'Inter' },
+  chipTextActive: { color: C.white },
+
+  errorText: { color: '#ef4444', fontSize: 15.5, fontFamily: 'Inter', marginBottom: 12, textAlign: 'center' },
+
+  saveBtn: {
+    backgroundColor: C.cyan700, borderRadius: V6Radii.btn, paddingVertical: 14,
+    alignItems: 'center', marginTop: 4,
+    ...V6Shadows.primaryButton,
+  },
   saveBtnDisabled: { opacity: 0.7 },
-  skillsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  skillChip: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 999, borderWidth: 1, borderColor: 'rgba(144,153,184,0.3)', backgroundColor: Colors.white },
-  skillChipActive: { backgroundColor: Colors.brandDark, borderColor: Colors.brandDark },
-  skillChipText: { color: Colors.muted, fontSize: 13, fontWeight: '600', fontFamily: 'Inter' },
-  skillChipTextActive: { color: Colors.white },
-  saveBtn: { backgroundColor: Colors.brandTeal, borderRadius: 24, paddingVertical: 15, alignItems: 'center', marginTop: 4, shadowColor: Colors.brandTeal, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.35, shadowRadius: 12, elevation: 5 },
-  saveBtnText: { color: Colors.white, fontSize: 15, fontWeight: '600', fontFamily: 'Inter', letterSpacing: 0.3 },
+  saveBtnText: { color: C.white, fontSize: 16.5, fontWeight: '700', fontFamily: 'Inter' },
 });
