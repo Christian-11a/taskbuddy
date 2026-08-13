@@ -78,7 +78,7 @@ mobile/
     ├── lib/format.ts           # peso(), shortDate(), timeAgo(), jobStatusMeta()…
     ├── context/AuthContext.tsx # Session, profile, role, signInWithGoogle
     ├── hooks/useAsyncData.ts   # { data, loading, error, reload }
-    ├── components/             # AppHeader, bottom nav bars, modals, skeletons
+    ├── components/             # BottomNavBar, ConfirmationModal, ScreenSkeleton, HelpSupportScreen
     ├── constants/theme.ts      # Colors, Radii, Shadows, Sizes, Spacing
     └── types/navigation.ts     # Screen key unions
 ```
@@ -100,9 +100,20 @@ per role, plus a selected `jobId` threaded through
 ```
 initializing         → SplashScreen
 not authenticated    → Onboarding → Login / Register
-role 'homeowner'     → HO tab bar (Home, My Jobs, Create, Wallet, Profile)
-role 'provider'      → SP tab bar (Home, My Jobs, Calendar, Wallet, Profile)
+role 'homeowner'     → HO tab bar (Home, My Jobs, Create, Calendar, Wallet)
+role 'provider'      → SP tab bar (Feed, My Work, Calendar, Wallet)
 ```
+
+Neither tab bar has a Profile tab — Profile is reached via the avatar button
+in Home's/Feed's header, matching the design mockup rather than the app's
+earlier Figma-era layout.
+
+Non-tab screens (Job Detail, Chat, Edit Profile, Settings, Help & Support,
+…) are tracked on a small back-stack (`hoStack`/`spStack` in `App.tsx`), not
+just "jump to the active tab" — `hoNavigate`/`spNavigate` push the screen
+being left before switching, and `hoBack`/`spBack` pop it. Landing on a tab
+(or the Create Job flow) resets the stack, same as tapping a tab in a native
+app.
 
 Adding a new screen requires three edits: add the key to
 `src/types/navigation.ts`, render it in `App.tsx`, and navigate to it via
@@ -195,10 +206,11 @@ creation and verification endpoints submit.
 | `HOChatScreen` | `POST /conversations` then message listing |
 | `HOWalletScreen` | `GET /wallet`; **Add Money** posts `POST /payments/checkout-session` and opens Stripe Checkout in a browser |
 | `HODisputeFilingScreen` | `POST /jobs/:jobId/disputes` |
-| `HOProfile` | Displays profile data |
+| `HOProfile` | Displays profile data; menu is Edit Profile / Settings / Help & Support |
 | `HOEditProfileScreen` | `PATCH /profiles/me`, then `refreshProfile()` |
 | `HONotificationsScreen` | `GET /notifications`; mark read / read-all |
-| `HOSettingsScreen` | Local-only toggles (nothing persisted) |
+| `HOSettingsScreen` | `POST /auth/change-password` (real); Dark Mode, notification toggles, Language, Delete Account are all local-only UI — see [What's Not Wired Yet](#whats-not-wired-yet) |
+| `HelpSupportScreen` (shared, `src/components/`) | Static FAQ + `mailto:` support link — no backend |
 
 ### Provider (Service Provider — `SP*`)
 
@@ -212,8 +224,9 @@ creation and verification endpoints submit.
 | `SPWalletScreen` | `GET /wallet` |
 | `SPNotificationsScreen` | `GET /notifications` |
 | `SPVerificationScreen` | ID + selfie upload, `POST /verifications`, shows review status |
-| `SPProfileScreen` | Displays profile + provider-specific data |
+| `SPProfileScreen` | Displays profile + provider-specific data + a real verified/unverified badge (`providerProfile.is_verified`); menu is Edit Profile / Get Verified / Settings / Help & Support |
 | `SPEditProfileScreen` | `PATCH /profiles/me` + `PUT /profiles/me/provider` |
+| `SPSettingsScreen` | Mirrors `HOSettingsScreen` — same real/placeholder split |
 
 ---
 
@@ -257,32 +270,28 @@ Full rules: `backend/BACKEND_SCHEMA.md` §18.
 
 ### 🔧 Recent mobile updates
 
-- Wired **Add Money** to Stripe hosted Checkout: `POST /payments/checkout-session`
-  then `WebBrowser.openAuthSessionAsync`, returning through the app's deep link.
-  This replaces the direct `POST /wallet/transactions` credit, which the backend
-  now refuses — that call minted wallet balance with no payment behind it, and
-  wallet balance pays for real work through escrow.
-  The wallet is credited by Stripe's webhook, so the screen polls `GET /wallet`
-  briefly after the browser closes rather than assuming the balance moved.
-- Removed unsupported `@stripe/stripe-react-native` from the Expo app so the wallet screen compiles and Expo Go can start normally. Checkout needs no native module; PaymentSheet stays available on the backend for when the team moves to an EAS dev build.
-- Fixed `HOLeaveReviewScreen.tsx` back button rendering so the back action only appears when provided.
-- Added a date calendar and selected-date filtering to `HOMyJobs`.
-- Added explicit job actions in `HOJobDetailScreen` for viewing applications and leaving a review.
-- Added new `HOJobApplicationsScreen`, `HOLeaveReviewScreen`, and `HOProviderProfileScreen` screen files in the homeowner section.
-- Added new navigation entries for the homeowner job applications, review, and provider profile flows.
+Detailed, dated history of what changed and why lives in
+[`CHANGELOG.md`](./CHANGELOG.md). Short version: both roles' screens were
+rebuilt against the design mockup (`taskbuddy_UI_update.html`, outside this
+repo) rather than the app's earlier Figma-era layouts, navigation moved from
+"jump to the active tab" to a real back-stack, and each role's Profile menu
+was trimmed to remove rows that duplicated a bottom-nav tab or a header icon.
 
 ### ⚠️ What's Not Wired Yet
 
 | Thing | Status |
 |-------|--------|
-| **Applicant list for clients** | No screen to view / accept provider applications — the biggest functional gap; `POST /applications/:id/accept` and the full escrow flow can't be triggered from the app |
+| **Dark Mode** | Toggle exists in both Settings screens and persists nothing — it's local `useState`. No theme-switching is wired up. See [`CHANGELOG.md`](./CHANGELOG.md) for the approach that was built and then deliberately reverted (kept as UI only, on purpose, as a follow-up task) — and the ~40 screens still using inline hex colors instead of `V6Colors` tokens, which is the real blocker before the toggle can do anything |
+| **Language** | Settings modal states English is the only option — no i18n system exists to back a real picker |
+| **Delete Account** | No self-serve deletion endpoint. The Settings row opens a `mailto:` to support instead of pretending to delete |
+| **Notification toggles** (push/email/SMS) | Local `useState` on both Settings screens; nothing is saved or wired to a real preferences backend |
 | **Review submission** | `api.reviewJob` exists; nothing calls it — ratings are displayed only |
-| **Wallet Withdraw / Transfer** | Buttons are present but have no handler |
+| **Wallet Withdraw / Transfer** | Buttons are present but have no handler — there's no withdraw endpoint on the backend |
 | **Forgot password** | UI only — no backend reset endpoint |
 | **Realtime chat** | Messages only refresh on mount; call and attachment buttons are inert |
 | **Avatar / photo upload** | "Change Photo" does nothing; `avatar_url` is never sent |
-| **Settings persistence** | Toggles are local `useState`; nothing is saved |
 | **Provider calendar write** | Bookings are created by the backend when a job is assigned, not from this screen |
+| **Notch/edge-to-edge status-bar spacing** | `Sizes.statusBarHeight` uses `StatusBar.currentHeight` (Android, built-in RN API) as a floor under the previous fixed `52`, which fixes most cases without a new dependency — but it's read once at module load, not on rotation/inset changes, and iOS still uses a fixed estimate. A full fix means adopting `react-native-safe-area-context` (new dependency) and touching header padding in every screen |
 
 ---
 
@@ -307,7 +316,13 @@ Full rules: `backend/BACKEND_SCHEMA.md` §18.
   consistent.
 - Review the chat interface.
 - Add a properly functioning animated splash screen.
-- Create a dark-mode color palette.
+- **Wire up Dark Mode.** The toggle UI already exists on both Settings
+  screens; what's missing is the actual palette-switching. Before that can
+  work, the inline hex colors scattered across most screens need replacing
+  with `V6Colors` token references — see
+  [What's Not Wired Yet](#whats-not-wired-yet) and `CHANGELOG.md` for the
+  approach already prototyped once (built, then deliberately reverted to
+  leave this as an open task).
 - Replace inline screen-header filter options with a filter button that opens a
   modal containing the available filters.
 - Add consistent skeleton loading states throughout the app.
