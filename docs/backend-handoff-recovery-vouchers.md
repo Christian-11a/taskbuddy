@@ -31,7 +31,8 @@ against a user story; read "What's already done" first — most of it is already
   column including `kind`.
 - **Schema**: `backend/supabase/migrations/0021_recovery_credit_kind.sql` adds `'recovery_credit'`
   to the `wallet_txn_kind` enum (same idempotent `add value if not exists` pattern as 0018).
-  Applied directly via Supabase SQL editor — should already be live by the time you read this.
+  **Applied and verified 2026-08-17** — the endpoint below can insert `kind: 'recovery_credit'`
+  rows immediately, no migration step needed first.
 
 ## What's still yours: the issuance endpoint
 
@@ -121,7 +122,7 @@ build that once the endpoint is live — no point wiring a button to a route tha
 
 | Item | Size | Blocked on |
 |---|---|---|
-| `wallet_txn_kind` gets `'recovery_credit'` | done | — applied via Supabase, nothing needed |
+| `wallet_txn_kind` gets `'recovery_credit'` | done | — applied and verified 2026-08-17 |
 | Dispute progress timeline (mobile) | done | — built on the existing `GET /jobs/:jobId/disputes` |
 | Wallet's Recovery Vouchers section (mobile) | done | — waiting on real data, not on more mobile work |
 | `POST /admin/wallet-transactions/recovery-credit` | small | nothing — can start now |
