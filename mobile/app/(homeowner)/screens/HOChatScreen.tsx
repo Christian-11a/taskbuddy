@@ -34,7 +34,12 @@ import { Sizes, Spacing, V6Colors } from '../../../src/constants/theme';
 
 const C = V6Colors;
 import { useAuth } from '../../../src/context/AuthContext';
-import { api, type Conversation, type Message } from '../../../src/lib/api';
+import {
+  api,
+  mergeMessageById,
+  type Conversation,
+  type Message,
+} from '../../../src/lib/api';
 import { initials, timeOfDay } from '../../../src/lib/format';
 
 interface HOChatScreenProps {
@@ -55,6 +60,7 @@ export default function HOChatScreen({ jobId, onBack, onViewJob }: HOChatScreenP
 
   useEffect(() => {
     let active = true;
+    let stopStream: (() => void) | undefined;
     (async () => {
       setLoading(true);
       setError(null);
@@ -65,6 +71,13 @@ export default function HOChatScreen({ jobId, onBack, onViewJob }: HOChatScreenP
         if (active) {
           setConversation(convo);
           setMessages(msgs);
+          stopStream = api.streamMessages(
+            convo.id,
+            msgs[msgs.length - 1]?.created_at,
+            (message) => {
+              if (active) setMessages((previous) => mergeMessageById(previous, message));
+            },
+          );
         }
         api.markConversationRead(convo.id).catch(() => {});
       } catch (e) {
@@ -75,6 +88,7 @@ export default function HOChatScreen({ jobId, onBack, onViewJob }: HOChatScreenP
     })();
     return () => {
       active = false;
+      stopStream?.();
     };
   }, [jobId]);
 
@@ -84,7 +98,7 @@ export default function HOChatScreen({ jobId, onBack, onViewJob }: HOChatScreenP
     setSending(true);
     try {
       const msg = await api.sendMessage(conversation.id, body);
-      setMessages((prev) => [...prev, msg]);
+      setMessages((previous) => mergeMessageById(previous, msg));
       setText('');
       setTimeout(() => listRef.current?.scrollToEnd({ animated: true }), 100);
     } catch {

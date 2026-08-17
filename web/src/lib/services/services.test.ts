@@ -1,12 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("@/lib/api/session", () => ({
-  getStoredSession: vi.fn(() => null),
-  setStoredSession: vi.fn(),
-  clearStoredSession: vi.fn(),
-}));
-
-import { clearStoredSession, getStoredSession, setStoredSession } from "@/lib/api/session";
+import { clearAdminSession, getAdminSession, setAdminSession } from "@/lib/api/session";
 import * as services from "./index";
 
 function jsonResponse(body: unknown, status = 200): Response {
@@ -21,6 +15,7 @@ const originalFetch = global.fetch;
 
 beforeEach(() => {
   vi.clearAllMocks();
+  clearAdminSession();
 });
 
 afterEach(() => {
@@ -28,7 +23,7 @@ afterEach(() => {
 });
 
 describe("login", () => {
-  it("stores the session and returns true on success", async () => {
+  it("creates a cookie session and returns the validated admin identity", async () => {
     global.fetch = vi.fn(() =>
       Promise.resolve(
         jsonResponse({
@@ -38,45 +33,36 @@ describe("login", () => {
             full_name: "Ana Cruz",
             role: "admin",
           },
-          session: { access_token: "tok", refresh_token: "ref", expires_at: 123 },
+          csrf_token: "csrf-123",
         }),
       ),
     ) as unknown as typeof fetch;
 
-    const ok = await services.login("admin@taskbuddy.io", "pw");
+    const profile = await services.login("admin@taskbuddy.io", "pw");
 
-    expect(ok).toBe(true);
-    // The refresh token is kept so an expired session renews instead of
-    // forcing a logout, and the display name comes from the profile now.
-    expect(setStoredSession).toHaveBeenCalledWith({
-      accessToken: "tok",
-      refreshToken: "ref",
-      adminProfile: { name: "Ana Cruz", email: "admin@taskbuddy.io" },
-    });
+    expect(profile).toEqual({ id: "u1", name: "Ana Cruz", email: "admin@taskbuddy.io" });
+    expect(global.fetch).toHaveBeenCalledWith(
+      expect.stringContaining("/auth/admin/login"),
+      expect.objectContaining({ credentials: "include", method: "POST" }),
+    );
   });
 
-  it("falls back to the email when the profile has no name", async () => {
+  it("rejects a login response without an admin identity or CSRF token", async () => {
     global.fetch = vi.fn(() =>
       Promise.resolve(
         jsonResponse({
           user: {
             id: "u1",
             email: "admin@taskbuddy.io",
-            full_name: null,
-            role: "admin",
+            full_name: "Ana Cruz",
+            role: "client",
           },
-          session: { access_token: "tok", refresh_token: "ref", expires_at: 123 },
+          csrf_token: "",
         }),
       ),
     ) as unknown as typeof fetch;
 
-    await services.login("admin@taskbuddy.io", "pw");
-
-    expect(setStoredSession).toHaveBeenCalledWith(
-      expect.objectContaining({
-        adminProfile: { name: "admin@taskbuddy.io", email: "admin@taskbuddy.io" },
-      }),
-    );
+    await expect(services.login("admin@taskbuddy.io", "pw")).resolves.toBeNull();
   });
 
   it("returns false on invalid credentials", async () => {
@@ -86,17 +72,62 @@ describe("login", () => {
 
     const ok = await services.login("admin@taskbuddy.io", "wrong");
 
-    expect(ok).toBe(false);
+    expect(ok).toBeNull();
+  });
+});
+
+describe("restoreSession", () => {
+  it("restores an admin identity and CSRF token from the cookie session", async () => {
+    global.fetch = vi.fn(() =>
+      Promise.resolve(jsonResponse({
+        user: { id: "u1", full_name: "Ana Cruz", role: "admin" },
+        csrf_token: "csrf-restored",
+      })),
+    ) as unknown as typeof fetch;
+
+    await expect(services.restoreSession()).resolves.toEqual({
+      id: "u1", name: "Ana Cruz", email: "",
+    });
+    expect(global.fetch).toHaveBeenCalledWith(
+      expect.stringContaining("/auth/admin/session"),
+      expect.objectContaining({ credentials: "include" }),
+    );
+    expect(getAdminSession()?.csrfToken).toBe("csrf-restored");
+  });
+
+  it("restores identity after refreshing an expired cookie before memory exists", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse({ message: "Expired" }, 401))
+      .mockResolvedValueOnce(jsonResponse({ csrf_token: "csrf-refreshed" }))
+      .mockResolvedValueOnce(jsonResponse({
+        user: { id: "u1", full_name: "Ana Cruz", role: "admin" },
+        csrf_token: "csrf-session",
+      }));
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    await expect(services.restoreSession()).resolves.toEqual({
+      id: "u1", name: "Ana Cruz", email: "",
+    });
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      expect.stringContaining("/auth/admin/refresh"),
+      expect.objectContaining({ credentials: "include", method: "POST" }),
+    );
+    expect(getAdminSession()?.csrfToken).toBe("csrf-session");
   });
 });
 
 describe("logout", () => {
-  it("clears the stored session even if the request fails", async () => {
+  it("calls the admin cookie logout endpoint", async () => {
     global.fetch = vi.fn(() => Promise.reject(new Error("network down"))) as unknown as typeof fetch;
 
     await services.logout();
 
-    expect(clearStoredSession).toHaveBeenCalled();
+    expect(global.fetch).toHaveBeenCalledWith(
+      expect.stringContaining("/auth/admin/logout"),
+      expect.objectContaining({ credentials: "include", method: "POST" }),
+    );
   });
 });
 
@@ -167,6 +198,61 @@ describe("getBookings", () => {
     expect(bookings).toEqual([
       { id: "j1", customerName: "Alice", providerName: "Unassigned", service: "Plumbing", status: "open", scheduledDate: "2026-01-01", amount: 0 },
     ]);
+  });
+});
+
+describe("paginated admin searches", () => {
+  it("constructs booking search, status, limit, and offset from page state", async () => {
+    const fetchMock = vi.fn(() => Promise.resolve(jsonResponse({ bookings: [], total: 23 })));
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    await expect(services.searchBookings({ search: "Ramos", status: "completed", page: 3, pageSize: 7 }))
+      .resolves.toEqual({ items: [], total: 23 });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining("/admin/bookings?search=Ramos&status=completed&limit=7&offset=14"),
+      expect.any(Object),
+    );
+  });
+
+  it("sends the confirmed booking status supported by the booking filter", async () => {
+    const fetchMock = vi.fn(() => Promise.resolve(jsonResponse({ bookings: [], total: 0 })));
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    await services.searchBookings({ search: "", status: "confirmed", page: 1, pageSize: 7 });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining("/admin/bookings?status=confirmed&limit=7&offset=0"),
+      expect.any(Object),
+    );
+  });
+
+  it("constructs escrow search, status, limit, and offset from page state", async () => {
+    const fetchMock = vi.fn(() => Promise.resolve(jsonResponse({ transactions: [], total: 8 })));
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    await expect(services.searchTransactions({ search: "Ana Cruz", status: "held", page: 2, pageSize: 7 }))
+      .resolves.toEqual({ items: [], total: 8 });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining("/admin/transactions?search=Ana+Cruz"),
+      expect.any(Object),
+    );
+    const [url] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+    expect(url).toContain("status=held&limit=7&offset=7");
+  });
+
+  it("constructs activity search, limit, and offset from page state", async () => {
+    const fetchMock = vi.fn(() => Promise.resolve(jsonResponse({ items: [], total: 15 })));
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    await expect(services.searchActivity({ search: "sink repair", page: 2, pageSize: 7 }))
+      .resolves.toEqual({ items: [], total: 15 });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining("/admin/activity?search=sink+repair&limit=7&offset=7"),
+      expect.any(Object),
+    );
   });
 });
 
@@ -456,10 +542,10 @@ describe("maintenance mode", () => {
 });
 
 describe("updateDisplayName", () => {
-  it("patches the profile and mirrors the new name into the stored session", async () => {
-    vi.mocked(getStoredSession).mockReturnValue({
-      accessToken: "tok",
-      adminProfile: { name: "Old Name", email: "admin@taskbuddy.io" },
+  it("patches the profile and mirrors the new name into the in-memory session", async () => {
+    setAdminSession({
+      csrfToken: "csrf-123",
+      adminProfile: { id: "u1", name: "Old Name", email: "admin@taskbuddy.io" },
     });
     const fetchMock = vi.fn(() => Promise.resolve(jsonResponse({ id: "u1", full_name: "New Name" })));
     global.fetch = fetchMock as unknown as typeof fetch;
@@ -471,13 +557,12 @@ describe("updateDisplayName", () => {
       expect.stringContaining("/profiles/me"),
       expect.objectContaining({ method: "PATCH", body: JSON.stringify({ full_name: "New Name" }) }),
     );
-    expect(setStoredSession).toHaveBeenCalledWith(
-      expect.objectContaining({ adminProfile: { name: "New Name", email: "admin@taskbuddy.io" } }),
-    );
+    expect(getAdminSession()?.adminProfile).toEqual({
+      id: "u1", name: "New Name", email: "admin@taskbuddy.io",
+    });
   });
 
   it("returns false when the request fails", async () => {
-    vi.mocked(getStoredSession).mockReturnValue(null);
     global.fetch = vi.fn(() => Promise.resolve(jsonResponse({ message: "nope" }, 400))) as unknown as typeof fetch;
 
     expect(await services.updateDisplayName("New Name")).toBe(false);

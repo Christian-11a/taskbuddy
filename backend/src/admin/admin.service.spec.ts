@@ -28,6 +28,10 @@ type QueryResult = {
  */
 function createSupabaseMock(resultsByTable: Record<string, QueryResult[]>) {
   const calls: { table: string; method: string; args: unknown[] }[] = [];
+  const rpc = jest.fn().mockResolvedValue({ data: [], error: null });
+  const getPublicUrl = jest.fn().mockImplementation((path: string) => ({
+    data: { publicUrl: `https://storage.test/job-photos/${path}` },
+  }));
   const from = jest.fn((table: string) => {
     const result = resultsByTable[table]?.shift() ?? {
       data: null,
@@ -67,11 +71,17 @@ function createSupabaseMock(resultsByTable: Record<string, QueryResult[]>) {
   const resetPasswordForEmail = jest.fn().mockResolvedValue({ error: null });
   return {
     supabase: {
-      admin: { from },
+      admin: {
+        from,
+        rpc,
+        storage: { from: jest.fn(() => ({ getPublicUrl })) },
+      },
       anon: { auth: { resetPasswordForEmail } },
     } as unknown as SupabaseService,
     calls,
     resetPasswordForEmail,
+    rpc,
+    getPublicUrl,
   };
 }
 
@@ -354,27 +364,99 @@ describe('AdminService', () => {
         NotFoundException,
       );
     });
+
+    it('converts job photo storage paths to public URLs', async () => {
+      const row = { id: 'j1', photo_urls: ['client-1/photo.jpg'] };
+      const { supabase, getPublicUrl } = createSupabaseMock({
+        jobs: [{ data: row, error: null }],
+      });
+      const service = new AdminService(supabase, createAdminActionsMock().mock);
+
+      await expect(service.getBooking('j1')).resolves.toEqual({
+        ...row,
+        photo_urls: ['https://storage.test/job-photos/client-1/photo.jpg'],
+      });
+      expect(getPublicUrl).toHaveBeenCalledWith('client-1/photo.jpg');
+    });
+
+    it('preserves absolute photo URLs and replaces malformed values with an empty list', async () => {
+      const absoluteUrl = 'https://cdn.example.test/photo.jpg';
+      const { supabase, getPublicUrl } = createSupabaseMock({
+        jobs: [
+          { data: { id: 'j1', photo_urls: [absoluteUrl] }, error: null },
+          { data: { id: 'j2', photo_urls: 'not-an-array' }, error: null },
+        ],
+      });
+      const service = new AdminService(supabase, createAdminActionsMock().mock);
+
+      await expect(service.getBooking('j1')).resolves.toMatchObject({
+        photo_urls: [absoluteUrl],
+      });
+      await expect(service.getBooking('j2')).resolves.toMatchObject({
+        photo_urls: [],
+      });
+      expect(getPublicUrl).not.toHaveBeenCalled();
+    });
   });
 
   describe('listBookings', () => {
     it('filters by status and returns total', async () => {
       const rows = [{ id: 'j1', status: 'completed' }];
-      const { supabase, calls } = createSupabaseMock({
-        jobs: [{ data: rows, error: null, count: 1 }],
+      const { supabase, rpc } = createSupabaseMock({});
+      rpc.mockResolvedValue({
+        data: [{ rows, total: 1 }],
+        error: null,
       });
       const service = new AdminService(supabase, createAdminActionsMock().mock);
 
       const result = await service.listBookings({ status: 'completed' });
 
       expect(result).toEqual({ bookings: rows, total: 1 });
-      expect(
-        calls.some(
-          (c) =>
-            c.method === 'eq' &&
-            c.args[0] === 'status' &&
-            c.args[1] === 'completed',
-        ),
-      ).toBe(true);
+      expect(rpc).toHaveBeenCalledWith('admin_list_bookings', {
+        p_search_term: null,
+        p_status: 'completed',
+        p_category_id: null,
+        p_limit: 20,
+        p_offset: 0,
+      });
+    });
+
+    it('uses a paginated bookings search RPC and returns its rows and exact total', async () => {
+      const rows = [{ id: 'j1', status: 'completed' }];
+      const { supabase, calls, rpc } = createSupabaseMock({});
+      rpc.mockResolvedValue({
+        data: [{ rows, total: 42 }],
+        error: null,
+      });
+      const service = new AdminService(supabase, createAdminActionsMock().mock);
+
+      await expect(
+        service.listBookings({
+          search: 'Ramos',
+          status: 'completed',
+          category_id: 2,
+          limit: 5,
+          offset: 10,
+        }),
+      ).resolves.toEqual({ bookings: rows, total: 42 });
+      expect(rpc).toHaveBeenCalledWith('admin_list_bookings', {
+        p_search_term: 'Ramos',
+        p_status: 'completed',
+        p_category_id: 2,
+        p_limit: 5,
+        p_offset: 10,
+      });
+      expect(calls).toEqual([]);
+    });
+
+    it('retains the exact bookings total when the requested page is empty', async () => {
+      const { supabase, rpc } = createSupabaseMock({});
+      rpc.mockResolvedValue({ data: [{ rows: [], total: 42 }], error: null });
+      const service = new AdminService(supabase, createAdminActionsMock().mock);
+
+      await expect(
+        service.listBookings({ search: 'Ramos', limit: 5, offset: 100 }),
+      ).resolves.toStrictEqual({ bookings: [], total: 42 });
     });
   });
 
@@ -479,25 +561,28 @@ describe('AdminService', () => {
           changed_by: { full_name: 'Georgina Ramos' },
         },
       ];
-      const { supabase, calls } = createSupabaseMock({
-        job_status_history: [{ data: rows, error: null, count: 1 }],
+      const { supabase, rpc } = createSupabaseMock({});
+      rpc.mockResolvedValue({
+        data: [{ rows, total: 1 }],
+        error: null,
       });
       const service = new AdminService(supabase, createAdminActionsMock().mock);
 
       const result = await service.recentActivity({});
 
       expect(result).toEqual({ items: rows, total: 1 });
-      expect(
-        calls.some(
-          (c) => c.method === 'range' && c.args[0] === 0 && c.args[1] === 19,
-        ),
-      ).toBe(true);
+      expect(rpc).toHaveBeenCalledWith('admin_list_activity', {
+        p_search_term: null,
+        p_from: null,
+        p_to: null,
+        p_limit: 20,
+        p_offset: 0,
+      });
     });
 
     it('applies from/to as changed_at bounds', async () => {
-      const { supabase, calls } = createSupabaseMock({
-        job_status_history: [{ data: [], error: null, count: 0 }],
-      });
+      const { supabase, rpc } = createSupabaseMock({});
+      rpc.mockResolvedValue({ data: [], error: null });
       const service = new AdminService(supabase, createAdminActionsMock().mock);
 
       await service.recentActivity({
@@ -505,28 +590,57 @@ describe('AdminService', () => {
         to: '2026-07-31T00:00:00Z',
       });
 
-      expect(
-        calls.some(
-          (c) =>
-            c.method === 'gte' &&
-            c.args[0] === 'changed_at' &&
-            c.args[1] === '2026-07-01T00:00:00Z',
-        ),
-      ).toBe(true);
-      expect(
-        calls.some(
-          (c) =>
-            c.method === 'lte' &&
-            c.args[0] === 'changed_at' &&
-            c.args[1] === '2026-07-31T00:00:00Z',
-        ),
-      ).toBe(true);
+      expect(rpc).toHaveBeenCalledWith('admin_list_activity', {
+        p_search_term: null,
+        p_from: '2026-07-01T00:00:00Z',
+        p_to: '2026-07-31T00:00:00Z',
+        p_limit: 20,
+        p_offset: 0,
+      });
+    });
+
+    it('uses a paginated activity search RPC and returns its rows and exact total', async () => {
+      const rows = [{ id: 1, jobs: { title: 'Fix sink' } }];
+      const { supabase, calls, rpc } = createSupabaseMock({});
+      rpc.mockResolvedValue({
+        data: [{ rows, total: 23 }],
+        error: null,
+      });
+      const service = new AdminService(supabase, createAdminActionsMock().mock);
+
+      await expect(
+        service.recentActivity({
+          search: 'sink',
+          from: '2026-08-01T00:00:00Z',
+          to: '2026-08-31T00:00:00Z',
+          limit: 5,
+          offset: 10,
+        }),
+      ).resolves.toEqual({ items: rows, total: 23 });
+      expect(rpc).toHaveBeenCalledWith('admin_list_activity', {
+        p_search_term: 'sink',
+        p_from: '2026-08-01T00:00:00Z',
+        p_to: '2026-08-31T00:00:00Z',
+        p_limit: 5,
+        p_offset: 10,
+      });
+      expect(calls).toEqual([]);
+    });
+
+
+    it('retains the exact activity total when the requested page is empty', async () => {
+      const { supabase, rpc } = createSupabaseMock({});
+      rpc.mockResolvedValue({ data: [{ rows: [], total: 23 }], error: null });
+      const service = new AdminService(supabase, createAdminActionsMock().mock);
+
+      await expect(
+        service.recentActivity({ search: 'sink', limit: 5, offset: 100 }),
+      ).resolves.toStrictEqual({ items: [], total: 23 });
     });
 
     it('throws BadRequestException on query error', async () => {
-      const { supabase } = createSupabaseMock({
-        job_status_history: [{ data: null, error: { message: 'boom' } }],
-      });
+      const { supabase, rpc } = createSupabaseMock({});
+      rpc.mockResolvedValue({ data: null, error: { message: 'boom' } });
       const service = new AdminService(supabase, createAdminActionsMock().mock);
 
       await expect(service.recentActivity({})).rejects.toThrow(
@@ -598,9 +712,7 @@ describe('AdminService', () => {
 
     it('defaults maintenance_message to null when omitted', async () => {
       const { supabase, calls } = createSupabaseMock({
-        platform_settings: [
-          { data: { maintenance_mode: false }, error: null },
-        ],
+        platform_settings: [{ data: { maintenance_mode: false }, error: null }],
       });
       const service = new AdminService(supabase, createAdminActionsMock().mock);
 

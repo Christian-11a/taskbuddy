@@ -1,35 +1,23 @@
-# Backend handoff — booking confirmation, job checklists, verification
+# Backend handoff — deployment prerequisites and smoke checks
 
-**Who this is for:** whoever holds Supabase and Render access for TaskBuddy. The two halves are
-split so they can be done by different people, in this order:
+**Who this is for:** whoever holds Supabase, API-host, web-host, and Expo access
+for TaskBuddy. This is an operator runbook for code in the worktree; it does
+not claim that any external deployment has occurred.
 
 | | Task | Needs | Status |
 |---|---|---|---|
-| **Part A** | Apply migrations 0018 and 0019 | Supabase SQL Editor | ✅ **Done — 2026-08-14** |
-| **Part B** | Redeploy the API, and check Stripe Identity is on | Render (+ Stripe dashboard) | ⬜ **Outstanding** |
+| **Part A** | Apply migrations 0018, 0019, and 0020 | Supabase SQL Editor | Operator action |
+| **Part B** | Configure API/web/Expo environment and deploy artifacts | API host, web host, Expo | Operator action |
 
-> **If you are picking this up: skip to [Part B](#part-b--render-and-stripe).** Part A was applied
-> on 2026-08-14 and verified — all four checks in §3 pass, including the Storage policies (4/4),
-> which are the only ones that can fail quietly. Part A is kept below for the record and because
-> both migrations are idempotent, so re-running them is harmless if you want to confirm for
-> yourself.
-
-Everything described here is **already written and committed** — API code, SQL migrations, mobile
-app, and admin console. Nothing below asks you to write code.
-
-**Part A was safe to do on its own, and was.** Both migrations are additive, and the currently
-deployed API neither reads `job_tasks` nor ever writes `'confirmed'` — so applying them changed
-nothing observable, and nothing will change until Part B lands. There is no window where the
-database is ahead of the API in a way anyone can notice.
-
-**Part B is what unblocks the app.** Until the API is redeployed, **the mobile app cannot post
-jobs** — `POST /jobs` now sends a `tasks` array and the deployed API rejects unknown fields with a
-400 (`forbidNonWhitelisted`). Migrations alone do not fix that; only the deploy does. Everything
-else in the app degrades quietly in the meantime (no checklists, Accept returns 404).
+Everything described here is implemented in the worktree: API code, SQL
+migrations, mobile app, and admin console. Nothing below asks an operator to
+write code. Applying database migrations alone is insufficient: the API must
+be deployed after them, and the web console needs its matching origin and API
+URL configuration.
 
 ---
 
-## Part A — Supabase (done 2026-08-14; kept for the record)
+## Part A — Supabase
 
 ### 1. Apply migration `0018_job_confirmed_status.sql`
 
@@ -64,10 +52,28 @@ the migration still applies, and you add those four policies through Dashboard �
 from the file. Nothing is exposed while you do: the bucket is private regardless, and the API only
 ever hands out short-lived signed URLs to admins.
 
-### 3. Verify Part A landed
+### 3. Apply and verify migration `0020_admin_search_functions.sql`
 
-**All four of these were run on 2026-08-14 and answered as expected**, including #4 at 4/4. They
-are repeatable if you want to confirm the state yourself.
+Run 0020 after 0019. It creates the `admin_list_bookings`,
+`admin_list_activity`, and `admin_list_transactions` RPCs. They search,
+filter, order, paginate, and count in SQL, and grant execution only to
+`service_role`; the browser never calls them directly.
+
+```sql
+select routine_name
+from information_schema.routines
+where routine_schema = 'public'
+  and routine_name in (
+    'admin_list_bookings',
+    'admin_list_activity',
+    'admin_list_transactions'
+  );
+-- expect all three names
+```
+
+### 4. Verify migrations 0018 and 0019
+
+Run these checks against the target Supabase project before deploying the API.
 
 ```sql
 -- 1. the new status exists
@@ -92,17 +98,51 @@ did not apply; re-run it and read the error rather than moving on.
 
 ---
 
-## Part B — Render, and Stripe
+## Part B — External deployment
 
-### 4. Redeploy the API on Render
+### 5. Configure and deploy the API
 
-Deploy the current `main` (or whichever branch carries this work). **After Part A, never before:**
+Deploy the branch that carries this work. **After Part A, never before:**
 the API reads `job_tasks` on every job query, so against a database without it, every job endpoint
 fails with PostgREST's `Could not find a relationship between 'jobs' and 'job_tasks'`.
 
-No new environment variables are required.
+Set `WEB_CORS_ORIGINS` to a comma-separated list of exact admin-console
+origins, for example:
 
-**Smoke test after the deploy** (any provider token):
+```env
+WEB_CORS_ORIGINS=https://your-admin.example.com,http://localhost:3000
+```
+
+Do not use `*`: browser-admin authentication uses `credentials: 'include'` and
+httpOnly cross-site cookies. Keep the existing Supabase, Stripe, Google, and
+`PUBLIC_API_URL` settings. Set `EXPO_ACCESS_TOKEN` only when Expo push security
+is enabled for the Expo project.
+
+### 6. Configure and deploy the web console
+
+Set the web host's `NEXT_PUBLIC_API_URL` to the deployed API's HTTPS origin,
+then deploy the current web artifact. Its origin must exactly match one entry
+in `WEB_CORS_ORIGINS`. The console uses `/auth/admin/*` cookie endpoints,
+keeps only its CSRF token in memory, and sends `credentials: 'include'`.
+
+### 7. Smoke test after external deployment
+
+Use an admin account in a browser:
+
+1. Sign in and confirm the response sets `tb_admin_access`,
+   `tb_admin_refresh` (httpOnly), and `tb_admin_csrf` cookies.
+2. Refresh the page. The console should restore its session via
+   `GET /auth/admin/session` without a token in local storage.
+3. Search and paginate Bookings, Transactions, and Activity Log. Confirm the
+   displayed total and a page beyond the first are returned by the API.
+4. Open a booking that has photos. Confirm `photo_urls` are browser-renderable
+   URLs rather than unresolved Storage paths.
+5. On two physical mobile devices, open the same conversation and send a
+   message. The other chat should receive its SSE event while open. Permit
+   notifications after sign-in, trigger a notification, and confirm Expo push
+   delivery plus the in-app notification row.
+
+For a bearer-token API check (any provider token):
 
 ```bash
 curl -s "$API/jobs" -H "Authorization: Bearer $TOKEN" | head -c 400
@@ -112,7 +152,7 @@ curl -s "$API/jobs" -H "Authorization: Bearer $TOKEN" | head -c 400
 If `summary` comes back but `job_tasks` is missing from the job objects, migration 0019 did not
 apply — go back to Part A rather than debugging the API.
 
-### 5. Turn on Stripe Identity (only if it is not already on)
+### 8. Turn on Stripe Identity (only if it is not already on)
 
 The verification flow's third step opens a Stripe Identity session. The API code and the mobile
 screen are done; what may be missing is the product being enabled on the Stripe account:
@@ -193,11 +233,11 @@ references it — but the old API build does not read it, so there is rarely a r
 
 ---
 
-## Still not done (deliberately, and not blocking any of the above)
+## Still not done (deliberately, and not blocking the deployment steps)
 
-- **Push delivery for the new notifications.** `POST /jobs/:id/accept` writes a `notifications`
-  row like every other lifecycle event; the app polls that table. There is still no FCM/APNs
-  transport, so "notifies the homeowner" means in-app, not on the lock screen.
+- **Call signalling and message attachments.** Chat messages are delivered live
+  over authenticated SSE, but the call buttons still have no signalling path
+  and `POST /conversations/:id/messages` has no attachment field.
 - **A `PENDING_VERIFICATION` column on `provider_profiles`.** The app derives that state from the
   provider's latest `provider_verifications` row (`status = 'pending'`), which is already the
   source of truth. A denormalised column would be a second one to keep in step; if you ever want

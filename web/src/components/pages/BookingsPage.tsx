@@ -1,11 +1,12 @@
 "use client";
 
-import { Fragment, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import { Search, XCircle, ChevronDown, Download } from "lucide-react";
 import { useApp } from "@/context/AppContext";
 import { datedFilename, downloadCsv, toCsv } from "@/lib/export/csv";
 import * as services from "@/lib/services";
 import type { AdminBookingDetail } from "@/lib/domain";
+import { toBookingRow, type BookingRow } from "@/lib/adapters";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { Pagination } from "@/components/ui/Pagination";
 import { useToast } from "@/components/ui/Toast";
@@ -18,6 +19,7 @@ type StatusFilter =
   | "Open"
   | "Matching"
   | "Assigned"
+  | "Confirmed"
   | "In Progress"
   | "Completed"
   | "Cancelled"
@@ -28,6 +30,7 @@ const STATUS_ACCENTS: Record<StatusFilter, string> = {
   Open: "#f59e0b",
   Matching: "#60a5fa",
   Assigned: "#8b5cf6",
+  Confirmed: "#06b6d4",
   "In Progress": "#a855f7",
   Completed: "#22c55e",
   Cancelled: "#ef4444",
@@ -35,7 +38,7 @@ const STATUS_ACCENTS: Record<StatusFilter, string> = {
 };
 
 export function BookingsPage() {
-  const { bookings, cancelBooking, loading } = useApp();
+  const { cancelBooking } = useApp();
   const { showToast } = useToast();
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
@@ -48,12 +51,46 @@ export function BookingsPage() {
   const [cancelingId, setCancelingId] = useState<string | null>(null);
   const [confirmingExport, setConfirmingExport] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [bookings, setBookings] = useState<BookingRow[]>([]);
+  const [total, setTotal] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const [reloadNonce, setReloadNonce] = useState(0);
+
+  useEffect(() => {
+    /* eslint-disable react-hooks/set-state-in-effect -- fetching page-local data */
+    let cancelled = false;
+    setLoading(true);
+    void services.searchBookings({
+      search,
+      status: statusFilter === "all" ? undefined : {
+        Open: "open", Matching: "recommending", Assigned: "assigned", Confirmed: "confirmed", "In Progress": "in_progress",
+        Completed: "completed", Cancelled: "cancelled", Expired: "expired",
+      }[statusFilter],
+      page,
+      pageSize: PAGE_SIZE,
+    }).then((result) => {
+      if (!cancelled) {
+        setBookings(result.items.map(toBookingRow));
+        setTotal(result.total);
+        setLoading(false);
+      }
+    }).catch(() => {
+      if (!cancelled) {
+        setBookings([]);
+        setTotal(0);
+        setLoading(false);
+      }
+    });
+    return () => { cancelled = true; };
+    /* eslint-enable react-hooks/set-state-in-effect */
+  }, [search, statusFilter, page, reloadNonce]);
 
   async function confirmCancel() {
     if (!cancelTarget) return;
     setCancelingId(cancelTarget.id);
     try {
       await cancelBooking(cancelTarget.id);
+      setReloadNonce((value) => value + 1);
       setCancelTarget(null);
       showToast("Booking cancelled.");
     } catch {
@@ -78,31 +115,20 @@ export function BookingsPage() {
     }
   }
 
-  const filtered = bookings.filter((b) => {
-    const matchSearch =
-      b.id.toLowerCase().includes(search.toLowerCase()) ||
-      b.customer.toLowerCase().includes(search.toLowerCase()) ||
-      b.service.toLowerCase().includes(search.toLowerCase());
-    const matchStatus = statusFilter === "all" || b.status === statusFilter;
-    return matchSearch && matchStatus;
-  });
-
   const counts: Record<StatusFilter, number> = {
-    all: bookings.length,
-    Open: bookings.filter((b) => b.status === "Open").length,
-    Matching: bookings.filter((b) => b.status === "Matching").length,
-    Assigned: bookings.filter((b) => b.status === "Assigned").length,
-    "In Progress": bookings.filter((b) => b.status === "In Progress").length,
-    Completed: bookings.filter((b) => b.status === "Completed").length,
-    Cancelled: bookings.filter((b) => b.status === "Cancelled").length,
-    Expired: bookings.filter((b) => b.status === "Expired").length,
+    all: statusFilter === "all" ? total : 0,
+    Open: statusFilter === "Open" ? total : 0,
+    Matching: statusFilter === "Matching" ? total : 0,
+    Assigned: statusFilter === "Assigned" ? total : 0,
+    Confirmed: statusFilter === "Confirmed" ? total : 0,
+    "In Progress": statusFilter === "In Progress" ? total : 0,
+    Completed: statusFilter === "Completed" ? total : 0,
+    Cancelled: statusFilter === "Cancelled" ? total : 0,
+    Expired: statusFilter === "Expired" ? total : 0,
   };
 
-  const paginated = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
-  // "Select all" covers every row matching the current search + filter, not
-  // just the visible page — matches Users, and lets an admin export a whole
-  // filtered set without paging through it first.
-  const allSelected = filtered.length > 0 && filtered.every((b) => selected.has(b.id));
+  // Only this server-loaded page is available for selection and export.
+  const allSelected = bookings.length > 0 && bookings.every((b) => selected.has(b.id));
 
   function toggleOne(id: string) {
     setSelected((prev) => {
@@ -114,7 +140,7 @@ export function BookingsPage() {
   }
 
   function toggleAll() {
-    setSelected(allSelected ? new Set() : new Set(filtered.map((b) => b.id)));
+    setSelected(allSelected ? new Set() : new Set(bookings.map((b) => b.id)));
   }
 
   function clearSelectionOnScopeChange() {
@@ -122,8 +148,8 @@ export function BookingsPage() {
     setPage(1);
   }
 
-  /** Exports the checked rows when any are checked; otherwise everything matching the current search + status filter. */
-  const exportScope = selected.size > 0 ? filtered.filter((b) => selected.has(b.id)) : filtered;
+  /** Exports checked rows or every row on the current server-loaded page. */
+  const exportScope = selected.size > 0 ? bookings.filter((b) => selected.has(b.id)) : bookings;
 
   function exportCsv() {
     const csv = toCsv(
@@ -143,16 +169,16 @@ export function BookingsPage() {
         <button
           onClick={() => setConfirmingExport(true)}
           disabled={exportScope.length === 0}
-          title={selected.size > 0 ? "Download only the checked rows" : "Download the rows currently shown"}
+          title={selected.size > 0 ? "Download only the checked rows" : "Download the current page"}
           className="flex items-center gap-1.5 font-semibold transition-opacity hover:opacity-80 disabled:opacity-40"
           style={{ background: "var(--chip-bg)", border: "1px solid var(--border-md)", borderRadius: 11, padding: "7px 13px", fontSize: 11.4, color: "var(--text-light)", cursor: "pointer", fontFamily: "inherit" }}
         >
-          <Download size={12} /> {selected.size > 0 ? `Export ${selected.size} selected` : "Export CSV"}
+          <Download size={12} /> {selected.size > 0 ? `Export ${selected.size} selected` : "Export current page"}
         </button>
       </div>
 
       <div className="flex gap-2.5 flex-wrap mb-4">
-        {(["all", "Open", "Matching", "Assigned", "In Progress", "Completed", "Cancelled", "Expired"] as StatusFilter[]).map((s) => {
+        {(["all", "Open", "Matching", "Assigned", "Confirmed", "In Progress", "Completed", "Cancelled", "Expired"] as StatusFilter[]).map((s) => {
           const accent = STATUS_ACCENTS[s];
           return (
             <button key={s} onClick={() => { setStatusFilter(s); clearSelectionOnScopeChange(); }}
@@ -195,10 +221,10 @@ export function BookingsPage() {
                   <input
                     type="checkbox"
                     className={clsx("row-checkbox", selected.size > 0 && "always-visible")}
-                    aria-label="Select all bookings"
+                    aria-label="Select all bookings on this page"
                     checked={allSelected}
                     onChange={toggleAll}
-                    disabled={filtered.length === 0}
+                    disabled={bookings.length === 0}
                   />
                 </th>
                 <th>Booking ID</th>
@@ -212,7 +238,7 @@ export function BookingsPage() {
               </tr>
             </thead>
             <tbody>
-              {paginated.map((b) => (
+              {bookings.map((b) => (
                 <Fragment key={b.id}>
                   <tr>
                     <td>
@@ -323,12 +349,12 @@ export function BookingsPage() {
                   )}
                 </Fragment>
               ))}
-              {filtered.length === 0 && (
+              {bookings.length === 0 && (
                 <tr>
                   <td colSpan={9} className="text-center py-12" style={{ color: "var(--text-muted)", fontSize: 13 }}>
                     {loading
                       ? "Loading bookings…"
-                      : bookings.length === 0
+                        : total === 0
                         ? "No bookings yet."
                         : "No bookings match this search or filter."}
                   </td>
@@ -337,7 +363,13 @@ export function BookingsPage() {
             </tbody>
           </table>
         </div>
-        <Pagination page={page} pageSize={PAGE_SIZE} total={filtered.length} onPageChange={setPage} itemLabel="bookings" />
+        <Pagination
+          page={page}
+          pageSize={PAGE_SIZE}
+          total={total}
+          onPageChange={(nextPage) => { setSelected(new Set()); setPage(nextPage); }}
+          itemLabel="bookings"
+        />
       </div>
 
       <ConfirmDialog
@@ -355,7 +387,7 @@ export function BookingsPage() {
         open={confirmingExport}
         danger={false}
         title="Export to CSV?"
-        message={`This downloads ${exportScope.length} row${exportScope.length === 1 ? "" : "s"} as a .csv file to your device.`}
+        message={`This downloads ${exportScope.length} row${exportScope.length === 1 ? "" : "s"} from the current page as a .csv file to your device.`}
         confirmLabel="Export"
         onConfirm={() => {
           setConfirmingExport(false);

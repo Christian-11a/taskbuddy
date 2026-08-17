@@ -54,6 +54,11 @@ export class SuspendUserDto {
 
 export class ListBookingsQueryDto {
   @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  search?: string;
+
+  @IsOptional()
   @IsIn([
     'open',
     'recommending',
@@ -83,6 +88,11 @@ export class ListBookingsQueryDto {
 }
 
 export class ListActivityQueryDto {
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  search?: string;
+
   @IsOptional()
   @IsInt()
   @Type(() => Number)

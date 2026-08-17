@@ -1,28 +1,18 @@
 "use client";
 
-import { useState } from "react";
-import { Search, Clock, CreditCard, AlertTriangle, UserPlus, ShieldCheck, CheckCircle, Download, ArrowUpDown } from "lucide-react";
-import { useApp } from "@/context/AppContext";
+import { useEffect, useState } from "react";
+import { Search, Clock, CreditCard, AlertTriangle, UserPlus, CheckCircle, Download } from "lucide-react";
 import { datedFilename, downloadCsv, toCsv } from "@/lib/export/csv";
 import type { ActivityType } from "@/lib/domain";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { Pagination } from "@/components/ui/Pagination";
-import clsx from "clsx";
+import * as services from "@/lib/services";
+import type { ActivityEvent } from "@/lib/domain";
 
 const PAGE_SIZE = 7;
 
-type Filter = "all" | ActivityType;
-
-const TYPE_LABEL: Record<ActivityType, string> = {
-  tx: "Completed",
-  alert: "Cancelled / Expired",
-  user: "Other transitions",
-  verif: "Verification",
-};
-
 function activityIcon(type: ActivityType) {
   switch (type) {
-    case "verif": return <ShieldCheck size={12} style={{ color: "#a5b4fc" }} />;
     case "tx": return <CreditCard size={12} style={{ color: "var(--success-text)" }} />;
     case "user": return <UserPlus size={12} style={{ color: "#60a5fa" }} />;
     case "alert": return <AlertTriangle size={12} style={{ color: "var(--warning-text)" }} />;
@@ -31,26 +21,36 @@ function activityIcon(type: ActivityType) {
 }
 
 export function ActivityLogPage() {
-  const { recentActivity, loading } = useApp();
   const [search, setSearch] = useState("");
-  const [filter, setFilter] = useState<Filter>("all");
-  const [oldestFirst, setOldestFirst] = useState(false);
   const [confirmingExport, setConfirmingExport] = useState(false);
   const [page, setPage] = useState(1);
+  const [recentActivity, setRecentActivity] = useState<ActivityEvent[]>([]);
+  const [total, setTotal] = useState(0);
+  const [loading, setLoading] = useState(true);
 
-  const matched = recentActivity.filter((a) => {
-    const matchFilter = filter === "all" || a.type === filter;
-    const matchSearch = a.text.toLowerCase().includes(search.toLowerCase());
-    return matchFilter && matchSearch;
-  });
-  // The endpoint already returns newest-first, so reversing is enough — there
-  // are no timestamps on the mapped rows to sort by.
-  const filtered = oldestFirst ? [...matched].reverse() : matched;
-
-  const typesPresent = Array.from(new Set(recentActivity.map((a) => a.type)));
+  useEffect(() => {
+    /* eslint-disable react-hooks/set-state-in-effect -- fetching page-local data */
+    let cancelled = false;
+    setLoading(true);
+    void services.searchActivity({ search, page, pageSize: PAGE_SIZE }).then((result) => {
+      if (!cancelled) {
+        setRecentActivity(result.items);
+        setTotal(result.total);
+        setLoading(false);
+      }
+    }).catch(() => {
+      if (!cancelled) {
+        setRecentActivity([]);
+        setTotal(0);
+        setLoading(false);
+      }
+    });
+    return () => { cancelled = true; };
+    /* eslint-enable react-hooks/set-state-in-effect */
+  }, [search, page]);
 
   function exportCsv() {
-    const csv = toCsv(["Event", "When"], filtered.map((a) => [a.text, a.time]));
+    const csv = toCsv(["Event", "When"], recentActivity.map((a) => [a.text, a.time]));
     downloadCsv(datedFilename("taskbuddy-activity"), csv);
   }
 
@@ -60,21 +60,13 @@ export function ActivityLogPage() {
         <div>
           <div className="text-white font-bold" style={{ fontSize: 22, letterSpacing: "-0.025em" }}>Activity Log</div>
           <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 5, lineHeight: 1.45 }}>
-            Recent booking status transitions across the platform — the latest {recentActivity.length} events
+            Recent booking status transitions across the platform — {total} events
           </div>
         </div>
         <div className="flex items-center gap-2">
           <button
-            onClick={() => setOldestFirst((v) => !v)}
-            title="Toggle sort order"
-            className="flex items-center gap-1.5 font-semibold transition-opacity hover:opacity-80"
-            style={{ background: "var(--chip-bg)", border: "1px solid var(--border-md)", borderRadius: 11, padding: "7px 13px", fontSize: 11.4, color: "var(--text-light)", cursor: "pointer", fontFamily: "inherit" }}
-          >
-            <ArrowUpDown size={12} /> {oldestFirst ? "Oldest first" : "Newest first"}
-          </button>
-          <button
             onClick={() => setConfirmingExport(true)}
-            disabled={filtered.length === 0}
+            disabled={recentActivity.length === 0}
             className="flex items-center gap-1.5 font-semibold transition-opacity hover:opacity-80 disabled:opacity-40"
             style={{ background: "var(--chip-bg)", border: "1px solid var(--border-md)", borderRadius: 11, padding: "7px 13px", fontSize: 11.4, color: "var(--text-light)", cursor: "pointer", fontFamily: "inherit" }}
           >
@@ -95,31 +87,21 @@ export function ActivityLogPage() {
             style={{ background: "var(--input-bg)", border: "1px solid var(--border-md)", height: 38, borderRadius: 9, padding: "0 13px 0 36px", fontSize: 12, fontFamily: "inherit", color: "var(--text-white)" }}
           />
         </div>
-        <div className="inline-flex flex-wrap" style={{ background: "var(--chip-bg)", padding: 3, borderRadius: 9, gap: 2 }}>
-          {(["all", ...typesPresent] as Filter[]).map((f) => (
-            <button key={f} onClick={() => { setFilter(f); setPage(1); }}
-              className={clsx("rounded-lg font-medium cursor-pointer transition-all", filter !== f && "text-gray-500 hover:text-gray-300")}
-              style={{ padding: "7px 11px", fontSize: 11, background: filter === f ? "var(--indigo-dark)" : "transparent", color: filter === f ? "var(--indigo-light)" : undefined, border: "none", fontFamily: "inherit" }}
-            >
-              {f === "all" ? "All" : TYPE_LABEL[f]}
-            </button>
-          ))}
-        </div>
       </div>
 
       <div className="rounded-xl overflow-hidden" style={{ background: "var(--card-bg)", border: "1px solid var(--card-border)" }}>
         <div style={{ padding: 20 }}>
-        {filtered.length === 0 && (
+        {recentActivity.length === 0 && (
           <div className="text-center py-12" style={{ color: "var(--text-muted)", fontSize: 13 }}>
             {loading
               ? "Loading activity…"
-              : recentActivity.length === 0
+                : total === 0
                 ? "No platform activity yet."
-                : "No events match this search or filter."}
+                : "No events match this search."}
           </div>
         )}
         <div className="flex flex-col gap-3">
-          {filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE).map((a, i) => (
+          {recentActivity.map((a, i) => (
             <div key={i} className="flex items-center gap-3">
               <div
                 className="flex items-center justify-center flex-shrink-0 rounded-lg"
@@ -135,14 +117,14 @@ export function ActivityLogPage() {
           ))}
         </div>
         </div>
-        <Pagination page={page} pageSize={PAGE_SIZE} total={filtered.length} onPageChange={setPage} itemLabel="events" />
+        <Pagination page={page} pageSize={PAGE_SIZE} total={total} onPageChange={setPage} itemLabel="events" />
       </div>
 
       <ConfirmDialog
         open={confirmingExport}
         danger={false}
         title="Export to CSV?"
-        message={`This downloads ${filtered.length} row${filtered.length === 1 ? "" : "s"} as a .csv file to your device.`}
+        message={`This downloads ${recentActivity.length} row${recentActivity.length === 1 ? "" : "s"} from the current page as a .csv file to your device.`}
         confirmLabel="Export"
         onConfirm={() => {
           setConfirmingExport(false);

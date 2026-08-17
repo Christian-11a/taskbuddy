@@ -1,34 +1,33 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { clearStoredSession, getStoredSession, setStoredSession } from "./session";
+import { clearAdminSession, getAdminSession, setAdminSession } from "./session";
 
-describe("session storage", () => {
+describe("admin session", () => {
   beforeEach(() => {
     localStorage.clear();
+    clearAdminSession();
   });
 
-  it("returns null when nothing is stored", () => {
-    expect(getStoredSession()).toBeNull();
-  });
-
-  it("round-trips a stored session", () => {
-    setStoredSession({
-      accessToken: "tok-123",
-      adminProfile: { name: "admin@taskbuddy.io", email: "admin@taskbuddy.io" },
+  it("keeps the admin identity and CSRF token only in memory", () => {
+    setAdminSession({
+      csrfToken: "csrf-123",
+      adminProfile: { id: "admin-1", name: "Ana Cruz", email: "ana@taskbuddy.io" },
     });
-    expect(getStoredSession()).toEqual({
-      accessToken: "tok-123",
-      adminProfile: { name: "admin@taskbuddy.io", email: "admin@taskbuddy.io" },
+
+    expect(getAdminSession()).toEqual({
+      csrfToken: "csrf-123",
+      adminProfile: { id: "admin-1", name: "Ana Cruz", email: "ana@taskbuddy.io" },
     });
+    expect(localStorage.getItem("tb-admin-session")).toBeNull();
   });
 
-  it("clears the stored session", () => {
-    setStoredSession({ accessToken: "tok", adminProfile: { name: "a", email: "a" } });
-    clearStoredSession();
-    expect(getStoredSession()).toBeNull();
-  });
+  it("clears the in-memory identity and CSRF token", () => {
+    setAdminSession({
+      csrfToken: "csrf-123",
+      adminProfile: { id: "admin-1", name: "Ana Cruz", email: "ana@taskbuddy.io" },
+    });
 
-  it("returns null instead of throwing on corrupted storage", () => {
-    localStorage.setItem("tb-admin-session", "{not-json");
-    expect(getStoredSession()).toBeNull();
+    clearAdminSession();
+
+    expect(getAdminSession()).toBeNull();
   });
 });

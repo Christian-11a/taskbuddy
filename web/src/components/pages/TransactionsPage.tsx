@@ -2,9 +2,8 @@
 
 import { Fragment, forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
 import { Search, ChevronDown, Download } from "lucide-react";
-import { useApp } from "@/context/AppContext";
 import * as services from "@/lib/services";
-import { toWalletTxnRow, type WalletTxnRow } from "@/lib/adapters";
+import { toTransactionRow, toWalletTxnRow, type TransactionRow, type WalletTxnRow } from "@/lib/adapters";
 import { datedFilename, downloadCsv, toCsv } from "@/lib/export/csv";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { Pagination } from "@/components/ui/Pagination";
@@ -22,8 +21,8 @@ interface ExportHandle {
 
 /** Tells the parent how many rows the header's Export CSV button would
  *  download — drives both its disabled state and the confirm dialog's row
- *  count/label. `total` is the filtered row count, `selected` is how many
- *  are checked (0 means "export everything shown"). Driven by primitives so
+ *  count/label. `total` is the current page row count, `selected` is how many
+ *  are checked (0 means "export this page"). Driven by primitives so
  *  this only fires when the counts actually change rather than on every
  *  render (the filtered array itself is a new reference every render and
  *  would otherwise re-trigger endlessly). */
@@ -32,32 +31,47 @@ interface TabProps {
 }
 
 const EscrowTab = forwardRef<ExportHandle, TabProps>(function EscrowTab({ onExportCountChange }, ref) {
-  const { transactions, loading } = useApp();
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [page, setPage] = useState(1);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [transactions, setTransactions] = useState<TransactionRow[]>([]);
+  const [totalCount, setTotalCount] = useState(0);
+  const [loading, setLoading] = useState(true);
 
-  // Memoised so the imperative handle below isn't rebuilt on every render.
-  const filtered = useMemo(
-    () =>
-      transactions.filter((t) => {
-        const matchSearch =
-          t.id.toLowerCase().includes(search.toLowerCase()) ||
-          t.customer.toLowerCase().includes(search.toLowerCase()) ||
-          t.provider.toLowerCase().includes(search.toLowerCase());
-        const matchStatus = statusFilter === "all" || t.status === statusFilter;
-        return matchSearch && matchStatus;
-      }),
-    [transactions, search, statusFilter],
-  );
+  useEffect(() => {
+    /* eslint-disable react-hooks/set-state-in-effect -- fetching page-local data */
+    let cancelled = false;
+    setLoading(true);
+    void services.searchTransactions({
+      search,
+      status: statusFilter === "all" ? undefined : {
+        Completed: "released", "In Escrow": "held", Disputed: "disputed", Refunded: "refunded",
+      }[statusFilter] as "released" | "held" | "disputed" | "refunded" | undefined,
+      page,
+      pageSize: PAGE_SIZE,
+    }).then((result) => {
+      if (!cancelled) {
+        setTransactions(result.items.map(toTransactionRow));
+        setTotalCount(result.total);
+        setLoading(false);
+      }
+    }).catch(() => {
+      if (!cancelled) {
+        setTransactions([]);
+        setTotalCount(0);
+        setLoading(false);
+      }
+    });
+    return () => { cancelled = true; };
+    /* eslint-enable react-hooks/set-state-in-effect */
+  }, [search, statusFilter, page]);
 
   const total = transactions.reduce((s, t) => s + t.amountValue, 0);
 
-  // "Select all" covers every row matching the current search + status filter,
-  // not just the visible page — matches Users/Bookings.
-  const allSelected = filtered.length > 0 && filtered.every((t) => selected.has(t.id));
+  // Only this server-loaded page is available for selection and export.
+  const allSelected = transactions.length > 0 && transactions.every((t) => selected.has(t.id));
 
   function toggleOne(id: string) {
     setSelected((prev) => {
@@ -69,7 +83,7 @@ const EscrowTab = forwardRef<ExportHandle, TabProps>(function EscrowTab({ onExpo
   }
 
   function toggleAll() {
-    setSelected(allSelected ? new Set() : new Set(filtered.map((t) => t.id)));
+    setSelected(allSelected ? new Set() : new Set(transactions.map((t) => t.id)));
   }
 
   function clearSelectionOnScopeChange() {
@@ -77,8 +91,8 @@ const EscrowTab = forwardRef<ExportHandle, TabProps>(function EscrowTab({ onExpo
     setPage(1);
   }
 
-  /** Exports the checked rows when any are checked; otherwise everything matching the current search + status filter. */
-  const exportScope = selected.size > 0 ? filtered.filter((t) => selected.has(t.id)) : filtered;
+  /** Exports checked rows or every row on the current server-loaded page. */
+  const exportScope = selected.size > 0 ? transactions.filter((t) => selected.has(t.id)) : transactions;
 
   useImperativeHandle(
     ref,
@@ -94,14 +108,14 @@ const EscrowTab = forwardRef<ExportHandle, TabProps>(function EscrowTab({ onExpo
     [exportScope],
   );
   useEffect(() => {
-    onExportCountChange({ total: filtered.length, selected: selected.size });
-  }, [filtered.length, selected.size, onExportCountChange]);
+    onExportCountChange({ total: transactions.length, selected: selected.size });
+  }, [transactions.length, selected.size, onExportCountChange]);
 
   return (
     <div>
       <div className="flex gap-2.5 flex-wrap mb-4">
         {[
-          { label: "Total Transactions", val: transactions.length, accent: "#6366f1" },
+          { label: "Total Transactions", val: totalCount, accent: "#6366f1" },
           { label: "Total Volume", val: `₱${total.toLocaleString()}`, accent: "#22c55e" },
           { label: "Completed", val: transactions.filter((t) => t.status === "Completed").length, accent: "var(--success-text)" },
           { label: "Disputed", val: transactions.filter((t) => t.status === "Disputed").length, accent: "#ef4444" },
@@ -152,10 +166,10 @@ const EscrowTab = forwardRef<ExportHandle, TabProps>(function EscrowTab({ onExpo
                   <input
                     type="checkbox"
                     className={clsx("row-checkbox", selected.size > 0 && "always-visible")}
-                    aria-label="Select all escrow transactions"
+                    aria-label="Select all escrow transactions on this page"
                     checked={allSelected}
                     onChange={toggleAll}
-                    disabled={filtered.length === 0}
+                    disabled={transactions.length === 0}
                   />
                 </th>
                 <th>ID</th>
@@ -169,7 +183,7 @@ const EscrowTab = forwardRef<ExportHandle, TabProps>(function EscrowTab({ onExpo
               </tr>
             </thead>
             <tbody>
-              {filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE).map((t) => (
+              {transactions.map((t) => (
                 <Fragment key={t.id}>
                   <tr>
                     <td>
@@ -226,12 +240,12 @@ const EscrowTab = forwardRef<ExportHandle, TabProps>(function EscrowTab({ onExpo
                   )}
                 </Fragment>
               ))}
-              {filtered.length === 0 && (
+              {transactions.length === 0 && (
                 <tr>
                   <td colSpan={9} className="text-center py-12" style={{ color: "var(--text-muted)", fontSize: 13 }}>
                     {loading
                       ? "Loading transactions…"
-                      : transactions.length === 0
+                        : totalCount === 0
                         ? "No escrow transactions yet."
                         : "No transactions match this search or filter."}
                   </td>
@@ -240,7 +254,13 @@ const EscrowTab = forwardRef<ExportHandle, TabProps>(function EscrowTab({ onExpo
             </tbody>
           </table>
         </div>
-        <Pagination page={page} pageSize={PAGE_SIZE} total={filtered.length} onPageChange={setPage} itemLabel="transactions" />
+        <Pagination
+          page={page}
+          pageSize={PAGE_SIZE}
+          total={totalCount}
+          onPageChange={(nextPage) => { setSelected(new Set()); setPage(nextPage); }}
+          itemLabel="transactions"
+        />
       </div>
     </div>
   );
@@ -287,9 +307,8 @@ const WalletTab = forwardRef<ExportHandle, TabProps>(function WalletTab({ onExpo
     [rows, search],
   );
 
-  // "Select all" covers every row matching the current search, not just the
-  // visible page — matches Users/Bookings/the Escrow tab.
-  const allSelected = filtered.length > 0 && filtered.every((r) => selected.has(r.id));
+  const visibleRows = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+  const allSelected = visibleRows.length > 0 && visibleRows.every((r) => selected.has(r.id));
 
   function toggleOne(id: string) {
     setSelected((prev) => {
@@ -301,7 +320,7 @@ const WalletTab = forwardRef<ExportHandle, TabProps>(function WalletTab({ onExpo
   }
 
   function toggleAll() {
-    setSelected(allSelected ? new Set() : new Set(filtered.map((r) => r.id)));
+    setSelected(allSelected ? new Set() : new Set(visibleRows.map((r) => r.id)));
   }
 
   function clearSelectionOnScopeChange() {
@@ -309,8 +328,8 @@ const WalletTab = forwardRef<ExportHandle, TabProps>(function WalletTab({ onExpo
     setPage(1);
   }
 
-  /** Exports the checked rows when any are checked; otherwise everything matching the current search. */
-  const exportScope = selected.size > 0 ? filtered.filter((r) => selected.has(r.id)) : filtered;
+  /** Exports checked rows or every row on the current page. */
+  const exportScope = selected.size > 0 ? visibleRows.filter((r) => selected.has(r.id)) : visibleRows;
 
   useImperativeHandle(
     ref,
@@ -326,8 +345,8 @@ const WalletTab = forwardRef<ExportHandle, TabProps>(function WalletTab({ onExpo
     [exportScope],
   );
   useEffect(() => {
-    onExportCountChange({ total: filtered.length, selected: selected.size });
-  }, [filtered.length, selected.size, onExportCountChange]);
+    onExportCountChange({ total: visibleRows.length, selected: selected.size });
+  }, [visibleRows.length, selected.size, onExportCountChange]);
 
   if (rows === "loading") {
     return <div style={{ fontSize: 12, color: "var(--text-muted)", padding: "24px 0" }}>Loading wallet activity…</div>;
@@ -381,7 +400,7 @@ const WalletTab = forwardRef<ExportHandle, TabProps>(function WalletTab({ onExpo
                   <input
                     type="checkbox"
                     className={clsx("row-checkbox", selected.size > 0 && "always-visible")}
-                    aria-label="Select all wallet rows"
+                    aria-label="Select all wallet rows on this page"
                     checked={allSelected}
                     onChange={toggleAll}
                     disabled={filtered.length === 0}
@@ -395,7 +414,7 @@ const WalletTab = forwardRef<ExportHandle, TabProps>(function WalletTab({ onExpo
               </tr>
             </thead>
             <tbody>
-              {filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE).map((r) => (
+              {visibleRows.map((r) => (
                 <tr key={r.id}>
                   <td>
                     <input
@@ -423,7 +442,13 @@ const WalletTab = forwardRef<ExportHandle, TabProps>(function WalletTab({ onExpo
             </tbody>
           </table>
         </div>
-        <Pagination page={page} pageSize={PAGE_SIZE} total={filtered.length} onPageChange={setPage} itemLabel="wallet rows" />
+        <Pagination
+          page={page}
+          pageSize={PAGE_SIZE}
+          total={filtered.length}
+          onPageChange={(nextPage) => { setSelected(new Set()); setPage(nextPage); }}
+          itemLabel="wallet rows"
+        />
       </div>
     </div>
   );
@@ -456,11 +481,11 @@ export function TransactionsPage() {
         <button
           onClick={() => setConfirmingExport(true)}
           disabled={exportCount === 0}
-          title={exportInfo.selected > 0 ? "Download only the checked rows" : "Download the rows currently shown"}
+          title={exportInfo.selected > 0 ? "Download only the checked rows" : "Download the current page"}
           className="flex items-center gap-1.5 font-semibold transition-opacity hover:opacity-80 disabled:opacity-40"
           style={{ background: "var(--chip-bg)", border: "1px solid var(--border-md)", borderRadius: 11, padding: "7px 13px", fontSize: 11.4, color: "var(--text-light)", cursor: "pointer", fontFamily: "inherit" }}
         >
-          <Download size={12} /> {exportInfo.selected > 0 ? `Export ${exportInfo.selected} selected` : "Export CSV"}
+          <Download size={12} /> {exportInfo.selected > 0 ? `Export ${exportInfo.selected} selected` : "Export current page"}
         </button>
       </div>
 
@@ -490,7 +515,7 @@ export function TransactionsPage() {
         open={confirmingExport}
         danger={false}
         title="Export to CSV?"
-        message={`This downloads ${exportCount} row${exportCount === 1 ? "" : "s"} from the ${tab === "escrow" ? "Escrow" : "Wallet"} tab as a .csv file to your device.`}
+        message={`This downloads ${exportCount} row${exportCount === 1 ? "" : "s"} from the current ${tab === "escrow" ? "Escrow" : "Wallet"} page as a .csv file to your device.`}
         confirmLabel="Export"
         onConfirm={handleExport}
         onCancel={() => setConfirmingExport(false)}

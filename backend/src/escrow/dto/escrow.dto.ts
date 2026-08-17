@@ -10,6 +10,11 @@ import {
 
 export class ListTransactionsQueryDto {
   @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  search?: string;
+
+  @IsOptional()
   @IsIn(['held', 'released', 'disputed', 'refunded', 'cancelled'])
   status?: string;
 

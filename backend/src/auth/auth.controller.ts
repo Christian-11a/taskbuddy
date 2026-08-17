@@ -2,6 +2,7 @@ import {
   BadRequestException,
   Body,
   Controller,
+  ForbiddenException,
   Get,
   HttpCode,
   HttpException,
@@ -10,6 +11,7 @@ import {
   Redirect,
   Req,
   Res,
+  UnauthorizedException,
   UseGuards,
 } from '@nestjs/common';
 import type { Response } from 'express';
@@ -23,9 +25,18 @@ import {
   RegisterDto,
   ResetPasswordDto,
 } from './dto/auth.dto';
+import {
+  ADMIN_CSRF_COOKIE,
+  clearAdminSessionCookies,
+  getCookie,
+  hasMatchingCsrfToken,
+  setAdminSessionCookies,
+} from './admin-session';
 import { appendRedirectParams } from './google-redirect';
 import { JwtAuthGuard } from './jwt-auth.guard';
 import { CurrentUser } from './current-user.decorator';
+import { Roles } from './roles.decorator';
+import { isAllowedWebOrigin } from './web-origins';
 import type { AuthenticatedRequest, Profile } from '../common/types';
 
 @Controller('auth')
@@ -41,6 +52,83 @@ export class AuthController {
   @HttpCode(200)
   login(@Body() dto: LoginDto) {
     return this.authService.login(dto);
+  }
+
+  @Post('admin/login')
+  @HttpCode(200)
+  async adminLogin(
+    @Body() dto: LoginDto,
+    @Res({ passthrough: true }) res: Response,
+    @Req() req: { headers: { origin?: string } },
+  ) {
+    if (!isAllowedWebOrigin(req.headers.origin)) {
+      throw new ForbiddenException('Untrusted Origin');
+    }
+    const result = await this.authService.login(dto);
+    if (result.user.role !== 'admin') {
+      await this.authService.logout(result.session.access_token);
+      throw new ForbiddenException('Admin access required');
+    }
+
+    const csrfToken = setAdminSessionCookies(res, result.session);
+    return {
+      user: {
+        id: result.user.id,
+        email: result.user.email,
+        full_name: result.user.full_name,
+        role: result.user.role,
+      },
+      csrf_token: csrfToken,
+    };
+  }
+
+  @Post('admin/refresh')
+  @HttpCode(200)
+  async adminRefresh(
+    @Req()
+    req: {
+      headers: { cookie?: string; 'x-csrf-token'?: string };
+    },
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const cookieHeader = req.headers.cookie;
+    const refreshToken = getCookie(cookieHeader, 'tb_admin_refresh');
+    if (!refreshToken) throw new UnauthorizedException('Missing refresh token');
+    if (!hasMatchingCsrfToken(cookieHeader, req.headers['x-csrf-token'])) {
+      throw new ForbiddenException('Invalid CSRF token');
+    }
+
+    const result = await this.authService.refresh({
+      refresh_token: refreshToken,
+    });
+    const csrfToken = setAdminSessionCookies(res, result.session);
+    return { success: true, csrf_token: csrfToken };
+  }
+
+  @Get('admin/session')
+  @UseGuards(JwtAuthGuard)
+  @Roles('admin')
+  adminSession(
+    @CurrentUser() user: Profile,
+    @Req() req: { headers: { cookie?: string } },
+  ) {
+    return {
+      user: { id: user.id, full_name: user.full_name, role: user.role },
+      csrf_token: getCookie(req.headers.cookie, ADMIN_CSRF_COOKIE),
+    };
+  }
+
+  @Post('admin/logout')
+  @HttpCode(200)
+  @UseGuards(JwtAuthGuard)
+  @Roles('admin')
+  async adminLogout(
+    @Req() req: AuthenticatedRequest,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const result = await this.authService.logout(req.accessToken);
+    clearAdminSessionCookies(res);
+    return result;
   }
 
   /** Step 1 — redirect the browser to Google's consent screen. */

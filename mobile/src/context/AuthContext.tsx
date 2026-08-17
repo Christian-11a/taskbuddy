@@ -30,6 +30,7 @@ import {
   type ProviderProfile,
   type Session,
 } from '../lib/api';
+import { getExpoPushRegistration } from '../lib/pushNotifications';
 
 // Required for expo-auth-session to complete the OAuth flow on Android
 WebBrowser.maybeCompleteAuthSession();
@@ -110,6 +111,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   // Always-current token, read by the api client's auth accessor.
   const sessionRef = useRef<Session | null>(null);
+  const pushTokenRef = useRef<string | null>(null);
 
   const persistSession = useCallback(async (next: Session | null) => {
     sessionRef.current = next;
@@ -145,6 +147,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       },
     );
   }, [persistSession]);
+
+  // Permission prompts and registration are deliberately best-effort: neither
+  // should block an authenticated session when a device cannot receive pushes.
+  useEffect(() => {
+    if (!session || !profile) return;
+    let active = true;
+
+    getExpoPushRegistration()
+      .then((registration) => {
+        if (!active || !registration) return;
+        pushTokenRef.current = registration.token;
+        return api.registerDevice(registration);
+      })
+      .catch(() => {});
+
+    return () => {
+      active = false;
+    };
+  }, [profile?.id, session?.access_token]);
 
   // ── Restore a persisted session on launch ────────────────────────────────
   useEffect(() => {
@@ -355,9 +376,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const signOut = useCallback(async () => {
     const token = session?.access_token;
+    const pushToken = pushTokenRef.current;
     setProfile(null);
     setProviderProfile(null);
     await persistSession(null);
+    pushTokenRef.current = null;
+    if (token && pushToken) {
+      // Do not let an unavailable push endpoint delay or prevent sign-out.
+      api.unregisterDevice(token, pushToken).catch(() => {});
+    }
     if (token) {
       // Best-effort server-side revocation; ignore failures.
       api.logout(token).catch(() => {});

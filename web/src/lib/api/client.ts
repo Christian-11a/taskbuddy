@@ -1,10 +1,4 @@
-// ─── API client ───────────────────────────────────────────────────────────────
-// The single place that talks to the real backend. Attaches the stored admin
-// session's bearer token to every request; clears the session and surfaces a
-// distinguishable ApiError on 401/403 so callers (AppContext) can force a
-// logout.
-
-import { clearStoredSession, getStoredSession, setStoredSession } from "./session";
+import { clearAdminSession, getCsrfToken, setCsrfToken } from "./session";
 
 export const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
 
@@ -18,73 +12,56 @@ export class ApiError extends Error {
   }
 }
 
-async function send(path: string, token: string | undefined, init?: RequestInit) {
+function isUnsafeMethod(method?: string): boolean {
+  return !["GET", "HEAD", "OPTIONS"].includes(method ?? "GET");
+}
+
+async function send(path: string, init?: RequestInit): Promise<Response> {
+  const csrfToken = getCsrfToken();
   return fetch(`${API_URL}${path}`, {
     ...init,
+    credentials: "include",
     headers: {
       "Content-Type": "application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...(isUnsafeMethod(init?.method) && csrfToken ? { "X-CSRF-Token": csrfToken } : {}),
       ...init?.headers,
     },
   });
+
 }
 
-/**
- * Exchange the stored refresh token for a new access token. Returns null when
- * there's nothing to refresh with or the refresh itself fails, in which case the
- * caller falls through to a normal 401.
- *
- * Concurrent 401s share one refresh so a dashboard load doesn't fire several.
- */
-let refreshInFlight: Promise<string | null> | null = null;
+let refreshInFlight: Promise<boolean> | null = null;
 
-async function refreshAccessToken(): Promise<string | null> {
-  const session = getStoredSession();
-  if (!session?.refreshToken) return null;
-
-  refreshInFlight ??= (async () => {
-    try {
-      const res = await send("/auth/refresh", undefined, {
-        method: "POST",
-        body: JSON.stringify({ refresh_token: session.refreshToken }),
-      });
-      if (!res.ok) return null;
-      const body = (await res.json()) as {
-        session: { access_token: string; refresh_token: string };
-      };
-      setStoredSession({
-        ...session,
-        accessToken: body.session.access_token,
-        refreshToken: body.session.refresh_token,
-      });
-      return body.session.access_token;
-    } catch {
-      return null;
-    } finally {
+async function refreshSession(): Promise<boolean> {
+  refreshInFlight ??= send("/auth/admin/refresh", { method: "POST" })
+    .then(async (res) => {
+      if (!res.ok) return false;
+      const body = (await res.json()) as { csrf_token?: unknown };
+      if (typeof body.csrf_token !== "string" || !body.csrf_token) return false;
+      setCsrfToken(body.csrf_token);
+      return true;
+    })
+    .catch(() => false)
+    .finally(() => {
       refreshInFlight = null;
-    }
-  })();
-
+    });
   return refreshInFlight;
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  let res = await send(path, getStoredSession()?.accessToken, init);
-
-  // An expired access token used to be a hard logout. Try one refresh first.
-  if (res.status === 401) {
-    const renewed = await refreshAccessToken();
-    if (renewed) res = await send(path, renewed, init);
+  let res = await send(path, init);
+  if (res.status === 401 && path !== "/auth/admin/refresh" && await refreshSession()) {
+    res = await send(path, init);
   }
 
   if (!res.ok) {
-    if (res.status === 401 || res.status === 403) clearStoredSession();
-    let message = `${init?.method ?? "GET"} ${path} → ${res.status}`;
+    if (res.status === 401 || res.status === 403) clearAdminSession();
+    let message = `${init?.method ?? "GET"} ${path} -> ${res.status}`;
     try {
       const body = await res.json();
       if (typeof body?.message === "string") message = body.message;
     } catch {
-      // body wasn't JSON — keep the generic message
+      // body wasn't JSON - keep the generic message
     }
     throw new ApiError(res.status, message);
   }

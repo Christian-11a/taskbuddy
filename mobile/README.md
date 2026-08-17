@@ -19,7 +19,7 @@ buttons that still do nothing.
 | Auth | **AuthContext** backed by the NestJS API (JWT + Supabase sessions) |
 | Storage | **AsyncStorage** — session persistence only |
 | Icons | **lucide-react-native** |
-| UI extras | **react-native-calendars**, **expo-image-picker** |
+| UI extras | **react-native-calendars**, **expo-image-picker**, **expo-notifications**, **react-native-sse** |
 | Navigation | Custom `useState` in `App.tsx` — no router library |
 
 ---
@@ -75,6 +75,7 @@ mobile/
 │   └── (provider)/screens/     # Provider-side screens (SP*)
 └── src/
     ├── lib/api.ts              # THE API CLIENT — every network call lives here
+    ├── lib/pushNotifications.ts # Expo permission + push-token registration helper
     ├── lib/format.ts           # peso(), shortDate(), timeAgo(), jobStatusMeta()…
     ├── context/AuthContext.tsx # Session, profile, role, signInWithGoogle
     ├── lib/onboarding.ts       # "has this account seen the slides?" flag
@@ -185,6 +186,22 @@ URL (`POST /uploads/signed-url`), `PUT`s the file straight to Supabase Storage,
 and returns the storage **path**. That path — not a device URI — is what job
 creation and verification endpoints submit.
 
+### Live chat and push notifications
+
+Both chat screens first load message history, then open the authenticated
+`GET /conversations/:id/stream?since=` SSE endpoint through
+`react-native-sse`. The stream emits new messages and keep-alive pings while
+the screen is focused; cleanup closes it when the screen unmounts. The API
+polls its database behind that SSE connection, so the mobile app still talks
+only to the NestJS API rather than directly to Supabase Realtime.
+
+After sign-in, the app best-effort requests notification permission and posts
+an Expo push token to `POST /devices`; it unregisters that token on sign-out.
+The backend's 30-second scheduler sends pending notification rows to opted-in
+devices via Expo. Test this on a physical device with a deployed API and Expo
+credentials. Permission denial or a push-registration failure does not block
+sign-in, and notification rows remain available in the in-app list.
+
 ---
 
 ## Screens
@@ -250,9 +267,11 @@ Full rules: `backend/BACKEND_SCHEMA.md` §18.
 
 ## Requires the current backend
 
-The app now uses endpoints and columns added by backend migrations **0018 and
-0019**: `POST /jobs` sends a `tasks` checklist, `POST /jobs/:id/accept` answers
-a booking request, and `PATCH /jobs/:id/tasks/:taskId` ticks items off.
+The app now uses endpoints and columns added by backend migrations **0018,
+0019, and 0020**: `POST /jobs` sends a `tasks` checklist, `POST /jobs/:id/accept`
+answers a booking request, and `PATCH /jobs/:id/tasks/:taskId` ticks items off.
+Migration 0020 is required by the admin API's server-side booking, activity,
+and transaction search; mobile does not call those admin endpoints.
 
 Against an older deployed API, **posting a job fails with a 400** — the backend
 runs `forbidNonWhitelisted`, so the unknown `tasks` field is a hard rejection,
@@ -299,7 +318,7 @@ correctly in production:
 
 ### 2. [`docs/backend-handoff-mobile-todo-gaps.md`](../docs/backend-handoff-mobile-todo-gaps.md)
 
-**Non-urgent — nothing is currently broken.** Documents every remaining item from
+**Non-urgent — no mobile UI is deliberately faked.** Documents every remaining item from
 the mobile to-do list that cannot be finished without an API change first:
 
 | # | Item | Blocking? |
@@ -307,10 +326,10 @@ the mobile to-do list that cannot be finished without an API change first:
 | 1 | Account deletion (`DELETE /profiles/me`) | No — Settings row opens `mailto:` honestly |
 | 2 | Wallet withdrawal / payout rail (Stripe Connect or equivalent) | No — buttons are inert |
 | 3 | `has_review` flag on job payload | No — nice-to-have |
-| 4 | Realtime chat (polling / Supabase Realtime / WebSocket) | No — fetch-on-mount still works |
+| 4 | Realtime chat | Done — authenticated SSE streams messages through the API |
 | 5 | Email OTP at registration | No — Supabase confirmation already handles this |
 | 6 | Homeowner card-at-hire (vs wallet top-up) | No — product decision |
-| 7 | FCM/APNs push transport | No — app polls the `notifications` table |
+| 7 | Push delivery | Implemented with Expo tokens and the API scheduler; requires external Expo/API configuration and device smoke testing |
 
 ---
 
@@ -337,7 +356,8 @@ the mobile to-do list that cannot be finished without an API change first:
 - Dispute filing
 - Image upload (via Supabase Storage signed URLs)
 - Provider calendar (read-only view of bookings)
-- Chat (polling on mount — no realtime)
+- Chat (initial history plus authenticated SSE live messages)
+- Expo push-token registration after sign-in, with API-side notification delivery
 
 ### 🔧 Recent mobile updates
 
@@ -356,8 +376,8 @@ was trimmed to remove rows that duplicated a bottom-nav tab or a header icon.
 | **Language** | Settings modal states English is the only option — no i18n system exists to back a real picker |
 | **Delete Account** | No self-serve deletion endpoint. The Settings row opens a `mailto:` to support instead of pretending to delete. What one would have to handle is written up in the [handoff doc](../docs/backend-handoff-mobile-todo-gaps.md) §1 |
 | **Wallet Withdraw / Transfer** | Buttons are present but have no handler. `POST /wallet/transactions` is a bookkeeping primitive, not a withdrawal, and there is no payout rail at all — money can only enter via the Stripe webhook. See the [handoff doc](../docs/backend-handoff-mobile-todo-gaps.md) §2 |
-| **Push delivery** | Notification *preferences* persist (`push_enabled`), but there is no FCM/APNs transport — the `notifications` table is the source of truth and the app polls it. Nothing reaches a lock screen |
-| **Realtime chat** | Messages only refresh on mount; call and attachment buttons are inert |
+| **Push delivery** | Implemented through Expo after the app has notification permission and a registered device token. It still needs external API/Expo configuration and physical-device verification; the notification row remains the source of truth if delivery fails |
+| **Realtime chat** | Message delivery is live through authenticated SSE; call and attachment buttons remain inert |
 | **Counterpart avatars** | Chat, applicant, and review payloads all carry `avatar_url`; those screens still render initials. (The signed-in user's *own* avatar does render — see `OwnAvatar`) |
 | **Provider calendar write** | Bookings are created by the backend when a job is assigned, not from this screen |
 | **Notch/edge-to-edge status-bar spacing** | `Sizes.statusBarHeight` uses `StatusBar.currentHeight` (Android, built-in RN API) as a floor under the previous fixed `52`, which fixes most cases without a new dependency — but it's read once at module load, not on rotation/inset changes, and iOS still uses a fixed estimate. A full fix means adopting `react-native-safe-area-context` (new dependency) and touching header padding in every screen |
@@ -368,8 +388,9 @@ was trimmed to remove rows that duplicated a bottom-nav tab or a header icon.
 
 - `@supabase/supabase-js` is listed in `package.json` but **unused** — the app
   talks only to the NestJS API. Safe to remove when convenient.
-- The backend has no push-notification transport. The `notifications` table is
-  the source of truth and the app polls it; nothing is delivered via FCM/APNs.
+- Push delivery is through Expo, not direct FCM/APNs. The API's scheduler reads
+  pending notification rows and honours `push_enabled`; the in-app notification
+  list remains the source of truth.
 - `expo-crypto` remains in `package.json` but is no longer imported — nonce
   generation for Google auth moved to the backend. Safe to remove.
 

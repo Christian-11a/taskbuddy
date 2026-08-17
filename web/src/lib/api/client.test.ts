@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiError, client } from "./client";
-import { getStoredSession, setStoredSession } from "./session";
+import { clearAdminSession, getAdminSession, setAdminSession } from "./session";
 
 function jsonResponse(body: unknown, status = 200): Response {
   return {
@@ -14,6 +14,7 @@ const originalFetch = global.fetch;
 
 beforeEach(() => {
   localStorage.clear();
+  clearAdminSession();
 });
 
 afterEach(() => {
@@ -22,75 +23,103 @@ afterEach(() => {
 });
 
 describe("client", () => {
-  it("attaches the stored bearer token to requests", async () => {
-    setStoredSession({ accessToken: "tok-abc", adminProfile: { name: "a", email: "a" } });
+  it("includes browser cookies on every request without a bearer token", async () => {
     const fetchMock = vi.fn(() => Promise.resolve(jsonResponse({ ok: true })));
     global.fetch = fetchMock as unknown as typeof fetch;
 
     await client.get("/admin/users");
 
-    const [, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit | undefined];
-    expect((init?.headers as Record<string, string>).Authorization).toBe("Bearer tok-abc");
+    const [, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+    expect(init.credentials).toBe("include");
+    expect((init.headers as Record<string, string>).Authorization).toBeUndefined();
   });
 
-  it("sends no Authorization header when there is no session", async () => {
+  it("attaches the in-memory CSRF token to unsafe requests", async () => {
+    setAdminSession({
+      csrfToken: "csrf-123",
+      adminProfile: { id: "admin-1", name: "Ana", email: "ana@taskbuddy.io" },
+    });
+    const fetchMock = vi.fn(() => Promise.resolve(jsonResponse({ ok: true })));
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    await client.post("/admin/users/u1/suspend", { reason: "Fraud" });
+
+    const [, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+    expect((init.headers as Record<string, string>)["X-CSRF-Token"]).toBe("csrf-123");
+  });
+
+  it("does not attach CSRF to safe requests", async () => {
+    setAdminSession({
+      csrfToken: "csrf-123",
+      adminProfile: { id: "admin-1", name: "Ana", email: "ana@taskbuddy.io" },
+    });
     const fetchMock = vi.fn(() => Promise.resolve(jsonResponse({ ok: true })));
     global.fetch = fetchMock as unknown as typeof fetch;
 
     await client.get("/admin/users");
 
-    const [, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit | undefined];
-    expect((init?.headers as Record<string, string>).Authorization).toBeUndefined();
+    const [, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+    expect((init.headers as Record<string, string>)["X-CSRF-Token"]).toBeUndefined();
   });
 
-  it("clears the stored session and throws ApiError on 401", async () => {
-    setStoredSession({ accessToken: "expired", adminProfile: { name: "a", email: "a" } });
+  it("clears the in-memory session and throws ApiError on 401 or 403", async () => {
+    setAdminSession({
+      csrfToken: "csrf-123",
+      adminProfile: { id: "admin-1", name: "Ana", email: "ana@taskbuddy.io" },
+    });
     global.fetch = vi.fn(() =>
-      Promise.resolve(jsonResponse({ message: "Invalid or expired token" }, 401)),
+      Promise.resolve(jsonResponse({ message: "Invalid session" }, 403)),
     ) as unknown as typeof fetch;
 
     await expect(client.get("/admin/users")).rejects.toThrow(ApiError);
+    expect(getAdminSession()).toBeNull();
     expect(localStorage.getItem("tb-admin-session")).toBeNull();
   });
 
-  it("refreshes an expired token and retries the request once", async () => {
-    setStoredSession({
-      accessToken: "expired",
-      refreshToken: "ref-1",
-      adminProfile: { name: "a", email: "a" },
+  it("refreshes a 401 once, updates CSRF, and retries the unsafe request", async () => {
+    setAdminSession({
+      csrfToken: "csrf-old",
+      adminProfile: { id: "admin-1", name: "Ana", email: "ana@taskbuddy.io" },
     });
     const fetchMock = vi
       .fn()
-      .mockResolvedValueOnce(jsonResponse({ message: "Invalid or expired token" }, 401))
-      .mockResolvedValueOnce(
-        jsonResponse({ session: { access_token: "fresh", refresh_token: "ref-2" } }),
-      )
-      .mockResolvedValueOnce(jsonResponse({ users: [] }));
+      .mockResolvedValueOnce(jsonResponse({ message: "Expired" }, 401))
+      .mockResolvedValueOnce(jsonResponse({ csrf_token: "csrf-new" }))
+      .mockResolvedValueOnce(jsonResponse({ ok: true }));
     global.fetch = fetchMock as unknown as typeof fetch;
 
-    await expect(client.get("/admin/users")).resolves.toEqual({ users: [] });
+    await expect(client.post("/admin/users/u1/suspend", { reason: "Fraud" })).resolves.toEqual({ ok: true });
 
-    // The retry carries the new token, and both tokens are persisted.
-    const [, retryInit] = fetchMock.mock.calls[2] as unknown as [string, RequestInit];
-    expect((retryInit.headers as Record<string, string>).Authorization).toBe("Bearer fresh");
-    expect(getStoredSession()).toMatchObject({
-      accessToken: "fresh",
-      refreshToken: "ref-2",
-    });
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      expect.stringContaining("/auth/admin/refresh"),
+      expect.objectContaining({
+        credentials: "include",
+        headers: expect.objectContaining({ "X-CSRF-Token": "csrf-old" }),
+      }),
+    );
+    const [, retry] = fetchMock.mock.calls[2] as unknown as [string, RequestInit];
+    expect((retry.headers as Record<string, string>)["X-CSRF-Token"]).toBe("csrf-new");
+    expect(getAdminSession()?.csrfToken).toBe("csrf-new");
   });
 
-  it("clears the session when the refresh itself fails", async () => {
-    setStoredSession({
-      accessToken: "expired",
-      refreshToken: "ref-dead",
-      adminProfile: { name: "a", email: "a" },
+  it("shares one refresh between simultaneous 401 responses", async () => {
+    setAdminSession({
+      csrfToken: "csrf-old",
+      adminProfile: { id: "admin-1", name: "Ana", email: "ana@taskbuddy.io" },
     });
-    global.fetch = vi.fn(() =>
-      Promise.resolve(jsonResponse({ message: "Invalid or expired token" }, 401)),
-    ) as unknown as typeof fetch;
+    const calls = new Map<string, number>();
+    const fetchMock = vi.fn((url: string) => {
+      const count = (calls.get(url) ?? 0) + 1;
+      calls.set(url, count);
+      if (url.endsWith("/auth/admin/refresh")) return Promise.resolve(jsonResponse({ csrf_token: "csrf-new" }));
+      return Promise.resolve(count === 1 ? jsonResponse({}, 401) : jsonResponse({ ok: url }));
+    });
+    global.fetch = fetchMock as unknown as typeof fetch;
 
-    await expect(client.get("/admin/users")).rejects.toThrow(ApiError);
-    expect(localStorage.getItem("tb-admin-session")).toBeNull();
+    await Promise.all([client.get("/admin/users"), client.get("/admin/disputes")]);
+
+    expect(fetchMock.mock.calls.filter(([url]) => String(url).endsWith("/auth/admin/refresh"))).toHaveLength(1);
   });
 
   it("surfaces the backend's error message when present", async () => {

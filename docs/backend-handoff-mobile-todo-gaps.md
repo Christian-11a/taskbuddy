@@ -1,7 +1,8 @@
 # Backend handoff — what the mobile to-do list still needs from the API
 
 **Who this is for:** whoever owns `backend/` (and, for items 1 and 2, whoever holds Supabase and
-Stripe access).
+Stripe access). It describes gaps that remain after the implemented SSE chat
+and Expo push work; it is not a record of an external deployment.
 
 This came out of working through `mobile/README.md`'s "Additional To-Do Items" and "What's Not
 Wired Yet". Everything that could be finished purely in the app **has been** — see
@@ -31,7 +32,7 @@ Two notes that follow from that, in case they reach you as bug reports:
   switching to apply it to. That is app-side work, and the Settings screens say so on the row.
 - **`email_enabled` / `sms_enabled` are stored but unread.** No transport consults them, exactly as
   migration 0011's own comment says. `push_enabled` is the only one anything looks at, and only by
-  the push scheduler — which still has no delivery transport (item 7).
+  the Expo push scheduler described in item 7.
 
 Same story, smaller, for **counterpart avatars**: `avatar_url` is already selected on the
 application, conversation, and review payloads. Those screens still render initials, which is
@@ -115,23 +116,16 @@ A boolean on the existing payload is enough. This is a nice-to-have, not a defec
 
 ---
 
-## 4. Realtime chat
+## 4. Realtime chat (implemented)
 
-**Missing:** any push/subscribe transport for messages.
+`GET /conversations/:id/stream?since=` is an authenticated SSE endpoint. The
+mobile chat screens load history once, subscribe through `react-native-sse`,
+merge incoming message events by ID, and close the stream on unmount. The API
+uses a two-second server-side cursor poll and keep-alive pings, keeping the
+app's "talk only to the API" convention intact.
 
-`GET /chat/:id/messages` is fetch-on-mount. There is no polling loop and no socket, so a
-conversation only updates when the screen is reopened. The call and attachment buttons in the chat
-header are decorative for the same reason — no signalling, and no attachment upload path on the
-message endpoint (`/uploads/signed-url` could serve it, but `POST /chat/:id/messages` has nowhere
-to put the resulting path).
-
-Options, cheapest first: client-side polling while the screen is focused (no backend change at all,
-and honestly adequate for this product); Supabase Realtime on the `messages` table (but the app
-talks only to the API by design — see CLAUDE.md — so this would be the first exception); a
-WebSocket gateway on the Nest side.
-
-Worth deciding deliberately, since the "app never touches Supabase directly" rule is one of the
-codebase's load-bearing conventions and option two breaks it.
+The remaining chat gaps are separate: call buttons have no signalling path and
+message attachments have no field on `POST /conversations/:id/messages`.
 
 ---
 
@@ -168,10 +162,16 @@ surface, two sources of truth for held money). Recommend the former if it is wan
 
 ---
 
-## 7. Still true from the earlier handoff
+## 7. Push delivery (implemented; requires external configuration)
 
-`docs/backend-handoff-booking-tasks-verification.md` §"Still not done" already covers **push
-delivery** — the `notifications` table is written on every lifecycle event and the app polls it,
-but there is no FCM/APNs transport, so nothing arrives on a lock screen. The mobile to-do item
-"ensure notifications are delivered" is that same gap; `user_settings.push_enabled` is already
-stored and waiting for a transport to consult it.
+The app requests permission after sign-in and registers an Expo token with
+`POST /devices`; it unregisters on sign-out. The API's 30-second scheduler
+claims pending notification rows, filters recipients by `push_enabled`, sends
+through Expo, and removes tokens Expo reports as unregistered. The
+`notifications` table remains the in-app source of truth.
+
+Before expecting lock-screen delivery outside local development: apply the
+current migrations, deploy the API, configure Expo/EAS credentials, and set
+`EXPO_ACCESS_TOKEN` if Expo push security is enabled. Verify with a physical
+device. These are required external steps, not evidence that deployment has
+already occurred.

@@ -20,6 +20,7 @@ type QueryResult = {
 /** Same chainable stand-in as admin.service.spec.ts — results consumed per `.from()`. */
 function createSupabaseMock(resultsByTable: Record<string, QueryResult[]>) {
   const calls: { table: string; method: string; args: unknown[] }[] = [];
+  const rpc = jest.fn().mockResolvedValue({ data: [], error: null });
   const from = jest.fn((table: string) => {
     const result = resultsByTable[table]?.shift() ?? {
       data: null,
@@ -36,6 +37,7 @@ function createSupabaseMock(resultsByTable: Record<string, QueryResult[]>) {
       'update',
       'insert',
       'eq',
+      'in',
       'order',
       'range',
       'limit',
@@ -50,7 +52,11 @@ function createSupabaseMock(resultsByTable: Record<string, QueryResult[]>) {
     ) => Promise.resolve(result).then(resolve, reject);
     return builder;
   });
-  return { supabase: { admin: { from } } as unknown as SupabaseService, calls };
+  return {
+    supabase: { admin: { from, rpc } } as unknown as SupabaseService,
+    calls,
+    rpc,
+  };
 }
 
 /** Escrow only ever asks the wallet for a balance. */
@@ -90,6 +96,44 @@ function ledgerWrites(
 }
 
 describe('EscrowService', () => {
+  describe('listForAdmin', () => {
+    it('uses a paginated transactions search RPC and returns its rows and exact total', async () => {
+      const rows = [{ id: 'e1', jobs: { title: 'Fix sink' } }];
+      const { supabase, calls, rpc } = createSupabaseMock({});
+      rpc.mockResolvedValue({
+        data: [{ rows, total: 17 }],
+        error: null,
+      });
+      const service = new EscrowService(supabase, createWalletMock().wallet);
+
+      await expect(
+        service.listForAdmin({
+          search: 'Ramos',
+          status: 'held',
+          limit: 5,
+          offset: 10,
+        }),
+      ).resolves.toEqual({ transactions: rows, total: 17 });
+      expect(rpc).toHaveBeenCalledWith('admin_list_transactions', {
+        p_search_term: 'Ramos',
+        p_status: 'held',
+        p_limit: 5,
+        p_offset: 10,
+      });
+      expect(calls).toEqual([]);
+    });
+
+    it('retains the exact transactions total when the requested page is empty', async () => {
+      const { supabase, rpc } = createSupabaseMock({});
+      rpc.mockResolvedValue({ data: [{ rows: [], total: 17 }], error: null });
+      const service = new EscrowService(supabase, createWalletMock().wallet);
+
+      await expect(
+        service.listForAdmin({ search: 'Ramos', limit: 5, offset: 100 }),
+      ).resolves.toStrictEqual({ transactions: [], total: 17 });
+    });
+  });
+
   describe('hold', () => {
     it('debits the client and records a held escrow', async () => {
       const { supabase, calls } = createSupabaseMock({

@@ -15,6 +15,8 @@
  * refreshing on a 401, so screens never handle tokens themselves.
  */
 
+import EventSource from 'react-native-sse';
+
 const PRIMARY_API_URL =
   process.env.EXPO_PUBLIC_API_URL ?? 'https://taskbuddy-1d48.onrender.com';
 
@@ -398,6 +400,13 @@ export interface Message {
   body: string;
   read_at: string | null;
   created_at: string;
+}
+
+/** Adds a message or refreshes the existing row without duplicating it. */
+export function mergeMessageById(messages: Message[], message: Message): Message[] {
+  const existing = messages.findIndex(({ id }) => id === message.id);
+  if (existing === -1) return [...messages, message];
+  return messages.map((item) => (item.id === message.id ? message : item));
 }
 
 export interface Booking {
@@ -991,6 +1000,61 @@ export const api = {
       `/conversations/${conversationId}/read`,
       { method: 'POST' },
     );
+  },
+
+  /**
+   * Opens the authenticated live-message stream. EventSource setup is deferred
+   * until the API base URL has resolved, and cleanup remains safe in that gap.
+   */
+  streamMessages(
+    conversationId: string,
+    since: string | undefined,
+    onMessage: (message: Message) => void,
+  ) {
+    let source: EventSource<'ping'> | null = null;
+    let closed = false;
+
+    void ensureApiBaseUrl()
+      .then((baseUrl) => {
+        const token = getAccessToken();
+        if (closed || !token) return;
+
+        const cursor = since ? `?since=${encodeURIComponent(since)}` : '';
+        source = new EventSource(`${baseUrl}/conversations/${conversationId}/stream${cursor}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        source.addEventListener('message', (event) => {
+          if (!event.data) return;
+          try {
+            onMessage(JSON.parse(event.data) as Message);
+          } catch {
+            // A malformed event must not disrupt the open chat screen.
+          }
+        });
+      })
+      .catch(() => {
+        // Streaming is an enhancement; the loaded conversation remains usable.
+      });
+
+    return () => {
+      closed = true;
+      source?.close();
+    };
+  },
+
+  // ── Devices / push notifications ──────────────────────────────────────────
+  registerDevice(input: { token: string; platform: 'ios' | 'android' | 'web' }) {
+    return authRequest<{ success: boolean }>('/devices', {
+      method: 'POST',
+      body: input,
+    });
+  },
+
+  unregisterDevice(accessToken: string, token: string) {
+    return request<{ success: boolean }>(`/devices/${encodeURIComponent(token)}`, {
+      method: 'DELETE',
+      accessToken,
+    });
   },
 
   // ── Calendar ────────────────────────────────────────────────────────────────

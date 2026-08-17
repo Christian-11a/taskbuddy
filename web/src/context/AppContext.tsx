@@ -11,20 +11,17 @@ import {
 } from "react";
 import * as services from "@/lib/services";
 import {
-  toBookingRow,
   toDisputeRow,
-  toTransactionRow,
   toUserRow,
   toVerificationRow,
-  type BookingRow,
   type DisputeRow,
+  type BookingRow,
   type TransactionRow,
   type UserRow,
   type VerificationRow,
 } from "@/lib/adapters";
 import type {
   ActivityEvent,
-  AdminBooking,
   AdminUser,
   CategoryShare,
   DashboardStats,
@@ -32,7 +29,6 @@ import type {
   DisputeResolution,
   MonthlyPoint,
   TopProvider,
-  Transaction,
   UserStatus,
   Verification,
 } from "@/lib/domain";
@@ -92,6 +88,7 @@ function loadStoredPrefs(): Partial<StoredPrefs> | null {
 // ─── Context shape ────────────────────────────────────────────────────────────
 
 interface AdminProfile {
+  id: string;
   name: string;
   email: string;
 }
@@ -121,6 +118,7 @@ interface AppState {
   retryLoad: () => void;
   verifications: VerificationRow[];
   users: UserRow[];
+  /** Search pages load these from their own paginated backend queries. */
   transactions: TransactionRow[];
   disputes: DisputeRow[];
   bookings: BookingRow[];
@@ -175,25 +173,20 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [sessionRestored, setSessionRestored] = useState(false);
   const [adminProfile, setAdminProfile] = useState<AdminProfile>({
+    id: "",
     name: "Super Admin",
     email: "admin@taskbuddy.io",
   });
 
-  /* eslint-disable react-hooks/set-state-in-effect --
-     Syncing from an external store is the documented exception to this rule,
-     and localStorage is one the server cannot read. The only hydration-safe
-     order is: render once without it, then adopt it after mount. Reading it
-     during render — what the rule otherwise pushes toward — is the actual bug
-     (a server/client tree mismatch), not the fix. */
   useEffect(() => {
-    const session = services.restoreSession();
-    if (session) {
-      setAdminProfile(session);
-      setIsLoggedIn(true);
-    }
-    setSessionRestored(true);
+    void services.restoreSession().then((session) => {
+      if (session) {
+        setAdminProfile(session);
+        setIsLoggedIn(true);
+      }
+      setSessionRestored(true);
+    });
   }, []);
-  /* eslint-enable react-hooks/set-state-in-effect */
 
   // domain data
   const [loading, setLoading] = useState(true);
@@ -202,9 +195,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [reloadNonce, setReloadNonce] = useState(0);
   const [domainUsers, setDomainUsers] = useState<AdminUser[]>([]);
   const [domainVerifications, setDomainVerifications] = useState<Verification[]>([]);
-  const [domainTransactions, setDomainTransactions] = useState<Transaction[]>([]);
   const [domainDisputes, setDomainDisputes] = useState<Dispute[]>([]);
-  const [domainBookings, setDomainBookings] = useState<AdminBooking[]>([]);
   const [dashboardStats, setDashboardStats] = useState<DashboardStats | null>(null);
   const [revenueSeries, setRevenueSeries] = useState<MonthlyPoint[]>([]);
   const [bookingsSeries, setBookingsSeries] = useState<MonthlyPoint[]>([]);
@@ -240,13 +231,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setLoading(true);
       setLoadError(null);
       try {
-        const [users, verifs, txns, disputes, bookings, stats, revenue, bookVol, categories, activity, providers, serverDarkMode, maintenance] =
+        const [users, verifs, disputes, stats, revenue, bookVol, categories, activity, providers, serverDarkMode, maintenance] =
           await Promise.all([
             services.getUsers(),
             services.getVerifications(),
-            services.getTransactions(),
             services.getDisputes(),
-            services.getBookings(),
             services.getDashboardStats(),
             services.getRevenueSeries(),
             services.getBookingsSeries(),
@@ -259,9 +248,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         if (cancelled) return;
         setDomainUsers(users);
         setDomainVerifications(verifs);
-        setDomainTransactions(txns);
         setDomainDisputes(disputes);
-        setDomainBookings(bookings);
         setDashboardStats(stats);
         setRevenueSeries(revenue);
         setBookingsSeries(bookVol);
@@ -314,13 +301,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   // ── session ──
   const login = useCallback(async (email: string, password: string) => {
-    const ok = await services.login(email, password);
-    if (ok) {
-      const profile = services.restoreSession();
-      if (profile) setAdminProfile(profile);
+    const profile = await services.login(email, password);
+    if (profile) {
+      setAdminProfile(profile);
       setIsLoggedIn(true);
     }
-    return ok;
+    return profile !== null;
   }, []);
 
   /** The admin layout's auth gate sends the browser to /login once this flips. */
@@ -384,7 +370,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const sendPasswordReset = useCallback((id: string) => services.sendPasswordReset(id), []);
 
   const cancelBooking = useCallback(async (id: string) => {
-    setDomainBookings(await services.cancelBooking(id));
+    await services.cancelBooking(id);
   }, []);
 
   const resolveDispute = useCallback(
@@ -421,9 +407,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
   // ── display rows (adapters applied once per data change) ──
   const users = useMemo(() => domainUsers.map(toUserRow), [domainUsers]);
   const verifications = useMemo(() => domainVerifications.map(toVerificationRow), [domainVerifications]);
-  const transactions = useMemo(() => domainTransactions.map(toTransactionRow), [domainTransactions]);
   const disputes = useMemo(() => domainDisputes.map(toDisputeRow), [domainDisputes]);
-  const bookings = useMemo(() => domainBookings.map(toBookingRow), [domainBookings]);
+  const transactions = useMemo<TransactionRow[]>(() => [], []);
+  const bookings = useMemo<BookingRow[]>(() => [], []);
 
   /**
    * Memoised so the context value isn't a brand-new object on every render.
@@ -442,7 +428,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       isLoggedIn, sessionRestored, adminProfile,
       login, logout, updateDisplayName, changePassword,
       loading, loadError, retryLoad,
-      verifications, users, transactions, disputes, bookings,
+       verifications, users, transactions, disputes, bookings,
       dashboardStats, revenueSeries, bookingsSeries, bookingsByCategory,
       recentActivity, topProviders,
       approveVerification, rejectVerification,
@@ -456,7 +442,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       isLoggedIn, sessionRestored, adminProfile,
       login, logout, updateDisplayName, changePassword,
       loading, loadError, retryLoad,
-      verifications, users, transactions, disputes, bookings,
+       verifications, users, transactions, disputes, bookings,
       dashboardStats, revenueSeries, bookingsSeries, bookingsByCategory,
       recentActivity, topProviders,
       approveVerification, rejectVerification,

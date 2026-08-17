@@ -1,31 +1,36 @@
-// ─── Session storage ──────────────────────────────────────────────────────────
-// Persists the admin's auth session (backend access token + profile) across
-// page reloads. Mirrors the localStorage pattern AppContext already uses for
-// UI preferences (see PREFS_KEY in context/AppContext.tsx).
-
-export interface StoredSession {
-  accessToken: string;
-  /** Kept so an expired access token can be renewed instead of forcing a logout. */
-  refreshToken?: string;
-  adminProfile: { name: string; email: string };
+export interface AdminProfile {
+  id: string;
+  name: string;
+  email: string;
 }
 
-const SESSION_KEY = "tb-admin-session";
-
-export function getStoredSession(): StoredSession | null {
-  if (typeof window === "undefined") return null;
-  try {
-    const raw = localStorage.getItem(SESSION_KEY);
-    return raw ? (JSON.parse(raw) as StoredSession) : null;
-  } catch {
-    return null; // corrupted storage — behave as if signed out
-  }
+interface AdminSession {
+  csrfToken: string;
+  adminProfile: AdminProfile;
 }
 
-export function setStoredSession(session: StoredSession): void {
-  localStorage.setItem(SESSION_KEY, JSON.stringify(session));
+let session: AdminSession | null = null;
+let csrfToken: string | null = null;
+
+export function getAdminSession(): AdminSession | null {
+  return session;
 }
 
-export function clearStoredSession(): void {
-  localStorage.removeItem(SESSION_KEY);
+export function setAdminSession(nextSession: AdminSession): void {
+  session = nextSession;
+  csrfToken = nextSession.csrfToken;
+}
+
+export function getCsrfToken(): string | null {
+  return csrfToken;
+}
+
+export function setCsrfToken(nextCsrfToken: string): void {
+  csrfToken = nextCsrfToken;
+  if (session) session = { ...session, csrfToken: nextCsrfToken };
+}
+
+export function clearAdminSession(): void {
+  session = null;
+  csrfToken = null;
 }
