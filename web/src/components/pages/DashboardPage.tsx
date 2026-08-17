@@ -55,7 +55,6 @@ const StatCard = ({
 
 const activityIcon = (type: string) => {
   switch (type) {
-    case "verif": return <ShieldCheck size={12} style={{ color: "#a5b4fc" }} />;
     case "tx": return <CreditCard size={12} style={{ color: "var(--success-text)" }} />;
     case "user": return <UserPlus size={12} style={{ color: "#60a5fa" }} />;
     case "alert": return <AlertTriangle size={12} style={{ color: "var(--warning-text)" }} />;

@@ -891,8 +891,9 @@ round-trips honestly; no transport reads them yet.
 
 ## 20. Push Notifications (migration 0012)
 
-Before this, `notifications` *was* the notification system: rows written by triggers and services,
-polled by the app. mobile/README.md: "The backend has no push-notification transport."
+`notifications` remains the in-app source of truth: rows are written by
+triggers and services, displayed in the app, and delivered to opted-in devices
+through the Expo scheduler described below.
 
 ### `device_tokens`
 

@@ -15,11 +15,6 @@ export interface EscrowRow {
   refunded_at: string | null;
 }
 
-const TRANSACTION_SELECT =
-  '*, jobs(title, service_categories(name)), ' +
-  'client:profiles!escrow_transactions_client_id_fkey(id, full_name), ' +
-  'provider:profiles!escrow_transactions_provider_id_fkey(id, full_name)';
-
 /**
  * Escrow state for a job, from assignment to payout.
  *
@@ -146,21 +141,26 @@ export class EscrowService {
 
   /**
    * The admin Transactions page. Rows carry both parties and the service name,
-   * which is the shape the console renders; it filters and searches client-side.
+   * which is the shape the console renders.
    */
   async listForAdmin(query: ListTransactionsQueryDto) {
     const offset = query.offset ?? 0;
     const limit = query.limit ?? 50;
-    let builder = this.supabase.admin
-      .from('escrow_transactions')
-      .select(TRANSACTION_SELECT, { count: 'exact' })
-      .order('held_at', { ascending: false })
-      .range(offset, offset + limit - 1);
-    if (query.status) builder = builder.eq('status', query.status);
-
-    const { data, error, count } = await builder;
+    const { data, error } = await this.supabase.admin.rpc(
+      'admin_list_transactions',
+      {
+        p_search_term: query.search ?? null,
+        p_status: query.status ?? null,
+        p_limit: limit,
+        p_offset: offset,
+      },
+    );
     if (error) throw new BadRequestException(error.message);
-    return { transactions: data ?? [], total: count ?? 0 };
+    const result = data?.[0];
+    return {
+      transactions: result?.rows ?? [],
+      total: Number(result?.total ?? 0),
+    };
   }
 
   private async setStatus(

@@ -8,14 +8,9 @@ Next.js 16 (App Router) + TypeScript, talking to the NestJS backend in
 **Live:** https://taskbuddy-nine-zeta.vercel.app · **Sign in:**
 `admin@taskbuddy.com` (ask the team for the password)
 
-> **Status:** all admin console features are built, wired to the real backend,
-> and verified — lint, type-check, 93 tests and a production build all pass.
->
-> **Two items need backend changes before this is production-ready** and are
-> the main things to review: session tokens are held in `localStorage` rather
-> than an httpOnly cookie, and list pagination is blocked on missing `search`
-> params. Both are specified in
-> **[Needs backend work (for review)](#needs-backend-work-for-review)**.
+> **Status:** this worktree implements browser-admin cookie sessions and
+> server-side list search/pagination. External deployment and production smoke
+> testing remain operator actions; this document does not claim they occurred.
 
 ---
 
@@ -41,6 +36,11 @@ already taken:
 ```bash
 cd ../backend && PORT=3001 npm run start:dev
 ```
+
+For an externally hosted console, set `NEXT_PUBLIC_API_URL` to the API HTTPS
+origin and set that exact console origin in the API's comma-separated
+`WEB_CORS_ORIGINS`. The API enables credentialed CORS only for that allowlist;
+wildcard origins cannot be used with the admin cookies.
 
 | Script | What it does |
 |---|---|
@@ -181,38 +181,44 @@ are checked. Written UTF-8 with a BOM so Excel doesn't mangle the peso sign.
 
 ---
 
-## Needs backend work (for review)
+## Backend Integration Status
 
-**These two cannot be fixed from `web/`.** Both are written up with the
-specific change required, so they can be picked up without re-diagnosing.
+**This worktree uses the backend integrations below.** An external deploy is
+still required before they are available at a hosted URL.
 
-### 1. Auth tokens are stored in `localStorage` (security)
+### 1. Adopt browser-admin session cookies
 
-`lib/api/session.ts` keeps the access *and* refresh token where any injected
-script can read them.
+`lib/api/session.ts` keeps only the in-memory admin identity and CSRF token.
+The access and refresh tokens are never put in `localStorage`; the browser
+holds them in httpOnly cookies.
 
-**Needed on the backend:** issue the session as an
-`httpOnly; Secure; SameSite` cookie instead, enable CORS credentials, and add
-CSRF protection on state-changing routes. The web side then stops handling
-tokens entirely.
+**Endpoints in use:** `POST /auth/admin/login`,
+`POST /auth/admin/refresh`, `GET /auth/admin/session`, and
+`POST /auth/admin/logout`. They use httpOnly access/refresh cookies and a
+readable CSRF cookie/token pair. The API enables credentialed CORS and rejects
+unsafe cookie-authenticated requests without a matching `X-CSRF-Token`.
 
-### 2. Pagination is blocked on missing `search` params
+`lib/api/client.ts` sends `credentials: 'include'` and adds the current CSRF
+token to unsafe requests. A single in-flight refresh rotates the cookies and
+updates the in-memory CSRF token before retrying a 401.
 
-Every list requests a flat 200 rows, so row 201 is invisible. `limit`/`offset`
-already exist — **the blocker is search.** Bookings, Transactions and Activity
-Log filter client-side over the rows already loaded, and their query DTOs take
-no `search` param. Paginating them as they stand would make the search box
-quietly search only the current page, which is worse than the 200-row cap it
-replaced.
+### 2. Adopt server-side list search and pagination
 
-**Needed on the backend:** add a `search` string to `ListBookingsQueryDto`,
-`ListTransactionsQueryDto` and `ListActivityQueryDto`, matched against the same
-columns the UI filters on today — customer/provider/service, customer/provider/
-id, and job title respectively.
+Bookings, Transactions, and Activity Log send their search/filter/page state
+to the API and render its exact `total`, rather than filtering a fixed local
+slice.
 
-`ListUsersQueryDto` already accepts `search`/`role`/`status`, so Users could be
-paged immediately. Worth shipping all four together so paging behaves the same
-everywhere.
+**Backend support in use:** `GET /admin/bookings`,
+`GET /admin/transactions`, and `GET /admin/activity` accept `search`, `limit`,
+and `offset`; search, filtering, ordering, exact count, and page selection run
+in SQL. Bookings search booking ID, client/provider name, and category;
+transactions search transaction ID, client/provider name, and job title;
+activity searches job title.
+
+Migration `0020_admin_search_functions.sql` supplies the hardened,
+service-role-only RPCs backing these list endpoints. Apply it before deploying
+the backend that calls them. Booking detail responses also expose `photo_urls`
+as renderable public URLs, including conversion of stored `job-photos` paths.
 
 ---
 

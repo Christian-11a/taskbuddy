@@ -26,7 +26,16 @@ export interface LoginApiResponse {
     full_name: string | null;
     role: "client" | "provider" | "admin" | null;
   };
-  session: { access_token: string; refresh_token: string; expires_at: number };
+  csrf_token: string;
+}
+
+export interface AdminSessionApiResponse {
+  user: {
+    id: string;
+    full_name: string | null;
+    role: "admin" | null;
+  };
+  csrf_token: string | undefined;
 }
 
 export interface AdminUserApiRow {

@@ -5,7 +5,12 @@
 // them real tables, so the in-memory mock DB is gone.
 
 import { ApiError, client } from "@/lib/api/client";
-import { clearStoredSession, getStoredSession, setStoredSession } from "@/lib/api/session";
+import {
+  clearAdminSession,
+  getAdminSession,
+  setAdminSession,
+  type AdminProfile,
+} from "@/lib/api/session";
 import {
   mapActivity,
   mapBookingsByCategory,
@@ -16,6 +21,7 @@ import {
 } from "./mapAnalytics";
 import type {
   AdminActionApiRow,
+  AdminSessionApiResponse,
   AdminBookingApiRow,
   AdminBookingDetailApiResponse,
   AdminConversationApiResponse,
@@ -64,6 +70,7 @@ import type {
 } from "@/lib/domain";
 
 export { ApiError };
+export type { AdminProfile };
 
 // Users/Bookings tables render fully client-side with no pagination UI —
 // request a generous page size instead of building pagination this pass.
@@ -210,35 +217,46 @@ function mapMessageRow(row: AdminMessageApiRow): ConversationMessage {
 
 // ─── Auth ─────────────────────────────────────────────────────────────────────
 
-export async function login(email: string, password: string): Promise<boolean> {
+function toAdminProfile(
+  user: { id: string; email?: string; full_name: string | null; role: string | null },
+  email: string,
+): AdminProfile | null {
+  if (!user.id || user.role !== "admin") return null;
+  return { id: user.id, name: user.full_name ?? email, email: user.email ?? email };
+}
+
+export async function login(email: string, password: string): Promise<AdminProfile | null> {
   try {
-    const res = await client.post<LoginApiResponse>("/auth/login", { email, password });
-    setStoredSession({
-      accessToken: res.session.access_token,
-      refreshToken: res.session.refresh_token,
-      adminProfile: {
-        name: res.user.full_name ?? res.user.email,
-        email: res.user.email,
-      },
-    });
-    return true;
+    const res = await client.post<LoginApiResponse>("/auth/admin/login", { email, password });
+    const profile = toAdminProfile(res.user, email);
+    if (!profile || !res.csrf_token) return null;
+    setAdminSession({ csrfToken: res.csrf_token, adminProfile: profile });
+    return profile;
   } catch {
-    return false;
+    return null;
   }
 }
 
-/** Reads a previously stored session (survives page reloads). */
-export function restoreSession(): { name: string; email: string } | null {
-  return getStoredSession()?.adminProfile ?? null;
+/** Re-establishes in-memory identity from the browser's cookie session. */
+export async function restoreSession(): Promise<AdminProfile | null> {
+  try {
+    const res = await client.get<AdminSessionApiResponse>("/auth/admin/session");
+    const profile = toAdminProfile(res.user, getAdminSession()?.adminProfile.email ?? "");
+    if (!profile || !res.csrf_token) return null;
+    setAdminSession({ csrfToken: res.csrf_token, adminProfile: profile });
+    return profile;
+  } catch {
+    return null;
+  }
 }
 
 export async function logout(): Promise<void> {
   try {
-    await client.post("/auth/logout");
+    await client.post("/auth/admin/logout");
   } catch {
-    // best-effort — the local session below is cleared regardless
+    // best-effort — the in-memory session below is cleared regardless
   } finally {
-    clearStoredSession();
+    clearAdminSession();
   }
 }
 
@@ -250,8 +268,8 @@ export async function logout(): Promise<void> {
 export async function updateDisplayName(name: string): Promise<boolean> {
   try {
     await client.patch("/profiles/me", { full_name: name });
-    const session = getStoredSession();
-    if (session) setStoredSession({ ...session, adminProfile: { ...session.adminProfile, name } });
+    const session = getAdminSession();
+    if (session) setAdminSession({ ...session, adminProfile: { ...session.adminProfile, name } });
     return true;
   } catch {
     return false;
@@ -371,6 +389,36 @@ export async function getTransactions(): Promise<Transaction[]> {
   return transactionsInFlight;
 }
 
+export interface PageQuery {
+  search: string;
+  page: number;
+  pageSize: number;
+}
+
+export interface SearchBookingsQuery extends PageQuery {
+  status?: string;
+}
+
+export interface SearchTransactionsQuery extends PageQuery {
+  status?: EscrowStatusApi;
+}
+
+function paginatedPath(path: string, query: PageQuery & { status?: string }): string {
+  const params = new URLSearchParams();
+  if (query.search.trim()) params.set("search", query.search.trim());
+  if (query.status) params.set("status", query.status);
+  params.set("limit", String(query.pageSize));
+  params.set("offset", String((query.page - 1) * query.pageSize));
+  return `${path}?${params}`;
+}
+
+export async function searchTransactions(query: SearchTransactionsQuery): Promise<{ items: Transaction[]; total: number }> {
+  const res = await client.get<ListTransactionsApiResponse>(
+    paginatedPath("/admin/transactions", query),
+  );
+  return { items: res.transactions.map(mapTransactionRow), total: res.total };
+}
+
 /** GET /admin/wallet-transactions (migration 0017) — the wallet ledger tab on
  *  the Transactions page, separate from escrow above. Fetched on demand when
  *  the tab is opened, not part of the initial page load. */
@@ -394,6 +442,13 @@ export async function getDisputes(): Promise<Dispute[]> {
 export async function getBookings(): Promise<AdminBooking[]> {
   const res = await client.get<ListBookingsApiResponse>(`/admin/bookings?limit=${LIST_PAGE_SIZE}`);
   return res.bookings.map(mapBookingRow);
+}
+
+export async function searchBookings(query: SearchBookingsQuery): Promise<{ items: AdminBooking[]; total: number }> {
+  const res = await client.get<ListBookingsApiResponse>(
+    paginatedPath("/admin/bookings", query),
+  );
+  return { items: res.bookings.map(mapBookingRow), total: res.total };
 }
 
 /**
@@ -449,6 +504,11 @@ export async function getRecentActivity(): Promise<ActivityEvent[]> {
   // want the list — so this still returns a flat array to its callers.
   const { items } = await client.get<ListActivityApiResponse>("/admin/activity");
   return mapActivity(items);
+}
+
+export async function searchActivity(query: PageQuery): Promise<{ items: ActivityEvent[]; total: number }> {
+  const res = await client.get<ListActivityApiResponse>(paginatedPath("/admin/activity", query));
+  return { items: mapActivity(res.items), total: res.total };
 }
 
 export async function getTopProviders(): Promise<TopProvider[]> {

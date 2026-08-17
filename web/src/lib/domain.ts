@@ -218,7 +218,7 @@ export interface CategoryShare {
   value: number; // percent 0–100
 }
 
-export type ActivityType = "verif" | "tx" | "user" | "alert";
+export type ActivityType = "tx" | "user" | "alert";
 
 export interface ActivityEvent {
   time: string;

@@ -14,6 +14,7 @@ import {
 } from './dto/admin.dto';
 import { AdminActionsService } from './admin-actions.service';
 import type { Profile } from '../common/types';
+import { JOB_PHOTOS_BUCKET } from '../uploads/uploads.constants';
 
 // admin_user_overview (migration 0005) joins profiles with auth.users email;
 // readable by the service role only.
@@ -23,10 +24,6 @@ const BOOKING_SELECT =
   '*, service_categories(name), ' +
   'client:profiles!jobs_client_id_fkey(id, full_name), ' +
   'provider:profiles!jobs_assigned_provider_id_fkey(id, full_name)';
-
-const ACTIVITY_SELECT =
-  'id, old_status, new_status, changed_at, ' +
-  'jobs(title), changed_by:profiles(full_name)';
 
 @Injectable()
 export class AdminService {
@@ -112,17 +109,22 @@ export class AdminService {
   async listBookings(query: ListBookingsQueryDto) {
     const offset = query.offset ?? 0;
     const limit = query.limit ?? 20;
-    let builder = this.supabase.admin
-      .from('jobs')
-      .select(BOOKING_SELECT, { count: 'exact' })
-      .order('created_at', { ascending: false })
-      .range(offset, offset + limit - 1);
-    if (query.status) builder = builder.eq('status', query.status);
-    if (query.category_id)
-      builder = builder.eq('category_id', query.category_id);
-    const { data, error, count } = await builder;
+    const { data, error } = await this.supabase.admin.rpc(
+      'admin_list_bookings',
+      {
+        p_search_term: query.search ?? null,
+        p_status: query.status ?? null,
+        p_category_id: query.category_id ?? null,
+        p_limit: limit,
+        p_offset: offset,
+      },
+    );
     if (error) throw new BadRequestException(error.message);
-    return { bookings: data ?? [], total: count ?? 0 };
+    const result = data?.[0];
+    return {
+      bookings: result?.rows ?? [],
+      total: Number(result?.total ?? 0),
+    };
   }
 
   /**
@@ -163,7 +165,23 @@ export class AdminService {
     // BOOKING_SELECT is a concatenated (non-literal) string — supabase-js
     // can't infer a row type from it (same pitfall as JOB_SELECT in
     // jobs.service.ts), so the cast is explicit rather than accidental.
-    return data as unknown as Record<string, unknown>;
+    const booking = data as unknown as Record<string, unknown>;
+    if (!('photo_urls' in booking)) return booking;
+    const photoUrls = booking.photo_urls;
+    return {
+      ...booking,
+      photo_urls:
+        Array.isArray(photoUrls) &&
+        photoUrls.every((url) => typeof url === 'string' && url.length > 0)
+          ? photoUrls.map((url) =>
+              isAbsoluteUrl(url)
+                ? url
+                : this.supabase.admin.storage
+                    .from(JOB_PHOTOS_BUCKET)
+                    .getPublicUrl(url).data.publicUrl,
+            )
+          : [],
+    };
   }
 
   /** Cancels a booking (story #31 extension) — refuses if it's already in a
@@ -319,17 +337,22 @@ export class AdminService {
   async recentActivity(query: ListActivityQueryDto = {}) {
     const offset = query.offset ?? 0;
     const limit = query.limit ?? 20;
-    let builder = this.supabase.admin
-      .from('job_status_history')
-      .select(ACTIVITY_SELECT, { count: 'exact' })
-      .order('changed_at', { ascending: false })
-      .range(offset, offset + limit - 1);
-    if (query.from) builder = builder.gte('changed_at', query.from);
-    if (query.to) builder = builder.lte('changed_at', query.to);
-
-    const { data, error, count } = await builder;
+    const { data, error } = await this.supabase.admin.rpc(
+      'admin_list_activity',
+      {
+        p_search_term: query.search ?? null,
+        p_from: query.from ?? null,
+        p_to: query.to ?? null,
+        p_limit: limit,
+        p_offset: offset,
+      },
+    );
     if (error) throw new BadRequestException(error.message);
-    return { items: data ?? [], total: count ?? 0 };
+    const result = data?.[0];
+    return {
+      items: result?.rows ?? [],
+      total: Number(result?.total ?? 0),
+    };
   }
 
   /**
@@ -407,4 +430,13 @@ export class AdminService {
 
 function round2(n: number): number {
   return Math.round(n * 100) / 100;
+}
+
+function isAbsoluteUrl(value: string): boolean {
+  try {
+    const url = new URL(value);
+    return url.protocol === 'http:' || url.protocol === 'https:';
+  } catch {
+    return false;
+  }
 }

@@ -136,19 +136,24 @@ describe('WalletService', () => {
       expect(result).toEqual({ transactions: rows, total: 1 });
       expect(
         calls.some(
-          (c) => c.method === 'eq' && c.args[0] === 'kind' && c.args[1] === 'topup',
+          (c) =>
+            c.method === 'eq' && c.args[0] === 'kind' && c.args[1] === 'topup',
         ),
       ).toBe(true);
       expect(
         calls.some(
           (c) =>
-            c.method === 'eq' && c.args[0] === 'direction' && c.args[1] === 'credit',
+            c.method === 'eq' &&
+            c.args[0] === 'direction' &&
+            c.args[1] === 'credit',
         ),
       ).toBe(true);
       expect(
         calls.some(
           (c) =>
-            c.method === 'eq' && c.args[0] === 'status' && c.args[1] === 'completed',
+            c.method === 'eq' &&
+            c.args[0] === 'status' &&
+            c.args[1] === 'completed',
         ),
       ).toBe(true);
     });

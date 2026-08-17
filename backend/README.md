@@ -62,7 +62,7 @@ Job lifecycle: `open → recommending → assigned → in_progress → completed
 
 1. Create a project at [supabase.com](https://supabase.com).
 2. Apply **every** migration in [`supabase/migrations/`](./supabase/migrations) **in order**
-   (0001 → 0010), either by pasting each file into the SQL Editor or with the CLI:
+   (0001 → 0020), either by pasting each file into the SQL Editor or with the CLI:
 
    ```bash
    supabase link --project-ref <your-project-ref>
@@ -81,6 +81,16 @@ Job lifecycle: `open → recommending → assigned → in_progress → completed
    | `0008_provider_verifications.sql` | `provider_verifications` + `provider_profiles.is_verified`; creates the **private** `verification-docs` Storage bucket. Backs the admin Verification queue. See `BACKEND_SCHEMA.md` §17. |
    | `0009_escrow_and_disputes.sql` | `escrow_transactions` + `disputes`. Backs the admin Transactions page and the mobile dispute screen. See `BACKEND_SCHEMA.md` §18. |
    | `0010_wallet_txn_kind.sql` | `wallet_transactions.kind`, so platform revenue counts payouts without also counting escrow refunds. Split out of 0009 because that file had already been applied. Safely re-runnable. |
+   | `0011_avatars_and_user_settings.sql` | public `avatars` Storage bucket plus per-user notification and display settings. |
+   | `0012_push_device_tokens.sql` | Expo push-device tokens and notification delivery metadata. |
+   | `0013_stripe_payments_and_identity.sql` | Stripe PaymentIntent/Checkout idempotency and provider Stripe Identity verification support. |
+   | `0014_admin_console_followups.sql` | timed suspensions, `admin_actions`, and expanded admin-console data. |
+   | `0015_signup_consents_and_sp_category.sql` | signup consent records and provider service-category support. |
+   | `0016_google_signup_pending.sql` | pending-profile state for Google signups. |
+   | `0017_maintenance_mode.sql` | platform maintenance setting and wallet-ledger admin support. |
+   | `0018_job_confirmed_status.sql` | `confirmed` job status and assignment lifecycle updates. |
+   | `0019_job_tasks_and_verification_storage_rls.sql` | job checklists and verification-storage RLS policies. |
+   | `0020_admin_search_functions.sql` | service-role-only SQL RPCs for paginated admin booking, activity, and escrow search. |
 
    > Migrations 0008 and 0009 each run `alter type notification_type add value`.
    > Postgres allows this inside a transaction as long as the new value isn't
@@ -92,7 +102,9 @@ Job lifecycle: `open → recommending → assigned → in_progress → completed
    > CHECK constraint, which the same rule forbids inside one transaction (and
    > the Supabase SQL editor runs a pasted script as one transaction). Run
    > 0018, let it commit, then run 0019. `supabase db push` applies each file
-   > in its own transaction and needs no special handling.
+   > in its own transaction and needs no special handling. Apply **0020 only
+   > after 0019**: it depends on the complete jobs, escrow, and admin schema
+   > established by the preceding migrations.
    >
    > The API code that ships with these migrations reads `job_tasks` on every
    > job query, so **apply 0019 before deploying the API**. Out of order, job
@@ -116,6 +128,33 @@ cp .env.example .env    # fill in your Supabase URL + keys (Settings → API)
 npm install
 npm run start:dev       # http://localhost:3000
 ```
+
+`WEB_CORS_ORIGINS` is a comma-separated allowlist for credentialed browser
+requests. Set it explicitly in every externally deployed API environment and
+include the exact admin-console origin; do not use `*`, because browser-admin
+sessions require `credentials: 'include'`.
+
+```env
+WEB_CORS_ORIGINS=https://your-admin.example.com,http://localhost:3000
+```
+
+### External deployment checklist
+
+The repository contains the implementation, but an operator must still run
+these external steps. This checklist does not assert that a deployment occurred.
+
+1. Apply migrations through `0020_admin_search_functions.sql` in order. Run
+   0018 and 0019 in separate SQL Editor transactions as described above; 0020
+   comes after 0019 and creates the service-role-only admin list RPCs.
+2. Set the API host's `WEB_CORS_ORIGINS`, then deploy the backend with the
+   current environment variables and migrations available.
+3. Set `NEXT_PUBLIC_API_URL` at the web host to that API's HTTPS origin and
+   deploy the web application. Its origin must exactly match the CORS allowlist.
+4. For mobile push, use a physical device to grant notification permission and
+   register an Expo token after sign-in. Configure Expo/EAS credentials and,
+   when Expo push security is enabled, set `EXPO_ACCESS_TOKEN` on the API host.
+5. Run the smoke checks in
+   [`docs/backend-handoff-booking-tasks-verification.md`](../docs/backend-handoff-booking-tasks-verification.md).
 
 ### 3. ML service
 
@@ -177,6 +216,10 @@ All bodies are JSON. 🔒 = requires auth; (client) / (provider) = role-restrict
 |---|---|
 | `POST /auth/register` | `{ email, password, role, full_name, phone? }` |
 | `POST /auth/login` | `{ email, password }` → `{ user: { id, email, full_name, role }, session }` |
+| `POST /auth/admin/login` | admin-only browser login; sets httpOnly access/refresh cookies plus a readable CSRF cookie, returns minimal admin identity + `csrf_token` |
+| `POST /auth/admin/refresh` | rotates browser-admin cookies; requires the refresh cookie and matching `X-CSRF-Token` |
+| `GET /auth/admin/session` | current cookie-authenticated admin identity + `csrf_token` |
+| `POST /auth/admin/logout` | revokes the current cookie-authenticated admin session and clears its cookies |
 | `POST /auth/refresh` | `{ refresh_token }` → new session |
 | `POST /auth/logout` 🔒 | revoke the session |
 | `GET /auth/me` 🔒 | `{ profile, provider_profile }` |
@@ -352,24 +395,25 @@ vars these endpoints return **503** and the rest of the API is unaffected.
 | `POST /admin/users/:id/suspend` | `{ duration_days?, reason }` — refuses if already suspended or if the target is an admin. Omit `duration_days` for indefinite; otherwise the suspension lifts itself the next time `deactivated_at` is checked (login), no cron job |
 | `POST /admin/users/:id/reinstate` | reactivate a suspended account |
 | `POST /admin/users/:id/send-password-reset` | admin-triggered password reset email — refuses admin targets (migration 0014) |
-| `GET /admin/bookings?status=&category_id=&limit=&offset=` | platform-wide bookings view (story #31) |
-| `GET /admin/bookings/:id` | one booking's full detail, plus its escrow record if one exists (migration 0014) |
+| `GET /admin/bookings?search=&status=&category_id=&limit=&offset=` | platform-wide bookings view; search matches booking ID, client/provider name, or service category (story #31) |
+| `GET /admin/bookings/:id` | one booking's full detail, plus its escrow record if one exists; stored `job-photos` paths are returned as public photo URLs |
 | `POST /admin/bookings/:id/cancel` | force-cancel a booking — refuses if already `completed`/`cancelled`/`expired` |
 | `GET /admin/analytics/summary` | totals (users/clients/providers/suspended/bookings/avg_rating/revenue/`pending_verifications`), bookings by status/category, daily booking trend, revenue trend, top 10 providers by completed jobs (story #32) |
-| `GET /admin/activity?limit=&offset=&from=&to=` | job-status transitions → `{ items, total }` (migration 0014 — was a bare array of the newest 20) |
+| `GET /admin/activity?search=&limit=&offset=&from=&to=` | job-status transitions; search matches job title → `{ items, total }` (migration 0014 — was a bare array of the newest 20) |
 | `GET /admin/audit?action=&actor_id=&from=&to=&limit=&offset=` | the admin action audit trail → `{ actions, total }` (migration 0014) — see below |
 | `GET /admin/jobs/:jobId/conversation` | read-only view of a job's chat, oldest first, for dispute review (migration 0014) |
 | `GET /admin/verifications?status=&limit=&offset=` | review queue; rows carry provider name, email, and short-lived signed document URLs |
 | `POST /admin/verifications/:id/approve` | approve → sets `provider_profiles.is_verified` |
 | `POST /admin/verifications/:id/reject` | `{ reason? }` |
-| `GET /admin/transactions?status=&limit=&offset=` | escrow records with both parties + service name (story #17/#18) |
+| `GET /admin/transactions?search=&status=&limit=&offset=` | escrow records with both parties + service name; search matches transaction ID, client/provider name, or job title (story #17/#18) |
 | `GET /admin/disputes?status=&limit=&offset=` | dispute queue |
 | `POST /admin/disputes/:id/resolve` | `{ resolution: 'released_to_provider' \| 'refunded_to_client', note? }` (story #20) |
 
 Admin accounts can't self-register (`POST /auth/register` only allows
-`client`/`provider`) and log in through the same `POST /auth/login` as
-everyone else — there's no separate admin login endpoint. See
-`0005_admin_role.sql` above for how to promote an account to `admin`.
+`client`/`provider`). The admin console uses `POST /auth/admin/login` and the
+cookie-session endpoints above; mobile and other bearer-token clients can use
+the general login flow. See `0005_admin_role.sql` above for how to promote an
+account to `admin`.
 
 **Admin audit trail** (migration 0014, `admin_actions` table, service-role only
 — never client-readable outside `GET /admin/audit`): every `suspend`,

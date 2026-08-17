@@ -106,11 +106,12 @@ export class AuthService implements OnModuleInit {
     if (userId) {
       const now = new Date().toISOString();
       const consentPatch: Record<string, string | number | null> = {};
-      if (dto.consented_terms)           consentPatch.consented_terms_at           = now;
-      if (dto.consented_privacy)         consentPatch.consented_privacy_at         = now;
-      if (dto.consented_data_collection) consentPatch.consented_data_collection_at = now;
-      if (dto.consented_biometric)       consentPatch.consented_biometric_at       = now;
-      if (dto.category_id)               consentPatch.signup_category_id           = dto.category_id;
+      if (dto.consented_terms) consentPatch.consented_terms_at = now;
+      if (dto.consented_privacy) consentPatch.consented_privacy_at = now;
+      if (dto.consented_data_collection)
+        consentPatch.consented_data_collection_at = now;
+      if (dto.consented_biometric) consentPatch.consented_biometric_at = now;
+      if (dto.category_id) consentPatch.signup_category_id = dto.category_id;
 
       if (Object.keys(consentPatch).length > 0) {
         await this.supabase.admin
@@ -124,19 +125,17 @@ export class AuthService implements OnModuleInit {
       // matching system immediately but must complete their profile before
       // applying to jobs (the Edit Profile screen enforces bio in UX).
       if (dto.role === 'provider' && dto.category_id) {
-        await this.supabase.admin
-          .from('provider_profiles')
-          .upsert(
-            {
-              profile_id: userId,
-              category_id: dto.category_id,
-              bio: null,
-              years_experience: 0,
-              is_available: false,
-              service_radius_km: 15,
-            },
-            { onConflict: 'profile_id', ignoreDuplicates: true },
-          );
+        await this.supabase.admin.from('provider_profiles').upsert(
+          {
+            profile_id: userId,
+            category_id: dto.category_id,
+            bio: null,
+            years_experience: 0,
+            is_available: false,
+            service_radius_km: 15,
+          },
+          { onConflict: 'profile_id', ignoreDuplicates: true },
+        );
       }
     }
 
@@ -152,7 +151,6 @@ export class AuthService implements OnModuleInit {
         : null,
     };
   }
-
 
   async login(dto: LoginDto) {
     const { data, error } = await this.supabase.anon.auth.signInWithPassword({
@@ -597,11 +595,11 @@ export class AuthService implements OnModuleInit {
       role: dto.role,
       google_signup_pending: false,
     };
-    if (dto.consented_terms)           patch.consented_terms_at           = now;
-    if (dto.consented_privacy)         patch.consented_privacy_at         = now;
+    if (dto.consented_terms) patch.consented_terms_at = now;
+    if (dto.consented_privacy) patch.consented_privacy_at = now;
     if (dto.consented_data_collection) patch.consented_data_collection_at = now;
-    if (dto.consented_biometric)       patch.consented_biometric_at       = now;
-    if (dto.category_id)               patch.signup_category_id           = dto.category_id;
+    if (dto.consented_biometric) patch.consented_biometric_at = now;
+    if (dto.category_id) patch.signup_category_id = dto.category_id;
 
     const { error } = await this.supabase.admin
       .from('profiles')
@@ -612,19 +610,17 @@ export class AuthService implements OnModuleInit {
     // Seed provider_profiles when the user chose Service Provider and supplied
     // a category.  Mirrors the same step in register() from migration 0015.
     if (dto.role === 'provider' && dto.category_id) {
-      await this.supabase.admin
-        .from('provider_profiles')
-        .upsert(
-          {
-            profile_id: user.id,
-            category_id: dto.category_id,
-            bio: null,
-            years_experience: 0,
-            is_available: false,
-            service_radius_km: 15,
-          },
-          { onConflict: 'profile_id', ignoreDuplicates: true },
-        );
+      await this.supabase.admin.from('provider_profiles').upsert(
+        {
+          profile_id: user.id,
+          category_id: dto.category_id,
+          bio: null,
+          years_experience: 0,
+          is_available: false,
+          service_radius_km: 15,
+        },
+        { onConflict: 'profile_id', ignoreDuplicates: true },
+      );
     }
 
     return { success: true };
