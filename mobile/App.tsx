@@ -43,6 +43,7 @@ import HONotificationsScreen from './app/(homeowner)/screens/HONotificationsScre
 import HOEditProfileScreen from './app/(homeowner)/screens/HOEditProfileScreen';
 import HOSettingsScreen from './app/(homeowner)/screens/HOSettingsScreen';
 import HODisputeFilingScreen from './app/(homeowner)/screens/HODisputeFilingScreen';
+import HODisputeStatusScreen from './app/(homeowner)/screens/HODisputeStatusScreen';
 
 // ── Provider screens ──────────────────────────────────────────────────────────
 import SPHomeScreen from './app/(provider)/screens/SPHomeScreen';
@@ -406,6 +407,13 @@ function AppContent() {
       return (
         <View style={styles.screen}>
           <HODisputeFilingScreen jobId={hoSelectedId} onBack={hoBack} onSubmitted={hoBack} />
+        </View>
+      );
+    }
+    if (hoScreen === 'Dispute Status') {
+      return (
+        <View style={styles.screen}>
+          <HODisputeStatusScreen jobId={hoSelectedId} onBack={hoBack} />
         </View>
       );
     }

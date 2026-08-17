@@ -27,6 +27,7 @@ import {
   ArrowUpRight,
   ArrowRightLeft,
   CircleDollarSign,
+  Gift,
   Package,
   Shield,
   WalletCards,
@@ -168,6 +169,7 @@ export default function HOWalletScreen() {
     activeTab === 'all'
       ? transactions
       : transactions.filter((t) => t.direction === activeTab);
+  const vouchers = transactions.filter((t) => t.kind === 'recovery_credit');
 
   if (loading) return <ScreenSkeleton variant="dashboard" />;
 
@@ -239,6 +241,33 @@ export default function HOWalletScreen() {
             <Text style={[styles.statValue, { color: '#22c55e' }]}>{peso(data?.total_credited ?? 0)}</Text>
             <Text style={styles.statLabel}>Added</Text>
           </View>
+        </View>
+
+        {/* Recovery Vouchers — trust credits an admin issues after resolving a
+            dispute in the client's favour. Always shown, even empty, so it's
+            already there the moment the first one is issued. */}
+        <View style={styles.voucherCard}>
+          <View style={styles.voucherHeader}>
+            <Gift size={17} color="#9333ea" />
+            <Text style={styles.voucherHeaderText}>Recovery Vouchers</Text>
+          </View>
+          {vouchers.length === 0 ? (
+            <Text style={styles.voucherEmptyText}>
+              Trust credits from resolved disputes will appear here.
+            </Text>
+          ) : (
+            <View style={styles.voucherList}>
+              {vouchers.map((v) => (
+                <View key={v.id} style={styles.voucherRow}>
+                  <View style={styles.voucherInfo}>
+                    <Text style={styles.voucherTitle} numberOfLines={1}>{v.title}</Text>
+                    <Text style={styles.voucherDate}>{shortDate(v.created_at)}</Text>
+                  </View>
+                  <Text style={styles.voucherAmount}>+{peso(v.amount)}</Text>
+                </View>
+              ))}
+            </View>
+          )}
         </View>
 
         {/* Trust note */}
@@ -422,6 +451,20 @@ const styles = StyleSheet.create({
   statDivider: { width: 1, backgroundColor: C.line },
   statValue: { fontSize: 18.5, fontWeight: '800', fontFamily: 'Inter', marginBottom: 2 },
   statLabel: { color: C.ink400, fontSize: 13, fontFamily: 'Inter' },
+
+  voucherCard: {
+    backgroundColor: '#faf5ff', borderWidth: 1, borderColor: '#e9d5ff',
+    borderRadius: 15, padding: 14, marginBottom: 14,
+  },
+  voucherHeader: { flexDirection: 'row', alignItems: 'center', gap: 7, marginBottom: 8 },
+  voucherHeaderText: { color: '#7e22ce', fontSize: 13.5, fontWeight: '800', fontFamily: 'Inter' },
+  voucherEmptyText: { color: '#a855f7', fontSize: 12.5, fontFamily: 'Inter', lineHeight: 17 },
+  voucherList: { gap: 8 },
+  voucherRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  voucherInfo: { flex: 1, marginRight: 10 },
+  voucherTitle: { color: C.ink900, fontSize: 13.5, fontWeight: '600', fontFamily: 'Inter' },
+  voucherDate: { color: C.ink400, fontSize: 11.5, fontFamily: 'Inter', marginTop: 1 },
+  voucherAmount: { color: '#9333ea', fontSize: 14, fontWeight: '800', fontFamily: 'Inter' },
 
   trustNote: {
     flexDirection: 'row', gap: 9, alignItems: 'flex-start',

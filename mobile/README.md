@@ -198,9 +198,32 @@ only to the NestJS API rather than directly to Supabase Realtime.
 After sign-in, the app best-effort requests notification permission and posts
 an Expo push token to `POST /devices`; it unregisters that token on sign-out.
 The backend's 30-second scheduler sends pending notification rows to opted-in
-devices via Expo. Test this on a physical device with a deployed API and Expo
-credentials. Permission denial or a push-registration failure does not block
-sign-in, and notification rows remain available in the in-app list.
+devices via Expo. Permission denial or a registration failure does not block
+sign-in, and notification rows remain available in the in-app list either way.
+
+> **⚠️ Push does not work yet, and won't until two things are set up.** The code
+> is complete on both sides; the configuration isn't.
+>
+> 1. **An EAS project id.** `getExpoPushTokenAsync()` resolves one from
+>    `options.projectId` → `Constants.easConfig` → `expoConfig.extra.eas.projectId`.
+>    `app.json` currently has none, so the call throws
+>    `ERR_NOTIFICATIONS_NO_EXPERIENCE_ID` and no token is ever obtained. Run
+>    `eas init` and commit the resulting `expo.extra.eas.projectId`.
+> 2. **A development build.** Remote push is not supported in **Expo Go** from
+>    SDK 53 onward, and this app is on SDK 54. Testing needs `eas build --profile
+>    development` (or a local dev client) on a physical device — a simulator
+>    cannot receive pushes either.
+>
+> `eas.json` is committed with `development` / `preview` / `production` profiles,
+> so both steps are: `npm i -g eas-cli` → `eas login` → `eas init` (writes the
+> project id into `app.json` — commit it) → `eas build --profile development
+> --platform android`. Only an Expo account holder can run these; the project id
+> is minted server-side and cannot be filled in by hand.
+>
+> Until then `src/lib/pushNotifications.ts` returns `{ status: 'misconfigured' }`
+> and `AuthContext` logs `[push] not registered (misconfigured) — …` in `__DEV__`.
+> That warning is the intended signal, not a bug. A *denied* permission is
+> logged as nothing, deliberately: the user chose it and it isn't a fault.
 
 ---
 
@@ -279,20 +302,21 @@ not a silently dropped extra. Everything else degrades quietly (no checklists,
 Accept returns 404). What has to be applied and deployed, and by whom, is in
 [`docs/backend-handoff-booking-tasks-verification.md`](../docs/backend-handoff-booking-tasks-verification.md).
 
-> **Note on migrations 0018 and 0019:** These may already have been applied to
-> the Supabase project by the mobile developer via the SQL editor. Before running
-> them, verify in the SQL Editor with the four queries in the handoff doc's
-> "Verify Part A landed" section. If they already exist, skip straight to Part B
-> (Render redeploy).
+> **All three migrations are applied** to the Supabase project (0018 + 0019 on
+> 2026-08-14, 0020 on 2026-08-17), and the API carrying this work is deployed.
+> The verification queries in the handoff doc's §3 and §4 are repeatable if you
+> want to confirm the state of a given project yourself.
 
 ---
 
 ## Backend Handoff Docs
 
-Two handoff documents in [`docs/`](../docs/) are addressed to whoever holds
-backend / Supabase / Render access. They contain everything needed to bring the
-deployed stack up to date with the current codebase — **no new code is needed**,
-only applies and deploys of already-committed work.
+Four handoff documents in [`docs/`](../docs/) are addressed to whoever holds
+backend / Supabase / Render access. The first two are pure ops — applying and
+deploying already-committed work, no new code. The last two ask for small,
+specific pieces of new backend code (rate limiting, an admin-only credit
+endpoint) plus one real architecture decision (Stripe Connect) — each is
+scoped precisely so nothing has to be re-derived from the user stories.
 
 ### 1. [`docs/backend-handoff-booking-tasks-verification.md`](../docs/backend-handoff-booking-tasks-verification.md)
 
@@ -301,20 +325,31 @@ correctly in production:
 
 | Part | What | Needs | Status |
 |------|------|-------|--------|
-| **A** | Apply Supabase migrations 0018 and 0019 | Supabase SQL Editor | ✅ Done 2026-08-14 |
-| **B** | Redeploy the API on Render; confirm Stripe Identity is enabled | Render + Stripe Dashboard | ⬜ **Outstanding** |
+| **A** | Apply Supabase migrations 0018, 0019, 0020 | Supabase SQL Editor | ✅ Done — 0018 + 0019 2026-08-14, 0020 2026-08-17 |
+| **B** | Deploy the API; configure web + Expo | API host, web host, Expo | ⚠️ API deployed 2026-08-17; **hosted-web + Expo config outstanding** |
 
 - **Migration 0018** adds the `'confirmed'` value to the `job_status` enum.
 - **Migration 0019** creates the `job_tasks` checklist table with RLS, and adds
   four Row-Level Security policies on the `verification-docs` storage bucket.
-- **Render redeploy** is what actually unblocks `POST /jobs` — the API validates
-  request bodies strictly and rejects the new `tasks` field until redeployed.
+- **Migration 0020** adds the admin search/pagination RPCs the deployed API calls
+  for the admin console's Bookings, Transactions, and Activity pages. Mobile
+  never calls them.
 
-> **Part A is already done** — both migrations were applied and verified on
-> 2026-08-14 (all four checks pass, including the Storage policies at 4/4).
-> **Only the Render redeploy is outstanding**, and it is what unblocks posting
-> a job. Both migrations are idempotent, so re-running them to confirm the
-> state is harmless if you'd rather see it yourself.
+> **Part A and the API deploy have both landed.** Verified 2026-08-17:
+> `POST /jobs/:id/accept`, `POST /devices`, and `GET /conversations/:id/stream`
+> answer `401` rather than `404`, and all three `admin_list_*` functions are
+> present in `information_schema.routines`. Posting a job works again.
+>
+> **What is still outstanding:** the `NEXT_PUBLIC_API_URL` / `WEB_CORS_ORIGINS`
+> pair *for an externally hosted* admin console (running it locally is already
+> configured — `web/.env.local` points at the deployed API, and that origin is
+> allowed by the deployed CORS preflight), and Expo push credentials, blocked
+> first by the missing EAS `projectId` — see above.
+>
+> 0018 and 0019 are idempotent and safe to re-run. **0020 is not** — it uses bare
+> `create function`, so re-running it errors with `42723 function already exists`.
+> Check state with the `information_schema.routines` query in the handoff doc §3
+> instead.
 
 ### 2. [`docs/backend-handoff-mobile-todo-gaps.md`](../docs/backend-handoff-mobile-todo-gaps.md)
 
@@ -329,7 +364,26 @@ the mobile to-do list that cannot be finished without an API change first:
 | 4 | Realtime chat | Done — authenticated SSE streams messages through the API |
 | 5 | Email OTP at registration | No — Supabase confirmation already handles this |
 | 6 | Homeowner card-at-hire (vs wallet top-up) | No — product decision |
-| 7 | Push delivery | Implemented with Expo tokens and the API scheduler; requires external Expo/API configuration and device smoke testing |
+| 7 | Push delivery | Backend done (Expo tokens + API scheduler). **Blocked on our side**: no EAS `projectId`, and Expo Go can't receive push on SDK 54 — see [Live chat and push notifications](#live-chat-and-push-notifications) |
+
+### 3. [`docs/backend-handoff-stripe-connect-escrow.md`](../docs/backend-handoff-stripe-connect-escrow.md)
+
+**Needs a real decision, not just code.** Covers the "escrow hold via Stripe Connect at booking"
+story. Today's escrow is a ledger debit against a wallet the client pre-funded — there is no
+Stripe Connect anywhere in the backend, no per-booking payment intent, and no rate limiting on any
+payment endpoint. The doc lays out two viable architectures (A: keep the wallet ledger, add a real
+per-booking hold + Connect transfer on release; B: full Connect destination charges) and asks for
+a call before code gets written, since it changes real money-movement semantics. Rate limiting
+(`@nestjs/throttler`, currently not even a dependency) and a small explicit-error hardening fix in
+`EscrowService.release()` are both independent of that decision and can start immediately.
+
+### 4. [`docs/backend-handoff-recovery-vouchers.md`](../docs/backend-handoff-recovery-vouchers.md)
+
+**Non-urgent.** The dispute progress timeline and Wallet's Recovery Vouchers section are both
+already built on this side (see below) — the one thing outstanding is a new admin-only endpoint to
+actually issue a recovery credit, since `POST /wallet/transactions` deliberately refuses any
+credit from any caller. `wallet_txn_kind` already has the `'recovery_credit'` value
+(`0021_recovery_credit_kind.sql`, applied), so the endpoint has a slot ready to write into.
 
 ---
 
@@ -353,7 +407,12 @@ the mobile to-do list that cannot be finished without an API change first:
 - Notifications (listing + mark read)
 - Profile view and edit (both roles)
 - Provider verification submission
-- Dispute filing
+- Dispute filing and progress tracking (a 3-step Filed → Under Review →
+  Resolved timeline derived from the dispute's current status — there's no
+  stored step history, so it's not a true event log)
+- Wallet balance, total added/spent (both roles), chronological transaction
+  log, and a Recovery Vouchers section on the homeowner side — empty until
+  the backend can issue one, see handoff doc #3
 - Image upload (via Supabase Storage signed URLs)
 - Provider calendar (read-only view of bookings)
 - Chat (initial history plus authenticated SSE live messages)
@@ -376,7 +435,7 @@ was trimmed to remove rows that duplicated a bottom-nav tab or a header icon.
 | **Language** | Settings modal states English is the only option — no i18n system exists to back a real picker |
 | **Delete Account** | No self-serve deletion endpoint. The Settings row opens a `mailto:` to support instead of pretending to delete. What one would have to handle is written up in the [handoff doc](../docs/backend-handoff-mobile-todo-gaps.md) §1 |
 | **Wallet Withdraw / Transfer** | Buttons are present but have no handler. `POST /wallet/transactions` is a bookkeeping primitive, not a withdrawal, and there is no payout rail at all — money can only enter via the Stripe webhook. See the [handoff doc](../docs/backend-handoff-mobile-todo-gaps.md) §2 |
-| **Push delivery** | Implemented through Expo after the app has notification permission and a registered device token. It still needs external API/Expo configuration and physical-device verification; the notification row remains the source of truth if delivery fails |
+| **Push delivery** | Code complete end to end, **but not yet functional**: `app.json` has no EAS `projectId`, so no push token is ever obtained, and remote push needs a development build (not Expo Go) on SDK 54. The `notifications` table remains the source of truth and the in-app list is unaffected — see [Live chat and push notifications](#live-chat-and-push-notifications) |
 | **Realtime chat** | Message delivery is live through authenticated SSE; call and attachment buttons remain inert |
 | **Counterpart avatars** | Chat, applicant, and review payloads all carry `avatar_url`; those screens still render initials. (The signed-in user's *own* avatar does render — see `OwnAvatar`) |
 | **Provider calendar write** | Bookings are created by the backend when a job is assigned, not from this screen |

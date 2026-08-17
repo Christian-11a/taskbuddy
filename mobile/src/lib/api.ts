@@ -350,8 +350,20 @@ export interface Dispute {
   details: string | null;
   status: 'open' | 'resolved' | 'cancelled';
   resolution: 'released_to_provider' | 'refunded_to_client' | null;
+  resolution_note: string | null;
+  resolved_at: string | null;
   created_at: string;
 }
+
+/** Ledger row purpose — see backend/supabase/migrations/0010 and 0021. */
+export type WalletTxnKind =
+  | 'topup'
+  | 'withdrawal'
+  | 'escrow_hold'
+  | 'payout'
+  | 'refund'
+  | 'adjustment'
+  | 'recovery_credit';
 
 export interface WalletTransaction {
   id: string;
@@ -361,6 +373,7 @@ export interface WalletTransaction {
   amount: number;
   title: string;
   job_id: string | null;
+  kind: WalletTxnKind;
   created_at: string;
 }
 

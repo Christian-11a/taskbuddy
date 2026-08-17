@@ -216,8 +216,8 @@ transactions search transaction ID, client/provider name, and job title;
 activity searches job title.
 
 Migration `0020_admin_search_functions.sql` supplies the hardened,
-service-role-only RPCs backing these list endpoints. Apply it before deploying
-the backend that calls them. Booking detail responses also expose `photo_urls`
+service-role-only RPCs backing these list endpoints — applied and verified
+2026-08-17, so these pages work against the deployed API. Booking detail responses also expose `photo_urls`
 as renderable public URLs, including conversion of stored `job-photos` paths.
 
 ---

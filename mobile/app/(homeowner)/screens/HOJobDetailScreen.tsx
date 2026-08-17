@@ -76,7 +76,10 @@ export default function HOJobDetailScreen({ jobId, onBack, onNavigate }: HOJobDe
     const provider = job.assigned_provider_id
       ? await api.getProvider(job.assigned_provider_id).catch(() => null)
       : null;
-    return { job, provider };
+    // No escrow means no dispute is possible — skip the call rather than let
+    // it 400/403 for jobs that never had a payment held.
+    const dispute = await api.jobDispute(jobId).catch(() => null);
+    return { job, provider, dispute };
   }, [jobId]);
 
   const [busy, setBusy] = useState(false);
@@ -85,6 +88,7 @@ export default function HOJobDetailScreen({ jobId, onBack, onNavigate }: HOJobDe
 
   const job = data?.job;
   const provider = data?.provider;
+  const dispute = data?.dispute;
   const meta = job ? jobStatusMeta(job.status) : null;
   const stage = job ? stageIndex(job.status) : 0;
   const tasks = [...(job?.job_tasks ?? [])].sort((a, b) => a.position - b.position);
@@ -312,7 +316,7 @@ export default function HOJobDetailScreen({ jobId, onBack, onNavigate }: HOJobDe
                 disabled={busy}
               >
                 <Text style={styles.primaryBtnText}>
-                  {busy ? 'Working…' : 'Mark as Completed'}
+                  {busy ? 'Working…' : 'Confirm Completion'}
                 </Text>
               </TouchableOpacity>
             )}
@@ -349,10 +353,12 @@ export default function HOJobDetailScreen({ jobId, onBack, onNavigate }: HOJobDe
 
             <TouchableOpacity
               style={styles.outlineBtn}
-              onPress={() => onNavigate('Dispute Filing')}
+              onPress={() => onNavigate(dispute ? 'Dispute Status' : 'Dispute Filing')}
               activeOpacity={0.85}
             >
-              <Text style={styles.outlineBtnText}>File a Dispute</Text>
+              <Text style={styles.outlineBtnText}>
+                {dispute ? 'View Dispute Status' : 'File a Dispute'}
+              </Text>
             </TouchableOpacity>
           </View>
 

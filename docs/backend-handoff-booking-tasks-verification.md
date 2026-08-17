@@ -6,8 +6,27 @@ not claim that any external deployment has occurred.
 
 | | Task | Needs | Status |
 |---|---|---|---|
-| **Part A** | Apply migrations 0018, 0019, and 0020 | Supabase SQL Editor | Operator action |
-| **Part B** | Configure API/web/Expo environment and deploy artifacts | API host, web host, Expo | Operator action |
+| **Part A** | Apply migrations 0018, 0019, and 0020 | Supabase SQL Editor | ✅ **Done** — 0018 + 0019 verified 2026-08-14; 0020 verified 2026-08-17 |
+| **Part B** | Configure API/web/Expo environment and deploy artifacts | API host, web host, Expo | ⚠️ **Partly done** — API deployed (verified 2026-08-17); hosted-web + Expo config outstanding |
+
+**Observed state of the deployed API at `taskbuddy-1d48.onrender.com`, 2026-08-17:**
+`POST /jobs/:id/accept`, `POST /devices`, `GET /conversations/:id/stream`, and
+`GET /auth/admin/session` all answer `401` rather than `404` — the routes exist, so the build
+carrying this work is live. Migrations 0018 and 0019 were applied on 2026-08-14 with all four
+checks in §4 passing, including the Storage policies at 4/4.
+
+All three migrations are applied. 0020's three RPCs were confirmed present on 2026-08-17 with the
+query in §3.
+
+**Still to do:**
+
+1. **Hosted web console config** (§6) — `NEXT_PUBLIC_API_URL` plus a matching `WEB_CORS_ORIGINS`
+   entry. Running the console *locally* already works: `web/.env.local` points at the deployed API,
+   and the deployed CORS preflight was confirmed to allow `http://localhost:3000` with credentials
+   on 2026-08-17. Only an externally hosted console still needs its origin added.
+2. **Expo push setup** — see the mobile-side blocker in `mobile/README.md`; the app cannot obtain
+   a push token until an EAS `projectId` exists, so §7 step 5's push check will fail until then
+   regardless of API configuration.
 
 Everything described here is implemented in the worktree: API code, SQL
 migrations, mobile app, and admin console. Nothing below asks an operator to
@@ -54,6 +73,11 @@ ever hands out short-lived signed URLs to admins.
 
 ### 3. Apply and verify migration `0020_admin_search_functions.sql`
 
+**Applied and verified 2026-08-17 — all three functions present.** Unlike 0018 and 0019 this file
+is *not* re-runnable: it uses bare `create function`, so running it against a database that
+already has these RPCs aborts with `42723 function already exists`. Harmless — it fails before
+changing anything — but run the verification query below *first* rather than the file.
+
 Run 0020 after 0019. It creates the `admin_list_bookings`,
 `admin_list_activity`, and `admin_list_transactions` RPCs. They search,
 filter, order, paginate, and count in SQL, and grant execution only to
@@ -73,7 +97,8 @@ where routine_schema = 'public'
 
 ### 4. Verify migrations 0018 and 0019
 
-Run these checks against the target Supabase project before deploying the API.
+**These four were run on 2026-08-14 and all passed, including #4 at 4/4.** They are repeatable if
+you want to confirm the state of a given project yourself.
 
 ```sql
 -- 1. the new status exists
