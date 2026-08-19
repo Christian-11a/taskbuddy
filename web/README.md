@@ -222,6 +222,50 @@ as renderable public URLs, including conversion of stored `job-photos` paths.
 
 ---
 
+## Backend Requests
+
+### Needed
+
+- **Recovery-credit issuance endpoint** — `POST /admin/wallet-transactions/recovery-credit`.
+  Nothing today lets an admin credit a wallet at all;
+  `WalletService.create()` explicitly refuses any `direction: 'credit'` request
+  from any caller, including admins, to prevent free balance minting. This
+  needs a separate, admin-only route that's allowed to do what that one
+  deliberately can't. Fully unblocked — migration `0021_recovery_credit_kind.sql`
+  is already applied — and `docs/backend-handoff-recovery-vouchers.md` has a
+  ready-to-use DTO/service/controller sketch (audit-log + notify pattern
+  mirrors `DisputesService.resolve()`). Once this exists, web gets a small
+  "Issue Credit" button on the Transactions page's Wallet tab — no point
+  wiring it to a route that 404s.
+- **Fee/commission model** — no backend support today. Needs a schema decision
+  (where the rate lives, whether it's global or per-category) before any UI.
+- **Category management** — no CRUD for service categories today; they're
+  fixed at seed time. Needs a schema decision before any UI.
+- **A second admin account** — today there's exactly one admin row; anything
+  multi-admin (activity attribution, permissions) needs that decided first.
+- **Notification broadcast** (admin → all users) — no backend support; see
+  `backend/BACKEND_SCHEMA.md` for the existing `notifications` table shape
+  this would need to extend.
+
+### Resolved
+
+- **Auth tokens moved off `localStorage`** — was flagged as a security gap
+  (any injected script could read the access/refresh tokens). Fixed in
+  `fe2356d` ("align backend with current clients", 2026-08-17): httpOnly
+  cookie sessions + CSRF, detailed under
+  [Backend Integration Status](#backend-integration-status) above. Verified
+  end-to-end against the deployed API 2026-08-19 — login, session restore,
+  a CSRF-protected mutation rejecting without the header and accepting with
+  it, refresh rotating the cookie/CSRF pair, and logout clearing the session.
+- **Server-side search/pagination for Bookings, Transactions, Activity Log**
+  — was flagged as blocked on missing `search` params (the 200-row cap made
+  row 201 invisible, and client-side filtering over a fixed slice would have
+  quietly searched only the loaded page). Fixed in the same commit via
+  migration `0020_admin_search_functions.sql` — detailed under
+  [Backend Integration Status](#backend-integration-status) above.
+
+---
+
 ## Deliberate tradeoffs (no action needed)
 
 Called out because a reviewer will spot them and should know they were chosen,
@@ -244,13 +288,9 @@ not missed.
 
 ## Not yet built
 
-- **Component tests.** The 93 tests all cover `lib/`. Page behaviour — confirm
-  dialogs, error toasts, loading vs empty states — has been verified by hand in
-  a browser, but nothing re-runs it. Vitest and jsdom are already set up, so
-  this is mostly adding React Testing Library. Clearest next step.
 - **Fee/commission model, category management, a second admin account, and
   notification broadcast.** None have backend support today — see
-  `backend/BACKEND_SCHEMA.md`. Each needs a schema decision before any UI.
+  [Backend Requests](#backend-requests) above.
 
 ---
 

@@ -5,6 +5,41 @@ app works today; this file covers how it got there and why. Newest first.
 
 ---
 
+## Component tests, and verifying the cookie/CSRF auth rework
+
+Commit `fe2356d` ("align backend with current clients", 2026-08-17) replaced
+`localStorage` session tokens with httpOnly cookies + CSRF and added
+server-side search/pagination — resolving both items previously listed under
+"Needs backend work" here. This pass verified that rework and closed the
+remaining testing gap:
+
+- **Component tests added.** React Testing Library + `@testing-library/user-event`
+  installed; `vitest.config.ts` now also picks up `*.test.tsx`, with a
+  `vitest.setup.ts` for `@testing-library/jest-dom` matchers and RTL cleanup
+  between tests (not using vitest's `globals` mode, so cleanup has to be
+  explicit). New coverage: `ConfirmDialog` (open/close, Escape, backdrop
+  click, busy-state button disabling, focus trap), `Toast` (success vs. error
+  role/dismiss-timing, manual dismiss), and `UsersPage`'s suspend flow
+  end-to-end — reason-required validation, an error toast on a rejected
+  request instead of failing silently, and the confirm button disabling
+  during an in-flight request so a slow network can't double-submit. 114
+  tests total (was 93).
+- **Auth flow verified against the deployed API**, not just read: logged in
+  against `taskbuddy-1d48.onrender.com`, confirmed the httpOnly access/refresh
+  cookies and readable CSRF cookie are set, `GET /auth/admin/session`
+  round-trips, a mutation without `X-CSRF-Token` is rejected with 403 and the
+  same request with the header reaches DTO validation, `POST
+  /auth/admin/refresh` rotates the cookie/CSRF pair, and `POST
+  /auth/admin/logout` actually clears the session (subsequent `/session` call
+  401s). No regressions found.
+- **README restructured**: the old numbered "Known gaps" list is gone — it's
+  now "Backend Requests", split into Needed (recovery-credit
+  issuance endpoint, fee/commission model, category management, second admin
+  account, notification broadcast) and Resolved (the two items above, with
+  dates and what verified them).
+
+---
+
 ## Visual/UX port from the design mockup
 
 The console's visual design and several interaction patterns were ported from
