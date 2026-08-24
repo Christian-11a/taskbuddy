@@ -387,36 +387,111 @@ credit from any caller. `wallet_txn_kind` already has the `'recovery_credit'` va
 
 ---
 
+## Remaining Backend Work
+
+The migration and deployment handoff above is complete. The remaining backend
+work identified during the mobile acceptance audit is:
+
+- Add unit coverage for `ApplicationsService`, `ReviewsService`,
+  `RecommendationsService`, and `RecommendationsScheduler`.
+- Make application acceptance and escrow hold atomic. An insufficient wallet
+  balance must not leave the application accepted or the job assigned.
+- Verify the job status vocabulary against the test plan. This app currently
+  uses `open`, `recommending`, `assigned`, `confirmed`, `in_progress`,
+  `completed`, `cancelled`, and `expired`; `PENDING` and
+  `COMPLETED_PENDING_CONFIRMATION` are not current backend statuses.
+- Verify review completion ownership, duplicate protection, cached provider
+  rating/count recalculation, provider profile output, and the
+  `provider_avg_rating` recommendation feature. Align error wording with the
+  test plan if exact messages are contractual.
+- Add recommendation and provider-feed tests for verified/available status,
+  radius boundaries, missing coordinates, ranking, ML failures, and response
+  time. The current proximity feed is provider-facing Haversine filtering; it
+  is not a Google Maps-backed homeowner service directory.
+- Add an end-to-end lifecycle test covering create, apply, accept, escrow,
+  start, complete, payout, and review.
+
+---
+
 ## Current State of the App
 
-### ✅ Fully working
+The mobile app currently implements the homeowner-posted job and
+provider-application marketplace. It does not implement a separate customer
+service catalogue or direct service-booking workflow. Therefore, the supplied
+TC-SRV cases for Browse Services, Service Detail, keyword search, and
+homeowner-facing recommendations do not map directly to the current product.
 
-- Email/password register, login, logout
-- Google Sign-In (server-side OAuth — works in Expo Go and production builds)
-- Session persistence across app restarts (AsyncStorage)
-- Token refresh (silent retry on `401`)
-- Role-based navigation (homeowner vs provider)
-- Guided job creation (5 steps — service, location, task checklist, urgency, review)
-- Job listing and filtering by status
-- Job detail with complete / cancel actions and a task checklist
-- Provider application to jobs
-- Provider accept / decline of booking requests, and ticking off tasks while working
-- Wallet balance display and Add Money via **Stripe hosted Checkout**, opened in
-  a browser with `expo-web-browser` — works in Expo Go, no native module and no
-  dev build required
-- Notifications (listing + mark read)
-- Profile view and edit (both roles)
-- Provider verification submission
-- Dispute filing and progress tracking (a 3-step Filed → Under Review →
-  Resolved timeline derived from the dispute's current status — there's no
-  stored step history, so it's not a true event log)
-- Wallet balance, total added/spent (both roles), chronological transaction
-  log, and a Recovery Vouchers section on the homeowner side — empty until
-  the backend can issue one, see handoff doc #3
-- Image upload (via Supabase Storage signed URLs)
-- Provider calendar (read-only view of bookings)
-- Chat (initial history plus authenticated SSE live messages)
-- Expo push-token registration after sign-in, with API-side notification delivery
+### ✅ Working frontend functionality
+
+- Email/password registration, login, logout, Google Sign-In, session
+  persistence, token refresh, and role-based navigation
+- Five-step guided job creation: service/category, location, task checklist,
+  urgency and schedule, then review/post
+- Inline validation for required fields, budget, terms, and past scheduled
+  dates/times before a job is submitted
+- My Jobs list showing job name, location, status, urgency, price, elapsed time,
+  and assigned provider, with lifecycle status filters
+- Job Details with status progress, task checklist, provider information,
+  offers, cancel confirmation, completion, review navigation, and chat
+- Provider job browsing, applications, booking-request accept/decline, job
+  start, and task updates
+- Wallet balance and Stripe hosted Checkout top-ups
+- In-app notifications, profile editing, provider verification, disputes,
+  image uploads, provider calendar, and authenticated SSE chat
+
+### ⚠️ Partial or configuration-dependent
+
+- Review submission is shown only for completed jobs with an assigned provider,
+  but duplicate-review and completion checks are ultimately enforced by the
+  backend. The mobile flow still needs tests for these states.
+- Recommendations are currently provider-facing notifications and offers;
+  there is no homeowner-facing recommended-services section.
+- Push notification code is present, but remote delivery requires an EAS
+  project ID and an SDK 54 development build. Expo Go cannot receive remote
+  pushes.
+- Homeowner job locations use the saved profile address or fallback
+  coordinates. There is no Expo GPS or Google Maps provider-discovery flow.
+- Dark Mode persists a preference but does not change the palette. Language,
+  account deletion, wallet withdrawal/transfer, chat calls, and chat
+  attachments remain unwired.
+
+### 🔧 Remaining frontend tasks
+
+#### Job creation and jobs
+
+- Add mobile tests for the five-step flow, category/task selection, required
+  fields, budget, terms, photo upload, and past-date inline validation.
+- Add My Jobs rendering/filter tests and verify reverse chronological ordering,
+  empty states, refresh/retry, and long text on small screens.
+- Add Job Details tests for cancel confirmation, cancellation errors, chat
+  navigation, completion, provider/offer states, and review gating.
+- Verify the complete homeowner flow manually with TC-BOOK-001, 002, 005, and
+  007, plus provider acceptance, decline, and completion cases TC-BOOK-003,
+  004, and 006.
+
+#### Reviews and recommendations
+
+- Add mobile review-flow tests for successful submission, duplicate review,
+  and attempting to review before completion (TC-REV-001, 002, and 003).
+- Display and test review submission errors returned by the API, including
+  retry and duplicate-tap behavior.
+- Decide whether recommendations should remain provider invites/offers or
+  become a homeowner-facing section. A homeowner Browse Services and
+  recommended-services UI would require a corresponding backend service
+  catalogue API and is not part of the current job-posting flow.
+
+#### Reliability, permissions, and navigation
+
+- Add visible error and retry handling for the Home API, application actions,
+  notification mark-read actions, uploads, and network failures.
+- Review loading, skeleton, empty, and error states for consistency across
+  jobs, applications, notifications, wallet, calendar, chat, and reviews.
+- Complete manual tests for gallery, camera, location, and notification
+  permissions, including denied and permanently denied permissions.
+- Verify iOS and Android date-picker behavior, back-stack restoration,
+  logout reset, deep navigation, and offline/retry behavior.
+- Apply the persisted Dark Mode preference through shared theme tokens; add
+  i18n before presenting a language picker.
 
 ### 🔧 Recent mobile updates
 
@@ -452,69 +527,3 @@ was trimmed to remove rows that duplicated a bottom-nav tab or a header icon.
   list remains the source of truth.
 - `expo-crypto` remains in `package.json` but is no longer imported — nonce
   generation for Google auth moved to the backend. Safe to remove.
-
----
-
-## Additional To-Do Items
-
-### User Experience and Interface
-
-- Apply appropriate animations throughout the app.
-- Review all empty states and make their design and messaging consistent.
-- Review all error modals and make their design, behaviour, and messaging
-  consistent.
-- Review the chat interface.
-- Add a properly functioning animated splash screen.
-- **Wire up Dark Mode.** The toggle UI already exists on both Settings
-  screens; what's missing is the actual palette-switching. Before that can
-  work, the inline hex colors scattered across most screens need replacing
-  with `V6Colors` token references — see
-  [What's Not Wired Yet](#whats-not-wired-yet) and `CHANGELOG.md` for the
-  approach already prototyped once (built, then deliberately reverted to
-  leave this as an open task).
-- Replace inline screen-header filter options with a filter button that opens a
-  modal containing the available filters.
-- Add consistent skeleton loading states throughout the app.
-- Add empty and skeleton loading states to the notification screens.
-
-### Onboarding and Registration
-
-- ~~Show onboarding screens after a newly registered user successfully logs in~~
-  and ~~do not show them again after the user has completed them~~ — done: the
-  slides moved from a pre-auth screen to a post-login gate, recorded per account
-  in AsyncStorage (`taskbuddy.onboarded.<profile id>`).
-- Add email verification during registration by sending an OTP to the email
-  address supplied by the user.
-- Identify the user's location during registration and display it on the
-  corresponding role home screen after registration is complete.
-- Create the automated email content, including OTP emails and related messages.
-
-### Jobs and Location
-
-- Enable geolocation to make location selection easier in the homeowner job
-  creation flow.
-- ~~When a homeowner accesses **Create New Job** from the **Book a Job** section
-  of `HOHomeScreen`, skip the service step for the category they tapped~~ —
-  done: the category id travels with the navigation and the flow opens on
-  step 2, with step 1 still reachable via Back.
-- ~~Add a loading state for each step of `HOCreateJobScreen`~~ — done for the
-  steps that actually wait on something: skeleton service tiles on step 1, a
-  busy photo-picker on step 3, and "Uploading photos…" vs "Posting…" on submit.
-  Steps 2, 4 and 5 are pure local input and were deliberately left alone.
-- ~~Verify whether urgency has multiple levels~~ — done: step 4 offers all
-  three real `job_urgency` values and says what each one does to the
-  recommendation deadline.
-- ~~Make the Flexibility Pill Options and Budget Pill Options clickable~~ —
-  they were removed instead. "Flexibility" and "Payment Type" were selectable
-  but had no backend column to land in, so they changed nothing however they
-  were set. Bring them back with a migration behind them, or not at all.
-
-### Notifications, Permissions, and Payments
-
-- Ensure notifications are delivered and that their messages appear correctly.
-- Implement and clearly request the required app permissions, including access
-  to the gallery/files, location, camera, and notification delivery.
-- Integrate Stripe for both user roles. The provider side is done — Stripe
-  Identity is step 3 of `SPVerificationScreen` — and wallet top-ups run through
-  hosted Checkout; what is left is anything a homeowner would pay with directly
-  rather than through the wallet.
