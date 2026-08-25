@@ -50,7 +50,7 @@ as $$
     select pg_catalog.count(*) as total from filtered
   )
   select
-    pg_catalog.coalesce(
+    coalesce(
       pg_catalog.jsonb_agg(page.row order by page.sort_at desc, page.id desc)
         filter (where page.row is not null),
       '[]'::pg_catalog.jsonb
@@ -102,7 +102,7 @@ as $$
     select pg_catalog.count(*) as total from filtered
   )
   select
-    pg_catalog.coalesce(
+    coalesce(
       pg_catalog.jsonb_agg(page.row order by page.sort_at desc, page.id desc)
         filter (where page.row is not null),
       '[]'::pg_catalog.jsonb
@@ -156,7 +156,7 @@ as $$
     select pg_catalog.count(*) as total from filtered
   )
   select
-    pg_catalog.coalesce(
+    coalesce(
       pg_catalog.jsonb_agg(page.row order by page.sort_at desc, page.id desc)
         filter (where page.row is not null),
       '[]'::pg_catalog.jsonb
