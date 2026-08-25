@@ -42,10 +42,19 @@ comment on column profiles.deleted_at is
 create index if not exists idx_profiles_not_deleted
     on profiles (id) where deleted_at is null;
 
--- The admin console reads people through this view (0005). Without the column
--- here a deleted account is indistinguishable from a suspended one.
+-- The admin console reads people through this view. Without the column here a
+-- deleted account is indistinguishable from a suspended one.
+--
+-- `create or replace view` is append-only: Postgres refuses to drop or reorder
+-- an existing column (42P16, "cannot drop columns from view"). So the select
+-- list below must reproduce the *current* one exactly and add to the end of
+-- it — and the current one is 0014's, not 0005's. 0014 appended
+-- suspended_until and suspension_reason; an earlier draft of this migration
+-- copied 0005's list, which silently meant "drop those two" and failed on
+-- push. If a later migration appends more, copy from that one, not from here.
 create or replace view admin_user_overview as
 select
+    -- ── 0005's columns, in 0005's order ──────────────────────────────────
     p.id,
     u.email,
     p.full_name,
@@ -58,6 +67,10 @@ select
     sc.name as category_name,
     pp.cached_avg_rating,
     pp.cached_completed_jobs,
+    -- ── appended by 0014 ─────────────────────────────────────────────────
+    p.suspended_until,
+    p.suspension_reason,
+    -- ── appended here ────────────────────────────────────────────────────
     p.deleted_at
 from profiles p
 join auth.users u on u.id = p.id
