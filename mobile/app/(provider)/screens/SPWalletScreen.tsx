@@ -66,6 +66,19 @@ export default function SPWalletScreen() {
           </View>
         </View>
 
+        {/* Total earned / withdrawn — same total_credited/total_debited stats
+            the homeowner wallet shows, relabelled for a provider's ledger. */}
+        <View style={styles.statsRow}>
+          <View style={styles.statCard}>
+            <Text style={[styles.statValue, { color: '#22c55e' }]}>{peso(data?.total_credited ?? 0)}</Text>
+            <Text style={styles.statLabel}>Total Earned</Text>
+          </View>
+          <View style={styles.statCard}>
+            <Text style={[styles.statValue, { color: '#f59e0b' }]}>{peso(data?.total_debited ?? 0)}</Text>
+            <Text style={styles.statLabel}>Total Withdrawn</Text>
+          </View>
+        </View>
+
         <View style={styles.trustNote}>
           <WalletCards size={18} color={C.cyan800} />
           <Text style={styles.trustNoteText}>

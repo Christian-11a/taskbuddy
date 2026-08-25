@@ -221,8 +221,8 @@ transactions search transaction ID, client/provider name, and job title;
 activity searches job title.
 
 Migration `0020_admin_search_functions.sql` supplies the hardened,
-service-role-only RPCs backing these list endpoints. Apply it before deploying
-the backend that calls them. Booking detail responses also expose `photo_urls`
+service-role-only RPCs backing these list endpoints — applied and verified
+2026-08-17, so these pages work against the deployed API. Booking detail responses also expose `photo_urls`
 as renderable public URLs, including conversion of stored `job-photos` paths.
 
 ### 3. Available but not yet consumed (migrations 0021–0023)
@@ -257,6 +257,59 @@ them:
 
 ---
 
+## Backend Requests
+
+### Needed
+
+- **Recovery-credit issuance endpoint** — `POST /admin/wallet-transactions/recovery-credit`.
+  Nothing today lets an admin credit a wallet at all;
+  `WalletService.create()` explicitly refuses any `direction: 'credit'` request
+  from any caller, including admins, to prevent free balance minting. This
+  needs a separate, admin-only route that's allowed to do what that one
+  deliberately can't. Fully unblocked — migration `0021_recovery_credit_kind.sql`
+  is already applied — and `docs/backend-handoff-recovery-vouchers.md` has a
+  ready-to-use DTO/service/controller sketch (audit-log + notify pattern
+  mirrors `DisputesService.resolve()`). Once this exists, web gets a small
+  "Issue Credit" button on the Transactions page's Wallet tab — no point
+  wiring it to a route that 404s.
+
+### Resolved
+
+- **Fee/commission model, category management, a second admin account, and
+  notification broadcast** — all four were flagged here as needing a schema
+  decision before any UI. Answered by migrations 0021–0023, with the decisions
+  recorded in `backend/BACKEND_SCHEMA.md` §27: the rate lives on the single
+  `platform_settings` row (global, not per-category) as a fraction, frozen onto
+  the escrow row at release; categories deactivate rather than delete, since
+  jobs and the ML feature set reference them by id; admin creation never
+  accepts a password and the last admin cannot be demoted; broadcast writes one
+  row per recipient so read state and push both work. Endpoints are
+  `GET`/`PATCH /admin/commission`, `GET`/`POST /admin/categories` +
+  `PATCH /admin/categories/:id`, `GET`/`POST /admin/admins` +
+  `POST /admin/admins/:id/revoke`, and
+  `POST /admin/notifications/broadcast`. **No UI yet.**
+- **Withdrawal settlement queue** — not previously requested here, but newly
+  available and worth the same note: `GET /admin/withdrawals` plus settle and
+  reject. There is no payout rail, so this queue is the only way anyone on the
+  platform gets paid out. **No UI yet**, which makes it the most load-bearing
+  gap on this list.
+- **Auth tokens moved off `localStorage`** — was flagged as a security gap
+  (any injected script could read the access/refresh tokens). Fixed in
+  `fe2356d` ("align backend with current clients", 2026-08-17): httpOnly
+  cookie sessions + CSRF, detailed under
+  [Backend Integration Status](#backend-integration-status) above. Verified
+  end-to-end against the deployed API 2026-08-19 — login, session restore,
+  a CSRF-protected mutation rejecting without the header and accepting with
+  it, refresh rotating the cookie/CSRF pair, and logout clearing the session.
+- **Server-side search/pagination for Bookings, Transactions, Activity Log**
+  — was flagged as blocked on missing `search` params (the 200-row cap made
+  row 201 invisible, and client-side filtering over a fixed slice would have
+  quietly searched only the loaded page). Fixed in the same commit via
+  migration `0020_admin_search_functions.sql` — detailed under
+  [Backend Integration Status](#backend-integration-status) above.
+
+---
+
 ## Deliberate tradeoffs (no action needed)
 
 Called out because a reviewer will spot them and should know they were chosen,
@@ -279,10 +332,6 @@ not missed.
 
 ## Not yet built
 
-- **Component tests.** The 93 tests all cover `lib/`. Page behaviour — confirm
-  dialogs, error toasts, loading vs empty states — has been verified by hand in
-  a browser, but nothing re-runs it. Vitest and jsdom are already set up, so
-  this is mostly adding React Testing Library. Clearest next step.
 - **UI for the four newly-backed admin surfaces.** Fee/commission, category
   management, a second admin account, and notification broadcast used to be
   listed here as having no backend at all. They do now — migrations 0021–0023,
@@ -293,6 +342,8 @@ not missed.
   settle/reject. This one is not cosmetic: there is no payout rail, so until a
   page exists nobody on the platform can be paid out except by an operator
   calling the API directly.
+- **UI for recovery-credit issuance.** Still genuinely blocked — see
+  [Backend Requests](#backend-requests) above; that endpoint does not exist yet.
 
 ---
 

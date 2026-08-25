@@ -198,9 +198,32 @@ only to the NestJS API rather than directly to Supabase Realtime.
 After sign-in, the app best-effort requests notification permission and posts
 an Expo push token to `POST /devices`; it unregisters that token on sign-out.
 The backend's 30-second scheduler sends pending notification rows to opted-in
-devices via Expo. Test this on a physical device with a deployed API and Expo
-credentials. Permission denial or a push-registration failure does not block
-sign-in, and notification rows remain available in the in-app list.
+devices via Expo. Permission denial or a registration failure does not block
+sign-in, and notification rows remain available in the in-app list either way.
+
+> **⚠️ Push does not work yet, and won't until two things are set up.** The code
+> is complete on both sides; the configuration isn't.
+>
+> 1. **An EAS project id.** `getExpoPushTokenAsync()` resolves one from
+>    `options.projectId` → `Constants.easConfig` → `expoConfig.extra.eas.projectId`.
+>    `app.json` currently has none, so the call throws
+>    `ERR_NOTIFICATIONS_NO_EXPERIENCE_ID` and no token is ever obtained. Run
+>    `eas init` and commit the resulting `expo.extra.eas.projectId`.
+> 2. **A development build.** Remote push is not supported in **Expo Go** from
+>    SDK 53 onward, and this app is on SDK 54. Testing needs `eas build --profile
+>    development` (or a local dev client) on a physical device — a simulator
+>    cannot receive pushes either.
+>
+> `eas.json` is committed with `development` / `preview` / `production` profiles,
+> so both steps are: `npm i -g eas-cli` → `eas login` → `eas init` (writes the
+> project id into `app.json` — commit it) → `eas build --profile development
+> --platform android`. Only an Expo account holder can run these; the project id
+> is minted server-side and cannot be filled in by hand.
+>
+> Until then `src/lib/pushNotifications.ts` returns `{ status: 'misconfigured' }`
+> and `AuthContext` logs `[push] not registered (misconfigured) — …` in `__DEV__`.
+> That warning is the intended signal, not a bug. A *denied* permission is
+> logged as nothing, deliberately: the user chose it and it isn't a fault.
 
 ---
 
@@ -286,20 +309,21 @@ not a silently dropped extra. Everything else degrades quietly (no checklists,
 Accept returns 404). What has to be applied and deployed, and by whom, is in
 [`docs/backend-handoff-booking-tasks-verification.md`](../docs/backend-handoff-booking-tasks-verification.md).
 
-> **Note on migrations 0018 and 0019:** These may already have been applied to
-> the Supabase project by the mobile developer via the SQL editor. Before running
-> them, verify in the SQL Editor with the four queries in the handoff doc's
-> "Verify Part A landed" section. If they already exist, skip straight to Part B
-> (Render redeploy).
+> **All three migrations are applied** to the Supabase project (0018 + 0019 on
+> 2026-08-14, 0020 on 2026-08-17), and the API carrying this work is deployed.
+> The verification queries in the handoff doc's §3 and §4 are repeatable if you
+> want to confirm the state of a given project yourself.
 
 ---
 
 ## Backend Handoff Docs
 
-Two handoff documents in [`docs/`](../docs/) are addressed to whoever holds
-backend / Supabase / Render access. They contain everything needed to bring the
-deployed stack up to date with the current codebase — **no new code is needed**,
-only applies and deploys of already-committed work.
+Four handoff documents in [`docs/`](../docs/) are addressed to whoever holds
+backend / Supabase / Render access. The first two are pure ops — applying and
+deploying already-committed work, no new code. The last two ask for small,
+specific pieces of new backend code (rate limiting, an admin-only credit
+endpoint) plus one real architecture decision (Stripe Connect) — each is
+scoped precisely so nothing has to be re-derived from the user stories.
 
 ### 1. [`docs/backend-handoff-booking-tasks-verification.md`](../docs/backend-handoff-booking-tasks-verification.md)
 
@@ -308,20 +332,31 @@ correctly in production:
 
 | Part | What | Needs | Status |
 |------|------|-------|--------|
-| **A** | Apply Supabase migrations 0018 and 0019 | Supabase SQL Editor | ✅ Done 2026-08-14 |
-| **B** | Redeploy the API on Render; confirm Stripe Identity is enabled | Render + Stripe Dashboard | ⬜ **Outstanding** |
+| **A** | Apply Supabase migrations 0018, 0019, 0020 | Supabase SQL Editor | ✅ Done — 0018 + 0019 2026-08-14, 0020 2026-08-17 |
+| **B** | Deploy the API; configure web + Expo | API host, web host, Expo | ⚠️ API deployed 2026-08-17; **hosted-web + Expo config outstanding** |
 
 - **Migration 0018** adds the `'confirmed'` value to the `job_status` enum.
 - **Migration 0019** creates the `job_tasks` checklist table with RLS, and adds
   four Row-Level Security policies on the `verification-docs` storage bucket.
-- **Render redeploy** is what actually unblocks `POST /jobs` — the API validates
-  request bodies strictly and rejects the new `tasks` field until redeployed.
+- **Migration 0020** adds the admin search/pagination RPCs the deployed API calls
+  for the admin console's Bookings, Transactions, and Activity pages. Mobile
+  never calls them.
 
-> **Part A is already done** — both migrations were applied and verified on
-> 2026-08-14 (all four checks pass, including the Storage policies at 4/4).
-> **Only the Render redeploy is outstanding**, and it is what unblocks posting
-> a job. Both migrations are idempotent, so re-running them to confirm the
-> state is harmless if you'd rather see it yourself.
+> **Part A and the API deploy have both landed.** Verified 2026-08-17:
+> `POST /jobs/:id/accept`, `POST /devices`, and `GET /conversations/:id/stream`
+> answer `401` rather than `404`, and all three `admin_list_*` functions are
+> present in `information_schema.routines`. Posting a job works again.
+>
+> **What is still outstanding:** the `NEXT_PUBLIC_API_URL` / `WEB_CORS_ORIGINS`
+> pair *for an externally hosted* admin console (running it locally is already
+> configured — `web/.env.local` points at the deployed API, and that origin is
+> allowed by the deployed CORS preflight), and Expo push credentials, blocked
+> first by the missing EAS `projectId` — see above.
+>
+> 0018 and 0019 are idempotent and safe to re-run. **0020 is not** — it uses bare
+> `create function`, so re-running it errors with `42723 function already exists`.
+> Check state with the `information_schema.routines` query in the handoff doc §3
+> instead.
 
 ### 2. [`docs/backend-handoff-mobile-todo-gaps.md`](../docs/backend-handoff-mobile-todo-gaps.md)
 
@@ -335,40 +370,139 @@ would use them are not yet wired, which is app-side work.
 | # | Item | Status |
 |---|---|---|
 | 1 | Account deletion (`DELETE /profiles/me`) | **API done** — soft delete, `409 { blockers[] }` while money or obligations are in flight. Settings row still opens `mailto:` until it is wired |
-| 2 | Wallet withdrawal / payout rail | **API done, as the interim this doc recommended** — `POST /wallet/withdrawals` files a *pending* request an admin settles by hand. A real rail (Stripe Connect or a local disburser) is still the outstanding piece |
+| 2 | Wallet withdrawal / payout rail | **API done, as the interim this doc recommended** — `POST /wallet/withdrawals` files a *pending* request an admin settles by hand. The real rail is still outstanding and now has its own doc — see [§3 below](#3-docsbackend-handoff-stripe-connect-escrowmd) |
 | 3 | `has_review` flag on job payload | **Done** — every job now carries `has_review` and `review` |
 | 4 | Realtime chat | Done — authenticated SSE streams messages through the API |
 | 5 | Email OTP at registration | **API done** — `POST /auth/send-email-otp` / `verify-email-otp`, wrapping Supabase's own signup code. Needs the `{{ .Token }}` template change in [`docs/email-otp-setup.md`](../docs/email-otp-setup.md) |
 | 6 | Homeowner card-at-hire (vs wallet top-up) | Still open — a product decision, not a missing endpoint |
-| 7 | Push delivery | Implemented with Expo tokens and the API scheduler; requires external Expo/API configuration and device smoke testing |
+| 7 | Push delivery | Backend done (Expo tokens + API scheduler). **Blocked on our side**: no EAS `projectId`, and Expo Go can't receive push on SDK 54 — see [Live chat and push notifications](#live-chat-and-push-notifications) |
+
+### 3. [`docs/backend-handoff-stripe-connect-escrow.md`](../docs/backend-handoff-stripe-connect-escrow.md)
+
+**Needs a real decision, not just code.** Covers the "escrow hold via Stripe Connect at booking"
+story. Today's escrow is a ledger debit against a wallet the client pre-funded — there is no
+Stripe Connect anywhere in the backend, no per-booking payment intent, and no rate limiting on any
+payment endpoint. The doc lays out two viable architectures (A: keep the wallet ledger, add a real
+per-booking hold + Connect transfer on release; B: full Connect destination charges) and asks for
+a call before code gets written, since it changes real money-movement semantics. Rate limiting
+(`@nestjs/throttler`, currently not even a dependency) and a small explicit-error hardening fix in
+`EscrowService.release()` are both independent of that decision and can start immediately.
+
+### 4. [`docs/backend-handoff-recovery-vouchers.md`](../docs/backend-handoff-recovery-vouchers.md)
+
+**Non-urgent.** The dispute progress timeline and Wallet's Recovery Vouchers section are both
+already built on this side (see below) — the one thing outstanding is a new admin-only endpoint to
+actually issue a recovery credit, since `POST /wallet/transactions` deliberately refuses any
+credit from any caller. `wallet_txn_kind` already has the `'recovery_credit'` value
+(`0021_recovery_credit_kind.sql`, applied), so the endpoint has a slot ready to write into.
+
+---
+
+## Remaining Backend Work
+
+The migration and deployment handoff above is complete. The remaining backend
+work identified during the mobile acceptance audit is:
+
+- Add unit coverage for `ApplicationsService`, `ReviewsService`,
+  `RecommendationsService`, and `RecommendationsScheduler`.
+- Make application acceptance and escrow hold atomic. An insufficient wallet
+  balance must not leave the application accepted or the job assigned.
+- Verify the job status vocabulary against the test plan. This app currently
+  uses `open`, `recommending`, `assigned`, `confirmed`, `in_progress`,
+  `completed`, `cancelled`, and `expired`; `PENDING` and
+  `COMPLETED_PENDING_CONFIRMATION` are not current backend statuses.
+- Verify review completion ownership, duplicate protection, cached provider
+  rating/count recalculation, provider profile output, and the
+  `provider_avg_rating` recommendation feature. Align error wording with the
+  test plan if exact messages are contractual.
+- Add recommendation and provider-feed tests for verified/available status,
+  radius boundaries, missing coordinates, ranking, ML failures, and response
+  time. The current proximity feed is provider-facing Haversine filtering; it
+  is not a Google Maps-backed homeowner service directory.
+- Add an end-to-end lifecycle test covering create, apply, accept, escrow,
+  start, complete, payout, and review.
 
 ---
 
 ## Current State of the App
 
-### ✅ Fully working
+The mobile app currently implements the homeowner-posted job and
+provider-application marketplace. It does not implement a separate customer
+service catalogue or direct service-booking workflow. Therefore, the supplied
+TC-SRV cases for Browse Services, Service Detail, keyword search, and
+homeowner-facing recommendations do not map directly to the current product.
 
-- Email/password register, login, logout
-- Google Sign-In (server-side OAuth — works in Expo Go and production builds)
-- Session persistence across app restarts (AsyncStorage)
-- Token refresh (silent retry on `401`)
-- Role-based navigation (homeowner vs provider)
-- Guided job creation (5 steps — service, location, task checklist, urgency, review)
-- Job listing and filtering by status
-- Job detail with complete / cancel actions and a task checklist
-- Provider application to jobs
-- Provider accept / decline of booking requests, and ticking off tasks while working
-- Wallet balance display and Add Money via **Stripe hosted Checkout**, opened in
-  a browser with `expo-web-browser` — works in Expo Go, no native module and no
-  dev build required
-- Notifications (listing + mark read)
-- Profile view and edit (both roles)
-- Provider verification submission
-- Dispute filing
-- Image upload (via Supabase Storage signed URLs)
-- Provider calendar (read-only view of bookings)
-- Chat (initial history plus authenticated SSE live messages)
-- Expo push-token registration after sign-in, with API-side notification delivery
+### ✅ Working frontend functionality
+
+- Email/password registration, login, logout, Google Sign-In, session
+  persistence, token refresh, and role-based navigation
+- Five-step guided job creation: service/category, location, task checklist,
+  urgency and schedule, then review/post
+- Inline validation for required fields, budget, terms, and past scheduled
+  dates/times before a job is submitted
+- My Jobs list showing job name, location, status, urgency, price, elapsed time,
+  and assigned provider, with lifecycle status filters
+- Job Details with status progress, task checklist, provider information,
+  offers, cancel confirmation, completion, review navigation, and chat
+- Provider job browsing, applications, booking-request accept/decline, job
+  start, and task updates
+- Wallet balance and Stripe hosted Checkout top-ups
+- In-app notifications, profile editing, provider verification, disputes,
+  image uploads, provider calendar, and authenticated SSE chat
+
+### ⚠️ Partial or configuration-dependent
+
+- Review submission is shown only for completed jobs with an assigned provider,
+  but duplicate-review and completion checks are ultimately enforced by the
+  backend. The mobile flow still needs tests for these states.
+- Recommendations are currently provider-facing notifications and offers;
+  there is no homeowner-facing recommended-services section.
+- Push notification code is present, but remote delivery requires an EAS
+  project ID and an SDK 54 development build. Expo Go cannot receive remote
+  pushes.
+- Homeowner job locations use the saved profile address or fallback
+  coordinates. There is no Expo GPS or Google Maps provider-discovery flow.
+- Dark Mode persists a preference but does not change the palette. Language,
+  account deletion, wallet withdrawal/transfer, chat calls, and chat
+  attachments remain unwired.
+
+### 🔧 Remaining frontend tasks
+
+#### Job creation and jobs
+
+- Add mobile tests for the five-step flow, category/task selection, required
+  fields, budget, terms, photo upload, and past-date inline validation.
+- Add My Jobs rendering/filter tests and verify reverse chronological ordering,
+  empty states, refresh/retry, and long text on small screens.
+- Add Job Details tests for cancel confirmation, cancellation errors, chat
+  navigation, completion, provider/offer states, and review gating.
+- Verify the complete homeowner flow manually with TC-BOOK-001, 002, 005, and
+  007, plus provider acceptance, decline, and completion cases TC-BOOK-003,
+  004, and 006.
+
+#### Reviews and recommendations
+
+- Add mobile review-flow tests for successful submission, duplicate review,
+  and attempting to review before completion (TC-REV-001, 002, and 003).
+- Display and test review submission errors returned by the API, including
+  retry and duplicate-tap behavior.
+- Decide whether recommendations should remain provider invites/offers or
+  become a homeowner-facing section. A homeowner Browse Services and
+  recommended-services UI would require a corresponding backend service
+  catalogue API and is not part of the current job-posting flow.
+
+#### Reliability, permissions, and navigation
+
+- Add visible error and retry handling for the Home API, application actions,
+  notification mark-read actions, uploads, and network failures.
+- Review loading, skeleton, empty, and error states for consistency across
+  jobs, applications, notifications, wallet, calendar, chat, and reviews.
+- Complete manual tests for gallery, camera, location, and notification
+  permissions, including denied and permanently denied permissions.
+- Verify iOS and Android date-picker behavior, back-stack restoration,
+  logout reset, deep navigation, and offline/retry behavior.
+- Apply the persisted Dark Mode preference through shared theme tokens; add
+  i18n before presenting a language picker.
 
 ### 🔧 Recent mobile updates
 
@@ -388,7 +522,7 @@ was trimmed to remove rows that duplicated a bottom-nav tab or a header icon.
 | **Delete Account** | **Backend now exists** — `DELETE /profiles/me` soft-deletes and answers `409 { blockers[] }` when the account still has a balance, a pending withdrawal, escrow held, an open dispute, or a live job. The Settings row still opens a `mailto:`; wiring it (call, confirm, render the blocker list, sign out) is app-side work |
 | **Wallet Withdraw** | **Backend now exists** — `POST /wallet/withdrawals` files a *pending* request that an admin settles from the console; `GET /wallet` reports `available` and `pending_withdrawals` alongside `balance`. The button still has no handler. There is still no automated payout rail — settlement is a human sending money and recording the reference |
 | **Wallet Transfer** | Deliberately not built, backend or front. Wallet-to-wallet transfer turns the wallet into a money-transmission service, which is a licensing matter in PH, not an engineering one |
-| **Push delivery** | Implemented through Expo after the app has notification permission and a registered device token. It still needs external API/Expo configuration and physical-device verification; the notification row remains the source of truth if delivery fails |
+| **Push delivery** | Code complete end to end, **but not yet functional**: `app.json` has no EAS `projectId`, so no push token is ever obtained, and remote push needs a development build (not Expo Go) on SDK 54. The `notifications` table remains the source of truth and the in-app list is unaffected — see [Live chat and push notifications](#live-chat-and-push-notifications) |
 | **Realtime chat** | Message delivery is live through authenticated SSE; call and attachment buttons remain inert |
 | **Counterpart avatars** | Chat, applicant, and review payloads all carry `avatar_url`; those screens still render initials. (The signed-in user's *own* avatar does render — see `OwnAvatar`) |
 | **"Leave Review" already-reviewed state** | **Backend now exists** — every job carries `has_review` and the review itself, so the button can hide instead of discovering the duplicate by submitting one. Not yet read by the app |
@@ -406,72 +540,3 @@ was trimmed to remove rows that duplicated a bottom-nav tab or a header icon.
   list remains the source of truth.
 - `expo-crypto` remains in `package.json` but is no longer imported — nonce
   generation for Google auth moved to the backend. Safe to remove.
-
----
-
-## Additional To-Do Items
-
-### User Experience and Interface
-
-- Apply appropriate animations throughout the app.
-- Review all empty states and make their design and messaging consistent.
-- Review all error modals and make their design, behaviour, and messaging
-  consistent.
-- Review the chat interface.
-- Add a properly functioning animated splash screen.
-- **Wire up Dark Mode.** The toggle UI already exists on both Settings
-  screens; what's missing is the actual palette-switching. Before that can
-  work, the inline hex colors scattered across most screens need replacing
-  with `V6Colors` token references — see
-  [What's Not Wired Yet](#whats-not-wired-yet) and `CHANGELOG.md` for the
-  approach already prototyped once (built, then deliberately reverted to
-  leave this as an open task).
-- Replace inline screen-header filter options with a filter button that opens a
-  modal containing the available filters.
-- Add consistent skeleton loading states throughout the app.
-- Add empty and skeleton loading states to the notification screens.
-
-### Onboarding and Registration
-
-- ~~Show onboarding screens after a newly registered user successfully logs in~~
-  and ~~do not show them again after the user has completed them~~ — done: the
-  slides moved from a pre-auth screen to a post-login gate, recorded per account
-  in AsyncStorage (`taskbuddy.onboarded.<profile id>`).
-- Add email verification during registration by sending an OTP to the email
-  address supplied by the user. **The API is ready** —
-  `POST /auth/send-email-otp` then `POST /auth/verify-email-otp`, which returns
-  a session so the user lands signed in. What is left is the screen and the
-  Supabase template change in [`docs/email-otp-setup.md`](../docs/email-otp-setup.md).
-- Identify the user's location during registration and display it on the
-  corresponding role home screen after registration is complete.
-- Create the automated email content, including OTP emails and related messages.
-
-### Jobs and Location
-
-- Enable geolocation to make location selection easier in the homeowner job
-  creation flow.
-- ~~When a homeowner accesses **Create New Job** from the **Book a Job** section
-  of `HOHomeScreen`, skip the service step for the category they tapped~~ —
-  done: the category id travels with the navigation and the flow opens on
-  step 2, with step 1 still reachable via Back.
-- ~~Add a loading state for each step of `HOCreateJobScreen`~~ — done for the
-  steps that actually wait on something: skeleton service tiles on step 1, a
-  busy photo-picker on step 3, and "Uploading photos…" vs "Posting…" on submit.
-  Steps 2, 4 and 5 are pure local input and were deliberately left alone.
-- ~~Verify whether urgency has multiple levels~~ — done: step 4 offers all
-  three real `job_urgency` values and says what each one does to the
-  recommendation deadline.
-- ~~Make the Flexibility Pill Options and Budget Pill Options clickable~~ —
-  they were removed instead. "Flexibility" and "Payment Type" were selectable
-  but had no backend column to land in, so they changed nothing however they
-  were set. Bring them back with a migration behind them, or not at all.
-
-### Notifications, Permissions, and Payments
-
-- Ensure notifications are delivered and that their messages appear correctly.
-- Implement and clearly request the required app permissions, including access
-  to the gallery/files, location, camera, and notification delivery.
-- Integrate Stripe for both user roles. The provider side is done — Stripe
-  Identity is step 3 of `SPVerificationScreen` — and wallet top-ups run through
-  hosted Checkout; what is left is anything a homeowner would pay with directly
-  rather than through the wallet.

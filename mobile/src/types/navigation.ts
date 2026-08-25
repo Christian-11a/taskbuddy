@@ -20,6 +20,7 @@ export type HOScreen =
   | 'Notifications'
   | 'Edit Profile'
   | 'Dispute Filing'
+  | 'Dispute Status'
   | 'Settings'
   | 'Help & Support';
 

@@ -91,6 +91,7 @@ Job lifecycle: `open → recommending → assigned → in_progress → completed
    | `0018_job_confirmed_status.sql` | `confirmed` job status and assignment lifecycle updates. |
    | `0019_job_tasks_and_verification_storage_rls.sql` | job checklists and verification-storage RLS policies. |
    | `0020_admin_search_functions.sql` | service-role-only SQL RPCs for paginated admin booking, activity, and escrow search. |
+   | `0021_recovery_credit_kind.sql` | adds `'recovery_credit'` to `wallet_txn_kind`, the tag an admin-issued trust credit will carry once that endpoint exists (see `docs/backend-handoff-recovery-vouchers.md`). Safely re-runnable. |
    | `0021_notification_announcement_type.sql` | `notification_type` gains `'announcement'` (admin broadcast) and `'wallet_update'` (withdrawal settled/declined). |
    | `0022_account_deletion_and_email_otp.sql` | `profiles.deleted_at` (soft delete) and `profiles.email_verified_at`; `admin_user_overview` re-created to expose `deleted_at`. |
    | `0023_withdrawal_requests_and_commission.sql` | withdrawal review columns on `wallet_transactions`, `platform_settings.commission_rate` (default 0), `escrow_transactions.commission_amount`. |
@@ -107,7 +108,9 @@ Job lifecycle: `open → recommending → assigned → in_progress → completed
    > 0018, let it commit, then run 0019. `supabase db push` applies each file
    > in its own transaction and needs no special handling. Apply **0020 only
    > after 0019**: it depends on the complete jobs, escrow, and admin schema
-   > established by the preceding migrations.
+   > established by the preceding migrations. 0021 has no such ordering
+   > requirement — it's a standalone enum addition — but comes last since
+   > it's the most recently added.
    >
    > The API code that ships with these migrations reads `job_tasks` on every
    > job query, so **apply 0019 before deploying the API**. Out of order, job
@@ -157,9 +160,10 @@ WEB_CORS_ORIGINS=https://your-admin.example.com,http://localhost:3000
 The repository contains the implementation, but an operator must still run
 these external steps. This checklist does not assert that a deployment occurred.
 
-1. Apply migrations through `0020_admin_search_functions.sql` in order. Run
+1. Apply migrations through `0021_recovery_credit_kind.sql` in order. Run
    0018 and 0019 in separate SQL Editor transactions as described above; 0020
-   comes after 0019 and creates the service-role-only admin list RPCs.
+   comes after 0019 and creates the service-role-only admin list RPCs; 0021 is
+   an independent enum addition and can run any time after that.
 2. Set the API host's `WEB_CORS_ORIGINS`, then deploy the backend with the
    current environment variables and migrations available.
 3. Set `NEXT_PUBLIC_API_URL` at the web host to that API's HTTPS origin and

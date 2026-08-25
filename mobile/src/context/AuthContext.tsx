@@ -30,7 +30,7 @@ import {
   type ProviderProfile,
   type Session,
 } from '../lib/api';
-import { getExpoPushRegistration } from '../lib/pushNotifications';
+import { requestExpoPushRegistration } from '../lib/pushNotifications';
 
 // Required for expo-auth-session to complete the OAuth flow on Android
 WebBrowser.maybeCompleteAuthSession();
@@ -150,17 +150,33 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   // Permission prompts and registration are deliberately best-effort: neither
   // should block an authenticated session when a device cannot receive pushes.
+  // Best-effort still means *reported*, though — a swallowed error here made a
+  // missing EAS projectId (which never fixes itself) indistinguishable from a
+  // user declining the prompt, so push silently never worked for anyone.
   useEffect(() => {
     if (!session || !profile) return;
     let active = true;
 
-    getExpoPushRegistration()
-      .then((registration) => {
-        if (!active || !registration) return;
-        pushTokenRef.current = registration.token;
-        return api.registerDevice(registration);
-      })
-      .catch(() => {});
+    void (async () => {
+      const outcome = await requestExpoPushRegistration();
+      if (!active) return;
+
+      if (outcome.status !== 'registered') {
+        if (__DEV__ && outcome.status !== 'denied') {
+          const detail = 'reason' in outcome ? ` — ${outcome.reason}` : '';
+          console.warn(`[push] not registered (${outcome.status})${detail}`);
+        }
+        return;
+      }
+
+      pushTokenRef.current = outcome.registration.token;
+      try {
+        await api.registerDevice(outcome.registration);
+      } catch (e) {
+        // The token is still held so sign-out can attempt to unregister it.
+        if (__DEV__) console.warn('[push] POST /devices failed', e);
+      }
+    })();
 
     return () => {
       active = false;
