@@ -3,7 +3,7 @@
 > **Status, 2026-08-25 — items 1, 2, 3 and 5 have been built.** This document is kept
 > as the record of what was asked for and why, but it is no longer a to-do list. Each
 > section below now opens with what shipped and where it differs from what was
-> sketched here. Migrations `0021`–`0023`; full reasoning in
+> sketched here. Migrations `0022`–`0024`; full reasoning in
 > `backend/BACKEND_SCHEMA.md` §27. Items 4 and 7 were already done; item 6 is still
 > open and still a product decision rather than a missing endpoint.
 >
@@ -55,7 +55,7 @@ app-side work too.
 
 > **Built.** `DELETE /profiles/me` — 204, or 409 with a `blockers` array naming every
 > obligation at once rather than one per attempt. Implemented as the soft delete
-> recommended below (`profiles.deleted_at`, migration 0022), with every identifying
+> recommended below (`profiles.deleted_at`, migration 0023), with every identifying
 > field on the row overwritten at deletion time; the Auth user is renamed to a
 > `.invalid` address so the real one can be reused, banned, and signed out.
 >

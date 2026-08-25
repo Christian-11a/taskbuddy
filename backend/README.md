@@ -62,7 +62,7 @@ Job lifecycle: `open → recommending → assigned → in_progress → completed
 
 1. Create a project at [supabase.com](https://supabase.com).
 2. Apply **every** migration in [`supabase/migrations/`](./supabase/migrations) **in order**
-   (0001 → 0023), either by pasting each file into the SQL Editor or with the CLI:
+   (0001 → 0024), either by pasting each file into the SQL Editor or with the CLI:
 
    ```bash
    supabase link --project-ref <your-project-ref>
@@ -92,9 +92,9 @@ Job lifecycle: `open → recommending → assigned → in_progress → completed
    | `0019_job_tasks_and_verification_storage_rls.sql` | job checklists and verification-storage RLS policies. |
    | `0020_admin_search_functions.sql` | service-role-only SQL RPCs for paginated admin booking, activity, and escrow search. |
    | `0021_recovery_credit_kind.sql` | adds `'recovery_credit'` to `wallet_txn_kind`, the tag an admin-issued trust credit will carry once that endpoint exists (see `docs/backend-handoff-recovery-vouchers.md`). Safely re-runnable. |
-   | `0021_notification_announcement_type.sql` | `notification_type` gains `'announcement'` (admin broadcast) and `'wallet_update'` (withdrawal settled/declined). |
-   | `0022_account_deletion_and_email_otp.sql` | `profiles.deleted_at` (soft delete) and `profiles.email_verified_at`; `admin_user_overview` re-created to expose `deleted_at`. |
-   | `0023_withdrawal_requests_and_commission.sql` | withdrawal review columns on `wallet_transactions`, `platform_settings.commission_rate` (default 0), `escrow_transactions.commission_amount`. |
+   | `0022_notification_announcement_type.sql` | `notification_type` gains `'announcement'` (admin broadcast) and `'wallet_update'` (withdrawal settled/declined). |
+   | `0023_account_deletion_and_email_otp.sql` | `profiles.deleted_at` (soft delete) and `profiles.email_verified_at`; `admin_user_overview` re-created to expose `deleted_at`. |
+   | `0024_withdrawal_requests_and_commission.sql` | withdrawal review columns on `wallet_transactions`, `platform_settings.commission_rate` (default 0), `escrow_transactions.commission_amount`. |
 
    > Migrations 0008 and 0009 each run `alter type notification_type add value`.
    > Postgres allows this inside a transaction as long as the new value isn't
@@ -117,7 +117,7 @@ Job lifecycle: `open → recommending → assigned → in_progress → completed
    > endpoints fail with PostgREST's "Could not find a relationship between
    > 'jobs' and 'job_tasks'".
 
-   > **0021 must be applied on its own, before 0022 and 0023**, for the same
+   > **0022 must be applied on its own, before 0023 and 0024**, for the same
    > reason 0018 must precede 0019: it adds `notification_type` values that the
    > API writes immediately, and Postgres will not let a new enum value be used
    > in the transaction that added it. Run 0021, let it commit, then the other
@@ -125,7 +125,7 @@ Job lifecycle: `open → recommending → assigned → in_progress → completed
    >
    > The API also reads `reviews` on every job query (the `has_review` flag) and
    > `platform_settings.commission_rate` on every escrow release, so **apply
-   > 0022 and 0023 before deploying the API**. 0023's default commission rate is
+   > 0023 and 0024 before deploying the API**. 0024's default commission rate is
    > 0, so applying it changes no payout until an admin sets a rate.
 
    The two Storage buckets are created by the migrations themselves
@@ -254,7 +254,7 @@ All bodies are JSON. 🔒 = requires auth; (client) / (provider) = role-restrict
 | `PATCH /profiles/me` 🔒 | update `full_name, phone, avatar_url, address, city, latitude, longitude`. `avatar_url` takes either an `avatars` Storage path (converted to a public URL) or an `https://` URL; `""` clears it |
 | `PUT /profiles/me/provider` 🔒 (provider) | `{ category_id, bio (20–400 chars), years_experience?, service_radius_km? }` |
 | `PATCH /profiles/me/provider/availability` 🔒 (provider) | `{ is_available: boolean }` |
-| `DELETE /profiles/me` 🔒 | self-serve account deletion → `204`, or `409 { blockers[] }` while the account still has a balance, a pending withdrawal, escrow held, an open dispute, or a live job. A **soft** delete: the row survives (the ledger, reviews and ML snapshots reference it) with every identifying field scrubbed, and the Auth user is renamed, banned and signed out (migration 0022, `BACKEND_SCHEMA.md` §27.1) |
+| `DELETE /profiles/me` 🔒 | self-serve account deletion → `204`, or `409 { blockers[] }` while the account still has a balance, a pending withdrawal, escrow held, an open dispute, or a live job. A **soft** delete: the row survives (the ledger, reviews and ML snapshots reference it) with every identifying field scrubbed, and the Auth user is renamed, banned and signed out (migration 0023, `BACKEND_SCHEMA.md` §27.1) |
 | `GET /providers/:id` 🔒 | public provider card (bio, category, rating, completed jobs) |
 | `GET /providers/:id/reviews` 🔒 | reviews for a provider |
 | `GET /categories` 🔒 | `[{ id, name }]` |
@@ -302,7 +302,7 @@ All bodies are JSON. 🔒 = requires auth; (client) / (provider) = role-restrict
 | Method & path | Description |
 |---|---|
 | `GET /wallet` 🔒 | `{ balance, available, total_credited, total_debited, pending, pending_withdrawals, transactions[] }` — all derived from the ledger. `available` is `balance` less anything already promised to a pending withdrawal; that is the figure escrow checks before a hire |
-| `POST /wallet/withdrawals` 🔒 | `{ amount, destination, title? }` → a **pending** ledger row. Nothing moves until an admin settles it — there is no payout rail, so the admin queue *is* the disbursement mechanism (migration 0023, `BACKEND_SCHEMA.md` §27.2) |
+| `POST /wallet/withdrawals` 🔒 | `{ amount, destination, title? }` → a **pending** ledger row. Nothing moves until an admin settles it — there is no payout rail, so the admin queue *is* the disbursement mechanism (migration 0024, `BACKEND_SCHEMA.md` §27.2) |
 | `GET /wallet/withdrawals` 🔒 | the caller's own requests, newest first |
 | `POST /wallet/withdrawals/:id/cancel` 🔒 | retract a request an admin has not acted on |
 | `POST /wallet/transactions` 🔒 | **Deprecated** — use `POST /wallet/withdrawals`. Still accepts `{ direction: 'debit', amount, title, job_id?, destination? }` and now files the same pending request. `direction: 'credit'` is refused: wallet funding has exactly one entry point, a settled Stripe charge |
@@ -414,7 +414,7 @@ vars these endpoints return **503** and the rest of the API is unaffected.
 
 | Method & path | Description |
 |---|---|
-| `GET /admin/users?search=&role=&status=&limit=&offset=` | search/filter users (`role`: client/provider/admin, `status`: active/suspended/**deleted**). Deleted accounts are excluded unless asked for, and never appear under `suspended` (migration 0022) |
+| `GET /admin/users?search=&role=&status=&limit=&offset=` | search/filter users (`role`: client/provider/admin, `status`: active/suspended/**deleted**). Deleted accounts are excluded unless asked for, and never appear under `suspended` (migration 0023) |
 | `GET /admin/users/:id` | single user detail (from `admin_user_overview`) |
 | `POST /admin/users/:id/suspend` | `{ duration_days?, reason }` — refuses if already suspended or if the target is an admin. Omit `duration_days` for indefinite; otherwise the suspension lifts itself the next time `deactivated_at` is checked (login), no cron job |
 | `POST /admin/users/:id/reinstate` | reactivate a suspended account |
@@ -432,7 +432,7 @@ vars these endpoints return **503** and the rest of the API is unaffected.
 | `GET /admin/transactions?search=&status=&limit=&offset=` | escrow records with both parties + service name; search matches transaction ID, client/provider name, or job title (story #17/#18) |
 | `GET /admin/disputes?status=&limit=&offset=` | dispute queue |
 | `POST /admin/disputes/:id/resolve` | `{ resolution: 'released_to_provider' \| 'refunded_to_client', note? }` (story #20) |
-| `GET /admin/withdrawals?status=&limit=&offset=` | the settlement queue — `pending` by default, oldest first (migration 0023) |
+| `GET /admin/withdrawals?status=&limit=&offset=` | the settlement queue — `pending` by default, oldest first (migration 0024) |
 | `POST /admin/withdrawals/:id/settle` | `{ reference? }` — records that the money was actually sent. This is what debits the wallet; the balance is re-checked first and the row is only settled once, whoever clicks |
 | `POST /admin/withdrawals/:id/reject` | `{ reason }` — the reason reaches the account holder and the amount returns to their available balance |
 | `GET /admin/categories` | every service category, active or not (`GET /categories` still serves the apps only active ones) |
@@ -443,7 +443,7 @@ vars these endpoints return **503** and the rest of the API is unaffected.
 | `POST /admin/admins/:id/revoke` | demote to `client`. Refuses self-demotion and refuses to remove the last admin |
 | `POST /admin/notifications/broadcast` | `{ title, body, audience: 'all' \| 'clients' \| 'providers' }` → `{ sent, failed, audience }`. One row per recipient (so read state and push both work); excludes admins, suspended and deleted accounts |
 | `GET /admin/commission` | the current platform cut |
-| `PATCH /admin/commission` | `{ commission_rate }` — a **fraction**, 0.15 being 15%, capped at 0.5. Applies to escrow released from now on; settled jobs keep their figures (migration 0023) |
+| `PATCH /admin/commission` | `{ commission_rate }` — a **fraction**, 0.15 being 15%, capped at 0.5. Applies to escrow released from now on; settled jobs keep their figures (migration 0024) |
 
 Admin accounts can't self-register (`POST /auth/register` only allows
 `client`/`provider`). The admin console uses `POST /auth/admin/login` and the

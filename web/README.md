@@ -225,7 +225,7 @@ service-role-only RPCs backing these list endpoints — applied and verified
 2026-08-17, so these pages work against the deployed API. Booking detail responses also expose `photo_urls`
 as renderable public URLs, including conversion of stored `job-photos` paths.
 
-### 3. Available but not yet consumed (migrations 0021–0023)
+### 3. Available but not yet consumed (migrations 0022–0024)
 
 Four surfaces this document previously listed under "Not yet built" now have an
 API. The console does not call any of them yet. Full reasoning for each decision
@@ -277,7 +277,7 @@ them:
 
 - **Fee/commission model, category management, a second admin account, and
   notification broadcast** — all four were flagged here as needing a schema
-  decision before any UI. Answered by migrations 0021–0023, with the decisions
+  decision before any UI. Answered by migrations 0022–0024, with the decisions
   recorded in `backend/BACKEND_SCHEMA.md` §27: the rate lives on the single
   `platform_settings` row (global, not per-category) as a fraction, frozen onto
   the escrow row at release; categories deactivate rather than delete, since
@@ -334,7 +334,7 @@ not missed.
 
 - **UI for the four newly-backed admin surfaces.** Fee/commission, category
   management, a second admin account, and notification broadcast used to be
-  listed here as having no backend at all. They do now — migrations 0021–0023,
+  listed here as having no backend at all. They do now — migrations 0022–0024,
   `backend/BACKEND_SCHEMA.md` §27. Nothing in this console calls them yet; the
   endpoints and the decisions they encode are below under
   [Backend Integration Status](#backend-integration-status).

@@ -6,7 +6,7 @@
 -- not Stripe Connect) and the "fee/commission model" entry under "Not yet
 -- built" in web/README.md.
 --
--- Apply after 0022.
+-- Apply after 0023.
 
 -- ===========================================================================
 -- 1. Withdrawal requests

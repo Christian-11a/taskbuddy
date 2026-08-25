@@ -1350,21 +1350,21 @@ writing anything, which is what lets the client fall back to a manual submission
 
 ---
 
-## 27. Backend Leftovers (migrations 0021–0023)
+## 27. Backend Leftovers (migrations 0022–0024)
 
 The items `mobile/README.md` and `web/README.md` listed as needing the API to change first —
 `docs/backend-handoff-mobile-todo-gaps.md` §§1, 2, 3, 5, and the four entries under web's "Not yet
 built". They are grouped here because they arrived together, not because they are one feature.
 
-Three migrations, in order. **0021 must be applied on its own and allowed to commit first** —
+Three migrations, in order. **0022 must be applied on its own and allowed to commit first** —
 Postgres will not let a new enum value be used in the same transaction that adds it, and the
 Supabase SQL editor wraps a script in one transaction (the same constraint 0018 documented).
 
 | Migration | Contents |
 |---|---|
-| `0021_notification_announcement_type.sql` | `notification_type` gains `'announcement'` and `'wallet_update'` |
-| `0022_account_deletion_and_email_otp.sql` | `profiles.deleted_at`, `profiles.email_verified_at`, `admin_user_overview` re-created with `deleted_at` |
-| `0023_withdrawal_requests_and_commission.sql` | withdrawal review columns on `wallet_transactions`, `platform_settings.commission_rate`, `escrow_transactions.commission_amount` |
+| `0022_notification_announcement_type.sql` | `notification_type` gains `'announcement'` and `'wallet_update'` |
+| `0023_account_deletion_and_email_otp.sql` | `profiles.deleted_at`, `profiles.email_verified_at`, `admin_user_overview` re-created with `deleted_at` |
+| `0024_withdrawal_requests_and_commission.sql` | withdrawal review columns on `wallet_transactions`, `platform_settings.commission_rate`, `escrow_transactions.commission_amount` |
 
 ### 27.1 Account deletion is a soft delete (`DELETE /profiles/me`)
 
@@ -1500,7 +1500,7 @@ GET   /admin/commission   🔒 admin
 PATCH /admin/commission   🔒 admin  { commission_rate }   -- a fraction: 0.15 is 15%
 ```
 
-`platform_settings.commission_rate` defaults to **0**, capped at 0.5 in the schema. Applying 0023
+`platform_settings.commission_rate` defaults to **0**, capped at 0.5 in the schema. Applying 0024
 therefore changes no figure anywhere: providers keep receiving the whole budget until an admin
 deliberately sets a rate. A fee model is a business decision, and a migration should not quietly
 start taking a cut. The 0.5 cap is not a guess at the right number — it is the bound past which a
@@ -1583,7 +1583,7 @@ them out. A failed chunk does not abandon the rest — a broadcast that reached 
 and *says so* is more useful than one that stops at the first problem and reports nothing about
 what did land, which is why the response carries `failed` rather than throwing.
 
-`'announcement'` is a new `notification_type` (0021) rather than a reused `'job_update'`: these
+`'announcement'` is a new `notification_type` (0022) rather than a reused `'job_update'`: these
 rows have no job to be about, and filing them under `job_update` would make every "which of my
 jobs is this?" consumer wrong.
 

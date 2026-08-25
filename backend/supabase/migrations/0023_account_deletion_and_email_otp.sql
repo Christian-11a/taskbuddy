@@ -3,7 +3,7 @@
 --
 -- Closes items 1 and 5 of docs/backend-handoff-mobile-todo-gaps.md.
 --
--- Apply after 0021 has committed.
+-- Apply after 0022 has committed.
 
 -- ===========================================================================
 -- 1. profiles.deleted_at — the soft-delete tombstone

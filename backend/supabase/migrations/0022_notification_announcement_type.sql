@@ -1,7 +1,7 @@
 -- TaskBuddy schema — an admin-authored notification type
 -- Source of truth: backend/BACKEND_SCHEMA.md §27.
 --
--- RUN THIS FILE ON ITS OWN, BEFORE 0022 AND 0023.
+-- RUN THIS FILE ON ITS OWN, BEFORE 0023 AND 0024.
 --
 -- Same constraint as 0018: Postgres will not let a new enum value be *used* in
 -- the same transaction that adds it, and the Supabase SQL editor wraps a
@@ -20,7 +20,7 @@
 --
 -- Why 'wallet_update'
 -- -------------------
--- A withdrawal request now waits for an admin (0023), so for the first time
+-- A withdrawal request now waits for an admin (0024), so for the first time
 -- something happens to a user's money that no job of theirs explains. The
 -- notification that carries the payout reference — or the reason it was
 -- refused — has no job_id to attach to, which is exactly what makes it a

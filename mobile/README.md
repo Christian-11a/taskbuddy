@@ -296,11 +296,11 @@ answers a booking request, and `PATCH /jobs/:id/tasks/:taskId` ticks items off.
 Migration 0020 is required by the admin API's server-side booking, activity,
 and transaction search; mobile does not call those admin endpoints.
 
-Migrations **0021–0023** add the backend leftovers above (account deletion,
+Migrations **0022–0024** add the backend leftovers above (account deletion,
 withdrawal requests, `has_review`, email OTP, commission). Nothing in the app
 calls them yet, so the app runs unchanged against an API without them — but the
 API itself reads `reviews` on every job query and the commission rate on every
-escrow release, so **apply them before deploying the current backend**. 0021 is
+escrow release, so **apply them before deploying the current backend**. 0022 is
 an enum change and must be applied on its own first.
 
 Against an older deployed API, **posting a job fails with a 400** — the backend
@@ -363,7 +363,7 @@ correctly in production:
 **Non-urgent — no mobile UI is deliberately faked.** Documents every remaining item from
 the mobile to-do list that cannot be finished without an API change first:
 
-**Items 1, 2, 3 and 5 have since been built** (migrations 0021–0023,
+**Items 1, 2, 3 and 5 have since been built** (migrations 0022–0024,
 `backend/BACKEND_SCHEMA.md` §27). The API side is done; the mobile screens that
 would use them are not yet wired, which is app-side work.
 
