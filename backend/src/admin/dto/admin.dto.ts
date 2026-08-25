@@ -2,14 +2,18 @@ import { Type } from 'class-transformer';
 import {
   IsBoolean,
   IsDateString,
+  IsEmail,
   IsIn,
   IsInt,
   IsNotEmpty,
+  IsNumber,
   IsOptional,
   IsPositive,
   IsString,
   IsUUID,
+  Max,
   MaxLength,
+  Min,
 } from 'class-validator';
 import type { JobStatus, UserRole } from '../../common/types';
 
@@ -23,9 +27,15 @@ export class ListUsersQueryDto {
   @IsIn(['client', 'provider', 'admin'])
   role?: UserRole;
 
+  /**
+   * 'deleted' is opt-in. Accounts that deleted themselves are excluded from
+   * the default list — they are not moderation subjects any more — but they
+   * remain findable, because the rows they left behind (ledger, reviews, jobs)
+   * still point at them and a question about one has to be answerable.
+   */
   @IsOptional()
-  @IsIn(['active', 'suspended'])
-  status?: 'active' | 'suspended';
+  @IsIn(['active', 'suspended', 'deleted'])
+  status?: 'active' | 'suspended' | 'deleted';
 
   @IsOptional()
   @IsInt()
@@ -149,4 +159,81 @@ export class ListAuditQueryDto {
   @IsInt()
   @Type(() => Number)
   offset?: number;
+}
+
+// ── Service category management (web/README.md, "Not yet built") ────────────
+
+export class CreateCategoryDto {
+  /** Unique in the schema; a duplicate comes back as a 409, not a 500. */
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(60)
+  name!: string;
+}
+
+export class UpdateCategoryDto {
+  @IsOptional()
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(60)
+  name?: string;
+
+  /**
+   * Deactivation is the only kind of removal on offer. Jobs, provider profiles
+   * and the ML feature set all reference a category by id; deleting one would
+   * either cascade real history away or fail on the constraint. An inactive
+   * category stops being offered to new jobs and keeps explaining the old ones.
+   */
+  @IsOptional()
+  @IsBoolean()
+  is_active?: boolean;
+}
+
+// ── Admin provisioning (web/README.md, "a second admin account") ────────────
+
+export class CreateAdminDto {
+  @IsEmail()
+  email!: string;
+
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(120)
+  full_name!: string;
+}
+
+// ── Notification broadcast (web/README.md, "Not yet built") ─────────────────
+
+export class BroadcastNotificationDto {
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(120)
+  title!: string;
+
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(500)
+  body!: string;
+
+  /**
+   * Who receives it. Admins are never in the audience — a broadcast is a
+   * message to the platform's users, and an admin notifying themselves is
+   * noise in the one inbox that has to stay readable.
+   */
+  @IsIn(['all', 'clients', 'providers'])
+  audience!: 'all' | 'clients' | 'providers';
+}
+
+// ── Platform commission (web/README.md, "Fee/commission model") ─────────────
+
+export class UpdateCommissionDto {
+  /**
+   * Fraction, not percent: 0.15 is fifteen percent. The schema caps it at 0.5
+   * and rejects a negative, so a percent typed here (15) is refused rather
+   * than quietly charging 1500%.
+   */
+  @IsNumber({ maxDecimalPlaces: 4 })
+  @Min(0)
+  @Max(0.5)
+  @Type(() => Number)
+  commission_rate!: number;
 }

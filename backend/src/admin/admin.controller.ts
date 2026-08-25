@@ -3,6 +3,7 @@ import {
   Controller,
   Get,
   Param,
+  ParseIntPipe,
   ParseUUIDPipe,
   Patch,
   Post,
@@ -14,13 +15,19 @@ import { Roles } from '../auth/roles.decorator';
 import { CurrentUser } from '../auth/current-user.decorator';
 import { AdminService } from './admin.service';
 import { AdminActionsService } from './admin-actions.service';
+import { AdminPlatformService } from './admin-platform.service';
 import { VerificationsService } from '../verifications/verifications.service';
 import {
+  BroadcastNotificationDto,
+  CreateAdminDto,
+  CreateCategoryDto,
   ListActivityQueryDto,
   ListAuditQueryDto,
   ListBookingsQueryDto,
   ListUsersQueryDto,
   SuspendUserDto,
+  UpdateCategoryDto,
+  UpdateCommissionDto,
   UpdateMaintenanceDto,
 } from './dto/admin.dto';
 import {
@@ -36,7 +43,12 @@ import {
 } from '../escrow/dto/escrow.dto';
 import { ChatService } from '../chat/chat.service';
 import { WalletService } from '../wallet/wallet.service';
-import { ListWalletTxnQueryDto } from '../wallet/dto/wallet.dto';
+import {
+  ListWalletTxnQueryDto,
+  ListWithdrawalsQueryDto,
+  RejectWithdrawalDto,
+  SettleWithdrawalDto,
+} from '../wallet/dto/wallet.dto';
 import type { Profile } from '../common/types';
 
 @Controller('admin')
@@ -46,6 +58,7 @@ export class AdminController {
   constructor(
     private readonly adminService: AdminService,
     private readonly adminActionsService: AdminActionsService,
+    private readonly adminPlatformService: AdminPlatformService,
     private readonly verificationsService: VerificationsService,
     private readonly escrowService: EscrowService,
     private readonly disputesService: DisputesService,
@@ -142,6 +155,117 @@ export class AdminController {
   @Get('wallet-transactions')
   listWalletTransactions(@Query() query: ListWalletTxnQueryDto) {
     return this.walletService.listForAdmin(query);
+  }
+
+  // ── Withdrawal settlement queue (migration 0023) ──────────────────────────
+
+  /**
+   * Withdrawal requests awaiting a human. There is no payout rail — money
+   * enters through the Stripe webhook and leaves through whatever an admin
+   * does by hand — so this queue is the disbursement mechanism, not a review
+   * step in front of one.
+   */
+  @Get('withdrawals')
+  listWithdrawals(@Query() query: ListWithdrawalsQueryDto) {
+    return this.walletService.listWithdrawalsForAdmin(query);
+  }
+
+  /** Records that the money was actually sent. This is what debits the wallet. */
+  @Post('withdrawals/:id/settle')
+  settleWithdrawal(
+    @CurrentUser() admin: Profile,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: SettleWithdrawalDto,
+  ) {
+    return this.walletService.settleWithdrawal(admin, id, dto.reference);
+  }
+
+  @Post('withdrawals/:id/reject')
+  rejectWithdrawal(
+    @CurrentUser() admin: Profile,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: RejectWithdrawalDto,
+  ) {
+    return this.walletService.rejectWithdrawal(admin, id, dto.reason);
+  }
+
+  // ── Service catalogue (management for migration 0001's table) ─────────────────────
+
+  @Get('categories')
+  listCategories() {
+    return this.adminPlatformService.listCategories();
+  }
+
+  @Post('categories')
+  createCategory(
+    @CurrentUser() admin: Profile,
+    @Body() dto: CreateCategoryDto,
+  ) {
+    return this.adminPlatformService.createCategory(admin, dto);
+  }
+
+  /** Rename, or deactivate. There is no delete — see the service comment. */
+  @Patch('categories/:id')
+  updateCategory(
+    @CurrentUser() admin: Profile,
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: UpdateCategoryDto,
+  ) {
+    return this.adminPlatformService.updateCategory(admin, id, dto);
+  }
+
+  // ── Admin accounts ────────────────────────────────────────────────────────
+
+  @Get('admins')
+  listAdmins() {
+    return this.adminPlatformService.listAdmins();
+  }
+
+  /**
+   * Creates or promotes an admin. No password crosses this boundary — the new
+   * admin sets their own from the email this triggers.
+   */
+  @Post('admins')
+  createAdmin(@CurrentUser() admin: Profile, @Body() dto: CreateAdminDto) {
+    return this.adminPlatformService.createAdmin(admin, dto);
+  }
+
+  @Post('admins/:id/revoke')
+  revokeAdmin(
+    @CurrentUser() admin: Profile,
+    @Param('id', ParseUUIDPipe) id: string,
+  ) {
+    return this.adminPlatformService.revokeAdmin(admin, id);
+  }
+
+  // ── Notification broadcast ────────────────────────────────────────────────
+
+  /**
+   * One notification row per recipient, which the push scheduler then delivers
+   * to whoever has push enabled. Returns what actually landed.
+   */
+  @Post('notifications/broadcast')
+  broadcast(
+    @CurrentUser() admin: Profile,
+    @Body() dto: BroadcastNotificationDto,
+  ) {
+    return this.adminPlatformService.broadcast(admin, dto);
+  }
+
+  // ── Platform commission (migration 0023) ──────────────────────────────────
+
+  @Get('commission')
+  getCommission() {
+    return this.adminPlatformService.getCommission();
+  }
+
+  /** Applies to escrow released from now on; settled jobs keep their figures. */
+  @Patch('commission')
+  setCommission(
+    @CurrentUser() admin: Profile,
+    @Body() dto: UpdateCommissionDto,
+  ) {
+    return this.adminPlatformService.setCommission(admin, dto);
   }
 
   @Get('jobs/:jobId/conversation')

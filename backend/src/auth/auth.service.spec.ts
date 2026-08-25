@@ -488,3 +488,136 @@ describe('AuthService password reset', () => {
     });
   });
 });
+
+describe('AuthService registration email OTP', () => {
+  function createOtpSupabaseMock(options: {
+    resendError?: { message: string } | null;
+    verifyError?: { message: string } | null;
+    deactivatedAt?: string | null;
+  }) {
+    const resend = jest
+      .fn()
+      .mockResolvedValue({ error: options.resendError ?? null });
+    const verifyOtp = jest.fn().mockResolvedValue(
+      options.verifyError
+        ? { data: {}, error: options.verifyError }
+        : {
+            data: {
+              user: { id: 'u1', email: 'user@test.io' },
+              session: SESSION,
+            },
+            error: null,
+          },
+    );
+    const signOut = jest.fn().mockResolvedValue({ error: null });
+    const updates: unknown[] = [];
+
+    function makeBuilder() {
+      const builder: Record<string, unknown> = {};
+      builder.select = jest.fn(() => builder);
+      builder.update = jest.fn((patch: unknown) => {
+        updates.push(patch);
+        return builder;
+      });
+      builder.eq = jest.fn(() => builder);
+      builder.maybeSingle = jest.fn(() =>
+        Promise.resolve({
+          data: { deactivated_at: options.deactivatedAt ?? null },
+          error: null,
+        }),
+      );
+      builder.then = (
+        resolve: (value: { error: null }) => unknown,
+        reject?: (reason: unknown) => unknown,
+      ) => Promise.resolve({ error: null }).then(resolve, reject);
+      return builder;
+    }
+
+    const supabase = {
+      anon: { auth: { resend, verifyOtp } },
+      admin: {
+        auth: { admin: { signOut } },
+        from: jest.fn(() => makeBuilder()),
+      },
+    } as unknown as SupabaseService;
+    return { supabase, resend, verifyOtp, updates, signOut };
+  }
+
+  describe('sendEmailOtp', () => {
+    it('asks Supabase to resend the signup code rather than issuing its own', async () => {
+      // Supabase owns email delivery here; a parallel code would leave the
+      // account unconfirmed to Auth while we insisted it was verified.
+      const { supabase, resend } = createOtpSupabaseMock({});
+      const service = new AuthService(supabase);
+
+      await expect(
+        service.sendEmailOtp({ email: 'user@test.io' }),
+      ).resolves.toEqual({ success: true });
+      expect(resend).toHaveBeenCalledWith({
+        type: 'signup',
+        email: 'user@test.io',
+      });
+    });
+
+    it('reports success even when the send fails', async () => {
+      // Same membership-oracle reasoning as forgotPassword: the caller must
+      // not be able to tell "no such address" from "already confirmed".
+      const { supabase } = createOtpSupabaseMock({
+        resendError: { message: 'User already confirmed' },
+      });
+      const service = new AuthService(supabase);
+
+      await expect(
+        service.sendEmailOtp({ email: 'user@test.io' }),
+      ).resolves.toEqual({ success: true });
+    });
+  });
+
+  describe('verifyEmailOtp', () => {
+    const dto = { email: 'user@test.io', token: '123456' };
+
+    it('confirms the address, stamps the profile, and returns a session', async () => {
+      const { supabase, verifyOtp, updates } = createOtpSupabaseMock({});
+      const service = new AuthService(supabase);
+
+      await expect(service.verifyEmailOtp(dto)).resolves.toEqual({
+        user: { id: 'u1', email: 'user@test.io' },
+        session: SESSION,
+      });
+      // 'signup', not 'recovery' — the two code namespaces are separate and
+      // one must not verify against the other.
+      expect(verifyOtp).toHaveBeenCalledWith({
+        email: 'user@test.io',
+        token: '123456',
+        type: 'signup',
+      });
+      expect(updates).toContainEqual({
+        email_verified_at: expect.any(String),
+      });
+    });
+
+    it('rejects a wrong or expired code', async () => {
+      const { supabase, updates } = createOtpSupabaseMock({
+        verifyError: { message: 'Token has expired' },
+      });
+      const service = new AuthService(supabase);
+
+      await expect(service.verifyEmailOtp(dto)).rejects.toThrow(
+        UnauthorizedException,
+      );
+      expect(updates).toEqual([]);
+    });
+
+    it('is not a way back into a suspended account', async () => {
+      const { supabase, signOut } = createOtpSupabaseMock({
+        deactivatedAt: '2026-08-01T00:00:00Z',
+      });
+      const service = new AuthService(supabase);
+
+      await expect(service.verifyEmailOtp(dto)).rejects.toThrow(
+        ForbiddenException,
+      );
+      expect(signOut).toHaveBeenCalledWith(SESSION.access_token);
+    });
+  });
+});

@@ -60,6 +60,13 @@ export class JwtAuthGuard implements CanActivate {
     if (profileError || !profile) {
       throw new UnauthorizedException('No profile found for this user');
     }
+    // Deletion sets deactivated_at too, so the check below would already
+    // refuse — but "deactivated" reads as "suspended, ask support", which
+    // sends a user who deleted their own account to a queue that cannot help
+    // them.
+    if ((profile as Profile).deleted_at) {
+      throw new ForbiddenException('This account has been deleted');
+    }
     if ((profile as Profile).deactivated_at) {
       throw new ForbiddenException('Account is deactivated');
     }

@@ -273,6 +273,13 @@ answers a booking request, and `PATCH /jobs/:id/tasks/:taskId` ticks items off.
 Migration 0020 is required by the admin API's server-side booking, activity,
 and transaction search; mobile does not call those admin endpoints.
 
+Migrations **0021–0023** add the backend leftovers above (account deletion,
+withdrawal requests, `has_review`, email OTP, commission). Nothing in the app
+calls them yet, so the app runs unchanged against an API without them — but the
+API itself reads `reviews` on every job query and the commission rate on every
+escrow release, so **apply them before deploying the current backend**. 0021 is
+an enum change and must be applied on its own first.
+
 Against an older deployed API, **posting a job fails with a 400** — the backend
 runs `forbidNonWhitelisted`, so the unknown `tasks` field is a hard rejection,
 not a silently dropped extra. Everything else degrades quietly (no checklists,
@@ -321,14 +328,18 @@ correctly in production:
 **Non-urgent — no mobile UI is deliberately faked.** Documents every remaining item from
 the mobile to-do list that cannot be finished without an API change first:
 
-| # | Item | Blocking? |
-|---|------|-----------|
-| 1 | Account deletion (`DELETE /profiles/me`) | No — Settings row opens `mailto:` honestly |
-| 2 | Wallet withdrawal / payout rail (Stripe Connect or equivalent) | No — buttons are inert |
-| 3 | `has_review` flag on job payload | No — nice-to-have |
+**Items 1, 2, 3 and 5 have since been built** (migrations 0021–0023,
+`backend/BACKEND_SCHEMA.md` §27). The API side is done; the mobile screens that
+would use them are not yet wired, which is app-side work.
+
+| # | Item | Status |
+|---|---|---|
+| 1 | Account deletion (`DELETE /profiles/me`) | **API done** — soft delete, `409 { blockers[] }` while money or obligations are in flight. Settings row still opens `mailto:` until it is wired |
+| 2 | Wallet withdrawal / payout rail | **API done, as the interim this doc recommended** — `POST /wallet/withdrawals` files a *pending* request an admin settles by hand. A real rail (Stripe Connect or a local disburser) is still the outstanding piece |
+| 3 | `has_review` flag on job payload | **Done** — every job now carries `has_review` and `review` |
 | 4 | Realtime chat | Done — authenticated SSE streams messages through the API |
-| 5 | Email OTP at registration | No — Supabase confirmation already handles this |
-| 6 | Homeowner card-at-hire (vs wallet top-up) | No — product decision |
+| 5 | Email OTP at registration | **API done** — `POST /auth/send-email-otp` / `verify-email-otp`, wrapping Supabase's own signup code. Needs the `{{ .Token }}` template change in [`docs/email-otp-setup.md`](../docs/email-otp-setup.md) |
+| 6 | Homeowner card-at-hire (vs wallet top-up) | Still open — a product decision, not a missing endpoint |
 | 7 | Push delivery | Implemented with Expo tokens and the API scheduler; requires external Expo/API configuration and device smoke testing |
 
 ---
@@ -374,11 +385,13 @@ was trimmed to remove rows that duplicated a bottom-nav tab or a header icon.
 |-------|--------|
 | **Dark Mode** | Half done: the *preference* persists (`user_settings.dark_mode` via `PATCH /settings`), but nothing applies it — there is still no theme switching. Both Settings screens say so under the switch rather than implying a repaint that never comes. The blocker is the ~40 screens still using inline hex instead of `V6Colors` tokens; see [`CHANGELOG.md`](./CHANGELOG.md) for the theming approach that was built and then deliberately reverted to leave this open |
 | **Language** | Settings modal states English is the only option — no i18n system exists to back a real picker |
-| **Delete Account** | No self-serve deletion endpoint. The Settings row opens a `mailto:` to support instead of pretending to delete. What one would have to handle is written up in the [handoff doc](../docs/backend-handoff-mobile-todo-gaps.md) §1 |
-| **Wallet Withdraw / Transfer** | Buttons are present but have no handler. `POST /wallet/transactions` is a bookkeeping primitive, not a withdrawal, and there is no payout rail at all — money can only enter via the Stripe webhook. See the [handoff doc](../docs/backend-handoff-mobile-todo-gaps.md) §2 |
+| **Delete Account** | **Backend now exists** — `DELETE /profiles/me` soft-deletes and answers `409 { blockers[] }` when the account still has a balance, a pending withdrawal, escrow held, an open dispute, or a live job. The Settings row still opens a `mailto:`; wiring it (call, confirm, render the blocker list, sign out) is app-side work |
+| **Wallet Withdraw** | **Backend now exists** — `POST /wallet/withdrawals` files a *pending* request that an admin settles from the console; `GET /wallet` reports `available` and `pending_withdrawals` alongside `balance`. The button still has no handler. There is still no automated payout rail — settlement is a human sending money and recording the reference |
+| **Wallet Transfer** | Deliberately not built, backend or front. Wallet-to-wallet transfer turns the wallet into a money-transmission service, which is a licensing matter in PH, not an engineering one |
 | **Push delivery** | Implemented through Expo after the app has notification permission and a registered device token. It still needs external API/Expo configuration and physical-device verification; the notification row remains the source of truth if delivery fails |
 | **Realtime chat** | Message delivery is live through authenticated SSE; call and attachment buttons remain inert |
 | **Counterpart avatars** | Chat, applicant, and review payloads all carry `avatar_url`; those screens still render initials. (The signed-in user's *own* avatar does render — see `OwnAvatar`) |
+| **"Leave Review" already-reviewed state** | **Backend now exists** — every job carries `has_review` and the review itself, so the button can hide instead of discovering the duplicate by submitting one. Not yet read by the app |
 | **Provider calendar write** | Bookings are created by the backend when a job is assigned, not from this screen |
 | **Notch/edge-to-edge status-bar spacing** | `Sizes.statusBarHeight` uses `StatusBar.currentHeight` (Android, built-in RN API) as a floor under the previous fixed `52`, which fixes most cases without a new dependency — but it's read once at module load, not on rotation/inset changes, and iOS still uses a fixed estimate. A full fix means adopting `react-native-safe-area-context` (new dependency) and touching header padding in every screen |
 
@@ -425,7 +438,10 @@ was trimmed to remove rows that duplicated a bottom-nav tab or a header icon.
   slides moved from a pre-auth screen to a post-login gate, recorded per account
   in AsyncStorage (`taskbuddy.onboarded.<profile id>`).
 - Add email verification during registration by sending an OTP to the email
-  address supplied by the user.
+  address supplied by the user. **The API is ready** —
+  `POST /auth/send-email-otp` then `POST /auth/verify-email-otp`, which returns
+  a session so the user lands signed in. What is left is the screen and the
+  Supabase template change in [`docs/email-otp-setup.md`](../docs/email-otp-setup.md).
 - Identify the user's location during registration and display it on the
   corresponding role home screen after registration is complete.
 - Create the automated email content, including OTP emails and related messages.

@@ -1,4 +1,13 @@
-import { Body, Controller, Patch, Put, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  HttpCode,
+  Patch,
+  Put,
+  Req,
+  UseGuards,
+} from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { Roles } from '../auth/roles.decorator';
 import { CurrentUser } from '../auth/current-user.decorator';
@@ -8,7 +17,7 @@ import {
   UpdateProfileDto,
   UpsertProviderProfileDto,
 } from './dto/profiles.dto';
-import type { Profile } from '../common/types';
+import type { AuthenticatedRequest, Profile } from '../common/types';
 
 @Controller('profiles')
 @UseGuards(JwtAuthGuard)
@@ -18,6 +27,19 @@ export class ProfilesController {
   @Patch('me')
   updateProfile(@CurrentUser() user: Profile, @Body() dto: UpdateProfileDto) {
     return this.profilesService.updateProfile(user, dto);
+  }
+
+  /**
+   * Self-serve account deletion. 204 on success, 409 with a `blockers` array
+   * when the account still has money or obligations in flight.
+   *
+   * The access token comes off the request rather than the body: the same
+   * token that authorised this call is the one being invalidated.
+   */
+  @Delete('me')
+  @HttpCode(204)
+  async deleteAccount(@Req() req: AuthenticatedRequest) {
+    await this.profilesService.deleteAccount(req.user, req.accessToken);
   }
 
   @Put('me/provider')

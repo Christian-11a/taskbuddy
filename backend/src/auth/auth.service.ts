@@ -18,6 +18,8 @@ import {
   RefreshDto,
   RegisterDto,
   ResetPasswordDto,
+  SendEmailOtpDto,
+  VerifyEmailOtpDto,
 } from './dto/auth.dto';
 import type { Profile } from '../common/types';
 
@@ -311,6 +313,102 @@ export class AuthService implements OnModuleInit {
     if (updateError) throw new BadRequestException(updateError.message);
 
     return {
+      session: {
+        access_token: data.session.access_token,
+        refresh_token: data.session.refresh_token,
+        expires_at: data.session.expires_at,
+      },
+    };
+  }
+
+  // -- Registration email verification (OTP) ---------------------------------
+
+  /**
+   * Step 1 - mails a six-digit code to an address that registered but has not
+   * confirmed yet. Item 5 of docs/backend-handoff-mobile-todo-gaps.md.
+   *
+   * This wraps Supabase's own signup OTP rather than issuing a code from a
+   * table of our own, and that is the whole design decision. A hashed,
+   * single-use, expiring, attempt-capped code table is easy; *delivering* it is
+   * not, and this backend has no mail transport - every email the platform
+   * sends leaves through Supabase Auth. Supabase's code is already all of those
+   * things, and it does one thing a private table cannot: verifying it sets
+   * `auth.users.email_confirmed_at`, so the address is confirmed to Auth itself
+   * rather than only to us. A parallel code would leave the account
+   * unconfirmed to Supabase while we insisted it was verified.
+   *
+   * See docs/email-otp-setup.md for the template change this needs: Supabase's
+   * default confirmation email sends a link, which is useless to a phone (it
+   * opens the device browser, not the app).
+   *
+   * Always reports success, for the same reason forgotPassword does: whether
+   * an address has an account, and whether it is already confirmed, are not
+   * things an unauthenticated caller gets to enumerate. Real failures -
+   * Supabase's per-hour email rate limit, SMTP misconfiguration - are logged
+   * here instead.
+   */
+  async sendEmailOtp(dto: SendEmailOtpDto) {
+    const { error } = await this.supabase.anon.auth.resend({
+      type: 'signup',
+      email: dto.email,
+    });
+    if (error) {
+      this.logger.warn(
+        `Signup OTP not sent for ${dto.email}: ${error.message}`,
+      );
+    }
+    return { success: true };
+  }
+
+  /**
+   * Step 2 - exchanges the code for a confirmed account and a session.
+   *
+   * The session comes back for the same reason resetPassword returns one: the
+   * user has just proved they hold the mailbox, so bouncing them to Login to
+   * type a password they entered ninety seconds ago achieves nothing.
+   *
+   * `profiles.email_verified_at` is stamped alongside Supabase's own
+   * `email_confirmed_at`. They are not redundant - the Supabase column also
+   * gets set by clicking a confirmation link, and this one records that the
+   * registration flow specifically saw the code come back.
+   */
+  async verifyEmailOtp(dto: VerifyEmailOtpDto) {
+    const { data, error } = await this.supabase.anon.auth.verifyOtp({
+      email: dto.email,
+      token: dto.token,
+      // 'signup' is the confirmation code for a newly registered address;
+      // 'recovery' (used by resetPassword) is the password-reset code. They are
+      // separate namespaces - one will not verify against the other.
+      type: 'signup',
+    });
+    if (error || !data.session || !data.user) {
+      throw new UnauthorizedException(
+        error?.message ?? 'That verification code is invalid or has expired',
+      );
+    }
+
+    // Consistent with login() and resetPassword(): a confirmed email is not a
+    // way back into a suspended account.
+    const { data: profile } = await this.supabase.admin
+      .from('profiles')
+      .select('deactivated_at, suspended_until')
+      .eq('id', data.user.id)
+      .maybeSingle();
+    if (profile) {
+      await this.enforceNotSuspended(
+        data.user.id,
+        data.session.access_token,
+        profile,
+      );
+    }
+
+    await this.supabase.admin
+      .from('profiles')
+      .update({ email_verified_at: new Date().toISOString() })
+      .eq('id', data.user.id);
+
+    return {
+      user: { id: data.user.id, email: data.user.email },
       session: {
         access_token: data.session.access_token,
         refresh_token: data.session.refresh_token,

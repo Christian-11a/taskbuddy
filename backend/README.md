@@ -62,7 +62,7 @@ Job lifecycle: `open → recommending → assigned → in_progress → completed
 
 1. Create a project at [supabase.com](https://supabase.com).
 2. Apply **every** migration in [`supabase/migrations/`](./supabase/migrations) **in order**
-   (0001 → 0020), either by pasting each file into the SQL Editor or with the CLI:
+   (0001 → 0023), either by pasting each file into the SQL Editor or with the CLI:
 
    ```bash
    supabase link --project-ref <your-project-ref>
@@ -91,6 +91,9 @@ Job lifecycle: `open → recommending → assigned → in_progress → completed
    | `0018_job_confirmed_status.sql` | `confirmed` job status and assignment lifecycle updates. |
    | `0019_job_tasks_and_verification_storage_rls.sql` | job checklists and verification-storage RLS policies. |
    | `0020_admin_search_functions.sql` | service-role-only SQL RPCs for paginated admin booking, activity, and escrow search. |
+   | `0021_notification_announcement_type.sql` | `notification_type` gains `'announcement'` (admin broadcast) and `'wallet_update'` (withdrawal settled/declined). |
+   | `0022_account_deletion_and_email_otp.sql` | `profiles.deleted_at` (soft delete) and `profiles.email_verified_at`; `admin_user_overview` re-created to expose `deleted_at`. |
+   | `0023_withdrawal_requests_and_commission.sql` | withdrawal review columns on `wallet_transactions`, `platform_settings.commission_rate` (default 0), `escrow_transactions.commission_amount`. |
 
    > Migrations 0008 and 0009 each run `alter type notification_type add value`.
    > Postgres allows this inside a transaction as long as the new value isn't
@@ -110,6 +113,17 @@ Job lifecycle: `open → recommending → assigned → in_progress → completed
    > job query, so **apply 0019 before deploying the API**. Out of order, job
    > endpoints fail with PostgREST's "Could not find a relationship between
    > 'jobs' and 'job_tasks'".
+
+   > **0021 must be applied on its own, before 0022 and 0023**, for the same
+   > reason 0018 must precede 0019: it adds `notification_type` values that the
+   > API writes immediately, and Postgres will not let a new enum value be used
+   > in the transaction that added it. Run 0021, let it commit, then the other
+   > two. `supabase db push` handles this itself.
+   >
+   > The API also reads `reviews` on every job query (the `has_review` flag) and
+   > `platform_settings.commission_rate` on every escrow release, so **apply
+   > 0022 and 0023 before deploying the API**. 0023's default commission rate is
+   > 0, so applying it changes no payout until an admin sets a rate.
 
    The two Storage buckets are created by the migrations themselves
    (`insert into storage.buckets ... on conflict do nothing`), so there is no
@@ -226,6 +240,8 @@ All bodies are JSON. 🔒 = requires auth; (client) / (provider) = role-restrict
 | `POST /auth/change-password` 🔒 | `{ current_password, new_password }` — re-authenticates first |
 | `POST /auth/forgot-password` | `{ email }` → mails a 6-digit code. **Always** `{ success: true }`, even for an unknown address — otherwise it's an email-enumeration oracle |
 | `POST /auth/reset-password` | `{ email, token, new_password }` → `{ session }`. Needs the Supabase template to emit `{{ .Token }}` — see [`docs/password-reset-setup.md`](../docs/password-reset-setup.md) |
+| `POST /auth/send-email-otp` | `{ email }` → mails the signup confirmation code. **Always** `{ success: true }` — same enumeration reasoning as forgot-password |
+| `POST /auth/verify-email-otp` | `{ email, token }` → `{ user, session }`. Confirms the address with Supabase Auth and stamps `profiles.email_verified_at`. Needs the **Confirm signup** template to emit `{{ .Token }}` — see [`docs/email-otp-setup.md`](../docs/email-otp-setup.md) |
 
 **Profiles & providers**
 
@@ -234,6 +250,7 @@ All bodies are JSON. 🔒 = requires auth; (client) / (provider) = role-restrict
 | `PATCH /profiles/me` 🔒 | update `full_name, phone, avatar_url, address, city, latitude, longitude`. `avatar_url` takes either an `avatars` Storage path (converted to a public URL) or an `https://` URL; `""` clears it |
 | `PUT /profiles/me/provider` 🔒 (provider) | `{ category_id, bio (20–400 chars), years_experience?, service_radius_km? }` |
 | `PATCH /profiles/me/provider/availability` 🔒 (provider) | `{ is_available: boolean }` |
+| `DELETE /profiles/me` 🔒 | self-serve account deletion → `204`, or `409 { blockers[] }` while the account still has a balance, a pending withdrawal, escrow held, an open dispute, or a live job. A **soft** delete: the row survives (the ledger, reviews and ML snapshots reference it) with every identifying field scrubbed, and the Auth user is renamed, banned and signed out (migration 0022, `BACKEND_SCHEMA.md` §27.1) |
 | `GET /providers/:id` 🔒 | public provider card (bio, category, rating, completed jobs) |
 | `GET /providers/:id/reviews` 🔒 | reviews for a provider |
 | `GET /categories` 🔒 | `[{ id, name }]` |
@@ -280,8 +297,11 @@ All bodies are JSON. 🔒 = requires auth; (client) / (provider) = role-restrict
 
 | Method & path | Description |
 |---|---|
-| `GET /wallet` 🔒 | `{ balance, total_credited, total_debited, pending, transactions[] }` (balance derived from the ledger) |
-| `POST /wallet/transactions` 🔒 | top up / withdraw: `{ direction: credit/debit, amount, title, job_id? }`. A debit larger than the balance is refused. `kind` is derived (`topup`/`withdrawal`) and cannot be set by the caller. |
+| `GET /wallet` 🔒 | `{ balance, available, total_credited, total_debited, pending, pending_withdrawals, transactions[] }` — all derived from the ledger. `available` is `balance` less anything already promised to a pending withdrawal; that is the figure escrow checks before a hire |
+| `POST /wallet/withdrawals` 🔒 | `{ amount, destination, title? }` → a **pending** ledger row. Nothing moves until an admin settles it — there is no payout rail, so the admin queue *is* the disbursement mechanism (migration 0023, `BACKEND_SCHEMA.md` §27.2) |
+| `GET /wallet/withdrawals` 🔒 | the caller's own requests, newest first |
+| `POST /wallet/withdrawals/:id/cancel` 🔒 | retract a request an admin has not acted on |
+| `POST /wallet/transactions` 🔒 | **Deprecated** — use `POST /wallet/withdrawals`. Still accepts `{ direction: 'debit', amount, title, job_id?, destination? }` and now files the same pending request. `direction: 'credit'` is refused: wallet funding has exactly one entry point, a settled Stripe charge |
 | `GET /conversations` 🔒 | caller's conversations (counterpart name + last-message time) |
 | `POST /conversations` 🔒 | get-or-create for `{ job_id }` — job must have an assigned provider |
 | `GET /conversations/:id/messages` 🔒 | messages, oldest first |
@@ -390,7 +410,7 @@ vars these endpoints return **503** and the rest of the API is unaffected.
 
 | Method & path | Description |
 |---|---|
-| `GET /admin/users?search=&role=&status=&limit=&offset=` | search/filter users (`role`: client/provider/admin, `status`: active/suspended) |
+| `GET /admin/users?search=&role=&status=&limit=&offset=` | search/filter users (`role`: client/provider/admin, `status`: active/suspended/**deleted**). Deleted accounts are excluded unless asked for, and never appear under `suspended` (migration 0022) |
 | `GET /admin/users/:id` | single user detail (from `admin_user_overview`) |
 | `POST /admin/users/:id/suspend` | `{ duration_days?, reason }` — refuses if already suspended or if the target is an admin. Omit `duration_days` for indefinite; otherwise the suspension lifts itself the next time `deactivated_at` is checked (login), no cron job |
 | `POST /admin/users/:id/reinstate` | reactivate a suspended account |
@@ -398,7 +418,7 @@ vars these endpoints return **503** and the rest of the API is unaffected.
 | `GET /admin/bookings?search=&status=&category_id=&limit=&offset=` | platform-wide bookings view; search matches booking ID, client/provider name, or service category (story #31) |
 | `GET /admin/bookings/:id` | one booking's full detail, plus its escrow record if one exists; stored `job-photos` paths are returned as public photo URLs |
 | `POST /admin/bookings/:id/cancel` | force-cancel a booking — refuses if already `completed`/`cancelled`/`expired` |
-| `GET /admin/analytics/summary` | totals (users/clients/providers/suspended/bookings/avg_rating/revenue/`pending_verifications`), bookings by status/category, daily booking trend, revenue trend, top 10 providers by completed jobs (story #32) |
+| `GET /admin/analytics/summary` | totals (users/clients/providers/suspended/bookings/avg_rating/revenue/**commission**/`pending_verifications`/`pending_withdrawals`), bookings by status/category, daily booking trend, revenue trend, commission trend, top 10 providers by completed jobs (story #32). `total_revenue` is what flowed *through* the platform; `total_commission` is what it *kept* — see `BACKEND_SCHEMA.md` §27.5 |
 | `GET /admin/activity?search=&limit=&offset=&from=&to=` | job-status transitions; search matches job title → `{ items, total }` (migration 0014 — was a bare array of the newest 20) |
 | `GET /admin/audit?action=&actor_id=&from=&to=&limit=&offset=` | the admin action audit trail → `{ actions, total }` (migration 0014) — see below |
 | `GET /admin/jobs/:jobId/conversation` | read-only view of a job's chat, oldest first, for dispute review (migration 0014) |
@@ -408,6 +428,18 @@ vars these endpoints return **503** and the rest of the API is unaffected.
 | `GET /admin/transactions?search=&status=&limit=&offset=` | escrow records with both parties + service name; search matches transaction ID, client/provider name, or job title (story #17/#18) |
 | `GET /admin/disputes?status=&limit=&offset=` | dispute queue |
 | `POST /admin/disputes/:id/resolve` | `{ resolution: 'released_to_provider' \| 'refunded_to_client', note? }` (story #20) |
+| `GET /admin/withdrawals?status=&limit=&offset=` | the settlement queue — `pending` by default, oldest first (migration 0023) |
+| `POST /admin/withdrawals/:id/settle` | `{ reference? }` — records that the money was actually sent. This is what debits the wallet; the balance is re-checked first and the row is only settled once, whoever clicks |
+| `POST /admin/withdrawals/:id/reject` | `{ reason }` — the reason reaches the account holder and the amount returns to their available balance |
+| `GET /admin/categories` | every service category, active or not (`GET /categories` still serves the apps only active ones) |
+| `POST /admin/categories` | `{ name }` — 409 on a duplicate name |
+| `PATCH /admin/categories/:id` | `{ name?, is_active? }`. **No delete** — jobs, provider profiles and the ML feature set all reference a category by id; `is_active: false` takes it off the menu without rewriting history |
+| `GET /admin/admins` | who currently holds admin |
+| `POST /admin/admins` | `{ email, full_name }` — creates or promotes an admin. **No password is accepted**; the new admin sets their own from the reset email this sends |
+| `POST /admin/admins/:id/revoke` | demote to `client`. Refuses self-demotion and refuses to remove the last admin |
+| `POST /admin/notifications/broadcast` | `{ title, body, audience: 'all' \| 'clients' \| 'providers' }` → `{ sent, failed, audience }`. One row per recipient (so read state and push both work); excludes admins, suspended and deleted accounts |
+| `GET /admin/commission` | the current platform cut |
+| `PATCH /admin/commission` | `{ commission_rate }` — a **fraction**, 0.15 being 15%, capped at 0.5. Applies to escrow released from now on; settled jobs keep their figures (migration 0023) |
 
 Admin accounts can't self-register (`POST /auth/register` only allows
 `client`/`provider`). The admin console uses `POST /auth/admin/login` and the
@@ -433,15 +465,35 @@ resolves it either way (release → provider, refund → client).
 
 Because a hold needs real funds, **`POST /applications/:id/accept` returns 400
 `Insufficient wallet balance`** when the client can't cover the budget — the job
-stays `open`. Clients top up with `POST /wallet/transactions`
-(`direction: 'credit'`), which is what mobile's Add Money button does.
+stays `open`. Clients top up through Stripe hosted Checkout
+(`POST /payments/checkout-session`), and the wallet is credited when Stripe's
+webhook reports the charge settled. That webhook is the **only** way money
+enters: `POST /wallet/transactions` refuses `direction: 'credit'`, since anything
+else would let any authenticated caller mint balance that buys real labour.
 
-Every ledger row carries a `kind`, and **platform revenue is `kind = 'payout'`**.
-This matters: a payout and a refund are both credits with a `job_id`, so the old
-`direction + job_id` rule would have counted refunds as revenue. `kind` is
-derived server-side and never read from the request body — otherwise anyone
-could inflate reported revenue by topping up. See `BACKEND_SCHEMA.md` §18,
-including the documented concurrency caveat on the balance check.
+The balance the hold checks is the **available** one — settled, less anything
+already promised to a pending withdrawal. Without that reservation a client could
+file a withdrawal for their whole balance and hire someone with the same money;
+whichever settled second would take the ledger negative.
+
+Money leaves by request, not by ledger entry. `POST /wallet/withdrawals` files a
+**pending** row and an admin settles it by hand from `GET /admin/withdrawals` —
+there is no payout rail, so that queue *is* the disbursement mechanism
+(`BACKEND_SCHEMA.md` §27.2).
+
+Every ledger row carries a `kind`, and **`kind = 'payout'` is the gross value
+that flowed through the platform**. This matters: a payout and a refund are both
+credits with a `job_id`, so the old `direction + job_id` rule would have counted
+refunds as revenue. `kind` is derived server-side and never read from the request
+body — otherwise anyone could inflate the reported figure by topping up.
+
+What the platform actually **keeps** is the commission: a fraction of the budget
+withheld at release, frozen onto `escrow_transactions.commission_amount`. It has
+no ledger row of its own, because `wallet_transactions` is keyed by profile and
+the platform is not a profile. The rate defaults to 0, so nothing is withheld
+until an admin sets one via `PATCH /admin/commission`. See `BACKEND_SCHEMA.md`
+§18 — including the documented concurrency caveat on the balance check — and
+§27.5.
 
 ### Errors
 

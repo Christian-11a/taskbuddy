@@ -252,6 +252,71 @@ describe('JobsService.create', () => {
   });
 });
 
+describe('JobsService review flag', () => {
+  const client = { id: 'c1', role: 'client' } as Profile;
+
+  it('flattens the embedded review and says so on the job', async () => {
+    // Without this, "has the client already reviewed?" could only be answered
+    // by submitting a second review and reading the error.
+    const review = { id: 'r1', rating: 5, comment: 'Great', created_at: 'x' };
+    const { service } = createService({
+      jobs: [ok(job({ status: 'completed', reviews: review }))],
+    });
+
+    const result = (await service.getById(client, 'j1')) as Record<
+      string,
+      unknown
+    >;
+
+    expect(result.has_review).toBe(true);
+    expect(result.review).toEqual(review);
+    // The raw embed is dropped so no screen learns to read two shapes.
+    expect(result.reviews).toBeUndefined();
+  });
+
+  it('accepts the array shape PostgREST falls back to', async () => {
+    const review = { id: 'r1', rating: 4, comment: null, created_at: 'x' };
+    const { service } = createService({
+      jobs: [ok(job({ status: 'completed', reviews: [review] }))],
+    });
+
+    const result = (await service.getById(client, 'j1')) as Record<
+      string,
+      unknown
+    >;
+
+    expect(result).toMatchObject({ has_review: true, review });
+  });
+
+  it('reports false for an unreviewed job', async () => {
+    const { service } = createService({
+      jobs: [ok(job({ status: 'completed', reviews: null }))],
+    });
+
+    const result = (await service.getById(client, 'j1')) as Record<
+      string,
+      unknown
+    >;
+
+    expect(result).toMatchObject({ has_review: false, review: null });
+  });
+
+  it('flags every row of a list, not just a fetched one', async () => {
+    const { service } = createService({
+      jobs: [
+        ok([
+          job({ id: 'j1', reviews: { id: 'r1' } }),
+          job({ id: 'j2', reviews: null }),
+        ]),
+      ],
+    });
+
+    const result = (await service.mine(client)) as Record<string, unknown>[];
+
+    expect(result.map((j) => j.has_review)).toEqual([true, false]);
+  });
+});
+
 describe('CreateJobDto scheduled_at', () => {
   const validate = (value: unknown) =>
     new IsNotPastInstantConstraint().validate(value);

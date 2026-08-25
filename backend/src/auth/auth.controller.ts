@@ -24,6 +24,8 @@ import {
   RefreshDto,
   RegisterDto,
   ResetPasswordDto,
+  SendEmailOtpDto,
+  VerifyEmailOtpDto,
 } from './dto/auth.dto';
 import {
   ADMIN_CSRF_COOKIE,
@@ -194,6 +196,24 @@ export class AuthController {
   @HttpCode(200)
   resetPassword(@Body() dto: ResetPasswordDto) {
     return this.authService.resetPassword(dto);
+  }
+
+  /**
+   * Mails a signup verification code. Always 200 - see the service comment on
+   * why this must not report whether the address exists or is already
+   * confirmed.
+   */
+  @Post('send-email-otp')
+  @HttpCode(200)
+  sendEmailOtp(@Body() dto: SendEmailOtpDto) {
+    return this.authService.sendEmailOtp(dto);
+  }
+
+  /** Exchanges that code for a confirmed account and a session. */
+  @Post('verify-email-otp')
+  @HttpCode(200)
+  verifyEmailOtp(@Body() dto: VerifyEmailOtpDto) {
+    return this.authService.verifyEmailOtp(dto);
   }
 
   @Post('refresh')

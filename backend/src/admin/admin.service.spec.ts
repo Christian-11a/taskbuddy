@@ -52,6 +52,7 @@ function createSupabaseMock(resultsByTable: Record<string, QueryResult[]>) {
       'is',
       'not',
       'in',
+      'gt',
       'gte',
       'lte',
       'order',
@@ -505,6 +506,15 @@ describe('AdminService', () => {
         { amount: 100, created_at: '2026-06-15T00:00:00Z' },
         { amount: 50.5, created_at: `${currentMonth}-01T00:00:00Z` },
       ];
+      // Commission is what the platform keeps; revenue above is what flowed
+      // through it. Reported separately so neither is mistaken for the other.
+      const commissionRows = [
+        { commission_amount: 15, released_at: '2026-06-15T00:00:00Z' },
+        {
+          commission_amount: 7.58,
+          released_at: `${currentMonth}-01T00:00:00Z`,
+        },
+      ];
       const { supabase } = createSupabaseMock({
         jobs: [{ data: jobs, error: null }],
         profiles: [{ data: users, error: null }],
@@ -512,8 +522,12 @@ describe('AdminService', () => {
           { data: providers, error: null },
           { data: ratedProviders, error: null },
         ],
-        wallet_transactions: [{ data: revenueTxns, error: null }],
+        wallet_transactions: [
+          { data: revenueTxns, error: null },
+          { data: null, error: null, count: 3 }, // pending withdrawals
+        ],
         provider_verifications: [{ data: null, error: null, count: 2 }],
+        escrow_transactions: [{ data: commissionRows, error: null }],
       });
       const service = new AdminService(supabase, createAdminActionsMock().mock);
 
@@ -528,7 +542,10 @@ describe('AdminService', () => {
         avg_rating: 4.5,
         total_revenue: 150.5,
         monthly_revenue: 50.5,
+        total_commission: 22.58,
+        monthly_commission: 7.58,
         pending_verifications: 2,
+        pending_withdrawals: 3,
       });
       expect(result.bookings_by_status).toEqual({ completed: 1, open: 2 });
       expect(result.bookings_by_category).toEqual({
@@ -543,6 +560,12 @@ describe('AdminService', () => {
         [
           { month: '2026-06', amount: 100 },
           { month: currentMonth, amount: 50.5 },
+        ].sort((a, b) => a.month.localeCompare(b.month)),
+      );
+      expect(result.commission_trend).toEqual(
+        [
+          { month: '2026-06', amount: 15 },
+          { month: currentMonth, amount: 7.58 },
         ].sort((a, b) => a.month.localeCompare(b.month)),
       );
       expect(result.top_providers).toEqual(providers);
@@ -626,7 +649,6 @@ describe('AdminService', () => {
       });
       expect(calls).toEqual([]);
     });
-
 
     it('retains the exact activity total when the requested page is empty', async () => {
       const { supabase, rpc } = createSupabaseMock({});

@@ -148,6 +148,11 @@ render, so redirecting without that check would bounce a signed-in admin to
 | Reports | `GET /admin/analytics/summary` |
 | Settings | `PATCH /profiles/me`, `POST /auth/change-password`, `GET`/`PATCH /settings`, `GET`/`PATCH /admin/maintenance` |
 
+Available but not yet wired to a page: `GET /admin/withdrawals` (+ settle /
+reject), `GET`/`POST /admin/categories` + `PATCH /admin/categories/:id`,
+`GET`/`POST /admin/admins` + `POST /admin/admins/:id/revoke`,
+`POST /admin/notifications/broadcast`, and `GET`/`PATCH /admin/commission`.
+
 Bulk actions call the single-item endpoint once per id in parallel. A per-id
 failure doesn't abort the rest — the counts come back so the UI can say
 "Suspended 3 of 5" rather than implying all 5 worked.
@@ -220,6 +225,36 @@ service-role-only RPCs backing these list endpoints. Apply it before deploying
 the backend that calls them. Booking detail responses also expose `photo_urls`
 as renderable public URLs, including conversion of stored `job-photos` paths.
 
+### 3. Available but not yet consumed (migrations 0021–0023)
+
+Four surfaces this document previously listed under "Not yet built" now have an
+API. The console does not call any of them yet. Full reasoning for each decision
+is in `backend/BACKEND_SCHEMA.md` §27; the short version, because each carries a
+choice a reviewer should not have to rediscover:
+
+| Surface | Endpoints | The decision baked in |
+|---|---|---|
+| **Withdrawal queue** | `GET /admin/withdrawals`, `POST .../settle` (accepts a payout reference), `POST .../reject` (accepts a reason) | Withdrawal requests land `pending` and settle only when an admin records that money actually moved. There is no payout rail, so this queue *is* the disbursement mechanism, not a review step in front of one. Settling re-checks the balance and can only fire once, whoever clicks |
+| **Categories** | `GET`/`POST /admin/categories`, `PATCH /admin/categories/:id` | **No delete.** Jobs, provider profiles and the ML feature set all reference a category by id; `is_active: false` takes it off the menu without rewriting the jobs that used it. A duplicate name is a 409 |
+| **Admin accounts** | `GET`/`POST /admin/admins`, `POST /admin/admins/:id/revoke` | **No password crosses the wire.** The new admin sets their own from a reset email. Revocation refuses self-demotion and refuses to remove the last admin — a console nobody can get into is not recoverable from inside the console |
+| **Commission** | `GET`/`PATCH /admin/commission` | A **fraction**, not a percent: 0.15 is 15%, capped at 0.5. Applies at escrow release and freezes onto the escrow row, so settled jobs keep their figures. Defaults to 0 — nothing is withheld until someone deliberately sets it |
+| **Broadcast** | `POST /admin/notifications/broadcast` | One notification row per recipient (read state and push are both per-row), excluding admins, suspended and deleted accounts. Returns `{ sent, failed }` — a partly-delivered broadcast reports the shortfall rather than throwing |
+
+Two changes to pages that **do** exist, worth knowing before the next pass over
+them:
+
+- **Users** — `status` accepts `deleted` as well as `active`/`suspended`.
+  Accounts that deleted themselves (`DELETE /profiles/me`) are excluded from the
+  default list and from `suspended`; they carry `deactivated_at`, so without that
+  they would show up as people to consider reinstating. The rows they left behind
+  still reference them, which is why they remain findable at all.
+- **Dashboard** — `GET /admin/analytics/summary` gains `total_commission`,
+  `monthly_commission`, `commission_trend` and `pending_withdrawals`. The
+  existing revenue fields are unchanged and still mean what they meant:
+  `total_revenue` is what flowed *through* the platform, commission is what it
+  *kept*. Rendering either as "Revenue" without the other is how a marketplace
+  ends up quoting GMV as income.
+
 ---
 
 ## Deliberate tradeoffs (no action needed)
@@ -248,9 +283,16 @@ not missed.
   dialogs, error toasts, loading vs empty states — has been verified by hand in
   a browser, but nothing re-runs it. Vitest and jsdom are already set up, so
   this is mostly adding React Testing Library. Clearest next step.
-- **Fee/commission model, category management, a second admin account, and
-  notification broadcast.** None have backend support today — see
-  `backend/BACKEND_SCHEMA.md`. Each needs a schema decision before any UI.
+- **UI for the four newly-backed admin surfaces.** Fee/commission, category
+  management, a second admin account, and notification broadcast used to be
+  listed here as having no backend at all. They do now — migrations 0021–0023,
+  `backend/BACKEND_SCHEMA.md` §27. Nothing in this console calls them yet; the
+  endpoints and the decisions they encode are below under
+  [Backend Integration Status](#backend-integration-status).
+- **UI for the withdrawal settlement queue.** `GET /admin/withdrawals` plus
+  settle/reject. This one is not cosmetic: there is no payout rail, so until a
+  page exists nobody on the platform can be paid out except by an operator
+  calling the API directly.
 
 ---
 
