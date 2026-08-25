@@ -49,8 +49,14 @@ function haversineKm(
 //
 // job_tasks rides along on every job read: the provider's job screen is the
 // checklist, so fetching it separately would only buy a second round trip.
+//
+// reviews rides along too, for the same reason: "has the client already
+// reviewed this?" is a question every completed-job screen asks, and without
+// the answer on the payload the only way to find out was to submit a second
+// review and read the error. `reviews.job_id` is UNIQUE, so this embed is
+// one-to-one.
 const JOB_SELECT =
-  '*, service_categories(name), assigned_provider:profiles!jobs_assigned_provider_id_fkey(id, full_name), job_tasks(id, label, position, is_done, completed_at)';
+  '*, service_categories(name), assigned_provider:profiles!jobs_assigned_provider_id_fkey(id, full_name), job_tasks(id, label, position, is_done, completed_at), reviews(id, rating, comment, created_at)';
 
 /** The one status an incoming booking request can be accepted from. */
 const AWAITING_PROVIDER_ANSWER = ['assigned'];
@@ -118,12 +124,12 @@ export class JobsService {
         this.logger.error(
           `Job ${jobId} created without its checklist: ${taskError.message}`,
         );
-        return data;
+        return this.withReview(data);
       }
       return this.findJob(jobId);
     }
 
-    return data;
+    return this.withReview(data);
   }
 
   /**
@@ -191,9 +197,11 @@ export class JobsService {
 
     const offset = query.offset ?? 0;
     const limit = query.limit ?? 20;
-    const page = filtered
-      .slice(offset, offset + limit)
-      .map((j) => ({ ...j.job, distance_km: j.distanceKm }));
+    const page = this.withReviews(
+      filtered
+        .slice(offset, offset + limit)
+        .map((j) => ({ ...j.job, distance_km: j.distanceKm })),
+    );
 
     return { jobs: page, summary };
   }
@@ -204,7 +212,7 @@ export class JobsService {
       .select(JOB_SELECT)
       .eq('client_id', user.id)
       .order('created_at', { ascending: false });
-    return data ?? [];
+    return this.withReviews(data ?? []);
   }
 
   async assigned(user: Profile) {
@@ -213,7 +221,7 @@ export class JobsService {
       .select(JOB_SELECT)
       .eq('assigned_provider_id', user.id)
       .order('assigned_at', { ascending: false });
-    return data ?? [];
+    return this.withReviews(data ?? []);
   }
 
   async getById(user: Profile, jobId: string) {
@@ -401,6 +409,29 @@ export class JobsService {
     return this.findJob(jobId);
   }
 
+  /**
+   * Normalises the embedded review into the two fields callers actually want.
+   *
+   * PostgREST returns a one-to-one embed as an object, but returns an array
+   * when it cannot see the uniqueness (an older schema cache, say). Both
+   * shapes are flattened here so no screen has to know which it got, and
+   * `has_review` is spelled out rather than left as "check whether `review` is
+   * truthy" — the flag is the thing the UI branches on.
+   */
+  private withReview<T>(job: T): T {
+    const row = job as Record<string, unknown>;
+    const embedded = row.reviews;
+    const review = Array.isArray(embedded)
+      ? ((embedded[0] as Record<string, unknown> | undefined) ?? null)
+      : ((embedded as Record<string, unknown> | null) ?? null);
+    const { reviews: _dropped, ...rest } = row;
+    return { ...rest, review, has_review: review !== null } as T;
+  }
+
+  private withReviews<T>(jobs: T[]): T[] {
+    return jobs.map((job) => this.withReview(job));
+  }
+
   private async findJob(jobId: string) {
     const { data, error } = await this.supabase.admin
       .from('jobs')
@@ -409,7 +440,7 @@ export class JobsService {
       .maybeSingle();
     if (error) throw new BadRequestException(error.message);
     if (!data) throw new NotFoundException('Job not found');
-    return data;
+    return this.withReview(data);
   }
 
   private async setStatus(jobId: string, status: string) {
@@ -420,7 +451,7 @@ export class JobsService {
       .select(JOB_SELECT)
       .single();
     if (error) throw new BadRequestException(error.message);
-    return data;
+    return this.withReview(data);
   }
 
   private async notify(

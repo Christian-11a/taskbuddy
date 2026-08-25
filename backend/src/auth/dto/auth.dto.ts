@@ -149,3 +149,28 @@ export class CompleteGoogleProfileDto {
   @IsBoolean()
   consented_biometric?: boolean;
 }
+
+/**
+ * POST /auth/send-email-otp — mails a six-digit code to a registered but
+ * unconfirmed address.
+ *
+ * Address-only, deliberately. This runs before the user has a session (the
+ * whole point is that they cannot get one yet), so there is nothing to
+ * authenticate with, and asking for the password again would only teach people
+ * to type it into more places.
+ */
+export class SendEmailOtpDto {
+  @IsEmail()
+  email!: string;
+}
+
+/** POST /auth/verify-email-otp — exchanges that code for a confirmed account. */
+export class VerifyEmailOtpDto {
+  @IsEmail()
+  email!: string;
+
+  /** The code from the email. Supabase issues 6 digits. */
+  @IsString()
+  @IsNotEmpty()
+  token!: string;
+}

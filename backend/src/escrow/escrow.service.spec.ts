@@ -22,10 +22,17 @@ function createSupabaseMock(resultsByTable: Record<string, QueryResult[]>) {
   const calls: { table: string; method: string; args: unknown[] }[] = [];
   const rpc = jest.fn().mockResolvedValue({ data: [], error: null });
   const from = jest.fn((table: string) => {
-    const result = resultsByTable[table]?.shift() ?? {
-      data: null,
-      error: { message: `no mock result for table '${table}'` },
-    };
+    const result =
+      resultsByTable[table]?.shift() ??
+      // Every payOut reads the commission rate (0023). Defaulting it to zero
+      // here means the tests written before commission existed keep describing
+      // exactly the case they were written for: the platform takes nothing.
+      (table === 'platform_settings'
+        ? { data: { commission_rate: 0 }, error: null }
+        : {
+            data: null,
+            error: { message: `no mock result for table '${table}'` },
+          });
     const builder: Record<string, unknown> = {};
     const chain = (method: string) =>
       jest.fn((...args: unknown[]) => {
@@ -59,12 +66,17 @@ function createSupabaseMock(resultsByTable: Record<string, QueryResult[]>) {
   };
 }
 
-/** Escrow only ever asks the wallet for a balance. */
+/**
+ * Escrow only ever asks the wallet for a balance — the available one since
+ * 0023, so a peso promised to a pending withdrawal cannot also fund a hire.
+ */
 function createWalletMock(balance = 100_000) {
   const balanceFor = jest.fn(() => Promise.resolve(balance));
+  const availableBalanceFor = jest.fn(() => Promise.resolve(balance));
   return {
-    wallet: { balanceFor } as unknown as WalletService,
+    wallet: { balanceFor, availableBalanceFor } as unknown as WalletService,
     balanceFor,
+    availableBalanceFor,
   };
 }
 
@@ -81,6 +93,7 @@ const heldEscrow: EscrowRow = {
   held_at: '2026-08-01T00:00:00Z',
   released_at: null,
   refunded_at: null,
+  commission_amount: 0,
 };
 
 const client = { id: 'c1', role: 'client' } as Profile;
@@ -195,7 +208,7 @@ describe('EscrowService', () => {
     });
 
     it('no-ops for a job posted without a budget', async () => {
-      const { wallet, balanceFor } = createWalletMock();
+      const { wallet, availableBalanceFor } = createWalletMock();
       const { supabase, calls } = createSupabaseMock({
         jobs: [
           {
@@ -209,7 +222,7 @@ describe('EscrowService', () => {
       expect(await service.hold('j1', 'p1')).toBeNull();
       expect(calls.some((c) => c.table === 'escrow_transactions')).toBe(false);
       // Bails before it ever asks about money.
-      expect(balanceFor).not.toHaveBeenCalled();
+      expect(availableBalanceFor).not.toHaveBeenCalled();
     });
 
     it('does not debit twice when the job is already held', async () => {
@@ -239,6 +252,93 @@ describe('EscrowService', () => {
 
       expect(result).toMatchObject({ id: 'e1' });
       expect(ledgerWrites(calls)).toEqual([]);
+    });
+  });
+
+  describe('commission', () => {
+    /** A release with a rate configured. */
+    function releaseWith(rate: number, budget = 1500) {
+      return createSupabaseMock({
+        escrow_transactions: [
+          { data: { ...heldEscrow, amount: budget }, error: null },
+          {
+            data: { ...heldEscrow, amount: budget, status: 'released' },
+            error: null,
+          },
+        ],
+        platform_settings: [{ data: { commission_rate: rate }, error: null }],
+        jobs: [{ data: { title: 'Fix sink' }, error: null }],
+        wallet_transactions: [okLedger()],
+      });
+    }
+
+    it('pays the provider the whole budget while the rate is zero', async () => {
+      // The default, and the point of the default: applying 0023 changes no
+      // figure anywhere until an admin deliberately sets a rate.
+      const { supabase, calls } = releaseWith(0);
+      const service = new EscrowService(supabase, createWalletMock().wallet);
+
+      await service.release('j1');
+
+      expect(ledgerWrites(calls)[0]).toMatchObject({
+        kind: 'payout',
+        amount: 1500,
+      });
+    });
+
+    it('withholds the configured cut and credits the provider the remainder', async () => {
+      const { supabase, calls } = releaseWith(0.15);
+      const service = new EscrowService(supabase, createWalletMock().wallet);
+
+      await service.release('j1');
+
+      expect(ledgerWrites(calls)[0]).toMatchObject({
+        kind: 'payout',
+        amount: 1275, // 1500 less 15%
+      });
+      // The withheld amount has no ledger row of its own — the platform is not
+      // a profile — so escrow is where it is recorded.
+      const escrowUpdate = calls.find(
+        (c) => c.table === 'escrow_transactions' && c.method === 'update',
+      );
+      expect(escrowUpdate?.args[0]).toMatchObject({
+        status: 'released',
+        commission_amount: 225,
+      });
+    });
+
+    it('rounds to centavos rather than carrying float noise into the ledger', async () => {
+      // 1000.05 * 0.075 = 75.00375 — a payout of 925.04625 pesos is not a
+      // number the ledger can hold, let alone one anyone can be paid.
+      const { supabase, calls } = releaseWith(0.075, 1000.05);
+      const service = new EscrowService(supabase, createWalletMock().wallet);
+
+      await service.release('j1');
+
+      expect(ledgerWrites(calls)[0]).toMatchObject({ amount: 925.05 });
+      const escrowUpdate = calls.find(
+        (c) => c.table === 'escrow_transactions' && c.method === 'update',
+      );
+      expect(escrowUpdate?.args[0]).toMatchObject({ commission_amount: 75 });
+    });
+
+    it('falls back to no commission when the settings row cannot be read', async () => {
+      // A settings read that fails must not strand a provider's payout, and
+      // zero is the direction that errs in the user's favour.
+      const { supabase, calls } = createSupabaseMock({
+        escrow_transactions: [
+          { data: heldEscrow, error: null },
+          { data: { ...heldEscrow, status: 'released' }, error: null },
+        ],
+        platform_settings: [{ data: null, error: { message: 'boom' } }],
+        jobs: [{ data: { title: 'Fix sink' }, error: null }],
+        wallet_transactions: [okLedger()],
+      });
+      const service = new EscrowService(supabase, createWalletMock().wallet);
+
+      await service.release('j1');
+
+      expect(ledgerWrites(calls)[0]).toMatchObject({ amount: 1500 });
     });
   });
 

@@ -15,6 +15,8 @@ export type ApplicationStatus =
   'pending' | 'accepted' | 'rejected' | 'withdrawn';
 export type WalletTxnDirection = 'credit' | 'debit';
 export type WalletTxnStatus = 'pending' | 'completed' | 'failed';
+export type WalletTxnKind =
+  'topup' | 'withdrawal' | 'escrow_hold' | 'payout' | 'refund' | 'adjustment';
 export type BookingStatus = 'scheduled' | 'completed' | 'cancelled';
 export type VerificationStatus = 'pending' | 'approved' | 'rejected';
 export type VerificationMethod = 'manual' | 'stripe_identity';
@@ -31,6 +33,12 @@ export interface Profile {
   latitude: number | null;
   longitude: number | null;
   deactivated_at: string | null;
+  // Soft-delete tombstone (migration 0022). Set by DELETE /profiles/me; the
+  // row survives because the ledger, reviews and ML snapshots point at it.
+  deleted_at: string | null;
+  // Set when the registration OTP is verified (migration 0022). Distinct from
+  // Supabase's own auth.users.email_confirmed_at.
+  email_verified_at: string | null;
   created_at: string;
   updated_at: string;
   // Signup consents (nullable — NULL for accounts before migration 0015)

@@ -1347,3 +1347,255 @@ Identity rows carry none. The paths go through the same ownership and image pre-
 The one-open-review index (`uq_provider_verifications_one_pending`) is unchanged, so the flow
 produces exactly one row either way. When Stripe is not configured the API answers 503 *before*
 writing anything, which is what lets the client fall back to a manual submission.
+
+---
+
+## 27. Backend Leftovers (migrations 0022–0024)
+
+The items `mobile/README.md` and `web/README.md` listed as needing the API to change first —
+`docs/backend-handoff-mobile-todo-gaps.md` §§1, 2, 3, 5, and the four entries under web's "Not yet
+built". They are grouped here because they arrived together, not because they are one feature.
+
+Three migrations, in order. **0022 must be applied on its own and allowed to commit first** —
+Postgres will not let a new enum value be used in the same transaction that adds it, and the
+Supabase SQL editor wraps a script in one transaction (the same constraint 0018 documented).
+
+| Migration | Contents |
+|---|---|
+| `0022_notification_announcement_type.sql` | `notification_type` gains `'announcement'` and `'wallet_update'` |
+| `0023_account_deletion_and_email_otp.sql` | `profiles.deleted_at`, `profiles.email_verified_at`, `admin_user_overview` re-created with `deleted_at` |
+| `0024_withdrawal_requests_and_commission.sql` | withdrawal review columns on `wallet_transactions`, `platform_settings.commission_rate`, `escrow_transactions.commission_amount` |
+
+### 27.1 Account deletion is a soft delete (`DELETE /profiles/me`)
+
+```
+DELETE /profiles/me   🔒
+  → 204  deleted
+  → 409  { message, blockers: [{ code, message }] }
+```
+
+**The row survives; the person in it does not.** `wallet_transactions`, `reviews`, `jobs` and
+`recommendation_candidates` all cascade off `profiles`, and each has to outlive the account: the
+ledger is the record of money (§18), the reviews and job history belong to the *other* party, and
+the candidate snapshots are the ML retraining set (§13) — holes in it silently bias the next
+model. So deletion sets `deleted_at`, sets `deactivated_at`, and overwrites every identifying
+field (`full_name` becomes `'Deleted user'`; phone, avatar, address, city and coordinates become
+NULL). The erasure is the scrub, not the row's absence.
+
+Three things happen to the Supabase Auth user, and all three matter:
+
+| Step | Why |
+|---|---|
+| Email rotated to `deleted-<id>@deleted.invalid` | Frees the real address for re-registration. `.invalid` is RFC 2606-reserved, so it can never be deliverable. |
+| Banned indefinitely | No new session can be minted for it. |
+| Current session signed out | The token in the app's hand stops working now, not at its next expiry. |
+
+Deliberately **not** `auth.admin.deleteUser`: `admin_user_overview` (0005) inner-joins
+`auth.users`, so deleting the Auth row would drop the account out of the admin console entirely,
+including out of any after-the-fact question about what it did.
+
+Setting `deactivated_at` is what makes every pre-existing suspension check — `JwtAuthGuard`,
+`login`, `resetPassword`, the Google callback — refuse a deleted account without any of them
+learning about `deleted_at`. The guard adds one check of its own, purely for the message:
+"deactivated" reads as *suspended, ask support*, which sends a user who deleted their own account
+to a queue that cannot help them.
+
+**The 409 refuses rather than unwinds.** An account with money or obligations in flight is told
+what is in the way and resolves it first; the alternative is the API deciding on its own to cancel
+someone's confirmed booking or write off a balance. All five checks run — a user who has to come
+back three times because the API mentioned one blocker at a time has been told the truth and still
+treated badly.
+
+| `code` | Raised when |
+|---|---|
+| `wallet_balance` | settled balance > 0 |
+| `pending_withdrawal` | a withdrawal request is still awaiting an admin |
+| `escrow_held` | escrow `held` on either side of a job |
+| `open_dispute` | escrow `disputed` on either side |
+| `active_job` | a job in `assigned` / `confirmed` / `in_progress` |
+
+A deleted provider is also set `is_available = false`, which takes them out of both browse and the
+recommender (`fn_job_provider_features` filters on it) even if some query elsewhere forgets about
+`deleted_at`. The admin user list excludes deleted accounts by default and exposes them under
+`status=deleted`; they are excluded from `status=suspended` too, since they carry
+`deactivated_at` and would otherwise appear as people to consider reinstating.
+
+### 27.2 Withdrawals are requests, not ledger entries
+
+```
+POST /wallet/withdrawals            🔒  { amount, destination, title? }  → pending row
+GET  /wallet/withdrawals            🔒  own requests
+POST /wallet/withdrawals/:id/cancel 🔒  retract while still pending
+
+GET  /admin/withdrawals             🔒 admin  ?status=pending (default), oldest first
+POST /admin/withdrawals/:id/settle  🔒 admin  { reference? }  → completed
+POST /admin/withdrawals/:id/reject  🔒 admin  { reason }      → failed
+```
+
+`POST /wallet/transactions` still works and does the same thing; it is deprecated in favour of the
+named route.
+
+**Why the row is `pending`.** There is no payout rail. Money enters the platform through exactly
+one door — a Stripe webhook reporting a settled charge (§21) — and, until Stripe Connect or a
+local disbursement provider exists, leaves through none. The old endpoint wrote `completed`, so
+the ledger asserted money had moved when nothing had and the balance was wrong the moment anyone
+pressed the button. `docs/backend-handoff-mobile-todo-gaps.md` §2 recommended exactly this interim
+shape: a request that lands in the admin console for manual settlement. This queue *is* the
+disbursement mechanism, not a review step in front of one.
+
+**Available vs settled balance.** `WalletService.balanceFor` is unchanged: completed credits minus
+completed debits. `availableBalanceFor` subtracts pending withdrawals, and that — not the settled
+figure — is what may be committed to something new, which is why `EscrowService.hold` now checks
+it. Without the reservation a user could file a withdrawal for their whole balance and
+immediately hire someone with the same money; whichever settled second would take the ledger
+negative. `GET /wallet` reports both, plus `pending_withdrawals`.
+
+Settlement re-checks the settled balance (escrow may have spent it in between) and re-asserts
+`status = 'pending'` in the UPDATE's WHERE clause, so two admins clicking at once produce one
+settlement and one "already settled" rather than two payouts. A rejection or a user-side
+cancellation marks the row `failed` rather than deleting it — the ledger records what was
+attempted, and a vanished row leaves the user's history with a hole where they remember pressing a
+button. Both outcomes write a `wallet_update` notification carrying the payout reference or the
+reason.
+
+### 27.3 `has_review` on the job payload
+
+`JOB_SELECT` now embeds `reviews(id, rating, comment, created_at)` — `reviews.job_id` is UNIQUE,
+so the embed is one-to-one — and every job the API returns carries `review` (the row or `null`)
+and `has_review` (the boolean the UI branches on). The raw `reviews` key is dropped so no screen
+learns to read two shapes; the array fallback PostgREST returns when it cannot see the uniqueness
+is flattened too.
+
+Before this, a second review attempt could only be discovered by submitting it and reading the
+error. §3 of the handoff document called it a nice-to-have, and it is.
+
+### 27.4 Registration email OTP
+
+```
+POST /auth/send-email-otp    { email }          → { success: true }  (always)
+POST /auth/verify-email-otp  { email, token }   → { user, session }
+```
+
+This wraps **Supabase's own signup OTP** rather than issuing codes from a table of ours, and that
+is the whole design decision. A hashed, single-use, expiring, attempt-capped code table is the
+easy half; *delivering* it is not, and this backend has no mail transport — every email the
+platform sends leaves through Supabase Auth. Supabase's code already is all of those things, and
+it does one thing a private table cannot: verifying it sets `auth.users.email_confirmed_at`, so
+the address is confirmed to Auth itself and not merely to us.
+
+`profiles.email_verified_at` is stamped alongside it, recording that *this* flow saw the code come
+back — Supabase's column is also set by clicking a confirmation link, so the two are not
+redundant. `type: 'signup'`, not `'recovery'`: the two code namespaces are separate and one will
+not verify against the other.
+
+`send-email-otp` reports success unconditionally, for the same reason `forgot-password` does
+(§22): whether an address has an account, and whether it is already confirmed, are not things an
+unauthenticated caller gets to enumerate. Setup, including the `{{ .Token }}` email template this
+needs, is in `docs/email-otp-setup.md`.
+
+### 27.5 Platform commission
+
+```
+GET   /admin/commission   🔒 admin
+PATCH /admin/commission   🔒 admin  { commission_rate }   -- a fraction: 0.15 is 15%
+```
+
+`platform_settings.commission_rate` defaults to **0**, capped at 0.5 in the schema. Applying 0024
+therefore changes no figure anywhere: providers keep receiving the whole budget until an admin
+deliberately sets a rate. A fee model is a business decision, and a migration should not quietly
+start taking a cut. The 0.5 cap is not a guess at the right number — it is the bound past which a
+typo (0.15 entered as 15) stops being recoverable after the fact.
+
+`EscrowService.payOut` reads the rate **at release** and freezes the peso amount onto
+`escrow_transactions.commission_amount`; the provider is credited `amount - commission`. Reading
+the live setting later to explain an old payout would misreport every job settled under a previous
+rate. Jobs already settled keep their figures; jobs in flight use whatever the rate is when they
+finish — the same deal every marketplace offers, and the reason a change is worth announcing.
+
+**The commission gets no ledger row.** `wallet_transactions` is keyed by profile and the platform
+is not a profile. The withheld amount lives on the escrow row instead, which is where the admin
+console sums it. A consequence worth stating plainly: the ledger no longer nets to zero across a
+released job, and the shortfall is exactly the commission — the correct statement that the money
+left user wallets and did not arrive in another.
+
+`analyticsSummary` adds `total_commission`, `monthly_commission` and `commission_trend` alongside
+the existing revenue figures rather than redefining them. They answer different questions:
+`total_revenue` is the value that flowed *through* the platform, commission is what it *kept*.
+Collapsing the two into one number called "revenue" is how a marketplace ends up quoting its GMV
+as its income.
+
+### 27.6 Service catalogue management
+
+```
+GET   /admin/categories       🔒 admin   every category, active or not
+POST  /admin/categories       🔒 admin   { name }
+PATCH /admin/categories/:id   🔒 admin   { name?, is_active? }
+```
+
+`GET /categories` is unchanged and still serves the apps only active rows; an admin managing the
+catalogue has to see what they deactivated.
+
+**There is no delete.** `jobs`, `provider_profiles`, `profiles.signup_category_id` and the ML
+feature set all reference a category by id — removing one would either cascade real history away
+or fail on the constraint, and neither is what "remove this from the menu" should mean.
+`is_active: false` stops it being offered on new jobs while every job that used it still says what
+it was. A duplicate name comes back as a 409 rather than a raw constraint error.
+
+### 27.7 Admin accounts
+
+```
+GET  /admin/admins             🔒 admin
+POST /admin/admins             🔒 admin   { email, full_name }
+POST /admin/admins/:id/revoke  🔒 admin
+```
+
+The manual step 0005 documented in a SQL comment, finally reachable from the console.
+
+**No password crosses this boundary and none is accepted.** The account is created confirmed but
+without a usable credential, and a password-reset email is what lets the new admin choose one. An
+endpoint that took a password would mean one admin knowing another's, which makes the audit trail
+a guess about who was actually at the keyboard. An address that already has an account is
+*promoted* rather than duplicated — Supabase keys accounts by email, so a second signup on the
+same address cannot happen anyway.
+
+Revocation refuses two cases, both for the same reason — a console nobody can get into is not
+recoverable from inside the console: an admin cannot demote themselves, and the last remaining
+admin cannot be demoted at all. Every create, promote and revoke is written to `admin_actions`
+(§23.5).
+
+### 27.8 Notification broadcast
+
+```
+POST /admin/notifications/broadcast  🔒 admin
+  { title, body, audience: 'all' | 'clients' | 'providers' }
+  → { sent, failed, audience }
+```
+
+Writes **one notification row per recipient**, in chunks of 500. Deliberately not a single
+"broadcast" row every client renders: read/unread state, the badge count and the push scheduler
+are all per-row, and a shared row has nowhere to record that *this* user has seen it. Push
+delivery then follows for free — the 30-second scheduler (§20) picks the pending rows up and
+honours each recipient's `push_enabled`; nothing here needs to know about devices.
+
+Admins, suspended accounts and deleted accounts are excluded. Neither of the latter two can sign
+in to read it, and a push to a suspended account is a message from a platform that has just shut
+them out. A failed chunk does not abandon the rest — a broadcast that reached most of the platform
+and *says so* is more useful than one that stops at the first problem and reports nothing about
+what did land, which is why the response carries `failed` rather than throwing.
+
+`'announcement'` is a new `notification_type` (0022) rather than a reused `'job_update'`: these
+rows have no job to be about, and filing them under `job_update` would make every "which of my
+jobs is this?" consumer wrong.
+
+### 27.9 What is still not built, and why
+
+- **Card-at-hire for homeowners** (handoff §6). Not a missing endpoint — a product fork. The
+  escrow model (§7) assumes the budget is debited from a wallet balance at hire; paying by card at
+  hire means either topping up silently behind the scenes (one ledger, recommended) or a second
+  escrow path that never touches the wallet (two sources of truth for held money). Providers are
+  already done, and homeowners can already pay through the wallet.
+- **A real payout rail.** §27.2 is the interim the handoff asked for. Stripe Connect — provider
+  onboarding, a connected account each, transfers/payouts — or a local disbursement provider is
+  still the real work; the endpoint is small next to it.
+- **Wallet-to-wallet transfer.** Deliberately absent. It turns the wallet into a
+  money-transmission service, which is a licensing matter in PH, not an engineering one.

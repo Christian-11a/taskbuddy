@@ -45,10 +45,19 @@ export class AdminService {
       builder = builder.or(`full_name.ilike.${term},email.ilike.${term}`);
     }
     if (query.role) builder = builder.eq('role', query.role);
-    if (query.status === 'suspended') {
-      builder = builder.not('deactivated_at', 'is', null);
+    if (query.status === 'deleted') {
+      builder = builder.not('deleted_at', 'is', null);
+    } else if (query.status === 'suspended') {
+      // Deleted accounts also carry deactivated_at (that is what makes every
+      // existing suspension check refuse them), so they would otherwise show
+      // up in the suspension queue as people to consider reinstating.
+      builder = builder
+        .not('deactivated_at', 'is', null)
+        .is('deleted_at', null);
     } else if (query.status === 'active') {
-      builder = builder.is('deactivated_at', null);
+      builder = builder.is('deactivated_at', null).is('deleted_at', null);
+    } else {
+      builder = builder.is('deleted_at', null);
     }
     const { data, error, count } = await builder;
     if (error) throw new BadRequestException(error.message);
@@ -281,6 +290,37 @@ export class AdminService {
     const currentMonth = new Date().toISOString().slice(0, 7);
     const monthlyRevenue = revenueByMonth[currentMonth] ?? 0;
 
+    // Commission is what the platform actually keeps (migration 0023), as
+    // opposed to `total_revenue` above, which is the value that flowed through
+    // it. Both are reported: they answer different questions, and collapsing
+    // them into one number called "revenue" is how a marketplace ends up
+    // quoting its GMV as its income. Zero everywhere until a rate is set.
+    //
+    // Read off escrow rather than the ledger on purpose — the commission is
+    // withheld, so it has no wallet_transactions row of its own (there is no
+    // platform profile for it to belong to). See EscrowService.creditProvider.
+    const { data: commissionRows, error: commissionError } =
+      await this.supabase.admin
+        .from('escrow_transactions')
+        .select('commission_amount, released_at')
+        .eq('status', 'released')
+        .gt('commission_amount', 0);
+    if (commissionError) {
+      throw new BadRequestException(commissionError.message);
+    }
+
+    const commissionByMonth: Record<string, number> = {};
+    let totalCommission = 0;
+    for (const row of commissionRows ?? []) {
+      const amount = Number(row.commission_amount);
+      totalCommission += amount;
+      const month = (row.released_at ?? '').slice(0, 7);
+      if (month) {
+        commissionByMonth[month] = (commissionByMonth[month] ?? 0) + amount;
+      }
+    }
+    const monthlyCommission = commissionByMonth[currentMonth] ?? 0;
+
     const jobsByStatus: Record<string, number> = {};
     const jobsByCategory: Record<string, number> = {};
     const trendByDay: Record<string, number> = {};
@@ -300,6 +340,14 @@ export class AdminService {
       .select('id', { count: 'exact', head: true })
       .eq('status', 'pending');
 
+    // The other queue that needs a human (migration 0023). Unlike
+    // verifications, nobody gets paid until someone works this one.
+    const { count: pendingWithdrawals } = await this.supabase.admin
+      .from('wallet_transactions')
+      .select('id', { count: 'exact', head: true })
+      .eq('kind', 'withdrawal')
+      .eq('status', 'pending');
+
     const allUsers = users ?? [];
     return {
       totals: {
@@ -311,7 +359,10 @@ export class AdminService {
         avg_rating: avgRating,
         total_revenue: round2(totalRevenue),
         monthly_revenue: round2(monthlyRevenue),
+        total_commission: round2(totalCommission),
+        monthly_commission: round2(monthlyCommission),
         pending_verifications: pendingVerifications ?? 0,
+        pending_withdrawals: pendingWithdrawals ?? 0,
       },
       bookings_by_status: jobsByStatus,
       bookings_by_category: jobsByCategory,
@@ -319,6 +370,9 @@ export class AdminService {
         .sort(([a], [b]) => a.localeCompare(b))
         .map(([date, count]) => ({ date, count })),
       revenue_trend: Object.entries(revenueByMonth)
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([month, amount]) => ({ month, amount: round2(amount) })),
+      commission_trend: Object.entries(commissionByMonth)
         .sort(([a], [b]) => a.localeCompare(b))
         .map(([month, amount]) => ({ month, amount: round2(amount) })),
       top_providers: providers ?? [],

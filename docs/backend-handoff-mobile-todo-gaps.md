@@ -1,5 +1,16 @@
 # Backend handoff — what the mobile to-do list still needs from the API
 
+> **Status, 2026-08-25 — items 1, 2, 3 and 5 have been built.** This document is kept
+> as the record of what was asked for and why, but it is no longer a to-do list. Each
+> section below now opens with what shipped and where it differs from what was
+> sketched here. Migrations `0022`–`0024`; full reasoning in
+> `backend/BACKEND_SCHEMA.md` §27. Items 4 and 7 were already done; item 6 is still
+> open and still a product decision rather than a missing endpoint.
+>
+> All four are **API-side only**. No mobile screen calls them yet, which is why
+> `mobile/README.md` still lists the corresponding buttons under "What's Not Wired
+> Yet".
+
 **Who this is for:** whoever owns `backend/` (and, for items 1 and 2, whoever holds Supabase and
 Stripe access). It describes gaps that remain after the implemented SSE chat
 and Expo push work; it is not a record of an external deployment.
@@ -42,7 +53,19 @@ app-side work too.
 
 ## 1. Account deletion
 
-**Missing:** `DELETE /profiles/me`.
+> **Built.** `DELETE /profiles/me` — 204, or 409 with a `blockers` array naming every
+> obligation at once rather than one per attempt. Implemented as the soft delete
+> recommended below (`profiles.deleted_at`, migration 0023), with every identifying
+> field on the row overwritten at deletion time; the Auth user is renamed to a
+> `.invalid` address so the real one can be reused, banned, and signed out.
+>
+> One deviation: the Auth user is **not** deleted. `admin_user_overview` inner-joins
+> `auth.users`, so removing it would drop the account out of the admin console
+> entirely, including out of any later question about what it did. Banning plus the
+> email rotation achieves what the note below wanted from deletion — no new session,
+> and the address freed.
+
+**Was missing:** `DELETE /profiles/me`.
 
 Today the Settings row opens a `mailto:` to support, deliberately, because deleting nothing while
 saying "deleted" is worse than being honest about the manual process. If you want it self-serve:
@@ -76,7 +99,23 @@ email cannot be reused and the JWT stays valid until expiry.
 
 ## 2. Wallet withdrawal / transfer
 
-**Missing:** a real disbursement path.
+> **Built — as the interim this section recommends, not as Connect.**
+> `POST /wallet/withdrawals` derives `kind = 'withdrawal'` itself, checks the balance,
+> and lands the row `pending`; `GET`/`POST /admin/withdrawals/:id/settle|reject` is the
+> admin queue. `POST /wallet/transactions` still works and now files the same pending
+> request instead of writing a completed debit.
+>
+> One thing this section did not anticipate: a pending withdrawal has to be *reserved*.
+> `WalletService.availableBalanceFor` subtracts pending withdrawals from the settled
+> balance, and escrow holds check that figure — otherwise the same peso funds a hire
+> and a payout, and whichever settles second takes the ledger negative.
+>
+> **Still outstanding: the rail itself.** Settlement is a human sending money and
+> recording the reference. Stripe Connect or a local disburser remains the real work,
+> exactly as described below. Transfer was not built, for the reason given at the end
+> of this section.
+
+**Was missing:** a real disbursement path.
 
 The Withdraw and Transfer buttons on both Wallet screens have no handler. `POST
 /wallet/transactions` exists but takes a free `direction` + `amount` + `title`, which is a
@@ -105,7 +144,11 @@ engineering one.
 
 ## 3. Small: tell the job payload whether it has been reviewed
 
-**Missing:** a `has_review` (or embedded `review`) field on the job object.
+> **Built.** Every job the API returns now carries both — `has_review` (the boolean
+> the UI branches on) and `review` (the row itself, or `null`), embedded through
+> `reviews.job_id`'s UNIQUE constraint.
+
+**Was missing:** a `has_review` (or embedded `review`) field on the job object.
 
 `GET /jobs/:id` returns no indication that the client already reviewed the job. The app now only
 offers "Leave Review" on a `completed` job with an assigned provider, which removes the obviously
@@ -131,7 +174,21 @@ message attachments have no field on `POST /conversations/:id/messages`.
 
 ## 5. Email OTP at registration
 
-**Missing:** an OTP issue/verify pair.
+> **Built — and the prior question below was answered "Supabase".**
+> `POST /auth/send-email-otp` and `POST /auth/verify-email-otp` wrap Supabase's own
+> signup OTP rather than a private code table. The deciding argument is not in this
+> section: a hashed, single-use, expiring, attempt-capped table is the easy half, and
+> *delivery* is the hard one — this backend has no mail transport at all. Supabase's
+> code is already all of those things and additionally sets
+> `auth.users.email_confirmed_at`, which a table of ours could not; a parallel code
+> would have left the account unconfirmed to Auth while our own column insisted it
+> was verified.
+>
+> `profiles.email_verified_at` records that this flow specifically saw the code come
+> back. Setup — including the `{{ .Token }}` template change, which is the same
+> gotcha as the password-reset flow — is in `docs/email-otp-setup.md`.
+
+**Was missing:** an OTP issue/verify pair.
 
 The to-do list asks for email verification by OTP during signup. Supabase Auth's own email
 confirmation already exists and `POST /auth/register` handles both the confirmed and unconfirmed
@@ -148,6 +205,9 @@ templates, not with the app.
 ---
 
 ## 6. Homeowner-direct card payment
+
+> **Still open, unchanged.** Nothing here was built, because nothing here is a missing
+> endpoint — see below.
 
 **Missing:** nothing structural — this is a product decision.
 

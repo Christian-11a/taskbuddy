@@ -65,6 +65,7 @@ describe('admin search functions', () => {
     expect(migration).toContain(
       'grant execute on function public.admin_list_bookings',
     );
+    expect(migration).not.toContain('pg_catalog.coalesce(');
   });
 
   it('documents search on every searchable admin endpoint', () => {

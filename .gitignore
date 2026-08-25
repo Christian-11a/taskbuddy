@@ -162,6 +162,7 @@ AGENTS*
 CLAUDE*
 .claude/*
 docs/superpowers/
+.worktrees/
 # but DO commit env templates
 !.env.example
 
