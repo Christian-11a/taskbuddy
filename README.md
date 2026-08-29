@@ -10,9 +10,9 @@ provider against it and invites the best-matched few. Hiring moves real money
 through an escrow-backed wallet, so a provider who completes a job is paid from
 funds that were held the moment they were assigned.
 
-**Live API:** https://taskbuddy-1d48.onrender.com
-([status page](https://taskbuddy-1d48.onrender.com/) ·
-[health JSON](https://taskbuddy-1d48.onrender.com/health)) — frontends call this;
+**Live API:** https://taskbuddy-kpek.onrender.com
+([status page](https://taskbuddy-kpek.onrender.com/) ·
+[health JSON](https://taskbuddy-kpek.onrender.com/health)) — frontends call this;
 see the [backend README](./backend/README.md#base-url).
 
 ---

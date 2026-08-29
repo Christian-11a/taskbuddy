@@ -18,7 +18,7 @@
 import EventSource from 'react-native-sse';
 
 const PRIMARY_API_URL =
-  process.env.EXPO_PUBLIC_API_URL ?? 'https://taskbuddy-1d48.onrender.com';
+  process.env.EXPO_PUBLIC_API_URL ?? 'https://taskbuddy-kpek.onrender.com';
 
 /** Optional second choice, tried only when the primary is unreachable. */
 const FALLBACK_API_URL = process.env.EXPO_PUBLIC_API_URL_FALLBACK ?? null;

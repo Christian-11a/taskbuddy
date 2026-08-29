@@ -26,7 +26,7 @@ it, so switching between test and live is a backend env change and not a new app
 
 Dashboard → **Developers → Webhooks → Add endpoint**.
 
-- **URL:** `https://taskbuddy-1d48.onrender.com/payments/webhook`
+- **URL:** `https://taskbuddy-kpek.onrender.com/payments/webhook`
 - **Events:**
   - `payment_intent.succeeded`
   - `identity.verification_session.verified`
