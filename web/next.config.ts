@@ -36,7 +36,7 @@ const securityHeaders = [
       "img-src 'self' data: blob: https://*.supabase.co",
       "font-src 'self' data:",
       // The backend API this console talks to.
-      "connect-src 'self' https://taskbuddy-1d48.onrender.com https://*.supabase.co http://localhost:3001",
+      "connect-src 'self' https://taskbuddy-kpek.onrender.com https://*.supabase.co http://localhost:3001",
       "frame-ancestors 'none'",
       "base-uri 'self'",
       "form-action 'self'",

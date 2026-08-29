@@ -33,7 +33,7 @@ npm start          # then press 'a' for Android / 'i' for iOS / scan QR for Expo
 ```
 
 By default the app talks to the deployed backend at
-`https://taskbuddy-1d48.onrender.com`, so it works with no local setup.
+`https://taskbuddy-kpek.onrender.com`, so it works with no local setup.
 
 To run against a local backend, copy `.env.example` to `.env` and set your
 machine's **LAN IP** — not `localhost`, which on a phone/emulator refers to the
@@ -167,7 +167,7 @@ as a redirect URI in Google Cloud Console.
 ```
 App  →  WebBrowser.openAuthSessionAsync(GET /auth/google/authorize?app_redirect=<deep-link>)
           Backend  →  302 to Google consent screen
-            Google →  302 to https://taskbuddy-1d48.onrender.com/auth/google/callback
+            Google →  302 to https://taskbuddy-kpek.onrender.com/auth/google/callback
               Backend  →  exchanges code for id_token (server-to-server)
                        →  signInWithIdToken via Supabase
                        →  302 to <deep-link>?access_token=...&refresh_token=...

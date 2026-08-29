@@ -14,7 +14,7 @@ Mobile app
     Backend
       → redirects browser to Google consent screen
         Google
-          → redirects to https://taskbuddy-1d48.onrender.com/auth/google/callback
+          → redirects to https://taskbuddy-kpek.onrender.com/auth/google/callback
             Backend
               → exchanges code for id_token (server-to-server)
               → calls Supabase signInWithIdToken
@@ -55,7 +55,7 @@ You need a **Web Application** OAuth 2.0 client.
 3. Choose **Web application**.
 4. Under **Authorized redirect URIs**, add exactly:
    ```
-   https://taskbuddy-1d48.onrender.com/auth/google/callback
+   https://taskbuddy-kpek.onrender.com/auth/google/callback
    ```
    > For local backend development also add: `http://localhost:3000/auth/google/callback`
 5. Click **Create**. Copy the **Client ID** and **Client Secret** — you'll need both below.
@@ -83,7 +83,7 @@ In the Render dashboard for the `taskbuddy` backend service, go to
 |-----|-------|
 | `GOOGLE_CLIENT_ID` | The Client ID from Step 1 |
 | `GOOGLE_CLIENT_SECRET` | The Client Secret from Step 1 |
-| `GOOGLE_CALLBACK_URL` | `https://taskbuddy-1d48.onrender.com/auth/google/callback` |
+| `GOOGLE_CALLBACK_URL` | `https://taskbuddy-kpek.onrender.com/auth/google/callback` |
 | `GOOGLE_STATE_SECRET` | A random 32-byte hex string (run `openssl rand -hex 32` to generate one) |
 
 After saving, Render will redeploy automatically.

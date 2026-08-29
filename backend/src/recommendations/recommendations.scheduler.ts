@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
+import { isExternallyScheduled } from '../common/cron-driver';
 import { SupabaseService } from '../supabase/supabase.service';
 import { RecommendationsService } from './recommendations.service';
 
@@ -22,6 +23,15 @@ export class RecommendationsScheduler {
   ) {}
 
   @Cron(CronExpression.EVERY_MINUTE)
+  async scheduledTick() {
+    if (isExternallyScheduled()) return;
+    await this.tick();
+  }
+
+  /**
+   * The sweep itself, shared by the `@Cron` above and
+   * POST /internal/tick/recommendations so the two drivers cannot drift.
+   */
   async tick() {
     if (this.running) return; // skip overlapping ticks
     this.running = true;
