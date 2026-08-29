@@ -58,6 +58,10 @@ const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 export default function HOWalletScreen() {
   const [activeTab, setActiveTab] = useState<'all' | 'credit' | 'debit'>('all');
   const { data, loading, error, reload } = useAsyncData(() => api.wallet(), [], 'ho-wallet');
+  const {
+    data: withdrawalData,
+    reload: reloadWithdrawals,
+  } = useAsyncData(() => api.withdrawals(), [], 'ho-withdrawals');
 
   // Add Money: hiring holds the job budget in escrow, so a client needs a
   // funded wallet before they can accept an application.
@@ -67,6 +71,12 @@ export default function HOWalletScreen() {
   const [confirming, setConfirming] = useState(false);
   const [addError, setAddError] = useState<string | null>(null);
 
+  const [showWithdraw, setShowWithdraw] = useState(false);
+  const [withdrawAmount, setWithdrawAmount] = useState('');
+  const [withdrawDestination, setWithdrawDestination] = useState('');
+  const [withdrawing, setWithdrawing] = useState(false);
+  const [withdrawError, setWithdrawError] = useState<string | null>(null);
+
   const parsedAmount = Number(amount.replace(/,/g, ''));
   const isValidAmount =
     Number.isFinite(parsedAmount) && parsedAmount >= MIN_TOPUP_PHP;
@@ -75,6 +85,51 @@ export default function HOWalletScreen() {
     setShowAddMoney(false);
     setAmount('');
     setAddError(null);
+  };
+
+  const parsedWithdrawalAmount = Number(withdrawAmount.replace(/,/g, ''));
+  const availableToWithdraw = data?.available ?? 0;
+  const isValidWithdrawal =
+    Number.isFinite(parsedWithdrawalAmount) &&
+    parsedWithdrawalAmount > 0 &&
+    parsedWithdrawalAmount <= availableToWithdraw &&
+    withdrawDestination.trim().length > 0;
+
+  const closeWithdraw = () => {
+    setShowWithdraw(false);
+    setWithdrawAmount('');
+    setWithdrawDestination('');
+    setWithdrawError(null);
+  };
+
+  const submitWithdrawal = async () => {
+    if (!isValidWithdrawal) return;
+    setWithdrawing(true);
+    setWithdrawError(null);
+    try {
+      await api.requestWithdrawal({
+        amount: parsedWithdrawalAmount,
+        destination: withdrawDestination.trim(),
+      });
+      closeWithdraw();
+      reload();
+      reloadWithdrawals();
+    } catch (e) {
+      setWithdrawError(e instanceof Error ? e.message : 'Could not request a withdrawal.');
+    } finally {
+      setWithdrawing(false);
+    }
+  };
+
+  const cancelWithdrawal = async (id: string) => {
+    try {
+      await api.cancelWithdrawal(id);
+      reload();
+      reloadWithdrawals();
+    } catch (e) {
+      setWithdrawError(e instanceof Error ? e.message : 'Could not cancel the withdrawal.');
+      setShowWithdraw(true);
+    }
   };
 
   /**
@@ -170,6 +225,7 @@ export default function HOWalletScreen() {
       ? transactions
       : transactions.filter((t) => t.direction === activeTab);
   const vouchers = transactions.filter((t) => t.kind === 'recovery_credit');
+  const withdrawals = withdrawalData ?? [];
 
   if (loading) return <ScreenSkeleton variant="dashboard" />;
 
@@ -206,7 +262,11 @@ export default function HOWalletScreen() {
               <Text style={styles.quickActionText}>Add Money</Text>
             </TouchableOpacity>
             <View style={styles.actionDivider} />
-            <TouchableOpacity style={styles.quickActionBtn} activeOpacity={0.8}>
+            <TouchableOpacity
+              style={styles.quickActionBtn}
+              onPress={() => setShowWithdraw(true)}
+              activeOpacity={0.8}
+            >
               <ArrowDownLeft size={22} color={C.white} />
               <Text style={styles.quickActionText}>Withdraw</Text>
             </TouchableOpacity>
@@ -228,6 +288,46 @@ export default function HOWalletScreen() {
             </View>
             <Shield size={24} color={C.cyan700} />
           </View>
+        </View>
+
+        <View style={styles.withdrawalCard}>
+          <View style={styles.withdrawalHeader}>
+            <View>
+              <Text style={styles.withdrawalLabel}>AVAILABLE TO WITHDRAW</Text>
+              <Text style={styles.withdrawalAmount}>{peso(availableToWithdraw)}</Text>
+            </View>
+            <TouchableOpacity onPress={() => setShowWithdraw(true)} activeOpacity={0.8}>
+              <Text style={styles.withdrawalLink}>Request</Text>
+            </TouchableOpacity>
+          </View>
+          <Text style={styles.withdrawalNote}>
+            Withdrawal requests are reviewed and paid manually. Pending requests reserve this amount.
+          </Text>
+          {withdrawals.length > 0 && (
+            <View style={styles.withdrawalList}>
+              {withdrawals.slice(0, 3).map((withdrawal) => (
+                <View key={withdrawal.id} style={styles.withdrawalRow}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.withdrawalTitle}>{withdrawal.title}</Text>
+                    <Text style={styles.withdrawalMeta}>
+                      {shortDate(withdrawal.created_at)} · {withdrawal.status}
+                    </Text>
+                    {!!withdrawal.review_note && (
+                      <Text style={styles.withdrawalMeta}>{withdrawal.review_note}</Text>
+                    )}
+                  </View>
+                  <View style={styles.withdrawalAction}>
+                    <Text style={styles.withdrawalValue}>{peso(withdrawal.amount)}</Text>
+                    {withdrawal.status === 'pending' && (
+                      <TouchableOpacity onPress={() => void cancelWithdrawal(withdrawal.id)} activeOpacity={0.8}>
+                        <Text style={styles.withdrawalCancel}>Cancel</Text>
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                </View>
+              ))}
+            </View>
+          )}
         </View>
 
         {/* Spent / Added summary */}
@@ -401,6 +501,65 @@ export default function HOWalletScreen() {
           </View>
         </View>
       </Modal>
+
+      <Modal
+        visible={showWithdraw}
+        transparent
+        animationType="fade"
+        onRequestClose={closeWithdraw}
+      >
+        <View style={styles.modalBackdrop}>
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>Withdraw</Text>
+            <Text style={styles.modalBody}>
+              Send a request to withdraw your available wallet balance. Our team will process it manually.
+            </Text>
+            <Text style={styles.withdrawAvailable}>Available: {peso(availableToWithdraw)}</Text>
+
+            <View style={styles.amountRow}>
+              <Text style={styles.amountCurrency}>₱</Text>
+              <TextInput
+                style={styles.amountInput}
+                value={withdrawAmount}
+                onChangeText={setWithdrawAmount}
+                keyboardType="decimal-pad"
+                placeholder="0.00"
+                placeholderTextColor={C.ink400}
+                editable={!withdrawing}
+              />
+            </View>
+            <TextInput
+              style={styles.destinationInput}
+              value={withdrawDestination}
+              onChangeText={setWithdrawDestination}
+              placeholder="GCash number or bank account details"
+              placeholderTextColor={C.ink400}
+              editable={!withdrawing}
+            />
+
+            {!!withdrawError && <Text style={styles.modalError}>{withdrawError}</Text>}
+
+            <View style={styles.modalActions}>
+              <TouchableOpacity
+                style={[styles.modalBtn, styles.modalCancel]}
+                onPress={closeWithdraw}
+                disabled={withdrawing}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.modalCancelText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.modalBtn, styles.modalConfirm, (!isValidWithdrawal || withdrawing) && styles.modalBtnDisabled]}
+                onPress={() => void submitWithdrawal()}
+                disabled={!isValidWithdrawal || withdrawing}
+                activeOpacity={0.85}
+              >
+                {withdrawing ? <ActivityIndicator color={C.white} /> : <Text style={styles.modalConfirmText}>Request Withdrawal</Text>}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 
@@ -442,6 +601,23 @@ const styles = StyleSheet.create({
   escrowLabel: { fontSize: 11, textTransform: 'uppercase', letterSpacing: 0.6, fontWeight: '800', color: C.cyan700 },
   escrowAmount: { fontSize: 24, fontWeight: '800', color: C.ink900, marginVertical: 3, fontFamily: 'Inter' },
   escrowNote: { fontSize: 12, color: C.ink500, lineHeight: 16, fontFamily: 'Inter' },
+
+  withdrawalCard: {
+    backgroundColor: C.white, borderWidth: 1, borderColor: C.line,
+    borderRadius: 15, padding: 14, marginBottom: 14,
+  },
+  withdrawalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
+  withdrawalLabel: { fontSize: 11, textTransform: 'uppercase', letterSpacing: 0.6, fontWeight: '800', color: C.cyan700, fontFamily: 'Inter' },
+  withdrawalAmount: { fontSize: 24, fontWeight: '800', color: C.ink900, marginTop: 3, fontFamily: 'Inter' },
+  withdrawalLink: { color: C.cyan700, fontSize: 14, fontWeight: '800', fontFamily: 'Inter', padding: 4 },
+  withdrawalNote: { fontSize: 12, color: C.ink500, lineHeight: 16, fontFamily: 'Inter', marginTop: 5 },
+  withdrawalList: { marginTop: 12, borderTopWidth: 1, borderTopColor: C.line },
+  withdrawalRow: { flexDirection: 'row', gap: 10, paddingTop: 10, marginTop: 2 },
+  withdrawalTitle: { color: C.ink900, fontSize: 13.5, fontWeight: '700', fontFamily: 'Inter' },
+  withdrawalMeta: { color: C.ink400, fontSize: 11.5, fontFamily: 'Inter', marginTop: 2 },
+  withdrawalAction: { alignItems: 'flex-end' },
+  withdrawalValue: { color: C.ink900, fontSize: 13.5, fontWeight: '800', fontFamily: 'Inter' },
+  withdrawalCancel: { color: '#ef4444', fontSize: 12, fontWeight: '700', fontFamily: 'Inter', marginTop: 4 },
 
   statsRow: {
     flexDirection: 'row', backgroundColor: C.white, borderWidth: 1, borderColor: C.line,
@@ -514,6 +690,12 @@ const styles = StyleSheet.create({
   amountInput: { fontSize: 48.5, fontWeight: '800', fontFamily: 'Inter', color: C.ink900, minWidth: 120, textAlign: 'center' },
   modalError: { color: '#ef4444', fontSize: 15.5, fontFamily: 'Inter', textAlign: 'center', marginTop: 4 },
   modalHint: { color: C.ink400, fontSize: 14.5, fontFamily: 'Inter', textAlign: 'center', marginTop: 6 },
+  withdrawAvailable: { color: C.cyan700, fontSize: 14, fontWeight: '700', fontFamily: 'Inter', marginTop: 12 },
+  destinationInput: {
+    backgroundColor: '#f5f8fa', borderRadius: 12, paddingHorizontal: 14, minHeight: 48,
+    borderWidth: 1, borderColor: '#dce3e9', fontFamily: 'Inter', fontSize: 15, color: C.ink900,
+    marginTop: 12,
+  },
   modalActions: { flexDirection: 'row', gap: 10, marginTop: 18 },
   modalBtn: { flex: 1, alignItems: 'center', justifyContent: 'center', borderRadius: V6Radii.btn, paddingVertical: 13 },
   modalBtnDisabled: { opacity: 0.5 },

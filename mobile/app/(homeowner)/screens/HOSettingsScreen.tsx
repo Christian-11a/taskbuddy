@@ -31,7 +31,6 @@
 import React, { useState } from 'react';
 import {
   ActivityIndicator,
-  Linking,
   Modal,
   Pressable,
   ScrollView,
@@ -55,9 +54,7 @@ import { Sizes, Spacing, V6Colors } from '../../../src/constants/theme';
 const C = V6Colors;
 import ConfirmationModal from '../../../src/components/ConfirmationModal';
 import { useSettings } from '../../../src/hooks/useSettings';
-import { api } from '../../../src/lib/api';
-
-const SUPPORT_EMAIL = 'support@taskbuddy.ph';
+import { api, ApiError } from '../../../src/lib/api';
 
 interface HOSettingsScreenProps {
   onBack: () => void;
@@ -71,6 +68,31 @@ export default function HOSettingsScreen({ onBack, onLogout }: HOSettingsScreenP
   const [showPasswordModal, setShowPasswordModal] = useState(false);
   const [showLanguageModal, setShowLanguageModal] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+
+  const handleDelete = async () => {
+    setDeleting(true);
+    setDeleteError(null);
+    try {
+      await api.deleteAccount();
+      setShowDeleteModal(false);
+      onLogout();
+    } catch (e) {
+      if (e instanceof ApiError && e.status === 409) {
+        const blockers = (e.details as { blockers?: { message?: string }[] } | undefined)?.blockers;
+        if (blockers?.length) {
+          setDeleteError(blockers.map((blocker) => blocker.message).filter(Boolean).join('\n'));
+        } else {
+          setDeleteError(e.message);
+        }
+      } else {
+        setDeleteError(e instanceof Error ? e.message : 'Could not delete your account. Please try again.');
+      }
+    } finally {
+      setDeleting(false);
+    }
+  };
 
   const toggles = [
     { key: 'push_enabled' as const, label: 'Push Notifications' },
@@ -221,14 +243,16 @@ export default function HOSettingsScreen({ onBack, onLogout }: HOSettingsScreenP
       <ConfirmationModal
         visible={showDeleteModal}
         title="Delete your account?"
-        message="Account deletion isn't self-serve yet. Email us and we'll take care of it for you."
-        confirmLabel="Email Support"
+        message={deleteError ?? 'This permanently removes your personal details and signs you out. You must first clear any wallet balance, pending withdrawal, active job, escrow hold, or dispute.'}
+        confirmLabel={deleting ? 'Deleting…' : deleteError ? 'Try Again' : 'Delete Account'}
         cancelLabel="Cancel"
-        onConfirm={() => {
+        onConfirm={() => void handleDelete()}
+        onCancel={() => {
+          if (deleting) return;
+          setDeleteError(null);
           setShowDeleteModal(false);
-          Linking.openURL(`mailto:${SUPPORT_EMAIL}?subject=Delete my account`);
         }}
-        onCancel={() => setShowDeleteModal(false)}
+        busy={deleting}
       />
     </View>
   );
