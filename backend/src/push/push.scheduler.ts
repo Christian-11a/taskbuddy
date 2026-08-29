@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
+import { isExternallyScheduled } from '../common/cron-driver';
 import { SupabaseService } from '../supabase/supabase.service';
 import { SettingsService } from '../settings/settings.service';
 import { PushService, type PushMessage } from './push.service';
@@ -40,6 +41,16 @@ export class PushScheduler {
   ) {}
 
   @Cron(CronExpression.EVERY_30_SECONDS)
+  async scheduledTick() {
+    if (isExternallyScheduled()) return;
+    await this.tick();
+  }
+
+  /**
+   * The sweep itself, shared by the `@Cron` above and POST /internal/tick/push
+   * so the two drivers cannot drift. The `running` flag makes an overlap
+   * between them harmless rather than merely unlikely.
+   */
   async tick() {
     if (this.running) return; // skip overlapping ticks
     this.running = true;

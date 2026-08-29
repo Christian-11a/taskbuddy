@@ -6,5 +6,6 @@ import { RecommendationsScheduler } from './recommendations.scheduler';
 @Module({
   controllers: [RecommendationsController],
   providers: [RecommendationsService, RecommendationsScheduler],
+  exports: [RecommendationsScheduler],
 })
 export class RecommendationsModule {}

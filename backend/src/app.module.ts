@@ -28,6 +28,7 @@ import { EscrowModule } from './escrow/escrow.module';
 import { SettingsModule } from './settings/settings.module';
 import { PushModule } from './push/push.module';
 import { PaymentsModule } from './payments/payments.module';
+import { InternalModule } from './internal/internal.module';
 
 @Module({
   imports: [
@@ -54,6 +55,7 @@ import { PaymentsModule } from './payments/payments.module';
     SettingsModule,
     PushModule,
     PaymentsModule,
+    InternalModule,
   ],
 })
 export class AppModule implements NestModule {
@@ -64,6 +66,7 @@ export class AppModule implements NestModule {
         { path: 'admin/(.*)', method: RequestMethod.ALL },
         { path: 'auth/(.*)', method: RequestMethod.ALL },
         { path: 'health', method: RequestMethod.ALL },
+        { path: 'internal/(.*)', method: RequestMethod.ALL },
       )
       .forRoutes({ path: '*', method: RequestMethod.ALL });
   }
