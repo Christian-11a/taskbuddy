@@ -32,23 +32,34 @@ const StatCard = ({
   accent: string;
   className?: string;
 }) => (
+  /* No hover lift: this card isn't a link or a button, so animating it on
+     hover promised an interaction that doesn't exist. The heavy drop shadow
+     went with it — these sit flat on the page, and elevation should mean
+     something is floating above it (a drawer, a dropdown), not decorate a
+     static panel. */
   <div
-    className={`rounded-2xl p-5 flex flex-col gap-4 transition-transform hover:-translate-y-0.5 ${className}`}
-    style={{ background: "var(--card-bg)", border: "1px solid var(--card-border)", boxShadow: "0 12px 30px rgba(0,0,0,.12)" }}
+    className={`flex flex-col ${className}`}
+    style={{
+      background: "var(--card-bg)",
+      border: "1px solid var(--card-border)",
+      borderRadius: "var(--r-lg)",
+      padding: "var(--sp-5)",
+      gap: "var(--sp-4)",
+    }}
   >
     <div className="flex items-center justify-between">
-      <span style={{ fontSize: 11, color: "var(--text-muted)", fontWeight: 500 }}>{label}</span>
+      <span style={{ fontSize: "var(--fs-xs)", color: "var(--text-muted)", fontWeight: 500 }}>{label}</span>
       <div
-        className="flex items-center justify-center rounded-lg"
-        style={{ width: 28, height: 28, background: accent + "22" }}
+        className="flex items-center justify-center"
+        style={{ width: 28, height: 28, borderRadius: "var(--r-sm)", background: accent + "22" }}
       >
-        <span style={{ color: accent }}>{icon}</span>
+        <span style={{ color: accent, display: "flex" }}>{icon}</span>
       </div>
     </div>
     <div>
-      <div className="text-white font-extrabold" style={{ fontSize: 27, letterSpacing: "-0.04em" }}>{value}</div>
+      <div className="text-white font-extrabold tabular" style={{ fontSize: "var(--fs-3xl)", letterSpacing: "var(--tr-tight)", lineHeight: "var(--lh-tight)" }}>{value}</div>
       {sub && (
-        <div className="mt-1" style={{ fontSize: 10, color: "var(--text-muted)" }}>
+        <div style={{ fontSize: "var(--fs-2xs)", color: "var(--text-muted)", marginTop: "var(--sp-1)" }}>
           {sub}
         </div>
       )}
@@ -101,8 +112,8 @@ export function DashboardPage() {
           nothing about platform state and made the dashboard read as a
           marketing surface rather than a place of work. */}
       <header className="mb-6">
-        <h1 className="text-white font-bold" style={{ fontSize: 26, letterSpacing: "-0.035em", lineHeight: 1.15 }}>Platform overview</h1>
-        <p style={{ fontSize: 12.5, color: "var(--text-muted)", marginTop: 6, lineHeight: 1.5 }}>A clear read on marketplace activity, revenue, and the work that needs attention.</p>
+        <h1 className="text-white font-bold" style={{ fontSize: "var(--fs-3xl)", letterSpacing: "var(--tr-tight)", lineHeight: "var(--lh-tight)" }}>Platform overview</h1>
+        <p style={{ fontSize: "var(--fs-sm)", color: "var(--text-muted)", marginTop: "var(--sp-2)", lineHeight: "var(--lh-normal)" }}>A clear read on marketplace activity, revenue, and the work that needs attention.</p>
       </header>
 
       {/* Outstanding work leads the page. This is an operations console: what
@@ -128,21 +139,21 @@ export function DashboardPage() {
               style={{ background: "var(--card-bg)", border: "1px solid var(--card-border)", padding: "13px 16px" }}
             >
               <CheckCircle size={15} style={{ color: "var(--success-text)", flexShrink: 0 }} />
-              <span className="text-white" style={{ fontSize: 12.5 }}>Nothing needs review right now.</span>
-              <span style={{ fontSize: 11.4, color: "var(--text-muted)" }}>Disputes, withdrawals, verifications, and escrow holds are all clear.</span>
+              <span className="text-white" style={{ fontSize: "var(--fs-sm)" }}>Nothing needs review right now.</span>
+              <span style={{ fontSize: "var(--fs-xs)", color: "var(--text-muted)" }}>Disputes, withdrawals, verifications, and escrow holds are all clear.</span>
             </div>
           );
         }
 
         return (
           <section className="mb-7">
-            <h2 className="font-semibold text-white mb-2.5" style={{ fontSize: 13 }}>Needs your attention</h2>
+            <h2 className="font-semibold text-white mb-2.5" style={{ fontSize: "var(--fs-md)" }}>Needs your attention</h2>
             <div className="rounded-xl overflow-hidden" style={{ background: "var(--card-bg)", border: "1px solid var(--card-border)" }}>
               {open.map((q, i) => (
                 <Link
                   key={q.key}
                   href={q.href}
-                  className="flex items-center gap-3.5 transition-colors hover:bg-white/5"
+                  className="hover-row flex items-center gap-3.5"
                   style={{ padding: i === 0 ? "15px 16px" : "12px 16px", borderTop: i === 0 ? "none" : "1px solid var(--border)", textDecoration: "none" }}
                 >
                   <span
@@ -164,7 +175,7 @@ export function DashboardPage() {
       })()}
 
       {/* Marketplace scale — three peer counts, so they share one treatment. */}
-      <h2 className="font-semibold text-white mb-2.5" style={{ fontSize: 13 }}>Marketplace</h2>
+      <h2 className="font-semibold text-white mb-2.5" style={{ fontSize: "var(--fs-md)" }}>Marketplace</h2>
       <div className="grid grid-cols-2 lg:grid-cols-3 gap-3 mb-6">
         <StatCard
           icon={<Users size={14} />}
@@ -193,7 +204,7 @@ export function DashboardPage() {
       {/* Money is a different kind of fact from headcount, so it gets its own
           grouped panel rather than two more cards in the same row — the three
           figures here are related to each other, not to the counts above. */}
-      <h2 className="font-semibold text-white mb-2.5" style={{ fontSize: 13 }}>This month&apos;s money</h2>
+      <h2 className="font-semibold text-white mb-2.5" style={{ fontSize: "var(--fs-md)" }}>This month&apos;s money</h2>
       <div
         className="rounded-xl mb-7 flex flex-wrap"
         style={{ background: "var(--card-bg)", border: "1px solid var(--card-border)", padding: "18px 20px", columnGap: 44, rowGap: 18 }}

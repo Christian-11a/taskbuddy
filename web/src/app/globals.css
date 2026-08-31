@@ -4,6 +4,51 @@
    `@import url(...)` here did the opposite on all three counts. */
 @import "tailwindcss";
 
+/* ─── Foundation scales ───────────────────────────────────────────────────
+   These are theme-independent: light and dark differ in colour only, never
+   in size or rhythm. Before this the app carried 21 distinct inline font
+   sizes (9.8, 11.2, 11.4, 12.2 …) and two competing radius systems, so no
+   two components shared a ratio and every new one invented its own.
+   ────────────────────────────────────────────────────────────────────────── */
+:root {
+  /* Type — ~1.15 ratio, tight steps because product UI carries many more
+     type roles than a marketing page and wide contrast just reads as noise. */
+  --fs-2xs: 10px;   /* dense meta: timestamps, row sub-labels */
+  --fs-xs: 11px;    /* labels, captions, table meta */
+  --fs-sm: 12px;    /* secondary body, control text */
+  --fs-md: 13px;    /* primary body, section titles */
+  --fs-lg: 15px;    /* panel headings */
+  --fs-xl: 18px;    /* sub-page headings */
+  --fs-2xl: 22px;   /* page titles */
+  --fs-3xl: 26px;   /* the single largest thing on any screen */
+
+  --lh-tight: 1.15;
+  --lh-snug: 1.35;
+  --lh-normal: 1.5;
+
+  /* Negative tracking on large text only; small UI text needs its default. */
+  --tr-tight: -0.035em;
+  --tr-snug: -0.02em;
+  --tr-label: 0.08em;
+
+  /* Space — 4px grid. */
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-5: 20px;
+  --sp-6: 24px;
+  --sp-8: 32px;
+  --sp-10: 40px;
+
+  /* Radius — three steps plus a pill. Inner elements sit tighter than the
+     containers holding them. */
+  --r-sm: 8px;
+  --r-md: 10px;
+  --r-lg: 14px;
+  --r-pill: 999px;
+}
+
 :root {
   --bg-main: #0b1016;
   --bg-sidebar: #0d141b;
@@ -39,6 +84,18 @@
   --brand-solid: #0e7f8d;
   --brand-solid-hover: #0b6a76;
   --brand-on-solid: #ffffff;
+
+  /* Shell surfaces. The sidebar and header used hardcoded Tailwind darks
+     (text-white, hover:bg-white/5, #516071) which light mode then had to
+     undo with override rules further down this file. Naming them lets both
+     themes state their own values instead. */
+  --nav-fg: #c5cfda;          /* resting nav item */
+  --nav-fg-strong: #f8fafc;   /* nav item text that is a proper label */
+  --nav-fg-muted: #7f8c9b;    /* group headings */
+  --nav-hover-bg: rgba(255, 255, 255, 0.05);
+  --nav-active-bg: rgba(43, 179, 192, 0.12);
+  --nav-active-fg: #78d5dc;
+  --overlay: rgba(0, 0, 0, 0.6);
 }
 
 /* Light mode overrides */
@@ -62,6 +119,16 @@
   --success-text: #16a34a;
   --danger-text: #dc2626;
   --warning-text: #b45309;
+
+  /* Light states its own shell values rather than relying on the override
+     block below to reverse dark ones. */
+  --nav-fg: #374151;
+  --nav-fg-strong: #111827;
+  --nav-fg-muted: #6b7280;
+  --nav-hover-bg: rgba(0, 0, 0, 0.05);
+  --nav-active-bg: rgba(14, 127, 141, 0.1);
+  --nav-active-fg: #0e7f8d;
+  --overlay: rgba(17, 24, 39, 0.45);
   color-scheme: light;
 }
 
@@ -158,14 +225,32 @@ aside.sidebar {
 .sidebar-nav-link {
   min-height: 36px;
   text-decoration: none;
+  transition: background-color 0.12s ease, color 0.12s ease;
 }
 
-.sidebar-nav-link:hover {
-  transform: translateX(1px);
+/* Hover reads as "this is reachable", press as "this was hit" — both are
+   state feedback. The old translateX nudge on every hover moved the whole
+   nav list around for no informational reason. */
+.sidebar-nav-link--idle:hover {
+  background: var(--nav-hover-bg);
+  color: var(--nav-fg-strong);
 }
 
 .sidebar-nav-link:active {
-  transform: translateX(1px) scale(0.99);
+  transform: scale(0.99);
+}
+
+.sidebar-signout:hover {
+  color: var(--danger-text);
+}
+
+/* Rows in the header's search results and notification panel. Was
+   hover:bg-white/5, which light mode had to reverse with an override. */
+.hover-row {
+  transition: background-color 0.12s ease;
+}
+.hover-row:hover {
+  background: var(--nav-hover-bg);
 }
 
 @media (max-width: 1023px) {

@@ -56,7 +56,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       {drawerOpen && (
         <div
           className="fixed inset-0 z-20 lg:hidden"
-          style={{ background: "rgba(0,0,0,0.6)" }}
+          style={{ background: "var(--overlay)" }}
           onClick={() => setDrawerOpen(false)}
         />
       )}

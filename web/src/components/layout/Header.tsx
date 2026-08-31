@@ -111,7 +111,7 @@ export function Header({ onOpenDrawer }: HeaderProps) {
           placeholder="Search users, bookings, transactions…"
           aria-label="Search"
           className="w-full outline-none"
-          style={{ height: 38, background: "var(--input-bg)", border: "1px solid var(--border-md)", borderRadius: 10, padding: "0 13px 0 36px", fontSize: 12, color: "var(--text-white)" }}
+          style={{ height: 38, background: "var(--input-bg)", border: "1px solid var(--border-md)", borderRadius: "var(--r-md)", padding: "0 13px 0 36px", fontSize: 12, color: "var(--text-white)" }}
         />
         {searchOpen && searchQuery.trim().length >= 2 && (
           <div
@@ -128,7 +128,7 @@ export function Header({ onOpenDrawer }: HeaderProps) {
                   key={r.key}
                   href={pageToPath(r.page)}
                   onClick={() => { setSearchOpen(false); setSearchQuery(""); }}
-                  className="w-full flex items-center gap-3 px-4 py-2.5 text-left transition-colors hover:bg-white/5"
+                  className="w-full flex items-center gap-3 px-4 py-2.5 text-left transition-colors hover-row"
                   style={{ borderBottom: "1px solid var(--border)", textDecoration: "none" }}
                 >
                   <div className="flex items-center justify-center flex-shrink-0 rounded-lg" style={{ width: 26, height: 26, background: "var(--indigo-dark)", color: "var(--indigo-light)" }}>
@@ -198,13 +198,13 @@ export function Header({ onOpenDrawer }: HeaderProps) {
 
                 {pendingVerifs.length > 0 && (
                   <div>
-                    <div className="px-4 py-2 uppercase" style={{ fontSize: 8, color: "#4b5563", fontWeight: 600, letterSpacing: "0.8px" }}>Pending Verifications</div>
+                    <div className="px-4 py-2 uppercase" style={{ fontSize: "var(--fs-2xs)", color: "var(--nav-fg-muted)", fontWeight: 600, letterSpacing: "var(--tr-label)" }}>Pending Verifications</div>
                     {pendingVerifs.map((v) => (
                       <Link
                         key={v.email}
                         href={pageToPath("verifications")}
                         onClick={() => setNotifOpen(false)}
-                        className="w-full flex items-start gap-3 px-4 py-3 text-left transition-colors hover:bg-white/5"
+                        className="w-full flex items-start gap-3 px-4 py-3 text-left transition-colors hover-row"
                         style={{ borderBottom: "1px solid var(--border)", textDecoration: "none" }}
                       >
                         <div className="flex items-center justify-center flex-shrink-0 rounded-lg" style={{ width: 28, height: 28, background: "rgba(245,158,11,0.15)", marginTop: 1 }}>
@@ -221,13 +221,13 @@ export function Header({ onOpenDrawer }: HeaderProps) {
 
                 {openDisputes.length > 0 && (
                   <div>
-                    <div className="px-4 py-2 uppercase" style={{ fontSize: 8, color: "#4b5563", fontWeight: 600, letterSpacing: "0.8px" }}>Open Disputes</div>
+                    <div className="px-4 py-2 uppercase" style={{ fontSize: "var(--fs-2xs)", color: "var(--nav-fg-muted)", fontWeight: 600, letterSpacing: "var(--tr-label)" }}>Open Disputes</div>
                     {openDisputes.map((d) => (
                       <Link
                         key={d.id}
                         href={pageToPath("disputes")}
                         onClick={() => setNotifOpen(false)}
-                        className="w-full flex items-start gap-3 px-4 py-3 text-left transition-colors hover:bg-white/5"
+                        className="w-full flex items-start gap-3 px-4 py-3 text-left transition-colors hover-row"
                         style={{ borderBottom: "1px solid var(--border)", textDecoration: "none" }}
                       >
                         <div className="flex items-center justify-center flex-shrink-0 rounded-lg" style={{ width: 28, height: 28, background: "rgba(239,68,68,0.15)", marginTop: 1 }}>
