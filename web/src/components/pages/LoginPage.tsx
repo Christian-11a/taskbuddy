@@ -42,7 +42,7 @@ export function LoginPage() {
       </aside>
       <main className="flex flex-1 items-center justify-center p-6 lg:p-12">
       <div style={{ width: "100%", maxWidth: 372 }}>
-        <div className="flex items-center gap-2.5 mb-9">
+        <div className="flex items-center gap-2.5 mb-9 lg:hidden">
           {/* decorative: the adjacent wordmark already carries the brand name */}
           <Image src="/taskbuddy-logo.png" alt="" width={34} height={34} style={{ borderRadius: "var(--r-md)", objectFit: "cover" }} />
           <div>
