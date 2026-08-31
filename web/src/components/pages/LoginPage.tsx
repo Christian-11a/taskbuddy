@@ -2,7 +2,7 @@
 
 import { useId, useState } from "react";
 import Image from "next/image";
-import { Mail, Lock, Shield, AlertCircle } from "lucide-react";
+import { Mail, Lock, AlertCircle } from "lucide-react";
 import { useApp } from "@/context/AppContext";
 import { validateEmail, validateRequired } from "@/lib/validation";
 
@@ -56,9 +56,6 @@ export function LoginPage() {
         </div>
 
         <div className="my-auto relative z-10">
-          <div className="inline-flex items-center gap-2 font-medium mb-6" style={{ background: "rgba(34,195,214,0.10)", border: "1px solid rgba(34,195,214,0.22)", borderRadius: 999, padding: "5px 12px", fontSize: 9.8, color: "var(--indigo-light)" }}>
-            <Shield size={11} /> Secure Admin Access
-          </div>
           <h1 className="text-white font-extrabold leading-tight mb-4" style={{ fontSize: 42, letterSpacing: "-0.055em", maxWidth: 440 }}>The quiet center of a busy marketplace.</h1>
           <p className="leading-relaxed mb-6" style={{ fontSize: 13, color: "#a9cbd0", maxWidth: 310 }}>
             Manage users, verify service providers, monitor transactions, and oversee all platform activity from one central dashboard.

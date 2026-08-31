@@ -104,7 +104,6 @@ export function DashboardPage() {
             <h1 className="text-white font-bold" style={{ fontSize: 28, letterSpacing: "-0.04em", lineHeight: 1.1 }}>Platform overview</h1>
             <p style={{ fontSize: 12, color: "#aebbd5", marginTop: 8, lineHeight: 1.5 }}>A clear read on marketplace activity, revenue, and the work that needs attention.</p>
           </div>
-          <div className="flex items-center gap-2 font-semibold flex-shrink-0" style={{ background: "rgba(34,197,94,.13)", border: "1px solid rgba(34,197,94,.24)", borderRadius: 999, padding: "8px 12px", fontSize: 11.4, color: "var(--success-text)" }}><div className="rounded-full" style={{ width: 7, height: 7, background: "var(--success-text)", boxShadow: "0 0 8px var(--success-text)" }} />Live data</div>
         </div>
       </section>
 
