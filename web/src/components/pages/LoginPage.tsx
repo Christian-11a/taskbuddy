@@ -35,10 +35,10 @@ export function LoginPage() {
 
   return (
     <div className="login-page flex min-h-screen w-full overflow-hidden" style={{ background: "#080d12" }}>
-      <aside className="hidden lg:flex flex-col justify-between p-12" style={{ flex: "0 0 47%", background: "#10383f", borderRight: "1px solid rgba(255,255,255,.08)" }}>
+      <aside className="login-brand-panel hidden lg:flex flex-col justify-between p-12" style={{ flex: "0 0 47%", background: "linear-gradient(112deg, #10383f 0%, #10505b 58%, #24508b 100%)", borderRight: "1px solid rgba(255,255,255,.12)" }}>
         <div className="flex items-center gap-2.5"><Image src="/taskbuddy-logo.png" alt="" width={36} height={36} style={{ borderRadius: "var(--r-md)", objectFit: "cover" }} /><div><div className="text-white font-bold" style={{ fontSize: "var(--fs-md)" }}>TaskBuddy</div><div style={{ fontSize: "var(--fs-2xs)", color: "#9de2e4" }}>Admin Console</div></div></div>
         <div style={{ maxWidth: 420 }}><div style={{ fontSize: "var(--fs-xs)", color: "#9de2e4", letterSpacing: ".12em", textTransform: "uppercase", fontWeight: 700, marginBottom: "var(--sp-4)" }}>Marketplace operations</div><h2 className="text-white font-bold" style={{ fontSize: "clamp(2.4rem, 4vw, 4.2rem)", lineHeight: 1.02, letterSpacing: "-0.06em" }}>Keep every service moving.</h2><p style={{ color: "#c1dfe1", fontSize: "var(--fs-md)", lineHeight: 1.6, marginTop: "var(--sp-5)", maxWidth: 360 }}>One place to verify providers, protect payments, and keep the TaskBuddy marketplace healthy.</p><div className="flex gap-8" style={{ marginTop: "var(--sp-8)", paddingTop: "var(--sp-5)", borderTop: "1px solid rgba(255,255,255,.16)" }}><div><div className="text-white font-bold" style={{ fontSize: "var(--fs-xl)" }}>17</div><div style={{ color: "#9fc4c7", fontSize: "var(--fs-xs)" }}>users</div></div><div><div className="text-white font-bold" style={{ fontSize: "var(--fs-xl)" }}>10</div><div style={{ color: "#9fc4c7", fontSize: "var(--fs-xs)" }}>bookings this month</div></div><div><div className="text-white font-bold" style={{ fontSize: "var(--fs-xl)" }}>1</div><div style={{ color: "#9fc4c7", fontSize: "var(--fs-xs)" }}>needs review</div></div></div></div>
-        <div style={{ color: "#8db8bb", fontSize: "var(--fs-3xs)" }}>TaskBuddy Admin Console v2.1</div>
+        <div aria-hidden="true" />
       </aside>
       <main className="flex flex-1 items-center justify-center p-6 lg:p-12">
       <div style={{ width: "100%", maxWidth: 372 }}>
@@ -108,7 +108,7 @@ export function LoginPage() {
         </form>
 
         <div style={{ fontSize: "var(--fs-3xs)", color: "var(--text-muted)", marginTop: 28, paddingTop: "var(--sp-4)", borderTop: "1px solid rgba(255,255,255,0.07)" }}>
-          TaskBuddy Admin Console v2.1
+          TaskBuddy v1
         </div>
       </div>
       </main>
