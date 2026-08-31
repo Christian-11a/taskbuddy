@@ -378,14 +378,16 @@ const WalletTab = forwardRef<ExportHandle, TabProps>(function WalletTab({ onExpo
 
   return (
     <div>
+      {/* Ledger totals are neutral facts, not statuses — one calm surface,
+          matching the Escrow tab's counters. */}
       <div className="flex gap-2.5 flex-wrap mb-4">
         {[
-          { label: "Ledger Rows", val: rows.length, accent: "#6366f1" },
-          { label: "Total Topped Up", val: `₱${totalTopups.toLocaleString()}`, accent: "#22c55e" },
-          { label: "Total Withdrawn", val: `₱${totalWithdrawals.toLocaleString()}`, accent: "#f59e0b" },
+          { label: "Ledger Rows", val: rows.length.toLocaleString() },
+          { label: "Total Topped Up", val: `₱${totalTopups.toLocaleString()}` },
+          { label: "Total Withdrawn", val: `₱${totalWithdrawals.toLocaleString()}` },
         ].map((s) => (
-          <div key={s.label} className="flex items-center gap-2 rounded-xl" style={{ padding: "9px 14px", border: `1px solid ${s.accent}33`, background: `${s.accent}18`, fontSize: 11.4 }}>
-            <span className="font-semibold text-white">{s.val}</span>
+          <div key={s.label} className="flex items-center gap-2 rounded-xl" style={{ padding: "9px 14px", border: "1px solid var(--card-border)", background: "var(--chip-bg)", fontSize: 11.4 }}>
+            <span className="font-semibold text-white tabular">{s.val}</span>
             <span style={{ color: "var(--text-muted)" }}>{s.label}</span>
           </div>
         ))}

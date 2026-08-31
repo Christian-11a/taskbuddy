@@ -206,22 +206,33 @@ export function UsersPage() {
         </button>
       </div>
 
+      {/* These are counts that happen to be clickable, not three status
+          badges — so they carry one neutral surface and let the selected one
+          be the only coloured thing, rather than each wearing its own
+          permanent accent wash. */}
       <div className="flex gap-2.5 flex-wrap mb-4">
         {[
-          { icon: <Users size={13} />, label: "Total Users", val: total, accent: "#22c3d6", role: "all" as RoleFilter },
-          { icon: <Wrench size={13} />, label: "Providers", val: providers, accent: "#38bdf8", role: "provider" as RoleFilter },
-          { icon: <Home size={13} />, label: "Homeowners", val: customers, accent: "#22c55e", role: "customer" as RoleFilter },
+          { icon: <Users size={13} />, label: "Total Users", val: total, role: "all" as RoleFilter },
+          { icon: <Wrench size={13} />, label: "Providers", val: providers, role: "provider" as RoleFilter },
+          { icon: <Home size={13} />, label: "Homeowners", val: customers, role: "customer" as RoleFilter },
         ].map((s) => {
           const isActive = roleFilter === s.role;
           return (
           <button
             key={s.label}
             onClick={() => { setRoleFilter(s.role); clearSelectionOnScopeChange(); }}
-            className="flex items-center gap-2 rounded-xl cursor-pointer transition-opacity hover:opacity-80"
-            style={{ padding: "9px 14px", border: `1px solid ${s.accent}33`, background: isActive ? `${s.accent}30` : `${s.accent}18`, fontSize: 11.4, fontFamily: "inherit", outline: isActive ? `1px solid ${s.accent}55` : "none" }}
+            aria-pressed={isActive}
+            className="flex items-center gap-2 rounded-xl cursor-pointer transition-colors"
+            style={{
+              padding: "9px 14px",
+              border: `1px solid ${isActive ? "var(--indigo)" : "var(--card-border)"}`,
+              background: isActive ? "var(--indigo-dark)" : "var(--card-bg)",
+              fontSize: 11.4,
+              fontFamily: "inherit",
+            }}
           >
-            <span style={{ color: s.accent, display: "flex" }}>{s.icon}</span>
-            <span className="font-semibold text-white">{s.val}</span>
+            <span style={{ color: isActive ? "var(--indigo-light)" : "var(--text-muted)", display: "flex" }}>{s.icon}</span>
+            <span className="font-semibold text-white tabular">{s.val}</span>
             <span style={{ color: "var(--text-muted)" }}>{s.label}</span>
           </button>
           );
