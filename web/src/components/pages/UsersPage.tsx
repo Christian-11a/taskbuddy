@@ -20,12 +20,14 @@ function bulkMessage(verb: string, succeeded: number, failed: number): string {
 }
 
 type RoleFilter = "all" | "provider" | "customer";
+type StatusFilter = "all" | "active" | "suspended" | "deleted";
 
 export function UsersPage() {
   const { users, setUserStatus, bulkSetUserStatus, sendPasswordReset, loading } = useApp();
   const { showToast } = useToast();
   const [search, setSearch] = useState("");
   const [roleFilter, setRoleFilter] = useState<RoleFilter>("all");
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [page, setPage] = useState(1);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [bulkBusy, setBulkBusy] = useState(false);
@@ -48,11 +50,12 @@ export function UsersPage() {
       roleFilter === "all" ||
       (roleFilter === "provider" && u.isProvider) ||
       (roleFilter === "customer" && !u.isProvider);
-    return matchSearch && matchRole;
+    const matchStatus = statusFilter === "all" || u.status.toLowerCase() === statusFilter;
+    return matchSearch && matchRole && matchStatus;
   });
 
   // Admins can't be suspended (backend refuses it) — leave them out of bulk selection.
-  const selectable = filtered.filter((u) => u.rolePlain !== "Admin");
+  const selectable = filtered.filter((u) => u.rolePlain !== "Admin" && u.status !== "Deleted");
   const allSelected = selectable.length > 0 && selectable.every((u) => selected.has(u.id));
 
   function toggleOne(id: string) {
@@ -181,6 +184,7 @@ export function UsersPage() {
   const total = users.length;
   const providers = users.filter((u) => u.isProvider).length;
   const customers = users.filter((u) => !u.isProvider).length;
+  const deleted = users.filter((u) => u.status === "Deleted").length;
   const reviewing = users.find((u) => u.id === reviewingId) ?? null;
   const paginated = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
 
@@ -245,6 +249,11 @@ export function UsersPage() {
             >
               {label}
             </button>
+          ))}
+        </div>
+        <div className="inline-flex" style={{ background: "var(--chip-bg)", padding: 3, borderRadius: 9, gap: 2 }} aria-label="Filter users by status">
+          {([['all', 'All statuses'], ['active', 'Active'], ['suspended', 'Suspended'], ['deleted', `Deleted${deleted ? ` (${deleted})` : ''}`]] as [StatusFilter, string][]).map(([f, label]) => (
+            <button key={f} onClick={() => { setStatusFilter(f); clearSelectionOnScopeChange(); }} className={clsx("rounded-lg font-medium cursor-pointer transition-all", statusFilter !== f && "text-gray-500 hover:text-gray-300")} style={{ padding: "7px 10px", fontSize: 11, background: statusFilter === f ? "var(--indigo-dark)" : "transparent", color: statusFilter === f ? "var(--indigo-light)" : undefined, border: "none", fontFamily: "inherit" }}>{label}</button>
           ))}
         </div>
         <span style={{ fontSize: 11, color: "var(--text-muted)" }}>{filtered.length.toLocaleString()} {filtered.length === 1 ? "user" : "users"}</span>
@@ -444,7 +453,7 @@ export function UsersPage() {
                 >
                   <PauseCircle size={13} /> Suspend Account
                 </button>
-              ) : (
+              ) : reviewing?.status === "Suspended" ? (
                 <button
                   onClick={() => reviewing && handleActivateOne(reviewing.id)}
                   disabled={activateBusyId === reviewing?.id}
@@ -453,7 +462,7 @@ export function UsersPage() {
                 >
                   <CheckCircle size={13} /> {activateBusyId === reviewing?.id ? "Reinstating…" : "Reinstate Account"}
                 </button>
-              )}
+              ) : null}
             </>
           ) : (
             <button

@@ -1,18 +1,10 @@
 import type { Metadata } from "next";
-import { Inter } from "next/font/google";
 import "./globals.css";
 import { AppProvider } from "@/context/AppContext";
 import { ToastProvider } from "@/components/ui/Toast";
 
 /** Self-hosted at build time — see the note in globals.css for why this
  *  replaced the stylesheet @import. */
-const inter = Inter({
-  subsets: ["latin"],
-  weight: ["400", "500", "600", "700", "800"],
-  display: "swap",
-  variable: "--font-inter",
-});
-
 export const metadata: Metadata = {
   // `template` gives each route its own tab title (see the per-page metadata
   // exports) while keeping the product name as a suffix.
@@ -32,7 +24,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" className={inter.variable}>
+    <html lang="en">
       {/* AppProvider lives here rather than in a page so its state — session,
           the loaded data set, preferences — survives client-side navigation
           between routes. Mounted per-page it would refetch everything on every

@@ -5,6 +5,22 @@ app works today; this file covers how it got there and why. Newest first.
 
 ---
 
+## Platform administration surfaces
+
+Added the web integrations and UI for the backend work in migrations 0022–0024:
+
+- `/withdrawals` provides the human settlement queue with payout references,
+  rejection reasons, status filters, and partial/error feedback.
+- `/platform` manages commission, service categories, admin accounts, and user
+  announcements.
+- Dashboard now shows commission and pending-withdrawal signals; Users can
+  explicitly find deleted accounts without exposing them to moderation actions.
+
+Recovery-credit issuance remains intentionally absent until its dedicated admin
+endpoint exists.
+
+---
+
 ## Component tests, and verifying the cookie/CSRF auth rework
 
 Commit `fe2356d` ("align backend with current clients", 2026-08-17) replaced

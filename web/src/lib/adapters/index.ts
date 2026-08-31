@@ -57,6 +57,7 @@ export function formatDate(iso: string): string {
 export const USER_STATUS_DISPLAY: Record<UserStatus, { label: string; badgeClass: string }> = {
   ACTIVE:    { label: "Active",    badgeClass: "badge-active" },
   SUSPENDED: { label: "Suspended", badgeClass: "badge-suspended" },
+  DELETED:   { label: "Deleted",   badgeClass: "badge-banned" },
 };
 
 export const TRANSACTION_STATUS_DISPLAY: Record<TransactionStatus, { label: string; badgeClass: string }> = {
@@ -108,6 +109,7 @@ export const WALLET_KIND_DISPLAY: Record<WalletTxnKind, { label: string; badgeCl
   payout:       { label: "Payout",      badgeClass: "badge-active" },
   refund:       { label: "Refund",      badgeClass: "badge-refunded" },
   adjustment:   { label: "Adjustment",  badgeClass: "badge-cancelled" },
+  recovery_credit: { label: "Recovery credit", badgeClass: "badge-completed" },
 };
 
 // ─── Display row types (what components render) ───────────────────────────────
@@ -140,6 +142,7 @@ export interface UserRow {
   /** "—" when not suspended or the suspension is indefinite (migration 0014). */
   suspendedUntil: string;
   suspensionReason: string;
+  deletedAt?: string | null;
 }
 
 export interface VerificationDocument {
@@ -243,6 +246,7 @@ export function toUserRow(u: AdminUser): UserRow {
     ratingValue: u.rating,
     suspendedUntil: u.suspendedUntil ? formatDate(u.suspendedUntil) : "—",
     suspensionReason: u.suspensionReason ?? "—",
+    deletedAt: u.deletedAt ? formatDate(u.deletedAt) : null,
   };
 }
 

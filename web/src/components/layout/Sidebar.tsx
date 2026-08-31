@@ -6,6 +6,7 @@ import Link from "next/link";
 import {
   ShieldCheck, Users, CreditCard, CalendarDays, AlertTriangle, History,
   BarChart3, Settings, LogOut, LayoutDashboard, ChevronLeft, ChevronRight, ScrollText,
+  WalletCards, SlidersHorizontal,
 } from "lucide-react";
 import type { Page } from "@/lib/domain";
 import { useApp } from "@/context/AppContext";
@@ -45,6 +46,7 @@ export function Sidebar({ activePage, onNavigate, onLogout, collapsed, onToggleC
       { id: "bookings", label: "Bookings", icon: <CalendarDays size={15} /> },
       { id: "disputes", label: "Disputes", icon: <AlertTriangle size={15} />, badge: openDisputeCount || undefined },
       { id: "transactions", label: "Transactions", icon: <CreditCard size={15} /> },
+      { id: "withdrawals", label: "Withdrawals", icon: <WalletCards size={15} /> },
     ] },
     { label: "People", items: [
       { id: "users", label: "Users", icon: <Users size={15} /> },
@@ -53,6 +55,9 @@ export function Sidebar({ activePage, onNavigate, onLogout, collapsed, onToggleC
       { id: "activity-log", label: "Activity", icon: <History size={15} /> },
       { id: "audit-log", label: "Audit Log", icon: <ScrollText size={15} /> },
       { id: "reports", label: "Reports", icon: <BarChart3 size={15} /> },
+    ] },
+    { label: "Administration", items: [
+      { id: "platform", label: "Platform", icon: <SlidersHorizontal size={15} /> },
     ] },
   ];
 

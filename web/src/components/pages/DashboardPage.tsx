@@ -11,6 +11,7 @@ import {
   AlertTriangle,
   CheckCircle,
   UserPlus,
+  WalletCards, Percent,
 } from "lucide-react";
 import { useApp } from "@/context/AppContext";
 import { formatCurrency } from "@/lib/adapters";
@@ -150,6 +151,13 @@ export function DashboardPage() {
           sub={`${formatCurrency(escrowHeld)} currently held in escrow`}
           accent="#f59e0b"
         />
+        <StatCard
+          icon={<Percent size={14} />}
+          label="Monthly Commission"
+          value={formatCurrency(dashboardStats.monthlyCommission)}
+          sub={`${formatCurrency(dashboardStats.totalCommission)} total retained`}
+          accent="#a78bfa"
+        />
       </div>
 
       {/* Secondary Stat Row — actionable items only. Completion rate, avg
@@ -169,6 +177,23 @@ export function DashboardPage() {
           </div>
           <Link
             href={pageToPath("verifications")}
+            className="ml-auto flex items-center gap-1 font-medium transition-opacity hover:opacity-75"
+            style={{ fontSize: 10, color: "var(--indigo-light)", textDecoration: "none" }}
+          >
+            Review <ArrowUpRight size={10} />
+          </Link>
+        </div>
+        <div
+          className="flex items-center gap-3 px-4 py-3 rounded-xl flex-1"
+          style={{ background: "var(--card-bg)", border: "1px solid var(--card-border)" }}
+        >
+          <WalletCards size={16} style={{ color: "var(--warning-text)" }} />
+          <div>
+            <div className="text-white font-bold" style={{ fontSize: 18 }}>{dashboardStats.pendingWithdrawals}</div>
+            <div style={{ fontSize: 10, color: "var(--text-muted)" }}>Pending Withdrawals</div>
+          </div>
+          <Link
+            href={pageToPath("withdrawals")}
             className="ml-auto flex items-center gap-1 font-medium transition-opacity hover:opacity-75"
             style={{ fontSize: 10, color: "var(--indigo-light)", textDecoration: "none" }}
           >

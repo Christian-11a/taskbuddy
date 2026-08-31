@@ -146,12 +146,12 @@ render, so redirecting without that check would bounce a signed-in admin to
 | Activity Log | `GET /admin/activity` |
 | Audit Log | `GET /admin/audit` |
 | Reports | `GET /admin/analytics/summary` |
+| Withdrawals | `GET /admin/withdrawals`, `POST .../:id/settle` · `POST .../:id/reject` |
+| Platform | `GET`/`PATCH /admin/commission`, category CRUD, admin accounts, notification broadcast |
 | Settings | `PATCH /profiles/me`, `POST /auth/change-password`, `GET`/`PATCH /settings`, `GET`/`PATCH /admin/maintenance` |
 
-Available but not yet wired to a page: `GET /admin/withdrawals` (+ settle /
-reject), `GET`/`POST /admin/categories` + `PATCH /admin/categories/:id`,
-`GET`/`POST /admin/admins` + `POST /admin/admins/:id/revoke`,
-`POST /admin/notifications/broadcast`, and `GET`/`PATCH /admin/commission`.
+The Platform page consumes the commission, category, admin-account, and
+notification endpoints. The Withdrawals page consumes the settlement queue.
 
 Bulk actions call the single-item endpoint once per id in parallel. A per-id
 failure doesn't abort the rest — the counts come back so the UI can say
@@ -225,10 +225,10 @@ service-role-only RPCs backing these list endpoints — applied and verified
 2026-08-17, so these pages work against the deployed API. Booking detail responses also expose `photo_urls`
 as renderable public URLs, including conversion of stored `job-photos` paths.
 
-### 3. Available but not yet consumed (migrations 0022–0024)
+### 3. Consumed by the web console (migrations 0022–0024)
 
 Four surfaces this document previously listed under "Not yet built" now have an
-API. The console does not call any of them yet. Full reasoning for each decision
+API and are wired to the Platform page. Full reasoning for each decision
 is in `backend/BACKEND_SCHEMA.md` §27; the short version, because each carries a
 choice a reviewer should not have to rediscover:
 
@@ -287,12 +287,11 @@ them:
   `GET`/`PATCH /admin/commission`, `GET`/`POST /admin/categories` +
   `PATCH /admin/categories/:id`, `GET`/`POST /admin/admins` +
   `POST /admin/admins/:id/revoke`, and
-  `POST /admin/notifications/broadcast`. **No UI yet.**
+  `POST /admin/notifications/broadcast`. Implemented under `/platform`.
 - **Withdrawal settlement queue** — not previously requested here, but newly
   available and worth the same note: `GET /admin/withdrawals` plus settle and
   reject. There is no payout rail, so this queue is the only way anyone on the
-  platform gets paid out. **No UI yet**, which makes it the most load-bearing
-  gap on this list.
+  platform gets paid out. Implemented under `/withdrawals`.
 - **Auth tokens moved off `localStorage`** — was flagged as a security gap
   (any injected script could read the access/refresh tokens). Fixed in
   `fe2356d` ("align backend with current clients", 2026-08-17): httpOnly
@@ -332,16 +331,6 @@ not missed.
 
 ## Not yet built
 
-- **UI for the four newly-backed admin surfaces.** Fee/commission, category
-  management, a second admin account, and notification broadcast used to be
-  listed here as having no backend at all. They do now — migrations 0022–0024,
-  `backend/BACKEND_SCHEMA.md` §27. Nothing in this console calls them yet; the
-  endpoints and the decisions they encode are below under
-  [Backend Integration Status](#backend-integration-status).
-- **UI for the withdrawal settlement queue.** `GET /admin/withdrawals` plus
-  settle/reject. This one is not cosmetic: there is no payout rail, so until a
-  page exists nobody on the platform can be paid out except by an operator
-  calling the API directly.
 - **UI for recovery-credit issuance.** Still genuinely blocked — see
   [Backend Requests](#backend-requests) above; that endpoint does not exist yet.
 

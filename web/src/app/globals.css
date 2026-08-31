@@ -1,4 +1,4 @@
-/* Inter is loaded via next/font/google in app/layout.tsx, which self-hosts it
+/* Typography uses a local system stack so builds work without network access.
    at build time — no runtime request to fonts.googleapis.com, no flash of
    unstyled text, and no third-party origin to allow through the CSP. The old
    `@import url(...)` here did the opposite on all three counts. */
