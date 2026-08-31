@@ -35,10 +35,23 @@ export function LoginPage() {
 
   return (
     <div className="login-page flex min-h-screen w-full overflow-hidden" style={{ background: "var(--login-panel)" }}>
-      <aside className="login-brand-panel hidden lg:flex flex-col justify-between p-12" style={{ flex: "0 0 47%", background: "linear-gradient(112deg, var(--login-brand-start) 0%, var(--login-brand-mid) 58%, var(--login-brand-end) 100%)", borderRight: "1px solid rgba(255,255,255,.12)" }}>
-        <div className="flex items-center gap-2.5"><Image src="/taskbuddy-logo.png" alt="" width={36} height={36} style={{ borderRadius: "var(--r-md)", objectFit: "cover" }} /><div><div className="text-white font-bold" style={{ fontSize: "var(--fs-md)" }}>TaskBuddy</div><div style={{ fontSize: "var(--fs-2xs)", color: "#9de2e4" }}>Admin Console</div></div></div>
-        <div style={{ maxWidth: 420 }}><div style={{ fontSize: "var(--fs-xs)", color: "var(--login-brand-accent)", letterSpacing: ".12em", textTransform: "uppercase", fontWeight: 700, marginBottom: "var(--sp-4)" }}>Marketplace operations</div><h2 className="text-white font-bold" style={{ fontSize: "clamp(2.4rem, 4vw, 4.2rem)", lineHeight: 1.02, letterSpacing: "-0.06em" }}>Keep every service moving.</h2><p style={{ color: "var(--login-brand-text)", fontSize: "var(--fs-md)", lineHeight: 1.6, marginTop: "var(--sp-5)", maxWidth: 360 }}>One place to verify providers, protect payments, and keep the TaskBuddy marketplace healthy.</p><div className="flex gap-8" style={{ marginTop: "var(--sp-8)", paddingTop: "var(--sp-5)", borderTop: "1px solid rgba(255,255,255,.16)" }}><div><div className="text-white font-bold" style={{ fontSize: "var(--fs-md)" }}>Verify</div><div style={{ color: "var(--login-brand-muted)", fontSize: "var(--fs-xs)" }}>providers</div></div><div><div className="text-white font-bold" style={{ fontSize: "var(--fs-md)" }}>Protect</div><div style={{ color: "var(--login-brand-muted)", fontSize: "var(--fs-xs)" }}>payments</div></div><div><div className="text-white font-bold" style={{ fontSize: "var(--fs-md)" }}>Operate</div><div style={{ color: "var(--login-brand-muted)", fontSize: "var(--fs-xs)" }}>with clarity</div></div></div></div>
-        <div aria-hidden="true" />
+      {/* A brand field, not a hero. This panel previously carried an eyebrow
+          label, a 4.2rem headline, a marketing paragraph, and a three-item
+          feature strip — the same "sell the product to people who already
+          use it daily" pattern removed from this page earlier. What's left
+          is what a brand field needs to do: say whose console this is. The
+          form is the only thing here making a case for itself. */}
+      <aside className="login-brand-panel hidden lg:flex flex-col justify-between p-10" style={{ flex: "0 0 32%", background: "linear-gradient(112deg, var(--login-brand-start) 0%, var(--login-brand-mid) 58%, var(--login-brand-end) 100%)", borderRight: "1px solid rgba(255,255,255,.12)" }}>
+        <div className="flex items-center gap-2.5">
+          <Image src="/taskbuddy-logo.png" alt="" width={36} height={36} style={{ borderRadius: "var(--r-md)", objectFit: "cover" }} />
+          <div>
+            <div className="text-white font-bold" style={{ fontSize: "var(--fs-md)" }}>TaskBuddy</div>
+            <div style={{ fontSize: "var(--fs-2xs)", color: "var(--login-brand-accent)" }}>Admin Console</div>
+          </div>
+        </div>
+        <p style={{ color: "var(--login-brand-text)", fontSize: "var(--fs-sm)", lineHeight: 1.5, maxWidth: 260 }}>
+          Verification, payments, and platform operations for the TaskBuddy marketplace.
+        </p>
       </aside>
       <main className="flex flex-1 items-center justify-center p-6 lg:p-12">
       <div style={{ width: "100%", maxWidth: 372 }}>
@@ -108,7 +121,7 @@ export function LoginPage() {
         </form>
 
         <div style={{ fontSize: "var(--fs-3xs)", color: "var(--text-muted)", marginTop: 28, paddingTop: "var(--sp-4)", borderTop: "1px solid rgba(255,255,255,0.07)" }}>
-          TaskBuddy v1
+          TaskBuddy Admin Console
         </div>
       </div>
       </main>
