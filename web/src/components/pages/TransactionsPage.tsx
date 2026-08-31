@@ -113,19 +113,37 @@ const EscrowTab = forwardRef<ExportHandle, TabProps>(function EscrowTab({ onExpo
 
   return (
     <div>
-      <div className="flex gap-2.5 flex-wrap mb-4">
-        {[
-          { label: "Total Transactions", val: totalCount, accent: "#6366f1" },
-          { label: "Total Volume", val: `₱${total.toLocaleString()}`, accent: "#22c55e" },
-          { label: "Completed", val: transactions.filter((t) => t.status === "Completed").length, accent: "var(--success-text)" },
-          { label: "Disputed", val: transactions.filter((t) => t.status === "Disputed").length, accent: "#ef4444" },
-        ].map((s) => (
-          <div key={s.label} className="flex items-center gap-2 rounded-xl" style={{ padding: "9px 14px", border: `1px solid ${s.accent}33`, background: `${s.accent}18`, fontSize: 11.4 }}>
-            <span className="font-semibold text-white">{s.val}</span>
-            <span style={{ color: "var(--text-muted)" }}>{s.label}</span>
+      {/* Disputed transactions need attention when they exist and shouldn't
+          compete with the neutral counters when they don't — a red pill
+          reading "0 Disputed" looked like an alert for nothing. */}
+      {(() => {
+        const disputedCount = transactions.filter((t) => t.status === "Disputed").length;
+        return (
+          <div className="flex gap-2.5 flex-wrap mb-4 items-center">
+            <div className="flex items-center gap-2 rounded-xl" style={{ padding: "9px 14px", border: "1px solid var(--card-border)", background: "var(--chip-bg)", fontSize: 11.4 }}>
+              <span className="font-semibold text-white">{totalCount}</span>
+              <span style={{ color: "var(--text-muted)" }}>Total Transactions</span>
+            </div>
+            <div className="flex items-center gap-2 rounded-xl" style={{ padding: "9px 14px", border: "1px solid var(--card-border)", background: "var(--chip-bg)", fontSize: 11.4 }}>
+              <span className="font-semibold text-white">₱{total.toLocaleString()}</span>
+              <span style={{ color: "var(--text-muted)" }}>Total Volume</span>
+            </div>
+            <div className="flex items-center gap-2 rounded-xl" style={{ padding: "9px 14px", border: "1px solid var(--card-border)", background: "var(--chip-bg)", fontSize: 11.4 }}>
+              <span className="font-semibold" style={{ color: "var(--success-text)" }}>{transactions.filter((t) => t.status === "Completed").length}</span>
+              <span style={{ color: "var(--text-muted)" }}>Completed</span>
+            </div>
+            <div
+              className="flex items-center gap-2 rounded-xl"
+              style={disputedCount > 0
+                ? { padding: "9px 14px", border: "1px solid rgba(239,68,68,0.35)", background: "rgba(239,68,68,0.15)", fontSize: 11.4 }
+                : { padding: "9px 14px", border: "1px solid var(--card-border)", background: "var(--chip-bg)", fontSize: 11.4 }}
+            >
+              <span className="font-semibold" style={{ color: disputedCount > 0 ? "var(--danger-text)" : "var(--text-muted)" }}>{disputedCount}</span>
+              <span style={{ color: "var(--text-muted)" }}>Disputed</span>
+            </div>
           </div>
-        ))}
-      </div>
+        );
+      })()}
 
       <div className="flex gap-2.5 mb-4 flex-wrap">
         <div className="relative flex-1" style={{ minWidth: 200, maxWidth: 360 }}>
