@@ -13,6 +13,7 @@
 :root {
   /* Type — ~1.15 ratio, tight steps because product UI carries many more
      type roles than a marketing page and wide contrast just reads as noise. */
+  --fs-3xs: 9px;    /* micro: badge counters, avatar initials, uppercase micro-labels */
   --fs-2xs: 10px;   /* dense meta: timestamps, row sub-labels */
   --fs-xs: 11px;    /* labels, captions, table meta */
   --fs-sm: 12px;    /* secondary body, control text */
@@ -412,9 +413,13 @@ textarea {
 .data-table th {
   text-align: left;
   padding: 11px 14px;
-  font-size: 9.5px;
+  font-size: var(--fs-3xs);
   font-weight: 600;
-  color: #4b5563;
+  /* Was a hardcoded #4b5563 that didn't participate in theming — it read
+     fine on both surfaces mostly by luck. --text-muted is the token every
+     other secondary label in the app already uses, and resolves to the
+     same values this rule was hardcoding, so there's no visual change. */
+  color: var(--text-muted);
   text-transform: uppercase;
   letter-spacing: 0.07em;
   background: rgba(255, 255, 255, 0.02);
