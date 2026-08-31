@@ -2,7 +2,7 @@
 
 import { useId, useState } from "react";
 import Image from "next/image";
-import { Mail, Lock, AlertCircle } from "lucide-react";
+import { Mail, Lock, AlertCircle, Check } from "lucide-react";
 import { useApp } from "@/context/AppContext";
 import { validateEmail, validateRequired } from "@/lib/validation";
 
@@ -60,8 +60,10 @@ export function LoginPage() {
           <p className="leading-relaxed mb-6" style={{ fontSize: 13, color: "#a9cbd0", maxWidth: 310 }}>
             Manage users, verify service providers, monitor transactions, and oversee all platform activity from one central dashboard.
           </p>
-          {["Provider verification queue", "User and account management", "Transaction and escrow monitoring", "Analytics and reporting"].map((feat, i) => (
-            <div key={feat} className="flex items-center gap-3 font-medium mb-2.5" style={{ background: "rgba(255,255,255,0.065)", border: "1px solid rgba(255,255,255,.08)", borderRadius: 12, padding: "11px 13px", fontSize: 11.4, color: "#cfeef3", maxWidth: 340 }}><span style={{ color: "#55d4df", fontSize: 10, fontWeight: 800 }}>0{i + 1}</span>{feat}</div>
+          {["Provider verification queue", "User and account management", "Transaction and escrow monitoring", "Analytics and reporting"].map((feat) => (
+            <div key={feat} className="flex items-center gap-3 font-medium mb-2.5" style={{ background: "rgba(255,255,255,0.065)", border: "1px solid rgba(255,255,255,.08)", borderRadius: 12, padding: "11px 13px", fontSize: 11.4, color: "#cfeef3", maxWidth: 340 }}>
+              <Check size={13} style={{ color: "#55d4df", flexShrink: 0 }} />{feat}
+            </div>
           ))}
         </div>
         <div style={{ fontSize: 9.8, color: "var(--text-muted)" }} className="relative z-10">TaskBuddy Admin Console v2.1 · Restricted Access</div>
@@ -77,7 +79,6 @@ export function LoginPage() {
             <div className="text-white font-bold" style={{ fontSize: 16 }}>TaskBuddy Admin</div>
           </div>
 
-          <div className="mb-1" style={{ fontSize: 10, color: "#55d4df", letterSpacing: ".14em", textTransform: "uppercase", fontWeight: 700 }}>TaskBuddy / Admin</div>
           <h2 className="text-white font-bold mb-1" style={{ fontSize: 25, letterSpacing: "-0.035em" }}>Welcome back</h2>
           <p style={{ fontSize: 13, color: "var(--text-muted)", marginBottom: 26 }}>This portal is restricted to authorized administrators only.</p>
 
