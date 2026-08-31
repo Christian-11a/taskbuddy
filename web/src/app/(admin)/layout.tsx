@@ -74,10 +74,10 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         <Header onOpenDrawer={() => setDrawerOpen(true)} />
 
         <main
-          className="flex-1 overflow-y-auto"
+          className="flex-1 min-w-0 overflow-y-auto overflow-x-auto"
           style={{ background: "var(--bg-main)" }}
         >
-          <div style={{ padding: "26px 28px 40px", maxWidth: 1540, width: "100%", margin: "0 auto" }}>
+          <div className="w-full max-w-[1540px] mx-auto px-4 py-5 sm:px-6 sm:py-6 lg:px-7 lg:pt-[26px] lg:pb-10">
           {/* Sits above every page rather than inside one: a failed load
               leaves *all* of them showing empty tables and zeroed stats, so
               the warning belongs where it's visible regardless of which

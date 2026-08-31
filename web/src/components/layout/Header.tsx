@@ -85,8 +85,8 @@ export function Header({ onOpenDrawer }: HeaderProps) {
 
   return (
     <header
-      className="flex items-center justify-between flex-shrink-0"
-      style={{ background: "var(--bg-header)", borderBottom: "1px solid var(--border)", padding: "13px 24px", height: 72, position: "sticky", top: 0, zIndex: 35 }}
+      className="flex items-center justify-between flex-shrink-0 px-3 sm:px-4 lg:px-6"
+      style={{ background: "var(--bg-header)", borderBottom: "1px solid var(--border)", paddingTop: 13, paddingBottom: 13, height: 72, position: "sticky", top: 0, zIndex: 35 }}
     >
       <div className="flex items-center" style={{ gap: 14, minWidth: 0 }}>
         <button
@@ -100,7 +100,7 @@ export function Header({ onOpenDrawer }: HeaderProps) {
         <span className="hidden md:inline font-bold whitespace-nowrap" style={{ fontSize: 13 }}>TaskBuddy Admin</span>
         <span className="hidden md:block flex-shrink-0" style={{ width: 1, height: 22, background: "var(--border-md)" }} />
 
-        <div className="relative" style={{ width: "min(420px, 36vw)" }} ref={searchRef}>
+        <div className="relative min-w-0" style={{ width: "clamp(150px, 36vw, 420px)" }} ref={searchRef}>
         <span className="absolute top-1/2 -translate-y-1/2 pointer-events-none" style={{ left: 12, opacity: 0.45, display: "flex" }}>
           <Search size={13} />
         </span>
@@ -146,7 +146,7 @@ export function Header({ onOpenDrawer }: HeaderProps) {
         </div>
       </div>
 
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-2 sm:gap-3 flex-shrink-0">
         <span className="hidden lg:block" style={{ fontSize: 11, color: "var(--text-muted)" }}>{today}</span>
 
         {/* Notification Bell */}
@@ -173,7 +173,7 @@ export function Header({ onOpenDrawer }: HeaderProps) {
           {notifOpen && (
             <div
               className="absolute right-0 rounded-xl overflow-hidden"
-              style={{ top: 43, width: 360, background: "var(--panel-bg)", border: "1px solid var(--panel-border)", boxShadow: "0 18px 50px rgba(0,0,0,0.48)", zIndex: 50 }}
+              style={{ top: 43, width: "min(360px, calc(100vw - 24px))", background: "var(--panel-bg)", border: "1px solid var(--panel-border)", boxShadow: "0 18px 50px rgba(0,0,0,0.48)", zIndex: 50 }}
             >
               {/* Header */}
               <div className="flex items-center justify-between px-4 py-3" style={{ borderBottom: "1px solid var(--border)" }}>

@@ -31,8 +31,8 @@ const StatCard = ({
   accent: string;
 }) => (
   <div
-    className="flex-1 min-w-[145px] rounded-xl p-4 flex flex-col gap-3"
-    style={{ background: "var(--card-bg)", border: "1px solid var(--card-border)" }}
+    className="flex-1 min-w-[145px] rounded-2xl p-4 flex flex-col gap-3 transition-transform hover:-translate-y-0.5"
+    style={{ background: "var(--card-bg)", border: "1px solid var(--card-border)", boxShadow: "0 12px 30px rgba(0,0,0,.12)" }}
   >
     <div className="flex items-center justify-between">
       <span style={{ fontSize: 11, color: "var(--text-muted)", fontWeight: 500 }}>{label}</span>
@@ -44,7 +44,7 @@ const StatCard = ({
       </div>
     </div>
     <div>
-      <div className="text-white font-extrabold" style={{ fontSize: 24 }}>{value}</div>
+      <div className="text-white font-extrabold" style={{ fontSize: 27, letterSpacing: "-0.04em" }}>{value}</div>
       {sub && (
         <div className="mt-1" style={{ fontSize: 10, color: "var(--text-muted)" }}>
           {sub}
@@ -94,35 +94,20 @@ export function DashboardPage() {
 
   return (
     <div>
-      {/* Section Header */}
-      <div className="flex items-start justify-between mb-4">
-        <div>
-          <div className="text-white font-bold" style={{ fontSize: 22, letterSpacing: "-0.025em" }}>Platform Overview</div>
-          <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 5, lineHeight: 1.45 }}>
-            Real-time snapshot of TaskBuddy&apos;s key metrics
+      <section className="relative overflow-hidden rounded-3xl p-6 mb-5" style={{ background: "linear-gradient(120deg, rgba(35,45,78,.95), rgba(16,24,47,.9))", border: "1px solid rgba(120,145,220,.22)", boxShadow: "0 20px 50px rgba(0,0,0,.2)" }}>
+        <div className="absolute -right-16 -top-24 rounded-full" style={{ width: 230, height: 230, background: "radial-gradient(circle, rgba(56,189,248,.18), transparent 68%)" }} />
+        <div className="relative flex items-start justify-between gap-4">
+          <div>
+            <div className="flex items-center gap-2 mb-3" style={{ fontSize: 10, color: "#9db3d8", letterSpacing: ".12em", textTransform: "uppercase", fontWeight: 700 }}>Operations center <span style={{ opacity: .45 }}>·</span> Today</div>
+            <h1 className="text-white font-bold" style={{ fontSize: 28, letterSpacing: "-0.04em", lineHeight: 1.1 }}>Platform overview</h1>
+            <p style={{ fontSize: 12, color: "#aebbd5", marginTop: 8, lineHeight: 1.5 }}>A clear read on marketplace activity, revenue, and the work that needs attention.</p>
           </div>
+          <div className="flex items-center gap-2 font-semibold flex-shrink-0" style={{ background: "rgba(34,197,94,.13)", border: "1px solid rgba(34,197,94,.24)", borderRadius: 999, padding: "8px 12px", fontSize: 11.4, color: "var(--success-text)" }}><div className="rounded-full" style={{ width: 7, height: 7, background: "var(--success-text)", boxShadow: "0 0 8px var(--success-text)" }} />Live data</div>
         </div>
-        <div
-          className="flex items-center gap-1.5 font-semibold"
-          style={{
-            background: "rgba(34,197,94,0.12)",
-            border: "1px solid rgba(34,197,94,0.2)",
-            borderRadius: 11,
-            padding: "7px 11px",
-            fontSize: 11.4,
-            color: "var(--success-text)",
-          }}
-        >
-          <div
-            className="rounded-full"
-            style={{ width: 6, height: 6, background: "var(--success-text)", boxShadow: "0 0 6px var(--success-text)" }}
-          />
-          Live
-        </div>
-      </div>
+      </section>
 
       {/* Stat Cards */}
-      <div className="flex gap-3 mb-4 flex-wrap">
+      <div className="flex gap-3 mb-5 flex-wrap">
         <StatCard
           icon={<Users size={14} />}
           label="Total Users"
@@ -160,14 +145,15 @@ export function DashboardPage() {
         />
       </div>
 
+      <div className="flex items-center justify-between mb-2"><div className="font-semibold text-white" style={{ fontSize: 13 }}>Needs your attention</div><div style={{ fontSize: 10, color: "var(--text-muted)" }}>Live queue</div></div>
       {/* Secondary Stat Row — actionable items only. Completion rate, avg
           rating, and total revenue duplicated Reports & Analytics, which
           already covers them (and more); trimmed so Dashboard stays a quick
           glance + what needs your attention right now, not a second Reports
           page. */}
-      <div className="flex gap-3 mb-4 flex-wrap">
+      <div className="flex gap-3 mb-5 flex-wrap">
         <div
-          className="flex items-center gap-3 px-4 py-3 rounded-xl flex-1 min-w-[210px]"
+          className="flex items-center gap-3 px-4 py-3 rounded-2xl flex-1 min-w-[210px]"
           style={{ background: "var(--card-bg)", border: "1px solid var(--card-border)" }}
         >
           <ShieldCheck size={16} style={{ color: "#f59e0b" }} />
@@ -184,7 +170,7 @@ export function DashboardPage() {
           </Link>
         </div>
         <div
-          className="flex items-center gap-3 px-4 py-3 rounded-xl flex-1 min-w-[210px]"
+          className="flex items-center gap-3 px-4 py-3 rounded-2xl flex-1 min-w-[210px]"
           style={{ background: "var(--card-bg)", border: "1px solid var(--card-border)" }}
         >
           <WalletCards size={16} style={{ color: "var(--warning-text)" }} />
@@ -201,7 +187,7 @@ export function DashboardPage() {
           </Link>
         </div>
         <div
-          className="flex items-center gap-3 px-4 py-3 rounded-xl flex-1 min-w-[210px]"
+          className="flex items-center gap-3 px-4 py-3 rounded-2xl flex-1 min-w-[210px]"
           style={{ background: "var(--card-bg)", border: "1px solid var(--card-border)" }}
         >
           <AlertTriangle size={16} style={{ color: "var(--danger-text)" }} />
@@ -218,7 +204,7 @@ export function DashboardPage() {
           </Link>
         </div>
         <div
-          className="flex items-center gap-3 px-4 py-3 rounded-xl flex-1 min-w-[210px]"
+          className="flex items-center gap-3 px-4 py-3 rounded-2xl flex-1 min-w-[210px]"
           style={{ background: "var(--card-bg)", border: "1px solid var(--card-border)" }}
         >
           <CreditCard size={16} style={{ color: "var(--indigo-light)" }} />
@@ -236,10 +222,11 @@ export function DashboardPage() {
         </div>
       </div>
 
+      <div className="flex items-center justify-between mb-2"><div className="font-semibold text-white" style={{ fontSize: 13 }}>What&apos;s happening</div><div style={{ fontSize: 10, color: "var(--text-muted)" }}>Latest signals</div></div>
       {/* Recent Activity + Marketplace Health */}
       <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1.6fr)_minmax(260px,0.8fr)] gap-3">
         <div
-          className="rounded-xl p-5"
+          className="rounded-2xl p-5"
           style={{ background: "var(--card-bg)", border: "1px solid var(--card-border)" }}
         >
           <div className="flex items-start justify-between mb-1 gap-3">
@@ -275,7 +262,7 @@ export function DashboardPage() {
         </div>
 
         <div
-          className="rounded-xl p-5"
+          className="rounded-2xl p-5"
           style={{ background: "var(--card-bg)", border: "1px solid var(--card-border)" }}
         >
           <div className="font-semibold text-white mb-1" style={{ fontSize: 14 }}>Marketplace Health</div>
@@ -302,3 +289,4 @@ export function DashboardPage() {
     </div>
   );
 }
+
