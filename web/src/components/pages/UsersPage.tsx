@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Search, CheckCircle, PauseCircle, Download, KeyRound } from "lucide-react";
+import { Search, CheckCircle, PauseCircle, Download, KeyRound, Users, Wrench, Home } from "lucide-react";
 import { useApp } from "@/context/AppContext";
 import { datedFilename, downloadCsv, toCsv } from "@/lib/export/csv";
 import { REASON_MAX_LENGTH, validateDurationDays } from "@/lib/validation";
@@ -208,9 +208,9 @@ export function UsersPage() {
 
       <div className="flex gap-2.5 flex-wrap mb-4">
         {[
-          { icon: "👥", label: "Total Users", val: total, accent: "#22c3d6", role: "all" as RoleFilter },
-          { icon: "🔧", label: "Providers", val: providers, accent: "#38bdf8", role: "provider" as RoleFilter },
-          { icon: "👤", label: "Homeowners", val: customers, accent: "#22c55e", role: "customer" as RoleFilter },
+          { icon: <Users size={13} />, label: "Total Users", val: total, accent: "#22c3d6", role: "all" as RoleFilter },
+          { icon: <Wrench size={13} />, label: "Providers", val: providers, accent: "#38bdf8", role: "provider" as RoleFilter },
+          { icon: <Home size={13} />, label: "Homeowners", val: customers, accent: "#22c55e", role: "customer" as RoleFilter },
         ].map((s) => {
           const isActive = roleFilter === s.role;
           return (
@@ -220,7 +220,7 @@ export function UsersPage() {
             className="flex items-center gap-2 rounded-xl cursor-pointer transition-opacity hover:opacity-80"
             style={{ padding: "9px 14px", border: `1px solid ${s.accent}33`, background: isActive ? `${s.accent}30` : `${s.accent}18`, fontSize: 11.4, fontFamily: "inherit", outline: isActive ? `1px solid ${s.accent}55` : "none" }}
           >
-            <span>{s.icon}</span>
+            <span style={{ color: s.accent, display: "flex" }}>{s.icon}</span>
             <span className="font-semibold text-white">{s.val}</span>
             <span style={{ color: "var(--text-muted)" }}>{s.label}</span>
           </button>
