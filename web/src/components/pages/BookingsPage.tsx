@@ -256,7 +256,7 @@ export function BookingsPage() {
                         onChange={() => toggleOne(b.id)}
                       />
                     </td>
-                    <td style={{ color: "var(--indigo-light)", fontFamily: "monospace", fontSize: 11 }}>{b.id}</td>
+                    <td style={{ color: "var(--indigo-light)", fontFamily: "monospace", fontSize: 11 }} title={b.id}>{b.id.slice(0, 8)}…</td>
                     <td className="text-white">{b.customer}</td>
                     <td className="hidden md:table-cell" style={{ color: "var(--text-light)" }}>{b.provider}</td>
                     <td className="hidden lg:table-cell" style={{ color: "var(--text-light)" }}>{b.service}</td>
