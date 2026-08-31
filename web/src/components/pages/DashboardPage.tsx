@@ -11,7 +11,7 @@ import {
   AlertTriangle,
   CheckCircle,
   UserPlus,
-  WalletCards, Percent,
+  WalletCards, Percent, Star,
 } from "lucide-react";
 import { useApp } from "@/context/AppContext";
 import { formatCurrency } from "@/lib/adapters";
@@ -278,17 +278,22 @@ export function DashboardPage() {
             ["Jobs matching", String(matchingJobs)],
             ["Escrow held", formatCurrency(escrowHeld)],
             ["Dispute rate", `${disputeRate.toFixed(1)}%`],
-            ["Avg provider rating", `${dashboardStats.avgRating} ★`],
-          ].map(([label, value], i, arr) => (
+          ].map(([label, value]) => (
             <div
               key={label}
               className="flex items-center justify-between"
-              style={{ padding: "11px 0", borderBottom: i === arr.length - 1 ? "none" : "1px solid var(--border)" }}
+              style={{ padding: "11px 0", borderBottom: "1px solid var(--border)" }}
             >
               <span style={{ fontSize: 11.4, color: "var(--text-light)" }}>{label}</span>
               <span className="text-white font-bold" style={{ fontSize: 13 }}>{value}</span>
             </div>
           ))}
+          <div className="flex items-center justify-between" style={{ padding: "11px 0" }}>
+            <span style={{ fontSize: 11.4, color: "var(--text-light)" }}>Avg provider rating</span>
+            <span className="text-white font-bold flex items-center gap-1" style={{ fontSize: 13 }}>
+              {dashboardStats.avgRating} <Star size={12} fill="#f59e0b" color="#f59e0b" />
+            </span>
+          </div>
         </div>
       </div>
     </div>
