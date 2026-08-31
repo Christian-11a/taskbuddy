@@ -58,7 +58,7 @@ export function ActivityLogPage() {
     <div>
       <div className="flex items-start justify-between flex-wrap gap-3 mb-4">
         <div>
-          <div className="text-white font-bold" style={{ fontSize: 22, letterSpacing: "-0.025em" }}>Activity Log</div>
+          <h1 className="text-white font-bold" style={{ fontSize: 22, letterSpacing: "-0.025em" }}>Activity Log</h1>
           <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 5, lineHeight: 1.45 }}>
             Recent booking status transitions across the platform — {total} events
           </div>
@@ -92,7 +92,7 @@ export function ActivityLogPage() {
       <div className="rounded-xl overflow-hidden" style={{ background: "var(--card-bg)", border: "1px solid var(--card-border)" }}>
         <div style={{ padding: 20 }}>
         {recentActivity.length === 0 && (
-          <div className="text-center py-12" style={{ color: "var(--text-muted)", fontSize: 13 }}>
+          <div role="status" aria-live="polite" className="text-center py-12" style={{ color: "var(--text-muted)", fontSize: 13 }}>
             {loading
               ? "Loading activity…"
                 : total === 0

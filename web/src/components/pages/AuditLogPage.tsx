@@ -66,7 +66,7 @@ export function AuditLogPage() {
     <div>
       <div className="flex items-start justify-between flex-wrap gap-3 mb-4">
         <div>
-          <div className="text-white font-bold" style={{ fontSize: 22, letterSpacing: "-0.025em" }}>Audit Log</div>
+          <h1 className="text-white font-bold" style={{ fontSize: 22, letterSpacing: "-0.025em" }}>Audit Log</h1>
           <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 5, lineHeight: 1.45 }}>
             Every suspend, reinstate, cancel, and dispute resolution — with the admin behind it
           </div>
@@ -84,10 +84,10 @@ export function AuditLogPage() {
       <div className="rounded-xl overflow-hidden" style={{ background: "var(--card-bg)", border: "1px solid var(--card-border)" }}>
         <div style={{ padding: 20 }}>
         {loading && (
-          <div className="text-center py-12" style={{ color: "var(--text-muted)", fontSize: 13 }}>Loading…</div>
+          <div role="status" aria-live="polite" className="text-center py-12" style={{ color: "var(--text-muted)", fontSize: 13 }}>Loading audit log…</div>
         )}
         {!loading && error && (
-          <div className="flex items-center justify-center gap-2 py-12" style={{ color: "var(--danger-text)", fontSize: 13 }}>
+          <div role="alert" className="flex items-center justify-center gap-2 py-12" style={{ color: "var(--danger-text)", fontSize: 13 }}>
             <ShieldAlert size={14} /> Could not load the audit log.
           </div>
         )}

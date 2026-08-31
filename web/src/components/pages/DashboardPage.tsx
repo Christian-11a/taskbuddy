@@ -31,7 +31,7 @@ const StatCard = ({
   accent: string;
 }) => (
   <div
-    className="flex-1 min-w-0 rounded-xl p-4 flex flex-col gap-3"
+    className="flex-1 min-w-[145px] rounded-xl p-4 flex flex-col gap-3"
     style={{ background: "var(--card-bg)", border: "1px solid var(--card-border)" }}
   >
     <div className="flex items-center justify-between">
@@ -167,7 +167,7 @@ export function DashboardPage() {
           page. */}
       <div className="flex gap-3 mb-4 flex-wrap">
         <div
-          className="flex items-center gap-3 px-4 py-3 rounded-xl flex-1"
+          className="flex items-center gap-3 px-4 py-3 rounded-xl flex-1 min-w-[210px]"
           style={{ background: "var(--card-bg)", border: "1px solid var(--card-border)" }}
         >
           <ShieldCheck size={16} style={{ color: "#f59e0b" }} />
@@ -184,7 +184,7 @@ export function DashboardPage() {
           </Link>
         </div>
         <div
-          className="flex items-center gap-3 px-4 py-3 rounded-xl flex-1"
+          className="flex items-center gap-3 px-4 py-3 rounded-xl flex-1 min-w-[210px]"
           style={{ background: "var(--card-bg)", border: "1px solid var(--card-border)" }}
         >
           <WalletCards size={16} style={{ color: "var(--warning-text)" }} />
@@ -201,7 +201,7 @@ export function DashboardPage() {
           </Link>
         </div>
         <div
-          className="flex items-center gap-3 px-4 py-3 rounded-xl flex-1"
+          className="flex items-center gap-3 px-4 py-3 rounded-xl flex-1 min-w-[210px]"
           style={{ background: "var(--card-bg)", border: "1px solid var(--card-border)" }}
         >
           <AlertTriangle size={16} style={{ color: "var(--danger-text)" }} />
@@ -218,7 +218,7 @@ export function DashboardPage() {
           </Link>
         </div>
         <div
-          className="flex items-center gap-3 px-4 py-3 rounded-xl flex-1"
+          className="flex items-center gap-3 px-4 py-3 rounded-xl flex-1 min-w-[210px]"
           style={{ background: "var(--card-bg)", border: "1px solid var(--card-border)" }}
         >
           <CreditCard size={16} style={{ color: "var(--indigo-light)" }} />

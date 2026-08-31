@@ -475,7 +475,7 @@ export function TransactionsPage() {
           separate export button (which used to leave a large empty gap). */}
       <div className="flex items-start justify-between flex-wrap gap-3 mb-4">
         <div>
-          <div className="text-white font-bold" style={{ fontSize: 22, letterSpacing: "-0.025em" }}>Transactions</div>
+          <h1 className="text-white font-bold" style={{ fontSize: 22, letterSpacing: "-0.025em" }}>Transactions</h1>
           <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 5, lineHeight: 1.45 }}>Monitor escrow payments and wallet activity across the platform</div>
         </div>
         <button

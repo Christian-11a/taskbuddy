@@ -163,7 +163,7 @@ export function BookingsPage() {
     <div>
       <div className="flex items-start justify-between flex-wrap gap-3 mb-4">
         <div>
-          <div className="text-white font-bold" style={{ fontSize: 22, letterSpacing: "-0.025em" }}>Bookings</div>
+          <h1 className="text-white font-bold" style={{ fontSize: 22, letterSpacing: "-0.025em" }}>Bookings</h1>
           <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 5, lineHeight: 1.45 }}>Track all service bookings across the platform</div>
         </div>
         <button
@@ -213,8 +213,14 @@ export function BookingsPage() {
       )}
 
       <div className="rounded-xl overflow-hidden" style={{ background: "var(--card-bg)", border: "1px solid var(--card-border)" }}>
-        <div className="overflow-x-auto">
-          <table className="data-table">
+        <div
+          className="overflow-x-auto pb-1"
+          role="region"
+          aria-label="Bookings table"
+          tabIndex={0}
+          style={{ scrollbarColor: "var(--border-md) transparent" }}
+        >
+          <table className="data-table" style={{ minWidth: 720 }}>
             <thead>
               <tr>
                 <th style={{ width: 30 }}>
@@ -362,6 +368,9 @@ export function BookingsPage() {
               )}
             </tbody>
           </table>
+        </div>
+        <div className="md:hidden px-4 py-2" style={{ color: "var(--text-muted)", fontSize: 10 }}>
+          Swipe horizontally to view provider, service, and date details.
         </div>
         <Pagination
           page={page}

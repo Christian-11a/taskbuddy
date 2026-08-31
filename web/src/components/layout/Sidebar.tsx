@@ -112,7 +112,7 @@ export function Sidebar({ activePage, onNavigate, onLogout, collapsed, onToggleC
                 title={collapsed ? item.label : undefined}
                 aria-current={activePage === item.id ? "page" : undefined}
                 className={clsx(
-                  "w-full flex items-center rounded-xl mb-0.5 text-left relative transition-all duration-150 font-medium cursor-pointer",
+                  "sidebar-nav-link w-full flex items-center rounded-xl mb-0.5 text-left relative transition-all duration-150 font-medium cursor-pointer",
                   collapsed && "justify-center",
                   activePage !== item.id && "text-gray-500 hover:bg-white/5 hover:text-gray-300"
                 )}
@@ -141,7 +141,7 @@ export function Sidebar({ activePage, onNavigate, onLogout, collapsed, onToggleC
           title={collapsed ? "Settings" : undefined}
           aria-current={activePage === "settings" ? "page" : undefined}
           className={clsx(
-            "w-full flex items-center gap-2.5 rounded-xl mb-2 text-left transition-all duration-150",
+            "sidebar-nav-link w-full flex items-center gap-2.5 rounded-xl mb-2 text-left transition-all duration-150",
             collapsed && "justify-center",
             activePage !== "settings" && "text-gray-500 hover:bg-white/5 hover:text-gray-300"
           )}

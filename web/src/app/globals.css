@@ -5,17 +5,17 @@
 @import "tailwindcss";
 
 :root {
-  --bg-main: #0b0f14;
-  --bg-sidebar: #0d131a;
-  --bg-header: #0f141b;
+  --bg-main: #0b1016;
+  --bg-sidebar: #0d141b;
+  --bg-header: #10171f;
   --border: #1a2430;
   --border-md: #263240;
   --text-white: #f8fafc;
   --text-muted: #7f8c9b;
   --text-light: #c5cfda;
-  --indigo: #22c3d6;
-  --indigo-light: #72dbe6;
-  --indigo-dark: rgba(34, 195, 214, 0.12);
+  --indigo: #2bb3c0;
+  --indigo-light: #78d5dc;
+  --indigo-dark: rgba(43, 179, 192, 0.12);
   --violet: #38bdf8;
   --green: #22c55e;
   --red: #ef4444;
@@ -37,7 +37,7 @@
 /* Light mode overrides */
 [data-theme="light"] {
   --bg-main: #f3f4f6;
-  --bg-sidebar: linear-gradient(180deg, #ffffff 0%, #f9fafb 100%);
+  --bg-sidebar: #ffffff;
   --bg-header: #ffffff;
   --border: rgba(0, 0, 0, 0.08);
   --border-md: rgba(0, 0, 0, 0.12);
@@ -119,6 +119,26 @@ aside.sidebar {
   transition: opacity 0.15s ease, width 0.15s ease;
 }
 
+.sidebar-nav-link {
+  min-height: 36px;
+  text-decoration: none;
+}
+
+.sidebar-nav-link:hover {
+  transform: translateX(1px);
+}
+
+.sidebar-nav-link:active {
+  transform: translateX(1px) scale(0.99);
+}
+
+@media (max-width: 1023px) {
+  aside.sidebar {
+    width: min(var(--sidebar-w), 86vw) !important;
+    box-shadow: 18px 0 42px rgba(0, 0, 0, 0.28);
+  }
+}
+
 /* Content area margin — 0 on mobile (sidebar is off-canvas), sidebar width on lg+ */
 .content-area {
   margin-left: 0;
@@ -154,6 +174,49 @@ body {
   background: var(--bg-main);
   color: var(--text-white);
   font-size: 14px;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+::selection {
+  background: rgba(43, 179, 192, 0.28);
+  color: var(--text-white);
+}
+
+button,
+a,
+input,
+select,
+textarea {
+  -webkit-tap-highlight-color: transparent;
+}
+
+:where(button, a, input, select, textarea):focus-visible {
+  outline: 2px solid var(--indigo-light);
+  outline-offset: 2px;
+}
+
+/* Keep the shell quiet and legible: reserve contrast for current state and
+   actionable controls rather than giving every panel a glow. */
+.app-shell .text-gray-500 { color: #8794a3; }
+.app-shell .text-gray-400 { color: #9aa7b5; }
+
+@media (max-width: 639px) {
+  .content-area main > div,
+  .content-area main > div > div {
+    /* Preserve comfortable page gutters on narrow screens without forcing
+       every page component to carry a mobile-specific padding prop. */
+    max-width: 100%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }
 
 /* Scrollbar */

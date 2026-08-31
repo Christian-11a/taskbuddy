@@ -332,8 +332,14 @@ export function UsersPage() {
         </div>
       )}
 
-        <div className="overflow-x-auto">
-          <table className="data-table">
+        <div
+          className="overflow-x-auto pb-1"
+          role="region"
+          aria-label="Users table"
+          tabIndex={0}
+          style={{ scrollbarColor: "var(--border-md) transparent" }}
+        >
+          <table className="data-table" style={{ minWidth: 620 }}>
             <thead>
               <tr>
                 <th style={{ width: 30 }}>
@@ -426,6 +432,9 @@ export function UsersPage() {
               )}
             </tbody>
           </table>
+        </div>
+        <div className="md:hidden px-4 py-2" style={{ color: "var(--text-muted)", fontSize: 10 }}>
+          Swipe horizontally to view all user details.
         </div>
         <Pagination page={page} pageSize={PAGE_SIZE} total={filtered.length} onPageChange={setPage} itemLabel="users" />
       </div>

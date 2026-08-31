@@ -189,7 +189,7 @@ export function SettingsPage() {
   return (
     <div>
       <div className="mb-4">
-        <div className="text-white font-bold" style={{ fontSize: 22, letterSpacing: "-0.025em" }}>Settings</div>
+        <h1 className="text-white font-bold" style={{ fontSize: 22, letterSpacing: "-0.025em" }}>Settings</h1>
         <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 5, lineHeight: 1.45 }}>Configure your admin console preferences</div>
       </div>
 
