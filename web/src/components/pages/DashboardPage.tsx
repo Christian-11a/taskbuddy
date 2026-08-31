@@ -112,8 +112,8 @@ export function DashboardPage() {
           nothing about platform state and made the dashboard read as a
           marketing surface rather than a place of work. */}
       <header className="mb-6">
-        <h1 className="text-white font-bold" style={{ fontSize: "var(--fs-3xl)", letterSpacing: "var(--tr-tight)", lineHeight: "var(--lh-tight)" }}>Platform overview</h1>
-        <p style={{ fontSize: "var(--fs-sm)", color: "var(--text-muted)", marginTop: "var(--sp-2)", lineHeight: "var(--lh-normal)" }}>A clear read on marketplace activity, revenue, and the work that needs attention.</p>
+        <h1 className="text-white font-bold" style={{ fontSize: "var(--fs-3xl)", letterSpacing: "var(--tr-tight)", lineHeight: "var(--lh-tight)" }}>Today at TaskBuddy</h1>
+        <p style={{ fontSize: "var(--fs-sm)", color: "var(--text-muted)", marginTop: "var(--sp-2)", lineHeight: "var(--lh-normal)" }}>Marketplace activity, money in motion, and work waiting for review.</p>
       </header>
 
       {/* Outstanding work leads the page. This is an operations console: what
@@ -182,14 +182,14 @@ export function DashboardPage() {
           label="Total Users"
           value={dashboardStats.totalUsers.toLocaleString()}
           sub={newUsersThisMonth > 0 ? `+${newUsersThisMonth} this month` : "No new signups this month"}
-          accent="#22c3d6"
+          accent="var(--chart-cyan)"
         />
         <StatCard
           icon={<ShieldCheck size={14} />}
           label="Active Providers"
           value={dashboardStats.activeProviders}
           sub={`${activeProviderShare}% of registered users`}
-          accent="#22c55e"
+          accent="var(--chart-green)"
         />
         <StatCard
           icon={<CalendarDays size={14} />}
@@ -197,7 +197,7 @@ export function DashboardPage() {
           value={bookingsThisMonth.toLocaleString()}
           sub={`${dashboardStats.completionRate}% completion rate`}
           className="col-span-2 lg:col-span-1"
-          accent="#38bdf8"
+          accent="var(--chart-blue)"
         />
       </div>
 
@@ -268,8 +268,8 @@ export function DashboardPage() {
           className="rounded-2xl p-5"
           style={{ background: "var(--card-bg)", border: "1px solid var(--card-border)" }}
         >
-          <div className="font-semibold text-white mb-1" style={{ fontSize: "var(--fs-md)" }}>Marketplace Health</div>
-          <div style={{ fontSize: "var(--fs-xs)", color: "var(--text-muted)", marginBottom: "var(--sp-3)" }}>Current operational signals</div>
+          <div className="font-semibold text-white mb-1" style={{ fontSize: "var(--fs-md)" }}>Service health</div>
+          <div style={{ fontSize: "var(--fs-xs)", color: "var(--text-muted)", marginBottom: "var(--sp-3)" }}>Live booking and provider signals</div>
           {[
             ["Completion rate", `${dashboardStats.completionRate}%`],
             ["Open jobs", String(openJobs)],
@@ -289,7 +289,7 @@ export function DashboardPage() {
           <div className="flex items-center justify-between" style={{ padding: "11px 0" }}>
             <span style={{ fontSize: "var(--fs-xs)", color: "var(--text-light)" }}>Avg provider rating</span>
             <span className="text-white font-bold flex items-center gap-1" style={{ fontSize: "var(--fs-md)" }}>
-              {dashboardStats.avgRating} <Star size={12} fill="#f59e0b" color="#f59e0b" />
+              {dashboardStats.avgRating} <Star size={12} fill="var(--chart-amber)" color="var(--chart-amber)" />
             </span>
           </div>
         </div>

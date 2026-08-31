@@ -20,7 +20,7 @@ import { formatCurrency, formatCurrencyCompact } from "@/lib/adapters";
 import { datedFilename, downloadCsv, toCsv } from "@/lib/export/csv";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 
-const PIE_COLORS = ["#22c3d6", "#38bdf8", "#22c55e", "#f59e0b", "#ef4444", "#a78bfa"];
+const PIE_COLORS = ["var(--chart-cyan)", "var(--chart-blue)", "var(--chart-green)", "var(--chart-amber)", "var(--chart-red)", "var(--chart-violet)"];
 
 export function ReportsPage() {
   const {
@@ -111,8 +111,8 @@ export function ReportsPage() {
               <AreaChart data={revenueSeries}>
                 <defs>
                   <linearGradient id="rev" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#22c3d6" stopOpacity={0.3} />
-                    <stop offset="95%" stopColor="#22c3d6" stopOpacity={0} />
+                    <stop offset="5%" stopColor="var(--chart-cyan)" stopOpacity={0.3} />
+                    <stop offset="95%" stopColor="var(--chart-cyan)" stopOpacity={0} />
                   </linearGradient>
                 </defs>
                 <XAxis dataKey="month" tick={{ fill: "var(--text-muted)", fontSize: "var(--fs-2xs)" }} axisLine={false} tickLine={false} />
@@ -130,7 +130,7 @@ export function ReportsPage() {
                   itemStyle={{ color: "var(--text-white)", fontSize: "var(--fs-sm)", fontWeight: 600, padding: 0 }}
                   formatter={(v: number) => [formatCurrency(v), "Revenue"]}
                 />
-                <Area type="monotone" dataKey="value" stroke="#22c3d6" fill="url(#rev)" strokeWidth={2} />
+                <Area type="monotone" dataKey="value" stroke="var(--chart-cyan)" fill="url(#rev)" strokeWidth={2} />
               </AreaChart>
             </ResponsiveContainer>
           )}
@@ -159,7 +159,7 @@ export function ReportsPage() {
           <div className="flex items-center justify-between" style={{ padding: "11px 0" }}>
             <span style={{ fontSize: "var(--fs-xs)", color: "var(--text-light)" }}>Avg provider rating</span>
             <span className="text-white font-bold flex items-center gap-1" style={{ fontSize: "var(--fs-md)" }}>
-              {dashboardStats.avgRating} <Star size={12} fill="#f59e0b" color="#f59e0b" />
+              {dashboardStats.avgRating} <Star size={12} fill="var(--chart-amber)" color="var(--chart-amber)" />
             </span>
           </div>
         </div>
@@ -191,7 +191,7 @@ export function ReportsPage() {
                 itemStyle={{ color: "var(--text-white)", fontSize: "var(--fs-sm)", fontWeight: 600, padding: 0 }}
                 formatter={(v: number) => [v, "Bookings"]}
               />
-              <Bar dataKey="value" fill="#38bdf8" radius={[4, 4, 0, 0]} />
+              <Bar dataKey="value" fill="var(--chart-blue)" radius={[4, 4, 0, 0]} />
             </BarChart>
           </ResponsiveContainer>
         </div>
@@ -253,7 +253,7 @@ export function ReportsPage() {
                   width: 22,
                   height: 22,
                   borderRadius: "var(--r-sm)",
-                  background: i === 0 ? "#f59e0b" : i === 1 ? "#9ca3af" : i === 2 ? "#cd7c3d" : "#6b7280",
+                  background: i === 0 ? "var(--chart-amber)" : i === 1 ? "var(--text-muted)" : i === 2 ? "var(--rank-bronze)" : "var(--text-dim)",
                   color: "#fff",
                   fontSize: "var(--fs-3xs)",
                 }}
@@ -263,7 +263,7 @@ export function ReportsPage() {
               <div className="flex-1 min-w-0">
                 <div className="text-white font-medium" style={{ fontSize: "var(--fs-xs)" }}>{p.name}</div>
                 <div className="flex items-center gap-1" style={{ fontSize: "var(--fs-3xs)", color: "var(--text-muted)" }}>
-                  {p.jobs} jobs · {p.rating} <Star size={9} fill="#f59e0b" color="#f59e0b" />
+                  {p.jobs} jobs · {p.rating} <Star size={9} fill="var(--chart-amber)" color="var(--chart-amber)" />
                 </div>
               </div>
               <div

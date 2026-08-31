@@ -75,7 +75,10 @@
   --track-bg: #202a35;
   --success-text: #4ade80;
   --danger-text: #f87171;
+  --danger-border: rgba(239, 68, 68, 0.4);
   --warning-text: #fbbf24;
+  --text-dim: #6b7280;
+  --rank-bronze: #cd7c3d;
   --sidebar-w: 244px;
   --sidebar-collapsed-w: 68px;
   /* Solid brand fill for primary actions. Deeper than --indigo so white label
@@ -85,6 +88,20 @@
   --brand-solid: #0e7f8d;
   --brand-solid-hover: #0b6a76;
   --brand-on-solid: #ffffff;
+  --login-brand-start: #10383f;
+  --login-brand-mid: #10505b;
+  --login-brand-end: #24508b;
+  --login-brand-text: #c1dfe1;
+  --login-brand-muted: #9fc4c7;
+  --login-brand-accent: #9de2e4;
+  --login-panel: #080d12;
+  --login-input: rgba(255, 255, 255, 0.06);
+  --chart-cyan: #22c3d6;
+  --chart-blue: #38bdf8;
+  --chart-green: #22c55e;
+  --chart-amber: #f59e0b;
+  --chart-red: #ef4444;
+  --chart-violet: #a78bfa;
 
   /* Shell surfaces. The sidebar and header used hardcoded Tailwind darks
      (text-white, hover:bg-white/5, #516071) which light mode then had to

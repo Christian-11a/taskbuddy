@@ -34,10 +34,10 @@ export function LoginPage() {
   };
 
   return (
-    <div className="login-page flex min-h-screen w-full overflow-hidden" style={{ background: "#080d12" }}>
-      <aside className="login-brand-panel hidden lg:flex flex-col justify-between p-12" style={{ flex: "0 0 47%", background: "linear-gradient(112deg, #10383f 0%, #10505b 58%, #24508b 100%)", borderRight: "1px solid rgba(255,255,255,.12)" }}>
+    <div className="login-page flex min-h-screen w-full overflow-hidden" style={{ background: "var(--login-panel)" }}>
+      <aside className="login-brand-panel hidden lg:flex flex-col justify-between p-12" style={{ flex: "0 0 47%", background: "linear-gradient(112deg, var(--login-brand-start) 0%, var(--login-brand-mid) 58%, var(--login-brand-end) 100%)", borderRight: "1px solid rgba(255,255,255,.12)" }}>
         <div className="flex items-center gap-2.5"><Image src="/taskbuddy-logo.png" alt="" width={36} height={36} style={{ borderRadius: "var(--r-md)", objectFit: "cover" }} /><div><div className="text-white font-bold" style={{ fontSize: "var(--fs-md)" }}>TaskBuddy</div><div style={{ fontSize: "var(--fs-2xs)", color: "#9de2e4" }}>Admin Console</div></div></div>
-        <div style={{ maxWidth: 420 }}><div style={{ fontSize: "var(--fs-xs)", color: "#9de2e4", letterSpacing: ".12em", textTransform: "uppercase", fontWeight: 700, marginBottom: "var(--sp-4)" }}>Marketplace operations</div><h2 className="text-white font-bold" style={{ fontSize: "clamp(2.4rem, 4vw, 4.2rem)", lineHeight: 1.02, letterSpacing: "-0.06em" }}>Keep every service moving.</h2><p style={{ color: "#c1dfe1", fontSize: "var(--fs-md)", lineHeight: 1.6, marginTop: "var(--sp-5)", maxWidth: 360 }}>One place to verify providers, protect payments, and keep the TaskBuddy marketplace healthy.</p><div className="flex gap-8" style={{ marginTop: "var(--sp-8)", paddingTop: "var(--sp-5)", borderTop: "1px solid rgba(255,255,255,.16)" }}><div><div className="text-white font-bold" style={{ fontSize: "var(--fs-xl)" }}>17</div><div style={{ color: "#9fc4c7", fontSize: "var(--fs-xs)" }}>users</div></div><div><div className="text-white font-bold" style={{ fontSize: "var(--fs-xl)" }}>10</div><div style={{ color: "#9fc4c7", fontSize: "var(--fs-xs)" }}>bookings this month</div></div><div><div className="text-white font-bold" style={{ fontSize: "var(--fs-xl)" }}>1</div><div style={{ color: "#9fc4c7", fontSize: "var(--fs-xs)" }}>needs review</div></div></div></div>
+        <div style={{ maxWidth: 420 }}><div style={{ fontSize: "var(--fs-xs)", color: "var(--login-brand-accent)", letterSpacing: ".12em", textTransform: "uppercase", fontWeight: 700, marginBottom: "var(--sp-4)" }}>Marketplace operations</div><h2 className="text-white font-bold" style={{ fontSize: "clamp(2.4rem, 4vw, 4.2rem)", lineHeight: 1.02, letterSpacing: "-0.06em" }}>Keep every service moving.</h2><p style={{ color: "var(--login-brand-text)", fontSize: "var(--fs-md)", lineHeight: 1.6, marginTop: "var(--sp-5)", maxWidth: 360 }}>One place to verify providers, protect payments, and keep the TaskBuddy marketplace healthy.</p><div className="flex gap-8" style={{ marginTop: "var(--sp-8)", paddingTop: "var(--sp-5)", borderTop: "1px solid rgba(255,255,255,.16)" }}><div><div className="text-white font-bold" style={{ fontSize: "var(--fs-md)" }}>Verify</div><div style={{ color: "var(--login-brand-muted)", fontSize: "var(--fs-xs)" }}>providers</div></div><div><div className="text-white font-bold" style={{ fontSize: "var(--fs-md)" }}>Protect</div><div style={{ color: "var(--login-brand-muted)", fontSize: "var(--fs-xs)" }}>payments</div></div><div><div className="text-white font-bold" style={{ fontSize: "var(--fs-md)" }}>Operate</div><div style={{ color: "var(--login-brand-muted)", fontSize: "var(--fs-xs)" }}>with clarity</div></div></div></div>
         <div aria-hidden="true" />
       </aside>
       <main className="flex flex-1 items-center justify-center p-6 lg:p-12">
@@ -64,9 +64,9 @@ export function LoginPage() {
 
         <form onSubmit={handleSubmit} noValidate>
           <div style={{ marginBottom: "var(--sp-4)" }}>
-            <label htmlFor={emailId} className="block font-medium" style={{ fontSize: "var(--fs-xs)", color: "#9ca3af", marginBottom: 7 }}>Admin email</label>
+            <label htmlFor={emailId} className="block font-medium" style={{ fontSize: "var(--fs-xs)", color: "var(--text-muted)", marginBottom: 7 }}>Admin email</label>
             <div className="relative">
-              <span className="absolute top-1/2 -translate-y-1/2 left-3.5 opacity-50"><Mail size={14} color="#6b7280" /></span>
+              <span className="absolute top-1/2 -translate-y-1/2 left-3.5 opacity-50"><Mail size={14} /></span>
               <input
                 id={emailId}
                 type="email"
@@ -75,15 +75,15 @@ export function LoginPage() {
                 value={email}
                 onChange={(e) => { setEmail(e.target.value); setError(""); }}
                 className="w-full text-white outline-none"
-                style={{ background: "rgba(255,255,255,0.06)", border: `1px solid ${error ? "rgba(239,68,68,0.4)" : "rgba(255,255,255,0.1)"}`, borderRadius: "var(--r-md)", padding: "11px 14px 11px 36px", fontSize: "var(--fs-sm)", fontFamily: "inherit" }}
+                style={{ background: "var(--login-input)", border: `1px solid ${error ? "var(--danger-border)" : "var(--border-md)"}`, borderRadius: "var(--r-md)", padding: "11px 14px 11px 36px", fontSize: "var(--fs-sm)", fontFamily: "inherit" }}
               />
             </div>
           </div>
 
           <div style={{ marginBottom: 22 }}>
-            <label htmlFor={passwordId} className="block font-medium" style={{ fontSize: "var(--fs-xs)", color: "#9ca3af", marginBottom: 7 }}>Password</label>
+            <label htmlFor={passwordId} className="block font-medium" style={{ fontSize: "var(--fs-xs)", color: "var(--text-muted)", marginBottom: 7 }}>Password</label>
             <div className="relative">
-              <span className="absolute top-1/2 -translate-y-1/2 left-3.5 opacity-50"><Lock size={14} color="#6b7280" /></span>
+              <span className="absolute top-1/2 -translate-y-1/2 left-3.5 opacity-50"><Lock size={14} /></span>
               <input
                 id={passwordId}
                 type="password"
@@ -92,7 +92,7 @@ export function LoginPage() {
                 value={password}
                 onChange={(e) => { setPassword(e.target.value); setError(""); }}
                 className="w-full text-white outline-none"
-                style={{ background: "rgba(255,255,255,0.06)", border: `1px solid ${error ? "rgba(239,68,68,0.4)" : "rgba(255,255,255,0.1)"}`, borderRadius: "var(--r-md)", padding: "11px 14px 11px 36px", fontSize: "var(--fs-sm)", fontFamily: "inherit" }}
+                style={{ background: "var(--login-input)", border: `1px solid ${error ? "var(--danger-border)" : "var(--border-md)"}`, borderRadius: "var(--r-md)", padding: "11px 14px 11px 36px", fontSize: "var(--fs-sm)", fontFamily: "inherit" }}
               />
             </div>
           </div>
