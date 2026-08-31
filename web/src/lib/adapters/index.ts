@@ -119,9 +119,9 @@ export interface UserRow {
   initials: string;
   name: string;
   email: string;
-  /** Display label, emoji-prefixed (e.g. "🔧 Provider"). Use `rolePlain` for exports. */
+  /** Display label (e.g. "Provider") — the badge it renders in already carries color by role. */
   role: string;
-  /** Same role without the emoji — CSV exports and any non-visual consumer. */
+  /** Same as `role` — kept as a separate field for CSV exports and any non-visual consumer. */
   rolePlain: string;
   isProvider: boolean;
   status: string;
@@ -135,7 +135,7 @@ export interface UserRow {
   city: string;
   category: string;
   jobsCompleted: number;
-  /** Display string, e.g. "⭐ 4.5" or "Not yet rated". */
+  /** Display string, e.g. "4.5 rating" or "Not yet rated". */
   rating: string;
   /** Raw value for exports and sorting; null when the provider has no ratings. */
   ratingValue: number | null;
@@ -230,19 +230,19 @@ export function toUserRow(u: AdminUser): UserRow {
     initials: initials(u.name),
     name: u.name,
     email: u.email,
-    role: isProvider ? "🔧 Provider" : u.role === "admin" ? "🛡️ Admin" : "👤 Homeowner",
+    role: isProvider ? "Provider" : u.role === "admin" ? "Admin" : "Homeowner",
     rolePlain: isProvider ? "Provider" : u.role === "admin" ? "Admin" : "Homeowner",
     isProvider,
     status: display.label,
     statusClass: display.badgeClass,
     joined: formatDate(u.createdAt),
     createdAt: u.createdAt,
-    activity: `${u.jobsCompleted} job${u.jobsCompleted === 1 ? "" : "s"}${u.rating ? ` ⭐${u.rating}` : ""}`,
+    activity: `${u.jobsCompleted} job${u.jobsCompleted === 1 ? "" : "s"}${u.rating ? ` · ${u.rating} rating` : ""}`,
     phone: u.phone ?? "—",
     city: u.city ?? "—",
     category: u.categoryName ?? "—",
     jobsCompleted: u.jobsCompleted,
-    rating: u.rating ? `⭐ ${u.rating}` : "Not yet rated",
+    rating: u.rating ? `${u.rating} rating` : "Not yet rated",
     ratingValue: u.rating,
     suspendedUntil: u.suspendedUntil ? formatDate(u.suspendedUntil) : "—",
     suspensionReason: u.suspensionReason ?? "—",
