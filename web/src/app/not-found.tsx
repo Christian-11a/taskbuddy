@@ -21,8 +21,8 @@ export default function NotFound() {
       </div>
       <Link
         href="/dashboard"
-        className="font-semibold text-white transition-opacity hover:opacity-90"
-        style={{ background: "linear-gradient(172deg, #22c3d6 0%, #38bdf8 100%)", borderRadius: 11, padding: "9px 18px", fontSize: 13, textDecoration: "none" }}
+        className="btn-primary inline-block"
+        style={{ borderRadius: 11, padding: "9px 18px", fontSize: 13, textDecoration: "none" }}
       >
         Back to dashboard
       </Link>

@@ -182,8 +182,8 @@ export function DisputesPage() {
               <button
                 onClick={() => reviewing && openConfirm(reviewing.id, "RELEASED_TO_PROVIDER")}
                 disabled={resolvingId === reviewing?.id}
-                className="flex-1 flex items-center justify-center gap-1.5 font-semibold transition-colors disabled:opacity-50"
-                style={{ background: "linear-gradient(172deg, #22c3d6 0%, #38bdf8 100%)", border: "none", borderRadius: 9, padding: "9px 14px", fontSize: 12, color: "#fff", cursor: "pointer", fontFamily: "inherit" }}
+                className="btn-primary flex-1 flex items-center justify-center gap-1.5 transition-colors disabled:opacity-50"
+                style={{ borderRadius: 9, padding: "9px 14px", fontSize: 12 }}
               >
                 <Check size={13} /> Release to Provider
               </button>

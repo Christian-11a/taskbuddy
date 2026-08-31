@@ -270,8 +270,8 @@ export function SettingsPage() {
         </span>
         <button
           onClick={handleSave}
-          className="flex items-center gap-2 font-semibold transition-opacity hover:opacity-90"
-          style={{ background: "linear-gradient(172deg, #22c3d6 0%, #38bdf8 100%)", color: "#fff", borderRadius: 11, padding: "10px 20px", fontSize: 13, border: "none", cursor: "pointer", fontFamily: "inherit" }}
+          className="btn-primary flex items-center gap-2"
+          style={{ borderRadius: 11, padding: "10px 20px", fontSize: 13 }}
         >
           <Save size={14} /> Save account changes
         </button>

@@ -155,7 +155,7 @@ export function Sidebar({ activePage, onNavigate, onLogout, collapsed, onToggleC
           className={clsx("flex items-center rounded-xl", collapsed ? "justify-center px-1 py-2" : "gap-2.5")}
           style={collapsed ? {} : { background: "var(--card-bg)", border: "1px solid var(--card-border)", padding: "10px 11px", borderRadius: 11 }}
         >
-          <div className="flex items-center justify-center flex-shrink-0 font-bold" style={{ width: 29, height: 29, borderRadius: 9, background: "linear-gradient(145deg, #17bfd2, #087d91)", fontSize: 11, color: "#fff" }}>{initials(adminProfile.name)}</div>
+          <div className="flex items-center justify-center flex-shrink-0 font-bold" style={{ width: 29, height: 29, borderRadius: 9, background: "var(--brand-solid)", fontSize: 11, color: "var(--brand-on-solid)" }}>{initials(adminProfile.name)}</div>
           {!collapsed && (
             <>
               <div className="flex-1 min-w-0">

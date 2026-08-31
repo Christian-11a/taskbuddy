@@ -274,7 +274,7 @@ export function ReportsPage() {
                   className="h-full rounded-full"
                   style={{
                     width: `${(p.jobs / maxProviderJobs) * 100}%`,
-                    background: "linear-gradient(90deg, #22c3d6, #38bdf8)",
+                    background: "var(--indigo)",
                   }}
                 />
               </div>
