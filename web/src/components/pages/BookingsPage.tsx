@@ -177,13 +177,13 @@ export function BookingsPage() {
         </button>
       </div>
 
-      <div className="flex gap-2.5 flex-wrap mb-4">
+      <div className="flex gap-2.5 mb-4 overflow-x-auto pb-1" style={{ scrollbarColor: "var(--border-md) transparent" }}>
         {(["all", "Open", "Matching", "Assigned", "Confirmed", "In Progress", "Completed", "Cancelled", "Expired"] as StatusFilter[]).map((s) => {
           const accent = STATUS_ACCENTS[s];
           return (
             <button key={s} onClick={() => { setStatusFilter(s); clearSelectionOnScopeChange(); }}
-              className="flex items-center gap-2 rounded-xl cursor-pointer transition-opacity hover:opacity-80"
-              style={{ padding: "9px 14px", border: `1px solid ${accent}33`, background: statusFilter === s ? `${accent}28` : `${accent}18`, fontSize: 11.4, fontFamily: "inherit", outline: statusFilter === s ? `1px solid ${accent}44` : "none" }}
+              className="flex items-center gap-2 rounded-xl cursor-pointer transition-opacity hover:opacity-80 flex-shrink-0"
+              style={{ padding: "9px 14px", border: `1px solid ${accent}33`, background: statusFilter === s ? `${accent}28` : `${accent}18`, fontSize: 11.4, fontFamily: "inherit", outline: statusFilter === s ? `1px solid ${accent}44` : "none", whiteSpace: "nowrap" }}
             >
               <span className="font-semibold text-white">{counts[s]}</span>
               <span style={{ color: "var(--text-muted)" }}>{s === "all" ? "Total" : s}</span>
