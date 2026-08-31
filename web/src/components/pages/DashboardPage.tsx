@@ -100,9 +100,8 @@ export function DashboardPage() {
         <div className="absolute -right-16 -top-24 rounded-full" style={{ width: 230, height: 230, background: "radial-gradient(circle, rgba(56,189,248,.18), transparent 68%)" }} />
         <div className="relative flex items-start justify-between gap-4">
           <div>
-            <div className="flex items-center gap-2 mb-3" style={{ fontSize: 10, color: "#9db3d8", letterSpacing: ".12em", textTransform: "uppercase", fontWeight: 700 }}>Operations center <span style={{ opacity: .45 }}>·</span> Today</div>
             <h1 className="text-white font-bold" style={{ fontSize: 28, letterSpacing: "-0.04em", lineHeight: 1.1 }}>Platform overview</h1>
-            <p style={{ fontSize: 12, color: "#aebbd5", marginTop: 8, lineHeight: 1.5 }}>A clear read on marketplace activity, revenue, and the work that needs attention.</p>
+            <p style={{ fontSize: 12, color: "#aebbd5", marginTop: 10, lineHeight: 1.5 }}>A clear read on marketplace activity, revenue, and the work that needs attention.</p>
           </div>
         </div>
       </section>
