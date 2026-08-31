@@ -132,7 +132,7 @@ export function ConfirmDialog({
         tabIndex={-1}
         onClick={(e) => e.stopPropagation()}
         className="rounded-xl outline-none"
-        style={{ background: "var(--panel-bg)", border: "1px solid var(--panel-border)", width: "100%", maxWidth: 380, padding: 20, boxShadow: "0 20px 50px rgba(0,0,0,0.4)" }}
+        style={{ background: "var(--panel-bg)", border: "1px solid var(--panel-border)", width: "100%", maxWidth: 380, padding: "var(--sp-5)", boxShadow: "0 20px 50px rgba(0,0,0,0.4)" }}
       >
         <div className="flex items-start gap-3 mb-3">
           {danger && (
@@ -141,8 +141,8 @@ export function ConfirmDialog({
             </div>
           )}
           <div>
-            <div id="confirm-dialog-title" className="text-white font-semibold" style={{ fontSize: 14 }}>{title}</div>
-            <div id="confirm-dialog-message" style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 4 }}>{message}</div>
+            <div id="confirm-dialog-title" className="text-white font-semibold" style={{ fontSize: "var(--fs-md)" }}>{title}</div>
+            <div id="confirm-dialog-message" style={{ fontSize: "var(--fs-sm)", color: "var(--text-muted)", marginTop: "var(--sp-1)" }}>{message}</div>
           </div>
         </div>
 
@@ -153,7 +153,7 @@ export function ConfirmDialog({
             onClick={onCancel}
             disabled={busy}
             className="font-semibold transition-colors disabled:opacity-40"
-            style={{ background: "transparent", border: "1px solid var(--border-md)", borderRadius: 9, padding: "7px 14px", fontSize: 11.4, color: "var(--text-light)", cursor: busy ? "default" : "pointer", fontFamily: "inherit" }}
+            style={{ background: "transparent", border: "1px solid var(--border-md)", borderRadius: "var(--r-md)", padding: "7px 14px", fontSize: "var(--fs-xs)", color: "var(--text-light)", cursor: busy ? "default" : "pointer", fontFamily: "inherit" }}
           >
             {cancelLabel}
           </button>
@@ -164,8 +164,8 @@ export function ConfirmDialog({
             className="font-semibold transition-colors disabled:opacity-40"
             style={
               danger
-                ? { background: "rgba(239,68,68,0.2)", border: "1px solid rgba(239,68,68,0.35)", borderRadius: 9, padding: "7px 14px", fontSize: 11.4, color: "var(--danger-text)", cursor: busy || confirmDisabled ? "default" : "pointer", fontFamily: "inherit" }
-                : { background: "var(--indigo-dark)", border: "1px solid rgba(34,195,214,0.4)", borderRadius: 9, padding: "7px 14px", fontSize: 11.4, color: "var(--indigo-light)", cursor: busy || confirmDisabled ? "default" : "pointer", fontFamily: "inherit" }
+                ? { background: "rgba(239,68,68,0.2)", border: "1px solid rgba(239,68,68,0.35)", borderRadius: "var(--r-md)", padding: "7px 14px", fontSize: "var(--fs-xs)", color: "var(--danger-text)", cursor: busy || confirmDisabled ? "default" : "pointer", fontFamily: "inherit" }
+                : { background: "var(--indigo-dark)", border: "1px solid rgba(34,195,214,0.4)", borderRadius: "var(--r-md)", padding: "7px 14px", fontSize: "var(--fs-xs)", color: "var(--indigo-light)", cursor: busy || confirmDisabled ? "default" : "pointer", fontFamily: "inherit" }
             }
           >
             {busy ? "Working…" : confirmLabel}

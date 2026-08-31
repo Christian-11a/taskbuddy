@@ -120,23 +120,23 @@ const EscrowTab = forwardRef<ExportHandle, TabProps>(function EscrowTab({ onExpo
         const disputedCount = transactions.filter((t) => t.status === "Disputed").length;
         return (
           <div className="flex gap-2.5 flex-wrap mb-4 items-center">
-            <div className="flex items-center gap-2 rounded-xl" style={{ padding: "9px 14px", border: "1px solid var(--card-border)", background: "var(--chip-bg)", fontSize: 11.4 }}>
+            <div className="flex items-center gap-2 rounded-xl" style={{ padding: "9px 14px", border: "1px solid var(--card-border)", background: "var(--chip-bg)", fontSize: "var(--fs-xs)" }}>
               <span className="font-semibold text-white">{totalCount}</span>
               <span style={{ color: "var(--text-muted)" }}>Total Transactions</span>
             </div>
-            <div className="flex items-center gap-2 rounded-xl" style={{ padding: "9px 14px", border: "1px solid var(--card-border)", background: "var(--chip-bg)", fontSize: 11.4 }}>
+            <div className="flex items-center gap-2 rounded-xl" style={{ padding: "9px 14px", border: "1px solid var(--card-border)", background: "var(--chip-bg)", fontSize: "var(--fs-xs)" }}>
               <span className="font-semibold text-white">₱{total.toLocaleString()}</span>
               <span style={{ color: "var(--text-muted)" }}>Total Volume</span>
             </div>
-            <div className="flex items-center gap-2 rounded-xl" style={{ padding: "9px 14px", border: "1px solid var(--card-border)", background: "var(--chip-bg)", fontSize: 11.4 }}>
+            <div className="flex items-center gap-2 rounded-xl" style={{ padding: "9px 14px", border: "1px solid var(--card-border)", background: "var(--chip-bg)", fontSize: "var(--fs-xs)" }}>
               <span className="font-semibold" style={{ color: "var(--success-text)" }}>{transactions.filter((t) => t.status === "Completed").length}</span>
               <span style={{ color: "var(--text-muted)" }}>Completed</span>
             </div>
             <div
               className="flex items-center gap-2 rounded-xl"
               style={disputedCount > 0
-                ? { padding: "9px 14px", border: "1px solid rgba(239,68,68,0.35)", background: "rgba(239,68,68,0.15)", fontSize: 11.4 }
-                : { padding: "9px 14px", border: "1px solid var(--card-border)", background: "var(--chip-bg)", fontSize: 11.4 }}
+                ? { padding: "9px 14px", border: "1px solid rgba(239,68,68,0.35)", background: "rgba(239,68,68,0.15)", fontSize: "var(--fs-xs)" }
+                : { padding: "9px 14px", border: "1px solid var(--card-border)", background: "var(--chip-bg)", fontSize: "var(--fs-xs)" }}
             >
               <span className="font-semibold" style={{ color: disputedCount > 0 ? "var(--danger-text)" : "var(--text-muted)" }}>{disputedCount}</span>
               <span style={{ color: "var(--text-muted)" }}>Disputed</span>
@@ -154,14 +154,14 @@ const EscrowTab = forwardRef<ExportHandle, TabProps>(function EscrowTab({ onExpo
             aria-label="Search escrow transactions"
             value={search}
             onChange={(e) => { setSearch(e.target.value); clearSelectionOnScopeChange(); }}
-            style={{ background: "var(--input-bg)", border: "1px solid var(--border-md)", height: 38, borderRadius: 9, padding: "0 13px 0 36px", fontSize: 12, fontFamily: "inherit" }}
+            style={{ background: "var(--input-bg)", border: "1px solid var(--border-md)", height: 38, borderRadius: "var(--r-md)", padding: "0 13px 0 36px", fontSize: "var(--fs-sm)", fontFamily: "inherit" }}
           />
         </div>
-        <div className="inline-flex flex-wrap" style={{ background: "var(--chip-bg)", padding: 3, borderRadius: 9, gap: 2 }}>
+        <div className="inline-flex flex-wrap" style={{ background: "var(--chip-bg)", padding: 3, borderRadius: "var(--r-md)", gap: 2 }}>
           {(["all", "Completed", "In Escrow", "Disputed", "Refunded"] as StatusFilter[]).map((f) => (
             <button key={f} onClick={() => { setStatusFilter(f); clearSelectionOnScopeChange(); }}
               className={clsx("rounded-lg font-medium cursor-pointer transition-all", statusFilter !== f && "text-gray-500 hover:text-gray-300")}
-              style={{ padding: "5px 10px", fontSize: 10.5, background: statusFilter === f ? "var(--indigo-dark)" : "transparent", color: statusFilter === f ? "var(--indigo-light)" : undefined, border: "none", fontFamily: "inherit", whiteSpace: "nowrap" }}
+              style={{ padding: "5px 10px", fontSize: "var(--fs-2xs)", background: statusFilter === f ? "var(--indigo-dark)" : "transparent", color: statusFilter === f ? "var(--indigo-light)" : undefined, border: "none", fontFamily: "inherit", whiteSpace: "nowrap" }}
             >
               {f === "all" ? "All" : f}
             </button>
@@ -170,7 +170,7 @@ const EscrowTab = forwardRef<ExportHandle, TabProps>(function EscrowTab({ onExpo
       </div>
 
       {selected.size > 0 && (
-        <div className="flex items-center gap-3 mb-3 flex-wrap" style={{ fontSize: 11.4, color: "var(--text-muted)" }}>
+        <div className="flex items-center gap-3 mb-3 flex-wrap" style={{ fontSize: "var(--fs-xs)", color: "var(--text-muted)" }}>
           <span>{selected.size} selected</span>
         </div>
       )}
@@ -213,7 +213,7 @@ const EscrowTab = forwardRef<ExportHandle, TabProps>(function EscrowTab({ onExpo
                         onChange={() => toggleOne(t.id)}
                       />
                     </td>
-                    <td style={{ color: "var(--indigo-light)", fontFamily: "monospace", fontSize: 11 }}>{t.id}</td>
+                    <td style={{ color: "var(--indigo-light)", fontFamily: "monospace", fontSize: "var(--fs-xs)" }}>{t.id}</td>
                     <td className="text-white">{t.customer}</td>
                     <td className="hidden md:table-cell" style={{ color: "var(--text-light)" }}>{t.provider}</td>
                     <td className="hidden lg:table-cell" style={{ color: "var(--text-light)" }}>{t.service}</td>
@@ -236,7 +236,7 @@ const EscrowTab = forwardRef<ExportHandle, TabProps>(function EscrowTab({ onExpo
                   {expandedId === t.id && (
                     <tr>
                       <td colSpan={9} style={{ background: "var(--chip-bg)", padding: "12px 16px" }}>
-                        <div className="grid grid-cols-2 md:grid-cols-4 gap-3" style={{ fontSize: 11.4 }}>
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-3" style={{ fontSize: "var(--fs-xs)" }}>
                           {[
                             ["ESCROW ID", t.id],
                             ["JOB ID", t.jobId],
@@ -248,7 +248,7 @@ const EscrowTab = forwardRef<ExportHandle, TabProps>(function EscrowTab({ onExpo
                             ["HELD SINCE", t.date],
                           ].map(([label, value]) => (
                             <div key={label}>
-                              <div style={{ fontSize: 9.8, color: "var(--text-muted)", marginBottom: 3 }}>{label}</div>
+                              <div style={{ fontSize: "var(--fs-3xs)", color: "var(--text-muted)", marginBottom: 3 }}>{label}</div>
                               <div className="text-white" style={{ wordBreak: "break-all" }}>{value}</div>
                             </div>
                           ))}
@@ -260,7 +260,7 @@ const EscrowTab = forwardRef<ExportHandle, TabProps>(function EscrowTab({ onExpo
               ))}
               {transactions.length === 0 && (
                 <tr>
-                  <td colSpan={9} className="text-center py-12" style={{ color: "var(--text-muted)", fontSize: 13 }}>
+                  <td colSpan={9} className="text-center py-12" style={{ color: "var(--text-muted)", fontSize: "var(--fs-md)" }}>
                     {loading
                       ? "Loading transactions…"
                         : totalCount === 0
@@ -367,10 +367,10 @@ const WalletTab = forwardRef<ExportHandle, TabProps>(function WalletTab({ onExpo
   }, [visibleRows.length, selected.size, onExportCountChange]);
 
   if (rows === "loading") {
-    return <div style={{ fontSize: 12, color: "var(--text-muted)", padding: "24px 0" }}>Loading wallet activity…</div>;
+    return <div style={{ fontSize: "var(--fs-sm)", color: "var(--text-muted)", padding: "24px 0" }}>Loading wallet activity…</div>;
   }
   if (rows === "error") {
-    return <div style={{ fontSize: 12, color: "var(--danger-text)", padding: "24px 0" }}>Could not load wallet activity. Please try again.</div>;
+    return <div style={{ fontSize: "var(--fs-sm)", color: "var(--danger-text)", padding: "24px 0" }}>Could not load wallet activity. Please try again.</div>;
   }
 
   const totalTopups = rows.filter((r) => r.direction === "credit").reduce((s, r) => s + r.amountValue, 0);
@@ -386,7 +386,7 @@ const WalletTab = forwardRef<ExportHandle, TabProps>(function WalletTab({ onExpo
           { label: "Total Topped Up", val: `₱${totalTopups.toLocaleString()}` },
           { label: "Total Withdrawn", val: `₱${totalWithdrawals.toLocaleString()}` },
         ].map((s) => (
-          <div key={s.label} className="flex items-center gap-2 rounded-xl" style={{ padding: "9px 14px", border: "1px solid var(--card-border)", background: "var(--chip-bg)", fontSize: 11.4 }}>
+          <div key={s.label} className="flex items-center gap-2 rounded-xl" style={{ padding: "9px 14px", border: "1px solid var(--card-border)", background: "var(--chip-bg)", fontSize: "var(--fs-xs)" }}>
             <span className="font-semibold text-white tabular">{s.val}</span>
             <span style={{ color: "var(--text-muted)" }}>{s.label}</span>
           </div>
@@ -401,12 +401,12 @@ const WalletTab = forwardRef<ExportHandle, TabProps>(function WalletTab({ onExpo
             aria-label="Search wallet activity"
           value={search}
           onChange={(e) => { setSearch(e.target.value); clearSelectionOnScopeChange(); }}
-          style={{ background: "var(--input-bg)", border: "1px solid var(--border-md)", height: 38, borderRadius: 9, padding: "0 13px 0 36px", fontSize: 12, fontFamily: "inherit" }}
+          style={{ background: "var(--input-bg)", border: "1px solid var(--border-md)", height: 38, borderRadius: "var(--r-md)", padding: "0 13px 0 36px", fontSize: "var(--fs-sm)", fontFamily: "inherit" }}
         />
       </div>
 
       {selected.size > 0 && (
-        <div className="flex items-center gap-3 mb-3 flex-wrap" style={{ fontSize: 11.4, color: "var(--text-muted)" }}>
+        <div className="flex items-center gap-3 mb-3 flex-wrap" style={{ fontSize: "var(--fs-xs)", color: "var(--text-muted)" }}>
           <span>{selected.size} selected</span>
         </div>
       )}
@@ -454,7 +454,7 @@ const WalletTab = forwardRef<ExportHandle, TabProps>(function WalletTab({ onExpo
               ))}
               {filtered.length === 0 && (
                 <tr>
-                  <td colSpan={6} className="text-center py-12" style={{ color: "var(--text-muted)", fontSize: 13 }}>
+                  <td colSpan={6} className="text-center py-12" style={{ color: "var(--text-muted)", fontSize: "var(--fs-md)" }}>
                     No wallet activity found.
                   </td>
                 </tr>
@@ -495,21 +495,21 @@ export function TransactionsPage() {
           separate export button (which used to leave a large empty gap). */}
       <div className="flex items-start justify-between flex-wrap gap-3 mb-4">
         <div>
-          <h1 className="text-white font-bold" style={{ fontSize: 22, letterSpacing: "-0.025em" }}>Transactions</h1>
-          <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 5, lineHeight: 1.45 }}>Monitor escrow payments and wallet activity across the platform</div>
+          <h1 className="text-white font-bold" style={{ fontSize: "var(--fs-2xl)", letterSpacing: "-0.025em" }}>Transactions</h1>
+          <div style={{ fontSize: "var(--fs-sm)", color: "var(--text-muted)", marginTop: 5, lineHeight: 1.45 }}>Monitor escrow payments and wallet activity across the platform</div>
         </div>
         <button
           onClick={() => setConfirmingExport(true)}
           disabled={exportCount === 0}
           title={exportInfo.selected > 0 ? "Download only the checked rows" : "Download the current page"}
           className="flex items-center gap-1.5 font-semibold transition-opacity hover:opacity-80 disabled:opacity-40"
-          style={{ background: "var(--chip-bg)", border: "1px solid var(--border-md)", borderRadius: 11, padding: "7px 13px", fontSize: 11.4, color: "var(--text-light)", cursor: "pointer", fontFamily: "inherit" }}
+          style={{ background: "var(--chip-bg)", border: "1px solid var(--border-md)", borderRadius: "var(--r-md)", padding: "7px 13px", fontSize: "var(--fs-xs)", color: "var(--text-light)", cursor: "pointer", fontFamily: "inherit" }}
         >
           <Download size={12} /> {exportInfo.selected > 0 ? `Export ${exportInfo.selected} selected` : "Export current page"}
         </button>
       </div>
 
-      <div className="inline-flex mb-4" style={{ background: "var(--chip-bg)", padding: 3, borderRadius: 9, gap: 2 }}>
+      <div className="inline-flex mb-4" style={{ background: "var(--chip-bg)", padding: 3, borderRadius: "var(--r-md)", gap: 2 }}>
         {([
           ["escrow", "Escrow"],
           ["wallet", "Wallet"],
@@ -518,7 +518,7 @@ export function TransactionsPage() {
             key={id}
             onClick={() => setTab(id)}
             className={clsx("rounded-lg font-medium cursor-pointer transition-all", tab !== id && "text-gray-500 hover:text-gray-300")}
-            style={{ padding: "6px 16px", fontSize: 11.4, background: tab === id ? "var(--indigo-dark)" : "transparent", color: tab === id ? "var(--indigo-light)" : undefined, border: "none", fontFamily: "inherit" }}
+            style={{ padding: "6px 16px", fontSize: "var(--fs-xs)", background: tab === id ? "var(--indigo-dark)" : "transparent", color: tab === id ? "var(--indigo-light)" : undefined, border: "none", fontFamily: "inherit" }}
           >
             {label}
           </button>

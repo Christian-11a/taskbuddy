@@ -43,7 +43,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     return (
       <div
         className="flex items-center justify-center h-screen"
-        style={{ background: "var(--bg-main)", color: "var(--text-muted)", fontSize: 13 }}
+        style={{ background: "var(--bg-main)", color: "var(--text-muted)", fontSize: "var(--fs-md)" }}
       >
         Loading…
       </div>
@@ -86,14 +86,14 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
             <div
               role="alert"
               className="flex items-center gap-2.5 rounded-xl mb-4 flex-wrap"
-              style={{ background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.25)", padding: "10px 14px", fontSize: 12, color: "var(--danger-text)" }}
+              style={{ background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.25)", padding: "10px 14px", fontSize: "var(--fs-sm)", color: "var(--danger-text)" }}
             >
               <AlertTriangle size={14} className="flex-shrink-0" />
               <span>{loadError} The figures below may be incomplete or empty.</span>
               <button
                 onClick={retryLoad}
                 className="font-semibold transition-opacity hover:opacity-80 ml-auto"
-                style={{ background: "rgba(239,68,68,0.15)", border: "1px solid rgba(239,68,68,0.3)", borderRadius: 9, padding: "4px 12px", fontSize: 11, color: "var(--danger-text)", cursor: "pointer", fontFamily: "inherit" }}
+                style={{ background: "rgba(239,68,68,0.15)", border: "1px solid rgba(239,68,68,0.3)", borderRadius: "var(--r-md)", padding: "4px 12px", fontSize: "var(--fs-xs)", color: "var(--danger-text)", cursor: "pointer", fontFamily: "inherit" }}
               >
                 Retry
               </button>

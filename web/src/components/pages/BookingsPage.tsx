@@ -149,15 +149,15 @@ export function BookingsPage() {
     <div>
       <div className="flex items-start justify-between flex-wrap gap-3 mb-4">
         <div>
-          <h1 className="text-white font-bold" style={{ fontSize: 22, letterSpacing: "-0.025em" }}>Bookings</h1>
-          <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 5, lineHeight: 1.45 }}>Track all service bookings across the platform</div>
+          <h1 className="text-white font-bold" style={{ fontSize: "var(--fs-2xl)", letterSpacing: "-0.025em" }}>Bookings</h1>
+          <div style={{ fontSize: "var(--fs-sm)", color: "var(--text-muted)", marginTop: 5, lineHeight: 1.45 }}>Track all service bookings across the platform</div>
         </div>
         <button
           onClick={() => setConfirmingExport(true)}
           disabled={exportScope.length === 0}
           title={selected.size > 0 ? "Download only the checked rows" : "Download the current page"}
           className="flex items-center gap-1.5 font-semibold transition-opacity hover:opacity-80 disabled:opacity-40"
-          style={{ background: "var(--chip-bg)", border: "1px solid var(--border-md)", borderRadius: 11, padding: "7px 13px", fontSize: 11.4, color: "var(--text-light)", cursor: "pointer", fontFamily: "inherit" }}
+          style={{ background: "var(--chip-bg)", border: "1px solid var(--border-md)", borderRadius: "var(--r-md)", padding: "7px 13px", fontSize: "var(--fs-xs)", color: "var(--text-light)", cursor: "pointer", fontFamily: "inherit" }}
         >
           <Download size={12} /> {selected.size > 0 ? `Export ${selected.size} selected` : "Export current page"}
         </button>
@@ -167,14 +167,14 @@ export function BookingsPage() {
           instead of nine individually-washed colour pills. Colour marks which
           status is selected; it isn't sprayed across every option. */}
       <div className="mb-4 overflow-x-auto pb-1" style={{ scrollbarColor: "var(--border-md) transparent" }}>
-        <div className="inline-flex" style={{ background: "var(--chip-bg)", padding: 3, borderRadius: 9, gap: 2 }} role="group" aria-label="Filter bookings by status">
+        <div className="inline-flex" style={{ background: "var(--chip-bg)", padding: 3, borderRadius: "var(--r-md)", gap: 2 }} role="group" aria-label="Filter bookings by status">
           {(["all", "Open", "Matching", "Assigned", "Confirmed", "In Progress", "Completed", "Cancelled", "Expired"] as StatusFilter[]).map((s) => {
             const active = statusFilter === s;
             return (
               <button key={s} onClick={() => { setStatusFilter(s); clearSelectionOnScopeChange(); }}
                 aria-pressed={active}
                 className={clsx("rounded-lg font-medium cursor-pointer transition-all flex-shrink-0", !active && "text-gray-500 hover:text-gray-300")}
-                style={{ padding: "7px 11px", fontSize: 11, background: active ? "var(--indigo-dark)" : "transparent", color: active ? "var(--indigo-light)" : undefined, border: "none", fontFamily: "inherit", whiteSpace: "nowrap" }}
+                style={{ padding: "7px 11px", fontSize: "var(--fs-xs)", background: active ? "var(--indigo-dark)" : "transparent", color: active ? "var(--indigo-light)" : undefined, border: "none", fontFamily: "inherit", whiteSpace: "nowrap" }}
               >
                 {s === "all" ? "All" : s}
                 {active && <span className="tabular" style={{ marginLeft: 6, opacity: 0.75 }}>{total}</span>}
@@ -193,13 +193,13 @@ export function BookingsPage() {
             aria-label="Search bookings"
             value={search}
             onChange={(e) => { setSearch(e.target.value); clearSelectionOnScopeChange(); }}
-            style={{ background: "var(--input-bg)", border: "1px solid var(--border-md)", height: 38, borderRadius: 9, padding: "0 13px 0 36px", fontSize: 12, fontFamily: "inherit" }}
+            style={{ background: "var(--input-bg)", border: "1px solid var(--border-md)", height: 38, borderRadius: "var(--r-md)", padding: "0 13px 0 36px", fontSize: "var(--fs-sm)", fontFamily: "inherit" }}
           />
         </div>
       </div>
 
       {selected.size > 0 && (
-        <div className="flex items-center gap-3 mb-3 flex-wrap" style={{ fontSize: 11.4, color: "var(--text-muted)" }}>
+        <div className="flex items-center gap-3 mb-3 flex-wrap" style={{ fontSize: "var(--fs-xs)", color: "var(--text-muted)" }}>
           <span>{selected.size} selected</span>
         </div>
       )}
@@ -248,7 +248,7 @@ export function BookingsPage() {
                         onChange={() => toggleOne(b.id)}
                       />
                     </td>
-                    <td style={{ color: "var(--indigo-light)", fontFamily: "monospace", fontSize: 11 }} title={b.id}>{b.id.slice(0, 8)}…</td>
+                    <td style={{ color: "var(--indigo-light)", fontFamily: "monospace", fontSize: "var(--fs-xs)" }} title={b.id}>{b.id.slice(0, 8)}…</td>
                     <td className="text-white">{b.customer}</td>
                     <td className="hidden md:table-cell" style={{ color: "var(--text-light)" }}>{b.provider}</td>
                     <td className="hidden lg:table-cell" style={{ color: "var(--text-light)" }}>{b.service}</td>
@@ -263,7 +263,7 @@ export function BookingsPage() {
                             disabled={cancelingId === b.id}
                             title="Cancel booking"
                             className="flex items-center gap-1 font-medium transition-colors hover:opacity-80 disabled:opacity-40"
-                            style={{ background: "rgba(239,68,68,0.12)", border: "1px solid rgba(239,68,68,0.2)", borderRadius: 8, padding: "4px 10px", fontSize: 10, color: "var(--danger-text)", cursor: cancelingId === b.id ? "default" : "pointer", fontFamily: "inherit" }}
+                            style={{ background: "rgba(239,68,68,0.12)", border: "1px solid rgba(239,68,68,0.2)", borderRadius: "var(--r-sm)", padding: "4px 10px", fontSize: "var(--fs-2xs)", color: "var(--danger-text)", cursor: cancelingId === b.id ? "default" : "pointer", fontFamily: "inherit" }}
                           >
                             <XCircle size={10} /> {cancelingId === b.id ? "Cancelling…" : "Cancel"}
                           </button>
@@ -284,7 +284,7 @@ export function BookingsPage() {
                   {expandedId === b.id && (
                     <tr>
                       <td colSpan={9} style={{ background: "var(--chip-bg)", padding: "12px 16px" }}>
-                        <div className="grid grid-cols-2 md:grid-cols-4 gap-3" style={{ fontSize: 11.4 }}>
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-3" style={{ fontSize: "var(--fs-xs)" }}>
                           {[
                             ["BOOKING ID", b.id],
                             ["HOMEOWNER", b.customer],
@@ -295,46 +295,46 @@ export function BookingsPage() {
                             ["BUDGET", b.amount],
                           ].map(([label, value]) => (
                             <div key={label}>
-                              <div style={{ fontSize: 9.8, color: "var(--text-muted)", marginBottom: 3 }}>{label}</div>
+                              <div style={{ fontSize: "var(--fs-3xs)", color: "var(--text-muted)", marginBottom: 3 }}>{label}</div>
                               <div className="text-white" style={{ wordBreak: "break-all" }}>{value}</div>
                             </div>
                           ))}
                         </div>
                         {details[b.id] === "loading" && (
-                          <div style={{ fontSize: 10.8, color: "var(--text-muted)", marginTop: 10 }}>Loading job detail…</div>
+                          <div style={{ fontSize: "var(--fs-2xs)", color: "var(--text-muted)", marginTop: 10 }}>Loading job detail…</div>
                         )}
                         {details[b.id] === "error" && (
-                          <div style={{ fontSize: 10.8, color: "var(--danger-text)", marginTop: 10 }}>Could not load job detail.</div>
+                          <div style={{ fontSize: "var(--fs-2xs)", color: "var(--danger-text)", marginTop: 10 }}>Could not load job detail.</div>
                         )}
                         {details[b.id] && typeof details[b.id] === "object" && (() => {
                           const d = details[b.id] as AdminBookingDetail;
                           return (
-                            <div className="grid grid-cols-2 md:grid-cols-4 gap-3" style={{ fontSize: 11.4, marginTop: 10, paddingTop: 10, borderTop: "1px solid var(--border)" }}>
+                            <div className="grid grid-cols-2 md:grid-cols-4 gap-3" style={{ fontSize: "var(--fs-xs)", marginTop: 10, paddingTop: 10, borderTop: "1px solid var(--border)" }}>
                               <div className="col-span-2">
-                                <div style={{ fontSize: 9.8, color: "var(--text-muted)", marginBottom: 3 }}>DESCRIPTION</div>
+                                <div style={{ fontSize: "var(--fs-3xs)", color: "var(--text-muted)", marginBottom: 3 }}>DESCRIPTION</div>
                                 <div className="text-white">{d.description ?? "—"}</div>
                               </div>
                               <div className="col-span-2">
-                                <div style={{ fontSize: 9.8, color: "var(--text-muted)", marginBottom: 3 }}>ADDRESS</div>
+                                <div style={{ fontSize: "var(--fs-3xs)", color: "var(--text-muted)", marginBottom: 3 }}>ADDRESS</div>
                                 <div className="text-white">{d.address ?? "—"}</div>
                               </div>
                               <div>
-                                <div style={{ fontSize: 9.8, color: "var(--text-muted)", marginBottom: 3 }}>SCHEDULED</div>
+                                <div style={{ fontSize: "var(--fs-3xs)", color: "var(--text-muted)", marginBottom: 3 }}>SCHEDULED</div>
                                 <div className="text-white">{d.scheduledAt ? new Date(d.scheduledAt).toLocaleString() : "—"}</div>
                               </div>
                               <div>
-                                <div style={{ fontSize: 9.8, color: "var(--text-muted)", marginBottom: 3 }}>ESCROW</div>
+                                <div style={{ fontSize: "var(--fs-3xs)", color: "var(--text-muted)", marginBottom: 3 }}>ESCROW</div>
                                 <div className="text-white">
                                   {d.escrowStatus ? `${d.escrowStatus.replace("_", " ")} (₱${d.escrowAmount})` : "No escrow hold"}
                                 </div>
                               </div>
                               {d.photoUrls.length > 0 && (
                                 <div className="col-span-2 md:col-span-4">
-                                  <div style={{ fontSize: 9.8, color: "var(--text-muted)", marginBottom: 3 }}>PHOTOS</div>
+                                  <div style={{ fontSize: "var(--fs-3xs)", color: "var(--text-muted)", marginBottom: 3 }}>PHOTOS</div>
                                   <div className="flex gap-2 flex-wrap">
                                     {d.photoUrls.map((url) => (
                                       // eslint-disable-next-line @next/next/no-img-element
-                                      <img key={url} src={url} alt="Job photo" style={{ width: 60, height: 60, borderRadius: 8, objectFit: "cover" }} />
+                                      <img key={url} src={url} alt="Job photo" style={{ width: 60, height: 60, borderRadius: "var(--r-sm)", objectFit: "cover" }} />
                                     ))}
                                   </div>
                                 </div>
@@ -349,7 +349,7 @@ export function BookingsPage() {
               ))}
               {bookings.length === 0 && (
                 <tr>
-                  <td colSpan={9} className="text-center py-12" style={{ color: "var(--text-muted)", fontSize: 13 }}>
+                  <td colSpan={9} className="text-center py-12" style={{ color: "var(--text-muted)", fontSize: "var(--fs-md)" }}>
                     {/* `total` is the count for the *current* query, so it is 0
                         whenever a filter excludes everything — using it alone
                         claimed "No bookings yet" while eleven bookings existed
@@ -366,7 +366,7 @@ export function BookingsPage() {
             </tbody>
           </table>
         </div>
-        <div className="md:hidden px-4 py-2" style={{ color: "var(--text-muted)", fontSize: 10 }}>
+        <div className="md:hidden px-4 py-2" style={{ color: "var(--text-muted)", fontSize: "var(--fs-2xs)" }}>
           Swipe horizontally to view provider, service, and date details.
         </div>
         <Pagination

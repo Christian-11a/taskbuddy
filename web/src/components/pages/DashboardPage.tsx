@@ -99,7 +99,7 @@ export function DashboardPage() {
 
   if (loading || !dashboardStats) {
     return (
-      <div className="flex items-center justify-center" style={{ height: 300, color: "var(--text-muted)", fontSize: 13 }}>
+      <div className="flex items-center justify-center" style={{ height: 300, color: "var(--text-muted)", fontSize: "var(--fs-md)" }}>
         Loading dashboard…
       </div>
     );
@@ -164,7 +164,7 @@ export function DashboardPage() {
                   </span>
                   <span className="font-bold tabular" style={{ fontSize: i === 0 ? 22 : 17, color: q.tone, minWidth: 28 }}>{q.count}</span>
                   <span className="text-white" style={{ fontSize: i === 0 ? 13 : 12 }}>{q.count === 1 ? q.one : q.many}</span>
-                  <span className="ml-auto flex items-center gap-1 font-medium flex-shrink-0" style={{ fontSize: 11, color: "var(--indigo-light)" }}>
+                  <span className="ml-auto flex items-center gap-1 font-medium flex-shrink-0" style={{ fontSize: "var(--fs-xs)", color: "var(--indigo-light)" }}>
                     Review <ArrowUpRight size={11} />
                   </span>
                 </Link>
@@ -210,22 +210,22 @@ export function DashboardPage() {
         style={{ background: "var(--card-bg)", border: "1px solid var(--card-border)", padding: "18px 20px", columnGap: 44, rowGap: 18 }}
       >
         <div>
-          <div className="flex items-center gap-1.5" style={{ fontSize: 11, color: "var(--text-muted)" }}><CreditCard size={13} /> Gross merchandise value</div>
-          <div className="text-white font-extrabold mt-1.5 tabular" style={{ fontSize: 26, letterSpacing: "-0.03em" }}>{formatCurrency(dashboardStats.monthlyRevenue)}</div>
+          <div className="flex items-center gap-1.5" style={{ fontSize: "var(--fs-xs)", color: "var(--text-muted)" }}><CreditCard size={13} /> Gross merchandise value</div>
+          <div className="text-white font-extrabold mt-1.5 tabular" style={{ fontSize: "var(--fs-3xl)", letterSpacing: "-0.03em" }}>{formatCurrency(dashboardStats.monthlyRevenue)}</div>
         </div>
         <div>
-          <div className="flex items-center gap-1.5" style={{ fontSize: 11, color: "var(--text-muted)" }}><Percent size={13} /> Commission retained</div>
-          <div className="text-white font-extrabold mt-1.5 tabular" style={{ fontSize: 26, letterSpacing: "-0.03em" }}>{formatCurrency(dashboardStats.monthlyCommission)}</div>
-          <div style={{ fontSize: 10.5, color: "var(--text-muted)", marginTop: 3 }}>{formatCurrency(dashboardStats.totalCommission)} all time</div>
+          <div className="flex items-center gap-1.5" style={{ fontSize: "var(--fs-xs)", color: "var(--text-muted)" }}><Percent size={13} /> Commission retained</div>
+          <div className="text-white font-extrabold mt-1.5 tabular" style={{ fontSize: "var(--fs-3xl)", letterSpacing: "-0.03em" }}>{formatCurrency(dashboardStats.monthlyCommission)}</div>
+          <div style={{ fontSize: "var(--fs-2xs)", color: "var(--text-muted)", marginTop: 3 }}>{formatCurrency(dashboardStats.totalCommission)} all time</div>
         </div>
         <div>
-          <div className="flex items-center gap-1.5" style={{ fontSize: 11, color: "var(--text-muted)" }}><WalletCards size={13} /> Held in escrow</div>
-          <div className="text-white font-extrabold mt-1.5 tabular" style={{ fontSize: 26, letterSpacing: "-0.03em" }}>{formatCurrency(escrowHeld)}</div>
-          <div style={{ fontSize: 10.5, color: "var(--text-muted)", marginTop: 3 }}>Not yet released to providers</div>
+          <div className="flex items-center gap-1.5" style={{ fontSize: "var(--fs-xs)", color: "var(--text-muted)" }}><WalletCards size={13} /> Held in escrow</div>
+          <div className="text-white font-extrabold mt-1.5 tabular" style={{ fontSize: "var(--fs-3xl)", letterSpacing: "-0.03em" }}>{formatCurrency(escrowHeld)}</div>
+          <div style={{ fontSize: "var(--fs-2xs)", color: "var(--text-muted)", marginTop: 3 }}>Not yet released to providers</div>
         </div>
       </div>
 
-      <div className="flex items-center justify-between mb-2"><div className="font-semibold text-white" style={{ fontSize: 13 }}>What&apos;s happening</div><div style={{ fontSize: 10, color: "var(--text-muted)" }}>Latest signals</div></div>
+      <div className="flex items-center justify-between mb-2"><div className="font-semibold text-white" style={{ fontSize: "var(--fs-md)" }}>What&apos;s happening</div><div style={{ fontSize: "var(--fs-2xs)", color: "var(--text-muted)" }}>Latest signals</div></div>
       {/* Recent Activity + Marketplace Health */}
       <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1.6fr)_minmax(260px,0.8fr)] gap-3">
         <div
@@ -234,18 +234,18 @@ export function DashboardPage() {
         >
           <div className="flex items-start justify-between mb-1 gap-3">
             <div>
-              <div className="font-semibold text-white" style={{ fontSize: 14 }}>Recent Platform Activity</div>
-              <div style={{ fontSize: 10.5, color: "var(--text-muted)", marginTop: 4 }}>Latest marketplace and administrative events.</div>
+              <div className="font-semibold text-white" style={{ fontSize: "var(--fs-md)" }}>Recent Platform Activity</div>
+              <div style={{ fontSize: "var(--fs-2xs)", color: "var(--text-muted)", marginTop: "var(--sp-1)" }}>Latest marketplace and administrative events.</div>
             </div>
             <Link
               href={pageToPath("activity-log")}
               className="flex-shrink-0 font-semibold transition-opacity hover:opacity-80"
-              style={{ background: "var(--chip-bg)", border: "1px solid var(--border-md)", borderRadius: 9, padding: "6px 12px", fontSize: 11, color: "var(--text-light)", textDecoration: "none" }}
+              style={{ background: "var(--chip-bg)", border: "1px solid var(--border-md)", borderRadius: "var(--r-md)", padding: "6px 12px", fontSize: "var(--fs-xs)", color: "var(--text-light)", textDecoration: "none" }}
             >
               View activity
             </Link>
           </div>
-          <div className="flex flex-col gap-3" style={{ marginTop: 12 }}>
+          <div className="flex flex-col gap-3" style={{ marginTop: "var(--sp-3)" }}>
             {/* Dashboard is a preview, not the full log — the Activity page is the complete history. */}
             {recentActivity.slice(0, 7).map((a, i) => (
               <div key={i} className="flex items-center gap-3">
@@ -255,8 +255,8 @@ export function DashboardPage() {
                 >
                   {activityIcon(a.type)}
                 </div>
-                <div className="flex-1 text-white" style={{ fontSize: 11.4 }}>{a.text}</div>
-                <div className="flex items-center gap-1 flex-shrink-0" style={{ fontSize: 10, color: "var(--text-muted)" }}>
+                <div className="flex-1 text-white" style={{ fontSize: "var(--fs-xs)" }}>{a.text}</div>
+                <div className="flex items-center gap-1 flex-shrink-0" style={{ fontSize: "var(--fs-2xs)", color: "var(--text-muted)" }}>
                   <Clock size={9} /> {a.time}
                 </div>
               </div>
@@ -268,8 +268,8 @@ export function DashboardPage() {
           className="rounded-2xl p-5"
           style={{ background: "var(--card-bg)", border: "1px solid var(--card-border)" }}
         >
-          <div className="font-semibold text-white mb-1" style={{ fontSize: 14 }}>Marketplace Health</div>
-          <div style={{ fontSize: 11.4, color: "var(--text-muted)", marginBottom: 12 }}>Current operational signals</div>
+          <div className="font-semibold text-white mb-1" style={{ fontSize: "var(--fs-md)" }}>Marketplace Health</div>
+          <div style={{ fontSize: "var(--fs-xs)", color: "var(--text-muted)", marginBottom: "var(--sp-3)" }}>Current operational signals</div>
           {[
             ["Completion rate", `${dashboardStats.completionRate}%`],
             ["Open jobs", String(openJobs)],
@@ -282,13 +282,13 @@ export function DashboardPage() {
               className="flex items-center justify-between"
               style={{ padding: "11px 0", borderBottom: "1px solid var(--border)" }}
             >
-              <span style={{ fontSize: 11.4, color: "var(--text-light)" }}>{label}</span>
-              <span className="text-white font-bold" style={{ fontSize: 13 }}>{value}</span>
+              <span style={{ fontSize: "var(--fs-xs)", color: "var(--text-light)" }}>{label}</span>
+              <span className="text-white font-bold" style={{ fontSize: "var(--fs-md)" }}>{value}</span>
             </div>
           ))}
           <div className="flex items-center justify-between" style={{ padding: "11px 0" }}>
-            <span style={{ fontSize: 11.4, color: "var(--text-light)" }}>Avg provider rating</span>
-            <span className="text-white font-bold flex items-center gap-1" style={{ fontSize: 13 }}>
+            <span style={{ fontSize: "var(--fs-xs)", color: "var(--text-light)" }}>Avg provider rating</span>
+            <span className="text-white font-bold flex items-center gap-1" style={{ fontSize: "var(--fs-md)" }}>
               {dashboardStats.avgRating} <Star size={12} fill="#f59e0b" color="#f59e0b" />
             </span>
           </div>

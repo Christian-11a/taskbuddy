@@ -35,7 +35,7 @@ export function ReportsPage() {
 
   if (loading || !dashboardStats) {
     return (
-      <div className="flex items-center justify-center" style={{ height: 300, color: "var(--text-muted)", fontSize: 13 }}>
+      <div className="flex items-center justify-center" style={{ height: 300, color: "var(--text-muted)", fontSize: "var(--fs-md)" }}>
         Loading reports…
       </div>
     );
@@ -75,8 +75,8 @@ export function ReportsPage() {
     <div>
       <div className="flex items-start justify-between flex-wrap gap-3 mb-4">
         <div>
-          <h1 className="text-white font-bold" style={{ fontSize: 22, letterSpacing: "-0.025em" }}>Reports & Analytics</h1>
-          <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 5, lineHeight: 1.45 }}>
+          <h1 className="text-white font-bold" style={{ fontSize: "var(--fs-2xl)", letterSpacing: "-0.025em" }}>Reports & Analytics</h1>
+          <div style={{ fontSize: "var(--fs-sm)", color: "var(--text-muted)", marginTop: 5, lineHeight: 1.45 }}>
             Platform performance metrics and business intelligence
           </div>
         </div>
@@ -84,7 +84,7 @@ export function ReportsPage() {
           onClick={() => setConfirmingExport(true)}
           title="Download every section on this page as one CSV"
           className="flex items-center gap-1.5 font-semibold transition-opacity hover:opacity-80"
-          style={{ background: "var(--chip-bg)", border: "1px solid var(--border-md)", borderRadius: 11, padding: "7px 13px", fontSize: 11.4, color: "var(--text-light)", cursor: "pointer", fontFamily: "inherit" }}
+          style={{ background: "var(--chip-bg)", border: "1px solid var(--border-md)", borderRadius: "var(--r-md)", padding: "7px 13px", fontSize: "var(--fs-xs)", color: "var(--text-light)", cursor: "pointer", fontFamily: "inherit" }}
         >
           <Download size={12} /> Export CSV
         </button>
@@ -97,12 +97,12 @@ export function ReportsPage() {
           className="rounded-xl p-5"
           style={{ background: "var(--card-bg)", border: "1px solid var(--card-border)" }}
         >
-          <div className="font-semibold text-white mb-1" style={{ fontSize: 14 }}>Revenue Trend</div>
-          <div style={{ fontSize: 11.4, color: "var(--text-muted)", marginBottom: 16 }}>Monthly earnings over time</div>
+          <div className="font-semibold text-white mb-1" style={{ fontSize: "var(--fs-md)" }}>Revenue Trend</div>
+          <div style={{ fontSize: "var(--fs-xs)", color: "var(--text-muted)", marginBottom: "var(--sp-4)" }}>Monthly earnings over time</div>
           {revenueSeries.length === 0 ? (
             <div
               className="flex items-center justify-center"
-              style={{ height: 210, fontSize: 11.4, color: "var(--text-muted)", textAlign: "center" }}
+              style={{ height: 210, fontSize: "var(--fs-xs)", color: "var(--text-muted)", textAlign: "center" }}
             >
               No revenue yet — this fills in once a job&apos;s escrow is released to a provider.
             </div>
@@ -115,19 +115,19 @@ export function ReportsPage() {
                     <stop offset="95%" stopColor="#22c3d6" stopOpacity={0} />
                   </linearGradient>
                 </defs>
-                <XAxis dataKey="month" tick={{ fill: "#6b7280", fontSize: 10 }} axisLine={false} tickLine={false} />
+                <XAxis dataKey="month" tick={{ fill: "var(--text-muted)", fontSize: "var(--fs-2xs)" }} axisLine={false} tickLine={false} />
                 <YAxis hide />
                 <Tooltip
                   cursor={{ stroke: "var(--indigo)", strokeWidth: 1, strokeDasharray: "3 3" }}
                   contentStyle={{
                     background: "var(--panel-bg)",
                     border: "1px solid var(--panel-border)",
-                    borderRadius: 8,
+                    borderRadius: "var(--r-sm)",
                     boxShadow: "0 8px 24px rgba(0,0,0,0.25)",
                     padding: "8px 12px",
                   }}
-                  labelStyle={{ color: "var(--text-muted)", fontSize: 10, marginBottom: 2 }}
-                  itemStyle={{ color: "var(--text-white)", fontSize: 12, fontWeight: 600, padding: 0 }}
+                  labelStyle={{ color: "var(--text-muted)", fontSize: "var(--fs-2xs)", marginBottom: 2 }}
+                  itemStyle={{ color: "var(--text-white)", fontSize: "var(--fs-sm)", fontWeight: 600, padding: 0 }}
                   formatter={(v: number) => [formatCurrency(v), "Revenue"]}
                 />
                 <Area type="monotone" dataKey="value" stroke="#22c3d6" fill="url(#rev)" strokeWidth={2} />
@@ -140,8 +140,8 @@ export function ReportsPage() {
           className="rounded-xl p-5"
           style={{ background: "var(--card-bg)", border: "1px solid var(--card-border)" }}
         >
-          <div className="font-semibold text-white mb-1" style={{ fontSize: 14 }}>Key Metrics</div>
-          <div style={{ fontSize: 11.4, color: "var(--text-muted)", marginBottom: 12 }}>Platform performance at a glance</div>
+          <div className="font-semibold text-white mb-1" style={{ fontSize: "var(--fs-md)" }}>Key Metrics</div>
+          <div style={{ fontSize: "var(--fs-xs)", color: "var(--text-muted)", marginBottom: "var(--sp-3)" }}>Platform performance at a glance</div>
           {[
             { label: "Total revenue", value: formatCurrencyCompact(dashboardStats.totalRevenue) },
             { label: "This month", value: formatCurrency(dashboardStats.monthlyRevenue) },
@@ -152,13 +152,13 @@ export function ReportsPage() {
               className="flex items-center justify-between"
               style={{ padding: "11px 0", borderBottom: "1px solid var(--border)" }}
             >
-              <span style={{ fontSize: 11.4, color: "var(--text-light)" }}>{row.label}</span>
-              <span className="text-white font-bold" style={{ fontSize: 13 }}>{row.value}</span>
+              <span style={{ fontSize: "var(--fs-xs)", color: "var(--text-light)" }}>{row.label}</span>
+              <span className="text-white font-bold" style={{ fontSize: "var(--fs-md)" }}>{row.value}</span>
             </div>
           ))}
           <div className="flex items-center justify-between" style={{ padding: "11px 0" }}>
-            <span style={{ fontSize: 11.4, color: "var(--text-light)" }}>Avg provider rating</span>
-            <span className="text-white font-bold flex items-center gap-1" style={{ fontSize: 13 }}>
+            <span style={{ fontSize: "var(--fs-xs)", color: "var(--text-light)" }}>Avg provider rating</span>
+            <span className="text-white font-bold flex items-center gap-1" style={{ fontSize: "var(--fs-md)" }}>
               {dashboardStats.avgRating} <Star size={12} fill="#f59e0b" color="#f59e0b" />
             </span>
           </div>
@@ -172,23 +172,23 @@ export function ReportsPage() {
           className="rounded-xl p-5"
           style={{ background: "var(--card-bg)", border: "1px solid var(--card-border)" }}
         >
-          <div className="font-semibold text-white mb-1" style={{ fontSize: 14 }}>Monthly Bookings</div>
-          <div style={{ fontSize: 11.4, color: "var(--text-muted)", marginBottom: 16 }}>Volume per month</div>
+          <div className="font-semibold text-white mb-1" style={{ fontSize: "var(--fs-md)" }}>Monthly Bookings</div>
+          <div style={{ fontSize: "var(--fs-xs)", color: "var(--text-muted)", marginBottom: "var(--sp-4)" }}>Volume per month</div>
           <ResponsiveContainer width="100%" height={160}>
             <BarChart data={bookingsSeries} barSize={20}>
-              <XAxis dataKey="month" tick={{ fill: "#6b7280", fontSize: 10 }} axisLine={false} tickLine={false} />
+              <XAxis dataKey="month" tick={{ fill: "var(--text-muted)", fontSize: "var(--fs-2xs)" }} axisLine={false} tickLine={false} />
               <YAxis hide />
               <Tooltip
                 cursor={{ fill: "var(--track-bg)", radius: 4 }}
                 contentStyle={{
                   background: "var(--panel-bg)",
                   border: "1px solid var(--panel-border)",
-                  borderRadius: 8,
+                  borderRadius: "var(--r-sm)",
                   boxShadow: "0 8px 24px rgba(0,0,0,0.25)",
                   padding: "8px 12px",
                 }}
-                labelStyle={{ color: "var(--text-muted)", fontSize: 10, marginBottom: 2 }}
-                itemStyle={{ color: "var(--text-white)", fontSize: 12, fontWeight: 600, padding: 0 }}
+                labelStyle={{ color: "var(--text-muted)", fontSize: "var(--fs-2xs)", marginBottom: 2 }}
+                itemStyle={{ color: "var(--text-white)", fontSize: "var(--fs-sm)", fontWeight: 600, padding: 0 }}
                 formatter={(v: number) => [v, "Bookings"]}
               />
               <Bar dataKey="value" fill="#38bdf8" radius={[4, 4, 0, 0]} />
@@ -200,8 +200,8 @@ export function ReportsPage() {
           className="rounded-xl p-5"
           style={{ background: "var(--card-bg)", border: "1px solid var(--card-border)" }}
         >
-          <div className="font-semibold text-white mb-1" style={{ fontSize: 14 }}>Service Categories</div>
-          <div style={{ fontSize: 11.4, color: "var(--text-muted)", marginBottom: 8 }}>Booking distribution</div>
+          <div className="font-semibold text-white mb-1" style={{ fontSize: "var(--fs-md)" }}>Service Categories</div>
+          <div style={{ fontSize: "var(--fs-xs)", color: "var(--text-muted)", marginBottom: "var(--sp-2)" }}>Booking distribution</div>
           <div className="flex items-center gap-4">
             {/* Fixed-size chart — no ResponsiveContainer needed (avoids its console warning) */}
             <PieChart width={110} height={110}>
@@ -221,7 +221,7 @@ export function ReportsPage() {
             </PieChart>
             <div className="flex flex-col gap-1.5">
               {bookingsByCategory.map((c, i) => (
-                <div key={c.label} className="flex items-center gap-2" style={{ fontSize: 10 }}>
+                <div key={c.label} className="flex items-center gap-2" style={{ fontSize: "var(--fs-2xs)" }}>
                   <div
                     className="rounded-sm flex-shrink-0"
                     style={{ width: 8, height: 8, background: PIE_COLORS[i % PIE_COLORS.length] }}
@@ -242,8 +242,8 @@ export function ReportsPage() {
         className="rounded-xl p-5"
         style={{ background: "var(--card-bg)", border: "1px solid var(--card-border)" }}
       >
-        <div className="font-semibold text-white mb-1" style={{ fontSize: 14 }}>Top Providers</div>
-        <div style={{ fontSize: 11.4, color: "var(--text-muted)", marginBottom: 16 }}>By total completed jobs</div>
+        <div className="font-semibold text-white mb-1" style={{ fontSize: "var(--fs-md)" }}>Top Providers</div>
+        <div style={{ fontSize: "var(--fs-xs)", color: "var(--text-muted)", marginBottom: "var(--sp-4)" }}>By total completed jobs</div>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-3">
           {topProviders.map((p, i) => (
             <div key={p.name} className="flex items-center gap-3">
@@ -252,17 +252,17 @@ export function ReportsPage() {
                 style={{
                   width: 22,
                   height: 22,
-                  borderRadius: 8,
+                  borderRadius: "var(--r-sm)",
                   background: i === 0 ? "#f59e0b" : i === 1 ? "#9ca3af" : i === 2 ? "#cd7c3d" : "#6b7280",
                   color: "#fff",
-                  fontSize: 9,
+                  fontSize: "var(--fs-3xs)",
                 }}
               >
                 #{i + 1}
               </div>
               <div className="flex-1 min-w-0">
-                <div className="text-white font-medium" style={{ fontSize: 11.4 }}>{p.name}</div>
-                <div className="flex items-center gap-1" style={{ fontSize: 9.8, color: "var(--text-muted)" }}>
+                <div className="text-white font-medium" style={{ fontSize: "var(--fs-xs)" }}>{p.name}</div>
+                <div className="flex items-center gap-1" style={{ fontSize: "var(--fs-3xs)", color: "var(--text-muted)" }}>
                   {p.jobs} jobs · {p.rating} <Star size={9} fill="#f59e0b" color="#f59e0b" />
                 </div>
               </div>

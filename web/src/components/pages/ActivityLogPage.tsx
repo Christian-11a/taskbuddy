@@ -58,8 +58,8 @@ export function ActivityLogPage() {
     <div>
       <div className="flex items-start justify-between flex-wrap gap-3 mb-4">
         <div>
-          <h1 className="text-white font-bold" style={{ fontSize: 22, letterSpacing: "-0.025em" }}>Activity Log</h1>
-          <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 5, lineHeight: 1.45 }}>
+          <h1 className="text-white font-bold" style={{ fontSize: "var(--fs-2xl)", letterSpacing: "-0.025em" }}>Activity Log</h1>
+          <div style={{ fontSize: "var(--fs-sm)", color: "var(--text-muted)", marginTop: 5, lineHeight: 1.45 }}>
             Recent booking status transitions across the platform — {total} events
           </div>
         </div>
@@ -68,7 +68,7 @@ export function ActivityLogPage() {
             onClick={() => setConfirmingExport(true)}
             disabled={recentActivity.length === 0}
             className="flex items-center gap-1.5 font-semibold transition-opacity hover:opacity-80 disabled:opacity-40"
-            style={{ background: "var(--chip-bg)", border: "1px solid var(--border-md)", borderRadius: 11, padding: "7px 13px", fontSize: 11.4, color: "var(--text-light)", cursor: "pointer", fontFamily: "inherit" }}
+            style={{ background: "var(--chip-bg)", border: "1px solid var(--border-md)", borderRadius: "var(--r-md)", padding: "7px 13px", fontSize: "var(--fs-xs)", color: "var(--text-light)", cursor: "pointer", fontFamily: "inherit" }}
           >
             <Download size={12} /> Export CSV
           </button>
@@ -84,15 +84,15 @@ export function ActivityLogPage() {
             aria-label="Search activity by job title"
             value={search}
             onChange={(e) => { setSearch(e.target.value); setPage(1); }}
-            style={{ background: "var(--input-bg)", border: "1px solid var(--border-md)", height: 38, borderRadius: 9, padding: "0 13px 0 36px", fontSize: 12, fontFamily: "inherit", color: "var(--text-white)" }}
+            style={{ background: "var(--input-bg)", border: "1px solid var(--border-md)", height: 38, borderRadius: "var(--r-md)", padding: "0 13px 0 36px", fontSize: "var(--fs-sm)", fontFamily: "inherit", color: "var(--text-white)" }}
           />
         </div>
       </div>
 
       <div className="rounded-xl overflow-hidden" style={{ background: "var(--card-bg)", border: "1px solid var(--card-border)" }}>
-        <div style={{ padding: 20 }}>
+        <div style={{ padding: "var(--sp-5)" }}>
         {recentActivity.length === 0 && (
-          <div role="status" aria-live="polite" className="text-center py-12" style={{ color: "var(--text-muted)", fontSize: 13 }}>
+          <div role="status" aria-live="polite" className="text-center py-12" style={{ color: "var(--text-muted)", fontSize: "var(--fs-md)" }}>
             {loading
               ? "Loading activity…"
                 : total === 0
@@ -109,8 +109,8 @@ export function ActivityLogPage() {
               >
                 {activityIcon(a.type)}
               </div>
-              <div className="flex-1 text-white" style={{ fontSize: 11.4 }}>{a.text}</div>
-              <div className="flex items-center gap-1 flex-shrink-0" style={{ fontSize: 10, color: "var(--text-muted)" }}>
+              <div className="flex-1 text-white" style={{ fontSize: "var(--fs-xs)" }}>{a.text}</div>
+              <div className="flex items-center gap-1 flex-shrink-0" style={{ fontSize: "var(--fs-2xs)", color: "var(--text-muted)" }}>
                 <Clock size={9} /> {a.time}
               </div>
             </div>

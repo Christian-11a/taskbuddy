@@ -23,7 +23,7 @@ export default function Page() {
   return (
     <div
       className="flex items-center justify-center h-screen"
-      style={{ background: "var(--bg-main)", color: "var(--text-muted)", fontSize: 13 }}
+      style={{ background: "var(--bg-main)", color: "var(--text-muted)", fontSize: "var(--fs-md)" }}
     >
       Loading…
     </div>

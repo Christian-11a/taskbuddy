@@ -86,7 +86,7 @@ export function Sidebar({ activePage, onNavigate, onLogout, collapsed, onToggleC
         {/* alt only carries the brand name when collapsed, since that's the
             only case where the adjacent "TaskBuddy" text label is hidden —
             otherwise a screen reader would announce the brand twice. */}
-        <Image src="/taskbuddy-logo.png" alt={collapsed ? "TaskBuddy" : ""} width={36} height={36} className="flex-shrink-0" style={{ borderRadius: 12, objectFit: "cover" }} />
+        <Image src="/taskbuddy-logo.png" alt={collapsed ? "TaskBuddy" : ""} width={36} height={36} className="flex-shrink-0" style={{ borderRadius: "var(--r-lg)", objectFit: "cover" }} />
         {!collapsed && (
           <div className="sidebar-label overflow-hidden">
             <div className="font-bold whitespace-nowrap" style={{ fontSize: "var(--fs-md)", color: "var(--nav-fg-strong)", letterSpacing: "var(--tr-snug)" }}>TaskBuddy</div>

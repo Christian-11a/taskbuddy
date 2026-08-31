@@ -91,17 +91,17 @@ export function DisputesPage() {
     <div>
       <div className="flex items-start justify-between flex-wrap gap-3 mb-4">
         <div>
-          <h1 className="text-white font-bold" style={{ fontSize: 22, letterSpacing: "-0.025em" }}>Disputes</h1>
-          <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 5, lineHeight: 1.45 }}>Review and resolve payment disputes raised by homeowners</div>
+          <h1 className="text-white font-bold" style={{ fontSize: "var(--fs-2xl)", letterSpacing: "-0.025em" }}>Disputes</h1>
+          <div style={{ fontSize: "var(--fs-sm)", color: "var(--text-muted)", marginTop: 5, lineHeight: 1.45 }}>Review and resolve payment disputes raised by homeowners</div>
         </div>
         {/* Red means someone's money is in contention. With nothing open it
             would be an alarm about nothing, so it drops to a plain note. */}
         {counts.open > 0 ? (
-          <div className="flex items-center gap-1.5 font-semibold" style={{ background: "rgba(239,68,68,0.12)", border: "1px solid rgba(239,68,68,0.2)", borderRadius: 11, padding: "7px 11px", fontSize: 11.4, color: "var(--danger-text)" }}>
+          <div className="flex items-center gap-1.5 font-semibold" style={{ background: "rgba(239,68,68,0.12)", border: "1px solid rgba(239,68,68,0.2)", borderRadius: "var(--r-md)", padding: "7px 11px", fontSize: "var(--fs-xs)", color: "var(--danger-text)" }}>
             <AlertTriangle size={12} /> {counts.open} open
           </div>
         ) : (
-          <div className="flex items-center gap-1.5" style={{ borderRadius: 11, padding: "7px 11px", fontSize: 11.4, color: "var(--text-muted)" }}>
+          <div className="flex items-center gap-1.5" style={{ borderRadius: "var(--r-md)", padding: "7px 11px", fontSize: "var(--fs-xs)", color: "var(--text-muted)" }}>
             <Check size={12} style={{ color: "var(--success-text)" }} /> No open disputes
           </div>
         )}
@@ -116,16 +116,16 @@ export function DisputesPage() {
             aria-label="Search disputes"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            style={{ background: "var(--input-bg)", border: "1px solid var(--border-md)", height: 38, borderRadius: 9, padding: "0 13px 0 36px", fontSize: 12, fontFamily: "inherit", color: "var(--text-white)" }}
+            style={{ background: "var(--input-bg)", border: "1px solid var(--border-md)", height: 38, borderRadius: "var(--r-md)", padding: "0 13px 0 36px", fontSize: "var(--fs-sm)", fontFamily: "inherit", color: "var(--text-white)" }}
           />
         </div>
-        <div className="inline-flex flex-wrap" style={{ background: "var(--chip-bg)", padding: 3, borderRadius: 9, gap: 2 }}>
+        <div className="inline-flex flex-wrap" style={{ background: "var(--chip-bg)", padding: 3, borderRadius: "var(--r-md)", gap: 2 }}>
           {(["all", "open", "resolved", "cancelled"] as Filter[]).map((f) => (
             <button key={f} onClick={() => setFilter(f)}
               className={clsx("flex items-center gap-1 rounded-lg font-medium cursor-pointer transition-all", filter !== f && "text-gray-500 hover:text-gray-300")}
-              style={{ padding: "7px 11px", fontSize: 11, background: filter === f ? "var(--indigo-dark)" : "transparent", color: filter === f ? "var(--indigo-light)" : undefined, border: "none", fontFamily: "inherit" }}
+              style={{ padding: "7px 11px", fontSize: "var(--fs-xs)", background: filter === f ? "var(--indigo-dark)" : "transparent", color: filter === f ? "var(--indigo-light)" : undefined, border: "none", fontFamily: "inherit" }}
             >
-              {f.charAt(0).toUpperCase() + f.slice(1)} <span style={{ fontSize: 9.8, opacity: 0.7 }}>({counts[f]})</span>
+              {f.charAt(0).toUpperCase() + f.slice(1)} <span style={{ fontSize: "var(--fs-3xs)", opacity: 0.7 }}>({counts[f]})</span>
             </button>
           ))}
         </div>
@@ -133,7 +133,7 @@ export function DisputesPage() {
 
       <div>
         {filtered.length === 0 && (
-          <div className="text-center py-12" style={{ color: "var(--text-muted)", fontSize: 13 }}>
+          <div className="text-center py-12" style={{ color: "var(--text-muted)", fontSize: "var(--fs-md)" }}>
             {loading
               ? "Loading disputes…"
               : disputes.length === 0
@@ -151,18 +151,18 @@ export function DisputesPage() {
                 <AlertTriangle size={16} />
               </div>
               <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2 font-semibold flex-wrap" style={{ fontSize: 13 }}>
+                <div className="flex items-center gap-2 font-semibold flex-wrap" style={{ fontSize: "var(--fs-md)" }}>
                   {d.jobTitle}
                   <span className={clsx("badge", d.statusClass)}>{d.status}</span>
                 </div>
-                <div style={{ fontSize: 9.8, color: "var(--text-muted)", marginTop: 2 }}>
+                <div style={{ fontSize: "var(--fs-3xs)", color: "var(--text-muted)", marginTop: 2 }}>
                   {d.clientName} vs {d.providerName} · {d.amount} · {d.createdAt}
                 </div>
               </div>
               <button
                 onClick={() => openReview(d.id)}
                 className="flex items-center gap-1.5 font-semibold transition-colors flex-shrink-0"
-                style={{ background: "var(--indigo-dark)", border: "1px solid rgba(34,195,214,0.3)", borderRadius: 9, padding: "8px 16px", fontSize: 11, color: "var(--indigo-light)", cursor: "pointer", fontFamily: "inherit" }}
+                style={{ background: "var(--indigo-dark)", border: "1px solid rgba(34,195,214,0.3)", borderRadius: "var(--r-md)", padding: "8px 16px", fontSize: "var(--fs-xs)", color: "var(--indigo-light)", cursor: "pointer", fontFamily: "inherit" }}
               >
                 Review case
               </button>
@@ -183,7 +183,7 @@ export function DisputesPage() {
                 onClick={() => reviewing && openConfirm(reviewing.id, "REFUNDED_TO_CLIENT")}
                 disabled={resolvingId === reviewing?.id}
                 className="flex-1 flex items-center justify-center gap-1.5 font-semibold transition-colors disabled:opacity-50"
-                style={{ background: "transparent", border: "1px solid rgba(245,158,11,0.3)", borderRadius: 9, padding: "9px 14px", fontSize: 12, color: "#f59e0b", cursor: "pointer", fontFamily: "inherit" }}
+                style={{ background: "transparent", border: "1px solid rgba(245,158,11,0.3)", borderRadius: "var(--r-md)", padding: "9px 14px", fontSize: "var(--fs-sm)", color: "#f59e0b", cursor: "pointer", fontFamily: "inherit" }}
               >
                 <RotateCcw size={13} /> Refund Homeowner
               </button>
@@ -191,7 +191,7 @@ export function DisputesPage() {
                 onClick={() => reviewing && openConfirm(reviewing.id, "RELEASED_TO_PROVIDER")}
                 disabled={resolvingId === reviewing?.id}
                 className="btn-primary flex-1 flex items-center justify-center gap-1.5 transition-colors disabled:opacity-50"
-                style={{ borderRadius: 9, padding: "9px 14px", fontSize: 12 }}
+                style={{ borderRadius: "var(--r-md)", padding: "9px 14px", fontSize: "var(--fs-sm)" }}
               >
                 <Check size={13} /> Release to Provider
               </button>
@@ -200,7 +200,7 @@ export function DisputesPage() {
             <button
               onClick={() => setReviewingId(null)}
               className="flex-1 font-semibold transition-colors"
-              style={{ background: "var(--chip-bg)", border: "1px solid var(--border-md)", borderRadius: 9, padding: "9px 14px", fontSize: 12, color: "var(--text-light)", cursor: "pointer", fontFamily: "inherit" }}
+              style={{ background: "var(--chip-bg)", border: "1px solid var(--border-md)", borderRadius: "var(--r-md)", padding: "9px 14px", fontSize: "var(--fs-sm)", color: "var(--text-light)", cursor: "pointer", fontFamily: "inherit" }}
             >
               Close
             </button>
@@ -218,18 +218,18 @@ export function DisputesPage() {
               </div>
             </DrawerSection>
             <DrawerSection>
-              <div style={{ fontSize: 9, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 8 }}>Reason for dispute</div>
-              <div style={{ fontSize: 12, lineHeight: 1.6, color: "var(--text-light)" }}>{reviewing.reason}</div>
+              <div style={{ fontSize: "var(--fs-3xs)", fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: "var(--sp-2)" }}>Reason for dispute</div>
+              <div style={{ fontSize: "var(--fs-sm)", lineHeight: 1.6, color: "var(--text-light)" }}>{reviewing.reason}</div>
               {reviewing.details && (
                 <div className="mt-3">
-                  <div style={{ fontSize: 9, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 8 }}>Details</div>
-                  <div style={{ fontSize: 12, lineHeight: 1.6, color: "var(--text-light)" }}>{reviewing.details}</div>
+                  <div style={{ fontSize: "var(--fs-3xs)", fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: "var(--sp-2)" }}>Details</div>
+                  <div style={{ fontSize: "var(--fs-sm)", lineHeight: 1.6, color: "var(--text-light)" }}>{reviewing.details}</div>
                 </div>
               )}
               {reviewing.resolution && (
                 <div className="mt-3">
-                  <div style={{ fontSize: 9, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 8 }}>Resolution</div>
-                  <div style={{ fontSize: 12, lineHeight: 1.6, color: "var(--text-light)" }}>
+                  <div style={{ fontSize: "var(--fs-3xs)", fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: "var(--sp-2)" }}>Resolution</div>
+                  <div style={{ fontSize: "var(--fs-sm)", lineHeight: 1.6, color: "var(--text-light)" }}>
                     {reviewing.resolution} · {reviewing.resolvedAt}
                     {reviewing.resolutionNote && ` — ${reviewing.resolutionNote}`}
                   </div>
@@ -240,7 +240,7 @@ export function DisputesPage() {
               <button
                 onClick={() => toggleConversation(reviewing.jobId)}
                 className="flex items-center gap-1.5 font-semibold transition-colors"
-                style={{ background: "var(--indigo-dark)", border: "1px solid rgba(34,195,214,0.25)", borderRadius: 9, padding: "6px 12px", fontSize: 11, color: "var(--indigo-light)", cursor: "pointer", fontFamily: "inherit" }}
+                style={{ background: "var(--indigo-dark)", border: "1px solid rgba(34,195,214,0.25)", borderRadius: "var(--r-md)", padding: "6px 12px", fontSize: "var(--fs-xs)", color: "var(--indigo-light)", cursor: "pointer", fontFamily: "inherit" }}
               >
                 <MessagesSquare size={11} /> {conversationOpen ? "Hide conversation" : "View conversation"}
               </button>
@@ -248,19 +248,19 @@ export function DisputesPage() {
               {conversationOpen && (
                 <div className="mt-2 rounded-lg" style={{ background: "var(--card-bg)", border: "1px solid var(--card-border)", padding: 10, maxHeight: 240, overflowY: "auto" }}>
                   {conversations[reviewing.jobId] === "loading" && (
-                    <div style={{ fontSize: 10.8, color: "var(--text-muted)" }}>Loading conversation…</div>
+                    <div style={{ fontSize: "var(--fs-2xs)", color: "var(--text-muted)" }}>Loading conversation…</div>
                   )}
                   {conversations[reviewing.jobId] === "error" && (
-                    <div style={{ fontSize: 10.8, color: "var(--danger-text)" }}>Could not load the conversation.</div>
+                    <div style={{ fontSize: "var(--fs-2xs)", color: "var(--danger-text)" }}>Could not load the conversation.</div>
                   )}
                   {Array.isArray(conversations[reviewing.jobId]) && (conversations[reviewing.jobId] as ConversationMessage[]).length === 0 && (
-                    <div style={{ fontSize: 10.8, color: "var(--text-muted)" }}>No messages in this job&apos;s chat.</div>
+                    <div style={{ fontSize: "var(--fs-2xs)", color: "var(--text-muted)" }}>No messages in this job&apos;s chat.</div>
                   )}
                   {Array.isArray(conversations[reviewing.jobId]) &&
                     (conversations[reviewing.jobId] as ConversationMessage[]).map((m) => (
-                      <div key={m.id} className="mb-2 last:mb-0" style={{ fontSize: 11 }}>
+                      <div key={m.id} className="mb-2 last:mb-0" style={{ fontSize: "var(--fs-xs)" }}>
                         <div className="text-white font-medium">
-                          {m.senderName} <span style={{ fontSize: 9.8, color: "var(--text-muted)", fontWeight: 400 }}>{new Date(m.createdAt).toLocaleString()}</span>
+                          {m.senderName} <span style={{ fontSize: "var(--fs-3xs)", color: "var(--text-muted)", fontWeight: 400 }}>{new Date(m.createdAt).toLocaleString()}</span>
                         </div>
                         <div style={{ color: "var(--text-light)" }}>{m.body}</div>
                       </div>
@@ -269,7 +269,7 @@ export function DisputesPage() {
               )}
             </DrawerSection>
             <div>
-              <div style={{ fontSize: 9, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 9 }}>Admin resolution note</div>
+              <div style={{ fontSize: "var(--fs-3xs)", fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 9 }}>Admin resolution note</div>
               <textarea
                 placeholder="Document the reason for the final decision…"
                 aria-label="Resolution note (optional)"
@@ -277,9 +277,9 @@ export function DisputesPage() {
                 onChange={(e) => setResolveNote(e.target.value)}
                 rows={3}
                 className="w-full text-white outline-none"
-                style={{ background: "var(--input-bg)", border: `1px solid ${resolveNoteTooLong ? "rgba(239,68,68,0.5)" : "var(--border-md)"}`, borderRadius: 9, padding: "10px 12px", fontSize: 12, fontFamily: "inherit", resize: "vertical" }}
+                style={{ background: "var(--input-bg)", border: `1px solid ${resolveNoteTooLong ? "rgba(239,68,68,0.5)" : "var(--border-md)"}`, borderRadius: "var(--r-md)", padding: "10px 12px", fontSize: "var(--fs-sm)", fontFamily: "inherit", resize: "vertical" }}
               />
-              <div className="mt-1 text-right" style={{ fontSize: 10, color: resolveNoteTooLong ? "var(--danger-text)" : "var(--text-muted)" }}>
+              <div className="mt-1 text-right" style={{ fontSize: "var(--fs-2xs)", color: resolveNoteTooLong ? "var(--danger-text)" : "var(--text-muted)" }}>
                 {resolveNote.length}/{NOTE_MAX_LENGTH}
               </div>
             </div>

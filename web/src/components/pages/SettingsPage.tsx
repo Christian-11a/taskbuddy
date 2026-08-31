@@ -17,12 +17,12 @@ interface FieldErrors {
 
 const Section = ({ title, icon, note, children }: { title: string; icon: React.ReactNode; note?: string; children: React.ReactNode }) => (
   <div className="rounded-xl p-5 mb-4" style={{ background: "var(--card-bg)", border: "1px solid var(--card-border)" }}>
-    <div className="mb-4" style={{ borderBottom: "1px solid var(--border)", paddingBottom: 12 }}>
+    <div className="mb-4" style={{ borderBottom: "1px solid var(--border)", paddingBottom: "var(--sp-3)" }}>
       <div className="flex items-center gap-2">
         <span style={{ color: "var(--indigo-light)" }}>{icon}</span>
-        <div className="text-white font-semibold" style={{ fontSize: 14 }}>{title}</div>
+        <div className="text-white font-semibold" style={{ fontSize: "var(--fs-md)" }}>{title}</div>
       </div>
-      {note && <div style={{ fontSize: 10, color: "var(--warning-text)", marginTop: 6 }}>{note}</div>}
+      {note && <div style={{ fontSize: "var(--fs-2xs)", color: "var(--warning-text)", marginTop: 6 }}>{note}</div>}
     </div>
     {children}
   </div>
@@ -45,8 +45,8 @@ function Toggle({ label, sub, value, onChange }: { label: string; sub?: string; 
   return (
     <div className="flex items-center justify-between py-2">
       <div>
-        <div className="text-white" style={{ fontSize: 12 }}>{label}</div>
-        {sub && <div style={{ fontSize: 10, color: "var(--text-muted)" }}>{sub}</div>}
+        <div className="text-white" style={{ fontSize: "var(--fs-sm)" }}>{label}</div>
+        {sub && <div style={{ fontSize: "var(--fs-2xs)", color: "var(--text-muted)" }}>{sub}</div>}
       </div>
       <button
         type="button"
@@ -54,7 +54,7 @@ function Toggle({ label, sub, value, onChange }: { label: string; sub?: string; 
         aria-checked={value}
         aria-label={label}
         onClick={() => onChange(!value)}
-        style={{ width: 36, height: 20, borderRadius: 999, background: value ? "var(--indigo)" : "var(--track-bg)", transition: "background 0.2s", border: "none", cursor: "pointer", flexShrink: 0, position: "relative" }}
+        style={{ width: 36, height: 20, borderRadius: "var(--r-pill)", background: value ? "var(--indigo)" : "var(--track-bg)", transition: "background 0.2s", border: "none", cursor: "pointer", flexShrink: 0, position: "relative" }}
       >
         <div style={{ position: "absolute", top: 3, left: value ? 19 : 3, width: 14, height: 14, borderRadius: "50%", background: "white", transition: "left 0.2s" }} />
       </button>
@@ -93,7 +93,7 @@ function Field({
   const errorId = `${id}-error`;
   return (
     <div className="mb-3">
-      <label htmlFor={id} className="block font-medium" style={{ fontSize: 11, color: "#9ca3af", marginBottom: 6 }}>
+      <label htmlFor={id} className="block font-medium" style={{ fontSize: "var(--fs-xs)", color: "var(--text-muted)", marginBottom: 6 }}>
         {label}{disabled && <span style={{ opacity: 0.6 }}> (read-only)</span>}
       </label>
       <input
@@ -106,10 +106,10 @@ function Field({
         aria-describedby={error ? errorId : undefined}
         onChange={(e) => onChange?.(e.target.value)}
         className="w-full text-white outline-none"
-        style={{ background: "var(--input-bg)", border: `1px solid ${error ? "rgba(239,68,68,0.5)" : "var(--border-md)"}`, borderRadius: 11, padding: "9px 13px", fontSize: 12, fontFamily: "inherit", opacity: disabled ? 0.55 : 1, cursor: disabled ? "not-allowed" : "text" }}
+        style={{ background: "var(--input-bg)", border: `1px solid ${error ? "rgba(239,68,68,0.5)" : "var(--border-md)"}`, borderRadius: "var(--r-md)", padding: "9px 13px", fontSize: "var(--fs-sm)", fontFamily: "inherit", opacity: disabled ? 0.55 : 1, cursor: disabled ? "not-allowed" : "text" }}
       />
       {error && (
-        <div id={errorId} style={{ fontSize: 10.5, color: "var(--danger-text)", marginTop: 4 }}>{error}</div>
+        <div id={errorId} style={{ fontSize: "var(--fs-2xs)", color: "var(--danger-text)", marginTop: "var(--sp-1)" }}>{error}</div>
       )}
     </div>
   );
@@ -190,22 +190,22 @@ export function SettingsPage() {
   return (
     <div>
       <div className="mb-4">
-        <h1 className="text-white font-bold" style={{ fontSize: 22, letterSpacing: "-0.025em" }}>Settings</h1>
-        <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 5, lineHeight: 1.45 }}>Configure your admin console preferences</div>
+        <h1 className="text-white font-bold" style={{ fontSize: "var(--fs-2xl)", letterSpacing: "-0.025em" }}>Settings</h1>
+        <div style={{ fontSize: "var(--fs-sm)", color: "var(--text-muted)", marginTop: 5, lineHeight: 1.45 }}>Configure your admin console preferences</div>
       </div>
 
-      <div className="flex items-start gap-2 rounded-xl mb-4" style={{ background: "rgba(245,158,11,0.08)", border: "1px solid rgba(245,158,11,0.18)", padding: "10px 14px", fontSize: 11.4, color: "var(--warning-text)", lineHeight: 1.5 }}>
+      <div className="flex items-start gap-2 rounded-xl mb-4" style={{ background: "rgba(245,158,11,0.08)", border: "1px solid rgba(245,158,11,0.18)", padding: "10px 14px", fontSize: "var(--fs-xs)", color: "var(--warning-text)", lineHeight: 1.5 }}>
         <AlertCircle size={13} style={{ marginTop: 1, flexShrink: 0 }} />
         <span>{LOCAL_ONLY_SECTIONS} save to this device only — not yet connected to the backend. Account changes and Maintenance Mode are live.</span>
       </div>
 
       {saved && (
-        <div className="flex items-center gap-2 rounded-xl mb-4" style={{ background: "rgba(34,197,94,0.12)", border: "1px solid rgba(34,197,94,0.2)", padding: "10px 14px", fontSize: 12, color: "var(--success-text)" }}>
+        <div className="flex items-center gap-2 rounded-xl mb-4" style={{ background: "rgba(34,197,94,0.12)", border: "1px solid rgba(34,197,94,0.2)", padding: "10px 14px", fontSize: "var(--fs-sm)", color: "var(--success-text)" }}>
           <Check size={13} /> Account changes saved.
         </div>
       )}
       {error && (
-        <div className="flex items-center gap-2 rounded-xl mb-4" style={{ background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.2)", padding: "10px 14px", fontSize: 12, color: "var(--danger-text)" }}>
+        <div className="flex items-center gap-2 rounded-xl mb-4" style={{ background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.2)", padding: "10px 14px", fontSize: "var(--fs-sm)", color: "var(--danger-text)" }}>
           <AlertCircle size={13} /> {error}
         </div>
       )}
@@ -244,7 +244,7 @@ export function SettingsPage() {
               value={maintenanceMode}
               onChange={handleMaintenanceToggle}
             />
-            {maintenanceBusy && <div style={{ fontSize: 10, color: "var(--text-muted)" }}>Saving…</div>}
+            {maintenanceBusy && <div style={{ fontSize: "var(--fs-2xs)", color: "var(--text-muted)" }}>Saving…</div>}
           </Section>
           <Section title="Appearance" icon={<Palette size={15} />}>
             <Toggle label="Dark Mode" value={darkMode} onChange={setDarkMode} />
@@ -265,13 +265,13 @@ export function SettingsPage() {
           "Save Changes" implied it was committing the whole page, including
           the platform settings that aren't wired to a backend at all. */}
       <div className="flex items-center justify-end gap-3 mt-2 flex-wrap">
-        <span style={{ fontSize: 10.5, color: "var(--text-muted)" }}>
+        <span style={{ fontSize: "var(--fs-2xs)", color: "var(--text-muted)" }}>
           Everything else on this page saves as you change it.
         </span>
         <button
           onClick={handleSave}
           className="btn-primary flex items-center gap-2"
-          style={{ borderRadius: 11, padding: "10px 20px", fontSize: 13 }}
+          style={{ borderRadius: "var(--r-md)", padding: "10px 20px", fontSize: "var(--fs-md)" }}
         >
           <Save size={14} /> Save account changes
         </button>

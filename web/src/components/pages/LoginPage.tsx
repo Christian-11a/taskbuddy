@@ -43,27 +43,27 @@ export function LoginPage() {
       <main style={{ width: "100%", maxWidth: 372 }}>
         <div className="flex items-center gap-2.5 mb-9">
           {/* decorative: the adjacent wordmark already carries the brand name */}
-          <Image src="/taskbuddy-logo.png" alt="" width={34} height={34} style={{ borderRadius: 11, objectFit: "cover" }} />
+          <Image src="/taskbuddy-logo.png" alt="" width={34} height={34} style={{ borderRadius: "var(--r-md)", objectFit: "cover" }} />
           <div>
-            <div className="text-white font-bold" style={{ fontSize: 14, letterSpacing: "-0.01em" }}>TaskBuddy</div>
-            <div style={{ fontSize: 10, color: "var(--indigo-light)" }}>Admin Console</div>
+            <div className="text-white font-bold" style={{ fontSize: "var(--fs-md)", letterSpacing: "-0.01em" }}>TaskBuddy</div>
+            <div style={{ fontSize: "var(--fs-2xs)", color: "var(--indigo-light)" }}>Admin Console</div>
           </div>
         </div>
 
-        <h1 className="text-white font-bold" style={{ fontSize: 26, letterSpacing: "-0.035em" }}>Sign in</h1>
-        <p style={{ fontSize: 12.5, color: "var(--text-muted)", marginTop: 6, marginBottom: 26, lineHeight: 1.5 }}>
+        <h1 className="text-white font-bold" style={{ fontSize: "var(--fs-3xl)", letterSpacing: "-0.035em" }}>Sign in</h1>
+        <p style={{ fontSize: "var(--fs-sm)", color: "var(--text-muted)", marginTop: 6, marginBottom: 26, lineHeight: 1.5 }}>
           Restricted to authorized TaskBuddy administrators.
         </p>
 
         {error && (
-          <div role="alert" className="flex items-start gap-2 rounded-xl mb-4" style={{ background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.2)", padding: "10px 13px", fontSize: 11.4, color: "#f87171", lineHeight: 1.45 }}>
+          <div role="alert" className="flex items-start gap-2 rounded-xl mb-4" style={{ background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.2)", padding: "10px 13px", fontSize: "var(--fs-xs)", color: "#f87171", lineHeight: 1.45 }}>
             <AlertCircle size={13} style={{ marginTop: 1, flexShrink: 0 }} /> {error}
           </div>
         )}
 
         <form onSubmit={handleSubmit} noValidate>
-          <div style={{ marginBottom: 16 }}>
-            <label htmlFor={emailId} className="block font-medium" style={{ fontSize: 11.4, color: "#9ca3af", marginBottom: 7 }}>Admin email</label>
+          <div style={{ marginBottom: "var(--sp-4)" }}>
+            <label htmlFor={emailId} className="block font-medium" style={{ fontSize: "var(--fs-xs)", color: "#9ca3af", marginBottom: 7 }}>Admin email</label>
             <div className="relative">
               <span className="absolute top-1/2 -translate-y-1/2 left-3.5 opacity-50"><Mail size={14} color="#6b7280" /></span>
               <input
@@ -74,13 +74,13 @@ export function LoginPage() {
                 value={email}
                 onChange={(e) => { setEmail(e.target.value); setError(""); }}
                 className="w-full text-white outline-none"
-                style={{ background: "rgba(255,255,255,0.06)", border: `1px solid ${error ? "rgba(239,68,68,0.4)" : "rgba(255,255,255,0.1)"}`, borderRadius: 11, padding: "11px 14px 11px 36px", fontSize: 12.5, fontFamily: "inherit" }}
+                style={{ background: "rgba(255,255,255,0.06)", border: `1px solid ${error ? "rgba(239,68,68,0.4)" : "rgba(255,255,255,0.1)"}`, borderRadius: "var(--r-md)", padding: "11px 14px 11px 36px", fontSize: "var(--fs-sm)", fontFamily: "inherit" }}
               />
             </div>
           </div>
 
           <div style={{ marginBottom: 22 }}>
-            <label htmlFor={passwordId} className="block font-medium" style={{ fontSize: 11.4, color: "#9ca3af", marginBottom: 7 }}>Password</label>
+            <label htmlFor={passwordId} className="block font-medium" style={{ fontSize: "var(--fs-xs)", color: "#9ca3af", marginBottom: 7 }}>Password</label>
             <div className="relative">
               <span className="absolute top-1/2 -translate-y-1/2 left-3.5 opacity-50"><Lock size={14} color="#6b7280" /></span>
               <input
@@ -91,7 +91,7 @@ export function LoginPage() {
                 value={password}
                 onChange={(e) => { setPassword(e.target.value); setError(""); }}
                 className="w-full text-white outline-none"
-                style={{ background: "rgba(255,255,255,0.06)", border: `1px solid ${error ? "rgba(239,68,68,0.4)" : "rgba(255,255,255,0.1)"}`, borderRadius: 11, padding: "11px 14px 11px 36px", fontSize: 12.5, fontFamily: "inherit" }}
+                style={{ background: "rgba(255,255,255,0.06)", border: `1px solid ${error ? "rgba(239,68,68,0.4)" : "rgba(255,255,255,0.1)"}`, borderRadius: "var(--r-md)", padding: "11px 14px 11px 36px", fontSize: "var(--fs-sm)", fontFamily: "inherit" }}
               />
             </div>
           </div>
@@ -100,13 +100,13 @@ export function LoginPage() {
             type="submit"
             disabled={submitting}
             className="btn-primary w-full"
-            style={{ padding: 12, borderRadius: 11, fontSize: 13, cursor: submitting ? "wait" : "pointer" }}
+            style={{ padding: "var(--sp-3)", borderRadius: "var(--r-md)", fontSize: "var(--fs-md)", cursor: submitting ? "wait" : "pointer" }}
           >
             {submitting ? "Signing in…" : "Sign in"}
           </button>
         </form>
 
-        <div style={{ fontSize: 9.8, color: "var(--text-muted)", marginTop: 28, paddingTop: 16, borderTop: "1px solid rgba(255,255,255,0.07)" }}>
+        <div style={{ fontSize: "var(--fs-3xs)", color: "var(--text-muted)", marginTop: 28, paddingTop: "var(--sp-4)", borderTop: "1px solid rgba(255,255,255,0.07)" }}>
           TaskBuddy Admin Console v2.1
         </div>
       </main>

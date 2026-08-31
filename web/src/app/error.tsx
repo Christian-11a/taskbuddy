@@ -34,26 +34,26 @@ export default function GlobalError({
       >
         <AlertTriangle size={22} style={{ color: "var(--danger-text)" }} />
       </div>
-      <div className="text-white font-bold mb-2" style={{ fontSize: 18 }}>Something went wrong</div>
-      <div style={{ fontSize: 13, color: "var(--text-muted)", maxWidth: 420, marginBottom: 20 }}>
+      <div className="text-white font-bold mb-2" style={{ fontSize: "var(--fs-xl)" }}>Something went wrong</div>
+      <div style={{ fontSize: "var(--fs-md)", color: "var(--text-muted)", maxWidth: 420, marginBottom: "var(--sp-5)" }}>
         The console hit an unexpected error. Trying again usually clears it — if
         it keeps happening, the details are in the browser console.
         {error.digest && (
-          <div style={{ fontSize: 11, marginTop: 8, fontFamily: "monospace" }}>Ref: {error.digest}</div>
+          <div style={{ fontSize: "var(--fs-xs)", marginTop: "var(--sp-2)", fontFamily: "monospace" }}>Ref: {error.digest}</div>
         )}
       </div>
       <div className="flex gap-2.5">
         <button
           onClick={reset}
           className="btn-primary"
-          style={{ borderRadius: 11, padding: "9px 18px", fontSize: 13 }}
+          style={{ borderRadius: "var(--r-md)", padding: "9px 18px", fontSize: "var(--fs-md)" }}
         >
           Try again
         </button>
         <a
           href="/dashboard"
           className="font-semibold transition-opacity hover:opacity-80"
-          style={{ background: "var(--chip-bg)", border: "1px solid var(--border-md)", borderRadius: 11, padding: "9px 18px", fontSize: 13, color: "var(--text-light)", textDecoration: "none" }}
+          style={{ background: "var(--chip-bg)", border: "1px solid var(--border-md)", borderRadius: "var(--r-md)", padding: "9px 18px", fontSize: "var(--fs-md)", color: "var(--text-light)", textDecoration: "none" }}
         >
           Back to dashboard
         </a>
