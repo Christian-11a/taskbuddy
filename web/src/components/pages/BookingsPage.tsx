@@ -25,17 +25,9 @@ type StatusFilter =
   | "Cancelled"
   | "Expired";
 
-const STATUS_ACCENTS: Record<StatusFilter, string> = {
-  all: "#6366f1",
-  Open: "#f59e0b",
-  Matching: "#60a5fa",
-  Assigned: "#8b5cf6",
-  Confirmed: "#06b6d4",
-  "In Progress": "#a855f7",
-  Completed: "#22c55e",
-  Cancelled: "#ef4444",
-  Expired: "var(--danger-text)",
-};
+/* The per-status accent palette that used to wash all nine filter chips is
+   gone with them — row status still reads from the shared .badge-* classes,
+   so status colour lives in one place rather than two. */
 
 export function BookingsPage() {
   const { cancelBooking } = useApp();
@@ -115,17 +107,11 @@ export function BookingsPage() {
     }
   }
 
-  const counts: Record<StatusFilter, number> = {
-    all: statusFilter === "all" ? total : 0,
-    Open: statusFilter === "Open" ? total : 0,
-    Matching: statusFilter === "Matching" ? total : 0,
-    Assigned: statusFilter === "Assigned" ? total : 0,
-    Confirmed: statusFilter === "Confirmed" ? total : 0,
-    "In Progress": statusFilter === "In Progress" ? total : 0,
-    Completed: statusFilter === "Completed" ? total : 0,
-    Cancelled: statusFilter === "Cancelled" ? total : 0,
-    Expired: statusFilter === "Expired" ? total : 0,
-  };
+  /* searchBookings only returns a total for the status currently queried, so a
+     per-status count is not available for the inactive filters. They used to
+     render "0", which stated as fact that there were no Open or Completed
+     bookings when the server had simply never been asked. Only the active
+     filter shows a count now, because it is the only one that is true. */
 
   // Only this server-loaded page is available for selection and export.
   const allSelected = bookings.length > 0 && bookings.every((b) => selected.has(b.id));
@@ -177,19 +163,25 @@ export function BookingsPage() {
         </button>
       </div>
 
-      <div className="flex gap-2.5 mb-4 overflow-x-auto pb-1" style={{ scrollbarColor: "var(--border-md) transparent" }}>
-        {(["all", "Open", "Matching", "Assigned", "Confirmed", "In Progress", "Completed", "Cancelled", "Expired"] as StatusFilter[]).map((s) => {
-          const accent = STATUS_ACCENTS[s];
-          return (
-            <button key={s} onClick={() => { setStatusFilter(s); clearSelectionOnScopeChange(); }}
-              className="flex items-center gap-2 rounded-xl cursor-pointer transition-opacity hover:opacity-80 flex-shrink-0"
-              style={{ padding: "9px 14px", border: `1px solid ${accent}33`, background: statusFilter === s ? `${accent}28` : `${accent}18`, fontSize: 11.4, fontFamily: "inherit", outline: statusFilter === s ? `1px solid ${accent}44` : "none", whiteSpace: "nowrap" }}
-            >
-              <span className="font-semibold text-white">{counts[s]}</span>
-              <span style={{ color: "var(--text-muted)" }}>{s === "all" ? "Total" : s}</span>
-            </button>
-          );
-        })}
+      {/* One segmented control, matching Users / Transactions / Verifications,
+          instead of nine individually-washed colour pills. Colour marks which
+          status is selected; it isn't sprayed across every option. */}
+      <div className="mb-4 overflow-x-auto pb-1" style={{ scrollbarColor: "var(--border-md) transparent" }}>
+        <div className="inline-flex" style={{ background: "var(--chip-bg)", padding: 3, borderRadius: 9, gap: 2 }} role="group" aria-label="Filter bookings by status">
+          {(["all", "Open", "Matching", "Assigned", "Confirmed", "In Progress", "Completed", "Cancelled", "Expired"] as StatusFilter[]).map((s) => {
+            const active = statusFilter === s;
+            return (
+              <button key={s} onClick={() => { setStatusFilter(s); clearSelectionOnScopeChange(); }}
+                aria-pressed={active}
+                className={clsx("rounded-lg font-medium cursor-pointer transition-all flex-shrink-0", !active && "text-gray-500 hover:text-gray-300")}
+                style={{ padding: "7px 11px", fontSize: 11, background: active ? "var(--indigo-dark)" : "transparent", color: active ? "var(--indigo-light)" : undefined, border: "none", fontFamily: "inherit", whiteSpace: "nowrap" }}
+              >
+                {s === "all" ? "All" : s}
+                {active && <span className="tabular" style={{ marginLeft: 6, opacity: 0.75 }}>{total}</span>}
+              </button>
+            );
+          })}
+        </div>
       </div>
 
       <div className="flex gap-2.5 mb-4">
@@ -358,11 +350,16 @@ export function BookingsPage() {
               {bookings.length === 0 && (
                 <tr>
                   <td colSpan={9} className="text-center py-12" style={{ color: "var(--text-muted)", fontSize: 13 }}>
+                    {/* `total` is the count for the *current* query, so it is 0
+                        whenever a filter excludes everything — using it alone
+                        claimed "No bookings yet" while eleven bookings existed
+                        under another status. Narrowing the scope is the real
+                        signal for which message is true. */}
                     {loading
                       ? "Loading bookings…"
-                        : total === 0
-                        ? "No bookings yet."
-                        : "No bookings match this search or filter."}
+                      : statusFilter !== "all" || search.trim()
+                        ? "No bookings match this search or filter."
+                        : "No bookings yet."}
                   </td>
                 </tr>
               )}
