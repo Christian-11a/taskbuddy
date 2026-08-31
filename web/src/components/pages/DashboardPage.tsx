@@ -96,25 +96,82 @@ export function DashboardPage() {
 
   return (
     <div>
-      <section className="relative overflow-hidden rounded-3xl p-6 mb-5" style={{ background: "linear-gradient(120deg, rgba(35,45,78,.95), rgba(16,24,47,.9))", border: "1px solid rgba(120,145,220,.22)", boxShadow: "0 20px 50px rgba(0,0,0,.2)" }}>
-        <div className="absolute -right-16 -top-24 rounded-full" style={{ width: 230, height: 230, background: "radial-gradient(circle, rgba(56,189,248,.18), transparent 68%)" }} />
-        <div className="relative flex items-start justify-between gap-4">
-          <div>
-            <h1 className="text-white font-bold" style={{ fontSize: 28, letterSpacing: "-0.04em", lineHeight: 1.1 }}>Platform overview</h1>
-            <p style={{ fontSize: 12, color: "#aebbd5", marginTop: 10, lineHeight: 1.5 }}>A clear read on marketplace activity, revenue, and the work that needs attention.</p>
-          </div>
-        </div>
-      </section>
+      {/* The page title is a heading, not a hero. The indigo gradient slab and
+          its radial glow behind this text were pure decoration — they said
+          nothing about platform state and made the dashboard read as a
+          marketing surface rather than a place of work. */}
+      <header className="mb-6">
+        <h1 className="text-white font-bold" style={{ fontSize: 26, letterSpacing: "-0.035em", lineHeight: 1.15 }}>Platform overview</h1>
+        <p style={{ fontSize: 12.5, color: "var(--text-muted)", marginTop: 6, lineHeight: 1.5 }}>A clear read on marketplace activity, revenue, and the work that needs attention.</p>
+      </header>
 
-      {/* Stat Cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-6 gap-3 mb-6">
+      {/* Outstanding work leads the page. This is an operations console: what
+          an admin has to *do* outranks how the marketplace is performing.
+          Queues are ordered by how much a delay costs someone — an active
+          dispute freezes money, an unpaid withdrawal keeps a provider waiting,
+          an unverified provider can't earn at all — and only queues with real
+          items are shown, so an idle console reads as one calm line instead of
+          four cards all reporting zero. */}
+      {(() => {
+        const queues = [
+          { key: "disputes", count: openDisputes, one: "open dispute", many: "open disputes", href: pageToPath("disputes"), icon: <AlertTriangle size={15} />, tone: "var(--danger-text)", wash: "rgba(239,68,68,0.09)" },
+          { key: "withdrawals", count: dashboardStats.pendingWithdrawals, one: "withdrawal to settle", many: "withdrawals to settle", href: pageToPath("withdrawals"), icon: <WalletCards size={15} />, tone: "var(--warning-text)", wash: "rgba(245,158,11,0.09)" },
+          { key: "verifications", count: dashboardStats.pendingVerifications, one: "provider awaiting verification", many: "providers awaiting verification", href: pageToPath("verifications"), icon: <ShieldCheck size={15} />, tone: "var(--warning-text)", wash: "rgba(245,158,11,0.09)" },
+          { key: "escrow", count: escrowUnderReview, one: "escrow hold under review", many: "escrow holds under review", href: pageToPath("transactions"), icon: <CreditCard size={15} />, tone: "var(--indigo-light)", wash: "var(--chip-bg)" },
+        ];
+        const open = queues.filter((q) => q.count > 0);
+
+        if (open.length === 0) {
+          return (
+            <div
+              className="flex items-center gap-2.5 rounded-xl mb-7"
+              style={{ background: "var(--card-bg)", border: "1px solid var(--card-border)", padding: "13px 16px" }}
+            >
+              <CheckCircle size={15} style={{ color: "var(--success-text)", flexShrink: 0 }} />
+              <span className="text-white" style={{ fontSize: 12.5 }}>Nothing needs review right now.</span>
+              <span style={{ fontSize: 11.4, color: "var(--text-muted)" }}>Disputes, withdrawals, verifications, and escrow holds are all clear.</span>
+            </div>
+          );
+        }
+
+        return (
+          <section className="mb-7">
+            <h2 className="font-semibold text-white mb-2.5" style={{ fontSize: 13 }}>Needs your attention</h2>
+            <div className="rounded-xl overflow-hidden" style={{ background: "var(--card-bg)", border: "1px solid var(--card-border)" }}>
+              {open.map((q, i) => (
+                <Link
+                  key={q.key}
+                  href={q.href}
+                  className="flex items-center gap-3.5 transition-colors hover:bg-white/5"
+                  style={{ padding: i === 0 ? "15px 16px" : "12px 16px", borderTop: i === 0 ? "none" : "1px solid var(--border)", textDecoration: "none" }}
+                >
+                  <span
+                    className="flex items-center justify-center rounded-lg flex-shrink-0"
+                    style={{ width: i === 0 ? 34 : 28, height: i === 0 ? 34 : 28, background: q.wash, color: q.tone }}
+                  >
+                    {q.icon}
+                  </span>
+                  <span className="font-bold tabular" style={{ fontSize: i === 0 ? 22 : 17, color: q.tone, minWidth: 28 }}>{q.count}</span>
+                  <span className="text-white" style={{ fontSize: i === 0 ? 13 : 12 }}>{q.count === 1 ? q.one : q.many}</span>
+                  <span className="ml-auto flex items-center gap-1 font-medium flex-shrink-0" style={{ fontSize: 11, color: "var(--indigo-light)" }}>
+                    Review <ArrowUpRight size={11} />
+                  </span>
+                </Link>
+              ))}
+            </div>
+          </section>
+        );
+      })()}
+
+      {/* Marketplace scale — three peer counts, so they share one treatment. */}
+      <h2 className="font-semibold text-white mb-2.5" style={{ fontSize: 13 }}>Marketplace</h2>
+      <div className="grid grid-cols-2 lg:grid-cols-3 gap-3 mb-6">
         <StatCard
           icon={<Users size={14} />}
           label="Total Users"
           value={dashboardStats.totalUsers.toLocaleString()}
           sub={newUsersThisMonth > 0 ? `+${newUsersThisMonth} this month` : "No new signups this month"}
           accent="#22c3d6"
-          className="col-span-2"
         />
         <StatCard
           icon={<ShieldCheck size={14} />}
@@ -122,108 +179,38 @@ export function DashboardPage() {
           value={dashboardStats.activeProviders}
           sub={`${activeProviderShare}% of registered users`}
           accent="#22c55e"
-          className="col-span-2"
         />
         <StatCard
           icon={<CalendarDays size={14} />}
           label="Bookings This Month"
           value={bookingsThisMonth.toLocaleString()}
           sub={`${dashboardStats.completionRate}% completion rate`}
+          className="col-span-2 lg:col-span-1"
           accent="#38bdf8"
-          className="col-span-2"
-        />
-        <StatCard
-          icon={<CreditCard size={14} />}
-          label="Monthly GMV"
-          value={formatCurrency(dashboardStats.monthlyRevenue)}
-          sub={`${formatCurrency(escrowHeld)} currently held in escrow`}
-          accent="#f59e0b"
-          className="col-span-2 lg:col-span-3"
-        />
-        <StatCard
-          icon={<Percent size={14} />}
-          label="Monthly Commission"
-          value={formatCurrency(dashboardStats.monthlyCommission)}
-          sub={`${formatCurrency(dashboardStats.totalCommission)} total retained`}
-          accent="#a78bfa"
-          className="col-span-2 lg:col-span-3"
         />
       </div>
 
-      <div className="flex items-center justify-between mb-2"><div className="font-semibold text-white" style={{ fontSize: 13 }}>Needs your attention</div><div style={{ fontSize: 10, color: "var(--text-muted)" }}>Live queue</div></div>
-      {/* Secondary Stat Row — actionable items only. Completion rate, avg
-          rating, and total revenue duplicated Reports & Analytics, which
-          already covers them (and more); trimmed so Dashboard stays a quick
-          glance + what needs your attention right now, not a second Reports
-          page. */}
-      <div className="flex gap-3 mb-5 flex-wrap">
-        <div
-          className="flex items-center gap-3 px-4 py-3 rounded-2xl flex-1 min-w-[210px]"
-          style={{ background: "var(--card-bg)", border: "1px solid var(--card-border)" }}
-        >
-          <ShieldCheck size={16} style={{ color: "#f59e0b" }} />
-          <div>
-            <div className="text-white font-bold" style={{ fontSize: 18 }}>{dashboardStats.pendingVerifications}</div>
-            <div style={{ fontSize: 10, color: "var(--text-muted)" }}>Pending Verifications</div>
-          </div>
-          <Link
-            href={pageToPath("verifications")}
-            className="ml-auto flex items-center gap-1 font-medium transition-opacity hover:opacity-75"
-            style={{ fontSize: 10, color: "var(--indigo-light)", textDecoration: "none" }}
-          >
-            Review <ArrowUpRight size={10} />
-          </Link>
+      {/* Money is a different kind of fact from headcount, so it gets its own
+          grouped panel rather than two more cards in the same row — the three
+          figures here are related to each other, not to the counts above. */}
+      <h2 className="font-semibold text-white mb-2.5" style={{ fontSize: 13 }}>This month&apos;s money</h2>
+      <div
+        className="rounded-xl mb-7 flex flex-wrap"
+        style={{ background: "var(--card-bg)", border: "1px solid var(--card-border)", padding: "18px 20px", columnGap: 44, rowGap: 18 }}
+      >
+        <div>
+          <div className="flex items-center gap-1.5" style={{ fontSize: 11, color: "var(--text-muted)" }}><CreditCard size={13} /> Gross merchandise value</div>
+          <div className="text-white font-extrabold mt-1.5 tabular" style={{ fontSize: 26, letterSpacing: "-0.03em" }}>{formatCurrency(dashboardStats.monthlyRevenue)}</div>
         </div>
-        <div
-          className="flex items-center gap-3 px-4 py-3 rounded-2xl flex-1 min-w-[210px]"
-          style={{ background: "var(--card-bg)", border: "1px solid var(--card-border)" }}
-        >
-          <WalletCards size={16} style={{ color: "var(--warning-text)" }} />
-          <div>
-            <div className="text-white font-bold" style={{ fontSize: 18 }}>{dashboardStats.pendingWithdrawals}</div>
-            <div style={{ fontSize: 10, color: "var(--text-muted)" }}>Pending Withdrawals</div>
-          </div>
-          <Link
-            href={pageToPath("withdrawals")}
-            className="ml-auto flex items-center gap-1 font-medium transition-opacity hover:opacity-75"
-            style={{ fontSize: 10, color: "var(--indigo-light)", textDecoration: "none" }}
-          >
-            Review <ArrowUpRight size={10} />
-          </Link>
+        <div>
+          <div className="flex items-center gap-1.5" style={{ fontSize: 11, color: "var(--text-muted)" }}><Percent size={13} /> Commission retained</div>
+          <div className="text-white font-extrabold mt-1.5 tabular" style={{ fontSize: 26, letterSpacing: "-0.03em" }}>{formatCurrency(dashboardStats.monthlyCommission)}</div>
+          <div style={{ fontSize: 10.5, color: "var(--text-muted)", marginTop: 3 }}>{formatCurrency(dashboardStats.totalCommission)} all time</div>
         </div>
-        <div
-          className="flex items-center gap-3 px-4 py-3 rounded-2xl flex-1 min-w-[210px]"
-          style={{ background: "var(--card-bg)", border: "1px solid var(--card-border)" }}
-        >
-          <AlertTriangle size={16} style={{ color: "var(--danger-text)" }} />
-          <div>
-            <div className="text-white font-bold" style={{ fontSize: 18 }}>{openDisputes}</div>
-            <div style={{ fontSize: 10, color: "var(--text-muted)" }}>Open Disputes</div>
-          </div>
-          <Link
-            href={pageToPath("disputes")}
-            className="ml-auto flex items-center gap-1 font-medium transition-opacity hover:opacity-75"
-            style={{ fontSize: 10, color: "var(--indigo-light)", textDecoration: "none" }}
-          >
-            Review <ArrowUpRight size={10} />
-          </Link>
-        </div>
-        <div
-          className="flex items-center gap-3 px-4 py-3 rounded-2xl flex-1 min-w-[210px]"
-          style={{ background: "var(--card-bg)", border: "1px solid var(--card-border)" }}
-        >
-          <CreditCard size={16} style={{ color: "var(--indigo-light)" }} />
-          <div>
-            <div className="text-white font-bold" style={{ fontSize: 18 }}>{escrowUnderReview}</div>
-            <div style={{ fontSize: 10, color: "var(--text-muted)" }}>Escrow Under Review</div>
-          </div>
-          <Link
-            href={pageToPath("transactions")}
-            className="ml-auto flex items-center gap-1 font-medium transition-opacity hover:opacity-75"
-            style={{ fontSize: 10, color: "var(--indigo-light)", textDecoration: "none" }}
-          >
-            Review <ArrowUpRight size={10} />
-          </Link>
+        <div>
+          <div className="flex items-center gap-1.5" style={{ fontSize: 11, color: "var(--text-muted)" }}><WalletCards size={13} /> Held in escrow</div>
+          <div className="text-white font-extrabold mt-1.5 tabular" style={{ fontSize: 26, letterSpacing: "-0.03em" }}>{formatCurrency(escrowHeld)}</div>
+          <div style={{ fontSize: 10.5, color: "var(--text-muted)", marginTop: 3 }}>Not yet released to providers</div>
         </div>
       </div>
 

@@ -109,7 +109,7 @@ export function WithdrawalsPage() {
           <div className="rounded-xl p-4 mb-3 flex items-center gap-8 flex-wrap" style={{ background: "var(--card-bg)", border: "1px solid var(--card-border)" }}>
             <div>
               <div className="flex items-center gap-2" style={{ color: hasPending ? "var(--warning-text)" : "var(--text-muted)", fontSize: 11 }}><Clock3 size={14} /> Waiting for review</div>
-              <div className="font-extrabold mt-2" style={{ fontSize: 28, color: hasPending ? "#fff" : "var(--text-muted)" }}>{status === "pending" ? pendingCount : "—"}</div>
+              <div className="font-extrabold mt-2 tabular" style={{ fontSize: 28, color: hasPending ? "var(--text-white)" : "var(--text-muted)" }}>{status === "pending" ? pendingCount : "—"}</div>
             </div>
             <div style={{ width: 1, alignSelf: "stretch", background: "var(--border)" }} />
             <div>
