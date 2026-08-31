@@ -73,6 +73,8 @@ mobile/Maestro/
 mobile/.maestro/
 .maestro/
 Maestro/
+!mobile/maestro/
+!mobile/maestro/*.yaml
 
 # Native
 .kotlin/

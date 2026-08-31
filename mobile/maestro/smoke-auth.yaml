@@ -1,0 +1,12 @@
+appId: host.exp.exponent
+
+# Expo Go is the current local target. Switch appId to com.taskbuddy.app when
+# a development/preview APK is installed on the emulator.
+---
+- assertVisible: "Welcome!"
+- assertVisible: "Sign in to your account"
+- assertVisible: "Email"
+- assertVisible: "Password"
+- assertVisible: "Forgot Password?"
+- assertVisible: "Sign In"
+- assertVisible: "Continue with Google"
