@@ -138,9 +138,17 @@ export function VerificationsPage() {
           <h1 className="text-white font-bold" style={{ fontSize: 22, letterSpacing: "-0.025em" }}>Provider Verification Queue</h1>
           <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 5, lineHeight: 1.45 }}>Review submitted government IDs and service certificates</div>
         </div>
-        <div className="flex items-center gap-1.5 font-semibold" style={{ background: "rgba(245,158,11,0.12)", border: "1px solid rgba(245,158,11,0.2)", borderRadius: 11, padding: "7px 11px", fontSize: 11.4, color: "#f59e0b" }}>
-          <AlertTriangle size={12} /> {counts.pending} pending
-        </div>
+        {/* Amber is a call to act. An empty queue is good news, so it reads
+            as a plain confirmation rather than a warning about nothing. */}
+        {counts.pending > 0 ? (
+          <div className="flex items-center gap-1.5 font-semibold" style={{ background: "rgba(245,158,11,0.12)", border: "1px solid rgba(245,158,11,0.2)", borderRadius: 11, padding: "7px 11px", fontSize: 11.4, color: "#f59e0b" }}>
+            <AlertTriangle size={12} /> {counts.pending} pending
+          </div>
+        ) : (
+          <div className="flex items-center gap-1.5" style={{ borderRadius: 11, padding: "7px 11px", fontSize: 11.4, color: "var(--text-muted)" }}>
+            <Check size={12} style={{ color: "var(--success-text)" }} /> Queue clear
+          </div>
+        )}
       </div>
 
       <div className="flex gap-3 items-center mb-4 flex-wrap">
