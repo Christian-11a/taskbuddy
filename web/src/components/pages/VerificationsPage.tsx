@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Search, Check, X, FileText, Download } from "lucide-react";
+import { Search, Check, X, FileText, Download, AlertTriangle } from "lucide-react";
 import { useApp } from "@/context/AppContext";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { ReviewDrawer, DrawerField, DrawerSection } from "@/components/ui/ReviewDrawer";
@@ -139,7 +139,7 @@ export function VerificationsPage() {
           <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 5, lineHeight: 1.45 }}>Review submitted government IDs and service certificates</div>
         </div>
         <div className="flex items-center gap-1.5 font-semibold" style={{ background: "rgba(245,158,11,0.12)", border: "1px solid rgba(245,158,11,0.2)", borderRadius: 11, padding: "7px 11px", fontSize: 11.4, color: "#f59e0b" }}>
-          ⚠️ {counts.pending} pending
+          <AlertTriangle size={12} /> {counts.pending} pending
         </div>
       </div>
 
