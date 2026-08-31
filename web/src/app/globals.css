@@ -32,6 +32,13 @@
   --warning-text: #fbbf24;
   --sidebar-w: 244px;
   --sidebar-collapsed-w: 68px;
+  /* Solid brand fill for primary actions. Deeper than --indigo so white label
+     text clears 4.5:1 — the old gradient buttons sat around 2.5:1 at their
+     light end. One flat colour, because a gradient here communicated nothing
+     about state. */
+  --brand-solid: #0e7f8d;
+  --brand-solid-hover: #0b6a76;
+  --brand-on-solid: #ffffff;
 }
 
 /* Light mode overrides */
@@ -108,6 +115,35 @@
 }
 [data-theme="light"] .data-table tr:hover td {
   background: rgba(0, 0, 0, 0.03);
+}
+
+/* Primary action. Replaces a decorative cyan→blue gradient that was repeated
+   inline across eight call sites and carried no state meaning. */
+.btn-primary {
+  background: var(--brand-solid);
+  color: var(--brand-on-solid);
+  border: none;
+  cursor: pointer;
+  font-family: inherit;
+  font-weight: 600;
+  transition: background-color 0.15s ease;
+}
+.btn-primary:hover:not(:disabled) {
+  background: var(--brand-solid-hover);
+}
+.btn-primary:active:not(:disabled) {
+  transform: translateY(1px);
+}
+.btn-primary:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+/* Figures in tables and metric readouts line up column-to-column instead of
+   jittering as digit widths change. */
+.data-table td,
+.tabular {
+  font-variant-numeric: tabular-nums;
 }
 
 /* Sidebar transition */
