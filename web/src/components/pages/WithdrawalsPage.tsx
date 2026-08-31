@@ -99,19 +99,28 @@ export function WithdrawalsPage() {
         </button>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">
-        <div className="rounded-xl p-4" style={{ background: "var(--card-bg)", border: "1px solid var(--card-border)" }}>
-          <div className="flex items-center gap-2" style={{ color: "var(--warning-text)", fontSize: 11 }}><Clock3 size={14} /> Waiting for review</div>
-          <div className="text-white font-extrabold mt-2" style={{ fontSize: 24 }}>{status === "pending" ? total : "—"}</div>
-        </div>
-        <div className="rounded-xl p-4" style={{ background: "var(--card-bg)", border: "1px solid var(--card-border)" }}>
-          <div className="flex items-center gap-2" style={{ color: "var(--indigo-light)", fontSize: 11 }}><WalletCards size={14} /> Amount in this view</div>
-          <div className="text-white font-extrabold mt-2" style={{ fontSize: 24 }}>{formatCurrency(pendingAmount)}</div>
-        </div>
-        <div className="rounded-xl p-4" style={{ background: "var(--card-bg)", border: "1px solid var(--card-border)" }}>
-          <div className="flex items-center gap-2" style={{ color: "var(--text-muted)", fontSize: 11 }}><AlertTriangle size={14} /> Settlement rule</div>
-          <div className="text-white mt-2" style={{ fontSize: 12, lineHeight: 1.45 }}>Only mark paid after money has actually moved.</div>
-        </div>
+      {/* Two real numbers share one card at their natural asymmetric weight;
+          the settlement rule is policy text, not a metric, so it reads as a
+          caption below rather than forcing a third equal card to hold it. */}
+      {(() => {
+        const pendingCount = status === "pending" ? total : 0;
+        const hasPending = status === "pending" && total > 0;
+        return (
+          <div className="rounded-xl p-4 mb-3 flex items-center gap-8 flex-wrap" style={{ background: "var(--card-bg)", border: "1px solid var(--card-border)" }}>
+            <div>
+              <div className="flex items-center gap-2" style={{ color: hasPending ? "var(--warning-text)" : "var(--text-muted)", fontSize: 11 }}><Clock3 size={14} /> Waiting for review</div>
+              <div className="font-extrabold mt-2" style={{ fontSize: 28, color: hasPending ? "#fff" : "var(--text-muted)" }}>{status === "pending" ? pendingCount : "—"}</div>
+            </div>
+            <div style={{ width: 1, alignSelf: "stretch", background: "var(--border)" }} />
+            <div>
+              <div className="flex items-center gap-2" style={{ color: "var(--text-muted)", fontSize: 11 }}><WalletCards size={14} /> Amount in this view</div>
+              <div className="text-white font-extrabold mt-2" style={{ fontSize: 28 }}>{formatCurrency(pendingAmount)}</div>
+            </div>
+          </div>
+        );
+      })()}
+      <div className="flex items-center gap-2 mb-4" style={{ color: "var(--text-muted)", fontSize: 11, lineHeight: 1.45 }}>
+        <AlertTriangle size={12} style={{ flexShrink: 0 }} /> Only mark paid after money has actually moved.
       </div>
 
       <div className="rounded-xl overflow-hidden" style={{ background: "var(--card-bg)", border: "1px solid var(--card-border)" }}>
