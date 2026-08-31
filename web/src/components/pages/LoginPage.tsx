@@ -34,13 +34,13 @@ export function LoginPage() {
   };
 
   return (
-    <div className="flex h-screen w-full overflow-hidden">
+    <div className="login-page flex h-screen w-full overflow-hidden" style={{ background: "#080d12" }}>
       {/* Left Panel */}
       <div
-        className="hidden lg:flex flex-col p-10 relative overflow-hidden"
+        className="hidden lg:flex flex-col p-12 relative overflow-hidden"
         style={{
-          flex: "0 0 55%",
-          background: "linear-gradient(133deg, #072c35 0%, #0c4752 42%, #101822 100%)",
+          flex: "0 0 58%",
+          background: "radial-gradient(circle at 12% 16%, rgba(50,211,228,.22), transparent 28%), linear-gradient(145deg, #0b2029 0%, #0d3038 48%, #0b121a 100%)",
         }}
       >
         <div className="absolute pointer-events-none" style={{ top: -65, right: -65, width: 261, height: 261, borderRadius: "50%", background: "radial-gradient(circle, rgba(34,195,214,.20), transparent 70%)" }} />
@@ -59,20 +59,20 @@ export function LoginPage() {
           <div className="inline-flex items-center gap-2 font-medium mb-6" style={{ background: "rgba(34,195,214,0.10)", border: "1px solid rgba(34,195,214,0.22)", borderRadius: 999, padding: "5px 12px", fontSize: 9.8, color: "var(--indigo-light)" }}>
             <Shield size={11} /> Secure Admin Access
           </div>
-          <h1 className="text-white font-extrabold leading-tight mb-4" style={{ fontSize: 29 }}>Platform<br />Control Center</h1>
+          <h1 className="text-white font-extrabold leading-tight mb-4" style={{ fontSize: 42, letterSpacing: "-0.055em", maxWidth: 440 }}>The quiet center of a busy marketplace.</h1>
           <p className="leading-relaxed mb-6" style={{ fontSize: 13, color: "#a9cbd0", maxWidth: 310 }}>
             Manage users, verify service providers, monitor transactions, and oversee all platform activity from one central dashboard.
           </p>
-          {["🛡️ Provider Verification Queue", "👥 User & Account Management", "💳 Transaction & Escrow Monitoring", "📊 Analytics & Reporting"].map((feat) => (
-            <div key={feat} className="flex items-center gap-2.5 font-medium mb-2.5" style={{ background: "rgba(255,255,255,0.07)", borderRadius: 13, padding: "10px 13px", fontSize: 11.4, color: "#cfeef3" }}>{feat}</div>
+          {["Provider verification queue", "User and account management", "Transaction and escrow monitoring", "Analytics and reporting"].map((feat, i) => (
+            <div key={feat} className="flex items-center gap-3 font-medium mb-2.5" style={{ background: "rgba(255,255,255,0.065)", border: "1px solid rgba(255,255,255,.08)", borderRadius: 12, padding: "11px 13px", fontSize: 11.4, color: "#cfeef3", maxWidth: 340 }}><span style={{ color: "#55d4df", fontSize: 10, fontWeight: 800 }}>0{i + 1}</span>{feat}</div>
           ))}
         </div>
         <div style={{ fontSize: 9.8, color: "var(--text-muted)" }} className="relative z-10">TaskBuddy Admin Console v2.1 · Restricted Access</div>
       </div>
 
       {/* Right Panel */}
-      <div className="flex-1 flex flex-col justify-center items-center p-6 lg:p-10" style={{ background: "#0b0f14" }}>
-        <div style={{ width: "100%", maxWidth: 343 }}>
+      <div className="flex-1 flex flex-col justify-center items-center p-6 lg:p-10" style={{ background: "#080d12" }}>
+        <div className="rounded-3xl p-7 lg:p-9" style={{ width: "100%", maxWidth: 430, background: "rgba(17,24,32,.86)", border: "1px solid rgba(120,150,170,.16)", boxShadow: "0 24px 70px rgba(0,0,0,.28)" }}>
           {/* Mobile logo */}
           <div className="flex lg:hidden items-center gap-2.5 mb-8 justify-center">
             {/* decorative: the adjacent "TaskBuddy" text label already carries the brand name */}
@@ -80,7 +80,8 @@ export function LoginPage() {
             <div className="text-white font-bold" style={{ fontSize: 16 }}>TaskBuddy Admin</div>
           </div>
 
-          <h2 className="text-white font-bold mb-1" style={{ fontSize: 21 }}>Admin Sign In</h2>
+          <div className="mb-1" style={{ fontSize: 10, color: "#55d4df", letterSpacing: ".14em", textTransform: "uppercase", fontWeight: 700 }}>TaskBuddy / Admin</div>
+          <h2 className="text-white font-bold mb-1" style={{ fontSize: 25, letterSpacing: "-0.035em" }}>Welcome back</h2>
           <p style={{ fontSize: 13, color: "var(--text-muted)", marginBottom: 26 }}>This portal is restricted to authorized administrators only.</p>
 
           {error && (

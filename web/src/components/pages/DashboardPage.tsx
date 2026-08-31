@@ -23,15 +23,17 @@ const StatCard = ({
   value,
   sub,
   accent,
+  className = "",
 }: {
   icon: React.ReactNode;
   label: string;
   value: string | number;
   sub?: string;
   accent: string;
+  className?: string;
 }) => (
   <div
-    className="flex-1 min-w-[145px] rounded-2xl p-4 flex flex-col gap-3 transition-transform hover:-translate-y-0.5"
+    className={`rounded-2xl p-5 flex flex-col gap-4 transition-transform hover:-translate-y-0.5 ${className}`}
     style={{ background: "var(--card-bg)", border: "1px solid var(--card-border)", boxShadow: "0 12px 30px rgba(0,0,0,.12)" }}
   >
     <div className="flex items-center justify-between">
@@ -107,13 +109,14 @@ export function DashboardPage() {
       </section>
 
       {/* Stat Cards */}
-      <div className="flex gap-3 mb-5 flex-wrap">
+      <div className="grid grid-cols-2 lg:grid-cols-6 gap-3 mb-6">
         <StatCard
           icon={<Users size={14} />}
           label="Total Users"
           value={dashboardStats.totalUsers.toLocaleString()}
           sub={newUsersThisMonth > 0 ? `+${newUsersThisMonth} this month` : "No new signups this month"}
           accent="#22c3d6"
+          className="col-span-2"
         />
         <StatCard
           icon={<ShieldCheck size={14} />}
@@ -121,6 +124,7 @@ export function DashboardPage() {
           value={dashboardStats.activeProviders}
           sub={`${activeProviderShare}% of registered users`}
           accent="#22c55e"
+          className="col-span-2"
         />
         <StatCard
           icon={<CalendarDays size={14} />}
@@ -128,6 +132,7 @@ export function DashboardPage() {
           value={bookingsThisMonth.toLocaleString()}
           sub={`${dashboardStats.completionRate}% completion rate`}
           accent="#38bdf8"
+          className="col-span-2"
         />
         <StatCard
           icon={<CreditCard size={14} />}
@@ -135,6 +140,7 @@ export function DashboardPage() {
           value={formatCurrency(dashboardStats.monthlyRevenue)}
           sub={`${formatCurrency(escrowHeld)} currently held in escrow`}
           accent="#f59e0b"
+          className="col-span-2 lg:col-span-3"
         />
         <StatCard
           icon={<Percent size={14} />}
@@ -142,6 +148,7 @@ export function DashboardPage() {
           value={formatCurrency(dashboardStats.monthlyCommission)}
           sub={`${formatCurrency(dashboardStats.totalCommission)} total retained`}
           accent="#a78bfa"
+          className="col-span-2 lg:col-span-3"
         />
       </div>
 
