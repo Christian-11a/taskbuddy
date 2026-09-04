@@ -246,14 +246,14 @@ sign-in, and notification rows remain available in the in-app list either way.
 | `HOHomeScreen` | `GET /wallet`, `GET /jobs/mine`, `GET /categories`, unread notification count |
 | `HOMyJobs` | `GET /jobs/mine`, filtered client-side by status (All / Open / Awaiting / Confirmed / In Progress / Completed / Cancelled) |
 | `HOCreateJobScreen` | `GET /categories`, image upload, `POST /jobs` — the guided 5-step flow: service → location → tasks → urgency → review |
-| `HOJobDetailScreen` | `GET /jobs/:id`, `GET /providers/:id`; complete / cancel (confirmed first) / chat; read-only task checklist |
+| `HOJobDetailScreen` | `GET /jobs/:id`, `GET /providers/:id`, `POST /jobs/:id/recommendations/trigger`; complete / cancel / chat, review-state gating, manual provider-matching retry, and read-only task checklist |
 | `HOChatScreen` | `POST /conversations` then message listing |
-| `HOWalletScreen` | `GET /wallet`; **Add Money** posts `POST /payments/checkout-session` and opens Stripe Checkout in a browser |
+| `HOWalletScreen` | `GET /wallet` + `GET`/`POST /wallet/withdrawals`; Add Money opens Stripe Checkout, and Withdraw files/cancels manual payout requests |
 | `HODisputeFilingScreen` | `POST /jobs/:jobId/disputes` |
 | `HOProfile` | Displays profile data; menu is Edit Profile / Settings / Help & Support |
 | `HOEditProfileScreen` | `PATCH /profiles/me`, then `refreshProfile()` |
 | `HONotificationsScreen` | `GET /notifications`; mark read / read-all |
-| `HOSettingsScreen` | `POST /auth/change-password` and all five switches (`GET`/`PATCH /settings`) are real. Dark Mode saves a preference nothing applies yet; Language and Delete Account stay honest placeholders — see [What's Not Wired Yet](#whats-not-wired-yet) |
+| `HOSettingsScreen` | `POST /auth/change-password`, all five switches (`GET`/`PATCH /settings`), and `DELETE /profiles/me`. Account deletion displays backend blockers and signs out after success; Dark Mode still only saves a preference and Language remains a placeholder |
 | `HelpSupportScreen` (shared, `src/components/`) | Static FAQ + `mailto:` support link — no backend |
 
 ### Provider (Service Provider — `SP*`)
@@ -364,14 +364,14 @@ correctly in production:
 the mobile to-do list that cannot be finished without an API change first:
 
 **Items 1, 2, 3 and 5 have since been built** (migrations 0022–0024,
-`backend/BACKEND_SCHEMA.md` §27). The API side is done; the mobile screens that
-would use them are not yet wired, which is app-side work.
+`backend/BACKEND_SCHEMA.md` §27). The homeowner app now uses items 1–3;
+signup OTP (item 5) remains available for a future registration-confirmation flow.
 
 | # | Item | Status |
 |---|---|---|
-| 1 | Account deletion (`DELETE /profiles/me`) | **API done** — soft delete, `409 { blockers[] }` while money or obligations are in flight. Settings row still opens `mailto:` until it is wired |
-| 2 | Wallet withdrawal / payout rail | **API done, as the interim this doc recommended** — `POST /wallet/withdrawals` files a *pending* request an admin settles by hand. The real rail is still outstanding and now has its own doc — see [§3 below](#3-docsbackend-handoff-stripe-connect-escrowmd) |
-| 3 | `has_review` flag on job payload | **Done** — every job now carries `has_review` and `review` |
+| 1 | Account deletion (`DELETE /profiles/me`) | **Wired in the homeowner Settings screen** — soft delete, with every `409 { blockers[] }` reason shown before retry |
+| 2 | Wallet withdrawal / payout rail | **Wired as a manual request flow** — `POST /wallet/withdrawals` creates a pending request; the homeowner can view/cancel it and an admin settles it by hand. The automated payout rail remains outstanding — see [§3 below](#3-docsbackend-handoff-stripe-connect-escrowmd) |
+| 3 | `has_review` flag on job payload | **Wired** — completed jobs hide Leave Review when `has_review` is true; direct review access is also blocked |
 | 4 | Realtime chat | Done — authenticated SSE streams messages through the API |
 | 5 | Email OTP at registration | **API done** — `POST /auth/send-email-otp` / `verify-email-otp`, wrapping Supabase's own signup code. Needs the `{{ .Token }}` template change in [`docs/email-otp-setup.md`](../docs/email-otp-setup.md) |
 | 6 | Homeowner card-at-hire (vs wallet top-up) | Still open — a product decision, not a missing endpoint |
@@ -443,28 +443,28 @@ homeowner-facing recommendations do not map directly to the current product.
 - My Jobs list showing job name, location, status, urgency, price, elapsed time,
   and assigned provider, with lifecycle status filters
 - Job Details with status progress, task checklist, provider information,
-  offers, cancel confirmation, completion, review navigation, and chat
+  offers, cancel confirmation, completion, review-state gating, provider-matching
+  retry, and chat
 - Provider job browsing, applications, booking-request accept/decline, job
   start, and task updates
-- Wallet balance and Stripe hosted Checkout top-ups
-- In-app notifications, profile editing, provider verification, disputes,
-  image uploads, provider calendar, and authenticated SSE chat
+- Wallet balance, Stripe hosted Checkout top-ups, and manual withdrawal requests
+- In-app notifications, profile editing, self-service account deletion, provider
+  verification, disputes, image uploads, provider calendar, and authenticated SSE chat
 
 ### ⚠️ Partial or configuration-dependent
 
-- Review submission is shown only for completed jobs with an assigned provider,
-  but duplicate-review and completion checks are ultimately enforced by the
-  backend. The mobile flow still needs tests for these states.
-- Recommendations are currently provider-facing notifications and offers;
-  there is no homeowner-facing recommended-services section.
+- Review submission is shown only for completed jobs with an assigned provider
+  that has not already been reviewed. The backend remains the final authority,
+  and the mobile flow still needs automated tests for these states.
+- Homeowners can manually retry provider matching from an open job. Results are
+  provider invitations; there is still no homeowner-facing service catalogue.
 - Push notification code is present, but remote delivery requires an EAS
   project ID and an SDK 54 development build. Expo Go cannot receive remote
   pushes.
 - Homeowner job locations use the saved profile address or fallback
   coordinates. There is no Expo GPS or Google Maps provider-discovery flow.
 - Dark Mode persists a preference but does not change the palette. Language,
-  account deletion, wallet withdrawal/transfer, chat calls, and chat
-  attachments remain unwired.
+  wallet transfer, chat calls, and chat attachments remain unwired.
 
 ### 🔧 Remaining frontend tasks
 
@@ -475,7 +475,9 @@ homeowner-facing recommendations do not map directly to the current product.
 - Add My Jobs rendering/filter tests and verify reverse chronological ordering,
   empty states, refresh/retry, and long text on small screens.
 - Add Job Details tests for cancel confirmation, cancellation errors, chat
-  navigation, completion, provider/offer states, and review gating.
+  navigation, completion, provider/offer states, review gating, and provider-matching retry.
+- Add homeowner Settings and Wallet tests for account-deletion blockers/sign-out,
+  withdrawal validation, request submission, history, and cancellation.
 - Verify the complete homeowner flow manually with TC-BOOK-001, 002, 005, and
   007, plus provider acceptance, decline, and completion cases TC-BOOK-003,
   004, and 006.
@@ -519,13 +521,10 @@ was trimmed to remove rows that duplicated a bottom-nav tab or a header icon.
 |-------|--------|
 | **Dark Mode** | Half done: the *preference* persists (`user_settings.dark_mode` via `PATCH /settings`), but nothing applies it — there is still no theme switching. Both Settings screens say so under the switch rather than implying a repaint that never comes. The blocker is the ~40 screens still using inline hex instead of `V6Colors` tokens; see [`CHANGELOG.md`](./CHANGELOG.md) for the theming approach that was built and then deliberately reverted to leave this open |
 | **Language** | Settings modal states English is the only option — no i18n system exists to back a real picker |
-| **Delete Account** | **Backend now exists** — `DELETE /profiles/me` soft-deletes and answers `409 { blockers[] }` when the account still has a balance, a pending withdrawal, escrow held, an open dispute, or a live job. The Settings row still opens a `mailto:`; wiring it (call, confirm, render the blocker list, sign out) is app-side work |
-| **Wallet Withdraw** | **Backend now exists** — `POST /wallet/withdrawals` files a *pending* request that an admin settles from the console; `GET /wallet` reports `available` and `pending_withdrawals` alongside `balance`. The button still has no handler. There is still no automated payout rail — settlement is a human sending money and recording the reference |
 | **Wallet Transfer** | Deliberately not built, backend or front. Wallet-to-wallet transfer turns the wallet into a money-transmission service, which is a licensing matter in PH, not an engineering one |
 | **Push delivery** | Code complete end to end, **but not yet functional**: `app.json` has no EAS `projectId`, so no push token is ever obtained, and remote push needs a development build (not Expo Go) on SDK 54. The `notifications` table remains the source of truth and the in-app list is unaffected — see [Live chat and push notifications](#live-chat-and-push-notifications) |
 | **Realtime chat** | Message delivery is live through authenticated SSE; call and attachment buttons remain inert |
 | **Counterpart avatars** | Chat, applicant, and review payloads all carry `avatar_url`; those screens still render initials. (The signed-in user's *own* avatar does render — see `OwnAvatar`) |
-| **"Leave Review" already-reviewed state** | **Backend now exists** — every job carries `has_review` and the review itself, so the button can hide instead of discovering the duplicate by submitting one. Not yet read by the app |
 | **Provider calendar write** | Bookings are created by the backend when a job is assigned, not from this screen |
 | **Notch/edge-to-edge status-bar spacing** | `Sizes.statusBarHeight` uses `StatusBar.currentHeight` (Android, built-in RN API) as a floor under the previous fixed `52`, which fixes most cases without a new dependency — but it's read once at module load, not on rotation/inset changes, and iOS still uses a fixed estimate. A full fix means adopting `react-native-safe-area-context` (new dependency) and touching header padding in every screen |
 

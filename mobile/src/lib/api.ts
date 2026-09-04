@@ -283,6 +283,14 @@ export interface Job {
   assigned_provider?: { full_name: string } | null;
   /** The job's checklist, unordered — sort by `position` before rendering. */
   job_tasks?: JobTask[];
+  /** A completed job can only receive one homeowner review. */
+  has_review?: boolean;
+  review?: {
+    id: string;
+    rating: number;
+    comment: string | null;
+    created_at: string;
+  } | null;
   /** Km from the provider's location. Present only on the browse feed, and
    *  null there when either side has no coordinates. */
   distance_km?: number | null;
@@ -374,15 +382,26 @@ export interface WalletTransaction {
   title: string;
   job_id: string | null;
   kind: WalletTxnKind;
+  withdrawal_destination?: string | null;
+  review_note?: string | null;
   created_at: string;
 }
 
 export interface WalletOverview {
   balance: number;
+  /** Settled balance less money reserved by pending withdrawal requests. */
+  available: number;
   total_credited: number;
   total_debited: number;
   pending: number;
+  pending_withdrawals: number;
   transactions: WalletTransaction[];
+}
+
+export interface RecommendationTriggerResult {
+  run_id: string | null;
+  pool_size: number;
+  notified: number;
 }
 
 /** Stripe hosted Checkout session, opened in a browser to fund the wallet. */
@@ -445,6 +464,8 @@ export class ApiError extends Error {
   constructor(
     message: string,
     readonly status: number,
+    /** Additional structured error fields returned by the API, when present. */
+    readonly details?: unknown,
   ) {
     super(message);
     this.name = 'ApiError';
@@ -515,7 +536,7 @@ async function rawRequest<T>(
     const message =
       (data && (Array.isArray(data.message) ? data.message[0] : data.message)) ||
       'Something went wrong. Please try again.';
-    throw new ApiError(message, response.status);
+    throw new ApiError(message, response.status, data);
   }
 
   return data as T;
@@ -685,6 +706,10 @@ export const api = {
     return authRequest<Profile>('/profiles/me', { method: 'PATCH', body: input });
   },
 
+  deleteAccount() {
+    return authRequest<void>('/profiles/me', { method: 'DELETE' });
+  },
+
   upsertProviderProfile(input: {
     category_id: number;
     bio: string;
@@ -812,6 +837,13 @@ export const api = {
 
   completeJob(id: string) {
     return authRequest<Job>(`/jobs/${id}/complete`, { method: 'POST' });
+  },
+
+  triggerRecommendations(jobId: string) {
+    return authRequest<RecommendationTriggerResult>(
+      `/jobs/${jobId}/recommendations/trigger`,
+      { method: 'POST' },
+    );
   },
 
   // ── Applications ──────────────────────────────────────────────────────────────
@@ -948,6 +980,27 @@ export const api = {
   // ── Wallet ──────────────────────────────────────────────────────────────────
   wallet() {
     return authRequest<WalletOverview>('/wallet');
+  },
+
+  withdrawals() {
+    return authRequest<WalletTransaction[]>('/wallet/withdrawals');
+  },
+
+  requestWithdrawal(input: {
+    amount: number;
+    destination: string;
+    title?: string;
+  }) {
+    return authRequest<WalletTransaction>('/wallet/withdrawals', {
+      method: 'POST',
+      body: input,
+    });
+  },
+
+  cancelWithdrawal(id: string) {
+    return authRequest<WalletTransaction>(`/wallet/withdrawals/${id}/cancel`, {
+      method: 'POST',
+    });
   },
 
   /**
