@@ -7,10 +7,11 @@
  * takeover: the victim signs in normally and their tokens land on the
  * attacker's server.
  *
- * Only three shapes are legitimate for this app:
- *   taskbuddy://...          standalone / dev-client builds (mobile/app.json scheme)
- *   exp://<private-host>...  Expo Go, which points at the dev machine's LAN IP
- *   http://localhost:<port>  web + local browser development
+ * Only four shapes are legitimate for this app:
+ *   taskbuddy://...              standalone / dev-client builds (mobile/app.json scheme)
+ *   exp://<private-host>...      Expo Go, which points at the dev machine's LAN IP
+ *   http://localhost:<port>      web + local browser development
+ *   https://<WEB_PROD_HOST>      the deployed web console / promo site
  *
  * Note this is deliberately *not* gated on NODE_ENV: Expo Go is tested against
  * the deployed Render backend, so exp:// has to work in production too.
@@ -24,6 +25,9 @@ const PRIVATE_HOST =
 const EXPO_TUNNEL_HOST = /(^|\.)(exp\.direct|exp\.host)$/;
 
 const LOOPBACK_HOST = /^(localhost|127\.0\.0\.1)$/;
+
+/** The deployed web admin console / promo site on Vercel. */
+const WEB_PROD_HOST = /^taskbuddy-nine-zeta\.vercel\.app$/;
 
 /** App schemes, as produced by `AuthSession.makeRedirectUri({ scheme: 'taskbuddy' })`. */
 const APP_SCHEMES = new Set(['taskbuddy:', 'exp+taskbuddy:']);
@@ -56,8 +60,14 @@ export function isAllowedAppRedirect(uri: string): boolean {
     );
   }
 
-  if (parsed.protocol === 'http:' || parsed.protocol === 'https:') {
+  if (parsed.protocol === 'http:') {
     return LOOPBACK_HOST.test(parsed.hostname);
+  }
+
+  if (parsed.protocol === 'https:') {
+    return (
+      LOOPBACK_HOST.test(parsed.hostname) || WEB_PROD_HOST.test(parsed.hostname)
+    );
   }
 
   return false;

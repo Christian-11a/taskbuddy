@@ -8,21 +8,30 @@ export const metadata = {
   description: "Your TaskBuddy account is ready.",
 };
 
-async function hasValidSession(): Promise<boolean> {
+async function getProfile(): Promise<{ google_signup_pending?: boolean } | null> {
   const accessToken = await getAccessToken();
-  if (!accessToken) return false;
+  if (!accessToken) return null;
 
   const res = await fetch(`${API_URL}/auth/me`, {
     headers: { Authorization: `Bearer ${accessToken}` },
     cache: "no-store",
   }).catch(() => null);
 
-  return !!res?.ok;
+  if (!res?.ok) return null;
+  const data = await res.json().catch(() => null);
+  return data?.profile ?? null;
 }
 
 export default async function AccountPage() {
-  if (!(await hasValidSession())) {
+  const profile = await getProfile();
+  if (!profile) {
     redirect("/#login");
+  }
+  // A first-time Google signup doesn't have a role yet — finish that before
+  // showing the handoff page, same as a fresh email signup would have picked
+  // a role on the Sign Up panel itself.
+  if (profile.google_signup_pending) {
+    redirect("/account/complete-profile");
   }
 
   return (

@@ -1,8 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
-import { API_URL, setAccountSession } from "../_session";
+import { API_URL, isSameOriginRequest, setAccountSession } from "../_session";
 
 /** Exchanges the six-digit email code for a real session (POST /auth/verify-email-otp). */
 export async function POST(req: NextRequest) {
+  if (!isSameOriginRequest(req)) {
+    return NextResponse.json({ message: "Invalid request origin." }, { status: 403 });
+  }
+
   const body = await req.json();
 
   const upstream = await fetch(`${API_URL}/auth/verify-email-otp`, {

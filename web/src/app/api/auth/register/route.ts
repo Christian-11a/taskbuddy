@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { API_URL, setAccountSession } from "../_session";
+import { API_URL, isSameOriginRequest, setAccountSession } from "../_session";
 
 /**
  * Proxies POST /auth/register on the real backend. The backend returns the
@@ -8,6 +8,10 @@ import { API_URL, setAccountSession } from "../_session";
  * web equivalent of mobile's SecureStore. Tokens never reach client JS.
  */
 export async function POST(req: NextRequest) {
+  if (!isSameOriginRequest(req)) {
+    return NextResponse.json({ message: "Invalid request origin." }, { status: 403 });
+  }
+
   const body = await req.json();
 
   const upstream = await fetch(`${API_URL}/auth/register`, {

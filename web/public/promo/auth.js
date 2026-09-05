@@ -9,9 +9,12 @@
     signin: document.getElementById("panel-signin"),
     signup: document.getElementById("panel-signup"),
     confirm: document.getElementById("panel-confirm"),
+    forgot: document.getElementById("panel-forgot"),
+    reset: document.getElementById("panel-reset"),
+    doc: document.getElementById("panel-doc"),
   };
 
-  var HASH_TO_PANEL = { "#join": "welcome", "#login": "signin", "#signup": "signup" };
+  var HASH_TO_PANEL = { "#join": "welcome", "#login": "signin", "#signup": "signup", "#forgot": "forgot" };
 
   function showPanel(name) {
     Object.keys(panels).forEach(function (key) {
@@ -47,12 +50,83 @@
   window.addEventListener("hashchange", syncFromHash);
   syncFromHash();
 
+  // ── Google sign-in ──────────────────────────────────────────────────────
+  document.querySelectorAll(".auth-google").forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      window.location.href = "/api/auth/google/start";
+    });
+  });
+
+  // A failed Google round-trip lands back here as ?google_error=...#login.
+  (function surfaceGoogleError() {
+    var params = new URLSearchParams(window.location.search);
+    var message = params.get("google_error");
+    if (!message) return;
+    var status = document.querySelector("[data-signin-status]");
+    if (status) {
+      status.textContent = message;
+      status.className = "auth-status is-visible is-error";
+    }
+    params.delete("google_error");
+    var query = params.toString();
+    history.replaceState(
+      "",
+      document.title,
+      window.location.pathname + (query ? "?" + query : "") + window.location.hash
+    );
+  })();
+
   document.querySelectorAll("[data-close-modal]").forEach(function (btn) {
     btn.addEventListener("click", closeModal);
   });
 
   document.querySelectorAll("[data-back-to-welcome]").forEach(function (btn) {
     btn.addEventListener("click", function () { window.location.hash = "join"; });
+  });
+
+  document.querySelectorAll("[data-back-to-signin]").forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      window.__promoModalPinnedOpen = false;
+      window.location.hash = "login";
+    });
+  });
+
+  // ── Terms / Privacy document panel ──────────────────────────────────────
+  // Reading the docs is optional — a checkbox can always just be checked
+  // directly. This only exists for people who click the link: it shows the
+  // real text and, on "I agree", checks that one box for them and goes back.
+  // Using data-open-doc + preventDefault (instead of leaving these as plain
+  // "#terms"/"#privacy" links) is the fix for the modal-closing bug: an
+  // unhandled hash change that isn't in HASH_TO_PANEL falls through to
+  // syncFromHash()'s "no matching panel" branch, which closes the whole modal.
+  var docReturnPanel = "signup";
+
+  document.querySelectorAll("[data-open-doc]").forEach(function (link) {
+    link.addEventListener("click", function (event) {
+      event.preventDefault();
+      var docName = link.getAttribute("data-open-doc");
+      var parentPanel = link.closest(".auth-panel");
+      if (parentPanel && parentPanel.id) {
+        docReturnPanel = parentPanel.id.replace("panel-", "");
+      }
+      panels.doc.querySelectorAll("[data-doc]").forEach(function (block) {
+        block.hidden = block.getAttribute("data-doc") !== docName;
+      });
+      showPanel("doc");
+    });
+  });
+
+  document.querySelectorAll("[data-doc-back]").forEach(function (btn) {
+    btn.addEventListener("click", function () { showPanel(docReturnPanel); });
+  });
+
+  document.querySelectorAll("[data-doc-accept]").forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      var docName = btn.getAttribute("data-doc-accept");
+      var checkbox = document.querySelector('[data-consent="' + docName + '"]');
+      if (checkbox) checkbox.checked = true;
+      showPanel(docReturnPanel);
+    });
   });
 
   overlay.addEventListener("click", function (event) {
@@ -289,4 +363,90 @@
         showStatus(signupStatus, err.message, true);
       });
   });
+
+  // ── Forgot / Reset password ─────────────────────────────────────────────
+  var forgotForm = document.getElementById("forgot-form");
+  var forgotStatus = document.querySelector("[data-forgot-status]");
+  var resetPanel = panels.reset;
+  var resetEmailInput = document.getElementById("reset-email");
+  var resetCodeInput = document.getElementById("reset-code");
+  var resetPasswordInput = document.getElementById("reset-password");
+  var resetStatus = document.querySelector("[data-reset-status]");
+  var resetForm = document.getElementById("reset-form");
+
+  function openResetPanel(email) {
+    if (resetEmailInput) resetEmailInput.value = email;
+    var emailLabel = resetPanel && resetPanel.querySelector("[data-reset-email-label]");
+    if (emailLabel) emailLabel.textContent = email;
+    window.__promoModalPinnedOpen = true;
+    showPanel("reset");
+    overlay.hidden = false;
+    document.documentElement.classList.add("has-modal-open");
+    document.body.classList.add("has-modal-open");
+    if (resetCodeInput) resetCodeInput.focus();
+  }
+
+  if (forgotForm) {
+    forgotForm.addEventListener("submit", function (event) {
+      event.preventDefault();
+      clearStatus(forgotStatus);
+
+      var emailInput = document.getElementById("forgot-email");
+      var emailField = forgotForm.querySelector('[data-field="email"]');
+      var emailValid = emailInput.checkValidity();
+      setInvalid(emailField, !emailValid);
+
+      if (!emailValid) {
+        showStatus(forgotStatus, "Please enter a valid email address.", true);
+        return;
+      }
+
+      var button = forgotForm.querySelector(".auth-submit");
+      setLoading(button, true);
+      postJson("/api/auth/forgot-password", { email: emailInput.value })
+        .then(function () {
+          setLoading(button, false);
+          openResetPanel(emailInput.value);
+        })
+        .catch(function (err) {
+          setLoading(button, false);
+          showStatus(forgotStatus, err.message, true);
+        });
+    });
+  }
+
+  if (resetForm) {
+    resetForm.addEventListener("submit", function (event) {
+      event.preventDefault();
+      clearStatus(resetStatus);
+
+      var codeField = resetForm.querySelector('[data-field="code"]');
+      var passwordField = resetForm.querySelector('[data-field="password"]');
+      var codeValid = resetCodeInput.checkValidity();
+      var passwordValid = resetPasswordInput.checkValidity();
+      setInvalid(codeField, !codeValid);
+      setInvalid(passwordField, !passwordValid);
+
+      if (!codeValid || !passwordValid) {
+        showStatus(resetStatus, "Check the highlighted fields above.", true);
+        return;
+      }
+
+      var button = resetForm.querySelector(".auth-submit");
+      setLoading(button, true);
+      postJson("/api/auth/reset-password", {
+        email: resetEmailInput.value,
+        token: resetCodeInput.value,
+        new_password: resetPasswordInput.value,
+      })
+        .then(function () {
+          window.__promoModalPinnedOpen = false;
+          window.location.href = "/account";
+        })
+        .catch(function (err) {
+          setLoading(button, false);
+          showStatus(resetStatus, err.message, true);
+        });
+    });
+  }
 })();

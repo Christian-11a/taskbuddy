@@ -1,7 +1,281 @@
-# Changelog — TaskBuddy Admin Console
+# Changelog — TaskBuddy Web
 
-Detailed history for the admin console (`web/`). The README covers how the
-app works today; this file covers how it got there and why. Newest first.
+Detailed history for `web/` (public promo site + admin console). The README
+covers how the app works today; this file covers how it got there and why.
+Newest first.
+
+---
+
+## Fixed: login-CSRF hole in the Google callback, plus a full re-check
+
+`/api/auth/google/callback` trusted `access_token`/`refresh_token`/`expires_at`
+straight off the query string with nothing verifying they'd just come from a
+real Google round-trip. Anyone could craft that URL using tokens from an
+account *they* control and get a victim to click it — the victim's browser
+would then be silently signed into the attacker's account (a "login CSRF" /
+session-fixation pattern). The backend's own OAuth exchange already has solid
+protection here (signed HMAC state, nonce, expiry, constant-time comparison
+— confirmed by reading `handleGoogleCallback`), but that only protects the
+backend's callback; it says nothing about who ends up on *ours* afterward.
+
+- **`_session.ts`**: added `setGoogleNonce()`/`consumeGoogleNonce()` — a
+  random one-time value stored in a short-lived (10 min) httpOnly cookie,
+  compared with `timingSafeEqual`.
+- **`google/start`**: mints the nonce and stamps it onto the callback URL we
+  hand the backend as `app_redirect` (`appendRedirectParams` on the backend
+  preserves that query string, so it survives the whole Google round-trip
+  unchanged).
+- **`google/callback`**: checks the nonce *first*, unconditionally, before
+  even looking at `google_error` or the tokens — a mismatch or missing nonce
+  now redirects to Sign In with "That sign-in link is invalid or has
+  expired." and never touches the session cookie.
+
+Verified live: a hand-crafted `google/callback?access_token=fake&...` URL is
+now rejected with no cookie set (confirmed via `document.cookie` staying
+empty); the real flow still reaches the actual Google consent screen
+unchanged.
+
+**Then went back over everything else, not just this fix**, since a targeted
+patch is easy to trust too much on its own:
+
+- Full production `next build` (not just `tsc --noEmit`) — clean, all 30
+  routes compiled.
+- `npm run lint` surfaced **353 problems**, nearly all of them from
+  `gsap.min.js`/`ScrollTrigger.min.js` never being excluded — added
+  `public/**` to `eslint.config.mjs`'s ignores (vendor bundles and
+  `auth.js`/`script.js` are intentionally plain ES5 for the static site, not
+  TypeScript app source). Fixed the two real findings underneath the noise:
+  an unescaped apostrophe in `CompleteProfileForm.tsx` (error), and
+  documented (rather than silently ignored) its one intentional
+  `window.location.href` hard-navigation, which matches the same
+  cookie-reload pattern used everywhere else in the auth flow. Lint went from
+  353 problems (11 errors) down to 1 pre-existing, unrelated warning
+  (`no-page-custom-font`, a Pages-Router-era rule that doesn't really apply
+  under App Router).
+- Re-swept the ported HTML for any other instance of the "unregistered hash
+  closes the modal" bug class (the same root cause as the Terms/Privacy fix
+  below) — confirmed no others exist.
+- Full backend suite — 247/247 tests across 25 suites, plus `tsc --noEmit`.
+- `npm test` (web) — 114/114, unchanged.
+
+---
+
+## Fixed: Google button had no accessible name
+
+Its label is CSS-generated content (`content: "Continue with Google"` on a
+`::after`), which some browsers/screen readers don't reliably expose as the
+element's accessible name — confirmed via the accessibility tree, which
+reported it as an unnamed button. Added `aria-label="Continue with Google"`
+to both instances (Sign In and Sign Up panels) in the source prototype and
+regenerated `HomePage.markup.ts`. Verified live: the accessibility tree now
+reports the button's name correctly.
+
+---
+
+## Fixed: Terms/Privacy links closing the auth modal, and added real content
+
+The Sign Up panel's Terms & Conditions / Privacy Policy links were plain
+`<a href="#terms">`/`<a href="#privacy">` — clicking either changed the URL
+hash to something `HASH_TO_PANEL` doesn't recognize, which `syncFromHash()`
+treats as "no matching panel" and closes the whole modal. They also went
+nowhere: no terms or privacy content existed on the site at all.
+
+- **`auth.js`**: the links now carry `data-open-doc="terms"`/`"privacy"` and
+  their click handler calls `preventDefault()` before showing a new document
+  panel — the hash never changes, so the modal-closing bug can't fire.
+  Reading is optional: a checkbox can always be checked directly, same as
+  before. Only clicking the link opens the real text; an "I agree to the ___"
+  button at the bottom checks that one checkbox and returns to whichever
+  panel (currently always Sign Up) the link was opened from, tracked via
+  `link.closest(".auth-panel")` rather than hardcoded, so this generalizes if
+  another panel gains its own consent links later.
+- **Real content**, ported verbatim from `mobile/app/(auth)/screens/TermsAndConditions.tsx`
+  (the mobile app already had this copy; the web app never did) — same
+  sections, same wording, for both documents.
+- **`CompleteProfileForm.tsx`** (the Google role-selection page from the
+  entry below) had the identical dead-link problem with its own consent
+  checkboxes — fixed the same way, as in-component state
+  (`docView: "terms" | "privacy" | null`) rather than the hash-panel
+  mechanism, since that page isn't part of the ported-HTML modal system. The
+  content lives once, in `legalDocs.ts`, imported by that component; `auth.js`
+  has its own copy of the same text since it's a static file with no bundler
+  to share a TS module with — kept in sync by hand, both sourced from the
+  same mobile screen.
+
+Verified live in both places: clicking a link no longer closes the modal, the
+real content renders, "I agree" checks the box and returns to the form with
+the rest of the entered data intact, and checking the box directly (without
+opening the link) still works exactly as before. `tsc --noEmit` clean,
+`npm test` still 114/114.
+
+---
+
+## Docs cleanup: open items grouped by who has to act
+
+README's "Backend Requests" and "Not yet built / needs a human" sections were
+two separate lists of the same kind of thing — open work — split by an
+arbitrary line (backend vs. everything else) rather than by what actually
+matters when picking one up: **who is unblocked to act on it**. A recovery-
+credit endpoint (needs a backend developer) and a Google Cloud Console
+permission (needs project access, zero code) don't belong in the same
+decision-making bucket just because both happened to sit outside `web`'s own
+code.
+
+Merged both into one **"Needed to Move Forward"** section, grouped into three
+subsections: **Needs a backend developer** (repo + deploy access), **Needs
+Google Cloud Console access** (a dashboard permission on one specific
+project, no code), and **Needs a human with a real inbox** (no special access
+at all). Same rule as before applies going forward: once something here
+ships, its story moves to this changelog and the item is removed from
+README, not left behind as a resolved trophy.
+
+---
+
+## Role-selection step for a first-time Google signup
+
+Closed the last piece the Google Sign-In pass below left open: a brand-new
+Google signup used to land straight on `/account` with no role — the backend
+flags this via `profiles.google_signup_pending`, and mobile already solves it
+with `GoogleRoleSelectionScreen`/`GoogleSPDetailsScreen` calling
+`POST /auth/complete-google-profile`.
+
+- **`/account/complete-profile`** (new, real React page — not ported HTML
+  like the rest of the promo site, since there's no static-prototype design
+  for it to match) reuses the existing `auth-modal`/`auth-role-switch`/
+  `auth-consents` CSS classes so it looks native to the auth flow: role
+  toggle (Homeowner/Service Provider), skill category when Provider is
+  selected, the same four consent checkboxes Sign Up has. Submits to a new
+  `POST /api/auth/complete-google-profile` route (CSRF-guarded like the rest,
+  reads the session cookie server-side same as `/account` does) and redirects
+  to `/account` on success.
+- **`/account`** now inspects `profile.google_signup_pending` (from
+  `GET /auth/me`) and redirects to `/account/complete-profile` instead of
+  rendering the handoff page when it's still true.
+
+Verified live (the gate, not the full round-trip, since that needs a signed-in
+Google session): visiting `/account/complete-profile` without a session
+redirects to `/#login`, correct; toggling Service Provider correctly reveals
+the skill-category select and the biometric consent checkbox. `tsc --noEmit`
+clean, `npm test` still 114/114.
+
+---
+
+## Google Sign-In wiring, CSRF guard, and a sitemap
+
+Three items closed from README's "Not yet built" list:
+
+- **Google Sign-In.** The button already existed in the ported HTML (its
+  label is CSS-generated content — `content: "Continue with Google"` on a
+  `::after` — which is why earlier text-searches of the markup missed it) but
+  had no click handler. Wired it up via two new routes rather than pointing
+  the browser at the backend directly, keeping `API_URL` server-side like
+  every other route here: `GET /api/auth/google/start` redirects to the
+  backend's `/auth/google/authorize` with `app_redirect` set to this app's own
+  `/api/auth/google/callback`; that route reads the tokens the backend's
+  callback appends to the query string, sets them via the same
+  `setAccountSession()` login/register use, and redirects to `/account` (or
+  back to `/#login` with `?google_error=...`, which `auth.js` now surfaces in
+  the Sign In panel's status line on load). Verified live end-to-end through
+  the real backend and the real Google consent screen — it stopped there with
+  `redirect_uri_mismatch`, because `https://taskbuddy-kpek.onrender.com/auth/google/callback`
+  isn't registered as an allowed redirect URI on that Google Cloud OAuth
+  client. Not a code problem; needs whoever has access to that Google Cloud
+  project to add it. The post-first-Google-signup role-selection step
+  (`POST /auth/complete-google-profile`, mirroring mobile's
+  `GoogleRoleSelectionScreen`) still isn't built — a new Google signup lands
+  on `/account` with an incomplete profile for now.
+- **CSRF protection for `/api/auth/*`.** Added `isSameOriginRequest()` to
+  `_session.ts` (checks `Origin`, falling back to `Referer`, against the
+  request's `Host`) and applied it to all six route handlers. Verified a
+  normal same-origin submit still 200s.
+- **`sitemap.ts`.** Lists just `/` — `/account*` and `/admin/*` are already
+  excluded via `robots.ts` and have no business being crawled.
+
+Verified after all three: `tsc --noEmit` clean, `npm test` still 114/114.
+
+---
+
+## Docs cleanup: README stopped duplicating this changelog
+
+README's "Backend Requests → Resolved" subsection and its separate
+"Not yet built" recovery-credit note were narrating the same shipped work
+already recorded in the "Component tests, and verifying the cookie/CSRF auth
+rework" and "Platform administration surfaces" entries below — two places
+that drift apart the moment only one gets updated (this file didn't get
+today's changes until this pass either). Going forward: **README describes
+only current, actionable state** — what's live, and what's still genuinely
+missing (`Backend Requests`, `Not yet built / needs a human`). Anything
+resolved gets its story told here, with a date, and removed from README
+rather than kept as a trophy case.
+
+---
+
+## Public promo site, real customer auth, and the admin move to `/admin/*`
+
+The admin console used to be the whole app, at root-level routes (`/login`,
+`/dashboard`, …) by deliberate earlier design. That stopped being possible
+once the team's approved static prototype
+(`taskbuddy-product-reference/public-site/`) needed to become the real `/` —
+so this pass did both migrations together, since one forced the other.
+
+- **Admin moved to `/admin/*`.** `login/page.tsx` → `admin/login/page.tsx`;
+  `(admin)/*` → `admin/(admin)/*`. `lib/routes.ts` updated
+  (`pageToPath`/`pathToPage`/`LOGIN_PATH`) so every existing call site
+  (`Sidebar`, `Header`, `DashboardPage`, `not-found.tsx`, `error.tsx`) picked
+  up the new paths without further changes. `AppProvider`/`ToastProvider`
+  moved out of the root layout into a new `admin/layout.tsx` so they only run
+  for `/admin/*` — they were firing session-restore 401s against the public
+  homepage otherwise.
+- **Public homepage at `/`**, ported from the static prototype's
+  `index.html` via `dangerouslySetInnerHTML` (`HomePage.markup.ts`, generated
+  from the prototype HTML by a small script, never hand-edited) rather than
+  hand-transcribing hundreds of data-attribute-driven interactive elements
+  into JSX. GSAP + ScrollTrigger loaded via `next/script`; `styles/promo.css`
+  scoped under a `.promo-site` wrapper (via CSS `@scope`) so it can't leak
+  into `/admin/*`'s own token system, and vice versa.
+- **Sign In / Sign Up / Forgot Password / Reset Password**, designed as a
+  single modal driven by `location.hash` (`#login`, `#signup`, `#forgot`)
+  rather than separate pages, matching the flow the team approved in the
+  static prototype. `/account/login` and `/account/signup` exist only to give
+  the modal a stable, shareable URL to redirect from — the homepage never
+  unmounts underneath it. Wired to the backend's real customer endpoints
+  (not a placeholder): `register`, `login`, `logout`, `me`,
+  `forgot-password`, `reset-password`, `send-email-otp`, `verify-email-otp`,
+  via new route handlers under `app/api/auth/*` that convert the backend's
+  JSON-token response into httpOnly `tb_account_access`/`tb_account_refresh`
+  cookies (the web equivalent of mobile's SecureStore).
+- **`/account`** is the real, session-gated handoff page (checks `GET
+  /auth/me` server-side) — honest "your account is ready" copy, no fake
+  dashboard or download link, since the mobile app isn't released yet.
+- **Verified live against the deployed backend**, not just read: Sign In,
+  Sign Up, Forgot Password (200s, transitions to the Reset panel with the
+  email prefilled), and Reset Password's error path (an invalid/expired code
+  correctly surfaces the backend's "Token has expired or is invalid" instead
+  of a generic failure). The reset-with-a-valid-code success path still needs
+  a human checking a real inbox — see
+  [README → Needed to Move Forward](./README.md#needs-a-human-with-a-real-inbox).
+- **Admin login page redesigned** from a generic split-panel/gradient
+  template to a single centered card, using new theme-invariant
+  `--login-card`/`--login-card-border` tokens in `globals.css`.
+- **Branding split, deliberately:** `public/promo/taskbuddy-logo.png` (deep
+  blue, promo site) is a separate file from `public/taskbuddy-logo.png`
+  (light cyan, admin) — not a duplicate-asset bug. Favicon overrides follow
+  the same split: root `app/favicon.ico` (promo blue) vs.
+  `app/admin/icon.png` (admin cyan).
+- **`robots.ts`** changed from blanket `disallow: "/"` to
+  `disallow: ["/admin", "/account"]` — the public site is meant to be
+  indexed; the admin console and the session-gated handoff page are not.
+- **Google OAuth redirect allowlist** (`backend/src/auth/google-redirect.ts`)
+  extended to allow `https://taskbuddy-nine-zeta.vercel.app` alongside the
+  existing localhost/app-scheme/Expo rules — required before "Sign in with
+  Google" can work on the deployed site rather than only in local dev.
+  Covered by new cases in `google-redirect.spec.ts` (prod host allowed over
+  https, rejected over plain http, rejected as a smuggled subdomain).
+- Fixed along the way: a global `overflow: hidden` on `html, body` in
+  `globals.css` (scoped originally for the admin's fixed-shell layout) was
+  silently breaking scroll on the new public homepage, since both surfaces
+  shared one root layout — removed, since both admin surfaces already
+  self-manage overflow at their own wrapper level.
 
 ---
 
@@ -48,11 +322,9 @@ remaining testing gap:
   /auth/admin/refresh` rotates the cookie/CSRF pair, and `POST
   /auth/admin/logout` actually clears the session (subsequent `/session` call
   401s). No regressions found.
-- **README restructured**: the old numbered "Known gaps" list is gone — it's
-  now "Backend Requests", split into Needed (recovery-credit
-  issuance endpoint, fee/commission model, category management, second admin
-  account, notification broadcast) and Resolved (the two items above, with
-  dates and what verified them).
+- **README restructured**: the old numbered "Known gaps" list became
+  "Backend Requests", split into Needed and Resolved subsections. (Later
+  trimmed to just Needed — see the docs-cleanup entry above.)
 
 ---
 
@@ -204,7 +476,7 @@ something already handled. Grouped by what changed, not when.
 - Pagination UI now exists client-side (see the mockup-port pass below), but
   it still pages over a flat 200-row fetch, so row 201 is invisible. Blocked
   on backend `search` params; see
-  [Backend Requests to Evaluate](./README.md#needs-backend-work-for-review).
+  [Needed to Move Forward](./README.md#needs-a-backend-developer).
 - Mutations refetch the whole list rather than patching state from the
   response. Deliberate — it's what keeps a table honest when a bulk action
   partly fails — but a fair future optimisation.
@@ -216,7 +488,7 @@ something already handled. Grouped by what changed, not when.
 
 **All nine items below are shipped and wired up** — nothing here is
 outstanding; it's kept as a record of what closed. For what's still missing,
-see [Backend Requests to Evaluate](./README.md#needs-backend-work-for-review).
+see [Needed to Move Forward](./README.md#needs-a-backend-developer).
 
 Migrations 0014 and 0017 shipped the backend (`backend/BACKEND_SCHEMA.md`
 §23–25), and the console calls every one of these endpoints. (0017 was

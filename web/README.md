@@ -1,16 +1,27 @@
-# TaskBuddy Admin Console
+# TaskBuddy Web
 
-The internal admin dashboard for the TaskBuddy platform — user moderation,
-provider verification, escrow/wallet monitoring, disputes, and analytics.
-Next.js 16 (App Router) + TypeScript, talking to the NestJS backend in
-`../backend`.
+One Next.js 16 (App Router) + TypeScript app serving two audiences:
 
-**Live:** https://taskbuddy-nine-zeta.vercel.app · **Sign in:**
-`admin@taskbuddy.com` (ask the team for the password)
+- **`/`** — the public promo site (marketing homepage, Sign In / Sign Up, the
+  post-signup account handoff page) — talks to the NestJS backend's plain
+  customer auth endpoints (`/auth/register`, `/auth/login`, `/auth/forgot-password`, etc).
+- **`/admin/*`** — the internal admin dashboard — user moderation, provider
+  verification, escrow/wallet monitoring, disputes, and analytics — talks to
+  the backend's separate cookie-based `/auth/admin/*` endpoints.
 
-> **Status:** this worktree implements browser-admin cookie sessions and
-> server-side list search/pagination. External deployment and production smoke
-> testing remain operator actions; this document does not claim they occurred.
+Both share one deploy, one root layout, and one backend in `../backend`; they
+don't share a session or an auth model — see
+[Backend Integration Status](#backend-integration-status) for why that's two
+different mechanisms on purpose.
+
+**Live:** https://taskbuddy-nine-zeta.vercel.app · **Admin sign in:**
+`/admin/login` — `admin@taskbuddy.com` (ask the team for the password)
+
+> **Status:** this worktree implements browser-admin cookie sessions,
+> server-side list search/pagination, and the public promo site + customer
+> auth flow (including forgot/reset password, verified against the live
+> backend). External deployment and production smoke testing remain operator
+> actions; this document does not claim they occurred.
 
 ---
 
@@ -18,7 +29,8 @@ Next.js 16 (App Router) + TypeScript, talking to the NestJS backend in
 
 ```bash
 npm install
-npm run dev          # http://localhost:3000
+npm run dev          # http://localhost:3000 — public homepage
+                      # http://localhost:3000/admin/login — admin sign in
 ```
 
 By default this hits the deployed backend, so you can sign in immediately with
@@ -73,19 +85,28 @@ banner, the platform genuinely has no data yet.
 
 ## Architecture
 
+The data flow below (`AppContext` → `lib/services` → `lib/api/client`) is
+**admin-only** — `/admin/*` pages never call the backend directly. The public
+site at `/` doesn't use any of it; its Sign In/Sign Up/Forgot Password calls
+go straight from `public/promo/auth.js` to `web`'s own `app/api/auth/*` route
+handlers (see [Backend Integration Status §3](#3-public-site-customer-auth--password-reset)).
+
 ```
-pages → context/AppContext → lib/services → lib/api/client → backend
-                                   ↓
-                             lib/adapters (display formatting)
+admin pages → context/AppContext → lib/services → lib/api/client → backend
+                                         ↓
+                                   lib/adapters (display formatting)
 ```
 
-- **Pages never call the backend directly.** They read from `AppContext` and
-  render rows produced by `lib/adapters`.
+- **Admin pages never call the backend directly.** They read from `AppContext`
+  and render rows produced by `lib/adapters`.
 - **`lib/services` is the seam.** It's where snake_case wire types become
   camelCase domain objects, and backend enums become display labels
   (escrow `held` → `IN_ESCROW`).
-- **`AppProvider` lives in the root layout**, so session and loaded data survive
-  client-side navigation — sidebar clicks don't refetch, a hard refresh does.
+- **`AppProvider` lives in `app/admin/layout.tsx`**, scoped to `/admin/*` only
+  (it used to sit in the root layout, but that fired session-restore 401s
+  against the public homepage once `/` stopped being an admin route) — so
+  session and loaded data still survive client-side navigation within the
+  admin console.
 - **Overlapping requests are deduped.** `/admin/analytics/summary` backs five
   dashboard values, and `getTransactions()` is needed by both the Transactions
   page and the dispute cross-reference; both share one in-flight request rather
@@ -96,47 +117,84 @@ pages → context/AppContext → lib/services → lib/api/client → backend
 ```
 src/
 ├── app/
-│   ├── layout.tsx            # <html>, Inter via next/font, ToastProvider + AppProvider
-│   ├── page.tsx              # "/" → redirects to /dashboard or /login
+│   ├── layout.tsx            # <html>, Inter via next/font — shared by both surfaces
+│   ├── page.tsx              # "/" — public homepage (HomePage.tsx)
+│   ├── robots.ts             # disallow ["/admin", "/account"]; "/" is indexable
 │   ├── error.tsx             # Error boundary
 │   ├── not-found.tsx         # Custom 404
-│   ├── robots.ts             # Disallow all — this console holds real user PII
-│   ├── login/page.tsx
-│   └── (admin)/              # Route group: URLs stay /users, not /admin/users
-│       ├── layout.tsx        # Auth gate + sidebar/header + load-error banner
-│       └── <page>/page.tsx   # One folder per page, each sets its own <title>
+│   ├── account/
+│   │   ├── page.tsx          # Session-gated handoff page ("your account is ready")
+│   │   ├── login/page.tsx    # Shareable URL → redirects into the "/#login" modal
+│   │   └── signup/page.tsx   # Same, for "/#signup"
+│   ├── api/auth/             # Route handlers proxying the backend's plain
+│   │   │                     # customer endpoints; turn JSON tokens into httpOnly
+│   │   │                     # cookies (register, login, logout, forgot-password,
+│   │   │                     # reset-password, verify-email-otp; see _session.ts)
+│   └── admin/
+│       ├── layout.tsx        # Scopes ToastProvider + AppProvider to /admin/* only
+│       ├── login/page.tsx
+│       └── (admin)/          # Route group: URLs are /admin/users, not /admin/(admin)/users
+│           ├── layout.tsx    # Auth gate + sidebar/header + load-error banner
+│           └── <page>/page.tsx
 ├── components/
-│   ├── layout/               # Sidebar, Header
-│   ├── pages/                # One component per admin page
+│   ├── layout/               # Sidebar, Header (admin only)
+│   ├── pages/                # HomePage + AccountPage (promo) and one per admin page
 │   └── ui/                   # ConfirmDialog, Toast
-├── context/AppContext.tsx    # Session, data, mutations, preferences
+├── styles/promo.css          # Scoped under `.promo-site` — doesn't affect /admin
+├── context/AppContext.tsx    # Session, data, mutations, preferences (admin only)
 └── lib/
     ├── domain.ts             # Backend-shaped domain types
-    ├── routes.ts             # Page id ↔ URL + page titles
+    ├── routes.ts             # Page id ↔ /admin/<page> URL + page titles
     ├── validation.ts         # Shared rules, mirroring backend DTO limits
-    ├── services/             # THE DATA SEAM
+    ├── services/             # THE DATA SEAM (admin)
     ├── adapters/             # Domain → display rows
     ├── export/csv.ts         # Client-side CSV
-    └── api/                  # client.ts, session.ts, types.ts
+    └── api/                  # client.ts, session.ts, types.ts (admin)
+
+public/promo/                 # auth.js (modal logic, real backend calls), vendor/
+                               # (gsap, ScrollTrigger), images — static, not bundled
 ```
 
 ### Routing
 
-Every page has a real URL (`/dashboard`, `/users`, …), so refresh, bookmarks,
-deep links and the back button all work.
+Every admin page has a real URL (`/admin/dashboard`, `/admin/users`, …), so
+refresh, bookmarks, deep links and the back button all work.
 
-The auth gate in `(admin)/layout.tsx` waits on `sessionRestored` before
+The auth gate in `admin/(admin)/layout.tsx` waits on `sessionRestored` before
 redirecting — `isLoggedIn` is false on the server and on the client's first
 render, so redirecting without that check would bounce a signed-in admin to
-`/login` on every refresh.
+`/admin/login` on every refresh.
+
+The public site's Sign In / Sign Up isn't a route at all in the usual sense —
+it's a single modal on `/`, switched between panels (`welcome` / `signin` /
+`signup` / `confirm` / `forgot` / `reset`) by `location.hash`
+(`public/promo/auth.js`). `/account/login` and `/account/signup` exist only so
+the panel has a real, shareable URL to redirect from; the homepage itself
+never unmounts.
 
 ---
 
 ## Where each page's data comes from
 
+**Public site** (`/`, via `web/src/app/api/auth/*` route handlers, which proxy
+the backend and convert its JSON tokens into httpOnly cookies):
+
+| Panel/page | Endpoint(s) |
+|---|---|
+| Sign In | `POST /auth/login` |
+| Sign Up | `POST /auth/register`, `POST /auth/send-email-otp` (if email confirmation is required) |
+| Confirm email | `POST /auth/verify-email-otp` |
+| Forgot password | `POST /auth/forgot-password` (always 200 — never confirms whether the address exists) |
+| Reset password | `POST /auth/reset-password` (logs the user in immediately on success) |
+| Continue with Google | `GET /auth/google/authorize` (via `/api/auth/google/start`), then `/api/auth/google/callback` turns the returned tokens into the session cookie |
+| `/account/complete-profile` | `POST /auth/complete-google-profile` — role + category + consents for a first-time Google signup |
+| `/account` (handoff page) | `GET /auth/me`, server-side, to gate the page (and to detect `google_signup_pending` → redirect to complete-profile instead) |
+
+**Admin console** (`/admin/*`):
+
 | Page | Endpoint(s) |
 |---|---|
-| Login | `POST /auth/login` |
+| Login | `POST /auth/admin/login` |
 | Dashboard | `GET /admin/analytics/summary`, `GET /admin/activity` |
 | Verifications | `GET /admin/verifications`, `POST .../approve` · `/reject` (accepts a reason) |
 | Users | `GET /admin/users`, `POST .../suspend` (reason + optional duration) · `/reinstate` · `/send-password-reset` |
@@ -225,7 +283,48 @@ service-role-only RPCs backing these list endpoints — applied and verified
 2026-08-17, so these pages work against the deployed API. Booking detail responses also expose `photo_urls`
 as renderable public URLs, including conversion of stored `job-photos` paths.
 
-### 3. Consumed by the web console (migrations 0022–0024)
+### 3. Public site: customer auth + password reset
+
+The promo site's Sign In / Sign Up / Forgot Password modal talks to the
+backend's plain customer endpoints — a different mechanism from the admin
+console's cookie-based `/auth/admin/*` above, because these endpoints return
+tokens in the JSON body rather than setting cookies themselves (the same
+contract `mobile` already uses). `web`'s own route handlers
+(`app/api/auth/*`) are the thing that turns that JSON response into an httpOnly
+`tb_account_access`/`tb_account_refresh` cookie pair — the backend never sees
+a cookie for these.
+
+**Endpoints in use:** `POST /auth/register`, `POST /auth/login`,
+`POST /auth/logout`, `GET /auth/me`, `POST /auth/forgot-password`,
+`POST /auth/reset-password`, `POST /auth/send-email-otp`,
+`POST /auth/verify-email-otp`, `GET /auth/google/authorize` +
+`GET /auth/google/callback` (via `/api/auth/google/start` and
+`/api/auth/google/callback`), `POST /auth/complete-google-profile`.
+
+Every route in `app/api/auth/*` checks `isSameOriginRequest()` (Origin,
+falling back to Referer, against the request's Host) before doing anything —
+a CSRF guard, since some of these are cookie-authenticated and a browser
+attaches cookies to a request regardless of which site triggered it.
+`google/callback` additionally requires a one-time nonce minted by
+`google/start` and stored httpOnly (`setGoogleNonce`/`consumeGoogleNonce` in
+`_session.ts`) — that route's tokens come from the URL's query string rather
+than a cookie, so the Origin/Referer check alone wouldn't stop someone from
+crafting that URL directly with tokens from an account they control and
+handing it to a victim (a login-CSRF/session-fixation pattern, distinct from
+ordinary CSRF).
+
+Verified live: submitting Forgot Password with a real address 200s and
+transitions to the Reset panel with the email prefilled; submitting Reset
+Password with an invalid/expired code correctly surfaces the backend's
+"Token has expired or is invalid" rather than a generic failure; clicking
+"Continue with Google" goes through `/api/auth/google/start` to the real
+backend to the real Google consent screen (it stops there today on
+`redirect_uri_mismatch` — see [Needed to Move Forward](#needs-google-cloud-console-access));
+a hand-crafted `google/callback` URL with fake tokens is rejected and sets no
+cookie. The reset-with-a-real-code success path still needs a human checking
+a real inbox — see [Needed to Move Forward](#needs-a-human-with-a-real-inbox).
+
+### 4. Consumed by the web console (migrations 0022–0024)
 
 Four surfaces this document previously listed under "Not yet built" now have an
 API and are wired to the Platform page. Full reasoning for each decision
@@ -257,58 +356,6 @@ them:
 
 ---
 
-## Backend Requests
-
-### Needed
-
-- **Recovery-credit issuance endpoint** — `POST /admin/wallet-transactions/recovery-credit`.
-  Nothing today lets an admin credit a wallet at all;
-  `WalletService.create()` explicitly refuses any `direction: 'credit'` request
-  from any caller, including admins, to prevent free balance minting. This
-  needs a separate, admin-only route that's allowed to do what that one
-  deliberately can't. Fully unblocked — migration `0021_recovery_credit_kind.sql`
-  is already applied — and `docs/backend-handoff-recovery-vouchers.md` has a
-  ready-to-use DTO/service/controller sketch (audit-log + notify pattern
-  mirrors `DisputesService.resolve()`). Once this exists, web gets a small
-  "Issue Credit" button on the Transactions page's Wallet tab — no point
-  wiring it to a route that 404s.
-
-### Resolved
-
-- **Fee/commission model, category management, a second admin account, and
-  notification broadcast** — all four were flagged here as needing a schema
-  decision before any UI. Answered by migrations 0022–0024, with the decisions
-  recorded in `backend/BACKEND_SCHEMA.md` §27: the rate lives on the single
-  `platform_settings` row (global, not per-category) as a fraction, frozen onto
-  the escrow row at release; categories deactivate rather than delete, since
-  jobs and the ML feature set reference them by id; admin creation never
-  accepts a password and the last admin cannot be demoted; broadcast writes one
-  row per recipient so read state and push both work. Endpoints are
-  `GET`/`PATCH /admin/commission`, `GET`/`POST /admin/categories` +
-  `PATCH /admin/categories/:id`, `GET`/`POST /admin/admins` +
-  `POST /admin/admins/:id/revoke`, and
-  `POST /admin/notifications/broadcast`. Implemented under `/platform`.
-- **Withdrawal settlement queue** — not previously requested here, but newly
-  available and worth the same note: `GET /admin/withdrawals` plus settle and
-  reject. There is no payout rail, so this queue is the only way anyone on the
-  platform gets paid out. Implemented under `/withdrawals`.
-- **Auth tokens moved off `localStorage`** — was flagged as a security gap
-  (any injected script could read the access/refresh tokens). Fixed in
-  `fe2356d` ("align backend with current clients", 2026-08-17): httpOnly
-  cookie sessions + CSRF, detailed under
-  [Backend Integration Status](#backend-integration-status) above. Verified
-  end-to-end against the deployed API 2026-08-19 — login, session restore,
-  a CSRF-protected mutation rejecting without the header and accepting with
-  it, refresh rotating the cookie/CSRF pair, and logout clearing the session.
-- **Server-side search/pagination for Bookings, Transactions, Activity Log**
-  — was flagged as blocked on missing `search` params (the 200-row cap made
-  row 201 invisible, and client-side filtering over a fixed slice would have
-  quietly searched only the loaded page). Fixed in the same commit via
-  migration `0020_admin_search_functions.sql` — detailed under
-  [Backend Integration Status](#backend-integration-status) above.
-
----
-
 ## Deliberate tradeoffs (no action needed)
 
 Called out because a reviewer will spot them and should know they were chosen,
@@ -329,13 +376,6 @@ not missed.
 
 ---
 
-## Not yet built
-
-- **UI for recovery-credit issuance.** Still genuinely blocked — see
-  [Backend Requests](#backend-requests) above; that endpoint does not exist yet.
-
----
-
 ## Decided against (out of scope)
 
 - **AI/automated identity verification.** Real KYC (Onfido, Persona, Sumsub) is
@@ -348,7 +388,6 @@ not missed.
 
 ---
 
-
 ## Project history
 
 Detailed change history — what shipped in each pass and why — lives in
@@ -358,3 +397,57 @@ through hardening passes covering routing, security headers, destructive-action
 confirmations, error handling, and accessibility, then had its visual design
 and interaction patterns (pagination, row-selection, scoped CSV export)
 ported from a design mockup to match it exactly.
+
+---
+
+## Needed to Move Forward
+
+Everything still open, grouped by **who** has to act — not by what kind of
+gap it is. Once an item here ships, its story moves to
+[`CHANGELOG.md`](./CHANGELOG.md) with the commit and how it was verified, and
+it's removed from here — this list only tracks current, unstarted work.
+
+### Needs a backend developer
+
+Code that has to be written and deployed to `backend` — repo write access +
+Render deploy rights, not a dashboard permission.
+
+- **Recovery-credit issuance endpoint** — `POST /admin/wallet-transactions/recovery-credit`.
+  Nothing today lets an admin credit a wallet at all;
+  `WalletService.create()` explicitly refuses any `direction: 'credit'` request
+  from any caller, including admins, to prevent free balance minting. This
+  needs a separate, admin-only route that's allowed to do what that one
+  deliberately can't. Fully unblocked — migration `0021_recovery_credit_kind.sql`
+  is already applied — and `docs/backend-handoff-recovery-vouchers.md` has a
+  ready-to-use DTO/service/controller sketch (audit-log + notify pattern
+  mirrors `DisputesService.resolve()`). Once this exists, web gets a small
+  "Issue Credit" button on the Transactions page's Wallet tab (that's the
+  matching, currently-nonexistent, web-side item) — no point wiring it to a
+  route that 404s.
+
+### Needs Google Cloud Console access
+
+Not code — a permission on the Google Cloud *project* that owns TaskBuddy's
+OAuth client (client id `646218465005-...`). Whoever is an Owner/Editor there
+can fix this in a couple of clicks; nobody without that project's access can.
+
+- **Register the Google OAuth redirect URI.** Sign-In with Google is fully
+  wired on our side (button → `/api/auth/google/start` → backend → the real
+  Google consent screen) and verified that far — it stops at Google itself
+  with `redirect_uri_mismatch`, because
+  `https://taskbuddy-kpek.onrender.com/auth/google/callback` isn't on that
+  OAuth client's allowed-redirect-URIs list. Add it in Google Cloud Console
+  → APIs & Services → Credentials → that OAuth 2.0 Client ID → Authorized
+  redirect URIs, and this works end-to-end with no further code changes. A
+  one-time registration for the app itself — not something repeated per user.
+
+### Needs a human with a real inbox (testing)
+
+No special access required — just someone willing to sign up (or request a
+reset) with a real, checkable email address.
+
+- **Verifying the reset-password and signup-OTP success path.** The
+  request/response handling is already verified (see
+  [Backend Integration Status §3](#3-public-site-customer-auth--password-reset))
+  — what's left is confirming the actual email arrives and the real code in
+  it works. No amount of automated testing substitutes for that.

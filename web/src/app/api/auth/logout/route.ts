@@ -1,7 +1,11 @@
-import { NextResponse } from "next/server";
-import { API_URL, clearAccountSession, getAccessToken } from "../_session";
+import { NextRequest, NextResponse } from "next/server";
+import { API_URL, clearAccountSession, getAccessToken, isSameOriginRequest } from "../_session";
 
-export async function POST() {
+export async function POST(req: NextRequest) {
+  if (!isSameOriginRequest(req)) {
+    return NextResponse.json({ message: "Invalid request origin." }, { status: 403 });
+  }
+
   const accessToken = await getAccessToken();
 
   if (accessToken) {
