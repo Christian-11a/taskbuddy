@@ -12,6 +12,12 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Static assets served as-is, not part of the app's TS/React source:
+    // vendor libraries (minified, not ours to lint) and auth.js/script.js
+    // (intentionally plain ES5-style IIFEs for the ported static site, not
+    // TypeScript — linting them as app source produces hundreds of false
+    // positives from the vendor bundles alone).
+    "public/**",
   ]),
 ]);
 

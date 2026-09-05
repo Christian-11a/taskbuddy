@@ -40,14 +40,14 @@ export function Pagination({ page, pageSize, total, onPageChange, itemLabel }: P
     border: `1px solid ${active ? "#2b7f8b" : "var(--border-md)"}`,
     background: active ? "rgba(34,195,214,0.15)" : "var(--chip-bg)",
     color: active ? "var(--indigo-light)" : "var(--text-light)",
-    borderRadius: 7,
-    fontSize: 10.5,
+    borderRadius: "var(--r-sm)",
+    fontSize: "var(--fs-2xs)",
     cursor: "pointer",
     fontFamily: "inherit",
   });
 
   return (
-    <div className="flex items-center justify-between flex-wrap gap-2" style={{ padding: "11px 14px", borderTop: "1px solid var(--card-border)", color: "var(--text-muted)", fontSize: 10.5 }}>
+    <div className="flex items-center justify-between flex-wrap gap-2" style={{ padding: "11px 14px", borderTop: "1px solid var(--card-border)", color: "var(--text-muted)", fontSize: "var(--fs-2xs)" }}>
       <span>Showing {from}–{to} of {total.toLocaleString()} {itemLabel}</span>
       {totalPages > 1 && (
         <div className="flex items-center gap-1">
@@ -62,7 +62,7 @@ export function Pagination({ page, pageSize, total, onPageChange, itemLabel }: P
           </button>
           {pages.map((p, i) =>
             p === "…" ? (
-              <span key={`ellipsis-${i}`} style={{ padding: "0 4px", fontSize: 10.5 }}>…</span>
+              <span key={`ellipsis-${i}`} style={{ padding: "0 4px", fontSize: "var(--fs-2xs)" }}>…</span>
             ) : (
               <button
                 key={p}

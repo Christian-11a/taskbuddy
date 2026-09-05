@@ -44,6 +44,7 @@ export interface AdminUserApiRow {
   full_name: string;
   role: "client" | "provider" | "admin";
   deactivated_at: string | null;
+  deleted_at?: string | null;
   created_at: string;
   cached_avg_rating: number | null;
   cached_completed_jobs: number | null;
@@ -100,6 +101,9 @@ export interface AnalyticsSummaryApiResponse {
     monthly_revenue: number;
     /** Submissions awaiting admin review (migration 0008). */
     pending_verifications: number;
+    total_commission?: number;
+    monthly_commission?: number;
+    pending_withdrawals?: number;
   };
   bookings_by_status: Record<string, number>;
   bookings_by_category: Record<string, number>;
@@ -256,7 +260,8 @@ export type WalletTxnKindApi =
   | "escrow_hold"
   | "payout"
   | "refund"
-  | "adjustment";
+  | "adjustment"
+  | "recovery_credit";
 
 export interface AdminWalletTxnApiRow {
   id: string;
@@ -273,6 +278,46 @@ export interface AdminWalletTxnApiRow {
 export interface ListWalletTxnApiResponse {
   transactions: AdminWalletTxnApiRow[];
   total: number;
+}
+
+export interface AdminWithdrawalApiRow extends AdminWalletTxnApiRow {
+  profile_id: string;
+  withdrawal_destination: string | null;
+  reviewed_at: string | null;
+  reviewed_by: string | null;
+  review_note: string | null;
+}
+
+export interface ListWithdrawalsApiResponse {
+  withdrawals: AdminWithdrawalApiRow[];
+  total: number;
+}
+
+export interface CategoryApiRow {
+  id: number;
+  name: string;
+  is_active: boolean;
+}
+
+export interface AdminAccountApiRow {
+  id: string;
+  email?: string;
+  full_name?: string;
+  role: "admin";
+  created_at?: string;
+  deactivated_at?: string | null;
+  deleted_at?: string | null;
+}
+
+export interface CommissionApiResponse {
+  commission_rate: number | string;
+  updated_at: string;
+}
+
+export interface BroadcastApiResponse {
+  sent: number;
+  failed: number;
+  audience: "all" | "clients" | "providers";
 }
 
 export interface AdminMessageApiRow {

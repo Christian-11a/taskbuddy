@@ -83,11 +83,11 @@ describe("row adapters", () => {
     };
     const row = toUserRow(u);
     expect(row).toMatchObject({
-      id: "u-001", initials: "ML", role: "🔧 Provider", isProvider: true,
+      id: "u-001", initials: "ML", role: "Provider", isProvider: true,
       status: "Active", statusClass: "badge-active",
-      joined: "Mar 10, 2024", activity: "21 jobs ⭐4.9",
+      joined: "Mar 10, 2024", activity: "21 jobs · 4.9 rating",
     });
-    // Export/logic consumers use the plain variants — no emoji, raw number.
+    // Export/logic consumers use the plain variant — same text, raw number.
     expect(row.rolePlain).toBe("Provider");
     expect(row.ratingValue).toBe(4.9);
   });
@@ -113,7 +113,7 @@ describe("row adapters", () => {
       suspendedUntil: null, suspensionReason: null,
     };
     const row = toUserRow(u);
-    expect(row.role).toBe("👤 Homeowner");
+    expect(row.role).toBe("Homeowner");
     expect(row.activity).toBe("0 jobs");
     expect(row.statusClass).toBe("badge-suspended");
     // Detail fields fall back to a dash rather than rendering "null".

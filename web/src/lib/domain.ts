@@ -15,13 +15,15 @@ export type Page =
   | "audit-log"
   | "bookings"
   | "reports"
+  | "withdrawals"
+  | "platform"
   | "settings";
 
 // ─── Users ────────────────────────────────────────────────────────────────────
 
 export type UserRole = "client" | "provider" | "admin";
 /** The real schema only has `deactivated_at` — no separate "banned" tier. */
-export type UserStatus = "ACTIVE" | "SUSPENDED";
+export type UserStatus = "ACTIVE" | "SUSPENDED" | "DELETED";
 
 /** Admin view of a user: the `admin_user_overview` row (migration 0005),
  *  remapped for display. */
@@ -44,6 +46,7 @@ export interface AdminUser {
   /** Null unless the account is under a timed suspension (migration 0014). */
   suspendedUntil: string | null;
   suspensionReason: string | null;
+  deletedAt?: string | null;
 }
 
 // ─── Verifications ────────────────────────────────────────────────────────────
@@ -160,7 +163,10 @@ export type WalletTxnKind =
   | "escrow_hold"
   | "payout"
   | "refund"
-  | "adjustment";
+  | "adjustment"
+  | "recovery_credit";
+  // Recovery credits are issued by an admin after a dispute; the backend
+  // route is intentionally not exposed in this console until it exists.
 export type WalletTxnStatus = "pending" | "completed" | "failed";
 
 export interface WalletTransaction {
@@ -172,6 +178,45 @@ export interface WalletTransaction {
   amount: number;
   title: string;
   createdAt: string; // ISO date
+}
+
+export interface AdminWithdrawal {
+  id: string;
+  profileId: string;
+  profileName: string;
+  amount: number;
+  title: string;
+  destination: string | null;
+  status: WalletTxnStatus;
+  createdAt: string;
+  reviewedAt: string | null;
+  reviewNote: string | null;
+}
+
+export interface ServiceCategory {
+  id: number;
+  name: string;
+  isActive: boolean;
+}
+
+export interface AdminAccount {
+  id: string;
+  email: string;
+  name: string;
+  createdAt: string;
+  deactivatedAt: string | null;
+  deletedAt: string | null;
+}
+
+export interface CommissionSettings {
+  rate: number;
+  updatedAt: string;
+}
+
+export interface DashboardPlatformStats {
+  totalCommission: number;
+  monthlyCommission: number;
+  pendingWithdrawals: number;
 }
 
 // ─── Admin audit log (migration 0014) ─────────────────────────────────────────
@@ -206,6 +251,9 @@ export interface DashboardStats {
   monthlyRevenue: number;
   completionRate: number; // 0–100
   avgRating: number;
+  totalCommission: number;
+  monthlyCommission: number;
+  pendingWithdrawals: number;
 }
 
 export interface MonthlyPoint {

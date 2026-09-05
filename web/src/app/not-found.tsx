@@ -15,14 +15,14 @@ export default function NotFound() {
       >
         <Compass size={22} style={{ color: "var(--indigo-light)" }} />
       </div>
-      <div className="text-white font-bold mb-2" style={{ fontSize: 18 }}>Page not found</div>
-      <div style={{ fontSize: 13, color: "var(--text-muted)", maxWidth: 380, marginBottom: 20 }}>
+      <div className="text-white font-bold mb-2" style={{ fontSize: "var(--fs-xl)" }}>Page not found</div>
+      <div style={{ fontSize: "var(--fs-md)", color: "var(--text-muted)", maxWidth: 380, marginBottom: "var(--sp-5)" }}>
         That URL doesn&apos;t match any page in the admin console.
       </div>
       <Link
-        href="/dashboard"
-        className="font-semibold text-white transition-opacity hover:opacity-90"
-        style={{ background: "linear-gradient(172deg, #22c3d6 0%, #38bdf8 100%)", borderRadius: 11, padding: "9px 18px", fontSize: 13, textDecoration: "none" }}
+        href="/admin/dashboard"
+        className="btn-primary inline-block"
+        style={{ borderRadius: "var(--r-md)", padding: "9px 18px", fontSize: "var(--fs-md)", textDecoration: "none" }}
       >
         Back to dashboard
       </Link>

@@ -12,6 +12,7 @@ describe('isAllowedAppRedirect', () => {
     ['exp://abc-123.exp.direct/--/'],
     ['http://localhost:19006'],
     ['http://127.0.0.1:3000/callback'],
+    ['https://taskbuddy-nine-zeta.vercel.app/account'],
   ])('allows %s', (uri) => {
     expect(isAllowedAppRedirect(uri)).toBe(true);
   });
@@ -25,6 +26,10 @@ describe('isAllowedAppRedirect', () => {
     ['exp://172.32.0.1:8081'],
     // localhost as a subdomain of an attacker domain.
     ['http://localhost.evil.example'],
+    // Plain http on the prod host isn't allowed, only https.
+    ['http://taskbuddy-nine-zeta.vercel.app'],
+    // Prod host as a subdomain of an attacker domain.
+    ['https://taskbuddy-nine-zeta.vercel.app.evil.example'],
     ['javascript:alert(1)'],
     ['data:text/html,<script>'],
     ['file:///etc/passwd'],
