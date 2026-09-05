@@ -10,10 +10,10 @@ The full data-schema and product spec lives in [`BACKEND_SCHEMA.md`](./BACKEND_S
 — that document is the source of truth for tables, lifecycle rules, and ML features.
 
 > **🚀 Deployed instance:** the backend is live at
-> **https://taskbuddy-1d48.onrender.com** — frontend developers can build
+> **https://taskbuddy-kpek.onrender.com** — frontend developers can build
 > against it directly, no local backend setup required (see
-> [Base URL](#base-url) below). Status page: <https://taskbuddy-1d48.onrender.com/> ·
-> JSON health: <https://taskbuddy-1d48.onrender.com/health>
+> [Base URL](#base-url) below). Status page: <https://taskbuddy-kpek.onrender.com/> ·
+> JSON health: <https://taskbuddy-kpek.onrender.com/health>
 
 ## Architecture
 
@@ -34,7 +34,7 @@ mobile / web ──REST──► backend/ (NestJS, :3000)
   also goes through it). It enforces authorization in code and owns all DB writes.
 - **ml-service** is a stateless scorer serving the trained **Random Forest
   `rf-a-v1`** (0.82 accuracy / 0.88 ROC-AUC holdout). Deployed at
-  <https://taskbuddy-ml-service.onrender.com> — see
+  <https://taskbuddy-ml-service-8ppc.onrender.com> — see
   [`../ml-service/README.md`](../ml-service/README.md).
 
 ### The matching flow
@@ -196,21 +196,21 @@ use the manual trigger endpoint to retry). Full details:
 
 | Environment | Base URL |
 |---|---|
-| **Production (Render)** | `https://taskbuddy-1d48.onrender.com` |
+| **Production (Render)** | `https://taskbuddy-kpek.onrender.com` |
 | Local development | `http://localhost:3000` |
 
 Don't hardcode the URL — read it from an environment variable so it can be
 switched per environment:
 
-- **web (Next.js):** put `NEXT_PUBLIC_API_URL=https://taskbuddy-1d48.onrender.com`
+- **web (Next.js):** put `NEXT_PUBLIC_API_URL=https://taskbuddy-kpek.onrender.com`
   in `web/.env.local` and use `process.env.NEXT_PUBLIC_API_URL`.
-- **mobile (Expo):** put `EXPO_PUBLIC_API_URL=https://taskbuddy-1d48.onrender.com`
+- **mobile (Expo):** put `EXPO_PUBLIC_API_URL=https://taskbuddy-kpek.onrender.com`
   in `mobile/.env` and use `process.env.EXPO_PUBLIC_API_URL`.
 
 > **Free-tier note:** the Render instance spins down after ~15 minutes without
 > traffic; the first request after that takes 30–60 s to answer (cold start).
 > If a request seems to hang, wait — it's waking up, not broken. Check
-> <https://taskbuddy-1d48.onrender.com/health> if unsure.
+> <https://taskbuddy-kpek.onrender.com/health> if unsure.
 
 ### Authentication
 
@@ -511,7 +511,7 @@ Errors use NestJS's standard shape with proper status codes (400 validation,
 ### Example flow (curl)
 
 ```bash
-API=https://taskbuddy-1d48.onrender.com   # or http://localhost:3000
+API=https://taskbuddy-kpek.onrender.com   # or http://localhost:3000
 
 # 1. Register + login as client
 curl -X POST $API/auth/register -H "Content-Type: application/json" \
