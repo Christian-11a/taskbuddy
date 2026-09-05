@@ -20,7 +20,7 @@ export default function NotFound() {
         That URL doesn&apos;t match any page in the admin console.
       </div>
       <Link
-        href="/dashboard"
+        href="/admin/dashboard"
         className="btn-primary inline-block"
         style={{ borderRadius: "var(--r-md)", padding: "9px 18px", fontSize: "var(--fs-md)", textDecoration: "none" }}
       >

@@ -34,52 +34,38 @@ export function LoginPage() {
   };
 
   return (
-    <div className="login-page flex min-h-screen w-full overflow-hidden" style={{ background: "var(--login-panel)" }}>
-      {/* A brand field, not a hero. This panel previously carried an eyebrow
-          label, a 4.2rem headline, a marketing paragraph, and a three-item
-          feature strip — the same "sell the product to people who already
-          use it daily" pattern removed from this page earlier. What's left
-          is what a brand field needs to do: say whose console this is. The
-          form is the only thing here making a case for itself. */}
-      <aside className="login-brand-panel hidden lg:flex flex-col justify-between p-10" style={{ flex: "0 0 32%", background: "linear-gradient(112deg, var(--login-brand-start) 0%, var(--login-brand-mid) 58%, var(--login-brand-end) 100%)", borderRight: "1px solid rgba(255,255,255,.12)" }}>
-        <div className="flex items-center gap-2.5">
-          <Image src="/taskbuddy-logo.png" alt="" width={36} height={36} style={{ borderRadius: "var(--r-md)", objectFit: "cover" }} />
-          <div>
-            <div className="text-white font-bold" style={{ fontSize: "var(--fs-md)" }}>TaskBuddy</div>
-            <div style={{ fontSize: "var(--fs-2xs)", color: "var(--login-brand-accent)" }}>Admin Console</div>
-          </div>
-        </div>
-        <p style={{ color: "var(--login-brand-text)", fontSize: "var(--fs-sm)", lineHeight: 1.5, maxWidth: 260 }}>
-          Verification, payments, and platform operations for the TaskBuddy marketplace.
-        </p>
-      </aside>
-      <main className="flex flex-1 items-center justify-center p-6 lg:p-12">
-      <div style={{ width: "100%", maxWidth: 372 }}>
-        <div className="flex items-center gap-2.5 mb-9 lg:hidden">
-          {/* decorative: the adjacent wordmark already carries the brand name */}
-          <Image src="/taskbuddy-logo.png" alt="" width={34} height={34} style={{ borderRadius: "var(--r-md)", objectFit: "cover" }} />
-          <div>
-            <div className="text-white font-bold" style={{ fontSize: "var(--fs-md)", letterSpacing: "-0.01em" }}>TaskBuddy</div>
-            <div style={{ fontSize: "var(--fs-2xs)", color: "var(--indigo-light)" }}>Admin Console</div>
-          </div>
+    <div className="login-page flex min-h-screen w-full items-center justify-center overflow-hidden p-6" style={{ background: "var(--login-panel)" }}>
+      {/* A single centered card, not a split hero-panel-plus-form template. The
+          previous layout paired a gradient brand panel with the form — the
+          gradient contradicted this app's own rule for --brand-solid ("one
+          flat colour, because a gradient here communicated nothing about
+          state") and the split-panel shape is the generic admin-login
+          template every dashboard starter ships with. This card carries the
+          brand mark itself instead of a decorative field beside it. */}
+      <main className="w-full" style={{ maxWidth: 440 }}>
+      <div style={{ background: "var(--login-card)", border: "1px solid var(--login-card-border)", borderRadius: "var(--r-lg)", padding: "var(--sp-10) var(--sp-8)" }}>
+        <div className="flex flex-col items-center text-center" style={{ marginBottom: "var(--sp-6)" }}>
+          <Image src="/taskbuddy-logo.png" alt="" width={56} height={56} style={{ borderRadius: "var(--r-md)", objectFit: "cover", marginBottom: "var(--sp-3)" }} />
+          <div className="text-white font-bold" style={{ fontSize: "var(--fs-lg)" }}>TaskBuddy</div>
+          <div style={{ fontSize: "var(--fs-xs)", color: "var(--indigo-light)" }}>Admin Console</div>
         </div>
 
-        <h1 className="text-white font-bold" style={{ fontSize: "var(--fs-3xl)", letterSpacing: "-0.035em" }}>Sign in</h1>
-        <p style={{ fontSize: "var(--fs-sm)", color: "var(--text-muted)", marginTop: 6, marginBottom: 26, lineHeight: 1.5 }}>
+        <h1 className="text-white font-bold text-center" style={{ fontSize: "var(--fs-3xl)", letterSpacing: "-0.035em" }}>Sign in</h1>
+        <p className="text-center" style={{ fontSize: "var(--fs-md)", color: "var(--text-muted)", marginTop: 6, marginBottom: 30, lineHeight: 1.5 }}>
           Restricted to authorized TaskBuddy administrators.
         </p>
 
         {error && (
-          <div role="alert" className="flex items-start gap-2 rounded-xl mb-4" style={{ background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.2)", padding: "10px 13px", fontSize: "var(--fs-xs)", color: "#f87171", lineHeight: 1.45 }}>
-            <AlertCircle size={13} style={{ marginTop: 1, flexShrink: 0 }} /> {error}
+          <div role="alert" className="flex items-start gap-2 rounded-xl mb-4" style={{ background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.2)", padding: "12px 15px", fontSize: "var(--fs-sm)", color: "#f87171", lineHeight: 1.45 }}>
+            <AlertCircle size={15} style={{ marginTop: 1, flexShrink: 0 }} /> {error}
           </div>
         )}
 
         <form onSubmit={handleSubmit} noValidate>
           <div style={{ marginBottom: "var(--sp-4)" }}>
-            <label htmlFor={emailId} className="block font-medium" style={{ fontSize: "var(--fs-xs)", color: "var(--text-muted)", marginBottom: 7 }}>Admin email</label>
+            <label htmlFor={emailId} className="block font-medium" style={{ fontSize: "var(--fs-sm)", color: "var(--text-muted)", marginBottom: 8 }}>Admin email</label>
             <div className="relative">
-              <span className="absolute top-1/2 -translate-y-1/2 left-3.5 opacity-50"><Mail size={14} /></span>
+              <span className="absolute top-1/2 -translate-y-1/2 left-4 opacity-50"><Mail size={16} /></span>
               <input
                 id={emailId}
                 type="email"
@@ -88,15 +74,15 @@ export function LoginPage() {
                 value={email}
                 onChange={(e) => { setEmail(e.target.value); setError(""); }}
                 className="w-full text-white outline-none"
-                style={{ background: "var(--login-input)", border: `1px solid ${error ? "var(--danger-border)" : "var(--border-md)"}`, borderRadius: "var(--r-md)", padding: "11px 14px 11px 36px", fontSize: "var(--fs-sm)", fontFamily: "inherit" }}
+                style={{ background: "var(--login-input)", border: `1px solid ${error ? "var(--danger-border)" : "var(--border-md)"}`, borderRadius: "var(--r-md)", padding: "13px 16px 13px 40px", fontSize: "var(--fs-md)", fontFamily: "inherit" }}
               />
             </div>
           </div>
 
-          <div style={{ marginBottom: 22 }}>
-            <label htmlFor={passwordId} className="block font-medium" style={{ fontSize: "var(--fs-xs)", color: "var(--text-muted)", marginBottom: 7 }}>Password</label>
+          <div style={{ marginBottom: 26 }}>
+            <label htmlFor={passwordId} className="block font-medium" style={{ fontSize: "var(--fs-sm)", color: "var(--text-muted)", marginBottom: 8 }}>Password</label>
             <div className="relative">
-              <span className="absolute top-1/2 -translate-y-1/2 left-3.5 opacity-50"><Lock size={14} /></span>
+              <span className="absolute top-1/2 -translate-y-1/2 left-4 opacity-50"><Lock size={16} /></span>
               <input
                 id={passwordId}
                 type="password"
@@ -105,7 +91,7 @@ export function LoginPage() {
                 value={password}
                 onChange={(e) => { setPassword(e.target.value); setError(""); }}
                 className="w-full text-white outline-none"
-                style={{ background: "var(--login-input)", border: `1px solid ${error ? "var(--danger-border)" : "var(--border-md)"}`, borderRadius: "var(--r-md)", padding: "11px 14px 11px 36px", fontSize: "var(--fs-sm)", fontFamily: "inherit" }}
+                style={{ background: "var(--login-input)", border: `1px solid ${error ? "var(--danger-border)" : "var(--border-md)"}`, borderRadius: "var(--r-md)", padding: "13px 16px 13px 40px", fontSize: "var(--fs-md)", fontFamily: "inherit" }}
               />
             </div>
           </div>
@@ -114,13 +100,13 @@ export function LoginPage() {
             type="submit"
             disabled={submitting}
             className="btn-primary w-full"
-            style={{ padding: "var(--sp-3)", borderRadius: "var(--r-md)", fontSize: "var(--fs-md)", cursor: submitting ? "wait" : "pointer" }}
+            style={{ padding: "var(--sp-4)", borderRadius: "var(--r-md)", fontSize: "var(--fs-lg)", cursor: submitting ? "wait" : "pointer" }}
           >
             {submitting ? "Signing in…" : "Sign in"}
           </button>
         </form>
 
-        <div style={{ fontSize: "var(--fs-3xs)", color: "var(--text-muted)", marginTop: 28, paddingTop: "var(--sp-4)", borderTop: "1px solid rgba(255,255,255,0.07)" }}>
+        <div style={{ fontSize: "var(--fs-2xs)", color: "var(--text-muted)", marginTop: 30, paddingTop: "var(--sp-4)", borderTop: "1px solid rgba(255,255,255,0.07)" }}>
           TaskBuddy Admin Console
         </div>
       </div>

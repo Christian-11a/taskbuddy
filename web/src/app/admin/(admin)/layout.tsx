@@ -9,9 +9,12 @@ import { Header } from "@/components/layout/Header";
 import { LOGIN_PATH, pathToPage } from "@/lib/routes";
 
 /**
- * Chrome + auth gate for every admin page. A route group `(admin)` rather than
- * a path segment, so the URLs stay `/users` and not `/admin/users` — the whole
- * app is the admin console, so an /admin prefix would be noise on every route.
+ * Chrome + auth gate for every admin page. Routes live under `/admin/*`
+ * (`/admin/users`, `/admin/dashboard`, ...) — `/` is now the public
+ * promotional site, not the admin console, so the prefix disambiguates them.
+ * The `(admin)` route group still exists nested under `admin/` purely to
+ * share this layout across all admin pages without adding another path
+ * segment.
  */
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   const { isLoggedIn, sessionRestored, logout, sidebarCollapsed, setSidebarCollapsed, loadError, retryLoad } = useApp();

@@ -88,13 +88,13 @@
   --brand-solid: #0e7f8d;
   --brand-solid-hover: #0b6a76;
   --brand-on-solid: #ffffff;
-  --login-brand-start: #10383f;
-  --login-brand-mid: #10505b;
-  --login-brand-end: #24508b;
-  --login-brand-text: #c1dfe1;
-  --login-brand-accent: #9de2e4;
   --login-panel: #080d12;
   --login-input: rgba(255, 255, 255, 0.06);
+  /* Theme-invariant like the two above — this page must stay dark regardless
+     of the ambient light/dark toggle, so it can't reuse --card-bg/--card-border
+     (those flip to white in light mode via [data-theme="light"] below). */
+  --login-card: #111820;
+  --login-card-border: #202a35;
   --chart-cyan: #22c3d6;
   --chart-blue: #38bdf8;
   --chart-green: #22c55e;
@@ -301,10 +301,15 @@ aside.sidebar {
   }
 }
 
+/* overflow:hidden lived here for the admin shell, but that's a global lock
+   shared with the public promo site (single root layout) — a normal long
+   page needs the document itself to scroll. Admin already self-contains its
+   own overflow at the wrapper level ((admin)/layout.tsx's h-screen
+   overflow-hidden, the login card's own overflow-hidden), so dropping the
+   global rule doesn't change admin's behavior, only unblocks the public site. */
 html,
 body {
   height: 100%;
-  overflow: hidden;
 }
 
 body {

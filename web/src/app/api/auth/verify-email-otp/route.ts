@@ -1,0 +1,25 @@
+import { NextRequest, NextResponse } from "next/server";
+import { API_URL, setAccountSession } from "../_session";
+
+/** Exchanges the six-digit email code for a real session (POST /auth/verify-email-otp). */
+export async function POST(req: NextRequest) {
+  const body = await req.json();
+
+  const upstream = await fetch(`${API_URL}/auth/verify-email-otp`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+
+  const data = await upstream.json().catch(() => null);
+
+  if (!upstream.ok) {
+    return NextResponse.json(
+      { message: data?.message ?? "That code didn't work. Please try again." },
+      { status: upstream.status }
+    );
+  }
+
+  await setAccountSession(data.session);
+  return NextResponse.json({ ok: true });
+}

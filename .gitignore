@@ -75,6 +75,8 @@ mobile/.maestro/
 Maestro/
 !mobile/maestro/
 !mobile/maestro/*.yaml
+maestro/
+maestro-results/
 
 # Native
 .kotlin/
@@ -162,9 +164,15 @@ next-env.d.ts
 #ai and agents
 AGENTS*
 CLAUDE*
-.claude/*
+.claude/
+.codex/
 docs/superpowers/
 .worktrees/
+.agents/
+# Local design-iteration snapshots — not project source, not meant to be shared.
+public-site-backups/
+# Kept locally as a design reference, deliberately not pushed.
+design.md
 # but DO commit env templates
 !.env.example
 

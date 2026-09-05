@@ -51,7 +51,7 @@ export default function GlobalError({
           Try again
         </button>
         <a
-          href="/dashboard"
+          href="/admin/dashboard"
           className="font-semibold transition-opacity hover:opacity-80"
           style={{ background: "var(--chip-bg)", border: "1px solid var(--border-md)", borderRadius: "var(--r-md)", padding: "9px 18px", fontSize: "var(--fs-md)", color: "var(--text-light)", textDecoration: "none" }}
         >
