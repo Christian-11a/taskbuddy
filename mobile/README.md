@@ -379,48 +379,82 @@ signup OTP (item 5) remains available for a future registration-confirmation flo
 
 ### 3. [`docs/backend-handoff-stripe-connect-escrow.md`](../docs/backend-handoff-stripe-connect-escrow.md)
 
-**Needs a real decision, not just code.** Covers the "escrow hold via Stripe Connect at booking"
-story. Today's escrow is a ledger debit against a wallet the client pre-funded — there is no
-Stripe Connect anywhere in the backend, no per-booking payment intent, and no rate limiting on any
-payment endpoint. The doc lays out two viable architectures (A: keep the wallet ledger, add a real
-per-booking hold + Connect transfer on release; B: full Connect destination charges) and asks for
-a call before code gets written, since it changes real money-movement semantics. Rate limiting
-(`@nestjs/throttler`, currently not even a dependency) and a small explicit-error hardening fix in
-`EscrowService.release()` are both independent of that decision and can start immediately.
+**Still needs a real decision, not just code.** Covers the "escrow hold via Stripe Connect at
+booking" story. Today's escrow is a ledger debit against a wallet the client pre-funded — there is
+still no Stripe Connect anywhere in the backend and no per-booking payment intent. The doc lays
+out two viable architectures (A: keep the wallet ledger, add a real per-booking hold + Connect
+transfer on release; B: full Connect destination charges) and asks for a call before code gets
+written, since it changes real money-movement semantics.
+
+**The two pieces that did not depend on that decision have since shipped:** rate limiting
+(`@nestjs/throttler`, now applied per client IP — `BACKEND_SCHEMA.md` §28.4) and the
+explicit-error hardening in `EscrowService.release()` (§28.2). Neither changes anything the app
+sees, except that a retry loop against an auth or payment endpoint now earns a `429`.
 
 ### 4. [`docs/backend-handoff-recovery-vouchers.md`](../docs/backend-handoff-recovery-vouchers.md)
 
-**Non-urgent.** The dispute progress timeline and Wallet's Recovery Vouchers section are both
-already built on this side (see below) — the one thing outstanding is a new admin-only endpoint to
-actually issue a recovery credit, since `POST /wallet/transactions` deliberately refuses any
-credit from any caller. `wallet_txn_kind` already has the `'recovery_credit'` value
-(`0021_recovery_credit_kind.sql`, applied), so the endpoint has a slot ready to write into.
+**Closed.** The dispute progress timeline and Wallet's Recovery Vouchers section were already
+built on this side; the admin-only issuance endpoint they were waiting for now exists —
+`POST /admin/wallet-transactions/recovery-credit` (`BACKEND_SCHEMA.md` §28.1).
+`POST /wallet/transactions` still refuses a credit from every caller, admins included; that
+refusal is the point, and the new route is the one deliberate, audited exception to it.
+
+Nothing changes in the app: `HOWalletScreen` already filters the existing transaction list on
+`kind === 'recovery_credit'`, so the section fills itself as soon as an admin issues one. The
+credit is **fungible** — spendable on a hire or withdrawable like any other peso — so if that card
+ever implies "booking use only", it will be wrong. What is left is the web console's Issue Credit
+button (`web/README.md`).
 
 ---
 
 ## Remaining Backend Work
 
-The migration and deployment handoff above is complete. The remaining backend
-work identified during the mobile acceptance audit is:
+The migration and deployment handoff above is complete. Everything the mobile
+acceptance audit raised has since been done — full reasoning in
+`backend/BACKEND_SCHEMA.md` §28.
 
-- Add unit coverage for `ApplicationsService`, `ReviewsService`,
-  `RecommendationsService`, and `RecommendationsScheduler`.
-- Make application acceptance and escrow hold atomic. An insufficient wallet
-  balance must not leave the application accepted or the job assigned.
-- Verify the job status vocabulary against the test plan. This app currently
-  uses `open`, `recommending`, `assigned`, `confirmed`, `in_progress`,
-  `completed`, `cancelled`, and `expired`; `PENDING` and
-  `COMPLETED_PENDING_CONFIRMATION` are not current backend statuses.
-- Verify review completion ownership, duplicate protection, cached provider
-  rating/count recalculation, provider profile output, and the
-  `provider_avg_rating` recommendation feature. Align error wording with the
-  test plan if exact messages are contractual.
-- Add recommendation and provider-feed tests for verified/available status,
-  radius boundaries, missing coordinates, ranking, ML failures, and response
-  time. The current proximity feed is provider-facing Haversine filtering; it
-  is not a Google Maps-backed homeowner service directory.
-- Add an end-to-end lifecycle test covering create, apply, accept, escrow,
-  start, complete, payout, and review.
+| Item | Outcome |
+|---|---|
+| Unit coverage for `ApplicationsService`, `ReviewsService`, `RecommendationsService`, `RecommendationsScheduler` | **Done** — all four have specs (§28.7) |
+| Make application acceptance and escrow hold atomic | **Done** — the hold is placed *before* the accept, so an insufficient balance leaves the job open and every applicant still in the running; if the accept then fails the hold is rolled back and the client credited (§28.3) |
+| Verify the job status vocabulary | **Verified, nothing to change** — the enum is the eight values this app uses, and the API uses exactly those. `PENDING` and `COMPLETED_PENDING_CONFIRMATION` have never been backend statuses (§28.8) |
+| Verify review ownership, duplicate protection, cached rating recalculation, provider profile output, `provider_avg_rating` | **Verified**, with two additions: a completed job with nobody assigned is now an explicit 400 rather than a raw Postgres constraint message, and the provider is notified that their rating moved (§28.5, §28.8) |
+| Recommendation and provider-feed tests | **Done** — ranking, ML-service failure, mismatched score arrays, empty pools, and feed radius boundaries / missing coordinates / urgency-then-distance ordering. Still provider-facing Haversine filtering, not a Google Maps service directory |
+| End-to-end lifecycle test | **Done** — `src/jobs/job-lifecycle.spec.ts` runs post → apply → accept → hold → confirm → start → complete → payout → review against one shared in-memory store, plus cancellation, provider decline, dispute resolution, commission, and a budget-less job (§28.7) |
+
+Three further backend changes landed alongside them, none of which need
+anything from the app:
+
+- **Rate limiting** (§28.4), **per endpoint per IP**: 240/minute on any one
+  route, the credential endpoints 10/minute each, and the two payment-opening
+  routes 5/minute. Well above ordinary app use — a screen loading jobs, wallet
+  and an unread count on focus is nowhere near it, and `POST /auth/refresh` and
+  `GET /auth/me` are deliberately left on the 240 so a busy session cannot sign
+  itself out. What does change: a retry loop against `POST /auth/login` now
+  earns a `429`, so treat that status as "slow down", not "credentials wrong" —
+  `ApiError.status` already carries it through to the screen.
+- **Escrow release raises instead of going quiet** (§28.2). No user-visible
+  change: `POST /jobs/:id/complete` still blocks a second completion on job
+  status first, with the same message.
+- **`POST /admin/wallet-transactions/recovery-credit`** (§28.1) — admin-only.
+  The Wallet screen's Recovery Vouchers section can now have something in it;
+  it already renders `kind === 'recovery_credit'` rows and needs no change.
+
+### Still open, and still not a missing endpoint
+
+- **Stripe Connect escrow** — a product/Stripe-account decision, unchanged.
+  `docs/backend-handoff-stripe-connect-escrow.md` Story 1.
+- **A real payout rail.** Withdrawals are still settled by hand from the admin
+  queue.
+- **Card-at-hire for homeowners** (handoff item 6). A product fork.
+- **`is_verified`: badge or gate?** The backend currently returns
+  `403 Verify your identity before applying to jobs` for an unverified
+  provider, while `BACKEND_SCHEMA.md` §17 and `backend/README.md` both say
+  verification is a badge and not a gate. One of the two is wrong and it is a
+  one-line fix either way, but they are different products — flagged in
+  `BACKEND_SCHEMA.md` §17 for a decision. If gating stays, `SPVerificationScreen`
+  is a prerequisite to applying rather than an optional badge, and the feed
+  should say so.
 
 ---
 

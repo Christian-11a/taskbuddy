@@ -1,5 +1,11 @@
 # Backend handoff — admin-issued recovery credits
 
+> **Status: closed.** `POST /admin/wallet-transactions/recovery-credit` is built, tested and
+> documented in `backend/BACKEND_SCHEMA.md` §28.1. This document is kept as the record of what
+> was asked for and why; the "What's still yours" section below now describes what shipped and
+> where it went beyond the sketch. The remaining item is the web console's **Issue Credit**
+> button, which was waiting on this endpoint and is no longer blocked.
+
 **Who this is for:** whoever holds the backend NestJS codebase and Supabase access. Written
 against a user story; read "What's already done" first — most of it is already built.
 
@@ -34,9 +40,34 @@ against a user story; read "What's already done" first — most of it is already
   **Applied and verified 2026-08-17** — the endpoint below can insert `kind: 'recovery_credit'`
   rows immediately, no migration step needed first.
 
-## What's still yours: the issuance endpoint
+## The issuance endpoint — built, with three guards the sketch did not have
 
-**Nothing today lets an admin credit a wallet at all.** `WalletService.create()`
+> **Shipped.** `POST /admin/wallet-transactions/recovery-credit`, taking
+> `{ profile_id, amount, title, job_id? }` and returning the ledger row. It follows the sketch
+> below — same audit-log-then-notify pattern as `DisputesService.resolve()`, reusing
+> `AdminActionsService` (`wallet.issue_recovery_credit`) rather than inventing a second audit
+> path — and adds three refusals that the sketch would have written through:
+>
+> - **A deleted recipient.** Their Auth user is banned and their fields scrubbed (§27.1), so
+>   nobody could ever sign in to spend the credit; it would only put an unreachable balance on
+>   the platform's books.
+> - **A `job_id` the recipient is not a party to.** The id makes the credit render inside that
+>   job's history, so a mistyped one files somebody's compensation against a stranger's job. It
+>   is typed by a human into a console field next to the amount.
+> - **An amount over ₱50,000** (the `@Max` the sketch already suggested) — a typo guard, not a
+>   policy.
+>
+> `ListWalletTxnQueryDto.kind` also accepts `'recovery_credit'` now, so the console's Wallet tab
+> can filter to them. Without it the rows would be visible in the unfiltered list and unreachable
+> by filter.
+>
+> **The fungible-vs-earmarked question below was answered "fungible."** Reasoning in
+> `BACKEND_SCHEMA.md` §28.1: a restricted balance needs its own ledger and its own spend-time
+> checks, and `wallet_transactions` being the single account of record is what makes the ledger
+> reconcilable. A non-withdrawable voucher remains a real option, but it is a new table and a
+> rule in the withdrawal path — not a flag on this row. Flag it back if product wants it.
+
+**Nothing before this endpoint let an admin credit a wallet at all.** `WalletService.create()`
 (`backend/src/wallet/wallet.service.ts:80-85`) explicitly refuses any `direction: 'credit'`
 request from any caller — including admins — specifically to prevent free balance minting
 (commit `0ea1c90`, "fix(wallet): refuse client-initiated wallet credits"). That refusal should
@@ -125,6 +156,6 @@ build that once the endpoint is live — no point wiring a button to a route tha
 | `wallet_txn_kind` gets `'recovery_credit'` | done | — applied and verified 2026-08-17 |
 | Dispute progress timeline (mobile) | done | — built on the existing `GET /jobs/:jobId/disputes` |
 | Wallet's Recovery Vouchers section (mobile) | done | — waiting on real data, not on more mobile work |
-| `POST /admin/wallet-transactions/recovery-credit` | small | nothing — can start now |
-| Web admin "Issue Credit" button | small | the endpoint above — we'll build it once it exists |
-| Decide fungible credit vs. earmarked voucher | decision | you/product — see design note above |
+| `POST /admin/wallet-transactions/recovery-credit` | done | — built, tested, `BACKEND_SCHEMA.md` §28.1 |
+| Web admin "Issue Credit" button | small | **unblocked** — the endpoint is live |
+| Decide fungible credit vs. earmarked voucher | done | — answered "fungible"; see §28.1 for why, and flag it back if product disagrees |

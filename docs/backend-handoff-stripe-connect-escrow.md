@@ -1,5 +1,11 @@
 # Backend handoff — Stripe Connect escrow hold, and hardening the release path
 
+> **Status: the two independent pieces are done; the decision is not.**
+> Rate limiting (`@nestjs/throttler`) and the `EscrowService.release()` hardening both shipped —
+> `backend/BACKEND_SCHEMA.md` §28.4 and §28.2. **Story 1 is untouched and still needs a call on
+> Option A vs Option B before any code**, because it changes money-movement semantics described
+> in `BACKEND_SCHEMA.md` §18/§21. Nothing below has been pre-empted by the work that landed.
+
 **Who this is for:** whoever holds the backend NestJS codebase and Stripe dashboard access.
 Written against two user stories; read "What's already done" first — one of the two stories is
 mostly built already, and re-implementing it would be wasted work.
@@ -58,10 +64,19 @@ only ever exchanges tokens with Stripe directly.
 
 ### Concrete, low-ambiguity pieces (do these regardless of A vs B)
 
-**Rate limiting — currently entirely absent.** `@nestjs/throttler` is not a dependency
-(`backend/package.json` has no entry) and there's no `ThrottlerModule` in `app.module.ts`, no
-`@Throttle()` anywhere, no rate-limit middleware in `main.ts`. This needs to exist regardless of
-which payment architecture is picked:
+**Rate limiting — done.** `@nestjs/throttler` is now a dependency, a global `ThrottlerGuard`
+applies a 240/min burst ceiling, `POST /payments/topup` and `POST /payments/checkout-session`
+are narrowed to 5/min, the credential endpoints to 10/min, and `POST /payments/webhook` is
+`@SkipThrottle()`d exactly as this section recommends. One caveat to carry into the Option A/B
+work above: every one of those limits is **per endpoint per IP** — that is the throttler's own key
+— so whatever new booking-payment endpoint gets added needs its own `@ThrottlePayments()`; it does
+not inherit the ceiling from the routes next to it. One detail this section did not name and
+which the limit does not work without: `main.ts` sets `trust proxy`, because behind Render's proxy
+every request otherwise arrives from one address and a single abusive caller would rate-limit the
+whole platform. Full reasoning, including the per-process storage caveat, in `BACKEND_SCHEMA.md`
+§28.4.
+
+The original ask, kept for the record:
 
 ```bash
 npm install @nestjs/throttler
@@ -126,6 +141,21 @@ client's own report of payment success.
 
 ### One real gap: `EscrowService.release()`/`payOut()` degrade silently instead of erroring
 
+> **Done, and slightly further than this asks.** `release()` now throws (`400` with no escrow,
+> `409` when it is not `held`), and `payOut()`/`refund()` gained the same guard. Rather than
+> leaving callers to catch the new exception, the job lifecycle calls a second method,
+> `releaseIfHeld()`, which tolerates exactly the two absences a normal completion legitimately
+> reaches it in — a job posted without a budget, and a disputed hold frozen for an admin — and
+> still raises on an already-released one. That keeps `JobsService.complete()` behaving as it did
+> while making the silent-success path unreachable from anywhere else.
+>
+> One addition this section did not ask for: `payOut()` and `refund()` now apply their terminal
+> status through a conditional update that re-asserts the status they read, so two admins
+> resolving one dispute produce one payout and one "already settled" rather than two credits.
+> `BACKEND_SCHEMA.md` §28.2.
+>
+> The original description, for the record:
+
 `escrow.service.ts:89-93`:
 
 ```ts
@@ -175,8 +205,8 @@ named that.
 |---|---|---|
 | Decide Option A vs B for Story 1 | decision | you — Stripe account design call |
 | Stripe Connect onboarding + per-booking payment intent/hold | large | the decision above |
-| `@nestjs/throttler` on payment-initiating routes | small | nothing — can do independently |
-| `EscrowService.release()`/`payOut()` explicit-error hardening | small | nothing — can do independently |
+| `@nestjs/throttler` on payment-initiating routes | done | — `BACKEND_SCHEMA.md` §28.4 |
+| `EscrowService.release()`/`payOut()` explicit-error hardening | done | — `BACKEND_SCHEMA.md` §28.2 |
 | New `escrow_transactions` / `provider_profiles` columns for Option A/B | migration | the decision above — we'll write and apply it once you've picked, same as 0018–0020 |
 
 Nothing here needs a Supabase migration yet — the schema addition depends on which payment shape
