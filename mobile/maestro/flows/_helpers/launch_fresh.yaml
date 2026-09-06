@@ -1,0 +1,40 @@
+appId: com.taskbuddy.app
+---
+# `launchApp` always force-restarts the process (clearState or not), and a
+# fresh dev-client process lands on Expo dev-launcher's server picker — that
+# connection is process-level, not persisted data, so clearState doesn't
+# change it. Handle both outcomes: tap the remembered server if the picker
+# shows, no-op otherwise.
+#
+# Anchored on Metro's port, not its host. eiyu-system matched `10.0.2.2` (the
+# emulator's loopback alias); this machine's dev client bound the LAN address
+# instead — observed as `http://192.168.1.8:8081` in the expo run:android
+# output. The IP moves between machines and networks, the 8081 does not.
+- launchApp:
+    clearState: true
+- extendedWaitUntil:
+    visible: ".*(TaskBuddy|8081).*"
+    timeout: 60000
+- tapOn:
+    text: ".*8081.*"
+    optional: true
+# eiyu-system needed an unconditional `back` here to dismiss Expo's one-time
+# dev-menu tutorial overlay. **Do not copy that.** This dev client does not
+# show the overlay (nor the server picker — it auto-connects), so an
+# unconditional back lands on the app's root screen and closes the app: the
+# run then fails on the next assertion with the app no longer running.
+# `optional: true` is no protection, because `back` always succeeds — it just
+# does the wrong thing.
+#
+# So press back only when the overlay is actually up. Harmless when absent,
+# correct when present.
+- runFlow:
+    when:
+      visible: ".*developer menu.*"
+    commands:
+      - back
+# 60s rather than 30s: the first API call of a session wakes a sleeping
+# Render dyno, and the splash holds until auth state resolves.
+- extendedWaitUntil:
+    visible: "Welcome!"
+    timeout: 60000

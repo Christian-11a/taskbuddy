@@ -31,7 +31,6 @@
 import React, { useState } from 'react';
 import {
   ActivityIndicator,
-  Linking,
   Modal,
   Pressable,
   ScrollView,
@@ -54,10 +53,10 @@ import { Sizes, Spacing, V6Colors } from '../../../src/constants/theme';
 
 const C = V6Colors;
 import ConfirmationModal from '../../../src/components/ConfirmationModal';
+import DeleteAccountModal from '../../../src/components/DeleteAccountModal';
 import { useSettings } from '../../../src/hooks/useSettings';
 import { api } from '../../../src/lib/api';
 
-const SUPPORT_EMAIL = 'support@taskbuddy.ph';
 
 interface HOSettingsScreenProps {
   onBack: () => void;
@@ -65,6 +64,8 @@ interface HOSettingsScreenProps {
 }
 
 export default function HOSettingsScreen({ onBack, onLogout }: HOSettingsScreenProps) {
+  // Deleting signs the user out: the token stays syntactically valid until it
+  // expires, so the app has to drop it rather than wait for a 401.
   const { flags, setFlag, loading: settingsLoading, error: settingsError } = useSettings();
   const [confirmLogoutVisible, setConfirmLogoutVisible] = useState(false);
 
@@ -218,17 +219,10 @@ export default function HOSettingsScreen({ onBack, onLogout }: HOSettingsScreenP
         </Pressable>
       </Modal>
 
-      <ConfirmationModal
+      <DeleteAccountModal
         visible={showDeleteModal}
-        title="Delete your account?"
-        message="Account deletion isn't self-serve yet. Email us and we'll take care of it for you."
-        confirmLabel="Email Support"
-        cancelLabel="Cancel"
-        onConfirm={() => {
-          setShowDeleteModal(false);
-          Linking.openURL(`mailto:${SUPPORT_EMAIL}?subject=Delete my account`);
-        }}
-        onCancel={() => setShowDeleteModal(false)}
+        onClose={() => setShowDeleteModal(false)}
+        onDeleted={onLogout}
       />
     </View>
   );

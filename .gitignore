@@ -68,11 +68,14 @@ dist/
 web-build/
 expo-env.d.ts
 
-# Maestro UI tests
-mobile/Maestro/
+# Maestro UI tests — scratch dirs (.maestro is created by maestro studio/init).
+# NOTE: the old bare `Maestro/` patterns were removed on purpose. Git on
+# Windows matches ignore patterns case-insensitively (core.ignorecase), so
+# `Maestro/` also swallowed `mobile/maestro/` — the committed flow suite — and
+# a negation re-including it also re-included the scratch dir. The stale
+# scratch dir mobile/Maestro/ (two Aug 11 flows, wrong appId) is deletable.
 mobile/.maestro/
 .maestro/
-Maestro/
 
 # Native
 .kotlin/
@@ -101,9 +104,14 @@ yarn-error.*
 # typescript
 *.tsbuildinfo
 
-# generated native folders
+# generated native folders (expo prebuild output — regenerated, never edited
+# by hand). The leading-slash forms anchor to the repo root, which is the
+# wrong place in a monorepo: the Expo app lives in mobile/, so `expo run:android`
+# writes mobile/android/ and the root-anchored pattern never matched it.
 /ios
 /android
+mobile/ios/
+mobile/android/
 
 # WEB .gitignore
 # See https://help.github.com/articles/ignoring-files/ for more about ignoring files.

@@ -7,9 +7,10 @@
 > `backend/BACKEND_SCHEMA.md` §27. Items 4 and 7 were already done; item 6 is still
 > open and still a product decision rather than a missing endpoint.
 >
-> All four are **API-side only**. No mobile screen calls them yet, which is why
-> `mobile/README.md` still lists the corresponding buttons under "What's Not Wired
-> Yet".
+> **Update, 2026-08-27 — the mobile side of all four is now wired**, so they are no
+> longer API-side only. See §8 for the three things that surfaced while doing it,
+> none of which are app-side work. The web admin console still calls none of the
+> admin-facing endpoints; that gap is tracked in `web/README.md`.
 
 **Who this is for:** whoever owns `backend/` (and, for items 1 and 2, whoever holds Supabase and
 Stripe access). It describes gaps that remain after the implemented SSE chat
@@ -235,3 +236,61 @@ current migrations, deploy the API, configure Expo/EAS credentials, and set
 `EXPO_ACCESS_TOKEN` if Expo push security is enabled. Verify with a physical
 device. These are required external steps, not evidence that deployment has
 already occurred.
+
+---
+
+## 8. Raised by wiring the mobile clients (2026-08-27)
+
+The four API-side items above are now called by the app —
+`DeleteAccountModal`, `WithdrawModal`, `HOJobDetailScreen`'s `has_review`
+branch, and `RegisterScreen`'s OTP step. Doing that surfaced three things that
+are not app-side work.
+
+### 8.1 `kind = 'recovery_credit'` is rejected by the admin ledger filter
+
+`ListWalletTxnQueryDto.kind` (`backend/src/wallet/dto/wallet.dto.ts`) is an
+`@IsIn([...])` over six values and `'recovery_credit'` is not one of them, even
+though migration 0021 added it to the `wallet_txn_kind` enum and
+`WalletService.listForAdmin` passes the value straight through. So
+`GET /admin/wallet-transactions?kind=recovery_credit` answers 400 rather than
+filtering.
+
+Nothing hits this yet — the credits it would filter cannot exist until the
+issuance endpoint below does, and mobile filters its own list client-side. It
+will bite the moment the web console adds a "Recovery Vouchers" filter to the
+Transactions page. One value in one array.
+
+### 8.2 Still no recovery-credit issuance endpoint
+
+`POST /admin/wallet-transactions/recovery-credit`, as described in
+`docs/backend-handoff-recovery-vouchers.md`. Unchanged and still unbuilt: no
+route, no service method, no reference to `recovery_credit` anywhere in
+`backend/src` outside a comment. Migration 0021 is applied, so this is
+unblocked.
+
+The mobile side has been ready since the vouchers work: `HOWalletScreen`'s
+Recovery Vouchers card filters the existing transaction list on
+`kind === 'recovery_credit'` and renders whatever it finds. It shows its empty
+state today because nothing can create one.
+
+### 8.3 Email OTP needs Supabase configured, not code
+
+> **Both prerequisites confirmed done 2026-08-27** — *Confirm email* is enabled and the
+> *Confirm signup* template renders `{{ .Token }}`. The rate-limit note below still
+> applies and is the thing most likely to look like an app bug during testing.
+
+`POST /auth/send-email-otp` / `verify-email-otp` exist and the app now calls
+them, but neither does anything useful until someone with Supabase dashboard
+access does both of these (`docs/email-otp-setup.md` has the detail):
+
+1. Authentication → Providers → Email → enable **Confirm email**. With it off,
+   `POST /auth/register` returns a live session and there is nothing to verify.
+2. Authentication → Email Templates → **Confirm signup** → render
+   `{{ .Token }}`. A template still sending `{{ .ConfirmationURL }}` mails a
+   link, and `verify-email-otp` then rejects every code a user types.
+
+Worth knowing the failure mode, because it is silent and looks like an app bug:
+`send-email-otp` returns `{ success: true }` unconditionally — deliberately, so
+it cannot be used to enumerate registered addresses — so a project over its
+hourly email cap, or with confirmation switched off, reports success and mails
+nothing.

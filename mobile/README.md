@@ -29,22 +29,34 @@ buttons that still do nothing.
 ```bash
 cd mobile
 npm install
-npm start          # then press 'a' for Android / 'i' for iOS / scan QR for Expo Go
+npm run android    # builds + installs the Android dev client, then starts Metro
+                   # (first run costs several minutes of Gradle — it prebuilds
+                   # mobile/android/, which is gitignored)
 ```
+
+**Android development requires the dev client — not Expo Go.** The app carries
+native modules (notifications, image picker, calendars), the Maestro e2e suite
+in `maestro/` drives the dev client build, and Expo Go masks native-version
+mismatches — its runtime ships its own modules, which is how a wrong
+`expo-splash-screen` pin crashed every dev build while Expo Go looked fine.
+`npm start` still works for Metro only: open the dev client on the emulator
+and it connects (it auto-connects — no server picker, no dev-menu overlay).
 
 By default the app talks to the deployed backend at
 `https://taskbuddy-1d48.onrender.com`, so it works with no local setup.
 
-To run against a local backend, copy `.env.example` to `.env` and set your
-machine's **LAN IP** — not `localhost`, which on a phone/emulator refers to the
-device itself:
+To run against a local backend, copy `.env.example` to `.env` and point at
+your machine — on an **emulator** use `10.0.2.2` (the host's loopback alias;
+stable across networks), on a **physical device** use the machine's **LAN IP** —
+never `localhost`, which on a phone/emulator refers to the device itself:
 
 ```env
-EXPO_PUBLIC_API_URL=http://192.168.1.20:3000
+EXPO_PUBLIC_API_URL=http://10.0.2.2:3000        # emulator
+# EXPO_PUBLIC_API_URL=http://192.168.1.20:3000  # physical device
 ```
 
-Only `EXPO_PUBLIC_*` variables reach the app at build time. Restart the dev
-server after changing `.env`.
+Only `EXPO_PUBLIC_*` variables reach the app at bundle time. Restart the dev
+server after changing `.env` — a Metro restart is enough; no Gradle rebuild.
 
 > **Free-tier note:** the Render backend spins down after ~15 minutes idle, so
 > the first request can take 30–60 s. If the splash screen seems stuck, that's
@@ -54,8 +66,7 @@ Other scripts:
 
 ```bash
 npm run typecheck   # tsc --noEmit
-npm run android     # expo start --android
-npm run ios         # expo start --ios
+npm run ios         # expo run:ios (dev build, same reasoning as Android)
 ```
 
 ---
@@ -253,7 +264,7 @@ sign-in, and notification rows remain available in the in-app list either way.
 | `HOProfile` | Displays profile data; menu is Edit Profile / Settings / Help & Support |
 | `HOEditProfileScreen` | `PATCH /profiles/me`, then `refreshProfile()` |
 | `HONotificationsScreen` | `GET /notifications`; mark read / read-all |
-| `HOSettingsScreen` | `POST /auth/change-password` and all five switches (`GET`/`PATCH /settings`) are real. Dark Mode saves a preference nothing applies yet; Language and Delete Account stay honest placeholders — see [What's Not Wired Yet](#whats-not-wired-yet) |
+| `HOSettingsScreen` | `POST /auth/change-password` and all five switches (`GET`/`PATCH /settings`) are real. Delete Account calls `DELETE /profiles/me`. Dark Mode saves a preference nothing applies yet and Language stays an honest placeholder — see [What's Not Wired Yet](#whats-not-wired-yet) |
 | `HelpSupportScreen` (shared, `src/components/`) | Static FAQ + `mailto:` support link — no backend |
 
 ### Provider (Service Provider — `SP*`)
@@ -519,15 +530,30 @@ was trimmed to remove rows that duplicated a bottom-nav tab or a header icon.
 |-------|--------|
 | **Dark Mode** | Half done: the *preference* persists (`user_settings.dark_mode` via `PATCH /settings`), but nothing applies it — there is still no theme switching. Both Settings screens say so under the switch rather than implying a repaint that never comes. The blocker is the ~40 screens still using inline hex instead of `V6Colors` tokens; see [`CHANGELOG.md`](./CHANGELOG.md) for the theming approach that was built and then deliberately reverted to leave this open |
 | **Language** | Settings modal states English is the only option — no i18n system exists to back a real picker |
-| **Delete Account** | **Backend now exists** — `DELETE /profiles/me` soft-deletes and answers `409 { blockers[] }` when the account still has a balance, a pending withdrawal, escrow held, an open dispute, or a live job. The Settings row still opens a `mailto:`; wiring it (call, confirm, render the blocker list, sign out) is app-side work |
-| **Wallet Withdraw** | **Backend now exists** — `POST /wallet/withdrawals` files a *pending* request that an admin settles from the console; `GET /wallet` reports `available` and `pending_withdrawals` alongside `balance`. The button still has no handler. There is still no automated payout rail — settlement is a human sending money and recording the reference |
-| **Wallet Transfer** | Deliberately not built, backend or front. Wallet-to-wallet transfer turns the wallet into a money-transmission service, which is a licensing matter in PH, not an engineering one |
+| **Wallet Transfer** | Deliberately not built, backend or front. Wallet-to-wallet transfer turns the wallet into a money-transmission service, which is a licensing matter in PH, not an engineering one. The button now opens a short note saying so rather than doing nothing |
 | **Push delivery** | Code complete end to end, **but not yet functional**: `app.json` has no EAS `projectId`, so no push token is ever obtained, and remote push needs a development build (not Expo Go) on SDK 54. The `notifications` table remains the source of truth and the in-app list is unaffected — see [Live chat and push notifications](#live-chat-and-push-notifications) |
 | **Realtime chat** | Message delivery is live through authenticated SSE; call and attachment buttons remain inert |
 | **Counterpart avatars** | Chat, applicant, and review payloads all carry `avatar_url`; those screens still render initials. (The signed-in user's *own* avatar does render — see `OwnAvatar`) |
-| **"Leave Review" already-reviewed state** | **Backend now exists** — every job carries `has_review` and the review itself, so the button can hide instead of discovering the duplicate by submitting one. Not yet read by the app |
 | **Provider calendar write** | Bookings are created by the backend when a job is assigned, not from this screen |
 | **Notch/edge-to-edge status-bar spacing** | `Sizes.statusBarHeight` uses `StatusBar.currentHeight` (Android, built-in RN API) as a floor under the previous fixed `52`, which fixes most cases without a new dependency — but it's read once at module load, not on rotation/inset changes, and iOS still uses a fixed estimate. A full fix means adopting `react-native-safe-area-context` (new dependency) and touching header padding in every screen |
+
+### Wired against migrations 0022–0024
+
+Four rows left this table once PR #44 landed the API for them. What the app now
+does, and the one thing that still has to happen outside the codebase:
+
+| Thing | Where | Note |
+|---|---|---|
+| **Delete Account** | `DeleteAccountModal`, both Settings screens | `DELETE /profiles/me`. The 409's `blockers[]` are rendered as a list — the API returns every obligation at once, so the user isn't made to delete repeatedly to discover them one at a time. Success signs out locally; the token stays syntactically valid until it expires, so the app has to drop it rather than wait for a 401 |
+| **Wallet Withdraw** | `WithdrawModal`, both Wallet screens | `POST /wallet/withdrawals`. Both screens now headline `available` (balance minus pending withdrawals) rather than `balance`, list pending requests separately, and can cancel one. Copy promises a review, not a transfer — there is still no payout rail |
+| **"Leave Review" already-reviewed** | `HOJobDetailScreen` | Reads `has_review`; when true the row shows the rating that was left instead of hiding entirely, so "did I review this?" is answered on screen rather than inferred from an absence |
+| **Email OTP at signup** | `RegisterScreen` + `AuthContext.verifyEmailOtp` | Registering already triggers Supabase's confirm-signup mail, so the screen reads the code rather than sending a second one; Resend is the only path that mails another. Verifying returns a session, so the user lands signed in |
+
+> **Email OTP needs Supabase configured before it works at all.** Authentication →
+> Providers → Email → **Confirm email** must be on, and the **Confirm signup**
+> template must render `{{ .Token }}` — a template still sending
+> `{{ .ConfirmationURL }}` mails a link, and every code typed into the app is
+> rejected. Full steps in [`docs/email-otp-setup.md`](../docs/email-otp-setup.md).
 
 ---
 

@@ -8,13 +8,14 @@
  * "Payout History" list.
  *
  * The mockup only shows one action (Withdraw) here — unlike the homeowner
- * wallet, which keeps 3 actions per an explicit product decision. There's no
- * real withdraw/payout-method backend flow yet, so Withdraw is a visual
- * placeholder for now, same as the non-functional Transfer/Statement
- * buttons this screen already had.
+ * wallet, which keeps 3 actions per an explicit product decision.
+ *
+ * Withdraw files a request against `POST /wallet/withdrawals` that an admin
+ * settles by hand; there is still no automated payout rail, which is why the
+ * modal's copy promises a review rather than a transfer.
  */
 
-import React from 'react';
+import React, { useState } from 'react';
 import { ActivityIndicator, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Banknote, Building2, Sparkles, WalletCards } from 'lucide-react-native';
@@ -25,12 +26,33 @@ import { useAuth } from '../../../src/context/AuthContext';
 import { useAsyncData } from '../../../src/hooks/useAsyncData';
 import { api } from '../../../src/lib/api';
 import { peso, shortDate } from '../../../src/lib/format';
+import WithdrawModal from '../../../src/components/WithdrawModal';
 
 export default function SPWalletScreen() {
   const { providerProfile } = useAuth();
-  const { data, loading, error } = useAsyncData(() => api.wallet(), [], 'sp-wallet');
+  const { data, loading, error, reload } = useAsyncData(() => api.wallet(), [], 'sp-wallet');
   const transactions = data?.transactions ?? [];
   const jobsDone = providerProfile?.cached_completed_jobs ?? 0;
+
+  const [showWithdraw, setShowWithdraw] = useState(false);
+  const [cancelling, setCancelling] = useState<string | null>(null);
+
+  const pendingWithdrawals = transactions.filter(
+    (t) => t.kind === 'withdrawal' && t.status === 'pending',
+  );
+  const canWithdraw = (data?.available ?? 0) > 0;
+
+  const cancelWithdrawal = async (id: string) => {
+    setCancelling(id);
+    try {
+      await api.cancelWithdrawal(id);
+      reload();
+    } catch {
+      // Still pending — the row stays, which is the accurate state.
+    } finally {
+      setCancelling(null);
+    }
+  };
 
   return (
     <View style={styles.screen}>
@@ -48,12 +70,51 @@ export default function SPWalletScreen() {
           style={styles.heroCard}
         >
           <Text style={styles.balanceLabel}>Available to withdraw</Text>
-          <Text style={styles.balanceAmount}>{data ? peso(data.balance) : '—'}</Text>
-          <TouchableOpacity style={styles.withdrawBtn} activeOpacity={0.85}>
+          <Text style={styles.balanceAmount}>{data ? peso(data.available) : '—'}</Text>
+          {!!data && data.pending_withdrawals > 0 && (
+            <Text style={styles.balanceSubnote}>
+              {peso(data.pending_withdrawals)} awaiting withdrawal · {peso(data.balance)} total
+            </Text>
+          )}
+          <TouchableOpacity
+            style={[styles.withdrawBtn, !canWithdraw && styles.withdrawBtnDisabled]}
+            onPress={() => setShowWithdraw(true)}
+            disabled={!canWithdraw}
+            activeOpacity={0.85}
+            accessibilityRole="button"
+            accessibilityState={{ disabled: !canWithdraw }}
+          >
             <Banknote size={18} color={C.white} />
             <Text style={styles.withdrawBtnText}>Withdraw</Text>
           </TouchableOpacity>
         </LinearGradient>
+
+        {pendingWithdrawals.length > 0 && (
+          <View style={styles.pendingCard}>
+            <Text style={styles.pendingHeader}>Withdrawal Requests</Text>
+            {pendingWithdrawals.map((w) => (
+              <View key={w.id} style={styles.pendingRow}>
+                <View style={styles.pendingInfo}>
+                  <Text style={styles.pendingAmount}>{peso(w.amount)}</Text>
+                  <Text style={styles.pendingDate}>
+                    Requested {shortDate(w.created_at)} · Pending
+                  </Text>
+                </View>
+                <TouchableOpacity
+                  onPress={() => cancelWithdrawal(w.id)}
+                  disabled={cancelling === w.id}
+                  activeOpacity={0.7}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Cancel withdrawal of ${peso(w.amount)}`}
+                >
+                  <Text style={styles.pendingCancel}>
+                    {cancelling === w.id ? 'Cancelling…' : 'Cancel'}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            ))}
+          </View>
+        )}
 
         <View style={styles.statsRow}>
           <View style={styles.statCard}>
@@ -120,6 +181,13 @@ export default function SPWalletScreen() {
 
         <View style={{ height: 20 }} />
       </ScrollView>
+
+      <WithdrawModal
+        visible={showWithdraw}
+        available={data?.available ?? 0}
+        onClose={() => setShowWithdraw(false)}
+        onFiled={reload}
+      />
     </View>
   );
 }
@@ -146,7 +214,28 @@ const styles = StyleSheet.create({
     flexDirection: 'row', alignSelf: 'flex-start', alignItems: 'center', gap: 8,
     backgroundColor: '#22c55e', borderRadius: V6Radii.btn, paddingHorizontal: 16, paddingVertical: 10,
   },
+  withdrawBtnDisabled: { opacity: 0.45 },
   withdrawBtnText: { color: C.white, fontSize: 14, fontWeight: '700', fontFamily: 'Inter' },
+  balanceSubnote: {
+    color: 'rgba(255,255,255,0.75)', fontSize: 12.5, fontFamily: 'Inter',
+    marginTop: -10, marginBottom: 12,
+  },
+
+  pendingCard: {
+    backgroundColor: '#fffbeb', borderWidth: 1, borderColor: '#fde68a',
+    borderRadius: 15, padding: 14, marginBottom: 16,
+  },
+  pendingHeader: {
+    color: '#92400e', fontSize: 13.5, fontWeight: '800', fontFamily: 'Inter', marginBottom: 8,
+  },
+  pendingRow: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    paddingVertical: 4,
+  },
+  pendingInfo: { flex: 1, marginRight: 10 },
+  pendingAmount: { color: C.ink900, fontSize: 15, fontWeight: '700', fontFamily: 'Inter' },
+  pendingDate: { color: '#b45309', fontSize: 11.5, fontFamily: 'Inter', marginTop: 1 },
+  pendingCancel: { color: '#b45309', fontSize: 13.5, fontWeight: '700', fontFamily: 'Inter' },
 
   statsRow: { flexDirection: 'row', gap: 12, marginBottom: 20 },
   statCard: {

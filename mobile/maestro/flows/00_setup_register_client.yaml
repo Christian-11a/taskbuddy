@@ -1,0 +1,119 @@
+appId: com.taskbuddy.app
+---
+# Creates the persistent client test account. Run once (see
+# 00_setup_test_accounts.md for the SQL that confirms and funds it).
+#
+# Stops at the OTP screen deliberately: the account already exists by then, and
+# the emailed code is unreadable to Maestro. The SQL confirms it instead.
+#
+# Register's selectors: FormInput now ships testIDs (input-name, input-email,
+# input-password, input-confirm-password) because positional selection on the
+# two secure fields is unreliable — a filled secure field stops exposing its
+# value to accessibility, so the number of matches for `••••••••` changes
+# mid-form and both entries land in the first box. Do not go back to
+# placeholder+index here.
+- runFlow: _helpers/launch_fresh.yaml
+# The Login screen paints before React attaches its press handlers on a cold
+# JS bundle, so the first tap after `clearState` is swallowed — the tap
+# reports COMPLETED and nothing happens. Settle first, then retry once if we
+# are still on Login.
+- waitForAnimationToEnd:
+    timeout: 10000
+# Tapped by TEXT, not id. `btn-signup` is a bare `Pressable`, which React
+# Native does not mark accessible by default, so `tapOn: { id: btn-signup }`
+# reports COMPLETED and does nothing at all. See maestro/README.md.
+- tapOn: "Sign Up"
+- runFlow:
+    when:
+      visible: "Welcome!"
+    commands:
+      - tapOn: "Sign Up"
+- extendedWaitUntil:
+    visible: "Create account"
+    timeout: 30000
+# Role defaults to homeowner (RegisterScreen.tsx:211), so no role tap here.
+# All four by testID. The two password fields share the placeholder
+# `••••••••`, and a secure field stops exposing its value to accessibility
+# once filled — so the number of elements matching that placeholder *changes*
+# as the form is filled, and any positional selector silently lands on the
+# wrong field. Both entries end up in the first box and registration fails on
+# "Passwords do not match." testIDs were added to FormInput for this.
+- tapOn:
+    id: "input-name"
+- inputText: "Maestro Client"
+- tapOn:
+    id: "input-email"
+- inputText: "maestro.client@taskbuddy.test"
+- tapOn:
+    id: "input-password"
+- inputText: "TestPass123!"
+# The confirm field sits under the on-screen keyboard at this point, and an
+# element the keyboard covers is not in the hierarchy to be found by id.
+- hideKeyboard
+- scrollUntilVisible:
+    element:
+      id: "input-confirm-password"
+    direction: DOWN
+    timeout: 20000
+- tapOn:
+    id: "input-confirm-password"
+- inputText: "TestPass123!"
+- hideKeyboard
+# The three consents do NOT behave alike. Terms and Privacy each open a full
+# screen that has to be accepted; only data-collection is a plain toggle.
+# Tapping all three and expecting three ticks silently leaves two unchecked.
+- scrollUntilVisible:
+    element:
+      id: "chk-terms"
+    direction: DOWN
+    timeout: 20000
+- tapOn:
+    id: "chk-terms"
+# Each consent screen's accept button sits at the end of the copy. Terms is
+# short enough to fit on one screen; Privacy is not, so scroll rather than
+# assume — the difference is only content length and will move as copy changes.
+- extendedWaitUntil:
+    visible: "Terms & Conditions"
+    timeout: 20000
+- scrollUntilVisible:
+    element:
+      text: "I agree to the Terms & Conditions"
+    direction: DOWN
+    timeout: 20000
+- tapOn: "I agree to the Terms & Conditions"
+
+- scrollUntilVisible:
+    element:
+      id: "chk-privacy"
+    direction: DOWN
+    timeout: 20000
+- tapOn:
+    id: "chk-privacy"
+- extendedWaitUntil:
+    visible: "Privacy Policy"
+    timeout: 20000
+- scrollUntilVisible:
+    element:
+      text: "I agree to the Privacy Policy"
+    direction: DOWN
+    timeout: 20000
+- tapOn: "I agree to the Privacy Policy"
+
+# This one is a straight toggle — no screen, nothing to accept.
+- scrollUntilVisible:
+    element:
+      id: "chk-data-collection"
+    direction: DOWN
+    timeout: 20000
+- tapOn:
+    id: "chk-data-collection"
+
+- scrollUntilVisible:
+    element:
+      text: "Sign Up"
+    direction: DOWN
+    timeout: 20000
+- tapOn: "Sign Up"
+- extendedWaitUntil:
+    visible: "Check your email"
+    timeout: 60000

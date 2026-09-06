@@ -86,6 +86,11 @@ interface AuthContextValue {
     newPassword: string;
   }) => Promise<void>;
   /**
+   * Confirms a newly registered address with the emailed 6-digit code and
+   * signs the user in with the session the backend returns.
+   */
+  verifyEmailOtp: (input: { email: string; token: string }) => Promise<void>;
+  /**
    * Completes the profile for a new Google OAuth user after role selection.
    * Clears the google_signup_pending flag and refreshes the local profile.
    */
@@ -256,6 +261,27 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         email: input.email.trim(),
         token: input.token.trim(),
         new_password: input.newPassword,
+      });
+      const me = await api.me(next.access_token);
+      await persistSession(next);
+      setProfile(me.profile);
+      setProviderProfile(me.provider_profile);
+    },
+    [persistSession],
+  );
+
+  /**
+   * Confirms a new account with the emailed code and signs the user in.
+   *
+   * Same shape as resetPassword, and for the same reason: the code proves they
+   * hold the mailbox, so the backend hands back a live session rather than
+   * making them retype the password they entered a minute ago.
+   */
+  const verifyEmailOtp = useCallback(
+    async (input: { email: string; token: string }) => {
+      const { session: next } = await api.verifyEmailOtp({
+        email: input.email.trim(),
+        token: input.token.trim(),
       });
       const me = await api.me(next.access_token);
       await persistSession(next);
@@ -452,6 +478,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       signUp,
       signInWithGoogle,
       resetPassword,
+      verifyEmailOtp,
       completeGoogleProfile,
       signOut,
     }),
@@ -465,6 +492,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       signUp,
       signInWithGoogle,
       resetPassword,
+      verifyEmailOtp,
       completeGoogleProfile,
       signOut,
     ],

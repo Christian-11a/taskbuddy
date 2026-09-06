@@ -113,10 +113,12 @@ export default function HOJobDetailScreen({ jobId, onBack, onNavigate }: HOJobDe
     job &&
     ['open', 'recommending', 'assigned', 'confirmed', 'in_progress'].includes(job.status);
   const canComplete = job?.status === 'in_progress';
-  // A review needs a finished job and someone to review. The API also rejects a
-  // second review for the same job, but the job payload carries no "already
-  // reviewed" flag, so that one still surfaces as an error on submit.
-  const canReview = job?.status === 'completed' && !!job.assigned_provider_id;
+  // A review needs a finished job, someone to review, and no review already.
+  // The job payload now carries `has_review`, so a second one is prevented up
+  // front instead of surfacing as an error after the user has written it.
+  const reviewable = job?.status === 'completed' && !!job.assigned_provider_id;
+  const canReview = reviewable && !job?.has_review;
+  const existingReview = reviewable ? job?.review ?? null : null;
 
   return (
     <View style={styles.screen}>
@@ -302,6 +304,16 @@ export default function HOJobDetailScreen({ jobId, onBack, onNavigate }: HOJobDe
                 <Text style={styles.linkRowText}>Leave Review</Text>
               </TouchableOpacity>
             )}
+            {/* Already reviewed: show what was left rather than removing the
+                row outright, so the answer to "did I review this?" is on the
+                screen instead of inferred from an absence. */}
+            {!!existingReview && (
+              <View style={[styles.linkRow, styles.detailRowBorder]}>
+                <Text style={styles.reviewedText}>
+                  You rated this {existingReview.rating}/5
+                </Text>
+              </View>
+            )}
           </View>
 
           {/* Actions — matches .detail-action-bar */}
@@ -476,6 +488,7 @@ const styles = StyleSheet.create({
   // Link rows
   linkRow: { paddingVertical: 12 },
   linkRowText: { color: C.cyan700, fontSize: 14.5, fontWeight: '700', fontFamily: 'Inter' },
+  reviewedText: { color: C.ink400, fontSize: 14.5, fontWeight: '600', fontFamily: 'Inter' },
 
   // Action bar
   actionBar: { paddingTop: 16, paddingBottom: 10, gap: 8 },
