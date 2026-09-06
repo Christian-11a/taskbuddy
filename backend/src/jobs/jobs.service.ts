@@ -356,9 +356,11 @@ export class JobsService {
       );
     }
     const updated = await this.setStatus(jobId, 'completed');
-    // Pay the provider out of escrow. No-ops when the job had no budget, and
-    // deliberately skips a disputed escrow — that needs an admin decision.
-    await this.escrow.release(jobId);
+    // Pay the provider out of escrow. `releaseIfHeld`, not `release`: a job
+    // posted without a budget has no escrow row at all, and a disputed one is
+    // frozen for an admin. Anything else — an already-released hold reached a
+    // second time — raises rather than reporting a payout that did not happen.
+    await this.escrow.releaseIfHeld(jobId);
     await this.notify(job.assigned_provider_id, 'job_update', 'Job completed', {
       body: `The client marked "${job.title}" as completed.`,
       job_id: jobId,

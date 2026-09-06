@@ -2,6 +2,7 @@ import {
   BadRequestException,
   ForbiddenException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { SupabaseService } from '../supabase/supabase.service';
@@ -11,6 +12,8 @@ import type { Profile } from '../common/types';
 
 @Injectable()
 export class ApplicationsService {
+  private readonly logger = new Logger(ApplicationsService.name);
+
   constructor(
     private readonly supabase: SupabaseService,
     private readonly escrow: EscrowService,
@@ -122,7 +125,31 @@ export class ApplicationsService {
     return data ?? [];
   }
 
-  /** Accept: the DB trigger assigns the job and auto-rejects sibling applications. */
+  /**
+   * Accept: the DB trigger assigns the job and auto-rejects sibling
+   * applications.
+   *
+   * **Escrow is held before the application is accepted, not after.** The
+   * accept is an `update` that fires `handle_application_accepted`, which
+   * assigns the job, rejects every rival applicant and opens a booking — a
+   * cascade nothing in application code can cleanly reverse. Holding first
+   * means the one failure that actually happens in practice, a client whose
+   * wallet cannot cover the budget, is refused while the job is still open and
+   * every applicant is still in the running. The old order accepted first and
+   * discovered the shortfall afterwards, leaving a provider hired against
+   * money that was never held.
+   *
+   * If the accept itself then fails, the hold is rolled back and the client
+   * credited. That direction of failure is recoverable; the other is not.
+   *
+   * **Only a hold this call actually placed is rolled back.** `escrow.hold()`
+   * is idempotent, so the losing half of a double-tap gets the winner's hold
+   * handed back to it, then fails its own `setStatus` because the application
+   * is no longer pending. Undoing the hold there would refund the client for a
+   * hire that had in fact succeeded, leaving an assigned job with no money
+   * behind it — worse than the bug this ordering exists to fix. `placed` is
+   * what distinguishes the two.
+   */
   async accept(user: Profile, applicationId: string) {
     const application = await this.findWithJob(applicationId);
     if (application.jobs.client_id !== user.id)
@@ -136,16 +163,48 @@ export class ApplicationsService {
       throw new BadRequestException('Job already has an assigned provider');
     }
 
-    const updated = await this.setStatus(applicationId, 'accepted');
-    // Hold the client's budget against the job. No-ops for jobs posted without
-    // one (everything created before migration 0007).
-    await this.escrow.hold(application.job_id, application.provider_id);
+    // No-ops for jobs posted without a budget (everything before migration
+    // 0007); throws, before anything is accepted, when the wallet is short.
+    const { placed } = await this.escrow.hold(
+      application.job_id,
+      application.provider_id,
+    );
+
+    let updated: unknown;
+    try {
+      updated = await this.setStatus(applicationId, 'accepted');
+    } catch (err) {
+      if (placed) await this.rollbackHold(application.job_id, err);
+      throw err;
+    }
+
     await this.notifyProvider(
       application,
       'Application accepted',
       `You were hired for "${application.jobs.title}"!`,
     );
     return updated;
+  }
+
+  /**
+   * The hire failed after its money was held. Give it back.
+   *
+   * A failure here is swallowed rather than replacing the original error: the
+   * client needs to be told why the hire did not happen, and "the rollback
+   * also failed" is an operator's problem, not theirs. It is logged loudly
+   * because it leaves a hold with no hire behind it — the one state this
+   * ordering can produce that a human has to unpick.
+   */
+  private async rollbackHold(jobId: string, cause: unknown) {
+    try {
+      await this.escrow.releaseHoldForFailedHire(jobId);
+    } catch (rollbackErr) {
+      this.logger.error(
+        `Job ${jobId}: accept failed (${(cause as Error).message}) and the ` +
+          `escrow hold could not be released (${(rollbackErr as Error).message}) ` +
+          `— the client is debited for a hire that did not happen`,
+      );
+    }
   }
 
   async reject(user: Profile, applicationId: string) {
@@ -190,14 +249,26 @@ export class ApplicationsService {
     return data;
   }
 
+  /**
+   * `status = 'pending'` is re-asserted in the WHERE clause, not just checked
+   * in memory beforehand. Two taps arriving together both read `pending`; this
+   * is what makes exactly one of them fire `handle_application_accepted`,
+   * rather than both assigning the job and rejecting each other's siblings.
+   */
   private async setStatus(applicationId: string, status: string) {
     const { data, error } = await this.supabase.admin
       .from('job_applications')
       .update({ status, decided_at: new Date().toISOString() })
       .eq('id', applicationId)
+      .eq('status', 'pending')
       .select()
-      .single();
+      .maybeSingle();
     if (error) throw new BadRequestException(error.message);
+    if (!data) {
+      throw new BadRequestException(
+        'This application was already decided by someone else',
+      );
+    }
     return data;
   }
 
