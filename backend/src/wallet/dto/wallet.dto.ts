@@ -8,6 +8,7 @@ import {
   IsString,
   IsUUID,
   Length,
+  Max,
   MaxLength,
 } from 'class-validator';
 import type { WalletTxnDirection } from '../../common/types';
@@ -85,6 +86,9 @@ export class ListWalletTxnQueryDto {
     'payout',
     'refund',
     'adjustment',
+    // Admin-issued trust credits (0021). Without it here the console could
+    // see recovery credits in the unfiltered list but never filter to them.
+    'recovery_credit',
   ])
   kind?: string;
 
@@ -139,4 +143,40 @@ export class RejectWithdrawalDto {
   @IsString()
   @Length(1, 500)
   reason!: string;
+}
+
+/**
+ * An admin issuing a trust credit after a dispute (migration 0021,
+ * `docs/backend-handoff-recovery-vouchers.md`).
+ *
+ * This is the one body that can put money into a wallet without a settled
+ * Stripe charge, which is why it lives on the admin surface and nowhere near
+ * `RequestWithdrawalDto`. `direction` and `kind` are absent for the same
+ * reason they are absent there: the endpoint does exactly one thing, and a
+ * caller who could name the `kind` could tag their own credit as a `payout`
+ * and inflate reported platform revenue.
+ *
+ * The upper bound is a typo guard, not a policy: ₱50,000 is far above any
+ * plausible job budget, and past it a misplaced digit stops being something
+ * an admin can quietly undo.
+ */
+export class IssueRecoveryCreditDto {
+  @IsUUID()
+  profile_id!: string;
+
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @IsPositive()
+  @Max(50_000)
+  @Type(() => Number)
+  amount!: number;
+
+  /** What the recipient sees in their transaction list. */
+  @IsString()
+  @Length(1, 200)
+  title!: string;
+
+  /** The job or dispute this compensates, when there is one. */
+  @IsOptional()
+  @IsUUID()
+  job_id?: string;
 }
