@@ -10,9 +10,9 @@ preprocessing (ordinal encoding, TF-IDF → SVD for the two Taglish text
 features) happens **inside the persisted sklearn pipeline**, so this service
 receives raw values and returns hire probabilities.
 
-> **🚀 Deployed instance:** live at **https://taskbuddy-ml-service.onrender.com**
-> — status page: <https://taskbuddy-ml-service.onrender.com/> · JSON health:
-> <https://taskbuddy-ml-service.onrender.com/health>. The deployed backend's
+> **🚀 Deployed instance:** live at **https://taskbuddy-ml-service-8ppc.onrender.com**
+> — status page: <https://taskbuddy-ml-service-8ppc.onrender.com/> · JSON health:
+> <https://taskbuddy-ml-service-8ppc.onrender.com/health>. The deployed backend's
 > `ML_SERVICE_URL` points here. (Free tier: first request after idle takes
 > ~30–60 s while the instance wakes.)
 

@@ -16,17 +16,18 @@ interface ConfirmationModalProps {
   message: string;
   confirmLabel?: string;
   cancelLabel?: string;
+  busy?: boolean;
   onConfirm: () => void;
   onCancel: () => void;
 }
 
 /** Reusable confirmation dialog for actions that require an explicit user choice. */
 export default function ConfirmationModal({
-  visible, title, message, confirmLabel = 'Confirm', cancelLabel = 'Cancel', onConfirm, onCancel,
+  visible, title, message, confirmLabel = 'Confirm', cancelLabel = 'Cancel', busy = false, onConfirm, onCancel,
 }: ConfirmationModalProps) {
   return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onCancel}>
-      <Pressable style={styles.overlay} onPress={onCancel} accessible={false}>
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={busy ? undefined : onCancel}>
+      <Pressable style={styles.overlay} onPress={busy ? undefined : onCancel} accessible={false}>
         <Pressable
           style={styles.dialog}
           onPress={(event) => event.stopPropagation()}
@@ -39,6 +40,7 @@ export default function ConfirmationModal({
             <TouchableOpacity
               style={styles.cancelButton}
               onPress={onCancel}
+              disabled={busy}
               activeOpacity={0.8}
               accessibilityRole="button"
               accessibilityLabel={cancelLabel}
@@ -48,6 +50,7 @@ export default function ConfirmationModal({
             <TouchableOpacity
               style={styles.confirmButton}
               onPress={onConfirm}
+              disabled={busy}
               activeOpacity={0.85}
               accessibilityRole="button"
               accessibilityLabel={confirmLabel}

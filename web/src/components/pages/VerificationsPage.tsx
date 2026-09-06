@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Search, Check, X, FileText, Download } from "lucide-react";
+import { Search, Check, X, FileText, Download, AlertTriangle } from "lucide-react";
 import { useApp } from "@/context/AppContext";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { ReviewDrawer, DrawerField, DrawerSection } from "@/components/ui/ReviewDrawer";
@@ -135,12 +135,20 @@ export function VerificationsPage() {
     <div>
       <div className="flex items-start justify-between flex-wrap gap-3 mb-4">
         <div>
-          <div className="text-white font-bold" style={{ fontSize: 22, letterSpacing: "-0.025em" }}>Provider Verification Queue</div>
-          <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 5, lineHeight: 1.45 }}>Review submitted government IDs and service certificates</div>
+          <h1 className="text-white font-bold" style={{ fontSize: "var(--fs-2xl)", letterSpacing: "-0.025em" }}>Provider Verification Queue</h1>
+          <div style={{ fontSize: "var(--fs-sm)", color: "var(--text-muted)", marginTop: 5, lineHeight: 1.45 }}>Review submitted government IDs and service certificates</div>
         </div>
-        <div className="flex items-center gap-1.5 font-semibold" style={{ background: "rgba(245,158,11,0.12)", border: "1px solid rgba(245,158,11,0.2)", borderRadius: 11, padding: "7px 11px", fontSize: 11.4, color: "#f59e0b" }}>
-          ⚠️ {counts.pending} pending
-        </div>
+        {/* Amber is a call to act. An empty queue is good news, so it reads
+            as a plain confirmation rather than a warning about nothing. */}
+        {counts.pending > 0 ? (
+          <div className="flex items-center gap-1.5 font-semibold" style={{ background: "rgba(245,158,11,0.12)", border: "1px solid rgba(245,158,11,0.2)", borderRadius: "var(--r-md)", padding: "7px 11px", fontSize: "var(--fs-xs)", color: "var(--warning-text)" }}>
+            <AlertTriangle size={12} /> {counts.pending} pending
+          </div>
+        ) : (
+          <div className="flex items-center gap-1.5" style={{ borderRadius: "var(--r-md)", padding: "7px 11px", fontSize: "var(--fs-xs)", color: "var(--text-muted)" }}>
+            <Check size={12} style={{ color: "var(--success-text)" }} /> Queue clear
+          </div>
+        )}
       </div>
 
       <div className="flex gap-3 items-center mb-4 flex-wrap">
@@ -152,30 +160,30 @@ export function VerificationsPage() {
             aria-label="Search verifications by name or email"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            style={{ background: "var(--input-bg)", border: "1px solid var(--border-md)", height: 38, borderRadius: 9, padding: "0 13px 0 36px", fontSize: 12, fontFamily: "inherit", color: "var(--text-white)" }}
+            style={{ background: "var(--input-bg)", border: "1px solid var(--border-md)", height: 38, borderRadius: "var(--r-md)", padding: "0 13px 0 36px", fontSize: "var(--fs-sm)", fontFamily: "inherit", color: "var(--text-white)" }}
           />
         </div>
-        <div className="inline-flex flex-wrap" style={{ background: "var(--chip-bg)", padding: 3, borderRadius: 9, gap: 2 }}>
+        <div className="inline-flex flex-wrap" style={{ background: "var(--chip-bg)", padding: 3, borderRadius: "var(--r-md)", gap: 2 }}>
           {(["all", "pending", "approved", "rejected"] as Filter[]).map((f) => (
             <button key={f} onClick={() => setFilter(f)}
               className={clsx("flex items-center gap-1 rounded-lg font-medium cursor-pointer transition-all", filter !== f && "text-gray-500 hover:text-gray-300")}
-              style={{ padding: "7px 11px", fontSize: 11, background: filter === f ? "var(--indigo-dark)" : "transparent", color: filter === f ? "var(--indigo-light)" : undefined, border: "none", fontFamily: "inherit" }}
+              style={{ padding: "7px 11px", fontSize: "var(--fs-xs)", background: filter === f ? "var(--indigo-dark)" : "transparent", color: filter === f ? "var(--indigo-light)" : undefined, border: "none", fontFamily: "inherit" }}
             >
-              {f.charAt(0).toUpperCase() + f.slice(1)} <span style={{ fontSize: 9.8, opacity: 0.7 }}>({counts[f]})</span>
+              {f.charAt(0).toUpperCase() + f.slice(1)} <span style={{ fontSize: "var(--fs-3xs)", opacity: 0.7 }}>({counts[f]})</span>
             </button>
           ))}
         </div>
       </div>
 
       <div className="flex items-center justify-between gap-3 mb-3 flex-wrap">
-        <span style={{ fontSize: 11.4, color: "var(--text-muted)" }}>
+        <span style={{ fontSize: "var(--fs-xs)", color: "var(--text-muted)" }}>
           Review each submission before approving or rejecting provider access.
         </span>
         <button
           onClick={() => setConfirmingExport(true)}
           disabled={filtered.length === 0}
           className="flex items-center gap-1.5 font-semibold transition-opacity hover:opacity-80 disabled:opacity-40"
-          style={{ background: "var(--chip-bg)", border: "1px solid var(--border-md)", borderRadius: 11, padding: "7px 13px", fontSize: 11.4, color: "var(--text-light)", cursor: "pointer", fontFamily: "inherit" }}
+          style={{ background: "var(--chip-bg)", border: "1px solid var(--border-md)", borderRadius: "var(--r-md)", padding: "7px 13px", fontSize: "var(--fs-xs)", color: "var(--text-light)", cursor: "pointer", fontFamily: "inherit" }}
         >
           <Download size={12} /> Export queue
         </button>
@@ -183,7 +191,7 @@ export function VerificationsPage() {
 
       <div>
         {filtered.length === 0 && (
-          <div className="text-center py-12" style={{ color: "var(--text-muted)", fontSize: 13 }}>
+          <div className="text-center py-12" style={{ color: "var(--text-muted)", fontSize: "var(--fs-md)" }}>
             {loading
               ? "Loading verifications…"
               : verifications.length === 0
@@ -194,18 +202,18 @@ export function VerificationsPage() {
         {filtered.map((v) => (
           <div key={v.id} className="rounded-xl mb-2.5" style={{ background: "var(--card-bg)", border: "1px solid var(--card-border)" }}>
             <div className="flex items-center gap-3 flex-wrap" style={{ padding: 13 }}>
-              <div className="flex items-center justify-center flex-shrink-0 font-bold" style={{ width: 38, height: 38, borderRadius: 13, background: "var(--indigo-dark)", color: "var(--indigo-light)", fontSize: 11.4 }}>{v.initials}</div>
+              <div className="flex items-center justify-center flex-shrink-0 font-bold" style={{ width: 38, height: 38, borderRadius: "var(--r-lg)", background: "var(--indigo-dark)", color: "var(--indigo-light)", fontSize: "var(--fs-xs)" }}>{v.initials}</div>
               <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2 font-semibold flex-wrap" style={{ fontSize: 13 }}>
+                <div className="flex items-center gap-2 font-semibold flex-wrap" style={{ fontSize: "var(--fs-md)" }}>
                   {v.name}
                   <span className={clsx("badge", `badge-${v.status}`)}>{v.status.charAt(0).toUpperCase() + v.status.slice(1)}</span>
                 </div>
-                <div style={{ fontSize: 9.8, color: "var(--text-muted)", marginTop: 2 }}>{v.email} · Submitted {v.date} · {v.documents.length} document{v.documents.length === 1 ? "" : "s"}</div>
+                <div style={{ fontSize: "var(--fs-3xs)", color: "var(--text-muted)", marginTop: 2 }}>{v.email} · Submitted {v.date} · {v.documents.length} document{v.documents.length === 1 ? "" : "s"}</div>
               </div>
               <button
                 onClick={() => setReviewingId(v.id)}
                 className="flex items-center gap-1.5 font-semibold transition-colors flex-shrink-0"
-                style={{ background: "var(--indigo-dark)", border: "1px solid rgba(34,195,214,0.3)", borderRadius: 9, padding: "8px 16px", fontSize: 11, color: "var(--indigo-light)", cursor: "pointer", fontFamily: "inherit" }}
+                style={{ background: "var(--indigo-dark)", border: "1px solid rgba(34,195,214,0.3)", borderRadius: "var(--r-md)", padding: "8px 16px", fontSize: "var(--fs-xs)", color: "var(--indigo-light)", cursor: "pointer", fontFamily: "inherit" }}
               >
                 Review submission
               </button>
@@ -226,15 +234,15 @@ export function VerificationsPage() {
               <button
                 onClick={() => reviewing && openRejectPrompt(reviewing.id)}
                 className="flex-1 flex items-center justify-center gap-1.5 font-semibold transition-colors"
-                style={{ background: "transparent", border: "1px solid rgba(239,68,68,0.3)", borderRadius: 9, padding: "9px 14px", fontSize: 12, color: "var(--danger-text)", cursor: "pointer", fontFamily: "inherit" }}
+                style={{ background: "transparent", border: "1px solid rgba(239,68,68,0.3)", borderRadius: "var(--r-md)", padding: "9px 14px", fontSize: "var(--fs-sm)", color: "var(--danger-text)", cursor: "pointer", fontFamily: "inherit" }}
               >
                 <X size={13} /> Reject
               </button>
               <button
                 onClick={() => reviewing && handleApproveOne(reviewing.id)}
                 disabled={approveBusyId === reviewing?.id}
-                className="flex-1 flex items-center justify-center gap-1.5 font-semibold transition-colors disabled:opacity-50"
-                style={{ background: "linear-gradient(172deg, #22c3d6 0%, #38bdf8 100%)", border: "none", borderRadius: 9, padding: "9px 14px", fontSize: 12, color: "#fff", cursor: "pointer", fontFamily: "inherit" }}
+                className="btn-primary flex-1 flex items-center justify-center gap-1.5 transition-colors disabled:opacity-50"
+                style={{ borderRadius: "var(--r-md)", padding: "9px 14px", fontSize: "var(--fs-sm)" }}
               >
                 <Check size={13} /> {approveBusyId === reviewing?.id ? "Approving…" : "Approve Provider"}
               </button>
@@ -243,7 +251,7 @@ export function VerificationsPage() {
             <button
               onClick={() => setReviewingId(null)}
               className="flex-1 font-semibold transition-colors"
-              style={{ background: "var(--chip-bg)", border: "1px solid var(--border-md)", borderRadius: 9, padding: "9px 14px", fontSize: 12, color: "var(--text-light)", cursor: "pointer", fontFamily: "inherit" }}
+              style={{ background: "var(--chip-bg)", border: "1px solid var(--border-md)", borderRadius: "var(--r-md)", padding: "9px 14px", fontSize: "var(--fs-sm)", color: "var(--text-light)", cursor: "pointer", fontFamily: "inherit" }}
             >
               Close
             </button>
@@ -261,17 +269,17 @@ export function VerificationsPage() {
               </div>
             </DrawerSection>
             <DrawerSection>
-              <div style={{ fontSize: 9, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 10 }}>Submitted documents</div>
+              <div style={{ fontSize: "var(--fs-3xs)", fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 10 }}>Submitted documents</div>
               <div className="grid grid-cols-2 gap-2">
                 {reviewing.documents.length === 0 && (
-                  <span style={{ fontSize: 10.5, color: "var(--text-muted)" }}>No documents available</span>
+                  <span style={{ fontSize: "var(--fs-2xs)", color: "var(--text-muted)" }}>No documents available</span>
                 )}
                 {reviewing.documents.map((doc) => (
                   <button
                     key={doc.label}
                     onClick={() => setPreview(doc)}
                     className="flex items-center gap-1.5 font-medium transition-opacity hover:opacity-80"
-                    style={{ background: "var(--indigo-dark)", border: "1px solid rgba(34,195,214,0.2)", borderRadius: 8, padding: "6px 10px", fontSize: 10.5, color: "var(--indigo-light)", cursor: "pointer", fontFamily: "inherit" }}
+                    style={{ background: "var(--indigo-dark)", border: "1px solid rgba(34,195,214,0.2)", borderRadius: "var(--r-sm)", padding: "6px 10px", fontSize: "var(--fs-2xs)", color: "var(--indigo-light)", cursor: "pointer", fontFamily: "inherit" }}
                   >
                     <FileText size={12} /> {doc.label}
                   </button>
@@ -300,7 +308,7 @@ export function VerificationsPage() {
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between px-4 py-3" style={{ borderBottom: "1px solid var(--border)" }}>
-              <span className="text-white font-semibold" style={{ fontSize: 13 }}>{preview.label}</span>
+              <span className="text-white font-semibold" style={{ fontSize: "var(--fs-md)" }}>{preview.label}</span>
               <button onClick={() => setPreview(null)} aria-label="Close document preview" style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-muted)" }}>
                 <X size={16} />
               </button>
@@ -333,11 +341,11 @@ export function VerificationsPage() {
           onChange={(e) => setRejectReason(e.target.value)}
           rows={3}
           className="w-full text-white outline-none"
-          style={{ background: "var(--input-bg)", border: `1px solid ${rejectReasonTooLong ? "rgba(239,68,68,0.5)" : "var(--border-md)"}`, borderRadius: 9, padding: "8px 11px", fontSize: 11.4, fontFamily: "inherit", resize: "vertical" }}
+          style={{ background: "var(--input-bg)", border: `1px solid ${rejectReasonTooLong ? "rgba(239,68,68,0.5)" : "var(--border-md)"}`, borderRadius: "var(--r-md)", padding: "8px 11px", fontSize: "var(--fs-xs)", fontFamily: "inherit", resize: "vertical" }}
         />
         <div
           className="mt-1 text-right"
-          style={{ fontSize: 10, color: rejectReasonTooLong ? "var(--danger-text)" : "var(--text-muted)" }}
+          style={{ fontSize: "var(--fs-2xs)", color: rejectReasonTooLong ? "var(--danger-text)" : "var(--text-muted)" }}
         >
           {rejectReason.length}/{REASON_MAX_LENGTH}
         </div>

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Search, CheckCircle, PauseCircle, Download, KeyRound } from "lucide-react";
+import { Search, CheckCircle, PauseCircle, Download, KeyRound, Users, Wrench, Home } from "lucide-react";
 import { useApp } from "@/context/AppContext";
 import { datedFilename, downloadCsv, toCsv } from "@/lib/export/csv";
 import { REASON_MAX_LENGTH, validateDurationDays } from "@/lib/validation";
@@ -20,12 +20,14 @@ function bulkMessage(verb: string, succeeded: number, failed: number): string {
 }
 
 type RoleFilter = "all" | "provider" | "customer";
+type StatusFilter = "all" | "active" | "suspended" | "deleted";
 
 export function UsersPage() {
   const { users, setUserStatus, bulkSetUserStatus, sendPasswordReset, loading } = useApp();
   const { showToast } = useToast();
   const [search, setSearch] = useState("");
   const [roleFilter, setRoleFilter] = useState<RoleFilter>("all");
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [page, setPage] = useState(1);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [bulkBusy, setBulkBusy] = useState(false);
@@ -48,11 +50,12 @@ export function UsersPage() {
       roleFilter === "all" ||
       (roleFilter === "provider" && u.isProvider) ||
       (roleFilter === "customer" && !u.isProvider);
-    return matchSearch && matchRole;
+    const matchStatus = statusFilter === "all" || u.status.toLowerCase() === statusFilter;
+    return matchSearch && matchRole && matchStatus;
   });
 
   // Admins can't be suspended (backend refuses it) — leave them out of bulk selection.
-  const selectable = filtered.filter((u) => u.rolePlain !== "Admin");
+  const selectable = filtered.filter((u) => u.rolePlain !== "Admin" && u.status !== "Deleted");
   const allSelected = selectable.length > 0 && selectable.every((u) => selected.has(u.id));
 
   function toggleOne(id: string) {
@@ -181,6 +184,7 @@ export function UsersPage() {
   const total = users.length;
   const providers = users.filter((u) => u.isProvider).length;
   const customers = users.filter((u) => !u.isProvider).length;
+  const deleted = users.filter((u) => u.status === "Deleted").length;
   const reviewing = users.find((u) => u.id === reviewingId) ?? null;
   const paginated = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
 
@@ -188,40 +192,31 @@ export function UsersPage() {
     <div>
       <div className="flex items-start justify-between flex-wrap gap-3 mb-4">
         <div>
-          <div className="text-white font-bold" style={{ fontSize: 22, letterSpacing: "-0.025em" }}>Users</div>
-          <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 5, lineHeight: 1.45 }}>Search, review, and moderate homeowner and provider accounts.</div>
+          <div className="text-white font-bold" style={{ fontSize: "var(--fs-2xl)", letterSpacing: "-0.025em" }}>Users</div>
+          <div style={{ fontSize: "var(--fs-sm)", color: "var(--text-muted)", marginTop: 5, lineHeight: 1.45 }}>Search, review, and moderate homeowner and provider accounts.</div>
         </div>
         <button
           onClick={() => setConfirmingExport(true)}
           disabled={exportScope.length === 0}
           title={selected.size > 0 ? "Download only the checked rows" : "Download the rows currently shown"}
           className="flex items-center gap-1.5 font-semibold transition-opacity hover:opacity-80 disabled:opacity-40"
-          style={{ background: "var(--chip-bg)", border: "1px solid var(--border-md)", borderRadius: 11, padding: "7px 13px", fontSize: 11.4, color: "var(--text-light)", cursor: "pointer", fontFamily: "inherit" }}
+          style={{ background: "var(--chip-bg)", border: "1px solid var(--border-md)", borderRadius: "var(--r-md)", padding: "7px 13px", fontSize: "var(--fs-xs)", color: "var(--text-light)", cursor: "pointer", fontFamily: "inherit" }}
         >
           <Download size={12} /> {selected.size > 0 ? `Export ${selected.size} selected` : "Export CSV"}
         </button>
       </div>
 
-      <div className="flex gap-2.5 flex-wrap mb-4">
-        {[
-          { icon: "👥", label: "Total Users", val: total, accent: "#22c3d6", role: "all" as RoleFilter },
-          { icon: "🔧", label: "Providers", val: providers, accent: "#38bdf8", role: "provider" as RoleFilter },
-          { icon: "👤", label: "Homeowners", val: customers, accent: "#22c55e", role: "customer" as RoleFilter },
-        ].map((s) => {
-          const isActive = roleFilter === s.role;
-          return (
-          <button
-            key={s.label}
-            onClick={() => { setRoleFilter(s.role); clearSelectionOnScopeChange(); }}
-            className="flex items-center gap-2 rounded-xl cursor-pointer transition-opacity hover:opacity-80"
-            style={{ padding: "9px 14px", border: `1px solid ${s.accent}33`, background: isActive ? `${s.accent}30` : `${s.accent}18`, fontSize: 11.4, fontFamily: "inherit", outline: isActive ? `1px solid ${s.accent}55` : "none" }}
-          >
-            <span>{s.icon}</span>
-            <span className="font-semibold text-white">{s.val}</span>
-            <span style={{ color: "var(--text-muted)" }}>{s.label}</span>
-          </button>
-          );
-        })}
+      {/* The count chips used to be a second control for the exact filter the
+          segmented "All / Providers / Homeowners" below already runs — two
+          interactive elements changing the same state. The totals are worth
+          keeping visible; the duplicate click targets weren't. Plain summary
+          text, not buttons. */}
+      <div className="flex items-center gap-1.5 flex-wrap mb-3" style={{ fontSize: "var(--fs-xs)", color: "var(--text-muted)" }}>
+        <span className="flex items-center gap-1"><Users size={12} /> <span className="font-semibold text-white tabular">{total}</span> total</span>
+        <span aria-hidden="true">·</span>
+        <span className="flex items-center gap-1"><Wrench size={12} /> <span className="font-semibold text-white tabular">{providers}</span> providers</span>
+        <span aria-hidden="true">·</span>
+        <span className="flex items-center gap-1"><Home size={12} /> <span className="font-semibold text-white tabular">{customers}</span> homeowners</span>
       </div>
 
       <div className="rounded-xl overflow-hidden" style={{ background: "var(--card-bg)", border: "1px solid var(--card-border)" }}>
@@ -234,30 +229,35 @@ export function UsersPage() {
             aria-label="Search users by name or email"
             value={search}
             onChange={(e) => { setSearch(e.target.value); clearSelectionOnScopeChange(); }}
-            style={{ background: "var(--input-bg)", border: "1px solid var(--border-md)", height: 38, borderRadius: 9, padding: "0 13px 0 36px", fontSize: 12, fontFamily: "inherit" }}
+            style={{ background: "var(--input-bg)", border: "1px solid var(--border-md)", height: 38, borderRadius: "var(--r-md)", padding: "0 13px 0 36px", fontSize: "var(--fs-sm)", fontFamily: "inherit" }}
           />
         </div>
-        <div className="inline-flex" style={{ background: "var(--chip-bg)", padding: 3, borderRadius: 9, gap: 2 }}>
+        <div className="inline-flex" style={{ background: "var(--chip-bg)", padding: 3, borderRadius: "var(--r-md)", gap: 2 }}>
           {([["all", "All"], ["provider", "Providers"], ["customer", "Homeowners"]] as [RoleFilter, string][]).map(([f, label]) => (
             <button key={f} onClick={() => { setRoleFilter(f); clearSelectionOnScopeChange(); }}
               className={clsx("rounded-lg font-medium cursor-pointer transition-all", roleFilter !== f && "text-gray-500 hover:text-gray-300")}
-              style={{ padding: "7px 11px", fontSize: 11, background: roleFilter === f ? "var(--indigo-dark)" : "transparent", color: roleFilter === f ? "var(--indigo-light)" : undefined, border: "none", fontFamily: "inherit" }}
+              style={{ padding: "7px 11px", fontSize: "var(--fs-xs)", background: roleFilter === f ? "var(--indigo-dark)" : "transparent", color: roleFilter === f ? "var(--indigo-light)" : undefined, border: "none", fontFamily: "inherit" }}
             >
               {label}
             </button>
           ))}
         </div>
-        <span style={{ fontSize: 11, color: "var(--text-muted)" }}>{filtered.length.toLocaleString()} {filtered.length === 1 ? "user" : "users"}</span>
+        <div className="inline-flex" style={{ background: "var(--chip-bg)", padding: 3, borderRadius: "var(--r-md)", gap: 2 }} aria-label="Filter users by status">
+          {([['all', 'All statuses'], ['active', 'Active'], ['suspended', 'Suspended'], ['deleted', `Deleted${deleted ? ` (${deleted})` : ''}`]] as [StatusFilter, string][]).map(([f, label]) => (
+            <button key={f} onClick={() => { setStatusFilter(f); clearSelectionOnScopeChange(); }} className={clsx("rounded-lg font-medium cursor-pointer transition-all", statusFilter !== f && "text-gray-500 hover:text-gray-300")} style={{ padding: "7px 10px", fontSize: "var(--fs-xs)", background: statusFilter === f ? "var(--indigo-dark)" : "transparent", color: statusFilter === f ? "var(--indigo-light)" : undefined, border: "none", fontFamily: "inherit" }}>{label}</button>
+          ))}
+        </div>
+        <span style={{ fontSize: "var(--fs-xs)", color: "var(--text-muted)" }}>{filtered.length.toLocaleString()} {filtered.length === 1 ? "user" : "users"}</span>
       </div>
 
       {selected.size > 0 && (
-        <div className="flex items-center gap-3 flex-wrap" style={{ fontSize: 11.4, padding: "10px 14px", borderBottom: "1px solid var(--card-border)" }}>
+        <div className="flex items-center gap-3 flex-wrap" style={{ fontSize: "var(--fs-xs)", padding: "10px 14px", borderBottom: "1px solid var(--card-border)" }}>
           <span style={{ color: "var(--text-muted)" }}>{selected.size} selected</span>
           <button
             onClick={activateSelected}
             disabled={bulkBusy}
             className="flex items-center gap-1.5 font-semibold transition-colors disabled:opacity-40"
-            style={{ background: "rgba(34,197,94,0.15)", border: "1px solid rgba(34,197,94,0.2)", borderRadius: 9, padding: "4px 12px", fontSize: 11, color: "var(--success-text)", cursor: "pointer", fontFamily: "inherit" }}
+            style={{ background: "rgba(34,197,94,0.15)", border: "1px solid rgba(34,197,94,0.2)", borderRadius: "var(--r-md)", padding: "4px 12px", fontSize: "var(--fs-xs)", color: "var(--success-text)", cursor: "pointer", fontFamily: "inherit" }}
           >
             <CheckCircle size={11} /> Activate selected
           </button>
@@ -265,7 +265,7 @@ export function UsersPage() {
             onClick={openBulkSuspendPrompt}
             disabled={bulkBusy}
             className="flex items-center gap-1.5 font-semibold transition-colors disabled:opacity-40"
-            style={{ background: "rgba(245,158,11,0.15)", border: "1px solid rgba(245,158,11,0.2)", borderRadius: 9, padding: "4px 12px", fontSize: 11, color: "#f59e0b", cursor: "pointer", fontFamily: "inherit" }}
+            style={{ background: "rgba(245,158,11,0.15)", border: "1px solid rgba(245,158,11,0.2)", borderRadius: "var(--r-md)", padding: "4px 12px", fontSize: "var(--fs-xs)", color: "#f59e0b", cursor: "pointer", fontFamily: "inherit" }}
           >
             <PauseCircle size={11} /> Suspend selected
           </button>
@@ -275,7 +275,7 @@ export function UsersPage() {
       {/* Bulk suspend prompt only — single-user suspend now lives in the drawer. */}
       {suspending?.bulk && (
         <div className="flex flex-col gap-2" style={{ background: "rgba(245,158,11,0.08)", borderBottom: "1px solid var(--card-border)", padding: "12px 14px" }}>
-          <div className="text-white font-semibold" style={{ fontSize: 12 }}>Suspend {selected.size} selected user(s)</div>
+          <div className="text-white font-semibold" style={{ fontSize: "var(--fs-sm)" }}>Suspend {selected.size} selected user(s)</div>
           <input
             autoFocus
             placeholder="Reason (required)"
@@ -283,9 +283,9 @@ export function UsersPage() {
             value={suspendReason}
             onChange={(e) => setSuspendReason(e.target.value)}
             className="text-white outline-none"
-            style={{ background: "var(--input-bg)", border: `1px solid ${suspendReasonTooLong ? "rgba(239,68,68,0.5)" : "var(--border-md)"}`, borderRadius: 9, padding: "7px 11px", fontSize: 11.4, fontFamily: "inherit" }}
+            style={{ background: "var(--input-bg)", border: `1px solid ${suspendReasonTooLong ? "rgba(239,68,68,0.5)" : "var(--border-md)"}`, borderRadius: "var(--r-md)", padding: "7px 11px", fontSize: "var(--fs-xs)", fontFamily: "inherit" }}
           />
-          <div style={{ fontSize: 10, color: suspendReasonTooLong ? "var(--danger-text)" : "var(--text-muted)", marginTop: -4 }}>
+          <div style={{ fontSize: "var(--fs-2xs)", color: suspendReasonTooLong ? "var(--danger-text)" : "var(--text-muted)", marginTop: -4 }}>
             {suspendReason.length}/{REASON_MAX_LENGTH}
           </div>
           <input
@@ -298,24 +298,24 @@ export function UsersPage() {
             value={suspendDays}
             onChange={(e) => setSuspendDays(e.target.value)}
             className="text-white outline-none"
-            style={{ background: "var(--input-bg)", border: `1px solid ${suspendDaysError ? "rgba(239,68,68,0.5)" : "var(--border-md)"}`, borderRadius: 9, padding: "7px 11px", fontSize: 11.4, fontFamily: "inherit", maxWidth: 240 }}
+            style={{ background: "var(--input-bg)", border: `1px solid ${suspendDaysError ? "rgba(239,68,68,0.5)" : "var(--border-md)"}`, borderRadius: "var(--r-md)", padding: "7px 11px", fontSize: "var(--fs-xs)", fontFamily: "inherit", maxWidth: 240 }}
           />
           {suspendDaysError && (
-            <div style={{ fontSize: 10, color: "var(--danger-text)", marginTop: -4 }}>{suspendDaysError}</div>
+            <div style={{ fontSize: "var(--fs-2xs)", color: "var(--danger-text)", marginTop: -4 }}>{suspendDaysError}</div>
           )}
           <div className="flex items-center gap-2 mt-1">
             <button
               onClick={confirmSuspend}
               disabled={bulkBusy || !suspendReason.trim() || suspendReasonTooLong || !!suspendDaysError}
               className="font-semibold transition-colors disabled:opacity-40"
-              style={{ background: "rgba(245,158,11,0.2)", border: "1px solid rgba(245,158,11,0.3)", borderRadius: 9, padding: "5px 14px", fontSize: 11, color: "#f59e0b", cursor: "pointer", fontFamily: "inherit" }}
+              style={{ background: "rgba(245,158,11,0.2)", border: "1px solid rgba(245,158,11,0.3)", borderRadius: "var(--r-md)", padding: "5px 14px", fontSize: "var(--fs-xs)", color: "#f59e0b", cursor: "pointer", fontFamily: "inherit" }}
             >
               {bulkBusy ? "Suspending…" : "Confirm suspend"}
             </button>
             <button
               onClick={() => setSuspending(null)}
               className="font-semibold transition-colors"
-              style={{ background: "transparent", border: "1px solid var(--border-md)", borderRadius: 9, padding: "5px 14px", fontSize: 11, color: "var(--text-muted)", cursor: "pointer", fontFamily: "inherit" }}
+              style={{ background: "transparent", border: "1px solid var(--border-md)", borderRadius: "var(--r-md)", padding: "5px 14px", fontSize: "var(--fs-xs)", color: "var(--text-muted)", cursor: "pointer", fontFamily: "inherit" }}
             >
               Cancel
             </button>
@@ -323,8 +323,14 @@ export function UsersPage() {
         </div>
       )}
 
-        <div className="overflow-x-auto">
-          <table className="data-table">
+        <div
+          className="overflow-x-auto pb-1"
+          role="region"
+          aria-label="Users table"
+          tabIndex={0}
+          style={{ scrollbarColor: "var(--border-md) transparent" }}
+        >
+          <table className="data-table" style={{ minWidth: 620 }}>
             <thead>
               <tr>
                 <th style={{ width: 30 }}>
@@ -366,8 +372,8 @@ export function UsersPage() {
                         style={{
                           width: 34,
                           height: 34,
-                          borderRadius: 10,
-                          fontSize: 10,
+                          borderRadius: "var(--r-md)",
+                          fontSize: "var(--fs-2xs)",
                           background: u.isProvider ? "rgba(34,195,214,0.10)" : "rgba(34,197,94,0.10)",
                           color: u.isProvider ? "#7ce3eb" : "#61d98a",
                         }}
@@ -375,8 +381,8 @@ export function UsersPage() {
                         {u.initials}
                       </div>
                       <div>
-                        <div className="text-white font-medium" style={{ fontSize: 11.4 }}>{u.name}</div>
-                        <div style={{ fontSize: 9.8, color: "var(--text-muted)" }}>{u.email}</div>
+                        <div className="text-white font-medium" style={{ fontSize: "var(--fs-xs)" }}>{u.name}</div>
+                        <div style={{ fontSize: "var(--fs-3xs)", color: "var(--text-muted)" }}>{u.email}</div>
                       </div>
                     </div>
                   </td>
@@ -386,15 +392,15 @@ export function UsersPage() {
                     </span>
                   </td>
                   <td><span className={clsx("badge", `badge-${u.status.toLowerCase()}`)}>{u.status}</span></td>
-                  <td className="hidden md:table-cell" style={{ color: "var(--text-light)", fontSize: 11.4 }}>{u.joined}</td>
-                  <td className="hidden lg:table-cell" style={{ color: "var(--text-light)", fontSize: 11.4 }}>{u.activity}</td>
+                  <td className="hidden md:table-cell" style={{ color: "var(--text-light)", fontSize: "var(--fs-xs)" }}>{u.joined}</td>
+                  <td className="hidden lg:table-cell" style={{ color: "var(--text-light)", fontSize: "var(--fs-xs)" }}>{u.activity}</td>
                   <td onClick={(e) => e.stopPropagation()}>
                     <button
                       title="More actions"
                       onClick={() => setReviewingId(u.id)}
                       aria-label={`Show details for ${u.name}`}
                       className="flex items-center justify-center rounded-lg transition-all hover:bg-white/10"
-                      style={{ width: 30, height: 30, background: "transparent", border: "none", cursor: "pointer", color: "var(--text-muted)", fontSize: 18, letterSpacing: 2 }}
+                      style={{ width: 30, height: 30, background: "transparent", border: "none", cursor: "pointer", color: "var(--text-muted)", fontSize: "var(--fs-xl)", letterSpacing: 2 }}
                     >
                       ···
                     </button>
@@ -403,7 +409,7 @@ export function UsersPage() {
               ))}
               {filtered.length === 0 && (
                 <tr>
-                  <td colSpan={7} className="text-center py-12" style={{ color: "var(--text-muted)", fontSize: 13 }}>
+                  <td colSpan={7} className="text-center py-12" style={{ color: "var(--text-muted)", fontSize: "var(--fs-md)" }}>
                     {/* Three distinct states — saying "No users yet" while the
                         initial load is still in flight (up to a 60s Render
                         cold start) would be a confident lie. */}
@@ -417,6 +423,9 @@ export function UsersPage() {
               )}
             </tbody>
           </table>
+        </div>
+        <div className="md:hidden px-4 py-2" style={{ color: "var(--text-muted)", fontSize: "var(--fs-2xs)" }}>
+          Swipe horizontally to view all user details.
         </div>
         <Pagination page={page} pageSize={PAGE_SIZE} total={filtered.length} onPageChange={setPage} itemLabel="users" />
       </div>
@@ -432,7 +441,7 @@ export function UsersPage() {
               <button
                 onClick={() => setReviewingId(null)}
                 className="flex-1 font-semibold transition-colors"
-                style={{ background: "var(--chip-bg)", border: "1px solid var(--border-md)", borderRadius: 9, padding: "9px 14px", fontSize: 12, color: "var(--text-light)", cursor: "pointer", fontFamily: "inherit" }}
+                style={{ background: "var(--chip-bg)", border: "1px solid var(--border-md)", borderRadius: "var(--r-md)", padding: "9px 14px", fontSize: "var(--fs-sm)", color: "var(--text-light)", cursor: "pointer", fontFamily: "inherit" }}
               >
                 Close
               </button>
@@ -440,26 +449,26 @@ export function UsersPage() {
                 <button
                   onClick={() => reviewing && openSuspendPrompt(reviewing.id)}
                   className="flex-1 flex items-center justify-center gap-1.5 font-semibold transition-colors"
-                  style={{ background: "#8b3b3b", border: "none", borderRadius: 9, padding: "9px 14px", fontSize: 12, color: "#fff", cursor: "pointer", fontFamily: "inherit" }}
+                  style={{ background: "#8b3b3b", border: "none", borderRadius: "var(--r-md)", padding: "9px 14px", fontSize: "var(--fs-sm)", color: "#fff", cursor: "pointer", fontFamily: "inherit" }}
                 >
                   <PauseCircle size={13} /> Suspend Account
                 </button>
-              ) : (
+              ) : reviewing?.status === "Suspended" ? (
                 <button
                   onClick={() => reviewing && handleActivateOne(reviewing.id)}
                   disabled={activateBusyId === reviewing?.id}
                   className="flex-1 flex items-center justify-center gap-1.5 font-semibold transition-colors disabled:opacity-50"
-                  style={{ background: "#1f6b45", border: "none", borderRadius: 9, padding: "9px 14px", fontSize: 12, color: "#fff", cursor: "pointer", fontFamily: "inherit" }}
+                  style={{ background: "#1f6b45", border: "none", borderRadius: "var(--r-md)", padding: "9px 14px", fontSize: "var(--fs-sm)", color: "#fff", cursor: "pointer", fontFamily: "inherit" }}
                 >
                   <CheckCircle size={13} /> {activateBusyId === reviewing?.id ? "Reinstating…" : "Reinstate Account"}
                 </button>
-              )}
+              ) : null}
             </>
           ) : (
             <button
               onClick={() => setReviewingId(null)}
               className="flex-1 font-semibold transition-colors"
-              style={{ background: "var(--chip-bg)", border: "1px solid var(--border-md)", borderRadius: 9, padding: "9px 14px", fontSize: 12, color: "var(--text-light)", cursor: "pointer", fontFamily: "inherit" }}
+              style={{ background: "var(--chip-bg)", border: "1px solid var(--border-md)", borderRadius: "var(--r-md)", padding: "9px 14px", fontSize: "var(--fs-sm)", color: "var(--text-light)", cursor: "pointer", fontFamily: "inherit" }}
             >
               Close
             </button>
@@ -493,7 +502,7 @@ export function UsersPage() {
 
             {suspending && !suspending.bulk && suspending.id === reviewing.id && (
               <DrawerSection>
-                <div style={{ fontSize: 9, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 10 }}>Suspend this user</div>
+                <div style={{ fontSize: "var(--fs-3xs)", fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 10 }}>Suspend this user</div>
                 <input
                   autoFocus
                   placeholder="Reason (required)"
@@ -501,9 +510,9 @@ export function UsersPage() {
                   value={suspendReason}
                   onChange={(e) => setSuspendReason(e.target.value)}
                   className="w-full text-white outline-none mb-2"
-                  style={{ background: "var(--input-bg)", border: `1px solid ${suspendReasonTooLong ? "rgba(239,68,68,0.5)" : "var(--border-md)"}`, borderRadius: 9, padding: "8px 11px", fontSize: 12, fontFamily: "inherit" }}
+                  style={{ background: "var(--input-bg)", border: `1px solid ${suspendReasonTooLong ? "rgba(239,68,68,0.5)" : "var(--border-md)"}`, borderRadius: "var(--r-md)", padding: "8px 11px", fontSize: "var(--fs-sm)", fontFamily: "inherit" }}
                 />
-                <div style={{ fontSize: 10, color: suspendReasonTooLong ? "var(--danger-text)" : "var(--text-muted)", marginBottom: 8 }}>
+                <div style={{ fontSize: "var(--fs-2xs)", color: suspendReasonTooLong ? "var(--danger-text)" : "var(--text-muted)", marginBottom: "var(--sp-2)" }}>
                   {suspendReason.length}/{REASON_MAX_LENGTH}
                 </div>
                 <input
@@ -516,24 +525,24 @@ export function UsersPage() {
                   value={suspendDays}
                   onChange={(e) => setSuspendDays(e.target.value)}
                   className="w-full text-white outline-none"
-                  style={{ background: "var(--input-bg)", border: `1px solid ${suspendDaysError ? "rgba(239,68,68,0.5)" : "var(--border-md)"}`, borderRadius: 9, padding: "8px 11px", fontSize: 12, fontFamily: "inherit" }}
+                  style={{ background: "var(--input-bg)", border: `1px solid ${suspendDaysError ? "rgba(239,68,68,0.5)" : "var(--border-md)"}`, borderRadius: "var(--r-md)", padding: "8px 11px", fontSize: "var(--fs-sm)", fontFamily: "inherit" }}
                 />
                 {suspendDaysError && (
-                  <div style={{ fontSize: 10, color: "var(--danger-text)", marginTop: 4 }}>{suspendDaysError}</div>
+                  <div style={{ fontSize: "var(--fs-2xs)", color: "var(--danger-text)", marginTop: "var(--sp-1)" }}>{suspendDaysError}</div>
                 )}
                 <div className="flex items-center gap-2 mt-3">
                   <button
                     onClick={confirmSuspend}
                     disabled={bulkBusy || !suspendReason.trim() || suspendReasonTooLong || !!suspendDaysError}
                     className="font-semibold transition-colors disabled:opacity-40"
-                    style={{ background: "rgba(245,158,11,0.2)", border: "1px solid rgba(245,158,11,0.3)", borderRadius: 9, padding: "7px 16px", fontSize: 11.4, color: "#f59e0b", cursor: "pointer", fontFamily: "inherit" }}
+                    style={{ background: "rgba(245,158,11,0.2)", border: "1px solid rgba(245,158,11,0.3)", borderRadius: "var(--r-md)", padding: "7px 16px", fontSize: "var(--fs-xs)", color: "#f59e0b", cursor: "pointer", fontFamily: "inherit" }}
                   >
                     {bulkBusy ? "Suspending…" : "Confirm suspend"}
                   </button>
                   <button
                     onClick={() => setSuspending(null)}
                     className="font-semibold transition-colors"
-                    style={{ background: "transparent", border: "1px solid var(--border-md)", borderRadius: 9, padding: "7px 16px", fontSize: 11.4, color: "var(--text-muted)", cursor: "pointer", fontFamily: "inherit" }}
+                    style={{ background: "transparent", border: "1px solid var(--border-md)", borderRadius: "var(--r-md)", padding: "7px 16px", fontSize: "var(--fs-xs)", color: "var(--text-muted)", cursor: "pointer", fontFamily: "inherit" }}
                   >
                     Cancel
                   </button>
@@ -546,7 +555,7 @@ export function UsersPage() {
                 onClick={() => handleSendReset(reviewing.id)}
                 disabled={resetBusyId === reviewing.id}
                 className="flex items-center gap-1.5 font-semibold transition-colors disabled:opacity-40"
-                style={{ background: "var(--indigo-dark)", border: "1px solid rgba(34,195,214,0.25)", borderRadius: 9, padding: "7px 14px", fontSize: 11.4, color: "var(--indigo-light)", cursor: "pointer", fontFamily: "inherit" }}
+                style={{ background: "var(--indigo-dark)", border: "1px solid rgba(34,195,214,0.25)", borderRadius: "var(--r-md)", padding: "7px 14px", fontSize: "var(--fs-xs)", color: "var(--indigo-light)", cursor: "pointer", fontFamily: "inherit" }}
               >
                 <KeyRound size={12} />
                 {resetSentId === reviewing.id ? "Reset email sent" : resetBusyId === reviewing.id ? "Sending…" : "Send password reset"}

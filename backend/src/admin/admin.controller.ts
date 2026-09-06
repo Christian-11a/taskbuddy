@@ -44,6 +44,7 @@ import {
 import { ChatService } from '../chat/chat.service';
 import { WalletService } from '../wallet/wallet.service';
 import {
+  IssueRecoveryCreditDto,
   ListWalletTxnQueryDto,
   ListWithdrawalsQueryDto,
   RejectWithdrawalDto,
@@ -155,6 +156,20 @@ export class AdminController {
   @Get('wallet-transactions')
   listWalletTransactions(@Query() query: ListWalletTxnQueryDto) {
     return this.walletService.listForAdmin(query);
+  }
+
+  /**
+   * Issues a trust credit after a dispute (migration 0021). The only route in
+   * the API that adds balance without a settled Stripe charge — deliberately
+   * admin-only and audited, since `POST /wallet/transactions` refuses credits
+   * from everyone including admins for exactly this reason.
+   */
+  @Post('wallet-transactions/recovery-credit')
+  issueRecoveryCredit(
+    @CurrentUser() admin: Profile,
+    @Body() dto: IssueRecoveryCreditDto,
+  ) {
+    return this.walletService.issueRecoveryCredit(admin, dto);
   }
 
   // ── Withdrawal settlement queue (migration 0023) ──────────────────────────

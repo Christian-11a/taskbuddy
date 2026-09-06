@@ -14,7 +14,9 @@ import {
 } from '@nestjs/common';
 import type { RawBodyRequest } from '@nestjs/common';
 import type { Request, Response } from 'express';
+import { SkipThrottle } from '@nestjs/throttler';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { ThrottlePayments } from '../common/throttle';
 import { CurrentUser } from '../auth/current-user.decorator';
 import { PaymentsService } from './payments.service';
 import { StripeService } from './stripe.service';
@@ -48,6 +50,7 @@ export class PaymentsController {
    */
   @Post('topup')
   @HttpCode(200)
+  @ThrottlePayments()
   @UseGuards(JwtAuthGuard)
   topup(@CurrentUser() user: Profile, @Body() dto: CreateTopupDto) {
     return this.payments.createTopupIntent(user, dto);
@@ -60,6 +63,7 @@ export class PaymentsController {
    */
   @Post('checkout-session')
   @HttpCode(200)
+  @ThrottlePayments()
   @UseGuards(JwtAuthGuard)
   checkoutSession(
     @CurrentUser() user: Profile,
@@ -110,6 +114,12 @@ export class PaymentsController {
    */
   @Post('webhook')
   @HttpCode(200)
+  // Exempt from the rate limit. The caller is Stripe, already authenticated by
+  // the signature below, and it retries for three days — throttling it would
+  // only delay the credit the payer is waiting for. It also arrives from
+  // Stripe's own address range, so a burst of legitimate events (a batch
+  // redelivery after an outage) would otherwise all count against one IP.
+  @SkipThrottle()
   async webhook(
     @Req() req: RawBodyRequest<Request>,
     @Headers('stripe-signature') signature: string,

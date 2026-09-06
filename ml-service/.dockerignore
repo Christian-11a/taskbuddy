@@ -1,0 +1,15 @@
+# The 40k-row training set. Not committed to git, not needed to serve — only
+# train_model.py reads it, and training does not happen in the container.
+taskbuddy_synthetic_dataset.csv
+train_model.py
+
+# Local interpreter and caches — copying these in would shadow the wheels pip
+# installs for the container's own architecture.
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+
+# Docs, not runtime.
+README.md
+SPACE_README.md

@@ -1,4 +1,8 @@
-import { BadRequestException, ForbiddenException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  ForbiddenException,
+} from '@nestjs/common';
 import { EscrowService, type EscrowRow } from './escrow.service';
 import { DisputesService } from './disputes.service';
 import type { SupabaseService } from '../supabase/supabase.service';
@@ -161,7 +165,12 @@ describe('EscrowService', () => {
             error: null,
           },
         ],
-        escrow_transactions: [{ data: heldEscrow, error: null }],
+        escrow_transactions: [
+          // hold() looks for an existing row before inserting, so a second
+          // hire cannot silently inherit the first one's money.
+          { data: null, error: null },
+          { data: heldEscrow, error: null },
+        ],
         wallet_transactions: [okLedger()],
       });
       const service = new EscrowService(
@@ -171,7 +180,8 @@ describe('EscrowService', () => {
 
       const result = await service.hold('j1', 'p1');
 
-      expect(result).toMatchObject({ status: 'held', amount: 1500 });
+      expect(result.escrow).toMatchObject({ status: 'held', amount: 1500 });
+      expect(result.placed).toBe(true);
       expect(ledgerWrites(calls)).toEqual([
         expect.objectContaining({
           profile_id: 'c1',
@@ -196,14 +206,20 @@ describe('EscrowService', () => {
             error: null,
           },
         ],
+        escrow_transactions: [{ data: null, error: null }],
       });
       const service = new EscrowService(supabase, createWalletMock(200).wallet);
 
       await expect(service.hold('j1', 'p1')).rejects.toThrow(
         /Insufficient wallet balance/,
       );
-      // Nothing was held and nobody was debited.
-      expect(calls.some((c) => c.table === 'escrow_transactions')).toBe(false);
+      // Nothing was written and nobody was debited. (The read that looks for
+      // an existing hold is fine; it is the insert that must not happen.)
+      expect(
+        calls.some(
+          (c) => c.table === 'escrow_transactions' && c.method === 'insert',
+        ),
+      ).toBe(false);
       expect(ledgerWrites(calls)).toEqual([]);
     });
 
@@ -219,7 +235,10 @@ describe('EscrowService', () => {
       });
       const service = new EscrowService(supabase, wallet);
 
-      expect(await service.hold('j1', 'p1')).toBeNull();
+      expect(await service.hold('j1', 'p1')).toEqual({
+        escrow: null,
+        placed: false,
+      });
       expect(calls.some((c) => c.table === 'escrow_transactions')).toBe(false);
       // Bails before it ever asks about money.
       expect(availableBalanceFor).not.toHaveBeenCalled();
@@ -238,10 +257,7 @@ describe('EscrowService', () => {
             error: null,
           },
         ],
-        escrow_transactions: [
-          { data: null, error: { message: 'duplicate', code: '23505' } },
-          { data: heldEscrow, error: null }, // findByJob fallback
-        ],
+        escrow_transactions: [{ data: heldEscrow, error: null }],
       });
       const service = new EscrowService(
         supabase,
@@ -250,8 +266,103 @@ describe('EscrowService', () => {
 
       const result = await service.hold('j1', 'p1');
 
-      expect(result).toMatchObject({ id: 'e1' });
+      expect(result.escrow).toMatchObject({ id: 'e1' });
       expect(ledgerWrites(calls)).toEqual([]);
+      expect(
+        calls.some(
+          (c) => c.table === 'escrow_transactions' && c.method === 'insert',
+        ),
+      ).toBe(false);
+      // The load-bearing half: nothing was debited, so this caller must not be
+      // told it placed the hold. ApplicationsService.accept rolls back on
+      // `placed`, and a true here would refund a hire that succeeded.
+      expect(result.placed).toBe(false);
+    });
+
+    it('refuses to inherit a hold placed for a different provider', async () => {
+      // Two accepts landing together would otherwise assign the job to one
+      // provider while the money sits held for another.
+      const { supabase, calls } = createSupabaseMock({
+        jobs: [
+          {
+            data: {
+              id: 'j1',
+              title: 'Fix sink',
+              budget: 1500,
+              client_id: 'c1',
+            },
+            error: null,
+          },
+        ],
+        escrow_transactions: [{ data: heldEscrow, error: null }],
+      });
+      const service = new EscrowService(
+        supabase,
+        createWalletMock(5000).wallet,
+      );
+
+      await expect(service.hold('j1', 'p2')).rejects.toThrow(ConflictException);
+      expect(ledgerWrites(calls)).toEqual([]);
+    });
+
+    it('revives a hold that a failed hire rolled back, debiting again', async () => {
+      const { supabase, calls } = createSupabaseMock({
+        jobs: [
+          {
+            data: {
+              id: 'j1',
+              title: 'Fix sink',
+              budget: 1500,
+              client_id: 'c1',
+            },
+            error: null,
+          },
+        ],
+        escrow_transactions: [
+          { data: { ...heldEscrow, status: 'cancelled' }, error: null },
+          { data: heldEscrow, error: null },
+        ],
+        wallet_transactions: [okLedger()],
+      });
+      const service = new EscrowService(
+        supabase,
+        createWalletMock(5000).wallet,
+      );
+
+      const result = await service.hold('j1', 'p1');
+
+      // Without the re-debit the retry would adopt an empty row and hire
+      // someone against money that had already gone back to the client.
+      expect(result.escrow).toMatchObject({ status: 'held' });
+      expect(result.placed).toBe(true);
+      expect(ledgerWrites(calls)).toEqual([
+        expect.objectContaining({ kind: 'escrow_hold', amount: 1500 }),
+      ]);
+    });
+
+    it('refuses to re-hold an escrow that has already been released', async () => {
+      const { supabase } = createSupabaseMock({
+        jobs: [
+          {
+            data: {
+              id: 'j1',
+              title: 'Fix sink',
+              budget: 1500,
+              client_id: 'c1',
+            },
+            error: null,
+          },
+        ],
+        escrow_transactions: [
+          { data: { ...heldEscrow, status: 'released' }, error: null },
+        ],
+      });
+      const service = new EscrowService(
+        supabase,
+        createWalletMock(5000).wallet,
+      );
+
+      await expect(service.hold('j1', 'p1')).rejects.toThrow(ConflictException);
     });
   });
 
@@ -369,7 +480,52 @@ describe('EscrowService', () => {
       ]);
     });
 
+    it('raises rather than reporting a payout that did not happen', async () => {
+      // This used to return null. A caller that reads silence as success —
+      // a retried webhook, a future payout rail — would believe the provider
+      // had been paid.
+      const { supabase, calls } = createSupabaseMock({
+        escrow_transactions: [
+          { data: { ...heldEscrow, status: 'released' }, error: null },
+        ],
+      });
+      const service = new EscrowService(supabase, createWalletMock().wallet);
+
+      await expect(service.release('j1')).rejects.toThrow(ConflictException);
+      expect(ledgerWrites(calls)).toEqual([]);
+    });
+
+    it('raises when the job never had an escrow hold at all', async () => {
+      const { supabase } = createSupabaseMock({
+        escrow_transactions: [{ data: null, error: null }],
+      });
+      const service = new EscrowService(supabase, createWalletMock().wallet);
+
+      await expect(service.release('j1')).rejects.toThrow(BadRequestException);
+    });
+  });
+
+  describe('releaseIfHeld', () => {
+    it('pays out a held escrow, same as release', async () => {
+      const { supabase, calls } = createSupabaseMock({
+        escrow_transactions: [
+          { data: heldEscrow, error: null },
+          { data: { ...heldEscrow, status: 'released' }, error: null },
+        ],
+        jobs: [{ data: { title: 'Fix sink' }, error: null }],
+        wallet_transactions: [okLedger()],
+      });
+      const service = new EscrowService(supabase, createWalletMock().wallet);
+
+      expect(await service.releaseIfHeld('j1')).toMatchObject({
+        status: 'released',
+      });
+      expect(ledgerWrites(calls)[0]).toMatchObject({ kind: 'payout' });
+    });
+
     it('leaves a disputed escrow alone and pays nobody', async () => {
+      // Frozen until an admin decides it either way — not an error, and not a
+      // payout.
       const { supabase, calls } = createSupabaseMock({
         escrow_transactions: [
           { data: { ...heldEscrow, status: 'disputed' }, error: null },
@@ -377,12 +533,113 @@ describe('EscrowService', () => {
       });
       const service = new EscrowService(supabase, createWalletMock().wallet);
 
-      expect(await service.release('j1')).toBeNull();
+      expect(await service.releaseIfHeld('j1')).toBeNull();
+      expect(ledgerWrites(calls)).toEqual([]);
+    });
+
+    it('returns null for a job posted without a budget', async () => {
+      const { supabase } = createSupabaseMock({
+        escrow_transactions: [{ data: null, error: null }],
+      });
+      const service = new EscrowService(supabase, createWalletMock().wallet);
+
+      expect(await service.releaseIfHeld('j1')).toBeNull();
+    });
+
+    it('still raises on an escrow that was already released', async () => {
+      const { supabase } = createSupabaseMock({
+        escrow_transactions: [
+          { data: { ...heldEscrow, status: 'released' }, error: null },
+        ],
+      });
+      const service = new EscrowService(supabase, createWalletMock().wallet);
+
+      await expect(service.releaseIfHeld('j1')).rejects.toThrow(
+        ConflictException,
+      );
+    });
+  });
+
+  describe('releaseHoldForFailedHire', () => {
+    it('returns the money when an accept failed after its hold was placed', async () => {
+      const { supabase, calls } = createSupabaseMock({
+        escrow_transactions: [
+          { data: heldEscrow, error: null },
+          { data: { ...heldEscrow, status: 'cancelled' }, error: null },
+        ],
+        jobs: [{ data: { title: 'Fix sink' }, error: null }],
+        wallet_transactions: [okLedger()],
+      });
+      const service = new EscrowService(supabase, createWalletMock().wallet);
+
+      await service.releaseHoldForFailedHire('j1');
+
+      expect(ledgerWrites(calls)).toEqual([
+        expect.objectContaining({
+          profile_id: 'c1',
+          direction: 'credit',
+          kind: 'refund',
+          amount: 1500,
+        }),
+      ]);
+    });
+
+    it('credits nobody when the hold moved on before the rollback ran', async () => {
+      const { supabase, calls } = createSupabaseMock({
+        escrow_transactions: [
+          { data: heldEscrow, error: null },
+          { data: null, error: null }, // the update matched nothing
+        ],
+      });
+      const service = new EscrowService(supabase, createWalletMock().wallet);
+
+      await service.releaseHoldForFailedHire('j1');
+
+      expect(ledgerWrites(calls)).toEqual([]);
+    });
+
+    it('does nothing when there is no live hold to undo', async () => {
+      const { supabase, calls } = createSupabaseMock({
+        escrow_transactions: [{ data: null, error: null }],
+      });
+      const service = new EscrowService(supabase, createWalletMock().wallet);
+
+      await service.releaseHoldForFailedHire('j1');
+
       expect(ledgerWrites(calls)).toEqual([]);
     });
   });
 
   describe('cancelForJob', () => {
+    it('credits nobody when another cancel got there first', async () => {
+      // A client tapping Cancel while the provider taps Decline: two
+      // endpoints, one escrow, both reading 'held'. The conditional update
+      // matches no row for the loser, and without that check both would
+      // credit the client — refunding one hold twice.
+      const { supabase, calls } = createSupabaseMock({
+        escrow_transactions: [
+          { data: heldEscrow, error: null },
+          { data: null, error: null }, // the update matched nothing
+        ],
+      });
+      const service = new EscrowService(supabase, createWalletMock().wallet);
+
+      expect(await service.cancelForJob('j1')).toBeNull();
+      expect(ledgerWrites(calls)).toEqual([]);
+    });
+
+    it('leaves a disputed escrow for an admin rather than refunding it', async () => {
+      const { supabase, calls } = createSupabaseMock({
+        escrow_transactions: [
+          { data: { ...heldEscrow, status: 'disputed' }, error: null },
+        ],
+      });
+      const service = new EscrowService(supabase, createWalletMock().wallet);
+
+      expect(await service.cancelForJob('j1')).toBeNull();
+      expect(ledgerWrites(calls)).toEqual([]);
+    });
+
     it('cancels and returns the held funds to the client', async () => {
       const { supabase, calls } = createSupabaseMock({
         escrow_transactions: [

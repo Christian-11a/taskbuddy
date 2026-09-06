@@ -119,7 +119,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
                   background: "var(--panel-bg)",
                   border: `1px solid ${t.kind === "error" ? "rgba(239,68,68,0.35)" : "rgba(34,197,94,0.3)"}`,
                   padding: "10px 12px",
-                  fontSize: 12,
+                  fontSize: "var(--fs-sm)",
                   color: "var(--text-light)",
                   boxShadow: "0 10px 30px rgba(0,0,0,0.35)",
                 }}

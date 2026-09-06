@@ -66,8 +66,8 @@ export function AuditLogPage() {
     <div>
       <div className="flex items-start justify-between flex-wrap gap-3 mb-4">
         <div>
-          <div className="text-white font-bold" style={{ fontSize: 22, letterSpacing: "-0.025em" }}>Audit Log</div>
-          <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 5, lineHeight: 1.45 }}>
+          <h1 className="text-white font-bold" style={{ fontSize: "var(--fs-2xl)", letterSpacing: "-0.025em" }}>Audit Log</h1>
+          <div style={{ fontSize: "var(--fs-sm)", color: "var(--text-muted)", marginTop: 5, lineHeight: 1.45 }}>
             Every suspend, reinstate, cancel, and dispute resolution — with the admin behind it
           </div>
         </div>
@@ -75,37 +75,37 @@ export function AuditLogPage() {
           onClick={() => void load()}
           disabled={loading}
           className="flex items-center gap-1.5 font-semibold transition-opacity hover:opacity-80 disabled:opacity-40"
-          style={{ background: "var(--chip-bg)", border: "1px solid var(--border-md)", borderRadius: 11, padding: "7px 13px", fontSize: 11.4, color: "var(--text-light)", cursor: "pointer", fontFamily: "inherit" }}
+          style={{ background: "var(--chip-bg)", border: "1px solid var(--border-md)", borderRadius: "var(--r-md)", padding: "7px 13px", fontSize: "var(--fs-xs)", color: "var(--text-light)", cursor: "pointer", fontFamily: "inherit" }}
         >
           <RefreshCw size={12} /> Refresh
         </button>
       </div>
 
       <div className="rounded-xl overflow-hidden" style={{ background: "var(--card-bg)", border: "1px solid var(--card-border)" }}>
-        <div style={{ padding: 20 }}>
+        <div style={{ padding: "var(--sp-5)" }}>
         {loading && (
-          <div className="text-center py-12" style={{ color: "var(--text-muted)", fontSize: 13 }}>Loading…</div>
+          <div role="status" aria-live="polite" className="text-center py-12" style={{ color: "var(--text-muted)", fontSize: "var(--fs-md)" }}>Loading audit log…</div>
         )}
         {!loading && error && (
-          <div className="flex items-center justify-center gap-2 py-12" style={{ color: "var(--danger-text)", fontSize: 13 }}>
+          <div role="alert" className="flex items-center justify-center gap-2 py-12" style={{ color: "var(--danger-text)", fontSize: "var(--fs-md)" }}>
             <ShieldAlert size={14} /> Could not load the audit log.
           </div>
         )}
         {!loading && !error && actions.length === 0 && (
-          <div className="text-center py-12" style={{ color: "var(--text-muted)", fontSize: 13 }}>No admin actions recorded yet.</div>
+          <div className="text-center py-12" style={{ color: "var(--text-muted)", fontSize: "var(--fs-md)" }}>No admin actions recorded yet.</div>
         )}
         {!loading && !error && actions.length > 0 && (
           <div className="flex flex-col gap-3">
             {actions.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE).map((a) => (
-              <div key={a.id} className="flex items-start justify-between gap-3" style={{ fontSize: 11.4 }}>
+              <div key={a.id} className="flex items-start justify-between gap-3" style={{ fontSize: "var(--fs-xs)" }}>
                 <div>
                   <div className="text-white font-medium capitalize">{actionLabel(a.action)}</div>
-                  <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 2 }}>
+                  <div style={{ fontSize: "var(--fs-2xs)", color: "var(--text-muted)", marginTop: 2 }}>
                     by {a.actorName} · {a.targetType} <span style={{ fontFamily: "monospace" }}>{a.targetId.slice(0, 8)}</span>
                     {typeof a.metadata.reason === "string" && a.metadata.reason && ` — "${a.metadata.reason}"`}
                   </div>
                 </div>
-                <div style={{ fontSize: 10, color: "var(--text-muted)", flexShrink: 0 }}>{formatWhen(a.createdAt)}</div>
+                <div style={{ fontSize: "var(--fs-2xs)", color: "var(--text-muted)", flexShrink: 0 }}>{formatWhen(a.createdAt)}</div>
               </div>
             ))}
           </div>

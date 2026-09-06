@@ -60,15 +60,33 @@ function createService(resultsByTable: Record<string, QueryResult[]>) {
   // Held as standalone jest.fn()s (the escrow.service.spec.ts pattern) so
   // assertions read them directly rather than off the cast object.
   const cancelForJob = jest.fn().mockResolvedValue(undefined);
-  const release = jest.fn().mockResolvedValue(undefined);
-  const escrow = { cancelForJob, release } as unknown as EscrowService;
+  const releaseIfHeld = jest.fn().mockResolvedValue(undefined);
+  const escrow = { cancelForJob, releaseIfHeld } as unknown as EscrowService;
   return {
     service: new JobsService(supabase, uploads, escrow),
     calls,
     cancelForJob,
-    release,
+    releaseIfHeld,
   };
 }
+
+/** A browsable job, as `browse()` reads them off the open/recommending list. */
+const openJob = (overrides: Record<string, unknown> = {}) => ({
+  id: 'j1',
+  client_id: 'c1',
+  title: 'Fix the sink',
+  status: 'open',
+  urgency: 'normal',
+  budget: 1000,
+  latitude: 14.676,
+  longitude: 121.0437,
+  posted_at: '2026-08-01T00:00:00Z',
+  ...overrides,
+});
+
+// Quezon City, and a point ~110km south of it.
+const QC = { latitude: 14.676, longitude: 121.0437 };
+const FAR = { latitude: 13.676, longitude: 121.0437 };
 
 describe('JobsService.accept', () => {
   it("moves an incoming booking request to 'confirmed' and tells the client", async () => {
@@ -339,5 +357,186 @@ describe('CreateJobDto scheduled_at', () => {
   it('leaves malformed values to @IsISO8601 to report', () => {
     expect(validate('not a date')).toBe(true);
     expect(validate(undefined)).toBe(true);
+  });
+});
+
+describe('JobsService.complete', () => {
+  it('pays the provider out of escrow and tells them the job closed', async () => {
+    const { service, calls, releaseIfHeld } = createService({
+      jobs: [
+        ok(job({ client_id: 'c1', status: 'in_progress' })),
+        ok(job({ status: 'completed' })),
+      ],
+      notifications: [ok(null)],
+    });
+
+    await service.complete({ id: 'c1' } as Profile, 'j1');
+
+    // `releaseIfHeld`, not `release`: a job posted without a budget has no
+    // escrow row and a disputed one is an admin's to decide, but an
+    // already-released hold reached a second time must still raise.
+    expect(releaseIfHeld).toHaveBeenCalledWith('j1');
+    expect(
+      calls.find((c) => c.table === 'jobs' && c.method === 'update')?.args[0],
+    ).toEqual({ status: 'completed' });
+  });
+
+  it('refuses to complete a job that is not under way', async () => {
+    const { service, releaseIfHeld } = createService({
+      jobs: [ok(job({ client_id: 'c1', status: 'completed' }))],
+    });
+
+    await expect(
+      service.complete({ id: 'c1' } as Profile, 'j1'),
+    ).rejects.toThrow(/Cannot complete a job in status 'completed'/);
+    expect(releaseIfHeld).not.toHaveBeenCalled();
+  });
+
+  it('refuses a job the caller does not own', async () => {
+    const { service, releaseIfHeld } = createService({
+      jobs: [ok(job({ client_id: 'someone-else', status: 'in_progress' }))],
+    });
+
+    await expect(
+      service.complete({ id: 'c1' } as Profile, 'j1'),
+    ).rejects.toThrow(ForbiddenException);
+    expect(releaseIfHeld).not.toHaveBeenCalled();
+  });
+});
+
+describe('JobsService.browse', () => {
+  it('drops jobs outside the radius and keeps the ones inside it', async () => {
+    const { service } = createService({
+      jobs: [
+        ok([openJob({ id: 'near', ...QC }), openJob({ id: 'far', ...FAR })]),
+      ],
+    });
+
+    const { jobs } = await service.browse({ ...QC, radius_km: 50 });
+
+    expect(jobs.map((j: any) => j.id)).toEqual(['near']);
+  });
+
+  it('measures the radius as a boundary, not a rounding', async () => {
+    // ~111 km apart. A 120 km radius includes it; a 100 km one does not, and
+    // the same pair of points has to answer both ways.
+    const inside = await createService({
+      jobs: [ok([openJob({ id: 'far', ...FAR })])],
+    }).service.browse({ ...QC, radius_km: 120 });
+    const outside = await createService({
+      jobs: [ok([openJob({ id: 'far', ...FAR })])],
+    }).service.browse({ ...QC, radius_km: 100 });
+
+    expect(inside.jobs).toHaveLength(1);
+    expect(outside.jobs).toHaveLength(0);
+  });
+
+  it('keeps a job whose own coordinates are missing', async () => {
+    // Distance is unknowable, not infinite. Hiding it would silently drop
+    // every job posted before coordinates were required.
+    const { service } = createService({
+      jobs: [ok([openJob({ id: 'nowhere', latitude: null, longitude: null })])],
+    });
+
+    const { jobs } = await service.browse({ ...QC, radius_km: 1 });
+
+    expect(jobs.map((j: any) => j.id)).toEqual(['nowhere']);
+    expect(jobs[0].distance_km).toBeNull();
+  });
+
+  it('does not filter by distance at all when the provider sends no location', async () => {
+    const { service } = createService({
+      jobs: [
+        ok([openJob({ id: 'near', ...QC }), openJob({ id: 'far', ...FAR })]),
+      ],
+    });
+
+    const { jobs } = await service.browse({});
+
+    expect(jobs.map((j: any) => j.id)).toEqual(['near', 'far']);
+    expect(jobs[0].distance_km).toBeNull();
+  });
+
+  it('ranks urgent work first, then the nearest of equal urgency', async () => {
+    const { service } = createService({
+      jobs: [
+        ok([
+          openJob({ id: 'normal-near', urgency: 'normal', ...QC }),
+          openJob({ id: 'urgent-far', urgency: 'urgent', ...FAR }),
+          openJob({ id: 'urgent-near', urgency: 'urgent', ...QC }),
+          openJob({ id: 'flexible-near', urgency: 'flexible', ...QC }),
+        ]),
+      ],
+    });
+
+    const { jobs } = await service.browse({ ...QC, radius_km: 500 });
+
+    expect(jobs.map((j: any) => j.id)).toEqual([
+      'urgent-near',
+      'urgent-far',
+      'normal-near',
+      'flexible-near',
+    ]);
+  });
+
+  it('falls back to newest first when urgency and distance both tie', async () => {
+    const { service } = createService({
+      jobs: [
+        ok([
+          openJob({ id: 'older', posted_at: '2026-08-01T00:00:00Z', ...QC }),
+          openJob({ id: 'newer', posted_at: '2026-08-09T00:00:00Z', ...QC }),
+        ]),
+      ],
+    });
+
+    const { jobs } = await service.browse({ ...QC });
+
+    expect(jobs.map((j: any) => j.id)).toEqual(['newer', 'older']);
+  });
+
+  it('summarises the whole filtered set, not the page being returned', async () => {
+    // The feed header says "3 jobs near you"; paging to the second page must
+    // not make that number shrink.
+    const { service } = createService({
+      jobs: [
+        ok([
+          openJob({ id: 'a', urgency: 'urgent', budget: 1000, ...QC }),
+          openJob({ id: 'b', urgency: 'normal', budget: 500, ...QC }),
+          openJob({ id: 'c', urgency: 'urgent', budget: 250, ...QC }),
+        ]),
+      ],
+    });
+
+    const { jobs, summary } = await service.browse({ ...QC, limit: 1 });
+
+    expect(jobs).toHaveLength(1);
+    expect(summary).toEqual({
+      open_count: 3,
+      urgent_count: 2,
+      potential_payout: 1750,
+    });
+  });
+
+  it('only ever offers open and recommending work', async () => {
+    // Assigned jobs are somebody's booking; the filter is in SQL, so this
+    // asserts the query rather than the result.
+    const { service, calls } = createService({ jobs: [ok([])] });
+
+    await service.browse({});
+
+    expect(calls.find((c) => c.method === 'in')?.args).toEqual([
+      'status',
+      ['open', 'recommending'],
+    ]);
+  });
+
+  it('reports every job as unreviewed on the feed', async () => {
+    const { service } = createService({
+      jobs: [ok([openJob({ reviews: null })])],
+    });
+
+    const { jobs } = await service.browse({});
+
+    expect(jobs[0].has_review).toBe(false);
   });
 });

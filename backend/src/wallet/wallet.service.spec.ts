@@ -1,6 +1,7 @@
-import { BadRequestException } from '@nestjs/common';
+import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { WalletService } from './wallet.service';
 import type { SupabaseService } from '../supabase/supabase.service';
+import type { AdminActionsService } from '../admin/admin-actions.service';
 import type { Profile } from '../common/types';
 
 type QueryResult = {
@@ -44,6 +45,15 @@ function createSupabaseMock(results: QueryResult[]) {
   return { supabase: { admin: { from } } as unknown as SupabaseService, calls };
 }
 
+/**
+ * Only `issueRecoveryCredit` writes to the audit trail; every other method
+ * gets this and never touches it.
+ */
+function createAdminActionsMock() {
+  const record = jest.fn().mockResolvedValue(undefined);
+  return { mock: { record } as unknown as AdminActionsService, record };
+}
+
 const user = { id: 'u1', role: 'client' } as Profile;
 const admin = { id: 'a1', role: 'admin' } as Profile;
 
@@ -60,7 +70,10 @@ describe('WalletService', () => {
           error: null,
         },
       ]);
-      const service = new WalletService(supabase);
+      const service = new WalletService(
+        supabase,
+        createAdminActionsMock().mock,
+      );
 
       expect(await service.balanceFor('u1')).toBe(750);
     });
@@ -74,7 +87,10 @@ describe('WalletService', () => {
         { data: [{ direction: 'credit', amount: '1000.00' }], error: null },
         { data: [{ amount: '400.00' }], error: null },
       ]);
-      const service = new WalletService(supabase);
+      const service = new WalletService(
+        supabase,
+        createAdminActionsMock().mock,
+      );
 
       expect(await service.availableBalanceFor('u1')).toBe(600);
     });
@@ -89,7 +105,10 @@ describe('WalletService', () => {
         { data: [], error: null },
         { data: { id: 't2' }, error: null },
       ]);
-      const service = new WalletService(supabase);
+      const service = new WalletService(
+        supabase,
+        createAdminActionsMock().mock,
+      );
 
       await service.requestWithdrawal(user, {
         amount: 300,
@@ -110,7 +129,10 @@ describe('WalletService', () => {
         { data: [{ direction: 'credit', amount: '100.00' }], error: null },
         { data: [], error: null },
       ]);
-      const service = new WalletService(supabase);
+      const service = new WalletService(
+        supabase,
+        createAdminActionsMock().mock,
+      );
 
       await expect(
         service.requestWithdrawal(user, { amount: 500, destination: 'GCash' }),
@@ -123,7 +145,10 @@ describe('WalletService', () => {
         { data: [{ direction: 'credit', amount: '1000.00' }], error: null },
         { data: [{ amount: '800.00' }], error: null },
       ]);
-      const service = new WalletService(supabase);
+      const service = new WalletService(
+        supabase,
+        createAdminActionsMock().mock,
+      );
 
       await expect(
         service.requestWithdrawal(user, { amount: 500, destination: 'GCash' }),
@@ -148,7 +173,10 @@ describe('WalletService', () => {
         { data: { id: 'w1', status: 'completed' }, error: null },
         { data: null, error: null }, // notification
       ]);
-      const service = new WalletService(supabase);
+      const service = new WalletService(
+        supabase,
+        createAdminActionsMock().mock,
+      );
 
       await service.settleWithdrawal(admin, 'w1', 'GC-99');
 
@@ -184,7 +212,10 @@ describe('WalletService', () => {
         },
         { data: [{ direction: 'credit', amount: '100.00' }], error: null },
       ]);
-      const service = new WalletService(supabase);
+      const service = new WalletService(
+        supabase,
+        createAdminActionsMock().mock,
+      );
 
       await expect(service.settleWithdrawal(admin, 'w1')).rejects.toThrow(
         BadRequestException,
@@ -204,7 +235,10 @@ describe('WalletService', () => {
           error: null,
         },
       ]);
-      const service = new WalletService(supabase);
+      const service = new WalletService(
+        supabase,
+        createAdminActionsMock().mock,
+      );
 
       await expect(service.settleWithdrawal(admin, 'w1')).rejects.toThrow(
         BadRequestException,
@@ -218,7 +252,10 @@ describe('WalletService', () => {
       const { supabase, calls } = createSupabaseMock([
         { data: { id: 't1' }, error: null },
       ]);
-      const service = new WalletService(supabase);
+      const service = new WalletService(
+        supabase,
+        createAdminActionsMock().mock,
+      );
 
       // Anything else here is free money: this endpoint needs only a valid JWT,
       // and the balance it would create spends like paid-for balance in escrow.
@@ -238,7 +275,10 @@ describe('WalletService', () => {
         { data: [], error: null },
         { data: { id: 't2' }, error: null },
       ]);
-      const service = new WalletService(supabase);
+      const service = new WalletService(
+        supabase,
+        createAdminActionsMock().mock,
+      );
 
       await service.create(user, {
         direction: 'debit',
@@ -268,7 +308,10 @@ describe('WalletService', () => {
       const { supabase, calls } = createSupabaseMock([
         { data: rows, error: null, count: 1 },
       ]);
-      const service = new WalletService(supabase);
+      const service = new WalletService(
+        supabase,
+        createAdminActionsMock().mock,
+      );
 
       const result = await service.listForAdmin({
         kind: 'topup',
@@ -305,7 +348,10 @@ describe('WalletService', () => {
       const { supabase } = createSupabaseMock([
         { data: [], error: null, count: 0 },
       ]);
-      const service = new WalletService(supabase);
+      const service = new WalletService(
+        supabase,
+        createAdminActionsMock().mock,
+      );
 
       await expect(service.listForAdmin({})).resolves.toEqual({
         transactions: [],
@@ -317,11 +363,172 @@ describe('WalletService', () => {
       const { supabase } = createSupabaseMock([
         { data: null, error: { message: 'boom' } },
       ]);
-      const service = new WalletService(supabase);
+      const service = new WalletService(
+        supabase,
+        createAdminActionsMock().mock,
+      );
 
       await expect(service.listForAdmin({})).rejects.toThrow(
         BadRequestException,
       );
+    });
+  });
+  describe('issueRecoveryCredit', () => {
+    const activeRecipient = { id: 'u1', deleted_at: null };
+
+    it('writes a completed credit tagged as a recovery voucher', async () => {
+      // The only path in the API that adds balance outside a settled Stripe
+      // charge or an escrow release. `kind` is set here, never read from the
+      // body — a caller who could name it could tag their own credit
+      // `payout` and inflate reported platform revenue.
+      const { supabase, calls } = createSupabaseMock([
+        { data: activeRecipient, error: null },
+        { data: { id: 'w1' }, error: null },
+        { data: null, error: null },
+      ]);
+      const { mock, record } = createAdminActionsMock();
+      const service = new WalletService(supabase, mock);
+
+      const result = await service.issueRecoveryCredit(admin, {
+        profile_id: 'u1',
+        amount: 500,
+        title: 'Sorry for the bad experience',
+      });
+
+      expect(result).toMatchObject({ id: 'w1' });
+      const inserted = calls.find((c) => c.method === 'insert')
+        ?.args[0] as Record<string, unknown>;
+      expect(inserted).toMatchObject({
+        profile_id: 'u1',
+        direction: 'credit',
+        kind: 'recovery_credit',
+        status: 'completed',
+        amount: 500,
+        job_id: null,
+      });
+      expect(record).toHaveBeenCalledWith(
+        admin,
+        'wallet.issue_recovery_credit',
+        'wallet_transactions',
+        'w1',
+        expect.objectContaining({ profile_id: 'u1', amount: 500 }),
+      );
+    });
+
+    it('tells the recipient the credit arrived', async () => {
+      const { supabase, calls } = createSupabaseMock([
+        { data: activeRecipient, error: null },
+        { data: { id: 'w1' }, error: null },
+        { data: null, error: null },
+      ]);
+      const service = new WalletService(
+        supabase,
+        createAdminActionsMock().mock,
+      );
+
+      await service.issueRecoveryCredit(admin, {
+        profile_id: 'u1',
+        amount: 250,
+        title: 'Trust credit',
+      });
+
+      const notification = calls
+        .filter((c) => c.method === 'insert')
+        .map((c) => c.args[0] as Record<string, unknown>)
+        .find((row) => row.recipient_id !== undefined);
+      expect(notification).toMatchObject({
+        recipient_id: 'u1',
+        type: 'wallet_update',
+        title: 'Trust credit issued',
+      });
+    });
+
+    it('ties the credit to a job both parties are actually on', async () => {
+      const { supabase, calls } = createSupabaseMock([
+        { data: activeRecipient, error: null },
+        {
+          data: { client_id: 'u1', assigned_provider_id: 'p9' },
+          error: null,
+        },
+        { data: { id: 'w1' }, error: null },
+        { data: null, error: null },
+      ]);
+      const service = new WalletService(
+        supabase,
+        createAdminActionsMock().mock,
+      );
+
+      await service.issueRecoveryCredit(admin, {
+        profile_id: 'u1',
+        amount: 500,
+        title: 'Compensation',
+        job_id: 'j1',
+      });
+
+      const inserted = calls.find((c) => c.method === 'insert')
+        ?.args[0] as Record<string, unknown>;
+      expect(inserted).toMatchObject({ job_id: 'j1' });
+    });
+
+    it('refuses a job the recipient has nothing to do with', async () => {
+      // The job_id makes the credit render inside that job's history; a
+      // mistyped id would file somebody's compensation against a stranger.
+      const { supabase, calls } = createSupabaseMock([
+        { data: activeRecipient, error: null },
+        {
+          data: { client_id: 'someone-else', assigned_provider_id: 'p9' },
+          error: null,
+        },
+      ]);
+      const service = new WalletService(
+        supabase,
+        createAdminActionsMock().mock,
+      );
+
+      await expect(
+        service.issueRecoveryCredit(admin, {
+          profile_id: 'u1',
+          amount: 500,
+          title: 'Compensation',
+          job_id: 'j1',
+        }),
+      ).rejects.toThrow('That job does not belong to the recipient');
+      expect(calls.some((c) => c.method === 'insert')).toBe(false);
+    });
+
+    it('refuses a deleted account, whose balance nobody could ever reach', async () => {
+      const { supabase, calls } = createSupabaseMock([
+        { data: { id: 'u1', deleted_at: '2026-08-01T00:00:00Z' }, error: null },
+      ]);
+      const service = new WalletService(
+        supabase,
+        createAdminActionsMock().mock,
+      );
+
+      await expect(
+        service.issueRecoveryCredit(admin, {
+          profile_id: 'u1',
+          amount: 500,
+          title: 'Trust credit',
+        }),
+      ).rejects.toThrow(/deleted/);
+      expect(calls.some((c) => c.method === 'insert')).toBe(false);
+    });
+
+    it('reports an unknown recipient as 404, not a failed insert', async () => {
+      const { supabase } = createSupabaseMock([{ data: null, error: null }]);
+      const service = new WalletService(
+        supabase,
+        createAdminActionsMock().mock,
+      );
+
+      await expect(
+        service.issueRecoveryCredit(admin, {
+          profile_id: 'u1',
+          amount: 500,
+          title: 'Trust credit',
+        }),
+      ).rejects.toThrow(NotFoundException);
     });
   });
 });

@@ -42,7 +42,6 @@ import { useAsyncData } from '../../../src/hooks/useAsyncData';
 import { api, MIN_TOPUP_PHP } from '../../../src/lib/api';
 import { peso, shortDate } from '../../../src/lib/format';
 import ScreenSkeleton from '../../../src/components/ScreenSkeleton';
-import WithdrawModal from '../../../src/components/WithdrawModal';
 
 /**
  * How long to wait for the top-up to appear after Stripe says it succeeded.
@@ -59,6 +58,10 @@ const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 export default function HOWalletScreen() {
   const [activeTab, setActiveTab] = useState<'all' | 'credit' | 'debit'>('all');
   const { data, loading, error, reload } = useAsyncData(() => api.wallet(), [], 'ho-wallet');
+  const {
+    data: withdrawalData,
+    reload: reloadWithdrawals,
+  } = useAsyncData(() => api.withdrawals(), [], 'ho-withdrawals');
 
   // Add Money: hiring holds the job budget in escrow, so a client needs a
   // funded wallet before they can accept an application.
@@ -68,12 +71,11 @@ export default function HOWalletScreen() {
   const [confirming, setConfirming] = useState(false);
   const [addError, setAddError] = useState<string | null>(null);
 
-  // Withdraw: files a pending request an admin settles by hand. Transfer stays
-  // deliberately unbuilt — wallet-to-wallet transfer is a money-transmission
-  // licensing question in PH, not an engineering one — so it explains itself
-  // rather than sitting there as a dead button.
   const [showWithdraw, setShowWithdraw] = useState(false);
-  const [showTransferNote, setShowTransferNote] = useState(false);
+  const [withdrawAmount, setWithdrawAmount] = useState('');
+  const [withdrawDestination, setWithdrawDestination] = useState('');
+  const [withdrawing, setWithdrawing] = useState(false);
+  const [withdrawError, setWithdrawError] = useState<string | null>(null);
 
   const parsedAmount = Number(amount.replace(/,/g, ''));
   const isValidAmount =
@@ -83,6 +85,51 @@ export default function HOWalletScreen() {
     setShowAddMoney(false);
     setAmount('');
     setAddError(null);
+  };
+
+  const parsedWithdrawalAmount = Number(withdrawAmount.replace(/,/g, ''));
+  const availableToWithdraw = data?.available ?? 0;
+  const isValidWithdrawal =
+    Number.isFinite(parsedWithdrawalAmount) &&
+    parsedWithdrawalAmount > 0 &&
+    parsedWithdrawalAmount <= availableToWithdraw &&
+    withdrawDestination.trim().length > 0;
+
+  const closeWithdraw = () => {
+    setShowWithdraw(false);
+    setWithdrawAmount('');
+    setWithdrawDestination('');
+    setWithdrawError(null);
+  };
+
+  const submitWithdrawal = async () => {
+    if (!isValidWithdrawal) return;
+    setWithdrawing(true);
+    setWithdrawError(null);
+    try {
+      await api.requestWithdrawal({
+        amount: parsedWithdrawalAmount,
+        destination: withdrawDestination.trim(),
+      });
+      closeWithdraw();
+      reload();
+      reloadWithdrawals();
+    } catch (e) {
+      setWithdrawError(e instanceof Error ? e.message : 'Could not request a withdrawal.');
+    } finally {
+      setWithdrawing(false);
+    }
+  };
+
+  const cancelWithdrawal = async (id: string) => {
+    try {
+      await api.cancelWithdrawal(id);
+      reload();
+      reloadWithdrawals();
+    } catch (e) {
+      setWithdrawError(e instanceof Error ? e.message : 'Could not cancel the withdrawal.');
+      setShowWithdraw(true);
+    }
   };
 
   /**
@@ -172,31 +219,13 @@ export default function HOWalletScreen() {
     }
   };
 
-  const [cancelling, setCancelling] = useState<string | null>(null);
-
-  const cancelWithdrawal = async (id: string) => {
-    setCancelling(id);
-    try {
-      await api.cancelWithdrawal(id);
-      reload();
-    } catch {
-      // Leaving the row in place is the honest outcome: the request is still
-      // pending, and reload() below would only redraw the same thing.
-    } finally {
-      setCancelling(null);
-    }
-  };
-
   const transactions = data?.transactions ?? [];
   const filtered =
     activeTab === 'all'
       ? transactions
       : transactions.filter((t) => t.direction === activeTab);
   const vouchers = transactions.filter((t) => t.kind === 'recovery_credit');
-  const pendingWithdrawals = transactions.filter(
-    (t) => t.kind === 'withdrawal' && t.status === 'pending',
-  );
-  const canWithdraw = (data?.available ?? 0) > 0;
+  const withdrawals = withdrawalData ?? [];
 
   if (loading) return <ScreenSkeleton variant="dashboard" />;
 
@@ -221,80 +250,33 @@ export default function HOWalletScreen() {
         >
           <Text style={styles.balanceLabel}>Available Balance</Text>
           <Text style={styles.balanceAmount}>
-            {data ? peso(data.available) : '—'}
+            {data ? peso(data.balance) : '—'}
           </Text>
-          {/* Only shown when the two figures actually differ, so the common
-              case stays a single uncomplicated number. */}
-          {!!data && data.pending_withdrawals > 0 && (
-            <Text style={styles.balanceSubnote}>
-              {peso(data.pending_withdrawals)} awaiting withdrawal ·{' '}
-              {peso(data.balance)} total
-            </Text>
-          )}
           <View style={styles.quickActions}>
             <TouchableOpacity
               style={styles.quickActionBtn}
               onPress={() => setShowAddMoney(true)}
               activeOpacity={0.8}
-              accessibilityRole="button"
             >
               <ArrowUpRight size={22} color={C.white} />
               <Text style={styles.quickActionText}>Add Money</Text>
             </TouchableOpacity>
             <View style={styles.actionDivider} />
             <TouchableOpacity
-              style={[styles.quickActionBtn, !canWithdraw && styles.quickActionDisabled]}
+              style={styles.quickActionBtn}
               onPress={() => setShowWithdraw(true)}
-              disabled={!canWithdraw}
               activeOpacity={0.8}
-              accessibilityRole="button"
-              accessibilityState={{ disabled: !canWithdraw }}
             >
               <ArrowDownLeft size={22} color={C.white} />
               <Text style={styles.quickActionText}>Withdraw</Text>
             </TouchableOpacity>
             <View style={styles.actionDivider} />
-            <TouchableOpacity
-              style={styles.quickActionBtn}
-              onPress={() => setShowTransferNote(true)}
-              activeOpacity={0.8}
-              accessibilityRole="button"
-            >
+            <TouchableOpacity style={styles.quickActionBtn} activeOpacity={0.8}>
               <ArrowRightLeft size={22} color={C.white} />
               <Text style={styles.quickActionText}>Transfer</Text>
             </TouchableOpacity>
           </View>
         </LinearGradient>
-
-        {/* Pending withdrawals — listed separately from history so a request
-            in flight is visible without scrolling, and cancellable while it
-            still can be. */}
-        {pendingWithdrawals.length > 0 && (
-          <View style={styles.pendingCard}>
-            <Text style={styles.pendingHeader}>Withdrawal Requests</Text>
-            {pendingWithdrawals.map((w) => (
-              <View key={w.id} style={styles.pendingRow}>
-                <View style={styles.pendingInfo}>
-                  <Text style={styles.pendingAmount}>{peso(w.amount)}</Text>
-                  <Text style={styles.pendingDate}>
-                    Requested {shortDate(w.created_at)} · Pending
-                  </Text>
-                </View>
-                <TouchableOpacity
-                  onPress={() => cancelWithdrawal(w.id)}
-                  disabled={cancelling === w.id}
-                  activeOpacity={0.7}
-                  accessibilityRole="button"
-                  accessibilityLabel={`Cancel withdrawal of ${peso(w.amount)}`}
-                >
-                  <Text style={styles.pendingCancel}>
-                    {cancelling === w.id ? 'Cancelling…' : 'Cancel'}
-                  </Text>
-                </TouchableOpacity>
-              </View>
-            ))}
-          </View>
-        )}
 
         {/* Escrow card */}
         <View style={styles.escrowCard}>
@@ -306,6 +288,46 @@ export default function HOWalletScreen() {
             </View>
             <Shield size={24} color={C.cyan700} />
           </View>
+        </View>
+
+        <View style={styles.withdrawalCard}>
+          <View style={styles.withdrawalHeader}>
+            <View>
+              <Text style={styles.withdrawalLabel}>AVAILABLE TO WITHDRAW</Text>
+              <Text style={styles.withdrawalAmount}>{peso(availableToWithdraw)}</Text>
+            </View>
+            <TouchableOpacity onPress={() => setShowWithdraw(true)} activeOpacity={0.8}>
+              <Text style={styles.withdrawalLink}>Request</Text>
+            </TouchableOpacity>
+          </View>
+          <Text style={styles.withdrawalNote}>
+            Withdrawal requests are reviewed and paid manually. Pending requests reserve this amount.
+          </Text>
+          {withdrawals.length > 0 && (
+            <View style={styles.withdrawalList}>
+              {withdrawals.slice(0, 3).map((withdrawal) => (
+                <View key={withdrawal.id} style={styles.withdrawalRow}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.withdrawalTitle}>{withdrawal.title}</Text>
+                    <Text style={styles.withdrawalMeta}>
+                      {shortDate(withdrawal.created_at)} · {withdrawal.status}
+                    </Text>
+                    {!!withdrawal.review_note && (
+                      <Text style={styles.withdrawalMeta}>{withdrawal.review_note}</Text>
+                    )}
+                  </View>
+                  <View style={styles.withdrawalAction}>
+                    <Text style={styles.withdrawalValue}>{peso(withdrawal.amount)}</Text>
+                    {withdrawal.status === 'pending' && (
+                      <TouchableOpacity onPress={() => void cancelWithdrawal(withdrawal.id)} activeOpacity={0.8}>
+                        <Text style={styles.withdrawalCancel}>Cancel</Text>
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                </View>
+              ))}
+            </View>
+          )}
         </View>
 
         {/* Spent / Added summary */}
@@ -480,38 +502,59 @@ export default function HOWalletScreen() {
         </View>
       </Modal>
 
-      <WithdrawModal
-        visible={showWithdraw}
-        available={data?.available ?? 0}
-        onClose={() => setShowWithdraw(false)}
-        onFiled={reload}
-      />
-
       <Modal
-        visible={showTransferNote}
+        visible={showWithdraw}
         transparent
         animationType="fade"
-        onRequestClose={() => setShowTransferNote(false)}
+        onRequestClose={closeWithdraw}
       >
         <View style={styles.modalBackdrop}>
           <View style={styles.modalCard}>
-            <Text style={styles.modalTitle}>Transfer</Text>
+            <Text style={styles.modalTitle}>Withdraw</Text>
             <Text style={styles.modalBody}>
-              Sending money straight to another TaskBuddy wallet isn't
-              available. Doing that would make TaskBuddy a money-transfer
-              service, which needs its own licence here — so we've left it out
-              rather than half-building it.
-              {'\n\n'}
-              You can still withdraw to your own GCash or bank account.
+              Send a request to withdraw your available wallet balance. Our team will process it manually.
             </Text>
+            <Text style={styles.withdrawAvailable}>Available: {peso(availableToWithdraw)}</Text>
+
+            <View style={styles.amountRow}>
+              <Text style={styles.amountCurrency}>₱</Text>
+              <TextInput
+                style={styles.amountInput}
+                value={withdrawAmount}
+                onChangeText={setWithdrawAmount}
+                keyboardType="decimal-pad"
+                placeholder="0.00"
+                placeholderTextColor={C.ink400}
+                editable={!withdrawing}
+              />
+            </View>
+            <TextInput
+              style={styles.destinationInput}
+              value={withdrawDestination}
+              onChangeText={setWithdrawDestination}
+              placeholder="GCash number or bank account details"
+              placeholderTextColor={C.ink400}
+              editable={!withdrawing}
+            />
+
+            {!!withdrawError && <Text style={styles.modalError}>{withdrawError}</Text>}
+
             <View style={styles.modalActions}>
               <TouchableOpacity
-                style={[styles.modalBtn, styles.modalConfirm]}
-                onPress={() => setShowTransferNote(false)}
-                activeOpacity={0.85}
-                accessibilityRole="button"
+                style={[styles.modalBtn, styles.modalCancel]}
+                onPress={closeWithdraw}
+                disabled={withdrawing}
+                activeOpacity={0.8}
               >
-                <Text style={styles.modalConfirmText}>Got it</Text>
+                <Text style={styles.modalCancelText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.modalBtn, styles.modalConfirm, (!isValidWithdrawal || withdrawing) && styles.modalBtnDisabled]}
+                onPress={() => void submitWithdrawal()}
+                disabled={!isValidWithdrawal || withdrawing}
+                activeOpacity={0.85}
+              >
+                {withdrawing ? <ActivityIndicator color={C.white} /> : <Text style={styles.modalConfirmText}>Request Withdrawal</Text>}
               </TouchableOpacity>
             </View>
           </View>
@@ -544,29 +587,8 @@ const styles = StyleSheet.create({
   },
   balanceLabel: { color: C.cyan100, fontSize: 13, fontFamily: 'Inter', marginBottom: 4 },
   balanceAmount: { color: C.white, fontSize: 32.5, fontWeight: '800', fontFamily: 'Inter', marginBottom: 16 },
-  balanceSubnote: {
-    color: 'rgba(255,255,255,0.8)', fontSize: 12.5, fontFamily: 'Inter',
-    marginTop: -12, marginBottom: 14,
-  },
   quickActions: { flexDirection: 'row', alignItems: 'center' },
   quickActionBtn: { flex: 1, alignItems: 'center', gap: 4 },
-  quickActionDisabled: { opacity: 0.45 },
-
-  pendingCard: {
-    backgroundColor: '#fffbeb', borderWidth: 1, borderColor: '#fde68a',
-    borderRadius: 15, padding: 14, marginBottom: 14,
-  },
-  pendingHeader: {
-    color: '#92400e', fontSize: 13.5, fontWeight: '800', fontFamily: 'Inter', marginBottom: 8,
-  },
-  pendingRow: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    paddingVertical: 4,
-  },
-  pendingInfo: { flex: 1, marginRight: 10 },
-  pendingAmount: { color: C.ink900, fontSize: 15, fontWeight: '700', fontFamily: 'Inter' },
-  pendingDate: { color: '#b45309', fontSize: 11.5, fontFamily: 'Inter', marginTop: 1 },
-  pendingCancel: { color: '#b45309', fontSize: 13.5, fontWeight: '700', fontFamily: 'Inter' },
   quickActionText: { color: 'rgba(255,255,255,0.85)', fontSize: 13.5, fontWeight: '600', fontFamily: 'Inter' },
   actionDivider: { width: 1, height: 34, backgroundColor: 'rgba(255,255,255,0.2)' },
 
@@ -579,6 +601,23 @@ const styles = StyleSheet.create({
   escrowLabel: { fontSize: 11, textTransform: 'uppercase', letterSpacing: 0.6, fontWeight: '800', color: C.cyan700 },
   escrowAmount: { fontSize: 24, fontWeight: '800', color: C.ink900, marginVertical: 3, fontFamily: 'Inter' },
   escrowNote: { fontSize: 12, color: C.ink500, lineHeight: 16, fontFamily: 'Inter' },
+
+  withdrawalCard: {
+    backgroundColor: C.white, borderWidth: 1, borderColor: C.line,
+    borderRadius: 15, padding: 14, marginBottom: 14,
+  },
+  withdrawalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
+  withdrawalLabel: { fontSize: 11, textTransform: 'uppercase', letterSpacing: 0.6, fontWeight: '800', color: C.cyan700, fontFamily: 'Inter' },
+  withdrawalAmount: { fontSize: 24, fontWeight: '800', color: C.ink900, marginTop: 3, fontFamily: 'Inter' },
+  withdrawalLink: { color: C.cyan700, fontSize: 14, fontWeight: '800', fontFamily: 'Inter', padding: 4 },
+  withdrawalNote: { fontSize: 12, color: C.ink500, lineHeight: 16, fontFamily: 'Inter', marginTop: 5 },
+  withdrawalList: { marginTop: 12, borderTopWidth: 1, borderTopColor: C.line },
+  withdrawalRow: { flexDirection: 'row', gap: 10, paddingTop: 10, marginTop: 2 },
+  withdrawalTitle: { color: C.ink900, fontSize: 13.5, fontWeight: '700', fontFamily: 'Inter' },
+  withdrawalMeta: { color: C.ink400, fontSize: 11.5, fontFamily: 'Inter', marginTop: 2 },
+  withdrawalAction: { alignItems: 'flex-end' },
+  withdrawalValue: { color: C.ink900, fontSize: 13.5, fontWeight: '800', fontFamily: 'Inter' },
+  withdrawalCancel: { color: '#ef4444', fontSize: 12, fontWeight: '700', fontFamily: 'Inter', marginTop: 4 },
 
   statsRow: {
     flexDirection: 'row', backgroundColor: C.white, borderWidth: 1, borderColor: C.line,
@@ -651,6 +690,12 @@ const styles = StyleSheet.create({
   amountInput: { fontSize: 48.5, fontWeight: '800', fontFamily: 'Inter', color: C.ink900, minWidth: 120, textAlign: 'center' },
   modalError: { color: '#ef4444', fontSize: 15.5, fontFamily: 'Inter', textAlign: 'center', marginTop: 4 },
   modalHint: { color: C.ink400, fontSize: 14.5, fontFamily: 'Inter', textAlign: 'center', marginTop: 6 },
+  withdrawAvailable: { color: C.cyan700, fontSize: 14, fontWeight: '700', fontFamily: 'Inter', marginTop: 12 },
+  destinationInput: {
+    backgroundColor: '#f5f8fa', borderRadius: 12, paddingHorizontal: 14, minHeight: 48,
+    borderWidth: 1, borderColor: '#dce3e9', fontFamily: 'Inter', fontSize: 15, color: C.ink900,
+    marginTop: 12,
+  },
   modalActions: { flexDirection: 'row', gap: 10, marginTop: 18 },
   modalBtn: { flex: 1, alignItems: 'center', justifyContent: 'center', borderRadius: V6Radii.btn, paddingVertical: 13 },
   modalBtnDisabled: { opacity: 0.5 },

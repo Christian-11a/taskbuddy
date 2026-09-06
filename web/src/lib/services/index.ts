@@ -31,6 +31,9 @@ import type {
   AdminUserApiRow,
   AdminVerificationApiRow,
   AdminWalletTxnApiRow,
+  AdminWithdrawalApiRow,
+  AdminAccountApiRow,
+  CategoryApiRow,
   AnalyticsSummaryApiResponse,
   DisputeResolutionApi,
   EscrowStatusApi,
@@ -42,6 +45,9 @@ import type {
   ListUsersApiResponse,
   ListVerificationsApiResponse,
   ListWalletTxnApiResponse,
+  ListWithdrawalsApiResponse,
+  CommissionApiResponse,
+  BroadcastApiResponse,
   LoginApiResponse,
   MaintenanceApiResponse,
   UserSettingsApiResponse,
@@ -67,6 +73,10 @@ import type {
   Verification,
   VerificationStatus,
   WalletTransaction,
+  AdminWithdrawal,
+  AdminAccount,
+  ServiceCategory,
+  CommissionSettings,
 } from "@/lib/domain";
 
 export { ApiError };
@@ -83,7 +93,7 @@ function mapUserRow(row: AdminUserApiRow): AdminUser {
     role: row.role,
     createdAt: row.created_at,
     name: row.full_name,
-    status: row.deactivated_at ? "SUSPENDED" : "ACTIVE",
+    status: row.deleted_at ? "DELETED" : row.deactivated_at ? "SUSPENDED" : "ACTIVE",
     jobsCompleted: row.cached_completed_jobs ?? 0,
     rating: row.cached_avg_rating,
     phone: row.phone ?? null,
@@ -91,6 +101,7 @@ function mapUserRow(row: AdminUserApiRow): AdminUser {
     categoryName: row.category_name ?? null,
     suspendedUntil: row.suspended_until ?? null,
     suspensionReason: row.suspension_reason ?? null,
+    ...(row.deleted_at !== undefined ? { deletedAt: row.deleted_at } : {}),
   };
 }
 
@@ -191,6 +202,36 @@ function mapWalletTxnRow(row: AdminWalletTxnApiRow): WalletTransaction {
     amount: Number(row.amount),
     title: row.title,
     createdAt: row.created_at,
+  };
+}
+
+function mapWithdrawalRow(row: AdminWithdrawalApiRow): AdminWithdrawal {
+  return {
+    id: row.id,
+    profileId: row.profile_id,
+    profileName: row.profile?.full_name ?? "Unknown user",
+    amount: Number(row.amount),
+    title: row.title,
+    destination: row.withdrawal_destination,
+    status: row.status,
+    createdAt: row.created_at,
+    reviewedAt: row.reviewed_at,
+    reviewNote: row.review_note,
+  };
+}
+
+function mapCategoryRow(row: CategoryApiRow): ServiceCategory {
+  return { id: row.id, name: row.name, isActive: row.is_active };
+}
+
+function mapAdminRow(row: AdminAccountApiRow): AdminAccount {
+  return {
+    id: row.id,
+    email: row.email ?? "",
+    name: row.full_name ?? row.email ?? "Unnamed admin",
+    createdAt: row.created_at ?? new Date().toISOString(),
+    deactivatedAt: row.deactivated_at ?? null,
+    deletedAt: row.deleted_at ?? null,
   };
 }
 
@@ -352,8 +393,9 @@ export async function setMaintenanceStatus(
 
 // ─── Reads ────────────────────────────────────────────────────────────────────
 
-export async function getUsers(): Promise<AdminUser[]> {
-  const res = await client.get<ListUsersApiResponse>(`/admin/users?limit=${LIST_PAGE_SIZE}`);
+export async function getUsers(status?: "deleted"): Promise<AdminUser[]> {
+  const suffix = status ? `&status=${status}` : "";
+  const res = await client.get<ListUsersApiResponse>(`/admin/users?limit=${LIST_PAGE_SIZE}${suffix}`);
   return res.users.map(mapUserRow);
 }
 
@@ -429,6 +471,65 @@ export async function getWalletTransactions(): Promise<WalletTransaction[]> {
   return res.transactions.map(mapWalletTxnRow);
 }
 
+export async function getWithdrawals(status: "pending" | "completed" | "failed" = "pending"): Promise<{ items: AdminWithdrawal[]; total: number }> {
+  const res = await client.get<ListWithdrawalsApiResponse>(`/admin/withdrawals?status=${status}&limit=100`);
+  return { items: res.withdrawals.map(mapWithdrawalRow), total: res.total };
+}
+
+export async function settleWithdrawal(id: string, reference?: string): Promise<AdminWithdrawal> {
+  const row = await client.post<AdminWithdrawalApiRow>(`/admin/withdrawals/${id}/settle`, reference?.trim() ? { reference: reference.trim() } : {});
+  return mapWithdrawalRow(row);
+}
+
+export async function rejectWithdrawal(id: string, reason: string): Promise<AdminWithdrawal> {
+  const row = await client.post<AdminWithdrawalApiRow>(`/admin/withdrawals/${id}/reject`, { reason: reason.trim() });
+  return mapWithdrawalRow(row);
+}
+
+export async function getCategories(): Promise<ServiceCategory[]> {
+  const rows = await client.get<CategoryApiRow[]>("/admin/categories");
+  return rows.map(mapCategoryRow);
+}
+
+export async function createCategory(name: string): Promise<ServiceCategory> {
+  return mapCategoryRow(await client.post<CategoryApiRow>("/admin/categories", { name: name.trim() }));
+}
+
+export async function updateCategory(id: number, patch: { name?: string; is_active?: boolean }): Promise<ServiceCategory> {
+  return mapCategoryRow(await client.patch<CategoryApiRow>(`/admin/categories/${id}`, patch));
+}
+
+export async function getAdmins(): Promise<AdminAccount[]> {
+  const rows = await client.get<AdminAccountApiRow[]>("/admin/admins");
+  return rows.map(mapAdminRow);
+}
+
+export async function createAdmin(email: string, fullName: string): Promise<AdminAccount> {
+  return mapAdminRow(await client.post<AdminAccountApiRow>("/admin/admins", { email: email.trim(), full_name: fullName.trim() }));
+}
+
+export async function revokeAdmin(id: string): Promise<AdminAccount> {
+  return mapAdminRow(await client.post<AdminAccountApiRow>(`/admin/admins/${id}/revoke`));
+}
+
+export async function getCommission(): Promise<CommissionSettings> {
+  const res = await client.get<CommissionApiResponse>("/admin/commission");
+  return { rate: Number(res.commission_rate), updatedAt: res.updated_at };
+}
+
+export async function updateCommission(rate: number): Promise<CommissionSettings> {
+  const res = await client.patch<CommissionApiResponse>("/admin/commission", { commission_rate: rate });
+  return { rate: Number(res.commission_rate), updatedAt: res.updated_at };
+}
+
+export async function broadcastNotification(
+  title: string,
+  body: string,
+  audience: "all" | "clients" | "providers",
+): Promise<BroadcastApiResponse> {
+  return client.post<BroadcastApiResponse>("/admin/notifications/broadcast", { title: title.trim(), body: body.trim(), audience });
+}
+
 /** Cross-references Transactions (for provider name + amount fallback) — see mapDisputeRow. */
 export async function getDisputes(): Promise<Dispute[]> {
   const [res, txns] = await Promise.all([
@@ -482,6 +583,9 @@ export async function getDashboardStats(): Promise<DashboardStats> {
     completionRate: mapCompletionRate(summary),
     // Null until at least one provider has been rated.
     avgRating: summary.totals.avg_rating ?? 0,
+    totalCommission: summary.totals.total_commission ?? 0,
+    monthlyCommission: summary.totals.monthly_commission ?? 0,
+    pendingWithdrawals: summary.totals.pending_withdrawals ?? 0,
   };
 }
 

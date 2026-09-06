@@ -18,7 +18,7 @@
 import EventSource from 'react-native-sse';
 
 const PRIMARY_API_URL =
-  process.env.EXPO_PUBLIC_API_URL ?? 'https://taskbuddy-1d48.onrender.com';
+  process.env.EXPO_PUBLIC_API_URL ?? 'https://taskbuddy-kpek.onrender.com';
 
 /** Optional second choice, tried only when the primary is unreachable. */
 const FALLBACK_API_URL = process.env.EXPO_PUBLIC_API_URL_FALLBACK ?? null;
@@ -283,28 +283,18 @@ export interface Job {
   assigned_provider?: { full_name: string } | null;
   /** The job's checklist, unordered — sort by `position` before rendering. */
   job_tasks?: JobTask[];
+  /** A completed job can only receive one homeowner review. */
+  has_review?: boolean;
+  review?: {
+    id: string;
+    rating: number;
+    comment: string | null;
+    created_at: string;
+  } | null;
   /** Km from the provider's location. Present only on the browse feed, and
    *  null there when either side has no coordinates. */
   distance_km?: number | null;
-  /**
-   * Whether the client has already reviewed this job.
-   *
-   * Spelled out by the backend rather than left as "check whether `review` is
-   * null" so the UI can hide "Leave Review" up front instead of discovering
-   * the duplicate by submitting one. `reviews.job_id` is UNIQUE.
-   */
-  has_review?: boolean;
-  /** The review itself, when there is one. */
-  review?: JobReview | null;
   [key: string]: unknown;
-}
-
-/** The review embedded on a job payload (migration-era: PR #44). */
-export interface JobReview {
-  id: string;
-  rating: number;
-  comment: string | null;
-  created_at: string;
 }
 
 /**
@@ -392,25 +382,27 @@ export interface WalletTransaction {
   title: string;
   job_id: string | null;
   kind: WalletTxnKind;
+  withdrawal_destination?: string | null;
+  review_note?: string | null;
   created_at: string;
 }
 
 export interface WalletOverview {
   /** Settled credits minus settled debits. */
   balance: number;
-  /**
-   * What may actually be committed to something new: `balance` minus anything
-   * already promised to a pending withdrawal. Spend checks (escrow holds, new
-   * withdrawals) run against this, not `balance` — otherwise the same peso
-   * could fund a hire and a payout.
-   */
+  /** Settled balance less money reserved by pending withdrawal requests. */
   available: number;
-  /** Sum of withdrawal requests filed but not yet settled by an admin. */
-  pending_withdrawals: number;
   total_credited: number;
   total_debited: number;
   pending: number;
+  pending_withdrawals: number;
   transactions: WalletTransaction[];
+}
+
+export interface RecommendationTriggerResult {
+  run_id: string | null;
+  pool_size: number;
+  notified: number;
 }
 
 /** Stripe hosted Checkout session, opened in a browser to fund the wallet. */
@@ -473,15 +465,8 @@ export class ApiError extends Error {
   constructor(
     message: string,
     readonly status: number,
-    /**
-     * The parsed error body, when there was one.
-     *
-     * Most failures say everything they need to in `message`. A few answer
-     * with structured detail the UI has to render rather than summarise —
-     * `DELETE /profiles/me`'s 409 lists every blocker at once — and that detail
-     * used to be dropped here.
-     */
-    readonly body?: unknown,
+    /** Additional structured error fields returned by the API, when present. */
+    readonly details?: unknown,
   ) {
     super(message);
     this.name = 'ApiError';
@@ -513,7 +498,7 @@ export interface DeletionBlocker {
  */
 export function deletionBlockersFrom(err: unknown): DeletionBlocker[] {
   if (!(err instanceof ApiError) || err.status !== 409) return [];
-  const blockers = (err.body as { blockers?: unknown } | null)?.blockers;
+  const blockers = (err.details as { blockers?: unknown } | null)?.blockers;
   return Array.isArray(blockers) ? (blockers as DeletionBlocker[]) : [];
 }
 
@@ -924,6 +909,13 @@ export const api = {
 
   completeJob(id: string) {
     return authRequest<Job>(`/jobs/${id}/complete`, { method: 'POST' });
+  },
+
+  triggerRecommendations(jobId: string) {
+    return authRequest<RecommendationTriggerResult>(
+      `/jobs/${jobId}/recommendations/trigger`,
+      { method: 'POST' },
+    );
   },
 
   // ── Applications ──────────────────────────────────────────────────────────────

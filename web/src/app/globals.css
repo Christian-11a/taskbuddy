@@ -1,21 +1,67 @@
-/* Inter is loaded via next/font/google in app/layout.tsx, which self-hosts it
+/* Typography uses a local system stack so builds work without network access.
    at build time — no runtime request to fonts.googleapis.com, no flash of
    unstyled text, and no third-party origin to allow through the CSP. The old
    `@import url(...)` here did the opposite on all three counts. */
 @import "tailwindcss";
 
+/* ─── Foundation scales ───────────────────────────────────────────────────
+   These are theme-independent: light and dark differ in colour only, never
+   in size or rhythm. Before this the app carried 21 distinct inline font
+   sizes (9.8, 11.2, 11.4, 12.2 …) and two competing radius systems, so no
+   two components shared a ratio and every new one invented its own.
+   ────────────────────────────────────────────────────────────────────────── */
 :root {
-  --bg-main: #0b0f14;
-  --bg-sidebar: #0d131a;
-  --bg-header: #0f141b;
+  /* Type — ~1.15 ratio, tight steps because product UI carries many more
+     type roles than a marketing page and wide contrast just reads as noise. */
+  --fs-3xs: 9px;    /* micro: badge counters, avatar initials, uppercase micro-labels */
+  --fs-2xs: 10px;   /* dense meta: timestamps, row sub-labels */
+  --fs-xs: 11px;    /* labels, captions, table meta */
+  --fs-sm: 12px;    /* secondary body, control text */
+  --fs-md: 13px;    /* primary body, section titles */
+  --fs-lg: 15px;    /* panel headings */
+  --fs-xl: 18px;    /* sub-page headings */
+  --fs-2xl: 22px;   /* page titles */
+  --fs-3xl: 26px;   /* the single largest thing on any screen */
+
+  --lh-tight: 1.15;
+  --lh-snug: 1.35;
+  --lh-normal: 1.5;
+
+  /* Negative tracking on large text only; small UI text needs its default. */
+  --tr-tight: -0.035em;
+  --tr-snug: -0.02em;
+  --tr-label: 0.08em;
+
+  /* Space — 4px grid. */
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-5: 20px;
+  --sp-6: 24px;
+  --sp-8: 32px;
+  --sp-10: 40px;
+
+  /* Radius — three steps plus a pill. Inner elements sit tighter than the
+     containers holding them. */
+  --r-sm: 8px;
+  --r-md: 10px;
+  --r-lg: 14px;
+  --r-pill: 999px;
+}
+
+:root {
+  --bg-main: #0b1016;
+  --bg-sidebar: #0d141b;
+  --bg-header: #10171f;
   --border: #1a2430;
   --border-md: #263240;
   --text-white: #f8fafc;
   --text-muted: #7f8c9b;
   --text-light: #c5cfda;
-  --indigo: #22c3d6;
-  --indigo-light: #72dbe6;
-  --indigo-dark: rgba(34, 195, 214, 0.12);
+  --indigo: #2bb3c0;
+  --indigo-light: #78d5dc;
+  --indigo-dark: rgba(43, 179, 192, 0.12);
   --violet: #38bdf8;
   --green: #22c55e;
   --red: #ef4444;
@@ -29,15 +75,50 @@
   --track-bg: #202a35;
   --success-text: #4ade80;
   --danger-text: #f87171;
+  --danger-border: rgba(239, 68, 68, 0.4);
   --warning-text: #fbbf24;
+  --text-dim: #6b7280;
+  --rank-bronze: #cd7c3d;
   --sidebar-w: 244px;
   --sidebar-collapsed-w: 68px;
+  /* Solid brand fill for primary actions. Deeper than --indigo so white label
+     text clears 4.5:1 — the old gradient buttons sat around 2.5:1 at their
+     light end. One flat colour, because a gradient here communicated nothing
+     about state. */
+  --brand-solid: #0e7f8d;
+  --brand-solid-hover: #0b6a76;
+  --brand-on-solid: #ffffff;
+  --login-panel: #080d12;
+  --login-input: rgba(255, 255, 255, 0.06);
+  /* Theme-invariant like the two above — this page must stay dark regardless
+     of the ambient light/dark toggle, so it can't reuse --card-bg/--card-border
+     (those flip to white in light mode via [data-theme="light"] below). */
+  --login-card: #111820;
+  --login-card-border: #202a35;
+  --chart-cyan: #22c3d6;
+  --chart-blue: #38bdf8;
+  --chart-green: #22c55e;
+  --chart-amber: #f59e0b;
+  --chart-red: #ef4444;
+  --chart-violet: #a78bfa;
+
+  /* Shell surfaces. The sidebar and header used hardcoded Tailwind darks
+     (text-white, hover:bg-white/5, #516071) which light mode then had to
+     undo with override rules further down this file. Naming them lets both
+     themes state their own values instead. */
+  --nav-fg: #c5cfda;          /* resting nav item */
+  --nav-fg-strong: #f8fafc;   /* nav item text that is a proper label */
+  --nav-fg-muted: #7f8c9b;    /* group headings */
+  --nav-hover-bg: rgba(255, 255, 255, 0.05);
+  --nav-active-bg: rgba(43, 179, 192, 0.12);
+  --nav-active-fg: #78d5dc;
+  --overlay: rgba(0, 0, 0, 0.6);
 }
 
 /* Light mode overrides */
 [data-theme="light"] {
   --bg-main: #f3f4f6;
-  --bg-sidebar: linear-gradient(180deg, #ffffff 0%, #f9fafb 100%);
+  --bg-sidebar: #ffffff;
   --bg-header: #ffffff;
   --border: rgba(0, 0, 0, 0.08);
   --border-md: rgba(0, 0, 0, 0.12);
@@ -55,6 +136,16 @@
   --success-text: #16a34a;
   --danger-text: #dc2626;
   --warning-text: #b45309;
+
+  /* Light states its own shell values rather than relying on the override
+     block below to reverse dark ones. */
+  --nav-fg: #374151;
+  --nav-fg-strong: #111827;
+  --nav-fg-muted: #6b7280;
+  --nav-hover-bg: rgba(0, 0, 0, 0.05);
+  --nav-active-bg: rgba(14, 127, 141, 0.1);
+  --nav-active-fg: #0e7f8d;
+  --overlay: rgba(17, 24, 39, 0.45);
   color-scheme: light;
 }
 
@@ -110,6 +201,35 @@
   background: rgba(0, 0, 0, 0.03);
 }
 
+/* Primary action. Replaces a decorative cyan→blue gradient that was repeated
+   inline across eight call sites and carried no state meaning. */
+.btn-primary {
+  background: var(--brand-solid);
+  color: var(--brand-on-solid);
+  border: none;
+  cursor: pointer;
+  font-family: inherit;
+  font-weight: 600;
+  transition: background-color 0.15s ease;
+}
+.btn-primary:hover:not(:disabled) {
+  background: var(--brand-solid-hover);
+}
+.btn-primary:active:not(:disabled) {
+  transform: translateY(1px);
+}
+.btn-primary:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+/* Figures in tables and metric readouts line up column-to-column instead of
+   jittering as digit widths change. */
+.data-table td,
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
+
 /* Sidebar transition */
 aside.sidebar {
   transition: width 0.2s ease, transform 0.2s ease;
@@ -117,6 +237,44 @@ aside.sidebar {
 
 .sidebar-label {
   transition: opacity 0.15s ease, width 0.15s ease;
+}
+
+.sidebar-nav-link {
+  min-height: 36px;
+  text-decoration: none;
+  transition: background-color 0.12s ease, color 0.12s ease;
+}
+
+/* Hover reads as "this is reachable", press as "this was hit" — both are
+   state feedback. The old translateX nudge on every hover moved the whole
+   nav list around for no informational reason. */
+.sidebar-nav-link--idle:hover {
+  background: var(--nav-hover-bg);
+  color: var(--nav-fg-strong);
+}
+
+.sidebar-nav-link:active {
+  transform: scale(0.99);
+}
+
+.sidebar-signout:hover {
+  color: var(--danger-text);
+}
+
+/* Rows in the header's search results and notification panel. Was
+   hover:bg-white/5, which light mode had to reverse with an override. */
+.hover-row {
+  transition: background-color 0.12s ease;
+}
+.hover-row:hover {
+  background: var(--nav-hover-bg);
+}
+
+@media (max-width: 1023px) {
+  aside.sidebar {
+    width: min(var(--sidebar-w), 86vw) !important;
+    box-shadow: 18px 0 42px rgba(0, 0, 0, 0.28);
+  }
 }
 
 /* Content area margin — 0 on mobile (sidebar is off-canvas), sidebar width on lg+ */
@@ -143,10 +301,15 @@ aside.sidebar {
   }
 }
 
+/* overflow:hidden lived here for the admin shell, but that's a global lock
+   shared with the public promo site (single root layout) — a normal long
+   page needs the document itself to scroll. Admin already self-contains its
+   own overflow at the wrapper level ((admin)/layout.tsx's h-screen
+   overflow-hidden, the login card's own overflow-hidden), so dropping the
+   global rule doesn't change admin's behavior, only unblocks the public site. */
 html,
 body {
   height: 100%;
-  overflow: hidden;
 }
 
 body {
@@ -154,6 +317,49 @@ body {
   background: var(--bg-main);
   color: var(--text-white);
   font-size: 14px;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+::selection {
+  background: rgba(43, 179, 192, 0.28);
+  color: var(--text-white);
+}
+
+button,
+a,
+input,
+select,
+textarea {
+  -webkit-tap-highlight-color: transparent;
+}
+
+:where(button, a, input, select, textarea):focus-visible {
+  outline: 2px solid var(--indigo-light);
+  outline-offset: 2px;
+}
+
+/* Keep the shell quiet and legible: reserve contrast for current state and
+   actionable controls rather than giving every panel a glow. */
+.app-shell .text-gray-500 { color: #8794a3; }
+.app-shell .text-gray-400 { color: #9aa7b5; }
+
+@media (max-width: 639px) {
+  .content-area main > div,
+  .content-area main > div > div {
+    /* Preserve comfortable page gutters on narrow screens without forcing
+       every page component to carry a mobile-specific padding prop. */
+    max-width: 100%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }
 
 /* Scrollbar */
@@ -228,9 +434,13 @@ body {
 .data-table th {
   text-align: left;
   padding: 11px 14px;
-  font-size: 9.5px;
+  font-size: var(--fs-3xs);
   font-weight: 600;
-  color: #4b5563;
+  /* Was a hardcoded #4b5563 that didn't participate in theming — it read
+     fine on both surfaces mostly by luck. --text-muted is the token every
+     other secondary label in the app already uses, and resolves to the
+     same values this rule was hardcoding, so there's no visual change. */
+  color: var(--text-muted);
   text-transform: uppercase;
   letter-spacing: 0.07em;
   background: rgba(255, 255, 255, 0.02);

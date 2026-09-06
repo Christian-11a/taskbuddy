@@ -104,8 +104,8 @@ export function ReviewDrawer({ open, title, subtitle, onClose, children, footer 
       >
         <div className="flex items-center justify-between flex-shrink-0" style={{ padding: "20px 22px", borderBottom: "1px solid var(--border)" }}>
           <div>
-            <div id="review-drawer-title" className="text-white font-bold" style={{ fontSize: 17 }}>{title}</div>
-            {subtitle && <div style={{ fontSize: 10.5, color: "var(--text-muted)", marginTop: 3 }}>{subtitle}</div>}
+            <div id="review-drawer-title" className="text-white font-bold" style={{ fontSize: "var(--fs-lg)" }}>{title}</div>
+            {subtitle && <div style={{ fontSize: "var(--fs-2xs)", color: "var(--text-muted)", marginTop: 3 }}>{subtitle}</div>}
           </div>
           <button
             onClick={onClose}
@@ -136,8 +136,8 @@ export function ReviewDrawer({ open, title, subtitle, onClose, children, footer 
 export function DrawerField({ label, value }: { label: string; value: React.ReactNode }) {
   return (
     <div>
-      <div style={{ fontSize: 9, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 5 }}>{label}</div>
-      <div style={{ fontSize: 12, color: "var(--text-light)" }}>{value}</div>
+      <div style={{ fontSize: "var(--fs-3xs)", fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 5 }}>{label}</div>
+      <div style={{ fontSize: "var(--fs-sm)", color: "var(--text-light)" }}>{value}</div>
     </div>
   );
 }
@@ -145,7 +145,7 @@ export function DrawerField({ label, value }: { label: string; value: React.Reac
 /** Section wrapper with consistent spacing/divider inside a drawer body. */
 export function DrawerSection({ children }: { children: React.ReactNode }) {
   return (
-    <div style={{ paddingBottom: 20, marginBottom: 20, borderBottom: "1px solid var(--border)" }}>
+    <div style={{ paddingBottom: "var(--sp-5)", marginBottom: "var(--sp-5)", borderBottom: "1px solid var(--border)" }}>
       {children}
     </div>
   );

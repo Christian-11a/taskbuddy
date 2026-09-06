@@ -44,8 +44,13 @@ export default function HOLeaveReviewScreen({ jobId, onSubmitted, onBack }: HOLe
     useCallback(() => api.getJob(jobId), [jobId]),
   );
   const providerName = job?.assigned_provider?.full_name ?? 'Provider';
+  const alreadyReviewed = job?.has_review === true;
 
   const submit = async () => {
+    if (alreadyReviewed) {
+      setError('You have already submitted a review for this job.');
+      return;
+    }
     setError(null);
     setBusy(true);
     try {
@@ -108,12 +113,15 @@ export default function HOLeaveReviewScreen({ jobId, onSubmitted, onBack }: HOLe
             />
           </View>
 
+          {alreadyReviewed && (
+            <Text style={styles.alreadyReviewedText}>You already submitted a review for this job.</Text>
+          )}
           {error && <Text style={styles.errorText}>{error}</Text>}
 
           <TouchableOpacity
-            style={[styles.submitBtn, busy && styles.disabled]}
+            style={[styles.submitBtn, (busy || alreadyReviewed) && styles.disabled]}
             onPress={submit}
-            disabled={busy}
+            disabled={busy || alreadyReviewed}
             activeOpacity={0.85}
           >
             {busy ? <ActivityIndicator color={C.white} /> : <Text style={styles.submitText}>Submit Review</Text>}
@@ -171,4 +179,5 @@ const styles = StyleSheet.create({
   disabled: { opacity: 0.6 },
 
   errorText: { color: '#ef4444', marginTop: 8, fontFamily: 'Inter', fontSize: 15 },
+  alreadyReviewedText: { color: C.cyan800, marginTop: 8, fontFamily: 'Inter', fontSize: 15, textAlign: 'center' },
 });

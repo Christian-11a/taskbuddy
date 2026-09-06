@@ -231,9 +231,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setLoading(true);
       setLoadError(null);
       try {
-        const [users, verifs, disputes, stats, revenue, bookVol, categories, activity, providers, serverDarkMode, maintenance] =
+        const [users, deletedUsers, verifs, disputes, stats, revenue, bookVol, categories, activity, providers, serverDarkMode, maintenance] =
           await Promise.all([
             services.getUsers(),
+            // Deleted accounts are an opt-in enhancement. If the deployed API
+            // predates the status filter, keep the rest of the console usable.
+            services.getUsers("deleted").catch(() => []),
             services.getVerifications(),
             services.getDisputes(),
             services.getDashboardStats(),
@@ -246,7 +249,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
             services.getMaintenanceStatus(),
           ]);
         if (cancelled) return;
-        setDomainUsers(users);
+        setDomainUsers([...users, ...deletedUsers]);
         setDomainVerifications(verifs);
         setDomainDisputes(disputes);
         setDashboardStats(stats);

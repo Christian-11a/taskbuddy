@@ -43,7 +43,7 @@ mismatches — its runtime ships its own modules, which is how a wrong
 and it connects (it auto-connects — no server picker, no dev-menu overlay).
 
 By default the app talks to the deployed backend at
-`https://taskbuddy-1d48.onrender.com`, so it works with no local setup.
+`https://taskbuddy-kpek.onrender.com`, so it works with no local setup.
 
 To run against a local backend, copy `.env.example` to `.env` and point at
 your machine — on an **emulator** use `10.0.2.2` (the host's loopback alias;
@@ -178,7 +178,7 @@ as a redirect URI in Google Cloud Console.
 ```
 App  →  WebBrowser.openAuthSessionAsync(GET /auth/google/authorize?app_redirect=<deep-link>)
           Backend  →  302 to Google consent screen
-            Google →  302 to https://taskbuddy-1d48.onrender.com/auth/google/callback
+            Google →  302 to https://taskbuddy-kpek.onrender.com/auth/google/callback
               Backend  →  exchanges code for id_token (server-to-server)
                        →  signInWithIdToken via Supabase
                        →  302 to <deep-link>?access_token=...&refresh_token=...
@@ -257,14 +257,14 @@ sign-in, and notification rows remain available in the in-app list either way.
 | `HOHomeScreen` | `GET /wallet`, `GET /jobs/mine`, `GET /categories`, unread notification count |
 | `HOMyJobs` | `GET /jobs/mine`, filtered client-side by status (All / Open / Awaiting / Confirmed / In Progress / Completed / Cancelled) |
 | `HOCreateJobScreen` | `GET /categories`, image upload, `POST /jobs` — the guided 5-step flow: service → location → tasks → urgency → review |
-| `HOJobDetailScreen` | `GET /jobs/:id`, `GET /providers/:id`; complete / cancel (confirmed first) / chat; read-only task checklist |
+| `HOJobDetailScreen` | `GET /jobs/:id`, `GET /providers/:id`, `POST /jobs/:id/recommendations/trigger`; complete / cancel / chat, review-state gating, manual provider-matching retry, and read-only task checklist |
 | `HOChatScreen` | `POST /conversations` then message listing |
-| `HOWalletScreen` | `GET /wallet`; **Add Money** posts `POST /payments/checkout-session` and opens Stripe Checkout in a browser |
+| `HOWalletScreen` | `GET /wallet` + `GET`/`POST /wallet/withdrawals`; Add Money opens Stripe Checkout, and Withdraw files/cancels manual payout requests |
 | `HODisputeFilingScreen` | `POST /jobs/:jobId/disputes` |
 | `HOProfile` | Displays profile data; menu is Edit Profile / Settings / Help & Support |
 | `HOEditProfileScreen` | `PATCH /profiles/me`, then `refreshProfile()` |
 | `HONotificationsScreen` | `GET /notifications`; mark read / read-all |
-| `HOSettingsScreen` | `POST /auth/change-password` and all five switches (`GET`/`PATCH /settings`) are real. Delete Account calls `DELETE /profiles/me`. Dark Mode saves a preference nothing applies yet and Language stays an honest placeholder — see [What's Not Wired Yet](#whats-not-wired-yet) |
+| `HOSettingsScreen` | `POST /auth/change-password`, all five switches (`GET`/`PATCH /settings`), and `DELETE /profiles/me`. Account deletion displays backend blockers and signs out after success; Dark Mode still only saves a preference and Language remains a placeholder |
 | `HelpSupportScreen` (shared, `src/components/`) | Static FAQ + `mailto:` support link — no backend |
 
 ### Provider (Service Provider — `SP*`)
@@ -276,12 +276,12 @@ sign-in, and notification rows remain available in the in-app list either way.
 | `SPJobDetailScreen` | `GET /jobs/:id`; apply to an open job, or accept / decline / start and tick off the task checklist once it's theirs |
 | `SPCalendarScreen` | `GET /calendar/bookings?from=&to=` for the current month |
 | `SPChatScreen` | Messaging (same flow as HO) |
-| `SPWalletScreen` | `GET /wallet` |
+| `SPWalletScreen` | `GET /wallet` + `GET`/`POST /wallet/withdrawals` via `WithdrawModal`; Withdraw files/cancels manual payout requests, same as the homeowner wallet |
 | `SPNotificationsScreen` | `GET /notifications` |
 | `SPVerificationScreen` | 3-step flow — ID upload, face scan, then `POST /verifications/identity-session` (Stripe Identity, opened in a browser); falls back to `POST /verifications` for admin review if Stripe is unavailable |
 | `SPProfileScreen` | Displays profile + provider-specific data + a real verified/unverified badge (`providerProfile.is_verified`); menu is Edit Profile / Get Verified / Settings / Help & Support |
 | `SPEditProfileScreen` | `PATCH /profiles/me` + `PUT /profiles/me/provider` |
-| `SPSettingsScreen` | Mirrors `HOSettingsScreen` — same real/placeholder split |
+| `SPSettingsScreen` | Mirrors `HOSettingsScreen` — same real/placeholder split; Delete Account calls `DELETE /profiles/me` via `DeleteAccountModal` |
 
 ---
 
@@ -375,14 +375,14 @@ correctly in production:
 the mobile to-do list that cannot be finished without an API change first:
 
 **Items 1, 2, 3 and 5 have since been built** (migrations 0022–0024,
-`backend/BACKEND_SCHEMA.md` §27). The API side is done; the mobile screens that
-would use them are not yet wired, which is app-side work.
+`backend/BACKEND_SCHEMA.md` §27). The homeowner app now uses items 1–3;
+signup OTP (item 5) remains available for a future registration-confirmation flow.
 
 | # | Item | Status |
 |---|---|---|
-| 1 | Account deletion (`DELETE /profiles/me`) | **API done** — soft delete, `409 { blockers[] }` while money or obligations are in flight. Settings row still opens `mailto:` until it is wired |
-| 2 | Wallet withdrawal / payout rail | **API done, as the interim this doc recommended** — `POST /wallet/withdrawals` files a *pending* request an admin settles by hand. The real rail is still outstanding and now has its own doc — see [§3 below](#3-docsbackend-handoff-stripe-connect-escrowmd) |
-| 3 | `has_review` flag on job payload | **Done** — every job now carries `has_review` and `review` |
+| 1 | Account deletion (`DELETE /profiles/me`) | **Wired in the homeowner Settings screen** — soft delete, with every `409 { blockers[] }` reason shown before retry |
+| 2 | Wallet withdrawal / payout rail | **Wired as a manual request flow** — `POST /wallet/withdrawals` creates a pending request; the homeowner can view/cancel it and an admin settles it by hand. The automated payout rail remains outstanding — see [§3 below](#3-docsbackend-handoff-stripe-connect-escrowmd) |
+| 3 | `has_review` flag on job payload | **Wired** — completed jobs hide Leave Review when `has_review` is true; direct review access is also blocked |
 | 4 | Realtime chat | Done — authenticated SSE streams messages through the API |
 | 5 | Email OTP at registration | **API done** — `POST /auth/send-email-otp` / `verify-email-otp`, wrapping Supabase's own signup code. Needs the `{{ .Token }}` template change in [`docs/email-otp-setup.md`](../docs/email-otp-setup.md) |
 | 6 | Homeowner card-at-hire (vs wallet top-up) | Still open — a product decision, not a missing endpoint |
@@ -390,48 +390,82 @@ would use them are not yet wired, which is app-side work.
 
 ### 3. [`docs/backend-handoff-stripe-connect-escrow.md`](../docs/backend-handoff-stripe-connect-escrow.md)
 
-**Needs a real decision, not just code.** Covers the "escrow hold via Stripe Connect at booking"
-story. Today's escrow is a ledger debit against a wallet the client pre-funded — there is no
-Stripe Connect anywhere in the backend, no per-booking payment intent, and no rate limiting on any
-payment endpoint. The doc lays out two viable architectures (A: keep the wallet ledger, add a real
-per-booking hold + Connect transfer on release; B: full Connect destination charges) and asks for
-a call before code gets written, since it changes real money-movement semantics. Rate limiting
-(`@nestjs/throttler`, currently not even a dependency) and a small explicit-error hardening fix in
-`EscrowService.release()` are both independent of that decision and can start immediately.
+**Still needs a real decision, not just code.** Covers the "escrow hold via Stripe Connect at
+booking" story. Today's escrow is a ledger debit against a wallet the client pre-funded — there is
+still no Stripe Connect anywhere in the backend and no per-booking payment intent. The doc lays
+out two viable architectures (A: keep the wallet ledger, add a real per-booking hold + Connect
+transfer on release; B: full Connect destination charges) and asks for a call before code gets
+written, since it changes real money-movement semantics.
+
+**The two pieces that did not depend on that decision have since shipped:** rate limiting
+(`@nestjs/throttler`, now applied per client IP — `BACKEND_SCHEMA.md` §28.4) and the
+explicit-error hardening in `EscrowService.release()` (§28.2). Neither changes anything the app
+sees, except that a retry loop against an auth or payment endpoint now earns a `429`.
 
 ### 4. [`docs/backend-handoff-recovery-vouchers.md`](../docs/backend-handoff-recovery-vouchers.md)
 
-**Non-urgent.** The dispute progress timeline and Wallet's Recovery Vouchers section are both
-already built on this side (see below) — the one thing outstanding is a new admin-only endpoint to
-actually issue a recovery credit, since `POST /wallet/transactions` deliberately refuses any
-credit from any caller. `wallet_txn_kind` already has the `'recovery_credit'` value
-(`0021_recovery_credit_kind.sql`, applied), so the endpoint has a slot ready to write into.
+**Closed.** The dispute progress timeline and Wallet's Recovery Vouchers section were already
+built on this side; the admin-only issuance endpoint they were waiting for now exists —
+`POST /admin/wallet-transactions/recovery-credit` (`BACKEND_SCHEMA.md` §28.1).
+`POST /wallet/transactions` still refuses a credit from every caller, admins included; that
+refusal is the point, and the new route is the one deliberate, audited exception to it.
+
+Nothing changes in the app: `HOWalletScreen` already filters the existing transaction list on
+`kind === 'recovery_credit'`, so the section fills itself as soon as an admin issues one. The
+credit is **fungible** — spendable on a hire or withdrawable like any other peso — so if that card
+ever implies "booking use only", it will be wrong. What is left is the web console's Issue Credit
+button (`web/README.md`).
 
 ---
 
 ## Remaining Backend Work
 
-The migration and deployment handoff above is complete. The remaining backend
-work identified during the mobile acceptance audit is:
+The migration and deployment handoff above is complete. Everything the mobile
+acceptance audit raised has since been done — full reasoning in
+`backend/BACKEND_SCHEMA.md` §28.
 
-- Add unit coverage for `ApplicationsService`, `ReviewsService`,
-  `RecommendationsService`, and `RecommendationsScheduler`.
-- Make application acceptance and escrow hold atomic. An insufficient wallet
-  balance must not leave the application accepted or the job assigned.
-- Verify the job status vocabulary against the test plan. This app currently
-  uses `open`, `recommending`, `assigned`, `confirmed`, `in_progress`,
-  `completed`, `cancelled`, and `expired`; `PENDING` and
-  `COMPLETED_PENDING_CONFIRMATION` are not current backend statuses.
-- Verify review completion ownership, duplicate protection, cached provider
-  rating/count recalculation, provider profile output, and the
-  `provider_avg_rating` recommendation feature. Align error wording with the
-  test plan if exact messages are contractual.
-- Add recommendation and provider-feed tests for verified/available status,
-  radius boundaries, missing coordinates, ranking, ML failures, and response
-  time. The current proximity feed is provider-facing Haversine filtering; it
-  is not a Google Maps-backed homeowner service directory.
-- Add an end-to-end lifecycle test covering create, apply, accept, escrow,
-  start, complete, payout, and review.
+| Item | Outcome |
+|---|---|
+| Unit coverage for `ApplicationsService`, `ReviewsService`, `RecommendationsService`, `RecommendationsScheduler` | **Done** — all four have specs (§28.7) |
+| Make application acceptance and escrow hold atomic | **Done** — the hold is placed *before* the accept, so an insufficient balance leaves the job open and every applicant still in the running; if the accept then fails the hold is rolled back and the client credited (§28.3) |
+| Verify the job status vocabulary | **Verified, nothing to change** — the enum is the eight values this app uses, and the API uses exactly those. `PENDING` and `COMPLETED_PENDING_CONFIRMATION` have never been backend statuses (§28.8) |
+| Verify review ownership, duplicate protection, cached rating recalculation, provider profile output, `provider_avg_rating` | **Verified**, with two additions: a completed job with nobody assigned is now an explicit 400 rather than a raw Postgres constraint message, and the provider is notified that their rating moved (§28.5, §28.8) |
+| Recommendation and provider-feed tests | **Done** — ranking, ML-service failure, mismatched score arrays, empty pools, and feed radius boundaries / missing coordinates / urgency-then-distance ordering. Still provider-facing Haversine filtering, not a Google Maps service directory |
+| End-to-end lifecycle test | **Done** — `src/jobs/job-lifecycle.spec.ts` runs post → apply → accept → hold → confirm → start → complete → payout → review against one shared in-memory store, plus cancellation, provider decline, dispute resolution, commission, and a budget-less job (§28.7) |
+
+Three further backend changes landed alongside them, none of which need
+anything from the app:
+
+- **Rate limiting** (§28.4), **per endpoint per IP**: 240/minute on any one
+  route, the credential endpoints 10/minute each, and the two payment-opening
+  routes 5/minute. Well above ordinary app use — a screen loading jobs, wallet
+  and an unread count on focus is nowhere near it, and `POST /auth/refresh` and
+  `GET /auth/me` are deliberately left on the 240 so a busy session cannot sign
+  itself out. What does change: a retry loop against `POST /auth/login` now
+  earns a `429`, so treat that status as "slow down", not "credentials wrong" —
+  `ApiError.status` already carries it through to the screen.
+- **Escrow release raises instead of going quiet** (§28.2). No user-visible
+  change: `POST /jobs/:id/complete` still blocks a second completion on job
+  status first, with the same message.
+- **`POST /admin/wallet-transactions/recovery-credit`** (§28.1) — admin-only.
+  The Wallet screen's Recovery Vouchers section can now have something in it;
+  it already renders `kind === 'recovery_credit'` rows and needs no change.
+
+### Still open, and still not a missing endpoint
+
+- **Stripe Connect escrow** — a product/Stripe-account decision, unchanged.
+  `docs/backend-handoff-stripe-connect-escrow.md` Story 1.
+- **A real payout rail.** Withdrawals are still settled by hand from the admin
+  queue.
+- **Card-at-hire for homeowners** (handoff item 6). A product fork.
+- **`is_verified`: badge or gate?** The backend currently returns
+  `403 Verify your identity before applying to jobs` for an unverified
+  provider, while `BACKEND_SCHEMA.md` §17 and `backend/README.md` both say
+  verification is a badge and not a gate. One of the two is wrong and it is a
+  one-line fix either way, but they are different products — flagged in
+  `BACKEND_SCHEMA.md` §17 for a decision. If gating stays, `SPVerificationScreen`
+  is a prerequisite to applying rather than an optional badge, and the feed
+  should say so.
 
 ---
 
@@ -454,28 +488,28 @@ homeowner-facing recommendations do not map directly to the current product.
 - My Jobs list showing job name, location, status, urgency, price, elapsed time,
   and assigned provider, with lifecycle status filters
 - Job Details with status progress, task checklist, provider information,
-  offers, cancel confirmation, completion, review navigation, and chat
+  offers, cancel confirmation, completion, review-state gating, provider-matching
+  retry, and chat
 - Provider job browsing, applications, booking-request accept/decline, job
   start, and task updates
-- Wallet balance and Stripe hosted Checkout top-ups
-- In-app notifications, profile editing, provider verification, disputes,
-  image uploads, provider calendar, and authenticated SSE chat
+- Wallet balance, Stripe hosted Checkout top-ups, and manual withdrawal requests
+- In-app notifications, profile editing, self-service account deletion, provider
+  verification, disputes, image uploads, provider calendar, and authenticated SSE chat
 
 ### ⚠️ Partial or configuration-dependent
 
-- Review submission is shown only for completed jobs with an assigned provider,
-  but duplicate-review and completion checks are ultimately enforced by the
-  backend. The mobile flow still needs tests for these states.
-- Recommendations are currently provider-facing notifications and offers;
-  there is no homeowner-facing recommended-services section.
+- Review submission is shown only for completed jobs with an assigned provider
+  that has not already been reviewed. The backend remains the final authority,
+  and the mobile flow still needs automated tests for these states.
+- Homeowners can manually retry provider matching from an open job. Results are
+  provider invitations; there is still no homeowner-facing service catalogue.
 - Push notification code is present, but remote delivery requires an EAS
   project ID and an SDK 54 development build. Expo Go cannot receive remote
   pushes.
 - Homeowner job locations use the saved profile address or fallback
   coordinates. There is no Expo GPS or Google Maps provider-discovery flow.
 - Dark Mode persists a preference but does not change the palette. Language,
-  account deletion, wallet withdrawal/transfer, chat calls, and chat
-  attachments remain unwired.
+  wallet transfer, chat calls, and chat attachments remain unwired.
 
 ### 🔧 Remaining frontend tasks
 
@@ -486,7 +520,9 @@ homeowner-facing recommendations do not map directly to the current product.
 - Add My Jobs rendering/filter tests and verify reverse chronological ordering,
   empty states, refresh/retry, and long text on small screens.
 - Add Job Details tests for cancel confirmation, cancellation errors, chat
-  navigation, completion, provider/offer states, and review gating.
+  navigation, completion, provider/offer states, review gating, and provider-matching retry.
+- Add homeowner Settings and Wallet tests for account-deletion blockers/sign-out,
+  withdrawal validation, request submission, history, and cancellation.
 - Verify the complete homeowner flow manually with TC-BOOK-001, 002, 005, and
   007, plus provider acceptance, decline, and completion cases TC-BOOK-003,
   004, and 006.
@@ -530,7 +566,7 @@ was trimmed to remove rows that duplicated a bottom-nav tab or a header icon.
 |-------|--------|
 | **Dark Mode** | Half done: the *preference* persists (`user_settings.dark_mode` via `PATCH /settings`), but nothing applies it — there is still no theme switching. Both Settings screens say so under the switch rather than implying a repaint that never comes. The blocker is the ~40 screens still using inline hex instead of `V6Colors` tokens; see [`CHANGELOG.md`](./CHANGELOG.md) for the theming approach that was built and then deliberately reverted to leave this open |
 | **Language** | Settings modal states English is the only option — no i18n system exists to back a real picker |
-| **Wallet Transfer** | Deliberately not built, backend or front. Wallet-to-wallet transfer turns the wallet into a money-transmission service, which is a licensing matter in PH, not an engineering one. The button now opens a short note saying so rather than doing nothing |
+| **Wallet Transfer** | Deliberately not built, backend or front. Wallet-to-wallet transfer turns the wallet into a money-transmission service, which is a licensing matter in PH, not an engineering one |
 | **Push delivery** | Code complete end to end, **but not yet functional**: `app.json` has no EAS `projectId`, so no push token is ever obtained, and remote push needs a development build (not Expo Go) on SDK 54. The `notifications` table remains the source of truth and the in-app list is unaffected — see [Live chat and push notifications](#live-chat-and-push-notifications) |
 | **Realtime chat** | Message delivery is live through authenticated SSE; call and attachment buttons remain inert |
 | **Counterpart avatars** | Chat, applicant, and review payloads all carry `avatar_url`; those screens still render initials. (The signed-in user's *own* avatar does render — see `OwnAvatar`) |
@@ -539,14 +575,15 @@ was trimmed to remove rows that duplicated a bottom-nav tab or a header icon.
 
 ### Wired against migrations 0022–0024
 
-Four rows left this table once PR #44 landed the API for them. What the app now
-does, and the one thing that still has to happen outside the codebase:
+Delete Account, Wallet Withdraw, and the "Leave Review" already-reviewed state
+were wired against these migrations on both roles; the homeowner screens
+(`HOSettingsScreen`, `HOWalletScreen`, `HOJobDetailScreen`) call the endpoints
+inline, while the provider screens use the shared `DeleteAccountModal` and
+`WithdrawModal` components (`mobile/src/components/`) for the same two flows.
+One more piece was wired alongside them:
 
 | Thing | Where | Note |
 |---|---|---|
-| **Delete Account** | `DeleteAccountModal`, both Settings screens | `DELETE /profiles/me`. The 409's `blockers[]` are rendered as a list — the API returns every obligation at once, so the user isn't made to delete repeatedly to discover them one at a time. Success signs out locally; the token stays syntactically valid until it expires, so the app has to drop it rather than wait for a 401 |
-| **Wallet Withdraw** | `WithdrawModal`, both Wallet screens | `POST /wallet/withdrawals`. Both screens now headline `available` (balance minus pending withdrawals) rather than `balance`, list pending requests separately, and can cancel one. Copy promises a review, not a transfer — there is still no payout rail |
-| **"Leave Review" already-reviewed** | `HOJobDetailScreen` | Reads `has_review`; when true the row shows the rating that was left instead of hiding entirely, so "did I review this?" is answered on screen rather than inferred from an absence |
 | **Email OTP at signup** | `RegisterScreen` + `AuthContext.verifyEmailOtp` | Registering already triggers Supabase's confirm-signup mail, so the screen reads the code rather than sending a second one; Resend is the only path that mails another. Verifying returns a session, so the user lands signed in |
 
 > **Email OTP needs Supabase configured before it works at all.** Authentication →

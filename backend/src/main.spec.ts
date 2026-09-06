@@ -1,3 +1,4 @@
+const mockSet = jest.fn();
 const mockEnableCors = jest.fn();
 const mockUseGlobalPipes = jest.fn();
 const mockListen = jest.fn().mockResolvedValue(undefined);
@@ -6,6 +7,7 @@ const mockLog = jest.fn();
 jest.mock('@nestjs/core', () => ({
   NestFactory: {
     create: jest.fn().mockResolvedValue({
+      set: mockSet,
       enableCors: mockEnableCors,
       useGlobalPipes: mockUseGlobalPipes,
       listen: mockListen,
@@ -33,6 +35,34 @@ async function bootstrapWithOrigins(origins?: string) {
 
   await bootstrap();
 }
+
+describe('bootstrap proxy configuration', () => {
+  const originalHops = process.env.TRUST_PROXY_HOPS;
+
+  afterEach(() => {
+    if (originalHops === undefined) {
+      delete process.env.TRUST_PROXY_HOPS;
+    } else {
+      process.env.TRUST_PROXY_HOPS = originalHops;
+    }
+  });
+
+  it('trusts one proxy hop by default, so the rate limiter sees client IPs', async () => {
+    delete process.env.TRUST_PROXY_HOPS;
+    await bootstrapWithOrigins();
+
+    // Without this every request behind Render's proxy shares one address and
+    // a single abusive caller would rate-limit the whole platform.
+    expect(mockSet).toHaveBeenCalledWith('trust proxy', 1);
+  });
+
+  it('accepts a different hop count for deployments with another proxy', async () => {
+    process.env.TRUST_PROXY_HOPS = '2';
+    await bootstrapWithOrigins();
+
+    expect(mockSet).toHaveBeenCalledWith('trust proxy', 2);
+  });
+});
 
 describe('bootstrap CORS configuration', () => {
   const originalOrigins = process.env.WEB_CORS_ORIGINS;

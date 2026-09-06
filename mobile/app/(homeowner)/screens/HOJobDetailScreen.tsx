@@ -84,6 +84,7 @@ export default function HOJobDetailScreen({ jobId, onBack, onNavigate }: HOJobDe
 
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [matchingMessage, setMatchingMessage] = useState<string | null>(null);
   const [confirmCancel, setConfirmCancel] = useState(false);
 
   const job = data?.job;
@@ -109,16 +110,37 @@ export default function HOJobDetailScreen({ jobId, onBack, onNavigate }: HOJobDe
     }
   };
 
+  const findProviders = async () => {
+    if (!job) return;
+    setBusy(true);
+    setActionError(null);
+    setMatchingMessage(null);
+    try {
+      const result = await api.triggerRecommendations(job.id);
+      setMatchingMessage(
+        result.notified > 0
+          ? `We invited ${result.notified} matched provider${result.notified === 1 ? '' : 's'} to apply.`
+          : 'No providers matched yet. You can try again later while the job remains open.',
+      );
+      reload();
+    } catch (e) {
+      setActionError(
+        e instanceof ApiError ? e.message : 'Could not look for providers. Please try again.',
+      );
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const canCancel =
     job &&
     ['open', 'recommending', 'assigned', 'confirmed', 'in_progress'].includes(job.status);
   const canComplete = job?.status === 'in_progress';
-  // A review needs a finished job, someone to review, and no review already.
-  // The job payload now carries `has_review`, so a second one is prevented up
-  // front instead of surfacing as an error after the user has written it.
-  const reviewable = job?.status === 'completed' && !!job.assigned_provider_id;
-  const canReview = reviewable && !job?.has_review;
-  const existingReview = reviewable ? job?.review ?? null : null;
+  const canReview =
+    job?.status === 'completed' &&
+    !!job.assigned_provider_id &&
+    !job.has_review;
+  const canFindProviders = job && ['open', 'recommending'].includes(job.status);
 
   return (
     <View style={styles.screen}>
@@ -304,14 +326,9 @@ export default function HOJobDetailScreen({ jobId, onBack, onNavigate }: HOJobDe
                 <Text style={styles.linkRowText}>Leave Review</Text>
               </TouchableOpacity>
             )}
-            {/* Already reviewed: show what was left rather than removing the
-                row outright, so the answer to "did I review this?" is on the
-                screen instead of inferred from an absence. */}
-            {!!existingReview && (
+            {job.has_review && (
               <View style={[styles.linkRow, styles.detailRowBorder]}>
-                <Text style={styles.reviewedText}>
-                  You rated this {existingReview.rating}/5
-                </Text>
+                <Text style={styles.linkRowText}>Review submitted</Text>
               </View>
             )}
           </View>
@@ -332,6 +349,20 @@ export default function HOJobDetailScreen({ jobId, onBack, onNavigate }: HOJobDe
                 </Text>
               </TouchableOpacity>
             )}
+
+            {canFindProviders && (
+              <TouchableOpacity
+                style={styles.primaryBtn}
+                onPress={() => void findProviders()}
+                activeOpacity={0.85}
+                disabled={busy}
+              >
+                <Text style={styles.primaryBtnText}>
+                  {busy ? 'Looking…' : 'Find Providers'}
+                </Text>
+              </TouchableOpacity>
+            )}
+            {!!matchingMessage && <Text style={styles.matchingMessage}>{matchingMessage}</Text>}
 
             {/* Chat is reachable from the provider card too, but only once a
                 provider exists; this is the one that is always where you left
@@ -456,6 +487,7 @@ const styles = StyleSheet.create({
   taskLabel: { flex: 1, fontSize: 13.5, lineHeight: 18, color: C.ink800, fontFamily: 'Inter' },
   taskLabelDone: { color: C.ink400, textDecorationLine: 'line-through' },
   actionError: { color: '#ef4444', fontSize: 13.5, fontFamily: 'Inter', textAlign: 'center' },
+  matchingMessage: { color: C.cyan800, fontSize: 13.5, fontFamily: 'Inter', textAlign: 'center', lineHeight: 18 },
   descText: { fontSize: 14, lineHeight: 21, color: C.ink700, fontFamily: 'Inter' },
 
   // Horizontal timeline
@@ -488,7 +520,6 @@ const styles = StyleSheet.create({
   // Link rows
   linkRow: { paddingVertical: 12 },
   linkRowText: { color: C.cyan700, fontSize: 14.5, fontWeight: '700', fontFamily: 'Inter' },
-  reviewedText: { color: C.ink400, fontSize: 14.5, fontWeight: '600', fontFamily: 'Inter' },
 
   // Action bar
   actionBar: { paddingTop: 16, paddingBottom: 10, gap: 8 },

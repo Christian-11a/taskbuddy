@@ -7,10 +7,12 @@ import {
 import { SupabaseService } from '../supabase/supabase.service';
 import {
   CreateWalletTxnDto,
+  IssueRecoveryCreditDto,
   ListWalletTxnQueryDto,
   ListWithdrawalsQueryDto,
   RequestWithdrawalDto,
 } from './dto/wallet.dto';
+import { AdminActionsService } from '../admin/admin-actions.service';
 import type { Profile } from '../common/types';
 
 const ADMIN_WALLET_SELECT =
@@ -34,7 +36,10 @@ export interface WalletTransaction {
 
 @Injectable()
 export class WalletService {
-  constructor(private readonly supabase: SupabaseService) {}
+  constructor(
+    private readonly supabase: SupabaseService,
+    private readonly adminActions: AdminActionsService,
+  ) {}
 
   /** Wallet overview: derived balance, summary stats, and the transaction list. */
   async overview(user: Profile) {
@@ -240,6 +245,108 @@ export class WalletService {
       `Your withdrawal of ${row.amount} was not processed: ${reason}. The amount is back in your available balance.`,
     );
     return rejected;
+  }
+
+  /**
+   * An admin issues a trust credit after a dispute — the "Recovery Voucher"
+   * mobile's Wallet screen renders (migration 0021,
+   * `docs/backend-handoff-recovery-vouchers.md`).
+   *
+   * This is the only path in the codebase that credits a wallet outside a
+   * settled Stripe charge or an escrow release, which is exactly why it is
+   * not reachable from `create()`. That method refuses `direction: 'credit'`
+   * from every caller, admins included, because the endpoint behind it is
+   * open to any authenticated user and balance buys real labour through
+   * escrow. The separation is the control: minting balance requires the admin
+   * role, and every issue writes an audit row naming who did it.
+   *
+   * The credit is fungible once issued — a normal ledger row tagged for
+   * display, spendable on a hire or withdrawable like any other peso. An
+   * earmarked, booking-only voucher would need a second balance with its own
+   * spend-time rules, and `wallet_transactions` being the single account of
+   * record (§18) is the property that makes the ledger reconcilable at all.
+   */
+  async issueRecoveryCredit(admin: Profile, dto: IssueRecoveryCreditDto) {
+    const recipient = await this.findCreditRecipient(dto.profile_id);
+    // A deleted account's identifying fields are scrubbed and its Auth user is
+    // banned (§27.1), so nobody can ever sign in to spend this. Crediting one
+    // would only put an unreachable balance on the platform's books.
+    if (recipient.deleted_at) {
+      throw new BadRequestException(
+        'This account has been deleted and cannot receive a credit',
+      );
+    }
+    if (dto.job_id) await this.assertParticipant(dto.job_id, dto.profile_id);
+
+    const { data, error } = await this.supabase.admin
+      .from('wallet_transactions')
+      .insert({
+        profile_id: dto.profile_id,
+        direction: 'credit',
+        kind: 'recovery_credit',
+        status: 'completed',
+        amount: dto.amount,
+        title: dto.title,
+        job_id: dto.job_id ?? null,
+      })
+      .select('*')
+      .single();
+    if (error) throw new BadRequestException(error.message);
+
+    await this.adminActions.record(
+      admin,
+      'wallet.issue_recovery_credit',
+      'wallet_transactions',
+      (data as WalletTransaction).id,
+      {
+        profile_id: dto.profile_id,
+        amount: dto.amount,
+        job_id: dto.job_id ?? null,
+        title: dto.title,
+      },
+    );
+    await this.notify(
+      dto.profile_id,
+      'Trust credit issued',
+      `You received a credit of ${dto.amount}: ${dto.title}`,
+    );
+    return data;
+  }
+
+  private async findCreditRecipient(profileId: string) {
+    const { data, error } = await this.supabase.admin
+      .from('profiles')
+      .select('id, deleted_at')
+      .eq('id', profileId)
+      .maybeSingle();
+    if (error) throw new BadRequestException(error.message);
+    if (!data) throw new NotFoundException('Recipient profile not found');
+    return data;
+  }
+
+  /**
+   * A `job_id` on the row makes the credit render inside that job's history,
+   * so an id the recipient has nothing to do with would file the compensation
+   * against a stranger's job. Checked rather than trusted: this is typed by a
+   * human into a console field, next to the amount.
+   */
+  private async assertParticipant(jobId: string, profileId: string) {
+    const { data, error } = await this.supabase.admin
+      .from('jobs')
+      .select('id, client_id, assigned_provider_id')
+      .eq('id', jobId)
+      .maybeSingle();
+    if (error) throw new BadRequestException(error.message);
+    if (!data) throw new NotFoundException('Job not found');
+    const job = data as {
+      client_id: string;
+      assigned_provider_id: string | null;
+    };
+    if (job.client_id !== profileId && job.assigned_provider_id !== profileId) {
+      throw new BadRequestException(
+        'That job does not belong to the recipient',
+      );
+    }
   }
 
   /** The admin settlement queue — pending first, oldest first within it. */

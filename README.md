@@ -10,9 +10,9 @@ provider against it and invites the best-matched few. Hiring moves real money
 through an escrow-backed wallet, so a provider who completes a job is paid from
 funds that were held the moment they were assigned.
 
-**Live API:** https://taskbuddy-1d48.onrender.com
-([status page](https://taskbuddy-1d48.onrender.com/) ·
-[health JSON](https://taskbuddy-1d48.onrender.com/health)) — frontends call this;
+**Live API:** https://taskbuddy-kpek.onrender.com
+([status page](https://taskbuddy-kpek.onrender.com/) ·
+[health JSON](https://taskbuddy-kpek.onrender.com/health)) — frontends call this;
 see the [backend README](./backend/README.md#base-url).
 
 ---
@@ -106,8 +106,11 @@ balance can't cover it is refused at the point of accepting an application.
 
 Clients fund their wallet through Stripe (test mode), and **the wallet is
 credited by Stripe's webhook, never by the app reporting its own success** —
-balance buys labour, so a client able to mint it could hire for free. Full rules
-in [`BACKEND_SCHEMA.md` §18 and §21](./backend/BACKEND_SCHEMA.md).
+balance buys labour, so a client able to mint it could hire for free. There is
+exactly one other way balance appears: an admin issuing a recovery credit after
+a dispute, which is a separate audited route for that reason
+([§28.1](./backend/BACKEND_SCHEMA.md)). Full rules in
+[`BACKEND_SCHEMA.md` §18 and §21](./backend/BACKEND_SCHEMA.md).
 
 Stripe is not available to Philippine businesses; a production launch would move
 to PayMongo, Xendit or Maya, which also support GCash. The escrow design is

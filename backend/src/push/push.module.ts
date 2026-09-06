@@ -8,5 +8,6 @@ import { SettingsModule } from '../settings/settings.module';
   imports: [SettingsModule],
   controllers: [PushController],
   providers: [PushService, PushScheduler],
+  exports: [PushScheduler],
 })
 export class PushModule {}
