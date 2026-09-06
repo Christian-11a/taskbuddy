@@ -4,8 +4,10 @@ import {
   NestModule,
   RequestMethod,
 } from '@nestjs/common';
+import { APP_GUARD } from '@nestjs/core';
 import { ConfigModule } from '@nestjs/config';
 import { ScheduleModule } from '@nestjs/schedule';
+import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { MaintenanceMiddleware } from './common/maintenance.middleware';
 import { SupabaseModule } from './supabase/supabase.module';
 import { HealthModule } from './health/health.module';
@@ -34,6 +36,33 @@ import { InternalModule } from './internal/internal.module';
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
     ScheduleModule.forRoot(),
+    /**
+     * Per-IP rate limiting (`docs/backend-handoff-stripe-connect-escrow.md`).
+     *
+     * One throttler, not several. Every named throttler in this list applies
+     * to every route, so a tight `payments` entry here would also be the
+     * ceiling on reading a job list; the tighter limits belong on the routes
+     * that need them, which is what `common/throttle.ts` does by overriding
+     * `default` per handler.
+     *
+     * 240/minute is a burst ceiling rather than a quota, and it is **per
+     * endpoint per IP** — the throttler keys on
+     * `sha256(Class-handler-name-ip)`, so there is no aggregate cap across the
+     * API. A mobile screen that loads jobs, wallet and an unread count on
+     * focus legitimately fires several requests at once, and a person
+     * switching tabs does it again a second later; the number has to leave
+     * that alone and still refuse a script pointed at one route. Damping the
+     * routes that cost something is what the per-route limits in
+     * `common/throttle.ts` are for.
+     *
+     * Storage is in-memory, so the limit is per process. One Render instance
+     * makes that the whole platform; a second would double every ceiling.
+     * Shared storage is the fix if it comes to that — see BACKEND_SCHEMA.md
+     * §28.
+     */
+    ThrottlerModule.forRoot({
+      throttlers: [{ name: 'default', limit: 240, ttl: 60_000 }],
+    }),
     SupabaseModule,
     HealthModule,
     AuthModule,
@@ -56,6 +85,13 @@ import { InternalModule } from './internal/internal.module';
     PushModule,
     PaymentsModule,
     InternalModule,
+  ],
+  providers: [
+    // Applies the global ceiling everywhere, and whatever a route's own
+    // `@Throttle()` narrows it to. `@SkipThrottle()` opts a route out —
+    // POST /payments/webhook does, since that caller is Stripe, authenticated
+    // by signature, and retrying on failure.
+    { provide: APP_GUARD, useClass: ThrottlerGuard },
   ],
 })
 export class AppModule implements NestModule {
