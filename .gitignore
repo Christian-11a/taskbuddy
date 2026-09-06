@@ -161,6 +161,14 @@ next-env.d.ts
 **/dist/
 **/build/
 
+# web/public/video-capture/out/ is real, committed content (the hero video +
+# poster image), not a build artifact — it's only named "out" because that's
+# the export folder the video-capture tool wrote to. The **/out/ rule above
+# was silently swallowing it, so it never made it into any deploy.
+!web/public/video-capture/
+!web/public/video-capture/out/
+!web/public/video-capture/out/*
+
 #ai and agents
 AGENTS*
 CLAUDE*
