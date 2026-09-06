@@ -46,12 +46,20 @@ export class RecommendationsScheduler {
   }
 
   private async processTimeouts() {
-    const { data: jobs } = await this.supabase.admin
+    const { data: jobs, error } = await this.supabase.admin
       .from('jobs')
       .select('id, title')
       .eq('status', 'open')
       .lt('recommendation_deadline', new Date().toISOString())
       .limit(20);
+    // Surfaced rather than discarded. A read that fails means no job ever
+    // reaches 'recommending' again, and swallowing the error made that
+    // indistinguishable from a genuinely quiet minute — the sweep would go on
+    // reporting nothing for as long as the fault lasted. `tick()` catches this
+    // and logs it, so the schedule survives while the failure is visible.
+    if (error) {
+      throw new Error(`Could not read timed-out jobs: ${error.message}`);
+    }
 
     for (const job of jobs ?? []) {
       // Flip status first so the timeout path runs at most once per job (§7).
@@ -80,12 +88,15 @@ export class RecommendationsScheduler {
     const cutoff = new Date(
       Date.now() - EXPIRY_HOURS * 3600 * 1000,
     ).toISOString();
-    const { data: expired } = await this.supabase.admin
+    const { data: expired, error } = await this.supabase.admin
       .from('jobs')
       .update({ status: 'expired' })
       .in('status', ['open', 'recommending'])
       .lt('posted_at', cutoff)
       .select('id');
+    if (error) {
+      throw new Error(`Could not expire stale jobs: ${error.message}`);
+    }
     if (expired && expired.length > 0) {
       this.logger.log(
         `Expired ${expired.length} unassigned job(s) older than ${EXPIRY_HOURS}h`,
