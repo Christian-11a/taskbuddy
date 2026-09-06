@@ -249,6 +249,18 @@ are checked. Written UTF-8 with a BOM so Excel doesn't mangle the peso sign.
 **This worktree uses the backend integrations below.** An external deploy is
 still required before they are available at a hosted URL.
 
+> **New since this list was written:** `POST /admin/wallet-transactions/recovery-credit`
+> exists now, so the Wallet tab's "Issue Credit" button is unblocked — see
+> [Needs a web developer](#needs-a-web-developer). The API is also rate-limited
+> (`backend/BACKEND_SCHEMA.md` §28.4), **per endpoint per IP** — 240/minute on
+> any one route, and `POST /auth/admin/login` specifically 10/minute. The
+> console is nowhere near that, with one exception worth knowing before it
+> bites: a bulk action fires one request per id in parallel and they all hit
+> the *same* handler, so selecting more than 240 rows and suspending them at
+> once would start earning `429`s partway through. The existing
+> "Suspended 3 of 5" per-id failure reporting already covers that honestly, but
+> a `429` is worth retrying rather than reporting as a refusal.
+
 ### 1. Adopt browser-admin session cookies
 
 `lib/api/session.ts` keeps only the in-memory admin identity and CSRF token.
@@ -407,23 +419,32 @@ gap it is. Once an item here ships, its story moves to
 [`CHANGELOG.md`](./CHANGELOG.md) with the commit and how it was verified, and
 it's removed from here — this list only tracks current, unstarted work.
 
-### Needs a backend developer
+### Needs a web developer
 
-Code that has to be written and deployed to `backend` — repo write access +
-Render deploy rights, not a dashboard permission.
+- **The "Issue Credit" button** on the Transactions page's Wallet tab
+  (`TransactionsPage.tsx`'s `WalletTab`). **No longer blocked** — the endpoint
+  it was waiting for now exists:
 
-- **Recovery-credit issuance endpoint** — `POST /admin/wallet-transactions/recovery-credit`.
-  Nothing today lets an admin credit a wallet at all;
-  `WalletService.create()` explicitly refuses any `direction: 'credit'` request
-  from any caller, including admins, to prevent free balance minting. This
-  needs a separate, admin-only route that's allowed to do what that one
-  deliberately can't. Fully unblocked — migration `0021_recovery_credit_kind.sql`
-  is already applied — and `docs/backend-handoff-recovery-vouchers.md` has a
-  ready-to-use DTO/service/controller sketch (audit-log + notify pattern
-  mirrors `DisputesService.resolve()`). Once this exists, web gets a small
-  "Issue Credit" button on the Transactions page's Wallet tab (that's the
-  matching, currently-nonexistent, web-side item) — no point wiring it to a
-  route that 404s.
+  ```
+  POST /admin/wallet-transactions/recovery-credit
+       { profile_id, amount, title, job_id? }  →  the created ledger row
+  ```
+
+  A row-level "credit this user" action is the natural shape, since the tab
+  already has each row's `profile_id`; the modal needs `amount` and `title`
+  (the recipient reads the title in their own transaction list), plus an
+  optional `job_id`.
+
+  Four errors worth surfacing verbatim rather than as "something went wrong",
+  because each one is a thing the admin can fix: the recipient's account was
+  deleted, the `job_id` doesn't belong to them, the amount is over the ₱50,000
+  ceiling, and the profile doesn't exist. Reasoning for each guard is in
+  `backend/BACKEND_SCHEMA.md` §28.1.
+
+  The credit is **fungible** once issued — spendable on a hire or withdrawable
+  like any other peso, tagged `kind: 'recovery_credit'` for display only. If the
+  UI implies it can only be put toward a booking, it will be wrong.
+  `GET /admin/wallet-transactions?kind=recovery_credit` filters to them.
 
 ### Needs Google Cloud Console access
 

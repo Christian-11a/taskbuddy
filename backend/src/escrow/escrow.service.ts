@@ -1,4 +1,8 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+} from '@nestjs/common';
 import { SupabaseService } from '../supabase/supabase.service';
 import { WalletService } from '../wallet/wallet.service';
 import { ListTransactionsQueryDto } from './dto/escrow.dto';
@@ -15,6 +19,22 @@ export interface EscrowRow {
   refunded_at: string | null;
   /** Withheld at release; 0 until a commission rate is configured (0023). */
   commission_amount: number | string;
+}
+
+/**
+ * What a `hold()` call did.
+ *
+ * `placed` is the part callers cannot work out for themselves: `hold()` is
+ * idempotent, so a second accept for the same provider gets the *existing*
+ * hold back and is debited nothing. A caller that then wants to undo its own
+ * hold must know which of those two it was — see `ApplicationsService.accept`,
+ * where getting this wrong would refund the escrow of a hire that succeeded.
+ */
+export interface HoldResult {
+  /** The hold, or null for a job posted without a budget. */
+  escrow: EscrowRow | null;
+  /** True only when this call actually debited the client. */
+  placed: boolean;
 }
 
 /**
@@ -40,15 +60,24 @@ export class EscrowService {
    *
    * Throws when the client can't cover the budget: you cannot hold money that
    * isn't there, so the hire is refused rather than driving the wallet negative.
+   * `ApplicationsService.accept` calls this *before* it accepts the
+   * application, so that refusal cannot leave a hired provider behind it.
+   *
+   * Returns whether it actually debited anyone: a retried accept gets the
+   * existing hold back untouched, and only the call that placed the money may
+   * take it away again.
    */
-  async hold(jobId: string, providerId: string): Promise<EscrowRow | null> {
+  async hold(jobId: string, providerId: string): Promise<HoldResult> {
     const { data: job, error } = await this.supabase.admin
       .from('jobs')
       .select('id, title, budget, client_id')
       .eq('id', jobId)
       .maybeSingle();
     if (error) throw new BadRequestException(error.message);
-    if (!job || job.budget == null) return null;
+    if (!job || job.budget == null) return { escrow: null, placed: false };
+
+    const existing = await this.findByJob(jobId);
+    if (existing) return this.reuseHold(existing, providerId, job.title);
 
     const amount = Number(job.budget);
     // Available, not settled: a peso already promised to a pending withdrawal
@@ -74,7 +103,14 @@ export class EscrowService {
       })
       .select('*')
       .single();
-    if (insertError?.code === '23505') return this.findByJob(jobId);
+    // Lost the race between the read above and this insert. Whoever won holds
+    // the money; reconcile against their row rather than reporting a hold that
+    // this call did not place.
+    if (insertError?.code === '23505') {
+      const raced = await this.findByJob(jobId);
+      if (!raced) throw new BadRequestException(insertError.message);
+      return this.reuseHold(raced, providerId, job.title);
+    }
     if (insertError) throw new BadRequestException(insertError.message);
 
     await this.ledger({
@@ -85,16 +121,133 @@ export class EscrowService {
       title: `Escrow hold — ${job.title as string}`,
       jobId,
     });
-    return data as EscrowRow;
+    return { escrow: data as EscrowRow, placed: true };
+  }
+
+  /**
+   * A hold already exists for this job. `job_id` is unique on
+   * `escrow_transactions`, so this is where a second hire is reconciled
+   * against the first rather than quietly inheriting its money.
+   *
+   * Three cases, and they are genuinely different:
+   *
+   * - **Same provider, still held.** A retried accept. Return the existing row;
+   *   nobody is debited twice.
+   * - **A different provider.** Two applications accepted in the same instant
+   *   would otherwise assign the job to one provider while the money is held
+   *   for another. Refused: the job already has a hire.
+   * - **Cancelled.** The hold was rolled back after a failed hire (see
+   *   `ApplicationsService.accept`) and the money returned. Revive it and debit
+   *   again, so the retry actually holds funds instead of adopting an empty row.
+   *
+   * A released or refunded escrow is settled money and a disputed one is an
+   * admin's to decide; neither may be re-held.
+   */
+  private async reuseHold(
+    existing: EscrowRow,
+    providerId: string,
+    jobTitle: unknown,
+  ): Promise<HoldResult> {
+    if (existing.provider_id !== providerId) {
+      throw new ConflictException(
+        'This job already has an escrow hold for another provider.',
+      );
+    }
+    // Nothing was debited, and `placed: false` is what stops the caller from
+    // undoing a hold it did not place.
+    if (existing.status === 'held') return { escrow: existing, placed: false };
+    if (existing.status !== 'cancelled') {
+      throw new ConflictException(
+        `This job's escrow is already '${existing.status}' and cannot be re-held.`,
+      );
+    }
+
+    const amount = Number(existing.amount);
+    const balance = await this.wallet.availableBalanceFor(existing.client_id);
+    if (balance < amount) {
+      throw new BadRequestException(
+        `Insufficient wallet balance: ${peso(amount)} needed, ${peso(balance)} available. Add funds to your wallet before hiring.`,
+      );
+    }
+    const revived = await this.settle(existing, {
+      status: 'held',
+      held_at: new Date().toISOString(),
+    });
+    await this.ledger({
+      profileId: existing.client_id,
+      direction: 'debit',
+      kind: 'escrow_hold',
+      amount,
+      title: `Escrow hold — ${(jobTitle as string) ?? 'job'}`,
+      jobId: existing.job_id,
+    });
+    return { escrow: revived, placed: true };
+  }
+
+  /**
+   * Undoes a hold placed for a hire that then failed to go through. Distinct
+   * from `cancelForJob` only in the ledger line the client reads: nothing
+   * about their job was cancelled, the hire simply did not complete.
+   */
+  async releaseHoldForFailedHire(jobId: string): Promise<void> {
+    const escrow = await this.findByJob(jobId);
+    if (!escrow || escrow.status !== 'held') return;
+    // Quietly, not `settle`: if something else already moved this escrow on,
+    // the money is no longer where this rollback thought it was, and the only
+    // thing left to get wrong is crediting the client for it twice.
+    const cancelled = await this.settleIfUnchanged(escrow, {
+      status: 'cancelled',
+    });
+    if (!cancelled) return;
+    await this.creditClient(escrow, 'Refund — hire did not complete');
   }
 
   /**
    * Called when the client completes the job: pay the provider.
-   * A disputed escrow is deliberately left alone — an admin has to resolve it.
+   *
+   * Raises rather than returning null when there is nothing to release. This
+   * used to no-op silently, which was safe only because `JobsService.complete`
+   * blocks a second completion on job status before ever reaching here — the
+   * guard that actually produces the user-facing "already completed" error. A
+   * silent no-op is the wrong contract for a money mover: any second call site
+   * (a retried webhook, a payout rail) would read success and believe a
+   * provider had been paid twice over.
+   *
+   * A job that never had a budget is the one absence that is not an error —
+   * every job posted before migration 0007 has none, and there is genuinely
+   * nothing to move. `releaseIfHeld` is the caller-facing wrapper that keeps
+   * that distinction; see `JobsService.complete`.
    */
-  async release(jobId: string): Promise<EscrowRow | null> {
+  async release(jobId: string): Promise<EscrowRow> {
     const escrow = await this.findByJob(jobId);
-    if (!escrow || escrow.status !== 'held') return null;
+    if (!escrow) {
+      throw new BadRequestException('No escrow hold exists for this job.');
+    }
+    if (escrow.status !== 'held') {
+      throw new ConflictException(
+        `Escrow is already '${escrow.status}' — cannot release again.`,
+      );
+    }
+    return this.payOut(escrow);
+  }
+
+  /**
+   * `release`, but tolerant of the two states a normal completion legitimately
+   * reaches it in: a job posted without a budget (no escrow row at all), and a
+   * disputed escrow, which is frozen until an admin decides it either way.
+   * Anything else still throws, so a genuinely wrong release is loud.
+   *
+   * This is what the job lifecycle calls. `release` is for callers that know
+   * a live hold must exist and want to hear about it when one does not.
+   */
+  async releaseIfHeld(jobId: string): Promise<EscrowRow | null> {
+    const escrow = await this.findByJob(jobId);
+    if (!escrow || escrow.status === 'disputed') return null;
+    if (escrow.status !== 'held') {
+      throw new ConflictException(
+        `Escrow is already '${escrow.status}' — cannot release again.`,
+      );
+    }
     return this.payOut(escrow);
   }
 
@@ -105,8 +258,21 @@ export class EscrowService {
    */
   async cancelForJob(jobId: string): Promise<EscrowRow | null> {
     const escrow = await this.findByJob(jobId);
+    // Already released, refunded, cancelled, or frozen for an admin. Unlike
+    // `release` this stays quiet rather than raising: cancelling a job whose
+    // money has already gone back is the outcome the caller wanted, and there
+    // is nothing left to do about it.
     if (!escrow || escrow.status !== 'held') return null;
-    const updated = await this.setStatus(escrow.id, { status: 'cancelled' });
+
+    // Conditional, and quiet when it loses. A client tapping Cancel while the
+    // provider taps Decline is two different endpoints reaching this with the
+    // same escrow: both read 'held', and without the re-assertion both would
+    // credit the client, refunding one hold twice and inventing the money for
+    // the second one.
+    const updated = await this.settleIfUnchanged(escrow, {
+      status: 'cancelled',
+    });
+    if (!updated) return null;
     await this.creditClient(escrow, 'Refund — job cancelled');
     return updated;
   }
@@ -121,9 +287,17 @@ export class EscrowService {
    * this behaves exactly as it did before commission existed.
    */
   async payOut(escrow: EscrowRow): Promise<EscrowRow> {
+    // Re-asserted in the WHERE clause below rather than only checked here:
+    // two concurrent releases both read 'held', and only the update that
+    // actually flips the row may credit the provider.
+    if (escrow.status !== 'held' && escrow.status !== 'disputed') {
+      throw new ConflictException(
+        `Escrow is already '${escrow.status}' — cannot pay it out.`,
+      );
+    }
     const amount = Number(escrow.amount);
     const commission = round2(amount * (await this.commissionRate()));
-    const updated = await this.setStatus(escrow.id, {
+    const updated = await this.settle(escrow, {
       status: 'released',
       released_at: new Date().toISOString(),
       commission_amount: commission,
@@ -150,7 +324,12 @@ export class EscrowService {
 
   /** Dispute resolved in the client's favour — return the held funds. */
   async refund(escrow: EscrowRow): Promise<EscrowRow> {
-    const updated = await this.setStatus(escrow.id, {
+    if (escrow.status !== 'held' && escrow.status !== 'disputed') {
+      throw new ConflictException(
+        `Escrow is already '${escrow.status}' — cannot refund it.`,
+      );
+    }
+    const updated = await this.settle(escrow, {
       status: 'refunded',
       refunded_at: new Date().toISOString(),
     });
@@ -194,6 +373,47 @@ export class EscrowService {
       transactions: result?.rows ?? [],
       total: Number(result?.total ?? 0),
     };
+  }
+
+  /**
+   * A terminal status change that is about to move money, applied only if the
+   * row is still in the status we read. Two admins resolving the same dispute
+   * — or a release racing a webhook retry — both pass the in-memory guard;
+   * this is what makes exactly one of them win, so the provider is credited
+   * once rather than once per caller.
+   */
+  private async settle(
+    escrow: EscrowRow,
+    patch: Record<string, unknown>,
+  ): Promise<EscrowRow> {
+    const updated = await this.settleIfUnchanged(escrow, patch);
+    if (!updated) {
+      throw new ConflictException(
+        'This escrow was already settled by someone else.',
+      );
+    }
+    return updated;
+  }
+
+  /**
+   * The same conditional update, returning null instead of raising when it
+   * loses. For the callers whose whole job is to end up in a state someone
+   * else may already have reached — cancelling, and rolling a failed hire
+   * back. Losing there is not an error; crediting the client anyway is.
+   */
+  private async settleIfUnchanged(
+    escrow: EscrowRow,
+    patch: Record<string, unknown>,
+  ): Promise<EscrowRow | null> {
+    const { data, error } = await this.supabase.admin
+      .from('escrow_transactions')
+      .update(patch)
+      .eq('id', escrow.id)
+      .eq('status', escrow.status)
+      .select('*')
+      .maybeSingle();
+    if (error) throw new BadRequestException(error.message);
+    return (data as EscrowRow) ?? null;
   }
 
   private async setStatus(

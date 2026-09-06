@@ -155,6 +155,13 @@ sessions require `credentials: 'include'`.
 WEB_CORS_ORIGINS=https://your-admin.example.com,http://localhost:3000
 ```
 
+`TRUST_PROXY_HOPS` says how many proxies sit in front of the API; it defaults
+to `1`, which is right on Render. It exists for the rate limiter: without it
+every request behind the proxy arrives from the same address, the limiter sees
+the whole platform as one client, and one abusive caller locks everybody out.
+Set it to `0` only when the API is exposed directly — the value is also what
+stops a client's own `X-Forwarded-For` from being a way around the limit.
+
 ### External deployment checklist
 
 The repository contains the implementation, but an operator must still run
@@ -305,7 +312,7 @@ All bodies are JSON. 🔒 = requires auth; (client) / (provider) = role-restrict
 | `POST /wallet/withdrawals` 🔒 | `{ amount, destination, title? }` → a **pending** ledger row. Nothing moves until an admin settles it — there is no payout rail, so the admin queue *is* the disbursement mechanism (migration 0024, `BACKEND_SCHEMA.md` §27.2) |
 | `GET /wallet/withdrawals` 🔒 | the caller's own requests, newest first |
 | `POST /wallet/withdrawals/:id/cancel` 🔒 | retract a request an admin has not acted on |
-| `POST /wallet/transactions` 🔒 | **Deprecated** — use `POST /wallet/withdrawals`. Still accepts `{ direction: 'debit', amount, title, job_id?, destination? }` and now files the same pending request. `direction: 'credit'` is refused: wallet funding has exactly one entry point, a settled Stripe charge |
+| `POST /wallet/transactions` 🔒 | **Deprecated** — use `POST /wallet/withdrawals`. Still accepts `{ direction: 'debit', amount, title, job_id?, destination? }` and now files the same pending request. `direction: 'credit'` is refused for **every** caller, admins included: wallet funding has exactly one entry point, a settled Stripe charge. The one deliberate exception lives on the admin surface — `POST /admin/wallet-transactions/recovery-credit` |
 | `GET /conversations` 🔒 | caller's conversations (counterpart name + last-message time) |
 | `POST /conversations` 🔒 | get-or-create for `{ job_id }` — job must have an assigned provider |
 | `GET /conversations/:id/messages` 🔒 | messages, oldest first |
@@ -342,9 +349,15 @@ Two routes, one queue: a `manual` row carries document paths and waits for an
 admin, a `stripe_identity` row carries none and is resolved by webhook. Only one
 review may be open per provider, whichever route it came in by.
 
-Approval flips `provider_profiles.is_verified`. That flag is a **badge only** —
-applying to jobs is deliberately *not* gated on it, since gating would lock out
-every provider who signed up before verification existed.
+Approval flips `provider_profiles.is_verified`. That flag was specified as a
+**badge only** — applying to jobs deliberately *not* gated on it, since gating
+would lock out every provider who signed up before verification existed.
+
+> **⚠️ The code disagrees with that paragraph and with `BACKEND_SCHEMA.md` §17.**
+> `POST /jobs/:jobId/applications` returns `403 Verify your identity before
+> applying to jobs` when `is_verified` is false. Flagged rather than quietly
+> resolved: gating and not gating are different products, and the fix is one
+> line in whichever direction is chosen. See `BACKEND_SCHEMA.md` §17.
 
 **Disputes** (migration 0009)
 
@@ -432,6 +445,7 @@ vars these endpoints return **503** and the rest of the API is unaffected.
 | `GET /admin/transactions?search=&status=&limit=&offset=` | escrow records with both parties + service name; search matches transaction ID, client/provider name, or job title (story #17/#18) |
 | `GET /admin/disputes?status=&limit=&offset=` | dispute queue |
 | `POST /admin/disputes/:id/resolve` | `{ resolution: 'released_to_provider' \| 'refunded_to_client', note? }` (story #20) |
+| `POST /admin/wallet-transactions/recovery-credit` | `{ profile_id, amount, title, job_id? }` — issues a trust credit after a dispute, tagged `kind: 'recovery_credit'` (migration 0021). **The only route that adds balance outside a settled Stripe charge or an escrow release**, which is why it is admin-only and audited; `POST /wallet/transactions` still refuses credits from everyone. Refuses a deleted recipient, a `job_id` they are not on, and anything over ₱50,000. See `BACKEND_SCHEMA.md` §28.1 |
 | `GET /admin/withdrawals?status=&limit=&offset=` | the settlement queue — `pending` by default, oldest first (migration 0024) |
 | `POST /admin/withdrawals/:id/settle` | `{ reference? }` — records that the money was actually sent. This is what debits the wallet; the balance is re-checked first and the row is only settled once, whoever clicks |
 | `POST /admin/withdrawals/:id/reject` | `{ reason }` — the reason reaches the account holder and the amount returns to their available balance |
@@ -485,6 +499,19 @@ Money leaves by request, not by ledger entry. `POST /wallet/withdrawals` files a
 there is no payout rail, so that queue *is* the disbursement mechanism
 (`BACKEND_SCHEMA.md` §27.2).
 
+**Releasing raises rather than going quiet.** `EscrowService.release()` throws on
+an escrow that does not exist or is no longer `held`; `releaseIfHeld()` — what the
+job lifecycle calls — tolerates the two absences a normal completion legitimately
+reaches it in (a job posted without a budget, and a disputed hold frozen for an
+admin) and still raises on an already-released one. A silent no-op would let a
+retried caller read success and believe a provider had been paid. §28.2.
+
+**Hiring holds the money before it accepts the application.** The accept fires a
+trigger that assigns the job and rejects every rival applicant, which application
+code cannot reverse; an insufficient balance discovered afterwards used to leave a
+hired provider standing behind an error the client read as a failure. Now the
+refusal lands while the job is still `open`. §28.3.
+
 Every ledger row carries a `kind`, and **`kind = 'payout'` is the gross value
 that flowed through the platform**. This matters: a payout and a refund are both
 credits with a `job_id`, so the old `direction + job_id` rule would have counted
@@ -498,6 +525,36 @@ the platform is not a profile. The rate defaults to 0, so nothing is withheld
 until an admin sets one via `PATCH /admin/commission`. See `BACKEND_SCHEMA.md`
 §18 — including the documented concurrency caveat on the balance check — and
 §27.5.
+
+### Rate limiting
+
+Enforced by a global `ThrottlerGuard` (`BACKEND_SCHEMA.md` §28.4). Over the
+limit is a `429`.
+
+**Every limit is per endpoint, per IP** — the throttler keys on handler + IP, so
+each route counts separately and there is no aggregate cap across the API.
+
+| Scope | Limit (per endpoint, per IP) |
+|---|---|
+| Everything | 240 / minute |
+| `POST /payments/topup`, `POST /payments/checkout-session` | 5 / minute |
+| `POST /auth/{register,login,admin/login,forgot-password,reset-password,send-email-otp,verify-email-otp,change-password}` | 10 / minute **each** |
+| `POST /payments/webhook` | exempt — Stripe is authenticated by signature and retries for three days |
+
+`POST /auth/refresh`, `GET /auth/me` and the admin session routes are
+deliberately left on the 240 ceiling: they fire on ordinary app use, and a tight
+limit there would sign people out rather than stop anything.
+
+The 240 is a burst allowance, not a quota: a mobile screen that loads jobs,
+wallet and an unread count on focus legitimately fires several requests at once.
+The tight limits are the ones that matter — they stop the payment routes being a
+free card-testing endpoint pointed at Stripe, and the auth routes being a
+password-guessing or mail-relay surface. Neither stops a distributed attempt;
+per-IP limiting cannot.
+
+Storage is in-memory, so the limit is also **per process**. One Render instance
+makes that the whole platform; a second would double every ceiling, and shared
+storage (Redis) is the fix if it comes to that.
 
 ### Errors
 

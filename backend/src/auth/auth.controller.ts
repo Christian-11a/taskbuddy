@@ -39,6 +39,7 @@ import { JwtAuthGuard } from './jwt-auth.guard';
 import { CurrentUser } from './current-user.decorator';
 import { Roles } from './roles.decorator';
 import { isAllowedWebOrigin } from './web-origins';
+import { ThrottleAuth } from '../common/throttle';
 import type { AuthenticatedRequest, Profile } from '../common/types';
 
 @Controller('auth')
@@ -46,18 +47,21 @@ export class AuthController {
   constructor(private readonly authService: AuthService) {}
 
   @Post('register')
+  @ThrottleAuth()
   register(@Body() dto: RegisterDto) {
     return this.authService.register(dto);
   }
 
   @Post('login')
   @HttpCode(200)
+  @ThrottleAuth()
   login(@Body() dto: LoginDto) {
     return this.authService.login(dto);
   }
 
   @Post('admin/login')
   @HttpCode(200)
+  @ThrottleAuth()
   async adminLogin(
     @Body() dto: LoginDto,
     @Res({ passthrough: true }) res: Response,
@@ -186,6 +190,7 @@ export class AuthController {
 
   /** Mails a recovery code. Always 200, even for an address with no account. */
   @Post('forgot-password')
+  @ThrottleAuth()
   @HttpCode(200)
   forgotPassword(@Body() dto: ForgotPasswordDto) {
     return this.authService.forgotPassword(dto);
@@ -193,6 +198,7 @@ export class AuthController {
 
   /** Exchanges that code for a session and sets the new password. */
   @Post('reset-password')
+  @ThrottleAuth()
   @HttpCode(200)
   resetPassword(@Body() dto: ResetPasswordDto) {
     return this.authService.resetPassword(dto);
@@ -204,6 +210,7 @@ export class AuthController {
    * confirmed.
    */
   @Post('send-email-otp')
+  @ThrottleAuth()
   @HttpCode(200)
   sendEmailOtp(@Body() dto: SendEmailOtpDto) {
     return this.authService.sendEmailOtp(dto);
@@ -211,6 +218,7 @@ export class AuthController {
 
   /** Exchanges that code for a confirmed account and a session. */
   @Post('verify-email-otp')
+  @ThrottleAuth()
   @HttpCode(200)
   verifyEmailOtp(@Body() dto: VerifyEmailOtpDto) {
     return this.authService.verifyEmailOtp(dto);
@@ -236,6 +244,7 @@ export class AuthController {
   }
 
   @Post('change-password')
+  @ThrottleAuth()
   @HttpCode(200)
   @UseGuards(JwtAuthGuard)
   changePassword(@CurrentUser() user: Profile, @Body() dto: ChangePasswordDto) {
