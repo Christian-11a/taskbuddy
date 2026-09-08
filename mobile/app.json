@@ -14,7 +14,12 @@
       "backgroundColor": "#ffffff"
     },
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "infoPlist": {
+        "NSCameraUsageDescription": "TaskBuddy uses the camera for identity verification.",
+        "NSLocationWhenInUseUsageDescription": "TaskBuddy uses your location to show nearby jobs and set job locations.",
+        "NSPhotoLibraryUsageDescription": "TaskBuddy uses your photo library for profile, verification, and job photos."
+      }
     },
     "android": {
       "package": "com.taskbuddy.app",
@@ -23,7 +28,12 @@
         "backgroundColor": "#ffffff"
       },
       "edgeToEdgeEnabled": true,
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "permissions": [
+        "CAMERA",
+        "ACCESS_FINE_LOCATION",
+        "READ_MEDIA_IMAGES"
+      ]
     },
     "web": {
       "favicon": "./assets/favicon.png"

@@ -11,6 +11,8 @@
 import React, { useState } from 'react';
 import {
   ActivityIndicator,
+  Image,
+  Modal,
   ScrollView,
   StyleSheet,
   Text,
@@ -86,6 +88,7 @@ export default function HOJobDetailScreen({ jobId, onBack, onNavigate }: HOJobDe
   const [actionError, setActionError] = useState<string | null>(null);
   const [matchingMessage, setMatchingMessage] = useState<string | null>(null);
   const [confirmCancel, setConfirmCancel] = useState(false);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
 
   const job = data?.job;
   const provider = data?.provider;
@@ -198,24 +201,6 @@ export default function HOJobDetailScreen({ jobId, onBack, onNavigate }: HOJobDe
             </View>
           </View>
 
-          {/* Job progress — matches .timeline (horizontal steps) */}
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Job Progress</Text>
-            <View style={styles.timeline}>
-              <View style={styles.timelineLine} />
-              {JOB_STAGES.map((label, i) => (
-                <View key={label} style={styles.timelineStep}>
-                  <View style={[
-                    styles.timelineDot,
-                    i < stage && styles.timelineDotDone,
-                    i === stage && styles.timelineDotCurrent,
-                  ]} />
-                  <Text style={[styles.timelineLabel, i <= stage && styles.timelineLabelDone]}>{label}</Text>
-                </View>
-              ))}
-            </View>
-          </View>
-
           {/* Task list — what was asked for, and how much of it the provider
               has ticked off. Read-only here: only the provider can change it. */}
           {tasks.length > 0 && (
@@ -248,13 +233,14 @@ export default function HOJobDetailScreen({ jobId, onBack, onNavigate }: HOJobDe
               kept in the same .detail-row pattern used elsewhere in the mockup. */}
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Details</Text>
-            {[
+            <View style={styles.detailsGrid}>
+              {[
               { icon: Wrench, label: 'Service', value: job.service_categories?.name ?? '—' },
               { icon: MapPin, label: 'Location', value: job.address },
               { icon: TriangleAlert, label: 'Urgency', value: urgencyMeta(job.urgency).label },
               { icon: CalendarDays, label: 'Posted', value: timeAgo(job.posted_at) },
-            ].map((item, i) => (
-              <View key={item.label} style={[styles.detailRow, i > 0 && styles.detailRowBorder]}>
+              ].map((item) => (
+              <View key={item.label} style={styles.detailRow}>
                 <View style={styles.detailIcon}>
                   <item.icon size={17} color={C.ink500} />
                 </View>
@@ -263,7 +249,41 @@ export default function HOJobDetailScreen({ jobId, onBack, onNavigate }: HOJobDe
                   <Text style={styles.detailValue}>{item.value}</Text>
                 </View>
               </View>
-            ))}
+              ))}
+            </View>
+          </View>
+
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Job Photos</Text>
+            {job.photo_urls?.length > 0 ? (
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.attachmentList}>
+                {job.photo_urls.map((url) => (
+                  <TouchableOpacity key={url} onPress={() => setPreviewUrl(url)} activeOpacity={0.85}>
+                    <Image source={{ uri: url }} style={styles.attachmentImage} />
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+            ) : (
+              <Text style={styles.emptyAttachmentText}>The homeowner has not provided a picture.</Text>
+            )}
+          </View>
+
+          {/* Job progress — this stays in the document while the action bar is docked below. */}
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Job Progress</Text>
+            <View style={styles.timeline}>
+              <View style={styles.timelineLine} />
+              {JOB_STAGES.map((label, i) => (
+                <View key={label} style={styles.timelineStep}>
+                  <View style={[
+                    styles.timelineDot,
+                    i < stage && styles.timelineDotDone,
+                    i === stage && styles.timelineDotCurrent,
+                  ]} />
+                  <Text style={[styles.timelineLabel, i <= stage && styles.timelineLabelDone]}>{label}</Text>
+                </View>
+              ))}
+            </View>
           </View>
 
           {/* Hired provider */}
@@ -295,6 +315,13 @@ export default function HOJobDetailScreen({ jobId, onBack, onNavigate }: HOJobDe
                   <Text style={styles.messageBtnText}>Message</Text>
                 </TouchableOpacity>
               </View>
+              <TouchableOpacity
+                style={styles.linkRow}
+                onPress={() => onNavigate('Job Applications', job.id)}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.linkRowText}>View Offers</Text>
+              </TouchableOpacity>
             </View>
           ) : (
             <View style={styles.section}>
@@ -302,18 +329,18 @@ export default function HOJobDetailScreen({ jobId, onBack, onNavigate }: HOJobDe
               <Text style={styles.detailValue}>
                 No provider assigned yet. You'll be notified when someone is matched.
               </Text>
+              <TouchableOpacity
+                style={styles.linkRow}
+                onPress={() => onNavigate('Job Applications', job.id)}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.linkRowText}>View Offers</Text>
+              </TouchableOpacity>
             </View>
           )}
 
           {/* Related links — real app functionality, kept as flat rows */}
           <View style={styles.section}>
-            <TouchableOpacity
-              style={styles.linkRow}
-              onPress={() => onNavigate('Job Applications', job.id)}
-              activeOpacity={0.7}
-            >
-              <Text style={styles.linkRowText}>View Offers</Text>
-            </TouchableOpacity>
             {/* Only offered once there is something to review. The row used to
                 show on every job, including ones with no provider yet, where
                 POST /jobs/:id/review can only come back as an error. */}
@@ -333,81 +360,56 @@ export default function HOJobDetailScreen({ jobId, onBack, onNavigate }: HOJobDe
             )}
           </View>
 
-          {/* Actions — matches .detail-action-bar */}
-          <View style={styles.actionBar}>
-            {!!actionError && <Text style={styles.actionError}>{actionError}</Text>}
-
-            {canComplete && (
-              <TouchableOpacity
-                style={styles.primaryBtn}
-                onPress={() => runAction(() => api.completeJob(job.id))}
-                activeOpacity={0.85}
-                disabled={busy}
-              >
-                <Text style={styles.primaryBtnText}>
-                  {busy ? 'Working…' : 'Confirm Completion'}
-                </Text>
-              </TouchableOpacity>
-            )}
-
-            {canFindProviders && (
-              <TouchableOpacity
-                style={styles.primaryBtn}
-                onPress={() => void findProviders()}
-                activeOpacity={0.85}
-                disabled={busy}
-              >
-                <Text style={styles.primaryBtnText}>
-                  {busy ? 'Looking…' : 'Find Providers'}
-                </Text>
-              </TouchableOpacity>
-            )}
-            {!!matchingMessage && <Text style={styles.matchingMessage}>{matchingMessage}</Text>}
-
-            {/* Chat is reachable from the provider card too, but only once a
-                provider exists; this is the one that is always where you left
-                it. */}
-            <TouchableOpacity
-              style={styles.outlineBtn}
-              onPress={() => onNavigate('Chat', job.id)}
-              activeOpacity={0.85}
-            >
-              <View style={styles.outlineBtnContent}>
-                <MessageCircle size={17} color={C.ink700} />
-                <Text style={styles.outlineBtnText}>
-                  {provider ? `Message ${provider.profiles?.full_name ?? 'Provider'}` : 'Open Chat'}
-                </Text>
-              </View>
-            </TouchableOpacity>
-
-            {canCancel && (
-              <TouchableOpacity
-                style={styles.outlineDangerBtn}
-                onPress={() => setConfirmCancel(true)}
-                activeOpacity={0.85}
-                disabled={busy}
-              >
-                <View style={styles.outlineBtnContent}>
-                  <CircleAlert size={17} color="#ef4444" />
-                  <Text style={styles.outlineDangerBtnText}>Cancel Job</Text>
-                </View>
-              </TouchableOpacity>
-            )}
-
-            <TouchableOpacity
-              style={styles.outlineBtn}
-              onPress={() => onNavigate(dispute ? 'Dispute Status' : 'Dispute Filing')}
-              activeOpacity={0.85}
-            >
-              <Text style={styles.outlineBtnText}>
-                {dispute ? 'View Dispute Status' : 'File a Dispute'}
-              </Text>
-            </TouchableOpacity>
-          </View>
-
-          <View style={{ height: 10 }} />
+          <View style={{ height: 18 }} />
         </ScrollView>
       )}
+
+      {job && (
+        <View style={styles.actionBar}>
+          {!!actionError && <Text style={styles.actionError}>{actionError}</Text>}
+          {canComplete && (
+            <TouchableOpacity style={styles.primaryBtn} onPress={() => runAction(() => api.completeJob(job.id))} activeOpacity={0.85} disabled={busy}>
+              <Text style={styles.primaryBtnText}>{busy ? 'Working…' : 'Confirm Completion'}</Text>
+            </TouchableOpacity>
+          )}
+          {canFindProviders && (
+            <TouchableOpacity style={styles.primaryBtn} onPress={() => void findProviders()} activeOpacity={0.85} disabled={busy}>
+              <Text style={styles.primaryBtnText}>{busy ? 'Looking…' : 'Find Providers'}</Text>
+            </TouchableOpacity>
+          )}
+          {!!matchingMessage && <Text style={styles.matchingMessage}>{matchingMessage}</Text>}
+          {canCancel && (
+            <TouchableOpacity style={styles.outlineDangerBtn} onPress={() => setConfirmCancel(true)} activeOpacity={0.85} disabled={busy}>
+              <View style={styles.outlineBtnContent}>
+                <CircleAlert size={17} color="#ef4444" />
+                <Text style={styles.outlineDangerBtnText}>Cancel Job</Text>
+              </View>
+            </TouchableOpacity>
+          )}
+          {(dispute || !!job.assigned_provider_id || ['assigned', 'confirmed', 'in_progress'].includes(job.status)) && (
+            <TouchableOpacity style={styles.outlineBtn} onPress={() => onNavigate(dispute ? 'Dispute Status' : 'Dispute Filing', job.id)} activeOpacity={0.85}>
+              <Text style={styles.outlineDangerBtnText}>{dispute ? 'View Dispute Status' : 'File a Dispute'}</Text>
+            </TouchableOpacity>
+          )}
+        </View>
+      )}
+
+      {job && (
+        <TouchableOpacity
+          style={styles.floatingChat}
+          onPress={() => onNavigate('Chat', job.id)}
+          accessibilityLabel="Open chat"
+          activeOpacity={0.85}
+        >
+          <MessageCircle size={22} color={C.white} />
+        </TouchableOpacity>
+      )}
+
+      <Modal visible={!!previewUrl} transparent animationType="fade" onRequestClose={() => setPreviewUrl(null)}>
+        <TouchableOpacity style={styles.previewBackdrop} activeOpacity={1} onPress={() => setPreviewUrl(null)}>
+          {previewUrl && <Image source={{ uri: previewUrl }} style={styles.previewImage} resizeMode="contain" />}
+        </TouchableOpacity>
+      </Modal>
 
       {/* Cancelling is irreversible and moves money — ask first. */}
       <ConfirmationModal
@@ -455,7 +457,7 @@ const styles = StyleSheet.create({
   headerTitle: { flex: 1, color: C.ink900, fontSize: 19.5, fontWeight: '800', fontFamily: 'Inter' },
 
   body: { flex: 1 },
-  bodyContent: { paddingHorizontal: Spacing.screenH, paddingTop: 4 },
+  bodyContent: { paddingHorizontal: Spacing.screenH, paddingTop: 4, paddingBottom: 12 },
   stateText: { color: C.ink500, fontSize: 16.5, fontFamily: 'Inter', textAlign: 'center', marginTop: 30, paddingHorizontal: Spacing.screenH },
 
   // Hero
@@ -489,6 +491,9 @@ const styles = StyleSheet.create({
   actionError: { color: '#ef4444', fontSize: 13.5, fontFamily: 'Inter', textAlign: 'center' },
   matchingMessage: { color: C.cyan800, fontSize: 13.5, fontFamily: 'Inter', textAlign: 'center', lineHeight: 18 },
   descText: { fontSize: 14, lineHeight: 21, color: C.ink700, fontFamily: 'Inter' },
+  attachmentList: { gap: 10 },
+  attachmentImage: { width: 92, height: 92, borderRadius: 10, backgroundColor: C.ink100 },
+  emptyAttachmentText: { color: C.ink500, fontSize: 13.5, fontFamily: 'Inter' },
 
   // Horizontal timeline
   timeline: { flexDirection: 'row', justifyContent: 'space-between', position: 'relative', marginTop: 4 },
@@ -501,8 +506,8 @@ const styles = StyleSheet.create({
   timelineLabelDone: { color: C.ink700, fontWeight: '700' },
 
   // Detail rows
-  detailRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 10, paddingVertical: 8 },
-  detailRowBorder: { borderTopWidth: 1, borderTopColor: '#f1f4f6' },
+  detailsGrid: { flexDirection: 'row', flexWrap: 'wrap', rowGap: 14 },
+  detailRow: { width: '50%', flexDirection: 'row', alignItems: 'flex-start', gap: 10, paddingRight: 8 },
   detailIcon: { width: 30, height: 30, borderRadius: 9, backgroundColor: '#f6f8fa', alignItems: 'center', justifyContent: 'center' },
   detailLabel: { fontSize: 11.5, color: C.ink400, fontFamily: 'Inter', marginBottom: 2 },
   detailValue: { fontSize: 13.5, color: C.ink800, fontWeight: '600', fontFamily: 'Inter', lineHeight: 17 },
@@ -519,10 +524,14 @@ const styles = StyleSheet.create({
 
   // Link rows
   linkRow: { paddingVertical: 12 },
+  detailRowBorder: { borderTopWidth: 1, borderTopColor: '#f1f4f6' },
   linkRowText: { color: C.cyan700, fontSize: 14.5, fontWeight: '700', fontFamily: 'Inter' },
 
   // Action bar
-  actionBar: { paddingTop: 16, paddingBottom: 10, gap: 8 },
+  actionBar: { paddingHorizontal: Spacing.screenH, paddingTop: 12, paddingBottom: 10, gap: 8, backgroundColor: C.white, borderTopWidth: 1, borderTopColor: C.line },
+  floatingChat: { position: 'absolute', right: 20, bottom: 24, width: 54, height: 54, borderRadius: 27, backgroundColor: C.cyan700, alignItems: 'center', justifyContent: 'center', elevation: 4, shadowColor: '#000', shadowOpacity: 0.2, shadowRadius: 5, shadowOffset: { width: 0, height: 3 } },
+  previewBackdrop: { flex: 1, backgroundColor: 'rgba(15,23,42,0.9)', alignItems: 'center', justifyContent: 'center', padding: 20 },
+  previewImage: { width: '100%', height: '80%' },
   primaryBtn: { backgroundColor: C.cyan700, borderRadius: 13, paddingVertical: 14, alignItems: 'center' },
   primaryBtnText: { color: C.white, fontSize: 16.5, fontWeight: '700', fontFamily: 'Inter' },
   outlineBtn: { borderWidth: 1, borderColor: '#dce3e9', borderRadius: 13, paddingVertical: 14, alignItems: 'center' },

@@ -25,6 +25,7 @@ import { V6Colors } from '../constants/theme';
 import { useAuth } from '../context/AuthContext';
 import { api } from '../lib/api';
 import { initials } from '../lib/format';
+import { requestAppPermission } from '../lib/permissions';
 
 const C = V6Colors;
 
@@ -39,11 +40,7 @@ export default function AvatarPicker({ name }: { name: string }) {
     setError(null);
     setBusy(true);
     try {
-      const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
-      if (!permission.granted) {
-        setError('Allow photo library access to change your photo.');
-        return;
-      }
+      if (!(await requestAppPermission('gallery'))) return;
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ['images'],
         allowsEditing: true,

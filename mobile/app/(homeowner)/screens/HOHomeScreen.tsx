@@ -25,7 +25,6 @@ import {
   Hand,
   MapPin,
   Palette,
-  Search,
   Sparkles,
   Wrench,
 } from 'lucide-react-native';
@@ -174,14 +173,6 @@ export default function HOHomeScreen({ onNavigate }: HOHomeScreenProps) {
             <View style={styles.sectionHead}>
               <Text style={styles.sectionTitle}>Find a service</Text>
             </View>
-            <TouchableOpacity
-              style={styles.scopeSearch}
-              onPress={() => onNavigate('Create Job')}
-              activeOpacity={0.8}
-            >
-              <Search size={19} color={C.ink400} />
-              <Text style={styles.scopeSearchText}>Search services or providers</Text>
-            </TouchableOpacity>
             <ScrollView
               horizontal
               showsHorizontalScrollIndicator={false}
@@ -328,7 +319,7 @@ const styles = StyleSheet.create({
   },
   notifBadgeText: { color: C.white, fontSize: 11, fontWeight: '800' },
   avatarCircle: {
-    width: 40, height: 40, borderRadius: 12,
+    width: 40, height: 40, borderRadius: 20,
     backgroundColor: 'rgba(255,255,255,0.16)',
     borderWidth: 1, borderColor: 'rgba(255,255,255,0.12)',
     alignItems: 'center', justifyContent: 'center', overflow: 'hidden',
@@ -372,14 +363,6 @@ const styles = StyleSheet.create({
   sectionTitle: { fontSize: 19, fontWeight: '800', color: C.ink900, fontFamily: 'Inter', letterSpacing: -0.15 },
   sectionCount: { fontWeight: '600', color: C.ink400, fontSize: 13.5 },
   textLink: { color: C.cyan700, fontSize: 14.5, fontWeight: '700', fontFamily: 'Inter' },
-
-  scopeSearch: {
-    flexDirection: 'row', alignItems: 'center', gap: 9,
-    backgroundColor: C.white, borderWidth: 1, borderColor: C.line,
-    borderRadius: 14, paddingHorizontal: 13, paddingVertical: 11,
-    marginBottom: 12,
-  },
-  scopeSearchText: { fontSize: 13.5, color: C.ink400, fontFamily: 'Inter', flex: 1 },
 
   categoryStrip: { gap: 9, paddingRight: Spacing.screenH },
   categoryTile: {
