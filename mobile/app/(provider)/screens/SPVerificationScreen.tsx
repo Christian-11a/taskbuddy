@@ -57,6 +57,7 @@ import { api, ApiError } from '../../../src/lib/api';
 import { useAsyncData } from '../../../src/hooks/useAsyncData';
 import { shortDate } from '../../../src/lib/format';
 import { Sizes, Spacing, V6Colors, V6Radii, V6Shadows } from '../../../src/constants/theme';
+import { requestAppPermission } from '../../../src/lib/permissions';
 
 const Colors = {
   ...V6Colors,
@@ -118,11 +119,7 @@ export default function SPVerificationScreen({ onBack, onVerified }: SPVerificat
   );
 
   const pick = async (slot: Slot) => {
-    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!permission.granted) {
-      setError('Allow photo library access to upload your documents.');
-      return;
-    }
+    if (!(await requestAppPermission('gallery'))) return;
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ['images'],
       quality: 0.85,
@@ -143,11 +140,7 @@ export default function SPVerificationScreen({ onBack, onVerified }: SPVerificat
 
   /** Camera capture — the selfie should be a live shot, not a saved photo. */
   const takeSelfie = async () => {
-    const permission = await ImagePicker.requestCameraPermissionsAsync();
-    if (!permission.granted) {
-      setError('Allow camera access to take your selfie.');
-      return;
-    }
+    if (!(await requestAppPermission('camera'))) return;
     const result = await ImagePicker.launchCameraAsync({
       mediaTypes: ['images'],
       quality: 0.85,

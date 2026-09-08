@@ -399,7 +399,14 @@ function AppContent() {
     if (hoScreen === 'Chat') {
       return (
         <View style={styles.screen}>
-          <HOChatScreen jobId={hoSelectedId} onBack={hoBack} onViewJob={() => hoNavigate('Job Detail')} />
+          <HOChatScreen
+            jobId={hoSelectedId}
+            onBack={hoBack}
+            onViewJob={() => {
+              setHOStack([]);
+              setHOScreen('Job Detail');
+            }}
+          />
         </View>
       );
     }
@@ -516,7 +523,14 @@ function AppContent() {
   if (spScreen === 'Chat') {
     return (
       <View style={styles.screen}>
-        <SPChatScreen jobId={spJobId} onBack={spBack} onViewJob={() => spNavigate('Job Detail')} />
+        <SPChatScreen
+          jobId={spJobId}
+          onBack={spBack}
+          onViewJob={() => {
+            setSPStack([]);
+            setSPScreen('Job Detail');
+          }}
+        />
       </View>
     );
   }

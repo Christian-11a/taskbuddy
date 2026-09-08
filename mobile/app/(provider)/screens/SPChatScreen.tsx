@@ -44,6 +44,7 @@ import {
   type Message,
 } from '../../../src/lib/api';
 import { initials, timeOfDay } from '../../../src/lib/format';
+import ChatEmptyState from '../../../src/components/ChatEmptyState';
 
 interface SPChatScreenProps {
   jobId: string | null;
@@ -151,9 +152,7 @@ export default function SPChatScreen({ jobId, onBack, onViewJob }: SPChatScreenP
       >
         {loading && <ActivityIndicator style={{ marginTop: 30 }} color={C.cyan700} />}
         {!!error && !loading && <Text style={styles.stateText}>{error}</Text>}
-        {!loading && !error && messages.length === 0 && (
-          <Text style={styles.stateText}>No messages yet. Say hello 👋</Text>
-        )}
+        {!loading && !error && messages.length === 0 && <ChatEmptyState />}
         <FlatList
           ref={listRef}
           data={messages}

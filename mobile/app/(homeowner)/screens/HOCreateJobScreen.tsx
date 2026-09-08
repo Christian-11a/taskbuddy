@@ -60,6 +60,7 @@ import {
   Modal,
   Image,
   ActivityIndicator,
+  KeyboardAvoidingView,
 } from 'react-native';
 import {
   ArrowLeft,
@@ -81,6 +82,7 @@ import DateTimePicker, {
 } from '@react-native-community/datetimepicker';
 import { Calendar } from 'react-native-calendars';
 import * as ImagePicker from 'expo-image-picker';
+import MapView, { Marker } from 'react-native-maps';
 import { Sizes, Spacing, V6Colors, V6Shadows } from '../../../src/constants/theme';
 import { useAuth } from '../../../src/context/AuthContext';
 import { useAsyncData } from '../../../src/hooks/useAsyncData';
@@ -88,6 +90,7 @@ import { api } from '../../../src/lib/api';
 import { peso } from '../../../src/lib/format';
 import TermsAndConditions from '../../(auth)/screens/TermsAndConditions';
 import ConfirmationModal from '../../../src/components/ConfirmationModal';
+import { requestAppPermission } from '../../../src/lib/permissions';
 
 const Colors = {
   ...V6Colors,
@@ -224,6 +227,7 @@ export default function HOCreateJobScreen({
   const [descriptionTouched, setDescriptionTouched] = useState(false);
   const [descriptionHeight, setDescriptionHeight] = useState<number | null>(null);
   const [location, setLocation] = useState('');
+  const [useProfileLocation, setUseProfileLocation] = useState(true);
   const [tasks, setTasks] = useState<string[]>([]);
   const [customTask, setCustomTask] = useState('');
   const [date, setDate] = useState<Date | null>(null);
@@ -419,11 +423,7 @@ export default function HOCreateJobScreen({
     // appear on a cold gallery; without this the tile looks like a dead tap.
     setPickingPhotos(true);
     try {
-      const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
-      if (!permission.granted) {
-        setError('Allow photo library access to add job photos.');
-        return;
-      }
+      if (!(await requestAppPermission('gallery'))) return;
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ['images'],
         allowsMultipleSelection: true,
@@ -446,7 +446,7 @@ export default function HOCreateJobScreen({
     if (step === 3) {
       void (async () => {
         try {
-          await ImagePicker.requestMediaLibraryPermissionsAsync();
+          await requestAppPermission('gallery');
         } catch {
           // The picker asks again at use time; nothing to recover here.
         }
@@ -665,6 +665,32 @@ export default function HOCreateJobScreen({
           <View>
             <Text style={styles.stepTitle}>Select a Service<Text style={styles.requiredAsterisk}> *</Text></Text>
             <Text style={styles.stepSubtitle}>What service do you need?</Text>
+            <View style={styles.locationPrompt}>
+              <Text style={styles.locationPromptTitle}>Use your default location?</Text>
+              <Text style={styles.locationPromptText}>
+                {profile?.address ?? 'No profile address saved yet.'}
+              </Text>
+              <View style={styles.locationPromptActions}>
+                <TouchableOpacity
+                  style={[styles.locationChoice, useProfileLocation && styles.locationChoiceActive]}
+                  onPress={() => {
+                    setUseProfileLocation(true);
+                    if (profile?.address) setLocation(profile.address);
+                  }}
+                >
+                  <Text style={styles.locationChoiceText}>Use default</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.locationChoice, !useProfileLocation && styles.locationChoiceActive]}
+                  onPress={() => {
+                    setUseProfileLocation(false);
+                    setLocation('');
+                  }}
+                >
+                  <Text style={styles.locationChoiceText}>Enter custom</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
             {/* Skeleton tiles in the grid's own shape, so the step doesn't
                 jump from a line of text to a two-column grid on arrival. */}
             {categories.loading && (
@@ -733,6 +759,26 @@ export default function HOCreateJobScreen({
               />
               {!!fieldErrors.location && <Text style={styles.inputErrorText}>{fieldErrors.location}</Text>}
             </View>
+
+            <MapView
+              style={styles.map}
+              initialRegion={{
+                latitude: profile?.latitude ?? FALLBACK_COORDS.latitude,
+                longitude: profile?.longitude ?? FALLBACK_COORDS.longitude,
+                latitudeDelta: 0.01,
+                longitudeDelta: 0.01,
+              }}
+              scrollEnabled={false}
+              zoomEnabled={false}
+            >
+              <Marker
+                coordinate={{
+                  latitude: profile?.latitude ?? FALLBACK_COORDS.latitude,
+                  longitude: profile?.longitude ?? FALLBACK_COORDS.longitude,
+                }}
+                title="Job location"
+              />
+            </MapView>
 
             {!!profile?.address && profile.address !== location && (
               <TouchableOpacity
@@ -862,6 +908,7 @@ export default function HOCreateJobScreen({
               {!!fieldErrors.title && <Text style={styles.inputErrorText}>{fieldErrors.title}</Text>}
             </View>
 
+            <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
             <View style={styles.inputGroup}>
               <Text style={styles.inputLabel}>Description<Text style={styles.requiredAsterisk}> *</Text></Text>
               <View style={styles.textAreaWrap}>
@@ -899,6 +946,7 @@ export default function HOCreateJobScreen({
               </View>
               {!!fieldErrors.description && <Text style={styles.inputErrorText}>{fieldErrors.description}</Text>}
             </View>
+            </KeyboardAvoidingView>
 
             <View style={styles.inputGroup}>
               <Text style={styles.inputLabel}>Photos (optional)</Text>
@@ -1268,6 +1316,13 @@ const styles = StyleSheet.create({
 
   stepTitle: { color: Colors.brandDark, fontSize: 26.5, fontWeight: '800', fontFamily: 'Inter', marginBottom: 4 },
   stepSubtitle: { color: Colors.muted, fontSize: 16.5, fontFamily: 'Inter', marginBottom: 20, lineHeight: 21 },
+  locationPrompt: { backgroundColor: Colors.white, borderWidth: 1, borderColor: Colors.line, borderRadius: 14, padding: 14, marginBottom: 16 },
+  locationPromptTitle: { color: Colors.ink900, fontSize: 14.5, fontWeight: '800', fontFamily: 'Inter' },
+  locationPromptText: { color: Colors.muted, fontSize: 13, fontFamily: 'Inter', marginTop: 4 },
+  locationPromptActions: { flexDirection: 'row', gap: 8, marginTop: 12 },
+  locationChoice: { flex: 1, alignItems: 'center', borderWidth: 1, borderColor: Colors.line, borderRadius: 10, paddingVertical: 9 },
+  locationChoiceActive: { backgroundColor: '#e6f8fb', borderColor: Colors.brandTeal },
+  locationChoiceText: { color: Colors.brandDark, fontSize: 13, fontWeight: '700', fontFamily: 'Inter' },
 
   serviceGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },
   serviceCard: {
@@ -1305,6 +1360,7 @@ const styles = StyleSheet.create({
   },
   savedAddressText: { flex: 1, color: Colors.brandTeal, fontSize: 14, fontWeight: '600', fontFamily: 'Inter' },
   noteCard: { backgroundColor: Colors.ink50, borderRadius: 14, padding: 14 },
+  map: { height: 190, borderRadius: 14, marginBottom: 16 },
   noteText: { color: Colors.slate, fontSize: 14, lineHeight: 19, fontFamily: 'Inter' },
 
   calendarOverlay: { flex: 1, backgroundColor: 'rgba(15,23,42,0.45)', justifyContent: 'center', padding: 20 },

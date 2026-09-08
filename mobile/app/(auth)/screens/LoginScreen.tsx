@@ -21,6 +21,7 @@ import {
   Text,
   TextInput,
   TouchableOpacity,
+  TouchableWithoutFeedback,
   View,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -310,6 +311,7 @@ export default function LoginScreen({
     // even with pointerEvents set, and this sidesteps that class of bug
     // entirely: children of a normal View-like container always receive
     // touches, no workaround needed.
+    <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
     <LinearGradient
       colors={['#cdeef7', '#ffffff']}
       locations={[0, 0.55]}
@@ -332,6 +334,7 @@ export default function LoginScreen({
         <View style={styles.flex}>{scrollContent}</View>
       )}
     </LinearGradient>
+    </TouchableWithoutFeedback>
   );
 }
 
