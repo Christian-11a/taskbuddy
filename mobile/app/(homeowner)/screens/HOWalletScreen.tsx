@@ -14,12 +14,14 @@
 import React, { useState } from 'react';
 import {
   ActivityIndicator,
+  Keyboard,
   Modal,
   ScrollView,
   StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
+  TouchableWithoutFeedback,
   View,
 } from 'react-native';
 import {
@@ -230,6 +232,7 @@ export default function HOWalletScreen() {
   if (loading) return <ScreenSkeleton variant="dashboard" />;
 
   const content = (
+    <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
     <View style={styles.screen}>
       {/* Header — matches .topbar (flat white, not a dark hero) */}
       <View style={styles.header}>
@@ -561,6 +564,7 @@ export default function HOWalletScreen() {
         </View>
       </Modal>
     </View>
+    </TouchableWithoutFeedback>
   );
 
   return content;
