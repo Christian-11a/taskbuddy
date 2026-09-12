@@ -165,7 +165,37 @@ no UI for; mobile can prove a request files, reserves, and cancels).
   back entry above). `launch_fresh.yaml` keeps guarded handling in case an
   emulator or dev-client update ever reintroduces the overlay.
 
+- **Home screen's avatar button had no `testID`.** Added `btn-home-avatar` to
+  both `HOHomeScreen.tsx` and `SPHomeScreen.tsx` (inert, no behaviour change)
+  because it's an icon-only button rendering dynamic initials
+  (`OwnAvatar`) — text selection can't disambiguate dynamic per-user content,
+  exactly the case the project's selector policy (spec §4) calls out for a
+  `testID`. Needed to reach Settings/Profile in any flow.
+- **Two elements share the text "Log Out" once the sign-out confirm modal is
+  open** — the Settings row behind it, and the modal's own confirm button
+  (`confirmLabel="Log Out"` on `ConfirmationModal`). Disambiguated with a
+  `below:` relative selector anchored on the modal's message text, not
+  `index`, since the row is still in the tree (just covered by the modal).
+- **`ConfirmationModal`'s Cancel/confirm buttons are side-by-side, not
+  stacked** — `below:` anchored on the modal's message text works for a
+  *short* single-line message (Log Out's), but failed outright against
+  `HOSettingsScreen`'s delete-account modal, whose message wraps five lines.
+  Use `rightOf: "Cancel"` for the confirm button on any `ConfirmationModal`
+  with a multi-line message — geometrically unambiguous regardless of message
+  length, and it's what actually worked for
+  `settings_delete_account_burner.yaml`.
+
 ## What's covered
 
 - `smoke_login_both_roles` — harness proof: launches clean, logs in as the
   client and the provider, asserts each role's home screen.
+- `auth_wrong_password` — wrong password on a real account shows an inline
+  error, stays on Login.
+- `auth_logout_client` / `auth_logout_provider` — sign out from Settings
+  returns to Login, both roles.
+- `auth_forgot_password_request` — stage 1 only (request the code); stage 2
+  needs a real inbox, same as signup-with-OTP, not automated.
+- `auth_signup_client_no_confirmation` — full homeowner signup end-to-end
+  against this environment's current Confirm-email-OFF state; see
+  `bug-log.md`'s environment note before assuming this represents the
+  project's normal configuration.

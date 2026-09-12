@@ -1,0 +1,42 @@
+appId: com.taskbuddy.app
+env:
+  BURNER_EMAIL: maestro.signup2@taskbuddy.test
+  BURNER_PASSWORD: TestPass123!
+---
+# Phase 2: delete account, happy path (no blockers — burner has no balance,
+# jobs, or escrow). Uses a disposable burner account created this session by
+# auth_signup_client_no_confirmation.yaml, NOT the persistent maestro.client
+# account. Two "Delete Account" texts are on screen at once here (the modal
+# isn't a full-screen overlay, so the Settings row behind it stays visible,
+# unlike Log Out's fully-covering modal) — disambiguated with `rightOf:
+# "Cancel"`, since Cancel/Delete Account are side-by-side buttons, not
+# stacked (a `below:` anchor here is geometrically wrong, confirmed by
+# running it first and watching it fail to find any match).
+- runFlow: _helpers/launch_fresh.yaml
+- tapOn:
+    id: "input-email"
+- inputText: ${BURNER_EMAIL}
+- tapOn:
+    id: "input-password"
+- inputText: ${BURNER_PASSWORD}
+- hideKeyboard
+- tapOn:
+    id: "btn-sign-in"
+- extendedWaitUntil:
+    visible: ".*(Skip|Need something done\\?).*"
+    timeout: 60000
+- tapOn:
+    text: "Skip"
+    optional: true
+- assertVisible: "Need something done?"
+- tapOn:
+    id: "btn-home-avatar"
+- tapOn: "Settings"
+- tapOn: "Delete Account"
+- assertVisible: "Delete your account?"
+- tapOn:
+    text: "Delete Account"
+    rightOf: "Cancel"
+- extendedWaitUntil:
+    visible: "Welcome!"
+    timeout: 20000

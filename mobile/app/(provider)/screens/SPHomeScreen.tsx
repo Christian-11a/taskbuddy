@@ -182,6 +182,7 @@ export default function SPHomeScreen({ onNavigate }: SPHomeScreenProps) {
               <Bell size={20} color={C.white} />
             </TouchableOpacity>
             <TouchableOpacity
+              testID="btn-home-avatar"
               style={styles.avatarCircle}
               onPress={() => onNavigate('Profile')}
               activeOpacity={0.8}

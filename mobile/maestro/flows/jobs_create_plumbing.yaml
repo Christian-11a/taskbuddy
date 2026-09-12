@@ -1,0 +1,23 @@
+appId: com.taskbuddy.app
+---
+# Phase 3: full job creation happy path, Plumbing. Also the runtime check
+# bug-log.md flagged for next session: does the native Android time picker
+# still work after @react-native-community/datetimepicker was downgraded
+# 9.1.0 -> 8.4.4 for the SDK 54 realignment? (Date uses a custom calendar
+# component, not the native picker — only the time step exercises it.)
+- runFlow: _helpers/login_client.yaml
+- tapOn: "Create job"
+- assertVisible: "Select a Service"
+- tapOn: "Plumbing"
+- tapOn: "Next"
+- assertVisible: "Location"
+- tapOn: "Brgy. Sampaguita, Lipa City"
+- inputText: "123 Test Street, Lipa City"
+- hideKeyboard
+- tapOn: "Next"
+- assertVisible: "What Needs Doing"
+- tapOn: "Fix leaking faucet"
+- tapOn: "Next"
+- assertVisible: "How Soon?"
+- tapOn: "Select a date"
+- takeScreenshot: jobs_create_date_picker

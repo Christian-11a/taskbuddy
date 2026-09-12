@@ -129,6 +129,7 @@ export default function HOHomeScreen({ onNavigate }: HOHomeScreenProps) {
                 )}
               </TouchableOpacity>
               <TouchableOpacity
+                testID="btn-home-avatar"
                 style={styles.avatarCircle}
                 onPress={() => onNavigate('Profile')}
                 activeOpacity={0.8}
