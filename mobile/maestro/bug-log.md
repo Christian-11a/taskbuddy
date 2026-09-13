@@ -228,12 +228,53 @@ This was reached through `jobs_create_plumbing.yaml`: login succeeded, `Tap on
 and both login helpers pass clean on this build, so login/nav-to-Profile are
 fine — the defect is still specific to the `BottomNavBar` route.
 
-**Not yet done (next Phase 3 debugging pass):** establish whether "backgrounds
-to launcher" and the old "silent no-op" share a root cause; check a non-FAB nav
-item (Wallet/My Jobs) to see if the launcher exit is specific to the FAB (edge-
-to-edge system-gesture overlap is a live hypothesis on this `targetSdkVersion`
-build) or affects all `BottomNavBar` items; the DevTools/Flipper and
-physical-device checks from the original "Not yet tried" list still apply.
+### Root cause — identified 2026-09-13 (static analysis; on-device confirmation pending)
+
+**The app is drawn edge-to-edge but applies no real safe-area insets anywhere,
+so the bottom nav bar is rendered underneath the system navigation bar and the
+system consumes its taps before React Native ever sees them.**
+
+Evidence chain (all from source + the bounds already recorded above):
+
+- `app/layout.tsx` is deliberately edge-to-edge ("paint behind the status and
+  home-indicator areas") and adds **no** insets. On this `targetSdkVersion=36`
+  build edge-to-edge is *enforced* — the app draws under the system bars.
+- The app has **no inset library at all**: `react-native-safe-area-context` is
+  not a dependency, and nothing calls `useSafeAreaInsets`. Insets are faked with
+  fixed constants — `paddingTop: Sizes.statusBarHeight` on screens, and
+  `paddingBottom: 22` (dp) on `BottomNavBar` (`BottomNavBar.tsx:97`).
+- The emulator uses **3-button navigation** (◄ ● ■ visible in every screenshot),
+  a solid ~48dp system bar. `paddingBottom: 22` < ~48dp, so the nav bar's
+  touchable row sits inside the system-bar region. The recorded Wallet-button
+  bounds `[830,2213][1049,2348]` on a 2400px-tall screen put the button's centre
+  (~y2280) inside the bottom ~48dp system strip.
+- This explains **every** observation: `onPress` never fires (the touch goes to
+  the OS, not RN); all tabs dead on both roles (shared `BottomNavBar`, all in the
+  system strip); and the decisive new SDK-57 clue — the centre "Create job" FAB
+  overlaps the system **Home** button, so tapping it goes to the launcher, while
+  off-centre tabs overlap dead parts of the bar and no-op.
+
+Open loose end for the on-device confirmation: the earlier "tapped near the icon
+(top of the button) and it still no-op'd" note — the icon sits near the top edge
+of the system strip, so this needs the exact inset height measured live to
+confirm the strip is tall enough to cover it (or whether a second factor is in
+play). This is the one thing static analysis can't settle.
+
+**Confirmation test (JS-only, no rebuild):** temporarily raise `BottomNavBar`'s
+`paddingBottom` to ~70 and Fast-Refresh; if nav taps start registering, the
+overlap is confirmed.
+
+**Fix (proper):** add `react-native-safe-area-context`
+(`npx expo install react-native-safe-area-context` — native module, needs a dev-
+client rebuild), wrap the tree in `SafeAreaProvider`, and drive the nav bar's
+bottom padding from `useSafeAreaInsets().bottom` (`paddingBottom: base +
+insets.bottom`) instead of the fixed 22. The fixed `Sizes.statusBarHeight` top
+padding should move to `insets.top` for the same reason. Verify by running
+`jobs_create_plumbing.yaml` past the "Create job" tap to "Select a Service".
+
+**Status of this fix: NOT yet applied or verified** — the emulator and Metro
+went down under memory pressure mid-session and a native rebuild needs them back
+up on a machine with free memory.
 
 ---
 
