@@ -2,7 +2,8 @@
 
 Manual-testing-as-code for the TaskBuddy mobile app, run against an Android
 emulator (or device) with a real dev client — not Expo Go, and not the web
-build (SDK 54).
+build. The app is on **Expo SDK 57 / React Native 0.86** (upgraded from SDK 54
+on 2026-09-12; see the native-regeneration note below and `mobile/README.md`).
 
 ## One-time setup
 
@@ -18,6 +19,32 @@ npx expo run:android
 # Create the two persistent test accounts these flows log into.
 # See flows/00_setup_test_accounts.md — this one is a runbook, not a flow.
 ```
+
+## Per-session startup checklist
+
+Run through this every session before touching a flow — most "the app is broken"
+dead ends trace back to a skipped step here:
+
+1. **Shell env** (every new shell — these do not persist):
+   ```bash
+   export JAVA_HOME="/c/Program Files/Android/Android Studio/jbr"   # Maestro needs JDK 17+
+   export ANDROID_HOME="$LOCALAPPDATA/Android/Sdk"
+   export PATH="$PATH:$HOME/.maestro/bin:$LOCALAPPDATA/Android/Sdk/platform-tools"
+   ```
+2. **Emulator up:** `adb devices` shows a `device` (not `offline`).
+3. **Warm the backend** before the first flow — it is on Render's free tier and
+   cold-starts in 30–60 s (see "Backend timing"): `curl -s -o /dev/null -w
+   "%{http_code}\n" https://taskbuddy-kpek.onrender.com/health`. A cold login
+   flow will otherwise time out mid-spinner and look like a bug.
+4. **Metro is THIS project's** — the single most expensive trap this suite has
+   hit. See "Metro port collision" below. Quick check: the process on `:8081`
+   must be an `expo start` from `taskbuddy/mobile`, and the app's first real
+   screen must say **TaskBuddy** ("Hire with confidence, pay with ease."), not
+   another app's login.
+5. **Dev client matches the current SDK** — if you have just pulled an SDK
+   upgrade, regenerate the native project first (see "If the app crashes
+   instantly on a dev build").
+6. **One flow per invocation** — see "Running flows".
 
 ## Running flows
 
@@ -39,26 +66,44 @@ emulator time.
 
 ## If the app crashes instantly on a dev build
 
-Run `npx expo-doctor` **first** — before suspecting Maestro, Gradle, or the
-build cache.
+**First, decide which of two native/JS mismatches you have** — both look like
+"the app is broken" but have different fixes:
 
-On 2026-08-27 the app died on every launch with
-`ClassNotFoundException: expo.modules.kotlin.types.AnyTypeCache`. Cause:
-`package.json` pinned `expo-splash-screen@^57.0.4` on an SDK 54 project, which
-expects `~31.0.13`. Splash-screen 57 is compiled against a newer
-`expo-modules-core` that has that class; SDK 54 ships 3.0.30, which does not.
-`@react-native-community/datetimepicker` was similarly ahead (9.1.0 vs 8.4.4).
-Both came from `npm install <pkg>` (installs latest) instead of
-`npx expo install <pkg>` (installs the SDK-compatible version). Fixed with
-`npx expo install --fix`.
+**1. The native project is stale after an SDK upgrade.** This was the whole
+story on 2026-09-12 resuming after the SDK 54 → 57 bump. The upgrade commit
+(`232b58f`) changed `package.json`/`app.json` but nobody regenerated the
+gitignored, prebuild-managed `mobile/android/`, so `expo run:android` reused a
+stale SDK-54 native project and it failed two ways in sequence:
 
-**This class of bug is invisible in Expo Go**, which ships its own native
-runtime and ignores native module version mismatches. It only appears in a dev
-build — so always use `npx expo install`, never bare `npm install`, for any
-`expo-*` or native module.
+- **Compile error:** `MainApplication.kt: Unresolved reference
+  'ReactNativeHostWrapper'` — the SDK-54 template referenced a class SDK 57's
+  Expo modules no longer provide.
+- **Runtime red-box (if an old APK is still installed):** `Can't find
+  ViewManager 'RNCSafeAreaProvider'` — the installed APK's native side predates
+  the JS bundle Metro now serves.
 
-Two full rebuilds were spent on a stale-build-cache theory before `expo-doctor`
-answered it in seconds. Don't repeat that.
+Fix: **regenerate the native project**, don't chase the build cache:
+
+```bash
+npx expo prebuild --clean --platform android   # rewrites mobile/android/ from SDK 57 templates
+npx expo run:android                            # rebuild + reinstall the dev client
+```
+
+A clean checkout does *not* hit this — with no `android/` present,
+`expo run:android` auto-prebuilds fresh. Only a checkout carrying an `android/`
+from before the upgrade is affected.
+
+**2. A single package is ahead of the SDK.** Run `npx expo-doctor`. The classic
+symptom is a `ClassNotFoundException` for an Expo Kotlin class. Cause: a package
+installed with bare `npm install <pkg>` (installs latest) instead of
+`npx expo install <pkg>` (installs the SDK-compatible version). Fix with
+`npx expo install --fix`. **Always use `npx expo install`, never bare
+`npm install`, for any `expo-*` or native module.**
+
+**This whole class of bug is invisible in Expo Go**, which ships its own native
+runtime and ignores native-module version mismatches — it only appears in a dev
+build. And don't burn rebuilds on a stale-build-cache theory: on 2026-08-27 two
+full rebuilds were spent that way before `expo-doctor` answered it in seconds.
 
 ## Backend timing
 
@@ -66,6 +111,33 @@ The API is on Render's free tier. After ~15 minutes idle the first request
 takes 30–60s while the dyno wakes. **This is expected, not a defect.** Warm
 the backend before a session (open the app once, or curl the health endpoint)
 rather than logging it as a bug. All first-launch waits use 60s timeouts.
+
+## Metro port collision (verify the dev server is THIS project's)
+
+The dev client loads whatever JS bundle answers on `:8081` — it does **not**
+verify the bundle belongs to TaskBuddy. If another Expo project (this machine
+also has `eiyu-system`, the app this suite was ported from) already has an
+`expo start` running on `:8081`, the freshly built TaskBuddy native shell will
+happily load *that* project's JS. On 2026-09-12 this presented as a login screen
+reading "EIYU SYSTEM" instead of "TaskBuddy", and every flow failing on the
+`"Welcome!"` assertion — it cost real time to diagnose because nothing errors;
+the wrong app just loads.
+
+Before running flows, confirm `:8081` is this project's Metro:
+
+```bash
+# What is on 8081, and from which project?
+netstat -ano | grep ":8081 " | grep LISTENING          # note the PID
+powershell "Get-CimInstance Win32_Process -Filter 'ProcessId=<PID>' | % CommandLine"
+# Want it gone? Stop it, then start TaskBuddy's own:
+powershell "Stop-Process -Id <PID> -Force"
+cd mobile && npx expo start --port 8081 --clear
+```
+
+The definitive check is visual: the app's first real screen must say
+**TaskBuddy**, not another app's name. `--no-bundler` on `expo run:android`
+makes this worse — it skips starting Metro and silently reuses whatever is on
+`:8081`, so only pass it when you have already confirmed the right Metro is up.
 
 ## Scope & phases
 
@@ -107,16 +179,20 @@ no UI for; mobile can prove a request files, reserves, and cancels).
   reasons.
 - **Never press `back` unconditionally after launch.** eiyu-system's
   `launch_fresh` does, to dismiss Expo's one-time dev-menu tutorial overlay.
-  This dev client shows *neither* that overlay nor the server picker — it
-  auto-connects — so an unconditional back lands on the app's root screen and
-  **closes the app**, and the run then fails on the next assertion with the app
-  no longer running. `optional: true` does not protect you: `back` always
-  succeeds, it just does the wrong thing. `launch_fresh.yaml` guards it with
-  `runFlow: { when: { visible: ... } }` instead.
-- **The dev-server URL is not `10.0.2.2`.** eiyu-system matched the emulator
-  loopback alias; this machine's dev client binds the LAN address (observed as
-  `http://192.168.1.8:8081`). The IP moves between machines and networks, so
-  `launch_fresh.yaml` anchors on the Metro **port** instead.
+  An unconditional `back` on a screen without that overlay lands on the app's
+  root and **closes the app**, and the run then fails on the next assertion with
+  the app no longer running. `optional: true` does not protect you: `back`
+  always succeeds, it just does the wrong thing. `launch_fresh.yaml` guards it
+  with `runFlow: { when: { visible: ... } }` instead. (Note: the freshly
+  prebuilt SDK 57 dev client *does* now show a launcher/server entry to tap —
+  `launch_fresh.yaml` handles it by tapping the `:8081` entry; see the next
+  bullet — so don't assume "no picker".)
+- **The dev-server URL varies — anchor on the port, not the host.** It has been
+  observed as the LAN address (`http://192.168.1.8:8081`) on an older build and
+  as the emulator loopback alias (`http://10.0.2.2:8081`) on the freshly
+  prebuilt SDK 57 client. The host moves between machines, networks, and
+  prebuilds, so `launch_fresh.yaml` anchors on the Metro **port** (`.*8081.*`)
+  instead — which matches either form.
 - **Onboarding slides reappear on every run.** `hasCompletedOnboarding` is
   AsyncStorage-backed and keyed by profile id (`src/lib/onboarding.ts`), and
   `launchApp: { clearState: true }` wipes AsyncStorage. So the post-login
@@ -159,11 +235,14 @@ no UI for; mobile can prove a request files, reserves, and cancels).
   stock emulator, dimming the app and blocking the accessibility tree. Fix it
   environmentally, not per-flow:
   `adb shell settings put secure autofill_service null`
-- **This dev client auto-connects — no server picker, no dev-menu overlay.**
-  eiyu-system's launch handled both; here neither appears, and the inherited
-  unconditional `back` that dismissed the overlay *closed the app* (see the
-  back entry above). `launch_fresh.yaml` keeps guarded handling in case an
-  emulator or dev-client update ever reintroduces the overlay.
+- **Launcher behaviour changed after the SDK 57 prebuild.** The pre-upgrade dev
+  client auto-connected with no server picker and no dev-menu overlay. The
+  freshly prebuilt SDK 57 client instead shows a launcher entry (the `:8081`
+  server URL) to tap before the app loads — `launch_fresh.yaml` handles it by
+  tapping the `.*8081.*` entry. The dev-menu tutorial overlay still does not
+  appear here; `launch_fresh.yaml` keeps guarded handling in case an emulator or
+  dev-client update reintroduces it, but never presses `back` unconditionally
+  (see the `back` entry above — that closed the app).
 
 - **Home screen's avatar button had no `testID`.** Added `btn-home-avatar` to
   both `HOHomeScreen.tsx` and `SPHomeScreen.tsx` (inert, no behaviour change)

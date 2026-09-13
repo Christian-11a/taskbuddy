@@ -14,7 +14,7 @@ buttons that still do nothing.
 
 | Layer | Choice |
 |-------|--------|
-| Runtime | **Expo SDK 54** / **React Native 0.81** / **React 19** |
+| Runtime | **Expo SDK 57** / **React Native 0.86** / **React 19** |
 | Language | **TypeScript** |
 | Auth | **AuthContext** backed by the NestJS API (JWT + Supabase sessions) |
 | Storage | **AsyncStorage** — session persistence only |
@@ -34,13 +34,27 @@ npm run android    # builds + installs the Android dev client, then starts Metro
                    # mobile/android/, which is gitignored)
 ```
 
+> **After an Expo SDK upgrade, regenerate the native project.** `mobile/android/`
+> is gitignored and prebuild-managed, so a clean checkout builds fine (`npm run
+> android` auto-prebuilds when `android/` is absent). But an `android/` folder
+> left from *before* the upgrade is reused as-is and no longer matches the new
+> SDK — you get a compile error (`Unresolved reference 'ReactNativeHostWrapper'`)
+> or, if an old APK is still installed, a runtime `RNCSafeAreaProvider`
+> ViewManager crash on launch. Fix by regenerating:
+> `npx expo prebuild --clean --platform android`, then `npm run android`. This is
+> the actual footgun behind the SDK 54 → 57 bump: the upgrade commit changed
+> `package.json`/`app.json` but no one regenerated their local `android/`.
+
 **Android development requires the dev client — not Expo Go.** The app carries
 native modules (notifications, image picker, calendars), the Maestro e2e suite
 in `maestro/` drives the dev client build, and Expo Go masks native-version
 mismatches — its runtime ships its own modules, which is how a wrong
 `expo-splash-screen` pin crashed every dev build while Expo Go looked fine.
-`npm start` still works for Metro only: open the dev client on the emulator
-and it connects (it auto-connects — no server picker, no dev-menu overlay).
+`npm start` still works for Metro only: open the dev client on the emulator and
+it connects. On a freshly prebuilt SDK 57 dev client the launcher shows a server
+entry (e.g. `http://10.0.2.2:8081`) to tap rather than auto-connecting silently,
+so make sure the Metro it points at is **this** project's — see the Metro-port
+trap in `maestro/README.md`.
 
 By default the app talks to the deployed backend at
 `https://taskbuddy-kpek.onrender.com`, so it works with no local setup.
@@ -221,7 +235,7 @@ sign-in, and notification rows remain available in the in-app list either way.
 >    `ERR_NOTIFICATIONS_NO_EXPERIENCE_ID` and no token is ever obtained. Run
 >    `eas init` and commit the resulting `expo.extra.eas.projectId`.
 > 2. **A development build.** Remote push is not supported in **Expo Go** from
->    SDK 53 onward, and this app is on SDK 54. Testing needs `eas build --profile
+>    SDK 53 onward, and this app is on SDK 57. Testing needs `eas build --profile
 >    development` (or a local dev client) on a physical device — a simulator
 >    cannot receive pushes either.
 >
@@ -386,7 +400,7 @@ signup OTP (item 5) remains available for a future registration-confirmation flo
 | 4 | Realtime chat | Done — authenticated SSE streams messages through the API |
 | 5 | Email OTP at registration | **API done** — `POST /auth/send-email-otp` / `verify-email-otp`, wrapping Supabase's own signup code. Needs the `{{ .Token }}` template change in [`docs/email-otp-setup.md`](../docs/email-otp-setup.md) |
 | 6 | Homeowner card-at-hire (vs wallet top-up) | Still open — a product decision, not a missing endpoint |
-| 7 | Push delivery | Backend done (Expo tokens + API scheduler). **Blocked on our side**: no EAS `projectId`, and Expo Go can't receive push on SDK 54 — see [Live chat and push notifications](#live-chat-and-push-notifications) |
+| 7 | Push delivery | Backend done (Expo tokens + API scheduler). **Blocked on our side**: no EAS `projectId`, and Expo Go can't receive push on SDK 57 — see [Live chat and push notifications](#live-chat-and-push-notifications) |
 
 ### 3. [`docs/backend-handoff-stripe-connect-escrow.md`](../docs/backend-handoff-stripe-connect-escrow.md)
 
@@ -504,7 +518,7 @@ homeowner-facing recommendations do not map directly to the current product.
 - Homeowners can manually retry provider matching from an open job. Results are
   provider invitations; there is still no homeowner-facing service catalogue.
 - Push notification code is present, but remote delivery requires an EAS
-  project ID and an SDK 54 development build. Expo Go cannot receive remote
+  project ID and an SDK 57 development build. Expo Go cannot receive remote
   pushes.
 - Homeowner job locations use the saved profile address or fallback
   coordinates. There is no Expo GPS or Google Maps provider-discovery flow.
@@ -567,7 +581,7 @@ was trimmed to remove rows that duplicated a bottom-nav tab or a header icon.
 | **Dark Mode** | Half done: the *preference* persists (`user_settings.dark_mode` via `PATCH /settings`), but nothing applies it — there is still no theme switching. Both Settings screens say so under the switch rather than implying a repaint that never comes. The blocker is the ~40 screens still using inline hex instead of `V6Colors` tokens; see [`CHANGELOG.md`](./CHANGELOG.md) for the theming approach that was built and then deliberately reverted to leave this open |
 | **Language** | Settings modal states English is the only option — no i18n system exists to back a real picker |
 | **Wallet Transfer** | Deliberately not built, backend or front. Wallet-to-wallet transfer turns the wallet into a money-transmission service, which is a licensing matter in PH, not an engineering one |
-| **Push delivery** | Code complete end to end, **but not yet functional**: `app.json` has no EAS `projectId`, so no push token is ever obtained, and remote push needs a development build (not Expo Go) on SDK 54. The `notifications` table remains the source of truth and the in-app list is unaffected — see [Live chat and push notifications](#live-chat-and-push-notifications) |
+| **Push delivery** | Code complete end to end, **but not yet functional**: `app.json` has no EAS `projectId`, so no push token is ever obtained, and remote push needs a development build (not Expo Go) on SDK 57. The `notifications` table remains the source of truth and the in-app list is unaffected — see [Live chat and push notifications](#live-chat-and-push-notifications) |
 | **Realtime chat** | Message delivery is live through authenticated SSE; call and attachment buttons remain inert |
 | **Counterpart avatars** | Chat, applicant, and review payloads all carry `avatar_url`; those screens still render initials. (The signed-in user's *own* avatar does render — see `OwnAvatar`) |
 | **Provider calendar write** | Bookings are created by the backend when a job is assigned, not from this screen |

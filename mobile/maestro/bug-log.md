@@ -113,6 +113,8 @@ infrastructure state, not a code defect, and not tracked here.
 ## BUG-002 — Bottom navigation bar is completely unresponsive on both roles
 
 **Found:** 2026-09-06, Phase 3 (exploring client job creation)
+**Re-verified:** 2026-09-13 on the SDK 57 build — still broken, **symptom
+changed** (see "Re-verification" below).
 **Status:** open — logged, root cause not isolated. **This blocks all further
 phases that depend on reaching My Jobs, Wallet, Calendar, or Create Job**
 (Phases 3, 4, 5, 6 per the design spec's phase table), since there is no
@@ -204,6 +206,35 @@ visible in the nav labels, proving bundle freshness at the moment of the
 failed tap — marker was reverted after this screenshot, it is not in the
 current source).
 
+### Re-verification — 2026-09-13 (SDK 57 build)
+
+Re-checked after the SDK 54 → 57 native regeneration (once the app built and
+launched again, and after confirming the *right* Metro was serving — see the
+environment note below). The bug survives the upgrade but **presents
+differently**, so the SDK-54 root-cause elimination above is only partly
+transferable:
+
+- **Then (SDK 54):** tapping a bottom-nav item was a silent no-op — the app
+  stayed on Home, nothing rendered.
+- **Now (SDK 57):** tapping the "Create job" FAB **sends the app to the Android
+  launcher** (backgrounds it). The process stays alive (`pidof
+  com.taskbuddy.app` returns a pid; no `FATAL`/`AndroidRuntime` in logcat) — it
+  is not a crash, the app just leaves the foreground. Confirmed via the Maestro
+  artifact `step-022-assertCondition-Select_a_Service.png` (already on the
+  launcher at the moment of the failed assert) and a live `adb screencap`.
+
+This was reached through `jobs_create_plumbing.yaml`: login succeeded, `Tap on
+"Create job"` reported COMPLETED, then `Select a Service` never appeared. Smoke
+and both login helpers pass clean on this build, so login/nav-to-Profile are
+fine — the defect is still specific to the `BottomNavBar` route.
+
+**Not yet done (next Phase 3 debugging pass):** establish whether "backgrounds
+to launcher" and the old "silent no-op" share a root cause; check a non-FAB nav
+item (Wallet/My Jobs) to see if the launcher exit is specific to the FAB (edge-
+to-edge system-gesture overlap is a live hypothesis on this `targetSdkVersion`
+build) or affects all `BottomNavBar` items; the DevTools/Flipper and
+physical-device checks from the original "Not yet tried" list still apply.
+
 ---
 
 ## Environment note — 2026-09-06, resuming after a merge
@@ -237,6 +268,35 @@ Two environment changes surfaced immediately and are not app defects:
   `scratchpad/pending-wallet-seed.sql` in this session's temp dir. Phases 5–6
   (escrow, withdraw) block on this; phases 1–4 do not.
 
+## Environment note — 2026-09-13, resuming after the SDK 57 upgrade
+
+Two environment problems blocked all testing at the start of this session; both
+are now fixed and neither is an app defect. They are the reason the harness was
+un-runnable, not bugs in the app:
+
+- **The SDK 54 → 57 upgrade left the native project stale.** Commit `232b58f`
+  bumped `package.json`/`app.json` to Expo SDK 57 / RN 0.86 but did not
+  regenerate the gitignored `mobile/android/`. The pre-existing SDK-54 native
+  project failed to compile (`MainApplication.kt: Unresolved reference
+  'ReactNativeHostWrapper'`); an older installed APK also red-boxed at runtime
+  (`Can't find ViewManager 'RNCSafeAreaProvider'`). Fixed for this machine with
+  `npx expo prebuild --clean --platform android` + `npx expo run:android`
+  (BUILD SUCCESSFUL). A clean checkout auto-prebuilds and avoids this; only a
+  checkout with a pre-upgrade `android/` is affected. Documented in
+  `mobile/README.md` and `maestro/README.md`.
+- **The wrong Metro was serving `:8081`.** An `expo start` from the
+  `eiyu-system` project was running on the port, so the TaskBuddy dev client
+  loaded eiyu-system's JS bundle (login screen read "EIYU SYSTEM", every flow
+  failed on `"Welcome!"`). Nothing errored — the wrong app just loaded. Fixed by
+  stopping that Metro and starting TaskBuddy's own from `mobile/`. New trap +
+  startup check added to `maestro/README.md`.
+
+After both fixes: `smoke_login_both_roles.yaml` passes end to end on SDK 57
+(both roles), so Phase 0 + Phase 1 are green on the new build. Test accounts
+(`maestro.client@` / `maestro.provider@taskbuddy.test`, `TestPass123!`) still
+exist on `taskbuddy-kpek.onrender.com`. BUG-002 re-verified as still-open with a
+changed symptom (see its Re-verification entry above).
+
 ## Confirmed (moved out of "not yet triaged")
 
 - **First tap after a cold launch is swallowed — reproduced again.** Hit for
@@ -252,9 +312,11 @@ Two environment changes surfaced immediately and are not app defects:
 
 ## Not yet triaged
 
-- **`@react-native-community/datetimepicker` downgraded 9.1.0 → 8.4.4** as part
-  of the SDK 54 realignment (see README, "If the app crashes instantly on a dev
-  build"). `HOCreateJobScreen` uses it heavily with platform-specific Android
-  behaviour. `npm run typecheck` passes, but that is type-level only — the
-  picker has not been exercised at runtime since the downgrade. Check it when
-  Phase 3 (client jobs) reaches job creation.
+- **`@react-native-community/datetimepicker` is back to 9.1.0** on SDK 57 (the
+  8.4.4 downgrade from the SDK-54 realignment was undone by the upgrade). The
+  earlier concern — a version-mismatched picker — no longer applies, but it
+  still has **not been exercised at runtime** on this build: `HOCreateJobScreen`
+  uses it heavily with platform-specific Android behaviour, and the only flow
+  that reaches it (`jobs_create_plumbing.yaml`) is currently blocked before the
+  picker step by BUG-002. Verify the time picker once BUG-002 is cleared and
+  Phase 3 can reach job creation.
