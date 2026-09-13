@@ -97,6 +97,7 @@ export default function SPSettingsScreen({ onBack, onLogout }: SPSettingsScreenP
               <Text style={styles.toggleLabel}>Dark Mode</Text>
             </View>
             <Switch
+              testID="toggle-dark-mode"
               value={flags.dark_mode}
               onValueChange={(v) => void setFlag('dark_mode', v)}
               disabled={settingsLoading}
@@ -118,6 +119,7 @@ export default function SPSettingsScreen({ onBack, onLogout }: SPSettingsScreenP
             <View key={toggle.key} style={[styles.toggleRow, i < toggles.length - 1 && styles.rowBorder]}>
               <Text style={styles.toggleLabel}>{toggle.label}</Text>
               <Switch
+                testID={`toggle-${toggle.key}`}
                 value={flags[toggle.key]}
                 onValueChange={(v) => void setFlag(toggle.key, v)}
                 disabled={settingsLoading}

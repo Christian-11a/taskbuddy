@@ -637,6 +637,14 @@ curl -X POST $API/jobs -H "Authorization: Bearer $TOKEN" -H "Content-Type: appli
   rows** (produced by the early placeholder scorer). Retraining/versioning guide:
   [`../ml-service/README.md`](../ml-service/README.md).
 
+## Pending handoffs
+
+- [`docs/backend-handoff-mobile-e2e-test-environment.md`](../docs/backend-handoff-mobile-e2e-test-environment.md) —
+  **open, blocking**: the mobile e2e sweep needs a Google Maps API key (job creation crashes
+  without one), a wallet balance seed for the test client account, and per-job
+  `recommendation_deadline` SQL nudges. Needs Google Cloud Console + Supabase dashboard access,
+  not a code change here beyond the one-line `app.json` config once a key exists.
+
 ## Project layout
 
 ```

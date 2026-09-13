@@ -357,12 +357,12 @@ Accept returns 404). What has to be applied and deployed, and by whom, is in
 
 ## Backend Handoff Docs
 
-Four handoff documents in [`docs/`](../docs/) are addressed to whoever holds
-backend / Supabase / Render access. The first two are pure ops — applying and
-deploying already-committed work, no new code. The last two ask for small,
+Five handoff documents in [`docs/`](../docs/) are addressed to whoever holds
+backend / Supabase / Render / Google Cloud access. The first two are pure ops — applying and
+deploying already-committed work, no new code. The next two ask for small,
 specific pieces of new backend code (rate limiting, an admin-only credit
-endpoint) plus one real architecture decision (Stripe Connect) — each is
-scoped precisely so nothing has to be re-derived from the user stories.
+endpoint) plus one real architecture decision (Stripe Connect). The fifth is a
+test-environment blocker, not app code.
 
 ### 1. [`docs/backend-handoff-booking-tasks-verification.md`](../docs/backend-handoff-booking-tasks-verification.md)
 
@@ -450,6 +450,21 @@ Nothing changes in the app: `HOWalletScreen` already filters the existing transa
 credit is **fungible** — spendable on a hire or withdrawable like any other peso — so if that card
 ever implies "booking use only", it will be wrong. What is left is the web console's Issue Credit
 button (`web/README.md`).
+
+### 5. [`docs/backend-handoff-mobile-e2e-test-environment.md`](../docs/backend-handoff-mobile-e2e-test-environment.md)
+
+**Open, blocking mobile e2e test progress.** Not an app bug — three test-environment items found
+by the Maestro sweep (`mobile/maestro/`) that need access this repo's code can't grant:
+
+| # | Item | Blocks |
+|---|---|---|
+| 1 | Google Maps API key — never configured, so `HOCreateJobScreen`'s Location step (`MapView`) fatally crashes the app on every job-creation attempt | Job creation entirely, and transitively the cross-role hire loop |
+| 2 | Wallet balance seed SQL for the test client account | Escrow/hire and wallet/withdraw testing |
+| 3 | `recommendation_deadline` SQL nudge (per test job) | Nothing — workaround is waiting 5–15 real minutes |
+
+Item 1 needs a Google Cloud Console credential and is currently the active blocker; items 2–3 need
+Supabase SQL access. None of these need new backend code beyond the one-line `app.json` config
+once a Maps key exists.
 
 ---
 
