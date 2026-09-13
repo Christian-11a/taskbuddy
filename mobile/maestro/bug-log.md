@@ -113,13 +113,12 @@ infrastructure state, not a code defect, and not tracked here.
 ## BUG-002 — Bottom navigation bar is completely unresponsive on both roles
 
 **Found:** 2026-09-06, Phase 3 (exploring client job creation)
-**Re-verified:** 2026-09-13 on the SDK 57 build — still broken, **symptom
-changed** (see "Re-verification" below).
-**Status:** open — logged, root cause not isolated. **This blocks all further
-phases that depend on reaching My Jobs, Wallet, Calendar, or Create Job**
-(Phases 3, 4, 5, 6 per the design spec's phase table), since there is no
-other route to any of those screens — `HOProfile`'s menu only reaches Edit
-Profile, Settings, and Help & Support.
+**Re-verified:** 2026-09-13 on the SDK 57 build — reproduced, then root-caused
+and **FIXED** (see "Resolution" below).
+**Status:** **FIXED 2026-09-13** — two independent causes, both addressed;
+verified on-device (`nav_bottombar_client.yaml` passes: Wallet, Home, and the
+Create-job FAB all navigate; `smoke_login_both_roles` still green on both roles).
+Previously blocked Phases 3–6; those are now unblocked.
 **Severity: critical.** This is not an edge case; it is the primary means of
 navigating the app.
 
@@ -254,27 +253,41 @@ Evidence chain (all from source + the bounds already recorded above):
   overlaps the system **Home** button, so tapping it goes to the launcher, while
   off-centre tabs overlap dead parts of the bar and no-op.
 
-Open loose end for the on-device confirmation: the earlier "tapped near the icon
-(top of the button) and it still no-op'd" note — the icon sits near the top edge
-of the system strip, so this needs the exact inset height measured live to
-confirm the strip is tall enough to cover it (or whether a second factor is in
-play). This is the one thing static analysis can't settle.
+On-device confirmation revealed a **second, independent cause** (the "loose end"
+above — the icon tap failing even above the system strip):
 
-**Confirmation test (JS-only, no rebuild):** temporarily raise `BottomNavBar`'s
-`paddingBottom` to ~70 and Fast-Refresh; if nav taps start registering, the
-overlap is confirmed.
+**Cause 2 — the dev-only LogBox notification overlay intercepts the bottom nav's
+touches.** With the bar lifted clear of the system strip, taps *still* didn't
+fire `onPress`. The view hierarchy showed no covering node, but suppressing
+LogBox (`ignoreAllLogs`) made the tabs navigate immediately. The
+"Open debugger to view warnings" toast (and any warning re-shows it — the
+FCM-less `[push] not registered` warn, the `SafeAreaView` deprecation, etc.)
+renders over the bottom of the screen and eats the nav taps. This is why the
+2026-09-06 investigation, which removed only one factor at a time, never cracked
+it: dismissing the toast left the system-strip overlap, and it never lifted the
+bar. **Dev-only** — LogBox does not exist in release builds.
 
-**Fix (proper):** add `react-native-safe-area-context`
-(`npx expo install react-native-safe-area-context` — native module, needs a dev-
-client rebuild), wrap the tree in `SafeAreaProvider`, and drive the nav bar's
-bottom padding from `useSafeAreaInsets().bottom` (`paddingBottom: base +
-insets.bottom`) instead of the fixed 22. The fixed `Sizes.statusBarHeight` top
-padding should move to `insets.top` for the same reason. Verify by running
-`jobs_create_plumbing.yaml` past the "Create job" tap to "Select a Service".
+## Resolution (2026-09-13, verified)
 
-**Status of this fix: NOT yet applied or verified** — the emulator and Metro
-went down under memory pressure mid-session and a native rebuild needs them back
-up on a machine with free memory.
+- **Cause 1 (production):** added `react-native-safe-area-context`, wrapped the
+  app in `SafeAreaProvider`, and drove `BottomNavBar`'s height + bottom padding
+  from `useSafeAreaInsets().bottom` (`App.tsx`, `BottomNavBar.tsx`). The bar now
+  sits above the system navigation bar on any device. (New native dependency —
+  a dev-client rebuild is required after pulling; `android/` is gitignored.)
+- **Cause 2 (dev/test):** `LogBox.ignoreAllLogs(true)` under `__DEV__` in
+  `App.tsx` — removes the touch-blocking notification overlay while warnings
+  still print to the Metro console and errors still redbox.
+- Also migrated `SplashScreen` off the deprecated core `SafeAreaView`, added
+  `nav-tab-*` testIDs to the nav tabs (the label "Home" collides with the OS
+  launcher's own Home button in the a11y tree — a text selector taps the wrong
+  one), and fixed `jobs_create_plumbing.yaml`'s first assert (the heading is
+  "Select a Service *", which an exact "Select a Service" match missed).
+- **Verified on-device:** `nav_bottombar_client.yaml` (new) passes — Wallet, Home
+  and the Create-job FAB all navigate; `smoke_login_both_roles` still green.
+
+Follow-up (not required for BUG-002): the top status-bar padding still uses the
+fixed `Sizes.statusBarHeight` constant; migrating it to `insets.top` is the same
+class of fix but not blocking anything.
 
 ---
 

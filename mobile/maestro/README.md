@@ -268,6 +268,10 @@ no UI for; mobile can prove a request files, reserves, and cancels).
 
 - `smoke_login_both_roles` — harness proof: launches clean, logs in as the
   client and the provider, asserts each role's home screen.
+- `nav_bottombar_client` — regression cover for BUG-002: asserts the homeowner
+  bottom-nav routes (a regular tab, Home, and the Create-job FAB) each navigate.
+  Taps by `nav-tab-*` testID, since the label "Home" collides with the OS
+  launcher's own Home button in the accessibility tree.
 - `auth_wrong_password` — wrong password on a real account shows an inline
   error, stays on Login.
 - `auth_logout_client` / `auth_logout_provider` — sign out from Settings

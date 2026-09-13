@@ -7,7 +7,9 @@ appId: com.taskbuddy.app
 # component, not the native picker — only the time step exercises it.)
 - runFlow: _helpers/login_client.yaml
 - tapOn: "Create job"
-- assertVisible: "Select a Service"
+# The heading renders as "Select a Service *" (required-field asterisk), which an
+# exact "Select a Service" match misses — anchor on the subtitle instead.
+- extendedWaitUntil: { visible: "What service do you need?", timeout: 15000 }
 - tapOn: "Plumbing"
 - tapOn: "Next"
 - assertVisible: "Location"

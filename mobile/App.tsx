@@ -12,7 +12,20 @@
  */
 
 import React, { useEffect, useState } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { LogBox, StyleSheet, View } from 'react-native';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
+
+// The LogBox notification renders over the bottom of the screen and, in dev
+// builds, intercepts the bottom navigation bar's touches (BUG-002) — breaking
+// navigation for both human developers and the Maestro e2e suite. Any warning
+// re-shows it (push-registration failures in FCM-less environments, third-party
+// deprecations, etc.), so disable the in-app notification overlay in dev.
+// Warnings still print to the Metro console and uncaught errors still redbox;
+// this only removes the touch-blocking toast. No-op in production (LogBox is
+// dev-only).
+if (__DEV__) {
+  LogBox.ignoreAllLogs(true);
+}
 import * as ExpoSplashScreen from 'expo-splash-screen';
 import * as WebBrowser from 'expo-web-browser';
 import { CalendarDays, CirclePlus, ClipboardList, Home, Search, Wallet } from 'lucide-react-native';
@@ -612,11 +625,13 @@ function AppContent() {
 /** Every route above is rendered inside the shared responsive root layout. */
 export default function App() {
   return (
-    <AuthProvider>
-      <RootLayout>
-        <AppContent />
-      </RootLayout>
-    </AuthProvider>
+    <SafeAreaProvider>
+      <AuthProvider>
+        <RootLayout>
+          <AppContent />
+        </RootLayout>
+      </AuthProvider>
+    </SafeAreaProvider>
   );
 }
 
