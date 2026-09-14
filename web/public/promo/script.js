@@ -17,16 +17,19 @@
   var storyHeading = document.querySelector("[data-story-heading]");
   var storyLede = document.querySelector("[data-story-lede]");
   var storyHeadingCopy = document.querySelector(".story-heading__copy");
+  var storyCapture = document.querySelector(".story-capture");
   var roleControls = document.querySelectorAll("[data-role-target]");
   var heroVideo = document.querySelector("[data-hero-video]");
   var heroPlay = document.querySelector("[data-hero-play]");
   var heroRoleLabel = document.querySelector("[data-hero-role-label]");
   var heroCaption = document.querySelector("[data-hero-caption]");
-  // Motion is always forced on, ignoring the OS/browser prefers-reduced-motion
-  // setting. ?motion=off is kept as a manual testing hook for the fallback path.
   var motionOverride = new URLSearchParams(window.location.search).get("motion");
+  var prefersReducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
   function isMotionReduced() {
     return motionOverride === "off";
+  }
+  function isCarouselMotionReduced() {
+    return motionOverride === "off" || (motionOverride !== "on" && prefersReducedMotion.matches);
   }
   if (motionOverride === "on") document.documentElement.classList.add("motion-override-on");
   if (motionOverride === "off") document.documentElement.classList.add("motion-override-off");
@@ -134,7 +137,35 @@
   var currentIndex = 0;
   var drag = { active: false, pointerId: null, startX: 0, lastX: 0, lastTime: 0, velocity: 0 };
   var animationTimer = null;
-  var headingAnimationTimer = null;
+  var animationSequence = 0;
+  var CAROUSEL_EXIT_MS = 220;
+  var stagedImage = image.cloneNode(false);
+  var visibleImage = image;
+  var imageStage = document.createElement("span");
+
+  imageStage.className = "story-image-stage";
+  stagedImage.removeAttribute("data-story-image");
+  stagedImage.setAttribute("aria-hidden", "true");
+  stagedImage.setAttribute("alt", "");
+  stagedImage.classList.add("story-image-layer");
+  image.classList.add("story-image-layer", "is-active");
+  storyCapture.insertBefore(imageStage, image);
+  imageStage.appendChild(image);
+  imageStage.appendChild(stagedImage);
+
+  function setImageDirection(direction) {
+    image.style.setProperty("--slide-direction", direction);
+    stagedImage.style.setProperty("--slide-direction", direction);
+    visibleImage.style.setProperty("--slide-direction", direction);
+  }
+
+  function resetImageLayers() {
+    image.classList.remove("is-active", "is-entering", "is-exiting");
+    stagedImage.classList.remove("is-active", "is-entering", "is-exiting");
+    visibleImage.classList.add("is-active");
+    visibleImage.removeAttribute("aria-hidden");
+    stagedImage.setAttribute("aria-hidden", "true");
+  }
 
   function applyUrlState() {
     var params = new URLSearchParams(window.location.search);
@@ -203,37 +234,19 @@
     storyLede.textContent = set.lede;
   }
 
-  function updateStoryHeading(set, shouldAnimate) {
-    if (headingAnimationTimer) {
-      window.clearTimeout(headingAnimationTimer);
-      headingAnimationTimer = null;
-    }
-
-    var reduceMotion = isMotionReduced();
-    if (!shouldAnimate || reduceMotion || !storyHeadingCopy) {
-      setStoryHeading(set);
-      if (storyHeadingCopy) storyHeadingCopy.classList.remove("is-changing");
-      return;
-    }
-
-    storyHeadingCopy.classList.add("is-changing");
-    headingAnimationTimer = window.setTimeout(function () {
-      setStoryHeading(set);
-      storyHeadingCopy.classList.remove("is-changing");
-      headingAnimationTimer = null;
-    }, 120);
+  function cancelCarouselAnimation() {
+    animationSequence += 1;
+    if (animationTimer) window.clearTimeout(animationTimer);
+    animationTimer = null;
+    resetImageLayers();
+    storyCopy.classList.remove("is-changing");
+    if (storyHeadingCopy) storyHeadingCopy.classList.remove("is-changing");
   }
 
-  function render(shouldAnimate, shouldAnimateHeading) {
-    var set = stories[currentRole];
-    var step = set.steps[currentIndex];
-
-    document.documentElement.setAttribute("data-role", currentRole);
-    story.classList.toggle("story--customer", currentRole === "customer");
-    story.classList.toggle("story--provider", currentRole === "provider");
-    updateStoryHeading(set, shouldAnimateHeading);
-    image.src = step.image;
-    image.alt = step.alt;
+  function setStoryContent(set, step, targetImage) {
+    setStoryHeading(set);
+    (targetImage || visibleImage).src = step.image;
+    (targetImage || visibleImage).alt = step.alt;
     caption.textContent = step.caption;
     number.textContent = String(currentIndex + 1).padStart(2, "0");
     roleLabel.textContent = set.role;
@@ -248,44 +261,102 @@
     status.textContent = set.role + " step " + (currentIndex + 1) + " of " + set.steps.length;
     renderProgress();
     syncHeroFilm();
-
-    if (shouldAnimate) {
-      image.classList.remove("is-entering");
-      storyCopy.classList.remove("is-changing");
-      window.requestAnimationFrame(function () {
-        image.classList.add("is-entering");
-        storyCopy.classList.add("is-changing");
-      });
-    }
   }
 
-  function scheduleAnimationEnd() {
-    if (animationTimer) window.clearTimeout(animationTimer);
-    animationTimer = window.setTimeout(function () {
-      image.classList.remove("is-entering");
-      storyCopy.classList.remove("is-changing");
-      image.style.removeProperty("--slide-direction");
-      animationTimer = null;
-    }, 120);
+  // Warm the next asset before swapping the visible <img>. Without this, a
+  // slow image response can reveal the new content halfway through its fade.
+  function preloadStoryImage(src, done) {
+    var preloader = new Image();
+    var finished = false;
+    var timeout = window.setTimeout(finish, 900);
+
+    function finish() {
+      if (finished) return;
+      finished = true;
+      window.clearTimeout(timeout);
+      done();
+    }
+
+    preloader.onload = finish;
+    preloader.onerror = finish;
+    preloader.src = src;
+    if (preloader.complete) finish();
+  }
+
+  function render(shouldAnimate, shouldAnimateHeading) {
+    var set = stories[currentRole];
+    var step = set.steps[currentIndex];
+
+    document.documentElement.setAttribute("data-role", currentRole);
+    story.classList.toggle("story--customer", currentRole === "customer");
+    story.classList.toggle("story--provider", currentRole === "provider");
+
+    if (!shouldAnimate || isCarouselMotionReduced()) {
+      cancelCarouselAnimation();
+      setStoryContent(set, step);
+      stagedImage.src = visibleImage.src;
+      stagedImage.alt = "";
+      setImageDirection(1);
+      return;
+    }
+
+    cancelCarouselAnimation();
+    animationSequence += 1;
+    var sequence = animationSequence;
+    var outgoingImage = visibleImage;
+    var incomingImage = stagedImage;
+
+    outgoingImage.classList.add("is-exiting");
+    storyCopy.classList.add("is-changing");
+    if (shouldAnimateHeading && storyHeadingCopy) storyHeadingCopy.classList.add("is-changing");
+
+    preloadStoryImage(step.image, function () {
+      if (sequence !== animationSequence) return;
+
+      setStoryContent(set, step, incomingImage);
+      incomingImage.classList.add("is-entering");
+      // Both layers stay in the figure. The old layer fades out while the
+      // preloaded new layer fades in, so there is no blank frame between them.
+      void incomingImage.offsetWidth;
+      window.requestAnimationFrame(function () {
+        if (sequence !== animationSequence) return;
+        incomingImage.classList.add("is-active");
+        incomingImage.classList.remove("is-entering");
+        outgoingImage.setAttribute("aria-hidden", "true");
+        incomingImage.removeAttribute("aria-hidden");
+        storyCopy.classList.remove("is-changing");
+        if (shouldAnimateHeading && storyHeadingCopy) storyHeadingCopy.classList.remove("is-changing");
+
+        animationTimer = window.setTimeout(function () {
+          if (sequence !== animationSequence) return;
+          outgoingImage.classList.remove("is-active", "is-exiting");
+          incomingImage.classList.remove("is-exiting");
+          visibleImage = incomingImage;
+          stagedImage = outgoingImage;
+          stagedImage.setAttribute("aria-hidden", "true");
+          animationTimer = null;
+        }, CAROUSEL_EXIT_MS);
+      });
+    });
   }
 
   function setSlide(nextIndex, direction) {
     var set = currentSet();
     currentIndex = (nextIndex + set.length) % set.length;
     syncUrl();
-    image.style.setProperty("--slide-direction", direction);
+    setImageDirection(direction);
     render(true, false);
-    scheduleAnimationEnd();
   }
 
   function switchRole(nextRole, shouldScroll) {
     if (!stories[nextRole]) return;
+    var direction = nextRole === "provider" ? 1 : -1;
     currentRole = nextRole;
     currentIndex = 0;
     updateRoleControls();
     syncUrl();
+    setImageDirection(direction);
     render(true, true);
-    scheduleAnimationEnd();
     if (shouldScroll) {
       story.scrollIntoView({ behavior: isMotionReduced() ? "auto" : "smooth", block: "start" });
     }
@@ -294,11 +365,11 @@
   function resetDrag() {
     if (!drag.active) return;
     drag.active = false;
-    image.classList.remove("is-dragging");
-    image.classList.add("is-settling");
-    image.style.transform = "";
+    visibleImage.classList.remove("is-dragging");
+    visibleImage.classList.add("is-settling");
+    visibleImage.style.transform = "";
     window.setTimeout(function () {
-      image.classList.remove("is-settling");
+      visibleImage.classList.remove("is-settling");
     }, 300);
   }
 
@@ -310,8 +381,8 @@
     drag.lastX = event.clientX;
     drag.lastTime = performance.now();
     drag.velocity = 0;
-    image.classList.add("is-dragging");
-    image.setPointerCapture(event.pointerId);
+    visibleImage.classList.add("is-dragging");
+    visibleImage.setPointerCapture(event.pointerId);
   }
 
   function onPointerMove(event) {
@@ -323,7 +394,7 @@
     drag.velocity = stepDelta / elapsed;
     drag.lastX = event.clientX;
     drag.lastTime = now;
-    image.style.transform = "translate3d(" + delta + "px, 0, 0)";
+    visibleImage.style.transform = "translate3d(" + delta + "px, 0, 0)";
   }
 
   function onPointerUp(event) {
@@ -348,6 +419,11 @@
   image.addEventListener("pointerup", onPointerUp);
   image.addEventListener("pointercancel", resetDrag);
   image.addEventListener("lostpointercapture", resetDrag);
+  stagedImage.addEventListener("pointerdown", onPointerDown);
+  stagedImage.addEventListener("pointermove", onPointerMove);
+  stagedImage.addEventListener("pointerup", onPointerUp);
+  stagedImage.addEventListener("pointercancel", resetDrag);
+  stagedImage.addEventListener("lostpointercapture", resetDrag);
 
   carousel.tabIndex = 0;
   carousel.setAttribute("aria-label", "TaskBuddy product story carousel. Use arrow keys to change steps.");
@@ -723,6 +799,16 @@
       menuToggle.setAttribute("aria-expanded", "false");
       siteNav.classList.remove("is-open");
     }
+  });
+
+  document.addEventListener("keydown", function (event) {
+    if (event.key !== "Escape" || !siteNav.classList.contains("is-open")) {
+      return;
+    }
+
+    siteNav.classList.remove("is-open");
+    menuToggle.setAttribute("aria-expanded", "false");
+    menuToggle.focus();
   });
 
   applyUrlState();

@@ -471,6 +471,29 @@ export async function getWalletTransactions(): Promise<WalletTransaction[]> {
   return res.transactions.map(mapWalletTxnRow);
 }
 
+/**
+ * POST /admin/wallet-transactions/recovery-credit (migration 0021) — the only
+ * route that can add wallet balance without a settled Stripe charge, gated to
+ * admins and audited (`docs/backend-handoff-recovery-vouchers.md`). Returns
+ * void rather than a mapped row: the insert response has no joined profile
+ * name (unlike GET /admin/wallet-transactions), so callers should refetch the
+ * list afterward instead of trying to display this response directly —
+ * same "mutations refetch" convention as suspend/reinstate/settle elsewhere.
+ */
+export async function issueRecoveryCredit(input: {
+  profileId: string;
+  amount: number;
+  title: string;
+  jobId?: string;
+}): Promise<void> {
+  await client.post("/admin/wallet-transactions/recovery-credit", {
+    profile_id: input.profileId,
+    amount: input.amount,
+    title: input.title.trim(),
+    ...(input.jobId?.trim() ? { job_id: input.jobId.trim() } : {}),
+  });
+}
+
 export async function getWithdrawals(status: "pending" | "completed" | "failed" = "pending"): Promise<{ items: AdminWithdrawal[]; total: number }> {
   const res = await client.get<ListWithdrawalsApiResponse>(`/admin/withdrawals?status=${status}&limit=100`);
   return { items: res.withdrawals.map(mapWithdrawalRow), total: res.total };

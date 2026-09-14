@@ -13,7 +13,7 @@
   --color-dark: oklch(20% .04 225);
   --color-error: oklch(52% .19 25);
   --color-error-soft: oklch(95% .04 25);
-  --font-display: "Bricolage Grotesque", system-ui, sans-serif;
+  --font-display: var(--font-bricolage-grotesque), "Bricolage Grotesque", system-ui, sans-serif;
   --font-body: "Switzer", system-ui, sans-serif;
   --space-1: .25rem; --space-2: .5rem; --space-3: .75rem; --space-4: 1rem; --space-6: 1.5rem; --space-8: 2rem; --space-12: 3rem; --space-16: 4rem; --space-24: 6rem; --space-32: 8rem;
   --radius-sm: .5rem; --radius-md: 1rem; --radius-lg: 1.75rem;
@@ -224,7 +224,7 @@ section[id] { scroll-margin-top: 6rem; }
   text-align: center;
 }
 .story-heading > .stage__num--inline { display: none; }
-.story-heading__copy { order: 1; width: min(100%, 42rem); }
+.story-heading__copy { order: 1; width: min(100%, 42rem); margin-inline: auto; text-align: center; }
 .story-heading__copy h2 {
   width: min(100%, 34rem);
   min-height: 2.04em;
@@ -240,14 +240,14 @@ section[id] { scroll-margin-top: 6rem; }
   line-height: 1.45;
 }
 .story-heading__copy > * {
-  transition: opacity 360ms var(--ease-out), transform 360ms var(--ease-out);
+  transition: opacity 240ms var(--ease-out), transform 240ms var(--ease-out);
 }
 .story-heading__copy.is-changing > * {
   opacity: 0;
   transform: translateY(.55rem);
 }
-.audience-switch { order: 2; width: min(100%, 22rem); gap: .2rem; padding: .2rem; }
-.audience-tab { padding: .45rem .7rem; }
+.audience-switch { order: 2; width: min(100%, 22rem); margin-inline: auto; gap: .2rem; padding: .2rem; }
+.audience-tab { padding: .45rem .7rem; text-align: center; }
 .audience-tab span { font-size: .95rem; }
 .audience-tab small { margin-top: .1rem; font-size: .64rem; }
 .story-carousel { height: min(33rem, calc(100svh - 21rem)); min-height: 31rem; box-shadow: 0 1.5rem 3rem color-mix(in oklch, var(--color-dark) 8%, transparent); }
@@ -394,6 +394,8 @@ section[id] { scroll-margin-top: 6rem; }
   .hero { align-content: start; }
   .hero__visual { width: 100%; }
   .story-carousel { height: auto; min-height: 0; }
+  .story-media { min-height: 34rem; }
+  .story-capture { min-height: 32rem; }
   .story-capture img { width: min(52%, 245px); max-height: 30rem; }
   .hero-capture { aspect-ratio: 16 / 9; }
   .hero-capture video { transform: none; }
@@ -409,6 +411,8 @@ section[id] { scroll-margin-top: 6rem; }
 @media (max-width: 480px) {
   .site-header { width: calc(100% - 1rem); }
   .story-heading__copy > p:last-child { min-height: 2.9em; }
+  .story-media { min-height: 33rem; }
+  .story-capture { min-height: 31rem; }
   .story-capture img { width: min(62%, 230px); }
   .about-buddy { padding-block: 4.5rem; }
   .about-buddy__art { min-height: 21rem; }
@@ -1208,23 +1212,62 @@ section[id] { scroll-margin-top: 6rem; }
 .reveal-target--from-left { transform: translate3d(calc((1 - var(--sc-p, 1)) * -.6rem), 0, 0); }
 .reveal-target--from-right { transform: translate3d(calc((1 - var(--sc-p, 1)) * .6rem), 0, 0); }
 
-/* Carousel choreography: the phone leads, then the copy settles behind it. */
-.story-capture img.is-entering {
-  opacity: 0;
-  transform: translate3d(calc(var(--slide-direction, 1) * 3rem), 0, 0) scale(.98);
+/* Carousel choreography: keep two phone layers in the figure so the next
+   asset can fade in over the old one instead of exposing a blank frame. */
+.story-capture {
+  grid-template-rows: minmax(0, 1fr) auto;
+  row-gap: .5rem;
 }
-.story-capture img {
-  transition: transform 480ms var(--ease-out), opacity 480ms var(--ease-out);
+.story-capture img.story-image-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  margin: auto;
+  width: auto;
+  height: min(100%, 30rem);
+  max-width: 100%;
+  opacity: 0;
+  pointer-events: none;
+  transition: transform 220ms var(--ease-out), opacity 220ms var(--ease-out);
+}
+.story-image-stage {
+  position: relative;
+  display: grid;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  align-self: stretch;
+  place-items: center;
+}
+.story-capture img.story-image-layer.is-active {
+  opacity: 1;
+  pointer-events: auto;
+  transform: none;
+}
+.story-capture img.story-image-layer.is-active.is-exiting {
+  opacity: 0;
+  pointer-events: none;
+  transform: translate3d(calc(var(--slide-direction, 1) * -1.5rem), 0, 0) scale(.985);
+}
+.story-capture img.story-image-layer.is-entering {
+  opacity: 0;
+  transform: translate3d(calc(var(--slide-direction, 1) * 1.5rem), 0, 0) scale(.985);
+}
+.story-capture figcaption {
+  position: static;
+  justify-self: center;
+  padding-inline: .5rem;
+  text-align: center;
 }
 .story-copy__topline,
 .story-copy h3,
 .story-copy [data-story-body],
 .story-copy .story-points {
-  transition-duration: 420ms;
+  transition-duration: 240ms;
 }
-.story-copy h3 { transition-delay: 40ms; }
-.story-copy [data-story-body] { transition-delay: 80ms; }
-.story-copy .story-points { transition-delay: 120ms; }
+.story-copy h3 { transition-delay: 30ms; }
+.story-copy [data-story-body] { transition-delay: 60ms; }
+.story-copy .story-points { transition-delay: 90ms; }
 
 /* A short line draw gives each major section the same editorial arrival cue. */
 .features,
@@ -1399,6 +1442,7 @@ section[id] { scroll-margin-top: 6rem; }
 .auth-modal-body {
   padding: 1.75rem;
   overflow-y: auto;
+  overscroll-behavior: contain;
   scrollbar-width: none;
   -ms-overflow-style: none;
 }
@@ -1556,7 +1600,8 @@ section[id] { scroll-margin-top: 6rem; }
 
 .auth-field-toggle:hover { color: var(--color-ink); }
 
-.auth-field[data-invalid="true"] input {
+.auth-field[data-invalid="true"] input,
+.auth-field[data-invalid="true"] select {
   border-color: var(--color-error);
   background: var(--color-error-soft);
 }
@@ -1589,6 +1634,20 @@ section[id] { scroll-margin-top: 6rem; }
 .auth-submit[data-state="loading"] { opacity: .85; cursor: progress; }
 
 .auth-submit[disabled] { opacity: .55; cursor: not-allowed; transform: none; }
+
+.auth-resend {
+  justify-self: center;
+  border: 0;
+  background: transparent;
+  color: var(--color-accent-deep);
+  font: inherit;
+  font-size: .82rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.auth-resend:hover { text-decoration: underline; }
+.auth-resend:disabled { opacity: .55; cursor: wait; }
 
 .auth-divider {
   display: flex;

@@ -47,6 +47,10 @@ export async function getAccessToken(): Promise<string | null> {
   return store.get(ACCESS_COOKIE)?.value ?? null;
 }
 
+export function isSixDigitOtp(value: unknown): value is string {
+  return typeof value === "string" && /^\d{6}$/.test(value);
+}
+
 const GOOGLE_NONCE_COOKIE = "tb_google_nonce";
 
 /**
