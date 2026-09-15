@@ -482,6 +482,8 @@ export interface Message {
   conversation_id: string;
   sender_id: string;
   body: string;
+  attachment_path: string | null;
+  attachment_url: string | null;
   read_at: string | null;
   created_at: string;
 }
@@ -1086,7 +1088,7 @@ export const api = {
    * storage *path*, which is what job/verification payloads carry.
    */
   async uploadImage(
-    bucket: 'job-photos' | 'verification-docs' | 'avatars',
+    bucket: 'job-photos' | 'verification-docs' | 'avatars' | 'chat-attachments',
     uri: string,
   ): Promise<string> {
     const contentType = contentTypeFor(uri);
@@ -1287,10 +1289,10 @@ export const api = {
     return authRequest<Message[]>(`/conversations/${conversationId}/messages`);
   },
 
-  sendMessage(conversationId: string, body: string) {
+  sendMessage(conversationId: string, body: string, attachmentPath?: string) {
     return authRequest<Message>(`/conversations/${conversationId}/messages`, {
       method: 'POST',
-      body: { body },
+      body: { body, attachment_path: attachmentPath },
     });
   },
 
