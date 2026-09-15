@@ -10,28 +10,28 @@ Each item below: what's wrong, why it's backend, and what "done" looks like.
 
 ---
 
-## 1. Escrow hold isn't atomic on concurrent accepts
+## 1. Escrow hold isn't atomic on concurrent accepts — RESOLVED on `main`
 
-**Where:** `backend/src/escrow/escrow.service.ts`, `hold()` (~line 70–125).
+> **Fixed, 2026-09-16.** `EscrowService.hold()` (`backend/src/escrow/escrow.service.ts`)
+> now delegates to a SQL function, `escrow_place_hold` (migration `0028`), which does
+> the balance check and the debit inside one transaction behind a per-wallet advisory
+> lock. The race described below — two different jobs for the same client landing
+> concurrently, each reading the balance before either debit posts — is closed by the
+> lock, not by anything client-side. See `BACKEND_SCHEMA.md` §29.2 for the full
+> mechanism (it also now covers the wallet-hold and card-funded-hold paths in one
+> function).
 
-**Problem:** The double-hold race for the *same job* is already handled
-correctly — `escrow_transactions.job_id` is unique, so a duplicate accept
-hits a `23505` conflict and reconciles against the existing hold rather than
-double-debiting. The gap is across *different* jobs: a client with one wallet
-balance can have two separate jobs accepted for them at nearly the same
-instant. Each `hold()` call independently reads the balance via
-`wallet.availableBalanceFor()`, both can pass the check before either debit
-lands, and the wallet goes negative.
+Kept below for the record — this is what the gap looked like before the fix.
 
-**Fix:** Serialize the balance-check-then-debit for a given client — either
-a `SELECT ... FOR UPDATE` on a per-client lock row, or wrap the read+insert
-in a serializable transaction and retry on conflict. Whatever approach is
-used should keep `hold()`'s existing idempotency contract (`HoldResult.placed`
-semantics documented on the interface) intact.
+**Where:** `backend/src/escrow/escrow.service.ts`, `hold()` (~line 70–125, pre-`0028`).
 
-**Currently:** Accepted as a documented pre-launch risk, not fixed. Low
-volume makes this unlikely to trigger today, but it's a real path to a
-negative wallet balance once traffic exists.
+**Problem:** The double-hold race for the *same job* was already handled correctly —
+`escrow_transactions.job_id` is unique, so a duplicate accept hit a `23505` conflict
+and reconciled against the existing hold rather than double-debiting. The gap was
+across *different* jobs: a client with one wallet balance could have two separate
+jobs accepted for them at nearly the same instant. Each `hold()` call independently
+read the balance via `wallet.availableBalanceFor()`, both could pass the check before
+either debit landed, and the wallet could go negative.
 
 ---
 
