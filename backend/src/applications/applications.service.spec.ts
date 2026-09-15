@@ -1,4 +1,8 @@
-import { BadRequestException, ForbiddenException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  ForbiddenException,
+} from '@nestjs/common';
 import { ApplicationsService } from './applications.service';
 import type { SupabaseService } from '../supabase/supabase.service';
 import type { EscrowService } from '../escrow/escrow.service';
@@ -79,6 +83,11 @@ const pendingApplication = {
   status: 'pending',
   jobs: { id: 'j1', title: 'Fix sink', status: 'open', client_id: 'c1' },
 };
+
+/** The `assertHireable` read of a provider who may be hired. */
+const verified = (): QueryResult[] => [
+  { data: { is_verified: true }, error: null },
+];
 
 /** The rows a call wrote to one table, in order. */
 function writesTo(
@@ -222,6 +231,40 @@ describe('ApplicationsService', () => {
       );
     });
 
+    it('refuses an unverified provider with a code the app can act on', async () => {
+      // Verification is a gate, not a badge (BACKEND_SCHEMA.md §17).
+      const { supabase, calls } = createSupabaseMock({
+        jobs: [
+          {
+            data: {
+              id: 'j1',
+              title: 'Fix sink',
+              status: 'open',
+              client_id: 'c1',
+            },
+            error: null,
+          },
+        ],
+        provider_profiles: [
+          { data: { profile_id: 'p1', is_verified: false }, error: null },
+        ],
+      });
+      const service = new ApplicationsService(
+        supabase,
+        createEscrowMock().escrow,
+      );
+
+      const err: unknown = await service
+        .apply(provider, 'j1', {})
+        .catch((e: unknown) => e);
+      expect(err).toBeInstanceOf(ForbiddenException);
+      expect((err as ForbiddenException).getResponse()).toMatchObject({
+        message: 'Verify your identity before applying to jobs',
+        code: 'verification_required',
+      });
+      expect(writesTo(calls, 'job_applications', 'insert')).toEqual([]);
+    });
+
     it('turns the unique-violation on a second apply into a readable error', async () => {
       const { supabase } = createSupabaseMock({
         jobs: [
@@ -258,6 +301,7 @@ describe('ApplicationsService', () => {
     it('holds the budget before accepting, so a hire and its money land together', async () => {
       const { escrow, hold } = createEscrowMock();
       const { supabase, calls } = createSupabaseMock({
+        provider_profiles: verified(),
         job_applications: [
           { data: pendingApplication, error: null },
           { data: { ...pendingApplication, status: 'accepted' }, error: null },
@@ -288,6 +332,7 @@ describe('ApplicationsService', () => {
           ),
       });
       const { supabase, calls } = createSupabaseMock({
+        provider_profiles: verified(),
         job_applications: [{ data: pendingApplication, error: null }],
       });
       const service = new ApplicationsService(supabase, escrow);
@@ -303,9 +348,11 @@ describe('ApplicationsService', () => {
     it('returns the held money when the accept itself fails', async () => {
       const { escrow, releaseHoldForFailedHire } = createEscrowMock();
       const { supabase } = createSupabaseMock({
+        provider_profiles: verified(),
         job_applications: [
           { data: pendingApplication, error: null },
           { data: null, error: { message: 'connection lost' } },
+          { data: { status: 'pending' }, error: null }, // re-read: not hired
         ],
       });
       const service = new ApplicationsService(supabase, escrow);
@@ -325,9 +372,11 @@ describe('ApplicationsService', () => {
           .mockRejectedValue(new Error('refund failed too')),
       });
       const { supabase } = createSupabaseMock({
+        provider_profiles: verified(),
         job_applications: [
           { data: pendingApplication, error: null },
           { data: null, error: { message: 'connection lost' } },
+          { data: { status: 'pending' }, error: null },
         ],
       });
       const service = new ApplicationsService(supabase, escrow);
@@ -343,6 +392,7 @@ describe('ApplicationsService', () => {
         hold: jest.fn().mockResolvedValue({ escrow: null, placed: false }),
       });
       const { supabase } = createSupabaseMock({
+        provider_profiles: verified(),
         job_applications: [
           { data: pendingApplication, error: null },
           { data: null, error: { message: 'connection lost' } },
@@ -368,6 +418,7 @@ describe('ApplicationsService', () => {
           .mockResolvedValue({ escrow: { id: 'e1' }, placed: false }),
       });
       const { supabase } = createSupabaseMock({
+        provider_profiles: verified(),
         job_applications: [
           { data: pendingApplication, error: null },
           { data: null, error: null }, // lost the race on `status = pending`
@@ -384,6 +435,7 @@ describe('ApplicationsService', () => {
     it('refuses someone else’s job', async () => {
       const { escrow, hold } = createEscrowMock();
       const { supabase } = createSupabaseMock({
+        provider_profiles: verified(),
         job_applications: [
           {
             data: {
@@ -405,6 +457,7 @@ describe('ApplicationsService', () => {
     it('refuses a job that already has an assigned provider', async () => {
       const { escrow, hold } = createEscrowMock();
       const { supabase } = createSupabaseMock({
+        provider_profiles: verified(),
         job_applications: [
           {
             data: {
@@ -428,6 +481,7 @@ describe('ApplicationsService', () => {
       // no row rather than firing the assign-and-reject trigger a second time.
       const { escrow } = createEscrowMock();
       const { supabase } = createSupabaseMock({
+        provider_profiles: verified(),
         job_applications: [
           { data: pendingApplication, error: null },
           { data: null, error: null },
@@ -438,6 +492,69 @@ describe('ApplicationsService', () => {
       await expect(service.accept(client, 'app1')).rejects.toThrow(
         'This application was already decided by someone else',
       );
+    });
+
+    it('keeps the hold it placed when a concurrent accept hired on it', async () => {
+      // This call placed the hold, but the other tap's setStatus won the
+      // race and hired the provider against that same money. `placed` is
+      // true here, so only the re-read stops a refund of a successful hire.
+      const { escrow, releaseHoldForFailedHire } = createEscrowMock();
+      const { supabase } = createSupabaseMock({
+        provider_profiles: verified(),
+        job_applications: [
+          { data: pendingApplication, error: null },
+          { data: null, error: null }, // lost `status = pending`
+          { data: { status: 'accepted' }, error: null }, // re-read
+        ],
+      });
+      const service = new ApplicationsService(supabase, escrow);
+
+      await expect(service.accept(client, 'app1')).rejects.toThrow(
+        'This application was already decided by someone else',
+      );
+      expect(releaseHoldForFailedHire).not.toHaveBeenCalled();
+    });
+
+    it('keeps the hold, and logs, when it cannot tell whether the hire went through', async () => {
+      const { escrow, releaseHoldForFailedHire } = createEscrowMock();
+      const { supabase } = createSupabaseMock({
+        provider_profiles: verified(),
+        job_applications: [
+          { data: pendingApplication, error: null },
+          { data: null, error: { message: 'connection lost' } },
+          { data: null, error: { message: 'still down' } }, // re-read fails
+        ],
+      });
+      const service = new ApplicationsService(supabase, escrow);
+      const log = jest
+        .spyOn(service['logger'], 'error')
+        .mockImplementation(() => {});
+
+      await expect(service.accept(client, 'app1')).rejects.toThrow(
+        'connection lost',
+      );
+      expect(releaseHoldForFailedHire).not.toHaveBeenCalled();
+      expect(log).toHaveBeenCalledWith(
+        expect.stringContaining('escrow hold kept'),
+      );
+    });
+
+    it('refuses to hire a provider who is not verified, before holding any money', async () => {
+      const { escrow, hold } = createEscrowMock();
+      const { supabase } = createSupabaseMock({
+        provider_profiles: [{ data: { is_verified: false }, error: null }],
+        job_applications: [{ data: pendingApplication, error: null }],
+      });
+      const service = new ApplicationsService(supabase, escrow);
+
+      const err: unknown = await service
+        .accept(client, 'app1')
+        .catch((e: unknown) => e);
+      expect(err).toBeInstanceOf(ConflictException);
+      expect((err as ConflictException).getResponse()).toMatchObject({
+        code: 'provider_not_verified',
+      });
+      expect(hold).not.toHaveBeenCalled();
     });
   });
 

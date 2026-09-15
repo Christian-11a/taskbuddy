@@ -192,9 +192,15 @@ export default function SPVerificationScreen({ onBack, onVerified }: SPVerificat
         }
         pollForResult(POLL_ATTEMPTS);
       } catch (identityError) {
-        // The API creates its row only after Stripe answers, so a failure here
-        // has left nothing behind and the manual queue is still open to us.
-        if (!(identityError instanceof ApiError)) throw identityError;
+        // The API creates its row only after Stripe answers, so a server-side
+        // failure here — 503 when Stripe Identity isn't configured, or a 5xx
+        // from Stripe itself — has left nothing behind and the manual queue is
+        // still open to us. A 4xx is different: a rate limit (429), an expired
+        // session or a review already pending would all be *wrong* to paper
+        // over with a manual submission, so those surface as they are.
+        if (!(identityError instanceof ApiError) || identityError.status < 500) {
+          throw identityError;
+        }
         await api.submitVerification({ id_document_path, selfie_path });
         setFellBackToManual(true);
       }

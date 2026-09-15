@@ -44,7 +44,7 @@ export class RequestWithdrawalDto {
 }
 
 /**
- * The pre-0023 body. Kept so `POST /wallet/transactions` does not break under
+ * The pre-0024 body. Kept so `POST /wallet/transactions` does not break under
  * clients built against it, but it now produces the same pending request as
  * `POST /wallet/withdrawals` rather than a completed ledger row.
  *

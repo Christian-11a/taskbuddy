@@ -1,7 +1,7 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { UsersPage } from "./UsersPage";
+import { UsersPage, bulkMessage } from "./UsersPage";
 import { ToastProvider } from "@/components/ui/Toast";
 import { useApp } from "@/context/AppContext";
 import type { UserRow } from "@/lib/adapters";
@@ -134,5 +134,33 @@ describe("UsersPage — suspend flow", () => {
     renderWithToast(<UsersPage />);
     await user.type(screen.getByPlaceholderText("Search by name, email…"), "nobody");
     expect(screen.getByText("No users match this search or filter.")).toBeInTheDocument();
+  });
+});
+
+describe("bulkMessage", () => {
+  it("says so plainly when everything worked", () => {
+    expect(bulkMessage("Suspended", { succeeded: 3, failed: 0, errors: [] })).toBe("Suspended 3 users.");
+  });
+
+  it("reports the reasons the API actually gave, grouped", () => {
+    const tooMany = { status: 429, message: "Too many requests — try again in 30s." };
+    expect(
+      bulkMessage("Suspended", {
+        succeeded: 2,
+        failed: 3,
+        errors: [
+          { id: "a", ...tooMany },
+          { id: "b", ...tooMany },
+          { id: "c", status: 0, message: "Failed to fetch" },
+        ],
+      }),
+    ).toBe("Suspended 2 of 5. 3 failed: Too many requests — try again in 30s. (×2); Failed to fetch.");
+  });
+
+  it("summarises beyond the first two distinct reasons", () => {
+    const errors = ["one", "two", "three", "four"].map((message, i) => ({ id: `u${i}`, status: 400, message }));
+    expect(bulkMessage("Reinstated", { succeeded: 0, failed: 4, errors })).toBe(
+      "Reinstated 0 of 4. 4 failed: one; two; +2 other reasons.",
+    );
   });
 });

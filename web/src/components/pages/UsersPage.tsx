@@ -10,13 +10,28 @@ import { ReviewDrawer, DrawerField, DrawerSection } from "@/components/ui/Review
 import { Pagination } from "@/components/ui/Pagination";
 import { useToast } from "@/components/ui/Toast";
 import clsx from "clsx";
+import type { BulkCounts } from "@/lib/services";
 
 const PAGE_SIZE = 7;
 
-/** Turns bulk counts into one honest sentence — "3 of 5" when some failed. */
-function bulkMessage(verb: string, succeeded: number, failed: number): string {
+/**
+ * Turns bulk counts into one honest sentence — "3 of 5" when some failed,
+ * followed by the reasons the API actually gave. This used to blame every
+ * failure on "admins can't be suspended", but admins are already excluded from
+ * selection, so the failures that remain are rate limits, a user changed by
+ * someone else, or a network error — and the admin needs to know which.
+ */
+export function bulkMessage(verb: string, { succeeded, failed, errors }: BulkCounts): string {
   if (failed === 0) return `${verb} ${succeeded} user${succeeded === 1 ? "" : "s"}.`;
-  return `${verb} ${succeeded} of ${succeeded + failed}. ${failed} failed — admins can't be suspended.`;
+  const reasons = new Map<string, number>();
+  for (const e of errors) reasons.set(e.message, (reasons.get(e.message) ?? 0) + 1);
+  const why = [...reasons]
+    .slice(0, 2)
+    .map(([message, n]) => (n > 1 ? `${message} (×${n})` : message))
+    .join("; ");
+  const others = reasons.size - 2;
+  const more = others > 0 ? `; +${others} other reason${others === 1 ? "" : "s"}` : "";
+  return `${verb} ${succeeded} of ${succeeded + failed}. ${failed} failed: ${why}${more}.`;
 }
 
 type RoleFilter = "all" | "provider" | "customer";
@@ -88,9 +103,9 @@ export function UsersPage() {
     if (ids.length === 0) return;
     setBulkBusy(true);
     try {
-      const { succeeded, failed } = await bulkSetUserStatus(ids, "Active");
+      const counts = await bulkSetUserStatus(ids, "Active");
       setSelected(new Set());
-      showToast(bulkMessage("Reinstated", succeeded, failed), failed > 0 ? "error" : "success");
+      showToast(bulkMessage("Reinstated", counts), counts.failed > 0 ? "error" : "success");
     } catch {
       showToast("Could not reinstate the selected users. Please try again.", "error");
     } finally {
@@ -120,9 +135,9 @@ export function UsersPage() {
     setBulkBusy(true);
     try {
       if (suspending.bulk) {
-        const { succeeded, failed } = await bulkSetUserStatus([...selected], "Suspended", { reason: suspendReason.trim(), durationDays: days });
+        const counts = await bulkSetUserStatus([...selected], "Suspended", { reason: suspendReason.trim(), durationDays: days });
         setSelected(new Set());
-        showToast(bulkMessage("Suspended", succeeded, failed), failed > 0 ? "error" : "success");
+        showToast(bulkMessage("Suspended", counts), counts.failed > 0 ? "error" : "success");
       } else {
         await setUserStatus(suspending.id, "Suspended", { reason: suspendReason.trim(), durationDays: days });
         showToast("User suspended.");

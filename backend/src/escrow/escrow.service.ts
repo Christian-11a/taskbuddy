@@ -17,7 +17,7 @@ export interface EscrowRow {
   held_at: string;
   released_at: string | null;
   refunded_at: string | null;
-  /** Withheld at release; 0 until a commission rate is configured (0023). */
+  /** Withheld at release; 0 until a commission rate is configured (0024). */
   commission_amount: number | string;
 }
 
@@ -41,7 +41,8 @@ export interface HoldResult {
  * Escrow state for a job, from assignment to payout.
  *
  * Money moves through the `wallet_transactions` ledger, which is the only
- * account of record (there is no payment gateway): the client is debited when
+ * account of record (Stripe reports money arriving; the ledger records it,
+ * §21): the client is debited when
  * escrow is held, the provider credited on release, and the client credited
  * back on cancellation or refund. Rows are tagged with `kind` so the admin
  * revenue query can count payouts without also counting refunds.
@@ -337,8 +338,30 @@ export class EscrowService {
     return updated;
   }
 
-  async markDisputed(escrowId: string): Promise<EscrowRow> {
-    return this.setStatus(escrowId, { status: 'disputed' });
+  /**
+   * Freezes a held escrow for an admin to decide.
+   *
+   * Conditional on the row still being `held`, like every other transition
+   * here. The caller checked `held` when it read the row, but a completion
+   * can release it in between — and an unconditional flip would then turn
+   * `released` back into `disputed`, after which resolving the dispute in the
+   * provider's favour pays them a second time for the same job.
+   */
+  async markDisputed(escrow: EscrowRow): Promise<EscrowRow> {
+    if (escrow.status !== 'held') {
+      throw new ConflictException(
+        `Cannot dispute a payment that is already '${escrow.status}'`,
+      );
+    }
+    const updated = await this.settleIfUnchanged(escrow, {
+      status: 'disputed',
+    });
+    if (!updated) {
+      throw new ConflictException(
+        'This payment was released or refunded while the dispute was being filed.',
+      );
+    }
+    return updated;
   }
 
   async findByJob(jobId: string): Promise<EscrowRow | null> {
@@ -414,20 +437,6 @@ export class EscrowService {
       .maybeSingle();
     if (error) throw new BadRequestException(error.message);
     return (data as EscrowRow) ?? null;
-  }
-
-  private async setStatus(
-    escrowId: string,
-    patch: Record<string, unknown>,
-  ): Promise<EscrowRow> {
-    const { data, error } = await this.supabase.admin
-      .from('escrow_transactions')
-      .update(patch)
-      .eq('id', escrowId)
-      .select('*')
-      .single();
-    if (error) throw new BadRequestException(error.message);
-    return data as EscrowRow;
   }
 
   /**

@@ -194,7 +194,9 @@ export class ProfilesService {
             .from('wallet_transactions')
             .select('id', { count: 'exact', head: true })
             .eq('profile_id', user.id)
-            .eq('kind', 'withdrawal')
+            // Any money still on its way out, not only withdrawal requests —
+            // the same reservation WalletService.availableBalanceFor makes.
+            .eq('direction', 'debit')
             .eq('status', 'pending'),
         ),
         this.supabase.admin

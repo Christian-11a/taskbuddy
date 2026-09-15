@@ -75,7 +75,7 @@ function sortedTasks(job: Job | null): JobTask[] {
 }
 
 export default function SPJobDetailScreen({ jobId, onBack, onNavigate }: SPJobDetailScreenProps) {
-  const { profile, isVerified } = useAuth();
+  const { profile, isVerified, refreshProfile } = useAuth();
   const { data: job, loading, error, reload } = useAsyncData(() => {
     if (!jobId) return Promise.reject(new Error('No job selected.'));
     return api.getJob(jobId);
@@ -119,6 +119,12 @@ export default function SPJobDetailScreen({ jobId, onBack, onNavigate }: SPJobDe
       reload();
     } catch (e) {
       setActionError(errorMessage(e));
+      // Verification is required to apply (BACKEND_SCHEMA.md §17). Reaching
+      // this means the cached profile said "verified" when the API disagrees,
+      // so re-read it: the Verify button below then replaces Submit Proposal.
+      if (e instanceof ApiError && e.code === 'verification_required') {
+        void refreshProfile();
+      }
     } finally {
       setBusy(false);
     }

@@ -290,7 +290,7 @@ export class AdminService {
     const currentMonth = new Date().toISOString().slice(0, 7);
     const monthlyRevenue = revenueByMonth[currentMonth] ?? 0;
 
-    // Commission is what the platform actually keeps (migration 0023), as
+    // Commission is what the platform actually keeps (migration 0024), as
     // opposed to `total_revenue` above, which is the value that flowed through
     // it. Both are reported: they answer different questions, and collapsing
     // them into one number called "revenue" is how a marketplace ends up
@@ -340,7 +340,7 @@ export class AdminService {
       .select('id', { count: 'exact', head: true })
       .eq('status', 'pending');
 
-    // The other queue that needs a human (migration 0023). Unlike
+    // The other queue that needs a human (migration 0024). Unlike
     // verifications, nobody gets paid until someone works this one.
     const { count: pendingWithdrawals } = await this.supabase.admin
       .from('wallet_transactions')

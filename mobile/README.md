@@ -285,7 +285,7 @@ sign-in, and notification rows remain available in the in-app list either way.
 
 | Screen | Key API calls |
 |--------|--------------|
-| `SPHomeScreen` | `GET /jobs` (location-filtered feed + summary), `GET /jobs/assigned` (booking requests, with inline accept/decline); availability toggle |
+| `SPHomeScreen` | `GET /jobs` (location-filtered feed + summary), `GET /jobs/assigned` (booking requests, with inline accept/decline); availability toggle; a "Verification required to apply" banner until verified |
 | `SPMyJobsScreen` | `GET /jobs/assigned`, `GET /applications/mine` |
 | `SPJobDetailScreen` | `GET /jobs/:id`; apply to an open job, or accept / decline / start and tick off the task checklist once it's theirs |
 | `SPCalendarScreen` | `GET /calendar/bookings?from=&to=` for the current month |
@@ -472,14 +472,13 @@ anything from the app:
 - **A real payout rail.** Withdrawals are still settled by hand from the admin
   queue.
 - **Card-at-hire for homeowners** (handoff item 6). A product fork.
-- **`is_verified`: badge or gate?** The backend currently returns
-  `403 Verify your identity before applying to jobs` for an unverified
-  provider, while `BACKEND_SCHEMA.md` §17 and `backend/README.md` both say
-  verification is a badge and not a gate. One of the two is wrong and it is a
-  one-line fix either way, but they are different products — flagged in
-  `BACKEND_SCHEMA.md` §17 for a decision. If gating stays, `SPVerificationScreen`
-  is a prerequisite to applying rather than an optional badge, and the feed
-  should say so.
+- ~~**`is_verified`: badge or gate?**~~ **Decided: a gate**, on applying *and*
+  on being hired (`BACKEND_SCHEMA.md` §17). The API answers
+  `403 { code: 'verification_required' }` to an unverified provider's proposal
+  and `409 { code: 'provider_not_verified' }` to a client trying to hire one.
+  The feed banner says verification is required. Proposals show a **Not
+  verified** chip and disable Accept, and migration 0026 removed the RLS
+  policy that let a provider set their own `is_verified`.
 
 ---
 

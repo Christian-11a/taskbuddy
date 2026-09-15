@@ -22,7 +22,19 @@ export async function bootstrap() {
    * when the API is exposed directly.
    */
   app.set('trust proxy', Number(process.env.TRUST_PROXY_HOPS ?? 1));
-  app.enableCors({ origin: allowedWebOrigins(), credentials: true });
+  app.enableCors({
+    origin: allowedWebOrigins(),
+    credentials: true,
+    // Not CORS-safelisted, so a cross-origin console cannot read them unless
+    // they are exposed. The rate limiter sets them on every response and a
+    // 429 is only worth retrying if the caller can see how long to wait.
+    exposedHeaders: [
+      'Retry-After',
+      'X-RateLimit-Limit',
+      'X-RateLimit-Remaining',
+      'X-RateLimit-Reset',
+    ],
+  });
   app.useGlobalPipes(
     new ValidationPipe({
       whitelist: true,

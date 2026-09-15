@@ -28,7 +28,7 @@ function createSupabaseMock(resultsByTable: Record<string, QueryResult[]>) {
   const from = jest.fn((table: string) => {
     const result =
       resultsByTable[table]?.shift() ??
-      // Every payOut reads the commission rate (0023). Defaulting it to zero
+      // Every payOut reads the commission rate (0024). Defaulting it to zero
       // here means the tests written before commission existed keep describing
       // exactly the case they were written for: the platform takes nothing.
       (table === 'platform_settings'
@@ -72,7 +72,7 @@ function createSupabaseMock(resultsByTable: Record<string, QueryResult[]>) {
 
 /**
  * Escrow only ever asks the wallet for a balance — the available one since
- * 0023, so a peso promised to a pending withdrawal cannot also fund a hire.
+ * 0024, so a peso promised to a pending withdrawal cannot also fund a hire.
  */
 function createWalletMock(balance = 100_000) {
   const balanceFor = jest.fn(() => Promise.resolve(balance));
@@ -384,7 +384,7 @@ describe('EscrowService', () => {
     }
 
     it('pays the provider the whole budget while the rate is zero', async () => {
-      // The default, and the point of the default: applying 0023 changes no
+      // The default, and the point of the default: applying 0024 changes no
       // figure anywhere until an admin deliberately sets a rate.
       const { supabase, calls } = releaseWith(0);
       const service = new EscrowService(supabase, createWalletMock().wallet);
@@ -720,6 +720,46 @@ describe('DisputesService', () => {
         calls.some((c) => c.table === 'notifications' && c.method === 'insert'),
       ).toBe(true);
       // Disputing freezes the money; it must not move yet.
+      expect(ledgerWrites(calls)).toEqual([]);
+    });
+
+    it('closes its own dispute and pays nobody when a release got there first', async () => {
+      // findByJob read 'held'; by the time the freeze runs a completion has
+      // released it, so the conditional update matches nothing. Before the
+      // fix this flipped 'released' back to 'disputed' and let resolve() pay
+      // the provider a second time.
+      const { supabase, calls } = createSupabaseMock({
+        escrow_transactions: [
+          { data: heldEscrow, error: null }, // findByJob
+          { data: null, error: null }, // markDisputed loses the race
+        ],
+        disputes: [
+          { data: { id: 'd1', status: 'open' }, error: null }, // insert
+          { data: null, error: null }, // cancel it again
+        ],
+      });
+      const escrow = new EscrowService(supabase, createWalletMock().wallet);
+      const service = new DisputesService(
+        supabase,
+        escrow,
+        createAdminActionsMock().mock,
+      );
+
+      await expect(
+        service.raise(client, 'j1', { reason: 'No show' }),
+      ).rejects.toThrow(ConflictException);
+
+      const freeze = calls.find(
+        (c) =>
+          c.table === 'escrow_transactions' &&
+          c.method === 'eq' &&
+          c.args[0] === 'status',
+      );
+      expect(freeze?.args).toEqual(['status', 'held']);
+      const closed = calls.find(
+        (c) => c.table === 'disputes' && c.method === 'update',
+      );
+      expect(closed?.args[0]).toEqual({ status: 'cancelled' });
       expect(ledgerWrites(calls)).toEqual([]);
     });
 

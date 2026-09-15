@@ -15,7 +15,10 @@ traps"; there are 10 of them and they are not repeated here.
 ## BUG-001 — Any non-JSON error response reaches the user as "JSON Parse error"
 
 **Found:** 2026-08-27, Phase 0 (while creating test accounts)
-**Status:** open — logged, not fixed (did not block testing)
+**Status:** fixed 2026-09-15 — `rawRequest` now catches the parse and throws an
+`ApiError` carrying the real status ("The server is unavailable right now (HTTP
+502)…"), so every caller's existing error handling applies. A 429 gets the same
+treatment with the wait from `Retry-After`.
 **Severity:** low impact per-incident, but it is the *only* thing the app says
 when the backend is unreachable, so it is what a user sees during any outage.
 

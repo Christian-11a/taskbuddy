@@ -133,7 +133,7 @@ export class WalletService {
   }
 
   /**
-   * The pre-0023 entry point, kept working for clients built against it.
+   * The pre-0024 entry point, kept working for clients built against it.
    *
    * Credits are refused. This endpoint used to accept them, back when there
    * was no payment gateway — which meant any authenticated caller could mint
@@ -217,6 +217,20 @@ export class WalletService {
       reviewed_by: admin.id,
       review_note: reference ?? null,
     });
+    // The same audit trail every other admin money decision leaves
+    // (dispute.resolve, wallet.issue_recovery_credit). reviewed_by on the row
+    // says who; this is what the admin Audit Log page actually lists.
+    await this.adminActions.record(
+      admin,
+      'wallet.settle_withdrawal',
+      'wallet_transactions',
+      id,
+      {
+        profile_id: row.profile_id,
+        amount: Number(row.amount),
+        reference: reference ?? null,
+      },
+    );
     await this.notify(
       row.profile_id,
       'Withdrawal sent',
@@ -239,6 +253,13 @@ export class WalletService {
       reviewed_by: admin.id,
       review_note: reason,
     });
+    await this.adminActions.record(
+      admin,
+      'wallet.reject_withdrawal',
+      'wallet_transactions',
+      id,
+      { profile_id: row.profile_id, amount: Number(row.amount), reason },
+    );
     await this.notify(
       row.profile_id,
       'Withdrawal declined',
@@ -429,12 +450,19 @@ export class WalletService {
     return round2(settled - reserved);
   }
 
+  /**
+   * Every pending debit, not only withdrawals: any money on its way out of the
+   * wallet is spoken for until it has either left or come back. Today that is
+   * withdrawal requests; keying on direction rather than kind means the next
+   * kind of outgoing payment is reserved without anyone having to remember to
+   * add it here.
+   */
   private async pendingWithdrawalTotal(profileId: string): Promise<number> {
     const { data, error } = await this.supabase.admin
       .from('wallet_transactions')
       .select('amount')
       .eq('profile_id', profileId)
-      .eq('kind', 'withdrawal')
+      .eq('direction', 'debit')
       .eq('status', 'pending');
     if (error) throw new BadRequestException(error.message);
     return round2((data ?? []).reduce((sum, t) => sum + Number(t.amount), 0));

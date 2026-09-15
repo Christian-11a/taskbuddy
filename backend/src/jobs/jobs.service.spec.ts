@@ -1,4 +1,8 @@
-import { BadRequestException, ForbiddenException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  ForbiddenException,
+} from '@nestjs/common';
 import { JobsService } from './jobs.service';
 import { IsNotPastInstantConstraint } from './dto/jobs.dto';
 import type { SupabaseService } from '../supabase/supabase.service';
@@ -401,6 +405,35 @@ describe('JobsService.complete', () => {
       service.complete({ id: 'c1' } as Profile, 'j1'),
     ).rejects.toThrow(ForbiddenException);
     expect(releaseIfHeld).not.toHaveBeenCalled();
+  });
+
+  it('re-asserts the status it read, and pays nobody when it lost the race', async () => {
+    // A Cancel landed between this request's read and its write: the job is
+    // no longer in_progress, so the conditional update matches no row.
+    const { service, calls, releaseIfHeld } = createService({
+      jobs: [ok(job({ client_id: 'c1', status: 'in_progress' })), ok(null)],
+    });
+
+    await expect(
+      service.complete({ id: 'c1' } as Profile, 'j1'),
+    ).rejects.toThrow(ConflictException);
+    expect(
+      calls.find((c) => c.table === 'jobs' && c.method === 'in')?.args,
+    ).toEqual(['status', ['in_progress']]);
+    expect(releaseIfHeld).not.toHaveBeenCalled();
+  });
+});
+
+describe('JobsService.cancel', () => {
+  it('refunds nothing when a concurrent completion already moved the job', async () => {
+    const { service, cancelForJob } = createService({
+      jobs: [ok(job({ client_id: 'c1', status: 'in_progress' })), ok(null)],
+    });
+
+    await expect(service.cancel({ id: 'c1' } as Profile, 'j1')).rejects.toThrow(
+      ConflictException,
+    );
+    expect(cancelForJob).not.toHaveBeenCalled();
   });
 });
 

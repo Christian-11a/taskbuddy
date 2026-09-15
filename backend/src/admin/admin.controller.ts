@@ -172,7 +172,7 @@ export class AdminController {
     return this.walletService.issueRecoveryCredit(admin, dto);
   }
 
-  // ── Withdrawal settlement queue (migration 0023) ──────────────────────────
+  // ── Withdrawal settlement queue (migration 0024) ──────────────────────────
 
   /**
    * Withdrawal requests awaiting a human. There is no payout rail — money
@@ -267,7 +267,7 @@ export class AdminController {
     return this.adminPlatformService.broadcast(admin, dto);
   }
 
-  // ── Platform commission (migration 0023) ──────────────────────────────────
+  // ── Platform commission (migration 0024) ──────────────────────────────────
 
   @Get('commission')
   getCommission() {

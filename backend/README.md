@@ -62,7 +62,7 @@ Job lifecycle: `open → recommending → assigned → in_progress → completed
 
 1. Create a project at [supabase.com](https://supabase.com).
 2. Apply **every** migration in [`supabase/migrations/`](./supabase/migrations) **in order**
-   (0001 → 0024), either by pasting each file into the SQL Editor or with the CLI:
+   (0001 → 0026), either by pasting each file into the SQL Editor or with the CLI:
 
    ```bash
    supabase link --project-ref <your-project-ref>
@@ -91,10 +91,12 @@ Job lifecycle: `open → recommending → assigned → in_progress → completed
    | `0018_job_confirmed_status.sql` | `confirmed` job status and assignment lifecycle updates. |
    | `0019_job_tasks_and_verification_storage_rls.sql` | job checklists and verification-storage RLS policies. |
    | `0020_admin_search_functions.sql` | service-role-only SQL RPCs for paginated admin booking, activity, and escrow search. |
-   | `0021_recovery_credit_kind.sql` | adds `'recovery_credit'` to `wallet_txn_kind`, the tag an admin-issued trust credit will carry once that endpoint exists (see `docs/backend-handoff-recovery-vouchers.md`). Safely re-runnable. |
+   | `0021_recovery_credit_kind.sql` | adds `'recovery_credit'` to `wallet_txn_kind`, the tag an admin-issued trust credit carries (`POST /admin/wallet-transactions/recovery-credit`, `BACKEND_SCHEMA.md` §28.1). Safely re-runnable. |
    | `0022_notification_announcement_type.sql` | `notification_type` gains `'announcement'` (admin broadcast) and `'wallet_update'` (withdrawal settled/declined). |
    | `0023_account_deletion_and_email_otp.sql` | `profiles.deleted_at` (soft delete) and `profiles.email_verified_at`; `admin_user_overview` re-created to expose `deleted_at`. |
    | `0024_withdrawal_requests_and_commission.sql` | withdrawal review columns on `wallet_transactions`, `platform_settings.commission_rate` (default 0), `escrow_transactions.commission_amount`. |
+   | `0025_scheduler_cron.sql` | Postgres-driven scheduler ticks (pg_cron + pg_net) calling `POST /internal/tick/*`, so push and recommendation sweeps run while the API host sleeps. Read its header before applying — it needs a setup snippet run first. |
+   | `0026_rls_write_lockdown.sql` | drops every RLS **write** policy 0003/0006/0019 granted to signed-in users (own profile, own provider row — including `is_verified` — jobs, application status, reviews, messages, checklist, notification read-state). All writes go through the API; reads are unchanged. See `BACKEND_SCHEMA.md` §11 and §17. Re-runnable. |
 
    > Migrations 0008 and 0009 each run `alter type notification_type add value`.
    > Postgres allows this inside a transaction as long as the new value isn't
@@ -120,7 +122,7 @@ Job lifecycle: `open → recommending → assigned → in_progress → completed
    > **0022 must be applied on its own, before 0023 and 0024**, for the same
    > reason 0018 must precede 0019: it adds `notification_type` values that the
    > API writes immediately, and Postgres will not let a new enum value be used
-   > in the transaction that added it. Run 0021, let it commit, then the other
+   > in the transaction that added it. Run 0022, let it commit, then the other
    > two. `supabase db push` handles this itself.
    >
    > The API also reads `reviews` on every job query (the `has_review` flag) and
@@ -167,10 +169,11 @@ stops a client's own `X-Forwarded-For` from being a way around the limit.
 The repository contains the implementation, but an operator must still run
 these external steps. This checklist does not assert that a deployment occurred.
 
-1. Apply migrations through `0021_recovery_credit_kind.sql` in order. Run
-   0018 and 0019 in separate SQL Editor transactions as described above; 0020
-   comes after 0019 and creates the service-role-only admin list RPCs; 0021 is
-   an independent enum addition and can run any time after that.
+1. Apply every migration in order, through the latest. Run 0018 and 0019 in
+   separate SQL Editor transactions as described above, and 0022 on its own
+   before 0023/0024; 0020 comes after 0019 and creates the service-role-only
+   admin list RPCs. 0026 can run any time after 0025 — the API writes with the
+   service-role key and is unaffected by it.
 2. Set the API host's `WEB_CORS_ORIGINS`, then deploy the backend with the
    current environment variables and migrations available.
 3. Set `NEXT_PUBLIC_API_URL` at the web host to that API's HTTPS origin and
@@ -349,15 +352,19 @@ Two routes, one queue: a `manual` row carries document paths and waits for an
 admin, a `stripe_identity` row carries none and is resolved by webhook. Only one
 review may be open per provider, whichever route it came in by.
 
-Approval flips `provider_profiles.is_verified`. That flag was specified as a
-**badge only** — applying to jobs deliberately *not* gated on it, since gating
-would lock out every provider who signed up before verification existed.
+Approval flips `provider_profiles.is_verified`, and that flag is a **gate**,
+not a badge (`BACKEND_SCHEMA.md` §17). An unverified provider can browse the
+feed but:
 
-> **⚠️ The code disagrees with that paragraph and with `BACKEND_SCHEMA.md` §17.**
-> `POST /jobs/:jobId/applications` returns `403 Verify your identity before
-> applying to jobs` when `is_verified` is false. Flagged rather than quietly
-> resolved: gating and not gating are different products, and the fix is one
-> line in whichever direction is chosen. See `BACKEND_SCHEMA.md` §17.
+- `POST /jobs/:jobId/applications` answers `403 { message: 'Verify your identity
+  before applying to jobs', code: 'verification_required' }`;
+- `POST /applications/:id/accept` answers `409 { code: 'provider_not_verified' }`
+  before any money is held, in case an application outlives the verification
+  it was filed under.
+
+The `code` is what the app branches on to offer a way to verify. Since
+migration 0026 no signed-in user can write `provider_profiles` directly, so
+the flag can only be set by an approval or a Stripe Identity webhook.
 
 **Disputes** (migration 0009)
 

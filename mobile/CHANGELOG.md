@@ -5,6 +5,45 @@ app works today; this file covers how it got there and why. Newest first.
 
 ---
 
+## Hiring errors are shown, and verification is a gate the app says out loud (2026-09-15)
+
+**The Proposals screen had two bugs that hid each other.**
+`HOJobApplicationsScreen`'s Accept/Reject had no `catch`. A wallet that couldn't
+cover the budget (`400 Insufficient wallet balance`) made Accept look like a
+button that did nothing. The screen also read `app.profiles` and
+`app.cached_*`, but the API returns `provider`, so every card said "Provider ·
+New · 0 jobs". Now:
+
+- errors show in a banner, with an **Add money to your wallet →** link when the
+  wallet is short;
+- names and stats come from `provider` / `provider.provider_profiles`, which the
+  API now embeds;
+- a **Not verified** chip disables Accept ("Awaiting verification"). The API
+  refuses that hire with `409 provider_not_verified` anyway;
+- decided applications show Hired / Not selected / Withdrawn instead of live
+  buttons, and the count is pending proposals only;
+- testIDs `applications-accept-<id>`, `applications-reject-<id>`,
+  `applications-action-error` and `applications-add-funds` are there for Maestro.
+
+**Verification is required to apply** (`BACKEND_SCHEMA.md` §17 now says so).
+The feed banner no longer says "Browse jobs freely. Verify when you're ready";
+it says verification is required to send proposals or be hired. If the API
+answers `verification_required` while the cached profile said "verified", the
+screen re-reads the profile, and Submit Proposal turns into Verify to Apply.
+
+**`SPVerificationScreen` falls back to manual review only on a server error.**
+Any `ApiError` used to trigger the fallback, including a `429` or a review
+already pending, which quietly filed a second, manual submission.
+
+**`src/lib/api.ts`**
+- A non-JSON error body (a sleeping host, proxy 502, captive portal) becomes
+  an `ApiError` with the real status. It used to be a raw "JSON Parse error"
+  (BUG-001, now fixed).
+- A `429` reads "Too many attempts. Please try again in N seconds." from
+  `Retry-After`.
+- `ApiError` gains `retryAfterSeconds` and a `code` getter.
+- `jobApplications()` is typed (`JobApplication`).
+
 ## Settings and password reset stop pretending: five endpoints that were always there
 
 Nothing new was built on the backend for this. `GET`/`PATCH /settings` and

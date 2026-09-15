@@ -211,6 +211,33 @@ export interface ProviderProfile {
   [key: string]: unknown;
 }
 
+/**
+ * One proposal on a client's job, as `GET /jobs/:id/applications` returns it.
+ * The provider's stats ride along nested under `provider.provider_profiles`,
+ * because `job_applications.provider_id` references `profiles`, and
+ * `provider_profiles` hangs off that row one-to-one.
+ */
+export interface JobApplication {
+  id: string;
+  job_id: string;
+  provider_id: string;
+  status: 'pending' | 'accepted' | 'rejected' | 'withdrawn';
+  source: 'organic' | 'recommended';
+  cover_message: string | null;
+  applied_at: string;
+  decided_at: string | null;
+  provider: {
+    id: string;
+    full_name: string;
+    avatar_url: string | null;
+    city: string | null;
+    provider_profiles: Pick<
+      ProviderProfile,
+      'is_verified' | 'cached_avg_rating' | 'cached_completed_jobs'
+    > | null;
+  } | null;
+}
+
 export interface MeResponse {
   profile: Profile;
   provider_profile: ProviderProfile | null;
@@ -467,10 +494,33 @@ export class ApiError extends Error {
     readonly status: number,
     /** Additional structured error fields returned by the API, when present. */
     readonly details?: unknown,
+    /**
+     * Seconds the rate limiter asked us to wait, from `Retry-After`. Present
+     * only on a 429; the screen shows it so "try again" means something.
+     */
+    readonly retryAfterSeconds?: number,
   ) {
     super(message);
     this.name = 'ApiError';
   }
+
+  /**
+   * The machine-readable reason some refusals carry alongside their message —
+   * `verification_required`, `provider_not_verified`, … — so a screen can offer
+   * the way out (a link to Verification, say) instead of parsing prose.
+   */
+  get code(): string | undefined {
+    const code = (this.details as { code?: unknown } | null | undefined)?.code;
+    return typeof code === 'string' ? code : undefined;
+  }
+}
+
+/** Reads a `Retry-After` header in its delta-seconds form; undefined if absent or unparseable. */
+function retryAfterSeconds(response: Response): number | undefined {
+  const raw = response.headers.get('retry-after');
+  if (!raw) return undefined;
+  const seconds = Number(raw);
+  return Number.isFinite(seconds) && seconds >= 0 ? Math.ceil(seconds) : undefined;
 }
 
 /**
@@ -560,9 +610,38 @@ async function rawRequest<T>(
   }
 
   const text = await response.text();
-  const data = text ? JSON.parse(text) : null;
+  let data: any = null;
+  try {
+    data = text ? JSON.parse(text) : null;
+  } catch {
+    // A non-JSON body is an error page from something between us and the
+    // API — a sleeping Render host, a proxy 502, a captive-portal login. The
+    // transport succeeded, so the fetch catch above never fired, and without
+    // this the user read "JSON Parse error: Unexpected character: <"
+    // (maestro/bug-log.md BUG-001). Surface it as an ApiError with the real
+    // status so every caller's existing handling applies.
+    throw new ApiError(
+      response.ok
+        ? 'The server sent a response the app could not read. Please try again.'
+        : `The server is unavailable right now (HTTP ${response.status}). Please try again shortly.`,
+      response.status,
+    );
+  }
 
   if (!response.ok) {
+    if (response.status === 429) {
+      // The rate limiter answered before the request was handled, so nothing
+      // happened; say how long to wait rather than the throttler's own text.
+      const wait = retryAfterSeconds(response);
+      throw new ApiError(
+        wait
+          ? `Too many attempts. Please try again in ${wait} second${wait === 1 ? '' : 's'}.`
+          : 'Too many attempts. Please wait a moment and try again.',
+        429,
+        data,
+        wait,
+      );
+    }
     const message =
       (data && (Array.isArray(data.message) ? data.message[0] : data.message)) ||
       'Something went wrong. Please try again.';
@@ -927,7 +1006,7 @@ export const api = {
   },
 
   jobApplications(jobId: string) {
-    return authRequest<unknown[]>(`/jobs/${jobId}/applications`);
+    return authRequest<JobApplication[]>(`/jobs/${jobId}/applications`);
   },
 
   myApplications() {

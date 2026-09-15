@@ -258,15 +258,22 @@ are checked. Written UTF-8 with a BOM so Excel doesn't mangle the peso sign.
 **This worktree uses the backend integrations below.** An external deploy is
 still required before they are available at a hosted URL.
 
-> **New since this list was written:** the API is now rate-limited
-> (`backend/BACKEND_SCHEMA.md` §28.4), **per endpoint per IP** — 240/minute on
-> any one route, and `POST /auth/admin/login` specifically 10/minute. The
-> console is nowhere near that, with one exception worth knowing before it
-> bites: a bulk action fires one request per id in parallel and they all hit
-> the *same* handler, so selecting more than 240 rows and suspending them at
-> once would start earning `429`s partway through. The existing
-> "Suspended 3 of 5" per-id failure reporting already covers that honestly, but
-> a `429` is worth retrying rather than reporting as a refusal.
+> **Rate limits.** The API is rate-limited **per endpoint per IP**
+> (`backend/BACKEND_SCHEMA.md` §28.4) — 240/minute on any one route, and
+> `POST /auth/admin/login` specifically 10/minute. The console handles a `429`
+> in two places:
+>
+> - `lib/api/client.ts` retries a `429` up to twice, waiting the `Retry-After`
+>   the API sends (exposed to this origin by the API's CORS config) or backing
+>   off exponentially, with jitter. That is safe for POSTs too: the throttler
+>   rejects before the handler runs, so the first attempt did nothing. A wait
+>   longer than 10 s fails straight away with "try again in Ns" instead of
+>   leaving the admin staring at a spinner.
+> - Bulk actions (`runBulk` in `lib/services`) run through a pool of
+>   `BULK_CONCURRENCY` (4) rather than firing every id at once, and return the
+>   real reason for each failure, which the Users page groups into its toast
+>   ("Suspended 2 of 5. 3 failed: Too many requests — try again in 30s. (×2);
+>   …") instead of guessing.
 
 ### 1. Adopt browser-admin session cookies
 
