@@ -3,6 +3,12 @@ import type Stripe from 'stripe';
 import { SupabaseService } from '../supabase/supabase.service';
 import { VerificationsService } from '../verifications/verifications.service';
 import { StripeService } from './stripe.service';
+import { StripeEventsService } from './stripe-events.service';
+import { StripeCustomersService } from './stripe-customers.service';
+import {
+  HIRE_FUNDING_PURPOSE,
+  HireFundingService,
+} from './hire-funding.service';
 import { CreateCheckoutSessionDto, CreateTopupDto } from './dto/payments.dto';
 import { isAllowedAppRedirect } from '../auth/google-redirect';
 import type { Profile } from '../common/types';
@@ -29,6 +35,9 @@ export class PaymentsService {
     private readonly supabase: SupabaseService,
     private readonly stripeService: StripeService,
     private readonly verifications: VerificationsService,
+    private readonly events: StripeEventsService,
+    private readonly customers: StripeCustomersService,
+    private readonly hireFunding: HireFundingService,
   ) {}
 
   /**
@@ -41,7 +50,7 @@ export class PaymentsService {
    */
   async createTopupIntent(user: Profile, dto: CreateTopupDto) {
     const stripe = this.stripeService.stripe;
-    const customerId = await this.customerFor(user);
+    const customerId = await this.customers.customerFor(user);
 
     const ephemeralKey = await stripe.ephemeralKeys.create(
       { customer: customerId },
@@ -102,7 +111,7 @@ export class PaymentsService {
     }
 
     const stripe = this.stripeService.stripe;
-    const customerId = await this.customerFor(user);
+    const customerId = await this.customers.customerFor(user);
     const returnUrl = (status: 'success' | 'cancelled') =>
       `${returnBase}/payments/return?status=${status}` +
       `&app_redirect=${encodeURIComponent(dto.app_redirect)}`;
@@ -171,11 +180,19 @@ export class PaymentsService {
    * failure — work never done, event marked handled — permanent and silent.
    */
   async handleEvent(event: Stripe.Event): Promise<void> {
-    if (await this.alreadyProcessed(event.id)) return;
+    if (await this.events.alreadyProcessed(event.id)) return;
 
     switch (event.type) {
       case 'payment_intent.succeeded':
-        await this.creditWallet(event.data.object);
+        // Two kinds of payment arrive here, told apart by the purpose this
+        // server stamped on the intent when it opened it: a plain wallet
+        // top-up, and a card-at-hire payment that also places the hold and
+        // accepts the application (§29.4).
+        if (event.data.object.metadata?.purpose === HIRE_FUNDING_PURPOSE) {
+          await this.hireFunding.completeFromIntent(event.data.object);
+        } else {
+          await this.creditWallet(event.data.object);
+        }
         break;
       case 'identity.verification_session.verified':
         await this.verifications.applyIdentityResult(
@@ -200,22 +217,7 @@ export class PaymentsService {
         this.logger.debug(`Ignoring Stripe event type ${event.type}`);
     }
 
-    await this.recordProcessed(event);
-  }
-
-  async alreadyProcessed(eventId: string): Promise<boolean> {
-    const { data } = await this.supabase.admin
-      .from('stripe_events')
-      .select('id')
-      .eq('id', eventId)
-      .maybeSingle();
-    return data !== null;
-  }
-
-  async recordProcessed(event: Stripe.Event): Promise<void> {
-    await this.supabase.admin
-      .from('stripe_events')
-      .upsert({ id: event.id, type: event.type }, { onConflict: 'id' });
+    await this.events.recordProcessed(event);
   }
 
   // ── Internals ─────────────────────────────────────────────────────────────
@@ -271,39 +273,5 @@ export class PaymentsService {
       data: { payment_intent_id: intent.id, amount },
     });
     this.logger.log(`Credited ₱${amount} to ${profileId} (${intent.id})`);
-  }
-
-  /**
-   * The user's Stripe customer, created on first payment.
-   *
-   * Reusing one customer per profile is what lets PaymentSheet offer a saved
-   * card on the second top-up instead of asking for the number again.
-   */
-  private async customerFor(user: Profile): Promise<string> {
-    const { data: profile } = await this.supabase.admin
-      .from('profiles')
-      .select('stripe_customer_id')
-      .eq('id', user.id)
-      .maybeSingle();
-    if (profile?.stripe_customer_id)
-      return profile.stripe_customer_id as string;
-
-    const { data: authData } = await this.supabase.admin.auth.admin.getUserById(
-      user.id,
-    );
-
-    const customer = await this.stripeService.stripe.customers.create({
-      email: authData?.user?.email ?? undefined,
-      name: user.full_name,
-      metadata: { profile_id: user.id },
-    });
-
-    const { error } = await this.supabase.admin
-      .from('profiles')
-      .update({ stripe_customer_id: customer.id })
-      .eq('id', user.id);
-    if (error) throw new BadRequestException(error.message);
-
-    return customer.id;
   }
 }

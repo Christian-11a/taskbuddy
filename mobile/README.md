@@ -273,6 +273,7 @@ sign-in, and notification rows remain available in the in-app list either way.
 | `HOCreateJobScreen` | `GET /categories`, image upload, `POST /jobs` — the guided 5-step flow: service → location → tasks → urgency → review |
 | `HOJobDetailScreen` | `GET /jobs/:id`, `GET /providers/:id`, `POST /jobs/:id/recommendations/trigger`; complete / cancel / chat, review-state gating, manual provider-matching retry, and read-only task checklist |
 | `HOChatScreen` | `POST /conversations` then message listing |
+| `HOJobApplicationsScreen` | `GET /jobs/:id/applications`; Accept opens `HirePaymentModal` — `POST /applications/:id/accept` (wallet) or `POST /payments/hire-checkout-session` (card, then polls for `accepted`); Reject |
 | `HOWalletScreen` | `GET /wallet` + `GET`/`POST /wallet/withdrawals`; Add Money opens Stripe Checkout, and Withdraw files/cancels manual payout requests |
 | `HODisputeFilingScreen` | `POST /jobs/:jobId/disputes` |
 | `HOProfile` | Displays profile data; menu is Edit Profile / Settings / Help & Support |
@@ -285,7 +286,7 @@ sign-in, and notification rows remain available in the in-app list either way.
 
 | Screen | Key API calls |
 |--------|--------------|
-| `SPHomeScreen` | `GET /jobs` (location-filtered feed + summary), `GET /jobs/assigned` (booking requests, with inline accept/decline); availability toggle |
+| `SPHomeScreen` | `GET /jobs` (location-filtered feed + summary), `GET /jobs/assigned` (booking requests, with inline accept/decline); availability toggle; a "Verification required to apply" banner until verified |
 | `SPMyJobsScreen` | `GET /jobs/assigned`, `GET /applications/mine` |
 | `SPJobDetailScreen` | `GET /jobs/:id`; apply to an open job, or accept / decline / start and tick off the task checklist once it's theirs |
 | `SPCalendarScreen` | `GET /calendar/bookings?from=&to=` for the current month |
@@ -301,15 +302,28 @@ sign-in, and notification rows remain available in the in-app list either way.
 
 ## Money, Briefly
 
-Hiring holds the job budget in escrow so the client's wallet must cover it:
-`POST /applications/:id/accept` returns `400 Insufficient wallet balance` otherwise.
-That is what the Wallet screen's **Add Money** button is for.
-Funds are released to the provider when the client marks the job complete, and
-returned to the client if the job is cancelled or a dispute is resolved in the
-client's favour.
+Hiring holds the job budget in escrow. Accept on a proposal
+(`HOJobApplicationsScreen`) opens `HirePaymentModal`, which offers two ways to pay:
 
-There is no payment gateway — the wallet ledger is the only account of record.
-Full rules: `backend/BACKEND_SCHEMA.md` §18.
+- **Pay from wallet**: `POST /applications/:id/accept` holds the budget from the
+  wallet. It is disabled, with an **add money** link, when the wallet is short.
+  The API refuses with `400 Insufficient wallet balance` anyway.
+- **Pay by card**: `POST /payments/hire-checkout-session` opens Stripe Checkout
+  for the full budget. **The app does not do the hire.** Stripe's webhook
+  credits the payment, holds it in escrow, and accepts the application, so
+  after the browser closes the screen polls the proposal until it reads
+  `accepted`. If the proposal was taken in the meantime, the payment stays in
+  the wallet and the screen says so.
+
+Funds are released to the provider when the client marks the job complete, and
+returned to the **wallet** if the job is cancelled or a dispute is resolved in
+the client's favour. That includes card-paid jobs.
+
+Providers who set up **Profile → Payouts** (Stripe Connect Express) have
+card-paid jobs sent straight to their Stripe account on completion. Everything
+else stays in the TaskBuddy wallet and is withdrawn by request. The wallet ledger
+is the only account of record. Full rules: `backend/BACKEND_SCHEMA.md` §18
+and §29.
 
 ---
 
@@ -399,22 +413,29 @@ signup OTP (item 5) remains available for a future registration-confirmation flo
 | 3 | `has_review` flag on job payload | **Wired** — completed jobs hide Leave Review when `has_review` is true; direct review access is also blocked |
 | 4 | Realtime chat | Done — authenticated SSE streams messages through the API |
 | 5 | Email OTP at registration | **API done** — `POST /auth/send-email-otp` / `verify-email-otp`, wrapping Supabase's own signup code. Needs the `{{ .Token }}` template change in [`docs/email-otp-setup.md`](../docs/email-otp-setup.md) |
-| 6 | Homeowner card-at-hire (vs wallet top-up) | Still open — a product decision, not a missing endpoint |
+| 6 | Homeowner card-at-hire (vs wallet top-up) | **Wired** — Accept offers Pay from wallet or Pay by card; the card path is hired by Stripe's webhook (`BACKEND_SCHEMA.md` §29.4) |
 | 7 | Push delivery | Backend done (Expo tokens + API scheduler). **Blocked on our side**: no EAS `projectId`, and Expo Go can't receive push on SDK 57 — see [Live chat and push notifications](#live-chat-and-push-notifications) |
 
 ### 3. [`docs/backend-handoff-stripe-connect-escrow.md`](../docs/backend-handoff-stripe-connect-escrow.md)
 
-**Still needs a real decision, not just code.** Covers the "escrow hold via Stripe Connect at
-booking" story. Today's escrow is a ledger debit against a wallet the client pre-funded — there is
-still no Stripe Connect anywhere in the backend and no per-booking payment intent. The doc lays
-out two viable architectures (A: keep the wallet ledger, add a real per-booking hold + Connect
-transfer on release; B: full Connect destination charges) and asks for a call before code gets
-written, since it changes real money-movement semantics.
+**Closed: Option A, built.** The escrow hold via Stripe Connect at booking:
 
-**The two pieces that did not depend on that decision have since shipped:** rate limiting
-(`@nestjs/throttler`, now applied per client IP — `BACKEND_SCHEMA.md` §28.4) and the
-explicit-error hardening in `EscrowService.release()` (§28.2). Neither changes anything the app
-sees, except that a retry loop against an auth or payment endpoint now earns a `429`.
+- **Card-at-hire.** A homeowner can pay a hire by card. The webhook credits
+  the payment, places the `held` escrow, and accepts the application
+  (`BACKEND_SCHEMA.md` §29.4).
+- **Provider payouts.** Providers onboard to Stripe Connect Express from
+  Profile → Payouts. A card-paid job's payout is sent to their Stripe account
+  when it completes, as a transfer sourced from that job's own charge (§29.5).
+- **The wallet ledger stays the account of record** throughout.
+
+Wallet-funded payouts still withdraw through the manual queue, because Stripe
+cannot move pesos that did not arrive as a single charge (the FX reason in
+§29).
+
+Rate limiting (§28.4) and the `EscrowService.release()` hardening (§28.2)
+shipped earlier. Before going live, the test-mode check in
+[`docs/stripe-setup.md`](../docs/stripe-setup.md) §7 needs running against
+the real Stripe account.
 
 ### 4. [`docs/backend-handoff-recovery-vouchers.md`](../docs/backend-handoff-recovery-vouchers.md)
 
@@ -435,8 +456,11 @@ button (`web/README.md`).
 ## Remaining Backend Work
 
 The migration and deployment handoff above is complete. Everything the mobile
-acceptance audit raised has since been done — full reasoning in
-`backend/BACKEND_SCHEMA.md` §28.
+acceptance audit raised has since been done (full reasoning in
+`backend/BACKEND_SCHEMA.md` §28), and so have the decisions that were left
+open: the Stripe Connect escrow, card-at-hire, and verification as a gate
+(§29, §17). Migrations **0026–0029** must be applied before deploying the
+current API, with 0027 run alone first. See `backend/README.md`.
 
 | Item | Outcome |
 |---|---|
@@ -467,19 +491,22 @@ anything from the app:
 
 ### Still open, and still not a missing endpoint
 
-- **Stripe Connect escrow** — a product/Stripe-account decision, unchanged.
-  `docs/backend-handoff-stripe-connect-escrow.md` Story 1.
-- **A real payout rail.** Withdrawals are still settled by hand from the admin
-  queue.
-- **Card-at-hire for homeowners** (handoff item 6). A product fork.
-- **`is_verified`: badge or gate?** The backend currently returns
-  `403 Verify your identity before applying to jobs` for an unverified
-  provider, while `BACKEND_SCHEMA.md` §17 and `backend/README.md` both say
-  verification is a badge and not a gate. One of the two is wrong and it is a
-  one-line fix either way, but they are different products — flagged in
-  `BACKEND_SCHEMA.md` §17 for a decision. If gating stays, `SPVerificationScreen`
-  is a prerequisite to applying rather than an optional badge, and the feed
-  should say so.
+- ~~**Stripe Connect escrow**~~ **Done** (Option A): card-at-hire plus Connect
+  payouts, `BACKEND_SCHEMA.md` §29.
+- **A payout rail for wallet balances.** Card-paid jobs now reach a provider's
+  Stripe account automatically. Money that sits in a wallet (wallet-funded
+  payouts, refunds, credits) is still withdrawn by request and settled by hand.
+  Automating that needs a PH-native disburser, or an FX decision Stripe cannot
+  make for us (§29).
+- ~~**Card-at-hire for homeowners** (handoff item 6).~~ **Done**: Pay by card at
+  Accept, hired by the webhook (§29.4).
+- ~~**`is_verified`: badge or gate?**~~ **Decided: a gate**, on applying *and*
+  on being hired (`BACKEND_SCHEMA.md` §17). The API answers
+  `403 { code: 'verification_required' }` to an unverified provider's proposal
+  and `409 { code: 'provider_not_verified' }` to a client trying to hire one.
+  The feed banner says verification is required. Proposals show a **Not
+  verified** chip and disable Accept, and migration 0026 removed the RLS
+  policy that let a provider set their own `is_verified`.
 
 ---
 

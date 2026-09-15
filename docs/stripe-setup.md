@@ -77,7 +77,8 @@ on the account before `POST /verifications/identity-session` will succeed.
 
 ## 5. Render
 
-Add all three keys under **Environment** on the Render service, then redeploy. The boot log
+Add all three keys under **Environment** on the Render service, then redeploy.
+For provider payouts, add the Connect variables from §6 as well. The boot log
 confirms the state:
 
 ```
@@ -85,6 +86,135 @@ WARN [StripeService] Stripe is disabled — missing env: ... ← not configured
 ```
 
 No warning means the keys were read.
+
+## 6. Stripe Connect — provider payouts
+
+Providers are paid through **Connect Express** accounts, onboarded on Stripe's
+own hosted pages (`BACKEND_SCHEMA.md` §29). The API only creates the account,
+hands out links, and records what Stripe reports. Bank details never reach
+TaskBuddy.
+
+**Optional.** Without it everything else works. Card-funded payouts then stay
+in the provider's TaskBuddy wallet, the same as a wallet-funded job.
+
+### Enable Connect (test mode first)
+
+1. Dashboard → **Connect → Get started** → choose **Platform or marketplace**.
+2. **Settings → Connect → Branding**: set the name, icon and colour. Account
+   links fail with a confusing error until branding is set.
+3. **Settings → Connect → Express**: leave the defaults. The API asks only for
+   the `transfers` capability. Providers never take card payments themselves;
+   TaskBuddy charges the homeowner and sends the provider their share
+   ("separate charges and transfers").
+
+### The Connect webhook endpoint
+
+This is a **second** endpoint, separate from the one in §2. Stripe delivers
+events about connected accounts only to an endpoint created for them, and
+that endpoint has its own signing secret.
+
+Dashboard → **Developers → Webhooks → Add endpoint**:
+
+- **URL:** `https://taskbuddy-kpek.onrender.com/payments/connect/webhook`
+- **Listen to:** **Events on Connected accounts**
+- **Events:** `account.updated`, `capability.updated`
+- **API version:** the same as the platform endpoint
+
+```env
+STRIPE_CONNECT_WEBHOOK_SECRET=whsec_...   # this endpoint's secret, not §2's
+```
+
+Without it the API warns at boot, and a provider's status updates only when
+they tap **Refresh status** or return from onboarding (the app syncs on
+return either way).
+
+### Where providers' accounts are created
+
+```env
+STRIPE_CONNECT_COUNTRY=US                  # default
+STRIPE_CONNECT_SERVICE_AGREEMENT=full      # default; 'recipient' for cross-border
+```
+
+Stripe has no Philippine platform accounts. A PH provider can only be a
+**cross-border recipient** account on a platform in a supported country:
+`STRIPE_CONNECT_COUNTRY=PH` plus `STRIPE_CONNECT_SERVICE_AGREEMENT=recipient`,
+and only once Stripe has confirmed cross-border payouts for this platform. In
+test mode, leave the defaults: US Express accounts onboard with Stripe's test
+data (below) on any test platform.
+
+### Test-mode onboarding data
+
+On Stripe's hosted form: phone `000 000 0000` with SMS code `000000`; date of
+birth `1901-01-01`; SSN `000-00-0000`; address line 1 `address_full_match`;
+routing number `110000000` with account number `000123456789`. The account
+becomes **Active** in the app a few seconds later.
+
+### Local development
+
+```bash
+stripe listen \
+  --forward-to localhost:3000/payments/webhook \
+  --forward-connect-to localhost:3000/payments/connect/webhook
+```
+
+The CLI signs both streams with the **one** secret it prints. Locally, set
+`STRIPE_WEBHOOK_SECRET` and `STRIPE_CONNECT_WEBHOOK_SECRET` both to it.
+
+## 7. Card-at-hire and payout transfers — the test-mode check
+
+Card-at-hire needs no new configuration: its payments arrive as `payment_intent.succeeded` on the
+§2 endpoint, told apart by `metadata.purpose = 'hire_funding'`.
+
+Payout transfers depend on two facts about **this** platform account, which can only be read from
+Stripe. Run the checks below once in test mode before relying on transfers, and record the answers
+here. `BACKEND_SCHEMA.md` §29.5 explains why they matter.
+
+```bash
+# 1. The settlement currency. The code transfers in the charge's balance-transaction currency
+#    whatever it is; this just tells you what it will be.
+stripe get /v1/account | grep -E '"country"|"default_currency"'
+
+# 2. What a PHP card charge became. Pay a hire by card with 4242 4242 4242 4242, then:
+stripe charges retrieve ch_... --expand balance_transaction
+#    → balance_transaction.currency / .amount / .exchange_rate
+
+# 3. A source_transaction transfer for the full gross settled amount (the basis the code uses).
+#    Expected: success.
+stripe transfers create --amount <bt.amount> --currency <bt.currency> \
+  --destination acct_... --source-transaction ch_...
+
+# 4. The same in PHP. Expected: a currency error. That is why wallet balances are not sent.
+stripe transfers create --amount 100 --currency php --destination acct_... --source-transaction ch_...
+```
+
+If step 3 is refused for exceeding the charge, the platform must transfer the **net** settled
+amount instead. Change `computeTransferAmount`'s basis from `bt.amount` to `bt.net`, a one-line
+change covered by its unit test. For a cross-border PH recipient account, repeat onboarding with
+`STRIPE_CONNECT_COUNTRY=PH` and `STRIPE_CONNECT_SERVICE_AGREEMENT=recipient`, and record whether
+Stripe allows it.
+
+**Recorded results:** _not yet run_. Fill in the account country, settlement currency, and the
+outcome of steps 3–4.
+
+**End to end, in test mode** (with `stripe listen` from §6 running):
+
+1. A provider finishes **Profile → Payouts**. Their status turns Active, and
+   `provider_payout_accounts.transfers_active = true`.
+2. A homeowner posts a ₱1,000 job, the verified provider applies, and the homeowner taps **Accept →
+   Pay by card** with `4242…`. The proposal turns Hired, and the escrow reads
+   `held` / `card` / `pi_…` / `ch_…`.
+3. `stripe events resend evt_…` for that payment adds no rows.
+4. The provider starts the job and the homeowner completes it. The provider's ledger shows
+   `payout +1000` and a completed `connect_transfer −1000`, and the escrow is `transferred`.
+   `stripe transfers retrieve tr_…` shows the `source_transaction`.
+5. Failure path: complete a card job for a provider with no payout account. It lands `not_eligible`
+   and the money stays in their wallet. Finish onboarding, then use **Retry transfer** on the
+   console's Escrow tab, or `POST /internal/tick/payments`.
+6. `4000 0000 0000 9995` (declined) produces no webhook and no hire. `4000 0025 0000 3155` runs 3D
+   Secure first.
+
+Never refund a card hire from the Stripe Dashboard. Refunds go to the wallet through the app, and a
+Dashboard refund would pay the client twice.
 
 ---
 

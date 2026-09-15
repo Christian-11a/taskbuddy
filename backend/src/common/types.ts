@@ -16,7 +16,16 @@ export type ApplicationStatus =
 export type WalletTxnDirection = 'credit' | 'debit';
 export type WalletTxnStatus = 'pending' | 'completed' | 'failed';
 export type WalletTxnKind =
-  'topup' | 'withdrawal' | 'escrow_hold' | 'payout' | 'refund' | 'adjustment';
+  | 'topup'
+  | 'withdrawal'
+  | 'escrow_hold'
+  | 'payout'
+  | 'refund'
+  | 'adjustment'
+  // An admin-issued trust credit after a dispute (migration 0021).
+  | 'recovery_credit'
+  // A card-funded payout sent on to the provider's Stripe account (0027).
+  | 'connect_transfer';
 export type BookingStatus = 'scheduled' | 'completed' | 'cancelled';
 export type VerificationStatus = 'pending' | 'approved' | 'rejected';
 export type VerificationMethod = 'manual' | 'stripe_identity';

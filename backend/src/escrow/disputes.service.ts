@@ -73,7 +73,21 @@ export class DisputesService {
     }
     if (error) throw new BadRequestException(error.message);
 
-    await this.escrow.markDisputed(escrow.id);
+    try {
+      await this.escrow.markDisputed(escrow);
+    } catch (err) {
+      // The money moved on between the read above and the freeze — a
+      // completion released it, say. The dispute row just inserted would
+      // otherwise sit open against an escrow that is no longer disputable,
+      // and resolving it would move the money a second time. Close it and
+      // tell the client what actually happened.
+      await this.supabase.admin
+        .from('disputes')
+        .update({ status: 'cancelled' })
+        .eq('id', (data as DisputeRow).id)
+        .eq('status', 'open');
+      throw err;
+    }
     await this.notify(
       escrow.provider_id,
       'Payment disputed',

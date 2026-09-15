@@ -15,6 +15,16 @@ import clsx from "clsx";
 
 const PAGE_SIZE = 7;
 
+/** What an admin is told after "Retry transfer" (see ConnectPayoutsService). */
+const RETRY_OUTCOME_MESSAGE: Record<services.TransferRetryOutcome, string> = {
+  transferred: "Payout sent to the provider's Stripe account.",
+  not_eligible: "The provider hasn't finished setting up payouts. The money stays in their wallet.",
+  failed: "Stripe refused the transfer again. The money stays in the provider's wallet.",
+  abandoned: "Stripe refused the transfer. The money stays in the provider's wallet.",
+  retry: "Stripe didn't answer. The transfer is queued and will be retried automatically.",
+  skipped: "Nothing to retry for this escrow.",
+};
+
 type StatusFilter = "all" | "Completed" | "In Escrow" | "Disputed" | "Refunded";
 type Tab = "escrow" | "wallet";
 
@@ -43,6 +53,23 @@ const EscrowTab = forwardRef<ExportHandle, TabProps>(function EscrowTab({ onExpo
   const [transactions, setTransactions] = useState<TransactionRow[]>([]);
   const [totalCount, setTotalCount] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [reloadKey, setReloadKey] = useState(0);
+  const [retryingId, setRetryingId] = useState<string | null>(null);
+  const { showToast } = useToast();
+
+  /** Retries a card-funded payout's Stripe transfer, then reloads the page. */
+  async function retryTransfer(t: TransactionRow) {
+    setRetryingId(t.id);
+    try {
+      const outcome = await services.retryEscrowTransfer(t.id);
+      showToast(RETRY_OUTCOME_MESSAGE[outcome], outcome === "transferred" ? "success" : "error");
+      setReloadKey((k) => k + 1);
+    } catch (err) {
+      showToast(err instanceof ApiError ? err.message : "Could not retry the transfer.", "error");
+    } finally {
+      setRetryingId(null);
+    }
+  }
 
   useEffect(() => {
     /* eslint-disable react-hooks/set-state-in-effect -- fetching page-local data */
@@ -70,7 +97,7 @@ const EscrowTab = forwardRef<ExportHandle, TabProps>(function EscrowTab({ onExpo
     });
     return () => { cancelled = true; };
     /* eslint-enable react-hooks/set-state-in-effect */
-  }, [search, statusFilter, page]);
+  }, [search, statusFilter, page, reloadKey]);
 
   const total = transactions.reduce((s, t) => s + t.amountValue, 0);
 
@@ -103,8 +130,8 @@ const EscrowTab = forwardRef<ExportHandle, TabProps>(function EscrowTab({ onExpo
     () => ({
       exportCsv: () => {
         const csv = toCsv(
-          ["Escrow ID", "Job ID", "Homeowner", "Provider", "Service", "Amount", "Status", "Date"],
-          exportScope.map((t) => [t.id, t.jobId, t.customer, t.provider, t.service, t.amountValue, t.status, t.date]),
+          ["Escrow ID", "Job ID", "Homeowner", "Provider", "Service", "Amount", "Status", "Date", "Funding", "Payout"],
+          exportScope.map((t) => [t.id, t.jobId, t.customer, t.provider, t.service, t.amountValue, t.status, t.date, t.funding, t.payout]),
         );
         downloadCsv(datedFilename("taskbuddy-transactions"), csv);
       },
@@ -200,6 +227,7 @@ const EscrowTab = forwardRef<ExportHandle, TabProps>(function EscrowTab({ onExpo
                 <th className="hidden lg:table-cell">Service</th>
                 <th>Amount</th>
                 <th>Status</th>
+                <th className="hidden lg:table-cell">Payout</th>
                 <th className="hidden md:table-cell">Date</th>
                 <th style={{ width: 40 }}></th>
               </tr>
@@ -223,6 +251,13 @@ const EscrowTab = forwardRef<ExportHandle, TabProps>(function EscrowTab({ onExpo
                     <td className="hidden lg:table-cell" style={{ color: "var(--text-light)" }}>{t.service}</td>
                     <td className="text-white font-semibold">{t.amount}</td>
                     <td><span className={clsx("badge", t.statusClass)}>{t.status}</span></td>
+                    <td className="hidden lg:table-cell">
+                      {t.payout && (
+                        <span className={clsx("badge", t.payoutClass)} title={t.payoutDetail ?? undefined}>
+                          {t.payout}
+                        </span>
+                      )}
+                    </td>
                     <td className="hidden md:table-cell" style={{ color: "var(--text-light)" }}>{t.date}</td>
                     <td>
                       <button
@@ -239,7 +274,7 @@ const EscrowTab = forwardRef<ExportHandle, TabProps>(function EscrowTab({ onExpo
                   </tr>
                   {expandedId === t.id && (
                     <tr>
-                      <td colSpan={9} style={{ background: "var(--chip-bg)", padding: "12px 16px" }}>
+                      <td colSpan={10} style={{ background: "var(--chip-bg)", padding: "12px 16px" }}>
                         <div className="grid grid-cols-2 md:grid-cols-4 gap-3" style={{ fontSize: "var(--fs-xs)" }}>
                           {[
                             ["ESCROW ID", t.id],
@@ -250,6 +285,9 @@ const EscrowTab = forwardRef<ExportHandle, TabProps>(function EscrowTab({ onExpo
                             ["AMOUNT HELD", t.amount],
                             ["STATUS", t.status],
                             ["HELD SINCE", t.date],
+                            ["FUNDED BY", t.funding],
+                            ["PAYOUT", t.payout || "—"],
+                            ...(t.payoutDetail ? [["STRIPE", t.payoutDetail]] : []),
                           ].map(([label, value]) => (
                             <div key={label}>
                               <div style={{ fontSize: "var(--fs-3xs)", color: "var(--text-muted)", marginBottom: 3 }}>{label}</div>
@@ -257,6 +295,19 @@ const EscrowTab = forwardRef<ExportHandle, TabProps>(function EscrowTab({ onExpo
                             </div>
                           ))}
                         </div>
+                        {t.canRetryTransfer && (
+                          <div className="mt-3 flex items-center gap-3 flex-wrap" style={{ fontSize: "var(--fs-xs)", color: "var(--text-muted)" }}>
+                            <span>The payout is in the provider&apos;s wallet. Retrying sends it to their Stripe account.</span>
+                            <button
+                              onClick={() => void retryTransfer(t)}
+                              disabled={retryingId === t.id}
+                              className="rounded-lg font-semibold cursor-pointer"
+                              style={{ padding: "6px 12px", background: "var(--indigo-dark)", color: "var(--indigo-light)", border: "none", fontFamily: "inherit", fontSize: "var(--fs-xs)", opacity: retryingId === t.id ? 0.6 : 1 }}
+                            >
+                              {retryingId === t.id ? "Retrying…" : "Retry transfer"}
+                            </button>
+                          </div>
+                        )}
                       </td>
                     </tr>
                   )}
@@ -264,7 +315,7 @@ const EscrowTab = forwardRef<ExportHandle, TabProps>(function EscrowTab({ onExpo
               ))}
               {transactions.length === 0 && (
                 <tr>
-                  <td colSpan={9} className="text-center py-12" style={{ color: "var(--text-muted)", fontSize: "var(--fs-md)" }}>
+                  <td colSpan={10} className="text-center py-12" style={{ color: "var(--text-muted)", fontSize: "var(--fs-md)" }}>
                     {loading
                       ? "Loading transactions…"
                         : totalCount === 0

@@ -15,9 +15,24 @@
  * bid amount (providers apply to the homeowner's posted budget, not counter
  * -offer), so the actions here are the real ones this screen supports —
  * Accept / Reject — restyled to the same outline/primary button pair.
+ *
+ * Accept is where the hire's money is held, so it is also where the hire's
+ * refusals surface: an insufficient wallet (400), a provider who is not
+ * verified (409 `provider_not_verified`), or a rate limit (429). Each shows in
+ * the payment modal (or, for Reject, the banner above the list) rather than
+ * disappearing — the actions used to have no catch at all, so a short wallet
+ * looked like a button that did nothing.
+ *
+ * Accept opens `HirePaymentModal`: pay from the wallet (the accept call holds
+ * the budget), or pay by card on Stripe Checkout (BACKEND_SCHEMA.md §29.4).
+ * A card hire is made by Stripe's webhook, not by this screen, so after the
+ * browser closes the screen polls the application until it turns `accepted`
+ * — the same "the server decides, the app waits" shape as Add Money.
  */
 
 import React, { useState } from 'react';
+import * as AuthSession from 'expo-auth-session';
+import * as WebBrowser from 'expo-web-browser';
 import {
   ActivityIndicator,
   ScrollView,
@@ -26,13 +41,14 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import { ArrowLeft, MessageCircle, Star } from 'lucide-react-native';
+import { AlertCircle, ArrowLeft, MessageCircle, ShieldAlert, Star } from 'lucide-react-native';
 import { Sizes, Spacing, V6Colors } from '../../../src/constants/theme';
 
 const C = V6Colors;
 import { useAsyncData } from '../../../src/hooks/useAsyncData';
-import { api } from '../../../src/lib/api';
+import { api, type JobApplication } from '../../../src/lib/api';
 import { initials } from '../../../src/lib/format';
+import HirePaymentModal from '../../../src/components/HirePaymentModal';
 import { HOScreen } from '../../../src/types/navigation';
 
 interface HOJobApplicationsScreenProps {
@@ -46,7 +62,7 @@ export default function HOJobApplicationsScreen({
   onBack,
   onNavigate,
 }: HOJobApplicationsScreenProps) {
-  const { data: apps, loading, error, reload } = useAsyncData<any[]>(
+  const { data: apps, loading, error, reload } = useAsyncData<JobApplication[]>(
     async () => {
       if (!jobId) throw new Error('No job selected.');
       return api.jobApplications(jobId);
@@ -55,14 +71,138 @@ export default function HOJobApplicationsScreen({
   );
 
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
 
   const runAction = async (id: string, fn: () => Promise<unknown>) => {
     setBusyId(id);
+    setActionError(null);
     try {
       await fn();
       reload();
+    } catch (e) {
+      setActionError(
+        e instanceof Error ? e.message : 'Something went wrong. Please try again.',
+      );
+      // Whatever refused this, the list may be stale — someone else may have
+      // decided the application, or the provider's status may have changed.
+      reload();
     } finally {
       setBusyId(null);
+    }
+  };
+
+  const pendingCount = apps?.filter((a) => a.status === 'pending').length ?? 0;
+
+  // ── Hiring: the payment choice ─────────────────────────────────────────────
+  const [hireTarget, setHireTarget] = useState<JobApplication | null>(null);
+  const [budget, setBudget] = useState<number | null>(null);
+  const [available, setAvailable] = useState<number | null>(null);
+  const [hireBusy, setHireBusy] = useState<'wallet' | 'card' | null>(null);
+  const [hireMessage, setHireMessage] = useState<{ text: string; tone: 'error' | 'info' } | null>(null);
+
+  const openHire = async (app: JobApplication) => {
+    if (!jobId) return;
+    setActionError(null);
+    setHireMessage(null);
+    setBudget(null);
+    setAvailable(null);
+    setHireTarget(app);
+    try {
+      const [job, wallet] = await Promise.all([api.getJob(jobId), api.wallet()]);
+      setBudget(job.budget == null ? null : Number(job.budget));
+      setAvailable(wallet.available);
+    } catch (e) {
+      setHireMessage({
+        text: e instanceof Error ? e.message : 'Could not load your balance.',
+        tone: 'error',
+      });
+    }
+  };
+
+  const closeHire = () => {
+    setHireTarget(null);
+    setHireMessage(null);
+  };
+
+  const payFromWallet = async () => {
+    if (!hireTarget) return;
+    setHireBusy('wallet');
+    setHireMessage(null);
+    try {
+      await api.acceptApplication(hireTarget.id);
+      closeHire();
+      reload();
+    } catch (e) {
+      setHireMessage({
+        text: e instanceof Error ? e.message : 'Could not complete the hire.',
+        tone: 'error',
+      });
+      reload();
+    } finally {
+      setHireBusy(null);
+    }
+  };
+
+  /** Re-reads the proposal until the webhook has decided it, or we give up waiting. */
+  const awaitHire = async (applicationId: string) => {
+    for (let attempt = 0; attempt < HIRE_POLL_ATTEMPTS; attempt++) {
+      await new Promise((resolve) => setTimeout(resolve, HIRE_POLL_INTERVAL_MS));
+      const latest = (await api.jobApplications(jobId!)).find((a) => a.id === applicationId);
+      if (latest && latest.status !== 'pending') return latest.status;
+    }
+    return 'pending' as const;
+  };
+
+  const payByCard = async () => {
+    if (!hireTarget || !jobId) return;
+    setHireBusy('card');
+    setHireMessage(null);
+    try {
+      // exp://[ip]:8081/--/hire in Expo Go, taskbuddy://hire in a build —
+      // the backend allowlists both.
+      const appRedirect = AuthSession.makeRedirectUri({ scheme: 'taskbuddy', path: 'hire' });
+      const session = await api.createHireCheckoutSession({
+        application_id: hireTarget.id,
+        app_redirect: appRedirect,
+      });
+      const result = await WebBrowser.openAuthSessionAsync(session.url, appRedirect);
+      const outcome =
+        result.type === 'success'
+          ? new URLSearchParams(result.url.split('?')[1] ?? '').get('hire')
+          : null;
+
+      if (outcome === 'cancelled') {
+        setHireMessage({ text: 'Payment was cancelled.', tone: 'info' });
+        return;
+      }
+      // Paid, or the browser was dismissed — which is not proof they didn't
+      // pay. Either way only the server knows, so ask it.
+      setHireMessage({ text: 'Confirming your payment…', tone: 'info' });
+      const status = await awaitHire(hireTarget.id);
+      reload();
+      if (status === 'accepted') {
+        closeHire();
+      } else if (status === 'pending') {
+        setHireMessage({
+          text:
+            outcome === 'success'
+              ? 'Payment received. Your hire is still being confirmed — check back in a moment.'
+              : 'No payment was confirmed. If you did pay, your hire will appear shortly.',
+          tone: 'info',
+        });
+      } else {
+        setHireMessage({
+          text: 'Your payment is in your wallet, but the hire could not be completed — this proposal is no longer available.',
+          tone: 'error',
+        });
+      }
+    } catch (e) {
+      setHireMessage({
+        text: e instanceof Error ? e.message : 'Could not open the payment page.',
+        tone: 'error',
+      });
+    } finally {
+      setHireBusy(null);
     }
   };
 
@@ -88,8 +228,15 @@ export default function HOJobApplicationsScreen({
           showsVerticalScrollIndicator={false}
         >
           <Text style={styles.countText}>
-            {apps.length} active proposal{apps.length === 1 ? '' : 's'} · Hire exactly one provider
+            {pendingCount} active proposal{pendingCount === 1 ? '' : 's'} · Hire exactly one provider
           </Text>
+
+          {actionError && (
+            <View style={styles.errorBanner} testID="applications-action-error">
+              <AlertCircle size={16} color={C.red700} />
+              <Text style={[styles.errorBannerText, { flex: 1 }]}>{actionError}</Text>
+            </View>
+          )}
 
           {apps.length === 0 && (
             <View style={styles.emptyState}>
@@ -100,7 +247,9 @@ export default function HOJobApplicationsScreen({
 
           <View style={styles.list}>
             {apps.map((app) => {
-              const provider = app.profiles ?? null;
+              const provider = app.provider;
+              const stats = provider?.provider_profiles ?? null;
+              const verified = stats?.is_verified === true;
               return (
                 <View key={app.id} style={styles.card}>
                   <View style={styles.cardHead}>
@@ -112,12 +261,18 @@ export default function HOJobApplicationsScreen({
                       <View style={styles.ratingRow}>
                         <Star size={12} color={C.ink400} fill={C.ink400} />
                         <Text style={styles.providerMeta}>
-                          {app.cached_avg_rating != null
-                            ? `${Number(app.cached_avg_rating).toFixed(1)} · `
+                          {stats?.cached_avg_rating != null
+                            ? `${Number(stats.cached_avg_rating).toFixed(1)} · `
                             : 'New · '}
-                          {app.cached_completed_jobs ?? 0} jobs
+                          {stats?.cached_completed_jobs ?? 0} jobs
                         </Text>
                       </View>
+                      {!verified && (
+                        <View style={styles.unverifiedChip}>
+                          <ShieldAlert size={11} color={C.amber700} />
+                          <Text style={styles.unverifiedChipText}>Not verified</Text>
+                        </View>
+                      )}
                     </View>
                     {onNavigate && jobId && (
                       <TouchableOpacity
@@ -134,24 +289,35 @@ export default function HOJobApplicationsScreen({
                     <Text style={styles.messageText}>{app.cover_message ?? 'No cover message.'}</Text>
                   </View>
 
-                  <View style={styles.actionsRow}>
-                    <TouchableOpacity
-                      style={[styles.outlineBtn, busyId === app.id && styles.disabled]}
-                      onPress={() => runAction(app.id, () => api.rejectApplication(app.id))}
-                      disabled={busyId === app.id}
-                      activeOpacity={0.85}
-                    >
-                      <Text style={styles.outlineBtnText}>{busyId === app.id ? 'Working…' : 'Reject'}</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      style={[styles.primaryBtn, busyId === app.id && styles.disabled]}
-                      onPress={() => runAction(app.id, () => api.acceptApplication(app.id))}
-                      disabled={busyId === app.id}
-                      activeOpacity={0.85}
-                    >
-                      <Text style={styles.primaryBtnText}>{busyId === app.id ? 'Working…' : 'Accept'}</Text>
-                    </TouchableOpacity>
-                  </View>
+                  {app.status === 'pending' ? (
+                    <View style={styles.actionsRow}>
+                      <TouchableOpacity
+                        style={[styles.outlineBtn, busyId !== null && styles.disabled]}
+                        onPress={() => runAction(app.id, () => api.rejectApplication(app.id))}
+                        disabled={busyId !== null}
+                        activeOpacity={0.85}
+                        testID={`applications-reject-${app.id}`}
+                      >
+                        <Text style={styles.outlineBtnText}>{busyId === app.id ? 'Working…' : 'Reject'}</Text>
+                      </TouchableOpacity>
+                      {/* Hiring an unverified provider is refused by the API
+                          (409 provider_not_verified); disabling it here says
+                          why before the tap rather than after. */}
+                      <TouchableOpacity
+                        style={[styles.primaryBtn, (busyId !== null || !verified) && styles.disabled]}
+                        onPress={() => openHire(app)}
+                        disabled={busyId !== null || !verified}
+                        activeOpacity={0.85}
+                        testID={`applications-accept-${app.id}`}
+                      >
+                        <Text style={styles.primaryBtnText}>
+                          {busyId === app.id ? 'Working…' : verified ? 'Accept' : 'Awaiting verification'}
+                        </Text>
+                      </TouchableOpacity>
+                    </View>
+                  ) : (
+                    <Text style={styles.decidedText}>{DECIDED_LABEL[app.status]}</Text>
+                  )}
                 </View>
               );
             })}
@@ -160,9 +326,35 @@ export default function HOJobApplicationsScreen({
           <View style={{ height: 20 }} />
         </ScrollView>
       )}
+
+      <HirePaymentModal
+        visible={hireTarget !== null}
+        providerName={hireTarget?.provider?.full_name ?? 'this provider'}
+        budget={budget}
+        available={available}
+        busy={hireBusy}
+        message={hireMessage}
+        onPayWallet={payFromWallet}
+        onPayCard={payByCard}
+        onAddMoney={() => {
+          closeHire();
+          onNavigate?.('Wallet');
+        }}
+        onClose={closeHire}
+      />
     </View>
   );
 }
+
+/** How long to wait for Stripe's webhook to turn a card payment into a hire. */
+const HIRE_POLL_ATTEMPTS = 8;
+const HIRE_POLL_INTERVAL_MS = 1500;
+
+const DECIDED_LABEL: Record<Exclude<JobApplication['status'], 'pending'>, string> = {
+  accepted: 'Hired',
+  rejected: 'Not selected',
+  withdrawn: 'Withdrawn by the provider',
+};
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: C.canvas },
@@ -212,6 +404,21 @@ const styles = StyleSheet.create({
   outlineBtnText: { color: C.ink700, fontSize: 13.5, fontWeight: '700', fontFamily: 'Inter' },
   primaryBtn: { flex: 1, backgroundColor: C.cyan700, borderRadius: 11, paddingVertical: 9, alignItems: 'center' },
   primaryBtnText: { color: C.white, fontSize: 13.5, fontWeight: '700', fontFamily: 'Inter' },
+
+  unverifiedChip: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    backgroundColor: '#fef3c7', borderRadius: 999,
+    paddingHorizontal: 8, paddingVertical: 3, marginTop: 2,
+  },
+  unverifiedChipText: { color: C.amber700, fontSize: 10.5, fontWeight: '700', fontFamily: 'Inter' },
+  decidedText: { color: C.ink500, fontSize: 12.5, fontWeight: '600', fontFamily: 'Inter', textAlign: 'center' },
+
+  errorBanner: {
+    flexDirection: 'row', alignItems: 'flex-start', gap: 8,
+    backgroundColor: '#fef2f2', borderWidth: 1, borderColor: '#fecaca',
+    borderRadius: 12, padding: 11, marginBottom: 12,
+  },
+  errorBannerText: { color: C.red700, fontSize: 12.5, lineHeight: 17, fontFamily: 'Inter' },
 
   disabled: { opacity: 0.6 },
   stateText: { color: C.ink500, fontSize: 16.5, fontFamily: 'Inter', textAlign: 'center', marginTop: 30 },

@@ -37,5 +37,6 @@ export type SPScreen =
   | 'Notifications'
   | 'Edit Profile'
   | 'Verification'
+  | 'Payouts'
   | 'Settings'
   | 'Help & Support';

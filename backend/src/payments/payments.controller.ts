@@ -20,7 +20,14 @@ import { ThrottlePayments } from '../common/throttle';
 import { CurrentUser } from '../auth/current-user.decorator';
 import { PaymentsService } from './payments.service';
 import { StripeService } from './stripe.service';
-import { CreateCheckoutSessionDto, CreateTopupDto } from './dto/payments.dto';
+import { publicOrigin } from './public-origin';
+import {
+  CreateCheckoutSessionDto,
+  CreateHireCheckoutDto,
+  CreateTopupDto,
+} from './dto/payments.dto';
+import { HireFundingService } from './hire-funding.service';
+import { Roles } from '../auth/roles.decorator';
 import {
   appendRedirectParams,
   isAllowedAppRedirect,
@@ -34,6 +41,7 @@ export class PaymentsController {
   constructor(
     private readonly payments: PaymentsService,
     private readonly stripe: StripeService,
+    private readonly hireFunding: HireFundingService,
   ) {}
 
   /** Publishable key, so the app doesn't have to ship a build per environment. */
@@ -70,7 +78,27 @@ export class PaymentsController {
     @Body() dto: CreateCheckoutSessionDto,
     @Req() req: Request,
   ) {
-    return this.payments.createCheckoutSession(user, dto, this.originOf(req));
+    return this.payments.createCheckoutSession(user, dto, publicOrigin(req));
+  }
+
+  /**
+   * Card-at-hire: opens Stripe Checkout for the job's full budget, to hire
+   * the provider behind `application_id`. Nothing is hired here — the webhook
+   * credits the payment, holds it in escrow and accepts the application once
+   * Stripe confirms the charge (§29.4). The app polls the application after
+   * the browser closes.
+   */
+  @Post('hire-checkout-session')
+  @HttpCode(200)
+  @ThrottlePayments()
+  @UseGuards(JwtAuthGuard)
+  @Roles('client')
+  hireCheckoutSession(
+    @CurrentUser() user: Profile,
+    @Body() dto: CreateHireCheckoutDto,
+    @Req() req: Request,
+  ) {
+    return this.hireFunding.createCheckout(user, dto, publicOrigin(req));
   }
 
   /**
@@ -87,6 +115,7 @@ export class PaymentsController {
   paymentReturn(
     @Query('app_redirect') appRedirect: string,
     @Query('status') status: string,
+    @Query('flow') flow: string | undefined,
     @Res() res: Response,
   ) {
     // Same allowlist the session creation checked. Re-checked here because this
@@ -96,8 +125,13 @@ export class PaymentsController {
       throw new BadRequestException('app_redirect is not an allowed URI');
     }
 
+    // `flow` names the query parameter the app listens for: `topup=` for the
+    // wallet's Add Money (the default, so existing links keep working) and
+    // `hire=` for card-at-hire. It decides which screen the user lands on,
+    // nothing more — the webhook decides whether money arrived.
     const params = new URLSearchParams({
-      topup: status === 'success' ? 'success' : 'cancelled',
+      [flow === 'hire' ? 'hire' : 'topup']:
+        status === 'success' ? 'success' : 'cancelled',
     });
     return res.redirect(appendRedirectParams(appRedirect, params));
   }
@@ -135,25 +169,5 @@ export class PaymentsController {
     await this.payments.handleEvent(event);
     this.logger.log(`Handled Stripe event ${event.type} (${event.id})`);
     return { received: true };
-  }
-
-  /**
-   * This API's public origin, for building the URLs Stripe redirects back to.
-   *
-   * Derived from the request so local development works with no configuration,
-   * but `PUBLIC_API_URL` wins where it is set. On Render the request host is
-   * right and the protocol is not — TLS terminates at the proxy, so the app
-   * sees plain http and would hand Stripe an http:// URL that redirects users
-   * out of TLS. `x-forwarded-proto` is what the proxy left behind to say so.
-   */
-  private originOf(req: Request): string {
-    const configured = process.env.PUBLIC_API_URL;
-    if (configured) return configured.replace(/\/+$/, '');
-
-    const forwarded = req.headers['x-forwarded-proto'];
-    const protocol =
-      (Array.isArray(forwarded) ? forwarded[0] : forwarded)?.split(',')[0] ??
-      req.protocol;
-    return `${protocol}://${req.get('host')}`;
   }
 }

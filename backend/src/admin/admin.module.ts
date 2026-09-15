@@ -7,6 +7,7 @@ import { VerificationsModule } from '../verifications/verifications.module';
 import { EscrowModule } from '../escrow/escrow.module';
 import { ChatModule } from '../chat/chat.module';
 import { WalletModule } from '../wallet/wallet.module';
+import { ConnectModule } from '../payments/connect/connect.module';
 
 @Module({
   imports: [
@@ -15,6 +16,7 @@ import { WalletModule } from '../wallet/wallet.module';
     EscrowModule,
     ChatModule,
     WalletModule,
+    ConnectModule,
   ],
   controllers: [AdminController],
   providers: [AdminService, AdminPlatformService],

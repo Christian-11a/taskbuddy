@@ -245,9 +245,9 @@ export default function SPHomeScreen({ onNavigate }: SPHomeScreenProps) {
               <ShieldCheck size={19} color={C.cyan700} />
             </View>
             <View style={{ flex: 1 }}>
-              <Text style={styles.flowTitle}>Get verified to submit proposals</Text>
+              <Text style={styles.flowTitle}>Verification required to apply</Text>
               <Text style={styles.flowBody}>
-                Browse jobs freely. Verify when you're ready to apply for work and receive payouts.
+                You can browse jobs now, but you must verify your identity before you can send proposals or be hired.
               </Text>
             </View>
             <Text style={styles.flowAction}>Verify now</Text>

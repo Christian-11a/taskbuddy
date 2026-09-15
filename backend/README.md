@@ -62,7 +62,7 @@ Job lifecycle: `open → recommending → assigned → in_progress → completed
 
 1. Create a project at [supabase.com](https://supabase.com).
 2. Apply **every** migration in [`supabase/migrations/`](./supabase/migrations) **in order**
-   (0001 → 0024), either by pasting each file into the SQL Editor or with the CLI:
+   (0001 → 0029), either by pasting each file into the SQL Editor or with the CLI:
 
    ```bash
    supabase link --project-ref <your-project-ref>
@@ -91,10 +91,15 @@ Job lifecycle: `open → recommending → assigned → in_progress → completed
    | `0018_job_confirmed_status.sql` | `confirmed` job status and assignment lifecycle updates. |
    | `0019_job_tasks_and_verification_storage_rls.sql` | job checklists and verification-storage RLS policies. |
    | `0020_admin_search_functions.sql` | service-role-only SQL RPCs for paginated admin booking, activity, and escrow search. |
-   | `0021_recovery_credit_kind.sql` | adds `'recovery_credit'` to `wallet_txn_kind`, the tag an admin-issued trust credit will carry once that endpoint exists (see `docs/backend-handoff-recovery-vouchers.md`). Safely re-runnable. |
+   | `0021_recovery_credit_kind.sql` | adds `'recovery_credit'` to `wallet_txn_kind`, the tag an admin-issued trust credit carries (`POST /admin/wallet-transactions/recovery-credit`, `BACKEND_SCHEMA.md` §28.1). Safely re-runnable. |
    | `0022_notification_announcement_type.sql` | `notification_type` gains `'announcement'` (admin broadcast) and `'wallet_update'` (withdrawal settled/declined). |
    | `0023_account_deletion_and_email_otp.sql` | `profiles.deleted_at` (soft delete) and `profiles.email_verified_at`; `admin_user_overview` re-created to expose `deleted_at`. |
    | `0024_withdrawal_requests_and_commission.sql` | withdrawal review columns on `wallet_transactions`, `platform_settings.commission_rate` (default 0), `escrow_transactions.commission_amount`. |
+   | `0025_scheduler_cron.sql` | Postgres-driven scheduler ticks (pg_cron + pg_net) calling `POST /internal/tick/*`, so push and recommendation sweeps run while the API host sleeps. Read its header before applying — it needs a setup snippet run first. |
+   | `0026_rls_write_lockdown.sql` | drops every RLS **write** policy 0003/0006/0019 granted to signed-in users (own profile, own provider row — including `is_verified` — jobs, application status, reviews, messages, checklist, notification read-state). All writes go through the API; reads are unchanged. See `BACKEND_SCHEMA.md` §11 and §17. Re-runnable. |
+   | `0027_connect_transfer_kind.sql` | adds `'connect_transfer'` to `wallet_txn_kind`. **Apply alone and let it commit before 0028**, which names the value in an index. |
+   | `0028_stripe_connect_and_card_funding.sql` | `provider_payout_accounts` (Connect Express, service-role writes only); escrow funding (`wallet`/`card`) and onward-transfer columns; `wallet_transactions.stripe_transfer_id`; and the service-role-only SQL functions `escrow_place_hold`, `escrow_settle`, `wallet_reserve_connect_transfer` that change escrow and write its ledger row in **one** transaction. See `BACKEND_SCHEMA.md` §29. Re-runnable. |
+   | `0029_payments_tick_cron.sql` | schedules the payments sweep (`/internal/tick/payments`, every 5 min) through 0025's `scheduler_tick`. Does nothing, with a notice, where pg_cron or 0025 is absent. Re-runnable. |
 
    > Migrations 0008 and 0009 each run `alter type notification_type add value`.
    > Postgres allows this inside a transaction as long as the new value isn't
@@ -120,7 +125,7 @@ Job lifecycle: `open → recommending → assigned → in_progress → completed
    > **0022 must be applied on its own, before 0023 and 0024**, for the same
    > reason 0018 must precede 0019: it adds `notification_type` values that the
    > API writes immediately, and Postgres will not let a new enum value be used
-   > in the transaction that added it. Run 0021, let it commit, then the other
+   > in the transaction that added it. Run 0022, let it commit, then the other
    > two. `supabase db push` handles this itself.
    >
    > The API also reads `reviews` on every job query (the `has_review` flag) and
@@ -167,10 +172,11 @@ stops a client's own `X-Forwarded-For` from being a way around the limit.
 The repository contains the implementation, but an operator must still run
 these external steps. This checklist does not assert that a deployment occurred.
 
-1. Apply migrations through `0021_recovery_credit_kind.sql` in order. Run
-   0018 and 0019 in separate SQL Editor transactions as described above; 0020
-   comes after 0019 and creates the service-role-only admin list RPCs; 0021 is
-   an independent enum addition and can run any time after that.
+1. Apply every migration in order, through the latest. Run 0018 and 0019 in
+   separate SQL Editor transactions as described above, and 0022 on its own
+   before 0023/0024; 0020 comes after 0019 and creates the service-role-only
+   admin list RPCs. 0026 can run any time after 0025 — the API writes with the
+   service-role key and is unaffected by it.
 2. Set the API host's `WEB_CORS_ORIGINS`, then deploy the backend with the
    current environment variables and migrations available.
 3. Set `NEXT_PUBLIC_API_URL` at the web host to that API's HTTPS origin and
@@ -349,15 +355,19 @@ Two routes, one queue: a `manual` row carries document paths and waits for an
 admin, a `stripe_identity` row carries none and is resolved by webhook. Only one
 review may be open per provider, whichever route it came in by.
 
-Approval flips `provider_profiles.is_verified`. That flag was specified as a
-**badge only** — applying to jobs deliberately *not* gated on it, since gating
-would lock out every provider who signed up before verification existed.
+Approval flips `provider_profiles.is_verified`, and that flag is a **gate**,
+not a badge (`BACKEND_SCHEMA.md` §17). An unverified provider can browse the
+feed but:
 
-> **⚠️ The code disagrees with that paragraph and with `BACKEND_SCHEMA.md` §17.**
-> `POST /jobs/:jobId/applications` returns `403 Verify your identity before
-> applying to jobs` when `is_verified` is false. Flagged rather than quietly
-> resolved: gating and not gating are different products, and the fix is one
-> line in whichever direction is chosen. See `BACKEND_SCHEMA.md` §17.
+- `POST /jobs/:jobId/applications` answers `403 { message: 'Verify your identity
+  before applying to jobs', code: 'verification_required' }`;
+- `POST /applications/:id/accept` answers `409 { code: 'provider_not_verified' }`
+  before any money is held, in case an application outlives the verification
+  it was filed under.
+
+The `code` is what the app branches on to offer a way to verify. Since
+migration 0026 no signed-in user can write `provider_profiles` directly, so
+the flag can only be set by an approval or a Stripe Identity webhook.
 
 **Disputes** (migration 0009)
 
@@ -395,7 +405,8 @@ record. Tokens Expo rejects as `DeviceNotRegistered` are deleted.
 | `POST /payments/config` 🔒 | `{ publishable_key }` — served rather than compiled in, so test↔live is a backend env change |
 | `POST /payments/topup` 🔒 | `{ amount }` (₱20–₱100,000) → PaymentSheet parameters: `{ payment_intent_client_secret, ephemeral_key_secret, customer_id, publishable_key, amount, currency }` |
 | `POST /payments/checkout-session` 🔒 | `{ amount, app_redirect }` → `{ url, session_id, amount }`. Hosted Checkout, for clients that cannot load a native SDK — **this is what the Expo Go app uses** |
-| `GET /payments/return?status=&app_redirect=` | Where Stripe returns the browser. Redirects to the app deep link with `?topup=success\|cancelled`. No JWT — it is a plain browser navigation that reveals and changes nothing |
+| `POST /payments/hire-checkout-session` 🔒 (client) | `{ application_id, app_redirect }` → `{ url, session_id, amount }`. **Card-at-hire**: Checkout for the job's full budget. The hire itself is made by the webhook (credit → hold → accept), not by this call — poll the application afterwards. Same hireability checks as a wallet accept; 400 `card_amount_out_of_range` outside ₱20–₱100,000. `BACKEND_SCHEMA.md` §29.4 |
+| `GET /payments/return?status=&app_redirect=&flow=` | Where Stripe returns the browser. Redirects to the app deep link with `?topup=success\|cancelled`, or `?hire=…` when `flow=hire`. No JWT — it is a plain browser navigation that reveals and changes nothing |
 | `POST /payments/webhook` | Stripe only. No JWT — authenticated by the signature over the **raw** body |
 
 **The wallet is credited by the webhook, never by `POST /payments/topup`, and
@@ -423,6 +434,31 @@ Redelivery is safe: `wallet_transactions.stripe_payment_intent_id` is
 partial-unique and the collision *is* the idempotency check. Without Stripe env
 vars these endpoints return **503** and the rest of the API is unaffected.
 
+**Provider payouts — Stripe Connect Express** (migrations 0027–0028, `BACKEND_SCHEMA.md` §29, setup in [`docs/stripe-setup.md`](../docs/stripe-setup.md) §6)
+
+| Method & path | Description |
+|---|---|
+| `GET /payments/connect` 🔒 (provider) | `{ state: 'not_started' \| 'onboarding' \| 'restricted' \| 'active', details_submitted, payouts_enabled, transfers_active, requirements_due[], disabled_reason, country }`. The Stripe account id is never returned |
+| `POST /payments/connect/onboarding-link` 🔒 (provider) | `{ app_redirect }` → `{ url, expires_at }`. Creates the provider's Express account on first use (transfers capability only), then a single-use Stripe onboarding link |
+| `POST /payments/connect/sync` 🔒 (provider) | Re-reads the account from Stripe → the same status shape. The app calls it on returning from onboarding, since reaching `return` does not mean the form was finished |
+| `POST /payments/connect/dashboard-link` 🔒 (provider) | `{ url }` — a one-time login to the provider's Stripe Express dashboard (bank details, payout history). 400 until onboarding has been submitted |
+| `GET /payments/connect/return?app_redirect=` · `GET /payments/connect/refresh?app_redirect=` | Stripe's `return_url` / `refresh_url`. Redirect to the app with `?connect=return\|refresh`; allowlisted like `/payments/return` |
+| `POST /payments/connect/webhook` | Stripe only, a **separate** endpoint with its own secret (`STRIPE_CONNECT_WEBHOOK_SECRET`). `account.updated` / `capability.updated` re-read the account and store what Stripe says now |
+
+**Card-funded payouts** are sent on to the provider's Connect account automatically when the escrow
+is released — a transfer sourced from the job's own charge, so Stripe's own FX rate applies
+(`BACKEND_SCHEMA.md` §29.5). Wallet-funded payouts, and providers without an active account, stay in
+the wallet and withdraw through the manual queue.
+
+The three `POST` routes carry the payments rate limit. Connect is optional: without
+`STRIPE_CONNECT_WEBHOOK_SECRET` the webhook answers 503 and statuses update only on sync.
+
+| Env | Default | Meaning |
+|---|---|---|
+| `STRIPE_CONNECT_WEBHOOK_SECRET` | — | Signing secret of the Connect webhook endpoint |
+| `STRIPE_CONNECT_COUNTRY` | `US` | Country for new Express accounts |
+| `STRIPE_CONNECT_SERVICE_AGREEMENT` | `full` | `recipient` for cross-border accounts (e.g. PH on a US platform), once Stripe has enabled that |
+
 **Admin** (🔒 admin role only — 401 without a token, 403 for non-admins)
 
 | Method & path | Description |
@@ -446,6 +482,7 @@ vars these endpoints return **503** and the rest of the API is unaffected.
 | `GET /admin/disputes?status=&limit=&offset=` | dispute queue |
 | `POST /admin/disputes/:id/resolve` | `{ resolution: 'released_to_provider' \| 'refunded_to_client', note? }` (story #20) |
 | `POST /admin/wallet-transactions/recovery-credit` | `{ profile_id, amount, title, job_id? }` — issues a trust credit after a dispute, tagged `kind: 'recovery_credit'` (migration 0021). **The only route that adds balance outside a settled Stripe charge or an escrow release**, which is why it is admin-only and audited; `POST /wallet/transactions` still refuses credits from everyone. Refuses a deleted recipient, a `job_id` they are not on, and anything over ₱50,000. See `BACKEND_SCHEMA.md` §28.1 |
+| `POST /admin/escrow/:id/retry-transfer` | retries a card-funded payout's Stripe transfer that `failed`, was `abandoned`, or was `not_eligible` → `{ outcome }`. Audited (`escrow.retry_transfer`). The money is in the provider's wallet either way (`BACKEND_SCHEMA.md` §29.5) |
 | `GET /admin/withdrawals?status=&limit=&offset=` | the settlement queue — `pending` by default, oldest first (migration 0024) |
 | `POST /admin/withdrawals/:id/settle` | `{ reference? }` — records that the money was actually sent. This is what debits the wallet; the balance is re-checked first and the row is only settled once, whoever clicks |
 | `POST /admin/withdrawals/:id/reject` | `{ reason }` — the reason reaches the account holder and the amount returns to their available balance |
@@ -474,10 +511,13 @@ which audits job lifecycle transitions, not the admin behind a decision.
 
 ### Escrow, in one paragraph
 
-There is **no payment gateway** — the `wallet_transactions` ledger is the only
-account of record. When a client accepts an application on a job with a
-`budget`, the client is **debited** and an `escrow_transactions` row is created
-as `held`. On completion it becomes `released` and the provider is **credited**.
+The `wallet_transactions` ledger is the only account of record; Stripe decides
+whether money arrived, the ledger records it. When a client accepts an
+application on a job with a `budget`, the client is **debited** and an
+`escrow_transactions` row is created as `held` — in one SQL transaction
+(`escrow_place_hold`, migration 0028). A client can also **pay the hire by
+card** (`POST /payments/hire-checkout-session`): Stripe's webhook credits the
+payment, holds it and accepts the application (`BACKEND_SCHEMA.md` §29.4). On completion it becomes `released` and the provider is **credited**.
 Cancelling returns the money to the client; a dispute freezes it until an admin
 resolves it either way (release → provider, refund → client).
 
@@ -537,9 +577,10 @@ each route counts separately and there is no aggregate cap across the API.
 | Scope | Limit (per endpoint, per IP) |
 |---|---|
 | Everything | 240 / minute |
-| `POST /payments/topup`, `POST /payments/checkout-session` | 5 / minute |
+| `POST /payments/topup`, `POST /payments/checkout-session`, `POST /payments/hire-checkout-session` | 5 / minute |
 | `POST /auth/{register,login,admin/login,forgot-password,reset-password,send-email-otp,verify-email-otp,change-password}` | 10 / minute **each** |
-| `POST /payments/webhook` | exempt — Stripe is authenticated by signature and retries for three days |
+| `POST /payments/connect/{onboarding-link,sync,dashboard-link}` | 5 / minute each |
+| `POST /payments/webhook`, `POST /payments/connect/webhook` | exempt — Stripe is authenticated by signature and retries for three days |
 
 `POST /auth/refresh`, `GET /auth/me` and the admin session routes are
 deliberately left on the 240 ceiling: they fire on ordinary app use, and a tight
@@ -626,4 +667,13 @@ npm run start:dev   # dev server with watch
 npm run build       # compile
 npm run lint        # eslint --fix
 npm run format      # prettier
+npm test            # jest unit + lifecycle specs (supabase-js mocked)
+npm run test:sql    # the real migrations on real Postgres (PGlite, in-process)
 ```
+
+`test:sql` applies every migration to PGlite (Postgres compiled to
+WebAssembly — no server, no Docker) with the Supabase `auth`/`storage` schemas
+stubbed, then exercises the money functions from 0028, the RLS lockdown from
+0026, and re-applying the latest migrations. The jest suites mock the
+database and cannot see SQL at all; this is what does. `0025` is skipped — it
+needs pg_cron, pg_net and Vault.

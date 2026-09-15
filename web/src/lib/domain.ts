@@ -77,7 +77,21 @@ export interface Transaction {
   amount: number;
   status: TransactionStatus;
   date: string; // ISO date
+  /** How the hold was funded (0028). Wallet for every escrow before card-at-hire. */
+  fundingMethod: "wallet" | "card";
+  /** The onward Stripe transfer of a card-funded payout (0028). */
+  transferStatus: TransferStatus;
+  stripeTransferId: string | null;
+  transferError: string | null;
 }
+
+export type TransferStatus =
+  | "none"
+  | "pending"
+  | "transferred"
+  | "failed"
+  | "not_eligible"
+  | "abandoned";
 
 // ─── Disputes ─────────────────────────────────────────────────────────────────
 
@@ -164,9 +178,10 @@ export type WalletTxnKind =
   | "payout"
   | "refund"
   | "adjustment"
-  | "recovery_credit";
-  // Recovery credits are issued by an admin after a dispute; the backend
-  // route is intentionally not exposed in this console until it exists.
+  // Issued by an admin after a dispute (Issue Credit on the Wallet tab).
+  | "recovery_credit"
+  // A card-funded payout sent on to the provider's Stripe account (0027).
+  | "connect_transfer";
 export type WalletTxnStatus = "pending" | "completed" | "failed";
 
 export interface WalletTransaction {

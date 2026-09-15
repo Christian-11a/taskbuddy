@@ -150,6 +150,10 @@ function mapTransactionRow(row: AdminTransactionApiRow): Transaction {
     amount: Number(row.amount),
     status: TRANSACTION_STATUS[row.status],
     date: row.held_at,
+    fundingMethod: row.funding_method ?? "wallet",
+    transferStatus: row.transfer_status ?? "none",
+    stripeTransferId: row.stripe_transfer_id ?? null,
+    transferError: row.transfer_last_error ?? null,
   };
 }
 
@@ -454,6 +458,26 @@ function paginatedPath(path: string, query: PageQuery & { status?: string }): st
   return `${path}?${params}`;
 }
 
+export type TransferRetryOutcome =
+  | "transferred"
+  | "not_eligible"
+  | "failed"
+  | "abandoned"
+  | "retry"
+  | "skipped";
+
+/**
+ * Retries a card-funded payout's transfer to the provider's Stripe account
+ * (backend/BACKEND_SCHEMA.md §29.5). The money is in the provider's wallet
+ * whatever the outcome — this only decides whether it also leaves for Stripe.
+ */
+export async function retryEscrowTransfer(escrowId: string): Promise<TransferRetryOutcome> {
+  const { outcome } = await client.post<{ outcome: TransferRetryOutcome }>(
+    `/admin/escrow/${escrowId}/retry-transfer`,
+  );
+  return outcome;
+}
+
 export async function searchTransactions(query: SearchTransactionsQuery): Promise<{ items: Transaction[]; total: number }> {
   const res = await client.get<ListTransactionsApiResponse>(
     paginatedPath("/admin/transactions", query),
@@ -671,42 +695,78 @@ export async function rejectVerification(id: string, reason?: string): Promise<V
 
 /**
  * How many ids a bulk action actually changed. There is no bulk endpoint —
- * these fire the single-item endpoint per id in parallel, and one id failing
- * (the backend refusing to suspend an admin, say) must not abort the rest.
- * The count is returned rather than swallowed so the caller can tell the
- * admin "3 of 5 succeeded" instead of silently implying all 5 did.
+ * these fire the single-item endpoint per id, and one id failing must not
+ * abort the rest. The counts are returned rather than swallowed so the caller
+ * can tell the admin "3 of 5 succeeded" instead of silently implying all 5
+ * did, and `errors` says *why* the others didn't, so the message is the real
+ * reason rather than a guess.
  */
 export interface BulkCounts {
   succeeded: number;
   failed: number;
+  errors: BulkError[];
+}
+
+export interface BulkError {
+  id: string;
+  /** HTTP status, or 0 when the request never got an answer. */
+  status: number;
+  message: string;
 }
 
 export interface BulkResult<T> extends BulkCounts {
   rows: T[];
 }
 
-/** Runs `op` for every id, tolerating individual failures, and counts them. */
-async function runBulk(ids: string[], op: (id: string) => Promise<unknown>) {
-  const results = await Promise.all(ids.map((id) => op(id).then(() => true).catch(() => false)));
-  const succeeded = results.filter(Boolean).length;
-  return { succeeded, failed: results.length - succeeded };
+/**
+ * At most this many single-item requests in flight at once. Every bulk
+ * request hits the *same* handler, and the API's limit is per endpoint per IP
+ * (240/min, backend/BACKEND_SCHEMA.md §28.4): firing hundreds at once used to
+ * earn a burst of 429s partway through. A small pool keeps the console well
+ * under the ceiling for ordinary selections, and the client's 429 retry
+ * covers the rest.
+ */
+export const BULK_CONCURRENCY = 4;
+
+/** Runs `op` for every id through a bounded pool, tolerating individual failures. */
+async function runBulk(ids: string[], op: (id: string) => Promise<unknown>): Promise<BulkCounts> {
+  const errors: BulkError[] = [];
+  let succeeded = 0;
+  let next = 0;
+  const worker = async () => {
+    while (next < ids.length) {
+      const id = ids[next++];
+      try {
+        await op(id);
+        succeeded++;
+      } catch (err) {
+        errors.push({
+          id,
+          status: err instanceof ApiError ? err.status : 0,
+          message: err instanceof Error ? err.message : "Request failed",
+        });
+      }
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(BULK_CONCURRENCY, ids.length) }, worker));
+  return { succeeded, failed: errors.length, errors };
 }
 
 export async function bulkApproveVerifications(ids: string[]): Promise<BulkResult<Verification>> {
-  const { succeeded, failed } = await runBulk(ids, (id) =>
+  const counts = await runBulk(ids, (id) =>
     client.post(`/admin/verifications/${id}/approve`),
   );
-  return { rows: await getVerifications(), succeeded, failed };
+  return { rows: await getVerifications(), ...counts };
 }
 
 export async function bulkRejectVerifications(
   ids: string[],
   reason?: string,
 ): Promise<BulkResult<Verification>> {
-  const { succeeded, failed } = await runBulk(ids, (id) =>
+  const counts = await runBulk(ids, (id) =>
     client.post(`/admin/verifications/${id}/reject`, reason ? { reason } : undefined),
   );
-  return { rows: await getVerifications(), succeeded, failed };
+  return { rows: await getVerifications(), ...counts };
 }
 
 /** Backend migration 0014 made `reason` required on suspend — omitted only
@@ -733,17 +793,17 @@ export async function setUserStatus(
 }
 
 /**
- * No bulk endpoint exists — fires the existing single-user endpoint per id in
- * parallel. A per-id failure (e.g. the backend refuses to suspend an admin)
- * doesn't abort the rest: the final refetch reflects exactly what actually
- * changed, and the counts let the caller say how many didn't.
+ * No bulk endpoint exists — fires the existing single-user endpoint per id
+ * through `runBulk`'s bounded pool. A per-id failure doesn't abort the rest:
+ * the final refetch reflects exactly what actually changed, and the counts
+ * and errors let the caller say how many didn't, and why.
  */
 export async function bulkSetUserStatus(
   ids: string[],
   status: UserStatus,
   suspend?: SuspendOptions,
 ): Promise<BulkResult<AdminUser>> {
-  const { succeeded, failed } = await runBulk(ids, (id) =>
+  const counts = await runBulk(ids, (id) =>
     status === "SUSPENDED"
       ? client.post(`/admin/users/${id}/suspend`, {
           reason: suspend?.reason ?? "",
@@ -751,7 +811,7 @@ export async function bulkSetUserStatus(
         })
       : client.post(`/admin/users/${id}/reinstate`),
   );
-  return { rows: await getUsers(), succeeded, failed };
+  return { rows: await getUsers(), ...counts };
 }
 
 export async function sendPasswordReset(id: string): Promise<boolean> {

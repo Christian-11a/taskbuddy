@@ -94,6 +94,25 @@ describe('WalletService', () => {
 
       expect(await service.availableBalanceFor('u1')).toBe(600);
     });
+
+    it('reserves every pending debit, not only withdrawal requests', async () => {
+      // Keyed on direction, so any future outgoing payment is reserved too
+      // without someone remembering to add its kind here.
+      const { supabase, calls } = createSupabaseMock([
+        { data: [{ direction: 'credit', amount: '1000.00' }], error: null },
+        { data: [{ amount: '400.00' }], error: null },
+      ]);
+      const service = new WalletService(
+        supabase,
+        createAdminActionsMock().mock,
+      );
+
+      await service.availableBalanceFor('u1');
+
+      const filters = calls.filter((c) => c.method === 'eq').map((c) => c.args);
+      expect(filters).toContainEqual(['direction', 'debit']);
+      expect(filters).not.toContainEqual(['kind', 'withdrawal']);
+    });
   });
 
   describe('requestWithdrawal', () => {
@@ -173,13 +192,18 @@ describe('WalletService', () => {
         { data: { id: 'w1', status: 'completed' }, error: null },
         { data: null, error: null }, // notification
       ]);
-      const service = new WalletService(
-        supabase,
-        createAdminActionsMock().mock,
-      );
+      const { mock: adminActions, record } = createAdminActionsMock();
+      const service = new WalletService(supabase, adminActions);
 
       await service.settleWithdrawal(admin, 'w1', 'GC-99');
 
+      expect(record).toHaveBeenCalledWith(
+        admin,
+        'wallet.settle_withdrawal',
+        'wallet_transactions',
+        'w1',
+        { profile_id: 'u1', amount: 300, reference: 'GC-99' },
+      );
       const update = calls.find((c) => c.method === 'update');
       expect(update?.args[0]).toMatchObject({
         status: 'completed',
@@ -221,6 +245,34 @@ describe('WalletService', () => {
         BadRequestException,
       );
       expect(calls.some((c) => c.method === 'update')).toBe(false);
+    });
+
+    it('audits a rejection with the reason the account holder is told', async () => {
+      const { supabase } = createSupabaseMock([
+        {
+          data: {
+            id: 'w1',
+            profile_id: 'u1',
+            amount: '300.00',
+            status: 'pending',
+          },
+          error: null,
+        },
+        { data: { id: 'w1', status: 'failed' }, error: null },
+        { data: null, error: null }, // notification
+      ]);
+      const { mock: adminActions, record } = createAdminActionsMock();
+      const service = new WalletService(supabase, adminActions);
+
+      await service.rejectWithdrawal(admin, 'w1', 'Account name mismatch');
+
+      expect(record).toHaveBeenCalledWith(
+        admin,
+        'wallet.reject_withdrawal',
+        'wallet_transactions',
+        'w1',
+        { profile_id: 'u1', amount: 300, reason: 'Account name mismatch' },
+      );
     });
 
     it('refuses a request someone already settled', async () => {

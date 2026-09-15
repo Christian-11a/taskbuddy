@@ -1,0 +1,18 @@
+appId: com.taskbuddy.app
+---
+# Profile → Payouts renders a Stripe Connect status card (BACKEND_SCHEMA.md §29).
+# Stops at the card: onboarding itself happens on Stripe's hosted pages in a
+# browser, which Maestro does not drive — that half is the manual recipe in
+# docs/stripe-setup.md §6.
+#
+# The persistent provider account may be at any stage, so the assertion is on
+# "some status card rendered", not on a particular one.
+- runFlow: _helpers/login_provider.yaml
+- tapOn:
+    id: "btn-home-avatar"
+- tapOn: "Payouts"
+- extendedWaitUntil:
+    visible: "How you get paid"
+    timeout: 60000
+- assertVisible:
+    id: "payouts-status-.*"

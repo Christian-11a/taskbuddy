@@ -4,8 +4,8 @@
 > as the record of what was asked for and why, but it is no longer a to-do list. Each
 > section below now opens with what shipped and where it differs from what was
 > sketched here. Migrations `0022`–`0024`; full reasoning in
-> `backend/BACKEND_SCHEMA.md` §27. Items 4 and 7 were already done; item 6 is still
-> open and still a product decision rather than a missing endpoint.
+> `backend/BACKEND_SCHEMA.md` §27. Items 4 and 7 were already done; item 6
+> (card-at-hire) was built on 2026-09-16 (§29.4).
 >
 > **Update, 2026-08-27 — the mobile side of all four is now wired**, so they are no
 > longer API-side only. See §8 for the three things that surfaced while doing it,
@@ -207,8 +207,10 @@ templates, not with the app.
 
 ## 6. Homeowner-direct card payment
 
-> **Still open, unchanged.** Nothing here was built, because nothing here is a missing
-> endpoint — see below.
+> **Built (2026-09-16), as the "top up behind the scenes, one ledger" option recommended
+> below.** Accept offers Pay from wallet or Pay by card; a card payment is credited to the wallet
+> and held by the webhook, so held money has one source of truth. `backend/BACKEND_SCHEMA.md`
+> §29.4.
 
 **Missing:** nothing structural — this is a product decision.
 

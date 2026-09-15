@@ -7,5 +7,8 @@ import { EscrowModule } from '../escrow/escrow.module';
   imports: [EscrowModule],
   controllers: [ApplicationsController],
   providers: [ApplicationsService],
+  // The card-at-hire webhook (PaymentsModule) finishes a hire through the
+  // same accept path, and checks hireability with the same rules.
+  exports: [ApplicationsService],
 })
 export class ApplicationsModule {}

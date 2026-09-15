@@ -69,6 +69,7 @@ import SPChatScreen from './app/(provider)/screens/SPChatScreen';
 import SPNotificationsScreen from './app/(provider)/screens/SPNotificationsScreen';
 import SPEditProfileScreen from './app/(provider)/screens/SPEditProfileScreen';
 import SPVerificationScreen from './app/(provider)/screens/SPVerificationScreen';
+import SPPayoutsScreen from './app/(provider)/screens/SPPayoutsScreen';
 import SPSettingsScreen from './app/(provider)/screens/SPSettingsScreen';
 
 // ── Shared navigation components ──────────────────────────────────────────────
@@ -585,6 +586,13 @@ function AppContent() {
             spBack();
           }}
         />
+      </View>
+    );
+  }
+  if (spScreen === 'Payouts') {
+    return (
+      <View style={styles.screen}>
+        <SPPayoutsScreen onBack={spBack} />
       </View>
     );
   }

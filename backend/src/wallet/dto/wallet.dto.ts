@@ -44,7 +44,7 @@ export class RequestWithdrawalDto {
 }
 
 /**
- * The pre-0023 body. Kept so `POST /wallet/transactions` does not break under
+ * The pre-0024 body. Kept so `POST /wallet/transactions` does not break under
  * clients built against it, but it now produces the same pending request as
  * `POST /wallet/withdrawals` rather than a completed ledger row.
  *
@@ -89,6 +89,8 @@ export class ListWalletTxnQueryDto {
     // Admin-issued trust credits (0021). Without it here the console could
     // see recovery credits in the unfiltered list but never filter to them.
     'recovery_credit',
+    // Card-funded payouts sent on to a provider's Stripe account (0027).
+    'connect_transfer',
   ])
   kind?: string;
 

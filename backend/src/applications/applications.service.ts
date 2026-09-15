@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   ForbiddenException,
   Injectable,
   Logger,
@@ -42,10 +43,14 @@ export class ApplicationsService {
         'Set up your provider profile before applying',
       );
     }
+    // Verification is a gate, not a badge (BACKEND_SCHEMA.md §17): these are
+    // strangers being let into people's homes. The `code` is what the app
+    // branches on to offer a way to verify, rather than parsing the message.
     if (!providerProfile.is_verified) {
-      throw new ForbiddenException(
-        'Verify your identity before applying to jobs',
-      );
+      throw new ForbiddenException({
+        message: 'Verify your identity before applying to jobs',
+        code: 'verification_required',
+      });
     }
 
     // Was this provider recommended for this job? Then the application is
@@ -106,8 +111,13 @@ export class ApplicationsService {
 
     const { data } = await this.supabase.admin
       .from('job_applications')
+      // provider_profiles rides along (nested: job_applications.provider_id
+      // references profiles, and provider_profiles hangs off that one-to-one)
+      // for what the proposals screen shows next to each name — the rating,
+      // the job count, and whether this provider can be hired at all (see
+      // `assertHireable`).
       .select(
-        '*, provider:profiles!job_applications_provider_id_fkey(id, full_name, avatar_url, city)',
+        '*, provider:profiles!job_applications_provider_id_fkey(id, full_name, avatar_url, city, provider_profiles(is_verified, cached_avg_rating, cached_completed_jobs))',
       )
       .eq('job_id', jobId)
       .order('applied_at', { ascending: true });
@@ -154,14 +164,7 @@ export class ApplicationsService {
     const application = await this.findWithJob(applicationId);
     if (application.jobs.client_id !== user.id)
       throw new ForbiddenException('Not your job');
-    if (application.status !== 'pending') {
-      throw new BadRequestException(
-        `Application is already '${application.status}'`,
-      );
-    }
-    if (!['open', 'recommending'].includes(application.jobs.status)) {
-      throw new BadRequestException('Job already has an assigned provider');
-    }
+    await this.assertHireable(application);
 
     // No-ops for jobs posted without a budget (everything before migration
     // 0007); throws, before anything is accepted, when the wallet is short.
@@ -174,7 +177,27 @@ export class ApplicationsService {
     try {
       updated = await this.setStatus(applicationId, 'accepted');
     } catch (err) {
-      if (placed) await this.rollbackHold(application.job_id, err);
+      // `placed` alone is not enough to undo. Two accepts for the same
+      // application can both reach here: the one that placed the hold may
+      // still lose `setStatus` to the other, whose accept succeeded against
+      // that very hold. Re-reading the application is what tells a hire that
+      // failed from a hire someone else finished.
+      if (placed) {
+        const now = await this.statusOf(applicationId);
+        if (now === 'unknown') {
+          // Cannot tell whether the hire went through. Refunding a hire that
+          // succeeded strands an assigned job with no money behind it; keeping
+          // the hold of one that failed costs the client until someone looks.
+          // Only the second is recoverable, so keep it — and say so loudly.
+          this.logger.error(
+            `Job ${application.job_id}: accept failed (${(err as Error).message}) ` +
+              `and the application could not be re-read — escrow hold kept; ` +
+              `check whether application ${applicationId} was accepted`,
+          );
+        } else if (now !== 'accepted') {
+          await this.rollbackHold(application.job_id, err);
+        }
+      }
       throw err;
     }
 
@@ -184,6 +207,44 @@ export class ApplicationsService {
       `You were hired for "${application.jobs.title}"!`,
     );
     return updated;
+  }
+
+  /**
+   * Everything that must be true for an application to be turned into a
+   * hire, checked before any money is held. Public because the card-at-hire
+   * checkout runs the same checks before it asks a card for anything.
+   *
+   * The provider's verification is re-checked here even though `apply`
+   * already required it: an application can outlive the verification it was
+   * filed under, and a hire is the moment a stranger gets a client's address.
+   */
+  async assertHireable(application: {
+    id: string;
+    status: string;
+    provider_id: string;
+    jobs: { status: string };
+  }) {
+    if (application.status !== 'pending') {
+      throw new BadRequestException(
+        `Application is already '${application.status}'`,
+      );
+    }
+    if (!['open', 'recommending'].includes(application.jobs.status)) {
+      throw new BadRequestException('Job already has an assigned provider');
+    }
+    const { data, error } = await this.supabase.admin
+      .from('provider_profiles')
+      .select('is_verified')
+      .eq('profile_id', application.provider_id)
+      .maybeSingle();
+    if (error) throw new BadRequestException(error.message);
+    if (!data?.is_verified) {
+      throw new ConflictException({
+        message:
+          'This provider has not verified their identity and cannot be hired yet',
+        code: 'provider_not_verified',
+      });
+    }
   }
 
   /**
@@ -238,7 +299,40 @@ export class ApplicationsService {
     return this.setStatus(applicationId, 'withdrawn');
   }
 
-  private async findWithJob(applicationId: string) {
+  /**
+   * The card-at-hire webhook's half of `accept()`: the hold has already been
+   * placed by `escrow.hold()` with the payment that funded it, so all that is
+   * left is the accept itself (which fires the assign-and-reject trigger) and
+   * telling the provider. Same conditional update as `accept`, so a wallet
+   * tap and the webhook racing each other hire exactly once.
+   */
+  async acceptFunded(application: {
+    id: string;
+    job_id: string;
+    provider_id: string;
+    jobs: { title: string };
+  }) {
+    const updated = await this.setStatus(application.id, 'accepted');
+    await this.notifyProvider(
+      application,
+      'Application accepted',
+      `You were hired for "${application.jobs.title}"!`,
+    );
+    return updated;
+  }
+
+  /** The application's current status, or 'unknown' when it cannot be read. */
+  async statusOf(applicationId: string): Promise<string> {
+    const { data, error } = await this.supabase.admin
+      .from('job_applications')
+      .select('status')
+      .eq('id', applicationId)
+      .maybeSingle();
+    if (error || !data) return 'unknown';
+    return data.status as string;
+  }
+
+  async findWithJob(applicationId: string) {
     const { data, error } = await this.supabase.admin
       .from('job_applications')
       .select('*, jobs(id, title, status, client_id)')

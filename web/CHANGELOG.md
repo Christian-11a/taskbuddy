@@ -6,6 +6,50 @@ Newest first.
 
 ---
 
+## Escrow tab: where a card-funded payout went, and Retry transfer (2026-09-16)
+
+Card-funded payouts are now sent on to the provider's Stripe Connect account
+(`backend/BACKEND_SCHEMA.md` §29.5). The Escrow tab shows how that went:
+
+- **Payout column**: Wallet · Sending to Stripe · Sent to Stripe · Transfer
+  failed · Not set up — wallet · Kept in wallet. Hover a badge for the Stripe
+  transfer id or the error. "Wallet" is the normal state for a wallet-funded
+  job, not a failure.
+- **Details** add *Funded by* (Wallet/Card), *Payout*, and *Stripe*.
+- **Retry transfer** in the details of a failed, abandoned, or not-set-up
+  transfer calls `POST /admin/escrow/:id/retry-transfer`. The toast reports the
+  outcome and the table reloads. The money is in the provider's wallet whatever
+  happens.
+- CSV export adds Funding and Payout columns. The Wallet tab labels
+  `connect_transfer` rows "Sent to Stripe".
+
+## Rate limits: retry a 429 instead of reporting it as a refusal (2026-09-15)
+
+The API's rate limit is per endpoint per IP, and a bulk action fires every
+request at the *same* handler, so selecting a few hundred users and suspending
+them earned `429`s partway through. The console counted each one as a refusal
+and the Users page then blamed every failure on "admins can't be suspended",
+though admins can't even be selected.
+
+- **`lib/api/client.ts`** retries a `429` up to twice. It waits the
+  `Retry-After` the API sends, or backs off exponentially (0.5 s, 1 s) with
+  jitter. The throttler rejects before the handler runs, so resending a POST
+  cannot apply it twice. A `Retry-After` over 10 s fails immediately with "try
+  again in Ns". A `429` never signs the admin out, and `ApiError` carries
+  `retryAfterSeconds`. The browser could not read that header until the API
+  started exposing it in its CORS config (same change, backend side).
+- **`runBulk`** now uses a pool of `BULK_CONCURRENCY` (4) instead of an
+  unbounded `Promise.all`, and returns `errors[]` with each failure's status
+  and message alongside the counts.
+- **Users page**: the bulk toast groups the real reasons ("Suspended 2 of 5.
+  3 failed: Too many requests — try again in 30s. (×2); Failed to fetch.").
+- class-validator's `message[]` array is now shown instead of the generic
+  "POST /path -> 400".
+
+Tests: `client.test.ts` (Retry-After honoured, exponential cap, fail-fast, no
+sign-out), `services.test.ts` (never more than 4 in flight, errors collected),
+`UsersPage.test.tsx` (`bulkMessage`).
+
 ## Completed: final web verification and light-mode default (2026-09-15)
 
 The remaining web checklist is complete. The manual checks were confirmed in

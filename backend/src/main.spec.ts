@@ -24,6 +24,13 @@ jest.mock('./app.module', () => ({ AppModule: class AppModule {} }));
 
 import { bootstrap } from './main';
 
+const RATE_LIMIT_HEADERS = [
+  'Retry-After',
+  'X-RateLimit-Limit',
+  'X-RateLimit-Remaining',
+  'X-RateLimit-Reset',
+];
+
 async function bootstrapWithOrigins(origins?: string) {
   jest.clearAllMocks();
 
@@ -84,7 +91,16 @@ describe('bootstrap CORS configuration', () => {
         'https://taskbuddy-nine-zeta.vercel.app',
       ],
       credentials: true,
+      exposedHeaders: RATE_LIMIT_HEADERS,
     });
+  });
+
+  it('exposes the rate-limit headers, so a browser can honour Retry-After', async () => {
+    await bootstrapWithOrigins();
+
+    expect(mockEnableCors.mock.calls[0][0].exposedHeaders).toContain(
+      'Retry-After',
+    );
   });
 
   it('accepts comma-separated production web origins', async () => {
@@ -98,6 +114,7 @@ describe('bootstrap CORS configuration', () => {
         'https://taskbuddy.example',
       ],
       credentials: true,
+      exposedHeaders: RATE_LIMIT_HEADERS,
     });
   });
 });

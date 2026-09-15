@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   ForbiddenException,
   Injectable,
   Logger,
@@ -69,6 +70,15 @@ const AWAITING_PROVIDER_ANSWER = ['assigned'];
  * not stranded.
  */
 const PRE_START = ['assigned', 'confirmed'];
+
+/** Every state a client may still cancel from. */
+const CANCELLABLE = [
+  'open',
+  'recommending',
+  'assigned',
+  'confirmed',
+  'in_progress',
+];
 
 @Injectable()
 export class JobsService {
@@ -240,20 +250,12 @@ export class JobsService {
   async cancel(user: Profile, jobId: string) {
     const job = await this.findJob(jobId);
     if (job.client_id !== user.id) throw new ForbiddenException('Not your job');
-    if (
-      ![
-        'open',
-        'recommending',
-        'assigned',
-        'confirmed',
-        'in_progress',
-      ].includes(job.status)
-    ) {
+    if (!CANCELLABLE.includes(job.status)) {
       throw new BadRequestException(
         `Cannot cancel a job in status '${job.status}'`,
       );
     }
-    const updated = await this.setStatus(jobId, 'cancelled');
+    const updated = await this.setStatus(jobId, 'cancelled', CANCELLABLE);
     // Release the hold. A disputed escrow is left for an admin to resolve.
     await this.escrow.cancelForJob(jobId);
     if (job.assigned_provider_id) {
@@ -291,7 +293,11 @@ export class JobsService {
           : `Cannot accept a job in status '${job.status}'`,
       );
     }
-    const updated = await this.setStatus(jobId, 'confirmed');
+    const updated = await this.setStatus(
+      jobId,
+      'confirmed',
+      AWAITING_PROVIDER_ANSWER,
+    );
     await this.notify(job.client_id, 'job_update', 'Booking confirmed', {
       body: `${user.full_name} accepted your booking for "${job.title}".`,
       job_id: jobId,
@@ -310,7 +316,7 @@ export class JobsService {
         `Cannot start a job in status '${job.status}'`,
       );
     }
-    const updated = await this.setStatus(jobId, 'in_progress');
+    const updated = await this.setStatus(jobId, 'in_progress', PRE_START);
     await this.notify(job.client_id, 'job_update', 'Work started', {
       body: `${user.full_name} started working on "${job.title}".`,
       job_id: jobId,
@@ -336,7 +342,7 @@ export class JobsService {
         `Cannot decline a job in status '${job.status}'`,
       );
     }
-    const updated = await this.setStatus(jobId, 'cancelled');
+    const updated = await this.setStatus(jobId, 'cancelled', PRE_START);
     // Release the hold back to the client, same as a client-initiated cancel.
     await this.escrow.cancelForJob(jobId);
     await this.notify(job.client_id, 'job_update', 'Booking declined', {
@@ -355,7 +361,7 @@ export class JobsService {
         `Cannot complete a job in status '${job.status}'`,
       );
     }
-    const updated = await this.setStatus(jobId, 'completed');
+    const updated = await this.setStatus(jobId, 'completed', ['in_progress']);
     // Pay the provider out of escrow. `releaseIfHeld`, not `release`: a job
     // posted without a budget has no escrow row at all, and a disputed one is
     // frozen for an admin. Anything else — an already-released hold reached a
@@ -445,14 +451,29 @@ export class JobsService {
     return this.withReview(data);
   }
 
-  private async setStatus(jobId: string, status: string) {
+  /**
+   * Moves a job on, but only from a status the caller already checked it was
+   * in. The check before this call reads the row; this re-asserts it in the
+   * WHERE clause, because two requests arriving together — a client's Cancel
+   * and their own Complete, or a Cancel racing the provider's Decline — both
+   * pass the read. Without the re-assertion both would "win" at the job level
+   * while escrow settled only one way, leaving a completed job whose money
+   * went back to the client, or a cancelled one that paid the provider.
+   */
+  private async setStatus(jobId: string, status: string, from: string[]) {
     const { data, error } = await this.supabase.admin
       .from('jobs')
       .update({ status })
       .eq('id', jobId)
+      .in('status', from)
       .select(JOB_SELECT)
-      .single();
+      .maybeSingle();
     if (error) throw new BadRequestException(error.message);
+    if (!data) {
+      throw new ConflictException(
+        'This job changed while you were acting on it. Refresh and try again.',
+      );
+    }
     return this.withReview(data);
   }
 

@@ -3,10 +3,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { clearAdminSession, getAdminSession, setAdminSession } from "@/lib/api/session";
 import * as services from "./index";
 
-function jsonResponse(body: unknown, status = 200): Response {
+function jsonResponse(body: unknown, status = 200, headers: Record<string, string> = {}): Response {
   return {
     ok: status >= 200 && status < 300,
     status,
+    headers: new Headers(headers),
     json: () => Promise.resolve(body),
   } as Response;
 }
@@ -692,7 +693,33 @@ describe("bulk actions", () => {
       rows: [],
       succeeded: 1,
       failed: 1,
+      errors: [{ id: "u1", status: 400, message: "cannot suspend admin" }],
     });
+  });
+
+  it("never has more than BULK_CONCURRENCY requests in flight", async () => {
+    // Every bulk request hits the same handler, and the API limits per
+    // endpoint per IP — an unbounded Promise.all over 300 ids earned 429s.
+    let inFlight = 0;
+    let peak = 0;
+    const fetchMock = vi.fn((url: string) => {
+      if (url.includes("/admin/users?")) return Promise.resolve(jsonResponse({ users: [], total: 0 }));
+      inFlight++;
+      peak = Math.max(peak, inFlight);
+      return new Promise<Response>((resolve) =>
+        setTimeout(() => {
+          inFlight--;
+          resolve(jsonResponse({ ok: true }));
+        }, 1),
+      );
+    });
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    const ids = Array.from({ length: 20 }, (_, i) => `u${i}`);
+    const result = await services.bulkSetUserStatus(ids, "ACTIVE");
+
+    expect(result.succeeded).toBe(20);
+    expect(peak).toBe(services.BULK_CONCURRENCY);
   });
 
   it("bulkApproveVerifications reports counts when every id succeeds", async () => {
@@ -707,6 +734,7 @@ describe("bulk actions", () => {
       rows: [],
       succeeded: 2,
       failed: 0,
+      errors: [],
     });
   });
 

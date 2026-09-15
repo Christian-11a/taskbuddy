@@ -158,11 +158,18 @@ earlier ones are green:
 8. Provider verification
 9. Edge probes — double-tap on hire/complete, 401 refresh, 503, back-stack
 
-Deliberately untested — do not re-discover these as bugs: push delivery (no
-EAS projectId in app.json), recovery vouchers (no issuance endpoint exists —
-the wallet card stays empty by design), wallet transfer (unbuilt on purpose),
-and the final settlement of withdrawals (an admin action the web console has
-no UI for; mobile can prove a request files, reserves, and cancels).
+Deliberately untested here. Do not re-discover these as bugs:
+
+- **Push delivery.** There is no EAS projectId in app.json.
+- **Wallet transfer.** Unbuilt on purpose.
+- **Stripe-hosted pages.** Maestro does not drive the browser that Checkout and
+  Connect onboarding open. `hire_payment_choice.yaml` and
+  `payouts_entry_provider.yaml` stop at the app side, and the rest is the
+  manual recipe in `docs/stripe-setup.md` §7.
+- **Things that live in the web console.** Issuing a recovery voucher, settling
+  a withdrawal, and retrying a transfer are admin actions there. Mobile proves
+  a withdrawal request files, reserves and cancels, and that a voucher shows
+  up in the Wallet once issued.
 
 ## Known selector traps
 

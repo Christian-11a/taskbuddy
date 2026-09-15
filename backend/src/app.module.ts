@@ -30,6 +30,7 @@ import { EscrowModule } from './escrow/escrow.module';
 import { SettingsModule } from './settings/settings.module';
 import { PushModule } from './push/push.module';
 import { PaymentsModule } from './payments/payments.module';
+import { ConnectModule } from './payments/connect/connect.module';
 import { InternalModule } from './internal/internal.module';
 
 @Module({
@@ -84,6 +85,7 @@ import { InternalModule } from './internal/internal.module';
     SettingsModule,
     PushModule,
     PaymentsModule,
+    ConnectModule,
     InternalModule,
   ],
   providers: [
@@ -103,6 +105,16 @@ export class AppModule implements NestModule {
         { path: 'auth/(.*)', method: RequestMethod.ALL },
         { path: 'health', method: RequestMethod.ALL },
         { path: 'internal/(.*)', method: RequestMethod.ALL },
+        // Stripe is not a user of the app. A 503 here does not pause
+        // anything — Stripe retries for three days and the money it is
+        // reporting has already moved — so blocking the webhook only delays
+        // a credit someone paid for. The browser return hops change nothing
+        // either, and a JSON 503 would strand the user on a blank page.
+        { path: 'payments/webhook', method: RequestMethod.POST },
+        { path: 'payments/return', method: RequestMethod.GET },
+        { path: 'payments/connect/webhook', method: RequestMethod.POST },
+        { path: 'payments/connect/return', method: RequestMethod.GET },
+        { path: 'payments/connect/refresh', method: RequestMethod.GET },
       )
       .forRoutes({ path: '*', method: RequestMethod.ALL });
   }
