@@ -1,6 +1,7 @@
 "use client";
 
 import Script from "next/script";
+import { useState } from "react";
 import "../../styles/promo.css";
 import { HOME_MARKUP } from "./HomePage.markup";
 
@@ -22,6 +23,9 @@ const HOME_MARKUP_WITHOUT_DUPLICATE_SKIP_LINK = HOME_MARKUP.replace(
  * risk of a hand-transcription bug.
  */
 export function HomePage() {
+  const [gsapReady, setGsapReady] = useState(false);
+  const [scrollTriggerReady, setScrollTriggerReady] = useState(false);
+
   return (
     <div className="promo-site">
       <a className="skip-link" href="#main">Skip to content</a>
@@ -33,13 +37,27 @@ export function HomePage() {
       <link rel="preconnect" href="https://api.fontshare.com" />
       <link rel="stylesheet" href="https://api.fontshare.com/v2/css?f[]=switzer@400,500,600,700&display=swap" />
 
-      {/* Same load order as the static prototype: GSAP + ScrollTrigger as
-          globals, then script.js (site interactions), then auth.js (the
-          account modal, now wired to the real backend via /api/auth/*). */}
-      <Script src="/promo/vendor/gsap.min.js" strategy="afterInteractive" />
-      <Script src="/promo/vendor/ScrollTrigger.min.js" strategy="afterInteractive" />
-      <Script src="/promo/script.js" strategy="afterInteractive" />
-      <Script src="/promo/auth.js" strategy="afterInteractive" />
+      {/* Load the motion dependencies sequentially. Next's afterInteractive
+          scripts can otherwise race: script.js may initialize before
+          ScrollTrigger exists and permanently select the heavier fallback. */}
+      <Script
+        src="/promo/vendor/gsap.min.js"
+        strategy="afterInteractive"
+        onReady={() => setGsapReady(true)}
+      />
+      {gsapReady && (
+        <Script
+          src="/promo/vendor/ScrollTrigger.min.js"
+          strategy="afterInteractive"
+          onReady={() => setScrollTriggerReady(true)}
+        />
+      )}
+      {scrollTriggerReady && (
+        <>
+          <Script src="/promo/script.js" strategy="afterInteractive" />
+          <Script src="/promo/auth.js" strategy="afterInteractive" />
+        </>
+      )}
     </div>
   );
 }
