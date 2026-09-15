@@ -2003,6 +2003,63 @@ in-process) with Supabase's `auth` and `storage` schemas stubbed. It then covers
 This complements `job-lifecycle.spec.ts`, whose honest limit (§28.7) is that it transcribes SQL
 rather than running it.
 
+### 29.4 Card-at-hire — the webhook places the hold
+
+`POST /payments/hire-checkout-session { application_id, app_redirect }` (client-only,
+payments rate limit) opens Stripe Checkout for the **job's full budget**. The amount comes from the
+server, never from the request. Before a card is ever asked for, it runs the same checks a wallet
+accept makes (`ApplicationsService.assertHireable`: application pending, job open, provider
+verified). The PaymentIntent carries:
+
+- `metadata: { purpose: 'hire_funding', profile_id, application_id, job_id, provider_id }`;
+- `transfer_group: job:<id>`;
+- `payment_method_types: ['card']`, so the charge is a card charge that captures immediately.
+
+The return hop is `/payments/return?flow=hire`, which lands on the app's deep link as
+`?hire=success|cancelled`.
+
+**Nothing is hired by the request or the redirect.** `payment_intent.succeeded` with
+`purpose = 'hire_funding'` goes to `HireFundingService.completeFromIntent`:
+
+1. **Credit** the payment to the client's wallet as a `topup` carrying `stripe_payment_intent_id`.
+   A unique-key collision means an earlier delivery already credited it. Processing **continues**
+   past the collision, because that delivery may have crashed before finishing the hire.
+2. **Already done?** If the job's escrow is funded by this intent and the application is
+   `accepted`, stop.
+3. **Refusals**: the proposal was decided or withdrawn, the job is no longer open, the metadata
+   doesn't match, the amount or currency differs from the budget, or the provider is no longer
+   verified. Each is answered 2xx, the money stays in the wallet, and the client is told once.
+4. **Hold** via `escrow_place_hold(…, 'card', pi, charge)`. This is where the escrow becomes `held`,
+   right after the webhook, as Story 1 asked. `InsufficientBalanceError` (the client spent the
+   credit in the gap) and `EscrowConflictError` are refusals.
+5. **Accept** (`ApplicationsService.acceptFunded`, the same conditional update). On failure,
+   re-read the application:
+   - `accepted`: someone else finished the hire. Done.
+   - still `pending` or unreadable: a fault. Throw, and Stripe retries.
+   - decided: undo this intent's own hold (`releaseHoldForFailedHire`), then refuse.
+
+**Only faults throw.** A refusal that threw would be retried by Stripe for three days, and a fault
+swallowed as a refusal would drop a paid hire on a database blip. That is why the money functions
+raise typed errors (`isMoneyRefusal`) and why the service's own reads throw plain `Error`s, which
+become 500s, not 4xxs.
+
+**Why credit the wallet first**, instead of holding straight from the card: it keeps
+`wallet_transactions` the single account of record (every peso in escrow was debited from a
+wallet, however it got there), and it makes every failure recoverable. If the hire cannot happen
+by the time the money arrives, the money is simply in the client's wallet, spendable or
+withdrawable.
+
+**Captured immediately, not authorised.** Card authorisations lapse after about a week, and jobs
+are booked further out than that. A captured charge in the platform balance is also what the
+provider's transfer is sourced from (§29.5).
+
+**Refunds go to the wallet.** A cancelled job, or a dispute resolved for the client, credits the
+wallet exactly as it does for a wallet-funded hold (§18), not the card. Two consequences to know:
+
+- The cardholder can still file a chargeback after receiving that refund.
+- **Never refund a hire from the Stripe Dashboard.** The ledger would not know, and the client
+  would be paid twice.
+
 **Verification on a live project:**
 
 ```sql

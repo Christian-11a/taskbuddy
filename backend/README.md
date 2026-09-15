@@ -404,7 +404,8 @@ record. Tokens Expo rejects as `DeviceNotRegistered` are deleted.
 | `POST /payments/config` 🔒 | `{ publishable_key }` — served rather than compiled in, so test↔live is a backend env change |
 | `POST /payments/topup` 🔒 | `{ amount }` (₱20–₱100,000) → PaymentSheet parameters: `{ payment_intent_client_secret, ephemeral_key_secret, customer_id, publishable_key, amount, currency }` |
 | `POST /payments/checkout-session` 🔒 | `{ amount, app_redirect }` → `{ url, session_id, amount }`. Hosted Checkout, for clients that cannot load a native SDK — **this is what the Expo Go app uses** |
-| `GET /payments/return?status=&app_redirect=` | Where Stripe returns the browser. Redirects to the app deep link with `?topup=success\|cancelled`. No JWT — it is a plain browser navigation that reveals and changes nothing |
+| `POST /payments/hire-checkout-session` 🔒 (client) | `{ application_id, app_redirect }` → `{ url, session_id, amount }`. **Card-at-hire**: Checkout for the job's full budget. The hire itself is made by the webhook (credit → hold → accept), not by this call — poll the application afterwards. Same hireability checks as a wallet accept; 400 `card_amount_out_of_range` outside ₱20–₱100,000. `BACKEND_SCHEMA.md` §29.4 |
+| `GET /payments/return?status=&app_redirect=&flow=` | Where Stripe returns the browser. Redirects to the app deep link with `?topup=success\|cancelled`, or `?hire=…` when `flow=hire`. No JWT — it is a plain browser navigation that reveals and changes nothing |
 | `POST /payments/webhook` | Stripe only. No JWT — authenticated by the signature over the **raw** body |
 
 **The wallet is credited by the webhook, never by `POST /payments/topup`, and
@@ -503,10 +504,13 @@ which audits job lifecycle transitions, not the admin behind a decision.
 
 ### Escrow, in one paragraph
 
-There is **no payment gateway** — the `wallet_transactions` ledger is the only
-account of record. When a client accepts an application on a job with a
-`budget`, the client is **debited** and an `escrow_transactions` row is created
-as `held`. On completion it becomes `released` and the provider is **credited**.
+The `wallet_transactions` ledger is the only account of record; Stripe decides
+whether money arrived, the ledger records it. When a client accepts an
+application on a job with a `budget`, the client is **debited** and an
+`escrow_transactions` row is created as `held` — in one SQL transaction
+(`escrow_place_hold`, migration 0028). A client can also **pay the hire by
+card** (`POST /payments/hire-checkout-session`): Stripe's webhook credits the
+payment, holds it and accepts the application (`BACKEND_SCHEMA.md` §29.4). On completion it becomes `released` and the provider is **credited**.
 Cancelling returns the money to the client; a dispute freezes it until an admin
 resolves it either way (release → provider, refund → client).
 
@@ -566,7 +570,7 @@ each route counts separately and there is no aggregate cap across the API.
 | Scope | Limit (per endpoint, per IP) |
 |---|---|
 | Everything | 240 / minute |
-| `POST /payments/topup`, `POST /payments/checkout-session` | 5 / minute |
+| `POST /payments/topup`, `POST /payments/checkout-session`, `POST /payments/hire-checkout-session` | 5 / minute |
 | `POST /auth/{register,login,admin/login,forgot-password,reset-password,send-email-otp,verify-email-otp,change-password}` | 10 / minute **each** |
 | `POST /payments/connect/{onboarding-link,sync,dashboard-link}` | 5 / minute each |
 | `POST /payments/webhook`, `POST /payments/connect/webhook` | exempt — Stripe is authenticated by signature and retries for three days |

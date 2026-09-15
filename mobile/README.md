@@ -273,6 +273,7 @@ sign-in, and notification rows remain available in the in-app list either way.
 | `HOCreateJobScreen` | `GET /categories`, image upload, `POST /jobs` — the guided 5-step flow: service → location → tasks → urgency → review |
 | `HOJobDetailScreen` | `GET /jobs/:id`, `GET /providers/:id`, `POST /jobs/:id/recommendations/trigger`; complete / cancel / chat, review-state gating, manual provider-matching retry, and read-only task checklist |
 | `HOChatScreen` | `POST /conversations` then message listing |
+| `HOJobApplicationsScreen` | `GET /jobs/:id/applications`; Accept opens `HirePaymentModal` — `POST /applications/:id/accept` (wallet) or `POST /payments/hire-checkout-session` (card, then polls for `accepted`); Reject |
 | `HOWalletScreen` | `GET /wallet` + `GET`/`POST /wallet/withdrawals`; Add Money opens Stripe Checkout, and Withdraw files/cancels manual payout requests |
 | `HODisputeFilingScreen` | `POST /jobs/:jobId/disputes` |
 | `HOProfile` | Displays profile data; menu is Edit Profile / Settings / Help & Support |
@@ -301,15 +302,28 @@ sign-in, and notification rows remain available in the in-app list either way.
 
 ## Money, Briefly
 
-Hiring holds the job budget in escrow so the client's wallet must cover it:
-`POST /applications/:id/accept` returns `400 Insufficient wallet balance` otherwise.
-That is what the Wallet screen's **Add Money** button is for.
-Funds are released to the provider when the client marks the job complete, and
-returned to the client if the job is cancelled or a dispute is resolved in the
-client's favour.
+Hiring holds the job budget in escrow. Accept on a proposal
+(`HOJobApplicationsScreen`) opens `HirePaymentModal`, which offers two ways to pay:
 
-There is no payment gateway — the wallet ledger is the only account of record.
-Full rules: `backend/BACKEND_SCHEMA.md` §18.
+- **Pay from wallet**: `POST /applications/:id/accept` holds the budget from the
+  wallet. It is disabled, with an **add money** link, when the wallet is short.
+  The API refuses with `400 Insufficient wallet balance` anyway.
+- **Pay by card**: `POST /payments/hire-checkout-session` opens Stripe Checkout
+  for the full budget. **The app does not do the hire.** Stripe's webhook
+  credits the payment, holds it in escrow, and accepts the application, so
+  after the browser closes the screen polls the proposal until it reads
+  `accepted`. If the proposal was taken in the meantime, the payment stays in
+  the wallet and the screen says so.
+
+Funds are released to the provider when the client marks the job complete, and
+returned to the **wallet** if the job is cancelled or a dispute is resolved in
+the client's favour. That includes card-paid jobs.
+
+Providers who set up **Profile → Payouts** (Stripe Connect Express) have
+card-paid jobs sent straight to their Stripe account on completion. Everything
+else stays in the TaskBuddy wallet and is withdrawn by request. The wallet ledger
+is the only account of record. Full rules: `backend/BACKEND_SCHEMA.md` §18
+and §29.
 
 ---
 
@@ -399,7 +413,7 @@ signup OTP (item 5) remains available for a future registration-confirmation flo
 | 3 | `has_review` flag on job payload | **Wired** — completed jobs hide Leave Review when `has_review` is true; direct review access is also blocked |
 | 4 | Realtime chat | Done — authenticated SSE streams messages through the API |
 | 5 | Email OTP at registration | **API done** — `POST /auth/send-email-otp` / `verify-email-otp`, wrapping Supabase's own signup code. Needs the `{{ .Token }}` template change in [`docs/email-otp-setup.md`](../docs/email-otp-setup.md) |
-| 6 | Homeowner card-at-hire (vs wallet top-up) | Still open — a product decision, not a missing endpoint |
+| 6 | Homeowner card-at-hire (vs wallet top-up) | **Wired** — Accept offers Pay from wallet or Pay by card; the card path is hired by Stripe's webhook (`BACKEND_SCHEMA.md` §29.4) |
 | 7 | Push delivery | Backend done (Expo tokens + API scheduler). **Blocked on our side**: no EAS `projectId`, and Expo Go can't receive push on SDK 57 — see [Live chat and push notifications](#live-chat-and-push-notifications) |
 
 ### 3. [`docs/backend-handoff-stripe-connect-escrow.md`](../docs/backend-handoff-stripe-connect-escrow.md)
@@ -471,7 +485,8 @@ anything from the app:
   `docs/backend-handoff-stripe-connect-escrow.md` Story 1.
 - **A real payout rail.** Withdrawals are still settled by hand from the admin
   queue.
-- **Card-at-hire for homeowners** (handoff item 6). A product fork.
+- ~~**Card-at-hire for homeowners** (handoff item 6).~~ **Done**: Pay by card at
+  Accept, hired by the webhook (§29.4).
 - ~~**`is_verified`: badge or gate?**~~ **Decided: a gate**, on applying *and*
   on being hired (`BACKEND_SCHEMA.md` §17). The API answers
   `403 { code: 'verification_required' }` to an unverified provider's proposal

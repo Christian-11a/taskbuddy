@@ -2,6 +2,8 @@ import type Stripe from 'stripe';
 import { BadRequestException } from '@nestjs/common';
 import { PaymentsService } from './payments.service';
 import { StripeEventsService } from './stripe-events.service';
+import { StripeCustomersService } from './stripe-customers.service';
+import type { HireFundingService } from './hire-funding.service';
 import type { SupabaseService } from '../supabase/supabase.service';
 import type { StripeService } from './stripe.service';
 import type { VerificationsService } from '../verifications/verifications.service';
@@ -75,6 +77,12 @@ function createCheckoutStripeMock() {
   };
 }
 
+function createHireFundingMock() {
+  return {
+    completeFromIntent: jest.fn(() => Promise.resolve()),
+  } as unknown as HireFundingService & { completeFromIntent: jest.Mock };
+}
+
 function createVerificationsMock() {
   return {
     applyIdentityResult: jest.fn(() => Promise.resolve()),
@@ -112,6 +120,8 @@ describe('PaymentsService', () => {
         createStripeMock(),
         createVerificationsMock(),
         new StripeEventsService(supabase),
+        new StripeCustomersService(supabase, createStripeMock()),
+        createHireFundingMock(),
       );
 
       await service.handleEvent(topupEvent());
@@ -144,6 +154,8 @@ describe('PaymentsService', () => {
         createStripeMock(),
         createVerificationsMock(),
         new StripeEventsService(supabase),
+        new StripeCustomersService(supabase, createStripeMock()),
+        createHireFundingMock(),
       );
 
       await expect(service.handleEvent(topupEvent())).resolves.toBeUndefined();
@@ -158,6 +170,8 @@ describe('PaymentsService', () => {
         createStripeMock(),
         createVerificationsMock(),
         new StripeEventsService(supabase),
+        new StripeCustomersService(supabase, createStripeMock()),
+        createHireFundingMock(),
       );
 
       await service.handleEvent(topupEvent());
@@ -176,6 +190,8 @@ describe('PaymentsService', () => {
         createStripeMock(),
         createVerificationsMock(),
         new StripeEventsService(supabase),
+        new StripeCustomersService(supabase, createStripeMock()),
+        createHireFundingMock(),
       );
 
       await service.handleEvent(
@@ -183,6 +199,35 @@ describe('PaymentsService', () => {
       );
 
       expect(calls.some((c) => c.table === 'wallet_transactions')).toBe(false);
+    });
+
+    it('hands a card-at-hire payment to the hire flow, not the top-up one', async () => {
+      const { supabase, calls } = createSupabaseMock({
+        stripe_events: [{ data: null, error: null }],
+      });
+      const hireFunding = createHireFundingMock();
+      const service = new PaymentsService(
+        supabase,
+        createStripeMock(),
+        createVerificationsMock(),
+        new StripeEventsService(supabase),
+        new StripeCustomersService(supabase, createStripeMock()),
+        hireFunding,
+      );
+
+      await service.handleEvent(
+        topupEvent({ metadata: { purpose: 'hire_funding', profile_id: 'u1' } }),
+      );
+
+      expect(hireFunding.completeFromIntent).toHaveBeenCalledWith(
+        expect.objectContaining({ id: 'pi_1' }),
+      );
+      // The hire flow writes its own credit; this path must not add another.
+      expect(
+        calls.some(
+          (c) => c.table === 'wallet_transactions' && c.method === 'insert',
+        ),
+      ).toBe(false);
     });
 
     it('surfaces a real insert failure so Stripe retries', async () => {
@@ -197,6 +242,8 @@ describe('PaymentsService', () => {
         createStripeMock(),
         createVerificationsMock(),
         new StripeEventsService(supabase),
+        new StripeCustomersService(supabase, createStripeMock()),
+        createHireFundingMock(),
       );
 
       await expect(service.handleEvent(topupEvent())).rejects.toThrow(
@@ -216,6 +263,8 @@ describe('PaymentsService', () => {
         createStripeMock(),
         createVerificationsMock(),
         new StripeEventsService(supabase),
+        new StripeCustomersService(supabase, createStripeMock()),
+        createHireFundingMock(),
       );
 
       await expect(service.handleEvent(topupEvent())).rejects.toThrow();
@@ -245,6 +294,8 @@ describe('PaymentsService', () => {
         stripe,
         createVerificationsMock(),
         new StripeEventsService(supabase),
+        new StripeCustomersService(supabase, stripe),
+        createHireFundingMock(),
       );
 
       await payments.createCheckoutSession(
@@ -273,6 +324,8 @@ describe('PaymentsService', () => {
         stripe,
         createVerificationsMock(),
         new StripeEventsService(supabase),
+        new StripeCustomersService(supabase, stripe),
+        createHireFundingMock(),
       );
 
       await payments.createCheckoutSession(
@@ -295,6 +348,8 @@ describe('PaymentsService', () => {
         stripe,
         createVerificationsMock(),
         new StripeEventsService(supabase),
+        new StripeCustomersService(supabase, stripe),
+        createHireFundingMock(),
       );
 
       await payments.createCheckoutSession(
@@ -321,6 +376,8 @@ describe('PaymentsService', () => {
         stripe,
         createVerificationsMock(),
         new StripeEventsService(supabase),
+        new StripeCustomersService(supabase, stripe),
+        createHireFundingMock(),
       );
 
       // /payments/return redirects a browser to whatever comes back out, so an
@@ -347,6 +404,8 @@ describe('PaymentsService', () => {
         createStripeMock(),
         verifications,
         new StripeEventsService(supabase),
+        new StripeCustomersService(supabase, createStripeMock()),
+        createHireFundingMock(),
       );
 
       await service.handleEvent({
@@ -371,6 +430,8 @@ describe('PaymentsService', () => {
         createStripeMock(),
         verifications,
         new StripeEventsService(supabase),
+        new StripeCustomersService(supabase, createStripeMock()),
+        createHireFundingMock(),
       );
 
       await service.handleEvent({

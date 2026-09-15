@@ -319,6 +319,7 @@ export default function HOJobDetailScreen({ jobId, onBack, onNavigate }: HOJobDe
                 style={styles.linkRow}
                 onPress={() => onNavigate('Job Applications', job.id)}
                 activeOpacity={0.7}
+                testID="job-detail-view-offers"
               >
                 <Text style={styles.linkRowText}>View Offers</Text>
               </TouchableOpacity>
@@ -333,6 +334,7 @@ export default function HOJobDetailScreen({ jobId, onBack, onNavigate }: HOJobDe
                 style={styles.linkRow}
                 onPress={() => onNavigate('Job Applications', job.id)}
                 activeOpacity={0.7}
+                testID="job-detail-view-offers"
               >
                 <Text style={styles.linkRowText}>View Offers</Text>
               </TouchableOpacity>

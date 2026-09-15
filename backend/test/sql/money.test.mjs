@@ -130,9 +130,11 @@ describe('escrow_place_hold', () => {
     assert.equal(first.escrow.funding_method, 'wallet');
     assert.equal(retry.placed, false);
     assert.equal(retry.escrow.id, first.escrow.id);
+    // Sorted: two rows written in the same millisecond share created_at, and
+    // the tiebreak is a random uuid.
     assert.deepEqual(
-      (await ledger(CLIENT)).map((t) => t.kind),
-      ['topup', 'escrow_hold'],
+      (await ledger(CLIENT)).map((t) => t.kind).sort(),
+      ['escrow_hold', 'topup'],
     );
   });
 

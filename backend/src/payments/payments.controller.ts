@@ -21,7 +21,13 @@ import { CurrentUser } from '../auth/current-user.decorator';
 import { PaymentsService } from './payments.service';
 import { StripeService } from './stripe.service';
 import { publicOrigin } from './public-origin';
-import { CreateCheckoutSessionDto, CreateTopupDto } from './dto/payments.dto';
+import {
+  CreateCheckoutSessionDto,
+  CreateHireCheckoutDto,
+  CreateTopupDto,
+} from './dto/payments.dto';
+import { HireFundingService } from './hire-funding.service';
+import { Roles } from '../auth/roles.decorator';
 import {
   appendRedirectParams,
   isAllowedAppRedirect,
@@ -35,6 +41,7 @@ export class PaymentsController {
   constructor(
     private readonly payments: PaymentsService,
     private readonly stripe: StripeService,
+    private readonly hireFunding: HireFundingService,
   ) {}
 
   /** Publishable key, so the app doesn't have to ship a build per environment. */
@@ -75,6 +82,26 @@ export class PaymentsController {
   }
 
   /**
+   * Card-at-hire: opens Stripe Checkout for the job's full budget, to hire
+   * the provider behind `application_id`. Nothing is hired here — the webhook
+   * credits the payment, holds it in escrow and accepts the application once
+   * Stripe confirms the charge (§29.4). The app polls the application after
+   * the browser closes.
+   */
+  @Post('hire-checkout-session')
+  @HttpCode(200)
+  @ThrottlePayments()
+  @UseGuards(JwtAuthGuard)
+  @Roles('client')
+  hireCheckoutSession(
+    @CurrentUser() user: Profile,
+    @Body() dto: CreateHireCheckoutDto,
+    @Req() req: Request,
+  ) {
+    return this.hireFunding.createCheckout(user, dto, publicOrigin(req));
+  }
+
+  /**
    * Where Stripe sends the browser when Checkout finishes, and the only reason
    * this endpoint exists: `success_url` must be http(s), so the app's
    * `taskbuddy://` deep link cannot be given to Stripe directly. This bounces
@@ -88,6 +115,7 @@ export class PaymentsController {
   paymentReturn(
     @Query('app_redirect') appRedirect: string,
     @Query('status') status: string,
+    @Query('flow') flow: string | undefined,
     @Res() res: Response,
   ) {
     // Same allowlist the session creation checked. Re-checked here because this
@@ -97,8 +125,13 @@ export class PaymentsController {
       throw new BadRequestException('app_redirect is not an allowed URI');
     }
 
+    // `flow` names the query parameter the app listens for: `topup=` for the
+    // wallet's Add Money (the default, so existing links keep working) and
+    // `hire=` for card-at-hire. It decides which screen the user lands on,
+    // nothing more — the webhook decides whether money arrived.
     const params = new URLSearchParams({
-      topup: status === 'success' ? 'success' : 'cancelled',
+      [flow === 'hire' ? 'hire' : 'topup']:
+        status === 'success' ? 'success' : 'cancelled',
     });
     return res.redirect(appendRedirectParams(appRedirect, params));
   }

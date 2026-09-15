@@ -463,6 +463,9 @@ export interface CheckoutSession {
 /** Backend rejects a top-up below this (Stripe's own PHP minimum charge). */
 export const MIN_TOPUP_PHP = 20;
 
+/** The most a single card payment may be — the backend's top-up/hire ceiling. */
+export const MAX_CARD_PHP = 100_000;
+
 export interface Conversation {
   id: string;
   job_id: string;
@@ -1219,6 +1222,20 @@ export const api = {
    */
   createCheckoutSession(input: { amount: number; app_redirect: string }) {
     return authRequest<CheckoutSession>('/payments/checkout-session', {
+      method: 'POST',
+      body: input,
+    });
+  },
+
+  /**
+   * Card-at-hire: a hosted Checkout for the job's full budget. Open `url`
+   * with `openAuthSessionAsync`; the browser comes back to `app_redirect`
+   * with `?hire=success|cancelled`. **Nothing is hired by this call or by the
+   * redirect** — Stripe's webhook credits the payment, holds it and accepts
+   * the application, so poll `jobApplications` for `accepted` afterwards.
+   */
+  createHireCheckoutSession(input: { application_id: string; app_redirect: string }) {
+    return authRequest<CheckoutSession>('/payments/hire-checkout-session', {
       method: 'POST',
       body: input,
     });

@@ -4,6 +4,10 @@ import { EscrowService } from '../escrow/escrow.service';
 import { WalletService } from '../wallet/wallet.service';
 import { ReviewsService } from '../reviews/reviews.service';
 import { DisputesService } from '../escrow/disputes.service';
+import { HireFundingService } from '../payments/hire-funding.service';
+import type { StripeService } from '../payments/stripe.service';
+import type { StripeCustomersService } from '../payments/stripe-customers.service';
+import type Stripe from 'stripe';
 import type { SupabaseService } from '../supabase/supabase.service';
 import type { UploadsService } from '../uploads/uploads.service';
 import type { AdminActionsService } from '../admin/admin-actions.service';
@@ -87,6 +91,9 @@ const DEFAULTS: Record<string, () => Row> = {
 /** Composite uniqueness, as the migrations declare it. */
 const UNIQUE_KEYS: Record<string, string[][]> = {
   escrow_transactions: [['job_id']],
+  // Partial: `where stripe_payment_intent_id is not null` (0013). The
+  // collision is how a redelivered payment is recognised.
+  wallet_transactions: [['stripe_payment_intent_id']],
   reviews: [['job_id']],
   job_applications: [['job_id', 'provider_id']],
   bookings: [['job_id']],
@@ -176,6 +183,9 @@ class FakeDb {
 
   private uniqueViolation(table: string, row: Row): PgError | null {
     for (const key of UNIQUE_KEYS[table] ?? []) {
+      // A null in a unique column never collides — which is also what makes
+      // the partial indexes above behave like their SQL.
+      if (key.some((col) => row[col] == null)) continue;
       const clash = this.rows(table).some((existing) =>
         key.every((col) => existing[col] === row[col]),
       );
@@ -262,9 +272,194 @@ class FakeDb {
     return {
       admin: {
         from: (table: string) => this.builder(table),
-        rpc: () => Promise.resolve({ data: [], error: null }),
+        rpc: (fn: string, args: Row) => Promise.resolve(this.rpc(fn, args)),
       },
     } as unknown as SupabaseService;
+  }
+
+  /** What `wallet_available_balance` computes: settled minus every pending debit. */
+  available(profileId: string): number {
+    const pending = this.rows('wallet_transactions')
+      .filter(
+        (t) =>
+          t.profile_id === profileId &&
+          t.status === 'pending' &&
+          t.direction === 'debit',
+      )
+      .reduce((sum, t) => sum + Number(t.amount), 0);
+    return this.balance(profileId) - pending;
+  }
+
+  /**
+   * The money functions from migration 0028, transcribed like the triggers
+   * above — same honest limit: `npm run test:sql` is what executes the real
+   * ones. Each runs to completion before anything else can interleave, which
+   * is what the real ones' single transaction and advisory lock guarantee.
+   */
+  private rpc(
+    fn: string,
+    args: Row,
+  ): { data: unknown; error: (PgError & { details?: string }) | null } {
+    const refuse = (code: string, message: string, details?: string) => ({
+      data: null,
+      error: { code, message, details },
+    });
+    const ledger = (entry: Row) => {
+      const row = {
+        id: this.id('wallet_transactions'),
+        created_at: new Date().toISOString(),
+        ...DEFAULTS.wallet_transactions(),
+        ...entry,
+      };
+      this.rows('wallet_transactions').push(row);
+      return row;
+    };
+
+    if (fn === 'escrow_place_hold') {
+      const job = this.rows('jobs').find((j) => j.id === args.p_job_id);
+      if (!job) return refuse('TB404', 'Job not found');
+      if (job.budget == null) {
+        return { data: { escrow: null, placed: false }, error: null };
+      }
+      const existing = this.rows('escrow_transactions').find(
+        (e) => e.job_id === job.id,
+      );
+      if (existing && existing.provider_id !== args.p_provider_id) {
+        return refuse(
+          'TB409',
+          'This job already has an escrow hold for another provider.',
+        );
+      }
+      if (existing?.status === 'held') {
+        return {
+          data: { escrow: { ...existing }, placed: false },
+          error: null,
+        };
+      }
+      if (existing && existing.status !== 'cancelled') {
+        return refuse(
+          'TB409',
+          `This job's escrow is already '${existing.status}'`,
+        );
+      }
+      const amount = Number(existing?.amount ?? job.budget);
+      const available = this.available(job.client_id);
+      if (available < amount) {
+        return refuse(
+          'TB402',
+          'Insufficient wallet balance',
+          JSON.stringify({ needed: amount, available }),
+        );
+      }
+      const funding = {
+        funding_method: args.p_funding_method ?? 'wallet',
+        funding_payment_intent_id: args.p_payment_intent_id ?? null,
+        funding_charge_id: args.p_charge_id ?? null,
+      };
+      let escrow: Row;
+      if (existing) {
+        Object.assign(existing, { status: 'held', ...funding });
+        escrow = existing;
+      } else {
+        escrow = {
+          id: this.id('escrow_transactions'),
+          ...DEFAULTS.escrow_transactions(),
+          job_id: job.id,
+          client_id: job.client_id,
+          provider_id: args.p_provider_id,
+          amount,
+          ...funding,
+        };
+        this.rows('escrow_transactions').push(escrow);
+      }
+      ledger({
+        profile_id: job.client_id,
+        direction: 'debit',
+        kind: 'escrow_hold',
+        amount,
+        title: `Escrow hold — ${job.title}`,
+        job_id: job.id,
+      });
+      return { data: { escrow: { ...escrow }, placed: true }, error: null };
+    }
+
+    if (fn === 'escrow_settle') {
+      const escrow = this.rows('escrow_transactions').find(
+        (e) => e.id === args.p_escrow_id,
+      );
+      if (!escrow || escrow.status !== args.p_expected) {
+        return { data: null, error: null };
+      }
+      const next = args.p_next as string;
+      const commission = Number(args.p_commission ?? 0);
+      escrow.status = next;
+      if (next === 'released') {
+        escrow.released_at = new Date().toISOString();
+        escrow.commission_amount = commission;
+        if (escrow.funding_method === 'card')
+          escrow.transfer_status = 'pending';
+        ledger({
+          profile_id: escrow.provider_id,
+          direction: 'credit',
+          kind: 'payout',
+          amount: Number(escrow.amount) - commission,
+          title: args.p_title ?? 'Payout',
+          job_id: escrow.job_id,
+        });
+      } else if (next === 'refunded' || next === 'cancelled') {
+        if (next === 'refunded') escrow.refunded_at = new Date().toISOString();
+        ledger({
+          profile_id: escrow.client_id,
+          direction: 'credit',
+          kind: 'refund',
+          amount: Number(escrow.amount),
+          title: args.p_title ?? 'Refund',
+          job_id: escrow.job_id,
+        });
+      }
+      return { data: { ...escrow }, error: null };
+    }
+
+    if (fn === 'wallet_reserve_connect_transfer') {
+      const escrow = this.rows('escrow_transactions').find(
+        (e) => e.id === args.p_escrow_id,
+      );
+      if (!escrow) return refuse('TB404', 'Escrow not found');
+      if (escrow.status !== 'released' || escrow.funding_method !== 'card') {
+        return refuse(
+          'TB409',
+          'Only a released, card-funded escrow can be sent to Stripe',
+        );
+      }
+      const live = this.rows('wallet_transactions').find(
+        (t) =>
+          t.job_id === escrow.job_id &&
+          t.kind === 'connect_transfer' &&
+          ['pending', 'completed'].includes(t.status),
+      );
+      if (live) return { data: { ...live }, error: null };
+      const amount = Number(args.p_amount);
+      const available = this.available(escrow.provider_id);
+      if (available < amount) {
+        return refuse(
+          'TB402',
+          'Insufficient wallet balance',
+          JSON.stringify({ needed: amount, available }),
+        );
+      }
+      const row = ledger({
+        profile_id: escrow.provider_id,
+        direction: 'debit',
+        kind: 'connect_transfer',
+        status: 'pending',
+        amount,
+        title: args.p_title ?? 'Sent to your Stripe account',
+        job_id: escrow.job_id,
+      });
+      return { data: { ...row }, error: null };
+    }
+
+    return refuse('42883', `function ${fn} is not transcribed in FakeDb`);
   }
 
   private builder(table: string) {
@@ -476,13 +671,30 @@ function buildWorld(options: { topUp?: number; commissionRate?: number } = {}) {
   } as unknown as UploadsService;
 
   const wallet = new WalletService(supabase, adminActions);
-  const escrow = new EscrowService(supabase, wallet);
+  const escrow = new EscrowService(supabase);
   const jobs = new JobsService(supabase, uploads, escrow);
   const applications = new ApplicationsService(supabase, escrow);
   const reviews = new ReviewsService(supabase);
   const disputes = new DisputesService(supabase, escrow, adminActions);
+  // Only the webhook half runs here; opening Checkout needs Stripe itself.
+  const hireFunding = new HireFundingService(
+    supabase,
+    {} as StripeService,
+    {} as StripeCustomersService,
+    applications,
+    escrow,
+  );
 
-  return { db, wallet, escrow, jobs, applications, reviews, disputes };
+  return {
+    db,
+    wallet,
+    escrow,
+    jobs,
+    applications,
+    reviews,
+    disputes,
+    hireFunding,
+  };
 }
 
 async function postJob(
@@ -743,6 +955,123 @@ describe('job lifecycle, end to end', () => {
     await jobs.decline(provider, posted.id, { reason: 'May emergency po' });
 
     expect(db.rows('jobs')[0].status).toBe('cancelled');
+    expect(await wallet.balanceFor('c1')).toBe(5000);
+  });
+});
+
+/** A card payment for the job's budget, as Stripe reports it to the webhook. */
+function hirePayment(
+  application: Record<string, any>,
+  budget = BUDGET,
+): Stripe.PaymentIntent {
+  return {
+    id: 'pi_hire',
+    amount_received: Math.round(budget * 100),
+    currency: 'php',
+    latest_charge: 'ch_hire',
+    metadata: {
+      purpose: 'hire_funding',
+      profile_id: 'c1',
+      application_id: application.id,
+      job_id: application.job_id,
+      provider_id: application.provider_id,
+    },
+  } as unknown as Stripe.PaymentIntent;
+}
+
+describe('job lifecycle, paid by card at hire (§29.4)', () => {
+  it('holds the card payment on the webhook and pays the provider on completion', async () => {
+    // No top-up: the client's wallet is empty until Stripe says the card paid.
+    const world = buildWorld();
+    const { db, jobs, applications, escrow, wallet, hireFunding } = world;
+    const posted = (await postJob(world)) as Record<string, any>;
+    const application = (await applications.apply(
+      provider,
+      posted.id,
+      {},
+    )) as Record<string, any>;
+
+    await hireFunding.completeFromIntent(hirePayment(application));
+
+    // HELD immediately after the webhook, recording the payment behind it.
+    expect(await escrow.findByJob(posted.id)).toMatchObject({
+      status: 'held',
+      funding_method: 'card',
+      funding_payment_intent_id: 'pi_hire',
+      funding_charge_id: 'ch_hire',
+    });
+    expect(db.rows('job_applications')[0].status).toBe('accepted');
+    expect(db.rows('jobs')[0].status).toBe('assigned');
+    // One ledger: the card payment in, the hold out.
+    expect(db.ledgerFor('c1')).toEqual([
+      { direction: 'credit', kind: 'topup', amount: BUDGET },
+      { direction: 'debit', kind: 'escrow_hold', amount: BUDGET },
+    ]);
+
+    await jobs.start(provider, posted.id);
+    await jobs.complete(client, posted.id);
+
+    expect(await wallet.balanceFor('p1')).toBe(BUDGET);
+    // Marked for the onward Stripe transfer in the same move as the release.
+    expect(await escrow.findByJob(posted.id)).toMatchObject({
+      status: 'released',
+      transfer_status: 'pending',
+    });
+  });
+
+  it('turns a redelivered payment into exactly one credit, one hold and one hire', async () => {
+    const world = buildWorld();
+    const { db, applications, hireFunding } = world;
+    const posted = (await postJob(world)) as Record<string, any>;
+    const application = (await applications.apply(
+      provider,
+      posted.id,
+      {},
+    )) as Record<string, any>;
+
+    await hireFunding.completeFromIntent(hirePayment(application));
+    await hireFunding.completeFromIntent(hirePayment(application));
+
+    expect(db.ledgerFor('c1')).toEqual([
+      { direction: 'credit', kind: 'topup', amount: BUDGET },
+      { direction: 'debit', kind: 'escrow_hold', amount: BUDGET },
+    ]);
+    expect(db.rows('escrow_transactions')).toHaveLength(1);
+  });
+
+  it('refunds a cancelled card-funded job to the wallet', async () => {
+    const world = buildWorld();
+    const { jobs, applications, wallet, hireFunding } = world;
+    const posted = (await postJob(world)) as Record<string, any>;
+    const application = (await applications.apply(
+      provider,
+      posted.id,
+      {},
+    )) as Record<string, any>;
+    await hireFunding.completeFromIntent(hirePayment(application));
+
+    await jobs.cancel(client, posted.id);
+
+    // Back in the wallet — spendable on another hire, or withdrawable.
+    expect(await wallet.balanceFor('c1')).toBe(BUDGET);
+  });
+
+  it('keeps the money in the wallet when a wallet accept won the race', async () => {
+    const world = buildWorld({ topUp: 5000 });
+    const { db, applications, wallet, hireFunding } = world;
+    const posted = (await postJob(world)) as Record<string, any>;
+    const application = (await applications.apply(
+      provider,
+      posted.id,
+      {},
+    )) as Record<string, any>;
+
+    await applications.accept(client, application.id); // from the wallet
+    await hireFunding.completeFromIntent(hirePayment(application));
+
+    expect(db.rows('escrow_transactions')).toHaveLength(1);
+    expect(db.rows('escrow_transactions')[0].funding_method).toBe('wallet');
+    // 5000 − 1500 held + 1500 card payment, nothing lost and nothing doubled.
     expect(await wallet.balanceFor('c1')).toBe(5000);
   });
 });

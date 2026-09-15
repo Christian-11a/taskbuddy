@@ -5,6 +5,36 @@ app works today; this file covers how it got there and why. Newest first.
 
 ---
 
+## Pay for a hire by card (2026-09-16)
+
+Accept on a proposal now opens **`HirePaymentModal`** with two options:
+**Pay from wallet**, which is the old Accept, and **Pay by card**, which is the
+full budget on Stripe Checkout (`BACKEND_SCHEMA.md` §29.4).
+
+**The card path is hired by the server, not the app.** The app opens Checkout
+(`api.createHireCheckoutSession`) with `openAuthSessionAsync` and reads
+`?hire=success|cancelled` off the return. Stripe's webhook then credits the
+payment, holds it in escrow, and accepts the application. That is the same
+rule Add Money follows: a client that reported its own success could hire
+people with money that never arrived. So after the browser closes, the screen
+polls the proposal (8 × 1.5 s) and reports one of three outcomes:
+
+- **Hired**: the modal closes, and the card reads Hired.
+- **Taken in the meantime**: "Your payment is in your wallet, but the hire
+  could not be completed". The money is not lost; it sits in the wallet.
+- **Still confirming**: a slow webhook. It says so, and the list will catch up.
+
+Dismissing the browser is not taken as proof of no payment, for the same reason
+as Add Money: the screen still asks the server.
+
+Wallet is disabled when the balance is short, with an **add money** link.
+Card is disabled outside ₱20–₱100,000, Stripe's and the API's bounds. A job
+with no budget shows a single **Hire**.
+
+New: `MAX_CARD_PHP`. testIDs `hire-pay-wallet`, `hire-pay-card`,
+`hire-payment-message`, `my-jobs-card-<n>` and `job-detail-view-offers`.
+Maestro flow `hire_payment_choice.yaml`.
+
 ## Providers can set up Stripe payouts (2026-09-16)
 
 **Profile → Payouts** (`SPPayoutsScreen`) connects a Stripe Connect Express
@@ -39,16 +69,16 @@ button that did nothing. The screen also read `app.profiles` and
 `app.cached_*`, but the API returns `provider`, so every card said "Provider ·
 New · 0 jobs". Now:
 
-- errors show in a banner, with an **Add money to your wallet →** link when the
-  wallet is short;
+- errors show instead of vanishing (in the payment modal since card-at-hire,
+  with an **add money** link when the wallet is short);
 - names and stats come from `provider` / `provider.provider_profiles`, which the
   API now embeds;
 - a **Not verified** chip disables Accept ("Awaiting verification"). The API
   refuses that hire with `409 provider_not_verified` anyway;
 - decided applications show Hired / Not selected / Withdrawn instead of live
   buttons, and the count is pending proposals only;
-- testIDs `applications-accept-<id>`, `applications-reject-<id>`,
-  `applications-action-error` and `applications-add-funds` are there for Maestro.
+- testIDs `applications-accept-<id>`, `applications-reject-<id>` and
+  `applications-action-error` are there for Maestro.
 
 **Verification is required to apply** (`BACKEND_SCHEMA.md` §17 now says so).
 The feed banner no longer says "Browse jobs freely. Verify when you're ready";

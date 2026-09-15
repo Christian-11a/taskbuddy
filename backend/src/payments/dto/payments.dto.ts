@@ -1,5 +1,12 @@
 import { Type } from 'class-transformer';
-import { IsNumber, IsPositive, IsString, Max, Min } from 'class-validator';
+import {
+  IsNumber,
+  IsPositive,
+  IsString,
+  IsUUID,
+  Max,
+  Min,
+} from 'class-validator';
 
 /**
  * Bounds are in pesos.
@@ -32,6 +39,20 @@ export class CreateTopupDto {
  * flow before we agree to redirect anyone to it.
  */
 export class CreateCheckoutSessionDto extends CreateTopupDto {
+  @IsString()
+  app_redirect!: string;
+}
+
+/**
+ * Card-at-hire: pay the job's full budget by card and hire the provider behind
+ * `application_id` — done by the webhook once Stripe confirms the charge
+ * (BACKEND_SCHEMA.md §29.4). No amount is accepted: it is the job's budget,
+ * read server-side, so a client cannot hire for less than they posted.
+ */
+export class CreateHireCheckoutDto {
+  @IsUUID()
+  application_id!: string;
+
   @IsString()
   app_redirect!: string;
 }

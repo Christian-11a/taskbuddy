@@ -2,13 +2,32 @@ import {
   BadRequestException,
   ConflictException,
   ForbiddenException,
+  NotFoundException,
 } from '@nestjs/common';
 import { EscrowService, type EscrowRow } from './escrow.service';
 import { DisputesService } from './disputes.service';
+import {
+  EscrowConflictError,
+  InsufficientBalanceError,
+  isMoneyRefusal,
+  moneyError,
+} from './escrow-errors';
 import type { SupabaseService } from '../supabase/supabase.service';
-import type { WalletService } from '../wallet/wallet.service';
 import type { AdminActionsService } from '../admin/admin-actions.service';
 import type { Profile } from '../common/types';
+
+/**
+ * Since migration 0028 every escrow move is one SQL function that changes the
+ * escrow row and writes its ledger row together. What those functions do to
+ * the ledger — who is debited, the refund that happens once, the payout net of
+ * commission — is tested against real Postgres in `test/sql/money.test.mjs`.
+ *
+ * What is tested here is this service's half of the contract: which function
+ * it calls for which move, with what arguments (the commission it computed,
+ * the ledger line it wrote), and what it does with the answer — a lost race
+ * that is an error for some callers and quiet for others, and the SQLSTATEs
+ * that become typed exceptions.
+ */
 
 function createAdminActionsMock() {
   const record = jest.fn().mockResolvedValue(undefined);
@@ -17,26 +36,38 @@ function createAdminActionsMock() {
 
 type QueryResult = {
   data: unknown;
-  error: { message: string; code?: string } | null;
+  error: { message: string; code?: string; details?: string } | null;
   count?: number | null;
 };
 
-/** Same chainable stand-in as admin.service.spec.ts — results consumed per `.from()`. */
-function createSupabaseMock(resultsByTable: Record<string, QueryResult[]>) {
+/** Table reads consumed per `.from()`, RPC results consumed per function name. */
+function createSupabaseMock(
+  resultsByTable: Record<string, QueryResult[]>,
+  rpcResults: Record<string, QueryResult[]> = {},
+) {
   const calls: { table: string; method: string; args: unknown[] }[] = [];
-  const rpc = jest.fn().mockResolvedValue({ data: [], error: null });
+  const rpc = jest.fn((fn: string, _args?: Record<string, unknown>) =>
+    Promise.resolve(
+      rpcResults[fn]?.shift() ?? {
+        data: null,
+        error: { message: `no mock result for rpc '${fn}'` },
+      },
+    ),
+  );
   const from = jest.fn((table: string) => {
     const result =
       resultsByTable[table]?.shift() ??
-      // Every payOut reads the commission rate (0024). Defaulting it to zero
-      // here means the tests written before commission existed keep describing
-      // exactly the case they were written for: the platform takes nothing.
+      // Every payOut reads the commission rate (0024) and every ledger line
+      // names the job. Defaulting both means a test states only what it is
+      // about.
       (table === 'platform_settings'
         ? { data: { commission_rate: 0 }, error: null }
-        : {
-            data: null,
-            error: { message: `no mock result for table '${table}'` },
-          });
+        : table === 'jobs'
+          ? { data: { title: 'Fix sink' }, error: null }
+          : {
+              data: null,
+              error: { message: `no mock result for table '${table}'` },
+            });
     const builder: Record<string, unknown> = {};
     const chain = (method: string) =>
       jest.fn((...args: unknown[]) => {
@@ -70,23 +101,6 @@ function createSupabaseMock(resultsByTable: Record<string, QueryResult[]>) {
   };
 }
 
-/**
- * Escrow only ever asks the wallet for a balance — the available one since
- * 0024, so a peso promised to a pending withdrawal cannot also fund a hire.
- */
-function createWalletMock(balance = 100_000) {
-  const balanceFor = jest.fn(() => Promise.resolve(balance));
-  const availableBalanceFor = jest.fn(() => Promise.resolve(balance));
-  return {
-    wallet: { balanceFor, availableBalanceFor } as unknown as WalletService,
-    balanceFor,
-    availableBalanceFor,
-  };
-}
-
-/** Every successful ledger write consumes one queued wallet_transactions result. */
-const okLedger = (): QueryResult => ({ data: null, error: null });
-
 const heldEscrow: EscrowRow = {
   id: 'e1',
   job_id: 'j1',
@@ -100,697 +114,547 @@ const heldEscrow: EscrowRow = {
   commission_amount: 0,
 };
 
+const ok = (data: unknown): QueryResult => ({ data, error: null });
 const client = { id: 'c1', role: 'client' } as Profile;
 const admin = { id: 'a1', role: 'admin' } as Profile;
 
-/** Pull the wallet rows a call inserted, in order. */
-function ledgerWrites(
-  calls: { table: string; method: string; args: unknown[] }[],
-) {
-  return calls
-    .filter((c) => c.table === 'wallet_transactions' && c.method === 'insert')
-    .map((c) => c.args[0] as Record<string, unknown>);
+/** The arguments of every call to one RPC, in order. */
+function rpcArgs(rpc: jest.Mock, fn: string) {
+  return rpc.mock.calls
+    .filter(([name]) => name === fn)
+    .map(([, args]) => args as Record<string, unknown>);
 }
 
 describe('EscrowService', () => {
   describe('listForAdmin', () => {
     it('uses a paginated transactions search RPC and returns its rows and exact total', async () => {
       const rows = [{ id: 'e1', jobs: { title: 'Fix sink' } }];
-      const { supabase, calls, rpc } = createSupabaseMock({});
-      rpc.mockResolvedValue({
-        data: [{ rows, total: 17 }],
-        error: null,
-      });
-      const service = new EscrowService(supabase, createWalletMock().wallet);
+      const { supabase, calls, rpc } = createSupabaseMock(
+        {},
+        { admin_list_transactions: [ok([{ rows, total: 51 }])] },
+      );
+      const service = new EscrowService(supabase);
 
       await expect(
         service.listForAdmin({
-          search: 'Ramos',
+          search: 'faucet',
           status: 'held',
-          limit: 5,
-          offset: 10,
+          limit: 25,
+          offset: 25,
         }),
-      ).resolves.toEqual({ transactions: rows, total: 17 });
+      ).resolves.toEqual({ transactions: rows, total: 51 });
       expect(rpc).toHaveBeenCalledWith('admin_list_transactions', {
-        p_search_term: 'Ramos',
+        p_search_term: 'faucet',
         p_status: 'held',
-        p_limit: 5,
-        p_offset: 10,
+        p_limit: 25,
+        p_offset: 25,
       });
       expect(calls).toEqual([]);
     });
 
     it('retains the exact transactions total when the requested page is empty', async () => {
-      const { supabase, rpc } = createSupabaseMock({});
-      rpc.mockResolvedValue({ data: [{ rows: [], total: 17 }], error: null });
-      const service = new EscrowService(supabase, createWalletMock().wallet);
+      const { supabase } = createSupabaseMock(
+        {},
+        { admin_list_transactions: [ok([{ rows: [], total: 51 }])] },
+      );
+      const service = new EscrowService(supabase);
 
       await expect(
-        service.listForAdmin({ search: 'Ramos', limit: 5, offset: 100 }),
-      ).resolves.toStrictEqual({ transactions: [], total: 17 });
+        service.listForAdmin({ limit: 25, offset: 100 }),
+      ).resolves.toEqual({ transactions: [], total: 51 });
     });
   });
 
   describe('hold', () => {
-    it('debits the client and records a held escrow', async () => {
-      const { supabase, calls } = createSupabaseMock({
-        jobs: [
-          {
-            data: {
-              id: 'j1',
-              title: 'Fix sink',
-              budget: 1500,
-              client_id: 'c1',
-            },
-            error: null,
-          },
-        ],
-        escrow_transactions: [
-          // hold() looks for an existing row before inserting, so a second
-          // hire cannot silently inherit the first one's money.
-          { data: null, error: null },
-          { data: heldEscrow, error: null },
-        ],
-        wallet_transactions: [okLedger()],
-      });
-      const service = new EscrowService(
-        supabase,
-        createWalletMock(2000).wallet,
+    it('places a wallet-funded hold in one call and says it did', async () => {
+      const { supabase, rpc, calls } = createSupabaseMock(
+        {},
+        { escrow_place_hold: [ok({ escrow: heldEscrow, placed: true })] },
       );
+      const service = new EscrowService(supabase);
 
       const result = await service.hold('j1', 'p1');
 
-      expect(result.escrow).toMatchObject({ status: 'held', amount: 1500 });
-      expect(result.placed).toBe(true);
-      expect(ledgerWrites(calls)).toEqual([
-        expect.objectContaining({
-          profile_id: 'c1',
-          direction: 'debit',
-          kind: 'escrow_hold',
-          amount: 1500,
-          job_id: 'j1',
-        }),
+      expect(result).toEqual({ escrow: heldEscrow, placed: true });
+      expect(rpcArgs(rpc, 'escrow_place_hold')).toEqual([
+        {
+          p_job_id: 'j1',
+          p_provider_id: 'p1',
+          p_funding_method: 'wallet',
+          p_payment_intent_id: null,
+          p_charge_id: null,
+        },
       ]);
+      // No separate escrow insert or ledger write: both happen inside the
+      // function, in one transaction.
+      expect(calls).toEqual([]);
     });
 
-    it('blocks the hire when the client cannot cover the budget', async () => {
-      const { supabase, calls } = createSupabaseMock({
-        jobs: [
-          {
-            data: {
-              id: 'j1',
-              title: 'Fix sink',
-              budget: 1500,
-              client_id: 'c1',
-            },
-            error: null,
-          },
-        ],
-        escrow_transactions: [{ data: null, error: null }],
-      });
-      const service = new EscrowService(supabase, createWalletMock(200).wallet);
-
-      await expect(service.hold('j1', 'p1')).rejects.toThrow(
-        /Insufficient wallet balance/,
+    it('records the card payment behind a card-funded hold', async () => {
+      const { supabase, rpc } = createSupabaseMock(
+        {},
+        { escrow_place_hold: [ok({ escrow: heldEscrow, placed: true })] },
       );
-      // Nothing was written and nobody was debited. (The read that looks for
-      // an existing hold is fine; it is the insert that must not happen.)
-      expect(
-        calls.some(
-          (c) => c.table === 'escrow_transactions' && c.method === 'insert',
-        ),
-      ).toBe(false);
-      expect(ledgerWrites(calls)).toEqual([]);
+      const service = new EscrowService(supabase);
+
+      await service.hold('j1', 'p1', {
+        paymentIntentId: 'pi_1',
+        chargeId: 'ch_1',
+      });
+
+      expect(rpcArgs(rpc, 'escrow_place_hold')[0]).toMatchObject({
+        p_funding_method: 'card',
+        p_payment_intent_id: 'pi_1',
+        p_charge_id: 'ch_1',
+      });
+    });
+
+    it('passes on a retry that debited nobody as placed: false', async () => {
+      // The load-bearing half: ApplicationsService.accept rolls back on
+      // `placed`, and a true here would refund a hire that succeeded.
+      const { supabase } = createSupabaseMock(
+        {},
+        { escrow_place_hold: [ok({ escrow: heldEscrow, placed: false })] },
+      );
+      const service = new EscrowService(supabase);
+
+      expect((await service.hold('j1', 'p1')).placed).toBe(false);
     });
 
     it('no-ops for a job posted without a budget', async () => {
-      const { wallet, availableBalanceFor } = createWalletMock();
-      const { supabase, calls } = createSupabaseMock({
-        jobs: [
-          {
-            data: { id: 'j1', title: 'Old job', budget: null, client_id: 'c1' },
-            error: null,
-          },
-        ],
-      });
-      const service = new EscrowService(supabase, wallet);
+      const { supabase } = createSupabaseMock(
+        {},
+        { escrow_place_hold: [ok({ escrow: null, placed: false })] },
+      );
+      const service = new EscrowService(supabase);
 
       expect(await service.hold('j1', 'p1')).toEqual({
         escrow: null,
         placed: false,
       });
-      expect(calls.some((c) => c.table === 'escrow_transactions')).toBe(false);
-      // Bails before it ever asks about money.
-      expect(availableBalanceFor).not.toHaveBeenCalled();
     });
 
-    it('does not debit twice when the job is already held', async () => {
-      const { supabase, calls } = createSupabaseMock({
-        jobs: [
-          {
-            data: {
-              id: 'j1',
-              title: 'Fix sink',
-              budget: 1500,
-              client_id: 'c1',
+    it('turns a short wallet into the message the app shows, with the figures', async () => {
+      const { supabase } = createSupabaseMock(
+        {},
+        {
+          escrow_place_hold: [
+            {
+              data: null,
+              error: {
+                code: 'TB402',
+                message: 'Insufficient wallet balance',
+                details: '{"needed": 1500, "available": 200}',
+              },
             },
-            error: null,
-          },
-        ],
-        escrow_transactions: [{ data: heldEscrow, error: null }],
-      });
-      const service = new EscrowService(
-        supabase,
-        createWalletMock(5000).wallet,
+          ],
+        },
       );
+      const service = new EscrowService(supabase);
 
-      const result = await service.hold('j1', 'p1');
+      const err: unknown = await service
+        .hold('j1', 'p1')
+        .catch((e: unknown) => e);
 
-      expect(result.escrow).toMatchObject({ id: 'e1' });
-      expect(ledgerWrites(calls)).toEqual([]);
-      expect(
-        calls.some(
-          (c) => c.table === 'escrow_transactions' && c.method === 'insert',
-        ),
-      ).toBe(false);
-      // The load-bearing half: nothing was debited, so this caller must not be
-      // told it placed the hold. ApplicationsService.accept rolls back on
-      // `placed`, and a true here would refund a hire that succeeded.
-      expect(result.placed).toBe(false);
+      expect(err).toBeInstanceOf(InsufficientBalanceError);
+      expect(err).toBeInstanceOf(BadRequestException);
+      expect((err as InsufficientBalanceError).getResponse()).toMatchObject({
+        message:
+          'Insufficient wallet balance: ₱1,500.00 needed, ₱200.00 available. Add funds to your wallet before hiring.',
+        code: 'insufficient_funds',
+        needed: 1500,
+        available: 200,
+      });
     });
 
-    it('refuses to inherit a hold placed for a different provider', async () => {
-      // Two accepts landing together would otherwise assign the job to one
-      // provider while the money sits held for another.
-      const { supabase, calls } = createSupabaseMock({
-        jobs: [
-          {
-            data: {
-              id: 'j1',
-              title: 'Fix sink',
-              budget: 1500,
-              client_id: 'c1',
+    it('refuses a hold for another provider as a conflict', async () => {
+      const { supabase } = createSupabaseMock(
+        {},
+        {
+          escrow_place_hold: [
+            {
+              data: null,
+              error: {
+                code: 'TB409',
+                message:
+                  'This job already has an escrow hold for another provider.',
+              },
             },
-            error: null,
-          },
-        ],
-        escrow_transactions: [{ data: heldEscrow, error: null }],
-      });
-      const service = new EscrowService(
-        supabase,
-        createWalletMock(5000).wallet,
+          ],
+        },
       );
+      const service = new EscrowService(supabase);
 
-      await expect(service.hold('j1', 'p2')).rejects.toThrow(ConflictException);
-      expect(ledgerWrites(calls)).toEqual([]);
-    });
-
-    it('revives a hold that a failed hire rolled back, debiting again', async () => {
-      const { supabase, calls } = createSupabaseMock({
-        jobs: [
-          {
-            data: {
-              id: 'j1',
-              title: 'Fix sink',
-              budget: 1500,
-              client_id: 'c1',
-            },
-            error: null,
-          },
-        ],
-        escrow_transactions: [
-          { data: { ...heldEscrow, status: 'cancelled' }, error: null },
-          { data: heldEscrow, error: null },
-        ],
-        wallet_transactions: [okLedger()],
-      });
-      const service = new EscrowService(
-        supabase,
-        createWalletMock(5000).wallet,
+      await expect(service.hold('j1', 'p2')).rejects.toThrow(
+        EscrowConflictError,
       );
-
-      const result = await service.hold('j1', 'p1');
-
-      // Without the re-debit the retry would adopt an empty row and hire
-      // someone against money that had already gone back to the client.
-      expect(result.escrow).toMatchObject({ status: 'held' });
-      expect(result.placed).toBe(true);
-      expect(ledgerWrites(calls)).toEqual([
-        expect.objectContaining({ kind: 'escrow_hold', amount: 1500 }),
-      ]);
-    });
-
-    it('refuses to re-hold an escrow that has already been released', async () => {
-      const { supabase } = createSupabaseMock({
-        jobs: [
-          {
-            data: {
-              id: 'j1',
-              title: 'Fix sink',
-              budget: 1500,
-              client_id: 'c1',
-            },
-            error: null,
-          },
-        ],
-        escrow_transactions: [
-          { data: { ...heldEscrow, status: 'released' }, error: null },
-        ],
-      });
-      const service = new EscrowService(
-        supabase,
-        createWalletMock(5000).wallet,
-      );
-
-      await expect(service.hold('j1', 'p1')).rejects.toThrow(ConflictException);
     });
   });
 
   describe('commission', () => {
-    /** A release with a rate configured. */
     function releaseWith(rate: number, budget = 1500) {
-      return createSupabaseMock({
-        escrow_transactions: [
-          { data: { ...heldEscrow, amount: budget }, error: null },
-          {
-            data: { ...heldEscrow, amount: budget, status: 'released' },
-            error: null,
-          },
-        ],
-        platform_settings: [{ data: { commission_rate: rate }, error: null }],
-        jobs: [{ data: { title: 'Fix sink' }, error: null }],
-        wallet_transactions: [okLedger()],
-      });
+      const escrow = { ...heldEscrow, amount: budget };
+      return createSupabaseMock(
+        {
+          escrow_transactions: [ok(escrow)],
+          platform_settings: [ok({ commission_rate: rate })],
+        },
+        { escrow_settle: [ok({ ...escrow, status: 'released' })] },
+      );
     }
 
     it('pays the provider the whole budget while the rate is zero', async () => {
       // The default, and the point of the default: applying 0024 changes no
       // figure anywhere until an admin deliberately sets a rate.
-      const { supabase, calls } = releaseWith(0);
-      const service = new EscrowService(supabase, createWalletMock().wallet);
+      const { supabase, rpc } = releaseWith(0);
+      await new EscrowService(supabase).release('j1');
 
-      await service.release('j1');
-
-      expect(ledgerWrites(calls)[0]).toMatchObject({
-        kind: 'payout',
-        amount: 1500,
+      expect(rpcArgs(rpc, 'escrow_settle')[0]).toMatchObject({
+        p_next: 'released',
+        p_commission: 0,
+        p_title: 'Payout — Fix sink',
       });
     });
 
-    it('withholds the configured cut and credits the provider the remainder', async () => {
-      const { supabase, calls } = releaseWith(0.15);
-      const service = new EscrowService(supabase, createWalletMock().wallet);
+    it('freezes the configured cut onto the release and says so on the payout line', async () => {
+      const { supabase, rpc } = releaseWith(0.15);
+      await new EscrowService(supabase).release('j1');
 
-      await service.release('j1');
-
-      expect(ledgerWrites(calls)[0]).toMatchObject({
-        kind: 'payout',
-        amount: 1275, // 1500 less 15%
-      });
-      // The withheld amount has no ledger row of its own — the platform is not
-      // a profile — so escrow is where it is recorded.
-      const escrowUpdate = calls.find(
-        (c) => c.table === 'escrow_transactions' && c.method === 'update',
-      );
-      expect(escrowUpdate?.args[0]).toMatchObject({
-        status: 'released',
-        commission_amount: 225,
+      expect(rpcArgs(rpc, 'escrow_settle')[0]).toMatchObject({
+        p_commission: 225,
+        p_title: 'Payout — Fix sink (less 225.00 platform fee)',
       });
     });
 
     it('rounds to centavos rather than carrying float noise into the ledger', async () => {
-      // 1000.05 * 0.075 = 75.00375 — a payout of 925.04625 pesos is not a
-      // number the ledger can hold, let alone one anyone can be paid.
-      const { supabase, calls } = releaseWith(0.075, 1000.05);
-      const service = new EscrowService(supabase, createWalletMock().wallet);
+      // 1000.05 * 0.075 = 75.00375 — not an amount anyone can be charged.
+      const { supabase, rpc } = releaseWith(0.075, 1000.05);
+      await new EscrowService(supabase).release('j1');
 
-      await service.release('j1');
-
-      expect(ledgerWrites(calls)[0]).toMatchObject({ amount: 925.05 });
-      const escrowUpdate = calls.find(
-        (c) => c.table === 'escrow_transactions' && c.method === 'update',
-      );
-      expect(escrowUpdate?.args[0]).toMatchObject({ commission_amount: 75 });
+      expect(rpcArgs(rpc, 'escrow_settle')[0]).toMatchObject({
+        p_commission: 75,
+      });
     });
 
     it('falls back to no commission when the settings row cannot be read', async () => {
       // A settings read that fails must not strand a provider's payout, and
       // zero is the direction that errs in the user's favour.
-      const { supabase, calls } = createSupabaseMock({
-        escrow_transactions: [
-          { data: heldEscrow, error: null },
-          { data: { ...heldEscrow, status: 'released' }, error: null },
-        ],
-        platform_settings: [{ data: null, error: { message: 'boom' } }],
-        jobs: [{ data: { title: 'Fix sink' }, error: null }],
-        wallet_transactions: [okLedger()],
+      const { supabase, rpc } = createSupabaseMock(
+        {
+          escrow_transactions: [ok(heldEscrow)],
+          platform_settings: [{ data: null, error: { message: 'boom' } }],
+        },
+        { escrow_settle: [ok({ ...heldEscrow, status: 'released' })] },
+      );
+      await new EscrowService(supabase).release('j1');
+
+      expect(rpcArgs(rpc, 'escrow_settle')[0]).toMatchObject({
+        p_commission: 0,
       });
-      const service = new EscrowService(supabase, createWalletMock().wallet);
-
-      await service.release('j1');
-
-      expect(ledgerWrites(calls)[0]).toMatchObject({ amount: 1500 });
     });
   });
 
   describe('release', () => {
-    it('marks released and credits the provider as a payout', async () => {
-      const { supabase, calls } = createSupabaseMock({
-        escrow_transactions: [
-          { data: heldEscrow, error: null },
-          { data: { ...heldEscrow, status: 'released' }, error: null },
-        ],
-        jobs: [{ data: { title: 'Fix sink' }, error: null }],
-        wallet_transactions: [okLedger()],
-      });
-      const service = new EscrowService(supabase, createWalletMock().wallet);
+    it('moves held → released, re-asserting the status it read', async () => {
+      const { supabase, rpc } = createSupabaseMock(
+        { escrow_transactions: [ok(heldEscrow)] },
+        { escrow_settle: [ok({ ...heldEscrow, status: 'released' })] },
+      );
 
-      const result = await service.release('j1');
+      const result = await new EscrowService(supabase).release('j1');
 
       expect(result).toMatchObject({ status: 'released' });
-      expect(ledgerWrites(calls)).toEqual([
-        expect.objectContaining({
-          profile_id: 'p1',
-          direction: 'credit',
-          // `payout` is what the admin revenue query counts.
-          kind: 'payout',
-          amount: 1500,
-          job_id: 'j1',
-        }),
-      ]);
+      expect(rpcArgs(rpc, 'escrow_settle')[0]).toMatchObject({
+        p_escrow_id: 'e1',
+        p_expected: 'held',
+        p_next: 'released',
+      });
+    });
+
+    it('raises when another release got there first, rather than reporting a payout', async () => {
+      const { supabase } = createSupabaseMock(
+        { escrow_transactions: [ok(heldEscrow)] },
+        { escrow_settle: [ok(null)] }, // lost the race
+      );
+
+      await expect(new EscrowService(supabase).release('j1')).rejects.toThrow(
+        ConflictException,
+      );
     });
 
     it('raises rather than reporting a payout that did not happen', async () => {
       // This used to return null. A caller that reads silence as success —
-      // a retried webhook, a future payout rail — would believe the provider
-      // had been paid.
-      const { supabase, calls } = createSupabaseMock({
-        escrow_transactions: [
-          { data: { ...heldEscrow, status: 'released' }, error: null },
-        ],
+      // a retried webhook, the payout rail — would believe the provider had
+      // been paid.
+      const { supabase, rpc } = createSupabaseMock({
+        escrow_transactions: [ok({ ...heldEscrow, status: 'released' })],
       });
-      const service = new EscrowService(supabase, createWalletMock().wallet);
 
-      await expect(service.release('j1')).rejects.toThrow(ConflictException);
-      expect(ledgerWrites(calls)).toEqual([]);
+      await expect(new EscrowService(supabase).release('j1')).rejects.toThrow(
+        ConflictException,
+      );
+      expect(rpc).not.toHaveBeenCalled();
     });
 
     it('raises when the job never had an escrow hold at all', async () => {
       const { supabase } = createSupabaseMock({
-        escrow_transactions: [{ data: null, error: null }],
+        escrow_transactions: [ok(null)],
       });
-      const service = new EscrowService(supabase, createWalletMock().wallet);
 
-      await expect(service.release('j1')).rejects.toThrow(BadRequestException);
+      await expect(new EscrowService(supabase).release('j1')).rejects.toThrow(
+        BadRequestException,
+      );
     });
   });
 
   describe('releaseIfHeld', () => {
     it('pays out a held escrow, same as release', async () => {
-      const { supabase, calls } = createSupabaseMock({
-        escrow_transactions: [
-          { data: heldEscrow, error: null },
-          { data: { ...heldEscrow, status: 'released' }, error: null },
-        ],
-        jobs: [{ data: { title: 'Fix sink' }, error: null }],
-        wallet_transactions: [okLedger()],
-      });
-      const service = new EscrowService(supabase, createWalletMock().wallet);
+      const { supabase } = createSupabaseMock(
+        { escrow_transactions: [ok(heldEscrow)] },
+        { escrow_settle: [ok({ ...heldEscrow, status: 'released' })] },
+      );
 
-      expect(await service.releaseIfHeld('j1')).toMatchObject({
-        status: 'released',
-      });
-      expect(ledgerWrites(calls)[0]).toMatchObject({ kind: 'payout' });
+      expect(
+        await new EscrowService(supabase).releaseIfHeld('j1'),
+      ).toMatchObject({ status: 'released' });
     });
 
     it('leaves a disputed escrow alone and pays nobody', async () => {
-      // Frozen until an admin decides it either way — not an error, and not a
-      // payout.
-      const { supabase, calls } = createSupabaseMock({
-        escrow_transactions: [
-          { data: { ...heldEscrow, status: 'disputed' }, error: null },
-        ],
+      const { supabase, rpc } = createSupabaseMock({
+        escrow_transactions: [ok({ ...heldEscrow, status: 'disputed' })],
       });
-      const service = new EscrowService(supabase, createWalletMock().wallet);
 
-      expect(await service.releaseIfHeld('j1')).toBeNull();
-      expect(ledgerWrites(calls)).toEqual([]);
+      expect(await new EscrowService(supabase).releaseIfHeld('j1')).toBeNull();
+      expect(rpc).not.toHaveBeenCalled();
     });
 
     it('returns null for a job posted without a budget', async () => {
       const { supabase } = createSupabaseMock({
-        escrow_transactions: [{ data: null, error: null }],
+        escrow_transactions: [ok(null)],
       });
-      const service = new EscrowService(supabase, createWalletMock().wallet);
 
-      expect(await service.releaseIfHeld('j1')).toBeNull();
+      expect(await new EscrowService(supabase).releaseIfHeld('j1')).toBeNull();
     });
 
     it('still raises on an escrow that was already released', async () => {
       const { supabase } = createSupabaseMock({
-        escrow_transactions: [
-          { data: { ...heldEscrow, status: 'released' }, error: null },
-        ],
+        escrow_transactions: [ok({ ...heldEscrow, status: 'released' })],
       });
-      const service = new EscrowService(supabase, createWalletMock().wallet);
 
-      await expect(service.releaseIfHeld('j1')).rejects.toThrow(
-        ConflictException,
-      );
+      await expect(
+        new EscrowService(supabase).releaseIfHeld('j1'),
+      ).rejects.toThrow(ConflictException);
     });
   });
 
   describe('releaseHoldForFailedHire', () => {
-    it('returns the money when an accept failed after its hold was placed', async () => {
-      const { supabase, calls } = createSupabaseMock({
-        escrow_transactions: [
-          { data: heldEscrow, error: null },
-          { data: { ...heldEscrow, status: 'cancelled' }, error: null },
-        ],
-        jobs: [{ data: { title: 'Fix sink' }, error: null }],
-        wallet_transactions: [okLedger()],
+    it('returns the money under its own ledger line', async () => {
+      const { supabase, rpc } = createSupabaseMock(
+        { escrow_transactions: [ok(heldEscrow)] },
+        { escrow_settle: [ok({ ...heldEscrow, status: 'cancelled' })] },
+      );
+
+      await new EscrowService(supabase).releaseHoldForFailedHire('j1');
+
+      expect(rpcArgs(rpc, 'escrow_settle')[0]).toMatchObject({
+        p_expected: 'held',
+        p_next: 'cancelled',
+        p_title: 'Refund — hire did not complete: Fix sink',
       });
-      const service = new EscrowService(supabase, createWalletMock().wallet);
-
-      await service.releaseHoldForFailedHire('j1');
-
-      expect(ledgerWrites(calls)).toEqual([
-        expect.objectContaining({
-          profile_id: 'c1',
-          direction: 'credit',
-          kind: 'refund',
-          amount: 1500,
-        }),
-      ]);
     });
 
-    it('credits nobody when the hold moved on before the rollback ran', async () => {
-      const { supabase, calls } = createSupabaseMock({
-        escrow_transactions: [
-          { data: heldEscrow, error: null },
-          { data: null, error: null }, // the update matched nothing
-        ],
-      });
-      const service = new EscrowService(supabase, createWalletMock().wallet);
+    it('is quiet when the hold moved on before the rollback ran', async () => {
+      const { supabase } = createSupabaseMock(
+        { escrow_transactions: [ok(heldEscrow)] },
+        { escrow_settle: [ok(null)] },
+      );
 
-      await service.releaseHoldForFailedHire('j1');
-
-      expect(ledgerWrites(calls)).toEqual([]);
+      await expect(
+        new EscrowService(supabase).releaseHoldForFailedHire('j1'),
+      ).resolves.toBeUndefined();
     });
 
     it('does nothing when there is no live hold to undo', async () => {
-      const { supabase, calls } = createSupabaseMock({
-        escrow_transactions: [{ data: null, error: null }],
+      const { supabase, rpc } = createSupabaseMock({
+        escrow_transactions: [ok(null)],
       });
-      const service = new EscrowService(supabase, createWalletMock().wallet);
 
-      await service.releaseHoldForFailedHire('j1');
+      await new EscrowService(supabase).releaseHoldForFailedHire('j1');
 
-      expect(ledgerWrites(calls)).toEqual([]);
+      expect(rpc).not.toHaveBeenCalled();
     });
   });
 
   describe('cancelForJob', () => {
-    it('credits nobody when another cancel got there first', async () => {
-      // A client tapping Cancel while the provider taps Decline: two
-      // endpoints, one escrow, both reading 'held'. The conditional update
-      // matches no row for the loser, and without that check both would
-      // credit the client — refunding one hold twice.
-      const { supabase, calls } = createSupabaseMock({
-        escrow_transactions: [
-          { data: heldEscrow, error: null },
-          { data: null, error: null }, // the update matched nothing
-        ],
-      });
-      const service = new EscrowService(supabase, createWalletMock().wallet);
+    it('cancels and returns the held funds to the client', async () => {
+      const { supabase, rpc } = createSupabaseMock(
+        { escrow_transactions: [ok(heldEscrow)] },
+        { escrow_settle: [ok({ ...heldEscrow, status: 'cancelled' })] },
+      );
 
-      expect(await service.cancelForJob('j1')).toBeNull();
-      expect(ledgerWrites(calls)).toEqual([]);
+      const result = await new EscrowService(supabase).cancelForJob('j1');
+
+      expect(result).toMatchObject({ status: 'cancelled' });
+      expect(rpcArgs(rpc, 'escrow_settle')[0]).toMatchObject({
+        p_next: 'cancelled',
+        p_title: 'Refund — job cancelled: Fix sink',
+      });
+    });
+
+    it('is quiet when another cancel got there first', async () => {
+      // A client tapping Cancel while the provider taps Decline: two
+      // endpoints, one escrow. The loser gets null, and the SQL function wrote
+      // no refund for it.
+      const { supabase } = createSupabaseMock(
+        { escrow_transactions: [ok(heldEscrow)] },
+        { escrow_settle: [ok(null)] },
+      );
+
+      expect(await new EscrowService(supabase).cancelForJob('j1')).toBeNull();
     });
 
     it('leaves a disputed escrow for an admin rather than refunding it', async () => {
-      const { supabase, calls } = createSupabaseMock({
-        escrow_transactions: [
-          { data: { ...heldEscrow, status: 'disputed' }, error: null },
-        ],
+      const { supabase, rpc } = createSupabaseMock({
+        escrow_transactions: [ok({ ...heldEscrow, status: 'disputed' })],
       });
-      const service = new EscrowService(supabase, createWalletMock().wallet);
 
-      expect(await service.cancelForJob('j1')).toBeNull();
-      expect(ledgerWrites(calls)).toEqual([]);
-    });
-
-    it('cancels and returns the held funds to the client', async () => {
-      const { supabase, calls } = createSupabaseMock({
-        escrow_transactions: [
-          { data: heldEscrow, error: null },
-          { data: { ...heldEscrow, status: 'cancelled' }, error: null },
-        ],
-        jobs: [{ data: { title: 'Fix sink' }, error: null }],
-        wallet_transactions: [okLedger()],
-      });
-      const service = new EscrowService(supabase, createWalletMock().wallet);
-
-      const result = await service.cancelForJob('j1');
-
-      expect(result).toMatchObject({ status: 'cancelled' });
-      expect(ledgerWrites(calls)).toEqual([
-        expect.objectContaining({
-          profile_id: 'c1',
-          direction: 'credit',
-          // `refund`, never `payout` — a cancelled job is not revenue.
-          kind: 'refund',
-          amount: 1500,
-        }),
-      ]);
+      expect(await new EscrowService(supabase).cancelForJob('j1')).toBeNull();
+      expect(rpc).not.toHaveBeenCalled();
     });
   });
 
   describe('refund', () => {
-    it('credits the client back and tags the row as a refund', async () => {
-      const { supabase, calls } = createSupabaseMock({
-        escrow_transactions: [
-          { data: { ...heldEscrow, status: 'refunded' }, error: null },
-        ],
-        jobs: [{ data: { title: 'Fix sink' }, error: null }],
-        wallet_transactions: [okLedger()],
+    it('settles a disputed escrow in the client’s favour', async () => {
+      const disputed = { ...heldEscrow, status: 'disputed' as const };
+      const { supabase, rpc } = createSupabaseMock(
+        {},
+        { escrow_settle: [ok({ ...disputed, status: 'refunded' })] },
+      );
+
+      await new EscrowService(supabase).refund(disputed);
+
+      expect(rpcArgs(rpc, 'escrow_settle')[0]).toMatchObject({
+        p_expected: 'disputed',
+        p_next: 'refunded',
+        p_title: 'Refund — dispute resolved: Fix sink',
       });
-      const service = new EscrowService(supabase, createWalletMock().wallet);
+    });
 
-      await service.refund(heldEscrow);
+    it('refuses money that has already moved', async () => {
+      const { supabase, rpc } = createSupabaseMock({});
 
-      expect(ledgerWrites(calls)).toEqual([
-        expect.objectContaining({
-          profile_id: 'c1',
-          direction: 'credit',
-          kind: 'refund',
-          amount: 1500,
+      await expect(
+        new EscrowService(supabase).refund({
+          ...heldEscrow,
+          status: 'refunded',
         }),
-      ]);
+      ).rejects.toThrow(ConflictException);
+      expect(rpc).not.toHaveBeenCalled();
     });
   });
 });
 
+describe('moneyError', () => {
+  it('maps each SQLSTATE from migration 0028 to its exception', () => {
+    expect(
+      moneyError({ code: 'TB402', message: 'x', details: '{}' }),
+    ).toBeInstanceOf(InsufficientBalanceError);
+    expect(moneyError({ code: 'TB409', message: 'x' })).toBeInstanceOf(
+      EscrowConflictError,
+    );
+    expect(moneyError({ code: 'TB404', message: 'x' })).toBeInstanceOf(
+      NotFoundException,
+    );
+    expect(moneyError({ code: '08006', message: 'x' })).toBeInstanceOf(
+      BadRequestException,
+    );
+  });
+
+  it('tells a refusal from a fault', () => {
+    expect(isMoneyRefusal(new InsufficientBalanceError(1, 0))).toBe(true);
+    expect(isMoneyRefusal(new EscrowConflictError('x'))).toBe(true);
+    expect(isMoneyRefusal(new BadRequestException('connection lost'))).toBe(
+      false,
+    );
+  });
+});
+
 describe('DisputesService', () => {
+  function build(
+    tables: Record<string, QueryResult[]>,
+    rpcs: Record<string, QueryResult[]> = {},
+  ) {
+    const { supabase, calls, rpc } = createSupabaseMock(tables, rpcs);
+    const { mock: adminActions, record } = createAdminActionsMock();
+    const service = new DisputesService(
+      supabase,
+      new EscrowService(supabase),
+      adminActions,
+    );
+    return { service, calls, rpc, record };
+  }
+
   describe('raise', () => {
-    it('marks the escrow disputed and notifies the provider', async () => {
-      const { supabase, calls } = createSupabaseMock({
-        escrow_transactions: [
-          { data: heldEscrow, error: null }, // findByJob
-          { data: { ...heldEscrow, status: 'disputed' }, error: null }, // markDisputed
-        ],
-        disputes: [{ data: { id: 'd1', status: 'open' }, error: null }],
-        notifications: [{ data: null, error: null }],
-      });
-      const escrow = new EscrowService(supabase, createWalletMock().wallet);
-      const service = new DisputesService(
-        supabase,
-        escrow,
-        createAdminActionsMock().mock,
+    it('freezes the escrow without moving money, and notifies the provider', async () => {
+      const { service, calls, rpc } = build(
+        {
+          escrow_transactions: [ok(heldEscrow)],
+          disputes: [ok({ id: 'd1', status: 'open' })],
+          notifications: [ok(null)],
+        },
+        { escrow_settle: [ok({ ...heldEscrow, status: 'disputed' })] },
       );
 
       const result = await service.raise(client, 'j1', { reason: 'No show' });
 
       expect(result).toMatchObject({ id: 'd1' });
-      const update = calls.find(
-        (c) => c.table === 'escrow_transactions' && c.method === 'update',
-      );
-      expect(update?.args[0]).toEqual({ status: 'disputed' });
+      expect(rpcArgs(rpc, 'escrow_settle')[0]).toMatchObject({
+        p_expected: 'held',
+        p_next: 'disputed',
+        p_commission: 0,
+        p_title: null,
+      });
       expect(
         calls.some((c) => c.table === 'notifications' && c.method === 'insert'),
       ).toBe(true);
-      // Disputing freezes the money; it must not move yet.
-      expect(ledgerWrites(calls)).toEqual([]);
     });
 
-    it('closes its own dispute and pays nobody when a release got there first', async () => {
+    it('closes its own dispute when a release got there first', async () => {
       // findByJob read 'held'; by the time the freeze runs a completion has
-      // released it, so the conditional update matches nothing. Before the
-      // fix this flipped 'released' back to 'disputed' and let resolve() pay
-      // the provider a second time.
-      const { supabase, calls } = createSupabaseMock({
-        escrow_transactions: [
-          { data: heldEscrow, error: null }, // findByJob
-          { data: null, error: null }, // markDisputed loses the race
-        ],
-        disputes: [
-          { data: { id: 'd1', status: 'open' }, error: null }, // insert
-          { data: null, error: null }, // cancel it again
-        ],
-      });
-      const escrow = new EscrowService(supabase, createWalletMock().wallet);
-      const service = new DisputesService(
-        supabase,
-        escrow,
-        createAdminActionsMock().mock,
+      // released it, so the conditional move matches nothing. Before the fix
+      // this flipped 'released' back to 'disputed' and let resolve() pay the
+      // provider a second time.
+      const { service, calls } = build(
+        {
+          escrow_transactions: [ok(heldEscrow)],
+          disputes: [ok({ id: 'd1', status: 'open' }), ok(null)],
+        },
+        { escrow_settle: [ok(null)] },
       );
 
       await expect(
         service.raise(client, 'j1', { reason: 'No show' }),
       ).rejects.toThrow(ConflictException);
 
-      const freeze = calls.find(
-        (c) =>
-          c.table === 'escrow_transactions' &&
-          c.method === 'eq' &&
-          c.args[0] === 'status',
-      );
-      expect(freeze?.args).toEqual(['status', 'held']);
       const closed = calls.find(
         (c) => c.table === 'disputes' && c.method === 'update',
       );
       expect(closed?.args[0]).toEqual({ status: 'cancelled' });
-      expect(ledgerWrites(calls)).toEqual([]);
     });
 
     it('refuses when the money is no longer held', async () => {
-      const { supabase } = createSupabaseMock({
-        escrow_transactions: [
-          { data: { ...heldEscrow, status: 'released' }, error: null },
-        ],
+      const { service, rpc } = build({
+        escrow_transactions: [ok({ ...heldEscrow, status: 'released' })],
       });
-      const escrow = new EscrowService(supabase, createWalletMock().wallet);
-      const service = new DisputesService(
-        supabase,
-        escrow,
-        createAdminActionsMock().mock,
-      );
 
       await expect(
         service.raise(client, 'j1', { reason: 'Too late' }),
       ).rejects.toThrow(BadRequestException);
+      expect(rpc).not.toHaveBeenCalled();
     });
 
     it('refuses a client who does not own the job', async () => {
-      const { supabase } = createSupabaseMock({
-        escrow_transactions: [{ data: heldEscrow, error: null }],
-      });
-      const escrow = new EscrowService(supabase, createWalletMock().wallet);
-      const service = new DisputesService(
-        supabase,
-        escrow,
-        createAdminActionsMock().mock,
-      );
+      const { service } = build({ escrow_transactions: [ok(heldEscrow)] });
 
       await expect(
         service.raise({ id: 'other', role: 'client' } as Profile, 'j1', {
@@ -800,18 +664,12 @@ describe('DisputesService', () => {
     });
 
     it('refuses a second open dispute on the same escrow', async () => {
-      const { supabase } = createSupabaseMock({
-        escrow_transactions: [{ data: heldEscrow, error: null }],
+      const { service } = build({
+        escrow_transactions: [ok(heldEscrow)],
         disputes: [
           { data: null, error: { message: 'duplicate', code: '23505' } },
         ],
       });
-      const escrow = new EscrowService(supabase, createWalletMock().wallet);
-      const service = new DisputesService(
-        supabase,
-        escrow,
-        createAdminActionsMock().mock,
-      );
 
       await expect(
         service.raise(client, 'j1', { reason: 'Again' }),
@@ -820,38 +678,29 @@ describe('DisputesService', () => {
   });
 
   describe('resolve', () => {
-    it('pays the provider when released', async () => {
-      const { supabase, calls } = createSupabaseMock({
-        disputes: [
-          { data: { id: 'd1', job_id: 'j1', status: 'open' }, error: null },
-          { data: { id: 'd1', status: 'resolved' }, error: null },
-        ],
-        escrow_transactions: [
-          { data: { ...heldEscrow, status: 'disputed' }, error: null },
-          { data: { ...heldEscrow, status: 'released' }, error: null },
-        ],
-        jobs: [{ data: { title: 'Fix sink' }, error: null }],
-        wallet_transactions: [okLedger()],
-        notifications: [
-          { data: null, error: null },
-          { data: null, error: null },
-        ],
-      });
-      const escrow = new EscrowService(supabase, createWalletMock().wallet);
-      const { mock: adminActions, record } = createAdminActionsMock();
-      const service = new DisputesService(supabase, escrow, adminActions);
+    const disputed = { ...heldEscrow, status: 'disputed' as const };
+
+    it('pays the provider when released, and audits the decision', async () => {
+      const { service, rpc, record } = build(
+        {
+          disputes: [
+            ok({ id: 'd1', job_id: 'j1', status: 'open' }),
+            ok({ id: 'd1', status: 'resolved' }),
+          ],
+          escrow_transactions: [ok(disputed)],
+          notifications: [ok(null), ok(null)],
+        },
+        { escrow_settle: [ok({ ...disputed, status: 'released' })] },
+      );
 
       await service.resolve(admin, 'd1', {
         resolution: 'released_to_provider',
       });
 
-      expect(ledgerWrites(calls)).toEqual([
-        expect.objectContaining({
-          profile_id: 'p1',
-          kind: 'payout',
-          amount: 1500,
-        }),
-      ]);
+      expect(rpcArgs(rpc, 'escrow_settle')[0]).toMatchObject({
+        p_expected: 'disputed',
+        p_next: 'released',
+      });
       expect(record).toHaveBeenCalledWith(
         admin,
         'dispute.resolve',
@@ -862,52 +711,43 @@ describe('DisputesService', () => {
     });
 
     it('returns the money to the client when refunded', async () => {
-      const { supabase, calls } = createSupabaseMock({
-        disputes: [
-          { data: { id: 'd1', job_id: 'j1', status: 'open' }, error: null },
-          { data: { id: 'd1', status: 'resolved' }, error: null },
-        ],
-        escrow_transactions: [
-          { data: { ...heldEscrow, status: 'disputed' }, error: null },
-          { data: { ...heldEscrow, status: 'refunded' }, error: null },
-        ],
-        jobs: [{ data: { title: 'Fix sink' }, error: null }],
-        wallet_transactions: [okLedger()],
-        notifications: [
-          { data: null, error: null },
-          { data: null, error: null },
-        ],
-      });
-      const escrow = new EscrowService(supabase, createWalletMock().wallet);
-      const service = new DisputesService(
-        supabase,
-        escrow,
-        createAdminActionsMock().mock,
+      const { service, rpc } = build(
+        {
+          disputes: [
+            ok({ id: 'd1', job_id: 'j1', status: 'open' }),
+            ok({ id: 'd1', status: 'resolved' }),
+          ],
+          escrow_transactions: [ok(disputed)],
+          notifications: [ok(null), ok(null)],
+        },
+        { escrow_settle: [ok({ ...disputed, status: 'refunded' })] },
       );
 
       await service.resolve(admin, 'd1', { resolution: 'refunded_to_client' });
 
-      expect(ledgerWrites(calls)).toEqual([
-        expect.objectContaining({
-          profile_id: 'c1',
-          kind: 'refund',
-          amount: 1500,
-        }),
-      ]);
+      expect(rpcArgs(rpc, 'escrow_settle')[0]).toMatchObject({
+        p_next: 'refunded',
+      });
+    });
+
+    it('lets only one of two admins resolving at once move the money', async () => {
+      const { service } = build(
+        {
+          disputes: [ok({ id: 'd1', job_id: 'j1', status: 'open' })],
+          escrow_transactions: [ok(disputed)],
+        },
+        { escrow_settle: [ok(null)] },
+      );
+
+      await expect(
+        service.resolve(admin, 'd1', { resolution: 'released_to_provider' }),
+      ).rejects.toThrow(ConflictException);
     });
 
     it('refuses an already-resolved dispute', async () => {
-      const { supabase } = createSupabaseMock({
-        disputes: [
-          { data: { id: 'd1', job_id: 'j1', status: 'resolved' }, error: null },
-        ],
+      const { service } = build({
+        disputes: [ok({ id: 'd1', job_id: 'j1', status: 'resolved' })],
       });
-      const escrow = new EscrowService(supabase, createWalletMock().wallet);
-      const service = new DisputesService(
-        supabase,
-        escrow,
-        createAdminActionsMock().mock,
-      );
 
       await expect(
         service.resolve(admin, 'd1', { resolution: 'refunded_to_client' }),

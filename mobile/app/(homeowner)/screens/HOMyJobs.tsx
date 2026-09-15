@@ -137,12 +137,13 @@ export default function MyJobs({ onNavigate }: MyJobsProps) {
           </View>
         )}
 
-        {filtered.map((job) => {
+        {filtered.map((job, index) => {
           const meta = jobStatusMeta(job.status);
           const urgency = urgencyMeta(job.urgency);
           return (
             <TouchableOpacity
               key={job.id}
+              testID={`my-jobs-card-${index}`}
               style={styles.jobCard}
               onPress={() => onNavigate('Job Detail', job.id)}
               activeOpacity={0.9}

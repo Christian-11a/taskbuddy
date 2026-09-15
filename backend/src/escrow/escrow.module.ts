@@ -2,7 +2,6 @@ import { Module } from '@nestjs/common';
 import { EscrowService } from './escrow.service';
 import { DisputesService } from './disputes.service';
 import { DisputesController } from './disputes.controller';
-import { WalletModule } from '../wallet/wallet.module';
 import { AdminActionsModule } from '../admin/admin-actions.module';
 
 /**
@@ -10,7 +9,9 @@ import { AdminActionsModule } from '../admin/admin-actions.module';
  * from the job lifecycle; AdminModule owns the review queues.
  */
 @Module({
-  imports: [WalletModule, AdminActionsModule],
+  // No WalletModule: balance checks happen inside escrow_place_hold (0028),
+  // under the same lock as the debit they guard.
+  imports: [AdminActionsModule],
   controllers: [DisputesController],
   providers: [EscrowService, DisputesService],
   exports: [EscrowService, DisputesService],

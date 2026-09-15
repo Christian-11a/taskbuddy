@@ -19,11 +19,20 @@
  * Accept is where the hire's money is held, so it is also where the hire's
  * refusals surface: an insufficient wallet (400), a provider who is not
  * verified (409 `provider_not_verified`), or a rate limit (429). Each shows in
- * the banner above the list rather than disappearing — the action used to have
- * no catch at all, so a short wallet looked like a button that did nothing.
+ * the payment modal (or, for Reject, the banner above the list) rather than
+ * disappearing — the actions used to have no catch at all, so a short wallet
+ * looked like a button that did nothing.
+ *
+ * Accept opens `HirePaymentModal`: pay from the wallet (the accept call holds
+ * the budget), or pay by card on Stripe Checkout (BACKEND_SCHEMA.md §29.4).
+ * A card hire is made by Stripe's webhook, not by this screen, so after the
+ * browser closes the screen polls the application until it turns `accepted`
+ * — the same "the server decides, the app waits" shape as Add Money.
  */
 
 import React, { useState } from 'react';
+import * as AuthSession from 'expo-auth-session';
+import * as WebBrowser from 'expo-web-browser';
 import {
   ActivityIndicator,
   ScrollView,
@@ -37,8 +46,9 @@ import { Sizes, Spacing, V6Colors } from '../../../src/constants/theme';
 
 const C = V6Colors;
 import { useAsyncData } from '../../../src/hooks/useAsyncData';
-import { api, ApiError, type JobApplication } from '../../../src/lib/api';
+import { api, type JobApplication } from '../../../src/lib/api';
 import { initials } from '../../../src/lib/format';
+import HirePaymentModal from '../../../src/components/HirePaymentModal';
 import { HOScreen } from '../../../src/types/navigation';
 
 interface HOJobApplicationsScreenProps {
@@ -61,11 +71,7 @@ export default function HOJobApplicationsScreen({
   );
 
   const [busyId, setBusyId] = useState<string | null>(null);
-  const [actionError, setActionError] = useState<{
-    message: string;
-    /** The wallet can't cover the budget — offer the way to fix that. */
-    needsFunds: boolean;
-  } | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
 
   const runAction = async (id: string, fn: () => Promise<unknown>) => {
     setBusyId(id);
@@ -74,13 +80,9 @@ export default function HOJobApplicationsScreen({
       await fn();
       reload();
     } catch (e) {
-      const message =
-        e instanceof Error ? e.message : 'Something went wrong. Please try again.';
-      setActionError({
-        message,
-        needsFunds:
-          e instanceof ApiError && e.status === 400 && /Insufficient wallet balance/i.test(message),
-      });
+      setActionError(
+        e instanceof Error ? e.message : 'Something went wrong. Please try again.',
+      );
       // Whatever refused this, the list may be stale — someone else may have
       // decided the application, or the provider's status may have changed.
       reload();
@@ -90,6 +92,119 @@ export default function HOJobApplicationsScreen({
   };
 
   const pendingCount = apps?.filter((a) => a.status === 'pending').length ?? 0;
+
+  // ── Hiring: the payment choice ─────────────────────────────────────────────
+  const [hireTarget, setHireTarget] = useState<JobApplication | null>(null);
+  const [budget, setBudget] = useState<number | null>(null);
+  const [available, setAvailable] = useState<number | null>(null);
+  const [hireBusy, setHireBusy] = useState<'wallet' | 'card' | null>(null);
+  const [hireMessage, setHireMessage] = useState<{ text: string; tone: 'error' | 'info' } | null>(null);
+
+  const openHire = async (app: JobApplication) => {
+    if (!jobId) return;
+    setActionError(null);
+    setHireMessage(null);
+    setBudget(null);
+    setAvailable(null);
+    setHireTarget(app);
+    try {
+      const [job, wallet] = await Promise.all([api.getJob(jobId), api.wallet()]);
+      setBudget(job.budget == null ? null : Number(job.budget));
+      setAvailable(wallet.available);
+    } catch (e) {
+      setHireMessage({
+        text: e instanceof Error ? e.message : 'Could not load your balance.',
+        tone: 'error',
+      });
+    }
+  };
+
+  const closeHire = () => {
+    setHireTarget(null);
+    setHireMessage(null);
+  };
+
+  const payFromWallet = async () => {
+    if (!hireTarget) return;
+    setHireBusy('wallet');
+    setHireMessage(null);
+    try {
+      await api.acceptApplication(hireTarget.id);
+      closeHire();
+      reload();
+    } catch (e) {
+      setHireMessage({
+        text: e instanceof Error ? e.message : 'Could not complete the hire.',
+        tone: 'error',
+      });
+      reload();
+    } finally {
+      setHireBusy(null);
+    }
+  };
+
+  /** Re-reads the proposal until the webhook has decided it, or we give up waiting. */
+  const awaitHire = async (applicationId: string) => {
+    for (let attempt = 0; attempt < HIRE_POLL_ATTEMPTS; attempt++) {
+      await new Promise((resolve) => setTimeout(resolve, HIRE_POLL_INTERVAL_MS));
+      const latest = (await api.jobApplications(jobId!)).find((a) => a.id === applicationId);
+      if (latest && latest.status !== 'pending') return latest.status;
+    }
+    return 'pending' as const;
+  };
+
+  const payByCard = async () => {
+    if (!hireTarget || !jobId) return;
+    setHireBusy('card');
+    setHireMessage(null);
+    try {
+      // exp://[ip]:8081/--/hire in Expo Go, taskbuddy://hire in a build —
+      // the backend allowlists both.
+      const appRedirect = AuthSession.makeRedirectUri({ scheme: 'taskbuddy', path: 'hire' });
+      const session = await api.createHireCheckoutSession({
+        application_id: hireTarget.id,
+        app_redirect: appRedirect,
+      });
+      const result = await WebBrowser.openAuthSessionAsync(session.url, appRedirect);
+      const outcome =
+        result.type === 'success'
+          ? new URLSearchParams(result.url.split('?')[1] ?? '').get('hire')
+          : null;
+
+      if (outcome === 'cancelled') {
+        setHireMessage({ text: 'Payment was cancelled.', tone: 'info' });
+        return;
+      }
+      // Paid, or the browser was dismissed — which is not proof they didn't
+      // pay. Either way only the server knows, so ask it.
+      setHireMessage({ text: 'Confirming your payment…', tone: 'info' });
+      const status = await awaitHire(hireTarget.id);
+      reload();
+      if (status === 'accepted') {
+        closeHire();
+      } else if (status === 'pending') {
+        setHireMessage({
+          text:
+            outcome === 'success'
+              ? 'Payment received. Your hire is still being confirmed — check back in a moment.'
+              : 'No payment was confirmed. If you did pay, your hire will appear shortly.',
+          tone: 'info',
+        });
+      } else {
+        setHireMessage({
+          text: 'Your payment is in your wallet, but the hire could not be completed — this proposal is no longer available.',
+          tone: 'error',
+        });
+      }
+    } catch (e) {
+      setHireMessage({
+        text: e instanceof Error ? e.message : 'Could not open the payment page.',
+        tone: 'error',
+      });
+    } finally {
+      setHireBusy(null);
+    }
+  };
 
   return (
     <View style={styles.screen}>
@@ -119,18 +234,7 @@ export default function HOJobApplicationsScreen({
           {actionError && (
             <View style={styles.errorBanner} testID="applications-action-error">
               <AlertCircle size={16} color={C.red700} />
-              <View style={{ flex: 1 }}>
-                <Text style={styles.errorBannerText}>{actionError.message}</Text>
-                {actionError.needsFunds && onNavigate && (
-                  <TouchableOpacity
-                    onPress={() => onNavigate('Wallet')}
-                    activeOpacity={0.8}
-                    testID="applications-add-funds"
-                  >
-                    <Text style={styles.errorBannerLink}>Add money to your wallet →</Text>
-                  </TouchableOpacity>
-                )}
-              </View>
+              <Text style={[styles.errorBannerText, { flex: 1 }]}>{actionError}</Text>
             </View>
           )}
 
@@ -201,7 +305,7 @@ export default function HOJobApplicationsScreen({
                           why before the tap rather than after. */}
                       <TouchableOpacity
                         style={[styles.primaryBtn, (busyId !== null || !verified) && styles.disabled]}
-                        onPress={() => runAction(app.id, () => api.acceptApplication(app.id))}
+                        onPress={() => openHire(app)}
                         disabled={busyId !== null || !verified}
                         activeOpacity={0.85}
                         testID={`applications-accept-${app.id}`}
@@ -222,9 +326,29 @@ export default function HOJobApplicationsScreen({
           <View style={{ height: 20 }} />
         </ScrollView>
       )}
+
+      <HirePaymentModal
+        visible={hireTarget !== null}
+        providerName={hireTarget?.provider?.full_name ?? 'this provider'}
+        budget={budget}
+        available={available}
+        busy={hireBusy}
+        message={hireMessage}
+        onPayWallet={payFromWallet}
+        onPayCard={payByCard}
+        onAddMoney={() => {
+          closeHire();
+          onNavigate?.('Wallet');
+        }}
+        onClose={closeHire}
+      />
     </View>
   );
 }
+
+/** How long to wait for Stripe's webhook to turn a card payment into a hire. */
+const HIRE_POLL_ATTEMPTS = 8;
+const HIRE_POLL_INTERVAL_MS = 1500;
 
 const DECIDED_LABEL: Record<Exclude<JobApplication['status'], 'pending'>, string> = {
   accepted: 'Hired',
@@ -295,7 +419,6 @@ const styles = StyleSheet.create({
     borderRadius: 12, padding: 11, marginBottom: 12,
   },
   errorBannerText: { color: C.red700, fontSize: 12.5, lineHeight: 17, fontFamily: 'Inter' },
-  errorBannerLink: { color: C.cyan700, fontSize: 12.5, fontWeight: '700', fontFamily: 'Inter', marginTop: 4 },
 
   disabled: { opacity: 0.6 },
   stateText: { color: C.ink500, fontSize: 16.5, fontFamily: 'Inter', textAlign: 'center', marginTop: 30 },

@@ -299,8 +299,30 @@ export class ApplicationsService {
     return this.setStatus(applicationId, 'withdrawn');
   }
 
+  /**
+   * The card-at-hire webhook's half of `accept()`: the hold has already been
+   * placed by `escrow.hold()` with the payment that funded it, so all that is
+   * left is the accept itself (which fires the assign-and-reject trigger) and
+   * telling the provider. Same conditional update as `accept`, so a wallet
+   * tap and the webhook racing each other hire exactly once.
+   */
+  async acceptFunded(application: {
+    id: string;
+    job_id: string;
+    provider_id: string;
+    jobs: { title: string };
+  }) {
+    const updated = await this.setStatus(application.id, 'accepted');
+    await this.notifyProvider(
+      application,
+      'Application accepted',
+      `You were hired for "${application.jobs.title}"!`,
+    );
+    return updated;
+  }
+
   /** The application's current status, or 'unknown' when it cannot be read. */
-  private async statusOf(applicationId: string): Promise<string> {
+  async statusOf(applicationId: string): Promise<string> {
     const { data, error } = await this.supabase.admin
       .from('job_applications')
       .select('status')

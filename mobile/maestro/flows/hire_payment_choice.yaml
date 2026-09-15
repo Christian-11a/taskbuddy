@@ -1,0 +1,29 @@
+appId: com.taskbuddy.app
+---
+# Accept on a proposal opens the payment choice (BACKEND_SCHEMA.md §29.4):
+# Pay from wallet, or Pay by card. Asserts the choice is offered and stops —
+# Stripe's hosted Checkout runs in a browser Maestro does not drive, so the
+# card path end to end is the manual recipe in docs/stripe-setup.md.
+#
+# Precondition (00_setup_test_accounts.md): the client test account has an
+# open job with a pending proposal from the *verified* provider test account,
+# as the first card in My Jobs.
+- runFlow: _helpers/login_client.yaml
+- tapOn: "My Jobs"
+- tapOn:
+    id: "my-jobs-card-0"
+- tapOn:
+    id: "job-detail-view-offers"
+- extendedWaitUntil:
+    visible: "Proposals"
+    timeout: 60000
+- tapOn:
+    id: "applications-accept-.*"
+    index: 0
+- extendedWaitUntil:
+    visible:
+      id: "hire-pay-wallet"
+    timeout: 30000
+- assertVisible:
+    id: "hire-pay-card"
+- tapOn: "Cancel"
