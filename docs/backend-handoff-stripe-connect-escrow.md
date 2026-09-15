@@ -1,10 +1,30 @@
 # Backend handoff — Stripe Connect escrow hold, and hardening the release path
 
-> **Status: the two independent pieces are done; the decision is not.**
-> Rate limiting (`@nestjs/throttler`) and the `EscrowService.release()` hardening both shipped —
-> `backend/BACKEND_SCHEMA.md` §28.4 and §28.2. **Story 1 is untouched and still needs a call on
-> Option A vs Option B before any code**, because it changes money-movement semantics described
-> in `BACKEND_SCHEMA.md` §18/§21. Nothing below has been pre-empted by the work that landed.
+> **Status: closed — Option A, built** (2026-09-16). `backend/BACKEND_SCHEMA.md` §29 is the full
+> record. In short:
+>
+> - **Story 1.** A homeowner can pay a hire by card on Stripe Checkout
+>   (`POST /payments/hire-checkout-session`). The `payment_intent.succeeded` **webhook** credits
+>   the payment, places the escrow with `status = 'held'`, and records the PaymentIntent and charge
+>   on it (`funding_payment_intent_id`, `funding_charge_id`). Then it accepts the application
+>   (§29.4). No card data touches the backend, and the new payment route carries the payments rate
+>   limit.
+> - **The payout leg.** Providers onboard to Connect Express. On release, a card-funded payout is
+>   sent to their connected account by `stripe.transfers.create` with `source_transaction` set to
+>   the job's charge (§29.5). That is Option A's "real transfer instead of a wallet credit", with
+>   the wallet credit kept as the ledger record and netted by a `connect_transfer` debit.
+> - **What changed from the sketch below.** Capture happens immediately rather than by manual
+>   capture, because card authorisations lapse in about 7 days and jobs are booked further out. And
+>   only card-funded payouts are transferred: Stripe cannot hold pesos, so a transfer must be
+>   sourced from a charge to convert at a known rate. Wallet balances keep the manual withdrawal
+>   queue.
+> - **Found and fixed on the way.** Hold, settle and the payout reservation are now single SQL
+>   transactions behind a per-wallet lock (0028), which closes the §18 overdraw race. A dispute
+>   racing a completion could pay twice. Maintenance mode blocked Stripe's webhook. Job status
+>   changes were unconditional.
+>
+> Before going live, run the test-mode check in `docs/stripe-setup.md` §7 against the real account.
+> The sections below are kept as the record of what was asked.
 
 **Who this is for:** whoever holds the backend NestJS codebase and Stripe dashboard access.
 Written against two user stories; read "What's already done" first — one of the two stories is
@@ -37,7 +57,7 @@ The AC as written describes a **different model**: a payment intent created per 
 (not captured, or captured-but-not-transferred) at confirmation, and later transferred to the
 provider's own Stripe-connected account on release. That's a legitimate design — it's what "escrow
 via Stripe Connect" usually means — but it changes money-movement semantics described in
-`BACKEND_SCHEMA.md` §18/§21, and CLAUDE.md is explicit that wallet balance must stay
+`BACKEND_SCHEMA.md` §18/§21, which are explicit that wallet balance must stay
 server-derived and single-sourced. Please make the call on one of these two shapes (or propose a
 third) before writing code, since we don't want to hand you a schema that boxes in a decision that
 is really yours:
@@ -203,11 +223,11 @@ named that.
 
 | Item | Size | Blocked on |
 |---|---|---|
-| Decide Option A vs B for Story 1 | decision | you — Stripe account design call |
-| Stripe Connect onboarding + per-booking payment intent/hold | large | the decision above |
+| Decide Option A vs B for Story 1 | done | — Option A, §29 |
+| Stripe Connect onboarding + per-booking payment intent/hold | done | — §29.1, §29.4, §29.5 |
 | `@nestjs/throttler` on payment-initiating routes | done | — `BACKEND_SCHEMA.md` §28.4 |
 | `EscrowService.release()`/`payOut()` explicit-error hardening | done | — `BACKEND_SCHEMA.md` §28.2 |
-| New `escrow_transactions` / `provider_profiles` columns for Option A/B | migration | the decision above — we'll write and apply it once you've picked, same as 0018–0020 |
+| New `escrow_transactions` / payout-account columns for Option A | done | — migrations 0027–0028 (payout accounts are a table of their own, not `provider_profiles` columns — §29.1) |
 
 Nothing here needs a Supabase migration yet — the schema addition depends on which payment shape
 you pick, and guessing it now risks handing you a column layout you'd have to work around. Tell us

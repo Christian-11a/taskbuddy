@@ -418,17 +418,24 @@ signup OTP (item 5) remains available for a future registration-confirmation flo
 
 ### 3. [`docs/backend-handoff-stripe-connect-escrow.md`](../docs/backend-handoff-stripe-connect-escrow.md)
 
-**Still needs a real decision, not just code.** Covers the "escrow hold via Stripe Connect at
-booking" story. Today's escrow is a ledger debit against a wallet the client pre-funded — there is
-still no Stripe Connect anywhere in the backend and no per-booking payment intent. The doc lays
-out two viable architectures (A: keep the wallet ledger, add a real per-booking hold + Connect
-transfer on release; B: full Connect destination charges) and asks for a call before code gets
-written, since it changes real money-movement semantics.
+**Closed: Option A, built.** The escrow hold via Stripe Connect at booking:
 
-**The two pieces that did not depend on that decision have since shipped:** rate limiting
-(`@nestjs/throttler`, now applied per client IP — `BACKEND_SCHEMA.md` §28.4) and the
-explicit-error hardening in `EscrowService.release()` (§28.2). Neither changes anything the app
-sees, except that a retry loop against an auth or payment endpoint now earns a `429`.
+- **Card-at-hire.** A homeowner can pay a hire by card. The webhook credits
+  the payment, places the `held` escrow, and accepts the application
+  (`BACKEND_SCHEMA.md` §29.4).
+- **Provider payouts.** Providers onboard to Stripe Connect Express from
+  Profile → Payouts. A card-paid job's payout is sent to their Stripe account
+  when it completes, as a transfer sourced from that job's own charge (§29.5).
+- **The wallet ledger stays the account of record** throughout.
+
+Wallet-funded payouts still withdraw through the manual queue, because Stripe
+cannot move pesos that did not arrive as a single charge (the FX reason in
+§29).
+
+Rate limiting (§28.4) and the `EscrowService.release()` hardening (§28.2)
+shipped earlier. Before going live, the test-mode check in
+[`docs/stripe-setup.md`](../docs/stripe-setup.md) §7 needs running against
+the real Stripe account.
 
 ### 4. [`docs/backend-handoff-recovery-vouchers.md`](../docs/backend-handoff-recovery-vouchers.md)
 
@@ -449,8 +456,11 @@ button (`web/README.md`).
 ## Remaining Backend Work
 
 The migration and deployment handoff above is complete. Everything the mobile
-acceptance audit raised has since been done — full reasoning in
-`backend/BACKEND_SCHEMA.md` §28.
+acceptance audit raised has since been done (full reasoning in
+`backend/BACKEND_SCHEMA.md` §28), and so have the decisions that were left
+open: the Stripe Connect escrow, card-at-hire, and verification as a gate
+(§29, §17). Migrations **0026–0029** must be applied before deploying the
+current API, with 0027 run alone first. See `backend/README.md`.
 
 | Item | Outcome |
 |---|---|
@@ -481,10 +491,13 @@ anything from the app:
 
 ### Still open, and still not a missing endpoint
 
-- **Stripe Connect escrow** — a product/Stripe-account decision, unchanged.
-  `docs/backend-handoff-stripe-connect-escrow.md` Story 1.
-- **A real payout rail.** Withdrawals are still settled by hand from the admin
-  queue.
+- ~~**Stripe Connect escrow**~~ **Done** (Option A): card-at-hire plus Connect
+  payouts, `BACKEND_SCHEMA.md` §29.
+- **A payout rail for wallet balances.** Card-paid jobs now reach a provider's
+  Stripe account automatically. Money that sits in a wallet (wallet-funded
+  payouts, refunds, credits) is still withdrawn by request and settled by hand.
+  Automating that needs a PH-native disburser, or an FX decision Stripe cannot
+  make for us (§29).
 - ~~**Card-at-hire for homeowners** (handoff item 6).~~ **Done**: Pay by card at
   Accept, hired by the webhook (§29.4).
 - ~~**`is_verified`: badge or gate?**~~ **Decided: a gate**, on applying *and*

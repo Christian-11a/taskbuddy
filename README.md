@@ -104,17 +104,23 @@ The wallet ledger is the **only account of record** — balances are derived fro
 it, never stored. Hiring holds the job budget in escrow, so a client whose
 balance can't cover it is refused at the point of accepting an application.
 
-Clients fund their wallet through Stripe (test mode), and **the wallet is
-credited by Stripe's webhook, never by the app reporting its own success** —
-balance buys labour, so a client able to mint it could hire for free. There is
-exactly one other way balance appears: an admin issuing a recovery credit after
-a dispute, which is a separate audited route for that reason
-([§28.1](./backend/BACKEND_SCHEMA.md)). Full rules in
-[`BACKEND_SCHEMA.md` §18 and §21](./backend/BACKEND_SCHEMA.md).
+Clients fund their wallet through Stripe (test mode), or pay a hire by card at
+the moment they accept. Either way **the wallet is credited by Stripe's webhook,
+never by the app reporting its own success**. Balance buys labour, so a client
+able to mint it could hire for free, and for a card hire it is the webhook that
+places the escrow hold. Balance can appear one other way: an admin issuing a
+recovery credit after a dispute, which is a separate audited route for that
+reason ([§28.1](./backend/BACKEND_SCHEMA.md)).
 
-Stripe is not available to Philippine businesses; a production launch would move
-to PayMongo, Xendit or Maya, which also support GCash. The escrow design is
-gateway-independent.
+Providers can connect a Stripe Connect Express account. A card-paid job's
+payout is then sent to it automatically when the job completes, and everything
+else is withdrawn by request. Full rules in
+[`BACKEND_SCHEMA.md` §18, §21 and §29](./backend/BACKEND_SCHEMA.md).
+
+Stripe is not available to Philippine businesses, and cannot hold pesos, which
+is why only card-funded payouts can be sent on through it (§29). A production
+launch would move to PayMongo, Xendit or Maya, which also support GCash. The
+escrow design, with the ledger as the account of record, is gateway-independent.
 
 ## Getting started
 
