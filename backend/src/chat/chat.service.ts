@@ -8,6 +8,7 @@ import {
 import { concatMap, from, interval, mergeMap, switchMap } from 'rxjs';
 import type { Observable } from 'rxjs';
 import { SupabaseService } from '../supabase/supabase.service';
+import { UploadsService } from '../uploads/uploads.service';
 import type { Profile } from '../common/types';
 
 /**
@@ -33,13 +34,26 @@ interface ConversationRow {
   provider?: { full_name: string; avatar_url: string | null } | null;
 }
 
+interface MessageRow {
+  id: string;
+  conversation_id: string;
+  sender_id: string;
+  body: string;
+  attachment_path: string | null;
+  read_at: string | null;
+  created_at: string;
+}
+
 // Disambiguate the two profiles FKs on conversations for PostgREST embedding.
 const CONVERSATION_SELECT =
   '*, jobs(title, status), client:profiles!conversations_client_id_fkey(full_name, avatar_url), provider:profiles!conversations_provider_id_fkey(full_name, avatar_url)';
 
 @Injectable()
 export class ChatService {
-  constructor(private readonly supabase: SupabaseService) {}
+  constructor(
+    private readonly supabase: SupabaseService,
+    private readonly uploads: UploadsService,
+  ) {}
 
   /** Conversations the caller participates in, most-recent first. */
   async listConversations(user: Profile) {
@@ -105,7 +119,9 @@ export class ChatService {
       .eq('conversation_id', conversationId)
       .order('created_at', { ascending: true });
     if (error) throw new BadRequestException(error.message);
-    return data ?? [];
+    return Promise.all(
+      (data ?? []).map((row) => this.withAttachmentUrl(row as MessageRow)),
+    );
   }
 
   /**
@@ -151,7 +167,7 @@ export class ChatService {
             // tick retries from the same cursor.
             if (error) return [];
 
-            const rows = (data ?? []) as { created_at: string }[];
+            const rows = (data ?? []) as MessageRow[];
             if (rows.length === 0) {
               // A comment-only event keeps proxies (Render's included) from
               // closing a connection they consider idle.
@@ -159,7 +175,10 @@ export class ChatService {
             }
 
             cursor = rows[rows.length - 1].created_at;
-            return rows.map((row) => ({ type: 'message', data: row }));
+            const resolved = await Promise.all(
+              rows.map((row) => this.withAttachmentUrl(row)),
+            );
+            return resolved.map((row) => ({ type: 'message', data: row }));
           }),
           mergeMap((events) => events),
         );
@@ -167,19 +186,32 @@ export class ChatService {
     );
   }
 
-  async sendMessage(user: Profile, conversationId: string, body: string) {
+  async sendMessage(
+    user: Profile,
+    conversationId: string,
+    body?: string,
+    attachmentPath?: string,
+  ) {
+    const trimmedBody = body?.trim() ?? '';
+    if (!trimmedBody && !attachmentPath) {
+      throw new BadRequestException('Message must have text or an attachment.');
+    }
     await this.assertParticipant(user, conversationId);
+    if (attachmentPath) {
+      this.uploads.assertOwnedPaths(user, [attachmentPath]);
+    }
     const { data, error } = await this.supabase.admin
       .from('messages')
       .insert({
         conversation_id: conversationId,
         sender_id: user.id,
-        body,
+        body: trimmedBody,
+        attachment_path: attachmentPath ?? null,
       })
       .select('*')
       .single();
     if (error) throw new BadRequestException(error.message);
-    return data;
+    return this.withAttachmentUrl(data as MessageRow);
   }
 
   /**
@@ -242,6 +274,16 @@ export class ChatService {
       throw new ForbiddenException('You are not a participant of this chat');
     }
     return data;
+  }
+
+  private async withAttachmentUrl(row: MessageRow) {
+    const attachment_url = row.attachment_path
+      ? await this.uploads.signedDownloadUrl(
+          'chat-attachments',
+          row.attachment_path,
+        )
+      : null;
+    return { ...row, attachment_url };
   }
 
   /** Flatten to the counterpart the caller is talking to, for easy UI rendering. */
