@@ -271,6 +271,23 @@ Deliberately untested here. Do not re-discover these as bugs:
   length, and it's what actually worked for
   `settings_delete_account_burner.yaml`.
 
+- **Typing a string containing a doubled "r" ("rr"/"RR") reloads the whole
+  app.** Found 2026-09-13 writing Phase 2's Change Password flow: `inputText:
+  "WrongCurrentPassword"` (and `"WrongCurrent123!"`) each triggered a full
+  "Loading from 10.0.2.2:8081…" reload mid-field-entry, landing back on
+  Login — looked exactly like a crash/nav bug at first. Root-caused via
+  `adb logcat`: `ReactHost{0}.getOrCreateReloadTask()` fires right as the
+  keystrokes land. This is React Native's own dev-mode hardware-keyboard
+  shortcut — pressing `R` twice quickly reloads the JS bundle — firing because
+  Maestro's Android text input sends real keystrokes fast enough to trigger
+  it. Confirmed directly with a throwaway `inputText: "aabbrrcc"`, which
+  reloads on the double `r` alone. **Not app-specific and not a product bug**
+  — it would hit any RN dev build. Avoid it by choosing test strings with no
+  doubled letter (e.g. `"WrongPassLogin1!"` instead of anything containing
+  "Curr...", "err...", "arr...", etc.) rather than working around it
+  per-flow; check any new literal typed via `inputText` for a repeated
+  consonant before relying on the flow's result.
+
 ## What's covered
 
 - `smoke_login_both_roles` — harness proof: launches clean, logs in as the
@@ -289,3 +306,64 @@ Deliberately untested here. Do not re-discover these as bugs:
   against this environment's current Confirm-email-OFF state; see
   `bug-log.md`'s environment note before assuming this represents the
   project's normal configuration.
+- `settings_delete_account_burner` — Phase 2: delete account happy path on a
+  disposable burner.
+- `settings_client` — Phase 2: SMS Alerts toggle on/off (via `toggle-*`
+  testIDs), and Change Password's four states (empty fields, too-short,
+  mismatch, and a real wrong-current-password round trip to the API). Closes
+  and reopens the modal (`Cancel` → `Change Password`) between each
+  validation round — `inputText` appends rather than replaces, so an earlier
+  draft of this flow that skipped that step produced concatenated garbage
+  across rounds and a false-looking failure on the last assertion.
+
+## Phase 3 status (2026-09-13) — blocked immediately, hard stop
+
+Post a Job's Step 2 (Location) crashes the app fatally, unconditionally,
+regardless of "Use default" or "Enter custom" — see BUG-004 in bug-log.md.
+**No job can be created from mobile right now**, which blocks all of Phase 3
+and transitively Phase 5 (needs a job to exist). Root cause: `react-native-maps`
+is used in `HOCreateJobScreen.tsx` with no Google Maps API key ever configured
+in `app.json`/`AndroidManifest.xml` — needs a real credential to fix, escalated
+rather than worked around. No flows written this phase; nothing to automate
+against a screen that can't render.
+
+Also found BUG-005 while probing this screen's tap coordinates: the wizard's
+bottom action bar has the same missing-safe-area-insets issue BUG-002 had,
+un-fixed by BUG-002's patch (which only touched the persistent bottom nav).
+Lower-severity, doesn't block on its own.
+
+## Phase 2 status (2026-09-13) — Settings done and green; Edit Profile blocked on environment, not app, issues
+
+**Settings** (`settings_client.yaml`, passes end-to-end) — Dark Mode/Push/
+Email/SMS toggles persist for real through `/settings`, and Change
+Password's four states (empty fields, too-short, mismatch, and a real
+wrong-current-password round trip to the API) all show the right inline
+error. `toggle-dark-mode`/`toggle-push_enabled`/`toggle-email_enabled`/
+`toggle-sms_enabled` testIDs were added to both `HOSettingsScreen.tsx` and
+`SPSettingsScreen.tsx` (inert) so the three notification switches can be
+disambiguated — `rightOf`/positional selectors picked the wrong switch on
+this screen once, see the toggle testID note.
+
+**Edit Profile** (`profile_edit_client.yaml`) has correct selectors and
+matches verified app behavior — it has passed end-to-end at least once (burner
+registered, profile saved and verified showing "Quezon City, 123 Test
+Street", account deleted in cleanup) — but is **not reliably green**: two
+harness bugs in the flow file itself were found and fixed 2026-09-13 (a
+redundant `btn-home-avatar` tap in cleanup after already being on Profile,
+and a `Sign Up` retry race during registration — see bug-log.md's session
+note), and **ENV-001 remains an unfixed, frequent blocker** — it hit 2 of 3
+runs that reached the Phone field even after both harness fixes, always the
+same symptom (app backgrounds to Google Calendar). This is a Gboard/AVD
+keyboard-suggestion issue, not app or flow code — see ENV-001 in
+bug-log.md. This AVD has no non-Gboard keyboard installed
+(`adb shell ime list -s` shows only Gboard and Google Voice Typing), so
+disabling Gboard isn't viable without provisioning a different keyboard
+first. **Before relying on this flow passing in CI or a fresh run, either
+provision this AVD with a plain keyboard or disable Gboard's contextual
+suggestions** (Gboard → Preferences → Text correction) — re-debugging this
+as an app issue would be wasted effort.
+
+If a run fails after registering the burner but before the cleanup step,
+`maestro.editprofile@taskbuddy.test` is left registered on the backend and
+the next attempt's Sign Up fails with "User already registered" — log in as
+that account and delete it (Settings → Delete Account) before retrying.

@@ -294,6 +294,170 @@ class of fix but not blocking anything.
 
 ---
 
+## BUG-003 — Android hardware back exits the app from any nested screen instead of navigating up
+
+**Found:** 2026-09-13, Phase 2 (exploring client Edit Profile)
+**Status:** open — logged, not fixed (does not block testing; every screen's
+in-app back arrow still works, so flows can navigate around it).
+**Severity: high.** Affects every nested screen in the whole app, both roles —
+not specific to Edit Profile, just first noticed there.
+
+### Steps
+
+1. Log in as either role, landing on the role's home screen.
+2. Navigate into any nested screen via its own in-app affordance — e.g. tap
+   the home screen's avatar to reach Profile, then tap "Edit Profile".
+3. Press the Android hardware/gesture **back** button (not the screen's own
+   back arrow).
+
+### Expected
+
+Back pops one level of the app's own navigation stack — same as tapping the
+screen's in-app back arrow (e.g. Edit Profile → Profile → Home).
+
+### Actual
+
+The app backgrounds to the Android launcher (home screen), as if back had
+been pressed on the app's root screen. Confirmed via screenshot: mid-flow on
+Edit Profile, one hardware back press away from it lands on the OS launcher's
+app grid, not Profile.
+
+### Cause
+
+`App.tsx` holds all navigation in plain `useState` (see `mobile/CLAUDE.md`:
+"No router library"). There is no `BackHandler` registration anywhere in the
+codebase (`grep -rn BackHandler mobile/` returns nothing), so Android's
+default hardware-back behavior applies uncontested: on a single-Activity app
+with no handler intercepting it, back exits the activity rather than popping
+whatever the JS-side "screen" state considers the previous view. Every
+screen's own in-app back arrow works because those call `onBack` directly
+(e.g. `HOEditProfileScreen.tsx:129`), bypassing the hardware button
+entirely — this is why the bug went unnoticed screen-by-screen.
+
+### Suggested fix
+
+Register a `BackHandler.addEventListener('hardwareBackPress', ...)` at the
+navigation-state level (wherever `App.tsx`'s screen `useState` lives) that
+calls the same `onBack`/pop logic the in-app arrows use when not on a root
+screen, and returns `false` (let the OS handle it — exit) only when already
+on a role's home screen. This is a navigation-architecture change, not a
+one-line fix — flagging rather than self-serving it per the sweep's
+escalation boundary (design spec §10 treats "a behavior you cannot confirm is
+correct" and broader architectural changes as sign-off items, not delegate
+fixes).
+
+### Evidence
+
+Screenshot: mid-Edit-Profile hardware back landing on the OS launcher,
+captured during Phase 2 exploration (`p2-03-back-to-profile` in this
+session's scratch run — not committed as a named artifact since it's a
+throwaway exploration flow, reproduce via the Steps above).
+
+### Harness corollary (genuinely BUG-003 — these commands issue a real back press) — the exit is intermittent, not tied to one specific command
+
+Found 2026-09-13 writing `profile_edit_client.yaml`. On `HOEditProfileScreen`
+(a full screen, not a `Modal`), single-command debug flows landed on the OS
+launcher — same symptom as a direct hardware-back press — after `eraseText`
+(both unbounded and an exact-count `eraseText: 14` matching the field's real
+length, ruling out an overshoot-into-extra-backspaces theory), after
+`hideKeyboard`, and after `longPressOn` a text field. **However**, re-checking
+the screenshot taken immediately *before* the `eraseText` call in one of
+those runs (`dbg-e1-focused`) shows the app **already** on the launcher — i.e.
+the plain `tapOn` that focused the field was enough to trigger it that time,
+with no erase/hideKeyboard/longPress involved at all. The same `tapOn`
+sequence ran cleanly in other passes through this exact screen earlier in
+the session. So this is **intermittent**, not a deterministic property of any
+one of those three commands — treat any of them (and possibly a bare `tapOn`
+too) as *able* to trigger it on a plain screen, not certain to.
+
+By contrast, `hideKeyboard` was used repeatedly without incident inside a
+`Modal` (Change Password) and on the Register screen (a screen that isn't
+nested under Home/Profile). Working theory, not confirmed: Android's IME
+absorbs the first back press whenever the keyboard is genuinely showing at
+that instant, so the failure needs a race — a moment where the keyboard
+isn't actually up despite the field having been tapped, or where a residual
+back-equivalent event fires after the field lost focus — for the unhandled
+back to reach the Activity and hit BUG-003 (no `BackHandler` anywhere). Not
+chased further per the sweep's escalation boundary (bounded debugging pass
+done; root cause of the race, and of why `eraseText`/`hideKeyboard`/
+`longPressOn` seem to correlate with it more than plain `tapOn`/`inputText`,
+needs a session with more headroom or a physical device).
+
+**Practical effect on this sweep:** flows in this phase avoid
+`eraseText`/`hideKeyboard`/`longPressOn` on any plain (non-`Modal`) screen,
+sticking to `tapOn` + `inputText`, since those two commands have not been
+observed to trigger this. That means a field that already carries a value on
+a plain screen can't be reliably cleared back to empty by automation right
+now, and even the safer commands may rarely still hit this since the tap
+itself did once. Fixing BUG-003 (a real `BackHandler` at the
+navigation-state level) should resolve this for free — re-verify once that
+lands, before assuming this note still applies.
+
+---
+
+## ENV-001 — Gboard/emulator tap interference on the Phone field (NOT related to BUG-003)
+
+**Important:** unlike the corollary above, neither finding below involves a
+back press — they happened on `scrollUntilVisible`, `pressKey: Enter`, and a
+plain `tapOn`. **Fixing BUG-003's missing `BackHandler` will not touch
+either of these** — don't expect `profile_edit_client.yaml` to go green
+just because BUG-003 lands. This is filed separately on purpose after
+initially (incorrectly) being logged as a BUG-003 corollary.
+
+### A `scrollUntilVisible` swipe once escaped to the OS Assistant/Search overlay
+
+Found 2026-09-13, same flow, right after switching to `tapOn`/`inputText`
+only (no erase/hideKeyboard/longPress). `scrollUntilVisible` on
+`HOEditProfileScreen` while the phone-pad keyboard was showing (right after
+typing into Phone) landed the whole device — not just the app — on Android's
+system-wide Assistant/Search overlay, pre-filled with the typed phone number
+as a search query. Screenshot showed "Search on Google / YouTube / Maps /
+Play Store / Settings / Contacts" — this is an OS-level surface, not
+anything TaskBuddy renders. Not reproduced on a second attempt with the same
+screen using `pressKey: Enter` instead, and `scrollUntilVisible` was used
+repeatedly and safely elsewhere in this same session (the signup form's
+checkbox scrolling). Best guess, unconfirmed: a swipe gesture whose start
+point landed in the bottom system-gesture strip (same region BUG-002's
+edge-to-edge root cause implicated — only `BottomNavBar` got real safe-area
+insets in that fix; this screen's `ScrollView` has none) got interpreted as
+an Android system gesture (swipe-and-hold near an edge opens Assistant on
+gesture-nav configs) instead of an in-app scroll. Logged rather than chased
+further — one occurrence, high cost to reproduce deliberately, and the
+`pressKey: Enter` workaround avoids it entirely for this flow's purposes.
+Worth remembering if a future flow's `scrollUntilVisible` inexplicably lands
+outside the app.
+
+### The app also jumps to Google Calendar, intermittently, after typing into the Phone field
+
+Found 2026-09-13, same session, chasing the two corollaries above. After
+typing a phone number into `HOEditProfileScreen`'s Phone field
+(`keyboardType="phone-pad"`), the **next** action — regardless of which:
+`pressKey: Enter` once, a plain `tapOn` on the static "Full name" label text
+another time — landed on the **Google Calendar app**, not the OS launcher
+and not a Metro reload. Reproduced twice with two different trigger actions,
+never with a deterministic single cause, which rules out any one Maestro
+command and points at something tied to the **phone-shaped text itself**
+combined with a delay: Gboard shows a contextual suggestion strip above the
+keyboard for phone-number-looking input (e.g. an "Add to contacts" or
+similar smart chip), and it's a plausible explanation that whichever action
+fires while that chip is rendering hits the chip instead of the intended app
+element, launching whatever app backs it. Not proven — the suggestion strip
+itself wasn't caught in a screenshot — but it fits all three symptoms
+(intermittent, action-independent, specific to the phone field, lands on an
+unrelated real Android app rather than exiting or reloading).
+
+**This one is an emulator/keyboard-configuration issue, not a TaskBuddy or
+Maestro defect**, and combined with the two corollaries above it made
+Phase 2's Edit Profile automation unreliable enough that `profile_edit_client.yaml`
+could not be completed and verified end-to-end this session — see the
+Phase 2 status note below. Recommended fix for whoever resumes: disable
+Gboard's suggestion strip / clipboard suggestions on the AVD (Gboard app →
+Preferences → Text correction, or provision an AVD image without Gboard's
+predictive features) before trying this screen's automation again, rather
+than re-debugging it as an app issue.
+
+---
+
 ## Environment note — 2026-09-06, resuming after a merge
 
 Session resumed after merging a large upstream batch (47 commits, incl. a
@@ -366,6 +530,201 @@ changed symptom (see its Re-verification entry above).
   press handlers), not a one-off flake. Still an open UX question, not fixed
   in app code: is the window long enough for a real user's fast tap to land in
   it? Worth a product call, not an engineering fix on its own.
+
+## Session note — 2026-09-13 (resuming Phase 2, harness fix + ENV-001 recurrence)
+
+Resumed a session that had left Phase 2 uncommitted (settings green,
+`profile_edit_client.yaml` written but not verified). Startup checklist
+re-run clean: correct Metro confirmed by screenshot (TaskBuddy's own "Post a
+Job" screen, not the eiyu-system trap), backend warm (`200` from `/health`),
+`smoke_login_both_roles.yaml` and `nav_bottombar_client.yaml` both green.
+
+**Found and fixed a harness (not app) bug in `profile_edit_client.yaml`
+itself**, unrelated to BUG-003/ENV-001:
+1. The flow's cleanup section tapped `btn-home-avatar` a second time after
+   the Save-Changes confirmation, but Save Changes navigates back to the
+   Profile screen (not Home) — `btn-home-avatar` doesn't exist there, so the
+   tap failed. Fixed by dropping the redundant tap; cleanup now goes straight
+   to `tapOn: "Settings"`.
+2. The registration section's `runFlow: when: visible: "Welcome!"` retry
+   (the same idiom used in `00_setup_register_client.yaml` and
+   `auth_signup_client_no_confirmation.yaml`) raced the first tap's own
+   navigation: 3 of 4 runs this session hard-failed here because the retry's
+   own `tapOn: "Sign Up"` ran after the app had already reached Create
+   Account, where "Sign Up" as visible text doesn't exist yet (it's a
+   password field's neighborhood, not the button). Fixed by making that
+   retry's tap `optional: true` — a no-op when the race means it isn't
+   needed. Worth applying the same guard to the other two flows if they ever
+   show the same flake (not done here — out of scope for this pass, and
+   neither has failed there yet).
+
+**ENV-001 (Google Calendar jump after typing into Phone) reproduced again,
+twice, after the harness fixes above** — confirming it's a real, frequent
+blocker for this screen on this AVD, not a one-off: of 3 runs that got far
+enough to reach the Phone field post-fix, 2 hit it (identical symptom,
+screenshot-confirmed: app backgrounds to Google Calendar's month view).
+Attempted a fix within delegate scope — checked for a plain non-Gboard IME
+to switch to (`adb shell ime list -s` shows only Gboard and Google Voice
+Typing on this AVD image, no AOSP keyboard installed, so disabling Gboard
+would kill text input for every other flow) — and stopped there rather than
+attempt Gboard's own suggestion-strip settings, per the sweep's
+escalation boundary (this is AVD/keyboard-image tuning, not app or flow
+code, and the prior session already logged the same "stop chasing it" call).
+**Recommendation stands unchanged: provision this AVD with a plain keyboard
+(or disable Gboard's contextual suggestions) before `profile_edit_client.yaml`
+can be expected to pass reliably.** No app-code fix exists for this since it
+is not an app defect.
+
+Each burner-account run that reached registration but not cleanup (2
+occurrences, from runs that failed mid-flow) left `maestro.editprofile@
+taskbuddy.test` registered on the backend, which then failed the *next*
+run's Sign Up with "User already registered" — cleaned up by hand each time
+via a throwaway login+delete-account flow. Anyone re-running this flow after
+a failed attempt should check for and delete that leftover account first.
+
+## BUG-004 — Posting a job crashes the app at Step 2 (Location): no Google Maps API key configured
+
+**Found:** 2026-09-13, Phase 3 (exploring client job creation)
+**Status:** open — logged, not fixed. **Hard blocker for all of Phase 3** (and,
+transitively, Phase 5's cross-role loop, which needs a job to exist) — no job
+can be created past Step 1 regardless of path taken.
+**Severity: critical.** Fatal crash (process death, not just a JS-side error),
+on the very first step past service selection, every time.
+
+### Steps
+
+1. Log in as a client, tap "+ Post" (or any "Find a service" card) to start
+   Post a Job.
+2. Step 1 of 5 (Service): pick any service, pick **either** "Use default" or
+   "Enter custom" for location, tap Next.
+
+### Expected
+
+Step 2 of 5 (Location) renders, showing a map for the job's location.
+
+### Actual
+
+The app throws a fatal exception and the process dies (confirmed via
+`adb shell pidof com.taskbuddy.app` returning nothing afterward, and
+`Process com.taskbuddy.app (pid ...) has died` in logcat — this is a real
+crash, not a recoverable redbox). Reproduced identically twice, once via
+each location path ("Use default" with no saved profile address, and "Enter
+custom") — the crash is unconditional on this step, not dependent on which
+location option was picked.
+
+Redbox / logcat:
+```
+addViewAt: failed to insert view [...] into parent [...] at index 4
+Caused by: java.lang.IllegalStateException: API key not found.  Check that
+<meta-data android:name="com.google.android.geo.API_KEY"
+android:value="your API key"/> is in the <application> element of
+AndroidManifest.xml
+...
+FATAL EXCEPTION: androidmapsapi-ula-1
+Process: com.taskbuddy.app, PID: ...
+```
+
+### Cause
+
+`HOCreateJobScreen.tsx:85` imports `MapView` from `react-native-maps` and
+renders it unconditionally on the Location step (`HOCreateJobScreen.tsx:763`).
+`react-native-maps` needs a Google Maps Platform API key wired into
+`AndroidManifest.xml`'s `com.google.android.geo.API_KEY` meta-data — normally
+supplied via `app.json`'s `expo.android.config.googleMaps.apiKey` (consumed by
+the `react-native-maps` Expo config plugin at prebuild time). **`app.json` has
+no such key anywhere** (checked directly — no `googleMaps` entry under
+`android`, no `react-native-maps` entry in `plugins`), and the generated
+`android/app/src/main/AndroidManifest.xml` correspondingly has no
+`com.google.android.geo.API_KEY` meta-data. This isn't a regression from a
+recent change — the config was never wired up.
+
+### Why this is a hand-back, not a delegate fix
+
+Needs a real Google Maps Platform API key (a credential), which the test
+session doesn't have and can't fabricate — same class of escalation as the
+missing Supabase SQL access. Once a key exists, wiring it in is a one-line
+`app.json` change:
+```json
+"android": {
+  "config": { "googleMaps": { "apiKey": "<key>" } }
+}
+```
+followed by `npx expo prebuild --clean --platform android` (native config
+change — regenerates `AndroidManifest.xml`) and a dev-client rebuild. Not
+attempted here per the sweep's escalation boundary (native/config change
+needing a credential the delegate doesn't have).
+
+### Impact on this sweep
+
+**All of Phase 3 is blocked** — task checklist, photo upload, my jobs, cancel
+all sit behind this same wizard's Location step, since it's step 2 of 5 for
+every service. **Phase 5 (cross-role hire loop) is transitively blocked too**
+— it needs a job to exist, and no job can currently be created from mobile at
+all. Phase 4 (provider browse/apply) is unaffected by this specific bug
+(doesn't touch job creation) but has nothing to browse without Phase 3
+producing jobs, other than jobs seeded some other way (e.g. directly via API/SQL).
+
+### Evidence
+
+Logcat captured via `adb logcat -d`, reproduced twice (once per location
+option) 2026-09-13. Screenshots of both crash instances (identical redbox)
+taken during this session's exploration, not committed as named artifacts.
+
+---
+
+## BUG-005 — Post a Job wizard's bottom action bar partly overlaps the system navigation bar (BUG-002-class, not fixed by BUG-002's patch)
+
+**Found:** 2026-09-13, Phase 3 (exploring client job creation)
+**Status:** open — logged, not fixed. Does not fully block testing (a tap in
+the upper ~50px of the button's reported bounds reaches the app), but is a
+real, reproducible defect a real user's thumb can easily hit.
+**Severity: medium-high.** Same root cause class as BUG-002 (missing
+safe-area insets under edge-to-edge), but BUG-002's fix (`App.tsx`/
+`BottomNavBar.tsx`) only touched the persistent bottom nav — this wizard's own
+footer (Back/Next/Submit bar) was not part of that fix and still isn't inset.
+
+### Steps
+
+1. Start Post a Job, reach Step 1 (Service).
+2. Use `adb shell input tap` (or an equally precise tap) at the *lower* edge
+   of the "Next" button's accessibility bounds — confirmed via
+   `uiautomator dump`: bounds were `[53,2230][1028,2362]` on this device, so a
+   tap at y≈2296 (roughly the bounds' vertical center).
+
+### Expected
+
+The tap always reaches the app's Next handler, since the button is drawn (and
+its accessibility bounds are reported) as fully on-screen, non-overlapping
+with system UI.
+
+### Actual
+
+A tap at y≈2296 exits to the **OS launcher** (Home) instead of reaching the
+app at all — identical symptom to BUG-002 pre-fix. A tap at y≈2245 (55px
+higher, still within the same reported bounds) **does** reach the app's Next
+handler and advances the wizard. So roughly the bottom half of this button's
+reported clickable area is actually intercepted by the system's 3-button
+navigation bar, which sits on top of it (edge-to-edge, no inset) — the
+accessibility bounds overstate the area that's actually reachable.
+
+### Cause (inferred, not re-verified with the same rigor as BUG-002)
+
+Same class as BUG-002: this wizard's bottom action bar isn't wrapped with
+`useSafeAreaInsets()` the way `BottomNavBar` now is post-fix. Not re-run
+through the full BUG-002 elimination process here — flagging by pattern
+match rather than re-deriving from scratch, since the fix is the same shape
+(drive the bar's bottom padding from `insets.bottom`) wherever this footer
+component is defined (shared across the wizard's 5 steps, so likely one
+component to fix for all of them).
+
+### Impact on this sweep
+
+Automated flows targeting this screen's Next/Back/Submit buttons must aim at
+the upper portion of the reported bounds, not the center — same practical
+workaround Phase 2 uses for BUG-003-adjacent issues. Not chased to a full
+root-cause/fix here since BUG-004 already fully blocks this screen from being
+useful, and per §2's blocker-exception rule this is a UI-polish issue,
+not what's actually blocking further testing right now.
 
 ## Not yet triaged
 

@@ -1,0 +1,98 @@
+appId: com.taskbuddy.app
+---
+# Phase 2: Settings, homeowner role — notification toggles + Change Password
+# validation. Uses the persistent maestro.client account; every toggle this
+# flow flips is flipped back before the flow ends, so repeat runs and other
+# flows see the account in its original state.
+#
+# Selectors: the three notification Switches (Dark Mode is excluded here —
+# see below) are structurally identical to accessibility (no distinguishing
+# text of their own), and `rightOf`/`below` positional selectors picked the
+# wrong switch once during exploration this session. `toggle-dark-mode`/
+# `toggle-push_enabled`/`toggle-email_enabled`/`toggle-sms_enabled` testIDs
+# were added to HOSettingsScreen.tsx/SPSettingsScreen.tsx this session
+# (inert) specifically to fix that. This flow only exercises SMS Alerts —
+# Dark Mode and the other two toggles are the identical component with a
+# different key, not worth repeating three times over.
+#
+# Change Password's modal is safe to use hideKeyboard/tapOn "Save" inside:
+# RN's Modal intercepts hardware back via onRequestClose, so the BUG-003
+# harness corollary (hideKeyboard exiting the app on a plain screen) does
+# not apply here — confirmed during this session's exploration.
+#
+# The modal does NOT reset its fields between attempts unless closed and
+# reopened (ChangePasswordModal's `reset()` only runs from `close()`) —
+# inputText appends to whatever is already in a field rather than replacing
+# it, so each validation round below closes with Cancel and reopens with
+# Change Password first. Skipping this the first time this flow was written
+# produced concatenated garbage across rounds and a false-looking failure on
+# the last assertion — a flow bug, not a product one.
+
+- runFlow: _helpers/login_client.yaml
+- tapOn:
+    id: "btn-home-avatar"
+- tapOn: "Settings"
+- assertVisible: "Notifications"
+
+# --- Toggle: SMS Alerts flips on, then back off ---
+- tapOn:
+    id: "toggle-sms_enabled"
+- extendedWaitUntil:
+    visible:
+      id: "toggle-sms_enabled"
+      checked: true
+    timeout: 5000
+- tapOn:
+    id: "toggle-sms_enabled"
+- extendedWaitUntil:
+    visible:
+      id: "toggle-sms_enabled"
+      checked: false
+    timeout: 5000
+
+# --- Change Password: empty fields blocks save ---
+- tapOn: "Change Password"
+- tapOn: "Save"
+- assertVisible: "Fill in both password fields."
+- tapOn: "Cancel"
+
+# --- Change Password: new password too short ---
+- tapOn: "Change Password"
+- tapOn: "Current password"
+- inputText: "WrongPassLogin1!"
+- tapOn: "New password"
+- inputText: "short"
+- tapOn: "Confirm new password"
+- inputText: "short"
+- hideKeyboard
+- tapOn: "Save"
+- assertVisible: "New password must be at least 8 characters."
+- tapOn: "Cancel"
+
+# --- Change Password: new passwords do not match ---
+- tapOn: "Change Password"
+- tapOn: "Current password"
+- inputText: "WrongPassLogin1!"
+- tapOn: "New password"
+- inputText: "GoodPass123"
+- tapOn: "Confirm new password"
+- inputText: "GoodPass456"
+- hideKeyboard
+- tapOn: "Save"
+- assertVisible: "New passwords do not match."
+- tapOn: "Cancel"
+
+# --- Change Password: wrong current password (real API round trip) ---
+- tapOn: "Change Password"
+- tapOn: "Current password"
+- inputText: "WrongPassLogin1!"
+- tapOn: "New password"
+- inputText: "GoodPass123"
+- tapOn: "Confirm new password"
+- inputText: "GoodPass123"
+- hideKeyboard
+- tapOn: "Save"
+- extendedWaitUntil:
+    visible: "Current password is incorrect"
+    timeout: 15000
+- tapOn: "Cancel"

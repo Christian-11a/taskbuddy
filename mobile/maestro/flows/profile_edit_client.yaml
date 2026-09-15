@@ -1,0 +1,161 @@
+appId: com.taskbuddy.app
+env:
+  BURNER_NAME: "Maestro Edit Burner"
+  BURNER_EMAIL: "maestro.editprofile@taskbuddy.test"
+  BURNER_PASSWORD: "TestPass123!"
+---
+# Phase 2: Edit Profile, homeowner role.
+#
+# Uses a disposable burner account (registered inline, deleted at the end)
+# rather than the persistent maestro.client account, and deliberately avoids
+# eraseText/hideKeyboard/longPressOn on this screen: bug-log.md's BUG-003
+# harness corollary found all three (and, intermittently, even a bare tapOn)
+# can exit the whole app on any plain non-Modal screen here. A burner starts
+# with every editable field blank, so the happy path never needs to clear a
+# pre-filled value — only tapOn + inputText are used.
+#
+# Selectors: FormField renders a Text label directly above its TextInput with
+# no testID (HOEditProfileScreen.tsx), so fields are addressed with `below:`
+# anchored on the label — the nearest element below a unique label text.
+#
+# Not covered here (see bug-log.md): the "empty full name blocks save"
+# validation, confirmed correct by manual exploration this session but not
+# committed as a flow, since triggering it needs clearing a filled field.
+
+# --- Register the burner (Confirm-email is OFF on this environment) ---
+- runFlow: _helpers/launch_fresh.yaml
+- waitForAnimationToEnd:
+    timeout: 10000
+- tapOn: "Sign Up"
+# The `when: visible "Welcome!"` check races the first tap's own navigation:
+# by the time this retry runs, the app may have already moved to Create
+# Account, making the retry's own tapOn fail even though nothing is wrong.
+# optional: true keeps that race from hard-failing the flow.
+- runFlow:
+    when:
+      visible: "Welcome!"
+    commands:
+      - tapOn:
+          text: "Sign Up"
+          optional: true
+- extendedWaitUntil:
+    visible: "Create account"
+    timeout: 30000
+- tapOn:
+    id: "input-name"
+- inputText: ${BURNER_NAME}
+- tapOn:
+    id: "input-email"
+- inputText: ${BURNER_EMAIL}
+- tapOn:
+    id: "input-password"
+- inputText: ${BURNER_PASSWORD}
+- hideKeyboard
+- scrollUntilVisible:
+    element:
+      id: "input-confirm-password"
+    direction: DOWN
+    timeout: 20000
+- tapOn:
+    id: "input-confirm-password"
+- inputText: ${BURNER_PASSWORD}
+- hideKeyboard
+- scrollUntilVisible:
+    element:
+      id: "chk-terms"
+    direction: DOWN
+    timeout: 20000
+- tapOn:
+    id: "chk-terms"
+- extendedWaitUntil:
+    visible: "Terms & Conditions"
+    timeout: 20000
+- scrollUntilVisible:
+    element:
+      text: "I agree to the Terms & Conditions"
+    direction: DOWN
+    timeout: 20000
+- tapOn: "I agree to the Terms & Conditions"
+- scrollUntilVisible:
+    element:
+      id: "chk-privacy"
+    direction: DOWN
+    timeout: 20000
+- tapOn:
+    id: "chk-privacy"
+- extendedWaitUntil:
+    visible: "Privacy Policy"
+    timeout: 20000
+- scrollUntilVisible:
+    element:
+      text: "I agree to the Privacy Policy"
+    direction: DOWN
+    timeout: 20000
+- tapOn: "I agree to the Privacy Policy"
+- scrollUntilVisible:
+    element:
+      id: "chk-data-collection"
+    direction: DOWN
+    timeout: 20000
+- tapOn:
+    id: "chk-data-collection"
+- scrollUntilVisible:
+    element:
+      text: "Sign Up"
+    direction: DOWN
+    timeout: 20000
+- tapOn: "Sign Up"
+- extendedWaitUntil:
+    visible: ".*(Skip|Need something done\\?).*"
+    timeout: 60000
+- tapOn:
+    text: "Skip"
+    optional: true
+- extendedWaitUntil:
+    visible: "Need something done?"
+    timeout: 15000
+
+# --- Edit Profile: fill every blank field, save, confirm on Profile ---
+# Dismiss the keyboard between fields by tapping the static "Full name" Text
+# label (keyboardShouldPersistTaps="handled" blurs the focused input on a tap
+# outside it) rather than any gesture/key-injection command. Two things that
+# looked like safer shortcuts each broke once this session and are avoided:
+# `pressKey: Enter` once backgrounded the whole app into Google Calendar, and
+# a `scrollUntilVisible` swipe once escaped to the OS Assistant/Search
+# overlay with the typed phone number as the query (both in bug-log.md).
+# hideKeyboard/eraseText/longPressOn are avoided too, per the BUG-003 harness
+# corollary noted above — a plain tapOn on a non-interactive Text element is
+# the only keyboard-dismiss method that held up under repeat testing.
+- tapOn:
+    id: "btn-home-avatar"
+- tapOn: "Edit Profile"
+- assertVisible: "Full name"
+- tapOn:
+    below: "Phone"
+- inputText: "+639171234567"
+- tapOn: "Full name"
+- tapOn:
+    below: "Address"
+- inputText: "123 Test Street"
+- tapOn: "Full name"
+- tapOn:
+    below: "City"
+- inputText: "Quezon City"
+- tapOn: "Full name"
+- tapOn: "Save Changes"
+- assertVisible: "Save profile changes?"
+- tapOn: "Save Changes"
+- assertVisible: "Quezon City, 123 Test Street"
+
+# --- Clean up: delete the burner (Settings > Delete Account) ---
+# Already on the Profile screen here (Save Changes navigates back to it),
+# not Home, so no second btn-home-avatar tap is needed/possible.
+- tapOn: "Settings"
+- tapOn: "Delete Account"
+- assertVisible: "Delete your account?"
+- tapOn:
+    text: "Delete Account"
+    rightOf: "Cancel"
+- extendedWaitUntil:
+    visible: "Welcome!"
+    timeout: 20000
