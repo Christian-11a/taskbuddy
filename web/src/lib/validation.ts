@@ -24,6 +24,25 @@ export const NOTE_MAX_LENGTH = 1000;
  *  input for `type="number"` — and suspending a user for 100,000 days with no
  *  warning shown anywhere. */
 export const SUSPENSION_MAX_DAYS = 3650;
+/** Matches `IssueRecoveryCreditDto.title` (`@Length(1, 200)`, wallet.dto.ts). */
+export const RECOVERY_CREDIT_TITLE_MAX_LENGTH = 200;
+/** Matches `IssueRecoveryCreditDto.amount`'s `@Max(50_000)` — a typo guard on
+ *  the backend, not a policy, but still worth catching client-side before the
+ *  round trip. */
+export const RECOVERY_CREDIT_MAX_AMOUNT = 50_000;
+
+/** Validates the credit amount field: a positive number, at most 2 decimal
+ *  places (matches the backend's `@IsNumber({ maxDecimalPlaces: 2 })`), and
+ *  no more than the typo-guard ceiling. */
+export function validateRecoveryCreditAmount(value: string): string | null {
+  const trimmed = value.trim();
+  if (!trimmed) return "Amount is required.";
+  const n = Number(trimmed);
+  if (!Number.isFinite(n) || n <= 0) return "Amount must be a positive number.";
+  if (Math.round(n * 100) !== n * 100) return "Amount can have at most 2 decimal places.";
+  if (n > RECOVERY_CREDIT_MAX_AMOUNT) return `Amount must be ${RECOVERY_CREDIT_MAX_AMOUNT.toLocaleString()} or less.`;
+  return null;
+}
 
 /**
  * Validates the optional "duration in days" field on a suspension. Empty is

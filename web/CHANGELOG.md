@@ -6,6 +6,107 @@ Newest first.
 
 ---
 
+## Completed: final web verification and light-mode default (2026-09-15)
+
+The remaining web checklist is complete. The manual checks were confirmed in
+the browser against the configured healthy backend:
+
+- **Issue Credit** was submitted with a small test amount and confirmed in the
+  recipient's wallet balance and Wallet-tab ledger.
+- **Customer auth** was checked with a real email. Signup correctly reaches the
+  account handoff under the current Supabase Auth configuration, where signup
+  confirmation OTP is not required. Password-reset OTP delivery and the
+  valid-code reset path were also confirmed.
+- **Browser smoke test** covered the public homepage, carousel role/step
+  controls, video and FAQ controls, auth-modal navigation and validation,
+  Escape-to-close navigation, admin login, the dashboard, and every listed
+  admin route. Read-only admin filters, pagination, details, Wallet/Escrow
+  tabs, the Issue Credit form cancel path, user details, Platform tabs, and
+  Settings were exercised without new errors.
+- **Admin appearance** now starts in light mode on `/admin/login` and the
+  dashboard. Existing saved dark-mode preferences remain supported.
+
+`npm test` passed with 118 tests and 1 intentional skip; lint, TypeScript, and
+the production build also passed. The only remaining build message is the
+non-blocking workspace-root warning caused by the root and `web/` lockfiles.
+
+---
+
+## Resolved: backend redeploy for the recovery-credit endpoint
+
+The gap blocking full verification of the "Issue Credit" button is closed.
+Re-checked `POST /admin/wallet-transactions/recovery-credit` against the live
+backend: it now returns `401 Missing authentication token` instead of the
+`404 Cannot POST` seen right after the endpoint's PR merged — confirming the
+route is live (a 401 only happens for a route that exists and is checking
+auth; a 404 means no route matched at all). No other backend commits landed
+between the two checks, so this was purely the redeploy catching up, not a
+code change. Removed the "Needs someone to redeploy the backend" item from
+README and folded the remaining "does it actually credit a wallet" check
+into the existing manual-testing item, since that only needs a real admin
+login now, not a backend fix.
+
+---
+
+## Resolved: Google OAuth redirect URI
+
+The `redirect_uri_mismatch` blocking Google Sign-In (README's "Needed to Move
+Forward" list) is fixed — verified live by clicking through the real flow
+again: it now reaches Google's actual "Sign in to continue to
+taskbuddy-kpek.onrender.com" screen instead of erroring. Someone with access
+to the Google Cloud project updated the OAuth client's Authorized redirect
+URIs to the current backend domain; no code changed on this side. Removed the
+now-resolved item from README.
+
+---
+
+## Built: "Issue Credit" button on the Wallet tab — and a live-deploy gap it surfaced
+
+Closes the last piece of the recovery-credit feature: backend support shipped
+in `feat/backend-handoff-closeout` (Eduard, PR #48), the web-side button did
+not exist yet.
+
+- **`lib/validation.ts`**: `RECOVERY_CREDIT_TITLE_MAX_LENGTH`,
+  `RECOVERY_CREDIT_MAX_AMOUNT`, `validateRecoveryCreditAmount()` — mirror the
+  backend's `IssueRecoveryCreditDto` limits (title ≤200 chars, amount ≤₱50,000,
+  ≤2 decimal places), same "duplicate validation on both sides" convention as
+  everywhere else in this console.
+- **`lib/services/index.ts`**: `issueRecoveryCredit()`, calling
+  `POST /admin/wallet-transactions/recovery-credit`. Returns `void` rather than
+  a mapped row — the insert has no joined profile name, unlike
+  `GET /admin/wallet-transactions` — so callers refetch the list instead of
+  trusting the response, same convention as suspend/reinstate/settle.
+- **`TransactionsPage.tsx`**: an "Issue Credit" button on the Wallet tab opens
+  a form (in the existing `ConfirmDialog`) with a recipient search — there's no
+  dedicated "search users" endpoint, so this filters the users already loaded
+  app-wide via `useApp()` rather than requiring a raw UUID — amount, title, and
+  an optional job id. The four backend refusals (deleted recipient, `job_id`
+  not theirs, over the ₱50,000 ceiling, unknown profile) surface verbatim
+  rather than as a generic error.
+- **`TransactionsPage.test.tsx`** (new): 4 tests — confirm-disabled until the
+  form is valid, the amount ceiling, the exact request shape sent to the
+  backend plus the refetch-not-trust-response behavior, and verbatim error
+  surfacing.
+
+**What "live-tested" actually found:** logged in as a real admin and ran the
+full flow against the deployed backend — search, select a real user
+(Georgina Ramos), fill the form, submit. The request came back
+`404 Cannot POST /admin/wallet-transactions/recovery-credit` — confirmed via a
+direct unauthenticated `fetch()` against the same URL, which is NestJS's
+"no route matches at all" response, not a permission error. The backend
+process's uptime predates when PR #48 merged, so Render simply hasn't
+redeployed since — not a bug in this code or in the backend code, just a
+deploy that hasn't happened yet. Nothing was actually charged: the request
+failed before reaching any real logic. Recorded as a new "Needs someone to
+redeploy the backend" item in README rather than claiming this shipped
+end-to-end when it hasn't been proven to yet.
+
+`tsc --noEmit`, `npm run lint` (1 pre-existing unrelated warning), and
+`npm test` (118/119, the 1 skip being the credentials-gated live admin-login
+test) all clean.
+
+---
+
 ## Fixed: login-CSRF hole in the Google callback, plus a full re-check
 
 `/api/auth/google/callback` trusted `access_token`/`refresh_token`/`expires_at`
@@ -251,9 +352,9 @@ so this pass did both migrations together, since one forced the other.
   Sign Up, Forgot Password (200s, transitions to the Reset panel with the
   email prefilled), and Reset Password's error path (an invalid/expired code
   correctly surfaces the backend's "Token has expired or is invalid" instead
-  of a generic failure). The reset-with-a-valid-code success path still needs
-  a human checking a real inbox — see
-  [README → Needed to Move Forward](./README.md#needs-a-human-with-a-real-inbox).
+  of a generic failure). At the time of this entry, the reset-with-a-valid-code
+  success path still needed a human checking a real inbox; that check was later
+  completed in the 2026-09-15 entry above.
 - **Admin login page redesigned** from a generic split-panel/gradient
   template to a single centered card, using new theme-invariant
   `--login-card`/`--login-card-border` tokens in `globals.css`.
@@ -476,7 +577,7 @@ something already handled. Grouped by what changed, not when.
 - Pagination UI now exists client-side (see the mockup-port pass below), but
   it still pages over a flat 200-row fetch, so row 201 is invisible. Blocked
   on backend `search` params; see
-  [Needed to Move Forward](./README.md#needs-a-backend-developer).
+  [Needed to Move Forward](./README.md#needed-to-move-forward).
 - Mutations refetch the whole list rather than patching state from the
   response. Deliberate — it's what keeps a table honest when a bulk action
   partly fails — but a fair future optimisation.
@@ -488,7 +589,7 @@ something already handled. Grouped by what changed, not when.
 
 **All nine items below are shipped and wired up** — nothing here is
 outstanding; it's kept as a record of what closed. For what's still missing,
-see [Needed to Move Forward](./README.md#needs-a-backend-developer).
+see [Needed to Move Forward](./README.md#needed-to-move-forward).
 
 Migrations 0014 and 0017 shipped the backend (`backend/BACKEND_SCHEMA.md`
 §23–25), and the console calls every one of these endpoints. (0017 was

@@ -4,6 +4,11 @@ import Script from "next/script";
 import "../../styles/promo.css";
 import { HOME_MARKUP } from "./HomePage.markup";
 
+const HOME_MARKUP_WITHOUT_DUPLICATE_SKIP_LINK = HOME_MARKUP.replace(
+  '<a class="skip-link" href="#main">Skip to content</a>',
+  "",
+);
+
 /**
  * The public promotional homepage, ported from
  * taskbuddy-product-reference/public-site/index.html.
@@ -20,13 +25,13 @@ export function HomePage() {
   return (
     <div className="promo-site">
       <a className="skip-link" href="#main">Skip to content</a>
-      <div dangerouslySetInnerHTML={{ __html: HOME_MARKUP }} />
+      <div dangerouslySetInnerHTML={{ __html: HOME_MARKUP_WITHOUT_DUPLICATE_SKIP_LINK }} />
 
-      {/* Fonts, matching the static prototype's <head> links exactly. */}
-      <link rel="preconnect" href="https://fonts.googleapis.com" />
-      <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
+      {/* Switzer remains on Fontshare because no licensed local font files are
+          part of this repository. Bricolage Grotesque is self-hosted by
+          next/font in the root layout. */}
+      <link rel="preconnect" href="https://api.fontshare.com" />
       <link rel="stylesheet" href="https://api.fontshare.com/v2/css?f[]=switzer@400,500,600,700&display=swap" />
-      <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&display=swap" />
 
       {/* Same load order as the static prototype: GSAP + ScrollTrigger as
           globals, then script.js (site interactions), then auth.js (the

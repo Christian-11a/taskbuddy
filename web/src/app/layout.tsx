@@ -1,5 +1,14 @@
 import type { Metadata } from "next";
+import { Bricolage_Grotesque } from "next/font/google";
 import "./globals.css";
+
+const bricolageGrotesque = Bricolage_Grotesque({
+  variable: "--font-bricolage-grotesque",
+  weight: "variable",
+  axes: ["opsz"],
+  subsets: ["latin"],
+  display: "swap",
+});
 
 /** Self-hosted at build time — see the note in globals.css for why this
  *  replaced the stylesheet @import. */
@@ -24,7 +33,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en">
+    <html lang="en" className={bricolageGrotesque.variable} data-theme="light">
       {/* suppressHydrationWarning: browser extensions (Grammarly, Dashlane,
           etc.) inject their own attributes onto <body> before React
           hydrates — data-gr-ext-installed and similar. React sees the

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { API_URL, isSameOriginRequest, setAccountSession } from "../_session";
+import { API_URL, isSameOriginRequest, isSixDigitOtp, setAccountSession } from "../_session";
 
 /** Exchanges the six-digit email code for a real session (POST /auth/verify-email-otp). */
 export async function POST(req: NextRequest) {
@@ -7,7 +7,15 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ message: "Invalid request origin." }, { status: 403 });
   }
 
-  const body = await req.json();
+  let body: unknown;
+  try {
+    body = await req.json();
+  } catch {
+    return NextResponse.json({ message: "Enter the 6-digit confirmation code." }, { status: 400 });
+  }
+  if (!body || typeof body !== "object" || !isSixDigitOtp((body as Record<string, unknown>).token)) {
+    return NextResponse.json({ message: "Enter the 6-digit confirmation code." }, { status: 400 });
+  }
 
   const upstream = await fetch(`${API_URL}/auth/verify-email-otp`, {
     method: "POST",

@@ -90,9 +90,8 @@
   --brand-on-solid: #ffffff;
   --login-panel: #080d12;
   --login-input: rgba(255, 255, 255, 0.06);
-  /* Theme-invariant like the two above — this page must stay dark regardless
-     of the ambient light/dark toggle, so it can't reuse --card-bg/--card-border
-     (those flip to white in light mode via [data-theme="light"] below). */
+  /* Login surfaces have their own tokens because the console card needs
+     stronger separation than the dashboard shell in either theme. */
   --login-card: #111820;
   --login-card-border: #202a35;
   --chart-cyan: #22c3d6;
@@ -146,6 +145,10 @@
   --nav-active-bg: rgba(14, 127, 141, 0.1);
   --nav-active-fg: #0e7f8d;
   --overlay: rgba(17, 24, 39, 0.45);
+  --login-panel: #f3f4f6;
+  --login-input: rgba(0, 0, 0, 0.04);
+  --login-card: #ffffff;
+  --login-card-border: rgba(0, 0, 0, 0.08);
   color-scheme: light;
 }
 
@@ -154,15 +157,14 @@
   color: var(--text-white);
 }
 
-/* Light-mode text remaps, scoped to the app shell and to `.theme-portal` —
-   the login page keeps its always-dark design, so its `text-white` must stay
-   literally white. `.theme-portal` covers ConfirmDialog/ReviewDrawer: both
-   render via createPortal straight into <body>, so they sit outside
-   `.app-shell` in the DOM and wouldn't otherwise pick up these overrides. */
-[data-theme="light"] :is(.app-shell, .theme-portal) {
+/* Light-mode text remaps, scoped to the app shell, login page, and
+   `.theme-portal`. The portal covers ConfirmDialog/ReviewDrawer: both render
+   via createPortal straight into <body>, so they sit outside `.app-shell` in
+   the DOM and wouldn't otherwise pick up these overrides. */
+[data-theme="light"] :is(.app-shell, .login-page, .theme-portal) {
   --indigo-light: #0f9caf;
 }
-[data-theme="light"] :is(.app-shell, .theme-portal) .text-white {
+[data-theme="light"] :is(.app-shell, .login-page, .theme-portal) .text-white {
   color: var(--text-white);
 }
 [data-theme="light"] :is(.app-shell, .theme-portal) .text-indigo-300 {

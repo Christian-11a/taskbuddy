@@ -73,6 +73,15 @@ requests are fast.
 **Backend won't start / port already in use.** Both the backend and Next.js
 default to port 3000. Run the backend with `PORT=3001`.
 
+**Admin theme starts in light mode.** `/admin/login` and the dashboard use a
+light theme by default. A previously saved dark-mode preference is preserved;
+use the Dark Mode switch in Settings to change it.
+
+**Build warns about multiple lockfiles.** The repository has a root
+`package-lock.json` and a second one under `web/`, so Next.js may warn while
+inferring its workspace root. The web build still completes successfully; do
+not remove the root lockfile as part of a web-only change.
+
 **Hydration warning mentioning `data-gr-ext-installed`.** That's the Grammarly
 browser extension editing `<body>` before React hydrates, not app code. Already
 suppressed via `suppressHydrationWarning` on `<body>`.
@@ -249,9 +258,7 @@ are checked. Written UTF-8 with a BOM so Excel doesn't mangle the peso sign.
 **This worktree uses the backend integrations below.** An external deploy is
 still required before they are available at a hosted URL.
 
-> **New since this list was written:** `POST /admin/wallet-transactions/recovery-credit`
-> exists now, so the Wallet tab's "Issue Credit" button is unblocked — see
-> [Needs a web developer](#needs-a-web-developer). The API is also rate-limited
+> **New since this list was written:** the API is now rate-limited
 > (`backend/BACKEND_SCHEMA.md` §28.4), **per endpoint per IP** — 240/minute on
 > any one route, and `POST /auth/admin/login` specifically 10/minute. The
 > console is nowhere near that, with one exception worth knowing before it
@@ -330,11 +337,14 @@ transitions to the Reset panel with the email prefilled; submitting Reset
 Password with an invalid/expired code correctly surfaces the backend's
 "Token has expired or is invalid" rather than a generic failure; clicking
 "Continue with Google" goes through `/api/auth/google/start` to the real
-backend to the real Google consent screen (it stops there today on
-`redirect_uri_mismatch` — see [Needed to Move Forward](#needs-google-cloud-console-access));
-a hand-crafted `google/callback` URL with fake tokens is rejected and sets no
-cookie. The reset-with-a-real-code success path still needs a human checking
-a real inbox — see [Needed to Move Forward](#needs-a-human-with-a-real-inbox).
+backend to the real Google consent screen — the OAuth client's redirect URI
+was updated to the current backend domain, so this now reaches Google's real
+sign-in screen instead of `redirect_uri_mismatch`; a hand-crafted
+`google/callback` URL with fake tokens is rejected and sets no cookie. The
+reset-with-a-real-code success path and the real-email signup path were also
+manually verified. The current Supabase Auth configuration does not require a
+signup-confirmation OTP, so a successful signup can go straight to the account
+handoff; reset-password OTPs remain required for password recovery.
 
 ### 4. Consumed by the web console (migrations 0022–0024)
 
@@ -350,6 +360,20 @@ choice a reviewer should not have to rediscover:
 | **Admin accounts** | `GET`/`POST /admin/admins`, `POST /admin/admins/:id/revoke` | **No password crosses the wire.** The new admin sets their own from a reset email. Revocation refuses self-demotion and refuses to remove the last admin — a console nobody can get into is not recoverable from inside the console |
 | **Commission** | `GET`/`PATCH /admin/commission` | A **fraction**, not a percent: 0.15 is 15%, capped at 0.5. Applies at escrow release and freezes onto the escrow row, so settled jobs keep their figures. Defaults to 0 — nothing is withheld until someone deliberately sets it |
 | **Broadcast** | `POST /admin/notifications/broadcast` | One notification row per recipient (read state and push are both per-row), excluding admins, suspended and deleted accounts. Returns `{ sent, failed }` — a partly-delivered broadcast reports the shortfall rather than throwing |
+| **Recovery credit** | `POST /admin/wallet-transactions/recovery-credit` | Fungible once issued — spendable on a hire or withdrawable like any other peso, tagged `kind: 'recovery_credit'` for display only. `GET /admin/wallet-transactions?kind=recovery_credit` filters to them. Reasoning in `backend/BACKEND_SCHEMA.md` §28.1 |
+
+An "Issue Credit" button on the Transactions page's Wallet tab
+(`TransactionsPage.tsx`'s `WalletTab`) calls the recovery-credit endpoint
+above: a recipient search (there's no dedicated "search users" endpoint, so
+this filters the users already loaded app-wide), amount, title, and an
+optional job id, refetching the wallet list on success rather than trusting
+the mutation response (the insert has no joined profile name). The four
+backend refusals — deleted recipient, `job_id` not theirs, over the ₱50,000
+ceiling, unknown profile — surface verbatim instead of a generic error.
+Verified via component tests (`TransactionsPage.test.tsx`) and that the route
+now exists live (`401` instead of the earlier `404`) — a real admin
+click-through also confirmed that the credit lands in the recipient's wallet
+balance and ledger; the completed check is recorded in [`CHANGELOG.md`](./CHANGELOG.md).
 
 Two changes to pages that **do** exist, worth knowing before the next pass over
 them:
@@ -414,61 +438,7 @@ ported from a design mockup to match it exactly.
 
 ## Needed to Move Forward
 
-Everything still open, grouped by **who** has to act — not by what kind of
-gap it is. Once an item here ships, its story moves to
-[`CHANGELOG.md`](./CHANGELOG.md) with the commit and how it was verified, and
-it's removed from here — this list only tracks current, unstarted work.
-
-### Needs a web developer
-
-- **The "Issue Credit" button** on the Transactions page's Wallet tab
-  (`TransactionsPage.tsx`'s `WalletTab`). **No longer blocked** — the endpoint
-  it was waiting for now exists:
-
-  ```
-  POST /admin/wallet-transactions/recovery-credit
-       { profile_id, amount, title, job_id? }  →  the created ledger row
-  ```
-
-  A row-level "credit this user" action is the natural shape, since the tab
-  already has each row's `profile_id`; the modal needs `amount` and `title`
-  (the recipient reads the title in their own transaction list), plus an
-  optional `job_id`.
-
-  Four errors worth surfacing verbatim rather than as "something went wrong",
-  because each one is a thing the admin can fix: the recipient's account was
-  deleted, the `job_id` doesn't belong to them, the amount is over the ₱50,000
-  ceiling, and the profile doesn't exist. Reasoning for each guard is in
-  `backend/BACKEND_SCHEMA.md` §28.1.
-
-  The credit is **fungible** once issued — spendable on a hire or withdrawable
-  like any other peso, tagged `kind: 'recovery_credit'` for display only. If the
-  UI implies it can only be put toward a booking, it will be wrong.
-  `GET /admin/wallet-transactions?kind=recovery_credit` filters to them.
-
-### Needs Google Cloud Console access
-
-Not code — a permission on the Google Cloud *project* that owns TaskBuddy's
-OAuth client (client id `646218465005-...`). Whoever is an Owner/Editor there
-can fix this in a couple of clicks; nobody without that project's access can.
-
-- **Register the Google OAuth redirect URI.** Sign-In with Google is fully
-  wired on our side (button → `/api/auth/google/start` → backend → the real
-  Google consent screen) and verified that far — it stops at Google itself
-  with `redirect_uri_mismatch`, because
-  `https://taskbuddy-kpek.onrender.com/auth/google/callback` isn't on that
-  OAuth client's allowed-redirect-URIs list. Add it in Google Cloud Console
-  → APIs & Services → Credentials → that OAuth 2.0 Client ID → Authorized
-  redirect URIs, and this works end-to-end with no further code changes. A
-  one-time registration for the app itself — not something repeated per user.
-
-### Needs a human with a real inbox (testing)
-
-No special access required — just someone willing to sign up (or request a
-reset) with a real, checkable email address.
-
-- **Verifying the reset-password and signup-OTP success path.** The
-  request/response handling is already verified (see
-  [Backend Integration Status §3](#3-public-site-customer-auth--password-reset))
-  — what's left is confirming the actual email arrives and the real code in
-  it works. No amount of automated testing substitutes for that.
+Nothing is currently blocking the web work. The earlier manual checks for
+Issue Credit, password reset, and real-email signup were completed and are
+recorded in [`CHANGELOG.md`](./CHANGELOG.md). The multiple-lockfile message
+described in Troubleshooting is informational and does not block the web build.

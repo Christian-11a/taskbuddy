@@ -1,12 +1,16 @@
 "use client";
 
 import { Fragment, forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
-import { Search, ChevronDown, Download } from "lucide-react";
+import { Search, ChevronDown, Download, Gift } from "lucide-react";
 import * as services from "@/lib/services";
+import { useApp } from "@/context/AppContext";
 import { toTransactionRow, toWalletTxnRow, type TransactionRow, type WalletTxnRow } from "@/lib/adapters";
 import { datedFilename, downloadCsv, toCsv } from "@/lib/export/csv";
+import { RECOVERY_CREDIT_MAX_AMOUNT, RECOVERY_CREDIT_TITLE_MAX_LENGTH, validateRecoveryCreditAmount } from "@/lib/validation";
+import { ApiError } from "@/lib/api/client";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { Pagination } from "@/components/ui/Pagination";
+import { useToast } from "@/components/ui/Toast";
 import clsx from "clsx";
 
 const PAGE_SIZE = 7;
@@ -292,10 +296,41 @@ const EscrowTab = forwardRef<ExportHandle, TabProps>(function EscrowTab({ onExpo
  * BookingsPage fetches booking detail on expand.
  */
 const WalletTab = forwardRef<ExportHandle, TabProps>(function WalletTab({ onExportCountChange }, ref) {
+  const { users } = useApp();
+  const { showToast } = useToast();
   const [rows, setRows] = useState<WalletTxnRow[] | "loading" | "error">("loading");
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
   const [selected, setSelected] = useState<Set<string>>(new Set());
+
+  // Issue Credit form state. A plain object rather than five separate
+  // useState calls since it's reset/read as a unit (open, close, submit).
+  const [issuingCredit, setIssuingCredit] = useState(false);
+  const [creditRecipientQuery, setCreditRecipientQuery] = useState("");
+  const [creditProfileId, setCreditProfileId] = useState<string | null>(null);
+  const [creditAmount, setCreditAmount] = useState("");
+  const [creditTitle, setCreditTitle] = useState("");
+  const [creditJobId, setCreditJobId] = useState("");
+  const [creditBusy, setCreditBusy] = useState(false);
+  const [creditError, setCreditError] = useState("");
+
+  function resetCreditForm() {
+    setCreditRecipientQuery("");
+    setCreditProfileId(null);
+    setCreditAmount("");
+    setCreditTitle("");
+    setCreditJobId("");
+    setCreditError("");
+  }
+
+  async function loadWallet() {
+    try {
+      const txns = await services.getWalletTransactions();
+      setRows(txns.map(toWalletTxnRow));
+    } catch {
+      setRows("error");
+    }
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -376,21 +411,84 @@ const WalletTab = forwardRef<ExportHandle, TabProps>(function WalletTab({ onExpo
   const totalTopups = rows.filter((r) => r.direction === "credit").reduce((s, r) => s + r.amountValue, 0);
   const totalWithdrawals = rows.filter((r) => r.direction === "debit").reduce((s, r) => s + r.amountValue, 0);
 
+  // Recipient search over the users already loaded app-wide — there's no
+  // dedicated "search users" endpoint, and the admin picking a recovery-credit
+  // recipient by typing a raw UUID isn't realistic. Capped to 6 so picking a
+  // common name doesn't dump the whole user base into a dropdown.
+  const selectedRecipient = creditProfileId ? users.find((u) => u.id === creditProfileId) : undefined;
+  const recipientMatches =
+    !selectedRecipient && creditRecipientQuery.trim().length > 0
+      ? users
+          .filter(
+            (u) =>
+              u.name.toLowerCase().includes(creditRecipientQuery.toLowerCase()) ||
+              u.email.toLowerCase().includes(creditRecipientQuery.toLowerCase()),
+          )
+          .slice(0, 6)
+      : [];
+
+  const creditAmountError = creditAmount ? validateRecoveryCreditAmount(creditAmount) : null;
+  const creditTitleTooLong = creditTitle.length > RECOVERY_CREDIT_TITLE_MAX_LENGTH;
+  const creditFormValid =
+    !!creditProfileId &&
+    creditAmount.trim().length > 0 &&
+    !creditAmountError &&
+    creditTitle.trim().length > 0 &&
+    !creditTitleTooLong;
+
+  function closeCreditDialog() {
+    setIssuingCredit(false);
+    resetCreditForm();
+  }
+
+  async function confirmIssueCredit() {
+    if (!creditProfileId || !creditFormValid) return;
+    setCreditBusy(true);
+    setCreditError("");
+    try {
+      await services.issueRecoveryCredit({
+        profileId: creditProfileId,
+        amount: Number(creditAmount),
+        title: creditTitle,
+        jobId: creditJobId,
+      });
+      await loadWallet();
+      showToast("Recovery credit issued.");
+      closeCreditDialog();
+    } catch (err) {
+      // Surfaced verbatim: the backend's four refusal messages (deleted
+      // recipient, job_id not theirs, over the ceiling, unknown profile) are
+      // specific enough to act on, unlike a generic "something went wrong".
+      setCreditError(err instanceof ApiError ? err.message : "Unable to issue credit. Please try again.");
+    } finally {
+      setCreditBusy(false);
+    }
+  }
+
   return (
     <div>
       {/* Ledger totals are neutral facts, not statuses — one calm surface,
           matching the Escrow tab's counters. */}
-      <div className="flex gap-2.5 flex-wrap mb-4">
-        {[
-          { label: "Ledger Rows", val: rows.length.toLocaleString() },
-          { label: "Total Topped Up", val: `₱${totalTopups.toLocaleString()}` },
-          { label: "Total Withdrawn", val: `₱${totalWithdrawals.toLocaleString()}` },
-        ].map((s) => (
-          <div key={s.label} className="flex items-center gap-2 rounded-xl" style={{ padding: "9px 14px", border: "1px solid var(--card-border)", background: "var(--chip-bg)", fontSize: "var(--fs-xs)" }}>
-            <span className="font-semibold text-white tabular">{s.val}</span>
-            <span style={{ color: "var(--text-muted)" }}>{s.label}</span>
-          </div>
-        ))}
+      <div className="flex items-start justify-between flex-wrap gap-3 mb-4">
+        <div className="flex gap-2.5 flex-wrap">
+          {[
+            { label: "Ledger Rows", val: rows.length.toLocaleString() },
+            { label: "Total Topped Up", val: `₱${totalTopups.toLocaleString()}` },
+            { label: "Total Withdrawn", val: `₱${totalWithdrawals.toLocaleString()}` },
+          ].map((s) => (
+            <div key={s.label} className="flex items-center gap-2 rounded-xl" style={{ padding: "9px 14px", border: "1px solid var(--card-border)", background: "var(--chip-bg)", fontSize: "var(--fs-xs)" }}>
+              <span className="font-semibold text-white tabular">{s.val}</span>
+              <span style={{ color: "var(--text-muted)" }}>{s.label}</span>
+            </div>
+          ))}
+        </div>
+        <button
+          onClick={() => setIssuingCredit(true)}
+          className="flex items-center gap-1.5 font-semibold transition-opacity hover:opacity-80"
+          style={{ background: "rgba(34,197,94,0.15)", border: "1px solid rgba(34,197,94,0.2)", borderRadius: "var(--r-md)", padding: "7px 13px", fontSize: "var(--fs-xs)", color: "var(--success-text)", cursor: "pointer", fontFamily: "inherit" }}
+        >
+          <Gift size={12} /> Issue Credit
+        </button>
       </div>
 
       <div className="relative mb-4" style={{ maxWidth: 360 }}>
@@ -470,6 +568,127 @@ const WalletTab = forwardRef<ExportHandle, TabProps>(function WalletTab({ onExpo
           itemLabel="wallet rows"
         />
       </div>
+
+      <ConfirmDialog
+        open={issuingCredit}
+        danger={false}
+        title="Issue recovery credit"
+        message="Adds wallet balance for a user, typically after a dispute — spendable on a hire or withdrawable like any other peso."
+        confirmLabel="Issue credit"
+        busy={creditBusy}
+        confirmDisabled={!creditFormValid}
+        onConfirm={confirmIssueCredit}
+        onCancel={closeCreditDialog}
+      >
+        <div className="flex flex-col gap-3">
+          <div className="relative">
+            <label className="block font-semibold mb-1" style={{ fontSize: "var(--fs-xs)", color: "var(--text-light)" }}>
+              Recipient
+            </label>
+            {selectedRecipient ? (
+              <div
+                className="flex items-center justify-between"
+                style={{ background: "var(--input-bg)", border: "1px solid var(--border-md)", borderRadius: "var(--r-md)", padding: "7px 11px" }}
+              >
+                <span style={{ fontSize: "var(--fs-xs)" }} className="text-white">
+                  {selectedRecipient.name} <span style={{ color: "var(--text-muted)" }}>({selectedRecipient.email})</span>
+                </span>
+                <button
+                  onClick={() => { setCreditProfileId(null); setCreditRecipientQuery(""); }}
+                  className="font-semibold"
+                  style={{ background: "transparent", border: 0, color: "var(--text-muted)", fontSize: "var(--fs-xs)", cursor: "pointer", fontFamily: "inherit" }}
+                >
+                  Change
+                </button>
+              </div>
+            ) : (
+              <input
+                autoFocus
+                placeholder="Search by name or email…"
+                aria-label="Search recipient by name or email"
+                value={creditRecipientQuery}
+                onChange={(e) => setCreditRecipientQuery(e.target.value)}
+                className="w-full text-white outline-none"
+                style={{ background: "var(--input-bg)", border: "1px solid var(--border-md)", borderRadius: "var(--r-md)", padding: "7px 11px", fontSize: "var(--fs-xs)", fontFamily: "inherit" }}
+              />
+            )}
+            {recipientMatches.length > 0 && (
+              <div
+                className="absolute left-0 right-0 overflow-y-auto"
+                style={{ top: "100%", marginTop: 4, maxHeight: 180, background: "var(--panel-bg)", border: "1px solid var(--panel-border)", borderRadius: "var(--r-md)", zIndex: 1, boxShadow: "0 8px 20px rgba(0,0,0,0.3)" }}
+              >
+                {recipientMatches.map((u) => (
+                  <button
+                    key={u.id}
+                    onClick={() => { setCreditProfileId(u.id); setCreditRecipientQuery(""); }}
+                    className="w-full text-left transition-colors hover:opacity-80"
+                    style={{ background: "transparent", border: 0, padding: "7px 11px", fontSize: "var(--fs-xs)", color: "var(--text-light)", cursor: "pointer", fontFamily: "inherit", display: "block" }}
+                  >
+                    <span className="text-white">{u.name}</span>{" "}
+                    <span style={{ color: "var(--text-muted)" }}>({u.email})</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div>
+            <label className="block font-semibold mb-1" style={{ fontSize: "var(--fs-xs)", color: "var(--text-light)" }}>
+              Amount (₱)
+            </label>
+            <input
+              type="number"
+              min={0.01}
+              max={RECOVERY_CREDIT_MAX_AMOUNT}
+              step="0.01"
+              placeholder="e.g. 500"
+              aria-label="Credit amount in pesos"
+              value={creditAmount}
+              onChange={(e) => setCreditAmount(e.target.value)}
+              className="w-full text-white outline-none"
+              style={{ background: "var(--input-bg)", border: `1px solid ${creditAmountError ? "rgba(239,68,68,0.5)" : "var(--border-md)"}`, borderRadius: "var(--r-md)", padding: "7px 11px", fontSize: "var(--fs-xs)", fontFamily: "inherit" }}
+            />
+            {creditAmountError && (
+              <div style={{ fontSize: "var(--fs-2xs)", color: "var(--danger-text)", marginTop: 4 }}>{creditAmountError}</div>
+            )}
+          </div>
+
+          <div>
+            <label className="block font-semibold mb-1" style={{ fontSize: "var(--fs-xs)", color: "var(--text-light)" }}>
+              Title <span style={{ color: "var(--text-muted)", fontWeight: 400 }}>(shown to the recipient)</span>
+            </label>
+            <input
+              placeholder="e.g. Dispute resolution credit"
+              aria-label="Credit title, shown to the recipient"
+              value={creditTitle}
+              onChange={(e) => setCreditTitle(e.target.value)}
+              className="w-full text-white outline-none"
+              style={{ background: "var(--input-bg)", border: `1px solid ${creditTitleTooLong ? "rgba(239,68,68,0.5)" : "var(--border-md)"}`, borderRadius: "var(--r-md)", padding: "7px 11px", fontSize: "var(--fs-xs)", fontFamily: "inherit" }}
+            />
+            <div style={{ fontSize: "var(--fs-2xs)", color: creditTitleTooLong ? "var(--danger-text)" : "var(--text-muted)", marginTop: 4 }}>
+              {creditTitle.length}/{RECOVERY_CREDIT_TITLE_MAX_LENGTH}
+            </div>
+          </div>
+
+          <div>
+            <label className="block font-semibold mb-1" style={{ fontSize: "var(--fs-xs)", color: "var(--text-light)" }}>
+              Job ID <span style={{ color: "var(--text-muted)", fontWeight: 400 }}>(optional — the dispute or job this compensates)</span>
+            </label>
+            <input
+              placeholder="Optional"
+              aria-label="Related job ID (optional)"
+              value={creditJobId}
+              onChange={(e) => setCreditJobId(e.target.value)}
+              className="w-full text-white outline-none"
+              style={{ background: "var(--input-bg)", border: "1px solid var(--border-md)", borderRadius: "var(--r-md)", padding: "7px 11px", fontSize: "var(--fs-xs)", fontFamily: "inherit" }}
+            />
+          </div>
+
+          {creditError && (
+            <div style={{ fontSize: "var(--fs-xs)", color: "var(--danger-text)" }}>{creditError}</div>
+          )}
+        </div>
+      </ConfirmDialog>
     </div>
   );
 });

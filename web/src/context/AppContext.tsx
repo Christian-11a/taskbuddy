@@ -206,7 +206,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [maintenanceMessage, setMaintenanceMessageState] = useState<string | null>(null);
 
   // preferences — lazily hydrated from localStorage on the client
-  const [darkMode, setDarkModeState] = useState(() => loadStoredPrefs()?.darkMode ?? true);
+  // Light mode is the first-run default. A saved preference still wins, and
+  // the server preference is applied after the admin session/data restore.
+  const [darkMode, setDarkModeState] = useState(() => loadStoredPrefs()?.darkMode ?? false);
   const [sidebarCollapsed, setSidebarCollapsedState] = useState(
     () => loadStoredPrefs()?.sidebarCollapsed ?? false,
   );

@@ -12,7 +12,44 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ message: "Invalid request origin." }, { status: 403 });
   }
 
-  const body = await req.json();
+  let body: unknown;
+  try {
+    body = await req.json();
+  } catch {
+    return NextResponse.json({ message: "Invalid registration request." }, { status: 400 });
+  }
+
+  if (!body || typeof body !== "object") {
+    return NextResponse.json({ message: "Invalid registration request." }, { status: 400 });
+  }
+
+  const registration = body as Record<string, unknown>;
+  if (
+    registration.consented_terms !== true ||
+    registration.consented_privacy !== true ||
+    registration.consented_data_collection !== true
+  ) {
+    return NextResponse.json(
+      { message: "Please accept the required consents to continue." },
+      { status: 400 },
+    );
+  }
+
+  if (registration.role === "provider") {
+    const categoryId = registration.category_id;
+    if (
+      registration.consented_biometric !== true ||
+      typeof categoryId !== "number" ||
+      !Number.isInteger(categoryId) ||
+      categoryId < 1 ||
+      categoryId > 5
+    ) {
+      return NextResponse.json(
+        { message: "Choose a skill category and accept the provider consent to continue." },
+        { status: 400 },
+      );
+    }
+  }
 
   const upstream = await fetch(`${API_URL}/auth/register`, {
     method: "POST",

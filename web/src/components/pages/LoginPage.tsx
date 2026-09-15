@@ -106,7 +106,7 @@ export function LoginPage() {
           </button>
         </form>
 
-        <div style={{ fontSize: "var(--fs-2xs)", color: "var(--text-muted)", marginTop: 30, paddingTop: "var(--sp-4)", borderTop: "1px solid rgba(255,255,255,0.07)" }}>
+        <div style={{ fontSize: "var(--fs-2xs)", color: "var(--text-muted)", marginTop: 30, paddingTop: "var(--sp-4)", borderTop: "1px solid var(--border)" }}>
           TaskBuddy Admin Console
         </div>
       </div>
