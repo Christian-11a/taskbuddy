@@ -143,7 +143,7 @@ export default function SPWalletScreen() {
         <View style={styles.trustNote}>
           <WalletCards size={18} color={C.cyan800} />
           <Text style={styles.trustNoteText}>
-            Withdrawals happen here in Wallet. To add or remove payout accounts, use Profile → Payout Methods.
+            Card-paid jobs go straight to your Stripe account once payouts are set up (Profile → Payouts). Everything else lands here — withdraw it with the button above.
           </Text>
         </View>
 
@@ -162,7 +162,10 @@ export default function SPWalletScreen() {
           <View style={styles.txnList}>
             {transactions.map((txn, i) => {
               const Icon = txn.direction === 'credit' ? Sparkles : Building2;
-              const statusLabel = txn.status.charAt(0).toUpperCase() + txn.status.slice(1);
+              const statusLabel =
+                txn.kind === 'connect_transfer'
+                  ? CONNECT_TRANSFER_STATUS[txn.status]
+                  : txn.status.charAt(0).toUpperCase() + txn.status.slice(1);
               return (
                 <View key={txn.id} style={[styles.txnRow, i < transactions.length - 1 && styles.txnRowBorder]}>
                   <View style={styles.txnIcon}><Icon size={19} color={C.cyan700} /></View>
@@ -191,6 +194,17 @@ export default function SPWalletScreen() {
     </View>
   );
 }
+
+/**
+ * A card-funded payout sent on to the provider's Stripe account (§29.5).
+ * Failed means Stripe refused it and the money stayed in this wallet — the
+ * row's minus sign no longer applies, and the label says so.
+ */
+const CONNECT_TRANSFER_STATUS: Record<'pending' | 'completed' | 'failed', string> = {
+  pending: 'Sending to Stripe…',
+  completed: 'Sent to Stripe',
+  failed: 'Not sent — kept in wallet',
+};
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: C.canvas },

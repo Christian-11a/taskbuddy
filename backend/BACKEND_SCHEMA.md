@@ -42,7 +42,7 @@ recommendation model (see [Recommendation Engine Integration](#9-recommendation-
 26. [Booking Confirmation, Job Checklists & Verification Storage RLS (migrations 0018–0019)](#26-booking-confirmation-job-checklists--verification-storage-rls-migrations-00180019)
 27. [Backend Leftovers (migrations 0022–0024)](#27-backend-leftovers-migrations-00220024)
 28. [Handoff Closeout (no migration)](#28-handoff-closeout-no-migration)
-29. [Stripe Connect Payouts & Card-Funded Escrow (migrations 0026–0028)](#29-stripe-connect-payouts--card-funded-escrow-migrations-00260028)
+29. [Stripe Connect Payouts & Card-Funded Escrow (migrations 0026–0029)](#29-stripe-connect-payouts--card-funded-escrow-migrations-00260029)
 
 ---
 
@@ -1625,14 +1625,10 @@ jobs is this?" consumer wrong.
 
 ### 27.9 What is still not built, and why
 
-- **Card-at-hire for homeowners** (handoff §6). Not a missing endpoint — a product fork. The
-  escrow model (§7) assumes the budget is debited from a wallet balance at hire; paying by card at
-  hire means either topping up silently behind the scenes (one ledger, recommended) or a second
-  escrow path that never touches the wallet (two sources of truth for held money). Providers are
-  already done, and homeowners can already pay through the wallet.
-- **A real payout rail.** §27.2 is the interim the handoff asked for. Stripe Connect — provider
-  onboarding, a connected account each, transfers/payouts — or a local disbursement provider is
-  still the real work; the endpoint is small next to it.
+- ~~**Card-at-hire for homeowners** (handoff §6).~~ Built as the "top up behind the scenes, one
+  ledger" option recommended here — §29.4.
+- ~~**A real payout rail.**~~ Stripe Connect for card-funded payouts — §29.5. Wallet balances still
+  settle through §27.2.
 - **Wallet-to-wallet transfer.** Deliberately absent. It turns the wallet into a
   money-transmission service, which is a licensing matter in PH, not an engineering one.
 
@@ -1863,16 +1859,15 @@ anything that ever shipped, and both were confirmed to fail against the code wit
 
 ### 28.9 Still open, and still not ours to decide
 
-- **Stripe Connect escrow (Option A vs B).** Unchanged and untouched — see
-  `docs/backend-handoff-stripe-connect-escrow.md`. It changes money-movement semantics described in
-  §18/§21 and needs a product/Stripe-account decision before any code.
-- **A real payout rail.** §27.2 remains the interim: a human settles withdrawals by hand.
-- **Card-at-hire for homeowners.** §27.9. A product fork, not a missing endpoint.
+- ~~**Stripe Connect escrow (Option A vs B).**~~ Decided Option A and built — §29.
+- ~~**A real payout rail.**~~ Built for card-funded payouts (Connect transfers, §29.5); wallet
+  balances keep the manual queue (§27.2), for the FX reason §29 gives.
+- ~~**Card-at-hire for homeowners.**~~ Built — §29.4.
 - ~~**`is_verified`: badge or gate?**~~ Decided: a gate, on apply and on hire. §17.
 
 ---
 
-## 29. Stripe Connect Payouts & Card-Funded Escrow (migrations 0026–0028)
+## 29. Stripe Connect Payouts & Card-Funded Escrow (migrations 0026–0029)
 
 Closes Story 1 of `docs/backend-handoff-stripe-connect-escrow.md`, together with the payout rail
 and card-at-hire (handoff item 6), which turned out to be the same design. The decision was
@@ -2059,6 +2054,83 @@ wallet exactly as it does for a wallet-funded hold (§18), not the card. Two con
 - The cardholder can still file a chargeback after receiving that refund.
 - **Never refund a hire from the Stripe Dashboard.** The ledger would not know, and the client
   would be paid twice.
+
+### 29.5 Card-funded payouts go on to Stripe
+
+When a card-funded escrow is released (job completed, or a dispute resolved for the provider),
+`escrow_settle` credits the provider's wallet as always **and** marks `transfer_status = 'pending'`
+in the same transaction. `EscrowService.payOut` then starts `ConnectPayoutsService.processEscrow`
+without awaiting it: a slow or failing Stripe call must never hold up a job's completion. It never
+throws, and the sweep (§29.6) picks up anything it doesn't finish.
+
+`processEscrow(escrow)`:
+
+1. **Eligible?** The escrow must be released and card-funded, with the transfer `pending` or
+   `failed`. If the provider isn't payable (§29.1), it becomes `not_eligible` and the provider is
+   told once: the payout is in their wallet, and payouts can be set up.
+2. **Amount.** `charges.retrieve(funding_charge_id, { expand: ['balance_transaction'] })`, then
+   `computeTransferAmount`, which works in integer minor units:
+   - settled in PHP: the net payout in centavos;
+   - otherwise: `floor(bt.amount × net centavos ÷ charge centavos)`, capped at `bt.amount`.
+   For example, a ₱1,500 charge that settled for $27.00 sends $27.00, or $22.95 net of a 15%
+   commission.
+3. **Reserve** with `wallet_reserve_connect_transfer`, a pending `connect_transfer` debit, so the
+   same money can't also be withdrawn by hand. `TB402` (they already withdrew it) or `TB404` means
+   `abandoned`, with the reason recorded.
+4. **Adopt or create.** `transfers.list({ destination, transfer_group: 'job:<id>' })` first,
+   adopting any transfer whose `metadata.escrow_id` matches. Stripe keeps idempotency keys for only
+   24 hours, so a key alone can't stop a second transfer on a retry the next day. Otherwise
+   `transfers.create`:
+   - `source_transaction: <charge>`, `currency: bt.currency`, `transfer_group`, `metadata`;
+   - idempotency key `escrow-transfer:<escrow>:<attempts>`;
+   - 10 s timeout, 2 network retries.
+5. **Success**: the reservation becomes `completed` with `stripe_transfer_id`, the escrow becomes
+   `transferred` with amount, currency and time, and the provider is notified. Their wallet nets to
+   zero for the job: payout in, `connect_transfer` out.
+6. **Stripe refused** (`StripeInvalidRequestError` / `PermissionError` / `IdempotencyError` /
+   `CardError`): the reservation becomes `failed`, so the money is back in their available
+   balance; attempts go up by one, the error is recorded, and the escrow becomes `failed`
+   (`abandoned` at the third). The attempt count is part of the idempotency key, so the next
+   attempt isn't handed Stripe's cached refusal.
+7. **Unclassifiable error** (connection, API, rate limit): Stripe may or may not have made the
+   transfer. Everything stays `pending`, the reservation included, and the next attempt reuses the
+   **same** key, which returns the original result if there was one.
+
+Every transfer-state write is conditional on the state the attempt found, so an inline attempt, a
+sweep and an admin retry racing each other record one outcome.
+
+**Admin retry:** `POST /admin/escrow/:id/retry-transfer` works from `failed`, `abandoned` or
+`not_eligible`, and is audited as `escrow.retry_transfer`. It keeps the attempt count rather than
+resetting it, for the same cached-refusal reason. The console's Escrow tab shows Funding and Payout
+columns, and a Retry button on those states.
+
+**Who bears Stripe's fee and the FX spread: the platform.** The transfer is sourced from the
+**gross** settled amount, so the fee comes out of TaskBuddy's balance, i.e. out of commission. With
+commission at 0 (the default, §27.5), every card job costs the platform the fee. That is acceptable
+in test mode and a pricing decision before live.
+
+**Before going live**, check with Stripe that:
+
+- the platform account supports **cross-border payouts** to PH recipient accounts
+  (`STRIPE_CONNECT_COUNTRY=PH`, `STRIPE_CONNECT_SERVICE_AGREEMENT=recipient`);
+- a `source_transaction` transfer may equal the charge's gross settled amount.
+
+`docs/stripe-setup.md` §7 is the test-mode check for both.
+
+### 29.6 The payments sweep
+
+`PaymentsScheduler` runs every 5 minutes, in-process with `@Cron`, or via
+`POST /internal/tick/payments` from pg_cron (migration 0029) when `CRON_DRIVER=pg_cron`. It does
+two jobs:
+
+1. **Transfers**: `ConnectPayoutsService.sweep()` retries a `pending` transfer untouched for 5
+   minutes (the inline attempt may still be running) and a `failed` one once its backoff has passed
+   (1 h after the first failure, 6 h after the second).
+2. **Reconciliation**: an escrow still `held` on a job that is `completed` or `cancelled` and was
+   last updated more than 2 minutes ago is settled with `releaseIfHeld` / `cancelForJob`. The job's
+   status flip and the escrow move are separate calls, and a failure between them used to leave the
+   money held with nothing to retry it. Settlement is conditional, so racing a live request is
+   harmless.
 
 **Verification on a live project:**
 

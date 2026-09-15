@@ -16,11 +16,14 @@ vi.mock("@/lib/services", () => ({
   searchTransactions: vi.fn().mockResolvedValue({ items: [], total: 0 }),
   getWalletTransactions: vi.fn().mockResolvedValue([]),
   issueRecoveryCredit: vi.fn(),
+  retryEscrowTransfer: vi.fn(),
 }));
 
 const mockedUseApp = vi.mocked(useApp);
 const mockedGetWalletTransactions = vi.mocked(services.getWalletTransactions);
 const mockedIssueRecoveryCredit = vi.mocked(services.issueRecoveryCredit);
+const mockedSearchTransactions = vi.mocked(services.searchTransactions);
+const mockedRetryEscrowTransfer = vi.mocked(services.retryEscrowTransfer);
 
 function makeUser(overrides: Partial<UserRow> = {}): UserRow {
   return {
@@ -150,3 +153,37 @@ describe("TransactionsPage — Issue Credit (Wallet tab)", () => {
     expect(screen.getByRole("alertdialog")).toBeInTheDocument();
   });
 });
+
+describe("TransactionsPage — card-funded payouts (Escrow tab)", () => {
+  beforeEach(() => {
+    mockedUseApp.mockReturnValue({ users: [] } as unknown as ReturnType<typeof useApp>);
+    mockedSearchTransactions.mockResolvedValue({
+      items: [
+        {
+          id: "esc-1", jobId: "job-1", customerName: "Jamie Kim", providerName: "Pat Morgan",
+          service: "Plumbing", amount: 1500, status: "COMPLETED", date: "2026-09-16",
+          fundingMethod: "card", transferStatus: "failed", stripeTransferId: null,
+          transferError: "Account is restricted",
+        },
+      ],
+      total: 1,
+    });
+  });
+
+  it("shows why a transfer failed and lets an admin retry it", async () => {
+    mockedRetryEscrowTransfer.mockResolvedValue("transferred");
+    const user = userEvent.setup();
+    renderWithToast(<TransactionsPage />);
+
+    expect(await screen.findByText("Transfer failed")).toHaveAttribute("title", "Account is restricted");
+    await user.click(screen.getByRole("button", { name: /show details for esc-1/i }));
+    expect(screen.getByText("Card")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Retry transfer" }));
+
+    expect(mockedRetryEscrowTransfer).toHaveBeenCalledWith("esc-1");
+    expect(await screen.findByText("Payout sent to the provider's Stripe account.")).toBeInTheDocument();
+    // Reloaded so the row shows the new state.
+    expect(mockedSearchTransactions.mock.calls.length).toBeGreaterThanOrEqual(2);
+  });
+});
+

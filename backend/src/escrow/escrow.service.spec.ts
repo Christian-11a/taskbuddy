@@ -14,6 +14,7 @@ import {
 } from './escrow-errors';
 import type { SupabaseService } from '../supabase/supabase.service';
 import type { AdminActionsService } from '../admin/admin-actions.service';
+import type { ConnectPayoutsService } from '../payments/connect/connect-payouts.service';
 import type { Profile } from '../common/types';
 
 /**
@@ -115,6 +116,12 @@ const heldEscrow: EscrowRow = {
 };
 
 const ok = (data: unknown): QueryResult => ({ data, error: null });
+
+/** The onward Stripe transfer (§29.5). Shared; reset before each test. */
+const processEscrow = jest.fn((_id: string) => Promise.resolve('transferred'));
+const payouts = { processEscrow } as unknown as ConnectPayoutsService;
+beforeEach(() => processEscrow.mockClear());
+
 const client = { id: 'c1', role: 'client' } as Profile;
 const admin = { id: 'a1', role: 'admin' } as Profile;
 
@@ -133,7 +140,7 @@ describe('EscrowService', () => {
         {},
         { admin_list_transactions: [ok([{ rows, total: 51 }])] },
       );
-      const service = new EscrowService(supabase);
+      const service = new EscrowService(supabase, payouts);
 
       await expect(
         service.listForAdmin({
@@ -157,7 +164,7 @@ describe('EscrowService', () => {
         {},
         { admin_list_transactions: [ok([{ rows: [], total: 51 }])] },
       );
-      const service = new EscrowService(supabase);
+      const service = new EscrowService(supabase, payouts);
 
       await expect(
         service.listForAdmin({ limit: 25, offset: 100 }),
@@ -171,7 +178,7 @@ describe('EscrowService', () => {
         {},
         { escrow_place_hold: [ok({ escrow: heldEscrow, placed: true })] },
       );
-      const service = new EscrowService(supabase);
+      const service = new EscrowService(supabase, payouts);
 
       const result = await service.hold('j1', 'p1');
 
@@ -195,7 +202,7 @@ describe('EscrowService', () => {
         {},
         { escrow_place_hold: [ok({ escrow: heldEscrow, placed: true })] },
       );
-      const service = new EscrowService(supabase);
+      const service = new EscrowService(supabase, payouts);
 
       await service.hold('j1', 'p1', {
         paymentIntentId: 'pi_1',
@@ -216,7 +223,7 @@ describe('EscrowService', () => {
         {},
         { escrow_place_hold: [ok({ escrow: heldEscrow, placed: false })] },
       );
-      const service = new EscrowService(supabase);
+      const service = new EscrowService(supabase, payouts);
 
       expect((await service.hold('j1', 'p1')).placed).toBe(false);
     });
@@ -226,7 +233,7 @@ describe('EscrowService', () => {
         {},
         { escrow_place_hold: [ok({ escrow: null, placed: false })] },
       );
-      const service = new EscrowService(supabase);
+      const service = new EscrowService(supabase, payouts);
 
       expect(await service.hold('j1', 'p1')).toEqual({
         escrow: null,
@@ -250,7 +257,7 @@ describe('EscrowService', () => {
           ],
         },
       );
-      const service = new EscrowService(supabase);
+      const service = new EscrowService(supabase, payouts);
 
       const err: unknown = await service
         .hold('j1', 'p1')
@@ -283,7 +290,7 @@ describe('EscrowService', () => {
           ],
         },
       );
-      const service = new EscrowService(supabase);
+      const service = new EscrowService(supabase, payouts);
 
       await expect(service.hold('j1', 'p2')).rejects.toThrow(
         EscrowConflictError,
@@ -307,7 +314,7 @@ describe('EscrowService', () => {
       // The default, and the point of the default: applying 0024 changes no
       // figure anywhere until an admin deliberately sets a rate.
       const { supabase, rpc } = releaseWith(0);
-      await new EscrowService(supabase).release('j1');
+      await new EscrowService(supabase, payouts).release('j1');
 
       expect(rpcArgs(rpc, 'escrow_settle')[0]).toMatchObject({
         p_next: 'released',
@@ -318,7 +325,7 @@ describe('EscrowService', () => {
 
     it('freezes the configured cut onto the release and says so on the payout line', async () => {
       const { supabase, rpc } = releaseWith(0.15);
-      await new EscrowService(supabase).release('j1');
+      await new EscrowService(supabase, payouts).release('j1');
 
       expect(rpcArgs(rpc, 'escrow_settle')[0]).toMatchObject({
         p_commission: 225,
@@ -329,7 +336,7 @@ describe('EscrowService', () => {
     it('rounds to centavos rather than carrying float noise into the ledger', async () => {
       // 1000.05 * 0.075 = 75.00375 — not an amount anyone can be charged.
       const { supabase, rpc } = releaseWith(0.075, 1000.05);
-      await new EscrowService(supabase).release('j1');
+      await new EscrowService(supabase, payouts).release('j1');
 
       expect(rpcArgs(rpc, 'escrow_settle')[0]).toMatchObject({
         p_commission: 75,
@@ -346,11 +353,50 @@ describe('EscrowService', () => {
         },
         { escrow_settle: [ok({ ...heldEscrow, status: 'released' })] },
       );
-      await new EscrowService(supabase).release('j1');
+      await new EscrowService(supabase, payouts).release('j1');
 
       expect(rpcArgs(rpc, 'escrow_settle')[0]).toMatchObject({
         p_commission: 0,
       });
+    });
+  });
+
+  describe('the onward transfer for card-funded payouts', () => {
+    it('starts it after a card-funded release, without waiting for it', async () => {
+      // A Stripe call that never answers must not hold the completion up.
+      processEscrow.mockImplementationOnce(() => new Promise(() => {}));
+      const { supabase } = createSupabaseMock(
+        { escrow_transactions: [ok(heldEscrow)] },
+        {
+          escrow_settle: [
+            ok({
+              ...heldEscrow,
+              status: 'released',
+              transfer_status: 'pending',
+            }),
+          ],
+        },
+      );
+
+      await expect(
+        new EscrowService(supabase, payouts).release('j1'),
+      ).resolves.toMatchObject({ status: 'released' });
+      expect(processEscrow).toHaveBeenCalledWith('e1');
+    });
+
+    it('leaves a wallet-funded payout in the wallet', async () => {
+      const { supabase } = createSupabaseMock(
+        { escrow_transactions: [ok(heldEscrow)] },
+        {
+          escrow_settle: [
+            ok({ ...heldEscrow, status: 'released', transfer_status: 'none' }),
+          ],
+        },
+      );
+
+      await new EscrowService(supabase, payouts).release('j1');
+
+      expect(processEscrow).not.toHaveBeenCalled();
     });
   });
 
@@ -361,7 +407,7 @@ describe('EscrowService', () => {
         { escrow_settle: [ok({ ...heldEscrow, status: 'released' })] },
       );
 
-      const result = await new EscrowService(supabase).release('j1');
+      const result = await new EscrowService(supabase, payouts).release('j1');
 
       expect(result).toMatchObject({ status: 'released' });
       expect(rpcArgs(rpc, 'escrow_settle')[0]).toMatchObject({
@@ -377,9 +423,9 @@ describe('EscrowService', () => {
         { escrow_settle: [ok(null)] }, // lost the race
       );
 
-      await expect(new EscrowService(supabase).release('j1')).rejects.toThrow(
-        ConflictException,
-      );
+      await expect(
+        new EscrowService(supabase, payouts).release('j1'),
+      ).rejects.toThrow(ConflictException);
     });
 
     it('raises rather than reporting a payout that did not happen', async () => {
@@ -390,9 +436,9 @@ describe('EscrowService', () => {
         escrow_transactions: [ok({ ...heldEscrow, status: 'released' })],
       });
 
-      await expect(new EscrowService(supabase).release('j1')).rejects.toThrow(
-        ConflictException,
-      );
+      await expect(
+        new EscrowService(supabase, payouts).release('j1'),
+      ).rejects.toThrow(ConflictException);
       expect(rpc).not.toHaveBeenCalled();
     });
 
@@ -401,9 +447,9 @@ describe('EscrowService', () => {
         escrow_transactions: [ok(null)],
       });
 
-      await expect(new EscrowService(supabase).release('j1')).rejects.toThrow(
-        BadRequestException,
-      );
+      await expect(
+        new EscrowService(supabase, payouts).release('j1'),
+      ).rejects.toThrow(BadRequestException);
     });
   });
 
@@ -415,7 +461,7 @@ describe('EscrowService', () => {
       );
 
       expect(
-        await new EscrowService(supabase).releaseIfHeld('j1'),
+        await new EscrowService(supabase, payouts).releaseIfHeld('j1'),
       ).toMatchObject({ status: 'released' });
     });
 
@@ -424,7 +470,9 @@ describe('EscrowService', () => {
         escrow_transactions: [ok({ ...heldEscrow, status: 'disputed' })],
       });
 
-      expect(await new EscrowService(supabase).releaseIfHeld('j1')).toBeNull();
+      expect(
+        await new EscrowService(supabase, payouts).releaseIfHeld('j1'),
+      ).toBeNull();
       expect(rpc).not.toHaveBeenCalled();
     });
 
@@ -433,7 +481,9 @@ describe('EscrowService', () => {
         escrow_transactions: [ok(null)],
       });
 
-      expect(await new EscrowService(supabase).releaseIfHeld('j1')).toBeNull();
+      expect(
+        await new EscrowService(supabase, payouts).releaseIfHeld('j1'),
+      ).toBeNull();
     });
 
     it('still raises on an escrow that was already released', async () => {
@@ -442,7 +492,7 @@ describe('EscrowService', () => {
       });
 
       await expect(
-        new EscrowService(supabase).releaseIfHeld('j1'),
+        new EscrowService(supabase, payouts).releaseIfHeld('j1'),
       ).rejects.toThrow(ConflictException);
     });
   });
@@ -454,7 +504,7 @@ describe('EscrowService', () => {
         { escrow_settle: [ok({ ...heldEscrow, status: 'cancelled' })] },
       );
 
-      await new EscrowService(supabase).releaseHoldForFailedHire('j1');
+      await new EscrowService(supabase, payouts).releaseHoldForFailedHire('j1');
 
       expect(rpcArgs(rpc, 'escrow_settle')[0]).toMatchObject({
         p_expected: 'held',
@@ -470,7 +520,7 @@ describe('EscrowService', () => {
       );
 
       await expect(
-        new EscrowService(supabase).releaseHoldForFailedHire('j1'),
+        new EscrowService(supabase, payouts).releaseHoldForFailedHire('j1'),
       ).resolves.toBeUndefined();
     });
 
@@ -479,7 +529,7 @@ describe('EscrowService', () => {
         escrow_transactions: [ok(null)],
       });
 
-      await new EscrowService(supabase).releaseHoldForFailedHire('j1');
+      await new EscrowService(supabase, payouts).releaseHoldForFailedHire('j1');
 
       expect(rpc).not.toHaveBeenCalled();
     });
@@ -492,7 +542,9 @@ describe('EscrowService', () => {
         { escrow_settle: [ok({ ...heldEscrow, status: 'cancelled' })] },
       );
 
-      const result = await new EscrowService(supabase).cancelForJob('j1');
+      const result = await new EscrowService(supabase, payouts).cancelForJob(
+        'j1',
+      );
 
       expect(result).toMatchObject({ status: 'cancelled' });
       expect(rpcArgs(rpc, 'escrow_settle')[0]).toMatchObject({
@@ -510,7 +562,9 @@ describe('EscrowService', () => {
         { escrow_settle: [ok(null)] },
       );
 
-      expect(await new EscrowService(supabase).cancelForJob('j1')).toBeNull();
+      expect(
+        await new EscrowService(supabase, payouts).cancelForJob('j1'),
+      ).toBeNull();
     });
 
     it('leaves a disputed escrow for an admin rather than refunding it', async () => {
@@ -518,7 +572,9 @@ describe('EscrowService', () => {
         escrow_transactions: [ok({ ...heldEscrow, status: 'disputed' })],
       });
 
-      expect(await new EscrowService(supabase).cancelForJob('j1')).toBeNull();
+      expect(
+        await new EscrowService(supabase, payouts).cancelForJob('j1'),
+      ).toBeNull();
       expect(rpc).not.toHaveBeenCalled();
     });
   });
@@ -531,7 +587,7 @@ describe('EscrowService', () => {
         { escrow_settle: [ok({ ...disputed, status: 'refunded' })] },
       );
 
-      await new EscrowService(supabase).refund(disputed);
+      await new EscrowService(supabase, payouts).refund(disputed);
 
       expect(rpcArgs(rpc, 'escrow_settle')[0]).toMatchObject({
         p_expected: 'disputed',
@@ -544,7 +600,7 @@ describe('EscrowService', () => {
       const { supabase, rpc } = createSupabaseMock({});
 
       await expect(
-        new EscrowService(supabase).refund({
+        new EscrowService(supabase, payouts).refund({
           ...heldEscrow,
           status: 'refunded',
         }),
@@ -588,7 +644,7 @@ describe('DisputesService', () => {
     const { mock: adminActions, record } = createAdminActionsMock();
     const service = new DisputesService(
       supabase,
-      new EscrowService(supabase),
+      new EscrowService(supabase, payouts),
       adminActions,
     );
     return { service, calls, rpc, record };

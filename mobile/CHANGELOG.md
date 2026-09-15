@@ -5,6 +5,19 @@ app works today; this file covers how it got there and why. Newest first.
 
 ---
 
+## Card-paid payouts reach the provider's Stripe account (2026-09-16)
+
+With payouts set up, a card-paid job's payout is sent to the provider's Stripe
+account when it completes (`BACKEND_SCHEMA.md` §29.5). In the provider wallet
+it appears as two rows: the payout credit, then a `connect_transfer` debit
+labelled **Sending to Stripe…**, **Sent to Stripe**, or **Not sent — kept in
+wallet** if Stripe refused it and the money stayed.
+
+The wallet's trust note used to point to "Profile → Payout Methods", which
+never existed. It now points to Profile → Payouts and explains the split. The
+Withdraw modal no longer says "there's no automatic payout yet". That was
+true of wallet withdrawals, not of card-paid jobs.
+
 ## Pay for a hire by card (2026-09-16)
 
 Accept on a proposal now opens **`HirePaymentModal`** with two options:

@@ -151,12 +151,42 @@ describe("row adapters", () => {
     const t: Transaction = {
       id: "TXN-002", jobId: "job-002", customerName: "Jamie Kim", providerName: "Pat Morgan",
       service: "Plumbing", amount: 850, status: "IN_ESCROW", date: "2026-04-12",
+      fundingMethod: "wallet", transferStatus: "none", stripeTransferId: null, transferError: null,
     };
     const row = toTransactionRow(t);
     expect(row.amount).toBe("₱850");
     expect(row.amountValue).toBe(850);
     expect(row.status).toBe("In Escrow");
     expect(row.statusClass).toBe("badge-processing");
+    expect(row.funding).toBe("Wallet");
+    // Nothing has been paid out yet, so there is nothing to say about it.
+    expect(row.payout).toBe("");
+    expect(row.canRetryTransfer).toBe(false);
+  });
+
+  it("shows where a card-funded payout went, and when an admin can retry it", () => {
+    const base: Transaction = {
+      id: "TXN-003", jobId: "job-003", customerName: "Jamie Kim", providerName: "Pat Morgan",
+      service: "Plumbing", amount: 1500, status: "COMPLETED", date: "2026-09-16",
+      fundingMethod: "card", transferStatus: "transferred", stripeTransferId: "tr_1", transferError: null,
+    };
+    const sent = toTransactionRow(base);
+    expect(sent.funding).toBe("Card");
+    expect(sent.payout).toBe("Sent to Stripe");
+    expect(sent.payoutDetail).toBe("tr_1");
+    expect(sent.canRetryTransfer).toBe(false);
+
+    const failed = toTransactionRow({
+      ...base, transferStatus: "failed", stripeTransferId: null, transferError: "Account is restricted",
+    });
+    expect(failed.payout).toBe("Transfer failed");
+    expect(failed.payoutDetail).toBe("Account is restricted");
+    expect(failed.canRetryTransfer).toBe(true);
+
+    // A released wallet-funded payout is a wallet credit, not a failure.
+    const wallet = toTransactionRow({ ...base, fundingMethod: "wallet", transferStatus: "none" });
+    expect(wallet.payout).toBe("Wallet");
+    expect(wallet.canRetryTransfer).toBe(false);
   });
 
   it("maps an open dispute to a display row", () => {

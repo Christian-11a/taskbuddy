@@ -150,6 +150,10 @@ function mapTransactionRow(row: AdminTransactionApiRow): Transaction {
     amount: Number(row.amount),
     status: TRANSACTION_STATUS[row.status],
     date: row.held_at,
+    fundingMethod: row.funding_method ?? "wallet",
+    transferStatus: row.transfer_status ?? "none",
+    stripeTransferId: row.stripe_transfer_id ?? null,
+    transferError: row.transfer_last_error ?? null,
   };
 }
 
@@ -452,6 +456,26 @@ function paginatedPath(path: string, query: PageQuery & { status?: string }): st
   params.set("limit", String(query.pageSize));
   params.set("offset", String((query.page - 1) * query.pageSize));
   return `${path}?${params}`;
+}
+
+export type TransferRetryOutcome =
+  | "transferred"
+  | "not_eligible"
+  | "failed"
+  | "abandoned"
+  | "retry"
+  | "skipped";
+
+/**
+ * Retries a card-funded payout's transfer to the provider's Stripe account
+ * (backend/BACKEND_SCHEMA.md §29.5). The money is in the provider's wallet
+ * whatever the outcome — this only decides whether it also leaves for Stripe.
+ */
+export async function retryEscrowTransfer(escrowId: string): Promise<TransferRetryOutcome> {
+  const { outcome } = await client.post<{ outcome: TransferRetryOutcome }>(
+    `/admin/escrow/${escrowId}/retry-transfer`,
+  );
+  return outcome;
 }
 
 export async function searchTransactions(query: SearchTransactionsQuery): Promise<{ items: Transaction[]; total: number }> {

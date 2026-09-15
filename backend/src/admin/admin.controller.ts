@@ -42,6 +42,7 @@ import {
   ResolveDisputeDto,
 } from '../escrow/dto/escrow.dto';
 import { ChatService } from '../chat/chat.service';
+import { ConnectPayoutsService } from '../payments/connect/connect-payouts.service';
 import { WalletService } from '../wallet/wallet.service';
 import {
   IssueRecoveryCreditDto,
@@ -65,6 +66,7 @@ export class AdminController {
     private readonly disputesService: DisputesService,
     private readonly chatService: ChatService,
     private readonly walletService: WalletService,
+    private readonly connectPayouts: ConnectPayoutsService,
   ) {}
 
   @Get('users')
@@ -317,6 +319,21 @@ export class AdminController {
   @Get('transactions')
   listTransactions(@Query() query: ListTransactionsQueryDto) {
     return this.escrowService.listForAdmin(query);
+  }
+
+  /**
+   * Retries a card-funded payout's transfer to the provider's Stripe account
+   * — one that failed, was given up on, or found them not yet payable
+   * (BACKEND_SCHEMA.md §29.5). Audited as `escrow.retry_transfer`. Answers
+   * with the attempt's outcome; the money is in the provider's wallet
+   * whichever way it goes.
+   */
+  @Post('escrow/:id/retry-transfer')
+  retryTransfer(
+    @CurrentUser() admin: Profile,
+    @Param('id', ParseUUIDPipe) id: string,
+  ) {
+    return this.connectPayouts.retryForAdmin(admin, id);
   }
 
   @Get('disputes')

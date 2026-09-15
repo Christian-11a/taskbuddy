@@ -7,9 +7,11 @@
  * Two things this deliberately does not pretend:
  *
  * - **The money does not move here.** The request lands `pending` and stays
- *   there until an admin settles it from the console. There is no payout rail,
- *   so settlement is a human sending money and recording the reference. The
- *   copy says so rather than showing a success state that implies a transfer.
+ *   there until an admin settles it from the console: wallet balances are paid
+ *   out by a human sending money and recording the reference. (Card-paid jobs
+ *   reach a provider with Stripe payouts set up automatically, without ever
+ *   becoming a request — BACKEND_SCHEMA.md §29.5.) The copy says so rather
+ *   than showing a success state that implies a transfer.
  * - **`destination` is free text.** A person reads it to make the payment, so
  *   there is nothing to validate it against beyond "not empty". Placeholder
  *   text carries the expectation instead.
@@ -97,9 +99,8 @@ export default function WithdrawModal({
         >
           <Text style={styles.title} accessibilityRole="header">Withdraw Funds</Text>
           <Text style={styles.body}>
-            We'll review this and send the money by hand — there's no automatic
-            payout yet, so it isn't instant. You'll see it here as Pending until
-            it's settled.
+            We'll review this and send the money by hand, so it isn't instant.
+            You'll see it here as Pending until it's settled.
           </Text>
 
           <View style={styles.amountRow}>

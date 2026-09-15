@@ -207,7 +207,7 @@ the backend and convert its JSON tokens into httpOnly cookies):
 | Dashboard | `GET /admin/analytics/summary`, `GET /admin/activity` |
 | Verifications | `GET /admin/verifications`, `POST .../approve` · `/reject` (accepts a reason) |
 | Users | `GET /admin/users`, `POST .../suspend` (reason + optional duration) · `/reinstate` · `/send-password-reset` |
-| Transactions | **Escrow:** `GET /admin/transactions` · **Wallet:** `GET /admin/wallet-transactions` (fetched when the tab opens) |
+| Transactions | **Escrow:** `GET /admin/transactions`, `POST /admin/escrow/:id/retry-transfer` (card-funded payouts) · **Wallet:** `GET /admin/wallet-transactions` (fetched when the tab opens), `POST /admin/wallet-transactions/recovery-credit` |
 | Disputes | `GET /admin/disputes`, `POST .../resolve` (accepts a note), `GET /admin/jobs/:jobId/conversation` (on demand) |
 | Bookings | `GET /admin/bookings`, `POST .../cancel`, `GET /admin/bookings/:id` (on row expand) |
 | Activity Log | `GET /admin/activity` |
@@ -246,6 +246,11 @@ are checked. Written UTF-8 with a BOM so Excel doesn't mangle the peso sign.
 - **Escrow ≠ wallet.** Escrow is money held for one job; the wallet ledger is a
   user's running balance (top-ups, withdrawals, payouts, refunds). Separate
   tables, separate tabs.
+- **Funding and payout** (Escrow tab, migration 0028). A hold is funded from the
+  client's wallet or by card at hire. A card-funded payout is also sent on to
+  the provider's Stripe Connect account. The Payout column says whether it was,
+  and **Retry transfer** re-runs one that failed. Every other payout is a wallet
+  credit, shown as "Wallet" (`backend/BACKEND_SCHEMA.md` §29).
 - **⚠️ Validation limits are duplicated on both sides.** `REASON_MAX_LENGTH` =
   500, `NOTE_MAX_LENGTH` = 1000, name ≤ 120 — these mirror the backend DTOs.
   **Change a limit on one side and it must change on the other**, or the UI

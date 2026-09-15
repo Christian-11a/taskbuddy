@@ -6,6 +6,23 @@ Newest first.
 
 ---
 
+## Escrow tab: where a card-funded payout went, and Retry transfer (2026-09-16)
+
+Card-funded payouts are now sent on to the provider's Stripe Connect account
+(`backend/BACKEND_SCHEMA.md` §29.5). The Escrow tab shows how that went:
+
+- **Payout column**: Wallet · Sending to Stripe · Sent to Stripe · Transfer
+  failed · Not set up — wallet · Kept in wallet. Hover a badge for the Stripe
+  transfer id or the error. "Wallet" is the normal state for a wallet-funded
+  job, not a failure.
+- **Details** add *Funded by* (Wallet/Card), *Payout*, and *Stripe*.
+- **Retry transfer** in the details of a failed, abandoned, or not-set-up
+  transfer calls `POST /admin/escrow/:id/retry-transfer`. The toast reports the
+  outcome and the table reloads. The money is in the provider's wallet whatever
+  happens.
+- CSV export adds Funding and Payout columns. The Wallet tab labels
+  `connect_transfer` rows "Sent to Stripe".
+
 ## Rate limits: retry a 429 instead of reporting it as a refusal (2026-09-15)
 
 The API's rate limit is per endpoint per IP, and a bulk action fires every

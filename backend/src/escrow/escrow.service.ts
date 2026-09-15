@@ -6,6 +6,7 @@ import {
 import { SupabaseService } from '../supabase/supabase.service';
 import { ListTransactionsQueryDto } from './dto/escrow.dto';
 import { moneyError } from './escrow-errors';
+import { ConnectPayoutsService } from '../payments/connect/connect-payouts.service';
 
 export type EscrowStatus =
   'held' | 'released' | 'disputed' | 'refunded' | 'cancelled';
@@ -76,7 +77,10 @@ export interface CardFunding {
  */
 @Injectable()
 export class EscrowService {
-  constructor(private readonly supabase: SupabaseService) {}
+  constructor(
+    private readonly supabase: SupabaseService,
+    private readonly connectPayouts: ConnectPayoutsService,
+  ) {}
 
   /**
    * Called when an application is accepted — from the wallet, or by the card
@@ -214,13 +218,25 @@ export class EscrowService {
     const amount = Number(escrow.amount);
     const commission = round2(amount * (await this.commissionRate()));
     const title = await this.jobTitle(escrow.job_id);
-    return this.settle(escrow, 'released', {
+    const released = await this.settle(escrow, 'released', {
       commission,
       title:
         commission > 0
           ? `Payout — ${title} (less ${commission.toFixed(2)} platform fee)`
           : `Payout — ${title}`,
     });
+
+    // A card-funded payout goes on to the provider's Stripe account (§29.5).
+    // The ledger credit above is already committed, and escrow_settle marked
+    // the transfer `pending` in the same transaction, so this is the second
+    // leg only — started, not awaited. A slow or failing Stripe call must
+    // never hold up or fail a job's completion or a dispute's resolution;
+    // processEscrow never throws, and the payments sweep picks up anything
+    // this attempt does not finish.
+    if (released.transfer_status === 'pending') {
+      void this.connectPayouts.processEscrow(released.id);
+    }
+    return released;
   }
 
   /** Dispute resolved in the client's favour — return the held funds. */

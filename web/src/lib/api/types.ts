@@ -162,7 +162,24 @@ export interface AdminTransactionApiRow {
   jobs: { title: string; service_categories: { name: string } | null } | null;
   client: { id: string; full_name: string } | null;
   provider: { id: string; full_name: string } | null;
+  /**
+   * Migration 0028. Absent against an older API — `admin_list_transactions`
+   * returns `to_jsonb(escrow)`, so the columns appear as soon as they exist.
+   */
+  funding_method?: "wallet" | "card";
+  transfer_status?: TransferStatusApi;
+  stripe_transfer_id?: string | null;
+  transfer_last_error?: string | null;
 }
+
+/** Where a card-funded payout's onward Stripe transfer stands (0028). */
+export type TransferStatusApi =
+  | "none"
+  | "pending"
+  | "transferred"
+  | "failed"
+  | "not_eligible"
+  | "abandoned";
 
 export interface ListTransactionsApiResponse {
   transactions: AdminTransactionApiRow[];
@@ -261,7 +278,8 @@ export type WalletTxnKindApi =
   | "payout"
   | "refund"
   | "adjustment"
-  | "recovery_credit";
+  | "recovery_credit"
+  | "connect_transfer";
 
 export interface AdminWalletTxnApiRow {
   id: string;

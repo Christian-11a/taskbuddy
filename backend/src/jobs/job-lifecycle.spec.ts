@@ -5,6 +5,9 @@ import { WalletService } from '../wallet/wallet.service';
 import { ReviewsService } from '../reviews/reviews.service';
 import { DisputesService } from '../escrow/disputes.service';
 import { HireFundingService } from '../payments/hire-funding.service';
+import { ConnectAccountsService } from '../payments/connect/connect-accounts.service';
+import { ConnectPayoutsService } from '../payments/connect/connect-payouts.service';
+import { StripeEventsService } from '../payments/stripe-events.service';
 import type { StripeService } from '../payments/stripe.service';
 import type { StripeCustomersService } from '../payments/stripe-customers.service';
 import type Stripe from 'stripe';
@@ -69,6 +72,15 @@ const DEFAULTS: Record<string, () => Row> = {
     released_at: null,
     refunded_at: null,
     commission_amount: 0,
+    // 0028
+    funding_method: 'wallet',
+    funding_payment_intent_id: null,
+    funding_charge_id: null,
+    transfer_status: 'none',
+    transfer_attempts: 0,
+    transfer_attempted_at: null,
+    transfer_last_error: null,
+    stripe_transfer_id: null,
   }),
   wallet_transactions: () => ({
     status: 'completed',
@@ -115,6 +127,8 @@ class FakeDb {
     disputes: [],
     platform_settings: [],
     recommendation_candidates: [],
+    provider_payout_accounts: [],
+    stripe_events: [],
   };
 
   private seq = 0;
@@ -608,7 +622,61 @@ const rival = {
 const admin = { id: 'a1', role: 'admin', full_name: 'Ops' } as Profile;
 
 /** Every service the lifecycle touches, wired to one shared store. */
-function buildWorld(options: { topUp?: number; commissionRate?: number } = {}) {
+/**
+ * Stripe, as far as a payout transfer touches it. The ₱1,500 charge settled
+ * into a US platform as $27.00 — the FX reason card-funded payouts are
+ * sourced from their own charge (§29.5).
+ */
+function createFakeStripe() {
+  const transfers: Record<string, any>[] = [];
+  let refuseTransfers: string | null = null;
+  const stripe = {
+    charges: {
+      retrieve: jest.fn((id: string) =>
+        Promise.resolve({
+          id,
+          amount: BUDGET * 100,
+          balance_transaction: { amount: 2700, currency: 'usd' },
+        }),
+      ),
+    },
+    transfers: {
+      list: jest.fn(() => Promise.resolve({ data: transfers })),
+      create: jest.fn((params: Record<string, any>) => {
+        if (refuseTransfers) {
+          return Promise.reject(
+            Object.assign(new Error(refuseTransfers), {
+              type: 'StripeInvalidRequestError',
+            }),
+          );
+        }
+        const transfer = { id: `tr_${transfers.length + 1}`, ...params };
+        transfers.push(transfer);
+        return Promise.resolve(transfer);
+      }),
+    },
+  };
+  return {
+    service: { stripe } as unknown as StripeService,
+    stripe,
+    transfers,
+    refuse: (message: string | null) => {
+      refuseTransfers = message;
+    },
+  };
+}
+
+/** Lets a started-not-awaited transfer (EscrowService.payOut) run to its end. */
+const flush = () => new Promise((resolve) => setImmediate(resolve));
+
+function buildWorld(
+  options: {
+    topUp?: number;
+    commissionRate?: number;
+    /** Give provider p1 an active Stripe Connect payout account. */
+    payable?: boolean;
+  } = {},
+) {
   const db = new FakeDb();
   const supabase = db.service;
 
@@ -670,8 +738,33 @@ function buildWorld(options: { topUp?: number; commissionRate?: number } = {}) {
     assertOwnedPaths: jest.fn(),
   } as unknown as UploadsService;
 
+  if (options.payable) {
+    db.rows('provider_payout_accounts').push({
+      profile_id: 'p1',
+      stripe_account_id: 'acct_p1',
+      country: 'US',
+      details_submitted: true,
+      payouts_enabled: true,
+      transfers_active: true,
+      requirements_due: [],
+      disabled_reason: null,
+    });
+  }
+
+  const fakeStripe = createFakeStripe();
+  const accounts = new ConnectAccountsService(
+    supabase,
+    fakeStripe.service,
+    new StripeEventsService(supabase),
+  );
+  const payouts = new ConnectPayoutsService(
+    supabase,
+    fakeStripe.service,
+    accounts,
+    adminActions,
+  );
   const wallet = new WalletService(supabase, adminActions);
-  const escrow = new EscrowService(supabase);
+  const escrow = new EscrowService(supabase, payouts);
   const jobs = new JobsService(supabase, uploads, escrow);
   const applications = new ApplicationsService(supabase, escrow);
   const reviews = new ReviewsService(supabase);
@@ -694,6 +787,8 @@ function buildWorld(options: { topUp?: number; commissionRate?: number } = {}) {
     reviews,
     disputes,
     hireFunding,
+    payouts,
+    fakeStripe,
   };
 }
 
@@ -1011,11 +1106,13 @@ describe('job lifecycle, paid by card at hire (§29.4)', () => {
     await jobs.start(provider, posted.id);
     await jobs.complete(client, posted.id);
 
+    await flush();
     expect(await wallet.balanceFor('p1')).toBe(BUDGET);
-    // Marked for the onward Stripe transfer in the same move as the release.
+    // Marked for the onward Stripe transfer in the same move as the release;
+    // this provider has no payout account, so it stays in their wallet.
     expect(await escrow.findByJob(posted.id)).toMatchObject({
       status: 'released',
-      transfer_status: 'pending',
+      transfer_status: 'not_eligible',
     });
   });
 
@@ -1073,5 +1170,160 @@ describe('job lifecycle, paid by card at hire (§29.4)', () => {
     expect(db.rows('escrow_transactions')[0].funding_method).toBe('wallet');
     // 5000 − 1500 held + 1500 card payment, nothing lost and nothing doubled.
     expect(await wallet.balanceFor('c1')).toBe(5000);
+  });
+});
+
+describe('card-funded payouts sent to Stripe Connect (§29.5)', () => {
+  async function completedCardJob(world: ReturnType<typeof buildWorld>) {
+    const { jobs, applications, hireFunding } = world;
+    const posted = (await postJob(world)) as Record<string, any>;
+    const application = (await applications.apply(
+      provider,
+      posted.id,
+      {},
+    )) as Record<string, any>;
+    await hireFunding.completeFromIntent(hirePayment(application));
+    await jobs.start(provider, posted.id);
+    await jobs.complete(client, posted.id);
+    await flush();
+    return posted;
+  }
+
+  it('pays the provider in the ledger, then sends it on at the charge’s own rate', async () => {
+    const world = buildWorld({ payable: true });
+    const { db, escrow, wallet, fakeStripe } = world;
+
+    const posted = await completedCardJob(world);
+
+    expect(fakeStripe.transfers).toEqual([
+      expect.objectContaining({
+        amount: 2700, // the $27.00 the ₱1,500 charge settled for
+        currency: 'usd',
+        destination: 'acct_p1',
+        source_transaction: 'ch_hire',
+        transfer_group: `job:${posted.id}`,
+      }),
+    ]);
+    // Credited, then sent on: the wallet nets to zero and says why.
+    expect(db.ledgerFor('p1')).toEqual([
+      { direction: 'credit', kind: 'payout', amount: BUDGET },
+      { direction: 'debit', kind: 'connect_transfer', amount: BUDGET },
+    ]);
+    expect(await wallet.balanceFor('p1')).toBe(0);
+    expect(await escrow.findByJob(posted.id)).toMatchObject({
+      transfer_status: 'transferred',
+      stripe_transfer_id: 'tr_1',
+      transfer_currency: 'usd',
+    });
+  });
+
+  it('leaves the payout in the wallet when the provider has not set up payouts', async () => {
+    const world = buildWorld(); // no payout account
+    const { db, escrow, wallet, fakeStripe } = world;
+
+    const posted = await completedCardJob(world);
+
+    expect(fakeStripe.transfers).toEqual([]);
+    expect(await wallet.balanceFor('p1')).toBe(BUDGET);
+    expect(await escrow.findByJob(posted.id)).toMatchObject({
+      transfer_status: 'not_eligible',
+    });
+    expect(
+      db
+        .rows('notifications')
+        .some(
+          (n) =>
+            n.recipient_id === 'p1' &&
+            n.title === 'Payout added to your wallet',
+        ),
+    ).toBe(true);
+  });
+
+  it('keeps a refused transfer in the wallet, and a later sweep sends it', async () => {
+    const world = buildWorld({ payable: true });
+    const { escrow, wallet, fakeStripe, payouts } = world;
+    fakeStripe.refuse('Account is restricted');
+
+    const posted = await completedCardJob(world);
+
+    // Refused: the reservation is released and the money is spendable again.
+    expect(await wallet.availableBalanceFor('p1')).toBe(BUDGET);
+    expect(await escrow.findByJob(posted.id)).toMatchObject({
+      transfer_status: 'failed',
+      transfer_attempts: 1,
+      transfer_last_error: 'Account is restricted',
+    });
+
+    // The provider fixes their account; the sweep runs once the backoff passes.
+    fakeStripe.refuse(null);
+    const later = new Date(Date.now() + 2 * 60 * 60 * 1000);
+    await payouts.sweep(later);
+
+    expect(await escrow.findByJob(posted.id)).toMatchObject({
+      transfer_status: 'transferred',
+    });
+    expect(await wallet.balanceFor('p1')).toBe(0);
+    // A fresh idempotency key for the second attempt, so Stripe does not
+    // replay the cached refusal.
+    const keys = fakeStripe.stripe.transfers.create.mock.calls.map(
+      (call: unknown[]) =>
+        (call[1] as { idempotencyKey: string }).idempotencyKey,
+    );
+    expect(new Set(keys).size).toBe(2);
+  });
+
+  it('does not send money the provider already withdrew by hand', async () => {
+    const world = buildWorld({ payable: true });
+    const { db, escrow, jobs, applications, hireFunding, fakeStripe } = world;
+    fakeStripe.refuse('Temporarily unavailable');
+    const posted = (await postJob(world)) as Record<string, any>;
+    const application = (await applications.apply(
+      provider,
+      posted.id,
+      {},
+    )) as Record<string, any>;
+    await hireFunding.completeFromIntent(hirePayment(application));
+    await jobs.start(provider, posted.id);
+    await jobs.complete(client, posted.id);
+    await flush();
+
+    // Between attempts, the provider withdraws the whole payout by request.
+    await world.wallet.requestWithdrawal(provider, {
+      amount: BUDGET,
+      destination: 'GCash 0917',
+    });
+    fakeStripe.refuse(null);
+    await world.payouts.sweep(new Date(Date.now() + 2 * 60 * 60 * 1000));
+
+    expect(fakeStripe.transfers).toEqual([]);
+    expect(await escrow.findByJob(posted.id)).toMatchObject({
+      transfer_status: 'abandoned',
+    });
+    expect(
+      db
+        .rows('wallet_transactions')
+        .filter((t) => t.kind === 'connect_transfer' && t.status !== 'failed'),
+    ).toEqual([]);
+  });
+
+  it('sends a dispute resolved for the provider on to Stripe as well', async () => {
+    const world = buildWorld({ payable: true });
+    const { db, jobs, applications, hireFunding, disputes, fakeStripe } = world;
+    const posted = (await postJob(world)) as Record<string, any>;
+    const application = (await applications.apply(
+      provider,
+      posted.id,
+      {},
+    )) as Record<string, any>;
+    await hireFunding.completeFromIntent(hirePayment(application));
+    await jobs.start(provider, posted.id);
+    await disputes.raise(client, posted.id, { reason: 'Hindi natapos' });
+
+    await disputes.resolve(admin, db.rows('disputes')[0].id, {
+      resolution: 'released_to_provider',
+    });
+    await flush();
+
+    expect(fakeStripe.transfers).toHaveLength(1);
   });
 });

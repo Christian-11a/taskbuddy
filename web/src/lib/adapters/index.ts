@@ -17,6 +17,7 @@ import type {
   Verification,
   WalletTransaction,
   WalletTxnKind,
+  TransferStatus,
 } from "@/lib/domain";
 
 // ─── Pure helpers ─────────────────────────────────────────────────────────────
@@ -110,7 +111,25 @@ export const WALLET_KIND_DISPLAY: Record<WalletTxnKind, { label: string; badgeCl
   refund:       { label: "Refund",      badgeClass: "badge-refunded" },
   adjustment:   { label: "Adjustment",  badgeClass: "badge-cancelled" },
   recovery_credit: { label: "Recovery credit", badgeClass: "badge-completed" },
+  connect_transfer: { label: "Sent to Stripe", badgeClass: "badge-processing" },
 };
+
+/**
+ * The Payout column on the Escrow tab. Only card-funded escrows are sent on to
+ * Stripe (BACKEND_SCHEMA.md §29.5); every other payout stays in the provider's
+ * wallet, which is what "Wallet" means here — not an error.
+ */
+export const TRANSFER_STATUS_DISPLAY: Record<TransferStatus, { label: string; badgeClass: string }> = {
+  none:         { label: "Wallet",              badgeClass: "badge-pending" },
+  pending:      { label: "Sending to Stripe",   badgeClass: "badge-processing" },
+  transferred:  { label: "Sent to Stripe",      badgeClass: "badge-completed" },
+  failed:       { label: "Transfer failed",     badgeClass: "badge-rejected" },
+  not_eligible: { label: "Not set up — wallet", badgeClass: "badge-pending" },
+  abandoned:    { label: "Kept in wallet",      badgeClass: "badge-rejected" },
+};
+
+/** Transfer states an admin may retry from (POST /admin/escrow/:id/retry-transfer). */
+export const RETRYABLE_TRANSFER: ReadonlySet<TransferStatus> = new Set(["failed", "abandoned", "not_eligible"]);
 
 // ─── Display row types (what components render) ───────────────────────────────
 
@@ -193,6 +212,13 @@ export interface TransactionRow {
   status: string;
   statusClass: string;
   date: string;
+  funding: "Wallet" | "Card";
+  /** Empty until the escrow is released — nothing has been paid out yet. */
+  payout: string;
+  payoutClass: string;
+  /** The Stripe transfer id, or why it failed — the Payout cell's tooltip. */
+  payoutDetail: string | null;
+  canRetryTransfer: boolean;
 }
 
 export interface WalletTxnRow {
@@ -279,6 +305,23 @@ export function toTransactionRow(t: Transaction): TransactionRow {
     status: display.label,
     statusClass: display.badgeClass,
     date: formatDate(t.date),
+    funding: t.fundingMethod === "card" ? "Card" : "Wallet",
+    ...payoutCell(t),
+  };
+}
+
+function payoutCell(t: Transaction): Pick<TransactionRow, "payout" | "payoutClass" | "payoutDetail" | "canRetryTransfer"> {
+  // A wallet-funded escrow's payout is a wallet credit; there is no transfer to
+  // report until (and unless) it is card-funded and released.
+  if (t.status !== "COMPLETED" && t.transferStatus === "none") {
+    return { payout: "", payoutClass: "", payoutDetail: null, canRetryTransfer: false };
+  }
+  const display = TRANSFER_STATUS_DISPLAY[t.transferStatus];
+  return {
+    payout: display.label,
+    payoutClass: display.badgeClass,
+    payoutDetail: t.stripeTransferId ?? t.transferError,
+    canRetryTransfer: RETRYABLE_TRANSFER.has(t.transferStatus),
   };
 }
 

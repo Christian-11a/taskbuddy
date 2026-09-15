@@ -89,6 +89,8 @@ export class ListWalletTxnQueryDto {
     // Admin-issued trust credits (0021). Without it here the console could
     // see recovery credits in the unfiltered list but never filter to them.
     'recovery_credit',
+    // Card-funded payouts sent on to a provider's Stripe account (0027).
+    'connect_transfer',
   ])
   kind?: string;
 

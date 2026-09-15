@@ -62,7 +62,7 @@ Job lifecycle: `open → recommending → assigned → in_progress → completed
 
 1. Create a project at [supabase.com](https://supabase.com).
 2. Apply **every** migration in [`supabase/migrations/`](./supabase/migrations) **in order**
-   (0001 → 0028), either by pasting each file into the SQL Editor or with the CLI:
+   (0001 → 0029), either by pasting each file into the SQL Editor or with the CLI:
 
    ```bash
    supabase link --project-ref <your-project-ref>
@@ -99,6 +99,7 @@ Job lifecycle: `open → recommending → assigned → in_progress → completed
    | `0026_rls_write_lockdown.sql` | drops every RLS **write** policy 0003/0006/0019 granted to signed-in users (own profile, own provider row — including `is_verified` — jobs, application status, reviews, messages, checklist, notification read-state). All writes go through the API; reads are unchanged. See `BACKEND_SCHEMA.md` §11 and §17. Re-runnable. |
    | `0027_connect_transfer_kind.sql` | adds `'connect_transfer'` to `wallet_txn_kind`. **Apply alone and let it commit before 0028**, which names the value in an index. |
    | `0028_stripe_connect_and_card_funding.sql` | `provider_payout_accounts` (Connect Express, service-role writes only); escrow funding (`wallet`/`card`) and onward-transfer columns; `wallet_transactions.stripe_transfer_id`; and the service-role-only SQL functions `escrow_place_hold`, `escrow_settle`, `wallet_reserve_connect_transfer` that change escrow and write its ledger row in **one** transaction. See `BACKEND_SCHEMA.md` §29. Re-runnable. |
+   | `0029_payments_tick_cron.sql` | schedules the payments sweep (`/internal/tick/payments`, every 5 min) through 0025's `scheduler_tick`. Does nothing, with a notice, where pg_cron or 0025 is absent. Re-runnable. |
 
    > Migrations 0008 and 0009 each run `alter type notification_type add value`.
    > Postgres allows this inside a transaction as long as the new value isn't
@@ -444,6 +445,11 @@ vars these endpoints return **503** and the rest of the API is unaffected.
 | `GET /payments/connect/return?app_redirect=` · `GET /payments/connect/refresh?app_redirect=` | Stripe's `return_url` / `refresh_url`. Redirect to the app with `?connect=return\|refresh`; allowlisted like `/payments/return` |
 | `POST /payments/connect/webhook` | Stripe only, a **separate** endpoint with its own secret (`STRIPE_CONNECT_WEBHOOK_SECRET`). `account.updated` / `capability.updated` re-read the account and store what Stripe says now |
 
+**Card-funded payouts** are sent on to the provider's Connect account automatically when the escrow
+is released — a transfer sourced from the job's own charge, so Stripe's own FX rate applies
+(`BACKEND_SCHEMA.md` §29.5). Wallet-funded payouts, and providers without an active account, stay in
+the wallet and withdraw through the manual queue.
+
 The three `POST` routes carry the payments rate limit. Connect is optional: without
 `STRIPE_CONNECT_WEBHOOK_SECRET` the webhook answers 503 and statuses update only on sync.
 
@@ -476,6 +482,7 @@ The three `POST` routes carry the payments rate limit. Connect is optional: with
 | `GET /admin/disputes?status=&limit=&offset=` | dispute queue |
 | `POST /admin/disputes/:id/resolve` | `{ resolution: 'released_to_provider' \| 'refunded_to_client', note? }` (story #20) |
 | `POST /admin/wallet-transactions/recovery-credit` | `{ profile_id, amount, title, job_id? }` — issues a trust credit after a dispute, tagged `kind: 'recovery_credit'` (migration 0021). **The only route that adds balance outside a settled Stripe charge or an escrow release**, which is why it is admin-only and audited; `POST /wallet/transactions` still refuses credits from everyone. Refuses a deleted recipient, a `job_id` they are not on, and anything over ₱50,000. See `BACKEND_SCHEMA.md` §28.1 |
+| `POST /admin/escrow/:id/retry-transfer` | retries a card-funded payout's Stripe transfer that `failed`, was `abandoned`, or was `not_eligible` → `{ outcome }`. Audited (`escrow.retry_transfer`). The money is in the provider's wallet either way (`BACKEND_SCHEMA.md` §29.5) |
 | `GET /admin/withdrawals?status=&limit=&offset=` | the settlement queue — `pending` by default, oldest first (migration 0024) |
 | `POST /admin/withdrawals/:id/settle` | `{ reference? }` — records that the money was actually sent. This is what debits the wallet; the balance is re-checked first and the row is only settled once, whoever clicks |
 | `POST /admin/withdrawals/:id/reject` | `{ reason }` — the reason reaches the account holder and the amount returns to their available balance |
