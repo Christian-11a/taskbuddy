@@ -683,6 +683,35 @@ Logcat captured via `adb logcat -d`, reproduced twice (once per location
 option) 2026-09-13. Screenshots of both crash instances (identical redbox)
 taken during this session's exploration, not committed as named artifacts.
 
+### Update 2026-09-15 — Maps Demo Key tried, confirms the diagnosis but doesn't fix it
+
+Google Maps Platform's free "Demo Key" (no billing account needed,
+console.cloud.google.com self-serve) was wired into `app.json` and prebuilt
+to test whether it could unblock this without a real credential. Result:
+**the fatal crash is gone**, but the map still doesn't render — now fails
+softer with a blank/beige placeholder (just the Google watermark, no tiles)
+and this logcat error instead of a process death:
+
+```
+E Google Android Maps SDK: Authorization failure.
+E Google Android Maps SDK: Ensure that the "Maps SDK for Android" is enabled.
+E Google Android Maps SDK: API Key: [REDACTED-LEAKED-KEY]
+E Google Android Maps SDK: Android Application (<cert_fingerprint>;<package_name>):
+    5E:8F:16:06:2E:A3:CD:2C:4A:0D:54:78:76:BA:A6:F3:8C:AB:F6:25;com.taskbuddy.app
+```
+
+Confirms the original diagnosis was exactly right (the crash really was
+just a missing manifest key) and rules out the demo key as a full fix: it
+covers the JS/web-service Maps products, not native **Maps SDK for
+Android**, which `react-native-maps` needs. A real key with Maps SDK for
+Android enabled is still required — still a hand-back (needs a billing
+account on the user's Google Cloud account).
+
+One reusable side effect: the error log above hands over the exact debug
+keystore SHA-1 (`5E:8F:16:06:2E:A3:CD:2C:4A:0D:54:78:76:BA:A6:F3:8C:AB:F6:25`)
+needed to restrict the real key to this package/cert once it exists — saves
+the `keytool -list -v -keystore ~/.android/debug.keystore ...` step.
+
 ---
 
 ## BUG-005 — Post a Job wizard's bottom action bar partly overlaps the system navigation bar (BUG-002-class, not fixed by BUG-002's patch)
