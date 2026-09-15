@@ -77,7 +77,8 @@ on the account before `POST /verifications/identity-session` will succeed.
 
 ## 5. Render
 
-Add all three keys under **Environment** on the Render service, then redeploy. The boot log
+Add all three keys under **Environment** on the Render service, then redeploy.
+For provider payouts, add the Connect variables from §6 as well. The boot log
 confirms the state:
 
 ```
@@ -85,6 +86,79 @@ WARN [StripeService] Stripe is disabled — missing env: ... ← not configured
 ```
 
 No warning means the keys were read.
+
+## 6. Stripe Connect — provider payouts
+
+Providers are paid through **Connect Express** accounts, onboarded on Stripe's
+own hosted pages (`BACKEND_SCHEMA.md` §29). The API only creates the account,
+hands out links, and records what Stripe reports. Bank details never reach
+TaskBuddy.
+
+**Optional.** Without it everything else works. Card-funded payouts then stay
+in the provider's TaskBuddy wallet, the same as a wallet-funded job.
+
+### Enable Connect (test mode first)
+
+1. Dashboard → **Connect → Get started** → choose **Platform or marketplace**.
+2. **Settings → Connect → Branding**: set the name, icon and colour. Account
+   links fail with a confusing error until branding is set.
+3. **Settings → Connect → Express**: leave the defaults. The API asks only for
+   the `transfers` capability. Providers never take card payments themselves;
+   TaskBuddy charges the homeowner and sends the provider their share
+   ("separate charges and transfers").
+
+### The Connect webhook endpoint
+
+This is a **second** endpoint, separate from the one in §2. Stripe delivers
+events about connected accounts only to an endpoint created for them, and
+that endpoint has its own signing secret.
+
+Dashboard → **Developers → Webhooks → Add endpoint**:
+
+- **URL:** `https://taskbuddy-kpek.onrender.com/payments/connect/webhook`
+- **Listen to:** **Events on Connected accounts**
+- **Events:** `account.updated`, `capability.updated`
+- **API version:** the same as the platform endpoint
+
+```env
+STRIPE_CONNECT_WEBHOOK_SECRET=whsec_...   # this endpoint's secret, not §2's
+```
+
+Without it the API warns at boot, and a provider's status updates only when
+they tap **Refresh status** or return from onboarding (the app syncs on
+return either way).
+
+### Where providers' accounts are created
+
+```env
+STRIPE_CONNECT_COUNTRY=US                  # default
+STRIPE_CONNECT_SERVICE_AGREEMENT=full      # default; 'recipient' for cross-border
+```
+
+Stripe has no Philippine platform accounts. A PH provider can only be a
+**cross-border recipient** account on a platform in a supported country:
+`STRIPE_CONNECT_COUNTRY=PH` plus `STRIPE_CONNECT_SERVICE_AGREEMENT=recipient`,
+and only once Stripe has confirmed cross-border payouts for this platform. In
+test mode, leave the defaults: US Express accounts onboard with Stripe's test
+data (below) on any test platform.
+
+### Test-mode onboarding data
+
+On Stripe's hosted form: phone `000 000 0000` with SMS code `000000`; date of
+birth `1901-01-01`; SSN `000-00-0000`; address line 1 `address_full_match`;
+routing number `110000000` with account number `000123456789`. The account
+becomes **Active** in the app a few seconds later.
+
+### Local development
+
+```bash
+stripe listen \
+  --forward-to localhost:3000/payments/webhook \
+  --forward-connect-to localhost:3000/payments/connect/webhook
+```
+
+The CLI signs both streams with the **one** secret it prints. Locally, set
+`STRIPE_WEBHOOK_SECRET` and `STRIPE_CONNECT_WEBHOOK_SECRET` both to it.
 
 ---
 

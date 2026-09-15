@@ -37,6 +37,12 @@ recommendation model (see [Recommendation Engine Integration](#9-recommendation-
 21. [Stripe Payments & Identity (migration 0013)](#21-stripe-payments--identity-migration-0013)
 22. [Password Reset](#22-password-reset)
 23. [Admin Console Follow-ups (migration 0014)](#23-admin-console-follow-ups-migration-0014)
+24. [Maintenance Mode (migration 0017)](#24-maintenance-mode-migration-0017)
+25. [Admin Wallet Visibility (migration 0017)](#25-admin-wallet-visibility-migration-0017)
+26. [Booking Confirmation, Job Checklists & Verification Storage RLS (migrations 0018–0019)](#26-booking-confirmation-job-checklists--verification-storage-rls-migrations-00180019)
+27. [Backend Leftovers (migrations 0022–0024)](#27-backend-leftovers-migrations-00220024)
+28. [Handoff Closeout (no migration)](#28-handoff-closeout-no-migration)
+29. [Stripe Connect Payouts & Card-Funded Escrow (migrations 0026–0028)](#29-stripe-connect-payouts--card-funded-escrow-migrations-00260028)
 
 ---
 
@@ -858,7 +864,11 @@ So every ledger row now carries a `wallet_txn_kind`, and **platform revenue is d
 only ever produces `topup` or `withdrawal`; `payout`, `refund` and `escrow_hold` are written
 exclusively by `EscrowService`.
 
-### Known limitation
+### Known limitation — closed in 0028
+
+> **Closed.** Hold, settle and the payout reservation are single SQL transactions behind a
+> per-wallet advisory lock since migration 0028 (§29.2). The paragraph below is kept as the record
+> of why.
 
 The balance check and the debit are two separate statements, not one transaction. Two concurrent
 accepts for the same client could both pass the check and overdraw. In practice a client accepting
@@ -1859,3 +1869,154 @@ anything that ever shipped, and both were confirmed to fail against the code wit
 - **A real payout rail.** §27.2 remains the interim: a human settles withdrawals by hand.
 - **Card-at-hire for homeowners.** §27.9. A product fork, not a missing endpoint.
 - ~~**`is_verified`: badge or gate?**~~ Decided: a gate, on apply and on hire. §17.
+
+---
+
+## 29. Stripe Connect Payouts & Card-Funded Escrow (migrations 0026–0028)
+
+Closes Story 1 of `docs/backend-handoff-stripe-connect-escrow.md`, together with the payout rail
+and card-at-hire (handoff item 6), which turned out to be the same design. The decision was
+**Option A**:
+
+- `wallet_transactions` stays the single account of record (§18, §21).
+- A homeowner may pay a hire by card. The **webhook**, not the request, credits that payment and
+  places the `held` escrow.
+- A card-funded job's payout is sent on to the provider's **Stripe Connect Express** account as a
+  transfer **sourced from that job's own charge**.
+
+Everything else (top-ups, refunds, recovery credits, wallet-funded payouts) keeps the manual
+withdrawal queue (§27.2).
+
+**Why only card-funded payouts go to Stripe.** Stripe has no Philippine accounts, so a ₱ charge
+settles into the platform's balance in the platform's currency (USD on a US platform), and a
+transfer has to be made in that currency. A transfer with `source_transaction` set to the charge
+that paid for the job converts at **the rate Stripe applied to that charge**, which is exact. A
+wallet balance built from many top-ups has no single charge behind it, and sending it on would mean
+choosing an exchange rate ourselves.
+
+### 29.1 `provider_payout_accounts`
+
+One row per provider with a Connect Express account: `stripe_account_id` (unique), `country`,
+`details_submitted`, `payouts_enabled`, `transfers_active` (`capabilities.transfers = 'active'`),
+`requirements_due` (Stripe's `currently_due` ∪ `past_due`), `disabled_reason`, `stripe_synced_at`.
+
+It is a table of its own rather than columns on `provider_profiles`, for the reason 0026 exists:
+nobody should be able to point a payout account at a Stripe account of their choosing. RLS lets the
+owner read their own row. There are no write policies, so only the API's service role writes it.
+
+A provider is **payable** when `transfers_active && payouts_enabled`. The app sees four states
+(`GET /payments/connect`):
+
+| State | Condition |
+|---|---|
+| `not_started` | no row |
+| `onboarding` | row, `details_submitted = false` |
+| `restricted` | submitted, but not payable (Stripe wants more, or paused them) |
+| `active` | payable |
+
+**Onboarding** happens entirely on Stripe's hosted pages. `POST /payments/connect/onboarding-link`
+creates the Express account on first use:
+
+- `type: 'express'`, `business_type: 'individual'`, and **only** the `transfers` capability.
+  TaskBuddy takes the card payment; the provider only ever receives transfers ("separate charges
+  and transfers").
+- Idempotency key `connect-account:<profile>`.
+- If two taps race past that key, the second insert collides on the primary key. The loser deletes
+  the account it just created and uses the winner's.
+
+Stripe's `return_url` and `refresh_url` point at `/payments/connect/{return,refresh}`, which bounce
+the browser into the app's deep link. This is the same allowlisted hop `/payments/return` makes,
+for the same reason: Stripe only accepts http(s).
+
+Reaching `return` does not mean the form was finished; Stripe sends "save for later" there too. So
+the app calls `POST /payments/connect/sync`, which re-reads the account.
+
+**The Connect webhook** (`POST /payments/connect/webhook`) is a second Stripe endpoint with its own
+secret. It is created with "Events on Connected accounts", because Stripe delivers events about
+connected accounts only to such an endpoint. On `account.updated` and `capability.updated` it
+**re-retrieves the account** instead of trusting the event's snapshot. Connect events can arrive
+out of order, and re-reading makes the handler an assignment: redelivered or reordered, it
+converges on what Stripe says now. Events share `stripe_events` with the platform endpoint and are
+recorded after the work (§21).
+
+### 29.2 Money moves are single transactions now
+
+§18's "Known limitation" said the balance check and the debit were two statements, and that
+closing the gap meant "moving hold into a SQL function … worth doing if real money is ever
+involved." Card payments are real money, so 0028 does it for every move:
+
+| Function | Replaces | In one transaction |
+|---|---|---|
+| `escrow_place_hold(job, provider, funding_method, pi, charge)` | `EscrowService.hold` / `reuseHold` | lock the client's wallet, lock the escrow row, check the available balance, insert or revive the escrow, write the `escrow_hold` debit. Returns `{ escrow, placed }` |
+| `escrow_settle(escrow, expected, next, commission, title)` | the conditional `settle` + ledger insert | move `expected → next` only if still `expected`, and write that move's single ledger row (`payout` net of commission, or `refund`). A card-funded release is also marked `transfer_status = 'pending'` here. Returns the row, or `null` if it lost the race |
+| `wallet_reserve_connect_transfer(escrow, amount, title)` | — (new) | lock the provider's wallet, require the job's payout credit, check the available balance, insert a **pending** `connect_transfer` debit, or return the live one |
+
+`wallet_available_balance(profile)` is the SQL twin of `WalletService.availableBalanceFor`:
+completed credits, minus completed debits, minus **every** pending debit.
+
+**The lock.** Each function that commits wallet money first takes
+`pg_advisory_xact_lock(hashtextextended('wallet:' || profile_id, 0))`, so two commitments for one
+person are serialised. Two hires at once, or a hire racing a payout transfer, can no longer both
+pass the balance check. That is the §18 overdraw race, closed.
+
+A withdrawal *request* still checks its balance in TypeScript without the lock. The race that
+leaves is benign: settlement re-checks the settled balance and refuses what is no longer covered
+(§27.2).
+
+**Errors** use custom SQLSTATEs, which the API maps to typed exceptions:
+
+| SQLSTATE | Meaning | `detail` |
+|---|---|---|
+| `TB402` | insufficient funds | `{"needed": n, "available": n}` |
+| `TB404` | nothing to act on | |
+| `TB409` | conflicts with the row's state | |
+
+All four functions are `SECURITY DEFINER`, `search_path = ''`, and `EXECUTE` is granted to
+`service_role` only, the pattern 0020 set.
+
+**The escrow row now records funding and the onward transfer:**
+
+- `funding_method` (`wallet` | `card`), plus `funding_payment_intent_id` and `funding_charge_id`,
+  both unique. A CHECK requires both ids on a card row.
+- `transfer_status`: `none` → `pending` → `transferred` | `failed` | `not_eligible` | `abandoned`.
+  CHECKs enforce that only a card row may leave `none`, and that `transferred` needs a
+  `stripe_transfer_id`.
+- Transfer bookkeeping: amount and currency, `transfer_attempts`, `transfer_last_error`, and
+  timestamps.
+
+**`connect_transfer`** is a new `wallet_txn_kind` (0027, applied alone first). It is deliberately
+not `withdrawal`: every withdrawal path keys on that kind (the admin queue, settle/reject, the
+user's cancel), and a transfer Stripe is already carrying must not be settled by hand or cancelled.
+A partial unique index allows at most one live (`pending` | `completed`) connect transfer per job.
+
+### 29.3 Tested on real Postgres
+
+`npm run test:sql` applies every migration to PGlite (Postgres compiled to WebAssembly, run
+in-process) with Supabase's `auth` and `storage` schemas stubbed. It then covers:
+
+- each function's branches (short wallet with its figures, reserved withdrawals, idempotent retry,
+  another provider, revive, lost races, commission, disputes both ways);
+- the CHECKs and unique indexes, including when the functions are bypassed;
+- execute privileges, and that 0026 left no write policy;
+- that 0026–0028 re-apply cleanly.
+
+This complements `job-lifecycle.spec.ts`, whose honest limit (§28.7) is that it transcribes SQL
+rather than running it.
+
+**Verification on a live project:**
+
+```sql
+select routine_name from information_schema.routines
+ where routine_schema = 'public'
+   and routine_name in ('wallet_available_balance', 'wallet_lock', 'escrow_place_hold',
+                        'escrow_settle', 'wallet_reserve_connect_transfer');   -- expect 5
+
+select has_function_privilege('authenticated',
+  'public.escrow_place_hold(uuid, uuid, text, text, text)', 'execute');   -- expect false
+
+select count(*) from pg_policies
+ where schemaname = 'public' and cmd <> 'SELECT'
+   and tablename in ('profiles', 'provider_profiles', 'jobs', 'job_applications',
+                     'reviews', 'messages', 'job_tasks', 'notifications');  -- expect 0
+```
+

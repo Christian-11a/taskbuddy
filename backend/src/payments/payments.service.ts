@@ -3,6 +3,7 @@ import type Stripe from 'stripe';
 import { SupabaseService } from '../supabase/supabase.service';
 import { VerificationsService } from '../verifications/verifications.service';
 import { StripeService } from './stripe.service';
+import { StripeEventsService } from './stripe-events.service';
 import { CreateCheckoutSessionDto, CreateTopupDto } from './dto/payments.dto';
 import { isAllowedAppRedirect } from '../auth/google-redirect';
 import type { Profile } from '../common/types';
@@ -29,6 +30,7 @@ export class PaymentsService {
     private readonly supabase: SupabaseService,
     private readonly stripeService: StripeService,
     private readonly verifications: VerificationsService,
+    private readonly events: StripeEventsService,
   ) {}
 
   /**
@@ -171,7 +173,7 @@ export class PaymentsService {
    * failure — work never done, event marked handled — permanent and silent.
    */
   async handleEvent(event: Stripe.Event): Promise<void> {
-    if (await this.alreadyProcessed(event.id)) return;
+    if (await this.events.alreadyProcessed(event.id)) return;
 
     switch (event.type) {
       case 'payment_intent.succeeded':
@@ -200,22 +202,7 @@ export class PaymentsService {
         this.logger.debug(`Ignoring Stripe event type ${event.type}`);
     }
 
-    await this.recordProcessed(event);
-  }
-
-  async alreadyProcessed(eventId: string): Promise<boolean> {
-    const { data } = await this.supabase.admin
-      .from('stripe_events')
-      .select('id')
-      .eq('id', eventId)
-      .maybeSingle();
-    return data !== null;
-  }
-
-  async recordProcessed(event: Stripe.Event): Promise<void> {
-    await this.supabase.admin
-      .from('stripe_events')
-      .upsert({ id: event.id, type: event.type }, { onConflict: 'id' });
+    await this.events.recordProcessed(event);
   }
 
   // ── Internals ─────────────────────────────────────────────────────────────

@@ -5,6 +5,31 @@ app works today; this file covers how it got there and why. Newest first.
 
 ---
 
+## Providers can set up Stripe payouts (2026-09-16)
+
+**Profile → Payouts** (`SPPayoutsScreen`) connects a Stripe Connect Express
+account, onboarded on Stripe's own hosted pages (`BACKEND_SCHEMA.md` §29).
+The screen shows one of four states (Set up, Continue setup, Update details,
+Payouts are on), each with one action. **Open Stripe dashboard** appears once
+the form has been submitted.
+
+The screen explains the two ways a provider gets paid, because the split is
+not obvious. It is Stripe's constraint, not a product choice: a card-paid job
+can go straight to Stripe, and a wallet-paid one stays in the TaskBuddy wallet.
+Bank details are entered on Stripe's pages and never reach the app or the API.
+
+Onboarding runs through `openAuthSessionAsync`, like Add Money, and the backend
+bounces Stripe's return back to the deep link:
+
+- `?connect=return`: the screen syncs with Stripe, because returning does not
+  mean the form was finished.
+- `?connect=refresh`: the link expired, so the screen fetches a fresh one and
+  reopens it, once.
+
+New `api.ts` methods: `connectStatus`, `connectOnboardingLink`, `connectSync`,
+`connectDashboardLink`. `WalletTxnKind` gains `connect_transfer`. Maestro flow:
+`payouts_entry_provider.yaml`.
+
 ## Hiring errors are shown, and verification is a gate the app says out loud (2026-09-15)
 
 **The Proposals screen had two bugs that hid each other.**

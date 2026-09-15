@@ -20,6 +20,7 @@ import { ThrottlePayments } from '../common/throttle';
 import { CurrentUser } from '../auth/current-user.decorator';
 import { PaymentsService } from './payments.service';
 import { StripeService } from './stripe.service';
+import { publicOrigin } from './public-origin';
 import { CreateCheckoutSessionDto, CreateTopupDto } from './dto/payments.dto';
 import {
   appendRedirectParams,
@@ -70,7 +71,7 @@ export class PaymentsController {
     @Body() dto: CreateCheckoutSessionDto,
     @Req() req: Request,
   ) {
-    return this.payments.createCheckoutSession(user, dto, this.originOf(req));
+    return this.payments.createCheckoutSession(user, dto, publicOrigin(req));
   }
 
   /**
@@ -135,25 +136,5 @@ export class PaymentsController {
     await this.payments.handleEvent(event);
     this.logger.log(`Handled Stripe event ${event.type} (${event.id})`);
     return { received: true };
-  }
-
-  /**
-   * This API's public origin, for building the URLs Stripe redirects back to.
-   *
-   * Derived from the request so local development works with no configuration,
-   * but `PUBLIC_API_URL` wins where it is set. On Render the request host is
-   * right and the protocol is not — TLS terminates at the proxy, so the app
-   * sees plain http and would hand Stripe an http:// URL that redirects users
-   * out of TLS. `x-forwarded-proto` is what the proxy left behind to say so.
-   */
-  private originOf(req: Request): string {
-    const configured = process.env.PUBLIC_API_URL;
-    if (configured) return configured.replace(/\/+$/, '');
-
-    const forwarded = req.headers['x-forwarded-proto'];
-    const protocol =
-      (Array.isArray(forwarded) ? forwarded[0] : forwarded)?.split(',')[0] ??
-      req.protocol;
-    return `${protocol}://${req.get('host')}`;
   }
 }

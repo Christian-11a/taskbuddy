@@ -30,6 +30,7 @@ import { EscrowModule } from './escrow/escrow.module';
 import { SettingsModule } from './settings/settings.module';
 import { PushModule } from './push/push.module';
 import { PaymentsModule } from './payments/payments.module';
+import { ConnectModule } from './payments/connect/connect.module';
 import { InternalModule } from './internal/internal.module';
 
 @Module({
@@ -84,6 +85,7 @@ import { InternalModule } from './internal/internal.module';
     SettingsModule,
     PushModule,
     PaymentsModule,
+    ConnectModule,
     InternalModule,
   ],
   providers: [

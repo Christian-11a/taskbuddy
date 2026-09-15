@@ -1,6 +1,7 @@
 import type Stripe from 'stripe';
 import { BadRequestException } from '@nestjs/common';
 import { PaymentsService } from './payments.service';
+import { StripeEventsService } from './stripe-events.service';
 import type { SupabaseService } from '../supabase/supabase.service';
 import type { StripeService } from './stripe.service';
 import type { VerificationsService } from '../verifications/verifications.service';
@@ -110,6 +111,7 @@ describe('PaymentsService', () => {
         supabase,
         createStripeMock(),
         createVerificationsMock(),
+        new StripeEventsService(supabase),
       );
 
       await service.handleEvent(topupEvent());
@@ -141,6 +143,7 @@ describe('PaymentsService', () => {
         supabase,
         createStripeMock(),
         createVerificationsMock(),
+        new StripeEventsService(supabase),
       );
 
       await expect(service.handleEvent(topupEvent())).resolves.toBeUndefined();
@@ -154,6 +157,7 @@ describe('PaymentsService', () => {
         supabase,
         createStripeMock(),
         createVerificationsMock(),
+        new StripeEventsService(supabase),
       );
 
       await service.handleEvent(topupEvent());
@@ -171,6 +175,7 @@ describe('PaymentsService', () => {
         supabase,
         createStripeMock(),
         createVerificationsMock(),
+        new StripeEventsService(supabase),
       );
 
       await service.handleEvent(
@@ -191,6 +196,7 @@ describe('PaymentsService', () => {
         supabase,
         createStripeMock(),
         createVerificationsMock(),
+        new StripeEventsService(supabase),
       );
 
       await expect(service.handleEvent(topupEvent())).rejects.toThrow(
@@ -209,6 +215,7 @@ describe('PaymentsService', () => {
         supabase,
         createStripeMock(),
         createVerificationsMock(),
+        new StripeEventsService(supabase),
       );
 
       await expect(service.handleEvent(topupEvent())).rejects.toThrow();
@@ -237,6 +244,7 @@ describe('PaymentsService', () => {
         supabase,
         stripe,
         createVerificationsMock(),
+        new StripeEventsService(supabase),
       );
 
       await payments.createCheckoutSession(
@@ -264,6 +272,7 @@ describe('PaymentsService', () => {
         supabase,
         stripe,
         createVerificationsMock(),
+        new StripeEventsService(supabase),
       );
 
       await payments.createCheckoutSession(
@@ -285,6 +294,7 @@ describe('PaymentsService', () => {
         supabase,
         stripe,
         createVerificationsMock(),
+        new StripeEventsService(supabase),
       );
 
       await payments.createCheckoutSession(
@@ -310,6 +320,7 @@ describe('PaymentsService', () => {
         supabase,
         stripe,
         createVerificationsMock(),
+        new StripeEventsService(supabase),
       );
 
       // /payments/return redirects a browser to whatever comes back out, so an
@@ -335,6 +346,7 @@ describe('PaymentsService', () => {
         supabase,
         createStripeMock(),
         verifications,
+        new StripeEventsService(supabase),
       );
 
       await service.handleEvent({
@@ -358,6 +370,7 @@ describe('PaymentsService', () => {
         supabase,
         createStripeMock(),
         verifications,
+        new StripeEventsService(supabase),
       );
 
       await service.handleEvent({

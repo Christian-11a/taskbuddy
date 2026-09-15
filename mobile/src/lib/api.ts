@@ -398,7 +398,28 @@ export type WalletTxnKind =
   | 'payout'
   | 'refund'
   | 'adjustment'
-  | 'recovery_credit';
+  | 'recovery_credit'
+  /** A card-funded payout sent on to the provider's Stripe account (migration 0027). */
+  | 'connect_transfer';
+
+/**
+ * Where a provider stands with Stripe Connect payouts
+ * (`GET /payments/connect`, BACKEND_SCHEMA.md §29):
+ *
+ * - `not_started` — no payout account yet
+ * - `onboarding`  — started Stripe's form but not finished it
+ * - `restricted`  — finished, but Stripe still needs something (`requirements_due`)
+ * - `active`      — card-paid jobs are sent to their Stripe account automatically
+ */
+export interface ConnectStatus {
+  state: 'not_started' | 'onboarding' | 'restricted' | 'active';
+  country: string | null;
+  details_submitted: boolean;
+  payouts_enabled: boolean;
+  transfers_active: boolean;
+  requirements_due: string[];
+  disabled_reason: string | null;
+}
 
 export interface WalletTransaction {
   id: string;
@@ -1200,6 +1221,36 @@ export const api = {
     return authRequest<CheckoutSession>('/payments/checkout-session', {
       method: 'POST',
       body: input,
+    });
+  },
+
+  // ── Stripe Connect payouts (providers) ─────────────────────────────────────
+  connectStatus() {
+    return authRequest<ConnectStatus>('/payments/connect');
+  },
+
+  /**
+   * A single-use Stripe onboarding URL. Open it with `openAuthSessionAsync`;
+   * the backend bounces the browser back to `app_redirect` with
+   * `?connect=return` (left the form — finished or not, so call
+   * `connectSync`) or `?connect=refresh` (the link expired; ask for another).
+   */
+  connectOnboardingLink(input: { app_redirect: string }) {
+    return authRequest<{ url: string; expires_at: number }>(
+      '/payments/connect/onboarding-link',
+      { method: 'POST', body: input },
+    );
+  },
+
+  /** Re-reads the payout account from Stripe. */
+  connectSync() {
+    return authRequest<ConnectStatus>('/payments/connect/sync', { method: 'POST' });
+  },
+
+  /** A one-time link into the provider's Stripe Express dashboard. */
+  connectDashboardLink() {
+    return authRequest<{ url: string }>('/payments/connect/dashboard-link', {
+      method: 'POST',
     });
   },
 

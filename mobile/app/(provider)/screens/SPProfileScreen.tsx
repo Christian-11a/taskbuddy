@@ -34,6 +34,7 @@ import {
   BadgeCheck,
   ChevronRight,
   CircleHelp,
+  Landmark,
   LogOut,
   Pencil,
   Settings as SettingsIcon,
@@ -51,6 +52,7 @@ import OwnAvatar from '../../../src/components/OwnAvatar';
 const MENU_ITEMS: { label: string; icon: typeof Pencil; screen: SPScreen }[] = [
   { label: 'Edit Profile', icon: Pencil, screen: 'Edit Profile' },
   { label: 'Get Verified', icon: ShieldCheck, screen: 'Verification' },
+  { label: 'Payouts', icon: Landmark, screen: 'Payouts' },
   { label: 'Settings', icon: SettingsIcon, screen: 'Settings' },
   { label: 'Help & Support', icon: CircleHelp, screen: 'Help & Support' },
 ];

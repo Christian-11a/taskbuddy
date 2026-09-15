@@ -62,7 +62,7 @@ Job lifecycle: `open → recommending → assigned → in_progress → completed
 
 1. Create a project at [supabase.com](https://supabase.com).
 2. Apply **every** migration in [`supabase/migrations/`](./supabase/migrations) **in order**
-   (0001 → 0026), either by pasting each file into the SQL Editor or with the CLI:
+   (0001 → 0028), either by pasting each file into the SQL Editor or with the CLI:
 
    ```bash
    supabase link --project-ref <your-project-ref>
@@ -97,6 +97,8 @@ Job lifecycle: `open → recommending → assigned → in_progress → completed
    | `0024_withdrawal_requests_and_commission.sql` | withdrawal review columns on `wallet_transactions`, `platform_settings.commission_rate` (default 0), `escrow_transactions.commission_amount`. |
    | `0025_scheduler_cron.sql` | Postgres-driven scheduler ticks (pg_cron + pg_net) calling `POST /internal/tick/*`, so push and recommendation sweeps run while the API host sleeps. Read its header before applying — it needs a setup snippet run first. |
    | `0026_rls_write_lockdown.sql` | drops every RLS **write** policy 0003/0006/0019 granted to signed-in users (own profile, own provider row — including `is_verified` — jobs, application status, reviews, messages, checklist, notification read-state). All writes go through the API; reads are unchanged. See `BACKEND_SCHEMA.md` §11 and §17. Re-runnable. |
+   | `0027_connect_transfer_kind.sql` | adds `'connect_transfer'` to `wallet_txn_kind`. **Apply alone and let it commit before 0028**, which names the value in an index. |
+   | `0028_stripe_connect_and_card_funding.sql` | `provider_payout_accounts` (Connect Express, service-role writes only); escrow funding (`wallet`/`card`) and onward-transfer columns; `wallet_transactions.stripe_transfer_id`; and the service-role-only SQL functions `escrow_place_hold`, `escrow_settle`, `wallet_reserve_connect_transfer` that change escrow and write its ledger row in **one** transaction. See `BACKEND_SCHEMA.md` §29. Re-runnable. |
 
    > Migrations 0008 and 0009 each run `alter type notification_type add value`.
    > Postgres allows this inside a transaction as long as the new value isn't
@@ -430,6 +432,26 @@ Redelivery is safe: `wallet_transactions.stripe_payment_intent_id` is
 partial-unique and the collision *is* the idempotency check. Without Stripe env
 vars these endpoints return **503** and the rest of the API is unaffected.
 
+**Provider payouts — Stripe Connect Express** (migrations 0027–0028, `BACKEND_SCHEMA.md` §29, setup in [`docs/stripe-setup.md`](../docs/stripe-setup.md) §6)
+
+| Method & path | Description |
+|---|---|
+| `GET /payments/connect` 🔒 (provider) | `{ state: 'not_started' \| 'onboarding' \| 'restricted' \| 'active', details_submitted, payouts_enabled, transfers_active, requirements_due[], disabled_reason, country }`. The Stripe account id is never returned |
+| `POST /payments/connect/onboarding-link` 🔒 (provider) | `{ app_redirect }` → `{ url, expires_at }`. Creates the provider's Express account on first use (transfers capability only), then a single-use Stripe onboarding link |
+| `POST /payments/connect/sync` 🔒 (provider) | Re-reads the account from Stripe → the same status shape. The app calls it on returning from onboarding, since reaching `return` does not mean the form was finished |
+| `POST /payments/connect/dashboard-link` 🔒 (provider) | `{ url }` — a one-time login to the provider's Stripe Express dashboard (bank details, payout history). 400 until onboarding has been submitted |
+| `GET /payments/connect/return?app_redirect=` · `GET /payments/connect/refresh?app_redirect=` | Stripe's `return_url` / `refresh_url`. Redirect to the app with `?connect=return\|refresh`; allowlisted like `/payments/return` |
+| `POST /payments/connect/webhook` | Stripe only, a **separate** endpoint with its own secret (`STRIPE_CONNECT_WEBHOOK_SECRET`). `account.updated` / `capability.updated` re-read the account and store what Stripe says now |
+
+The three `POST` routes carry the payments rate limit. Connect is optional: without
+`STRIPE_CONNECT_WEBHOOK_SECRET` the webhook answers 503 and statuses update only on sync.
+
+| Env | Default | Meaning |
+|---|---|---|
+| `STRIPE_CONNECT_WEBHOOK_SECRET` | — | Signing secret of the Connect webhook endpoint |
+| `STRIPE_CONNECT_COUNTRY` | `US` | Country for new Express accounts |
+| `STRIPE_CONNECT_SERVICE_AGREEMENT` | `full` | `recipient` for cross-border accounts (e.g. PH on a US platform), once Stripe has enabled that |
+
 **Admin** (🔒 admin role only — 401 without a token, 403 for non-admins)
 
 | Method & path | Description |
@@ -546,7 +568,8 @@ each route counts separately and there is no aggregate cap across the API.
 | Everything | 240 / minute |
 | `POST /payments/topup`, `POST /payments/checkout-session` | 5 / minute |
 | `POST /auth/{register,login,admin/login,forgot-password,reset-password,send-email-otp,verify-email-otp,change-password}` | 10 / minute **each** |
-| `POST /payments/webhook` | exempt — Stripe is authenticated by signature and retries for three days |
+| `POST /payments/connect/{onboarding-link,sync,dashboard-link}` | 5 / minute each |
+| `POST /payments/webhook`, `POST /payments/connect/webhook` | exempt — Stripe is authenticated by signature and retries for three days |
 
 `POST /auth/refresh`, `GET /auth/me` and the admin session routes are
 deliberately left on the 240 ceiling: they fire on ordinary app use, and a tight
@@ -633,4 +656,13 @@ npm run start:dev   # dev server with watch
 npm run build       # compile
 npm run lint        # eslint --fix
 npm run format      # prettier
+npm test            # jest unit + lifecycle specs (supabase-js mocked)
+npm run test:sql    # the real migrations on real Postgres (PGlite, in-process)
 ```
+
+`test:sql` applies every migration to PGlite (Postgres compiled to
+WebAssembly — no server, no Docker) with the Supabase `auth`/`storage` schemas
+stubbed, then exercises the money functions from 0028, the RLS lockdown from
+0026, and re-applying the latest migrations. The jest suites mock the
+database and cannot see SQL at all; this is what does. `0025` is skipped — it
+needs pg_cron, pg_net and Vault.
