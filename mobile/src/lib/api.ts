@@ -388,6 +388,7 @@ export interface WalletTransaction {
 }
 
 export interface WalletOverview {
+  /** Settled credits minus settled debits. */
   balance: number;
   /** Settled balance less money reserved by pending withdrawal requests. */
   available: number;
@@ -470,6 +471,35 @@ export class ApiError extends Error {
     super(message);
     this.name = 'ApiError';
   }
+}
+
+/**
+ * Why an account cannot be deleted yet. Mirrors the backend's
+ * `DeletionBlockerCode` (`backend/src/profiles/dto/account-deletion.ts`).
+ */
+export type DeletionBlockerCode =
+  | 'wallet_balance'
+  | 'pending_withdrawal'
+  | 'escrow_held'
+  | 'active_job'
+  | 'open_dispute';
+
+export interface DeletionBlocker {
+  code: DeletionBlockerCode;
+  /** Written to be shown as-is — says what to do, not just what is wrong. */
+  message: string;
+}
+
+/**
+ * Pulls the blocker list out of a `DELETE /profiles/me` 409.
+ *
+ * Returns an empty array for any other failure, so a caller can branch on
+ * "did this fail because of blockers" without inspecting the status itself.
+ */
+export function deletionBlockersFrom(err: unknown): DeletionBlocker[] {
+  if (!(err instanceof ApiError) || err.status !== 409) return [];
+  const blockers = (err.details as { blockers?: unknown } | null)?.blockers;
+  return Array.isArray(blockers) ? (blockers as DeletionBlocker[]) : [];
 }
 
 /**
@@ -614,6 +644,35 @@ export const api = {
     return request<LoginResponse>('/auth/login', { method: 'POST', body: input });
   },
 
+  /**
+   * Mails a 6-digit signup verification code.
+   *
+   * Always resolves, even for an address that does not exist or is already
+   * confirmed — the backend deliberately does not report which, since an
+   * endpoint that says "no such account" is an account-enumeration oracle.
+   * So a success here is not evidence the address is real.
+   */
+  sendEmailOtp(email: string) {
+    return request<{ success: true }>('/auth/send-email-otp', {
+      method: 'POST',
+      body: { email },
+    });
+  },
+
+  /**
+   * Exchanges the emailed code for a confirmed account and a session.
+   *
+   * A session comes back because the code proves control of the address just
+   * as a password would, so the user is signed in rather than bounced to a
+   * login screen they just proved they don't need.
+   */
+  verifyEmailOtp(input: { email: string; token: string }) {
+    return request<LoginResponse>('/auth/verify-email-otp', {
+      method: 'POST',
+      body: input,
+    });
+  },
+
   refresh(refresh_token: string) {
     return request<{ session: Session }>('/auth/refresh', {
       method: 'POST',
@@ -706,6 +765,19 @@ export const api = {
     return authRequest<Profile>('/profiles/me', { method: 'PATCH', body: input });
   },
 
+  /**
+   * Deletes the signed-in account. Resolves on success (204, no body).
+   *
+   * Throws a 409 `ApiError` when the account still has obligations — a
+   * balance, a pending withdrawal, escrow held, a live job, an open dispute.
+   * Every blocker is listed at once rather than one per attempt; read them
+   * with `deletionBlockersFrom(err)`.
+   *
+   * This is a soft delete server-side: the row is retained (jobs, reviews and
+   * ledger entries still point at it) with identifying fields overwritten, and
+   * the address freed for reuse. The caller must sign out afterwards — the
+   * access token stays syntactically valid until it expires.
+   */
   deleteAccount() {
     return authRequest<void>('/profiles/me', { method: 'DELETE' });
   },
@@ -982,10 +1054,17 @@ export const api = {
     return authRequest<WalletOverview>('/wallet');
   },
 
-  withdrawals() {
-    return authRequest<WalletTransaction[]>('/wallet/withdrawals');
-  },
-
+  /**
+   * Files a withdrawal request.
+   *
+   * The row comes back `pending`: the money has not moved and will not until
+   * an admin settles it from the console. There is no payout rail — settlement
+   * is a human sending money and recording the reference — so `destination` is
+   * free text a person reads, not a validated account identifier.
+   *
+   * Checked against the wallet's `available`, not `balance`, so two requests
+   * cannot both draw on the same funds.
+   */
   requestWithdrawal(input: {
     amount: number;
     destination: string;
@@ -997,6 +1076,12 @@ export const api = {
     });
   },
 
+  /** The caller's own withdrawal requests, newest first. */
+  withdrawals() {
+    return authRequest<WalletTransaction[]>('/wallet/withdrawals');
+  },
+
+  /** Withdraws a request that has not been settled yet, returning the funds. */
   cancelWithdrawal(id: string) {
     return authRequest<WalletTransaction>(`/wallet/withdrawals/${id}/cancel`, {
       method: 'POST',
@@ -1004,8 +1089,9 @@ export const api = {
   },
 
   /**
-   * Withdrawals only. Credits are refused by the backend — wallet funding has
-   * to come from a settled Stripe charge, so use `createCheckoutSession`.
+   * @deprecated Superseded by `requestWithdrawal`. The backend keeps this route
+   * working but now files the same pending request rather than writing a
+   * completed debit.
    */
   createWalletTransaction(input: {
     direction: 'debit';

@@ -1,0 +1,101 @@
+appId: com.taskbuddy.app
+---
+# Phase 1: full homeowner signup end-to-end, adapted from 00_setup_register_client.yaml
+# for a disposable burner account and updated for this environment's current
+# state: Supabase's "Confirm email" is OFF here (discovered 2026-09-06), so
+# AuthContext.signUp's `res.session` branch fires and the app lands straight on
+# the home screen — RegisterScreen's OTP step (`confirmationSent`) never shows.
+# If Confirm email is ever switched back on, this flow's final assertion goes
+# back to "Check your email" like 00_setup_register_client.yaml's does.
+#
+# Re-running needs a new email each time — this account is not deleted after.
+- runFlow: _helpers/launch_fresh.yaml
+# Cold-launch swallowed-tap: the Login screen paints before React attaches
+# press handlers, so the very first tap after clearState can be a no-op.
+- waitForAnimationToEnd:
+    timeout: 10000
+- tapOn: "Sign Up"
+- runFlow:
+    when:
+      visible: "Welcome!"
+    commands:
+      - tapOn: "Sign Up"
+- extendedWaitUntil:
+    visible: "Create account"
+    timeout: 30000
+- tapOn:
+    id: "input-name"
+- inputText: "Maestro Signup Burner"
+- tapOn:
+    id: "input-email"
+- inputText: "maestro.signup2@taskbuddy.test"
+- tapOn:
+    id: "input-password"
+- inputText: "TestPass123!"
+- hideKeyboard
+- scrollUntilVisible:
+    element:
+      id: "input-confirm-password"
+    direction: DOWN
+    timeout: 20000
+- tapOn:
+    id: "input-confirm-password"
+- inputText: "TestPass123!"
+- hideKeyboard
+- scrollUntilVisible:
+    element:
+      id: "chk-terms"
+    direction: DOWN
+    timeout: 20000
+- tapOn:
+    id: "chk-terms"
+- extendedWaitUntil:
+    visible: "Terms & Conditions"
+    timeout: 20000
+- scrollUntilVisible:
+    element:
+      text: "I agree to the Terms & Conditions"
+    direction: DOWN
+    timeout: 20000
+- tapOn: "I agree to the Terms & Conditions"
+- scrollUntilVisible:
+    element:
+      id: "chk-privacy"
+    direction: DOWN
+    timeout: 20000
+- tapOn:
+    id: "chk-privacy"
+- extendedWaitUntil:
+    visible: "Privacy Policy"
+    timeout: 20000
+- scrollUntilVisible:
+    element:
+      text: "I agree to the Privacy Policy"
+    direction: DOWN
+    timeout: 20000
+- tapOn: "I agree to the Privacy Policy"
+- scrollUntilVisible:
+    element:
+      id: "chk-data-collection"
+    direction: DOWN
+    timeout: 20000
+- tapOn:
+    id: "chk-data-collection"
+- scrollUntilVisible:
+    element:
+      text: "Sign Up"
+    direction: DOWN
+    timeout: 20000
+- tapOn: "Sign Up"
+# A brand-new account genuinely sees onboarding here (unlike login_client.yaml's
+# Skip, which is working around clearState wiping AsyncStorage on a returning
+# account) — this is the real first-run onboarding gate.
+- extendedWaitUntil:
+    visible: ".*(Skip|Need something done\\?).*"
+    timeout: 60000
+- tapOn:
+    text: "Skip"
+    optional: true
+- extendedWaitUntil:
+    visible: "Need something done?"
+    timeout: 15000

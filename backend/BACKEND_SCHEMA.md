@@ -1372,6 +1372,14 @@ Three migrations, in order. **0022 must be applied on its own and allowed to com
 Postgres will not let a new enum value be used in the same transaction that adds it, and the
 Supabase SQL editor wraps a script in one transaction (the same constraint 0018 documented).
 
+> **All three applied and verified 2026-08-27.** Checked against the live database:
+> `notification_type` carries `'announcement'` and `'wallet_update'`; `profiles` has
+> `deleted_at` and `email_verified_at`; `admin_user_overview` exposes `deleted_at`;
+> `wallet_transactions` has `withdrawal_destination`, `reviewed_at`, `reviewed_by` and
+> `review_note`; `platform_settings.commission_rate` and
+> `escrow_transactions.commission_amount` are both present. Migration 0021's
+> `'recovery_credit'` enum value was re-confirmed in the same pass.
+
 | Migration | Contents |
 |---|---|
 | `0022_notification_announcement_type.sql` | `notification_type` gains `'announcement'` and `'wallet_update'` |

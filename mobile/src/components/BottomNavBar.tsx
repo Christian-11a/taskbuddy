@@ -1,5 +1,6 @@
 import React from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { LucideIcon } from 'lucide-react-native';
 import { Sizes, V6Colors } from '../constants/theme';
@@ -32,8 +33,20 @@ export default function BottomNavBar<T extends string>({
   tabs,
   onTabPress,
 }: BottomNavBarProps<T>) {
+  // The app is edge-to-edge (enforced on targetSdk 36), so without the real
+  // bottom inset the bar renders under the system navigation bar and the OS
+  // eats every tap (BUG-002). Drive the bottom padding + height from the inset.
+  const insets = useSafeAreaInsets();
   return (
-    <View style={styles.container}>
+    <View
+      style={[
+        styles.container,
+        {
+          height: Sizes.navBarHeight + insets.bottom,
+          paddingBottom: 22 + insets.bottom,
+        },
+      ]}
+    >
       {tabs.map((tab) => {
         const Icon = tab.icon;
         const isActive = tab.key === activeTab;
@@ -42,6 +55,7 @@ export default function BottomNavBar<T extends string>({
           return (
             <TouchableOpacity
               key={tab.key}
+              testID={`nav-tab-${tab.key}`}
               accessibilityLabel={tab.label}
               accessibilityRole="button"
               style={styles.primaryButtonWrap}
@@ -63,6 +77,7 @@ export default function BottomNavBar<T extends string>({
         return (
           <TouchableOpacity
             key={tab.key}
+            testID={`nav-tab-${tab.key}`}
             accessibilityLabel={tab.label}
             accessibilityRole="tab"
             accessibilityState={{ selected: isActive }}
@@ -91,10 +106,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     backgroundColor: Colors.white,
-    height: Sizes.navBarHeight,
+    // height and paddingBottom are set inline from the safe-area inset (BUG-002).
     paddingHorizontal: 12,
     paddingTop: 7,
-    paddingBottom: 22,
     borderTopWidth: 1,
     borderTopColor: '#edf1f4',
     shadowColor: '#0f172a',

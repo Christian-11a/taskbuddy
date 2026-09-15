@@ -14,7 +14,7 @@ buttons that still do nothing.
 
 | Layer | Choice |
 |-------|--------|
-| Runtime | **Expo SDK 54** / **React Native 0.81** / **React 19** |
+| Runtime | **Expo SDK 57** / **React Native 0.86** / **React 19** |
 | Language | **TypeScript** |
 | Auth | **AuthContext** backed by the NestJS API (JWT + Supabase sessions) |
 | Storage | **AsyncStorage** — session persistence only |
@@ -29,22 +29,48 @@ buttons that still do nothing.
 ```bash
 cd mobile
 npm install
-npm start          # then press 'a' for Android / 'i' for iOS / scan QR for Expo Go
+npm run android    # builds + installs the Android dev client, then starts Metro
+                   # (first run costs several minutes of Gradle — it prebuilds
+                   # mobile/android/, which is gitignored)
 ```
+
+> **After an Expo SDK upgrade, regenerate the native project.** `mobile/android/`
+> is gitignored and prebuild-managed, so a clean checkout builds fine (`npm run
+> android` auto-prebuilds when `android/` is absent). But an `android/` folder
+> left from *before* the upgrade is reused as-is and no longer matches the new
+> SDK — you get a compile error (`Unresolved reference 'ReactNativeHostWrapper'`)
+> or, if an old APK is still installed, a runtime `RNCSafeAreaProvider`
+> ViewManager crash on launch. Fix by regenerating:
+> `npx expo prebuild --clean --platform android`, then `npm run android`. This is
+> the actual footgun behind the SDK 54 → 57 bump: the upgrade commit changed
+> `package.json`/`app.json` but no one regenerated their local `android/`.
+
+**Android development requires the dev client — not Expo Go.** The app carries
+native modules (notifications, image picker, calendars), the Maestro e2e suite
+in `maestro/` drives the dev client build, and Expo Go masks native-version
+mismatches — its runtime ships its own modules, which is how a wrong
+`expo-splash-screen` pin crashed every dev build while Expo Go looked fine.
+`npm start` still works for Metro only: open the dev client on the emulator and
+it connects. On a freshly prebuilt SDK 57 dev client the launcher shows a server
+entry (e.g. `http://10.0.2.2:8081`) to tap rather than auto-connecting silently,
+so make sure the Metro it points at is **this** project's — see the Metro-port
+trap in `maestro/README.md`.
 
 By default the app talks to the deployed backend at
 `https://taskbuddy-kpek.onrender.com`, so it works with no local setup.
 
-To run against a local backend, copy `.env.example` to `.env` and set your
-machine's **LAN IP** — not `localhost`, which on a phone/emulator refers to the
-device itself:
+To run against a local backend, copy `.env.example` to `.env` and point at
+your machine — on an **emulator** use `10.0.2.2` (the host's loopback alias;
+stable across networks), on a **physical device** use the machine's **LAN IP** —
+never `localhost`, which on a phone/emulator refers to the device itself:
 
 ```env
-EXPO_PUBLIC_API_URL=http://192.168.1.20:3000
+EXPO_PUBLIC_API_URL=http://10.0.2.2:3000        # emulator
+# EXPO_PUBLIC_API_URL=http://192.168.1.20:3000  # physical device
 ```
 
-Only `EXPO_PUBLIC_*` variables reach the app at build time. Restart the dev
-server after changing `.env`.
+Only `EXPO_PUBLIC_*` variables reach the app at bundle time. Restart the dev
+server after changing `.env` — a Metro restart is enough; no Gradle rebuild.
 
 > **Free-tier note:** the Render backend spins down after ~15 minutes idle, so
 > the first request can take 30–60 s. If the splash screen seems stuck, that's
@@ -54,8 +80,7 @@ Other scripts:
 
 ```bash
 npm run typecheck   # tsc --noEmit
-npm run android     # expo start --android
-npm run ios         # expo start --ios
+npm run ios         # expo run:ios (dev build, same reasoning as Android)
 ```
 
 ---
@@ -210,7 +235,7 @@ sign-in, and notification rows remain available in the in-app list either way.
 >    `ERR_NOTIFICATIONS_NO_EXPERIENCE_ID` and no token is ever obtained. Run
 >    `eas init` and commit the resulting `expo.extra.eas.projectId`.
 > 2. **A development build.** Remote push is not supported in **Expo Go** from
->    SDK 53 onward, and this app is on SDK 54. Testing needs `eas build --profile
+>    SDK 53 onward, and this app is on SDK 57. Testing needs `eas build --profile
 >    development` (or a local dev client) on a physical device — a simulator
 >    cannot receive pushes either.
 >
@@ -265,12 +290,12 @@ sign-in, and notification rows remain available in the in-app list either way.
 | `SPJobDetailScreen` | `GET /jobs/:id`; apply to an open job, or accept / decline / start and tick off the task checklist once it's theirs |
 | `SPCalendarScreen` | `GET /calendar/bookings?from=&to=` for the current month |
 | `SPChatScreen` | Messaging (same flow as HO) |
-| `SPWalletScreen` | `GET /wallet` |
+| `SPWalletScreen` | `GET /wallet` + `GET`/`POST /wallet/withdrawals` via `WithdrawModal`; Withdraw files/cancels manual payout requests, same as the homeowner wallet |
 | `SPNotificationsScreen` | `GET /notifications` |
 | `SPVerificationScreen` | 3-step flow — ID upload, face scan, then `POST /verifications/identity-session` (Stripe Identity, opened in a browser); falls back to `POST /verifications` for admin review if Stripe is unavailable |
 | `SPProfileScreen` | Displays profile + provider-specific data + a real verified/unverified badge (`providerProfile.is_verified`); menu is Edit Profile / Get Verified / Settings / Help & Support |
 | `SPEditProfileScreen` | `PATCH /profiles/me` + `PUT /profiles/me/provider` |
-| `SPSettingsScreen` | Mirrors `HOSettingsScreen` — same real/placeholder split |
+| `SPSettingsScreen` | Mirrors `HOSettingsScreen` — same real/placeholder split; Delete Account calls `DELETE /profiles/me` via `DeleteAccountModal` |
 
 ---
 
@@ -375,7 +400,7 @@ signup OTP (item 5) remains available for a future registration-confirmation flo
 | 4 | Realtime chat | Done — authenticated SSE streams messages through the API |
 | 5 | Email OTP at registration | **API done** — `POST /auth/send-email-otp` / `verify-email-otp`, wrapping Supabase's own signup code. Needs the `{{ .Token }}` template change in [`docs/email-otp-setup.md`](../docs/email-otp-setup.md) |
 | 6 | Homeowner card-at-hire (vs wallet top-up) | Still open — a product decision, not a missing endpoint |
-| 7 | Push delivery | Backend done (Expo tokens + API scheduler). **Blocked on our side**: no EAS `projectId`, and Expo Go can't receive push on SDK 54 — see [Live chat and push notifications](#live-chat-and-push-notifications) |
+| 7 | Push delivery | Backend done (Expo tokens + API scheduler). **Blocked on our side**: no EAS `projectId`, and Expo Go can't receive push on SDK 57 — see [Live chat and push notifications](#live-chat-and-push-notifications) |
 
 ### 3. [`docs/backend-handoff-stripe-connect-escrow.md`](../docs/backend-handoff-stripe-connect-escrow.md)
 
@@ -493,7 +518,7 @@ homeowner-facing recommendations do not map directly to the current product.
 - Homeowners can manually retry provider matching from an open job. Results are
   provider invitations; there is still no homeowner-facing service catalogue.
 - Push notification code is present, but remote delivery requires an EAS
-  project ID and an SDK 54 development build. Expo Go cannot receive remote
+  project ID and an SDK 57 development build. Expo Go cannot receive remote
   pushes.
 - Homeowner job locations use the saved profile address or fallback
   coordinates. There is no Expo GPS or Google Maps provider-discovery flow.
@@ -556,11 +581,30 @@ was trimmed to remove rows that duplicated a bottom-nav tab or a header icon.
 | **Dark Mode** | Half done: the *preference* persists (`user_settings.dark_mode` via `PATCH /settings`), but nothing applies it — there is still no theme switching. Both Settings screens say so under the switch rather than implying a repaint that never comes. The blocker is the ~40 screens still using inline hex instead of `V6Colors` tokens; see [`CHANGELOG.md`](./CHANGELOG.md) for the theming approach that was built and then deliberately reverted to leave this open |
 | **Language** | Settings modal states English is the only option — no i18n system exists to back a real picker |
 | **Wallet Transfer** | Deliberately not built, backend or front. Wallet-to-wallet transfer turns the wallet into a money-transmission service, which is a licensing matter in PH, not an engineering one |
-| **Push delivery** | Code complete end to end, **but not yet functional**: `app.json` has no EAS `projectId`, so no push token is ever obtained, and remote push needs a development build (not Expo Go) on SDK 54. The `notifications` table remains the source of truth and the in-app list is unaffected — see [Live chat and push notifications](#live-chat-and-push-notifications) |
+| **Push delivery** | Code complete end to end, **but not yet functional**: `app.json` has no EAS `projectId`, so no push token is ever obtained, and remote push needs a development build (not Expo Go) on SDK 57. The `notifications` table remains the source of truth and the in-app list is unaffected — see [Live chat and push notifications](#live-chat-and-push-notifications) |
 | **Realtime chat** | Message delivery is live through authenticated SSE; call and attachment buttons remain inert |
 | **Counterpart avatars** | Chat, applicant, and review payloads all carry `avatar_url`; those screens still render initials. (The signed-in user's *own* avatar does render — see `OwnAvatar`) |
 | **Provider calendar write** | Bookings are created by the backend when a job is assigned, not from this screen |
 | **Notch/edge-to-edge status-bar spacing** | `Sizes.statusBarHeight` uses `StatusBar.currentHeight` (Android, built-in RN API) as a floor under the previous fixed `52`, which fixes most cases without a new dependency — but it's read once at module load, not on rotation/inset changes, and iOS still uses a fixed estimate. A full fix means adopting `react-native-safe-area-context` (new dependency) and touching header padding in every screen |
+
+### Wired against migrations 0022–0024
+
+Delete Account, Wallet Withdraw, and the "Leave Review" already-reviewed state
+were wired against these migrations on both roles; the homeowner screens
+(`HOSettingsScreen`, `HOWalletScreen`, `HOJobDetailScreen`) call the endpoints
+inline, while the provider screens use the shared `DeleteAccountModal` and
+`WithdrawModal` components (`mobile/src/components/`) for the same two flows.
+One more piece was wired alongside them:
+
+| Thing | Where | Note |
+|---|---|---|
+| **Email OTP at signup** | `RegisterScreen` + `AuthContext.verifyEmailOtp` | Registering already triggers Supabase's confirm-signup mail, so the screen reads the code rather than sending a second one; Resend is the only path that mails another. Verifying returns a session, so the user lands signed in |
+
+> **Email OTP needs Supabase configured before it works at all.** Authentication →
+> Providers → Email → **Confirm email** must be on, and the **Confirm signup**
+> template must render `{{ .Token }}` — a template still sending
+> `{{ .ConfirmationURL }}` mails a link, and every code typed into the app is
+> rejected. Full steps in [`docs/email-otp-setup.md`](../docs/email-otp-setup.md).
 
 ---
 

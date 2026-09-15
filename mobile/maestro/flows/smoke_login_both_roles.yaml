@@ -1,0 +1,20 @@
+appId: com.taskbuddy.app
+---
+# Harness proof, and the thing to run first in any session: if this fails,
+# nothing else is worth debugging. Exercises both roles in one flow because
+# role switching on a single device is the structural assumption every
+# cross-role flow from Phase 5 onward depends on.
+- runFlow: _helpers/login_client.yaml
+- assertVisible: "Need something done?"
+# Login itself already proved the backend answers — reaching a home screen
+# requires POST /auth/login and GET /auth/me to have succeeded. This extra
+# assertion is a structural canary on the home screen rendering its cards,
+# not a backend check; "Wallet balance" is a static label.
+- assertVisible: "Wallet balance"
+
+# Second role. login_provider.yaml starts with its own launch_fresh, which
+# clears state — that IS the sign-out, and it is more reliable than driving
+# the Settings sign-out button for a harness check.
+- runFlow: _helpers/login_provider.yaml
+- assertVisible: "Jobs Near You"
+- assertVisible: "Open"

@@ -1,0 +1,25 @@
+appId: com.taskbuddy.app
+---
+# Reusable: log in as the persistent provider test account. Same shape as
+# login_client.yaml — the two differ only in credentials and the home screen
+# they assert. If the selector experiment showed `id:` does not resolve, apply
+# the same text-selector fallback here.
+- runFlow: launch_fresh.yaml
+- tapOn:
+    id: "input-email"
+- inputText: "maestro.provider@taskbuddy.test"
+- tapOn:
+    id: "input-password"
+- inputText: "TestPass123!"
+- hideKeyboard
+- tapOn:
+    id: "btn-sign-in"
+- extendedWaitUntil:
+    visible: ".*(Skip|Jobs Near You).*"
+    timeout: 60000
+- tapOn:
+    text: "Skip"
+    optional: true
+- extendedWaitUntil:
+    visible: "Jobs Near You"
+    timeout: 60000

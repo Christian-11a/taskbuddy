@@ -40,6 +40,10 @@ import { V6Colors, V6Radii, V6Shadows } from '../../../src/constants/theme';
 import TermsAndConditions from './TermsAndConditions';
 import { api } from '../../../src/lib/api';
 import type { MobileRole } from '../../../src/lib/api';
+import { useAuth } from '../../../src/context/AuthContext';
+
+/** Supabase issues 6-digit signup codes. */
+const OTP_LENGTH = 6;
 
 const C = {
   ...V6Colors,
@@ -94,11 +98,19 @@ interface InputProps {
   secureTextEntry?: boolean;
   keyboardType?: 'default' | 'email-address';
   error?: string;
+  /**
+   * Test hook only — inert, same as ConsentCheckbox's. Needed because the two
+   * password fields share the placeholder `••••••••`, and a secure field stops
+   * exposing its value to accessibility once filled: the number of elements
+   * matching that placeholder changes mid-flow, so positional selectors land on
+   * the wrong field and both entries end up in the first one.
+   */
+  testID?: string;
 }
 
 function FormInput({
   label, placeholder, value, onChangeText,
-  secureTextEntry, keyboardType, error,
+  secureTextEntry, keyboardType, error, testID,
 }: InputProps) {
   const [focused, setFocused] = useState(false);
   return (
@@ -107,6 +119,7 @@ function FormInput({
       <View style={[styles.inputBox, focused && styles.inputBoxFocused, error ? styles.inputBoxError : undefined]}>
         <TextInput
           style={styles.inputText}
+          testID={testID}
           placeholder={placeholder}
           placeholderTextColor={C.muted}
           value={value}
@@ -172,6 +185,7 @@ type FieldErrors = {
 };
 
 export default function RegisterScreen({ onRegister, onLogin, onGoogleSignIn }: RegisterScreenProps) {
+  const { verifyEmailOtp } = useAuth();
   // Entrance transition — matches the mockup's `.screen{animation:fadeIn .22s ease}`
   // (fade in + slide up 6px). Runs once on mount, when this screen first opens.
   const entrance = useRef(new Animated.Value(0)).current;
@@ -215,6 +229,50 @@ export default function RegisterScreen({ onRegister, onLogin, onGoogleSignIn }: 
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
   const [error, setError] = useState<string | null>(null);
   const [confirmationSent, setConfirmationSent] = useState(false);
+
+  // Email verification. Registering already triggers Supabase's confirm-signup
+  // mail, so this step reads the code the user has rather than sending a
+  // second one; `resendCode` is the only path that mails another.
+  const [otp, setOtp] = useState('');
+  const [verifying, setVerifying] = useState(false);
+  const [resending, setResending] = useState(false);
+  const [otpError, setOtpError] = useState<string | null>(null);
+  const [resendNote, setResendNote] = useState<string | null>(null);
+
+  const canVerify = otp.length === OTP_LENGTH && !verifying;
+
+  const verifyCode = async () => {
+    if (!canVerify) return;
+    setVerifying(true);
+    setOtpError(null);
+    setResendNote(null);
+    try {
+      // Signs the user straight in — App.tsx switches to the authed tree off
+      // the context change, so there is nothing to navigate to here.
+      await verifyEmailOtp({ email: email.trim(), token: otp });
+    } catch (e) {
+      setOtpError(
+        e instanceof Error ? e.message : 'That code did not work. Try again.',
+      );
+    } finally {
+      setVerifying(false);
+    }
+  };
+
+  const resendCode = async () => {
+    setResending(true);
+    setOtpError(null);
+    try {
+      await api.sendEmailOtp(email.trim());
+      // Deliberately not "we sent it" — the endpoint always reports success,
+      // so claiming delivery would be asserting more than we know.
+      setResendNote(`If ${email.trim()} needs confirming, a new code is on its way.`);
+    } catch (e) {
+      setOtpError(e instanceof Error ? e.message : 'Could not resend the code.');
+    } finally {
+      setResending(false);
+    }
+  };
 
   // Fetch real categories from backend (falls back to static list on error)
   const [categories, setCategories] = useState(SKILL_CATEGORIES as readonly { id: number; name: string }[]);
@@ -336,16 +394,57 @@ export default function RegisterScreen({ onRegister, onLogin, onGoogleSignIn }: 
             </View>
             <Text style={styles.title}>Check your email</Text>
             <Text style={styles.confirmText}>
-              We sent a confirmation link to{' '}
-              <Text style={styles.confirmEmail}>{email.trim()}</Text>. Confirm
-              your address, then sign in to start using TaskBuddy.
+              We sent a 6-digit code to{' '}
+              <Text style={styles.confirmEmail}>{email.trim()}</Text>. Enter it
+              below to finish creating your account.
             </Text>
+
+            <TextInput
+              style={styles.otpInput}
+              value={otp}
+              onChangeText={(text) => {
+                setOtp(text.replace(/\D/g, '').slice(0, OTP_LENGTH));
+                setOtpError(null);
+              }}
+              keyboardType="number-pad"
+              placeholder="000000"
+              placeholderTextColor={C.slate}
+              maxLength={OTP_LENGTH}
+              editable={!verifying}
+              accessibilityLabel="Verification code"
+              autoFocus
+            />
+
+            {!!otpError && <Text style={styles.otpError}>{otpError}</Text>}
+            {!!resendNote && <Text style={styles.otpNote}>{resendNote}</Text>}
+
             <TouchableOpacity
-              style={styles.primaryBtn}
-              onPress={onLogin}
+              style={[styles.primaryBtn, !canVerify && styles.primaryBtnDisabled]}
+              onPress={verifyCode}
+              disabled={!canVerify}
               activeOpacity={0.85}
+              accessibilityRole="button"
             >
-              <Text style={styles.primaryBtnText}>Go to Sign In</Text>
+              {verifying ? (
+                <ActivityIndicator color={C.white} />
+              ) : (
+                <Text style={styles.primaryBtnText}>Verify Email</Text>
+              )}
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              onPress={resendCode}
+              disabled={resending || verifying}
+              activeOpacity={0.7}
+              accessibilityRole="button"
+            >
+              <Text style={styles.otpLink}>
+                {resending ? 'Sending…' : "Didn't get it? Resend code"}
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity onPress={onLogin} activeOpacity={0.7} accessibilityRole="button">
+              <Text style={styles.otpLinkMuted}>Go to Sign In</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -404,6 +503,7 @@ export default function RegisterScreen({ onRegister, onLogin, onGoogleSignIn }: 
             <FormInput
               label="Full Name"
               placeholder="Alex Chen"
+              testID="input-name"
               value={name}
               onChangeText={(v) => { setName(v); clearError('name'); }}
               error={fieldErrors.name}
@@ -411,6 +511,7 @@ export default function RegisterScreen({ onRegister, onLogin, onGoogleSignIn }: 
             <FormInput
               label="Email Address"
               placeholder="alex@example.com"
+              testID="input-email"
               value={email}
               onChangeText={(v) => { setEmail(v); clearError('email'); }}
               keyboardType="email-address"
@@ -419,6 +520,7 @@ export default function RegisterScreen({ onRegister, onLogin, onGoogleSignIn }: 
             <FormInput
               label="Password"
               placeholder="••••••••"
+              testID="input-password"
               value={password}
               onChangeText={(v) => { setPassword(v); clearError('password'); }}
               secureTextEntry
@@ -427,6 +529,7 @@ export default function RegisterScreen({ onRegister, onLogin, onGoogleSignIn }: 
             <FormInput
               label="Confirm Password"
               placeholder="••••••••"
+              testID="input-confirm-password"
               value={confirmPassword}
               onChangeText={(v) => { setConfirmPassword(v); clearError('confirmPassword'); }}
               secureTextEntry
@@ -791,6 +894,31 @@ const styles = StyleSheet.create({
     lineHeight: 21, marginTop: 8, marginBottom: 24,
   },
   confirmEmail: { color: C.brandDark, fontWeight: '700' },
+  otpInput: {
+    alignSelf: 'stretch',
+    borderWidth: 1,
+    borderColor: C.line,
+    borderRadius: V6Radii.btn,
+    paddingVertical: 14,
+    marginTop: 18,
+    marginBottom: 4,
+    fontSize: 30,
+    fontWeight: '800',
+    fontFamily: 'Inter',
+    color: C.brandDark,
+    textAlign: 'center',
+    letterSpacing: 8,
+  },
+  otpError: { color: '#ef4444', fontSize: 14, fontFamily: 'Inter', textAlign: 'center', marginTop: 8 },
+  otpNote: { color: C.slate, fontSize: 13.5, fontFamily: 'Inter', textAlign: 'center', marginTop: 8, lineHeight: 18 },
+  otpLink: {
+    color: C.brandTeal, fontSize: 15, fontWeight: '700', fontFamily: 'Inter',
+    textAlign: 'center', marginTop: 16,
+  },
+  otpLinkMuted: {
+    color: C.slate, fontSize: 14.5, fontWeight: '600', fontFamily: 'Inter',
+    textAlign: 'center', marginTop: 12,
+  },
 
   dividerRow: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 16 },
   dividerLine: { flex: 1, height: 1, backgroundColor: '#E2E8F0' },
