@@ -703,7 +703,7 @@ and this logcat error instead of a process death:
 ```
 E Google Android Maps SDK: Authorization failure.
 E Google Android Maps SDK: Ensure that the "Maps SDK for Android" is enabled.
-E Google Android Maps SDK: API Key: [REDACTED-LEAKED-KEY]
+E Google Android Maps SDK: API Key: [REDACTED — leaked demo key, revoked; see BUG-004 update 2026-09-15]
 E Google Android Maps SDK: Android Application (<cert_fingerprint>;<package_name>):
     5E:8F:16:06:2E:A3:CD:2C:4A:0D:54:78:76:BA:A6:F3:8C:AB:F6:25;com.taskbuddy.app
 ```
