@@ -15,7 +15,7 @@
  */
 
 import { Platform } from 'react-native';
-import * as Notifications from 'expo-notifications';
+import { isRunningInExpoGo } from 'expo';
 
 type PushPlatform = 'ios' | 'android';
 
@@ -44,7 +44,21 @@ export async function requestExpoPushRegistration(): Promise<PushRegistrationOut
     return { status: 'unsupported', reason: 'Remote push is not supported on web.' };
   }
 
+  // Importing expo-notifications initializes its push-token listener. Android
+  // Expo Go removed remote-push support in SDK 53, and that initialization
+  // throws before the registration promise can handle the error. Keep Expo Go
+  // usable for the rest of the app and load notifications only in a build
+  // that includes the supported native push implementation.
+  if (isRunningInExpoGo()) {
+    return {
+      status: 'unsupported',
+      reason: 'Remote push requires a development or production build, not Expo Go.',
+    };
+  }
+
   try {
+    const Notifications = await import('expo-notifications');
+
     if (Platform.OS === 'android') {
       await Notifications.setNotificationChannelAsync('default', {
         name: 'Default',
