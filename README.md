@@ -148,3 +148,11 @@ The mobile app defaults to the deployed API, so it runs with no local setup.
 | [`docs/google-auth-setup.md`](./docs/google-auth-setup.md) | Server-side Google OAuth (works in Expo Go) |
 | [`docs/password-reset-setup.md`](./docs/password-reset-setup.md) | Supabase email template + SMTP for reset codes |
 | [`docs/stripe-setup.md`](./docs/stripe-setup.md) | Stripe keys, webhooks, Identity, local CLI testing |
+
+## Backend handoff
+
+[`HANDOFF.md`](./HANDOFF.md) tracks open items from the mobile e2e sweep that
+need backend work or a backend-side decision — escrow hold atomicity, chat
+attachments, load testing, push notification delivery, and a spec question on
+the provider booking-request story. Check it before picking up backend work
+on this branch.

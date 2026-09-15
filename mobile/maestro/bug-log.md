@@ -501,6 +501,14 @@ Two environment changes surfaced immediately and are not app defects:
   saved for the human to run, whenever convenient:
   `scratchpad/pending-wallet-seed.sql` in this session's temp dir. Phases 5–6
   (escrow, withdraw) block on this; phases 1–4 do not.
+- **RESOLVED 2026-09-15** — the seed SQL from `00_setup_test_accounts.md` §3
+  was run against the correct project (₱50,000.00 topup, confirmed via SQL
+  select). Verified on-device: `HOWalletScreen` renders Available Balance
+  (₱50,000.00), In Escrow (₱0.00), Available to Withdraw (₱50,000.00),
+  Spent/Added (₱0.00 / ₱50,000.00), and the Recovery Vouchers section's empty
+  state, all correctly. No code changes were needed — the screen and
+  `GET /wallet` endpoint were already correct; this was purely a test-data gap.
+  Phases 5–6 are now unblocked for wallet/escrow-adjacent testing.
 
 ## Environment note — 2026-09-13, resuming after the SDK 57 upgrade
 
