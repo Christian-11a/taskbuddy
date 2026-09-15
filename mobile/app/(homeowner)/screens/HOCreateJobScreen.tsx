@@ -83,6 +83,7 @@ import DateTimePicker, {
 import { Calendar } from 'react-native-calendars';
 import * as ImagePicker from 'expo-image-picker';
 import MapView, { Marker } from 'react-native-maps';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Sizes, Spacing, V6Colors, V6Shadows } from '../../../src/constants/theme';
 import { useAuth } from '../../../src/context/AuthContext';
 import { useAsyncData } from '../../../src/hooks/useAsyncData';
@@ -217,6 +218,7 @@ export default function HOCreateJobScreen({
 }: HOCreateJobScreenProps) {
   const { profile } = useAuth();
   const categories = useAsyncData(() => api.categories(), []);
+  const insets = useSafeAreaInsets();
 
   const [step, setStep] = useState(initialCategoryId ? 2 : 1);
   const [categoryId, setCategoryId] = useState<number | null>(null);
@@ -1137,7 +1139,9 @@ export default function HOCreateJobScreen({
       </ScrollView>
 
       {/* Footer */}
-      <View style={styles.footer}>
+      {/* BUG-005: same edge-to-edge safe-area gap as BUG-002's bottom nav — pad
+          for the system nav bar so the Back/Next buttons aren't under it. */}
+      <View style={[styles.footer, { paddingBottom: 14 + insets.bottom }]}>
         {!!error && <Text style={styles.errorText}>{error}</Text>}
         <View style={styles.footerActions}>
           {step > 1 && (

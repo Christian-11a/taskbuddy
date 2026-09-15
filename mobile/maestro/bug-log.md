@@ -297,8 +297,7 @@ class of fix but not blocking anything.
 ## BUG-003 — Android hardware back exits the app from any nested screen instead of navigating up
 
 **Found:** 2026-09-13, Phase 2 (exploring client Edit Profile)
-**Status:** open — logged, not fixed (does not block testing; every screen's
-in-app back arrow still works, so flows can navigate around it).
+**Status:** **FIXED 2026-09-15** — see Fix below.
 **Severity: high.** Affects every nested screen in the whole app, both roles —
 not specific to Edit Profile, just first noticed there.
 
@@ -334,17 +333,31 @@ screen's own in-app back arrow works because those call `onBack` directly
 (e.g. `HOEditProfileScreen.tsx:129`), bypassing the hardware button
 entirely — this is why the bug went unnoticed screen-by-screen.
 
-### Suggested fix
+### Fix
+
+Registered a `BackHandler.addEventListener('hardwareBackPress', ...)` in
+`AppContent` (`App.tsx`), re-subscribed on every relevant nav-state change so
+it never sees a stale closure. It calls the exact same `hoBack`/`spBack`/
+`hoNavigate`/`spNavigate` logic the in-app back arrows already use — hardware
+back gets identical behavior, not a separate nav path — and returns `false`
+(let Android's default exit happen) only when already at a role's true root:
+the `login` screen (pre-auth), or the `Home`/`Dashboard` tab with no stack
+entries.
+
+Verified on-device 2026-09-15 (`Medium_Phone` AVD), both roles: Home → Edit
+Profile → hardware back → lands on Profile (not exit); Wallet tab →
+hardware back → lands on Home/Feed tab (not exit); Home/Feed tab → hardware
+back → exits to the OS launcher (correct root behavior). Regression check:
+`nav_bottombar_client.yaml` and `smoke_login_both_roles.yaml` both still
+green.
+
+### Suggested fix (superseded by Fix above, kept for the original reasoning)
 
 Register a `BackHandler.addEventListener('hardwareBackPress', ...)` at the
 navigation-state level (wherever `App.tsx`'s screen `useState` lives) that
 calls the same `onBack`/pop logic the in-app arrows use when not on a root
 screen, and returns `false` (let the OS handle it — exit) only when already
-on a role's home screen. This is a navigation-architecture change, not a
-one-line fix — flagging rather than self-serving it per the sweep's
-escalation boundary (design spec §10 treats "a behavior you cannot confirm is
-correct" and broader architectural changes as sign-off items, not delegate
-fixes).
+on a role's home screen.
 
 ### Evidence
 
@@ -675,9 +688,7 @@ taken during this session's exploration, not committed as named artifacts.
 ## BUG-005 — Post a Job wizard's bottom action bar partly overlaps the system navigation bar (BUG-002-class, not fixed by BUG-002's patch)
 
 **Found:** 2026-09-13, Phase 3 (exploring client job creation)
-**Status:** open — logged, not fixed. Does not fully block testing (a tap in
-the upper ~50px of the button's reported bounds reaches the app), but is a
-real, reproducible defect a real user's thumb can easily hit.
+**Status:** **FIXED 2026-09-15** — see Fix below.
 **Severity: medium-high.** Same root cause class as BUG-002 (missing
 safe-area insets under edge-to-edge), but BUG-002's fix (`App.tsx`/
 `BottomNavBar.tsx`) only touched the persistent bottom nav — this wizard's own
@@ -707,24 +718,34 @@ reported clickable area is actually intercepted by the system's 3-button
 navigation bar, which sits on top of it (edge-to-edge, no inset) — the
 accessibility bounds overstate the area that's actually reachable.
 
-### Cause (inferred, not re-verified with the same rigor as BUG-002)
+### Cause
 
-Same class as BUG-002: this wizard's bottom action bar isn't wrapped with
-`useSafeAreaInsets()` the way `BottomNavBar` now is post-fix. Not re-run
-through the full BUG-002 elimination process here — flagging by pattern
-match rather than re-deriving from scratch, since the fix is the same shape
-(drive the bar's bottom padding from `insets.bottom`) wherever this footer
-component is defined (shared across the wizard's 5 steps, so likely one
-component to fix for all of them).
+Same class as BUG-002: this wizard's bottom action bar (`HOCreateJobScreen.tsx`'s
+`styles.footer`, shared across all 5 steps) wasn't wrapped with
+`useSafeAreaInsets()` the way `BottomNavBar` now is post-fix.
 
-### Impact on this sweep
+### Fix
 
-Automated flows targeting this screen's Next/Back/Submit buttons must aim at
-the upper portion of the reported bounds, not the center — same practical
-workaround Phase 2 uses for BUG-003-adjacent issues. Not chased to a full
-root-cause/fix here since BUG-004 already fully blocks this screen from being
-useful, and per §2's blocker-exception rule this is a UI-polish issue,
-not what's actually blocking further testing right now.
+Added `const insets = useSafeAreaInsets()` and changed the footer `View` to
+`[styles.footer, { paddingBottom: 14 + insets.bottom }]`, same pattern as
+`BottomNavBar`'s fix — `styles.footer`'s own `paddingVertical: 14` still sets
+the top padding, the inline style only overrides the bottom.
+
+Verified on-device 2026-09-15: `uiautomator dump` showed the nav bar's inset
+frame at `[0,2274][1080,2400]` on this AVD, and the Next button's clickable
+bounds now end at y=2236 (a 38px clearance) versus the original bug's bounds
+extending to y=2362, past where the nav bar started. A tap at y=2230 (inside
+the button's old bounds, near the nav-bar boundary) now correctly reaches the
+app (shows "Please select a service." validation) instead of exiting to the
+launcher.
+
+### Impact on this sweep (resolved)
+
+Automated flows targeting this screen's Next/Back/Submit buttons no longer
+need to aim at the upper portion of the reported bounds — full-bounds taps
+now reach the app reliably. BUG-004 still fully blocks this screen beyond
+Step 1 (Location crashes with no Maps API key), so this fix can't yet be
+regression-covered by a Maestro flow that completes the wizard.
 
 ## Not yet triaged
 

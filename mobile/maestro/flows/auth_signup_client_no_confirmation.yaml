@@ -19,7 +19,13 @@ appId: com.taskbuddy.app
     when:
       visible: "Welcome!"
     commands:
-      - tapOn: "Sign Up"
+      # Race guard (see profile_edit_client.yaml / bug-log.md session note,
+      # 2026-09-13): this retry can run after the first tap's own navigation
+      # already left "Sign Up" behind, where it isn't visible text yet —
+      # optional so that case is a no-op instead of a hard failure.
+      - tapOn:
+          text: "Sign Up"
+          optional: true
 - extendedWaitUntil:
     visible: "Create account"
     timeout: 30000

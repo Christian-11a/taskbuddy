@@ -12,7 +12,7 @@
  */
 
 import React, { useEffect, useState } from 'react';
-import { LogBox, StyleSheet, View } from 'react-native';
+import { BackHandler, LogBox, StyleSheet, View } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 // The LogBox notification renders over the bottom of the screen and, in dev
@@ -233,6 +233,71 @@ function AppContent() {
       return prev.slice(0, -1);
     });
   };
+
+  // BUG-003: the app has no BackHandler, so Android's hardware/gesture back
+  // falls through to its default behavior (exit the Activity) from any nested
+  // screen instead of popping one level like the in-app back arrows do.
+  // Reuses the same hoBack/spBack/hoNavigate/spNavigate the in-app arrows call
+  // — hardware back gets identical behavior, not a separate nav path. Returning
+  // `false` only when already on a role's home/dashboard tab (or the login
+  // screen) lets the OS's real exit happen where it should.
+  useEffect(() => {
+    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+      if (!isAuthenticated) {
+        if (preAuth !== 'login') {
+          setPreAuth('login');
+          return true;
+        }
+        return false;
+      }
+
+      if (isGoogleSignupPending) {
+        if (googleSubScreen === 'sp-details') {
+          setGoogleSubScreen('role');
+          return true;
+        }
+        return false;
+      }
+
+      if (showOnboarding) {
+        return false;
+      }
+
+      if (role === 'homeowner') {
+        if (hoStack.length > 0 || hoScreen !== hoTab) {
+          hoBack();
+          return true;
+        }
+        if (hoTab !== 'Home') {
+          hoNavigate('Home');
+          return true;
+        }
+        return false;
+      }
+
+      if (role === 'provider') {
+        if (spStack.length > 0 || spScreen !== spTab) {
+          spBack();
+          return true;
+        }
+        if (spTab !== 'Dashboard') {
+          spNavigate('Dashboard');
+          return true;
+        }
+        return false;
+      }
+
+      return false;
+    });
+
+    return () => sub.remove();
+  }, [
+    isAuthenticated, preAuth,
+    isGoogleSignupPending, googleSubScreen,
+    showOnboarding,
+    role, hoScreen, hoTab, hoStack,
+    spScreen, spTab, spStack,
+  ]);
 
   useEffect(() => {
     // Pre-warm the browser on Android so Google OAuth opens instantly.
