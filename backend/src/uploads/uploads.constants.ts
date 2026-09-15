@@ -6,17 +6,20 @@
  *   Never build a public URL for this bucket — admins read it through short-lived
  *   signed download URLs instead.
  * - `avatars`           — public read; referenced by profiles.avatar_url (migration 0011).
+ * - chat-attachments — PRIVATE; referenced by messages.attachment_path (migration 0030).
  */
 export const UPLOAD_BUCKETS = [
   'job-photos',
   'verification-docs',
   'avatars',
+  'chat-attachments',
 ] as const;
 export type UploadBucket = (typeof UPLOAD_BUCKETS)[number];
 
 export const JOB_PHOTOS_BUCKET: UploadBucket = 'job-photos';
 export const VERIFICATION_DOCS_BUCKET: UploadBucket = 'verification-docs';
 export const AVATARS_BUCKET: UploadBucket = 'avatars';
+export const CHAT_ATTACHMENTS_BUCKET: UploadBucket = 'chat-attachments';
 
 /** Images only — these are job photos and ID/selfie captures. */
 export const UPLOAD_CONTENT_TYPES = [
