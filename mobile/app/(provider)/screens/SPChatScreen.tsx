@@ -20,6 +20,7 @@ import React, { useEffect, useState, useRef } from 'react';
 import {
   ActivityIndicator,
   FlatList,
+  Image,
   KeyboardAvoidingView,
   Platform,
   StyleSheet,
@@ -33,6 +34,8 @@ import {
   ArrowRight,
   Paperclip,
 } from 'lucide-react-native';
+import * as ImagePicker from 'expo-image-picker';
+import { requestAppPermission } from '../../../src/lib/permissions';
 import { Sizes, Spacing, V6Colors } from '../../../src/constants/theme';
 
 const C = V6Colors;
@@ -60,6 +63,7 @@ export default function SPChatScreen({ jobId, onBack, onViewJob }: SPChatScreenP
   const [error, setError] = useState<string | null>(null);
   const [text, setText] = useState('');
   const [sending, setSending] = useState(false);
+  const [attaching, setAttaching] = useState(false);
   const listRef = useRef<FlatList>(null);
 
   useEffect(() => {
@@ -112,12 +116,38 @@ export default function SPChatScreen({ jobId, onBack, onViewJob }: SPChatScreenP
     }
   };
 
+  const handleAttach = async () => {
+    if (!conversation || attaching || sending) return;
+    setAttaching(true);
+    try {
+      if (!(await requestAppPermission('gallery'))) return;
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['images'],
+        quality: 0.8,
+      });
+      if (result.canceled) return;
+      const path = await api.uploadImage('chat-attachments', result.assets[0].uri);
+      const msg = await api.sendMessage(conversation.id, '', path);
+      setMessages((previous) => mergeMessageById(previous, msg));
+      setTimeout(() => listRef.current?.scrollToEnd({ animated: true }), 100);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not send the photo.');
+    } finally {
+      setAttaching(false);
+    }
+  };
+
   const renderBubble = ({ item }: { item: Message }) => {
     const sent = item.sender_id === profile?.id;
     return (
       <View style={[styles.bubbleWrap, sent ? styles.bubbleWrapSent : styles.bubbleWrapReceived]}>
         <View style={[styles.bubble, sent ? styles.bubbleSent : styles.bubbleReceived]}>
-          <Text style={[styles.bubbleText, sent && styles.bubbleTextSent]}>{item.body}</Text>
+          {!!item.attachment_url && (
+            <Image source={{ uri: item.attachment_url }} style={styles.bubbleImage} />
+          )}
+          {!!item.body && (
+            <Text style={[styles.bubbleText, sent && styles.bubbleTextSent]}>{item.body}</Text>
+          )}
         </View>
         <Text style={[styles.bubbleTime, sent && styles.bubbleTimeSent]}>{timeOfDay(item.created_at)}</Text>
       </View>
@@ -165,8 +195,17 @@ export default function SPChatScreen({ jobId, onBack, onViewJob }: SPChatScreenP
 
         {/* Composer — matches .chat-composer */}
         <View style={styles.composer}>
-          <TouchableOpacity style={styles.attachBtn} activeOpacity={0.8}>
-            <Paperclip size={20} color={C.ink500} />
+          <TouchableOpacity
+            style={styles.attachBtn}
+            activeOpacity={0.8}
+            onPress={() => void handleAttach()}
+            disabled={attaching}
+          >
+            {attaching ? (
+              <ActivityIndicator size="small" color={C.ink500} />
+            ) : (
+              <Paperclip size={20} color={C.ink500} />
+            )}
           </TouchableOpacity>
           <TextInput
             style={styles.chatInput}
@@ -235,6 +274,9 @@ const styles = StyleSheet.create({
   },
   bubbleText: { fontFamily: 'Inter', fontSize: 14.5, color: C.ink900, lineHeight: 18 },
   bubbleTextSent: { color: C.white },
+  bubbleImage: {
+    width: 200, height: 150, borderRadius: 10, marginBottom: 6,
+  },
   bubbleTime: { fontFamily: 'Inter', fontSize: 11, color: C.ink300, marginTop: 4 },
   bubbleTimeSent: { textAlign: 'right' },
 
