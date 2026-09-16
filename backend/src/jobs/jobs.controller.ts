@@ -16,15 +16,21 @@ import { JobsService } from './jobs.service';
 import {
   BrowseJobsQueryDto,
   CreateJobDto,
+  GeocodeQueryDto,
   DeclineJobDto,
   UpdateJobTaskDto,
 } from './dto/jobs.dto';
+import { GeocodingService } from './geocoding.service';
+import { ThrottleGeocode } from '../common/throttle';
 import type { Profile } from '../common/types';
 
 @Controller('jobs')
 @UseGuards(JwtAuthGuard)
 export class JobsController {
-  constructor(private readonly jobsService: JobsService) {}
+  constructor(
+    private readonly jobsService: JobsService,
+    private readonly geocoding: GeocodingService,
+  ) {}
 
   @Post()
   @Roles('client')
@@ -48,6 +54,18 @@ export class JobsController {
   @Roles('provider')
   assigned(@CurrentUser() user: Profile) {
     return this.jobsService.assigned(user);
+  }
+
+  /**
+   * Resolve a typed address to verified coordinates before posting a job.
+   * Declared above `:id`, which would otherwise claim the path and fail UUID
+   * parsing on "geocode".
+   */
+  @Get('geocode')
+  @Roles('client')
+  @ThrottleGeocode()
+  geocode(@Query() query: GeocodeQueryDto) {
+    return this.geocoding.geocode(query.address);
   }
 
   @Get(':id')

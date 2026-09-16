@@ -115,6 +115,13 @@ export class UpdateJobTaskDto {
   is_done!: boolean;
 }
 
+/** `GET /jobs/geocode` — the typed address the homeowner wants the job at. */
+export class GeocodeQueryDto {
+  @IsString()
+  @Length(5, 300)
+  address!: string;
+}
+
 export class BrowseJobsQueryDto {
   @IsOptional()
   @IsInt()
