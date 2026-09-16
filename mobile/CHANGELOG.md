@@ -5,6 +5,25 @@ app works today; this file covers how it got there and why. Newest first.
 
 ---
 
+## [High] HOHomeScreen — widget failures now show a local error and Retry action
+
+Wallet, jobs, categories, and notifications load independently, so one failed
+request no longer hides the rest of the homeowner home screen.
+
+## [High] HOCreateJobScreen — typed job addresses are prepared for backend verification
+
+Address edits are sent to the pending backend Google Geocoding handoff on blur
+and before leaving the Location step. Approximate or failed results block
+posting; profile and Metro Manila coordinate fallbacks were removed.
+
+## [High] Android MapView — Google Maps key wiring remains blocked by credential setup
+
+No key was added to `app.json` because the project has not enabled billing or
+provided a restricted Android key. The key must be supplied in
+`expo.android.config.googleMaps.apiKey`, restricted to `com.taskbuddy.app` and
+the release/dev-client SHA-1, then verified in a rebuilt dev client (Expo Go
+does not validate this native configuration).
+
 ## Card-paid payouts reach the provider's Stripe account (2026-09-16)
 
 With payouts set up, a card-paid job's payout is sent to the provider's Stripe

@@ -918,6 +918,12 @@ export const api = {
     return authRequest<Category[]>('/categories');
   },
 
+  geocodeAddress(address: string) {
+    return authRequest<{ latitude: number; longitude: number }>(
+      `/jobs/geocode?address=${encodeURIComponent(address)}`,
+    );
+  },
+
   // ── Jobs ────────────────────────────────────────────────────────────────────
   createJob(input: {
     category_id: number;
