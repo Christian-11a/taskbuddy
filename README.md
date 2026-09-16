@@ -152,7 +152,22 @@ The mobile app defaults to the deployed API, so it runs with no local setup.
 ## Backend handoff
 
 [`HANDOFF.md`](./HANDOFF.md) tracks open items from the mobile e2e sweep that
-need backend work or a backend-side decision — escrow hold atomicity, chat
-attachments, load testing, push notification delivery, and a spec question on
-the provider booking-request story. Check it before picking up backend work
-on this branch.
+need backend work or a backend-side decision. Escrow hold atomicity and chat
+attachments are resolved; what's still open needs backend/infra access the
+app owner doesn't have:
+
+- **Render deploy** — chat attachments are merged to `main` and their
+  migrations are live on Supabase, but the deployed API hasn't been
+  redeployed to pick up the code yet (item #5).
+- **Firebase/FCM credentials** — push notification delivery is otherwise
+  code-complete and the EAS project is linked; it just needs a
+  `google-services.json` (item #4).
+- Load testing, the booking-request story wording question, and a punch list
+  of minor polish items from the chat-attachments review are also tracked
+  there (items #6-7).
+
+Check it before picking up backend work on this branch. `docs/backend-handoff-*.md`
+has deeper writeups on specific subsystems, including
+[`docs/backend-handoff-wallet-payout-rail-spike.md`](./docs/backend-handoff-wallet-payout-rail-spike.md)
+(why the wallet withdrawal payout rail can't reuse the Stripe Connect payout
+service as-is).

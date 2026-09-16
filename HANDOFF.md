@@ -94,38 +94,90 @@ limits) will show up as false failures if not accounted for.
 
 ---
 
-## 4. Push notification delivery not functional
+## 4. Push notification delivery not functional — PARTIALLY DONE, blocked on Firebase
 
-**Where:** `mobile/app.json`, EAS project config. **Note: this is an
-infra/build-config task, not a NestJS code change** — flagging it here
-per explicit request, but the actual work lives in the mobile build
-pipeline, not `backend/src/`.
+**Where:** `mobile/app.json`, EAS project config, and (new blocker) Firebase/FCM
+credentials. **Note: this is an infra/build-config task, not a NestJS code
+change** — the actual work lives in the mobile build pipeline and an external
+Firebase project, not `backend/src/`. Assigned to whoever owns backend/infra —
+the app owner does not have Firebase Console access.
 
 **Problem:** The backend push pipeline is code-complete — nothing to change
 in `backend/src/push/push.service.ts` (Expo Push API integration, device
 token upsert, dead-token pruning) or `backend/src/push/push.scheduler.ts`.
-The blocker: `mobile/app.json` has no EAS `projectId`, so `expo-notifications`
-never obtains a push token on-device, and nothing the backend does can reach
-a token that doesn't exist. Additionally, remote push needs a real
-development build — Expo Go does not support it on this SDK.
 
-**Fix:**
-1. `eas login` + `eas init` (or `eas build:configure`) from `mobile/` —
-   requires an Expo account. This writes `expo.extra.eas.projectId` into
-   `app.json`.
-2. Confirm the existing dev-client build path (already used for native
-   modules like Maps) picks up the new project ID.
-3. Rebuild the dev client (`npx expo prebuild --clean && npx expo run:android`).
-4. Verify a token is obtained and reaches the backend's device-registration
-   endpoint, then trigger one real notification end-to-end (e.g. a job status
-   change) as the actual acceptance test.
+**Done, 2026-09-16:** `eas init` ran; `mobile/app.json` now has a real
+`extra.eas.projectId`. The dev client was rebuilt (`expo prebuild --clean` +
+`expo run:android`, after fixing a JVM 8→17 Gradle mismatch by pointing
+`JAVA_HOME` at Android Studio's bundled JDK) and confirmed running on an
+emulator.
 
-**Whoever picks this up needs an Expo/EAS account** — that's step 0 if one
-doesn't already exist for this project.
+**Still blocking — Firebase (FCM):** on the rebuilt client, push registration
+fails with `Unable to get Firebase Messaging instance. Did you configure
+'googleServicesFile' path in app config?`. Since Expo SDK 49+, Android remote
+push goes through Firebase Cloud Messaging under the hood — the EAS
+`projectId` alone isn't enough.
+
+**Fix, remaining:**
+1. Firebase Console → create/pick a project → add an Android app with package
+   name `com.taskbuddy.app` (matches `app.json`) → download `google-services.json`
+   → place at `mobile/google-services.json`.
+2. Add `"googleServicesFile": "./google-services.json"` under `expo.android`
+   in `app.json`.
+3. Upload that Firebase project's Server Key (or FCM V1 service account) to
+   EAS credentials (`eas credentials` walks through this).
+4. Rebuild the dev client, confirm a token is obtained and reaches the
+   backend's device-registration endpoint, then trigger one real notification
+   end-to-end (e.g. a job status change) as the acceptance test.
 
 ---
 
-## 5. "Booking requests" user story may not match the actual data model
+## 5. Chat attachments landed on `main`, but the deployed API hasn't picked it up
+
+**Where:** the Render deployment of `backend/`. **Assigned to whoever holds
+Render access** — the app owner does not have it.
+
+**Problem:** Item #2's fix (migrations `0030`/`0031`, `chat.service.ts`, the
+`chat-attachments` bucket) is merged into `main` and the two migrations were
+applied directly to the live Supabase database. But a live smoke test against
+the deployed API (`taskbuddy-kpek.onrender.com`) on 2026-09-16 showed the
+running process is still the *old* build: `POST /uploads/signed-url` rejects
+`chat-attachments` as an unknown bucket, and `POST /conversations/:id/messages`
+still enforces the old `body` (1–1000 chars) validation. The database is
+current; the API process is not.
+
+**Fix:** trigger a Render deploy of `main` (check whether auto-deploy-on-push
+is enabled for this service first — if so, this may already be moot by the
+time you read this; if not, deploy manually from the Render dashboard). Then
+re-run the smoke test: log in as `maestro.client@taskbuddy.test` /
+`maestro.provider@taskbuddy.test` (`TestPass123!`, both pre-seeded, funded,
+and ID-verified — see `mobile/maestro/flows/00_setup_test_accounts.md`), open
+a conversation on an assigned job, and send a photo end-to-end.
+
+---
+
+## 6. Minor polish items parked from the chat-attachments final review
+
+Not blocking, not urgent — a punch list for whoever next touches this code,
+found during the 2026-09-16 review but deliberately not fixed then:
+
+- No placeholder ("Photo unavailable") when a signed attachment URL fails to
+  resolve — the message bubble just renders empty.
+- No existence/validity check on a submitted `attachment_path` before it's
+  persisted (unlike the verification-upload flow's `assertValidImage`) — a
+  client could point a message at a path that doesn't exist.
+- `SendMessageDto.attachment_path` (`backend/src/chat/dto/chat.dto.ts`) has no
+  length/shape validation beyond `@IsString()`.
+- `bubbleImage` (both chat screens) has no `resizeMode` and no tap-to-expand —
+  non-4:3 photos get cropped.
+- `handleSend` in both chat screens guards on its own `sending` flag but not
+  on `attaching` — a fast double-tap could send text ahead of an in-flight
+  photo upload. One-word fix (`|| attaching` in the early-return guard).
+- `BACKEND_SCHEMA.md`'s table of contents doesn't list the new §30 section.
+
+---
+
+## 7. "Booking requests" user story may not match the actual data model
 
 **Where:** `backend/src/applications/` (accept/reject are `@Roles('client')`
 only — no provider-facing "incoming request" concept exists).
