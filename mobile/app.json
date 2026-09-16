@@ -35,11 +35,20 @@
       "expo-web-browser",
       "expo-notifications",
       "@react-native-community/datetimepicker",
-      ["expo-splash-screen", {
-        "image": "./assets/splash-icon.png",
-        "resizeMode": "contain",
-        "backgroundColor": "#ffffff"
-      }]
-    ]
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/splash-icon.png",
+          "resizeMode": "contain",
+          "backgroundColor": "#ffffff"
+        }
+      ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "cc00d869-9171-4b13-a1ed-3102d98fbba9"
+      }
+    },
+    "owner": "mclector"
   }
 }
