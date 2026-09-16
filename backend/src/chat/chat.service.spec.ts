@@ -1,5 +1,8 @@
 import { BadRequestException } from '@nestjs/common';
+import { validate } from 'class-validator';
+import { plainToInstance } from 'class-transformer';
 import { ChatService } from './chat.service';
+import { SendMessageDto } from './dto/chat.dto';
 import type { SupabaseService } from '../supabase/supabase.service';
 import type { UploadsService } from '../uploads/uploads.service';
 
@@ -27,7 +30,7 @@ function createSupabaseMock(resultsByTable: Record<string, QueryResult[]>) {
     ) => Promise.resolve(result).then(resolve, reject);
     return builder;
   });
-  return { supabase: { admin: { from } } as unknown as SupabaseService };
+  return { supabase: { admin: { from } } as unknown as SupabaseService, from };
 }
 
 function createUploadsMock(
@@ -35,6 +38,7 @@ function createUploadsMock(
 ) {
   return {
     assertOwnedPaths: jest.fn(),
+    assertValidImage: jest.fn().mockResolvedValue(undefined),
     signedDownloadUrl: jest.fn().mockResolvedValue(signedUrl),
   };
 }
@@ -176,10 +180,37 @@ describe('ChatService.sendMessage', () => {
     expect(uploads.assertOwnedPaths).toHaveBeenCalledWith({ id: 'u1' }, [
       'u1/photo.jpg',
     ]);
+    expect(uploads.assertValidImage).toHaveBeenCalledWith(
+      'chat-attachments',
+      'u1/photo.jpg',
+    );
     expect(result).toEqual({
       ...insertedRow,
       attachment_url: 'https://signed.example/photo.jpg',
     });
+  });
+
+  it('refuses an attachment that is not a valid uploaded image, inserting nothing', async () => {
+    const { supabase, from } = createSupabaseMock({
+      conversations: [
+        { data: { id: 'c1', client_id: 'u1', provider_id: 'u2' }, error: null },
+      ],
+    });
+    const uploads = createUploadsMock();
+    uploads.assertValidImage.mockRejectedValue(
+      new BadRequestException('Upload not found: u1/missing.jpg'),
+    );
+    const service = newChatService(supabase, uploads);
+
+    await expect(
+      service.sendMessage(
+        { id: 'u1' } as any,
+        'c1',
+        undefined,
+        'u1/missing.jpg',
+      ),
+    ).rejects.toThrow('Upload not found: u1/missing.jpg');
+    expect(from).not.toHaveBeenCalledWith('messages');
   });
 
   it('sends a text-only message with attachment_url null', async () => {
@@ -209,6 +240,30 @@ describe('ChatService.sendMessage', () => {
     );
 
     expect(uploads.assertOwnedPaths).not.toHaveBeenCalled();
+    expect(uploads.assertValidImage).not.toHaveBeenCalled();
     expect(result).toEqual({ ...insertedRow, attachment_url: null });
+  });
+});
+
+describe('SendMessageDto.attachment_path', () => {
+  const path =
+    '3f1c2a9e-8b7d-4c6e-9a1b-2d3e4f5a6b7c/0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d';
+
+  async function errorsFor(attachment_path: string) {
+    const dto = plainToInstance(SendMessageDto, { attachment_path });
+    return validate(dto);
+  }
+
+  it.each(['jpg', 'png', 'webp'])('accepts an issued .%s path', async (ext) => {
+    await expect(errorsFor(`${path}.${ext}`)).resolves.toHaveLength(0);
+  });
+
+  it.each([
+    ['a traversal', '../other-user/secret.jpg'],
+    ['a non-image extension', `${path}.pdf`],
+    ['a made-up name', 'u1/photo.jpg'],
+    ['an absolute URL', `https://evil.example/${path}.jpg`],
+  ])('rejects %s', async (_label, value) => {
+    await expect(errorsFor(value)).resolves.not.toHaveLength(0);
   });
 });
