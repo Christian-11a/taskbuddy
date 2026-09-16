@@ -459,8 +459,16 @@ by the Maestro sweep (`mobile/maestro/`) that need access this repo's code can't
 | # | Item | Blocks |
 |---|---|---|
 | 1 | Google Maps API key — never configured, so `HOCreateJobScreen`'s Location step (`MapView`) fatally crashes the app on every job-creation attempt | Job creation entirely, and transitively the cross-role hire loop |
-| 2 | Wallet balance seed SQL for the test client account | Escrow/hire and wallet/withdraw testing |
-| 3 | `recommendation_deadline` SQL nudge (per test job) | Nothing — workaround is waiting 5–15 real minutes |
+| 2 | Backend address geocoding endpoint — add an authenticated homeowner route such as `GET /jobs/geocode?address=...`, backed by a server-side Google Geocoding key. Return only precise `ROOFTOP` or `RANGE_INTERPOLATED` results; reject API failures, empty results, and approximate coordinates. | Typed-address job posting; the mobile form now blocks posting until it receives verified coordinates |
+| 3 | Wallet balance seed SQL for the test client account | Escrow/hire and wallet/withdraw testing |
+| 4 | `recommendation_deadline` SQL nudge (per test job) | Nothing — workaround is waiting 5–15 real minutes |
+
+The address handoff deliberately keeps the Google geocoding credential on the
+backend. Add the key to the backend deployment environment, restrict it to
+the Geocoding API, and never put it in the mobile bundle. The mobile client
+already calls the route, stores the returned latitude/longitude with the job,
+and refuses to use the profile address or a Metro Manila fallback when the
+lookup fails.
 
 Item 1 needs a Google Cloud Console credential and is currently the active blocker; items 2–3 need
 Supabase SQL access. None of these need new backend code beyond the one-line `app.json` config
@@ -562,8 +570,9 @@ homeowner-facing recommendations do not map directly to the current product.
 - Push notification code is present, but remote delivery requires an EAS
   project ID and an SDK 57 development build. Expo Go cannot receive remote
   pushes.
-- Homeowner job locations use the saved profile address or fallback
-  coordinates. There is no Expo GPS or Google Maps provider-discovery flow.
+- Homeowner job locations require verified coordinates from the backend
+  geocoding handoff above. There is no Expo GPS or Google Maps provider-
+  discovery flow.
 - Dark Mode persists a preference but does not change the palette. Language,
   wallet transfer, and chat calls remain unwired.
 

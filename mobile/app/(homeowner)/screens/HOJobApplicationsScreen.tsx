@@ -235,6 +235,9 @@ export default function HOJobApplicationsScreen({
             <View style={styles.errorBanner} testID="applications-action-error">
               <AlertCircle size={16} color={C.red700} />
               <Text style={[styles.errorBannerText, { flex: 1 }]}>{actionError}</Text>
+              <TouchableOpacity onPress={() => reload()} activeOpacity={0.8}>
+                <Text style={styles.retryText}>Retry</Text>
+              </TouchableOpacity>
             </View>
           )}
 
@@ -414,10 +417,11 @@ const styles = StyleSheet.create({
   decidedText: { color: C.ink500, fontSize: 12.5, fontWeight: '600', fontFamily: 'Inter', textAlign: 'center' },
 
   errorBanner: {
-    flexDirection: 'row', alignItems: 'flex-start', gap: 8,
+    flexDirection: 'row', alignItems: 'center', gap: 8,
     backgroundColor: '#fef2f2', borderWidth: 1, borderColor: '#fecaca',
     borderRadius: 12, padding: 11, marginBottom: 12,
   },
+  retryText: { color: C.cyan700, fontSize: 12.5, fontWeight: '700', fontFamily: 'Inter' },
   errorBannerText: { color: C.red700, fontSize: 12.5, lineHeight: 17, fontFamily: 'Inter' },
 
   disabled: { opacity: 0.6 },

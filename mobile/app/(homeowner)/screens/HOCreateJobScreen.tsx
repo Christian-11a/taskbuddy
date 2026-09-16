@@ -187,9 +187,6 @@ const URGENCY_OPTIONS = [
   },
 ];
 
-// Fallback coordinates (Metro Manila) when the client has no saved location.
-const FALLBACK_COORDS = { latitude: 14.5995, longitude: 120.9842 };
-
 const MAX_TASKS = 20;
 
 type FieldErrors = Partial<
@@ -229,6 +226,9 @@ export default function HOCreateJobScreen({
   const [descriptionTouched, setDescriptionTouched] = useState(false);
   const [descriptionHeight, setDescriptionHeight] = useState<number | null>(null);
   const [location, setLocation] = useState('');
+  const [resolvedCoordinates, setResolvedCoordinates] = useState<{ latitude: number; longitude: number } | null>(null);
+  const [geocodedAddress, setGeocodedAddress] = useState('');
+  const [geocoding, setGeocoding] = useState(false);
   const [useProfileLocation, setUseProfileLocation] = useState(true);
   const [tasks, setTasks] = useState<string[]>([]);
   const [customTask, setCustomTask] = useState('');
@@ -320,8 +320,38 @@ export default function HOCreateJobScreen({
 
   /** Prefill the address from the saved profile — most jobs are at home. */
   useEffect(() => {
-    if (!location && profile?.address) setLocation(profile.address);
+    if (!location && profile?.address) {
+      setLocation(profile.address);
+      if (profile.latitude != null && profile.longitude != null) {
+        setResolvedCoordinates({ latitude: profile.latitude, longitude: profile.longitude });
+        setGeocodedAddress(profile.address);
+      }
+    }
   }, [profile?.address]);
+
+  const resolveAddress = async (): Promise<boolean> => {
+    const address = location.trim();
+    if (!address) return false;
+    if (address === geocodedAddress && resolvedCoordinates) return true;
+    setGeocoding(true);
+    setFieldErrors((prev) => ({ ...prev, location: undefined }));
+    try {
+      const coordinates = await api.geocodeAddress(address);
+      setResolvedCoordinates(coordinates);
+      setGeocodedAddress(address);
+      return true;
+    } catch (e) {
+      setResolvedCoordinates(null);
+      setGeocodedAddress('');
+      setFieldErrors((prev) => ({
+        ...prev,
+        location: e instanceof Error ? e.message : 'We could not verify this address precisely.',
+      }));
+      return false;
+    } finally {
+      setGeocoding(false);
+    }
+  };
 
   /**
    * Draft the title and description from what the homeowner has picked, until
@@ -371,9 +401,7 @@ export default function HOCreateJobScreen({
       return false;
     }
 
-    if (step === 2 && !location.trim()) {
-      errors.location = 'Please enter where the job is.';
-    }
+    if (step === 2 && !location.trim()) errors.location = 'Please enter where the job is.';
 
     if (step === 3) {
       if (tasks.length === 0) {
@@ -473,8 +501,8 @@ export default function HOCreateJobScreen({
         description: description.trim(),
         urgency,
         address: location.trim(),
-        latitude: profile?.latitude ?? FALLBACK_COORDS.latitude,
-        longitude: profile?.longitude ?? FALLBACK_COORDS.longitude,
+        latitude: resolvedCoordinates!.latitude,
+        longitude: resolvedCoordinates!.longitude,
         budget: Number(budget.replace(/,/g, '')),
         scheduled_at: scheduledAt!.toISOString(),
         photo_urls,
@@ -499,8 +527,9 @@ export default function HOCreateJobScreen({
   const stepBusy =
     (step === 1 && categories.loading) || (step === 3 && pickingPhotos);
 
-  const handleNext = () => {
+  const handleNext = async () => {
     if (!validateStep()) return;
+    if (step === 2 && !(await resolveAddress())) return;
     setError(null);
     if (step < totalSteps) {
       setStep((s) => s + 1);
@@ -531,6 +560,9 @@ export default function HOCreateJobScreen({
     setTitleTouched(false);
     setDescription('');
     setDescriptionTouched(false);
+    setLocation('');
+    setResolvedCoordinates(null);
+    setGeocodedAddress('');
     setTasks([]);
     setCustomTask('');
     setDate(null);
@@ -656,43 +688,50 @@ export default function HOCreateJobScreen({
         </Text>
       </View>
 
-      <ScrollView
+      <KeyboardAvoidingView
         style={styles.body}
-        contentContainerStyle={styles.bodyContent}
-        showsVerticalScrollIndicator={false}
-        keyboardShouldPersistTaps="handled"
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={24}
       >
+        <ScrollView
+          testID="create-job-form-scroll"
+          style={styles.body}
+          contentContainerStyle={[styles.bodyContent, { paddingBottom: 140 + insets.bottom }]}
+          contentInsetAdjustmentBehavior="automatic"
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+        >
         {/* ── Step 1 · Service ─────────────────────────────────────────── */}
         {step === 1 && (
           <View>
             <Text style={styles.stepTitle}>Select a Service<Text style={styles.requiredAsterisk}> *</Text></Text>
             <Text style={styles.stepSubtitle}>What service do you need?</Text>
-            <View style={styles.locationPrompt}>
-              <Text style={styles.locationPromptTitle}>Use your default location?</Text>
-              <Text style={styles.locationPromptText}>
-                {profile?.address ?? 'No profile address saved yet.'}
-              </Text>
-              <View style={styles.locationPromptActions}>
-                <TouchableOpacity
-                  style={[styles.locationChoice, useProfileLocation && styles.locationChoiceActive]}
-                  onPress={() => {
-                    setUseProfileLocation(true);
-                    if (profile?.address) setLocation(profile.address);
-                  }}
-                >
-                  <Text style={styles.locationChoiceText}>Use default</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[styles.locationChoice, !useProfileLocation && styles.locationChoiceActive]}
-                  onPress={() => {
-                    setUseProfileLocation(false);
-                    setLocation('');
-                  }}
-                >
-                  <Text style={styles.locationChoiceText}>Enter custom</Text>
-                </TouchableOpacity>
+            {!!profile?.address && (
+              <View style={styles.locationPrompt}>
+                <Text style={styles.locationPromptTitle}>Use your default location?</Text>
+                <Text style={styles.locationPromptText}>{profile.address}</Text>
+                <View style={styles.locationPromptActions}>
+                  <TouchableOpacity
+                    style={[styles.locationChoice, useProfileLocation && styles.locationChoiceActive]}
+                    onPress={() => {
+                      setUseProfileLocation(true);
+                      setLocation(profile.address ?? '');
+                    }}
+                  >
+                    <Text style={styles.locationChoiceText}>Use default</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.locationChoice, !useProfileLocation && styles.locationChoiceActive]}
+                    onPress={() => {
+                      setUseProfileLocation(false);
+                      setLocation('');
+                    }}
+                  >
+                    <Text style={styles.locationChoiceText}>Enter custom</Text>
+                  </TouchableOpacity>
+                </View>
               </View>
-            </View>
+            )}
             {/* Skeleton tiles in the grid's own shape, so the step doesn't
                 jump from a line of text to a two-column grid on arrival. */}
             {categories.loading && (
@@ -750,43 +789,51 @@ export default function HOCreateJobScreen({
                 value={location}
                 onChangeText={(value) => {
                   setLocation(value);
+                  setResolvedCoordinates(null);
+                  setGeocodedAddress('');
                   clearError('location');
                 }}
                 onFocus={() => {
                   setFocusedField('location');
                   clearError('location');
                 }}
-                onBlur={() => setFocusedField(null)}
+                onBlur={() => {
+                  setFocusedField(null);
+                  if (location.trim()) void resolveAddress();
+                }}
                 multiline
               />
+              {geocoding && <Text style={styles.inputHint}>Verifying address…</Text>}
               {!!fieldErrors.location && <Text style={styles.inputErrorText}>{fieldErrors.location}</Text>}
             </View>
 
-            <MapView
-              style={styles.map}
-              initialRegion={{
-                latitude: profile?.latitude ?? FALLBACK_COORDS.latitude,
-                longitude: profile?.longitude ?? FALLBACK_COORDS.longitude,
-                latitudeDelta: 0.01,
-                longitudeDelta: 0.01,
-              }}
-              scrollEnabled={false}
-              zoomEnabled={false}
-            >
-              <Marker
-                coordinate={{
-                  latitude: profile?.latitude ?? FALLBACK_COORDS.latitude,
-                  longitude: profile?.longitude ?? FALLBACK_COORDS.longitude,
-                }}
-                title="Job location"
-              />
-            </MapView>
+            {resolvedCoordinates ? (
+              <MapView
+                style={styles.map}
+                initialRegion={{ ...resolvedCoordinates, latitudeDelta: 0.01, longitudeDelta: 0.01 }}
+                scrollEnabled={false}
+                zoomEnabled={false}
+              >
+                <Marker coordinate={resolvedCoordinates} title="Job location" />
+              </MapView>
+            ) : (
+              <View style={styles.mapPlaceholder}>
+                <MapPin size={20} color={Colors.muted} />
+                <Text style={styles.mapPlaceholderText}>Verify the address to preview its location.</Text>
+              </View>
+            )}
 
             {!!profile?.address && profile.address !== location && (
               <TouchableOpacity
                 style={styles.savedAddressBtn}
                 onPress={() => {
                   setLocation(profile.address!);
+                  setResolvedCoordinates(
+                    profile.latitude != null && profile.longitude != null
+                      ? { latitude: profile.latitude, longitude: profile.longitude }
+                      : null,
+                  );
+                  setGeocodedAddress(profile.latitude != null && profile.longitude != null ? profile.address! : '');
                   clearError('location');
                 }}
                 activeOpacity={0.8}
@@ -800,9 +847,8 @@ export default function HOCreateJobScreen({
 
             <View style={styles.noteCard}>
               <Text style={styles.noteText}>
-                Providers see this address on the job and use the coordinates saved on
-                your profile to work out how far away you are. Update them in Edit
-                Profile if the map distance looks wrong.
+                Providers see this address and its verified coordinates on the job.
+                A job cannot be posted until the address is resolved precisely.
               </Text>
             </View>
           </View>
@@ -1082,8 +1128,8 @@ export default function HOCreateJobScreen({
 
         {/* ── Step 5 · Review ──────────────────────────────────────────── */}
         {step === 5 && (
-          <View>
-            <Text style={styles.stepTitle}>Review & Post</Text>
+          <View testID="create-job-review">
+            <Text testID="create-job-review-title" style={styles.stepTitle}>Review & Post</Text>
             <Text style={styles.stepSubtitle}>Check everything before posting</Text>
 
             <View style={styles.reviewCard}>
@@ -1136,7 +1182,8 @@ export default function HOCreateJobScreen({
         )}
 
         <View style={{ height: 20 }} />
-      </ScrollView>
+        </ScrollView>
+      </KeyboardAvoidingView>
 
       {/* Footer */}
       {/* BUG-005: same edge-to-edge safe-area gap as BUG-002's bottom nav — pad
@@ -1326,7 +1373,9 @@ const styles = StyleSheet.create({
   locationPromptActions: { flexDirection: 'row', gap: 8, marginTop: 12 },
   locationChoice: { flex: 1, alignItems: 'center', borderWidth: 1, borderColor: Colors.line, borderRadius: 10, paddingVertical: 9 },
   locationChoiceActive: { backgroundColor: '#e6f8fb', borderColor: Colors.brandTeal },
+  locationChoiceDisabled: { opacity: 0.55 },
   locationChoiceText: { color: Colors.brandDark, fontSize: 13, fontWeight: '700', fontFamily: 'Inter' },
+  locationChoiceTextDisabled: { color: Colors.muted },
 
   serviceGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },
   serviceCard: {
@@ -1352,6 +1401,7 @@ const styles = StyleSheet.create({
   inputFocused: { borderColor: Colors.brandTeal, borderWidth: 2 },
   inputError: { borderColor: Colors.error, borderWidth: 2 },
   inputErrorText: { color: Colors.error, fontSize: 15.5, marginTop: 8, fontFamily: 'Inter' },
+  inputHint: { color: Colors.slate, fontSize: 13.5, marginTop: 8, fontFamily: 'Inter' },
   requiredAsterisk: { color: Colors.error, fontWeight: '800' },
   pickerInput: { justifyContent: 'center', minHeight: 48 },
   pickerText: { color: Colors.brandDark, fontFamily: 'Inter', fontSize: 18.5 },
@@ -1365,6 +1415,8 @@ const styles = StyleSheet.create({
   savedAddressText: { flex: 1, color: Colors.brandTeal, fontSize: 14, fontWeight: '600', fontFamily: 'Inter' },
   noteCard: { backgroundColor: Colors.ink50, borderRadius: 14, padding: 14 },
   map: { height: 190, borderRadius: 14, marginBottom: 16 },
+  mapPlaceholder: { height: 190, borderRadius: 14, marginBottom: 16, backgroundColor: Colors.ink50, alignItems: 'center', justifyContent: 'center', gap: 8, padding: 20 },
+  mapPlaceholderText: { color: Colors.muted, fontSize: 14, fontFamily: 'Inter', textAlign: 'center' },
   noteText: { color: Colors.slate, fontSize: 14, lineHeight: 19, fontFamily: 'Inter' },
 
   calendarOverlay: { flex: 1, backgroundColor: 'rgba(15,23,42,0.45)', justifyContent: 'center', padding: 20 },

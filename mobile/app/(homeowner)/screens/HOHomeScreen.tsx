@@ -73,30 +73,42 @@ interface HOHomeScreenProps {
   onNavigate: (screen: HOScreen, jobId?: string) => void;
 }
 
+function WidgetError({ message, onRetry }: { message: string; onRetry: () => void }) {
+  return (
+    <View style={styles.widgetError}>
+      <Text style={styles.widgetErrorText}>{message}</Text>
+      <TouchableOpacity onPress={onRetry} activeOpacity={0.8}>
+        <Text style={styles.widgetRetry}>Retry</Text>
+      </TouchableOpacity>
+    </View>
+  );
+}
+
 export default function HOHomeScreen({ onNavigate }: HOHomeScreenProps) {
   const { profile } = useAuth();
-  const { data, loading } = useAsyncData(async () => {
-    const [wallet, jobs, cats, notifs, unreadCount] = await Promise.all([
-      api.wallet(),
-      api.myJobs(),
-      api.categories(),
+  const wallet = useAsyncData(() => api.wallet(), [], 'ho-home-wallet');
+  const jobs = useAsyncData(() => api.myJobs(), [], 'ho-home-jobs');
+  const categories = useAsyncData(() => api.categories(), [], 'ho-home-categories');
+  const notifications = useAsyncData(async () => {
+    const [notifs, unreadCount] = await Promise.all([
       api.notifications() as Promise<NotificationRow[]>,
       api.unreadNotificationCount(),
     ]);
-    return { wallet, jobs, cats, notifs, unreadCount };
-  }, [], 'ho-home');
+    return { notifs, unreadCount };
+  }, [], 'ho-home-notifications');
 
   const name = profile?.full_name ?? '';
-  const jobs = data?.jobs ?? [];
-  const activeJobs = jobs.filter((j) => ACTIVE_STATUSES.includes(j.status));
-  const recentActivity = (data?.notifs ?? []).slice(0, 3);
-  const unread = data?.unreadCount.count ?? 0;
+  const activeJobs = (jobs.data ?? []).filter((j) => ACTIVE_STATUSES.includes(j.status));
+  const recentActivity = (notifications.data?.notifs ?? []).slice(0, 3);
+  const unread = notifications.data?.unreadCount.count ?? 0;
   const location =
     [profile?.city, profile?.address].filter(Boolean).join(', ') || 'Set your location';
   const hour = new Date().getHours();
   const greeting = hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening';
 
-  if (loading) return <ScreenSkeleton variant="dashboard" />;
+  if (wallet.loading && jobs.loading && categories.loading && notifications.loading) {
+    return <ScreenSkeleton variant="dashboard" />;
+  }
 
   return (
     <View style={styles.screen}>
@@ -141,7 +153,11 @@ export default function HOHomeScreen({ onNavigate }: HOHomeScreenProps) {
           <View style={styles.balanceStrip}>
             <View>
               <Text style={styles.balanceLabel}>Wallet balance</Text>
-              <Text style={styles.balanceAmount}>{data ? peso(data.wallet.balance) : '—'}</Text>
+              {wallet.error ? (
+                <WidgetError message="Couldn't load your wallet" onRetry={wallet.reload} />
+              ) : (
+                <Text style={styles.balanceAmount}>{wallet.data ? peso(wallet.data.balance) : '—'}</Text>
+              )}
             </View>
             <TouchableOpacity onPress={() => onNavigate('Wallet')} activeOpacity={0.8}>
               <Text style={styles.manageLink}>Manage wallet</Text>
@@ -179,7 +195,9 @@ export default function HOHomeScreen({ onNavigate }: HOHomeScreenProps) {
               showsHorizontalScrollIndicator={false}
               contentContainerStyle={styles.categoryStrip}
             >
-              {(data?.cats ?? []).map((cat) => {
+              {categories.error ? (
+                <WidgetError message="Couldn't load services" onRetry={categories.reload} />
+              ) : (categories.data ?? []).map((cat) => {
                 const Icon = CATEGORY_ICON[cat.name] ?? Hand;
                 return (
                   <TouchableOpacity
@@ -213,7 +231,9 @@ export default function HOHomeScreen({ onNavigate }: HOHomeScreenProps) {
             </TouchableOpacity>
           </View>
 
-          {activeJobs.length === 0 && (
+          {jobs.error && <WidgetError message="Couldn't load your jobs" onRetry={jobs.reload} />}
+
+          {!jobs.error && activeJobs.length === 0 && (
             <View style={styles.emptyState}>
               <ClipboardList size={30} color={C.ink300} />
               <Text style={styles.emptyTitle}>No active jobs</Text>
@@ -249,7 +269,9 @@ export default function HOHomeScreen({ onNavigate }: HOHomeScreenProps) {
           })}
 
           {/* Recent Activity */}
-          {recentActivity.length > 0 && (
+          {notifications.error ? (
+            <WidgetError message="Couldn't load your notifications" onRetry={notifications.reload} />
+          ) : recentActivity.length > 0 && (
             <>
               <View style={[styles.sectionHead, { marginTop: 22 }]}>
                 <Text style={styles.sectionTitle}>Recent Activity</Text>
@@ -338,6 +360,9 @@ const styles = StyleSheet.create({
   balanceLabel: { color: 'rgba(255,255,255,0.72)', fontSize: 13.5, fontFamily: 'Inter', marginBottom: 2 },
   balanceAmount: { color: C.white, fontSize: 21.5, fontWeight: '800', fontFamily: 'Inter' },
   manageLink: { color: C.white, fontSize: 14.5, fontWeight: '700', fontFamily: 'Inter' },
+  widgetError: { flexDirection: 'row', alignItems: 'center', gap: 9, paddingVertical: 8 },
+  widgetErrorText: { color: C.ink500, fontSize: 13.5, fontFamily: 'Inter', flexShrink: 1 },
+  widgetRetry: { color: C.cyan700, fontSize: 13.5, fontWeight: '800', fontFamily: 'Inter' },
 
   // Body
   body: { paddingHorizontal: Spacing.screenH, paddingTop: 18 },

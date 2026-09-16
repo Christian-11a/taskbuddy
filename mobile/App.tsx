@@ -177,7 +177,7 @@ function AppContent() {
       return;
     }
     if (screen === 'Create Job') {
-      setHOStack([]);
+      setHOStack((prev) => [...prev, { screen: hoScreen, id: hoSelectedId }]);
       // `id` here is a category id from Home's "Book a Job" strip. Always
       // assign it — including clearing it when the flow is opened from the FAB
       // — so a previous tile's category can't leak into the next job.
@@ -536,10 +536,7 @@ function AppContent() {
         <View style={styles.screen}>
           <HOCreateJobScreen
             initialCategoryId={Number.isFinite(Number(hoSelectedId)) ? Number(hoSelectedId) : null}
-            onBack={() => {
-              setHOTab('Home');
-              setHOScreen('Home');
-            }}
+            onBack={hoBack}
             onSuccess={() => {
               setHOTab('My Jobs');
               setHOScreen('My Jobs');

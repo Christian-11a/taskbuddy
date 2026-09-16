@@ -99,7 +99,9 @@ export default function MyJobs({ onNavigate }: MyJobsProps) {
       {/* Filter tabs — matches .job-tabs (underline style) */}
       <View style={styles.tabsWrap}>
         <ScrollView
+          testID="my-jobs-tabs"
           horizontal
+          alwaysBounceHorizontal
           showsHorizontalScrollIndicator={false}
           contentContainerStyle={styles.tabsContent}
         >
@@ -123,6 +125,7 @@ export default function MyJobs({ onNavigate }: MyJobsProps) {
       <ScrollView
         style={styles.body}
         contentContainerStyle={styles.bodyContent}
+        contentInsetAdjustmentBehavior="automatic"
         showsVerticalScrollIndicator={false}
       >
         {!!error && !loading && <Text style={styles.stateText}>{error}</Text>}
@@ -215,7 +218,7 @@ const styles = StyleSheet.create({
   newBtnText: { color: C.cyan700, fontWeight: '700', fontSize: 14.5, fontFamily: 'Inter' },
 
   tabsWrap: { backgroundColor: C.white, borderBottomWidth: 1, borderBottomColor: C.line, paddingHorizontal: Spacing.screenH },
-  tabsContent: { gap: 24 },
+  tabsContent: { gap: 24, paddingRight: Spacing.screenH },
   jobTab: { paddingVertical: 13, alignItems: 'center' },
   jobTabText: { color: C.ink400, fontSize: 13.5, fontWeight: '600', fontFamily: 'Inter' },
   jobTabTextActive: { color: C.ink900, fontWeight: '800' },

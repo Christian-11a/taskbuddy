@@ -5,6 +5,65 @@ app works today; this file covers how it got there and why. Newest first.
 
 ---
 
+## [Low] Wallet — blank-area swipes scroll the full screen
+
+Removed the keyboard-dismiss touch wrapper that could capture gestures outside buttons and filters; the Wallet `ScrollView` now owns scrolling across the entire content area.
+
+## [Low] Add Money — payment CTA no longer wraps
+
+The Add Money modal uses the shorter "Continue" label so the primary action stays on one line on narrow screens.
+
+## [Low] Create Job & My Jobs — homeowner content stays clear of fixed UI
+
+The job review form now reserves space for the footer and safe-area inset, while the My Jobs filter strip keeps horizontal scrolling and trailing space instead of clipping tabs.
+
+## [Medium] Wallet — transfer action is disabled until the backend payout flow exists
+
+The wallet's dead transfer button is now hidden behind a disabled "Coming soon" state instead of a no-op action.
+
+## [Medium] Wallet → Withdraw — zero-balance withdrawals are blocked with a clear reason
+
+The withdraw action is disabled at ₱0.00 and shows an inline message telling the user the minimum threshold needed before a withdrawal can be requested.
+
+## [Medium] Add Money — top-up minimum validation matches the provider rules
+
+The add-money helper text and client-side validation now align with the provider's actual minimum amount, preventing the mismatch between the UI and the checkout rejection.
+
+## [Medium] Create Job — default location is hidden when no profile address exists
+
+The default-location option is disabled and relabelled when no address is saved, so the screen no longer shows contradictory default and empty-state text.
+
+## [Medium] Create Job — back navigation returns to My Jobs instead of dropping to Home
+
+The create-job flow is now pushed onto the homeowner navigation stack, so backing out returns the user to the previously active My Jobs tab.
+
+## [Medium] Create Job — budget entry stays above the keyboard during typing
+
+The form uses a keyboard-aware scroll container so the budget field scrolls into view as the user types.
+
+## [Medium] Notifications & Proposals — failed actions show inline errors with retry
+
+Marking notifications as read and accepting/rejecting proposals now show an inline banner and a retry action when the request fails, without leaving the UI in a silent failed state.
+
+## [High] HOHomeScreen — widget failures now show a local error and Retry action
+
+Wallet, jobs, categories, and notifications load independently, so one failed
+request no longer hides the rest of the homeowner home screen.
+
+## [High] HOCreateJobScreen — typed job addresses are prepared for backend verification
+
+Address edits are sent to the pending backend Google Geocoding handoff on blur
+and before leaving the Location step. Approximate or failed results block
+posting; profile and Metro Manila coordinate fallbacks were removed.
+
+## [High] Android MapView — Google Maps key wiring remains blocked by credential setup
+
+No key was added to `app.json` because the project has not enabled billing or
+provided a restricted Android key. The key must be supplied in
+`expo.android.config.googleMaps.apiKey`, restricted to `com.taskbuddy.app` and
+the release/dev-client SHA-1, then verified in a rebuilt dev client (Expo Go
+does not validate this native configuration).
+
 ## Card-paid payouts reach the provider's Stripe account (2026-09-16)
 
 With payouts set up, a card-paid job's payout is sent to the provider's Stripe
