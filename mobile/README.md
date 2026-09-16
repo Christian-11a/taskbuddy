@@ -459,7 +459,7 @@ by the Maestro sweep (`mobile/maestro/`) that need access this repo's code can't
 | # | Item | Blocks |
 |---|---|---|
 | 1 | Google Maps API key — never configured, so `HOCreateJobScreen`'s Location step (`MapView`) fatally crashes the app on every job-creation attempt | Job creation entirely, and transitively the cross-role hire loop |
-| 2 | Backend address geocoding endpoint — add an authenticated homeowner route such as `GET /jobs/geocode?address=...`, backed by a server-side Google Geocoding key. Return only precise `ROOFTOP` or `RANGE_INTERPOLATED` results; reject API failures, empty results, and approximate coordinates. | Typed-address job posting; the mobile form now blocks posting until it receives verified coordinates |
+| 2 | Backend address geocoding endpoint — **API done**: `GET /jobs/geocode?address=` returns only precise, exact (not `partial_match`) `ROOFTOP`/`RANGE_INTERPOLATED` results, Philippines only (`backend/BACKEND_SCHEMA.md` §31). **Still needs** `GOOGLE_GEOCODING_API_KEY` set on the API host; until then the route answers `503` | Typed-address job posting; the mobile form now blocks posting until it receives verified coordinates |
 | 3 | Wallet balance seed SQL for the test client account | Escrow/hire and wallet/withdraw testing |
 | 4 | `recommendation_deadline` SQL nudge (per test job) | Nothing — workaround is waiting 5–15 real minutes |
 
@@ -470,9 +470,9 @@ already calls the route, stores the returned latitude/longitude with the job,
 and refuses to use the profile address or a Metro Manila fallback when the
 lookup fails.
 
-Item 1 needs a Google Cloud Console credential and is currently the active blocker; items 2–3 need
-Supabase SQL access. None of these need new backend code beyond the one-line `app.json` config
-once a Maps key exists.
+Item 1 needs a Google Cloud Console credential and is currently the active blocker; item 2 needs a
+Geocoding key set on the API host; items 3–4 need Supabase SQL access. None of these need further
+backend code beyond the one-line `app.json` config once a Maps key exists.
 
 ---
 

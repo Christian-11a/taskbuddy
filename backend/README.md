@@ -280,6 +280,7 @@ All bodies are JSON. 🔒 = requires auth; (client) / (provider) = role-restrict
 |---|---|
 | `POST /jobs` 🔒 (client) | `{ category_id, title (5–120), description (20–750), urgency?, address, latitude, longitude, budget?, scheduled_at?, photo_urls?, tasks? }` — `scheduled_at` in the past is a 400; `tasks` is up to 20 checklist labels (≤120 chars each) stored as `job_tasks` |
 | `GET /jobs?category_id=&limit=&offset=&latitude=&longitude=&radius_km=` 🔒 (provider) | browse `open`/`recommending` jobs, sorted by urgency then distance/newest; `latitude`+`longitude` (both required together) filter to `radius_km` (default 50km) of the provider; returns `{ jobs, summary: { open_count, urgent_count, potential_payout } }` |
+| `GET /jobs/geocode?address=` 🔒 (client) | typed address → `{ latitude, longitude, formatted_address }` via Google Geocoding, Philippines only. `400` when not found, only approximate (a street/city centre), or only a partial match, `503` when Google fails or `GOOGLE_GEOCODING_API_KEY` is unset. 10/min per IP. `BACKEND_SCHEMA.md` §31 |
 | `GET /jobs/mine` 🔒 (client) | own jobs |
 | `GET /jobs/assigned` 🔒 (provider) | jobs assigned to me |
 | `GET /jobs/:id` 🔒 | job detail |
@@ -324,7 +325,7 @@ All bodies are JSON. 🔒 = requires auth; (client) / (provider) = role-restrict
 | `GET /conversations` 🔒 | caller's conversations (counterpart name + last-message time) |
 | `POST /conversations` 🔒 | get-or-create for `{ job_id }` — job must have an assigned provider |
 | `GET /conversations/:id/messages` 🔒 | messages, oldest first |
-| `POST /conversations/:id/messages` 🔒 | send `{ body (1–1000)?, attachment_path? }` — at least one of the two is required |
+| `POST /conversations/:id/messages` 🔒 | send `{ body (1–1000)?, attachment_path? }` — at least one of the two is required. `attachment_path` must be a `chat-attachments` path from `POST /uploads/signed-url`, owned by the sender, and already uploaded as a non-empty image (400 otherwise) |
 | `POST /conversations/:id/read` 🔒 | mark the other participant's messages read |
 | `GET /conversations/:id/stream?since=` 🔒 | **SSE.** `message` events carrying a full message row, plus `ping` keep-alives. `since` = `created_at` of the newest message the client already has. Needs a client that sends an `Authorization` header — browser `EventSource` cannot |
 | `GET /calendar/bookings?from=&to=` 🔒 | caller's bookings (provider or client side), with job + counterpart |
@@ -582,6 +583,7 @@ each route counts separately and there is no aggregate cap across the API.
 | `POST /payments/topup`, `POST /payments/checkout-session`, `POST /payments/hire-checkout-session` | 5 / minute |
 | `POST /auth/{register,login,admin/login,forgot-password,reset-password,send-email-otp,verify-email-otp,change-password}` | 10 / minute **each** |
 | `POST /payments/connect/{onboarding-link,sync,dashboard-link}` | 5 / minute each |
+| `GET /jobs/geocode` | 10 / minute — every call is a billed Google request |
 | `POST /payments/webhook`, `POST /payments/connect/webhook` | exempt — Stripe is authenticated by signature and retries for three days |
 
 `POST /auth/refresh`, `GET /auth/me` and the admin session routes are
@@ -680,6 +682,10 @@ npm run format      # prettier
 npm test            # jest unit + lifecycle specs (supabase-js mocked)
 npm run test:sql    # the real migrations on real Postgres (PGlite, in-process)
 ```
+
+A k6 load test for the money path (post → apply → accept/escrow hold → cancel/refund)
+lives in [`load/`](./load/README.md). It is run by hand, not in CI, and **writes real rows**
+to the API it targets.
 
 `test:sql` applies every migration to PGlite (Postgres compiled to
 WebAssembly — no server, no Docker) with the Supabase `auth`/`storage` schemas
