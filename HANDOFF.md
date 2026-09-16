@@ -35,7 +35,19 @@ either debit landed, and the wallet could go negative.
 
 ---
 
-## 2. Chat has no attachment support
+## 2. Chat has no attachment support — RESOLVED on `chore/sdk57-e2e-doc-reconciliation`
+
+> **Fixed, 2026-09-16.** `0030_chat_attachments.sql` added `messages.attachment_path` and the
+> private `chat-attachments` Storage bucket; `chat.controller.ts`/`chat.service.ts` accept and
+> return it through the same signed-URL upload flow every other attachment in this app uses
+> (`POST /uploads/signed-url` → direct upload → submit the path). A follow-up migration,
+> `0031_messages_body_or_attachment.sql`, was needed on top: 0030 never relaxed 0006's `messages`
+> body CHECK, so every attachment-only send — the only kind the mobile attach flow produces — was
+> rejected by Postgres until 0031 landed. See `BACKEND_SCHEMA.md` §30 for the full mechanism,
+> including the chat-specific signed-URL TTL and the admin dispute-evidence view now including
+> attachments too.
+
+Kept below for the record — this is what the gap looked like before the fix.
 
 **Where:** `backend/supabase/migrations/`, `backend/src/chat/`.
 

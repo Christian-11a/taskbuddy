@@ -62,7 +62,7 @@ Job lifecycle: `open → recommending → assigned → in_progress → completed
 
 1. Create a project at [supabase.com](https://supabase.com).
 2. Apply **every** migration in [`supabase/migrations/`](./supabase/migrations) **in order**
-   (0001 → 0029), either by pasting each file into the SQL Editor or with the CLI:
+   (0001 → 0031), either by pasting each file into the SQL Editor or with the CLI:
 
    ```bash
    supabase link --project-ref <your-project-ref>
@@ -100,6 +100,8 @@ Job lifecycle: `open → recommending → assigned → in_progress → completed
    | `0027_connect_transfer_kind.sql` | adds `'connect_transfer'` to `wallet_txn_kind`. **Apply alone and let it commit before 0028**, which names the value in an index. |
    | `0028_stripe_connect_and_card_funding.sql` | `provider_payout_accounts` (Connect Express, service-role writes only); escrow funding (`wallet`/`card`) and onward-transfer columns; `wallet_transactions.stripe_transfer_id`; and the service-role-only SQL functions `escrow_place_hold`, `escrow_settle`, `wallet_reserve_connect_transfer` that change escrow and write its ledger row in **one** transaction. See `BACKEND_SCHEMA.md` §29. Re-runnable. |
    | `0029_payments_tick_cron.sql` | schedules the payments sweep (`/internal/tick/payments`, every 5 min) through 0025's `scheduler_tick`. Does nothing, with a notice, where pg_cron or 0025 is absent. Re-runnable. |
+   | `0030_chat_attachments.sql` | `messages.attachment_path`; creates the private `chat-attachments` Storage bucket. See `BACKEND_SCHEMA.md` §30. |
+   | `0031_messages_body_or_attachment.sql` | replaces 0006's `messages` body CHECK — 0030 added `attachment_path` but never relaxed it, so an attachment-only send (the only kind the app's attach flow produces) was rejected by Postgres. Now requires body OR attachment, never neither. Re-runnable. |
 
    > Migrations 0008 and 0009 each run `alter type notification_type add value`.
    > Postgres allows this inside a transaction as long as the new value isn't
@@ -322,7 +324,7 @@ All bodies are JSON. 🔒 = requires auth; (client) / (provider) = role-restrict
 | `GET /conversations` 🔒 | caller's conversations (counterpart name + last-message time) |
 | `POST /conversations` 🔒 | get-or-create for `{ job_id }` — job must have an assigned provider |
 | `GET /conversations/:id/messages` 🔒 | messages, oldest first |
-| `POST /conversations/:id/messages` 🔒 | send `{ body (1–1000) }` |
+| `POST /conversations/:id/messages` 🔒 | send `{ body (1–1000)?, attachment_path? }` — at least one of the two is required |
 | `POST /conversations/:id/read` 🔒 | mark the other participant's messages read |
 | `GET /conversations/:id/stream?since=` 🔒 | **SSE.** `message` events carrying a full message row, plus `ping` keep-alives. `since` = `created_at` of the newest message the client already has. Needs a client that sends an `Authorization` header — browser `EventSource` cannot |
 | `GET /calendar/bookings?from=&to=` 🔒 | caller's bookings (provider or client side), with job + counterpart |

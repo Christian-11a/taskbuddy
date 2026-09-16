@@ -565,7 +565,7 @@ homeowner-facing recommendations do not map directly to the current product.
 - Homeowner job locations use the saved profile address or fallback
   coordinates. There is no Expo GPS or Google Maps provider-discovery flow.
 - Dark Mode persists a preference but does not change the palette. Language,
-  wallet transfer, chat calls, and chat attachments remain unwired.
+  wallet transfer, and chat calls remain unwired.
 
 ### 🔧 Remaining frontend tasks
 
@@ -624,7 +624,7 @@ was trimmed to remove rows that duplicated a bottom-nav tab or a header icon.
 | **Language** | Settings modal states English is the only option — no i18n system exists to back a real picker |
 | **Wallet Transfer** | Deliberately not built, backend or front. Wallet-to-wallet transfer turns the wallet into a money-transmission service, which is a licensing matter in PH, not an engineering one |
 | **Push delivery** | Code complete end to end, **but not yet functional**: `app.json` has no EAS `projectId`, so no push token is ever obtained, and remote push needs a development build (not Expo Go) on SDK 57. The `notifications` table remains the source of truth and the in-app list is unaffected — see [Live chat and push notifications](#live-chat-and-push-notifications) |
-| **Realtime chat** | Message delivery is live through authenticated SSE; call and attachment buttons remain inert |
+| **Realtime chat** | Message delivery is live through authenticated SSE; attachments are wired (photo picker, upload, rendering). The call button remains inert — no signalling path exists |
 | **Counterpart avatars** | Chat, applicant, and review payloads all carry `avatar_url`; those screens still render initials. (The signed-in user's *own* avatar does render — see `OwnAvatar`) |
 | **Provider calendar write** | Bookings are created by the backend when a job is assigned, not from this screen |
 | **Notch/edge-to-edge status-bar spacing** | `Sizes.statusBarHeight` uses `StatusBar.currentHeight` (Android, built-in RN API) as a floor under the previous fixed `52`, which fixes most cases without a new dependency — but it's read once at module load, not on rotation/inset changes, and iOS still uses a fixed estimate. A full fix means adopting `react-native-safe-area-context` (new dependency) and touching header padding in every screen |

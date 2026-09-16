@@ -732,12 +732,13 @@ is `kind = 'payout'`, not merely "a credit with a job_id".
 
 One conversation per job, between its `client_id` and (assigned) `provider_id`. Created lazily the
 first time either participant opens it — the job must already have an assigned provider. `messages`
-carry `body` (1–1000 chars) and a `read_at`; a trigger keeps `conversations.last_message_at`
-current for list ordering.
+carry `body` (0–1000 chars), an optional `attachment_path`, and a `read_at`; a trigger keeps
+`conversations.last_message_at` current for list ordering. A message needs a non-empty `body`, a
+non-null `attachment_path`, or both — see §30 for the attachment column and its constraint.
 
 - `GET /conversations` → the caller's conversations (counterpart name + last-message time)
 - `POST /conversations` → get-or-create for `{ job_id }`
-- `GET /conversations/:id/messages` · `POST /conversations/:id/messages` `{ body }` · `POST /conversations/:id/read`
+- `GET /conversations/:id/messages` · `POST /conversations/:id/messages` `{ body?, attachment_path? }` · `POST /conversations/:id/read`
 
 ### 15.3 Calendar — `bookings`
 
@@ -2148,4 +2149,58 @@ select count(*) from pg_policies
    and tablename in ('profiles', 'provider_profiles', 'jobs', 'job_applications',
                      'reviews', 'messages', 'job_tasks', 'notifications');  -- expect 0
 ```
+
+---
+
+## 30. Chat Attachments (migrations 0030–0031)
+
+`0030_chat_attachments.sql` adds `messages.attachment_path` (nullable, same
+`<uploader profile id>/<uuid>.<ext>` convention as every other upload path — see §16 for
+`job-photos` and §17 for `verification-docs`) and creates the **private** `chat-attachments`
+Storage bucket. Private, like `verification-docs` and unlike `avatars`/`job-photos`: a chat photo
+is between two people and shown nowhere else, so signing each read is the right tradeoff. Storage
+RLS mirrors 0019's shape (defence in depth only — the API always reads/writes with the
+service-role key); the real access gate is `ChatService.assertParticipant()`, which runs before
+any signed URL for this bucket is minted.
+
+Upload goes through the same flow as every other attachment in this app (§16, uploads module): the
+client calls `POST /uploads/signed-url { bucket: 'chat-attachments', content_type }`, uploads
+directly to Storage, and submits the returned path — never a URL — to
+`POST /conversations/:id/messages`.
+
+**0030 did not touch 0006's `messages` body CHECK.** That constraint required
+`char_length(body) between 1 and 1000`, so it rejected every attachment-only message outright —
+which is the *only* kind the mobile app's attach flow produces (both chat screens call
+`sendMessage(conversationId, '', path)`). This was caught in a final whole-branch review run
+against migration 0030's real, applied schema — the jest suites mock supabase-js and cannot see a
+Postgres CHECK constraint at all (§29.3's `test/sql/` harness is what can).
+
+`0031_messages_body_or_attachment.sql` replaces `messages_body_check` with:
+
+```sql
+check (
+    char_length(body) <= 1000
+    and (char_length(body) > 0 or attachment_path is not null)
+)
+```
+
+A message needs text, an attachment, or both — never neither. `ChatService.sendMessage` already
+enforced this in application code (`'Message must have text or an attachment.'`); 0031 makes the
+database agree, which is what actually gates the insert. Regression coverage lives in
+`test/sql/chat-attachments.test.mjs`, following §29.3's real-Postgres pattern: an attachment-only
+insert succeeds, a body-and-attachment-both-empty insert still fails `23514`, and a text-only
+insert is unaffected.
+
+**Signed-URL lifetime.** `UploadsService.signedDownloadUrl`'s TTL was previously one constant
+(`SIGNED_DOWNLOAD_TTL_SECONDS`, 5 minutes) shared by every private bucket, sized for an admin's
+one-time verification-document view. A chat screen holds `messages` in state indefinitely with no
+refresh, so a photo scrolled out of view and back after 5+ minutes would 403. `signedDownloadUrl`
+now takes an optional third `ttlSeconds` argument (default unchanged), and `ChatService` passes a
+dedicated `CHAT_ATTACHMENT_TTL_SECONDS` (1 hour).
+
+**Admin dispute view.** `adminConversationForJob` (§23.6) now resolves `attachment_path` /
+`attachment_url` on every message it returns, the same as the other three read paths
+(`getMessages`, `streamMessages`, `sendMessage`) — previously it hand-picked fields and silently
+dropped attachments, so an admin resolving "the provider damaged my floor, here's the photo" saw
+an empty-bodied message with no sign a photo was ever attached.
 
