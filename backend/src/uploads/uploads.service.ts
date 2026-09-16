@@ -76,10 +76,11 @@ export class UploadsService {
   async signedDownloadUrl(
     bucket: UploadBucket,
     path: string,
+    ttlSeconds: number = SIGNED_DOWNLOAD_TTL_SECONDS,
   ): Promise<string | null> {
     const { data, error } = await this.supabase.admin.storage
       .from(bucket)
-      .createSignedUrl(path, SIGNED_DOWNLOAD_TTL_SECONDS);
+      .createSignedUrl(path, ttlSeconds);
     return error ? null : data.signedUrl;
   }
 

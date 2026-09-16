@@ -36,3 +36,6 @@ export const CONTENT_TYPE_EXTENSIONS: Record<string, string> = {
 
 /** How long an admin's signed download URL for a verification document stays valid. */
 export const SIGNED_DOWNLOAD_TTL_SECONDS = 300;
+
+/** Chat stays open far longer than an admin verification review; signed URLs need to outlive that. */
+export const CHAT_ATTACHMENT_TTL_SECONDS = 3600;

@@ -9,6 +9,7 @@ import { concatMap, from, interval, mergeMap, switchMap } from 'rxjs';
 import type { Observable } from 'rxjs';
 import { SupabaseService } from '../supabase/supabase.service';
 import { UploadsService } from '../uploads/uploads.service';
+import { CHAT_ATTACHMENT_TTL_SECONDS } from '../uploads/uploads.constants';
 import type { Profile } from '../common/types';
 
 /**
@@ -236,18 +237,27 @@ export class ChatService {
       .order('created_at', { ascending: true });
     if (messagesError) throw new BadRequestException(messagesError.message);
 
-    return {
-      messages: (data ?? []).map((m) => ({
-        id: m.id,
-        sender_id: m.sender_id,
-        sender_name:
-          (m.sender as unknown as { full_name: string } | null)?.full_name ??
-          null,
-        body: m.body,
-        read_at: m.read_at,
-        created_at: m.created_at,
-      })),
-    };
+    const messages = await Promise.all(
+      (data ?? []).map(async (m) => {
+        const { attachment_url } = await this.withAttachmentUrl(
+          m as MessageRow,
+        );
+        return {
+          id: m.id,
+          sender_id: m.sender_id,
+          sender_name:
+            (m.sender as unknown as { full_name: string } | null)
+              ?.full_name ?? null,
+          body: m.body,
+          attachment_path: m.attachment_path,
+          attachment_url,
+          read_at: m.read_at,
+          created_at: m.created_at,
+        };
+      }),
+    );
+
+    return { messages };
   }
 
   /** Marks messages sent by the other participant as read. */
@@ -281,6 +291,7 @@ export class ChatService {
       ? await this.uploads.signedDownloadUrl(
           'chat-attachments',
           row.attachment_path,
+          CHAT_ATTACHMENT_TTL_SECONDS,
         )
       : null;
     return { ...row, attachment_url };
