@@ -14,14 +14,12 @@
 import React, { useState } from 'react';
 import {
   ActivityIndicator,
-  Keyboard,
   Modal,
   ScrollView,
   StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
-  TouchableWithoutFeedback,
   View,
 } from 'react-native';
 import {
@@ -233,7 +231,6 @@ export default function HOWalletScreen() {
   if (loading) return <ScreenSkeleton variant="dashboard" />;
 
   const content = (
-    <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
     <View style={styles.screen}>
       {/* Header — matches .topbar (flat white, not a dark hero) */}
       <View style={styles.header}>
@@ -241,8 +238,11 @@ export default function HOWalletScreen() {
       </View>
 
       <ScrollView
+        testID="wallet-scroll"
         style={styles.body}
         contentContainerStyle={styles.bodyContent}
+        keyboardDismissMode="on-drag"
+        keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
         {/* Balance card — mockup's linear-gradient(165deg, cyan600, cyan700) */}
@@ -583,7 +583,6 @@ export default function HOWalletScreen() {
         </View>
       </Modal>
     </View>
-    </TouchableWithoutFeedback>
   );
 
   return content;

@@ -5,6 +5,10 @@ app works today; this file covers how it got there and why. Newest first.
 
 ---
 
+## [Low] Wallet — blank-area swipes scroll the full screen
+
+Removed the keyboard-dismiss touch wrapper that could capture gestures outside buttons and filters; the Wallet `ScrollView` now owns scrolling across the entire content area.
+
 ## [Low] Add Money — payment CTA no longer wraps
 
 The Add Money modal uses the shorter "Continue" label so the primary action stays on one line on narrow screens.
