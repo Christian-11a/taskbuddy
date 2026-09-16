@@ -62,14 +62,24 @@ describe('ChatService.adminConversationForJob', () => {
     });
   });
 
-  it('returns messages oldest-first with the sender name attached', async () => {
+  it('returns messages oldest-first with the sender name and attachment attached', async () => {
     const rows = [
       {
         id: 'm1',
         sender_id: 'p1',
         body: 'Hi, on my way',
+        attachment_path: null,
         read_at: null,
         created_at: '2026-08-01T10:00:00Z',
+        sender: { full_name: 'Juan Cruz' },
+      },
+      {
+        id: 'm2',
+        sender_id: 'p1',
+        body: '',
+        attachment_path: 'p1/photo.jpg',
+        read_at: null,
+        created_at: '2026-08-01T10:05:00Z',
         sender: { full_name: 'Juan Cruz' },
       },
     ];
@@ -77,7 +87,10 @@ describe('ChatService.adminConversationForJob', () => {
       conversations: [{ data: { id: 'c1' }, error: null }],
       messages: [{ data: rows, error: null }],
     });
-    const service = newChatService(supabase, createUploadsMock());
+    const service = newChatService(
+      supabase,
+      createUploadsMock('https://signed.example/photo.jpg'),
+    );
 
     const result = await service.adminConversationForJob('j1');
 
@@ -88,8 +101,20 @@ describe('ChatService.adminConversationForJob', () => {
           sender_id: 'p1',
           sender_name: 'Juan Cruz',
           body: 'Hi, on my way',
+          attachment_path: null,
+          attachment_url: null,
           read_at: null,
           created_at: '2026-08-01T10:00:00Z',
+        },
+        {
+          id: 'm2',
+          sender_id: 'p1',
+          sender_name: 'Juan Cruz',
+          body: '',
+          attachment_path: 'p1/photo.jpg',
+          attachment_url: 'https://signed.example/photo.jpg',
+          read_at: null,
+          created_at: '2026-08-01T10:05:00Z',
         },
       ],
     });
