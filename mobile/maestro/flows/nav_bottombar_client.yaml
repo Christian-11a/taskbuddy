@@ -9,6 +9,10 @@ appId: com.taskbuddy.app
 - runFlow: _helpers/login_client.yaml
 - tapOn: { id: "nav-tab-Wallet" }
 - extendedWaitUntil: { visible: "Available Balance", timeout: 15000 }
+- tapOn: "Add Money"
+- inputText: "1000"
+- assertVisible: { id: "wallet-add-money-continue" }
+- tapOn: "Cancel"
 - tapOn: { id: "nav-tab-Home" }
 - extendedWaitUntil: { visible: "Need something done?", timeout: 15000 }
 - tapOn: { id: "nav-tab-Create Job" }

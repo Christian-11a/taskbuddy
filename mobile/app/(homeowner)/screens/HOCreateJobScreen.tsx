@@ -694,8 +694,10 @@ export default function HOCreateJobScreen({
         keyboardVerticalOffset={24}
       >
         <ScrollView
+          testID="create-job-form-scroll"
           style={styles.body}
-          contentContainerStyle={styles.bodyContent}
+          contentContainerStyle={[styles.bodyContent, { paddingBottom: 140 + insets.bottom }]}
+          contentInsetAdjustmentBehavior="automatic"
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
         >
@@ -1126,8 +1128,8 @@ export default function HOCreateJobScreen({
 
         {/* ── Step 5 · Review ──────────────────────────────────────────── */}
         {step === 5 && (
-          <View>
-            <Text style={styles.stepTitle}>Review & Post</Text>
+          <View testID="create-job-review">
+            <Text testID="create-job-review-title" style={styles.stepTitle}>Review & Post</Text>
             <Text style={styles.stepSubtitle}>Check everything before posting</Text>
 
             <View style={styles.reviewCard}>

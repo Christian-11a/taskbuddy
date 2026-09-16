@@ -492,6 +492,7 @@ export default function HOWalletScreen() {
                 <Text style={styles.modalCancelText}>Cancel</Text>
               </TouchableOpacity>
               <TouchableOpacity
+                testID="wallet-add-money-continue"
                 style={[
                   styles.modalBtn,
                   styles.modalConfirm,
@@ -504,7 +505,7 @@ export default function HOWalletScreen() {
                 {adding ? (
                   <ActivityIndicator color={C.white} />
                 ) : (
-                  <Text style={styles.modalConfirmText}>Continue to Payment</Text>
+                  <Text style={styles.modalConfirmText}>Continue</Text>
                 )}
               </TouchableOpacity>
             </View>

@@ -5,6 +5,14 @@ app works today; this file covers how it got there and why. Newest first.
 
 ---
 
+## [Low] Add Money — payment CTA no longer wraps
+
+The Add Money modal uses the shorter "Continue" label so the primary action stays on one line on narrow screens.
+
+## [Low] Create Job & My Jobs — homeowner content stays clear of fixed UI
+
+The job review form now reserves space for the footer and safe-area inset, while the My Jobs filter strip keeps horizontal scrolling and trailing space instead of clipping tabs.
+
 ## [Medium] Wallet — transfer action is disabled until the backend payout flow exists
 
 The wallet's dead transfer button is now hidden behind a disabled "Coming soon" state instead of a no-op action.
