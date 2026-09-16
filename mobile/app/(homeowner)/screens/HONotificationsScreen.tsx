@@ -8,7 +8,7 @@
  * dot, read rows plain.
  */
 
-import React from 'react';
+import React, { useState } from 'react';
 import {
   ActivityIndicator,
   ScrollView,
@@ -54,17 +54,34 @@ export default function HONotificationsScreen({ onBack }: HONotificationsProps) 
     () => api.notifications() as Promise<NotificationRow[]>,
     [],
   );
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [pendingReadId, setPendingReadId] = useState<string | null>(null);
   const notifications = data ?? [];
   const unreadCount = notifications.filter((n) => !n.read_at).length;
 
   const markAllRead = async () => {
-    await api.markAllNotificationsRead();
-    reload();
+    try {
+      setActionError(null);
+      await api.markAllNotificationsRead();
+      reload();
+    } catch (e) {
+      setActionError(e instanceof Error ? e.message : 'Could not mark notifications as read.');
+    }
   };
 
   const markRead = async (id: string) => {
-    await api.markNotificationRead(id);
-    reload();
+    const prev = notifications.find((n) => n.id === id)?.read_at;
+    setPendingReadId(id);
+    setActionError(null);
+    try {
+      await api.markNotificationRead(id);
+      reload();
+    } catch (e) {
+      setActionError(e instanceof Error ? e.message : 'Could not mark this notification as read.');
+      if (prev === null) reload();
+    } finally {
+      setPendingReadId(null);
+    }
   };
 
   return (
@@ -87,6 +104,14 @@ export default function HONotificationsScreen({ onBack }: HONotificationsProps) 
         contentContainerStyle={styles.bodyContent}
         showsVerticalScrollIndicator={false}
       >
+        {actionError && (
+          <View style={styles.banner}>
+            <Text style={styles.bannerText}>{actionError}</Text>
+            <TouchableOpacity onPress={() => void reload()} activeOpacity={0.8}>
+              <Text style={styles.bannerAction}>Retry</Text>
+            </TouchableOpacity>
+          </View>
+        )}
         {loading && <ActivityIndicator style={{ marginTop: 20 }} color={C.cyan700} />}
         {!!error && !loading && <Text style={styles.stateText}>{error}</Text>}
         {!loading && !error && notifications.length === 0 && (
@@ -105,9 +130,11 @@ export default function HONotificationsScreen({ onBack }: HONotificationsProps) 
                     styles.notifRow,
                     i < notifications.length - 1 && styles.notifRowBorder,
                     isUnread && styles.notifRowUnread,
+                    pendingReadId === notif.id && styles.notifRowPending,
                   ]}
                   activeOpacity={0.85}
                   onPress={() => isUnread && markRead(notif.id)}
+                  disabled={pendingReadId === notif.id}
                 >
                   <View style={[styles.notifIcon, isUnread && styles.notifIconUnread]}>
                     <Icon size={19} color={C.cyan700} />
@@ -152,6 +179,13 @@ const styles = StyleSheet.create({
   bodyContent: { paddingHorizontal: Spacing.screenH, paddingTop: 14, paddingBottom: 20 },
 
   stateText: { color: C.ink500, fontSize: 16.5, fontFamily: 'Inter', textAlign: 'center', marginTop: 30 },
+  banner: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    backgroundColor: '#fef2f2', borderWidth: 1, borderColor: '#fecaca',
+    borderRadius: 12, padding: 10, marginBottom: 12,
+  },
+  bannerText: { flex: 1, color: '#7f1d1d', fontSize: 12.5, fontFamily: 'Inter', lineHeight: 18 },
+  bannerAction: { color: C.cyan700, fontSize: 12.5, fontWeight: '700', fontFamily: 'Inter', marginLeft: 12 },
 
   notificationList: {
     backgroundColor: C.white, borderWidth: 1, borderColor: C.line,
@@ -160,6 +194,7 @@ const styles = StyleSheet.create({
   notifRow: { flexDirection: 'row', gap: 11, padding: 14, position: 'relative' },
   notifRowBorder: { borderBottomWidth: 1, borderBottomColor: '#f0f3f6' },
   notifRowUnread: { backgroundColor: '#f2fbfd' },
+  notifRowPending: { opacity: 0.7 },
   notifIcon: {
     width: 34, height: 34, borderRadius: 12,
     backgroundColor: '#f7f9fb', alignItems: 'center', justifyContent: 'center', flexShrink: 0,

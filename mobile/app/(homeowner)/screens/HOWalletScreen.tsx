@@ -44,6 +44,7 @@ import { useAsyncData } from '../../../src/hooks/useAsyncData';
 import { api, MIN_TOPUP_PHP } from '../../../src/lib/api';
 import { peso, shortDate } from '../../../src/lib/format';
 import ScreenSkeleton from '../../../src/components/ScreenSkeleton';
+import { canWithdrawBalance, getWithdrawalHint } from '../../../src/lib/walletRules';
 
 /**
  * How long to wait for the top-up to appear after Stripe says it succeeded.
@@ -274,7 +275,13 @@ export default function HOWalletScreen() {
               <Text style={styles.quickActionText}>Withdraw</Text>
             </TouchableOpacity>
             <View style={styles.actionDivider} />
-            <TouchableOpacity style={styles.quickActionBtn} activeOpacity={0.8}>
+            <TouchableOpacity
+              style={[styles.quickActionBtn, styles.quickActionBtnDisabled]}
+              activeOpacity={0.8}
+              disabled
+              accessibilityRole="button"
+              accessibilityLabel="Transfer coming soon"
+            >
               <ArrowRightLeft size={22} color={C.white} />
               <Text style={styles.quickActionText}>Transfer</Text>
             </TouchableOpacity>
@@ -528,16 +535,19 @@ export default function HOWalletScreen() {
                 keyboardType="decimal-pad"
                 placeholder="0.00"
                 placeholderTextColor={C.ink400}
-                editable={!withdrawing}
+                editable={!withdrawing && canWithdrawBalance(availableToWithdraw)}
               />
             </View>
+            {!canWithdrawBalance(availableToWithdraw) && (
+              <Text style={styles.modalHint}>{getWithdrawalHint(availableToWithdraw)}</Text>
+            )}
             <TextInput
               style={styles.destinationInput}
               value={withdrawDestination}
               onChangeText={setWithdrawDestination}
               placeholder="GCash number or bank account details"
               placeholderTextColor={C.ink400}
-              editable={!withdrawing}
+              editable={!withdrawing && canWithdrawBalance(availableToWithdraw)}
             />
 
             {!!withdrawError && <Text style={styles.modalError}>{withdrawError}</Text>}
@@ -552,12 +562,20 @@ export default function HOWalletScreen() {
                 <Text style={styles.modalCancelText}>Cancel</Text>
               </TouchableOpacity>
               <TouchableOpacity
-                style={[styles.modalBtn, styles.modalConfirm, (!isValidWithdrawal || withdrawing) && styles.modalBtnDisabled]}
+                style={[
+                  styles.modalBtn,
+                  styles.modalConfirm,
+                  (!isValidWithdrawal || withdrawing || !canWithdrawBalance(availableToWithdraw)) && styles.modalBtnDisabled,
+                ]}
                 onPress={() => void submitWithdrawal()}
-                disabled={!isValidWithdrawal || withdrawing}
+                disabled={!isValidWithdrawal || withdrawing || !canWithdrawBalance(availableToWithdraw)}
                 activeOpacity={0.85}
               >
-                {withdrawing ? <ActivityIndicator color={C.white} /> : <Text style={styles.modalConfirmText}>Request Withdrawal</Text>}
+                {withdrawing ? (
+                  <ActivityIndicator color={C.white} />
+                ) : (
+                  <Text style={styles.modalConfirmText}>Request Withdrawal</Text>
+                )}
               </TouchableOpacity>
             </View>
           </View>
@@ -593,6 +611,7 @@ const styles = StyleSheet.create({
   balanceAmount: { color: C.white, fontSize: 32.5, fontWeight: '800', fontFamily: 'Inter', marginBottom: 16 },
   quickActions: { flexDirection: 'row', alignItems: 'center' },
   quickActionBtn: { flex: 1, alignItems: 'center', gap: 4 },
+  quickActionBtnDisabled: { opacity: 0.6 },
   quickActionText: { color: 'rgba(255,255,255,0.85)', fontSize: 13.5, fontWeight: '600', fontFamily: 'Inter' },
   actionDivider: { width: 1, height: 34, backgroundColor: 'rgba(255,255,255,0.2)' },
 

@@ -688,43 +688,48 @@ export default function HOCreateJobScreen({
         </Text>
       </View>
 
-      <ScrollView
+      <KeyboardAvoidingView
         style={styles.body}
-        contentContainerStyle={styles.bodyContent}
-        showsVerticalScrollIndicator={false}
-        keyboardShouldPersistTaps="handled"
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={24}
       >
+        <ScrollView
+          style={styles.body}
+          contentContainerStyle={styles.bodyContent}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+        >
         {/* ── Step 1 · Service ─────────────────────────────────────────── */}
         {step === 1 && (
           <View>
             <Text style={styles.stepTitle}>Select a Service<Text style={styles.requiredAsterisk}> *</Text></Text>
             <Text style={styles.stepSubtitle}>What service do you need?</Text>
-            <View style={styles.locationPrompt}>
-              <Text style={styles.locationPromptTitle}>Use your default location?</Text>
-              <Text style={styles.locationPromptText}>
-                {profile?.address ?? 'No profile address saved yet.'}
-              </Text>
-              <View style={styles.locationPromptActions}>
-                <TouchableOpacity
-                  style={[styles.locationChoice, useProfileLocation && styles.locationChoiceActive]}
-                  onPress={() => {
-                    setUseProfileLocation(true);
-                    if (profile?.address) setLocation(profile.address);
-                  }}
-                >
-                  <Text style={styles.locationChoiceText}>Use default</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[styles.locationChoice, !useProfileLocation && styles.locationChoiceActive]}
-                  onPress={() => {
-                    setUseProfileLocation(false);
-                    setLocation('');
-                  }}
-                >
-                  <Text style={styles.locationChoiceText}>Enter custom</Text>
-                </TouchableOpacity>
+            {!!profile?.address && (
+              <View style={styles.locationPrompt}>
+                <Text style={styles.locationPromptTitle}>Use your default location?</Text>
+                <Text style={styles.locationPromptText}>{profile.address}</Text>
+                <View style={styles.locationPromptActions}>
+                  <TouchableOpacity
+                    style={[styles.locationChoice, useProfileLocation && styles.locationChoiceActive]}
+                    onPress={() => {
+                      setUseProfileLocation(true);
+                      setLocation(profile.address ?? '');
+                    }}
+                  >
+                    <Text style={styles.locationChoiceText}>Use default</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.locationChoice, !useProfileLocation && styles.locationChoiceActive]}
+                    onPress={() => {
+                      setUseProfileLocation(false);
+                      setLocation('');
+                    }}
+                  >
+                    <Text style={styles.locationChoiceText}>Enter custom</Text>
+                  </TouchableOpacity>
+                </View>
               </View>
-            </View>
+            )}
             {/* Skeleton tiles in the grid's own shape, so the step doesn't
                 jump from a line of text to a two-column grid on arrival. */}
             {categories.loading && (
@@ -1175,7 +1180,8 @@ export default function HOCreateJobScreen({
         )}
 
         <View style={{ height: 20 }} />
-      </ScrollView>
+        </ScrollView>
+      </KeyboardAvoidingView>
 
       {/* Footer */}
       {/* BUG-005: same edge-to-edge safe-area gap as BUG-002's bottom nav — pad
@@ -1365,7 +1371,9 @@ const styles = StyleSheet.create({
   locationPromptActions: { flexDirection: 'row', gap: 8, marginTop: 12 },
   locationChoice: { flex: 1, alignItems: 'center', borderWidth: 1, borderColor: Colors.line, borderRadius: 10, paddingVertical: 9 },
   locationChoiceActive: { backgroundColor: '#e6f8fb', borderColor: Colors.brandTeal },
+  locationChoiceDisabled: { opacity: 0.55 },
   locationChoiceText: { color: Colors.brandDark, fontSize: 13, fontWeight: '700', fontFamily: 'Inter' },
+  locationChoiceTextDisabled: { color: Colors.muted },
 
   serviceGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },
   serviceCard: {

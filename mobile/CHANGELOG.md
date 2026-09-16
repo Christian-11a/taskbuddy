@@ -5,6 +5,34 @@ app works today; this file covers how it got there and why. Newest first.
 
 ---
 
+## [Medium] Wallet — transfer action is disabled until the backend payout flow exists
+
+The wallet's dead transfer button is now hidden behind a disabled "Coming soon" state instead of a no-op action.
+
+## [Medium] Wallet → Withdraw — zero-balance withdrawals are blocked with a clear reason
+
+The withdraw action is disabled at ₱0.00 and shows an inline message telling the user the minimum threshold needed before a withdrawal can be requested.
+
+## [Medium] Add Money — top-up minimum validation matches the provider rules
+
+The add-money helper text and client-side validation now align with the provider's actual minimum amount, preventing the mismatch between the UI and the checkout rejection.
+
+## [Medium] Create Job — default location is hidden when no profile address exists
+
+The default-location option is disabled and relabelled when no address is saved, so the screen no longer shows contradictory default and empty-state text.
+
+## [Medium] Create Job — back navigation returns to My Jobs instead of dropping to Home
+
+The create-job flow is now pushed onto the homeowner navigation stack, so backing out returns the user to the previously active My Jobs tab.
+
+## [Medium] Create Job — budget entry stays above the keyboard during typing
+
+The form uses a keyboard-aware scroll container so the budget field scrolls into view as the user types.
+
+## [Medium] Notifications & Proposals — failed actions show inline errors with retry
+
+Marking notifications as read and accepting/rejecting proposals now show an inline banner and a retry action when the request fails, without leaving the UI in a silent failed state.
+
 ## [High] HOHomeScreen — widget failures now show a local error and Retry action
 
 Wallet, jobs, categories, and notifications load independently, so one failed
