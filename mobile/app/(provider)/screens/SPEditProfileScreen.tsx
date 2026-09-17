@@ -101,6 +101,11 @@ export default function SPEditProfileScreen({ onBack, onSave }: SPEditProfileScr
   const requestSave = () => {
     setError(null);
     if (!name.trim()) return setError('Full name cannot be empty.');
+    // Recommendations match providers to jobs within their service radius of
+    // this address; without one a provider is never invited to anything.
+    if (!location.trim()) {
+      return setError('Enter your address so nearby jobs can be matched to you.');
+    }
     if (!categoryId) return setError('Please select the service you offer.');
     if (bio.trim().length < 20) return setError('Bio must be at least 20 characters.');
     setShowSaveConfirmation(true);
