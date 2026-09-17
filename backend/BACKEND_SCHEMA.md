@@ -45,6 +45,7 @@ recommendation model (see [Recommendation Engine Integration](#9-recommendation-
 29. [Stripe Connect Payouts & Card-Funded Escrow (migrations 0026–0029)](#29-stripe-connect-payouts--card-funded-escrow-migrations-00260029)
 30. [Chat Attachments (migrations 0030–0031)](#30-chat-attachments-migrations-00300031)
 31. [Address Geocoding (no migration)](#31-address-geocoding-no-migration)
+32. [Matching Eligibility & Profile Coordinates (migration 0032)](#32-matching-eligibility--profile-coordinates-migration-0032)
 
 ---
 
@@ -484,6 +485,9 @@ Definitions the backend must implement:
   `deactivated_at is null`, who have not already applied to the job, and whose category matches
   the job **or** whose distance to the job is within their `service_radius_km`. `pool_size` on
   `recommendation_runs` records how many were scored.
+  > **Superseded by migration 0032 (§32):** every provider must now also be verified, have a
+  > bio and be located, and **all** providers — same category or not — must be within their own
+  > `service_radius_km`.
 
 ### Feature-vector SQL function
 
@@ -2242,3 +2246,68 @@ another country. The mobile client reads only `latitude`/`longitude`; `formatted
 Every call is a billed Google request, so the route carries its own limit, `@ThrottleGeocode()`:
 **10 / min per IP** (§28.4's per-endpoint model). No response caching: a homeowner geocodes once
 per job, and a cache would need an invalidation story for addresses Google later refines.
+
+---
+
+## 32. Matching Eligibility & Profile Coordinates (migration 0032)
+
+An audit of the live matching path found that no provider created through the app could ever be
+recommended, and that the pool could crash or mislead the model when anyone did qualify. Every
+cause below was reproduced on real Postgres (`test/sql/matching.test.mjs`) or against the deployed
+ml-service before being fixed.
+
+### 32.1 Profiles get coordinates from their address
+
+`fn_job_provider_features` skips any provider whose profile has no `latitude`/`longitude`, and
+nothing in the product ever wrote them: the Edit Profile screens send `address` and `city`, and
+`PATCH /profiles/me` stored them as text. The pool was empty for every real provider.
+
+`ProfilesService.updateProfile` now geocodes the address through the shared `GeocodingService`
+(§31) and stores the result, for **both roles** (a homeowner's coordinates prefill job creation):
+
+- Google is called only when `address` or `city` **changed**, or when a saved address still has
+  **no coordinates** (profiles saved before this change). A save that touches neither — a name, a
+  phone number — never calls Google and can never be blocked by it.
+- `city` is appended to the query unless the address already contains it; the app keeps it in its
+  own field, and a street alone is often ambiguous.
+- An address that cannot be verified **rejects the whole save** with the geocoder's `400` (not
+  found, too general, partial match) or `503` (Google unavailable, or `GOOGLE_GEOCODING_API_KEY`
+  unset). Saving it without coordinates would leave a provider silently unmatchable, with nothing
+  telling them why. Both Edit Profile screens already render the API message.
+- Clearing the address (`""`) clears the coordinates.
+- `latitude`/`longitude` are **no longer accepted** from the client (a `400` under
+  `forbidNonWhitelisted`). No app sent them, and accepting them would let a provider place
+  themselves anywhere. Coordinates are server-derived only.
+- No extra rate limit: the route stays on the global 240/min.
+
+Existing providers get coordinates on their next profile save that includes their address, which
+both Edit Profile screens always send.
+
+### 32.2 Who is eligible (migration 0032)
+
+`0032_matching_eligibility.sql` replaces `fn_job_provider_features` with an unchanged signature
+and unchanged features; only the WHERE clause differs:
+
+| Rule | Why |
+|---|---|
+| `pp.bio is not null` | Signup creates the provider row with a NULL bio (0015). ml-service requires `provider_bio` to be a string, so **one** such provider made the whole batch fail with `422` — nobody for that job was scored. `recommendation_candidates.provider_bio` is `not null` as well |
+| `pp.is_verified` | Verification gates applying (§17). An unverified invitee could only reach `403 verification_required` |
+| distance ≤ `pp.service_radius_km` for **every** provider | The old rule admitted a same-category provider at any distance (a Cebu plumber for a Quezon City job). The model was trained on distances up to 20 km, so it scores 350 km much like 20 km, and far providers could take the top 8. The radius is the provider's own, set in Edit Profile (default 15 km) |
+| `pr.deleted_at is null` | Explicit; deletion already sets `deactivated_at` |
+
+Unchanged: available, not suspended, located, and not already applied.
+
+### 32.3 Unscored jobs are retried
+
+The scheduler flips a job to `recommending` *before* scoring it, so a run that fails — ml-service
+asleep or erroring — or that finds nobody eligible leaves the job in `recommending` with no
+`recommendation_runs` row. The timeout sweep only reads `open` jobs, so that job used to wait for
+the client to press retry.
+
+`RecommendationsScheduler.retryUnscoredJobs` runs on every tick, after the timeout sweep: up to 20
+`recommending` jobs untouched for at least 60 seconds, oldest first, minus those that already have
+a run, are scored again. The 60-second grace keeps it off a job a manual trigger or the same tick
+has just moved and is still scoring. Because an empty pool records no run, a job keeps being
+retried until someone becomes eligible (verifies, sets an address) or it expires at 24 h — the
+cost of an empty retry is one feature query, with no ml-service call.
+
