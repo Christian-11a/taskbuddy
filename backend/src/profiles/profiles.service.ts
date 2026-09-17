@@ -58,11 +58,16 @@ export class ProfilesService {
    * `fn_job_provider_features` skips anyone without them, so a provider with no
    * coordinates is never recommended.
    *
-   * Google is called only when the address or city changed, or when a saved
-   * address still has no coordinates (profiles saved before this existed), so
-   * editing a name or phone number never depends on Google. An address that
-   * cannot be verified rejects the save with the geocoder's own 400/503 —
-   * storing it without coordinates would leave a provider silently unmatched.
+   * A **changed** address or city is geocoded, and an address that cannot be
+   * verified rejects the save with the geocoder's own 400/503 — storing it
+   * without coordinates would leave a provider silently unmatched.
+   *
+   * An **unchanged** address that still has no coordinates (saved before this
+   * existed — the apps send the address on every save) is geocoded
+   * opportunistically: success fills the coordinates in, failure is logged and
+   * the rest of the save goes through. Editing a name or phone number must not
+   * depend on Google, or on an old address it cannot place.
+   *
    * Clearing the address clears the coordinates.
    */
   private async resolveLocation(
@@ -78,17 +83,29 @@ export class ProfilesService {
     const unchanged =
       address === (user.address ?? '').trim() &&
       city === (user.city ?? '').trim();
-    if (unchanged && user.latitude != null && user.longitude != null) {
-      return {};
-    }
+    const located = user.latitude != null && user.longitude != null;
+    if (unchanged && located) return {};
 
     // The app keeps city in its own field; Google needs it to place a street.
     const query =
       city && !address.toLowerCase().includes(city.toLowerCase())
         ? `${address}, ${city}`
         : address;
-    const { latitude, longitude } = await this.geocoding.geocode(query);
-    return { latitude, longitude };
+
+    if (!unchanged) {
+      const { latitude, longitude } = await this.geocoding.geocode(query);
+      return { latitude, longitude };
+    }
+
+    try {
+      const { latitude, longitude } = await this.geocoding.geocode(query);
+      return { latitude, longitude };
+    } catch (err) {
+      this.logger.warn(
+        `Profile ${user.id}: saved address still has no coordinates (${(err as Error).message})`,
+      );
+      return {};
+    }
   }
 
   /**

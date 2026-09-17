@@ -1,4 +1,8 @@
-import { BadRequestException, ConflictException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  ServiceUnavailableException,
+} from '@nestjs/common';
 import { ProfilesService } from './profiles.service';
 import type { SupabaseService } from '../supabase/supabase.service';
 import type { UploadsService } from '../uploads/uploads.service';
@@ -314,6 +318,53 @@ describe('ProfilesService', () => {
         latitude: null,
         longitude: null,
       });
+    });
+
+    it('still saves a name change when an old, unlocated address cannot be verified', async () => {
+      // Every profile saved before geocoding existed has an address and no
+      // coordinates, and the apps resend the address on every save. A name
+      // edit must not fail because Google cannot place that old address.
+      const geocoding = createGeocodingMock(
+        new BadRequestException(
+          'That address is too general to locate. Add a house number and street.',
+        ),
+      );
+      const { service, update } = setup(geocoding);
+      jest.spyOn(service['logger'], 'warn').mockImplementation(() => {});
+
+      await service.updateProfile(
+        {
+          ...located,
+          address: 'Quezon City',
+          city: null,
+          latitude: null,
+          longitude: null,
+        },
+        { full_name: 'Boy Plumber', address: 'Quezon City' },
+      );
+
+      expect(geocoding.geocode).toHaveBeenCalledTimes(1);
+      expect(update()).toEqual({
+        full_name: 'Boy Plumber',
+        address: 'Quezon City',
+      });
+    });
+
+    it('still saves an unchanged address when geocoding is not configured', async () => {
+      const { service, update } = setup(
+        createGeocodingMock(
+          new ServiceUnavailableException('Address lookup is not configured'),
+        ),
+      );
+      jest.spyOn(service['logger'], 'warn').mockImplementation(() => {});
+
+      await service.updateProfile(
+        { ...located, latitude: null, longitude: null },
+        { phone: '09171234567', address: '12 Mabini St', city: 'Quezon City' },
+      );
+
+      expect(update()).not.toHaveProperty('latitude');
+      expect(update()).toMatchObject({ phone: '09171234567' });
     });
 
     it('rejects the whole save when the address cannot be verified', async () => {
