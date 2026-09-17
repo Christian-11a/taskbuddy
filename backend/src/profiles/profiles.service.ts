@@ -66,7 +66,7 @@ export class ProfilesService {
    * existed — the apps send the address on every save) is geocoded
    * opportunistically: success fills the coordinates in, failure is logged and
    * the rest of the save goes through. Editing a name or phone number must not
-   * depend on Google, or on an old address it cannot place.
+   * depend on the geocoder, or on an old address it cannot place.
    *
    * Clearing the address clears the coordinates.
    */
@@ -86,7 +86,7 @@ export class ProfilesService {
     const located = user.latitude != null && user.longitude != null;
     if (unchanged && located) return {};
 
-    // The app keeps city in its own field; Google needs it to place a street.
+    // The app keeps city in its own field; the geocoder needs it to place a street.
     const query =
       city && !address.toLowerCase().includes(city.toLowerCase())
         ? `${address}, ${city}`

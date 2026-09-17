@@ -6,30 +6,45 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 
-const GEOCODE_URL = 'https://maps.googleapis.com/maps/api/geocode/json';
+const GEOCODE_URL = 'https://api.geoapify.com/v1/geocode/search';
 
-/** Google answers in well under a second; past this the app should say so. */
+/** Geoapify answers in well under a second; past this the app should say so. */
 const GEOCODE_TIMEOUT_MS = 5000;
 
 /**
- * The only `location_type`s precise enough to send a provider to. `GEOMETRIC_CENTER`
- * and `APPROXIMATE` are the centre of a street, barangay or city — a job pinned
- * there would feed the recommendation engine's `distance_km` feature a guess.
+ * Street level or better. `building` and `amenity` (a named place) are points;
+ * `street` places the job on the right street, which is accurate enough for
+ * service radii measured in kilometres. Anything coarser — `suburb`,
+ * `district`, `postcode`, `city`, … — is the centre of an area, and a job
+ * pinned there would feed the recommendation engine's `distance_km` a guess.
+ *
+ * Building-only would be stricter, but OpenStreetMap (Geoapify's data) has few
+ * house numbers in the Philippines, so most real addresses would be refused.
  */
-const PRECISE_LOCATION_TYPES = ['ROOFTOP', 'RANGE_INTERPOLATED'];
+const PRECISE_RESULT_TYPES = ['building', 'amenity', 'street'];
+
+/**
+ * Below this street-level confidence Geoapify doubts the result is the street
+ * that was typed — it matched something else. 0.2 is the "not confirmed"
+ * level from Geoapify's own geocoding docs (DECLINE_LEVEL). Street confidence
+ * is used rather than the overall score because a missing house number lowers
+ * the overall score, and street level is all this check asks for.
+ */
+const MIN_STREET_CONFIDENCE = 0.2;
 
 const UNAVAILABLE_MESSAGE =
   "We couldn't verify addresses right now. Try again shortly.";
 
-interface GeocodeResponse {
-  status: string;
-  error_message?: string;
+interface GeoapifyResponse {
   results?: {
-    formatted_address: string;
-    partial_match?: boolean;
-    geometry: {
-      location: { lat: number; lng: number };
-      location_type: string;
+    lat: number;
+    lon: number;
+    formatted?: string;
+    result_type?: string;
+    rank?: {
+      confidence?: number;
+      confidence_street_level?: number;
+      match_type?: string;
     };
   }[];
 }
@@ -41,14 +56,18 @@ export interface GeocodedAddress {
 }
 
 /**
- * Turns a typed address — a job's or a profile's — into coordinates
- * (BACKEND_SCHEMA.md §31, §32).
+ * Turns a typed address — a job's or a profile's — into coordinates, using
+ * Geoapify's Geocoding API (BACKEND_SCHEMA.md §31, §32).
  *
- * The Google key lives here, not in the mobile bundle, where anyone could lift
- * it and bill against it. Results are restricted to the Philippines, and only
- * a precise match is returned: the app refuses to post a job without verified
- * coordinates, so a vague answer is a 400 the homeowner can act on, never a
+ * The key lives here, not in the mobile bundle, where anyone could lift it and
+ * spend the account's daily credits. Results are restricted to the
+ * Philippines, and only a street-level-or-better match the geocoder is not
+ * doubtful about is returned: the app refuses to post a job without verified
+ * coordinates, so a vague answer is a 400 the user can act on, never a
  * silently wrong pin.
+ *
+ * Geoapify's free plan requires attribution; the apps show it on the Help &
+ * Support screen.
  */
 @Injectable()
 export class GeocodingService {
@@ -56,7 +75,7 @@ export class GeocodingService {
   private readonly apiKey: string | undefined;
 
   constructor(config: ConfigService) {
-    this.apiKey = config.get<string>('GOOGLE_GEOCODING_API_KEY') || undefined;
+    this.apiKey = config.get<string>('GEOAPIFY_API_KEY') || undefined;
   }
 
   async geocode(address: string): Promise<GeocodedAddress> {
@@ -65,7 +84,7 @@ export class GeocodingService {
     }
 
     // The DTO's length check counts whitespace; an address that is only
-    // spaces would reach Google as INVALID_REQUEST and read as an outage.
+    // spaces would reach the geocoder as an empty query.
     const trimmed = address.trim();
     if (trimmed.length < 5) {
       throw new BadRequestException(
@@ -74,62 +93,61 @@ export class GeocodingService {
     }
 
     const params = new URLSearchParams({
-      address: trimmed,
-      components: 'country:PH',
-      key: this.apiKey,
+      text: trimmed,
+      filter: 'countrycode:ph',
+      lang: 'en',
+      limit: '1',
+      format: 'json',
+      apiKey: this.apiKey,
     });
 
-    let body: GeocodeResponse;
+    let body: GeoapifyResponse;
     try {
       const response = await fetch(`${GEOCODE_URL}?${params.toString()}`, {
         signal: AbortSignal.timeout(GEOCODE_TIMEOUT_MS),
       });
       if (!response.ok) {
-        this.logger.warn(`Geocoding API returned HTTP ${response.status}`);
+        // 401 (bad key), 429 (daily credits used up), 5xx: our configuration
+        // or Geoapify's problem, not the user's. The body stays in the log —
+        // it can describe the key and the account.
+        this.logger.warn(
+          `Geoapify returned HTTP ${response.status}: ${await response.text()}`,
+        );
         throw new ServiceUnavailableException(UNAVAILABLE_MESSAGE);
       }
-      body = (await response.json()) as GeocodeResponse;
+      body = (await response.json()) as GeoapifyResponse;
     } catch (err) {
       if (err instanceof ServiceUnavailableException) throw err;
       this.logger.warn(`Geocoding request failed: ${(err as Error).message}`);
       throw new ServiceUnavailableException(UNAVAILABLE_MESSAGE);
     }
 
-    if (body.status === 'ZERO_RESULTS') {
+    const result = body.results?.[0];
+    if (!result) {
       throw new BadRequestException(
         "We couldn't find that address. Check the street and city.",
       );
     }
-    const result = body.results?.[0];
-    if (body.status !== 'OK' || !result) {
-      // OVER_QUERY_LIMIT, REQUEST_DENIED, INVALID_REQUEST, UNKNOWN_ERROR: our
-      // configuration or Google's problem, not the homeowner's. The raw status
-      // and message stay in the log — they can name the key's restrictions.
-      this.logger.warn(
-        `Geocoding API status ${body.status}${body.error_message ? `: ${body.error_message}` : ''}`,
-      );
-      throw new ServiceUnavailableException(UNAVAILABLE_MESSAGE);
-    }
 
-    // Google matched only part of what was typed — a misspelt street, or a
-    // house number it could not find — and may have pinned a different, if
-    // precise, address. Posting there would send a provider to the wrong door.
-    if (result.partial_match) {
-      throw new BadRequestException(
-        "We couldn't match that address exactly. Check the house number, street and city.",
-      );
-    }
-
-    if (!PRECISE_LOCATION_TYPES.includes(result.geometry.location_type)) {
+    if (!PRECISE_RESULT_TYPES.includes(result.result_type ?? '')) {
       throw new BadRequestException(
         'That address is too general to locate. Add a house number and street.',
       );
     }
 
+    // A named place may carry no street score; fall back to the overall one.
+    const confidence =
+      result.rank?.confidence_street_level ?? result.rank?.confidence ?? 0;
+    if (confidence < MIN_STREET_CONFIDENCE) {
+      throw new BadRequestException(
+        "We couldn't match that address exactly. Check the house number, street and city.",
+      );
+    }
+
     return {
-      latitude: result.geometry.location.lat,
-      longitude: result.geometry.location.lng,
-      formatted_address: result.formatted_address,
+      latitude: result.lat,
+      longitude: result.lon,
+      formatted_address: result.formatted ?? trimmed,
     };
   }
 }

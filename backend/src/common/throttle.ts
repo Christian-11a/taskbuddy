@@ -45,8 +45,10 @@ export const ThrottleAuth = () =>
   Throttle({ default: { limit: 10, ttl: 60_000 } });
 
 /**
- * Address geocoding. Every call is a billed request to Google's Geocoding API,
- * so this route must not become a free proxy for someone else's lookups. Ten a
+ * Address geocoding. Every call spends one of the Geoapify account's daily
+ * credits (3,000 on the free plan), so this route must not become a free proxy
+ * for someone else's lookups — exhausting them would stop every job post and
+ * address change on the platform for the rest of the day. Ten a
  * minute is several attempts at correcting a mistyped address, which is all a
  * homeowner posting a job needs.
  */
