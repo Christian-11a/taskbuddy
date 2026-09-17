@@ -1778,7 +1778,7 @@ Read the table that way; the numbers mean much less if you read them as a platfo
 | Everything | 240 / min | A burst ceiling on any one route. A mobile screen loading jobs, wallet and an unread count on focus legitimately fires several requests at once; the number has to leave that alone and still refuse a script pointed at a single endpoint |
 | `POST /payments/topup`, `POST /payments/checkout-session` | 5 / min | A person tops up once. This is the ceiling that stops TaskBuddy being a free card-testing endpoint pointed at Stripe. Both routes carry it, so neither is a way around the other |
 | `POST /auth/{register,login,admin/login,forgot-password,reset-password,send-email-otp,verify-email-otp,change-password}` | 10 / min **each** | Two attacks at once: guessing one account's password, and using someone else's address as a mail relay by requesting codes they never asked for. Ten leaves room for a person mistyping theirs |
-| `GET /jobs/geocode` | 10 / min | Each call is a billed Google Geocoding request (§31); a homeowner correcting a typo needs a few, not hundreds |
+| `GET /jobs/geocode` | 10 / min | Each call spends one of Geoapify's 3,000 free daily credits (§31); a homeowner correcting a typo needs a few, not hundreds |
 | `POST /payments/webhook` | exempt (`@SkipThrottle()`) | The caller is Stripe, already authenticated by the signature over the raw body, and it retries for three days. Throttling it would only delay the credit a payer is waiting for |
 
 **One throttler, not several named ones.** Every entry in `ThrottlerModule.forRoot`'s list applies
@@ -2227,25 +2227,43 @@ to the profile address or a Metro Manila default, because `jobs.latitude/longitu
 provider feed's radius filter and the recommendation engine's `distance_km` feature (§8). A wrong
 pin is worse than no job.
 
-`GeocodingService` (`src/jobs/geocoding.service.ts`) calls Google's Geocoding API server-side with
-`GOOGLE_GEOCODING_API_KEY`. The key stays on the API host: a key in the mobile bundle can be
-extracted and billed against. Restrict it to the Geocoding API in Google Cloud Console.
+`GeocodingService` (`src/geocoding/geocoding.service.ts`) calls **Geoapify**'s Geocoding API
+(`GET https://api.geoapify.com/v1/geocode/search`) server-side with `GEOAPIFY_API_KEY`. Geoapify was
+chosen over Google because its free plan (3,000 requests/day) needs no payment method. The key stays
+on the API host: a key in the mobile bundle can be extracted and its daily credits spent by anyone.
 
-| Google says | API answers |
+The request is `text=<address>&filter=countrycode:ph&lang=en&limit=1&format=json`, so an ambiguous
+address can never resolve to another country. Only the first result is judged:
+
+| Geoapify says | API answers |
 |---|---|
-| `OK`, first result `ROOFTOP` or `RANGE_INTERPOLATED`, not `partial_match` | `200 { latitude, longitude, formatted_address }` |
-| `OK`, first result has `partial_match: true` | `400` — Google matched only part of the input (e.g. a misspelt street or unknown house number) and may have pinned a different address, however precisely |
-| `OK`, first result `GEOMETRIC_CENTER` or `APPROXIMATE` | `400` — too general (a street, barangay or city centre); add a house number and street |
-| `ZERO_RESULTS` | `400` — address not found |
-| `OVER_QUERY_LIMIT`, `REQUEST_DENIED`, `INVALID_REQUEST`, `UNKNOWN_ERROR`, non-2xx, network error, 5 s timeout | `503` — generic "try again shortly"; the raw status is logged, never returned, since it can describe the key's restrictions |
+| `result_type` `building`, `amenity` or `street`, and street-level confidence ≥ 0.2 | `200 { latitude, longitude, formatted_address }` |
+| `result_type` `suburb`, `district`, `postcode`, `city`, `county`, `state`, `country` or `unknown` | `400` — too general (the centre of an area); add a house number and street |
+| street-level confidence < 0.2 | `400` — Geoapify doubts the result is the address that was typed (e.g. a misspelt street it matched to a different one) |
+| no results | `400` — address not found |
+| non-2xx (401 bad key, 429 daily credits used up, 5xx), network error, 5 s timeout | `503` — generic "try again shortly"; the response body is logged, never returned, since it can describe the key and account |
 | (no key configured) | `503 Address lookup is not configured` — like `/payments/*` without Stripe, the rest of the API is unaffected |
 
-Results are restricted with `components=country:PH`, so an ambiguous address can never resolve to
-another country. The mobile client reads only `latitude`/`longitude`; `formatted_address` is extra.
+**Precision is street level, on purpose.** Geoapify's data is OpenStreetMap, which has few house
+numbers in the Philippines; requiring a building match would refuse most real addresses. A street
+match is accurate to a few hundred metres, which is enough for service radii of several kilometres.
 
-Every call is a billed Google request, so the route carries its own limit, `@ThrottleGeocode()`:
+**Confidence.** Geoapify's docs recommend judging a match by its confidence scores, not
+`rank.match_type` (which only reports the level matched), and use 0.2 as the "not confirmed" level
+(`DECLINE_LEVEL`). The check uses `rank.confidence_street_level` — the overall `rank.confidence`
+drops when a house number is missing, which street level tolerates — falling back to
+`rank.confidence` for a named place that has no street score, and treating a result with neither
+as unconfirmed. The 0.2 threshold is the documented default, not calibrated on TaskBuddy's own
+addresses; revisit it if real addresses are refused or mismatched.
+
+**Attribution.** The free plan requires crediting Geoapify and OpenStreetMap. Both apps show it on
+the Help & Support screen.
+
+The mobile client reads only `latitude`/`longitude`; `formatted_address` is extra.
+
+Every call spends one daily credit, so the route carries its own limit, `@ThrottleGeocode()`:
 **10 / min per IP** (§28.4's per-endpoint model). No response caching: a homeowner geocodes once
-per job, and a cache would need an invalidation story for addresses Google later refines.
+per job, and a cache would need an invalidation story for addresses the map data later refines.
 
 ---
 
@@ -2270,11 +2288,11 @@ nothing in the product ever wrote them: the Edit Profile screens send `address` 
 - An **unchanged** address that still has **no coordinates** (every profile saved before this
   change — and the apps resend the address on every save) is geocoded **opportunistically**:
   success fills the coordinates in; failure is logged and the rest of the save goes through. A name
-  or phone edit is never blocked by Google, a missing key, or an old address it cannot place.
+  or phone edit is never blocked by the geocoder, a missing key, or an old address it cannot place.
 - `city` is appended to the query unless the address already contains it; the app keeps it in its
   own field, and a street alone is often ambiguous.
 - A changed address that cannot be verified **rejects the whole save** with the geocoder's `400` (not
-  found, too general, partial match) or `503` (Google unavailable, or `GOOGLE_GEOCODING_API_KEY`
+  found, too general, low confidence) or `503` (Geoapify unavailable, or `GEOAPIFY_API_KEY`
   unset). Saving it without coordinates would leave a provider silently unmatchable, with nothing
   telling them why. Both Edit Profile screens already render the API message.
 - Clearing the address (`""`) clears the coordinates.

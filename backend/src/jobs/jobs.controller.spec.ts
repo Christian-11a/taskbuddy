@@ -14,7 +14,7 @@ import { SupabaseService } from '../supabase/supabase.service';
 /**
  * HTTP-level checks for GET /jobs/geocode: the real controller, guard,
  * ValidationPipe (configured as in main.ts) and throttler, with Supabase and
- * Google stubbed. The unit spec for GeocodingService covers Google's answers;
+ * the geocoder stubbed. The unit spec for GeocodingService covers Geoapify's answers;
  * this covers what only the wiring can get wrong — route order against
  * `:id`, the client-only role, query validation, and the 10/min limit.
  */

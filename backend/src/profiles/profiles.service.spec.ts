@@ -270,7 +270,7 @@ describe('ProfilesService', () => {
       expect(geocoding.geocode).toHaveBeenCalledWith('12 Mabini St, Pasig');
     });
 
-    it('skips Google when the address is unchanged and already located', async () => {
+    it('skips the geocoder when the address is unchanged and already located', async () => {
       const { service, geocoding, update } = setup();
 
       await service.updateProfile(located, {
@@ -295,7 +295,7 @@ describe('ProfilesService', () => {
       expect(update()).toMatchObject({ latitude: 14.676, longitude: 121.0437 });
     });
 
-    it('never calls Google for a save that does not touch the address', async () => {
+    it('never calls the geocoder for a save that does not touch the address', async () => {
       const { service, geocoding, update } = setup();
 
       await service.updateProfile(
@@ -323,7 +323,7 @@ describe('ProfilesService', () => {
     it('still saves a name change when an old, unlocated address cannot be verified', async () => {
       // Every profile saved before geocoding existed has an address and no
       // coordinates, and the apps resend the address on every save. A name
-      // edit must not fail because Google cannot place that old address.
+      // edit must not fail because the geocoder cannot place that old address.
       const geocoding = createGeocodingMock(
         new BadRequestException(
           'That address is too general to locate. Add a house number and street.',

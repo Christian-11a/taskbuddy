@@ -11,12 +11,23 @@
 
 import React from 'react';
 import { Linking, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import { ArrowLeft, Mail } from 'lucide-react-native';
+import { ArrowLeft, ExternalLink, Mail } from 'lucide-react-native';
 import { Sizes, Spacing, V6Colors, V6Radii, V6Shadows } from '../constants/theme';
 
 const C = V6Colors;
 
 const SUPPORT_EMAIL = 'support@taskbuddy.ph';
+
+/**
+ * Required attribution. Addresses are geocoded through Geoapify (on the
+ * backend), whose free plan requires a visible link to Geoapify, and whose data
+ * is OpenStreetMap's (ODbL), which requires crediting its contributors.
+ * See backend/BACKEND_SCHEMA.md §31.
+ */
+const ATTRIBUTIONS = [
+  { label: 'Powered by Geoapify', url: 'https://www.geoapify.com/' },
+  { label: '© OpenStreetMap contributors', url: 'https://www.openstreetmap.org/copyright' },
+];
 
 const HO_FAQS = [
   { q: 'How do payments work?', a: 'Add money to your Wallet via Stripe Checkout. Funds are held in escrow once you hire a provider and released to them when you mark the job complete.' },
@@ -81,6 +92,25 @@ export default function HelpSupportScreen({ role, onBack }: HelpSupportScreenPro
           </View>
         </TouchableOpacity>
 
+        <Text style={[styles.sectionTitle, styles.sectionSpacing]}>Address data</Text>
+        <View style={styles.card}>
+          <Text style={styles.attributionIntro}>
+            Addresses are located using these services.
+          </Text>
+          {ATTRIBUTIONS.map((item) => (
+            <TouchableOpacity
+              key={item.url}
+              style={styles.attributionRow}
+              activeOpacity={0.8}
+              accessibilityRole="link"
+              onPress={() => Linking.openURL(item.url)}
+            >
+              <Text style={styles.attributionLink}>{item.label}</Text>
+              <ExternalLink size={15} color={C.cyan700} />
+            </TouchableOpacity>
+          ))}
+        </View>
+
         <View style={{ height: 20 }} />
       </ScrollView>
     </View>
@@ -130,4 +160,12 @@ const styles = StyleSheet.create({
   },
   contactTitle: { color: C.ink900, fontSize: 14.5, fontWeight: '700', fontFamily: 'Inter' },
   contactEmail: { color: C.cyan700, fontSize: 13.5, fontFamily: 'Inter', marginTop: 2 },
+
+  sectionSpacing: { marginTop: 24 },
+  attributionIntro: { color: C.ink500, fontSize: 13.5, fontFamily: 'Inter', paddingHorizontal: 15, paddingTop: 14, paddingBottom: 4 },
+  attributionRow: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    paddingHorizontal: 15, paddingVertical: 12,
+  },
+  attributionLink: { color: C.cyan700, fontSize: 14, fontWeight: '600', fontFamily: 'Inter' },
 });

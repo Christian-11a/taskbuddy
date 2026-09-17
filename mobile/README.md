@@ -280,7 +280,7 @@ sign-in, and notification rows remain available in the in-app list either way.
 | `HOEditProfileScreen` | `PATCH /profiles/me`, then `refreshProfile()`. The backend geocodes a changed address and rejects the save with a readable message if it can't verify it |
 | `HONotificationsScreen` | `GET /notifications`; mark read / read-all |
 | `HOSettingsScreen` | `POST /auth/change-password`, all five switches (`GET`/`PATCH /settings`), and `DELETE /profiles/me`. Account deletion displays backend blockers and signs out after success; Dark Mode still only saves a preference and Language remains a placeholder |
-| `HelpSupportScreen` (shared, `src/components/`) | Static FAQ + `mailto:` support link — no backend |
+| `HelpSupportScreen` (shared, `src/components/`) | Static FAQ + `mailto:` support link + the required Geoapify / OpenStreetMap attribution links — no backend |
 
 ### Provider (Service Provider — `SP*`)
 
@@ -459,13 +459,13 @@ by the Maestro sweep (`mobile/maestro/`) that need access this repo's code can't
 | # | Item | Blocks |
 |---|---|---|
 | 1 | Google Maps API key — never configured, so `HOCreateJobScreen`'s Location step (`MapView`) fatally crashes the app on every job-creation attempt | Job creation entirely, and transitively the cross-role hire loop |
-| 2 | Backend address geocoding endpoint — **API done**: `GET /jobs/geocode?address=` returns only precise, exact (not `partial_match`) `ROOFTOP`/`RANGE_INTERPOLATED` results, Philippines only (`backend/BACKEND_SCHEMA.md` §31). **Still needs** `GOOGLE_GEOCODING_API_KEY` set on the API host; until then the route answers `503` | Typed-address job posting; the mobile form now blocks posting until it receives verified coordinates |
+| 2 | Backend address geocoding endpoint — **API done**: `GET /jobs/geocode?address=` returns street-level-or-better results via Geoapify, Philippines only (`backend/BACKEND_SCHEMA.md` §31). **Still needs** `GEOAPIFY_API_KEY` set on the API host; until then the route answers `503` | Typed-address job posting; the mobile form now blocks posting until it receives verified coordinates |
 | 3 | Wallet balance seed SQL for the test client account | Escrow/hire and wallet/withdraw testing |
 | 4 | `recommendation_deadline` SQL nudge (per test job) | Nothing — workaround is waiting 5–15 real minutes |
 
-The address handoff deliberately keeps the Google geocoding credential on the
-backend. Add the key to the backend deployment environment, restrict it to
-the Geocoding API, and never put it in the mobile bundle. The mobile client
+The address handoff deliberately keeps the Geoapify geocoding key on the
+backend. Add it to the backend deployment environment and never put it in the
+mobile bundle. The mobile client
 already calls the route, stores the returned latitude/longitude with the job,
 and refuses to use the profile address or a Metro Manila fallback when the
 lookup fails.
