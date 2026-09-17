@@ -613,7 +613,10 @@ function AppContent() {
   if (spScreen === 'Notifications') {
     return (
       <View style={styles.screen}>
-        <SPNotificationsScreen onBack={spBack} />
+        <SPNotificationsScreen
+          onBack={spBack}
+          onOpenJob={(jobId) => spNavigate('Job Detail', jobId)}
+        />
       </View>
     );
   }

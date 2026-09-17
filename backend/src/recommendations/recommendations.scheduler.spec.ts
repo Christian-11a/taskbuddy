@@ -4,7 +4,10 @@ import type { SupabaseService } from '../supabase/supabase.service';
 
 type QueryResult = { data: unknown; error: { message: string } | null };
 
-function createSupabaseMock(resultsByTable: Record<string, QueryResult[]>) {
+function createSupabaseMock(
+  resultsByTable: Record<string, QueryResult[]>,
+  claimed: QueryResult = { data: [], error: null },
+) {
   const calls: { table: string; method: string; args: unknown[] }[] = [];
   const from = jest.fn((table: string) => {
     const result = resultsByTable[table]?.shift() ?? {
@@ -17,7 +20,15 @@ function createSupabaseMock(resultsByTable: Record<string, QueryResult[]>) {
         calls.push({ table, method, args });
         return builder;
       });
-    for (const method of ['select', 'update', 'eq', 'in', 'lt', 'limit']) {
+    for (const method of [
+      'select',
+      'update',
+      'eq',
+      'in',
+      'lt',
+      'order',
+      'limit',
+    ]) {
       builder[method] = chain(method);
     }
     builder.maybeSingle = jest.fn(() => Promise.resolve(result));
@@ -28,7 +39,12 @@ function createSupabaseMock(resultsByTable: Record<string, QueryResult[]>) {
     ) => Promise.resolve(result).then(resolve, reject);
     return builder;
   });
-  return { supabase: { admin: { from } } as unknown as SupabaseService, calls };
+  const rpc = jest.fn(() => Promise.resolve(claimed));
+  return {
+    supabase: { admin: { from, rpc } } as unknown as SupabaseService,
+    calls,
+    rpc,
+  };
 }
 
 function createRecommendationsMock(scoreJob = jest.fn().mockResolvedValue({})) {
@@ -76,7 +92,10 @@ describe('RecommendationsScheduler', () => {
 
       await scheduler.tick();
 
-      expect(updatesTo(calls, 'jobs')[0]).toEqual({ status: 'recommending' });
+      expect(updatesTo(calls, 'jobs')[0]).toMatchObject({
+        status: 'recommending',
+        recommendation_attempted_at: expect.any(String),
+      });
       expect(scoreJob).toHaveBeenCalledWith('j1', 'Fix sink', 'timeout');
     });
 
@@ -137,6 +156,68 @@ describe('RecommendationsScheduler', () => {
         (c) => c.table === 'jobs' && c.method === 'in',
       )?.args;
       expect(scoped).toEqual(['status', ['open', 'recommending']]);
+    });
+
+    it('scores the unscored jobs the claim function hands back', async () => {
+      const { recommendations, scoreJob } = createRecommendationsMock();
+      const { supabase, rpc } = createSupabaseMock(
+        {
+          jobs: [
+            { data: [], error: null }, // nothing newly timed out
+            { data: [], error: null }, // expireStaleJobs
+          ],
+        },
+        {
+          data: [
+            { id: 'j1', title: 'Fix sink' },
+            { id: 'j2', title: 'Clean house' },
+          ],
+          error: null,
+        },
+      );
+      const scheduler = new RecommendationsScheduler(supabase, recommendations);
+
+      await scheduler.tick();
+
+      // The run check, the batch limit and the attempt window all live in SQL
+      // (migration 0032, covered by test/sql/matching.test.mjs).
+      expect(rpc).toHaveBeenCalledWith('claim_unscored_recommending_jobs', {
+        p_retry_after_seconds: 300,
+        p_limit: 20,
+      });
+      expect(scoreJob.mock.calls).toEqual([
+        ['j1', 'Fix sink', 'timeout'],
+        ['j2', 'Clean house', 'timeout'],
+      ]);
+    });
+
+    it('keeps retrying other unscored jobs when one retry fails', async () => {
+      const scoreJob = jest
+        .fn()
+        .mockRejectedValueOnce(new Error('ml-service asleep'))
+        .mockResolvedValue({});
+      const { recommendations } = createRecommendationsMock(scoreJob);
+      const { supabase } = createSupabaseMock(
+        {
+          jobs: [
+            { data: [], error: null },
+            { data: [], error: null },
+          ],
+        },
+        {
+          data: [
+            { id: 'j1', title: 'Fix sink' },
+            { id: 'j2', title: 'Clean house' },
+          ],
+          error: null,
+        },
+      );
+      const scheduler = new RecommendationsScheduler(supabase, recommendations);
+      jest.spyOn(scheduler['logger'], 'error').mockImplementation(() => {});
+
+      await scheduler.tick();
+
+      expect(scoreJob).toHaveBeenCalledTimes(2);
     });
 
     it('swallows a failing sweep so the next minute still runs', async () => {

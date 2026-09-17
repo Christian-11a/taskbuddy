@@ -1,8 +1,6 @@
 import {
   IsBoolean,
   IsInt,
-  IsLatitude,
-  IsLongitude,
   IsNumber,
   IsOptional,
   IsString,
@@ -33,13 +31,9 @@ export class UpdateProfileDto {
   @IsString()
   city?: string;
 
-  @IsOptional()
-  @IsLatitude()
-  latitude?: number;
-
-  @IsOptional()
-  @IsLongitude()
-  longitude?: number;
+  // No latitude/longitude: coordinates are derived server-side by geocoding
+  // `address` (BACKEND_SCHEMA.md §32). Accepting them from the client would let
+  // a provider place themselves anywhere and skew recommendation matching.
 }
 
 export class UpsertProviderProfileDto {

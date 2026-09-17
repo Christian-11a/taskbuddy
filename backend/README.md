@@ -62,7 +62,7 @@ Job lifecycle: `open → recommending → assigned → in_progress → completed
 
 1. Create a project at [supabase.com](https://supabase.com).
 2. Apply **every** migration in [`supabase/migrations/`](./supabase/migrations) **in order**
-   (0001 → 0031), either by pasting each file into the SQL Editor or with the CLI:
+   (0001 → 0032), either by pasting each file into the SQL Editor or with the CLI:
 
    ```bash
    supabase link --project-ref <your-project-ref>
@@ -102,6 +102,7 @@ Job lifecycle: `open → recommending → assigned → in_progress → completed
    | `0029_payments_tick_cron.sql` | schedules the payments sweep (`/internal/tick/payments`, every 5 min) through 0025's `scheduler_tick`. Does nothing, with a notice, where pg_cron or 0025 is absent. Re-runnable. |
    | `0030_chat_attachments.sql` | `messages.attachment_path`; creates the private `chat-attachments` Storage bucket. See `BACKEND_SCHEMA.md` §30. |
    | `0031_messages_body_or_attachment.sql` | replaces 0006's `messages` body CHECK — 0030 added `attachment_path` but never relaxed it, so an attachment-only send (the only kind the app's attach flow produces) was rejected by Postgres. Now requires body OR attachment, never neither. Re-runnable. |
+   | `0032_matching_eligibility.sql` | replaces `fn_job_provider_features`' WHERE clause: providers must be verified, have a bio, and be within their own `service_radius_km` (same category or not). Without it, one signup-created provider with a NULL bio makes ml-service reject the whole scoring batch. Same signature and features. Also adds `jobs.recommendation_attempted_at` and the service-role-only `claim_unscored_recommending_jobs` the scheduler's retry uses. **Apply before deploying the API** — the scheduler writes that column. Re-runnable. See `BACKEND_SCHEMA.md` §32. |
 
    > Migrations 0008 and 0009 each run `alter type notification_type add value`.
    > Postgres allows this inside a transaction as long as the new value isn't
@@ -266,7 +267,7 @@ All bodies are JSON. 🔒 = requires auth; (client) / (provider) = role-restrict
 
 | Method & path | Description |
 |---|---|
-| `PATCH /profiles/me` 🔒 | update `full_name, phone, avatar_url, address, city, latitude, longitude`. `avatar_url` takes either an `avatars` Storage path (converted to a public URL) or an `https://` URL; `""` clears it |
+| `PATCH /profiles/me` 🔒 | update `full_name, phone, avatar_url, address, city`. A changed `address`/`city` is geocoded server-side and stores `latitude`/`longitude`; if it can't be verified the save is rejected (`400`, or `503` when geocoding is unavailable). An unchanged address still missing coordinates is geocoded best-effort and never blocks the save. Coordinates are never accepted from the client (`BACKEND_SCHEMA.md` §32). `avatar_url` takes either an `avatars` Storage path (converted to a public URL) or an `https://` URL; `""` clears it |
 | `PUT /profiles/me/provider` 🔒 (provider) | `{ category_id, bio (20–400 chars), years_experience?, service_radius_km? }` |
 | `PATCH /profiles/me/provider/availability` 🔒 (provider) | `{ is_available: boolean }` |
 | `DELETE /profiles/me` 🔒 | self-serve account deletion → `204`, or `409 { blockers[] }` while the account still has a balance, a pending withdrawal, escrow held, an open dispute, or a live job. A **soft** delete: the row survives (the ledger, reviews and ML snapshots reference it) with every identifying field scrubbed, and the Auth user is renamed, banned and signed out (migration 0023, `BACKEND_SCHEMA.md` §27.1) |
@@ -631,8 +632,14 @@ curl -X POST $API/jobs -H "Authorization: Bearer $TOKEN" -H "Content-Type: appli
 - A scheduler inside the API runs **every minute**: `open` jobs past their
   `recommendation_deadline` flip to `recommending` (at most once), get scored, and
   the top 8 providers receive `recommendation_invite` notifications.
+- Jobs left in `recommending` with no run (ml-service failed, or nobody was
+  eligible yet) are retried every 5 minutes until scored or expired.
 - Feature vectors come from the `fn_job_provider_features(job_id)` SQL function —
   14 raw features per pair, names matching the ML training CSV exactly.
+- **Eligible providers** are available, verified, have a bio, have profile
+  coordinates (geocoded from their saved address), and are within their own
+  `service_radius_km` of the job. A provider missing any of these is never
+  invited (`BACKEND_SCHEMA.md` §32).
 - Scoring is done by the trained **Random Forest `rf-a-v1`** in ml-service
   (`recommendation_runs.model_version` records which model produced each run).
 - Every scored pair is snapshotted in `recommendation_candidates`; when the job
@@ -690,6 +697,6 @@ to the API it targets.
 `test:sql` applies every migration to PGlite (Postgres compiled to
 WebAssembly — no server, no Docker) with the Supabase `auth`/`storage` schemas
 stubbed, then exercises the money functions from 0028, the RLS lockdown from
-0026, and re-applying the latest migrations. The jest suites mock the
+0026, recommendation eligibility from 0032, and re-applying the latest migrations. The jest suites mock the
 database and cannot see SQL at all; this is what does. `0025` is skipped — it
 needs pg_cron, pg_net and Vault.

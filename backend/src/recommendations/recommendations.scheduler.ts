@@ -8,6 +8,18 @@ import { RecommendationsService } from './recommendations.service';
 const EXPIRY_HOURS = 24;
 
 /**
+ * How long after a scoring attempt — the timeout flip, a manual trigger, or a
+ * retry — before the sweep tries that job again (BACKEND_SCHEMA.md §32.3).
+ * Longer than a scoring run can take with a cold ml-service on the free tier
+ * (30–60 s to wake), so a retry never overlaps an attempt still in flight, and
+ * slow enough that a job nobody is eligible for does not query every minute.
+ */
+const RETRY_AFTER_SECONDS = 300;
+
+/** Per-tick cap, like the timeout sweep's, so a backlog cannot stall a tick. */
+const RETRY_BATCH = 20;
+
+/**
  * Replaces the schema's pg_cron suggestion with an in-process scheduler
  * (implementer's choice per §9): every minute, timed-out open jobs move to
  * 'recommending' and get scored, and stale unassigned jobs expire.
@@ -37,6 +49,7 @@ export class RecommendationsScheduler {
     this.running = true;
     try {
       await this.processTimeouts();
+      await this.retryUnscoredJobs();
       await this.expireStaleJobs();
     } catch (err) {
       this.logger.error(`Scheduler tick failed: ${(err as Error).message}`);
@@ -63,9 +76,13 @@ export class RecommendationsScheduler {
 
     for (const job of jobs ?? []) {
       // Flip status first so the timeout path runs at most once per job (§7).
+      // Stamping the attempt keeps the retry sweep off this job while it scores.
       const { data: flipped } = await this.supabase.admin
         .from('jobs')
-        .update({ status: 'recommending' })
+        .update({
+          status: 'recommending',
+          recommendation_attempted_at: new Date().toISOString(),
+        })
         .eq('id', job.id)
         .eq('status', 'open')
         .select('id')
@@ -79,6 +96,41 @@ export class RecommendationsScheduler {
         // the client can retry via the manual trigger endpoint.
         this.logger.error(
           `Scoring failed for job ${job.id}: ${(err as Error).message}`,
+        );
+      }
+    }
+  }
+
+  /**
+   * A job that reached 'recommending' but has no recommendation run was never
+   * scored: ml-service failed or timed out, or nobody was eligible yet. The
+   * timeout sweep above only reads 'open' jobs, so without this it would wait
+   * forever for the client to press retry. Retried every RETRY_AFTER_SECONDS
+   * until a run exists or the job leaves 'recommending' — which also means a
+   * provider who becomes eligible later (verifies, sets an address) still gets
+   * invited before the job expires.
+   *
+   * Selection happens in SQL (`claim_unscored_recommending_jobs`, migration
+   * 0032): it excludes jobs that already have a run *before* limiting, rotates
+   * through a backlog by last attempt, and stamps each claimed job so a
+   * concurrent tick or manual trigger does not score it twice.
+   */
+  private async retryUnscoredJobs() {
+    const { data, error } = await this.supabase.admin.rpc(
+      'claim_unscored_recommending_jobs',
+      { p_retry_after_seconds: RETRY_AFTER_SECONDS, p_limit: RETRY_BATCH },
+    );
+    if (error) {
+      throw new Error(`Could not claim unscored jobs: ${error.message}`);
+    }
+    const jobs = (data ?? []) as { id: string; title: string }[];
+
+    for (const job of jobs) {
+      try {
+        await this.recommendations.scoreJob(job.id, job.title, 'timeout');
+      } catch (err) {
+        this.logger.error(
+          `Scoring retry failed for job ${job.id}: ${(err as Error).message}`,
         );
       }
     }

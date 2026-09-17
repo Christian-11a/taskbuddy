@@ -20,7 +20,7 @@ import {
   DeclineJobDto,
   UpdateJobTaskDto,
 } from './dto/jobs.dto';
-import { GeocodingService } from './geocoding.service';
+import { GeocodingService } from '../geocoding/geocoding.service';
 import { ThrottleGeocode } from '../common/throttle';
 import type { Profile } from '../common/types';
 

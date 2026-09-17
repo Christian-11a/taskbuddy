@@ -59,11 +59,24 @@ export class RecommendationsService {
         `Cannot run recommendations for a '${job.status}' job`,
       );
     }
-    if (job.status === 'open') {
-      await this.supabase.admin
-        .from('jobs')
-        .update({ status: 'recommending' })
-        .eq('id', jobId);
+    // Stamp the attempt either way, so the scheduler's retry sweep leaves this
+    // job alone while it scores (BACKEND_SCHEMA.md §32.3).
+    const { data: claimed } = await this.supabase.admin
+      .from('jobs')
+      .update({
+        status: 'recommending',
+        recommendation_attempted_at: new Date().toISOString(),
+      })
+      .eq('id', jobId)
+      // Re-checked here, so a hire landing since the read above is neither
+      // pulled back to 'recommending' nor sent a fresh round of invites.
+      .in('status', ['open', 'recommending'])
+      .select('id')
+      .maybeSingle();
+    if (!claimed) {
+      throw new BadRequestException(
+        'This job is no longer looking for providers',
+      );
     }
     return this.scoreJob(jobId, job.title, 'manual');
   }

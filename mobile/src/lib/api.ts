@@ -858,14 +858,18 @@ export const api = {
   },
 
   // ── Profiles & providers ────────────────────────────────────────────────────
+  /**
+   * No latitude/longitude: the backend geocodes `address` + `city` and stores
+   * the coordinates itself, and rejects them from the client with a 400
+   * (backend/BACKEND_SCHEMA.md §32). An unverifiable address fails the save
+   * with a message that can be shown as-is.
+   */
   updateProfile(input: Partial<{
     full_name: string;
     phone: string;
     avatar_url: string;
     address: string;
     city: string;
-    latitude: number;
-    longitude: number;
   }>) {
     return authRequest<Profile>('/profiles/me', { method: 'PATCH', body: input });
   },

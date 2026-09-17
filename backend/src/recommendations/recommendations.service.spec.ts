@@ -311,7 +311,7 @@ describe('RecommendationsService', () => {
             },
             error: null,
           },
-          { data: null, error: null }, // the status flip
+          { data: { id: 'j1' }, error: null }, // the status flip
         ],
       });
       rpc.mockResolvedValue({ data: [], error: null });
@@ -319,12 +319,17 @@ describe('RecommendationsService', () => {
 
       await service.triggerManual(client, 'j1');
 
-      expect(writesTo(calls, 'jobs', 'update')[0]).toEqual({
+      expect(writesTo(calls, 'jobs', 'update')[0]).toMatchObject({
         status: 'recommending',
+        recommendation_attempted_at: expect.any(String),
       });
+      // Guarded, so a hire that lands after the read is not reverted.
+      expect(
+        calls.find((c) => c.table === 'jobs' && c.method === 'in')?.args,
+      ).toEqual(['status', ['open', 'recommending']]);
     });
 
-    it('leaves a job already in recommending where it is', async () => {
+    it('stamps the attempt on a job already in recommending, so a retry does not overlap it', async () => {
       const { supabase, calls, rpc } = createSupabaseMock({
         jobs: [
           {
@@ -336,6 +341,7 @@ describe('RecommendationsService', () => {
             },
             error: null,
           },
+          { data: { id: 'j1' }, error: null }, // the attempt stamp
         ],
       });
       rpc.mockResolvedValue({ data: [], error: null });
@@ -343,7 +349,35 @@ describe('RecommendationsService', () => {
 
       await service.triggerManual(client, 'j1');
 
-      expect(writesTo(calls, 'jobs', 'update')).toEqual([]);
+      expect(writesTo(calls, 'jobs', 'update')).toEqual([
+        {
+          status: 'recommending',
+          recommendation_attempted_at: expect.any(String),
+        },
+      ]);
+    });
+
+    it('does not score a job that was hired between the read and the stamp', async () => {
+      const { supabase, rpc } = createSupabaseMock({
+        jobs: [
+          {
+            data: {
+              id: 'j1',
+              title: 'Fix sink',
+              status: 'open',
+              client_id: 'c1',
+            },
+            error: null,
+          },
+          { data: null, error: null }, // guarded update matched no row
+        ],
+      });
+      const service = new RecommendationsService(supabase, config);
+
+      await expect(service.triggerManual(client, 'j1')).rejects.toThrow(
+        'no longer looking for providers',
+      );
+      expect(rpc).not.toHaveBeenCalled();
     });
 
     it('refuses someone else’s job', async () => {

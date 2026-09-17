@@ -277,7 +277,7 @@ sign-in, and notification rows remain available in the in-app list either way.
 | `HOWalletScreen` | `GET /wallet` + `GET`/`POST /wallet/withdrawals`; Add Money opens Stripe Checkout, and Withdraw files/cancels manual payout requests |
 | `HODisputeFilingScreen` | `POST /jobs/:jobId/disputes` |
 | `HOProfile` | Displays profile data; menu is Edit Profile / Settings / Help & Support |
-| `HOEditProfileScreen` | `PATCH /profiles/me`, then `refreshProfile()` |
+| `HOEditProfileScreen` | `PATCH /profiles/me`, then `refreshProfile()`. The backend geocodes a changed address and rejects the save with a readable message if it can't verify it |
 | `HONotificationsScreen` | `GET /notifications`; mark read / read-all |
 | `HOSettingsScreen` | `POST /auth/change-password`, all five switches (`GET`/`PATCH /settings`), and `DELETE /profiles/me`. Account deletion displays backend blockers and signs out after success; Dark Mode still only saves a preference and Language remains a placeholder |
 | `HelpSupportScreen` (shared, `src/components/`) | Static FAQ + `mailto:` support link — no backend |
@@ -292,10 +292,10 @@ sign-in, and notification rows remain available in the in-app list either way.
 | `SPCalendarScreen` | `GET /calendar/bookings?from=&to=` for the current month |
 | `SPChatScreen` | Messaging (same flow as HO) |
 | `SPWalletScreen` | `GET /wallet` + `GET`/`POST /wallet/withdrawals` via `WithdrawModal`; Withdraw files/cancels manual payout requests, same as the homeowner wallet |
-| `SPNotificationsScreen` | `GET /notifications` |
+| `SPNotificationsScreen` | `GET /notifications`; tapping one about a job (recommendation invite, application or job update) opens that job's detail screen |
 | `SPVerificationScreen` | 3-step flow — ID upload, face scan, then `POST /verifications/identity-session` (Stripe Identity, opened in a browser); falls back to `POST /verifications` for admin review if Stripe is unavailable |
 | `SPProfileScreen` | Displays profile + provider-specific data + a real verified/unverified badge (`providerProfile.is_verified`); menu is Edit Profile / Get Verified / Settings / Help & Support |
-| `SPEditProfileScreen` | `PATCH /profiles/me` + `PUT /profiles/me/provider` |
+| `SPEditProfileScreen` | `PATCH /profiles/me` + `PUT /profiles/me/provider`. The address is required and geocoded server-side, and the provider is only recommended for jobs within their **Service radius**, once verified and with a bio (`backend/BACKEND_SCHEMA.md` §32) |
 | `SPSettingsScreen` | Mirrors `HOSettingsScreen` — same real/placeholder split; Delete Account calls `DELETE /profiles/me` via `DeleteAccountModal` |
 
 ---

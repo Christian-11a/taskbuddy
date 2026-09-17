@@ -41,7 +41,8 @@ export interface GeocodedAddress {
 }
 
 /**
- * Turns a typed job address into coordinates (BACKEND_SCHEMA.md §31).
+ * Turns a typed address — a job's or a profile's — into coordinates
+ * (BACKEND_SCHEMA.md §31, §32).
  *
  * The Google key lives here, not in the mobile bundle, where anyone could lift
  * it and bill against it. Results are restricted to the Philippines, and only
@@ -67,7 +68,9 @@ export class GeocodingService {
     // spaces would reach Google as INVALID_REQUEST and read as an outage.
     const trimmed = address.trim();
     if (trimmed.length < 5) {
-      throw new BadRequestException('Enter the full address of the job.');
+      throw new BadRequestException(
+        'Enter the full address, including the street.',
+      );
     }
 
     const params = new URLSearchParams({
@@ -119,7 +122,7 @@ export class GeocodingService {
 
     if (!PRECISE_LOCATION_TYPES.includes(result.geometry.location_type)) {
       throw new BadRequestException(
-        'That address is too general to pin a job to. Add a house number and street.',
+        'That address is too general to locate. Add a house number and street.',
       );
     }
 
