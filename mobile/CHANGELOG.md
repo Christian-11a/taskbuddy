@@ -5,6 +5,10 @@ app works today; this file covers how it got there and why. Newest first.
 
 ---
 
+## [Low] Help & Support — address data attribution
+
+Both roles' Help & Support screen gains an **Address data** section linking to Geoapify and OpenStreetMap. The backend now geocodes addresses through Geoapify instead of Google (no payment method needed), and Geoapify's free plan requires a visible link to it, while its OpenStreetMap data requires crediting OSM contributors.
+
 ## [High] Provider matching — invites open the job, and profiles need an address
 
 Follow-ups to the backend matching fix (`backend/BACKEND_SCHEMA.md` §32). Tapping a notification that carries a `job_id` (a recommendation invite, or an application/job update) on the provider Notifications screen now opens that job's detail screen, where an invited provider can apply; before, it only marked the row read. Provider Edit Profile now requires an address, since the backend geocodes it and a provider with no location is never matched. `api.updateProfile` no longer offers `latitude`/`longitude`: the backend derives them and rejects them from the client.
