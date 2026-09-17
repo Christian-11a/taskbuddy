@@ -7,7 +7,7 @@ import request from 'supertest';
 import type { App } from 'supertest/types';
 import { JobsController } from './jobs.controller';
 import { JobsService } from './jobs.service';
-import { GeocodingService } from './geocoding.service';
+import { GeocodingService } from '../geocoding/geocoding.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { SupabaseService } from '../supabase/supabase.service';
 
