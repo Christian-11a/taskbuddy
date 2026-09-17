@@ -3,6 +3,7 @@ import { ProfilesService } from './profiles.service';
 import type { SupabaseService } from '../supabase/supabase.service';
 import type { UploadsService } from '../uploads/uploads.service';
 import type { WalletService } from '../wallet/wallet.service';
+import type { GeocodingService } from '../geocoding/geocoding.service';
 import type { Profile } from '../common/types';
 
 type QueryResult = {
@@ -63,6 +64,21 @@ function createUploadsMock(): UploadsService {
   } as unknown as UploadsService;
 }
 
+function createGeocodingMock(
+  result: { latitude: number; longitude: number } | Error = {
+    latitude: 14.676,
+    longitude: 121.0437,
+  },
+) {
+  return {
+    geocode: jest.fn(() =>
+      result instanceof Error
+        ? Promise.reject(result)
+        : Promise.resolve({ ...result, formatted_address: 'x' }),
+    ),
+  } as unknown as GeocodingService & { geocode: jest.Mock };
+}
+
 const user = { id: 'u1', role: 'client' } as Profile;
 
 describe('ProfilesService', () => {
@@ -75,6 +91,7 @@ describe('ProfilesService', () => {
         supabase,
         createUploadsMock(),
         createWalletMock(0),
+        createGeocodingMock(),
       );
 
       await service.updateProfile(user, { avatar_url: 'u1/photo.jpg' });
@@ -93,6 +110,7 @@ describe('ProfilesService', () => {
         supabase,
         createUploadsMock(),
         createWalletMock(0),
+        createGeocodingMock(),
       );
 
       await service.updateProfile(user, {
@@ -111,6 +129,7 @@ describe('ProfilesService', () => {
         supabase,
         createUploadsMock(),
         createWalletMock(0),
+        createGeocodingMock(),
       );
 
       await expect(
@@ -130,6 +149,7 @@ describe('ProfilesService', () => {
         supabase,
         uploads,
         createWalletMock(0),
+        createGeocodingMock(),
       );
 
       await expect(
@@ -145,6 +165,7 @@ describe('ProfilesService', () => {
         supabase,
         createUploadsMock(),
         createWalletMock(0),
+        createGeocodingMock(),
       );
 
       await service.updateProfile(user, { avatar_url: '' });
@@ -161,6 +182,7 @@ describe('ProfilesService', () => {
         supabase,
         createUploadsMock(),
         createWalletMock(0),
+        createGeocodingMock(),
       );
 
       await service.updateProfile(user, { full_name: 'Ana Cruz' });
@@ -169,6 +191,150 @@ describe('ProfilesService', () => {
       expect(update?.args[0]).toEqual({ full_name: 'Ana Cruz' });
     });
   });
+  describe('updateProfile — address geocoding', () => {
+    const located = {
+      id: 'u1',
+      role: 'provider',
+      address: '12 Mabini St',
+      city: 'Quezon City',
+      latitude: 14.6,
+      longitude: 121.0,
+    } as Profile;
+
+    function setup(geocoding = createGeocodingMock()) {
+      const { supabase, calls } = createSupabaseMock([
+        { data: { id: 'u1' }, error: null },
+      ]);
+      const service = new ProfilesService(
+        supabase,
+        createUploadsMock(),
+        createWalletMock(0),
+        geocoding,
+      );
+      const update = () =>
+        calls.find((c) => c.method === 'update')?.args[0] as
+          Record<string, unknown> | undefined;
+      return { service, geocoding, update };
+    }
+
+    it('geocodes a new address with its city and stores the coordinates', async () => {
+      const { service, geocoding, update } = setup();
+
+      await service.updateProfile(
+        {
+          ...located,
+          address: null,
+          city: null,
+          latitude: null,
+          longitude: null,
+        },
+        { address: '12 Mabini St', city: 'Quezon City' },
+      );
+
+      expect(geocoding.geocode).toHaveBeenCalledWith(
+        '12 Mabini St, Quezon City',
+      );
+      expect(update()).toEqual({
+        address: '12 Mabini St',
+        city: 'Quezon City',
+        latitude: 14.676,
+        longitude: 121.0437,
+      });
+    });
+
+    it('does not repeat the city when the address already contains it', async () => {
+      const { service, geocoding } = setup();
+
+      await service.updateProfile(located, {
+        address: '5 Rizal Ave, Quezon City',
+        city: 'Quezon City',
+      });
+
+      expect(geocoding.geocode).toHaveBeenCalledWith(
+        '5 Rizal Ave, Quezon City',
+      );
+    });
+
+    it('re-geocodes when only the city changes', async () => {
+      const { service, geocoding } = setup();
+
+      await service.updateProfile(located, {
+        address: '12 Mabini St',
+        city: 'Pasig',
+      });
+
+      expect(geocoding.geocode).toHaveBeenCalledWith('12 Mabini St, Pasig');
+    });
+
+    it('skips Google when the address is unchanged and already located', async () => {
+      const { service, geocoding, update } = setup();
+
+      await service.updateProfile(located, {
+        full_name: 'Boy Plumber',
+        address: '12 Mabini St',
+        city: 'Quezon City',
+      });
+
+      expect(geocoding.geocode).not.toHaveBeenCalled();
+      expect(update()).not.toHaveProperty('latitude');
+    });
+
+    it('geocodes an unchanged address that was saved without coordinates', async () => {
+      const { service, geocoding, update } = setup();
+
+      await service.updateProfile(
+        { ...located, latitude: null, longitude: null },
+        { address: '12 Mabini St', city: 'Quezon City' },
+      );
+
+      expect(geocoding.geocode).toHaveBeenCalledTimes(1);
+      expect(update()).toMatchObject({ latitude: 14.676, longitude: 121.0437 });
+    });
+
+    it('never calls Google for a save that does not touch the address', async () => {
+      const { service, geocoding, update } = setup();
+
+      await service.updateProfile(
+        { ...located, latitude: null, longitude: null },
+        { phone: '09171234567' },
+      );
+
+      expect(geocoding.geocode).not.toHaveBeenCalled();
+      expect(update()).toEqual({ phone: '09171234567' });
+    });
+
+    it('clears the coordinates when the address is cleared', async () => {
+      const { service, geocoding, update } = setup();
+
+      await service.updateProfile(located, { address: '' });
+
+      expect(geocoding.geocode).not.toHaveBeenCalled();
+      expect(update()).toEqual({
+        address: '',
+        latitude: null,
+        longitude: null,
+      });
+    });
+
+    it('rejects the whole save when the address cannot be verified', async () => {
+      const { service, update } = setup(
+        createGeocodingMock(
+          new BadRequestException(
+            'That address is too general to locate. Add a house number and street.',
+          ),
+        ),
+      );
+
+      await expect(
+        service.updateProfile(located, {
+          full_name: 'Boy Plumber',
+          address: 'Quezon City',
+        }),
+      ).rejects.toThrow('too general to locate');
+      expect(update()).toBeUndefined();
+    });
+  });
+
   describe('deleteAccount', () => {
     /**
      * The four reads deletionBlockers() runs, in the order Promise.all
@@ -190,6 +356,7 @@ describe('ProfilesService', () => {
         supabase,
         createUploadsMock(),
         createWalletMock(0),
+        createGeocodingMock(),
       );
 
       await expect(service.deleteAccount(user, 'token')).resolves.toEqual({
@@ -219,6 +386,7 @@ describe('ProfilesService', () => {
         supabase,
         createUploadsMock(),
         createWalletMock(0),
+        createGeocodingMock(),
       );
 
       await service.deleteAccount(user, 'token');
@@ -237,6 +405,7 @@ describe('ProfilesService', () => {
         supabase,
         createUploadsMock(),
         createWalletMock(250.5),
+        createGeocodingMock(),
       );
 
       await expect(service.deleteAccount(user, 'token')).rejects.toThrow(
@@ -255,6 +424,7 @@ describe('ProfilesService', () => {
         supabase,
         createUploadsMock(),
         createWalletMock(100),
+        createGeocodingMock(),
       );
 
       await expect(service.deleteAccount(user, 'token')).rejects.toMatchObject({
@@ -279,6 +449,7 @@ describe('ProfilesService', () => {
         supabase,
         createUploadsMock(),
         createWalletMock(0),
+        createGeocodingMock(),
       );
 
       await service.deleteAccount({ ...user, role: 'provider' }, 't');

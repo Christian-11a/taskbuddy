@@ -8,6 +8,7 @@ import {
 import { SupabaseService } from '../supabase/supabase.service';
 import { UploadsService } from '../uploads/uploads.service';
 import { WalletService } from '../wallet/wallet.service';
+import { GeocodingService } from '../geocoding/geocoding.service';
 import { AVATARS_BUCKET } from '../uploads/uploads.constants';
 import {
   SetAvailabilityDto,
@@ -31,6 +32,7 @@ export class ProfilesService {
     private readonly supabase: SupabaseService,
     private readonly uploads: UploadsService,
     private readonly wallet: WalletService,
+    private readonly geocoding: GeocodingService,
   ) {}
 
   async updateProfile(user: Profile, dto: UpdateProfileDto) {
@@ -38,6 +40,7 @@ export class ProfilesService {
     if (dto.avatar_url !== undefined) {
       patch.avatar_url = this.resolveAvatar(user, dto.avatar_url);
     }
+    Object.assign(patch, await this.resolveLocation(user, dto));
 
     const { data, error } = await this.supabase.admin
       .from('profiles')
@@ -47,6 +50,45 @@ export class ProfilesService {
       .single();
     if (error) throw new BadRequestException(error.message);
     return data;
+  }
+
+  /**
+   * Coordinates for a profile come only from geocoding its address, never from
+   * the client (BACKEND_SCHEMA.md §32). They matter most for providers:
+   * `fn_job_provider_features` skips anyone without them, so a provider with no
+   * coordinates is never recommended.
+   *
+   * Google is called only when the address or city changed, or when a saved
+   * address still has no coordinates (profiles saved before this existed), so
+   * editing a name or phone number never depends on Google. An address that
+   * cannot be verified rejects the save with the geocoder's own 400/503 —
+   * storing it without coordinates would leave a provider silently unmatched.
+   * Clearing the address clears the coordinates.
+   */
+  private async resolveLocation(
+    user: Profile,
+    dto: UpdateProfileDto,
+  ): Promise<Record<string, unknown>> {
+    if (dto.address === undefined && dto.city === undefined) return {};
+
+    const address = (dto.address ?? user.address ?? '').trim();
+    const city = (dto.city ?? user.city ?? '').trim();
+    if (!address) return { latitude: null, longitude: null };
+
+    const unchanged =
+      address === (user.address ?? '').trim() &&
+      city === (user.city ?? '').trim();
+    if (unchanged && user.latitude != null && user.longitude != null) {
+      return {};
+    }
+
+    // The app keeps city in its own field; Google needs it to place a street.
+    const query =
+      city && !address.toLowerCase().includes(city.toLowerCase())
+        ? `${address}, ${city}`
+        : address;
+    const { latitude, longitude } = await this.geocoding.geocode(query);
+    return { latitude, longitude };
   }
 
   /**
