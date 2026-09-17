@@ -8,6 +8,16 @@ import { RecommendationsService } from './recommendations.service';
 const EXPIRY_HOURS = 24;
 
 /**
+ * How long a job must have sat in 'recommending' before the sweep retries its
+ * scoring. Keeps the retry off a job that a manual trigger or this same tick
+ * has only just moved there, and is still scoring (BACKEND_SCHEMA.md §32).
+ */
+const RETRY_AFTER_MS = 60_000;
+
+/** Per-tick cap, like the timeout sweep's, so a backlog cannot stall a tick. */
+const RETRY_BATCH = 20;
+
+/**
  * Replaces the schema's pg_cron suggestion with an in-process scheduler
  * (implementer's choice per §9): every minute, timed-out open jobs move to
  * 'recommending' and get scored, and stale unassigned jobs expire.
@@ -37,6 +47,7 @@ export class RecommendationsScheduler {
     this.running = true;
     try {
       await this.processTimeouts();
+      await this.retryUnscoredJobs();
       await this.expireStaleJobs();
     } catch (err) {
       this.logger.error(`Scheduler tick failed: ${(err as Error).message}`);
@@ -79,6 +90,53 @@ export class RecommendationsScheduler {
         // the client can retry via the manual trigger endpoint.
         this.logger.error(
           `Scoring failed for job ${job.id}: ${(err as Error).message}`,
+        );
+      }
+    }
+  }
+
+  /**
+   * A job that reached 'recommending' but has no recommendation run was never
+   * scored: ml-service failed or timed out, or nobody was eligible yet. The
+   * timeout sweep above only reads 'open' jobs, so without this it would wait
+   * forever for the client to press retry. Retried every tick until a run
+   * exists or the job leaves 'recommending' — which also means a provider who
+   * becomes eligible later (verifies, sets an address) still gets invited
+   * before the job expires.
+   */
+  private async retryUnscoredJobs() {
+    const { data: jobs, error } = await this.supabase.admin
+      .from('jobs')
+      .select('id, title')
+      .eq('status', 'recommending')
+      .lt('updated_at', new Date(Date.now() - RETRY_AFTER_MS).toISOString())
+      .order('updated_at', { ascending: true })
+      .limit(RETRY_BATCH);
+    if (error) {
+      throw new Error(`Could not read unscored jobs: ${error.message}`);
+    }
+    if (!jobs || jobs.length === 0) return;
+
+    const { data: runs, error: runsError } = await this.supabase.admin
+      .from('recommendation_runs')
+      .select('job_id')
+      .in(
+        'job_id',
+        jobs.map((j) => j.id),
+      );
+    if (runsError) {
+      throw new Error(
+        `Could not read recommendation runs: ${runsError.message}`,
+      );
+    }
+    const scored = new Set((runs ?? []).map((r) => r.job_id as string));
+
+    for (const job of jobs.filter((j) => !scored.has(j.id))) {
+      try {
+        await this.recommendations.scoreJob(job.id, job.title, 'timeout');
+      } catch (err) {
+        this.logger.error(
+          `Scoring retry failed for job ${job.id}: ${(err as Error).message}`,
         );
       }
     }

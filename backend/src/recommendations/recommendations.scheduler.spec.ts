@@ -17,7 +17,15 @@ function createSupabaseMock(resultsByTable: Record<string, QueryResult[]>) {
         calls.push({ table, method, args });
         return builder;
       });
-    for (const method of ['select', 'update', 'eq', 'in', 'lt', 'limit']) {
+    for (const method of [
+      'select',
+      'update',
+      'eq',
+      'in',
+      'lt',
+      'order',
+      'limit',
+    ]) {
       builder[method] = chain(method);
     }
     builder.maybeSingle = jest.fn(() => Promise.resolve(result));
@@ -42,6 +50,7 @@ function createRecommendationsMock(scoreJob = jest.fn().mockResolvedValue({})) {
 const noWork = () => ({
   jobs: [
     { data: [], error: null }, // processTimeouts' select
+    { data: [], error: null }, // retryUnscoredJobs' select
     { data: [], error: null }, // expireStaleJobs' update
   ],
 });
@@ -69,6 +78,7 @@ describe('RecommendationsScheduler', () => {
         jobs: [
           { data: [{ id: 'j1', title: 'Fix sink' }], error: null },
           { data: { id: 'j1' }, error: null }, // the conditional flip
+          { data: [], error: null }, // retryUnscoredJobs
           { data: [], error: null }, // expireStaleJobs
         ],
       });
@@ -90,6 +100,7 @@ describe('RecommendationsScheduler', () => {
           { data: [{ id: 'j1', title: 'Fix sink' }], error: null },
           { data: null, error: null }, // the flip matched no row
           { data: [], error: null },
+          { data: [], error: null },
         ],
       });
       const scheduler = new RecommendationsScheduler(supabase, recommendations);
@@ -110,6 +121,7 @@ describe('RecommendationsScheduler', () => {
           { data: [{ id: 'j1', title: 'Fix sink' }], error: null },
           { data: { id: 'j1' }, error: null },
           { data: [], error: null },
+          { data: [], error: null },
         ],
       });
       const scheduler = new RecommendationsScheduler(supabase, recommendations);
@@ -122,6 +134,7 @@ describe('RecommendationsScheduler', () => {
       const { recommendations } = createRecommendationsMock();
       const { supabase, calls } = createSupabaseMock({
         jobs: [
+          { data: [], error: null },
           { data: [], error: null },
           { data: [{ id: 'old1' }, { id: 'old2' }], error: null },
         ],
@@ -137,6 +150,67 @@ describe('RecommendationsScheduler', () => {
         (c) => c.table === 'jobs' && c.method === 'in',
       )?.args;
       expect(scoped).toEqual(['status', ['open', 'recommending']]);
+    });
+
+    it('retries a recommending job that has no run, and skips one that was scored', async () => {
+      const { recommendations, scoreJob } = createRecommendationsMock();
+      const { supabase, calls } = createSupabaseMock({
+        jobs: [
+          { data: [], error: null }, // nothing newly timed out
+          {
+            data: [
+              { id: 'j1', title: 'Fix sink' },
+              { id: 'j2', title: 'Clean house' },
+            ],
+            error: null,
+          },
+          { data: [], error: null }, // expireStaleJobs
+        ],
+        recommendation_runs: [{ data: [{ job_id: 'j2' }], error: null }],
+      });
+      const scheduler = new RecommendationsScheduler(supabase, recommendations);
+
+      await scheduler.tick();
+
+      expect(scoreJob).toHaveBeenCalledTimes(1);
+      expect(scoreJob).toHaveBeenCalledWith('j1', 'Fix sink', 'timeout');
+      // Only jobs that have sat in 'recommending' past the grace period, so a
+      // job still being scored by a manual trigger is not scored twice.
+      const cutoff = calls.find(
+        (c) =>
+          c.table === 'jobs' && c.method === 'lt' && c.args[0] === 'updated_at',
+      )?.args[1] as string;
+      expect(Date.now() - new Date(cutoff).getTime()).toBeGreaterThanOrEqual(
+        60_000,
+      );
+    });
+
+    it('keeps retrying other unscored jobs when one retry fails', async () => {
+      const scoreJob = jest
+        .fn()
+        .mockRejectedValueOnce(new Error('ml-service asleep'))
+        .mockResolvedValue({});
+      const { recommendations } = createRecommendationsMock(scoreJob);
+      const { supabase } = createSupabaseMock({
+        jobs: [
+          { data: [], error: null },
+          {
+            data: [
+              { id: 'j1', title: 'Fix sink' },
+              { id: 'j2', title: 'Clean house' },
+            ],
+            error: null,
+          },
+          { data: [], error: null },
+        ],
+        recommendation_runs: [{ data: [], error: null }],
+      });
+      const scheduler = new RecommendationsScheduler(supabase, recommendations);
+      jest.spyOn(scheduler['logger'], 'error').mockImplementation(() => {});
+
+      await scheduler.tick();
+
+      expect(scoreJob).toHaveBeenCalledTimes(2);
     });
 
     it('swallows a failing sweep so the next minute still runs', async () => {
@@ -165,6 +239,7 @@ describe('RecommendationsScheduler', () => {
         jobs: [
           { data: [{ id: 'j1', title: 'Fix sink' }], error: null },
           { data: { id: 'j1' }, error: null },
+          { data: [], error: null },
           { data: [], error: null },
         ],
       });
