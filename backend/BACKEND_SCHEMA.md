@@ -2265,12 +2265,15 @@ nothing in the product ever wrote them: the Edit Profile screens send `address` 
 `ProfilesService.updateProfile` now geocodes the address through the shared `GeocodingService`
 (§31) and stores the result, for **both roles** (a homeowner's coordinates prefill job creation):
 
-- Google is called only when `address` or `city` **changed**, or when a saved address still has
-  **no coordinates** (profiles saved before this change). A save that touches neither — a name, a
-  phone number — never calls Google and can never be blocked by it.
+- A **changed** `address` or `city` is geocoded. If it cannot be verified, the whole save is
+  rejected (below).
+- An **unchanged** address that still has **no coordinates** (every profile saved before this
+  change — and the apps resend the address on every save) is geocoded **opportunistically**:
+  success fills the coordinates in; failure is logged and the rest of the save goes through. A name
+  or phone edit is never blocked by Google, a missing key, or an old address it cannot place.
 - `city` is appended to the query unless the address already contains it; the app keeps it in its
   own field, and a street alone is often ambiguous.
-- An address that cannot be verified **rejects the whole save** with the geocoder's `400` (not
+- A changed address that cannot be verified **rejects the whole save** with the geocoder's `400` (not
   found, too general, partial match) or `503` (Google unavailable, or `GOOGLE_GEOCODING_API_KEY`
   unset). Saving it without coordinates would leave a provider silently unmatchable, with nothing
   telling them why. Both Edit Profile screens already render the API message.
@@ -2280,8 +2283,9 @@ nothing in the product ever wrote them: the Edit Profile screens send `address` 
   themselves anywhere. Coordinates are server-derived only.
 - No extra rate limit: the route stays on the global 240/min.
 
-Existing providers get coordinates on their next profile save that includes their address, which
-both Edit Profile screens always send.
+Existing providers get coordinates on their next profile save if their saved address can be
+placed; if it cannot, they stay unmatched until they correct it (provider Edit Profile now requires
+an address).
 
 ### 32.2 Who is eligible (migration 0032)
 
@@ -2304,10 +2308,26 @@ asleep or erroring — or that finds nobody eligible leaves the job in `recommen
 `recommendation_runs` row. The timeout sweep only reads `open` jobs, so that job used to wait for
 the client to press retry.
 
-`RecommendationsScheduler.retryUnscoredJobs` runs on every tick, after the timeout sweep: up to 20
-`recommending` jobs untouched for at least 60 seconds, oldest first, minus those that already have
-a run, are scored again. The 60-second grace keeps it off a job a manual trigger or the same tick
-has just moved and is still scoring. Because an empty pool records no run, a job keeps being
-retried until someone becomes eligible (verifies, sets an address) or it expires at 24 h — the
-cost of an empty retry is one feature query, with no ml-service call.
+Migration 0032 adds `jobs.recommendation_attempted_at` and `claim_unscored_recommending_jobs(
+p_retry_after_seconds, p_limit)` (service role only). On every tick, after the timeout sweep,
+`RecommendationsScheduler.retryUnscoredJobs` calls it with **300 s** and **20**, and scores what it
+returns. The function, in one statement:
 
+- selects `recommending` jobs with **no run**, whose last attempt is null or older than the window;
+- excludes scored jobs **before** the limit — a first version filtered them out in application code
+  after a `LIMIT`, and since scored jobs stay `recommending` until a hire, enough of them hid every
+  unscored job from the retry;
+- orders by last attempt, never-attempted first, so a backlog rotates instead of the same oldest
+  jobs being retried forever;
+- stamps `recommendation_attempted_at = now()` on what it returns, under `FOR UPDATE SKIP LOCKED`.
+
+Every scoring attempt stamps that column — the timeout flip, the manual trigger (which also
+re-checks the status in its update: if a hire landed after its read, it answers `400` and scores
+nothing, rather than reverting the job or inviting providers to it), and the
+retry claim — so a retry never overlaps an attempt made within the last 5 minutes. Five minutes is
+longer than a scoring run takes with a cold ml-service (30–60 s to wake). A job nobody is eligible
+for is retried every 5 minutes until someone qualifies or it expires at 24 h; an empty retry costs
+one feature query and no ml-service call.
+
+Not prevented: a client pressing retry while a scheduler attempt is mid-flight still starts a
+second run, as pressing retry twice always has.
