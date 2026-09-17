@@ -1,13 +1,14 @@
 import { Module } from '@nestjs/common';
 import { JobsController } from './jobs.controller';
 import { JobsService } from './jobs.service';
+import { GeocodingService } from './geocoding.service';
 import { UploadsModule } from '../uploads/uploads.module';
 import { EscrowModule } from '../escrow/escrow.module';
 
 @Module({
   imports: [UploadsModule, EscrowModule],
   controllers: [JobsController],
-  providers: [JobsService],
+  providers: [JobsService, GeocodingService],
   exports: [JobsService],
 })
 export class JobsModule {}

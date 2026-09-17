@@ -43,6 +43,8 @@ recommendation model (see [Recommendation Engine Integration](#9-recommendation-
 27. [Backend Leftovers (migrations 0022–0024)](#27-backend-leftovers-migrations-00220024)
 28. [Handoff Closeout (no migration)](#28-handoff-closeout-no-migration)
 29. [Stripe Connect Payouts & Card-Funded Escrow (migrations 0026–0029)](#29-stripe-connect-payouts--card-funded-escrow-migrations-00260029)
+30. [Chat Attachments (migrations 0030–0031)](#30-chat-attachments-migrations-00300031)
+31. [Address Geocoding (no migration)](#31-address-geocoding-no-migration)
 
 ---
 
@@ -1772,6 +1774,7 @@ Read the table that way; the numbers mean much less if you read them as a platfo
 | Everything | 240 / min | A burst ceiling on any one route. A mobile screen loading jobs, wallet and an unread count on focus legitimately fires several requests at once; the number has to leave that alone and still refuse a script pointed at a single endpoint |
 | `POST /payments/topup`, `POST /payments/checkout-session` | 5 / min | A person tops up once. This is the ceiling that stops TaskBuddy being a free card-testing endpoint pointed at Stripe. Both routes carry it, so neither is a way around the other |
 | `POST /auth/{register,login,admin/login,forgot-password,reset-password,send-email-otp,verify-email-otp,change-password}` | 10 / min **each** | Two attacks at once: guessing one account's password, and using someone else's address as a mail relay by requesting codes they never asked for. Ten leaves room for a person mistyping theirs |
+| `GET /jobs/geocode` | 10 / min | Each call is a billed Google Geocoding request (§31); a homeowner correcting a typo needs a few, not hundreds |
 | `POST /payments/webhook` | exempt (`@SkipThrottle()`) | The caller is Stripe, already authenticated by the signature over the raw body, and it retries for three days. Throttling it would only delay the credit a payer is waiting for |
 
 **One throttler, not several named ones.** Every entry in `ThrottlerModule.forRoot`'s list applies
@@ -2168,6 +2171,12 @@ client calls `POST /uploads/signed-url { bucket: 'chat-attachments', content_typ
 directly to Storage, and submits the returned path — never a URL — to
 `POST /conversations/:id/messages`.
 
+**The submitted path is checked before it is stored.** `SendMessageDto` only accepts the exact
+`<uuid>/<uuid>.<jpg|png|webp>` shape `createSignedUpload` issues, `assertOwnedPaths` refuses a path
+under someone else's profile id, and `UploadsService.assertValidImage` (the same metadata check
+§23.7 added for verification uploads) refuses an object that does not exist, is empty, or is not an
+image. A message can therefore never point at a photo the other participant will fail to load.
+
 **0030 did not touch 0006's `messages` body CHECK.** That constraint required
 `char_length(body) between 1 and 1000`, so it rejected every attachment-only message outright —
 which is the *only* kind the mobile app's attach flow produces (both chat screens call
@@ -2204,3 +2213,32 @@ dedicated `CHAT_ATTACHMENT_TTL_SECONDS` (1 hour).
 dropped attachments, so an admin resolving "the provider damaged my floor, here's the photo" saw
 an empty-bodied message with no sign a photo was ever attached.
 
+---
+
+## 31. Address Geocoding (no migration)
+
+`GET /jobs/geocode?address=` (client only) turns the address a homeowner types into coordinates
+before a job is posted. The mobile job form refuses to post without them, and refuses to fall back
+to the profile address or a Metro Manila default, because `jobs.latitude/longitude` feed both the
+provider feed's radius filter and the recommendation engine's `distance_km` feature (§8). A wrong
+pin is worse than no job.
+
+`GeocodingService` (`src/jobs/geocoding.service.ts`) calls Google's Geocoding API server-side with
+`GOOGLE_GEOCODING_API_KEY`. The key stays on the API host: a key in the mobile bundle can be
+extracted and billed against. Restrict it to the Geocoding API in Google Cloud Console.
+
+| Google says | API answers |
+|---|---|
+| `OK`, first result `ROOFTOP` or `RANGE_INTERPOLATED`, not `partial_match` | `200 { latitude, longitude, formatted_address }` |
+| `OK`, first result has `partial_match: true` | `400` — Google matched only part of the input (e.g. a misspelt street or unknown house number) and may have pinned a different address, however precisely |
+| `OK`, first result `GEOMETRIC_CENTER` or `APPROXIMATE` | `400` — too general (a street, barangay or city centre); add a house number and street |
+| `ZERO_RESULTS` | `400` — address not found |
+| `OVER_QUERY_LIMIT`, `REQUEST_DENIED`, `INVALID_REQUEST`, `UNKNOWN_ERROR`, non-2xx, network error, 5 s timeout | `503` — generic "try again shortly"; the raw status is logged, never returned, since it can describe the key's restrictions |
+| (no key configured) | `503 Address lookup is not configured` — like `/payments/*` without Stripe, the rest of the API is unaffected |
+
+Results are restricted with `components=country:PH`, so an ambiguous address can never resolve to
+another country. The mobile client reads only `latitude`/`longitude`; `formatted_address` is extra.
+
+Every call is a billed Google request, so the route carries its own limit, `@ThrottleGeocode()`:
+**10 / min per IP** (§28.4's per-endpoint model). No response caching: a homeowner geocodes once
+per job, and a cache would need an invalidation story for addresses Google later refines.

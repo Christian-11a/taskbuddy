@@ -43,3 +43,12 @@ export const ThrottlePayments = () =>
  */
 export const ThrottleAuth = () =>
   Throttle({ default: { limit: 10, ttl: 60_000 } });
+
+/**
+ * Address geocoding. Every call is a billed request to Google's Geocoding API,
+ * so this route must not become a free proxy for someone else's lookups. Ten a
+ * minute is several attempts at correcting a mistyped address, which is all a
+ * homeowner posting a job needs.
+ */
+export const ThrottleGeocode = () =>
+  Throttle({ default: { limit: 10, ttl: 60_000 } });

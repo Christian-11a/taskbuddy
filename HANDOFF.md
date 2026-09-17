@@ -75,6 +75,15 @@ go as soon as this lands.
 
 ## 3. No concurrent-load testing exists anywhere in the repo
 
+> **Script added, not yet run, 2026-09-17.** `backend/load/money-path.js` is a k6 test of the money
+> path: post job → apply → accept (escrow hold) → cancel (refund). It defaults to the deployed API
+> and the maestro.* accounts, and **writes real rows** there. The recommendation cron is left out
+> because it needs a 5–15 minute wait or a SQL nudge per job. How to run it and read the results:
+> `backend/load/README.md`. What's still open is actually running it against the deploy and
+> recording the numbers.
+
+Kept below for the record — this is what the gap looked like before the script.
+
 **Where:** N/A — nothing currently exists.
 
 **Problem:** Confirmed via repo-wide search: no k6, artillery, autocannon,
@@ -163,17 +172,21 @@ found during the 2026-09-16 review but deliberately not fixed then:
 
 - No placeholder ("Photo unavailable") when a signed attachment URL fails to
   resolve — the message bubble just renders empty.
-- No existence/validity check on a submitted `attachment_path` before it's
+- ~~No existence/validity check on a submitted `attachment_path` before it's
   persisted (unlike the verification-upload flow's `assertValidImage`) — a
-  client could point a message at a path that doesn't exist.
-- `SendMessageDto.attachment_path` (`backend/src/chat/dto/chat.dto.ts`) has no
-  length/shape validation beyond `@IsString()`.
+  client could point a message at a path that doesn't exist.~~ **Done
+  2026-09-17** — `ChatService.sendMessage` now calls `assertValidImage`.
+- ~~`SendMessageDto.attachment_path` (`backend/src/chat/dto/chat.dto.ts`) has no
+  length/shape validation beyond `@IsString()`.~~ **Done 2026-09-17** —
+  `@MaxLength` plus a `@Matches` for the exact `<uuid>/<uuid>.<jpg|png|webp>`
+  shape the upload endpoint issues.
 - `bubbleImage` (both chat screens) has no `resizeMode` and no tap-to-expand —
   non-4:3 photos get cropped.
 - `handleSend` in both chat screens guards on its own `sending` flag but not
   on `attaching` — a fast double-tap could send text ahead of an in-flight
   photo upload. One-word fix (`|| attaching` in the early-return guard).
-- `BACKEND_SCHEMA.md`'s table of contents doesn't list the new §30 section.
+- ~~`BACKEND_SCHEMA.md`'s table of contents doesn't list the new §30 section.~~
+  **Done 2026-09-17.**
 
 ---
 

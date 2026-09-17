@@ -9,7 +9,10 @@ import { concatMap, from, interval, mergeMap, switchMap } from 'rxjs';
 import type { Observable } from 'rxjs';
 import { SupabaseService } from '../supabase/supabase.service';
 import { UploadsService } from '../uploads/uploads.service';
-import { CHAT_ATTACHMENT_TTL_SECONDS } from '../uploads/uploads.constants';
+import {
+  CHAT_ATTACHMENTS_BUCKET,
+  CHAT_ATTACHMENT_TTL_SECONDS,
+} from '../uploads/uploads.constants';
 import type { Profile } from '../common/types';
 
 /**
@@ -200,6 +203,12 @@ export class ChatService {
     await this.assertParticipant(user, conversationId);
     if (attachmentPath) {
       this.uploads.assertOwnedPaths(user, [attachmentPath]);
+      // The object must exist and be a non-empty image before a message points
+      // at it — otherwise the other participant gets a bubble that never loads.
+      await this.uploads.assertValidImage(
+        CHAT_ATTACHMENTS_BUCKET,
+        attachmentPath,
+      );
     }
     const { data, error } = await this.supabase.admin
       .from('messages')
