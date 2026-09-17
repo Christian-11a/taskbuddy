@@ -292,10 +292,10 @@ sign-in, and notification rows remain available in the in-app list either way.
 | `SPCalendarScreen` | `GET /calendar/bookings?from=&to=` for the current month |
 | `SPChatScreen` | Messaging (same flow as HO) |
 | `SPWalletScreen` | `GET /wallet` + `GET`/`POST /wallet/withdrawals` via `WithdrawModal`; Withdraw files/cancels manual payout requests, same as the homeowner wallet |
-| `SPNotificationsScreen` | `GET /notifications` |
+| `SPNotificationsScreen` | `GET /notifications`; tapping one about a job (recommendation invite, application or job update) opens that job's detail screen |
 | `SPVerificationScreen` | 3-step flow — ID upload, face scan, then `POST /verifications/identity-session` (Stripe Identity, opened in a browser); falls back to `POST /verifications` for admin review if Stripe is unavailable |
 | `SPProfileScreen` | Displays profile + provider-specific data + a real verified/unverified badge (`providerProfile.is_verified`); menu is Edit Profile / Get Verified / Settings / Help & Support |
-| `SPEditProfileScreen` | `PATCH /profiles/me` + `PUT /profiles/me/provider`. The saved address is geocoded server-side, and the provider is only recommended for jobs within their **Service radius**, once verified and with a bio (`backend/BACKEND_SCHEMA.md` §32) |
+| `SPEditProfileScreen` | `PATCH /profiles/me` + `PUT /profiles/me/provider`. The address is required and geocoded server-side, and the provider is only recommended for jobs within their **Service radius**, once verified and with a bio (`backend/BACKEND_SCHEMA.md` §32) |
 | `SPSettingsScreen` | Mirrors `HOSettingsScreen` — same real/placeholder split; Delete Account calls `DELETE /profiles/me` via `DeleteAccountModal` |
 
 ---

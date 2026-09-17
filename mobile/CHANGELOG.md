@@ -5,6 +5,10 @@ app works today; this file covers how it got there and why. Newest first.
 
 ---
 
+## [High] Provider matching — invites open the job, and profiles need an address
+
+Follow-ups to the backend matching fix (`backend/BACKEND_SCHEMA.md` §32). Tapping a notification that carries a `job_id` (a recommendation invite, or an application/job update) on the provider Notifications screen now opens that job's detail screen, where an invited provider can apply; before, it only marked the row read. Provider Edit Profile now requires an address, since the backend geocodes it and a provider with no location is never matched. `api.updateProfile` no longer offers `latitude`/`longitude`: the backend derives them and rejects them from the client.
+
 ## [Low] Wallet — blank-area swipes scroll the full screen
 
 Removed the keyboard-dismiss touch wrapper that could capture gestures outside buttons and filters; the Wallet `ScrollView` now owns scrolling across the entire content area.
