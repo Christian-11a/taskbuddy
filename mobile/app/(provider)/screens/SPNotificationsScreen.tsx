@@ -37,6 +37,8 @@ interface NotificationRow {
   body: string;
   read_at: string | null;
   created_at: string;
+  /** Recommendation invites and job/application updates carry the job they are about. */
+  data: { job_id?: string } | null;
 }
 
 const ICON_BY_TYPE: Record<string, typeof BriefcaseBusiness> = {
@@ -47,9 +49,11 @@ const ICON_BY_TYPE: Record<string, typeof BriefcaseBusiness> = {
 
 interface SPNotificationsScreenProps {
   onBack: () => void;
+  /** Opens a job's detail screen — where an invited provider can apply. */
+  onOpenJob: (jobId: string) => void;
 }
 
-export default function SPNotificationsScreen({ onBack }: SPNotificationsScreenProps) {
+export default function SPNotificationsScreen({ onBack, onOpenJob }: SPNotificationsScreenProps) {
   const { data, loading, error, reload } = useAsyncData(
     () => api.notifications() as Promise<NotificationRow[]>,
     [],
@@ -65,6 +69,21 @@ export default function SPNotificationsScreen({ onBack }: SPNotificationsScreenP
   const markRead = async (id: string) => {
     await api.markNotificationRead(id);
     reload();
+  };
+
+  /**
+   * A notification about a job opens that job. Marking it read is fire-and-
+   * forget there: this screen unmounts on navigation and reloads on return,
+   * and a failed mark-read should not keep the provider from the job.
+   */
+  const openNotification = (notif: NotificationRow) => {
+    const jobId = notif.data?.job_id;
+    if (jobId) {
+      if (!notif.read_at) api.markNotificationRead(notif.id).catch(() => {});
+      onOpenJob(jobId);
+    } else if (!notif.read_at) {
+      markRead(notif.id);
+    }
   };
 
   return (
@@ -107,7 +126,7 @@ export default function SPNotificationsScreen({ onBack }: SPNotificationsScreenP
                     isUnread && styles.notifRowUnread,
                   ]}
                   activeOpacity={0.85}
-                  onPress={() => isUnread && markRead(notif.id)}
+                  onPress={() => openNotification(notif)}
                 >
                   <View style={[styles.notifIcon, isUnread && styles.notifIconUnread]}>
                     <Icon size={19} color={C.cyan700} />
