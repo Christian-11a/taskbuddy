@@ -159,3 +159,108 @@ describe('fn_job_provider_features eligibility', () => {
     assert.equal((await pool(jobId)).length, 0);
   });
 });
+
+describe('claim_unscored_recommending_jobs', () => {
+  const claim = async (retryAfterSeconds = 300, limit = 20) =>
+    q(`select * from claim_unscored_recommending_jobs($1, $2)`, [
+      retryAfterSeconds,
+      limit,
+    ]);
+
+  /** A job already in 'recommending', optionally scored and/or attempted `attemptedAgo` ago. */
+  async function recommendingJob({ scored = false, attemptedAgo = null } = {}) {
+    const id = await postJob();
+    await q(
+      `update jobs
+          set status = 'recommending',
+              recommendation_attempted_at =
+                case when $2::text is null then null else now() - $2::interval end
+        where id = $1`,
+      [id, attemptedAgo],
+    );
+    if (scored) {
+      await q(
+        `insert into recommendation_runs (job_id, model_version, pool_size) values ($1, 'rf-a-v1', 3)`,
+        [id],
+      );
+    }
+    return id;
+  }
+
+  it('claims a recommending job with no run, and stamps the attempt', async () => {
+    const id = await recommendingJob();
+
+    const rows = await claim();
+
+    assert.deepEqual(
+      rows.map((r) => r.id),
+      [id],
+    );
+    const [job] = await q(`select recommendation_attempted_at from jobs where id = $1`, [id]);
+    assert.ok(job.recommendation_attempted_at, 'attempt was stamped');
+  });
+
+  it('does not claim the same job again inside the retry window', async () => {
+    await recommendingJob();
+
+    assert.equal((await claim()).length, 1);
+    assert.equal((await claim()).length, 0);
+  });
+
+  it('reclaims a job whose last attempt is older than the retry window', async () => {
+    const id = await recommendingJob({ attemptedAgo: '10 minutes' });
+
+    assert.deepEqual(
+      (await claim(300)).map((r) => r.id),
+      [id],
+    );
+  });
+
+  it('skips jobs attempted within the window, e.g. by a manual trigger still scoring', async () => {
+    await recommendingJob({ attemptedAgo: '30 seconds' });
+
+    assert.equal((await claim(300)).length, 0);
+  });
+
+  it('never claims a job that already has a run, or one that is not recommending', async () => {
+    await recommendingJob({ scored: true });
+    await postJob(); // still 'open'
+
+    assert.equal((await claim()).length, 0);
+  });
+
+  it('is not starved by scored jobs filling the batch', async () => {
+    // The first version limited the batch before excluding scored jobs, and
+    // scored jobs stay 'recommending' until a hire — so enough of them hid
+    // every unscored job from the retry.
+    for (let i = 0; i < 3; i++) await recommendingJob({ scored: true });
+    const unscored = await recommendingJob();
+
+    assert.deepEqual(
+      (await claim(300, 2)).map((r) => r.id),
+      [unscored],
+    );
+  });
+
+  it('rotates through a backlog, never-attempted jobs first', async () => {
+    const attemptedLongAgo = await recommendingJob({ attemptedAgo: '1 hour' });
+    const neverAttempted = await recommendingJob();
+
+    assert.deepEqual((await claim(300, 1)).map((r) => r.id), [neverAttempted]);
+    assert.deepEqual((await claim(300, 1)).map((r) => r.id), [attemptedLongAgo]);
+    assert.equal((await claim(300, 1)).length, 0);
+  });
+
+  it('is executable by the service role only', async () => {
+    const rows = await q(
+      `select grantee from information_schema.routine_privileges
+        where routine_name = 'claim_unscored_recommending_jobs'
+          and privilege_type = 'EXECUTE'`,
+    );
+    const grantees = rows.map((r) => r.grantee);
+    assert.ok(grantees.includes('service_role'));
+    assert.ok(!grantees.includes('anon'));
+    assert.ok(!grantees.includes('authenticated'));
+    assert.ok(!grantees.includes('PUBLIC'));
+  });
+});

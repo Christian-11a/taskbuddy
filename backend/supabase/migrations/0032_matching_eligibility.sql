@@ -23,7 +23,18 @@
 -- Also excludes soft-deleted accounts explicitly (0023). Deletion sets
 -- deactivated_at as well, so this is belt-and-braces, not a behaviour change.
 --
--- Re-runnable: create or replace with an unchanged signature.
+-- Part 2 adds what the scheduler needs to retry jobs that reached
+-- 'recommending' but were never scored (§32.3): an attempt timestamp, and a
+-- function that claims a batch of such jobs atomically.
+--
+-- Re-runnable: create or replace with unchanged signatures, add column if not
+-- exists. APPLY BEFORE DEPLOYING THE API that ships with it — the scheduler
+-- writes jobs.recommendation_attempted_at when it flips a job, and that update
+-- fails on a database without the column.
+
+-- ===========================================================================
+-- 1. Eligibility
+-- ===========================================================================
 
 create or replace function fn_job_provider_features(p_job_id uuid)
 returns table (
@@ -76,3 +87,60 @@ language sql stable as $$
       and haversine_km(j.latitude, j.longitude, pr.latitude, pr.longitude)
           <= pp.service_radius_km;
 $$;
+
+-- ===========================================================================
+-- 2. Retrying unscored jobs
+-- ===========================================================================
+
+-- When scoring was last attempted for this job — by the timeout flip, a
+-- manual trigger, or a retry. Doubles as a claim: a job attempted recently is
+-- left alone, so two scorers do not run the same job at once.
+alter table jobs
+    add column if not exists recommendation_attempted_at timestamptz;
+
+comment on column jobs.recommendation_attempted_at is
+    'Last time recommendation scoring was attempted (timeout, manual or retry). '
+    'Retries skip jobs attempted within the retry window. BACKEND_SCHEMA.md §32.3.';
+
+-- Claims up to p_limit jobs that sit in 'recommending' with NO recommendation
+-- run and no attempt in the last p_retry_after_seconds, stamps them as
+-- attempted, and returns them for scoring.
+--
+-- The run check happens here, before the limit. Filtering in application code
+-- after a LIMIT let already-scored jobs — which legitimately stay
+-- 'recommending' until someone is hired — fill every batch, so unscored jobs
+-- were never retried once enough scored ones were waiting. Ordering by the
+-- last attempt (never-attempted first) rotates through a backlog instead of
+-- retrying the same oldest jobs forever. FOR UPDATE SKIP LOCKED makes the
+-- claim safe against a concurrent tick.
+create or replace function claim_unscored_recommending_jobs(
+    p_retry_after_seconds integer,
+    p_limit integer
+)
+returns table (id uuid, title text)
+language sql volatile
+set search_path = public
+as $$
+    update jobs j
+       set recommendation_attempted_at = now()
+     where j.id in (
+         select c.id
+           from jobs c
+          where c.status = 'recommending'
+            and not exists (select 1 from recommendation_runs rr
+                             where rr.job_id = c.id)
+            and (c.recommendation_attempted_at is null
+                 or c.recommendation_attempted_at
+                    < now() - make_interval(secs => p_retry_after_seconds))
+          order by c.recommendation_attempted_at nulls first, c.posted_at
+          limit p_limit
+          for update skip locked
+     )
+    returning j.id, j.title;
+$$;
+
+revoke all on function public.claim_unscored_recommending_jobs(pg_catalog.int4, pg_catalog.int4)
+    from public, anon, authenticated;
+grant execute on function public.claim_unscored_recommending_jobs(pg_catalog.int4, pg_catalog.int4)
+    to service_role;
+
