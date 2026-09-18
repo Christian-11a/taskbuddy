@@ -10,6 +10,35 @@ Each item below: what's wrong, why it's backend, and what "done" looks like.
 
 ---
 
+## Update 2026-09-18 — mobile session (crash fix + new backend asks)
+
+A mobile-side session cleared the last critical job-creation crash and cleaned up
+the app config. What changed on the mobile end, and what it now needs from backend:
+
+**Done on mobile, no backend action needed:**
+- **BUG-004 (job-post crash) is fixed.** The create-job Location step used a native
+  `react-native-maps` map that crashed on a missing Google Maps Android SDK key.
+  That dependency is removed; the step now shows a keyless "Location confirmed"
+  card built on the address the backend already geocodes (Geoapify). Full detail: **§8**.
+- App config cleaned: duplicate Android permissions removed, expo patch versions
+  realigned (`expo-doctor` 21/21), `expo-updates` + EAS `updates.url` kept and
+  `eas.json` channels added so OTA is properly wired. **Note:** OTA only reaches a
+  build made *after* this — one fresh `eas build` (development channel) is needed
+  before `eas update` publishes will land on the installed client.
+
+**New / updated backend asks:**
+- **§8 (B2)** — optional map thumbnail: needs a backend endpoint returning a keyless
+  Geoapify static-map URL (key stays server-side). Mobile UI is ready to consume it.
+- **§9 (new)** — the deployed **ml-service is returning HTTP 429** (`/health` shows
+  `ml_service: down`), so recommendation scoring is currently failing in prod.
+- **Item 5** — deploy-drift: the live API's uptime is now newer than the chat fix,
+  so this is *likely* resolved; still needs the signed-URL smoke test to confirm.
+- **Item 3** — the k6 load-test script exists and just needs running + numbers recorded
+  (needs Render/Supabase tier visibility).
+- **Item 4** — push/Firebase is unchanged: still blocked on FCM credentials + a rebuild.
+
+---
+
 ## 1. Escrow hold isn't atomic on concurrent accepts — RESOLVED on `main`
 
 > **Fixed, 2026-09-16.** `EscrowService.hold()` (`backend/src/escrow/escrow.service.ts`)
@@ -205,6 +234,52 @@ receives a request and approves/declines it.
 story is satisfied by "provider applies, client hires" (in which case no
 code changes needed, just re-wording the story) or whether a real
 client-initiates-request-to-provider flow is wanted (a new feature).
+
+---
+
+## 8. Job-creation map crash (BUG-004) — fixed on mobile; optional thumbnail (B2) needs a backend endpoint
+
+**Where:** `mobile/app/(homeowner)/screens/HOCreateJobScreen.tsx` (mobile, done);
+a new backend geocoding/static-map route (the remaining, optional part).
+
+**What was wrong:** the create-job Location step rendered a native
+`react-native-maps` `MapView`, which needs `com.google.android.geo.API_KEY` in the
+Android manifest (a Google Maps *Android SDK* key, billing-account-gated). No key
+was ever configured, so advancing past service selection killed the process. Note
+this is a *different* Google product from the geocoding API Eduard already moved to
+Geoapify — that switch was backend-only and did not touch this map.
+
+**Done, mobile side (2026-09-18):** `react-native-maps` removed entirely; the step
+now shows a keyless "Location confirmed" card. No functionality lost — the map was
+only a visual preview of coordinates the backend already resolves via
+`GET`-geocode. `eas update` (OTA) could **not** have fixed this (native manifest
+key), which is why the earlier "eas update resolved it" assumption was wrong.
+
+**Remaining, optional (B2 — needs backend):** if a real map *image* is wanted back,
+mobile will render a `<Image>` from a static-map URL. The catch: the Geoapify key
+must stay server-side, so backend needs a small endpoint that returns a signed/
+static Geoapify map URL (or a proxied image) for a given lat/long. Keyless on the
+client. **Done looks like:** an endpoint mobile can call with resolved coordinates
+that returns a ready-to-render static-map URL; no key ever ships in the app bundle.
+
+---
+
+## 9. Deployed ml-service is returning HTTP 429 — recommendations failing in prod
+
+**Where:** the Render deployment of `ml-service/` (and/or the backend→ml-service call
+path). **Assigned to whoever holds Render/ml-service access.**
+
+**Problem:** a live check on 2026-09-18 (`GET /health` on the deployed backend)
+reported `ml_service: {status: "down", detail: "HTTP 429"}`. A 429 means the
+ml-service is rate-limiting (or something upstream of it is). While it's down,
+jobs still reach `recommending` but scoring fails, so the top-8 invitations never
+go out — the core matching feature is silently broken in production.
+
+**Fix:** check the ml-service Render logs for the source of the 429 (free-tier
+limit, a hot retry loop, or an upstream provider quota — note the recommendation
+retry work in `4f2e8f7` claims unscored jobs in SQL, so confirm it isn't hammering
+the scorer). **Done looks like:** `/health` shows `ml_service: up`, and a posted
+test job gets scored and invites its top providers.
 
 ---
 

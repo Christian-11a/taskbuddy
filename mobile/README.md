@@ -573,6 +573,13 @@ homeowner-facing recommendations do not map directly to the current product.
 - Homeowner job locations require verified coordinates from the backend
   geocoding handoff above. There is no Expo GPS or Google Maps provider-
   discovery flow.
+- The job-creation Location step no longer renders a native `react-native-maps`
+  map (that dependency was removed 2026-09-18 — it crashed the app on a missing
+  Google Maps Android SDK key; see `HANDOFF.md` §8). Since the backend already
+  geocodes the address via Geoapify, the step now shows a keyless "Location
+  confirmed" card instead. A visual map thumbnail is **UI-ready but pending a
+  backend endpoint** that returns a keyless Geoapify static-map URL (the key
+  must stay server-side) — tracked as B2 in `HANDOFF.md` §8.
 - Dark Mode persists a preference but does not change the palette. Language,
   wallet transfer, and chat calls remain unwired.
 
