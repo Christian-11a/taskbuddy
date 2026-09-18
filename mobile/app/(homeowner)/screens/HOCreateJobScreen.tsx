@@ -82,7 +82,6 @@ import DateTimePicker, {
 } from '@react-native-community/datetimepicker';
 import { Calendar } from 'react-native-calendars';
 import * as ImagePicker from 'expo-image-picker';
-import MapView, { Marker } from 'react-native-maps';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Sizes, Spacing, V6Colors, V6Shadows } from '../../../src/constants/theme';
 import { useAuth } from '../../../src/context/AuthContext';
@@ -808,14 +807,15 @@ export default function HOCreateJobScreen({
             </View>
 
             {resolvedCoordinates ? (
-              <MapView
-                style={styles.map}
-                initialRegion={{ ...resolvedCoordinates, latitudeDelta: 0.01, longitudeDelta: 0.01 }}
-                scrollEnabled={false}
-                zoomEnabled={false}
-              >
-                <Marker coordinate={resolvedCoordinates} title="Job location" />
-              </MapView>
+              <View style={styles.mapConfirmed}>
+                <MapPin size={20} color={Colors.brandTeal} />
+                <View style={styles.mapConfirmedBody}>
+                  <Text style={styles.mapConfirmedTitle}>Location confirmed</Text>
+                  <Text style={styles.mapConfirmedText} numberOfLines={2}>
+                    {geocodedAddress || location.trim()}
+                  </Text>
+                </View>
+              </View>
             ) : (
               <View style={styles.mapPlaceholder}>
                 <MapPin size={20} color={Colors.muted} />
@@ -1414,9 +1414,22 @@ const styles = StyleSheet.create({
   },
   savedAddressText: { flex: 1, color: Colors.brandTeal, fontSize: 14, fontWeight: '600', fontFamily: 'Inter' },
   noteCard: { backgroundColor: Colors.ink50, borderRadius: 14, padding: 14 },
-  map: { height: 190, borderRadius: 14, marginBottom: 16 },
   mapPlaceholder: { height: 190, borderRadius: 14, marginBottom: 16, backgroundColor: Colors.ink50, alignItems: 'center', justifyContent: 'center', gap: 8, padding: 20 },
   mapPlaceholderText: { color: Colors.muted, fontSize: 14, fontFamily: 'Inter', textAlign: 'center' },
+  mapConfirmed: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    borderRadius: 14,
+    marginBottom: 16,
+    padding: 16,
+    backgroundColor: Colors.ink50,
+    borderWidth: 1,
+    borderColor: Colors.brandTeal,
+  },
+  mapConfirmedBody: { flex: 1, gap: 2 },
+  mapConfirmedTitle: { color: Colors.brandTeal, fontSize: 14, fontWeight: '700', fontFamily: 'Inter' },
+  mapConfirmedText: { color: Colors.ink900, fontSize: 14, fontFamily: 'Inter' },
   noteText: { color: Colors.slate, fontSize: 14, lineHeight: 19, fontFamily: 'Inter' },
 
   calendarOverlay: { flex: 1, backgroundColor: 'rgba(15,23,42,0.45)', justifyContent: 'center', padding: 20 },
