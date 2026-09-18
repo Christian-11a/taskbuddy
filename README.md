@@ -15,6 +15,8 @@ funds that were held the moment they were assigned.
 [health JSON](https://taskbuddy-kpek.onrender.com/health)) — frontends call this;
 see the [backend README](./backend/README.md#base-url).
 
+**Live ML-SERVICE:** https://taskbuddy-ml-service-8ppc.onrender.com
+
 ---
 
 ## How it works
