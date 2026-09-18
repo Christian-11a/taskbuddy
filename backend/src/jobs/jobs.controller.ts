@@ -2,11 +2,13 @@ import {
   Body,
   Controller,
   Get,
+  Header,
   Param,
   ParseUUIDPipe,
   Patch,
   Post,
   Query,
+  StreamableFile,
   UseGuards,
 } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
@@ -18,10 +20,11 @@ import {
   CreateJobDto,
   GeocodeQueryDto,
   DeclineJobDto,
+  StaticMapQueryDto,
   UpdateJobTaskDto,
 } from './dto/jobs.dto';
 import { GeocodingService } from '../geocoding/geocoding.service';
-import { ThrottleGeocode } from '../common/throttle';
+import { ThrottleGeocode, ThrottleStaticMap } from '../common/throttle';
 import type { Profile } from '../common/types';
 
 @Controller('jobs')
@@ -66,6 +69,24 @@ export class JobsController {
   @ThrottleGeocode()
   geocode(@Query() query: GeocodeQueryDto) {
     return this.geocoding.geocode(query.address);
+  }
+
+  /**
+   * A PNG preview of a geocoded point, proxied so the Geoapify key never
+   * reaches the app (BACKEND_SCHEMA.md §31.1). Also declared above `:id`.
+   */
+  @Get('static-map')
+  @Roles('client')
+  @ThrottleStaticMap()
+  @Header('Cache-Control', 'private, max-age=86400')
+  async staticMap(@Query() query: StaticMapQueryDto) {
+    // Six decimals is ~10 cm; more only makes identical pins look different.
+    const round = (n: number) => Math.round(n * 1e6) / 1e6;
+    const png = await this.geocoding.staticMap(
+      round(query.lat),
+      round(query.lon),
+    );
+    return new StreamableFile(png, { type: 'image/png' });
   }
 
   @Get(':id')

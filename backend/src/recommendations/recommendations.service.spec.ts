@@ -275,7 +275,28 @@ describe('RecommendationsService', () => {
 
       await expect(
         service.scoreJob('j1', 'Fix sink', 'timeout'),
-      ).rejects.toThrow(/Model service returned 503/);
+      ).rejects.toThrow(/Model service at http:\/\/[^ ]+ returned 503/);
+    });
+
+    it('bounds the call with a timeout and names the host when it fails', async () => {
+      // A hung scorer would otherwise hold the scheduler's `running` flag.
+      const { supabase, rpc } = createSupabaseMock({});
+      rpc.mockResolvedValue({ data: [featureRow('p1')], error: null });
+      const timeout = Object.assign(new Error('aborted'), {
+        name: 'TimeoutError',
+      });
+      const fetchMock = jest.fn().mockRejectedValue(timeout);
+      global.fetch = fetchMock;
+      const service = new RecommendationsService(supabase, config);
+
+      await expect(
+        service.scoreJob('j1', 'Fix sink', 'timeout'),
+      ).rejects.toThrow(
+        /Model service at http:\/\/[^ ]+ unreachable: timed out/,
+      );
+      expect(
+        (fetchMock.mock.calls[0][1] as { signal?: AbortSignal }).signal,
+      ).toBeInstanceOf(AbortSignal);
     });
 
     it('refuses a score array that does not line up with the pool', async () => {

@@ -1,6 +1,12 @@
 # Backend/infra handoff — mobile e2e test environment blockers
 
-**Status: open.** Three items surfaced by the mobile Maestro e2e sweep (see `mobile/maestro/`)
+> **Status, 2026-09-18: item 1 is obsolete, items 2–3 are standing test chores.** The mobile app
+> no longer uses `react-native-maps` (removed 2026-09-18, `HANDOFF.md` §8), so the Maps key in
+> item 1 isn't needed and nothing here blocks job creation any more. The address geocoding that
+> replaced it runs on the backend through Geoapify, and its key is set on the deployed API. The
+> original text is kept below for the record.
+
+**Status (original): open.** Three items surfaced by the mobile Maestro e2e sweep (see `mobile/maestro/`)
 that need DB/dashboard/credential access the test session doesn't have. None of these are code
 bugs to fix in this repo beyond the one-line config change noted in item 1 — they're
 access/credential items for whoever holds the Google Cloud project and Supabase dashboard.

@@ -48,7 +48,7 @@
  *  - iOS: keep the existing custom Modal + spinner + Done button flow.
  */
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   ScrollView,
   StyleSheet,
@@ -226,6 +226,16 @@ export default function HOCreateJobScreen({
   const [descriptionHeight, setDescriptionHeight] = useState<number | null>(null);
   const [location, setLocation] = useState('');
   const [resolvedCoordinates, setResolvedCoordinates] = useState<{ latitude: number; longitude: number } | null>(null);
+  // The preview is decoration on top of verified coordinates: if it fails
+  // (backend 503, expired token, offline) the confirmed card stands alone.
+  const [mapPreviewFailed, setMapPreviewFailed] = useState(false);
+  const mapPreviewSource = useMemo(
+    () => (resolvedCoordinates
+      ? api.staticMapSource(resolvedCoordinates.latitude, resolvedCoordinates.longitude)
+      : null),
+    [resolvedCoordinates],
+  );
+  useEffect(() => setMapPreviewFailed(false), [mapPreviewSource]);
   const [geocodedAddress, setGeocodedAddress] = useState('');
   const [geocoding, setGeocoding] = useState(false);
   const [useProfileLocation, setUseProfileLocation] = useState(true);
@@ -805,6 +815,18 @@ export default function HOCreateJobScreen({
               {geocoding && <Text style={styles.inputHint}>Verifying address…</Text>}
               {!!fieldErrors.location && <Text style={styles.inputErrorText}>{fieldErrors.location}</Text>}
             </View>
+
+            {mapPreviewSource && !mapPreviewFailed && (
+              <View style={styles.mapPreview}>
+                <Image
+                  source={mapPreviewSource}
+                  style={styles.mapPreviewImage}
+                  resizeMode="cover"
+                  onError={() => setMapPreviewFailed(true)}
+                  accessibilityLabel="Map of the confirmed job location"
+                />
+              </View>
+            )}
 
             {resolvedCoordinates ? (
               <View style={styles.mapConfirmed}>
@@ -1416,6 +1438,10 @@ const styles = StyleSheet.create({
   noteCard: { backgroundColor: Colors.ink50, borderRadius: 14, padding: 14 },
   mapPlaceholder: { height: 190, borderRadius: 14, marginBottom: 16, backgroundColor: Colors.ink50, alignItems: 'center', justifyContent: 'center', gap: 8, padding: 20 },
   mapPlaceholderText: { color: Colors.muted, fontSize: 14, fontFamily: 'Inter', textAlign: 'center' },
+  mapPreview: { borderRadius: 14, overflow: 'hidden', marginBottom: 8, backgroundColor: Colors.ink50 },
+  // Matches the 2:1 image the backend renders (600×300). `cover` at that ratio
+  // never crops, which keeps Geoapify's attribution line in its bottom corner.
+  mapPreviewImage: { width: '100%', aspectRatio: 2 },
   mapConfirmed: {
     flexDirection: 'row',
     alignItems: 'center',

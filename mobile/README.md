@@ -226,29 +226,24 @@ The backend's 30-second scheduler sends pending notification rows to opted-in
 devices via Expo. Permission denial or a registration failure does not block
 sign-in, and notification rows remain available in the in-app list either way.
 
-> **⚠️ Push does not work yet, and won't until two things are set up.** The code
+> **⚠️ Push does not work yet: Firebase (FCM) is the remaining blocker.** The code
 > is complete on both sides; the configuration isn't.
 >
-> 1. **An EAS project id.** `getExpoPushTokenAsync()` resolves one from
->    `options.projectId` → `Constants.easConfig` → `expoConfig.extra.eas.projectId`.
->    `app.json` currently has none, so the call throws
->    `ERR_NOTIFICATIONS_NO_EXPERIENCE_ID` and no token is ever obtained. Run
->    `eas init` and commit the resulting `expo.extra.eas.projectId`.
-> 2. **A development build.** Remote push is not supported in **Expo Go** from
->    SDK 53 onward, and this app is on SDK 57. Testing needs `eas build --profile
->    development` (or a local dev client) on a physical device — a simulator
->    cannot receive pushes either.
+> - **EAS project id: done** (2026-09-16). `app.json` has `expo.extra.eas.projectId`.
+> - **Firebase Cloud Messaging: not done.** Android remote push goes through FCM, so a
+>   rebuilt dev client fails registration with `Unable to get Firebase Messaging
+>   instance`. It needs a Firebase project with an Android app for
+>   `com.taskbuddy.app`, `google-services.json` referenced from
+>   `expo.android.googleServicesFile`, the FCM V1 credentials uploaded with
+>   `eas credentials`, then a rebuild. Only someone with Firebase Console access can do
+>   this. Steps: `HANDOFF.md` §4.
+> - **A development build.** Remote push is not supported in **Expo Go** from SDK 53
+>   onward, and a simulator can't receive pushes either. Test on a physical device.
 >
-> `eas.json` is committed with `development` / `preview` / `production` profiles,
-> so both steps are: `npm i -g eas-cli` → `eas login` → `eas init` (writes the
-> project id into `app.json` — commit it) → `eas build --profile development
-> --platform android`. Only an Expo account holder can run these; the project id
-> is minted server-side and cannot be filled in by hand.
->
-> Until then `src/lib/pushNotifications.ts` returns `{ status: 'misconfigured' }`
-> and `AuthContext` logs `[push] not registered (misconfigured) — …` in `__DEV__`.
-> That warning is the intended signal, not a bug. A *denied* permission is
-> logged as nothing, deliberately: the user chose it and it isn't a fault.
+> Until then, `src/lib/pushNotifications.ts` fails to obtain a token and `AuthContext`
+> logs `[push] not registered …` in `__DEV__`. That warning is the intended signal, not
+> a bug. A *denied* permission logs nothing, deliberately: the user chose it and it
+> isn't a fault.
 
 ---
 
@@ -270,7 +265,7 @@ sign-in, and notification rows remain available in the in-app list either way.
 |--------|--------------|
 | `HOHomeScreen` | `GET /wallet`, `GET /jobs/mine`, `GET /categories`, unread notification count |
 | `HOMyJobs` | `GET /jobs/mine`, filtered client-side by status (All / Open / Awaiting / Confirmed / In Progress / Completed / Cancelled) |
-| `HOCreateJobScreen` | `GET /categories`, image upload, `POST /jobs` — the guided 5-step flow: service → location → tasks → urgency → review |
+| `HOCreateJobScreen` | `GET /categories`, `GET /jobs/geocode` + `GET /jobs/static-map` (location preview), image upload, `POST /jobs`. The guided 5-step flow: service → location → tasks → urgency → review |
 | `HOJobDetailScreen` | `GET /jobs/:id`, `GET /providers/:id`, `POST /jobs/:id/recommendations/trigger`; complete / cancel / chat, review-state gating, manual provider-matching retry, and read-only task checklist |
 | `HOChatScreen` | `POST /conversations` then message listing |
 | `HOJobApplicationsScreen` | `GET /jobs/:id/applications`; Accept opens `HirePaymentModal` — `POST /applications/:id/accept` (wallet) or `POST /payments/hire-checkout-session` (card, then polls for `accepted`); Reject |
@@ -357,7 +352,8 @@ Accept returns 404). What has to be applied and deployed, and by whom, is in
 
 ## Backend Handoff Docs
 
-Five handoff documents in [`docs/`](../docs/) are addressed to whoever holds
+The live punch list of open backend asks is [`HANDOFF.md`](../HANDOFF.md) at the repo root;
+start there. Five older handoff documents in [`docs/`](../docs/) are addressed to whoever holds
 backend / Supabase / Render / Google Cloud access. The first two are pure ops — applying and
 deploying already-committed work, no new code. The next two ask for small,
 specific pieces of new backend code (rate limiting, an admin-only credit
@@ -372,7 +368,7 @@ correctly in production:
 | Part | What | Needs | Status |
 |------|------|-------|--------|
 | **A** | Apply Supabase migrations 0018, 0019, 0020 | Supabase SQL Editor | ✅ Done — 0018 + 0019 2026-08-14, 0020 2026-08-17 |
-| **B** | Deploy the API; configure web + Expo | API host, web host, Expo | ⚠️ API deployed 2026-08-17; **hosted-web + Expo config outstanding** |
+| **B** | Deploy the API; configure web + Expo | API host, web host, Expo | ⚠️ API and hosted web done; **Expo push (FCM) outstanding** |
 
 - **Migration 0018** adds the `'confirmed'` value to the `job_status` enum.
 - **Migration 0019** creates the `job_tasks` checklist table with RLS, and adds
@@ -386,11 +382,12 @@ correctly in production:
 > answer `401` rather than `404`, and all three `admin_list_*` functions are
 > present in `information_schema.routines`. Posting a job works again.
 >
-> **What is still outstanding:** the `NEXT_PUBLIC_API_URL` / `WEB_CORS_ORIGINS`
-> pair *for an externally hosted* admin console (running it locally is already
-> configured — `web/.env.local` points at the deployed API, and that origin is
-> allowed by the deployed CORS preflight), and Expo push credentials, blocked
-> first by the missing EAS `projectId` — see above.
+> **Hosted web: done.** Verified 2026-09-18: a preflight from
+> `https://taskbuddy-nine-zeta.vercel.app` gets `access-control-allow-origin` for
+> that origin with credentials allowed.
+>
+> **Still outstanding:** Expo push, blocked on Firebase (FCM) credentials. The EAS
+> `projectId` is in place; see above.
 >
 > 0018 and 0019 are idempotent and safe to re-run. **0020 is not** — it uses bare
 > `create function`, so re-running it errors with `42723 function already exists`.
@@ -414,7 +411,7 @@ signup OTP (item 5) remains available for a future registration-confirmation flo
 | 4 | Realtime chat | Done — authenticated SSE streams messages through the API |
 | 5 | Email OTP at registration | **API done** — `POST /auth/send-email-otp` / `verify-email-otp`, wrapping Supabase's own signup code. Needs the `{{ .Token }}` template change in [`docs/email-otp-setup.md`](../docs/email-otp-setup.md) |
 | 6 | Homeowner card-at-hire (vs wallet top-up) | **Wired** — Accept offers Pay from wallet or Pay by card; the card path is hired by Stripe's webhook (`BACKEND_SCHEMA.md` §29.4) |
-| 7 | Push delivery | Backend done (Expo tokens + API scheduler). **Blocked on our side**: no EAS `projectId`, and Expo Go can't receive push on SDK 57 — see [Live chat and push notifications](#live-chat-and-push-notifications) |
+| 7 | Push delivery | Backend done (Expo tokens + API scheduler). **Blocked** on Firebase (FCM) credentials; the EAS `projectId` is set. See [Live chat and push notifications](#live-chat-and-push-notifications) |
 
 ### 3. [`docs/backend-handoff-stripe-connect-escrow.md`](../docs/backend-handoff-stripe-connect-escrow.md)
 
@@ -453,26 +450,20 @@ button (`web/README.md`).
 
 ### 5. [`docs/backend-handoff-mobile-e2e-test-environment.md`](../docs/backend-handoff-mobile-e2e-test-environment.md)
 
-**Open, blocking mobile e2e test progress.** Not an app bug — three test-environment items found
-by the Maestro sweep (`mobile/maestro/`) that need access this repo's code can't grant:
+**Mostly resolved.** Test-environment items found by the Maestro sweep (`mobile/maestro/`) that
+needed access this repo's code can't grant:
 
-| # | Item | Blocks |
+| # | Item | Status |
 |---|---|---|
-| 1 | Google Maps API key — never configured, so `HOCreateJobScreen`'s Location step (`MapView`) fatally crashes the app on every job-creation attempt | Job creation entirely, and transitively the cross-role hire loop |
-| 2 | Backend address geocoding endpoint — **API done**: `GET /jobs/geocode?address=` returns street-level-or-better results via Geoapify, Philippines only (`backend/BACKEND_SCHEMA.md` §31). **Still needs** `GEOAPIFY_API_KEY` set on the API host; until then the route answers `503` | Typed-address job posting; the mobile form now blocks posting until it receives verified coordinates |
-| 3 | Wallet balance seed SQL for the test client account | Escrow/hire and wallet/withdraw testing |
-| 4 | `recommendation_deadline` SQL nudge (per test job) | Nothing — workaround is waiting 5–15 real minutes |
+| 1 | Google Maps API key for `HOCreateJobScreen`'s `MapView` | **Obsolete.** `react-native-maps` was removed on 2026-09-18 and the Location step no longer needs a Maps key (`HANDOFF.md` §8) |
+| 2 | Wallet balance seed SQL for the test client account | Needs Supabase SQL access whenever the maestro client runs low |
+| 3 | `recommendation_deadline` SQL nudge (per test job) | Nothing blocked. The workaround is waiting 5–15 real minutes |
+| — | Backend address geocoding (`GET /jobs/geocode`, Geoapify, `backend/BACKEND_SCHEMA.md` §31), tracked alongside | **Done.** `GEOAPIFY_API_KEY` is set on the deployed API; verified 2026-09-18 with a 200 for a Quezon City street address |
 
-The address handoff deliberately keeps the Geoapify geocoding key on the
-backend. Add it to the backend deployment environment and never put it in the
-mobile bundle. The mobile client
-already calls the route, stores the returned latitude/longitude with the job,
-and refuses to use the profile address or a Metro Manila fallback when the
-lookup fails.
-
-Item 1 needs a Google Cloud Console credential and is currently the active blocker; item 2 needs a
-Geocoding key set on the API host; items 3–4 need Supabase SQL access. None of these need further
-backend code beyond the one-line `app.json` config once a Maps key exists.
+The Geoapify key stays on the backend. Never put it in the mobile bundle. That also rules out the
+map preview's image URL, which the API renders and proxies instead (`GET /jobs/static-map`). The
+mobile client stores the latitude/longitude the geocode route returns with the job, and refuses to
+use the profile address or a Metro Manila fallback when the lookup fails.
 
 ---
 
@@ -482,8 +473,9 @@ The migration and deployment handoff above is complete. Everything the mobile
 acceptance audit raised has since been done (full reasoning in
 `backend/BACKEND_SCHEMA.md` §28), and so have the decisions that were left
 open: the Stripe Connect escrow, card-at-hire, and verification as a gate
-(§29, §17). Migrations **0026–0029** must be applied before deploying the
-current API, with 0027 run alone first. See `backend/README.md`.
+(§29, §17). The migration list, including which ones must be applied before an
+API deploy and which must run alone (0022, 0027), is kept in one place:
+`backend/README.md`. It currently runs through **0032**.
 
 | Item | Outcome |
 |---|---|
@@ -567,19 +559,19 @@ homeowner-facing recommendations do not map directly to the current product.
   and the mobile flow still needs automated tests for these states.
 - Homeowners can manually retry provider matching from an open job. Results are
   provider invitations; there is still no homeowner-facing service catalogue.
-- Push notification code is present, but remote delivery requires an EAS
-  project ID and an SDK 57 development build. Expo Go cannot receive remote
-  pushes.
+- Push notification code is present and the EAS project ID is set, but remote
+  delivery needs Firebase (FCM) credentials and a rebuilt SDK 57 development
+  build. Expo Go cannot receive remote pushes.
 - Homeowner job locations require verified coordinates from the backend
   geocoding handoff above. There is no Expo GPS or Google Maps provider-
   discovery flow.
 - The job-creation Location step no longer renders a native `react-native-maps`
   map (that dependency was removed 2026-09-18 — it crashed the app on a missing
   Google Maps Android SDK key; see `HANDOFF.md` §8). Since the backend already
-  geocodes the address via Geoapify, the step now shows a keyless "Location
-  confirmed" card instead. A visual map thumbnail is **UI-ready but pending a
-  backend endpoint** that returns a keyless Geoapify static-map URL (the key
-  must stay server-side) — tracked as B2 in `HANDOFF.md` §8.
+  geocodes the address via Geoapify, the step shows a "Location confirmed" card,
+  with a map preview rendered by the API (`GET /jobs/static-map`; the key stays
+  server-side). The preview hides itself on any error, so it needs the API
+  deploy that carries that route before it appears.
 - Dark Mode persists a preference but does not change the palette. Language,
   wallet transfer, and chat calls remain unwired.
 
@@ -639,7 +631,7 @@ was trimmed to remove rows that duplicated a bottom-nav tab or a header icon.
 | **Dark Mode** | Half done: the *preference* persists (`user_settings.dark_mode` via `PATCH /settings`), but nothing applies it — there is still no theme switching. Both Settings screens say so under the switch rather than implying a repaint that never comes. The blocker is the ~40 screens still using inline hex instead of `V6Colors` tokens; see [`CHANGELOG.md`](./CHANGELOG.md) for the theming approach that was built and then deliberately reverted to leave this open |
 | **Language** | Settings modal states English is the only option — no i18n system exists to back a real picker |
 | **Wallet Transfer** | Deliberately not built, backend or front. Wallet-to-wallet transfer turns the wallet into a money-transmission service, which is a licensing matter in PH, not an engineering one |
-| **Push delivery** | Code complete end to end, **but not yet functional**: `app.json` has no EAS `projectId`, so no push token is ever obtained, and remote push needs a development build (not Expo Go) on SDK 57. The `notifications` table remains the source of truth and the in-app list is unaffected — see [Live chat and push notifications](#live-chat-and-push-notifications) |
+| **Push delivery** | Code complete end to end, **but not yet functional**: the EAS `projectId` is set, but Firebase (FCM) credentials aren't, so no push token is obtained on Android. Remote push also needs a development build (not Expo Go) on SDK 57. The `notifications` table remains the source of truth and the in-app list is unaffected — see [Live chat and push notifications](#live-chat-and-push-notifications) |
 | **Realtime chat** | Message delivery is live through authenticated SSE; attachments are wired (photo picker, upload, rendering). The call button remains inert — no signalling path exists |
 | **Counterpart avatars** | Chat, applicant, and review payloads all carry `avatar_url`; those screens still render initials. (The signed-in user's *own* avatar does render — see `OwnAvatar`) |
 | **Provider calendar write** | Bookings are created by the backend when a job is assigned, not from this screen |

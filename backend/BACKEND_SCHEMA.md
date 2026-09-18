@@ -45,6 +45,7 @@ recommendation model (see [Recommendation Engine Integration](#9-recommendation-
 29. [Stripe Connect Payouts & Card-Funded Escrow (migrations 0026–0029)](#29-stripe-connect-payouts--card-funded-escrow-migrations-00260029)
 30. [Chat Attachments (migrations 0030–0031)](#30-chat-attachments-migrations-00300031)
 31. [Address Geocoding (no migration)](#31-address-geocoding-no-migration)
+    - [31.1 Location preview map](#311-location-preview-map-get-jobsstatic-map)
 32. [Matching Eligibility & Profile Coordinates (migration 0032)](#32-matching-eligibility--profile-coordinates-migration-0032)
 
 ---
@@ -1779,6 +1780,7 @@ Read the table that way; the numbers mean much less if you read them as a platfo
 | `POST /payments/topup`, `POST /payments/checkout-session` | 5 / min | A person tops up once. This is the ceiling that stops TaskBuddy being a free card-testing endpoint pointed at Stripe. Both routes carry it, so neither is a way around the other |
 | `POST /auth/{register,login,admin/login,forgot-password,reset-password,send-email-otp,verify-email-otp,change-password}` | 10 / min **each** | Two attacks at once: guessing one account's password, and using someone else's address as a mail relay by requesting codes they never asked for. Ten leaves room for a person mistyping theirs |
 | `GET /jobs/geocode` | 10 / min | Each call spends one of Geoapify's 3,000 free daily credits (§31); a homeowner correcting a typo needs a few, not hundreds |
+| `GET /jobs/static-map` | 20 / min | Each render also spends Geoapify credits (§31.1); it follows a successful geocode, so it sits a little above that route's ten |
 | `POST /payments/webhook` | exempt (`@SkipThrottle()`) | The caller is Stripe, already authenticated by the signature over the raw body, and it retries for three days. Throttling it would only delay the credit a payer is waiting for |
 
 **One throttler, not several named ones.** Every entry in `ThrottlerModule.forRoot`'s list applies
@@ -2264,6 +2266,35 @@ The mobile client reads only `latitude`/`longitude`; `formatted_address` is extr
 Every call spends one daily credit, so the route carries its own limit, `@ThrottleGeocode()`:
 **10 / min per IP** (§28.4's per-endpoint model). No response caching: a homeowner geocodes once
 per job, and a cache would need an invalidation story for addresses the map data later refines.
+
+### 31.1 Location preview map (`GET /jobs/static-map`)
+
+`GET /jobs/static-map?lat=&lon=` (client only) returns a **600×300 PNG** of the point `GET
+/jobs/geocode` just resolved, with a pin on it. The mobile job form shows it above "Location
+confirmed" so the homeowner can check the pin against the streets they know.
+
+**The API proxies the image; it does not hand out a URL.** A Geoapify Static Maps URL has to carry
+`apiKey`, and a key in a URL the app loads can be pulled out as easily as one in the bundle. So
+`GeocodingService.staticMap()` calls `GET https://maps.geoapify.com/v1/staticmap`
+(`style=osm-bright`, `zoom=16`, `center` and `marker` at the point, `format=png`) server-side and
+the controller returns the bytes as `image/png`.
+
+| Input / upstream | API answers |
+|---|---|
+| `lat` in 4.5–21.5 and `lon` in 116–127 | `200 image/png`, `Cache-Control: private, max-age=86400` |
+| missing, non-numeric, or outside that box | `400`. The box surrounds the Philippines, the only country geocode answers for, so the route can't render maps of anywhere else on TaskBuddy's credits |
+| non-2xx from Geoapify, a non-PNG answer, network error, 8 s timeout | `503 Map preview is unavailable right now.`, with the upstream body logged, never returned |
+| (no key configured) | `503 Map preview is not configured` |
+
+Coordinates are rounded to six decimals (~10 cm) before rendering. The preview is decorative:
+the mobile card hides the image on any error and the confirmed coordinates still post the job.
+Geoapify draws the required attribution ("Powered by Geoapify | © OpenMapTiles © OpenStreetMap
+contributors") into the image itself. The app shows the image at its 2:1 ratio so that line is never
+cropped, and adds no caption of its own.
+
+Each render spends Geoapify credits, so the route has its own limit, `@ThrottleStaticMap()`:
+**20 / min per IP**, a little above geocode's ten because every successful geocode is followed by
+one render.
 
 ---
 

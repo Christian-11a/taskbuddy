@@ -10,6 +10,24 @@ Each item below: what's wrong, why it's backend, and what "done" looks like.
 
 ---
 
+## Update 2026-09-18 (later) — handoff pass
+
+Where each item stands after a pass over this file, checked against the deployed API:
+
+| § | Item | Status |
+|---|---|---|
+| 1, 2 | Escrow atomicity, chat attachments | Resolved (unchanged) |
+| 3 | k6 load test | Script ready, **still not run**. Needs `k6` installed and a go-ahead to write test rows to prod |
+| 4 | Push / FCM | **Open.** Needs Firebase Console access (unchanged) |
+| 5 | Chat attachments on the deployed API | **Resolved.** Live smoke test passed 2026-09-18 |
+| 6 | Chat polish punch list | Resize and send-guard done in `9ad2758`. Only the "Photo unavailable" placeholder is left |
+| 7 | "Booking requests" story | **Stale.** The provider-side accept/decline flow exists. See §7 |
+| 8 | Map thumbnail (B2) | **Built**: `GET /jobs/static-map` plus the mobile preview. Needs an API deploy |
+| 9 | ml-service 429 | **Diagnosed**: the API's `ML_SERVICE_URL` points at the wrong host. Needs a Render env change. See §9 |
+
+Also confirmed live: `GEOAPIFY_API_KEY` is set on the API (`GET /jobs/geocode` returns 200), and
+the hosted admin console's origin passes the API's credentialed CORS preflight.
+
 ## Update 2026-09-18 — mobile session (crash fix + new backend asks)
 
 A mobile-side session cleared the last critical job-creation crash and cleaned up
@@ -104,6 +122,11 @@ go as soon as this lands.
 
 ## 3. No concurrent-load testing exists anywhere in the repo
 
+> **Still not run, 2026-09-18.** `k6` isn't installed on the machine this pass ran on, and running
+> the script writes jobs, holds and refunds to the production database. Both need an explicit
+> go-ahead. Steps: `brew install k6`, then a short 1–2 VU run to confirm the client wallet covers
+> the concurrent holds, then the default profile (`backend/load/README.md`).
+
 > **Script added, not yet run, 2026-09-17.** `backend/load/money-path.js` is a k6 test of the money
 > path: post job → apply → accept (escrow hold) → cancel (refund). It defaults to the deployed API
 > and the maestro.* accounts, and **writes real rows** there. The recommendation cron is left out
@@ -170,7 +193,16 @@ push goes through Firebase Cloud Messaging under the hood — the EAS
 
 ---
 
-## 5. Chat attachments landed on `main`, but the deployed API hasn't picked it up
+## 5. Chat attachments landed on `main`, but the deployed API hasn't picked it up — RESOLVED
+
+> **Verified live, 2026-09-18.** Against `taskbuddy-kpek.onrender.com`, as the maestro.* accounts:
+> `POST /uploads/signed-url` issued a `chat-attachments` URL. The PNG `PUT` returned 200.
+> `POST /conversations/:id/messages` accepted an attachment-only message (empty `body`). The
+> provider's `GET …/messages` returned a signed `attachment_url` that serves `200 image/png`.
+> The deployed build is current. Test conversation: job
+> `5f13ac3f-c909-4a39-b7f2-b750d218d553` ("E2E chat attachment verification job").
+
+Kept below for the record.
 
 **Where:** the Render deployment of `backend/`. **Assigned to whoever holds
 Render access** — the app owner does not have it.
@@ -209,17 +241,27 @@ found during the 2026-09-16 review but deliberately not fixed then:
   length/shape validation beyond `@IsString()`.~~ **Done 2026-09-17** —
   `@MaxLength` plus a `@Matches` for the exact `<uuid>/<uuid>.<jpg|png|webp>`
   shape the upload endpoint issues.
-- `bubbleImage` (both chat screens) has no `resizeMode` and no tap-to-expand —
-  non-4:3 photos get cropped.
-- `handleSend` in both chat screens guards on its own `sending` flag but not
+- ~~`bubbleImage` (both chat screens) has no `resizeMode` and no tap-to-expand —
+  non-4:3 photos get cropped.~~ **Cropping fixed in `9ad2758`** (`resizeMode="contain"`);
+  tap-to-expand is still not built.
+- ~~`handleSend` in both chat screens guards on its own `sending` flag but not
   on `attaching` — a fast double-tap could send text ahead of an in-flight
-  photo upload. One-word fix (`|| attaching` in the early-return guard).
+  photo upload.~~ **Done in `9ad2758`.**
 - ~~`BACKEND_SCHEMA.md`'s table of contents doesn't list the new §30 section.~~
   **Done 2026-09-17.**
 
 ---
 
-## 7. "Booking requests" user story may not match the actual data model
+## 7. "Booking requests" user story may not match the actual data model — STALE
+
+> **Out of date, 2026-09-18.** The description below predates migration 0018. The provider side
+> *does* now receive and act on booking requests. Once a client hires, the job sits in `assigned`
+> until the provider accepts (`POST /jobs/:id/accept` → `confirmed`) or declines it.
+> `SPHomeScreen` lists these under "booking requests" with inline accept/decline
+> (`mobile/README.md`, Screens). Story 9 is satisfied by that flow. The only thing left for product
+> is whether the story's wording should say "hire requests" to match.
+
+Kept below for the record.
 
 **Where:** `backend/src/applications/` (accept/reject are `@Roles('client')`
 only — no provider-facing "incoming request" concept exists).
@@ -237,7 +279,15 @@ client-initiates-request-to-provider flow is wanted (a new feature).
 
 ---
 
-## 8. Job-creation map crash (BUG-004) — fixed on mobile; optional thumbnail (B2) needs a backend endpoint
+## 8. Job-creation map crash (BUG-004) — fixed on mobile; thumbnail (B2) built
+
+> **B2 built, 2026-09-18, in the working tree and not yet deployed.** `GET /jobs/static-map?lat=&lon=`
+> (client only, 20/min) has the API render the Geoapify static map and return the PNG bytes. The
+> key never leaves the server, and there's no keyed URL for the app to lift. Coordinates are
+> bounded to a Philippines box. Details are in `backend/BACKEND_SCHEMA.md` §31.1.
+> `HOCreateJobScreen` shows the image above "Location confirmed" via `api.staticMapSource()` and
+> hides it on any error, so an API without the route behaves exactly as before. **To do:** deploy
+> the API, then check on a device that the preview renders after an address verifies.
 
 **Where:** `mobile/app/(homeowner)/screens/HOCreateJobScreen.tsx` (mobile, done);
 a new backend geocoding/static-map route (the remaining, optional part).
@@ -265,6 +315,26 @@ that returns a ready-to-render static-map URL; no key ever ships in the app bund
 ---
 
 ## 9. Deployed ml-service is returning HTTP 429 — recommendations failing in prod
+
+> **Diagnosed, 2026-09-18: the API is calling the wrong host.** At the same moment:
+> - The API's `GET /health` reported `ml_service: down, HTTP 429`, answered in ~100 ms.
+> - The Render ml-service `https://taskbuddy-ml-service-8ppc.onrender.com/health` answered
+>   **200** directly, with `model_loaded: true, model_version: rf-a-v1`.
+>
+> ml-service has no rate limiter of its own. So the 429 comes from whatever host the API's
+> `ML_SERVICE_URL` names, most likely the old Hugging Face Space (`ml-service/SPACE_README.md`).
+>
+> **Fix (Render dashboard, API service → Environment):** set
+> `ML_SERVICE_URL=https://taskbuddy-ml-service-8ppc.onrender.com` with no trailing slash, then
+> redeploy. **Done looks like** `/health` → `ml_service: up`, and a test job gets scored.
+>
+> **Code hardening, in the working tree:** the `/score` call had no timeout, so a hung scorer held
+> the recommendation scheduler's `running` flag and stalled every later tick. It now aborts after
+> 75 s (enough for a cold start; the retry sweep picks the job up again). Failures now name the
+> host (`Model service at https://… returned 429`), so a misrouted URL shows in the logs. The
+> host isn't added to the public `/health` body.
+
+Original report, kept for the record:
 
 **Where:** the Render deployment of `ml-service/` (and/or the backend→ml-service call
 path). **Assigned to whoever holds Render/ml-service access.**

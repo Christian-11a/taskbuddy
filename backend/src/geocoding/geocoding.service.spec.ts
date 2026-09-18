@@ -215,4 +215,83 @@ describe('GeocodingService (Geoapify)', () => {
       service().geocode('12 Mabini St, Quezon City'),
     ).rejects.toThrow(ServiceUnavailableException);
   });
+
+  describe('staticMap', () => {
+    const pngBytes = new Uint8Array([0x89, 0x50, 0x4e, 0x47]);
+
+    function imageResponse(
+      contentType: string | null,
+      ok = true,
+      status = 200,
+    ) {
+      return {
+        ok,
+        status,
+        headers: {
+          get: (name: string) =>
+            name.toLowerCase() === 'content-type' ? contentType : null,
+        },
+        arrayBuffer: () => Promise.resolve(pngBytes.buffer),
+        text: () => Promise.resolve('Invalid apiKey test-key'),
+      } as unknown as Response;
+    }
+
+    it('answers 503 without calling Geoapify when no key is configured', async () => {
+      await expect(service('').staticMap(14.676, 121.0437)).rejects.toThrow(
+        ServiceUnavailableException,
+      );
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    it('renders a PNG centred and pinned on the point, and returns the bytes', async () => {
+      fetchMock.mockResolvedValue(imageResponse('image/png'));
+
+      const png = await service().staticMap(14.676, 121.0437);
+
+      expect(png).toEqual(Buffer.from(pngBytes));
+      const url = new URL(fetchMock.mock.calls[0][0] as string);
+      expect(url.origin + url.pathname).toBe(
+        'https://maps.geoapify.com/v1/staticmap',
+      );
+      // Geoapify takes longitude first.
+      expect(url.searchParams.get('center')).toBe('lonlat:121.0437,14.676');
+      expect(url.searchParams.get('marker')).toMatch(
+        /^lonlat:121\.0437,14\.676;/,
+      );
+      expect(url.searchParams.get('format')).toBe('png');
+      expect(url.searchParams.get('apiKey')).toBe('test-key');
+    });
+
+    it.each([
+      [401, 'invalid key'],
+      [429, 'daily credits used up'],
+      [500, 'server error'],
+    ])('answers 503 and hides the details on HTTP %s (%s)', async (status) => {
+      fetchMock.mockResolvedValue(
+        imageResponse('application/json', false, status),
+      );
+
+      const error = await service()
+        .staticMap(14.676, 121.0437)
+        .catch((e: unknown) => e);
+      expect(error).toBeInstanceOf(ServiceUnavailableException);
+      expect((error as Error).message).not.toContain('apiKey');
+    });
+
+    it('answers 503 when Geoapify answers 200 with something that is not a PNG', async () => {
+      fetchMock.mockResolvedValue(imageResponse('application/json'));
+
+      await expect(service().staticMap(14.676, 121.0437)).rejects.toThrow(
+        ServiceUnavailableException,
+      );
+    });
+
+    it('answers 503 when the request itself fails or times out', async () => {
+      fetchMock.mockRejectedValue(new Error('The operation was aborted'));
+
+      await expect(service().staticMap(14.676, 121.0437)).rejects.toThrow(
+        ServiceUnavailableException,
+      );
+    });
+  });
 });
