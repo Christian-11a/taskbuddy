@@ -54,3 +54,11 @@ export const ThrottleAuth = () =>
  */
 export const ThrottleGeocode = () =>
   Throttle({ default: { limit: 10, ttl: 60_000 } });
+
+/**
+ * The job form's map preview. Each render also spends Geoapify credits, and it
+ * follows a successful geocode, so it sits a little above that route's ten: a
+ * homeowner who re-verifies the address a few times still sees a map.
+ */
+export const ThrottleStaticMap = () =>
+  Throttle({ default: { limit: 20, ttl: 60_000 } });

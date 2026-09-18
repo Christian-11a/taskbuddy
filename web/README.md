@@ -17,11 +17,11 @@ different mechanisms on purpose.
 **Live:** https://taskbuddy-nine-zeta.vercel.app · **Admin sign in:**
 `/admin/login` — `admin@taskbuddy.com` (ask the team for the password)
 
-> **Status:** this worktree implements browser-admin cookie sessions,
-> server-side list search/pagination, and the public promo site + customer
-> auth flow (including forgot/reset password, verified against the live
-> backend). External deployment and production smoke testing remain operator
-> actions; this document does not claim they occurred.
+> **Status:** deployed on Vercel at the URL above, against the deployed API.
+> Browser-admin cookie sessions, server-side list search/pagination, and the
+> public promo site + customer auth flow (including forgot/reset password) are
+> live. The API's credentialed CORS allows this origin (preflight verified
+> 2026-09-18). A new deploy of either side is still an operator action.
 
 ---
 
@@ -260,8 +260,8 @@ are checked. Written UTF-8 with a BOM so Excel doesn't mangle the peso sign.
 
 ## Backend Integration Status
 
-**This worktree uses the backend integrations below.** An external deploy is
-still required before they are available at a hosted URL.
+**The console uses the backend integrations below**, live at the hosted URL
+above against the deployed API.
 
 > **Rate limits.** The API is rate-limited **per endpoint per IP**
 > (`backend/BACKEND_SCHEMA.md` §28.4) — 240/minute on any one route, and

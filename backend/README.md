@@ -282,6 +282,7 @@ All bodies are JSON. 🔒 = requires auth; (client) / (provider) = role-restrict
 | `POST /jobs` 🔒 (client) | `{ category_id, title (5–120), description (20–750), urgency?, address, latitude, longitude, budget?, scheduled_at?, photo_urls?, tasks? }` — `scheduled_at` in the past is a 400; `tasks` is up to 20 checklist labels (≤120 chars each) stored as `job_tasks` |
 | `GET /jobs?category_id=&limit=&offset=&latitude=&longitude=&radius_km=` 🔒 (provider) | browse `open`/`recommending` jobs, sorted by urgency then distance/newest; `latitude`+`longitude` (both required together) filter to `radius_km` (default 50km) of the provider; returns `{ jobs, summary: { open_count, urgent_count, potential_payout } }` |
 | `GET /jobs/geocode?address=` 🔒 (client) | typed address → `{ latitude, longitude, formatted_address }` via Geoapify, Philippines only, street-level precision or better. `400` when not found, too general (a barangay/city centre), or a low-confidence match; `503` when Geoapify fails or `GEOAPIFY_API_KEY` is unset. 10/min per IP. `BACKEND_SCHEMA.md` §31 |
+| `GET /jobs/static-map?lat=&lon=` 🔒 (client) | `image/png` 600×300 map of a geocoded point, rendered by Geoapify server-side so the key never reaches the app. Coordinates must fall in the Philippines box (`400` otherwise); `503` when Geoapify fails or `GEOAPIFY_API_KEY` is unset. 20/min per IP. `BACKEND_SCHEMA.md` §31.1 |
 | `GET /jobs/mine` 🔒 (client) | own jobs |
 | `GET /jobs/assigned` 🔒 (provider) | jobs assigned to me |
 | `GET /jobs/:id` 🔒 | job detail |
@@ -585,6 +586,7 @@ each route counts separately and there is no aggregate cap across the API.
 | `POST /auth/{register,login,admin/login,forgot-password,reset-password,send-email-otp,verify-email-otp,change-password}` | 10 / minute **each** |
 | `POST /payments/connect/{onboarding-link,sync,dashboard-link}` | 5 / minute each |
 | `GET /jobs/geocode` | 10 / minute — every call spends a Geoapify daily credit |
+| `GET /jobs/static-map` | 20 / minute — every render spends Geoapify credits |
 | `POST /payments/webhook`, `POST /payments/connect/webhook` | exempt — Stripe is authenticated by signature and retries for three days |
 
 `POST /auth/refresh`, `GET /auth/me` and the admin session routes are

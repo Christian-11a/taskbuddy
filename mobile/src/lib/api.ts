@@ -928,6 +928,20 @@ export const api = {
     );
   },
 
+  /**
+   * `<Image>` source for the job form's map preview (`GET /jobs/static-map`).
+   * The backend renders it so the Geoapify key never ships in the app. The
+   * image loader can't go through `authRequest`, so the token rides as a
+   * header and a 401 is not refreshed — callers hide the image on error.
+   */
+  staticMapSource(latitude: number, longitude: number) {
+    const token = getAccessToken();
+    return {
+      uri: `${activeBaseUrl}/jobs/static-map?lat=${latitude}&lon=${longitude}`,
+      headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+    };
+  },
+
   // ── Jobs ────────────────────────────────────────────────────────────────────
   createJob(input: {
     category_id: number;

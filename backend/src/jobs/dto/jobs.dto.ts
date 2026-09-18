@@ -14,6 +14,8 @@ import {
   IsPositive,
   IsString,
   Length,
+  Max,
+  Min,
   Validate,
   ValidatorConstraint,
 } from 'class-validator';
@@ -120,6 +122,25 @@ export class GeocodeQueryDto {
   @IsString()
   @Length(5, 300)
   address!: string;
+}
+
+/**
+ * `GET /jobs/static-map` — the point `GET /jobs/geocode` returned. Held to a box
+ * around the Philippines (the only country geocode answers for), so the route
+ * cannot be used to render maps of anywhere else on the platform's credits.
+ */
+export class StaticMapQueryDto {
+  @Type(() => Number)
+  @IsNumber({ allowNaN: false, allowInfinity: false })
+  @Min(4.5)
+  @Max(21.5)
+  lat!: number;
+
+  @Type(() => Number)
+  @IsNumber({ allowNaN: false, allowInfinity: false })
+  @Min(116)
+  @Max(127)
+  lon!: number;
 }
 
 export class BrowseJobsQueryDto {

@@ -7,6 +7,7 @@ import {
 import { ConfigService } from '@nestjs/config';
 
 const GEOCODE_URL = 'https://api.geoapify.com/v1/geocode/search';
+const STATIC_MAP_URL = 'https://maps.geoapify.com/v1/staticmap';
 
 /** Geoapify answers in well under a second; past this the app should say so. */
 const GEOCODE_TIMEOUT_MS = 5000;
@@ -32,8 +33,22 @@ const PRECISE_RESULT_TYPES = ['building', 'amenity', 'street'];
  */
 const MIN_STREET_CONFIDENCE = 0.2;
 
+/**
+ * The thumbnail the job form shows under "Location confirmed". 600×300 is
+ * sharp on a phone at the card's width; zoom 16 shows the surrounding streets,
+ * which is what a homeowner checks the pin against.
+ */
+const STATIC_MAP_WIDTH = 600;
+const STATIC_MAP_HEIGHT = 300;
+const STATIC_MAP_ZOOM = 16;
+
+/** Rendering takes longer than a lookup; still well inside a mobile request. */
+const STATIC_MAP_TIMEOUT_MS = 8000;
+
 const UNAVAILABLE_MESSAGE =
   "We couldn't verify addresses right now. Try again shortly.";
+
+const MAP_UNAVAILABLE_MESSAGE = 'Map preview is unavailable right now.';
 
 interface GeoapifyResponse {
   results?: {
@@ -149,5 +164,56 @@ export class GeocodingService {
       longitude: result.lon,
       formatted_address: result.formatted ?? trimmed,
     };
+  }
+
+  /**
+   * A PNG map of one point, for the job form's location preview (§31.1).
+   *
+   * The API fetches the image and returns the bytes rather than handing the
+   * app a Geoapify URL: that URL has to carry `apiKey`, and a key in a URL the
+   * app loads is as extractable as one in the bundle. The coordinates are the
+   * ones `geocode()` returned, already bounded to the Philippines by the DTO.
+   */
+  async staticMap(latitude: number, longitude: number): Promise<Buffer> {
+    if (!this.apiKey) {
+      throw new ServiceUnavailableException('Map preview is not configured');
+    }
+
+    const point = `lonlat:${longitude},${latitude}`;
+    const params = new URLSearchParams({
+      style: 'osm-bright',
+      width: String(STATIC_MAP_WIDTH),
+      height: String(STATIC_MAP_HEIGHT),
+      center: point,
+      zoom: String(STATIC_MAP_ZOOM),
+      marker: `${point};color:#096e8b;size:medium`,
+      format: 'png',
+      apiKey: this.apiKey,
+    });
+
+    try {
+      const response = await fetch(`${STATIC_MAP_URL}?${params.toString()}`, {
+        signal: AbortSignal.timeout(STATIC_MAP_TIMEOUT_MS),
+      });
+      if (!response.ok) {
+        // Same reasoning as geocode(): the body can describe the key.
+        this.logger.warn(
+          `Geoapify static map returned HTTP ${response.status}: ${await response.text()}`,
+        );
+        throw new ServiceUnavailableException(MAP_UNAVAILABLE_MESSAGE);
+      }
+      const contentType = response.headers.get('content-type') ?? '';
+      if (!contentType.startsWith('image/png')) {
+        this.logger.warn(
+          `Geoapify static map answered ${contentType || 'no content type'}, not a PNG`,
+        );
+        throw new ServiceUnavailableException(MAP_UNAVAILABLE_MESSAGE);
+      }
+      return Buffer.from(await response.arrayBuffer());
+    } catch (err) {
+      if (err instanceof ServiceUnavailableException) throw err;
+      this.logger.warn(`Static map request failed: ${(err as Error).message}`);
+      throw new ServiceUnavailableException(MAP_UNAVAILABLE_MESSAGE);
+    }
   }
 }

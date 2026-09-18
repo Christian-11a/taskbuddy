@@ -12,7 +12,7 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { SupabaseService } from '../supabase/supabase.service';
 
 /**
- * HTTP-level checks for GET /jobs/geocode: the real controller, guard,
+ * HTTP-level checks for GET /jobs/geocode and GET /jobs/static-map: the real controller, guard,
  * ValidationPipe (configured as in main.ts) and throttler, with Supabase and
  * the geocoder stubbed. The unit spec for GeocodingService covers Geoapify's answers;
  * this covers what only the wiring can get wrong — route order against
@@ -21,6 +21,7 @@ import { SupabaseService } from '../supabase/supabase.service';
 describe('GET /jobs/geocode (HTTP)', () => {
   let app: INestApplication<App>;
   const geocode = jest.fn();
+  const staticMap = jest.fn();
 
   /** Token → role. Anything else is rejected by the stubbed auth.getUser. */
   const roles: Record<string, string> = {
@@ -65,6 +66,7 @@ describe('GET /jobs/geocode (HTTP)', () => {
 
   beforeEach(async () => {
     geocode.mockReset();
+    staticMap.mockReset();
     const moduleRef = await Test.createTestingModule({
       imports: [
         ThrottlerModule.forRoot({
@@ -77,7 +79,7 @@ describe('GET /jobs/geocode (HTTP)', () => {
         { provide: APP_GUARD, useClass: ThrottlerGuard },
         { provide: SupabaseService, useValue: supabase },
         { provide: JobsService, useValue: {} },
-        { provide: GeocodingService, useValue: { geocode } },
+        { provide: GeocodingService, useValue: { geocode, staticMap } },
       ],
     }).compile();
 
@@ -160,5 +162,78 @@ describe('GET /jobs/geocode (HTTP)', () => {
 
     expect(res.status).toBe(429);
     expect(geocode).toHaveBeenCalledTimes(10);
+  });
+
+  describe('GET /jobs/static-map', () => {
+    // Smallest valid PNG signature is enough; the route never decodes it.
+    const png = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+
+    const getMap = (query: string, token?: string) => {
+      const req = request(app.getHttpServer()).get(`/jobs/static-map${query}`);
+      return token ? req.set('Authorization', `Bearer ${token}`) : req;
+    };
+
+    it('is matched before /jobs/:id and returns a cacheable PNG', async () => {
+      staticMap.mockResolvedValue(png);
+
+      const res = await getMap(
+        '?lat=14.6616623&lon=121.0723338',
+        'client-token',
+      );
+
+      expect(res.status).toBe(200);
+      expect(res.headers['content-type']).toBe('image/png');
+      expect(res.headers['cache-control']).toBe('private, max-age=86400');
+      expect(Buffer.from(res.body as Buffer)).toEqual(png);
+    });
+
+    it('rounds the coordinates to six decimals before rendering', async () => {
+      staticMap.mockResolvedValue(png);
+
+      await getMap('?lat=14.66166234567&lon=121.07233389999', 'client-token');
+
+      expect(staticMap).toHaveBeenCalledWith(14.661662, 121.072334);
+    });
+
+    it('requires a token', async () => {
+      const res = await getMap('?lat=14.6&lon=121.0');
+      expect(res.status).toBe(401);
+      expect(staticMap).not.toHaveBeenCalled();
+    });
+
+    it('is client-only', async () => {
+      const res = await getMap('?lat=14.6&lon=121.0', 'provider-token');
+      expect(res.status).toBe(403);
+      expect(staticMap).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      ['missing coordinates', ''],
+      ['a non-numeric latitude', '?lat=abc&lon=121.0'],
+      ['a point north of the Philippines (Tokyo)', '?lat=35.68&lon=139.69'],
+      [
+        'a point west of the Philippines (Ho Chi Minh City)',
+        '?lat=10.82&lon=106.63',
+      ],
+      ['an unknown query field', '?lat=14.6&lon=121.0&zoom=3'],
+    ])('rejects %s with a 400', async (_label, query) => {
+      const res = await getMap(query, 'client-token');
+      expect(res.status).toBe(400);
+      expect(staticMap).not.toHaveBeenCalled();
+    });
+
+    it('allows 20 renders a minute, then answers 429', async () => {
+      staticMap.mockResolvedValue(png);
+
+      for (let i = 0; i < 20; i++) {
+        expect(
+          (await getMap('?lat=14.6&lon=121.0', 'client-token')).status,
+        ).toBe(200);
+      }
+      const res = await getMap('?lat=14.6&lon=121.0', 'client-token');
+
+      expect(res.status).toBe(429);
+      expect(staticMap).toHaveBeenCalledTimes(20);
+    });
   });
 });

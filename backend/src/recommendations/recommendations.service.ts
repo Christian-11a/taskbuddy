@@ -30,6 +30,18 @@ interface FeatureRow {
   provider_bio: string;
 }
 
+/** Covers a free-tier cold start (30–60 s) with some margin. */
+const ML_SCORE_TIMEOUT_MS = 75_000;
+
+/** Scheme + host only: never log a path or credentials from the configured URL. */
+function safeOrigin(url: string): string {
+  try {
+    return new URL(url).origin;
+  } catch {
+    return '(invalid ML_SERVICE_URL)';
+  }
+}
+
 @Injectable()
 export class RecommendationsService {
   private readonly logger = new Logger(RecommendationsService.name);
@@ -185,14 +197,31 @@ export class RecommendationsService {
     const records = pool.map(
       ({ provider_id: _ignored, ...features }) => features,
     );
-    const response = await fetch(`${this.mlServiceUrl}/score`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ records }),
-    });
+    // The origin names the host in every failure, so a misrouted
+    // ML_SERVICE_URL (HANDOFF.md §9) is visible in the logs rather than
+    // looking like the scorer itself is down.
+    const origin = safeOrigin(this.mlServiceUrl);
+    let response: Response;
+    try {
+      response = await fetch(`${this.mlServiceUrl}/score`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ records }),
+        // Without a bound, a hung scorer holds the scheduler's `running` flag
+        // and stalls every later tick. Long enough for a free-tier cold start;
+        // a job that times out is picked up again by the retry sweep.
+        signal: AbortSignal.timeout(ML_SCORE_TIMEOUT_MS),
+      });
+    } catch (err) {
+      const reason =
+        (err as Error).name === 'TimeoutError'
+          ? `timed out after ${ML_SCORE_TIMEOUT_MS / 1000}s`
+          : (err as Error).message;
+      throw new Error(`Model service at ${origin} unreachable: ${reason}`);
+    }
     if (!response.ok) {
       throw new Error(
-        `Model service returned ${response.status}: ${await response.text()}`,
+        `Model service at ${origin} returned ${response.status}: ${await response.text()}`,
       );
     }
     const body = (await response.json()) as {
