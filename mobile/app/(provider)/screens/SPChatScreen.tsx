@@ -102,7 +102,7 @@ export default function SPChatScreen({ jobId, onBack, onViewJob }: SPChatScreenP
 
   const handleSend = async () => {
     const body = text.trim();
-    if (!body || !conversation || sending) return;
+    if (!body || !conversation || sending || attaching) return;
     setSending(true);
     try {
       const msg = await api.sendMessage(conversation.id, body);
@@ -143,7 +143,7 @@ export default function SPChatScreen({ jobId, onBack, onViewJob }: SPChatScreenP
       <View style={[styles.bubbleWrap, sent ? styles.bubbleWrapSent : styles.bubbleWrapReceived]}>
         <View style={[styles.bubble, sent ? styles.bubbleSent : styles.bubbleReceived]}>
           {!!item.attachment_url && (
-            <Image source={{ uri: item.attachment_url }} style={styles.bubbleImage} />
+            <Image source={{ uri: item.attachment_url }} style={styles.bubbleImage} resizeMode="contain" />
           )}
           {!!item.body && (
             <Text style={[styles.bubbleText, sent && styles.bubbleTextSent]}>{item.body}</Text>
