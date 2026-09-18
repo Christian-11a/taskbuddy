@@ -49,6 +49,12 @@
         "projectId": "cc00d869-9171-4b13-a1ed-3102d98fbba9"
       }
     },
-    "owner": "mclector"
+    "owner": "mclector",
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/cc00d869-9171-4b13-a1ed-3102d98fbba9"
+    }
   }
 }
