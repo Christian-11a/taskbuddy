@@ -23,7 +23,7 @@ Where each item stands after a pass over this file, checked against the deployed
 | 6 | Chat polish punch list | Resize and send-guard done in `9ad2758`. Only the "Photo unavailable" placeholder is left |
 | 7 | "Booking requests" story | **Stale.** The provider-side accept/decline flow exists. See §7 |
 | 8 | Map thumbnail (B2) | **Built**: `GET /jobs/static-map` plus the mobile preview. Needs an API deploy |
-| 9 | ml-service 429 | **Diagnosed**: the API's `ML_SERVICE_URL` points at the wrong host. Needs a Render env change. See §9 |
+| 9 | ml-service 429 | **Resolved** by restarting the ml-service on Render. Cause unknown; restart it if the 429 returns. See §9 |
 
 Also confirmed live: `GEOAPIFY_API_KEY` is set on the API (`GET /jobs/geocode` returns 200), and
 the hosted admin console's origin passes the API's credentialed CORS preflight.
@@ -314,25 +314,42 @@ that returns a ready-to-render static-map URL; no key ever ships in the app bund
 
 ---
 
-## 9. Deployed ml-service is returning HTTP 429 — recommendations failing in prod
+## 9. Deployed ml-service was returning HTTP 429 — RESOLVED by a restart
 
-> **Diagnosed, 2026-09-18: the API is calling the wrong host.** At the same moment:
-> - The API's `GET /health` reported `ml_service: down, HTTP 429`, answered in ~100 ms.
-> - The Render ml-service `https://taskbuddy-ml-service-8ppc.onrender.com/health` answered
->   **200** directly, with `model_loaded: true, model_version: rf-a-v1`.
+> **Resolved, 2026-09-18, by restarting the ml-service on Render. The root cause is unknown.**
 >
-> ml-service has no rate limiter of its own. So the 429 comes from whatever host the API's
-> `ML_SERVICE_URL` names, most likely the old Hugging Face Space (`ml-service/SPACE_README.md`).
+> **What was seen.** The API's `GET /health` reported `ml_service: down, HTTP 429` in ~100 ms. At
+> the same moment, calling `https://taskbuddy-ml-service-8ppc.onrender.com/health` directly
+> answered **200**, with `model_loaded: true`.
 >
-> **Fix (Render dashboard, API service → Environment):** set
-> `ML_SERVICE_URL=https://taskbuddy-ml-service-8ppc.onrender.com` with no trailing slash, then
-> redeploy. **Done looks like** `/health` → `ml_service: up`, and a test job gets scored.
+> **What fixed it.** An environment variable was added to the ml-service's Render service, and
+> Render restarted it on save. The variable itself does nothing: ml-service reads only
+> `MODEL_PATH` and `PORT`. Right after the restart, the API's `/health` reported
+> `ml_service: up, model rf-a-v1`.
 >
-> **Code hardening, in the working tree:** the `/score` call had no timeout, so a hung scorer held
-> the recommendation scheduler's `running` flag and stalled every later tick. It now aborts after
-> 75 s (enough for a cold start; the retry sweep picks the job up again). Failures now name the
-> host (`Model service at https://… returned 429`), so a misrouted URL shows in the logs. The
-> host isn't added to the public `/health` body.
+> **What it wasn't.** An earlier version of this section blamed a wrong `ML_SERVICE_URL` on the
+> API. That was wrong. The API didn't restart (its `uptime_s` ran on through the fix), so its
+> configuration never changed. It had been calling the right host all along. ml-service has no
+> rate limiter in its code, so the 429 came from the running ml-service instance or Render's layer
+> in front of it, and a restart cleared it.
+>
+> **Verified after the fix:**
+> - `POST /score` directly: 200 in 4.2 s. A strong pair (same skill, 2 km, rating 4.8) scored
+>   0.87 and a weak pair (other skill, 18 km, unavailable) scored 0.06.
+> - The API's `/health`: `ml_service: up`.
+> - Not run: the API's own pool → score → invite path on a real job, because it would post a
+>   production job and notify real providers.
+>
+> **If the 429 comes back:** restart the ml-service from the Render dashboard, then read its logs
+> around the first 429 for the trigger (free-tier limit, a burst from the retry sweep, or a
+> platform limit). Jobs left unscored in the meantime are retried by the scheduler; nothing needs
+> replaying by hand.
+>
+> **Code hardening, on `feat/geoapify-geocoding`:** the `/score` call had no timeout, so a hung
+> scorer held the recommendation scheduler's `running` flag and stalled every later tick. It now
+> aborts after 75 s (enough for a cold start; the retry sweep picks the job up again). Failures
+> now name the host (`Model service at https://… returned 429`), so the logs show which server
+> refused. The host isn't added to the public `/health` body.
 
 Original report, kept for the record:
 
