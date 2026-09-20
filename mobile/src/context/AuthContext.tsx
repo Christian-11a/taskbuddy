@@ -20,6 +20,7 @@ import { Linking } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as WebBrowser from 'expo-web-browser';
 import * as AuthSession from 'expo-auth-session';
+import * as Crypto from 'expo-crypto';
 import {
   api,
   ApiError,
@@ -42,6 +43,55 @@ WebBrowser.maybeCompleteAuthSession();
 
 const SESSION_KEY = 'taskbuddy.session';
 
+/**
+ * A Google sign-in waiting to be claimed: `{ id, startedAt }`. On disk rather
+ * than in state because the redirect can restart the app (a development build
+ * reloads its bundle when its own scheme is opened), and everything in memory
+ * goes with it.
+ */
+const PENDING_SIGNIN_KEY = 'taskbuddy.pendingGoogleSignIn';
+
+/** Matches the backend's handoff row TTL — past it a claim can only fail. */
+const PENDING_SIGNIN_TTL_MS = 5 * 60 * 1000;
+
+const CLAIM_ATTEMPTS = 5;
+const CLAIM_RETRY_MS = 2000;
+
+const PROFILE_ATTEMPTS = 3;
+const PROFILE_RETRY_MS = 1500;
+
+/**
+ * True when the API has actually rejected these tokens, rather than failing to
+ * answer about them. Only the first justifies throwing a session away.
+ */
+function isRejectedSession(err: unknown): boolean {
+  if (!(err instanceof ApiError)) return true; // e.g. corrupt JSON on disk
+  return err.status === 401 || err.status === 403;
+}
+
+/**
+ * `/auth/me`, retried through the failures that say nothing about the session:
+ * no connection (status 0), a 5xx from a sleeping host, and the brief 401 a
+ * brand-new Google user gets while their profile row is still being created by
+ * the `handle_new_user` trigger.
+ */
+async function fetchProfileWithRetry(accessToken: string) {
+  let lastError: unknown;
+  for (let attempt = 0; attempt < PROFILE_ATTEMPTS; attempt++) {
+    try {
+      return await api.me(accessToken);
+    } catch (e) {
+      lastError = e;
+      const status = e instanceof ApiError ? e.status : null;
+      const worthRetrying =
+        status === 0 || status === null || status >= 500 || status === 401;
+      if (!worthRetrying || attempt === PROFILE_ATTEMPTS - 1) throw e;
+      await new Promise((r) => setTimeout(r, PROFILE_RETRY_MS));
+    }
+  }
+  throw lastError;
+}
+
 interface AuthContextValue {
   /** True until the persisted session (if any) has been restored on launch. */
   initializing: boolean;
@@ -60,6 +110,13 @@ interface AuthContextValue {
    * their role on GoogleRoleSelectionScreen.
    */
   isGoogleSignupPending: boolean;
+  /**
+   * A sign-in failure worth showing, kept in context rather than in the screen
+   * because the failure can outlive the screen: a Google sign-in that resumes
+   * on launch has no LoginScreen to report to.
+   */
+  authError: string | null;
+  clearAuthError: () => void;
   /** Re-fetch /auth/me (e.g. after editing the profile). */
   refreshProfile: () => Promise<void>;
   signIn: (email: string, password: string) => Promise<void>;
@@ -115,6 +172,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [providerProfile, setProviderProfile] =
     useState<ProviderProfile | null>(null);
+  const [authError, setAuthError] = useState<string | null>(null);
 
   // Always-current token, read by the api client's auth accessor.
   const sessionRef = useRef<Session | null>(null);
@@ -144,8 +202,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           );
           await persistSession(refreshed);
           return refreshed.access_token;
-        } catch {
-          // Refresh failed — force sign-out state.
+        } catch (err) {
+          // Only a *rejected* refresh token means the session is over. A
+          // network failure or a 5xx from a sleeping host is temporary, and
+          // signing the user out there threw away a session that was fine —
+          // the screen that got the 401 shows its own error instead.
+          if (!isRejectedSession(err)) return null;
           await persistSession(null);
           setProfile(null);
           setProviderProfile(null);
@@ -191,73 +253,104 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [profile?.id, session?.access_token]);
 
   /**
-   * Signs in from a `taskbuddy://?access_token=…` deep link.
+   * Adopts a session the API just handed us.
    *
-   * Shared by the in-flight Google flow and by launch, because the redirect
-   * does not always come back to the flow that started it: opening the app's
-   * scheme can *restart* the app — a development build reloads the bundle on
-   * its own scheme — and the promise waiting in signInWithGoogle dies with the
-   * old JS context. The tokens are still in the launch URL, so the same
-   * handler finishes the job and the user lands signed in instead of back on
-   * the sign-in screen.
-   *
-   * Returns false for a link that carries no session, so callers can tell a
-   * sign-in redirect from any other deep link.
+   * **The session is persisted before the profile is fetched**, which is the
+   * whole point of the ordering. `/auth/me` can fail transiently — a sleeping
+   * Render instance, a 502 from something in between, or the 401 the guard
+   * returns in the moment before the new user's profile row is visible — and
+   * the old order threw one-time tokens away on any of those. Stored tokens
+   * are recoverable: the next launch retries the profile with them.
    */
-  const completeSignInFromUrl = useCallback(
-    async (url: string): Promise<boolean> => {
-      const params = new URLSearchParams(url.split('?')[1] ?? '');
-
-      const googleError = params.get('google_error');
-      if (googleError) throw new Error(googleError);
-
-      const accessToken = params.get('access_token');
-      const refreshToken = params.get('refresh_token');
-      const expiresAt = params.get('expires_at');
-      if (!accessToken || !refreshToken || !expiresAt) return false;
-
-      const next: Session = {
-        access_token: accessToken,
-        refresh_token: refreshToken,
-        expires_at: Number(expiresAt),
-      };
-
-      const me = await api.me(next.access_token);
+  const adoptSession = useCallback(
+    async (next: Session): Promise<void> => {
       await persistSession(next);
+      const me = await fetchProfileWithRetry(next.access_token);
       setProfile(me.profile);
       setProviderProfile(me.provider_profile);
-      return true;
     },
     [persistSession],
   );
 
-  // ── Sign-in redirects that arrive outside the Google flow ────────────────
-  // A link delivered while the app is already running but with no flow waiting
-  // for it — the restart case leaves nothing listening.
-  useEffect(() => {
-    const subscription = Linking.addEventListener('url', ({ url }) => {
-      if (sessionRef.current) return;
-      void completeSignInFromUrl(url).catch((e) => {
-        if (__DEV__) console.warn('[auth] deep-link sign-in failed', e);
-      });
-    });
-    return () => subscription.remove();
-  }, [completeSignInFromUrl]);
+  /**
+   * Trades a handoff id for the session the OAuth callback parked (§19).
+   *
+   * Retried, because this runs exactly when the backend is least likely to
+   * answer first time: the browser hop may have been the first request in
+   * minutes and Render may still be waking. A claim that reports the id is
+   * unknown is final — it was already used, or it expired — so it stops.
+   */
+  const claimPendingSignIn = useCallback(
+    async (handoffId: string): Promise<boolean> => {
+      for (let attempt = 0; attempt < CLAIM_ATTEMPTS; attempt++) {
+        try {
+          const { session: claimed } = await api.claimGoogleSession(handoffId);
+          await AsyncStorage.removeItem(PENDING_SIGNIN_KEY);
+          await adoptSession(claimed);
+          if (__DEV__) console.log('[auth] claimed google session');
+          return true;
+        } catch (e) {
+          const status = e instanceof ApiError ? e.status : null;
+          // 404/410: nothing parked under this id, and nothing ever will be.
+          if (status === 404 || status === 410) {
+            await AsyncStorage.removeItem(PENDING_SIGNIN_KEY);
+            return false;
+          }
+          if (attempt === CLAIM_ATTEMPTS - 1) throw e;
+          await new Promise((r) => setTimeout(r, CLAIM_RETRY_MS));
+        }
+      }
+      return false;
+    },
+    [adoptSession],
+  );
+
+  /**
+   * Finishes a sign-in left pending by a browser round trip, if one is.
+   *
+   * Called on launch as well as when the Google flow returns, because the
+   * redirect can *restart* the app — a development build reloads its bundle on
+   * its own scheme — and whatever was awaiting the browser is gone by then.
+   * The pending id lives in AsyncStorage precisely so it survives that.
+   */
+  const resumePendingSignIn = useCallback(async (): Promise<boolean> => {
+    const raw = await AsyncStorage.getItem(PENDING_SIGNIN_KEY);
+    if (!raw) return false;
+
+    let pending: { id: string; startedAt: number };
+    try {
+      pending = JSON.parse(raw) as { id: string; startedAt: number };
+    } catch {
+      await AsyncStorage.removeItem(PENDING_SIGNIN_KEY);
+      return false;
+    }
+
+    // Matches the backend's row TTL — past it the claim can only 404.
+    if (Date.now() - pending.startedAt > PENDING_SIGNIN_TTL_MS) {
+      await AsyncStorage.removeItem(PENDING_SIGNIN_KEY);
+      return false;
+    }
+
+    return claimPendingSignIn(pending.id);
+  }, [claimPendingSignIn]);
 
   // ── Restore a persisted session on launch ────────────────────────────────
   useEffect(() => {
     let mounted = true;
     (async () => {
       try {
-        // A cold launch *by* the OAuth redirect: the tokens are in the URL
-        // that started the app, and there is no stored session yet. Checked
-        // before AsyncStorage so a fresh sign-in wins over a stale session.
-        const launchUrl = await Linking.getInitialURL();
-        if (launchUrl && mounted) {
-          try {
-            if (await completeSignInFromUrl(launchUrl)) return;
-          } catch (e) {
-            if (__DEV__) console.warn('[auth] launch-url sign-in failed', e);
+        // A launch that *is* the tail of a Google sign-in: the browser came
+        // back, the app restarted, and the session is still waiting to be
+        // claimed. Checked first so a fresh sign-in wins over a stale session.
+        try {
+          if ((await resumePendingSignIn()) && mounted) return;
+        } catch (e) {
+          if (mounted) {
+            setAuthError(
+              e instanceof Error
+                ? e.message
+                : 'Could not finish signing you in. Please try again.',
+            );
           }
         }
 
@@ -267,7 +360,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         // Validate the token by fetching the profile; refresh once if expired.
         let active: Session = stored;
         try {
-          const me = await api.me(active.access_token);
+          const me = await fetchProfileWithRetry(active.access_token);
           if (mounted) {
             sessionRef.current = active;
             setSession(active);
@@ -280,7 +373,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               active.refresh_token,
             );
             active = refreshed;
-            const me = await api.me(active.access_token);
+            const me = await fetchProfileWithRetry(active.access_token);
             if (mounted) {
               await AsyncStorage.setItem(SESSION_KEY, JSON.stringify(active));
               sessionRef.current = active;
@@ -292,9 +385,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             throw err;
           }
         }
-      } catch {
-        // Corrupt/expired session — start signed out.
-        await AsyncStorage.removeItem(SESSION_KEY);
+      } catch (err) {
+        // Only a *rejected* session is discarded. A network failure or a 5xx
+        // from a sleeping host says nothing about whether these tokens are
+        // still good, and deleting them there logged people out every time the
+        // API was slow to wake.
+        if (isRejectedSession(err)) {
+          await AsyncStorage.removeItem(SESSION_KEY);
+        } else if (__DEV__) {
+          console.warn('[auth] session kept despite a failed restore', err);
+        }
       } finally {
         if (mounted) setInitializing(false);
       }
@@ -433,21 +533,38 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   // ── Google OAuth (server-side flow) ────────────────────────────────────────
   //
   // Flow:
-  //   1. App opens the backend /auth/google/authorize URL in a browser.
+  //   1. App mints a handoff id, saves it to disk, and opens the backend
+  //      /auth/google/authorize URL (carrying that id) in a browser.
   //   2. Backend redirects to Google (HTTPS callback — Google accepts it).
   //   3. Google redirects to the backend callback, which exchanges the code
-  //      for an id_token, calls Supabase signInWithIdToken, then redirects
-  //      the browser to appRedirect with session tokens in the query string.
-  //   4. openRedirectSession picks up the redirect back to the app scheme
-  //      (exp:// in Expo Go, taskbuddy:// in builds), from the browser session
-  //      or from Linking — see appRedirectSession.ts for why both are needed.
+  //      for an id_token, calls Supabase signInWithIdToken, and *parks* the
+  //      session under sha256(handoff id) before sending the browser back to
+  //      the app with only the id.
+  //   4. The app claims the session over HTTPS, retrying until it succeeds.
+  //
+  // Step 4 is why sign-in is no longer at the mercy of the redirect. The deep
+  // link now only decides *when* the app notices it should claim — and if it
+  // never arrives, or it restarts the app, the pending id on disk is picked up
+  // on the next launch and the sign-in still completes. Tokens never travel in
+  // a URL, so they are also out of browser history.
   //
   // Google never sees the app deep-link — only the backend HTTPS callback —
   // so exp:// and taskbuddy:// both work without any Google Console changes.
   const signInWithGoogle = useCallback(async () => {
+    setAuthError(null);
+
+    const handoffId = Crypto.randomUUID();
+    await AsyncStorage.setItem(
+      PENDING_SIGNIN_KEY,
+      JSON.stringify({ id: handoffId, startedAt: Date.now() }),
+    );
+
     // appRedirect is exp://[ip]:8081 in Expo Go, taskbuddy:// in a real build.
     const appRedirect = AuthSession.makeRedirectUri({ scheme: 'taskbuddy' });
-    const authorizeUrl = await api.getGoogleAuthorizeUrl(appRedirect);
+    const authorizeUrl = await api.getGoogleAuthorizeUrl(
+      appRedirect,
+      handoffId,
+    );
 
     if (__DEV__) console.log('[auth] google redirect uri', appRedirect);
 
@@ -455,13 +572,28 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     if (__DEV__) console.log('[auth] google result', result.type);
 
-    if (result.type !== 'success') {
-      if (result.type === 'cancel' || result.type === 'dismiss') return;
-      throw new Error('Google sign-in was unsuccessful. Please try again.');
+    // An error from the backend rides the link even when the session does not.
+    if (result.type === 'success') {
+      const googleError = new URLSearchParams(
+        result.url.split('?')[1] ?? '',
+      ).get('google_error');
+      if (googleError) {
+        await AsyncStorage.removeItem(PENDING_SIGNIN_KEY);
+        throw new Error(googleError);
+      }
     }
 
-    await completeSignInFromUrl(result.url);
-  }, [completeSignInFromUrl]);
+    // Claim whatever the browser's own outcome was. 'dismiss' is what Android
+    // reports when the custom tab closes because the deep link fired, so
+    // treating it as a cancellation is exactly the bug this replaces — only a
+    // claim that finds nothing parked means the user really did back out.
+    if (await claimPendingSignIn(handoffId)) return;
+
+    if (result.type === 'cancel' || result.type === 'dismiss') return;
+    throw new Error('Google sign-in was unsuccessful. Please try again.');
+  }, [claimPendingSignIn]);
+
+  const clearAuthError = useCallback(() => setAuthError(null), []);
 
   const signOut = useCallback(async () => {
     const token = session?.access_token;
@@ -520,6 +652,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       isAuthenticated: !!session && !!profile,
       isVerified: !!(providerProfile?.is_verified),
       isGoogleSignupPending: !!(profile?.google_signup_pending),
+      authError,
+      clearAuthError,
       refreshProfile,
       signIn,
       signUp,
@@ -534,6 +668,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       session,
       profile,
       providerProfile,
+      authError,
+      clearAuthError,
       refreshProfile,
       signIn,
       signUp,

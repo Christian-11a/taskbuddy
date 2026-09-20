@@ -10,7 +10,8 @@ steps below to activate Google Sign-In end-to-end.
 
 ```
 Mobile app
-  → opens browser to GET /auth/google/authorize?app_redirect=<deep-link>
+  → mints a one-time handoff id, saves it to disk
+  → opens browser to GET /auth/google/authorize?app_redirect=<deep-link>&handoff=<id>
     Backend
       → redirects browser to Google consent screen
         Google
@@ -18,10 +19,17 @@ Mobile app
             Backend
               → exchanges code for id_token (server-to-server)
               → calls Supabase signInWithIdToken
-              → redirects browser back to <deep-link>?access_token=...
+              → parks the session under sha256(handoff id), 5-minute TTL
+              → answers with a page that opens <deep-link>?handoff=<id>
 Mobile app
-  → reads tokens from the redirect URL, user is signed in
+  → POST /auth/google/claim { handoff_id }  → { session }, user is signed in
 ```
+
+**Tokens never travel in the redirect URL.** The app claims its session over
+HTTPS and can retry, so sign-in completes even when the deep link is slow,
+never arrives, or restarts the app (a dev build reloads its bundle when its own
+scheme is opened). The pending id is on disk, so the claim is retried on the
+next launch too. See BACKEND_SCHEMA.md §33 and migration 0033.
 
 The mobile app **never** contacts Google directly. Google only ever sees the
 backend's HTTPS callback URL, which is why it works in both Expo Go and
@@ -29,8 +37,9 @@ production builds.
 
 ### Allowed deep-link targets
 
-The final redirect carries a live Supabase session in its query string, so the
-backend only redirects to targets on an allowlist
+The final redirect carries the handoff id — and, for older builds that send no
+`handoff`, a live Supabase session — so the backend only redirects to targets
+on an allowlist
 (`backend/src/auth/google-redirect.ts`):
 
 | Target | Used by |

@@ -18,6 +18,7 @@ import type { Response } from 'express';
 import { AuthService } from './auth.service';
 import {
   ChangePasswordDto,
+  ClaimGoogleSessionDto,
   CompleteGoogleProfileDto,
   ForgotPasswordDto,
   LoginDto,
@@ -141,12 +142,21 @@ export class AuthController {
     return result;
   }
 
-  /** Step 1 — redirect the browser to Google's consent screen. */
+  /**
+   * Step 1 — redirect the browser to Google's consent screen.
+   *
+   * `handoff` is a one-time id the app minted before opening the browser. It
+   * is optional so an older build still signs in, but a build that sends one
+   * gets the session parked for it (§19) instead of appended to the deep link.
+   */
   @Get('google/authorize')
   @Redirect()
-  googleAuthorize(@Query('app_redirect') appRedirect: string) {
+  googleAuthorize(
+    @Query('app_redirect') appRedirect: string,
+    @Query('handoff') handoff?: string,
+  ) {
     if (!appRedirect) throw new BadRequestException('app_redirect is required');
-    const url = this.authService.buildGoogleAuthUrl(appRedirect);
+    const url = this.authService.buildGoogleAuthUrl(appRedirect, handoff);
     return { url, statusCode: 302 };
   }
 
@@ -168,13 +178,20 @@ export class AuthController {
     @Res() res: Response,
   ) {
     try {
-      const { appRedirect, session } =
+      const { appRedirect, handoffId, session } =
         await this.authService.handleGoogleCallback(code, state);
-      const params = new URLSearchParams({
-        access_token: session.access_token,
-        refresh_token: session.refresh_token,
-        expires_at: String(session.expires_at),
-      });
+
+      // With a handoff the link carries only the id and the app claims the
+      // session over HTTPS, which survives a redirect that never arrives or an
+      // app that restarts on it. Without one — an older build — the tokens
+      // still ride on the link, because that build has no way to claim them.
+      const params = handoffId
+        ? new URLSearchParams({ handoff: handoffId })
+        : new URLSearchParams({
+            access_token: session.access_token,
+            refresh_token: session.refresh_token,
+            expires_at: String(session.expires_at),
+          });
       return this.sendToApp(res, appendRedirectParams(appRedirect, params));
     } catch (err: unknown) {
       // Try to send the error back to the app rather than leaving the user
@@ -206,6 +223,20 @@ export class AuthController {
     res.setHeader('Cache-Control', 'no-store');
     if (!isAppSchemeRedirect(deepLink)) return res.redirect(deepLink);
     return res.type('html').send(renderAppRedirectPage(deepLink));
+  }
+
+  /**
+   * Step 3 — the app exchanges its handoff id for the session (§19).
+   *
+   * Unauthenticated by design: the id *is* the credential, it is single use,
+   * and it expires in five minutes. Rate-limited with the other credential
+   * routes, since it is guessable in exactly the way a password is not.
+   */
+  @Post('google/claim')
+  @HttpCode(200)
+  @ThrottleAuth()
+  claimGoogleSession(@Body() dto: ClaimGoogleSessionDto) {
+    return this.authService.claimGoogleHandoff(dto.handoff_id);
   }
 
   /** Mails a recovery code. Always 200, even for an address with no account. */

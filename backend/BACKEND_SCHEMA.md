@@ -49,6 +49,7 @@ recommendation model (see [Recommendation Engine Integration](#9-recommendation-
     - [31.2 Address suggestions](#312-address-suggestions-get-geocodingautocomplete)
     - [31.3 Current location](#313-current-location-get-geocodingreverse)
 32. [Matching Eligibility & Profile Coordinates (migration 0032)](#32-matching-eligibility--profile-coordinates-migration-0032)
+33. [Google Sign-In Session Handoff (migration 0033)](#33-google-sign-in-session-handoff-migration-0033)
 
 ---
 
@@ -2449,3 +2450,65 @@ one feature query and no ml-service call.
 
 Not prevented: a client pressing retry while a scheduler attempt is mid-flight still starts a
 second run, as pressing retry twice always has.
+
+---
+
+## 33. Google Sign-In Session Handoff (migration 0033)
+
+Google sign-in authenticated correctly and then put the user back on the sign-in screen. The cause
+was the delivery mechanism, not the auth: the callback appended the Supabase session to the app's
+deep link, so **one URL arriving exactly once** was the only way a session could ever reach the
+app. On Android it does not arrive reliably:
+
+- Chrome **drops a server 302 into an app scheme**. `Location: taskbuddy://…` left the tab spinning
+  forever (fixed first by serving a page that asks for the link from script — see §21's
+  `/payments/return`, same problem, same fix).
+- Once the link *is* asked for, Android may hand it to the app's Linking handler rather than to the
+  browser session that opened it — and in a development build it **restarts the app**, because the
+  dev client reloads its bundle when its own scheme is opened. Either way, whatever was awaiting the
+  redirect is gone, and with it the only copy of the tokens.
+
+### The handoff
+
+`GET /auth/google/authorize` now takes an optional `handoff` — a one-time id the app generated
+before opening the browser — and folds it into the **existing HMAC-signed `state`**, so it inherits
+that signature: the callback will not park a session under a code an attacker chose.
+
+After `signInWithIdToken`, the callback writes `sha256(handoff) → session` to `oauth_handoffs` and
+redirects the app to `<deep-link>?handoff=<id>` — **no tokens in the URL**, so they are also out of
+browser history and out of the interstitial page. The app then claims the session over HTTPS:
+
+`POST /auth/google/claim { handoff_id }` → `{ session }`
+
+| Case | Answer |
+|---|---|
+| id parked and unexpired | `200 { session }`, and the row is deleted in the same statement |
+| id already claimed, never issued, or older than 5 minutes | `404` — indistinguishable on purpose, so the endpoint cannot be probed for which codes existed |
+| database unreachable | `503`, so the app retries rather than reporting a false expiry |
+
+Unauthenticated, because the id **is** the credential, and rate-limited with the other credential
+routes (`@ThrottleAuth()`, 10/min per IP). Only the hash is stored: a dump of this table must not be
+a pile of usable logins. The delete *is* the claim — a row either matched or it did not — so single
+use needs no `consumed_at`. Expired rows are swept opportunistically on each claim, which needs no
+scheduler at this volume.
+
+**The deep link is now an optimisation.** It decides *when* the app notices it should claim. The app
+also writes `{ id, startedAt }` to AsyncStorage before opening the browser and retries the claim on
+the next launch, so a redirect that never arrives — or one that restarts the app — still ends in a
+signed-in user. A build that sends no `handoff` still gets tokens on the link, since it has no way
+to claim them.
+
+### What else was throwing sessions away
+
+Two things on the mobile side turned any transient failure into a silent sign-out, and both
+outlived the redirect bug:
+
+- `completeSignInFromUrl` called `/auth/me` **before** persisting the session, so one 502 from a
+  sleeping host — or the brief `No profile found for this user` 401 that the guard returns while
+  `handle_new_user` is still creating the row — discarded one-time tokens for good. The session is
+  now persisted first and the profile fetch is retried.
+- Both the launch restore and the 401 refresher deleted the stored session on *any* error,
+  including "no connection". They now only discard a session the API actually **rejected** (401/403).
+
+Failures that survive all that are reported: `AuthContext` holds an `authError` that `LoginScreen`
+renders, because a Google failure can outlive the screen that started it.
