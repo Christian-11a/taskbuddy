@@ -1901,3 +1901,16 @@ section[id] { scroll-margin-top: 6rem; }
    document-level concern, not something worth namespacing. */
 html.has-modal-open,
 body.has-modal-open { overflow: hidden; }
+
+/* On narrow screens the primary CTA belongs inside the menu. Keeping the
+   header's existing secondary action visible leaves enough room for the logo
+   and menu control without clipping the primary action off-screen. */
+.site-nav a.site-nav__cta--mobile { display: none; }
+@media (max-width: 480px) {
+  .site-nav__actions .site-nav__cta--primary { display: none; }
+  .site-nav.is-open .site-nav__cta--mobile {
+    display: inline-flex;
+    justify-content: center;
+    margin-top: .25rem;
+  }
+}

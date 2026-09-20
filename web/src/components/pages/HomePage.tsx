@@ -5,7 +5,12 @@ import { useState } from "react";
 import "../../styles/promo.css";
 import { HOME_MARKUP } from "./HomePage.markup";
 
-const HOME_MARKUP_WITHOUT_DUPLICATE_SKIP_LINK = HOME_MARKUP.replace(
+const HOME_MARKUP_WITH_MOBILE_JOIN_CTA = HOME_MARKUP.replace(
+  '<nav class="site-nav" id="site-nav" aria-label="Primary navigation"><a href="#stories">How it works</a><a href="#features">Features</a><a href="#services">Services</a><a href="#faq">FAQ</a></nav>',
+  '<nav class="site-nav" id="site-nav" aria-label="Primary navigation"><a href="#stories">How it works</a><a href="#features">Features</a><a href="#services">Services</a><a href="#faq">FAQ</a><a class="site-nav__cta site-nav__cta--primary site-nav__cta--mobile" href="#join">Join TaskBuddy</a></nav>',
+);
+
+const HOME_MARKUP_WITHOUT_DUPLICATE_SKIP_LINK = HOME_MARKUP_WITH_MOBILE_JOIN_CTA.replace(
   '<a class="skip-link" href="#main">Skip to content</a>',
   "",
 );

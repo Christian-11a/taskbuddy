@@ -191,7 +191,7 @@ const EscrowTab = forwardRef<ExportHandle, TabProps>(function EscrowTab({ onExpo
         <div className="inline-flex flex-wrap" style={{ background: "var(--chip-bg)", padding: 3, borderRadius: "var(--r-md)", gap: 2 }}>
           {(["all", "Completed", "In Escrow", "Disputed", "Refunded"] as StatusFilter[]).map((f) => (
             <button key={f} onClick={() => { setStatusFilter(f); clearSelectionOnScopeChange(); }}
-              className={clsx("rounded-lg font-medium cursor-pointer transition-all", statusFilter !== f && "text-gray-500 hover:text-gray-300")}
+              className={clsx("rounded-lg font-medium cursor-pointer transition-colors", statusFilter !== f && "text-gray-500 hover:text-gray-300")}
               style={{ padding: "5px 10px", fontSize: "var(--fs-2xs)", background: statusFilter === f ? "var(--indigo-dark)" : "transparent", color: statusFilter === f ? "var(--indigo-light)" : undefined, border: "none", fontFamily: "inherit", whiteSpace: "nowrap" }}
             >
               {f === "all" ? "All" : f}
@@ -265,7 +265,7 @@ const EscrowTab = forwardRef<ExportHandle, TabProps>(function EscrowTab({ onExpo
                         onClick={() => setExpandedId(expandedId === t.id ? null : t.id)}
                         aria-label={`${expandedId === t.id ? "Hide" : "Show"} details for ${t.id}`}
                         aria-expanded={expandedId === t.id}
-                        className="flex items-center justify-center rounded-lg transition-all hover:bg-white/10"
+                        className="flex items-center justify-center rounded-lg transition-colors hover:bg-white/10"
                         style={{ width: 26, height: 26, background: "transparent", border: "none", cursor: "pointer", color: "var(--text-muted)", transform: expandedId === t.id ? "rotate(180deg)" : "none" }}
                       >
                         <ChevronDown size={12} />
@@ -787,7 +787,7 @@ export function TransactionsPage() {
           <button
             key={id}
             onClick={() => setTab(id)}
-            className={clsx("rounded-lg font-medium cursor-pointer transition-all", tab !== id && "text-gray-500 hover:text-gray-300")}
+            className={clsx("rounded-lg font-medium cursor-pointer transition-colors", tab !== id && "text-gray-500 hover:text-gray-300")}
             style={{ padding: "6px 16px", fontSize: "var(--fs-xs)", background: tab === id ? "var(--indigo-dark)" : "transparent", color: tab === id ? "var(--indigo-light)" : undefined, border: "none", fontFamily: "inherit" }}
           >
             {label}

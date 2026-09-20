@@ -250,7 +250,7 @@ export function UsersPage() {
         <div className="inline-flex" style={{ background: "var(--chip-bg)", padding: 3, borderRadius: "var(--r-md)", gap: 2 }}>
           {([["all", "All"], ["provider", "Providers"], ["customer", "Homeowners"]] as [RoleFilter, string][]).map(([f, label]) => (
             <button key={f} onClick={() => { setRoleFilter(f); clearSelectionOnScopeChange(); }}
-              className={clsx("rounded-lg font-medium cursor-pointer transition-all", roleFilter !== f && "text-gray-500 hover:text-gray-300")}
+            className={clsx("rounded-lg font-medium cursor-pointer transition-colors", roleFilter !== f && "text-gray-500 hover:text-gray-300")}
               style={{ padding: "7px 11px", fontSize: "var(--fs-xs)", background: roleFilter === f ? "var(--indigo-dark)" : "transparent", color: roleFilter === f ? "var(--indigo-light)" : undefined, border: "none", fontFamily: "inherit" }}
             >
               {label}
@@ -259,7 +259,7 @@ export function UsersPage() {
         </div>
         <div className="inline-flex" style={{ background: "var(--chip-bg)", padding: 3, borderRadius: "var(--r-md)", gap: 2 }} aria-label="Filter users by status">
           {([['all', 'All statuses'], ['active', 'Active'], ['suspended', 'Suspended'], ['deleted', `Deleted${deleted ? ` (${deleted})` : ''}`]] as [StatusFilter, string][]).map(([f, label]) => (
-            <button key={f} onClick={() => { setStatusFilter(f); clearSelectionOnScopeChange(); }} className={clsx("rounded-lg font-medium cursor-pointer transition-all", statusFilter !== f && "text-gray-500 hover:text-gray-300")} style={{ padding: "7px 10px", fontSize: "var(--fs-xs)", background: statusFilter === f ? "var(--indigo-dark)" : "transparent", color: statusFilter === f ? "var(--indigo-light)" : undefined, border: "none", fontFamily: "inherit" }}>{label}</button>
+              <button key={f} onClick={() => { setStatusFilter(f); clearSelectionOnScopeChange(); }} className={clsx("rounded-lg font-medium cursor-pointer transition-colors", statusFilter !== f && "text-gray-500 hover:text-gray-300")} style={{ padding: "7px 10px", fontSize: "var(--fs-xs)", background: statusFilter === f ? "var(--indigo-dark)" : "transparent", color: statusFilter === f ? "var(--indigo-light)" : undefined, border: "none", fontFamily: "inherit" }}>{label}</button>
           ))}
         </div>
         <span style={{ fontSize: "var(--fs-xs)", color: "var(--text-muted)" }}>{filtered.length.toLocaleString()} {filtered.length === 1 ? "user" : "users"}</span>
@@ -414,7 +414,7 @@ export function UsersPage() {
                       title="More actions"
                       onClick={() => setReviewingId(u.id)}
                       aria-label={`Show details for ${u.name}`}
-                      className="flex items-center justify-center rounded-lg transition-all hover:bg-white/10"
+                      className="flex items-center justify-center rounded-lg transition-colors hover:bg-white/10"
                       style={{ width: 30, height: 30, background: "transparent", border: "none", cursor: "pointer", color: "var(--text-muted)", fontSize: "var(--fs-xl)", letterSpacing: 2 }}
                     >
                       ···
