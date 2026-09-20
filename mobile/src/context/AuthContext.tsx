@@ -16,6 +16,7 @@ import React, {
   useRef,
   useState,
 } from 'react';
+import { Linking } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as WebBrowser from 'expo-web-browser';
 import * as AuthSession from 'expo-auth-session';
@@ -380,15 +381,48 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const appRedirect = AuthSession.makeRedirectUri({ scheme: 'taskbuddy' });
     const authorizeUrl = await api.getGoogleAuthorizeUrl(appRedirect);
 
-    const result = await WebBrowser.openAuthSessionAsync(
-      authorizeUrl,
-      appRedirect,
+    if (__DEV__) console.log('[auth] google redirect uri', appRedirect);
+
+    // Two things can deliver the redirect, and on a development build only the
+    // second reliably does.
+    //
+    // `openAuthSessionAsync` resolves when *it* sees the deep link. But a
+    // development build already owns the `taskbuddy://` scheme for its own
+    // launcher links, so Android can route the callback to the app's Linking
+    // handler instead — the browser tab then just sits there and the promise
+    // never settles, which is exactly the hang this replaces. Racing the two
+    // takes whichever arrives, and the browser is dismissed by hand when
+    // Linking wins so the tab doesn't outlive the sign-in.
+    let unsubscribe: (() => void) | undefined;
+    const viaLinking = new Promise<WebBrowser.WebBrowserAuthSessionResult>(
+      (resolve) => {
+        const subscription = Linking.addEventListener('url', ({ url }) => {
+          if (!url.startsWith(appRedirect.split('?')[0])) return;
+          resolve({ type: 'success', url });
+        });
+        unsubscribe = () => subscription.remove();
+      },
     );
+
+    let result: WebBrowser.WebBrowserAuthSessionResult;
+    try {
+      result = await Promise.race([
+        WebBrowser.openAuthSessionAsync(authorizeUrl, appRedirect),
+        viaLinking,
+      ]);
+    } finally {
+      unsubscribe?.();
+    }
+
+    if (__DEV__) console.log('[auth] google result', result.type);
 
     if (result.type !== 'success') {
       if (result.type === 'cancel' || result.type === 'dismiss') return;
       throw new Error('Google sign-in was unsuccessful. Please try again.');
     }
+
+    // The tab is still open when Linking delivered the redirect first.
+    await WebBrowser.dismissBrowser().catch(() => {});
 
     // Parse session tokens from the redirect URL query string.
     const query = result.url.split('?')[1] ?? '';
