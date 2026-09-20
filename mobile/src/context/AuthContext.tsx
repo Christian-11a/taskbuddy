@@ -16,6 +16,7 @@ import React, {
   useRef,
   useState,
 } from 'react';
+import { Linking } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as WebBrowser from 'expo-web-browser';
 import * as AuthSession from 'expo-auth-session';
@@ -189,11 +190,77 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     };
   }, [profile?.id, session?.access_token]);
 
+  /**
+   * Signs in from a `taskbuddy://?access_token=…` deep link.
+   *
+   * Shared by the in-flight Google flow and by launch, because the redirect
+   * does not always come back to the flow that started it: opening the app's
+   * scheme can *restart* the app — a development build reloads the bundle on
+   * its own scheme — and the promise waiting in signInWithGoogle dies with the
+   * old JS context. The tokens are still in the launch URL, so the same
+   * handler finishes the job and the user lands signed in instead of back on
+   * the sign-in screen.
+   *
+   * Returns false for a link that carries no session, so callers can tell a
+   * sign-in redirect from any other deep link.
+   */
+  const completeSignInFromUrl = useCallback(
+    async (url: string): Promise<boolean> => {
+      const params = new URLSearchParams(url.split('?')[1] ?? '');
+
+      const googleError = params.get('google_error');
+      if (googleError) throw new Error(googleError);
+
+      const accessToken = params.get('access_token');
+      const refreshToken = params.get('refresh_token');
+      const expiresAt = params.get('expires_at');
+      if (!accessToken || !refreshToken || !expiresAt) return false;
+
+      const next: Session = {
+        access_token: accessToken,
+        refresh_token: refreshToken,
+        expires_at: Number(expiresAt),
+      };
+
+      const me = await api.me(next.access_token);
+      await persistSession(next);
+      setProfile(me.profile);
+      setProviderProfile(me.provider_profile);
+      return true;
+    },
+    [persistSession],
+  );
+
+  // ── Sign-in redirects that arrive outside the Google flow ────────────────
+  // A link delivered while the app is already running but with no flow waiting
+  // for it — the restart case leaves nothing listening.
+  useEffect(() => {
+    const subscription = Linking.addEventListener('url', ({ url }) => {
+      if (sessionRef.current) return;
+      void completeSignInFromUrl(url).catch((e) => {
+        if (__DEV__) console.warn('[auth] deep-link sign-in failed', e);
+      });
+    });
+    return () => subscription.remove();
+  }, [completeSignInFromUrl]);
+
   // ── Restore a persisted session on launch ────────────────────────────────
   useEffect(() => {
     let mounted = true;
     (async () => {
       try {
+        // A cold launch *by* the OAuth redirect: the tokens are in the URL
+        // that started the app, and there is no stored session yet. Checked
+        // before AsyncStorage so a fresh sign-in wins over a stale session.
+        const launchUrl = await Linking.getInitialURL();
+        if (launchUrl && mounted) {
+          try {
+            if (await completeSignInFromUrl(launchUrl)) return;
+          } catch (e) {
+            if (__DEV__) console.warn('[auth] launch-url sign-in failed', e);
+          }
+        }
+
         const raw = await AsyncStorage.getItem(SESSION_KEY);
         if (!raw) return;
         const stored = JSON.parse(raw) as Session;
@@ -393,31 +460,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       throw new Error('Google sign-in was unsuccessful. Please try again.');
     }
 
-    // Parse session tokens from the redirect URL query string.
-    const query = result.url.split('?')[1] ?? '';
-    const params = new URLSearchParams(query);
-
-    const googleError = params.get('google_error');
-    if (googleError) throw new Error(googleError);
-
-    const accessToken = params.get('access_token');
-    const refreshToken = params.get('refresh_token');
-    const expiresAt = params.get('expires_at');
-    if (!accessToken || !refreshToken || !expiresAt) {
-      throw new Error('Google sign-in did not return a valid session.');
-    }
-
-    const next: Session = {
-      access_token: accessToken,
-      refresh_token: refreshToken,
-      expires_at: Number(expiresAt),
-    };
-
-    const me = await api.me(next.access_token);
-    await persistSession(next);
-    setProfile(me.profile);
-    setProviderProfile(me.provider_profile);
-  }, [persistSession]);
+    await completeSignInFromUrl(result.url);
+  }, [completeSignInFromUrl]);
 
   const signOut = useCallback(async () => {
     const token = session?.access_token;
