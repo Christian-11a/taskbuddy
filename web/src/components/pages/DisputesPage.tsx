@@ -122,7 +122,7 @@ export function DisputesPage() {
         <div className="inline-flex flex-wrap" style={{ background: "var(--chip-bg)", padding: 3, borderRadius: "var(--r-md)", gap: 2 }}>
           {(["all", "open", "resolved", "cancelled"] as Filter[]).map((f) => (
             <button key={f} onClick={() => setFilter(f)}
-              className={clsx("flex items-center gap-1 rounded-lg font-medium cursor-pointer transition-all", filter !== f && "text-gray-500 hover:text-gray-300")}
+              className={clsx("flex items-center gap-1 rounded-lg font-medium cursor-pointer transition-colors", filter !== f && "text-gray-500 hover:text-gray-300")}
               style={{ padding: "7px 11px", fontSize: "var(--fs-xs)", background: filter === f ? "var(--indigo-dark)" : "transparent", color: filter === f ? "var(--indigo-light)" : undefined, border: "none", fontFamily: "inherit" }}
             >
               {f.charAt(0).toUpperCase() + f.slice(1)} <span style={{ fontSize: "var(--fs-3xs)", opacity: 0.7 }}>({counts[f]})</span>

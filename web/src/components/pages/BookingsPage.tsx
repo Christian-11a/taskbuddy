@@ -173,7 +173,7 @@ export function BookingsPage() {
             return (
               <button key={s} onClick={() => { setStatusFilter(s); clearSelectionOnScopeChange(); }}
                 aria-pressed={active}
-                className={clsx("rounded-lg font-medium cursor-pointer transition-all flex-shrink-0", !active && "text-gray-500 hover:text-gray-300")}
+                className={clsx("rounded-lg font-medium cursor-pointer transition-colors flex-shrink-0", !active && "text-gray-500 hover:text-gray-300")}
                 style={{ padding: "7px 11px", fontSize: "var(--fs-xs)", background: active ? "var(--indigo-dark)" : "transparent", color: active ? "var(--indigo-light)" : undefined, border: "none", fontFamily: "inherit", whiteSpace: "nowrap" }}
               >
                 {s === "all" ? "All" : s}
@@ -273,7 +273,7 @@ export function BookingsPage() {
                           onClick={() => toggleExpand(b.id)}
                         aria-label={`${expandedId === b.id ? "Hide" : "Show"} details for ${b.id}`}
                         aria-expanded={expandedId === b.id}
-                          className="flex items-center justify-center rounded-lg transition-all hover:bg-white/10"
+                          className="flex items-center justify-center rounded-lg transition-colors hover:bg-white/10"
                           style={{ width: 26, height: 26, background: "transparent", border: "none", cursor: "pointer", color: "var(--text-muted)", transform: expandedId === b.id ? "rotate(180deg)" : "none" }}
                         >
                           <ChevronDown size={12} />
