@@ -1046,6 +1046,19 @@ created *and* again on return, since the endpoint is reachable directly and woul
 an open redirect. The return hop is cosmetic: it decides which screen the user lands on, while
 the webhook decides whether the money arrived.
 
+**The last hop is a page, not a 302.** Chrome does not follow a *server* redirect into an app
+scheme: a `302 Location: taskbuddy://…` is dropped and the tab sits on a spinner, which is what
+made both the wallet top-up and Google sign-in look like they hung on Android. So when
+`app_redirect` is an app scheme (`taskbuddy:`, `exp+taskbuddy:`, `exp:`) the handler answers
+`200 text/html` with `renderAppRedirectPage()` — a "Signing you in…" page that asks for the deep
+link from script and offers it as a tappable link for browsers that only honour a real gesture.
+Web targets (`https://…`) are still plain redirects. The URL carries session tokens or a payment
+outcome, so the response is always `Cache-Control: no-store`.
+
+On the app side the deep link may then arrive at the *Linking* handler rather than at the browser
+session that opened it — a development build already owns `taskbuddy://` for its own launcher —
+so the mobile helper `openRedirectSession()` races both and takes whichever fires.
+
 ### Idempotency
 
 Stripe retries until it gets a 2xx, so every handler must be safely repeatable. Two mechanisms:

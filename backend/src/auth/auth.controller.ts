@@ -34,7 +34,11 @@ import {
   hasMatchingCsrfToken,
   setAdminSessionCookies,
 } from './admin-session';
-import { appendRedirectParams } from './google-redirect';
+import {
+  appendRedirectParams,
+  isAppSchemeRedirect,
+  renderAppRedirectPage,
+} from './google-redirect';
 import { JwtAuthGuard } from './jwt-auth.guard';
 import { CurrentUser } from './current-user.decorator';
 import { Roles } from './roles.decorator';
@@ -171,7 +175,7 @@ export class AuthController {
         refresh_token: session.refresh_token,
         expires_at: String(session.expires_at),
       });
-      return res.redirect(appendRedirectParams(appRedirect, params));
+      return this.sendToApp(res, appendRedirectParams(appRedirect, params));
     } catch (err: unknown) {
       // Try to send the error back to the app rather than leaving the user
       // staring at a browser error page. tryParseAppRedirect enforces the
@@ -181,11 +185,27 @@ export class AuthController {
         const message =
           err instanceof HttpException ? err.message : 'Google sign-in failed';
         const params = new URLSearchParams({ google_error: message });
-        return res.redirect(appendRedirectParams(appRedirect, params));
+        return this.sendToApp(res, appendRedirectParams(appRedirect, params));
       }
       // No usable redirect — fall through to NestJS's error handler.
       throw err;
     }
+  }
+
+  /**
+   * Hands a deep link back to whatever opened the OAuth flow.
+   *
+   * A browser can be 302'd to the web console's https URL, but *not* into the
+   * app's own scheme: Chrome drops a server redirect to `taskbuddy://` and
+   * leaves the tab spinning, which is indistinguishable from a hung sign-in.
+   * Those targets get a page that jumps to the link from script instead
+   * (§google-redirect.ts). Either way the URL carries session tokens, so it
+   * must never be cached.
+   */
+  private sendToApp(res: Response, deepLink: string) {
+    res.setHeader('Cache-Control', 'no-store');
+    if (!isAppSchemeRedirect(deepLink)) return res.redirect(deepLink);
+    return res.type('html').send(renderAppRedirectPage(deepLink));
   }
 
   /** Mails a recovery code. Always 200, even for an address with no account. */

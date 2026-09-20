@@ -16,7 +16,6 @@ import React, {
   useRef,
   useState,
 } from 'react';
-import { Linking } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as WebBrowser from 'expo-web-browser';
 import * as AuthSession from 'expo-auth-session';
@@ -32,6 +31,7 @@ import {
   type Session,
 } from '../lib/api';
 import { requestExpoPushRegistration } from '../lib/pushNotifications';
+import { openRedirectSession } from '../lib/appRedirectSession';
 
 // Required for expo-auth-session to complete the OAuth flow on Android
 WebBrowser.maybeCompleteAuthSession();
@@ -371,8 +371,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   //   3. Google redirects to the backend callback, which exchanges the code
   //      for an id_token, calls Supabase signInWithIdToken, then redirects
   //      the browser to appRedirect with session tokens in the query string.
-  //   4. WebBrowser.openAuthSessionAsync intercepts the redirect back to the
-  //      app scheme (exp:// in Expo Go, taskbuddy:// in builds) and resolves.
+  //   4. openRedirectSession picks up the redirect back to the app scheme
+  //      (exp:// in Expo Go, taskbuddy:// in builds), from the browser session
+  //      or from Linking — see appRedirectSession.ts for why both are needed.
   //
   // Google never sees the app deep-link — only the backend HTTPS callback —
   // so exp:// and taskbuddy:// both work without any Google Console changes.
@@ -383,36 +384,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     if (__DEV__) console.log('[auth] google redirect uri', appRedirect);
 
-    // Two things can deliver the redirect, and on a development build only the
-    // second reliably does.
-    //
-    // `openAuthSessionAsync` resolves when *it* sees the deep link. But a
-    // development build already owns the `taskbuddy://` scheme for its own
-    // launcher links, so Android can route the callback to the app's Linking
-    // handler instead — the browser tab then just sits there and the promise
-    // never settles, which is exactly the hang this replaces. Racing the two
-    // takes whichever arrives, and the browser is dismissed by hand when
-    // Linking wins so the tab doesn't outlive the sign-in.
-    let unsubscribe: (() => void) | undefined;
-    const viaLinking = new Promise<WebBrowser.WebBrowserAuthSessionResult>(
-      (resolve) => {
-        const subscription = Linking.addEventListener('url', ({ url }) => {
-          if (!url.startsWith(appRedirect.split('?')[0])) return;
-          resolve({ type: 'success', url });
-        });
-        unsubscribe = () => subscription.remove();
-      },
-    );
-
-    let result: WebBrowser.WebBrowserAuthSessionResult;
-    try {
-      result = await Promise.race([
-        WebBrowser.openAuthSessionAsync(authorizeUrl, appRedirect),
-        viaLinking,
-      ]);
-    } finally {
-      unsubscribe?.();
-    }
+    const result = await openRedirectSession(authorizeUrl, appRedirect);
 
     if (__DEV__) console.log('[auth] google result', result.type);
 
@@ -420,9 +392,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (result.type === 'cancel' || result.type === 'dismiss') return;
       throw new Error('Google sign-in was unsuccessful. Please try again.');
     }
-
-    // The tab is still open when Linking delivered the redirect first.
-    await WebBrowser.dismissBrowser().catch(() => {});
 
     // Parse session tokens from the redirect URL query string.
     const query = result.url.split('?')[1] ?? '';

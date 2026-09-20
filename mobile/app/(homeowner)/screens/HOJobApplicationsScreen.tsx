@@ -32,7 +32,6 @@
 
 import React, { useState } from 'react';
 import * as AuthSession from 'expo-auth-session';
-import * as WebBrowser from 'expo-web-browser';
 import {
   ActivityIndicator,
   ScrollView,
@@ -47,6 +46,7 @@ import { Sizes, Spacing, V6Colors } from '../../../src/constants/theme';
 const C = V6Colors;
 import { useAsyncData } from '../../../src/hooks/useAsyncData';
 import { api, type JobApplication } from '../../../src/lib/api';
+import { openRedirectSession } from '../../../src/lib/appRedirectSession';
 import { initials } from '../../../src/lib/format';
 import HirePaymentModal from '../../../src/components/HirePaymentModal';
 import { HOScreen } from '../../../src/types/navigation';
@@ -165,7 +165,7 @@ export default function HOJobApplicationsScreen({
         application_id: hireTarget.id,
         app_redirect: appRedirect,
       });
-      const result = await WebBrowser.openAuthSessionAsync(session.url, appRedirect);
+      const result = await openRedirectSession(session.url, appRedirect);
       const outcome =
         result.type === 'success'
           ? new URLSearchParams(result.url.split('?')[1] ?? '').get('hire')
