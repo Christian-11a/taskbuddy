@@ -21,6 +21,7 @@ import {
 import { ArrowLeft } from 'lucide-react-native';
 import AvatarPicker from '../../../src/components/AvatarPicker';
 import ConfirmationModal from '../../../src/components/ConfirmationModal';
+import AddressField from '../../../src/components/AddressField';
 import { Sizes, Spacing, V6Colors, V6Radii, V6Shadows } from '../../../src/constants/theme';
 
 const C = V6Colors;
@@ -149,7 +150,18 @@ export default function HOEditProfileScreen({ onBack, onSave }: HOEditProfileScr
           <FormField label="Full name" value={name} onChangeText={setName} placeholder="Your full name" />
           <FormField label="Email" value={email} placeholder="email@example.com" keyboardType="email-address" editable={false} />
           <FormField label="Phone" value={phone} onChangeText={setPhone} placeholder="+63 9XX XXX XXXX" keyboardType="phone-pad" />
-          <FormField label="Address" value={location} onChangeText={setLocation} placeholder="House no., Barangay, Street" />
+          {/* The saved address is what job posts prefill and what the backend
+              geocodes on save, so it gets the same suggestions + GPS the job
+              form has rather than a bare text box. */}
+          <View style={styles.fieldGroup}>
+            <Text style={styles.fieldLabel}>Address</Text>
+            <AddressField
+              value={location}
+              onChangeText={setLocation}
+              onResolve={() => {}}
+              placeholder="House no., Barangay, Street"
+            />
+          </View>
           <FormField label="City" value={city} onChangeText={setCity} placeholder="City / Municipality" />
 
           {!!error && <Text style={styles.errorText}>{error}</Text>}

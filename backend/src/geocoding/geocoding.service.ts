@@ -7,6 +7,8 @@ import {
 import { ConfigService } from '@nestjs/config';
 
 const GEOCODE_URL = 'https://api.geoapify.com/v1/geocode/search';
+const AUTOCOMPLETE_URL = 'https://api.geoapify.com/v1/geocode/autocomplete';
+const REVERSE_URL = 'https://api.geoapify.com/v1/geocode/reverse';
 const STATIC_MAP_URL = 'https://maps.geoapify.com/v1/staticmap';
 
 /** Geoapify answers in well under a second; past this the app should say so. */
@@ -32,6 +34,26 @@ const PRECISE_RESULT_TYPES = ['building', 'amenity', 'street'];
  * the overall score, and street level is all this check asks for.
  */
 const MIN_STREET_CONFIDENCE = 0.2;
+
+/**
+ * How many suggestions the address field offers. Five fills the dropdown
+ * without covering the form behind it, and each extra result costs nothing
+ * beyond the one credit the request already spends.
+ */
+const AUTOCOMPLETE_LIMIT = 5;
+
+/**
+ * Suggestions are typed into, so they are asked for more often than a final
+ * geocode and are worth less when late — past this the keystroke that follows
+ * has already replaced the query.
+ */
+const AUTOCOMPLETE_TIMEOUT_MS = 3000;
+
+/**
+ * Shortest query worth a credit. Geoapify answers two letters with the biggest
+ * cities in the country, which is noise under a half-typed street name.
+ */
+const MIN_AUTOCOMPLETE_LENGTH = 3;
 
 /**
  * The thumbnail the job form shows under "Location confirmed". 600×300 is
@@ -68,6 +90,19 @@ export interface GeocodedAddress {
   latitude: number;
   longitude: number;
   formatted_address: string;
+}
+
+/**
+ * One row of the address field's dropdown.
+ *
+ * `precise` mirrors the rule `geocode()` enforces, so the app can tell a
+ * suggestion it may confirm a job with ("12 Mabini Street, …") from one it may
+ * only use as a starting point ("Lipa City"). Coarse rows are still returned:
+ * tapping a city to then add the street is how a half-remembered address gets
+ * typed, and hiding them leaves the dropdown empty for most early keystrokes.
+ */
+export interface AddressSuggestion extends GeocodedAddress {
+  precise: boolean;
 }
 
 /**
@@ -164,6 +199,130 @@ export class GeocodingService {
       longitude: result.lon,
       formatted_address: result.formatted ?? trimmed,
     };
+  }
+
+  /**
+   * Address suggestions for what the user has typed so far (§31.2).
+   *
+   * Unlike `geocode()`, a partial query has no right answer yet, so nothing
+   * here throws on a vague match: the rows carry `precise` and the app decides.
+   * An empty list is a normal answer — "no match yet" is what half a street
+   * name looks like — and a Geoapify outage degrades to that same empty list
+   * rather than an error, because the user can always keep typing and let
+   * `geocode()` confirm the address on its own.
+   */
+  async autocomplete(text: string): Promise<AddressSuggestion[]> {
+    if (!this.apiKey) {
+      throw new ServiceUnavailableException('Address lookup is not configured');
+    }
+
+    const trimmed = text.trim();
+    if (trimmed.length < MIN_AUTOCOMPLETE_LENGTH) return [];
+
+    const params = new URLSearchParams({
+      text: trimmed,
+      filter: 'countrycode:ph',
+      lang: 'en',
+      limit: String(AUTOCOMPLETE_LIMIT),
+      format: 'json',
+      apiKey: this.apiKey,
+    });
+
+    let body: GeoapifyResponse;
+    try {
+      const response = await fetch(`${AUTOCOMPLETE_URL}?${params.toString()}`, {
+        signal: AbortSignal.timeout(AUTOCOMPLETE_TIMEOUT_MS),
+      });
+      if (!response.ok) {
+        this.logger.warn(
+          `Geoapify autocomplete returned HTTP ${response.status}: ${await response.text()}`,
+        );
+        return [];
+      }
+      body = (await response.json()) as GeoapifyResponse;
+    } catch (err) {
+      this.logger.warn(`Autocomplete request failed: ${(err as Error).message}`);
+      return [];
+    }
+
+    return (body.results ?? [])
+      .filter((r) => typeof r.lat === 'number' && typeof r.lon === 'number')
+      .map((r) => ({
+        latitude: r.lat,
+        longitude: r.lon,
+        formatted_address: r.formatted ?? trimmed,
+        precise: this.isPrecise(r),
+      }));
+  }
+
+  /**
+   * The address at a set of coordinates, for the "use my current location"
+   * button (§31.3). The phone supplies the point from GPS, so unlike
+   * `geocode()` there is nothing to verify — but the answer still has to be
+   * precise enough to post a job with, and a GPS fix in open country legitimately
+   * resolves to nothing at all, which is a 400 the user fixes by typing.
+   */
+  async reverse(latitude: number, longitude: number): Promise<GeocodedAddress> {
+    if (!this.apiKey) {
+      throw new ServiceUnavailableException('Address lookup is not configured');
+    }
+
+    const params = new URLSearchParams({
+      lat: String(latitude),
+      lon: String(longitude),
+      lang: 'en',
+      limit: '1',
+      format: 'json',
+      apiKey: this.apiKey,
+    });
+
+    let body: GeoapifyResponse;
+    try {
+      const response = await fetch(`${REVERSE_URL}?${params.toString()}`, {
+        signal: AbortSignal.timeout(GEOCODE_TIMEOUT_MS),
+      });
+      if (!response.ok) {
+        this.logger.warn(
+          `Geoapify reverse returned HTTP ${response.status}: ${await response.text()}`,
+        );
+        throw new ServiceUnavailableException(UNAVAILABLE_MESSAGE);
+      }
+      body = (await response.json()) as GeoapifyResponse;
+    } catch (err) {
+      if (err instanceof ServiceUnavailableException) throw err;
+      this.logger.warn(`Reverse geocoding failed: ${(err as Error).message}`);
+      throw new ServiceUnavailableException(UNAVAILABLE_MESSAGE);
+    }
+
+    const result = body.results?.[0];
+    if (!result?.formatted) {
+      throw new BadRequestException(
+        "We couldn't find an address at your location. Type it instead.",
+      );
+    }
+
+    // The phone's point, not the geocoder's: reverse results snap to the
+    // centre of whatever was matched, and the GPS fix is the better pin.
+    return {
+      latitude,
+      longitude,
+      formatted_address: result.formatted,
+    };
+  }
+
+  /**
+   * Street level or better, and a match the geocoder is not doubtful about —
+   * the rule `geocode()` rejects an address for, reused so a suggestion the
+   * app marks confirmable is one `geocode()` would also accept.
+   */
+  private isPrecise(result: {
+    result_type?: string;
+    rank?: { confidence?: number; confidence_street_level?: number };
+  }): boolean {
+    if (!PRECISE_RESULT_TYPES.includes(result.result_type ?? '')) return false;
+    const confidence =
+      result.rank?.confidence_street_level ?? result.rank?.confidence ?? 0;
+    return confidence >= MIN_STREET_CONFIDENCE;
   }
 
   /**

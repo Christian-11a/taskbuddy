@@ -46,6 +46,8 @@ recommendation model (see [Recommendation Engine Integration](#9-recommendation-
 30. [Chat Attachments (migrations 0030–0031)](#30-chat-attachments-migrations-00300031)
 31. [Address Geocoding (no migration)](#31-address-geocoding-no-migration)
     - [31.1 Location preview map](#311-location-preview-map-get-jobsstatic-map)
+    - [31.2 Address suggestions](#312-address-suggestions-get-geocodingautocomplete)
+    - [31.3 Current location](#313-current-location-get-geocodingreverse)
 32. [Matching Eligibility & Profile Coordinates (migration 0032)](#32-matching-eligibility--profile-coordinates-migration-0032)
 
 ---
@@ -1781,6 +1783,8 @@ Read the table that way; the numbers mean much less if you read them as a platfo
 | `POST /auth/{register,login,admin/login,forgot-password,reset-password,send-email-otp,verify-email-otp,change-password}` | 10 / min **each** | Two attacks at once: guessing one account's password, and using someone else's address as a mail relay by requesting codes they never asked for. Ten leaves room for a person mistyping theirs |
 | `GET /jobs/geocode` | 10 / min | Each call spends one of Geoapify's 3,000 free daily credits (§31); a homeowner correcting a typo needs a few, not hundreds |
 | `GET /jobs/static-map` | 20 / min | Each render also spends Geoapify credits (§31.1); it follows a successful geocode, so it sits a little above that route's ten |
+| `GET /geocoding/autocomplete` | 30 / min | Suggestions are typed into, so a person correcting a street name legitimately fires several in a row (§31.2). The app debounces, so a minute of steady typing is a handful of calls — thirty leaves that alone and still refuses a script using the route as a free autocomplete proxy |
+| `GET /geocoding/reverse` | 10 / min | One call per tap of "use my current location" (§31.3), and it spends a credit like a geocode does |
 | `POST /payments/webhook` | exempt (`@SkipThrottle()`) | The caller is Stripe, already authenticated by the signature over the raw body, and it retries for three days. Throttling it would only delay the credit a payer is waiting for |
 
 **One throttler, not several named ones.** Every entry in `ThrottlerModule.forRoot`'s list applies
@@ -2295,6 +2299,58 @@ cropped, and adds no caption of its own.
 Each render spends Geoapify credits, so the route has its own limit, `@ThrottleStaticMap()`:
 **20 / min per IP**, a little above geocode's ten because every successful geocode is followed by
 one render.
+
+### 31.2 Address suggestions (`GET /geocoding/autocomplete`)
+
+`GET /geocoding/autocomplete?q=` returns up to **five** suggestions for a partially typed address,
+so the address field can offer a dropdown instead of asking the user to spell a barangay correctly
+on the first try. `GeocodingService.autocomplete()` calls `GET
+https://api.geoapify.com/v1/geocode/autocomplete` with the same `filter=countrycode:ph&lang=en`
+restriction as §31.
+
+**Not under `/jobs`.** `GET /jobs/geocode` is `@Roles('client')`, but a provider editing their
+profile address needs the same dropdown — their coordinates are what makes them eligible for
+matching (§32.1). So both routes here live on `GeocodingController` and are open to any signed-in
+user.
+
+| Input / upstream | API answers |
+|---|---|
+| `q` of 3+ characters | `200 [{ latitude, longitude, formatted_address, precise }]` (may be empty) |
+| `q` shorter than 3 characters | `200 []`, **without** calling Geoapify — two letters match the biggest cities in the country, which is noise under a half-typed street name, and it would still cost a credit |
+| non-2xx from Geoapify, network error, 3 s timeout | `200 []`. Suggestions are an assist, not a gate: the typed address is still geocoded by §31 when the user moves on, so an outage must not stop them typing |
+| (no key configured) | `503 Address lookup is not configured` |
+
+**`precise` mirrors §31's accept rule** — street level or better, street-level confidence ≥ 0.2 —
+so a row the app lets a user confirm a job with is one `GET /jobs/geocode` would also accept.
+Coarser rows (a city, a barangay) are still returned rather than filtered out: tapping "Lipa City"
+and then adding the street is how a half-remembered address gets typed, and dropping them leaves
+the dropdown empty for most early keystrokes. The app fills the field from a coarse row but keeps
+the pin unverified and asks for a house number.
+
+The timeout is 3 s, shorter than §31's 5 s: by then the next keystroke has replaced the query.
+
+### 31.3 Current location (`GET /geocoding/reverse`)
+
+`GET /geocoding/reverse?lat=&lon=` turns the phone's GPS fix into an address, behind the address
+field's "use my current location" button. The app asks for the foreground location permission
+itself (`expo-location`); this route only names the point.
+
+| Input / upstream | API answers |
+|---|---|
+| `lat` in 4.5–21.5 and `lon` in 116–127 | `200 { latitude, longitude, formatted_address }` |
+| missing, non-numeric, or outside that box | `400`. Same Philippines box as §31.1, so the route can't be used as a free worldwide reverse geocoder on TaskBuddy's credits |
+| a fix that resolves to nothing addressable (open country, at sea) | `400` — "We couldn't find an address at your location. Type it instead." |
+| non-2xx from Geoapify, network error, 5 s timeout | `503`, upstream body logged, never returned |
+| (no key configured) | `503 Address lookup is not configured` |
+
+**The coordinates returned are the phone's, not the geocoder's.** A reverse result snaps to the
+centre of whatever it matched — a street's midpoint, a building's centroid — and the GPS fix is the
+better pin for a job the user is standing at. Only `formatted_address` comes from Geoapify.
+
+Because the point is already verified, the app treats this answer the way it treats a `precise`
+suggestion: the job form posts on it without spending another §31 credit.
+
+---
 
 ---
 
