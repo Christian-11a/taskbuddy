@@ -647,7 +647,12 @@ function AppContent() {
     return (
       <View style={styles.screen}>
         <SPVerificationScreen
-          onBack={spBack}
+          onBack={() => {
+            // A verification may have completed on this visit even if the
+            // provider leaves with back instead of "Go to Dashboard".
+            void refreshProfile();
+            spBack();
+          }}
           onVerified={async () => {
             await refreshProfile();
             spBack();

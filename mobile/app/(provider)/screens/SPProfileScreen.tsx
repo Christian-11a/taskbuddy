@@ -146,7 +146,7 @@ export default function SPProfileScreen({ onNavigate, onLogout, onBack }: SPProf
 
         {/* Menu — matches .navrow */}
         <View style={styles.card}>
-          {MENU_ITEMS.map((item) => (
+          {MENU_ITEMS.filter((item) => !(isVerified && item.screen === 'Verification')).map((item) => (
             <TouchableOpacity
               key={item.label}
               style={styles.navrow}

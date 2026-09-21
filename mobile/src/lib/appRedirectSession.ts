@@ -20,7 +20,7 @@
  * deep link.
  */
 
-import { Linking } from 'react-native';
+import { Linking, Platform } from 'react-native';
 import * as WebBrowser from 'expo-web-browser';
 
 export type RedirectSessionResult =
@@ -58,8 +58,10 @@ export async function openRedirectSession(
     ]);
 
     // The tab is still open when Linking delivered the redirect first.
-    if (result.type === 'success') {
-      await WebBrowser.dismissBrowser().catch(() => {});
+    // dismissBrowser is iOS-only: on Android the native module doesn't define
+    // it, so the call returns undefined rather than a promise.
+    if (result.type === 'success' && Platform.OS === 'ios') {
+      await Promise.resolve(WebBrowser.dismissBrowser?.()).catch(() => {});
     }
 
     return result as RedirectSessionResult;

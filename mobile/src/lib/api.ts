@@ -1176,13 +1176,18 @@ export const api = {
       body: { bucket, content_type: contentType },
     });
 
-    // React Native turns a file:// URI into a Blob via fetch().
-    const blob = await (await fetch(uri)).blob();
-    const res = await fetch(signed.upload_url, {
-      method: 'PUT',
-      headers: { 'Content-Type': contentType },
-      body: blob,
-    });
+    // Send the file as a typed multipart part, as supabase-js does. A Blob from
+    // fetch(file://) usually has an empty type, which React Native uploads as
+    // application/octet-stream regardless of the header, and Storage records
+    // that as the object's mimetype.
+    const form = new FormData();
+    form.append('cacheControl', '3600');
+    form.append('', {
+      uri,
+      name: signed.path.split('/').pop() ?? 'upload',
+      type: contentType,
+    } as unknown as Blob);
+    const res = await fetch(signed.upload_url, { method: 'PUT', body: form });
     if (!res.ok) {
       throw new ApiError('Could not upload the image. Try again.', res.status);
     }
