@@ -85,3 +85,77 @@ export function appendRedirectParams(
   const separator = appRedirect.includes('?') ? '&' : '?';
   return `${appRedirect}${separator}${params.toString()}`;
 }
+
+/** True for the app's own deep links, which a browser cannot be 302'd into. */
+export function isAppSchemeRedirect(uri: string): boolean {
+  return /^(taskbuddy|exp\+taskbuddy|exp):/i.test(uri);
+}
+
+const escapeHtml = (value: string) =>
+  value.replace(
+    /[&<>"']/g,
+    (c) =>
+      ({
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#39;',
+      })[c] as string,
+  );
+
+/**
+ * A JS string literal safe to inline. `JSON.stringify` alone is not: it leaves
+ * `<` as-is, so a link containing `</script>` would end the block early and
+ * the rest of the URL would be parsed as markup. Escaping `<` closes that
+ * without changing what the string means to the browser.
+ */
+const scriptString = (value: string) =>
+  JSON.stringify(value).replace(/</g, '\\u003c');
+
+/**
+ * The page the OAuth callback answers with when the redirect target is the
+ * app's own scheme.
+ *
+ * **A 302 to `taskbuddy://` does not work in Chrome.** Chrome only follows a
+ * navigation into an external app scheme when the page itself asks for it —
+ * a server redirect into one is dropped, and the tab sits on a spinner while
+ * the app waits for a callback that will never arrive. That is what made
+ * Google sign-in look like it hung on Android.
+ *
+ * So the callback returns this instead: a page that asks for the deep link
+ * from script the moment it loads, with a link the user can tap if the
+ * browser refuses that too (some in-app browsers only honour a real gesture).
+ *
+ * The URL carries the session tokens, so the page must not be cached — the
+ * controller sends `Cache-Control: no-store` with it — and nothing here is
+ * ever logged or shown as text.
+ */
+export function renderAppRedirectPage(deepLink: string): string {
+  return `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<title>Signing you in…</title>
+<style>
+  body { margin:0; min-height:100vh; display:flex; align-items:center; justify-content:center;
+         background:#F1F5F9; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif; }
+  .card { text-align:center; padding:32px 24px; }
+  h1 { color:#063D4D; font-size:19px; margin:0 0 8px; }
+  p { color:#64748B; font-size:15px; margin:0 0 20px; }
+  a { display:inline-block; background:#096E8B; color:#fff; text-decoration:none;
+      padding:12px 22px; border-radius:12px; font-size:16px; font-weight:600; }
+</style>
+</head>
+<body>
+  <div class="card">
+    <h1>Signing you in…</h1>
+    <p>Returning you to TaskBuddy.</p>
+    <a id="continue" href="${escapeHtml(deepLink)}">Open TaskBuddy</a>
+  </div>
+  <script>window.location.replace(${scriptString(deepLink)});</script>
+</body>
+</html>`;
+}

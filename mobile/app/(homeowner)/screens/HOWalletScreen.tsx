@@ -34,12 +34,12 @@ import {
 } from 'lucide-react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as AuthSession from 'expo-auth-session';
-import * as WebBrowser from 'expo-web-browser';
 import { Sizes, Spacing, V6Colors, V6Radii, V6Shadows } from '../../../src/constants/theme';
 
 const C = V6Colors;
 import { useAsyncData } from '../../../src/hooks/useAsyncData';
 import { api, MIN_TOPUP_PHP } from '../../../src/lib/api';
+import { openRedirectSession } from '../../../src/lib/appRedirectSession';
 import { peso, shortDate } from '../../../src/lib/format';
 import ScreenSkeleton from '../../../src/components/ScreenSkeleton';
 import { canWithdrawBalance, getWithdrawalHint } from '../../../src/lib/walletRules';
@@ -51,6 +51,13 @@ import { canWithdrawBalance, getWithdrawalHint } from '../../../src/lib/walletRu
  * coming back, so at the moment the sheet closes the balance is usually — but
  * not always — already updated. Polling covers the gap.
  */
+/**
+ * One tap instead of typing, covering what a homeowner actually tops up: a
+ * single small job, a typical one, and a couple of jobs' worth. Typing still
+ * works for anything else — these only fill the field.
+ */
+const QUICK_TOPUP_AMOUNTS = [500, 1000, 2500, 5000];
+
 const CONFIRM_POLL_ATTEMPTS = 8;
 const CONFIRM_POLL_INTERVAL_MS = 1500;
 
@@ -156,10 +163,11 @@ export default function HOWalletScreen() {
   /**
    * Funds the wallet through Stripe's hosted Checkout page.
    *
-   * Opened in a browser rather than a native payment sheet because the app
-   * runs in Expo Go. `openAuthSessionAsync` closes the browser when the
-   * backend's /payments/return bounces to our deep link — Stripe only accepts
-   * http(s) redirect targets, so that hop happens server-side.
+   * Opened in a browser rather than a native payment sheet: Stripe only
+   * accepts http(s) redirect targets, so the hop back to our deep link happens
+   * on the backend's /payments/return. `openRedirectSession` is what closes
+   * the browser on the way back — see its comment for why a plain
+   * `openAuthSessionAsync` hangs on Android.
    */
   const addMoney = async () => {
     if (!isValidAmount) return;
@@ -177,10 +185,7 @@ export default function HOWalletScreen() {
         app_redirect: appRedirect,
       });
 
-      const result = await WebBrowser.openAuthSessionAsync(
-        session.url,
-        appRedirect,
-      );
+      const result = await openRedirectSession(session.url, appRedirect);
 
       if (result.type !== 'success') {
         // Dismissing the browser is not proof the payment failed — the user
@@ -474,6 +479,34 @@ export default function HOWalletScreen() {
               />
             </View>
 
+            <View style={styles.quickAmounts}>
+              {QUICK_TOPUP_AMOUNTS.map((preset) => {
+                const selected = parsedAmount === preset;
+                return (
+                  <TouchableOpacity
+                    key={preset}
+                    testID={`wallet-quick-${preset}`}
+                    style={[styles.quickAmount, selected && styles.quickAmountActive]}
+                    onPress={() => {
+                      setAmount(String(preset));
+                      setAddError(null);
+                    }}
+                    disabled={adding}
+                    activeOpacity={0.8}
+                  >
+                    <Text
+                      style={[
+                        styles.quickAmountText,
+                        selected && styles.quickAmountTextActive,
+                      ]}
+                    >
+                      {peso(preset)}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+
             <Text style={styles.modalHint}>Minimum ₱{MIN_TOPUP_PHP}</Text>
 
             {confirming && (
@@ -713,6 +746,14 @@ const styles = StyleSheet.create({
   amountInput: { fontSize: 48.5, fontWeight: '800', fontFamily: 'Inter', color: C.ink900, minWidth: 120, textAlign: 'center' },
   modalError: { color: '#ef4444', fontSize: 15.5, fontFamily: 'Inter', textAlign: 'center', marginTop: 4 },
   modalHint: { color: C.ink400, fontSize: 14.5, fontFamily: 'Inter', textAlign: 'center', marginTop: 6 },
+  quickAmounts: { flexDirection: 'row', justifyContent: 'center', flexWrap: 'wrap', gap: 8, marginTop: 10 },
+  quickAmount: {
+    paddingHorizontal: 14, paddingVertical: 8, borderRadius: 999,
+    borderWidth: 1, borderColor: '#dce3e9', backgroundColor: C.white,
+  },
+  quickAmountActive: { borderColor: C.cyan700, backgroundColor: C.cyan50 },
+  quickAmountText: { color: C.ink700, fontSize: 14.5, fontWeight: '600', fontFamily: 'Inter' },
+  quickAmountTextActive: { color: C.cyan700 },
   withdrawAvailable: { color: C.cyan700, fontSize: 14, fontWeight: '700', fontFamily: 'Inter', marginTop: 12 },
   destinationInput: {
     backgroundColor: '#f5f8fa', borderRadius: 12, paddingHorizontal: 14, minHeight: 48,

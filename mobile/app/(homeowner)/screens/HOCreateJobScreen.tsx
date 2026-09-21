@@ -86,10 +86,11 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Sizes, Spacing, V6Colors, V6Shadows } from '../../../src/constants/theme';
 import { useAuth } from '../../../src/context/AuthContext';
 import { useAsyncData } from '../../../src/hooks/useAsyncData';
-import { api } from '../../../src/lib/api';
+import { api, type GeocodedAddress } from '../../../src/lib/api';
 import { peso } from '../../../src/lib/format';
 import TermsAndConditions from '../../(auth)/screens/TermsAndConditions';
 import ConfirmationModal from '../../../src/components/ConfirmationModal';
+import AddressField from '../../../src/components/AddressField';
 import { requestAppPermission } from '../../../src/lib/permissions';
 
 const Colors = {
@@ -337,6 +338,27 @@ export default function HOCreateJobScreen({
       }
     }
   }, [profile?.address]);
+
+  /**
+   * A suggestion tapped in the address dropdown, or the reverse-geocoded GPS
+   * fix, arrives already verified by the backend — so it fills the same two
+   * pieces of state a successful `resolveAddress()` would, and step 2 moves on
+   * without spending another geocode credit. A null means the text was edited
+   * away from what was resolved, which puts the pin back to unverified.
+   */
+  const handleResolvedAddress = (resolved: GeocodedAddress | null) => {
+    if (!resolved) {
+      setResolvedCoordinates(null);
+      setGeocodedAddress('');
+      return;
+    }
+    setResolvedCoordinates({
+      latitude: resolved.latitude,
+      longitude: resolved.longitude,
+    });
+    setGeocodedAddress(resolved.formatted_address.trim());
+    clearError('location');
+  };
 
   const resolveAddress = async (): Promise<boolean> => {
     const address = location.trim();
@@ -791,29 +813,17 @@ export default function HOCreateJobScreen({
 
             <View style={styles.inputGroup}>
               <Text style={styles.inputLabel}>Address<Text style={styles.requiredAsterisk}> *</Text></Text>
-              <TextInput
-                style={[styles.input, styles.addressInput, focusedField === 'location' && styles.inputFocused, fieldErrors.location && styles.inputError]}
-                placeholder="Brgy. Sampaguita, Lipa City"
-                placeholderTextColor={Colors.muted}
+              <AddressField
+                testID="create-job-address"
                 value={location}
                 onChangeText={(value) => {
                   setLocation(value);
-                  setResolvedCoordinates(null);
-                  setGeocodedAddress('');
                   clearError('location');
                 }}
-                onFocus={() => {
-                  setFocusedField('location');
-                  clearError('location');
-                }}
-                onBlur={() => {
-                  setFocusedField(null);
-                  if (location.trim()) void resolveAddress();
-                }}
-                multiline
+                onResolve={handleResolvedAddress}
+                error={fieldErrors.location}
+                hint={geocoding ? 'Verifying address…' : undefined}
               />
-              {geocoding && <Text style={styles.inputHint}>Verifying address…</Text>}
-              {!!fieldErrors.location && <Text style={styles.inputErrorText}>{fieldErrors.location}</Text>}
             </View>
 
             {mapPreviewSource && !mapPreviewFailed && (

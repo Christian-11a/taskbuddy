@@ -31,6 +31,8 @@ import { Roles } from '../auth/roles.decorator';
 import {
   appendRedirectParams,
   isAllowedAppRedirect,
+  isAppSchemeRedirect,
+  renderAppRedirectPage,
 } from '../auth/google-redirect';
 import type { Profile } from '../common/types';
 
@@ -133,7 +135,13 @@ export class PaymentsController {
       [flow === 'hire' ? 'hire' : 'topup']:
         status === 'success' ? 'success' : 'cancelled',
     });
-    return res.redirect(appendRedirectParams(appRedirect, params));
+    const deepLink = appendRedirectParams(appRedirect, params);
+
+    // Chrome drops a 302 into `taskbuddy://`, leaving the tab spinning while
+    // the app waits for a return that never lands — the same failure Google
+    // sign-in had. App schemes get a page that asks for the link instead.
+    if (!isAppSchemeRedirect(deepLink)) return res.redirect(deepLink);
+    return res.type('html').send(renderAppRedirectPage(deepLink));
   }
 
   /**

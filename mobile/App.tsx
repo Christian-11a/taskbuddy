@@ -124,7 +124,7 @@ function AppContent() {
     initializing, isAuthenticated, isGoogleSignupPending,
     role, profile,
     signIn, signUp, signOut, signInWithGoogle, completeGoogleProfile,
-    refreshProfile,
+    refreshProfile, authError, clearAuthError,
   } = useAuth();
 
   // Which pre-auth screen to show while the user is signed out.
@@ -357,6 +357,8 @@ function AppContent() {
           onGoogleSignIn={signInWithGoogle}
           onSignUp={() => setPreAuth('register')}
           onForgotPassword={() => setPreAuth('forgotPassword')}
+          signInError={authError}
+          onClearSignInError={clearAuthError}
         />
       );
     }

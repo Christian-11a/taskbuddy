@@ -56,6 +56,17 @@ export const ThrottleGeocode = () =>
   Throttle({ default: { limit: 10, ttl: 60_000 } });
 
 /**
+ * Address suggestions as the user types. Each keystroke burst spends Geoapify
+ * credits like a geocode does, but a person correcting a street name legitimately
+ * fires several in a row — the app debounces, so a minute of steady typing is a
+ * handful of calls, not one per character. Thirty a minute leaves that alone
+ * while still stopping the route from being scripted as a free autocomplete
+ * proxy that would drain the daily credits every job post depends on.
+ */
+export const ThrottleAutocomplete = () =>
+  Throttle({ default: { limit: 30, ttl: 60_000 } });
+
+/**
  * The job form's map preview. Each render also spends Geoapify credits, and it
  * follows a successful geocode, so it sits a little above that route's ten: a
  * homeowner who re-verifies the address a few times still sees a map.

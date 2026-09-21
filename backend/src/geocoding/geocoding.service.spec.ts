@@ -294,4 +294,117 @@ describe('GeocodingService (Geoapify)', () => {
       );
     });
   });
+
+  describe('autocomplete', () => {
+    it('answers 503 without calling Geoapify when no key is configured', async () => {
+      await expect(service('').autocomplete('Mabini')).rejects.toThrow(
+        ServiceUnavailableException,
+      );
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    it('spends no credit on a query too short to mean anything', async () => {
+      await expect(service().autocomplete('Ma')).resolves.toEqual([]);
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    it('restricts suggestions to the Philippines and asks for a short list', async () => {
+      fetchMock.mockResolvedValue(found(result('building')));
+
+      await service().autocomplete('  12 Mabini  ');
+
+      const url = new URL(fetchMock.mock.calls[0][0] as string);
+      expect(url.origin + url.pathname).toBe(
+        'https://api.geoapify.com/v1/geocode/autocomplete',
+      );
+      expect(url.searchParams.get('text')).toBe('12 Mabini');
+      expect(url.searchParams.get('filter')).toBe('countrycode:ph');
+      expect(url.searchParams.get('limit')).toBe('5');
+      expect(url.searchParams.get('apiKey')).toBe('test-key');
+    });
+
+    it('marks street-level-or-better rows precise and coarser ones not', async () => {
+      fetchMock.mockResolvedValue(
+        found(result('building'), result('city'), result('street')),
+      );
+
+      const suggestions = await service().autocomplete('Mabini');
+
+      expect(suggestions.map((s) => s.precise)).toEqual([true, false, true]);
+      expect(suggestions[0]).toEqual({
+        latitude: 14.676,
+        longitude: 121.0437,
+        formatted_address:
+          '12 Mabini Street, Quezon City, Metro Manila, Philippines',
+        precise: true,
+      });
+    });
+
+    it('marks a match Geoapify doubts as not precise rather than dropping it', async () => {
+      fetchMock.mockResolvedValue(
+        found(result('street', { confidence_street_level: 0.1 })),
+      );
+
+      await expect(service().autocomplete('Mabini')).resolves.toMatchObject([
+        { precise: false },
+      ]);
+    });
+
+    it('degrades to no suggestions when Geoapify errors, so typing still works', async () => {
+      fetchMock.mockResolvedValue(geoapifyResponse({}, false, 429));
+
+      await expect(service().autocomplete('Mabini')).resolves.toEqual([]);
+    });
+
+    it('degrades to no suggestions when the request fails or times out', async () => {
+      fetchMock.mockRejectedValue(new Error('The operation was aborted'));
+
+      await expect(service().autocomplete('Mabini')).resolves.toEqual([]);
+    });
+  });
+
+  describe('reverse', () => {
+    it('answers 503 without calling Geoapify when no key is configured', async () => {
+      await expect(service('').reverse(14.676, 121.0437)).rejects.toThrow(
+        ServiceUnavailableException,
+      );
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    it("keeps the phone's own fix as the pin and returns the matched address", async () => {
+      fetchMock.mockResolvedValue(found(result('building')));
+
+      await expect(service().reverse(14.5, 121.1)).resolves.toEqual({
+        latitude: 14.5,
+        longitude: 121.1,
+        formatted_address:
+          '12 Mabini Street, Quezon City, Metro Manila, Philippines',
+      });
+
+      const url = new URL(fetchMock.mock.calls[0][0] as string);
+      expect(url.origin + url.pathname).toBe(
+        'https://api.geoapify.com/v1/geocode/reverse',
+      );
+      expect(url.searchParams.get('lat')).toBe('14.5');
+      expect(url.searchParams.get('lon')).toBe('121.1');
+    });
+
+    it('answers 400 when the fix resolves to nothing the user could type', async () => {
+      fetchMock.mockResolvedValue(found());
+
+      await expect(service().reverse(14.5, 121.1)).rejects.toThrow(
+        BadRequestException,
+      );
+    });
+
+    it('answers 503 and hides the details when Geoapify errors', async () => {
+      fetchMock.mockResolvedValue(geoapifyResponse({}, false, 401));
+
+      const error = await service()
+        .reverse(14.5, 121.1)
+        .catch((e: unknown) => e);
+      expect(error).toBeInstanceOf(ServiceUnavailableException);
+      expect((error as Error).message).not.toContain('apiKey');
+    });
+  });
 });

@@ -262,6 +262,22 @@ export interface Category {
   name: string;
 }
 
+/** A verified address with the coordinates the backend resolved it to. */
+export interface GeocodedAddress {
+  latitude: number;
+  longitude: number;
+  formatted_address: string;
+}
+
+/**
+ * One row of the address field's dropdown. `precise` is false for a city or
+ * barangay — usable as a starting point, but not specific enough to post a
+ * job with, so the field keeps asking for a street.
+ */
+export interface AddressSuggestion extends GeocodedAddress {
+  precise: boolean;
+}
+
 /**
  * One item of a job's checklist (migration 0019). The client picks these when
  * posting the job; the assigned provider ticks them off while working.
@@ -849,12 +865,33 @@ export const api = {
    * backend redirects to Google, handles the callback, and finally redirects
    * back to appRedirect with session tokens in the query string.
    */
-  async getGoogleAuthorizeUrl(appRedirect: string): Promise<string> {
+  async getGoogleAuthorizeUrl(
+    appRedirect: string,
+    handoffId?: string,
+  ): Promise<string> {
     // Async so sign-in cannot open the browser against one backend while the
     // rest of the app has resolved to the other.
     const baseUrl = await ensureApiBaseUrl();
     const encoded = encodeURIComponent(appRedirect);
-    return `${baseUrl}/auth/google/authorize?app_redirect=${encoded}`;
+    const handoff = handoffId
+      ? `&handoff=${encodeURIComponent(handoffId)}`
+      : '';
+    return `${baseUrl}/auth/google/authorize?app_redirect=${encoded}${handoff}`;
+  },
+
+  /**
+   * Collects the session the OAuth callback parked under `handoffId`
+   * (`POST /auth/google/claim`).
+   *
+   * Unauthenticated — the id is the credential — single use, and good for five
+   * minutes. This, not the deep link, is how a Google session reaches the app:
+   * a claim can be retried, a redirect that never arrives cannot.
+   */
+  claimGoogleSession(handoffId: string) {
+    return request<{ session: Session }>('/auth/google/claim', {
+      method: 'POST',
+      body: { handoff_id: handoffId },
+    });
   },
 
   // ── Profiles & providers ────────────────────────────────────────────────────
@@ -925,6 +962,24 @@ export const api = {
   geocodeAddress(address: string) {
     return authRequest<{ latitude: number; longitude: number }>(
       `/jobs/geocode?address=${encodeURIComponent(address)}`,
+    );
+  },
+
+  /**
+   * Suggestions for a partially typed address (`GET /geocoding/autocomplete`).
+   * The backend answers an empty list rather than an error when the geocoder
+   * is unavailable, so the address field never blocks on it.
+   */
+  addressSuggestions(query: string) {
+    return authRequest<AddressSuggestion[]>(
+      `/geocoding/autocomplete?q=${encodeURIComponent(query)}`,
+    );
+  },
+
+  /** The address at a GPS fix (`GET /geocoding/reverse`). */
+  reverseGeocode(latitude: number, longitude: number) {
+    return authRequest<GeocodedAddress>(
+      `/geocoding/reverse?lat=${latitude}&lon=${longitude}`,
     );
   },
 

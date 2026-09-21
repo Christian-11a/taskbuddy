@@ -43,6 +43,7 @@ import {
   Wallet,
 } from 'lucide-react-native';
 import { api, type ConnectStatus } from '../../../src/lib/api';
+import { openRedirectSession } from '../../../src/lib/appRedirectSession';
 import { useAsyncData } from '../../../src/hooks/useAsyncData';
 import { Sizes, Spacing, V6Colors } from '../../../src/constants/theme';
 
@@ -103,7 +104,7 @@ export default function SPPayoutsScreen({ onBack }: SPPayoutsScreenProps) {
     // the backend allowlists both.
     const appRedirect = AuthSession.makeRedirectUri({ scheme: 'taskbuddy', path: 'payouts' });
     const link = await api.connectOnboardingLink({ app_redirect: appRedirect });
-    const result = await WebBrowser.openAuthSessionAsync(link.url, appRedirect);
+    const result = await openRedirectSession(link.url, appRedirect);
 
     const leg =
       result.type === 'success'

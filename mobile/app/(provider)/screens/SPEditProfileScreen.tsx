@@ -27,6 +27,7 @@ import {
 import { ArrowLeft } from 'lucide-react-native';
 import AvatarPicker from '../../../src/components/AvatarPicker';
 import ConfirmationModal from '../../../src/components/ConfirmationModal';
+import AddressField from '../../../src/components/AddressField';
 import { Sizes, Spacing, V6Colors, V6Radii, V6Shadows } from '../../../src/constants/theme';
 
 const C = V6Colors;
@@ -161,7 +162,17 @@ export default function SPEditProfileScreen({ onBack, onSave }: SPEditProfileScr
           <FormField label="Full name" value={name} onChangeText={setName} placeholder="Your full name" />
           <FormField label="Email" value={email} placeholder="email@example.com" keyboardType="email-address" editable={false} />
           <FormField label="Phone" value={phone} onChangeText={setPhone} placeholder="+63 9XX XXX XXXX" keyboardType="phone-pad" />
-          <FormField label="Address" value={location} onChangeText={setLocation} placeholder="House no., Barangay, Street" />
+          {/* The address a provider is matched from — same suggestions + GPS
+              as the job form, so "nearby" means a place the geocoder knows. */}
+          <View style={styles.fieldGroup}>
+            <Text style={styles.fieldLabel}>Address</Text>
+            <AddressField
+              value={location}
+              onChangeText={setLocation}
+              onResolve={() => {}}
+              placeholder="House no., Barangay, Street"
+            />
+          </View>
           <FormField label="City" value={city} onChangeText={setCity} placeholder="City / Municipality" />
           <FormField label="Bio (min 20 characters)" value={bio} onChangeText={setBio} multiline placeholder="Describe your experience..." />
           <FormField label="Service radius (km)" value={radius} onChangeText={setRadius} keyboardType="number-pad" placeholder="8" />

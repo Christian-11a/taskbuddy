@@ -46,7 +46,10 @@ recommendation model (see [Recommendation Engine Integration](#9-recommendation-
 30. [Chat Attachments (migrations 0030–0031)](#30-chat-attachments-migrations-00300031)
 31. [Address Geocoding (no migration)](#31-address-geocoding-no-migration)
     - [31.1 Location preview map](#311-location-preview-map-get-jobsstatic-map)
+    - [31.2 Address suggestions](#312-address-suggestions-get-geocodingautocomplete)
+    - [31.3 Current location](#313-current-location-get-geocodingreverse)
 32. [Matching Eligibility & Profile Coordinates (migration 0032)](#32-matching-eligibility--profile-coordinates-migration-0032)
+33. [Google Sign-In Session Handoff (migration 0033)](#33-google-sign-in-session-handoff-migration-0033)
 
 ---
 
@@ -1044,6 +1047,19 @@ created *and* again on return, since the endpoint is reachable directly and woul
 an open redirect. The return hop is cosmetic: it decides which screen the user lands on, while
 the webhook decides whether the money arrived.
 
+**The last hop is a page, not a 302.** Chrome does not follow a *server* redirect into an app
+scheme: a `302 Location: taskbuddy://…` is dropped and the tab sits on a spinner, which is what
+made both the wallet top-up and Google sign-in look like they hung on Android. So when
+`app_redirect` is an app scheme (`taskbuddy:`, `exp+taskbuddy:`, `exp:`) the handler answers
+`200 text/html` with `renderAppRedirectPage()` — a "Signing you in…" page that asks for the deep
+link from script and offers it as a tappable link for browsers that only honour a real gesture.
+Web targets (`https://…`) are still plain redirects. The URL carries session tokens or a payment
+outcome, so the response is always `Cache-Control: no-store`.
+
+On the app side the deep link may then arrive at the *Linking* handler rather than at the browser
+session that opened it — a development build already owns `taskbuddy://` for its own launcher —
+so the mobile helper `openRedirectSession()` races both and takes whichever fires.
+
 ### Idempotency
 
 Stripe retries until it gets a 2xx, so every handler must be safely repeatable. Two mechanisms:
@@ -1781,6 +1797,8 @@ Read the table that way; the numbers mean much less if you read them as a platfo
 | `POST /auth/{register,login,admin/login,forgot-password,reset-password,send-email-otp,verify-email-otp,change-password}` | 10 / min **each** | Two attacks at once: guessing one account's password, and using someone else's address as a mail relay by requesting codes they never asked for. Ten leaves room for a person mistyping theirs |
 | `GET /jobs/geocode` | 10 / min | Each call spends one of Geoapify's 3,000 free daily credits (§31); a homeowner correcting a typo needs a few, not hundreds |
 | `GET /jobs/static-map` | 20 / min | Each render also spends Geoapify credits (§31.1); it follows a successful geocode, so it sits a little above that route's ten |
+| `GET /geocoding/autocomplete` | 30 / min | Suggestions are typed into, so a person correcting a street name legitimately fires several in a row (§31.2). The app debounces, so a minute of steady typing is a handful of calls — thirty leaves that alone and still refuses a script using the route as a free autocomplete proxy |
+| `GET /geocoding/reverse` | 10 / min | One call per tap of "use my current location" (§31.3), and it spends a credit like a geocode does |
 | `POST /payments/webhook` | exempt (`@SkipThrottle()`) | The caller is Stripe, already authenticated by the signature over the raw body, and it retries for three days. Throttling it would only delay the credit a payer is waiting for |
 
 **One throttler, not several named ones.** Every entry in `ThrottlerModule.forRoot`'s list applies
@@ -2296,6 +2314,58 @@ Each render spends Geoapify credits, so the route has its own limit, `@ThrottleS
 **20 / min per IP**, a little above geocode's ten because every successful geocode is followed by
 one render.
 
+### 31.2 Address suggestions (`GET /geocoding/autocomplete`)
+
+`GET /geocoding/autocomplete?q=` returns up to **five** suggestions for a partially typed address,
+so the address field can offer a dropdown instead of asking the user to spell a barangay correctly
+on the first try. `GeocodingService.autocomplete()` calls `GET
+https://api.geoapify.com/v1/geocode/autocomplete` with the same `filter=countrycode:ph&lang=en`
+restriction as §31.
+
+**Not under `/jobs`.** `GET /jobs/geocode` is `@Roles('client')`, but a provider editing their
+profile address needs the same dropdown — their coordinates are what makes them eligible for
+matching (§32.1). So both routes here live on `GeocodingController` and are open to any signed-in
+user.
+
+| Input / upstream | API answers |
+|---|---|
+| `q` of 3+ characters | `200 [{ latitude, longitude, formatted_address, precise }]` (may be empty) |
+| `q` shorter than 3 characters | `200 []`, **without** calling Geoapify — two letters match the biggest cities in the country, which is noise under a half-typed street name, and it would still cost a credit |
+| non-2xx from Geoapify, network error, 3 s timeout | `200 []`. Suggestions are an assist, not a gate: the typed address is still geocoded by §31 when the user moves on, so an outage must not stop them typing |
+| (no key configured) | `503 Address lookup is not configured` |
+
+**`precise` mirrors §31's accept rule** — street level or better, street-level confidence ≥ 0.2 —
+so a row the app lets a user confirm a job with is one `GET /jobs/geocode` would also accept.
+Coarser rows (a city, a barangay) are still returned rather than filtered out: tapping "Lipa City"
+and then adding the street is how a half-remembered address gets typed, and dropping them leaves
+the dropdown empty for most early keystrokes. The app fills the field from a coarse row but keeps
+the pin unverified and asks for a house number.
+
+The timeout is 3 s, shorter than §31's 5 s: by then the next keystroke has replaced the query.
+
+### 31.3 Current location (`GET /geocoding/reverse`)
+
+`GET /geocoding/reverse?lat=&lon=` turns the phone's GPS fix into an address, behind the address
+field's "use my current location" button. The app asks for the foreground location permission
+itself (`expo-location`); this route only names the point.
+
+| Input / upstream | API answers |
+|---|---|
+| `lat` in 4.5–21.5 and `lon` in 116–127 | `200 { latitude, longitude, formatted_address }` |
+| missing, non-numeric, or outside that box | `400`. Same Philippines box as §31.1, so the route can't be used as a free worldwide reverse geocoder on TaskBuddy's credits |
+| a fix that resolves to nothing addressable (open country, at sea) | `400` — "We couldn't find an address at your location. Type it instead." |
+| non-2xx from Geoapify, network error, 5 s timeout | `503`, upstream body logged, never returned |
+| (no key configured) | `503 Address lookup is not configured` |
+
+**The coordinates returned are the phone's, not the geocoder's.** A reverse result snaps to the
+centre of whatever it matched — a street's midpoint, a building's centroid — and the GPS fix is the
+better pin for a job the user is standing at. Only `formatted_address` comes from Geoapify.
+
+Because the point is already verified, the app treats this answer the way it treats a `precise`
+suggestion: the job form posts on it without spending another §31 credit.
+
+---
+
 ---
 
 ## 32. Matching Eligibility & Profile Coordinates (migration 0032)
@@ -2380,3 +2450,65 @@ one feature query and no ml-service call.
 
 Not prevented: a client pressing retry while a scheduler attempt is mid-flight still starts a
 second run, as pressing retry twice always has.
+
+---
+
+## 33. Google Sign-In Session Handoff (migration 0033)
+
+Google sign-in authenticated correctly and then put the user back on the sign-in screen. The cause
+was the delivery mechanism, not the auth: the callback appended the Supabase session to the app's
+deep link, so **one URL arriving exactly once** was the only way a session could ever reach the
+app. On Android it does not arrive reliably:
+
+- Chrome **drops a server 302 into an app scheme**. `Location: taskbuddy://…` left the tab spinning
+  forever (fixed first by serving a page that asks for the link from script — see §21's
+  `/payments/return`, same problem, same fix).
+- Once the link *is* asked for, Android may hand it to the app's Linking handler rather than to the
+  browser session that opened it — and in a development build it **restarts the app**, because the
+  dev client reloads its bundle when its own scheme is opened. Either way, whatever was awaiting the
+  redirect is gone, and with it the only copy of the tokens.
+
+### The handoff
+
+`GET /auth/google/authorize` now takes an optional `handoff` — a one-time id the app generated
+before opening the browser — and folds it into the **existing HMAC-signed `state`**, so it inherits
+that signature: the callback will not park a session under a code an attacker chose.
+
+After `signInWithIdToken`, the callback writes `sha256(handoff) → session` to `oauth_handoffs` and
+redirects the app to `<deep-link>?handoff=<id>` — **no tokens in the URL**, so they are also out of
+browser history and out of the interstitial page. The app then claims the session over HTTPS:
+
+`POST /auth/google/claim { handoff_id }` → `{ session }`
+
+| Case | Answer |
+|---|---|
+| id parked and unexpired | `200 { session }`, and the row is deleted in the same statement |
+| id already claimed, never issued, or older than 5 minutes | `404` — indistinguishable on purpose, so the endpoint cannot be probed for which codes existed |
+| database unreachable | `503`, so the app retries rather than reporting a false expiry |
+
+Unauthenticated, because the id **is** the credential, and rate-limited with the other credential
+routes (`@ThrottleAuth()`, 10/min per IP). Only the hash is stored: a dump of this table must not be
+a pile of usable logins. The delete *is* the claim — a row either matched or it did not — so single
+use needs no `consumed_at`. Expired rows are swept opportunistically on each claim, which needs no
+scheduler at this volume.
+
+**The deep link is now an optimisation.** It decides *when* the app notices it should claim. The app
+also writes `{ id, startedAt }` to AsyncStorage before opening the browser and retries the claim on
+the next launch, so a redirect that never arrives — or one that restarts the app — still ends in a
+signed-in user. A build that sends no `handoff` still gets tokens on the link, since it has no way
+to claim them.
+
+### What else was throwing sessions away
+
+Two things on the mobile side turned any transient failure into a silent sign-out, and both
+outlived the redirect bug:
+
+- `completeSignInFromUrl` called `/auth/me` **before** persisting the session, so one 502 from a
+  sleeping host — or the brief `No profile found for this user` 401 that the guard returns while
+  `handle_new_user` is still creating the row — discarded one-time tokens for good. The session is
+  now persisted first and the profile fetch is retried.
+- Both the launch restore and the 401 refresher deleted the stored session on *any* error,
+  including "no connection". They now only discard a session the API actually **rejected** (401/403).
+
+Failures that survive all that are reported: `AuthContext` holds an `authError` that `LoginScreen`
+renders, because a Google failure can outlive the screen that started it.

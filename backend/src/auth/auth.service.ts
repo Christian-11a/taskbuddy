@@ -4,6 +4,7 @@ import {
   ForbiddenException,
   Injectable,
   Logger,
+  NotFoundException,
   OnModuleInit,
   ServiceUnavailableException,
   UnauthorizedException,
@@ -26,12 +27,31 @@ import type { Profile } from '../common/types';
 const GOOGLE_AUTH_URL = 'https://accounts.google.com/o/oauth2/v2/auth';
 const GOOGLE_TOKEN_URL = 'https://oauth2.googleapis.com/token';
 
+/**
+ * How long the app has to claim a parked session (§19, migration 0033). Long
+ * enough to cover a restart plus a cold Render instance on a slow phone
+ * network; short enough that an id read off a screen or a log is stale by the
+ * time anyone could use it.
+ */
+const HANDOFF_TTL_MS = 5 * 60 * 1000;
+
+/** Stored form of a handoff id — see storeHandoff(). */
+const hashHandoffCode = (code: string) =>
+  crypto.createHash('sha256').update(code).digest('hex');
+
 const GOOGLE_ENV_KEYS = [
   'GOOGLE_CLIENT_ID',
   'GOOGLE_CLIENT_SECRET',
   'GOOGLE_CALLBACK_URL',
   'GOOGLE_STATE_SECRET',
 ] as const;
+
+/** What the app is handed on sign-in — the shape POST /auth/login returns. */
+export interface Session {
+  access_token: string;
+  refresh_token: string;
+  expires_at?: number;
+}
 
 interface GoogleConfig {
   clientId: string;
@@ -432,7 +452,7 @@ export class AuthService implements OnModuleInit {
    *   against the allowlist here because the callback will later append live
    *   session tokens to it.
    */
-  buildGoogleAuthUrl(appRedirect: string): string {
+  buildGoogleAuthUrl(appRedirect: string, handoffId?: string): string {
     const { clientId, callbackUrl, stateSecret } = this.googleConfig();
 
     if (!isAllowedAppRedirect(appRedirect)) {
@@ -445,11 +465,15 @@ export class AuthService implements OnModuleInit {
       .update(rawNonce)
       .digest('hex');
 
-    // State encodes { rawNonce, appRedirect, exp } and is HMAC-signed so the
-    // callback can verify it hasn't been tampered with (CSRF protection).
+    // State encodes { rawNonce, appRedirect, handoffId, exp } and is
+    // HMAC-signed so the callback can verify it hasn't been tampered with
+    // (CSRF protection). The handoff id rides here rather than in a second
+    // query parameter so it inherits that signature: the callback must not
+    // park a session under a code an attacker chose.
     const payload = JSON.stringify({
       rawNonce,
       appRedirect,
+      ...(handoffId ? { handoffId } : {}),
       exp: Date.now() + 10 * 60 * 1000, // 10 min window
     });
     const sig = crypto
@@ -467,6 +491,75 @@ export class AuthService implements OnModuleInit {
       state,
     });
     return `${GOOGLE_AUTH_URL}?${params.toString()}`;
+  }
+
+  /**
+   * Parks a freshly minted session under `sha256(handoffId)` for the app to
+   * claim (§19, migration 0033).
+   *
+   * Only the hash is stored: the id itself is a bearer credential for five
+   * minutes, and a dump of this table must not be a pile of usable logins.
+   * Storing is best-effort — if it fails the deep link still carries the id,
+   * the claim 404s, and the app reports a failed sign-in rather than hanging.
+   */
+  private async storeHandoff(
+    handoffId: string,
+    session: {
+      access_token: string;
+      refresh_token: string;
+      expires_at?: number;
+    },
+  ): Promise<void> {
+    const { error } = await this.supabase.admin.from('oauth_handoffs').upsert(
+      {
+        code_hash: hashHandoffCode(handoffId),
+        session,
+        expires_at: new Date(Date.now() + HANDOFF_TTL_MS).toISOString(),
+      },
+      { onConflict: 'code_hash' },
+    );
+    if (error) {
+      this.logger.warn(`Could not store OAuth handoff: ${error.message}`);
+    }
+  }
+
+  /**
+   * Exchanges a handoff id for the session it was parked with, once.
+   *
+   * The delete *is* the claim: a row that comes back was ours to give, and it
+   * is gone before the caller sees it, so a replayed id gets nothing. An
+   * expired row is treated as absent and swept with the rest.
+   *
+   * Deliberately unauthenticated — the id is the credential — and deliberately
+   * unable to tell "wrong code" from "already used" or "expired", so it cannot
+   * be probed for which codes existed.
+   */
+  async claimGoogleHandoff(handoffId: string) {
+    // Opportunistic sweep of sign-ins nobody ever came back for. At this
+    // volume it costs one indexed delete and needs no scheduler.
+    await this.supabase.admin
+      .from('oauth_handoffs')
+      .delete()
+      .lt('expires_at', new Date().toISOString());
+
+    const { data, error } = await this.supabase.admin
+      .from('oauth_handoffs')
+      .delete()
+      .eq('code_hash', hashHandoffCode(handoffId))
+      .select('session, expires_at')
+      .maybeSingle();
+
+    if (error) {
+      this.logger.warn(`Could not claim OAuth handoff: ${error.message}`);
+      throw new ServiceUnavailableException(
+        'Could not finish signing you in. Please try again.',
+      );
+    }
+    if (!data || new Date(data.expires_at as string).getTime() < Date.now()) {
+      throw new NotFoundException('This sign-in has expired. Please try again.');
+    }
+
+    return { session: data.session as Session };
   }
 
   /**
@@ -540,9 +633,10 @@ export class AuthService implements OnModuleInit {
       throw new BadRequestException('Invalid state signature');
     }
 
-    const { rawNonce, appRedirect, exp } = JSON.parse(payload) as {
+    const { rawNonce, appRedirect, handoffId, exp } = JSON.parse(payload) as {
       rawNonce: string;
       appRedirect: string;
+      handoffId?: string;
       exp: number;
     };
     if (Date.now() > exp) throw new BadRequestException('State expired');
@@ -604,14 +698,18 @@ export class AuthService implements OnModuleInit {
       );
     }
 
-    return {
-      appRedirect,
-      session: {
-        access_token: data.session.access_token,
-        refresh_token: data.session.refresh_token,
-        expires_at: data.session.expires_at,
-      },
+    const session = {
+      access_token: data.session.access_token,
+      refresh_token: data.session.refresh_token,
+      expires_at: data.session.expires_at,
     };
+
+    // Park the session for the app to claim over HTTPS. The deep link then
+    // only has to carry the id, and the app can retry the claim until it
+    // works — see storeHandoff().
+    if (handoffId) await this.storeHandoff(handoffId, session);
+
+    return { appRedirect, handoffId, session };
   }
 
   /**

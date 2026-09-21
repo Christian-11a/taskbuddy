@@ -38,6 +38,12 @@ interface LoginScreenProps {
   onGoogleSignIn: () => Promise<void>;
   onSignUp: () => void;
   onForgotPassword?: () => void;
+  /**
+   * A sign-in failure raised outside this screen's own lifetime — a Google
+   * flow that failed after the screen unmounted, or one resumed on launch.
+   */
+  signInError?: string | null;
+  onClearSignInError?: () => void;
 }
 
 // ─── InputField sub-component ─────────────────────────────────────────────────
@@ -104,6 +110,8 @@ export default function LoginScreen({
   onGoogleSignIn,
   onSignUp,
   onForgotPassword,
+  signInError,
+  onClearSignInError,
 }: LoginScreenProps) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -112,6 +120,11 @@ export default function LoginScreen({
   const [submitting, setSubmitting] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // A Google sign-in can fail after this screen has been unmounted — or resume
+  // and fail on the next launch, before it is mounted at all — so that failure
+  // is held in AuthContext and shown here rather than being lost.
+  const shownError = error ?? signInError ?? null;
 
   const validateFields = () => {
     const errors: { email?: string; password?: string } = {};
@@ -155,6 +168,7 @@ export default function LoginScreen({
 
   const handleGoogleSignIn = async () => {
     if (googleLoading || submitting) return;
+    onClearSignInError?.();
     setError(null);
     setGoogleLoading(true);
     try {
@@ -245,9 +259,9 @@ export default function LoginScreen({
       </View>
 
       {/* Error */}
-      {!!error && (
+      {!!shownError && (
         <Text testID="login-error" style={styles.errorBanner}>
-          {error}
+          {shownError}
         </Text>
       )}
 

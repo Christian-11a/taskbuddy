@@ -1,4 +1,9 @@
-import { appendRedirectParams, isAllowedAppRedirect } from './google-redirect';
+import {
+  appendRedirectParams,
+  isAllowedAppRedirect,
+  isAppSchemeRedirect,
+  renderAppRedirectPage,
+} from './google-redirect';
 
 describe('isAllowedAppRedirect', () => {
   it.each([
@@ -59,5 +64,41 @@ describe('appendRedirectParams', () => {
     expect(appendRedirectParams('exp://127.0.0.1:8081/--/?a=1', params)).toBe(
       'exp://127.0.0.1:8081/--/?a=1&access_token=abc',
     );
+  });
+});
+
+describe('isAppSchemeRedirect', () => {
+  it.each([
+    ['taskbuddy://?access_token=abc'],
+    ['exp+taskbuddy://expo-development-client'],
+    ['exp://192.168.1.42:8081/--/'],
+  ])('%s cannot be reached by a 302 and needs the page', (uri) => {
+    expect(isAppSchemeRedirect(uri)).toBe(true);
+  });
+
+  it.each([
+    ['https://taskbuddy-nine-zeta.vercel.app/account'],
+    ['http://localhost:19006'],
+  ])('%s is an ordinary redirect', (uri) => {
+    expect(isAppSchemeRedirect(uri)).toBe(false);
+  });
+});
+
+describe('renderAppRedirectPage', () => {
+  const link = 'taskbuddy://?access_token=abc&refresh_token=def';
+
+  it('asks for the deep link from script and offers it as a tappable link', () => {
+    const html = renderAppRedirectPage(link);
+
+    expect(html).toContain(`window.location.replace(${JSON.stringify(link)})`);
+    expect(html).toContain('<a id="continue"');
+    expect(html).toContain('href="taskbuddy://?access_token=abc&amp;refresh_token=def"');
+  });
+
+  it('escapes a link that would otherwise close the attribute or the script', () => {
+    const html = renderAppRedirectPage('taskbuddy://?a="><script>alert(1)</script>');
+
+    expect(html).not.toContain('"><script>alert(1)');
+    expect(html).toContain('&quot;&gt;&lt;script&gt;');
   });
 });

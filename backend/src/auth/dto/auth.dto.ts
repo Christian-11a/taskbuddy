@@ -6,6 +6,7 @@ import {
   IsNotEmpty,
   IsOptional,
   IsString,
+  Length,
   Min,
   MinLength,
 } from 'class-validator';
@@ -116,6 +117,17 @@ export class ResetPasswordDto {
  * GoogleRoleSelectionScreen. The caller is already authenticated (JWT guard)
  * so the user id comes from the JWT, not from this body.
  */
+/**
+ * `POST /auth/google/claim` — the one-time id the app minted before opening
+ * the browser and now trades for its session (§19). Length-bounded because it
+ * is hashed and looked up; anything else is not an id we issued.
+ */
+export class ClaimGoogleSessionDto {
+  @IsString()
+  @Length(16, 128)
+  handoff_id!: string;
+}
+
 export class CompleteGoogleProfileDto {
   /** The role the user has chosen. */
   @IsIn(['client', 'provider'])
