@@ -192,8 +192,8 @@ export default function LoginScreen({
       ]}
       // "handled" lets taps on buttons/links still register while any other
       // tap outside an input bubbles up and dismisses the keyboard (fixes #4).
-      keyboardShouldPersistTaps="always"
-      keyboardDismissMode="none"
+      keyboardShouldPersistTaps="handled"
+      keyboardDismissMode="on-drag"
       showsVerticalScrollIndicator={false}
       // iOS 17+/RN 0.71+: lets the ScrollView resize its content insets to
       // match the keyboard smoothly, without a manual KeyboardAvoidingView

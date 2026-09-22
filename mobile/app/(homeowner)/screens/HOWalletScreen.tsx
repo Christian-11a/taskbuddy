@@ -3,12 +3,12 @@
  *
  * v6 design: matches taskbuddy_UI_update.html's #ho-payments screen — flat
  * white topbar, a small rounded gradient balance card (not a full-bleed dark
- * hero), an escrow card, a trust-note banner, and a transaction list.
+ * hero), an escrow card, and a transaction list.
  *
- * Deviation from the mockup, per explicit product decision: the mockup only
- * shows "+ Deposit Money" for homeowners. This screen keeps all three
- * existing actions — Add Money, Withdraw, Transfer — restyled onto the new
- * balance card instead of the old dark hero.
+ * Trimmed after QA (Sep 2026) because it was too crowded: the balance card
+ * has Add Money and Withdraw only (Transfer was never implemented), and the
+ * spent/added stats, trust-note banner and duplicate "Request" link are gone.
+ * Withdrawals and recovery vouchers only appear once there are some.
  */
 
 import React, { useState } from 'react';
