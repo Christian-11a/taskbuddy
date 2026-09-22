@@ -139,7 +139,7 @@ export function BookingsPage() {
 
   function exportCsv() {
     const csv = toCsv(
-      ["Booking ID", "Homeowner", "Provider", "Service", "Status", "Posted", "Budget"],
+      ["Booking ID", "Client", "Provider", "Service", "Status", "Posted", "Budget"],
       exportScope.map((b) => [b.id, b.customer, b.provider, b.service, b.status, b.date, b.amount]),
     );
     downloadCsv(datedFilename("taskbuddy-bookings"), csv);
@@ -189,7 +189,7 @@ export function BookingsPage() {
           <Search size={13} className="absolute top-1/2 -translate-y-1/2 left-3 opacity-40" color="white" />
           <input
             className="w-full text-white outline-none"
-            placeholder="Search by booking ID, homeowner, or service…"
+            placeholder="Search by booking ID, client, or service…"
             aria-label="Search bookings"
             value={search}
             onChange={(e) => { setSearch(e.target.value); clearSelectionOnScopeChange(); }}
@@ -226,7 +226,7 @@ export function BookingsPage() {
                   />
                 </th>
                 <th>Booking ID</th>
-                <th>Homeowner</th>
+                <th>Client</th>
                 <th className="hidden md:table-cell">Provider</th>
                 <th className="hidden lg:table-cell">Service</th>
                 <th>Status</th>

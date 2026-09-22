@@ -1155,6 +1155,14 @@ export const api = {
     });
   },
 
+  deleteNotification(id: string) {
+    return authRequest<void>(`/notifications/${id}`, { method: 'DELETE' });
+  },
+
+  clearNotifications() {
+    return authRequest<void>('/notifications', { method: 'DELETE' });
+  },
+
   /** Server-side count — `notifications()` is capped at 50, so counting it caps the badge. */
   unreadNotificationCount() {
     return authRequest<{ count: number }>('/notifications/unread-count');

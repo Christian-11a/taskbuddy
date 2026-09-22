@@ -124,7 +124,7 @@ export function CompleteProfileForm() {
                 aria-selected={role === "homeowner"}
                 onClick={() => setRole("homeowner")}
               >
-                <span>Homeowner</span>
+                <span>Client</span>
               </button>
               <button
                 type="button"

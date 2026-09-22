@@ -515,7 +515,7 @@ export default function RegisterScreen({ onRegister, onLogin, onGoogleSignIn }: 
                   activeOpacity={0.8}
                 >
                   <Text style={[styles.roleBtnText, role === r && styles.roleBtnTextActive]}>
-                    {r === 'homeowner' ? 'Homeowner' : 'Service Provider'}
+                    {r === 'homeowner' ? 'Client' : 'Service Provider'}
                   </Text>
                 </TouchableOpacity>
               ))}

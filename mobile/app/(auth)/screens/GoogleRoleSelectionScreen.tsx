@@ -95,7 +95,7 @@ export default function GoogleRoleSelectionScreen({
             <View style={[styles.iconCircle, styles.iconCircleHO]}>
               <Home size={31} color={C.brandTeal} />
             </View>
-            <Text style={styles.cardTitle}>Homeowner</Text>
+            <Text style={styles.cardTitle}>Client</Text>
             <Text style={styles.cardDesc}>
               Post jobs and hire trusted local service providers.
             </Text>

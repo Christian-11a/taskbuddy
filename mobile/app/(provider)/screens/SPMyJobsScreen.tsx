@@ -144,7 +144,7 @@ export default function SPMyJobsScreen({ onNavigate }: SPMyJobsScreenProps) {
             <View style={styles.emptyState}>
               <Briefcase size={30} color={C.ink300} />
               <Text style={styles.emptyTitle}>No {tab.toLowerCase()} jobs</Text>
-              <Text style={styles.emptyText}>Jobs will move here after a homeowner hires you.</Text>
+              <Text style={styles.emptyText}>Jobs will move here after a client hires you.</Text>
             </View>
           ) : (
             (tab === 'Active' ? activeJobs : completedJobs).map((job) => {

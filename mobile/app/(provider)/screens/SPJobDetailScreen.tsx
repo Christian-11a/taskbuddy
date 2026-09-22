@@ -196,7 +196,7 @@ export default function SPJobDetailScreen({ jobId, onBack, onNavigate }: SPJobDe
                 <MapPin size={17} color={C.ink500} />
                 <View style={{ flex: 1, minWidth: 0 }}>
                   <Text style={styles.factLabel}>Location</Text>
-                  <Text style={styles.factValue} numberOfLines={1}>{job.address}</Text>
+                  <Text style={styles.factValue} numberOfLines={2}>{job.address}</Text>
                   {!!distanceLabel(job.distance_km) && (
                     <Text style={styles.factSub}>{distanceLabel(job.distance_km)}</Text>
                   )}
@@ -220,7 +220,7 @@ export default function SPJobDetailScreen({ jobId, onBack, onNavigate }: SPJobDe
             <View style={styles.requestNote}>
               <Text style={styles.requestNoteText}>
                 <Text style={{ fontWeight: '800' }}>You've been hired for this job.</Text>{' '}
-                Accept to confirm the booking with the homeowner, or decline and tell
+                Accept to confirm the booking with the client, or decline and tell
                 them why so they can find someone else.
               </Text>
             </View>
@@ -240,8 +240,8 @@ export default function SPJobDetailScreen({ jobId, onBack, onNavigate }: SPJobDe
               </View>
               <Text style={styles.progressHint}>
                 {doneCount === tasks.length
-                  ? 'All tasks done — the homeowner confirms completion from their side.'
-                  : 'Tick tasks off as you finish them. The homeowner sees this update.'}
+                  ? 'All tasks done — the client confirms completion from their side.'
+                  : 'Tick tasks off as you finish them. The client sees this update.'}
               </Text>
             </View>
           )}
@@ -311,8 +311,8 @@ export default function SPJobDetailScreen({ jobId, onBack, onNavigate }: SPJobDe
             <View style={styles.trustNote}>
               <Text style={styles.trustNoteText}>
                 <Text style={{ fontWeight: '800' }}>Your proposal</Text>
-                {myApplication.status === 'pending' && ' · Waiting for the homeowner to choose a provider.'}
-                {myApplication.status === 'rejected' && ' · The homeowner selected another provider.'}
+                {myApplication.status === 'pending' && ' · Waiting for the client to choose a provider.'}
+                {myApplication.status === 'rejected' && ' · The client selected another provider.'}
                 {myApplication.status === 'accepted' && ' · You were hired for this job.'}
                 {myApplication.status === 'withdrawn' && ' · You withdrew this proposal.'}
               </Text>
@@ -347,7 +347,7 @@ export default function SPJobDetailScreen({ jobId, onBack, onNavigate }: SPJobDe
 
             {isWorking && (
               <View style={styles.lockedBtn}>
-                <Text style={styles.lockedBtnText}>Waiting for homeowner to confirm completion</Text>
+                <Text style={styles.lockedBtnText}>Waiting for client to confirm completion</Text>
               </View>
             )}
             {isDone && (
@@ -391,7 +391,7 @@ export default function SPJobDetailScreen({ jobId, onBack, onNavigate }: SPJobDe
               <TouchableOpacity style={styles.outlineBtn} onPress={() => onNavigate('Chat', job.id)} activeOpacity={0.85}>
                 <View style={styles.primaryBtnContent}>
                   <MessageCircle size={17} color={C.ink700} />
-                  <Text style={styles.outlineBtnText}>Message Homeowner</Text>
+                  <Text style={styles.outlineBtnText}>Message Client</Text>
                 </View>
               </TouchableOpacity>
             )}

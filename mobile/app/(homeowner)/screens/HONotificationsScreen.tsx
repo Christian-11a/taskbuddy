@@ -6,6 +6,10 @@
  * card with hairline-divided .notif-row items (no date-group headers — the
  * mockup renders one flat list), unread rows tinted `#f2fbfd` with a small
  * dot, read rows plain.
+ *
+ * A notification about a job opens it: "New application" goes straight to
+ * that job's proposals, anything else to the job itself. Each row can be
+ * deleted, and "Clear all" empties the list.
  */
 
 import React, { useState } from 'react';
@@ -21,8 +25,11 @@ import {
   ArrowLeft,
   BellRing,
   CircleCheckBig,
+  Trash2,
   Trophy,
 } from 'lucide-react-native';
+import ConfirmationModal from '../../../src/components/ConfirmationModal';
+import { useNotificationDeletion } from '../../../src/hooks/useNotificationDeletion';
 import { Sizes, Spacing, V6Colors } from '../../../src/constants/theme';
 
 const C = V6Colors;
@@ -37,6 +44,8 @@ interface NotificationRow {
   body: string;
   read_at: string | null;
   created_at: string;
+  /** Job/application updates carry the job (and application) they are about. */
+  data: { job_id?: string; application_id?: string } | null;
 }
 
 const ICON_BY_TYPE: Record<string, typeof BellRing> = {
@@ -47,16 +56,21 @@ const ICON_BY_TYPE: Record<string, typeof BellRing> = {
 
 interface HONotificationsProps {
   onBack: () => void;
+  onOpenJob: (jobId: string) => void;
+  /** The job's Proposals screen — where a new application is reviewed. */
+  onOpenProposals: (jobId: string) => void;
 }
 
-export default function HONotificationsScreen({ onBack }: HONotificationsProps) {
+export default function HONotificationsScreen({ onBack, onOpenJob, onOpenProposals }: HONotificationsProps) {
   const { data, loading, error, reload } = useAsyncData(
     () => api.notifications() as Promise<NotificationRow[]>,
     [],
   );
   const [actionError, setActionError] = useState<string | null>(null);
   const [pendingReadId, setPendingReadId] = useState<string | null>(null);
-  const notifications = data ?? [];
+  const deletion = useNotificationDeletion(reload);
+  const [confirmClear, setConfirmClear] = useState(false);
+  const notifications = deletion.visible(data ?? []);
   const unreadCount = notifications.filter((n) => !n.read_at).length;
 
   const markAllRead = async () => {
@@ -84,6 +98,21 @@ export default function HONotificationsScreen({ onBack }: HONotificationsProps) 
     }
   };
 
+  /**
+   * Marking read is fire-and-forget when navigating away: this screen unmounts
+   * and reloads on return, and a failed mark-read should not block the job.
+   */
+  const openNotification = (notif: NotificationRow) => {
+    const jobId = notif.data?.job_id;
+    if (!jobId) {
+      if (!notif.read_at) void markRead(notif.id);
+      return;
+    }
+    if (!notif.read_at) api.markNotificationRead(notif.id).catch(() => {});
+    if (notif.data?.application_id) onOpenProposals(jobId);
+    else onOpenJob(jobId);
+  };
+
   return (
     <View style={styles.screen}>
       {/* Header — matches .topbar (flat white, not a dark hero) */}
@@ -97,7 +126,24 @@ export default function HONotificationsScreen({ onBack }: HONotificationsProps) 
             <Text style={styles.markAllText}>Mark all read</Text>
           </TouchableOpacity>
         )}
+        {unreadCount === 0 && notifications.length > 0 && (
+          <TouchableOpacity onPress={() => setConfirmClear(true)} activeOpacity={0.8}>
+            <Text style={styles.markAllText}>Clear all</Text>
+          </TouchableOpacity>
+        )}
       </View>
+
+      <ConfirmationModal
+        visible={confirmClear}
+        title="Clear all notifications?"
+        message="This removes every notification from your list. It can't be undone."
+        confirmLabel="Clear all"
+        onConfirm={() => {
+          setConfirmClear(false);
+          void deletion.clearAll();
+        }}
+        onCancel={() => setConfirmClear(false)}
+      />
 
       <ScrollView
         style={styles.body}
@@ -133,18 +179,27 @@ export default function HONotificationsScreen({ onBack }: HONotificationsProps) 
                     pendingReadId === notif.id && styles.notifRowPending,
                   ]}
                   activeOpacity={0.85}
-                  onPress={() => isUnread && markRead(notif.id)}
+                  onPress={() => openNotification(notif)}
                   disabled={pendingReadId === notif.id}
                 >
                   <View style={[styles.notifIcon, isUnread && styles.notifIconUnread]}>
                     <Icon size={19} color={C.cyan700} />
                   </View>
-                  <View style={{ flex: 1, paddingRight: isUnread ? 10 : 0 }}>
+                  <View style={{ flex: 1 }}>
                     <Text style={styles.notifTitle}>{notif.title}</Text>
                     <Text style={styles.notifBody}>{notif.body}</Text>
                     <Text style={styles.notifTime}>{timeAgo(notif.created_at)}</Text>
                   </View>
                   {isUnread && <View style={styles.unreadDot} />}
+                  <TouchableOpacity
+                    style={styles.deleteBtn}
+                    onPress={() => void deletion.remove(notif.id)}
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Delete notification: ${notif.title}`}
+                  >
+                    <Trash2 size={16} color={C.ink300} />
+                  </TouchableOpacity>
                 </TouchableOpacity>
               );
             })}
@@ -203,8 +258,9 @@ const styles = StyleSheet.create({
   notifTitle: { color: C.ink900, fontSize: 13.5, fontWeight: '700', fontFamily: 'Inter' },
   notifBody: { color: C.ink500, fontSize: 12.5, fontFamily: 'Inter', lineHeight: 16.5, marginTop: 3 },
   notifTime: { color: C.ink300, fontSize: 11.5, fontFamily: 'Inter', marginTop: 4 },
+  deleteBtn: { alignSelf: 'center', padding: 4 },
   unreadDot: {
-    position: 'absolute', right: 13, top: 17,
+    position: 'absolute', left: 6, top: 17,
     width: 7, height: 7, borderRadius: 4, backgroundColor: C.cyan500,
   },
 });

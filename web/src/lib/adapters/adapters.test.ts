@@ -113,7 +113,7 @@ describe("row adapters", () => {
       suspendedUntil: null, suspensionReason: null,
     };
     const row = toUserRow(u);
-    expect(row.role).toBe("Homeowner");
+    expect(row.role).toBe("Client");
     expect(row.activity).toBe("0 jobs");
     expect(row.statusClass).toBe("badge-suspended");
     // Detail fields fall back to a dash rather than rendering "null".

@@ -192,10 +192,12 @@ export default function HOJobDetailScreen({ jobId, onBack, onNavigate }: HOJobDe
                 </View>
               </View>
               <View style={styles.fact}>
-                <TriangleAlert size={17} color={C.ink500} />
+                <TriangleAlert size={17} color={urgencyMeta(job.urgency).color} />
                 <View style={{ flex: 1, minWidth: 0 }}>
                   <Text style={styles.factLabel}>Urgency</Text>
-                  <Text style={styles.factValue} numberOfLines={1}>{job.urgency}</Text>
+                  <Text style={[styles.factValue, { color: urgencyMeta(job.urgency).color }]} numberOfLines={1}>
+                    {urgencyMeta(job.urgency).label}
+                  </Text>
                 </View>
               </View>
             </View>
@@ -234,19 +236,20 @@ export default function HOJobDetailScreen({ jobId, onBack, onNavigate }: HOJobDe
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Details</Text>
             <View style={styles.detailsGrid}>
+              {/* Urgency already sits in the hero, so it isn't repeated here.
+                  Location gets the full width: addresses are long. */}
               {[
-              { icon: Wrench, label: 'Service', value: job.service_categories?.name ?? '—' },
-              { icon: MapPin, label: 'Location', value: job.address },
-              { icon: TriangleAlert, label: 'Urgency', value: urgencyMeta(job.urgency).label },
-              { icon: CalendarDays, label: 'Posted', value: timeAgo(job.posted_at) },
+              { icon: MapPin, label: 'Location', value: job.address, wide: true },
+              { icon: Wrench, label: 'Service', value: job.service_categories?.name ?? '—', wide: false },
+              { icon: CalendarDays, label: 'Posted', value: timeAgo(job.posted_at), wide: false },
               ].map((item) => (
-              <View key={item.label} style={styles.detailRow}>
+              <View key={item.label} style={[styles.detailRow, item.wide && styles.detailRowWide]}>
                 <View style={styles.detailIcon}>
                   <item.icon size={17} color={C.ink500} />
                 </View>
-                <View style={{ flex: 1 }}>
+                <View style={styles.detailText}>
                   <Text style={styles.detailLabel}>{item.label}</Text>
-                  <Text style={styles.detailValue}>{item.value}</Text>
+                  <Text style={styles.detailValue} numberOfLines={item.wide ? 3 : 1}>{item.value}</Text>
                 </View>
               </View>
               ))}
@@ -264,7 +267,7 @@ export default function HOJobDetailScreen({ jobId, onBack, onNavigate }: HOJobDe
                 ))}
               </ScrollView>
             ) : (
-              <Text style={styles.emptyAttachmentText}>The homeowner has not provided a picture.</Text>
+              <Text style={styles.emptyAttachmentText}>No photos were added to this job.</Text>
             )}
           </View>
 
@@ -396,17 +399,6 @@ export default function HOJobDetailScreen({ jobId, onBack, onNavigate }: HOJobDe
         </View>
       )}
 
-      {job && (
-        <TouchableOpacity
-          style={styles.floatingChat}
-          onPress={() => onNavigate('Chat', job.id)}
-          accessibilityLabel="Open chat"
-          activeOpacity={0.85}
-        >
-          <MessageCircle size={22} color={C.white} />
-        </TouchableOpacity>
-      )}
-
       <Modal visible={!!previewUrl} transparent animationType="fade" onRequestClose={() => setPreviewUrl(null)}>
         <TouchableOpacity style={styles.previewBackdrop} activeOpacity={1} onPress={() => setPreviewUrl(null)}>
           {previewUrl && <Image source={{ uri: previewUrl }} style={styles.previewImage} resizeMode="contain" />}
@@ -510,9 +502,11 @@ const styles = StyleSheet.create({
   // Detail rows
   detailsGrid: { flexDirection: 'row', flexWrap: 'wrap', rowGap: 14 },
   detailRow: { width: '50%', flexDirection: 'row', alignItems: 'flex-start', gap: 10, paddingRight: 8 },
+  detailRowWide: { width: '100%' },
+  detailText: { flex: 1, minWidth: 0 },
   detailIcon: { width: 30, height: 30, borderRadius: 9, backgroundColor: '#f6f8fa', alignItems: 'center', justifyContent: 'center' },
   detailLabel: { fontSize: 11.5, color: C.ink400, fontFamily: 'Inter', marginBottom: 2 },
-  detailValue: { fontSize: 13.5, color: C.ink800, fontWeight: '600', fontFamily: 'Inter', lineHeight: 17 },
+  detailValue: { fontSize: 13.5, color: C.ink800, fontWeight: '600', fontFamily: 'Inter', lineHeight: 17, flexShrink: 1 },
 
   // Provider card
   providerCard: { flexDirection: 'row', alignItems: 'center', gap: 11 },
@@ -531,7 +525,6 @@ const styles = StyleSheet.create({
 
   // Action bar
   actionBar: { paddingHorizontal: Spacing.screenH, paddingTop: 12, paddingBottom: 10, gap: 8, backgroundColor: C.white, borderTopWidth: 1, borderTopColor: C.line },
-  floatingChat: { position: 'absolute', right: 20, bottom: 24, width: 54, height: 54, borderRadius: 27, backgroundColor: C.cyan700, alignItems: 'center', justifyContent: 'center', elevation: 4, shadowColor: '#000', shadowOpacity: 0.2, shadowRadius: 5, shadowOffset: { width: 0, height: 3 } },
   previewBackdrop: { flex: 1, backgroundColor: 'rgba(15,23,42,0.9)', alignItems: 'center', justifyContent: 'center', padding: 20 },
   previewImage: { width: '100%', height: '80%' },
   primaryBtn: { backgroundColor: C.cyan700, borderRadius: 13, paddingVertical: 14, alignItems: 'center' },

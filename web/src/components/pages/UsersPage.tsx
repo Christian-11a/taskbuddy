@@ -208,7 +208,7 @@ export function UsersPage() {
       <div className="flex items-start justify-between flex-wrap gap-3 mb-4">
         <div>
           <div className="text-white font-bold" style={{ fontSize: "var(--fs-2xl)", letterSpacing: "-0.025em" }}>Users</div>
-          <div style={{ fontSize: "var(--fs-sm)", color: "var(--text-muted)", marginTop: 5, lineHeight: 1.45 }}>Search, review, and moderate homeowner and provider accounts.</div>
+          <div style={{ fontSize: "var(--fs-sm)", color: "var(--text-muted)", marginTop: 5, lineHeight: 1.45 }}>Search, review, and moderate client and provider accounts.</div>
         </div>
         <button
           onClick={() => setConfirmingExport(true)}
@@ -231,7 +231,7 @@ export function UsersPage() {
         <span aria-hidden="true">·</span>
         <span className="flex items-center gap-1"><Wrench size={12} /> <span className="font-semibold text-white tabular">{providers}</span> providers</span>
         <span aria-hidden="true">·</span>
-        <span className="flex items-center gap-1"><Home size={12} /> <span className="font-semibold text-white tabular">{customers}</span> homeowners</span>
+        <span className="flex items-center gap-1"><Home size={12} /> <span className="font-semibold text-white tabular">{customers}</span> clients</span>
       </div>
 
       <div className="rounded-xl overflow-hidden" style={{ background: "var(--card-bg)", border: "1px solid var(--card-border)" }}>
@@ -248,7 +248,7 @@ export function UsersPage() {
           />
         </div>
         <div className="inline-flex" style={{ background: "var(--chip-bg)", padding: 3, borderRadius: "var(--r-md)", gap: 2 }}>
-          {([["all", "All"], ["provider", "Providers"], ["customer", "Homeowners"]] as [RoleFilter, string][]).map(([f, label]) => (
+          {([["all", "All"], ["provider", "Providers"], ["customer", "Clients"]] as [RoleFilter, string][]).map(([f, label]) => (
             <button key={f} onClick={() => { setRoleFilter(f); clearSelectionOnScopeChange(); }}
             className={clsx("rounded-lg font-medium cursor-pointer transition-colors", roleFilter !== f && "text-gray-500 hover:text-gray-300")}
               style={{ padding: "7px 11px", fontSize: "var(--fs-xs)", background: roleFilter === f ? "var(--indigo-dark)" : "transparent", color: roleFilter === f ? "var(--indigo-light)" : undefined, border: "none", fontFamily: "inherit" }}

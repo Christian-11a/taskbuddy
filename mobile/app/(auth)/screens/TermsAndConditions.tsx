@@ -38,7 +38,7 @@ const TERMS_CONTENT = {
   sections: [
     {
       heading: 'TaskBuddy Terms of Use',
-      body: 'By creating an account, you agree to use TaskBuddy responsibly, provide accurate account details, and respect the community guidelines for both homeowners and service providers.',
+      body: 'By creating an account, you agree to use TaskBuddy responsibly, provide accurate account details, and respect the community guidelines for both clients and service providers.',
     },
     {
       heading: 'Platform Facilitator',
@@ -65,7 +65,7 @@ const PRIVACY_CONTENT = {
     },
     {
       heading: 'How We Use Your Data',
-      body: 'Your data is used to match homeowners with service providers, process payments, deliver notifications, and improve the TaskBuddy platform. We do not sell your personal information to third parties.',
+      body: 'Your data is used to match clients with service providers, process payments, deliver notifications, and improve the TaskBuddy platform. We do not sell your personal information to third parties.',
     },
     {
       heading: 'Data Storage & Security',

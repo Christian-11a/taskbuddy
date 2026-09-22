@@ -39,7 +39,7 @@ const HO_FAQS = [
 const SP_FAQS = [
   { q: 'How do I get verified?', a: 'Go to Profile → Get Verified and submit a government ID photo plus a selfie. An admin reviews it, usually within a few days.' },
   { q: 'How do I submit a proposal?', a: 'Browse open jobs on the Feed tab and tap into one to submit a proposal. You need to be verified before proposals can be submitted.' },
-  { q: 'How do I get paid?', a: 'Earnings appear in your Wallet as jobs are completed and approved by the homeowner. Withdrawals are made from the Wallet tab.' },
+  { q: 'How do I get paid?', a: 'Earnings appear in your Wallet as jobs are completed and approved by the client. Withdrawals are made from the Wallet tab.' },
   { q: 'How do I update my services or bio?', a: 'Go to Profile → Edit Profile to update your bio, category, and service radius.' },
 ];
 

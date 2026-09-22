@@ -105,7 +105,7 @@ export default function SPCalendarScreen({ onNavigate }: SPCalendarScreenProps) 
           <View style={styles.emptyState}>
             <CalendarDays size={30} color={C.ink300} />
             <Text style={styles.emptyTitle}>Nothing scheduled</Text>
-            <Text style={styles.emptyText}>Jobs appear here after a homeowner hires you.</Text>
+            <Text style={styles.emptyText}>Jobs appear here after a client hires you.</Text>
           </View>
         )}
 

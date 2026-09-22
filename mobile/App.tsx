@@ -513,7 +513,11 @@ function AppContent() {
     if (hoScreen === 'Notifications') {
       return (
         <ScreenFrame>
-          <HONotificationsScreen onBack={hoBack} />
+          <HONotificationsScreen
+            onBack={hoBack}
+            onOpenJob={(jobId) => hoNavigate('Job Detail', jobId)}
+            onOpenProposals={(jobId) => hoNavigate('Job Applications', jobId)}
+          />
         </ScreenFrame>
       );
     }

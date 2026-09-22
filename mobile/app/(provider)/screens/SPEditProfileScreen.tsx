@@ -48,8 +48,11 @@ function FormField({
   multiline,
   keyboardType,
   editable = true,
+  required = false,
 }: {
   label: string;
+  /** Shows a red asterisk. Only on fields the Save button actually checks. */
+  required?: boolean;
   value: string;
   onChangeText?: (v: string) => void;
   placeholder?: string;
@@ -60,7 +63,10 @@ function FormField({
   const [focused, setFocused] = useState(false);
   return (
     <View style={styles.fieldGroup}>
-      <Text style={styles.fieldLabel}>{label}</Text>
+      <Text style={styles.fieldLabel}>
+        {label}
+        {required && <Text style={styles.requiredAsterisk}> *</Text>}
+      </Text>
       <TextInput
         style={[
           styles.fieldInput,
@@ -159,13 +165,13 @@ export default function SPEditProfileScreen({ onBack, onSave }: SPEditProfileScr
           {/* Avatar — uploads on its own, independent of the Save button */}
           <AvatarPicker name={name} />
 
-          <FormField label="Full name" value={name} onChangeText={setName} placeholder="Your full name" />
+          <FormField required label="Full name" value={name} onChangeText={setName} placeholder="Your full name" />
           <FormField label="Email" value={email} placeholder="email@example.com" keyboardType="email-address" editable={false} />
           <FormField label="Phone" value={phone} onChangeText={setPhone} placeholder="+63 9XX XXX XXXX" keyboardType="phone-pad" />
           {/* The address a provider is matched from — same suggestions + GPS
               as the job form, so "nearby" means a place the geocoder knows. */}
           <View style={styles.fieldGroup}>
-            <Text style={styles.fieldLabel}>Address</Text>
+            <Text style={styles.fieldLabel}>Address<Text style={styles.requiredAsterisk}> *</Text></Text>
             <AddressField
               value={location}
               onChangeText={setLocation}
@@ -174,11 +180,11 @@ export default function SPEditProfileScreen({ onBack, onSave }: SPEditProfileScr
             />
           </View>
           <FormField label="City" value={city} onChangeText={setCity} placeholder="City / Municipality" />
-          <FormField label="Bio (min 20 characters)" value={bio} onChangeText={setBio} multiline placeholder="Describe your experience..." />
+          <FormField required label="Bio (min 20 characters)" value={bio} onChangeText={setBio} multiline placeholder="Describe your experience..." />
           <FormField label="Service radius (km)" value={radius} onChangeText={setRadius} keyboardType="number-pad" placeholder="8" />
 
           <View style={styles.fieldGroup}>
-            <Text style={styles.fieldLabel}>Service offered</Text>
+            <Text style={styles.fieldLabel}>Service offered<Text style={styles.requiredAsterisk}> *</Text></Text>
             <View style={styles.chipGrid}>
               {(categories.data ?? []).map((cat) => {
                 const active = categoryId === cat.id;
@@ -246,6 +252,7 @@ const styles = StyleSheet.create({
 
   fieldGroup: { marginBottom: 16 },
   fieldLabel: { color: C.ink900, fontSize: 14, fontWeight: '700', fontFamily: 'Inter', marginBottom: 6 },
+  requiredAsterisk: { color: '#ef4444', fontWeight: '700' },
   fieldInput: {
     backgroundColor: C.white, borderRadius: 12, paddingHorizontal: 14, minHeight: 46,
     borderWidth: 1, borderColor: '#dce3e9',

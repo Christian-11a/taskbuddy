@@ -112,7 +112,7 @@ describe("UsersPage — suspend flow", () => {
 
   it("filters the table by search text", async () => {
     mockedUseApp.mockReturnValue({
-      users: [makeUser(), makeUser({ id: "u-2", name: "Jamie Kim", email: "jamie@example.com", isProvider: false, rolePlain: "Homeowner" })],
+      users: [makeUser(), makeUser({ id: "u-2", name: "Jamie Kim", email: "jamie@example.com", isProvider: false, rolePlain: "Client" })],
       setUserStatus,
       bulkSetUserStatus,
       sendPasswordReset,

@@ -1,6 +1,8 @@
 import {
   Controller,
+  Delete,
   Get,
+  HttpCode,
   Param,
   ParseUUIDPipe,
   Post,
@@ -68,5 +70,29 @@ export class NotificationsController {
       .eq('recipient_id', user.id)
       .is('read_at', null);
     return { success: true };
+  }
+
+  /** Removes one of the caller's own notifications. Idempotent. */
+  @Delete(':id')
+  @HttpCode(204)
+  async remove(
+    @CurrentUser() user: Profile,
+    @Param('id', ParseUUIDPipe) id: string,
+  ) {
+    await this.supabase.admin
+      .from('notifications')
+      .delete()
+      .eq('id', id)
+      .eq('recipient_id', user.id);
+  }
+
+  /** Clears the caller's whole notification list. */
+  @Delete()
+  @HttpCode(204)
+  async removeAll(@CurrentUser() user: Profile) {
+    await this.supabase.admin
+      .from('notifications')
+      .delete()
+      .eq('recipient_id', user.id);
   }
 }
