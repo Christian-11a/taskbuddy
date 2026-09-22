@@ -75,6 +75,10 @@ import SPSettingsScreen from './app/(provider)/screens/SPSettingsScreen';
 // ── Shared navigation components ──────────────────────────────────────────────
 import BottomNavBar, { BottomNavItem } from './src/components/BottomNavBar';
 import HelpSupportScreen from './src/components/HelpSupportScreen';
+import ScreenFrame from './src/components/ScreenFrame';
+import { V6Colors } from './src/constants/theme';
+import { ToastHost } from './src/components/Toast';
+import { clearRetainedState } from './src/hooks/useRetainedState';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 import { HOScreen, SPScreen } from './src/types/navigation';
@@ -138,6 +142,7 @@ function AppContent() {
 
   const handleLogout = () => {
     void signOut();
+    clearRetainedState();
     setPreAuth('login');
     setShowOnboarding(null);
     setHOTab('Home');
@@ -451,35 +456,35 @@ function AppContent() {
     // Non-tab sub-screens (no bottom nav)
     if (hoScreen === 'Job Detail') {
       return (
-        <View style={styles.screen}>
+        <ScreenFrame bottomColor={V6Colors.white}>
           <HOJobDetailScreen jobId={hoSelectedId} onBack={hoBack} onNavigate={hoNavigate} />
-        </View>
+        </ScreenFrame>
       );
     }
     if (hoScreen === 'Job Applications') {
       return (
-        <View style={styles.screen}>
+        <ScreenFrame>
           <HOJobApplicationsScreen jobId={hoSelectedId} onBack={hoBack} onNavigate={hoNavigate} />
-        </View>
+        </ScreenFrame>
       );
     }
     if (hoScreen === 'Provider Profile') {
       return (
-        <View style={styles.screen}>
+        <ScreenFrame>
           <HOProviderProfileScreen id={hoSelectedId ?? ''} onBack={hoBack} onNavigate={hoNavigate} />
-        </View>
+        </ScreenFrame>
       );
     }
     if (hoScreen === 'Leave Review') {
       return (
-        <View style={styles.screen}>
+        <ScreenFrame bottomColor={V6Colors.white}>
           <HOLeaveReviewScreen jobId={hoSelectedId ?? ''} onSubmitted={hoBack} onBack={hoBack} />
-        </View>
+        </ScreenFrame>
       );
     }
     if (hoScreen === 'Chat') {
       return (
-        <View style={styles.screen}>
+        <ScreenFrame bottomColor={V6Colors.white}>
           <HOChatScreen
             jobId={hoSelectedId}
             onBack={hoBack}
@@ -488,49 +493,49 @@ function AppContent() {
               setHOScreen('Job Detail');
             }}
           />
-        </View>
+        </ScreenFrame>
       );
     }
     if (hoScreen === 'Dispute Filing') {
       return (
-        <View style={styles.screen}>
+        <ScreenFrame bottomColor={V6Colors.white}>
           <HODisputeFilingScreen jobId={hoSelectedId} onBack={hoBack} onSubmitted={hoBack} />
-        </View>
+        </ScreenFrame>
       );
     }
     if (hoScreen === 'Dispute Status') {
       return (
-        <View style={styles.screen}>
+        <ScreenFrame>
           <HODisputeStatusScreen jobId={hoSelectedId} onBack={hoBack} />
-        </View>
+        </ScreenFrame>
       );
     }
     if (hoScreen === 'Notifications') {
       return (
-        <View style={styles.screen}>
+        <ScreenFrame>
           <HONotificationsScreen onBack={hoBack} />
-        </View>
+        </ScreenFrame>
       );
     }
     if (hoScreen === 'Edit Profile') {
       return (
-        <View style={styles.screen}>
+        <ScreenFrame>
           <HOEditProfileScreen onBack={hoBack} onSave={hoBack} />
-        </View>
+        </ScreenFrame>
       );
     }
     if (hoScreen === 'Settings') {
       return (
-        <View style={styles.screen}>
+        <ScreenFrame>
           <HOSettingsScreen onBack={hoBack} onLogout={handleLogout} />
-        </View>
+        </ScreenFrame>
       );
     }
     if (hoScreen === 'Help & Support') {
       return (
-        <View style={styles.screen}>
+        <ScreenFrame>
           <HelpSupportScreen role="homeowner" onBack={hoBack} />
-        </View>
+        </ScreenFrame>
       );
     }
     if (hoScreen === 'Create Job') {
@@ -540,6 +545,7 @@ function AppContent() {
             initialCategoryId={Number.isFinite(Number(hoSelectedId)) ? Number(hoSelectedId) : null}
             onBack={hoBack}
             onSuccess={() => {
+              setHOStack([]);
               setHOTab('My Jobs');
               setHOScreen('My Jobs');
             }}
@@ -551,9 +557,9 @@ function AppContent() {
       // Not a bottom-nav tab (matches the mockup — Profile is reached via
       // Home's avatar button, see hero avatarCircle in HOHomeScreen).
       return (
-        <View style={styles.screen}>
+        <ScreenFrame>
           <Profile onNavigate={hoNavigate} onLogout={handleLogout} onBack={hoBack} />
-        </View>
+        </ScreenFrame>
       );
     }
 
@@ -574,10 +580,10 @@ function AppContent() {
     };
 
     return (
-      <View style={styles.screen}>
+      <ScreenFrame>
         <View style={styles.tabContent}>{renderHOTabContent()}</View>
         <BottomNavBar activeTab={hoTab} tabs={HOMEOWNER_TABS} onTabPress={hoNavigate} />
-      </View>
+      </ScreenFrame>
     );
   }
 
@@ -588,19 +594,19 @@ function AppContent() {
   // Non-tab sub-screens (no bottom nav)
   if (spScreen === 'Job Detail' || spScreen === 'Urgent Job') {
     return (
-      <View style={styles.screen}>
+      <ScreenFrame bottomColor={V6Colors.white}>
         <SPJobDetailScreen
           jobId={spJobId}
           onBack={spBack}
           onNavigate={spNavigate}
           isUrgent={spUrgentJob}
         />
-      </View>
+      </ScreenFrame>
     );
   }
   if (spScreen === 'Chat') {
     return (
-      <View style={styles.screen}>
+      <ScreenFrame bottomColor={V6Colors.white}>
         <SPChatScreen
           jobId={spJobId}
           onBack={spBack}
@@ -609,43 +615,43 @@ function AppContent() {
             setSPScreen('Job Detail');
           }}
         />
-      </View>
+      </ScreenFrame>
     );
   }
   if (spScreen === 'Notifications') {
     return (
-      <View style={styles.screen}>
+      <ScreenFrame>
         <SPNotificationsScreen
           onBack={spBack}
           onOpenJob={(jobId) => spNavigate('Job Detail', jobId)}
         />
-      </View>
+      </ScreenFrame>
     );
   }
   if (spScreen === 'Edit Profile') {
     return (
-      <View style={styles.screen}>
+      <ScreenFrame>
         <SPEditProfileScreen onBack={spBack} onSave={spBack} />
-      </View>
+      </ScreenFrame>
     );
   }
   if (spScreen === 'Settings') {
     return (
-      <View style={styles.screen}>
+      <ScreenFrame>
         <SPSettingsScreen onBack={spBack} onLogout={handleLogout} />
-      </View>
+      </ScreenFrame>
     );
   }
   if (spScreen === 'Help & Support') {
     return (
-      <View style={styles.screen}>
+      <ScreenFrame>
         <HelpSupportScreen role="provider" onBack={spBack} />
-      </View>
+      </ScreenFrame>
     );
   }
   if (spScreen === 'Verification') {
     return (
-      <View style={styles.screen}>
+      <ScreenFrame>
         <SPVerificationScreen
           onBack={() => {
             // A verification may have completed on this visit even if the
@@ -658,23 +664,23 @@ function AppContent() {
             spBack();
           }}
         />
-      </View>
+      </ScreenFrame>
     );
   }
   if (spScreen === 'Payouts') {
     return (
-      <View style={styles.screen}>
+      <ScreenFrame>
         <SPPayoutsScreen onBack={spBack} />
-      </View>
+      </ScreenFrame>
     );
   }
   if (spScreen === 'Profile') {
     // Not a bottom-nav tab (matches the mockup — Profile is reached via
     // Feed's avatar button, see hero avatar in SPHomeScreen).
     return (
-      <View style={styles.screen}>
+      <ScreenFrame>
         <SPProfileScreen onNavigate={spNavigate} onLogout={handleLogout} onBack={spBack} />
-      </View>
+      </ScreenFrame>
     );
   }
 
@@ -709,6 +715,7 @@ export default function App() {
       <AuthProvider>
         <RootLayout>
           <AppContent />
+          <ToastHost />
         </RootLayout>
       </AuthProvider>
     </SafeAreaProvider>

@@ -41,6 +41,7 @@ import TermsAndConditions from './TermsAndConditions';
 import { api } from '../../../src/lib/api';
 import type { MobileRole } from '../../../src/lib/api';
 import { useAuth } from '../../../src/context/AuthContext';
+import { useAuthLayout } from '../../../src/hooks/useAuthLayout';
 
 /** Supabase issues 6-digit signup codes. */
 const OTP_LENGTH = 6;
@@ -185,6 +186,7 @@ type FieldErrors = {
 };
 
 export default function RegisterScreen({ onRegister, onLogin, onGoogleSignIn }: RegisterScreenProps) {
+  const layout = useAuthLayout();
   const { verifyEmailOtp } = useAuth();
   // Entrance transition — matches the mockup's `.screen{animation:fadeIn .22s ease}`
   // (fade in + slide up 6px). Runs once on mount, when this screen first opens.
@@ -459,7 +461,7 @@ export default function RegisterScreen({ onRegister, onLogin, onGoogleSignIn }: 
   const scrollContent = (
     <ScrollView
       style={styles.flex}
-      contentContainerStyle={styles.scrollContent}
+      contentContainerStyle={[styles.scrollContent, { paddingTop: layout.paddingTop, paddingBottom: layout.paddingBottom }]}
       showsVerticalScrollIndicator={false}
       // "handled" lets taps on buttons/links/inputs still register while any
       // other tap outside an input bubbles up and dismisses the keyboard.

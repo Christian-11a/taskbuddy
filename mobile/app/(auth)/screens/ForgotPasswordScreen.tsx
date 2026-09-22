@@ -34,6 +34,7 @@ import { ArrowLeft } from 'lucide-react-native';
 import { V6Colors, V6Radii, V6Shadows } from '../../../src/constants/theme';
 import { useAuth } from '../../../src/context/AuthContext';
 import { api } from '../../../src/lib/api';
+import { useAuthLayout } from '../../../src/hooks/useAuthLayout';
 
 const C = V6Colors;
 
@@ -42,6 +43,7 @@ interface ForgotPasswordScreenProps {
 }
 
 export default function ForgotPasswordScreen({ onBackToLogin }: ForgotPasswordScreenProps) {
+  const layout = useAuthLayout();
   const { resetPassword } = useAuth();
   const [stage, setStage] = useState<'email' | 'code'>('email');
   const [email, setEmail] = useState('');
@@ -99,7 +101,7 @@ export default function ForgotPasswordScreen({ onBackToLogin }: ForgotPasswordSc
   const scrollContent = (
     <ScrollView
       style={styles.flex}
-      contentContainerStyle={styles.scrollContent}
+      contentContainerStyle={[styles.scrollContent, { paddingTop: layout.paddingTop, paddingBottom: layout.paddingBottom }]}
       showsVerticalScrollIndicator={false}
       keyboardShouldPersistTaps="handled"
       keyboardDismissMode="interactive"

@@ -28,6 +28,7 @@ import {
 import { ArrowLeft, Check, ChevronDown } from 'lucide-react-native';
 import { V6Colors, V6Radii, V6Shadows } from '../../../src/constants/theme';
 import TermsAndConditions from './TermsAndConditions';
+import { useAuthLayout } from '../../../src/hooks/useAuthLayout';
 
 const C = {
   ...V6Colors,
@@ -105,6 +106,7 @@ export default function GoogleSPDetailsScreen({
   onBack,
   onComplete,
 }: GoogleSPDetailsScreenProps) {
+  const layout = useAuthLayout();
   const [termsMode, setTermsMode] = useState<TermsMode>(null);
 
   const [categoryId, setCategoryId] = useState<number | null>(null);
@@ -183,7 +185,7 @@ export default function GoogleSPDetailsScreen({
       >
         <ScrollView
           style={styles.flex}
-          contentContainerStyle={styles.scrollContent}
+          contentContainerStyle={[styles.scrollContent, { paddingTop: layout.paddingTop, paddingBottom: layout.paddingBottom }]}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
         >

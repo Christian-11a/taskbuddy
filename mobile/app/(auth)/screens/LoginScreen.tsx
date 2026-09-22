@@ -27,6 +27,7 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import { Eye, EyeOff } from 'lucide-react-native';
 import { V6Colors, V6Radii, V6Shadows } from '../../../src/constants/theme';
+import { useAuthLayout } from '../../../src/hooks/useAuthLayout';
 
 const C = V6Colors;
 
@@ -120,6 +121,8 @@ export default function LoginScreen({
   const [submitting, setSubmitting] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const layout = useAuthLayout();
+  const cs = layout.compact ? compactStyles : null;
 
   // A Google sign-in can fail after this screen has been unmounted — or resume
   // and fail on the next launch, before it is mounted at all — so that failure
@@ -183,7 +186,10 @@ export default function LoginScreen({
   const scrollContent = (
     <ScrollView
       style={styles.flex}
-      contentContainerStyle={styles.loginContent}
+      contentContainerStyle={[
+        styles.loginContent,
+        { paddingTop: layout.paddingTop, paddingBottom: layout.paddingBottom },
+      ]}
       // "handled" lets taps on buttons/links still register while any other
       // tap outside an input bubbles up and dismisses the keyboard (fixes #4).
       keyboardShouldPersistTaps="always"
@@ -197,13 +203,13 @@ export default function LoginScreen({
     >
       {/* Logo */}
       <View style={styles.logoSection}>
-        <Image source={require('../../../assets/taskbuddy-logo.png')} style={styles.logoMark} resizeMode="contain" />
-        <Text style={styles.logoText}>TaskBuddy</Text>
+        <Image source={require('../../../assets/taskbuddy-logo.png')} style={[styles.logoMark, cs?.logoMark]} resizeMode="contain" />
+        <Text style={[styles.logoText, cs?.logoText]}>TaskBuddy</Text>
         <Text style={styles.tagline}>Hire with confidence, pay with ease.</Text>
       </View>
 
       {/* Heading */}
-      <View style={styles.headingSection}>
+      <View style={[styles.headingSection, cs?.headingSection]}>
         <Text style={styles.welcomeText}>Welcome!</Text>
         <Text style={styles.subtitleText}>Sign in to your account</Text>
       </View>
@@ -268,7 +274,7 @@ export default function LoginScreen({
       {/* Sign In */}
       <TouchableOpacity
         testID="btn-sign-in"
-        style={[styles.primaryBtn, submitting && styles.primaryBtnDisabled]}
+        style={[styles.primaryBtn, cs?.primaryBtn, submitting && styles.primaryBtnDisabled]}
         activeOpacity={0.85}
         onPress={handleSignIn}
         disabled={submitting}
@@ -281,7 +287,7 @@ export default function LoginScreen({
       </TouchableOpacity>
 
       {/* Divider */}
-      <View style={styles.dividerRow}>
+      <View style={[styles.dividerRow, cs?.dividerRow]}>
         <View style={styles.dividerLine} />
         <Text style={styles.dividerText}>or</Text>
         <View style={styles.dividerLine} />
@@ -290,7 +296,7 @@ export default function LoginScreen({
       {/* Google */}
       <TouchableOpacity
         testID="btn-google"
-        style={[styles.googleBtn, googleLoading && styles.primaryBtnDisabled]}
+        style={[styles.googleBtn, cs?.googleBtn, googleLoading && styles.primaryBtnDisabled]}
         activeOpacity={0.85}
         onPress={handleGoogleSignIn}
         disabled={googleLoading || submitting}
@@ -362,8 +368,6 @@ const styles = StyleSheet.create({
     flexGrow: 1,
     justifyContent: 'center',
     paddingHorizontal: 30,
-    paddingTop: 96,
-    paddingBottom: 40,
   },
 
   // Logo — matches .logo-mark (46x52)
@@ -467,4 +471,15 @@ const styles = StyleSheet.create({
   signUpRow: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center' },
   signUpPrompt: { fontFamily: 'Inter', fontSize: 15.5, fontWeight: '400', color: C.ink400 },
   signUpLink: { fontFamily: 'Inter', fontSize: 15.5, fontWeight: '700', color: C.cyan800 },
+});
+
+// Short screens (small phones, 3-button Android nav): trims vertical space so
+// the whole form fits without scrolling.
+const compactStyles = StyleSheet.create({
+  logoMark: { width: 64, height: 72 },
+  logoText: { fontSize: 26, marginTop: 6 },
+  headingSection: { marginTop: 14 },
+  primaryBtn: { marginBottom: 12 },
+  dividerRow: { marginBottom: 12 },
+  googleBtn: { marginBottom: 16 },
 });

@@ -21,6 +21,7 @@
  */
 
 import React, { useState } from 'react';
+import { useRetainedScroll } from '../../../src/hooks/useRetainedState';
 import {
   ScrollView,
   StyleSheet,
@@ -64,6 +65,8 @@ interface SPProfileScreenProps {
 }
 
 export default function SPProfileScreen({ onNavigate, onLogout, onBack }: SPProfileScreenProps) {
+  // Coming back from Settings/Edit Profile keeps the list where it was.
+  const scroll = useRetainedScroll('sp.profile');
   const { profile, providerProfile } = useAuth();
   const [confirmLogoutVisible, setConfirmLogoutVisible] = useState(false);
 
@@ -125,6 +128,7 @@ export default function SPProfileScreen({ onNavigate, onLogout, onBack }: SPProf
       </View>
 
       <ScrollView
+        {...scroll}
         style={styles.body}
         contentContainerStyle={styles.bodyContent}
         showsVerticalScrollIndicator={false}

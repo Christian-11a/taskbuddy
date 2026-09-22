@@ -12,7 +12,8 @@
  * All/Active/Upcoming/Completed filter over assigned jobs only.
  */
 
-import React, { useState } from 'react';
+import React from 'react';
+import { useRetainedScroll, useRetainedState } from '../../../src/hooks/useRetainedState';
 import {
   ActivityIndicator,
   ScrollView,
@@ -64,7 +65,9 @@ interface SPMyJobsScreenProps {
 }
 
 export default function SPMyJobsScreen({ onNavigate }: SPMyJobsScreenProps) {
-  const [tab, setTab] = useState<Tab>('Applications');
+  // Retained so going back from a job lands on the filter it was opened from.
+  const [tab, setTab] = useRetainedState<Tab>('sp.myWork.tab', 'Applications');
+  const scroll = useRetainedScroll(`sp.myWork.${tab}`);
 
   const { data: applications, loading: loadingApps } = useAsyncData(
     () => api.myApplications() as Promise<ApplicationRow[]>,
@@ -102,7 +105,7 @@ export default function SPMyJobsScreen({ onNavigate }: SPMyJobsScreenProps) {
         ))}
       </View>
 
-      <ScrollView style={styles.body} contentContainerStyle={styles.bodyContent} showsVerticalScrollIndicator={false}>
+      <ScrollView key={tab} {...scroll} style={styles.body} contentContainerStyle={styles.bodyContent} showsVerticalScrollIndicator={false}>
         {loading && <ActivityIndicator style={{ marginTop: 30 }} color={C.cyan700} />}
 
         {tab === 'Applications' && !loading && (

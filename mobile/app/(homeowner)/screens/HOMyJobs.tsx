@@ -17,7 +17,8 @@
  * long it has been up, and who is doing it.
  */
 
-import React, { useState } from 'react';
+import React from 'react';
+import { useRetainedScroll, useRetainedState } from '../../../src/hooks/useRetainedState';
 import {
   ScrollView,
   StyleSheet,
@@ -25,12 +26,13 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import { ClipboardList, Clock, MapPin, Plus, User } from 'lucide-react-native';
-import { Sizes, Spacing, V6Colors, V6Radii, V6Shadows } from '../../../src/constants/theme';
+import { ClipboardList, Clock, Plus, User } from 'lucide-react-native';
+import { Sizes, Spacing, V6Colors } from '../../../src/constants/theme';
 import { HOScreen } from '../../../src/types/navigation';
 import { useAsyncData } from '../../../src/hooks/useAsyncData';
 import { api } from '../../../src/lib/api';
-import { jobStatusMeta, peso, timeAgo, urgencyMeta } from '../../../src/lib/format';
+import { jobStatusMeta, timeAgo } from '../../../src/lib/format';
+import JobCard from '../../../src/components/JobCard';
 import ScreenSkeleton from '../../../src/components/ScreenSkeleton';
 
 const C = V6Colors;
@@ -71,7 +73,8 @@ interface MyJobsProps {
 }
 
 export default function MyJobs({ onNavigate }: MyJobsProps) {
-  const [activeFilter, setActiveFilter] = useState<FilterTab>('All');
+  const [activeFilter, setActiveFilter] = useRetainedState<FilterTab>('ho.myJobs.filter', 'All');
+  const scroll = useRetainedScroll(`ho.myJobs.${activeFilter}`);
   const { data, loading, error } = useAsyncData(() => api.myJobs(), [], 'ho-jobs');
   const jobs = data ?? [];
 
@@ -123,6 +126,8 @@ export default function MyJobs({ onNavigate }: MyJobsProps) {
 
       {/* Job list */}
       <ScrollView
+        key={activeFilter}
+        {...scroll}
         style={styles.body}
         contentContainerStyle={styles.bodyContent}
         contentInsetAdjustmentBehavior="automatic"
@@ -140,53 +145,26 @@ export default function MyJobs({ onNavigate }: MyJobsProps) {
           </View>
         )}
 
-        {filtered.map((job, index) => {
-          const meta = jobStatusMeta(job.status);
-          const urgency = urgencyMeta(job.urgency);
-          return (
-            <TouchableOpacity
-              key={job.id}
-              testID={`my-jobs-card-${index}`}
-              style={styles.jobCard}
-              onPress={() => onNavigate('Job Detail', job.id)}
-              activeOpacity={0.9}
-            >
-              <View style={styles.jobTopRow}>
-                <Text style={styles.jobTitle} numberOfLines={1}>{job.title}</Text>
-                {job.budget != null && <Text style={styles.jobPrice}>{peso(job.budget)}</Text>}
-              </View>
-
-              <View style={styles.jobMetaRow}>
-                <MapPin size={14} color={C.ink400} />
-                <Text style={styles.jobMeta} numberOfLines={1}>{job.address}</Text>
-              </View>
-
-              <View style={styles.pillRow}>
-                <View style={[styles.pill, { backgroundColor: meta.bg }]}>
-                  <View style={[styles.statusDot, { backgroundColor: meta.color }]} />
-                  <Text style={[styles.pillText, { color: meta.color }]}>{meta.label}</Text>
-                </View>
-                <View style={[styles.pill, { backgroundColor: urgency.bg }]}>
-                  <Text style={[styles.pillText, { color: urgency.color }]}>{urgency.label}</Text>
-                </View>
-              </View>
-
-              <View style={styles.jobBottomRow}>
-                <View style={styles.jobFootItem}>
-                  <User size={13} color={C.ink400} />
-                  <Text style={styles.jobProvider} numberOfLines={1}>
-                    {job.assigned_provider?.full_name ?? 'No provider yet'}
-                  </Text>
-                </View>
-                <View style={styles.jobFootItem}>
-                  <Clock size={13} color={C.ink400} />
-                  {/* Elapsed since posting — how long this has been waiting. */}
-                  <Text style={styles.jobElapsed}>{timeAgo(job.posted_at)}</Text>
-                </View>
-              </View>
-            </TouchableOpacity>
-          );
-        })}
+        {filtered.map((job, index) => (
+          <JobCard
+            key={job.id}
+            testID={`my-jobs-card-${index}`}
+            title={job.title}
+            budget={job.budget}
+            address={job.address}
+            status={jobStatusMeta(job.status)}
+            urgency={job.urgency}
+            footer={[
+              {
+                icon: <User size={13} color={C.ink400} />,
+                text: job.assigned_provider?.full_name ?? 'No provider yet',
+              },
+              // Elapsed since posting — how long this has been waiting.
+              { icon: <Clock size={13} color={C.ink400} />, text: timeAgo(job.posted_at) },
+            ]}
+            onPress={() => onNavigate('Job Detail', job.id)}
+          />
+        ))}
 
         <View style={{ height: 20 }} />
       </ScrollView>
@@ -226,32 +204,6 @@ const styles = StyleSheet.create({
 
   body: { flex: 1 },
   bodyContent: { paddingHorizontal: Spacing.screenH, paddingTop: 16, paddingBottom: 20 },
-
-  jobCard: {
-    backgroundColor: C.white, borderRadius: V6Radii.cardSm,
-    marginBottom: 10, padding: 15,
-    borderWidth: 1, borderColor: C.line,
-    ...V6Shadows.sm,
-  },
-  jobTopRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8, marginBottom: 5 },
-  jobTitle: { color: C.ink900, fontSize: 15.5, fontWeight: '800', fontFamily: 'Inter', flex: 1 },
-  jobPrice: { color: C.ink900, fontSize: 16, fontWeight: '800', fontFamily: 'Inter' },
-  jobMetaRow: { flexDirection: 'row', alignItems: 'center', gap: 5, marginBottom: 10 },
-  jobMeta: { color: C.ink400, fontSize: 12.5, fontFamily: 'Inter', flex: 1 },
-  pillRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 11 },
-  pill: {
-    flexDirection: 'row', alignItems: 'center', gap: 5,
-    paddingHorizontal: 9, paddingVertical: 5, borderRadius: 999,
-  },
-  pillText: { fontSize: 11.5, fontWeight: '800', fontFamily: 'Inter' },
-  jobBottomRow: {
-    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 10,
-    borderTopWidth: 1, borderTopColor: '#f1f4f6', paddingTop: 10,
-  },
-  jobFootItem: { flexDirection: 'row', alignItems: 'center', gap: 5, flexShrink: 1 },
-  statusDot: { width: 7, height: 7, borderRadius: 4 },
-  jobProvider: { color: C.ink500, fontSize: 12.5, fontWeight: '600', fontFamily: 'Inter', flexShrink: 1 },
-  jobElapsed: { color: C.ink400, fontSize: 12, fontFamily: 'Inter' },
 
   stateText: { color: C.ink500, fontSize: 16.5, fontFamily: 'Inter', textAlign: 'center', marginTop: 30 },
   emptyState: { alignItems: 'center', paddingVertical: 48, paddingHorizontal: 24 },

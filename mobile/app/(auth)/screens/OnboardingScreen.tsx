@@ -18,6 +18,7 @@ import {
 } from 'react-native';
 import { Shield, Sparkles, Wallet } from 'lucide-react-native';
 import { V6Colors, V6Radii, V6Shadows } from '../../../src/constants/theme';
+import { useAuthLayout } from '../../../src/hooks/useAuthLayout';
 
 const { width: W } = Dimensions.get('window');
 const C = V6Colors;
@@ -64,6 +65,7 @@ interface OnboardingScreenProps {
 }
 
 export default function OnboardingScreen({ onFinish, onLogin }: OnboardingScreenProps) {
+  const layout = useAuthLayout();
   const [currentIndex, setCurrentIndex] = useState(0);
   const flatListRef = useRef<FlatList>(null);
 
@@ -101,7 +103,7 @@ export default function OnboardingScreen({ onFinish, onLogin }: OnboardingScreen
   );
 
   return (
-    <View style={styles.screen}>
+    <View style={[styles.screen, { paddingTop: layout.paddingTop, paddingBottom: layout.paddingBottom }]}>
       <View style={styles.skipRow}>
         <TouchableOpacity style={styles.skipBtn} onPress={handleSkip} activeOpacity={0.8}>
           <Text style={styles.skipText}>Skip</Text>
@@ -149,7 +151,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'flex-end',
     paddingHorizontal: 20,
-    paddingTop: 56,
   },
   skipBtn: {
     backgroundColor: C.ink50,
@@ -167,7 +168,7 @@ const styles = StyleSheet.create({
   slide: {
     width: W,
     paddingHorizontal: 24,
-    paddingTop: 70,
+    paddingTop: 40,
     alignItems: 'center',
   },
 
@@ -217,7 +218,6 @@ const styles = StyleSheet.create({
 
   bottomBar: {
     paddingHorizontal: 24,
-    paddingBottom: 32,
     paddingTop: 16,
     alignItems: 'center',
     gap: 16,
