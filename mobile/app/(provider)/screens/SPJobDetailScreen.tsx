@@ -54,6 +54,9 @@ import { useAuth } from '../../../src/context/AuthContext';
 import { useAsyncData } from '../../../src/hooks/useAsyncData';
 import { api, ApiError, Job, JobTask } from '../../../src/lib/api';
 import { distanceLabel, peso, shortDate } from '../../../src/lib/format';
+import ProposalModal from '../../../src/components/ProposalModal';
+import AcceptBookingModal, { type AcceptLocation } from '../../../src/components/AcceptBookingModal';
+import { showToast } from '../../../src/components/Toast';
 import DeclineBookingModal from '../../../src/components/DeclineBookingModal';
 
 interface MyApplication {
@@ -89,6 +92,8 @@ export default function SPJobDetailScreen({ jobId, onBack, onNavigate }: SPJobDe
 
   const [busy, setBusy] = useState(false);
   const [declineOpen, setDeclineOpen] = useState(false);
+  const [proposalOpen, setProposalOpen] = useState(false);
+  const [acceptOpen, setAcceptOpen] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   // Which checklist row is mid-flight, so only that row shows a spinner.
   const [pendingTaskId, setPendingTaskId] = useState<string | null>(null);
@@ -125,6 +130,43 @@ export default function SPJobDetailScreen({ jobId, onBack, onNavigate }: SPJobDe
       if (e instanceof ApiError && e.code === 'verification_required') {
         void refreshProfile();
       }
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  // The two dialogs keep their own error line, so they run their request
+  // here rather than through runAction (which reports under the buttons).
+  const submitProposal = async (message: string) => {
+    if (!job) return;
+    setBusy(true);
+    setActionError(null);
+    try {
+      await api.applyToJob(job.id, message || undefined);
+      setProposalOpen(false);
+      showToast('Proposal sent', 'success');
+      reload();
+    } catch (e) {
+      setActionError(errorMessage(e));
+      if (e instanceof ApiError && e.code === 'verification_required') {
+        void refreshProfile();
+      }
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const confirmAccept = async (location: AcceptLocation) => {
+    if (!job) return;
+    setBusy(true);
+    setActionError(null);
+    try {
+      await api.acceptJob(job.id, location);
+      setAcceptOpen(false);
+      showToast('Booking confirmed', 'success');
+      reload();
+    } catch (e) {
+      setActionError(errorMessage(e));
     } finally {
       setBusy(false);
     }
@@ -321,16 +363,21 @@ export default function SPJobDetailScreen({ jobId, onBack, onNavigate }: SPJobDe
 
           {/* Actions — matches .detail-action-bar */}
           <View style={styles.actionBar}>
-            {!!actionError && <Text style={styles.actionError}>{actionError}</Text>}
+            {!!actionError && !proposalOpen && !acceptOpen && !declineOpen && (
+              <Text style={styles.actionError}>{actionError}</Text>
+            )}
 
             {isBookingRequest && (
               <TouchableOpacity
                 style={styles.primaryBtn}
-                onPress={() => runAction(() => api.acceptJob(job.id))}
+                onPress={() => {
+                  setActionError(null);
+                  setAcceptOpen(true);
+                }}
                 activeOpacity={0.85}
                 disabled={busy}
               >
-                <Text style={styles.primaryBtnText}>{busy ? 'Accepting…' : 'Accept Booking'}</Text>
+                <Text style={styles.primaryBtnText}>Accept Booking</Text>
               </TouchableOpacity>
             )}
 
@@ -374,11 +421,15 @@ export default function SPJobDetailScreen({ jobId, onBack, onNavigate }: SPJobDe
             {!isAssignedToMe && !myApplication && canApply && isVerified && (
               <TouchableOpacity
                 style={styles.primaryBtn}
-                onPress={() => runAction(() => api.applyToJob(job.id))}
+                onPress={() => {
+                  setActionError(null);
+                  setProposalOpen(true);
+                }}
                 activeOpacity={0.85}
                 disabled={busy}
+                testID="btn-submit-proposal"
               >
-                <Text style={styles.primaryBtnText}>{busy ? 'Sending…' : 'Submit Proposal'}</Text>
+                <Text style={styles.primaryBtnText}>Submit Proposal</Text>
               </TouchableOpacity>
             )}
             {!isAssignedToMe && !myApplication && !canApply && (
@@ -411,6 +462,31 @@ export default function SPJobDetailScreen({ jobId, onBack, onNavigate }: SPJobDe
           <View style={{ height: 10 }} />
         </ScrollView>
       )}
+
+      <ProposalModal
+        visible={proposalOpen}
+        jobTitle={job?.title}
+        busy={busy}
+        error={proposalOpen ? actionError : null}
+        onSubmit={(message) => void submitProposal(message)}
+        onCancel={() => {
+          setProposalOpen(false);
+          setActionError(null);
+        }}
+      />
+
+      <AcceptBookingModal
+        visible={acceptOpen}
+        jobTitle={job?.title}
+        defaultAddress={profile?.address}
+        busy={busy}
+        error={acceptOpen ? actionError : null}
+        onConfirm={(location) => void confirmAccept(location)}
+        onCancel={() => {
+          setAcceptOpen(false);
+          setActionError(null);
+        }}
+      />
 
       <DeclineBookingModal
         visible={declineOpen}

@@ -5,11 +5,13 @@
  * white .topbar (not a colored hero), .job-tabs underline-style filter tabs,
  * and individual `.card` rows (not a single merged list surface).
  *
- * The mockup's 3 tabs are Applications / Active / Completed — "Applications"
- * shows the provider's own submitted proposals (pending/hired/not selected),
- * which this app already has a real endpoint for (`api.myApplications()`)
- * but had never wired up anywhere. That's used here instead of the previous
- * All/Active/Upcoming/Completed filter over assigned jobs only.
+ * Three tabs, and a job is only ever in one of them:
+ *   Applications — proposals still in play or turned down (pending, not
+ *     selected, withdrawn). Once a client hires this provider the job moves
+ *     to Active, so it no longer shows here as "Hired" at the same time.
+ *   Active — hired work: awaiting this provider's confirmation, confirmed,
+ *     or in progress, labelled from the provider's side.
+ *   Completed.
  */
 
 import React from 'react';
@@ -22,14 +24,15 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import { Briefcase, FileText, MapPin } from 'lucide-react-native';
-import { Sizes, Spacing, V6Colors, V6Radii, V6Shadows } from '../../../src/constants/theme';
+import { Briefcase, CalendarDays, FileText } from 'lucide-react-native';
+import { Sizes, Spacing, V6Colors } from '../../../src/constants/theme';
+import JobCard from '../../../src/components/JobCard';
 
 const C = V6Colors;
 import { SPScreen } from '../../../src/types/navigation';
 import { useAsyncData } from '../../../src/hooks/useAsyncData';
 import { api } from '../../../src/lib/api';
-import { jobStatusMeta } from '../../../src/lib/format';
+import { providerJobStatusMeta, shortDate } from '../../../src/lib/format';
 
 const TABS = ['Applications', 'Active', 'Completed'] as const;
 type Tab = (typeof TABS)[number];
@@ -43,21 +46,16 @@ interface ApplicationRow {
     status: string;
     urgency: string;
     address: string;
+    budget?: number | null;
     service_categories?: { name: string } | null;
   };
 }
 
-const APP_STATUS_LABEL: Record<ApplicationRow['status'], string> = {
-  pending: 'Pending',
-  accepted: 'Hired',
-  rejected: 'Not selected',
-  withdrawn: 'Withdrawn',
-};
-const APP_STATUS_COLOR: Record<ApplicationRow['status'], string> = {
-  pending: '#9a6700',
-  accepted: '#15803d',
-  rejected: '#64748b',
-  withdrawn: '#64748b',
+const APP_STATUS: Record<ApplicationRow['status'], { label: string; color: string; bg: string }> = {
+  pending: { label: 'Proposal sent', color: '#9a6700', bg: '#FFF7ED' },
+  accepted: { label: 'Hired', color: '#15803d', bg: '#F0FDF4' },
+  rejected: { label: 'Not selected', color: '#64748b', bg: '#F1F5F9' },
+  withdrawn: { label: 'Withdrawn', color: '#64748b', bg: '#F1F5F9' },
 };
 
 interface SPMyJobsScreenProps {
@@ -86,6 +84,8 @@ export default function SPMyJobsScreen({ onNavigate }: SPMyJobsScreenProps) {
     ['assigned', 'confirmed', 'in_progress'].includes(j.status),
   );
   const completedJobs = (assigned ?? []).filter((j) => j.status === 'completed');
+  // Hired proposals live under Active from here on (see header comment).
+  const openApplications = (applications ?? []).filter((a) => a.status !== 'accepted');
   const loading = tab === 'Applications' ? loadingApps : loadingAssigned;
 
   return (
@@ -109,32 +109,28 @@ export default function SPMyJobsScreen({ onNavigate }: SPMyJobsScreenProps) {
         {loading && <ActivityIndicator style={{ marginTop: 30 }} color={C.cyan700} />}
 
         {tab === 'Applications' && !loading && (
-          (applications ?? []).length === 0 ? (
+          openApplications.length === 0 ? (
             <View style={styles.emptyState}>
               <FileText size={30} color={C.ink300} />
-              <Text style={styles.emptyTitle}>No proposals yet</Text>
-              <Text style={styles.emptyText}>Find an open job and submit a proposal.</Text>
+              <Text style={styles.emptyTitle}>No open proposals</Text>
+              <Text style={styles.emptyText}>
+                Find an open job and submit a proposal. Jobs you're hired for appear under Active.
+              </Text>
             </View>
           ) : (
-            (applications ?? []).map((app) => (
-              <TouchableOpacity
+            openApplications.map((app) => (
+              <JobCard
                 key={app.id}
-                style={styles.card}
+                title={app.jobs.title}
+                budget={app.jobs.budget}
+                address={app.jobs.address}
+                status={APP_STATUS[app.status]}
+                urgency={app.jobs.urgency}
+                pills={app.jobs.service_categories?.name
+                  ? [{ label: app.jobs.service_categories.name, color: C.ink700, bg: C.ink50 }]
+                  : []}
                 onPress={() => onNavigate('Job Detail', app.jobs.id)}
-                activeOpacity={0.85}
-              >
-                <View style={styles.cardRow}>
-                  <View style={{ flex: 1, minWidth: 0 }}>
-                    <Text style={styles.cardTitle} numberOfLines={1}>{app.jobs.title}</Text>
-                    <Text style={styles.cardSub}>{app.jobs.service_categories?.name ?? ''}</Text>
-                  </View>
-                  <View style={[styles.statusPill, { borderColor: APP_STATUS_COLOR[app.status] }]}>
-                    <Text style={[styles.statusPillText, { color: APP_STATUS_COLOR[app.status] }]}>
-                      {APP_STATUS_LABEL[app.status]}
-                    </Text>
-                  </View>
-                </View>
-              </TouchableOpacity>
+              />
             ))
           )
         )}
@@ -147,30 +143,21 @@ export default function SPMyJobsScreen({ onNavigate }: SPMyJobsScreenProps) {
               <Text style={styles.emptyText}>Jobs will move here after a client hires you.</Text>
             </View>
           ) : (
-            (tab === 'Active' ? activeJobs : completedJobs).map((job) => {
-              const meta = jobStatusMeta(job.status);
-              return (
-                <TouchableOpacity
-                  key={job.id}
-                  style={styles.card}
-                  onPress={() => onNavigate('Job Detail', job.id)}
-                  activeOpacity={0.85}
-                >
-                  <View style={styles.cardRow}>
-                    <View style={{ flex: 1, minWidth: 0 }}>
-                      <Text style={styles.cardTitle} numberOfLines={1}>{job.title}</Text>
-                      <View style={styles.cardLocationRow}>
-                        <MapPin size={13} color={C.ink400} />
-                        <Text style={styles.cardSub} numberOfLines={1}>{job.address}</Text>
-                      </View>
-                    </View>
-                    <View style={[styles.statusPill, { backgroundColor: meta.bg, borderColor: meta.bg }]}>
-                      <Text style={[styles.statusPillText, { color: meta.color }]}>{meta.label}</Text>
-                    </View>
-                  </View>
-                </TouchableOpacity>
-              );
-            })
+            (tab === 'Active' ? activeJobs : completedJobs).map((job) => (
+              <JobCard
+                key={job.id}
+                title={job.title}
+                budget={job.budget}
+                address={job.address}
+                status={providerJobStatusMeta(job.status)}
+                urgency={job.urgency}
+                footer={[{
+                  icon: <CalendarDays size={13} color={C.ink400} />,
+                  text: job.scheduled_at ? shortDate(job.scheduled_at) : 'Flexible schedule',
+                }]}
+                onPress={() => onNavigate('Job Detail', job.id)}
+              />
+            ))
           )
         )}
 
@@ -205,17 +192,4 @@ const styles = StyleSheet.create({
   emptyTitle: { color: C.ink800, fontSize: 16, fontWeight: '700', fontFamily: 'Inter', marginTop: 10, marginBottom: 4 },
   emptyText: { color: C.ink400, fontSize: 14, fontFamily: 'Inter', textAlign: 'center', lineHeight: 17 },
 
-  card: {
-    backgroundColor: C.white, borderWidth: 1, borderColor: C.line,
-    borderRadius: V6Radii.card, padding: 15, marginBottom: 11, ...V6Shadows.sm,
-  },
-  cardRow: { flexDirection: 'row', justifyContent: 'space-between', gap: 10 },
-  cardTitle: { fontSize: 14.5, fontWeight: '800', color: C.ink900, fontFamily: 'Inter' },
-  cardLocationRow: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 4 },
-  cardSub: { fontSize: 12, color: C.ink400, fontFamily: 'Inter', marginTop: 4 },
-  statusPill: {
-    alignSelf: 'flex-start', minHeight: 24, justifyContent: 'center',
-    paddingHorizontal: 9, borderRadius: 999, borderWidth: 1,
-  },
-  statusPillText: { fontSize: 11, fontWeight: '800', fontFamily: 'Inter' },
 });

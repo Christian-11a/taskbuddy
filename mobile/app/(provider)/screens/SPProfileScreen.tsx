@@ -4,7 +4,8 @@
  * v6 design: matches taskbuddy_UI_update.html's #sp-profile screen — a dark
  * navy `.profile-hero.dark` gradient (same gradient as SPHomeScreen's hero,
  * not the teal gradient homeowner profile uses) with a squircle avatar and a
- * back button, a 2-stat row (Jobs Done, Rating), and a .navrow-style menu
+ * back button, a 3-stat row (Jobs Done, Rating, Active — the one place
+ * these show; the Feed used to repeat them), and a .navrow-style menu
  * list. Not a bottom-nav tab (matches the mockup — reached via Feed's
  * avatar button instead).
  *
@@ -41,6 +42,7 @@ import {
   Settings as SettingsIcon,
   ShieldAlert,
   ShieldCheck,
+  Wrench,
 } from 'lucide-react-native';
 import ConfirmationModal from '../../../src/components/ConfirmationModal';
 import { Sizes, Spacing, V6Colors, V6Radii, V6Shadows } from '../../../src/constants/theme';
@@ -49,10 +51,13 @@ const C = V6Colors;
 import { SPScreen } from '../../../src/types/navigation';
 import { useAuth } from '../../../src/context/AuthContext';
 import OwnAvatar from '../../../src/components/OwnAvatar';
+import { useAsyncData } from '../../../src/hooks/useAsyncData';
+import { api } from '../../../src/lib/api';
 
 const MENU_ITEMS: { label: string; icon: typeof Pencil; screen: SPScreen }[] = [
   { label: 'Edit Profile', icon: Pencil, screen: 'Edit Profile' },
   { label: 'Get Verified', icon: ShieldCheck, screen: 'Verification' },
+  { label: 'My Services', icon: Wrench, screen: 'My Services' },
   { label: 'Payouts', icon: Landmark, screen: 'Payouts' },
   { label: 'Settings', icon: SettingsIcon, screen: 'Settings' },
   { label: 'Help & Support', icon: CircleHelp, screen: 'Help & Support' },
@@ -76,6 +81,11 @@ export default function SPProfileScreen({ onNavigate, onLogout, onBack }: SPProf
   const ratingLabel = rating != null ? Number(rating).toFixed(1) : '—';
   const category = providerProfile?.service_categories?.name;
   const isVerified = !!providerProfile?.is_verified;
+  // Hired, confirmed or under way — same definition My Work's Active tab uses.
+  const active = useAsyncData(async () => {
+    const jobs = await api.assignedJobs();
+    return jobs.filter((j) => ['assigned', 'confirmed', 'in_progress'].includes(j.status)).length;
+  }, [], 'sp-profile-active');
 
   return (
     <View style={styles.screen}>
@@ -124,6 +134,11 @@ export default function SPProfileScreen({ onNavigate, onLogout, onBack }: SPProf
         <View style={styles.statCard}>
           <Text style={styles.statValue}>{ratingLabel}</Text>
           <Text style={styles.statLabel}>Rating</Text>
+        </View>
+        <View style={styles.statDivider} />
+        <View style={styles.statCard}>
+          <Text style={styles.statValue}>{active.data ?? '—'}</Text>
+          <Text style={styles.statLabel}>Active</Text>
         </View>
       </View>
 

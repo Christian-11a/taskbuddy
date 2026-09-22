@@ -8,19 +8,17 @@
  * `.feed-list-surface` of flat `.feed-job-row` items (not individually
  * shadowed cards).
  *
- * Deviation: the mockup's hero shows no earnings/stats at all — this app
- * has real stats (jobs done, rating, active jobs) and an availability
- * toggle the mockup doesn't have, so those are kept but moved out of the
- * hero into a compact card row + status bar below it, matching the
- * mockup's `.flow-banner`/summary-card patterns instead of cluttering the
- * hero. The mockup's "For You"/"All Jobs" recommendation-score tabs are
- * dropped — this app has no job-match-scoring backend to power them.
+ * Jobs Done / Rating / Active live on the Profile screen, not here (QA: they
+ * were shown twice). The availability switch stays, under its own "Your
+ * status" heading, because it decides whether this feed brings in work.
+ * Urgency chips filter the feed. The mockup's "For You"/"All Jobs"
+ * recommendation-score tabs are dropped — there's no match-scoring backend.
  *
  * Two things run down this screen, and they are not the same thing:
  *
- *   Booking requests — jobs a homeowner has already hired this provider for
+ *   Booking requests — jobs a client has already hired this provider for
  *   (status 'assigned'), waiting on an answer. These are commitments with a
- *   homeowner on the other end, so they sit above everything else and carry
+ *   client on the other end, so they sit above everything else and carry
  *   Accept/Decline inline.
  *
  *   The job feed — open work nobody has been hired for yet. Filtered to the
@@ -34,6 +32,7 @@ import {
   ActivityIndicator,
   ScrollView,
   StyleSheet,
+  Switch,
   Text,
   TextInput,
   TouchableOpacity,
@@ -43,12 +42,11 @@ import { LinearGradient } from 'expo-linear-gradient';
 import {
   Bell,
   CalendarDays,
-  CheckCircle2,
   Inbox,
   MapPin,
+  Navigation,
   Search,
   ShieldCheck,
-  Star,
   TriangleAlert,
   Wallet,
 } from 'lucide-react-native';
@@ -62,6 +60,17 @@ import { api, ApiError, Job } from '../../../src/lib/api';
 import { distanceLabel, peso, shortDate } from '../../../src/lib/format';
 import DeclineBookingModal from '../../../src/components/DeclineBookingModal';
 import OwnAvatar from '../../../src/components/OwnAvatar';
+import JobCard from '../../../src/components/JobCard';
+import AcceptBookingModal, { type AcceptLocation } from '../../../src/components/AcceptBookingModal';
+import { useRetainedState } from '../../../src/hooks/useRetainedState';
+
+const URGENCY_FILTERS = [
+  { key: 'all', label: 'All' },
+  { key: 'urgent', label: 'Urgent' },
+  { key: 'normal', label: 'Normal' },
+  { key: 'flexible', label: 'Flexible' },
+] as const;
+type UrgencyFilter = (typeof URGENCY_FILTERS)[number]['key'];
 
 /** Feed radius when the provider has not set one on their profile. */
 const DEFAULT_RADIUS_KM = 50;
@@ -92,6 +101,8 @@ export default function SPHomeScreen({ onNavigate }: SPHomeScreenProps) {
   const [actingOn, setActingOn] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [decliningJob, setDecliningJob] = useState<Job | null>(null);
+  const [acceptingJob, setAcceptingJob] = useState<Job | null>(null);
+  const [urgency, setUrgency] = useRetainedState<UrgencyFilter>('sp.feed.urgency', 'all');
   useEffect(() => {
     if (providerProfile) setAvailable(providerProfile.is_available);
   }, [providerProfile]);
@@ -99,12 +110,13 @@ export default function SPHomeScreen({ onNavigate }: SPHomeScreenProps) {
   const errorMessage = (e: unknown) =>
     e instanceof ApiError ? e.message : 'Something went wrong. Please try again.';
 
-  const acceptBooking = async (job: Job) => {
+  const acceptBooking = async (job: Job, location: AcceptLocation) => {
     if (actingOn) return;
     setActingOn(job.id);
     setActionError(null);
     try {
-      await api.acceptJob(job.id);
+      await api.acceptJob(job.id, location);
+      setAcceptingJob(null);
       reload();
     } catch (e) {
       setActionError(errorMessage(e));
@@ -144,17 +156,14 @@ export default function SPHomeScreen({ onNavigate }: SPHomeScreenProps) {
   };
 
   const name = profile?.full_name ?? '';
-  const rating = providerProfile?.cached_avg_rating;
-  const jobsDone = providerProfile?.cached_completed_jobs ?? 0;
   // Hired and waiting on this provider to answer — the top of the screen.
   const bookingRequests = (data?.assigned ?? []).filter((j) => j.status === 'assigned');
-  const activeCount = (data?.assigned ?? []).filter((j) =>
-    ['assigned', 'confirmed', 'in_progress'].includes(j.status),
-  ).length;
   const summary = data?.summary;
   const q = search.trim().toLowerCase();
   const availableJobs = (data?.jobs ?? []).filter(
-    (job) => !q || job.title.toLowerCase().includes(q) || (job.service_categories?.name ?? '').toLowerCase().includes(q),
+    (job) =>
+      (urgency === 'all' || job.urgency === urgency) &&
+      (!q || job.title.toLowerCase().includes(q) || (job.service_categories?.name ?? '').toLowerCase().includes(q)),
   );
   const location = profile?.city || 'Set your location';
 
@@ -208,23 +217,29 @@ export default function SPHomeScreen({ onNavigate }: SPHomeScreenProps) {
             three describe the location-filtered feed below. */}
         <View style={styles.summaryStrip}>
           <View style={styles.summaryItem}>
-            <Search size={15} color="rgba(255,255,255,0.75)" />
+            <View style={styles.summaryLabelRow}>
+              <Search size={14} color="rgba(255,255,255,0.75)" />
+              <Text style={styles.summaryLabel}>Open</Text>
+            </View>
             <Text style={styles.summaryValue}>{summary?.open_count ?? '—'}</Text>
-            <Text style={styles.summaryLabel}>Open</Text>
           </View>
           <View style={styles.summaryDivider} />
           <View style={styles.summaryItem}>
-            <TriangleAlert size={15} color="#fca5a5" />
+            <View style={styles.summaryLabelRow}>
+              <TriangleAlert size={14} color="#fca5a5" />
+              <Text style={styles.summaryLabel}>Urgent</Text>
+            </View>
             <Text style={styles.summaryValue}>{summary?.urgent_count ?? '—'}</Text>
-            <Text style={styles.summaryLabel}>Urgent</Text>
           </View>
           <View style={styles.summaryDivider} />
           <View style={styles.summaryItem}>
-            <Wallet size={15} color="rgba(255,255,255,0.75)" />
+            <View style={styles.summaryLabelRow}>
+              <Wallet size={14} color="rgba(255,255,255,0.75)" />
+              <Text style={styles.summaryLabel}>Potential</Text>
+            </View>
             <Text style={styles.summaryValue} numberOfLines={1}>
               {summary ? peso(summary.potential_payout) : '—'}
             </Text>
-            <Text style={styles.summaryLabel}>Potential</Text>
           </View>
         </View>
       </LinearGradient>
@@ -269,7 +284,7 @@ export default function SPHomeScreen({ onNavigate }: SPHomeScreenProps) {
               </View>
             </View>
 
-            {!!actionError && !decliningJob && (
+            {!!actionError && !decliningJob && !acceptingJob && (
               <Text style={styles.actionError}>{actionError}</Text>
             )}
 
@@ -313,7 +328,7 @@ export default function SPHomeScreen({ onNavigate }: SPHomeScreenProps) {
                     </TouchableOpacity>
                     <TouchableOpacity
                       style={[styles.acceptBtn, busy && styles.btnBusy]}
-                      onPress={() => void acceptBooking(job)}
+                      onPress={() => setAcceptingJob(job)}
                       activeOpacity={0.85}
                       disabled={busy}
                     >
@@ -330,34 +345,28 @@ export default function SPHomeScreen({ onNavigate }: SPHomeScreenProps) {
           </View>
         )}
 
-        {/* Availability toggle (real feature, not in the mockup) */}
-        <TouchableOpacity style={styles.statusBar} onPress={toggleAvailability} activeOpacity={0.8} disabled={togglingAvail}>
+        {/* Availability — decides whether new work is offered to this provider. */}
+        <Text style={styles.sectionHeading}>Your status</Text>
+        <View style={styles.statusBar}>
           <View style={[styles.statusDot, { backgroundColor: available ? '#22c55e' : C.ink300 }]} />
-          <Text style={styles.statusText}>{available ? 'Available for Jobs' : 'Not Available'}</Text>
-          <View style={[styles.statusToggleTrack, !available && styles.statusToggleTrackOff]}>
-            <View style={[styles.statusToggleThumb, !available && styles.statusToggleThumbOff]} />
+          <View style={{ flex: 1 }}>
+            <Text style={styles.statusText}>{available ? 'Available for jobs' : 'Not available'}</Text>
+            <Text style={styles.statusHint}>
+              {available ? 'Clients can invite and hire you.' : "You won't be invited to new jobs."}
+            </Text>
           </View>
-        </TouchableOpacity>
-
-        {/* Stats row (real data, not in the mockup's feed hero) */}
-        <View style={styles.statsRow}>
-          <View style={styles.statCard}>
-            <CheckCircle2 size={18} color={C.cyan700} />
-            <Text style={styles.statValue}>{jobsDone}</Text>
-            <Text style={styles.statLabel}>Jobs Done</Text>
-          </View>
-          <View style={styles.statCard}>
-            <Star size={18} color={C.cyan700} />
-            <Text style={styles.statValue}>{rating != null ? Number(rating).toFixed(1) : 'New'}</Text>
-            <Text style={styles.statLabel}>Rating</Text>
-          </View>
-          <View style={styles.statCard}>
-            <CalendarDays size={18} color={C.cyan700} />
-            <Text style={styles.statValue}>{activeCount}</Text>
-            <Text style={styles.statLabel}>Active</Text>
-          </View>
+          <Switch
+            value={available}
+            onValueChange={() => void toggleAvailability()}
+            disabled={togglingAvail}
+            trackColor={{ false: C.ink100, true: C.cyan600 }}
+            thumbColor={C.white}
+            accessibilityLabel="Available for jobs"
+            testID="toggle-availability"
+          />
         </View>
 
+        <Text style={styles.sectionHeading}>Jobs near you</Text>
         {/* Search — matches .scope-search */}
         <View style={styles.scopeSearch}>
           <Search size={19} color={C.ink400} />
@@ -370,61 +379,73 @@ export default function SPHomeScreen({ onNavigate }: SPHomeScreenProps) {
           />
         </View>
 
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipRow}>
+          {URGENCY_FILTERS.map((f) => {
+            const active = urgency === f.key;
+            return (
+              <TouchableOpacity
+                key={f.key}
+                style={[styles.chip, active && styles.chipActive]}
+                onPress={() => setUrgency(f.key)}
+                activeOpacity={0.8}
+                accessibilityRole="button"
+                accessibilityState={{ selected: active }}
+                testID={`feed-urgency-${f.key}`}
+              >
+                <Text style={[styles.chipText, active && styles.chipTextActive]}>{f.label}</Text>
+              </TouchableOpacity>
+            );
+          })}
+        </ScrollView>
+
         {!data && <ActivityIndicator style={{ marginTop: 20 }} color={C.cyan700} />}
         {data && availableJobs.length === 0 && (
           <View style={styles.emptyState}>
             <Search size={30} color={C.ink300} />
             <Text style={styles.emptyTitle}>No matching jobs</Text>
-            <Text style={styles.emptyText}>Adjust your search to see more opportunities.</Text>
+            <Text style={styles.emptyText}>Adjust your search or urgency filter to see more opportunities.</Text>
           </View>
         )}
 
-        {/* Feed list — matches .feed-list-surface / .feed-job-row */}
-        {availableJobs.length > 0 && (
-          <View style={styles.feedList}>
-            {availableJobs.map((job, i) => {
-              const isUrgent = job.urgency === 'urgent';
-              return (
-                <TouchableOpacity
-                  key={job.id}
-                  style={[styles.feedRow, i < availableJobs.length - 1 && styles.feedRowBorder]}
-                  onPress={() => onNavigate('Job Detail', job.id)}
-                  activeOpacity={0.85}
-                >
-                  <View style={styles.feedRowMain}>
-                    <View style={{ flex: 1, minWidth: 0 }}>
-                      <Text style={styles.feedTitle} numberOfLines={1}>{job.title}</Text>
-                      <View style={styles.feedLocationRow}>
-                        <MapPin size={13} color={C.ink400} />
-                        <Text style={styles.feedLocation} numberOfLines={1}>{job.address}</Text>
-                      </View>
-                    </View>
-                    {job.budget != null && <Text style={styles.feedPrice}>₱{Number(job.budget).toLocaleString()}</Text>}
-                  </View>
-                  <View style={styles.feedFoot}>
-                    <View style={styles.feedSchedule}>
-                      <CalendarDays size={13} color={C.ink500} />
-                      <Text style={styles.feedScheduleText}>
-                        {job.scheduled_at ? shortDate(job.scheduled_at) : 'Flexible schedule'}
-                      </Text>
-                      {!!distanceLabel(job.distance_km) && (
-                        <Text style={styles.feedDistance}>· {distanceLabel(job.distance_km)}</Text>
-                      )}
-                    </View>
-                    {isUrgent ? (
-                      <Text style={styles.urgentInline}>Urgent</Text>
-                    ) : (
-                      <Text style={styles.normalInline}>{job.service_categories?.name ?? ''}</Text>
-                    )}
-                  </View>
-                </TouchableOpacity>
-              );
-            })}
-          </View>
-        )}
+        {/* Feed — the same card clients see for their own jobs. */}
+        {availableJobs.map((job) => (
+          <JobCard
+            key={job.id}
+            title={job.title}
+            budget={job.budget}
+            address={job.address}
+            urgency={job.urgency}
+            pills={job.service_categories?.name
+              ? [{ label: job.service_categories.name, color: C.ink700, bg: C.ink50 }]
+              : []}
+            footer={[
+              {
+                icon: <CalendarDays size={13} color={C.ink400} />,
+                text: job.scheduled_at ? shortDate(job.scheduled_at) : 'Flexible schedule',
+              },
+              ...(distanceLabel(job.distance_km)
+                ? [{ icon: <Navigation size={13} color={C.ink400} />, text: distanceLabel(job.distance_km) }]
+                : []),
+            ]}
+            onPress={() => onNavigate('Job Detail', job.id)}
+          />
+        ))}
 
         <View style={{ height: 20 }} />
       </ScrollView>
+
+      <AcceptBookingModal
+        visible={!!acceptingJob}
+        jobTitle={acceptingJob?.title}
+        defaultAddress={profile?.address}
+        busy={!!acceptingJob && actingOn === acceptingJob.id}
+        error={acceptingJob ? actionError : null}
+        onConfirm={(location) => acceptingJob && void acceptBooking(acceptingJob, location)}
+        onCancel={() => {
+          setAcceptingJob(null);
+          setActionError(null);
+        }}
+      />
 
       <DeclineBookingModal
         visible={!!decliningJob}
@@ -484,7 +505,8 @@ const styles = StyleSheet.create({
   summaryItem: { flex: 1, alignItems: 'center', gap: 3, paddingHorizontal: 4 },
   summaryDivider: { width: 1, alignSelf: 'stretch', backgroundColor: 'rgba(255,255,255,0.12)' },
   summaryValue: { color: C.white, fontSize: 15.5, fontWeight: '800', fontFamily: 'Inter' },
-  summaryLabel: { color: 'rgba(255,255,255,0.6)', fontSize: 11, fontFamily: 'Inter' },
+  summaryLabel: { color: 'rgba(255,255,255,0.7)', fontSize: 11.5, fontFamily: 'Inter', fontWeight: '600' },
+  summaryLabelRow: { flexDirection: 'row', alignItems: 'center', gap: 5 },
 
   requestsBlock: { marginBottom: 14 },
   requestsHeader: { flexDirection: 'row', alignItems: 'center', gap: 7, marginBottom: 9 },
@@ -535,22 +557,15 @@ const styles = StyleSheet.create({
     backgroundColor: C.white, borderWidth: 1, borderColor: C.line, borderRadius: 14, marginBottom: 14,
   },
   statusDot: { width: 8, height: 8, borderRadius: 4 },
-  statusText: { flex: 1, color: C.ink700, fontSize: 14.5, fontWeight: '600', fontFamily: 'Inter' },
-  statusToggleTrack: {
-    width: 40, height: 24, borderRadius: 12, backgroundColor: C.cyan700,
-    justifyContent: 'center', paddingHorizontal: 2,
-  },
-  statusToggleTrackOff: { backgroundColor: C.ink200 },
-  statusToggleThumb: { width: 20, height: 20, borderRadius: 10, backgroundColor: C.white, alignSelf: 'flex-end' },
-  statusToggleThumbOff: { alignSelf: 'flex-start' },
+  statusText: { color: C.ink700, fontSize: 14.5, fontWeight: '700', fontFamily: 'Inter' },
+  statusHint: { color: C.ink400, fontSize: 12.5, fontFamily: 'Inter', marginTop: 1 },
+  sectionHeading: { color: C.ink400, fontSize: 12.5, fontWeight: '800', fontFamily: 'Inter', textTransform: 'uppercase', letterSpacing: 0.6, marginBottom: 8 },
+  chipRow: { gap: 8, paddingBottom: 12 },
+  chip: { borderWidth: 1, borderColor: C.line, backgroundColor: C.white, borderRadius: 999, paddingHorizontal: 14, paddingVertical: 7 },
+  chipActive: { backgroundColor: C.cyan700, borderColor: C.cyan700 },
+  chipText: { color: C.ink700, fontSize: 13, fontWeight: '700', fontFamily: 'Inter' },
+  chipTextActive: { color: C.white },
 
-  statsRow: { flexDirection: 'row', gap: 10, marginBottom: 14 },
-  statCard: {
-    flex: 1, backgroundColor: C.white, borderWidth: 1, borderColor: C.line,
-    borderRadius: 14, paddingVertical: 12, alignItems: 'center', gap: 3,
-  },
-  statValue: { color: C.ink900, fontSize: 17.5, fontWeight: '800', fontFamily: 'Inter' },
-  statLabel: { color: C.ink400, fontSize: 12, fontFamily: 'Inter' },
 
   scopeSearch: {
     flexDirection: 'row', alignItems: 'center', gap: 9,
@@ -563,18 +578,5 @@ const styles = StyleSheet.create({
   emptyTitle: { color: C.ink800, fontSize: 16, fontWeight: '700', fontFamily: 'Inter', marginTop: 10, marginBottom: 4 },
   emptyText: { color: C.ink400, fontSize: 14, fontFamily: 'Inter', textAlign: 'center', lineHeight: 17 },
 
-  feedList: { backgroundColor: C.white, borderWidth: 1, borderColor: C.line, borderRadius: 16, overflow: 'hidden' },
-  feedRow: { padding: 16 },
-  feedRowBorder: { borderBottomWidth: 1, borderBottomColor: '#edf1f4' },
-  feedRowMain: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 14 },
-  feedTitle: { fontSize: 15.5, fontWeight: '800', color: C.ink900, fontFamily: 'Inter' },
-  feedLocationRow: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 5 },
-  feedLocation: { fontSize: 12.5, color: C.ink400, fontFamily: 'Inter', flexShrink: 1 },
-  feedPrice: { fontSize: 18.5, fontWeight: '800', color: C.ink900, fontFamily: 'Inter' },
-  feedFoot: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 12 },
-  feedSchedule: { flexDirection: 'row', alignItems: 'center', gap: 5 },
-  feedScheduleText: { fontSize: 12.5, color: C.ink500, fontWeight: '600', fontFamily: 'Inter' },
-  feedDistance: { fontSize: 12, color: C.ink400, fontFamily: 'Inter' },
   urgentInline: { color: '#b91c1c', fontSize: 11, fontWeight: '800', letterSpacing: 0.5, textTransform: 'uppercase', fontFamily: 'Inter' },
-  normalInline: { fontSize: 11.5, fontWeight: '700', color: C.ink400, fontFamily: 'Inter' },
 });

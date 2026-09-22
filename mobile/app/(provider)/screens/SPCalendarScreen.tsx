@@ -37,10 +37,18 @@ export default function SPCalendarScreen({ onNavigate }: SPCalendarScreenProps) 
   })();
   const [selectedDate, setSelectedDate] = useState<string>(todayKey);
 
-  const now = new Date();
-  const from = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
-  const to = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59).toISOString();
-  const { data, loading, error, reload } = useAsyncData(() => api.bookings({ from, to }), []);
+  // The month on screen, not today's month: paging the calendar used to show
+  // empty months because only the current one was ever fetched.
+  const [visibleMonth, setVisibleMonth] = useState(() => {
+    const d = new Date();
+    return { year: d.getFullYear(), month: d.getMonth() };
+  });
+  const from = new Date(visibleMonth.year, visibleMonth.month, 1).toISOString();
+  const to = new Date(visibleMonth.year, visibleMonth.month + 1, 0, 23, 59, 59).toISOString();
+  const { data, loading, error, reload } = useAsyncData(
+    () => api.bookings({ from, to }),
+    [from, to],
+  );
   const bookings = data ?? [];
 
   const dateKey = (iso: string) => {
@@ -77,6 +85,7 @@ export default function SPCalendarScreen({ onNavigate }: SPCalendarScreenProps) 
           <Calendar
             current={selectedDate}
             onDayPress={(day) => setSelectedDate(day.dateString)}
+            onMonthChange={(m) => setVisibleMonth({ year: m.year, month: m.month - 1 })}
             markedDates={markedDates}
             theme={{
               todayTextColor: C.cyan700,

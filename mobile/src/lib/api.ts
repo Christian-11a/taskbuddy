@@ -258,6 +258,21 @@ export interface ProviderCard {
   profiles?: { full_name: string; avatar_url: string | null; city: string | null } | null;
 }
 
+export type SkillRequestType = 'change_primary' | 'add_secondary';
+
+/** A provider's request to change or add a service (`/skill-requests`). */
+export interface SkillRequest {
+  id: string;
+  type: SkillRequestType;
+  category_id: number;
+  reason: string;
+  status: 'pending' | 'approved' | 'rejected' | 'cancelled';
+  review_note: string | null;
+  created_at: string;
+  reviewed_at: string | null;
+  category?: { id: number; name: string } | null;
+}
+
 /** One entry of a provider's recent completed work (`GET /providers/:id/work`). */
 export interface ProviderWorkItem {
   id: string;
@@ -1081,8 +1096,9 @@ export const api = {
    * 'assigned' (hired, awaiting their answer) to 'confirmed', and the
    * homeowner is notified. The mirror of `declineJob`.
    */
-  acceptJob(id: string) {
-    return authRequest<Job>(`/jobs/${id}/accept`, { method: 'POST' });
+  /** `location`: where the provider is as they accept (migration 0034). */
+  acceptJob(id: string, location?: { address: string; latitude: number; longitude: number }) {
+    return authRequest<Job>(`/jobs/${id}/accept`, { method: 'POST', body: location ?? {} });
   },
 
   startJob(id: string) {
@@ -1215,10 +1231,24 @@ export const api = {
     return signed.path;
   },
 
+  // ── Service change requests (migration 0034) ──────────────────────────────
+  mySkillRequests() {
+    return authRequest<SkillRequest[]>('/skill-requests/me');
+  },
+
+  createSkillRequest(input: { type: SkillRequestType; category_id: number; reason: string }) {
+    return authRequest<SkillRequest>('/skill-requests', { method: 'POST', body: input });
+  },
+
+  cancelSkillRequest(id: string) {
+    return authRequest<SkillRequest>(`/skill-requests/${id}/cancel`, { method: 'POST' });
+  },
+
   // ── Verifications ─────────────────────────────────────────────────────────
   submitVerification(input: {
     id_document_path: string;
     selfie_path: string;
+    document_type?: string;
   }) {
     return authRequest<Verification>('/verifications', {
       method: 'POST',
@@ -1236,6 +1266,7 @@ export const api = {
   startIdentitySession(input: {
     id_document_path?: string;
     selfie_path?: string;
+    document_type?: string;
   } = {}) {
     return authRequest<IdentitySession>('/verifications/identity-session', {
       method: 'POST',

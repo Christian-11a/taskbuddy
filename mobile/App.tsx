@@ -71,6 +71,7 @@ import SPEditProfileScreen from './app/(provider)/screens/SPEditProfileScreen';
 import SPVerificationScreen from './app/(provider)/screens/SPVerificationScreen';
 import SPPayoutsScreen from './app/(provider)/screens/SPPayoutsScreen';
 import SPSettingsScreen from './app/(provider)/screens/SPSettingsScreen';
+import SPSkillRequestScreen from './app/(provider)/screens/SPSkillRequestScreen';
 
 // ── Shared navigation components ──────────────────────────────────────────────
 import BottomNavBar, { BottomNavItem } from './src/components/BottomNavBar';
@@ -635,7 +636,11 @@ function AppContent() {
   if (spScreen === 'Edit Profile') {
     return (
       <ScreenFrame>
-        <SPEditProfileScreen onBack={spBack} onSave={spBack} />
+        <SPEditProfileScreen
+          onBack={spBack}
+          onSave={spBack}
+          onManageServices={() => spNavigate('My Services')}
+        />
       </ScreenFrame>
     );
   }
@@ -668,6 +673,13 @@ function AppContent() {
             spBack();
           }}
         />
+      </ScreenFrame>
+    );
+  }
+  if (spScreen === 'My Services') {
+    return (
+      <ScreenFrame>
+        <SPSkillRequestScreen onBack={spBack} />
       </ScreenFrame>
     );
   }

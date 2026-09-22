@@ -59,6 +59,16 @@ import { shortDate } from '../../../src/lib/format';
 import { Sizes, Spacing, V6Colors, V6Radii, V6Shadows } from '../../../src/constants/theme';
 import { requestAppPermission } from '../../../src/lib/permissions';
 
+/** The IDs we accept, in the order most providers are likely to have them. */
+const DOCUMENT_TYPES = [
+  { value: 'philsys', label: 'PhilSys (National ID)' },
+  { value: 'drivers_license', label: "Driver's licence" },
+  { value: 'umid', label: 'UMID' },
+  { value: 'passport', label: 'Passport' },
+  { value: 'postal_id', label: 'Postal ID' },
+] as const;
+type DocumentType = (typeof DOCUMENT_TYPES)[number]['value'];
+
 const Colors = {
   ...V6Colors,
   background: V6Colors.canvas,
@@ -94,6 +104,7 @@ type Slot = 'id' | 'selfie';
 
 export default function SPVerificationScreen({ onBack, onVerified }: SPVerificationScreenProps) {
   const [step, setStep] = useState(1);
+  const [documentType, setDocumentType] = useState<DocumentType | null>(null);
   const [idAsset, setIdAsset] = useState<ImagePicker.ImagePickerAsset | null>(null);
   const [selfieAsset, setSelfieAsset] = useState<ImagePicker.ImagePickerAsset | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -184,6 +195,7 @@ export default function SPVerificationScreen({ onBack, onVerified }: SPVerificat
         const session = await api.startIdentitySession({
           id_document_path,
           selfie_path,
+          document_type: documentType ?? undefined,
         });
         if (session.url) {
           // Expo Go cannot load Stripe's native SDK, so the hosted flow in a
@@ -201,12 +213,17 @@ export default function SPVerificationScreen({ onBack, onVerified }: SPVerificat
         if (!(identityError instanceof ApiError) || identityError.status < 500) {
           throw identityError;
         }
-        await api.submitVerification({ id_document_path, selfie_path });
+        await api.submitVerification({
+          id_document_path,
+          selfie_path,
+          document_type: documentType ?? undefined,
+        });
         setFellBackToManual(true);
       }
 
       setIdAsset(null);
       setSelfieAsset(null);
+      setDocumentType(null);
       setStep(1);
       reload();
     } catch (e) {
@@ -224,7 +241,7 @@ export default function SPVerificationScreen({ onBack, onVerified }: SPVerificat
   const inWizard = !isPending && !isApproved;
 
   const canAdvance =
-    (step === 1 && !!idAsset) || (step === 2 && !!selfieAsset) || step === 3;
+    (step === 1 && !!documentType && !!idAsset) || (step === 2 && !!selfieAsset) || step === 3;
 
   const renderStatus = () => {
     if (!verification) return null;
@@ -354,9 +371,28 @@ export default function SPVerificationScreen({ onBack, onVerified }: SPVerificat
                   <View style={styles.card}>
                     <Text style={styles.label}>Government ID</Text>
                     <Text style={styles.hint}>
-                      A clear photo of a valid ID showing your full name and photo —
-                      UMID, driver&apos;s licence, passport, PhilSys, or postal ID.
+                      Choose the ID you'll upload, then add a clear photo showing your
+                      full name and picture.
                     </Text>
+                    <Text style={styles.docTypeLabel}>ID type</Text>
+                    <View style={styles.docTypeRow} accessibilityRole="radiogroup">
+                      {DOCUMENT_TYPES.map((doc) => {
+                        const selected = documentType === doc.value;
+                        return (
+                          <TouchableOpacity
+                            key={doc.value}
+                            style={[styles.docTypeChip, selected && styles.docTypeChipOn]}
+                            onPress={() => setDocumentType(doc.value)}
+                            activeOpacity={0.8}
+                            accessibilityRole="radio"
+                            accessibilityState={{ selected }}
+                            testID={`verify-doc-${doc.value}`}
+                          >
+                            <Text style={[styles.docTypeText, selected && styles.docTypeTextOn]}>{doc.label}</Text>
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </View>
                     <TouchableOpacity
                       style={styles.dropzone}
                       onPress={() => void pick('id')}
@@ -559,6 +595,12 @@ const styles = StyleSheet.create({
   card: { backgroundColor: Colors.white, borderRadius: Radii.card, padding: 18, ...Shadows.card },
   label: { color: Colors.brandDark, fontFamily: 'Inter', fontSize: 18.5, fontWeight: '800' },
   hint: { color: Colors.muted, fontFamily: 'Inter', fontSize: 15.5, marginTop: 4, marginBottom: 14, lineHeight: 20 },
+  docTypeLabel: { color: Colors.brandDark, fontFamily: 'Inter', fontSize: 14, fontWeight: '700', marginBottom: 8 },
+  docTypeRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 16 },
+  docTypeChip: { borderWidth: 1, borderColor: '#dce3e9', borderRadius: 999, paddingHorizontal: 12, paddingVertical: 7, backgroundColor: Colors.white },
+  docTypeChipOn: { borderColor: Colors.brandTeal, backgroundColor: V6Colors.cyan50 },
+  docTypeText: { color: V6Colors.ink700, fontFamily: 'Inter', fontSize: 13.5, fontWeight: '600' },
+  docTypeTextOn: { color: Colors.brandTeal, fontWeight: '700' },
   dropzone: {
     height: 150,
     borderRadius: 12,
