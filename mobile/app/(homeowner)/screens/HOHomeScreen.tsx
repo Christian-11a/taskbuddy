@@ -20,10 +20,9 @@ import {
   BriefcaseBusiness,
   BrushCleaning,
   CheckCircle2,
-  ClipboardList,
   Hammer,
   Hand,
-  MapPin,
+  Clock,
   Palette,
   Sparkles,
   Wrench,
@@ -35,6 +34,7 @@ import { useAsyncData } from '../../../src/hooks/useAsyncData';
 import { api } from '../../../src/lib/api';
 import { jobStatusMeta, peso, shortDate } from '../../../src/lib/format';
 import ScreenSkeleton from '../../../src/components/ScreenSkeleton';
+import JobCard from '../../../src/components/JobCard';
 import OwnAvatar from '../../../src/components/OwnAvatar';
 
 const C = V6Colors;
@@ -167,24 +167,6 @@ export default function HOHomeScreen({ onNavigate }: HOHomeScreenProps) {
 
         {/* Body */}
         <View style={styles.body}>
-          {/* Primary task card */}
-          <TouchableOpacity
-            style={styles.primaryTaskCard}
-            onPress={() => onNavigate('Create Job')}
-            activeOpacity={0.9}
-          >
-            <View style={styles.taskIcon}>
-              <Sparkles size={22} color={C.cyan700} />
-            </View>
-            <View style={styles.taskCopy}>
-              <Text style={styles.taskTitle}>Need something done?</Text>
-              <Text style={styles.taskDesc}>Post a task and connect with a nearby verified provider.</Text>
-            </View>
-            <View style={styles.postBtn}>
-              <Text style={styles.postBtnText}>+ Post</Text>
-            </View>
-          </TouchableOpacity>
-
           {/* Find a service */}
           <View style={styles.section}>
             <View style={styles.sectionHead}>
@@ -233,40 +215,40 @@ export default function HOHomeScreen({ onNavigate }: HOHomeScreenProps) {
 
           {jobs.error && <WidgetError message="Couldn't load your jobs" onRetry={jobs.reload} />}
 
+          {/* "Need something done?" is the empty state, not a permanent card:
+              once there are active jobs, the list is what matters. */}
           {!jobs.error && activeJobs.length === 0 && (
-            <View style={styles.emptyState}>
-              <ClipboardList size={30} color={C.ink300} />
-              <Text style={styles.emptyTitle}>No active jobs</Text>
-              <Text style={styles.emptyText}>Tap a service above to post a job and start receiving offers.</Text>
-            </View>
+            <TouchableOpacity
+              style={styles.primaryTaskCard}
+              onPress={() => onNavigate('Create Job')}
+              activeOpacity={0.9}
+              testID="home-post-job"
+            >
+              <View style={styles.taskIcon}>
+                <Sparkles size={22} color={C.cyan700} />
+              </View>
+              <View style={styles.taskCopy}>
+                <Text style={styles.taskTitle}>Need something done?</Text>
+                <Text style={styles.taskDesc}>You have no active jobs. Post a task and connect with a nearby verified provider.</Text>
+              </View>
+              <View style={styles.postBtn}>
+                <Text style={styles.postBtnText}>+ Post</Text>
+              </View>
+            </TouchableOpacity>
           )}
 
-          {activeJobs.map((job) => {
-            const meta = jobStatusMeta(job.status);
-            return (
-              <TouchableOpacity
-                key={job.id}
-                style={styles.jobCard}
-                onPress={() => onNavigate('Job Detail', job.id)}
-                activeOpacity={0.9}
-              >
-                <View style={styles.jobTitleRow}>
-                  <Text style={styles.jobTitle} numberOfLines={1}>{job.title}</Text>
-                </View>
-                <View style={styles.jobMetaRow}>
-                  <MapPin size={13} color={C.ink400} />
-                  <Text style={styles.jobMeta} numberOfLines={1}>{job.address}</Text>
-                </View>
-                <View style={styles.jobBottomRow}>
-                  <View style={styles.jobStatus}>
-                    <View style={[styles.statusDot, { backgroundColor: meta.color }]} />
-                    <Text style={styles.jobStatusText}>{meta.label}</Text>
-                  </View>
-                  <Text style={styles.jobAge}>Posted {shortDate(job.posted_at)}</Text>
-                </View>
-              </TouchableOpacity>
-            );
-          })}
+          {activeJobs.map((job) => (
+            <JobCard
+              key={job.id}
+              title={job.title}
+              budget={job.budget}
+              address={job.address}
+              status={jobStatusMeta(job.status)}
+              urgency={job.urgency}
+              footer={[{ icon: <Clock size={13} color={C.ink400} />, text: `Posted ${shortDate(job.posted_at)}` }]}
+              onPress={() => onNavigate('Job Detail', job.id)}
+            />
+          ))}
 
           {/* Recent Activity */}
           {notifications.error ? (
@@ -404,24 +386,7 @@ const styles = StyleSheet.create({
   },
   categoryLabel: { fontSize: 11.5, fontWeight: '700', color: C.ink700, fontFamily: 'Inter', textAlign: 'center' },
 
-  emptyState: { alignItems: 'center', paddingVertical: 40, paddingHorizontal: 22 },
-  emptyTitle: { color: C.ink800, fontSize: 16, fontWeight: '700', fontFamily: 'Inter', marginTop: 10, marginBottom: 4 },
-  emptyText: { color: C.ink400, fontSize: 14, fontFamily: 'Inter', textAlign: 'center', lineHeight: 17 },
 
-  jobCard: {
-    backgroundColor: C.white, borderColor: C.line, borderWidth: 1,
-    borderRadius: V6Radii.cardSm, padding: 15, marginBottom: 10,
-    ...V6Shadows.sm,
-  },
-  jobTitleRow: { marginBottom: 5 },
-  jobTitle: { color: C.ink900, fontSize: 17.5, fontWeight: '800', fontFamily: 'Inter' },
-  jobMetaRow: { flexDirection: 'row', alignItems: 'center', gap: 5, marginBottom: 11 },
-  jobMeta: { color: C.ink400, fontSize: 14, fontFamily: 'Inter', flex: 1 },
-  jobBottomRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  jobStatus: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  statusDot: { width: 7, height: 7, borderRadius: 4 },
-  jobStatusText: { color: C.ink700, fontSize: 14, fontWeight: '700', fontFamily: 'Inter' },
-  jobAge: { color: C.ink400, fontSize: 13.5, fontFamily: 'Inter' },
 
   // Recent Activity — matches .activity-list/.activity-row
   activityList: {

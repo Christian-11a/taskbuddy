@@ -314,6 +314,12 @@ export default function HOCreateJobScreen({
    * rather than posting the job under nothing.
    */
   const preselectApplied = useRef(false);
+  // One ScrollView holds every step, so without this "Next" opened the new
+  // step wherever the previous one had been scrolled to (usually the bottom).
+  const scrollRef = useRef<ScrollView>(null);
+  useEffect(() => {
+    scrollRef.current?.scrollTo({ y: 0, animated: false });
+  }, [step]);
   useEffect(() => {
     // Once only: "Post another job" clears the form back to step 1, and it
     // would be wrong for the tile tapped on Home three screens ago to reappear.
@@ -721,6 +727,7 @@ export default function HOCreateJobScreen({
         keyboardVerticalOffset={24}
       >
         <ScrollView keyboardDismissMode="on-drag"
+          ref={scrollRef}
           testID="create-job-form-scroll"
           style={styles.body}
           contentContainerStyle={[styles.bodyContent, { paddingBottom: 140 + insets.bottom }]}
@@ -1254,7 +1261,7 @@ export default function HOCreateJobScreen({
       <ConfirmationModal
         visible={showExitConfirmation}
         title="Discard job draft?"
-        message="Returning to the home screen will delete the job details you have entered."
+        message="Leaving now will delete the job details you have entered."
         confirmLabel="Discard & Exit"
         cancelLabel="Keep Editing"
         onCancel={() => setShowExitConfirmation(false)}
@@ -1393,7 +1400,7 @@ const styles = StyleSheet.create({
   body: { flex: 1 },
   bodyContent: { paddingHorizontal: Spacing.screenH, paddingTop: 24, paddingBottom: 20 },
 
-  stepTitle: { color: Colors.brandDark, fontSize: 26.5, fontWeight: '800', fontFamily: 'Inter', marginBottom: 4 },
+  stepTitle: { color: Colors.brandDark, fontSize: 23, fontWeight: '800', fontFamily: 'Inter', marginBottom: 4 },
   stepSubtitle: { color: Colors.muted, fontSize: 16.5, fontFamily: 'Inter', marginBottom: 20, lineHeight: 21 },
   locationPrompt: { backgroundColor: Colors.white, borderWidth: 1, borderColor: Colors.line, borderRadius: 14, padding: 14, marginBottom: 16 },
   locationPromptTitle: { color: Colors.ink900, fontSize: 14.5, fontWeight: '800', fontFamily: 'Inter' },
@@ -1547,7 +1554,7 @@ const styles = StyleSheet.create({
   },
   budgetCardFocused: { borderColor: Colors.brandTeal, borderWidth: 2 },
   budgetCurrency: { color: Colors.brandDark, fontSize: 39, fontWeight: '800', fontFamily: 'Inter', marginRight: 4 },
-  budgetInput: { fontSize: 48, fontWeight: '800', fontFamily: 'Inter', color: Colors.brandDark, minWidth: 120 },
+  budgetInput: { fontSize: 40, fontWeight: '800', fontFamily: 'Inter', color: Colors.brandDark, minWidth: 120 },
   budgetHint: { color: Colors.muted, fontSize: 14, fontFamily: 'Inter', textAlign: 'center', marginTop: 12, lineHeight: 19 },
 
   reviewCard: { backgroundColor: Colors.white, borderRadius: 20, padding: 20, marginBottom: 16, ...Shadows.card },
@@ -1567,20 +1574,20 @@ const styles = StyleSheet.create({
   termsText: { flex: 1, color: Colors.slate, fontSize: 15.5, fontFamily: 'Inter', lineHeight: 20 },
   termsLink: { color: Colors.brandTeal, fontWeight: '700', textDecorationLine: 'underline' },
 
-  footer: { paddingHorizontal: Spacing.screenH, paddingVertical: 14, backgroundColor: Colors.white, borderTopWidth: 1, borderTopColor: Colors.ink100 },
+  footer: { paddingHorizontal: Spacing.screenH, paddingVertical: 12, backgroundColor: Colors.white, borderTopWidth: 1, borderTopColor: Colors.ink100 },
   footerActions: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'stretch' },
-  previousBtn: { width: '48%', height: 46, borderWidth: 1, borderColor: '#dce3e9', borderRadius: 13, backgroundColor: Colors.white, alignItems: 'center', justifyContent: 'center' },
-  previousBtnText: { color: Colors.ink700, fontSize: 16.5, fontWeight: '700', fontFamily: 'Inter' },
+  previousBtn: { width: '48%', height: 44, borderWidth: 1, borderColor: '#dce3e9', borderRadius: 12, backgroundColor: Colors.white, alignItems: 'center', justifyContent: 'center' },
+  previousBtnText: { color: Colors.ink700, fontSize: 15, fontWeight: '700', fontFamily: 'Inter' },
   primaryBtn: {
-    backgroundColor: Colors.cyan700, borderRadius: 13, paddingVertical: 14,
+    backgroundColor: Colors.cyan700, borderRadius: 12, paddingVertical: 12, minHeight: 44, justifyContent: 'center',
     alignItems: 'center',
     shadowColor: '#0891b2', shadowOffset: { width: 0, height: 5 },
     shadowOpacity: 0.16, shadowRadius: 14, elevation: 4,
   },
   primaryBtnFullWidth: { width: '100%' },
-  primaryBtnWithBack: { width: '48%', height: 46, paddingVertical: 0, justifyContent: 'center' },
+  primaryBtnWithBack: { width: '48%', height: 44, paddingVertical: 0, justifyContent: 'center' },
   primaryBtnInner: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
-  primaryBtnText: { color: Colors.white, fontSize: 16.5, fontWeight: '700', fontFamily: 'Inter', letterSpacing: -0.005 },
+  primaryBtnText: { color: Colors.white, fontSize: 15, fontWeight: '700', fontFamily: 'Inter', letterSpacing: -0.005 },
   primaryBtnDisabled: { opacity: 0.7 },
   errorText: { color: Colors.error, fontSize: 15.5, fontFamily: 'Inter', marginBottom: 10, textAlign: 'center' },
 
@@ -1590,12 +1597,13 @@ const styles = StyleSheet.create({
     width: 100, height: 100, borderRadius: 50,
     backgroundColor: '#F0FDF4', alignItems: 'center', justifyContent: 'center', marginBottom: 24,
   },
-  successTitle: { color: Colors.brandDark, fontSize: 34, fontWeight: '800', fontFamily: 'Inter', marginBottom: 12, textAlign: 'center' },
+  successTitle: { color: Colors.brandDark, fontSize: 28, fontWeight: '800', fontFamily: 'Inter', marginBottom: 12, textAlign: 'center' },
   successSubtitle: { color: Colors.slate, fontSize: 16.5, fontFamily: 'Inter', lineHeight: 22, textAlign: 'center', marginBottom: 28 },
   successCard: { backgroundColor: Colors.white, borderRadius: 20, padding: 20, width: '100%', marginBottom: 28, ...Shadows.card },
-  successRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: 'rgba(144,153,184,0.15)' },
-  successLabel: { color: Colors.slate, fontSize: 16.5, fontFamily: 'Inter' },
-  successValue: { color: Colors.brandDark, fontSize: 16.5, fontWeight: '700', fontFamily: 'Inter' },
+  successRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: 'rgba(144,153,184,0.15)' },
+  successLabel: { color: Colors.slate, fontSize: 15, fontFamily: 'Inter' },
+  // flexShrink + a width cap: a long address used to run past the card edge.
+  successValue: { color: Colors.brandDark, fontSize: 15, fontWeight: '700', fontFamily: 'Inter', flexShrink: 1, maxWidth: '65%', textAlign: 'right' },
   secondaryBtn: {
     marginTop: 12, paddingVertical: 14, alignItems: 'center', borderRadius: 13,
     borderWidth: 1, borderColor: Colors.brandTeal, width: '100%',

@@ -253,8 +253,17 @@ export interface ProviderCard {
   cached_avg_rating: number | null;
   cached_ratings_count: number;
   cached_completed_jobs: number;
+  is_verified?: boolean;
   service_categories?: { name: string } | null;
   profiles?: { full_name: string; avatar_url: string | null; city: string | null } | null;
+}
+
+/** One entry of a provider's recent completed work (`GET /providers/:id/work`). */
+export interface ProviderWorkItem {
+  id: string;
+  title: string;
+  completed_at: string | null;
+  service_categories?: { name: string } | null;
 }
 
 export interface Category {
@@ -949,6 +958,10 @@ export const api = {
 
   getProvider(id: string) {
     return authRequest<ProviderCard>(`/providers/${id}`);
+  },
+
+  getProviderWork(id: string) {
+    return authRequest<ProviderWorkItem[]>(`/providers/${id}/work`);
   },
 
   getProviderReviews(id: string) {

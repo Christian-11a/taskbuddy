@@ -25,11 +25,11 @@ appId: com.taskbuddy.app
 # — so they fire on EVERY run, not just for a genuinely new account.
 # `optional` so this helper still works if that ever changes.
 - extendedWaitUntil:
-    visible: ".*(Skip|Need something done\\?).*"
+    visible: ".*(Skip|Find a service).*"
     timeout: 60000
 - tapOn:
     text: "Skip"
     optional: true
 - extendedWaitUntil:
-    visible: "Need something done?"
+    visible: "Find a service"
     timeout: 60000

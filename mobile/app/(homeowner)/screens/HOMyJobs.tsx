@@ -6,11 +6,9 @@
  * rows. The calendar that used to be embedded here (before this screen
  * existed in the mockup as its own tab) now lives in HOCalendarScreen.tsx.
  *
- * The mockup's filter tabs (All/Open/Hired/Active/Review/Done) don't map
- * cleanly onto this app's real job-status enum — there's no "pending-review"
- * state in the backend — so the tabs here follow the real lifecycle
- * (All/Open/Awaiting/Confirmed/In Progress/Completed/Cancelled) with the
- * mockup's exact tab styling.
+ * Filters are All / Active / Completed / Cancelled (QA asked for fewer). The
+ * card's status pill carries the fine-grained state (Open, Awaiting
+ * Provider, Confirmed, In Progress).
  *
  * Each card carries the seven things a homeowner needs to tell one job from
  * another without opening it: name, location, status, urgency, price, how
@@ -37,30 +35,20 @@ import ScreenSkeleton from '../../../src/components/ScreenSkeleton';
 
 const C = V6Colors;
 
-const FILTER_TABS = [
-  'All',
-  'Open',
-  'Awaiting',
-  'Confirmed',
-  'In Progress',
-  'Completed',
-  'Cancelled',
-] as const;
+// Four filters, not one per status: the status pill on each card already
+// says exactly where a job is, so the tabs only need to split live work from
+// finished work.
+const FILTER_TABS = ['All', 'Active', 'Completed', 'Cancelled'] as const;
 type FilterTab = (typeof FILTER_TABS)[number];
+
+const ACTIVE_STATUSES = new Set(['open', 'recommending', 'assigned', 'confirmed', 'in_progress']);
 
 function matchesFilter(status: string, filter: FilterTab): boolean {
   switch (filter) {
     case 'All':
       return true;
-    case 'Open':
-      return status === 'open' || status === 'recommending';
-    // Hired, but the provider has not answered yet.
-    case 'Awaiting':
-      return status === 'assigned';
-    case 'Confirmed':
-      return status === 'confirmed';
-    case 'In Progress':
-      return status === 'in_progress';
+    case 'Active':
+      return ACTIVE_STATUSES.has(status);
     case 'Completed':
       return status === 'completed';
     case 'Cancelled':

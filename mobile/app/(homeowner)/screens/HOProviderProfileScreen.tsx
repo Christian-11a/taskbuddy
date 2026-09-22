@@ -8,12 +8,11 @@
  * Also fixes a real bug found while restyling: `onBack` was already a wired
  * prop but the old header never rendered a back button.
  *
- * Deviation: the mockup's version shows a freelancer-style "Services & rate"
- * skill-tag list and a portfolio image grid; this app's providers don't
- * carry hourly rates or a portfolio (it's a per-job marketplace, not a
- * freelancer directory), so those sections are replaced with the real About
- * + Reviews data this screen already had, restyled to the same section
- * pattern. The bottom action is "Message" (this app's real functionality)
+ * Reached from a proposal card, so a client can check a provider before
+ * hiring. The mockup's portfolio grid becomes "Recent work": the provider's
+ * last completed jobs (title, service, date — never another client's photos
+ * or address), alongside About and Reviews. No hourly rates: this is a
+ * per-job marketplace. The bottom action is "Message" (this app's real functionality)
  * in place of the mockup's "Invite to Apply" (which isn't a feature here).
  */
 
@@ -26,7 +25,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import { ArrowLeft, MessageCircle, Star } from 'lucide-react-native';
+import { ArrowLeft, BadgeCheck, CheckCircle2, MessageCircle, ShieldAlert, Star } from 'lucide-react-native';
 import { Spacing, Sizes, V6Colors } from '../../../src/constants/theme';
 
 const C = V6Colors;
@@ -49,12 +48,18 @@ export default function HOProviderProfileScreen({
   onNavigate,
 }: HOProviderProfileScreenProps) {
   const { data, loading, error } = useAsyncData(async () => {
-    const [provider, reviews] = await Promise.all([api.getProvider(id), api.getProviderReviews(id)]);
-    return { provider, reviews };
+    const [provider, reviews, work] = await Promise.all([
+      api.getProvider(id),
+      api.getProviderReviews(id),
+      // A missing portfolio shouldn't hide the rest of the profile.
+      api.getProviderWork(id).catch(() => []),
+    ]);
+    return { provider, reviews, work };
   }, [id]);
 
   const provider = data?.provider ?? null;
   const reviews: any[] = data?.reviews ?? [];
+  const work = data?.work ?? [];
 
   return (
     <View style={styles.screen}>
@@ -79,6 +84,17 @@ export default function HOProviderProfileScreen({
               <Text style={styles.avatarText}>{initials(provider.profiles?.full_name)}</Text>
             </View>
             <Text style={styles.name}>{provider.profiles?.full_name ?? 'Provider'}</Text>
+            {provider.service_categories?.name && (
+              <Text style={styles.serviceText}>{provider.service_categories.name}</Text>
+            )}
+            <View style={[styles.verifyPill, provider.is_verified ? styles.verifyPillOn : styles.verifyPillOff]}>
+              {provider.is_verified
+                ? <BadgeCheck size={13} color="#15803d" />
+                : <ShieldAlert size={13} color={C.amber700} />}
+              <Text style={[styles.verifyText, { color: provider.is_verified ? '#15803d' : C.amber700 }]}>
+                {provider.is_verified ? 'ID verified' : 'Not verified yet'}
+              </Text>
+            </View>
             <Text style={styles.metaText}>
               {provider.cached_avg_rating != null ? `${Number(provider.cached_avg_rating).toFixed(1)}★ · ` : 'New · '}
               {provider.cached_completed_jobs ?? 0} completed jobs
@@ -96,6 +112,25 @@ export default function HOProviderProfileScreen({
             </View>
           </View>
 
+          {/* Recent work — the portfolio */}
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Recent work</Text>
+            {work.length === 0 && <Text style={styles.bio}>No completed jobs on TaskBuddy yet.</Text>}
+            {work.map((item) => (
+              <View key={item.id} style={styles.workRow}>
+                <CheckCircle2 size={16} color={C.cyan700} />
+                <View style={{ flex: 1, minWidth: 0 }}>
+                  <Text style={styles.workTitle} numberOfLines={1}>{item.title}</Text>
+                  <Text style={styles.workMeta} numberOfLines={1}>
+                    {[item.service_categories?.name, item.completed_at ? shortDate(item.completed_at) : null]
+                      .filter(Boolean)
+                      .join(' · ')}
+                  </Text>
+                </View>
+              </View>
+            ))}
+          </View>
+
           {/* Reviews */}
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Reviews</Text>
@@ -103,17 +138,18 @@ export default function HOProviderProfileScreen({
             {reviews.map((r) => (
               <View key={r.id} style={styles.reviewRow}>
                 <View style={styles.reviewAvatar}>
-                  <Text style={styles.reviewAvatarText}>{initials(r.reviewer_name ?? r.reviewer?.full_name)}</Text>
+                  <Text style={styles.reviewAvatarText}>{initials(r.client?.full_name)}</Text>
                 </View>
                 <View style={{ flex: 1 }}>
                   <View style={styles.reviewHeader}>
-                    <Text style={styles.reviewName}>{r.reviewer_name ?? r.reviewer?.full_name ?? 'Reviewer'}</Text>
+                    <Text style={styles.reviewName}>{r.client?.full_name ?? 'Client'}</Text>
                     <Text style={styles.reviewDate}>{shortDate(r.created_at)}</Text>
                   </View>
                   <View style={styles.reviewRatingRow}>
                     <Star size={12} color={C.ink400} fill={C.ink400} />
                     <Text style={styles.reviewRating}>{r.rating ?? '—'}</Text>
                   </View>
+                  {!!r.jobs?.title && <Text style={styles.reviewJob} numberOfLines={1}>For: {r.jobs.title}</Text>}
                   {!!r.comment && <Text style={styles.reviewComment}>{r.comment}</Text>}
                 </View>
               </View>
@@ -165,6 +201,15 @@ const styles = StyleSheet.create({
   avatarText: { color: C.white, fontSize: 24, fontWeight: '800', fontFamily: 'Inter' },
   name: { color: C.ink900, fontSize: 20.5, fontWeight: '700', fontFamily: 'Inter' },
   metaText: { color: C.ink400, fontSize: 12.5, fontFamily: 'Inter', marginTop: 4, textAlign: 'center' },
+  serviceText: { color: C.cyan700, fontSize: 13, fontWeight: '700', fontFamily: 'Inter', marginTop: 2 },
+  verifyPill: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 10, paddingVertical: 4, borderRadius: 999, marginTop: 8 },
+  verifyPillOn: { backgroundColor: '#f0fdf4' },
+  verifyPillOff: { backgroundColor: '#fffbeb' },
+  verifyText: { fontSize: 12, fontWeight: '700', fontFamily: 'Inter' },
+  workRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 8 },
+  workTitle: { color: C.ink900, fontSize: 14, fontWeight: '700', fontFamily: 'Inter' },
+  workMeta: { color: C.ink400, fontSize: 12.5, fontFamily: 'Inter', marginTop: 1 },
+  reviewJob: { color: C.ink400, fontSize: 12, fontFamily: 'Inter', marginTop: 2 },
 
   section: { padding: 18, paddingHorizontal: Spacing.screenH, backgroundColor: C.white, borderBottomWidth: 1, borderBottomColor: C.line },
   sectionTitle: { fontSize: 12, textTransform: 'uppercase', letterSpacing: 0.7, color: C.ink400, fontWeight: '700', fontFamily: 'Inter', marginBottom: 10 },

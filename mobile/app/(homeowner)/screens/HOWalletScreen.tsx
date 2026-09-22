@@ -25,7 +25,6 @@ import {
 import {
   ArrowDownLeft,
   ArrowUpRight,
-  ArrowRightLeft,
   CircleDollarSign,
   Gift,
   Package,
@@ -43,6 +42,7 @@ import { openRedirectSession } from '../../../src/lib/appRedirectSession';
 import { peso, shortDate } from '../../../src/lib/format';
 import ScreenSkeleton from '../../../src/components/ScreenSkeleton';
 import { canWithdrawBalance, getWithdrawalHint } from '../../../src/lib/walletRules';
+import { showToast } from '../../../src/components/Toast';
 
 /**
  * How long to wait for the top-up to appear after Stripe says it succeeded.
@@ -102,6 +102,15 @@ export default function HOWalletScreen() {
     parsedWithdrawalAmount > 0 &&
     parsedWithdrawalAmount <= availableToWithdraw &&
     withdrawDestination.trim().length > 0;
+
+  // No point opening a form that can't be submitted: say why instead.
+  const openWithdraw = () => {
+    if (!canWithdrawBalance(availableToWithdraw)) {
+      showToast(availableToWithdraw > 0 ? getWithdrawalHint(availableToWithdraw) : 'You have no funds available to withdraw.');
+      return;
+    }
+    setShowWithdraw(true);
+  };
 
   const closeWithdraw = () => {
     setShowWithdraw(false);
@@ -273,24 +282,16 @@ export default function HOWalletScreen() {
             <View style={styles.actionDivider} />
             <TouchableOpacity
               style={styles.quickActionBtn}
-              onPress={() => setShowWithdraw(true)}
+              onPress={openWithdraw}
               activeOpacity={0.8}
             >
               <ArrowDownLeft size={22} color={C.white} />
               <Text style={styles.quickActionText}>Withdraw</Text>
             </TouchableOpacity>
-            <View style={styles.actionDivider} />
-            <TouchableOpacity
-              style={[styles.quickActionBtn, styles.quickActionBtnDisabled]}
-              activeOpacity={0.8}
-              disabled
-              accessibilityRole="button"
-              accessibilityLabel="Transfer coming soon"
-            >
-              <ArrowRightLeft size={22} color={C.white} />
-              <Text style={styles.quickActionText}>Transfer</Text>
-            </TouchableOpacity>
           </View>
+          {data && availableToWithdraw !== data.balance && (
+            <Text style={styles.balanceSub}>{peso(availableToWithdraw)} available to withdraw</Text>
+          )}
         </LinearGradient>
 
         {/* Escrow card */}
@@ -305,20 +306,9 @@ export default function HOWalletScreen() {
           </View>
         </View>
 
-        <View style={styles.withdrawalCard}>
-          <View style={styles.withdrawalHeader}>
-            <View>
-              <Text style={styles.withdrawalLabel}>AVAILABLE TO WITHDRAW</Text>
-              <Text style={styles.withdrawalAmount}>{peso(availableToWithdraw)}</Text>
-            </View>
-            <TouchableOpacity onPress={() => setShowWithdraw(true)} activeOpacity={0.8}>
-              <Text style={styles.withdrawalLink}>Request</Text>
-            </TouchableOpacity>
-          </View>
-          <Text style={styles.withdrawalNote}>
-            Withdrawal requests are reviewed and paid manually. Pending requests reserve this amount.
-          </Text>
-          {withdrawals.length > 0 && (
+        {withdrawals.length > 0 && (
+          <View style={styles.withdrawalCard}>
+            <Text style={styles.withdrawalLabel}>RECENT WITHDRAWALS</Text>
             <View style={styles.withdrawalList}>
               {withdrawals.slice(0, 3).map((withdrawal) => (
                 <View key={withdrawal.id} style={styles.withdrawalRow}>
@@ -342,35 +332,17 @@ export default function HOWalletScreen() {
                 </View>
               ))}
             </View>
-          )}
-        </View>
-
-        {/* Spent / Added summary */}
-        <View style={styles.statsRow}>
-          <View style={styles.statItem}>
-            <Text style={[styles.statValue, { color: '#f59e0b' }]}>{peso(data?.total_debited ?? 0)}</Text>
-            <Text style={styles.statLabel}>Spent</Text>
           </View>
-          <View style={styles.statDivider} />
-          <View style={styles.statItem}>
-            <Text style={[styles.statValue, { color: '#22c55e' }]}>{peso(data?.total_credited ?? 0)}</Text>
-            <Text style={styles.statLabel}>Added</Text>
-          </View>
-        </View>
+        )}
 
         {/* Recovery Vouchers — trust credits an admin issues after resolving a
-            dispute in the client's favour. Always shown, even empty, so it's
-            already there the moment the first one is issued. */}
-        <View style={styles.voucherCard}>
-          <View style={styles.voucherHeader}>
-            <Gift size={17} color="#9333ea" />
-            <Text style={styles.voucherHeaderText}>Recovery Vouchers</Text>
-          </View>
-          {vouchers.length === 0 ? (
-            <Text style={styles.voucherEmptyText}>
-              Trust credits from resolved disputes will appear here.
-            </Text>
-          ) : (
+            dispute in the client's favour. Only shown once there is one. */}
+        {vouchers.length > 0 && (
+          <View style={styles.voucherCard}>
+            <View style={styles.voucherHeader}>
+              <Gift size={17} color="#9333ea" />
+              <Text style={styles.voucherHeaderText}>Recovery Vouchers</Text>
+            </View>
             <View style={styles.voucherList}>
               {vouchers.map((v) => (
                 <View key={v.id} style={styles.voucherRow}>
@@ -382,17 +354,8 @@ export default function HOWalletScreen() {
                 </View>
               ))}
             </View>
-          )}
-        </View>
-
-        {/* Trust note */}
-        <View style={styles.trustNote}>
-          <WalletCards size={18} color={C.cyan800} />
-          <Text style={styles.trustNoteText}>
-            Funds are held in escrow when you hire a provider, and released to
-            them once you mark the job complete.
-          </Text>
-        </View>
+          </View>
+        )}
 
         {/* Filter tabs */}
         <View style={styles.tabRow}>
@@ -608,7 +571,7 @@ export default function HOWalletScreen() {
                 {withdrawing ? (
                   <ActivityIndicator color={C.white} />
                 ) : (
-                  <Text style={styles.modalConfirmText}>Request Withdrawal</Text>
+                  <Text style={styles.modalConfirmText}>Withdraw</Text>
                 )}
               </TouchableOpacity>
             </View>
@@ -642,9 +605,9 @@ const styles = StyleSheet.create({
   },
   balanceLabel: { color: C.cyan100, fontSize: 13, fontFamily: 'Inter', marginBottom: 4 },
   balanceAmount: { color: C.white, fontSize: 32.5, fontWeight: '800', fontFamily: 'Inter', marginBottom: 16 },
+  balanceSub: { color: 'rgba(255,255,255,0.85)', fontSize: 13, fontFamily: 'Inter', marginTop: 12, textAlign: 'center' },
   quickActions: { flexDirection: 'row', alignItems: 'center' },
   quickActionBtn: { flex: 1, alignItems: 'center', gap: 4 },
-  quickActionBtnDisabled: { opacity: 0.6 },
   quickActionText: { color: 'rgba(255,255,255,0.85)', fontSize: 13.5, fontWeight: '600', fontFamily: 'Inter' },
   actionDivider: { width: 1, height: 34, backgroundColor: 'rgba(255,255,255,0.2)' },
 
@@ -662,11 +625,7 @@ const styles = StyleSheet.create({
     backgroundColor: C.white, borderWidth: 1, borderColor: C.line,
     borderRadius: 15, padding: 14, marginBottom: 14,
   },
-  withdrawalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
   withdrawalLabel: { fontSize: 11, textTransform: 'uppercase', letterSpacing: 0.6, fontWeight: '800', color: C.cyan700, fontFamily: 'Inter' },
-  withdrawalAmount: { fontSize: 24, fontWeight: '800', color: C.ink900, marginTop: 3, fontFamily: 'Inter' },
-  withdrawalLink: { color: C.cyan700, fontSize: 14, fontWeight: '800', fontFamily: 'Inter', padding: 4 },
-  withdrawalNote: { fontSize: 12, color: C.ink500, lineHeight: 16, fontFamily: 'Inter', marginTop: 5 },
   withdrawalList: { marginTop: 12, borderTopWidth: 1, borderTopColor: C.line },
   withdrawalRow: { flexDirection: 'row', gap: 10, paddingTop: 10, marginTop: 2 },
   withdrawalTitle: { color: C.ink900, fontSize: 13.5, fontWeight: '700', fontFamily: 'Inter' },
@@ -675,14 +634,6 @@ const styles = StyleSheet.create({
   withdrawalValue: { color: C.ink900, fontSize: 13.5, fontWeight: '800', fontFamily: 'Inter' },
   withdrawalCancel: { color: '#ef4444', fontSize: 12, fontWeight: '700', fontFamily: 'Inter', marginTop: 4 },
 
-  statsRow: {
-    flexDirection: 'row', backgroundColor: C.white, borderWidth: 1, borderColor: C.line,
-    borderRadius: 16, padding: 14, marginBottom: 14,
-  },
-  statItem: { flex: 1, alignItems: 'center' },
-  statDivider: { width: 1, backgroundColor: C.line },
-  statValue: { fontSize: 18.5, fontWeight: '800', fontFamily: 'Inter', marginBottom: 2 },
-  statLabel: { color: C.ink400, fontSize: 13, fontFamily: 'Inter' },
 
   voucherCard: {
     backgroundColor: '#faf5ff', borderWidth: 1, borderColor: '#e9d5ff',
@@ -690,7 +641,6 @@ const styles = StyleSheet.create({
   },
   voucherHeader: { flexDirection: 'row', alignItems: 'center', gap: 7, marginBottom: 8 },
   voucherHeaderText: { color: '#7e22ce', fontSize: 13.5, fontWeight: '800', fontFamily: 'Inter' },
-  voucherEmptyText: { color: '#a855f7', fontSize: 12.5, fontFamily: 'Inter', lineHeight: 17 },
   voucherList: { gap: 8 },
   voucherRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   voucherInfo: { flex: 1, marginRight: 10 },
@@ -698,12 +648,6 @@ const styles = StyleSheet.create({
   voucherDate: { color: C.ink400, fontSize: 11.5, fontFamily: 'Inter', marginTop: 1 },
   voucherAmount: { color: '#9333ea', fontSize: 14, fontWeight: '800', fontFamily: 'Inter' },
 
-  trustNote: {
-    flexDirection: 'row', gap: 9, alignItems: 'flex-start',
-    backgroundColor: '#f5fbfc', borderWidth: 1, borderColor: '#d8f0f4',
-    borderRadius: 13, padding: 12, marginBottom: 18,
-  },
-  trustNoteText: { flex: 1, color: C.cyan800, fontSize: 12, lineHeight: 16, fontFamily: 'Inter' },
 
   tabRow: { flexDirection: 'row', gap: 8, marginBottom: 18 },
   tab: {
@@ -760,11 +704,11 @@ const styles = StyleSheet.create({
     borderWidth: 1, borderColor: '#dce3e9', fontFamily: 'Inter', fontSize: 15, color: C.ink900,
     marginTop: 12,
   },
-  modalActions: { flexDirection: 'row', gap: 10, marginTop: 18 },
-  modalBtn: { flex: 1, alignItems: 'center', justifyContent: 'center', borderRadius: V6Radii.btn, paddingVertical: 13 },
+  modalActions: { flexDirection: 'row', justifyContent: 'flex-end', gap: 10, marginTop: 18 },
+  modalBtn: { minWidth: 104, minHeight: 40, alignItems: 'center', justifyContent: 'center', borderRadius: 10, paddingHorizontal: 16, paddingVertical: 9 },
   modalBtnDisabled: { opacity: 0.5 },
   modalCancel: { backgroundColor: C.ink50 },
-  modalCancelText: { color: C.ink500, fontSize: 16.5, fontWeight: '700', fontFamily: 'Inter' },
+  modalCancelText: { color: C.ink500, fontSize: 14.5, fontWeight: '700', fontFamily: 'Inter' },
   modalConfirm: { backgroundColor: C.cyan700 },
-  modalConfirmText: { color: C.white, fontSize: 16.5, fontWeight: '700', fontFamily: 'Inter' },
+  modalConfirmText: { color: C.white, fontSize: 14.5, fontWeight: '700', fontFamily: 'Inter' },
 });

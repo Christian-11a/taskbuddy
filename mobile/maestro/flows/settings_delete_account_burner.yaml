@@ -23,12 +23,12 @@ env:
 - tapOn:
     id: "btn-sign-in"
 - extendedWaitUntil:
-    visible: ".*(Skip|Need something done\\?).*"
+    visible: ".*(Skip|Find a service).*"
     timeout: 60000
 - tapOn:
     text: "Skip"
     optional: true
-- assertVisible: "Need something done?"
+- assertVisible: "Find a service"
 - tapOn:
     id: "btn-home-avatar"
 - tapOn: "Settings"

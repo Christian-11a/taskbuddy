@@ -159,7 +159,7 @@ export default function WithdrawModal({
               {submitting ? (
                 <ActivityIndicator color={C.white} />
               ) : (
-                <Text style={styles.confirmText}>Request Withdrawal</Text>
+                <Text style={styles.confirmText}>Withdraw</Text>
               )}
             </Pressable>
           </View>
@@ -222,17 +222,19 @@ const styles = StyleSheet.create({
 
   error: { color: '#ef4444', fontSize: 14, fontFamily: 'Inter', marginTop: 8 },
 
-  actions: { flexDirection: 'row', gap: 10, marginTop: 18 },
+  actions: { flexDirection: 'row', justifyContent: 'flex-end', gap: 10, marginTop: 18 },
   btn: {
-    flex: 1,
+    minWidth: 104,
+    minHeight: 40,
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: V6Radii.btn,
-    paddingVertical: 13,
+    borderRadius: 10,
+    paddingHorizontal: 16,
+    paddingVertical: 9,
   },
   btnDisabled: { opacity: 0.5 },
   cancel: { backgroundColor: C.ink50 },
-  cancelText: { color: C.ink500, fontSize: 16, fontWeight: '700', fontFamily: 'Inter' },
+  cancelText: { color: C.ink500, fontSize: 14.5, fontWeight: '700', fontFamily: 'Inter' },
   confirm: { backgroundColor: C.cyan700 },
-  confirmText: { color: C.white, fontSize: 16, fontWeight: '700', fontFamily: 'Inter' },
+  confirmText: { color: C.white, fontSize: 14.5, fontWeight: '700', fontFamily: 'Inter' },
 });
