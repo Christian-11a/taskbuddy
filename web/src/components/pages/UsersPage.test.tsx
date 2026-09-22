@@ -33,6 +33,8 @@ function makeUser(overrides: Partial<UserRow> = {}): UserRow {
     rating: "4.9 rating",
     ratingValue: 4.9,
     suspendedUntil: "—",
+    verification: "Verified",
+    verificationClass: "badge-approved",
     suspensionReason: "—",
     ...overrides,
   };
@@ -127,6 +129,45 @@ describe("UsersPage — suspend flow", () => {
     await user.type(screen.getByPlaceholderText("Search by name, email…"), "jamie");
     expect(screen.queryByText("Morgan Lee")).not.toBeInTheDocument();
     expect(screen.getByText("Jamie Kim")).toBeInTheDocument();
+  });
+
+  it("filters to new users by join date", async () => {
+    const recent = new Date(Date.now() - 2 * 86_400_000).toISOString();
+    mockedUseApp.mockReturnValue({
+      users: [
+        makeUser({ createdAt: "2024-03-10" }),
+        makeUser({ id: "u-2", name: "Nina New", email: "nina@example.com", createdAt: recent }),
+      ],
+      setUserStatus,
+      bulkSetUserStatus,
+      sendPasswordReset,
+      loading: false,
+    } as unknown as ReturnType<typeof useApp>);
+    const user = userEvent.setup();
+    renderWithToast(<UsersPage />);
+
+    await user.selectOptions(screen.getByLabelText("Filter users by join date"), "7d");
+    expect(screen.queryByText("Morgan Lee")).not.toBeInTheDocument();
+    expect(screen.getByText("Nina New")).toBeInTheDocument();
+  });
+
+  it("filters providers by verification status", async () => {
+    mockedUseApp.mockReturnValue({
+      users: [
+        makeUser(),
+        makeUser({ id: "u-3", name: "Paula Pending", email: "paula@example.com", verification: "Pending review", verificationClass: "badge-pending" }),
+      ],
+      setUserStatus,
+      bulkSetUserStatus,
+      sendPasswordReset,
+      loading: false,
+    } as unknown as ReturnType<typeof useApp>);
+    const user = userEvent.setup();
+    renderWithToast(<UsersPage />);
+
+    await user.selectOptions(screen.getByLabelText("Filter providers by verification status"), "Pending review");
+    expect(screen.queryByText("Morgan Lee")).not.toBeInTheDocument();
+    expect(screen.getByText("Paula Pending")).toBeInTheDocument();
   });
 
   it("shows the correct empty state when a search matches nothing", async () => {

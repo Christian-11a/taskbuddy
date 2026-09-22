@@ -56,6 +56,9 @@ export interface AdminUserApiRow {
   /** Added by migration 0014. Null unless the account is under a timed suspension. */
   suspended_until: string | null;
   suspension_reason: string | null;
+  /** Added by migration 0034. Null for non-providers. */
+  is_verified?: boolean | null;
+  latest_verification_status?: "pending" | "approved" | "rejected" | null;
 }
 
 export interface ListUsersApiResponse {
@@ -134,6 +137,8 @@ export interface AdminVerificationApiRow {
   submitted_at: string;
   reviewed_at: string | null;
   rejection_reason: string | null;
+  /** Which government ID the provider says they uploaded (migration 0034). */
+  document_type?: string | null;
   /** Short-lived signed URLs — the documents bucket is private. */
   documents: string[];
 }
@@ -349,4 +354,19 @@ export interface AdminMessageApiRow {
 
 export interface AdminConversationApiResponse {
   messages: AdminMessageApiRow[];
+}
+
+// ─── Skill requests (migration 0034) ──────────────────────────────────────────
+
+export interface AdminSkillRequestApiRow {
+  id: string;
+  provider_id: string;
+  type: "change_primary" | "add_secondary";
+  category_id: number;
+  reason: string;
+  status: "pending" | "approved" | "rejected" | "cancelled";
+  review_note: string | null;
+  created_at: string;
+  category?: { id: number; name: string } | null;
+  provider?: { full_name: string | null } | null;
 }

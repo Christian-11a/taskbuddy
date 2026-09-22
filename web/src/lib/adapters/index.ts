@@ -162,6 +162,9 @@ export interface UserRow {
   suspendedUntil: string;
   suspensionReason: string;
   deletedAt?: string | null;
+  /** "Verified" / "Pending review" / "Rejected" / "Not submitted"; "—" for non-providers. */
+  verification: string;
+  verificationClass: string;
 }
 
 export interface VerificationDocument {
@@ -178,6 +181,8 @@ export interface VerificationRow {
   date: string;
   status: "pending" | "approved" | "rejected";
   documents: VerificationDocument[];
+  /** Display name of the ID type, or "Not specified" for older submissions. */
+  documentType: string;
 }
 
 export interface DisputeRow {
@@ -273,8 +278,17 @@ export function toUserRow(u: AdminUser): UserRow {
     suspendedUntil: u.suspendedUntil ? formatDate(u.suspendedUntil) : "—",
     suspensionReason: u.suspensionReason ?? "—",
     deletedAt: u.deletedAt ? formatDate(u.deletedAt) : null,
+    verification: u.verification ? VERIFICATION_DISPLAY[u.verification].label : "—",
+    verificationClass: u.verification ? VERIFICATION_DISPLAY[u.verification].badgeClass : "",
   };
 }
+
+const VERIFICATION_DISPLAY: Record<NonNullable<AdminUser["verification"]>, { label: string; badgeClass: string }> = {
+  VERIFIED: { label: "Verified", badgeClass: "badge-approved" },
+  PENDING: { label: "Pending review", badgeClass: "badge-pending" },
+  REJECTED: { label: "Rejected", badgeClass: "badge-rejected" },
+  UNVERIFIED: { label: "Not submitted", badgeClass: "badge-processing" },
+};
 
 /** Backend always signs [id_document_path, selfie_path] in that order (verifications.service.ts `shape()`);
  *  a doc is dropped from the array entirely if its signed URL failed to generate. */
@@ -289,8 +303,18 @@ export function toVerificationRow(v: Verification): VerificationRow {
     date: formatDate(v.submittedAt),
     status: v.status.toLowerCase() as VerificationRow["status"],
     documents: v.documents.map((url, i) => ({ label: DOCUMENT_LABELS[i] ?? `Document ${i + 1}`, url })),
+    documentType: (v.documentType && DOCUMENT_TYPE_LABELS[v.documentType]) ?? "Not specified",
   };
 }
+
+/** Mirrors the mobile picker and the CHECK in migration 0034. */
+const DOCUMENT_TYPE_LABELS: Record<string, string> = {
+  philsys: "PhilSys (National ID)",
+  drivers_license: "Driver's licence",
+  umid: "UMID",
+  passport: "Passport",
+  postal_id: "Postal ID",
+};
 
 export function toTransactionRow(t: Transaction): TransactionRow {
   const display = TRANSACTION_STATUS_DISPLAY[t.status];

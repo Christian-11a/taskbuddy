@@ -19,6 +19,7 @@ const PAGES: Page[] = [
   "audit-log",
   "reports",
   "withdrawals",
+  "skill-requests",
   "platform",
   "settings",
 ];

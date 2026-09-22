@@ -36,6 +36,10 @@ export function bulkMessage(verb: string, { succeeded, failed, errors }: BulkCou
 
 type RoleFilter = "all" | "provider" | "customer";
 type StatusFilter = "all" | "active" | "suspended" | "deleted";
+type JoinedFilter = "all" | "7d" | "30d";
+type VerificationFilter = "all" | "Verified" | "Pending review" | "Rejected" | "Not submitted";
+
+const JOINED_DAYS: Record<Exclude<JoinedFilter, "all">, number> = { "7d": 7, "30d": 30 };
 
 export function UsersPage() {
   const { users, setUserStatus, bulkSetUserStatus, sendPasswordReset, loading } = useApp();
@@ -43,6 +47,10 @@ export function UsersPage() {
   const [search, setSearch] = useState("");
   const [roleFilter, setRoleFilter] = useState<RoleFilter>("all");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
+  const [joinedFilter, setJoinedFilter] = useState<JoinedFilter>("all");
+  const [verificationFilter, setVerificationFilter] = useState<VerificationFilter>("all");
+  // Read once per mount: "new in the last 7 days" doesn't need to tick.
+  const [now] = useState(() => Date.now());
   const [page, setPage] = useState(1);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [bulkBusy, setBulkBusy] = useState(false);
@@ -66,7 +74,12 @@ export function UsersPage() {
       (roleFilter === "provider" && u.isProvider) ||
       (roleFilter === "customer" && !u.isProvider);
     const matchStatus = statusFilter === "all" || u.status.toLowerCase() === statusFilter;
-    return matchSearch && matchRole && matchStatus;
+    const matchJoined =
+      joinedFilter === "all" ||
+      now - new Date(u.createdAt).getTime() <= JOINED_DAYS[joinedFilter] * 86_400_000;
+    // Verification only applies to providers, so picking one narrows to them.
+    const matchVerification = verificationFilter === "all" || u.verification === verificationFilter;
+    return matchSearch && matchRole && matchStatus && matchJoined && matchVerification;
   });
 
   // Admins can't be suspended (backend refuses it) — leave them out of bulk selection.
@@ -190,8 +203,8 @@ export function UsersPage() {
 
   function exportCsv() {
     const csv = toCsv(
-      ["Name", "Email", "Phone", "Role", "Category", "City", "Status", "Joined", "Jobs completed", "Rating"],
-      exportScope.map((u) => [u.name, u.email, u.phone, u.rolePlain, u.category, u.city, u.status, u.joined, u.jobsCompleted, u.ratingValue]),
+      ["Name", "Email", "Phone", "Role", "Category", "City", "Status", "Verification", "Joined", "Jobs completed", "Rating"],
+      exportScope.map((u) => [u.name, u.email, u.phone, u.rolePlain, u.category, u.city, u.status, u.verification, u.joined, u.jobsCompleted, u.ratingValue]),
     );
     downloadCsv(datedFilename("taskbuddy-users"), csv);
   }
@@ -262,6 +275,28 @@ export function UsersPage() {
               <button key={f} onClick={() => { setStatusFilter(f); clearSelectionOnScopeChange(); }} className={clsx("rounded-lg font-medium cursor-pointer transition-colors", statusFilter !== f && "text-gray-500 hover:text-gray-300")} style={{ padding: "7px 10px", fontSize: "var(--fs-xs)", background: statusFilter === f ? "var(--indigo-dark)" : "transparent", color: statusFilter === f ? "var(--indigo-light)" : undefined, border: "none", fontFamily: "inherit" }}>{label}</button>
           ))}
         </div>
+        <select
+          aria-label="Filter users by join date"
+          value={joinedFilter}
+          onChange={(e) => { setJoinedFilter(e.target.value as JoinedFilter); clearSelectionOnScopeChange(); }}
+          style={{ background: "var(--chip-bg)", border: "1px solid var(--border-md)", borderRadius: "var(--r-md)", height: 34, padding: "0 10px", fontSize: "var(--fs-xs)", color: "var(--text-light)", fontFamily: "inherit" }}
+        >
+          <option value="all">Joined: any time</option>
+          <option value="7d">New: last 7 days</option>
+          <option value="30d">New: last 30 days</option>
+        </select>
+        <select
+          aria-label="Filter providers by verification status"
+          value={verificationFilter}
+          onChange={(e) => { setVerificationFilter(e.target.value as VerificationFilter); clearSelectionOnScopeChange(); }}
+          style={{ background: "var(--chip-bg)", border: "1px solid var(--border-md)", borderRadius: "var(--r-md)", height: 34, padding: "0 10px", fontSize: "var(--fs-xs)", color: "var(--text-light)", fontFamily: "inherit" }}
+        >
+          <option value="all">Verification: any</option>
+          <option value="Verified">Verified</option>
+          <option value="Pending review">Pending review</option>
+          <option value="Rejected">Rejected</option>
+          <option value="Not submitted">Not submitted</option>
+        </select>
         <span style={{ fontSize: "var(--fs-xs)", color: "var(--text-muted)" }}>{filtered.length.toLocaleString()} {filtered.length === 1 ? "user" : "users"}</span>
       </div>
 
@@ -361,6 +396,7 @@ export function UsersPage() {
                 <th>User</th>
                 <th>Role</th>
                 <th>Status</th>
+                <th>Verification</th>
                 <th className="hidden md:table-cell">Joined</th>
                 <th className="hidden lg:table-cell">Activity</th>
                 <th style={{ width: 50 }}></th>
@@ -407,6 +443,11 @@ export function UsersPage() {
                     </span>
                   </td>
                   <td><span className={clsx("badge", `badge-${u.status.toLowerCase()}`)}>{u.status}</span></td>
+                  <td>
+                    {u.isProvider
+                      ? <span className={clsx("badge", u.verificationClass)}>{u.verification}</span>
+                      : <span style={{ color: "var(--text-muted)", fontSize: "var(--fs-xs)" }}>—</span>}
+                  </td>
                   <td className="hidden md:table-cell" style={{ color: "var(--text-light)", fontSize: "var(--fs-xs)" }}>{u.joined}</td>
                   <td className="hidden lg:table-cell" style={{ color: "var(--text-light)", fontSize: "var(--fs-xs)" }}>{u.activity}</td>
                   <td onClick={(e) => e.stopPropagation()}>
@@ -424,7 +465,7 @@ export function UsersPage() {
               ))}
               {filtered.length === 0 && (
                 <tr>
-                  <td colSpan={7} className="text-center py-12" style={{ color: "var(--text-muted)", fontSize: "var(--fs-md)" }}>
+                  <td colSpan={8} className="text-center py-12" style={{ color: "var(--text-muted)", fontSize: "var(--fs-md)" }}>
                     {/* Three distinct states — saying "No users yet" while the
                         initial load is still in flight (up to a 60s Render
                         cold start) would be a confident lie. */}
@@ -503,6 +544,7 @@ export function UsersPage() {
                 {reviewing.isProvider && (
                   <>
                     <DrawerField label="Category" value={reviewing.category} />
+                    <DrawerField label="ID verification" value={reviewing.verification} />
                     <DrawerField label="Rating" value={reviewing.rating} />
                   </>
                 )}

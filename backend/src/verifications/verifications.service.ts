@@ -415,6 +415,7 @@ export class VerificationsService {
       email: emails.get(row.provider_id) ?? null,
       status: row.status,
       method: row.method,
+      document_type: row.document_type ?? null,
       submitted_at: row.submitted_at,
       reviewed_at: row.reviewed_at,
       rejection_reason: row.rejection_reason,
