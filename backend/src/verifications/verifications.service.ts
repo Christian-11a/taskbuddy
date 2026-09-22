@@ -35,6 +35,7 @@ interface VerificationRow {
   provider_id: string;
   id_document_path: string | null;
   selfie_path: string | null;
+  document_type: string | null;
   method: VerificationMethod;
   status: string;
   submitted_at: string;
@@ -78,6 +79,7 @@ export class VerificationsService {
         provider_id: user.id,
         id_document_path: dto.id_document_path,
         selfie_path: dto.selfie_path,
+        document_type: dto.document_type ?? null,
       })
       .select('*')
       .single();
@@ -145,6 +147,7 @@ export class VerificationsService {
         stripe_session_id: session.id,
         id_document_path: dto.id_document_path ?? null,
         selfie_path: dto.selfie_path ?? null,
+        document_type: dto.document_type ?? null,
       })
       .select('*')
       .single();
@@ -412,6 +415,7 @@ export class VerificationsService {
       email: emails.get(row.provider_id) ?? null,
       status: row.status,
       method: row.method,
+      document_type: row.document_type ?? null,
       submitted_at: row.submitted_at,
       reviewed_at: row.reviewed_at,
       rejection_reason: row.rejection_reason,

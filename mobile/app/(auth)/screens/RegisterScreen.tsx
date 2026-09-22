@@ -35,12 +35,14 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import { ArrowLeft, Check, ChevronDown, MailCheck } from 'lucide-react-native';
+import { AlertCircle, ArrowLeft, Check, ChevronDown, MailCheck } from 'lucide-react-native';
 import { V6Colors, V6Radii, V6Shadows } from '../../../src/constants/theme';
 import TermsAndConditions from './TermsAndConditions';
-import { api } from '../../../src/lib/api';
+import { ApiError, api } from '../../../src/lib/api';
 import type { MobileRole } from '../../../src/lib/api';
 import { useAuth } from '../../../src/context/AuthContext';
+import PasswordInput from '../../../src/components/PasswordInput';
+import { useAuthLayout } from '../../../src/hooks/useAuthLayout';
 
 /** Supabase issues 6-digit signup codes. */
 const OTP_LENGTH = 6;
@@ -116,24 +118,39 @@ function FormInput({
   return (
     <View style={styles.inputGroup}>
       <Text style={styles.inputLabel}>{label}</Text>
-      <View style={[styles.inputBox, focused && styles.inputBoxFocused, error ? styles.inputBoxError : undefined]}>
-        <TextInput
-          style={styles.inputText}
+      {secureTextEntry ? (
+        <PasswordInput
+          containerStyle={[styles.inputBox, focused && styles.inputBoxFocused, error ? styles.inputBoxError : undefined]}
+          inputStyle={styles.inputText}
           testID={testID}
           placeholder={placeholder}
           placeholderTextColor={C.muted}
           value={value}
           onChangeText={onChangeText}
-          secureTextEntry={secureTextEntry}
-          keyboardType={keyboardType}
-          autoCapitalize="none"
-          autoCorrect={false}
           onFocus={() => setFocused(true)}
           onBlur={() => setFocused(false)}
           onSubmitEditing={Keyboard.dismiss}
           enablesReturnKeyAutomatically
         />
-      </View>
+      ) : (
+        <View style={[styles.inputBox, focused && styles.inputBoxFocused, error ? styles.inputBoxError : undefined]}>
+          <TextInput
+            style={styles.inputText}
+            testID={testID}
+            placeholder={placeholder}
+            placeholderTextColor={C.muted}
+            value={value}
+            onChangeText={onChangeText}
+            keyboardType={keyboardType}
+            autoCapitalize="none"
+            autoCorrect={false}
+            onFocus={() => setFocused(true)}
+            onBlur={() => setFocused(false)}
+            onSubmitEditing={Keyboard.dismiss}
+            enablesReturnKeyAutomatically
+          />
+        </View>
+      )}
       {!!error && <Text style={styles.inputErrorText}>{error}</Text>}
     </View>
   );
@@ -185,6 +202,7 @@ type FieldErrors = {
 };
 
 export default function RegisterScreen({ onRegister, onLogin, onGoogleSignIn }: RegisterScreenProps) {
+  const layout = useAuthLayout();
   const { verifyEmailOtp } = useAuth();
   // Entrance transition — matches the mockup's `.screen{animation:fadeIn .22s ease}`
   // (fade in + slide up 6px). Runs once on mount, when this screen first opens.
@@ -205,6 +223,7 @@ export default function RegisterScreen({ onRegister, onLogin, onGoogleSignIn }: 
 
   // Which terms/policy modal to show
   const [termsMode, setTermsMode] = useState<TermsMode>(null);
+  const [emailTaken, setEmailTaken] = useState(false);
 
   // Consent flags
   const [termsAccepted, setTermsAccepted] = useState(false);
@@ -289,19 +308,6 @@ export default function RegisterScreen({ onRegister, onLogin, onGoogleSignIn }: 
     }
   }, [role]);
 
-  if (termsMode !== null) {
-    return (
-      <TermsAndConditions
-        mode={termsMode}
-        onBack={() => setTermsMode(null)}
-        onAccept={() => {
-          if (termsMode === 'terms') setTermsAccepted(true);
-          else if (termsMode === 'privacy') setPrivacyAccepted(true);
-          setTermsMode(null);
-        }}
-      />
-    );
-  }
 
   // ── Validation ─────────────────────────────────────────────────────────────
 
@@ -340,6 +346,7 @@ export default function RegisterScreen({ onRegister, onLogin, onGoogleSignIn }: 
   const handleSignUp = async () => {
     if (submitting) return;
     setError(null);
+    setEmailTaken(false);
 
     const errors = validate();
     if (Object.keys(errors).length > 0) {
@@ -363,6 +370,12 @@ export default function RegisterScreen({ onRegister, onLogin, onGoogleSignIn }: 
       });
       if (needsEmailConfirmation) setConfirmationSent(true);
     } catch (e) {
+      if (e instanceof ApiError && (e.details as { code?: string } | undefined)?.code === 'EMAIL_TAKEN') {
+        // Point at the field that caused it and offer the obvious way out.
+        setFieldErrors({ email: 'This email is already registered.' });
+        setEmailTaken(true);
+        return;
+      }
       setError(e instanceof Error ? e.message : 'Unable to create account.');
     } finally {
       setSubmitting(false);
@@ -459,7 +472,7 @@ export default function RegisterScreen({ onRegister, onLogin, onGoogleSignIn }: 
   const scrollContent = (
     <ScrollView
       style={styles.flex}
-      contentContainerStyle={styles.scrollContent}
+      contentContainerStyle={[styles.scrollContent, { paddingTop: layout.paddingTop, paddingBottom: layout.paddingBottom }]}
       showsVerticalScrollIndicator={false}
       // "handled" lets taps on buttons/links/inputs still register while any
       // other tap outside an input bubbles up and dismisses the keyboard.
@@ -467,10 +480,19 @@ export default function RegisterScreen({ onRegister, onLogin, onGoogleSignIn }: 
       // which fired on every touch — including tapping directly into an
       // input — and raced against the input's own focus, so the keyboard
       // sometimes never opened. Same fix as LoginScreen's.)
-      keyboardShouldPersistTaps="always"
-      keyboardDismissMode="none"
+      keyboardShouldPersistTaps="handled"
+      keyboardDismissMode="on-drag"
       automaticallyAdjustKeyboardInsets={Platform.OS === 'ios'}
     >
+      <TermsAndConditions
+        visible={termsMode !== null}
+        mode={termsMode ?? 'terms'}
+        onBack={() => setTermsMode(null)}
+        onAccept={() => {
+          if (termsMode === 'terms') setTermsAccepted(true);
+          else if (termsMode === 'privacy') setPrivacyAccepted(true);
+        }}
+      />
           {/* Top section */}
           <View style={styles.topSection}>
             <TouchableOpacity style={styles.backBtn} onPress={onLogin} activeOpacity={0.8}>
@@ -493,7 +515,7 @@ export default function RegisterScreen({ onRegister, onLogin, onGoogleSignIn }: 
                   activeOpacity={0.8}
                 >
                   <Text style={[styles.roleBtnText, role === r && styles.roleBtnTextActive]}>
-                    {r === 'homeowner' ? 'Homeowner' : 'Service Provider'}
+                    {r === 'homeowner' ? 'Client' : 'Service Provider'}
                   </Text>
                 </TouchableOpacity>
               ))}
@@ -513,7 +535,7 @@ export default function RegisterScreen({ onRegister, onLogin, onGoogleSignIn }: 
               placeholder="alex@example.com"
               testID="input-email"
               value={email}
-              onChangeText={(v) => { setEmail(v); clearError('email'); }}
+              onChangeText={(v) => { setEmail(v); clearError('email'); setEmailTaken(false); }}
               keyboardType="email-address"
               error={fieldErrors.email}
             />
@@ -679,7 +701,24 @@ export default function RegisterScreen({ onRegister, onLogin, onGoogleSignIn }: 
             </View>
 
             {/* Global error banner */}
-            {!!error && <Text style={styles.errorBanner}>{error}</Text>}
+            {emailTaken && (
+              <View style={styles.errorCard} accessibilityRole="alert">
+                <AlertCircle size={18} color={C.brandRed} />
+                <View style={styles.errorCardBody}>
+                  <Text style={styles.errorCardTitle}>Email already in use</Text>
+                  <Text style={styles.errorCardText}>
+                    An account with {email.trim()} already exists.{' '}
+                    <Text style={styles.errorCardLink} onPress={onLogin}>Log in instead</Text>
+                  </Text>
+                </View>
+              </View>
+            )}
+            {!!error && (
+              <View style={styles.errorCard} accessibilityRole="alert">
+                <AlertCircle size={18} color={C.brandRed} />
+                <Text style={[styles.errorCardText, styles.errorCardBody]}>{error}</Text>
+              </View>
+            )}
 
             {/* Sign Up */}
             <TouchableOpacity
@@ -720,13 +759,6 @@ export default function RegisterScreen({ onRegister, onLogin, onGoogleSignIn }: 
                 </>
               )}
             </TouchableOpacity>
-
-            {/* Progress dots */}
-            <View style={styles.dotsRow}>
-              {[0, 1, 2, 3].map((i) => (
-                <View key={i} style={[styles.dot, i === 0 && styles.dotActive]} />
-              ))}
-            </View>
           </View>
 
           {/* Sign In link */}
@@ -865,10 +897,15 @@ const styles = StyleSheet.create({
     color: C.muted, fontSize: 13.5, fontFamily: 'Inter', marginTop: 4, lineHeight: 16,
   },
 
-  errorBanner: {
-    fontFamily: 'Inter', fontSize: 15.5, color: C.brandRed,
-    marginBottom: 12, lineHeight: 18,
+  errorCard: {
+    flexDirection: 'row', alignItems: 'flex-start', gap: 10,
+    backgroundColor: '#fef2f2', borderWidth: 1, borderColor: '#fecaca',
+    borderRadius: 12, padding: 12, marginBottom: 14,
   },
+  errorCardBody: { flex: 1 },
+  errorCardTitle: { fontFamily: 'Inter', fontSize: 14.5, fontWeight: '700', color: '#991b1b', marginBottom: 2 },
+  errorCardText: { fontFamily: 'Inter', fontSize: 14, color: '#b91c1c', lineHeight: 19 },
+  errorCardLink: { fontWeight: '700', textDecorationLine: 'underline', color: '#991b1b' },
 
   primaryBtn: {
     backgroundColor: C.brandTeal, borderRadius: V6Radii.btn, paddingVertical: 15,
@@ -936,10 +973,6 @@ const styles = StyleSheet.create({
   },
   googleIconText: { color: C.white, fontSize: 14.5, fontWeight: '700' },
   googleBtnText: { fontFamily: 'Inter', fontSize: 16.5, fontWeight: '500', color: '#757575' },
-
-  dotsRow: { flexDirection: 'row', justifyContent: 'center', gap: 8 },
-  dot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#D9D9D9' },
-  dotActive: { backgroundColor: C.brandDark, width: 24, borderRadius: 4 },
 
   signInRow: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', marginTop: 4 },
   signInPrompt: { fontFamily: 'Inter', fontSize: 16.5, color: C.muted },

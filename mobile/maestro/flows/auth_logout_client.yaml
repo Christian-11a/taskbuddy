@@ -1,12 +1,11 @@
 appId: com.taskbuddy.app
 ---
-# Phase 1: sign out from Settings returns to Login. Two elements share the text
-# "Log Out" once the confirm modal is open (the row behind it, and the modal's
+# Phase 1: sign out from Profile returns to Login. Two elements share the text
+# "Log Out" once the confirm modal is open (the Profile row behind it, and the modal's
 # confirm button) — disambiguated with `below`, anchored on the modal's message.
 - runFlow: _helpers/login_client.yaml
 - tapOn:
     id: "btn-home-avatar"
-- tapOn: "Settings"
 - tapOn: "Log Out"
 - assertVisible: "Are you sure you want to log out?"
 - tapOn:

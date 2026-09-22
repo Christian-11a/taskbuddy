@@ -40,7 +40,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import { AlertCircle, ArrowLeft, MessageCircle, ShieldAlert, Star } from 'lucide-react-native';
+import { AlertCircle, ArrowLeft, ChevronRight, ShieldAlert, Star } from 'lucide-react-native';
 import { Sizes, Spacing, V6Colors } from '../../../src/constants/theme';
 
 const C = V6Colors;
@@ -49,6 +49,7 @@ import { api, type JobApplication } from '../../../src/lib/api';
 import { openRedirectSession } from '../../../src/lib/appRedirectSession';
 import { initials } from '../../../src/lib/format';
 import HirePaymentModal from '../../../src/components/HirePaymentModal';
+import ConfirmationModal from '../../../src/components/ConfirmationModal';
 import { HOScreen } from '../../../src/types/navigation';
 
 interface HOJobApplicationsScreenProps {
@@ -92,6 +93,11 @@ export default function HOJobApplicationsScreen({
   };
 
   const pendingCount = apps?.filter((a) => a.status === 'pending').length ?? 0;
+
+  // Accept and Reject both ask first: rejecting can't be undone, and accepting
+  // goes straight on to payment.
+  const [confirmReject, setConfirmReject] = useState<JobApplication | null>(null);
+  const [confirmAccept, setConfirmAccept] = useState<JobApplication | null>(null);
 
   // ── Hiring: the payment choice ─────────────────────────────────────────────
   const [hireTarget, setHireTarget] = useState<JobApplication | null>(null);
@@ -255,7 +261,17 @@ export default function HOJobApplicationsScreen({
               const verified = stats?.is_verified === true;
               return (
                 <View key={app.id} style={styles.card}>
-                  <View style={styles.cardHead}>
+                  {/* The whole header opens the provider's profile — rating,
+                      reviews and past work — before deciding. */}
+                  <TouchableOpacity
+                    style={styles.cardHead}
+                    onPress={() => onNavigate?.('Provider Profile', app.provider_id)}
+                    disabled={!onNavigate}
+                    activeOpacity={0.8}
+                    accessibilityRole="button"
+                    accessibilityLabel={`View ${provider?.full_name ?? 'provider'}'s profile`}
+                    testID={`applications-profile-${app.id}`}
+                  >
                     <View style={styles.avatar}>
                       <Text style={styles.avatarText}>{initials(provider?.full_name)}</Text>
                     </View>
@@ -277,16 +293,13 @@ export default function HOJobApplicationsScreen({
                         </View>
                       )}
                     </View>
-                    {onNavigate && jobId && (
-                      <TouchableOpacity
-                        style={styles.chatBtn}
-                        onPress={() => onNavigate('Chat', jobId)}
-                        activeOpacity={0.85}
-                      >
-                        <MessageCircle size={15} color={C.white} />
-                      </TouchableOpacity>
+                    {onNavigate && (
+                      <View style={styles.profileLink}>
+                        <Text style={styles.profileLinkText}>Profile</Text>
+                        <ChevronRight size={15} color={C.cyan700} />
+                      </View>
                     )}
-                  </View>
+                  </TouchableOpacity>
 
                   <View style={styles.messageBox}>
                     <Text style={styles.messageText}>{app.cover_message ?? 'No cover message.'}</Text>
@@ -296,7 +309,7 @@ export default function HOJobApplicationsScreen({
                     <View style={styles.actionsRow}>
                       <TouchableOpacity
                         style={[styles.outlineBtn, busyId !== null && styles.disabled]}
-                        onPress={() => runAction(app.id, () => api.rejectApplication(app.id))}
+                        onPress={() => setConfirmReject(app)}
                         disabled={busyId !== null}
                         activeOpacity={0.85}
                         testID={`applications-reject-${app.id}`}
@@ -308,7 +321,7 @@ export default function HOJobApplicationsScreen({
                           why before the tap rather than after. */}
                       <TouchableOpacity
                         style={[styles.primaryBtn, (busyId !== null || !verified) && styles.disabled]}
-                        onPress={() => openHire(app)}
+                        onPress={() => setConfirmAccept(app)}
                         disabled={busyId !== null || !verified}
                         activeOpacity={0.85}
                         testID={`applications-accept-${app.id}`}
@@ -329,6 +342,32 @@ export default function HOJobApplicationsScreen({
           <View style={{ height: 20 }} />
         </ScrollView>
       )}
+
+      <ConfirmationModal
+        visible={confirmReject !== null}
+        title="Reject this proposal?"
+        message={`${confirmReject?.provider?.full_name ?? 'This provider'} will be told they weren't selected. You can't undo this.`}
+        confirmLabel="Reject"
+        onConfirm={() => {
+          const app = confirmReject;
+          setConfirmReject(null);
+          if (app) void runAction(app.id, () => api.rejectApplication(app.id));
+        }}
+        onCancel={() => setConfirmReject(null)}
+      />
+
+      <ConfirmationModal
+        visible={confirmAccept !== null}
+        title="Hire this provider?"
+        message={`You're about to hire ${confirmAccept?.provider?.full_name ?? 'this provider'}. Next you'll choose how to pay; the job's budget is held in escrow until you confirm the work is done.`}
+        confirmLabel="Continue"
+        onConfirm={() => {
+          const app = confirmAccept;
+          setConfirmAccept(null);
+          if (app) void openHire(app);
+        }}
+        onCancel={() => setConfirmAccept(null)}
+      />
 
       <HirePaymentModal
         visible={hireTarget !== null}
@@ -397,7 +436,8 @@ const styles = StyleSheet.create({
   providerName: { color: C.ink900, fontSize: 14.5, fontWeight: '700', fontFamily: 'Inter' },
   ratingRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 3 },
   providerMeta: { color: C.ink400, fontSize: 11.5, fontFamily: 'Inter' },
-  chatBtn: { backgroundColor: C.cyan700, borderRadius: 10, padding: 8 },
+  profileLink: { flexDirection: 'row', alignItems: 'center', gap: 2, alignSelf: 'center' },
+  profileLinkText: { color: C.cyan700, fontSize: 13, fontWeight: '700', fontFamily: 'Inter' },
 
   messageBox: { backgroundColor: '#f8fafc', borderRadius: 11, padding: 11, marginVertical: 11 },
   messageText: { color: C.ink700, fontSize: 12.5, lineHeight: 17, fontFamily: 'Inter' },

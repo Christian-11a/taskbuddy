@@ -38,6 +38,8 @@ import { api } from '../../../src/lib/api';
 interface SPEditProfileScreenProps {
   onBack: () => void;
   onSave: () => void;
+  /** Opens My Services, where a service change is requested from the admins. */
+  onManageServices: () => void;
 }
 
 function FormField({
@@ -48,8 +50,11 @@ function FormField({
   multiline,
   keyboardType,
   editable = true,
+  required = false,
 }: {
   label: string;
+  /** Shows a red asterisk. Only on fields the Save button actually checks. */
+  required?: boolean;
   value: string;
   onChangeText?: (v: string) => void;
   placeholder?: string;
@@ -60,7 +65,10 @@ function FormField({
   const [focused, setFocused] = useState(false);
   return (
     <View style={styles.fieldGroup}>
-      <Text style={styles.fieldLabel}>{label}</Text>
+      <Text style={styles.fieldLabel}>
+        {label}
+        {required && <Text style={styles.requiredAsterisk}> *</Text>}
+      </Text>
       <TextInput
         style={[
           styles.fieldInput,
@@ -83,7 +91,7 @@ function FormField({
   );
 }
 
-export default function SPEditProfileScreen({ onBack, onSave }: SPEditProfileScreenProps) {
+export default function SPEditProfileScreen({ onBack, onSave, onManageServices }: SPEditProfileScreenProps) {
   const { profile, providerProfile, refreshProfile } = useAuth();
   const categories = useAsyncData(() => api.categories(), []);
 
@@ -150,7 +158,7 @@ export default function SPEditProfileScreen({ onBack, onSave }: SPEditProfileScr
       </View>
 
       <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
-        <ScrollView
+        <ScrollView keyboardDismissMode="on-drag"
           style={styles.body}
           contentContainerStyle={styles.bodyContent}
           showsVerticalScrollIndicator={false}
@@ -159,13 +167,13 @@ export default function SPEditProfileScreen({ onBack, onSave }: SPEditProfileScr
           {/* Avatar — uploads on its own, independent of the Save button */}
           <AvatarPicker name={name} />
 
-          <FormField label="Full name" value={name} onChangeText={setName} placeholder="Your full name" />
+          <FormField required label="Full name" value={name} onChangeText={setName} placeholder="Your full name" />
           <FormField label="Email" value={email} placeholder="email@example.com" keyboardType="email-address" editable={false} />
           <FormField label="Phone" value={phone} onChangeText={setPhone} placeholder="+63 9XX XXX XXXX" keyboardType="phone-pad" />
           {/* The address a provider is matched from — same suggestions + GPS
               as the job form, so "nearby" means a place the geocoder knows. */}
           <View style={styles.fieldGroup}>
-            <Text style={styles.fieldLabel}>Address</Text>
+            <Text style={styles.fieldLabel}>Address<Text style={styles.requiredAsterisk}> *</Text></Text>
             <AddressField
               value={location}
               onChangeText={setLocation}
@@ -174,26 +182,41 @@ export default function SPEditProfileScreen({ onBack, onSave }: SPEditProfileScr
             />
           </View>
           <FormField label="City" value={city} onChangeText={setCity} placeholder="City / Municipality" />
-          <FormField label="Bio (min 20 characters)" value={bio} onChangeText={setBio} multiline placeholder="Describe your experience..." />
+          <FormField required label="Bio (min 20 characters)" value={bio} onChangeText={setBio} multiline placeholder="Describe your experience..." />
           <FormField label="Service radius (km)" value={radius} onChangeText={setRadius} keyboardType="number-pad" placeholder="8" />
 
           <View style={styles.fieldGroup}>
-            <Text style={styles.fieldLabel}>Service offered</Text>
-            <View style={styles.chipGrid}>
-              {(categories.data ?? []).map((cat) => {
-                const active = categoryId === cat.id;
-                return (
-                  <TouchableOpacity
-                    key={cat.id}
-                    style={[styles.chip, active && styles.chipActive]}
-                    onPress={() => setCategoryId(cat.id)}
-                    activeOpacity={0.8}
-                  >
-                    <Text style={[styles.chipText, active && styles.chipTextActive]}>{cat.name}</Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
+            <Text style={styles.fieldLabel}>Service offered<Text style={styles.requiredAsterisk}> *</Text></Text>
+            {/* Once set, a service only changes through an admin-approved
+                request (My Services); the first one is still picked here. */}
+            {providerProfile?.category_id ? (
+              <View style={styles.serviceLocked}>
+                <Text style={styles.serviceLockedName}>
+                  {providerProfile.service_categories?.name ??
+                    (categories.data ?? []).find((c) => c.id === providerProfile.category_id)?.name ??
+                    '—'}
+                </Text>
+                <TouchableOpacity onPress={onManageServices} activeOpacity={0.8} testID="btn-manage-services">
+                  <Text style={styles.serviceLockedLink}>Request a change</Text>
+                </TouchableOpacity>
+              </View>
+            ) : (
+              <View style={styles.chipGrid}>
+                {(categories.data ?? []).map((cat) => {
+                  const active = categoryId === cat.id;
+                  return (
+                    <TouchableOpacity
+                      key={cat.id}
+                      style={[styles.chip, active && styles.chipActive]}
+                      onPress={() => setCategoryId(cat.id)}
+                      activeOpacity={0.8}
+                    >
+                      <Text style={[styles.chipText, active && styles.chipTextActive]}>{cat.name}</Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            )}
           </View>
 
           {!!error && <Text style={styles.errorText}>{error}</Text>}
@@ -246,6 +269,7 @@ const styles = StyleSheet.create({
 
   fieldGroup: { marginBottom: 16 },
   fieldLabel: { color: C.ink900, fontSize: 14, fontWeight: '700', fontFamily: 'Inter', marginBottom: 6 },
+  requiredAsterisk: { color: '#ef4444', fontWeight: '700' },
   fieldInput: {
     backgroundColor: C.white, borderRadius: 12, paddingHorizontal: 14, minHeight: 46,
     borderWidth: 1, borderColor: '#dce3e9',
@@ -256,6 +280,12 @@ const styles = StyleSheet.create({
   fieldInputDisabled: { color: C.ink400, backgroundColor: C.ink50 },
 
   chipGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  serviceLocked: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10,
+    borderWidth: 1, borderColor: '#dce3e9', borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12, backgroundColor: '#f8fafc',
+  },
+  serviceLockedName: { flex: 1, color: C.ink900, fontSize: 15, fontWeight: '700', fontFamily: 'Inter' },
+  serviceLockedLink: { color: C.cyan700, fontSize: 13.5, fontWeight: '700', fontFamily: 'Inter' },
   chip: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 999, borderWidth: 1, borderColor: '#dce3e9', backgroundColor: C.white },
   chipActive: { backgroundColor: C.ink900, borderColor: C.ink900 },
   chipText: { color: C.ink500, fontSize: 14.5, fontWeight: '600', fontFamily: 'Inter' },

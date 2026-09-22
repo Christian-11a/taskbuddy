@@ -12,6 +12,7 @@
  */
 
 import React, { useState } from 'react';
+import { useRetainedScroll } from '../../../src/hooks/useRetainedState';
 import {
   ScrollView,
   StyleSheet,
@@ -52,6 +53,8 @@ interface ProfileProps {
 }
 
 export default function Profile({ onNavigate, onLogout, onBack }: ProfileProps) {
+  // Coming back from Settings/Edit Profile keeps the list where it was.
+  const scroll = useRetainedScroll('ho.profile');
   const { profile } = useAuth();
   const [confirmLogoutVisible, setConfirmLogoutVisible] = useState(false);
 
@@ -112,6 +115,7 @@ export default function Profile({ onNavigate, onLogout, onBack }: ProfileProps) 
       </View>
 
       <ScrollView
+        {...scroll}
         style={styles.body}
         contentContainerStyle={styles.bodyContent}
         showsVerticalScrollIndicator={false}

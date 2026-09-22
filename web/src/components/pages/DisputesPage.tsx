@@ -211,7 +211,7 @@ export function DisputesPage() {
           <>
             <DrawerSection>
               <div className="grid grid-cols-2 gap-3">
-                <DrawerField label="Homeowner" value={reviewing.clientName} />
+                <DrawerField label="Client" value={reviewing.clientName} />
                 <DrawerField label="Provider" value={reviewing.providerName} />
                 <DrawerField label="Escrow amount" value={<span className="font-semibold text-white">{reviewing.amount}</span>} />
                 <DrawerField label="Opened" value={reviewing.createdAt} />

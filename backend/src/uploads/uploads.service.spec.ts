@@ -2,15 +2,22 @@ import { BadRequestException } from '@nestjs/common';
 import { UploadsService } from './uploads.service';
 import type { SupabaseService } from '../supabase/supabase.service';
 
-function createSupabaseMock(listResult: {
-  data: { name: string; metadata: Record<string, unknown> | null }[] | null;
-  error: { message: string } | null;
-}) {
+function createSupabaseMock(
+  listResult: {
+    data: { name: string; metadata: Record<string, unknown> | null }[] | null;
+    error: { message: string } | null;
+  },
+  fileBytes: number[] = [],
+) {
   const list = jest.fn().mockResolvedValue(listResult);
+  const download = jest.fn().mockResolvedValue({
+    data: new Blob([new Uint8Array(fileBytes)]),
+    error: null,
+  });
   const supabase = {
-    admin: { storage: { from: jest.fn(() => ({ list })) } },
+    admin: { storage: { from: jest.fn(() => ({ list, download })) } },
   } as unknown as SupabaseService;
-  return { supabase, list };
+  return { supabase, list, download };
 }
 
 describe('UploadsService.assertValidImage', () => {
@@ -64,6 +71,47 @@ describe('UploadsService.assertValidImage', () => {
 
     await expect(
       service.assertValidImage('verification-docs', 'p1/id.pdf'),
+    ).rejects.toThrow(/not a recognizable image/);
+  });
+
+  it('accepts an octet-stream object whose bytes are a JPEG', async () => {
+    const { supabase, download } = createSupabaseMock(
+      {
+        data: [
+          {
+            name: 'id.jpg',
+            metadata: { size: 2048, mimetype: 'application/octet-stream' },
+          },
+        ],
+        error: null,
+      },
+      [0xff, 0xd8, 0xff, 0xe0, 0, 0x10],
+    );
+    const service = new UploadsService(supabase);
+
+    await expect(
+      service.assertValidImage('verification-docs', 'p1/id.jpg'),
+    ).resolves.toBeUndefined();
+    expect(download).toHaveBeenCalledWith('p1/id.jpg');
+  });
+
+  it('rejects an octet-stream object whose bytes are not an image', async () => {
+    const { supabase } = createSupabaseMock(
+      {
+        data: [
+          {
+            name: 'id.jpg',
+            metadata: { size: 2048, mimetype: 'application/octet-stream' },
+          },
+        ],
+        error: null,
+      },
+      [0x25, 0x50, 0x44, 0x46], // %PDF
+    );
+    const service = new UploadsService(supabase);
+
+    await expect(
+      service.assertValidImage('verification-docs', 'p1/id.jpg'),
     ).rejects.toThrow(/not a recognizable image/);
   });
 

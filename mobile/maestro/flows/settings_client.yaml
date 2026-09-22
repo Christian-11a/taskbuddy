@@ -15,18 +15,10 @@ appId: com.taskbuddy.app
 # Dark Mode and the other two toggles are the identical component with a
 # different key, not worth repeating three times over.
 #
-# Change Password's modal is safe to use hideKeyboard/tapOn "Save" inside:
-# RN's Modal intercepts hardware back via onRequestClose, so the BUG-003
-# harness corollary (hideKeyboard exiting the app on a plain screen) does
-# not apply here — confirmed during this session's exploration.
-#
-# The modal does NOT reset its fields between attempts unless closed and
-# reopened (ChangePasswordModal's `reset()` only runs from `close()`) —
-# inputText appends to whatever is already in a field rather than replacing
-# it, so each validation round below closes with Cancel and reopens with
-# Change Password first. Skipping this the first time this flow was written
-# produced concatenated garbage across rounds and a false-looking failure on
-# the last assertion — a flow bug, not a product one.
+# Change Password shows its rules as a live checklist and keeps
+# "Update password" disabled until they all pass, so the client-side rounds
+# assert the checklist rather than an error after Save. The fields keep their
+# text until the modal is closed, so each round closes with Cancel first.
 
 - runFlow: _helpers/login_client.yaml
 - tapOn:
@@ -50,48 +42,45 @@ appId: com.taskbuddy.app
       checked: false
     timeout: 5000
 
-# --- Change Password: empty fields blocks save ---
+# --- Change Password: empty fields keep Update disabled ---
 - tapOn: "Change Password"
-- tapOn: "Save"
-- assertVisible: "Fill in both password fields."
+- assertVisible:
+    id: "btn-update-password"
+    enabled: false
 - tapOn: "Cancel"
 
 # --- Change Password: new password too short ---
 - tapOn: "Change Password"
-- tapOn: "Current password"
+- tapOn:
+    id: "input-current-password"
 - inputText: "WrongPassLogin1!"
-- tapOn: "New password"
+- tapOn:
+    id: "input-new-password"
 - inputText: "short"
-- tapOn: "Confirm new password"
+- tapOn:
+    id: "input-confirm-password"
 - inputText: "short"
 - hideKeyboard
-- tapOn: "Save"
-- assertVisible: "New password must be at least 8 characters."
-- tapOn: "Cancel"
-
-# --- Change Password: new passwords do not match ---
-- tapOn: "Change Password"
-- tapOn: "Current password"
-- inputText: "WrongPassLogin1!"
-- tapOn: "New password"
-- inputText: "GoodPass123"
-- tapOn: "Confirm new password"
-- inputText: "GoodPass456"
-- hideKeyboard
-- tapOn: "Save"
-- assertVisible: "New passwords do not match."
+- assertVisible: "At least 8 characters"
+- assertVisible:
+    id: "btn-update-password"
+    enabled: false
 - tapOn: "Cancel"
 
 # --- Change Password: wrong current password (real API round trip) ---
 - tapOn: "Change Password"
-- tapOn: "Current password"
+- tapOn:
+    id: "input-current-password"
 - inputText: "WrongPassLogin1!"
-- tapOn: "New password"
+- tapOn:
+    id: "input-new-password"
 - inputText: "GoodPass123"
-- tapOn: "Confirm new password"
+- tapOn:
+    id: "input-confirm-password"
 - inputText: "GoodPass123"
 - hideKeyboard
-- tapOn: "Save"
+- tapOn:
+    id: "btn-update-password"
 - extendedWaitUntil:
     visible: "Current password is incorrect"
     timeout: 15000

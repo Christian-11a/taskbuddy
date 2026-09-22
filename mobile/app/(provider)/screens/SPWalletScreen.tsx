@@ -27,6 +27,7 @@ import { useAsyncData } from '../../../src/hooks/useAsyncData';
 import { api } from '../../../src/lib/api';
 import { peso, shortDate } from '../../../src/lib/format';
 import WithdrawModal from '../../../src/components/WithdrawModal';
+import { showToast } from '../../../src/components/Toast';
 
 export default function SPWalletScreen() {
   const { providerProfile } = useAuth();
@@ -78,8 +79,8 @@ export default function SPWalletScreen() {
           )}
           <TouchableOpacity
             style={[styles.withdrawBtn, !canWithdraw && styles.withdrawBtnDisabled]}
-            onPress={() => setShowWithdraw(true)}
-            disabled={!canWithdraw}
+            // Kept tappable when empty so the tap explains itself.
+            onPress={() => (canWithdraw ? setShowWithdraw(true) : showToast('You have no funds available to withdraw.'))}
             activeOpacity={0.85}
             accessibilityRole="button"
             accessibilityState={{ disabled: !canWithdraw }}

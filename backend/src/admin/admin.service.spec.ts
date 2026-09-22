@@ -120,6 +120,41 @@ describe('AdminService', () => {
       ).toBe(true);
     });
 
+    it('filters new users by creation date', async () => {
+      const { supabase, calls } = createSupabaseMock({
+        admin_user_overview: [{ data: [], error: null, count: 0 }],
+      });
+      const service = new AdminService(supabase, createAdminActionsMock().mock);
+
+      await service.listUsers({ created_after: '2026-09-15T00:00:00.000Z' });
+
+      expect(calls).toContainEqual({
+        table: 'admin_user_overview',
+        method: 'gte',
+        args: ['created_at', '2026-09-15T00:00:00.000Z'],
+      });
+    });
+
+    it('filters providers awaiting verification review', async () => {
+      const { supabase, calls } = createSupabaseMock({
+        admin_user_overview: [{ data: [], error: null, count: 0 }],
+      });
+      const service = new AdminService(supabase, createAdminActionsMock().mock);
+
+      await service.listUsers({ verification: 'pending' });
+
+      expect(calls).toContainEqual({
+        table: 'admin_user_overview',
+        method: 'eq',
+        args: ['latest_verification_status', 'pending'],
+      });
+      expect(calls).toContainEqual({
+        table: 'admin_user_overview',
+        method: 'eq',
+        args: ['role', 'provider'],
+      });
+    });
+
     it('throws BadRequestException on query error', async () => {
       const { supabase } = createSupabaseMock({
         admin_user_overview: [

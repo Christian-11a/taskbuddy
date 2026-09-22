@@ -128,7 +128,7 @@ export class ApplicationsService {
     const { data } = await this.supabase.admin
       .from('job_applications')
       .select(
-        '*, jobs(id, title, status, urgency, address, service_categories(name))',
+        '*, jobs(id, title, status, urgency, address, budget, service_categories(name))',
       )
       .eq('provider_id', user.id)
       .order('applied_at', { ascending: false });

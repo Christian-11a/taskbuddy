@@ -106,13 +106,13 @@ env:
     timeout: 20000
 - tapOn: "Sign Up"
 - extendedWaitUntil:
-    visible: ".*(Skip|Need something done\\?).*"
+    visible: ".*(Skip|Find a service).*"
     timeout: 60000
 - tapOn:
     text: "Skip"
     optional: true
 - extendedWaitUntil:
-    visible: "Need something done?"
+    visible: "Find a service"
     timeout: 15000
 
 # --- Edit Profile: fill every blank field, save, confirm on Profile ---

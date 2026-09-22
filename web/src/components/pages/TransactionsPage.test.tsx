@@ -46,6 +46,8 @@ function makeUser(overrides: Partial<UserRow> = {}): UserRow {
     rating: "4.9 rating",
     ratingValue: 4.9,
     suspendedUntil: "—",
+    verification: "Verified",
+    verificationClass: "badge-approved",
     suspensionReason: "—",
     ...overrides,
   };

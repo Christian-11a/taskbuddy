@@ -9,6 +9,16 @@ import {
 } from 'class-validator';
 import type { VerificationStatus } from '../../common/types';
 
+/** Government IDs a provider can verify with (migration 0034). */
+export const DOCUMENT_TYPES = [
+  'umid',
+  'drivers_license',
+  'passport',
+  'philsys',
+  'postal_id',
+] as const;
+export type DocumentType = (typeof DOCUMENT_TYPES)[number];
+
 export class SubmitVerificationDto {
   // Storage object paths from POST /uploads/signed-url, not URLs.
   @IsString()
@@ -18,6 +28,11 @@ export class SubmitVerificationDto {
   @IsString()
   @IsNotEmpty()
   selfie_path!: string;
+
+  /** Optional so older app builds keep working. */
+  @IsOptional()
+  @IsIn(DOCUMENT_TYPES)
+  document_type?: DocumentType;
 }
 
 /**
@@ -41,6 +56,10 @@ export class StartIdentitySessionDto {
   @IsString()
   @IsNotEmpty()
   selfie_path?: string;
+
+  @IsOptional()
+  @IsIn(DOCUMENT_TYPES)
+  document_type?: DocumentType;
 }
 
 export class ListVerificationsQueryDto {

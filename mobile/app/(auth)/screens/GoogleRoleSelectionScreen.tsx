@@ -20,6 +20,7 @@ import {
 import { Home, Wrench } from 'lucide-react-native';
 import type { MobileRole } from '../../../src/lib/api';
 import { V6Colors, V6Radii } from '../../../src/constants/theme';
+import { useAuthLayout } from '../../../src/hooks/useAuthLayout';
 
 const C = {
   ...V6Colors,
@@ -47,6 +48,7 @@ export default function GoogleRoleSelectionScreen({
   onSelectProvider,
   email,
 }: GoogleRoleSelectionScreenProps) {
+  const layout = useAuthLayout();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -64,7 +66,7 @@ export default function GoogleRoleSelectionScreen({
   };
 
   return (
-    <View style={styles.screen}>
+    <View style={[styles.screen, { paddingBottom: layout.paddingBottom }]}>
       {/* Teal header accent */}
       <View style={styles.headerAccent} />
 
@@ -93,7 +95,7 @@ export default function GoogleRoleSelectionScreen({
             <View style={[styles.iconCircle, styles.iconCircleHO]}>
               <Home size={31} color={C.brandTeal} />
             </View>
-            <Text style={styles.cardTitle}>Homeowner</Text>
+            <Text style={styles.cardTitle}>Client</Text>
             <Text style={styles.cardDesc}>
               Post jobs and hire trusted local service providers.
             </Text>
@@ -151,8 +153,8 @@ const styles = StyleSheet.create({
   content: {
     flex: 1,
     paddingHorizontal: 24,
-    paddingTop: 80,
-    paddingBottom: 40,
+    paddingTop: 32,
+    paddingBottom: 16,
     justifyContent: 'center',
   },
 

@@ -14,7 +14,9 @@ import type { Profile } from '../common/types';
 
 // Embed the job + the counterpart names so the calendar can render a card.
 const BOOKING_SELECT =
-  '*, jobs(title, category_id, service_categories(name)), client:profiles!bookings_client_id_fkey(full_name), provider:profiles!bookings_provider_id_fkey(full_name)';
+  '*, jobs(title, status, category_id, service_categories(name)), client:profiles!bookings_client_id_fkey(full_name), provider:profiles!bookings_provider_id_fkey(full_name)';
+
+const INACTIVE_JOB_STATUSES = new Set(['cancelled', 'expired']);
 
 @Injectable()
 export class CalendarService {
@@ -32,7 +34,12 @@ export class CalendarService {
     if (query.to) builder = builder.lte('scheduled_at', query.to);
     const { data, error } = await builder;
     if (error) throw new BadRequestException(error.message);
-    return data ?? [];
+    // A booking row outlives its job being cancelled or expiring; neither
+    // belongs on anyone's calendar.
+    return (data ?? []).filter(
+      (b: { jobs?: { status?: string } | null }) =>
+        !INACTIVE_JOB_STATUSES.has(b.jobs?.status ?? ''),
+    );
   }
 
   /** Provider schedules one of their assigned jobs. */

@@ -41,8 +41,11 @@ function FormField({
   multiline,
   keyboardType,
   editable = true,
+  required = false,
 }: {
   label: string;
+  /** Shows a red asterisk. Only on fields the Save button actually checks. */
+  required?: boolean;
   value: string;
   onChangeText?: (v: string) => void;
   placeholder?: string;
@@ -53,7 +56,10 @@ function FormField({
   const [focused, setFocused] = useState(false);
   return (
     <View style={styles.fieldGroup}>
-      <Text style={styles.fieldLabel}>{label}</Text>
+      <Text style={styles.fieldLabel}>
+        {label}
+        {required && <Text style={styles.requiredAsterisk}> *</Text>}
+      </Text>
       <TextInput
         style={[
           styles.fieldInput,
@@ -138,7 +144,7 @@ export default function HOEditProfileScreen({ onBack, onSave }: HOEditProfileScr
         style={styles.flex}
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       >
-        <ScrollView
+        <ScrollView keyboardDismissMode="on-drag"
           style={styles.body}
           contentContainerStyle={styles.bodyContent}
           showsVerticalScrollIndicator={false}
@@ -147,7 +153,7 @@ export default function HOEditProfileScreen({ onBack, onSave }: HOEditProfileScr
           {/* Avatar — uploads on its own, independent of the Save button */}
           <AvatarPicker name={name} />
 
-          <FormField label="Full name" value={name} onChangeText={setName} placeholder="Your full name" />
+          <FormField required label="Full name" value={name} onChangeText={setName} placeholder="Your full name" />
           <FormField label="Email" value={email} placeholder="email@example.com" keyboardType="email-address" editable={false} />
           <FormField label="Phone" value={phone} onChangeText={setPhone} placeholder="+63 9XX XXX XXXX" keyboardType="phone-pad" />
           {/* The saved address is what job posts prefill and what the backend
@@ -214,6 +220,7 @@ const styles = StyleSheet.create({
 
   fieldGroup: { marginBottom: 16 },
   fieldLabel: { color: C.ink900, fontSize: 14, fontWeight: '700', fontFamily: 'Inter', marginBottom: 6 },
+  requiredAsterisk: { color: '#ef4444', fontWeight: '700' },
   fieldInput: {
     backgroundColor: C.white, borderRadius: 12, paddingHorizontal: 14, minHeight: 46,
     borderWidth: 1, borderColor: '#dce3e9',

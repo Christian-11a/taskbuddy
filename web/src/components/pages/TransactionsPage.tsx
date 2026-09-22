@@ -130,7 +130,7 @@ const EscrowTab = forwardRef<ExportHandle, TabProps>(function EscrowTab({ onExpo
     () => ({
       exportCsv: () => {
         const csv = toCsv(
-          ["Escrow ID", "Job ID", "Homeowner", "Provider", "Service", "Amount", "Status", "Date", "Funding", "Payout"],
+          ["Escrow ID", "Job ID", "Client", "Provider", "Service", "Amount", "Status", "Date", "Funding", "Payout"],
           exportScope.map((t) => [t.id, t.jobId, t.customer, t.provider, t.service, t.amountValue, t.status, t.date, t.funding, t.payout]),
         );
         downloadCsv(datedFilename("taskbuddy-transactions"), csv);
@@ -181,7 +181,7 @@ const EscrowTab = forwardRef<ExportHandle, TabProps>(function EscrowTab({ onExpo
           <Search size={13} className="absolute top-1/2 -translate-y-1/2 left-3 opacity-40" color="white" />
           <input
             className="w-full text-white outline-none"
-            placeholder="Search by ID, homeowner, or provider…"
+            placeholder="Search by ID, client, or provider…"
             aria-label="Search escrow transactions"
             value={search}
             onChange={(e) => { setSearch(e.target.value); clearSelectionOnScopeChange(); }}

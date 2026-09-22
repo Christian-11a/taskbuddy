@@ -45,6 +45,22 @@ export class AdminService {
       builder = builder.or(`full_name.ilike.${term},email.ilike.${term}`);
     }
     if (query.role) builder = builder.eq('role', query.role);
+    if (query.created_after) {
+      builder = builder.gte('created_at', query.created_after);
+    }
+    if (query.verification === 'verified') {
+      builder = builder.eq('is_verified', true);
+    } else if (query.verification === 'unverified') {
+      builder = builder
+        .eq('role', 'provider')
+        .or('is_verified.is.null,is_verified.eq.false')
+        .is('latest_verification_status', null);
+    } else if (query.verification) {
+      builder = builder
+        .eq('role', 'provider')
+        .or('is_verified.is.null,is_verified.eq.false')
+        .eq('latest_verification_status', query.verification);
+    }
     if (query.status === 'deleted') {
       builder = builder.not('deleted_at', 'is', null);
     } else if (query.status === 'suspended') {

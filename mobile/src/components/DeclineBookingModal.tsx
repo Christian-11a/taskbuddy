@@ -84,8 +84,8 @@ export default function DeclineBookingModal({
 
           <Text style={styles.message}>
             {jobTitle
-              ? `Tell the homeowner why you can't take "${jobTitle}". `
-              : "Tell the homeowner why you can't take this job. "}
+              ? `Tell the client why you can't take "${jobTitle}". `
+              : "Tell the client why you can't take this job. "}
             This cancels the booking and refunds them.
           </Text>
 

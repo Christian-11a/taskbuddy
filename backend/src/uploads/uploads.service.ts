@@ -108,10 +108,44 @@ export class UploadsService {
     if ((object.metadata?.size ?? 0) <= 0) {
       throw new BadRequestException(`Uploaded file is empty: ${path}`);
     }
-    if (!(object.metadata?.mimetype ?? '').startsWith('image/')) {
-      throw new BadRequestException(
-        `Uploaded file is not a recognizable image: ${path}`,
-      );
+    const mimetype = String(object.metadata?.mimetype ?? '');
+    if (mimetype.startsWith('image/')) return;
+
+    // React Native uploads a Blob whose type is often empty, so Storage records
+    // application/octet-stream for a perfectly good photo. Fall back to the
+    // file's magic bytes before rejecting it.
+    if (
+      GENERIC_MIMETYPES.has(mimetype) &&
+      (await this.hasImageSignature(bucket, path))
+    ) {
+      return;
     }
+    throw new BadRequestException(
+      `Uploaded file is not a recognizable image: ${path}`,
+    );
   }
+
+  private async hasImageSignature(
+    bucket: UploadBucket,
+    path: string,
+  ): Promise<boolean> {
+    const { data, error } = await this.supabase.admin.storage
+      .from(bucket)
+      .download(path);
+    if (error || !data) return false;
+    const head = new Uint8Array(await data.slice(0, 12).arrayBuffer());
+    return isImageSignature(head);
+  }
+}
+
+const GENERIC_MIMETYPES = new Set(['', 'application/octet-stream']);
+
+/** JPEG, PNG or WebP — the only types the upload endpoint issues URLs for. */
+export function isImageSignature(b: Uint8Array): boolean {
+  const jpeg = b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff;
+  const png = b[0] === 0x89 && b[1] === 0x50 && b[2] === 0x4e && b[3] === 0x47;
+  const ascii = (from: number, to: number) =>
+    String.fromCharCode(...b.slice(from, to));
+  const webp = ascii(0, 4) === 'RIFF' && ascii(8, 12) === 'WEBP';
+  return jpeg || png || webp;
 }

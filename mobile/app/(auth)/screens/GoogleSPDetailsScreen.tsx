@@ -28,6 +28,7 @@ import {
 import { ArrowLeft, Check, ChevronDown } from 'lucide-react-native';
 import { V6Colors, V6Radii, V6Shadows } from '../../../src/constants/theme';
 import TermsAndConditions from './TermsAndConditions';
+import { useAuthLayout } from '../../../src/hooks/useAuthLayout';
 
 const C = {
   ...V6Colors,
@@ -105,6 +106,7 @@ export default function GoogleSPDetailsScreen({
   onBack,
   onComplete,
 }: GoogleSPDetailsScreenProps) {
+  const layout = useAuthLayout();
   const [termsMode, setTermsMode] = useState<TermsMode>(null);
 
   const [categoryId, setCategoryId] = useState<number | null>(null);
@@ -118,20 +120,6 @@ export default function GoogleSPDetailsScreen({
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
-
-  if (termsMode !== null) {
-    return (
-      <TermsAndConditions
-        mode={termsMode}
-        onBack={() => setTermsMode(null)}
-        onAccept={() => {
-          if (termsMode === 'terms') setTermsAccepted(true);
-          else if (termsMode === 'privacy') setPrivacyAccepted(true);
-          setTermsMode(null);
-        }}
-      />
-    );
-  }
 
   const clearError = <K extends keyof FieldErrors>(key: K) =>
     setFieldErrors((prev) => ({ ...prev, [key]: undefined }));
@@ -176,14 +164,23 @@ export default function GoogleSPDetailsScreen({
   return (
     <View style={styles.screen}>
       <View style={styles.headerBg} />
+      <TermsAndConditions
+        visible={termsMode !== null}
+        mode={termsMode ?? 'terms'}
+        onBack={() => setTermsMode(null)}
+        onAccept={() => {
+          if (termsMode === 'terms') setTermsAccepted(true);
+          else if (termsMode === 'privacy') setPrivacyAccepted(true);
+        }}
+      />
 
       <KeyboardAvoidingView
         style={styles.flex}
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       >
-        <ScrollView
+        <ScrollView keyboardDismissMode="on-drag"
           style={styles.flex}
-          contentContainerStyle={styles.scrollContent}
+          contentContainerStyle={[styles.scrollContent, { paddingTop: layout.paddingTop, paddingBottom: layout.paddingBottom }]}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
         >

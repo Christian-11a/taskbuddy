@@ -66,12 +66,20 @@ export default function ConfirmationModal({
 
 const styles = StyleSheet.create({
   overlay: { flex: 1, justifyContent: 'center', padding: 24, backgroundColor: 'rgba(6, 61, 77, 0.5)' },
-  dialog: { backgroundColor: Colors.white, borderRadius: Radii.card, padding: 24 },
-  title: { color: Colors.brandDark, fontSize: 24.5, fontWeight: '800', fontFamily: 'Inter', marginBottom: 10 },
-  message: { color: Colors.slate, fontSize: 16.5, fontFamily: 'Inter', lineHeight: 21, marginBottom: 22 },
-  actions: { flexDirection: 'row', justifyContent: 'flex-end', gap: 10 },
-  cancelButton: { borderWidth: 1, borderColor: 'rgba(144,153,184,0.45)', borderRadius: 12, paddingHorizontal: 16, paddingVertical: 11 },
-  confirmButton: { backgroundColor: Colors.brandTeal, borderRadius: 12, paddingHorizontal: 16, paddingVertical: 11 },
-  cancelText: { color: Colors.slate, fontSize: 16.5, fontWeight: '700', fontFamily: 'Inter' },
-  confirmText: { color: Colors.white, fontSize: 16.5, fontWeight: '700', fontFamily: 'Inter' },
+  dialog: { backgroundColor: Colors.white, borderRadius: Radii.card, padding: 22, width: '100%', maxWidth: 420, alignSelf: 'center' },
+  title: { color: Colors.brandDark, fontSize: 19, fontWeight: '800', fontFamily: 'Inter', marginBottom: 8 },
+  message: { color: Colors.slate, fontSize: 15, fontFamily: 'Inter', lineHeight: 21, marginBottom: 20 },
+  // Two equal-width buttons: long labels ("Keep Editing" / "Discard & Exit")
+  // used to push the row past the dialog edge on narrow phones.
+  actions: { flexDirection: 'row', alignItems: 'stretch', gap: 10 },
+  cancelButton: {
+    flex: 1, alignItems: 'center', justifyContent: 'center', minHeight: 42,
+    borderWidth: 1, borderColor: 'rgba(144,153,184,0.45)', borderRadius: 10, paddingHorizontal: 12, paddingVertical: 9,
+  },
+  confirmButton: {
+    flex: 1, alignItems: 'center', justifyContent: 'center', minHeight: 42,
+    backgroundColor: Colors.brandTeal, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 9,
+  },
+  cancelText: { color: Colors.slate, fontSize: 14.5, fontWeight: '700', fontFamily: 'Inter', textAlign: 'center' },
+  confirmText: { color: Colors.white, fontSize: 14.5, fontWeight: '700', fontFamily: 'Inter', textAlign: 'center' },
 });

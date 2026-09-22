@@ -16,6 +16,7 @@ export type Page =
   | "bookings"
   | "reports"
   | "withdrawals"
+  | "skill-requests"
   | "platform"
   | "settings";
 
@@ -47,7 +48,11 @@ export interface AdminUser {
   suspendedUntil: string | null;
   suspensionReason: string | null;
   deletedAt?: string | null;
+  /** Provider ID verification (migration 0034); null for clients and admins. */
+  verification?: ProviderVerificationState | null;
 }
+
+export type ProviderVerificationState = "VERIFIED" | "PENDING" | "REJECTED" | "UNVERIFIED";
 
 // ─── Verifications ────────────────────────────────────────────────────────────
 
@@ -62,6 +67,8 @@ export interface Verification {
   submittedAt: string; // ISO date
   status: VerificationStatus;
   documents: string[];
+  /** e.g. "philsys"; null on submissions from before migration 0034. */
+  documentType?: string | null;
 }
 
 // ─── Transactions ─────────────────────────────────────────────────────────────
@@ -293,4 +300,20 @@ export interface TopProvider {
   name: string;
   jobs: number;
   rating: number;
+}
+
+// ─── Provider service-change requests (migration 0034) ───────────────────────
+
+export type SkillRequestStatus = "pending" | "approved" | "rejected" | "cancelled";
+
+export interface SkillRequest {
+  id: string;
+  providerId: string;
+  providerName: string;
+  type: "change_primary" | "add_secondary";
+  categoryName: string;
+  reason: string;
+  status: SkillRequestStatus;
+  reviewNote: string | null;
+  createdAt: string;
 }

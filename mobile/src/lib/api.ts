@@ -253,8 +253,32 @@ export interface ProviderCard {
   cached_avg_rating: number | null;
   cached_ratings_count: number;
   cached_completed_jobs: number;
+  is_verified?: boolean;
   service_categories?: { name: string } | null;
   profiles?: { full_name: string; avatar_url: string | null; city: string | null } | null;
+}
+
+export type SkillRequestType = 'change_primary' | 'add_secondary';
+
+/** A provider's request to change or add a service (`/skill-requests`). */
+export interface SkillRequest {
+  id: string;
+  type: SkillRequestType;
+  category_id: number;
+  reason: string;
+  status: 'pending' | 'approved' | 'rejected' | 'cancelled';
+  review_note: string | null;
+  created_at: string;
+  reviewed_at: string | null;
+  category?: { id: number; name: string } | null;
+}
+
+/** One entry of a provider's recent completed work (`GET /providers/:id/work`). */
+export interface ProviderWorkItem {
+  id: string;
+  title: string;
+  completed_at: string | null;
+  service_categories?: { name: string } | null;
 }
 
 export interface Category {
@@ -951,6 +975,10 @@ export const api = {
     return authRequest<ProviderCard>(`/providers/${id}`);
   },
 
+  getProviderWork(id: string) {
+    return authRequest<ProviderWorkItem[]>(`/providers/${id}/work`);
+  },
+
   getProviderReviews(id: string) {
     return authRequest<unknown[]>(`/providers/${id}/reviews`);
   },
@@ -1068,8 +1096,9 @@ export const api = {
    * 'assigned' (hired, awaiting their answer) to 'confirmed', and the
    * homeowner is notified. The mirror of `declineJob`.
    */
-  acceptJob(id: string) {
-    return authRequest<Job>(`/jobs/${id}/accept`, { method: 'POST' });
+  /** `location`: where the provider is as they accept (migration 0034). */
+  acceptJob(id: string, location?: { address: string; latitude: number; longitude: number }) {
+    return authRequest<Job>(`/jobs/${id}/accept`, { method: 'POST', body: location ?? {} });
   },
 
   startJob(id: string) {
@@ -1155,6 +1184,14 @@ export const api = {
     });
   },
 
+  deleteNotification(id: string) {
+    return authRequest<void>(`/notifications/${id}`, { method: 'DELETE' });
+  },
+
+  clearNotifications() {
+    return authRequest<void>('/notifications', { method: 'DELETE' });
+  },
+
   /** Server-side count — `notifications()` is capped at 50, so counting it caps the badge. */
   unreadNotificationCount() {
     return authRequest<{ count: number }>('/notifications/unread-count');
@@ -1176,23 +1213,42 @@ export const api = {
       body: { bucket, content_type: contentType },
     });
 
-    // React Native turns a file:// URI into a Blob via fetch().
-    const blob = await (await fetch(uri)).blob();
-    const res = await fetch(signed.upload_url, {
-      method: 'PUT',
-      headers: { 'Content-Type': contentType },
-      body: blob,
-    });
+    // Send the file as a typed multipart part, as supabase-js does. A Blob from
+    // fetch(file://) usually has an empty type, which React Native uploads as
+    // application/octet-stream regardless of the header, and Storage records
+    // that as the object's mimetype.
+    const form = new FormData();
+    form.append('cacheControl', '3600');
+    form.append('', {
+      uri,
+      name: signed.path.split('/').pop() ?? 'upload',
+      type: contentType,
+    } as unknown as Blob);
+    const res = await fetch(signed.upload_url, { method: 'PUT', body: form });
     if (!res.ok) {
       throw new ApiError('Could not upload the image. Try again.', res.status);
     }
     return signed.path;
   },
 
+  // ── Service change requests (migration 0034) ──────────────────────────────
+  mySkillRequests() {
+    return authRequest<SkillRequest[]>('/skill-requests/me');
+  },
+
+  createSkillRequest(input: { type: SkillRequestType; category_id: number; reason: string }) {
+    return authRequest<SkillRequest>('/skill-requests', { method: 'POST', body: input });
+  },
+
+  cancelSkillRequest(id: string) {
+    return authRequest<SkillRequest>(`/skill-requests/${id}/cancel`, { method: 'POST' });
+  },
+
   // ── Verifications ─────────────────────────────────────────────────────────
   submitVerification(input: {
     id_document_path: string;
     selfie_path: string;
+    document_type?: string;
   }) {
     return authRequest<Verification>('/verifications', {
       method: 'POST',
@@ -1210,6 +1266,7 @@ export const api = {
   startIdentitySession(input: {
     id_document_path?: string;
     selfie_path?: string;
+    document_type?: string;
   } = {}) {
     return authRequest<IdentitySession>('/verifications/identity-session', {
       method: 'POST',

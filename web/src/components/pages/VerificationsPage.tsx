@@ -265,6 +265,7 @@ export function VerificationsPage() {
                 <DrawerField label="Email" value={reviewing.email} />
                 <DrawerField label="Status" value={<span className={clsx("badge", `badge-${reviewing.status}`)}>{reviewing.status.charAt(0).toUpperCase() + reviewing.status.slice(1)}</span>} />
                 <DrawerField label="Submitted" value={reviewing.date} />
+                <DrawerField label="ID type" value={reviewing.documentType} />
                 <DrawerField label="Documents" value={`${reviewing.documents.length} submitted`} />
               </div>
             </DrawerSection>

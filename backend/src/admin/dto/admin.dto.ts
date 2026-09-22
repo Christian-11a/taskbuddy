@@ -37,6 +37,19 @@ export class ListUsersQueryDto {
   @IsIn(['active', 'suspended', 'deleted'])
   status?: 'active' | 'suspended' | 'deleted';
 
+  /** Only accounts created on or after this instant — the "new users" filter. */
+  @IsOptional()
+  @IsDateString()
+  created_after?: string;
+
+  /**
+   * Provider verification state (migration 0034). 'verified' reads the badge;
+   * the rest read the latest submission, 'unverified' meaning none at all.
+   */
+  @IsOptional()
+  @IsIn(['verified', 'pending', 'rejected', 'unverified'])
+  verification?: 'verified' | 'pending' | 'rejected' | 'unverified';
+
   @IsOptional()
   @IsInt()
   @Type(() => Number)

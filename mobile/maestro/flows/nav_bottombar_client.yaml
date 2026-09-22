@@ -14,6 +14,6 @@ appId: com.taskbuddy.app
 - assertVisible: { id: "wallet-add-money-continue" }
 - tapOn: "Cancel"
 - tapOn: { id: "nav-tab-Home" }
-- extendedWaitUntil: { visible: "Need something done?", timeout: 15000 }
+- extendedWaitUntil: { visible: "Find a service", timeout: 15000 }
 - tapOn: { id: "nav-tab-Create Job" }
 - extendedWaitUntil: { visible: "What service do you need?", timeout: 15000 }

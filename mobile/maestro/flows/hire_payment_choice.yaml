@@ -20,6 +20,9 @@ appId: com.taskbuddy.app
 - tapOn:
     id: "applications-accept-.*"
     index: 0
+# Accept asks for confirmation before the payment choice.
+- assertVisible: "Hire this provider?"
+- tapOn: "Continue"
 - extendedWaitUntil:
     visible:
       id: "hire-pay-wallet"

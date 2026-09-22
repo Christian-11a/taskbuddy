@@ -30,6 +30,7 @@ import type {
   AdminTransactionApiRow,
   AdminUserApiRow,
   AdminVerificationApiRow,
+  AdminSkillRequestApiRow,
   AdminWalletTxnApiRow,
   AdminWithdrawalApiRow,
   AdminAccountApiRow,
@@ -72,6 +73,8 @@ import type {
   UserStatus,
   Verification,
   VerificationStatus,
+  SkillRequest,
+  SkillRequestStatus,
   WalletTransaction,
   AdminWithdrawal,
   AdminAccount,
@@ -102,7 +105,17 @@ function mapUserRow(row: AdminUserApiRow): AdminUser {
     suspendedUntil: row.suspended_until ?? null,
     suspensionReason: row.suspension_reason ?? null,
     ...(row.deleted_at !== undefined ? { deletedAt: row.deleted_at } : {}),
+    verification: verificationState(row),
   };
+}
+
+/** The badge wins; otherwise the latest submission says where they are. */
+function verificationState(row: AdminUserApiRow): AdminUser["verification"] {
+  if (row.role !== "provider") return null;
+  if (row.is_verified) return "VERIFIED";
+  if (row.latest_verification_status === "pending") return "PENDING";
+  if (row.latest_verification_status === "rejected") return "REJECTED";
+  return "UNVERIFIED";
 }
 
 function mapBookingRow(row: AdminBookingApiRow): AdminBooking {
@@ -127,6 +140,7 @@ function mapVerificationRow(row: AdminVerificationApiRow): Verification {
     submittedAt: row.submitted_at,
     status: row.status.toUpperCase() as VerificationStatus,
     documents: row.documents,
+    documentType: row.document_type ?? null,
   };
 }
 
@@ -852,4 +866,35 @@ export async function resolveDispute(
     note,
   });
   return getDisputes();
+}
+
+// ─── Provider service-change requests (migration 0034) ───────────────────────
+
+function mapSkillRequestRow(row: AdminSkillRequestApiRow): SkillRequest {
+  return {
+    id: row.id,
+    providerId: row.provider_id,
+    providerName: row.provider?.full_name ?? "Unknown provider",
+    type: row.type,
+    categoryName: row.category?.name ?? `Category #${row.category_id}`,
+    reason: row.reason,
+    status: row.status,
+    reviewNote: row.review_note,
+    createdAt: row.created_at,
+  };
+}
+
+export async function getSkillRequests(status?: SkillRequestStatus): Promise<SkillRequest[]> {
+  const rows = await client.get<AdminSkillRequestApiRow[]>(
+    `/admin/skill-requests${status ? `?status=${status}` : ""}`,
+  );
+  return rows.map(mapSkillRequestRow);
+}
+
+export async function approveSkillRequest(id: string, note?: string): Promise<void> {
+  await client.post(`/admin/skill-requests/${id}/approve`, note ? { note } : undefined);
+}
+
+export async function rejectSkillRequest(id: string, note?: string): Promise<void> {
+  await client.post(`/admin/skill-requests/${id}/reject`, note ? { note } : undefined);
 }

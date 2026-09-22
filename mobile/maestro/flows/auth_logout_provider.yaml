@@ -1,10 +1,9 @@
 appId: com.taskbuddy.app
 ---
-# Phase 1: provider sign out from Settings, mirroring auth_logout_client.yaml.
+# Phase 1: provider sign out from Profile, mirroring auth_logout_client.yaml.
 - runFlow: _helpers/login_provider.yaml
 - tapOn:
     id: "btn-home-avatar"
-- tapOn: "Settings"
 - tapOn: "Log Out"
 - assertVisible: "Are you sure you want to log out?"
 - tapOn:

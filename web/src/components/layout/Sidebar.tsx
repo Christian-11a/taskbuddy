@@ -4,7 +4,7 @@ import { useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import {
-  ShieldCheck, Users, CreditCard, CalendarDays, AlertTriangle, History,
+  ShieldCheck, Wrench, Users, CreditCard, CalendarDays, AlertTriangle, History,
   BarChart3, Settings, LogOut, LayoutDashboard, ChevronLeft, ChevronRight, ScrollText,
   WalletCards, SlidersHorizontal,
 } from "lucide-react";
@@ -57,6 +57,7 @@ export function Sidebar({ activePage, onNavigate, onLogout, collapsed, onToggleC
       { id: "disputes", label: "Disputes", icon: <AlertTriangle size={15} />, badge: openDisputeCount || undefined },
       { id: "transactions", label: "Transactions", icon: <CreditCard size={15} /> },
       { id: "withdrawals", label: "Withdrawals", icon: <WalletCards size={15} /> },
+      { id: "skill-requests", label: "Service Requests", icon: <Wrench size={15} /> },
       { id: "users", label: "Users", icon: <Users size={15} /> },
     ] },
     { label: "Records", items: [

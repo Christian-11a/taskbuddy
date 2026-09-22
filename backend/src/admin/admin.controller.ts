@@ -17,6 +17,11 @@ import { AdminService } from './admin.service';
 import { AdminActionsService } from './admin-actions.service';
 import { AdminPlatformService } from './admin-platform.service';
 import { VerificationsService } from '../verifications/verifications.service';
+import { SkillRequestsService } from '../skill-requests/skill-requests.service';
+import {
+  ListSkillRequestsQueryDto,
+  ReviewSkillRequestDto,
+} from '../skill-requests/dto/skill-requests.dto';
 import {
   BroadcastNotificationDto,
   CreateAdminDto,
@@ -62,6 +67,7 @@ export class AdminController {
     private readonly adminActionsService: AdminActionsService,
     private readonly adminPlatformService: AdminPlatformService,
     private readonly verificationsService: VerificationsService,
+    private readonly skillRequestsService: SkillRequestsService,
     private readonly escrowService: EscrowService,
     private readonly disputesService: DisputesService,
     private readonly chatService: ChatService,
@@ -312,6 +318,31 @@ export class AdminController {
     @Body() dto: RejectVerificationDto,
   ) {
     return this.verificationsService.reject(admin, id, dto);
+  }
+
+  // ── Provider service-change requests (migration 0034) ─────────────────────
+
+  @Get('skill-requests')
+  listSkillRequests(@Query() query: ListSkillRequestsQueryDto) {
+    return this.skillRequestsService.list(query);
+  }
+
+  @Post('skill-requests/:id/approve')
+  approveSkillRequest(
+    @CurrentUser() admin: Profile,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: ReviewSkillRequestDto,
+  ) {
+    return this.skillRequestsService.approve(admin, id, dto);
+  }
+
+  @Post('skill-requests/:id/reject')
+  rejectSkillRequest(
+    @CurrentUser() admin: Profile,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: ReviewSkillRequestDto,
+  ) {
+    return this.skillRequestsService.reject(admin, id, dto);
   }
 
   // ── Escrow transactions & disputes (migration 0009) ───────────────────────

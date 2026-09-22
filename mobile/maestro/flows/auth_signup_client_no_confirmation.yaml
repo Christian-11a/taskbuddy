@@ -97,11 +97,11 @@ appId: com.taskbuddy.app
 # Skip, which is working around clearState wiping AsyncStorage on a returning
 # account) — this is the real first-run onboarding gate.
 - extendedWaitUntil:
-    visible: ".*(Skip|Need something done\\?).*"
+    visible: ".*(Skip|Find a service).*"
     timeout: 60000
 - tapOn:
     text: "Skip"
     optional: true
 - extendedWaitUntil:
-    visible: "Need something done?"
+    visible: "Find a service"
     timeout: 15000

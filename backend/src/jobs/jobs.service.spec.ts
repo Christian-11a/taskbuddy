@@ -113,6 +113,66 @@ describe('JobsService.accept', () => {
     });
   });
 
+  it('records where the provider was when they accepted', async () => {
+    const { service, calls } = createService({
+      jobs: [ok(job()), ok(job({ status: 'confirmed' }))],
+      bookings: [ok(null)],
+      notifications: [ok(null)],
+    });
+
+    await service.accept(provider, 'j1', {
+      address: 'Lipa City Proper',
+      latitude: 13.94,
+      longitude: 121.16,
+    });
+
+    const update = calls.find(
+      (c) => c.table === 'jobs' && c.method === 'update',
+    );
+    expect(update?.args[0]).toEqual({
+      status: 'confirmed',
+      provider_accept_address: 'Lipa City Proper',
+      provider_accept_latitude: 13.94,
+      provider_accept_longitude: 121.16,
+    });
+  });
+
+  it('puts an ASAP job on the calendar on the day it was confirmed', async () => {
+    const { service, calls } = createService({
+      jobs: [ok(job({ scheduled_at: null })), ok(job({ status: 'confirmed' }))],
+      bookings: [ok(null)],
+      notifications: [ok(null)],
+    });
+
+    await service.accept(provider, 'j1');
+
+    const booking = calls.find(
+      (c) => c.table === 'bookings' && c.method === 'insert',
+    );
+    expect(booking?.args[0]).toMatchObject({
+      job_id: 'j1',
+      provider_id: 'p1',
+      client_id: 'c1',
+    });
+    expect(
+      typeof (booking?.args[0] as { scheduled_at: string }).scheduled_at,
+    ).toBe('string');
+  });
+
+  it('does not fail the accept when the booking already exists', async () => {
+    const { service } = createService({
+      jobs: [ok(job()), ok(job({ status: 'confirmed' }))],
+      bookings: [
+        { data: null, error: { message: 'duplicate', code: '23505' } },
+      ],
+      notifications: [ok(null)],
+    });
+
+    await expect(service.accept(provider, 'j1')).resolves.toMatchObject({
+      status: 'confirmed',
+    });
+  });
+
   it('refuses a job assigned to someone else', async () => {
     const { service } = createService({
       jobs: [ok(job({ assigned_provider_id: 'p2' }))],

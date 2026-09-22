@@ -99,6 +99,21 @@ export function jobStatusMeta(status: string): {
   }
 }
 
+/**
+ * A job's status from the provider's side. The same 'assigned' that a client
+ * reads as "Awaiting Provider" is, for the provider, their own move to make.
+ */
+export function providerJobStatusMeta(status: string): {
+  label: string;
+  color: string;
+  bg: string;
+} {
+  if (status === 'assigned') {
+    return { label: 'Awaiting your confirmation', color: '#B45309', bg: '#FFF7ED' };
+  }
+  return jobStatusMeta(status);
+}
+
 /** Display label + colors for a job's urgency. */
 export function urgencyMeta(urgency: string): {
   label: string;

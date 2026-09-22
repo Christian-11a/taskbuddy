@@ -80,7 +80,7 @@ export default function HODisputeFilingScreen({ jobId, onBack, onSubmitted }: HO
         </View>
       </View>
 
-      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+      <ScrollView keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag" contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
         <View style={styles.fieldGroup}>
           <Text style={styles.label}>Issue</Text>
           <View style={styles.reasonList}>

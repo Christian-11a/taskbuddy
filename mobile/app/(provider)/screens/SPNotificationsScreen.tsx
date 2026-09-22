@@ -8,7 +8,7 @@
  * dot, read rows plain. Same pattern as HONotificationsScreen.tsx.
  */
 
-import React from 'react';
+import React, { useState } from 'react';
 import {
   ActivityIndicator,
   ScrollView,
@@ -22,7 +22,10 @@ import {
   ArrowLeft,
   BriefcaseBusiness,
   CircleCheckBig,
+  Trash2,
 } from 'lucide-react-native';
+import ConfirmationModal from '../../../src/components/ConfirmationModal';
+import { useNotificationDeletion } from '../../../src/hooks/useNotificationDeletion';
 import { Sizes, Spacing, V6Colors } from '../../../src/constants/theme';
 
 const C = V6Colors;
@@ -58,7 +61,9 @@ export default function SPNotificationsScreen({ onBack, onOpenJob }: SPNotificat
     () => api.notifications() as Promise<NotificationRow[]>,
     [],
   );
-  const notifications = data ?? [];
+  const deletion = useNotificationDeletion(reload);
+  const [confirmClear, setConfirmClear] = useState(false);
+  const notifications = deletion.visible(data ?? []);
   const unreadCount = notifications.filter((n) => !n.read_at).length;
 
   const markAllRead = async () => {
@@ -99,7 +104,24 @@ export default function SPNotificationsScreen({ onBack, onOpenJob }: SPNotificat
             <Text style={styles.markAllText}>Mark all read</Text>
           </TouchableOpacity>
         )}
+        {unreadCount === 0 && notifications.length > 0 && (
+          <TouchableOpacity onPress={() => setConfirmClear(true)} activeOpacity={0.8}>
+            <Text style={styles.markAllText}>Clear all</Text>
+          </TouchableOpacity>
+        )}
       </View>
+
+      <ConfirmationModal
+        visible={confirmClear}
+        title="Clear all notifications?"
+        message="This removes every notification from your list. It can't be undone."
+        confirmLabel="Clear all"
+        onConfirm={() => {
+          setConfirmClear(false);
+          void deletion.clearAll();
+        }}
+        onCancel={() => setConfirmClear(false)}
+      />
 
       <ScrollView
         style={styles.body}
@@ -131,12 +153,21 @@ export default function SPNotificationsScreen({ onBack, onOpenJob }: SPNotificat
                   <View style={[styles.notifIcon, isUnread && styles.notifIconUnread]}>
                     <Icon size={19} color={C.cyan700} />
                   </View>
-                  <View style={{ flex: 1, paddingRight: isUnread ? 10 : 0 }}>
+                  <View style={{ flex: 1 }}>
                     <Text style={styles.notifTitle}>{notif.title}</Text>
                     <Text style={styles.notifBody}>{notif.body}</Text>
                     <Text style={styles.notifTime}>{timeAgo(notif.created_at)}</Text>
                   </View>
                   {isUnread && <View style={styles.unreadDot} />}
+                  <TouchableOpacity
+                    style={styles.deleteBtn}
+                    onPress={() => void deletion.remove(notif.id)}
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Delete notification: ${notif.title}`}
+                  >
+                    <Trash2 size={16} color={C.ink300} />
+                  </TouchableOpacity>
                 </TouchableOpacity>
               );
             })}
@@ -187,8 +218,9 @@ const styles = StyleSheet.create({
   notifTitle: { color: C.ink900, fontSize: 13.5, fontWeight: '700', fontFamily: 'Inter' },
   notifBody: { color: C.ink500, fontSize: 12.5, fontFamily: 'Inter', lineHeight: 16.5, marginTop: 3 },
   notifTime: { color: C.ink300, fontSize: 11.5, fontFamily: 'Inter', marginTop: 4 },
+  deleteBtn: { alignSelf: 'center', padding: 4 },
   unreadDot: {
-    position: 'absolute', right: 13, top: 17,
+    position: 'absolute', left: 6, top: 17,
     width: 7, height: 7, borderRadius: 4, backgroundColor: C.cyan500,
   },
 });

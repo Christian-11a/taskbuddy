@@ -104,6 +104,21 @@ describe("row adapters", () => {
     expect(row.ratingValue).toBeNull();
   });
 
+  it("labels a provider's verification state and leaves clients out of it", () => {
+    const base: AdminUser = {
+      id: "u-010", email: "p@example.com", role: "provider",
+      createdAt: "2026-09-01", name: "Pat Provider", status: "ACTIVE",
+      jobsCompleted: 0, rating: null, phone: null, city: null, categoryName: null,
+      suspendedUntil: null, suspensionReason: null,
+    };
+    expect(toUserRow({ ...base, verification: "PENDING" })).toMatchObject({
+      verification: "Pending review",
+      verificationClass: "badge-pending",
+    });
+    expect(toUserRow({ ...base, verification: "VERIFIED" }).verification).toBe("Verified");
+    expect(toUserRow({ ...base, role: "client", verification: null }).verification).toBe("—");
+  });
+
   it("maps a suspended client without rating", () => {
     const u: AdminUser = {
       id: "u-002", email: "j.kim@example.com", role: "client",
@@ -113,7 +128,7 @@ describe("row adapters", () => {
       suspendedUntil: null, suspensionReason: null,
     };
     const row = toUserRow(u);
-    expect(row.role).toBe("Homeowner");
+    expect(row.role).toBe("Client");
     expect(row.activity).toBe("0 jobs");
     expect(row.statusClass).toBe("badge-suspended");
     // Detail fields fall back to a dash rather than rendering "null".

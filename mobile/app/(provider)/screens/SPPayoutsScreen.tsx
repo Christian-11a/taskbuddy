@@ -77,7 +77,7 @@ const COPY: Record<
   },
   active: {
     title: 'Payouts are on',
-    body: 'Card-paid jobs are sent to your Stripe account as soon as the homeowner confirms completion.',
+    body: 'Card-paid jobs are sent to your Stripe account as soon as the client confirms completion.',
     action: null,
     tone: 'good',
   },
@@ -237,7 +237,7 @@ export default function SPPayoutsScreen({ onBack }: SPPayoutsScreenProps) {
           <View style={styles.explainRow}>
             <CreditCard size={18} color={C.cyan700} />
             <View style={{ flex: 1 }}>
-              <Text style={styles.explainTitle}>Homeowner paid by card</Text>
+              <Text style={styles.explainTitle}>Client paid by card</Text>
               <Text style={styles.explainBody}>
                 {current.state === 'active'
                   ? 'Sent to your Stripe account when the job is completed, then paid to your bank by Stripe.'
@@ -248,7 +248,7 @@ export default function SPPayoutsScreen({ onBack }: SPPayoutsScreenProps) {
           <View style={styles.explainRow}>
             <Wallet size={18} color={C.cyan700} />
             <View style={{ flex: 1 }}>
-              <Text style={styles.explainTitle}>Homeowner paid from their wallet</Text>
+              <Text style={styles.explainTitle}>Client paid from their wallet</Text>
               <Text style={styles.explainBody}>
                 Lands in your TaskBuddy wallet. Withdraw it from the Wallet tab as usual.
               </Text>

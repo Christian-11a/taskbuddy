@@ -184,3 +184,23 @@ export class DeclineJobDto {
   @Length(1, 200)
   reason!: string;
 }
+
+/**
+ * `POST /jobs/:id/accept`. Where the provider is when they accept, so the
+ * client sees a real distance rather than the provider's home address.
+ * Optional for older app builds; the current app always sends it.
+ */
+export class AcceptJobDto {
+  @IsOptional()
+  @IsString()
+  @Length(3, 300)
+  address?: string;
+
+  @IsOptional()
+  @IsLatitude()
+  latitude?: number;
+
+  @IsOptional()
+  @IsLongitude()
+  longitude?: number;
+}

@@ -79,7 +79,7 @@ export default function HOLeaveReviewScreen({ jobId, onSubmitted, onBack }: HOLe
         style={styles.flex}
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       >
-        <ScrollView contentContainerStyle={styles.bodyContent} keyboardShouldPersistTaps="handled">
+        <ScrollView keyboardDismissMode="on-drag" contentContainerStyle={styles.bodyContent} keyboardShouldPersistTaps="handled">
           <View style={styles.avatar}>
             <Text style={styles.avatarText}>{initials(providerName)}</Text>
           </View>
