@@ -341,6 +341,7 @@ describe('VerificationsService', () => {
         submitted_at: '2026-08-01T00:00:00Z',
         reviewed_at: null,
         rejection_reason: null,
+        document_type: null,
         documents: ['https://signed/doc', 'https://signed/doc'],
       });
     });
