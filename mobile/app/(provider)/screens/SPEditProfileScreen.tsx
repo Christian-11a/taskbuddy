@@ -150,7 +150,7 @@ export default function SPEditProfileScreen({ onBack, onSave }: SPEditProfileScr
       </View>
 
       <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
-        <ScrollView
+        <ScrollView keyboardDismissMode="on-drag"
           style={styles.body}
           contentContainerStyle={styles.bodyContent}
           showsVerticalScrollIndicator={false}

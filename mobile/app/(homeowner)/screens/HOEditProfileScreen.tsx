@@ -138,7 +138,7 @@ export default function HOEditProfileScreen({ onBack, onSave }: HOEditProfileScr
         style={styles.flex}
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       >
-        <ScrollView
+        <ScrollView keyboardDismissMode="on-drag"
           style={styles.body}
           contentContainerStyle={styles.bodyContent}
           showsVerticalScrollIndicator={false}

@@ -3,7 +3,7 @@
  *
  * v6 design: matches taskbuddy_UI_update.html's #onboarding screen — 3 slides
  * (icon well + title + subtitle + body), dots progress, "Skip" ghost button,
- * "Continue" / "Get Started" primary button.
+ * "Continue" / "Get Started" primary button. The slides differ by role.
  */
 
 import React, { useRef, useState } from 'react';
@@ -16,7 +16,7 @@ import {
   View,
   ViewToken,
 } from 'react-native';
-import { Shield, Sparkles, Wallet } from 'lucide-react-native';
+import { BadgeCheck, CalendarCheck, Search, Shield, Sparkles, Users } from 'lucide-react-native';
 import { V6Colors, V6Radii, V6Shadows } from '../../../src/constants/theme';
 import { useAuthLayout } from '../../../src/hooks/useAuthLayout';
 
@@ -32,39 +32,73 @@ interface Slide {
   body: string;
 }
 
-const slides: Slide[] = [
+/**
+ * Each role gets its own walkthrough: what to do first, and where in the app
+ * to do it. Doubles as the first-run tutorial — the slides name the actual
+ * tabs and buttons the user is about to see.
+ */
+const CLIENT_SLIDES: Slide[] = [
   {
-    id: '1',
+    id: 'c1',
     Icon: Sparkles,
-    title: 'Get trusted help',
-    titleAccent: 'nearby',
-    subtitle: 'Post what you need. We’ll help you find the right person.',
-    body: 'Create a task, set your schedule and budget, then connect with verified local providers.',
+    title: 'Post a job in',
+    titleAccent: 'minutes',
+    subtitle: 'Tap the + button at the bottom of the screen.',
+    body: 'Describe the task, add photos, choose a schedule and budget. Verified providers nearby are notified right away.',
   },
   {
-    id: '2',
+    id: 'c2',
+    Icon: Users,
+    title: 'Pick the',
+    titleAccent: 'right provider',
+    subtitle: 'Compare proposals from My Jobs.',
+    body: 'Open a job to see who applied. Check each provider’s rating, reviews and past work before you hire.',
+  },
+  {
+    id: 'c3',
     Icon: Shield,
-    title: 'Hire with',
-    titleAccent: 'confidence',
-    subtitle: 'Know who you’re working with.',
-    body: 'Provider profiles, verification, ratings and clear job status help you make informed decisions.',
-  },
-  {
-    id: '3',
-    Icon: Wallet,
     title: 'Pay with',
     titleAccent: 'peace of mind',
-    subtitle: 'Simple payments, clear progress.',
-    body: 'Keep job communication and payment activity together from posting through completion.',
+    subtitle: 'Your payment is held until the job is done.',
+    body: 'Top up your Wallet, hire, then confirm completion to release payment. Something wrong? File a dispute from the job.',
+  },
+];
+
+const PROVIDER_SLIDES: Slide[] = [
+  {
+    id: 'p1',
+    Icon: BadgeCheck,
+    title: 'Get',
+    titleAccent: 'verified first',
+    subtitle: 'Profile → Get Verified.',
+    body: 'Upload a government ID and a quick face scan. Verified providers are trusted more and hired sooner.',
+  },
+  {
+    id: 'p2',
+    Icon: Search,
+    title: 'Find jobs',
+    titleAccent: 'near you',
+    subtitle: 'Your Feed lists open jobs in your service area.',
+    body: 'Open a job and tap Submit Proposal with a short message. Track your applications under My Work.',
+  },
+  {
+    id: 'p3',
+    Icon: CalendarCheck,
+    title: 'Confirm and',
+    titleAccent: 'get paid',
+    subtitle: 'Accept bookings, then do great work.',
+    body: 'When a client hires you, confirm the booking. It appears in your Calendar, and payment lands in your Wallet once the job is complete.',
   },
 ];
 
 interface OnboardingScreenProps {
+  role: 'homeowner' | 'provider' | null;
   onFinish: () => void;
   onLogin: () => void;
 }
 
-export default function OnboardingScreen({ onFinish, onLogin }: OnboardingScreenProps) {
+export default function OnboardingScreen({ role, onFinish, onLogin }: OnboardingScreenProps) {
+  const slides = role === 'provider' ? PROVIDER_SLIDES : CLIENT_SLIDES;
   const layout = useAuthLayout();
   const [currentIndex, setCurrentIndex] = useState(0);
   const flatListRef = useRef<FlatList>(null);

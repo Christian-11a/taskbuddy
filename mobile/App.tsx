@@ -445,7 +445,7 @@ function AppContent() {
   if (showOnboarding) {
     // Post-login there is nowhere to "skip to" but the dashboard, so Skip and
     // Get Started do the same thing — both count as having seen them.
-    return <OnboardingScreen onFinish={finishOnboarding} onLogin={finishOnboarding} />;
+    return <OnboardingScreen role={role} onFinish={finishOnboarding} onLogin={finishOnboarding} />;
   }
 
   // ─────────────────────────────────────────────────────────────────────────

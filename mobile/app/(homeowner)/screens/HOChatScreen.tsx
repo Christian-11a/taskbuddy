@@ -180,7 +180,7 @@ export default function HOChatScreen({ jobId, onBack, onViewJob }: HOChatScreenP
         {loading && <ActivityIndicator style={{ marginTop: 30 }} color={C.cyan700} />}
         {!!error && !loading && <Text style={styles.stateText}>{error}</Text>}
         {!loading && !error && messages.length === 0 && <ChatEmptyState />}
-        <FlatList
+        <FlatList keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag"
           ref={listRef}
           data={messages}
           renderItem={renderBubble}

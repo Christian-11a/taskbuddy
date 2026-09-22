@@ -1,14 +1,14 @@
 import React from 'react';
 import {
-  KeyboardAvoidingView,
-  Platform,
+  Modal,
+  Pressable,
   ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
 } from 'react-native';
-import { ArrowLeft } from 'lucide-react-native';
+import { X } from 'lucide-react-native';
 import { V6Colors, V6Radii, V6Shadows } from '../../../src/constants/theme';
 
 const C = {
@@ -21,6 +21,8 @@ const C = {
 } as const;
 
 interface TermsAndConditionsProps {
+  visible: boolean;
+  /** Close without accepting. */
   onBack: () => void;
   onAccept: () => void;
   /**
@@ -81,7 +83,12 @@ const PRIVACY_CONTENT = {
   acceptLabel: 'I agree to the Privacy Policy',
 };
 
+/**
+ * Terms / Privacy shown as a popup over the form that linked to it, so the
+ * user reads it without leaving (and losing their place in) sign-up.
+ */
 export default function TermsAndConditions({
+  visible,
   onBack,
   onAccept,
   mode = 'terms',
@@ -89,33 +96,34 @@ export default function TermsAndConditions({
   const content = mode === 'privacy' ? PRIVACY_CONTENT : TERMS_CONTENT;
 
   return (
-    <View style={styles.screen}>
-      <View style={styles.headerBg} />
-
-      <KeyboardAvoidingView
-        style={styles.flex}
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      >
-        <ScrollView
-          style={styles.flex}
-          contentContainerStyle={styles.scrollContent}
-          showsVerticalScrollIndicator={false}
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onBack} statusBarTranslucent>
+      <Pressable style={styles.overlay} onPress={onBack} accessible={false}>
+        <Pressable
+          style={styles.dialog}
+          onPress={(event) => event.stopPropagation()}
+          accessibilityViewIsModal
         >
-          <View style={styles.topSection}>
-            <TouchableOpacity style={styles.backBtn} onPress={onBack} activeOpacity={0.8}>
-              <ArrowLeft size={22} color={C.white} />
+          <View style={styles.header}>
+            <Text style={styles.title} accessibilityRole="header">{content.title}</Text>
+            <TouchableOpacity
+              onPress={onBack}
+              style={styles.closeBtn}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              accessibilityRole="button"
+              accessibilityLabel="Close"
+            >
+              <X size={20} color={C.slate} />
             </TouchableOpacity>
-            <Text style={styles.title}>{content.title}</Text>
           </View>
 
-          <View style={styles.card}>
+          <ScrollView style={styles.body} contentContainerStyle={styles.bodyContent} showsVerticalScrollIndicator>
             {content.sections.map((section) => (
               <View key={section.heading} style={styles.section}>
                 <Text style={styles.sectionTitle}>{section.heading}</Text>
                 <Text style={styles.bodyText}>{section.body}</Text>
               </View>
             ))}
-          </View>
+          </ScrollView>
 
           <TouchableOpacity
             style={styles.primaryBtn}
@@ -124,87 +132,52 @@ export default function TermsAndConditions({
               onBack();
             }}
             activeOpacity={0.85}
+            accessibilityRole="button"
           >
             <Text style={styles.primaryBtnText}>{content.acceptLabel}</Text>
           </TouchableOpacity>
-        </ScrollView>
-      </KeyboardAvoidingView>
-    </View>
+        </Pressable>
+      </Pressable>
+    </Modal>
   );
 }
 
 const styles = StyleSheet.create({
-  flex: { flex: 1 },
-  screen: { flex: 1, backgroundColor: C.bg },
-
-  headerBg: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    height: 200,
-    backgroundColor: C.brandDark,
-    borderBottomLeftRadius: 40,
-    borderBottomRightRadius: 40,
-  },
-
-  scrollContent: { paddingTop: 56, paddingHorizontal: 20, paddingBottom: 40 },
-
-  topSection: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 20,
-    gap: 12,
-  },
-  backBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 12,
-    backgroundColor: 'rgba(255,255,255,0.2)',
-    alignItems: 'center',
+  overlay: {
+    flex: 1,
     justifyContent: 'center',
+    padding: 20,
+    backgroundColor: 'rgba(6, 61, 77, 0.5)',
   },
-  title: { color: C.white, fontSize: 24.5, fontWeight: '700', fontFamily: 'Inter', flex: 1 },
-
-  card: {
+  dialog: {
     backgroundColor: C.white,
     borderRadius: V6Radii.card,
-    padding: 24,
-    shadowColor: '#0f172a',
-    shadowOpacity: 0.06,
-    shadowOffset: { width: 0, height: 12 },
-    shadowRadius: 25,
-    elevation: 6,
-    marginBottom: 20,
+    paddingTop: 20,
+    paddingHorizontal: 20,
+    paddingBottom: 18,
+    maxHeight: '85%',
+    width: '100%',
+    maxWidth: 480,
+    alignSelf: 'center',
   },
+  header: { flexDirection: 'row', alignItems: 'center', marginBottom: 12, gap: 12 },
+  title: { color: C.brandDark, fontSize: 19, fontWeight: '800', fontFamily: 'Inter', flex: 1 },
+  closeBtn: { padding: 2 },
 
-  section: { marginBottom: 16 },
-  sectionTitle: {
-    color: C.dark,
-    fontSize: 18.5,
-    fontWeight: '700',
-    fontFamily: 'Inter',
-    marginBottom: 6,
-  },
-  bodyText: {
-    color: C.slate,
-    fontSize: 16.5,
-    fontFamily: 'Inter',
-    lineHeight: 22,
-  },
+  body: { flexGrow: 0 },
+  bodyContent: { paddingBottom: 6 },
+  section: { marginBottom: 14 },
+  sectionTitle: { color: C.dark, fontSize: 15.5, fontWeight: '700', fontFamily: 'Inter', marginBottom: 4 },
+  bodyText: { color: C.slate, fontSize: 14.5, fontFamily: 'Inter', lineHeight: 20 },
 
   primaryBtn: {
     backgroundColor: C.brandTeal,
     borderRadius: V6Radii.btn,
-    paddingVertical: 15,
+    paddingVertical: 12,
+    paddingHorizontal: 12,
     alignItems: 'center',
+    marginTop: 12,
     ...V6Shadows.primaryButton,
   },
-  primaryBtnText: {
-    color: C.white,
-    fontFamily: 'Inter',
-    fontSize: 18.5,
-    fontWeight: '600',
-    letterSpacing: 0.3,
-  },
+  primaryBtnText: { color: C.white, fontFamily: 'Inter', fontSize: 15, fontWeight: '700', textAlign: 'center' },
 });

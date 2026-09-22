@@ -3,8 +3,7 @@
  *
  * Mirrors HOSettingsScreen.tsx's structure exactly — flat white .topbar, an
  * Appearance card (Dark Mode), a Notifications toggle card (3 native
- * switches), an Account .navrow card, and an outline "Log Out" button —
- * since the mockup never gave providers a Settings screen at all (only
+ * switches) and an Account .navrow card (Log Out lives on Profile) — since the mockup never gave providers a Settings screen at all (only
  * homeowners had #ho-settings) and there's no reason the two should differ.
  *
  * All five switches persist through `useSettings` → GET/PATCH /settings.
@@ -21,14 +20,12 @@
 
 import React, { useState } from 'react';
 import {
-  ActivityIndicator,
   Modal,
   Pressable,
   ScrollView,
   StyleSheet,
   Switch,
   Text,
-  TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
@@ -43,8 +40,8 @@ import {
 import { Sizes, Spacing, V6Colors } from '../../../src/constants/theme';
 
 const C = V6Colors;
-import ConfirmationModal from '../../../src/components/ConfirmationModal';
 import DeleteAccountModal from '../../../src/components/DeleteAccountModal';
+import ChangePasswordModal from '../../../src/components/ChangePasswordModal';
 import { useSettings } from '../../../src/hooks/useSettings';
 import { api } from '../../../src/lib/api';
 
@@ -56,7 +53,6 @@ interface SPSettingsScreenProps {
 
 export default function SPSettingsScreen({ onBack, onLogout }: SPSettingsScreenProps) {
   const { flags, setFlag, loading: settingsLoading, error: settingsError } = useSettings();
-  const [confirmLogoutVisible, setConfirmLogoutVisible] = useState(false);
 
   const [showPasswordModal, setShowPasswordModal] = useState(false);
   const [showLanguageModal, setShowLanguageModal] = useState(false);
@@ -84,7 +80,7 @@ export default function SPSettingsScreen({ onBack, onLogout }: SPSettingsScreenP
         <View style={{ width: 38 }} />
       </View>
 
-      <ScrollView
+      <ScrollView keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag"
         style={styles.body}
         contentContainerStyle={styles.bodyContent}
         showsVerticalScrollIndicator={false}
@@ -157,29 +153,10 @@ export default function SPSettingsScreen({ onBack, onLogout }: SPSettingsScreenP
           </TouchableOpacity>
         </View>
 
-        <TouchableOpacity
-          style={styles.logoutBtn}
-          onPress={() => setConfirmLogoutVisible(true)}
-          activeOpacity={0.85}
-        >
-          <Text style={styles.logoutBtnText}>Log Out</Text>
-        </TouchableOpacity>
 
         <View style={{ height: 20 }} />
       </ScrollView>
 
-      <ConfirmationModal
-        visible={confirmLogoutVisible}
-        title="Confirm Log Out"
-        message="Are you sure you want to log out?"
-        confirmLabel="Log Out"
-        cancelLabel="Cancel"
-        onConfirm={() => {
-          setConfirmLogoutVisible(false);
-          onLogout();
-        }}
-        onCancel={() => setConfirmLogoutVisible(false)}
-      />
 
       <ChangePasswordModal visible={showPasswordModal} onClose={() => setShowPasswordModal(false)} />
 
@@ -219,139 +196,6 @@ export default function SPSettingsScreen({ onBack, onLogout }: SPSettingsScreenP
   );
 }
 
-function ChangePasswordModal({ visible, onClose }: { visible: boolean; onClose: () => void }) {
-  const [currentPassword, setCurrentPassword] = useState('');
-  const [newPassword, setNewPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState(false);
-
-  const reset = () => {
-    setCurrentPassword('');
-    setNewPassword('');
-    setConfirmPassword('');
-    setError(null);
-    setSuccess(false);
-  };
-
-  const close = () => {
-    reset();
-    onClose();
-  };
-
-  const handleSave = async () => {
-    setError(null);
-    if (!currentPassword || !newPassword) {
-      setError('Fill in both password fields.');
-      return;
-    }
-    if (newPassword.length < 8) {
-      setError('New password must be at least 8 characters.');
-      return;
-    }
-    if (newPassword !== confirmPassword) {
-      setError('New passwords do not match.');
-      return;
-    }
-    setSaving(true);
-    try {
-      await api.changePassword({ current_password: currentPassword, new_password: newPassword });
-      setSuccess(true);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Could not change your password.');
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={close}>
-      <Pressable style={styles.overlay} onPress={close} accessible={false}>
-        <Pressable
-          style={styles.dialog}
-          onPress={(e) => e.stopPropagation()}
-          accessibilityViewIsModal
-          accessibilityRole="alert"
-        >
-          {success ? (
-            <>
-              <Text style={styles.dialogTitle} accessibilityRole="header">Password changed</Text>
-              <Text style={styles.dialogBody}>Your password has been updated.</Text>
-              <TouchableOpacity
-                style={styles.dialogCloseBtn}
-                onPress={close}
-                activeOpacity={0.85}
-                accessibilityRole="button"
-                accessibilityLabel="Done"
-              >
-                <Text style={styles.dialogCloseText}>Done</Text>
-              </TouchableOpacity>
-            </>
-          ) : (
-            <>
-              <Text style={styles.dialogTitle} accessibilityRole="header">Change Password</Text>
-              <TextInput
-                style={styles.pwInput}
-                placeholder="Current password"
-                placeholderTextColor={C.ink400}
-                secureTextEntry
-                value={currentPassword}
-                onChangeText={setCurrentPassword}
-                editable={!saving}
-                accessibilityLabel="Current password"
-              />
-              <TextInput
-                style={styles.pwInput}
-                placeholder="New password"
-                placeholderTextColor={C.ink400}
-                secureTextEntry
-                value={newPassword}
-                onChangeText={setNewPassword}
-                editable={!saving}
-                accessibilityLabel="New password"
-              />
-              <TextInput
-                style={styles.pwInput}
-                placeholder="Confirm new password"
-                placeholderTextColor={C.ink400}
-                secureTextEntry
-                value={confirmPassword}
-                onChangeText={setConfirmPassword}
-                editable={!saving}
-                accessibilityLabel="Confirm new password"
-              />
-              {!!error && <Text style={styles.pwError}>{error}</Text>}
-              <View style={styles.pwActions}>
-                <TouchableOpacity
-                  style={styles.dialogCancelBtn}
-                  onPress={close}
-                  disabled={saving}
-                  activeOpacity={0.8}
-                  accessibilityRole="button"
-                  accessibilityLabel="Cancel"
-                >
-                  <Text style={styles.dialogCancelText}>Cancel</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={styles.dialogSaveBtn}
-                  onPress={handleSave}
-                  disabled={saving}
-                  activeOpacity={0.85}
-                  accessibilityRole="button"
-                  accessibilityLabel="Save"
-                >
-                  {saving ? <ActivityIndicator color={C.white} /> : <Text style={styles.dialogSaveText}>Save</Text>}
-                </TouchableOpacity>
-              </View>
-            </>
-          )}
-        </Pressable>
-      </Pressable>
-    </Modal>
-  );
-}
-
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: C.canvas },
 
@@ -388,13 +232,8 @@ const styles = StyleSheet.create({
   rowLabel: { flex: 1, color: C.ink900, fontSize: 14.5, fontWeight: '600', fontFamily: 'Inter' },
   rowLabelDanger: { color: '#ef4444' },
 
-  logoutBtn: {
-    borderWidth: 1, borderColor: '#dce3e9', borderRadius: 13, paddingVertical: 14,
-    alignItems: 'center',
-  },
-  logoutBtnText: { color: C.ink700, fontSize: 16.5, fontWeight: '700', fontFamily: 'Inter' },
 
-  // Shared small-dialog styles (Language + Change Password)
+  // Language dialog
   overlay: { flex: 1, justifyContent: 'center', padding: 24, backgroundColor: 'rgba(6, 61, 77, 0.5)' },
   dialog: { backgroundColor: C.white, borderRadius: 20, padding: 22 },
   dialogTitle: { color: C.ink900, fontSize: 19, fontWeight: '800', fontFamily: 'Inter', marginBottom: 14 },
@@ -406,15 +245,4 @@ const styles = StyleSheet.create({
   langLabel: { color: C.ink900, fontSize: 15, fontWeight: '600', fontFamily: 'Inter' },
   langBadge: { color: C.cyan700, fontSize: 12, fontWeight: '700', fontFamily: 'Inter' },
 
-  pwInput: {
-    backgroundColor: '#f5f8fa', borderRadius: 12, paddingHorizontal: 14, minHeight: 46,
-    borderWidth: 1, borderColor: '#dce3e9', fontFamily: 'Inter', fontSize: 15, color: C.ink900,
-    marginBottom: 10,
-  },
-  pwError: { color: '#ef4444', fontSize: 13, fontFamily: 'Inter', marginBottom: 6 },
-  pwActions: { flexDirection: 'row', gap: 10, marginTop: 8 },
-  dialogCancelBtn: { flex: 1, borderWidth: 1, borderColor: '#dce3e9', borderRadius: 12, paddingVertical: 13, alignItems: 'center' },
-  dialogCancelText: { color: C.ink500, fontSize: 15, fontWeight: '700', fontFamily: 'Inter' },
-  dialogSaveBtn: { flex: 1, backgroundColor: C.cyan700, borderRadius: 12, paddingVertical: 13, alignItems: 'center' },
-  dialogSaveText: { color: C.white, fontSize: 15, fontWeight: '700', fontFamily: 'Inter' },
 });

@@ -1,6 +1,7 @@
 import * as crypto from 'crypto';
 import {
   BadRequestException,
+  ConflictException,
   ForbiddenException,
   Injectable,
   Logger,
@@ -116,7 +117,17 @@ export class AuthService implements OnModuleInit {
         },
       },
     });
-    if (error) throw new BadRequestException(error.message);
+    if (error) {
+      if (isDuplicateEmailError(error)) throw emailTakenError();
+      throw new BadRequestException(error.message);
+    }
+    // With email confirmation on, Supabase answers a duplicate sign-up with a
+    // success and an obfuscated user that has no identities, instead of an
+    // error. Stop here: going on would write consent/category fields onto the
+    // existing account's profile.
+    if (data.user && (data.user.identities?.length ?? 0) === 0) {
+      throw emailTakenError();
+    }
 
     const userId = data.user?.id;
 
@@ -556,7 +567,9 @@ export class AuthService implements OnModuleInit {
       );
     }
     if (!data || new Date(data.expires_at as string).getTime() < Date.now()) {
-      throw new NotFoundException('This sign-in has expired. Please try again.');
+      throw new NotFoundException(
+        'This sign-in has expired. Please try again.',
+      );
     }
 
     return { session: data.session as Session };
@@ -821,4 +834,22 @@ export class AuthService implements OnModuleInit {
 
     return { success: true };
   }
+}
+
+/** Stable code the app keys off to show "log in instead" rather than raw text. */
+export const EMAIL_TAKEN = 'EMAIL_TAKEN';
+
+function emailTakenError() {
+  return new ConflictException({
+    message: 'An account with this email already exists.',
+    code: EMAIL_TAKEN,
+  });
+}
+
+function isDuplicateEmailError(error: { message?: string; code?: string }) {
+  return (
+    error.code === 'user_already_exists' ||
+    error.code === 'email_exists' ||
+    /already (registered|exists)/i.test(error.message ?? '')
+  );
 }

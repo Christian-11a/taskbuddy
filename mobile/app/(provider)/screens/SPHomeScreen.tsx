@@ -229,7 +229,7 @@ export default function SPHomeScreen({ onNavigate }: SPHomeScreenProps) {
         </View>
       </LinearGradient>
 
-      <ScrollView
+      <ScrollView keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag"
         style={styles.body}
         contentContainerStyle={styles.bodyContent}
         showsVerticalScrollIndicator={false}

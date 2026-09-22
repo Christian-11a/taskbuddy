@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   ForbiddenException,
   ServiceUnavailableException,
   UnauthorizedException,
@@ -619,5 +620,62 @@ describe('AuthService registration email OTP', () => {
       );
       expect(signOut).toHaveBeenCalledWith(SESSION.access_token);
     });
+  });
+});
+
+describe('AuthService.register', () => {
+  const dto = {
+    email: 'taken@test.io',
+    password: 'secret123',
+    full_name: 'Ana Cruz',
+    role: 'client',
+  } as Parameters<AuthService['register']>[0];
+
+  function serviceWithSignUp(result: unknown) {
+    const from = jest.fn();
+    const supabase = {
+      anon: { auth: { signUp: jest.fn().mockResolvedValue(result) } },
+      admin: { from },
+    } as unknown as SupabaseService;
+    return { service: new AuthService(supabase), from };
+  }
+
+  it('maps Supabase "already registered" to a 409 with EMAIL_TAKEN', async () => {
+    const { service } = serviceWithSignUp({
+      data: { user: null, session: null },
+      error: {
+        message: 'User already registered',
+        code: 'user_already_exists',
+      },
+    });
+
+    const err = await service.register(dto).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(ConflictException);
+    expect((err as ConflictException).getResponse()).toMatchObject({
+      code: 'EMAIL_TAKEN',
+    });
+  });
+
+  it('treats an identity-less user (confirmation on) as a duplicate and writes nothing', async () => {
+    const { service, from } = serviceWithSignUp({
+      data: { user: { id: 'existing', identities: [] }, session: null },
+      error: null,
+    });
+
+    await expect(service.register(dto)).rejects.toBeInstanceOf(
+      ConflictException,
+    );
+    expect(from).not.toHaveBeenCalled();
+  });
+
+  it('keeps other sign-up errors as a 400', async () => {
+    const { service } = serviceWithSignUp({
+      data: { user: null, session: null },
+      error: { message: 'Password should be at least 6 characters' },
+    });
+
+    await expect(service.register(dto)).rejects.toBeInstanceOf(
+      BadRequestException,
+    );
   });
 });

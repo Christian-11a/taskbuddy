@@ -121,20 +121,6 @@ export default function GoogleSPDetailsScreen({
   const [error, setError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
 
-  if (termsMode !== null) {
-    return (
-      <TermsAndConditions
-        mode={termsMode}
-        onBack={() => setTermsMode(null)}
-        onAccept={() => {
-          if (termsMode === 'terms') setTermsAccepted(true);
-          else if (termsMode === 'privacy') setPrivacyAccepted(true);
-          setTermsMode(null);
-        }}
-      />
-    );
-  }
-
   const clearError = <K extends keyof FieldErrors>(key: K) =>
     setFieldErrors((prev) => ({ ...prev, [key]: undefined }));
 
@@ -178,12 +164,21 @@ export default function GoogleSPDetailsScreen({
   return (
     <View style={styles.screen}>
       <View style={styles.headerBg} />
+      <TermsAndConditions
+        visible={termsMode !== null}
+        mode={termsMode ?? 'terms'}
+        onBack={() => setTermsMode(null)}
+        onAccept={() => {
+          if (termsMode === 'terms') setTermsAccepted(true);
+          else if (termsMode === 'privacy') setPrivacyAccepted(true);
+        }}
+      />
 
       <KeyboardAvoidingView
         style={styles.flex}
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       >
-        <ScrollView
+        <ScrollView keyboardDismissMode="on-drag"
           style={styles.flex}
           contentContainerStyle={[styles.scrollContent, { paddingTop: layout.paddingTop, paddingBottom: layout.paddingBottom }]}
           showsVerticalScrollIndicator={false}

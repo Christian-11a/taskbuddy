@@ -641,18 +641,6 @@ export default function HOCreateJobScreen({
     if (selectedTime) setTempTime(selectedTime);
   };
 
-  if (showTerms) {
-    return (
-      <TermsAndConditions
-        onBack={() => setShowTerms(false)}
-        onAccept={() => {
-          setTermsAccepted(true);
-          clearError('terms');
-        }}
-      />
-    );
-  }
-
   if (step === 6) {
     // Success screen
     return (
@@ -699,6 +687,14 @@ export default function HOCreateJobScreen({
   return (
     <View style={styles.screen}>
       {/* Header — matches .topbar (flat white, not a dark hero) */}
+      <TermsAndConditions
+        visible={showTerms}
+        onBack={() => setShowTerms(false)}
+        onAccept={() => {
+          setTermsAccepted(true);
+          clearError('terms');
+        }}
+      />
       <View style={styles.header}>
         <TouchableOpacity style={styles.backBtn} onPress={handleExit} activeOpacity={0.8}>
           <ArrowLeft size={22} color={Colors.ink700} />
@@ -724,7 +720,7 @@ export default function HOCreateJobScreen({
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         keyboardVerticalOffset={24}
       >
-        <ScrollView
+        <ScrollView keyboardDismissMode="on-drag"
           testID="create-job-form-scroll"
           style={styles.body}
           contentContainerStyle={[styles.bodyContent, { paddingBottom: 140 + insets.bottom }]}
