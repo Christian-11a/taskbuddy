@@ -26,6 +26,7 @@ import { ChatModule } from './chat/chat.module';
 import { CalendarModule } from './calendar/calendar.module';
 import { UploadsModule } from './uploads/uploads.module';
 import { VerificationsModule } from './verifications/verifications.module';
+import { SkillRequestsModule } from './skill-requests/skill-requests.module';
 import { EscrowModule } from './escrow/escrow.module';
 import { SettingsModule } from './settings/settings.module';
 import { PushModule } from './push/push.module';
@@ -81,6 +82,7 @@ import { InternalModule } from './internal/internal.module';
     CalendarModule,
     UploadsModule,
     VerificationsModule,
+    SkillRequestsModule,
     EscrowModule,
     SettingsModule,
     PushModule,

@@ -10,6 +10,7 @@ import { SupabaseService } from '../supabase/supabase.service';
 import { UploadsService } from '../uploads/uploads.service';
 import { EscrowService } from '../escrow/escrow.service';
 import {
+  AcceptJobDto,
   BrowseJobsQueryDto,
   CreateJobDto,
   DeclineJobDto,
@@ -281,7 +282,7 @@ export class JobsService {
    * No money moves: escrow was placed when the client hired them and is
    * released on completion or refunded on cancellation, exactly as before.
    */
-  async accept(user: Profile, jobId: string) {
+  async accept(user: Profile, jobId: string, dto: AcceptJobDto = {}) {
     const job = await this.findJob(jobId);
     if (job.assigned_provider_id !== user.id) {
       throw new ForbiddenException('You are not assigned to this job');
@@ -293,11 +294,21 @@ export class JobsService {
           : `Cannot accept a job in status '${job.status}'`,
       );
     }
+    const hasLocation =
+      dto.address != null && dto.latitude != null && dto.longitude != null;
     const updated = await this.setStatus(
       jobId,
       'confirmed',
       AWAITING_PROVIDER_ANSWER,
+      hasLocation
+        ? {
+            provider_accept_address: dto.address,
+            provider_accept_latitude: dto.latitude,
+            provider_accept_longitude: dto.longitude,
+          }
+        : undefined,
     );
+    await this.ensureBooking(job);
     await this.notify(job.client_id, 'job_update', 'Booking confirmed', {
       body: `${user.full_name} accepted your booking for "${job.title}".`,
       job_id: jobId,
@@ -460,10 +471,15 @@ export class JobsService {
    * while escrow settled only one way, leaving a completed job whose money
    * went back to the client, or a cancelled one that paid the provider.
    */
-  private async setStatus(jobId: string, status: string, from: string[]) {
+  private async setStatus(
+    jobId: string,
+    status: string,
+    from: string[],
+    extra?: Record<string, unknown>,
+  ) {
     const { data, error } = await this.supabase.admin
       .from('jobs')
-      .update({ status })
+      .update({ status, ...extra })
       .eq('id', jobId)
       .in('status', from)
       .select(JOB_SELECT)
@@ -475,6 +491,32 @@ export class JobsService {
       );
     }
     return this.withReview(data);
+  }
+
+  /**
+   * Puts a confirmed booking on the provider's calendar. Hiring only creates a
+   * booking when the client picked a time (0007's trigger), so an ASAP job
+   * never reached the calendar at all; it lands on the day it was confirmed.
+   * The unique job_id makes a repeat a no-op, and a failure here must not
+   * undo an accept that already succeeded.
+   */
+  private async ensureBooking(job: {
+    id: string;
+    client_id: string;
+    assigned_provider_id: string | null;
+    scheduled_at?: string | null;
+  }) {
+    const { error } = await this.supabase.admin.from('bookings').insert({
+      job_id: job.id,
+      provider_id: job.assigned_provider_id,
+      client_id: job.client_id,
+      scheduled_at: job.scheduled_at ?? new Date().toISOString(),
+    });
+    if (error && error.code !== '23505') {
+      this.logger.warn(
+        `Could not add job ${job.id} to the calendar: ${error.message}`,
+      );
+    }
   }
 
   private async notify(

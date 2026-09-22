@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ForbiddenException,
   ConflictException,
   Injectable,
   Logger,
@@ -145,6 +146,19 @@ export class ProfilesService {
       .maybeSingle();
     if (!category)
       throw new BadRequestException('Unknown or inactive category_id');
+
+    // Once set, a provider's service only changes through an admin-approved
+    // request (POST /skill-requests), not by editing the profile.
+    const { data: existing } = await this.supabase.admin
+      .from('provider_profiles')
+      .select('category_id')
+      .eq('profile_id', user.id)
+      .maybeSingle();
+    if (existing && existing.category_id !== dto.category_id) {
+      throw new ForbiddenException(
+        'To change your service, send a request to the admins from Edit Profile.',
+      );
+    }
 
     // cached_* columns are intentionally never written here — triggers own them.
     const { data, error } = await this.supabase.admin

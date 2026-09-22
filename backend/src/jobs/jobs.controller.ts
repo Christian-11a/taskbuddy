@@ -16,6 +16,7 @@ import { Roles } from '../auth/roles.decorator';
 import { CurrentUser } from '../auth/current-user.decorator';
 import { JobsService } from './jobs.service';
 import {
+  AcceptJobDto,
   BrowseJobsQueryDto,
   CreateJobDto,
   GeocodeQueryDto,
@@ -106,8 +107,12 @@ export class JobsController {
   /** Provider accepts an incoming booking request → 'confirmed'. */
   @Post(':id/accept')
   @Roles('provider')
-  accept(@CurrentUser() user: Profile, @Param('id', ParseUUIDPipe) id: string) {
-    return this.jobsService.accept(user, id);
+  accept(
+    @CurrentUser() user: Profile,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: AcceptJobDto,
+  ) {
+    return this.jobsService.accept(user, id, dto);
   }
 
   @Post(':id/start')
