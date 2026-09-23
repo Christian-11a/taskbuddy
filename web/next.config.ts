@@ -45,6 +45,12 @@ const securityHeaders = [
 ];
 
 const nextConfig: NextConfig = {
+  // This app is deployed from `web/` inside a repository that also has a
+  // root-level lockfile. Pin Turbopack here so it does not infer the wrong
+  // workspace root from the two lockfiles.
+  turbopack: {
+    root: process.cwd(),
+  },
   async headers() {
     return [{ source: "/:path*", headers: securityHeaders }];
   },
