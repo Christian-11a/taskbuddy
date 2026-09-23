@@ -77,18 +77,21 @@ default to port 3000. Run the backend with `PORT=3001`.
 light theme by default. A previously saved dark-mode preference is preserved;
 use the Dark Mode switch in Settings to change it.
 
-**Build warns about multiple lockfiles.** The repository has a root
-`package-lock.json` and a second one under `web/`, so Next.js may warn while
-inferring its workspace root. The web build still completes successfully; do
-not remove the root lockfile as part of a web-only change.
+**Build workspace root.** The repository has a root `package-lock.json` and a
+second one under `web/`. `next.config.ts` pins Turbopack's root to this web app
+so it does not need to infer the workspace from both lockfiles. Keep the root
+lockfile; it belongs to the repository and should not be removed in a web-only
+change.
 
 **Hydration warning mentioning `data-gr-ext-installed`.** That's the Grammarly
 browser extension editing `<body>` before React hydrates, not app code. Already
 suppressed via `suppressHydrationWarning` on `<body>`.
 
-**Everything renders empty / all zeroes.** Check for a red banner at the top of
-the page — a failed data load shows there with a Retry button. If there's no
-banner, the platform genuinely has no data yet.
+**Console data is missing.** A failed core data load shows a banner at the top
+of the admin console with a Retry button. If only analytics fails, Dashboard
+and Reports show an inline unavailable message and Retry; they do not present
+the failed request as zero-valued data. See [Needed to Move Forward](#needed-to-move-forward)
+for the current backend dependency.
 
 ---
 
@@ -450,7 +453,28 @@ ported from a design mockup to match it exactly.
 
 ## Needed to Move Forward
 
-Nothing is currently blocking the web work. The earlier manual checks for
-Issue Credit, password reset, and real-email signup were completed and are
-recorded in [`CHANGELOG.md`](./CHANGELOG.md). The multiple-lockfile message
-described in Troubleshooting is informational and does not block the web build.
+### Backend follow-up (backend-owned)
+
+The web can continue to load its core admin lists when analytics is unavailable.
+The remaining issue is a backend dependency: the web Dashboard and Reports
+show analytics as unavailable while `GET /admin/analytics/summary` fails. During
+the 2026-09-23 check, Supabase request logs showed the backend's nested
+`provider_profiles` read (embedding `profiles(full_name)` and
+`service_categories(name)`) with HTTP status 300. A read-only check of the live
+foreign keys found one direct relationship to each referenced table, so an
+ambiguous-relationship cause is not confirmed. The backend owner needs to
+inspect the underlying PostgREST error details and correct the query or schema
+issue. The web keeps core admin lists usable and shows a Retry state; once the
+endpoint succeeds with the response shape the web expects, refreshing restores
+the analytics without a web revert.
+
+### Manual verification (completed)
+
+The earlier manual checks for Issue Credit, password reset, and real-email
+signup are recorded in [`CHANGELOG.md`](./CHANGELOG.md).
+
+### Build warning (resolved)
+
+The repository keeps its root and web lockfiles. `next.config.ts` pins
+Turbopack's root to `web/`, and the production build completes without the
+workspace-root warning.
