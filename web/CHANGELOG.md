@@ -6,6 +6,14 @@ Newest first.
 
 ---
 
+## Build workspace root is explicit (2026-09-23)
+
+Pinned Turbopack's root to `web/` in `next.config.ts`. The repository keeps
+both the root and web lockfiles, but Next no longer needs to guess the web
+app's workspace root from them. The root lockfile remains untouched. Verified
+with `npm test -- --maxWorkers=1` (131 passed, 1 skipped), `npm run lint`, and
+`npm run build` (successful with no workspace-root warning).
+
 ## Escrow tab: where a card-funded payout went, and Retry transfer (2026-09-16)
 
 Card-funded payouts are now sent on to the provider's Stripe Connect account

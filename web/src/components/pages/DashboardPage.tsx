@@ -77,7 +77,18 @@ const activityIcon = (type: string) => {
 };
 
 export function DashboardPage() {
-  const { dashboardStats, recentActivity, disputes, transactions, bookings, users, bookingsSeries, loading } = useApp();
+  const {
+    dashboardStats,
+    recentActivity,
+    disputes,
+    transactions,
+    bookings,
+    users,
+    bookingsSeries,
+    loading,
+    analyticsUnavailable,
+    retryLoad,
+  } = useApp();
   const openDisputes = disputes.filter((d) => d.isOpen).length;
   const escrowUnderReview = transactions.filter((t) => t.status === "IN_ESCROW").length;
   const escrowHeld = transactions.filter((t) => t.status === "IN_ESCROW").reduce((s, t) => s + t.amountValue, 0);
@@ -97,10 +108,86 @@ export function DashboardPage() {
   // the last point is the current month, real data rather than a guess.
   const bookingsThisMonth = bookingsSeries.length > 0 ? bookingsSeries[bookingsSeries.length - 1].value : 0;
 
-  if (loading || !dashboardStats) {
+  if (loading) {
     return (
       <div className="flex items-center justify-center" style={{ height: 300, color: "var(--text-muted)", fontSize: "var(--fs-md)" }}>
         Loading dashboard…
+      </div>
+    );
+  }
+
+  if (analyticsUnavailable || !dashboardStats) {
+    return (
+      <div>
+        <header className="mb-6">
+          <h1 className="text-white font-bold" style={{ fontSize: "var(--fs-3xl)", letterSpacing: "var(--tr-tight)", lineHeight: "var(--lh-tight)" }}>Today at TaskBuddy</h1>
+          <p style={{ fontSize: "var(--fs-sm)", color: "var(--text-muted)", marginTop: "var(--sp-2)", lineHeight: "var(--lh-normal)" }}>Marketplace activity, money in motion, and work waiting for review.</p>
+        </header>
+
+        <div
+          role="status"
+          className="flex items-center gap-3 rounded-xl mb-5 flex-wrap"
+          style={{ background: "var(--card-bg)", border: "1px solid var(--card-border)", padding: "12px 14px" }}
+        >
+          <AlertTriangle size={15} style={{ color: "var(--warning-text)", flexShrink: 0 }} />
+          <span className="flex-1" style={{ color: "var(--text-light)", fontSize: "var(--fs-sm)" }}>
+            {analyticsUnavailable
+              ? "Dashboard analytics are temporarily unavailable. Other admin sections are still available."
+              : "Dashboard data could not be loaded. Retry or check the console error above."}
+          </span>
+          <button
+            onClick={retryLoad}
+            className="font-semibold transition-opacity hover:opacity-80"
+            style={{ background: "var(--chip-bg)", border: "1px solid var(--border-md)", borderRadius: "var(--r-md)", padding: "5px 12px", fontSize: "var(--fs-xs)", color: "var(--text-light)", cursor: "pointer", fontFamily: "inherit" }}
+          >
+            Retry
+          </button>
+        </div>
+
+        {analyticsUnavailable && openDisputes > 0 && (
+          <Link
+            href={pageToPath("disputes")}
+            className="flex items-center gap-3 rounded-xl mb-5"
+            style={{ background: "var(--card-bg)", border: "1px solid var(--card-border)", padding: "14px 16px", color: "var(--text-light)", textDecoration: "none" }}
+          >
+            <AlertTriangle size={15} style={{ color: "var(--danger-text)" }} />
+            <span>{openDisputes} open {openDisputes === 1 ? "dispute" : "disputes"}</span>
+            <span className="ml-auto" style={{ color: "var(--indigo-light)", fontSize: "var(--fs-xs)" }}>Review</span>
+          </Link>
+        )}
+
+        {analyticsUnavailable && <section className="rounded-2xl p-5" style={{ background: "var(--card-bg)", border: "1px solid var(--card-border)" }}>
+          <div className="flex items-start justify-between mb-1 gap-3">
+            <div>
+              <h2 className="font-semibold text-white" style={{ fontSize: "var(--fs-md)" }}>Recent Platform Activity</h2>
+              <p style={{ fontSize: "var(--fs-2xs)", color: "var(--text-muted)", marginTop: "var(--sp-1)" }}>Latest marketplace and administrative events.</p>
+            </div>
+            <Link
+              href={pageToPath("activity-log")}
+              className="flex-shrink-0 font-semibold transition-opacity hover:opacity-80"
+              style={{ background: "var(--chip-bg)", border: "1px solid var(--border-md)", borderRadius: "var(--r-md)", padding: "6px 12px", fontSize: "var(--fs-xs)", color: "var(--text-light)", textDecoration: "none" }}
+            >
+              View activity
+            </Link>
+          </div>
+          {recentActivity.length === 0 ? (
+            <p style={{ color: "var(--text-muted)", fontSize: "var(--fs-xs)", marginTop: "var(--sp-4)" }}>No recent activity was returned.</p>
+          ) : (
+            <div className="flex flex-col gap-3" style={{ marginTop: "var(--sp-3)" }}>
+              {recentActivity.slice(0, 7).map((activity, index) => (
+                <div key={`${activity.type}-${activity.text}-${index}`} className="flex items-center gap-3">
+                  <div className="flex items-center justify-center flex-shrink-0 rounded-lg" style={{ width: 26, height: 26, background: "var(--chip-bg)" }}>
+                    {activityIcon(activity.type)}
+                  </div>
+                  <div className="flex-1 text-white" style={{ fontSize: "var(--fs-xs)" }}>{activity.text}</div>
+                  <div className="flex items-center gap-1 flex-shrink-0" style={{ fontSize: "var(--fs-2xs)", color: "var(--text-muted)" }}>
+                    <Clock size={9} /> {activity.time}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </section>}
       </div>
     );
   }

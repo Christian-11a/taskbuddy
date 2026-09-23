@@ -116,6 +116,8 @@ interface AppState {
   loadError: string | null;
   /** Re-runs the initial data load — wired to the error banner's Retry. */
   retryLoad: () => void;
+  /** True when the analytics endpoint failed while the rest of the console loaded. */
+  analyticsUnavailable: boolean;
   verifications: VerificationRow[];
   users: UserRow[];
   /** Search pages load these from their own paginated backend queries. */
@@ -191,6 +193,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   // domain data
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [analyticsUnavailable, setAnalyticsUnavailable] = useState(false);
   /** Bumped by retryLoad() to re-run the initial-load effect. */
   const [reloadNonce, setReloadNonce] = useState(0);
   const [domainUsers, setDomainUsers] = useState<AdminUser[]>([]);
@@ -232,34 +235,69 @@ export function AppProvider({ children }: { children: ReactNode }) {
     (async () => {
       setLoading(true);
       setLoadError(null);
+      setAnalyticsUnavailable(false);
       try {
-        const [users, deletedUsers, verifs, disputes, stats, revenue, bookVol, categories, activity, providers, serverDarkMode, maintenance] =
-          await Promise.all([
-            services.getUsers(),
-            // Deleted accounts are an opt-in enhancement. If the deployed API
-            // predates the status filter, keep the rest of the console usable.
-            services.getUsers("deleted").catch(() => []),
-            services.getVerifications(),
-            services.getDisputes(),
-            services.getDashboardStats(),
-            services.getRevenueSeries(),
-            services.getBookingsSeries(),
-            services.getBookingsByCategory(),
-            services.getRecentActivity(),
-            services.getTopProviders(),
-            services.getDarkModePreference(),
-            services.getMaintenanceStatus(),
-          ]);
+        const coreRequest = Promise.all([
+          services.getUsers(),
+          // Deleted accounts are an opt-in enhancement. If the deployed API
+          // predates the status filter, keep the rest of the console usable.
+          services.getUsers("deleted").catch(() => []),
+          services.getVerifications(),
+          services.getDisputes(),
+          services.getRecentActivity(),
+          services.getDarkModePreference(),
+          services.getMaintenanceStatus(),
+        ]);
+        // These values all depend on /admin/analytics/summary. Keep a failure
+        // there from discarding the independent console lists and preferences.
+        const analyticsRequest = Promise.all([
+          services.getDashboardStats(),
+          services.getRevenueSeries(),
+          services.getBookingsSeries(),
+          services.getBookingsByCategory(),
+          services.getTopProviders(),
+        ]);
+        const [coreResult, analyticsResult] = await Promise.allSettled([
+          coreRequest,
+          analyticsRequest,
+        ]);
         if (cancelled) return;
+
+        if (coreResult.status === "rejected") throw coreResult.reason;
+        if (
+          analyticsResult.status === "rejected" &&
+          analyticsResult.reason instanceof services.ApiError &&
+          (analyticsResult.reason.status === 401 || analyticsResult.reason.status === 403)
+        ) {
+          setIsLoggedIn(false);
+          setLoading(false);
+          return;
+        }
+
+        const [users, deletedUsers, verifs, disputes, activity, serverDarkMode, maintenance] =
+          coreResult.value;
         setDomainUsers([...users, ...deletedUsers]);
         setDomainVerifications(verifs);
         setDomainDisputes(disputes);
-        setDashboardStats(stats);
-        setRevenueSeries(revenue);
-        setBookingsSeries(bookVol);
-        setBookingsByCategory(categories);
         setRecentActivity(activity);
-        setTopProviders(providers);
+
+        if (analyticsResult.status === "fulfilled") {
+          const [stats, revenue, bookVol, categories, providers] = analyticsResult.value;
+          setDashboardStats(stats);
+          setRevenueSeries(revenue);
+          setBookingsSeries(bookVol);
+          setBookingsByCategory(categories);
+          setTopProviders(providers);
+        } else {
+          // Do not leave stale or empty arrays looking like real zero-valued
+          // analytics. The affected pages render an explicit retry state.
+          setDashboardStats(null);
+          setRevenueSeries([]);
+          setBookingsSeries([]);
+          setBookingsByCategory([]);
+          setTopProviders([]);
+          setAnalyticsUnavailable(true);
+        }
         // The account's saved preference wins over whatever this device had
         // cached, so dark mode now follows the admin across devices.
         if (serverDarkMode !== null) setDarkModeState(serverDarkMode);
@@ -337,7 +375,33 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const retryLoad = useCallback(() => setReloadNonce((n) => n + 1), []);
 
   const refreshStats = useCallback(async () => {
-    setDashboardStats(await services.getDashboardStats());
+    try {
+      const [stats, revenue, bookVol, categories, providers] = await Promise.all([
+        services.getDashboardStats(),
+        services.getRevenueSeries(),
+        services.getBookingsSeries(),
+        services.getBookingsByCategory(),
+        services.getTopProviders(),
+      ]);
+      setDashboardStats(stats);
+      setRevenueSeries(revenue);
+      setBookingsSeries(bookVol);
+      setBookingsByCategory(categories);
+      setTopProviders(providers);
+      setAnalyticsUnavailable(false);
+    } catch (err) {
+      if (err instanceof services.ApiError && (err.status === 401 || err.status === 403)) {
+        throw err;
+      }
+      // The mutation may already have succeeded; a failed analytics refresh
+      // must not make the UI report that the mutation itself failed.
+      setDashboardStats(null);
+      setRevenueSeries([]);
+      setBookingsSeries([]);
+      setBookingsByCategory([]);
+      setTopProviders([]);
+      setAnalyticsUnavailable(true);
+    }
   }, []);
 
   const approveVerification = useCallback(
@@ -432,7 +496,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     () => ({
       isLoggedIn, sessionRestored, adminProfile,
       login, logout, updateDisplayName, changePassword,
-      loading, loadError, retryLoad,
+      loading, loadError, retryLoad, analyticsUnavailable,
        verifications, users, transactions, disputes, bookings,
       dashboardStats, revenueSeries, bookingsSeries, bookingsByCategory,
       recentActivity, topProviders,
@@ -446,7 +510,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     [
       isLoggedIn, sessionRestored, adminProfile,
       login, logout, updateDisplayName, changePassword,
-      loading, loadError, retryLoad,
+      loading, loadError, retryLoad, analyticsUnavailable,
        verifications, users, transactions, disputes, bookings,
       dashboardStats, revenueSeries, bookingsSeries, bookingsByCategory,
       recentActivity, topProviders,
