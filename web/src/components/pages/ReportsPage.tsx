@@ -14,7 +14,7 @@ import {
   Pie,
   Cell,
 } from "recharts";
-import { Download, Star } from "lucide-react";
+import { AlertTriangle, Download, Star } from "lucide-react";
 import { useApp } from "@/context/AppContext";
 import { formatCurrency, formatCurrencyCompact } from "@/lib/adapters";
 import { datedFilename, downloadCsv, toCsv } from "@/lib/export/csv";
@@ -30,13 +30,45 @@ export function ReportsPage() {
     bookingsByCategory,
     topProviders,
     loading,
+    analyticsUnavailable,
+    retryLoad,
   } = useApp();
   const [confirmingExport, setConfirmingExport] = useState(false);
 
-  if (loading || !dashboardStats) {
+  if (loading) {
     return (
       <div className="flex items-center justify-center" style={{ height: 300, color: "var(--text-muted)", fontSize: "var(--fs-md)" }}>
         Loading reports…
+      </div>
+    );
+  }
+
+  if (analyticsUnavailable || !dashboardStats) {
+    return (
+      <div>
+        <header className="mb-5">
+          <h1 className="text-white font-bold" style={{ fontSize: "var(--fs-2xl)", letterSpacing: "-0.025em" }}>Reports &amp; Analytics</h1>
+          <p style={{ fontSize: "var(--fs-sm)", color: "var(--text-muted)", marginTop: 5, lineHeight: 1.45 }}>Platform performance metrics and business intelligence</p>
+        </header>
+        <div
+          role="status"
+          className="flex items-center gap-3 rounded-xl flex-wrap"
+          style={{ background: "var(--card-bg)", border: "1px solid var(--card-border)", padding: "14px 16px" }}
+        >
+          <AlertTriangle size={15} style={{ color: "var(--warning-text)", flexShrink: 0 }} />
+          <span className="flex-1" style={{ color: "var(--text-light)", fontSize: "var(--fs-sm)" }}>
+            {analyticsUnavailable
+              ? "Analytics are temporarily unavailable. No report values or charts are shown as zero while the data request is failing."
+              : "Report data could not be loaded. Retry or check the console error above."}
+          </span>
+          <button
+            onClick={retryLoad}
+            className="font-semibold transition-opacity hover:opacity-80"
+            style={{ background: "var(--chip-bg)", border: "1px solid var(--border-md)", borderRadius: "var(--r-md)", padding: "5px 12px", fontSize: "var(--fs-xs)", color: "var(--text-light)", cursor: "pointer", fontFamily: "inherit" }}
+          >
+            Retry
+          </button>
+        </div>
       </div>
     );
   }
