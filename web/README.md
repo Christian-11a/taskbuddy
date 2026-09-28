@@ -123,6 +123,18 @@ admin pages → context/AppContext → lib/services → lib/api/client → backe
   dashboard values, and `getTransactions()` is needed by both the Transactions
   page and the dispute cross-reference; both share one in-flight request rather
   than firing duplicates. This matters on a free-tier backend.
+- **Live refresh without new endpoints.** While an admin is signed in and the
+  tab is visible, `hooks/useLiveRefresh` calls `AppContext.refreshData()`
+  every 30 s (a silent reload: no spinner, keeps the last good analytics).
+  Pages with their own data (Withdrawals, Service Requests, Bookings,
+  Transactions, Activity) reload on the same tick via `hooks/useLiveTick`. A
+  silent refresh never starts while the first load is still running, and a
+  moderation action discards any refresh that was already in flight.
+- **Lists load in full.** `fetchAllRows()` in `lib/services` walks each admin
+  list endpoint's `limit`/`offset` until `total` is reached, so nothing stops
+  silently at the first 100–200 rows. If `/admin/analytics/summary` fails, the
+  same summary is rebuilt in the browser from those lists
+  (`lib/services/browserAnalytics.ts`).
 - **An expired token is refreshed once** via `POST /auth/refresh` and the
   request retried, instead of bouncing the admin to the login screen.
 
@@ -131,7 +143,10 @@ src/
 ├── app/
 │   ├── layout.tsx            # <html>, Inter via next/font — shared by both surfaces
 │   ├── page.tsx              # "/" — public homepage (HomePage.tsx)
-│   ├── robots.ts             # disallow ["/admin", "/account"]; "/" is indexable
+│   ├── robots.ts             # disallow ["/admin", "/account", "/dev"]; "/" is indexable
+│   ├── dev/admin-preview/    # Dev-only: /dev/admin-preview/<page|login>[?theme=dark]
+│   │                         # renders the console with sample data, no backend
+│   │                         # or login. 404 in production builds.
 │   ├── error.tsx             # Error boundary
 │   ├── not-found.tsx         # Custom 404
 │   ├── account/
@@ -149,11 +164,18 @@ src/
 │           ├── layout.tsx    # Auth gate + sidebar/header + load-error banner
 │           └── <page>/page.tsx
 ├── components/
-│   ├── layout/               # Sidebar, Header (admin only)
+│   ├── layout/               # Sidebar, Header, CommandPalette (⌘K), LiveIndicator,
+│   │                         # NotificationsMenu, ThemeToggle (admin only)
+│   ├── admin/                # Console building blocks: Panel/PageHeader, KpiCard,
+│   │                         # charts (Recharts), queue.tsx (inbox layout + J/K/A/R
+│   │                         # keys), table.tsx (DataTable, BulkBar), AnimatedNumber
 │   ├── pages/                # HomePage + AccountPage (promo) and one per admin page
-│   └── ui/                   # ConfirmDialog, Toast
+│   └── ui/                   # shadcn-style primitives (button, badge, dialog,
+│                             # dropdown-menu, command, input, switch, tooltip…)
+│                             # plus ConfirmDialog, Toast, ReviewDrawer, Pagination
 ├── styles/promo.css          # Scoped under `.promo-site` — doesn't affect /admin
 ├── context/AppContext.tsx    # Session, data, mutations, preferences (admin only)
+├── hooks/                    # useLiveRefresh, useLiveTick, useDebouncedValue
 └── lib/
     ├── domain.ts             # Backend-shaped domain types
     ├── routes.ts             # Page id ↔ /admin/<page> URL + page titles
@@ -161,6 +183,8 @@ src/
     ├── services/             # THE DATA SEAM (admin)
     ├── adapters/             # Domain → display rows
     ├── export/csv.ts         # Client-side CSV
+    ├── nav.ts                # Admin nav items, groups, search keywords
+    ├── theme.ts / utils.ts   # Initial theme choice; cn() class merging
     └── api/                  # client.ts, session.ts, types.ts (admin)
 
 public/promo/                 # auth.js (modal logic, real backend calls), vendor/
@@ -207,15 +231,15 @@ the backend and convert its JSON tokens into httpOnly cookies):
 | Page | Endpoint(s) |
 |---|---|
 | Login | `POST /auth/admin/login` |
-| Dashboard | `GET /admin/analytics/summary`, `GET /admin/activity` |
+| Dashboard | `GET /admin/analytics/summary` (rebuilt from the list endpoints below if it fails), `GET /admin/activity`, `GET /admin/transactions?status=held` (escrow held), `GET /admin/bookings?status=…&limit=1` (job counts), `GET /admin/skill-requests?status=pending` |
 | Verifications | `GET /admin/verifications`, `POST .../approve` · `/reject` (accepts a reason) |
 | Users | `GET /admin/users`, `POST .../suspend` (reason + optional duration) · `/reinstate` · `/send-password-reset` |
 | Transactions | **Escrow:** `GET /admin/transactions`, `POST /admin/escrow/:id/retry-transfer` (card-funded payouts) · **Wallet:** `GET /admin/wallet-transactions` (fetched when the tab opens), `POST /admin/wallet-transactions/recovery-credit` |
 | Disputes | `GET /admin/disputes`, `POST .../resolve` (accepts a note), `GET /admin/jobs/:jobId/conversation` (on demand) |
-| Bookings | `GET /admin/bookings`, `POST .../cancel`, `GET /admin/bookings/:id` (on row expand) |
+| Bookings | `GET /admin/bookings`, `GET /admin/bookings?status=…&limit=1` (tab counts), `POST .../cancel`, `GET /admin/bookings/:id` (detail drawer) |
 | Activity Log | `GET /admin/activity` |
-| Audit Log | `GET /admin/audit` |
-| Reports | `GET /admin/analytics/summary` |
+| Audit Log | `GET /admin/audit` (all pages) |
+| Reports | `GET /admin/analytics/summary` (same browser fallback as the Dashboard) |
 | Withdrawals | `GET /admin/withdrawals`, `POST .../:id/settle` · `POST .../:id/reject` |
 | Platform | `GET`/`PATCH /admin/commission`, category CRUD, admin accounts, notification broadcast |
 | Settings | `PATCH /profiles/me`, `POST /auth/change-password`, `GET`/`PATCH /settings`, `GET`/`PATCH /admin/maintenance` |
@@ -418,8 +442,8 @@ not missed.
 - **One `AppContext` rather than split auth/UI/data contexts.** The value is
   `useMemo`'d, which removes the needless re-renders. A full split is real
   boilerplate for no measurable gain at this data volume.
-- **CSP is report-only.** Every component styles inline, so an enforcing policy
-  needs `'unsafe-inline'` for styles anyway, and Next injects inline hydration
+- **CSP is report-only.** The public site and older components still style
+  inline, so an enforcing policy needs `'unsafe-inline'` for styles anyway, and Next injects inline hydration
   scripts. Tighten once the violation report is clean.
 - **Inert Settings toggles are labelled, not removed.** Notifications, Platform
   and Data & Privacy save to this device only and say so. An honestly labelled
@@ -442,12 +466,15 @@ not missed.
 ## Project history
 
 Detailed change history — what shipped in each pass and why — lives in
-[`CHANGELOG.md`](./CHANGELOG.md). Short version: the console started on mock
+[`CHANGELOG.md`](./CHANGELOG.md), split into **Admin console**, **Public
+website** and **Shared** parts, each newest first with category tags. Short version: the console started on mock
 data, moved onto the real backend across migrations 0008–0014 and 0017, went
 through hardening passes covering routing, security headers, destructive-action
 confirmations, error handling, and accessibility, then had its visual design
 and interaction patterns (pagination, row-selection, scoped CSV export)
-ported from a design mockup to match it exactly.
+ported from a design mockup to match it exactly. On 2026-09-29 the console
+was rebuilt on a new design system (light and dark themes, ⌘K palette, live
+refresh, keyboard work queues), keeping every feature and API call.
 
 ---
 
@@ -455,23 +482,81 @@ ported from a design mockup to match it exactly.
 
 ### Backend follow-up (backend-owned)
 
-The web can continue to load its core admin lists when analytics is unavailable.
-The remaining issue is a backend dependency: the web Dashboard and Reports
-show analytics as unavailable while `GET /admin/analytics/summary` fails. During
-the 2026-09-23 check, Supabase request logs showed the backend's nested
-`provider_profiles` read (embedding `profiles(full_name)` and
-`service_categories(name)`) with HTTP status 300. A read-only check of the live
-foreign keys found one direct relationship to each referenced table, so an
-ambiguous-relationship cause is not confirmed. The backend owner needs to
-inspect the underlying PostgREST error details and correct the query or schema
-issue. The web keeps core admin lists usable and shows a Retry state; once the
-endpoint succeeds with the response shape the web expects, refreshing restores
-the analytics without a web revert.
+We don't own the backend, so these are written as requests for the backend
+owner. **Nothing here blocks the web**: each item either has a web-side
+workaround in place or only affects the mobile app.
 
-### Manual verification (completed)
+#### Needs a backend fix
 
-The earlier manual checks for Issue Credit, password reset, and real-email
-signup are recorded in [`CHANGELOG.md`](./CHANGELOG.md).
+**1. `GET /admin/analytics/summary` fails with 400 — cause confirmed (2026-09-29).**
+
+> Could not embed because more than one relationship was found for
+> 'provider_profiles' and 'service_categories'
+
+Migration `0034_qa_provider_admin.sql` added `provider_secondary_categories`,
+a second link between `provider_profiles` and `service_categories` (the first
+is `provider_profiles.category_id` from migration 0001). The top-providers read
+in `backend/src/admin/admin.service.ts` (`analyticsSummary()`, the
+`.from('provider_profiles')` select) embeds `service_categories(name)` without
+saying which link to follow, so PostgREST refuses it and the whole summary
+fails. **Fix:** name the relationship, e.g. `service_categories!category_id(name)`
+(or the FK constraint name).
+
+*Web workaround (in place):* when the endpoint fails, the console rebuilds the
+same summary in the browser from list endpoints that work, with the backend's
+own formulas (`lib/services/browserAnalytics.ts`). Dashboard and Reports show
+real figures with a small "calculated in your browser" note, and switch back
+to the server's numbers by themselves once the endpoint is fixed; no web
+change needed then. The cost is a few extra list requests per load (cached
+for 2 minutes), so fixing the query is still worth it.
+
+**2. The same embed breaks two mobile-facing queries, silently.** Both ignore
+the error, so they return nothing instead of failing loudly:
+`backend/src/auth/auth.service.ts` (~line 777, a provider's own
+`provider_profile` comes back empty) and
+`backend/src/providers/providers.controller.ts` (~line 25, `GET /providers/:id`
+finds no provider). Same `!category_id` hint fixes both. The web can't work
+around these; they're in the mobile app's path.
+
+**3. Settings saved on this device only.** Notifications, Platform name/support
+email and Data & Privacy save to `localStorage` and are tagged "This device" in
+Settings (see Deliberate tradeoffs). If they should become real: an
+admin-preferences endpoint and the jobs behind each toggle.
+
+**4. Service requests stop at 100.** `GET /admin/skill-requests` applies
+`.limit(100)` (`backend/src/skill-requests/skill-requests.service.ts`) and takes no
+`limit`/`offset`, so request 101 onward never reaches the console. The web says
+"Showing the first 100" when it hits the cap. Request: `limit`/`offset` and a
+`total`, like the other admin lists.
+
+#### Nice to have (worked around on the web, 2026-09-29)
+
+These used to cap or blank out figures; the web now handles them itself. A
+backend change would only make them cheaper.
+
+- **Escrow and open-job totals** — the Dashboard pages through every held
+  escrow row and counts jobs per status itself. Cheaper: add
+  `escrow_held_total`, `escrow_held_count`, `open_jobs` and `matching_jobs`
+  to `/admin/analytics/summary`.
+- **Per-status Bookings counts** — the web asks each status for its total with
+  `limit=1` (eight small requests). Cheaper: a `status_counts` object on
+  `GET /admin/bookings`.
+- **Full lists** — every admin list endpoint already accepts `limit`/`offset`,
+  which the web now uses (`fetchAllRows`) instead of stopping at 100–200 rows.
+  Only missing piece: `search` on `/admin/audit` and
+  `/admin/wallet-transactions` (the web searches in the browser for now).
+
+### Manual verification
+
+- **Completed:** Issue Credit, password reset, and real-email signup (recorded
+  in [`CHANGELOG.md`](./CHANGELOG.md)).
+- **Pending — admin console redesign (2026-09-29):** every page was checked
+  in the browser with sample data and read-only against the live API, but no
+  real action was performed. Still to try against the live backend: approve and
+  reject a verification, release and refund a dispute, settle and reject a
+  withdrawal, approve and reject a service request, suspend and reinstate a
+  user (single and bulk), cancel a booking, Retry transfer, Issue Credit,
+  Platform edits and a broadcast, Maintenance Mode on/off, and a password change.
 
 ### Build warning (resolved)
 
