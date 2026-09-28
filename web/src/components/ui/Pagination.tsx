@@ -1,6 +1,7 @@
 "use client";
 
 import { ChevronLeft, ChevronRight } from "lucide-react";
+import { cn } from "@/lib/utils";
 
 interface PaginationProps {
   page: number;
@@ -34,55 +35,36 @@ export function Pagination({ page, pageSize, total, onPageChange, itemLabel }: P
     }
   }
 
-  const btnStyle = (active: boolean): React.CSSProperties => ({
-    minWidth: 28,
-    height: 28,
-    border: `1px solid ${active ? "#2b7f8b" : "var(--border-md)"}`,
-    background: active ? "rgba(34,195,214,0.15)" : "var(--chip-bg)",
-    color: active ? "var(--indigo-light)" : "var(--text-light)",
-    borderRadius: "var(--r-sm)",
-    fontSize: "var(--fs-2xs)",
-    cursor: "pointer",
-    fontFamily: "inherit",
-  });
+  const btn =
+    "grid h-7 min-w-7 place-items-center rounded-[7px] px-1.5 text-[12px] font-medium tabular transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-40";
 
   return (
-    <div className="flex items-center justify-between flex-wrap gap-2" style={{ padding: "11px 14px", borderTop: "1px solid var(--card-border)", color: "var(--text-muted)", fontSize: "var(--fs-2xs)" }}>
-      <span>Showing {from}–{to} of {total.toLocaleString()} {itemLabel}</span>
+    <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border px-4 py-2.5 text-[12px] text-muted-foreground">
+      <span className="tabular">
+        Showing <span className="font-medium text-foreground">{from}–{to}</span> of {total.toLocaleString()} {itemLabel}
+      </span>
       {totalPages > 1 && (
-        <div className="flex items-center gap-1">
-          <button
-            onClick={() => onPageChange(Math.max(1, page - 1))}
-            disabled={page === 1}
-            aria-label="Previous page"
-            className="flex items-center justify-center disabled:opacity-40"
-            style={btnStyle(false)}
-          >
-            <ChevronLeft size={12} />
+        <div className="flex items-center gap-0.5">
+          <button onClick={() => onPageChange(Math.max(1, page - 1))} disabled={page === 1} aria-label="Previous page" className={cn(btn, "hover:bg-accent")}>
+            <ChevronLeft className="size-3.5" />
           </button>
           {pages.map((p, i) =>
             p === "…" ? (
-              <span key={`ellipsis-${i}`} style={{ padding: "0 4px", fontSize: "var(--fs-2xs)" }}>…</span>
+              <span key={`ellipsis-${i}`} className="px-1 text-subtle">…</span>
             ) : (
               <button
                 key={p}
                 onClick={() => onPageChange(p)}
                 aria-label={`Page ${p}`}
                 aria-current={p === page ? "page" : undefined}
-                style={btnStyle(p === page)}
+                className={cn(btn, p === page ? "bg-primary-soft text-primary" : "text-muted-foreground hover:bg-accent hover:text-foreground")}
               >
                 {p}
               </button>
             ),
           )}
-          <button
-            onClick={() => onPageChange(Math.min(totalPages, page + 1))}
-            disabled={page === totalPages}
-            aria-label="Next page"
-            className="flex items-center justify-center disabled:opacity-40"
-            style={btnStyle(false)}
-          >
-            <ChevronRight size={12} />
+          <button onClick={() => onPageChange(Math.min(totalPages, page + 1))} disabled={page === totalPages} aria-label="Next page" className={cn(btn, "hover:bg-accent")}>
+            <ChevronRight className="size-3.5" />
           </button>
         </div>
       )}

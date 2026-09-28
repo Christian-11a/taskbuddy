@@ -1,23 +1,52 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
-import { CheckCircle2, RefreshCw, Wrench, XCircle } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { AlertTriangle, ArrowRightLeft, CheckCircle2, PlusCircle, RefreshCw, Wrench, XCircle } from "lucide-react";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { useToast } from "@/components/ui/Toast";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { ReasonField } from "@/components/ui/input";
+import { PageHeader } from "@/components/admin/Panel";
+import {
+  Avatar,
+  DetailCard,
+  DetailEmpty,
+  DetailSection,
+  Field,
+  FieldGrid,
+  FilterTabs,
+  KeyHints,
+  QueueItem,
+  QueueList,
+  QueueListSkeleton,
+  QueueListState,
+  QueueProgress,
+  QueueShell,
+  SearchField,
+  initialsOf,
+  neighborAfterRemoval,
+  useIsWide,
+  useQueueKeys,
+} from "@/components/admin/queue";
+import { useLiveTick } from "@/hooks/useLiveTick";
 import { approveSkillRequest, getSkillRequests, rejectSkillRequest } from "@/lib/services";
 import type { SkillRequest, SkillRequestStatus } from "@/lib/domain";
 import { formatDate } from "@/lib/adapters";
 
 type QueueStatus = Exclude<SkillRequestStatus, "cancelled">;
 
-const inputStyle = {
-  background: "var(--input-bg)", border: "1px solid var(--border-md)", borderRadius: "var(--r-md)",
-  padding: "8px 11px", fontSize: "var(--fs-sm)", color: "var(--text-white)", fontFamily: "inherit",
-};
+const NOTE_MAX = 500;
 
 const TYPE_LABEL: Record<SkillRequest["type"], string> = {
   change_primary: "Change main service",
   add_secondary: "Add a service",
+};
+
+const STATUS_META: Record<QueueStatus, { label: string; tone: "warn" | "ok" | "danger" }> = {
+  pending: { label: "Needs review", tone: "warn" },
+  approved: { label: "Approved", tone: "ok" },
+  rejected: { label: "Rejected", tone: "danger" },
 };
 
 /**
@@ -28,26 +57,38 @@ const TYPE_LABEL: Record<SkillRequest["type"], string> = {
  */
 export function SkillRequestsPage() {
   const { showToast } = useToast();
+  const isWide = useIsWide();
   const [status, setStatus] = useState<QueueStatus>("pending");
   const [items, setItems] = useState<SkillRequest[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [refreshing, setRefreshing] = useState(false);
+  const [search, setSearch] = useState("");
+  const [selectedId, setSelectedId] = useState<string | null>(null);
   const [approving, setApproving] = useState<SkillRequest | null>(null);
   const [rejecting, setRejecting] = useState<SkillRequest | null>(null);
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
+  const [doneThisSession, setDoneThisSession] = useState(0);
 
+  // Only the newest request may write state (see WithdrawalsPage).
+  const requestSeq = useRef(0);
   const load = useCallback(async (quiet = false) => {
+    const seq = ++requestSeq.current;
     if (!quiet) setLoading(true);
     setError("");
     try {
-      setItems(await getSkillRequests(status));
+      const rows = await getSkillRequests(status);
+      if (seq !== requestSeq.current) return;
+      setItems(rows);
     } catch {
+      if (seq !== requestSeq.current) return;
       setError("Could not load service requests. The backend may still be deploying.");
     } finally {
-      setLoading(false);
-      setRefreshing(false);
+      if (seq === requestSeq.current) {
+        setLoading(false);
+        setRefreshing(false);
+      }
     }
   }, [status]);
 
@@ -56,6 +97,16 @@ export function SkillRequestsPage() {
      continuation. */
   useEffect(() => { void load(); }, [load]);
   /* eslint-enable react-hooks/set-state-in-effect */
+  useLiveTick(() => void load(true));
+
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return items;
+    return items.filter((i) => i.providerName.toLowerCase().includes(q) || i.categoryName.toLowerCase().includes(q));
+  }, [items, search]);
+  const ids = useMemo(() => filtered.map((i) => i.id), [filtered]);
+  const selected = filtered.find((i) => i.id === selectedId) ?? (isWide ? filtered[0] : undefined);
+  const effectiveId = selected?.id ?? null;
 
   async function decide(kind: "approve" | "reject") {
     const target = kind === "approve" ? approving : rejecting;
@@ -68,6 +119,9 @@ export function SkillRequestsPage() {
       setApproving(null);
       setRejecting(null);
       setNote("");
+      setSelectedId(neighborAfterRemoval(ids, target.id));
+      setItems((prev) => prev.filter((i) => i.id !== target.id));
+      setDoneThisSession((n) => n + 1);
       await load(true);
     } catch {
       showToast("Could not update this request. It may already have been decided.", "error");
@@ -76,75 +130,159 @@ export function SkillRequestsPage() {
     }
   }
 
+  function openApprove(item: SkillRequest) { setApproving(item); setNote(""); }
+  function openReject(item: SkillRequest) { setRejecting(item); setNote(""); }
+
+  const pending = selected?.status === "pending";
+  useQueueKeys({
+    ids,
+    selectedId: effectiveId,
+    onSelect: setSelectedId,
+    onApprove: pending && !busy ? () => openApprove(selected!) : undefined,
+    onReject: pending && !busy ? () => openReject(selected!) : undefined,
+  });
+
+  const listBody = loading ? (
+    <QueueListSkeleton />
+  ) : error ? (
+    <QueueListState icon={AlertTriangle} tone="danger" title="Couldn't load service requests" description={error} action={<Button size="sm" variant="outline" onClick={() => void load()}>Try again</Button>} />
+  ) : filtered.length === 0 ? (
+    items.length > 0 ? (
+      <QueueListState title="Nothing matches" description="Try a different search." />
+    ) : (
+      <QueueListState
+        icon={status === "pending" ? CheckCircle2 : Wrench}
+        tone={status === "pending" ? "ok" : "neutral"}
+        title={status === "pending" ? "No requests waiting for review" : `No ${status} requests`}
+      />
+    )
+  ) : (
+    <QueueList label="Service requests">
+      {filtered.map((item) => (
+        <QueueItem
+          key={item.id}
+          id={item.id}
+          selected={item.id === effectiveId}
+          onSelect={setSelectedId}
+          leading={<Avatar initials={initialsOf(item.providerName)} tone={item.status === "pending" ? "accent" : "neutral"} />}
+          title={item.providerName}
+          trailing={<span className="text-[11.5px] text-subtle">{formatDate(item.createdAt)}</span>}
+          meta={`${TYPE_LABEL[item.type]} → ${item.categoryName}`}
+          aside={<Badge tone={STATUS_META[item.status as QueueStatus]?.tone ?? "neutral"} dot>{STATUS_META[item.status as QueueStatus]?.label ?? item.status}</Badge>}
+        />
+      ))}
+    </QueueList>
+  );
+
+  const TypeIcon = selected?.type === "change_primary" ? ArrowRightLeft : PlusCircle;
+
   return (
     <div>
-      <div className="flex items-start justify-between flex-wrap gap-3 mb-4">
-        <div>
-          <div className="text-white font-bold" style={{ fontSize: "var(--fs-2xl)", letterSpacing: "-0.025em" }}>Service requests</div>
-          <div style={{ fontSize: "var(--fs-sm)", color: "var(--text-muted)", marginTop: 5, lineHeight: 1.45 }}>
-            Providers asking to change their main service or add another one.
-          </div>
-        </div>
-        <button
-          onClick={() => { setRefreshing(true); void load(true); }}
-          disabled={refreshing}
-          className="flex items-center gap-1.5 font-semibold transition-opacity hover:opacity-80 disabled:opacity-40"
-          style={{ background: "var(--chip-bg)", border: "1px solid var(--border-md)", borderRadius: "var(--r-md)", padding: "8px 12px", fontSize: "var(--fs-xs)", color: "var(--text-light)", cursor: "pointer", fontFamily: "inherit" }}
-        >
-          <RefreshCw size={12} className={refreshing ? "animate-spin" : ""} /> Refresh
-        </button>
-      </div>
+      <PageHeader
+        eyebrow="Operations"
+        title="Service requests"
+        description="Providers asking to change their main service or add another one."
+        actions={
+          <Button variant="outline" size="sm" onClick={() => { setRefreshing(true); void load(true); }} disabled={refreshing}>
+            <RefreshCw className={refreshing ? "animate-spin" : ""} /> Refresh
+          </Button>
+        }
+      />
 
-      <div className="rounded-xl overflow-hidden" style={{ background: "var(--card-bg)", border: "1px solid var(--card-border)" }}>
-        <div className="flex items-center justify-between flex-wrap gap-2" style={{ padding: "12px 14px", borderBottom: "1px solid var(--card-border)" }}>
-          <div className="inline-flex" style={{ background: "var(--chip-bg)", padding: 3, borderRadius: "var(--r-md)", gap: 2 }}>
-            {(["pending", "approved", "rejected"] as QueueStatus[]).map((value) => (
-              <button key={value} onClick={() => setStatus(value)} className="rounded-lg font-medium cursor-pointer" style={{ padding: "7px 11px", fontSize: "var(--fs-xs)", background: status === value ? "var(--indigo-dark)" : "transparent", color: status === value ? "var(--indigo-light)" : "var(--text-muted)", border: "none", fontFamily: "inherit" }}>
-                {value === "pending" ? "Needs review" : value === "approved" ? "Approved" : "Rejected"}
-              </button>
-            ))}
-          </div>
-          <span style={{ fontSize: "var(--fs-xs)", color: "var(--text-muted)" }}>{items.length.toLocaleString()} request{items.length === 1 ? "" : "s"}</span>
-        </div>
-
-        {error && <div role="alert" style={{ padding: "12px 14px", color: "var(--danger-text)", fontSize: "var(--fs-xs)", borderBottom: "1px solid var(--card-border)" }}>{error}</div>}
-        {loading ? (
-          <div className="flex items-center justify-center" style={{ height: 220, color: "var(--text-muted)", fontSize: "var(--fs-sm)" }}>Loading service requests…</div>
-        ) : items.length === 0 ? (
-          <div className="flex flex-col items-center justify-center gap-2" style={{ height: 220, color: "var(--text-muted)", fontSize: "var(--fs-sm)" }}>
-            <Wrench size={20} /> No {status === "pending" ? "requests waiting for review" : `${status} requests`}.
-          </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="data-table">
-              <thead><tr><th>Provider</th><th>Request</th><th>Why they qualify</th><th>Sent</th><th style={{ width: 170 }}>{status === "pending" ? "Actions" : "Note"}</th></tr></thead>
-              <tbody>
-                {items.map((item) => (
-                  <tr key={item.id}>
-                    <td className="text-white font-medium" style={{ fontSize: "var(--fs-xs)" }}>{item.providerName}</td>
-                    <td style={{ fontSize: "var(--fs-xs)" }}>
-                      <div style={{ color: "var(--text-muted)" }}>{TYPE_LABEL[item.type]}</div>
-                      <div className="text-white font-semibold" style={{ marginTop: 2 }}>{item.categoryName}</div>
-                    </td>
-                    <td style={{ color: "var(--text-light)", fontSize: "var(--fs-xs)", maxWidth: 320, whiteSpace: "normal" }}>{item.reason}</td>
-                    <td style={{ color: "var(--text-light)", fontSize: "var(--fs-xs)" }}>{formatDate(item.createdAt)}</td>
-                    <td>
-                      {item.status === "pending" ? (
-                        <div className="flex gap-1.5">
-                          <button onClick={() => { setApproving(item); setNote(""); }} className="flex items-center gap-1 font-semibold" style={{ background: "rgba(34,197,94,0.12)", border: "1px solid rgba(34,197,94,0.25)", borderRadius: "var(--r-sm)", padding: "6px 9px", color: "var(--success-text)", fontSize: "var(--fs-2xs)", cursor: "pointer", fontFamily: "inherit" }}><CheckCircle2 size={11} /> Approve</button>
-                          <button onClick={() => { setRejecting(item); setNote(""); }} className="flex items-center gap-1 font-semibold" style={{ background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.25)", borderRadius: "var(--r-sm)", padding: "6px 9px", color: "var(--danger-text)", fontSize: "var(--fs-2xs)", cursor: "pointer", fontFamily: "inherit" }}><XCircle size={11} /> Reject</button>
-                        </div>
-                      ) : (
-                        <span style={{ fontSize: "var(--fs-2xs)", color: "var(--text-muted)" }}>{item.reviewNote ?? "—"}</span>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
+      <QueueShell
+        showDetailOnNarrow={!!selectedId && !!selected}
+        onBack={() => setSelectedId(null)}
+        toolbar={
+          <>
+            <FilterTabs
+              id="skill-requests"
+              label="Filter service requests by status"
+              value={status}
+              onChange={(s) => { setStatus(s); setSelectedId(null); }}
+              options={[
+                { value: "pending", label: "Needs review" },
+                { value: "approved", label: "Approved" },
+                { value: "rejected", label: "Rejected" },
+              ]}
+            />
+            <SearchField value={search} onChange={setSearch} placeholder="Search by provider or service…" label="Search service requests" />
+            {status === "pending" ? (
+              <QueueProgress remaining={items.length} done={doneThisSession} noun={items.length === 1 ? "request" : "requests"} />
+            ) : (
+              <span className="tabular text-[12px] text-muted-foreground">{items.length.toLocaleString()} request{items.length === 1 ? "" : "s"}</span>
+            )}
+          </>
+        }
+        list={
+          <>
+            {listBody}
+            {/* GET /admin/skill-requests caps at 100 rows and has no paging
+                (backend-owned; see README). Say so rather than imply "all". */}
+            {items.length >= 100 && (
+              <p className="border-t border-border bg-warn-soft px-3.5 py-2 text-[12px] text-warn">
+                Showing the first 100 requests — the server doesn&apos;t return more yet.
+              </p>
+            )}
+            <KeyHints approve="approve" reject="reject" />
+          </>
+        }
+        detail={
+          selected ? (
+            <DetailCard
+              key={selected.id}
+              header={
+                <div className="flex items-start gap-3.5">
+                  <Avatar initials={initialsOf(selected.providerName)} size="lg" />
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <h2 className="truncate text-[17px] font-semibold tracking-tight">{selected.providerName}</h2>
+                      <Badge tone={STATUS_META[selected.status as QueueStatus]?.tone ?? "neutral"} dot>
+                        {STATUS_META[selected.status as QueueStatus]?.label ?? selected.status}
+                      </Badge>
+                    </div>
+                    <p className="mt-0.5 text-[12.5px] text-muted-foreground">Sent {formatDate(selected.createdAt)}</p>
+                  </div>
+                </div>
+              }
+              footer={
+                selected.status === "pending" ? (
+                  <>
+                    <Button variant="destructive-outline" onClick={() => openReject(selected)} disabled={busy}>
+                      <XCircle /> Reject
+                    </Button>
+                    <Button onClick={() => openApprove(selected)} disabled={busy}>
+                      <CheckCircle2 /> Approve
+                    </Button>
+                  </>
+                ) : undefined
+              }
+            >
+              <div className="mb-6 flex items-center gap-3.5 rounded-[12px] border border-border bg-surface-2/60 p-4">
+                <span className="grid size-10 shrink-0 place-items-center rounded-[10px] bg-primary-soft text-primary">
+                  <TypeIcon className="size-[18px]" />
+                </span>
+                <div className="min-w-0">
+                  <div className="text-[12px] text-muted-foreground">{TYPE_LABEL[selected.type]}</div>
+                  <div className="text-[16px] font-semibold tracking-tight">{selected.categoryName}</div>
+                </div>
+              </div>
+              <DetailSection title="Why they qualify">
+                <p className="whitespace-pre-line text-[13.5px] leading-relaxed">{selected.reason}</p>
+              </DetailSection>
+              {selected.status !== "pending" && (
+                <DetailSection title="Decision">
+                  <FieldGrid>
+                    <Field label="Outcome">{STATUS_META[selected.status as QueueStatus]?.label ?? selected.status}</Field>
+                    <Field label="Note to provider">{selected.reviewNote ?? "—"}</Field>
+                  </FieldGrid>
+                </DetailSection>
+              )}
+            </DetailCard>
+          ) : (
+            <DetailEmpty queueEmpty={filtered.length === 0} title="Pick a request" description="Select a request on the left to read why the provider qualifies." />
+          )
+        }
+      />
 
       <ConfirmDialog
         open={!!approving}
@@ -155,13 +293,11 @@ export function SkillRequestsPage() {
         confirmLabel="Approve"
         danger={false}
         busy={busy}
+        confirmDisabled={note.length > NOTE_MAX}
         onConfirm={() => void decide("approve")}
         onCancel={() => !busy && setApproving(null)}
       >
-        <label className="block" style={{ fontSize: "var(--fs-xs)", color: "var(--text-muted)" }}>
-          Note to the provider <span style={{ opacity: .7 }}>(optional)</span>
-          <input value={note} onChange={(e) => setNote(e.target.value)} maxLength={500} style={{ ...inputStyle, width: "100%", marginTop: 6 }} />
-        </label>
+        <ReasonField value={note} onChange={setNote} max={NOTE_MAX} label="Note to the provider (optional)" placeholder="Note to the provider (optional)" />
       </ConfirmDialog>
       <ConfirmDialog
         open={!!rejecting}
@@ -169,15 +305,11 @@ export function SkillRequestsPage() {
         message="The provider will be notified and can send a new request."
         confirmLabel="Reject request"
         busy={busy}
-        confirmDisabled={!note.trim()}
+        confirmDisabled={!note.trim() || note.length > NOTE_MAX}
         onConfirm={() => void decide("reject")}
         onCancel={() => !busy && setRejecting(null)}
       >
-        <label className="block" style={{ fontSize: "var(--fs-xs)", color: "var(--text-muted)" }}>
-          Reason
-          <textarea value={note} onChange={(e) => setNote(e.target.value)} maxLength={500} rows={3} placeholder="Tell the provider what's missing" style={{ ...inputStyle, width: "100%", marginTop: 6, resize: "vertical" }} />
-          <span style={{ display: "block", textAlign: "right", marginTop: 3, fontSize: "var(--fs-3xs)" }}>{note.length}/500</span>
-        </label>
+        <ReasonField autoFocus required value={note} onChange={setNote} max={NOTE_MAX} label="Reason" placeholder="Tell the provider what's missing" />
       </ConfirmDialog>
     </div>
   );

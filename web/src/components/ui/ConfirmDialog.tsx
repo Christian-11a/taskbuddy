@@ -2,7 +2,9 @@
 
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { AlertTriangle } from "lucide-react";
+import { AlertTriangle, Info, Loader2 } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 
 interface ConfirmDialogProps {
   open: boolean;
@@ -119,8 +121,7 @@ export function ConfirmDialog({
   // transformed element.
   return createPortal(
     <div
-      className="fixed inset-0 flex items-center justify-center theme-portal"
-      style={{ background: "rgba(0,0,0,0.65)", zIndex: 200, padding: 16 }}
+      className="ui-root theme-portal fixed inset-0 z-[200] flex items-center justify-center bg-overlay p-4 backdrop-blur-[2px] motion-safe:animate-[ui-fade-in_160ms_ease-out]"
       onClick={() => !busy && onCancel()}
     >
       <div
@@ -131,45 +132,38 @@ export function ConfirmDialog({
         aria-describedby="confirm-dialog-message"
         tabIndex={-1}
         onClick={(e) => e.stopPropagation()}
-        className="rounded-xl outline-none"
-        style={{ background: "var(--panel-bg)", border: "1px solid var(--panel-border)", width: "100%", maxWidth: 380, padding: "var(--sp-5)", boxShadow: "0 20px 50px rgba(0,0,0,0.4)" }}
+        className="w-full max-w-[400px] rounded-[14px] border border-border bg-popover p-5 text-popover-foreground shadow-ui-lg outline-none motion-safe:animate-[ui-pop-in_200ms_cubic-bezier(0.16,1,0.3,1)]"
       >
-        <div className="flex items-start gap-3 mb-3">
-          {danger && (
-            <div className="flex items-center justify-center flex-shrink-0 rounded-full" style={{ width: 32, height: 32, background: "rgba(239,68,68,0.15)" }}>
-              <AlertTriangle size={15} style={{ color: "var(--danger-text)" }} />
-            </div>
-          )}
-          <div>
-            <div id="confirm-dialog-title" className="text-white font-semibold" style={{ fontSize: "var(--fs-md)" }}>{title}</div>
-            <div id="confirm-dialog-message" style={{ fontSize: "var(--fs-sm)", color: "var(--text-muted)", marginTop: "var(--sp-1)" }}>{message}</div>
+        <div className="flex items-start gap-3">
+          <div
+            className={cn(
+              "grid size-9 shrink-0 place-items-center rounded-full",
+              danger ? "bg-danger-soft text-danger" : "bg-primary-soft text-primary",
+            )}
+          >
+            {danger ? <AlertTriangle className="size-4" /> : <Info className="size-4" />}
+          </div>
+          <div className="min-w-0 pt-0.5">
+            <div id="confirm-dialog-title" className="text-[15px] font-semibold tracking-tight text-foreground">{title}</div>
+            <div id="confirm-dialog-message" className="mt-1 text-[13px] leading-relaxed text-muted-foreground">{message}</div>
           </div>
         </div>
 
-        {children && <div className="mb-4">{children}</div>}
+        {children && <div className="mt-4">{children}</div>}
 
-        <div className="flex justify-end gap-2 mt-2">
-          <button
-            onClick={onCancel}
-            disabled={busy}
-            className="font-semibold transition-colors disabled:opacity-40"
-            style={{ background: "transparent", border: "1px solid var(--border-md)", borderRadius: "var(--r-md)", padding: "7px 14px", fontSize: "var(--fs-xs)", color: "var(--text-light)", cursor: busy ? "default" : "pointer", fontFamily: "inherit" }}
-          >
+        <div className="mt-5 flex justify-end gap-2">
+          <Button variant="outline" onClick={onCancel} disabled={busy}>
             {cancelLabel}
-          </button>
-          <button
+          </Button>
+          <Button
+            variant={danger ? "destructive" : "default"}
             onClick={onConfirm}
             disabled={busy || confirmDisabled}
             autoFocus
-            className="font-semibold transition-colors disabled:opacity-40"
-            style={
-              danger
-                ? { background: "rgba(239,68,68,0.2)", border: "1px solid rgba(239,68,68,0.35)", borderRadius: "var(--r-md)", padding: "7px 14px", fontSize: "var(--fs-xs)", color: "var(--danger-text)", cursor: busy || confirmDisabled ? "default" : "pointer", fontFamily: "inherit" }
-                : { background: "var(--indigo-dark)", border: "1px solid rgba(34,195,214,0.4)", borderRadius: "var(--r-md)", padding: "7px 14px", fontSize: "var(--fs-xs)", color: "var(--indigo-light)", cursor: busy || confirmDisabled ? "default" : "pointer", fontFamily: "inherit" }
-            }
           >
+            {busy && <Loader2 className="size-3.5 animate-spin" aria-hidden />}
             {busy ? "Working…" : confirmLabel}
-          </button>
+          </Button>
         </div>
       </div>
     </div>,

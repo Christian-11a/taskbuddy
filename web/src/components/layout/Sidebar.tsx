@@ -3,17 +3,16 @@
 import { useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
-import {
-  ShieldCheck, Wrench, Users, CreditCard, CalendarDays, AlertTriangle, History,
-  BarChart3, Settings, LogOut, LayoutDashboard, ChevronLeft, ChevronRight, ScrollText,
-  WalletCards, SlidersHorizontal,
-} from "lucide-react";
+import { motion, useReducedMotion } from "motion/react";
+import { ChevronsLeft, ChevronsRight, LogOut, Settings } from "lucide-react";
 import type { Page } from "@/lib/domain";
 import { useApp } from "@/context/AppContext";
 import { initials } from "@/lib/adapters";
+import { ADMIN_NAV, NAV_GROUPS, type NavItem } from "@/lib/nav";
 import { pageToPath } from "@/lib/routes";
+import { cn } from "@/lib/utils";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
-import clsx from "clsx";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
 interface SidebarProps {
   /** Null on any route that isn't an admin page — nothing is highlighted then. */
@@ -26,178 +25,132 @@ interface SidebarProps {
   drawerOpen: boolean;
 }
 
+export const SIDEBAR_WIDTH = { expanded: 248, collapsed: 68 } as const;
+
 export function Sidebar({ activePage, onNavigate, onLogout, collapsed, onToggleCollapse, drawerOpen }: SidebarProps) {
   const { verifications, disputes, adminProfile, settings } = useApp();
   const [confirmingLogout, setConfirmingLogout] = useState(false);
-  const pendingCount = settings.activityBadge
-    ? verifications.filter((v) => v.status === "pending").length
-    : 0;
-  const openDisputeCount = settings.activityBadge
-    ? disputes.filter((d) => d.isOpen).length
-    : 0;
+  const reduce = useReducedMotion();
 
-  /**
-   * Five group headings for eleven destinations, three of which ("Overview",
-   * "People", "Administration") labelled a single item each — a heading that
-   * groups one thing isn't grouping, it's decoration. Dashboard now sits
-   * unlabelled at the top where it reads as the root, and the remaining
-   * headings each cover a real set: work that comes in and gets actioned,
-   * the record of what happened, and the settings behind it.
-   *
-   * Every destination is preserved; only the labels above them changed.
-   */
-  type NavItem = { id: Page; label: string; icon: React.ReactNode; badge?: number };
-  const NAV_SECTIONS: { label: string | null; items: NavItem[] }[] = [
-    { label: null, items: [
-      { id: "dashboard", label: "Dashboard", icon: <LayoutDashboard size={15} /> },
-    ] },
-    { label: "Operations", items: [
-      { id: "verifications", label: "Verifications", icon: <ShieldCheck size={15} />, badge: pendingCount || undefined },
-      { id: "bookings", label: "Bookings", icon: <CalendarDays size={15} /> },
-      { id: "disputes", label: "Disputes", icon: <AlertTriangle size={15} />, badge: openDisputeCount || undefined },
-      { id: "transactions", label: "Transactions", icon: <CreditCard size={15} /> },
-      { id: "withdrawals", label: "Withdrawals", icon: <WalletCards size={15} /> },
-      { id: "skill-requests", label: "Service Requests", icon: <Wrench size={15} /> },
-      { id: "users", label: "Users", icon: <Users size={15} /> },
-    ] },
-    { label: "Records", items: [
-      { id: "activity-log", label: "Activity", icon: <History size={15} /> },
-      { id: "audit-log", label: "Audit Log", icon: <ScrollText size={15} /> },
-      { id: "reports", label: "Reports", icon: <BarChart3 size={15} /> },
-    ] },
-    { label: "System", items: [
-      { id: "platform", label: "Platform", icon: <SlidersHorizontal size={15} /> },
-    ] },
-  ];
+  const badges: Partial<Record<Page, number>> = settings.activityBadge
+    ? {
+        verifications: verifications.filter((v) => v.status === "pending").length,
+        disputes: disputes.filter((d) => d.isOpen).length,
+      }
+    : {};
+
+  // Settings lives in the footer next to the account, as before.
+  const groups = NAV_GROUPS.map((g) => ({
+    ...g,
+    items: ADMIN_NAV.filter((n) => n.group === g.id && n.id !== "settings"),
+  })).filter((g) => g.items.length > 0);
+
+  const renderLink = (item: Pick<NavItem, "id" | "label" | "icon">, badge?: number) => {
+    const active = activePage === item.id;
+    const Icon = item.icon;
+    const link = (
+      <Link
+        href={pageToPath(item.id)}
+        onClick={onNavigate}
+        aria-current={active ? "page" : undefined}
+        aria-label={collapsed ? (badge ? `${item.label} (${badge})` : item.label) : undefined}
+        className={cn(
+          "group relative flex h-9 items-center gap-3 rounded-[8px] px-2.5 text-[13px] font-medium outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring",
+          collapsed && "justify-center px-0",
+          active ? "text-foreground" : "text-muted-foreground hover:bg-accent hover:text-foreground",
+        )}
+      >
+        {active && (
+          <motion.span
+            layoutId="sidebar-active"
+            transition={reduce ? { duration: 0 } : { type: "spring", stiffness: 480, damping: 38 }}
+            className="absolute inset-0 rounded-[8px] bg-primary-soft ring-1 ring-inset ring-primary/15"
+            aria-hidden="true"
+          />
+        )}
+        <Icon className={cn("relative size-4 shrink-0", active ? "text-primary" : "text-subtle group-hover:text-muted-foreground")} aria-hidden="true" />
+        {!collapsed && <span className="relative flex-1 truncate">{item.label}</span>}
+        {badge ? (
+          collapsed ? (
+            <span className="absolute right-2 top-1.5 size-2 rounded-full bg-danger ring-2 ring-surface" aria-hidden="true" />
+          ) : (
+            <span className="relative grid h-5 min-w-5 place-items-center rounded-full bg-danger-soft px-1.5 text-[11px] font-semibold tabular text-danger">
+              {badge}
+            </span>
+          )
+        ) : null}
+      </Link>
+    );
+    if (!collapsed) return <div key={item.id}>{link}</div>;
+    return (
+      <Tooltip key={item.id}>
+        <TooltipTrigger asChild>{link}</TooltipTrigger>
+        <TooltipContent side="right">{badge ? `${item.label} · ${badge}` : item.label}</TooltipContent>
+      </Tooltip>
+    );
+  };
 
   return (
     <aside
-      className={clsx(
-        "sidebar fixed left-0 top-0 z-30 flex flex-col h-screen",
-        drawerOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"
+      className={cn(
+        "fixed inset-y-0 left-0 z-40 flex flex-col border-r border-border bg-surface transition-[transform,width] duration-200 ease-out lg:translate-x-0",
+        drawerOpen ? "translate-x-0 shadow-ui-lg" : "-translate-x-full",
       )}
-      style={{
-        width: collapsed ? "var(--sidebar-collapsed-w)" : "var(--sidebar-w)",
-        background: "var(--bg-sidebar)",
-        borderRight: "1px solid var(--border)",
-      }}
+      style={{ width: collapsed ? SIDEBAR_WIDTH.collapsed : SIDEBAR_WIDTH.expanded, maxWidth: "86vw" }}
     >
-      {/* Logo */}
-      <div className="flex items-center gap-2.5 relative" style={{ height: 72, padding: "0 var(--sp-4)", borderBottom: "1px solid var(--border)", minWidth: 0 }}>
-        {/* alt only carries the brand name when collapsed, since that's the
-            only case where the adjacent "TaskBuddy" text label is hidden —
-            otherwise a screen reader would announce the brand twice. */}
-        <Image src="/taskbuddy-logo.png" alt={collapsed ? "TaskBuddy" : ""} width={36} height={36} className="flex-shrink-0" style={{ borderRadius: "var(--r-lg)", objectFit: "cover" }} />
+      {/* Brand */}
+      <div className={cn("relative flex h-14 shrink-0 items-center gap-2.5 border-b border-border", collapsed ? "justify-center px-2" : "px-4")}>
+        <Image src="/taskbuddy-logo.png" alt={collapsed ? "TaskBuddy Admin Console" : ""} width={30} height={30} className="shrink-0 rounded-[8px]" />
         {!collapsed && (
-          <div className="sidebar-label overflow-hidden">
-            <div className="font-bold whitespace-nowrap" style={{ fontSize: "var(--fs-md)", color: "var(--nav-fg-strong)", letterSpacing: "var(--tr-snug)" }}>TaskBuddy</div>
-            <div style={{ fontSize: "var(--fs-2xs)", color: "var(--nav-active-fg)" }}>Admin Console</div>
+          <div className="min-w-0 leading-tight">
+            <div className="truncate text-[14px] font-semibold tracking-tight">TaskBuddy</div>
+            <div className="truncate text-[11px] text-subtle">Admin Console</div>
           </div>
         )}
-        {/* Collapse toggle — desktop only */}
         <button
+          type="button"
           onClick={onToggleCollapse}
           aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-          className="hidden lg:flex absolute items-center justify-center rounded-full transition-colors"
-          style={{ right: -10, top: "50%", transform: "translateY(-50%)", width: 20, height: 20, background: "var(--bg-main)", border: "1px solid var(--border-md)", color: "var(--nav-fg-muted)", zIndex: 10, cursor: "pointer" }}
+          className="absolute -right-3 top-1/2 hidden size-6 -translate-y-1/2 place-items-center rounded-full border border-border bg-surface text-subtle shadow-ui-sm transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring lg:grid"
         >
-          {collapsed ? <ChevronRight size={10} /> : <ChevronLeft size={10} />}
+          {collapsed ? <ChevronsRight className="size-3.5" /> : <ChevronsLeft className="size-3.5" />}
         </button>
       </div>
 
-      {/* Nav — real links, so ctrl/middle-click opens a page in a new tab and
-          Next.js can prefetch the route on hover. */}
-      <nav className="flex-1 overflow-y-auto" style={{ padding: "var(--sp-4) var(--sp-3)" }} aria-label="Main navigation">
-        {NAV_SECTIONS.map((section, si) => (
-          <div key={section.label ?? "root"} style={{ marginTop: si === 0 ? 0 : "var(--sp-5)" }}>
-            {section.label && !collapsed && (
-              <div
-                className="uppercase font-semibold"
-                style={{ fontSize: "var(--fs-2xs)", color: "var(--nav-fg-muted)", letterSpacing: "var(--tr-label)", padding: "0 var(--sp-2)", marginBottom: "var(--sp-2)" }}
-              >
-                {section.label}
-              </div>
+      {/* Nav — real links, so ctrl/middle-click opens a new tab and Next can prefetch. */}
+      <nav aria-label="Main navigation" className="flex-1 space-y-5 overflow-y-auto px-3 py-4">
+        {groups.map((group) => (
+          <div key={group.id}>
+            {group.label && !collapsed && (
+              <div className="mb-1.5 px-2.5 text-[10.5px] font-semibold uppercase tracking-[0.08em] text-subtle">{group.label}</div>
             )}
-            {section.items.map((item) => {
-              const active = activePage === item.id;
-              return (
-                <Link
-                  key={item.id}
-                  href={pageToPath(item.id)}
-                  onClick={onNavigate}
-                  title={collapsed ? item.label : undefined}
-                  aria-current={active ? "page" : undefined}
-                  className={clsx(
-                    "sidebar-nav-link w-full flex items-center text-left relative font-medium cursor-pointer",
-                    collapsed && "justify-center",
-                    !active && "sidebar-nav-link--idle",
-                  )}
-                  style={{
-                    padding: "9px var(--sp-2)",
-                    borderRadius: "var(--r-md)",
-                    marginBottom: 2,
-                    fontSize: "var(--fs-sm)",
-                    gap: "var(--sp-3)",
-                    color: active ? "var(--nav-active-fg)" : "var(--nav-fg)",
-                    background: active ? "var(--nav-active-bg)" : "transparent",
-                  }}
-                >
-                  {active && !collapsed && (
-                    <span className="absolute left-0 top-1/2 -translate-y-1/2" style={{ width: 3, height: 18, borderRadius: "0 2px 2px 0", background: "var(--indigo)" }} />
-                  )}
-                  <span style={{ flexShrink: 0, width: 17, display: "inline-flex", justifyContent: "center" }}>{item.icon}</span>
-                  {!collapsed && <span className="sidebar-label">{item.label}</span>}
-                  {!collapsed && item.badge && <span className="nav-badge">{item.badge}</span>}
-                  {collapsed && item.badge && (
-                    <span className="absolute rounded-full" style={{ top: 4, right: 4, width: 6, height: 6, background: "var(--red)" }} />
-                  )}
-                </Link>
-              );
-            })}
+            {group.label && collapsed && <div className="mx-auto mb-2 h-px w-6 bg-border" aria-hidden="true" />}
+            <div className="space-y-0.5">{group.items.map((item) => renderLink(item, badges[item.id]))}</div>
           </div>
         ))}
       </nav>
 
-      {/* Footer */}
-      <div style={{ borderTop: "1px solid var(--border)", padding: collapsed ? "var(--sp-3) var(--sp-2)" : "var(--sp-3) var(--sp-3) var(--sp-4)" }}>
-        <Link
-          href={pageToPath("settings")}
-          onClick={onNavigate}
-          title={collapsed ? "Settings" : undefined}
-          aria-current={activePage === "settings" ? "page" : undefined}
-          className={clsx(
-            "sidebar-nav-link w-full flex items-center text-left",
-            collapsed && "justify-center",
-            activePage !== "settings" && "sidebar-nav-link--idle",
-          )}
-          style={{
-            padding: "9px var(--sp-2)",
-            borderRadius: "var(--r-md)",
-            marginBottom: "var(--sp-2)",
-            gap: "var(--sp-3)",
-            fontSize: "var(--fs-sm)",
-            fontWeight: 500,
-            color: activePage === "settings" ? "var(--nav-active-fg)" : "var(--nav-fg)",
-            background: activePage === "settings" ? "var(--nav-active-bg)" : "transparent",
-          }}
-        >
-          <Settings size={15} style={{ flexShrink: 0, width: 17 }} />
-          {!collapsed && <span className="sidebar-label">Settings</span>}
-        </Link>
-
-        <div
-          className={clsx("flex items-center", collapsed ? "justify-center px-1 py-2" : "gap-2.5")}
-          style={collapsed ? {} : { background: "var(--card-bg)", border: "1px solid var(--card-border)", padding: "var(--sp-2) 11px", borderRadius: "var(--r-md)" }}
-        >
-          <div className="flex items-center justify-center flex-shrink-0 font-bold" style={{ width: 29, height: 29, borderRadius: "var(--r-sm)", background: "var(--brand-solid)", fontSize: "var(--fs-xs)", color: "var(--brand-on-solid)" }}>{initials(adminProfile.name)}</div>
+      {/* Footer: settings + account */}
+      <div className="shrink-0 space-y-2 border-t border-border p-3">
+        {renderLink({ id: "settings", label: "Settings", icon: Settings })}
+        <div className={cn("flex items-center gap-2.5 rounded-[10px]", collapsed ? "justify-center py-1" : "border border-border bg-surface-2 px-2.5 py-2")}>
+          <div className="grid size-8 shrink-0 place-items-center rounded-[8px] bg-primary text-[11.5px] font-semibold text-primary-foreground">
+            {initials(adminProfile.name)}
+          </div>
           {!collapsed && (
             <>
-              <div className="flex-1 min-w-0">
-                <div className="font-semibold truncate" style={{ fontSize: "var(--fs-xs)", color: "var(--nav-fg-strong)" }}>{adminProfile.name}</div>
-                <div className="truncate" style={{ fontSize: "var(--fs-2xs)", color: "var(--nav-fg-muted)" }}>{adminProfile.email}</div>
+              <div className="min-w-0 flex-1 leading-tight">
+                <div className="truncate text-[12.5px] font-semibold">{adminProfile.name}</div>
+                <div className="truncate text-[11px] text-subtle">{adminProfile.email}</div>
               </div>
-              <button onClick={() => setConfirmingLogout(true)} className="sidebar-signout transition-colors" title="Sign out" aria-label="Sign out" style={{ background: "none", border: "none", cursor: "pointer", color: "var(--nav-fg-muted)", padding: 4, display: "flex", flexShrink: 0 }}>
-                <LogOut size={12} />
+              <button
+                type="button"
+                onClick={() => setConfirmingLogout(true)}
+                aria-label="Sign out"
+                title="Sign out"
+                className="grid size-7 shrink-0 place-items-center rounded-md text-subtle transition-colors hover:bg-danger-soft hover:text-danger focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                <LogOut className="size-3.5" />
               </button>
             </>
           )}

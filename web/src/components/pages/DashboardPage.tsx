@@ -1,387 +1,372 @@
 "use client";
 
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import {
-  Users,
-  ShieldCheck,
-  CreditCard,
-  CalendarDays,
-  ArrowUpRight,
-  Clock,
-  AlertTriangle,
-  CheckCircle,
-  UserPlus,
-  WalletCards, Percent, Star,
+  AlertTriangle, ArrowRight, CalendarDays, CheckCircle2, Clock, CreditCard, Percent, RotateCw, ShieldCheck,
+  UserPlus, Users, WalletCards, Wrench,
 } from "lucide-react";
 import { useApp } from "@/context/AppContext";
-import { formatCurrency } from "@/lib/adapters";
+import * as services from "@/lib/services";
+import { formatCurrency, formatCurrencyCompact } from "@/lib/adapters";
+import { AnalyticsSourceNote } from "@/components/admin/AnalyticsSourceNote";
 import { pageToPath } from "@/lib/routes";
+import type { Page } from "@/lib/domain";
+import { cn } from "@/lib/utils";
+import { AnimatedNumber } from "@/components/admin/AnimatedNumber";
+import { Delta, KpiCard, monthOverMonth } from "@/components/admin/KpiCard";
+import { EmptyState, PageHeader, Panel } from "@/components/admin/Panel";
+import { TrendChart } from "@/components/admin/charts";
+import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
 
-const StatCard = ({
-  icon,
-  label,
-  value,
-  sub,
-  accent,
-  className = "",
-}: {
-  icon: React.ReactNode;
-  label: string;
-  value: string | number;
-  sub?: string;
-  accent: string;
-  className?: string;
-}) => (
-  /* No hover lift: this card isn't a link or a button, so animating it on
-     hover promised an interaction that doesn't exist. The heavy drop shadow
-     went with it — these sit flat on the page, and elevation should mean
-     something is floating above it (a drawer, a dropdown), not decorate a
-     static panel. */
-  <div
-    className={`flex flex-col ${className}`}
-    style={{
-      background: "var(--card-bg)",
-      border: "1px solid var(--card-border)",
-      borderRadius: "var(--r-lg)",
-      padding: "var(--sp-5)",
-      gap: "var(--sp-4)",
-    }}
-  >
-    <div className="flex items-center justify-between">
-      <span style={{ fontSize: "var(--fs-xs)", color: "var(--text-muted)", fontWeight: 500 }}>{label}</span>
-      <div
-        className="flex items-center justify-center"
-        style={{ width: 28, height: 28, borderRadius: "var(--r-sm)", background: accent + "22" }}
-      >
-        <span style={{ color: accent, display: "flex" }}>{icon}</span>
-      </div>
-    </div>
-    <div>
-      <div className="text-white font-extrabold tabular" style={{ fontSize: "var(--fs-3xl)", letterSpacing: "var(--tr-tight)", lineHeight: "var(--lh-tight)" }}>{value}</div>
-      {sub && (
-        <div style={{ fontSize: "var(--fs-2xs)", color: "var(--text-muted)", marginTop: "var(--sp-1)" }}>
-          {sub}
-        </div>
-      )}
-    </div>
-  </div>
-);
+/** Figures the shared context doesn't carry (its bookings/transactions are
+ *  empty by design), loaded from the same endpoints their own pages use. */
+interface LiveExtras {
+  /** null = that request failed; shown as "—", never as a misleading zero. */
+  escrowCount: number | null;
+  escrowHeld: number | null;
+  openJobs: number | null;
+  matchingJobs: number | null;
+  pendingServiceRequests: number | null;
+}
 
-const activityIcon = (type: string) => {
-  switch (type) {
-    case "tx": return <CreditCard size={12} style={{ color: "var(--success-text)" }} />;
-    case "user": return <UserPlus size={12} style={{ color: "#60a5fa" }} />;
-    case "alert": return <AlertTriangle size={12} style={{ color: "var(--warning-text)" }} />;
-    default: return <CheckCircle size={12} style={{ color: "var(--success-text)" }} />;
-  }
-};
+function greeting(date: Date): string {
+  const h = date.getHours();
+  if (h < 12) return "Good morning";
+  if (h < 18) return "Good afternoon";
+  return "Good evening";
+}
 
-export function DashboardPage() {
-  const {
-    dashboardStats,
-    recentActivity,
-    disputes,
-    transactions,
-    bookings,
-    users,
-    bookingsSeries,
-    loading,
-    analyticsUnavailable,
-    retryLoad,
-  } = useApp();
-  const openDisputes = disputes.filter((d) => d.isOpen).length;
-  const escrowUnderReview = transactions.filter((t) => t.status === "IN_ESCROW").length;
-  const escrowHeld = transactions.filter((t) => t.status === "IN_ESCROW").reduce((s, t) => s + t.amountValue, 0);
-  const openJobs = bookings.filter((b) => b.status === "Open").length;
-  const matchingJobs = bookings.filter((b) => b.status === "Matching").length;
-  const disputeRate = dashboardStats ? (dashboardStats.totalBookings > 0 ? (disputes.length / dashboardStats.totalBookings) * 100 : 0) : 0;
+const ACTIVITY_ICON = {
+  tx: { icon: CreditCard, tone: "bg-ok-soft text-ok" },
+  user: { icon: UserPlus, tone: "bg-info-soft text-info" },
+  alert: { icon: AlertTriangle, tone: "bg-warn-soft text-warn" },
+} as const;
 
-  const now = new Date();
-  const newUsersThisMonth = users.filter((u) => {
-    const d = new Date(u.createdAt);
-    return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth();
-  }).length;
-  const activeProviderShare = dashboardStats && dashboardStats.totalUsers > 0
-    ? Math.round((dashboardStats.activeProviders / dashboardStats.totalUsers) * 1000) / 10
-    : 0;
-  // Booking trend is already aggregated server-side and sorted ascending —
-  // the last point is the current month, real data rather than a guess.
-  const bookingsThisMonth = bookingsSeries.length > 0 ? bookingsSeries[bookingsSeries.length - 1].value : 0;
+function useLiveExtras(lastUpdated: number | null): LiveExtras | null {
+  const [extras, setExtras] = useState<LiveExtras | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    // Every held escrow row and exact per-status job counts — not just the
+    // first page of each list, which is where these figures used to stop.
+    void Promise.allSettled([
+      services.getEscrowHeld(),
+      services.getBookingStatusCounts(),
+      services.getSkillRequests("pending"),
+    ]).then(([escrow, counts, sr]) => {
+      if (cancelled) return;
+      setExtras({
+        escrowCount: escrow.status === "fulfilled" ? escrow.value.count : null,
+        escrowHeld: escrow.status === "fulfilled" ? escrow.value.total : null,
+        openJobs: counts.status === "fulfilled" ? counts.value.open : null,
+        matchingJobs: counts.status === "fulfilled" ? counts.value.recommending : null,
+        pendingServiceRequests: sr.status === "fulfilled" ? sr.value.length : null,
+      });
+    });
+    return () => {
+      cancelled = true;
+    };
+    // Re-runs after every live refresh of the shared data.
+  }, [lastUpdated]);
+  return extras;
+}
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center" style={{ height: 300, color: "var(--text-muted)", fontSize: "var(--fs-md)" }}>
-        Loading dashboard…
-      </div>
-    );
-  }
-
-  if (analyticsUnavailable || !dashboardStats) {
-    return (
-      <div>
-        <header className="mb-6">
-          <h1 className="text-white font-bold" style={{ fontSize: "var(--fs-3xl)", letterSpacing: "var(--tr-tight)", lineHeight: "var(--lh-tight)" }}>Today at TaskBuddy</h1>
-          <p style={{ fontSize: "var(--fs-sm)", color: "var(--text-muted)", marginTop: "var(--sp-2)", lineHeight: "var(--lh-normal)" }}>Marketplace activity, money in motion, and work waiting for review.</p>
-        </header>
-
-        <div
-          role="status"
-          className="flex items-center gap-3 rounded-xl mb-5 flex-wrap"
-          style={{ background: "var(--card-bg)", border: "1px solid var(--card-border)", padding: "12px 14px" }}
-        >
-          <AlertTriangle size={15} style={{ color: "var(--warning-text)", flexShrink: 0 }} />
-          <span className="flex-1" style={{ color: "var(--text-light)", fontSize: "var(--fs-sm)" }}>
-            {analyticsUnavailable
-              ? "Dashboard analytics are temporarily unavailable. Other admin sections are still available."
-              : "Dashboard data could not be loaded. Retry or check the console error above."}
-          </span>
-          <button
-            onClick={retryLoad}
-            className="font-semibold transition-opacity hover:opacity-80"
-            style={{ background: "var(--chip-bg)", border: "1px solid var(--border-md)", borderRadius: "var(--r-md)", padding: "5px 12px", fontSize: "var(--fs-xs)", color: "var(--text-light)", cursor: "pointer", fontFamily: "inherit" }}
-          >
-            Retry
-          </button>
-        </div>
-
-        {analyticsUnavailable && openDisputes > 0 && (
-          <Link
-            href={pageToPath("disputes")}
-            className="flex items-center gap-3 rounded-xl mb-5"
-            style={{ background: "var(--card-bg)", border: "1px solid var(--card-border)", padding: "14px 16px", color: "var(--text-light)", textDecoration: "none" }}
-          >
-            <AlertTriangle size={15} style={{ color: "var(--danger-text)" }} />
-            <span>{openDisputes} open {openDisputes === 1 ? "dispute" : "disputes"}</span>
-            <span className="ml-auto" style={{ color: "var(--indigo-light)", fontSize: "var(--fs-xs)" }}>Review</span>
-          </Link>
-        )}
-
-        {analyticsUnavailable && <section className="rounded-2xl p-5" style={{ background: "var(--card-bg)", border: "1px solid var(--card-border)" }}>
-          <div className="flex items-start justify-between mb-1 gap-3">
-            <div>
-              <h2 className="font-semibold text-white" style={{ fontSize: "var(--fs-md)" }}>Recent Platform Activity</h2>
-              <p style={{ fontSize: "var(--fs-2xs)", color: "var(--text-muted)", marginTop: "var(--sp-1)" }}>Latest marketplace and administrative events.</p>
-            </div>
-            <Link
-              href={pageToPath("activity-log")}
-              className="flex-shrink-0 font-semibold transition-opacity hover:opacity-80"
-              style={{ background: "var(--chip-bg)", border: "1px solid var(--border-md)", borderRadius: "var(--r-md)", padding: "6px 12px", fontSize: "var(--fs-xs)", color: "var(--text-light)", textDecoration: "none" }}
-            >
-              View activity
-            </Link>
-          </div>
-          {recentActivity.length === 0 ? (
-            <p style={{ color: "var(--text-muted)", fontSize: "var(--fs-xs)", marginTop: "var(--sp-4)" }}>No recent activity was returned.</p>
-          ) : (
-            <div className="flex flex-col gap-3" style={{ marginTop: "var(--sp-3)" }}>
-              {recentActivity.slice(0, 7).map((activity, index) => (
-                <div key={`${activity.type}-${activity.text}-${index}`} className="flex items-center gap-3">
-                  <div className="flex items-center justify-center flex-shrink-0 rounded-lg" style={{ width: 26, height: 26, background: "var(--chip-bg)" }}>
-                    {activityIcon(activity.type)}
-                  </div>
-                  <div className="flex-1 text-white" style={{ fontSize: "var(--fs-xs)" }}>{activity.text}</div>
-                  <div className="flex items-center gap-1 flex-shrink-0" style={{ fontSize: "var(--fs-2xs)", color: "var(--text-muted)" }}>
-                    <Clock size={9} /> {activity.time}
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </section>}
-      </div>
-    );
-  }
-
+function AttentionTile({ href, icon: Icon, count, one, many, tone, index }: {
+  href: string;
+  icon: typeof ShieldCheck;
+  count: number;
+  one: string;
+  many: string;
+  tone: "danger" | "warn" | "info" | "accent";
+  index: number;
+}) {
+  const reduce = useReducedMotion();
+  const clear = count === 0;
+  const toneClass = {
+    danger: "bg-danger-soft text-danger",
+    warn: "bg-warn-soft text-warn",
+    info: "bg-info-soft text-info",
+    accent: "bg-primary-soft text-primary",
+  }[tone];
   return (
-    <div>
-      {/* The page title is a heading, not a hero. The indigo gradient slab and
-          its radial glow behind this text were pure decoration — they said
-          nothing about platform state and made the dashboard read as a
-          marketing surface rather than a place of work. */}
-      <header className="mb-6">
-        <h1 className="text-white font-bold" style={{ fontSize: "var(--fs-3xl)", letterSpacing: "var(--tr-tight)", lineHeight: "var(--lh-tight)" }}>Today at TaskBuddy</h1>
-        <p style={{ fontSize: "var(--fs-sm)", color: "var(--text-muted)", marginTop: "var(--sp-2)", lineHeight: "var(--lh-normal)" }}>Marketplace activity, money in motion, and work waiting for review.</p>
-      </header>
-
-      {/* Outstanding work leads the page. This is an operations console: what
-          an admin has to *do* outranks how the marketplace is performing.
-          Queues are ordered by how much a delay costs someone — an active
-          dispute freezes money, an unpaid withdrawal keeps a provider waiting,
-          an unverified provider can't earn at all — and only queues with real
-          items are shown, so an idle console reads as one calm line instead of
-          four cards all reporting zero. */}
-      {(() => {
-        const queues = [
-          { key: "disputes", count: openDisputes, one: "open dispute", many: "open disputes", href: pageToPath("disputes"), icon: <AlertTriangle size={15} />, tone: "var(--danger-text)", wash: "rgba(239,68,68,0.09)" },
-          { key: "withdrawals", count: dashboardStats.pendingWithdrawals, one: "withdrawal to settle", many: "withdrawals to settle", href: pageToPath("withdrawals"), icon: <WalletCards size={15} />, tone: "var(--warning-text)", wash: "rgba(245,158,11,0.09)" },
-          { key: "verifications", count: dashboardStats.pendingVerifications, one: "provider awaiting verification", many: "providers awaiting verification", href: pageToPath("verifications"), icon: <ShieldCheck size={15} />, tone: "var(--warning-text)", wash: "rgba(245,158,11,0.09)" },
-          { key: "escrow", count: escrowUnderReview, one: "escrow hold under review", many: "escrow holds under review", href: pageToPath("transactions"), icon: <CreditCard size={15} />, tone: "var(--indigo-light)", wash: "var(--chip-bg)" },
-        ];
-        const open = queues.filter((q) => q.count > 0);
-
-        if (open.length === 0) {
-          return (
-            <div
-              className="flex items-center gap-2.5 rounded-xl mb-7"
-              style={{ background: "var(--card-bg)", border: "1px solid var(--card-border)", padding: "13px 16px" }}
-            >
-              <CheckCircle size={15} style={{ color: "var(--success-text)", flexShrink: 0 }} />
-              <span className="text-white" style={{ fontSize: "var(--fs-sm)" }}>Nothing needs review right now.</span>
-              <span style={{ fontSize: "var(--fs-xs)", color: "var(--text-muted)" }}>Disputes, withdrawals, verifications, and escrow holds are all clear.</span>
-            </div>
-          );
-        }
-
-        return (
-          <section className="mb-7">
-            <h2 className="font-semibold text-white mb-2.5" style={{ fontSize: "var(--fs-md)" }}>Needs your attention</h2>
-            <div className="rounded-xl overflow-hidden" style={{ background: "var(--card-bg)", border: "1px solid var(--card-border)" }}>
-              {open.map((q, i) => (
-                <Link
-                  key={q.key}
-                  href={q.href}
-                  className="hover-row flex items-center gap-3.5"
-                  style={{ padding: i === 0 ? "15px 16px" : "12px 16px", borderTop: i === 0 ? "none" : "1px solid var(--border)", textDecoration: "none" }}
-                >
-                  <span
-                    className="flex items-center justify-center rounded-lg flex-shrink-0"
-                    style={{ width: i === 0 ? 34 : 28, height: i === 0 ? 34 : 28, background: q.wash, color: q.tone }}
-                  >
-                    {q.icon}
-                  </span>
-                  <span className="font-bold tabular" style={{ fontSize: i === 0 ? 22 : 17, color: q.tone, minWidth: 28 }}>{q.count}</span>
-                  <span className="text-white" style={{ fontSize: i === 0 ? 13 : 12 }}>{q.count === 1 ? q.one : q.many}</span>
-                  <span className="ml-auto flex items-center gap-1 font-medium flex-shrink-0" style={{ fontSize: "var(--fs-xs)", color: "var(--indigo-light)" }}>
-                    Review <ArrowUpRight size={11} />
-                  </span>
-                </Link>
-              ))}
-            </div>
-          </section>
-        );
-      })()}
-
-      {/* Marketplace scale — three peer counts, so they share one treatment. */}
-      <h2 className="font-semibold text-white mb-2.5" style={{ fontSize: "var(--fs-md)" }}>Marketplace</h2>
-      <div className="grid grid-cols-2 lg:grid-cols-3 gap-3 mb-6">
-        <StatCard
-          icon={<Users size={14} />}
-          label="Total Users"
-          value={dashboardStats.totalUsers.toLocaleString()}
-          sub={newUsersThisMonth > 0 ? `+${newUsersThisMonth} this month` : "No new signups this month"}
-          accent="var(--chart-cyan)"
-        />
-        <StatCard
-          icon={<ShieldCheck size={14} />}
-          label="Active Providers"
-          value={dashboardStats.activeProviders}
-          sub={`${activeProviderShare}% of registered users`}
-          accent="var(--chart-green)"
-        />
-        <StatCard
-          icon={<CalendarDays size={14} />}
-          label="Bookings This Month"
-          value={bookingsThisMonth.toLocaleString()}
-          sub={`${dashboardStats.completionRate}% completion rate`}
-          className="col-span-2 lg:col-span-1"
-          accent="var(--chart-blue)"
-        />
-      </div>
-
-      {/* Money is a different kind of fact from headcount, so it gets its own
-          grouped panel rather than two more cards in the same row — the three
-          figures here are related to each other, not to the counts above. */}
-      <h2 className="font-semibold text-white mb-2.5" style={{ fontSize: "var(--fs-md)" }}>This month&apos;s money</h2>
-      <div
-        className="rounded-xl mb-7 flex flex-wrap"
-        style={{ background: "var(--card-bg)", border: "1px solid var(--card-border)", padding: "18px 20px", columnGap: 44, rowGap: 18 }}
+    <motion.div
+      initial={reduce ? false : { opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.3, delay: index * 0.04, ease: [0.16, 1, 0.3, 1] }}
+    >
+      <Link
+        href={href}
+        className={cn(
+          "group flex h-full items-center gap-3 rounded-[12px] border bg-surface p-3.5 shadow-ui-sm outline-none transition-[border-color,box-shadow,transform] duration-150 hover:-translate-y-px hover:shadow-ui-md focus-visible:ring-2 focus-visible:ring-ring",
+          clear ? "border-border" : "border-border-strong",
+        )}
       >
-        <div>
-          <div className="flex items-center gap-1.5" style={{ fontSize: "var(--fs-xs)", color: "var(--text-muted)" }}><CreditCard size={13} /> Gross merchandise value</div>
-          <div className="text-white font-extrabold mt-1.5 tabular" style={{ fontSize: "var(--fs-3xl)", letterSpacing: "-0.03em" }}>{formatCurrency(dashboardStats.monthlyRevenue)}</div>
-        </div>
-        <div>
-          <div className="flex items-center gap-1.5" style={{ fontSize: "var(--fs-xs)", color: "var(--text-muted)" }}><Percent size={13} /> Commission retained</div>
-          <div className="text-white font-extrabold mt-1.5 tabular" style={{ fontSize: "var(--fs-3xl)", letterSpacing: "-0.03em" }}>{formatCurrency(dashboardStats.monthlyCommission)}</div>
-          <div style={{ fontSize: "var(--fs-2xs)", color: "var(--text-muted)", marginTop: 3 }}>{formatCurrency(dashboardStats.totalCommission)} all time</div>
-        </div>
-        <div>
-          <div className="flex items-center gap-1.5" style={{ fontSize: "var(--fs-xs)", color: "var(--text-muted)" }}><WalletCards size={13} /> Held in escrow</div>
-          <div className="text-white font-extrabold mt-1.5 tabular" style={{ fontSize: "var(--fs-3xl)", letterSpacing: "-0.03em" }}>{formatCurrency(escrowHeld)}</div>
-          <div style={{ fontSize: "var(--fs-2xs)", color: "var(--text-muted)", marginTop: 3 }}>Not yet released to providers</div>
-        </div>
-      </div>
+        <span className={cn("grid size-9 shrink-0 place-items-center rounded-[9px] [&_svg]:size-4", clear ? "bg-surface-2 text-subtle" : toneClass)}>
+          {clear ? <CheckCircle2 aria-hidden="true" /> : <Icon aria-hidden="true" />}
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className={cn("block text-[20px] font-semibold leading-none tracking-tight", clear && "text-subtle")}>
+            <AnimatedNumber value={count} />
+          </span>
+          <span className="mt-1 block truncate text-[12px] text-muted-foreground">{count === 1 ? one : many}</span>
+        </span>
+        <ArrowRight className="size-4 shrink-0 text-subtle transition-transform group-hover:translate-x-0.5 group-hover:text-foreground" aria-hidden="true" />
+      </Link>
+    </motion.div>
+  );
+}
 
-      <div className="flex items-center justify-between mb-2"><div className="font-semibold text-white" style={{ fontSize: "var(--fs-md)" }}>What&apos;s happening</div><div style={{ fontSize: "var(--fs-2xs)", color: "var(--text-muted)" }}>Latest signals</div></div>
-      {/* Recent Activity + Marketplace Health */}
-      <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1.6fr)_minmax(260px,0.8fr)] gap-3">
-        <div
-          className="rounded-2xl p-5"
-          style={{ background: "var(--card-bg)", border: "1px solid var(--card-border)" }}
-        >
-          <div className="flex items-start justify-between mb-1 gap-3">
-            <div>
-              <div className="font-semibold text-white" style={{ fontSize: "var(--fs-md)" }}>Recent Platform Activity</div>
-              <div style={{ fontSize: "var(--fs-2xs)", color: "var(--text-muted)", marginTop: "var(--sp-1)" }}>Latest marketplace and administrative events.</div>
-            </div>
-            <Link
-              href={pageToPath("activity-log")}
-              className="flex-shrink-0 font-semibold transition-opacity hover:opacity-80"
-              style={{ background: "var(--chip-bg)", border: "1px solid var(--border-md)", borderRadius: "var(--r-md)", padding: "6px 12px", fontSize: "var(--fs-xs)", color: "var(--text-light)", textDecoration: "none" }}
+function ActivityFeed({ items }: { items: { time: string; text: string; type: "tx" | "user" | "alert" }[] }) {
+  const reduce = useReducedMotion();
+  if (items.length === 0) {
+    return <EmptyState icon={<Clock />} title="No recent activity" description="New bookings, payments and signups will appear here." />;
+  }
+  return (
+    <ul className="-mx-2">
+      <AnimatePresence initial={false}>
+        {items.map((a) => {
+          const { icon: Icon, tone } = ACTIVITY_ICON[a.type] ?? ACTIVITY_ICON.tx;
+          return (
+            <motion.li
+              key={`${a.type}-${a.text}-${a.time}`}
+              layout={!reduce}
+              initial={reduce ? false : { opacity: 0, y: -6, height: 0 }}
+              animate={{ opacity: 1, y: 0, height: "auto" }}
+              exit={{ opacity: 0, height: 0 }}
+              transition={{ duration: 0.25, ease: [0.16, 1, 0.3, 1] }}
+              className="overflow-hidden"
             >
-              View activity
-            </Link>
-          </div>
-          <div className="flex flex-col gap-3" style={{ marginTop: "var(--sp-3)" }}>
-            {/* Dashboard is a preview, not the full log — the Activity page is the complete history. */}
-            {recentActivity.slice(0, 7).map((a, i) => (
-              <div key={i} className="flex items-center gap-3">
-                <div
-                  className="flex items-center justify-center flex-shrink-0 rounded-lg"
-                  style={{ width: 26, height: 26, background: "var(--chip-bg)" }}
-                >
-                  {activityIcon(a.type)}
-                </div>
-                <div className="flex-1 text-white" style={{ fontSize: "var(--fs-xs)" }}>{a.text}</div>
-                <div className="flex items-center gap-1 flex-shrink-0" style={{ fontSize: "var(--fs-2xs)", color: "var(--text-muted)" }}>
-                  <Clock size={9} /> {a.time}
-                </div>
+              <div className="flex items-center gap-3 rounded-[8px] px-2 py-2 transition-colors hover:bg-accent">
+                <span className={cn("grid size-7 shrink-0 place-items-center rounded-[8px] [&_svg]:size-3.5", tone)} aria-hidden="true"><Icon /></span>
+                <span className="min-w-0 flex-1 truncate text-[13px]">{a.text}</span>
+                <span className="shrink-0 text-[11.5px] tabular text-subtle">{a.time}</span>
               </div>
-            ))}
-          </div>
-        </div>
+            </motion.li>
+          );
+        })}
+      </AnimatePresence>
+    </ul>
+  );
+}
 
-        <div
-          className="rounded-2xl p-5"
-          style={{ background: "var(--card-bg)", border: "1px solid var(--card-border)" }}
-        >
-          <div className="font-semibold text-white mb-1" style={{ fontSize: "var(--fs-md)" }}>Service health</div>
-          <div style={{ fontSize: "var(--fs-xs)", color: "var(--text-muted)", marginBottom: "var(--sp-3)" }}>Live booking and provider signals</div>
-          {[
-            ["Completion rate", `${dashboardStats.completionRate}%`],
-            ["Open jobs", String(openJobs)],
-            ["Jobs matching", String(matchingJobs)],
-            ["Escrow held", formatCurrency(escrowHeld)],
-            ["Dispute rate", `${disputeRate.toFixed(1)}%`],
-          ].map(([label, value]) => (
-            <div
-              key={label}
-              className="flex items-center justify-between"
-              style={{ padding: "11px 0", borderBottom: "1px solid var(--border)" }}
-            >
-              <span style={{ fontSize: "var(--fs-xs)", color: "var(--text-light)" }}>{label}</span>
-              <span className="text-white font-bold" style={{ fontSize: "var(--fs-md)" }}>{value}</span>
-            </div>
-          ))}
-          <div className="flex items-center justify-between" style={{ padding: "11px 0" }}>
-            <span style={{ fontSize: "var(--fs-xs)", color: "var(--text-light)" }}>Avg provider rating</span>
-            <span className="text-white font-bold flex items-center gap-1" style={{ fontSize: "var(--fs-md)" }}>
-              {dashboardStats.avgRating} <Star size={12} fill="var(--chart-amber)" color="var(--chart-amber)" />
-            </span>
-          </div>
-        </div>
+function DashboardSkeleton() {
+  return (
+    <div aria-busy="true" aria-label="Loading dashboard">
+      <Skeleton className="mb-2 h-4 w-40" />
+      <Skeleton className="mb-7 h-8 w-72" />
+      <div className="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-5">
+        {Array.from({ length: 5 }, (_, i) => <Skeleton key={i} className="h-[70px] rounded-[12px]" />)}
       </div>
+      <div className="mb-6 grid grid-cols-2 gap-3 xl:grid-cols-4">
+        {Array.from({ length: 4 }, (_, i) => <Skeleton key={i} className="h-[150px] rounded-[12px]" />)}
+      </div>
+      <div className="mb-6 grid gap-3 lg:grid-cols-3">
+        <Skeleton className="h-[300px] rounded-[12px] lg:col-span-2" />
+        <Skeleton className="h-[300px] rounded-[12px]" />
+      </div>
+      <Skeleton className="h-[280px] rounded-[12px]" />
     </div>
   );
 }
 
+export function DashboardPage() {
+  const {
+    adminProfile, dashboardStats, recentActivity, disputes, users, revenueSeries, bookingsSeries,
+    loading, analyticsUnavailable, analyticsInBrowser, retryLoad, lastUpdated,
+  } = useApp();
+  const extras = useLiveExtras(lastUpdated);
+  const now = new Date();
+  const firstName = adminProfile.name.split(" ")[0] || "there";
+  const dateLabel = now.toLocaleDateString("en-PH", { weekday: "long", month: "long", day: "numeric", year: "numeric" });
+
+  const openDisputes = disputes.filter((d) => d.isOpen).length;
+  const newUsersThisMonth = useMemo(
+    () => users.filter((u) => {
+      const d = new Date(u.createdAt);
+      return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth();
+    }).length,
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- month boundary is fine to evaluate per data change
+    [users],
+  );
+
+  const header = (
+    <PageHeader
+      eyebrow={dateLabel}
+      title={`${greeting(now)}, ${firstName}`}
+      description="Marketplace activity, money in motion, and work waiting for review."
+    />
+  );
+
+  if (loading) return <DashboardSkeleton />;
+
+  // Analytics down (or not loaded): keep the console useful with what we have.
+  if (analyticsUnavailable || !dashboardStats) {
+    return (
+      <div>
+        {header}
+        <div role="status" className="mb-5 flex flex-wrap items-center gap-3 rounded-[12px] border border-warn/30 bg-warn-soft px-4 py-3 text-[13px]">
+          <AlertTriangle className="size-4 shrink-0 text-warn" aria-hidden="true" />
+          <span className="flex-1">
+            {analyticsUnavailable
+              ? "Dashboard analytics are temporarily unavailable. Other admin sections are still available."
+              : "Dashboard data could not be loaded. Retry or check the console error above."}
+          </span>
+          <Button size="sm" variant="outline" onClick={retryLoad}><RotateCw /> Retry</Button>
+        </div>
+        {analyticsUnavailable && openDisputes > 0 && (
+          <div className="mb-5 max-w-sm">
+            <AttentionTile href={pageToPath("disputes")} icon={AlertTriangle} count={openDisputes} one="open dispute" many="open disputes" tone="danger" index={0} />
+          </div>
+        )}
+        {analyticsUnavailable && (
+          <Panel
+            title="Recent platform activity"
+            description="Latest marketplace and administrative events."
+            action={<Button asChild variant="outline" size="sm"><Link href={pageToPath("activity-log")}>View activity</Link></Button>}
+          >
+            <ActivityFeed items={recentActivity.slice(0, 7)} />
+          </Panel>
+        )}
+      </div>
+    );
+  }
+
+  // The series only has months that had bookings, so its last point may be an
+  // older month. Count it only if it really is this month.
+  const currentMonthLabel = now.toLocaleDateString("en-US", { month: "short" });
+  const lastPoint = bookingsSeries[bookingsSeries.length - 1];
+  const bookingsThisMonth = lastPoint && lastPoint.month === currentMonthLabel ? lastPoint.value : 0;
+  const activeProviderShare = dashboardStats.totalUsers > 0
+    ? Math.round((dashboardStats.activeProviders / dashboardStats.totalUsers) * 1000) / 10
+    : 0;
+  const disputeRate = dashboardStats.totalBookings > 0 ? (disputes.length / dashboardStats.totalBookings) * 100 : 0;
+  const escrowHeld = extras?.escrowHeld ?? null;
+  const dash = (v: number | null | undefined, fmt: (n: number) => string = String) => (v === null || v === undefined ? "—" : fmt(v));
+
+  const queues: { key: string; page: Page; icon: typeof ShieldCheck; count: number; one: string; many: string; tone: "danger" | "warn" | "info" | "accent" }[] = [
+    { key: "disputes", page: "disputes", icon: AlertTriangle, count: openDisputes, one: "open dispute", many: "open disputes", tone: "danger" },
+    { key: "withdrawals", page: "withdrawals", icon: WalletCards, count: dashboardStats.pendingWithdrawals, one: "payout request", many: "payout requests", tone: "warn" },
+    { key: "verifications", page: "verifications", icon: ShieldCheck, count: dashboardStats.pendingVerifications, one: "provider to verify", many: "providers to verify", tone: "warn" },
+    { key: "skills", page: "skill-requests", icon: Wrench, count: extras?.pendingServiceRequests ?? 0, one: "service request", many: "service requests", tone: "info" },
+    { key: "escrow", page: "transactions", icon: CreditCard, count: extras?.escrowCount ?? 0, one: "escrow hold", many: "escrow holds", tone: "accent" },
+  ];
+  const openQueues = queues.filter((q) => q.count > 0).length;
+
+  return (
+    <div>
+      {header}
+      {analyticsInBrowser && <AnalyticsSourceNote />}
+
+      {/* Outstanding work leads: this is an operations console. */}
+      <section aria-labelledby="attention-title" className="mb-7">
+        <div className="mb-2.5 flex items-baseline justify-between gap-3">
+          <h2 id="attention-title" className="text-[14px] font-semibold tracking-tight">Needs your attention</h2>
+          <span className="text-[12px] text-muted-foreground">
+            {openQueues === 0 ? "All clear: nothing is waiting for review." : `${openQueues} ${openQueues === 1 ? "queue has" : "queues have"} work waiting`}
+          </span>
+        </div>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
+          {queues.map((q, i) => (
+            <AttentionTile key={q.key} href={pageToPath(q.page)} icon={q.icon} count={q.count} one={q.one} many={q.many} tone={q.tone} index={i} />
+          ))}
+        </div>
+      </section>
+
+      {/* Headline metrics */}
+      <section aria-label="Key metrics" className="mb-7 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <KpiCard
+          label="Total users"
+          icon={<Users />}
+          value={dashboardStats.totalUsers}
+          footer={<span className="text-[12px] text-muted-foreground">{newUsersThisMonth > 0 ? <><span className="font-semibold text-ok">+{newUsersThisMonth}</span> joined this month</> : "No new signups this month"}</span>}
+        />
+        <KpiCard
+          label="Active providers"
+          icon={<ShieldCheck />}
+          value={dashboardStats.activeProviders}
+          footer={<span className="text-[12px] text-muted-foreground"><span className="font-semibold text-foreground tabular">{activeProviderShare}%</span> of registered users</span>}
+        />
+        <KpiCard
+          label="Bookings this month"
+          icon={<CalendarDays />}
+          value={bookingsThisMonth}
+          trend={bookingsSeries.map((p) => p.value)}
+          footer={<Delta value={monthOverMonth(bookingsSeries)} />}
+        />
+        <KpiCard
+          label="Gross merchandise value"
+          icon={<CreditCard />}
+          value={dashboardStats.monthlyRevenue}
+          format={formatCurrency}
+          trend={revenueSeries.map((p) => p.value)}
+          footer={<Delta value={monthOverMonth(revenueSeries)} />}
+        />
+      </section>
+
+      {/* What's happening now, beside the money in motion. Deeper analysis
+          (categories, top providers, ratings, completion) lives on Reports. */}
+      <div className="mb-7 grid grid-cols-1 gap-3 lg:grid-cols-3">
+        <Panel
+          title="Recent platform activity"
+          description="Latest marketplace and administrative events"
+          className="lg:col-span-2"
+          action={<Button asChild variant="outline" size="sm"><Link href={pageToPath("activity-log")}>View all</Link></Button>}
+        >
+          {/* A preview, not the full log — the Activity page is the complete history. */}
+          <ActivityFeed items={recentActivity.slice(0, 7)} />
+        </Panel>
+
+        <Panel title="Marketplace pulse" description="Money held and jobs in motion">
+          <dl className="divide-y divide-border text-[13px]">
+            {[
+              {
+                label: "Held in escrow",
+                icon: WalletCards,
+                value: !extras ? "…" : dash(escrowHeld, formatCurrency),
+                hint: extras && extras.escrowCount !== null ? `${extras.escrowCount} ${extras.escrowCount === 1 ? "job" : "jobs"}` : undefined,
+              },
+              {
+                label: "Commission this month",
+                icon: Percent,
+                value: formatCurrency(dashboardStats.monthlyCommission),
+                hint: `${formatCurrency(dashboardStats.totalCommission)} all time`,
+              },
+              { label: "Open jobs", icon: CalendarDays, value: extras ? dash(extras.openJobs) : "…" },
+              { label: "Jobs matching", icon: Users, value: extras ? dash(extras.matchingJobs) : "…" },
+              { label: "Dispute rate", icon: AlertTriangle, value: `${disputeRate.toFixed(1)}%` },
+            ].map(({ label, icon: Icon, value, hint }) => (
+              <div key={label} className="flex items-center gap-3 py-2.5 first:pt-0 last:pb-0">
+                <Icon className="size-3.5 shrink-0 text-subtle" aria-hidden="true" />
+                <dt className="flex-1 text-muted-foreground">
+                  {label}
+                  {hint && <span className="block text-[11.5px] text-subtle">{hint}</span>}
+                </dt>
+                <dd className="font-semibold tabular">{value}</dd>
+              </div>
+            ))}
+          </dl>
+        </Panel>
+      </div>
+
+      <Panel
+        title="Revenue trend"
+        description="Gross merchandise value per month"
+        action={
+          <Button asChild variant="ghost" size="sm">
+            <Link href={pageToPath("reports")}>
+              Full reports <ArrowRight />
+            </Link>
+          </Button>
+        }
+      >
+        {revenueSeries.length > 0 ? (
+          <TrendChart data={revenueSeries} format={formatCurrency} yFormat={formatCurrencyCompact} height={220} />
+        ) : (
+          <EmptyState icon={<CreditCard />} title="No revenue yet" description="Completed, paid jobs will build this chart." />
+        )}
+      </Panel>
+    </div>
+  );
+}

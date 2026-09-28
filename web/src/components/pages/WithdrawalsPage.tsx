@@ -1,46 +1,87 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
-import { AlertTriangle, CheckCircle2, Clock3, RefreshCw, WalletCards, XCircle } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { AlertTriangle, Banknote, CheckCircle2, CircleSlash, RefreshCw, WalletCards, XCircle } from "lucide-react";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { useToast } from "@/components/ui/Toast";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Input, ReasonField } from "@/components/ui/input";
+import { PageHeader } from "@/components/admin/Panel";
+import { AnimatedNumber } from "@/components/admin/AnimatedNumber";
+import {
+  Avatar,
+  DetailCard,
+  DetailEmpty,
+  DetailSection,
+  Field,
+  FieldGrid,
+  FilterTabs,
+  KeyHints,
+  QueueItem,
+  QueueList,
+  QueueListSkeleton,
+  QueueListState,
+  QueueProgress,
+  QueueShell,
+  SearchField,
+  initialsOf,
+  neighborAfterRemoval,
+  useIsWide,
+  useQueueKeys,
+} from "@/components/admin/queue";
+import { useLiveTick } from "@/hooks/useLiveTick";
 import { getWithdrawals, rejectWithdrawal, settleWithdrawal } from "@/lib/services";
 import type { AdminWithdrawal } from "@/lib/domain";
 import { formatCurrency, formatDate } from "@/lib/adapters";
 
 type QueueStatus = "pending" | "completed" | "failed";
 
-const inputStyle = {
-  background: "var(--input-bg)", border: "1px solid var(--border-md)", borderRadius: "var(--r-md)",
-  padding: "8px 11px", fontSize: "var(--fs-sm)", color: "var(--text-white)", fontFamily: "inherit",
+const REASON_MAX = 500;
+const STATUS_META: Record<string, { label: string; tone: "warn" | "ok" | "danger" | "neutral" }> = {
+  pending: { label: "Needs review", tone: "warn" },
+  completed: { label: "Settled", tone: "ok" },
+  failed: { label: "Rejected", tone: "danger" },
 };
 
 export function WithdrawalsPage() {
   const { showToast } = useToast();
+  const isWide = useIsWide();
   const [status, setStatus] = useState<QueueStatus>("pending");
   const [items, setItems] = useState<AdminWithdrawal[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [refreshing, setRefreshing] = useState(false);
+  const [search, setSearch] = useState("");
+  const [selectedId, setSelectedId] = useState<string | null>(null);
   const [settling, setSettling] = useState<AdminWithdrawal | null>(null);
   const [rejecting, setRejecting] = useState<AdminWithdrawal | null>(null);
   const [reference, setReference] = useState("");
   const [reason, setReason] = useState("");
   const [busy, setBusy] = useState(false);
+  const [doneThisSession, setDoneThisSession] = useState(0);
 
+  // Only the newest request may write state: switching tabs (or a live tick)
+  // while an older request is slow must not fill this tab with another's rows.
+  const requestSeq = useRef(0);
   const load = useCallback(async (quiet = false) => {
+    const seq = ++requestSeq.current;
     if (!quiet) setLoading(true);
     setError("");
     try {
       const result = await getWithdrawals(status);
+      if (seq !== requestSeq.current) return;
       setItems(result.items);
       setTotal(result.total);
     } catch {
+      if (seq !== requestSeq.current) return;
       setError("Could not load withdrawal requests. The backend may still be deploying.");
     } finally {
-      setLoading(false);
-      setRefreshing(false);
+      if (seq === requestSeq.current) {
+        setLoading(false);
+        setRefreshing(false);
+      }
     }
   }, [status]);
 
@@ -49,15 +90,38 @@ export function WithdrawalsPage() {
      continuation. */
   useEffect(() => { void load(); }, [load]);
   /* eslint-enable react-hooks/set-state-in-effect */
+  useLiveTick(() => void load(true));
+
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return items;
+    return items.filter(
+      (i) => i.profileName.toLowerCase().includes(q) || (i.destination ?? "").toLowerCase().includes(q) || i.title.toLowerCase().includes(q),
+    );
+  }, [items, search]);
+  const ids = useMemo(() => filtered.map((i) => i.id), [filtered]);
+  const selected = filtered.find((i) => i.id === selectedId) ?? (isWide ? filtered[0] : undefined);
+  const effectiveId = selected?.id ?? null;
+  const amountInView = items.reduce((sum, item) => sum + item.amount, 0);
+
+  function afterDecision(id: string) {
+    setSelectedId(neighborAfterRemoval(ids, id));
+    // Drop it locally right away; the quiet reload then confirms from the server.
+    setItems((prev) => prev.filter((i) => i.id !== id));
+    setTotal((t) => Math.max(0, t - 1));
+    setDoneThisSession((n) => n + 1);
+  }
 
   async function confirmSettle() {
     if (!settling) return;
+    const id = settling.id;
     setBusy(true);
     try {
-      await settleWithdrawal(settling.id, reference);
+      await settleWithdrawal(id, reference);
       showToast("Withdrawal marked as paid.");
       setSettling(null);
       setReference("");
+      afterDecision(id);
       await load(true);
     } catch {
       showToast("Could not settle this withdrawal. Check the balance and try again.", "error");
@@ -66,100 +130,202 @@ export function WithdrawalsPage() {
 
   async function confirmReject() {
     if (!rejecting || !reason.trim()) return;
+    const id = rejecting.id;
     setBusy(true);
     try {
-      await rejectWithdrawal(rejecting.id, reason);
+      await rejectWithdrawal(id, reason);
       showToast("Withdrawal rejected.");
       setRejecting(null);
       setReason("");
+      afterDecision(id);
       await load(true);
     } catch {
       showToast("Could not reject this withdrawal. Please try again.", "error");
     } finally { setBusy(false); }
   }
 
-  const pendingAmount = items.reduce((sum, item) => sum + item.amount, 0);
+  function openSettle(item: AdminWithdrawal) { setSettling(item); setReference(""); }
+  function openReject(item: AdminWithdrawal) { setRejecting(item); setReason(""); }
+
+  const pending = selected?.status === "pending";
+  useQueueKeys({
+    ids,
+    selectedId: effectiveId,
+    onSelect: setSelectedId,
+    onApprove: pending && !busy ? () => openSettle(selected!) : undefined,
+    onReject: pending && !busy ? () => openReject(selected!) : undefined,
+  });
+
+  const listBody = loading ? (
+    <QueueListSkeleton />
+  ) : error ? (
+    <QueueListState icon={AlertTriangle} tone="danger" title="Couldn't load withdrawals" description={error} action={<Button size="sm" variant="outline" onClick={() => void load()}>Try again</Button>} />
+  ) : filtered.length === 0 ? (
+    items.length > 0 ? (
+      <QueueListState title="Nothing matches" description="Try a different search." />
+    ) : status === "pending" ? (
+      <QueueListState icon={CheckCircle2} tone="ok" title="No withdrawals waiting" description="New payout requests from providers will appear here." />
+    ) : (
+      <QueueListState icon={CircleSlash} title={`No ${STATUS_META[status].label.toLowerCase()} withdrawals`} />
+    )
+  ) : (
+    <QueueList label="Withdrawal requests">
+      {filtered.map((item) => (
+        <QueueItem
+          key={item.id}
+          id={item.id}
+          selected={item.id === effectiveId}
+          onSelect={setSelectedId}
+          leading={<Avatar initials={initialsOf(item.profileName)} tone={item.status === "pending" ? "warn" : "neutral"} />}
+          title={item.profileName}
+          trailing={<span className="tabular text-[13px] font-semibold">{formatCurrency(item.amount)}</span>}
+          meta={item.destination ?? "No destination provided"}
+          aside={
+            <span className="flex items-center gap-2">
+              <Badge tone={STATUS_META[item.status]?.tone ?? "neutral"} dot>{STATUS_META[item.status]?.label ?? item.status}</Badge>
+              <span className="text-[11.5px] text-muted-foreground">{formatDate(item.createdAt)}</span>
+            </span>
+          }
+        />
+      ))}
+    </QueueList>
+  );
 
   return (
     <div>
-      <div className="flex items-start justify-between flex-wrap gap-3 mb-4">
-        <div>
-          <div className="text-white font-bold" style={{ fontSize: "var(--fs-2xl)", letterSpacing: "-0.025em" }}>Withdrawals</div>
-          <div style={{ fontSize: "var(--fs-sm)", color: "var(--text-muted)", marginTop: 5, lineHeight: 1.45 }}>
-            Review requests and record payouts made outside the platform.
-          </div>
+      <PageHeader
+        eyebrow="Operations"
+        title="Withdrawals"
+        description="Review payout requests and record payouts made outside the platform."
+        actions={
+          <Button variant="outline" size="sm" onClick={() => { setRefreshing(true); void load(true); }} disabled={refreshing}>
+            <RefreshCw className={refreshing ? "animate-spin" : ""} /> Refresh
+          </Button>
+        }
+      />
+
+      <div className="mb-4 grid gap-3 sm:grid-cols-[auto_auto_1fr]">
+        <Stat icon={Banknote} label="Waiting for review" tone={status === "pending" && total > 0 ? "warn" : "neutral"}>
+          {status === "pending" ? <AnimatedNumber value={total} /> : "—"}
+        </Stat>
+        <Stat icon={WalletCards} label="Amount in this view">
+          <AnimatedNumber value={amountInView} format={formatCurrency} />
+        </Stat>
+        <div className="flex items-center gap-2.5 rounded-[12px] border border-warn/25 bg-warn-soft px-4 py-3 text-[12.5px] leading-relaxed text-warn">
+          <AlertTriangle className="size-4 shrink-0" />
+          Only mark a request paid after the money has actually moved.
         </div>
-        <button
-          onClick={() => { setRefreshing(true); void load(true); }}
-          disabled={refreshing}
-          className="flex items-center gap-1.5 font-semibold transition-opacity hover:opacity-80 disabled:opacity-40"
-          style={{ background: "var(--chip-bg)", border: "1px solid var(--border-md)", borderRadius: "var(--r-md)", padding: "8px 12px", fontSize: "var(--fs-xs)", color: "var(--text-light)", cursor: "pointer", fontFamily: "inherit" }}
-        >
-          <RefreshCw size={12} className={refreshing ? "animate-spin" : ""} /> Refresh
-        </button>
       </div>
 
-      {/* Two real numbers share one card at their natural asymmetric weight;
-          the settlement rule is policy text, not a metric, so it reads as a
-          caption below rather than forcing a third equal card to hold it. */}
-      {(() => {
-        const pendingCount = status === "pending" ? total : 0;
-        const hasPending = status === "pending" && total > 0;
-        return (
-          <div className="rounded-xl p-4 mb-3 flex items-center gap-8 flex-wrap" style={{ background: "var(--card-bg)", border: "1px solid var(--card-border)" }}>
-            <div>
-              <div className="flex items-center gap-2" style={{ color: hasPending ? "var(--warning-text)" : "var(--text-muted)", fontSize: "var(--fs-xs)" }}><Clock3 size={14} /> Waiting for review</div>
-              <div className="font-extrabold mt-2 tabular" style={{ fontSize: "var(--fs-3xl)", color: hasPending ? "var(--text-white)" : "var(--text-muted)" }}>{status === "pending" ? pendingCount : "—"}</div>
-            </div>
-            <div style={{ width: 1, alignSelf: "stretch", background: "var(--border)" }} />
-            <div>
-              <div className="flex items-center gap-2" style={{ color: "var(--text-muted)", fontSize: "var(--fs-xs)" }}><WalletCards size={14} /> Amount in this view</div>
-              <div className="text-white font-extrabold mt-2" style={{ fontSize: "var(--fs-3xl)" }}>{formatCurrency(pendingAmount)}</div>
-            </div>
-          </div>
-        );
-      })()}
-      <div className="flex items-center gap-2 mb-4" style={{ color: "var(--text-muted)", fontSize: "var(--fs-xs)", lineHeight: 1.45 }}>
-        <AlertTriangle size={12} style={{ flexShrink: 0 }} /> Only mark paid after money has actually moved.
-      </div>
-
-      <div className="rounded-xl overflow-hidden" style={{ background: "var(--card-bg)", border: "1px solid var(--card-border)" }}>
-        <div className="flex items-center justify-between flex-wrap gap-2" style={{ padding: "12px 14px", borderBottom: "1px solid var(--card-border)" }}>
-          <div className="inline-flex" style={{ background: "var(--chip-bg)", padding: 3, borderRadius: "var(--r-md)", gap: 2 }}>
-            {(["pending", "completed", "failed"] as QueueStatus[]).map((value) => (
-              <button key={value} onClick={() => setStatus(value)} className="rounded-lg font-medium cursor-pointer" style={{ padding: "7px 11px", fontSize: "var(--fs-xs)", background: status === value ? "var(--indigo-dark)" : "transparent", color: status === value ? "var(--indigo-light)" : "var(--text-muted)", border: "none", fontFamily: "inherit" }}>
-                {value === "pending" ? "Needs review" : value === "completed" ? "Settled" : "Rejected"}
-              </button>
-            ))}
-          </div>
-          <span style={{ fontSize: "var(--fs-xs)", color: "var(--text-muted)" }}>{total.toLocaleString()} request{total === 1 ? "" : "s"}</span>
-        </div>
-
-        {error && <div role="alert" style={{ padding: "12px 14px", color: "var(--danger-text)", fontSize: "var(--fs-xs)", borderBottom: "1px solid var(--card-border)" }}>{error}</div>}
-        {loading ? <div className="flex items-center justify-center" style={{ height: 220, color: "var(--text-muted)", fontSize: "var(--fs-sm)" }}>Loading withdrawal queue…</div> : items.length === 0 ? (
-          <div className="flex flex-col items-center justify-center gap-2" style={{ height: 220, color: "var(--text-muted)", fontSize: "var(--fs-sm)" }}><CheckCircle2 size={20} style={{ color: "var(--success-text)" }} /> No {status} withdrawals.</div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="data-table"><thead><tr><th>Account</th><th>Amount</th><th>Destination</th><th>Requested</th><th>Status</th><th style={{ width: 170 }}>Actions</th></tr></thead>
-              <tbody>{items.map((item) => <tr key={item.id}>
-                <td><div className="text-white font-medium" style={{ fontSize: "var(--fs-xs)" }}>{item.profileName}</div><div style={{ fontSize: "var(--fs-3xs)", color: "var(--text-muted)", marginTop: 2 }}>{item.title}</div></td>
-                <td className="text-white font-semibold" style={{ fontSize: "var(--fs-sm)" }}>{formatCurrency(item.amount)}</td>
-                <td style={{ color: "var(--text-light)", fontSize: "var(--fs-xs)", maxWidth: 240 }}>{item.destination ?? "Not provided"}</td>
-                <td style={{ color: "var(--text-light)", fontSize: "var(--fs-xs)" }}>{formatDate(item.createdAt)}</td>
-                <td><span className={`badge ${item.status === "pending" ? "badge-pending" : item.status === "completed" ? "badge-completed" : "badge-rejected"}`}>{item.status}</span></td>
-                <td>{item.status === "pending" ? <div className="flex gap-1.5"><button onClick={() => { setSettling(item); setReference(""); }} className="flex items-center gap-1 font-semibold" style={{ background: "rgba(34,197,94,0.12)", border: "1px solid rgba(34,197,94,0.25)", borderRadius: "var(--r-sm)", padding: "6px 9px", color: "var(--success-text)", fontSize: "var(--fs-2xs)", cursor: "pointer", fontFamily: "inherit" }}><CheckCircle2 size={11} /> Settle</button><button onClick={() => { setRejecting(item); setReason(""); }} className="flex items-center gap-1 font-semibold" style={{ background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.25)", borderRadius: "var(--r-sm)", padding: "6px 9px", color: "var(--danger-text)", fontSize: "var(--fs-2xs)", cursor: "pointer", fontFamily: "inherit" }}><XCircle size={11} /> Reject</button></div> : <span style={{ fontSize: "var(--fs-2xs)", color: "var(--text-muted)" }}>{item.reviewNote ?? "—"}</span>}</td>
-              </tr>)}</tbody>
-            </table>
-          </div>
-        )}
-      </div>
+      <QueueShell
+        showDetailOnNarrow={!!selectedId && !!selected}
+        onBack={() => setSelectedId(null)}
+        toolbar={
+          <>
+            <FilterTabs
+              id="withdrawals"
+              label="Filter withdrawals by status"
+              value={status}
+              onChange={(s) => { setStatus(s); setSelectedId(null); }}
+              options={[
+                { value: "pending", label: "Needs review" },
+                { value: "completed", label: "Settled" },
+                { value: "failed", label: "Rejected" },
+              ]}
+            />
+            <SearchField value={search} onChange={setSearch} placeholder="Search by name or destination…" label="Search withdrawals" />
+            {status === "pending" ? (
+              <QueueProgress remaining={total} done={doneThisSession} noun={total === 1 ? "request" : "requests"} />
+            ) : (
+              <span className="text-[12px] text-muted-foreground tabular">{total.toLocaleString()} request{total === 1 ? "" : "s"}</span>
+            )}
+          </>
+        }
+        list={<>{listBody}<KeyHints approve="settle" reject="reject" /></>}
+        detail={
+          selected ? (
+            <DetailCard
+              key={selected.id}
+              header={
+                <div className="flex items-start justify-between gap-4">
+                  <div className="flex min-w-0 items-start gap-3.5">
+                    <Avatar initials={initialsOf(selected.profileName)} size="lg" tone="neutral" />
+                    <div className="min-w-0">
+                      <h2 className="truncate text-[17px] font-semibold tracking-tight">{selected.profileName}</h2>
+                      <p className="mt-0.5 text-[12.5px] text-muted-foreground">{selected.title}</p>
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <div className="tabular text-[22px] font-semibold tracking-tight">{formatCurrency(selected.amount)}</div>
+                    <Badge tone={STATUS_META[selected.status]?.tone ?? "neutral"} dot className="mt-1">
+                      {STATUS_META[selected.status]?.label ?? selected.status}
+                    </Badge>
+                  </div>
+                </div>
+              }
+              footer={
+                selected.status === "pending" ? (
+                  <>
+                    <Button variant="destructive-outline" onClick={() => openReject(selected)} disabled={busy}>
+                      <XCircle /> Reject
+                    </Button>
+                    <Button onClick={() => openSettle(selected)} disabled={busy}>
+                      <CheckCircle2 /> Mark as paid
+                    </Button>
+                  </>
+                ) : undefined
+              }
+            >
+              <DetailSection title="Payout">
+                <FieldGrid>
+                  <Field label="Send to">{selected.destination ?? "Not provided"}</Field>
+                  <Field label="Requested">{formatDate(selected.createdAt)}</Field>
+                  {selected.reviewedAt && <Field label="Reviewed">{formatDate(selected.reviewedAt)}</Field>}
+                  {selected.status !== "pending" && <Field label="Review note">{selected.reviewNote ?? "—"}</Field>}
+                </FieldGrid>
+              </DetailSection>
+              {selected.status === "pending" && (
+                <p className="rounded-[10px] bg-surface-2 px-3.5 py-2.5 text-[12px] leading-relaxed text-muted-foreground">
+                  Send the money through GCash or the bank first, then mark it paid with the reference. Rejecting returns the reserved amount to the provider&apos;s available balance.
+                </p>
+              )}
+            </DetailCard>
+          ) : (
+            <DetailEmpty queueEmpty={filtered.length === 0} title="Pick a request" description="Select a withdrawal on the left to see where the money goes and settle it." />
+          )
+        }
+      />
 
       <ConfirmDialog open={!!settling} title="Mark withdrawal as paid?" message={settling ? `${settling.profileName} will be told that ${formatCurrency(settling.amount)} was sent.` : ""} confirmLabel="Mark as paid" cancelLabel="Keep pending" danger={false} busy={busy} onConfirm={() => void confirmSettle()} onCancel={() => !busy && setSettling(null)}>
-        <label className="block" style={{ fontSize: "var(--fs-xs)", color: "var(--text-muted)" }}>Payout reference <span style={{ opacity: .7 }}>(optional)</span><input value={reference} onChange={(e) => setReference(e.target.value)} placeholder="GCash / bank reference" style={{ ...inputStyle, width: "100%", marginTop: 6 }} /></label>
+        <label className="block text-[12px] font-medium text-muted-foreground">
+          Payout reference <span className="font-normal text-subtle">(optional)</span>
+          <Input value={reference} onChange={(e) => setReference(e.target.value)} placeholder="GCash / bank reference" className="mt-1.5" />
+        </label>
       </ConfirmDialog>
-      <ConfirmDialog open={!!rejecting} title="Reject withdrawal?" message="The requester will be notified and the reserved amount will return to their available balance." confirmLabel="Reject withdrawal" busy={busy} confirmDisabled={!reason.trim()} onConfirm={() => void confirmReject()} onCancel={() => !busy && setRejecting(null)}>
-        <label className="block" style={{ fontSize: "var(--fs-xs)", color: "var(--text-muted)" }}>Reason <textarea value={reason} onChange={(e) => setReason(e.target.value)} maxLength={500} rows={3} placeholder="Explain why this request cannot be paid" style={{ ...inputStyle, width: "100%", marginTop: 6, resize: "vertical" }} /><span style={{ display: "block", textAlign: "right", marginTop: 3, fontSize: "var(--fs-3xs)" }}>{reason.length}/500</span></label>
+      <ConfirmDialog open={!!rejecting} title="Reject withdrawal?" message="The requester will be notified and the reserved amount will return to their available balance." confirmLabel="Reject withdrawal" busy={busy} confirmDisabled={!reason.trim() || reason.length > REASON_MAX} onConfirm={() => void confirmReject()} onCancel={() => !busy && setRejecting(null)}>
+        <ReasonField autoFocus required value={reason} onChange={setReason} max={REASON_MAX} label="Reason" placeholder="Explain why this request cannot be paid" />
       </ConfirmDialog>
+    </div>
+  );
+}
+
+function Stat({
+  icon: Icon,
+  label,
+  tone = "neutral",
+  children,
+}: {
+  icon: React.ComponentType<{ className?: string }>;
+  label: string;
+  tone?: "warn" | "neutral";
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="min-w-[180px] rounded-[12px] border border-border bg-surface px-4 py-3 shadow-ui-sm">
+      <div className={`flex items-center gap-1.5 text-[12px] ${tone === "warn" ? "text-warn" : "text-muted-foreground"}`}>
+        <Icon className="size-3.5" /> {label}
+      </div>
+      <div className="mt-1 tabular text-[22px] font-semibold tracking-tight">{children}</div>
     </div>
   );
 }

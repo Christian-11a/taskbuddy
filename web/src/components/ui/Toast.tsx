@@ -11,6 +11,7 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 import { AlertTriangle, CheckCircle2, X } from "lucide-react";
+import { cn } from "@/lib/utils";
 
 export type ToastKind = "success" | "error";
 
@@ -105,39 +106,39 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
       {children}
       {mounted &&
         createPortal(
-          <div
-            className="fixed flex flex-col gap-2"
-            style={{ bottom: 20, right: 20, zIndex: 300, maxWidth: "min(380px, calc(100vw - 40px))" }}
-          >
+          <div className="ui-root theme-portal fixed bottom-5 right-5 z-[300] flex w-[min(380px,calc(100vw-40px))] flex-col gap-2">
             {toasts.map((t) => (
               <div
                 key={t.id}
                 // Errors interrupt (assertive); successes are announced politely.
                 role={t.kind === "error" ? "alert" : "status"}
-                className="flex items-start gap-2.5 rounded-xl"
-                style={{
-                  background: "var(--panel-bg)",
-                  border: `1px solid ${t.kind === "error" ? "rgba(239,68,68,0.35)" : "rgba(34,197,94,0.3)"}`,
-                  padding: "10px 12px",
-                  fontSize: "var(--fs-sm)",
-                  color: "var(--text-light)",
-                  boxShadow: "0 10px 30px rgba(0,0,0,0.35)",
-                }}
+                className="relative flex items-start gap-2.5 overflow-hidden rounded-[12px] border border-border bg-popover py-3 pl-3.5 pr-3 text-[13px] text-foreground shadow-ui-lg motion-safe:animate-[ui-toast-in_260ms_cubic-bezier(0.16,1,0.3,1)]"
               >
+                <span
+                  aria-hidden
+                  className={cn("absolute inset-y-0 left-0 w-[3px]", t.kind === "error" ? "bg-danger" : "bg-ok")}
+                />
                 {t.kind === "error" ? (
-                  <AlertTriangle size={14} className="flex-shrink-0" style={{ color: "var(--danger-text)", marginTop: 1 }} />
+                  <AlertTriangle className="mt-px size-4 shrink-0 text-danger" />
                 ) : (
-                  <CheckCircle2 size={14} className="flex-shrink-0" style={{ color: "var(--success-text)", marginTop: 1 }} />
+                  <CheckCircle2 className="mt-px size-4 shrink-0 text-ok" />
                 )}
-                <span className="flex-1">{t.message}</span>
+                <span className="flex-1 leading-snug">{t.message}</span>
                 <button
                   onClick={() => dismiss(t.id)}
                   aria-label="Dismiss notification"
-                  className="flex-shrink-0 transition-opacity hover:opacity-70"
-                  style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-muted)", padding: 0, marginTop: 1 }}
+                  className="-mr-1 -mt-0.5 grid size-6 shrink-0 place-items-center rounded-md text-subtle transition-colors hover:bg-accent hover:text-foreground"
                 >
-                  <X size={13} />
+                  <X className="size-3.5" />
                 </button>
+                <span
+                  aria-hidden
+                  className={cn(
+                    "absolute bottom-0 left-0 h-[2px] w-full origin-left opacity-40 motion-safe:animate-[ui-toast-timer_linear_forwards]",
+                    t.kind === "error" ? "bg-danger" : "bg-ok",
+                  )}
+                  style={{ animationDuration: `${DISMISS_MS[t.kind]}ms` }}
+                />
               </div>
             ))}
           </div>,

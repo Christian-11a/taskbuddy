@@ -1,6 +1,12 @@
 import type { Metadata } from "next";
+import { Inter } from "next/font/google";
 import { AppProvider } from "@/context/AppContext";
 import { ToastProvider } from "@/components/ui/Toast";
+import { BodyClass } from "@/components/admin/BodyClass";
+
+/** Admin-only typeface (self-hosted at build time by next/font). Exposed as
+ *  --font-inter; the redesign's `.ui-root` picks it up via --font-admin. */
+const inter = Inter({ subsets: ["latin"], variable: "--font-inter", display: "swap" });
 
 export const metadata: Metadata = {
   title: {
@@ -24,8 +30,11 @@ export default function AdminSegmentLayout({
   children: React.ReactNode;
 }) {
   return (
-    <ToastProvider>
-      <AppProvider>{children}</AppProvider>
-    </ToastProvider>
+    <div className={inter.variable}>
+      <BodyClass className={inter.variable} />
+      <ToastProvider>
+        <AppProvider>{children}</AppProvider>
+      </ToastProvider>
+    </div>
   );
 }

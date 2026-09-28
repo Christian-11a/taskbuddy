@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { Search, CheckCircle, PauseCircle, Download, KeyRound, Users, Wrench, Home } from "lucide-react";
+import { useMemo, useState } from "react";
+import { CheckCircle, Download, Home, KeyRound, MailCheck, MoreHorizontal, PauseCircle, Star, Users, Wrench } from "lucide-react";
 import { useApp } from "@/context/AppContext";
 import { datedFilename, downloadCsv, toCsv } from "@/lib/export/csv";
 import { REASON_MAX_LENGTH, validateDurationDays } from "@/lib/validation";
@@ -9,10 +9,28 @@ import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { ReviewDrawer, DrawerField, DrawerSection } from "@/components/ui/ReviewDrawer";
 import { Pagination } from "@/components/ui/Pagination";
 import { useToast } from "@/components/ui/Toast";
-import clsx from "clsx";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import { PageHeader } from "@/components/admin/Panel";
+import { Avatar, FilterTabs, SearchField } from "@/components/admin/queue";
+import {
+  BulkBar,
+  DataTable,
+  SelectFilter,
+  SummaryStrip,
+  TableCard,
+  TableEmpty,
+  sortRows,
+  usePaged,
+  useSort,
+  type Column,
+} from "@/components/admin/table";
+import { cn } from "@/lib/utils";
 import type { BulkCounts } from "@/lib/services";
+import type { UserRow } from "@/lib/adapters";
 
-const PAGE_SIZE = 7;
+const PAGE_SIZE = 12;
 
 /**
  * Turns bulk counts into one honest sentence — "3 of 5" when some failed,
@@ -41,6 +59,19 @@ type VerificationFilter = "all" | "Verified" | "Pending review" | "Rejected" | "
 
 const JOINED_DAYS: Record<Exclude<JoinedFilter, "all">, number> = { "7d": 7, "30d": 30 };
 
+const STATUS_TONE: Record<string, "ok" | "danger" | "warn" | "neutral"> = {
+  Active: "ok",
+  Suspended: "danger",
+  Pending: "warn",
+  Deleted: "neutral",
+};
+const VERIFICATION_TONE: Record<string, "ok" | "warn" | "danger" | "neutral"> = {
+  Verified: "ok",
+  "Pending review": "warn",
+  Rejected: "danger",
+  "Not submitted": "neutral",
+};
+
 export function UsersPage() {
   const { users, setUserStatus, bulkSetUserStatus, sendPasswordReset, loading } = useApp();
   const { showToast } = useToast();
@@ -56,34 +87,133 @@ export function UsersPage() {
   const [bulkBusy, setBulkBusy] = useState(false);
   const [reviewingId, setReviewingId] = useState<string | null>(null);
   const [confirmingExport, setConfirmingExport] = useState(false);
-  // Backend migration 0014 made `reason` required on suspend — a prompt
-  // rather than a modal since this is a one-off admin action, not a form.
+  // Backend migration 0014 made `reason` required on suspend.
   const [suspending, setSuspending] = useState<{ id: string; bulk: boolean } | null>(null);
   const [suspendReason, setSuspendReason] = useState("");
   const [suspendDays, setSuspendDays] = useState("");
   const [resetBusyId, setResetBusyId] = useState<string | null>(null);
   const [resetSentId, setResetSentId] = useState<string | null>(null);
   const [activateBusyId, setActivateBusyId] = useState<string | null>(null);
+  const { sort, toggle: toggleSort } = useSort({ id: "joined", dir: "desc" });
 
-  const filtered = users.filter((u) => {
-    const matchSearch =
-      u.name.toLowerCase().includes(search.toLowerCase()) ||
-      u.email.toLowerCase().includes(search.toLowerCase());
-    const matchRole =
-      roleFilter === "all" ||
-      (roleFilter === "provider" && u.isProvider) ||
-      (roleFilter === "customer" && !u.isProvider);
-    const matchStatus = statusFilter === "all" || u.status.toLowerCase() === statusFilter;
-    const matchJoined =
-      joinedFilter === "all" ||
-      now - new Date(u.createdAt).getTime() <= JOINED_DAYS[joinedFilter] * 86_400_000;
-    // Verification only applies to providers, so picking one narrows to them.
-    const matchVerification = verificationFilter === "all" || u.verification === verificationFilter;
-    return matchSearch && matchRole && matchStatus && matchJoined && matchVerification;
-  });
+  const filtered = useMemo(
+    () =>
+      users.filter((u) => {
+        const q = search.toLowerCase();
+        const matchSearch = u.name.toLowerCase().includes(q) || u.email.toLowerCase().includes(q);
+        const matchRole =
+          roleFilter === "all" || (roleFilter === "provider" && u.isProvider) || (roleFilter === "customer" && !u.isProvider);
+        const matchStatus = statusFilter === "all" || u.status.toLowerCase() === statusFilter;
+        const matchJoined =
+          joinedFilter === "all" || now - new Date(u.createdAt).getTime() <= JOINED_DAYS[joinedFilter] * 86_400_000;
+        // Verification only applies to providers, so picking one narrows to them.
+        const matchVerification = verificationFilter === "all" || u.verification === verificationFilter;
+        return matchSearch && matchRole && matchStatus && matchJoined && matchVerification;
+      }),
+    [users, search, roleFilter, statusFilter, joinedFilter, verificationFilter, now],
+  );
+
+  const columns: Column<UserRow>[] = useMemo(
+    () => [
+      {
+        id: "name",
+        header: "User",
+        sortValue: (u) => u.name,
+        cell: (u) => (
+          <div className="flex min-w-0 items-center gap-2.5">
+            <Avatar initials={u.initials} tone={u.isProvider ? "accent" : "ok"} />
+            <div className="min-w-0">
+              <div className="truncate font-medium">{u.name}</div>
+              <div className="truncate text-[12px] text-muted-foreground">{u.email}</div>
+            </div>
+          </div>
+        ),
+      },
+      {
+        id: "role",
+        header: "Role",
+        sortValue: (u) => u.role,
+        cell: (u) => (
+          <span className="inline-flex items-center gap-1.5 text-[12.5px]">
+            {u.isProvider ? <Wrench className="size-3.5 text-primary" /> : <Home className="size-3.5 text-ok" />}
+            {u.role}
+          </span>
+        ),
+      },
+      {
+        id: "status",
+        header: "Status",
+        sortValue: (u) => u.status,
+        cell: (u) => (
+          <Badge tone={STATUS_TONE[u.status] ?? "neutral"} dot>
+            {u.status}
+          </Badge>
+        ),
+      },
+      {
+        id: "verification",
+        header: "Verification",
+        sortValue: (u) => (u.isProvider ? u.verification : null),
+        cell: (u) =>
+          u.isProvider ? (
+            <Badge tone={VERIFICATION_TONE[u.verification] ?? "neutral"}>{u.verification}</Badge>
+          ) : (
+            <span className="text-subtle">—</span>
+          ),
+      },
+      {
+        id: "joined",
+        header: "Joined",
+        hideBelow: "md",
+        sortValue: (u) => new Date(u.createdAt).getTime() || null,
+        cell: (u) => <span className="tabular text-muted-foreground">{u.joined}</span>,
+      },
+      {
+        id: "activity",
+        header: "Activity",
+        hideBelow: "lg",
+        sortValue: (u) => u.jobsCompleted,
+        cell: (u) => (
+          <span className="inline-flex items-center gap-2 text-muted-foreground">
+            {u.activity}
+            {u.ratingValue ? (
+              <span className="inline-flex items-center gap-0.5 text-[12px] text-warn">
+                <Star className="size-3 fill-current" />
+                {u.ratingValue.toFixed(1)}
+              </span>
+            ) : null}
+          </span>
+        ),
+      },
+      {
+        id: "actions",
+        header: <span className="sr-only">Actions</span>,
+        width: 48,
+        align: "right",
+        cell: (u) => (
+          <button
+            title="More actions"
+            onClick={(e) => {
+              e.stopPropagation();
+              setReviewingId(u.id);
+            }}
+            aria-label={`Show details for ${u.name}`}
+            className="grid size-7 place-items-center rounded-md text-subtle opacity-60 transition hover:bg-accent hover:text-foreground group-hover:opacity-100"
+          >
+            <MoreHorizontal className="size-4" />
+          </button>
+        ),
+      },
+    ],
+    [],
+  );
+
+  const sorted = useMemo(() => sortRows(filtered, columns, sort), [filtered, columns, sort]);
+  const paginated = usePaged(sorted, page, PAGE_SIZE);
 
   // Admins can't be suspended (backend refuses it) — leave them out of bulk selection.
   const selectable = filtered.filter((u) => u.rolePlain !== "Admin" && u.status !== "Deleted");
+  const selectableIds = new Set(selectable.map((u) => u.id));
   const allSelected = selectable.length > 0 && selectable.every((u) => selected.has(u.id));
 
   function toggleOne(id: string) {
@@ -102,9 +232,8 @@ export function UsersPage() {
   /**
    * Bulk actions operate on the id set, not on what's currently rendered — so
    * a selection that survived a filter change could suspend users the admin
-   * can no longer see, while the bar still claimed "5 selected". Any change to
-   * what's in scope drops the selection so the count always matches the rows
-   * on screen.
+   * can no longer see. Any change to what's in scope drops the selection so
+   * the count always matches the rows on screen.
    */
   function clearSelectionOnScopeChange() {
     setSelected((prev) => (prev.size === 0 ? prev : new Set()));
@@ -141,9 +270,10 @@ export function UsersPage() {
 
   const suspendReasonTooLong = suspendReason.length > REASON_MAX_LENGTH;
   const suspendDaysError = validateDurationDays(suspendDays);
+  const suspendInvalid = !suspendReason.trim() || suspendReasonTooLong || !!suspendDaysError;
 
   async function confirmSuspend() {
-    if (!suspending || !suspendReason.trim() || suspendReasonTooLong || suspendDaysError) return;
+    if (!suspending || suspendInvalid) return;
     const days = suspendDays.trim() ? Number(suspendDays) : undefined;
     setBulkBusy(true);
     try {
@@ -184,8 +314,6 @@ export function UsersPage() {
         setResetSentId(id);
         setTimeout(() => setResetSentId((cur) => (cur === id ? null : cur)), 3000);
       } else {
-        // sendPasswordReset returns false rather than throwing, so this
-        // branch was previously a silent no-op — the button just stopped.
         showToast("Could not send the reset email. Please try again.", "error");
       }
     } finally {
@@ -193,12 +321,7 @@ export function UsersPage() {
     }
   }
 
-  /**
-   * Exports the checked rows when any are checked; otherwise falls back to
-   * everything matching the current search + role filter. Selection used to
-   * be ignored entirely here — checking 3 users and hitting Export silently
-   * downloaded every filtered row instead of just those 3.
-   */
+  /** Exports the checked rows when any are checked; otherwise everything matching the filters. */
   const exportScope = selected.size > 0 ? filtered.filter((u) => selected.has(u.id)) : filtered;
 
   function exportCsv() {
@@ -212,415 +335,303 @@ export function UsersPage() {
   const total = users.length;
   const providers = users.filter((u) => u.isProvider).length;
   const customers = users.filter((u) => !u.isProvider).length;
+  const suspended = users.filter((u) => u.status === "Suspended").length;
   const deleted = users.filter((u) => u.status === "Deleted").length;
   const reviewing = users.find((u) => u.id === reviewingId) ?? null;
-  const paginated = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+
+  const suspendFields = (
+    <div className="space-y-2">
+      <div>
+        <Input
+          autoFocus
+          placeholder="Reason (required)"
+          aria-label="Suspension reason (required)"
+          aria-invalid={suspendReasonTooLong || undefined}
+          value={suspendReason}
+          onChange={(e) => setSuspendReason(e.target.value)}
+        />
+        <div className={cn("mt-1 text-right text-[11px] tabular", suspendReasonTooLong ? "text-danger" : "text-subtle")}>
+          {suspendReason.length}/{REASON_MAX_LENGTH}
+        </div>
+      </div>
+      <div>
+        <Input
+          placeholder="Duration in days (blank = indefinite)"
+          aria-label="Suspension duration in days (leave blank for indefinite)"
+          aria-invalid={!!suspendDaysError || undefined}
+          type="number"
+          min={1}
+          max={3650}
+          step={1}
+          value={suspendDays}
+          onChange={(e) => setSuspendDays(e.target.value)}
+        />
+        {suspendDaysError && <div className="mt-1 text-[11.5px] text-danger">{suspendDaysError}</div>}
+      </div>
+    </div>
+  );
 
   return (
     <div>
-      <div className="flex items-start justify-between flex-wrap gap-3 mb-4">
-        <div>
-          <div className="text-white font-bold" style={{ fontSize: "var(--fs-2xl)", letterSpacing: "-0.025em" }}>Users</div>
-          <div style={{ fontSize: "var(--fs-sm)", color: "var(--text-muted)", marginTop: 5, lineHeight: 1.45 }}>Search, review, and moderate client and provider accounts.</div>
-        </div>
-        <button
-          onClick={() => setConfirmingExport(true)}
-          disabled={exportScope.length === 0}
-          title={selected.size > 0 ? "Download only the checked rows" : "Download the rows currently shown"}
-          className="flex items-center gap-1.5 font-semibold transition-opacity hover:opacity-80 disabled:opacity-40"
-          style={{ background: "var(--chip-bg)", border: "1px solid var(--border-md)", borderRadius: "var(--r-md)", padding: "7px 13px", fontSize: "var(--fs-xs)", color: "var(--text-light)", cursor: "pointer", fontFamily: "inherit" }}
-        >
-          <Download size={12} /> {selected.size > 0 ? `Export ${selected.size} selected` : "Export CSV"}
-        </button>
-      </div>
-
-      {/* The count chips used to be a second control for the exact filter the
-          segmented "All / Providers / Homeowners" below already runs — two
-          interactive elements changing the same state. The totals are worth
-          keeping visible; the duplicate click targets weren't. Plain summary
-          text, not buttons. */}
-      <div className="flex items-center gap-1.5 flex-wrap mb-3" style={{ fontSize: "var(--fs-xs)", color: "var(--text-muted)" }}>
-        <span className="flex items-center gap-1"><Users size={12} /> <span className="font-semibold text-white tabular">{total}</span> total</span>
-        <span aria-hidden="true">·</span>
-        <span className="flex items-center gap-1"><Wrench size={12} /> <span className="font-semibold text-white tabular">{providers}</span> providers</span>
-        <span aria-hidden="true">·</span>
-        <span className="flex items-center gap-1"><Home size={12} /> <span className="font-semibold text-white tabular">{customers}</span> clients</span>
-      </div>
-
-      <div className="rounded-xl overflow-hidden" style={{ background: "var(--card-bg)", border: "1px solid var(--card-border)" }}>
-      <div className="flex items-center gap-2.5 flex-wrap" style={{ padding: "12px 14px", borderBottom: "1px solid var(--card-border)" }}>
-        <div className="relative flex-1" style={{ minWidth: 200, maxWidth: 360 }}>
-          <Search size={13} className="absolute top-1/2 -translate-y-1/2 left-3 opacity-40" color="white" />
-          <input
-            className="w-full text-white outline-none"
-            placeholder="Search by name, email…"
-            aria-label="Search users by name or email"
-            value={search}
-            onChange={(e) => { setSearch(e.target.value); clearSelectionOnScopeChange(); }}
-            style={{ background: "var(--input-bg)", border: "1px solid var(--border-md)", height: 38, borderRadius: "var(--r-md)", padding: "0 13px 0 36px", fontSize: "var(--fs-sm)", fontFamily: "inherit" }}
-          />
-        </div>
-        <div className="inline-flex" style={{ background: "var(--chip-bg)", padding: 3, borderRadius: "var(--r-md)", gap: 2 }}>
-          {([["all", "All"], ["provider", "Providers"], ["customer", "Clients"]] as [RoleFilter, string][]).map(([f, label]) => (
-            <button key={f} onClick={() => { setRoleFilter(f); clearSelectionOnScopeChange(); }}
-            className={clsx("rounded-lg font-medium cursor-pointer transition-colors", roleFilter !== f && "text-gray-500 hover:text-gray-300")}
-              style={{ padding: "7px 11px", fontSize: "var(--fs-xs)", background: roleFilter === f ? "var(--indigo-dark)" : "transparent", color: roleFilter === f ? "var(--indigo-light)" : undefined, border: "none", fontFamily: "inherit" }}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
-        <div className="inline-flex" style={{ background: "var(--chip-bg)", padding: 3, borderRadius: "var(--r-md)", gap: 2 }} aria-label="Filter users by status">
-          {([['all', 'All statuses'], ['active', 'Active'], ['suspended', 'Suspended'], ['deleted', `Deleted${deleted ? ` (${deleted})` : ''}`]] as [StatusFilter, string][]).map(([f, label]) => (
-              <button key={f} onClick={() => { setStatusFilter(f); clearSelectionOnScopeChange(); }} className={clsx("rounded-lg font-medium cursor-pointer transition-colors", statusFilter !== f && "text-gray-500 hover:text-gray-300")} style={{ padding: "7px 10px", fontSize: "var(--fs-xs)", background: statusFilter === f ? "var(--indigo-dark)" : "transparent", color: statusFilter === f ? "var(--indigo-light)" : undefined, border: "none", fontFamily: "inherit" }}>{label}</button>
-          ))}
-        </div>
-        <select
-          aria-label="Filter users by join date"
-          value={joinedFilter}
-          onChange={(e) => { setJoinedFilter(e.target.value as JoinedFilter); clearSelectionOnScopeChange(); }}
-          style={{ background: "var(--chip-bg)", border: "1px solid var(--border-md)", borderRadius: "var(--r-md)", height: 34, padding: "0 10px", fontSize: "var(--fs-xs)", color: "var(--text-light)", fontFamily: "inherit" }}
-        >
-          <option value="all">Joined: any time</option>
-          <option value="7d">New: last 7 days</option>
-          <option value="30d">New: last 30 days</option>
-        </select>
-        <select
-          aria-label="Filter providers by verification status"
-          value={verificationFilter}
-          onChange={(e) => { setVerificationFilter(e.target.value as VerificationFilter); clearSelectionOnScopeChange(); }}
-          style={{ background: "var(--chip-bg)", border: "1px solid var(--border-md)", borderRadius: "var(--r-md)", height: 34, padding: "0 10px", fontSize: "var(--fs-xs)", color: "var(--text-light)", fontFamily: "inherit" }}
-        >
-          <option value="all">Verification: any</option>
-          <option value="Verified">Verified</option>
-          <option value="Pending review">Pending review</option>
-          <option value="Rejected">Rejected</option>
-          <option value="Not submitted">Not submitted</option>
-        </select>
-        <span style={{ fontSize: "var(--fs-xs)", color: "var(--text-muted)" }}>{filtered.length.toLocaleString()} {filtered.length === 1 ? "user" : "users"}</span>
-      </div>
-
-      {selected.size > 0 && (
-        <div className="flex items-center gap-3 flex-wrap" style={{ fontSize: "var(--fs-xs)", padding: "10px 14px", borderBottom: "1px solid var(--card-border)" }}>
-          <span style={{ color: "var(--text-muted)" }}>{selected.size} selected</span>
-          <button
-            onClick={activateSelected}
-            disabled={bulkBusy}
-            className="flex items-center gap-1.5 font-semibold transition-colors disabled:opacity-40"
-            style={{ background: "rgba(34,197,94,0.15)", border: "1px solid rgba(34,197,94,0.2)", borderRadius: "var(--r-md)", padding: "4px 12px", fontSize: "var(--fs-xs)", color: "var(--success-text)", cursor: "pointer", fontFamily: "inherit" }}
+      <PageHeader
+        eyebrow="Operations"
+        title="Users"
+        description="Search, review, and moderate client and provider accounts."
+        actions={
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setConfirmingExport(true)}
+            disabled={exportScope.length === 0}
+            title={selected.size > 0 ? "Download only the checked rows" : "Download the rows currently shown"}
           >
-            <CheckCircle size={11} /> Activate selected
-          </button>
-          <button
-            onClick={openBulkSuspendPrompt}
-            disabled={bulkBusy}
-            className="flex items-center gap-1.5 font-semibold transition-colors disabled:opacity-40"
-            style={{ background: "rgba(245,158,11,0.15)", border: "1px solid rgba(245,158,11,0.2)", borderRadius: "var(--r-md)", padding: "4px 12px", fontSize: "var(--fs-xs)", color: "#f59e0b", cursor: "pointer", fontFamily: "inherit" }}
-          >
-            <PauseCircle size={11} /> Suspend selected
-          </button>
-        </div>
-      )}
+            <Download /> {selected.size > 0 ? `Export ${selected.size} selected` : "Export CSV"}
+          </Button>
+        }
+      />
 
-      {/* Bulk suspend prompt only — single-user suspend now lives in the drawer. */}
-      {suspending?.bulk && (
-        <div className="flex flex-col gap-2" style={{ background: "rgba(245,158,11,0.08)", borderBottom: "1px solid var(--card-border)", padding: "12px 14px" }}>
-          <div className="text-white font-semibold" style={{ fontSize: "var(--fs-sm)" }}>Suspend {selected.size} selected user(s)</div>
-          <input
-            autoFocus
-            placeholder="Reason (required)"
-            aria-label="Suspension reason (required)"
-            value={suspendReason}
-            onChange={(e) => setSuspendReason(e.target.value)}
-            className="text-white outline-none"
-            style={{ background: "var(--input-bg)", border: `1px solid ${suspendReasonTooLong ? "rgba(239,68,68,0.5)" : "var(--border-md)"}`, borderRadius: "var(--r-md)", padding: "7px 11px", fontSize: "var(--fs-xs)", fontFamily: "inherit" }}
-          />
-          <div style={{ fontSize: "var(--fs-2xs)", color: suspendReasonTooLong ? "var(--danger-text)" : "var(--text-muted)", marginTop: -4 }}>
-            {suspendReason.length}/{REASON_MAX_LENGTH}
-          </div>
-          <input
-            placeholder="Duration in days (blank = indefinite)"
-            aria-label="Suspension duration in days (leave blank for indefinite)"
-            type="number"
-            min={1}
-            max={3650}
-            step={1}
-            value={suspendDays}
-            onChange={(e) => setSuspendDays(e.target.value)}
-            className="text-white outline-none"
-            style={{ background: "var(--input-bg)", border: `1px solid ${suspendDaysError ? "rgba(239,68,68,0.5)" : "var(--border-md)"}`, borderRadius: "var(--r-md)", padding: "7px 11px", fontSize: "var(--fs-xs)", fontFamily: "inherit", maxWidth: 240 }}
-          />
-          {suspendDaysError && (
-            <div style={{ fontSize: "var(--fs-2xs)", color: "var(--danger-text)", marginTop: -4 }}>{suspendDaysError}</div>
-          )}
-          <div className="flex items-center gap-2 mt-1">
-            <button
-              onClick={confirmSuspend}
-              disabled={bulkBusy || !suspendReason.trim() || suspendReasonTooLong || !!suspendDaysError}
-              className="font-semibold transition-colors disabled:opacity-40"
-              style={{ background: "rgba(245,158,11,0.2)", border: "1px solid rgba(245,158,11,0.3)", borderRadius: "var(--r-md)", padding: "5px 14px", fontSize: "var(--fs-xs)", color: "#f59e0b", cursor: "pointer", fontFamily: "inherit" }}
-            >
-              {bulkBusy ? "Suspending…" : "Confirm suspend"}
-            </button>
-            <button
-              onClick={() => setSuspending(null)}
-              className="font-semibold transition-colors"
-              style={{ background: "transparent", border: "1px solid var(--border-md)", borderRadius: "var(--r-md)", padding: "5px 14px", fontSize: "var(--fs-xs)", color: "var(--text-muted)", cursor: "pointer", fontFamily: "inherit" }}
-            >
-              Cancel
-            </button>
-          </div>
-        </div>
-      )}
+      <SummaryStrip
+        items={[
+          { icon: Users, label: "total", value: total.toLocaleString() },
+          { icon: Wrench, label: "providers", value: providers.toLocaleString() },
+          { icon: Home, label: "clients", value: customers.toLocaleString() },
+          ...(suspended ? [{ icon: PauseCircle, label: "suspended", value: suspended.toLocaleString() }] : []),
+        ]}
+      />
 
-        <div
-          className="overflow-x-auto pb-1"
-          role="region"
-          aria-label="Users table"
-          tabIndex={0}
-          style={{ scrollbarColor: "var(--border-md) transparent" }}
-        >
-          <table className="data-table" style={{ minWidth: 620 }}>
-            <thead>
-              <tr>
-                <th style={{ width: 30 }}>
-                  <input
-                    type="checkbox"
-                    className={clsx("row-checkbox", selected.size > 0 && "always-visible")}
-                    aria-label="Select all users"
-                    checked={allSelected}
-                    onChange={toggleAll}
-                    disabled={selectable.length === 0}
-                  />
-                </th>
-                <th>User</th>
-                <th>Role</th>
-                <th>Status</th>
-                <th>Verification</th>
-                <th className="hidden md:table-cell">Joined</th>
-                <th className="hidden lg:table-cell">Activity</th>
-                <th style={{ width: 50 }}></th>
-              </tr>
-            </thead>
-            <tbody>
-              {paginated.map((u) => (
-                <tr key={u.id} onClick={() => setReviewingId(u.id)} style={{ cursor: "pointer" }}>
-                  <td onClick={(e) => e.stopPropagation()}>
-                    {u.rolePlain !== "Admin" && (
-                      <input
-                        type="checkbox"
-                        className={clsx("row-checkbox", selected.size > 0 && "always-visible")}
-                        aria-label={`Select ${u.name}`}
-                        checked={selected.has(u.id)}
-                        onChange={() => toggleOne(u.id)}
-                      />
-                    )}
-                  </td>
-                  <td>
-                    <div className="flex items-center gap-2.5">
-                      <div
-                        className="flex items-center justify-center flex-shrink-0 font-bold"
-                        style={{
-                          width: 34,
-                          height: 34,
-                          borderRadius: "var(--r-md)",
-                          fontSize: "var(--fs-2xs)",
-                          background: u.isProvider ? "rgba(34,195,214,0.10)" : "rgba(34,197,94,0.10)",
-                          color: u.isProvider ? "#7ce3eb" : "#61d98a",
-                        }}
-                      >
-                        {u.initials}
-                      </div>
-                      <div>
-                        <div className="text-white font-medium" style={{ fontSize: "var(--fs-xs)" }}>{u.name}</div>
-                        <div style={{ fontSize: "var(--fs-3xs)", color: "var(--text-muted)" }}>{u.email}</div>
-                      </div>
-                    </div>
-                  </td>
-                  <td>
-                    <span className="badge" style={u.isProvider ? { background: "rgba(34,195,214,0.08)", borderColor: "rgba(34,195,214,0.14)", color: "#79dce6" } : { background: "rgba(34,197,94,0.08)", borderColor: "rgba(34,197,94,0.14)", color: "#5ed889" }}>
-                      {u.role}
-                    </span>
-                  </td>
-                  <td><span className={clsx("badge", `badge-${u.status.toLowerCase()}`)}>{u.status}</span></td>
-                  <td>
-                    {u.isProvider
-                      ? <span className={clsx("badge", u.verificationClass)}>{u.verification}</span>
-                      : <span style={{ color: "var(--text-muted)", fontSize: "var(--fs-xs)" }}>—</span>}
-                  </td>
-                  <td className="hidden md:table-cell" style={{ color: "var(--text-light)", fontSize: "var(--fs-xs)" }}>{u.joined}</td>
-                  <td className="hidden lg:table-cell" style={{ color: "var(--text-light)", fontSize: "var(--fs-xs)" }}>{u.activity}</td>
-                  <td onClick={(e) => e.stopPropagation()}>
-                    <button
-                      title="More actions"
-                      onClick={() => setReviewingId(u.id)}
-                      aria-label={`Show details for ${u.name}`}
-                      className="flex items-center justify-center rounded-lg transition-colors hover:bg-white/10"
-                      style={{ width: 30, height: 30, background: "transparent", border: "none", cursor: "pointer", color: "var(--text-muted)", fontSize: "var(--fs-xl)", letterSpacing: 2 }}
-                    >
-                      ···
-                    </button>
-                  </td>
-                </tr>
-              ))}
-              {filtered.length === 0 && (
-                <tr>
-                  <td colSpan={8} className="text-center py-12" style={{ color: "var(--text-muted)", fontSize: "var(--fs-md)" }}>
-                    {/* Three distinct states — saying "No users yet" while the
-                        initial load is still in flight (up to a 60s Render
-                        cold start) would be a confident lie. */}
-                    {loading
-                      ? "Loading users…"
-                      : users.length === 0
-                        ? "No users yet."
-                        : "No users match this search or filter."}
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-        <div className="md:hidden px-4 py-2" style={{ color: "var(--text-muted)", fontSize: "var(--fs-2xs)" }}>
-          Swipe horizontally to view all user details.
-        </div>
-        <Pagination page={page} pageSize={PAGE_SIZE} total={filtered.length} onPageChange={setPage} itemLabel="users" />
-      </div>
+      <TableCard
+        toolbar={
+          <>
+            <SearchField
+              className="w-full sm:w-64"
+              value={search}
+              onChange={(v) => {
+                setSearch(v);
+                clearSelectionOnScopeChange();
+              }}
+              placeholder="Search by name, email…"
+              label="Search users by name or email"
+            />
+            <FilterTabs
+              id="users-role"
+              label="Filter users by role"
+              value={roleFilter}
+              onChange={(f) => {
+                setRoleFilter(f);
+                clearSelectionOnScopeChange();
+              }}
+              options={[
+                { value: "all", label: "All" },
+                { value: "provider", label: "Providers" },
+                { value: "customer", label: "Clients" },
+              ]}
+            />
+            <SelectFilter
+              label="Filter users by status"
+              value={statusFilter}
+              onChange={(v) => {
+                setStatusFilter(v as StatusFilter);
+                clearSelectionOnScopeChange();
+              }}
+            >
+              <option value="all">Status: any</option>
+              <option value="active">Active</option>
+              <option value="suspended">Suspended</option>
+              <option value="deleted">Deleted{deleted ? ` (${deleted})` : ""}</option>
+            </SelectFilter>
+            <SelectFilter
+              label="Filter users by join date"
+              value={joinedFilter}
+              onChange={(v) => {
+                setJoinedFilter(v as JoinedFilter);
+                clearSelectionOnScopeChange();
+              }}
+            >
+              <option value="all">Joined: any time</option>
+              <option value="7d">New: last 7 days</option>
+              <option value="30d">New: last 30 days</option>
+            </SelectFilter>
+            <SelectFilter
+              label="Filter providers by verification status"
+              value={verificationFilter}
+              onChange={(v) => {
+                setVerificationFilter(v as VerificationFilter);
+                clearSelectionOnScopeChange();
+              }}
+            >
+              <option value="all">Verification: any</option>
+              <option value="Verified">Verified</option>
+              <option value="Pending review">Pending review</option>
+              <option value="Rejected">Rejected</option>
+              <option value="Not submitted">Not submitted</option>
+            </SelectFilter>
+            <span className="ml-auto tabular text-[12px] text-muted-foreground">
+              {filtered.length.toLocaleString()} {filtered.length === 1 ? "user" : "users"}
+            </span>
+          </>
+        }
+      >
+        <DataTable
+          label="Users table"
+          columns={columns}
+          rows={paginated}
+          getRowId={(u) => u.id}
+          onRowClick={(u) => setReviewingId(u.id)}
+          activeRowId={reviewingId}
+          sort={sort}
+          onSort={(id) => {
+            toggleSort(id);
+            setPage(1);
+          }}
+          minWidth={720}
+          selection={{
+            selected,
+            onToggle: toggleOne,
+            onToggleAll: toggleAll,
+            allSelected,
+            isSelectable: (id) => selectableIds.has(id),
+            rowLabel: (id) => `Select ${users.find((u) => u.id === id)?.name ?? "user"}`,
+            allLabel: `Select all ${selectable.length} matching users`,
+            disabledAll: selectable.length === 0,
+          }}
+          empty={
+            <TableEmpty>
+              {/* Three distinct states — saying "No users yet" while the initial
+                  load is still in flight (up to a 60s Render cold start) would
+                  be a confident lie. */}
+              {loading ? "Loading users…" : users.length === 0 ? "No users yet." : "No users match this search or filter."}
+            </TableEmpty>
+          }
+        />
+        <Pagination page={page} pageSize={PAGE_SIZE} total={filtered.length} onPageChange={(next) => { setSelected(new Set()); setPage(next); }} itemLabel="users" />
+      </TableCard>
+
+      <BulkBar count={selected.size} noun="user" onClear={() => setSelected(new Set())}>
+        <Button size="sm" variant="outline" onClick={activateSelected} disabled={bulkBusy}>
+          <CheckCircle className="text-ok" /> Reinstate
+        </Button>
+        <Button size="sm" variant="outline" onClick={openBulkSuspendPrompt} disabled={bulkBusy} className="text-warn">
+          <PauseCircle /> Suspend
+        </Button>
+      </BulkBar>
 
       <ReviewDrawer
         open={reviewing !== null}
-        onClose={() => setReviewingId(null)}
+        onClose={() => {
+          setReviewingId(null);
+          if (suspending && !suspending.bulk) setSuspending(null);
+        }}
         title={reviewing?.name ?? ""}
-        subtitle={reviewing ? `${reviewing.role} account` : undefined}
+        subtitle={reviewing ? `${reviewing.role} account · Joined ${reviewing.joined}` : undefined}
         footer={
-          reviewing?.rolePlain !== "Admin" ? (
+          reviewing && reviewing.rolePlain !== "Admin" && reviewing.status !== "Deleted" ? (
             <>
-              <button
-                onClick={() => setReviewingId(null)}
-                className="flex-1 font-semibold transition-colors"
-                style={{ background: "var(--chip-bg)", border: "1px solid var(--border-md)", borderRadius: "var(--r-md)", padding: "9px 14px", fontSize: "var(--fs-sm)", color: "var(--text-light)", cursor: "pointer", fontFamily: "inherit" }}
-              >
+              <Button variant="outline" onClick={() => setReviewingId(null)} className="flex-1">
                 Close
-              </button>
-              {reviewing?.status === "Active" ? (
-                <button
-                  onClick={() => reviewing && openSuspendPrompt(reviewing.id)}
-                  className="flex-1 flex items-center justify-center gap-1.5 font-semibold transition-colors"
-                  style={{ background: "#8b3b3b", border: "none", borderRadius: "var(--r-md)", padding: "9px 14px", fontSize: "var(--fs-sm)", color: "#fff", cursor: "pointer", fontFamily: "inherit" }}
-                >
-                  <PauseCircle size={13} /> Suspend Account
-                </button>
-              ) : reviewing?.status === "Suspended" ? (
-                <button
-                  onClick={() => reviewing && handleActivateOne(reviewing.id)}
-                  disabled={activateBusyId === reviewing?.id}
-                  className="flex-1 flex items-center justify-center gap-1.5 font-semibold transition-colors disabled:opacity-50"
-                  style={{ background: "#1f6b45", border: "none", borderRadius: "var(--r-md)", padding: "9px 14px", fontSize: "var(--fs-sm)", color: "#fff", cursor: "pointer", fontFamily: "inherit" }}
-                >
-                  <CheckCircle size={13} /> {activateBusyId === reviewing?.id ? "Reinstating…" : "Reinstate Account"}
-                </button>
+              </Button>
+              {reviewing.status === "Active" ? (
+                <Button variant="destructive" onClick={() => openSuspendPrompt(reviewing.id)} className="flex-1">
+                  <PauseCircle /> Suspend account
+                </Button>
+              ) : reviewing.status === "Suspended" ? (
+                <Button onClick={() => handleActivateOne(reviewing.id)} disabled={activateBusyId === reviewing.id} className="flex-1">
+                  <CheckCircle /> {activateBusyId === reviewing.id ? "Reinstating…" : "Reinstate account"}
+                </Button>
               ) : null}
             </>
           ) : (
-            <button
-              onClick={() => setReviewingId(null)}
-              className="flex-1 font-semibold transition-colors"
-              style={{ background: "var(--chip-bg)", border: "1px solid var(--border-md)", borderRadius: "var(--r-md)", padding: "9px 14px", fontSize: "var(--fs-sm)", color: "var(--text-light)", cursor: "pointer", fontFamily: "inherit" }}
-            >
+            <Button variant="outline" onClick={() => setReviewingId(null)} className="flex-1">
               Close
-            </button>
+            </Button>
           )
         }
       >
         {reviewing && (
           <>
-            <DrawerSection>
-              <div className="grid grid-cols-2 gap-3">
+            <div className="mb-5 flex items-center gap-3.5">
+              <Avatar initials={reviewing.initials} size="lg" tone={reviewing.isProvider ? "accent" : "ok"} />
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-2">
+                  <Badge tone={STATUS_TONE[reviewing.status] ?? "neutral"} dot>{reviewing.status}</Badge>
+                  {reviewing.isProvider && (
+                    <Badge tone={VERIFICATION_TONE[reviewing.verification] ?? "neutral"}>{reviewing.verification}</Badge>
+                  )}
+                </div>
+                <div className="mt-1 truncate text-[12.5px] text-muted-foreground">{reviewing.email}</div>
+              </div>
+            </div>
+
+            {reviewing.status === "Suspended" && (
+              <div className="mb-5 rounded-[10px] border border-danger/25 bg-danger-soft px-3.5 py-3 text-[12.5px]">
+                <div className="font-medium text-danger">
+                  Suspended {reviewing.suspendedUntil === "—" ? "indefinitely" : `until ${reviewing.suspendedUntil}`}
+                </div>
+                <div className="mt-0.5 text-muted-foreground">{reviewing.suspensionReason}</div>
+              </div>
+            )}
+
+            <DrawerSection title="Contact">
+              <div className="grid grid-cols-2 gap-4">
                 <DrawerField label="Email" value={reviewing.email} />
                 <DrawerField label="Phone" value={reviewing.phone} />
                 <DrawerField label="City" value={reviewing.city} />
-                <DrawerField label="Status" value={<span className={clsx("badge", `badge-${reviewing.status.toLowerCase()}`)}>{reviewing.status}</span>} />
                 <DrawerField label="Joined" value={reviewing.joined} />
+              </div>
+            </DrawerSection>
+
+            <DrawerSection title="Activity">
+              <div className="grid grid-cols-2 gap-4">
                 <DrawerField label="Activity" value={reviewing.activity} />
                 {reviewing.isProvider && (
                   <>
                     <DrawerField label="Category" value={reviewing.category} />
-                    <DrawerField label="ID verification" value={reviewing.verification} />
+                    <DrawerField label="Jobs completed" value={reviewing.jobsCompleted} />
                     <DrawerField label="Rating" value={reviewing.rating} />
-                  </>
-                )}
-                {reviewing.status === "Suspended" && (
-                  <>
-                    <DrawerField label="Suspended until" value={reviewing.suspendedUntil === "—" ? "Indefinite" : reviewing.suspendedUntil} />
-                    <DrawerField label="Suspension reason" value={reviewing.suspensionReason} />
                   </>
                 )}
               </div>
             </DrawerSection>
 
             {suspending && !suspending.bulk && suspending.id === reviewing.id && (
-              <DrawerSection>
-                <div style={{ fontSize: "var(--fs-3xs)", fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 10 }}>Suspend this user</div>
-                <input
-                  autoFocus
-                  placeholder="Reason (required)"
-                  aria-label="Suspension reason (required)"
-                  value={suspendReason}
-                  onChange={(e) => setSuspendReason(e.target.value)}
-                  className="w-full text-white outline-none mb-2"
-                  style={{ background: "var(--input-bg)", border: `1px solid ${suspendReasonTooLong ? "rgba(239,68,68,0.5)" : "var(--border-md)"}`, borderRadius: "var(--r-md)", padding: "8px 11px", fontSize: "var(--fs-sm)", fontFamily: "inherit" }}
-                />
-                <div style={{ fontSize: "var(--fs-2xs)", color: suspendReasonTooLong ? "var(--danger-text)" : "var(--text-muted)", marginBottom: "var(--sp-2)" }}>
-                  {suspendReason.length}/{REASON_MAX_LENGTH}
-                </div>
-                <input
-                  placeholder="Duration in days (blank = indefinite)"
-                  aria-label="Suspension duration in days (leave blank for indefinite)"
-                  type="number"
-                  min={1}
-                  max={3650}
-                  step={1}
-                  value={suspendDays}
-                  onChange={(e) => setSuspendDays(e.target.value)}
-                  className="w-full text-white outline-none"
-                  style={{ background: "var(--input-bg)", border: `1px solid ${suspendDaysError ? "rgba(239,68,68,0.5)" : "var(--border-md)"}`, borderRadius: "var(--r-md)", padding: "8px 11px", fontSize: "var(--fs-sm)", fontFamily: "inherit" }}
-                />
-                {suspendDaysError && (
-                  <div style={{ fontSize: "var(--fs-2xs)", color: "var(--danger-text)", marginTop: "var(--sp-1)" }}>{suspendDaysError}</div>
-                )}
-                <div className="flex items-center gap-2 mt-3">
-                  <button
-                    onClick={confirmSuspend}
-                    disabled={bulkBusy || !suspendReason.trim() || suspendReasonTooLong || !!suspendDaysError}
-                    className="font-semibold transition-colors disabled:opacity-40"
-                    style={{ background: "rgba(245,158,11,0.2)", border: "1px solid rgba(245,158,11,0.3)", borderRadius: "var(--r-md)", padding: "7px 16px", fontSize: "var(--fs-xs)", color: "#f59e0b", cursor: "pointer", fontFamily: "inherit" }}
-                  >
-                    {bulkBusy ? "Suspending…" : "Confirm suspend"}
-                  </button>
-                  <button
-                    onClick={() => setSuspending(null)}
-                    className="font-semibold transition-colors"
-                    style={{ background: "transparent", border: "1px solid var(--border-md)", borderRadius: "var(--r-md)", padding: "7px 16px", fontSize: "var(--fs-xs)", color: "var(--text-muted)", cursor: "pointer", fontFamily: "inherit" }}
-                  >
-                    Cancel
-                  </button>
+              <DrawerSection title="Suspend this user">
+                <div className="rounded-[10px] border border-danger/25 bg-danger-soft/50 p-3.5">
+                  {suspendFields}
+                  <div className="mt-3 flex items-center gap-2">
+                    <Button variant="destructive" size="sm" onClick={confirmSuspend} disabled={bulkBusy || suspendInvalid}>
+                      {bulkBusy ? "Suspending…" : "Confirm suspend"}
+                    </Button>
+                    <Button variant="ghost" size="sm" onClick={() => setSuspending(null)}>
+                      Cancel
+                    </Button>
+                  </div>
                 </div>
               </DrawerSection>
             )}
 
             {reviewing.rolePlain !== "Admin" && (
-              <button
-                onClick={() => handleSendReset(reviewing.id)}
-                disabled={resetBusyId === reviewing.id}
-                className="flex items-center gap-1.5 font-semibold transition-colors disabled:opacity-40"
-                style={{ background: "var(--indigo-dark)", border: "1px solid rgba(34,195,214,0.25)", borderRadius: "var(--r-md)", padding: "7px 14px", fontSize: "var(--fs-xs)", color: "var(--indigo-light)", cursor: "pointer", fontFamily: "inherit" }}
-              >
-                <KeyRound size={12} />
-                {resetSentId === reviewing.id ? "Reset email sent" : resetBusyId === reviewing.id ? "Sending…" : "Send password reset"}
-              </button>
+              <DrawerSection title="Account access">
+                <Button variant="outline" size="sm" onClick={() => handleSendReset(reviewing.id)} disabled={resetBusyId === reviewing.id}>
+                  {resetSentId === reviewing.id ? <MailCheck className="text-ok" /> : <KeyRound />}
+                  {resetSentId === reviewing.id ? "Reset email sent" : resetBusyId === reviewing.id ? "Sending…" : "Send password reset"}
+                </Button>
+              </DrawerSection>
             )}
           </>
         )}
       </ReviewDrawer>
+
+      <ConfirmDialog
+        open={!!suspending?.bulk}
+        title={`Suspend ${selected.size} selected user${selected.size === 1 ? "" : "s"}?`}
+        message="They won't be able to sign in or take jobs until reinstated. The reason is saved on each account."
+        confirmLabel="Confirm suspend"
+        busy={bulkBusy}
+        confirmDisabled={suspendInvalid}
+        onConfirm={confirmSuspend}
+        onCancel={() => setSuspending(null)}
+      >
+        {suspendFields}
+      </ConfirmDialog>
 
       <ConfirmDialog
         open={confirmingExport}

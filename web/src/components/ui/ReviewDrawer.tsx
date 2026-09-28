@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { X } from "lucide-react";
+import { cn } from "@/lib/utils";
 
 interface ReviewDrawerProps {
   open: boolean;
@@ -71,16 +72,12 @@ export function ReviewDrawer({ open, title, subtitle, onClose, children, footer 
   if (!mounted) return null;
 
   return createPortal(
-    <>
+    <div className="ui-root theme-portal">
       <div
-        className="fixed inset-0"
-        style={{
-          background: "rgba(3,7,11,0.56)",
-          zIndex: 150,
-          opacity: open ? 1 : 0,
-          pointerEvents: open ? "auto" : "none",
-          transition: "opacity 0.2s ease",
-        }}
+        className={cn(
+          "fixed inset-0 z-[150] bg-overlay backdrop-blur-[1px] transition-opacity duration-200",
+          open ? "opacity-100" : "pointer-events-none opacity-0",
+        )}
         onClick={onClose}
       />
       <aside
@@ -91,43 +88,30 @@ export function ReviewDrawer({ open, title, subtitle, onClose, children, footer 
         aria-hidden={!open}
         inert={!open ? true : undefined}
         tabIndex={-1}
-        className="fixed top-0 right-0 h-full flex flex-col outline-none theme-portal"
-        style={{
-          width: "min(520px, 92vw)",
-          background: "var(--panel-bg)",
-          borderLeft: "1px solid var(--panel-border)",
-          zIndex: 160,
-          transform: open ? "translateX(0)" : "translateX(100%)",
-          transition: "transform 0.22s ease",
-          boxShadow: "-24px 0 60px rgba(0,0,0,0.34)",
-        }}
+        className={cn(
+          "fixed right-0 top-0 z-[160] flex h-full w-[min(540px,94vw)] flex-col border-l border-border bg-popover text-popover-foreground shadow-ui-lg outline-none transition-transform duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] motion-reduce:transition-none",
+          open ? "translate-x-0" : "translate-x-full",
+        )}
       >
-        <div className="flex items-center justify-between flex-shrink-0" style={{ padding: "20px 22px", borderBottom: "1px solid var(--border)" }}>
-          <div>
-            <div id="review-drawer-title" className="text-white font-bold" style={{ fontSize: "var(--fs-lg)" }}>{title}</div>
-            {subtitle && <div style={{ fontSize: "var(--fs-2xs)", color: "var(--text-muted)", marginTop: 3 }}>{subtitle}</div>}
+        <div className="flex shrink-0 items-start justify-between gap-3 border-b border-border px-6 py-5">
+          <div className="min-w-0">
+            <div id="review-drawer-title" className="truncate text-[17px] font-semibold tracking-tight text-foreground">{title}</div>
+            {subtitle && <div className="mt-1 text-[12px] text-muted-foreground">{subtitle}</div>}
           </div>
           <button
             onClick={onClose}
             aria-label="Close"
-            className="flex items-center justify-center rounded-lg transition-colors hover:bg-white/10"
-            style={{ width: 30, height: 30, background: "transparent", border: "none", cursor: "pointer", color: "var(--text-muted)", flexShrink: 0 }}
+            className="grid size-8 shrink-0 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
-            <X size={15} />
+            <X className="size-4" />
           </button>
         </div>
 
-        <div className="flex-1 overflow-y-auto" style={{ padding: "20px 22px" }}>
-          {children}
-        </div>
+        <div className="flex-1 overflow-y-auto px-6 py-5">{children}</div>
 
-        {footer && (
-          <div className="flex-shrink-0 flex gap-2" style={{ padding: "14px 22px 18px", borderTop: "1px solid var(--border)", background: "var(--bg-header)" }}>
-            {footer}
-          </div>
-        )}
+        {footer && <div className="flex shrink-0 gap-2 border-t border-border bg-surface-2 px-6 py-4">{footer}</div>}
       </aside>
-    </>,
+    </div>,
     document.body,
   );
 }
@@ -135,18 +119,19 @@ export function ReviewDrawer({ open, title, subtitle, onClose, children, footer 
 /** Field label + value pair, matching the drawer's detail-grid style. */
 export function DrawerField({ label, value }: { label: string; value: React.ReactNode }) {
   return (
-    <div>
-      <div style={{ fontSize: "var(--fs-3xs)", fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 5 }}>{label}</div>
-      <div style={{ fontSize: "var(--fs-sm)", color: "var(--text-light)" }}>{value}</div>
+    <div className="min-w-0">
+      <div className="mb-1 text-[11px] font-medium uppercase tracking-[0.06em] text-subtle">{label}</div>
+      <div className="break-words text-[13px] text-foreground">{value}</div>
     </div>
   );
 }
 
 /** Section wrapper with consistent spacing/divider inside a drawer body. */
-export function DrawerSection({ children }: { children: React.ReactNode }) {
+export function DrawerSection({ children, title }: { children: React.ReactNode; title?: string }) {
   return (
-    <div style={{ paddingBottom: "var(--sp-5)", marginBottom: "var(--sp-5)", borderBottom: "1px solid var(--border)" }}>
+    <section className="mb-5 border-b border-border pb-5 last:mb-0 last:border-b-0 last:pb-0">
+      {title && <h3 className="mb-3 text-[11px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">{title}</h3>}
       {children}
-    </div>
+    </section>
   );
 }
