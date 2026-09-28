@@ -26,6 +26,29 @@
   });
   var modalOpener = null;
   var activePanelName = null;
+  var pendingDiscardAction = null;
+  var discardReturnFocus = null;
+
+  var discardPrompt = document.createElement("div");
+  discardPrompt.className = "auth-discard-prompt";
+  discardPrompt.setAttribute("data-auth-discard-prompt", "");
+  discardPrompt.setAttribute("role", "alertdialog");
+  discardPrompt.setAttribute("aria-modal", "true");
+  discardPrompt.setAttribute("aria-labelledby", "auth-discard-title");
+  discardPrompt.setAttribute("aria-describedby", "auth-discard-description");
+  discardPrompt.hidden = true;
+  discardPrompt.innerHTML =
+    '<div class="auth-discard-prompt__card">' +
+      '<h2 id="auth-discard-title">Leave this form?</h2>' +
+      '<p id="auth-discard-description">The information you entered has not been saved.</p>' +
+      '<div class="auth-discard-prompt__actions">' +
+        '<button class="button button--quiet" type="button" data-discard-cancel>Keep editing</button>' +
+        '<button class="button button--primary" type="button" data-discard-confirm>Discard</button>' +
+      '</div>' +
+    '</div>';
+  modal.appendChild(discardPrompt);
+  var discardCancelButton = discardPrompt.querySelector("[data-discard-cancel]");
+  var discardConfirmButton = discardPrompt.querySelector("[data-discard-confirm]");
 
   var panels = {
     welcome: document.getElementById("panel-welcome"),
@@ -72,8 +95,9 @@
 
   function getFocusableElements() {
     if (!modal) return [];
+    var scope = discardPrompt && !discardPrompt.hidden ? discardPrompt : modal;
     return Array.prototype.filter.call(
-      modal.querySelectorAll("a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex='-1'])"),
+      scope.querySelectorAll("a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex='-1'])"),
       function (element) {
         return element.getClientRects().length > 0;
       }
@@ -122,13 +146,52 @@
     return Array.prototype.some.call(form.querySelectorAll("input, select, textarea"), function (control) {
       if (control.disabled || control.type === "hidden") return false;
       if (control.closest(".auth-field[hidden], .auth-consent[hidden]")) return false;
-      return control.type === "checkbox" ? control.checked : control.value.trim() !== "";
+      // Consent checkboxes are choices, not partially entered account data.
+      // They should not block Back/Close behind a native confirmation prompt.
+      if (control.type === "checkbox" || control.type === "radio") return false;
+      return control.value.trim() !== "";
     });
   }
 
   function confirmDiscardAuthInput() {
-    return !hasUnsavedAuthInput() || window.confirm("Discard the information you entered?");
+    return !hasUnsavedAuthInput();
   }
+
+  function hideDiscardPrompt(restoreFocus) {
+    discardPrompt.hidden = true;
+    pendingDiscardAction = null;
+    var target = discardReturnFocus;
+    discardReturnFocus = null;
+    if (restoreFocus && target && target.isConnected && typeof target.focus === "function") {
+      target.focus();
+    }
+  }
+
+  function showDiscardPrompt(onDiscard) {
+    pendingDiscardAction = onDiscard;
+    discardReturnFocus = document.activeElement;
+    discardPrompt.hidden = false;
+    discardCancelButton.focus();
+  }
+
+  function requestDiscardAuthInput(onDiscard) {
+    if (!hasUnsavedAuthInput()) {
+      onDiscard();
+      return;
+    }
+    showDiscardPrompt(onDiscard);
+  }
+
+  function discardFormAndContinue() {
+    var action = pendingDiscardAction;
+    hideDiscardPrompt(false);
+    if (action) action();
+  }
+
+  discardCancelButton.addEventListener("click", function () {
+    hideDiscardPrompt(true);
+  });
+  discardConfirmButton.addEventListener("click", discardFormAndContinue);
 
   function resetAuthPanelState(name) {
     var panel = panels[name];
@@ -164,7 +227,15 @@
   }
 
   function closeModal() {
-    if (!confirmDiscardAuthInput()) return;
+    if (!confirmDiscardAuthInput()) {
+      showDiscardPrompt(closeModalWithoutConfirmation);
+      return;
+    }
+    closeModalWithoutConfirmation();
+  }
+
+  function closeModalWithoutConfirmation() {
+    hideDiscardPrompt(false);
     if (window.location.hash) {
       // `null` here, not "" — some tooling (Next's dev-mode HMR client, at
       // least) wraps history.pushState/replaceState and tries to tag the
@@ -219,22 +290,26 @@
 
   document.querySelectorAll("[data-back-to-welcome]").forEach(function (btn) {
     btn.addEventListener("click", function () {
-      if (confirmDiscardAuthInput()) window.location.hash = "join";
+      requestDiscardAuthInput(function () { window.location.hash = "join"; });
     });
   });
 
   document.querySelectorAll("[data-back-to-signin]").forEach(function (btn) {
     btn.addEventListener("click", function () {
-      if (!confirmDiscardAuthInput()) return;
-      window.__promoModalPinnedOpen = false;
-      window.location.hash = "login";
+      requestDiscardAuthInput(function () {
+        window.__promoModalPinnedOpen = false;
+        window.location.hash = "login";
+      });
     });
   });
 
   document.querySelectorAll(".auth-modal a[href^='#']").forEach(function (link) {
     link.addEventListener("click", function (event) {
       if (link.hasAttribute("data-open-doc")) return;
-      if (!confirmDiscardAuthInput()) event.preventDefault();
+      if (!hasUnsavedAuthInput()) return;
+      event.preventDefault();
+      var destination = link.hash;
+      requestDiscardAuthInput(function () { window.location.hash = destination; });
     });
   });
 
@@ -247,35 +322,59 @@
   // unhandled hash change that isn't in HASH_TO_PANEL falls through to
   // syncFromHash()'s "no matching panel" branch, which closes the whole modal.
   var docReturnPanel = "signup";
+  // The panels share one scroll container. Remember where the reader was in the
+  // form so "I agree" / "Back" land them on the same consent row, not the top.
+  var modalBody = document.querySelector(".auth-modal-body");
+  var docReturnScroll = 0;
 
-  document.querySelectorAll("[data-open-doc]").forEach(function (link) {
-    link.addEventListener("click", function (event) {
+  function returnFromDoc(checkbox) {
+    showPanel(docReturnPanel);
+    if (modalBody) modalBody.scrollTop = docReturnScroll;
+    if (!checkbox) return;
+    checkbox.focus({ preventScroll: true });
+    var row = checkbox.closest(".auth-consent");
+    if (row) {
+      row.classList.remove("is-invalid", "is-flash");
+      void row.offsetWidth; // restart the highlight if it is already running
+      row.classList.add("is-flash");
+    }
+  }
+
+  // Delegate these controls from the modal shell so they continue working if
+  // the app hydrates or replaces the consent markup after this script loads.
+  modal.addEventListener("click", function (event) {
+    var target = event.target;
+    if (!target || typeof target.closest !== "function") return;
+
+    var link = target.closest("[data-open-doc]");
+    if (link && modal.contains(link)) {
       event.preventDefault();
       var docName = link.getAttribute("data-open-doc");
       var parentPanel = link.closest(".auth-panel");
       if (parentPanel && parentPanel.id) {
         docReturnPanel = parentPanel.id.replace("panel-", "");
       }
+      docReturnScroll = modalBody ? modalBody.scrollTop : 0;
       panels.doc.querySelectorAll("[data-doc]").forEach(function (block) {
         block.hidden = block.getAttribute("data-doc") !== docName;
       });
       showPanel("doc");
-    });
-  });
+      if (modalBody) modalBody.scrollTop = 0;
+      return;
+    }
 
-  document.querySelectorAll("[data-doc-back]").forEach(function (btn) {
-    btn.addEventListener("click", function () {
-      if (confirmDiscardAuthInput()) showPanel(docReturnPanel);
-    });
-  });
+    var backButton = target.closest("[data-doc-back]");
+    if (backButton && modal.contains(backButton)) {
+      returnFromDoc(null);
+      return;
+    }
 
-  document.querySelectorAll("[data-doc-accept]").forEach(function (btn) {
-    btn.addEventListener("click", function () {
-      var docName = btn.getAttribute("data-doc-accept");
-      var checkbox = document.querySelector('[data-consent="' + docName + '"]');
-      if (checkbox) checkbox.checked = true;
-      showPanel(docReturnPanel);
-    });
+    var acceptButton = target.closest("[data-doc-accept]");
+    if (!acceptButton || !modal.contains(acceptButton)) return;
+    var acceptedDoc = acceptButton.getAttribute("data-doc-accept");
+    var checkbox = document.querySelector('[data-consent="' + acceptedDoc + '"]');
+    if (checkbox) checkbox.checked = true;
+    returnFromDoc(checkbox);
   });
 
   var backdropPointerStart = null;
@@ -300,6 +399,11 @@
   document.addEventListener("keydown", function (event) {
     if (overlay.hidden) return;
     if (event.key === "Escape") {
+      if (!discardPrompt.hidden) {
+        event.preventDefault();
+        hideDiscardPrompt(true);
+        return;
+      }
       closeModal();
       return;
     }
@@ -546,6 +650,11 @@
     });
   }
 
+  signupForm.addEventListener("change", function (event) {
+    var row = event.target.closest && event.target.closest(".auth-consent");
+    if (row && event.target.checked) row.classList.remove("is-invalid");
+  });
+
   signupForm.addEventListener("submit", function (event) {
     event.preventDefault();
     clearStatus(signupStatus);
@@ -578,13 +687,31 @@
     setInvalid(passwordField, !passwordValid);
     setInvalid(confirmField, !confirmValid);
     setInvalid(categoryField, isProvider && !categoryValid);
+    Array.prototype.forEach.call(signupForm.querySelectorAll(".auth-consent"), function (row) {
+      var box = row.querySelector("input[required]");
+      row.classList.toggle("is-invalid", !row.hidden && !!box && !box.checked);
+    });
 
-    if (!nameValid || !emailValid || !passwordValid || !confirmValid || !categoryValid || !consentsValid) {
+    var fieldsValid = nameValid && emailValid && passwordValid && confirmValid && categoryValid;
+    if (!fieldsValid || !consentsValid) {
       showStatus(
         signupStatus,
-        consentsValid ? "Check the highlighted fields above." : "Please accept the required consents to continue.",
+        !fieldsValid && !consentsValid
+          ? "Fill in the highlighted fields and accept the required consents."
+          : !fieldsValid
+            ? "Check the highlighted fields above."
+            : "Please accept the required consents to continue.",
         true
       );
+      // The status line sits under the button, often below the fold: take the
+      // reader to the first thing that needs fixing instead.
+      var firstProblem = signupForm.querySelector(
+        '.auth-field:not([hidden])[data-invalid="true"] input, .auth-field:not([hidden])[data-invalid="true"] select, .auth-consent.is-invalid input'
+      );
+      if (firstProblem) {
+        firstProblem.scrollIntoView({ block: "center", behavior: "smooth" });
+        firstProblem.focus({ preventScroll: true });
+      }
       return;
     }
 

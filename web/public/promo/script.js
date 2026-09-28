@@ -24,15 +24,14 @@
   var heroRoleLabel = document.querySelector("[data-hero-role-label]");
   var heroCaption = document.querySelector("[data-hero-caption]");
   var motionOverride = new URLSearchParams(window.location.search).get("motion");
-  var prefersReducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
-  function isMotionReduced() {
+  function isMotionDisabled() {
     return motionOverride === "off";
   }
-  function isCarouselMotionReduced() {
-    return motionOverride === "off" || (motionOverride !== "on" && prefersReducedMotion.matches);
+  if (isMotionDisabled()) {
+    document.documentElement.classList.add("motion-override-off");
+  } else {
+    document.documentElement.classList.add("motion-override-on");
   }
-  if (motionOverride === "on") document.documentElement.classList.add("motion-override-on");
-  if (motionOverride === "off") document.documentElement.classList.add("motion-override-off");
 
   var stories = {
     customer: {
@@ -42,40 +41,45 @@
       lede: "Describe what you need, compare service providers, and choose with confidence.",
       steps: [
         {
-          image: "../showcase-assets/customer/01-home-clean.png",
-          alt: "TaskBuddy homeowner home screen with service search and active jobs",
+          image: "/film/story/customer-1.jpg",
+          video: "/film/story/customer-1.mp4",
+          alt: "TaskBuddy homeowner home screen with wallet balance, services, and the Post button",
           caption: "Start with what you need.",
           title: "Start with what you need.",
           body: "Find a service, check your active jobs, and take the next step.",
           points: ["See your active jobs", "Know what to do next", "Move at your own pace"]
         },
         {
-          image: "../showcase-assets/customer/02-post-task-clean.png",
-          alt: "TaskBuddy homeowner screen for posting a task with details",
+          image: "/film/story/customer-2.jpg",
+          video: "/film/story/customer-2.mp4",
+          alt: "Homeowner posting a job: title, location, urgency, and budget",
           caption: "Tell service providers what you need.",
           title: "Tell service providers what you need.",
           body: "Add the service, location, schedule, and details in one request.",
           points: ["Describe the task clearly", "Choose a schedule", "Edit the request later"]
         },
         {
-          image: "../showcase-assets/customer/03-provider-profile-clean.png",
-          alt: "TaskBuddy homeowner view of a service provider profile",
-          caption: "Choose the right service provider.",
-          title: "Choose the right service provider.",
-          body: "Check a service provider’s profile and past work before you choose.",
-          points: ["See their experience", "Compare your options", "Choose with confidence"]
+          image: "/film/story/customer-3.jpg",
+          video: "/film/story/customer-3.mp4",
+          alt: "Homeowner comparing three proposals and hiring a verified provider",
+          caption: "Compare proposals, then hire.",
+          title: "Compare proposals, then hire.",
+          body: "See each service provider’s price, rating, and message side by side, then hire with one tap.",
+          points: ["Compare prices and ratings", "Read each proposal", "Hire with one tap"]
         },
         {
-          image: "../showcase-assets/customer/04-wallet-escrow-clean.png",
-          alt: "TaskBuddy homeowner wallet screen showing a visible payment balance",
+          image: "/film/story/customer-4.jpg",
+          video: "/film/story/customer-4.mp4",
+          alt: "Homeowner wallet showing payment held in escrow, then released",
           caption: "Know what you will pay.",
           title: "Know what you will pay.",
           body: "See the payment details and what happens next in one place.",
           points: ["See payment status", "Know what is held", "Keep the details in one place"]
         },
         {
-          image: "../showcase-assets/customer/05-review-clean.png",
-          alt: "TaskBuddy homeowner screen for completing a review",
+          image: "/film/story/customer-5.jpg",
+          video: "/film/story/customer-5.mp4",
+          alt: "Homeowner rating the provider five stars and submitting a review",
           caption: "Finish the job and leave a review.",
           title: "Finish the job and leave a review.",
           body: "Mark the job complete and share your experience.",
@@ -90,40 +94,45 @@
       lede: "Find jobs, show your skills, and get hired.",
       steps: [
         {
-          image: "../showcase-assets/provider/01-job-feed-clean.png",
-          alt: "TaskBuddy provider job feed with available service requests",
+          image: "/film/story/provider-1.jpg",
+          video: "/film/story/provider-1.mp4",
+          alt: "Service provider feed of jobs near you with a new job arriving",
           caption: "Find jobs that fit your skills.",
           title: "Find jobs that fit your skills.",
           body: "Browse requests and look for jobs that match your services.",
           points: ["Scan jobs quickly", "See key details first", "Choose the jobs you want"]
         },
         {
-          image: "../showcase-assets/provider/02-verification-clean.png",
-          alt: "TaskBuddy provider verification screen",
+          image: "/film/story/provider-2.jpg",
+          video: "/film/story/provider-2.mp4",
+          alt: "Service provider verification: government ID, face scan, and automated check",
           caption: "Verify your account first.",
           title: "Verify your account first.",
           body: "Verify your account before you apply to a job.",
           points: ["Know when you can apply", "Complete each step in one place", "Help keep the platform safe"]
         },
         {
-          image: "../showcase-assets/provider/03-provider-profile-clean.png",
-          alt: "TaskBuddy provider profile with service information",
+          image: "/film/story/provider-3.jpg",
+          video: "/film/story/provider-3.mp4",
+          alt: "Service provider profile with jobs done, rating, and a new review",
           caption: "Show what you can do.",
           title: "Show what you can do.",
           body: "Add your services and experience so homeowners know what you offer.",
           points: ["List your services", "Show your experience", "Help homeowners choose you"]
         },
         {
-          image: "../showcase-assets/provider/04-job-detail-clean.png",
-          alt: "TaskBuddy provider job details screen with work and schedule",
+          image: "/film/story/provider-4.jpg",
+          video: "/film/story/provider-4.mp4",
+          alt: "Service provider reviewing job details and submitting a proposal",
           caption: "See the job details first.",
           title: "See the job details first.",
           body: "Check the request, schedule, location, and homeowner details before you apply.",
           points: ["See the work and schedule", "Read the homeowner’s request", "Decide before you apply"]
         },
         {
-          image: "../showcase-assets/provider/05-hired-job-clean.png",
-          alt: "TaskBuddy provider hired job screen with start job and message actions",
+          image: "/film/story/provider-5.jpg",
+          video: "/film/story/provider-5.mp4",
+          alt: "Service provider accepting a booking request after being hired",
           caption: "You got the job. Now get started.",
           title: "You got the job. Now get started.",
           body: "See the job details and start when you are ready.",
@@ -152,6 +161,57 @@
   storyCapture.insertBefore(imageStage, image);
   imageStage.appendChild(image);
   imageStage.appendChild(stagedImage);
+
+  // Each step has a short silent loop of the current app UI. Its first frame is
+  // the step's poster image, so the clip fades in over an identical picture once
+  // a slide has settled; posters alone carry swipes, transitions and reduced motion.
+  var storyVideo = document.createElement("video");
+  var storyVideoToken = 0;
+  var storyInView = false;
+  storyVideo.className = "story-video";
+  storyVideo.muted = true;
+  storyVideo.loop = true;
+  storyVideo.playsInline = true;
+  storyVideo.setAttribute("playsinline", "");
+  storyVideo.setAttribute("aria-hidden", "true");
+  storyVideo.preload = "auto";
+  imageStage.appendChild(storyVideo);
+
+  function hideStoryVideo() {
+    storyVideoToken += 1;
+    storyVideo.classList.remove("is-visible");
+    storyVideo.pause();
+  }
+
+  function playStoryVideo() {
+    var step = stories[currentRole].steps[currentIndex];
+    hideStoryVideo();
+    if (!step.video || !storyInView || isMotionDisabled()) return;
+    var token = storyVideoToken;
+    if (storyVideo.getAttribute("src") !== step.video) storyVideo.setAttribute("src", step.video);
+    try { storyVideo.currentTime = 0; } catch (error) { /* not loaded yet */ }
+    function onPlaying() {
+      storyVideo.removeEventListener("playing", onPlaying);
+      if (token === storyVideoToken) storyVideo.classList.add("is-visible");
+    }
+    storyVideo.addEventListener("playing", onPlaying);
+    var attempt = storyVideo.play();
+    if (attempt && typeof attempt.catch === "function") attempt.catch(function () {});
+  }
+
+  if ("IntersectionObserver" in window) {
+    new IntersectionObserver(function (entries) {
+      storyInView = entries[0].isIntersecting;
+      if (storyInView) playStoryVideo();
+      else hideStoryVideo();
+    }, { threshold: 0.25 }).observe(storyCapture);
+  } else {
+    storyInView = true;
+  }
+  // Browsers defer playback in background tabs; retry once the page is shown.
+  document.addEventListener("visibilitychange", function () {
+    if (!document.hidden && storyInView && storyVideo.paused) playStoryVideo();
+  });
 
   function setImageDirection(direction) {
     image.style.setProperty("--slide-direction", direction);
@@ -201,7 +261,7 @@
   function syncHeroFilm() {
     if (!heroVideo) return;
     if (heroRoleLabel) heroRoleLabel.textContent = "See how it works";
-    if (heroCaption) heroCaption.textContent = "Follow a real task from request to completed job.";
+    if (heroCaption) heroCaption.textContent = "One job, two apps: from request to paid.";
   }
 
   function updateHeroPlaybackControl() {
@@ -291,12 +351,15 @@
     story.classList.toggle("story--customer", currentRole === "customer");
     story.classList.toggle("story--provider", currentRole === "provider");
 
-    if (!shouldAnimate || isCarouselMotionReduced()) {
+    hideStoryVideo();
+
+    if (!shouldAnimate || isMotionDisabled()) {
       cancelCarouselAnimation();
       setStoryContent(set, step);
       stagedImage.src = visibleImage.src;
       stagedImage.alt = "";
       setImageDirection(1);
+      playStoryVideo();
       return;
     }
 
@@ -335,6 +398,7 @@
           stagedImage = outgoingImage;
           stagedImage.setAttribute("aria-hidden", "true");
           animationTimer = null;
+          playStoryVideo();
         }, CAROUSEL_EXIT_MS);
       });
     });
@@ -358,7 +422,7 @@
     setImageDirection(direction);
     render(true, true);
     if (shouldScroll) {
-      story.scrollIntoView({ behavior: isMotionReduced() ? "auto" : "smooth", block: "start" });
+      story.scrollIntoView({ behavior: isMotionDisabled() ? "auto" : "smooth", block: "start" });
     }
   }
 
@@ -381,6 +445,7 @@
     drag.lastX = event.clientX;
     drag.lastTime = performance.now();
     drag.velocity = 0;
+    hideStoryVideo();
     visibleImage.classList.add("is-dragging");
     visibleImage.setPointerCapture(event.pointerId);
   }
@@ -404,6 +469,7 @@
     var direction = delta < 0 || drag.velocity < 0 ? 1 : -1;
     resetDrag();
     if (shouldAdvance) setSlide(currentIndex + direction, direction);
+    else window.setTimeout(playStoryVideo, 300);
   }
 
   document.querySelector("[data-carousel-prev]").addEventListener("click", function () {
@@ -474,12 +540,59 @@
     });
   }
 
+  // Full product film (with sound) in a dialog; the hero keeps its muted loop.
+  var filmModal = document.querySelector("[data-film-modal]");
+  var filmVideo = document.querySelector("[data-film-video]");
+  var filmOpen = document.querySelector("[data-film-open]");
+  var heroWasPlaying = false;
+
+  function closeFilm() {
+    if (!filmModal || filmModal.hidden) return;
+    filmVideo.pause();
+    filmModal.hidden = true;
+    document.documentElement.classList.remove("has-modal-open");
+    document.body.classList.remove("has-modal-open");
+    document.removeEventListener("keydown", onFilmKey);
+    if (heroVideo && heroWasPlaying) {
+      var resume = heroVideo.play();
+      if (resume && typeof resume.catch === "function") resume.catch(function () {});
+    }
+    if (filmOpen) filmOpen.focus();
+  }
+
+  function onFilmKey(event) {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      closeFilm();
+    }
+  }
+
+  if (filmModal && filmVideo && filmOpen) {
+    filmOpen.addEventListener("click", function () {
+      heroWasPlaying = !!heroVideo && !heroVideo.paused;
+      if (heroVideo) heroVideo.pause();
+      filmModal.hidden = false;
+      document.documentElement.classList.add("has-modal-open");
+      document.body.classList.add("has-modal-open");
+      document.addEventListener("keydown", onFilmKey);
+      filmVideo.currentTime = 0;
+      filmVideo.muted = false;
+      var attempt = filmVideo.play();
+      if (attempt && typeof attempt.catch === "function") attempt.catch(function () {});
+      var closeButton = filmModal.querySelector(".film-modal__close");
+      if (closeButton) closeButton.focus();
+    });
+    filmModal.querySelectorAll("[data-film-close]").forEach(function (el) {
+      el.addEventListener("click", closeFilm);
+    });
+  }
+
   var menuToggle = document.querySelector(".menu-toggle");
   var siteNav = document.querySelector(".site-nav");
   var siteHeader = document.querySelector(".site-header");
   var gsapApi = window.gsap;
   var scrollTriggerApi = window.ScrollTrigger;
-  var reduceMotionQuery = { get matches() { return isMotionReduced(); } };
+  var motionDisabledQuery = { get matches() { return isMotionDisabled(); } };
   var gsapMotionEnabled = Boolean(gsapApi && scrollTriggerApi);
   if (gsapMotionEnabled) {
     gsapApi.registerPlugin(scrollTriggerApi);
@@ -497,7 +610,7 @@
     if (!siteHeader) return;
     if (headerHidden === hidden) return;
     headerHidden = hidden;
-    if (gsapMotionEnabled && !reduceMotionQuery.matches) {
+    if (gsapMotionEnabled && !motionDisabledQuery.matches) {
       siteHeader.classList.toggle("is-hidden", hidden);
       gsapApi.to(siteHeader, {
         yPercent: hidden ? -125 : 0,
@@ -620,7 +733,7 @@
     var hero = document.querySelector(".hero");
     if (!hero) return;
     hero.classList.add("is-ready");
-    if (gsapMotionEnabled && !reduceMotionQuery.matches) {
+    if (gsapMotionEnabled && !motionDisabledQuery.matches) {
       var heroCopyItems = hero.querySelectorAll(".hero__copy > *");
       gsapApi.fromTo(heroCopyItems,
         { opacity: 0, y: 24 },
@@ -678,7 +791,7 @@
       initGsapMotion();
       return;
     }
-    if (reduceMotionQuery.matches) return;
+    if (motionDisabledQuery.matches) return;
     var revealTargetSet = new Set();
     var plainProgressEls = Array.prototype.slice.call(document.querySelectorAll("[data-sc-progress]"));
     revealTargets.forEach(function (target) {
@@ -715,7 +828,7 @@
 
   function initGsapMotion() {
     if (!gsapMotionEnabled) return;
-    if (reduceMotionQuery.matches) {
+    if (motionDisabledQuery.matches) {
       revealTargets.forEach(function (target) {
         target.classList.add("reveal-target", "is-revealed");
       });
