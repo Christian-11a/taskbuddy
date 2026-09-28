@@ -30,9 +30,10 @@ export function initials(name: string): string {
   return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
 }
 
-/** 1200 → "₱1,200" */
+/** 1200 → "₱1,200"; 1820.5 → "₱1,820.50" (centavos always get two digits). */
 export function formatCurrency(amount: number): string {
-  return `₱${amount.toLocaleString("en-PH")}`;
+  const fractional = Math.round(amount * 100) % 100 !== 0;
+  return `₱${amount.toLocaleString("en-PH", fractional ? { minimumFractionDigits: 2, maximumFractionDigits: 2 } : { maximumFractionDigits: 2 })}`;
 }
 
 /** 2400000 → "₱2.4M", 184200 → "₱184.2K" (dashboard-style compact figures). */

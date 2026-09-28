@@ -77,6 +77,45 @@ describe("login", () => {
   });
 });
 
+describe("loginDetailed", () => {
+  it("reports wrong credentials as 'credentials'", async () => {
+    global.fetch = vi.fn(() =>
+      Promise.resolve(jsonResponse({ message: "Invalid login credentials" }, 401)),
+    ) as unknown as typeof fetch;
+
+    await expect(services.loginDetailed("admin@taskbuddy.io", "wrong")).resolves.toEqual({ ok: false, reason: "credentials" });
+  });
+
+  it("reports an unreachable API as 'network', not as a wrong password", async () => {
+    global.fetch = vi.fn(() => Promise.reject(new TypeError("Failed to fetch"))) as unknown as typeof fetch;
+
+    await expect(services.loginDetailed("admin@taskbuddy.io", "pw")).resolves.toEqual({ ok: false, reason: "network" });
+  });
+
+  it("reports a server error as 'server'", async () => {
+    global.fetch = vi.fn(() =>
+      Promise.resolve(jsonResponse({ message: "boom" }, 500)),
+    ) as unknown as typeof fetch;
+
+    await expect(services.loginDetailed("admin@taskbuddy.io", "pw")).resolves.toEqual({ ok: false, reason: "server" });
+  });
+
+  it("reports the rate limiter with its wait time", async () => {
+    // A long Retry-After is not retried by the client, so the reason surfaces at once.
+    const limited = new Response(JSON.stringify({ message: "Too Many Requests" }), {
+      status: 429,
+      headers: { "Content-Type": "application/json", "Retry-After": "60" },
+    });
+    global.fetch = vi.fn(() => Promise.resolve(limited)) as unknown as typeof fetch;
+
+    await expect(services.loginDetailed("admin@taskbuddy.io", "pw")).resolves.toEqual({
+      ok: false,
+      reason: "rate_limited",
+      retryAfterSeconds: 60,
+    });
+  });
+});
+
 describe("restoreSession", () => {
   it("restores an admin identity and CSRF token from the cookie session", async () => {
     global.fetch = vi.fn(() =>
@@ -875,5 +914,78 @@ describe("getDashboardStats", () => {
 
     // There is no mock fallback any more — an unrated platform reads as 0.
     expect(stats.avgRating).toBe(0);
+  });
+});
+
+describe("list paging", () => {
+  it("walks limit/offset until every row is loaded", async () => {
+    const all = Array.from({ length: 250 }, (_, i) => ({
+      id: `u${i}`, email: `u${i}@x.test`, full_name: `U${i}`, role: "client", deactivated_at: null, created_at: "2026-01-01",
+      cached_avg_rating: null, cached_completed_jobs: null, phone: null, city: null, category_name: null,
+      suspended_until: null, suspension_reason: null,
+    }));
+    const fetchMock = vi.fn((url: string) => {
+      const u = new URL(url);
+      const offset = Number(u.searchParams.get("offset"));
+      const limit = Number(u.searchParams.get("limit"));
+      return Promise.resolve(jsonResponse({ users: all.slice(offset, offset + limit), total: all.length }));
+    });
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    const users = await services.getUsers();
+    expect(users).toHaveLength(250);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock.mock.calls[1][0]).toContain("offset=200");
+  });
+});
+
+describe("analytics summary stand-in", () => {
+  it("rebuilds the summary from list endpoints when /admin/analytics/summary fails", async () => {
+    const fetchMock = vi.fn((url: string) => {
+      if (url.includes("/admin/analytics/summary")) {
+        return Promise.resolve(jsonResponse({ message: "Could not embed because more than one relationship was found" }, 400));
+      }
+      if (url.includes("/admin/users")) {
+        return Promise.resolve(jsonResponse({
+          users: url.includes("status=deleted") ? [] : [
+            { id: "p1", role: "provider", full_name: "Pat", cached_avg_rating: 4.5, cached_completed_jobs: 7, deactivated_at: null },
+            { id: "c1", role: "client", full_name: "Cam", cached_avg_rating: null, cached_completed_jobs: null, deactivated_at: null },
+          ],
+          total: url.includes("status=deleted") ? 0 : 2,
+        }));
+      }
+      if (url.includes("/admin/bookings")) {
+        return Promise.resolve(jsonResponse({ bookings: [{ id: "j1", status: "completed", posted_at: "2026-09-01T00:00:00Z", service_categories: { name: "Plumbing" } }], total: 1 }));
+      }
+      if (url.includes("/admin/wallet-transactions")) {
+        return Promise.resolve(jsonResponse({ transactions: [{ amount: "900", created_at: "2026-09-02T00:00:00Z" }], total: 1 }));
+      }
+      if (url.includes("/admin/transactions")) {
+        return Promise.resolve(jsonResponse({ transactions: [{ commission_amount: "100", released_at: "2026-09-02T00:00:00Z" }], total: 1 }));
+      }
+      if (url.includes("/admin/verifications")) return Promise.resolve(jsonResponse({ verifications: [], total: 3 }));
+      if (url.includes("/admin/withdrawals")) return Promise.resolve(jsonResponse({ withdrawals: [], total: 1 }));
+      return Promise.resolve(jsonResponse({}, 404));
+    });
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    const stats = await services.getDashboardStats();
+    expect(services.lastAnalyticsSource()).toBe("browser");
+    expect(stats).toMatchObject({
+      totalUsers: 2,
+      activeProviders: 1,
+      totalBookings: 1,
+      totalRevenue: 900,
+      totalCommission: 100,
+      completionRate: 100,
+      avgRating: 4.5,
+      pendingVerifications: 3,
+      pendingWithdrawals: 1,
+    });
+  });
+
+  it("does not hide a signed-out session behind the stand-in", async () => {
+    global.fetch = vi.fn(() => Promise.resolve(jsonResponse({ message: "Unauthorized" }, 401))) as unknown as typeof fetch;
+    await expect(services.getDashboardStats()).rejects.toMatchObject({ status: 401 });
   });
 });
