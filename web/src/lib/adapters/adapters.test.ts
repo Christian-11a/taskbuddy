@@ -31,6 +31,8 @@ describe("formatCurrency", () => {
   it("formats pesos with thousands separators", () => {
     expect(formatCurrency(1200)).toBe("₱1,200");
     expect(formatCurrency(184200)).toBe("₱184,200");
+    expect(formatCurrency(1820.5)).toBe("₱1,820.50");
+    expect(formatCurrency(99.999)).toBe("₱100");
   });
   it("compacts large figures", () => {
     expect(formatCurrencyCompact(2_400_000)).toBe("₱2.4M");

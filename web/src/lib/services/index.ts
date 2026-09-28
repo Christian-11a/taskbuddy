@@ -19,6 +19,7 @@ import {
   mapRevenueSeries,
   mapTopProviders,
 } from "./mapAnalytics";
+import { summarizeAnalytics, type EscrowRowWithCommission } from "./browserAnalytics";
 import type {
   AdminActionApiRow,
   AdminSessionApiResponse,
@@ -39,14 +40,8 @@ import type {
   DisputeResolutionApi,
   EscrowStatusApi,
   ListActivityApiResponse,
-  ListAuditApiResponse,
   ListBookingsApiResponse,
-  ListDisputesApiResponse,
   ListTransactionsApiResponse,
-  ListUsersApiResponse,
-  ListVerificationsApiResponse,
-  ListWalletTxnApiResponse,
-  ListWithdrawalsApiResponse,
   CommissionApiResponse,
   BroadcastApiResponse,
   LoginApiResponse,
@@ -85,9 +80,39 @@ import type {
 export { ApiError };
 export type { AdminProfile };
 
-// Users/Bookings tables render fully client-side with no pagination UI —
-// request a generous page size instead of building pagination this pass.
+// Page size for lists the console loads in full and then filters/pages in
+// the browser. fetchAllRows keeps asking until it has every row.
 const LIST_PAGE_SIZE = 200;
+/** Safety stop: 25 × 200 = 5,000 rows per list. */
+const MAX_LIST_PAGES = 25;
+
+/**
+ * Loads every row of a list endpoint by walking `limit`/`offset` until
+ * `total` is reached (or a short page comes back). Every admin list endpoint
+ * accepts both and reports `total`; asking for one big page used to stop
+ * silently at 100–200 rows.
+ */
+async function fetchAllRows<T>(path: string, key: string, pageSize = LIST_PAGE_SIZE): Promise<T[]> {
+  const sep = path.includes("?") ? "&" : "?";
+  const rows: T[] = [];
+  for (let page = 0; page < MAX_LIST_PAGES; page++) {
+    const res = await client.get<Record<string, unknown>>(`${path}${sep}limit=${pageSize}&offset=${page * pageSize}`);
+    const batch = (res[key] as T[] | undefined) ?? [];
+    rows.push(...batch);
+    const total = typeof res.total === "number" ? res.total : undefined;
+    if (batch.length < pageSize || (total !== undefined && rows.length >= total)) return rows;
+  }
+  // Only reached when the safety stop cut the list short.
+  console.warn(`[admin] ${path}: stopped after ${rows.length} rows (safety limit); some records are not shown.`);
+  return rows;
+}
+
+/** A list's `total` for one filter, without its rows (`limit=1`). */
+async function countRows(path: string): Promise<number> {
+  const sep = path.includes("?") ? "&" : "?";
+  const res = await client.get<{ total?: number }>(`${path}${sep}limit=1&offset=0`);
+  return typeof res.total === "number" ? res.total : 0;
+}
 
 function mapUserRow(row: AdminUserApiRow): AdminUser {
   return {
@@ -284,16 +309,35 @@ function toAdminProfile(
   return { id: user.id, name: user.full_name ?? email, email: user.email ?? email };
 }
 
-export async function login(email: string, password: string): Promise<AdminProfile | null> {
+/**
+ * Why a sign-in failed, so the login screen can say something true. Wrong
+ * credentials and "not an admin" deliberately share one reason: telling them
+ * apart would reveal which emails belong to admins.
+ */
+export type LoginFailure = "credentials" | "rate_limited" | "network" | "server";
+export type LoginResult =
+  | { ok: true; profile: AdminProfile }
+  | { ok: false; reason: LoginFailure; retryAfterSeconds?: number };
+
+export async function loginDetailed(email: string, password: string): Promise<LoginResult> {
+  let res: LoginApiResponse;
   try {
-    const res = await client.post<LoginApiResponse>("/auth/admin/login", { email, password });
-    const profile = toAdminProfile(res.user, email);
-    if (!profile || !res.csrf_token) return null;
-    setAdminSession({ csrfToken: res.csrf_token, adminProfile: profile });
-    return profile;
-  } catch {
-    return null;
+    res = await client.post<LoginApiResponse>("/auth/admin/login", { email, password });
+  } catch (err) {
+    if (!(err instanceof ApiError)) return { ok: false, reason: "network" }; // fetch itself failed
+    if (err.status === 429) return { ok: false, reason: "rate_limited", retryAfterSeconds: err.retryAfterSeconds };
+    if (err.status >= 500) return { ok: false, reason: "server" };
+    return { ok: false, reason: "credentials" };
   }
+  const profile = toAdminProfile(res.user, email);
+  if (!profile || !res.csrf_token) return { ok: false, reason: "credentials" };
+  setAdminSession({ csrfToken: res.csrf_token, adminProfile: profile });
+  return { ok: true, profile };
+}
+
+export async function login(email: string, password: string): Promise<AdminProfile | null> {
+  const result = await loginDetailed(email, password);
+  return result.ok ? result.profile : null;
 }
 
 /** Re-establishes in-memory identity from the browser's cookie session. */
@@ -413,15 +457,13 @@ export async function setMaintenanceStatus(
 
 export async function getUsers(status?: "deleted"): Promise<AdminUser[]> {
   const suffix = status ? `&status=${status}` : "";
-  const res = await client.get<ListUsersApiResponse>(`/admin/users?limit=${LIST_PAGE_SIZE}${suffix}`);
-  return res.users.map(mapUserRow);
+  const rows = await fetchAllRows<AdminUserApiRow>(`/admin/users${suffix ? `?${suffix.slice(1)}` : ""}`, "users");
+  return rows.map(mapUserRow);
 }
 
 export async function getVerifications(): Promise<Verification[]> {
-  const res = await client.get<ListVerificationsApiResponse>(
-    `/admin/verifications?limit=${LIST_PAGE_SIZE}`,
-  );
-  return res.verifications.map(mapVerificationRow);
+  const rows = await fetchAllRows<AdminVerificationApiRow>("/admin/verifications", "verifications");
+  return rows.map(mapVerificationRow);
 }
 
 /**
@@ -440,9 +482,8 @@ export async function getVerifications(): Promise<Verification[]> {
 let transactionsInFlight: Promise<Transaction[]> | null = null;
 
 export async function getTransactions(): Promise<Transaction[]> {
-  transactionsInFlight ??= client
-    .get<ListTransactionsApiResponse>(`/admin/transactions?limit=${LIST_PAGE_SIZE}`)
-    .then((res) => res.transactions.map(mapTransactionRow))
+  transactionsInFlight ??= fetchAllRows<AdminTransactionApiRow>("/admin/transactions", "transactions")
+    .then((rows) => rows.map(mapTransactionRow))
     .finally(() => {
       transactionsInFlight = null;
     });
@@ -503,10 +544,8 @@ export async function searchTransactions(query: SearchTransactionsQuery): Promis
  *  the Transactions page, separate from escrow above. Fetched on demand when
  *  the tab is opened, not part of the initial page load. */
 export async function getWalletTransactions(): Promise<WalletTransaction[]> {
-  const res = await client.get<ListWalletTxnApiResponse>(
-    `/admin/wallet-transactions?limit=${LIST_PAGE_SIZE}`,
-  );
-  return res.transactions.map(mapWalletTxnRow);
+  const rows = await fetchAllRows<AdminWalletTxnApiRow>("/admin/wallet-transactions", "transactions");
+  return rows.map(mapWalletTxnRow);
 }
 
 /**
@@ -533,8 +572,8 @@ export async function issueRecoveryCredit(input: {
 }
 
 export async function getWithdrawals(status: "pending" | "completed" | "failed" = "pending"): Promise<{ items: AdminWithdrawal[]; total: number }> {
-  const res = await client.get<ListWithdrawalsApiResponse>(`/admin/withdrawals?status=${status}&limit=100`);
-  return { items: res.withdrawals.map(mapWithdrawalRow), total: res.total };
+  const rows = await fetchAllRows<AdminWithdrawalApiRow>(`/admin/withdrawals?status=${status}`, "withdrawals", 100);
+  return { items: rows.map(mapWithdrawalRow), total: rows.length };
 }
 
 export async function settleWithdrawal(id: string, reference?: string): Promise<AdminWithdrawal> {
@@ -593,17 +632,36 @@ export async function broadcastNotification(
 
 /** Cross-references Transactions (for provider name + amount fallback) — see mapDisputeRow. */
 export async function getDisputes(): Promise<Dispute[]> {
-  const [res, txns] = await Promise.all([
-    client.get<ListDisputesApiResponse>(`/admin/disputes?limit=${LIST_PAGE_SIZE}`),
+  const [rows, txns] = await Promise.all([
+    fetchAllRows<AdminDisputeApiRow>("/admin/disputes", "disputes"),
     getTransactions(),
   ]);
   const txnByJob = new Map(txns.map((t) => [t.jobId, t] as const));
-  return res.disputes.map((row) => mapDisputeRow(row, txnByJob));
+  return rows.map((row) => mapDisputeRow(row, txnByJob));
 }
 
 export async function getBookings(): Promise<AdminBooking[]> {
-  const res = await client.get<ListBookingsApiResponse>(`/admin/bookings?limit=${LIST_PAGE_SIZE}`);
-  return res.bookings.map(mapBookingRow);
+  const rows = await fetchAllRows<AdminBookingApiRow>("/admin/bookings", "bookings");
+  return rows.map(mapBookingRow);
+}
+
+/** Every booking status the API filters on. */
+export const BOOKING_STATUSES_API = ["open", "recommending", "assigned", "confirmed", "in_progress", "completed", "cancelled", "expired"] as const;
+
+/**
+ * How many bookings sit in each status. `/admin/bookings` only reports a
+ * total for the filter it was asked about, so this asks once per status with
+ * `limit=1` — eight tiny requests instead of loading every booking.
+ */
+export async function getBookingStatusCounts(): Promise<Record<(typeof BOOKING_STATUSES_API)[number], number>> {
+  const totals = await Promise.all(BOOKING_STATUSES_API.map((st) => countRows(`/admin/bookings?status=${st}`)));
+  return Object.fromEntries(BOOKING_STATUSES_API.map((st, i) => [st, totals[i]])) as Record<(typeof BOOKING_STATUSES_API)[number], number>;
+}
+
+/** Money currently held in escrow, across every held row (not just a first page). */
+export async function getEscrowHeld(): Promise<{ count: number; total: number }> {
+  const rows = await fetchAllRows<AdminTransactionApiRow>("/admin/transactions?status=held", "transactions");
+  return { count: rows.length, total: rows.reduce((sum, r) => sum + Number(r.amount), 0) };
 }
 
 export async function searchBookings(query: SearchBookingsQuery): Promise<{ items: AdminBooking[]; total: number }> {
@@ -623,9 +681,60 @@ export async function searchBookings(query: SearchBookingsQuery): Promise<{ item
  */
 let summaryInFlight: Promise<AnalyticsSummaryApiResponse> | null = null;
 
+export type AnalyticsSource = "server" | "browser";
+let analyticsSource: AnalyticsSource = "server";
+/** Where the last analytics summary came from — the API, or the in-browser
+ *  stand-in used while the summary endpoint is failing. */
+export function lastAnalyticsSource(): AnalyticsSource {
+  return analyticsSource;
+}
+
+// The stand-in pages through several lists, so it's reused for a couple of
+// minutes rather than rebuilt on every 30-second live refresh.
+const BROWSER_SUMMARY_TTL_MS = 2 * 60_000;
+let browserSummaryCache: { at: number; value: AnalyticsSummaryApiResponse } | null = null;
+
+/** Drops the cached stand-in summary, so the next read reflects a decision
+ *  that was just made (approve, reject, resolve…). */
+export function invalidateBrowserAnalytics(): void {
+  browserSummaryCache = null;
+}
+
+/** GET /admin/analytics/summary rebuilt from list endpoints (see browserAnalytics.ts). */
+export async function computeAnalyticsSummaryInBrowser(): Promise<AnalyticsSummaryApiResponse> {
+  const [users, deletedUsers, jobs, payouts, releasedEscrow, pendingVerifications, pendingWithdrawals] = await Promise.all([
+    fetchAllRows<AdminUserApiRow>("/admin/users", "users"),
+    fetchAllRows<AdminUserApiRow>("/admin/users?status=deleted", "users").catch(() => []),
+    fetchAllRows<AdminBookingApiRow>("/admin/bookings", "bookings"),
+    fetchAllRows<AdminWalletTxnApiRow>("/admin/wallet-transactions?kind=payout&status=completed", "transactions"),
+    fetchAllRows<EscrowRowWithCommission>("/admin/transactions?status=released", "transactions"),
+    countRows("/admin/verifications?status=pending"),
+    countRows("/admin/withdrawals?status=pending").catch(() => 0),
+  ]);
+  return summarizeAnalytics({ users: [...users, ...deletedUsers], jobs, payouts, releasedEscrow, pendingVerifications, pendingWithdrawals });
+}
+
 async function getAnalyticsSummary(): Promise<AnalyticsSummaryApiResponse> {
   summaryInFlight ??= client
     .get<AnalyticsSummaryApiResponse>("/admin/analytics/summary")
+    .then((summary) => {
+      analyticsSource = "server";
+      browserSummaryCache = null;
+      return summary;
+    })
+    .catch(async (err: unknown) => {
+      // Signed out is signed out — don't paper over it.
+      if (err instanceof ApiError && (err.status === 401 || err.status === 403)) throw err;
+      try {
+        if (!browserSummaryCache || Date.now() - browserSummaryCache.at > BROWSER_SUMMARY_TTL_MS) {
+          browserSummaryCache = { at: Date.now(), value: await computeAnalyticsSummaryInBrowser() };
+        }
+        analyticsSource = "browser";
+        return browserSummaryCache.value;
+      } catch {
+        throw err; // report the endpoint's own failure, not the stand-in's
+      }
+    })
     .finally(() => {
       summaryInFlight = null;
     });
@@ -682,8 +791,8 @@ export async function getTopProviders(): Promise<TopProvider[]> {
 
 /** GET /admin/audit (migration 0014) — the real admin moderation trail. */
 export async function getAuditLog(): Promise<AuditAction[]> {
-  const { actions } = await client.get<ListAuditApiResponse>("/admin/audit?limit=100");
-  return actions.map(mapAuditRow);
+  const rows = await fetchAllRows<AdminActionApiRow>("/admin/audit", "actions");
+  return rows.map(mapAuditRow);
 }
 
 /** GET /admin/jobs/:jobId/conversation (migration 0014) — read-only, admins

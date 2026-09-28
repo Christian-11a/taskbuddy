@@ -1,44 +1,84 @@
 "use client";
 
-import { Fragment, useEffect, useState } from "react";
-import { Search, XCircle, ChevronDown, Download } from "lucide-react";
+import { useEffect, useState } from "react";
+import { CalendarClock, Download, ImageIcon, Lock, MapPin, XCircle } from "lucide-react";
 import { useApp } from "@/context/AppContext";
 import { datedFilename, downloadCsv, toCsv } from "@/lib/export/csv";
 import * as services from "@/lib/services";
 import type { AdminBookingDetail } from "@/lib/domain";
-import { toBookingRow, type BookingRow } from "@/lib/adapters";
+import { formatCurrency, toBookingRow, type BookingRow } from "@/lib/adapters";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
+import { ReviewDrawer, DrawerField, DrawerSection } from "@/components/ui/ReviewDrawer";
 import { Pagination } from "@/components/ui/Pagination";
 import { useToast } from "@/components/ui/Toast";
-import clsx from "clsx";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { PageHeader } from "@/components/admin/Panel";
+import { SearchField } from "@/components/admin/queue";
+import { BulkBar, DataTable, SelectFilter, TableCard, TableEmpty, type Column } from "@/components/admin/table";
+import { useLiveTick } from "@/hooks/useLiveTick";
+import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 
-const PAGE_SIZE = 7;
+const PAGE_SIZE = 12;
 
 type StatusFilter =
   | "all"
   | "Open"
   | "Matching"
-  | "Assigned"
+  | "Awaiting Provider"
   | "Confirmed"
   | "In Progress"
   | "Completed"
   | "Cancelled"
   | "Expired";
 
-/* The per-status accent palette that used to wash all nine filter chips is
-   gone with them — row status still reads from the shared .badge-* classes,
-   so status colour lives in one place rather than two. */
+const STATUS_API: Record<Exclude<StatusFilter, "all">, string> = {
+  Open: "open",
+  Matching: "recommending",
+  "Awaiting Provider": "assigned",
+  Confirmed: "confirmed",
+  "In Progress": "in_progress",
+  Completed: "completed",
+  Cancelled: "cancelled",
+  Expired: "expired",
+};
+
+export const BOOKING_TONE: Record<string, "info" | "accent" | "ok" | "danger" | "neutral" | "warn"> = {
+  Open: "info",
+  Matching: "warn",
+  "Awaiting Provider": "accent",
+  Confirmed: "accent",
+  "In Progress": "info",
+  Completed: "ok",
+  Cancelled: "danger",
+  Expired: "neutral",
+};
+
+function escrowLabel(status: string) {
+  const text = status.replace(/_/g, " ").toLowerCase();
+  return text.charAt(0).toUpperCase() + text.slice(1);
+}
+
+/** The dropdown's option groups, in lifecycle order. */
+const STATUS_GROUPS: { label: string; statuses: Exclude<StatusFilter, "all">[] }[] = [
+  { label: "In progress", statuses: ["Open", "Matching", "Awaiting Provider", "Confirmed", "In Progress"] },
+  { label: "Finished", statuses: ["Completed", "Cancelled", "Expired"] },
+];
+
+const withCount = (label: string, count: number | undefined) => (count === undefined ? label : `${label} (${count})`);
+
+type DetailState = AdminBookingDetail | "loading" | "error";
 
 export function BookingsPage() {
   const { cancelBooking } = useApp();
   const { showToast } = useToast();
   const [search, setSearch] = useState("");
+  const debouncedSearch = useDebouncedValue(search, 250);
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [page, setPage] = useState(1);
-  const [expandedId, setExpandedId] = useState<string | null>(null);
-  // GET /admin/bookings/:id (migration 0014) — fetched on demand per row and
-  // cached by id so re-expanding a row doesn't refetch.
-  const [details, setDetails] = useState<Record<string, AdminBookingDetail | "loading" | "error">>({});
+  const [openId, setOpenId] = useState<string | null>(null);
+  // GET /admin/bookings/:id (migration 0014) — fetched on demand and cached by id.
+  const [details, setDetails] = useState<Record<string, DetailState>>({});
   const [cancelTarget, setCancelTarget] = useState<{ id: string } | null>(null);
   const [cancelingId, setCancelingId] = useState<string | null>(null);
   const [confirmingExport, setConfirmingExport] = useState(false);
@@ -52,30 +92,56 @@ export function BookingsPage() {
     /* eslint-disable react-hooks/set-state-in-effect -- fetching page-local data */
     let cancelled = false;
     setLoading(true);
-    void services.searchBookings({
-      search,
-      status: statusFilter === "all" ? undefined : {
-        Open: "open", Matching: "recommending", Assigned: "assigned", Confirmed: "confirmed", "In Progress": "in_progress",
-        Completed: "completed", Cancelled: "cancelled", Expired: "expired",
-      }[statusFilter],
-      page,
-      pageSize: PAGE_SIZE,
-    }).then((result) => {
-      if (!cancelled) {
-        setBookings(result.items.map(toBookingRow));
-        setTotal(result.total);
-        setLoading(false);
-      }
-    }).catch(() => {
-      if (!cancelled) {
-        setBookings([]);
-        setTotal(0);
-        setLoading(false);
-      }
-    });
-    return () => { cancelled = true; };
+    void services
+      .searchBookings({
+        search: debouncedSearch,
+        status: statusFilter === "all" ? undefined : STATUS_API[statusFilter],
+        page,
+        pageSize: PAGE_SIZE,
+      })
+      .then((result) => {
+        if (!cancelled) {
+          setBookings(result.items.map(toBookingRow));
+          setTotal(result.total);
+          setLoading(false);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setBookings([]);
+          setTotal(0);
+          setLoading(false);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
     /* eslint-enable react-hooks/set-state-in-effect */
-  }, [search, statusFilter, page, reloadNonce]);
+  }, [debouncedSearch, statusFilter, page, reloadNonce]);
+
+  useLiveTick(() => setReloadNonce((n) => n + 1));
+
+  // Exact count for every status tab: the list endpoint only totals the
+  // filter it was asked about, so this asks once per status (limit=1).
+  const [statusCounts, setStatusCounts] = useState<Record<string, number> | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    services
+      .getBookingStatusCounts()
+      .then((counts) => !cancelled && setStatusCounts(counts))
+      .catch(() => !cancelled && setStatusCounts(null));
+    return () => {
+      cancelled = true;
+    };
+  }, [reloadNonce]);
+
+  function countFor(s: StatusFilter): number | undefined {
+    // A search narrows the list, and these counts ignore it — so only the
+    // active tab's own total is shown while searching.
+    if (debouncedSearch.trim() || !statusCounts) return s === statusFilter && !loading ? total : undefined;
+    if (s === "all") return Object.values(statusCounts).reduce((sum, n) => sum + n, 0);
+    return statusCounts[STATUS_API[s]];
+  }
 
   async function confirmCancel() {
     if (!cancelTarget) return;
@@ -83,6 +149,11 @@ export function BookingsPage() {
     try {
       await cancelBooking(cancelTarget.id);
       setReloadNonce((value) => value + 1);
+      setDetails((prev) => {
+        const next = { ...prev };
+        delete next[cancelTarget.id];
+        return next;
+      });
       setCancelTarget(null);
       showToast("Booking cancelled.");
     } catch {
@@ -92,12 +163,8 @@ export function BookingsPage() {
     }
   }
 
-  function toggleExpand(id: string) {
-    if (expandedId === id) {
-      setExpandedId(null);
-      return;
-    }
-    setExpandedId(id);
+  function openDetail(id: string) {
+    setOpenId(id);
     if (!(id in details)) {
       setDetails((prev) => ({ ...prev, [id]: "loading" }));
       services
@@ -106,12 +173,6 @@ export function BookingsPage() {
         .catch(() => setDetails((prev) => ({ ...prev, [id]: "error" })));
     }
   }
-
-  /* searchBookings only returns a total for the status currently queried, so a
-     per-status count is not available for the inactive filters. They used to
-     render "0", which stated as fact that there were no Open or Completed
-     bookings when the server had simply never been asked. Only the active
-     filter shows a count now, because it is the only one that is true. */
 
   // Only this server-loaded page is available for selection and export.
   const allSelected = bookings.length > 0 && bookings.every((b) => selected.has(b.id));
@@ -145,238 +206,259 @@ export function BookingsPage() {
     downloadCsv(datedFilename("taskbuddy-bookings"), csv);
   }
 
+  const columns: Column<BookingRow>[] = [
+    {
+      id: "id",
+      header: "Booking",
+      cell: (b) => (
+        <span className="font-mono text-[12px] text-primary" title={b.id}>
+          {b.id.slice(0, 8)}
+        </span>
+      ),
+    },
+    { id: "customer", header: "Client", cell: (b) => <span className="font-medium">{b.customer}</span> },
+    { id: "provider", header: "Provider", hideBelow: "md", cell: (b) => <span className="text-muted-foreground">{b.provider}</span> },
+    { id: "service", header: "Service", hideBelow: "lg", cell: (b) => <span className="text-muted-foreground">{b.service}</span> },
+    {
+      id: "status",
+      header: "Status",
+      cell: (b) => (
+        <Badge tone={BOOKING_TONE[b.status] ?? "neutral"} dot>
+          {b.status}
+        </Badge>
+      ),
+    },
+    { id: "date", header: "Posted", hideBelow: "md", cell: (b) => <span className="tabular text-muted-foreground">{b.date}</span> },
+    { id: "amount", header: "Budget", align: "right", cell: (b) => <span className="tabular font-semibold">{b.amount}</span> },
+    {
+      id: "actions",
+      header: <span className="sr-only">Actions</span>,
+      align: "right",
+      width: 96,
+      cell: (b) =>
+        b.cancellable ? (
+          <Button
+            size="sm"
+            variant="ghost"
+            className="h-7 px-2 text-danger opacity-70 hover:bg-danger-soft hover:text-danger group-hover:opacity-100"
+            onClick={(e) => {
+              e.stopPropagation();
+              setCancelTarget({ id: b.id });
+            }}
+            disabled={cancelingId === b.id}
+            title="Cancel booking"
+          >
+            <XCircle className="size-3.5" /> {cancelingId === b.id ? "Cancelling…" : "Cancel"}
+          </Button>
+        ) : null,
+    },
+  ];
+
+  const open = bookings.find((b) => b.id === openId) ?? null;
+  const detail = openId ? details[openId] : undefined;
+
   return (
     <div>
-      <div className="flex items-start justify-between flex-wrap gap-3 mb-4">
-        <div>
-          <h1 className="text-white font-bold" style={{ fontSize: "var(--fs-2xl)", letterSpacing: "-0.025em" }}>Bookings</h1>
-          <div style={{ fontSize: "var(--fs-sm)", color: "var(--text-muted)", marginTop: 5, lineHeight: 1.45 }}>Track all service bookings across the platform</div>
-        </div>
-        <button
-          onClick={() => setConfirmingExport(true)}
-          disabled={exportScope.length === 0}
-          title={selected.size > 0 ? "Download only the checked rows" : "Download the current page"}
-          className="flex items-center gap-1.5 font-semibold transition-opacity hover:opacity-80 disabled:opacity-40"
-          style={{ background: "var(--chip-bg)", border: "1px solid var(--border-md)", borderRadius: "var(--r-md)", padding: "7px 13px", fontSize: "var(--fs-xs)", color: "var(--text-light)", cursor: "pointer", fontFamily: "inherit" }}
-        >
-          <Download size={12} /> {selected.size > 0 ? `Export ${selected.size} selected` : "Export current page"}
-        </button>
-      </div>
+      <PageHeader
+        eyebrow="Operations"
+        title="Bookings"
+        description="Every job posted on the platform, from open request to completed work."
+        actions={
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setConfirmingExport(true)}
+            disabled={exportScope.length === 0}
+            title={selected.size > 0 ? "Download only the checked rows" : "Download the current page"}
+          >
+            <Download /> {selected.size > 0 ? `Export ${selected.size} selected` : "Export current page"}
+          </Button>
+        }
+      />
 
-      {/* One segmented control, matching Users / Transactions / Verifications,
-          instead of nine individually-washed colour pills. Colour marks which
-          status is selected; it isn't sprayed across every option. */}
-      <div className="mb-4 overflow-x-auto pb-1" style={{ scrollbarColor: "var(--border-md) transparent" }}>
-        <div className="inline-flex" style={{ background: "var(--chip-bg)", padding: 3, borderRadius: "var(--r-md)", gap: 2 }} role="group" aria-label="Filter bookings by status">
-          {(["all", "Open", "Matching", "Assigned", "Confirmed", "In Progress", "Completed", "Cancelled", "Expired"] as StatusFilter[]).map((s) => {
-            const active = statusFilter === s;
-            return (
-              <button key={s} onClick={() => { setStatusFilter(s); clearSelectionOnScopeChange(); }}
-                aria-pressed={active}
-                className={clsx("rounded-lg font-medium cursor-pointer transition-colors flex-shrink-0", !active && "text-gray-500 hover:text-gray-300")}
-                style={{ padding: "7px 11px", fontSize: "var(--fs-xs)", background: active ? "var(--indigo-dark)" : "transparent", color: active ? "var(--indigo-light)" : undefined, border: "none", fontFamily: "inherit", whiteSpace: "nowrap" }}
-              >
-                {s === "all" ? "All" : s}
-                {active && <span className="tabular" style={{ marginLeft: 6, opacity: 0.75 }}>{total}</span>}
-              </button>
-            );
-          })}
-        </div>
-      </div>
-
-      <div className="flex gap-2.5 mb-4">
-        <div className="relative flex-1">
-          <Search size={13} className="absolute top-1/2 -translate-y-1/2 left-3 opacity-40" color="white" />
-          <input
-            className="w-full text-white outline-none"
-            placeholder="Search by booking ID, client, or service…"
-            aria-label="Search bookings"
-            value={search}
-            onChange={(e) => { setSearch(e.target.value); clearSelectionOnScopeChange(); }}
-            style={{ background: "var(--input-bg)", border: "1px solid var(--border-md)", height: 38, borderRadius: "var(--r-md)", padding: "0 13px 0 36px", fontSize: "var(--fs-sm)", fontFamily: "inherit" }}
-          />
-        </div>
-      </div>
-
-      {selected.size > 0 && (
-        <div className="flex items-center gap-3 mb-3 flex-wrap" style={{ fontSize: "var(--fs-xs)", color: "var(--text-muted)" }}>
-          <span>{selected.size} selected</span>
-        </div>
-      )}
-
-      <div className="rounded-xl overflow-hidden" style={{ background: "var(--card-bg)", border: "1px solid var(--card-border)" }}>
-        <div
-          className="overflow-x-auto pb-1"
-          role="region"
-          aria-label="Bookings table"
-          tabIndex={0}
-          style={{ scrollbarColor: "var(--border-md) transparent" }}
-        >
-          <table className="data-table" style={{ minWidth: 720 }}>
-            <thead>
-              <tr>
-                <th style={{ width: 30 }}>
-                  <input
-                    type="checkbox"
-                    className={clsx("row-checkbox", selected.size > 0 && "always-visible")}
-                    aria-label="Select all bookings on this page"
-                    checked={allSelected}
-                    onChange={toggleAll}
-                    disabled={bookings.length === 0}
-                  />
-                </th>
-                <th>Booking ID</th>
-                <th>Client</th>
-                <th className="hidden md:table-cell">Provider</th>
-                <th className="hidden lg:table-cell">Service</th>
-                <th>Status</th>
-                <th className="hidden md:table-cell">Date</th>
-                <th>Amount</th>
-                <th>Action</th>
-              </tr>
-            </thead>
-            <tbody>
-              {bookings.map((b) => (
-                <Fragment key={b.id}>
-                  <tr>
-                    <td>
-                      <input
-                        type="checkbox"
-                        className={clsx("row-checkbox", selected.size > 0 && "always-visible")}
-                        aria-label={`Select booking ${b.id}`}
-                        checked={selected.has(b.id)}
-                        onChange={() => toggleOne(b.id)}
-                      />
-                    </td>
-                    <td style={{ color: "var(--indigo-light)", fontFamily: "monospace", fontSize: "var(--fs-xs)" }} title={b.id}>{b.id.slice(0, 8)}…</td>
-                    <td className="text-white">{b.customer}</td>
-                    <td className="hidden md:table-cell" style={{ color: "var(--text-light)" }}>{b.provider}</td>
-                    <td className="hidden lg:table-cell" style={{ color: "var(--text-light)" }}>{b.service}</td>
-                    <td><span className={clsx("badge", b.statusClass)}>{b.status}</span></td>
-                    <td className="hidden md:table-cell" style={{ color: "var(--text-light)" }}>{b.date}</td>
-                    <td className="text-white font-semibold">{b.amount}</td>
-                    <td>
-                      <div className="flex items-center gap-1">
-                        {b.cancellable && (
-                          <button
-                            onClick={() => setCancelTarget({ id: b.id })}
-                            disabled={cancelingId === b.id}
-                            title="Cancel booking"
-                            className="flex items-center gap-1 font-medium transition-colors hover:opacity-80 disabled:opacity-40"
-                            style={{ background: "rgba(239,68,68,0.12)", border: "1px solid rgba(239,68,68,0.2)", borderRadius: "var(--r-sm)", padding: "4px 10px", fontSize: "var(--fs-2xs)", color: "var(--danger-text)", cursor: cancelingId === b.id ? "default" : "pointer", fontFamily: "inherit" }}
-                          >
-                            <XCircle size={10} /> {cancelingId === b.id ? "Cancelling…" : "Cancel"}
-                          </button>
-                        )}
-                        <button
-                          title="View details"
-                          onClick={() => toggleExpand(b.id)}
-                        aria-label={`${expandedId === b.id ? "Hide" : "Show"} details for ${b.id}`}
-                        aria-expanded={expandedId === b.id}
-                          className="flex items-center justify-center rounded-lg transition-colors hover:bg-white/10"
-                          style={{ width: 26, height: 26, background: "transparent", border: "none", cursor: "pointer", color: "var(--text-muted)", transform: expandedId === b.id ? "rotate(180deg)" : "none" }}
-                        >
-                          <ChevronDown size={12} />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                  {expandedId === b.id && (
-                    <tr>
-                      <td colSpan={9} style={{ background: "var(--chip-bg)", padding: "12px 16px" }}>
-                        <div className="grid grid-cols-2 md:grid-cols-4 gap-3" style={{ fontSize: "var(--fs-xs)" }}>
-                          {[
-                            ["BOOKING ID", b.id],
-                            ["HOMEOWNER", b.customer],
-                            ["PROVIDER", b.provider],
-                            ["SERVICE", b.service],
-                            ["STATUS", b.status],
-                            ["POSTED", b.date],
-                            ["BUDGET", b.amount],
-                          ].map(([label, value]) => (
-                            <div key={label}>
-                              <div style={{ fontSize: "var(--fs-3xs)", color: "var(--text-muted)", marginBottom: 3 }}>{label}</div>
-                              <div className="text-white" style={{ wordBreak: "break-all" }}>{value}</div>
-                            </div>
-                          ))}
-                        </div>
-                        {details[b.id] === "loading" && (
-                          <div style={{ fontSize: "var(--fs-2xs)", color: "var(--text-muted)", marginTop: 10 }}>Loading job detail…</div>
-                        )}
-                        {details[b.id] === "error" && (
-                          <div style={{ fontSize: "var(--fs-2xs)", color: "var(--danger-text)", marginTop: 10 }}>Could not load job detail.</div>
-                        )}
-                        {details[b.id] && typeof details[b.id] === "object" && (() => {
-                          const d = details[b.id] as AdminBookingDetail;
-                          return (
-                            <div className="grid grid-cols-2 md:grid-cols-4 gap-3" style={{ fontSize: "var(--fs-xs)", marginTop: 10, paddingTop: 10, borderTop: "1px solid var(--border)" }}>
-                              <div className="col-span-2">
-                                <div style={{ fontSize: "var(--fs-3xs)", color: "var(--text-muted)", marginBottom: 3 }}>DESCRIPTION</div>
-                                <div className="text-white">{d.description ?? "—"}</div>
-                              </div>
-                              <div className="col-span-2">
-                                <div style={{ fontSize: "var(--fs-3xs)", color: "var(--text-muted)", marginBottom: 3 }}>ADDRESS</div>
-                                <div className="text-white">{d.address ?? "—"}</div>
-                              </div>
-                              <div>
-                                <div style={{ fontSize: "var(--fs-3xs)", color: "var(--text-muted)", marginBottom: 3 }}>SCHEDULED</div>
-                                <div className="text-white">{d.scheduledAt ? new Date(d.scheduledAt).toLocaleString() : "—"}</div>
-                              </div>
-                              <div>
-                                <div style={{ fontSize: "var(--fs-3xs)", color: "var(--text-muted)", marginBottom: 3 }}>ESCROW</div>
-                                <div className="text-white">
-                                  {d.escrowStatus ? `${d.escrowStatus.replace("_", " ")} (₱${d.escrowAmount})` : "No escrow hold"}
-                                </div>
-                              </div>
-                              {d.photoUrls.length > 0 && (
-                                <div className="col-span-2 md:col-span-4">
-                                  <div style={{ fontSize: "var(--fs-3xs)", color: "var(--text-muted)", marginBottom: 3 }}>PHOTOS</div>
-                                  <div className="flex gap-2 flex-wrap">
-                                    {d.photoUrls.map((url) => (
-                                      // eslint-disable-next-line @next/next/no-img-element
-                                      <img key={url} src={url} alt="Job photo" style={{ width: 60, height: 60, borderRadius: "var(--r-sm)", objectFit: "cover" }} />
-                                    ))}
-                                  </div>
-                                </div>
-                              )}
-                            </div>
-                          );
-                        })()}
-                      </td>
-                    </tr>
-                  )}
-                </Fragment>
+      <TableCard
+        toolbar={
+          <>
+            <SearchField
+              className="w-full sm:w-72"
+              value={search}
+              onChange={(v) => {
+                setSearch(v);
+                clearSelectionOnScopeChange();
+              }}
+              placeholder="Search by booking ID, client, or service…"
+              label="Search bookings"
+            />
+            {/* One status at a time, grouped by lifecycle, each with its count.
+                A single-status query keeps paging on the server, so this stays
+                fast however many bookings pile up. */}
+            <SelectFilter
+              label="Filter bookings by status"
+              value={statusFilter}
+              onChange={(v) => {
+                setStatusFilter(v as StatusFilter);
+                clearSelectionOnScopeChange();
+              }}
+            >
+              <option value="all">{withCount("All statuses", countFor("all"))}</option>
+              {STATUS_GROUPS.map((group) => (
+                <optgroup key={group.label} label={group.label}>
+                  {group.statuses.map((st) => (
+                    <option key={st} value={st}>
+                      {withCount(st, countFor(st))}
+                    </option>
+                  ))}
+                </optgroup>
               ))}
-              {bookings.length === 0 && (
-                <tr>
-                  <td colSpan={9} className="text-center py-12" style={{ color: "var(--text-muted)", fontSize: "var(--fs-md)" }}>
-                    {/* `total` is the count for the *current* query, so it is 0
-                        whenever a filter excludes everything — using it alone
-                        claimed "No bookings yet" while eleven bookings existed
-                        under another status. Narrowing the scope is the real
-                        signal for which message is true. */}
-                    {loading
-                      ? "Loading bookings…"
-                      : statusFilter !== "all" || search.trim()
-                        ? "No bookings match this search or filter."
-                        : "No bookings yet."}
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-        <div className="md:hidden px-4 py-2" style={{ color: "var(--text-muted)", fontSize: "var(--fs-2xs)" }}>
-          Swipe horizontally to view provider, service, and date details.
-        </div>
+            </SelectFilter>
+            {statusFilter !== "all" && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  setStatusFilter("all");
+                  clearSelectionOnScopeChange();
+                }}
+              >
+                Clear filter
+              </Button>
+            )}
+            <span className="ml-auto tabular text-[12px] text-muted-foreground">
+              {loading ? "Loading…" : `${total.toLocaleString()} ${total === 1 ? "booking" : "bookings"}`}
+            </span>
+          </>
+        }
+      >
+        <DataTable
+          label="Bookings table"
+          columns={columns}
+          rows={bookings}
+          getRowId={(b) => b.id}
+          onRowClick={(b) => openDetail(b.id)}
+          activeRowId={openId}
+          minWidth={760}
+          rowClassName={() => (loading ? "opacity-60" : undefined)}
+          selection={{
+            selected,
+            onToggle: toggleOne,
+            onToggleAll: toggleAll,
+            allSelected,
+            rowLabel: (id) => `Select booking ${id}`,
+            allLabel: "Select all bookings on this page",
+            disabledAll: bookings.length === 0,
+          }}
+          empty={
+            <TableEmpty>
+              {/* `total` is the count for the *current* query, so narrowing the
+                  scope is the real signal for which message is true. */}
+              {loading
+                ? "Loading bookings…"
+                : statusFilter !== "all" || search.trim()
+                  ? "No bookings match this search or filter."
+                  : "No bookings yet."}
+            </TableEmpty>
+          }
+        />
         <Pagination
           page={page}
           pageSize={PAGE_SIZE}
           total={total}
-          onPageChange={(nextPage) => { setSelected(new Set()); setPage(nextPage); }}
+          onPageChange={(nextPage) => {
+            setSelected(new Set());
+            setPage(nextPage);
+          }}
           itemLabel="bookings"
         />
-      </div>
+      </TableCard>
+
+      <BulkBar count={selected.size} noun="booking" onClear={() => setSelected(new Set())}>
+        <Button size="sm" variant="outline" onClick={() => setConfirmingExport(true)}>
+          <Download /> Export
+        </Button>
+      </BulkBar>
+
+      <ReviewDrawer
+        open={open !== null}
+        onClose={() => setOpenId(null)}
+        title={open ? open.service : ""}
+        subtitle={open ? `Booking ${open.id.slice(0, 8)} · Posted ${open.date}` : undefined}
+        footer={
+          open ? (
+            <>
+              <Button variant="outline" className="flex-1" onClick={() => setOpenId(null)}>
+                Close
+              </Button>
+              {open.cancellable && (
+                <Button variant="destructive" className="flex-1" onClick={() => setCancelTarget({ id: open.id })} disabled={cancelingId === open.id}>
+                  <XCircle /> Cancel booking
+                </Button>
+              )}
+            </>
+          ) : undefined
+        }
+      >
+        {open && (
+          <>
+            <div className="mb-5 flex items-center justify-between gap-3">
+              <Badge tone={BOOKING_TONE[open.status] ?? "neutral"} dot>
+                {open.status}
+              </Badge>
+              <span className="tabular text-[20px] font-semibold tracking-tight">{open.amount}</span>
+            </div>
+            <DrawerSection title="People">
+              <div className="grid grid-cols-2 gap-4">
+                <DrawerField label="Client" value={open.customer} />
+                <DrawerField label="Provider" value={open.provider} />
+                <DrawerField label="Service" value={open.service} />
+                <DrawerField label="Booking ID" value={<span className="break-all font-mono text-[12px]">{open.id}</span>} />
+              </div>
+            </DrawerSection>
+            <DrawerSection title="Job detail">
+              {detail === "loading" || detail === undefined ? (
+                <div className="space-y-2">
+                  <div className="h-3 w-3/4 rounded bg-surface-2 motion-safe:animate-pulse" />
+                  <div className="h-3 w-1/2 rounded bg-surface-2 motion-safe:animate-pulse" />
+                  <div className="h-3 w-2/3 rounded bg-surface-2 motion-safe:animate-pulse" />
+                </div>
+              ) : detail === "error" ? (
+                <p className="text-[12.5px] text-danger">Could not load job detail.</p>
+              ) : (
+                <div className="space-y-4">
+                  <p className="text-[13px] leading-relaxed">{detail.description ?? "No description."}</p>
+                  <ul className="space-y-2.5 text-[12.5px]">
+                    <li className="flex items-start gap-2.5">
+                      <MapPin className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" /> {detail.address ?? "—"}
+                    </li>
+                    <li className="flex items-start gap-2.5">
+                      <CalendarClock className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" />
+                      {detail.scheduledAt ? new Date(detail.scheduledAt).toLocaleString() : "Not scheduled"}
+                    </li>
+                    <li className="flex items-start gap-2.5">
+                      <Lock className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" />
+                      {detail.escrowStatus ? `Escrow: ${escrowLabel(detail.escrowStatus)} · ${formatCurrency(detail.escrowAmount ?? 0)}` : "No escrow hold"}
+                    </li>
+                  </ul>
+                  {detail.photoUrls.length > 0 && (
+                    <div>
+                      <div className="mb-2 flex items-center gap-1.5 text-[11.5px] text-muted-foreground">
+                        <ImageIcon className="size-3.5" /> Photos
+                      </div>
+                      <div className="grid grid-cols-3 gap-2">
+                        {detail.photoUrls.map((url) => (
+                          <a key={url} href={url} target="_blank" rel="noreferrer" className="block overflow-hidden rounded-[8px] border border-border">
+                            {/* eslint-disable-next-line @next/next/no-img-element -- signed Storage URL */}
+                            <img src={url} alt="Job photo" className="aspect-square w-full object-cover transition-transform hover:scale-105" />
+                          </a>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </DrawerSection>
+          </>
+        )}
+      </ReviewDrawer>
 
       <ConfirmDialog
         open={cancelTarget !== null}

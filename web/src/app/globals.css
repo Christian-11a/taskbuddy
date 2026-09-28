@@ -462,3 +462,168 @@ textarea {
 .data-table tr:hover td {
   background: rgba(255, 255, 255, 0.02);
 }
+
+/* Login inputs: 16px on phones so iOS Safari does not zoom the page on focus
+   (it zooms any field whose text is smaller than 16px). */
+@media (max-width: 640px) {
+  .login-page .login-input { font-size: 16px !important; }
+}
+
+/* ════════════════════════════════════════════════════════════════════════
+   Admin redesign design system ("Daylight" + neutral dark)
+   Spec: docs/superpowers/specs/2026-09-28-admin-console-redesign-design.md
+   Semantic tokens live under --ui-* so they never collide with the legacy
+   variables (--border, --bg-main, …) that not-yet-rebuilt pages still use.
+   Tailwind colours below map onto them: bg-surface, text-muted-foreground…
+   ════════════════════════════════════════════════════════════════════════ */
+@custom-variant dark (&:where([data-theme=dark], [data-theme=dark] *));
+
+:root {
+  --ui-bg: #f6f8fa;
+  --ui-surface: #ffffff;
+  --ui-surface-2: #f1f4f7;
+  --ui-border: #e3e8ee;
+  --ui-border-strong: #cfd6de;
+  --ui-text: #0f1b2a;
+  --ui-text-muted: #5b6878;
+  --ui-text-subtle: #8792a0;
+  --ui-accent: #0e7490;
+  --ui-accent-hover: #0c6178;
+  --ui-accent-soft: #e6f4f7;
+  --ui-accent-fg: #ffffff;
+  --ui-hover: #eef2f5;
+  --ui-ring: #0e7490;
+
+  --ui-warn: #b45309;   --ui-warn-soft: #fef3c7;
+  --ui-danger: #b91c1c; --ui-danger-soft: #fee2e2;
+  --ui-ok: #15803d;     --ui-ok-soft: #dcfce7;
+  --ui-info: #1d4ed8;   --ui-info-soft: #dbeafe;
+  --ui-neutral: #475569; --ui-neutral-soft: #eef2f6;
+
+  --ui-chart-1: #0e7490;
+  --ui-chart-2: #7c93b5;
+  --ui-chart-3: #d59f3a;
+  --ui-chart-4: #9d7ad1;
+  --ui-chart-5: #5aa889;
+
+  --ui-shadow-sm: 0 1px 2px rgb(16 24 40 / 0.04), 0 1px 3px rgb(16 24 40 / 0.06);
+  --ui-shadow-md: 0 4px 12px rgb(16 24 40 / 0.06), 0 2px 4px rgb(16 24 40 / 0.04);
+  --ui-shadow-lg: 0 16px 40px rgb(16 24 40 / 0.12), 0 4px 10px rgb(16 24 40 / 0.06);
+  --ui-overlay: rgb(15 23 42 / 0.28);
+  --ui-danger-solid: #dc2626;
+  --ui-radius: 10px;
+}
+
+[data-theme="dark"] {
+  --ui-bg: #0f1115;
+  --ui-surface: #16181d;
+  --ui-surface-2: #1c1f25;
+  --ui-border: #262a31;
+  --ui-border-strong: #333842;
+  --ui-text: #e8eaed;
+  --ui-text-muted: #a0a8b3;
+  --ui-text-subtle: #6f7885;
+  --ui-accent: #22a6b8;
+  --ui-accent-hover: #2bb8cb;
+  --ui-accent-soft: rgb(34 166 184 / 0.14);
+  --ui-accent-fg: #041014;
+  --ui-hover: #20232a;
+  --ui-ring: #22a6b8;
+
+  --ui-warn: #f5b454;   --ui-warn-soft: rgb(245 180 84 / 0.14);
+  --ui-danger: #f28b8b; --ui-danger-soft: rgb(242 139 139 / 0.14);
+  --ui-ok: #5fd08a;     --ui-ok-soft: rgb(95 208 138 / 0.13);
+  --ui-info: #8ab4ff;   --ui-info-soft: rgb(138 180 255 / 0.14);
+  --ui-neutral: #a0a8b3; --ui-neutral-soft: rgb(160 168 179 / 0.12);
+
+  --ui-chart-1: #22a6b8;
+  --ui-chart-2: #8fa3c4;
+  --ui-chart-3: #e0b25c;
+  --ui-chart-4: #b397e0;
+  --ui-chart-5: #6cc29f;
+
+  /* Depth in dark mode comes from lighter layers, not heavy shadows. */
+  --ui-shadow-sm: 0 1px 2px rgb(0 0 0 / 0.3);
+  --ui-shadow-md: 0 4px 12px rgb(0 0 0 / 0.35);
+  --ui-shadow-lg: 0 16px 40px rgb(0 0 0 / 0.5);
+  --ui-overlay: rgb(0 0 0 / 0.5);
+  --ui-danger-solid: #d64545;
+}
+
+@theme inline {
+  --color-background: var(--ui-bg);
+  --color-foreground: var(--ui-text);
+  --color-surface: var(--ui-surface);
+  --color-surface-2: var(--ui-surface-2);
+  --color-card: var(--ui-surface);
+  --color-card-foreground: var(--ui-text);
+  --color-popover: var(--ui-surface);
+  --color-popover-foreground: var(--ui-text);
+  --color-primary: var(--ui-accent);
+  --color-primary-hover: var(--ui-accent-hover);
+  --color-primary-foreground: var(--ui-accent-fg);
+  --color-primary-soft: var(--ui-accent-soft);
+  --color-secondary: var(--ui-surface-2);
+  --color-secondary-foreground: var(--ui-text);
+  --color-muted: var(--ui-surface-2);
+  --color-muted-foreground: var(--ui-text-muted);
+  --color-subtle: var(--ui-text-subtle);
+  --color-accent: var(--ui-hover);
+  --color-accent-foreground: var(--ui-text);
+  --color-destructive: var(--ui-danger);
+  --color-border: var(--ui-border);
+  --color-border-strong: var(--ui-border-strong);
+  --color-input: var(--ui-border-strong);
+  --color-ring: var(--ui-ring);
+  --color-overlay: var(--ui-overlay);
+
+  --color-warn: var(--ui-warn);       --color-warn-soft: var(--ui-warn-soft);
+  --color-danger: var(--ui-danger);   --color-danger-soft: var(--ui-danger-soft);
+  --color-danger-solid: var(--ui-danger-solid);
+  /* White text on solid fills. Not `text-white`: the legacy light-theme
+     remap above recolours .text-white inside the shell. */
+  --color-on-solid: #ffffff;
+  --color-ok: var(--ui-ok);           --color-ok-soft: var(--ui-ok-soft);
+  --color-info: var(--ui-info);       --color-info-soft: var(--ui-info-soft);
+  --color-neutral: var(--ui-neutral); --color-neutral-soft: var(--ui-neutral-soft);
+
+  --color-chart-1: var(--ui-chart-1);
+  --color-chart-2: var(--ui-chart-2);
+  --color-chart-3: var(--ui-chart-3);
+  --color-chart-4: var(--ui-chart-4);
+  --color-chart-5: var(--ui-chart-5);
+
+  --shadow-ui-sm: var(--ui-shadow-sm);
+  --shadow-ui-md: var(--ui-shadow-md);
+  --shadow-ui-lg: var(--ui-shadow-lg);
+  --radius-ui: var(--ui-radius);
+  --font-admin: var(--font-inter), ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+/* Figures line up in columns everywhere in the new console. */
+.ui-root { font-family: var(--font-admin); font-feature-settings: "cv11", "ss01"; }
+.tabular { font-variant-numeric: tabular-nums; }
+
+/* ── Redesign: shared entry/exit motion for overlays (Radix data-state) ── */
+@keyframes ui-fade-in { from { opacity: 0; } }
+@keyframes ui-fade-out { to { opacity: 0; } }
+@keyframes ui-pop-in { from { opacity: 0; transform: translateY(4px) scale(0.98); } }
+@keyframes ui-pop-out { to { opacity: 0; transform: translateY(2px) scale(0.98); } }
+@keyframes ui-dialog-in { from { opacity: 0; transform: translate(-50%, calc(-50% + 8px)) scale(0.98); } }
+@keyframes ui-dialog-out { to { opacity: 0; transform: translate(-50%, calc(-50% + 4px)) scale(0.98); } }
+.ui-overlay[data-state="open"] { animation: ui-fade-in 160ms ease-out; }
+.ui-overlay[data-state="closed"] { animation: ui-fade-out 120ms ease-in; }
+.ui-pop[data-state="open"] { animation: ui-pop-in 160ms cubic-bezier(0.16, 1, 0.3, 1); }
+.ui-pop[data-state="closed"] { animation: ui-pop-out 110ms ease-in; }
+.ui-dialog[data-state="open"] { animation: ui-dialog-in 200ms cubic-bezier(0.16, 1, 0.3, 1); }
+.ui-dialog[data-state="closed"] { animation: ui-dialog-out 130ms ease-in; }
+@media (prefers-reduced-motion: reduce) {
+  .ui-overlay, .ui-pop, .ui-dialog { animation: none !important; }
+}
+@keyframes ui-grow { from { transform: scaleX(0); } }
+@keyframes ui-toast-in { from { opacity: 0; transform: translateY(10px) scale(0.97); } }
+@keyframes ui-toast-timer { to { transform: scaleX(0); } }
+@keyframes ui-slide-in-right { from { transform: translateX(100%); } }
+@keyframes ui-row-flash { from { background-color: var(--ui-accent-soft); } }
+.ui-row-new { animation: ui-row-flash 1.6s ease-out; }
+@media (prefers-reduced-motion: reduce) { .ui-row-new { animation: none; } }

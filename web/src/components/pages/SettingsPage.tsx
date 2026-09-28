@@ -1,9 +1,16 @@
 "use client";
 
 import { useId, useState } from "react";
-import { Save, Bell, Shield, Globe, Palette, Database, Check, AlertCircle } from "lucide-react";
+import { AlertCircle, Bell, Check, Construction, Database, Globe, Laptop, Moon, Palette, Save, Sun, UserRound } from "lucide-react";
 import { useApp, type ConsoleSettings } from "@/context/AppContext";
 import { validateEmail, validateName, validatePasswordChange } from "@/lib/validation";
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import { Switch } from "@/components/ui/switch";
+import { PageHeader } from "@/components/admin/Panel";
+import { cn } from "@/lib/utils";
 
 interface FieldErrors {
   name?: string;
@@ -15,62 +22,76 @@ interface FieldErrors {
   supportEmail?: string;
 }
 
-const Section = ({ title, icon, note, children }: { title: string; icon: React.ReactNode; note?: string; children: React.ReactNode }) => (
-  <div className="rounded-xl p-5 mb-4" style={{ background: "var(--card-bg)", border: "1px solid var(--card-border)" }}>
-    <div className="mb-4" style={{ borderBottom: "1px solid var(--border)", paddingBottom: "var(--sp-3)" }}>
-      <div className="flex items-center gap-2">
-        <span style={{ color: "var(--indigo-light)" }}>{icon}</span>
-        <div className="text-white font-semibold" style={{ fontSize: "var(--fs-md)" }}>{title}</div>
-      </div>
-      {note && <div style={{ fontSize: "var(--fs-2xs)", color: "var(--warning-text)", marginTop: 6 }}>{note}</div>}
-    </div>
-    {children}
-  </div>
-);
+const SECTIONS = [
+  { id: "account", label: "Account", icon: UserRound },
+  { id: "appearance", label: "Appearance", icon: Palette },
+  { id: "notifications", label: "Notifications", icon: Bell },
+  { id: "platform", label: "Platform", icon: Globe },
+  { id: "maintenance", label: "Maintenance", icon: Construction },
+  { id: "privacy", label: "Data & Privacy", icon: Database },
+] as const;
 
 /** Notifications, Platform, and Data & Privacy only write to localStorage —
- *  nothing reaches the backend yet. Surfaced once, page-level, rather than
- *  repeated per section, so nobody mistakes a saved toggle for a working
- *  feature without drowning the page in the same sentence three times. */
-const LOCAL_ONLY_SECTIONS = "Notifications, Platform, and Data & Privacy";
-
-/**
- * The visible label is a sibling `<div>`, not a `<label htmlFor>`, so the
- * button had no accessible name at all — a screen reader announced a bare
- * "button" with no indication of what it controlled or whether it was on.
- * `role="switch"` + `aria-checked` gives it both, and `aria-label` names it
- * from the same string that's rendered.
- */
-function Toggle({ label, sub, value, onChange }: { label: string; sub?: string; value: boolean; onChange: (v: boolean) => void }) {
+ *  nothing reaches the backend yet. Each of those sections carries a small
+ *  "This device" tag so nobody mistakes a saved toggle for a working feature. */
+function DeviceOnly() {
   return (
-    <div className="flex items-center justify-between py-2">
+    <Badge tone="neutral" title="Saved in this browser only — not yet connected to the backend">
+      <Laptop className="size-3" /> This device
+    </Badge>
+  );
+}
+
+function Section({
+  id,
+  title,
+  description,
+  icon: Icon,
+  badge,
+  children,
+}: {
+  id: string;
+  title: string;
+  description?: string;
+  icon: React.ComponentType<{ className?: string }>;
+  badge?: React.ReactNode;
+  children: React.ReactNode;
+}) {
+  return (
+    <section id={`settings-${id}`} aria-labelledby={`settings-${id}-title`} className="scroll-mt-6 rounded-[12px] border border-border bg-surface shadow-ui-sm">
+      <header className="flex flex-wrap items-start justify-between gap-2 border-b border-border px-5 py-4">
+        <div className="flex items-start gap-3">
+          <span className="grid size-8 shrink-0 place-items-center rounded-[8px] bg-primary-soft text-primary">
+            <Icon className="size-4" />
+          </span>
+          <div>
+            <h2 id={`settings-${id}-title`} className="text-[14px] font-semibold tracking-tight">{title}</h2>
+            {description && <p className="mt-0.5 text-[12.5px] text-muted-foreground">{description}</p>}
+          </div>
+        </div>
+        {badge}
+      </header>
+      <div className="px-5 py-2">{children}</div>
+    </section>
+  );
+}
+
+function Toggle({ label, sub, value, onChange, disabled }: { label: string; sub?: string; value: boolean; onChange: (v: boolean) => void; disabled?: boolean }) {
+  return (
+    <div className="flex items-center justify-between gap-4 border-b border-border py-3 last:border-b-0">
       <div>
-        <div className="text-white" style={{ fontSize: "var(--fs-sm)" }}>{label}</div>
-        {sub && <div style={{ fontSize: "var(--fs-2xs)", color: "var(--text-muted)" }}>{sub}</div>}
+        <div className="text-[13px] font-medium">{label}</div>
+        {sub && <div className="mt-0.5 text-[12px] text-muted-foreground">{sub}</div>}
       </div>
-      <button
-        type="button"
-        role="switch"
-        aria-checked={value}
-        aria-label={label}
-        onClick={() => onChange(!value)}
-        style={{ width: 36, height: 20, borderRadius: "var(--r-pill)", background: value ? "var(--indigo)" : "var(--track-bg)", transition: "background 0.2s", border: "none", cursor: "pointer", flexShrink: 0, position: "relative" }}
-      >
-        <div style={{ position: "absolute", top: 3, left: value ? 19 : 3, width: 14, height: 14, borderRadius: "50%", background: "white", transition: "left 0.2s" }} />
-      </button>
+      <Switch checked={value} onCheckedChange={onChange} label={label} disabled={disabled} />
     </div>
   );
 }
 
 /**
- * `useId` rather than a hand-rolled counter: it's stable across the server and
- * client render, so the `htmlFor`/`id` pair doesn't cause a hydration
- * mismatch. Without the association the visible label was decoration — a
- * screen reader announced the input with no name at all.
- *
+ * `useId` keeps the label/input pair stable across server and client renders.
  * `aria-describedby` ties the validation message to the field, and
- * `aria-invalid` marks the field itself as failing, so the error is announced
- * on focus rather than only being visible.
+ * `aria-invalid` marks it as failing, so the error is announced on focus.
  */
 function Field({
   label,
@@ -80,6 +101,7 @@ function Field({
   disabled = false,
   placeholder,
   error,
+  autoComplete,
 }: {
   label: string;
   value: string;
@@ -88,30 +110,78 @@ function Field({
   disabled?: boolean;
   placeholder?: string;
   error?: string;
+  autoComplete?: string;
 }) {
   const id = useId();
   const errorId = `${id}-error`;
   return (
-    <div className="mb-3">
-      <label htmlFor={id} className="block font-medium" style={{ fontSize: "var(--fs-xs)", color: "var(--text-muted)", marginBottom: 6 }}>
-        {label}{disabled && <span style={{ opacity: 0.6 }}> (read-only)</span>}
+    <div className="py-2">
+      <label htmlFor={id} className="mb-1.5 block text-[12px] font-medium">
+        {label}
+        {disabled && <span className="font-normal text-subtle"> (read-only)</span>}
       </label>
-      <input
+      <Input
         id={id}
         type={type}
         value={value}
         disabled={disabled}
         placeholder={placeholder}
+        autoComplete={autoComplete}
         aria-invalid={error ? true : undefined}
         aria-describedby={error ? errorId : undefined}
         onChange={(e) => onChange?.(e.target.value)}
-        className="w-full text-white outline-none"
-        style={{ background: "var(--input-bg)", border: `1px solid ${error ? "rgba(239,68,68,0.5)" : "var(--border-md)"}`, borderRadius: "var(--r-md)", padding: "9px 13px", fontSize: "var(--fs-sm)", fontFamily: "inherit", opacity: disabled ? 0.55 : 1, cursor: disabled ? "not-allowed" : "text" }}
+        className={cn(disabled && "cursor-not-allowed bg-surface-2")}
       />
       {error && (
-        <div id={errorId} style={{ fontSize: "var(--fs-2xs)", color: "var(--danger-text)", marginTop: "var(--sp-1)" }}>{error}</div>
+        <div id={errorId} className="mt-1 text-[11.5px] text-danger">
+          {error}
+        </div>
       )}
     </div>
+  );
+}
+
+function ThemeCard({ dark, selected, onSelect }: { dark: boolean; selected: boolean; onSelect: () => void }) {
+  return (
+    <button
+      type="button"
+      role="radio"
+      aria-checked={selected}
+      onClick={onSelect}
+      className={cn(
+        "group flex flex-col gap-2 rounded-[12px] border p-2 text-left transition-[border-color,box-shadow] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+        selected ? "border-primary shadow-[0_0_0_3px_var(--ui-accent-soft)]" : "border-border hover:border-border-strong",
+      )}
+    >
+      {/* A miniature of the console in that theme. */}
+      <span
+        aria-hidden
+        className="flex h-[84px] overflow-hidden rounded-[8px] border"
+        style={{ background: dark ? "#0f1115" : "#f6f8fa", borderColor: dark ? "#262a31" : "#e5e7eb" }}
+      >
+        <span className="w-[26%] space-y-1.5 p-2" style={{ background: dark ? "#16181d" : "#ffffff" }}>
+          <span className="block h-1.5 w-3/4 rounded-full" style={{ background: dark ? "#22a6b8" : "#0e7490" }} />
+          {[0, 1, 2, 3].map((i) => (
+            <span key={i} className="block h-1 w-full rounded-full" style={{ background: dark ? "#262a31" : "#e5e7eb" }} />
+          ))}
+        </span>
+        <span className="flex-1 space-y-1.5 p-2">
+          <span className="grid grid-cols-3 gap-1">
+            {[0, 1, 2].map((i) => (
+              <span key={i} className="block h-5 rounded" style={{ background: dark ? "#16181d" : "#ffffff", border: `1px solid ${dark ? "#262a31" : "#e5e7eb"}` }} />
+            ))}
+          </span>
+          <span className="block h-8 rounded" style={{ background: dark ? "#16181d" : "#ffffff", border: `1px solid ${dark ? "#262a31" : "#e5e7eb"}` }} />
+        </span>
+      </span>
+      <span className="flex items-center justify-between px-1 pb-0.5 text-[12.5px] font-medium">
+        <span className="flex items-center gap-1.5">
+          {dark ? <Moon className="size-3.5" /> : <Sun className="size-3.5" />}
+          {dark ? "Dark" : "Light"}
+        </span>
+        {selected && <Check className="size-3.5 text-primary" />}
+      </span>
+    </button>
   );
 }
 
@@ -129,19 +199,24 @@ export function SettingsPage() {
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [saved, setSaved] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
   const [maintenanceBusy, setMaintenanceBusy] = useState(false);
+  // Turning maintenance ON locks every client and provider out at once, so it asks first.
+  const [confirmingMaintenance, setConfirmingMaintenance] = useState(false);
 
   const handleMaintenanceToggle = async (enabled: boolean) => {
     setMaintenanceBusy(true);
     const ok = await setMaintenanceMode(enabled);
     setMaintenanceBusy(false);
+    setConfirmingMaintenance(false);
     if (!ok) setError("Could not update maintenance mode. Please try again.");
   };
 
-  const setToggle = (key: keyof ConsoleSettings) => (val: boolean) =>
-    updateSettings({ [key]: val });
+  const setToggle = (key: keyof ConsoleSettings) => (val: boolean) => updateSettings({ [key]: val });
+
+  const accountDirty = name.trim() !== adminProfile.name || !!currentPassword || !!newPassword || !!confirmPassword;
 
   const handleSave = async () => {
     setError("");
@@ -163,95 +238,137 @@ export function SettingsPage() {
       return;
     }
 
-    if (newPassword) {
-      const ok = await changePassword(currentPassword, newPassword);
-      if (!ok) {
-        setError("Current password is incorrect.");
-        setFieldErrors({ currentPassword: "Current password is incorrect." });
-        return;
+    setSaving(true);
+    try {
+      if (newPassword) {
+        const ok = await changePassword(currentPassword, newPassword);
+        if (!ok) {
+          setError("Current password is incorrect.");
+          setFieldErrors({ currentPassword: "Current password is incorrect." });
+          return;
+        }
+        setCurrentPassword("");
+        setNewPassword("");
+        setConfirmPassword("");
       }
-      setCurrentPassword("");
-      setNewPassword("");
-      setConfirmPassword("");
-    }
 
-    if (name.trim() !== adminProfile.name) {
-      const ok = await updateDisplayName(name.trim());
-      if (!ok) {
-        setError("Could not save your display name. Please try again.");
-        return;
+      if (name.trim() !== adminProfile.name) {
+        const ok = await updateDisplayName(name.trim());
+        if (!ok) {
+          setError("Could not save your display name. Please try again.");
+          return;
+        }
       }
-    }
 
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2500);
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2500);
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
     <div>
-      <div className="mb-4">
-        <h1 className="text-white font-bold" style={{ fontSize: "var(--fs-2xl)", letterSpacing: "-0.025em" }}>Settings</h1>
-        <div style={{ fontSize: "var(--fs-sm)", color: "var(--text-muted)", marginTop: 5, lineHeight: 1.45 }}>Configure your admin console preferences</div>
-      </div>
+      <PageHeader eyebrow="System" title="Settings" description="Your account and how this console looks and behaves." />
 
-      <div className="flex items-start gap-2 rounded-xl mb-4" style={{ background: "rgba(245,158,11,0.08)", border: "1px solid rgba(245,158,11,0.18)", padding: "10px 14px", fontSize: "var(--fs-xs)", color: "var(--warning-text)", lineHeight: 1.5 }}>
-        <AlertCircle size={13} style={{ marginTop: 1, flexShrink: 0 }} />
-        <span>{LOCAL_ONLY_SECTIONS} save to this device only — not yet connected to the backend. Account changes and Maintenance Mode are live.</span>
-      </div>
+      <div className="grid items-start gap-6 lg:grid-cols-[200px_minmax(0,1fr)]">
+        <nav aria-label="Settings sections" className="hidden lg:sticky lg:top-0 lg:block">
+          <ul className="space-y-0.5">
+            {SECTIONS.map(({ id, label, icon: Icon }) => (
+              <li key={id}>
+                <a
+                  href={`#settings-${id}`}
+                  className="flex items-center gap-2.5 rounded-[8px] px-2.5 py-1.5 text-[13px] text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                >
+                  <Icon className="size-4" /> {label}
+                </a>
+              </li>
+            ))}
+          </ul>
+        </nav>
 
-      {saved && (
-        <div className="flex items-center gap-2 rounded-xl mb-4" style={{ background: "rgba(34,197,94,0.12)", border: "1px solid rgba(34,197,94,0.2)", padding: "10px 14px", fontSize: "var(--fs-sm)", color: "var(--success-text)" }}>
-          <Check size={13} /> Account changes saved.
-        </div>
-      )}
-      {error && (
-        <div className="flex items-center gap-2 rounded-xl mb-4" style={{ background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.2)", padding: "10px 14px", fontSize: "var(--fs-sm)", color: "var(--danger-text)" }}>
-          <AlertCircle size={13} /> {error}
-        </div>
-      )}
+        <div className="min-w-0 space-y-4">
+          {saved && (
+            <div role="status" className="flex items-center gap-2 rounded-[10px] border border-ok/25 bg-ok-soft px-4 py-3 text-[13px] text-ok">
+              <Check className="size-4" /> Account changes saved.
+            </div>
+          )}
+          {error && (
+            <div role="alert" className="flex items-center gap-2 rounded-[10px] border border-danger/25 bg-danger-soft px-4 py-3 text-[13px] text-danger">
+              <AlertCircle className="size-4" /> {error}
+            </div>
+          )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <div>
-          <Section title="Account" icon={<Shield size={15} />}>
-            <Field label="Display Name" value={name} onChange={setName} error={fieldErrors.name} />
-            {/* Email lives on auth.users, not profiles — no endpoint exposes changing it. */}
-            <Field label="Email Address" value={adminProfile.email} type="email" disabled />
-            <Field label="Current Password" value={currentPassword} type="password" onChange={setCurrentPassword} placeholder="Required to change password" error={fieldErrors.currentPassword} />
-            <Field label="New Password" value={newPassword} type="password" onChange={setNewPassword} placeholder="Min. 8 characters, letters & numbers" error={fieldErrors.newPassword} />
-            <Field label="Confirm New Password" value={confirmPassword} type="password" onChange={setConfirmPassword} placeholder="Re-enter the new password" error={fieldErrors.confirmPassword} />
+          <Section id="account" title="Account" description="Your name on the audit trail, and your password." icon={UserRound}>
+            <div className="grid gap-x-4 sm:grid-cols-2">
+              <Field label="Display name" value={name} onChange={setName} error={fieldErrors.name} autoComplete="name" />
+              {/* Email lives on auth.users, not profiles — no endpoint exposes changing it. */}
+              <Field label="Email address" value={adminProfile.email} type="email" disabled />
+            </div>
+            <div className="mt-2 border-t border-border pt-2">
+              <div className="py-2 text-[12px] font-semibold uppercase tracking-[0.06em] text-subtle">Change password</div>
+              <div className="grid gap-x-4 sm:grid-cols-3">
+                <Field label="Current password" value={currentPassword} type="password" onChange={setCurrentPassword} placeholder="Required to change" error={fieldErrors.currentPassword} autoComplete="current-password" />
+                <Field label="New password" value={newPassword} type="password" onChange={setNewPassword} placeholder="8+ characters, letters & numbers" error={fieldErrors.newPassword} autoComplete="new-password" />
+                <Field label="Confirm new password" value={confirmPassword} type="password" onChange={setConfirmPassword} placeholder="Re-enter it" error={fieldErrors.confirmPassword} autoComplete="new-password" />
+              </div>
+            </div>
+            {/* Only the Account section needs an explicit save — everything
+                else on this page saves the moment it changes. */}
+            <div className="-mx-5 mt-3 flex flex-wrap items-center justify-end gap-3 border-t border-border bg-surface-2/60 px-5 py-3">
+              <span className="text-[12px] text-muted-foreground">Everything else on this page saves as you change it.</span>
+              <Button onClick={handleSave} disabled={saving || !accountDirty}>
+                <Save /> {saving ? "Saving…" : "Save account changes"}
+              </Button>
+            </div>
           </Section>
-          <Section title="Notifications" icon={<Bell size={15} />}>
+
+          <Section id="appearance" title="Appearance" description="Your theme is saved to your admin profile; the sidebar and badge choices stay on this device." icon={Palette}>
+            <div role="radiogroup" aria-label="Theme" className="grid max-w-md grid-cols-2 gap-3 py-3">
+              <ThemeCard dark={false} selected={!darkMode} onSelect={() => setDarkMode(false)} />
+              <ThemeCard dark selected={darkMode} onSelect={() => setDarkMode(true)} />
+            </div>
+            <Toggle label="Compact sidebar" sub="Collapse the sidebar to icons only" value={sidebarCollapsed} onChange={setSidebarCollapsed} />
+            <Toggle label="Show activity badge" sub="Pending counts on the Verifications and Disputes nav items" value={settings.activityBadge} onChange={setToggle("activityBadge")} />
+          </Section>
+
+          <Section id="notifications" title="Notifications" icon={Bell} badge={<DeviceOnly />}>
             <Toggle label="Email alerts for new verifications" value={settings.emailAlerts} onChange={setToggle("emailAlerts")} />
             <Toggle label="Notify on disputed transactions" value={settings.disputeNotify} onChange={setToggle("disputeNotify")} />
             <Toggle label="Daily summary report" sub="Sent every morning at 8 AM" value={settings.dailySummary} onChange={setToggle("dailySummary")} />
             <Toggle label="New user registrations" value={settings.newUserNotify} onChange={setToggle("newUserNotify")} />
           </Section>
-        </div>
-        <div>
-          <Section title="Platform" icon={<Globe size={15} />}>
-            <Field label="Platform Name" value={settings.platformName} onChange={(v) => updateSettings({ platformName: v })} error={fieldErrors.platformName} />
-            <Field label="Support Email" value={settings.supportEmail} type="email" onChange={(v) => updateSettings({ supportEmail: v })} error={fieldErrors.supportEmail} />
-            <Field label="Base Currency" value="PHP (₱)" disabled />
+
+          <Section id="platform" title="Platform" icon={Globe} badge={<DeviceOnly />}>
+            <div className="grid gap-x-4 sm:grid-cols-2">
+              <Field label="Platform name" value={settings.platformName} onChange={(v) => updateSettings({ platformName: v })} error={fieldErrors.platformName} />
+              <Field label="Support email" value={settings.supportEmail} type="email" onChange={(v) => updateSettings({ supportEmail: v })} error={fieldErrors.supportEmail} />
+              <Field label="Base currency" value="PHP (₱)" disabled />
+            </div>
           </Section>
+
           <Section
+            id="maintenance"
             title="Maintenance"
-            icon={<Shield size={15} />}
-            note={maintenanceMode ? "Live: everyone but admins is currently blocked from the app." : undefined}
+            description="Takes the TaskBuddy app offline for everyone except admins."
+            icon={Construction}
+            badge={maintenanceMode ? <Badge tone="danger" dot>Live now</Badge> : <Badge tone="ok" dot>App online</Badge>}
           >
+            {maintenanceMode && (
+              <div className="mt-3 rounded-[10px] border border-danger/25 bg-danger-soft px-3.5 py-2.5 text-[12.5px] text-danger">
+                Everyone but admins is currently blocked from the app.
+              </div>
+            )}
             <Toggle
               label="Maintenance Mode"
-              sub="Blocks all non-admin access to the app immediately"
+              sub={maintenanceBusy ? "Saving…" : "Blocks all non-admin access to the app immediately"}
               value={maintenanceMode}
-              onChange={handleMaintenanceToggle}
+              disabled={maintenanceBusy}
+              onChange={(enabled) => (enabled ? setConfirmingMaintenance(true) : void handleMaintenanceToggle(false))}
             />
-            {maintenanceBusy && <div style={{ fontSize: "var(--fs-2xs)", color: "var(--text-muted)" }}>Saving…</div>}
           </Section>
-          <Section title="Appearance" icon={<Palette size={15} />}>
-            <Toggle label="Dark Mode" value={darkMode} onChange={setDarkMode} />
-            <Toggle label="Compact sidebar" sub="Collapse the sidebar to icons only" value={sidebarCollapsed} onChange={setSidebarCollapsed} />
-            <Toggle label="Show activity badge" sub="Pending count on the Verifications nav item" value={settings.activityBadge} onChange={setToggle("activityBadge")} />
-          </Section>
-          <Section title="Data & Privacy" icon={<Database size={15} />}>
+
+          <Section id="privacy" title="Data & Privacy" icon={Database} badge={<DeviceOnly />}>
             <Toggle label="Auto-purge inactive accounts (1 year)" value={settings.autoPurge} onChange={setToggle("autoPurge")} />
             <Toggle label="Anonymize exported reports" value={settings.anonymizeExports} onChange={setToggle("anonymizeExports")} />
             <Toggle label="Audit log retention (90 days)" value={settings.auditLog} onChange={setToggle("auditLog")} />
@@ -259,23 +376,16 @@ export function SettingsPage() {
         </div>
       </div>
 
-      {/* Only the Account section needs an explicit save — every toggle and
-          field elsewhere on this page persists the moment it changes (to this
-          device, or to the backend for Maintenance Mode). Labelling the button
-          "Save Changes" implied it was committing the whole page, including
-          the platform settings that aren't wired to a backend at all. */}
-      <div className="flex items-center justify-end gap-3 mt-2 flex-wrap">
-        <span style={{ fontSize: "var(--fs-2xs)", color: "var(--text-muted)" }}>
-          Everything else on this page saves as you change it.
-        </span>
-        <button
-          onClick={handleSave}
-          className="btn-primary flex items-center gap-2"
-          style={{ borderRadius: "var(--r-md)", padding: "10px 20px", fontSize: "var(--fs-md)" }}
-        >
-          <Save size={14} /> Save account changes
-        </button>
-      </div>
+      <ConfirmDialog
+        open={confirmingMaintenance}
+        title="Turn on Maintenance Mode?"
+        message="Every client and provider is blocked from the app until you turn it off. Admins keep access to this console."
+        confirmLabel="Turn on"
+        cancelLabel="Keep the app online"
+        busy={maintenanceBusy}
+        onConfirm={() => void handleMaintenanceToggle(true)}
+        onCancel={() => setConfirmingMaintenance(false)}
+      />
     </div>
   );
 }

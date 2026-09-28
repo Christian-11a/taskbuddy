@@ -1,20 +1,228 @@
 # Changelog — TaskBuddy Web
 
-Detailed history for `web/` (public promo site + admin console). The README
-covers how the app works today; this file covers how it got there and why.
-Newest first.
+Detailed history for `web/`. The README covers how the app works today; this
+file covers how it got there and why.
+
+`web/` serves two separate products from one Next.js app, so this file is
+split into three parts. Each part lists its entries **newest first**, and every
+entry is tagged with a category.
+
+| Part | What it covers |
+|---|---|
+| **[Part 1 — Admin console](#part-1--admin-console)** | `/admin/*`: everything an admin sees after signing in |
+| **[Part 2 — Public website](#part-2--public-website)** | `/`, `/account/*`, `/terms`, `/privacy`, and the `/api/auth/*` routes behind sign-in |
+| **[Part 3 — Shared and project-wide](#part-3--shared-and-project-wide)** | Build, docs, and verification rounds that cover both |
+
+**Categories:** Feature · Improvement · Fix · Security · Accessibility ·
+Backend integration · Workaround (covers for a backend gap) · Verification ·
+Docs · Build
+
+"Undated" entries predate dated headings; within each part they are still in
+order, newest first.
+
+<br>
+
+---
+---
+
+# PART 1 — ADMIN CONSOLE
+
+> **Scope:** `/admin/*`
+> Everything an admin sees after signing in at `/admin/login`.
+
+| Date | Entry | Category |
+|---|---|---|
+| 2026-09-29 | Leaner Dashboard; login page on the new design | Improvement |
+| 2026-09-29 | Complete data without waiting on the backend | Workaround, Improvement |
+| 2026-09-29 | Admin console redesign (branch `admin-redesign`) | Feature, Fix, Accessibility |
+| 2026-09-23 | Keeps working when analytics fails | Fix |
+| 2026-09-22 | Users filters, ID type, Service Requests, "Client" wording | Feature |
+| 2026-09-16 | Escrow tab: where a card-funded payout went, and Retry transfer | Feature, Backend integration |
+| 2026-09-15 | Rate limits: retry a 429 instead of reporting it as a refusal | Fix |
+| undated | Resolved: backend redeploy for the recovery-credit endpoint | Backend integration |
+| undated | "Issue Credit" button on the Wallet tab — and a live-deploy gap it surfaced | Feature |
+| undated | Console moved to `/admin/*`; login redesigned | Improvement |
+| undated | Platform administration surfaces | Feature, Backend integration |
+| undated | Component tests, and verifying the cookie/CSRF auth rework | Security, Verification |
+| undated | Visual/UX port from the design mockup | Improvement |
+| undated | Hardening passes | Security, Fix, Accessibility |
+| undated | Backend follow-ups (migrations 0014, 0017) | Backend integration |
 
 ---
 
-## Build workspace root is explicit (2026-09-23)
+### 2026-09-29 · Leaner Dashboard; login page on the new design
 
-Pinned Turbopack's root to `web/` in `next.config.ts`. The repository keeps
-both the root and web lockfiles, but Next no longer needs to guess the web
-app's workspace root from them. The root lockfile remains untouched. Verified
-with `npm test -- --maxWorkers=1` (131 passed, 1 skipped), `npm run lint`, and
-`npm run build` (successful with no workspace-root warning).
+**Category:** Improvement
 
-## Escrow tab: where a card-funded payout went, and Retry transfer (2026-09-16)
+- **Dashboard trimmed to what needs attention.** It had grown into a second
+  Reports page. Kept: the "Needs your attention" tiles, the four KPI cards, the
+  activity feed, and one revenue chart (now linking to Reports). The escrow,
+  commission, open-job, matching-job and dispute-rate figures moved into one
+  compact **Marketplace pulse** panel beside the activity feed. Removed from
+  the Dashboard only (still on Reports): the category donut, top providers,
+  completion ring and rating card. The page now fits one screen. The
+  withdrawal tile reads "payout requests" so its label no longer truncates.
+- **Admin login rebuilt on the console's design system** (same card layout,
+  new tokens, inputs and button, a quiet backdrop, dark mode, 16 px fields on
+  phones so iOS doesn't zoom). Behaviour unchanged: specific failure
+  messages, focus moves to the field with the problem, show/hide password,
+  Caps Lock warning, forgot-password guidance, link back to the website.
+- **Independent review fixes** (Codex, read-only): "Bookings this month" no
+  longer shows an older month when this month has none; a decision clears the
+  cached in-browser analytics so the Dashboard counts update at once; a list cut
+  short by the 5,000-row safety stop now logs a warning; Service Requests says
+  when the backend's 100-row cap is hit; the Users select-all checkbox states
+  how many matching users it selects (select-all covering every filtered user,
+  not just the visible page, is deliberate).
+- **Bookings filter:** the row of nine status tabs became one grouped
+  dropdown ("In progress": Open, Matching, Awaiting Provider, Confirmed, In
+  Progress; "Finished": Completed, Cancelled, Expired), each with its count,
+  plus "Clear filter" and a result count. One status per request keeps paging on
+  the server, so it stays fast as bookings grow. The "Assigned" filter now reads
+  "Awaiting Provider", matching the row badges.
+- The dev preview gained `/dev/admin-preview/login` (sample data; any sign-in
+  there fails on purpose to show the error state).
+
+---
+
+### 2026-09-29 · Complete data without waiting on the backend
+
+**Category:** Workaround · Improvement
+
+Two of the backend requests in the README can't be fixed from here, but
+their effects can. Frontend only; no API changes.
+
+- **Analytics stand-in.** `GET /admin/analytics/summary` is failing (400,
+  ambiguous `provider_profiles` ↔ `service_categories` embed — README →
+  Needed to Move Forward). When it fails, `lib/services` now rebuilds the same
+  summary in the browser from list endpoints that work
+  (`lib/services/browserAnalytics.ts`), using the backend's own rules:
+  revenue = completed `payout` wallet rows, commission = released escrow
+  `commission_amount`, bookings by status/category/day, average of rated
+  providers, top 10 providers by completed jobs. Dashboard and Reports show a
+  blue "calculated in your browser" note instead of the "unavailable" banner,
+  and switch back to the server's figures by themselves once it recovers. The
+  stand-in is cached for 2 minutes so the 30-second live refresh doesn't
+  rebuild it every time. A 401/403 is never papered over.
+- **Complete lists instead of the first 100–200 rows.** New `fetchAllRows()`
+  walks `limit`/`offset` (which every admin list endpoint accepts) until
+  `total` is reached. Now used for users, verifications, disputes, escrow,
+  bookings, wallet ledger, withdrawals and the audit log.
+- **Exact Bookings tab counts.** `getBookingStatusCounts()` asks each status
+  for its total with `limit=1` (eight tiny requests), so every tab shows a
+  count, not just the active one.
+- **Dashboard escrow and open-job figures** come from every held escrow row
+  and the exact status counts, no longer from the first page of each list.
+- Small fixes: "Awaiting Provider" bookings get their status colour; audit
+  icons for settle/credit/maintenance actions.
+
+Verified read-only against the live API: the Dashboard shows real figures
+again (38 users, 13 providers, 17 bookings, category mix) with the stand-in
+note; Bookings tabs read All 17 = Awaiting Provider 1 + Cancelled 1 + Expired
+15. Tests: 167 passed, 1 skipped (new: `browserAnalytics.test.ts`, paging and
+stand-in cases in `services.test.ts`).
+
+---
+
+### 2026-09-29 · Admin console redesign (branch `admin-redesign`)
+
+**Category:** Feature · Fix · Accessibility
+
+The whole admin console was rebuilt on a new design system. Frontend only:
+every page keeps its features and makes the same API calls as before.
+
+- **Look:** a clean light theme ("Daylight") by default and a neutral dark
+  theme, on `--ui-*` design tokens (`globals.css`) so the old variables the
+  public site uses are untouched. Inter for the console. New primitives in
+  `components/ui` (Radix + class-variance-authority, shadcn-style), charts on
+  Recharts, motion via `motion`. ConfirmDialog, Toast, ReviewDrawer and
+  Pagination restyled with unchanged behaviour.
+- **Shell:** grouped sidebar with a sliding active marker, collapsible rail and
+  pending-count badges; header with breadcrumbs, a live indicator ("Live ·
+  updated Ns ago", click to refresh), notifications, theme toggle and account
+  menu; **⌘K / Ctrl+K command palette** that searches users, bookings,
+  transactions and disputes, jumps to any page, and runs actions.
+- **Live data:** the console refreshes silently every 30 s while the tab is
+  visible (no new endpoints); page-local lists reload on the same tick.
+- **Dashboard:** "Needs your attention" tiles, animated KPI cards with
+  sparklines and month-over-month change, revenue trend, category donut,
+  escrow/commission/completion/rating panels, activity feed, top providers.
+- **Work queues** (Verifications, Disputes, Withdrawals, Service Requests):
+  list + detail layout, keyboard shortcuts (J/K move, A approve/release/settle,
+  R reject/refund, Esc), auto-advance after a decision, "done this session"
+  progress. Every approve, money and reject action still goes through a
+  confirmation, including from the keyboard. Disputes load the job chat when a
+  case opens and show it as a conversation.
+- **Tables** (Users, Bookings, Transactions): shared `DataTable` with sortable
+  columns (Users), row selection, a floating bulk-action bar, keyboard-openable
+  rows, and a detail drawer instead of inline expanders. Debounced server
+  search.
+- **Activity / Audit Log:** timelines; the audit log is grouped by day with
+  search and an action filter. New activity is highlighted when it arrives.
+- **Reports:** 3M / 6M / 12M range on the charts. **Platform:** commission
+  calculator, notification preview, confirm before a broadcast is sent.
+  **Settings:** section navigation, Light/Dark theme cards, "This device" tags
+  on the local-only sections, confirm before Maintenance Mode goes on.
+- **Admin login:** specific error messages (wrong credentials / rate limited /
+  network / server), focus moves to the field with the problem, show-password
+  toggle, Caps Lock warning, "Forgot your password?" guidance, link back to the
+  website. `lib/services` gained `loginDetailed()` (`login()` wraps it).
+- **Fixed along the way:**
+  - Disputes: opening the Release/Refund confirmation wiped the admin's
+    resolution note, so notes were never saved. Notes are now kept per case.
+  - `formatCurrency` printed ₱1,820.5; centavos now always get two digits.
+  - Dashboard escrow and open-job figures read AppContext lists that are always
+    empty, so they showed 0; they now load from their own endpoints.
+  - "Client" wording (from 2026-09-22) kept throughout the new pages.
+  - A slow first load (Render cold start past 30 s) could leave the console
+    stuck on "loading"; a background refresh could briefly undo a moderation
+    result; quickly switching Withdrawals/Service Requests tabs could show the
+    previous tab's rows. All three guarded (found in an independent review).
+- **Dev preview:** `/dev/admin-preview/<page>` (`?theme=dark`,
+  `?collapsed=1`) renders any console page with sample data and a mocked API,
+  without a backend or login. 404 in production; `/dev` is in robots.txt.
+
+Tests: 160 passed, 1 skipped (new: queue keys, table sorting, KPI helpers,
+AnimatedNumber, live refresh, command palette, nav, theme, login results).
+UsersPage and TransactionsPage tests pass unchanged. Lint and TypeScript clean.
+Not yet done: exercising the real actions against the live backend (see README
+→ Manual verification).
+
+---
+
+### 2026-09-23 · Keeps working when analytics fails
+
+**Category:** Fix
+
+- When `GET /admin/analytics/summary` fails, the console now loads everything
+  else anyway (the two requests are settled separately) and Dashboard/Reports
+  show an explicit "analytics unavailable" state with Retry instead of zeros.
+  Commit `af18bb1`. (Superseded on 2026-09-29 by the in-browser stand-in above;
+  the cause was confirmed and handed to the backend.)
+
+---
+
+### 2026-09-22 · Users filters, ID type, Service Requests, "Client" wording
+
+**Category:** Feature
+
+Commits `aaf7158`, `394bacc`.
+
+- **Users:** "Joined" filter (last 7 / 30 days), a provider Verification filter
+  and column (Verified / Pending review / Rejected / Not submitted), also in the
+  detail drawer and CSV export. Reads columns migration 0034 adds to
+  `admin_user_overview`.
+- **Verifications:** the review shows which ID type the provider uploaded.
+- **Service Requests:** new page to approve or reject providers' requests to
+  change their main service or add one (rejecting requires a reason).
+- **Wording:** "Homeowner" is shown as "Client" across the admin console,
+  exports and public copy (display text only; the role value is unchanged).
+
+---
+
+### 2026-09-16 · Escrow tab: where a card-funded payout went, and Retry transfer
+
+**Category:** Feature · Backend integration
 
 Card-funded payouts are now sent on to the provider's Stripe Connect account
 (`backend/BACKEND_SCHEMA.md` §29.5). The Escrow tab shows how that went:
@@ -31,7 +239,11 @@ Card-funded payouts are now sent on to the provider's Stripe Connect account
 - CSV export adds Funding and Payout columns. The Wallet tab labels
   `connect_transfer` rows "Sent to Stripe".
 
-## Rate limits: retry a 429 instead of reporting it as a refusal (2026-09-15)
+---
+
+### 2026-09-15 · Rate limits: retry a 429 instead of reporting it as a refusal
+
+**Category:** Fix
 
 The API's rate limit is per endpoint per IP, and a bulk action fires every
 request at the *same* handler, so selecting a few hundred users and suspending
@@ -58,33 +270,11 @@ Tests: `client.test.ts` (Retry-After honoured, exponential cap, fail-fast, no
 sign-out), `services.test.ts` (never more than 4 in flight, errors collected),
 `UsersPage.test.tsx` (`bulkMessage`).
 
-## Completed: final web verification and light-mode default (2026-09-15)
-
-The remaining web checklist is complete. The manual checks were confirmed in
-the browser against the configured healthy backend:
-
-- **Issue Credit** was submitted with a small test amount and confirmed in the
-  recipient's wallet balance and Wallet-tab ledger.
-- **Customer auth** was checked with a real email. Signup correctly reaches the
-  account handoff under the current Supabase Auth configuration, where signup
-  confirmation OTP is not required. Password-reset OTP delivery and the
-  valid-code reset path were also confirmed.
-- **Browser smoke test** covered the public homepage, carousel role/step
-  controls, video and FAQ controls, auth-modal navigation and validation,
-  Escape-to-close navigation, admin login, the dashboard, and every listed
-  admin route. Read-only admin filters, pagination, details, Wallet/Escrow
-  tabs, the Issue Credit form cancel path, user details, Platform tabs, and
-  Settings were exercised without new errors.
-- **Admin appearance** now starts in light mode on `/admin/login` and the
-  dashboard. Existing saved dark-mode preferences remain supported.
-
-`npm test` passed with 118 tests and 1 intentional skip; lint, TypeScript, and
-the production build also passed. The only remaining build message is the
-non-blocking workspace-root warning caused by the root and `web/` lockfiles.
-
 ---
 
-## Resolved: backend redeploy for the recovery-credit endpoint
+### undated · Resolved: backend redeploy for the recovery-credit endpoint
+
+**Category:** Backend integration
 
 The gap blocking full verification of the "Issue Credit" button is closed.
 Re-checked `POST /admin/wallet-transactions/recovery-credit` against the live
@@ -100,22 +290,12 @@ login now, not a backend fix.
 
 ---
 
-## Resolved: Google OAuth redirect URI
+### undated · "Issue Credit" button on the Wallet tab — and a live-deploy gap it surfaced
 
-The `redirect_uri_mismatch` blocking Google Sign-In (README's "Needed to Move
-Forward" list) is fixed — verified live by clicking through the real flow
-again: it now reaches Google's actual "Sign in to continue to
-taskbuddy-kpek.onrender.com" screen instead of erroring. Someone with access
-to the Google Cloud project updated the OAuth client's Authorized redirect
-URIs to the current backend domain; no code changed on this side. Removed the
-now-resolved item from README.
-
----
-
-## Built: "Issue Credit" button on the Wallet tab — and a live-deploy gap it surfaced
+**Category:** Feature
 
 Closes the last piece of the recovery-credit feature: backend support shipped
-in `feat/backend-handoff-closeout` (Eduard, PR #48), the web-side button did
+in `feat/backend-handoff-closeout` (the backend owner, PR #48), the web-side button did
 not exist yet.
 
 - **`lib/validation.ts`**: `RECOVERY_CREDIT_TITLE_MAX_LENGTH`,
@@ -159,217 +339,11 @@ test) all clean.
 
 ---
 
-## Fixed: login-CSRF hole in the Google callback, plus a full re-check
+### undated · Console moved to `/admin/*`; login redesigned
 
-`/api/auth/google/callback` trusted `access_token`/`refresh_token`/`expires_at`
-straight off the query string with nothing verifying they'd just come from a
-real Google round-trip. Anyone could craft that URL using tokens from an
-account *they* control and get a victim to click it — the victim's browser
-would then be silently signed into the attacker's account (a "login CSRF" /
-session-fixation pattern). The backend's own OAuth exchange already has solid
-protection here (signed HMAC state, nonce, expiry, constant-time comparison
-— confirmed by reading `handleGoogleCallback`), but that only protects the
-backend's callback; it says nothing about who ends up on *ours* afterward.
+**Category:** Improvement
 
-- **`_session.ts`**: added `setGoogleNonce()`/`consumeGoogleNonce()` — a
-  random one-time value stored in a short-lived (10 min) httpOnly cookie,
-  compared with `timingSafeEqual`.
-- **`google/start`**: mints the nonce and stamps it onto the callback URL we
-  hand the backend as `app_redirect` (`appendRedirectParams` on the backend
-  preserves that query string, so it survives the whole Google round-trip
-  unchanged).
-- **`google/callback`**: checks the nonce *first*, unconditionally, before
-  even looking at `google_error` or the tokens — a mismatch or missing nonce
-  now redirects to Sign In with "That sign-in link is invalid or has
-  expired." and never touches the session cookie.
-
-Verified live: a hand-crafted `google/callback?access_token=fake&...` URL is
-now rejected with no cookie set (confirmed via `document.cookie` staying
-empty); the real flow still reaches the actual Google consent screen
-unchanged.
-
-**Then went back over everything else, not just this fix**, since a targeted
-patch is easy to trust too much on its own:
-
-- Full production `next build` (not just `tsc --noEmit`) — clean, all 30
-  routes compiled.
-- `npm run lint` surfaced **353 problems**, nearly all of them from
-  `gsap.min.js`/`ScrollTrigger.min.js` never being excluded — added
-  `public/**` to `eslint.config.mjs`'s ignores (vendor bundles and
-  `auth.js`/`script.js` are intentionally plain ES5 for the static site, not
-  TypeScript app source). Fixed the two real findings underneath the noise:
-  an unescaped apostrophe in `CompleteProfileForm.tsx` (error), and
-  documented (rather than silently ignored) its one intentional
-  `window.location.href` hard-navigation, which matches the same
-  cookie-reload pattern used everywhere else in the auth flow. Lint went from
-  353 problems (11 errors) down to 1 pre-existing, unrelated warning
-  (`no-page-custom-font`, a Pages-Router-era rule that doesn't really apply
-  under App Router).
-- Re-swept the ported HTML for any other instance of the "unregistered hash
-  closes the modal" bug class (the same root cause as the Terms/Privacy fix
-  below) — confirmed no others exist.
-- Full backend suite — 247/247 tests across 25 suites, plus `tsc --noEmit`.
-- `npm test` (web) — 114/114, unchanged.
-
----
-
-## Fixed: Google button had no accessible name
-
-Its label is CSS-generated content (`content: "Continue with Google"` on a
-`::after`), which some browsers/screen readers don't reliably expose as the
-element's accessible name — confirmed via the accessibility tree, which
-reported it as an unnamed button. Added `aria-label="Continue with Google"`
-to both instances (Sign In and Sign Up panels) in the source prototype and
-regenerated `HomePage.markup.ts`. Verified live: the accessibility tree now
-reports the button's name correctly.
-
----
-
-## Fixed: Terms/Privacy links closing the auth modal, and added real content
-
-The Sign Up panel's Terms & Conditions / Privacy Policy links were plain
-`<a href="#terms">`/`<a href="#privacy">` — clicking either changed the URL
-hash to something `HASH_TO_PANEL` doesn't recognize, which `syncFromHash()`
-treats as "no matching panel" and closes the whole modal. They also went
-nowhere: no terms or privacy content existed on the site at all.
-
-- **`auth.js`**: the links now carry `data-open-doc="terms"`/`"privacy"` and
-  their click handler calls `preventDefault()` before showing a new document
-  panel — the hash never changes, so the modal-closing bug can't fire.
-  Reading is optional: a checkbox can always be checked directly, same as
-  before. Only clicking the link opens the real text; an "I agree to the ___"
-  button at the bottom checks that one checkbox and returns to whichever
-  panel (currently always Sign Up) the link was opened from, tracked via
-  `link.closest(".auth-panel")` rather than hardcoded, so this generalizes if
-  another panel gains its own consent links later.
-- **Real content**, ported verbatim from `mobile/app/(auth)/screens/TermsAndConditions.tsx`
-  (the mobile app already had this copy; the web app never did) — same
-  sections, same wording, for both documents.
-- **`CompleteProfileForm.tsx`** (the Google role-selection page from the
-  entry below) had the identical dead-link problem with its own consent
-  checkboxes — fixed the same way, as in-component state
-  (`docView: "terms" | "privacy" | null`) rather than the hash-panel
-  mechanism, since that page isn't part of the ported-HTML modal system. The
-  content lives once, in `legalDocs.ts`, imported by that component; `auth.js`
-  has its own copy of the same text since it's a static file with no bundler
-  to share a TS module with — kept in sync by hand, both sourced from the
-  same mobile screen.
-
-Verified live in both places: clicking a link no longer closes the modal, the
-real content renders, "I agree" checks the box and returns to the form with
-the rest of the entered data intact, and checking the box directly (without
-opening the link) still works exactly as before. `tsc --noEmit` clean,
-`npm test` still 114/114.
-
----
-
-## Docs cleanup: open items grouped by who has to act
-
-README's "Backend Requests" and "Not yet built / needs a human" sections were
-two separate lists of the same kind of thing — open work — split by an
-arbitrary line (backend vs. everything else) rather than by what actually
-matters when picking one up: **who is unblocked to act on it**. A recovery-
-credit endpoint (needs a backend developer) and a Google Cloud Console
-permission (needs project access, zero code) don't belong in the same
-decision-making bucket just because both happened to sit outside `web`'s own
-code.
-
-Merged both into one **"Needed to Move Forward"** section, grouped into three
-subsections: **Needs a backend developer** (repo + deploy access), **Needs
-Google Cloud Console access** (a dashboard permission on one specific
-project, no code), and **Needs a human with a real inbox** (no special access
-at all). Same rule as before applies going forward: once something here
-ships, its story moves to this changelog and the item is removed from
-README, not left behind as a resolved trophy.
-
----
-
-## Role-selection step for a first-time Google signup
-
-Closed the last piece the Google Sign-In pass below left open: a brand-new
-Google signup used to land straight on `/account` with no role — the backend
-flags this via `profiles.google_signup_pending`, and mobile already solves it
-with `GoogleRoleSelectionScreen`/`GoogleSPDetailsScreen` calling
-`POST /auth/complete-google-profile`.
-
-- **`/account/complete-profile`** (new, real React page — not ported HTML
-  like the rest of the promo site, since there's no static-prototype design
-  for it to match) reuses the existing `auth-modal`/`auth-role-switch`/
-  `auth-consents` CSS classes so it looks native to the auth flow: role
-  toggle (Homeowner/Service Provider), skill category when Provider is
-  selected, the same four consent checkboxes Sign Up has. Submits to a new
-  `POST /api/auth/complete-google-profile` route (CSRF-guarded like the rest,
-  reads the session cookie server-side same as `/account` does) and redirects
-  to `/account` on success.
-- **`/account`** now inspects `profile.google_signup_pending` (from
-  `GET /auth/me`) and redirects to `/account/complete-profile` instead of
-  rendering the handoff page when it's still true.
-
-Verified live (the gate, not the full round-trip, since that needs a signed-in
-Google session): visiting `/account/complete-profile` without a session
-redirects to `/#login`, correct; toggling Service Provider correctly reveals
-the skill-category select and the biometric consent checkbox. `tsc --noEmit`
-clean, `npm test` still 114/114.
-
----
-
-## Google Sign-In wiring, CSRF guard, and a sitemap
-
-Three items closed from README's "Not yet built" list:
-
-- **Google Sign-In.** The button already existed in the ported HTML (its
-  label is CSS-generated content — `content: "Continue with Google"` on a
-  `::after` — which is why earlier text-searches of the markup missed it) but
-  had no click handler. Wired it up via two new routes rather than pointing
-  the browser at the backend directly, keeping `API_URL` server-side like
-  every other route here: `GET /api/auth/google/start` redirects to the
-  backend's `/auth/google/authorize` with `app_redirect` set to this app's own
-  `/api/auth/google/callback`; that route reads the tokens the backend's
-  callback appends to the query string, sets them via the same
-  `setAccountSession()` login/register use, and redirects to `/account` (or
-  back to `/#login` with `?google_error=...`, which `auth.js` now surfaces in
-  the Sign In panel's status line on load). Verified live end-to-end through
-  the real backend and the real Google consent screen — it stopped there with
-  `redirect_uri_mismatch`, because `https://taskbuddy-kpek.onrender.com/auth/google/callback`
-  isn't registered as an allowed redirect URI on that Google Cloud OAuth
-  client. Not a code problem; needs whoever has access to that Google Cloud
-  project to add it. The post-first-Google-signup role-selection step
-  (`POST /auth/complete-google-profile`, mirroring mobile's
-  `GoogleRoleSelectionScreen`) still isn't built — a new Google signup lands
-  on `/account` with an incomplete profile for now.
-- **CSRF protection for `/api/auth/*`.** Added `isSameOriginRequest()` to
-  `_session.ts` (checks `Origin`, falling back to `Referer`, against the
-  request's `Host`) and applied it to all six route handlers. Verified a
-  normal same-origin submit still 200s.
-- **`sitemap.ts`.** Lists just `/` — `/account*` and `/admin/*` are already
-  excluded via `robots.ts` and have no business being crawled.
-
-Verified after all three: `tsc --noEmit` clean, `npm test` still 114/114.
-
----
-
-## Docs cleanup: README stopped duplicating this changelog
-
-README's "Backend Requests → Resolved" subsection and its separate
-"Not yet built" recovery-credit note were narrating the same shipped work
-already recorded in the "Component tests, and verifying the cookie/CSRF auth
-rework" and "Platform administration surfaces" entries below — two places
-that drift apart the moment only one gets updated (this file didn't get
-today's changes until this pass either). Going forward: **README describes
-only current, actionable state** — what's live, and what's still genuinely
-missing (`Backend Requests`, `Not yet built / needs a human`). Anything
-resolved gets its story told here, with a date, and removed from README
-rather than kept as a trophy case.
-
----
-
-## Public promo site, real customer auth, and the admin move to `/admin/*`
-
-The admin console used to be the whole app, at root-level routes (`/login`,
-`/dashboard`, …) by deliberate earlier design. That stopped being possible
-once the team's approved static prototype
-(`taskbuddy-product-reference/public-site/`) needed to become the real `/` —
-so this pass did both migrations together, since one forced the other.
+Done in the same pass that made the public website the real `/` (Part 2): once `/` belonged to the public site, the console had to move.
 
 - **Admin moved to `/admin/*`.** `login/page.tsx` → `admin/login/page.tsx`;
   `(admin)/*` → `admin/(admin)/*`. `lib/routes.ts` updated
@@ -379,60 +353,15 @@ so this pass did both migrations together, since one forced the other.
   moved out of the root layout into a new `admin/layout.tsx` so they only run
   for `/admin/*` — they were firing session-restore 401s against the public
   homepage otherwise.
-- **Public homepage at `/`**, ported from the static prototype's
-  `index.html` via `dangerouslySetInnerHTML` (`HomePage.markup.ts`, generated
-  from the prototype HTML by a small script, never hand-edited) rather than
-  hand-transcribing hundreds of data-attribute-driven interactive elements
-  into JSX. GSAP + ScrollTrigger loaded via `next/script`; `styles/promo.css`
-  scoped under a `.promo-site` wrapper (via CSS `@scope`) so it can't leak
-  into `/admin/*`'s own token system, and vice versa.
-- **Sign In / Sign Up / Forgot Password / Reset Password**, designed as a
-  single modal driven by `location.hash` (`#login`, `#signup`, `#forgot`)
-  rather than separate pages, matching the flow the team approved in the
-  static prototype. `/account/login` and `/account/signup` exist only to give
-  the modal a stable, shareable URL to redirect from — the homepage never
-  unmounts underneath it. Wired to the backend's real customer endpoints
-  (not a placeholder): `register`, `login`, `logout`, `me`,
-  `forgot-password`, `reset-password`, `send-email-otp`, `verify-email-otp`,
-  via new route handlers under `app/api/auth/*` that convert the backend's
-  JSON-token response into httpOnly `tb_account_access`/`tb_account_refresh`
-  cookies (the web equivalent of mobile's SecureStore).
-- **`/account`** is the real, session-gated handoff page (checks `GET
-  /auth/me` server-side) — honest "your account is ready" copy, no fake
-  dashboard or download link, since the mobile app isn't released yet.
-- **Verified live against the deployed backend**, not just read: Sign In,
-  Sign Up, Forgot Password (200s, transitions to the Reset panel with the
-  email prefilled), and Reset Password's error path (an invalid/expired code
-  correctly surfaces the backend's "Token has expired or is invalid" instead
-  of a generic failure). At the time of this entry, the reset-with-a-valid-code
-  success path still needed a human checking a real inbox; that check was later
-  completed in the 2026-09-15 entry above.
 - **Admin login page redesigned** from a generic split-panel/gradient
   template to a single centered card, using new theme-invariant
   `--login-card`/`--login-card-border` tokens in `globals.css`.
-- **Branding split, deliberately:** `public/promo/taskbuddy-logo.png` (deep
-  blue, promo site) is a separate file from `public/taskbuddy-logo.png`
-  (light cyan, admin) — not a duplicate-asset bug. Favicon overrides follow
-  the same split: root `app/favicon.ico` (promo blue) vs.
-  `app/admin/icon.png` (admin cyan).
-- **`robots.ts`** changed from blanket `disallow: "/"` to
-  `disallow: ["/admin", "/account"]` — the public site is meant to be
-  indexed; the admin console and the session-gated handoff page are not.
-- **Google OAuth redirect allowlist** (`backend/src/auth/google-redirect.ts`)
-  extended to allow `https://taskbuddy-nine-zeta.vercel.app` alongside the
-  existing localhost/app-scheme/Expo rules — required before "Sign in with
-  Google" can work on the deployed site rather than only in local dev.
-  Covered by new cases in `google-redirect.spec.ts` (prod host allowed over
-  https, rejected over plain http, rejected as a smuggled subdomain).
-- Fixed along the way: a global `overflow: hidden` on `html, body` in
-  `globals.css` (scoped originally for the admin's fixed-shell layout) was
-  silently breaking scroll on the new public homepage, since both surfaces
-  shared one root layout — removed, since both admin surfaces already
-  self-manage overflow at their own wrapper level.
 
 ---
 
-## Platform administration surfaces
+### undated · Platform administration surfaces
+
+**Category:** Feature · Backend integration
 
 Added the web integrations and UI for the backend work in migrations 0022–0024:
 
@@ -448,7 +377,9 @@ endpoint exists.
 
 ---
 
-## Component tests, and verifying the cookie/CSRF auth rework
+### undated · Component tests, and verifying the cookie/CSRF auth rework
+
+**Category:** Security · Verification
 
 Commit `fe2356d` ("align backend with current clients", 2026-08-17) replaced
 `localStorage` session tokens with httpOnly cookies + CSRF and added
@@ -477,11 +408,13 @@ remaining testing gap:
   401s). No regressions found.
 - **README restructured**: the old numbered "Known gaps" list became
   "Backend Requests", split into Needed and Resolved subsections. (Later
-  trimmed to just Needed — see the docs-cleanup entry above.)
+  trimmed to just Needed — see the docs-cleanup entries in Part 3.)
 
 ---
 
-## Visual/UX port from the design mockup
+### undated · Visual/UX port from the design mockup
+
+**Category:** Improvement
 
 The console's visual design and several interaction patterns were ported from
 a static HTML mockup (`web-admin-taskbuddy.html` / `TaskBuddyCompleteRefinement.md`,
@@ -534,7 +467,9 @@ hover-reveal checkboxes, not just visual inspection).
 
 ---
 
-## Hardening passes
+### undated · Hardening passes
+
+**Category:** Security · Fix · Accessibility
 
 Kept short on purpose — the point is that a later audit doesn't re-flag
 something already handled. Grouped by what changed, not when.
@@ -626,7 +561,7 @@ something already handled. Grouped by what changed, not when.
   banner + retry, toasts, loading states). There are still **no component
   tests** — the 93 automated tests all cover `lib/`. Adding React Testing
   Library is the obvious next step.
-- Pagination UI now exists client-side (see the mockup-port pass below), but
+- Pagination UI now exists client-side (see the mockup-port pass above), but
   it still pages over a flat 200-row fetch, so row 201 is invisible. Blocked
   on backend `search` params; see
   [Needed to Move Forward](./README.md#needed-to-move-forward).
@@ -634,10 +569,11 @@ something already handled. Grouped by what changed, not when.
   response. Deliberate — it's what keeps a table honest when a bulk action
   partly fails — but a fair future optimisation.
 
-
 ---
 
-## Backend follow-ups (migrations 0014, 0017)
+### undated · Backend follow-ups (migrations 0014, 0017)
+
+**Category:** Backend integration
 
 **All nine items below are shipped and wired up** — nothing here is
 outstanding; it's kept as a record of what closed. For what's still missing,
@@ -692,3 +628,411 @@ first — no schema change, filename only.)
    withdrawal, and escrow payout/refund — including Stripe Checkout top-ups
    (PR #35), which before this were visible only in Stripe's own dashboard,
    not anywhere in TaskBuddy itself.
+
+
+<br>
+
+---
+---
+
+# PART 2 — PUBLIC WEBSITE
+
+> **Scope:** `/`, `/account/*`, `/terms`, `/privacy`, `/api/auth/*`
+> What the public sees: the promo homepage, sign-in/sign-up, and the account handoff.
+
+| Date | Entry | Category |
+|---|---|---|
+| 2026-09-28 | Promo site refresh: hero film, legal pages, sign-up fixes | Feature, Fix |
+| 2026-09-23 | Carousel fits phones | Fix |
+| undated | Resolved: Google OAuth redirect URI | Fix |
+| undated | Login-CSRF hole in the Google callback, plus a full re-check | Security |
+| undated | Google button had no accessible name | Accessibility |
+| undated | Terms/Privacy links closing the auth modal, and real content | Fix |
+| undated | Role-selection step for a first-time Google signup | Feature |
+| undated | Google Sign-In wiring, CSRF guard, and a sitemap | Feature, Security |
+| undated | Public website, real customer auth | Feature |
+
+---
+
+### 2026-09-28 · Promo site refresh: hero film, legal pages, sign-up fixes
+
+**Category:** Feature · Fix
+
+Commits `d3733bc`, `647ada2`, `7be5bfb`.
+
+- **Hero:** a 27-second looping hero video (separate mobile version) replaced
+  the old one, plus a "Watch the film · 1:00" button that opens the full
+  one-minute film with sound in a popup player. Both come from the Remotion
+  project in `promo/` and use the real mobile app UI and logo.
+- **"How it works" carousel** rebuilt with short animated clips of the current
+  app for both roles (client and provider); larger on phones.
+- **Content:** survey-results stats section, FAQ fixes, footer links and ©.
+- **Legal and sharing:** `/terms` and `/privacy` pages (`LegalPage`), linked
+  from the footer and the sitemap; Open Graph / Twitter card metadata with
+  `og-image.jpg` and a `metadataBase`.
+- **Sign-up fixes:** agreeing to Terms no longer makes the user scroll through
+  Privacy again, closing a half-filled form asks before discarding it, and a
+  validation error moves focus to the first field with a problem.
+- **Assets:** images compressed; web videos re-encoded to limited-range BT.709
+  so colours match across browsers. Replaced assets were backed up outside the
+  repo and removed from `public/`.
+
+---
+
+### 2026-09-23 · Carousel fits phones
+
+**Category:** Fix
+
+- The promo "How it works" carousel fits small screens. Commit `210de8e`.
+
+---
+
+### undated · Resolved: Google OAuth redirect URI
+
+**Category:** Fix
+
+The `redirect_uri_mismatch` blocking Google Sign-In (README's "Needed to Move
+Forward" list) is fixed — verified live by clicking through the real flow
+again: it now reaches Google's actual "Sign in to continue to
+taskbuddy-kpek.onrender.com" screen instead of erroring. Someone with access
+to the Google Cloud project updated the OAuth client's Authorized redirect
+URIs to the current backend domain; no code changed on this side. Removed the
+now-resolved item from README.
+
+---
+
+### undated · Login-CSRF hole in the Google callback, plus a full re-check
+
+**Category:** Security
+
+`/api/auth/google/callback` trusted `access_token`/`refresh_token`/`expires_at`
+straight off the query string with nothing verifying they'd just come from a
+real Google round-trip. Anyone could craft that URL using tokens from an
+account *they* control and get a victim to click it — the victim's browser
+would then be silently signed into the attacker's account (a "login CSRF" /
+session-fixation pattern). The backend's own OAuth exchange already has solid
+protection here (signed HMAC state, nonce, expiry, constant-time comparison
+— confirmed by reading `handleGoogleCallback`), but that only protects the
+backend's callback; it says nothing about who ends up on *ours* afterward.
+
+- **`_session.ts`**: added `setGoogleNonce()`/`consumeGoogleNonce()` — a
+  random one-time value stored in a short-lived (10 min) httpOnly cookie,
+  compared with `timingSafeEqual`.
+- **`google/start`**: mints the nonce and stamps it onto the callback URL we
+  hand the backend as `app_redirect` (`appendRedirectParams` on the backend
+  preserves that query string, so it survives the whole Google round-trip
+  unchanged).
+- **`google/callback`**: checks the nonce *first*, unconditionally, before
+  even looking at `google_error` or the tokens — a mismatch or missing nonce
+  now redirects to Sign In with "That sign-in link is invalid or has
+  expired." and never touches the session cookie.
+
+Verified live: a hand-crafted `google/callback?access_token=fake&...` URL is
+now rejected with no cookie set (confirmed via `document.cookie` staying
+empty); the real flow still reaches the actual Google consent screen
+unchanged.
+
+**Then went back over everything else, not just this fix**, since a targeted
+patch is easy to trust too much on its own:
+
+- Full production `next build` (not just `tsc --noEmit`) — clean, all 30
+  routes compiled.
+- `npm run lint` surfaced **353 problems**, nearly all of them from
+  `gsap.min.js`/`ScrollTrigger.min.js` never being excluded — added
+  `public/**` to `eslint.config.mjs`'s ignores (vendor bundles and
+  `auth.js`/`script.js` are intentionally plain ES5 for the static site, not
+  TypeScript app source). Fixed the two real findings underneath the noise:
+  an unescaped apostrophe in `CompleteProfileForm.tsx` (error), and
+  documented (rather than silently ignored) its one intentional
+  `window.location.href` hard-navigation, which matches the same
+  cookie-reload pattern used everywhere else in the auth flow. Lint went from
+  353 problems (11 errors) down to 1 pre-existing, unrelated warning
+  (`no-page-custom-font`, a Pages-Router-era rule that doesn't really apply
+  under App Router).
+- Re-swept the ported HTML for any other instance of the "unregistered hash
+  closes the modal" bug class (the same root cause as the Terms/Privacy fix
+  below) — confirmed no others exist.
+- Full backend suite — 247/247 tests across 25 suites, plus `tsc --noEmit`.
+- `npm test` (web) — 114/114, unchanged.
+
+---
+
+### undated · Google button had no accessible name
+
+**Category:** Accessibility
+
+Its label is CSS-generated content (`content: "Continue with Google"` on a
+`::after`), which some browsers/screen readers don't reliably expose as the
+element's accessible name — confirmed via the accessibility tree, which
+reported it as an unnamed button. Added `aria-label="Continue with Google"`
+to both instances (Sign In and Sign Up panels) in the source prototype and
+regenerated `HomePage.markup.ts`. Verified live: the accessibility tree now
+reports the button's name correctly.
+
+---
+
+### undated · Terms/Privacy links closing the auth modal, and real content
+
+**Category:** Fix
+
+The Sign Up panel's Terms & Conditions / Privacy Policy links were plain
+`<a href="#terms">`/`<a href="#privacy">` — clicking either changed the URL
+hash to something `HASH_TO_PANEL` doesn't recognize, which `syncFromHash()`
+treats as "no matching panel" and closes the whole modal. They also went
+nowhere: no terms or privacy content existed on the site at all.
+
+- **`auth.js`**: the links now carry `data-open-doc="terms"`/`"privacy"` and
+  their click handler calls `preventDefault()` before showing a new document
+  panel — the hash never changes, so the modal-closing bug can't fire.
+  Reading is optional: a checkbox can always be checked directly, same as
+  before. Only clicking the link opens the real text; an "I agree to the ___"
+  button at the bottom checks that one checkbox and returns to whichever
+  panel (currently always Sign Up) the link was opened from, tracked via
+  `link.closest(".auth-panel")` rather than hardcoded, so this generalizes if
+  another panel gains its own consent links later.
+- **Real content**, ported verbatim from `mobile/app/(auth)/screens/TermsAndConditions.tsx`
+  (the mobile app already had this copy; the web app never did) — same
+  sections, same wording, for both documents.
+- **`CompleteProfileForm.tsx`** (the Google role-selection page from the
+  entry below) had the identical dead-link problem with its own consent
+  checkboxes — fixed the same way, as in-component state
+  (`docView: "terms" | "privacy" | null`) rather than the hash-panel
+  mechanism, since that page isn't part of the ported-HTML modal system. The
+  content lives once, in `legalDocs.ts`, imported by that component; `auth.js`
+  has its own copy of the same text since it's a static file with no bundler
+  to share a TS module with — kept in sync by hand, both sourced from the
+  same mobile screen.
+
+Verified live in both places: clicking a link no longer closes the modal, the
+real content renders, "I agree" checks the box and returns to the form with
+the rest of the entered data intact, and checking the box directly (without
+opening the link) still works exactly as before. `tsc --noEmit` clean,
+`npm test` still 114/114.
+
+---
+
+### undated · Role-selection step for a first-time Google signup
+
+**Category:** Feature
+
+Closed the last piece the Google Sign-In pass below left open: a brand-new
+Google signup used to land straight on `/account` with no role — the backend
+flags this via `profiles.google_signup_pending`, and mobile already solves it
+with `GoogleRoleSelectionScreen`/`GoogleSPDetailsScreen` calling
+`POST /auth/complete-google-profile`.
+
+- **`/account/complete-profile`** (new, real React page — not ported HTML
+  like the rest of the promo site, since there's no static-prototype design
+  for it to match) reuses the existing `auth-modal`/`auth-role-switch`/
+  `auth-consents` CSS classes so it looks native to the auth flow: role
+  toggle (Homeowner/Service Provider), skill category when Provider is
+  selected, the same four consent checkboxes Sign Up has. Submits to a new
+  `POST /api/auth/complete-google-profile` route (CSRF-guarded like the rest,
+  reads the session cookie server-side same as `/account` does) and redirects
+  to `/account` on success.
+- **`/account`** now inspects `profile.google_signup_pending` (from
+  `GET /auth/me`) and redirects to `/account/complete-profile` instead of
+  rendering the handoff page when it's still true.
+
+Verified live (the gate, not the full round-trip, since that needs a signed-in
+Google session): visiting `/account/complete-profile` without a session
+redirects to `/#login`, correct; toggling Service Provider correctly reveals
+the skill-category select and the biometric consent checkbox. `tsc --noEmit`
+clean, `npm test` still 114/114.
+
+---
+
+### undated · Google Sign-In wiring, CSRF guard, and a sitemap
+
+**Category:** Feature · Security
+
+Three items closed from README's "Not yet built" list:
+
+- **Google Sign-In.** The button already existed in the ported HTML (its
+  label is CSS-generated content — `content: "Continue with Google"` on a
+  `::after` — which is why earlier text-searches of the markup missed it) but
+  had no click handler. Wired it up via two new routes rather than pointing
+  the browser at the backend directly, keeping `API_URL` server-side like
+  every other route here: `GET /api/auth/google/start` redirects to the
+  backend's `/auth/google/authorize` with `app_redirect` set to this app's own
+  `/api/auth/google/callback`; that route reads the tokens the backend's
+  callback appends to the query string, sets them via the same
+  `setAccountSession()` login/register use, and redirects to `/account` (or
+  back to `/#login` with `?google_error=...`, which `auth.js` now surfaces in
+  the Sign In panel's status line on load). Verified live end-to-end through
+  the real backend and the real Google consent screen — it stopped there with
+  `redirect_uri_mismatch`, because `https://taskbuddy-kpek.onrender.com/auth/google/callback`
+  isn't registered as an allowed redirect URI on that Google Cloud OAuth
+  client. Not a code problem; needs whoever has access to that Google Cloud
+  project to add it. The post-first-Google-signup role-selection step
+  (`POST /auth/complete-google-profile`, mirroring mobile's
+  `GoogleRoleSelectionScreen`) still isn't built — a new Google signup lands
+  on `/account` with an incomplete profile for now.
+- **CSRF protection for `/api/auth/*`.** Added `isSameOriginRequest()` to
+  `_session.ts` (checks `Origin`, falling back to `Referer`, against the
+  request's `Host`) and applied it to all six route handlers. Verified a
+  normal same-origin submit still 200s.
+- **`sitemap.ts`.** Lists just `/` — `/account*` and `/admin/*` are already
+  excluded via `robots.ts` and have no business being crawled.
+
+Verified after all three: `tsc --noEmit` clean, `npm test` still 114/114.
+
+---
+
+### undated · Public website, real customer auth
+
+**Category:** Feature
+
+The admin console used to be the whole app, at root-level routes (`/login`,
+`/dashboard`, …) by deliberate earlier design. That stopped being possible
+once the team's approved static prototype
+(`taskbuddy-product-reference/public-site/`) needed to become the real `/` —
+so this pass did both migrations together, since one forced the other.
+
+- **Public homepage at `/`**, ported from the static prototype's
+  `index.html` via `dangerouslySetInnerHTML` (`HomePage.markup.ts`, generated
+  from the prototype HTML by a small script, never hand-edited) rather than
+  hand-transcribing hundreds of data-attribute-driven interactive elements
+  into JSX. GSAP + ScrollTrigger loaded via `next/script`; `styles/promo.css`
+  scoped under a `.promo-site` wrapper (via CSS `@scope`) so it can't leak
+  into `/admin/*`'s own token system, and vice versa.
+- **Sign In / Sign Up / Forgot Password / Reset Password**, designed as a
+  single modal driven by `location.hash` (`#login`, `#signup`, `#forgot`)
+  rather than separate pages, matching the flow the team approved in the
+  static prototype. `/account/login` and `/account/signup` exist only to give
+  the modal a stable, shareable URL to redirect from — the homepage never
+  unmounts underneath it. Wired to the backend's real customer endpoints
+  (not a placeholder): `register`, `login`, `logout`, `me`,
+  `forgot-password`, `reset-password`, `send-email-otp`, `verify-email-otp`,
+  via new route handlers under `app/api/auth/*` that convert the backend's
+  JSON-token response into httpOnly `tb_account_access`/`tb_account_refresh`
+  cookies (the web equivalent of mobile's SecureStore).
+- **`/account`** is the real, session-gated handoff page (checks `GET
+  /auth/me` server-side) — honest "your account is ready" copy, no fake
+  dashboard or download link, since the mobile app isn't released yet.
+- **Verified live against the deployed backend**, not just read: Sign In,
+  Sign Up, Forgot Password (200s, transitions to the Reset panel with the
+  email prefilled), and Reset Password's error path (an invalid/expired code
+  correctly surfaces the backend's "Token has expired or is invalid" instead
+  of a generic failure). At the time of this entry, the reset-with-a-valid-code
+  success path still needed a human checking a real inbox; that check was later
+  completed in the 2026-09-15 verification entry in Part 3.
+- **Branding split, deliberately:** `public/promo/taskbuddy-logo.png` (deep
+  blue, promo site) is a separate file from `public/taskbuddy-logo.png`
+  (light cyan, admin) — not a duplicate-asset bug. Favicon overrides follow
+  the same split: root `app/favicon.ico` (promo blue) vs.
+  `app/admin/icon.png` (admin cyan).
+- **`robots.ts`** changed from blanket `disallow: "/"` to
+  `disallow: ["/admin", "/account"]` — the public site is meant to be
+  indexed; the admin console and the session-gated handoff page are not.
+- **Google OAuth redirect allowlist** (`backend/src/auth/google-redirect.ts`)
+  extended to allow `https://taskbuddy-nine-zeta.vercel.app` alongside the
+  existing localhost/app-scheme/Expo rules — required before "Sign in with
+  Google" can work on the deployed site rather than only in local dev.
+  Covered by new cases in `google-redirect.spec.ts` (prod host allowed over
+  https, rejected over plain http, rejected as a smuggled subdomain).
+- Fixed along the way: a global `overflow: hidden` on `html, body` in
+  `globals.css` (scoped originally for the admin's fixed-shell layout) was
+  silently breaking scroll on the new public homepage, since both surfaces
+  shared one root layout — removed, since both admin surfaces already
+  self-manage overflow at their own wrapper level.
+
+The admin side of this pass (the move to `/admin/*` and the login card) is in Part 1.
+
+
+<br>
+
+---
+---
+
+# PART 3 — SHARED AND PROJECT-WIDE
+
+> **Scope:** the whole `web/` app
+> Build settings, documentation conventions, and verification rounds that span both products.
+
+| Date | Entry | Category |
+|---|---|---|
+| 2026-09-23 | Build workspace root is explicit | Build |
+| 2026-09-15 | Final web verification and light-mode default | Verification |
+| undated | Docs cleanup: open items grouped by who has to act | Docs |
+| undated | Docs cleanup: README stopped duplicating this changelog | Docs |
+
+---
+
+### 2026-09-23 · Build workspace root is explicit
+
+**Category:** Build
+
+Pinned Turbopack's root to `web/` in `next.config.ts`. The repository keeps
+both the root and web lockfiles, but Next no longer needs to guess the web
+app's workspace root from them. The root lockfile remains untouched. Verified
+with `npm test -- --maxWorkers=1` (131 passed, 1 skipped), `npm run lint`, and
+`npm run build` (successful with no workspace-root warning).
+
+---
+
+### 2026-09-15 · Final web verification and light-mode default
+
+**Category:** Verification
+
+The remaining web checklist is complete. The manual checks were confirmed in
+the browser against the configured healthy backend:
+
+- **Issue Credit** was submitted with a small test amount and confirmed in the
+  recipient's wallet balance and Wallet-tab ledger.
+- **Customer auth** was checked with a real email. Signup correctly reaches the
+  account handoff under the current Supabase Auth configuration, where signup
+  confirmation OTP is not required. Password-reset OTP delivery and the
+  valid-code reset path were also confirmed.
+- **Browser smoke test** covered the public homepage, carousel role/step
+  controls, video and FAQ controls, auth-modal navigation and validation,
+  Escape-to-close navigation, admin login, the dashboard, and every listed
+  admin route. Read-only admin filters, pagination, details, Wallet/Escrow
+  tabs, the Issue Credit form cancel path, user details, Platform tabs, and
+  Settings were exercised without new errors.
+- **Admin appearance** now starts in light mode on `/admin/login` and the
+  dashboard. Existing saved dark-mode preferences remain supported.
+
+`npm test` passed with 118 tests and 1 intentional skip; lint, TypeScript, and
+the production build also passed. The only remaining build message is the
+non-blocking workspace-root warning caused by the root and `web/` lockfiles.
+
+---
+
+### undated · Docs cleanup: open items grouped by who has to act
+
+**Category:** Docs
+
+README's "Backend Requests" and "Not yet built / needs a human" sections were
+two separate lists of the same kind of thing — open work — split by an
+arbitrary line (backend vs. everything else) rather than by what actually
+matters when picking one up: **who is unblocked to act on it**. A recovery-
+credit endpoint (needs a backend developer) and a Google Cloud Console
+permission (needs project access, zero code) don't belong in the same
+decision-making bucket just because both happened to sit outside `web`'s own
+code.
+
+Merged both into one **"Needed to Move Forward"** section, grouped into three
+subsections: **Needs a backend developer** (repo + deploy access), **Needs
+Google Cloud Console access** (a dashboard permission on one specific
+project, no code), and **Needs a human with a real inbox** (no special access
+at all). Same rule as before applies going forward: once something here
+ships, its story moves to this changelog and the item is removed from
+README, not left behind as a resolved trophy.
+
+---
+
+### undated · Docs cleanup: README stopped duplicating this changelog
+
+**Category:** Docs
+
+README's "Backend Requests → Resolved" subsection and its separate
+"Not yet built" recovery-credit note were narrating the same shipped work
+already recorded in the "Component tests, and verifying the cookie/CSRF auth
+rework" and "Platform administration surfaces" entries in Part 1 — two places
+that drift apart the moment only one gets updated (this file didn't get
+today's changes until this pass either). Going forward: **README describes
+only current, actionable state** — what's live, and what's still genuinely
+missing (`Backend Requests`, `Not yet built / needs a human`). Anything
+resolved gets its story told here, with a date, and removed from README
+rather than kept as a trophy case.

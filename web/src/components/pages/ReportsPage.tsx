@@ -1,26 +1,20 @@
 "use client";
 
 import { useState } from "react";
-import {
-  AreaChart,
-  Area,
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  Tooltip,
-  ResponsiveContainer,
-  PieChart,
-  Pie,
-  Cell,
-} from "recharts";
-import { AlertTriangle, Download, Star } from "lucide-react";
+import { AlertTriangle, CalendarRange, CheckCircle2, Download, Star, TrendingUp, Wallet } from "lucide-react";
 import { useApp } from "@/context/AppContext";
 import { formatCurrency, formatCurrencyCompact } from "@/lib/adapters";
 import { datedFilename, downloadCsv, toCsv } from "@/lib/export/csv";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
+import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
+import { PageHeader, Panel } from "@/components/admin/Panel";
+import { Avatar, FilterTabs, initialsOf } from "@/components/admin/queue";
+import { BarList, BarTrend, DonutChart, ProgressRing, TrendChart } from "@/components/admin/charts";
+import { Delta, KpiCard, monthOverMonth } from "@/components/admin/KpiCard";
+import { AnalyticsSourceNote } from "@/components/admin/AnalyticsSourceNote";
 
-const PIE_COLORS = ["var(--chart-cyan)", "var(--chart-blue)", "var(--chart-green)", "var(--chart-amber)", "var(--chart-red)", "var(--chart-violet)"];
+type Range = "3" | "6" | "12";
 
 export function ReportsPage() {
   const {
@@ -31,14 +25,32 @@ export function ReportsPage() {
     topProviders,
     loading,
     analyticsUnavailable,
+    analyticsInBrowser,
     retryLoad,
   } = useApp();
   const [confirmingExport, setConfirmingExport] = useState(false);
+  // Only narrows what the charts show — the series already arrive from the server.
+  const [range, setRange] = useState<Range>("12");
+
+  const header = (actions?: React.ReactNode) => (
+    <PageHeader
+      eyebrow="Records"
+      title="Reports"
+      description="How the marketplace is performing: money, bookings, services and the providers doing the work."
+      actions={actions}
+    />
+  );
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center" style={{ height: 300, color: "var(--text-muted)", fontSize: "var(--fs-md)" }}>
-        Loading reports…
+      <div aria-busy="true" aria-label="Loading reports…">
+        {header()}
+        <div className="mb-4 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          {Array.from({ length: 4 }, (_, i) => (
+            <Skeleton key={i} className="h-[118px] rounded-[12px]" />
+          ))}
+        </div>
+        <Skeleton className="h-[340px] rounded-[12px]" />
       </div>
     );
   }
@@ -46,36 +58,30 @@ export function ReportsPage() {
   if (analyticsUnavailable || !dashboardStats) {
     return (
       <div>
-        <header className="mb-5">
-          <h1 className="text-white font-bold" style={{ fontSize: "var(--fs-2xl)", letterSpacing: "-0.025em" }}>Reports &amp; Analytics</h1>
-          <p style={{ fontSize: "var(--fs-sm)", color: "var(--text-muted)", marginTop: 5, lineHeight: 1.45 }}>Platform performance metrics and business intelligence</p>
-        </header>
-        <div
-          role="status"
-          className="flex items-center gap-3 rounded-xl flex-wrap"
-          style={{ background: "var(--card-bg)", border: "1px solid var(--card-border)", padding: "14px 16px" }}
-        >
-          <AlertTriangle size={15} style={{ color: "var(--warning-text)", flexShrink: 0 }} />
-          <span className="flex-1" style={{ color: "var(--text-light)", fontSize: "var(--fs-sm)" }}>
+        {header()}
+        <div role="status" className="flex flex-wrap items-center gap-3 rounded-[12px] border border-warn/30 bg-warn-soft px-4 py-3.5 text-[13px]">
+          <AlertTriangle className="size-4 shrink-0 text-warn" />
+          <span className="flex-1">
             {analyticsUnavailable
               ? "Analytics are temporarily unavailable. No report values or charts are shown as zero while the data request is failing."
               : "Report data could not be loaded. Retry or check the console error above."}
           </span>
-          <button
-            onClick={retryLoad}
-            className="font-semibold transition-opacity hover:opacity-80"
-            style={{ background: "var(--chip-bg)", border: "1px solid var(--border-md)", borderRadius: "var(--r-md)", padding: "5px 12px", fontSize: "var(--fs-xs)", color: "var(--text-light)", cursor: "pointer", fontFamily: "inherit" }}
-          >
+          <Button size="sm" variant="outline" onClick={retryLoad}>
             Retry
-          </button>
+          </Button>
         </div>
       </div>
     );
   }
 
-  const maxProviderJobs = Math.max(...topProviders.map((p) => p.jobs), 1);
   // Captured after the null guard above so the export closure keeps the narrowing.
   const stats = dashboardStats;
+  const months = Number(range);
+  const revenueInRange = revenueSeries.slice(-months);
+  const bookingsInRange = bookingsSeries.slice(-months);
+  const revenueTotalInRange = revenueInRange.reduce((s, r) => s + r.value, 0);
+  const bookingsTotalInRange = bookingsInRange.reduce((s, r) => s + r.value, 0);
+  const categoryTotal = bookingsByCategory.reduce((s, c) => s + c.value, 0);
 
   /**
    * One CSV covering every section on this page. A dashboard mixes several
@@ -105,214 +111,115 @@ export function ReportsPage() {
 
   return (
     <div>
-      <div className="flex items-start justify-between flex-wrap gap-3 mb-4">
-        <div>
-          <h1 className="text-white font-bold" style={{ fontSize: "var(--fs-2xl)", letterSpacing: "-0.025em" }}>Reports & Analytics</h1>
-          <div style={{ fontSize: "var(--fs-sm)", color: "var(--text-muted)", marginTop: 5, lineHeight: 1.45 }}>
-            Platform performance metrics and business intelligence
+      {header(
+        <>
+          <FilterTabs
+            id="reports-range"
+            label="Chart range"
+            value={range}
+            onChange={setRange}
+            options={[
+              { value: "3", label: "3M" },
+              { value: "6", label: "6M" },
+              { value: "12", label: "12M" },
+            ]}
+          />
+          <Button variant="outline" size="sm" onClick={() => setConfirmingExport(true)} title="Download every section on this page as one CSV">
+            <Download /> Export CSV
+          </Button>
+        </>,
+      )}
+
+      {analyticsInBrowser && <AnalyticsSourceNote />}
+      <div className="mb-4 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <KpiCard label="Total revenue" icon={<Wallet />} value={stats.totalRevenue} format={formatCurrencyCompact} footer={<span className="text-muted-foreground">All-time gross merchandise value</span>} />
+        <KpiCard
+          label="Revenue this month"
+          icon={<TrendingUp />}
+          value={stats.monthlyRevenue}
+          format={formatCurrency}
+          trend={revenueSeries.map((r) => r.value)}
+          footer={<Delta value={monthOverMonth(revenueSeries)} />}
+        />
+        <Panel bodyClassName="flex items-center gap-4 pt-4">
+          <ProgressRing value={stats.completionRate} size={64} stroke={7} label={`${stats.completionRate}%`} />
+          <div>
+            <div className="flex items-center gap-1.5 text-[12.5px] text-muted-foreground">
+              <CheckCircle2 className="size-3.5" /> Completion rate
+            </div>
+            <div className="mt-1 text-[12px] text-subtle">Share of accepted jobs that finished</div>
           </div>
-        </div>
-        <button
-          onClick={() => setConfirmingExport(true)}
-          title="Download every section on this page as one CSV"
-          className="flex items-center gap-1.5 font-semibold transition-opacity hover:opacity-80"
-          style={{ background: "var(--chip-bg)", border: "1px solid var(--border-md)", borderRadius: "var(--r-md)", padding: "7px 13px", fontSize: "var(--fs-xs)", color: "var(--text-light)", cursor: "pointer", fontFamily: "inherit" }}
-        >
-          <Download size={12} /> Export CSV
-        </button>
+        </Panel>
+        <Panel bodyClassName="pt-4">
+          <div className="flex items-center gap-1.5 text-[12.5px] text-muted-foreground">
+            <Star className="size-3.5" /> Avg provider rating
+          </div>
+          <div className="mt-2 flex items-end gap-2">
+            <span className="tabular text-[28px] font-semibold leading-none tracking-tight">{stats.avgRating}</span>
+            <span className="mb-0.5 flex text-warn" aria-hidden>
+              {Array.from({ length: 5 }, (_, i) => (
+                <Star key={i} className={i < Math.round(stats.avgRating) ? "size-3.5 fill-current" : "size-3.5 opacity-25"} />
+              ))}
+            </span>
+          </div>
+          <div className="mt-2 text-[12px] text-subtle">Across {stats.activeProviders.toLocaleString()} active providers</div>
+        </Panel>
       </div>
 
-      {/* Revenue Trend anchors the page; Key Metrics is a compact rail beside
-          it rather than four equal cards competing with the chart for weight. */}
-      <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1.6fr)_minmax(240px,0.8fr)] gap-4 mb-4">
-        <div
-          className="rounded-xl p-5"
-          style={{ background: "var(--card-bg)", border: "1px solid var(--card-border)" }}
+      <div className="mb-4 grid gap-4 xl:grid-cols-[minmax(0,1.65fr)_minmax(300px,1fr)]">
+        <Panel
+          title="Revenue trend"
+          description={`Gross merchandise value per month · ${formatCurrency(revenueTotalInRange)} over ${months} months`}
+          action={<CalendarRange className="size-4 text-subtle" />}
         >
-          <div className="font-semibold text-white mb-1" style={{ fontSize: "var(--fs-md)" }}>Revenue Trend</div>
-          <div style={{ fontSize: "var(--fs-xs)", color: "var(--text-muted)", marginBottom: "var(--sp-4)" }}>Monthly earnings over time</div>
-          {revenueSeries.length === 0 ? (
-            <div
-              className="flex items-center justify-center"
-              style={{ height: 210, fontSize: "var(--fs-xs)", color: "var(--text-muted)", textAlign: "center" }}
-            >
+          {revenueInRange.length === 0 ? (
+            <div className="grid h-[260px] place-items-center text-center text-[12.5px] text-muted-foreground">
               No revenue yet — this fills in once a job&apos;s escrow is released to a provider.
             </div>
           ) : (
-            <ResponsiveContainer width="100%" height={210}>
-              <AreaChart data={revenueSeries}>
-                <defs>
-                  <linearGradient id="rev" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="var(--chart-cyan)" stopOpacity={0.3} />
-                    <stop offset="95%" stopColor="var(--chart-cyan)" stopOpacity={0} />
-                  </linearGradient>
-                </defs>
-                <XAxis dataKey="month" tick={{ fill: "var(--text-muted)", fontSize: "var(--fs-2xs)" }} axisLine={false} tickLine={false} />
-                <YAxis hide />
-                <Tooltip
-                  cursor={{ stroke: "var(--indigo)", strokeWidth: 1, strokeDasharray: "3 3" }}
-                  contentStyle={{
-                    background: "var(--panel-bg)",
-                    border: "1px solid var(--panel-border)",
-                    borderRadius: "var(--r-sm)",
-                    boxShadow: "0 8px 24px rgba(0,0,0,0.25)",
-                    padding: "8px 12px",
-                  }}
-                  labelStyle={{ color: "var(--text-muted)", fontSize: "var(--fs-2xs)", marginBottom: 2 }}
-                  itemStyle={{ color: "var(--text-white)", fontSize: "var(--fs-sm)", fontWeight: 600, padding: 0 }}
-                  formatter={(v: number) => [formatCurrency(v), "Revenue"]}
-                />
-                <Area type="monotone" dataKey="value" stroke="var(--chart-cyan)" fill="url(#rev)" strokeWidth={2} />
-              </AreaChart>
-            </ResponsiveContainer>
+            <TrendChart data={revenueInRange} format={formatCurrency} yFormat={formatCurrencyCompact} height={260} />
           )}
-        </div>
-
-        <div
-          className="rounded-xl p-5"
-          style={{ background: "var(--card-bg)", border: "1px solid var(--card-border)" }}
-        >
-          <div className="font-semibold text-white mb-1" style={{ fontSize: "var(--fs-md)" }}>Key Metrics</div>
-          <div style={{ fontSize: "var(--fs-xs)", color: "var(--text-muted)", marginBottom: "var(--sp-3)" }}>Platform performance at a glance</div>
-          {[
-            { label: "Total revenue", value: formatCurrencyCompact(dashboardStats.totalRevenue) },
-            { label: "This month", value: formatCurrency(dashboardStats.monthlyRevenue) },
-            { label: "Completion rate", value: `${dashboardStats.completionRate}%` },
-          ].map((row) => (
-            <div
-              key={row.label}
-              className="flex items-center justify-between"
-              style={{ padding: "11px 0", borderBottom: "1px solid var(--border)" }}
-            >
-              <span style={{ fontSize: "var(--fs-xs)", color: "var(--text-light)" }}>{row.label}</span>
-              <span className="text-white font-bold" style={{ fontSize: "var(--fs-md)" }}>{row.value}</span>
-            </div>
-          ))}
-          <div className="flex items-center justify-between" style={{ padding: "11px 0" }}>
-            <span style={{ fontSize: "var(--fs-xs)", color: "var(--text-light)" }}>Avg provider rating</span>
-            <span className="text-white font-bold flex items-center gap-1" style={{ fontSize: "var(--fs-md)" }}>
-              {dashboardStats.avgRating} <Star size={12} fill="var(--chart-amber)" color="var(--chart-amber)" />
-            </span>
-          </div>
-        </div>
+        </Panel>
+        <Panel title="Service categories" description="Share of all bookings">
+          {bookingsByCategory.length === 0 ? (
+            <div className="grid h-[240px] place-items-center text-[12.5px] text-muted-foreground">No bookings yet.</div>
+          ) : (
+            <DonutChart data={bookingsByCategory} centerLabel="categories" centerValue={bookingsByCategory.length} />
+          )}
+          {categoryTotal > 0 && categoryTotal !== 100 && (
+            <p className="mt-2 text-[11.5px] text-subtle">Shares are rounded, so they may not add up to exactly 100%.</p>
+          )}
+        </Panel>
       </div>
 
-      {/* Monthly Bookings leads the second row; Service Categories rides beside
-          it at the same 1.6/0.8 ratio, so no two panels compete as equals. */}
-      <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1.6fr)_minmax(240px,0.8fr)] gap-4 mb-4">
-        <div
-          className="rounded-xl p-5"
-          style={{ background: "var(--card-bg)", border: "1px solid var(--card-border)" }}
-        >
-          <div className="font-semibold text-white mb-1" style={{ fontSize: "var(--fs-md)" }}>Monthly Bookings</div>
-          <div style={{ fontSize: "var(--fs-xs)", color: "var(--text-muted)", marginBottom: "var(--sp-4)" }}>Volume per month</div>
-          <ResponsiveContainer width="100%" height={160}>
-            <BarChart data={bookingsSeries} barSize={20}>
-              <XAxis dataKey="month" tick={{ fill: "var(--text-muted)", fontSize: "var(--fs-2xs)" }} axisLine={false} tickLine={false} />
-              <YAxis hide />
-              <Tooltip
-                cursor={{ fill: "var(--track-bg)", radius: 4 }}
-                contentStyle={{
-                  background: "var(--panel-bg)",
-                  border: "1px solid var(--panel-border)",
-                  borderRadius: "var(--r-sm)",
-                  boxShadow: "0 8px 24px rgba(0,0,0,0.25)",
-                  padding: "8px 12px",
-                }}
-                labelStyle={{ color: "var(--text-muted)", fontSize: "var(--fs-2xs)", marginBottom: 2 }}
-                itemStyle={{ color: "var(--text-white)", fontSize: "var(--fs-sm)", fontWeight: 600, padding: 0 }}
-                formatter={(v: number) => [v, "Bookings"]}
-              />
-              <Bar dataKey="value" fill="var(--chart-blue)" radius={[4, 4, 0, 0]} />
-            </BarChart>
-          </ResponsiveContainer>
-        </div>
-
-        <div
-          className="rounded-xl p-5"
-          style={{ background: "var(--card-bg)", border: "1px solid var(--card-border)" }}
-        >
-          <div className="font-semibold text-white mb-1" style={{ fontSize: "var(--fs-md)" }}>Service Categories</div>
-          <div style={{ fontSize: "var(--fs-xs)", color: "var(--text-muted)", marginBottom: "var(--sp-2)" }}>Booking distribution</div>
-          <div className="flex items-center gap-4">
-            {/* Fixed-size chart — no ResponsiveContainer needed (avoids its console warning) */}
-            <PieChart width={110} height={110}>
-              <Pie
-                data={bookingsByCategory}
-                cx="50%"
-                cy="50%"
-                innerRadius={28}
-                outerRadius={50}
-                dataKey="value"
-                paddingAngle={3}
-              >
-                {bookingsByCategory.map((_, i) => (
-                  <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />
-                ))}
-              </Pie>
-            </PieChart>
-            <div className="flex flex-col gap-1.5">
-              {bookingsByCategory.map((c, i) => (
-                <div key={c.label} className="flex items-center gap-2" style={{ fontSize: "var(--fs-2xs)" }}>
-                  <div
-                    className="rounded-sm flex-shrink-0"
-                    style={{ width: 8, height: 8, background: PIE_COLORS[i % PIE_COLORS.length] }}
-                  />
-                  <span style={{ color: "var(--text-muted)" }}>{c.label}</span>
-                  <span className="text-white font-semibold ml-auto">{c.value}%</span>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Top Providers gets the full width it needs as a ranked list — it
-          isn't a chart, and squeezing it into a half-width column wasted the
-          two-column grid pairing on content that isn't the same shape. */}
-      <div
-        className="rounded-xl p-5"
-        style={{ background: "var(--card-bg)", border: "1px solid var(--card-border)" }}
-      >
-        <div className="font-semibold text-white mb-1" style={{ fontSize: "var(--fs-md)" }}>Top Providers</div>
-        <div style={{ fontSize: "var(--fs-xs)", color: "var(--text-muted)", marginBottom: "var(--sp-4)" }}>By total completed jobs</div>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-3">
-          {topProviders.map((p, i) => (
-            <div key={p.name} className="flex items-center gap-3">
-              <div
-                className="flex items-center justify-center flex-shrink-0 font-bold text-white"
-                style={{
-                  width: 22,
-                  height: 22,
-                  borderRadius: "var(--r-sm)",
-                  background: i === 0 ? "var(--chart-amber)" : i === 1 ? "var(--text-muted)" : i === 2 ? "var(--rank-bronze)" : "var(--text-dim)",
-                  color: "#fff",
-                  fontSize: "var(--fs-3xs)",
-                }}
-              >
-                #{i + 1}
-              </div>
-              <div className="flex-1 min-w-0">
-                <div className="text-white font-medium" style={{ fontSize: "var(--fs-xs)" }}>{p.name}</div>
-                <div className="flex items-center gap-1" style={{ fontSize: "var(--fs-3xs)", color: "var(--text-muted)" }}>
-                  {p.jobs} jobs · {p.rating} <Star size={9} fill="var(--chart-amber)" color="var(--chart-amber)" />
-                </div>
-              </div>
-              <div
-                className="flex-shrink-0 rounded-full overflow-hidden"
-                style={{ width: 60, height: 4, background: "var(--track-bg)" }}
-              >
-                <div
-                  className="h-full rounded-full"
-                  style={{
-                    width: `${(p.jobs / maxProviderJobs) * 100}%`,
-                    background: "var(--indigo)",
-                  }}
-                />
-              </div>
-            </div>
-          ))}
-        </div>
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,1.65fr)_minmax(300px,1fr)]">
+        <Panel title="Monthly bookings" description={`${bookingsTotalInRange.toLocaleString()} bookings over ${months} months`}>
+          <BarTrend data={bookingsInRange} format={(n) => `${n} bookings`} color="var(--ui-chart-2)" height={240} />
+        </Panel>
+        <Panel title="Top providers" description="By completed jobs">
+          {topProviders.length === 0 ? (
+            <div className="grid h-[200px] place-items-center text-[12.5px] text-muted-foreground">No completed jobs yet.</div>
+          ) : (
+            <BarList
+              items={topProviders.map((p, i) => ({
+                label: (
+                  <span className="flex min-w-0 items-center gap-2">
+                    <span className="w-4 shrink-0 text-right tabular text-[11px] text-subtle">{i + 1}</span>
+                    <Avatar initials={initialsOf(p.name)} tone={i === 0 ? "warn" : "neutral"} />
+                    <span className="truncate">{p.name}</span>
+                  </span>
+                ),
+                value: p.jobs,
+                hint: (
+                  <span className="inline-flex items-center gap-0.5">
+                    {p.rating} <Star className="size-3 fill-current text-warn" />
+                  </span>
+                ),
+              }))}
+              format={(n) => `${n} jobs`}
+            />
+          )}
+        </Panel>
       </div>
 
       <ConfirmDialog

@@ -1,46 +1,97 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import { Search, Check, X, FileText, Download, AlertTriangle } from "lucide-react";
+import { useMemo, useState } from "react";
+import { BadgeCheck, Check, Download, FileText, Maximize2, ShieldCheck, X } from "lucide-react";
 import { useApp } from "@/context/AppContext";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
-import { ReviewDrawer, DrawerField, DrawerSection } from "@/components/ui/ReviewDrawer";
 import { useToast } from "@/components/ui/Toast";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { ReasonField } from "@/components/ui/input";
+import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
+import { PageHeader } from "@/components/admin/Panel";
+import {
+  Avatar,
+  DetailCard,
+  DetailEmpty,
+  DetailSection,
+  Field,
+  FieldGrid,
+  FilterTabs,
+  KeyHints,
+  QueueItem,
+  QueueList,
+  QueueListSkeleton,
+  QueueListState,
+  QueueProgress,
+  QueueShell,
+  SearchField,
+  neighborAfterRemoval,
+  useIsWide,
+  useQueueKeys,
+} from "@/components/admin/queue";
 import { REASON_MAX_LENGTH } from "@/lib/validation";
 import { datedFilename, downloadCsv, toCsv } from "@/lib/export/csv";
-import clsx from "clsx";
+import type { VerificationRow } from "@/lib/adapters";
 
 type Filter = "all" | "pending" | "approved" | "rejected";
+
+const STATUS_TONE = { pending: "warn", approved: "ok", rejected: "danger" } as const;
+const STATUS_LABEL = { pending: "Pending", approved: "Approved", rejected: "Rejected" } as const;
+
+function StatusBadge({ status }: { status: VerificationRow["status"] }) {
+  return (
+    <Badge tone={STATUS_TONE[status] ?? "neutral"} dot>
+      {STATUS_LABEL[status] ?? status}
+    </Badge>
+  );
+}
 
 /**
  * Provider verification is a trust-and-safety decision, not a bulk
  * housekeeping task — no "select all pending" / "approve selected" here on
- * purpose. Every provider gets reviewed one at a time via the drawer before
- * a decision is made. See docs/TaskBuddyCompleteRefinement.md §28.
+ * purpose. Every provider gets reviewed one at a time before a decision is
+ * made. See docs/TaskBuddyCompleteRefinement.md §28.
  */
 export function VerificationsPage() {
   const { verifications, approveVerification, rejectVerification, loading } = useApp();
   const { showToast } = useToast();
+  const isWide = useIsWide();
   const [filter, setFilter] = useState<Filter>("pending");
   const [search, setSearch] = useState("");
-  const [reviewingId, setReviewingId] = useState<string | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
   const [preview, setPreview] = useState<{ label: string; url: string } | null>(null);
   const [approveBusyId, setApproveBusyId] = useState<string | null>(null);
+  // The A shortcut asks first — a stray key press shouldn't approve a provider.
+  const [confirmApproveId, setConfirmApproveId] = useState<string | null>(null);
   const [rejectBusy, setRejectBusy] = useState(false);
   // Reject always confirms and always offers a reason — the backend records
-  // it on the audit trail (admin_actions), so leaving it blank in the UI
-  // meant every rejection reason was silently lost.
+  // it on the audit trail (admin_actions).
   const [rejectTargetId, setRejectTargetId] = useState<string | null>(null);
   const [rejectReason, setRejectReason] = useState("");
   const [confirmingExport, setConfirmingExport] = useState(false);
+  const [doneThisSession, setDoneThisSession] = useState(0);
 
-  const filtered = verifications.filter((v) => {
-    const matchFilter = filter === "all" || v.status === filter;
-    const matchSearch =
-      v.name.toLowerCase().includes(search.toLowerCase()) ||
-      v.email.toLowerCase().includes(search.toLowerCase());
-    return matchFilter && matchSearch;
-  });
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return verifications.filter((v) => {
+      const matchFilter = filter === "all" || v.status === filter;
+      const matchSearch = !q || v.name.toLowerCase().includes(q) || v.email.toLowerCase().includes(q);
+      return matchFilter && matchSearch;
+    });
+  }, [verifications, filter, search]);
+  const ids = useMemo(() => filtered.map((v) => v.id), [filtered]);
+
+  const counts = {
+    all: verifications.length,
+    pending: verifications.filter((v) => v.status === "pending").length,
+    approved: verifications.filter((v) => v.status === "approved").length,
+    rejected: verifications.filter((v) => v.status === "rejected").length,
+  };
+
+  // Wide screens behave like an inbox: something is always open.
+  const selected = filtered.find((v) => v.id === selectedId) ?? (isWide ? filtered[0] : undefined);
+  const effectiveId = selected?.id ?? null;
 
   function exportCsv() {
     const csv = toCsv(
@@ -50,19 +101,18 @@ export function VerificationsPage() {
     downloadCsv(datedFilename("taskbuddy-verification-queue"), csv);
   }
 
-  const counts = {
-    all: verifications.length,
-    pending: verifications.filter((v) => v.status === "pending").length,
-    approved: verifications.filter((v) => v.status === "approved").length,
-    rejected: verifications.filter((v) => v.status === "rejected").length,
-  };
+  function advanceFrom(id: string) {
+    setSelectedId(neighborAfterRemoval(ids, id));
+  }
 
-  async function handleApproveOne(id: string) {
+  async function handleApprove(id: string) {
+    setConfirmApproveId(null);
     setApproveBusyId(id);
     try {
       await approveVerification(id);
       showToast("Verification approved.");
-      setReviewingId(null);
+      setDoneThisSession((n) => n + 1);
+      advanceFrom(id);
     } catch {
       showToast("Could not approve that verification. Please try again.", "error");
     } finally {
@@ -77,12 +127,14 @@ export function VerificationsPage() {
 
   async function confirmReject() {
     if (!rejectTargetId) return;
+    const id = rejectTargetId;
     setRejectBusy(true);
     try {
-      await rejectVerification(rejectTargetId, rejectReason.trim() || undefined);
+      await rejectVerification(id, rejectReason.trim() || undefined);
       showToast("Verification rejected.");
       setRejectTargetId(null);
-      setReviewingId(null);
+      setDoneThisSession((n) => n + 1);
+      advanceFrom(id);
     } catch {
       showToast("Could not reject. Please try again.", "error");
     } finally {
@@ -90,239 +142,194 @@ export function VerificationsPage() {
     }
   }
 
+  useQueueKeys({
+    ids,
+    selectedId: effectiveId,
+    onSelect: setSelectedId,
+    onApprove: selected?.status === "pending" && !approveBusyId ? () => setConfirmApproveId(selected.id) : undefined,
+    onReject: selected?.status === "pending" ? () => openRejectPrompt(selected.id) : undefined,
+  });
+
   const rejectReasonTooLong = rejectReason.length > REASON_MAX_LENGTH;
-  const reviewing = verifications.find((v) => v.id === reviewingId) ?? null;
+  const approveTarget = verifications.find((v) => v.id === confirmApproveId);
 
-  // Same treatment ConfirmDialog gets: Escape to close, Tab kept inside the
-  // dialog, and focus handed back to whatever opened it.
-  const lightboxRef = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    if (!preview) return;
-    const previouslyFocused = document.activeElement as HTMLElement | null;
-
-    function handleKey(e: KeyboardEvent) {
-      if (e.key === "Escape") {
-        setPreview(null);
-        return;
-      }
-      if (e.key !== "Tab") return;
-      const root = lightboxRef.current;
-      if (!root) return;
-      const focusable = root.querySelectorAll<HTMLElement>(
-        'button:not([disabled]), [href], [tabindex]:not([tabindex="-1"])',
-      );
-      if (focusable.length === 0) return;
-      const first = focusable[0];
-      const last = focusable[focusable.length - 1];
-      if (e.shiftKey && (document.activeElement === first || !root.contains(document.activeElement))) {
-        e.preventDefault();
-        last.focus();
-      } else if (!e.shiftKey && (document.activeElement === last || !root.contains(document.activeElement))) {
-        e.preventDefault();
-        first.focus();
-      }
-    }
-
-    document.addEventListener("keydown", handleKey);
-    lightboxRef.current?.focus();
-    return () => {
-      document.removeEventListener("keydown", handleKey);
-      previouslyFocused?.focus?.();
-    };
-  }, [preview]);
+  const emptyState = loading ? (
+    <QueueListSkeleton />
+  ) : verifications.length === 0 ? (
+    <QueueListState icon={ShieldCheck} title="No verifications submitted yet" description="New provider submissions will appear here." />
+  ) : filter === "pending" && counts.pending === 0 && !search ? (
+    <QueueListState icon={BadgeCheck} tone="ok" title="Queue clear" description="Every provider submission has been reviewed." />
+  ) : (
+    <QueueListState title="Nothing matches" description="Try a different search or filter." />
+  );
 
   return (
     <div>
-      <div className="flex items-start justify-between flex-wrap gap-3 mb-4">
-        <div>
-          <h1 className="text-white font-bold" style={{ fontSize: "var(--fs-2xl)", letterSpacing: "-0.025em" }}>Provider Verification Queue</h1>
-          <div style={{ fontSize: "var(--fs-sm)", color: "var(--text-muted)", marginTop: 5, lineHeight: 1.45 }}>Review submitted government IDs and service certificates</div>
-        </div>
-        {/* Amber is a call to act. An empty queue is good news, so it reads
-            as a plain confirmation rather than a warning about nothing. */}
-        {counts.pending > 0 ? (
-          <div className="flex items-center gap-1.5 font-semibold" style={{ background: "rgba(245,158,11,0.12)", border: "1px solid rgba(245,158,11,0.2)", borderRadius: "var(--r-md)", padding: "7px 11px", fontSize: "var(--fs-xs)", color: "var(--warning-text)" }}>
-            <AlertTriangle size={12} /> {counts.pending} pending
-          </div>
-        ) : (
-          <div className="flex items-center gap-1.5" style={{ borderRadius: "var(--r-md)", padding: "7px 11px", fontSize: "var(--fs-xs)", color: "var(--text-muted)" }}>
-            <Check size={12} style={{ color: "var(--success-text)" }} /> Queue clear
-          </div>
-        )}
-      </div>
+      <PageHeader
+        eyebrow="Operations"
+        title="Verifications"
+        description="Review submitted government IDs and selfies, one provider at a time, before they can take jobs."
+        actions={
+          <Button variant="outline" size="sm" onClick={() => setConfirmingExport(true)} disabled={filtered.length === 0}>
+            <Download /> Export queue
+          </Button>
+        }
+      />
 
-      <div className="flex gap-3 items-center mb-4 flex-wrap">
-        <div className="relative" style={{ flex: "1 1 200px", maxWidth: 360 }}>
-          <Search size={13} className="absolute top-1/2 -translate-y-1/2 left-3 opacity-40" color="currentColor" style={{ color: "var(--text-white)" }} />
-          <input
-            className="w-full text-white outline-none"
-            placeholder="Search by name or email…"
-            aria-label="Search verifications by name or email"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            style={{ background: "var(--input-bg)", border: "1px solid var(--border-md)", height: 38, borderRadius: "var(--r-md)", padding: "0 13px 0 36px", fontSize: "var(--fs-sm)", fontFamily: "inherit", color: "var(--text-white)" }}
-          />
-        </div>
-        <div className="inline-flex flex-wrap" style={{ background: "var(--chip-bg)", padding: 3, borderRadius: "var(--r-md)", gap: 2 }}>
-          {(["all", "pending", "approved", "rejected"] as Filter[]).map((f) => (
-            <button key={f} onClick={() => setFilter(f)}
-              className={clsx("flex items-center gap-1 rounded-lg font-medium cursor-pointer transition-colors", filter !== f && "text-gray-500 hover:text-gray-300")}
-              style={{ padding: "7px 11px", fontSize: "var(--fs-xs)", background: filter === f ? "var(--indigo-dark)" : "transparent", color: filter === f ? "var(--indigo-light)" : undefined, border: "none", fontFamily: "inherit" }}
-            >
-              {f.charAt(0).toUpperCase() + f.slice(1)} <span style={{ fontSize: "var(--fs-3xs)", opacity: 0.7 }}>({counts[f]})</span>
-            </button>
-          ))}
-        </div>
-      </div>
-
-      <div className="flex items-center justify-between gap-3 mb-3 flex-wrap">
-        <span style={{ fontSize: "var(--fs-xs)", color: "var(--text-muted)" }}>
-          Review each submission before approving or rejecting provider access.
-        </span>
-        <button
-          onClick={() => setConfirmingExport(true)}
-          disabled={filtered.length === 0}
-          className="flex items-center gap-1.5 font-semibold transition-opacity hover:opacity-80 disabled:opacity-40"
-          style={{ background: "var(--chip-bg)", border: "1px solid var(--border-md)", borderRadius: "var(--r-md)", padding: "7px 13px", fontSize: "var(--fs-xs)", color: "var(--text-light)", cursor: "pointer", fontFamily: "inherit" }}
-        >
-          <Download size={12} /> Export queue
-        </button>
-      </div>
-
-      <div>
-        {filtered.length === 0 && (
-          <div className="text-center py-12" style={{ color: "var(--text-muted)", fontSize: "var(--fs-md)" }}>
-            {loading
-              ? "Loading verifications…"
-              : verifications.length === 0
-                ? "No verifications submitted yet."
-                : "No verifications match this search or filter."}
-          </div>
-        )}
-        {filtered.map((v) => (
-          <div key={v.id} className="rounded-xl mb-2.5" style={{ background: "var(--card-bg)", border: "1px solid var(--card-border)" }}>
-            <div className="flex items-center gap-3 flex-wrap" style={{ padding: 13 }}>
-              <div className="flex items-center justify-center flex-shrink-0 font-bold" style={{ width: 38, height: 38, borderRadius: "var(--r-lg)", background: "var(--indigo-dark)", color: "var(--indigo-light)", fontSize: "var(--fs-xs)" }}>{v.initials}</div>
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2 font-semibold flex-wrap" style={{ fontSize: "var(--fs-md)" }}>
-                  {v.name}
-                  <span className={clsx("badge", `badge-${v.status}`)}>{v.status.charAt(0).toUpperCase() + v.status.slice(1)}</span>
-                </div>
-                <div style={{ fontSize: "var(--fs-3xs)", color: "var(--text-muted)", marginTop: 2 }}>{v.email} · Submitted {v.date} · {v.documents.length} document{v.documents.length === 1 ? "" : "s"}</div>
-              </div>
-              <button
-                onClick={() => setReviewingId(v.id)}
-                className="flex items-center gap-1.5 font-semibold transition-colors flex-shrink-0"
-                style={{ background: "var(--indigo-dark)", border: "1px solid rgba(34,195,214,0.3)", borderRadius: "var(--r-md)", padding: "8px 16px", fontSize: "var(--fs-xs)", color: "var(--indigo-light)", cursor: "pointer", fontFamily: "inherit" }}
-              >
-                Review submission
-              </button>
+      <QueueShell
+        showDetailOnNarrow={!!selectedId && !!selected}
+        onBack={() => setSelectedId(null)}
+        toolbar={
+          <>
+            <div className="flex items-center justify-between gap-2">
+              <FilterTabs
+                id="verifications"
+                label="Filter verifications by status"
+                value={filter}
+                onChange={(f) => {
+                  setFilter(f);
+                  setSelectedId(null);
+                }}
+                options={[
+                  { value: "pending", label: "Pending", count: counts.pending },
+                  { value: "approved", label: "Approved", count: counts.approved },
+                  { value: "rejected", label: "Rejected", count: counts.rejected },
+                  { value: "all", label: "All", count: counts.all },
+                ]}
+              />
             </div>
-          </div>
-        ))}
-      </div>
-
-      {/* Review drawer — replaces the old inline row expand. */}
-      <ReviewDrawer
-        open={reviewing !== null}
-        onClose={() => setReviewingId(null)}
-        title={reviewing?.name ?? ""}
-        subtitle={reviewing ? `Provider verification · Submitted ${reviewing.date}` : undefined}
-        footer={
-          reviewing?.status === "pending" ? (
-            <>
-              <button
-                onClick={() => reviewing && openRejectPrompt(reviewing.id)}
-                className="flex-1 flex items-center justify-center gap-1.5 font-semibold transition-colors"
-                style={{ background: "transparent", border: "1px solid rgba(239,68,68,0.3)", borderRadius: "var(--r-md)", padding: "9px 14px", fontSize: "var(--fs-sm)", color: "var(--danger-text)", cursor: "pointer", fontFamily: "inherit" }}
-              >
-                <X size={13} /> Reject
-              </button>
-              <button
-                onClick={() => reviewing && handleApproveOne(reviewing.id)}
-                disabled={approveBusyId === reviewing?.id}
-                className="btn-primary flex-1 flex items-center justify-center gap-1.5 transition-colors disabled:opacity-50"
-                style={{ borderRadius: "var(--r-md)", padding: "9px 14px", fontSize: "var(--fs-sm)" }}
-              >
-                <Check size={13} /> {approveBusyId === reviewing?.id ? "Approving…" : "Approve Provider"}
-              </button>
-            </>
-          ) : (
-            <button
-              onClick={() => setReviewingId(null)}
-              className="flex-1 font-semibold transition-colors"
-              style={{ background: "var(--chip-bg)", border: "1px solid var(--border-md)", borderRadius: "var(--r-md)", padding: "9px 14px", fontSize: "var(--fs-sm)", color: "var(--text-light)", cursor: "pointer", fontFamily: "inherit" }}
+            <SearchField value={search} onChange={setSearch} placeholder="Search by name or email…" label="Search verifications by name or email" />
+            <QueueProgress remaining={counts.pending} done={doneThisSession} noun={counts.pending === 1 ? "submission" : "submissions"} />
+          </>
+        }
+        list={
+          <>
+            {filtered.length === 0 ? (
+              emptyState
+            ) : (
+              <QueueList label="Verification submissions">
+                {filtered.map((v) => (
+                  <QueueItem
+                    key={v.id}
+                    id={v.id}
+                    selected={v.id === effectiveId}
+                    onSelect={setSelectedId}
+                    leading={<Avatar initials={v.initials} tone={v.status === "pending" ? "accent" : "neutral"} />}
+                    title={v.name}
+                    trailing={<span className="text-[11.5px] text-subtle">{v.date}</span>}
+                    meta={v.email}
+                    aside={
+                      <span className="flex items-center gap-2">
+                        <StatusBadge status={v.status} />
+                        <span className="text-[11.5px] text-muted-foreground">
+                          {v.documentType} · {v.documents.length} file{v.documents.length === 1 ? "" : "s"}
+                        </span>
+                      </span>
+                    }
+                  />
+                ))}
+              </QueueList>
+            )}
+            <KeyHints approve="approve" reject="reject" />
+          </>
+        }
+        detail={
+          selected ? (
+            <DetailCard
+              key={selected.id}
+              header={
+                <div className="flex items-start gap-3.5">
+                  <Avatar initials={selected.initials} size="lg" />
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <h2 className="truncate text-[17px] font-semibold tracking-tight">{selected.name}</h2>
+                      <StatusBadge status={selected.status} />
+                    </div>
+                    <p className="mt-0.5 text-[12.5px] text-muted-foreground">Provider verification · Submitted {selected.date}</p>
+                  </div>
+                </div>
+              }
+              footer={
+                selected.status === "pending" ? (
+                  <>
+                    <Button variant="destructive-outline" onClick={() => openRejectPrompt(selected.id)} disabled={approveBusyId === selected.id}>
+                      <X /> Reject
+                    </Button>
+                    <Button onClick={() => handleApprove(selected.id)} disabled={approveBusyId === selected.id}>
+                      <Check /> {approveBusyId === selected.id ? "Approving…" : "Approve provider"}
+                    </Button>
+                  </>
+                ) : undefined
+              }
             >
-              Close
-            </button>
+              <DetailSection title="Applicant">
+                <FieldGrid>
+                  <Field label="Email">{selected.email}</Field>
+                  <Field label="ID type">{selected.documentType}</Field>
+                  <Field label="Submitted">{selected.date}</Field>
+                  <Field label="Documents">{selected.documents.length} submitted</Field>
+                </FieldGrid>
+              </DetailSection>
+              <DetailSection title="Submitted documents">
+                {selected.documents.length === 0 ? (
+                  <p className="rounded-[10px] border border-dashed border-border-strong px-4 py-6 text-center text-[12.5px] text-muted-foreground">
+                    No documents available
+                  </p>
+                ) : (
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    {selected.documents.map((doc) => (
+                      <button
+                        key={doc.label}
+                        onClick={() => setPreview(doc)}
+                        className="group relative overflow-hidden rounded-[10px] border border-border bg-surface-2 text-left transition-shadow hover:shadow-ui-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                        aria-label={`Open ${doc.label}`}
+                      >
+                        {/* eslint-disable-next-line @next/next/no-img-element -- short-lived signed Storage URL, not an optimizable static asset */}
+                        <img src={doc.url} alt="" className="h-40 w-full object-contain transition-transform duration-300 group-hover:scale-[1.03]" />
+                        <span className="flex items-center gap-1.5 border-t border-border bg-surface px-3 py-2 text-[12px] font-medium">
+                          <FileText className="size-3.5 text-muted-foreground" /> {doc.label}
+                          <Maximize2 className="ml-auto size-3.5 text-subtle opacity-0 transition-opacity group-hover:opacity-100" />
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </DetailSection>
+              {selected.status === "pending" && (
+                <p className="rounded-[10px] bg-surface-2 px-3.5 py-2.5 text-[12px] leading-relaxed text-muted-foreground">
+                  Check that the name matches the account and the selfie matches the ID photo. Rejections ask the provider to resubmit.
+                </p>
+              )}
+            </DetailCard>
+          ) : (
+            <DetailEmpty queueEmpty={filtered.length === 0} title="Pick a submission" description="Select a provider on the left to see their documents and decide." />
           )
         }
-      >
-        {reviewing && (
-          <>
-            <DrawerSection>
-              <div className="grid grid-cols-2 gap-3">
-                <DrawerField label="Email" value={reviewing.email} />
-                <DrawerField label="Status" value={<span className={clsx("badge", `badge-${reviewing.status}`)}>{reviewing.status.charAt(0).toUpperCase() + reviewing.status.slice(1)}</span>} />
-                <DrawerField label="Submitted" value={reviewing.date} />
-                <DrawerField label="ID type" value={reviewing.documentType} />
-                <DrawerField label="Documents" value={`${reviewing.documents.length} submitted`} />
-              </div>
-            </DrawerSection>
-            <DrawerSection>
-              <div style={{ fontSize: "var(--fs-3xs)", fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 10 }}>Submitted documents</div>
-              <div className="grid grid-cols-2 gap-2">
-                {reviewing.documents.length === 0 && (
-                  <span style={{ fontSize: "var(--fs-2xs)", color: "var(--text-muted)" }}>No documents available</span>
-                )}
-                {reviewing.documents.map((doc) => (
-                  <button
-                    key={doc.label}
-                    onClick={() => setPreview(doc)}
-                    className="flex items-center gap-1.5 font-medium transition-opacity hover:opacity-80"
-                    style={{ background: "var(--indigo-dark)", border: "1px solid rgba(34,195,214,0.2)", borderRadius: "var(--r-sm)", padding: "6px 10px", fontSize: "var(--fs-2xs)", color: "var(--indigo-light)", cursor: "pointer", fontFamily: "inherit" }}
-                  >
-                    <FileText size={12} /> {doc.label}
-                  </button>
-                ))}
-              </div>
-            </DrawerSection>
-          </>
-        )}
-      </ReviewDrawer>
+      />
 
-      {/* Document lightbox */}
-      {preview && (
-        <div
-          className="fixed inset-0 flex items-center justify-center"
-          style={{ background: "rgba(0,0,0,0.75)", zIndex: 200 }}
-          onClick={() => setPreview(null)}
-        >
-          <div
-            ref={lightboxRef}
-            role="dialog"
-            aria-modal="true"
-            aria-label={preview.label}
-            tabIndex={-1}
-            className="rounded-xl overflow-hidden outline-none"
-            style={{ background: "var(--panel-bg)", border: "1px solid var(--panel-border)", maxWidth: "min(600px, 90vw)", maxHeight: "85vh" }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="flex items-center justify-between px-4 py-3" style={{ borderBottom: "1px solid var(--border)" }}>
-              <span className="text-white font-semibold" style={{ fontSize: "var(--fs-md)" }}>{preview.label}</span>
-              <button onClick={() => setPreview(null)} aria-label="Close document preview" style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-muted)" }}>
-                <X size={16} />
-              </button>
-            </div>
-            {/* eslint-disable-next-line @next/next/no-img-element -- short-lived signed Storage URL, not an optimizable static asset */}
-            <img
-              src={preview.url}
-              alt={preview.label}
-              style={{ display: "block", maxWidth: "100%", maxHeight: "70vh", objectFit: "contain", margin: "0 auto" }}
-            />
+      <Dialog open={!!preview} onOpenChange={(open) => !open && setPreview(null)}>
+        <DialogContent className="max-w-[min(760px,94vw)] p-0">
+          <div className="border-b border-border px-5 py-3.5 pr-12">
+            <DialogTitle className="text-[15px]">{preview?.label}</DialogTitle>
+            <DialogDescription className="sr-only">Full-size document preview</DialogDescription>
           </div>
-        </div>
-      )}
+          {preview && (
+            // eslint-disable-next-line @next/next/no-img-element -- short-lived signed Storage URL
+            <img src={preview.url} alt={preview.label} className="mx-auto block max-h-[74vh] max-w-full object-contain p-3" />
+          )}
+        </DialogContent>
+      </Dialog>
+
+      <ConfirmDialog
+        open={!!approveTarget}
+        danger={false}
+        title="Approve this provider?"
+        message={approveTarget ? `${approveTarget.name} will be able to accept jobs right away.` : ""}
+        confirmLabel="Approve"
+        busy={approveBusyId !== null}
+        onConfirm={() => approveTarget && handleApprove(approveTarget.id)}
+        onCancel={() => setConfirmApproveId(null)}
+      />
 
       <ConfirmDialog
         open={rejectTargetId !== null}
@@ -334,22 +341,14 @@ export function VerificationsPage() {
         onConfirm={confirmReject}
         onCancel={() => setRejectTargetId(null)}
       >
-        <textarea
+        <ReasonField
           autoFocus
-          placeholder="Reason (optional, shown in the audit log)"
-          aria-label="Rejection reason (optional)"
           value={rejectReason}
-          onChange={(e) => setRejectReason(e.target.value)}
-          rows={3}
-          className="w-full text-white outline-none"
-          style={{ background: "var(--input-bg)", border: `1px solid ${rejectReasonTooLong ? "rgba(239,68,68,0.5)" : "var(--border-md)"}`, borderRadius: "var(--r-md)", padding: "8px 11px", fontSize: "var(--fs-xs)", fontFamily: "inherit", resize: "vertical" }}
+          onChange={setRejectReason}
+          max={REASON_MAX_LENGTH}
+          label="Rejection reason (optional)"
+          placeholder="Reason (optional, shown in the audit log)"
         />
-        <div
-          className="mt-1 text-right"
-          style={{ fontSize: "var(--fs-2xs)", color: rejectReasonTooLong ? "var(--danger-text)" : "var(--text-muted)" }}
-        >
-          {rejectReason.length}/{REASON_MAX_LENGTH}
-        </div>
       </ConfirmDialog>
 
       <ConfirmDialog

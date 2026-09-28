@@ -6,10 +6,12 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   ReactNode,
 } from "react";
 import * as services from "@/lib/services";
+import { resolveInitialTheme } from "@/lib/theme";
 import {
   toDisputeRow,
   toUserRow,
@@ -104,7 +106,7 @@ interface AppState {
    */
   sessionRestored: boolean;
   adminProfile: AdminProfile;
-  login: (email: string, password: string) => Promise<boolean>;
+  login: (email: string, password: string) => Promise<services.LoginResult>;
   logout: () => void;
   updateDisplayName: (name: string) => Promise<boolean>;
   changePassword: (current: string, next: string) => Promise<boolean>;
@@ -116,8 +118,17 @@ interface AppState {
   loadError: string | null;
   /** Re-runs the initial data load — wired to the error banner's Retry. */
   retryLoad: () => void;
+  /** Quietly re-fetches console data (no loading state) — the live refresh. */
+  refreshData: () => Promise<void>;
+  /** When console data last loaded successfully (epoch ms), for "updated Ns ago". */
+  lastUpdated: number | null;
+  /** True while a silent refresh is in flight. */
+  refreshing: boolean;
   /** True when the analytics endpoint failed while the rest of the console loaded. */
   analyticsUnavailable: boolean;
+  /** True while analytics are rebuilt in the browser because
+   *  /admin/analytics/summary is failing (see lib/services/browserAnalytics). */
+  analyticsInBrowser: boolean;
   verifications: VerificationRow[];
   users: UserRow[];
   /** Search pages load these from their own paginated backend queries. */
@@ -157,6 +168,13 @@ interface AppState {
 
 const AppContext = createContext<AppState | null>(null);
 
+/**
+ * Dev-only: lets /dev/admin-preview render the real shell and pages against
+ * sample data without a backend or a session. Not used by the app itself.
+ */
+export const AppContextForPreview = AppContext;
+export type { AppState };
+
 const STATUS_TO_DOMAIN: Record<"Active" | "Suspended", UserStatus> = {
   Active: "ACTIVE",
   Suspended: "SUSPENDED",
@@ -194,6 +212,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [analyticsUnavailable, setAnalyticsUnavailable] = useState(false);
+  const [analyticsInBrowser, setAnalyticsInBrowser] = useState(false);
   /** Bumped by retryLoad() to re-run the initial-load effect. */
   const [reloadNonce, setReloadNonce] = useState(0);
   const [domainUsers, setDomainUsers] = useState<AdminUser[]>([]);
@@ -209,9 +228,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [maintenanceMessage, setMaintenanceMessageState] = useState<string | null>(null);
 
   // preferences — lazily hydrated from localStorage on the client
-  // Light mode is the first-run default. A saved preference still wins, and
-  // the server preference is applied after the admin session/data restore.
-  const [darkMode, setDarkModeState] = useState(() => loadStoredPrefs()?.darkMode ?? false);
+  // First run follows the OS setting (light if it has none). A saved
+  // preference still wins, and the account's server preference is applied
+  // after the admin session/data restore.
+  const [darkMode, setDarkModeState] = useState(() =>
+    resolveInitialTheme(
+      loadStoredPrefs()?.darkMode,
+      typeof window !== "undefined" && window.matchMedia?.("(prefers-color-scheme: dark)").matches === true,
+    ),
+  );
   const [sidebarCollapsed, setSidebarCollapsedState] = useState(
     () => loadStoredPrefs()?.sidebarCollapsed ?? false,
   );
@@ -220,116 +245,160 @@ export function AppProvider({ children }: { children: ReactNode }) {
     ...loadStoredPrefs()?.settings,
   }));
 
-  // ── initial load — only once a session exists ──
+  // ── console data: initial load, Retry, and silent live refresh ──
+  /**
+   * One loader for all three. `silent` is the background refresh behind the
+   * "Live" indicator: it never flips `loading` (no skeleton flash), keeps the
+   * last good data when a request fails (a blip must not blank the console or
+   * raise the error banner), and never overrides the theme the admin may have
+   * just toggled. Only the newest call may write state (`loadSeq`).
+   */
+  const loadSeq = useRef(0);
+  // True while a full (non-silent) load is running. A silent refresh never
+  // starts then: it would supersede the full load, which alone clears
+  // `loading` (a Render cold start easily outlasts the 30s refresh interval).
+  const fullLoadInFlight = useRef(false);
+  /** Called when a mutation writes fresh rows: any refresh already in flight
+   *  fetched before the change landed, so its snapshot must not win. */
+  const dropInFlightRefresh = useCallback(() => {
+    if (!fullLoadInFlight.current) loadSeq.current += 1;
+  }, []);
+  const [lastUpdated, setLastUpdated] = useState<number | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
+
+  const loadConsoleData = useCallback(async (silent: boolean) => {
+    if (silent && fullLoadInFlight.current) return;
+    if (!silent) fullLoadInFlight.current = true;
+    const seq = ++loadSeq.current;
+    const stale = () => seq !== loadSeq.current;
+    if (silent) {
+      setRefreshing(true);
+    } else {
+      setLoading(true);
+      setLoadError(null);
+      setAnalyticsUnavailable(false);
+    }
+    try {
+      const coreRequest = Promise.all([
+        services.getUsers(),
+        // Deleted accounts are an opt-in enhancement. If the deployed API
+        // predates the status filter, keep the rest of the console usable.
+        services.getUsers("deleted").catch(() => []),
+        services.getVerifications(),
+        services.getDisputes(),
+        services.getRecentActivity(),
+        services.getDarkModePreference(),
+        services.getMaintenanceStatus(),
+      ]);
+      // These values all depend on /admin/analytics/summary. Keep a failure
+      // there from discarding the independent console lists and preferences.
+      const analyticsRequest = Promise.all([
+        services.getDashboardStats(),
+        services.getRevenueSeries(),
+        services.getBookingsSeries(),
+        services.getBookingsByCategory(),
+        services.getTopProviders(),
+      ]);
+      const [coreResult, analyticsResult] = await Promise.allSettled([
+        coreRequest,
+        analyticsRequest,
+      ]);
+      if (stale()) return;
+
+      if (coreResult.status === "rejected") throw coreResult.reason;
+      if (
+        analyticsResult.status === "rejected" &&
+        analyticsResult.reason instanceof services.ApiError &&
+        (analyticsResult.reason.status === 401 || analyticsResult.reason.status === 403)
+      ) {
+        setIsLoggedIn(false);
+        setLoading(false);
+        return;
+      }
+
+      const [users, deletedUsers, verifs, disputes, activity, serverDarkMode, maintenance] =
+        coreResult.value;
+      setDomainUsers([...users, ...deletedUsers]);
+      setDomainVerifications(verifs);
+      setDomainDisputes(disputes);
+      setRecentActivity(activity);
+
+      if (analyticsResult.status === "fulfilled") {
+        const [stats, revenue, bookVol, categories, providers] = analyticsResult.value;
+        setDashboardStats(stats);
+        setRevenueSeries(revenue);
+        setBookingsSeries(bookVol);
+        setBookingsByCategory(categories);
+        setTopProviders(providers);
+        setAnalyticsUnavailable(false);
+        setAnalyticsInBrowser(services.lastAnalyticsSource() === "browser");
+      } else if (!silent) {
+        // Do not leave stale or empty arrays looking like real zero-valued
+        // analytics. The affected pages render an explicit retry state.
+        // (A silent refresh keeps the figures it already has instead.)
+        setDashboardStats(null);
+        setRevenueSeries([]);
+        setBookingsSeries([]);
+        setBookingsByCategory([]);
+        setTopProviders([]);
+        setAnalyticsUnavailable(true);
+      }
+      // The account's saved preference wins over whatever this device had
+      // cached, so dark mode follows the admin across devices. Applied on the
+      // real load only, so a background refresh cannot undo a fresh toggle.
+      if (!silent && serverDarkMode !== null) setDarkModeState(serverDarkMode);
+      setMaintenanceModeState(maintenance.enabled);
+      setMaintenanceMessageState(maintenance.message);
+      setLoadError(null);
+      setLastUpdated(Date.now());
+      if (!silent) setLoading(false);
+    } catch (err) {
+      if (stale()) return;
+      // An expired/invalid token surfaces here as a 401/403 — force back
+      // to the login screen instead of showing an empty dashboard.
+      if (err instanceof services.ApiError && (err.status === 401 || err.status === 403)) {
+        setIsLoggedIn(false);
+      } else if (!silent) {
+        // Anything else (backend down, Render cold-start timeout, a 500)
+        // used to be swallowed here: loading simply stopped and every page
+        // rendered empty, indistinguishable from "the platform has no data".
+        // Surfaced now so the admin knows to retry rather than trusting a
+        // dashboard full of zeroes.
+        setLoadError(
+          err instanceof services.ApiError
+            ? `Could not load console data (${err.status}).`
+            : "Could not reach the backend.",
+        );
+      }
+      if (!silent) setLoading(false);
+    } finally {
+      if (silent) setRefreshing(false);
+      else if (!stale()) fullLoadInFlight.current = false;
+    }
+  }, []);
+
   /* eslint-disable react-hooks/set-state-in-effect --
      Fetching on mount is the other documented exception: the backend is an
      external system, and a loading flag has to be flipped somewhere. Every
      setState that carries fetched data already happens in an async
-     continuation, guarded by `cancelled`. */
+     continuation, guarded by `loadSeq`. */
   useEffect(() => {
     if (!isLoggedIn) {
       setLoading(false);
       return;
     }
-    let cancelled = false;
-    (async () => {
-      setLoading(true);
-      setLoadError(null);
-      setAnalyticsUnavailable(false);
-      try {
-        const coreRequest = Promise.all([
-          services.getUsers(),
-          // Deleted accounts are an opt-in enhancement. If the deployed API
-          // predates the status filter, keep the rest of the console usable.
-          services.getUsers("deleted").catch(() => []),
-          services.getVerifications(),
-          services.getDisputes(),
-          services.getRecentActivity(),
-          services.getDarkModePreference(),
-          services.getMaintenanceStatus(),
-        ]);
-        // These values all depend on /admin/analytics/summary. Keep a failure
-        // there from discarding the independent console lists and preferences.
-        const analyticsRequest = Promise.all([
-          services.getDashboardStats(),
-          services.getRevenueSeries(),
-          services.getBookingsSeries(),
-          services.getBookingsByCategory(),
-          services.getTopProviders(),
-        ]);
-        const [coreResult, analyticsResult] = await Promise.allSettled([
-          coreRequest,
-          analyticsRequest,
-        ]);
-        if (cancelled) return;
-
-        if (coreResult.status === "rejected") throw coreResult.reason;
-        if (
-          analyticsResult.status === "rejected" &&
-          analyticsResult.reason instanceof services.ApiError &&
-          (analyticsResult.reason.status === 401 || analyticsResult.reason.status === 403)
-        ) {
-          setIsLoggedIn(false);
-          setLoading(false);
-          return;
-        }
-
-        const [users, deletedUsers, verifs, disputes, activity, serverDarkMode, maintenance] =
-          coreResult.value;
-        setDomainUsers([...users, ...deletedUsers]);
-        setDomainVerifications(verifs);
-        setDomainDisputes(disputes);
-        setRecentActivity(activity);
-
-        if (analyticsResult.status === "fulfilled") {
-          const [stats, revenue, bookVol, categories, providers] = analyticsResult.value;
-          setDashboardStats(stats);
-          setRevenueSeries(revenue);
-          setBookingsSeries(bookVol);
-          setBookingsByCategory(categories);
-          setTopProviders(providers);
-        } else {
-          // Do not leave stale or empty arrays looking like real zero-valued
-          // analytics. The affected pages render an explicit retry state.
-          setDashboardStats(null);
-          setRevenueSeries([]);
-          setBookingsSeries([]);
-          setBookingsByCategory([]);
-          setTopProviders([]);
-          setAnalyticsUnavailable(true);
-        }
-        // The account's saved preference wins over whatever this device had
-        // cached, so dark mode now follows the admin across devices.
-        if (serverDarkMode !== null) setDarkModeState(serverDarkMode);
-        setMaintenanceModeState(maintenance.enabled);
-        setMaintenanceMessageState(maintenance.message);
-        setLoading(false);
-      } catch (err) {
-        if (cancelled) return;
-        // An expired/invalid token surfaces here as a 401/403 — force back
-        // to the login screen instead of showing an empty dashboard.
-        if (err instanceof services.ApiError && (err.status === 401 || err.status === 403)) {
-          setIsLoggedIn(false);
-        } else {
-          // Anything else (backend down, Render cold-start timeout, a 500)
-          // used to be swallowed here: loading simply stopped and every page
-          // rendered empty, indistinguishable from "the platform has no data".
-          // Surfaced now so the admin knows to retry rather than trusting a
-          // dashboard full of zeroes.
-          setLoadError(
-            err instanceof services.ApiError
-              ? `Could not load console data (${err.status}).`
-              : "Could not reach the backend.",
-          );
-        }
-        setLoading(false);
-      }
-    })();
+    void loadConsoleData(false);
     return () => {
-      cancelled = true;
+      loadSeq.current += 1; // drop the in-flight load's results
     };
-  }, [isLoggedIn, reloadNonce]);
+  }, [isLoggedIn, reloadNonce, loadConsoleData]);
   /* eslint-enable react-hooks/set-state-in-effect */
+
+  /** Background refresh for the live indicator (see useLiveRefresh). */
+  const refreshData = useCallback(
+    () => (isLoggedIn ? loadConsoleData(true) : Promise.resolve()),
+    [isLoggedIn, loadConsoleData],
+  );
 
   // ── preferences: persist on change ──
   useEffect(() => {
@@ -344,12 +413,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   // ── session ──
   const login = useCallback(async (email: string, password: string) => {
-    const profile = await services.login(email, password);
-    if (profile) {
-      setAdminProfile(profile);
+    const result = await services.loginDetailed(email, password);
+    if (result.ok) {
+      setAdminProfile(result.profile);
       setIsLoggedIn(true);
     }
-    return profile !== null;
+    return result;
   }, []);
 
   /** The admin layout's auth gate sends the browser to /login once this flips. */
@@ -375,6 +444,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const retryLoad = useCallback(() => setReloadNonce((n) => n + 1), []);
 
   const refreshStats = useCallback(async () => {
+    // A decision just changed the numbers; don't serve the cached stand-in.
+    services.invalidateBrowserAnalytics();
     try {
       const [stats, revenue, bookVol, categories, providers] = await Promise.all([
         services.getDashboardStats(),
@@ -406,34 +477,41 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const approveVerification = useCallback(
     async (id: string) => {
-      setDomainVerifications(await services.approveVerification(id));
+      const rows = await services.approveVerification(id);
+      dropInFlightRefresh();
+      setDomainVerifications(rows);
       await refreshStats();
     },
-    [refreshStats],
+    [refreshStats, dropInFlightRefresh],
   );
 
   const rejectVerification = useCallback(
     async (id: string, reason?: string) => {
-      setDomainVerifications(await services.rejectVerification(id, reason));
+      const rows = await services.rejectVerification(id, reason);
+      dropInFlightRefresh();
+      setDomainVerifications(rows);
       await refreshStats();
     },
-    [refreshStats],
+    [refreshStats, dropInFlightRefresh],
   );
 
   const setUserStatus = useCallback(
     async (id: string, status: "Active" | "Suspended", suspend?: services.SuspendOptions) => {
-      setDomainUsers(await services.setUserStatus(id, STATUS_TO_DOMAIN[status], suspend));
+      const rows = await services.setUserStatus(id, STATUS_TO_DOMAIN[status], suspend);
+      dropInFlightRefresh();
+      setDomainUsers(rows);
     },
-    [],
+    [dropInFlightRefresh],
   );
 
   const bulkSetUserStatus = useCallback(
     async (ids: string[], status: "Active" | "Suspended", suspend?: services.SuspendOptions) => {
       const { rows, ...counts } = await services.bulkSetUserStatus(ids, STATUS_TO_DOMAIN[status], suspend);
+      dropInFlightRefresh();
       setDomainUsers(rows);
       return counts;
     },
-    [],
+    [dropInFlightRefresh],
   );
 
   const sendPasswordReset = useCallback((id: string) => services.sendPasswordReset(id), []);
@@ -444,9 +522,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const resolveDispute = useCallback(
     async (id: string, resolution: DisputeResolution, note?: string) => {
-      setDomainDisputes(await services.resolveDispute(id, resolution, note));
+      const rows = await services.resolveDispute(id, resolution, note);
+      dropInFlightRefresh();
+      setDomainDisputes(rows);
     },
-    [],
+    [dropInFlightRefresh],
   );
 
   // ── preferences setters ──
@@ -496,7 +576,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     () => ({
       isLoggedIn, sessionRestored, adminProfile,
       login, logout, updateDisplayName, changePassword,
-      loading, loadError, retryLoad, analyticsUnavailable,
+      loading, loadError, retryLoad, analyticsUnavailable, analyticsInBrowser,
+      refreshData, lastUpdated, refreshing,
        verifications, users, transactions, disputes, bookings,
       dashboardStats, revenueSeries, bookingsSeries, bookingsByCategory,
       recentActivity, topProviders,
@@ -510,7 +591,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     [
       isLoggedIn, sessionRestored, adminProfile,
       login, logout, updateDisplayName, changePassword,
-      loading, loadError, retryLoad, analyticsUnavailable,
+      loading, loadError, retryLoad, analyticsUnavailable, analyticsInBrowser,
+      refreshData, lastUpdated, refreshing,
        verifications, users, transactions, disputes, bookings,
       dashboardStats, revenueSeries, bookingsSeries, bookingsByCategory,
       recentActivity, topProviders,
