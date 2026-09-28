@@ -13,11 +13,13 @@ const bricolageGrotesque = Bricolage_Grotesque({
 /** Self-hosted at build time — see the note in globals.css for why this
  *  replaced the stylesheet @import. */
 export const metadata: Metadata = {
+  // Lets pages give Open Graph images and canonicals as relative paths.
+  metadataBase: new URL("https://taskbuddy-nine-zeta.vercel.app"),
   title: {
     default: "TaskBuddy",
     template: "%s",
   },
-  description: "TaskBuddy connects Lipa City clients with local service providers.",
+  description: "TaskBuddy connects homeowners in Lipa City with verified local service providers.",
 };
 
 /**
