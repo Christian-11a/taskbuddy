@@ -15,6 +15,19 @@ const HOME_MARKUP_WITHOUT_DUPLICATE_SKIP_LINK = HOME_MARKUP_WITH_MOBILE_JOIN_CTA
   "",
 );
 
+// Keep policy links outside <label> elements. Anchors nested inside labels have
+// ambiguous activation behavior and can toggle the checkbox instead of opening
+// the in-modal document panel.
+const HOME_MARKUP_WITH_CLICKABLE_CONSENT_LINKS = HOME_MARKUP_WITHOUT_DUPLICATE_SKIP_LINK
+  .replace(
+    '<label class="auth-consent"><input type="checkbox" data-consent="terms" required /> I have read and agree to the <a href="#terms" data-open-doc="terms">Terms &amp; Conditions</a><span class="auth-consent-required">*</span></label>',
+    '<div class="auth-consent"><input type="checkbox" data-consent="terms" aria-label="I have read and agree to the Terms &amp; Conditions" required /> <span>I have read and agree to the <button class="auth-consent-link" type="button" data-open-doc="terms">Terms &amp; Conditions</button><span class="auth-consent-required">*</span></span></div>',
+  )
+  .replace(
+    '<label class="auth-consent"><input type="checkbox" data-consent="privacy" required /> I have read and agree to the <a href="#privacy" data-open-doc="privacy">Privacy Policy</a><span class="auth-consent-required">*</span></label>',
+    '<div class="auth-consent"><input type="checkbox" data-consent="privacy" aria-label="I have read and agree to the Privacy Policy" required /> <span>I have read and agree to the <button class="auth-consent-link" type="button" data-open-doc="privacy">Privacy Policy</button><span class="auth-consent-required">*</span></span></div>',
+  );
+
 /**
  * The public promotional homepage, ported from
  * taskbuddy-product-reference/public-site/index.html.
@@ -34,7 +47,7 @@ export function HomePage() {
   return (
     <div className="promo-site">
       <a className="skip-link" href="#main">Skip to content</a>
-      <div dangerouslySetInnerHTML={{ __html: HOME_MARKUP_WITHOUT_DUPLICATE_SKIP_LINK }} />
+      <div dangerouslySetInnerHTML={{ __html: HOME_MARKUP_WITH_CLICKABLE_CONSENT_LINKS }} />
 
       {/* Switzer remains on Fontshare because no licensed local font files are
           part of this repository. Bricolage Grotesque is self-hosted by
