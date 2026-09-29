@@ -496,6 +496,9 @@ export default function RegisterScreen({ onRegister, onLogin, onGoogleSignIn }: 
       keyboardShouldPersistTaps="handled"
       keyboardDismissMode="on-drag"
       automaticallyAdjustKeyboardInsets={Platform.OS === 'ios'}
+      onTouchStart={() => {
+        if (categoryOpen) setCategoryOpen(false);
+      }}
     >
       <TermsAndConditions
         visible={termsMode !== null}
@@ -577,7 +580,7 @@ export default function RegisterScreen({ onRegister, onLogin, onGoogleSignIn }: 
 
             {/* SP-only: skill category */}
             {role === 'provider' && (
-              <View style={styles.inputGroup}>
+              <View style={[styles.inputGroup, styles.categoryFieldGroup]}>
                 <Text style={styles.inputLabel}>
                   Skill Category
                   <Text style={styles.requiredAsterisk}> *</Text>
@@ -588,7 +591,7 @@ export default function RegisterScreen({ onRegister, onLogin, onGoogleSignIn }: 
                     styles.categoryPicker,
                     fieldErrors.category ? styles.inputBoxError : undefined,
                   ]}
-                  onPress={() => setCategoryOpen((o) => !o)}
+                  onPress={() => setCategoryOpen(true)}
                   activeOpacity={0.8}
                 >
                   <Text style={selectedCategory ? styles.inputText : styles.categoryPlaceholder}>
@@ -705,7 +708,7 @@ export default function RegisterScreen({ onRegister, onLogin, onGoogleSignIn }: 
                       I consent to the processing of my government-issued ID and
                       biometric data for identity verification purposes, in
                       accordance with the{' '}
-                      <Text style={styles.termsLink}>
+                      <Text style={styles.termsLink} onPress={() => setTermsMode('privacy')}>
                         Data Privacy Act of 2012 (RA 10173)
                       </Text>
                       .<Text style={styles.requiredAsterisk}>*</Text>
@@ -870,9 +873,11 @@ const styles = StyleSheet.create({
   categoryPicker: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
   },
+  categoryFieldGroup: { position: 'relative', zIndex: 20 },
   categoryPlaceholder: { fontFamily: 'Inter', fontSize: 18.5, color: C.muted, padding: 0 },
   categoryDropdown: {
-    marginTop: 4, borderRadius: 12, borderWidth: 1, borderColor: C.mutedBorder,
+    position: 'absolute', top: 67.5, left: 0, right: 0, zIndex: 30, elevation: 12,
+    borderRadius: 12, borderWidth: 1, borderColor: C.mutedBorder,
     backgroundColor: C.white, overflow: 'hidden',
   },
   categoryOption: {

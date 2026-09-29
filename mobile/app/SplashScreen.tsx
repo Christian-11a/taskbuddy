@@ -1,5 +1,5 @@
 import React, { useEffect, useRef } from 'react';
-import { Animated, StyleSheet, Text, View } from 'react-native';
+import { Animated, Image, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 
@@ -28,7 +28,12 @@ export default function SplashScreen() {
         <StatusBar style="light" />
         <View style={styles.container}>
           <View style={styles.logoBox}>
-            <View style={styles.logoCircle} />
+            <Image
+              source={require('../assets/taskbuddy-logo.png')}
+              style={styles.logoImage}
+              resizeMode="contain"
+              accessibilityLabel="TaskBuddy logo"
+            />
             <Text style={styles.logoText}>TaskBuddy</Text>
           </View>
           <Text style={styles.tagline}>Hire with confidence, pay with ease.</Text>
@@ -53,11 +58,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 24,
   },
-  logoCircle: {
-    width: 88,
-    height: 88,
-    borderRadius: 28,
-    backgroundColor: '#38bdf8',
+  logoImage: {
+    width: 220,
+    height: 100,
     marginBottom: 18,
     shadowColor: '#38bdf8',
     shadowOpacity: 0.35,

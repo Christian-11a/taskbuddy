@@ -67,6 +67,7 @@ interface Props {
   /** Extra hint under the field (e.g. "Verifying address…"). */
   hint?: string;
   inputStyle?: object;
+  actionVariant?: 'default' | 'primary';
   testID?: string;
 }
 
@@ -78,6 +79,7 @@ export default function AddressField({
   error,
   hint,
   inputStyle,
+  actionVariant = 'default',
   testID,
 }: Props) {
   const [suggestions, setSuggestions] = useState<AddressSuggestion[]>([]);
@@ -222,7 +224,7 @@ export default function AddressField({
       />
 
       <TouchableOpacity
-        style={styles.locateBtn}
+        style={[styles.locateBtn, actionVariant === 'primary' && styles.locateBtnPrimary]}
         onPress={() => void useCurrentLocation()}
         disabled={locating}
         activeOpacity={0.8}
@@ -231,11 +233,14 @@ export default function AddressField({
         testID="address-use-current-location"
       >
         {locating ? (
-          <ActivityIndicator size="small" color={Colors.brandTeal} />
+          <ActivityIndicator
+            size="small"
+            color={actionVariant === 'primary' ? Colors.white : Colors.brandTeal}
+          />
         ) : (
-          <LocateFixed size={18} color={Colors.brandTeal} />
+          <LocateFixed size={18} color={actionVariant === 'primary' ? Colors.white : Colors.brandTeal} />
         )}
-        <Text style={styles.locateText}>
+        <Text style={[styles.locateText, actionVariant === 'primary' && styles.locateTextPrimary]}>
           {locating ? 'Finding your address…' : 'Use my current location'}
         </Text>
       </TouchableOpacity>
@@ -292,12 +297,20 @@ const styles = StyleSheet.create({
     gap: 8,
     paddingVertical: 10,
   },
+  locateBtnPrimary: {
+    justifyContent: 'center',
+    backgroundColor: Colors.brandTeal,
+    borderRadius: 13,
+    paddingVertical: 14,
+    marginTop: 10,
+  },
   locateText: {
     color: Colors.brandTeal,
     fontFamily: 'Inter',
     fontSize: 15,
     fontWeight: '600',
   },
+  locateTextPrimary: { color: Colors.white, fontWeight: '700' },
 
   dropdown: {
     backgroundColor: Colors.white,

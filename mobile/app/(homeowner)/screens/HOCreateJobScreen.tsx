@@ -258,6 +258,7 @@ export default function HOCreateJobScreen({
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
   const [submitting, setSubmitting] = useState(false);
   const [pickingPhotos, setPickingPhotos] = useState(false);
+  const [photoMessage, setPhotoMessage] = useState<string | null>(null);
   // Which half of the submit is running — photo upload usually dominates the
   // wait, so saying so beats a single undifferentiated "Posting…".
   const [submitPhase, setSubmitPhase] = useState<'uploading' | 'posting' | null>(null);
@@ -487,6 +488,11 @@ export default function HOCreateJobScreen({
   };
 
   const pickPhotos = async () => {
+    if (photos.length >= 6) {
+      setPhotoMessage('You have already uploaded 6 photos. Remove a photo before adding another.');
+      return;
+    }
+
     // The permission prompt and the picker itself can both take a beat to
     // appear on a cold gallery; without this the tile looks like a dead tap.
     setPickingPhotos(true);
@@ -500,7 +506,14 @@ export default function HOCreateJobScreen({
       });
       if (!result.canceled) {
         // CreateJobDto caps photo_urls at 6 — trimming here beats a 400 later.
-        setPhotos((current) => [...current, ...result.assets].slice(0, 6));
+        const remainingSlots = 6 - photos.length;
+        const selectedPhotos = result.assets.slice(0, remainingSlots);
+        setPhotos((current) => [...current, ...selectedPhotos]);
+        setPhotoMessage(
+          result.assets.length > remainingSlots
+            ? 'You can upload up to 6 photos. Remove a photo below if you want to add a different one.'
+            : null,
+        );
         setError(null);
       }
     } finally {
@@ -607,6 +620,7 @@ export default function HOCreateJobScreen({
     setTime(null);
     setBudget('');
     setPhotos([]);
+    setPhotoMessage(null);
     setUrgency('normal');
     setTermsAccepted(false);
     setFieldErrors({});
@@ -821,6 +835,7 @@ export default function HOCreateJobScreen({
               <Text style={styles.inputLabel}>Address<Text style={styles.requiredAsterisk}> *</Text></Text>
               <AddressField
                 testID="create-job-address"
+                actionVariant="primary"
                 value={location}
                 onChangeText={(value) => {
                   setLocation(value);
@@ -1054,6 +1069,7 @@ export default function HOCreateJobScreen({
                   </>
                 )}
               </TouchableOpacity>
+              {!!photoMessage && <Text style={styles.inputErrorText}>{photoMessage}</Text>}
               {photos.length > 0 && (
                 <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.photoList}>
                   {photos.map((photo, index) => (
@@ -1061,7 +1077,10 @@ export default function HOCreateJobScreen({
                       <Image source={{ uri: photo.uri }} style={styles.photoImage} />
                       <TouchableOpacity
                         style={styles.removePhoto}
-                        onPress={() => setPhotos((current) => current.filter((_, photoIndex) => photoIndex !== index))}
+                        onPress={() => {
+                          setPhotos((current) => current.filter((_, photoIndex) => photoIndex !== index));
+                          setPhotoMessage(null);
+                        }}
                         accessibilityLabel={`Remove photo ${index + 1}`}
                       >
                         <Text style={styles.removePhotoText}>×</Text>
