@@ -34,6 +34,11 @@ Cold starts on the free tier take 30–60 s, so allow a minute before testing.
 
 ## 2. Deploy the hardening (recommended)
 
+**2026-09-29 local audit:** this hardening is already merged into `upstream/main`
+(pulled at `170a288`). Deployment and the Render environment remain unverified.
+The branch/merge wording below records the original handoff.
+
+
 Branch `fix/identity-stripe-version` contains:
 
 - `backend/src/payments/stripe-api-version.ts`. A malformed `STRIPE_MOBILE_API_VERSION` is logged

@@ -2514,3 +2514,29 @@ outlived the redirect bug:
 
 Failures that survive all that are reported: `AuthContext` holds an `authError` that `LoginScreen`
 renders, because a Google failure can outlive the screen that started it.
+
+
+## September 29 backend handover contracts (migrations 0035–0036)
+
+- Provider category embeds explicitly select the primary `category_id` relationship;
+  secondary categories no longer make analytics and provider reads ambiguous.
+- Job response `photo_urls` are public bucket URLs; stored values remain object paths.
+- `GET /jobs` accepts optional `urgency=urgent|normal|flexible`, applied before
+  distance filtering/sorting and paging. Wrong current passwords return 400 from
+  `POST /auth/change-password`; bearer authentication still uses 401.
+- `GET /admin/skill-requests` accepts `limit` (1–100) and `offset` (>=0). Either
+  opts into `{ items, total }`; omitting both preserves the legacy 100-row array.
+- `/admin/analytics/summary` adds exact `escrow_held_total`, `escrow_held_count`,
+  `open_jobs`, and `matching_jobs` to `totals`. Existing analytics formulas remain.
+- `/admin/bookings` adds all eight `status_counts`, respecting search/category but
+  ignoring selected status and pagination, suitable for status-tab totals.
+- `/admin/audit?search=` searches actor name, action, target type/id and reason;
+  `/admin/wallet-transactions?search=` searches profile name, title and transaction
+  ID. Case-insensitive literal substring search happens before paging/counting,
+  with existing filters and response shapes retained. All four new RPCs are
+  service-role-only with an empty search path.
+- 0035 inserts missing calendar rows for confirmed/in-progress jobs. The timestamp
+  is scheduled_at, otherwise earliest confirmation/start history, assigned_at,
+  then posted_at. Existing rows are never changed; reruns do not duplicate rows.
+
+Both migrations are locally tested; production application/deployment is pending.

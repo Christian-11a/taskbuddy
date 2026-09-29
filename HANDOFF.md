@@ -10,6 +10,51 @@ Each item below: what's wrong, why it's backend, and what "done" looks like.
 
 ---
 
+## Update 2026-09-29 — backend implementation pass (local, not deployed)
+
+Pulled `upstream/main` at `170a288` and reviewed both app READMEs and the handoff
+files. The following backend work is implemented locally:
+
+| Request | Implementation / next step |
+|---|---|
+| Analytics and provider profiles fail after 0034 | Explicit `service_categories!category_id(name)` in analytics, `/auth/me`, and `/providers/:id`; database errors no longer masquerade as missing provider data. |
+| Uploaded job photos do not render | All job response normalization converts stored paths to public `job-photos` URLs; legacy HTTP(S) URLs are preserved. |
+| Urgency filter only covers 20 jobs | `GET /jobs?urgency=urgent\|normal\|flexible` filters in SQL before distance sorting/paging. Mobile still needs to send the selected chip value. |
+| Wrong current password returns 401 | Now 400; expired/invalid bearer sessions still fail in the auth guard with 401. Google-only password UX remains a product decision. |
+| Old accepted jobs missing calendar rows | Migration **0035** backfills confirmed/in-progress jobs only, preserves existing bookings and historical schedule/confirmation dates, and is repeatable. Not applied to production. |
+| Service-request queue stops at 100 | `/admin/skill-requests?limit=20&offset=100` returns `{ items, total }`, with stable date/ID ordering. No pagination params preserves the legacy array for existing web builds. Web still needs to adopt the paginated contract. |
+| Extra admin count requests | Migration **0036** supplies exact `escrow_held_total`, `escrow_held_count`, `open_jobs`, `matching_jobs` in analytics `totals`, and `status_counts` on admin bookings. Booking counts respect search/category but ignore page/selected status. |
+| Audit and wallet search | `search` is accepted on both admin endpoints. SQL searches before paging/counting, including actor/profile names. Existing response envelopes are preserved. |
+
+**Deploy order:** confirm migrations through 0034, apply 0035 then 0036, deploy
+the backend, then verify authenticated analytics/provider/photo/filter requests.
+0036 is required before deploying this API because bookings and analytics call
+its RPCs. Unit/build/lint and local SQL tests are the verification here; no live
+API, database, Render, Stripe or Firebase changes have been made in this pass.
+
+**Validation (local):** `npm test -- --runInBand`: 45 suites / 577 tests pass;
+`npm run test:sql`: 58 pass (including the new migrations); `npm run build`
+passes. Changed TypeScript files pass ESLint. Full `npm run lint -- --no-fix`
+reports 10 existing errors in untouched `auth/google-redirect.spec.ts`,
+`auth/oauth-handoff.spec.ts`, `chat/chat.controller.ts`, `chat/chat.service.ts`,
+and `geocoding/geocoding.service.ts`. `npm run test:e2e -- --runInBand` exits
+with "No tests found"; there are no `.e2e-spec.ts` files. No device/browser or
+live integration verification is claimed.
+
+**Still external/approval-dependent:** Render Stripe version correction, verifying
+Identity activation and the deployed hardening, existing deployment/migration
+state, static-map/device checks, Firebase/FCM credentials and rebuild, Stripe
+money-path smoke tests, production-writing load tests, and OTP configuration.
+The Stripe hardening is already merged in the pulled main; no merge is needed.
+
+**Still product decisions:** Google-only change/set-password behavior, provider
+photo portfolios, secondary-category matching, where to display accept-time
+location, server-backed admin preferences, wallet payout rail, and the story/UX
+questions listed in the QA round 2 section below. Historical resolved handovers
+are retained below as evidence, not new implementation requests.
+
+---
+
 ## Update 2026-09-29 — BLOCKER: Render env var breaks provider verification
 
 Get Verified step 3 fails with `Invalid Stripe API version: 2025-21-27`. The bad value is
