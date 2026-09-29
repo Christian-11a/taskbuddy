@@ -372,6 +372,7 @@ export default function HOWalletScreen() {
           </View>
         )}
 
+        <Text style={styles.sectionTitle}>Transaction History</Text>
         {/* Filter tabs */}
         <View style={styles.tabRow}>
           {(['all', 'credit', 'debit'] as const).map((t) => (
@@ -387,8 +388,6 @@ export default function HOWalletScreen() {
             </TouchableOpacity>
           ))}
         </View>
-
-        <Text style={styles.sectionTitle}>Transaction History</Text>
 
         {!!error && !loading && <Text style={styles.stateText}>{error}</Text>}
         {!loading && !error && filtered.length === 0 && (
