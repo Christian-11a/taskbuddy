@@ -43,3 +43,28 @@ describe('ProvidersController.recentWork', () => {
     expect(columns).not.toMatch(/client|address|latitude|photo/);
   });
 });
+
+describe('ProvidersController.getById', () => {
+  it('selects the primary category and surfaces query failures', async () => {
+    const select = jest.fn();
+    const builder = {
+      select,
+      eq: jest.fn(),
+      maybeSingle: jest.fn().mockResolvedValue({
+        data: null,
+        error: { message: 'database unavailable' },
+      }),
+    };
+    select.mockReturnValue(builder);
+    builder.eq.mockReturnValue(builder);
+    const supabase = {
+      admin: { from: () => builder },
+    } as unknown as SupabaseService;
+    await expect(
+      new ProvidersController(supabase).getById('p1'),
+    ).rejects.toThrow('database unavailable');
+    expect(select).toHaveBeenCalledWith(
+      expect.stringContaining('service_categories!category_id(name)'),
+    );
+  });
+});

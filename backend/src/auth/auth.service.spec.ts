@@ -679,3 +679,69 @@ describe('AuthService.register', () => {
     );
   });
 });
+
+describe('AuthService handover fixes', () => {
+  it('returns 400 for a wrong current password without changing it', async () => {
+    const updateUserById = jest.fn();
+    const supabase = {
+      admin: {
+        auth: {
+          admin: {
+            getUserById: jest
+              .fn()
+              .mockResolvedValue({ data: { user: { email: 'a@test.io' } } }),
+            updateUserById,
+          },
+        },
+      },
+      anon: {
+        auth: {
+          signInWithPassword: jest.fn().mockResolvedValue({
+            error: { message: 'Invalid login credentials' },
+          }),
+        },
+      },
+    } as unknown as SupabaseService;
+    await expect(
+      new AuthService(supabase).changePassword(
+        { id: 'p1' } as import('../common/types').Profile,
+        { current_password: 'wrong', new_password: 'new-password' },
+      ),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(updateUserById).not.toHaveBeenCalled();
+  });
+
+  it('uses the primary category for me and does not hide database errors', async () => {
+    const builder = {
+      select: jest.fn(),
+      eq: jest.fn(),
+      maybeSingle: jest.fn().mockResolvedValue({
+        data: null,
+        error: { message: 'database unavailable' },
+      }),
+    };
+    builder.select.mockReturnValue(builder);
+    builder.eq.mockReturnValue(builder);
+    const supabase = {
+      admin: {
+        from: () => builder,
+        auth: {
+          admin: {
+            getUserById: jest
+              .fn()
+              .mockResolvedValue({ data: { user: { email: 'a@test.io' } } }),
+          },
+        },
+      },
+    } as unknown as SupabaseService;
+    await expect(
+      new AuthService(supabase).me({
+        id: 'p1',
+        role: 'provider',
+      } as import('../common/types').Profile),
+    ).rejects.toThrow('database unavailable');
+    expect(builder.select).toHaveBeenCalledWith(
+      '*, service_categories!category_id(name)',
+    );
+  });
+});
