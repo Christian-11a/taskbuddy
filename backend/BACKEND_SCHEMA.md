@@ -1104,12 +1104,14 @@ screen stops saying "under review". `reviewed_by` is `NULL` on these rows — no
 `POST /verifications/identity-session`
 
 **Env:** `STRIPE_SECRET_KEY`, `STRIPE_PUBLISHABLE_KEY`, `STRIPE_WEBHOOK_SECRET`,
-`STRIPE_MOBILE_API_VERSION` (optional), `PUBLIC_API_URL` (optional — this API's public origin
+`STRIPE_MOBILE_API_VERSION` (optional, `YYYY-MM-DD[.name]`; a malformed value is logged and replaced with `2025-01-27.acacia`), `PUBLIC_API_URL` (optional — this API's public origin
 for Checkout return URLs; derived from the request and `x-forwarded-proto` when unset, since
 Render terminates TLS at the proxy)
 
 Missing Stripe config warns at boot and returns **503** at the point of use, matching the Google
 OAuth pattern — a developer working on jobs or chat has no reason to hold Stripe keys.
+
+A Stripe refusal inside `POST /verifications/identity-session` (bad API version, Identity not activated) returns **503**, not Stripe's 400, so the app falls back to manual review; an orphaned Identity session is cancelled.
 
 Setup: [`docs/stripe-setup.md`](../docs/stripe-setup.md).
 

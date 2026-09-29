@@ -3,6 +3,7 @@ import type Stripe from 'stripe';
 import { SupabaseService } from '../supabase/supabase.service';
 import { VerificationsService } from '../verifications/verifications.service';
 import { StripeService } from './stripe.service';
+import { resolveMobileApiVersion } from './stripe-api-version';
 import { StripeEventsService } from './stripe-events.service';
 import { StripeCustomersService } from './stripe-customers.service';
 import {
@@ -21,8 +22,10 @@ const CURRENCY = 'php';
  * the version this server's own calls use — the two upgrade independently.
  * Override when @stripe/stripe-react-native is upgraded to require a newer one.
  */
-const MOBILE_API_VERSION =
-  process.env.STRIPE_MOBILE_API_VERSION ?? '2025-01-27';
+const MOBILE_API_VERSION = resolveMobileApiVersion(
+  process.env.STRIPE_MOBILE_API_VERSION,
+  (msg) => new Logger('StripeApiVersion').warn(msg),
+);
 
 /** Marks the PaymentIntents this service is responsible for, on the Stripe side. */
 const TOPUP_PURPOSE = 'wallet_topup';

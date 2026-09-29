@@ -630,6 +630,28 @@ function contentTypeFor(uri: string): string {
   return 'image/jpeg';
 }
 
+/**
+ * PUTs a multipart body and resolves with the HTTP status.
+ *
+ * XMLHttpRequest rather than fetch on purpose: Expo replaces the global fetch
+ * with expo/fetch, which throws "Unsupported FormDataPart implementation" on
+ * React Native's `{ uri, name, type }` file part. RN's XHR still hands that
+ * part to the native networking layer, which streams the file from disk.
+ */
+function putMultipart(url: string, form: FormData): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const failed = () =>
+      reject(new ApiError('Could not upload the image. Check your connection.', 0));
+    const xhr = new XMLHttpRequest();
+    xhr.open('PUT', url);
+    xhr.timeout = 60_000;
+    xhr.onload = () => resolve(xhr.status);
+    xhr.onerror = failed;
+    xhr.ontimeout = failed;
+    xhr.send(form);
+  });
+}
+
 // ── Auth token registry (wired by AuthContext) ─────────────────────────────────
 let getAccessToken: () => string | null = () => null;
 let refreshAccessToken: () => Promise<string | null> = async () => null;
@@ -1265,9 +1287,9 @@ export const api = {
       name: signed.path.split('/').pop() ?? 'upload',
       type: contentType,
     } as unknown as Blob);
-    const res = await fetch(signed.upload_url, { method: 'PUT', body: form });
-    if (!res.ok) {
-      throw new ApiError('Could not upload the image. Try again.', res.status);
+    const status = await putMultipart(signed.upload_url, form);
+    if (status < 200 || status >= 300) {
+      throw new ApiError('Could not upload the image. Try again.', status);
     }
     return signed.path;
   },
