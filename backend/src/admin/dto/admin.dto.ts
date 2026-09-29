@@ -149,6 +149,11 @@ export class UpdateMaintenanceDto {
 export class ListAuditQueryDto {
   @IsOptional()
   @IsString()
+  @MaxLength(200)
+  search?: string;
+
+  @IsOptional()
+  @IsString()
   action?: string;
 
   @IsOptional()

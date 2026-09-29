@@ -45,6 +45,22 @@ export class AdminActionsService {
   async list(query: ListAuditQueryDto) {
     const offset = query.offset ?? 0;
     const limit = query.limit ?? 50;
+    if (query.search) {
+      const { data, error } = await this.supabase.admin.rpc(
+        'admin_search_audit',
+        {
+          p_search: query.search,
+          p_action: query.action ?? null,
+          p_actor_id: query.actor_id ?? null,
+          p_from: query.from ?? null,
+          p_to: query.to ?? null,
+          p_limit: limit,
+          p_offset: offset,
+        },
+      );
+      if (error) throw new BadRequestException(error.message);
+      return { actions: data[0].rows, total: Number(data[0].total) };
+    }
     let builder = this.supabase.admin
       .from('admin_actions')
       .select(ACTION_SELECT, { count: 'exact' })

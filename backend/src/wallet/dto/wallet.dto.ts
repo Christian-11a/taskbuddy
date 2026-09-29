@@ -75,6 +75,11 @@ export class CreateWalletTxnDto {
 
 export class ListWalletTxnQueryDto {
   @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  search?: string;
+
+  @IsOptional()
   @IsIn(['credit', 'debit'])
   direction?: WalletTxnDirection;
 

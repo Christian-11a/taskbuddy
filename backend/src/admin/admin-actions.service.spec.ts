@@ -145,3 +145,33 @@ describe('AdminActionsService', () => {
     });
   });
 });
+
+describe('AdminActionsService search', () => {
+  it('passes search and filters to SQL and retains the total on an empty page', async () => {
+    const rpc = jest
+      .fn()
+      .mockResolvedValue({ data: [{ rows: [], total: 105 }], error: null });
+    const supabase = { admin: { rpc } } as unknown as SupabaseService;
+    await expect(
+      new AdminActionsService(supabase).list({
+        search: 'Ana',
+        action: 'user.suspend',
+        offset: 200,
+        limit: 20,
+      }),
+    ).resolves.toEqual({ actions: [], total: 105 });
+    expect(rpc).toHaveBeenCalledWith('admin_search_audit', {
+      p_search: 'Ana',
+      p_action: 'user.suspend',
+      p_actor_id: null,
+      p_from: null,
+      p_to: null,
+      p_limit: 20,
+      p_offset: 200,
+    });
+    rpc.mockResolvedValue({ data: null, error: { message: 'query failed' } });
+    await expect(
+      new AdminActionsService(supabase).list({ search: 'Ana' }),
+    ).rejects.toThrow('query failed');
+  });
+});

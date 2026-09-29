@@ -584,3 +584,35 @@ describe('WalletService', () => {
     });
   });
 });
+
+describe('WalletService admin search', () => {
+  it('passes search and filters to SQL and retains the total on an empty page', async () => {
+    const rpc = jest
+      .fn()
+      .mockResolvedValue({ data: [{ rows: [], total: 105 }], error: null });
+    const supabase = { admin: { rpc } } as unknown as SupabaseService;
+    const service = new WalletService(supabase, createAdminActionsMock().mock);
+    await expect(
+      service.listForAdmin({
+        search: 'Ana',
+        direction: 'credit',
+        kind: 'topup',
+        status: 'completed',
+        offset: 200,
+        limit: 20,
+      }),
+    ).resolves.toEqual({ transactions: [], total: 105 });
+    expect(rpc).toHaveBeenCalledWith('admin_search_wallet', {
+      p_search: 'Ana',
+      p_direction: 'credit',
+      p_kind: 'topup',
+      p_status: 'completed',
+      p_limit: 20,
+      p_offset: 200,
+    });
+    rpc.mockResolvedValue({ data: null, error: { message: 'query failed' } });
+    await expect(service.listForAdmin({ search: 'Ana' })).rejects.toThrow(
+      'query failed',
+    );
+  });
+});

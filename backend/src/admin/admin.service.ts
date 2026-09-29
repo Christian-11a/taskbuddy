@@ -146,8 +146,15 @@ export class AdminService {
     );
     if (error) throw new BadRequestException(error.message);
     const result = data?.[0];
+    const { data: statusCounts, error: countsError } =
+      await this.supabase.admin.rpc('admin_booking_status_counts', {
+        p_search: query.search ?? null,
+        p_category_id: query.category_id ?? null,
+      });
+    if (countsError) throw new BadRequestException(countsError.message);
     return {
       bookings: result?.rows ?? [],
+      status_counts: statusCounts,
       total: Number(result?.total ?? 0),
     };
   }
@@ -260,7 +267,7 @@ export class AdminService {
       .from('provider_profiles')
       .select(
         'profile_id, cached_avg_rating, cached_ratings_count, ' +
-          'cached_completed_jobs, profiles(full_name), service_categories(name)',
+          'cached_completed_jobs, profiles(full_name), service_categories!category_id(name)',
       )
       .order('cached_completed_jobs', { ascending: false })
       .limit(10);
@@ -364,9 +371,13 @@ export class AdminService {
       .eq('kind', 'withdrawal')
       .eq('status', 'pending');
 
+    const { data: dashboardCounts, error: countsError } =
+      await this.supabase.admin.rpc('admin_dashboard_counts');
+    if (countsError) throw new BadRequestException(countsError.message);
     const allUsers = users ?? [];
     return {
       totals: {
+        ...dashboardCounts,
         users: allUsers.length,
         clients: allUsers.filter((u) => u.role === 'client').length,
         providers: allUsers.filter((u) => u.role === 'provider').length,
