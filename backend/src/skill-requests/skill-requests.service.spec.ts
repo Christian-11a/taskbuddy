@@ -6,6 +6,7 @@ import type { Profile } from '../common/types';
 
 type QueryResult = {
   data: unknown;
+  count?: number;
   error: { message: string; code?: string } | null;
 };
 
@@ -26,6 +27,7 @@ function createSupabaseMock(resultsByTable: Record<string, QueryResult[]>) {
       'eq',
       'order',
       'limit',
+      'range',
     ]) {
       builder[method] = jest.fn((...args: unknown[]) => {
         calls.push({ table, method, args });
@@ -167,5 +169,48 @@ describe('SkillRequestsService.approve', () => {
     await expect(service.approve(admin, 'r1')).rejects.toBeInstanceOf(
       ConflictException,
     );
+  });
+});
+
+describe('SkillRequestsService.list', () => {
+  it('returns a counted page beyond the old 100-row cap', async () => {
+    const rows = [pendingRow()];
+    const { service, calls } = createService({
+      skill_change_requests: [{ data: rows, error: null, count: 101 }],
+    });
+    await expect(
+      service.list({ status: 'pending', limit: 20, offset: 100 }),
+    ).resolves.toEqual({ items: rows, total: 101 });
+    expect(calls).toContainEqual({
+      table: 'skill_change_requests',
+      method: 'range',
+      args: [100, 119],
+    });
+    expect(calls).toContainEqual({
+      table: 'skill_change_requests',
+      method: 'eq',
+      args: ['status', 'pending'],
+    });
+    expect(calls).toContainEqual({
+      table: 'skill_change_requests',
+      method: 'select',
+      args: [expect.any(String), { count: 'exact' }],
+    });
+  });
+
+  it('preserves the unpaginated response for deployed web builds', async () => {
+    const rows = [pendingRow()];
+    const { service } = createService({ skill_change_requests: [ok(rows)] });
+    await expect(service.list({})).resolves.toEqual(rows);
+  });
+
+  it('keeps the total on an empty page', async () => {
+    const { service } = createService({
+      skill_change_requests: [{ data: [], error: null, count: 101 }],
+    });
+    await expect(service.list({ offset: 200 })).resolves.toEqual({
+      items: [],
+      total: 101,
+    });
   });
 });

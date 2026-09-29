@@ -145,6 +145,10 @@ export class StaticMapQueryDto {
 
 export class BrowseJobsQueryDto {
   @IsOptional()
+  @IsIn(['urgent', 'normal', 'flexible'])
+  urgency?: JobUrgency;
+
+  @IsOptional()
   @IsInt()
   @Type(() => Number)
   category_id?: number;

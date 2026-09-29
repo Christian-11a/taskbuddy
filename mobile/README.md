@@ -226,11 +226,11 @@ object path, such as `<profile-id>/<uuid>.jpg>`. `HOCreateJobScreen` submits
 those paths in `photo_urls`, and `HOJobDetailScreen` renders the values it
 receives from `GET /jobs/:id` as React Native image URIs.
 
-**Required backend task:** transform relative `jobs.photo_urls` paths into
+**Implemented locally (2026-09-29), pending API deployment:** transform relative `jobs.photo_urls` paths into
 public URLs from the public `job-photos` bucket when returning job objects from
 `GET /jobs/:id` (and preferably `/jobs/mine`, `/jobs/browse`, and `/jobs/assigned`).
-Preserve absolute URLs if older rows already contain them. Until this handoff
-is implemented, uploaded job photos can be stored successfully but will not
+Absolute HTTP(S) URLs from older rows are preserved. Until this API is
+deployed, uploaded job photos can be stored successfully but will not
 render in Job Details because a storage path is not an image URL.
 
 ### Live chat and push notifications
@@ -452,6 +452,12 @@ after QA round 2, all shipped on the same branch:
 
 ## Backend Handoff Docs
 
+> **Backend pass (2026-09-29, local only):** provider/category reads and job photo
+> URLs are fixed; wrong current passwords return 400; browse accepts `urgency`;
+> migration 0035 backfills historical active bookings. The feed must still send
+> the selected urgency chip as a query parameter. Live/infra and product-decision
+> items remain open. See the latest [`HANDOFF.md`](../HANDOFF.md) update.
+
 The live punch list of open backend asks is [`HANDOFF.md`](../HANDOFF.md) at the repo root;
 start there. Six older handoff documents in [`docs/`](../docs/) are addressed to whoever holds
 backend / Supabase / Render / Google Cloud access. The first two are pure ops — applying and
@@ -575,7 +581,7 @@ with Render access.
 | # | Item | Needs | Status |
 |---|---|---|---|
 | 1 | Set `STRIPE_MOBILE_API_VERSION` to `2025-01-27.acacia` (or delete it) | Render dashboard | **Open** — unblocks the app, no deploy |
-| 2 | Deploy `fix/identity-stripe-version` (version validation + 503 manual-review fallback) | Merge to `main` + Render deploy | **Open** |
+| 2 | Deploy `fix/identity-stripe-version` (version validation + 503 manual-review fallback) | Render deploy (`main` already includes the hardening) | **Deployment unverified** |
 | 3 | Confirm Stripe Identity is activated on the account | Stripe Dashboard | **Open** |
 
 The same variable feeds card top-ups (`POST /payments/topup`), so those are probably failing too. The mobile

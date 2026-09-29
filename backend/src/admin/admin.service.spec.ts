@@ -439,7 +439,7 @@ describe('AdminService', () => {
     it('filters by status and returns total', async () => {
       const rows = [{ id: 'j1', status: 'completed' }];
       const { supabase, rpc } = createSupabaseMock({});
-      rpc.mockResolvedValue({
+      rpc.mockResolvedValueOnce({
         data: [{ rows, total: 1 }],
         error: null,
       });
@@ -447,7 +447,7 @@ describe('AdminService', () => {
 
       const result = await service.listBookings({ status: 'completed' });
 
-      expect(result).toEqual({ bookings: rows, total: 1 });
+      expect(result).toEqual({ bookings: rows, total: 1, status_counts: [] });
       expect(rpc).toHaveBeenCalledWith('admin_list_bookings', {
         p_search_term: null,
         p_status: 'completed',
@@ -460,7 +460,7 @@ describe('AdminService', () => {
     it('uses a paginated bookings search RPC and returns its rows and exact total', async () => {
       const rows = [{ id: 'j1', status: 'completed' }];
       const { supabase, calls, rpc } = createSupabaseMock({});
-      rpc.mockResolvedValue({
+      rpc.mockResolvedValueOnce({
         data: [{ rows, total: 42 }],
         error: null,
       });
@@ -474,7 +474,7 @@ describe('AdminService', () => {
           limit: 5,
           offset: 10,
         }),
-      ).resolves.toEqual({ bookings: rows, total: 42 });
+      ).resolves.toEqual({ bookings: rows, total: 42, status_counts: [] });
       expect(rpc).toHaveBeenCalledWith('admin_list_bookings', {
         p_search_term: 'Ramos',
         p_status: 'completed',
@@ -482,17 +482,24 @@ describe('AdminService', () => {
         p_limit: 5,
         p_offset: 10,
       });
+      expect(rpc).toHaveBeenCalledWith('admin_booking_status_counts', {
+        p_search: 'Ramos',
+        p_category_id: 2,
+      });
       expect(calls).toEqual([]);
     });
 
     it('retains the exact bookings total when the requested page is empty', async () => {
       const { supabase, rpc } = createSupabaseMock({});
-      rpc.mockResolvedValue({ data: [{ rows: [], total: 42 }], error: null });
+      rpc.mockResolvedValueOnce({
+        data: [{ rows: [], total: 42 }],
+        error: null,
+      });
       const service = new AdminService(supabase, createAdminActionsMock().mock);
 
       await expect(
         service.listBookings({ search: 'Ramos', limit: 5, offset: 100 }),
-      ).resolves.toStrictEqual({ bookings: [], total: 42 });
+      ).resolves.toStrictEqual({ bookings: [], total: 42, status_counts: [] });
     });
   });
 
@@ -550,7 +557,7 @@ describe('AdminService', () => {
           released_at: `${currentMonth}-01T00:00:00Z`,
         },
       ];
-      const { supabase } = createSupabaseMock({
+      const { supabase, calls, rpc } = createSupabaseMock({
         jobs: [{ data: jobs, error: null }],
         profiles: [{ data: users, error: null }],
         provider_profiles: [
@@ -564,11 +571,24 @@ describe('AdminService', () => {
         provider_verifications: [{ data: null, error: null, count: 2 }],
         escrow_transactions: [{ data: commissionRows, error: null }],
       });
+      rpc.mockResolvedValue({
+        data: {
+          escrow_held_total: 400,
+          escrow_held_count: 2,
+          open_jobs: 2,
+          matching_jobs: 0,
+        },
+        error: null,
+      });
       const service = new AdminService(supabase, createAdminActionsMock().mock);
 
       const result = await service.analyticsSummary();
 
       expect(result.totals).toEqual({
+        escrow_held_total: 400,
+        escrow_held_count: 2,
+        open_jobs: 2,
+        matching_jobs: 0,
         users: 3,
         clients: 2,
         providers: 1,
@@ -604,6 +624,11 @@ describe('AdminService', () => {
         ].sort((a, b) => a.month.localeCompare(b.month)),
       );
       expect(result.top_providers).toEqual(providers);
+      expect(calls).toContainEqual({
+        table: 'provider_profiles',
+        method: 'select',
+        args: [expect.stringContaining('service_categories!category_id(name)')],
+      });
     });
   });
 

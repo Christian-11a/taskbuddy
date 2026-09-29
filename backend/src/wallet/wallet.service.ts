@@ -398,6 +398,21 @@ export class WalletService {
   async listForAdmin(query: ListWalletTxnQueryDto) {
     const offset = query.offset ?? 0;
     const limit = query.limit ?? 50;
+    if (query.search) {
+      const { data, error } = await this.supabase.admin.rpc(
+        'admin_search_wallet',
+        {
+          p_search: query.search,
+          p_direction: query.direction ?? null,
+          p_kind: query.kind ?? null,
+          p_status: query.status ?? null,
+          p_limit: limit,
+          p_offset: offset,
+        },
+      );
+      if (error) throw new BadRequestException(error.message);
+      return { transactions: data[0].rows, total: Number(data[0].total) };
+    }
     let builder = this.supabase.admin
       .from('wallet_transactions')
       .select(ADMIN_WALLET_SELECT, { count: 'exact' })

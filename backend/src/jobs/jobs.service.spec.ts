@@ -40,7 +40,21 @@ function createSupabaseMock(resultsByTable: Record<string, QueryResult[]>) {
     ) => Promise.resolve(result).then(resolve, reject);
     return builder;
   });
-  return { supabase: { admin: { from } } as unknown as SupabaseService, calls };
+  return {
+    supabase: {
+      admin: {
+        from,
+        storage: {
+          from: jest.fn(() => ({
+            getPublicUrl: (path: string) => ({
+              data: { publicUrl: `https://storage.test/job-photos/${path}` },
+            }),
+          })),
+        },
+      },
+    } as unknown as SupabaseService,
+    calls,
+  };
 }
 
 const provider = { id: 'p1', full_name: 'Provider One' } as Profile;
@@ -632,4 +646,39 @@ describe('JobsService.browse', () => {
 
     expect(jobs[0].has_review).toBe(false);
   });
+});
+
+describe('JobsService handover fixes', () => {
+  it('filters urgency in the database before paging', async () => {
+    const { service, calls } = createService({ jobs: [ok([])] });
+    await service.browse({ urgency: 'flexible', limit: 20 });
+    expect(calls).toContainEqual({
+      table: 'jobs',
+      method: 'eq',
+      args: ['urgency', 'flexible'],
+    });
+  });
+
+  it.each(['detail', 'mine', 'assigned', 'browse'])(
+    'returns renderable photo URLs on %s without changing existing URLs',
+    async (route) => {
+      const row = job({
+        photo_urls: ['c1/photo.jpg', 'https://old.test/photo.jpg'],
+      });
+      const { service } = createService({
+        jobs: [ok(route === 'detail' ? row : [row])],
+      });
+      const client = { id: 'c1', role: 'client' } as Profile;
+      let result;
+      if (route === 'detail') result = await service.getById(client, 'j1');
+      else if (route === 'browse') result = (await service.browse({})).jobs[0];
+      else if (route === 'assigned')
+        result = (await service.assigned(provider))[0];
+      else result = (await service.mine(client))[0];
+      expect(result.photo_urls).toEqual([
+        'https://storage.test/job-photos/c1/photo.jpg',
+        'https://old.test/photo.jpg',
+      ]);
+    },
+  );
 });

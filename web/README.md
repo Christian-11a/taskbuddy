@@ -482,6 +482,14 @@ refresh, keyboard work queues), keeping every feature and API call.
 
 ### Backend follow-up (backend-owned)
 
+> **Implementation update (2026-09-29, local only):** items 1–2 and the backend
+> portion of item 4 below are implemented, along with all three count/search
+> requests under "Nice to have". Apply migrations 0035/0036 before deploying
+> the backend. Service-request pagination is opt-in (`limit`/`offset` returns
+> `{ items, total }`); this web build still uses the legacy array. Counts/search
+> are available for later web adoption; existing browser workarounds remain.
+> See [`HANDOFF.md`](../HANDOFF.md) for contracts and outstanding external work.
+
 We don't own the backend, so these are written as requests for the backend
 owner. **Nothing here blocks the web**: each item either has a web-side
 workaround in place or only affects the mobile app.

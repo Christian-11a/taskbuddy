@@ -157,6 +157,7 @@ export class JobsService {
       .order('posted_at', { ascending: false });
     if (query.category_id)
       builder = builder.eq('category_id', query.category_id);
+    if (query.urgency) builder = builder.eq('urgency', query.urgency);
     const { data, error } = await builder;
     if (error) throw new BadRequestException(error.message);
     const jobs = data ?? [];
@@ -444,7 +445,18 @@ export class JobsService {
       ? ((embedded[0] as Record<string, unknown> | undefined) ?? null)
       : ((embedded as Record<string, unknown> | null) ?? null);
     const { reviews: _dropped, ...rest } = row;
-    return { ...rest, review, has_review: review !== null } as T;
+    const photoUrls = (row.photo_urls as string[] | null) ?? [];
+    return {
+      ...rest,
+      photo_urls: photoUrls.map((path) =>
+        /^https?:\/\//i.test(path)
+          ? path
+          : this.supabase.admin.storage.from('job-photos').getPublicUrl(path)
+              .data.publicUrl,
+      ),
+      review,
+      has_review: review !== null,
+    } as T;
   }
 
   private withReviews<T>(jobs: T[]): T[] {

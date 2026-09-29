@@ -5,6 +5,7 @@ import {
   IsOptional,
   IsString,
   Length,
+  Max,
   MaxLength,
   Min,
 } from 'class-validator';
@@ -37,6 +38,19 @@ export class CreateSkillRequestDto {
 }
 
 export class ListSkillRequestsQueryDto {
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(100)
+  limit?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  offset?: number;
+
   @IsOptional()
   @IsIn(SKILL_REQUEST_STATUSES)
   status?: SkillRequestStatus;

@@ -262,7 +262,7 @@ export class AuthService implements OnModuleInit {
         password: dto.current_password,
       });
     if (reauthError)
-      throw new UnauthorizedException('Current password is incorrect');
+      throw new BadRequestException('Current password is incorrect');
 
     const { error } = await this.supabase.admin.auth.admin.updateUserById(
       user.id,
@@ -772,11 +772,12 @@ export class AuthService implements OnModuleInit {
     const profile = { ...user, email: authData?.user?.email ?? null };
 
     if (user.role !== 'provider') return { profile, provider_profile: null };
-    const { data } = await this.supabase.admin
+    const { data, error } = await this.supabase.admin
       .from('provider_profiles')
-      .select('*, service_categories(name)')
+      .select('*, service_categories!category_id(name)')
       .eq('profile_id', user.id)
       .maybeSingle();
+    if (error) throw new BadRequestException(error.message);
     return { profile, provider_profile: data };
   }
 
