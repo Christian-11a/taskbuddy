@@ -10,6 +10,15 @@ Each item below: what's wrong, why it's backend, and what "done" looks like.
 
 ---
 
+## Update 2026-09-29 — BLOCKER: Render env var breaks provider verification
+
+Get Verified step 3 fails with `Invalid Stripe API version: 2025-21-27`. The bad value is
+`STRIPE_MOBILE_API_VERSION` **on Render** (it is in no commit), so this needs someone with Render access:
+set it to `2025-01-27.acacia` or delete it. Card top-ups use the same variable and are probably failing too.
+Full steps, plus a hardening branch to deploy: [`docs/backend-handoff-stripe-identity-config.md`](docs/backend-handoff-stripe-identity-config.md).
+
+---
+
 ## Update 2026-09-24 (later) — mobile follow-up pass, no new backend asks
 
 A follow-up pass picked up four items flagged as deferred in the QA round 2 note below —

@@ -214,6 +214,11 @@ URL (`POST /uploads/signed-url`), `PUT`s the file straight to Supabase Storage,
 and returns the storage **path**. That path — not a device URI — is what job
 creation and verification endpoints submit.
 
+The storage `PUT` goes through `XMLHttpRequest`, not `fetch`. Expo replaces the global `fetch` with
+`expo/fetch`, which rejects React Native's `{ uri, name, type }` multipart file part with
+`Unsupported FormDataPart implementation`; XHR still hands that part to the native networking layer.
+Don't "simplify" it back to `fetch` (`src/lib/__tests__/api.uploadImage.test.ts` guards this).
+
 ### Live chat and push notifications
 
 Both chat screens first load message history, then open the authenticated
@@ -434,12 +439,13 @@ after QA round 2, all shipped on the same branch:
 ## Backend Handoff Docs
 
 The live punch list of open backend asks is [`HANDOFF.md`](../HANDOFF.md) at the repo root;
-start there. Five older handoff documents in [`docs/`](../docs/) are addressed to whoever holds
+start there. Six older handoff documents in [`docs/`](../docs/) are addressed to whoever holds
 backend / Supabase / Render / Google Cloud access. The first two are pure ops — applying and
 deploying already-committed work, no new code. The next two ask for small,
 specific pieces of new backend code (rate limiting, an admin-only credit
 endpoint) plus one real architecture decision (Stripe Connect). The fifth is a
-test-environment blocker, not app code.
+test-environment blocker, not app code. **The sixth is open and blocking:** a wrong environment variable
+on Render breaks provider verification, and only someone with Render access can fix it.
 
 ### 1. [`docs/backend-handoff-booking-tasks-verification.md`](../docs/backend-handoff-booking-tasks-verification.md)
 
@@ -545,6 +551,22 @@ The Geoapify key stays on the backend. Never put it in the mobile bundle. That a
 map preview's image URL, which the API renders and proxies instead (`GET /jobs/static-map`). The
 mobile client stores the latitude/longitude the geocode route returns with the job, and refuses to
 use the profile address or a Metro Manila fallback when the lookup fails.
+
+### 6. [`docs/backend-handoff-stripe-identity-config.md`](../docs/backend-handoff-stripe-identity-config.md)
+
+**Open, blocking (2026-09-29).** Get Verified step 3 fails with `Invalid Stripe API version: 2025-21-27`.
+That value is in the **Render** environment (`STRIPE_MOBILE_API_VERSION`), not in this repo, so it needs someone
+with Render access.
+
+| # | Item | Needs | Status |
+|---|---|---|---|
+| 1 | Set `STRIPE_MOBILE_API_VERSION` to `2025-01-27.acacia` (or delete it) | Render dashboard | **Open** — unblocks the app, no deploy |
+| 2 | Deploy `fix/identity-stripe-version` (version validation + 503 manual-review fallback) | Merge to `main` + Render deploy | **Open** |
+| 3 | Confirm Stripe Identity is activated on the account | Stripe Dashboard | **Open** |
+
+The same variable feeds card top-ups (`POST /payments/topup`), so those are probably failing too. The mobile
+side is done: the upload fix is on the same branch, and the app already falls back to manual review whenever the
+API answers 5xx.
 
 ---
 
