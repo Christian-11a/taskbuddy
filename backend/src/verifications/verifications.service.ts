@@ -3,10 +3,12 @@ import {
   Injectable,
   Logger,
   NotFoundException,
+  ServiceUnavailableException,
 } from '@nestjs/common';
 import { SupabaseService } from '../supabase/supabase.service';
 import { UploadsService } from '../uploads/uploads.service';
 import { StripeService } from '../payments/stripe.service';
+import { resolveMobileApiVersion } from '../payments/stripe-api-version';
 import { AdminActionsService } from '../admin/admin-actions.service';
 import { VERIFICATION_DOCS_BUCKET } from '../uploads/uploads.constants';
 import {
@@ -23,8 +25,10 @@ import type { Profile, VerificationMethod } from '../common/types';
  * consumes the key. Override when @stripe/stripe-react-native requires a newer
  * one.
  */
-const IDENTITY_API_VERSION =
-  process.env.STRIPE_MOBILE_API_VERSION ?? '2025-01-27';
+const IDENTITY_API_VERSION = resolveMobileApiVersion(
+  process.env.STRIPE_MOBILE_API_VERSION,
+  (msg) => new Logger('StripeApiVersion').warn(msg),
+);
 
 /**
  * Row shape as stored. Document paths are null on Stripe Identity rows — those
@@ -43,6 +47,12 @@ interface VerificationRow {
   reviewed_by: string | null;
   rejection_reason: string | null;
   profiles?: { full_name: string } | null;
+}
+
+/** stripe-node errors carry a `type` such as 'StripeInvalidRequestError'. */
+function isStripeError(e: unknown): boolean {
+  const type = (e as { type?: unknown } | null)?.type;
+  return typeof type === 'string' && type.startsWith('Stripe');
 }
 
 @Injectable()
@@ -128,16 +138,33 @@ export class VerificationsService {
       );
     }
 
-    const session = await stripe.identity.verificationSessions.create({
-      type: 'document',
-      metadata: { profile_id: user.id },
-    });
+    // A Stripe refusal here is this server's configuration (a bad API version,
+    // Identity not activated on the account, a wrong key), not the provider's
+    // mistake. Stripe answers those with a 400, which the app would show as a
+    // dead end; a 503 is what tells it to send the documents to manual review
+    // instead, as it already does when Stripe is not configured at all.
+    let session: { id: string; url: string | null };
+    try {
+      session = await stripe.identity.verificationSessions.create({
+        type: 'document',
+        metadata: { profile_id: user.id },
+      });
+    } catch (e) {
+      throw this.identityUnavailable(e, 'create the Identity session');
+    }
 
     // The mobile SDK drives the session with this key rather than the URL.
-    const ephemeralKey = await stripe.ephemeralKeys.create(
-      { verification_session: session.id },
-      { apiVersion: IDENTITY_API_VERSION },
-    );
+    let ephemeralKey: { secret?: string };
+    try {
+      ephemeralKey = await stripe.ephemeralKeys.create(
+        { verification_session: session.id },
+        { apiVersion: IDENTITY_API_VERSION },
+      );
+    } catch (e) {
+      // The session already exists at Stripe; don't leave it orphaned.
+      if (isStripeError(e)) await this.cancelSessionQuietly(session.id);
+      throw this.identityUnavailable(e, 'create the Identity ephemeral key');
+    }
 
     const { data, error } = await this.supabase.admin
       .from('provider_verifications')
@@ -170,6 +197,27 @@ export class VerificationsService {
       url: session.url,
       publishable_key: this.stripe.publishableKey,
     };
+  }
+
+  /** Maps a Stripe failure to a 503 (logged); anything else passes through. */
+  private identityUnavailable(e: unknown, step: string): unknown {
+    if (!isStripeError(e)) return e;
+    this.logger.error(
+      `Stripe Identity: could not ${step}: ${(e as Error).message}`,
+    );
+    return new ServiceUnavailableException(
+      'Automated verification is unavailable right now',
+    );
+  }
+
+  private async cancelSessionQuietly(sessionId: string) {
+    try {
+      await this.stripe.stripe.identity.verificationSessions.cancel(sessionId);
+    } catch (e) {
+      this.logger.warn(
+        `Could not cancel orphaned Identity session ${sessionId}: ${(e as Error).message}`,
+      );
+    }
   }
 
   /**
