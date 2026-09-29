@@ -120,15 +120,20 @@ export class SkillRequestsService {
   // ── Admin side ────────────────────────────────────────────────────────────
 
   async list(query: ListSkillRequestsQueryDto) {
+    const offset = query.offset ?? 0;
+    const limit = query.limit ?? 100;
+    const paginated = query.limit !== undefined || query.offset !== undefined;
     let builder = this.supabase.admin
       .from('skill_change_requests')
-      .select(REQUEST_SELECT)
+      .select(REQUEST_SELECT, { count: 'exact' })
       .order('created_at', { ascending: false })
-      .limit(100);
+      .order('id', { ascending: false })
+      .range(offset, offset + limit - 1);
     if (query.status) builder = builder.eq('status', query.status);
-    const { data, error } = await builder;
+    const { data, error, count } = await builder;
     if (error) throw new BadRequestException(error.message);
-    return data ?? [];
+    // Existing web builds expect a bare array; pagination opts into the envelope.
+    return paginated ? { items: data ?? [], total: count ?? 0 } : (data ?? []);
   }
 
   async approve(admin: Profile, id: string, dto: ReviewSkillRequestDto = {}) {
