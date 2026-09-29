@@ -184,28 +184,69 @@ export default function HOJobDetailScreen({ jobId, onBack, onNavigate }: HOJobDe
             {job.budget != null && (
               <Text style={styles.heroPrice}>₱{Number(job.budget).toLocaleString()}</Text>
             )}
-            <View style={styles.factsGrid}>
-              <View style={styles.fact}>
-                <CalendarDays size={17} color={C.ink500} />
-                <View style={{ flex: 1, minWidth: 0 }}>
-                  <Text style={styles.factLabel}>Schedule</Text>
-                  <Text style={styles.factValue} numberOfLines={1}>
-                    {job.scheduled_at
-                      ? `${shortDate(job.scheduled_at)} · ${timeOfDay(job.scheduled_at)}`
-                      : 'Flexible'}
-                  </Text>
+          </View>
+
+          {/* Details — kept together as the first information grid after the hero. */}
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Details</Text>
+            <View style={styles.detailsGrid}>
+              {[
+                {
+                  icon: CalendarDays,
+                  label: 'Schedule',
+                  value: job.scheduled_at
+                    ? `${shortDate(job.scheduled_at)} · ${timeOfDay(job.scheduled_at)}`
+                    : 'Flexible',
+                  wide: false,
+                },
+                {
+                  icon: TriangleAlert,
+                  label: 'Urgency',
+                  value: urgencyMeta(job.urgency).label,
+                  color: urgencyMeta(job.urgency).color,
+                  wide: false,
+                },
+                { icon: MapPin, label: 'Location', value: job.address, wide: true },
+                { icon: Wrench, label: 'Service', value: job.service_categories?.name ?? '—', wide: false },
+                { icon: CalendarDays, label: 'Posted', value: timeAgo(job.posted_at), wide: false },
+              ].map((item) => (
+                <View key={item.label} style={[styles.detailRow, item.wide && styles.detailRowWide]}>
+                  <View style={styles.detailIcon}>
+                    <item.icon size={17} color={item.color ?? C.ink500} />
+                  </View>
+                  <View style={styles.detailText}>
+                    <Text style={styles.detailLabel}>{item.label}</Text>
+                    <Text style={[styles.detailValue, item.color && { color: item.color }]} numberOfLines={item.wide ? 3 : 1}>
+                      {item.value}
+                    </Text>
+                  </View>
                 </View>
-              </View>
-              <View style={styles.fact}>
-                <TriangleAlert size={17} color={urgencyMeta(job.urgency).color} />
-                <View style={{ flex: 1, minWidth: 0 }}>
-                  <Text style={styles.factLabel}>Urgency</Text>
-                  <Text style={[styles.factValue, { color: urgencyMeta(job.urgency).color }]} numberOfLines={1}>
-                    {urgencyMeta(job.urgency).label}
-                  </Text>
-                </View>
-              </View>
+              ))}
             </View>
+          </View>
+
+          {/* Job progress — this stays in the document while the action bar is docked below. */}
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Job Progress</Text>
+            <View style={styles.timeline}>
+              <View style={styles.timelineLine} />
+              {JOB_STAGES.map((label, i) => (
+                <View key={label} style={styles.timelineStep}>
+                  <View style={[
+                    styles.timelineDot,
+                    i < stage && styles.timelineDotDone,
+                    i === stage && styles.timelineDotCurrent,
+                  ]} />
+                  <Text style={[styles.timelineLabel, i <= stage && styles.timelineLabelDone]}>{label}</Text>
+                </View>
+              ))}
+            </View>
+          </View>
+
+          {/* Description */}
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Job Description</Text>
+            <Text style={styles.descText}>{job.description || 'No description provided.'}</Text>
           </View>
 
           {/* Task list — what was asked for, and how much of it the provider
@@ -230,37 +271,6 @@ export default function HOJobDetailScreen({ jobId, onBack, onNavigate }: HOJobDe
             </View>
           )}
 
-          {/* Description */}
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Job Description</Text>
-            <Text style={styles.descText}>{job.description || 'No description provided.'}</Text>
-          </View>
-
-          {/* Location & category — real data the mockup's demo doesn't show,
-              kept in the same .detail-row pattern used elsewhere in the mockup. */}
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Details</Text>
-            <View style={styles.detailsGrid}>
-              {/* Urgency already sits in the hero, so it isn't repeated here.
-                  Location gets the full width: addresses are long. */}
-              {[
-              { icon: MapPin, label: 'Location', value: job.address, wide: true },
-              { icon: Wrench, label: 'Service', value: job.service_categories?.name ?? '—', wide: false },
-              { icon: CalendarDays, label: 'Posted', value: timeAgo(job.posted_at), wide: false },
-              ].map((item) => (
-              <View key={item.label} style={[styles.detailRow, item.wide && styles.detailRowWide]}>
-                <View style={styles.detailIcon}>
-                  <item.icon size={17} color={C.ink500} />
-                </View>
-                <View style={styles.detailText}>
-                  <Text style={styles.detailLabel}>{item.label}</Text>
-                  <Text style={styles.detailValue} numberOfLines={item.wide ? 3 : 1}>{item.value}</Text>
-                </View>
-              </View>
-              ))}
-            </View>
-          </View>
-
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Job Photos</Text>
             {job.photo_urls?.length > 0 ? (
@@ -276,28 +286,10 @@ export default function HOJobDetailScreen({ jobId, onBack, onNavigate }: HOJobDe
             )}
           </View>
 
-          {/* Job progress — this stays in the document while the action bar is docked below. */}
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Job Progress</Text>
-            <View style={styles.timeline}>
-              <View style={styles.timelineLine} />
-              {JOB_STAGES.map((label, i) => (
-                <View key={label} style={styles.timelineStep}>
-                  <View style={[
-                    styles.timelineDot,
-                    i < stage && styles.timelineDotDone,
-                    i === stage && styles.timelineDotCurrent,
-                  ]} />
-                  <Text style={[styles.timelineLabel, i <= stage && styles.timelineLabelDone]}>{label}</Text>
-                </View>
-              ))}
-            </View>
-          </View>
-
           {/* Hired provider */}
           {provider ? (
             <View style={styles.section}>
-              <Text style={styles.sectionTitle}>Hired Provider</Text>
+              <Text style={styles.sectionTitle}>Service Provider</Text>
               <View style={styles.providerCard}>
                 <View style={styles.providerAvatar}>
                   <Text style={styles.providerAvatarText}>{initials(provider.profiles?.full_name)}</Text>
@@ -324,51 +316,54 @@ export default function HOJobDetailScreen({ jobId, onBack, onNavigate }: HOJobDe
                 </TouchableOpacity>
               </View>
               <TouchableOpacity
-                style={styles.linkRow}
+                style={styles.primaryBtn}
                 onPress={() => onNavigate('Job Applications', job.id)}
-                activeOpacity={0.7}
+                activeOpacity={0.85}
                 testID="job-detail-view-offers"
               >
-                <Text style={styles.linkRowText}>View Offers</Text>
+                <Text style={styles.primaryBtnText}>View Offers</Text>
               </TouchableOpacity>
             </View>
           ) : (
             <View style={styles.section}>
               <Text style={styles.sectionTitle}>Service Provider</Text>
-              <Text style={styles.detailValue}>
+              <Text style={[styles.detailValue, styles.providerNotice]}>
                 No provider assigned yet. You'll be notified when someone is matched.
               </Text>
+              {!!matchingMessage && <Text style={styles.matchingMessage}>{matchingMessage}</Text>}
               <TouchableOpacity
-                style={styles.linkRow}
+                style={styles.primaryBtn}
                 onPress={() => onNavigate('Job Applications', job.id)}
-                activeOpacity={0.7}
+                activeOpacity={0.85}
                 testID="job-detail-view-offers"
               >
-                <Text style={styles.linkRowText}>View Offers</Text>
+                <Text style={styles.primaryBtnText}>View Offers</Text>
               </TouchableOpacity>
             </View>
           )}
 
           {/* Related links — real app functionality, kept as flat rows */}
-          <View style={styles.section}>
-            {/* Only offered once there is something to review. The row used to
-                show on every job, including ones with no provider yet, where
-                POST /jobs/:id/review can only come back as an error. */}
-            {canReview && (
-              <TouchableOpacity
-                style={[styles.linkRow, styles.detailRowBorder]}
-                onPress={() => onNavigate('Leave Review', job.id)}
-                activeOpacity={0.7}
-              >
-                <Text style={styles.linkRowText}>Leave Review</Text>
-              </TouchableOpacity>
-            )}
-            {job.has_review && (
-              <View style={[styles.linkRow, styles.detailRowBorder]}>
-                <Text style={styles.linkRowText}>Review submitted</Text>
-              </View>
-            )}
-          </View>
+          {(canReview || job.has_review) && (
+            <View style={styles.section}>
+              {/* Only offered once there is something to review. The row used to
+                  show on every job, including ones with no provider yet, where
+                  POST /jobs/:id/review can only come back as an error. */}
+              {canReview && (
+                <TouchableOpacity
+                  style={[styles.linkRow, styles.detailRowBorder]}
+                  onPress={() => onNavigate('Leave Review', job.id)}
+                  activeOpacity={0.7}
+                >
+                  <Text style={styles.linkRowText}>Leave Review</Text>
+                </TouchableOpacity>
+              )}
+              {job.has_review && (
+                <View style={[styles.linkRow, styles.detailRowBorder]}>
+                  <Text style={styles.linkRowText}>Review submitted</Text>
+                </View>
+              )}
+            </View>
+          )}
 
           <View style={{ height: 18 }} />
         </ScrollView>
@@ -387,7 +382,6 @@ export default function HOJobDetailScreen({ jobId, onBack, onNavigate }: HOJobDe
               <Text style={styles.primaryBtnText}>{busy ? 'Looking…' : 'Find Providers'}</Text>
             </TouchableOpacity>
           )}
-          {!!matchingMessage && <Text style={styles.matchingMessage}>{matchingMessage}</Text>}
           {canCancel && (
             <TouchableOpacity style={styles.outlineDangerBtn} onPress={() => setConfirmCancel(true)} activeOpacity={0.85} disabled={busy}>
               <View style={styles.outlineBtnContent}>
@@ -416,9 +410,8 @@ export default function HOJobDetailScreen({ jobId, onBack, onNavigate }: HOJobDe
         title="Cancel this job?"
         message={
           job?.assigned_provider_id
-            ? `This tells your provider the job is off${
-                job?.budget != null ? ` and returns ${peso(job.budget)} to your wallet` : ''
-              }. It cannot be undone.`
+            ? `This tells your provider the job is off${job?.budget != null ? ` and returns ${peso(job.budget)} to your wallet` : ''
+            }. It cannot be undone.`
             : 'This takes the job down so providers can no longer apply. It cannot be undone.'
         }
         confirmLabel="Cancel Job"
@@ -508,7 +501,7 @@ const styles = StyleSheet.create({
   taskLabel: { flex: 1, fontSize: 13.5, lineHeight: 18, color: C.ink800, fontFamily: 'Inter' },
   taskLabelDone: { color: C.ink400, textDecorationLine: 'line-through' },
   actionError: { color: '#ef4444', fontSize: 13.5, fontFamily: 'Inter', textAlign: 'center' },
-  matchingMessage: { color: C.cyan800, fontSize: 13.5, fontFamily: 'Inter', textAlign: 'center', lineHeight: 18 },
+  matchingMessage: { color: C.cyan800, fontSize: 13.5, fontFamily: 'Inter', textAlign: 'center', lineHeight: 18, marginBottom: 16 },
   descText: { fontSize: 14, lineHeight: 21, color: C.ink700, fontFamily: 'Inter' },
   attachmentList: { gap: 10 },
   attachmentImage: { width: 92, height: 92, borderRadius: 10, backgroundColor: C.ink100 },
@@ -532,6 +525,7 @@ const styles = StyleSheet.create({
   detailIcon: { width: 30, height: 30, borderRadius: 9, backgroundColor: '#f6f8fa', alignItems: 'center', justifyContent: 'center' },
   detailLabel: { fontSize: 11.5, color: C.ink400, fontFamily: 'Inter', marginBottom: 2 },
   detailValue: { fontSize: 13.5, color: C.ink800, fontWeight: '600', fontFamily: 'Inter', lineHeight: 17, flexShrink: 1 },
+  providerNotice: { marginBottom: 16 },
 
   // Provider card
   providerCard: { flexDirection: 'row', alignItems: 'center', gap: 11 },

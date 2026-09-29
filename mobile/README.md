@@ -219,6 +219,20 @@ The storage `PUT` goes through `XMLHttpRequest`, not `fetch`. Expo replaces the 
 `Unsupported FormDataPart implementation`; XHR still hands that part to the native networking layer.
 Don't "simplify" it back to `fetch` (`src/lib/__tests__/api.uploadImage.test.ts` guards this).
 
+### Backend handoff: job photo URLs
+
+`api.uploadImage('job-photos', uri)` intentionally returns a Supabase Storage
+object path, such as `<profile-id>/<uuid>.jpg>`. `HOCreateJobScreen` submits
+those paths in `photo_urls`, and `HOJobDetailScreen` renders the values it
+receives from `GET /jobs/:id` as React Native image URIs.
+
+**Required backend task:** transform relative `jobs.photo_urls` paths into
+public URLs from the public `job-photos` bucket when returning job objects from
+`GET /jobs/:id` (and preferably `/jobs/mine`, `/jobs/browse`, and `/jobs/assigned`).
+Preserve absolute URLs if older rows already contain them. Until this handoff
+is implemented, uploaded job photos can be stored successfully but will not
+render in Job Details because a storage path is not an image URL.
+
 ### Live chat and push notifications
 
 Both chat screens first load message history, then open the authenticated

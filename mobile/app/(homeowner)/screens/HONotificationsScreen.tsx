@@ -73,6 +73,7 @@ export default function HONotificationsScreen({ onBack, onOpenJob, onOpenProposa
   const [pendingReadId, setPendingReadId] = useState<string | null>(null);
   const deletion = useNotificationDeletion(reload);
   const [confirmClear, setConfirmClear] = useState(false);
+  const [pendingDelete, setPendingDelete] = useState<NotificationRow | null>(null);
   const notifications = deletion.visible(data ?? []);
   const unreadCount = notifications.filter((n) => !n.read_at).length;
 
@@ -148,6 +149,22 @@ export default function HONotificationsScreen({ onBack, onOpenJob, onOpenProposa
         onCancel={() => setConfirmClear(false)}
       />
 
+      <ConfirmationModal
+        visible={pendingDelete !== null}
+        title="Delete notification?"
+        message={pendingDelete ? `Delete “${pendingDelete.title}” from your notifications?` : ''}
+        confirmLabel="Delete"
+        cancelLabel="Keep"
+        destructive
+        onConfirm={() => {
+          if (!pendingDelete) return;
+          const id = pendingDelete.id;
+          setPendingDelete(null);
+          void deletion.remove(id);
+        }}
+        onCancel={() => setPendingDelete(null)}
+      />
+
       <ScrollView
         style={styles.body}
         contentContainerStyle={styles.bodyContent}
@@ -196,7 +213,7 @@ export default function HONotificationsScreen({ onBack, onOpenJob, onOpenProposa
                   {isUnread && <View style={styles.unreadDot} />}
                   <TouchableOpacity
                     style={styles.deleteBtn}
-                    onPress={() => void deletion.remove(notif.id)}
+                    onPress={() => setPendingDelete(notif)}
                     hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                     accessibilityRole="button"
                     accessibilityLabel={`Delete notification: ${notif.title}`}
