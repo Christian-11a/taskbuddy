@@ -480,17 +480,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       consentedDataCollection?: boolean;
       consentedBiometric?: boolean;
     }) => {
-      // Step 1 — Register the core fields only.
-      // Consent + category fields are sent in a follow-up call (step 2) once we
-      // have a JWT, because the current Render deployment doesn't accept them on
-      // POST /auth/register yet (forbidNonWhitelisted). This will be collapsed
-      // back into a single call once Render deploys the updated backend.
+      // Category and consents go with the registration itself. The backend
+      // writes them with the service-role client, so they persist even when
+      // email confirmation means there's no session yet — the old follow-up
+      // call needed one, and providers who confirmed by email ended up with
+      // no provider_profiles row, which made a later verification approval
+      // impossible to record.
       const res = await api.register({
         email: input.email.trim(),
         password: input.password,
         role: toBackendRole(input.role),
         full_name: input.fullName.trim(),
         phone: input.phone?.trim() || undefined,
+        category_id: input.categoryId,
+        consented_terms: input.consentedTerms,
+        consented_privacy: input.consentedPrivacy,
+        consented_data_collection: input.consentedDataCollection,
+        consented_biometric: input.consentedBiometric,
       });
 
       // If the project has email confirmation disabled, register returns a
@@ -500,27 +506,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         await persistSession(res.session);
         setProfile(me.profile);
         setProviderProfile(me.provider_profile);
-
-        // Step 2 — Persist consents + category now that we have a JWT.
-        // Uses the complete-google-profile endpoint which accepts these fields
-        // and is guarded by JWT. Fire-and-forget; failure is non-fatal for the
-        // user (they can still log in; consents will be re-prompted if needed).
-        if (
-          input.consentedTerms ||
-          input.consentedPrivacy ||
-          input.consentedDataCollection ||
-          input.consentedBiometric ||
-          input.categoryId
-        ) {
-          api.completeGoogleProfile(res.session.access_token, {
-            role: toBackendRole(input.role),
-            category_id: input.categoryId,
-            consented_terms: input.consentedTerms,
-            consented_privacy: input.consentedPrivacy,
-            consented_data_collection: input.consentedDataCollection,
-            consented_biometric: input.consentedBiometric,
-          }).catch(() => {/* best-effort; non-fatal */});
-        }
 
         return { needsEmailConfirmation: false };
       }

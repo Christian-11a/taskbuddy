@@ -310,6 +310,7 @@ export default function RegisterScreen({ onRegister, onLogin, onGoogleSignIn }: 
   useEffect(() => {
     if (role === 'homeowner') {
       setCategoryId(null);
+      setCategoryOpen(false);
       setBiometricAccepted(false);
     }
   }, [role]);
@@ -496,9 +497,6 @@ export default function RegisterScreen({ onRegister, onLogin, onGoogleSignIn }: 
       keyboardShouldPersistTaps="handled"
       keyboardDismissMode="on-drag"
       automaticallyAdjustKeyboardInsets={Platform.OS === 'ios'}
-      onTouchStart={() => {
-        if (categoryOpen) setCategoryOpen(false);
-      }}
     >
       <TermsAndConditions
         visible={termsMode !== null}
@@ -580,7 +578,7 @@ export default function RegisterScreen({ onRegister, onLogin, onGoogleSignIn }: 
 
             {/* SP-only: skill category */}
             {role === 'provider' && (
-              <View style={[styles.inputGroup, styles.categoryFieldGroup]}>
+              <View style={styles.inputGroup}>
                 <Text style={styles.inputLabel}>
                   Skill Category
                   <Text style={styles.requiredAsterisk}> *</Text>
@@ -591,7 +589,7 @@ export default function RegisterScreen({ onRegister, onLogin, onGoogleSignIn }: 
                     styles.categoryPicker,
                     fieldErrors.category ? styles.inputBoxError : undefined,
                   ]}
-                  onPress={() => setCategoryOpen(true)}
+                  onPress={() => setCategoryOpen((open) => !open)}
                   activeOpacity={0.8}
                 >
                   <Text style={selectedCategory ? styles.inputText : styles.categoryPlaceholder}>
@@ -873,10 +871,9 @@ const styles = StyleSheet.create({
   categoryPicker: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
   },
-  categoryFieldGroup: { position: 'relative', zIndex: 20 },
   categoryPlaceholder: { fontFamily: 'Inter', fontSize: 18.5, color: C.muted, padding: 0 },
   categoryDropdown: {
-    position: 'absolute', top: 67.5, left: 0, right: 0, zIndex: 30, elevation: 12,
+    marginTop: 8,
     borderRadius: 12, borderWidth: 1, borderColor: C.mutedBorder,
     backgroundColor: C.white, overflow: 'hidden',
   },
