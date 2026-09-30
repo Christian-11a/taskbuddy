@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   Injectable,
   Logger,
   NotFoundException,
@@ -55,6 +56,14 @@ function isStripeError(e: unknown): boolean {
   return typeof type === 'string' && type.startsWith('Stripe');
 }
 
+/**
+ * `is_verified` lives on provider_profiles, which only exists once the provider
+ * has picked a service. Approving without it used to mark the review approved
+ * while the flag had nowhere to land (BACKEND_SCHEMA.md §17).
+ */
+const PROFILE_MISSING_FOR_APPROVAL =
+  'This provider has not set up their service profile yet, so there is nothing to mark verified. Ask them to complete Edit Profile, then approve.';
+
 @Injectable()
 export class VerificationsService {
   private readonly logger = new Logger(VerificationsService.name);
@@ -82,6 +91,7 @@ export class VerificationsService {
       ),
       this.uploads.assertValidImage(VERIFICATION_DOCS_BUCKET, dto.selfie_path),
     ]);
+    await this.assertProviderProfile(user.id);
 
     const { data, error } = await this.supabase.admin
       .from('provider_verifications')
@@ -137,6 +147,8 @@ export class VerificationsService {
         ),
       );
     }
+
+    await this.assertProviderProfile(user.id);
 
     // A Stripe refusal here is this server's configuration (a bad API version,
     // Identity not activated on the account, a wrong key), not the provider's
@@ -249,6 +261,17 @@ export class VerificationsService {
     if (verification.status !== 'pending') return;
 
     const approved = outcome === 'verified';
+    if (
+      approved &&
+      !(await this.hasProviderProfile(verification.provider_id))
+    ) {
+      // Returning normally stops Stripe retrying. The row stays pending, so it
+      // sits in the admin queue until the provider finishes their profile.
+      this.logger.error(
+        `Identity verified for ${verification.provider_id}, who has no provider_profiles row; left pending for manual review`,
+      );
+      return;
+    }
     await this.review(verification.id, {
       status: approved ? 'approved' : 'rejected',
       reviewed_at: new Date().toISOString(),
@@ -257,12 +280,7 @@ export class VerificationsService {
       rejection_reason: approved ? null : (reason ?? null),
     });
 
-    if (approved) {
-      await this.supabase.admin
-        .from('provider_profiles')
-        .update({ is_verified: true })
-        .eq('profile_id', verification.provider_id);
-    }
+    if (approved) await this.markVerified(verification.provider_id);
 
     await this.notify(
       verification.provider_id,
@@ -321,6 +339,11 @@ export class VerificationsService {
 
   async approve(admin: Profile, id: string) {
     const row = await this.findPending(id);
+    // Checked before the review is written: once it says 'approved',
+    // findPending refuses every retry.
+    if (!(await this.hasProviderProfile(row.provider_id))) {
+      throw new ConflictException(PROFILE_MISSING_FOR_APPROVAL);
+    }
 
     const updated = await this.review(id, {
       status: 'approved',
@@ -329,10 +352,7 @@ export class VerificationsService {
       rejection_reason: null,
     });
 
-    await this.supabase.admin
-      .from('provider_profiles')
-      .update({ is_verified: true })
-      .eq('profile_id', row.provider_id);
+    await this.markVerified(row.provider_id);
 
     await this.adminActions.record(
       admin,
@@ -386,6 +406,38 @@ export class VerificationsService {
   }
 
   // ── Internals ─────────────────────────────────────────────────────────────
+
+  private async hasProviderProfile(providerId: string): Promise<boolean> {
+    const { data, error } = await this.supabase.admin
+      .from('provider_profiles')
+      .select('profile_id')
+      .eq('profile_id', providerId)
+      .maybeSingle();
+    if (error) throw new BadRequestException(error.message);
+    return !!data;
+  }
+
+  /** Verification without a service profile could never land (see approve). */
+  private async assertProviderProfile(providerId: string) {
+    if (!(await this.hasProviderProfile(providerId))) {
+      throw new ConflictException(
+        'Finish your profile first — pick your service and add a bio in Edit Profile — then verify your ID.',
+      );
+    }
+  }
+
+  /** Sets the flag and proves it landed — a 0-row update is a failure here. */
+  private async markVerified(providerId: string) {
+    const { data, error } = await this.supabase.admin
+      .from('provider_profiles')
+      .update({ is_verified: true })
+      .eq('profile_id', providerId)
+      .select('profile_id');
+    if (error) throw new BadRequestException(error.message);
+    if (!data || data.length === 0) {
+      throw new ConflictException(PROFILE_MISSING_FOR_APPROVAL);
+    }
+  }
 
   private async findPending(id: string): Promise<VerificationRow> {
     const { data, error } = await this.supabase.admin

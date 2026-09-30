@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   NotFoundException,
   ServiceUnavailableException,
 } from '@nestjs/common';
@@ -114,10 +115,16 @@ function createAdminActionsMock() {
 const provider = { id: 'p1', role: 'provider' } as Profile;
 const admin = { id: 'a1', role: 'admin' } as Profile;
 
+/** provider_profiles lookup result for a provider who has set up their service. */
+const HAS_PROFILE = { data: { profile_id: 'p1' }, error: null };
+/** provider_profiles lookup result for a provider who never picked a service. */
+const NO_PROFILE = { data: null, error: null };
+
 describe('VerificationsService', () => {
   describe('submit', () => {
     it('rejects a second submission while one is still pending', async () => {
       const { supabase } = createSupabaseMock({
+        provider_profiles: [HAS_PROFILE],
         provider_verifications: [
           { data: null, error: { message: 'duplicate', code: '23505' } },
         ],
@@ -141,6 +148,7 @@ describe('VerificationsService', () => {
       const uploads = createUploadsMock();
       const pending = { id: 'v1', provider_id: 'p1', status: 'pending' };
       const { supabase } = createSupabaseMock({
+        provider_profiles: [HAS_PROFILE],
         provider_verifications: [{ data: pending, error: null }],
       });
       const service = new VerificationsService(
@@ -188,6 +196,26 @@ describe('VerificationsService', () => {
       ).toBe(false);
     });
 
+    it('409s with a "finish your profile" message when no provider_profiles row exists', async () => {
+      const { supabase, calls } = createSupabaseMock({
+        provider_profiles: [NO_PROFILE],
+      });
+      const service = new VerificationsService(
+        supabase,
+        createUploadsMock(),
+        createStripeMock(),
+        createAdminActionsMock().mock,
+      );
+
+      await expect(
+        service.submit(provider, {
+          id_document_path: 'p1/id.jpg',
+          selfie_path: 'p1/selfie.jpg',
+        }),
+      ).rejects.toThrow(/Edit Profile/);
+      expect(calls.some((c) => c.method === 'insert')).toBe(false);
+    });
+
     it('refuses paths belonging to another user', async () => {
       const uploads = createUploadsMock();
       (uploads.assertOwnedPaths as jest.Mock).mockImplementation(() => {
@@ -224,7 +252,10 @@ describe('VerificationsService', () => {
           { data: pending, error: null },
           { data: { ...pending, status: 'approved' }, error: null },
         ],
-        provider_profiles: [{ data: null, error: null }],
+        provider_profiles: [
+          HAS_PROFILE,
+          { data: [{ profile_id: 'p1' }], error: null },
+        ],
         notifications: [{ data: null, error: null }],
       });
       const { mock: adminActions, record } = createAdminActionsMock();
@@ -288,6 +319,131 @@ describe('VerificationsService', () => {
       await expect(service.approve(admin, 'v1')).rejects.toThrow(
         NotFoundException,
       );
+    });
+
+    it('refuses with 409, and leaves the review pending, when the provider has no provider_profiles row', async () => {
+      const pending = { id: 'v1', provider_id: 'p1', status: 'pending' };
+      const { supabase, calls } = createSupabaseMock({
+        provider_verifications: [{ data: pending, error: null }],
+        provider_profiles: [NO_PROFILE],
+      });
+      const { mock: adminActions, record } = createAdminActionsMock();
+      const service = new VerificationsService(
+        supabase,
+        createUploadsMock(),
+        createStripeMock(),
+        adminActions,
+      );
+
+      await expect(service.approve(admin, 'v1')).rejects.toThrow(
+        ConflictException,
+      );
+      // The review is never marked approved, so the admin can approve it later.
+      expect(
+        calls.some(
+          (c) => c.table === 'provider_verifications' && c.method === 'update',
+        ),
+      ).toBe(false);
+      expect(calls.some((c) => c.table === 'notifications')).toBe(false);
+      expect(record).not.toHaveBeenCalled();
+    });
+
+    it('surfaces a failed is_verified write instead of reporting success', async () => {
+      const pending = { id: 'v1', provider_id: 'p1', status: 'pending' };
+      const { supabase } = createSupabaseMock({
+        provider_verifications: [
+          { data: pending, error: null },
+          { data: { ...pending, status: 'approved' }, error: null },
+        ],
+        provider_profiles: [
+          HAS_PROFILE,
+          { data: null, error: { message: 'boom' } },
+        ],
+      });
+      const service = new VerificationsService(
+        supabase,
+        createUploadsMock(),
+        createStripeMock(),
+        createAdminActionsMock().mock,
+      );
+
+      await expect(service.approve(admin, 'v1')).rejects.toThrow('boom');
+    });
+  });
+
+  describe('applyIdentityResult', () => {
+    const pendingIdentity = {
+      id: 'v1',
+      provider_id: 'p1',
+      status: 'pending',
+      method: 'stripe_identity',
+    };
+
+    it('leaves the review pending for an admin when the provider has no provider_profiles row', async () => {
+      const { supabase, calls } = createSupabaseMock({
+        provider_verifications: [{ data: pendingIdentity, error: null }],
+        provider_profiles: [NO_PROFILE],
+      });
+      const service = new VerificationsService(
+        supabase,
+        createUploadsMock(),
+        createStripeMock(),
+        createAdminActionsMock().mock,
+      );
+
+      // Resolves (a 2xx to Stripe, so it stops retrying) without writing anything.
+      await expect(
+        service.applyIdentityResult('vs_1', 'verified'),
+      ).resolves.toBeUndefined();
+      expect(calls.some((c) => c.method === 'update')).toBe(false);
+      expect(calls.some((c) => c.table === 'notifications')).toBe(false);
+    });
+
+    it('approves and sets is_verified when the row exists', async () => {
+      const { supabase, calls } = createSupabaseMock({
+        provider_verifications: [
+          { data: pendingIdentity, error: null },
+          { data: { ...pendingIdentity, status: 'approved' }, error: null },
+        ],
+        provider_profiles: [
+          HAS_PROFILE,
+          { data: [{ profile_id: 'p1' }], error: null },
+        ],
+        notifications: [{ data: null, error: null }],
+      });
+      const service = new VerificationsService(
+        supabase,
+        createUploadsMock(),
+        createStripeMock(),
+        createAdminActionsMock().mock,
+      );
+
+      await service.applyIdentityResult('vs_1', 'verified');
+
+      const verifiedUpdate = calls.find(
+        (c) => c.table === 'provider_profiles' && c.method === 'update',
+      );
+      expect(verifiedUpdate?.args[0]).toEqual({ is_verified: true });
+    });
+
+    it('still records a rejection without needing the row', async () => {
+      const { supabase, calls } = createSupabaseMock({
+        provider_verifications: [
+          { data: pendingIdentity, error: null },
+          { data: { ...pendingIdentity, status: 'rejected' }, error: null },
+        ],
+        notifications: [{ data: null, error: null }],
+      });
+      const service = new VerificationsService(
+        supabase,
+        createUploadsMock(),
+        createStripeMock(),
+        createAdminActionsMock().mock,
+      );
+
+      await service.applyIdentityResult('vs_1', 'rejected', 'Expired ID');
+
+      expect(calls.some((c) => c.table === 'provider_profiles')).toBe(false);
     });
   });
 
@@ -390,6 +546,7 @@ describe('VerificationsService', () => {
     it('returns the session, key and url, and records a pending row', async () => {
       const stripe = createIdentityStripeMock();
       const { supabase, calls } = createSupabaseMock({
+        provider_profiles: [HAS_PROFILE],
         provider_verifications: [{ data: { id: 'v1' }, error: null }],
       });
       const service = new VerificationsService(
@@ -414,12 +571,32 @@ describe('VerificationsService', () => {
       expect(calls.some((c) => c.method === 'insert')).toBe(true);
     });
 
+    it('409s before opening a Stripe session when no provider_profiles row exists', async () => {
+      const stripe = createIdentityStripeMock();
+      const { supabase } = createSupabaseMock({
+        provider_profiles: [NO_PROFILE],
+      });
+      const service = new VerificationsService(
+        supabase,
+        createUploadsMock(),
+        stripe.service,
+        createAdminActionsMock().mock,
+      );
+
+      await expect(
+        service.startIdentitySession(provider, paths),
+      ).rejects.toThrow(ConflictException);
+      expect(stripe.sessionsCreate).not.toHaveBeenCalled();
+    });
+
     it('503s and cancels the session when the ephemeral key is refused', async () => {
       const stripe = createIdentityStripeMock();
       stripe.keysCreate.mockRejectedValue(
         stripeError('Invalid Stripe API version: 2025-21-27'),
       );
-      const { supabase, calls } = createSupabaseMock({});
+      const { supabase, calls } = createSupabaseMock({
+        provider_profiles: [HAS_PROFILE],
+      });
       const service = new VerificationsService(
         supabase,
         createUploadsMock(),
@@ -439,7 +616,9 @@ describe('VerificationsService', () => {
       stripe.sessionsCreate.mockRejectedValue(
         stripeError('Your account is not activated for Identity'),
       );
-      const { supabase, calls } = createSupabaseMock({});
+      const { supabase, calls } = createSupabaseMock({
+        provider_profiles: [HAS_PROFILE],
+      });
       const service = new VerificationsService(
         supabase,
         createUploadsMock(),
@@ -459,7 +638,9 @@ describe('VerificationsService', () => {
       const stripe = createIdentityStripeMock();
       stripe.keysCreate.mockRejectedValue(stripeError('bad version'));
       stripe.sessionsCancel.mockRejectedValue(stripeError('cannot cancel'));
-      const { supabase } = createSupabaseMock({});
+      const { supabase } = createSupabaseMock({
+        provider_profiles: [HAS_PROFILE],
+      });
       const service = new VerificationsService(
         supabase,
         createUploadsMock(),
@@ -475,7 +656,9 @@ describe('VerificationsService', () => {
     it('does not remap a non-Stripe failure', async () => {
       const stripe = createIdentityStripeMock();
       stripe.sessionsCreate.mockRejectedValue(new Error('socket hang up'));
-      const { supabase } = createSupabaseMock({});
+      const { supabase } = createSupabaseMock({
+        provider_profiles: [HAS_PROFILE],
+      });
       const service = new VerificationsService(
         supabase,
         createUploadsMock(),
@@ -491,6 +674,7 @@ describe('VerificationsService', () => {
     it('keeps the 400 for a second pending review, and cancels the session', async () => {
       const stripe = createIdentityStripeMock();
       const { supabase } = createSupabaseMock({
+        provider_profiles: [HAS_PROFILE],
         provider_verifications: [
           { data: null, error: { message: 'duplicate', code: '23505' } },
         ],

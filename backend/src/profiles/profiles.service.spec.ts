@@ -28,7 +28,16 @@ function createSupabaseMock(results: QueryResult[]) {
         calls.push({ method, args });
         return builder;
       });
-    for (const method of ['select', 'update', 'upsert', 'eq', 'or', 'in']) {
+    for (const method of [
+      'select',
+      'update',
+      'upsert',
+      'eq',
+      'or',
+      'in',
+      'order',
+      'limit',
+    ]) {
       builder[method] = chain(method);
     }
     builder.single = jest.fn(() => Promise.resolve(result));
@@ -383,6 +392,92 @@ describe('ProfilesService', () => {
         }),
       ).rejects.toThrow('too general to locate');
       expect(update()).toBeUndefined();
+    });
+  });
+
+  describe('upsertProviderProfile — carrying an earlier approval', () => {
+    const provider = { id: 'u1', role: 'provider' } as Profile;
+    const dto = { category_id: 1, bio: 'Twenty-plus characters of bio' };
+    const newService = (results: QueryResult[]) => {
+      const mock = createSupabaseMock(results);
+      const service = new ProfilesService(
+        mock.supabase,
+        createUploadsMock(),
+        createWalletMock(0),
+        createGeocodingMock(),
+      );
+      const upsertPayload = () =>
+        mock.calls.find((c) => c.method === 'upsert')?.args[0] as
+          Record<string, unknown> | undefined;
+      return { service, calls: mock.calls, upsertPayload };
+    };
+
+    it('sets is_verified on a new row when the latest verification was approved', async () => {
+      const { service, upsertPayload } = newService([
+        { data: { id: 1 }, error: null }, // service_categories
+        { data: null, error: null }, // no existing provider_profiles row
+        { data: { status: 'approved' }, error: null }, // latest verification
+        { data: { profile_id: 'u1' }, error: null }, // upsert
+      ]);
+
+      await service.upsertProviderProfile(provider, dto);
+
+      expect(upsertPayload()).toMatchObject({ is_verified: true });
+    });
+
+    it('does not set is_verified when the latest verification is still pending', async () => {
+      const { service, upsertPayload } = newService([
+        { data: { id: 1 }, error: null },
+        { data: null, error: null },
+        { data: { status: 'pending' }, error: null },
+        { data: { profile_id: 'u1' }, error: null },
+      ]);
+
+      await service.upsertProviderProfile(provider, dto);
+
+      expect(upsertPayload()).not.toHaveProperty('is_verified');
+    });
+
+    it('does not set is_verified when there is no verification at all', async () => {
+      const { service, upsertPayload } = newService([
+        { data: { id: 1 }, error: null },
+        { data: null, error: null },
+        { data: null, error: null },
+        { data: { profile_id: 'u1' }, error: null },
+      ]);
+
+      await service.upsertProviderProfile(provider, dto);
+
+      expect(upsertPayload()).not.toHaveProperty('is_verified');
+    });
+
+    it('never touches is_verified, or looks up verifications, for an existing row', async () => {
+      const { service, calls, upsertPayload } = newService([
+        { data: { id: 1 }, error: null },
+        { data: { category_id: 1 }, error: null }, // existing row
+        { data: { profile_id: 'u1' }, error: null }, // upsert
+      ]);
+
+      await service.upsertProviderProfile(provider, dto);
+
+      expect(upsertPayload()).not.toHaveProperty('is_verified');
+      expect(
+        calls.some(
+          (c) => c.method === 'from' && c.args[0] === 'provider_verifications',
+        ),
+      ).toBe(false);
+    });
+
+    it('surfaces a failed verification lookup rather than guessing', async () => {
+      const { service } = newService([
+        { data: { id: 1 }, error: null },
+        { data: null, error: null },
+        { data: null, error: { message: 'lookup failed' } },
+      ]);
+
+      await expect(
+        service.upsertProviderProfile(provider, dto),
+      ).rejects.toThrow('lookup failed');
     });
   });
 

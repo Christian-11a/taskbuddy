@@ -160,6 +160,13 @@ export class ProfilesService {
       );
     }
 
+    // A provider approved before this row existed had nowhere for is_verified
+    // to land (BACKEND_SCHEMA.md §17), so the row inherits the approval when it
+    // is first created. Never on an update: an existing row's flag is the
+    // review's to set, not this endpoint's.
+    const inheritsApproval =
+      !existing && (await this.latestVerificationApproved(user.id));
+
     // cached_* columns are intentionally never written here — triggers own them.
     const { data, error } = await this.supabase.admin
       .from('provider_profiles')
@@ -170,6 +177,7 @@ export class ProfilesService {
           bio: dto.bio,
           years_experience: dto.years_experience ?? 0,
           service_radius_km: dto.service_radius_km ?? 15.0,
+          ...(inheritsApproval ? { is_verified: true } : {}),
         },
         { onConflict: 'profile_id' },
       )
@@ -177,6 +185,20 @@ export class ProfilesService {
       .single();
     if (error) throw new BadRequestException(error.message);
     return data;
+  }
+
+  private async latestVerificationApproved(
+    profileId: string,
+  ): Promise<boolean> {
+    const { data, error } = await this.supabase.admin
+      .from('provider_verifications')
+      .select('status')
+      .eq('provider_id', profileId)
+      .order('submitted_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (error) throw new BadRequestException(error.message);
+    return data?.status === 'approved';
   }
 
   /**
