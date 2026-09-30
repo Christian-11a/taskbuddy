@@ -153,23 +153,20 @@ The mobile app defaults to the deployed API, so it runs with no local setup.
 
 ## Backend handoff
 
-[`HANDOFF.md`](./HANDOFF.md) tracks open items from the mobile e2e sweep that
-need backend work or a backend-side decision. Escrow hold atomicity and chat
-attachments are resolved; what's still open needs backend/infra access the
-app owner doesn't have:
+**If you hold backend / Render / Stripe / Supabase / Firebase access, start at
+[`HANDOFF.md`](./HANDOFF.md).** It's the live punch list, newest update first. The app owner doesn't have
+those accesses, so each of these open asks is waiting on you:
 
-- **Render deploy** — chat attachments are merged to `main` and their
-  migrations are live on Supabase, but the deployed API hasn't been
-  redeployed to pick up the code yet (item #5).
-- **Firebase/FCM credentials** — push notification delivery is otherwise
-  code-complete and the EAS project is linked; it just needs a
-  `google-services.json` (item #4).
-- Load testing, the booking-request story wording question, and a punch list
-  of minor polish items from the chat-attachments review are also tracked
-  there (items #6-7).
+| Priority | Ask | Needs | Details |
+|---|---|---|---|
+| **Blocking** | Set `STRIPE_WEBHOOK_SECRET` to the sandbox endpoint's signing secret, then resend the failed events. Wallet top-ups, card-at-hire and Identity results all depend on it | Render + Stripe Dashboard | [`docs/backend-handoff-stripe-webhook-secret.md`](./docs/backend-handoff-stripe-webhook-secret.md) |
+| **Blocking** | Fix or delete `STRIPE_MOBILE_API_VERSION` on Render (`Invalid Stripe API version: 2025-21-27`) | Render | [`docs/backend-handoff-stripe-identity-config.md`](./docs/backend-handoff-stripe-identity-config.md) |
+| High | If not done yet, apply migrations 0035 then 0036. Do this **before** any deploy of `main`, because the analytics/bookings code needs 0036 | Supabase | `HANDOFF.md`, Update 2026-09-29 |
+| High | Deploy `main` (verification/profile gate), run the stuck-providers query, and confirm `/auth/register` accepts `category_id` before the next mobile build | Render + Supabase | `HANDOFF.md`, Update 2026-10-01 §B |
+| Medium | Push notifications: add Firebase `google-services.json` + FCM credentials, then rebuild | Firebase + EAS | `HANDOFF.md` §4 |
+| Low | Run the k6 money-path load test (it writes to prod, so it needs a go-ahead) | Render/Supabase tier visibility | `HANDOFF.md` §3, [`backend/load/README.md`](./backend/load/README.md) |
 
-Check it before picking up backend work on this branch. `docs/backend-handoff-*.md`
-has deeper writeups on specific subsystems, including
+Product decisions that block further backend work are listed in `HANDOFF.md` (Update 2026-09-24 and
+2026-09-29). `docs/backend-handoff-*.md` has deeper writeups on specific subsystems, for example
 [`docs/backend-handoff-wallet-payout-rail-spike.md`](./docs/backend-handoff-wallet-payout-rail-spike.md)
-(why the wallet withdrawal payout rail can't reuse the Stripe Connect payout
-service as-is).
+(why the withdrawal payout rail can't reuse the Stripe Connect payout service as-is).

@@ -452,6 +452,10 @@ after QA round 2, all shipped on the same branch:
 
 ## Backend Handoff Docs
 
+> **2026-10-01:** two new backend asks are at the top of [`HANDOFF.md`](../HANDOFF.md). One is the
+> blocking Stripe webhook secret (§7 below). The other is a Render deploy of the verification/profile
+> gate, which the app's single-call registration also depends on.
+
 > **Backend pass (2026-09-29, local only):** provider/category reads and job photo
 > URLs are fixed; wrong current passwords return 400; browse accepts `urgency`;
 > migration 0035 backfills historical active bookings. The feed must still send
@@ -459,13 +463,13 @@ after QA round 2, all shipped on the same branch:
 > items remain open. See the latest [`HANDOFF.md`](../HANDOFF.md) update.
 
 The live punch list of open backend asks is [`HANDOFF.md`](../HANDOFF.md) at the repo root;
-start there. Six older handoff documents in [`docs/`](../docs/) are addressed to whoever holds
+start there. Seven older handoff documents in [`docs/`](../docs/) are addressed to whoever holds
 backend / Supabase / Render / Google Cloud access. The first two are pure ops — applying and
 deploying already-committed work, no new code. The next two ask for small,
 specific pieces of new backend code (rate limiting, an admin-only credit
 endpoint) plus one real architecture decision (Stripe Connect). The fifth is a
-test-environment blocker, not app code. **The sixth is open and blocking:** a wrong environment variable
-on Render breaks provider verification, and only someone with Render access can fix it.
+test-environment blocker, not app code. **The sixth and seventh are open and blocking:** wrong environment variables on Render break provider
+verification and wallet top-ups, and only someone with Render/Stripe access can fix them.
 
 ### 1. [`docs/backend-handoff-booking-tasks-verification.md`](../docs/backend-handoff-booking-tasks-verification.md)
 
@@ -587,6 +591,22 @@ with Render access.
 The same variable feeds card top-ups (`POST /payments/topup`), so those are probably failing too. The mobile
 side is done: the upload fix is on the same branch, and the app already falls back to manual review whenever the
 API answers 5xx.
+
+### 7. [`docs/backend-handoff-stripe-webhook-secret.md`](../docs/backend-handoff-stripe-webhook-secret.md)
+
+**Open, blocking (2026-10-01).** Card top-ups succeed in Stripe, but the wallet is never credited: Stripe has not
+delivered one `payment_intent.succeeded` to `POST /payments/webhook` since at least 2026-09-28. Most likely
+`STRIPE_WEBHOOK_SECRET` on Render doesn't match the sandbox endpoint's signing secret. The same webhook also completes
+card-at-hire and Stripe Identity results.
+
+| # | Item | Needs | Status |
+|---|---|---|---|
+| 1 | Read the failed delivery's response in Stripe → Webhooks | Stripe Dashboard | **Open** |
+| 2 | Set `STRIPE_WEBHOOK_SECRET` to the endpoint's signing secret | Render dashboard | **Open** |
+| 3 | Resend the failed events (idempotent, safe) | Stripe Dashboard | **Open** |
+
+The mobile side is done. After Stripe returns, Add Money shows "Money added" or "Payment received" with a single
+Done button, so it can no longer start a second charge. The wallet also supports pull-to-refresh.
 
 ---
 

@@ -10,6 +10,58 @@ Each item below: what's wrong, why it's backend, and what "done" looks like.
 
 ---
 
+## Update 2026-10-01 — two new backend asks (one blocking)
+
+### A. BLOCKER — Stripe webhook never succeeds, so wallet top-ups never credit
+
+Card top-ups go through in Stripe, but no `payment_intent.succeeded` has reached `POST /payments/webhook`
+with a 2xx since at least 2026-09-28. The most likely cause is that `STRIPE_WEBHOOK_SECRET` on Render isn't
+the sandbox endpoint's signing secret. The same webhook completes card-at-hire and Stripe Identity results,
+so both of those are broken too. **Needs Render + Stripe Dashboard access, and no code change.** Stripe only
+retries for 3 days, so do the resend soon. Steps, the diagnosis table and how to verify:
+[`docs/backend-handoff-stripe-webhook-secret.md`](docs/backend-handoff-stripe-webhook-secret.md).
+
+### B. Deploy the verification/profile gate (committed on `main`, not yet on Render)
+
+**The bug:** a provider who confirmed their email at signup never got a `provider_profiles` row, because the
+old follow-up call needed a session they didn't have yet. An admin approval, or a Stripe Identity
+"verified", then marked the review `approved` while `is_verified` had no row to land on. After that the
+review couldn't be re-run. Details are in `BACKEND_SCHEMA.md` §17.
+
+**What changed (`verifications.service.ts`, `profiles.service.ts`; no migration):**
+- `POST /verifications`, `POST /verifications/identity-session`, and admin approve now return **409**
+  while the provider has no `provider_profiles` row. The message tells them to finish Edit Profile.
+- A Stripe Identity "verified" for such a provider is logged and left `pending`, so it stays in the admin
+  queue. The webhook still returns 2xx, so Stripe stops retrying.
+- `markVerified` now fails loudly on a 0-row update instead of reporting success.
+- `PUT /profiles/me/provider` sets `is_verified = true` when it **creates** the row for a provider whose
+  latest verification is already `approved`. This is the repair path. It never touches an existing row.
+
+**To do:**
+1. First confirm migrations **0035 and 0036** are applied (see Update 2026-09-29 below). `main`'s
+   analytics and bookings code calls 0036's RPCs, so deploying `main` without them breaks those routes.
+   Then deploy `main` to Render (`taskbuddy-kpek`) and check `GET /health`.
+2. Run this read-only query in Supabase. It lists the providers who hit the 409 until they complete Edit Profile:
+   ```sql
+   select p.id, p.full_name, p.signup_category_id, v.status as latest_verification
+   from profiles p
+   left join provider_profiles pp on pp.profile_id = p.id
+   left join lateral (
+     select status from provider_verifications
+     where provider_id = p.id order by submitted_at desc limit 1
+   ) v on true
+   where p.role = 'provider' and pp.profile_id is null;
+   ```
+   Rows with `latest_verification = 'approved'` repair themselves as soon as that provider saves Edit
+   Profile. Tell the mobile dev how many rows there are. Don't hand-insert `provider_profiles` rows:
+   `category_id` and `bio` are the provider's to choose.
+3. **Before the next mobile build ships:** confirm the deployed `POST /auth/register` accepts
+   `category_id` and `consented_*`. They're in `RegisterDto` since `c5f4bb4`, but deployment state
+   isn't verified here. The app now sends them on register and no longer makes a follow-up call.
+   Because of `forbidNonWhitelisted`, an API older than `c5f4bb4` would 400 **every** registration.
+
+---
+
 ## Update 2026-09-29 — backend implementation pass (local, not deployed)
 
 Pulled `upstream/main` at `170a288` and reviewed both app READMEs and the handoff
