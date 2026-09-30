@@ -21,7 +21,7 @@
  *   support a single account holding both roles.
  */
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useRetainedScroll } from '../../../src/hooks/useRetainedState';
 import {
   ScrollView,
@@ -47,6 +47,7 @@ import {
 import ConfirmationModal from '../../../src/components/ConfirmationModal';
 import { Spacing, V6Colors, V6Radii, V6Shadows } from '../../../src/constants/theme';
 import { useHeaderTop } from '../../../src/hooks/useHeaderTop';
+import { useRefreshOnForeground } from '../../../src/hooks/useRefreshOnForeground';
 
 const C = V6Colors;
 import { SPScreen } from '../../../src/types/navigation';
@@ -74,7 +75,7 @@ export default function SPProfileScreen({ onNavigate, onLogout, onBack }: SPProf
   const headerTop = useHeaderTop(4);
   // Coming back from Settings/Edit Profile keeps the list where it was.
   const scroll = useRetainedScroll('sp.profile');
-  const { profile, providerProfile } = useAuth();
+  const { profile, providerProfile, refreshProfile } = useAuth();
   const [confirmLogoutVisible, setConfirmLogoutVisible] = useState(false);
 
   const name = profile?.full_name ?? '';
@@ -83,6 +84,15 @@ export default function SPProfileScreen({ onNavigate, onLogout, onBack }: SPProf
   const ratingLabel = rating != null ? Number(rating).toFixed(1) : '—';
   const category = providerProfile?.service_categories?.name;
   const isVerified = !!providerProfile?.is_verified;
+  // Same as the Feed's banner: an approval lands server-side (admin or Stripe
+  // webhook) while this screen may already be showing "Not verified".
+  useRefreshOnForeground(() => void refreshProfile(), !isVerified);
+  useEffect(() => {
+    if (!isVerified) void refreshProfile();
+    // Mount only — refreshProfile is stable, and re-running on the isVerified
+    // flip would refetch right after the fetch that caused it.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   // Hired, confirmed or under way — same definition My Work's Active tab uses.
   const active = useAsyncData(async () => {
     const jobs = await api.assignedJobs();

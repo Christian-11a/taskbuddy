@@ -194,11 +194,18 @@ export default function SPHomeScreen({ onNavigate }: SPHomeScreenProps) {
         style={[styles.hero, { paddingTop: headerTop }]}
       >
         <View style={styles.heroTopRow}>
-          <View>
-            <Text style={styles.greeting}>Hello, {name || 'there'}</Text>
+          <View testID="hero-text" style={styles.heroText}>
+            <Text
+              style={styles.greeting}
+              numberOfLines={1}
+              ellipsizeMode="tail"
+              maxFontSizeMultiplier={1.3}
+            >
+              Hello, {name || 'there'}
+            </Text>
             <Text style={styles.heroTitle}>Jobs Near You</Text>
           </View>
-          <View style={styles.heroActions}>
+          <View testID="hero-actions" style={styles.heroActions}>
             <TouchableOpacity
               style={styles.iconBtn}
               onPress={() => onNavigate('Notifications')}
@@ -489,7 +496,11 @@ const styles = StyleSheet.create({
   heroTopRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingTop: 12 },
   greeting: { color: C.ink400, fontSize: 13, fontFamily: 'Inter', marginBottom: 3 },
   heroTitle: { color: C.white, fontSize: 21.5, fontWeight: '800', fontFamily: 'Inter' },
-  heroActions: { flexDirection: 'row', gap: 8, alignItems: 'center' },
+  // The greeting column yields to the actions, never the other way round: the
+  // avatar is the only route to Profile (and Log out), so a long name must
+  // truncate rather than push it off-screen.
+  heroText: { flex: 1, minWidth: 0, marginRight: 12 },
+  heroActions: { flexDirection: 'row', gap: 8, alignItems: 'center', flexShrink: 0 },
   iconBtn: {
     width: 40, height: 40, borderRadius: 12,
     backgroundColor: 'rgba(255,255,255,0.12)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)',

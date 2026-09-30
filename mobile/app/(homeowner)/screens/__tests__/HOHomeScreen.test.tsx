@@ -1,5 +1,6 @@
 import React from 'react';
-import { render, screen, waitFor } from '@testing-library/react-native';
+import { StyleSheet } from 'react-native';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react-native';
 import HOHomeScreen from '../HOHomeScreen';
 import { api } from '../../../../src/lib/api';
 import { useAuth } from '../../../../src/context/AuthContext';
@@ -48,5 +49,53 @@ describe('HOHomeScreen — empty state does not flash while jobs are still loadi
     render(<HOHomeScreen onNavigate={jest.fn()} />);
 
     await waitFor(() => expect(screen.getByText('Need something done?')).toBeTruthy());
+  });
+});
+
+// A long name used to widen the text column until the bell + avatar were pushed
+// off the right edge — the avatar is the only route to Profile (and Log out).
+describe('HOHomeScreen — hero header keeps the avatar reachable with a long name', () => {
+  const LONG_NAME = 'MYRE LECTOR ANDRE MORADA DELA CRUZ SANTIAGO VILLANUEVA';
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    (useAuth as jest.Mock).mockReturnValue({ profile: { full_name: LONG_NAME, city: null, address: null } });
+    (api.wallet as jest.Mock).mockResolvedValue({ balance: 0, available: 0, held: 0 });
+    (api.myJobs as jest.Mock).mockResolvedValue([]);
+    (api.categories as jest.Mock).mockResolvedValue([]);
+    (api.notifications as jest.Mock).mockResolvedValue([]);
+    (api.unreadNotificationCount as jest.Mock).mockResolvedValue({ count: 0 });
+  });
+
+  it('still navigates to Profile from the avatar', async () => {
+    const onNavigate = jest.fn();
+    render(<HOHomeScreen onNavigate={onNavigate} />);
+
+    fireEvent.press(await screen.findByTestId('btn-home-avatar'));
+
+    expect(onNavigate).toHaveBeenCalledWith('Profile');
+  });
+
+  it('lets the name column shrink and truncate instead of pushing the actions out', async () => {
+    render(<HOHomeScreen onNavigate={jest.fn()} />);
+
+    const column = StyleSheet.flatten((await screen.findByTestId('hero-text')).props.style);
+    expect(column.flex).toBe(1);
+    expect(column.minWidth).toBe(0);
+    expect(screen.getByText(LONG_NAME).props.numberOfLines).toBe(2);
+  });
+
+  it('never lets the action buttons shrink away', async () => {
+    render(<HOHomeScreen onNavigate={jest.fn()} />);
+
+    const actions = StyleSheet.flatten((await screen.findByTestId('hero-actions')).props.style);
+    expect(actions.flexShrink).toBe(0);
+  });
+
+  it('falls back to "there" when the profile has no name', async () => {
+    (useAuth as jest.Mock).mockReturnValue({ profile: { full_name: '', city: null, address: null } });
+    render(<HOHomeScreen onNavigate={jest.fn()} />);
+
+    expect(await screen.findByText('there')).toBeTruthy();
   });
 });

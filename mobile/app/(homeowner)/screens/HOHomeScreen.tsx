@@ -126,11 +126,18 @@ export default function HOHomeScreen({ onNavigate }: HOHomeScreenProps) {
           style={[styles.hero, { paddingTop: headerTop }]}
         >
           <View style={styles.heroTopRow}>
-            <View>
+            <View testID="hero-text" style={styles.heroText}>
               <Text style={styles.greeting}>{greeting}</Text>
-              <Text style={styles.userName}>{name || 'there'}</Text>
+              <Text
+                style={styles.userName}
+                numberOfLines={2}
+                ellipsizeMode="tail"
+                maxFontSizeMultiplier={1.3}
+              >
+                {name || 'there'}
+              </Text>
             </View>
-            <View style={styles.heroActions}>
+            <View testID="hero-actions" style={styles.heroActions}>
               <TouchableOpacity
                 style={styles.iconBtn}
                 onPress={() => onNavigate('Notifications')}
@@ -311,7 +318,11 @@ const styles = StyleSheet.create({
   },
   greeting: { color: C.cyan100, fontSize: 14.5, fontFamily: 'Inter', fontWeight: '500' },
   userName: { color: C.white, fontSize: 24.5, fontWeight: '800', fontFamily: 'Inter', marginTop: 3 },
-  heroActions: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  // The name column yields to the actions, never the other way round: the
+  // avatar is the only route to Profile (and Log out), so a long name must
+  // truncate rather than push it off-screen.
+  heroText: { flex: 1, minWidth: 0, marginRight: 12 },
+  heroActions: { flexDirection: 'row', alignItems: 'center', gap: 8, flexShrink: 0 },
   iconBtn: {
     width: 40, height: 40, borderRadius: 12,
     backgroundColor: 'rgba(255,255,255,0.12)',
