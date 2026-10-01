@@ -29,12 +29,14 @@ import {
   Platform,
   Pressable,
   ScrollView,
+  useWindowDimensions,
   StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
   TouchableWithoutFeedback,
   View,
+  type LayoutChangeEvent,
 } from 'react-native';
 import { AlertCircle, ArrowLeft, Check, ChevronDown, MailCheck } from 'lucide-react-native';
 import { V6Colors, V6Radii, V6Shadows } from '../../../src/constants/theme';
@@ -95,6 +97,7 @@ interface RegisterScreenProps {
 
 interface InputProps {
   label: string;
+  onLayout?: (event: LayoutChangeEvent) => void;
   /** Shows a red asterisk. Only on fields the Create Account button actually checks. */
   required?: boolean;
   placeholder: string;
@@ -115,11 +118,11 @@ interface InputProps {
 
 function FormInput({
   label, required, placeholder, value, onChangeText,
-  secureTextEntry, keyboardType, error, testID,
+  secureTextEntry, keyboardType, error, testID, onLayout,
 }: InputProps) {
   const [focused, setFocused] = useState(false);
   return (
-    <View style={styles.inputGroup}>
+    <View onLayout={onLayout} style={styles.inputGroup}>
       <Text style={styles.inputLabel}>
         {label}
         {required && <Text style={styles.requiredAsterisk}> *</Text>}
@@ -209,6 +212,13 @@ type FieldErrors = {
 
 export default function RegisterScreen({ onRegister, onLogin, onGoogleSignIn }: RegisterScreenProps) {
   const layout = useAuthLayout();
+  const scrollRef = useRef<ScrollView>(null);
+  const cardTop = useRef(0);
+  const fieldPositions = useRef<Record<string, number>>({});
+  const locateField = (field: string) => (event: LayoutChangeEvent) => {
+    fieldPositions.current[field] = event.nativeEvent.layout.y;
+  };
+  const { width, fontScale } = useWindowDimensions();
   const { verifyEmailOtp } = useAuth();
   // Entrance transition — matches the mockup's `.screen{animation:fadeIn .22s ease}`
   // (fade in + slide up 6px). Runs once on mount, when this screen first opens.
@@ -358,6 +368,9 @@ export default function RegisterScreen({ onRegister, onLogin, onGoogleSignIn }: 
     const errors = validate();
     if (Object.keys(errors).length > 0) {
       setFieldErrors(errors);
+      const first = Object.keys(errors)[0];
+      const field = ['terms', 'privacy', 'dataCollection', 'biometric'].includes(first) ? 'consents' : first;
+      scrollRef.current?.scrollTo({ y: cardTop.current + (fieldPositions.current[field] ?? 0), animated: true });
       return;
     }
 
@@ -485,6 +498,7 @@ export default function RegisterScreen({ onRegister, onLogin, onGoogleSignIn }: 
 
   const scrollContent = (
     <ScrollView
+      ref={scrollRef}
       style={styles.flex}
       contentContainerStyle={[styles.scrollContent, { paddingTop: layout.paddingTop, paddingBottom: layout.paddingBottom }]}
       showsVerticalScrollIndicator={false}
@@ -515,12 +529,12 @@ export default function RegisterScreen({ onRegister, onLogin, onGoogleSignIn }: 
           </View>
 
           {/* Form card */}
-          <View style={styles.card}>
+          <View onLayout={(event) => { cardTop.current = event.nativeEvent.layout.y; }} style={[styles.card, { padding: width < 380 ? 16 : 24 }]}>
             <Text style={styles.title}>Create account</Text>
             <Text style={styles.subtitle}>Let's get started!</Text>
 
             {/* Role toggle */}
-            <View style={styles.roleRow}>
+            <View style={[styles.roleRow, fontScale > 1.2 && { flexDirection: 'column' }]}>
               {(['homeowner', 'provider'] as const).map((r) => (
                 <TouchableOpacity
                   key={r}
@@ -543,6 +557,7 @@ export default function RegisterScreen({ onRegister, onLogin, onGoogleSignIn }: 
               testID="input-name"
               value={name}
               onChangeText={(v) => { setName(v); clearError('name'); }}
+              onLayout={locateField('name')}
               error={fieldErrors.name}
             />
             <FormInput
@@ -553,6 +568,7 @@ export default function RegisterScreen({ onRegister, onLogin, onGoogleSignIn }: 
               value={email}
               onChangeText={(v) => { setEmail(v); clearError('email'); setEmailTaken(false); }}
               keyboardType="email-address"
+              onLayout={locateField('email')}
               error={fieldErrors.email}
             />
             <FormInput
@@ -563,6 +579,7 @@ export default function RegisterScreen({ onRegister, onLogin, onGoogleSignIn }: 
               value={password}
               onChangeText={(v) => { setPassword(v); clearError('password'); }}
               secureTextEntry
+              onLayout={locateField('password')}
               error={fieldErrors.password}
             />
             <FormInput
@@ -573,12 +590,13 @@ export default function RegisterScreen({ onRegister, onLogin, onGoogleSignIn }: 
               value={confirmPassword}
               onChangeText={(v) => { setConfirmPassword(v); clearError('confirmPassword'); }}
               secureTextEntry
+              onLayout={locateField('confirmPassword')}
               error={fieldErrors.confirmPassword}
             />
 
             {/* SP-only: skill category */}
             {role === 'provider' && (
-              <View style={styles.inputGroup}>
+              <View onLayout={locateField('category')} style={styles.inputGroup}>
                 <Text style={styles.inputLabel}>
                   Skill Category
                   <Text style={styles.requiredAsterisk}> *</Text>
@@ -637,7 +655,7 @@ export default function RegisterScreen({ onRegister, onLogin, onGoogleSignIn }: 
             )}
 
             {/* ── Consent section ────────────────────────────────────────── */}
-            <View style={styles.consentSection}>
+            <View onLayout={locateField('consents')} style={styles.consentSection}>
               <Text style={styles.consentSectionTitle}>Consents & Agreements</Text>
 
               {/* T&C */}
@@ -819,7 +837,7 @@ const styles = StyleSheet.create({
   flex: { flex: 1 },
   screen: { flex: 1, backgroundColor: C.bg },
 
-  scrollContent: { paddingTop: 56, paddingHorizontal: 20, paddingBottom: 40 },
+  scrollContent: { width: '100%', maxWidth: 600, alignSelf: 'center', paddingTop: 56, paddingHorizontal: 16, paddingBottom: 40 },
 
   topSection: { marginBottom: 20, flexDirection: 'row' },
   backBtn: {

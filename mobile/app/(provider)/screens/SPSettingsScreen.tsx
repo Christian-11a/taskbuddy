@@ -97,8 +97,8 @@ export default function SPSettingsScreen({ onBack, onLogout }: SPSettingsScreenP
             <Switch
               testID="toggle-dark-mode"
               value={flags.dark_mode}
-              onValueChange={(v) => void setFlag('dark_mode', v)}
-              disabled={settingsLoading}
+              disabled
+              accessibilityLabel="Dark mode unavailable"
               trackColor={{ false: C.ink200, true: C.cyan600 }}
               thumbColor={C.white}
               ios_backgroundColor={C.ink200}
@@ -107,7 +107,7 @@ export default function SPSettingsScreen({ onBack, onLogout }: SPSettingsScreenP
           {/* The preference is stored for real; nothing applies it yet. Saying
               so beats letting the switch imply a theme change that won't come. */}
           <Text style={styles.rowNote}>
-            Saved to your account. Theme switching isn't available in the app yet.
+            Unavailable — theme switching is not implemented yet.
           </Text>
         </View>
 
