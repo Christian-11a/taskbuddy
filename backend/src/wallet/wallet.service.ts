@@ -51,6 +51,16 @@ export class WalletService {
     if (error) throw new BadRequestException(error.message);
 
     const transactions = (data ?? []) as WalletTransaction[];
+    const { data: escrows, error: escrowError } = await this.supabase.admin
+      .from('escrow_transactions')
+      .select('amount')
+      .eq(user.role === 'provider' ? 'provider_id' : 'client_id', user.id)
+      .in('status', ['held', 'disputed']);
+    if (escrowError) throw new BadRequestException(escrowError.message);
+    const inEscrow = (escrows ?? []).reduce(
+      (total, row) => total + Number(row.amount),
+      0,
+    );
 
     // Balance and stats are derived from the ledger — nothing is stored.
     let balance = 0;
@@ -86,6 +96,7 @@ export class WalletService {
       total_credited: round2(totalCredited),
       total_debited: round2(totalDebited),
       pending: round2(pending),
+      in_escrow: round2(inEscrow),
       pending_withdrawals: round2(pendingWithdrawals),
       transactions,
     };

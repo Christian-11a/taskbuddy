@@ -342,7 +342,7 @@ export default function HOWalletScreen() {
           <View style={styles.escrowTopRow}>
             <View style={styles.escrowCopy}>
               <Text style={styles.escrowLabel}>IN ESCROW</Text>
-              <Text style={styles.escrowAmount}>{data ? peso(data.pending) : '—'}</Text>
+              <Text style={styles.escrowAmount}>{data ? peso(data.in_escrow) : '—'}</Text>
               <Text style={styles.escrowNote}>Funds held securely until you approve completed work.</Text>
             </View>
             <Shield size={24} color={C.cyan700} />
@@ -431,7 +431,7 @@ export default function HOWalletScreen() {
           {filtered.map((txn, i) => {
             const Icon = txn.direction === 'credit' ? CircleDollarSign : Package;
             const statusLabel =
-              txn.status.charAt(0).toUpperCase() + txn.status.slice(1);
+              txn.kind === 'escrow_hold' ? 'Escrow funded' : `Payment ${txn.status}`;
             return (
               <View key={txn.id} style={[styles.txnRow, i < filtered.length - 1 && styles.txnRowBorder]}>
                 <View style={styles.txnIcon}>
