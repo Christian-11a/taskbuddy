@@ -44,8 +44,8 @@ export class JobsController {
 
   @Get()
   @Roles('provider')
-  browse(@Query() query: BrowseJobsQueryDto) {
-    return this.jobsService.browse(query);
+  browse(@Query() query: BrowseJobsQueryDto, @CurrentUser() user: Profile) {
+    return this.jobsService.browse(query, user);
   }
 
   @Get('mine')

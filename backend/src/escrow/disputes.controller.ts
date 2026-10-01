@@ -25,7 +25,7 @@ export class DisputesController {
   constructor(private readonly disputesService: DisputesService) {}
 
   @Post('jobs/:jobId/disputes')
-  @Roles('client')
+  @Roles('client', 'provider')
   raise(
     @CurrentUser() user: Profile,
     @Param('jobId', ParseUUIDPipe) jobId: string,

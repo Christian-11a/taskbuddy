@@ -35,63 +35,29 @@ export class DisputesService {
     private readonly adminActions: AdminActionsService,
   ) {}
 
-  /**
-   * The client raises a dispute against a job's escrow. Only money that is
-   * actually held can be disputed — once released or refunded there is nothing
-   * left to argue over.
-   */
+  /** Both participants can ask admins to review held or recently settled work. */
   async raise(user: Profile, jobId: string, dto: RaiseDisputeDto) {
     const escrow = await this.escrow.findByJob(jobId);
-    if (!escrow) {
+    if (!escrow)
       throw new BadRequestException('This job has no payment to dispute');
-    }
-    if (escrow.client_id !== user.id) {
+    if (escrow.client_id !== user.id && escrow.provider_id !== user.id) {
       throw new ForbiddenException('Not your job');
     }
-    if (escrow.status !== 'held') {
-      throw new BadRequestException(
-        `Cannot dispute a payment that is already '${escrow.status}'`,
-      );
-    }
-
-    const { data, error } = await this.supabase.admin
-      .from('disputes')
-      .insert({
-        escrow_id: escrow.id,
-        job_id: jobId,
-        raised_by: user.id,
-        reason: dto.reason,
-        details: dto.details ?? null,
-      })
-      .select('*')
-      .single();
-    // uq_disputes_one_open — only one live dispute per escrow.
-    if (error?.code === '23505') {
+    const { data, error } = await this.supabase.admin.rpc('raise_job_dispute', {
+      p_job_id: jobId,
+      p_actor_id: user.id,
+      p_reason: dto.reason,
+      p_details: dto.details ?? null,
+    });
+    if (error?.code === '23505')
       throw new BadRequestException(
         'There is already an open dispute for this job',
       );
-    }
     if (error) throw new BadRequestException(error.message);
-
-    try {
-      await this.escrow.markDisputed(escrow);
-    } catch (err) {
-      // The money moved on between the read above and the freeze — a
-      // completion released it, say. The dispute row just inserted would
-      // otherwise sit open against an escrow that is no longer disputable,
-      // and resolving it would move the money a second time. Close it and
-      // tell the client what actually happened.
-      await this.supabase.admin
-        .from('disputes')
-        .update({ status: 'cancelled' })
-        .eq('id', (data as DisputeRow).id)
-        .eq('status', 'open');
-      throw err;
-    }
     await this.notify(
-      escrow.provider_id,
-      'Payment disputed',
-      `The client raised a dispute on this job: ${dto.reason}`,
+      user.id === escrow.client_id ? escrow.provider_id : escrow.client_id,
+      'Dispute opened',
+      `Admin review requested: ${dto.reason}`,
       jobId,
     );
     return data;
@@ -139,7 +105,20 @@ export class DisputesService {
     const escrow = await this.escrow.findByJob(dispute.job_id);
     if (!escrow) throw new NotFoundException('Escrow record not found');
 
-    if (dto.resolution === 'released_to_provider') {
+    const settled = ['released', 'refunded', 'cancelled'].includes(
+      escrow.status,
+    );
+    if (settled) {
+      if (dto.resolution !== 'reviewed' || !dto.note?.trim()) {
+        throw new BadRequestException(
+          'This payment is already settled. Record the admin decision with a note; use the existing recovery-credit action for compensation.',
+        );
+      }
+    } else if (dto.resolution === 'reviewed') {
+      throw new BadRequestException(
+        'Resolve the held payment by releasing or refunding it',
+      );
+    } else if (dto.resolution === 'released_to_provider') {
       await this.escrow.payOut(escrow);
     } else {
       await this.escrow.refund(escrow);
@@ -155,6 +134,7 @@ export class DisputesService {
         resolved_at: new Date().toISOString(),
       })
       .eq('id', disputeId)
+      .eq('status', 'open')
       .select('*')
       .single();
     if (error) throw new BadRequestException(error.message);
@@ -168,9 +148,11 @@ export class DisputesService {
     );
 
     const outcome =
-      dto.resolution === 'released_to_provider'
-        ? 'released to the provider'
-        : 'refunded to the client';
+      dto.resolution === 'reviewed'
+        ? 'reviewed by an admin; see the resolution note'
+        : dto.resolution === 'released_to_provider'
+          ? 'released to the provider'
+          : 'refunded to the client';
     await Promise.all([
       this.notify(
         escrow.client_id,
