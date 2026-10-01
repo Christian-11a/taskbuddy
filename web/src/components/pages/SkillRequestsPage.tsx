@@ -81,9 +81,9 @@ export function SkillRequestsPage() {
       const rows = await getSkillRequests(status);
       if (seq !== requestSeq.current) return;
       setItems(rows);
-    } catch {
+    } catch (err) {
       if (seq !== requestSeq.current) return;
-      setError("Could not load service requests. The backend may still be deploying.");
+      setError(err instanceof Error ? err.message : "Could not load service requests. Please try again.");
     } finally {
       if (seq === requestSeq.current) {
         setLoading(false);
@@ -95,7 +95,10 @@ export function SkillRequestsPage() {
   /* eslint-disable react-hooks/set-state-in-effect -- initial data fetch is an
      external-system synchronization; the state updates happen in its async
      continuation. */
-  useEffect(() => { void load(); }, [load]);
+  useEffect(() => {
+    void load();
+    return () => { requestSeq.current += 1; };
+  }, [load]);
   /* eslint-enable react-hooks/set-state-in-effect */
   useLiveTick(() => void load(true));
 
@@ -216,13 +219,6 @@ export function SkillRequestsPage() {
         list={
           <>
             {listBody}
-            {/* GET /admin/skill-requests caps at 100 rows and has no paging
-                (backend-owned; see README). Say so rather than imply "all". */}
-            {items.length >= 100 && (
-              <p className="border-t border-border bg-warn-soft px-3.5 py-2 text-[12px] text-warn">
-                Showing the first 100 requests — the server doesn&apos;t return more yet.
-              </p>
-            )}
             <KeyHints approve="approve" reject="reject" />
           </>
         }

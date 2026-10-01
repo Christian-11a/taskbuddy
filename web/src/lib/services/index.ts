@@ -548,6 +548,13 @@ export async function getWalletTransactions(): Promise<WalletTransaction[]> {
   return rows.map(mapWalletTxnRow);
 }
 
+export async function searchWalletTransactions(query: PageQuery): Promise<{ items: WalletTransaction[]; total: number }> {
+  const res = await client.get<{ transactions: AdminWalletTxnApiRow[]; total: number }>(
+    paginatedPath("/admin/wallet-transactions", query),
+  );
+  return { items: res.transactions.map(mapWalletTxnRow), total: res.total };
+}
+
 /**
  * POST /admin/wallet-transactions/recovery-credit (migration 0021) — the only
  * route that can add wallet balance without a settled Stripe charge, gated to
@@ -649,11 +656,12 @@ export async function getBookings(): Promise<AdminBooking[]> {
 export const BOOKING_STATUSES_API = ["open", "recommending", "assigned", "confirmed", "in_progress", "completed", "cancelled", "expired"] as const;
 
 /**
- * How many bookings sit in each status. `/admin/bookings` only reports a
- * total for the filter it was asked about, so this asks once per status with
- * `limit=1` — eight tiny requests instead of loading every booking.
+ * Uses the server's status counts, with per-status requests only for an
+ * older backend that does not yet include them in the list response.
  */
 export async function getBookingStatusCounts(): Promise<Record<(typeof BOOKING_STATUSES_API)[number], number>> {
+  const res = await client.get<ListBookingsApiResponse>("/admin/bookings?limit=1&offset=0");
+  if (res.status_counts) return Object.fromEntries(BOOKING_STATUSES_API.map((st) => [st, res.status_counts![st] ?? 0])) as Record<(typeof BOOKING_STATUSES_API)[number], number>;
   const totals = await Promise.all(BOOKING_STATUSES_API.map((st) => countRows(`/admin/bookings?status=${st}`)));
   return Object.fromEntries(BOOKING_STATUSES_API.map((st, i) => [st, totals[i]])) as Record<(typeof BOOKING_STATUSES_API)[number], number>;
 }
@@ -664,11 +672,11 @@ export async function getEscrowHeld(): Promise<{ count: number; total: number }>
   return { count: rows.length, total: rows.reduce((sum, r) => sum + Number(r.amount), 0) };
 }
 
-export async function searchBookings(query: SearchBookingsQuery): Promise<{ items: AdminBooking[]; total: number }> {
+export async function searchBookings(query: SearchBookingsQuery): Promise<{ items: AdminBooking[]; total: number; statusCounts?: Record<string, number> }> {
   const res = await client.get<ListBookingsApiResponse>(
     paginatedPath("/admin/bookings", query),
   );
-  return { items: res.bookings.map(mapBookingRow), total: res.total };
+  return { items: res.bookings.map(mapBookingRow), total: res.total, statusCounts: res.status_counts };
 }
 
 /**
@@ -755,7 +763,11 @@ export async function getDashboardStats(): Promise<DashboardStats> {
     avgRating: summary.totals.avg_rating ?? 0,
     totalCommission: summary.totals.total_commission ?? 0,
     monthlyCommission: summary.totals.monthly_commission ?? 0,
-    pendingWithdrawals: summary.totals.pending_withdrawals ?? 0,
+    pendingWithdrawals: summary.totals.pending_withdrawals ?? null,
+    escrowHeld: summary.totals.escrow_held_total,
+    escrowCount: summary.totals.escrow_held_count,
+    openJobs: summary.totals.open_jobs,
+    matchingJobs: summary.totals.matching_jobs,
   };
 }
 
@@ -793,6 +805,13 @@ export async function getTopProviders(): Promise<TopProvider[]> {
 export async function getAuditLog(): Promise<AuditAction[]> {
   const rows = await fetchAllRows<AdminActionApiRow>("/admin/audit", "actions");
   return rows.map(mapAuditRow);
+}
+
+export async function searchAuditLog(query: PageQuery & { action?: string }): Promise<{ items: AuditAction[]; total: number }> {
+  let path = paginatedPath("/admin/audit", query);
+  if (query.action) path += `&action=${encodeURIComponent(query.action)}`;
+  const res = await client.get<{ actions: AdminActionApiRow[]; total: number }>(path);
+  return { items: res.actions.map(mapAuditRow), total: res.total };
 }
 
 /** GET /admin/jobs/:jobId/conversation (migration 0014) — read-only, admins
@@ -839,6 +858,16 @@ export interface BulkError {
 
 export interface BulkResult<T> extends BulkCounts {
   rows: T[];
+}
+
+export interface UserStatusResult {
+  rows: AdminUser[] | null;
+  refreshFailed?: boolean;
+}
+
+export interface BulkUserStatusResult extends BulkCounts {
+  rows: AdminUser[] | null;
+  refreshFailed?: boolean;
 }
 
 /**
@@ -903,7 +932,7 @@ export async function setUserStatus(
   id: string,
   status: UserStatus,
   suspend?: SuspendOptions,
-): Promise<AdminUser[]> {
+): Promise<UserStatusResult> {
   if (status === "SUSPENDED") {
     await client.post(`/admin/users/${id}/suspend`, {
       reason: suspend?.reason ?? "",
@@ -912,7 +941,11 @@ export async function setUserStatus(
   } else {
     await client.post(`/admin/users/${id}/reinstate`);
   }
-  return getUsers();
+  try {
+    return { rows: await getUsers() };
+  } catch {
+    return { rows: null, refreshFailed: true };
+  }
 }
 
 /**
@@ -925,7 +958,7 @@ export async function bulkSetUserStatus(
   ids: string[],
   status: UserStatus,
   suspend?: SuspendOptions,
-): Promise<BulkResult<AdminUser>> {
+): Promise<BulkUserStatusResult> {
   const counts = await runBulk(ids, (id) =>
     status === "SUSPENDED"
       ? client.post(`/admin/users/${id}/suspend`, {
@@ -934,7 +967,11 @@ export async function bulkSetUserStatus(
         })
       : client.post(`/admin/users/${id}/reinstate`),
   );
-  return { rows: await getUsers(), ...counts };
+  try {
+    return { rows: await getUsers(), ...counts };
+  } catch {
+    return { rows: null, refreshFailed: true, ...counts };
+  }
 }
 
 export async function sendPasswordReset(id: string): Promise<boolean> {
@@ -994,10 +1031,29 @@ function mapSkillRequestRow(row: AdminSkillRequestApiRow): SkillRequest {
 }
 
 export async function getSkillRequests(status?: SkillRequestStatus): Promise<SkillRequest[]> {
-  const rows = await client.get<AdminSkillRequestApiRow[]>(
-    `/admin/skill-requests${status ? `?status=${status}` : ""}`,
-  );
-  return rows.map(mapSkillRequestRow);
+  // The API has pagination but no search. Load every page so queue search and
+  // keyboard navigation continue to cover the whole selected status.
+  const rows: AdminSkillRequestApiRow[] = [];
+  let offset = 0;
+  for (;;) {
+    const params = new URLSearchParams({ limit: "100", offset: String(offset) });
+    if (status) params.set("status", status);
+    const res = await client.get<{ items: AdminSkillRequestApiRow[]; total: number }>(`/admin/skill-requests?${params}`);
+    if (!Array.isArray(res.items) || !Number.isSafeInteger(res.total) || res.total < 0) {
+      throw new Error("Service request pagination is unavailable. Please update the backend.");
+    }
+    rows.push(...res.items);
+    offset += res.items.length;
+    if (offset >= res.total) break;
+    if (res.items.length === 0) throw new Error("The service request queue could not be loaded completely. Please refresh.");
+  }
+  return [...new Map(rows.map((row) => [row.id, row])).values()].map(mapSkillRequestRow);
+}
+
+export async function getSkillRequestCount(status: SkillRequestStatus = "pending"): Promise<number> {
+  const res = await client.get<{ items: AdminSkillRequestApiRow[]; total: number }>(`/admin/skill-requests?status=${status}&limit=1&offset=0`);
+  if (!Number.isSafeInteger(res.total) || res.total < 0) throw new Error("Service request count is unavailable.");
+  return res.total;
 }
 
 export async function approveSkillRequest(id: string, note?: string): Promise<void> {

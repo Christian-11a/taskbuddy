@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
-import { render, screen, within } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { TransactionsPage } from "./TransactionsPage";
 import { ToastProvider } from "@/components/ui/Toast";
@@ -14,13 +14,13 @@ vi.mock("@/context/AppContext", () => ({
 
 vi.mock("@/lib/services", () => ({
   searchTransactions: vi.fn().mockResolvedValue({ items: [], total: 0 }),
-  getWalletTransactions: vi.fn().mockResolvedValue([]),
+  searchWalletTransactions: vi.fn().mockResolvedValue({ items: [], total: 0 }),
   issueRecoveryCredit: vi.fn(),
   retryEscrowTransfer: vi.fn(),
 }));
 
 const mockedUseApp = vi.mocked(useApp);
-const mockedGetWalletTransactions = vi.mocked(services.getWalletTransactions);
+const mockedSearchWalletTransactions = vi.mocked(services.searchWalletTransactions);
 const mockedIssueRecoveryCredit = vi.mocked(services.issueRecoveryCredit);
 const mockedSearchTransactions = vi.mocked(services.searchTransactions);
 const mockedRetryEscrowTransfer = vi.mocked(services.retryEscrowTransfer);
@@ -60,7 +60,7 @@ function renderWithToast(ui: React.ReactElement) {
 describe("TransactionsPage — Issue Credit (Wallet tab)", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockedGetWalletTransactions.mockResolvedValue([]);
+    mockedSearchWalletTransactions.mockResolvedValue({ items: [], total: 0 });
     mockedUseApp.mockReturnValue({
       users: [makeUser()],
     } as unknown as ReturnType<typeof useApp>);
@@ -129,7 +129,8 @@ describe("TransactionsPage — Issue Credit (Wallet tab)", () => {
     });
     // Refetches rather than trusting the mutation response (the insert has no
     // joined profile name) — same convention as suspend/reinstate elsewhere.
-    expect(mockedGetWalletTransactions).toHaveBeenCalledTimes(2);
+    expect(mockedSearchWalletTransactions).toHaveBeenCalledTimes(2);
+    expect(mockedSearchWalletTransactions).toHaveBeenLastCalledWith({ search: "", page: 1, pageSize: 12 });
     expect(await screen.findByText("Recovery credit issued.")).toBeInTheDocument();
     expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
   });
@@ -186,6 +187,84 @@ describe("TransactionsPage — card-funded payouts (Escrow tab)", () => {
     expect(await screen.findByText("Payout sent to the provider's Stripe account.")).toBeInTheDocument();
     // Reloaded so the row shows the new state.
     expect(mockedSearchTransactions.mock.calls.length).toBeGreaterThanOrEqual(2);
+  });
+});
+
+describe("TransactionsPage — server-paged Wallet tab", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockedUseApp.mockReturnValue({ users: [] } as unknown as ReturnType<typeof useApp>);
+    mockedSearchWalletTransactions.mockResolvedValue({
+      items: [
+        {
+          id: "wallet-1", profileName: "Morgan Lee", direction: "credit", kind: "topup",
+          status: "completed", amount: 125, title: "Wallet funding", createdAt: "2026-09-18T10:00:00.000Z",
+        },
+      ],
+      total: 25,
+    });
+  });
+
+  it("sends debounced searches and page changes to the server and labels page-only summaries", async () => {
+    const user = userEvent.setup();
+    renderWithToast(<TransactionsPage />);
+    await user.click(screen.getByRole("button", { name: "Wallet" }));
+
+    expect(await screen.findByText("Morgan Lee")).toBeInTheDocument();
+    expect(mockedSearchWalletTransactions).toHaveBeenCalledWith({ search: "", page: 1, pageSize: 12 });
+    expect(screen.getByText("credits on this page")).toBeInTheDocument();
+    expect(screen.getByText("₱125")).toBeInTheDocument();
+
+    await user.type(screen.getByLabelText("Search wallet activity"), "Morgan");
+    expect(screen.queryByText("Morgan Lee")).not.toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Export current page" })).toBeDisabled();
+    });
+    await vi.waitFor(() => {
+      expect(mockedSearchWalletTransactions).toHaveBeenLastCalledWith({ search: "Morgan", page: 1, pageSize: 12 });
+    });
+
+    await user.click(screen.getByRole("button", { name: "Page 2" }));
+    await vi.waitFor(() => {
+      expect(mockedSearchWalletTransactions).toHaveBeenLastCalledWith({ search: "Morgan", page: 2, pageSize: 12 });
+    });
+  });
+
+  it("disables exports immediately while a new wallet search is pending", async () => {
+    type Result = Awaited<ReturnType<typeof services.searchWalletTransactions>>;
+    let resolveSearch!: (result: Result) => void;
+    const pending = new Promise<Result>((resolve) => { resolveSearch = resolve; });
+    const user = userEvent.setup();
+    renderWithToast(<TransactionsPage />);
+    await user.click(screen.getByRole("button", { name: "Wallet" }));
+    expect(await screen.findByText("Morgan Lee")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Export current page" })).toBeEnabled();
+    mockedSearchWalletTransactions.mockReturnValueOnce(pending);
+    await user.type(screen.getByLabelText("Search wallet activity"), "missing");
+    expect(screen.getByRole("button", { name: "Export current page" })).toBeDisabled();
+    expect(screen.queryByText("Morgan Lee")).not.toBeInTheDocument();
+    await waitFor(() => expect(mockedSearchWalletTransactions).toHaveBeenLastCalledWith({ search: "missing", page: 1, pageSize: 12 }));
+    await act(async () => { resolveSearch({ items: [], total: 0 }); });
+    expect(await screen.findByText("No wallet activity found.")).toBeInTheDocument();
+  });
+
+  it("ignores an older wallet response after a newer search has completed", async () => {
+    type Result = Awaited<ReturnType<typeof services.searchWalletTransactions>>;
+    let resolveOld!: (result: Result) => void;
+    let resolveNew!: (result: Result) => void;
+    mockedSearchWalletTransactions
+      .mockReturnValueOnce(new Promise<Result>((resolve) => { resolveOld = resolve; }))
+      .mockReturnValueOnce(new Promise<Result>((resolve) => { resolveNew = resolve; }));
+    const user = userEvent.setup();
+    renderWithToast(<TransactionsPage />);
+    await user.click(screen.getByRole("button", { name: "Wallet" }));
+    await user.type(screen.getByLabelText("Search wallet activity"), "current");
+    await waitFor(() => expect(mockedSearchWalletTransactions).toHaveBeenLastCalledWith({ search: "current", page: 1, pageSize: 12 }));
+    await act(async () => { resolveNew({ items: [], total: 0 }); });
+    expect(await screen.findByText("No wallet activity found.")).toBeInTheDocument();
+    await act(async () => { resolveOld({ items: [{ id: "old", profileName: "Old result", direction: "credit", kind: "topup", status: "completed", amount: 1, title: "Old funding", createdAt: "2026-09-30" }], total: 1 }); });
+    expect(screen.queryByText("Old result")).not.toBeInTheDocument();
+    expect(screen.getByText("No wallet activity found.")).toBeInTheDocument();
   });
 });
 
