@@ -1,5 +1,13 @@
 # TaskBuddy Mobile
 
+## FullTest remediation — 2026-10-02
+
+Bug fixes cover approved skill filtering, job photos and lifecycle, escrow totals, cancellation/warranty dispute access, notification creation, and responsive auth/privacy/job forms. Dark-mode controls are explicitly unavailable; no new catalogue or theme was added.
+
+These changes are local and require migration **0037**, then the updated API,
+before releasing this app. See [backend handover](../HANDOFF.md) for validation
+and outstanding live/device checks.
+
 The Expo / React Native app for **TaskBuddy**, a Philippine home-services
 marketplace. Clients post jobs, providers apply and complete them.
 (The `web/` app is an admin console only; it has no client or provider surface.)
