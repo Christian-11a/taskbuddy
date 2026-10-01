@@ -34,6 +34,8 @@ export type SPScreen =
   | 'Profile'
   | 'Job Detail'
   | 'Urgent Job'
+  | 'Dispute Filing'
+  | 'Dispute Status'
   | 'Chat'
   | 'Notifications'
   | 'Edit Profile'

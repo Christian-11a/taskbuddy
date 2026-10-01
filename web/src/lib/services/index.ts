@@ -205,6 +205,7 @@ const DISPUTE_STATUS: Record<string, DisputeStatus> = {
 const DISPUTE_RESOLUTION: Record<DisputeResolutionApi, DisputeResolution> = {
   released_to_provider: "RELEASED_TO_PROVIDER",
   refunded_to_client: "REFUNDED_TO_CLIENT",
+  reviewed: "REVIEWED",
 };
 
 /**
@@ -222,7 +223,7 @@ function mapDisputeRow(
     jobId: row.job_id,
     jobTitle: row.jobs?.title ?? linked?.service ?? "Unknown job",
     service: row.jobs?.service_categories?.name ?? linked?.service ?? "Uncategorized",
-    clientName: row.raised_by_profile?.full_name ?? linked?.customerName ?? "Unknown homeowner",
+    clientName: linked?.customerName ?? "Unknown homeowner",
     providerName: linked?.providerName ?? "Unknown provider",
     amount: Number(row.escrow_transactions?.amount ?? linked?.amount ?? 0),
     reason: row.reason,
@@ -230,6 +231,7 @@ function mapDisputeRow(
     status: DISPUTE_STATUS[row.status] ?? "OPEN",
     resolution: row.resolution ? DISPUTE_RESOLUTION[row.resolution] : null,
     resolutionNote: row.resolution_note,
+    paymentSettled: ["released", "refunded", "cancelled"].includes(row.escrow_transactions?.status ?? ""),
     createdAt: row.created_at,
     resolvedAt: row.resolved_at,
   };
@@ -1008,7 +1010,7 @@ export async function resolveDispute(
   note?: string,
 ): Promise<Dispute[]> {
   await client.post(`/admin/disputes/${id}/resolve`, {
-    resolution: resolution === "RELEASED_TO_PROVIDER" ? "released_to_provider" : "refunded_to_client",
+    resolution: resolution === "REVIEWED" ? "reviewed" : resolution === "RELEASED_TO_PROVIDER" ? "released_to_provider" : "refunded_to_client",
     note,
   });
   return getDisputes();

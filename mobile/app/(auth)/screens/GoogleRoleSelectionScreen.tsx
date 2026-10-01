@@ -13,6 +13,8 @@ import React, { useState } from 'react';
 import {
   ActivityIndicator,
   StyleSheet,
+  ScrollView,
+  useWindowDimensions,
   Text,
   TouchableOpacity,
   View,
@@ -49,6 +51,7 @@ export default function GoogleRoleSelectionScreen({
   email,
 }: GoogleRoleSelectionScreenProps) {
   const layout = useAuthLayout();
+  const { width, fontScale } = useWindowDimensions();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -67,10 +70,9 @@ export default function GoogleRoleSelectionScreen({
 
   return (
     <View style={[styles.screen, { paddingBottom: layout.paddingBottom }]}>
-      {/* Teal header accent */}
-      <View style={styles.headerAccent} />
 
-      <View style={[styles.content, { paddingTop: layout.paddingTop }]}>
+
+      <ScrollView contentContainerStyle={[styles.content, { paddingTop: layout.paddingTop }]} >
         {/* Title block */}
         <View style={styles.titleBlock}>
           <Text style={styles.welcomeLabel}>Welcome to TaskBuddy</Text>
@@ -84,7 +86,7 @@ export default function GoogleRoleSelectionScreen({
         </View>
 
         {/* Role cards */}
-        <View style={styles.cardsRow}>
+        <View style={[styles.cardsRow, (width < 480 || fontScale > 1.2) && { flexDirection: 'column' }]}>
           {/* Homeowner */}
           <TouchableOpacity
             style={[styles.card, styles.cardLeft]}
@@ -133,7 +135,7 @@ export default function GoogleRoleSelectionScreen({
         <Text style={styles.footerNote}>
           Your Google account ({email ?? 'email'}) will be linked to this role permanently.
         </Text>
-      </View>
+      </ScrollView>
     </View>
   );
 }
@@ -151,7 +153,10 @@ const styles = StyleSheet.create({
   },
 
   content: {
-    flex: 1,
+    flexGrow: 1,
+    width: '100%',
+    maxWidth: 600,
+    alignSelf: 'center',
     paddingHorizontal: 24,
     // paddingTop overridden inline with layout.paddingTop (insets.top-based).
     paddingBottom: 16,
@@ -160,7 +165,7 @@ const styles = StyleSheet.create({
 
   titleBlock: { marginBottom: 32, alignItems: 'center' },
   welcomeLabel: {
-    color: 'rgba(255,255,255,0.7)',
+    color: C.brandTeal,
     fontFamily: 'Inter',
     fontSize: 15.5,
     fontWeight: '500',
@@ -168,7 +173,7 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   emailLabel: {
-    color: C.white,
+    color: C.slate,
     fontFamily: 'Inter',
     fontSize: 15.5,
     marginBottom: 24,

@@ -29,6 +29,7 @@ function createSupabaseMock(results: QueryResult[]) {
       'insert',
       'update',
       'eq',
+      'in',
       'order',
       'range',
     ]) {
@@ -58,6 +59,44 @@ const user = { id: 'u1', role: 'client' } as Profile;
 const admin = { id: 'a1', role: 'admin' } as Profile;
 
 describe('WalletService', () => {
+  it('reports held/disputed escrow separately from pending withdrawals', async () => {
+    const { supabase, calls } = createSupabaseMock([
+      {
+        data: [
+          { direction: 'credit', status: 'completed', amount: 1000 },
+          {
+            direction: 'debit',
+            status: 'completed',
+            kind: 'escrow_hold',
+            amount: 400,
+          },
+          {
+            direction: 'debit',
+            status: 'pending',
+            kind: 'withdrawal',
+            amount: 100,
+          },
+        ],
+        error: null,
+      },
+      { data: [{ amount: '400.00' }, { amount: '50.00' }], error: null },
+    ]);
+    const overview = await new WalletService(
+      supabase,
+      createAdminActionsMock().mock,
+    ).overview(user);
+    expect(overview).toMatchObject({
+      balance: 600,
+      available: 500,
+      pending: 100,
+      in_escrow: 450,
+    });
+    expect(calls).toContainEqual({
+      method: 'in',
+      args: ['status', ['held', 'disputed']],
+    });
+  });
+
   describe('balanceFor', () => {
     it('nets completed credits against completed debits', async () => {
       const { supabase } = createSupabaseMock([

@@ -299,7 +299,7 @@ All bodies are JSON. 🔒 = requires auth; (client) / (provider) = role-restrict
 | `POST /jobs/:id/accept` 🔒 (provider) | accept an incoming booking request; `assigned` → `confirmed`, notifies the client (migration 0018) |
 | `POST /jobs/:id/start` 🔒 (provider) | `assigned`/`confirmed` → `in_progress` |
 | `POST /jobs/:id/decline` 🔒 (provider) | `{ reason (1–200) }` — assigned provider declines before starting; `assigned`/`confirmed` → `cancelled`, refunds escrow, notifies client |
-| `PATCH /jobs/:id/tasks/:taskId` 🔒 (provider) | `{ is_done }` — assigned provider ticks a checklist item; allowed while `confirmed`/`in_progress`; returns the whole job (migration 0019) |
+| `PATCH /jobs/:id/tasks/:taskId` 🔒 (provider) | `{ is_done }` — assigned provider ticks a checklist item; allowed only while `in_progress`; returns the whole job (migration 0019) |
 | `POST /jobs/:id/complete` 🔒 (client) | `in_progress` → `completed` |
 | `POST /jobs/:id/recommendations/trigger` 🔒 (client) | manually re-run the recommendation engine |
 
@@ -387,7 +387,7 @@ the flag can only be set by an approval or a Stripe Identity webhook.
 
 | Method & path | Description |
 |---|---|
-| `POST /jobs/:jobId/disputes` 🔒 (client) | `{ reason (1–200), details? (≤1000) }` — the job's escrow must still be `held` |
+| `POST /jobs/:jobId/disputes` 🔒 (client/provider) | `{ reason (1–200), details? (≤1000) }` — participants can raise active/cancelled-job disputes or complain within seven days of completion; held escrow freezes, settled payments remain settled (0037) |
 | `GET /jobs/:jobId/disputes` 🔒 | the job's latest dispute (client or assigned provider) |
 
 **Settings** (🔒 — migration 0011)

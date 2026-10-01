@@ -29,7 +29,7 @@ interface HODisputeFilingScreenProps {
   onSubmitted: () => void;
 }
 
-const REASONS = ['Work not completed', 'Work quality issue', 'Provider did not arrive', 'Payment issue', 'Other'];
+const REASONS = ['Payment or cancellation issue', 'Work not completed', 'Work quality issue', 'Provider did not arrive', 'Payment issue', 'Other'];
 
 export default function HODisputeFilingScreen({ jobId, onBack, onSubmitted }: HODisputeFilingScreenProps) {
   const headerTop = useHeaderTop();

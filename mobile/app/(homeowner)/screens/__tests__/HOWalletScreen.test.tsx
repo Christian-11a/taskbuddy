@@ -240,3 +240,18 @@ describe('HOWalletScreen — Add Money after Stripe returns', () => {
     await waitFor(() => expect(api.wallet).toHaveBeenCalledTimes(2));
   });
 });
+
+describe('FullTest escrow display', () => {
+  it('uses escrow balances rather than pending ledger amounts and labels the hold as a payment', async () => {
+    jest.clearAllMocks();
+    clearAsyncDataCache();
+    (api.withdrawals as jest.Mock).mockResolvedValue([]);
+    (api.wallet as jest.Mock).mockResolvedValue({ balance: 600, available: 500, pending: 100, in_escrow: 400,
+      transactions: [{ id: 'hold-1', title: 'Repair payment', direction: 'debit', kind: 'escrow_hold', status: 'completed', amount: 400, created_at: '2026-10-01' }] });
+    render(<HOWalletScreen />);
+    await screen.findByText('Repair payment');
+    expect(screen.getByText('₱400.00')).toBeTruthy();
+    expect(screen.getByText(/Escrow funded/)).toBeTruthy();
+    expect(screen.queryByText(/ · Completed/)).toBeNull();
+  });
+});

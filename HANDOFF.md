@@ -10,6 +10,45 @@ Each item below: what's wrong, why it's backend, and what "done" looks like.
 
 ---
 
+## Update 2026-10-02 — FullTest fixes (local, not deployed)
+
+Implemented against `FullTest-Result.txt`, limited to bug fixes and blockers:
+
+- Approved primary **and secondary** skills constrain browse, matching, applications and assignment. Primary changes are blocked during active jobs; secondary requests remain available.
+- Every chat message creates a notification. Push delivery still depends on the existing push credentials and device registration.
+- Task progress requires Start Job; completion requires all tasks done. The final task notifies the client for review.
+- Cancelling work in progress preserves job/chat/task evidence and freezes held escrow for admin review. Participants can submit cancellation appeals; completed-job complaints have a seven-day window.
+- Settled-payment disputes require an admin note and record a decision without moving money again. Any compensation uses the existing Issue Credit process separately.
+- Wallet escrow totals now count held/disputed escrow independently of pending withdrawals. Mobile fixes cover job photos, hired-job offers, ongoing jobs, urgency filtering, form error scrolling, review thumbnails and responsive auth/privacy layouts. Inert dark-mode switches are disabled; no catalogue or theme feature was added.
+
+**Release order:** migration 0037 was applied to the linked Supabase project on
+2026-10-02 using the CLI SQL query command, then marked applied in migration
+history. Read-only checks confirmed the reviewed resolution value, both new
+RPCs and all nine triggers. Deploy the API next, then release mobile and web.
+No API or app deployment was performed in this pass. The remote migration
+history still contains dated copies of 0032–0034 and lacks numbered entries
+0025–0036, although the checked schema objects and 0035 backfill state exist.
+A normal `db push --dry-run` still fails until that history is reconciled; do
+not blindly run the CLI-suggested repair or `--include-all`.
+
+**Local verification:** backend 592 tests, SQL 68 tests, mobile 77 tests,
+web 210 tests (one skipped). Backend/web builds, mobile typecheck and web
+lint pass. Full backend lint retains 10 pre-existing errors in untouched
+files listed in the September 29 entry. Mobile has no lint script.
+Admin preview inspected at 390×844 and 1440×900; physical-device testing
+remains outstanding.
+
+**Live read-only checks (October 2, Asia/Manila):** the deployed API health
+reported database up and ML down with HTTP 429. A direct ML health request
+timed out after 45 seconds. Automatic recommendation delivery is therefore
+not verified. Stripe webhook configuration, FCM credentials, earlier migration history
+and deployed commit remain unverified; earlier handover diagnoses are not
+fresh confirmation of their current state. The local debug APK predates the
+test report, and no connected Android device was available, so the exact
+tested build could not be established.
+
+---
+
 ## Update 2026-10-01 — two new backend asks (one blocking)
 
 ### A. BLOCKER — Stripe webhook never succeeds, so wallet top-ups never credit

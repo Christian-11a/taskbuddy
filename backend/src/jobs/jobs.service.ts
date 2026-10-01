@@ -149,11 +149,25 @@ export class JobsService {
    * sorted by urgency then distance, newest first as the final tie-break.
    * Filtering/sorting happens in JS since distance isn't a plain column.
    */
-  async browse(query: BrowseJobsQueryDto) {
+  async browse(query: BrowseJobsQueryDto, user: Profile) {
+    const { data: skills, error: skillsError } = await this.supabase.admin.rpc(
+      'provider_approved_categories',
+      { p_provider_id: user.id },
+    );
+    if (skillsError) throw new BadRequestException(skillsError.message);
+    const categoryIds = (skills as { category_id: number }[]).map(
+      (s) => s.category_id,
+    );
+    if (!categoryIds.length)
+      return {
+        jobs: [],
+        summary: { open_count: 0, urgent_count: 0, potential_payout: 0 },
+      };
     let builder = this.supabase.admin
       .from('jobs')
       .select(JOB_SELECT)
       .in('status', ['open', 'recommending'])
+      .in('category_id', categoryIds)
       .order('posted_at', { ascending: false });
     if (query.category_id)
       builder = builder.eq('category_id', query.category_id);
@@ -266,7 +280,7 @@ export class JobsService {
         'job_update',
         'Job cancelled',
         {
-          body: `The job "${job.title}" was cancelled by the client.`,
+          body: `The job "${job.title}" was cancelled by the client.${job.status === 'in_progress' ? ' Any held payment is frozen for admin review. Open the job to view the dispute.' : ''}`,
           job_id: jobId,
         },
       );
@@ -373,6 +387,11 @@ export class JobsService {
         `Cannot complete a job in status '${job.status}'`,
       );
     }
+    if (job.job_tasks.some((task) => !task.is_done)) {
+      throw new BadRequestException(
+        'The provider must finish the task checklist before you confirm completion',
+      );
+    }
     const updated = await this.setStatus(jobId, 'completed', ['in_progress']);
     // Pay the provider out of escrow. `releaseIfHeld`, not `release`: a job
     // posted without a budget has no escrow row at all, and a disputed one is
@@ -391,8 +410,8 @@ export class JobsService {
    * whole job so the caller's screen re-renders from one source of truth
    * rather than patching a task into a list it already held.
    *
-   * Allowed from 'confirmed' and 'in_progress' only: before the provider has
-   * accepted there is nothing to report progress on, and after the client has
+   * Allowed only after Start Job: before work starts there is no progress
+   * to report, and after the client has
    * closed the job the checklist is a record of what happened, not a live
    * document.
    */
@@ -406,7 +425,7 @@ export class JobsService {
     if (job.assigned_provider_id !== user.id) {
       throw new ForbiddenException('You are not assigned to this job');
     }
-    if (!['confirmed', 'in_progress'].includes(job.status)) {
+    if (job.status !== 'in_progress') {
       throw new BadRequestException(
         `Cannot update the checklist of a job in status '${job.status}'`,
       );

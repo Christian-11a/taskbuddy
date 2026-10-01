@@ -44,8 +44,8 @@ const verifications: VerificationRow[] = [
 ] as VerificationRow[];
 
 const disputes: DisputeRow[] = [
-  { id: "d1", jobId: "j1042", jobTitle: "Fix leaking kitchen sink", service: "Plumbing", clientName: "Ana Reyes", providerName: "Rico Bautista", amount: "₱1,450.00", reason: "Work not completed", details: "The leak came back the same evening and the provider stopped replying.", status: "Open", statusClass: "badge-pending", resolution: null, resolutionNote: null, createdAt: "Sep 26, 2026", resolvedAt: null, isOpen: true },
-  { id: "d2", jobId: "j0988", jobTitle: "Deep clean 2BR condo", service: "Cleaning", clientName: "Jessa Ramos", providerName: "Liza Mercado", amount: "₱2,000.00", reason: "Quality issue", details: "Bathroom was skipped.", status: "Resolved", statusClass: "badge-completed", resolution: "Partial refund", resolutionNote: "Provider agreed to a 50% refund.", createdAt: "Sep 12, 2026", resolvedAt: "Sep 14, 2026", isOpen: false },
+  { id: "d1", jobId: "j1042", jobTitle: "Fix leaking kitchen sink", service: "Plumbing", clientName: "Ana Reyes", providerName: "Rico Bautista", amount: "₱1,450.00", reason: "Work not completed", details: "The leak came back the same evening and the provider stopped replying.", status: "Open", statusClass: "badge-pending", resolution: null, resolutionNote: null, paymentSettled: false, createdAt: "Sep 26, 2026", resolvedAt: null, isOpen: true },
+  { id: "d2", jobId: "j0988", jobTitle: "Deep clean 2BR condo", service: "Cleaning", clientName: "Jessa Ramos", providerName: "Liza Mercado", amount: "₱2,000.00", reason: "Quality issue", details: "Bathroom was skipped.", status: "Resolved", statusClass: "badge-completed", resolution: "Partial refund", resolutionNote: "Provider agreed to a 50% refund.", paymentSettled: true, createdAt: "Sep 12, 2026", resolvedAt: "Sep 14, 2026", isOpen: false },
 ];
 
 export const MOCK_APP: AppState = {

@@ -329,6 +329,25 @@ class FakeDb {
       return row;
     };
 
+    if (fn === 'raise_job_dispute') {
+      const escrow = this.rows('escrow_transactions').find(
+        (e) => e.job_id === args.p_job_id,
+      );
+      if (!escrow) return refuse('TB404', 'No payment');
+      const dispute = {
+        ...DEFAULTS.disputes(),
+        id: this.id('disputes'),
+        job_id: args.p_job_id,
+        escrow_id: escrow.id,
+        raised_by: args.p_actor_id,
+        reason: args.p_reason,
+        details: args.p_details,
+      };
+      this.rows('disputes').push(dispute);
+      if (escrow.status === 'held') escrow.status = 'disputed';
+      return { data: dispute, error: null };
+    }
+
     if (fn === 'escrow_place_hold') {
       const job = this.rows('jobs').find((j) => j.id === args.p_job_id);
       if (!job) return refuse('TB404', 'Job not found');
@@ -854,6 +873,11 @@ describe('job lifecycle, end to end', () => {
     );
 
     // 5. The client confirms completion; escrow pays the provider.
+    for (const task of world.db
+      .rows('job_tasks')
+      .filter((task) => task.job_id === posted.id)) {
+      await jobs.updateTask(provider, posted.id, task.id, { is_done: true });
+    }
     await jobs.complete(client, posted.id);
 
     expect(await escrow.findByJob(posted.id)).toMatchObject({
@@ -907,6 +931,11 @@ describe('job lifecycle, end to end', () => {
     )) as Record<string, any>;
     await applications.accept(client, application.id);
     await jobs.start(provider, posted.id);
+    for (const task of world.db
+      .rows('job_tasks')
+      .filter((task) => task.job_id === posted.id)) {
+      await jobs.updateTask(provider, posted.id, task.id, { is_done: true });
+    }
     await jobs.complete(client, posted.id);
 
     // The client paid the full budget; the provider received it less the cut.
@@ -995,6 +1024,11 @@ describe('job lifecycle, end to end', () => {
 
     // Completing now must not quietly pay the provider out from under the
     // dispute — that decision belongs to an admin.
+    for (const task of world.db
+      .rows('job_tasks')
+      .filter((task) => task.job_id === posted.id)) {
+      await jobs.updateTask(provider, posted.id, task.id, { is_done: true });
+    }
     await jobs.complete(client, posted.id);
     expect(await wallet.balanceFor('p1')).toBe(0);
     expect(await escrow.findByJob(posted.id)).toMatchObject({
@@ -1027,6 +1061,11 @@ describe('job lifecycle, end to end', () => {
     )) as Record<string, any>;
     await applications.accept(client, application.id);
     await jobs.start(provider, posted.id);
+    for (const task of world.db
+      .rows('job_tasks')
+      .filter((task) => task.job_id === posted.id)) {
+      await jobs.updateTask(provider, posted.id, task.id, { is_done: true });
+    }
     await jobs.complete(client, posted.id);
     await reviews.create(client, posted.id, { rating: 4 });
 
@@ -1104,6 +1143,11 @@ describe('job lifecycle, paid by card at hire (§29.4)', () => {
     ]);
 
     await jobs.start(provider, posted.id);
+    for (const task of world.db
+      .rows('job_tasks')
+      .filter((task) => task.job_id === posted.id)) {
+      await jobs.updateTask(provider, posted.id, task.id, { is_done: true });
+    }
     await jobs.complete(client, posted.id);
 
     await flush();
@@ -1184,6 +1228,11 @@ describe('card-funded payouts sent to Stripe Connect (§29.5)', () => {
     )) as Record<string, any>;
     await hireFunding.completeFromIntent(hirePayment(application));
     await jobs.start(provider, posted.id);
+    for (const task of world.db
+      .rows('job_tasks')
+      .filter((task) => task.job_id === posted.id)) {
+      await jobs.updateTask(provider, posted.id, task.id, { is_done: true });
+    }
     await jobs.complete(client, posted.id);
     await flush();
     return posted;
@@ -1284,6 +1333,11 @@ describe('card-funded payouts sent to Stripe Connect (§29.5)', () => {
     )) as Record<string, any>;
     await hireFunding.completeFromIntent(hirePayment(application));
     await jobs.start(provider, posted.id);
+    for (const task of world.db
+      .rows('job_tasks')
+      .filter((task) => task.job_id === posted.id)) {
+      await jobs.updateTask(provider, posted.id, task.id, { is_done: true });
+    }
     await jobs.complete(client, posted.id);
     await flush();
 

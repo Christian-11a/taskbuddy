@@ -30,6 +30,7 @@
 import React, { useState } from 'react';
 import {
   ActivityIndicator,
+  Image,
   ScrollView,
   StyleSheet,
   Text,
@@ -90,6 +91,10 @@ export default function SPJobDetailScreen({ jobId, onBack, onNavigate }: SPJobDe
     [],
     'sp-applications',
   );
+  const { data: dispute } = useAsyncData(
+    () => jobId && job?.assigned_provider_id === profile?.id ? api.jobDispute(jobId) : Promise.resolve(null),
+    [jobId, job?.assigned_provider_id, profile?.id],
+  );
   const myApplication = (myApps ?? []).find((a) => a.jobs.id === jobId);
 
   const [busy, setBusy] = useState(false);
@@ -106,6 +111,7 @@ export default function SPJobDetailScreen({ jobId, onBack, onNavigate }: SPJobDe
   const isConfirmed = isAssignedToMe && job?.status === 'confirmed';
   const isWorking = isAssignedToMe && job?.status === 'in_progress';
   const isDone = isAssignedToMe && job?.status === 'completed';
+  const withinWarranty = job?.completed_at && Date.now() <= new Date(job.completed_at).getTime() + 7 * 24 * 60 * 60 * 1000;
   const isCancelled = isAssignedToMe && job?.status === 'cancelled';
   const canApply = job && ['open', 'recommending'].includes(job.status) && !isAssignedToMe && !myApplication;
   const urgent = job?.urgency === 'urgent';
@@ -114,7 +120,7 @@ export default function SPJobDetailScreen({ jobId, onBack, onNavigate }: SPJobDe
   const doneCount = tasks.filter((t) => t.is_done).length;
   const progressPct = tasks.length ? Math.round((doneCount / tasks.length) * 100) : 0;
   // Ticking is only meaningful once the job is theirs and not yet closed.
-  const tasksEditable = isConfirmed || isWorking;
+  const tasksEditable = isWorking;
 
   const errorMessage = (e: unknown) =>
     e instanceof ApiError ? e.message : 'Something went wrong. Please try again.';
@@ -345,15 +351,12 @@ export default function SPJobDetailScreen({ jobId, onBack, onNavigate }: SPJobDe
           {/* Job photos (real data — job.photo_urls) */}
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Job Photos</Text>
-            <View style={styles.detailRow}>
-              <View style={styles.detailIcon}>
-                <ImageIcon size={17} color={C.ink500} />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.detailLabel}>Attached</Text>
-                <Text style={styles.detailValue}>{job.photo_urls?.length ?? 0} photo(s)</Text>
-              </View>
-            </View>
+            {job.photo_urls.length ? job.photo_urls.map((uri, index) => (
+              <Image key={uri} source={{ uri }} resizeMode="contain"
+                accessibilityLabel={`Job photo ${index + 1}`}
+                style={{ width: '100%', height: 240, marginTop: 12 }} />
+            )) : <Text style={styles.detailValue}>No photos attached</Text>}
+
           </View>
 
           {/* My proposal status (real data, not fabricated) */}
@@ -402,8 +405,14 @@ export default function SPJobDetailScreen({ jobId, onBack, onNavigate }: SPJobDe
 
             {isWorking && (
               <View style={styles.lockedBtn}>
-                <Text style={styles.lockedBtnText}>Waiting for client to confirm completion</Text>
+                <Text style={styles.lockedBtnText}>{tasks.length > 0 && doneCount === tasks.length ? 'Waiting for client to confirm completion' : 'Work in progress — complete the task checklist'}</Text>
               </View>
+            )}
+            {isAssignedToMe && (isCancelled || isWorking || (isDone && withinWarranty) || dispute) && (
+              <TouchableOpacity style={styles.primaryBtn}
+                onPress={() => onNavigate(dispute ? 'Dispute Status' : 'Dispute Filing', job.id)}>
+                <Text style={styles.primaryBtnText}>{dispute ? 'View Dispute Status' : 'Request Admin Review'}</Text>
+              </TouchableOpacity>
             )}
             {isDone && (
               <View style={styles.lockedBtn}>

@@ -44,6 +44,10 @@ function createSupabaseMock(resultsByTable: Record<string, QueryResult[]>) {
     supabase: {
       admin: {
         from,
+        rpc: jest.fn().mockResolvedValue({
+          data: [{ category_id: 1 }, { category_id: 2 }],
+          error: null,
+        }),
         storage: {
           from: jest.fn(() => ({
             getPublicUrl: (path: string) => ({
@@ -65,6 +69,7 @@ const job = (overrides: Record<string, unknown> = {}) => ({
   title: 'Fix the sink',
   status: 'assigned',
   assigned_provider_id: 'p1',
+  job_tasks: [],
   ...overrides,
 });
 
@@ -519,7 +524,7 @@ describe('JobsService.browse', () => {
       ],
     });
 
-    const { jobs } = await service.browse({ ...QC, radius_km: 50 });
+    const { jobs } = await service.browse({ ...QC, radius_km: 50 }, provider);
 
     expect(jobs.map((j: any) => j.id)).toEqual(['near']);
   });
@@ -529,10 +534,10 @@ describe('JobsService.browse', () => {
     // the same pair of points has to answer both ways.
     const inside = await createService({
       jobs: [ok([openJob({ id: 'far', ...FAR })])],
-    }).service.browse({ ...QC, radius_km: 120 });
+    }).service.browse({ ...QC, radius_km: 120 }, provider);
     const outside = await createService({
       jobs: [ok([openJob({ id: 'far', ...FAR })])],
-    }).service.browse({ ...QC, radius_km: 100 });
+    }).service.browse({ ...QC, radius_km: 100 }, provider);
 
     expect(inside.jobs).toHaveLength(1);
     expect(outside.jobs).toHaveLength(0);
@@ -545,7 +550,7 @@ describe('JobsService.browse', () => {
       jobs: [ok([openJob({ id: 'nowhere', latitude: null, longitude: null })])],
     });
 
-    const { jobs } = await service.browse({ ...QC, radius_km: 1 });
+    const { jobs } = await service.browse({ ...QC, radius_km: 1 }, provider);
 
     expect(jobs.map((j: any) => j.id)).toEqual(['nowhere']);
     expect(jobs[0].distance_km).toBeNull();
@@ -558,7 +563,7 @@ describe('JobsService.browse', () => {
       ],
     });
 
-    const { jobs } = await service.browse({});
+    const { jobs } = await service.browse({}, provider);
 
     expect(jobs.map((j: any) => j.id)).toEqual(['near', 'far']);
     expect(jobs[0].distance_km).toBeNull();
@@ -576,7 +581,7 @@ describe('JobsService.browse', () => {
       ],
     });
 
-    const { jobs } = await service.browse({ ...QC, radius_km: 500 });
+    const { jobs } = await service.browse({ ...QC, radius_km: 500 }, provider);
 
     expect(jobs.map((j: any) => j.id)).toEqual([
       'urgent-near',
@@ -596,7 +601,7 @@ describe('JobsService.browse', () => {
       ],
     });
 
-    const { jobs } = await service.browse({ ...QC });
+    const { jobs } = await service.browse({ ...QC }, provider);
 
     expect(jobs.map((j: any) => j.id)).toEqual(['newer', 'older']);
   });
@@ -614,7 +619,10 @@ describe('JobsService.browse', () => {
       ],
     });
 
-    const { jobs, summary } = await service.browse({ ...QC, limit: 1 });
+    const { jobs, summary } = await service.browse(
+      { ...QC, limit: 1 },
+      provider,
+    );
 
     expect(jobs).toHaveLength(1);
     expect(summary).toEqual({
@@ -629,7 +637,7 @@ describe('JobsService.browse', () => {
     // asserts the query rather than the result.
     const { service, calls } = createService({ jobs: [ok([])] });
 
-    await service.browse({});
+    await service.browse({}, provider);
 
     expect(calls.find((c) => c.method === 'in')?.args).toEqual([
       'status',
@@ -642,7 +650,7 @@ describe('JobsService.browse', () => {
       jobs: [ok([openJob({ reviews: null })])],
     });
 
-    const { jobs } = await service.browse({});
+    const { jobs } = await service.browse({}, provider);
 
     expect(jobs[0].has_review).toBe(false);
   });
@@ -651,7 +659,7 @@ describe('JobsService.browse', () => {
 describe('JobsService handover fixes', () => {
   it('filters urgency in the database before paging', async () => {
     const { service, calls } = createService({ jobs: [ok([])] });
-    await service.browse({ urgency: 'flexible', limit: 20 });
+    await service.browse({ urgency: 'flexible', limit: 20 }, provider);
     expect(calls).toContainEqual({
       table: 'jobs',
       method: 'eq',
@@ -671,7 +679,8 @@ describe('JobsService handover fixes', () => {
       const client = { id: 'c1', role: 'client' } as Profile;
       let result;
       if (route === 'detail') result = await service.getById(client, 'j1');
-      else if (route === 'browse') result = (await service.browse({})).jobs[0];
+      else if (route === 'browse')
+        result = (await service.browse({}, provider)).jobs[0];
       else if (route === 'assigned')
         result = (await service.assigned(provider))[0];
       else result = (await service.mine(client))[0];

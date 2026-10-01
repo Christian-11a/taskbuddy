@@ -39,10 +39,10 @@ const C = V6Colors;
 // Four filters, not one per status: the status pill on each card already
 // says exactly where a job is, so the tabs only need to split live work from
 // finished work.
-const FILTER_TABS = ['All', 'Active', 'Completed', 'Cancelled'] as const;
+const FILTER_TABS = ['All', 'Active', 'Ongoing', 'Completed', 'Cancelled'] as const;
 type FilterTab = (typeof FILTER_TABS)[number];
 
-const ACTIVE_STATUSES = new Set(['open', 'recommending', 'assigned', 'confirmed', 'in_progress']);
+const ACTIVE_STATUSES = new Set(['open', 'recommending']);
 
 function matchesFilter(status: string, filter: FilterTab): boolean {
   switch (filter) {
@@ -50,6 +50,8 @@ function matchesFilter(status: string, filter: FilterTab): boolean {
       return true;
     case 'Active':
       return ACTIVE_STATUSES.has(status);
+    case 'Ongoing':
+      return ['assigned', 'confirmed', 'in_progress'].includes(status);
     case 'Completed':
       return status === 'completed';
     case 'Cancelled':

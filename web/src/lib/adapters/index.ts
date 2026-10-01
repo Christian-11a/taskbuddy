@@ -102,6 +102,7 @@ export const DISPUTE_STATUS_DISPLAY: Record<DisputeStatus, { label: string; badg
 export const DISPUTE_RESOLUTION_LABEL: Record<DisputeResolution, string> = {
   RELEASED_TO_PROVIDER: "Released to provider",
   REFUNDED_TO_CLIENT: "Refunded to homeowner",
+  REVIEWED: "Reviewed by admin",
 };
 
 export const WALLET_KIND_DISPLAY: Record<WalletTxnKind, { label: string; badgeClass: string }> = {
@@ -200,6 +201,7 @@ export interface DisputeRow {
   statusClass: string;
   resolution: string | null;
   resolutionNote: string | null;
+  paymentSettled: boolean;
   createdAt: string;
   resolvedAt: string | null;
   isOpen: boolean;
@@ -366,6 +368,7 @@ export function toDisputeRow(d: Dispute): DisputeRow {
     statusClass: display.badgeClass,
     resolution: d.resolution ? DISPUTE_RESOLUTION_LABEL[d.resolution] : null,
     resolutionNote: d.resolutionNote,
+    paymentSettled: d.paymentSettled,
     createdAt: formatDate(d.createdAt),
     resolvedAt: d.resolvedAt ? formatDate(d.resolvedAt) : null,
     isOpen: d.status === "OPEN",

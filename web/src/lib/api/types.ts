@@ -199,7 +199,7 @@ export interface ListTransactionsApiResponse {
 // ─── Disputes (migration 0009) ─────────────────────────────────────────────────
 
 export type DisputeStatusApi = "open" | "resolved" | "cancelled";
-export type DisputeResolutionApi = "released_to_provider" | "refunded_to_client";
+export type DisputeResolutionApi = "released_to_provider" | "refunded_to_client" | "reviewed";
 
 export interface AdminDisputeApiRow {
   id: string;
@@ -214,7 +214,7 @@ export interface AdminDisputeApiRow {
   jobs: { title: string; service_categories: { name: string } | null } | null;
   /** Postgres numeric arrives as a string over PostgREST. */
   escrow_transactions: { amount: number | string; status: EscrowStatusApi } | null;
-  /** The client who raised it — only clients can (backend `@Roles('client')`). */
+  /** The client or assigned provider who requested admin review. */
   raised_by_profile: { id: string; full_name: string } | null;
 }
 

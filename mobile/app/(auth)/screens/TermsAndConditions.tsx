@@ -155,7 +155,7 @@ const styles = StyleSheet.create({
     paddingTop: 20,
     paddingHorizontal: 20,
     paddingBottom: 18,
-    maxHeight: '85%',
+    height: '85%',
     width: '100%',
     maxWidth: 480,
     alignSelf: 'center',
@@ -164,7 +164,7 @@ const styles = StyleSheet.create({
   title: { color: C.brandDark, fontSize: 19, fontWeight: '800', fontFamily: 'Inter', flex: 1 },
   closeBtn: { padding: 2 },
 
-  body: { flexGrow: 0 },
+  body: { flex: 1, minHeight: 0 },
   bodyContent: { paddingBottom: 6 },
   section: { marginBottom: 14 },
   sectionTitle: { color: C.dark, fontSize: 15.5, fontWeight: '700', fontFamily: 'Inter', marginBottom: 4 },

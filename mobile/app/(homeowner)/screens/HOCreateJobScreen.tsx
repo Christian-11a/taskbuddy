@@ -319,6 +319,7 @@ export default function HOCreateJobScreen({
   // One ScrollView holds every step, so without this "Next" opened the new
   // step wherever the previous one had been scrolled to (usually the bottom).
   const scrollRef = useRef<ScrollView>(null);
+  const fieldPositions = useRef<Partial<Record<keyof FieldErrors, number>>>({});
   useEffect(() => {
     scrollRef.current?.scrollTo({ y: 0, animated: false });
   }, [step]);
@@ -481,7 +482,9 @@ export default function HOCreateJobScreen({
 
     setFieldErrors(errors);
     if (Object.keys(errors).length > 0) {
-      setError(null);
+      const first = Object.keys(errors)[0] as keyof FieldErrors;
+      scrollRef.current?.scrollTo({ y: Math.max(0, (fieldPositions.current[first] ?? 0) - 12), animated: true });
+      setError(errors[first] ?? null);
       return false;
     }
     return true;
@@ -831,7 +834,7 @@ export default function HOCreateJobScreen({
             <Text style={styles.stepTitle}>Location</Text>
             <Text style={styles.stepSubtitle}>Where does the work need to happen?</Text>
 
-            <View style={styles.inputGroup}>
+            <View onLayout={(event) => { fieldPositions.current.location = event.nativeEvent.layout.y; }} style={styles.inputGroup}>
               <Text style={styles.inputLabel}>Address<Text style={styles.requiredAsterisk}> *</Text></Text>
               <AddressField
                 testID="create-job-address"
@@ -987,7 +990,7 @@ export default function HOCreateJobScreen({
 
             <View style={styles.divider} />
 
-            <View style={styles.inputGroup}>
+            <View onLayout={(event) => { fieldPositions.current.title = event.nativeEvent.layout.y; }} style={styles.inputGroup}>
               <Text style={styles.inputLabel}>Job Title<Text style={styles.requiredAsterisk}> *</Text></Text>
               <TextInput
                 style={[styles.input, focusedField === 'title' && styles.inputFocused, fieldErrors.title && styles.inputError]}
@@ -1009,7 +1012,7 @@ export default function HOCreateJobScreen({
               {!!fieldErrors.title && <Text style={styles.inputErrorText}>{fieldErrors.title}</Text>}
             </View>
 
-            <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+            <KeyboardAvoidingView onLayout={(event) => { fieldPositions.current.description = event.nativeEvent.layout.y; }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
             <View style={styles.inputGroup}>
               <Text style={styles.inputLabel}>Description<Text style={styles.requiredAsterisk}> *</Text></Text>
               <View style={styles.textAreaWrap}>
@@ -1130,7 +1133,7 @@ export default function HOCreateJobScreen({
 
             <View style={styles.divider} />
 
-            <View style={styles.inputGroup}>
+            <View onLayout={(event) => { fieldPositions.current.date = event.nativeEvent.layout.y; }} style={styles.inputGroup}>
               <Text style={styles.inputLabel}>Preferred Date<Text style={styles.requiredAsterisk}> *</Text></Text>
               <TouchableOpacity
                 style={[styles.input, styles.pickerInput, showDatePicker && styles.inputFocused, fieldErrors.date && styles.inputError]}
@@ -1142,7 +1145,7 @@ export default function HOCreateJobScreen({
               {!!fieldErrors.date && <Text style={styles.inputErrorText}>{fieldErrors.date}</Text>}
             </View>
 
-            <View style={styles.inputGroup}>
+            <View onLayout={(event) => { fieldPositions.current.time = event.nativeEvent.layout.y; }} style={styles.inputGroup}>
               <Text style={styles.inputLabel}>Preferred Time<Text style={styles.requiredAsterisk}> *</Text></Text>
               <TouchableOpacity
                 style={[styles.input, styles.pickerInput, showTimePicker && styles.inputFocused, fieldErrors.time && styles.inputError]}
@@ -1154,7 +1157,7 @@ export default function HOCreateJobScreen({
               {!!fieldErrors.time && <Text style={styles.inputErrorText}>{fieldErrors.time}</Text>}
             </View>
 
-            <View style={styles.inputGroup}>
+            <View onLayout={(event) => { fieldPositions.current.budget = event.nativeEvent.layout.y; }} style={styles.inputGroup}>
               <Text style={styles.inputLabel}>Budget<Text style={styles.requiredAsterisk}> *</Text></Text>
               <View style={[styles.budgetCard, focusedField === 'budget' && styles.budgetCardFocused, !!fieldErrors.budget && styles.inputError]}>
                 <Text style={styles.budgetCurrency}>₱</Text>
@@ -1198,7 +1201,6 @@ export default function HOCreateJobScreen({
                 { label: 'Time', value: timeLabel || 'Not set' },
                 { label: 'Urgency', value: URGENCY_OPTIONS.find((o) => o.value === urgency)?.label ?? '' },
                 { label: 'Budget', value: budget ? peso(budget) : 'Not set' },
-                { label: 'Photos', value: photos.length ? `${photos.length} selected` : 'None' },
               ].map((item) => (
                 <View key={item.label} style={styles.reviewRow}>
                   <Text style={styles.reviewLabel}>{item.label}</Text>
@@ -1206,6 +1208,15 @@ export default function HOCreateJobScreen({
                 </View>
               ))}
             </View>
+
+            {photos.length > 0 && (
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.photoList}>
+                {photos.map((photo, index) => (
+                  <Image key={photo.uri} source={{ uri: photo.uri }} style={styles.photoImage}
+                    resizeMode="contain" accessibilityLabel={`Selected photo ${index + 1}`} />
+                ))}
+              </ScrollView>
+            )}
 
             <Text style={styles.reviewSectionTitle}>Tasks ({tasks.length})</Text>
             <View style={styles.reviewCard}>
@@ -1219,6 +1230,7 @@ export default function HOCreateJobScreen({
 
             <TouchableOpacity
               style={styles.termsRow}
+              onLayout={(event) => { fieldPositions.current.terms = event.nativeEvent.layout.y; }}
               onPress={() => {
                 setTermsAccepted((accepted) => !accepted);
                 clearError('terms');

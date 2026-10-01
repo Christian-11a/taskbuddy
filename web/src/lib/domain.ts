@@ -103,14 +103,14 @@ export type TransferStatus =
 // ─── Disputes ─────────────────────────────────────────────────────────────────
 
 export type DisputeStatus = "OPEN" | "RESOLVED" | "CANCELLED";
-export type DisputeResolution = "RELEASED_TO_PROVIDER" | "REFUNDED_TO_CLIENT";
+export type DisputeResolution = "RELEASED_TO_PROVIDER" | "REFUNDED_TO_CLIENT" | "REVIEWED";
 
 export interface Dispute {
   id: string;
   jobId: string;
   jobTitle: string;
   service: string;
-  /** Always the client — only clients can raise a dispute (backend `@Roles('client')`). */
+  /** The client on the job, regardless of which participant opened the dispute. */
   clientName: string;
   /** Cross-referenced from the Transactions list by job id — "Unknown provider" if not found. */
   providerName: string;
@@ -120,6 +120,7 @@ export interface Dispute {
   status: DisputeStatus;
   resolution: DisputeResolution | null;
   resolutionNote: string | null;
+  paymentSettled: boolean;
   createdAt: string; // ISO date
   resolvedAt: string | null;
 }

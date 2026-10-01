@@ -57,8 +57,8 @@ export class ListDisputesQueryDto {
 }
 
 export class ResolveDisputeDto {
-  @IsIn(['released_to_provider', 'refunded_to_client'])
-  resolution!: 'released_to_provider' | 'refunded_to_client';
+  @IsIn(['released_to_provider', 'refunded_to_client', 'reviewed'])
+  resolution!: 'released_to_provider' | 'refunded_to_client' | 'reviewed';
 
   @IsOptional()
   @IsString()
