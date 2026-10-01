@@ -45,7 +45,7 @@ describe('HOJobDetailScreen — Confirm Completion asks first (QA #6)', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     (api.getJob as jest.Mock).mockResolvedValue(inProgressJob);
-    (api.getProvider as jest.Mock).mockResolvedValue({ id: 'provider-1', full_name: 'Jane Provider' });
+    (api.getProvider as jest.Mock).mockResolvedValue({ profile_id: 'provider-1', profiles: { full_name: 'Jane Provider' }, cached_completed_jobs: 1 });
     (api.jobDispute as jest.Mock).mockResolvedValue(null);
   });
 
@@ -112,5 +112,30 @@ describe('HOJobDetailScreen — Confirm Completion asks first (QA #6)', () => {
     );
     // Not stuck mid-action: the button is usable again for a retry.
     expect(screen.getByText('Confirm Completion')).toBeTruthy();
+  });
+});
+
+describe('FullTest homeowner job details', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    (api.getProvider as jest.Mock).mockResolvedValue({ profile_id: 'provider-1', profiles: { full_name: 'Jane Provider' }, cached_completed_jobs: 1 });
+    (api.jobDispute as jest.Mock).mockResolvedValue(null);
+  });
+
+  it('hides offers after hiring and completion until the checklist is done', async () => {
+    (api.getJob as jest.Mock).mockResolvedValue({ ...inProgressJob,
+      job_tasks: [{ id: 't1', label: 'Fix tap', position: 0, is_done: false }] });
+    render(<HOJobDetailScreen jobId="job-1" onBack={jest.fn()} onNavigate={jest.fn()} />);
+    await screen.findByText('Jane Provider');
+    expect(screen.queryByTestId('job-detail-view-offers')).toBeNull();
+    expect(screen.queryByText('Confirm Completion')).toBeNull();
+  });
+
+  it.each([1, 8])('shows a post-completion dispute only within seven days (age %i)', async (days) => {
+    (api.getJob as jest.Mock).mockResolvedValue({ ...inProgressJob, status: 'completed',
+      completed_at: new Date(Date.now() - days * 86400000).toISOString() });
+    render(<HOJobDetailScreen jobId="job-1" onBack={jest.fn()} onNavigate={jest.fn()} />);
+    await screen.findByText('Jane Provider');
+    expect(!!screen.queryByText('File a Dispute')).toBe(days <= 7);
   });
 });

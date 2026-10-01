@@ -80,9 +80,7 @@ export default function HOJobDetailScreen({ jobId, onBack, onNavigate }: HOJobDe
     const provider = job.assigned_provider_id
       ? await api.getProvider(job.assigned_provider_id).catch(() => null)
       : null;
-    // No escrow means no dispute is possible — skip the call rather than let
-    // it 400/403 for jobs that never had a payment held.
-    const dispute = await api.jobDispute(jobId).catch(() => null);
+    const dispute = await api.jobDispute(jobId);
     return { job, provider, dispute };
   }, [jobId]);
 
@@ -141,7 +139,11 @@ export default function HOJobDetailScreen({ jobId, onBack, onNavigate }: HOJobDe
   const canCancel =
     job &&
     ['open', 'recommending', 'assigned', 'confirmed', 'in_progress'].includes(job.status);
-  const canComplete = job?.status === 'in_progress';
+  const canDispute = job && !!job.assigned_provider_id && (
+    ['assigned', 'confirmed', 'in_progress', 'cancelled'].includes(job.status) ||
+    (job.status === 'completed' && job.completed_at && Date.now() <= new Date(job.completed_at).getTime() + 7 * 24 * 60 * 60 * 1000)
+  );
+  const canComplete = job?.status === 'in_progress' && tasks.every((task) => task.is_done);
   const canReview =
     job?.status === 'completed' &&
     !!job.assigned_provider_id &&
@@ -315,14 +317,7 @@ export default function HOJobDetailScreen({ jobId, onBack, onNavigate }: HOJobDe
                   <Text style={styles.messageBtnText}>Message</Text>
                 </TouchableOpacity>
               </View>
-              <TouchableOpacity
-                style={styles.primaryBtn}
-                onPress={() => onNavigate('Job Applications', job.id)}
-                activeOpacity={0.85}
-                testID="job-detail-view-offers"
-              >
-                <Text style={styles.primaryBtnText}>View Offers</Text>
-              </TouchableOpacity>
+
             </View>
           ) : (
             <View style={styles.section}>
@@ -331,6 +326,7 @@ export default function HOJobDetailScreen({ jobId, onBack, onNavigate }: HOJobDe
                 No provider assigned yet. You'll be notified when someone is matched.
               </Text>
               {!!matchingMessage && <Text style={styles.matchingMessage}>{matchingMessage}</Text>}
+              {['open', 'recommending'].includes(job.status) && (
               <TouchableOpacity
                 style={styles.primaryBtn}
                 onPress={() => onNavigate('Job Applications', job.id)}
@@ -339,6 +335,7 @@ export default function HOJobDetailScreen({ jobId, onBack, onNavigate }: HOJobDe
               >
                 <Text style={styles.primaryBtnText}>View Offers</Text>
               </TouchableOpacity>
+              )}
             </View>
           )}
 
@@ -390,7 +387,7 @@ export default function HOJobDetailScreen({ jobId, onBack, onNavigate }: HOJobDe
               </View>
             </TouchableOpacity>
           )}
-          {(dispute || !!job.assigned_provider_id || ['assigned', 'confirmed', 'in_progress'].includes(job.status)) && (
+          {(dispute || canDispute) && (
             <TouchableOpacity style={styles.outlineBtn} onPress={() => onNavigate(dispute ? 'Dispute Status' : 'Dispute Filing', job.id)} activeOpacity={0.85}>
               <Text style={styles.outlineDangerBtnText}>{dispute ? 'View Dispute Status' : 'File a Dispute'}</Text>
             </TouchableOpacity>
@@ -409,7 +406,9 @@ export default function HOJobDetailScreen({ jobId, onBack, onNavigate }: HOJobDe
         visible={confirmCancel}
         title="Cancel this job?"
         message={
-          job?.assigned_provider_id
+          job?.status === 'in_progress' || dispute?.status === 'open'
+            ? 'This cancels the job and preserves its history. Any held payment stays frozen for an admin to review before release or refund.'
+            : job?.assigned_provider_id
             ? `This tells your provider the job is off${job?.budget != null ? ` and returns ${peso(job.budget)} to your wallet` : ''
             }. It cannot be undone.`
             : 'This takes the job down so providers can no longer apply. It cannot be undone.'
@@ -433,7 +432,9 @@ export default function HOJobDetailScreen({ jobId, onBack, onNavigate }: HOJobDe
         visible={confirmComplete}
         title="Mark this job complete?"
         message={
-          job?.budget != null
+          dispute?.status === 'open'
+            ? 'This records completion of the work. The disputed payment stays frozen until an admin resolves it.'
+            : job?.budget != null
             ? `This releases ${peso(job.budget)} to the provider. It cannot be undone.`
             : 'This releases the held funds to the provider. It cannot be undone.'
         }

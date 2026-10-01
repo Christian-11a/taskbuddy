@@ -424,7 +424,7 @@ export interface Dispute {
   reason: string;
   details: string | null;
   status: 'open' | 'resolved' | 'cancelled';
-  resolution: 'released_to_provider' | 'refunded_to_client' | null;
+  resolution: 'released_to_provider' | 'refunded_to_client' | 'reviewed' | null;
   resolution_note: string | null;
   resolved_at: string | null;
   created_at: string;
@@ -484,6 +484,7 @@ export interface WalletOverview {
   total_debited: number;
   pending: number;
   pending_withdrawals: number;
+  in_escrow: number;
   transactions: WalletTransaction[];
 }
 
@@ -1117,6 +1118,7 @@ export const api = {
   },
 
   browseJobs(params: {
+    urgency?: 'urgent' | 'normal' | 'flexible';
     category_id?: number;
     limit?: number;
     offset?: number;
@@ -1125,6 +1127,7 @@ export const api = {
     radius_km?: number;
   } = {}) {
     const q = new URLSearchParams();
+    if (params.urgency != null) q.set('urgency', params.urgency);
     if (params.category_id != null) q.set('category_id', String(params.category_id));
     if (params.limit != null) q.set('limit', String(params.limit));
     if (params.offset != null) q.set('offset', String(params.offset));

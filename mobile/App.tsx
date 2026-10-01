@@ -679,6 +679,12 @@ function AppContent() {
       </ScreenFrame>
     );
   }
+  if (spScreen === 'Dispute Filing') {
+    return <ScreenFrame bottomColor={V6Colors.white}><HODisputeFilingScreen jobId={spJobId} onBack={spBack} onSubmitted={spBack} /></ScreenFrame>;
+  }
+  if (spScreen === 'Dispute Status') {
+    return <ScreenFrame bottomColor={V6Colors.white}><HODisputeStatusScreen jobId={spJobId} onBack={spBack} /></ScreenFrame>;
+  }
   if (spScreen === 'Chat') {
     return (
       <ScreenFrame bottomColor={V6Colors.white}>

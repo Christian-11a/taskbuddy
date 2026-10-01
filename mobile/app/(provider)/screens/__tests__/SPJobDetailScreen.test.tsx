@@ -7,6 +7,7 @@ import { useAuth } from '../../../../src/context/AuthContext';
 jest.mock('../../../../src/lib/api', () => ({
   api: {
     getJob: jest.fn(),
+    jobDispute: jest.fn().mockResolvedValue(null),
     myApplications: jest.fn(),
     applyToJob: jest.fn(),
   },
@@ -115,5 +116,37 @@ describe('SPJobDetailScreen — cancelled booking shows a locked row (declined-j
     await waitFor(() => expect(screen.getByText('Booking Cancelled')).toBeTruthy());
     expect(screen.getByText('CANCELLED BOOKING')).toBeTruthy();
     expect(screen.queryByTestId('btn-submit-proposal')).toBeNull();
+  });
+});
+
+describe('FullTest provider job details', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    (useAuth as jest.Mock).mockReturnValue({ profile: { id: PROVIDER_ID }, isVerified: true, refreshProfile: jest.fn() });
+    (api.myApplications as jest.Mock).mockResolvedValue([]);
+  });
+
+  it('renders job photos before the provider submits a proposal', async () => {
+    (api.getJob as jest.Mock).mockResolvedValue({ ...openJob, photo_urls: ['https://example.test/photo.jpg'] });
+    render(<SPJobDetailScreen jobId={JOB_ID} onBack={jest.fn()} onNavigate={jest.fn()} />);
+    expect((await screen.findByLabelText('Job photo 1')).props.source).toEqual({ uri: 'https://example.test/photo.jpg' });
+    expect(screen.getByTestId('btn-submit-proposal')).toBeTruthy();
+  });
+
+  it('keeps the checklist locked before Start Job and does not claim completion', async () => {
+    (api.getJob as jest.Mock).mockResolvedValue({ ...openJob, status: 'confirmed', assigned_provider_id: PROVIDER_ID,
+      job_tasks: [{ id: 'task-1', label: 'Fix tap', position: 0, is_done: false }] });
+    render(<SPJobDetailScreen jobId={JOB_ID} onBack={jest.fn()} onNavigate={jest.fn()} />);
+    await screen.findByText('Start Job');
+    expect(screen.getByRole('checkbox').props.accessibilityState.disabled).toBe(true);
+    expect(screen.queryByText('Waiting for client to confirm completion')).toBeNull();
+  });
+
+  it('offers the existing dispute screen for a cancelled job', async () => {
+    (api.getJob as jest.Mock).mockResolvedValue({ ...openJob, status: 'cancelled', assigned_provider_id: PROVIDER_ID });
+    const onNavigate = jest.fn();
+    render(<SPJobDetailScreen jobId={JOB_ID} onBack={jest.fn()} onNavigate={onNavigate} />);
+    fireEvent.press(await screen.findByText('Request Admin Review'));
+    expect(onNavigate).toHaveBeenCalledWith('Dispute Filing', JOB_ID);
   });
 });

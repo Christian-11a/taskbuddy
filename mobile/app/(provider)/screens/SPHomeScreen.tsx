@@ -98,10 +98,12 @@ export default function SPHomeScreen({ onNavigate }: SPHomeScreenProps) {
     // fetch that caused the flip.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+  const [urgency, setUrgency] = useRetainedState<UrgencyFilter>('sp.feed.urgency', 'all');
   const { data, reload } = useAsyncData(async () => {
     const [feed, assigned] = await Promise.all([
       api.browseJobs({
         limit: 20,
+        urgency: urgency === 'all' ? undefined : urgency,
         latitude: profile?.latitude ?? undefined,
         longitude: profile?.longitude ?? undefined,
         radius_km: radiusKm,
@@ -109,7 +111,7 @@ export default function SPHomeScreen({ onNavigate }: SPHomeScreenProps) {
       api.assignedJobs(),
     ]);
     return { jobs: feed.jobs, summary: feed.summary, assigned };
-  }, [profile?.latitude, profile?.longitude, radiusKm], 'sp-home');
+  }, [profile?.latitude, profile?.longitude, radiusKm, urgency], `sp-home-${urgency}`);
 
   const [available, setAvailable] = useState(providerProfile?.is_available ?? true);
   const [togglingAvail, setTogglingAvail] = useState(false);
@@ -118,7 +120,6 @@ export default function SPHomeScreen({ onNavigate }: SPHomeScreenProps) {
   const [actionError, setActionError] = useState<string | null>(null);
   const [decliningJob, setDecliningJob] = useState<Job | null>(null);
   const [acceptingJob, setAcceptingJob] = useState<Job | null>(null);
-  const [urgency, setUrgency] = useRetainedState<UrgencyFilter>('sp.feed.urgency', 'all');
   useEffect(() => {
     if (providerProfile) setAvailable(providerProfile.is_available);
   }, [providerProfile]);

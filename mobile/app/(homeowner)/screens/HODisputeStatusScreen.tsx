@@ -36,7 +36,7 @@ interface TimelineStep {
 
 function resolutionOutcome(dispute: Dispute): string {
   if (dispute.status === 'cancelled') return 'Dispute Cancelled';
-  if (dispute.resolution === 'refunded_to_client') return 'Resolved — Refunded to You';
+  if (dispute.resolution === 'refunded_to_client') return 'Resolved — Refunded to Client';
   if (dispute.resolution === 'released_to_provider') return 'Resolved — Released to Provider';
   return 'Resolved';
 }
