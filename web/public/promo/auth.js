@@ -68,8 +68,13 @@
     });
     activePanelName = name;
 
-    var heading = panels[name] && panels[name].querySelector(".auth-heading");
-    var lede = panels[name] && panels[name].querySelector(".auth-lede");
+    // The document panel contains both Terms and Privacy. Only the open
+    // document can label the dialog; the first heading may belong to a hidden one.
+    var panelContent = name === "doc"
+      ? panels.doc.querySelector("[data-doc]:not([hidden])")
+      : panels[name];
+    var heading = panelContent && panelContent.querySelector(".auth-heading");
+    var lede = panelContent && panelContent.querySelector(".auth-lede");
     document.querySelectorAll(".auth-heading").forEach(function (element) {
       if (element !== heading && element.id === "auth-modal-heading") element.removeAttribute("id");
     });
