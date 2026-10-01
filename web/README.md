@@ -4,9 +4,9 @@
 
 The existing dispute screen supports provider appeals and settled-payment reviews. Settled cases require a decision note and cannot release or refund the same payment again; compensation remains a separate existing Issue Credit action.
 
-These changes are local and require migration **0037**, then the updated API,
-before releasing this app. See [backend handover](../HANDOFF.md) for validation
-and outstanding live/device checks.
+Migration **0037** is applied to the linked Supabase project. The updated API
+still needs deployment before releasing this app. See [backend handover](../HANDOFF.md)
+for validation and outstanding live/device checks.
 
 One Next.js 16 (App Router) + TypeScript app serving two audiences:
 

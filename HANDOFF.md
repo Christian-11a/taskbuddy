@@ -21,10 +21,15 @@ Implemented against `FullTest-Result.txt`, limited to bug fixes and blockers:
 - Settled-payment disputes require an admin note and record a decision without moving money again. Any compensation uses the existing Issue Credit process separately.
 - Wallet escrow totals now count held/disputed escrow independently of pending withdrawals. Mobile fixes cover job photos, hired-job offers, ongoing jobs, urgency filtering, form error scrolling, review thumbnails and responsive auth/privacy layouts. Inert dark-mode switches are disabled; no catalogue or theme feature was added.
 
-**Release order:** verify migrations through 0036, apply
-`backend/supabase/migrations/0037_fulltest_remediation.sql`, deploy the API,
-then release mobile and web. This migration is required for the new RPCs,
-guards and notifications. No migration or deployment was performed in this pass.
+**Release order:** migration 0037 was applied to the linked Supabase project on
+2026-10-02 using the CLI SQL query command, then marked applied in migration
+history. Read-only checks confirmed the reviewed resolution value, both new
+RPCs and all nine triggers. Deploy the API next, then release mobile and web.
+No API or app deployment was performed in this pass. The remote migration
+history still contains dated copies of 0032–0034 and lacks numbered entries
+0025–0036, although the checked schema objects and 0035 backfill state exist.
+A normal `db push --dry-run` still fails until that history is reconciled; do
+not blindly run the CLI-suggested repair or `--include-all`.
 
 **Local verification:** backend 592 tests, SQL 68 tests, mobile 77 tests,
 web 210 tests (one skipped). Backend/web builds, mobile typecheck and web
@@ -36,7 +41,7 @@ remains outstanding.
 **Live read-only checks (October 2, Asia/Manila):** the deployed API health
 reported database up and ML down with HTTP 429. A direct ML health request
 timed out after 45 seconds. Automatic recommendation delivery is therefore
-not verified. Stripe webhook configuration, FCM credentials, applied migrations
+not verified. Stripe webhook configuration, FCM credentials, earlier migration history
 and deployed commit remain unverified; earlier handover diagnoses are not
 fresh confirmation of their current state. The local debug APK predates the
 test report, and no connected Android device was available, so the exact
