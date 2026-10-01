@@ -94,6 +94,7 @@ export function mapActivity(rows: AdminActivityApiRow[]): ActivityEvent[] {
           ? `Booking "${title}" was cancelled`
           : `Booking "${title}" moved to ${row.new_status.replace("_", " ")}`;
     return {
+      id: row.id,
       time: formatRelativeTime(row.changed_at),
       text,
       type: activityTypeFor(row.new_status),

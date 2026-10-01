@@ -12,7 +12,7 @@ import * as services from "@/lib/services";
 import { formatCurrency, formatCurrencyCompact } from "@/lib/adapters";
 import { AnalyticsSourceNote } from "@/components/admin/AnalyticsSourceNote";
 import { pageToPath } from "@/lib/routes";
-import type { Page } from "@/lib/domain";
+import type { ActivityEvent, DashboardStats, Page } from "@/lib/domain";
 import { cn } from "@/lib/utils";
 import { AnimatedNumber } from "@/components/admin/AnimatedNumber";
 import { Delta, KpiCard, monthOverMonth } from "@/components/admin/KpiCard";
@@ -45,16 +45,20 @@ const ACTIVITY_ICON = {
   alert: { icon: AlertTriangle, tone: "bg-warn-soft text-warn" },
 } as const;
 
-function useLiveExtras(lastUpdated: number | null): LiveExtras | null {
+function useLiveExtras(lastUpdated: number | null, stats: DashboardStats | null): LiveExtras | null {
   const [extras, setExtras] = useState<LiveExtras | null>(null);
+  const { escrowCount, escrowHeld, openJobs, matchingJobs } = stats ?? {};
   useEffect(() => {
     let cancelled = false;
-    // Every held escrow row and exact per-status job counts — not just the
-    // first page of each list, which is where these figures used to stop.
+    if (lastUpdated === null) return;
+    // Current deployments include these totals in the shared summary. Only
+    // older responses/browser fallback need the separate list requests.
     void Promise.allSettled([
-      services.getEscrowHeld(),
-      services.getBookingStatusCounts(),
-      services.getSkillRequests("pending"),
+      escrowCount !== undefined && escrowHeld !== undefined
+        ? Promise.resolve({ count: escrowCount, total: escrowHeld }) : services.getEscrowHeld(),
+      openJobs !== undefined && matchingJobs !== undefined
+        ? Promise.resolve({ open: openJobs, recommending: matchingJobs }) : services.getBookingStatusCounts(),
+      services.getSkillRequestCount("pending"),
     ]).then(([escrow, counts, sr]) => {
       if (cancelled) return;
       setExtras({
@@ -62,21 +66,21 @@ function useLiveExtras(lastUpdated: number | null): LiveExtras | null {
         escrowHeld: escrow.status === "fulfilled" ? escrow.value.total : null,
         openJobs: counts.status === "fulfilled" ? counts.value.open : null,
         matchingJobs: counts.status === "fulfilled" ? counts.value.recommending : null,
-        pendingServiceRequests: sr.status === "fulfilled" ? sr.value.length : null,
+        pendingServiceRequests: sr.status === "fulfilled" ? sr.value : null,
       });
     });
     return () => {
       cancelled = true;
     };
     // Re-runs after every live refresh of the shared data.
-  }, [lastUpdated]);
+  }, [lastUpdated, escrowCount, escrowHeld, openJobs, matchingJobs]);
   return extras;
 }
 
 function AttentionTile({ href, icon: Icon, count, one, many, tone, index }: {
   href: string;
   icon: typeof ShieldCheck;
-  count: number;
+  count: number | null;
   one: string;
   many: string;
   tone: "danger" | "warn" | "info" | "accent";
@@ -108,7 +112,7 @@ function AttentionTile({ href, icon: Icon, count, one, many, tone, index }: {
         </span>
         <span className="min-w-0 flex-1">
           <span className={cn("block text-[20px] font-semibold leading-none tracking-tight", clear && "text-subtle")}>
-            <AnimatedNumber value={count} />
+            {count === null ? "—" : <AnimatedNumber value={count} />}
           </span>
           <span className="mt-1 block truncate text-[12px] text-muted-foreground">{count === 1 ? one : many}</span>
         </span>
@@ -118,7 +122,7 @@ function AttentionTile({ href, icon: Icon, count, one, many, tone, index }: {
   );
 }
 
-function ActivityFeed({ items }: { items: { time: string; text: string; type: "tx" | "user" | "alert" }[] }) {
+function ActivityFeed({ items }: { items: ActivityEvent[] }) {
   const reduce = useReducedMotion();
   if (items.length === 0) {
     return <EmptyState icon={<Clock />} title="No recent activity" description="New bookings, payments and signups will appear here." />;
@@ -130,7 +134,7 @@ function ActivityFeed({ items }: { items: { time: string; text: string; type: "t
           const { icon: Icon, tone } = ACTIVITY_ICON[a.type] ?? ACTIVITY_ICON.tx;
           return (
             <motion.li
-              key={`${a.type}-${a.text}-${a.time}`}
+              key={a.id}
               layout={!reduce}
               initial={reduce ? false : { opacity: 0, y: -6, height: 0 }}
               animate={{ opacity: 1, y: 0, height: "auto" }}
@@ -176,7 +180,7 @@ export function DashboardPage() {
     adminProfile, dashboardStats, recentActivity, disputes, users, revenueSeries, bookingsSeries,
     loading, analyticsUnavailable, analyticsInBrowser, retryLoad, lastUpdated,
   } = useApp();
-  const extras = useLiveExtras(lastUpdated);
+  const extras = useLiveExtras(lastUpdated, dashboardStats);
   const now = new Date();
   const firstName = adminProfile.name.split(" ")[0] || "there";
   const dateLabel = now.toLocaleDateString("en-PH", { weekday: "long", month: "long", day: "numeric", year: "numeric" });
@@ -245,14 +249,15 @@ export function DashboardPage() {
   const escrowHeld = extras?.escrowHeld ?? null;
   const dash = (v: number | null | undefined, fmt: (n: number) => string = String) => (v === null || v === undefined ? "—" : fmt(v));
 
-  const queues: { key: string; page: Page; icon: typeof ShieldCheck; count: number; one: string; many: string; tone: "danger" | "warn" | "info" | "accent" }[] = [
+  const queues: { key: string; page: Page; icon: typeof ShieldCheck; count: number | null; one: string; many: string; tone: "danger" | "warn" | "info" | "accent" }[] = [
     { key: "disputes", page: "disputes", icon: AlertTriangle, count: openDisputes, one: "open dispute", many: "open disputes", tone: "danger" },
     { key: "withdrawals", page: "withdrawals", icon: WalletCards, count: dashboardStats.pendingWithdrawals, one: "payout request", many: "payout requests", tone: "warn" },
     { key: "verifications", page: "verifications", icon: ShieldCheck, count: dashboardStats.pendingVerifications, one: "provider to verify", many: "providers to verify", tone: "warn" },
-    { key: "skills", page: "skill-requests", icon: Wrench, count: extras?.pendingServiceRequests ?? 0, one: "service request", many: "service requests", tone: "info" },
-    { key: "escrow", page: "transactions", icon: CreditCard, count: extras?.escrowCount ?? 0, one: "escrow hold", many: "escrow holds", tone: "accent" },
+    { key: "skills", page: "skill-requests", icon: Wrench, count: extras?.pendingServiceRequests ?? null, one: "service request", many: "service requests", tone: "info" },
+    { key: "escrow", page: "transactions", icon: CreditCard, count: extras?.escrowCount ?? null, one: "escrow hold", many: "escrow holds", tone: "accent" },
   ];
-  const openQueues = queues.filter((q) => q.count > 0).length;
+  const openQueues = queues.filter((q) => q.count !== null && q.count > 0).length;
+  const unknownQueues = queues.some((q) => q.count === null);
 
   return (
     <div>
@@ -264,7 +269,7 @@ export function DashboardPage() {
         <div className="mb-2.5 flex items-baseline justify-between gap-3">
           <h2 id="attention-title" className="text-[14px] font-semibold tracking-tight">Needs your attention</h2>
           <span className="text-[12px] text-muted-foreground">
-            {openQueues === 0 ? "All clear: nothing is waiting for review." : `${openQueues} ${openQueues === 1 ? "queue has" : "queues have"} work waiting`}
+            {unknownQueues ? "Some queue counts are unavailable." : openQueues === 0 ? "All clear: nothing is waiting for review." : `${openQueues} ${openQueues === 1 ? "queue has" : "queues have"} work waiting`}
           </span>
         </div>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
