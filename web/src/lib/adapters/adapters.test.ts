@@ -211,7 +211,7 @@ describe("row adapters", () => {
       id: "DSP-001", jobId: "job-003", jobTitle: "Fix kitchen sink", service: "Plumbing",
       clientName: "Jamie Kim", providerName: "Pat Morgan", amount: 500,
       reason: "Job not completed", details: "Provider never showed up.",
-      status: "OPEN", resolution: null, resolutionNote: null,
+      status: "OPEN", resolution: null, resolutionNote: null, paymentSettled: false,
       createdAt: "2026-05-01", resolvedAt: null,
     };
     const row = toDisputeRow(d);
@@ -227,7 +227,7 @@ describe("row adapters", () => {
       id: "DSP-002", jobId: "job-004", jobTitle: "Deep clean", service: "Cleaning",
       clientName: "Jamie Kim", providerName: "Pat Morgan", amount: 1200,
       reason: "Poor quality", details: null,
-      status: "RESOLVED", resolution: "REFUNDED_TO_CLIENT", resolutionNote: "Verified with photos.",
+      status: "RESOLVED", resolution: "REFUNDED_TO_CLIENT", resolutionNote: "Verified with photos.", paymentSettled: true,
       createdAt: "2026-05-01", resolvedAt: "2026-05-03",
     };
     const row = toDisputeRow(d);

@@ -35,7 +35,7 @@ import {
 import { cn } from "@/lib/utils";
 
 type Filter = "all" | "open" | "resolved" | "cancelled";
-type Resolution = "RELEASED_TO_PROVIDER" | "REFUNDED_TO_CLIENT";
+type Resolution = "RELEASED_TO_PROVIDER" | "REFUNDED_TO_CLIENT" | "REVIEWED";
 type ConversationState = ConversationMessage[] | "error";
 
 function statusTone(d: DisputeRow) {
@@ -114,7 +114,7 @@ export function DisputesPage() {
       setDoneThisSession((n) => n + 1);
       setSelectedId(neighborAfterRemoval(ids, id));
       showToast(
-        resolution === "RELEASED_TO_PROVIDER" ? "Escrow released to the provider." : "Escrow refunded to the client.",
+        resolution === "REVIEWED" ? "Admin decision recorded. No money was moved." : resolution === "RELEASED_TO_PROVIDER" ? "Escrow released to the provider." : "Escrow refunded to the client.",
       );
     } catch {
       showToast("Could not resolve that dispute. Please try again.", "error");
@@ -124,14 +124,14 @@ export function DisputesPage() {
   }
 
   const noteTooLong = note.length > NOTE_MAX_LENGTH;
-  const canDecide = !!selected?.isOpen && resolvingId === null && !noteTooLong;
+  const canDecide = !!selected?.isOpen && resolvingId === null && !noteTooLong && (!selected.paymentSettled || !!note.trim());
 
   useQueueKeys({
     ids,
     selectedId: effectiveId,
     onSelect: setSelectedId,
-    onApprove: canDecide ? () => setConfirming({ id: selected!.id, resolution: "RELEASED_TO_PROVIDER" }) : undefined,
-    onReject: canDecide ? () => setConfirming({ id: selected!.id, resolution: "REFUNDED_TO_CLIENT" }) : undefined,
+    onApprove: canDecide ? () => setConfirming({ id: selected!.id, resolution: selected!.paymentSettled ? "REVIEWED" : "RELEASED_TO_PROVIDER" }) : undefined,
+    onReject: canDecide && !selected?.paymentSettled ? () => setConfirming({ id: selected!.id, resolution: "REFUNDED_TO_CLIENT" }) : undefined,
   });
 
   const confirmTarget = disputes.find((row) => row.id === confirming?.id);
@@ -139,7 +139,7 @@ export function DisputesPage() {
   const emptyState = loading ? (
     <QueueListSkeleton />
   ) : disputes.length === 0 ? (
-    <QueueListState icon={Scale} title="No disputes raised yet" description="When a client disputes a job, the case lands here." />
+    <QueueListState icon={Scale} title="No disputes raised yet" description="Client complaints and provider appeals land here for review." />
   ) : filter === "open" && counts.open === 0 && !search ? (
     <QueueListState icon={Check} tone="ok" title="No open disputes" description="Every case has been decided." />
   ) : (
@@ -151,7 +151,7 @@ export function DisputesPage() {
       <PageHeader
         eyebrow="Operations"
         title="Disputes"
-        description="Read both sides, check the job chat, then release the escrow to the provider or refund the client."
+        description="Review both sides and the job chat. Decide held escrow cases or record a decision for payments already settled."
       />
 
       <QueueShell
@@ -229,19 +229,19 @@ export function DisputesPage() {
               footer={
                 selected.isOpen ? (
                   <>
-                    <Button
+                    {!selected.paymentSettled && <Button
                       variant="outline"
                       className="border-warn/40 text-warn hover:bg-warn-soft"
                       onClick={() => setConfirming({ id: selected.id, resolution: "REFUNDED_TO_CLIENT" })}
-                      disabled={resolvingId === selected.id || noteTooLong}
+                      disabled={!canDecide}
                     >
                       <RotateCcw /> Refund client
-                    </Button>
+                    </Button>}
                     <Button
-                      onClick={() => setConfirming({ id: selected.id, resolution: "RELEASED_TO_PROVIDER" })}
-                      disabled={resolvingId === selected.id || noteTooLong}
+                      onClick={() => setConfirming({ id: selected.id, resolution: selected.paymentSettled ? "REVIEWED" : "RELEASED_TO_PROVIDER" })}
+                      disabled={!canDecide}
                     >
-                      <Check /> Release to provider
+                      <Check /> {selected.paymentSettled ? "Record admin decision" : "Release to provider"}
                     </Button>
                   </>
                 ) : undefined
@@ -287,11 +287,12 @@ export function DisputesPage() {
 
               {selected.isOpen && (
                 <DetailSection title="Admin resolution note">
+                  {selected.paymentSettled && <p>Payment already settled. Record your decision here; use Transactions → Issue Credit if compensation is approved.</p>}
                   <ReasonField
                     value={note}
                     onChange={(value) => setNotes((prev) => ({ ...prev, [selected.id]: value }))}
                     max={NOTE_MAX_LENGTH}
-                    label="Resolution note (optional)"
+                    label={selected.paymentSettled ? "Resolution note (required)" : "Resolution note (optional)"}
                     placeholder="Document the reason for the final decision…"
                   />
                 </DetailSection>
@@ -305,15 +306,15 @@ export function DisputesPage() {
 
       <ConfirmDialog
         open={confirming !== null}
-        title={confirming?.resolution === "RELEASED_TO_PROVIDER" ? "Release escrow to the provider?" : "Refund escrow to the client?"}
+        title={confirming?.resolution === "REVIEWED" ? "Record the admin decision?" : confirming?.resolution === "RELEASED_TO_PROVIDER" ? "Release escrow to the provider?" : "Refund escrow to the client?"}
         message={
           !confirmTarget || !confirming
             ? ""
-            : confirming.resolution === "RELEASED_TO_PROVIDER"
+            : confirming.resolution === "REVIEWED" ? "This payment is already settled. Save the decision note without moving money. Any compensation must use the existing Issue Credit action." : confirming.resolution === "RELEASED_TO_PROVIDER"
               ? `Pay ${confirmTarget.amount} to ${confirmTarget.providerName}. This can't be undone.`
               : `Refund ${confirmTarget.amount} to ${confirmTarget.clientName}. This can't be undone.`
         }
-        confirmLabel={confirming?.resolution === "RELEASED_TO_PROVIDER" ? "Release payment" : "Refund client"}
+        confirmLabel={confirming?.resolution === "REVIEWED" ? "Save decision" : confirming?.resolution === "RELEASED_TO_PROVIDER" ? "Release payment" : "Refund client"}
         danger={false}
         busy={resolvingId !== null}
         onConfirm={() => confirming && handleResolve(confirming.id, confirming.resolution)}

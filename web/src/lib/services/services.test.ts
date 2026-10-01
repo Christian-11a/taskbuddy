@@ -694,6 +694,7 @@ describe("getDisputes", () => {
         status: "OPEN",
         resolution: null,
         resolutionNote: null,
+        paymentSettled: false,
         createdAt: "2026-08-01",
         resolvedAt: null,
       },
