@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { UsersPage, bulkMessage } from "./UsersPage";
 import { ToastProvider } from "@/components/ui/Toast";
@@ -48,14 +48,16 @@ describe("UsersPage — suspend flow", () => {
   const setUserStatus = vi.fn();
   const bulkSetUserStatus = vi.fn();
   const sendPasswordReset = vi.fn();
+  const refreshUsers = vi.fn();
 
   beforeEach(() => {
-    vi.clearAllMocks();
+    vi.resetAllMocks();
     mockedUseApp.mockReturnValue({
       users: [makeUser()],
       setUserStatus,
       bulkSetUserStatus,
       sendPasswordReset,
+      refreshUsers,
       loading: false,
     } as unknown as ReturnType<typeof useApp>);
   });
@@ -91,6 +93,28 @@ describe("UsersPage — suspend flow", () => {
     expect(setUserStatus).toHaveBeenCalledTimes(1);
   });
 
+  it("reports a successful suspend separately from a failed user-list refresh", async () => {
+    setUserStatus.mockResolvedValueOnce({ refreshFailed: true });
+    refreshUsers.mockResolvedValueOnce(undefined);
+    const user = userEvent.setup();
+    renderWithToast(<UsersPage />);
+    await openSuspendPrompt(user);
+
+    await user.type(screen.getByPlaceholderText("Reason (required)"), "Repeated no-shows");
+    await user.click(screen.getByRole("button", { name: /confirm suspend/i }));
+
+    expect(await screen.findByText("The user list could not be refreshed after that action.")).toBeInTheDocument();
+    expect(await screen.findByText("User suspended.")).toBeInTheDocument();
+    expect(screen.queryByText("Could not suspend. Please try again.")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /refresh users/i })).toBeInTheDocument();
+    await user.click(screen.getByText("Morgan Lee"));
+    expect(screen.getByRole("button", { name: /suspend account/i })).toBeDisabled();
+
+    await user.click(screen.getByRole("button", { name: /refresh users/i }));
+    expect(refreshUsers).toHaveBeenCalledTimes(1);
+    expect(screen.queryByText("The user list could not be refreshed after that action.")).not.toBeInTheDocument();
+  });
+
   it("disables the confirm button while the request is in flight, so a slow network can't double-submit", async () => {
     let resolveRequest!: () => void;
     setUserStatus.mockReturnValueOnce(
@@ -118,6 +142,7 @@ describe("UsersPage — suspend flow", () => {
       setUserStatus,
       bulkSetUserStatus,
       sendPasswordReset,
+      refreshUsers,
       loading: false,
     } as unknown as ReturnType<typeof useApp>);
     const user = userEvent.setup();
@@ -141,6 +166,7 @@ describe("UsersPage — suspend flow", () => {
       setUserStatus,
       bulkSetUserStatus,
       sendPasswordReset,
+      refreshUsers,
       loading: false,
     } as unknown as ReturnType<typeof useApp>);
     const user = userEvent.setup();
@@ -160,6 +186,7 @@ describe("UsersPage — suspend flow", () => {
       setUserStatus,
       bulkSetUserStatus,
       sendPasswordReset,
+      refreshUsers,
       loading: false,
     } as unknown as ReturnType<typeof useApp>);
     const user = userEvent.setup();
@@ -175,6 +202,108 @@ describe("UsersPage — suspend flow", () => {
     renderWithToast(<UsersPage />);
     await user.type(screen.getByPlaceholderText("Search by name, email…"), "nobody");
     expect(screen.getByText("No users match this search or filter.")).toBeInTheDocument();
+  });
+
+  it("keeps only failed accounts selected, shows their names and errors, and retries no successes", async () => {
+    const users = [
+      makeUser(),
+      makeUser({ id: "u-2", name: "Jamie Kim", email: "jamie@example.com" }),
+      makeUser({ id: "u-3", name: "Paula Pending", email: "paula@example.com" }),
+    ];
+    mockedUseApp.mockReturnValue({
+      users,
+      setUserStatus,
+      bulkSetUserStatus,
+      sendPasswordReset,
+      refreshUsers,
+      loading: false,
+    } as unknown as ReturnType<typeof useApp>);
+    bulkSetUserStatus
+      .mockResolvedValueOnce({
+        succeeded: 2,
+        failed: 1,
+        errors: [{ id: "u-2", status: 429, message: "Too many requests — try again in 30s." }],
+      })
+      .mockResolvedValueOnce({ succeeded: 1, failed: 0, errors: [] });
+    const user = userEvent.setup();
+    renderWithToast(<UsersPage />);
+
+    await user.click(screen.getByRole("checkbox", { name: "Select all 3 matching users" }));
+    await user.click(screen.getByRole("button", { name: "Reinstate" }));
+
+    expect(await screen.findByText("Some user actions failed")).toBeInTheDocument();
+    const failurePanel = screen.getByRole("region", { name: "Some user actions failed" });
+    expect(within(failurePanel).getByText("Jamie Kim")).toBeInTheDocument();
+    expect(within(failurePanel).getByText(/Too many requests — try again in 30s\./)).toBeInTheDocument();
+    expect(screen.getByRole("checkbox", { name: "Select Jamie Kim" })).toBeChecked();
+    expect(screen.getByRole("checkbox", { name: "Select Morgan Lee" })).not.toBeChecked();
+    expect(screen.getByRole("checkbox", { name: "Select Paula Pending" })).not.toBeChecked();
+    expect(within(failurePanel).getByText(/jamie@example\.com · ID u-2/)).toBeInTheDocument();
+    expect(bulkSetUserStatus).toHaveBeenNthCalledWith(1, ["u-1", "u-2", "u-3"], "Active");
+
+    await user.click(screen.getByRole("button", { name: "Reinstate" }));
+    await screen.findByText("Reinstated 1 user.");
+    expect(bulkSetUserStatus).toHaveBeenNthCalledWith(2, ["u-2"], "Active");
+    expect(screen.queryByText("Some user actions failed")).not.toBeInTheDocument();
+    expect(screen.getByRole("checkbox", { name: "Select Jamie Kim" })).not.toBeChecked();
+  });
+
+  it("shows a bulk action success with a separate refresh warning and clears it after refresh", async () => {
+    mockedUseApp.mockReturnValue({
+      users: [makeUser()],
+      setUserStatus,
+      bulkSetUserStatus,
+      sendPasswordReset,
+      refreshUsers,
+      loading: false,
+    } as unknown as ReturnType<typeof useApp>);
+    bulkSetUserStatus.mockResolvedValueOnce({ succeeded: 1, failed: 0, errors: [], refreshFailed: true });
+    refreshUsers.mockResolvedValueOnce(undefined);
+    const user = userEvent.setup();
+    renderWithToast(<UsersPage />);
+
+    await user.click(screen.getByRole("checkbox", { name: "Select all 1 matching users" }));
+    await user.click(screen.getByRole("button", { name: "Reinstate" }));
+
+    expect(await screen.findByText("The user list could not be refreshed after that action.")).toBeInTheDocument();
+    expect(await screen.findByText("Reinstated 1 user.")).toBeInTheDocument();
+    expect(screen.queryByText("Could not reinstate the selected users. Please try again.")).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: /refresh users/i }));
+    expect(refreshUsers).toHaveBeenCalledTimes(1);
+    expect(screen.queryByText("The user list could not be refreshed after that action.")).not.toBeInTheDocument();
+  });
+
+  it("requires a list refresh and deselects accounts when a bulk request outcome is unconfirmed", async () => {
+    mockedUseApp.mockReturnValue({
+      users: [makeUser()],
+      setUserStatus,
+      bulkSetUserStatus,
+      sendPasswordReset,
+      refreshUsers,
+      loading: false,
+    } as unknown as ReturnType<typeof useApp>);
+    bulkSetUserStatus.mockResolvedValueOnce({
+      succeeded: 0,
+      failed: 1,
+      errors: [{ id: "u-1", status: 0, message: "Failed to fetch" }],
+    });
+    refreshUsers.mockResolvedValueOnce(undefined);
+    const user = userEvent.setup();
+    renderWithToast(<UsersPage />);
+
+    await user.click(screen.getByRole("checkbox", { name: "Select all 1 matching users" }));
+    await user.click(screen.getByRole("button", { name: "Reinstate" }));
+
+    expect(await screen.findByText("Some account outcomes are unconfirmed.")).toBeInTheDocument();
+    expect(screen.getByText(/morgan@example\.com · ID u-1/)).toBeInTheDocument();
+    expect(screen.getByText(/the action may already have succeeded/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Export 1 selected" })).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: /refresh users/i }));
+    expect(await screen.findByText(/check the refreshed account status before selecting it again/i)).toBeInTheDocument();
+    expect(screen.getByRole("checkbox", { name: "Select Morgan Lee" })).not.toBeChecked();
+    expect(screen.queryByText("Some account outcomes are unconfirmed.")).not.toBeInTheDocument();
   });
 });
 
