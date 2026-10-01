@@ -107,14 +107,14 @@ describe('fn_job_provider_features eligibility', () => {
     assert.ok(Number(rows[0].distance_km) < 1);
   });
 
-  it('includes a provider of another category within their radius, with skills_match 0', async () => {
+  it('excludes an unapproved skill and includes an approved secondary skill', async () => {
     const id = await provider({ category: CLEANING });
     const jobId = await postJob();
-
+    assert.deepEqual(await pool(jobId), []);
+    await q('insert into provider_secondary_categories(provider_id, category_id) values ($1, $2)', [id, PLUMBING]);
     const [row] = await pool(jobId);
-
     assert.equal(row.provider_id, id);
-    assert.equal(Number(row.skills_match), 0);
+    assert.equal(Number(row.skills_match), 1);
   });
 
   it('includes a provider 13 km away with a 15 km radius', async () => {
