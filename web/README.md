@@ -89,9 +89,9 @@ suppressed via `suppressHydrationWarning` on `<body>`.
 
 **Console data is missing.** A failed core data load shows a banner at the top
 of the admin console with a Retry button. If only analytics fails, Dashboard
-and Reports show an inline unavailable message and Retry; they do not present
-the failed request as zero-valued data. See [Needed to Move Forward](#needed-to-move-forward)
-for the current backend dependency.
+and Reports calculate a browser fallback from working list endpoints and label
+it as calculated in the browser. The live summary endpoint was verified working
+on 2026-09-30; the fallback remains for future outages.
 
 ---
 
@@ -130,11 +130,12 @@ admin pages → context/AppContext → lib/services → lib/api/client → backe
   Transactions, Activity) reload on the same tick via `hooks/useLiveTick`. A
   silent refresh never starts while the first load is still running, and a
   moderation action discards any refresh that was already in flight.
-- **Lists load in full.** `fetchAllRows()` in `lib/services` walks each admin
-  list endpoint's `limit`/`offset` until `total` is reached, so nothing stops
-  silently at the first 100–200 rows. If `/admin/analytics/summary` fails, the
-  same summary is rebuilt in the browser from those lists
-  (`lib/services/browserAnalytics.ts`).
+- **Lists use the backend's paging contracts.** Bookings, Activity, Audit and
+  Wallet load server-filtered pages. Other queues load their complete lists
+  for local filtering; Service Requests walks 100-row pages until the reported
+  total is reached, so its search includes requests beyond the first 100. If
+  `/admin/analytics/summary` fails, the same summary is rebuilt in the browser
+  from working lists (`lib/services/browserAnalytics.ts`).
 - **An expired token is refreshed once** via `POST /auth/refresh` and the
   request retried, instead of bouncing the admin to the login screen.
 
@@ -231,18 +232,18 @@ the backend and convert its JSON tokens into httpOnly cookies):
 | Page | Endpoint(s) |
 |---|---|
 | Login | `POST /auth/admin/login` |
-| Dashboard | `GET /admin/analytics/summary` (rebuilt from the list endpoints below if it fails), `GET /admin/activity`, `GET /admin/transactions?status=held` (escrow held), `GET /admin/bookings?status=…&limit=1` (job counts), `GET /admin/skill-requests?status=pending` |
+| Dashboard | `GET /admin/analytics/summary` (includes held escrow and job totals; browser fallback retained), `GET /admin/activity`, `GET /admin/skill-requests?status=pending&limit=1&offset=0` (exact queue total). Separate escrow/booking reads are used only if summary fields are absent. |
 | Verifications | `GET /admin/verifications`, `POST .../approve` · `/reject` (accepts a reason) |
 | Users | `GET /admin/users`, `POST .../suspend` (reason + optional duration) · `/reinstate` · `/send-password-reset` |
-| Transactions | **Escrow:** `GET /admin/transactions`, `POST /admin/escrow/:id/retry-transfer` (card-funded payouts) · **Wallet:** `GET /admin/wallet-transactions` (fetched when the tab opens), `POST /admin/wallet-transactions/recovery-credit` |
+| Transactions | **Escrow:** `GET /admin/transactions`, `POST /admin/escrow/:id/retry-transfer` (card-funded payouts) · **Wallet:** `GET /admin/wallet-transactions?search=…&limit=…&offset=…` (fetched when the tab opens), `POST /admin/wallet-transactions/recovery-credit` |
 | Disputes | `GET /admin/disputes`, `POST .../resolve` (accepts a note), `GET /admin/jobs/:jobId/conversation` (on demand) |
-| Bookings | `GET /admin/bookings`, `GET /admin/bookings?status=…&limit=1` (tab counts), `POST .../cancel`, `GET /admin/bookings/:id` (detail drawer) |
+| Bookings | `GET /admin/bookings` (page, total and search-filtered `status_counts` together), `POST .../cancel`, `GET /admin/bookings/:id` (detail drawer) |
 | Activity Log | `GET /admin/activity` |
-| Audit Log | `GET /admin/audit` (all pages) |
+| Audit Log | `GET /admin/audit?search=…&action=…&limit=…&offset=…` (server-filtered pages and total) |
 | Reports | `GET /admin/analytics/summary` (same browser fallback as the Dashboard) |
 | Withdrawals | `GET /admin/withdrawals`, `POST .../:id/settle` · `POST .../:id/reject` |
 | Platform | `GET`/`PATCH /admin/commission`, category CRUD, admin accounts, notification broadcast |
-| Settings | `PATCH /profiles/me`, `POST /auth/change-password`, `GET`/`PATCH /settings`, `GET`/`PATCH /admin/maintenance` |
+| Settings | `PATCH /profiles/me`, `POST /auth/change-password`, `GET`/`PATCH /settings` (account dark mode), `GET`/`PATCH /admin/maintenance`. Notifications, Platform name/support email and Data & Privacy are unavailable pending implementation. |
 
 The Platform page consumes the commission, category, admin-account, and
 notification endpoints. The Withdrawals page consumes the settlement queue.
@@ -346,11 +347,10 @@ as renderable public URLs, including conversion of stored `job-photos` paths.
 The promo site's Sign In / Sign Up / Forgot Password modal talks to the
 backend's plain customer endpoints — a different mechanism from the admin
 console's cookie-based `/auth/admin/*` above, because these endpoints return
-tokens in the JSON body rather than setting cookies themselves (the same
-contract `mobile` already uses). `web`'s own route handlers
-(`app/api/auth/*`) are the thing that turns that JSON response into an httpOnly
-`tb_account_access`/`tb_account_refresh` cookie pair — the backend never sees
-a cookie for these.
+tokens in the JSON body rather than setting cookies themselves. `web`'s own
+route handlers (`app/api/auth/*`) convert that JSON response into an httpOnly
+`tb_account_access`/`tb_account_refresh` cookie pair — the backend never sees a
+cookie for these.
 
 **Endpoints in use:** `POST /auth/register`, `POST /auth/login`,
 `POST /auth/logout`, `GET /auth/me`, `POST /auth/forgot-password`,
@@ -445,9 +445,6 @@ not missed.
 - **CSP is report-only.** The public site and older components still style
   inline, so an enforcing policy needs `'unsafe-inline'` for styles anyway, and Next injects inline hydration
   scripts. Tighten once the violation report is clean.
-- **Inert Settings toggles are labelled, not removed.** Notifications, Platform
-  and Data & Privacy save to this device only and say so. An honestly labelled
-  non-functional toggle documents intent; a deleted one loses the requirement.
 
 ---
 
@@ -478,96 +475,86 @@ refresh, keyboard work queues), keeping every feature and API call.
 
 ---
 
-## Needed to Move Forward
+## Manual Verification
 
-### Backend follow-up (backend-owned)
+- **Completed read-only checks (2026-09-30):** admin login, Dashboard, searched
+  Booking status counts, Settings availability, Audit search/filter, Wallet
+  search/empty state/page totals, Service Requests and Reports. These checks
+  did not approve, settle, credit, suspend or otherwise change production data.
 
-> **Implementation update (2026-09-29, local only):** items 1–2 and the backend
-> portion of item 4 below are implemented, along with all three count/search
-> requests under "Nice to have". Apply migrations 0035/0036 before deploying
-> the backend. Service-request pagination is opt-in (`limit`/`offset` returns
-> `{ items, total }`); this web build still uses the legacy array. Counts/search
-> are available for later web adoption; existing browser workarounds remain.
-> See [`HANDOFF.md`](../HANDOFF.md) for contracts and outstanding external work.
+- **Completed test-account actions (2026-09-30):** single and bulk
+  suspension/reinstatement (accounts restored to Active), cancellation of one
+  TEST ONLY booking with no held escrow, and approval of a test provider's
+  secondary service request. Fresh reads confirmed the saved results.
+  These do not prove cancellation with held escrow or financial settlement.
 
-We don't own the backend, so these are written as requests for the backend
-owner. **Nothing here blocks the web**: each item either has a web-side
-workaround in place or only affects the mobile app.
+- **Pending action verification:** approve/reject a verification,
+  release/refund a dispute, settle/reject a withdrawal, reject a service
+  request, cancel a booking with held escrow, Retry transfer, Issue Credit, Platform
+  edits and a broadcast, Maintenance Mode on/off, and a password change.
 
-#### Needs a backend fix
+## Build Status
 
-**1. `GET /admin/analytics/summary` fails with 400 — cause confirmed (2026-09-29).**
+The production build completes without the earlier workspace-root warning.
 
-> Could not embed because more than one relationship was found for
-> 'provider_profiles' and 'service_categories'
+On 2026-09-30, the latest local web suite passed **208 tests**, with the
+opt-in live-login test skipped. TypeScript and ESLint passed. The production
+build passed in the earlier verification round; it was not rerun for the
+latest moderation changes. Regression tests cover missing queue counts,
+stale searches, page-scoped exports, unavailable Settings, Service Requests
+beyond 100 rows, signup document dialog labels, and moderation partial
+failures/refresh recovery. Browser login was checked separately.
 
-Migration `0034_qa_provider_admin.sql` added `provider_secondary_categories`,
-a second link between `provider_profiles` and `service_categories` (the first
-is `provider_profiles.category_id` from migration 0001). The top-providers read
-in `backend/src/admin/admin.service.ts` (`analyticsSummary()`, the
-`.from('provider_profiles')` select) embeds `service_categories(name)` without
-saying which link to follow, so PostgREST refuses it and the whole summary
-fails. **Fix:** name the relationship, e.g. `service_categories!category_id(name)`
-(or the FK constraint name).
+## Current Web Blockers
 
-*Web workaround (in place):* when the endpoint fails, the console rebuilds the
-same summary in the browser from list endpoints that work, with the backend's
-own formulas (`lib/services/browserAnalytics.ts`). Dashboard and Reports show
-real figures with a small "calculated in your browser" note, and switch back
-to the server's numbers by themselves once the endpoint is fixed; no web
-change needed then. The cost is a few extra list requests per load (cached
-for 2 minutes), so fixing the query is still worth it.
+None currently confirmed. On 2026-09-30 the deployed backend returned 200 for
+analytics, booking counts, Service Requests pagination, Audit and Wallet lists.
+Audit/Wallet search returned zero matches for a nonexistent term. Backend
+implementation requests are listed below; pending action tests stay in
+[Manual Verification](#manual-verification).
 
-**2. The same embed breaks two mobile-facing queries, silently.** Both ignore
-the error, so they return nothing instead of failing loudly:
-`backend/src/auth/auth.service.ts` (~line 777, a provider's own
-`provider_profile` comes back empty) and
-`backend/src/providers/providers.controller.ts` (~line 25, `GET /providers/:id`
-finds no provider). Same `!category_id` hint fixes both. The web can't work
-around these; they're in the mobile app's path.
+## Needed Backend Work
 
-**3. Settings saved on this device only.** Notifications, Platform name/support
-email and Data & Privacy save to `localStorage` and are tagged "This device" in
-Settings (see Deliberate tradeoffs). If they should become real: an
-admin-preferences endpoint and the jobs behind each toggle.
+**Detailed handoff:** [Web admin backend requirements](../docs/backend-handoff-web-admin.md).
+It defines the required behavior, ownership, multi-admin rules, web follow-up
+and verification for each request below.
 
-**4. Service requests stop at 100.** `GET /admin/skill-requests` applies
-`.limit(100)` (`backend/src/skill-requests/skill-requests.service.ts`) and takes no
-`limit`/`offset`, so request 101 onward never reaches the console. The web says
-"Showing the first 100" when it hits the cap. Request: `limit`/`offset` and a
-`total`, like the other admin lists.
+**Owner: backend developer.** These requests do not block the working console.
+They are needed to enable the unavailable Settings features and improve queue
+search. The web developer will connect and test the supported behavior once
+the backend work is ready. This is a handoff list, not a claim that these
+features already work.
 
-#### Nice to have (worked around on the web, 2026-09-29)
+### Required to enable or improve these features
 
-These used to cap or blank out figures; the web now handles them itself. A
-backend change would only make them cheaper.
+| Feature | Backend work needed | Web follow-up |
+|---|---|---|
+| **Service Requests search** | Add provider/category search to `GET /admin/skill-requests`. Filter before pagination and return the matching total. | Switch from loading the complete selected-status queue to server-filtered pages. The old first-100 cutoff is already removed. |
+| **Notification settings** | Implement shared configuration, event-based admin alerts, and a scheduled daily summary with a defined timezone. | Connect and enable the controls after delivery behavior is verified. |
+| **Platform name and support email** | Agree which places consume these values; implement shared configuration that those places actually use. | Connect Settings and the agreed web consumers. Saving a value only on this device is not enough. |
+| **Data & Privacy settings** | Agree retention/purge rules and permissions. Implement shared configuration and authorized retention/purge behavior. | Implement and test report-export anonymization; connect verified controls. Keep purge, retention and anonymization controls unavailable until their behavior exists. |
 
-- **Escrow and open-job totals** — the Dashboard pages through every held
-  escrow row and counts jobs per status itself. Cheaper: add
-  `escrow_held_total`, `escrow_held_count`, `open_jobs` and `matching_jobs`
-  to `/admin/analytics/summary`.
-- **Per-status Bookings counts** — the web asks each status for its total with
-  `limit=1` (eight small requests). Cheaper: a `status_counts` object on
-  `GET /admin/bookings`.
-- **Full lists** — every admin list endpoint already accepts `limit`/`offset`,
-  which the web now uses (`fetchAllRows`) instead of stopping at 100–200 rows.
-  Only missing piece: `search` on `/admin/audit` and
-  `/admin/wallet-transactions` (the web searches in the browser for now).
+Shared configuration must persist on the server and be read consistently by
+all authorized admins, not separately saved in each browser. The backend/web
+contract must define who can change it and how concurrent edits are handled.
 
-### Manual verification
+### Additional improvements — not current blockers
 
-- **Completed:** Issue Credit, password reset, and real-email signup (recorded
-  in [`CHANGELOG.md`](./CHANGELOG.md)).
-- **Pending — admin console redesign (2026-09-29):** every page was checked
-  in the browser with sample data and read-only against the live API, but no
-  real action was performed. Still to try against the live backend: approve and
-  reject a verification, release and refund a dispute, settle and reject a
-  withdrawal, approve and reject a service request, suspend and reinstate a
-  user (single and bulk), cancel a booking, Retry transfer, Issue Credit,
-  Platform edits and a broadcast, Maintenance Mode on/off, and a password change.
+- **Booking-title search:** extend `admin_list_bookings` to search `job.title`
+  before pagination/counting. Current ID, client, provider and category search
+  works; title search is an additional capability. The web can update the
+  search hint and regression tests after the backend supports it.
+- **Larger queues:** full-list helpers still have a **5,000-row safety limit**.
+  Before queues approach that size, use server-filtered pagination and matching
+  totals. Reuse existing backend pagination where available; request missing
+  filters/counts from the backend owner instead of loading everything in the
+  browser. The web must also move those views off full-list helpers.
 
-### Build warning (resolved)
+### What already works
 
-The repository keeps its root and web lockfiles. `next.config.ts` pins
-Turbopack's root to `web/`, and the production build completes without the
-workspace-root warning.
+Appearance and activity badges remain functional; maintenance mode uses the
+shared backend. Old locally stored values for unavailable controls do not
+activate any feature. The separate Platform administration page works
+independently of the unavailable Platform fields in Settings.
+
+The analytics fallback is documented in [`lib/services/browserAnalytics.ts`](./src/lib/services/browserAnalytics.ts). [`HANDOFF.md`](../HANDOFF.md) describes the backend contracts; its older undeployed status is superseded for the endpoints verified above.

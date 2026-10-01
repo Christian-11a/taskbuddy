@@ -32,6 +32,9 @@ order, newest first.
 
 | Date | Entry | Category |
 |---|---|---|
+| 2026-10-01 | Admin regression suite after moderation recovery | Verification |
+| 2026-09-30 | Account moderation: per-account bulk failures and honest refresh recovery | Fix |
+| 2026-09-30 | Server counts, complete Service Requests, server search and honest Settings | Backend integration, Fix, Improvement |
 | 2026-09-29 | Leaner Dashboard; login page on the new design | Improvement |
 | 2026-09-29 | Complete data without waiting on the backend | Workaround, Improvement |
 | 2026-09-29 | Admin console redesign (branch `admin-redesign`) | Feature, Fix, Accessibility |
@@ -49,6 +52,60 @@ order, newest first.
 | undated | Backend follow-ups (migrations 0014, 0017) | Backend integration |
 
 ---
+
+### 2026-10-01 · Admin regression suite after moderation recovery
+
+**Category:** Verification
+
+The latest local web suite passed **208 tests**, with the opt-in live-login test
+skipped. TypeScript and ESLint passed. The production build passed in the earlier
+verification round but was not rerun after the latest moderation changes. The
+README's Build Status section records that distinction.
+
+---
+
+### 2026-09-30 · Account moderation: per-account bulk failures and honest refresh recovery
+
+**Category:** Fix
+
+- Bulk suspension/reinstatement identifies each failed account and its API error.
+  Only unsuccessful accounts stay selected for retry; confirmed successes are
+  removed from the selection.
+- A failed list reload after a confirmed moderation action no longer reports
+  that action as failed or discards its bulk results. The console preserves the
+  last available list, shows a separate refresh warning, and lets the admin
+  retry fetching current statuses before performing more moderation.
+- Regression tests simulate partial failures and failed reloads without
+  changing live accounts. Backend moderation endpoints remain unchanged.
+
+### 2026-09-30 · Server counts, complete Service Requests, server search and honest Settings
+
+**Category:** Backend integration, Fix, Improvement
+
+- Dashboard consumes the analytics summary's held escrow and open/matching
+  job totals. Booking tabs consume `status_counts` with their filtered page
+  instead of issuing eight separate count calls. Missing dashboard queue
+  counts display as unavailable rather than implying that no work exists.
+- Service Requests loads successive 100-row pages until the server total is
+  reached. Local queue search covers the complete selected status, and the
+  dashboard pending count reads the total with a one-row request. Incomplete
+  pages produce an error instead of silently hiding requests. Server-side
+  Service Requests search remains backend work.
+- Audit and Wallet use server search, totals and pagination, with stale-response
+  guards. Wallet export keeps its current-page/selection scope; page sums are
+  explicitly identified as page sums. Issue Credit still refreshes the ledger.
+- Unimplemented Notifications, Platform name/support email and Data & Privacy
+  settings are disabled and labelled unavailable. Working account, appearance,
+  activity-badge and maintenance controls remain available.
+- Deployed analytics/count/paging/search contracts were read-only verified on
+  2026-09-30. The old analytics-400/deployment follow-up is removed from the
+  current README; historical workaround entries remain below.
+- Final review also hides previous Booking counts during search debounce and
+  treats a missing payout count as unavailable, not zero. Validation: 192 tests
+  passed, one opt-in live-login test skipped; TypeScript, ESLint and the
+  production build passed.
+  Read-only browser checks covered login and the changed console flows; real
+  admin action tests remain explicitly pending in the README.
 
 ### 2026-09-29 · Leaner Dashboard; login page on the new design
 
@@ -642,6 +699,8 @@ first — no schema change, filename only.)
 
 | Date | Entry | Category |
 |---|---|---|
+| 2026-10-01 | Proof statistics reveal as the section scrolls into view | Improvement, Accessibility |
+| 2026-09-30 | Signup document dialog uses the visible document title | Accessibility, Fix |
 | 2026-09-28 | Promo site refresh: hero film, legal pages, sign-up fixes | Feature, Fix |
 | 2026-09-23 | Carousel fits phones | Fix |
 | undated | Resolved: Google OAuth redirect URI | Fix |
@@ -651,6 +710,29 @@ first — no schema change, filename only.)
 | undated | Role-selection step for a first-time Google signup | Feature |
 | undated | Google Sign-In wiring, CSRF guard, and a sitemap | Feature, Security |
 | undated | Public website, real customer auth | Feature |
+
+---
+
+### 2026-10-01 · Proof statistics reveal as the section scrolls into view
+
+**Category:** Improvement · Accessibility
+
+Added the "The problem, in numbers" heading and statistic cards to the promo
+page's existing scroll-reveal animation. The section now animates into view as
+visitors scroll to it, using the same reveal behavior as the other targeted
+sections.
+
+---
+
+### 2026-09-30 · Signup document dialog uses the visible document title
+
+**Category:** Accessibility · Fix
+
+- Privacy now labels the signup dialog "Privacy Policy", rather than using
+  the hidden Terms & Conditions heading. Terms and the other auth panels keep
+  their own labels. No visual, backend, or mobile changes.
+- Added regression coverage using the real homepage markup and auth script
+  for both document labels, reopening, and the existing Back/Close controls.
 
 ---
 
@@ -952,10 +1034,24 @@ The admin side of this pass (the move to `/admin/*` and the login card) is in Pa
 
 | Date | Entry | Category |
 |---|---|---|
+| 2026-10-01 | Dedicated backend handoff for web admin requests | Docs |
 | 2026-09-23 | Build workspace root is explicit | Build |
 | 2026-09-15 | Final web verification and light-mode default | Verification |
 | undated | Docs cleanup: open items grouped by who has to act | Docs |
 | undated | Docs cleanup: README stopped duplicating this changelog | Docs |
+
+---
+
+### 2026-10-01 · Dedicated backend handoff for web admin requests
+
+**Category:** Docs
+
+Added [`docs/backend-handoff-web-admin.md`](../docs/backend-handoff-web-admin.md)
+for the backend requests that support web admin features. It records current
+behavior, ownership, required API or policy decisions, web follow-up, and
+verification steps. The README links to it and keeps the short actionable
+summary; mobile-only requests and pending manual admin tests stay in their
+respective documentation.
 
 ---
 
