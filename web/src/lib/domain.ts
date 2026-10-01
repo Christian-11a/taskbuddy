@@ -275,7 +275,11 @@ export interface DashboardStats {
   avgRating: number;
   totalCommission: number;
   monthlyCommission: number;
-  pendingWithdrawals: number;
+  pendingWithdrawals: number | null;
+  escrowHeld?: number;
+  escrowCount?: number;
+  openJobs?: number;
+  matchingJobs?: number;
 }
 
 export interface MonthlyPoint {
@@ -291,6 +295,7 @@ export interface CategoryShare {
 export type ActivityType = "tx" | "user" | "alert";
 
 export interface ActivityEvent {
+  id: number;
   time: string;
   text: string;
   type: ActivityType;

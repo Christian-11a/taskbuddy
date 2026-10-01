@@ -216,7 +216,27 @@ describe("setUserStatus", () => {
       expect.stringContaining("/admin/users/u1/suspend"),
       expect.objectContaining({ method: "POST" }),
     );
-    expect(users[0].status).toBe("SUSPENDED");
+    expect(users.rows?.[0].status).toBe("SUSPENDED");
+    expect(users.refreshFailed).toBeUndefined();
+  });
+
+  it("reports a failed user refresh after the status change succeeds", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockImplementationOnce(() => Promise.resolve(jsonResponse({ id: "u1" })))
+      .mockImplementationOnce(() => Promise.resolve(jsonResponse({ message: "temporary failure" }, 503)));
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    await expect(services.setUserStatus("u1", "SUSPENDED")).resolves.toEqual({
+      rows: null,
+      refreshFailed: true,
+    });
+  });
+
+  it("throws when the status change POST fails", async () => {
+    global.fetch = vi.fn(() => Promise.resolve(jsonResponse({ message: "cannot suspend admin" }, 400))) as unknown as typeof fetch;
+
+    await expect(services.setUserStatus("u1", "SUSPENDED")).rejects.toThrow("cannot suspend admin");
   });
 });
 
@@ -247,7 +267,7 @@ describe("paginated admin searches", () => {
     global.fetch = fetchMock as unknown as typeof fetch;
 
     await expect(services.searchBookings({ search: "Ramos", status: "completed", page: 3, pageSize: 7 }))
-      .resolves.toEqual({ items: [], total: 23 });
+      .resolves.toEqual({ items: [], total: 23, statusCounts: undefined });
 
     expect(fetchMock).toHaveBeenCalledWith(
       expect.stringContaining("/admin/bookings?search=Ramos&status=completed&limit=7&offset=14"),
@@ -341,7 +361,7 @@ describe("getRecentActivity", () => {
     const activity = await services.getRecentActivity();
 
     expect(activity).toEqual([
-      { time: "just now", text: 'Booking "Fix sink" was completed', type: "tx" },
+      { id: 1, time: "just now", text: 'Booking "Fix sink" was completed', type: "tx" },
     ]);
   });
 });
@@ -737,6 +757,40 @@ describe("bulk actions", () => {
     });
   });
 
+  it("reports a failed user refresh after all bulk status POSTs succeed", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockImplementationOnce(() => Promise.resolve(jsonResponse({ id: "u1" })))
+      .mockImplementationOnce(() => Promise.resolve(jsonResponse({ id: "u2" })))
+      .mockImplementationOnce(() => Promise.resolve(jsonResponse({ message: "temporary failure" }, 503)));
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    await expect(services.bulkSetUserStatus(["u1", "u2"], "SUSPENDED")).resolves.toEqual({
+      rows: null,
+      refreshFailed: true,
+      succeeded: 2,
+      failed: 0,
+      errors: [],
+    });
+  });
+
+  it("preserves partial bulk counts and errors when the user refresh fails", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockImplementationOnce(() => Promise.resolve(jsonResponse({ message: "cannot suspend admin" }, 400)))
+      .mockImplementationOnce(() => Promise.resolve(jsonResponse({ id: "u2" })))
+      .mockImplementationOnce(() => Promise.resolve(jsonResponse({ message: "temporary failure" }, 503)));
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    await expect(services.bulkSetUserStatus(["u1", "u2"], "SUSPENDED")).resolves.toEqual({
+      rows: null,
+      refreshFailed: true,
+      succeeded: 1,
+      failed: 1,
+      errors: [{ id: "u1", status: 400, message: "cannot suspend admin" }],
+    });
+  });
+
   it("never has more than BULK_CONCURRENCY requests in flight", async () => {
     // Every bulk request hits the same handler, and the API limits per
     // endpoint per IP — an unbounded Promise.all over 300 ids earned 429s.
@@ -853,6 +907,17 @@ describe("cancelBooking", () => {
 });
 
 describe("getDashboardStats", () => {
+  it("uses the new summary totals without separate escrow/job list calls", async () => {
+    const fetchMock = vi.fn(() => Promise.resolve(jsonResponse({
+      totals: { users: 39, providers: 13, bookings: 19, total_revenue: 0, monthly_revenue: 0,
+        pending_verifications: 0, escrow_held_total: 500, escrow_held_count: 1, open_jobs: 0, matching_jobs: 1 },
+      bookings_by_status: {},
+    })));
+    global.fetch = fetchMock as unknown as typeof fetch;
+    expect(await services.getDashboardStats()).toMatchObject({ escrowHeld: 500, escrowCount: 1, openJobs: 0, matchingJobs: 1, pendingWithdrawals: null });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
   it("uses real totals/completion-rate/revenue/rating from the summary", async () => {
     global.fetch = vi.fn(() =>
       Promise.resolve(
@@ -918,6 +983,66 @@ describe("getDashboardStats", () => {
 });
 
 describe("list paging", () => {
+  it("loads service requests beyond 100 and keeps every request searchable", async () => {
+    const all = Array.from({ length: 205 }, (_, i) => ({
+      id: `s${i}`, type: "add_secondary", status: "pending", reason: "Experience", category_id: 1,
+      provider: { full_name: `Provider ${i}` }, category: { name: "Plumbing" }, created_at: "2026-09-30",
+    }));
+    const fetchMock = vi.fn((url: string) => {
+      const params = new URL(url).searchParams;
+      const offset = Number(params.get("offset"));
+      expect(params.get("status")).toBe("pending");
+      expect(params.get("limit")).toBe("100");
+      return Promise.resolve(jsonResponse({ items: all.slice(offset, offset + 100), total: all.length }));
+    });
+    global.fetch = fetchMock as unknown as typeof fetch;
+    const rows = await services.getSkillRequests("pending");
+    expect(rows).toHaveLength(205);
+    expect(rows[204].providerName).toBe("Provider 204");
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
+
+  it("does not present an incomplete service queue as a complete list", async () => {
+    global.fetch = vi.fn(() => Promise.resolve(jsonResponse({ items: [], total: 2 }))) as unknown as typeof fetch;
+    await expect(services.getSkillRequests("pending")).rejects.toThrow("loaded completely");
+  });
+
+  it("uses the service request total even when only one row is requested", async () => {
+    global.fetch = vi.fn(() => Promise.resolve(jsonResponse({ items: [], total: 205 }))) as unknown as typeof fetch;
+    expect(await services.getSkillRequestCount()).toBe(205);
+    expect(global.fetch).toHaveBeenCalledWith(expect.stringContaining("status=pending&limit=1&offset=0"), expect.anything());
+  });
+
+  it("returns booking status counts from the same filtered page response", async () => {
+    const counts = { assigned: 3, completed: 2 };
+    global.fetch = vi.fn(() => Promise.resolve(jsonResponse({ bookings: [], total: 3, status_counts: counts }))) as unknown as typeof fetch;
+    expect(await services.searchBookings({ search: "Pat", page: 2, pageSize: 2, status: "assigned" }))
+      .toEqual({ items: [], total: 3, statusCounts: counts });
+    expect(global.fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("uses a single request for booking counts when the backend supplies them", async () => {
+    global.fetch = vi.fn(() => Promise.resolve(jsonResponse({ bookings: [], total: 3, status_counts: { assigned: 3 } }))) as unknown as typeof fetch;
+    expect(await services.getBookingStatusCounts()).toMatchObject({ assigned: 3, open: 0 });
+    expect(global.fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("sends audit search and action filters before pagination", async () => {
+    global.fetch = vi.fn(() => Promise.resolve(jsonResponse({ actions: [], total: 0 }))) as unknown as typeof fetch;
+    expect(await services.searchAuditLog({ search: "  Pat  ", action: "user.suspend", page: 2, pageSize: 20 })).toEqual({ items: [], total: 0 });
+    expect(global.fetch).toHaveBeenCalledWith(expect.stringContaining("/admin/audit?search=Pat&limit=20&offset=20&action=user.suspend"), expect.anything());
+  });
+
+  it("maps only the requested wallet page and preserves the server total", async () => {
+    global.fetch = vi.fn(() => Promise.resolve(jsonResponse({ transactions: [
+      { id: "w1", profile: { full_name: "Pat" }, direction: "credit", kind: "topup", status: "completed", amount: "25", title: "Top-up", created_at: "2026-09-30" },
+    ], total: 50 }))) as unknown as typeof fetch;
+    const result = await services.searchWalletTransactions({ search: "Pat", page: 3, pageSize: 20 });
+    expect(result.total).toBe(50);
+    expect(result.items).toHaveLength(1);
+    expect(result.items[0]).toMatchObject({ amount: 25, profileName: "Pat" });
+    expect(global.fetch).toHaveBeenCalledWith(expect.stringContaining("/admin/wallet-transactions?search=Pat&limit=20&offset=40"), expect.anything());
+  });
   it("walks limit/offset until every row is loaded", async () => {
     const all = Array.from({ length: 250 }, (_, i) => ({
       id: `u${i}`, email: `u${i}@x.test`, full_name: `U${i}`, role: "client", deactivated_at: null, created_at: "2026-01-01",

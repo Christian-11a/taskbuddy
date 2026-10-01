@@ -120,6 +120,8 @@ interface AppState {
   retryLoad: () => void;
   /** Quietly re-fetches console data (no loading state) — the live refresh. */
   refreshData: () => Promise<void>;
+  /** Reloads the Users list; rejects on failure so retries cannot imply success. */
+  refreshUsers: () => Promise<void>;
   /** When console data last loaded successfully (epoch ms), for "updated Ns ago". */
   lastUpdated: number | null;
   /** True while a silent refresh is in flight. */
@@ -145,8 +147,8 @@ interface AppState {
   // mutations
   approveVerification: (id: string) => Promise<void>;
   rejectVerification: (id: string, reason?: string) => Promise<void>;
-  setUserStatus: (id: string, status: "Active" | "Suspended", suspend?: services.SuspendOptions) => Promise<void>;
-  bulkSetUserStatus: (ids: string[], status: "Active" | "Suspended", suspend?: services.SuspendOptions) => Promise<services.BulkCounts>;
+  setUserStatus: (id: string, status: "Active" | "Suspended", suspend?: services.SuspendOptions) => Promise<{ refreshFailed?: boolean }>;
+  bulkSetUserStatus: (ids: string[], status: "Active" | "Suspended", suspend?: services.SuspendOptions) => Promise<services.BulkCounts & { refreshFailed?: boolean }>;
   sendPasswordReset: (id: string) => Promise<boolean>;
   cancelBooking: (id: string) => Promise<void>;
   resolveDispute: (id: string, resolution: DisputeResolution, note?: string) => Promise<void>;
@@ -497,9 +499,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const setUserStatus = useCallback(
     async (id: string, status: "Active" | "Suspended", suspend?: services.SuspendOptions) => {
-      const rows = await services.setUserStatus(id, STATUS_TO_DOMAIN[status], suspend);
+      const { rows, refreshFailed } = await services.setUserStatus(id, STATUS_TO_DOMAIN[status], suspend);
       dropInFlightRefresh();
-      setDomainUsers(rows);
+      if (rows !== null) setDomainUsers(rows);
+      return { refreshFailed };
     },
     [dropInFlightRefresh],
   );
@@ -508,11 +511,21 @@ export function AppProvider({ children }: { children: ReactNode }) {
     async (ids: string[], status: "Active" | "Suspended", suspend?: services.SuspendOptions) => {
       const { rows, ...counts } = await services.bulkSetUserStatus(ids, STATUS_TO_DOMAIN[status], suspend);
       dropInFlightRefresh();
-      setDomainUsers(rows);
+      if (rows !== null) setDomainUsers(rows);
       return counts;
     },
     [dropInFlightRefresh],
   );
+
+  const refreshUsers = useCallback(async () => {
+    // Drop earlier console snapshots before requesting the authoritative list.
+    dropInFlightRefresh();
+    const [rows, deletedRows] = await Promise.all([
+      services.getUsers(),
+      services.getUsers("deleted"),
+    ]);
+    setDomainUsers([...rows, ...deletedRows]);
+  }, [dropInFlightRefresh]);
 
   const sendPasswordReset = useCallback((id: string) => services.sendPasswordReset(id), []);
 
@@ -577,7 +590,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       isLoggedIn, sessionRestored, adminProfile,
       login, logout, updateDisplayName, changePassword,
       loading, loadError, retryLoad, analyticsUnavailable, analyticsInBrowser,
-      refreshData, lastUpdated, refreshing,
+      refreshData, refreshUsers, lastUpdated, refreshing,
        verifications, users, transactions, disputes, bookings,
       dashboardStats, revenueSeries, bookingsSeries, bookingsByCategory,
       recentActivity, topProviders,
@@ -592,7 +605,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       isLoggedIn, sessionRestored, adminProfile,
       login, logout, updateDisplayName, changePassword,
       loading, loadError, retryLoad, analyticsUnavailable, analyticsInBrowser,
-      refreshData, lastUpdated, refreshing,
+      refreshData, refreshUsers, lastUpdated, refreshing,
        verifications, users, transactions, disputes, bookings,
       dashboardStats, revenueSeries, bookingsSeries, bookingsByCategory,
       recentActivity, topProviders,

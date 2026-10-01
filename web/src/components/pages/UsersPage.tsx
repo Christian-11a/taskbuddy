@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { CheckCircle, Download, Home, KeyRound, MailCheck, MoreHorizontal, PauseCircle, Star, Users, Wrench } from "lucide-react";
+import { AlertTriangle, CheckCircle, Download, Home, KeyRound, MailCheck, MoreHorizontal, PauseCircle, RefreshCw, Star, Users, Wrench } from "lucide-react";
 import { useApp } from "@/context/AppContext";
 import { datedFilename, downloadCsv, toCsv } from "@/lib/export/csv";
 import { REASON_MAX_LENGTH, validateDurationDays } from "@/lib/validation";
@@ -73,7 +73,7 @@ const VERIFICATION_TONE: Record<string, "ok" | "warn" | "danger" | "neutral"> = 
 };
 
 export function UsersPage() {
-  const { users, setUserStatus, bulkSetUserStatus, sendPasswordReset, loading } = useApp();
+  const { users, setUserStatus, bulkSetUserStatus, sendPasswordReset, refreshUsers, loading } = useApp();
   const { showToast } = useToast();
   const [search, setSearch] = useState("");
   const [roleFilter, setRoleFilter] = useState<RoleFilter>("all");
@@ -85,6 +85,16 @@ export function UsersPage() {
   const [page, setPage] = useState(1);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [bulkBusy, setBulkBusy] = useState(false);
+  const [usersStale, setUsersStale] = useState(false);
+  const [refreshingUsers, setRefreshingUsers] = useState(false);
+  const [bulkFailures, setBulkFailures] = useState<{
+    id: string;
+    name: string;
+    email: string;
+    status: number;
+    message: string;
+    outcomeRefreshed: boolean;
+  }[]>([]);
   const [reviewingId, setReviewingId] = useState<string | null>(null);
   const [confirmingExport, setConfirmingExport] = useState(false);
   // Backend migration 0014 made `reason` required on suspend.
@@ -95,6 +105,32 @@ export function UsersPage() {
   const [resetSentId, setResetSentId] = useState<string | null>(null);
   const [activateBusyId, setActivateBusyId] = useState<string | null>(null);
   const { sort, toggle: toggleSort } = useSort({ id: "joined", dir: "desc" });
+
+  function noteRefreshFailure(refreshFailed?: boolean, hasUnconfirmedOutcome = false) {
+    if (refreshFailed || hasUnconfirmedOutcome) setUsersStale(true);
+  }
+
+  async function retryUsersRefresh() {
+    setRefreshingUsers(true);
+    try {
+      await refreshUsers();
+      setUsersStale(false);
+      if (bulkFailures.some((failure) => failure.status === 0 && !failure.outcomeRefreshed)) {
+        const unconfirmedIds = new Set(
+          bulkFailures.filter((failure) => failure.status === 0 && !failure.outcomeRefreshed).map((failure) => failure.id),
+        );
+        setSelected((current) => new Set([...current].filter((id) => !unconfirmedIds.has(id))));
+        setBulkFailures((current) => current.map((failure) =>
+          failure.status === 0 ? { ...failure, outcomeRefreshed: true } : failure,
+        ));
+      }
+    } catch {
+      // Keep the warning and moderation lock in place until the list is current.
+      showToast("Could not refresh the users list. Please try again.", "error");
+    } finally {
+      setRefreshingUsers(false);
+    }
+  }
 
   const filtered = useMemo(
     () =>
@@ -242,11 +278,26 @@ export function UsersPage() {
 
   async function activateSelected() {
     const ids = [...selected];
-    if (ids.length === 0) return;
+    if (ids.length === 0 || usersStale) return;
     setBulkBusy(true);
     try {
       const counts = await bulkSetUserStatus(ids, "Active");
-      setSelected(new Set());
+      noteRefreshFailure(counts.refreshFailed, counts.errors.some((error) => error.status === 0));
+      if (counts.failed > 0) {
+        const failedIds = new Set(counts.errors.map((error) => error.id));
+        setSelected(failedIds);
+        setBulkFailures(counts.errors.map((error) => ({
+          id: error.id,
+          name: users.find((user) => user.id === error.id)?.name ?? "Unknown user",
+          email: users.find((user) => user.id === error.id)?.email ?? "Email unavailable",
+          status: error.status,
+          message: error.message,
+          outcomeRefreshed: false,
+        })));
+      } else {
+        setSelected(new Set());
+        setBulkFailures([]);
+      }
       showToast(bulkMessage("Reinstated", counts), counts.failed > 0 ? "error" : "success");
     } catch {
       showToast("Could not reinstate the selected users. Please try again.", "error");
@@ -273,16 +324,32 @@ export function UsersPage() {
   const suspendInvalid = !suspendReason.trim() || suspendReasonTooLong || !!suspendDaysError;
 
   async function confirmSuspend() {
-    if (!suspending || suspendInvalid) return;
+    if (!suspending || suspendInvalid || usersStale) return;
     const days = suspendDays.trim() ? Number(suspendDays) : undefined;
     setBulkBusy(true);
     try {
       if (suspending.bulk) {
         const counts = await bulkSetUserStatus([...selected], "Suspended", { reason: suspendReason.trim(), durationDays: days });
-        setSelected(new Set());
+        noteRefreshFailure(counts.refreshFailed, counts.errors.some((error) => error.status === 0));
+        if (counts.failed > 0) {
+          const failedIds = new Set(counts.errors.map((error) => error.id));
+          setSelected(failedIds);
+          setBulkFailures(counts.errors.map((error) => ({
+            id: error.id,
+            name: users.find((user) => user.id === error.id)?.name ?? "Unknown user",
+            email: users.find((user) => user.id === error.id)?.email ?? "Email unavailable",
+            status: error.status,
+            message: error.message,
+            outcomeRefreshed: false,
+          })));
+        } else {
+          setSelected(new Set());
+          setBulkFailures([]);
+        }
         showToast(bulkMessage("Suspended", counts), counts.failed > 0 ? "error" : "success");
       } else {
-        await setUserStatus(suspending.id, "Suspended", { reason: suspendReason.trim(), durationDays: days });
+        const result = await setUserStatus(suspending.id, "Suspended", { reason: suspendReason.trim(), durationDays: days });
+        noteRefreshFailure(result?.refreshFailed);
         showToast("User suspended.");
       }
       setSuspending(null);
@@ -295,9 +362,11 @@ export function UsersPage() {
   }
 
   async function handleActivateOne(id: string) {
+    if (usersStale) return;
     setActivateBusyId(id);
     try {
-      await setUserStatus(id, "Active");
+      const result = await setUserStatus(id, "Active");
+      noteRefreshFailure(result?.refreshFailed);
       showToast("User reinstated.");
     } catch {
       showToast("Could not reinstate that user. Please try again.", "error");
@@ -399,6 +468,52 @@ export function UsersPage() {
         ]}
       />
 
+      {usersStale && (
+        <div role="status" aria-live="polite" className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-[10px] border border-warn/30 bg-warn-soft/50 px-4 py-3 text-[13px]">
+          <div className="flex min-w-0 items-start gap-2.5">
+            <AlertTriangle className="mt-0.5 size-4 shrink-0 text-warn" />
+            <div>
+              <div className="font-medium">
+                {bulkFailures.some((failure) => failure.status === 0 && !failure.outcomeRefreshed)
+                  ? "Some account outcomes are unconfirmed."
+                  : "The user list could not be refreshed after that action."}
+              </div>
+              <div className="mt-0.5 text-muted-foreground">
+                {bulkFailures.some((failure) => failure.status === 0 && !failure.outcomeRefreshed)
+                  ? "Refresh the list before retrying to avoid repeating an action that may have succeeded."
+                  : "These rows may be out of date. Refresh the list before moderating accounts."}
+              </div>
+            </div>
+          </div>
+          <Button variant="outline" size="sm" onClick={retryUsersRefresh} disabled={refreshingUsers}>
+            <RefreshCw className={refreshingUsers ? "animate-spin" : undefined} />
+            {refreshingUsers ? "Refreshing…" : "Refresh users"}
+          </Button>
+        </div>
+      )}
+
+      {bulkFailures.length > 0 && (
+        <section role="region" aria-labelledby="bulk-user-failures-title" className="mb-4 rounded-[10px] border border-danger/25 bg-danger-soft/40 px-4 py-3">
+          <h2 id="bulk-user-failures-title" className="text-[13px] font-semibold text-danger">Some user actions failed</h2>
+          <p className="mt-0.5 text-[12px] text-muted-foreground">Failed accounts stay selected after the action. Review your selection before retrying; confirmed successes were deselected.</p>
+          <ul className="mt-2 space-y-2">
+            {bulkFailures.map((failure) => (
+              <li key={failure.id} className="text-[12.5px]">
+                <span className="font-medium">{failure.name}</span>
+                <span className="text-muted-foreground"> ({failure.email} · ID {failure.id}) — {failure.message}</span>
+                {failure.status === 0 && (
+                  <div className="mt-0.5 text-[12px] text-warn">
+                    Outcome unconfirmed. {failure.outcomeRefreshed
+                      ? "Check the refreshed account status before selecting it again."
+                      : "Refresh users before retrying; the action may already have succeeded."}
+                  </div>
+                )}
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
       <TableCard
         toolbar={
           <>
@@ -489,10 +604,10 @@ export function UsersPage() {
             onToggle: toggleOne,
             onToggleAll: toggleAll,
             allSelected,
-            isSelectable: (id) => selectableIds.has(id),
+            isSelectable: (id) => !usersStale && !bulkBusy && selectableIds.has(id),
             rowLabel: (id) => `Select ${users.find((u) => u.id === id)?.name ?? "user"}`,
             allLabel: `Select all ${selectable.length} matching users`,
-            disabledAll: selectable.length === 0,
+            disabledAll: selectable.length === 0 || usersStale || bulkBusy,
           }}
           empty={
             <TableEmpty>
@@ -507,10 +622,10 @@ export function UsersPage() {
       </TableCard>
 
       <BulkBar count={selected.size} noun="user" onClear={() => setSelected(new Set())}>
-        <Button size="sm" variant="outline" onClick={activateSelected} disabled={bulkBusy}>
+        <Button size="sm" variant="outline" onClick={activateSelected} disabled={bulkBusy || usersStale}>
           <CheckCircle className="text-ok" /> Reinstate
         </Button>
-        <Button size="sm" variant="outline" onClick={openBulkSuspendPrompt} disabled={bulkBusy} className="text-warn">
+        <Button size="sm" variant="outline" onClick={openBulkSuspendPrompt} disabled={bulkBusy || usersStale} className="text-warn">
           <PauseCircle /> Suspend
         </Button>
       </BulkBar>
@@ -530,11 +645,11 @@ export function UsersPage() {
                 Close
               </Button>
               {reviewing.status === "Active" ? (
-                <Button variant="destructive" onClick={() => openSuspendPrompt(reviewing.id)} className="flex-1">
+                <Button variant="destructive" onClick={() => openSuspendPrompt(reviewing.id)} disabled={usersStale} className="flex-1">
                   <PauseCircle /> Suspend account
                 </Button>
               ) : reviewing.status === "Suspended" ? (
-                <Button onClick={() => handleActivateOne(reviewing.id)} disabled={activateBusyId === reviewing.id} className="flex-1">
+                <Button onClick={() => handleActivateOne(reviewing.id)} disabled={activateBusyId === reviewing.id || usersStale} className="flex-1">
                   <CheckCircle /> {activateBusyId === reviewing.id ? "Reinstating…" : "Reinstate account"}
                 </Button>
               ) : null}
@@ -597,7 +712,7 @@ export function UsersPage() {
                 <div className="rounded-[10px] border border-danger/25 bg-danger-soft/50 p-3.5">
                   {suspendFields}
                   <div className="mt-3 flex items-center gap-2">
-                    <Button variant="destructive" size="sm" onClick={confirmSuspend} disabled={bulkBusy || suspendInvalid}>
+                    <Button variant="destructive" size="sm" onClick={confirmSuspend} disabled={bulkBusy || suspendInvalid || usersStale}>
                       {bulkBusy ? "Suspending…" : "Confirm suspend"}
                     </Button>
                     <Button variant="ghost" size="sm" onClick={() => setSuspending(null)}>
@@ -626,7 +741,7 @@ export function UsersPage() {
         message="They won't be able to sign in or take jobs until reinstated. The reason is saved on each account."
         confirmLabel="Confirm suspend"
         busy={bulkBusy}
-        confirmDisabled={suspendInvalid}
+        confirmDisabled={suspendInvalid || usersStale}
         onConfirm={confirmSuspend}
         onCancel={() => setSuspending(null)}
       >

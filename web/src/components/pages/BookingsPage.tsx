@@ -87,6 +87,7 @@ export function BookingsPage() {
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [reloadNonce, setReloadNonce] = useState(0);
+  const [statusCounts, setStatusCounts] = useState<Record<string, number> | null>(null);
 
   useEffect(() => {
     /* eslint-disable react-hooks/set-state-in-effect -- fetching page-local data */
@@ -101,8 +102,15 @@ export function BookingsPage() {
       })
       .then((result) => {
         if (!cancelled) {
+          const lastPage = Math.max(1, Math.ceil(result.total / PAGE_SIZE));
+          if (page > lastPage) {
+            setPage(lastPage);
+            setSelected(new Set());
+            return;
+          }
           setBookings(result.items.map(toBookingRow));
           setTotal(result.total);
+          setStatusCounts(result.statusCounts ?? null);
           setLoading(false);
         }
       })
@@ -110,6 +118,7 @@ export function BookingsPage() {
         if (!cancelled) {
           setBookings([]);
           setTotal(0);
+          setStatusCounts(null);
           setLoading(false);
         }
       });
@@ -121,24 +130,10 @@ export function BookingsPage() {
 
   useLiveTick(() => setReloadNonce((n) => n + 1));
 
-  // Exact count for every status tab: the list endpoint only totals the
-  // filter it was asked about, so this asks once per status (limit=1).
-  const [statusCounts, setStatusCounts] = useState<Record<string, number> | null>(null);
-  useEffect(() => {
-    let cancelled = false;
-    services
-      .getBookingStatusCounts()
-      .then((counts) => !cancelled && setStatusCounts(counts))
-      .catch(() => !cancelled && setStatusCounts(null));
-    return () => {
-      cancelled = true;
-    };
-  }, [reloadNonce]);
-
   function countFor(s: StatusFilter): number | undefined {
-    // A search narrows the list, and these counts ignore it — so only the
-    // active tab's own total is shown while searching.
-    if (debouncedSearch.trim() || !statusCounts) return s === statusFilter && !loading ? total : undefined;
+    // Server counts follow search/category but ignore the selected status.
+    if (loading || search !== debouncedSearch) return undefined;
+    if (!statusCounts) return s === statusFilter ? total : undefined;
     if (s === "all") return Object.values(statusCounts).reduce((sum, n) => sum + n, 0);
     return statusCounts[STATUS_API[s]];
   }
@@ -268,7 +263,7 @@ export function BookingsPage() {
             variant="outline"
             size="sm"
             onClick={() => setConfirmingExport(true)}
-            disabled={exportScope.length === 0}
+            disabled={loading || search !== debouncedSearch || exportScope.length === 0}
             title={selected.size > 0 ? "Download only the checked rows" : "Download the current page"}
           >
             <Download /> {selected.size > 0 ? `Export ${selected.size} selected` : "Export current page"}
@@ -372,7 +367,7 @@ export function BookingsPage() {
       </TableCard>
 
       <BulkBar count={selected.size} noun="booking" onClear={() => setSelected(new Set())}>
-        <Button size="sm" variant="outline" onClick={() => setConfirmingExport(true)}>
+        <Button size="sm" variant="outline" disabled={loading || search !== debouncedSearch} onClick={() => setConfirmingExport(true)}>
           <Download /> Export
         </Button>
       </BulkBar>

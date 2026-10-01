@@ -10,8 +10,33 @@ import { SearchField } from "@/components/admin/queue";
 import { SelectFilter, TableCard, TableEmpty } from "@/components/admin/table";
 import type { AuditAction } from "@/lib/domain";
 import { cn } from "@/lib/utils";
+import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 
 const PAGE_SIZE = 20;
+
+// Registry of action codes emitted by backend AdminActionsService. This keeps
+// filters available even when an action is absent from the current page.
+const KNOWN_ACTIONS = [
+  "admin.create",
+  "admin.revoke",
+  "booking.cancel",
+  "category.create",
+  "category.update",
+  "dispute.resolve",
+  "escrow.retry_transfer",
+  "notification.broadcast",
+  "platform.commission_change",
+  "platform.maintenance_toggle",
+  "skill_request.approve",
+  "skill_request.reject",
+  "user.reinstate",
+  "user.suspend",
+  "verification.approve",
+  "verification.reject",
+  "wallet.issue_recovery_credit",
+  "wallet.reject_withdrawal",
+  "wallet.settle_withdrawal",
+] as const;
 
 /** Human-readable label for the moderation action codes AdminActionsService
  *  writes (e.g. "user.suspend" — see backend/src/admin/admin-actions.service.ts). */
@@ -47,59 +72,56 @@ function actionStyle(action: string): { icon: React.ComponentType<{ className?: 
 
 export function AuditLogPage() {
   const [actions, setActions] = useState<AuditAction[]>([]);
+  const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState("");
   const [actionFilter, setActionFilter] = useState("all");
+  const [reloadKey, setReloadKey] = useState(0);
+  const [observedActions, setObservedActions] = useState<string[]>([]);
+  const debouncedSearch = useDebouncedValue(search, 250);
 
-  /** The Refresh button's handler — runs from an event, not an effect. */
-  async function load() {
-    setLoading(true);
-    setError(false);
-    try {
-      setActions(await services.getAuditLog());
-      setPage(1);
-    } catch {
-      setError(true);
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  // The mount fetch is written out rather than calling load(), so no state is
-  // set synchronously in the effect body.
   useEffect(() => {
     let cancelled = false;
-    services
-      .getAuditLog()
-      .then((rows) => {
-        if (!cancelled) setActions(rows);
+    /* eslint-disable react-hooks/set-state-in-effect -- fetching page-local data */
+    setLoading(true);
+    setError(false);
+    void services
+      .searchAuditLog({
+        search: debouncedSearch,
+        action: actionFilter === "all" ? undefined : actionFilter,
+        page,
+        pageSize: PAGE_SIZE,
+      })
+      .then((result) => {
+        if (!cancelled) {
+          setActions(result.items);
+          setTotal(result.total);
+          setObservedActions((known) => [...new Set([...known, ...result.items.map((item) => item.action)])]);
+          const lastPage = Math.max(1, Math.ceil(result.total / PAGE_SIZE));
+          if (page > lastPage) setPage(lastPage);
+          setLoading(false);
+        }
       })
       .catch(() => {
-        if (!cancelled) setError(true);
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
+        if (!cancelled) {
+          setError(true);
+          setLoading(false);
+        }
       });
     return () => {
       cancelled = true;
     };
-  }, []);
+    /* eslint-enable react-hooks/set-state-in-effect */
+  }, [debouncedSearch, actionFilter, page, reloadKey]);
 
-  const actionTypes = useMemo(() => [...new Set(actions.map((a) => a.action))].sort(), [actions]);
+  const actionTypes = useMemo(
+    () => [...new Set([...KNOWN_ACTIONS, ...observedActions, ...actions.map((a) => a.action)])].sort(),
+    [actions, observedActions],
+  );
 
-  const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    return actions.filter((a) => {
-      if (actionFilter !== "all" && a.action !== actionFilter) return false;
-      if (!q) return true;
-      const reason = typeof a.metadata.reason === "string" ? a.metadata.reason : "";
-      return [a.actorName, a.action, a.targetType, a.targetId, reason].some((v) => v.toLowerCase().includes(q));
-    });
-  }, [actions, search, actionFilter]);
-
-  const visible = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+  const visible = actions;
   const groups = useMemo(() => {
     const out: { day: string; items: AuditAction[] }[] = [];
     for (const a of visible) {
@@ -117,7 +139,7 @@ export function AuditLogPage() {
         title="Audit Log"
         description="Every suspend, reinstate, cancel, and dispute resolution — with the admin behind it."
         actions={
-          <Button variant="outline" size="sm" onClick={() => void load()} disabled={loading}>
+          <Button variant="outline" size="sm" onClick={() => setReloadKey((key) => key + 1)} disabled={loading}>
             <RefreshCw className={loading ? "animate-spin" : ""} /> Refresh
           </Button>
         }
@@ -153,7 +175,7 @@ export function AuditLogPage() {
             </SelectFilter>
             {!loading && !error && (
               <span className="ml-auto tabular text-[12px] text-muted-foreground">
-                {filtered.length.toLocaleString()} {filtered.length === 1 ? "action" : "actions"}
+                {total.toLocaleString()} {total === 1 ? "action" : "actions"}
               </span>
             )}
           </>
@@ -168,13 +190,13 @@ export function AuditLogPage() {
             <span className="flex items-center gap-2">
               <ShieldAlert className="size-4" /> Could not load the audit log.
             </span>
-            <Button size="sm" variant="outline" onClick={() => void load()}>
+            <Button size="sm" variant="outline" onClick={() => setReloadKey((key) => key + 1)}>
               Try again
             </Button>
           </div>
-        ) : actions.length === 0 ? (
+        ) : total === 0 && !debouncedSearch.trim() && actionFilter === "all" ? (
           <TableEmpty>No admin actions recorded yet.</TableEmpty>
-        ) : filtered.length === 0 ? (
+        ) : total === 0 ? (
           <TableEmpty>No actions match this search or filter.</TableEmpty>
         ) : (
           <div className="px-5 py-3">
@@ -217,7 +239,7 @@ export function AuditLogPage() {
             ))}
           </div>
         )}
-        {!loading && !error && <Pagination page={page} pageSize={PAGE_SIZE} total={filtered.length} onPageChange={setPage} itemLabel="actions" />}
+        {!loading && !error && <Pagination page={page} pageSize={PAGE_SIZE} total={total} onPageChange={setPage} itemLabel="actions" />}
       </TableCard>
     </div>
   );

@@ -1,6 +1,6 @@
 "use client";
 
-import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
+import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
 import { ArrowDownLeft, ArrowUpRight, Download, Gift, Landmark, Lock, PanelRightOpen, Receipt, RefreshCw, ShieldAlert } from "lucide-react";
 import * as services from "@/lib/services";
 import { useApp } from "@/context/AppContext";
@@ -376,9 +376,14 @@ const EscrowTab = forwardRef<ExportHandle, TabProps>(function EscrowTab({ onExpo
 const WalletTab = forwardRef<ExportHandle, TabProps>(function WalletTab({ onExportCountChange, onRequestExport }, ref) {
   const { users } = useApp();
   const { showToast } = useToast();
-  const [rows, setRows] = useState<WalletTxnRow[] | "loading" | "error">("loading");
+  const [rows, setRows] = useState<WalletTxnRow[]>([]);
+  const [totalCount, setTotalCount] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
+  const [reloadKey, setReloadKey] = useState(0);
+  const debouncedSearch = useDebouncedValue(search, 250);
 
   // Issue Credit form state.
   const [issuingCredit, setIssuingCredit] = useState(false);
@@ -399,41 +404,39 @@ const WalletTab = forwardRef<ExportHandle, TabProps>(function WalletTab({ onExpo
     setCreditError("");
   }
 
-  async function loadWallet() {
-    try {
-      const txns = await services.getWalletTransactions();
-      setRows(txns.map(toWalletTxnRow));
-    } catch {
-      setRows("error");
-    }
-  }
-
   useEffect(() => {
     let cancelled = false;
-    services
-      .getWalletTransactions()
-      .then((txns) => {
-        if (!cancelled) setRows(txns.map(toWalletTxnRow));
+    /* eslint-disable react-hooks/set-state-in-effect -- fetching page-local data */
+    setLoading(true);
+    setError(false);
+    void services
+      .searchWalletTransactions({ search: debouncedSearch, page, pageSize: PAGE_SIZE })
+      .then((result) => {
+        if (!cancelled) {
+          setRows(result.items.map(toWalletTxnRow));
+          setTotalCount(result.total);
+          const lastPage = Math.max(1, Math.ceil(result.total / PAGE_SIZE));
+          if (page > lastPage) setPage(lastPage);
+          setLoading(false);
+        }
       })
       .catch(() => {
-        if (!cancelled) setRows("error");
+        if (!cancelled) {
+          setRows([]);
+          setTotalCount(0);
+          setError(true);
+          setLoading(false);
+        }
       });
     return () => {
       cancelled = true;
     };
-  }, []);
+    /* eslint-enable react-hooks/set-state-in-effect */
+  }, [debouncedSearch, page, reloadKey]);
 
-  const filtered = useMemo(
-    () =>
-      Array.isArray(rows)
-        ? rows.filter(
-            (r) => r.profileName.toLowerCase().includes(search.toLowerCase()) || r.title.toLowerCase().includes(search.toLowerCase()),
-          )
-        : [],
-    [rows, search],
-  );
-
-  const visibleRows = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+  const searchPending = search !== debouncedSearch;
+  const walletBusy = loading || searchPending;
+  const visibleRows = walletBusy || error ? [] : rows;
   const sel = useSelection(visibleRows.map((r) => r.id));
 
   function clearSelectionOnScopeChange() {
@@ -443,11 +446,13 @@ const WalletTab = forwardRef<ExportHandle, TabProps>(function WalletTab({ onExpo
 
   /** Exports checked rows or every row on the current page. */
   const exportScope = sel.selected.size > 0 ? visibleRows.filter((r) => sel.selected.has(r.id)) : visibleRows;
+  const exportUnavailable = walletBusy || error;
 
   useImperativeHandle(
     ref,
     () => ({
       exportCsv: () => {
+        if (exportUnavailable) return;
         const csv = toCsv(
           ["ID", "User", "Kind", "Amount", "Title", "Date"],
           exportScope.map((r) => [r.id, r.profileName, r.kindLabel, r.amountValue, r.title, r.createdAt]),
@@ -455,35 +460,17 @@ const WalletTab = forwardRef<ExportHandle, TabProps>(function WalletTab({ onExpo
         downloadCsv(datedFilename("taskbuddy-wallet-transactions"), csv);
       },
     }),
-    [exportScope],
+    [exportScope, exportUnavailable],
   );
   useEffect(() => {
-    onExportCountChange({ total: visibleRows.length, selected: sel.selected.size });
-  }, [visibleRows.length, sel.selected.size, onExportCountChange]);
+    onExportCountChange({
+      total: exportUnavailable ? 0 : visibleRows.length,
+      selected: exportUnavailable ? 0 : sel.selected.size,
+    });
+  }, [visibleRows.length, sel.selected.size, exportUnavailable, onExportCountChange]);
 
-  if (rows === "loading") {
-    return (
-      <TableCard>
-        <div className="space-y-3 p-5" aria-label="Loading wallet activity…">
-          {Array.from({ length: 6 }, (_, i) => (
-            <div key={i} className="h-4 rounded bg-surface-2 motion-safe:animate-pulse" style={{ width: `${90 - i * 7}%` }} />
-          ))}
-        </div>
-      </TableCard>
-    );
-  }
-  if (rows === "error") {
-    return (
-      <TableCard>
-        <TableEmpty>
-          <span className="text-danger">Could not load wallet activity. Please try again.</span>
-        </TableEmpty>
-      </TableCard>
-    );
-  }
-
-  const totalTopups = rows.filter((r) => r.direction === "credit").reduce((s, r) => s + r.amountValue, 0);
-  const totalWithdrawals = rows.filter((r) => r.direction === "debit").reduce((s, r) => s + r.amountValue, 0);
+  const totalTopups = visibleRows.filter((r) => r.direction === "credit").reduce((s, r) => s + r.amountValue, 0);
+  const totalWithdrawals = visibleRows.filter((r) => r.direction === "debit").reduce((s, r) => s + r.amountValue, 0);
 
   // Recipient search over the users already loaded app-wide — there's no
   // dedicated "search users" endpoint. Capped to 6 so a common name doesn't
@@ -521,7 +508,8 @@ const WalletTab = forwardRef<ExportHandle, TabProps>(function WalletTab({ onExpo
         title: creditTitle,
         jobId: creditJobId,
       });
-      await loadWallet();
+      sel.clear();
+      setReloadKey((key) => key + 1);
       showToast("Recovery credit issued.");
       closeCreditDialog();
     } catch (err) {
@@ -557,14 +545,19 @@ const WalletTab = forwardRef<ExportHandle, TabProps>(function WalletTab({ onExpo
       <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
         <SummaryStrip
           items={[
-            { icon: Receipt, label: "ledger rows", value: rows.length.toLocaleString() },
-            { icon: ArrowDownLeft, label: "topped up", value: `₱${totalTopups.toLocaleString()}` },
-            { icon: ArrowUpRight, label: "withdrawn", value: `₱${totalWithdrawals.toLocaleString()}` },
+            { icon: Receipt, label: "rows on this page", value: visibleRows.length.toLocaleString() },
+            { icon: ArrowDownLeft, label: "credits on this page", value: `₱${totalTopups.toLocaleString()}` },
+            { icon: ArrowUpRight, label: "debits on this page", value: `₱${totalWithdrawals.toLocaleString()}` },
           ]}
         />
-        <Button size="sm" onClick={() => setIssuingCredit(true)}>
-          <Gift /> Issue Credit
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="outline" size="sm" onClick={() => { sel.clear(); setReloadKey((key) => key + 1); }} disabled={loading}>
+            <RefreshCw className={loading ? "animate-spin" : ""} /> Refresh
+          </Button>
+          <Button size="sm" onClick={() => setIssuingCredit(true)}>
+            <Gift /> Issue Credit
+          </Button>
+        </div>
       </div>
 
       <TableCard
@@ -594,24 +587,25 @@ const WalletTab = forwardRef<ExportHandle, TabProps>(function WalletTab({ onExpo
             allSelected: sel.allSelected,
             rowLabel: (id) => `Select wallet row ${id}`,
             allLabel: "Select all wallet rows on this page",
-            disabledAll: filtered.length === 0,
+            disabledAll: totalCount === 0,
           }}
-          empty={<TableEmpty>No wallet activity found.</TableEmpty>}
+          empty={walletBusy ? <TableEmpty>Loading wallet activity…</TableEmpty> : error ? <TableEmpty><span className="text-danger">Could not load wallet activity.</span> <Button size="sm" variant="outline" onClick={() => setReloadKey((key) => key + 1)}>Try again</Button></TableEmpty> : <TableEmpty>No wallet activity found.</TableEmpty>}
         />
-        <Pagination
+        {!walletBusy && !error && <Pagination
           page={page}
           pageSize={PAGE_SIZE}
-          total={filtered.length}
+          total={totalCount}
           onPageChange={(nextPage) => {
             sel.setSelected(new Set());
             setPage(nextPage);
           }}
           itemLabel="wallet rows"
-        />
+        />}
+        {walletBusy && <div role="status" aria-live="polite" className="sr-only">Loading wallet activity…</div>}
       </TableCard>
 
-      <BulkBar count={sel.selected.size} noun="row" onClear={() => sel.setSelected(new Set())}>
-        <Button size="sm" variant="outline" onClick={onRequestExport}>
+      <BulkBar count={exportUnavailable ? 0 : sel.selected.size} noun="row" onClear={() => sel.setSelected(new Set())}>
+        <Button size="sm" variant="outline" onClick={onRequestExport} disabled={exportUnavailable}>
           <Download /> Export
         </Button>
       </BulkBar>

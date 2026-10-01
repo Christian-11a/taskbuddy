@@ -90,6 +90,7 @@ export interface AdminBookingApiRow {
 export interface ListBookingsApiResponse {
   bookings: AdminBookingApiRow[];
   total: number;
+  status_counts?: Record<string, number>;
 }
 
 export interface AnalyticsSummaryApiResponse {
@@ -107,6 +108,10 @@ export interface AnalyticsSummaryApiResponse {
     total_commission?: number;
     monthly_commission?: number;
     pending_withdrawals?: number;
+    escrow_held_total?: number;
+    escrow_held_count?: number;
+    open_jobs?: number;
+    matching_jobs?: number;
   };
   bookings_by_status: Record<string, number>;
   bookings_by_category: Record<string, number>;

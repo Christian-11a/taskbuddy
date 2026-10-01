@@ -689,7 +689,7 @@
   // The hero is deliberately NOT in this list — it is above the fold on load,
   // so it gets a load entrance (.is-ready) instead of a scroll-tied reveal.
   var revealTargets = document.querySelectorAll(
-    ".story-heading, .story-carousel, " +
+    ".story-heading, .story-carousel, .proof__head, .proof__stats .proof-stat, " +
     ".about-buddy__art, .about-buddy__copy, .about-buddy__steps li, " +
     ".features__intro, .features__list .feature-row, " +
     ".services__head, .services__list .service-row, " +
@@ -699,7 +699,7 @@
 
   var REVEAL_STAGGER_MS = 45; // purely a timing lag now, never a position requirement
   var REVEAL_STAGGER_CAP = 5;
-  var STAGGERED_SELECTOR = ".about-buddy__steps li, .features__list .feature-row, .services__list .service-row, .faq-list details, .download__points li";
+  var STAGGERED_SELECTOR = ".about-buddy__steps li, .features__list .feature-row, .services__list .service-row, .faq-list details, .download__points li, .proof__stats .proof-stat";
 
   function revealDirectionFor(target) {
     if (target.matches(".story-heading__copy, .about-buddy__copy, .features__intro, .services__head, .faq__intro, .download__content")) return "from-left";

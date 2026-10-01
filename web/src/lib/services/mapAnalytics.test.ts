@@ -138,6 +138,7 @@ describe("mapActivity", () => {
       'Booking "Fix sink" moved to in progress',
     ]);
     expect(result.map((r) => r.type)).toEqual(["tx", "alert", "user"]);
+    expect(result.map((r) => r.id)).toEqual([1, 2, 3]);
     expect(result.every((r) => r.time === "just now")).toBe(true);
   });
 });
