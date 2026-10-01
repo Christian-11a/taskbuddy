@@ -1,9 +1,9 @@
 "use client";
 
 import { useId, useState } from "react";
-import { AlertCircle, Bell, Check, Construction, Database, Globe, Laptop, Moon, Palette, Save, Sun, UserRound } from "lucide-react";
+import { AlertCircle, Bell, Check, Construction, Database, Globe, Moon, Palette, Save, Sun, UserRound } from "lucide-react";
 import { useApp, type ConsoleSettings } from "@/context/AppContext";
-import { validateEmail, validateName, validatePasswordChange } from "@/lib/validation";
+import { validateName, validatePasswordChange } from "@/lib/validation";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -18,8 +18,6 @@ interface FieldErrors {
   currentPassword?: string;
   newPassword?: string;
   confirmPassword?: string;
-  platformName?: string;
-  supportEmail?: string;
 }
 
 const SECTIONS = [
@@ -30,17 +28,6 @@ const SECTIONS = [
   { id: "maintenance", label: "Maintenance", icon: Construction },
   { id: "privacy", label: "Data & Privacy", icon: Database },
 ] as const;
-
-/** Notifications, Platform, and Data & Privacy only write to localStorage —
- *  nothing reaches the backend yet. Each of those sections carries a small
- *  "This device" tag so nobody mistakes a saved toggle for a working feature. */
-function DeviceOnly() {
-  return (
-    <Badge tone="neutral" title="Saved in this browser only — not yet connected to the backend">
-      <Laptop className="size-3" /> This device
-    </Badge>
-  );
-}
 
 function Section({
   id,
@@ -224,8 +211,6 @@ export function SettingsPage() {
     // Validate everything up front so all problems show at once.
     const errors: FieldErrors = {
       name: validateName(name, "Display name") ?? undefined,
-      platformName: validateName(settings.platformName, "Platform name") ?? undefined,
-      supportEmail: validateEmail(settings.supportEmail, "Support email") ?? undefined,
     };
     // Password change is optional — only validated when a new password is set.
     if (newPassword) {
@@ -313,10 +298,10 @@ export function SettingsPage() {
                 <Field label="Confirm new password" value={confirmPassword} type="password" onChange={setConfirmPassword} placeholder="Re-enter it" error={fieldErrors.confirmPassword} autoComplete="new-password" />
               </div>
             </div>
-            {/* Only the Account section needs an explicit save — everything
-                else on this page saves the moment it changes. */}
+            {/* Account changes need an explicit save; working appearance
+                choices apply as they change. */}
             <div className="-mx-5 mt-3 flex flex-wrap items-center justify-end gap-3 border-t border-border bg-surface-2/60 px-5 py-3">
-              <span className="text-[12px] text-muted-foreground">Everything else on this page saves as you change it.</span>
+              <span className="text-[12px] text-muted-foreground">Appearance and activity badge changes apply as you change them.</span>
               <Button onClick={handleSave} disabled={saving || !accountDirty}>
                 <Save /> {saving ? "Saving…" : "Save account changes"}
               </Button>
@@ -332,17 +317,17 @@ export function SettingsPage() {
             <Toggle label="Show activity badge" sub="Pending counts on the Verifications and Disputes nav items" value={settings.activityBadge} onChange={setToggle("activityBadge")} />
           </Section>
 
-          <Section id="notifications" title="Notifications" icon={Bell} badge={<DeviceOnly />}>
-            <Toggle label="Email alerts for new verifications" value={settings.emailAlerts} onChange={setToggle("emailAlerts")} />
-            <Toggle label="Notify on disputed transactions" value={settings.disputeNotify} onChange={setToggle("disputeNotify")} />
-            <Toggle label="Daily summary report" sub="Sent every morning at 8 AM" value={settings.dailySummary} onChange={setToggle("dailySummary")} />
-            <Toggle label="New user registrations" value={settings.newUserNotify} onChange={setToggle("newUserNotify")} />
+          <Section id="notifications" title="Notifications" description="Not available yet. Notification settings are not connected to a delivery service." icon={Bell}>
+            <Toggle label="Email alerts for new verifications" value={settings.emailAlerts} onChange={setToggle("emailAlerts")} disabled />
+            <Toggle label="Notify on disputed transactions" value={settings.disputeNotify} onChange={setToggle("disputeNotify")} disabled />
+            <Toggle label="Daily summary report" value={settings.dailySummary} onChange={setToggle("dailySummary")} disabled />
+            <Toggle label="New user registrations" value={settings.newUserNotify} onChange={setToggle("newUserNotify")} disabled />
           </Section>
 
-          <Section id="platform" title="Platform" icon={Globe} badge={<DeviceOnly />}>
+          <Section id="platform" title="Platform" description="Not available yet. These values are not connected to platform behavior." icon={Globe}>
             <div className="grid gap-x-4 sm:grid-cols-2">
-              <Field label="Platform name" value={settings.platformName} onChange={(v) => updateSettings({ platformName: v })} error={fieldErrors.platformName} />
-              <Field label="Support email" value={settings.supportEmail} type="email" onChange={(v) => updateSettings({ supportEmail: v })} error={fieldErrors.supportEmail} />
+              <Field label="Platform name" value={settings.platformName} disabled />
+              <Field label="Support email" value={settings.supportEmail} type="email" disabled />
               <Field label="Base currency" value="PHP (₱)" disabled />
             </div>
           </Section>
@@ -368,10 +353,10 @@ export function SettingsPage() {
             />
           </Section>
 
-          <Section id="privacy" title="Data & Privacy" icon={Database} badge={<DeviceOnly />}>
-            <Toggle label="Auto-purge inactive accounts (1 year)" value={settings.autoPurge} onChange={setToggle("autoPurge")} />
-            <Toggle label="Anonymize exported reports" value={settings.anonymizeExports} onChange={setToggle("anonymizeExports")} />
-            <Toggle label="Audit log retention (90 days)" value={settings.auditLog} onChange={setToggle("auditLog")} />
+          <Section id="privacy" title="Data & Privacy" description="Not available yet. These options do not change data handling or reports." icon={Database}>
+            <Toggle label="Auto-purge inactive accounts (1 year)" value={settings.autoPurge} onChange={setToggle("autoPurge")} disabled />
+            <Toggle label="Report anonymization" value={settings.anonymizeExports} onChange={setToggle("anonymizeExports")} disabled />
+            <Toggle label="Audit log retention (90 days)" value={settings.auditLog} onChange={setToggle("auditLog")} disabled />
           </Section>
         </div>
       </div>
