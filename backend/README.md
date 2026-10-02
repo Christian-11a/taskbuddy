@@ -62,7 +62,7 @@ Job lifecycle: `open → recommending → assigned → in_progress → completed
 
 1. Create a project at [supabase.com](https://supabase.com).
 2. Apply **every** migration in [`supabase/migrations/`](./supabase/migrations) **in order**
-   (0001 → 0036), either by pasting each file into the SQL Editor or with the CLI:
+   (0001 → 0038), either by pasting each file into the SQL Editor or with the CLI:
 
    ```bash
    supabase link --project-ref <your-project-ref>
@@ -112,6 +112,8 @@ Job lifecycle: `open → recommending → assigned → in_progress → completed
    | `0034_qa_provider_admin.sql` | Verification document types, provider acceptance location, secondary categories/service requests and admin verification fields. |
    | `0035_backfill_active_bookings.sql` | Repeatable historical booking backfill for confirmed/in-progress jobs without a calendar row. |
    | `0036_admin_handover_queries.sql` | Service-role-only audit/wallet search and exact dashboard/booking counts. **Apply before deploying the updated API.** |
+   | `0037_fulltest_remediation.sql` | Approved-skill eligibility, job-task and dispute safeguards, chat notifications, and escrow protection. Applied to the linked project on 2026-10-02; see `HANDOFF.md` for the remote history mismatch. |
+   | `0038_admin_queue_search.sql` | Service-request search with matching pagination totals, booking-title search/counts, and a service-role-only password-presence check for Google-only mobile accounts. **Apply before deploying the API that calls its RPCs.** |
 
    > Migrations 0008 and 0009 each run `alter type notification_type add value`.
    > Postgres allows this inside a transaction as long as the new value isn't

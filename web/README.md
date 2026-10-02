@@ -537,7 +537,7 @@ features already work.
 
 | Feature | Backend work needed | Web follow-up |
 |---|---|---|
-| **Service Requests search** | Add provider/category search to `GET /admin/skill-requests`. Filter before pagination and return the matching total. | Switch from loading the complete selected-status queue to server-filtered pages. The old first-100 cutoff is already removed. |
+| **Service Requests search** | Implemented locally in migration 0038 and the API: provider/category search filters before pagination and returns a matching total. Apply 0038 and deploy the API before releasing the web change. | Implemented locally: server-filtered pages, matching totals, and a retry state. Live verification remains. |
 | **Notification settings** | Implement shared configuration, event-based admin alerts, and a scheduled daily summary with a defined timezone. | Connect and enable the controls after delivery behavior is verified. |
 | **Platform name and support email** | Agree which places consume these values; implement shared configuration that those places actually use. | Connect Settings and the agreed web consumers. Saving a value only on this device is not enough. |
 | **Data & Privacy settings** | Agree retention/purge rules and permissions. Implement shared configuration and authorized retention/purge behavior. | Implement and test report-export anonymization; connect verified controls. Keep purge, retention and anonymization controls unavailable until their behavior exists. |
@@ -548,10 +548,9 @@ contract must define who can change it and how concurrent edits are handled.
 
 ### Additional improvements — not current blockers
 
-- **Booking-title search:** extend `admin_list_bookings` to search `job.title`
-  before pagination/counting. Current ID, client, provider and category search
-  works; title search is an additional capability. The web can update the
-  search hint and regression tests after the backend supports it.
+- **Booking-title search:** implemented locally in migration 0038 for both the
+  booking page and status counts; the web search hint includes title. Apply
+  the migration and deploy the API before live verification.
 - **Larger queues:** full-list helpers still have a **5,000-row safety limit**.
   Before queues approach that size, use server-filtered pagination and matching
   totals. Reuse existing backend pagination where available; request missing

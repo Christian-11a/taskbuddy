@@ -10,6 +10,15 @@ Each item below: what's wrong, why it's backend, and what "done" looks like.
 
 ---
 
+## Update 2026-10-02 — admin search and mobile account/location follow-up (local)
+
+- Migration 0038 adds service-request provider/category search with totals, booking-title search/counts, and a service-role-only password-presence RPC. Apply it before deploying the updated API.
+- The web Service Requests page now requests server-filtered pages; Bookings includes title in its search hint. Google-only mobile accounts hide Change Password, and homeowner job details show the provider's accept-time address and distance.
+- These changes have local test coverage but have not been applied or deployed. Migration 0037 is applied; the older remote migration-history mismatch documented above still needs reconciliation before a normal `db push`.
+- Notification settings, shared platform contact details, data-retention policy, and job-photo portfolio visibility remain product decisions. Do not enable their controls or expose client photos without agreed behavior.
+
+---
+
 ## Update 2026-10-02 — FullTest fixes (local, not deployed)
 
 Implemented against `FullTest-Result.txt`, limited to bug fixes and blockers:

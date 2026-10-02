@@ -626,7 +626,14 @@ acceptance audit raised has since been done (full reasoning in
 open: the Stripe Connect escrow, card-at-hire, and verification as a gate
 (§29, §17). The migration list, including which ones must be applied before an
 API deploy and which must run alone (0022, 0027), is kept in one place:
-`backend/README.md`. It currently runs through **0032**.
+`backend/README.md`. It currently runs through **0038**.
+
+**2026-10-02 local follow-up:** `GET /auth/me` now reports `has_password` via
+the service-role-only migration 0038 RPC. Both roles hide Change Password for
+Google-only accounts. The homeowner job detail shows the provider's accept-time
+address and distance from the job when that location is recorded. Apply 0038
+and deploy the API before shipping the mobile change. Provider job-photo
+visibility remains a separate product decision.
 
 | Item | Outcome |
 |---|---|
