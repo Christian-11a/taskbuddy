@@ -26,6 +26,14 @@ Replace the body with something that renders `{{ .Token }}`:
 The template must contain `{{ .Token }}`. Leaving `{{ .ConfirmationURL }}` in place sends a link
 instead, and `POST /auth/reset-password` will reject every code the user tries to type.
 
+## Code expiry
+
+In the linked Supabase project, set **Authentication → Providers → Email → Email OTP
+Expiration** to **3600 seconds (1 hour)**. This is a Supabase Auth setting, not an
+API or mobile-app timer. It also controls other email codes and links, including
+signup confirmation, so check the project's existing value before changing it.
+The local `supabase/config.toml` value does not configure the hosted project.
+
 ## Endpoints
 
 ```
@@ -67,3 +75,10 @@ curl -X POST http://localhost:3000/auth/reset-password \
 
 A suspended account is refused at step two with **403 Account suspended** — a reset must not be a
 way back into an account an admin closed.
+
+If a freshly received code is rejected, check the Render `AuthService` log for
+`Password reset code verification failed`. It records Supabase's HTTP status,
+error code, and message without logging the code or new password. A generic
+"invalid or expired" message alone does not prove which occurred. Confirm that
+the code came from the latest Reset Password email for the same address, and
+compare the attempt time with Supabase Auth logs.
