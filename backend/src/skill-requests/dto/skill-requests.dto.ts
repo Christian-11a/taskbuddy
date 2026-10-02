@@ -39,6 +39,11 @@ export class CreateSkillRequestDto {
 
 export class ListSkillRequestsQueryDto {
   @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  search?: string;
+
+  @IsOptional()
   @Type(() => Number)
   @IsInt()
   @Min(1)

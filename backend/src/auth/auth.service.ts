@@ -766,10 +766,20 @@ export class AuthService implements OnModuleInit {
   async me(user: Profile) {
     // `profiles` has no email column (it lives in auth.users); attach it so the
     // frontends can display the account email without a second round-trip.
-    const { data: authData } = await this.supabase.admin.auth.admin.getUserById(
-      user.id,
-    );
-    const profile = { ...user, email: authData?.user?.email ?? null };
+    const [
+      { data: authData, error: authError },
+      { data: hasPassword, error: passwordError },
+    ] = await Promise.all([
+      this.supabase.admin.auth.admin.getUserById(user.id),
+      this.supabase.admin.rpc('auth_user_has_password', { p_user_id: user.id }),
+    ]);
+    if (authError) throw new BadRequestException(authError.message);
+    if (passwordError) throw new BadRequestException(passwordError.message);
+    const profile = {
+      ...user,
+      email: authData.user.email ?? null,
+      has_password: hasPassword,
+    };
 
     if (user.role !== 'provider') return { profile, provider_profile: null };
     const { data, error } = await this.supabase.admin

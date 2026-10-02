@@ -123,6 +123,20 @@ export class SkillRequestsService {
     const offset = query.offset ?? 0;
     const limit = query.limit ?? 100;
     const paginated = query.limit !== undefined || query.offset !== undefined;
+    if (query.search !== undefined) {
+      const { data, error } = await this.supabase.admin.rpc(
+        'admin_list_skill_requests',
+        {
+          p_search: query.search.trim() || null,
+          p_status: query.status ?? null,
+          p_limit: limit,
+          p_offset: offset,
+        },
+      );
+      if (error) throw new BadRequestException(error.message);
+      const page = data?.[0];
+      return { items: page?.rows ?? [], total: Number(page?.total ?? 0) };
+    }
     let builder = this.supabase.admin
       .from('skill_change_requests')
       .select(REQUEST_SELECT, { count: 'exact' })

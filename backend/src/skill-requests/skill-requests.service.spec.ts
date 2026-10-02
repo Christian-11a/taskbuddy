@@ -40,7 +40,14 @@ function createSupabaseMock(resultsByTable: Record<string, QueryResult[]>) {
       Promise.resolve(result).then(resolve);
     return builder;
   });
-  return { supabase: { admin: { from } } as unknown as SupabaseService, calls };
+  const rpc = jest
+    .fn()
+    .mockResolvedValue(resultsByTable.rpc?.shift() ?? ok(null));
+  return {
+    supabase: { admin: { from, rpc } } as unknown as SupabaseService,
+    calls,
+    rpc,
+  };
 }
 
 const ok = (data: unknown): QueryResult => ({ data, error: null });
@@ -48,12 +55,12 @@ const provider = { id: 'p1', role: 'provider' } as Profile;
 const admin = { id: 'a1', role: 'admin' } as Profile;
 
 function createService(results: Record<string, QueryResult[]>) {
-  const { supabase, calls } = createSupabaseMock(results);
+  const { supabase, calls, rpc } = createSupabaseMock(results);
   const record = jest.fn().mockResolvedValue(undefined);
   const service = new SkillRequestsService(supabase, {
     record,
   } as unknown as AdminActionsService);
-  return { service, calls, record };
+  return { service, calls, rpc, record };
 }
 
 const pendingRow = (overrides: Record<string, unknown> = {}) => ({
@@ -173,6 +180,27 @@ describe('SkillRequestsService.approve', () => {
 });
 
 describe('SkillRequestsService.list', () => {
+  it('uses a counted SQL page for provider/category search', async () => {
+    const rows = [pendingRow()];
+    const { service, rpc } = createService({
+      rpc: [ok([{ rows, total: 42 }])],
+    });
+    await expect(
+      service.list({
+        status: 'pending',
+        search: 'Rico',
+        limit: 20,
+        offset: 20,
+      }),
+    ).resolves.toEqual({ items: rows, total: 42 });
+    expect(rpc).toHaveBeenCalledWith('admin_list_skill_requests', {
+      p_search: 'Rico',
+      p_status: 'pending',
+      p_limit: 20,
+      p_offset: 20,
+    });
+  });
+
   it('returns a counted page beyond the old 100-row cap', async () => {
     const rows = [pendingRow()];
     const { service, calls } = createService({

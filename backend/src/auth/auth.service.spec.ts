@@ -681,6 +681,31 @@ describe('AuthService.register', () => {
 });
 
 describe('AuthService handover fixes', () => {
+  it('reports whether an account actually has a password', async () => {
+    const rpc = jest.fn().mockResolvedValue({ data: false, error: null });
+    const supabase = {
+      admin: {
+        rpc,
+        auth: {
+          admin: {
+            getUserById: jest.fn().mockResolvedValue({
+              data: { user: { email: 'google@test.io' } },
+              error: null,
+            }),
+          },
+        },
+      },
+    } as unknown as SupabaseService;
+    const result = await new AuthService(supabase).me({
+      id: 'p1',
+      role: 'client',
+    } as import('../common/types').Profile);
+    expect(result.profile.has_password).toBe(false);
+    expect(rpc).toHaveBeenCalledWith('auth_user_has_password', {
+      p_user_id: 'p1',
+    });
+  });
+
   it('returns 400 for a wrong current password without changing it', async () => {
     const updateUserById = jest.fn();
     const supabase = {
@@ -725,6 +750,7 @@ describe('AuthService handover fixes', () => {
     const supabase = {
       admin: {
         from: () => builder,
+        rpc: jest.fn().mockResolvedValue({ data: true, error: null }),
         auth: {
           admin: {
             getUserById: jest
