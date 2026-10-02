@@ -1032,24 +1032,18 @@ function mapSkillRequestRow(row: AdminSkillRequestApiRow): SkillRequest {
   };
 }
 
-export async function getSkillRequests(status?: SkillRequestStatus): Promise<SkillRequest[]> {
-  // The API has pagination but no search. Load every page so queue search and
-  // keyboard navigation continue to cover the whole selected status.
-  const rows: AdminSkillRequestApiRow[] = [];
-  let offset = 0;
-  for (;;) {
-    const params = new URLSearchParams({ limit: "100", offset: String(offset) });
-    if (status) params.set("status", status);
-    const res = await client.get<{ items: AdminSkillRequestApiRow[]; total: number }>(`/admin/skill-requests?${params}`);
-    if (!Array.isArray(res.items) || !Number.isSafeInteger(res.total) || res.total < 0) {
-      throw new Error("Service request pagination is unavailable. Please update the backend.");
-    }
-    rows.push(...res.items);
-    offset += res.items.length;
-    if (offset >= res.total) break;
-    if (res.items.length === 0) throw new Error("The service request queue could not be loaded completely. Please refresh.");
+export async function getSkillRequests(query: { status: SkillRequestStatus; search: string; page: number; pageSize: number }): Promise<{ items: SkillRequest[]; total: number }> {
+  const params = new URLSearchParams({
+    status: query.status,
+    search: query.search,
+    limit: String(query.pageSize),
+    offset: String((query.page - 1) * query.pageSize),
+  });
+  const res = await client.get<{ items: AdminSkillRequestApiRow[]; total: number }>(`/admin/skill-requests?${params}`);
+  if (!Array.isArray(res.items) || !Number.isSafeInteger(res.total) || res.total < 0) {
+    throw new Error("Service request pagination is unavailable. Please update the backend.");
   }
-  return [...new Map(rows.map((row) => [row.id, row])).values()].map(mapSkillRequestRow);
+  return { items: res.items.map(mapSkillRequestRow), total: res.total };
 }
 
 export async function getSkillRequestCount(status: SkillRequestStatus = "pending"): Promise<number> {
