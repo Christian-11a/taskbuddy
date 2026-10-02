@@ -122,6 +122,17 @@ describe('FullTest homeowner job details', () => {
     (api.jobDispute as jest.Mock).mockResolvedValue(null);
   });
 
+  it('shows the provider acceptance address and distance from the job', async () => {
+    (api.getJob as jest.Mock).mockResolvedValue({
+      ...inProgressJob,
+      provider_accept_address: 'Quezon City',
+      provider_accept_latitude: 14.61,
+      provider_accept_longitude: 121,
+    });
+    render(<HOJobDetailScreen jobId="job-1" onBack={jest.fn()} onNavigate={jest.fn()} />);
+    await screen.findByText(/Accepted from Quezon City.*from your job/);
+  });
+
   it('hides offers after hiring and completion until the checklist is done', async () => {
     (api.getJob as jest.Mock).mockResolvedValue({ ...inProgressJob,
       job_tasks: [{ id: 't1', label: 'Fix tap', position: 0, is_done: false }] });

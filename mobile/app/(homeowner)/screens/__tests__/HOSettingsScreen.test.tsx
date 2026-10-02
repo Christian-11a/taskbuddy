@@ -3,6 +3,9 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react-nativ
 import HOSettingsScreen from '../HOSettingsScreen';
 import { api } from '../../../../src/lib/api';
 
+const mockUseAuth = jest.fn(() => ({ profile: { has_password: true } }));
+jest.mock('../../../../src/context/AuthContext', () => ({ useAuth: () => mockUseAuth() }));
+
 jest.mock('../../../../src/lib/api', () => ({
   api: {
     settings: jest.fn(),
@@ -14,6 +17,7 @@ jest.mock('../../../../src/lib/api', () => ({
 describe('HOSettingsScreen — Delete Account confirm styling (code-review finding 5)', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    mockUseAuth.mockReturnValue({ profile: { has_password: true } });
     (api.settings as jest.Mock).mockResolvedValue({
       push_enabled: true,
       email_enabled: true,
@@ -36,5 +40,11 @@ describe('HOSettingsScreen — Delete Account confirm styling (code-review findi
       {},
     );
     expect(flatStyle.backgroundColor).toBe('#b91c1c');
+  });
+
+  it('hides Change Password for a Google-only account', () => {
+    mockUseAuth.mockReturnValue({ profile: { has_password: false } });
+    render(<HOSettingsScreen onBack={jest.fn()} onLogout={jest.fn()} />);
+    expect(screen.queryByText('Change Password')).toBeNull();
   });
 });
