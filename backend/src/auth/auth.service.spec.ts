@@ -2,6 +2,7 @@ import {
   BadRequestException,
   ConflictException,
   ForbiddenException,
+  Logger,
   ServiceUnavailableException,
   UnauthorizedException,
 } from '@nestjs/common';
@@ -383,7 +384,8 @@ describe('AuthService Google OAuth', () => {
 describe('AuthService password reset', () => {
   function createResetSupabaseMock(options: {
     resetError?: { message: string } | null;
-    verifyError?: { message: string } | null;
+    verifyError?: { message: string; code?: string; status?: number } | null;
+    missingSession?: boolean;
     deactivatedAt?: string | null;
     updateError?: { message: string } | null;
   }) {
@@ -393,10 +395,12 @@ describe('AuthService password reset', () => {
     const verifyOtp = jest.fn().mockResolvedValue(
       options.verifyError
         ? { data: {}, error: options.verifyError }
-        : {
-            data: { user: { id: 'u1' }, session: SESSION },
-            error: null,
-          },
+        : options.missingSession
+          ? { data: { user: null, session: null }, error: null }
+          : {
+              data: { user: { id: 'u1' }, session: SESSION },
+              error: null,
+            },
     );
     const updateUserById = jest
       .fn()
@@ -465,15 +469,39 @@ describe('AuthService password reset', () => {
     });
 
     it('rejects an expired or wrong code', async () => {
+      const log = jest.spyOn(Logger.prototype, 'warn').mockImplementation();
       const { supabase, updateUserById } = createResetSupabaseMock({
-        verifyError: { message: 'Token has expired' },
+        verifyError: {
+          message: 'Token has expired or is invalid',
+          code: 'otp_expired',
+          status: 403,
+        },
       });
+      const service = new AuthService(supabase);
+
+      await expect(service.resetPassword(dto)).rejects.toThrow(
+        'Token has expired or is invalid',
+      );
+      expect(updateUserById).not.toHaveBeenCalled();
+      expect(log).toHaveBeenCalledWith(
+        'Password reset code verification failed: Supabase status=403 code=otp_expired message=Token has expired or is invalid',
+      );
+      expect(log.mock.calls.flat().join(' ')).not.toContain(dto.token);
+      log.mockRestore();
+    });
+
+    it('logs a separate error if Supabase returns no session after verification', async () => {
+      const log = jest.spyOn(Logger.prototype, 'error').mockImplementation();
+      const { supabase } = createResetSupabaseMock({ missingSession: true });
       const service = new AuthService(supabase);
 
       await expect(service.resetPassword(dto)).rejects.toThrow(
         UnauthorizedException,
       );
-      expect(updateUserById).not.toHaveBeenCalled();
+      expect(log).toHaveBeenCalledWith(
+        'Password reset code verified but Supabase returned no user session',
+      );
+      log.mockRestore();
     });
 
     it('refuses a suspended account, so reset is not a way back in', async () => {

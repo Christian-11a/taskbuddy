@@ -316,9 +316,18 @@ export class AuthService implements OnModuleInit {
       token: dto.token,
       type: 'recovery',
     });
-    if (error || !data.session || !data.user) {
+    if (error) {
+      this.logger.warn(
+        `Password reset code verification failed: Supabase status=${error.status ?? 'unknown'} code=${error.code ?? 'unknown'} message=${error.message}`,
+      );
+      throw new UnauthorizedException(error.message);
+    }
+    if (!data.session || !data.user) {
+      this.logger.error(
+        'Password reset code verified but Supabase returned no user session',
+      );
       throw new UnauthorizedException(
-        error?.message ?? 'That reset code is invalid or has expired',
+        'That reset code could not be verified. Please request a new code.',
       );
     }
 
