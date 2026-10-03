@@ -153,16 +153,17 @@ The mobile app defaults to the deployed API, so it runs with no local setup.
 
 ## Backend handoff
 
-**If you hold backend / Render / Stripe / Supabase / Firebase access, start at
-[`HANDOFF.md`](./HANDOFF.md).** It's the live punch list, newest update first. The app owner doesn't have
-those accesses, so each of these open asks is waiting on you:
+**For backend / Render / Stripe / Supabase / Firebase work, start at
+[`HANDOFF.md`](./HANDOFF.md).** Check its dated updates against the current
+environment before acting: some older deployment and webhook asks have since
+been completed.
 
 | Priority | Ask | Needs | Details |
 |---|---|---|---|
-| **Blocking** | Set `STRIPE_WEBHOOK_SECRET` to the sandbox endpoint's signing secret, then resend the failed events. Wallet top-ups, card-at-hire and Identity results all depend on it | Render + Stripe Dashboard | [`docs/backend-handoff-stripe-webhook-secret.md`](./docs/backend-handoff-stripe-webhook-secret.md) |
-| **Blocking** | Fix or delete `STRIPE_MOBILE_API_VERSION` on Render (`Invalid Stripe API version: 2025-21-27`) | Render | [`docs/backend-handoff-stripe-identity-config.md`](./docs/backend-handoff-stripe-identity-config.md) |
-| High | If not done yet, apply migrations 0035 then 0036. Do this **before** any deploy of `main`, because the analytics/bookings code needs 0036 | Supabase | `HANDOFF.md`, Update 2026-09-29 |
-| High | Deploy `main` (verification/profile gate), run the stuck-providers query, and confirm `/auth/register` accepts `category_id` before the next mobile build | Render + Supabase | `HANDOFF.md`, Update 2026-10-01 §B |
+| High | Verify a fresh sandbox wallet top-up credits the wallet exactly once, then test card-at-hire and Stripe Identity on a device. A resent `payment_intent.succeeded` returned HTTP 200 after the signing-secret change, but this does not prove the full flows | Stripe + Render + mobile | [`docs/backend-handoff-stripe-webhook-secret.md`](./docs/backend-handoff-stripe-webhook-secret.md) |
+| High | Check the current Render `STRIPE_MOBILE_API_VERSION` and exercise Identity/top-up creation; an earlier Identity request failed with `Invalid Stripe API version: 2025-21-27` | Render + Stripe | [`docs/backend-handoff-stripe-identity-config.md`](./docs/backend-handoff-stripe-identity-config.md) |
+| High | Migration 0038 is applied to the linked Supabase project. Verify the restarted Render API serves the new admin search and `has_password` contracts; the health check does not identify the deployed commit. Deploy the web/mobile clients separately | Render + Vercel + EAS | [`backend/README.md`](./backend/README.md) |
+| Medium | Investigate the ML service's HTTP 429 before claiming recommendations work end to end | Render + ML service | [`HANDOFF.md`](./HANDOFF.md) |
 | Medium | Push notifications: add Firebase `google-services.json` + FCM credentials, then rebuild | Firebase + EAS | `HANDOFF.md` §4 |
 | Low | Run the k6 money-path load test (it writes to prod, so it needs a go-ahead) | Render/Supabase tier visibility | `HANDOFF.md` §3, [`backend/load/README.md`](./backend/load/README.md) |
 
@@ -170,3 +171,12 @@ Product decisions that block further backend work are listed in `HANDOFF.md` (Up
 2026-09-29). `docs/backend-handoff-*.md` has deeper writeups on specific subsystems, for example
 [`docs/backend-handoff-wallet-payout-rail-spike.md`](./docs/backend-handoff-wallet-payout-rail-spike.md)
 (why the withdrawal payout rail can't reuse the Stripe Connect payout service as-is).
+
+The linked project's migration 0038 functions were verified after application.
+Its older migration-history mismatch still prevents a clean `supabase db push
+--dry-run`; do not repair history based only on a dry-run suggestion. The
+Render API restarted after the fork's `main` push and returned HTTP 200 with
+database `up`, but exact deployed-commit identity and client releases remain
+unverified. Password-reset OTP expiry is configured in Supabase Auth to one
+hour; see [`docs/password-reset-setup.md`](./docs/password-reset-setup.md) for
+the template and failure-log checks.
