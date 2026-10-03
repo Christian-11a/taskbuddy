@@ -109,8 +109,7 @@ export const MOCK_APP: AppState = {
   sidebarCollapsed: false,
   setSidebarCollapsed: noop,
   settings: {
-    emailAlerts: true, disputeNotify: true, dailySummary: false, newUserNotify: false, activityBadge: true,
-    autoPurge: false, anonymizeExports: true, auditLog: true, platformName: "TaskBuddy", supportEmail: "support@example.com",
+    activityBadge: true, anonymizeExports: true, platformName: "TaskBuddy",
   },
   updateSettings: noop,
   maintenanceMode: false,
