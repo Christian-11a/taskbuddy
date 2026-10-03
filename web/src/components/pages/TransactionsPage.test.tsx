@@ -63,6 +63,7 @@ describe("TransactionsPage — Issue Credit (Wallet tab)", () => {
     mockedSearchWalletTransactions.mockResolvedValue({ items: [], total: 0 });
     mockedUseApp.mockReturnValue({
       users: [makeUser()],
+      settings: { anonymizeExports: false },
     } as unknown as ReturnType<typeof useApp>);
   });
 
@@ -159,7 +160,7 @@ describe("TransactionsPage — Issue Credit (Wallet tab)", () => {
 
 describe("TransactionsPage — card-funded payouts (Escrow tab)", () => {
   beforeEach(() => {
-    mockedUseApp.mockReturnValue({ users: [] } as unknown as ReturnType<typeof useApp>);
+    mockedUseApp.mockReturnValue({ users: [], settings: { anonymizeExports: false } } as unknown as ReturnType<typeof useApp>);
     mockedSearchTransactions.mockResolvedValue({
       items: [
         {
@@ -193,7 +194,7 @@ describe("TransactionsPage — card-funded payouts (Escrow tab)", () => {
 describe("TransactionsPage — server-paged Wallet tab", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockedUseApp.mockReturnValue({ users: [] } as unknown as ReturnType<typeof useApp>);
+    mockedUseApp.mockReturnValue({ users: [], settings: { anonymizeExports: false } } as unknown as ReturnType<typeof useApp>);
     mockedSearchWalletTransactions.mockResolvedValue({
       items: [
         {

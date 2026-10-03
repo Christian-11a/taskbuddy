@@ -31,6 +31,7 @@ import {
   useQueueKeys,
 } from "@/components/admin/queue";
 import { REASON_MAX_LENGTH } from "@/lib/validation";
+import { exportMasks } from "@/lib/export/anonymize";
 import { datedFilename, downloadCsv, toCsv } from "@/lib/export/csv";
 import type { VerificationRow } from "@/lib/adapters";
 
@@ -54,7 +55,7 @@ function StatusBadge({ status }: { status: VerificationRow["status"] }) {
  * made. See docs/TaskBuddyCompleteRefinement.md §28.
  */
 export function VerificationsPage() {
-  const { verifications, approveVerification, rejectVerification, loading } = useApp();
+  const { verifications, approveVerification, rejectVerification, loading, settings } = useApp();
   const { showToast } = useToast();
   const isWide = useIsWide();
   const [filter, setFilter] = useState<Filter>("pending");
@@ -94,9 +95,10 @@ export function VerificationsPage() {
   const effectiveId = selected?.id ?? null;
 
   function exportCsv() {
+    const mask = exportMasks(settings.anonymizeExports);
     const csv = toCsv(
       ["Name", "Email", "Status", "Submitted", "Documents"],
-      filtered.map((v) => [v.name, v.email, v.status, v.date, v.documents.length]),
+      filtered.map((v) => [mask.name(v.name), mask.email(v.email), v.status, v.date, v.documents.length]),
     );
     downloadCsv(datedFilename("taskbuddy-verification-queue"), csv);
   }

@@ -353,10 +353,13 @@ export function SettingsPage() {
             />
           </Section>
 
-          <Section id="privacy" title="Data & Privacy" description="Not available yet. These options do not change data handling or reports." icon={Database}>
-            <Toggle label="Auto-purge inactive accounts (1 year)" value={settings.autoPurge} onChange={setToggle("autoPurge")} disabled />
-            <Toggle label="Report anonymization" value={settings.anonymizeExports} onChange={setToggle("anonymizeExports")} disabled />
-            <Toggle label="Audit log retention (90 days)" value={settings.auditLog} onChange={setToggle("auditLog")} disabled />
+          <Section id="privacy" title="Data & Privacy" description="Applies to CSV exports from this console. The choice stays on this device." icon={Database}>
+            <Toggle
+              label="Anonymize exports"
+              sub="Names become initials; emails and phone numbers are masked. IDs, amounts and dates are kept."
+              value={settings.anonymizeExports}
+              onChange={setToggle("anonymizeExports")}
+            />
           </Section>
         </div>
       </div>

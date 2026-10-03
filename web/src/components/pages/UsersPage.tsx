@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { AlertTriangle, CheckCircle, Download, Home, KeyRound, MailCheck, MoreHorizontal, PauseCircle, RefreshCw, Star, Users, Wrench } from "lucide-react";
 import { useApp } from "@/context/AppContext";
+import { exportMasks } from "@/lib/export/anonymize";
 import { datedFilename, downloadCsv, toCsv } from "@/lib/export/csv";
 import { REASON_MAX_LENGTH, validateDurationDays } from "@/lib/validation";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
@@ -73,7 +74,7 @@ const VERIFICATION_TONE: Record<string, "ok" | "warn" | "danger" | "neutral"> = 
 };
 
 export function UsersPage() {
-  const { users, setUserStatus, bulkSetUserStatus, sendPasswordReset, refreshUsers, loading } = useApp();
+  const { users, setUserStatus, bulkSetUserStatus, sendPasswordReset, refreshUsers, loading, settings } = useApp();
   const { showToast } = useToast();
   const [search, setSearch] = useState("");
   const [roleFilter, setRoleFilter] = useState<RoleFilter>("all");
@@ -394,9 +395,10 @@ export function UsersPage() {
   const exportScope = selected.size > 0 ? filtered.filter((u) => selected.has(u.id)) : filtered;
 
   function exportCsv() {
+    const mask = exportMasks(settings.anonymizeExports);
     const csv = toCsv(
       ["Name", "Email", "Phone", "Role", "Category", "City", "Status", "Verification", "Joined", "Jobs completed", "Rating"],
-      exportScope.map((u) => [u.name, u.email, u.phone, u.rolePlain, u.category, u.city, u.status, u.verification, u.joined, u.jobsCompleted, u.ratingValue]),
+      exportScope.map((u) => [mask.name(u.name), mask.email(u.email), mask.phone(u.phone), u.rolePlain, u.category, u.city, u.status, u.verification, u.joined, u.jobsCompleted, u.ratingValue]),
     );
     downloadCsv(datedFilename("taskbuddy-users"), csv);
   }

@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { CalendarClock, Download, ImageIcon, Lock, MapPin, XCircle } from "lucide-react";
 import { useApp } from "@/context/AppContext";
+import { exportMasks } from "@/lib/export/anonymize";
 import { datedFilename, downloadCsv, toCsv } from "@/lib/export/csv";
 import * as services from "@/lib/services";
 import type { AdminBookingDetail } from "@/lib/domain";
@@ -70,7 +71,7 @@ const withCount = (label: string, count: number | undefined) => (count === undef
 type DetailState = AdminBookingDetail | "loading" | "error";
 
 export function BookingsPage() {
-  const { cancelBooking } = useApp();
+  const { cancelBooking, settings } = useApp();
   const { showToast } = useToast();
   const [search, setSearch] = useState("");
   const debouncedSearch = useDebouncedValue(search, 250);
@@ -194,9 +195,10 @@ export function BookingsPage() {
   const exportScope = selected.size > 0 ? bookings.filter((b) => selected.has(b.id)) : bookings;
 
   function exportCsv() {
+    const mask = exportMasks(settings.anonymizeExports);
     const csv = toCsv(
       ["Booking ID", "Client", "Provider", "Service", "Status", "Posted", "Budget"],
-      exportScope.map((b) => [b.id, b.customer, b.provider, b.service, b.status, b.date, b.amount]),
+      exportScope.map((b) => [b.id, mask.name(b.customer), mask.name(b.provider), b.service, b.status, b.date, b.amount]),
     );
     downloadCsv(datedFilename("taskbuddy-bookings"), csv);
   }

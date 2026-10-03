@@ -4,10 +4,16 @@ import userEvent from "@testing-library/user-event";
 import { UsersPage, bulkMessage } from "./UsersPage";
 import { ToastProvider } from "@/components/ui/Toast";
 import { useApp } from "@/context/AppContext";
+import { downloadCsv } from "@/lib/export/csv";
 import type { UserRow } from "@/lib/adapters";
 
 vi.mock("@/context/AppContext", () => ({
   useApp: vi.fn(),
+}));
+
+vi.mock("@/lib/export/csv", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/export/csv")>()),
+  downloadCsv: vi.fn(),
 }));
 
 const mockedUseApp = vi.mocked(useApp);
@@ -332,5 +338,48 @@ describe("bulkMessage", () => {
     expect(bulkMessage("Reinstated", { succeeded: 0, failed: 4, errors })).toBe(
       "Reinstated 0 of 4. 4 failed: one; two; +2 other reasons.",
     );
+  });
+});
+
+describe("UsersPage — CSV export anonymization", () => {
+  function setup(anonymizeExports: boolean) {
+    mockedUseApp.mockReturnValue({
+      users: [makeUser()],
+      setUserStatus: vi.fn(),
+      bulkSetUserStatus: vi.fn(),
+      sendPasswordReset: vi.fn(),
+      refreshUsers: vi.fn(),
+      loading: false,
+      settings: { anonymizeExports },
+    } as unknown as ReturnType<typeof useApp>);
+  }
+
+  async function exportCsv() {
+    const user = userEvent.setup();
+    renderWithToast(<UsersPage />);
+    await user.click(screen.getByRole("button", { name: /export csv/i }));
+    await user.click(await screen.findByRole("button", { name: "Export" }));
+    return vi.mocked(downloadCsv).mock.calls[0][1];
+  }
+
+  beforeEach(() => {
+    vi.resetAllMocks();
+  });
+
+  it("masks name, email and phone but keeps role, city and counts when anonymization is on", async () => {
+    setup(true);
+    const csv = await exportCsv();
+
+    expect(csv).toContain("M. L.,m***@example.com,***01,Provider,Plumbing,Quezon City");
+    expect(csv).not.toContain("Morgan");
+    expect(csv).not.toContain("morgan@example.com");
+    expect(csv).not.toContain("0917");
+  });
+
+  it("exports full values when anonymization is off", async () => {
+    setup(false);
+    const csv = await exportCsv();
+
+    expect(csv).toContain("Morgan Lee,morgan@example.com,0917 555 0101,Provider");
   });
 });
