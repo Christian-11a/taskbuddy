@@ -143,7 +143,14 @@ const routes: [RegExp, string, Handler][] = [
     row.status = action === "settle" ? "completed" : "failed";
     return row;
   }],
-  [/^\/admin\/skill-requests$/, "GET", (u) => skillRequests.filter((s) => !u.searchParams.get("status") || s.status === u.searchParams.get("status"))],
+  [/^\/admin\/skill-requests$/, "GET", (u) => {
+    const status = u.searchParams.get("status");
+    const q = u.searchParams.get("search");
+    const rows = skillRequests.filter((s) =>
+      (!status || s.status === status) && matches(q, s.provider.full_name, s.category.name),
+    );
+    return { items: paged(rows, u), total: rows.length };
+  }],
   [/^\/admin\/skill-requests\/[^/]+\/(approve|reject)$/, "POST", (u) => {
     const [, , , id, action] = u.pathname.split("/");
     const row = skillRequests.find((r) => r.id === id)!;
