@@ -223,10 +223,12 @@ export default function HOWalletScreen() {
       const result = await openRedirectSession(session.url, appRedirect);
 
       if (result.type !== 'success') {
-        // Dismissing the browser is not proof the payment failed — the user
-        // may have paid and swiped away — so reload rather than assert either.
+        // The browser flow has ended, including when Android reports a
+        // dismiss after a completed Checkout. The webhook still credits the
+        // wallet; leaving the form open invites a second charge.
+        closeAddMoney();
         reload();
-        setAdding(false);
+        void awaitCredit(balanceBefore).then(() => reload());
         return;
       }
 
@@ -235,8 +237,8 @@ export default function HOWalletScreen() {
       ).get('topup');
 
       if (status !== 'success') {
-        setAddError('Payment was cancelled.');
-        setAdding(false);
+        closeAddMoney();
+        showToast('Payment was cancelled.');
         return;
       }
 

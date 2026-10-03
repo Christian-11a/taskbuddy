@@ -188,7 +188,7 @@ describe('HOWalletScreen — Add Money after Stripe returns', () => {
     expect(screen.getByTestId('wallet-add-money-continue')).toBeTruthy();
   });
 
-  it('keeps the form with Continue (so the user can retry) when the payment was cancelled', async () => {
+  it('closes the form when Stripe returns a cancelled payment', async () => {
     (api.wallet as jest.Mock).mockResolvedValue(walletAt(0));
     (openRedirectSession as jest.Mock).mockResolvedValue({
       type: 'success',
@@ -197,18 +197,20 @@ describe('HOWalletScreen — Add Money after Stripe returns', () => {
 
     await startTopup();
 
-    await waitFor(() => expect(screen.getByText('Payment was cancelled.')).toBeTruthy());
-    expect(screen.getByTestId('wallet-add-money-continue')).toBeTruthy();
+    await waitFor(() => expect(screen.queryByTestId('add-money-dialog')).toBeNull());
+    expect(showToast).toHaveBeenCalledWith('Payment was cancelled.');
+    expect(api.createCheckoutSession).toHaveBeenCalledTimes(1);
   });
 
-  it('keeps the form without a result when the browser is dismissed', async () => {
+  it('closes the form when Android dismisses the browser after returning', async () => {
     (api.wallet as jest.Mock).mockResolvedValue(walletAt(0));
     (openRedirectSession as jest.Mock).mockResolvedValue({ type: 'dismiss' });
 
     await startTopup();
 
-    await waitFor(() => expect(openRedirectSession).toHaveBeenCalledTimes(1));
-    await waitFor(() => expect(screen.getByTestId('wallet-add-money-continue')).toBeTruthy());
+    await waitFor(() => expect(screen.queryByTestId('add-money-dialog')).toBeNull());
+    expect(openRedirectSession).toHaveBeenCalledTimes(1);
+    expect(api.wallet).toHaveBeenCalledTimes(2);
   });
 
   it('shows the error and keeps Continue when creating the Checkout session fails', async () => {
