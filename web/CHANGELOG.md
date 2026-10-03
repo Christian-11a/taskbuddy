@@ -32,6 +32,8 @@ order, newest first.
 
 | Date | Entry | Category |
 |---|---|---|
+| 2026-10-03 | Export anonymization is real; Settings trimmed to what exists | Feature, Improvement |
+| 2026-10-03 | Server-filtered Service Requests and booking-title search, verified live | Backend integration, Verification |
 | 2026-10-01 | Admin regression suite after moderation recovery | Verification |
 | 2026-09-30 | Account moderation: per-account bulk failures and honest refresh recovery | Fix |
 | 2026-09-30 | Server counts, complete Service Requests, server search and honest Settings | Backend integration, Fix, Improvement |
@@ -53,6 +55,65 @@ order, newest first.
 
 ---
 
+### 2026-10-03 · Export anonymization is real; Settings trimmed to what exists
+
+**Category:** Feature · Improvement
+
+- **Anonymize exports** (Settings → Data & Privacy) now works. It was a disabled
+  switch that looked on but did nothing. With it on (the default, stored on this
+  device), CSV exports mask names to initials (`Maria Cruz` → `M. C.`), emails to
+  the first character plus the domain (`m***@example.com`), and phone numbers to
+  the last two digits (`***67`). Ids, amounts, statuses, dates and cities are kept
+  so exports stay useful. Covered: Users, Verifications, Bookings, Transactions
+  (escrow), Wallet and Reports (top providers). The Activity export holds only job
+  titles and is unchanged. It is client-side only; the console and API still show
+  full values. New helper: `src/lib/export/anonymize.ts`.
+- **Removed** the unbuilt Data & Privacy options (auto-purge, audit-log retention)
+  and the notification switches for disputes, daily summary and new registrations.
+  They needed deletion policy and delivery services nobody has agreed or built.
+- **Support email** now shows "Not set yet" instead of a made-up
+  `support@taskbuddy.io`. The mailbox has not been created, so no address is
+  displayed or stored locally. The backend need stays, written so the email may be
+  empty until it exists.
+- **Honest off-state:** the one remaining notification switch, new-verification
+  email, shows off and disabled. Previously two disabled switches appeared on.
+  Unused stored preferences are ignored.
+- **Backend needs, decided by the web side:** one always-on email to admins when a
+  provider submits for verification, and platform name and support email stored once
+  for the site footer and outgoing emails. Written up in
+  `docs/backend-handoff-web-admin.md`, which now lists only these two.
+- Checked in the local dev preview: the Settings page, and a real Users export
+  that came out masked with other columns intact. Not yet deployed to Vercel.
+- Validation: 223 tests passed (one skipped); ESLint, TypeScript and the
+  production build passed.
+
+---
+
+### 2026-10-03 · Server-filtered Service Requests and booking-title search, verified live
+
+**Category:** Backend integration · Verification
+
+- **Service Requests** now loads server-filtered pages with a matching total
+  and a retry state, replacing the earlier walk of 100-row pages. The backend
+  filters provider and category before paging (migration 0038, applied to the
+  linked Supabase project along with 0037).
+- **Booking search** also matches the job title. The page and the status counts
+  filter together, and the search hint names title.
+- **Admin session reload** keeps the signed-in email, because
+  `GET /auth/admin/session` now returns it. Malformed or incomplete admin list
+  responses are rejected instead of showing an empty or truncated queue.
+- The development-only admin preview returns the same paged
+  `{ items, total }` shape as the backend.
+- **Live check, 2026-10-03** (Vercel on `773003a`, signed-in console, read-only):
+  Service Requests status tab and category search with matching totals;
+  booking search with matching status counts; Settings showed the admin email
+  after a fresh page load. The deployed Render commit is not exposed, so the
+  backend side is confirmed by behavior only.
+- Validation: 215 tests passed (one opt-in live-login test skipped); ESLint and
+  the production build passed.
+
+---
+
 ### 2026-10-01 · Admin regression suite after moderation recovery
 
 **Category:** Verification
@@ -60,7 +121,7 @@ order, newest first.
 The latest local web suite passed **208 tests**, with the opt-in live-login test
 skipped. TypeScript and ESLint passed. The production build passed in the earlier
 verification round but was not rerun after the latest moderation changes. The
-README's Build Status section records that distinction.
+README's Build Status section recorded that distinction (the section has since been removed).
 
 ---
 
@@ -699,6 +760,7 @@ first — no schema change, filename only.)
 
 | Date | Entry | Category |
 |---|---|---|
+| 2026-10-03 | Provider sign-up loads live categories | Fix, Backend integration |
 | 2026-10-01 | Proof statistics reveal as the section scrolls into view | Improvement, Accessibility |
 | 2026-09-30 | Signup document dialog uses the visible document title | Accessibility, Fix |
 | 2026-09-28 | Promo site refresh: hero film, legal pages, sign-up fixes | Feature, Fix |
@@ -710,6 +772,23 @@ first — no schema change, filename only.)
 | undated | Role-selection step for a first-time Google signup | Feature |
 | undated | Google Sign-In wiring, CSRF guard, and a sitemap | Feature, Security |
 | undated | Public website, real customer auth | Feature |
+
+---
+
+### 2026-10-03 · Provider sign-up loads live categories
+
+**Category:** Fix · Backend integration
+
+Provider sign-up used a fixed list of five skills, so categories added later
+could not be chosen. The form now reads the active categories from
+`GET /categories` through the new `/api/categories` proxy. The backend made that
+endpoint public so it works before login. The register route accepts valid IDs
+above five, and if the list cannot load, provider sign-up is blocked with an
+error rather than submitting a guessed ID.
+
+Live check, 2026-10-03: `/api/categories` returned 200 with the five active
+categories, and the provider sign-up skill list filled from it (form viewed, not
+submitted).
 
 ---
 
@@ -1034,11 +1113,55 @@ The admin side of this pass (the move to `/admin/*` and the login card) is in Pa
 
 | Date | Entry | Category |
 |---|---|---|
+| 2026-10-03 | README keeps only open items; completed work moved here | Docs, Verification |
 | 2026-10-01 | Dedicated backend handoff for web admin requests | Docs |
 | 2026-09-23 | Build workspace root is explicit | Build |
 | 2026-09-15 | Final web verification and light-mode default | Verification |
 | undated | Docs cleanup: open items grouped by who has to act | Docs |
 | undated | Docs cleanup: README stopped duplicating this changelog | Docs |
+
+---
+
+### 2026-10-03 · README keeps only open items; completed work moved here
+
+**Category:** Docs · Verification
+
+The README no longer carries finished requests or one-off verification logs.
+Moved here:
+
+- **FullTest remediation, 2026-10-02:** migrations 0037 and 0038 applied to the
+  linked Supabase project. The Render API restarted after the fork's `main`
+  push and passed `/health`, but its deployed commit is not exposed. The
+  Service Requests and booking-title requests that depended on 0038 are
+  recorded in the 2026-10-03 admin entry above.
+- **Read-only checks, 2026-09-30:** admin login, Dashboard, searched Booking
+  status counts, Settings availability, Audit search/filter, Wallet
+  search/empty state/page totals, Service Requests and Reports. Nothing was
+  approved, settled, credited or suspended. The deployed backend returned 200
+  for analytics, booking counts, Service Requests pagination, Audit and Wallet
+  lists, and Audit/Wallet search returned zero matches for a nonexistent term.
+- **Test-account actions, 2026-09-30:** single and bulk suspension and
+  reinstatement (accounts restored to Active), cancellation of one TEST ONLY
+  booking with no held escrow, and approval of a test provider's secondary
+  service request. Fresh reads confirmed the saved results. These do not prove
+  cancellation with held escrow or financial settlement.
+- **Live check, 2026-10-03:** see the admin and public-site entries above.
+
+`docs/backend-handoff-web-admin.md` was rewritten to list only the two open needs.
+
+Also moved here from the README's "What already works" and "Build Status":
+
+- The dispute screen supports provider appeals and settled-payment reviews. Settled
+  cases need a decision note and cannot release or refund the same payment twice;
+  compensation stays a separate Issue Credit action.
+- Appearance, the activity badge and Maintenance Mode work (maintenance uses the
+  shared backend). The separate Platform administration page works independently of
+  the disabled Platform fields in Settings.
+- Export anonymization behavior: see the "Export anonymization is real" entry above.
+- The analytics fallback is documented in `lib/services/browserAnalytics.ts`.
+- Test, lint and build results live in the changelog entry for each round (latest:
+  223 tests passed, one skipped, with ESLint, TypeScript and the production build
+  passing on 2026-10-03). The README now only lists the commands.
 
 ---
 
