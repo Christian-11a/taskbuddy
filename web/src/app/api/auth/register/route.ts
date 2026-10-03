@@ -41,8 +41,7 @@ export async function POST(req: NextRequest) {
       registration.consented_biometric !== true ||
       typeof categoryId !== "number" ||
       !Number.isInteger(categoryId) ||
-      categoryId < 1 ||
-      categoryId > 5
+      categoryId < 1
     ) {
       return NextResponse.json(
         { message: "Choose a skill category and accept the provider consent to continue." },

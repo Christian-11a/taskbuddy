@@ -540,7 +540,41 @@
   var roleOptions = document.querySelectorAll("[data-role-option]");
   var currentRole = "homeowner";
 
-  var CATEGORY_IDS = { Plumbing: 1, Cleaning: 2, Handyman: 3, Manicure: 4, Pedicure: 5 };
+  var categoriesLoaded = false;
+  var categoriesLoading = false;
+
+  async function loadCategories() {
+    if (categoriesLoaded || categoriesLoading) return;
+    categoriesLoading = true;
+    categorySelect.disabled = true;
+    categorySelect.options[0].textContent = "Loading skills…";
+    try {
+      var response = await fetch("/api/categories");
+      if (!response.ok) throw new Error("Could not load skill categories.");
+      var categories = await response.json();
+      if (!Array.isArray(categories) || !categories.length || !categories.every(function (category) {
+        return Number.isSafeInteger(category.id) && category.id > 0 && typeof category.name === "string" && category.name.trim();
+      })) throw new Error("No skill categories are available.");
+      var placeholder = document.createElement("option");
+      placeholder.textContent = "Select your skill…";
+      placeholder.value = "";
+      categorySelect.replaceChildren(placeholder);
+      categories.forEach(function (category) {
+        var option = document.createElement("option");
+        option.textContent = category.name;
+        option.value = String(category.id);
+        categorySelect.add(option);
+      });
+      categoriesLoaded = true;
+      categorySelect.disabled = false;
+      clearStatus(signupStatus);
+    } catch (error) {
+      categorySelect.options[0].textContent = "Skills unavailable";
+      if (currentRole === "provider") showStatus(signupStatus, error.message, true);
+    } finally {
+      categoriesLoading = false;
+    }
+  }
 
   function updateRoleFields() {
     var isProvider = currentRole === "provider";
@@ -566,6 +600,7 @@
       });
       currentRole = btn.getAttribute("data-role-option");
       updateRoleFields();
+      if (currentRole === "provider") loadCategories();
     });
     btn.addEventListener("keydown", function (event) {
       if (event.key !== "ArrowRight" && event.key !== "ArrowLeft" && event.key !== "Home" && event.key !== "End") return;
@@ -681,7 +716,7 @@
     var emailValid = emailInput.checkValidity();
     var passwordValid = passwordInput.checkValidity();
     var confirmValid = confirmInput.value === passwordInput.value && confirmInput.value.length > 0;
-    var categoryValid = !isProvider || (categorySelect && categorySelect.checkValidity());
+    var categoryValid = !isProvider || (categoriesLoaded && categorySelect && categorySelect.checkValidity());
     var consentsValid = Array.prototype.every.call(
       signupForm.querySelectorAll(".auth-consent:not([hidden]) input[required]"),
       function (checkbox) { return checkbox.checked; }
@@ -731,7 +766,7 @@
       consented_data_collection: consents[2] ? consents[2].checked : false,
     };
     if (isProvider) {
-      payload.category_id = CATEGORY_IDS[categorySelect.value] || undefined;
+      payload.category_id = Number(categorySelect.value);
       payload.consented_biometric = consents[3] ? consents[3].checked : false;
     }
 
