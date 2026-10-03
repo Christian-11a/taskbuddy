@@ -984,6 +984,11 @@ describe("getDashboardStats", () => {
 });
 
 describe("list paging", () => {
+  it("rejects a malformed list response instead of showing an empty queue", async () => {
+    global.fetch = vi.fn(() => Promise.resolve(jsonResponse({ wrong_key: [], total: 0 }))) as unknown as typeof fetch;
+    await expect(services.getVerifications()).rejects.toThrow("Invalid list response");
+  });
+
   it("requests the selected service-request page and search from the server", async () => {
     const all = Array.from({ length: 20 }, (_, i) => ({
       id: `s${i}`, type: "add_secondary", status: "pending", reason: "Experience", category_id: 1,
