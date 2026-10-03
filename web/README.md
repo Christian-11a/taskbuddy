@@ -4,9 +4,12 @@
 
 The existing dispute screen supports provider appeals and settled-payment reviews. Settled cases require a decision note and cannot release or refund the same payment again; compensation remains a separate existing Issue Credit action.
 
-Migration **0037** is applied to the linked Supabase project. The updated API
-still needs deployment before releasing this app. See [backend handover](../HANDOFF.md)
-for validation and outstanding live/device checks.
+Migrations **0037 and 0038** are applied to the linked Supabase project. The
+Render API restarted after the fork's `main` push and passed `/health`, but
+its deployed commit is not exposed. Verify the 0038 admin search endpoints
+against Render and deploy this web revision to Vercel before claiming the new
+search behavior is live. See [backend handover](../HANDOFF.md) for the remaining
+checks.
 
 One Next.js 16 (App Router) + TypeScript app serving two audiences:
 
@@ -26,10 +29,11 @@ different mechanisms on purpose.
 `/admin/login` — `admin@taskbuddy.com` (ask the team for the password)
 
 > **Status:** deployed on Vercel at the URL above, against the deployed API.
-> Browser-admin cookie sessions, server-side list search/pagination, and the
+> Browser-admin cookie sessions, earlier server-side list search/pagination, and the
 > public promo site + customer auth flow (including forgot/reset password) are
 > live. The API's credentialed CORS allows this origin (preflight verified
-> 2026-09-18). A new deploy of either side is still an operator action.
+> 2026-09-18). The 0038 Service Requests and booking-title search changes have
+> not been verified on the deployed API or released on Vercel.
 
 ---
 
@@ -138,10 +142,9 @@ admin pages → context/AppContext → lib/services → lib/api/client → backe
   Transactions, Activity) reload on the same tick via `hooks/useLiveTick`. A
   silent refresh never starts while the first load is still running, and a
   moderation action discards any refresh that was already in flight.
-- **Lists use the backend's paging contracts.** Bookings, Activity, Audit and
-  Wallet load server-filtered pages. Other queues load their complete lists
-  for local filtering; Service Requests walks 100-row pages until the reported
-  total is reached, so its search includes requests beyond the first 100. If
+- **Lists use the backend's paging contracts.** Bookings, Activity, Audit,
+  Wallet and Service Requests load server-filtered pages. Other queues load
+  their complete lists for local filtering. If
   `/admin/analytics/summary` fails, the same summary is rebuilt in the browser
   from working lists (`lib/services/browserAnalytics.ts`).
 - **An expired token is refreshed once** via `POST /auth/refresh` and the
@@ -505,10 +508,8 @@ refresh, keyboard work queues), keeping every feature and API call.
 
 The production build completes without the earlier workspace-root warning.
 
-On 2026-09-30, the latest local web suite passed **208 tests**, with the
-opt-in live-login test skipped. TypeScript and ESLint passed. The production
-build passed in the earlier verification round; it was not rerun for the
-latest moderation changes. Regression tests cover missing queue counts,
+On 2026-10-02, the local web suite passed **210 tests** (one skipped), and
+ESLint and the production build passed. Regression tests cover missing queue counts,
 stale searches, page-scoped exports, unavailable Settings, Service Requests
 beyond 100 rows, signup document dialog labels, and moderation partial
 failures/refresh recovery. Browser login was checked separately.
@@ -527,17 +528,16 @@ implementation requests are listed below; pending action tests stay in
 It defines the required behavior, ownership, multi-admin rules, web follow-up
 and verification for each request below.
 
-**Owner: backend developer.** These requests do not block the working console.
-They are needed to enable the unavailable Settings features and improve queue
-search. The web developer will connect and test the supported behavior once
-the backend work is ready. This is a handoff list, not a claim that these
-features already work.
+The search contracts below are implemented locally and migration 0038 is
+applied; their deployed behavior still needs verification. The other requests
+need product decisions and backend work before the unavailable Settings
+controls can be enabled.
 
 ### Required to enable or improve these features
 
 | Feature | Backend work needed | Web follow-up |
 |---|---|---|
-| **Service Requests search** | Implemented locally in migration 0038 and the API: provider/category search filters before pagination and returns a matching total. Apply 0038 and deploy the API before releasing the web change. | Implemented locally: server-filtered pages, matching totals, and a retry state. Live verification remains. |
+| **Service Requests search** | Migration 0038 is applied to the linked project; the API filters provider/category before pagination and returns a matching total. Verify the Render contract and deployed commit. | Implemented locally: server-filtered pages, matching totals, and a retry state. Deploy this web revision and verify it in browser. |
 | **Notification settings** | Implement shared configuration, event-based admin alerts, and a scheduled daily summary with a defined timezone. | Connect and enable the controls after delivery behavior is verified. |
 | **Platform name and support email** | Agree which places consume these values; implement shared configuration that those places actually use. | Connect Settings and the agreed web consumers. Saving a value only on this device is not enough. |
 | **Data & Privacy settings** | Agree retention/purge rules and permissions. Implement shared configuration and authorized retention/purge behavior. | Implement and test report-export anonymization; connect verified controls. Keep purge, retention and anonymization controls unavailable until their behavior exists. |
@@ -548,9 +548,10 @@ contract must define who can change it and how concurrent edits are handled.
 
 ### Additional improvements — not current blockers
 
-- **Booking-title search:** implemented locally in migration 0038 for both the
-  booking page and status counts; the web search hint includes title. Apply
-  the migration and deploy the API before live verification.
+- **Booking-title search:** implemented in migration 0038 for both the booking
+  page and status counts; the web search hint includes title. The migration is
+  applied to the linked project; Render and browser behavior still need a
+  direct check.
 - **Larger queues:** full-list helpers still have a **5,000-row safety limit**.
   Before queues approach that size, use server-filtered pagination and matching
   totals. Reuse existing backend pagination where available; request missing

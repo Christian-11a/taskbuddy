@@ -4,9 +4,11 @@
 
 Bug fixes cover approved skill filtering, job photos and lifecycle, escrow totals, cancellation/warranty dispute access, notification creation, and responsive auth/privacy/job forms. Dark-mode controls are explicitly unavailable; no new catalogue or theme was added.
 
-Migration **0037** is applied to the linked Supabase project. The updated API
-still needs deployment before releasing this app. See [backend handover](../HANDOFF.md)
-for validation and outstanding live/device checks.
+Migrations **0037 and 0038** are applied to the linked Supabase project. The
+Render API restarted after the fork's `main` push and passed `/health`, but
+that response does not identify its deployed commit. Verify the new API
+contracts and run the Android device flows before releasing this app. See
+[backend handover](../HANDOFF.md) for remaining checks.
 
 The Expo / React Native app for **TaskBuddy**, a Philippine home-services
 marketplace. Clients post jobs, providers apply and complete them.
@@ -234,12 +236,12 @@ object path, such as `<profile-id>/<uuid>.jpg>`. `HOCreateJobScreen` submits
 those paths in `photo_urls`, and `HOJobDetailScreen` renders the values it
 receives from `GET /jobs/:id` as React Native image URIs.
 
-**Implemented locally (2026-09-29), pending API deployment:** transform relative `jobs.photo_urls` paths into
+**Implemented in the API; deployed behavior needs verification:** transform relative `jobs.photo_urls` paths into
 public URLs from the public `job-photos` bucket when returning job objects from
 `GET /jobs/:id` (and preferably `/jobs/mine`, `/jobs/browse`, and `/jobs/assigned`).
-Absolute HTTP(S) URLs from older rows are preserved. Until this API is
-deployed, uploaded job photos can be stored successfully but will not
-render in Job Details because a storage path is not an image URL.
+Absolute HTTP(S) URLs from older rows are preserved. Confirm the deployed
+`GET /jobs/:id` returns a usable URL before counting the photo flow as working
+on a device.
 
 ### Live chat and push notifications
 
@@ -304,7 +306,7 @@ sign-in, and notification rows remain available in the in-app list either way.
 | `HOProfile` | Displays profile data; menu is Edit Profile / Settings / Help & Support |
 | `HOEditProfileScreen` | `PATCH /profiles/me`, then `refreshProfile()`. The backend geocodes a changed address and rejects the save with a readable message if it can't verify it |
 | `HONotificationsScreen` | `GET /notifications`; mark read / read-all |
-| `HOSettingsScreen` | `POST /auth/change-password`, all five switches (`GET`/`PATCH /settings`), and `DELETE /profiles/me`. Account deletion displays backend blockers and signs out after success; Dark Mode still only saves a preference and Language remains a placeholder |
+| `HOSettingsScreen` | `POST /auth/change-password` when `GET /auth/me` reports `has_password`, all five switches (`GET`/`PATCH /settings`), and `DELETE /profiles/me`. Google-only accounts without a password hide Change Password. Account deletion displays backend blockers and signs out after success; Dark Mode remains unavailable and Language remains a placeholder |
 | `HelpSupportScreen` (shared, `src/components/`) | Static FAQ + `mailto:` support link + the required Geoapify / OpenStreetMap attribution links — no backend |
 
 ### Provider (Service Provider — `SP*`)
@@ -460,9 +462,10 @@ after QA round 2, all shipped on the same branch:
 
 ## Backend Handoff Docs
 
-> **2026-10-01:** two new backend asks are at the top of [`HANDOFF.md`](../HANDOFF.md). One is the
-> blocking Stripe webhook secret (§7 below). The other is a Render deploy of the verification/profile
-> gate, which the app's single-call registration also depends on.
+> **2026-10-02:** one sandbox Stripe webhook resend returned HTTP 200 after the
+> signing-secret change (§7 below). The fork's `main` was pushed and Render
+> restarted, but the deployed commit and fresh mobile payment flows still need
+> direct verification.
 
 > **Backend pass (2026-09-29, local only):** provider/category reads and job photo
 > URLs are fixed; wrong current passwords return 400; browse accepts `urgency`;
@@ -470,14 +473,12 @@ after QA round 2, all shipped on the same branch:
 > the selected urgency chip as a query parameter. Live/infra and product-decision
 > items remain open. See the latest [`HANDOFF.md`](../HANDOFF.md) update.
 
-The live punch list of open backend asks is [`HANDOFF.md`](../HANDOFF.md) at the repo root;
-start there. Seven older handoff documents in [`docs/`](../docs/) are addressed to whoever holds
-backend / Supabase / Render / Google Cloud access. The first two are pure ops — applying and
-deploying already-committed work, no new code. The next two ask for small,
-specific pieces of new backend code (rate limiting, an admin-only credit
-endpoint) plus one real architecture decision (Stripe Connect). The fifth is a
-test-environment blocker, not app code. **The sixth and seventh are open and blocking:** wrong environment variables on Render break provider
-verification and wallet top-ups, and only someone with Render/Stripe access can fix them.
+The current release and operations checklist is [`HANDOFF.md`](../HANDOFF.md)
+at the repo root. The older guides in [`docs/`](../docs/) explain the original
+requests and contracts; use the dated checks here and in `HANDOFF.md` for their
+current status. Stripe Identity configuration still needs a Render check, and
+the recovered webhook delivery still needs fresh wallet, hire and Identity
+end-to-end checks.
 
 ### 1. [`docs/backend-handoff-booking-tasks-verification.md`](../docs/backend-handoff-booking-tasks-verification.md)
 
@@ -586,32 +587,33 @@ use the profile address or a Metro Manila fallback when the lookup fails.
 
 ### 6. [`docs/backend-handoff-stripe-identity-config.md`](../docs/backend-handoff-stripe-identity-config.md)
 
-**Open, blocking (2026-09-29).** Get Verified step 3 fails with `Invalid Stripe API version: 2025-21-27`.
-That value is in the **Render** environment (`STRIPE_MOBILE_API_VERSION`), not in this repo, so it needs someone
-with Render access.
+**Last observed failure (2026-09-29):** Get Verified step 3 returned `Invalid
+Stripe API version: 2025-21-27`. Check the current Render value of
+`STRIPE_MOBILE_API_VERSION` and retry before assuming the failure persists.
 
 | # | Item | Needs | Status |
 |---|---|---|---|
-| 1 | Set `STRIPE_MOBILE_API_VERSION` to `2025-01-27.acacia` (or delete it) | Render dashboard | **Open** — unblocks the app, no deploy |
-| 2 | Deploy `fix/identity-stripe-version` (version validation + 503 manual-review fallback) | Render deploy (`main` already includes the hardening) | **Deployment unverified** |
+| 1 | Check `STRIPE_MOBILE_API_VERSION`; if it still has the invalid value, set it to `2025-01-27.acacia` or remove it | Render dashboard | **Current value unverified** |
+| 2 | Confirm the version validation and 503 manual-review fallback on the deployed API | Render | **Deployed behavior unverified** |
 | 3 | Confirm Stripe Identity is activated on the account | Stripe Dashboard | **Open** |
 
-The same variable feeds card top-ups (`POST /payments/topup`), so those are probably failing too. The mobile
-side is done: the upload fix is on the same branch, and the app already falls back to manual review whenever the
-API answers 5xx.
+The same variable feeds card top-ups (`POST /payments/topup`), so test that
+route after checking the current value. The app falls back to manual review
+when the API answers 5xx.
 
 ### 7. [`docs/backend-handoff-stripe-webhook-secret.md`](../docs/backend-handoff-stripe-webhook-secret.md)
 
-**Open, blocking (2026-10-01).** Card top-ups succeed in Stripe, but the wallet is never credited: Stripe has not
-delivered one `payment_intent.succeeded` to `POST /payments/webhook` since at least 2026-09-28. Most likely
-`STRIPE_WEBHOOK_SECRET` on Render doesn't match the sandbox endpoint's signing secret. The same webhook also completes
-card-at-hire and Stripe Identity results.
+**Partial recovery (2026-10-02):** earlier `payment_intent.succeeded`
+deliveries returned HTTP 400 because signature verification failed. After the
+Render signing-secret change, one manual resend returned HTTP 200 with
+`{ "received": true }`. That confirms receipt of that event, not a fresh
+top-up's wallet credit or card-at-hire/Identity completion.
 
 | # | Item | Needs | Status |
 |---|---|---|---|
-| 1 | Read the failed delivery's response in Stripe → Webhooks | Stripe Dashboard | **Open** |
-| 2 | Set `STRIPE_WEBHOOK_SECRET` to the endpoint's signing secret | Render dashboard | **Open** |
-| 3 | Resend the failed events (idempotent, safe) | Stripe Dashboard | **Open** |
+| 1 | Verify a fresh sandbox top-up produces a successful delivery and one wallet credit | Stripe Dashboard + mobile | **Pending** |
+| 2 | Verify card-at-hire and Identity webhook outcomes on a development build | Stripe Dashboard + mobile | **Pending** |
+| 3 | Review any remaining failed historical deliveries before resending them | Stripe Dashboard | **Pending** |
 
 The mobile side is done. After Stripe returns, Add Money shows "Money added" or "Payment received" with a single
 Done button, so it can no longer start a second charge. The wallet also supports pull-to-refresh.
@@ -628,12 +630,13 @@ open: the Stripe Connect escrow, card-at-hire, and verification as a gate
 API deploy and which must run alone (0022, 0027), is kept in one place:
 `backend/README.md`. It currently runs through **0038**.
 
-**2026-10-02 local follow-up:** `GET /auth/me` now reports `has_password` via
+**2026-10-02 follow-up:** `GET /auth/me` now reports `has_password` via
 the service-role-only migration 0038 RPC. Both roles hide Change Password for
 Google-only accounts. The homeowner job detail shows the provider's accept-time
-address and distance from the job when that location is recorded. Apply 0038
-and deploy the API before shipping the mobile change. Provider job-photo
-visibility remains a separate product decision.
+address and distance from the job when that location is recorded. Migration
+0038 is applied; verify the deployed response and Android rendering before
+shipping the mobile change. Provider job-photo visibility remains a separate
+product decision.
 
 | Item | Outcome |
 |---|---|
