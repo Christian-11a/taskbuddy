@@ -120,13 +120,13 @@ describe("restoreSession", () => {
   it("restores an admin identity and CSRF token from the cookie session", async () => {
     global.fetch = vi.fn(() =>
       Promise.resolve(jsonResponse({
-        user: { id: "u1", full_name: "Ana Cruz", role: "admin" },
+        user: { id: "u1", email: "admin@taskbuddy.io", full_name: "Ana Cruz", role: "admin" },
         csrf_token: "csrf-restored",
       })),
     ) as unknown as typeof fetch;
 
     await expect(services.restoreSession()).resolves.toEqual({
-      id: "u1", name: "Ana Cruz", email: "",
+      id: "u1", name: "Ana Cruz", email: "admin@taskbuddy.io",
     });
     expect(global.fetch).toHaveBeenCalledWith(
       expect.stringContaining("/auth/admin/session"),
@@ -141,13 +141,13 @@ describe("restoreSession", () => {
       .mockResolvedValueOnce(jsonResponse({ message: "Expired" }, 401))
       .mockResolvedValueOnce(jsonResponse({ csrf_token: "csrf-refreshed" }))
       .mockResolvedValueOnce(jsonResponse({
-        user: { id: "u1", full_name: "Ana Cruz", role: "admin" },
+        user: { id: "u1", email: "admin@taskbuddy.io", full_name: "Ana Cruz", role: "admin" },
         csrf_token: "csrf-session",
       }));
     global.fetch = fetchMock as unknown as typeof fetch;
 
     await expect(services.restoreSession()).resolves.toEqual({
-      id: "u1", name: "Ana Cruz", email: "",
+      id: "u1", name: "Ana Cruz", email: "admin@taskbuddy.io",
     });
     expect(fetchMock).toHaveBeenNthCalledWith(
       2,

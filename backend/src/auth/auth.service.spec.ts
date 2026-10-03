@@ -9,6 +9,23 @@ import {
 import { AuthService } from './auth.service';
 import type { SupabaseService } from '../supabase/supabase.service';
 
+describe('AuthService.emailFor', () => {
+  it('reads the account email from auth.users', async () => {
+    const getUserById = jest.fn().mockResolvedValue({
+      data: { user: { email: 'admin@example.test' } },
+      error: null,
+    });
+    const supabase = {
+      admin: { auth: { admin: { getUserById } } },
+    } as unknown as SupabaseService;
+
+    await expect(
+      new AuthService(supabase).emailFor({ id: 'admin-1' } as never),
+    ).resolves.toBe('admin@example.test');
+    expect(getUserById).toHaveBeenCalledWith('admin-1');
+  });
+});
+
 const SESSION = {
   access_token: 'access',
   refresh_token: 'refresh',

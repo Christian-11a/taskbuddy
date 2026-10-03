@@ -346,7 +346,7 @@ export async function login(email: string, password: string): Promise<AdminProfi
 export async function restoreSession(): Promise<AdminProfile | null> {
   try {
     const res = await client.get<AdminSessionApiResponse>("/auth/admin/session");
-    const profile = toAdminProfile(res.user, getAdminSession()?.adminProfile.email ?? "");
+    const profile = toAdminProfile(res.user, res.user.email);
     if (!profile || !res.csrf_token) return null;
     setAdminSession({ csrfToken: res.csrf_token, adminProfile: profile });
     return profile;

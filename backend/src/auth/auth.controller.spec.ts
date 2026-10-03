@@ -20,15 +20,18 @@ function createAuthService() {
   });
   const refresh = jest.fn().mockResolvedValue({ session: SESSION });
   const logout = jest.fn().mockResolvedValue({ success: true });
+  const emailFor = jest.fn().mockResolvedValue('admin@example.test');
   return {
     authService: {
       login,
       refresh,
       logout,
+      emailFor,
     } as unknown as AuthService,
     login,
     refresh,
     logout,
+    emailFor,
   };
 }
 
@@ -155,19 +158,27 @@ describe('AuthController browser admin endpoints', () => {
     );
   });
 
-  it('returns the minimal admin session identity', () => {
-    const { authService } = createAuthService();
+  it('returns the admin session identity with its account email', async () => {
+    const { authService, emailFor } = createAuthService();
     const controller = new AuthController(authService);
 
     expect(
-      controller.adminSession(
+      await controller.adminSession(
         { id: 'admin-1', full_name: 'Admin User', role: 'admin' } as never,
         { headers: { cookie: 'tb_admin_csrf=csrf-token' } },
       ),
     ).toEqual({
-      user: { id: 'admin-1', full_name: 'Admin User', role: 'admin' },
+      user: {
+        id: 'admin-1',
+        email: 'admin@example.test',
+        full_name: 'Admin User',
+        role: 'admin',
+      },
       csrf_token: 'csrf-token',
     });
+    expect(emailFor).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'admin-1' }),
+    );
   });
 
   it('revokes the current token and clears browser-admin cookies on logout', async () => {
