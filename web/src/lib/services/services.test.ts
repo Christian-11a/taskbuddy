@@ -984,28 +984,29 @@ describe("getDashboardStats", () => {
 });
 
 describe("list paging", () => {
-  it("loads service requests beyond 100 and keeps every request searchable", async () => {
-    const all = Array.from({ length: 205 }, (_, i) => ({
+  it("requests the selected service-request page and search from the server", async () => {
+    const all = Array.from({ length: 20 }, (_, i) => ({
       id: `s${i}`, type: "add_secondary", status: "pending", reason: "Experience", category_id: 1,
       provider: { full_name: `Provider ${i}` }, category: { name: "Plumbing" }, created_at: "2026-09-30",
     }));
     const fetchMock = vi.fn((url: string) => {
       const params = new URL(url).searchParams;
-      const offset = Number(params.get("offset"));
       expect(params.get("status")).toBe("pending");
-      expect(params.get("limit")).toBe("100");
-      return Promise.resolve(jsonResponse({ items: all.slice(offset, offset + 100), total: all.length }));
+      expect(params.get("search")).toBe("Rico");
+      expect(params.get("limit")).toBe("20");
+      expect(params.get("offset")).toBe("100");
+      return Promise.resolve(jsonResponse({ items: all, total: 205 }));
     });
     global.fetch = fetchMock as unknown as typeof fetch;
-    const rows = await services.getSkillRequests("pending");
-    expect(rows).toHaveLength(205);
-    expect(rows[204].providerName).toBe("Provider 204");
-    expect(fetchMock).toHaveBeenCalledTimes(3);
+    const result = await services.getSkillRequests({ status: "pending", search: "Rico", page: 6, pageSize: 20 });
+    expect(result.total).toBe(205);
+    expect(result.items).toHaveLength(20);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
-  it("does not present an incomplete service queue as a complete list", async () => {
-    global.fetch = vi.fn(() => Promise.resolve(jsonResponse({ items: [], total: 2 }))) as unknown as typeof fetch;
-    await expect(services.getSkillRequests("pending")).rejects.toThrow("loaded completely");
+  it("rejects a malformed service-request page", async () => {
+    global.fetch = vi.fn(() => Promise.resolve(jsonResponse({ items: null, total: 2 }))) as unknown as typeof fetch;
+    await expect(services.getSkillRequests({ status: "pending", search: "", page: 1, pageSize: 20 })).rejects.toThrow("pagination is unavailable");
   });
 
   it("uses the service request total even when only one row is requested", async () => {

@@ -15,12 +15,8 @@
  * stored, but the app still has no theme switching to apply it to, so the row
  * says as much rather than letting the switch imply a repaint that won't come.
  *
- * Change Password is real (calls the actual `/auth/change-password`
- * endpoint). Language and Delete Account intentionally don't fake real
- * functionality that doesn't exist yet: Language has no i18n backing so its
- * modal just states English is the only option for now; Delete Account has
- * no self-serve deletion endpoint, so it directs to support email instead of
- * pretending to delete the account.
+ * Change Password is shown only for accounts with a password. Language has no
+ * i18n backing, so its modal states English is the only option for now.
  */
 
 import React, { useState } from 'react';
@@ -49,6 +45,7 @@ const C = V6Colors;
 import ConfirmationModal from '../../../src/components/ConfirmationModal';
 import ChangePasswordModal from '../../../src/components/ChangePasswordModal';
 import { useSettings } from '../../../src/hooks/useSettings';
+import { useAuth } from '../../../src/context/AuthContext';
 import { api, ApiError } from '../../../src/lib/api';
 
 interface HOSettingsScreenProps {
@@ -95,8 +92,9 @@ export default function HOSettingsScreen({ onBack, onLogout }: HOSettingsScreenP
     { key: 'sms_enabled' as const, label: 'SMS Alerts' },
   ];
 
+  const { profile } = useAuth();
   const accountItems = [
-    { label: 'Change Password', icon: Lock, onPress: () => setShowPasswordModal(true) },
+    ...(profile?.has_password ? [{ label: 'Change Password', icon: Lock, onPress: () => setShowPasswordModal(true) }] : []),
     { label: 'Language', icon: Globe, onPress: () => setShowLanguageModal(true) },
   ];
 

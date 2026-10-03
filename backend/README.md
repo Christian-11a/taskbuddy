@@ -15,6 +15,13 @@ The full data-schema and product spec lives in [`BACKEND_SCHEMA.md`](./BACKEND_S
 > [Base URL](#base-url) below). Status page: <https://taskbuddy-kpek.onrender.com/> ·
 > JSON health: <https://taskbuddy-kpek.onrender.com/health>
 
+> **Release check:** migration 0038 is applied to the linked
+> Supabase project; its four functions and service-role restrictions were
+> checked. The Render API restarted after the fork's `main` push, and `/health`
+> returned HTTP 200 with database `up`. That response does not identify the
+> deployed commit, so verify the new contracts directly before treating the
+> release as complete. The ML check still returned HTTP 429.
+
 ## Architecture
 
 ```
@@ -62,7 +69,7 @@ Job lifecycle: `open → recommending → assigned → in_progress → completed
 
 1. Create a project at [supabase.com](https://supabase.com).
 2. Apply **every** migration in [`supabase/migrations/`](./supabase/migrations) **in order**
-   (0001 → 0036), either by pasting each file into the SQL Editor or with the CLI:
+   (0001 → 0038), either by pasting each file into the SQL Editor or with the CLI:
 
    ```bash
    supabase link --project-ref <your-project-ref>
@@ -112,6 +119,13 @@ Job lifecycle: `open → recommending → assigned → in_progress → completed
    | `0034_qa_provider_admin.sql` | Verification document types, provider acceptance location, secondary categories/service requests and admin verification fields. |
    | `0035_backfill_active_bookings.sql` | Repeatable historical booking backfill for confirmed/in-progress jobs without a calendar row. |
    | `0036_admin_handover_queries.sql` | Service-role-only audit/wallet search and exact dashboard/booking counts. **Apply before deploying the updated API.** |
+   | `0037_fulltest_remediation.sql` | Approved-skill eligibility, job-task and dispute safeguards, chat notifications, and escrow protection. Applied to the linked project on 2026-10-02; see `HANDOFF.md` for the remote history mismatch. |
+   | `0038_admin_queue_search.sql` | Service-request search with matching pagination totals, booking-title search/counts, and a service-role-only password-presence check for Google-only mobile accounts. Applied to the linked project; apply before deploying this API to another project. |
+
+   The linked project's older migration-history mismatch still prevents a clean
+   `supabase db push --dry-run`, even though 0038 is recorded as applied. Check
+   both local and remote migration lists before repairing history; a dry-run
+   error alone is not evidence that the remote schema needs a rollback.
 
    > Migrations 0008 and 0009 each run `alter type notification_type add value`.
    > Postgres allows this inside a transaction as long as the new value isn't
@@ -181,8 +195,9 @@ stops a client's own `X-Forwarded-For` from being a way around the limit.
 
 ### External deployment checklist
 
-The repository contains the implementation, but an operator must still run
-these external steps. This checklist does not assert that a deployment occurred.
+The repository contains the implementation. For a new environment, complete
+these external steps. The linked-project and Render observations above do not
+verify a different environment or a frontend/device release.
 
 1. Apply every migration in order, through the latest. Run 0018 and 0019 in
    separate SQL Editor transactions as described above, and 0022 on its own
@@ -196,8 +211,8 @@ these external steps. This checklist does not assert that a deployment occurred.
 4. For mobile push, use a physical device to grant notification permission and
    register an Expo token after sign-in. Configure Expo/EAS credentials and,
    when Expo push security is enabled, set `EXPO_ACCESS_TOKEN` on the API host.
-5. Run the smoke checks in
-   [`docs/backend-handoff-booking-tasks-verification.md`](../docs/backend-handoff-booking-tasks-verification.md).
+5. Run the smoke checks in [`HANDOFF.md`](../HANDOFF.md) and the relevant
+   backend handoff guides in [`docs/`](../docs/).
 
 ### 3. ML service
 
@@ -265,10 +280,10 @@ All bodies are JSON. 🔒 = requires auth; (client) / (provider) = role-restrict
 | `POST /auth/admin/logout` | revokes the current cookie-authenticated admin session and clears its cookies |
 | `POST /auth/refresh` | `{ refresh_token }` → new session |
 | `POST /auth/logout` 🔒 | revoke the session |
-| `GET /auth/me` 🔒 | `{ profile, provider_profile }` |
+| `GET /auth/me` 🔒 | `{ profile, provider_profile, has_password }`; Google-only accounts without a password report `false` so mobile hides Change Password (migration 0038) |
 | `POST /auth/change-password` 🔒 | `{ current_password, new_password }` — re-authenticates first |
 | `POST /auth/forgot-password` | `{ email }` → mails a 6-digit code. **Always** `{ success: true }`, even for an unknown address — otherwise it's an email-enumeration oracle |
-| `POST /auth/reset-password` | `{ email, token, new_password }` → `{ session }`. Needs the Supabase template to emit `{{ .Token }}` — see [`docs/password-reset-setup.md`](../docs/password-reset-setup.md) |
+| `POST /auth/reset-password` | `{ email, token, new_password }` → `{ session }`. Needs the Supabase template to emit `{{ .Token }}`; the linked project's Email OTP expiry is 3600 seconds. Rejected-code logs include Supabase status/code/message without recording the token or new password — see [`docs/password-reset-setup.md`](../docs/password-reset-setup.md) |
 | `POST /auth/send-email-otp` | `{ email }` → mails the signup confirmation code. **Always** `{ success: true }` — same enumeration reasoning as forgot-password |
 | `POST /auth/verify-email-otp` | `{ email, token }` → `{ user, session }`. Confirms the address with Supabase Auth and stamps `profiles.email_verified_at`. Needs the **Confirm signup** template to emit `{{ .Token }}` — see [`docs/email-otp-setup.md`](../docs/email-otp-setup.md) |
 
@@ -482,7 +497,7 @@ The three `POST` routes carry the payments rate limit. Connect is optional: with
 | `POST /admin/users/:id/suspend` | `{ duration_days?, reason }` — refuses if already suspended or if the target is an admin. Omit `duration_days` for indefinite; otherwise the suspension lifts itself the next time `deactivated_at` is checked (login), no cron job |
 | `POST /admin/users/:id/reinstate` | reactivate a suspended account |
 | `POST /admin/users/:id/send-password-reset` | admin-triggered password reset email — refuses admin targets (migration 0014) |
-| `GET /admin/bookings?search=&status=&category_id=&limit=&offset=` | platform-wide bookings view; search matches booking ID, client/provider name, or service category (story #31) |
+| `GET /admin/bookings?search=&status=&category_id=&limit=&offset=` | platform-wide bookings view; search matches booking ID, client/provider name, service category, or job title; filtered status counts use the same search (migration 0038) |
 | `GET /admin/bookings/:id` | one booking's full detail, plus its escrow record if one exists; stored `job-photos` paths are returned as public photo URLs |
 | `POST /admin/bookings/:id/cancel` | force-cancel a booking — refuses if already `completed`/`cancelled`/`expired` |
 | `GET /admin/analytics/summary` | totals (users/clients/providers/suspended/bookings/avg_rating/revenue/**commission**/`pending_verifications`/`pending_withdrawals`), bookings by status/category, daily booking trend, revenue trend, commission trend, top 10 providers by completed jobs (story #32). `total_revenue` is what flowed *through* the platform; `total_commission` is what it *kept* — see `BACKEND_SCHEMA.md` §27.5 |
@@ -490,6 +505,7 @@ The three `POST` routes carry the payments rate limit. Connect is optional: with
 | `GET /admin/audit?action=&actor_id=&from=&to=&limit=&offset=` | the admin action audit trail → `{ actions, total }` (migration 0014) — see below |
 | `GET /admin/jobs/:jobId/conversation` | read-only view of a job's chat, oldest first, for dispute review (migration 0014) |
 | `GET /admin/verifications?status=&limit=&offset=` | review queue; rows carry provider name, email, and short-lived signed document URLs |
+| `GET /admin/skill-requests?search=&status=&limit=&offset=` | provider service-change queue; migration 0038 filters provider/category search before pagination and returns the matching total |
 | `POST /admin/verifications/:id/approve` | approve → sets `provider_profiles.is_verified` |
 | `POST /admin/verifications/:id/reject` | `{ reason? }` |
 | `GET /admin/transactions?search=&status=&limit=&offset=` | escrow records with both parties + service name; search matches transaction ID, client/provider name, or job title (story #17/#18) |

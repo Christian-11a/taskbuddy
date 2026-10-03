@@ -176,6 +176,7 @@ export interface Profile {
   id: string;
   role: BackendRole;
   email?: string | null;
+  has_password: boolean;
   full_name: string;
   phone: string | null;
   avatar_url: string | null;
@@ -335,6 +336,9 @@ export interface Job {
   address: string;
   latitude: number;
   longitude: number;
+  provider_accept_address: string | null;
+  provider_accept_latitude: number | null;
+  provider_accept_longitude: number | null;
   posted_at: string;
   assigned_provider_id: string | null;
   assigned_at: string | null;

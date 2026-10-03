@@ -35,11 +35,22 @@ import { Spacing, V6Colors } from '../../../src/constants/theme';
 import { useHeaderTop } from '../../../src/hooks/useHeaderTop';
 import { HOScreen } from '../../../src/types/navigation';
 import { useAsyncData } from '../../../src/hooks/useAsyncData';
-import { api, ApiError } from '../../../src/lib/api';
-import { initials, jobStatusMeta, peso, shortDate, timeAgo, timeOfDay, urgencyMeta } from '../../../src/lib/format';
+import { api, ApiError, type Job } from '../../../src/lib/api';
+import { distanceLabel, initials, jobStatusMeta, peso, shortDate, timeAgo, timeOfDay, urgencyMeta } from '../../../src/lib/format';
 import ConfirmationModal from '../../../src/components/ConfirmationModal';
 
 const C = V6Colors;
+
+function acceptedDistanceKm(job: Job): number | null {
+  if (job.provider_accept_latitude == null || job.provider_accept_longitude == null) return null;
+  const toRadians = (degrees: number) => degrees * Math.PI / 180;
+  const latitudeDelta = toRadians(job.provider_accept_latitude - job.latitude);
+  const longitudeDelta = toRadians(job.provider_accept_longitude - job.longitude);
+  const a = Math.sin(latitudeDelta / 2) ** 2 +
+    Math.cos(toRadians(job.latitude)) * Math.cos(toRadians(job.provider_accept_latitude)) *
+    Math.sin(longitudeDelta / 2) ** 2;
+  return 6371 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
 
 /**
  * The real lifecycle, in the homeowner's words. The mockup's "Review" stage
@@ -92,6 +103,7 @@ export default function HOJobDetailScreen({ jobId, onBack, onNavigate }: HOJobDe
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
 
   const job = data?.job;
+  const acceptedDistance = job ? acceptedDistanceKm(job) : null;
   const provider = data?.provider;
   const dispute = data?.dispute;
   const meta = job ? jobStatusMeta(job.status) : null;
@@ -317,6 +329,13 @@ export default function HOJobDetailScreen({ jobId, onBack, onNavigate }: HOJobDe
                   <Text style={styles.messageBtnText}>Message</Text>
                 </TouchableOpacity>
               </View>
+
+              {job.provider_accept_address && (
+                <Text style={styles.detailValue}>
+                  Accepted from {job.provider_accept_address}
+                  {acceptedDistance != null ? ` · ${distanceLabel(acceptedDistance)} from your job` : ''}
+                </Text>
+              )}
 
             </View>
           ) : (

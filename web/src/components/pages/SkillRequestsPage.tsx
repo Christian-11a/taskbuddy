@@ -30,6 +30,8 @@ import {
   useQueueKeys,
 } from "@/components/admin/queue";
 import { useLiveTick } from "@/hooks/useLiveTick";
+import { useDebouncedValue } from "@/hooks/useDebouncedValue";
+import { Pagination } from "@/components/ui/Pagination";
 import { approveSkillRequest, getSkillRequests, rejectSkillRequest } from "@/lib/services";
 import type { SkillRequest, SkillRequestStatus } from "@/lib/domain";
 import { formatDate } from "@/lib/adapters";
@@ -37,6 +39,7 @@ import { formatDate } from "@/lib/adapters";
 type QueueStatus = Exclude<SkillRequestStatus, "cancelled">;
 
 const NOTE_MAX = 500;
+const PAGE_SIZE = 20;
 
 const TYPE_LABEL: Record<SkillRequest["type"], string> = {
   change_primary: "Change main service",
@@ -64,6 +67,9 @@ export function SkillRequestsPage() {
   const [error, setError] = useState("");
   const [refreshing, setRefreshing] = useState(false);
   const [search, setSearch] = useState("");
+  const debouncedSearch = useDebouncedValue(search, 250);
+  const [page, setPage] = useState(1);
+  const [total, setTotal] = useState(0);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [approving, setApproving] = useState<SkillRequest | null>(null);
   const [rejecting, setRejecting] = useState<SkillRequest | null>(null);
@@ -78,9 +84,15 @@ export function SkillRequestsPage() {
     if (!quiet) setLoading(true);
     setError("");
     try {
-      const rows = await getSkillRequests(status);
+      const result = await getSkillRequests({ status, search: debouncedSearch, page, pageSize: PAGE_SIZE });
       if (seq !== requestSeq.current) return;
-      setItems(rows);
+      const lastPage = Math.max(1, Math.ceil(result.total / PAGE_SIZE));
+      if (page > lastPage) {
+        setPage(lastPage);
+        return;
+      }
+      setItems(result.items);
+      setTotal(result.total);
     } catch (err) {
       if (seq !== requestSeq.current) return;
       setError(err instanceof Error ? err.message : "Could not load service requests. Please try again.");
@@ -90,7 +102,7 @@ export function SkillRequestsPage() {
         setRefreshing(false);
       }
     }
-  }, [status]);
+  }, [status, debouncedSearch, page]);
 
   /* eslint-disable react-hooks/set-state-in-effect -- initial data fetch is an
      external-system synchronization; the state updates happen in its async
@@ -102,11 +114,7 @@ export function SkillRequestsPage() {
   /* eslint-enable react-hooks/set-state-in-effect */
   useLiveTick(() => void load(true));
 
-  const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    if (!q) return items;
-    return items.filter((i) => i.providerName.toLowerCase().includes(q) || i.categoryName.toLowerCase().includes(q));
-  }, [items, search]);
+  const filtered = items;
   const ids = useMemo(() => filtered.map((i) => i.id), [filtered]);
   const selected = filtered.find((i) => i.id === selectedId) ?? (isWide ? filtered[0] : undefined);
   const effectiveId = selected?.id ?? null;
@@ -150,7 +158,7 @@ export function SkillRequestsPage() {
   ) : error ? (
     <QueueListState icon={AlertTriangle} tone="danger" title="Couldn't load service requests" description={error} action={<Button size="sm" variant="outline" onClick={() => void load()}>Try again</Button>} />
   ) : filtered.length === 0 ? (
-    items.length > 0 ? (
+    debouncedSearch.trim() ? (
       <QueueListState title="Nothing matches" description="Try a different search." />
     ) : (
       <QueueListState
@@ -201,24 +209,25 @@ export function SkillRequestsPage() {
               id="skill-requests"
               label="Filter service requests by status"
               value={status}
-              onChange={(s) => { setStatus(s); setSelectedId(null); }}
+              onChange={(s) => { setStatus(s); setPage(1); setSelectedId(null); }}
               options={[
                 { value: "pending", label: "Needs review" },
                 { value: "approved", label: "Approved" },
                 { value: "rejected", label: "Rejected" },
               ]}
             />
-            <SearchField value={search} onChange={setSearch} placeholder="Search by provider or service…" label="Search service requests" />
+            <SearchField value={search} onChange={(value) => { setSearch(value); setPage(1); setSelectedId(null); }} placeholder="Search by provider or service…" label="Search service requests" />
             {status === "pending" ? (
-              <QueueProgress remaining={items.length} done={doneThisSession} noun={items.length === 1 ? "request" : "requests"} />
+              <QueueProgress remaining={total} done={doneThisSession} noun={total === 1 ? "request" : "requests"} />
             ) : (
-              <span className="tabular text-[12px] text-muted-foreground">{items.length.toLocaleString()} request{items.length === 1 ? "" : "s"}</span>
+              <span className="tabular text-[12px] text-muted-foreground">{total.toLocaleString()} request{total === 1 ? "" : "s"}</span>
             )}
           </>
         }
         list={
           <>
             {listBody}
+            {!loading && !error && <Pagination page={page} pageSize={PAGE_SIZE} total={total} onPageChange={(next) => { setPage(next); setSelectedId(null); }} itemLabel="requests" />}
             <KeyHints approve="approve" reject="reject" />
           </>
         }

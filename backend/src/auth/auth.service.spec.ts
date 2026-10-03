@@ -2,6 +2,7 @@ import {
   BadRequestException,
   ConflictException,
   ForbiddenException,
+  Logger,
   ServiceUnavailableException,
   UnauthorizedException,
 } from '@nestjs/common';
@@ -381,11 +382,20 @@ describe('AuthService Google OAuth', () => {
 });
 
 describe('AuthService password reset', () => {
+  const freshSession = {
+    access_token: 'new-access',
+    refresh_token: 'new-refresh',
+    expires_at: 456,
+  };
+
   function createResetSupabaseMock(options: {
     resetError?: { message: string } | null;
-    verifyError?: { message: string } | null;
+    verifyError?: { message: string; code?: string; status?: number } | null;
+    missingSession?: boolean;
     deactivatedAt?: string | null;
     updateError?: { message: string } | null;
+    signInError?: { message: string } | null;
+    missingSignInSession?: boolean;
   }) {
     const resetPasswordForEmail = jest
       .fn()
@@ -393,8 +403,20 @@ describe('AuthService password reset', () => {
     const verifyOtp = jest.fn().mockResolvedValue(
       options.verifyError
         ? { data: {}, error: options.verifyError }
+        : options.missingSession
+          ? { data: { user: null, session: null }, error: null }
+          : {
+              data: { user: { id: 'u1' }, session: SESSION },
+              error: null,
+            },
+    );
+    const signInWithPassword = jest.fn().mockResolvedValue(
+      options.signInError
+        ? { data: {}, error: options.signInError }
         : {
-            data: { user: { id: 'u1' }, session: SESSION },
+            data: {
+              session: options.missingSignInSession ? null : freshSession,
+            },
             error: null,
           },
     );
@@ -404,7 +426,7 @@ describe('AuthService password reset', () => {
     const signOut = jest.fn().mockResolvedValue({ error: null });
 
     const supabase = {
-      anon: { auth: { resetPasswordForEmail, verifyOtp } },
+      anon: { auth: { resetPasswordForEmail, verifyOtp, signInWithPassword } },
       admin: {
         auth: { admin: { updateUserById, signOut } },
         from: jest.fn(() => ({
@@ -417,7 +439,13 @@ describe('AuthService password reset', () => {
         })),
       },
     } as unknown as SupabaseService;
-    return { supabase, resetPasswordForEmail, verifyOtp, updateUserById };
+    return {
+      supabase,
+      resetPasswordForEmail,
+      verifyOtp,
+      updateUserById,
+      signInWithPassword,
+    };
   }
 
   describe('forgotPassword', () => {
@@ -452,28 +480,82 @@ describe('AuthService password reset', () => {
       new_password: 'newsecret123',
     };
 
-    it('rotates the password and returns a session', async () => {
-      const { supabase, updateUserById } = createResetSupabaseMock({});
+    it('rotates the password and returns a fresh session', async () => {
+      const { supabase, updateUserById, signInWithPassword } =
+        createResetSupabaseMock({});
       const service = new AuthService(supabase);
 
       await expect(service.resetPassword(dto)).resolves.toEqual({
-        session: SESSION,
+        session: freshSession,
       });
       expect(updateUserById).toHaveBeenCalledWith('u1', {
         password: 'newsecret123',
       });
+      expect(signInWithPassword).toHaveBeenCalledWith({
+        email: dto.email,
+        password: dto.new_password,
+      });
+      expect(updateUserById.mock.invocationCallOrder[0]).toBeLessThan(
+        signInWithPassword.mock.invocationCallOrder[0],
+      );
+    });
+
+    it('explains when the password changed but fresh sign-in fails', async () => {
+      const { supabase } = createResetSupabaseMock({
+        signInError: { message: 'Auth temporarily unavailable' },
+      });
+      const service = new AuthService(supabase);
+
+      await expect(service.resetPassword(dto)).rejects.toThrow(
+        'Password changed, but automatic sign-in failed. Sign in with your new password.',
+      );
+    });
+
+    it('does not return an empty session after the password change', async () => {
+      const { supabase } = createResetSupabaseMock({
+        missingSignInSession: true,
+      });
+      const service = new AuthService(supabase);
+
+      await expect(service.resetPassword(dto)).rejects.toThrow(
+        ServiceUnavailableException,
+      );
     });
 
     it('rejects an expired or wrong code', async () => {
+      const log = jest.spyOn(Logger.prototype, 'warn').mockImplementation();
       const { supabase, updateUserById } = createResetSupabaseMock({
-        verifyError: { message: 'Token has expired' },
+        verifyError: {
+          message: 'Token has expired or is invalid',
+          code: 'otp_expired',
+          status: 403,
+        },
       });
+      const service = new AuthService(supabase);
+
+      await expect(service.resetPassword(dto)).rejects.toThrow(
+        'Token has expired or is invalid',
+      );
+      expect(updateUserById).not.toHaveBeenCalled();
+      expect(log).toHaveBeenCalledWith(
+        'Password reset code verification failed: Supabase status=403 code=otp_expired message=Token has expired or is invalid',
+      );
+      expect(log.mock.calls.flat().join(' ')).not.toContain(dto.token);
+      log.mockRestore();
+    });
+
+    it('logs a separate error if Supabase returns no session after verification', async () => {
+      const log = jest.spyOn(Logger.prototype, 'error').mockImplementation();
+      const { supabase } = createResetSupabaseMock({ missingSession: true });
       const service = new AuthService(supabase);
 
       await expect(service.resetPassword(dto)).rejects.toThrow(
         UnauthorizedException,
       );
-      expect(updateUserById).not.toHaveBeenCalled();
+      expect(log).toHaveBeenCalledWith(
+        'Password reset code verified but Supabase returned no user session',
+      );
+      log.mockRestore();
     });
 
     it('refuses a suspended account, so reset is not a way back in', async () => {
@@ -681,6 +763,31 @@ describe('AuthService.register', () => {
 });
 
 describe('AuthService handover fixes', () => {
+  it('reports whether an account actually has a password', async () => {
+    const rpc = jest.fn().mockResolvedValue({ data: false, error: null });
+    const supabase = {
+      admin: {
+        rpc,
+        auth: {
+          admin: {
+            getUserById: jest.fn().mockResolvedValue({
+              data: { user: { email: 'google@test.io' } },
+              error: null,
+            }),
+          },
+        },
+      },
+    } as unknown as SupabaseService;
+    const result = await new AuthService(supabase).me({
+      id: 'p1',
+      role: 'client',
+    } as import('../common/types').Profile);
+    expect(result.profile.has_password).toBe(false);
+    expect(rpc).toHaveBeenCalledWith('auth_user_has_password', {
+      p_user_id: 'p1',
+    });
+  });
+
   it('returns 400 for a wrong current password without changing it', async () => {
     const updateUserById = jest.fn();
     const supabase = {
@@ -725,6 +832,7 @@ describe('AuthService handover fixes', () => {
     const supabase = {
       admin: {
         from: () => builder,
+        rpc: jest.fn().mockResolvedValue({ data: true, error: null }),
         auth: {
           admin: {
             getUserById: jest

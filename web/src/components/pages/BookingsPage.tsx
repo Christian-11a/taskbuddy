@@ -281,7 +281,7 @@ export function BookingsPage() {
                 setSearch(v);
                 clearSelectionOnScopeChange();
               }}
-              placeholder="Search by booking ID, client, or service…"
+              placeholder="Search by booking ID, title, client, or service…"
               label="Search bookings"
             />
             {/* One status at a time, grouped by lifecycle, each with its count.

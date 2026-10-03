@@ -316,9 +316,18 @@ export class AuthService implements OnModuleInit {
       token: dto.token,
       type: 'recovery',
     });
-    if (error || !data.session || !data.user) {
+    if (error) {
+      this.logger.warn(
+        `Password reset code verification failed: Supabase status=${error.status ?? 'unknown'} code=${error.code ?? 'unknown'} message=${error.message}`,
+      );
+      throw new UnauthorizedException(error.message);
+    }
+    if (!data.session || !data.user) {
+      this.logger.error(
+        'Password reset code verified but Supabase returned no user session',
+      );
       throw new UnauthorizedException(
-        error?.message ?? 'That reset code is invalid or has expired',
+        'That reset code could not be verified. Please request a new code.',
       );
     }
 
@@ -343,11 +352,27 @@ export class AuthService implements OnModuleInit {
       });
     if (updateError) throw new BadRequestException(updateError.message);
 
+    // Updating a password revokes existing sessions, including the one issued
+    // by verifyOtp. Sign in again so the app receives a usable session.
+    const { data: signedIn, error: signInError } =
+      await this.supabase.anon.auth.signInWithPassword({
+        email: dto.email,
+        password: dto.new_password,
+      });
+    if (signInError || !signedIn.session) {
+      this.logger.error(
+        `Password reset succeeded but sign-in failed: ${signInError?.message ?? 'no session returned'}`,
+      );
+      throw new ServiceUnavailableException(
+        'Password changed, but automatic sign-in failed. Sign in with your new password.',
+      );
+    }
+
     return {
       session: {
-        access_token: data.session.access_token,
-        refresh_token: data.session.refresh_token,
-        expires_at: data.session.expires_at,
+        access_token: signedIn.session.access_token,
+        refresh_token: signedIn.session.refresh_token,
+        expires_at: signedIn.session.expires_at,
       },
     };
   }
@@ -766,10 +791,20 @@ export class AuthService implements OnModuleInit {
   async me(user: Profile) {
     // `profiles` has no email column (it lives in auth.users); attach it so the
     // frontends can display the account email without a second round-trip.
-    const { data: authData } = await this.supabase.admin.auth.admin.getUserById(
-      user.id,
-    );
-    const profile = { ...user, email: authData?.user?.email ?? null };
+    const [
+      { data: authData, error: authError },
+      { data: hasPassword, error: passwordError },
+    ] = await Promise.all([
+      this.supabase.admin.auth.admin.getUserById(user.id),
+      this.supabase.admin.rpc('auth_user_has_password', { p_user_id: user.id }),
+    ]);
+    if (authError) throw new BadRequestException(authError.message);
+    if (passwordError) throw new BadRequestException(passwordError.message);
+    const profile = {
+      ...user,
+      email: authData.user.email ?? null,
+      has_password: hasPassword,
+    };
 
     if (user.role !== 'provider') return { profile, provider_profile: null };
     const { data, error } = await this.supabase.admin
