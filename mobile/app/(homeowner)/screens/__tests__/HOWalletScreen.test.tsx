@@ -124,6 +124,7 @@ describe('HOWalletScreen — Add Money after Stripe returns', () => {
   });
 
   afterEach(() => {
+    jest.clearAllTimers();
     jest.useRealTimers();
   });
 
@@ -132,10 +133,12 @@ describe('HOWalletScreen — Add Money after Stripe returns', () => {
     await waitFor(() => expect(screen.getByText('Add Money')).toBeTruthy());
     fireEvent.press(screen.getByText('Add Money'));
     fireEvent.press(screen.getByTestId('wallet-quick-500'));
-    fireEvent.press(screen.getByTestId('wallet-add-money-continue'));
+    await act(async () => {
+      fireEvent.press(screen.getByTestId('wallet-add-money-continue'));
+    });
   };
 
-  it('shows a "Money added" result with only a Done button once the credit lands', async () => {
+  it('closes Add Money as soon as Stripe returns success and refreshes the wallet', async () => {
     (api.wallet as jest.Mock)
       .mockResolvedValueOnce(walletAt(0)) // initial load
       .mockResolvedValue(walletAt(500)); // first poll sees the credit
@@ -146,12 +149,14 @@ describe('HOWalletScreen — Add Money after Stripe returns', () => {
 
     await startTopup();
 
-    await waitFor(() => expect(screen.getByText('Money added')).toBeTruthy(), { timeout: 30000 });
-    expect(screen.getByTestId('wallet-topup-done')).toBeTruthy();
-    expect(screen.queryByTestId('wallet-add-money-continue')).toBeNull();
+    await waitFor(() => expect(screen.queryByTestId('add-money-dialog')).toBeNull());
+    expect(showToast).toHaveBeenCalledWith('Payment received. Your wallet is updating.');
+    expect(api.createCheckoutSession).toHaveBeenCalledTimes(1);
+    await act(async () => { await jest.runAllTimersAsync(); });
+    expect(api.wallet).toHaveBeenCalledTimes(4);
   });
 
-  it('shows "Payment received" (not the form) when the credit has not landed yet, and Done never re-opens Stripe', async () => {
+  it('closes before a delayed webhook credits the wallet', async () => {
     (api.wallet as jest.Mock).mockResolvedValue(walletAt(0)); // webhook never arrives during the poll
     (openRedirectSession as jest.Mock).mockResolvedValue({
       type: 'success',
@@ -160,17 +165,13 @@ describe('HOWalletScreen — Add Money after Stripe returns', () => {
 
     await startTopup();
 
-    await waitFor(() => expect(screen.getByText('Payment received')).toBeTruthy(), { timeout: 60000 });
-    expect(screen.queryByTestId('wallet-add-money-continue')).toBeNull();
-
-    fireEvent.press(screen.getByTestId('wallet-topup-done'));
-
-    await waitFor(() => expect(screen.queryByTestId('wallet-topup-done')).toBeNull());
+    await waitFor(() => expect(screen.queryByTestId('add-money-dialog')).toBeNull());
+    expect(api.wallet).toHaveBeenCalledTimes(2); // initial load and immediate refresh
     expect(api.createCheckoutSession).toHaveBeenCalledTimes(1);
     expect(openRedirectSession).toHaveBeenCalledTimes(1);
   });
 
-  it('opens a fresh form (no leftover result) when Add Money is tapped again after Done', async () => {
+  it('opens a fresh form when Add Money is tapped again after returning from Stripe', async () => {
     (api.wallet as jest.Mock)
       .mockResolvedValueOnce(walletAt(0))
       .mockResolvedValue(walletAt(500));
@@ -180,13 +181,10 @@ describe('HOWalletScreen — Add Money after Stripe returns', () => {
     });
 
     await startTopup();
-    await waitFor(() => expect(screen.getByText('Money added')).toBeTruthy(), { timeout: 30000 });
-    fireEvent.press(screen.getByTestId('wallet-topup-done'));
-    await waitFor(() => expect(screen.queryByTestId('wallet-topup-done')).toBeNull());
+    await waitFor(() => expect(screen.queryByTestId('add-money-dialog')).toBeNull());
 
     fireEvent.press(screen.getByText('Add Money'));
 
-    expect(screen.queryByText('Money added')).toBeNull();
     expect(screen.getByTestId('wallet-add-money-continue')).toBeTruthy();
   });
 
@@ -201,7 +199,6 @@ describe('HOWalletScreen — Add Money after Stripe returns', () => {
 
     await waitFor(() => expect(screen.getByText('Payment was cancelled.')).toBeTruthy());
     expect(screen.getByTestId('wallet-add-money-continue')).toBeTruthy();
-    expect(screen.queryByTestId('wallet-topup-done')).toBeNull();
   });
 
   it('keeps the form without a result when the browser is dismissed', async () => {
@@ -212,7 +209,6 @@ describe('HOWalletScreen — Add Money after Stripe returns', () => {
 
     await waitFor(() => expect(openRedirectSession).toHaveBeenCalledTimes(1));
     await waitFor(() => expect(screen.getByTestId('wallet-add-money-continue')).toBeTruthy());
-    expect(screen.queryByTestId('wallet-topup-done')).toBeNull();
   });
 
   it('shows the error and keeps Continue when creating the Checkout session fails', async () => {

@@ -81,12 +81,7 @@ export default function HOWalletScreen() {
   const [showAddMoney, setShowAddMoney] = useState(false);
   const [amount, setAmount] = useState('');
   const [adding, setAdding] = useState(false);
-  const [confirming, setConfirming] = useState(false);
   const [addError, setAddError] = useState<string | null>(null);
-  // Set once Stripe has sent the user back with a successful payment. From
-  // then on the dialog shows a result with a single Done button — never the
-  // form's Continue, which would open a second Checkout and charge again.
-  const [topupResult, setTopupResult] = useState<'credited' | 'pending' | null>(null);
   const [refreshing, setRefreshing] = useState(false);
 
   const [showWithdraw, setShowWithdraw] = useState(false);
@@ -103,12 +98,6 @@ export default function HOWalletScreen() {
     setShowAddMoney(false);
     setAmount('');
     setAddError(null);
-    setTopupResult(null);
-  };
-
-  const finishTopup = () => {
-    closeAddMoney();
-    reload();
   };
 
   const onRefresh = () => {
@@ -191,21 +180,19 @@ export default function HOWalletScreen() {
   /**
    * Re-reads the wallet until the new balance shows up.
    *
-   * Returns true once it moves. A false here is a slow webhook, not a lost
-   * payment — Stripe retries for days and the ledger row keys off the
-   * PaymentIntent, so the money lands whether or not this poll sees it.
+   * A slow webhook is not a lost payment — Stripe retries for days and the
+   * ledger row keys off the PaymentIntent.
    */
-  const awaitCredit = async (balanceBefore: number): Promise<boolean> => {
+  const awaitCredit = async (balanceBefore: number): Promise<void> => {
     for (let attempt = 0; attempt < CONFIRM_POLL_ATTEMPTS; attempt++) {
       await wait(CONFIRM_POLL_INTERVAL_MS);
       try {
         const wallet = await api.wallet();
-        if (wallet.balance > balanceBefore) return true;
+        if (wallet.balance > balanceBefore) return;
       } catch {
         // A failed poll is not a failed payment; keep trying.
       }
     }
-    return false;
   };
 
   /**
@@ -253,19 +240,16 @@ export default function HOWalletScreen() {
         return;
       }
 
-      setConfirming(true);
-      const credited = await awaitCredit(balanceBefore);
-      setConfirming(false);
-
-      // Not credited yet is a slow webhook, not a failed payment — the
-      // money still lands. Either way the user is done paying.
-      setTopupResult(credited ? 'credited' : 'pending');
+      // Checkout is complete. The webhook may still be crediting the wallet,
+      // so close the form now and keep refreshing the balance in the background.
+      closeAddMoney();
+      showToast('Payment received. Your wallet is updating.');
       reload();
+      void awaitCredit(balanceBefore).then(() => reload());
     } catch (e) {
       setAddError(e instanceof Error ? e.message : 'Could not add money.');
     } finally {
       setAdding(false);
-      setConfirming(false);
     }
   };
 
@@ -459,7 +443,7 @@ export default function HOWalletScreen() {
         visible={showAddMoney}
         transparent
         animationType="fade"
-        onRequestClose={topupResult ? finishTopup : closeAddMoney}
+        onRequestClose={closeAddMoney}
       >
         <View style={styles.modalBackdrop}>
           <Pressable
@@ -468,115 +452,86 @@ export default function HOWalletScreen() {
             // Taps on the card's empty space close the keyboard, not the modal.
             onPress={() => Keyboard.dismiss()}
           >
-            {topupResult ? (
-              <>
-                <Text style={styles.modalTitle}>
-                  {topupResult === 'credited' ? 'Money added' : 'Payment received'}
-                </Text>
-                <Text style={styles.modalBody}>
-                  {topupResult === 'credited'
-                    ? `${peso(parsedAmount)} has been added to your wallet.`
-                    : `Your payment of ${peso(parsedAmount)} went through. It can take a minute to show in your balance — pull down on the wallet to refresh. You don't need to pay again.`}
-                </Text>
-                <View style={styles.modalActions}>
+            <Text style={styles.modalTitle}>Add Money</Text>
+            <Text style={styles.modalBody}>
+              You'll be taken to Stripe to pay by card. Funds are held in escrow
+              when you hire a provider, and released to them when you mark the
+              job complete.
+            </Text>
+
+            <View style={styles.amountRow}>
+              <Text style={styles.amountCurrency}>₱</Text>
+              <TextInput
+                style={styles.amountInput}
+                value={amount}
+                onChangeText={setAmount}
+                keyboardType="decimal-pad"
+                placeholder="0.00"
+                placeholderTextColor={C.ink400}
+                editable={!adding}
+                autoFocus
+              />
+            </View>
+
+            <View style={styles.quickAmounts}>
+              {QUICK_TOPUP_AMOUNTS.map((preset) => {
+                const selected = parsedAmount === preset;
+                return (
                   <TouchableOpacity
-                    testID="wallet-topup-done"
-                    style={[styles.modalBtn, styles.modalConfirm]}
-                    onPress={finishTopup}
-                    activeOpacity={0.85}
-                  >
-                    <Text style={styles.modalConfirmText}>Done</Text>
-                  </TouchableOpacity>
-                </View>
-              </>
-            ) : (
-              <>
-                <Text style={styles.modalTitle}>Add Money</Text>
-                <Text style={styles.modalBody}>
-                  You'll be taken to Stripe to pay by card. Funds are held in escrow
-                  when you hire a provider, and released to them when you mark the
-                  job complete.
-                </Text>
-
-                <View style={styles.amountRow}>
-                  <Text style={styles.amountCurrency}>₱</Text>
-                  <TextInput
-                    style={styles.amountInput}
-                    value={amount}
-                    onChangeText={setAmount}
-                    keyboardType="decimal-pad"
-                    placeholder="0.00"
-                    placeholderTextColor={C.ink400}
-                    editable={!adding}
-                    autoFocus
-                  />
-                </View>
-
-                <View style={styles.quickAmounts}>
-                  {QUICK_TOPUP_AMOUNTS.map((preset) => {
-                    const selected = parsedAmount === preset;
-                    return (
-                      <TouchableOpacity
-                        key={preset}
-                        testID={`wallet-quick-${preset}`}
-                        style={[styles.quickAmount, selected && styles.quickAmountActive]}
-                        onPress={() => {
-                          setAmount(String(preset));
-                          setAddError(null);
-                        }}
-                        disabled={adding}
-                        activeOpacity={0.8}
-                      >
-                        <Text
-                          style={[
-                            styles.quickAmountText,
-                            selected && styles.quickAmountTextActive,
-                          ]}
-                        >
-                          {peso(preset)}
-                        </Text>
-                      </TouchableOpacity>
-                    );
-                  })}
-                </View>
-
-                <Text style={styles.modalHint}>Minimum ₱{MIN_TOPUP_PHP}</Text>
-
-                {confirming && (
-                  <Text style={styles.modalHint}>Confirming your payment…</Text>
-                )}
-
-                {addError && <Text style={styles.modalError}>{addError}</Text>}
-
-                <View style={styles.modalActions}>
-                  <TouchableOpacity
-                    style={[styles.modalBtn, styles.modalCancel]}
-                    onPress={closeAddMoney}
+                    key={preset}
+                    testID={`wallet-quick-${preset}`}
+                    style={[styles.quickAmount, selected && styles.quickAmountActive]}
+                    onPress={() => {
+                      setAmount(String(preset));
+                      setAddError(null);
+                    }}
                     disabled={adding}
                     activeOpacity={0.8}
                   >
-                    <Text style={styles.modalCancelText}>Cancel</Text>
+                    <Text
+                      style={[
+                        styles.quickAmountText,
+                        selected && styles.quickAmountTextActive,
+                      ]}
+                    >
+                      {peso(preset)}
+                    </Text>
                   </TouchableOpacity>
-                  <TouchableOpacity
-                    testID="wallet-add-money-continue"
-                    style={[
-                      styles.modalBtn,
-                      styles.modalConfirm,
-                      (!isValidAmount || adding) && styles.modalBtnDisabled,
-                    ]}
-                    onPress={addMoney}
-                    disabled={!isValidAmount || adding}
-                    activeOpacity={0.85}
-                  >
-                    {adding ? (
-                      <ActivityIndicator color={C.white} />
-                    ) : (
-                      <Text style={styles.modalConfirmText}>Continue</Text>
-                    )}
-                  </TouchableOpacity>
-                </View>
-              </>
-            )}
+                );
+              })}
+            </View>
+
+            <Text style={styles.modalHint}>Minimum ₱{MIN_TOPUP_PHP}</Text>
+
+            {addError && <Text style={styles.modalError}>{addError}</Text>}
+
+            <View style={styles.modalActions}>
+              <TouchableOpacity
+                style={[styles.modalBtn, styles.modalCancel]}
+                onPress={closeAddMoney}
+                disabled={adding}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.modalCancelText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                testID="wallet-add-money-continue"
+                style={[
+                  styles.modalBtn,
+                  styles.modalConfirm,
+                  (!isValidAmount || adding) && styles.modalBtnDisabled,
+                ]}
+                onPress={addMoney}
+                disabled={!isValidAmount || adding}
+                activeOpacity={0.85}
+              >
+                {adding ? (
+                  <ActivityIndicator color={C.white} />
+                ) : (
+                  <Text style={styles.modalConfirmText}>Continue</Text>
+                )}
+              </TouchableOpacity>
+            </View>
           </Pressable>
         </View>
       </Modal>
