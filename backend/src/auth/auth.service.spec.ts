@@ -382,12 +382,20 @@ describe('AuthService Google OAuth', () => {
 });
 
 describe('AuthService password reset', () => {
+  const freshSession = {
+    access_token: 'new-access',
+    refresh_token: 'new-refresh',
+    expires_at: 456,
+  };
+
   function createResetSupabaseMock(options: {
     resetError?: { message: string } | null;
     verifyError?: { message: string; code?: string; status?: number } | null;
     missingSession?: boolean;
     deactivatedAt?: string | null;
     updateError?: { message: string } | null;
+    signInError?: { message: string } | null;
+    missingSignInSession?: boolean;
   }) {
     const resetPasswordForEmail = jest
       .fn()
@@ -402,13 +410,23 @@ describe('AuthService password reset', () => {
               error: null,
             },
     );
+    const signInWithPassword = jest.fn().mockResolvedValue(
+      options.signInError
+        ? { data: {}, error: options.signInError }
+        : {
+            data: {
+              session: options.missingSignInSession ? null : freshSession,
+            },
+            error: null,
+          },
+    );
     const updateUserById = jest
       .fn()
       .mockResolvedValue({ error: options.updateError ?? null });
     const signOut = jest.fn().mockResolvedValue({ error: null });
 
     const supabase = {
-      anon: { auth: { resetPasswordForEmail, verifyOtp } },
+      anon: { auth: { resetPasswordForEmail, verifyOtp, signInWithPassword } },
       admin: {
         auth: { admin: { updateUserById, signOut } },
         from: jest.fn(() => ({
@@ -421,7 +439,13 @@ describe('AuthService password reset', () => {
         })),
       },
     } as unknown as SupabaseService;
-    return { supabase, resetPasswordForEmail, verifyOtp, updateUserById };
+    return {
+      supabase,
+      resetPasswordForEmail,
+      verifyOtp,
+      updateUserById,
+      signInWithPassword,
+    };
   }
 
   describe('forgotPassword', () => {
@@ -456,16 +480,46 @@ describe('AuthService password reset', () => {
       new_password: 'newsecret123',
     };
 
-    it('rotates the password and returns a session', async () => {
-      const { supabase, updateUserById } = createResetSupabaseMock({});
+    it('rotates the password and returns a fresh session', async () => {
+      const { supabase, updateUserById, signInWithPassword } =
+        createResetSupabaseMock({});
       const service = new AuthService(supabase);
 
       await expect(service.resetPassword(dto)).resolves.toEqual({
-        session: SESSION,
+        session: freshSession,
       });
       expect(updateUserById).toHaveBeenCalledWith('u1', {
         password: 'newsecret123',
       });
+      expect(signInWithPassword).toHaveBeenCalledWith({
+        email: dto.email,
+        password: dto.new_password,
+      });
+      expect(updateUserById.mock.invocationCallOrder[0]).toBeLessThan(
+        signInWithPassword.mock.invocationCallOrder[0],
+      );
+    });
+
+    it('explains when the password changed but fresh sign-in fails', async () => {
+      const { supabase } = createResetSupabaseMock({
+        signInError: { message: 'Auth temporarily unavailable' },
+      });
+      const service = new AuthService(supabase);
+
+      await expect(service.resetPassword(dto)).rejects.toThrow(
+        'Password changed, but automatic sign-in failed. Sign in with your new password.',
+      );
+    });
+
+    it('does not return an empty session after the password change', async () => {
+      const { supabase } = createResetSupabaseMock({
+        missingSignInSession: true,
+      });
+      const service = new AuthService(supabase);
+
+      await expect(service.resetPassword(dto)).rejects.toThrow(
+        ServiceUnavailableException,
+      );
     });
 
     it('rejects an expired or wrong code', async () => {

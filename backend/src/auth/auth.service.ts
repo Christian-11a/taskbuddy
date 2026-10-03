@@ -352,11 +352,27 @@ export class AuthService implements OnModuleInit {
       });
     if (updateError) throw new BadRequestException(updateError.message);
 
+    // Updating a password revokes existing sessions, including the one issued
+    // by verifyOtp. Sign in again so the app receives a usable session.
+    const { data: signedIn, error: signInError } =
+      await this.supabase.anon.auth.signInWithPassword({
+        email: dto.email,
+        password: dto.new_password,
+      });
+    if (signInError || !signedIn.session) {
+      this.logger.error(
+        `Password reset succeeded but sign-in failed: ${signInError?.message ?? 'no session returned'}`,
+      );
+      throw new ServiceUnavailableException(
+        'Password changed, but automatic sign-in failed. Sign in with your new password.',
+      );
+    }
+
     return {
       session: {
-        access_token: data.session.access_token,
-        refresh_token: data.session.refresh_token,
-        expires_at: data.session.expires_at,
+        access_token: signedIn.session.access_token,
+        refresh_token: signedIn.session.refresh_token,
+        expires_at: signedIn.session.expires_at,
       },
     };
   }
