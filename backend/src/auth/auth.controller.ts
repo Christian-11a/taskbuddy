@@ -119,12 +119,13 @@ export class AuthController {
   @Get('admin/session')
   @UseGuards(JwtAuthGuard)
   @Roles('admin')
-  adminSession(
+  async adminSession(
     @CurrentUser() user: Profile,
     @Req() req: { headers: { cookie?: string } },
   ) {
+    const email = await this.authService.emailFor(user);
     return {
-      user: { id: user.id, full_name: user.full_name, role: user.role },
+      user: { id: user.id, email, full_name: user.full_name, role: user.role },
       csrf_token: getCookie(req.headers.cookie, ADMIN_CSRF_COOKIE),
     };
   }

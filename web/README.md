@@ -230,7 +230,7 @@ the backend and convert its JSON tokens into httpOnly cookies):
 | Panel/page | Endpoint(s) |
 |---|---|
 | Sign In | `POST /auth/login` |
-| Sign Up | `POST /auth/register`, `POST /auth/send-email-otp` (if email confirmation is required) |
+| Sign Up | `GET /categories` through `/api/categories` for live active provider skills, then `POST /auth/register` and `POST /auth/send-email-otp` (if email confirmation is required). Provider sign-up waits for the category list; it does not guess an ID if the lookup fails. |
 | Confirm email | `POST /auth/verify-email-otp` |
 | Forgot password | `POST /auth/forgot-password` (always 200 — never confirms whether the address exists) |
 | Reset password | `POST /auth/reset-password` (logs the user in immediately on success) |

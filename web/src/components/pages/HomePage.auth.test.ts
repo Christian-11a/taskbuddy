@@ -5,6 +5,7 @@ import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vites
 import { HOME_MARKUP } from "./HomePage.markup";
 
 const authScript = readFileSync(path.resolve("public/promo/auth.js"), "utf8");
+const originalFetch = window.fetch;
 
 describe("signup document dialog", () => {
   const windowListeners = vi.spyOn(window, "addEventListener");
@@ -25,6 +26,7 @@ describe("signup document dialog", () => {
       document,
       history: window.history,
       URLSearchParams,
+      fetch: (input: RequestInfo | URL, init?: RequestInit) => window.fetch(input, init),
     });
   });
 
@@ -38,6 +40,7 @@ describe("signup document dialog", () => {
     document.body.innerHTML = "";
     document.documentElement.classList.remove("has-modal-open");
     document.body.classList.remove("has-modal-open");
+    window.fetch = originalFetch;
     window.history.replaceState(null, "", "/");
   });
 
@@ -62,5 +65,33 @@ describe("signup document dialog", () => {
     expect(modal).toHaveAccessibleName(title);
     click("[data-close-modal]");
     expect(overlay.hidden).toBe(true);
+  });
+
+  it("loads active provider categories with their backend IDs", async () => {
+    window.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => [{ id: 6, name: "Electrical" }, { id: 9, name: "Painting" }],
+    }) as typeof fetch;
+    document.querySelector<HTMLElement>('[data-role-option="provider"]')!.click();
+
+    await vi.waitFor(() => {
+      const options = Array.from(document.querySelectorAll<HTMLOptionElement>("#signup-category option"));
+      expect(options.map((option) => [option.value, option.textContent])).toEqual([
+        ["", "Select your skill…"],
+        ["6", "Electrical"],
+        ["9", "Painting"],
+      ]);
+    });
+    expect(window.fetch).toHaveBeenCalledWith("/api/categories", undefined);
+  });
+
+  it("blocks provider sign-up when categories cannot be loaded", async () => {
+    window.fetch = vi.fn().mockResolvedValue({ ok: false }) as typeof fetch;
+    document.querySelector<HTMLElement>('[data-role-option="provider"]')!.click();
+
+    await vi.waitFor(() => {
+      expect(document.querySelector<HTMLSelectElement>("#signup-category")!.disabled).toBe(true);
+      expect(document.querySelector("[data-signup-status]")?.textContent).toContain("Could not load skill categories.");
+    });
   });
 });

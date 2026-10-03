@@ -787,6 +787,18 @@ export class AuthService implements OnModuleInit {
     throw new ForbiddenException('Account suspended');
   }
 
+  /** The admin cookie session needs the email stored in auth.users. */
+  async emailFor(user: Profile): Promise<string> {
+    const { data, error } = await this.supabase.admin.auth.admin.getUserById(
+      user.id,
+    );
+    if (error) throw new BadRequestException(error.message);
+    if (!data.user.email) {
+      throw new BadRequestException('Account email not found');
+    }
+    return data.user.email;
+  }
+
   /** Profile plus the provider extension when the caller is a provider. */
   async me(user: Profile) {
     // `profiles` has no email column (it lives in auth.users); attach it so the

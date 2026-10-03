@@ -97,21 +97,29 @@ async function fetchAllRows<T>(path: string, key: string, pageSize = LIST_PAGE_S
   const rows: T[] = [];
   for (let page = 0; page < MAX_LIST_PAGES; page++) {
     const res = await client.get<Record<string, unknown>>(`${path}${sep}limit=${pageSize}&offset=${page * pageSize}`);
-    const batch = (res[key] as T[] | undefined) ?? [];
+    const batch = res[key];
+    if (!Array.isArray(batch) || !Number.isSafeInteger(res.total) || (res.total as number) < 0) {
+      throw new Error(`Invalid list response from ${path}`);
+    }
     rows.push(...batch);
-    const total = typeof res.total === "number" ? res.total : undefined;
-    if (batch.length < pageSize || (total !== undefined && rows.length >= total)) return rows;
+    const total = res.total as number;
+    if (rows.length > total || batch.length > pageSize) {
+      throw new Error(`Invalid list response from ${path}`);
+    }
+    if (rows.length >= total) return rows;
+    if (batch.length < pageSize) throw new Error(`Incomplete list response from ${path}`);
   }
-  // Only reached when the safety stop cut the list short.
-  console.warn(`[admin] ${path}: stopped after ${rows.length} rows (safety limit); some records are not shown.`);
-  return rows;
+  throw new Error(`List from ${path} exceeds ${MAX_LIST_PAGES * pageSize} rows`);
 }
 
 /** A list's `total` for one filter, without its rows (`limit=1`). */
 async function countRows(path: string): Promise<number> {
   const sep = path.includes("?") ? "&" : "?";
-  const res = await client.get<{ total?: number }>(`${path}${sep}limit=1&offset=0`);
-  return typeof res.total === "number" ? res.total : 0;
+  const res = await client.get<{ total: number }>(`${path}${sep}limit=1&offset=0`);
+  if (!Number.isSafeInteger(res.total) || res.total < 0) {
+    throw new Error(`Invalid count response from ${path}`);
+  }
+  return res.total;
 }
 
 function mapUserRow(row: AdminUserApiRow): AdminUser {
@@ -346,7 +354,7 @@ export async function login(email: string, password: string): Promise<AdminProfi
 export async function restoreSession(): Promise<AdminProfile | null> {
   try {
     const res = await client.get<AdminSessionApiResponse>("/auth/admin/session");
-    const profile = toAdminProfile(res.user, getAdminSession()?.adminProfile.email ?? "");
+    const profile = toAdminProfile(res.user, res.user.email);
     if (!profile || !res.csrf_token) return null;
     setAdminSession({ csrfToken: res.csrf_token, adminProfile: profile });
     return profile;
