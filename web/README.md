@@ -1,16 +1,5 @@
 # TaskBuddy Web
 
-## FullTest remediation — 2026-10-02
-
-The existing dispute screen supports provider appeals and settled-payment reviews. Settled cases require a decision note and cannot release or refund the same payment again; compensation remains a separate existing Issue Credit action.
-
-Migrations **0037 and 0038** are applied to the linked Supabase project. The
-Render API restarted after the fork's `main` push and passed `/health`, but
-its deployed commit is not exposed. Verify the 0038 admin search endpoints
-against Render and deploy this web revision to Vercel before claiming the new
-search behavior is live. See [backend handover](../HANDOFF.md) for the remaining
-checks.
-
 One Next.js 16 (App Router) + TypeScript app serving two audiences:
 
 - **`/`** — the public promo site (marketing homepage, Sign In / Sign Up, the
@@ -29,11 +18,13 @@ different mechanisms on purpose.
 `/admin/login` — `admin@taskbuddy.com` (ask the team for the password)
 
 > **Status:** deployed on Vercel at the URL above, against the deployed API.
-> Browser-admin cookie sessions, earlier server-side list search/pagination, and the
-> public promo site + customer auth flow (including forgot/reset password) are
-> live. The API's credentialed CORS allows this origin (preflight verified
-> 2026-09-18). The 0038 Service Requests and booking-title search changes have
-> not been verified on the deployed API or released on Vercel.
+> Browser-admin cookie sessions, server-side list search/pagination (including
+> Service Requests and booking-title search), and the public promo site +
+> customer auth flow (including forgot/reset password and live provider
+> categories) are live. The API's credentialed CORS allows this origin. The
+> deployed Render commit is not exposed. See
+> [backend handover](../HANDOFF.md) for backend checks and
+> [CHANGELOG.md](./CHANGELOG.md) for what was verified and when.
 
 ---
 
@@ -254,7 +245,7 @@ the backend and convert its JSON tokens into httpOnly cookies):
 | Reports | `GET /admin/analytics/summary` (same browser fallback as the Dashboard) |
 | Withdrawals | `GET /admin/withdrawals`, `POST .../:id/settle` · `POST .../:id/reject` |
 | Platform | `GET`/`PATCH /admin/commission`, category CRUD, admin accounts, notification broadcast |
-| Settings | `PATCH /profiles/me`, `POST /auth/change-password`, `GET`/`PATCH /settings` (account dark mode), `GET`/`PATCH /admin/maintenance`. Notifications, Platform name/support email and Data & Privacy are unavailable pending implementation. |
+| Settings | `PATCH /profiles/me`, `POST /auth/change-password`, `GET`/`PATCH /settings` (account dark mode), `GET`/`PATCH /admin/maintenance`. The verification email alert and Platform name/support email are unavailable pending backend work. The Data & Privacy export-anonymization switch is local to the browser. |
 
 The Platform page consumes the commission, category, admin-account, and
 notification endpoints. The Withdrawals page consumes the settlement queue.
@@ -453,6 +444,10 @@ not missed.
 - **One `AppContext` rather than split auth/UI/data contexts.** The value is
   `useMemo`'d, which removes the needless re-renders. A full split is real
   boilerplate for no measurable gain at this data volume.
+- **Full-list queues have a 5,000-row safety limit.** Console queues are far
+  below it today. If one approaches that size, move it to server-filtered
+  pagination with matching totals, using existing backend pagination where
+  available.
 - **CSP is report-only.** The public site and older components still style
   inline, so an enforcing policy needs `'unsafe-inline'` for styles anyway, and Next injects inline hydration
   scripts. Tighten once the violation report is clean.
@@ -488,81 +483,30 @@ refresh, keyboard work queues), keeping every feature and API call.
 
 ## Manual Verification
 
-- **Completed read-only checks (2026-09-30):** admin login, Dashboard, searched
-  Booking status counts, Settings availability, Audit search/filter, Wallet
-  search/empty state/page totals, Service Requests and Reports. These checks
-  did not approve, settle, credit, suspend or otherwise change production data.
-
-- **Completed test-account actions (2026-09-30):** single and bulk
-  suspension/reinstatement (accounts restored to Active), cancellation of one
-  TEST ONLY booking with no held escrow, and approval of a test provider's
-  secondary service request. Fresh reads confirmed the saved results.
-  These do not prove cancellation with held escrow or financial settlement.
+Completed checks are recorded in [CHANGELOG.md](./CHANGELOG.md).
 
 - **Pending action verification:** approve/reject a verification,
   release/refund a dispute, settle/reject a withdrawal, reject a service
   request, cancel a booking with held escrow, Retry transfer, Issue Credit, Platform
   edits and a broadcast, Maintenance Mode on/off, and a password change.
 
-## Build Status
+## Build and tests
 
-The production build completes without the earlier workspace-root warning.
-
-On 2026-10-02, the local web suite passed **210 tests** (one skipped), and
-ESLint and the production build passed. Regression tests cover missing queue counts,
-stale searches, page-scoped exports, unavailable Settings, Service Requests
-beyond 100 rows, signup document dialog labels, and moderation partial
-failures/refresh recovery. Browser login was checked separately.
+Run `npm test`, `npm run lint` and `npm run build` (see [Quick start](#quick-start)).
+Results for each round are in [CHANGELOG.md](./CHANGELOG.md).
 
 ## Current Web Blockers
 
-None currently confirmed. On 2026-09-30 the deployed backend returned 200 for
-analytics, booking counts, Service Requests pagination, Audit and Wallet lists.
-Audit/Wallet search returned zero matches for a nonexistent term. Backend
-implementation requests are listed below; pending action tests stay in
-[Manual Verification](#manual-verification).
+None currently confirmed. Backend requests still open are listed below;
+pending action tests stay in [Manual Verification](#manual-verification).
 
 ## Needed Backend Work
 
 **Detailed handoff:** [Web admin backend requirements](../docs/backend-handoff-web-admin.md).
-It defines the required behavior, ownership, multi-admin rules, web follow-up
-and verification for each request below.
+Two things are needed. Neither blocks the working console; both enable Settings
+features that are disabled today.
 
-The search contracts below are implemented locally and migration 0038 is
-applied; their deployed behavior still needs verification. The other requests
-need product decisions and backend work before the unavailable Settings
-controls can be enabled.
-
-### Required to enable or improve these features
-
-| Feature | Backend work needed | Web follow-up |
+| Need | Backend work | Web follow-up |
 |---|---|---|
-| **Service Requests search** | Migration 0038 is applied to the linked project; the API filters provider/category before pagination and returns a matching total. Verify the Render contract and deployed commit. | Implemented locally: server-filtered pages, matching totals, and a retry state. Deploy this web revision and verify it in browser. |
-| **Notification settings** | Implement shared configuration, event-based admin alerts, and a scheduled daily summary with a defined timezone. | Connect and enable the controls after delivery behavior is verified. |
-| **Platform name and support email** | Agree which places consume these values; implement shared configuration that those places actually use. | Connect Settings and the agreed web consumers. Saving a value only on this device is not enough. |
-| **Data & Privacy settings** | Agree retention/purge rules and permissions. Implement shared configuration and authorized retention/purge behavior. | Implement and test report-export anonymization; connect verified controls. Keep purge, retention and anonymization controls unavailable until their behavior exists. |
-
-Shared configuration must persist on the server and be read consistently by
-all authorized admins, not separately saved in each browser. The backend/web
-contract must define who can change it and how concurrent edits are handled.
-
-### Additional improvements — not current blockers
-
-- **Booking-title search:** implemented in migration 0038 for both the booking
-  page and status counts; the web search hint includes title. The migration is
-  applied to the linked project; Render and browser behavior still need a
-  direct check.
-- **Larger queues:** full-list helpers still have a **5,000-row safety limit**.
-  Before queues approach that size, use server-filtered pagination and matching
-  totals. Reuse existing backend pagination where available; request missing
-  filters/counts from the backend owner instead of loading everything in the
-  browser. The web must also move those views off full-list helpers.
-
-### What already works
-
-Appearance and activity badges remain functional; maintenance mode uses the
-shared backend. Old locally stored values for unavailable controls do not
-activate any feature. The separate Platform administration page works
-independently of the unavailable Platform fields in Settings.
-
-The analytics fallback is documented in [`lib/services/browserAnalytics.ts`](./src/lib/services/browserAnalytics.ts). [`HANDOFF.md`](../HANDOFF.md) describes the backend contracts; its older undeployed status is superseded for the endpoints verified above.
+| **Email admins on new provider verification** | Send one email to every active admin when a provider submits for verification. Always on, no duplicates, and a failed send must not block the submission. | Replace the disabled Notifications switch with a note once it works. |
+| **Platform name and support email** | Store both once on the server (public read, admin-only update, stale edits rejected, changes audited). Used in the website footer and outgoing emails. **The support mailbox is not created yet**, so the email starts empty and the footer and emails show no contact line until it is set. | Settings shows the email as "Not set yet". Connect the fields and the footer. |
