@@ -297,7 +297,7 @@ All bodies are JSON. 🔒 = requires auth; (client) / (provider) = role-restrict
 | `DELETE /profiles/me` 🔒 | self-serve account deletion → `204`, or `409 { blockers[] }` while the account still has a balance, a pending withdrawal, escrow held, an open dispute, or a live job. A **soft** delete: the row survives (the ledger, reviews and ML snapshots reference it) with every identifying field scrubbed, and the Auth user is renamed, banned and signed out (migration 0023, `BACKEND_SCHEMA.md` §27.1) |
 | `GET /providers/:id` 🔒 | public provider card (bio, category, rating, completed jobs) |
 | `GET /providers/:id/reviews` 🔒 | reviews for a provider |
-| `GET /categories` 🔒 | `[{ id, name }]` |
+| `GET /categories` | Public list of active categories, `[{ id, name }]`, used by provider sign-up before login. Database errors return 400 rather than an empty list. |
 
 **Jobs**
 
