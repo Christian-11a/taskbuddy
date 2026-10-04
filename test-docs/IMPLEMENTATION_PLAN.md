@@ -285,15 +285,15 @@ Exit: the selected sandbox/live outcome is demonstrated with traceable evidence;
 
 ## Phase 10 — Integration, release, and final regression
 
-- [ ] Run relevant tests/lint/typechecks after each phase; add meaningful SQL tests for transaction, concurrency, permission, deadline, and replay behavior.
+- [x] Run relevant tests/lint/typechecks after each phase; add meaningful SQL tests for transaction, concurrency, permission, deadline, and replay behavior.
 - [ ] Verify state changes across client, provider, and admin together.
-- [ ] Add new migrations rather than rewriting already applied migrations.
+- [x] Add new migrations rather than rewriting already applied migrations.
 - [ ] Inspect remote history before migration work; the handoff documents a history mismatch. Do not blindly repair or include all migrations.
 - [ ] Review migrations → deploy API → release web/mobile → verify integration → physical-device regression, with required confirmation before external operations.
 - [ ] Rebuild the native app if native packages/plugins/permissions change; verify exact release artifacts regardless.
 - [ ] Repeat all report scenarios on two role accounts/devices plus admin, covering small/larger screens, enlarged text, both Android navigation modes, foreground/background, and both themes.
 - [ ] Capture expected outcome, automated result, deployed result, and new screenshot/transaction evidence for every populated PDF item.
-- [ ] Record unresolved failures and external/product blockers explicitly.
+- [x] Record unresolved failures and external/product blockers explicitly.
 
 Exit: every requirement below is implemented and appropriately verified; no unsupported completion claim remains.
 
