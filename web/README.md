@@ -527,3 +527,11 @@ Local gates: `npm run lint`, `npx --no-install tsc --noEmit`, `npm test`,
 `npm run build`. The production build fetches the existing Google font and
 requires approved network access. The live admin-login test stays skipped
 unless explicitly configured with controlled credentials.
+
+### Release verification (October 4, 2026)
+
+The matching Supabase migrations and Render API are deployed. Web lint,
+TypeScript checks, 227 tests and production build pass; one live-only test is
+skipped. Deployment of this web revision still requires the existing Vercel
+project owner. Local build/test results do not establish deployed admin UI
+behavior. See [release evidence](../test-docs/RELEASE_VERIFICATION.md).

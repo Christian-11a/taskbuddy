@@ -1,0 +1,14 @@
+{
+  "checked_at": "2026-10-04T07:00:02.147Z",
+  "api_revision": "15bc94a",
+  "clock_setup": "Backdated only the dedicated dummy cancellation deadline; did not invoke global expiry or payment tick",
+  "checks": [
+    "Existing scheduler expires unanswered prestart cancellation",
+    "Case resolves as expired with client refund",
+    "Held sandbox PHP50 refunded exactly once"
+  ],
+  "limitations": [
+    "Clock boundary simulated on dedicated test row; not 48 hours of elapsed wall-clock time",
+    "Warranty expiry still pending"
+  ]
+}

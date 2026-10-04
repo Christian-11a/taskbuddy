@@ -1,0 +1,14 @@
+{
+  "checked_at": "2026-10-04T06:55:23.106Z",
+  "api_revision": "15bc94a",
+  "fixture": "Public Lipa-area QA coordinate; not a physical GPS fix or the reported HSSi location",
+  "checks": [
+    "Reverse lookup issues account-bound signed location reference",
+    "Another account cannot save the reference",
+    "Client saves returned address and exact selected coordinates",
+    "Fresh auth profile read preserves address and coordinates"
+  ],
+  "limitations": [
+    "Real HSSi GPS, denied location permission, manual edit invalidation and expiry need separate evidence"
+  ]
+}

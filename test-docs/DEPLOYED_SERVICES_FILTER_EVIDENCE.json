@@ -1,0 +1,21 @@
+{
+  "checked_at": "2026-10-04T06:54:45.494Z",
+  "api_revision": "15bc94a",
+  "checks": [
+    "Service submission acknowledgement exactly once",
+    "Admin approval/rejection each produces one decision notice",
+    "Decision replay refused with no duplicate notice",
+    "Approved secondary service persists in auth and client profile relationships",
+    "Rejected service excluded from both profiles",
+    "Provider stays unavailable",
+    "Nonempty combined completed/category filter matches owned jobs",
+    "Two one-row pages preserve ordering with no duplicate",
+    "Nonmatching category returns no completed fixture jobs",
+    "Approved secondary service supports browse/apply/hire/start/complete on a no-budget fixture",
+    "Rejected category excluded from provider browse"
+  ],
+  "limitations": [
+    "Provider-open-screen synchronization requires native UI evidence",
+    "Filter detail/back retention requires native UI evidence"
+  ]
+}

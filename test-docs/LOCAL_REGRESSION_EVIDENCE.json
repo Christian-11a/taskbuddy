@@ -1,0 +1,29 @@
+{
+  "checked_at": "2026-10-04T07:00:00Z",
+  "code_revision": "adfa69c",
+  "backend": {
+    "lint": "passed",
+    "build": "passed",
+    "tests": 667,
+    "suites": 52,
+    "sql_tests": 120
+  },
+  "mobile": {
+    "typecheck": "passed",
+    "tests": 185,
+    "suites": 42,
+    "lint": "No configured lint script"
+  },
+  "web": {
+    "lint": "passed",
+    "typecheck": "passed",
+    "tests": 227,
+    "skipped_live_tests": 1,
+    "build": "passed"
+  },
+  "limitations": [
+    "Backend end-to-end command has no test files",
+    "Web emits an existing root Expo tsconfig resolution warning during Vitest config bundling; web typecheck/test/build pass",
+    "Deployed and native requirements must be verified separately"
+  ]
+}

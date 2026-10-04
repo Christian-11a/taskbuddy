@@ -628,3 +628,16 @@ restored and no live payment was used. Preview Android build `a5a067c2` finished
 from mobile revision `efb0047`; device verification remains pending. The user
 has no Vercel access, so web release requires the existing project's owner.
 Phase 10 remains open for remaining deployed and device requirements.
+
+### October 4 — service/location/filter and full regression pass
+
+Real service submission/approval/rejection, exactly-once notices, persisted
+secondary services and a secondary-service browse/apply/hire lifecycle passed.
+Nonempty category/status pagination and signed Lipa-area location persistence
+also passed. The existing scheduler expired/refunded a dedicated cancellation
+with its deadline advanced for QA. See the linked evidence in
+[release verification](RELEASE_VERIFICATION.md). Full local regression passes:
+667 backend, 120 SQL, 185 mobile and 227 web tests, with one live-only web skip.
+Phase 10 remains open: exact HSSi GPS, native UI/device coverage and Vercel owner
+deployment are not proved. Native CUA cannot access the emulator; an explicit
+adb UI automation choice is pending.

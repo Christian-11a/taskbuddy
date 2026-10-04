@@ -267,3 +267,31 @@ matches build `a5a067c2`, source `efb0047`, package `com.taskbuddy.app`;
 so it was preserved. Installation succeeded in an isolated fresh user-data
 instance of the existing AVD. This proves installation only; native CUA cannot
 access its window and adb UI automation awaits the user's choice.
+
+## Service, filter, location and scheduler pass
+
+[Service/filter evidence](DEPLOYED_SERVICES_FILTER_EVIDENCE.json) verifies real
+submission, admin approval/rejection, one notice per event, replay refusal and
+persisted approved relationships in both profile APIs. An approved secondary
+category also passed provider browse/apply, client hire and provider start/client
+completion on a no-budget fixture; the rejected category stayed excluded.
+Combined nonempty category/status filtering and two distinct one-row pages pass.
+An initial filter read timed out; only reads were resumed, without repeating
+admin decisions. Native profile synchronization and detail/back retention remain open.
+
+[Location evidence](DEPLOYED_LOCATION_EVIDENCE.json) verifies a public Lipa-area
+QA coordinate saves and reloads exactly through an account-bound server reference.
+Cross-account reuse is rejected. This is not physical GPS or the reported HSSi
+location. The first harness used `formatted` instead of `formatted_address`;
+it was corrected before location evidence was recorded.
+
+[Deadline evidence](DEPLOYED_DEADLINE_EVIDENCE.json) records the existing scheduler
+automatically expiring one unanswered dummy cancellation and refunding ₱50 once.
+Only that dedicated case's deadline was backdated; no global tick was invoked.
+Warranty expiry is being observed separately on a dedicated completed fixture.
+
+[Full regression](LOCAL_REGRESSION_EVIDENCE.json) passed backend lint/build/667
+tests/120 SQL tests, mobile typecheck/185 tests, and web lint/typecheck/227 tests
+and production build. One live-only web test is skipped; backend end-to-end
+has no test files and mobile has no lint script. Native and deployed evidence
+remain separate from these local results.

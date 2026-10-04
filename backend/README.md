@@ -769,3 +769,8 @@ viewing and ownership checks, plus text/photo notification and SSE snapshot
 checks. See [portfolio evidence](../test-docs/DEPLOYED_PORTFOLIO_EVIDENCE.json)
 and [chat evidence](../test-docs/DEPLOYED_CHAT_EVIDENCE.json). These API checks
 do not establish native photo viewing or background push delivery.
+
+Controlled service-request approval/rejection, replay notice counts, approved
+secondary-service browse/apply/hire, nonempty job filters and account-bound
+location save/reload also pass on the existing API. Evidence and the remaining
+physical GPS/native gaps are in [release verification](../test-docs/RELEASE_VERIFICATION.md).
