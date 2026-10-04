@@ -1,3 +1,5 @@
+import { CurrentUser } from '../auth/current-user.decorator';
+import type { Profile } from '../common/types';
 import { Controller, Get, Query, UseGuards } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { GeocodingService } from './geocoding.service';
@@ -20,14 +22,23 @@ export class GeocodingController {
   /** Suggestions for a partial address. Returns `[]` rather than an error. */
   @Get('autocomplete')
   @ThrottleAutocomplete()
-  autocomplete(@Query() query: AutocompleteQueryDto) {
-    return this.geocoding.autocomplete(query.q);
+  async autocomplete(
+    @CurrentUser() user: Profile,
+    @Query() query: AutocompleteQueryDto,
+  ) {
+    const suggestions = await this.geocoding.autocomplete(query.q);
+    return suggestions.map((row) =>
+      row.precise
+        ? { ...row, ...this.geocoding.issueLocationReference(user.id, row) }
+        : row,
+    );
   }
 
   /** The address at the phone's GPS fix, for "use my current location". */
   @Get('reverse')
   @ThrottleGeocode()
-  reverse(@Query() query: ReverseQueryDto) {
-    return this.geocoding.reverse(query.lat, query.lon);
+  async reverse(@CurrentUser() user: Profile, @Query() query: ReverseQueryDto) {
+    const location = await this.geocoding.reverse(query.lat, query.lon);
+    return this.geocoding.issueLocationReference(user.id, location);
   }
 }

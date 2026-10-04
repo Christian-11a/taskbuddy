@@ -1,3 +1,4 @@
+import { createHmac, timingSafeEqual } from 'node:crypto';
 import {
   BadRequestException,
   Injectable,
@@ -77,6 +78,7 @@ interface GeoapifyResponse {
     lat: number;
     lon: number;
     formatted?: string;
+    city?: string;
     result_type?: string;
     rank?: {
       confidence?: number;
@@ -90,6 +92,8 @@ export interface GeocodedAddress {
   latitude: number;
   longitude: number;
   formatted_address: string;
+  city?: string;
+  location_reference?: string;
 }
 
 /**
@@ -124,8 +128,71 @@ export class GeocodingService {
   private readonly logger = new Logger(GeocodingService.name);
   private readonly apiKey: string | undefined;
 
-  constructor(config: ConfigService) {
+  constructor(private readonly config: ConfigService) {
     this.apiKey = config.get<string>('GEOAPIFY_API_KEY') || undefined;
+  }
+
+  /** Fifteen-minute, account-bound proof of the server-resolved point. */
+  issueLocationReference(
+    userId: string,
+    location: GeocodedAddress,
+  ): GeocodedAddress {
+    const payload = Buffer.from(
+      JSON.stringify({
+        userId,
+        location,
+        expires: Date.now() + 15 * 60 * 1000,
+      }),
+    ).toString('base64url');
+    return {
+      ...location,
+      location_reference: `${payload}.${this.signLocation(payload).toString('base64url')}`,
+    };
+  }
+
+  resolveLocationReference(
+    userId: string,
+    reference: string,
+    address: string,
+  ): GeocodedAddress {
+    const [payload, signature, extra] = reference.split('.');
+    if (!payload || !signature || extra !== undefined)
+      throw new BadRequestException('Invalid location confirmation');
+    const expected = this.signLocation(payload);
+    const supplied = Buffer.from(signature, 'base64url');
+    if (
+      supplied.length !== expected.length ||
+      !timingSafeEqual(supplied, expected)
+    ) {
+      throw new BadRequestException('Invalid location confirmation');
+    }
+    const resolved = JSON.parse(
+      Buffer.from(payload, 'base64url').toString('utf8'),
+    ) as { userId: string; location: GeocodedAddress; expires: number };
+    if (
+      resolved.userId !== userId ||
+      resolved.location.formatted_address.trim() !== address.trim()
+    ) {
+      throw new BadRequestException(
+        'Location confirmation does not match this account or address',
+      );
+    }
+    if (Date.now() >= resolved.expires)
+      throw new BadRequestException(
+        'Location confirmation expired. Select the address or use your current location again.',
+      );
+    return resolved.location;
+  }
+
+  private signLocation(payload: string) {
+    // Domain separation keeps this purpose distinct from the existing API key.
+    const key = createHmac(
+      'sha256',
+      this.config.getOrThrow<string>('SUPABASE_SERVICE_ROLE_KEY'),
+    )
+      .update('taskbuddy.profile-location.v1')
+      .digest();
+    return createHmac('sha256', key).update(payload).digest();
   }
 
   async geocode(address: string): Promise<GeocodedAddress> {
@@ -198,6 +265,7 @@ export class GeocodingService {
       latitude: result.lat,
       longitude: result.lon,
       formatted_address: result.formatted ?? trimmed,
+      ...(result.city ? { city: result.city } : {}),
     };
   }
 
@@ -241,7 +309,9 @@ export class GeocodingService {
       }
       body = (await response.json()) as GeoapifyResponse;
     } catch (err) {
-      this.logger.warn(`Autocomplete request failed: ${(err as Error).message}`);
+      this.logger.warn(
+        `Autocomplete request failed: ${(err as Error).message}`,
+      );
       return [];
     }
 
@@ -251,6 +321,7 @@ export class GeocodingService {
         latitude: r.lat,
         longitude: r.lon,
         formatted_address: r.formatted ?? trimmed,
+        ...(r.city ? { city: r.city } : {}),
         precise: this.isPrecise(r),
       }));
   }
@@ -307,6 +378,7 @@ export class GeocodingService {
       latitude,
       longitude,
       formatted_address: result.formatted,
+      ...(result.city ? { city: result.city } : {}),
     };
   }
 

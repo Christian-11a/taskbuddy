@@ -7,6 +7,7 @@ import {
   Length,
   Max,
   Min,
+  ValidateIf,
 } from 'class-validator';
 
 export class UpdateProfileDto {
@@ -31,8 +32,13 @@ export class UpdateProfileDto {
   @IsString()
   city?: string;
 
-  // No latitude/longitude: coordinates are derived server-side by geocoding
-  // `address` (BACKEND_SCHEMA.md §32). Accepting them from the client would let
+  @ValidateIf((_object, value: unknown) => value !== undefined)
+  @IsString()
+  @Length(1, 4096)
+  location_reference?: string;
+
+  // No latitude/longitude: coordinates come from a signed server reference or
+  // server-side geocoding of `address` (BACKEND_SCHEMA.md §32). Accepting them from the client would let
   // a provider place themselves anywhere and skew recommendation matching.
 }
 
