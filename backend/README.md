@@ -551,6 +551,8 @@ payment, holds it and confirms the application (`BACKEND_SCHEMA.md` §29.4).
 Client completion confirmation starts a **72-hour warranty hold**; only expiry
 without an open timely complaint makes payment eligible for release. Hired-job
 cancellation opens response/review with funds held; the decision releases or refunds.
+The completion endpoint re-reads the persisted job after its database trigger
+stamps `completed_at`, so its response includes the 72-hour `warranty_expires_at`.
 
 Because a hold needs real funds, **`POST /applications/:id/accept` returns 400
 `Insufficient wallet balance`** when the client can't cover the budget — the job

@@ -454,10 +454,11 @@ describe('CreateJobDto scheduled_at', () => {
 });
 
 describe('JobsService.complete', () => {
-  it('starts the warranty without releasing escrow and tells the provider', async () => {
+  it('returns the persisted warranty when the completion trigger stamps a later update', async () => {
     const { service, calls, releaseIfHeld } = createService({
       jobs: [
         ok(job({ client_id: 'c1', status: 'in_progress', budget: 1500 })),
+        ok(job({ status: 'completed', completed_at: null })),
         ok(
           job({
             status: 'completed',
@@ -482,6 +483,12 @@ describe('JobsService.complete', () => {
       jobs: [
         ok(job({ status: 'in_progress', budget: null })),
         ok(job({ status: 'completed' })),
+        ok(
+          job({
+            status: 'completed',
+            completed_at: '2026-10-04T00:00:00.000Z',
+          }),
+        ),
       ],
       notifications: [ok(null)],
     });

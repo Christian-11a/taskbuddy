@@ -406,7 +406,7 @@ export class JobsService {
         'The provider must finish the task checklist before you confirm completion',
       );
     }
-    const updated = await this.setStatus(jobId, 'completed', ['in_progress']);
+    await this.setStatus(jobId, 'completed', ['in_progress']);
     // The payments sweep releases escrow after the 72-hour warranty.
     await this.notify(job.assigned_provider_id, 'job_update', 'Job completed', {
       body:
@@ -415,7 +415,9 @@ export class JobsService {
           : `The client marked "${job.title}" as completed. The three-day warranty has started.`,
       job_id: jobId,
     });
-    return updated;
+    // The AFTER UPDATE trigger stamps completed_at in a second update, which
+    // is not included in the original UPDATE RETURNING row.
+    return this.findJob(jobId);
   }
 
   /**
