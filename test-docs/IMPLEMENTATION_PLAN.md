@@ -720,3 +720,19 @@ overlap and rollback recovery. The separate concurrent API case proves a
 committed reservation rejects competing unaffordable spending. Cross-kind
 withdrawal/escrow/Connect contention remains covered by local native PostgreSQL
 tests. No external payment rail was invoked.
+
+
+### October 4 — authorized adb emulator verification
+
+The user approved adb UI control and confirmed web deployment follows their
+upstream PR merge. Client signup/privacy, live bell, notification navigation and
+mutations, filtered detail/back, persistent dark mode, photo selection/viewing
+and posting without a terms checkbox now have native emulator evidence in
+[NATIVE_EMULATOR_EVIDENCE.json](NATIVE_EMULATOR_EVIDENCE.json). The posted test
+job was cancelled without a hire or payment.
+
+Native QA found and corrected delayed initial chat scrolling (`cdb533f`), dark
+hero/navigation contrast (`af243c3`), and remaining escrow wording (`8c5a498`).
+The full mobile suite passes 187 tests/42 suites plus typecheck. Preview build
+`6b051063-47b3-49ca-9bb4-2bb8112fa5ac` contains these fixes; native retests and
+provider/layout coverage continue. No physical-device completion claim is made.

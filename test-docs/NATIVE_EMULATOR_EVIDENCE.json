@@ -1,0 +1,91 @@
+{
+  "checked_at": "2026-10-04",
+  "device": {
+    "kind": "isolated emulator",
+    "avd": "Pixel_10a",
+    "android": "17",
+    "resolution": "1080x2424",
+    "density": 420,
+    "font_scale": 1.0
+  },
+  "tested_apk_revision": "efb0047",
+  "checks": [
+    "Client signup has three consents and scroll-reachable bottom controls",
+    "Privacy dialog displays Your Rights and remaining content",
+    "Live bell increases 36 to 37 and Recent Activity gains provider message without refresh",
+    "Notification opens correct conversation; Android Back returns to notices",
+    "Native delete confirmation, mark-all-read and clear-all reach empty list and zero badge",
+    "Completed plus Plumbing filter returns expected job; detail/back retains filtered result",
+    "Dark mode applies to settings and persists on force-stop/relaunch",
+    "System photo picker attaches owned public QA icon; Step 5 photo opens full-screen and Back preserves review",
+    "Step 5 posts without terms checkbox; API confirms one persisted photo; unassigned test job cancelled without payment"
+  ],
+  "defects": [
+    {
+      "issue": "Chat entry stays above latest message after async load",
+      "fix": "cdb533f",
+      "native_retest": "pending updated build"
+    },
+    {
+      "issue": "Dark-mode greeting and selected navigation icon lack contrast",
+      "fix": "af243c3",
+      "native_retest": "pending updated build"
+    },
+    {
+      "issue": "Wallet and hire confirmation describe release at completion approval",
+      "fix": "8c5a498",
+      "native_retest": "pending updated build"
+    }
+  ],
+  "regression": {
+    "mobile_tests": 187,
+    "suites": 42,
+    "typecheck": "passed",
+    "lint": "no mobile lint script"
+  },
+  "latest_build_id": "6b051063-47b3-49ca-9bb4-2bb8112fa5ac",
+  "screenshots": [
+    {
+      "name": "signup-light.png",
+      "sha256": "52bce57949ac325e0598bdff20fdee680f10944b5b2a904f33123110ff746379"
+    },
+    {
+      "name": "signup-bottom.png",
+      "sha256": "5f8a798c955e8de5358644acd536299b2d9789582676b521952a2f056194aa20"
+    },
+    {
+      "name": "privacy-top.png",
+      "sha256": "f5321bb0ee9dd0ab90888506b4d1b33b83654902e50c7adffc7be80e59bf6e49"
+    },
+    {
+      "name": "client-home-light.png",
+      "sha256": "f613bb57ff230577e41ff2bfaf8db49e1f3f6d779fa234810aa77bee0dad8411"
+    },
+    {
+      "name": "client-live-bell.png",
+      "sha256": "9fce74a33e587b6b92195ab09bc446a5e779e500f849c7afcb9b2131f96c26ef"
+    },
+    {
+      "name": "client-notifications-empty.png",
+      "sha256": "fb265becca249629c5be7da9a1fe247cfe7b767ed3482d9b26b51a1b1b713f6c"
+    },
+    {
+      "name": "client-review-photo-open.png",
+      "sha256": "f48c68af026ca6162030a44d5514f39a6e37d5f03c58c33bf00150ea12f52a5f"
+    },
+    {
+      "name": "client-native-post-finished.png",
+      "sha256": "84510075c0ee3d8c50f9b65d3716880136127cb9815dd627a92d31452afe6158"
+    },
+    {
+      "name": "client-home-dark-persisted.png",
+      "sha256": "c0500b0fdd798653bd5f5cdab7b3d3b5c9ef31acc7ff8ce19dcd5268a283471d"
+    }
+  ],
+  "limits": [
+    "Screenshots retained in protected local QA directory; no credentials committed",
+    "Provider flows, smaller/enlarged layout, full theme matrix and corrected APK retests still in progress",
+    "Emulator checks do not prove physical GPS behavior",
+    "Web deployment follows user upstream merge"
+  ]
+}
