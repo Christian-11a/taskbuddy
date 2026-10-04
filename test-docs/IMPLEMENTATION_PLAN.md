@@ -607,3 +607,12 @@ payment attempts. Four independent-connection wallet checks passed on isolated
 PostgreSQL 18. Protected public backup restore verified 28 table counts and two
 sequences, then 0039–0045 passed on the restored target public schema/data.
 See the release evidence for Supabase-extension/auth/storage limitations.
+
+## Phase 10 — Applied database and matching API release
+
+Reviewed 0039–0045 migrations/source registry committed atomically. Fork main
+was fast-forwarded to `68feb6f`; Render reports that exact revision live.
+Database/ML health and ten authenticated role/API smoke checks passed, and
+maintenance is off. Full cross-role state changes/payment/device evidence and
+Vercel owner deployment remain open. EAS archive inspection caught and fixed
+credential-file inclusion before any upload; mobile typecheck/184 tests passed.

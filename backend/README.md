@@ -736,8 +736,10 @@ They add confirmed hiring, warranty settlement, participant complaints and
 cancellation review/appeals, atomic service notices, approved-service guards,
 private provider portfolio metadata/storage, and wallet debit reservations.
 Never replay the entire migration folder against a live project without checking
-its applied versions and repository history. These migrations are locally tested;
-this task has not applied them externally.
+its applied versions and repository history. These migrations passed local tests and a restored-target rehearsal, then were
+applied and registered atomically on October 4. The matching Render API is live
+at `68feb6f`; database/ML health and ten authenticated endpoint smoke checks
+passed. Full deployed state-change/payment/device scenarios remain pending.
 
 Portfolio ownership/read rules, signed location references, notification snapshot
 consistency and admin dispute actions are specified in [BACKEND_SCHEMA.md](BACKEND_SCHEMA.md).

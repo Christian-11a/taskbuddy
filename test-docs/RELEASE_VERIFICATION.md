@@ -1,9 +1,8 @@
 # Phase 10 release verification
 
 Status: local regression and project documentation complete; external release,
-integration and physical-device verification remain open. Approved Supabase/Render inspection, protected public-schema/data backups and controlled account preparation have run. This task has not
-released code, applied migrations, rebuilt a native artifact or performed an
-external payout.
+integration and physical-device verification remain open. Approved Supabase/Render inspection, protected public-schema/data backups and controlled account preparation have run. Migrations 0039–0045 and the matching API release are deployed. Native artifact,
+web release and full cross-role/device gates remain open; no external payout ran.
 
 ## Local evidence — October 4, 2026
 
@@ -108,7 +107,8 @@ Storage object bytes and migration registry are not part of these exports.
 table counts and two sequences. Auth identities/publication were stubbed and
 Supabase-only cron/net/Vault extensions omitted locally, so full Supabase
 recovery is unverified. New migrations 0039–0045 passed on the restored public
-schema/data. Maintenance has not yet been enabled.
+schema/data. Migration registry was also exported privately before applying new versions.
+A short maintenance window was used and the original off state restored.
 
 ## Focused implementation commits
 
@@ -125,7 +125,8 @@ schema/data. Maintenance has not yet been enabled.
 | `423c485` | Provider confirmed work, portfolios and payout screens |
 | `c24fdea` | Admin complaint review and required payout references |
 
-Commits are local; no push or deployment has been performed. Unrelated existing
+Implementation commits through `68feb6f` were pushed to the fork main and
+implementation branch; Render deployed that exact revision successfully. Unrelated existing
 changes and supplied PDF/image/thesis assets remain outside these batches.
 
 ## Prepared read-only preflight
@@ -190,3 +191,26 @@ withdrawal versus escrow hold, withdrawal versus Connect reservation, and
 rollback recovery. Competing unaffordable spending was rejected with `TB402`;
 rollback released the reservation. This verifies local PostgreSQL 18 contention,
 not deployed PostgreSQL 17 behavior. No real payment rail was called.
+
+## Approved API/database release — October 4
+
+Migrations 0039–0045 and their exact source-text registry entries committed in
+one transaction. Older registry gaps were not repaired or replayed. Fork main
+was fast-forwarded to `68feb6f` (the exact hash is in
+[deployed release evidence](DEPLOYED_RELEASE_EVIDENCE.json)); Render reported
+that revision live after a one-minute deployment. Database and ML health passed;
+maintenance was restored to off.
+
+Ten authenticated client/provider/admin endpoint smoke checks passed, including
+combined filter query acceptance, snapshot contracts, empty private portfolio
+owner/client reads and denied client access to the provider-owner endpoint.
+These reads do not prove nonempty filtering, image rendering, state transitions
+or payment settlement. Initial checks used expired fixture tokens and then
+unsupported query names; renewed fixture sessions and the documented
+`status_group`, `category_id`, `limit`, `offset` contract passed.
+
+EAS local archive inspection found the supplied credential file despite local
+Git exclusions. Root `.gitignore` now excludes both credential filenames; a new
+mobile preview archive verified their absence before any upload. Mobile
+typecheck and the full 184-test suite passed again. No Android device is
+currently attached; an existing Pixel_10a AVD and EAS project owner access exist.

@@ -21,3 +21,7 @@ Upstream integration and its web gates passed; protected public backups exist.
 Render access is verified; the user lacks Vercel access, so its owner must
 release the web changes. Local public-data restore and independent connection
 checks passed; full Supabase recovery and deployed/device gates remain open. See the release record for scope and evidence.
+
+[Deployed release evidence](DEPLOYED_RELEASE_EVIDENCE.json) records the applied
+0039–0045 registry, private bucket, exact Render revision and ten role/API smoke
+checks. These checks leave full state-change/payment and physical-device gates open.
