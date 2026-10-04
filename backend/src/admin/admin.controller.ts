@@ -1,3 +1,4 @@
+import { ClarificationDto } from '../escrow/dto/escrow.dto';
 import {
   Body,
   Controller,
@@ -370,6 +371,15 @@ export class AdminController {
   @Get('disputes')
   listDisputes(@Query() query: ListDisputesQueryDto) {
     return this.disputesService.listForAdmin(query);
+  }
+
+  @Post('disputes/:id/clarification')
+  clarifyDispute(
+    @CurrentUser() admin: Profile,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: ClarificationDto,
+  ) {
+    return this.disputesService.clarify(admin, id, dto.body);
   }
 
   @Post('disputes/:id/resolve')

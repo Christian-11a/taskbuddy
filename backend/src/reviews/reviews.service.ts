@@ -2,6 +2,7 @@ import {
   BadRequestException,
   ForbiddenException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { SupabaseService } from '../supabase/supabase.service';
@@ -10,6 +11,7 @@ import type { Profile } from '../common/types';
 
 @Injectable()
 export class ReviewsService {
+  private readonly logger = new Logger(ReviewsService.name);
   constructor(private readonly supabase: SupabaseService) {}
 
   async create(user: Profile, jobId: string, dto: CreateReviewDto) {
@@ -60,13 +62,19 @@ export class ReviewsService {
     // The provider's cached rating just changed and nothing else would tell
     // them. Best-effort: a notification that fails to write must not undo a
     // review that is already recorded.
-    await this.supabase.admin.from('notifications').insert({
-      recipient_id: job.assigned_provider_id,
-      type: 'job_update',
-      title: 'You received a review',
-      body: `${user.full_name} rated your work on "${job.title}" ${dto.rating} out of 5.`,
-      data: { job_id: jobId },
-    });
+    const { error: notificationError } = await this.supabase.admin
+      .from('notifications')
+      .insert({
+        recipient_id: job.assigned_provider_id,
+        type: 'job_update',
+        title: 'You received a review',
+        body: `${user.full_name} rated your work on "${job.title}" ${dto.rating} out of 5.`,
+        data: { job_id: jobId },
+      });
+    if (notificationError)
+      this.logger.error(
+        `Notification not written: ${notificationError.message}`,
+      );
 
     return data;
   }

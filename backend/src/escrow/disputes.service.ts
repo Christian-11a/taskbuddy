@@ -4,45 +4,43 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { ConnectPayoutsService } from '../payments/connect/connect-payouts.service';
 import { SupabaseService } from '../supabase/supabase.service';
-import { EscrowService } from './escrow.service';
-import { AdminActionsService } from '../admin/admin-actions.service';
 import {
+  AddDisputeEntryDto,
+  CancellationResponseDto,
   ListDisputesQueryDto,
   RaiseDisputeDto,
   ResolveDisputeDto,
 } from './dto/escrow.dto';
 import type { Profile } from '../common/types';
 
-interface DisputeRow {
+export interface EntryRow {
   id: string;
-  escrow_id: string;
-  job_id: string;
-  raised_by: string;
-  status: 'open' | 'resolved' | 'cancelled';
+  kind: string;
+  body: string;
+  created_at: string;
+  author: { id: string; full_name: string; role: string } | null;
+  message: { id: string; body: string; attachment_path: string | null } | null;
 }
-
+interface CaseRow {
+  id: string;
+  job_id: string;
+  status: string;
+  dispute_entries: EntryRow[];
+}
 const DISPUTE_SELECT =
-  '*, jobs(title, service_categories(name)), ' +
-  'escrow_transactions(amount, status, client_id, provider_id), ' +
-  'raised_by_profile:profiles!disputes_raised_by_fkey(id, full_name)';
+  '*, jobs(title, client_id, assigned_provider_id, service_categories(name), client:profiles!jobs_client_id_fkey(full_name), provider:profiles!jobs_assigned_provider_id_fkey(full_name)), escrow_transactions(amount, status, client_id, provider_id), raised_by_profile:profiles!disputes_raised_by_fkey(id, full_name), dispute_entries(*, author:profiles!dispute_entries_author_id_fkey(id, full_name, role), message:messages!dispute_entries_message_id_fkey(id, body, attachment_path))';
 
 @Injectable()
 export class DisputesService {
   constructor(
     private readonly supabase: SupabaseService,
-    private readonly escrow: EscrowService,
-    private readonly adminActions: AdminActionsService,
+    private readonly payouts: ConnectPayoutsService,
   ) {}
 
-  /** Both participants can ask admins to review held or recently settled work. */
   async raise(user: Profile, jobId: string, dto: RaiseDisputeDto) {
-    const escrow = await this.escrow.findByJob(jobId);
-    if (!escrow)
-      throw new BadRequestException('This job has no payment to dispute');
-    if (escrow.client_id !== user.id && escrow.provider_id !== user.id) {
-      throw new ForbiddenException('Not your job');
-    }
+    await this.assertParticipant(user, jobId);
     const { data, error } = await this.supabase.admin.rpc('raise_job_dispute', {
       p_job_id: jobId,
       p_actor_id: user.id,
@@ -51,154 +49,134 @@ export class DisputesService {
     });
     if (error?.code === '23505')
       throw new BadRequestException(
-        'There is already an open dispute for this job',
+        'There is already an open complaint for this job',
       );
     if (error) throw new BadRequestException(error.message);
-    await this.notify(
-      user.id === escrow.client_id ? escrow.provider_id : escrow.client_id,
-      'Dispute opened',
-      `Admin review requested: ${dto.reason}`,
-      jobId,
-    );
     return data;
   }
 
-  /** Either participant can see the dispute on a job they're part of. */
   async forJob(user: Profile, jobId: string) {
-    const escrow = await this.escrow.findByJob(jobId);
-    if (!escrow) return null;
-    if (escrow.client_id !== user.id && escrow.provider_id !== user.id) {
-      throw new ForbiddenException('Not your job');
-    }
+    await this.assertParticipant(user, jobId);
     const { data, error } = await this.supabase.admin
       .from('disputes')
-      .select('*')
+      .select(DISPUTE_SELECT)
       .eq('job_id', jobId)
+      .order('status', { ascending: true })
       .order('created_at', { ascending: false })
       .limit(1)
       .maybeSingle();
     if (error) throw new BadRequestException(error.message);
-    return data;
+    return data ? this.withEvidence(data as CaseRow) : null;
   }
 
   async listForAdmin(query: ListDisputesQueryDto) {
     const offset = query.offset ?? 0;
-    const limit = query.limit ?? 50;
     let builder = this.supabase.admin
       .from('disputes')
       .select(DISPUTE_SELECT, { count: 'exact' })
       .order('created_at', { ascending: false })
-      .range(offset, offset + limit - 1);
+      .range(offset, offset + (query.limit ?? 50) - 1);
     if (query.status) builder = builder.eq('status', query.status);
-
     const { data, error, count } = await builder;
     if (error) throw new BadRequestException(error.message);
-    return { disputes: data ?? [], total: count ?? 0 };
+    return {
+      disputes: await Promise.all(
+        (data as CaseRow[]).map((row) => this.withEvidence(row)),
+      ),
+      total: count ?? 0,
+    };
   }
 
-  /**
-   * Admin decides. Releasing pays the provider out of the held escrow;
-   * refunding closes it in the client's favour.
-   */
-  async resolve(admin: Profile, disputeId: string, dto: ResolveDisputeDto) {
-    const dispute = await this.findOpen(disputeId);
-    const escrow = await this.escrow.findByJob(dispute.job_id);
-    if (!escrow) throw new NotFoundException('Escrow record not found');
-
-    const settled = ['released', 'refunded', 'cancelled'].includes(
-      escrow.status,
-    );
-    if (settled) {
-      if (dto.resolution !== 'reviewed' || !dto.note?.trim()) {
-        throw new BadRequestException(
-          'This payment is already settled. Record the admin decision with a note; use the existing recovery-credit action for compensation.',
-        );
-      }
-    } else if (dto.resolution === 'reviewed') {
-      throw new BadRequestException(
-        'Resolve the held payment by releasing or refunding it',
-      );
-    } else if (dto.resolution === 'released_to_provider') {
-      await this.escrow.payOut(escrow);
-    } else {
-      await this.escrow.refund(escrow);
-    }
-
-    const { data, error } = await this.supabase.admin
-      .from('disputes')
-      .update({
-        status: 'resolved',
-        resolution: dto.resolution,
-        resolution_note: dto.note ?? null,
-        resolved_by: admin.id,
-        resolved_at: new Date().toISOString(),
-      })
-      .eq('id', disputeId)
-      .eq('status', 'open')
-      .select('*')
-      .single();
+  async addEntry(user: Profile, id: string, dto: AddDisputeEntryDto) {
+    const { data, error } = await this.supabase.admin.rpc('add_dispute_entry', {
+      p_dispute_id: id,
+      p_actor_id: user.id,
+      p_kind: dto.kind,
+      p_body: dto.body,
+      p_message_id: dto.message_id ?? null,
+    });
     if (error) throw new BadRequestException(error.message);
-
-    await this.adminActions.record(
-      admin,
-      'dispute.resolve',
-      'disputes',
-      disputeId,
-      { resolution: dto.resolution, note: dto.note ?? null },
-    );
-
-    const outcome =
-      dto.resolution === 'reviewed'
-        ? 'reviewed by an admin; see the resolution note'
-        : dto.resolution === 'released_to_provider'
-          ? 'released to the provider'
-          : 'refunded to the client';
-    await Promise.all([
-      this.notify(
-        escrow.client_id,
-        'Dispute resolved',
-        `The payment was ${outcome}.`,
-        dispute.job_id,
-      ),
-      this.notify(
-        escrow.provider_id,
-        'Dispute resolved',
-        `The payment was ${outcome}.`,
-        dispute.job_id,
-      ),
-    ]);
     return data;
   }
 
-  private async findOpen(disputeId: string): Promise<DisputeRow> {
-    const { data, error } = await this.supabase.admin
-      .from('disputes')
-      .select('*')
-      .eq('id', disputeId)
-      .maybeSingle();
+  async clarify(admin: Profile, id: string, body: string) {
+    const { data, error } = await this.supabase.admin.rpc('add_dispute_entry', {
+      p_dispute_id: id,
+      p_actor_id: admin.id,
+      p_kind: 'clarification',
+      p_body: body,
+      p_message_id: null,
+    });
     if (error) throw new BadRequestException(error.message);
-    if (!data) throw new NotFoundException('Dispute not found');
-    const dispute = data as DisputeRow;
-    if (dispute.status !== 'open') {
-      throw new BadRequestException(
-        `This dispute is already '${dispute.status}'`,
-      );
-    }
-    return dispute;
+    return data;
   }
 
-  private async notify(
-    recipientId: string,
-    title: string,
-    body: string,
-    jobId: string,
-  ) {
-    await this.supabase.admin.from('notifications').insert({
-      recipient_id: recipientId,
-      type: 'dispute_update',
-      title,
-      body,
-      data: { job_id: jobId },
-    });
+  async respond(user: Profile, id: string, dto: CancellationResponseDto) {
+    const { data, error } = await this.supabase.admin.rpc(
+      'respond_job_cancellation',
+      {
+        p_dispute_id: id,
+        p_actor_id: user.id,
+        p_accept: dto.accept,
+        p_note: dto.note,
+        p_message_id: dto.message_id ?? null,
+      },
+    );
+    if (error) throw new BadRequestException(error.message);
+    return data;
+  }
+
+  /** Settlement, case decision, history, audit and notifications share one transaction. */
+  async resolve(admin: Profile, id: string, dto: ResolveDisputeDto) {
+    const { data, error } = await this.supabase.admin.rpc(
+      'resolve_job_dispute',
+      {
+        p_dispute_id: id,
+        p_actor_id: admin.id,
+        p_resolution: dto.resolution,
+        p_note: dto.note,
+      },
+    );
+    if (error) throw new BadRequestException(error.message);
+    if (dto.resolution === 'released_to_provider' && data.escrow_id) {
+      void this.payouts.processEscrow(data.escrow_id);
+    }
+    return data;
+  }
+
+  private async assertParticipant(user: Profile, jobId: string) {
+    const { data, error } = await this.supabase.admin
+      .from('jobs')
+      .select('client_id, assigned_provider_id')
+      .eq('id', jobId)
+      .maybeSingle();
+    if (error) throw new BadRequestException(error.message);
+    if (!data) throw new NotFoundException('Job not found');
+    if (data.client_id !== user.id && data.assigned_provider_id !== user.id)
+      throw new ForbiddenException('Not your job');
+  }
+
+  private async withEvidence(row: CaseRow) {
+    const entries = await Promise.all(
+      row.dispute_entries.map(async (entry) => {
+        let attachment_url: string | null = null;
+        if (entry.message?.attachment_path) {
+          const { data, error } = await this.supabase.admin.storage
+            .from('chat-attachments')
+            .createSignedUrl(entry.message.attachment_path, 3600);
+          if (error)
+            throw new BadRequestException(
+              `Could not load case evidence: ${error.message}`,
+            );
+          attachment_url = data.signedUrl;
+        }
+        return { ...entry, attachment_url };
+      }),
+    );
+    entries.sort(
+      (a, b) =>
+        a.created_at.localeCompare(b.created_at) || a.id.localeCompare(b.id),
+    );
+    return { ...row, entries };
   }
 }

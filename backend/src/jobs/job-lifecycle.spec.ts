@@ -30,11 +30,9 @@ import type { Profile } from '../common/types';
  *
  * It is a fake, not Postgres. It implements the query surface these services
  * reach for, and the triggers are *transcribed* from
- * `0002_functions_and_triggers.sql` and `0007_job_pricing_schedule_photos.sql`
+ * `0002_functions_and_triggers.sql` and `0039_confirm_jobs_on_hire.sql`
  * rather than executed — so a change to those files will not fail this test.
- * That is the honest limit of what it proves; the verification queries in
- * `docs/backend-handoff-booking-tasks-verification.md` §4 are where real schema
- * behaviour gets checked.
+ * Real SQL behavior is covered separately by `test/sql/hire-confirmation.test.mjs`.
  */
 
 type Row = Record<string, any>;
@@ -225,16 +223,14 @@ class FakeDb {
       if (job) {
         job.assigned_provider_id = next.provider_id;
         job.assigned_at = new Date().toISOString();
-        job.status = 'assigned';
-        if (job.scheduled_at) {
-          this.rows('bookings').push({
-            id: this.id('booking'),
-            job_id: job.id,
-            provider_id: next.provider_id,
-            client_id: job.client_id,
-            scheduled_at: job.scheduled_at,
-          });
-        }
+        job.status = 'confirmed';
+        this.rows('bookings').push({
+          id: this.id('booking'),
+          job_id: job.id,
+          provider_id: next.provider_id,
+          client_id: job.client_id,
+          scheduled_at: job.scheduled_at ?? job.assigned_at,
+        });
       }
       for (const sibling of this.rows('job_applications')) {
         if (
@@ -245,6 +241,35 @@ class FakeDb {
           sibling.status = 'rejected';
           sibling.decided_at = new Date().toISOString();
         }
+      }
+    }
+
+    // Cancellation opens a case and freezes funds; the SQL suite verifies
+    // response deadlines, atomic notifications, and locking separately.
+    if (
+      table === 'jobs' &&
+      next.status === 'cancelled' &&
+      previous?.status !== 'cancelled' &&
+      next.assigned_provider_id &&
+      next.cancelled_by !== next.assigned_provider_id
+    ) {
+      const escrow = this.rows('escrow_transactions').find(
+        (e) => e.job_id === next.id,
+      );
+      if (escrow?.status === 'held') escrow.status = 'disputed';
+      if (
+        !this.rows('disputes').some(
+          (d) => d.job_id === next.id && d.status === 'open',
+        )
+      ) {
+        this.rows('disputes').push({
+          ...DEFAULTS.disputes(),
+          id: this.id('dispute'),
+          job_id: next.id,
+          escrow_id: escrow?.id ?? null,
+          cancellation_state:
+            previous?.status === 'in_progress' ? 'contested' : 'pending',
+        });
       }
     }
 
@@ -346,6 +371,48 @@ class FakeDb {
       this.rows('disputes').push(dispute);
       if (escrow.status === 'held') escrow.status = 'disputed';
       return { data: dispute, error: null };
+    }
+
+    if (fn === 'resolve_job_dispute' || fn === 'respond_job_cancellation') {
+      const dispute = this.rows('disputes').find(
+        (d) => d.id === args.p_dispute_id,
+      );
+      if (!dispute || dispute.status !== 'open')
+        return refuse('TB409', 'Already closed');
+      const escrow = this.rows('escrow_transactions').find(
+        (e) => e.job_id === dispute.job_id,
+      );
+      const resolution =
+        fn === 'respond_job_cancellation'
+          ? 'refunded_to_client'
+          : args.p_resolution;
+      if (escrow && resolution !== 'reviewed') {
+        const rate = Number(this.rows('platform_settings')[0].commission_rate);
+        const moved = this.rpc('escrow_settle', {
+          p_escrow_id: escrow.id,
+          p_expected: escrow.status,
+          p_next:
+            resolution === 'released_to_provider' ? 'released' : 'refunded',
+          p_commission:
+            resolution === 'released_to_provider'
+              ? Math.round(Number(escrow.amount) * rate * 100) / 100
+              : 0,
+        });
+        if (moved.error) return moved;
+      }
+      Object.assign(dispute, {
+        status: 'resolved',
+        resolution,
+        resolution_note: args.p_note,
+        resolved_by: args.p_actor_id,
+        resolved_at: new Date().toISOString(),
+      });
+      this.rows('admin_actions').push({
+        actor_id: args.p_actor_id,
+        action: 'dispute.resolve',
+        target_id: dispute.id,
+      });
+      return { data: { ...dispute }, error: null };
     }
 
     if (fn === 'escrow_place_hold') {
@@ -787,7 +854,7 @@ function buildWorld(
   const jobs = new JobsService(supabase, uploads, escrow);
   const applications = new ApplicationsService(supabase, escrow);
   const reviews = new ReviewsService(supabase);
-  const disputes = new DisputesService(supabase, escrow, adminActions);
+  const disputes = new DisputesService(supabase, payouts);
   // Only the webhook half runs here; opening Checkout needs Stripe itself.
   const hireFunding = new HireFundingService(
     supabase,
@@ -859,8 +926,7 @@ describe('job lifecycle, end to end', () => {
     ).toBe('rejected');
     expect(await wallet.balanceFor('c1')).toBe(5000 - BUDGET);
 
-    // 4. The provider confirms, starts, and ticks the checklist off.
-    await jobs.accept(provider, posted.id);
+    // 4. Hiring confirmed the booking; the provider starts work later.
     expect(db.rows('jobs')[0].status).toBe('confirmed');
 
     await jobs.start(provider, posted.id);
@@ -872,13 +938,20 @@ describe('job lifecycle, end to end', () => {
       true,
     );
 
-    // 5. The client confirms completion; escrow pays the provider.
+    // 5. Completion holds payment until the three-day warranty ends.
     for (const task of world.db
       .rows('job_tasks')
       .filter((task) => task.job_id === posted.id)) {
       await jobs.updateTask(provider, posted.id, task.id, { is_done: true });
     }
     await jobs.complete(client, posted.id);
+    expect(await escrow.findByJob(posted.id)).toMatchObject({ status: 'held' });
+    expect(await wallet.balanceFor('p1')).toBe(0);
+    // Advance the stored completion timestamp; real deadline enforcement is
+    // covered by the SQL suite rather than transcribed into this fake.
+    db.rows('jobs').find((job) => job.id === posted.id)!.completed_at =
+      new Date(Date.now() - 72 * 60 * 60 * 1000).toISOString();
+    await escrow.releaseIfHeld(posted.id);
 
     expect(await escrow.findByJob(posted.id)).toMatchObject({
       status: 'released',
@@ -937,6 +1010,13 @@ describe('job lifecycle, end to end', () => {
       await jobs.updateTask(provider, posted.id, task.id, { is_done: true });
     }
     await jobs.complete(client, posted.id);
+    expect(await escrow.findByJob(posted.id)).toMatchObject({ status: 'held' });
+    expect(await wallet.balanceFor('p1')).toBe(0);
+    // Advance the stored completion timestamp; real deadline enforcement is
+    // covered by the SQL suite rather than transcribed into this fake.
+    db.rows('jobs').find((job) => job.id === posted.id)!.completed_at =
+      new Date(Date.now() - 72 * 60 * 60 * 1000).toISOString();
+    await escrow.releaseIfHeld(posted.id);
 
     // The client paid the full budget; the provider received it less the cut.
     expect(await wallet.balanceFor('c1')).toBe(5000 - BUDGET);
@@ -976,7 +1056,7 @@ describe('job lifecycle, end to end', () => {
     ]);
   });
 
-  it('returns the money to the client when the job is cancelled', async () => {
+  it('holds a client cancellation until the provider agrees to refund', async () => {
     const world = buildWorld({ topUp: 5000 });
     const { db, jobs, applications, escrow, wallet } = world;
 
@@ -988,10 +1068,15 @@ describe('job lifecycle, end to end', () => {
     )) as Record<string, any>;
     await applications.accept(client, application.id);
     await jobs.cancel(client, posted.id);
+    expect(db.rows('escrow_transactions')[0].status).toBe('disputed');
+    await world.disputes.respond(provider, db.rows('disputes')[0].id, {
+      accept: true,
+      note: 'Agreed before starting work',
+    });
 
     expect(db.rows('jobs')[0].status).toBe('cancelled');
     expect(await escrow.findByJob(posted.id)).toMatchObject({
-      status: 'cancelled',
+      status: 'refunded',
     });
     expect(await wallet.balanceFor('c1')).toBe(5000);
     expect(await wallet.balanceFor('p1')).toBe(0);
@@ -1038,6 +1123,7 @@ describe('job lifecycle, end to end', () => {
     const dispute = db.rows('disputes')[0];
     await disputes.resolve(admin, dispute.id, {
       resolution: 'refunded_to_client',
+      note: 'Reviewed both participants and the unfinished work.',
     });
 
     expect(await escrow.findByJob(posted.id)).toMatchObject({
@@ -1135,7 +1221,7 @@ describe('job lifecycle, paid by card at hire (§29.4)', () => {
       funding_charge_id: 'ch_hire',
     });
     expect(db.rows('job_applications')[0].status).toBe('accepted');
-    expect(db.rows('jobs')[0].status).toBe('assigned');
+    expect(db.rows('jobs')[0].status).toBe('confirmed');
     // One ledger: the card payment in, the hold out.
     expect(db.ledgerFor('c1')).toEqual([
       { direction: 'credit', kind: 'topup', amount: BUDGET },
@@ -1149,6 +1235,13 @@ describe('job lifecycle, paid by card at hire (§29.4)', () => {
       await jobs.updateTask(provider, posted.id, task.id, { is_done: true });
     }
     await jobs.complete(client, posted.id);
+    expect(await escrow.findByJob(posted.id)).toMatchObject({ status: 'held' });
+    expect(await wallet.balanceFor('p1')).toBe(0);
+    // Advance the stored completion timestamp; real deadline enforcement is
+    // covered by the SQL suite rather than transcribed into this fake.
+    db.rows('jobs').find((job) => job.id === posted.id)!.completed_at =
+      new Date(Date.now() - 72 * 60 * 60 * 1000).toISOString();
+    await escrow.releaseIfHeld(posted.id);
 
     await flush();
     expect(await wallet.balanceFor('p1')).toBe(BUDGET);
@@ -1182,7 +1275,7 @@ describe('job lifecycle, paid by card at hire (§29.4)', () => {
 
   it('refunds a cancelled card-funded job to the wallet', async () => {
     const world = buildWorld();
-    const { jobs, applications, wallet, hireFunding } = world;
+    const { db, jobs, applications, wallet, hireFunding } = world;
     const posted = (await postJob(world)) as Record<string, any>;
     const application = (await applications.apply(
       provider,
@@ -1192,6 +1285,11 @@ describe('job lifecycle, paid by card at hire (§29.4)', () => {
     await hireFunding.completeFromIntent(hirePayment(application));
 
     await jobs.cancel(client, posted.id);
+    expect(db.rows('escrow_transactions')[0].status).toBe('disputed');
+    await world.disputes.respond(provider, db.rows('disputes')[0].id, {
+      accept: true,
+      note: 'Agreed before starting work',
+    });
 
     // Back in the wallet — spendable on another hire, or withdrawable.
     expect(await wallet.balanceFor('c1')).toBe(BUDGET);
@@ -1219,7 +1317,7 @@ describe('job lifecycle, paid by card at hire (§29.4)', () => {
 
 describe('card-funded payouts sent to Stripe Connect (§29.5)', () => {
   async function completedCardJob(world: ReturnType<typeof buildWorld>) {
-    const { jobs, applications, hireFunding } = world;
+    const { db, jobs, applications, escrow, wallet, hireFunding } = world;
     const posted = (await postJob(world)) as Record<string, any>;
     const application = (await applications.apply(
       provider,
@@ -1234,6 +1332,13 @@ describe('card-funded payouts sent to Stripe Connect (§29.5)', () => {
       await jobs.updateTask(provider, posted.id, task.id, { is_done: true });
     }
     await jobs.complete(client, posted.id);
+    expect(await escrow.findByJob(posted.id)).toMatchObject({ status: 'held' });
+    expect(await wallet.balanceFor('p1')).toBe(0);
+    // Advance the stored completion timestamp; real deadline enforcement is
+    // covered by the SQL suite rather than transcribed into this fake.
+    db.rows('jobs').find((job) => job.id === posted.id)!.completed_at =
+      new Date(Date.now() - 72 * 60 * 60 * 1000).toISOString();
+    await escrow.releaseIfHeld(posted.id);
     await flush();
     return posted;
   }
@@ -1323,7 +1428,8 @@ describe('card-funded payouts sent to Stripe Connect (§29.5)', () => {
 
   it('does not send money the provider already withdrew by hand', async () => {
     const world = buildWorld({ payable: true });
-    const { db, escrow, jobs, applications, hireFunding, fakeStripe } = world;
+    const { db, escrow, jobs, applications, wallet, hireFunding, fakeStripe } =
+      world;
     fakeStripe.refuse('Temporarily unavailable');
     const posted = (await postJob(world)) as Record<string, any>;
     const application = (await applications.apply(
@@ -1339,6 +1445,13 @@ describe('card-funded payouts sent to Stripe Connect (§29.5)', () => {
       await jobs.updateTask(provider, posted.id, task.id, { is_done: true });
     }
     await jobs.complete(client, posted.id);
+    expect(await escrow.findByJob(posted.id)).toMatchObject({ status: 'held' });
+    expect(await wallet.balanceFor('p1')).toBe(0);
+    // Advance the stored completion timestamp; real deadline enforcement is
+    // covered by the SQL suite rather than transcribed into this fake.
+    db.rows('jobs').find((job) => job.id === posted.id)!.completed_at =
+      new Date(Date.now() - 72 * 60 * 60 * 1000).toISOString();
+    await escrow.releaseIfHeld(posted.id);
     await flush();
 
     // Between attempts, the provider withdraws the whole payout by request.
@@ -1375,6 +1488,7 @@ describe('card-funded payouts sent to Stripe Connect (§29.5)', () => {
 
     await disputes.resolve(admin, db.rows('disputes')[0].id, {
       resolution: 'released_to_provider',
+      note: 'Reviewed evidence of completed work.',
     });
     await flush();
 

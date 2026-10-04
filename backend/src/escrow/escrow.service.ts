@@ -8,6 +8,8 @@ import { ListTransactionsQueryDto } from './dto/escrow.dto';
 import { moneyError } from './escrow-errors';
 import { ConnectPayoutsService } from '../payments/connect/connect-payouts.service';
 
+export const WARRANTY_DURATION_MS = 72 * 60 * 60 * 1000;
+
 export type EscrowStatus =
   'held' | 'released' | 'disputed' | 'refunded' | 'cancelled';
 
@@ -133,7 +135,7 @@ export class EscrowService {
   }
 
   /**
-   * Called when the client completes the job: pay the provider.
+   * Called after the completed job’s three-day warranty: pay the provider.
    *
    * Raises rather than returning null when there is nothing to release. This
    * used to no-op silently, which was safe only because `JobsService.complete`
@@ -143,7 +145,7 @@ export class EscrowService {
    * provider had been paid twice over.
    *
    * `releaseIfHeld` is the caller-facing wrapper that tolerates the absences a
-   * normal completion legitimately reaches; see `JobsService.complete`.
+   * warranty reconciliation legitimately reaches.
    */
   async release(jobId: string): Promise<EscrowRow> {
     const escrow = await this.findByJob(jobId);
@@ -159,7 +161,7 @@ export class EscrowService {
   }
 
   /**
-   * `release`, but tolerant of the two states a normal completion legitimately
+   * `release`, but tolerant of the two states warranty reconciliation legitimately
    * reaches it in: a job posted without a budget (no escrow row at all), and a
    * disputed escrow, which is frozen until an admin decides it either way.
    * Anything else still throws, so a genuinely wrong release is loud.

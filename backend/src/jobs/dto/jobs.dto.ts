@@ -143,6 +143,31 @@ export class StaticMapQueryDto {
   lon!: number;
 }
 
+export class MineJobsQueryDto {
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Type(() => Number)
+  category_id?: number;
+
+  @IsOptional()
+  @IsIn(['active', 'ongoing', 'completed', 'cancelled'])
+  status_group?: 'active' | 'ongoing' | 'completed' | 'cancelled';
+
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(100)
+  @Type(() => Number)
+  limit?: number;
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Type(() => Number)
+  offset?: number;
+}
+
 export class BrowseJobsQueryDto {
   @IsOptional()
   @IsIn(['urgent', 'normal', 'flexible'])

@@ -17,6 +17,7 @@ import { CurrentUser } from '../auth/current-user.decorator';
 import { JobsService } from './jobs.service';
 import {
   AcceptJobDto,
+  MineJobsQueryDto,
   BrowseJobsQueryDto,
   CreateJobDto,
   GeocodeQueryDto,
@@ -50,8 +51,8 @@ export class JobsController {
 
   @Get('mine')
   @Roles('client')
-  mine(@CurrentUser() user: Profile) {
-    return this.jobsService.mine(user);
+  mine(@CurrentUser() user: Profile, @Query() query: MineJobsQueryDto) {
+    return this.jobsService.mine(user, query);
   }
 
   @Get('assigned')

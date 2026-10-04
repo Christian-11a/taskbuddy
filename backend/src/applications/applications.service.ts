@@ -89,13 +89,19 @@ export class ApplicationsService {
         .eq('id', candidate.id);
     }
 
-    await this.supabase.admin.from('notifications').insert({
-      recipient_id: job.client_id,
-      type: 'application_update',
-      title: 'New application',
-      body: `${user.full_name} applied to "${job.title}".`,
-      data: { job_id: jobId, application_id: application.id },
-    });
+    const { error: notificationError } = await this.supabase.admin
+      .from('notifications')
+      .insert({
+        recipient_id: job.client_id,
+        type: 'application_update',
+        title: 'New application',
+        body: `${user.full_name} applied to "${job.title}".`,
+        data: { job_id: jobId, application_id: application.id },
+      });
+    if (notificationError)
+      this.logger.error(
+        `Notification not written: ${notificationError.message}`,
+      );
 
     return application;
   }
@@ -203,8 +209,8 @@ export class ApplicationsService {
 
     await this.notifyProvider(
       application,
-      'Application accepted',
-      `You were hired for "${application.jobs.title}"!`,
+      'Booking confirmed',
+      `You were hired for "${application.jobs.title}". Open the job to start work when you are ready.`,
     );
     return updated;
   }
@@ -315,8 +321,8 @@ export class ApplicationsService {
     const updated = await this.setStatus(application.id, 'accepted');
     await this.notifyProvider(
       application,
-      'Application accepted',
-      `You were hired for "${application.jobs.title}"!`,
+      'Booking confirmed',
+      `You were hired for "${application.jobs.title}". Open the job to start work when you are ready.`,
     );
     return updated;
   }
@@ -371,12 +377,18 @@ export class ApplicationsService {
     title: string,
     body: string,
   ) {
-    await this.supabase.admin.from('notifications').insert({
-      recipient_id: application.provider_id,
-      type: 'application_update',
-      title,
-      body,
-      data: { job_id: application.job_id, application_id: application.id },
-    });
+    const { error: notificationError } = await this.supabase.admin
+      .from('notifications')
+      .insert({
+        recipient_id: application.provider_id,
+        type: 'application_update',
+        title,
+        body,
+        data: { job_id: application.job_id, application_id: application.id },
+      });
+    if (notificationError)
+      this.logger.error(
+        `Notification not written: ${notificationError.message}`,
+      );
   }
 }

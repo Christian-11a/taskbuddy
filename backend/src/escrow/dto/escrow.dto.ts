@@ -1,6 +1,8 @@
 import { Type } from 'class-transformer';
 import {
   IsIn,
+  IsBoolean,
+  IsUUID,
   IsInt,
   IsOptional,
   IsString,
@@ -60,8 +62,33 @@ export class ResolveDisputeDto {
   @IsIn(['released_to_provider', 'refunded_to_client', 'reviewed'])
   resolution!: 'released_to_provider' | 'refunded_to_client' | 'reviewed';
 
-  @IsOptional()
   @IsString()
-  @MaxLength(1000)
-  note?: string;
+  @Length(1, 1000)
+  note!: string;
+}
+
+export class AddDisputeEntryDto {
+  @IsIn(['statement', 'appeal'])
+  kind!: 'statement' | 'appeal';
+  @IsString()
+  @Length(1, 1000)
+  body!: string;
+  @IsOptional()
+  @IsUUID()
+  message_id?: string;
+}
+export class ClarificationDto {
+  @IsString()
+  @Length(1, 1000)
+  body!: string;
+}
+export class CancellationResponseDto {
+  @IsOptional()
+  @IsUUID()
+  message_id?: string;
+  @IsBoolean()
+  accept!: boolean;
+  @IsString()
+  @Length(1, 1000)
+  note!: string;
 }

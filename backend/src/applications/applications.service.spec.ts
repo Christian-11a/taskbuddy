@@ -316,7 +316,7 @@ describe('ApplicationsService', () => {
       expect(result).toMatchObject({ status: 'accepted' });
       expect(writesTo(calls, 'notifications', 'insert')[0]).toMatchObject({
         recipient_id: 'p1',
-        title: 'Application accepted',
+        title: 'Booking confirmed',
       });
     });
 
