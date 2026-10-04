@@ -1,5 +1,10 @@
 # Phase 10 release verification
 
+Current notification scope: in-app notices and live bell updates on the existing
+stack. Firebase/Android system push is not selected and is not a completion
+blocker. Earlier FCM setup notes are superseded by the clarification below.
+
+
 Status: local regression and project documentation complete; external release,
 integration and physical-device verification remain open. Approved Supabase/Render inspection, protected public-schema/data backups and controlled account preparation have run. Migrations 0039–0045 and the matching API release are deployed. Native artifact,
 web release and full cross-role/device gates remain open; no external payout ran.
@@ -320,3 +325,23 @@ a matching Android app config and EAS FCM V1 credentials are required. The user 
 approval and identify its Google owner account, then configure the client, verify EAS credentials and
 build again before testing physical background delivery/taps. No new Firebase
 project or security access was created.
+
+## Superseding notification scope clarification
+
+The user requires the current stack and declines Firebase. Both source PDF
+pages were extracted and visually inspected: Core Shared #2 requests message
+notices in the app's notification list; UI Shared #4 requests a live bell without
+manual refresh. Android system push is not specified. The preceding Firebase
+setup/new-build request was an unnecessary expansion and is withdrawn. No
+Firebase project or credentials will be created.
+
+Supabase stored notices, Render SSE/snapshots and the existing Expo notification
+context satisfy the selected architecture. The APK's missing Firebase resources
+remain a true static finding for optional system push, not a release blocker
+for these in-app requirements. Actual native bell/list, navigation, mutations
+and app-return behavior still need verification.
+
+[Live SSE evidence](DEPLOYED_CHAT_EVIDENCE.json) now also proves an already-open
+stream receives a newly sent message with increased unread count, then receives
+the recipient read mutation with reduced count. Reconnection restores the
+persisted read notice and current count. Native bell rendering remains pending.

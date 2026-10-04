@@ -258,7 +258,7 @@ The backend's 30-second scheduler sends pending notification rows to opted-in
 devices via Expo. Permission denial or a registration failure does not block
 sign-in, and notification rows remain available in the in-app list either way.
 
-> **⚠️ Push does not work yet: Firebase (FCM) is the remaining blocker.** The code
+> **Optional Android system push is unconfigured. In-app notifications do not require Firebase.** The code
 > is complete on both sides; the configuration isn't.
 >
 > - **EAS project id: done** (2026-09-16). `app.json` has `expo.extra.eas.projectId`.
@@ -885,3 +885,13 @@ verify EAS credentials and rebuild before remote-push device testing.
 The deployed theme preference API passes per-account persistence and isolation;
 [theme verification](../test-docs/THEME_VERIFICATION.md) keeps native appearance
 and restart checks separate.
+
+### Notification scope for the PDF implementation
+
+The selected current-stack behavior is in-app notifications: a stored notice
+for each received message, a live unread bell/list through Render SSE, and
+refresh on app return. The PDF does not request Android OS alerts while closed
+or backgrounded; the user declined adding Firebase. Earlier FCM setup/new-build
+requirements apply only to the optional legacy system-push feature, not this
+implementation's completion gates. No Firebase project or credentials will be
+created. Native bell/list/navigation and app-return checks remain pending.

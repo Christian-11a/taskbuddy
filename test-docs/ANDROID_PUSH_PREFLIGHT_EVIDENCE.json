@@ -8,19 +8,17 @@
   "gcm_defaultSenderId_resource_present": false,
   "google_api_key_resource_present": false,
   "googleServicesFile_configured": false,
-  "blocker": "Android app Firebase registration configuration absent from current artifact",
+  "blocker": "Not a blocker for the selected in-app notification scope",
   "eas_fcm_v1_service_account_status": "Not inspected; do not infer absence from client APK",
-  "required_next_steps": [
-    "Create a TaskBuddy Firebase project under the user-selected Google account after approval",
-    "Configure matching Android google-services.json for com.taskbuddy.app",
-    "Verify or configure FCM V1 service credentials in existing EAS project",
-    "Build and verify new native artifact",
-    "Verify token registration, background delivery and notification tap routing on devices"
-  ],
+  "required_next_steps": [],
   "reference": "https://docs.expo.dev/push-notifications/fcm-credentials/",
   "limitations": [
     "Static artifact inspection does not test push token registration or delivery",
     "No Firebase project, credential, permission or configuration was created or changed"
   ],
-  "firebase_project_status": "User confirms no TaskBuddy Firebase project exists"
+  "firebase_project_status": "User confirms no TaskBuddy Firebase project exists",
+  "scope": "Optional Android system push; not required by the PDF notification/bell items and excluded under the user current-stack instruction",
+  "decision": "Do not create Firebase project or change cloud/FCM configuration",
+  "scope_confirmed_at": "2026-10-04T07:49:51.995601+00:00",
+  "source_requirement": "PDF Core Shared #2: message notice in notification list; UI Shared #4: bell updates without refresh"
 }
