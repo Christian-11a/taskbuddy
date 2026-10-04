@@ -67,13 +67,11 @@ export default function HOChatScreen({ jobId, onBack, onViewJob }: HOChatScreenP
   const [sending, setSending] = useState(false);
   const [attaching, setAttaching] = useState(false);
   const listRef = useRef<FlatList>(null);
-  const initialScrollPending = useRef(true);
 
   useEffect(() => {
     let active = true;
     let stopStream: (() => void) | undefined;
     (async () => {
-      initialScrollPending.current = true;
       setMessages([]);
       setLoading(true);
       setError(null);
@@ -113,7 +111,7 @@ export default function HOChatScreen({ jobId, onBack, onViewJob }: HOChatScreenP
       const msg = await api.sendMessage(conversation.id, body);
       setMessages((previous) => mergeMessageById(previous, msg));
       setText('');
-      setTimeout(() => listRef.current?.scrollToEnd({ animated: true }), 100);
+      setTimeout(() => listRef.current?.scrollToOffset({ offset: 0, animated: true }), 100);
     } catch {
       // Keep the text so the user can retry.
     } finally {
@@ -134,7 +132,7 @@ export default function HOChatScreen({ jobId, onBack, onViewJob }: HOChatScreenP
       const path = await api.uploadImage('chat-attachments', result.assets[0].uri);
       const msg = await api.sendMessage(conversation.id, '', path);
       setMessages((previous) => mergeMessageById(previous, msg));
-      setTimeout(() => listRef.current?.scrollToEnd({ animated: true }), 100);
+      setTimeout(() => listRef.current?.scrollToOffset({ offset: 0, animated: true }), 100);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not send the photo.');
     } finally {
@@ -194,18 +192,13 @@ export default function HOChatScreen({ jobId, onBack, onViewJob }: HOChatScreenP
         )}
         <FlatList keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag"
           ref={listRef}
-          data={messages}
+          inverted
+          data={[...messages].reverse()}
           renderItem={renderBubble}
           keyExtractor={(item) => item.id}
           contentContainerStyle={styles.chatContent}
           showsVerticalScrollIndicator={false}
-          onLayout={() => listRef.current?.scrollToEnd()}
-          onContentSizeChange={() => {
-            if (initialScrollPending.current && messages.length > 0) {
-              initialScrollPending.current = false;
-              listRef.current?.scrollToEnd({ animated: false });
-            }
-          }}
+          onLayout={() => listRef.current?.scrollToOffset({ offset: 0, animated: false })}
         />
 
         {/* Composer — matches .chat-composer */}

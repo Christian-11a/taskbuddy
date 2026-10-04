@@ -902,8 +902,9 @@ The signed preview APK was exercised through adb on an isolated Android emulator
 Client signup scrolling and the privacy dialog, live unread bell updates,
 notification-to-chat navigation, deletion, mark-all-read and clear-all passed.
 A delayed-message-layout defect left the newest chat message offscreen on entry.
-Both role chat screens now scroll after their first nonempty content layout,
-without snapping back on subsequent content changes. Mobile regression passes
+Both role chat screens now use an inverted list with newest-first rendering.
+Native retesting exposed that the first content-layout callback still ran before
+all variable-height rows were measured; inversion removes that dependency. Mobile regression passes
 187 tests in 42 suites plus typecheck; no mobile lint script exists. Native
 reverification of this correction requires the next preview build. These checks
 do not establish physical GPS behavior or the full device/theme matrix.

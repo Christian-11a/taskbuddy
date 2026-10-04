@@ -40,17 +40,16 @@ it.each([HOChatScreen, SPChatScreen])('repaints received/sent messages and keybo
 });
 
 
-it.each([HOChatScreen, SPChatScreen])('scrolls after asynchronous message layout without resetting later reading position', async Chat => {
-  const scroll = jest.spyOn(FlatList.prototype, 'scrollToEnd').mockImplementation(() => {});
+it.each([HOChatScreen, SPChatScreen])('anchors asynchronously loaded conversations at the newest message without changing API order', async Chat => {
+  const messages = [
+    {id: 'older', sender_id: 'other', body: 'Older message', created_at: '2026-10-04T10:00:00Z'},
+    {id: 'latest', sender_id: 'self', body: 'Latest message', created_at: '2026-10-04T10:01:00Z'},
+  ];
+  (api.messages as jest.Mock).mockResolvedValueOnce(messages);
   const view = render(<ThemeProvider><Chat jobId="job" onBack={jest.fn()} onViewJob={jest.fn()} /></ThemeProvider>);
-  const list = () => view.UNSAFE_getByType(FlatList);
-  fireEvent(list(), 'contentSizeChange', 375, 0);
-  expect(scroll).not.toHaveBeenCalled();
-  await screen.findByText('Incoming message');
-  fireEvent(list(), 'contentSizeChange', 375, 1800);
-  expect(scroll).toHaveBeenCalledWith({ animated: false });
-  scroll.mockClear();
-  fireEvent(list(), 'contentSizeChange', 375, 2100);
-  expect(scroll).not.toHaveBeenCalled();
-  scroll.mockRestore();
+  await screen.findByText('Latest message');
+  const list = view.UNSAFE_getByType(FlatList);
+  expect(list.props.inverted).toBe(true);
+  expect(list.props.data.map((message: {id: string}) => message.id)).toEqual(['latest', 'older']);
+  expect(messages.map(message => message.id)).toEqual(['older', 'latest']);
 });
