@@ -1,5 +1,6 @@
 import React from 'react';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react-native';
+import { ThemeProvider } from '../../../../src/context/ThemeContext';
 import HOSettingsScreen from '../HOSettingsScreen';
 import { api } from '../../../../src/lib/api';
 
@@ -28,7 +29,8 @@ describe('HOSettingsScreen — Delete Account confirm styling (code-review findi
   });
 
   it('renders the Delete Account confirm button red, like the other destructive dialogs', async () => {
-    render(<HOSettingsScreen onBack={jest.fn()} onLogout={jest.fn()} />);
+    render(<ThemeProvider><HOSettingsScreen onBack={jest.fn()} onLogout={jest.fn()} /></ThemeProvider>);
+    await waitFor(() => expect(screen.getByTestId('toggle-push_enabled').props.disabled).toBe(false));
 
     fireEvent.press(screen.getByTestId('settings-delete-account-row'));
 
@@ -42,9 +44,10 @@ describe('HOSettingsScreen — Delete Account confirm styling (code-review findi
     expect(flatStyle.backgroundColor).toBe('#b91c1c');
   });
 
-  it('hides Change Password for a Google-only account', () => {
+  it('hides Change Password for a Google-only account', async () => {
     mockUseAuth.mockReturnValue({ profile: { has_password: false } });
-    render(<HOSettingsScreen onBack={jest.fn()} onLogout={jest.fn()} />);
+    render(<ThemeProvider><HOSettingsScreen onBack={jest.fn()} onLogout={jest.fn()} /></ThemeProvider>);
+    await waitFor(() => expect(screen.getByTestId('toggle-push_enabled').props.disabled).toBe(false));
     expect(screen.queryByText('Change Password')).toBeNull();
   });
 });

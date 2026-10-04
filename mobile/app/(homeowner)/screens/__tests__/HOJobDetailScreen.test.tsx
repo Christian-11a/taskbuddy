@@ -61,7 +61,7 @@ describe('HOJobDetailScreen — Confirm Completion asks first (QA #6)', () => {
     // The dialog is open; completeJob must not have fired yet.
     expect(api.completeJob).not.toHaveBeenCalled();
     await waitFor(() =>
-      expect(screen.getByText(/releases .* to the provider/)).toBeTruthy(),
+      expect(screen.getByText(/stays held until it ends/)).toBeTruthy(),
     );
 
     await act(async () => {
@@ -142,11 +142,24 @@ describe('FullTest homeowner job details', () => {
     expect(screen.queryByText('Confirm Completion')).toBeNull();
   });
 
-  it.each([1, 8])('shows a post-completion dispute only within seven days (age %i)', async (days) => {
+  it.each([1, 4])('shows a post-completion dispute only within three days (age %i)', async (days) => {
     (api.getJob as jest.Mock).mockResolvedValue({ ...inProgressJob, status: 'completed',
-      completed_at: new Date(Date.now() - days * 86400000).toISOString() });
+      completed_at: new Date(Date.now() - days * 86400000).toISOString(),
+      warranty_expires_at: new Date(Date.now() + (3 - days) * 86400000).toISOString() });
     render(<HOJobDetailScreen jobId="job-1" onBack={jest.fn()} onNavigate={jest.fn()} />);
     await screen.findByText('Jane Provider');
-    expect(!!screen.queryByText('File a Dispute')).toBe(days <= 7);
+    expect(!!screen.queryByText('File a Complaint')).toBe(days < 3);
   });
+});
+
+it('preserves client job details when closing the shared image viewer', async () => {
+  (api.getJob as jest.Mock).mockResolvedValue({ ...inProgressJob, photo_urls: ['https://test/one', 'https://test/two'] });
+  (api.getProvider as jest.Mock).mockResolvedValue({ profiles: { full_name: 'Provider' } });
+  (api.jobDispute as jest.Mock).mockResolvedValue(null);
+  render(<HOJobDetailScreen jobId="job-1" onBack={jest.fn()} onNavigate={jest.fn()} />);
+  fireEvent.press(await screen.findByLabelText('Open job photo 2'));
+  expect(screen.getByTestId('full-photo').props.source.uri).toBe('https://test/two');
+  fireEvent.press(screen.getByLabelText('Close photo'));
+  expect(screen.queryByTestId('full-photo')).toBeNull();
+  expect(screen.getByText('Confirm Completion')).toBeTruthy();
 });

@@ -1,3 +1,5 @@
+import { useThemedStyles, type Palette as ThemePalette } from '../../../src/context/ThemeContext';
+import { useNotifications } from '../../../src/context/NotificationsContext';
 /**
  * HOHomeScreen.tsx
  *
@@ -6,6 +8,7 @@
  * category strip, active jobs list.
  */
 
+import { StatusBar } from 'expo-status-bar';
 import React from 'react';
 import {
   ScrollView,
@@ -27,7 +30,7 @@ import {
   Sparkles,
   Wrench,
 } from 'lucide-react-native';
-import { Spacing, V6Colors, V6Radii, V6Shadows } from '../../../src/constants/theme';
+import { Spacing, V6Radii, V6Shadows } from '../../../src/constants/theme';
 import { HOScreen } from '../../../src/types/navigation';
 import { useAuth } from '../../../src/context/AuthContext';
 import { useAsyncData } from '../../../src/hooks/useAsyncData';
@@ -37,8 +40,6 @@ import { jobStatusMeta, peso, shortDate } from '../../../src/lib/format';
 import ScreenSkeleton from '../../../src/components/ScreenSkeleton';
 import JobCard from '../../../src/components/JobCard';
 import OwnAvatar from '../../../src/components/OwnAvatar';
-
-const C = V6Colors;
 
 const CATEGORY_ICON: Record<string, typeof Wrench> = {
   Plumbing: Wrench,
@@ -62,19 +63,12 @@ const ACTIVITY_ICON: Record<string, typeof BriefcaseBusiness> = {
   job_update: BriefcaseBusiness,
 };
 
-interface NotificationRow {
-  id: string;
-  type: string;
-  title: string;
-  body: string;
-  created_at: string;
-}
-
 interface HOHomeScreenProps {
   onNavigate: (screen: HOScreen, jobId?: string) => void;
 }
 
 function WidgetError({ message, onRetry }: { message: string; onRetry: () => void }) {
+  const { styles, V6Colors } = useThemedStyles(createThemedStyles);
   return (
     <View style={styles.widgetError}>
       <Text style={styles.widgetErrorText}>{message}</Text>
@@ -86,23 +80,18 @@ function WidgetError({ message, onRetry }: { message: string; onRetry: () => voi
 }
 
 export default function HOHomeScreen({ onNavigate }: HOHomeScreenProps) {
+  const { C, styles, V6Colors } = useThemedStyles(createThemedStyles);
   const headerTop = useHeaderTop();
   const { profile } = useAuth();
   const wallet = useAsyncData(() => api.wallet(), [], 'ho-home-wallet');
   const jobs = useAsyncData(() => api.myJobs(), [], 'ho-home-jobs');
   const categories = useAsyncData(() => api.categories(), [], 'ho-home-categories');
-  const notifications = useAsyncData(async () => {
-    const [notifs, unreadCount] = await Promise.all([
-      api.notifications() as Promise<NotificationRow[]>,
-      api.unreadNotificationCount(),
-    ]);
-    return { notifs, unreadCount };
-  }, [], 'ho-home-notifications');
+  const notifications = useNotifications();
 
   const name = profile?.full_name ?? '';
   const activeJobs = (jobs.data ?? []).filter((j) => ACTIVE_STATUSES.includes(j.status));
-  const recentActivity = (notifications.data?.notifs ?? []).slice(0, 3);
-  const unread = notifications.data?.unreadCount.count ?? 0;
+  const recentActivity = notifications.notifications.slice(0, 3);
+  const unread = notifications.unreadCount;
   const location =
     [profile?.city, profile?.address].filter(Boolean).join(', ') || 'Set your location';
   const hour = new Date().getHours();
@@ -114,6 +103,7 @@ export default function HOHomeScreen({ onNavigate }: HOHomeScreenProps) {
 
   return (
     <View style={styles.screen}>
+      <StatusBar style="light" />
       <ScrollView
         style={styles.flex}
         showsVerticalScrollIndicator={false}
@@ -143,7 +133,7 @@ export default function HOHomeScreen({ onNavigate }: HOHomeScreenProps) {
                 onPress={() => onNavigate('Notifications')}
                 activeOpacity={0.8}
               >
-                <Bell size={20} color={C.white} />
+                <Bell size={20} color={C.onPrimary} />
                 {unread > 0 && (
                   <View style={styles.notifBadge}><Text style={styles.notifBadgeText}>{unread}</Text></View>
                 )}
@@ -200,7 +190,7 @@ export default function HOHomeScreen({ onNavigate }: HOHomeScreenProps) {
                     activeOpacity={0.85}
                   >
                     <View style={styles.categoryIconWell}>
-                      <Icon size={19} color={C.cyan700} />
+                      <Icon size={19} color={V6Colors.link} />
                     </View>
                     <Text style={styles.categoryLabel}>{cat.name}</Text>
                   </TouchableOpacity>
@@ -234,7 +224,7 @@ export default function HOHomeScreen({ onNavigate }: HOHomeScreenProps) {
               testID="home-post-job"
             >
               <View style={styles.taskIcon}>
-                <Sparkles size={22} color={C.cyan700} />
+                <Sparkles size={22} color={V6Colors.link} />
               </View>
               <View style={styles.taskCopy}>
                 <Text style={styles.taskTitle}>Need something done?</Text>
@@ -252,7 +242,7 @@ export default function HOHomeScreen({ onNavigate }: HOHomeScreenProps) {
               title={job.title}
               budget={job.budget}
               address={job.address}
-              status={jobStatusMeta(job.status)}
+              status={jobStatusMeta(job.status, V6Colors)}
               urgency={job.urgency}
               footer={[{ icon: <Clock size={13} color={C.ink400} />, text: `Posted ${shortDate(job.posted_at)}` }]}
               onPress={() => onNavigate('Job Detail', job.id)}
@@ -279,7 +269,7 @@ export default function HOHomeScreen({ onNavigate }: HOHomeScreenProps) {
                       style={[styles.activityRow, i < recentActivity.length - 1 && styles.activityRowBorder]}
                     >
                       <View style={styles.activityIcon}>
-                        <Icon size={19} color={C.cyan700} />
+                        <Icon size={19} color={V6Colors.link} />
                       </View>
                       <View style={styles.activityCopy}>
                         <Text style={styles.activityTitle} numberOfLines={1}>{n.title}</Text>
@@ -299,119 +289,122 @@ export default function HOHomeScreen({ onNavigate }: HOHomeScreenProps) {
   );
 }
 
-const styles = StyleSheet.create({
-  flex: { flex: 1 },
-  screen: { flex: 1, backgroundColor: C.canvas },
+function createThemedStyles(theme: ThemePalette) {
+  const { Colors, V6Colors } = theme;
+  const C = V6Colors;
+  const styles = StyleSheet.create({
+    flex: { flex: 1 },
+    screen: { flex: 1, backgroundColor: C.canvas },
 
-  // Hero — matches .hero-clean (linear-gradient 165deg cyan600->cyan700, rounded bottom corners)
-  hero: {
-    paddingHorizontal: Spacing.screenH,
-    paddingBottom: 20,
-    borderBottomLeftRadius: 26,
-    borderBottomRightRadius: 26,
-  },
-  heroTopRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 16,
-  },
-  greeting: { color: C.cyan100, fontSize: 14.5, fontFamily: 'Inter', fontWeight: '500' },
-  userName: { color: C.white, fontSize: 24.5, fontWeight: '800', fontFamily: 'Inter', marginTop: 3 },
-  // The name column yields to the actions, never the other way round: the
-  // avatar is the only route to Profile (and Log out), so a long name must
-  // truncate rather than push it off-screen.
-  heroText: { flex: 1, minWidth: 0, marginRight: 12 },
-  heroActions: { flexDirection: 'row', alignItems: 'center', gap: 8, flexShrink: 0 },
-  iconBtn: {
-    width: 40, height: 40, borderRadius: 12,
-    backgroundColor: 'rgba(255,255,255,0.12)',
-    borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)',
-    alignItems: 'center', justifyContent: 'center', position: 'relative',
-  },
-  notifBadge: {
-    position: 'absolute', top: -5, right: -4,
-    width: 16, height: 16, borderRadius: 8,
-    backgroundColor: '#ef4444', alignItems: 'center', justifyContent: 'center',
-  },
-  notifBadgeText: { color: C.white, fontSize: 11, fontWeight: '800' },
-  avatarCircle: {
-    width: 40, height: 40, borderRadius: 20,
-    backgroundColor: 'rgba(255,255,255,0.16)',
-    borderWidth: 1, borderColor: 'rgba(255,255,255,0.12)',
-    alignItems: 'center', justifyContent: 'center', overflow: 'hidden',
-  },
-  avatarText: { color: C.white, fontWeight: '800', fontSize: 14.5, fontFamily: 'Inter' },
+    // Hero — matches .hero-clean (linear-gradient 165deg cyan600->cyan700, rounded bottom corners)
+    hero: {
+      paddingHorizontal: Spacing.screenH,
+      paddingBottom: 20,
+      borderBottomLeftRadius: 26,
+      borderBottomRightRadius: 26,
+    },
+    heroTopRow: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      marginBottom: 16,
+    },
+    greeting: { color: C.cyan100, fontSize: 14.5, fontFamily: 'Inter', fontWeight: '500' },
+    userName: { color: C.onPrimary, fontSize: 24.5, fontWeight: '800', fontFamily: 'Inter', marginTop: 3 },
+    // The name column yields to the actions, never the other way round: the
+    // avatar is the only route to Profile (and Log out), so a long name must
+    // truncate rather than push it off-screen.
+    heroText: { flex: 1, minWidth: 0, marginRight: 12 },
+    heroActions: { flexDirection: 'row', alignItems: 'center', gap: 8, flexShrink: 0 },
+    iconBtn: {
+      width: 40, height: 40, borderRadius: 12,
+      backgroundColor: 'rgba(255,255,255,0.12)',
+      borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)',
+      alignItems: 'center', justifyContent: 'center', position: 'relative',
+    },
+    notifBadge: {
+      position: 'absolute', top: -5, right: -4,
+      width: 16, height: 16, borderRadius: 8,
+      backgroundColor: V6Colors.dangerSolid, alignItems: 'center', justifyContent: 'center',
+    },
+    notifBadgeText: { color: C.onPrimary, fontSize: 11, fontWeight: '800' },
+    avatarCircle: {
+      width: 40, height: 40, borderRadius: 20,
+      backgroundColor: 'rgba(255,255,255,0.16)',
+      borderWidth: 1, borderColor: 'rgba(255,255,255,0.12)',
+      alignItems: 'center', justifyContent: 'center', overflow: 'hidden',
+    },
+    avatarText: { color: C.onPrimary, fontWeight: '800', fontSize: 14.5, fontFamily: 'Inter' },
 
-  // Balance strip
-  balanceStrip: {
-    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
-    marginTop: 16, padding: 13,
-    backgroundColor: 'rgba(255,255,255,0.11)',
-    borderWidth: 1, borderColor: 'rgba(255,255,255,0.14)',
-    borderRadius: 14,
-  },
-  balanceLabel: { color: 'rgba(255,255,255,0.72)', fontSize: 13.5, fontFamily: 'Inter', marginBottom: 2 },
-  balanceAmount: { color: C.white, fontSize: 21.5, fontWeight: '800', fontFamily: 'Inter' },
-  manageLink: { color: C.white, fontSize: 14.5, fontWeight: '700', fontFamily: 'Inter' },
-  widgetError: { flexDirection: 'row', alignItems: 'center', gap: 9, paddingVertical: 8 },
-  widgetErrorText: { color: C.ink500, fontSize: 13.5, fontFamily: 'Inter', flexShrink: 1 },
-  widgetRetry: { color: C.cyan700, fontSize: 13.5, fontWeight: '800', fontFamily: 'Inter' },
+    // Balance strip
+    balanceStrip: {
+      flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
+      marginTop: 16, padding: 13,
+      backgroundColor: 'rgba(255,255,255,0.11)',
+      borderWidth: 1, borderColor: 'rgba(255,255,255,0.14)',
+      borderRadius: 14,
+    },
+    balanceLabel: { color: 'rgba(255,255,255,0.72)', fontSize: 13.5, fontFamily: 'Inter', marginBottom: 2 },
+    balanceAmount: { color: C.onPrimary, fontSize: 21.5, fontWeight: '800', fontFamily: 'Inter' },
+    manageLink: { color: C.onPrimary, fontSize: 14.5, fontWeight: '700', fontFamily: 'Inter' },
+    widgetError: { flexDirection: 'row', alignItems: 'center', gap: 9, paddingVertical: 8 },
+    widgetErrorText: { color: C.ink500, fontSize: 13.5, fontFamily: 'Inter', flexShrink: 1 },
+    widgetRetry: { color: V6Colors.link, fontSize: 13.5, fontWeight: '800', fontFamily: 'Inter' },
 
-  // Body
-  body: { paddingHorizontal: Spacing.screenH, paddingTop: 18 },
+    // Body
+    body: { paddingHorizontal: Spacing.screenH, paddingTop: 18 },
 
-  primaryTaskCard: {
-    flexDirection: 'row', alignItems: 'center', gap: 13,
-    backgroundColor: C.white, borderColor: C.cyan100, borderWidth: 1,
-    borderRadius: V6Radii.card, padding: 17, marginBottom: 22,
-    ...V6Shadows.sm,
-  },
-  taskIcon: {
-    width: 42, height: 42, borderRadius: 14,
-    backgroundColor: C.white, borderWidth: 1, borderColor: C.cyan100,
-    alignItems: 'center', justifyContent: 'center', flexShrink: 0,
-  },
-  taskCopy: { flex: 1, minWidth: 0 },
-  taskTitle: { fontSize: 16.5, fontWeight: '800', color: C.ink900, fontFamily: 'Inter', marginBottom: 3 },
-  taskDesc: { fontSize: 14, color: C.ink500, fontFamily: 'Inter', lineHeight: 16 },
-  postBtn: { backgroundColor: C.cyan700, borderRadius: V6Radii.btn, paddingHorizontal: 12, paddingVertical: 10 },
-  postBtnText: { color: C.white, fontSize: 14.5, fontWeight: '700', fontFamily: 'Inter' },
+    primaryTaskCard: {
+      flexDirection: 'row', alignItems: 'center', gap: 13,
+      backgroundColor: C.surface, borderColor: C.cyan100, borderWidth: 1,
+      borderRadius: V6Radii.card, padding: 17, marginBottom: 22,
+      ...V6Shadows.sm,
+    },
+    taskIcon: {
+      width: 42, height: 42, borderRadius: 14,
+      backgroundColor: C.surface, borderWidth: 1, borderColor: C.cyan100,
+      alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+    },
+    taskCopy: { flex: 1, minWidth: 0 },
+    taskTitle: { fontSize: 16.5, fontWeight: '800', color: C.ink900, fontFamily: 'Inter', marginBottom: 3 },
+    taskDesc: { fontSize: 14, color: C.ink500, fontFamily: 'Inter', lineHeight: 16 },
+    postBtn: { backgroundColor: C.cyan700, borderRadius: V6Radii.btn, paddingHorizontal: 12, paddingVertical: 10 },
+    postBtnText: { color: C.onPrimary, fontSize: 14.5, fontWeight: '700', fontFamily: 'Inter' },
 
-  section: { marginBottom: 22 },
-  sectionHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 11 },
-  sectionTitle: { fontSize: 19, fontWeight: '800', color: C.ink900, fontFamily: 'Inter', letterSpacing: -0.15 },
-  sectionCount: { fontWeight: '600', color: C.ink400, fontSize: 13.5 },
-  textLink: { color: C.cyan700, fontSize: 14.5, fontWeight: '700', fontFamily: 'Inter' },
+    section: { marginBottom: 22 },
+    sectionHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 11 },
+    sectionTitle: { fontSize: 19, fontWeight: '800', color: C.ink900, fontFamily: 'Inter', letterSpacing: -0.15 },
+    sectionCount: { fontWeight: '600', color: C.ink400, fontSize: 13.5 },
+    textLink: { color: V6Colors.link, fontSize: 14.5, fontWeight: '700', fontFamily: 'Inter' },
 
-  categoryStrip: { gap: 9, paddingRight: Spacing.screenH },
-  categoryTile: {
-    alignItems: 'center', width: 76,
-    borderWidth: 1, borderColor: C.line, backgroundColor: C.white,
-    borderRadius: 14, paddingVertical: 11, paddingHorizontal: 6,
-  },
-  categoryIconWell: {
-    width: 34, height: 34, borderRadius: 11,
-    backgroundColor: '#f3f8fa',
-    alignItems: 'center', justifyContent: 'center',
-    marginBottom: 7,
-  },
-  categoryLabel: { fontSize: 11.5, fontWeight: '700', color: C.ink700, fontFamily: 'Inter', textAlign: 'center' },
+    categoryStrip: { gap: 9, paddingRight: Spacing.screenH },
+    categoryTile: {
+      alignItems: 'center', width: 76,
+      borderWidth: 1, borderColor: C.line, backgroundColor: C.surface,
+      borderRadius: 14, paddingVertical: 11, paddingHorizontal: 6,
+    },
+    categoryIconWell: {
+      width: 34, height: 34, borderRadius: 11,
+      backgroundColor: V6Colors.wellBg,
+      alignItems: 'center', justifyContent: 'center',
+      marginBottom: 7,
+    },
+    categoryLabel: { fontSize: 11.5, fontWeight: '700', color: C.ink700, fontFamily: 'Inter', textAlign: 'center' },
 
-
-
-  // Recent Activity — matches .activity-list/.activity-row
-  activityList: {
-    backgroundColor: C.white, borderWidth: 1, borderColor: C.line,
-    borderRadius: 16, overflow: 'hidden',
-  },
-  activityRow: { flexDirection: 'row', gap: 11, padding: 14, alignItems: 'flex-start' },
-  activityRowBorder: { borderBottomWidth: 1, borderBottomColor: '#f0f3f6' },
-  activityIcon: {
-    width: 32, height: 32, borderRadius: 11,
-    backgroundColor: '#f3f8fa', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
-  },
-  activityCopy: { flex: 1 },
-  activityTitle: { color: C.ink900, fontSize: 13.5, fontWeight: '700', fontFamily: 'Inter', marginBottom: 2 },
-  activityBody: { color: C.ink400, fontSize: 12, fontFamily: 'Inter', lineHeight: 15 },
-});
+    // Recent Activity — matches .activity-list/.activity-row
+    activityList: {
+      backgroundColor: C.surface, borderWidth: 1, borderColor: C.line,
+      borderRadius: 16, overflow: 'hidden',
+    },
+    activityRow: { flexDirection: 'row', gap: 11, padding: 14, alignItems: 'flex-start' },
+    activityRowBorder: { borderBottomWidth: 1, borderBottomColor: V6Colors.wellBg },
+    activityIcon: {
+      width: 32, height: 32, borderRadius: 11,
+      backgroundColor: V6Colors.wellBg, alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+    },
+    activityCopy: { flex: 1 },
+    activityTitle: { color: C.ink900, fontSize: 13.5, fontWeight: '700', fontFamily: 'Inter', marginBottom: 2 },
+    activityBody: { color: C.ink400, fontSize: 12, fontFamily: 'Inter', lineHeight: 15 },
+  });
+  return { Colors, V6Colors, C, styles };
+}

@@ -12,6 +12,7 @@
  * deleted, and "Clear all" empties the list.
  */
 
+import { useThemedStyles, type Palette as ThemePalette } from '../../../src/context/ThemeContext';
 import React, { useState } from 'react';
 import {
   ActivityIndicator,
@@ -30,11 +31,11 @@ import {
 } from 'lucide-react-native';
 import ConfirmationModal from '../../../src/components/ConfirmationModal';
 import { useNotificationDeletion } from '../../../src/hooks/useNotificationDeletion';
-import { Spacing, V6Colors } from '../../../src/constants/theme';
+import { Spacing } from '../../../src/constants/theme';
 import { useHeaderTop } from '../../../src/hooks/useHeaderTop';
 
-const C = V6Colors;
-import { useAsyncData } from '../../../src/hooks/useAsyncData';
+import { useNotifications } from '../../../src/context/NotificationsContext';
+import { showToast } from '../../../src/components/Toast';
 import { api } from '../../../src/lib/api';
 import { timeAgo } from '../../../src/lib/format';
 import { resolveNotificationTarget } from '../../../src/lib/notificationRouting';
@@ -47,7 +48,7 @@ interface NotificationRow {
   read_at: string | null;
   created_at: string;
   /** Job/application updates carry the job (and application) they are about. */
-  data: { job_id?: string; application_id?: string } | null;
+  data: { job_id?: string; application_id?: string; conversation_id?: string; request_id?: string; dispute_id?: string } | null;
 }
 
 const ICON_BY_TYPE: Record<string, typeof BellRing> = {
@@ -59,29 +60,26 @@ const ICON_BY_TYPE: Record<string, typeof BellRing> = {
 interface HONotificationsProps {
   onBack: () => void;
   onOpenJob: (jobId: string) => void;
+  onOpenChat: (jobId: string) => void;
+  onOpenDispute: (jobId: string) => void;
   /** The job's Proposals screen — where a new application is reviewed. */
   onOpenProposals: (jobId: string) => void;
 }
 
-export default function HONotificationsScreen({ onBack, onOpenJob, onOpenProposals }: HONotificationsProps) {
+export default function HONotificationsScreen({ onBack, onOpenJob, onOpenProposals, onOpenChat, onOpenDispute }: HONotificationsProps) {
+  const { C, styles, V6Colors } = useThemedStyles(createThemedStyles);
   const headerTop = useHeaderTop();
-  const { data, loading, error, reload } = useAsyncData(
-    () => api.notifications() as Promise<NotificationRow[]>,
-    [],
-  );
-  const [actionError, setActionError] = useState<string | null>(null);
+  const { notifications: data, loading, error, reload, unreadCount } = useNotifications();  const [actionError, setActionError] = useState<string | null>(null);
   const [pendingReadId, setPendingReadId] = useState<string | null>(null);
-  const deletion = useNotificationDeletion(reload);
+  const deletion = useNotificationDeletion();
   const [confirmClear, setConfirmClear] = useState(false);
   const [pendingDelete, setPendingDelete] = useState<NotificationRow | null>(null);
-  const notifications = deletion.visible(data ?? []);
-  const unreadCount = notifications.filter((n) => !n.read_at).length;
+  const notifications = data;
 
   const markAllRead = async () => {
     try {
       setActionError(null);
       await api.markAllNotificationsRead();
-      reload();
     } catch (e) {
       setActionError(e instanceof Error ? e.message : 'Could not mark notifications as read.');
     }
@@ -93,7 +91,6 @@ export default function HONotificationsScreen({ onBack, onOpenJob, onOpenProposa
     setActionError(null);
     try {
       await api.markNotificationRead(id);
-      reload();
     } catch (e) {
       setActionError(e instanceof Error ? e.message : 'Could not mark this notification as read.');
       if (prev === null) reload();
@@ -112,9 +109,11 @@ export default function HONotificationsScreen({ onBack, onOpenJob, onOpenProposa
       if (!notif.read_at) void markRead(notif.id);
       return;
     }
-    if (!notif.read_at) api.markNotificationRead(notif.id).catch(() => {});
-    if (target.kind === 'proposals') onOpenProposals(target.jobId);
-    else onOpenJob(target.jobId);
+    if (!notif.read_at) api.markNotificationRead(notif.id).catch((err: Error) => showToast(err.message, 'error'));
+    if (target.kind === 'chat') onOpenChat(target.jobId);
+    else if (target.kind === 'dispute') onOpenDispute(target.jobId);
+    else if (target.kind === 'proposals') onOpenProposals(target.jobId);
+    else if (target.kind === 'job') onOpenJob(target.jobId);
   };
 
   return (
@@ -178,7 +177,7 @@ export default function HONotificationsScreen({ onBack, onOpenJob, onOpenProposa
             </TouchableOpacity>
           </View>
         )}
-        {loading && <ActivityIndicator style={{ marginTop: 20 }} color={C.cyan700} />}
+        {loading && <ActivityIndicator style={{ marginTop: 20 }} color={V6Colors.link} />}
         {!!error && !loading && <Text style={styles.stateText}>{error}</Text>}
         {!loading && !error && notifications.length === 0 && (
           <Text style={styles.stateText}>You have no notifications yet.</Text>
@@ -203,7 +202,7 @@ export default function HONotificationsScreen({ onBack, onOpenJob, onOpenProposa
                   disabled={pendingReadId === notif.id}
                 >
                   <View style={[styles.notifIcon, isUnread && styles.notifIconUnread]}>
-                    <Icon size={19} color={C.cyan700} />
+                    <Icon size={19} color={V6Colors.link} />
                   </View>
                   <View style={{ flex: 1 }}>
                     <Text style={styles.notifTitle}>{notif.title}</Text>
@@ -231,55 +230,60 @@ export default function HONotificationsScreen({ onBack, onOpenJob, onOpenProposa
   );
 }
 
-const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: C.canvas },
+function createThemedStyles(theme: ThemePalette) {
+  const { Colors, V6Colors } = theme;
+  const C = V6Colors;
+  const styles = StyleSheet.create({
+    screen: { flex: 1, backgroundColor: C.canvas },
 
-  header: {
-    flexDirection: 'row', alignItems: 'center', gap: 12,
-    backgroundColor: C.white,
-    paddingHorizontal: Spacing.screenH,
-    paddingBottom: 12,
-    borderBottomWidth: 1, borderBottomColor: '#edf1f4',
-  },
-  backBtn: {
-    width: 38, height: 38, borderRadius: 12,
-    backgroundColor: C.white, borderWidth: 1, borderColor: '#e8edf2',
-    alignItems: 'center', justifyContent: 'center', flexShrink: 0,
-  },
-  headerTitle: { flex: 1, color: C.ink900, fontSize: 19.5, fontWeight: '800', fontFamily: 'Inter', letterSpacing: -0.27 },
-  markAllText: { color: C.cyan700, fontSize: 14, fontWeight: '700', fontFamily: 'Inter' },
+    header: {
+      flexDirection: 'row', alignItems: 'center', gap: 12,
+      backgroundColor: C.surface,
+      paddingHorizontal: Spacing.screenH,
+      paddingBottom: 12,
+      borderBottomWidth: 1, borderBottomColor: V6Colors.line,
+    },
+    backBtn: {
+      width: 38, height: 38, borderRadius: 12,
+      backgroundColor: C.surface, borderWidth: 1, borderColor: V6Colors.line,
+      alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+    },
+    headerTitle: { flex: 1, color: C.ink900, fontSize: 19.5, fontWeight: '800', fontFamily: 'Inter', letterSpacing: -0.27 },
+    markAllText: { color: V6Colors.link, fontSize: 14, fontWeight: '700', fontFamily: 'Inter' },
 
-  body: { flex: 1 },
-  bodyContent: { paddingHorizontal: Spacing.screenH, paddingTop: 14, paddingBottom: 20 },
+    body: { flex: 1 },
+    bodyContent: { paddingHorizontal: Spacing.screenH, paddingTop: 14, paddingBottom: 20 },
 
-  stateText: { color: C.ink500, fontSize: 16.5, fontFamily: 'Inter', textAlign: 'center', marginTop: 30 },
-  banner: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    backgroundColor: '#fef2f2', borderWidth: 1, borderColor: '#fecaca',
-    borderRadius: 12, padding: 10, marginBottom: 12,
-  },
-  bannerText: { flex: 1, color: '#7f1d1d', fontSize: 12.5, fontFamily: 'Inter', lineHeight: 18 },
-  bannerAction: { color: C.cyan700, fontSize: 12.5, fontWeight: '700', fontFamily: 'Inter', marginLeft: 12 },
+    stateText: { color: C.ink500, fontSize: 16.5, fontFamily: 'Inter', textAlign: 'center', marginTop: 30 },
+    banner: {
+      flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+      backgroundColor: V6Colors.dangerSurface, borderWidth: 1, borderColor: V6Colors.dangerBorder,
+      borderRadius: 12, padding: 10, marginBottom: 12,
+    },
+    bannerText: { flex: 1, color: V6Colors.dangerText, fontSize: 12.5, fontFamily: 'Inter', lineHeight: 18 },
+    bannerAction: { color: V6Colors.link, fontSize: 12.5, fontWeight: '700', fontFamily: 'Inter', marginLeft: 12 },
 
-  notificationList: {
-    backgroundColor: C.white, borderWidth: 1, borderColor: C.line,
-    borderRadius: 16, overflow: 'hidden',
-  },
-  notifRow: { flexDirection: 'row', gap: 11, padding: 14, position: 'relative' },
-  notifRowBorder: { borderBottomWidth: 1, borderBottomColor: '#f0f3f6' },
-  notifRowUnread: { backgroundColor: '#f2fbfd' },
-  notifRowPending: { opacity: 0.7 },
-  notifIcon: {
-    width: 34, height: 34, borderRadius: 12,
-    backgroundColor: '#f7f9fb', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
-  },
-  notifIconUnread: { backgroundColor: C.white },
-  notifTitle: { color: C.ink900, fontSize: 13.5, fontWeight: '700', fontFamily: 'Inter' },
-  notifBody: { color: C.ink500, fontSize: 12.5, fontFamily: 'Inter', lineHeight: 16.5, marginTop: 3 },
-  notifTime: { color: C.ink300, fontSize: 11.5, fontFamily: 'Inter', marginTop: 4 },
-  deleteBtn: { alignSelf: 'center', padding: 4 },
-  unreadDot: {
-    position: 'absolute', left: 6, top: 17,
-    width: 7, height: 7, borderRadius: 4, backgroundColor: C.cyan500,
-  },
-});
+    notificationList: {
+      backgroundColor: C.surface, borderWidth: 1, borderColor: C.line,
+      borderRadius: 16, overflow: 'hidden',
+    },
+    notifRow: { flexDirection: 'row', gap: 11, padding: 14, position: 'relative' },
+    notifRowBorder: { borderBottomWidth: 1, borderBottomColor: V6Colors.wellBg },
+    notifRowUnread: { backgroundColor: V6Colors.infoSurface },
+    notifRowPending: { opacity: 0.7 },
+    notifIcon: {
+      width: 34, height: 34, borderRadius: 12,
+      backgroundColor: V6Colors.canvas, alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+    },
+    notifIconUnread: { backgroundColor: C.surface },
+    notifTitle: { color: C.ink900, fontSize: 13.5, fontWeight: '700', fontFamily: 'Inter' },
+    notifBody: { color: C.ink500, fontSize: 12.5, fontFamily: 'Inter', lineHeight: 16.5, marginTop: 3 },
+    notifTime: { color: C.ink300, fontSize: 11.5, fontFamily: 'Inter', marginTop: 4 },
+    deleteBtn: { alignSelf: 'center', padding: 4 },
+    unreadDot: {
+      position: 'absolute', left: 6, top: 17,
+      width: 7, height: 7, borderRadius: 4, backgroundColor: C.cyan500,
+    },
+  });
+  return { Colors, V6Colors, C, styles };
+}

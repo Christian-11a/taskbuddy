@@ -1,198 +1,114 @@
-/**
- * HODisputeStatusScreen.tsx
- *
- * Shows progress on a dispute already filed for a job. There is no stored
- * step-history for a dispute — `disputes` is a single row carrying its
- * current `status`/`resolution` (see backend/src/escrow/disputes.service.ts)
- * — so this timeline is derived client-side from that one row rather than
- * read from a real event log. Three steps only: Filed, Under Review,
- * Resolved/Cancelled. If a future backend adds a genuine per-step history
- * table, this can switch to rendering that instead.
- */
-
-import React from 'react';
-import { ActivityIndicator, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import { ArrowLeft, CheckCircle2, CircleDashed, CircleDot } from 'lucide-react-native';
-import { Spacing, V6Colors, V6Radii, V6Shadows } from '../../../src/constants/theme';
-
-const C = V6Colors;
+import { useThemedStyles, type Palette as ThemePalette } from '../../../src/context/ThemeContext';
+import React, { useState } from 'react';
+import { ActivityIndicator, Image, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { ArrowLeft } from 'lucide-react-native';
+import { Spacing } from '../../../src/constants/theme';
 import { useAsyncData } from '../../../src/hooks/useAsyncData';
 import { useHeaderTop } from '../../../src/hooks/useHeaderTop';
-import { api, Dispute } from '../../../src/lib/api';
-import { shortDate, timeOfDay } from '../../../src/lib/format';
+import { useAuth } from '../../../src/context/AuthContext';
+import { api, type Message } from '../../../src/lib/api';
 
-interface HODisputeStatusScreenProps {
-  jobId: string | null;
-  onBack: () => void;
-}
+interface Props { jobId: string | null; onBack: () => void }
 
-interface TimelineStep {
-  key: string;
-  title: string;
-  detail: string;
-  timestamp: string | null;
-  state: 'done' | 'active' | 'upcoming';
-}
-
-function resolutionOutcome(dispute: Dispute): string {
-  if (dispute.status === 'cancelled') return 'Dispute Cancelled';
-  if (dispute.resolution === 'refunded_to_client') return 'Resolved — Refunded to Client';
-  if (dispute.resolution === 'released_to_provider') return 'Resolved — Released to Provider';
-  return 'Resolved';
-}
-
-function buildSteps(dispute: Dispute): TimelineStep[] {
-  const isOpen = dispute.status === 'open';
-  const isClosed = dispute.status === 'resolved' || dispute.status === 'cancelled';
-
-  return [
-    {
-      key: 'filed',
-      title: 'Dispute Filed',
-      detail: dispute.reason,
-      timestamp: dispute.created_at,
-      state: 'done',
-    },
-    {
-      key: 'review',
-      title: 'Under Review',
-      detail: isOpen
-        ? 'Our support team is looking into this.'
-        : 'Reviewed by our support team.',
-      timestamp: null,
-      state: isOpen ? 'active' : 'done',
-    },
-    {
-      key: 'resolved',
-      title: isClosed ? resolutionOutcome(dispute) : 'Resolution',
-      detail:
-        dispute.resolution_note ??
-        (isClosed
-          ? 'A decision has been recorded for this dispute.'
-          : 'You will be notified once a decision is made.'),
-      timestamp: dispute.resolved_at,
-      state: isClosed ? 'done' : 'upcoming',
-    },
-  ];
-}
-
-export default function HODisputeStatusScreen({ jobId, onBack }: HODisputeStatusScreenProps) {
+export default function HODisputeStatusScreen({ jobId, onBack }: Props) {
+  const { C, styles, V6Colors, appearance } = useThemedStyles(createThemedStyles);
   const headerTop = useHeaderTop();
-  const { data: dispute, loading, error } = useAsyncData(
-    () => (jobId ? api.jobDispute(jobId) : Promise.resolve(null)),
-    [jobId],
-  );
+  const { profile } = useAuth();
+  const { data: dispute, loading, error, reload } = useAsyncData(() => jobId ? api.jobDispute(jobId) : Promise.resolve(null), [jobId]);
+  const [body, setBody] = useState('');
+  const [kind, setKind] = useState<'statement' | 'appeal'>('statement');
+  const [evidence, setEvidence] = useState<Message[]>([]);
+  const [messageId, setMessageId] = useState<string | undefined>();
+  const [busy, setBusy] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const pending = dispute?.status === 'open' && dispute.cancellation_state === 'pending';
+  const canRespond = pending && dispute.jobs?.assigned_provider_id === profile?.id &&
+    !!dispute.cancellation_deadline && Date.now() < new Date(dispute.cancellation_deadline).getTime();
 
-  const steps = dispute ? buildSteps(dispute) : [];
+  async function submit(accept?: boolean) {
+    if (!dispute || !body.trim() || busy) return;
+    setBusy(true); setActionError(null);
+    try {
+      if (accept !== undefined) await api.respondToCancellation(dispute.id, accept, body.trim(), messageId);
+      else await api.addDisputeEntry(dispute.id, { kind: dispute.status === 'open' ? kind : 'appeal', body: body.trim(), message_id: messageId });
+      setBody(''); setMessageId(undefined); reload();
+    } catch (e) { setActionError(e instanceof Error ? e.message : 'Could not update the complaint.'); }
+    finally { setBusy(false); }
+  }
+  async function loadEvidence() {
+    if (!jobId || busy) return;
+    setBusy(true); setActionError(null);
+    try {
+      const conversation = await api.openConversation(jobId);
+      setEvidence((await api.messages(conversation.id)).filter((message) => message.sender_id === profile?.id));
+    } catch (e) { setActionError(e instanceof Error ? e.message : 'Could not load job evidence.'); }
+    finally { setBusy(false); }
+  }
 
-  return (
-    <View style={styles.screen}>
-      <View style={[styles.header, { paddingTop: headerTop }]}>
-        <TouchableOpacity style={styles.backButton} onPress={onBack} activeOpacity={0.8}>
-          <ArrowLeft size={20} color={C.ink700} />
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>Dispute Status</Text>
-        <View style={{ width: 38 }} />
-      </View>
-
-      {loading && <ActivityIndicator style={{ marginTop: 40 }} color={C.cyan700} />}
-      {!!error && !loading && <Text style={styles.stateText}>{error}</Text>}
-      {!loading && !error && !dispute && (
-        <Text style={styles.stateText}>No dispute has been filed for this job.</Text>
-      )}
-
-      {dispute && (
-        <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-          <View style={styles.summaryCard}>
-            <Text style={styles.summaryLabel}>Reason</Text>
-            <Text style={styles.summaryValue}>{dispute.reason}</Text>
-            {!!dispute.details && (
-              <>
-                <Text style={[styles.summaryLabel, { marginTop: 10 }]}>Details</Text>
-                <Text style={styles.summaryValue}>{dispute.details}</Text>
-              </>
-            )}
-          </View>
-
-          <View style={styles.timeline}>
-            {steps.map((step, i) => {
-              const Icon =
-                step.state === 'done' ? CheckCircle2 : step.state === 'active' ? CircleDot : CircleDashed;
-              const iconColor =
-                step.state === 'done' ? '#16a34a' : step.state === 'active' ? C.cyan700 : C.ink300;
-              return (
-                <View key={step.key} style={styles.stepRow}>
-                  <View style={styles.stepRail}>
-                    <Icon size={22} color={iconColor} />
-                    {i < steps.length - 1 && (
-                      <View
-                        style={[
-                          styles.stepConnector,
-                          step.state === 'done' && styles.stepConnectorDone,
-                        ]}
-                      />
-                    )}
-                  </View>
-                  <View style={styles.stepBody}>
-                    <Text
-                      style={[
-                        styles.stepTitle,
-                        step.state === 'upcoming' && styles.stepTitleUpcoming,
-                      ]}
-                    >
-                      {step.title}
-                    </Text>
-                    <Text style={styles.stepDetail}>{step.detail}</Text>
-                    {!!step.timestamp && (
-                      <Text style={styles.stepTimestamp}>
-                        {shortDate(step.timestamp)} · {timeOfDay(step.timestamp)}
-                      </Text>
-                    )}
-                  </View>
-                </View>
-              );
-            })}
-          </View>
-        </ScrollView>
-      )}
+  return <View style={styles.screen}>
+    <View style={[styles.header, { paddingTop: headerTop }]}>
+      <TouchableOpacity onPress={onBack} accessibilityLabel="Back"><ArrowLeft size={22} color={C.ink700} /></TouchableOpacity>
+      <Text style={styles.title}>Complaint Status</Text>
+      <TouchableOpacity onPress={reload} accessibilityLabel="Refresh complaint"><Text style={styles.link}>Refresh</Text></TouchableOpacity>
     </View>
-  );
+    {loading && <ActivityIndicator color={V6Colors.link} />}
+    {!!error && <Text style={styles.error}>{error}</Text>}
+    {!loading && !error && !dispute && <Text style={styles.text}>No complaint has been filed for this job.</Text>}
+    {dispute && <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+      <Text style={styles.heading}>{dispute.reason}</Text>
+      {!!dispute.details && <Text style={styles.text}>{dispute.details}</Text>}
+      <Text style={styles.text}>Filed {new Date(dispute.created_at).toLocaleString()}</Text>
+      {pending ? <Text style={styles.text}>Cancellation awaiting provider response until {new Date(dispute.cancellation_deadline!).toLocaleString()}. No response refunds any unsettled payment to the client.</Text>
+        : dispute.status === 'open' ? <Text style={styles.text}>{dispute.escrow_transactions?.status === 'disputed' ? 'Payment under admin review' : 'Complaint awaiting admin review'}</Text>
+        : <Text style={styles.heading}>Decision recorded: {dispute.resolution}</Text>}
+      {!!dispute.resolution_note && <Text style={styles.text}>{dispute.resolution_note}</Text>}
+      {!!dispute.resolved_at && <Text style={styles.text}>Closed {new Date(dispute.resolved_at).toLocaleString()}</Text>}
+      <Text style={styles.heading}>Recorded case activity</Text>
+      {(dispute.entries ?? []).map((entry) => <View key={entry.id} style={styles.entry}>
+        <Text style={styles.heading}>{entry.author?.full_name ?? 'System'} · {entry.kind}</Text>
+        <Text style={styles.text}>{entry.body}</Text>
+        <Text style={styles.text}>{new Date(entry.created_at).toLocaleString()}</Text>
+        {!!entry.message?.body && <Text style={styles.text}>Job chat evidence: {entry.message.body}</Text>}
+        {entry.attachment_url && <Image accessibilityLabel="Case photo evidence" source={{ uri: entry.attachment_url }} style={styles.photo} resizeMode="contain" />}
+        {entry.message?.attachment_path && !entry.attachment_url && <Text style={styles.error}>Photo evidence is unavailable. Refresh to retry.</Text>}
+      </View>)}
+      <Text style={styles.heading}>{dispute.status === 'open' ? 'Add a statement or appeal' : 'Appeal the recorded decision'}</Text>
+      <Text style={styles.text}>Describe your position. Send photos in the job chat, then select your message below as evidence. An appeal reopens review without reversing settled payments.</Text>
+      {dispute.status === 'open' && !pending && <View style={styles.header}>
+        <TouchableOpacity onPress={() => setKind('statement')} accessibilityRole="radio" accessibilityState={{ checked: kind === 'statement' }}><Text style={styles.link}>Statement</Text></TouchableOpacity>
+        <TouchableOpacity onPress={() => setKind('appeal')} accessibilityRole="radio" accessibilityState={{ checked: kind === 'appeal' }}><Text style={styles.link}>Appeal</Text></TouchableOpacity>
+      </View>}
+      <TextInput keyboardAppearance={appearance} accessibilityLabel="Case statement" multiline value={body} onChangeText={setBody} maxLength={1000} placeholder="Explain what happened…" style={styles.input} />
+      <TouchableOpacity onPress={() => void loadEvidence()} disabled={busy}><Text style={styles.link}>Choose job chat evidence</Text></TouchableOpacity>
+      {evidence.map((message) => <TouchableOpacity key={message.id} onPress={() => setMessageId(messageId === message.id ? undefined : message.id)} accessibilityRole="checkbox" accessibilityState={{ checked: messageId === message.id }}>
+        <Text style={styles.text}>{messageId === message.id ? 'Selected: ' : ''}{message.body || 'Photo message'} · {new Date(message.created_at).toLocaleString()}</Text>
+      </TouchableOpacity>)}
+      {!!actionError && <Text style={styles.error}>{actionError}</Text>}
+      {canRespond ? <>
+        <TouchableOpacity style={styles.button} disabled={busy || !body.trim()} onPress={() => void submit(true)}><Text style={styles.buttonText}>Agree to cancellation and refund</Text></TouchableOpacity>
+        <TouchableOpacity style={styles.button} disabled={busy || !body.trim()} onPress={() => void submit(false)}><Text style={styles.buttonText}>Contest cancellation</Text></TouchableOpacity>
+      </> : <TouchableOpacity style={styles.button} disabled={busy || !body.trim()} onPress={() => void submit()}><Text style={styles.buttonText}>{busy ? 'Saving…' : dispute.status === 'open' ? 'Submit statement' : 'Submit appeal'}</Text></TouchableOpacity>}
+    </ScrollView>}
+  </View>;
 }
 
-const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: C.canvas },
-  header: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    backgroundColor: C.white,
-    paddingHorizontal: Spacing.screenH,
-    paddingBottom: 12,
-    borderBottomWidth: 1, borderBottomColor: '#edf1f4',
-  },
-  backButton: {
-    width: 38, height: 38, borderRadius: 12,
-    backgroundColor: C.white, borderWidth: 1, borderColor: '#e8edf2',
-    alignItems: 'center', justifyContent: 'center',
-  },
-  headerTitle: { color: C.ink900, fontSize: 19.5, fontWeight: '800', fontFamily: 'Inter' },
-  stateText: { color: C.ink500, fontSize: 16, fontFamily: 'Inter', textAlign: 'center', marginTop: 40, paddingHorizontal: 24 },
-
-  content: { padding: Spacing.screenH, paddingTop: 18, paddingBottom: 30 },
-
-  summaryCard: {
-    backgroundColor: C.white, borderWidth: 1, borderColor: C.line,
-    borderRadius: V6Radii.card, padding: 16, marginBottom: 22, ...V6Shadows.sm,
-  },
-  summaryLabel: { color: C.ink400, fontSize: 12, fontWeight: '700', fontFamily: 'Inter', textTransform: 'uppercase', letterSpacing: 0.4 },
-  summaryValue: { color: C.ink900, fontSize: 15, fontFamily: 'Inter', lineHeight: 20, marginTop: 3 },
-
-  timeline: { paddingLeft: 2 },
-  stepRow: { flexDirection: 'row' },
-  stepRail: { alignItems: 'center', width: 30 },
-  stepConnector: { flex: 1, width: 2, minHeight: 30, backgroundColor: C.line, marginVertical: 2 },
-  stepConnectorDone: { backgroundColor: '#16a34a' },
-  stepBody: { flex: 1, paddingBottom: 22 },
-  stepTitle: { color: C.ink900, fontSize: 15.5, fontWeight: '700', fontFamily: 'Inter' },
-  stepTitleUpcoming: { color: C.ink400 },
-  stepDetail: { color: C.ink500, fontSize: 13.5, fontFamily: 'Inter', lineHeight: 18, marginTop: 3 },
-  stepTimestamp: { color: C.ink400, fontSize: 12, fontFamily: 'Inter', marginTop: 4 },
-});
+function createThemedStyles(theme: ThemePalette) {
+  const { Colors, V6Colors } = theme;
+  const C = V6Colors;
+  const styles = StyleSheet.create({
+    screen: { flex: 1, backgroundColor: C.canvas },
+    header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: Spacing.screenH, paddingBottom: 12, gap: 12 },
+    title: { fontSize: 20, fontWeight: '800', color: C.ink900, fontFamily: 'Inter' },
+    content: { padding: Spacing.screenH, gap: 12, paddingBottom: 40 },
+    heading: { color: C.ink900, fontSize: 15, fontWeight: '700', fontFamily: 'Inter' },
+    text: { color: C.ink500, fontSize: 14, lineHeight: 21, fontFamily: 'Inter' },
+    link: { color: V6Colors.link, fontSize: 14, fontFamily: 'Inter' },
+    entry: { padding: 14, backgroundColor: C.surface, borderRadius: 12, gap: 8 },
+    input: { minHeight: 100, padding: 14, backgroundColor: C.surface, borderWidth: 1, borderColor: C.line, borderRadius: 12, color: C.ink900, fontFamily: 'Inter' },
+    button: { backgroundColor: C.cyan700, padding: 14, borderRadius: 12, alignItems: 'center' },
+    buttonText: { color: C.onPrimary, fontFamily: 'Inter', fontWeight: '700' },
+    photo: { width: '100%', height: 220 },
+    error: { color: V6Colors.dangerText, padding: 12, fontFamily: 'Inter' },
+  });
+  return { appearance: theme.appearance, Colors, V6Colors, C, styles };
+}

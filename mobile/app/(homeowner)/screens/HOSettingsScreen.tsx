@@ -11,14 +11,13 @@
  * /settings → the `user_settings` row from migration 0011. They used to be
  * plain `useState` that reset on every mount.
  *
- * "Dark Mode" is the one to be careful about: the *preference* is genuinely
- * stored, but the app still has no theme switching to apply it to, so the row
- * says as much rather than letting the switch imply a repaint that won't come.
+ * Dark Mode applies the shared palette and persists through settings.
  *
  * Change Password is shown only for accounts with a password. Language has no
  * i18n backing, so its modal states English is the only option for now.
  */
 
+import { useThemedStyles, type Palette as ThemePalette } from '../../../src/context/ThemeContext';
 import React, { useState } from 'react';
 import {
   Modal,
@@ -38,10 +37,9 @@ import {
   Moon,
   Trash2,
 } from 'lucide-react-native';
-import { Spacing, V6Colors } from '../../../src/constants/theme';
+import { Spacing } from '../../../src/constants/theme';
 import { useHeaderTop } from '../../../src/hooks/useHeaderTop';
 
-const C = V6Colors;
 import ConfirmationModal from '../../../src/components/ConfirmationModal';
 import ChangePasswordModal from '../../../src/components/ChangePasswordModal';
 import { useSettings } from '../../../src/hooks/useSettings';
@@ -54,8 +52,9 @@ interface HOSettingsScreenProps {
 }
 
 export default function HOSettingsScreen({ onBack, onLogout }: HOSettingsScreenProps) {
+  const { C, styles, V6Colors } = useThemedStyles(createThemedStyles);
   const headerTop = useHeaderTop();
-  const { flags, setFlag, loading: settingsLoading, error: settingsError } = useSettings();
+  const { flags, setFlag, loading: settingsLoading, error: settingsError, reload: reloadSettings } = useSettings();
 
   const [showPasswordModal, setShowPasswordModal] = useState(false);
   const [showLanguageModal, setShowLanguageModal] = useState(false);
@@ -124,17 +123,16 @@ export default function HOSettingsScreen({ onBack, onLogout }: HOSettingsScreenP
             <Switch
               testID="toggle-dark-mode"
               value={flags.dark_mode}
-              disabled
-              accessibilityLabel="Dark mode unavailable"
+              disabled={settingsLoading}
+              onValueChange={(value) => void setFlag('dark_mode', value)}
+              accessibilityLabel="Dark mode"
               trackColor={{ false: C.ink200, true: C.cyan600 }}
               thumbColor={C.white}
               ios_backgroundColor={C.ink200}
             />
           </View>
-          {/* The preference is stored for real; nothing applies it yet. Saying
-              so beats letting the switch imply a theme change that won't come. */}
           <Text style={styles.rowNote}>
-            Unavailable — theme switching is not implemented yet.
+            Applies to all screens and is saved to your account.
           </Text>
         </View>
 
@@ -155,7 +153,12 @@ export default function HOSettingsScreen({ onBack, onLogout }: HOSettingsScreenP
             </View>
           ))}
         </View>
-        {!!settingsError && <Text style={styles.settingsError}>{settingsError}</Text>}
+        {!!settingsError && <View>
+          <Text style={styles.settingsError}>{settingsError}</Text>
+          <TouchableOpacity onPress={reloadSettings} accessibilityLabel="Retry settings">
+            <Text style={{color: V6Colors.link, paddingBottom: 16}}>Retry settings</Text>
+          </TouchableOpacity>
+        </View>}
 
         <Text style={styles.sectionTitle}>Account</Text>
         <View style={styles.card}>
@@ -180,17 +183,15 @@ export default function HOSettingsScreen({ onBack, onLogout }: HOSettingsScreenP
             testID="settings-delete-account-row"
           >
             <View style={styles.rowIcon}>
-              <Trash2 size={17} color="#ef4444" />
+              <Trash2 size={17} color={V6Colors.dangerText} />
             </View>
             <Text style={[styles.rowLabel, styles.rowLabelDanger]}>Delete Account</Text>
             <ChevronRight size={20} color={C.ink300} />
           </TouchableOpacity>
         </View>
 
-
         <View style={{ height: 20 }} />
       </ScrollView>
-
 
       <ChangePasswordModal visible={showPasswordModal} onClose={() => setShowPasswordModal(false)} />
 
@@ -240,52 +241,56 @@ export default function HOSettingsScreen({ onBack, onLogout }: HOSettingsScreenP
   );
 }
 
-const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: C.canvas },
+function createThemedStyles(theme: ThemePalette) {
+  const { Colors, V6Colors } = theme;
+  const C = V6Colors;
+  const styles = StyleSheet.create({
+    screen: { flex: 1, backgroundColor: C.canvas },
 
-  header: {
-    flexDirection: 'row', alignItems: 'center', gap: 12,
-    backgroundColor: C.white,
-    paddingHorizontal: Spacing.screenH,
-    paddingBottom: 12,
-    borderBottomWidth: 1, borderBottomColor: '#edf1f4',
-  },
-  backBtn: {
-    width: 38, height: 38, borderRadius: 12,
-    backgroundColor: C.white, borderWidth: 1, borderColor: '#e8edf2',
-    alignItems: 'center', justifyContent: 'center',
-  },
-  headerTitle: { flex: 1, color: C.ink900, fontSize: 19.5, fontWeight: '800', fontFamily: 'Inter' },
+    header: {
+      flexDirection: 'row', alignItems: 'center', gap: 12,
+      backgroundColor: C.surface,
+      paddingHorizontal: Spacing.screenH,
+      paddingBottom: 12,
+      borderBottomWidth: 1, borderBottomColor: V6Colors.line,
+    },
+    backBtn: {
+      width: 38, height: 38, borderRadius: 12,
+      backgroundColor: C.surface, borderWidth: 1, borderColor: V6Colors.line,
+      alignItems: 'center', justifyContent: 'center',
+    },
+    headerTitle: { flex: 1, color: C.ink900, fontSize: 19.5, fontWeight: '800', fontFamily: 'Inter' },
 
-  body: { flex: 1 },
-  bodyContent: { paddingHorizontal: Spacing.screenH, paddingTop: 20, paddingBottom: 20 },
+    body: { flex: 1 },
+    bodyContent: { paddingHorizontal: Spacing.screenH, paddingTop: 20, paddingBottom: 20 },
 
-  sectionTitle: { fontSize: 13, fontWeight: '700', color: C.ink400, textTransform: 'uppercase', letterSpacing: 0.6, marginBottom: 10, fontFamily: 'Inter' },
-  card: { backgroundColor: C.white, borderRadius: 16, borderWidth: 1, borderColor: C.line, overflow: 'hidden', marginBottom: 20 },
-  rowBorder: { borderBottomWidth: 1, borderBottomColor: C.ink50 },
+    sectionTitle: { fontSize: 13, fontWeight: '700', color: C.ink400, textTransform: 'uppercase', letterSpacing: 0.6, marginBottom: 10, fontFamily: 'Inter' },
+    card: { backgroundColor: C.surface, borderRadius: 16, borderWidth: 1, borderColor: C.line, overflow: 'hidden', marginBottom: 20 },
+    rowBorder: { borderBottomWidth: 1, borderBottomColor: C.ink50 },
 
-  toggleRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 14 },
-  toggleLabelRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  toggleLabel: { fontSize: 14.5, color: C.ink900, fontWeight: '600', fontFamily: 'Inter' },
-  rowNote: { fontSize: 12.5, color: C.ink400, fontFamily: 'Inter', lineHeight: 17, paddingHorizontal: 16, paddingBottom: 13, marginTop: -4 },
-  settingsError: { color: '#ef4444', fontSize: 13, fontFamily: 'Inter', marginTop: -12, marginBottom: 18 },
+    toggleRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 14 },
+    toggleLabelRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+    toggleLabel: { fontSize: 14.5, color: C.ink900, fontWeight: '600', fontFamily: 'Inter' },
+    rowNote: { fontSize: 12.5, color: C.ink400, fontFamily: 'Inter', lineHeight: 17, paddingHorizontal: 16, paddingBottom: 13, marginTop: -4 },
+    settingsError: { color: V6Colors.dangerText, fontSize: 13, fontFamily: 'Inter', marginTop: -12, marginBottom: 18 },
 
-  navrow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 14, paddingHorizontal: 15 },
-  rowIcon: { width: 34, height: 34, borderRadius: 10, backgroundColor: '#f5f8fa', alignItems: 'center', justifyContent: 'center' },
-  rowLabel: { flex: 1, color: C.ink900, fontSize: 14.5, fontWeight: '600', fontFamily: 'Inter' },
-  rowLabelDanger: { color: '#ef4444' },
+    navrow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 14, paddingHorizontal: 15 },
+    rowIcon: { width: 34, height: 34, borderRadius: 10, backgroundColor: V6Colors.wellBg, alignItems: 'center', justifyContent: 'center' },
+    rowLabel: { flex: 1, color: C.ink900, fontSize: 14.5, fontWeight: '600', fontFamily: 'Inter' },
+    rowLabelDanger: { color: V6Colors.dangerText },
 
+    // Language dialog
+    overlay: { flex: 1, justifyContent: 'center', padding: 24, backgroundColor: 'rgba(6, 61, 77, 0.5)' },
+    dialog: { backgroundColor: C.surface, borderRadius: 20, padding: 22 },
+    dialogTitle: { color: C.ink900, fontSize: 19, fontWeight: '800', fontFamily: 'Inter', marginBottom: 14 },
+    dialogBody: { color: C.ink500, fontSize: 14, fontFamily: 'Inter', lineHeight: 19, marginTop: 4, marginBottom: 16 },
+    dialogCloseBtn: { backgroundColor: C.cyan700, borderRadius: 12, paddingVertical: 13, alignItems: 'center' },
+    dialogCloseText: { color: C.onPrimary, fontSize: 15, fontWeight: '700', fontFamily: 'Inter' },
 
-  // Language dialog
-  overlay: { flex: 1, justifyContent: 'center', padding: 24, backgroundColor: 'rgba(6, 61, 77, 0.5)' },
-  dialog: { backgroundColor: C.white, borderRadius: 20, padding: 22 },
-  dialogTitle: { color: C.ink900, fontSize: 19, fontWeight: '800', fontFamily: 'Inter', marginBottom: 14 },
-  dialogBody: { color: C.ink500, fontSize: 14, fontFamily: 'Inter', lineHeight: 19, marginTop: 4, marginBottom: 16 },
-  dialogCloseBtn: { backgroundColor: C.cyan700, borderRadius: 12, paddingVertical: 13, alignItems: 'center' },
-  dialogCloseText: { color: C.white, fontSize: 15, fontWeight: '700', fontFamily: 'Inter' },
+    langRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: V6Colors.wellBg, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12 },
+    langLabel: { color: C.ink900, fontSize: 15, fontWeight: '600', fontFamily: 'Inter' },
+    langBadge: { color: V6Colors.link, fontSize: 12, fontWeight: '700', fontFamily: 'Inter' },
 
-  langRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#f5f8fa', borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12 },
-  langLabel: { color: C.ink900, fontSize: 15, fontWeight: '600', fontFamily: 'Inter' },
-  langBadge: { color: C.cyan700, fontSize: 12, fontWeight: '700', fontFamily: 'Inter' },
-
-});
+  });
+  return { Colors, V6Colors, C, styles };
+}

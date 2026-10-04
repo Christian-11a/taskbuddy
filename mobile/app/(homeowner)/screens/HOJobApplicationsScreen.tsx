@@ -30,6 +30,7 @@
  * — the same "the server decides, the app waits" shape as Add Money.
  */
 
+import { useThemedStyles, type Palette as ThemePalette } from '../../../src/context/ThemeContext';
 import React, { useState } from 'react';
 import * as AuthSession from 'expo-auth-session';
 import {
@@ -41,10 +42,9 @@ import {
   View,
 } from 'react-native';
 import { AlertCircle, ArrowLeft, ChevronRight, ShieldAlert, Star } from 'lucide-react-native';
-import { Spacing, V6Colors } from '../../../src/constants/theme';
+import { Spacing } from '../../../src/constants/theme';
 import { useHeaderTop } from '../../../src/hooks/useHeaderTop';
 
-const C = V6Colors;
 import { useAsyncData } from '../../../src/hooks/useAsyncData';
 import { api, type JobApplication } from '../../../src/lib/api';
 import { openRedirectSession } from '../../../src/lib/appRedirectSession';
@@ -64,6 +64,7 @@ export default function HOJobApplicationsScreen({
   onBack,
   onNavigate,
 }: HOJobApplicationsScreenProps) {
+  const { C, styles, V6Colors } = useThemedStyles(createThemedStyles);
   const headerTop = useHeaderTop();
   const { data: apps, loading, error, reload } = useAsyncData<JobApplication[]>(
     async () => {
@@ -226,7 +227,7 @@ export default function HOJobApplicationsScreen({
         <Text style={styles.headerTitle}>Proposals</Text>
       </View>
 
-      {loading && <ActivityIndicator style={{ marginTop: 24 }} color={C.cyan700} />}
+      {loading && <ActivityIndicator style={{ marginTop: 24 }} color={V6Colors.link} />}
       {!!error && !loading && <Text style={styles.stateText}>{error}</Text>}
 
       {!loading && apps && (
@@ -241,7 +242,7 @@ export default function HOJobApplicationsScreen({
 
           {actionError && (
             <View style={styles.errorBanner} testID="applications-action-error">
-              <AlertCircle size={16} color={C.red700} />
+              <AlertCircle size={16} color={V6Colors.dangerText} />
               <Text style={[styles.errorBannerText, { flex: 1 }]}>{actionError}</Text>
               <TouchableOpacity onPress={() => reload()} activeOpacity={0.8}>
                 <Text style={styles.retryText}>Retry</Text>
@@ -298,7 +299,7 @@ export default function HOJobApplicationsScreen({
                     {onNavigate && (
                       <View style={styles.profileLink}>
                         <Text style={styles.profileLinkText}>Profile</Text>
-                        <ChevronRight size={15} color={C.cyan700} />
+                        <ChevronRight size={15} color={V6Colors.link} />
                       </View>
                     )}
                   </TouchableOpacity>
@@ -401,71 +402,76 @@ const DECIDED_LABEL: Record<Exclude<JobApplication['status'], 'pending'>, string
   withdrawn: 'Withdrawn by the provider',
 };
 
-const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: C.canvas },
+function createThemedStyles(theme: ThemePalette) {
+  const { Colors, V6Colors } = theme;
+  const C = V6Colors;
+  const styles = StyleSheet.create({
+    screen: { flex: 1, backgroundColor: C.canvas },
 
-  header: {
-    flexDirection: 'row', alignItems: 'center', gap: 12,
-    backgroundColor: C.white,
-    paddingHorizontal: Spacing.screenH,
-    paddingBottom: 12,
-    borderBottomWidth: 1, borderBottomColor: '#edf1f4',
-  },
-  backBtn: {
-    width: 38, height: 38, borderRadius: 12,
-    backgroundColor: C.white, borderWidth: 1, borderColor: '#e8edf2',
-    alignItems: 'center', justifyContent: 'center',
-  },
-  headerTitle: { color: C.ink900, fontSize: 19.5, fontWeight: '800', fontFamily: 'Inter' },
+    header: {
+      flexDirection: 'row', alignItems: 'center', gap: 12,
+      backgroundColor: C.surface,
+      paddingHorizontal: Spacing.screenH,
+      paddingBottom: 12,
+      borderBottomWidth: 1, borderBottomColor: V6Colors.line,
+    },
+    backBtn: {
+      width: 38, height: 38, borderRadius: 12,
+      backgroundColor: C.surface, borderWidth: 1, borderColor: V6Colors.line,
+      alignItems: 'center', justifyContent: 'center',
+    },
+    headerTitle: { color: C.ink900, fontSize: 19.5, fontWeight: '800', fontFamily: 'Inter' },
 
-  body: { flex: 1 },
-  bodyContent: { paddingHorizontal: Spacing.screenH, paddingTop: 16, paddingBottom: 20 },
-  countText: { color: C.ink400, fontSize: 12.5, fontFamily: 'Inter', marginBottom: 14 },
+    body: { flex: 1 },
+    bodyContent: { paddingHorizontal: Spacing.screenH, paddingTop: 16, paddingBottom: 20 },
+    countText: { color: C.ink400, fontSize: 12.5, fontFamily: 'Inter', marginBottom: 14 },
 
-  emptyState: { alignItems: 'center', paddingVertical: 44, paddingHorizontal: 24 },
-  emptyTitle: { color: C.ink800, fontSize: 16, fontWeight: '700', fontFamily: 'Inter', marginBottom: 4 },
-  emptyText: { color: C.ink400, fontSize: 14, fontFamily: 'Inter', textAlign: 'center' },
+    emptyState: { alignItems: 'center', paddingVertical: 44, paddingHorizontal: 24 },
+    emptyTitle: { color: C.ink800, fontSize: 16, fontWeight: '700', fontFamily: 'Inter', marginBottom: 4 },
+    emptyText: { color: C.ink400, fontSize: 14, fontFamily: 'Inter', textAlign: 'center' },
 
-  list: { gap: 11 },
-  card: { backgroundColor: C.white, borderWidth: 1, borderColor: C.line, borderRadius: 16, padding: 15 },
-  cardHead: { flexDirection: 'row', alignItems: 'flex-start', gap: 11 },
-  avatar: {
-    width: 42, height: 42, borderRadius: 13,
-    backgroundColor: C.cyan700, alignItems: 'center', justifyContent: 'center',
-  },
-  avatarText: { color: C.white, fontSize: 16, fontWeight: '800', fontFamily: 'Inter' },
-  copy: { flex: 1 },
-  providerName: { color: C.ink900, fontSize: 14.5, fontWeight: '700', fontFamily: 'Inter' },
-  ratingRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 3 },
-  providerMeta: { color: C.ink400, fontSize: 11.5, fontFamily: 'Inter' },
-  profileLink: { flexDirection: 'row', alignItems: 'center', gap: 2, alignSelf: 'center' },
-  profileLinkText: { color: C.cyan700, fontSize: 13, fontWeight: '700', fontFamily: 'Inter' },
+    list: { gap: 11 },
+    card: { backgroundColor: C.surface, borderWidth: 1, borderColor: C.line, borderRadius: 16, padding: 15 },
+    cardHead: { flexDirection: 'row', alignItems: 'flex-start', gap: 11 },
+    avatar: {
+      width: 42, height: 42, borderRadius: 13,
+      backgroundColor: C.cyan700, alignItems: 'center', justifyContent: 'center',
+    },
+    avatarText: { color: C.onPrimary, fontSize: 16, fontWeight: '800', fontFamily: 'Inter' },
+    copy: { flex: 1 },
+    providerName: { color: C.ink900, fontSize: 14.5, fontWeight: '700', fontFamily: 'Inter' },
+    ratingRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 3 },
+    providerMeta: { color: C.ink400, fontSize: 11.5, fontFamily: 'Inter' },
+    profileLink: { flexDirection: 'row', alignItems: 'center', gap: 2, alignSelf: 'center' },
+    profileLinkText: { color: V6Colors.link, fontSize: 13, fontWeight: '700', fontFamily: 'Inter' },
 
-  messageBox: { backgroundColor: '#f8fafc', borderRadius: 11, padding: 11, marginVertical: 11 },
-  messageText: { color: C.ink700, fontSize: 12.5, lineHeight: 17, fontFamily: 'Inter' },
+    messageBox: { backgroundColor: V6Colors.wellBg, borderRadius: 11, padding: 11, marginVertical: 11 },
+    messageText: { color: C.ink700, fontSize: 12.5, lineHeight: 17, fontFamily: 'Inter' },
 
-  actionsRow: { flexDirection: 'row', gap: 8 },
-  outlineBtn: { flex: 1, borderWidth: 1, borderColor: '#dce3e9', borderRadius: 11, paddingVertical: 9, alignItems: 'center' },
-  outlineBtnText: { color: C.ink700, fontSize: 13.5, fontWeight: '700', fontFamily: 'Inter' },
-  primaryBtn: { flex: 1, backgroundColor: C.cyan700, borderRadius: 11, paddingVertical: 9, alignItems: 'center' },
-  primaryBtnText: { color: C.white, fontSize: 13.5, fontWeight: '700', fontFamily: 'Inter' },
+    actionsRow: { flexDirection: 'row', gap: 8 },
+    outlineBtn: { flex: 1, borderWidth: 1, borderColor: V6Colors.fieldBorder, borderRadius: 11, paddingVertical: 9, alignItems: 'center' },
+    outlineBtnText: { color: C.ink700, fontSize: 13.5, fontWeight: '700', fontFamily: 'Inter' },
+    primaryBtn: { flex: 1, backgroundColor: C.cyan700, borderRadius: 11, paddingVertical: 9, alignItems: 'center' },
+    primaryBtnText: { color: C.onPrimary, fontSize: 13.5, fontWeight: '700', fontFamily: 'Inter' },
 
-  unverifiedChip: {
-    flexDirection: 'row', alignItems: 'center', gap: 4,
-    backgroundColor: '#fef3c7', borderRadius: 999,
-    paddingHorizontal: 8, paddingVertical: 3, marginTop: 2,
-  },
-  unverifiedChipText: { color: C.amber700, fontSize: 10.5, fontWeight: '700', fontFamily: 'Inter' },
-  decidedText: { color: C.ink500, fontSize: 12.5, fontWeight: '600', fontFamily: 'Inter', textAlign: 'center' },
+    unverifiedChip: {
+      flexDirection: 'row', alignItems: 'center', gap: 4,
+      backgroundColor: V6Colors.warningSurface, borderRadius: 999,
+      paddingHorizontal: 8, paddingVertical: 3, marginTop: 2,
+    },
+    unverifiedChipText: { color: C.amber700, fontSize: 10.5, fontWeight: '700', fontFamily: 'Inter' },
+    decidedText: { color: C.ink500, fontSize: 12.5, fontWeight: '600', fontFamily: 'Inter', textAlign: 'center' },
 
-  errorBanner: {
-    flexDirection: 'row', alignItems: 'center', gap: 8,
-    backgroundColor: '#fef2f2', borderWidth: 1, borderColor: '#fecaca',
-    borderRadius: 12, padding: 11, marginBottom: 12,
-  },
-  retryText: { color: C.cyan700, fontSize: 12.5, fontWeight: '700', fontFamily: 'Inter' },
-  errorBannerText: { color: C.red700, fontSize: 12.5, lineHeight: 17, fontFamily: 'Inter' },
+    errorBanner: {
+      flexDirection: 'row', alignItems: 'center', gap: 8,
+      backgroundColor: V6Colors.dangerSurface, borderWidth: 1, borderColor: V6Colors.dangerBorder,
+      borderRadius: 12, padding: 11, marginBottom: 12,
+    },
+    retryText: { color: V6Colors.link, fontSize: 12.5, fontWeight: '700', fontFamily: 'Inter' },
+    errorBannerText: { color: V6Colors.dangerText, fontSize: 12.5, lineHeight: 17, fontFamily: 'Inter' },
 
-  disabled: { opacity: 0.6 },
-  stateText: { color: C.ink500, fontSize: 16.5, fontFamily: 'Inter', textAlign: 'center', marginTop: 30 },
-});
+    disabled: { opacity: 0.6 },
+    stateText: { color: C.ink500, fontSize: 16.5, fontFamily: 'Inter', textAlign: 'center', marginTop: 30 },
+  });
+  return { Colors, V6Colors, C, styles };
+}

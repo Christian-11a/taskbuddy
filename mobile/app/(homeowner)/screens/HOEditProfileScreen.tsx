@@ -7,6 +7,7 @@
  * .field inputs (no card grouping) ending in one full-width Save button.
  */
 
+import { useThemedStyles, type Palette as ThemePalette } from '../../../src/context/ThemeContext';
 import React, { useState } from 'react';
 import {
   KeyboardAvoidingView,
@@ -22,11 +23,10 @@ import { ArrowLeft } from 'lucide-react-native';
 import AvatarPicker from '../../../src/components/AvatarPicker';
 import ConfirmationModal from '../../../src/components/ConfirmationModal';
 import AddressField from '../../../src/components/AddressField';
-import { Spacing, V6Colors, V6Radii, V6Shadows } from '../../../src/constants/theme';
+import { Spacing, V6Radii, V6Shadows } from '../../../src/constants/theme';
 
-const C = V6Colors;
 import { useAuth } from '../../../src/context/AuthContext';
-import { api } from '../../../src/lib/api';
+import { api, type GeocodedAddress } from '../../../src/lib/api';
 import { useHeaderTop } from '../../../src/hooks/useHeaderTop';
 
 interface HOEditProfileScreenProps {
@@ -54,6 +54,7 @@ function FormField({
   keyboardType?: 'default' | 'email-address' | 'phone-pad';
   editable?: boolean;
 }) {
+  const { C, styles, V6Colors, appearance } = useThemedStyles(createThemedStyles);
   const [focused, setFocused] = useState(false);
   return (
     <View style={styles.fieldGroup}>
@@ -61,7 +62,7 @@ function FormField({
         {label}
         {required && <Text style={styles.requiredAsterisk}> *</Text>}
       </Text>
-      <TextInput
+      <TextInput keyboardAppearance={appearance}
         style={[
           styles.fieldInput,
           multiline && styles.fieldInputMultiline,
@@ -84,12 +85,14 @@ function FormField({
 }
 
 export default function HOEditProfileScreen({ onBack, onSave }: HOEditProfileScreenProps) {
+  const { C, styles, V6Colors, appearance } = useThemedStyles(createThemedStyles);
   const headerTop = useHeaderTop();
   const { profile, refreshProfile } = useAuth();
   const [name, setName] = useState(profile?.full_name ?? '');
   const [phone, setPhone] = useState(profile?.phone ?? '');
   const [location, setLocation] = useState(profile?.address ?? '');
   const [city, setCity] = useState(profile?.city ?? '');
+  const [resolvedLocation, setResolvedLocation] = useState<GeocodedAddress | null>(null);
   const [showSaveConfirmation, setShowSaveConfirmation] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -99,7 +102,7 @@ export default function HOEditProfileScreen({ onBack, onSave }: HOEditProfileScr
     name !== (profile?.full_name ?? '') ||
     phone !== (profile?.phone ?? '') ||
     location !== (profile?.address ?? '') ||
-    city !== (profile?.city ?? '');
+    city !== (profile?.city ?? '') || resolvedLocation !== null;
 
   const requestSave = () => {
     setError(null);
@@ -121,6 +124,7 @@ export default function HOEditProfileScreen({ onBack, onSave }: HOEditProfileScr
         phone: phone.trim(),
         address: location.trim(),
         city: city.trim(),
+        location_reference: resolvedLocation?.location_reference,
       });
       await refreshProfile();
       onSave();
@@ -165,12 +169,12 @@ export default function HOEditProfileScreen({ onBack, onSave }: HOEditProfileScr
             <Text style={styles.fieldLabel}>Address</Text>
             <AddressField
               value={location}
-              onChangeText={setLocation}
-              onResolve={() => {}}
+              onChangeText={(value) => { setLocation(value); setResolvedLocation(null); }}
+              onResolve={(resolved) => { setResolvedLocation(resolved); if (resolved?.city) setCity(resolved.city); }}
               placeholder="House no., Barangay, Street"
             />
           </View>
-          <FormField label="City" value={city} onChangeText={setCity} placeholder="City / Municipality" />
+          <FormField label="City" value={city} onChangeText={(value) => { setCity(value); setResolvedLocation(null); }} placeholder="City / Municipality" />
 
           {!!error && <Text style={styles.errorText}>{error}</Text>}
 
@@ -198,46 +202,51 @@ export default function HOEditProfileScreen({ onBack, onSave }: HOEditProfileScr
   );
 }
 
-const styles = StyleSheet.create({
-  flex: { flex: 1 },
-  screen: { flex: 1, backgroundColor: C.canvas },
+function createThemedStyles(theme: ThemePalette) {
+  const { Colors, V6Colors } = theme;
+  const C = V6Colors;
+  const styles = StyleSheet.create({
+    flex: { flex: 1 },
+    screen: { flex: 1, backgroundColor: C.canvas },
 
-  header: {
-    flexDirection: 'row', alignItems: 'center', gap: 12,
-    backgroundColor: C.white,
-    paddingHorizontal: Spacing.screenH,
-    paddingBottom: 12,
-    borderBottomWidth: 1, borderBottomColor: '#edf1f4',
-  },
-  backBtn: {
-    width: 38, height: 38, borderRadius: 12,
-    backgroundColor: C.white, borderWidth: 1, borderColor: '#e8edf2',
-    alignItems: 'center', justifyContent: 'center',
-  },
-  headerTitle: { flex: 1, color: C.ink900, fontSize: 19.5, fontWeight: '800', fontFamily: 'Inter' },
+    header: {
+      flexDirection: 'row', alignItems: 'center', gap: 12,
+      backgroundColor: C.surface,
+      paddingHorizontal: Spacing.screenH,
+      paddingBottom: 12,
+      borderBottomWidth: 1, borderBottomColor: V6Colors.line,
+    },
+    backBtn: {
+      width: 38, height: 38, borderRadius: 12,
+      backgroundColor: C.surface, borderWidth: 1, borderColor: V6Colors.line,
+      alignItems: 'center', justifyContent: 'center',
+    },
+    headerTitle: { flex: 1, color: C.ink900, fontSize: 19.5, fontWeight: '800', fontFamily: 'Inter' },
 
-  body: { flex: 1 },
-  bodyContent: { paddingHorizontal: Spacing.screenH, paddingTop: 20, paddingBottom: 20 },
+    body: { flex: 1 },
+    bodyContent: { paddingHorizontal: Spacing.screenH, paddingTop: 20, paddingBottom: 20 },
 
-  fieldGroup: { marginBottom: 16 },
-  fieldLabel: { color: C.ink900, fontSize: 14, fontWeight: '700', fontFamily: 'Inter', marginBottom: 6 },
-  requiredAsterisk: { color: '#ef4444', fontWeight: '700' },
-  fieldInput: {
-    backgroundColor: C.white, borderRadius: 12, paddingHorizontal: 14, minHeight: 46,
-    borderWidth: 1, borderColor: '#dce3e9',
-    fontFamily: 'Inter', fontSize: 16.5, color: C.ink900,
-  },
-  fieldInputMultiline: { height: 90, textAlignVertical: 'top', paddingTop: 12 },
-  fieldInputFocused: { borderColor: C.cyan500 },
-  fieldInputDisabled: { color: C.ink400, backgroundColor: C.ink50 },
+    fieldGroup: { marginBottom: 16 },
+    fieldLabel: { color: C.ink900, fontSize: 14, fontWeight: '700', fontFamily: 'Inter', marginBottom: 6 },
+    requiredAsterisk: { color: V6Colors.dangerText, fontWeight: '700' },
+    fieldInput: {
+      backgroundColor: C.surface, borderRadius: 12, paddingHorizontal: 14, minHeight: 46,
+      borderWidth: 1, borderColor: V6Colors.fieldBorder,
+      fontFamily: 'Inter', fontSize: 16.5, color: C.ink900,
+    },
+    fieldInputMultiline: { height: 90, textAlignVertical: 'top', paddingTop: 12 },
+    fieldInputFocused: { borderColor: C.cyan500 },
+    fieldInputDisabled: { color: C.ink400, backgroundColor: C.ink50 },
 
-  errorText: { color: '#ef4444', fontSize: 15.5, fontFamily: 'Inter', marginBottom: 12, textAlign: 'center' },
+    errorText: { color: V6Colors.dangerText, fontSize: 15.5, fontFamily: 'Inter', marginBottom: 12, textAlign: 'center' },
 
-  saveBtn: {
-    backgroundColor: C.cyan700, borderRadius: V6Radii.btn, paddingVertical: 14,
-    alignItems: 'center', marginTop: 4,
-    ...V6Shadows.primaryButton,
-  },
-  saveBtnDisabled: { opacity: 0.7 },
-  saveBtnText: { color: C.white, fontSize: 16.5, fontWeight: '700', fontFamily: 'Inter' },
-});
+    saveBtn: {
+      backgroundColor: C.cyan700, borderRadius: V6Radii.btn, paddingVertical: 14,
+      alignItems: 'center', marginTop: 4,
+      ...V6Shadows.primaryButton,
+    },
+    saveBtnDisabled: { opacity: 0.7 },
+    saveBtnText: { color: C.onPrimary, fontSize: 16.5, fontWeight: '700', fontFamily: 'Inter' },
+  });
+  return { appearance: theme.appearance, Colors, V6Colors, C, styles };
+}
