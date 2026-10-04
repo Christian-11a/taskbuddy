@@ -2,6 +2,7 @@ import {
   BadRequestException,
   ForbiddenException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { SupabaseService } from '../supabase/supabase.service';
@@ -36,6 +37,7 @@ export interface WalletTransaction {
 
 @Injectable()
 export class WalletService {
+  private readonly logger = new Logger(WalletService.name);
   constructor(
     private readonly supabase: SupabaseService,
     private readonly adminActions: AdminActionsService,
@@ -208,7 +210,10 @@ export class WalletService {
    * flips to `completed`, which is the point at which the balance drops — up
    * to here the amount was only reserved.
    */
-  async settleWithdrawal(admin: Profile, id: string, reference?: string) {
+  async settleWithdrawal(admin: Profile, id: string, reference: string) {
+    if (!reference.trim())
+      throw new BadRequestException('Payout reference is required');
+    reference = reference.trim();
     const row = await this.findWithdrawal(id);
     if (row.status !== 'pending') {
       throw new BadRequestException(
@@ -226,7 +231,7 @@ export class WalletService {
     }
     const settledRow = await this.setWithdrawalStatus(id, 'completed', {
       reviewed_by: admin.id,
-      review_note: reference ?? null,
+      review_note: reference,
     });
     // The same audit trail every other admin money decision leaves
     // (dispute.resolve, wallet.issue_recovery_credit). reviewed_by on the row
@@ -239,15 +244,13 @@ export class WalletService {
       {
         profile_id: row.profile_id,
         amount: Number(row.amount),
-        reference: reference ?? null,
+        reference,
       },
     );
     await this.notify(
       row.profile_id,
       'Withdrawal sent',
-      reference
-        ? `Your withdrawal of ${row.amount} has been sent. Reference: ${reference}`
-        : `Your withdrawal of ${row.amount} has been sent.`,
+      `Your withdrawal of ${row.amount} has been sent. Reference: ${reference}`,
     );
     return settledRow;
   }
@@ -500,12 +503,18 @@ export class WalletService {
    * happened, and the ledger row itself remains the record either way.
    */
   private async notify(recipientId: string, title: string, body: string) {
-    await this.supabase.admin.from('notifications').insert({
-      recipient_id: recipientId,
-      type: 'wallet_update',
-      title,
-      body,
-    });
+    const { error: notificationError } = await this.supabase.admin
+      .from('notifications')
+      .insert({
+        recipient_id: recipientId,
+        type: 'wallet_update',
+        title,
+        body,
+      });
+    if (notificationError)
+      this.logger.error(
+        `Notification not written: ${notificationError.message}`,
+      );
   }
 
   private async findWithdrawal(id: string): Promise<WalletTransaction> {

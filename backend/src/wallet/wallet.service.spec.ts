@@ -280,9 +280,9 @@ describe('WalletService', () => {
         createAdminActionsMock().mock,
       );
 
-      await expect(service.settleWithdrawal(admin, 'w1')).rejects.toThrow(
-        BadRequestException,
-      );
+      await expect(
+        service.settleWithdrawal(admin, 'w1', 'GC-TEST'),
+      ).rejects.toThrow(BadRequestException);
       expect(calls.some((c) => c.method === 'update')).toBe(false);
     });
 
@@ -331,9 +331,9 @@ describe('WalletService', () => {
         createAdminActionsMock().mock,
       );
 
-      await expect(service.settleWithdrawal(admin, 'w1')).rejects.toThrow(
-        BadRequestException,
-      );
+      await expect(
+        service.settleWithdrawal(admin, 'w1', 'GC-TEST'),
+      ).rejects.toThrow(BadRequestException);
       expect(calls.some((c) => c.method === 'update')).toBe(false);
     });
   });

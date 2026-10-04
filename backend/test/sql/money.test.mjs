@@ -204,6 +204,8 @@ describe('escrow_settle', () => {
   it('releases net of commission, freezing the commission on the row', async () => {
     const escrow = await held();
 
+    await q("update jobs set status = 'completed', assigned_provider_id = '22222222-2222-2222-2222-222222222222' where id = $1", [escrow.job_id]);
+    await q("update jobs set completed_at = now() - interval '72 hours' where id = $1", [escrow.job_id]);
     const released = await rpc(
       `escrow_settle($1, 'held', 'released', 225, 'Payout — Fix kitchen faucet')`,
       [escrow.id],
@@ -220,6 +222,8 @@ describe('escrow_settle', () => {
 
   it('marks a card-funded release for transfer in the same transaction', async () => {
     const escrow = await held('card');
+    await q("update jobs set status = 'completed', assigned_provider_id = '22222222-2222-2222-2222-222222222222' where id = $1", [escrow.job_id]);
+    await q("update jobs set completed_at = now() - interval '72 hours' where id = $1", [escrow.job_id]);
     const released = await rpc(`escrow_settle($1, 'held', 'released', 0, 'Payout')`, [escrow.id]);
     assert.equal(released.transfer_status, 'pending');
   });
@@ -251,6 +255,8 @@ describe('wallet_reserve_connect_transfer', () => {
     await credit(CLIENT, 1500);
     const args = method === 'card' ? `'card', 'pi_1', 'ch_1'` : `'wallet'`;
     const { escrow } = await rpc(`escrow_place_hold($1, $2, ${args})`, [job, PROVIDER]);
+    await q("update jobs set status = 'completed', assigned_provider_id = '22222222-2222-2222-2222-222222222222' where id = $1", [job]);
+    await q("update jobs set completed_at = now() - interval '72 hours' where id = $1", [job]);
     await rpc(`escrow_settle($1, 'held', 'released', 225, 'Payout')`, [escrow.id]);
     return { escrow, job };
   }
@@ -287,6 +293,7 @@ describe('wallet_reserve_connect_transfer', () => {
   it('allows at most one live transfer per job, even bypassing the function', async () => {
     const { escrow, job } = await released();
     await rpc('wallet_reserve_connect_transfer($1, 1275)', [escrow.id]);
+    await credit(PROVIDER, 1); // Keep the unique-transfer constraint as the failure under test.
 
     await refusal(
       `insert into wallet_transactions (profile_id, direction, kind, status, amount, title, job_id)

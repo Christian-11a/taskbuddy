@@ -10,6 +10,7 @@ import {
   Length,
   Max,
   MaxLength,
+  Matches,
 } from 'class-validator';
 import type { WalletTxnDirection } from '../../common/types';
 
@@ -140,10 +141,10 @@ export class ListWithdrawalsQueryDto {
  */
 export class SettleWithdrawalDto {
   /** Payout reference from whatever rail actually moved the money. */
-  @IsOptional()
   @IsString()
-  @MaxLength(500)
-  reference?: string;
+  @Length(1, 500)
+  @Matches(/\S/, { message: 'Payout reference must not be blank' })
+  reference!: string;
 }
 
 export class RejectWithdrawalDto {
