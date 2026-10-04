@@ -190,10 +190,15 @@ the template and failure-log checks.
 populated PDF requirements. Phases 1–9 are implemented locally: confirmed hiring,
 warranty/cancellation review, shared notifications, approved services and saved
 location, job filters, owned portfolios, readable signup/policy/photo viewing,
-reactive themes, and traceable payout requests. Migrations **0039–0045** must be
-reviewed against the target history and applied before releasing these changes.
+reactive themes, and traceable payout requests. Migrations **0039–0045** were applied and registered atomically on October 4.
+Render is live at `68feb6f`; database and ML health checks pass. Web deployment
+requires the Vercel project owner; deployed workflows and device checks remain open.
 
 The selected withdrawal demonstration is a **local simulator**, not bank/GCash
 delivery. Run `node backend/scripts/payout-demo.mjs`; see
 [payout evidence](test-docs/PAYOUT_VERIFICATION.md). Automated validation does not
 replace deployed two-role/admin or physical-device verification.
+
+Local QA credential files are excluded by the root `.gitignore` so EAS build
+archives omit them. A local archive inspection verified this before upload;
+`.git/info/exclude` alone was insufficient for EAS.

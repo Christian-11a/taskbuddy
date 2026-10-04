@@ -851,3 +851,11 @@ Run `npm run typecheck` and `npm test -- --runInBand` in this folder. There is n
 configured mobile lint command. See the [verification matrix](../test-docs/VERIFICATION_MATRIX.md)
 for outstanding deployed/device checks. Migrations 0039–0045 and matching API
 release are required; no native dependency/plugin/permission was added by this work.
+
+## October 4 release archive check
+
+Before an EAS upload, inspect the archive with `eas build:inspect --platform
+android --profile preview --stage archive --output <new-local-directory>`.
+Local QA credentials must be absent. EAS did not honor the local Git exclude
+file during verification; the root `.gitignore` now excludes both supplied
+credential filenames. Keep dummy sessions and database backups outside the repo.
