@@ -15,14 +15,14 @@
  * modal's copy promises a review rather than a transfer.
  */
 
+import { useThemedStyles, type Palette as ThemePalette } from '../../../src/context/ThemeContext';
 import React, { useState } from 'react';
 import { ActivityIndicator, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Banknote, Building2, Sparkles, WalletCards } from 'lucide-react-native';
-import { Spacing, V6Colors, V6Radii, V6Shadows } from '../../../src/constants/theme';
+import { Spacing, V6Radii, V6Shadows } from '../../../src/constants/theme';
 import { useHeaderTop } from '../../../src/hooks/useHeaderTop';
 
-const C = V6Colors;
 import { useAuth } from '../../../src/context/AuthContext';
 import { useAsyncData } from '../../../src/hooks/useAsyncData';
 import { api } from '../../../src/lib/api';
@@ -31,6 +31,7 @@ import WithdrawModal from '../../../src/components/WithdrawModal';
 import { showToast } from '../../../src/components/Toast';
 
 export default function SPWalletScreen() {
+  const { C, styles, V6Colors } = useThemedStyles(createThemedStyles);
   const headerTop = useHeaderTop();
   const { providerProfile } = useAuth();
   const { data, loading, error, reload } = useAsyncData(() => api.wallet(), [], 'sp-wallet');
@@ -50,8 +51,8 @@ export default function SPWalletScreen() {
     try {
       await api.cancelWithdrawal(id);
       reload();
-    } catch {
-      // Still pending — the row stays, which is the accurate state.
+    } catch (e) {
+      showToast(e instanceof Error ? e.message : 'Could not cancel the withdrawal.', 'error');
     } finally {
       setCancelling(null);
     }
@@ -82,12 +83,18 @@ export default function SPWalletScreen() {
           <TouchableOpacity
             style={[styles.withdrawBtn, !canWithdraw && styles.withdrawBtnDisabled]}
             // Kept tappable when empty so the tap explains itself.
-            onPress={() => (canWithdraw ? setShowWithdraw(true) : showToast('You have no funds available to withdraw.'))}
+            onPress={() => {
+              if (!data) {
+                showToast('Could not load your wallet. Please try again.', 'error');
+                return;
+              }
+              if (canWithdraw) setShowWithdraw(true);
+              else showToast('You have no funds available to withdraw.');
+            }}
             activeOpacity={0.85}
             accessibilityRole="button"
-            accessibilityState={{ disabled: !canWithdraw }}
           >
-            <Banknote size={18} color={C.white} />
+            <Banknote size={18} color={C.onPrimary} />
             <Text style={styles.withdrawBtnText}>Withdraw</Text>
           </TouchableOpacity>
         </LinearGradient>
@@ -134,24 +141,24 @@ export default function SPWalletScreen() {
             the homeowner wallet shows, relabelled for a provider's ledger. */}
         <View style={styles.statsRow}>
           <View style={styles.statCard}>
-            <Text style={[styles.statValue, { color: '#22c55e' }]}>{peso(data?.total_credited ?? 0)}</Text>
+            <Text style={[styles.statValue, { color: V6Colors.successText }]}>{peso(data?.total_credited ?? 0)}</Text>
             <Text style={styles.statLabel}>Total Earned</Text>
           </View>
           <View style={styles.statCard}>
-            <Text style={[styles.statValue, { color: '#f59e0b' }]}>{peso(data?.total_debited ?? 0)}</Text>
+            <Text style={[styles.statValue, { color: V6Colors.warningText }]}>{peso(data?.total_debited ?? 0)}</Text>
             <Text style={styles.statLabel}>Total Withdrawn</Text>
           </View>
         </View>
 
         <View style={styles.trustNote}>
-          <WalletCards size={18} color={C.cyan800} />
+          <WalletCards size={18} color={V6Colors.link} />
           <Text style={styles.trustNoteText}>
-            Card-paid jobs go straight to your Stripe account once payouts are set up (Profile → Payouts). Everything else lands here — withdraw it with the button above.
+            Card-paid earnings become eligible for Stripe transfer after the three-day warranty ends without an open complaint, once payouts are set up (Profile → Payouts). Everything else lands here — withdraw it with the button above.
           </Text>
         </View>
 
         <Text style={styles.sectionTitle}>Payout History</Text>
-        {loading && <ActivityIndicator style={{ marginTop: 10 }} color={C.cyan700} />}
+        {loading && <ActivityIndicator style={{ marginTop: 10 }} color={V6Colors.link} />}
         {!!error && !loading && <Text style={styles.stateText}>{error}</Text>}
         {!loading && !error && transactions.length === 0 && (
           <View style={styles.emptyState}>
@@ -171,13 +178,18 @@ export default function SPWalletScreen() {
                   : txn.status.charAt(0).toUpperCase() + txn.status.slice(1);
               return (
                 <View key={txn.id} style={[styles.txnRow, i < transactions.length - 1 && styles.txnRowBorder]}>
-                  <View style={styles.txnIcon}><Icon size={19} color={C.cyan700} /></View>
+                  <View style={styles.txnIcon}><Icon size={19} color={V6Colors.link} /></View>
                   <View style={styles.txnInfo}>
                     <Text style={styles.txnTitle} numberOfLines={1}>{txn.title}</Text>
                     <Text style={styles.txnDate}>{shortDate(txn.created_at)} · {statusLabel}</Text>
+                    <Text style={styles.txnDate}>Transaction: {txn.id}</Text>
+                    {!!txn.stripe_transfer_id && <Text style={styles.txnDate}>Stripe transfer: {txn.stripe_transfer_id}</Text>}
+                    {!!txn.review_note && <Text style={styles.txnDate}>
+                      {txn.status === 'completed' ? 'Settlement reference' : 'Review note'}: {txn.review_note}
+                    </Text>}
                   </View>
                   <Text style={[styles.txnAmount, txn.direction === 'credit' ? styles.txnCredit : styles.txnDebit]}>
-                    {txn.direction === 'debit' ? '-' : '+'}{peso(txn.amount)}
+                    {txn.status === 'failed' ? '' : txn.direction === 'debit' ? '-' : '+'}{peso(txn.amount)}
                   </Text>
                 </View>
               );
@@ -209,79 +221,84 @@ const CONNECT_TRANSFER_STATUS: Record<'pending' | 'completed' | 'failed', string
   failed: 'Not sent — kept in wallet',
 };
 
-const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: C.canvas },
+function createThemedStyles(theme: ThemePalette) {
+  const { Colors, V6Colors } = theme;
+  const C = V6Colors;
+  const styles = StyleSheet.create({
+    screen: { flex: 1, backgroundColor: C.canvas },
 
-  header: {
-    backgroundColor: C.white,
-    paddingHorizontal: Spacing.screenH,
-    paddingBottom: 12,
-    borderBottomWidth: 1, borderBottomColor: '#edf1f4',
-  },
-  headerTitle: { color: C.ink900, fontSize: 21.5, fontWeight: '800', fontFamily: 'Inter', letterSpacing: -0.3 },
+    header: {
+      backgroundColor: C.surface,
+      paddingHorizontal: Spacing.screenH,
+      paddingBottom: 12,
+      borderBottomWidth: 1, borderBottomColor: V6Colors.line,
+    },
+    headerTitle: { color: C.ink900, fontSize: 21.5, fontWeight: '800', fontFamily: 'Inter', letterSpacing: -0.3 },
 
-  body: { flex: 1 },
-  bodyContent: { paddingHorizontal: Spacing.screenH, paddingTop: 16, paddingBottom: 20 },
+    body: { flex: 1 },
+    bodyContent: { paddingHorizontal: Spacing.screenH, paddingTop: 16, paddingBottom: 20 },
 
-  heroCard: { borderRadius: 18, padding: 20, marginBottom: 16 },
-  balanceLabel: { color: C.ink400, fontSize: 13, fontFamily: 'Inter', marginBottom: 4 },
-  balanceAmount: { color: C.white, fontSize: 32.5, fontWeight: '800', fontFamily: 'Inter', marginBottom: 14 },
-  withdrawBtn: {
-    flexDirection: 'row', alignSelf: 'flex-start', alignItems: 'center', gap: 8,
-    backgroundColor: '#22c55e', borderRadius: V6Radii.btn, paddingHorizontal: 16, paddingVertical: 10,
-  },
-  withdrawBtnDisabled: { opacity: 0.45 },
-  withdrawBtnText: { color: C.white, fontSize: 14, fontWeight: '700', fontFamily: 'Inter' },
-  balanceSubnote: {
-    color: 'rgba(255,255,255,0.75)', fontSize: 12.5, fontFamily: 'Inter',
-    marginTop: -10, marginBottom: 12,
-  },
+    heroCard: { borderRadius: 18, padding: 20, marginBottom: 16 },
+    balanceLabel: { color: C.ink400, fontSize: 13, fontFamily: 'Inter', marginBottom: 4 },
+    balanceAmount: { color: C.onPrimary, fontSize: 32.5, fontWeight: '800', fontFamily: 'Inter', marginBottom: 14 },
+    withdrawBtn: {
+      flexDirection: 'row', alignSelf: 'flex-start', alignItems: 'center', gap: 8,
+      backgroundColor: V6Colors.successSolid, borderRadius: V6Radii.btn, paddingHorizontal: 16, paddingVertical: 10,
+    },
+    withdrawBtnDisabled: { opacity: 0.45 },
+    withdrawBtnText: { color: C.onPrimary, fontSize: 14, fontWeight: '700', fontFamily: 'Inter' },
+    balanceSubnote: {
+      color: 'rgba(255,255,255,0.75)', fontSize: 12.5, fontFamily: 'Inter',
+      marginTop: -10, marginBottom: 12,
+    },
 
-  pendingCard: {
-    backgroundColor: '#fffbeb', borderWidth: 1, borderColor: '#fde68a',
-    borderRadius: 15, padding: 14, marginBottom: 16,
-  },
-  pendingHeader: {
-    color: '#92400e', fontSize: 13.5, fontWeight: '800', fontFamily: 'Inter', marginBottom: 8,
-  },
-  pendingRow: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    paddingVertical: 4,
-  },
-  pendingInfo: { flex: 1, marginRight: 10 },
-  pendingAmount: { color: C.ink900, fontSize: 15, fontWeight: '700', fontFamily: 'Inter' },
-  pendingDate: { color: '#b45309', fontSize: 11.5, fontFamily: 'Inter', marginTop: 1 },
-  pendingCancel: { color: '#b45309', fontSize: 13.5, fontWeight: '700', fontFamily: 'Inter' },
+    pendingCard: {
+      backgroundColor: V6Colors.warningSurface, borderWidth: 1, borderColor: V6Colors.warningBorder,
+      borderRadius: 15, padding: 14, marginBottom: 16,
+    },
+    pendingHeader: {
+      color: V6Colors.warningText, fontSize: 13.5, fontWeight: '800', fontFamily: 'Inter', marginBottom: 8,
+    },
+    pendingRow: {
+      flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+      paddingVertical: 4,
+    },
+    pendingInfo: { flex: 1, marginRight: 10 },
+    pendingAmount: { color: C.ink900, fontSize: 15, fontWeight: '700', fontFamily: 'Inter' },
+    pendingDate: { color: V6Colors.warningText, fontSize: 11.5, fontFamily: 'Inter', marginTop: 1 },
+    pendingCancel: { color: V6Colors.warningText, fontSize: 13.5, fontWeight: '700', fontFamily: 'Inter' },
 
-  statsRow: { flexDirection: 'row', gap: 12, marginBottom: 20 },
-  statCard: {
-    flex: 1, backgroundColor: C.white, borderWidth: 1, borderColor: C.line,
-    borderRadius: V6Radii.card, padding: 14, alignItems: 'center', ...V6Shadows.sm,
-  },
-  statValue: { color: C.ink900, fontSize: 19.5, fontWeight: '800', fontFamily: 'Inter', marginBottom: 2 },
-  statLabel: { color: C.ink400, fontSize: 12, fontFamily: 'Inter' },
+    statsRow: { flexDirection: 'row', gap: 12, marginBottom: 20 },
+    statCard: {
+      flex: 1, backgroundColor: C.surface, borderWidth: 1, borderColor: C.line,
+      borderRadius: V6Radii.card, padding: 14, alignItems: 'center', ...V6Shadows.sm,
+    },
+    statValue: { color: C.ink900, fontSize: 19.5, fontWeight: '800', fontFamily: 'Inter', marginBottom: 2 },
+    statLabel: { color: C.ink400, fontSize: 12, fontFamily: 'Inter' },
 
-  trustNote: {
-    flexDirection: 'row', gap: 9, alignItems: 'flex-start',
-    backgroundColor: '#f5fbfc', borderWidth: 1, borderColor: '#d8f0f4',
-    borderRadius: 13, padding: 12, marginBottom: 18,
-  },
-  trustNoteText: { flex: 1, color: C.cyan800, fontSize: 12, lineHeight: 16, fontFamily: 'Inter' },
+    trustNote: {
+      flexDirection: 'row', gap: 9, alignItems: 'flex-start',
+      backgroundColor: V6Colors.infoSurface, borderWidth: 1, borderColor: V6Colors.infoSurface,
+      borderRadius: 13, padding: 12, marginBottom: 18,
+    },
+    trustNoteText: { flex: 1, color: V6Colors.link, fontSize: 12, lineHeight: 16, fontFamily: 'Inter' },
 
-  sectionTitle: { color: C.ink900, fontSize: 16, fontWeight: '800', fontFamily: 'Inter', marginBottom: 12 },
-  stateText: { color: C.ink500, fontSize: 16.5, fontFamily: 'Inter', textAlign: 'center', marginTop: 20 },
-  emptyState: { alignItems: 'center', paddingVertical: 44, paddingHorizontal: 24 },
-  emptyTitle: { color: C.ink800, fontSize: 16, fontWeight: '700', fontFamily: 'Inter', marginTop: 10, marginBottom: 4 },
-  emptyText: { color: C.ink400, fontSize: 14, fontFamily: 'Inter', textAlign: 'center', lineHeight: 17 },
+    sectionTitle: { color: C.ink900, fontSize: 16, fontWeight: '800', fontFamily: 'Inter', marginBottom: 12 },
+    stateText: { color: C.ink500, fontSize: 16.5, fontFamily: 'Inter', textAlign: 'center', marginTop: 20 },
+    emptyState: { alignItems: 'center', paddingVertical: 44, paddingHorizontal: 24 },
+    emptyTitle: { color: C.ink800, fontSize: 16, fontWeight: '700', fontFamily: 'Inter', marginTop: 10, marginBottom: 4 },
+    emptyText: { color: C.ink400, fontSize: 14, fontFamily: 'Inter', textAlign: 'center', lineHeight: 17 },
 
-  txnList: { backgroundColor: C.white, borderRadius: 16, borderWidth: 1, borderColor: C.line, overflow: 'hidden' },
-  txnRow: { flexDirection: 'row', alignItems: 'center', padding: 14 },
-  txnRowBorder: { borderBottomWidth: 1, borderBottomColor: '#f0f3f6' },
-  txnIcon: { width: 34, height: 34, borderRadius: 12, backgroundColor: '#f7f9fb', alignItems: 'center', justifyContent: 'center', marginRight: 12 },
-  txnInfo: { flex: 1 },
-  txnTitle: { color: C.ink900, fontSize: 14.5, fontWeight: '600', fontFamily: 'Inter', marginBottom: 2 },
-  txnDate: { color: C.ink400, fontSize: 12.5, fontFamily: 'Inter' },
-  txnAmount: { fontSize: 14.5, fontWeight: '800', fontFamily: 'Inter' },
-  txnCredit: { color: '#16a34a' },
-  txnDebit: { color: C.ink900 },
-});
+    txnList: { backgroundColor: C.surface, borderRadius: 16, borderWidth: 1, borderColor: C.line, overflow: 'hidden' },
+    txnRow: { flexDirection: 'row', alignItems: 'center', padding: 14 },
+    txnRowBorder: { borderBottomWidth: 1, borderBottomColor: V6Colors.wellBg },
+    txnIcon: { width: 34, height: 34, borderRadius: 12, backgroundColor: V6Colors.canvas, alignItems: 'center', justifyContent: 'center', marginRight: 12 },
+    txnInfo: { flex: 1 },
+    txnTitle: { color: C.ink900, fontSize: 14.5, fontWeight: '600', fontFamily: 'Inter', marginBottom: 2 },
+    txnDate: { color: C.ink400, fontSize: 12.5, fontFamily: 'Inter' },
+    txnAmount: { fontSize: 14.5, fontWeight: '800', fontFamily: 'Inter' },
+    txnCredit: { color: V6Colors.successText },
+    txnDebit: { color: C.ink900 },
+  });
+  return { Colors, V6Colors, C, styles };
+}

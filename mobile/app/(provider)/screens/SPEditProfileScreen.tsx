@@ -13,6 +13,7 @@
  * input instead of the mockup's free-text demo string.
  */
 
+import { useThemedStyles, type Palette as ThemePalette } from '../../../src/context/ThemeContext';
 import React, { useState } from 'react';
 import {
   KeyboardAvoidingView,
@@ -28,13 +29,12 @@ import { ArrowLeft } from 'lucide-react-native';
 import AvatarPicker from '../../../src/components/AvatarPicker';
 import ConfirmationModal from '../../../src/components/ConfirmationModal';
 import AddressField from '../../../src/components/AddressField';
-import { Spacing, V6Colors, V6Radii, V6Shadows } from '../../../src/constants/theme';
+import { Spacing, V6Radii, V6Shadows } from '../../../src/constants/theme';
 import { useHeaderTop } from '../../../src/hooks/useHeaderTop';
 
-const C = V6Colors;
 import { useAuth } from '../../../src/context/AuthContext';
 import { useAsyncData } from '../../../src/hooks/useAsyncData';
-import { api } from '../../../src/lib/api';
+import { api, type GeocodedAddress } from '../../../src/lib/api';
 
 interface SPEditProfileScreenProps {
   onBack: () => void;
@@ -63,6 +63,7 @@ function FormField({
   keyboardType?: 'default' | 'email-address' | 'phone-pad' | 'number-pad';
   editable?: boolean;
 }) {
+  const { C, styles, V6Colors, appearance } = useThemedStyles(createThemedStyles);
   const [focused, setFocused] = useState(false);
   return (
     <View style={styles.fieldGroup}>
@@ -70,7 +71,7 @@ function FormField({
         {label}
         {required && <Text style={styles.requiredAsterisk}> *</Text>}
       </Text>
-      <TextInput
+      <TextInput keyboardAppearance={appearance}
         style={[
           styles.fieldInput,
           multiline && styles.fieldInputMultiline,
@@ -93,6 +94,7 @@ function FormField({
 }
 
 export default function SPEditProfileScreen({ onBack, onSave, onManageServices }: SPEditProfileScreenProps) {
+  const { C, styles, V6Colors, appearance } = useThemedStyles(createThemedStyles);
   const headerTop = useHeaderTop();
   const { profile, providerProfile, refreshProfile } = useAuth();
   const categories = useAsyncData(() => api.categories(), []);
@@ -101,6 +103,7 @@ export default function SPEditProfileScreen({ onBack, onSave, onManageServices }
   const [phone, setPhone] = useState(profile?.phone ?? '');
   const [location, setLocation] = useState(profile?.address ?? '');
   const [city, setCity] = useState(profile?.city ?? '');
+  const [resolvedLocation, setResolvedLocation] = useState<GeocodedAddress | null>(null);
   const [bio, setBio] = useState(providerProfile?.bio ?? '');
   const [radius, setRadius] = useState(String(providerProfile?.service_radius_km ?? ''));
   const [categoryId, setCategoryId] = useState<number | null>(providerProfile?.category_id ?? null);
@@ -132,6 +135,7 @@ export default function SPEditProfileScreen({ onBack, onSave, onManageServices }
         phone: phone.trim(),
         address: location.trim(),
         city: city.trim(),
+        location_reference: resolvedLocation?.location_reference,
       });
       await api.upsertProviderProfile({
         category_id: categoryId!,
@@ -178,12 +182,12 @@ export default function SPEditProfileScreen({ onBack, onSave, onManageServices }
             <Text style={styles.fieldLabel}>Address<Text style={styles.requiredAsterisk}> *</Text></Text>
             <AddressField
               value={location}
-              onChangeText={setLocation}
-              onResolve={() => {}}
+              onChangeText={(value) => { setLocation(value); setResolvedLocation(null); }}
+              onResolve={(resolved) => { setResolvedLocation(resolved); if (resolved?.city) setCity(resolved.city); }}
               placeholder="House no., Barangay, Street"
             />
           </View>
-          <FormField label="City" value={city} onChangeText={setCity} placeholder="City / Municipality" />
+          <FormField label="City" value={city} onChangeText={(value) => { setCity(value); setResolvedLocation(null); }} placeholder="City / Municipality" />
           <FormField required label="Bio (min 20 characters)" value={bio} onChangeText={setBio} multiline placeholder="Describe your experience..." />
           <FormField label="Service radius (km)" value={radius} onChangeText={setRadius} keyboardType="number-pad" placeholder="8" />
 
@@ -247,58 +251,63 @@ export default function SPEditProfileScreen({ onBack, onSave, onManageServices }
   );
 }
 
-const styles = StyleSheet.create({
-  flex: { flex: 1 },
-  screen: { flex: 1, backgroundColor: C.canvas },
+function createThemedStyles(theme: ThemePalette) {
+  const { Colors, V6Colors } = theme;
+  const C = V6Colors;
+  const styles = StyleSheet.create({
+    flex: { flex: 1 },
+    screen: { flex: 1, backgroundColor: C.canvas },
 
-  header: {
-    flexDirection: 'row', alignItems: 'center', gap: 12,
-    backgroundColor: C.white,
-    paddingHorizontal: Spacing.screenH,
-    paddingBottom: 12,
-    borderBottomWidth: 1, borderBottomColor: '#edf1f4',
-  },
-  backBtn: {
-    width: 38, height: 38, borderRadius: 12,
-    backgroundColor: C.white, borderWidth: 1, borderColor: '#e8edf2',
-    alignItems: 'center', justifyContent: 'center',
-  },
-  headerTitle: { flex: 1, color: C.ink900, fontSize: 19.5, fontWeight: '800', fontFamily: 'Inter' },
+    header: {
+      flexDirection: 'row', alignItems: 'center', gap: 12,
+      backgroundColor: C.surface,
+      paddingHorizontal: Spacing.screenH,
+      paddingBottom: 12,
+      borderBottomWidth: 1, borderBottomColor: V6Colors.line,
+    },
+    backBtn: {
+      width: 38, height: 38, borderRadius: 12,
+      backgroundColor: C.surface, borderWidth: 1, borderColor: V6Colors.line,
+      alignItems: 'center', justifyContent: 'center',
+    },
+    headerTitle: { flex: 1, color: C.ink900, fontSize: 19.5, fontWeight: '800', fontFamily: 'Inter' },
 
-  body: { flex: 1 },
-  bodyContent: { paddingHorizontal: Spacing.screenH, paddingTop: 20, paddingBottom: 20 },
+    body: { flex: 1 },
+    bodyContent: { paddingHorizontal: Spacing.screenH, paddingTop: 20, paddingBottom: 20 },
 
-  fieldGroup: { marginBottom: 16 },
-  fieldLabel: { color: C.ink900, fontSize: 14, fontWeight: '700', fontFamily: 'Inter', marginBottom: 6 },
-  requiredAsterisk: { color: '#ef4444', fontWeight: '700' },
-  fieldInput: {
-    backgroundColor: C.white, borderRadius: 12, paddingHorizontal: 14, minHeight: 46,
-    borderWidth: 1, borderColor: '#dce3e9',
-    fontFamily: 'Inter', fontSize: 16.5, color: C.ink900,
-  },
-  fieldInputMultiline: { height: 90, textAlignVertical: 'top', paddingTop: 12 },
-  fieldInputFocused: { borderColor: C.cyan500 },
-  fieldInputDisabled: { color: C.ink400, backgroundColor: C.ink50 },
+    fieldGroup: { marginBottom: 16 },
+    fieldLabel: { color: C.ink900, fontSize: 14, fontWeight: '700', fontFamily: 'Inter', marginBottom: 6 },
+    requiredAsterisk: { color: V6Colors.dangerText, fontWeight: '700' },
+    fieldInput: {
+      backgroundColor: C.surface, borderRadius: 12, paddingHorizontal: 14, minHeight: 46,
+      borderWidth: 1, borderColor: V6Colors.fieldBorder,
+      fontFamily: 'Inter', fontSize: 16.5, color: C.ink900,
+    },
+    fieldInputMultiline: { height: 90, textAlignVertical: 'top', paddingTop: 12 },
+    fieldInputFocused: { borderColor: C.cyan500 },
+    fieldInputDisabled: { color: C.ink400, backgroundColor: C.ink50 },
 
-  chipGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  serviceLocked: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10,
-    borderWidth: 1, borderColor: '#dce3e9', borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12, backgroundColor: '#f8fafc',
-  },
-  serviceLockedName: { flex: 1, color: C.ink900, fontSize: 15, fontWeight: '700', fontFamily: 'Inter' },
-  serviceLockedLink: { color: C.cyan700, fontSize: 13.5, fontWeight: '700', fontFamily: 'Inter' },
-  chip: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 999, borderWidth: 1, borderColor: '#dce3e9', backgroundColor: C.white },
-  chipActive: { backgroundColor: C.ink900, borderColor: C.ink900 },
-  chipText: { color: C.ink500, fontSize: 14.5, fontWeight: '600', fontFamily: 'Inter' },
-  chipTextActive: { color: C.white },
+    chipGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+    serviceLocked: {
+      flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10,
+      borderWidth: 1, borderColor: V6Colors.fieldBorder, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12, backgroundColor: V6Colors.wellBg,
+    },
+    serviceLockedName: { flex: 1, color: C.ink900, fontSize: 15, fontWeight: '700', fontFamily: 'Inter' },
+    serviceLockedLink: { color: V6Colors.link, fontSize: 13.5, fontWeight: '700', fontFamily: 'Inter' },
+    chip: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 999, borderWidth: 1, borderColor: V6Colors.fieldBorder, backgroundColor: C.surface },
+    chipActive: { backgroundColor: V6Colors.hero, borderColor: C.ink900 },
+    chipText: { color: C.ink500, fontSize: 14.5, fontWeight: '600', fontFamily: 'Inter' },
+    chipTextActive: { color: C.onPrimary },
 
-  errorText: { color: '#ef4444', fontSize: 15.5, fontFamily: 'Inter', marginBottom: 12, textAlign: 'center' },
+    errorText: { color: V6Colors.dangerText, fontSize: 15.5, fontFamily: 'Inter', marginBottom: 12, textAlign: 'center' },
 
-  saveBtn: {
-    backgroundColor: C.cyan700, borderRadius: V6Radii.btn, paddingVertical: 14,
-    alignItems: 'center', marginTop: 4,
-    ...V6Shadows.primaryButton,
-  },
-  saveBtnDisabled: { opacity: 0.7 },
-  saveBtnText: { color: C.white, fontSize: 16.5, fontWeight: '700', fontFamily: 'Inter' },
-});
+    saveBtn: {
+      backgroundColor: C.cyan700, borderRadius: V6Radii.btn, paddingVertical: 14,
+      alignItems: 'center', marginTop: 4,
+      ...V6Shadows.primaryButton,
+    },
+    saveBtnDisabled: { opacity: 0.7 },
+    saveBtnText: { color: C.onPrimary, fontSize: 16.5, fontWeight: '700', fontFamily: 'Inter' },
+  });
+  return { appearance: theme.appearance, Colors, V6Colors, C, styles };
+}

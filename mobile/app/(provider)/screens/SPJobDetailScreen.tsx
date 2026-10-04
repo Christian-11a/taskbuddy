@@ -6,20 +6,9 @@
  * bottom-divider only, not a card), .detail-section blocks, and a sticky
  * action bar whose primary button reflects the real job/application state.
  *
- * The screen has two faces, and which one you get depends on whether this
- * provider has taken the job on:
- *
- *   Claimable — an open job they may propose for, or a booking request a
- *   homeowner has already made to them (status 'assigned'). The checklist is
- *   shown read-only: it is the scope of work being offered, not a to-do list
- *   they own yet. The action bar offers Accept/Decline (a request) or Submit
- *   Proposal (an open job).
- *
- *   In progress — they accepted ('confirmed') or started ('in_progress'). The
- *   same checklist becomes tappable and gains a progress bar, which is the
- *   only progress signal this app has: completion is homeowner-triggered, so
- *   a provider's honest answer to "how far along are you" is which tasks are
- *   ticked.
+ * Open jobs accept proposals. Client hiring confirms the booking without
+ * another provider acceptance. Start Job enables the checklist; completion
+ * remains client-confirmed after all tasks are done.
  *
  * Deviation from the mockup: its 4-state lifecycle has an explicit "Submit for
  * Review" step. This app's backend has no such action — the homeowner marks a
@@ -27,7 +16,9 @@
  * rather than a button that would do nothing.
  */
 
+import { useThemedStyles, type Palette as ThemePalette } from '../../../src/context/ThemeContext';
 import React, { useState } from 'react';
+import PhotoViewer from '../../../src/components/PhotoViewer';
 import {
   ActivityIndicator,
   Image,
@@ -47,17 +38,15 @@ import {
   ShieldCheck,
 } from 'lucide-react-native';
 import { CalendarDays } from 'lucide-react-native';
-import { Spacing, V6Colors, V6Radii } from '../../../src/constants/theme';
+import { Spacing, V6Radii } from '../../../src/constants/theme';
 import { useHeaderTop } from '../../../src/hooks/useHeaderTop';
 
-const C = V6Colors;
 import { SPScreen } from '../../../src/types/navigation';
 import { useAuth } from '../../../src/context/AuthContext';
 import { useAsyncData } from '../../../src/hooks/useAsyncData';
 import { api, ApiError, Job, JobTask } from '../../../src/lib/api';
 import { distanceLabel, peso, shortDate } from '../../../src/lib/format';
 import ProposalModal from '../../../src/components/ProposalModal';
-import AcceptBookingModal, { type AcceptLocation } from '../../../src/components/AcceptBookingModal';
 import { showToast } from '../../../src/components/Toast';
 import DeclineBookingModal from '../../../src/components/DeclineBookingModal';
 
@@ -80,6 +69,7 @@ function sortedTasks(job: Job | null): JobTask[] {
 }
 
 export default function SPJobDetailScreen({ jobId, onBack, onNavigate }: SPJobDetailScreenProps) {
+  const { C, styles, V6Colors } = useThemedStyles(createThemedStyles);
   const headerTop = useHeaderTop();
   const { profile, isVerified, refreshProfile } = useAuth();
   const { data: job, loading, error, reload } = useAsyncData(() => {
@@ -97,21 +87,20 @@ export default function SPJobDetailScreen({ jobId, onBack, onNavigate }: SPJobDe
   );
   const myApplication = (myApps ?? []).find((a) => a.jobs.id === jobId);
 
+  const [photoIndex, setPhotoIndex] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
   const [declineOpen, setDeclineOpen] = useState(false);
   const [proposalOpen, setProposalOpen] = useState(false);
-  const [acceptOpen, setAcceptOpen] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   // Which checklist row is mid-flight, so only that row shows a spinner.
   const [pendingTaskId, setPendingTaskId] = useState<string | null>(null);
 
   const isAssignedToMe = job?.assigned_provider_id === profile?.id;
   /** A homeowner hired them and is waiting for an answer. */
-  const isBookingRequest = isAssignedToMe && job?.status === 'assigned';
-  const isConfirmed = isAssignedToMe && job?.status === 'confirmed';
+  const isConfirmed = isAssignedToMe && ['assigned', 'confirmed'].includes(job?.status ?? '');
   const isWorking = isAssignedToMe && job?.status === 'in_progress';
   const isDone = isAssignedToMe && job?.status === 'completed';
-  const withinWarranty = job?.completed_at && Date.now() <= new Date(job.completed_at).getTime() + 7 * 24 * 60 * 60 * 1000;
+  const withinWarranty = job?.warranty_expires_at && Date.now() < new Date(job.warranty_expires_at).getTime();
   const isCancelled = isAssignedToMe && job?.status === 'cancelled';
   const canApply = job && ['open', 'recommending'].includes(job.status) && !isAssignedToMe && !myApplication;
   const urgent = job?.urgency === 'urgent';
@@ -169,22 +158,6 @@ export default function SPJobDetailScreen({ jobId, onBack, onNavigate }: SPJobDe
     }
   };
 
-  const confirmAccept = async (location: AcceptLocation) => {
-    if (!job) return;
-    setBusy(true);
-    setActionError(null);
-    try {
-      await api.acceptJob(job.id, location);
-      setAcceptOpen(false);
-      showToast('Booking confirmed', 'success');
-      reload();
-    } catch (e) {
-      setActionError(errorMessage(e));
-    } finally {
-      setBusy(false);
-    }
-  };
-
   const submitDecline = async (reason: string) => {
     if (!job) return;
     setBusy(true);
@@ -215,7 +188,6 @@ export default function SPJobDetailScreen({ jobId, onBack, onNavigate }: SPJobDe
   };
 
   const kicker = () => {
-    if (isBookingRequest) return 'BOOKING REQUEST';
     if (isConfirmed) return 'CONFIRMED BOOKING';
     if (isWorking) return 'WORK IN PROGRESS';
     if (isDone) return 'COMPLETED JOB';
@@ -225,6 +197,8 @@ export default function SPJobDetailScreen({ jobId, onBack, onNavigate }: SPJobDe
 
   return (
     <View style={styles.screen}>
+      <PhotoViewer photos={(job?.photo_urls ?? []).map(uri => ({ uri }))}
+        index={photoIndex} onIndexChange={setPhotoIndex} onClose={() => setPhotoIndex(null)} />
       {/* Header — matches .topbar (flat white) */}
       <View style={[styles.header, { paddingTop: headerTop }]}>
         <TouchableOpacity style={styles.backBtn} onPress={onBack} activeOpacity={0.8}>
@@ -234,7 +208,7 @@ export default function SPJobDetailScreen({ jobId, onBack, onNavigate }: SPJobDe
         <View style={{ width: 38 }} />
       </View>
 
-      {loading && <ActivityIndicator style={{ marginTop: 40 }} color={C.cyan700} />}
+      {loading && <ActivityIndicator style={{ marginTop: 40 }} color={V6Colors.link} />}
       {!!error && !loading && <Text style={styles.stateText}>{error}</Text>}
 
       {job && (
@@ -269,18 +243,6 @@ export default function SPJobDetailScreen({ jobId, onBack, onNavigate }: SPJobDe
               </View>
             </View>
           </View>
-
-          {/* A booking request is a decision waiting to be made — say so before
-              the details, not after them. */}
-          {isBookingRequest && (
-            <View style={styles.requestNote}>
-              <Text style={styles.requestNoteText}>
-                <Text style={{ fontWeight: '800' }}>You've been hired for this job.</Text>{' '}
-                Accept to confirm the booking with the client, or decline and tell
-                them why so they can find someone else.
-              </Text>
-            </View>
-          )}
 
           {/* Progress — only once the job is actually theirs. */}
           {(isConfirmed || isWorking) && tasks.length > 0 && (
@@ -331,7 +293,7 @@ export default function SPJobDetailScreen({ jobId, onBack, onNavigate }: SPJobDe
                     {pendingTaskId === task.id ? (
                       <ActivityIndicator size="small" color={task.is_done ? C.white : C.cyan700} />
                     ) : (
-                      task.is_done && <Check size={14} color={C.white} strokeWidth={3} />
+                      task.is_done && <Check size={14} color={C.onPrimary} strokeWidth={3} />
                     )}
                   </View>
                   <Text style={[styles.taskLabel, task.is_done && styles.taskLabelDone]}>
@@ -352,9 +314,11 @@ export default function SPJobDetailScreen({ jobId, onBack, onNavigate }: SPJobDe
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Job Photos</Text>
             {job.photo_urls.length ? job.photo_urls.map((uri, index) => (
-              <Image key={uri} source={{ uri }} resizeMode="contain"
-                accessibilityLabel={`Job photo ${index + 1}`}
-                style={{ width: '100%', height: 240, marginTop: 12 }} />
+              <TouchableOpacity key={uri} onPress={() => setPhotoIndex(index)}
+                accessibilityLabel={`Open job photo ${index + 1}`}>
+                <Image source={{ uri }} resizeMode="contain" accessibilityLabel={`Job photo ${index + 1}`}
+                  style={{ width: '100%', height: 240, marginTop: 12 }} />
+              </TouchableOpacity>
             )) : <Text style={styles.detailValue}>No photos attached</Text>}
 
           </View>
@@ -374,22 +338,8 @@ export default function SPJobDetailScreen({ jobId, onBack, onNavigate }: SPJobDe
 
           {/* Actions — matches .detail-action-bar */}
           <View style={styles.actionBar}>
-            {!!actionError && !proposalOpen && !acceptOpen && !declineOpen && (
+            {!!actionError && !proposalOpen && !declineOpen && (
               <Text style={styles.actionError}>{actionError}</Text>
-            )}
-
-            {isBookingRequest && (
-              <TouchableOpacity
-                style={styles.primaryBtn}
-                onPress={() => {
-                  setActionError(null);
-                  setAcceptOpen(true);
-                }}
-                activeOpacity={0.85}
-                disabled={busy}
-              >
-                <Text style={styles.primaryBtnText}>Accept Booking</Text>
-              </TouchableOpacity>
             )}
 
             {isConfirmed && (
@@ -408,11 +358,15 @@ export default function SPJobDetailScreen({ jobId, onBack, onNavigate }: SPJobDe
                 <Text style={styles.lockedBtnText}>{tasks.length > 0 && doneCount === tasks.length ? 'Waiting for client to confirm completion' : 'Work in progress — complete the task checklist'}</Text>
               </View>
             )}
-            {isAssignedToMe && (isCancelled || isWorking || (isDone && withinWarranty) || dispute) && (
+            {isAssignedToMe && dispute?.status === 'open' && <Text style={styles.lockedBtnText}>{dispute.cancellation_state === 'pending' ? 'Cancellation awaiting your response' : dispute.escrow_transactions?.status === 'disputed' ? 'Payment under admin review' : 'Complaint awaiting admin review'}</Text>}
+            {isAssignedToMe && (isCancelled || isConfirmed || isWorking || (isDone && withinWarranty) || dispute) && (
               <TouchableOpacity style={styles.primaryBtn}
                 onPress={() => onNavigate(dispute ? 'Dispute Status' : 'Dispute Filing', job.id)}>
-                <Text style={styles.primaryBtnText}>{dispute ? 'View Dispute Status' : 'Request Admin Review'}</Text>
+                <Text style={styles.primaryBtnText}>{dispute ? 'View Dispute Status' : 'File a Complaint'}</Text>
               </TouchableOpacity>
+            )}
+            {isDone && job.warranty_expires_at && (
+              <Text style={styles.lockedBtnText}>Warranty ends {new Date(job.warranty_expires_at).toLocaleString()}.</Text>
             )}
             {isDone && (
               <View style={styles.lockedBtn}>
@@ -435,7 +389,7 @@ export default function SPJobDetailScreen({ jobId, onBack, onNavigate }: SPJobDe
             {!isAssignedToMe && !myApplication && canApply && !isVerified && (
               <TouchableOpacity style={styles.primaryBtn} onPress={() => onNavigate('Verification')} activeOpacity={0.85}>
                 <View style={styles.primaryBtnContent}>
-                  <ShieldCheck size={18} color={C.white} />
+                  <ShieldCheck size={18} color={C.onPrimary} />
                   <Text style={styles.primaryBtnText}>Verify to Apply</Text>
                 </View>
               </TouchableOpacity>
@@ -469,7 +423,7 @@ export default function SPJobDetailScreen({ jobId, onBack, onNavigate }: SPJobDe
               </TouchableOpacity>
             )}
 
-            {(isBookingRequest || isConfirmed) && (
+            {isConfirmed && (
               <TouchableOpacity
                 style={styles.outlineDangerBtn}
                 onPress={() => setDeclineOpen(true)}
@@ -497,18 +451,6 @@ export default function SPJobDetailScreen({ jobId, onBack, onNavigate }: SPJobDe
         }}
       />
 
-      <AcceptBookingModal
-        visible={acceptOpen}
-        jobTitle={job?.title}
-        busy={busy}
-        error={acceptOpen ? actionError : null}
-        onConfirm={(location) => void confirmAccept(location)}
-        onCancel={() => {
-          setAcceptOpen(false);
-          setActionError(null);
-        }}
-      />
-
       <DeclineBookingModal
         visible={declineOpen}
         jobTitle={job?.title}
@@ -524,90 +466,89 @@ export default function SPJobDetailScreen({ jobId, onBack, onNavigate }: SPJobDe
   );
 }
 
-const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: C.canvas },
-  header: {
-    flexDirection: 'row', alignItems: 'center', gap: 12,
-    backgroundColor: C.white,
-    paddingHorizontal: Spacing.screenH,
-    paddingBottom: 12,
-    borderBottomWidth: 1, borderBottomColor: '#edf1f4',
-  },
-  backBtn: {
-    width: 38, height: 38, borderRadius: 12,
-    backgroundColor: C.white, borderWidth: 1, borderColor: '#e8edf2',
-    alignItems: 'center', justifyContent: 'center',
-  },
-  headerTitle: { flex: 1, color: C.ink900, fontSize: 19.5, fontWeight: '800', fontFamily: 'Inter' },
+function createThemedStyles(theme: ThemePalette) {
+  const { Colors, V6Colors } = theme;
+  const C = V6Colors;
+  const styles = StyleSheet.create({
+    screen: { flex: 1, backgroundColor: C.canvas },
+    header: {
+      flexDirection: 'row', alignItems: 'center', gap: 12,
+      backgroundColor: C.surface,
+      paddingHorizontal: Spacing.screenH,
+      paddingBottom: 12,
+      borderBottomWidth: 1, borderBottomColor: V6Colors.line,
+    },
+    backBtn: {
+      width: 38, height: 38, borderRadius: 12,
+      backgroundColor: C.surface, borderWidth: 1, borderColor: V6Colors.line,
+      alignItems: 'center', justifyContent: 'center',
+    },
+    headerTitle: { flex: 1, color: C.ink900, fontSize: 19.5, fontWeight: '800', fontFamily: 'Inter' },
 
-  body: { flex: 1 },
-  bodyContent: { paddingHorizontal: Spacing.screenH, paddingTop: 4 },
-  stateText: { color: C.ink500, fontSize: 16.5, fontFamily: 'Inter', textAlign: 'center', marginTop: 30, paddingHorizontal: Spacing.screenH },
+    body: { flex: 1 },
+    bodyContent: { paddingHorizontal: Spacing.screenH, paddingTop: 4 },
+    stateText: { color: C.ink500, fontSize: 16.5, fontFamily: 'Inter', textAlign: 'center', marginTop: 30, paddingHorizontal: Spacing.screenH },
 
-  hero: { paddingVertical: 18, borderBottomWidth: 1, borderBottomColor: C.line },
-  kicker: { fontSize: 11.5, textTransform: 'uppercase', letterSpacing: 0.9, fontWeight: '800', color: C.cyan700, marginBottom: 8, fontFamily: 'Inter' },
-  heroTitleRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 16 },
-  heroTitle: { flex: 1, fontSize: 21.5, lineHeight: 25, letterSpacing: -0.5, color: C.ink900, fontWeight: '700', fontFamily: 'Inter' },
-  heroPrice: { fontSize: 21.5, fontWeight: '800', color: C.ink900, fontFamily: 'Inter' },
-  urgentTag: { color: '#b91c1c', fontSize: 12, fontWeight: '800', letterSpacing: 0.6, marginTop: 8, fontFamily: 'Inter' },
-  factsGrid: { flexDirection: 'row', gap: 8, marginTop: 14 },
-  fact: { flex: 1, flexDirection: 'row', alignItems: 'flex-start', gap: 8, padding: 10, backgroundColor: '#f5f8fa', borderRadius: 12 },
-  factLabel: { fontSize: 11.5, color: C.ink400, fontFamily: 'Inter' },
-  factValue: { fontSize: 13.5, color: C.ink800, fontWeight: '700', fontFamily: 'Inter', marginTop: 1 },
-  factSub: { fontSize: 11.5, color: C.ink400, fontFamily: 'Inter', marginTop: 2 },
+    hero: { paddingVertical: 18, borderBottomWidth: 1, borderBottomColor: C.line },
+    kicker: { fontSize: 11.5, textTransform: 'uppercase', letterSpacing: 0.9, fontWeight: '800', color: V6Colors.link, marginBottom: 8, fontFamily: 'Inter' },
+    heroTitleRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 16 },
+    heroTitle: { flex: 1, fontSize: 21.5, lineHeight: 25, letterSpacing: -0.5, color: C.ink900, fontWeight: '700', fontFamily: 'Inter' },
+    heroPrice: { fontSize: 21.5, fontWeight: '800', color: C.ink900, fontFamily: 'Inter' },
+    urgentTag: { color: V6Colors.dangerText, fontSize: 12, fontWeight: '800', letterSpacing: 0.6, marginTop: 8, fontFamily: 'Inter' },
+    factsGrid: { flexDirection: 'row', gap: 8, marginTop: 14 },
+    fact: { flex: 1, flexDirection: 'row', alignItems: 'flex-start', gap: 8, padding: 10, backgroundColor: V6Colors.wellBg, borderRadius: 12 },
+    factLabel: { fontSize: 11.5, color: C.ink400, fontFamily: 'Inter' },
+    factValue: { fontSize: 13.5, color: C.ink800, fontWeight: '700', fontFamily: 'Inter', marginTop: 1 },
+    factSub: { fontSize: 11.5, color: C.ink400, fontFamily: 'Inter', marginTop: 2 },
 
-  requestNote: {
-    backgroundColor: '#f2fbfd', borderWidth: 1, borderColor: C.cyan100,
-    borderRadius: 14, padding: 13, marginTop: 16,
-  },
-  requestNoteText: { color: C.cyan800, fontSize: 12.5, lineHeight: 17, fontFamily: 'Inter' },
+    section: { paddingVertical: 18, borderBottomWidth: 1, borderBottomColor: C.line },
+    sectionTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 7, marginBottom: 12 },
+    sectionTitle: { fontSize: 14, color: C.ink900, fontWeight: '800', fontFamily: 'Inter', marginBottom: 12 },
+    // The row already spaces itself; the shared title keeps its own margin for
+    // the sections that use it alone.
+    sectionTitleInline: { marginBottom: 0 },
+    descText: { fontSize: 14, lineHeight: 21, color: C.ink700, fontFamily: 'Inter' },
 
-  section: { paddingVertical: 18, borderBottomWidth: 1, borderBottomColor: C.line },
-  sectionTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 7, marginBottom: 12 },
-  sectionTitle: { fontSize: 14, color: C.ink900, fontWeight: '800', fontFamily: 'Inter', marginBottom: 12 },
-  // The row already spaces itself; the shared title keeps its own margin for
-  // the sections that use it alone.
-  sectionTitleInline: { marginBottom: 0 },
-  descText: { fontSize: 14, lineHeight: 21, color: C.ink700, fontFamily: 'Inter' },
+    progressRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+    progressTrack: { flex: 1, height: 8, borderRadius: 999, backgroundColor: C.ink100, overflow: 'hidden' },
+    progressFill: { height: 8, borderRadius: 999, backgroundColor: C.cyan700 },
+    progressText: { fontSize: 13, fontWeight: '800', color: C.ink900, fontFamily: 'Inter' },
+    progressHint: { fontSize: 12, lineHeight: 16, color: C.ink400, fontFamily: 'Inter', marginTop: 8 },
 
-  progressRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  progressTrack: { flex: 1, height: 8, borderRadius: 999, backgroundColor: C.ink100, overflow: 'hidden' },
-  progressFill: { height: 8, borderRadius: 999, backgroundColor: C.cyan700 },
-  progressText: { fontSize: 13, fontWeight: '800', color: C.ink900, fontFamily: 'Inter' },
-  progressHint: { fontSize: 12, lineHeight: 16, color: C.ink400, fontFamily: 'Inter', marginTop: 8 },
+    taskRow: { flexDirection: 'row', alignItems: 'center', gap: 11, paddingVertical: 9 },
+    taskBox: {
+      width: 22, height: 22, borderRadius: 7,
+      borderWidth: 1.5, borderColor: V6Colors.ink200,
+      alignItems: 'center', justifyContent: 'center',
+    },
+    taskBoxDone: { backgroundColor: C.cyan700, borderColor: C.cyan700 },
+    taskBoxLocked: { backgroundColor: C.ink50, borderColor: C.ink200 },
+    taskLabel: { flex: 1, fontSize: 14, lineHeight: 19, color: C.ink800, fontFamily: 'Inter' },
+    taskLabelDone: { color: C.ink400, textDecorationLine: 'line-through' },
 
-  taskRow: { flexDirection: 'row', alignItems: 'center', gap: 11, paddingVertical: 9 },
-  taskBox: {
-    width: 22, height: 22, borderRadius: 7,
-    borderWidth: 1.5, borderColor: '#cbd5e1',
-    alignItems: 'center', justifyContent: 'center',
-  },
-  taskBoxDone: { backgroundColor: C.cyan700, borderColor: C.cyan700 },
-  taskBoxLocked: { backgroundColor: C.ink50, borderColor: C.ink200 },
-  taskLabel: { flex: 1, fontSize: 14, lineHeight: 19, color: C.ink800, fontFamily: 'Inter' },
-  taskLabelDone: { color: C.ink400, textDecorationLine: 'line-through' },
+    detailRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 10 },
+    detailIcon: { width: 30, height: 30, borderRadius: 9, backgroundColor: V6Colors.wellBg, alignItems: 'center', justifyContent: 'center' },
+    detailLabel: { fontSize: 11.5, color: C.ink400, fontFamily: 'Inter', marginBottom: 2 },
+    detailValue: { fontSize: 13.5, color: C.ink800, fontWeight: '600', fontFamily: 'Inter' },
 
-  detailRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 10 },
-  detailIcon: { width: 30, height: 30, borderRadius: 9, backgroundColor: '#f6f8fa', alignItems: 'center', justifyContent: 'center' },
-  detailLabel: { fontSize: 11.5, color: C.ink400, fontFamily: 'Inter', marginBottom: 2 },
-  detailValue: { fontSize: 13.5, color: C.ink800, fontWeight: '600', fontFamily: 'Inter' },
+    trustNote: {
+      flexDirection: 'row', gap: 9, alignItems: 'flex-start',
+      backgroundColor: V6Colors.infoSurface, borderWidth: 1, borderColor: V6Colors.infoSurface,
+      borderRadius: 13, padding: 12, marginTop: 14,
+    },
+    trustNoteText: { flex: 1, color: V6Colors.link, fontSize: 12, lineHeight: 16, fontFamily: 'Inter' },
 
-  trustNote: {
-    flexDirection: 'row', gap: 9, alignItems: 'flex-start',
-    backgroundColor: '#f5fbfc', borderWidth: 1, borderColor: '#d8f0f4',
-    borderRadius: 13, padding: 12, marginTop: 14,
-  },
-  trustNoteText: { flex: 1, color: C.cyan800, fontSize: 12, lineHeight: 16, fontFamily: 'Inter' },
-
-  actionBar: { paddingTop: 16, paddingBottom: 10, gap: 8 },
-  actionError: { color: '#ef4444', fontSize: 13.5, fontFamily: 'Inter', textAlign: 'center' },
-  primaryBtn: { backgroundColor: C.cyan700, borderRadius: V6Radii.btn, paddingVertical: 14, alignItems: 'center' },
-  primaryBtnContent: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  primaryBtnText: { color: C.white, fontSize: 16.5, fontWeight: '700', fontFamily: 'Inter' },
-  outlineBtn: { borderWidth: 1, borderColor: '#dce3e9', borderRadius: V6Radii.btn, paddingVertical: 14, alignItems: 'center' },
-  outlineBtnText: { color: C.ink700, fontSize: 16.5, fontWeight: '700', fontFamily: 'Inter' },
-  outlineDangerBtn: { borderWidth: 1, borderColor: '#ef4444', borderRadius: V6Radii.btn, paddingVertical: 14, alignItems: 'center' },
-  outlineDangerBtnText: { color: '#ef4444', fontSize: 16.5, fontWeight: '700', fontFamily: 'Inter' },
-  lockedBtn: { backgroundColor: C.ink100, borderRadius: V6Radii.btn, paddingVertical: 14, alignItems: 'center' },
-  lockedBtnText: { color: C.ink400, fontSize: 15, fontWeight: '700', fontFamily: 'Inter', textAlign: 'center' },
-});
+    actionBar: { paddingTop: 16, paddingBottom: 10, gap: 8 },
+    actionError: { color: V6Colors.dangerText, fontSize: 13.5, fontFamily: 'Inter', textAlign: 'center' },
+    primaryBtn: { backgroundColor: C.cyan700, borderRadius: V6Radii.btn, paddingVertical: 14, alignItems: 'center' },
+    primaryBtnContent: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+    primaryBtnText: { color: C.onPrimary, fontSize: 16.5, fontWeight: '700', fontFamily: 'Inter' },
+    outlineBtn: { borderWidth: 1, borderColor: V6Colors.fieldBorder, borderRadius: V6Radii.btn, paddingVertical: 14, alignItems: 'center' },
+    outlineBtnText: { color: C.ink700, fontSize: 16.5, fontWeight: '700', fontFamily: 'Inter' },
+    outlineDangerBtn: { borderWidth: 1, borderColor: '#ef4444', borderRadius: V6Radii.btn, paddingVertical: 14, alignItems: 'center' },
+    outlineDangerBtnText: { color: V6Colors.dangerText, fontSize: 16.5, fontWeight: '700', fontFamily: 'Inter' },
+    lockedBtn: { backgroundColor: C.ink100, borderRadius: V6Radii.btn, paddingVertical: 14, alignItems: 'center' },
+    lockedBtnText: { color: C.ink400, fontSize: 15, fontWeight: '700', fontFamily: 'Inter', textAlign: 'center' },
+  });
+  return { Colors, V6Colors, C, styles };
+}

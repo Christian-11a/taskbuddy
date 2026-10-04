@@ -8,6 +8,7 @@
  * dot, read rows plain. Same pattern as HONotificationsScreen.tsx.
  */
 
+import { useThemedStyles, type Palette as ThemePalette } from '../../../src/context/ThemeContext';
 import React, { useState } from 'react';
 import {
   ActivityIndicator,
@@ -26,11 +27,11 @@ import {
 } from 'lucide-react-native';
 import ConfirmationModal from '../../../src/components/ConfirmationModal';
 import { useNotificationDeletion } from '../../../src/hooks/useNotificationDeletion';
-import { Spacing, V6Colors } from '../../../src/constants/theme';
+import { Spacing } from '../../../src/constants/theme';
 import { useHeaderTop } from '../../../src/hooks/useHeaderTop';
 
-const C = V6Colors;
-import { useAsyncData } from '../../../src/hooks/useAsyncData';
+import { useNotifications } from '../../../src/context/NotificationsContext';
+import { showToast } from '../../../src/components/Toast';
 import { api } from '../../../src/lib/api';
 import { timeAgo } from '../../../src/lib/format';
 import { resolveNotificationTarget } from '../../../src/lib/notificationRouting';
@@ -56,43 +57,30 @@ interface SPNotificationsScreenProps {
   onBack: () => void;
   /** Opens a job's detail screen — where an invited provider can apply. */
   onOpenJob: (jobId: string) => void;
+  onOpenChat: (jobId: string) => void;
+  onOpenDispute: (jobId: string) => void;
+  onOpenServices: () => void;
 }
 
-export default function SPNotificationsScreen({ onBack, onOpenJob }: SPNotificationsScreenProps) {
+export default function SPNotificationsScreen({ onBack, onOpenJob, onOpenChat, onOpenDispute, onOpenServices }: SPNotificationsScreenProps) {
+  const { C, styles, V6Colors } = useThemedStyles(createThemedStyles);
   const headerTop = useHeaderTop();
-  const { data, loading, error, reload } = useAsyncData(
-    () => api.notifications() as Promise<NotificationRow[]>,
-    [],
-  );
-  const deletion = useNotificationDeletion(reload);
+  const { notifications: data, loading, error, reload, unreadCount } = useNotifications();  const deletion = useNotificationDeletion();
   const [confirmClear, setConfirmClear] = useState(false);
   const [pendingDelete, setPendingDelete] = useState<NotificationRow | null>(null);
-  const notifications = deletion.visible(data ?? []);
-  const unreadCount = notifications.filter((n) => !n.read_at).length;
+  const notifications = data;
 
   const markAllRead = async () => {
-    await api.markAllNotificationsRead();
-    reload();
+    try { await api.markAllNotificationsRead(); }
+    catch (err) { showToast(err instanceof Error ? err.message : 'Could not mark notifications as read.', 'error'); }
   };
-
-  const markRead = async (id: string) => {
-    await api.markNotificationRead(id);
-    reload();
-  };
-
-  /**
-   * A notification about a job opens that job. Marking it read is fire-and-
-   * forget there: this screen unmounts on navigation and reloads on return,
-   * and a failed mark-read should not keep the provider from the job.
-   */
   const openNotification = (notif: NotificationRow) => {
     const target = resolveNotificationTarget('provider', notif.data ?? {});
-    if (target.kind === 'job') {
-      if (!notif.read_at) api.markNotificationRead(notif.id).catch(() => {});
-      onOpenJob(target.jobId);
-    } else if (!notif.read_at) {
-      markRead(notif.id);
-    }
+    if (!notif.read_at) void api.markNotificationRead(notif.id).catch((err: Error) => showToast(err.message, 'error'));
+    if (target.kind === 'chat') onOpenChat(target.jobId);
+    else if (target.kind === 'dispute') onOpenDispute(target.jobId);
+    else if (target.kind === 'services') onOpenServices();
+    else if (target.kind === 'job') onOpenJob(target.jobId);
   };
 
   return (
@@ -148,7 +136,7 @@ export default function SPNotificationsScreen({ onBack, onOpenJob }: SPNotificat
         contentContainerStyle={styles.bodyContent}
         showsVerticalScrollIndicator={false}
       >
-        {loading && <ActivityIndicator style={{ marginTop: 20 }} color={C.cyan700} />}
+        {loading && <ActivityIndicator style={{ marginTop: 20 }} color={V6Colors.link} />}
         {!!error && !loading && <Text style={styles.stateText}>{error}</Text>}
         {!loading && !error && notifications.length === 0 && (
           <Text style={styles.stateText}>You have no notifications yet.</Text>
@@ -171,7 +159,7 @@ export default function SPNotificationsScreen({ onBack, onOpenJob }: SPNotificat
                   onPress={() => openNotification(notif)}
                 >
                   <View style={[styles.notifIcon, isUnread && styles.notifIconUnread]}>
-                    <Icon size={19} color={C.cyan700} />
+                    <Icon size={19} color={V6Colors.link} />
                   </View>
                   <View style={{ flex: 1 }}>
                     <Text style={styles.notifTitle}>{notif.title}</Text>
@@ -199,47 +187,52 @@ export default function SPNotificationsScreen({ onBack, onOpenJob }: SPNotificat
   );
 }
 
-const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: C.canvas },
+function createThemedStyles(theme: ThemePalette) {
+  const { Colors, V6Colors } = theme;
+  const C = V6Colors;
+  const styles = StyleSheet.create({
+    screen: { flex: 1, backgroundColor: C.canvas },
 
-  header: {
-    flexDirection: 'row', alignItems: 'center', gap: 12,
-    backgroundColor: C.white,
-    paddingHorizontal: Spacing.screenH,
-    paddingBottom: 12,
-    borderBottomWidth: 1, borderBottomColor: '#edf1f4',
-  },
-  backBtn: {
-    width: 38, height: 38, borderRadius: 12,
-    backgroundColor: C.white, borderWidth: 1, borderColor: '#e8edf2',
-    alignItems: 'center', justifyContent: 'center', flexShrink: 0,
-  },
-  headerTitle: { flex: 1, color: C.ink900, fontSize: 19.5, fontWeight: '800', fontFamily: 'Inter', letterSpacing: -0.27 },
-  markAllText: { color: C.cyan700, fontSize: 14, fontWeight: '700', fontFamily: 'Inter' },
+    header: {
+      flexDirection: 'row', alignItems: 'center', gap: 12,
+      backgroundColor: C.surface,
+      paddingHorizontal: Spacing.screenH,
+      paddingBottom: 12,
+      borderBottomWidth: 1, borderBottomColor: V6Colors.line,
+    },
+    backBtn: {
+      width: 38, height: 38, borderRadius: 12,
+      backgroundColor: C.surface, borderWidth: 1, borderColor: V6Colors.line,
+      alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+    },
+    headerTitle: { flex: 1, color: C.ink900, fontSize: 19.5, fontWeight: '800', fontFamily: 'Inter', letterSpacing: -0.27 },
+    markAllText: { color: V6Colors.link, fontSize: 14, fontWeight: '700', fontFamily: 'Inter' },
 
-  body: { flex: 1 },
-  bodyContent: { paddingHorizontal: Spacing.screenH, paddingTop: 14, paddingBottom: 20 },
+    body: { flex: 1 },
+    bodyContent: { paddingHorizontal: Spacing.screenH, paddingTop: 14, paddingBottom: 20 },
 
-  stateText: { color: C.ink500, fontSize: 16.5, fontFamily: 'Inter', textAlign: 'center', marginTop: 30 },
+    stateText: { color: C.ink500, fontSize: 16.5, fontFamily: 'Inter', textAlign: 'center', marginTop: 30 },
 
-  notificationList: {
-    backgroundColor: C.white, borderWidth: 1, borderColor: C.line,
-    borderRadius: 16, overflow: 'hidden',
-  },
-  notifRow: { flexDirection: 'row', gap: 11, padding: 14, position: 'relative' },
-  notifRowBorder: { borderBottomWidth: 1, borderBottomColor: '#f0f3f6' },
-  notifRowUnread: { backgroundColor: '#f2fbfd' },
-  notifIcon: {
-    width: 34, height: 34, borderRadius: 12,
-    backgroundColor: '#f7f9fb', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
-  },
-  notifIconUnread: { backgroundColor: C.white },
-  notifTitle: { color: C.ink900, fontSize: 13.5, fontWeight: '700', fontFamily: 'Inter' },
-  notifBody: { color: C.ink500, fontSize: 12.5, fontFamily: 'Inter', lineHeight: 16.5, marginTop: 3 },
-  notifTime: { color: C.ink300, fontSize: 11.5, fontFamily: 'Inter', marginTop: 4 },
-  deleteBtn: { alignSelf: 'center', padding: 4 },
-  unreadDot: {
-    position: 'absolute', left: 6, top: 17,
-    width: 7, height: 7, borderRadius: 4, backgroundColor: C.cyan500,
-  },
-});
+    notificationList: {
+      backgroundColor: C.surface, borderWidth: 1, borderColor: C.line,
+      borderRadius: 16, overflow: 'hidden',
+    },
+    notifRow: { flexDirection: 'row', gap: 11, padding: 14, position: 'relative' },
+    notifRowBorder: { borderBottomWidth: 1, borderBottomColor: V6Colors.wellBg },
+    notifRowUnread: { backgroundColor: V6Colors.infoSurface },
+    notifIcon: {
+      width: 34, height: 34, borderRadius: 12,
+      backgroundColor: V6Colors.canvas, alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+    },
+    notifIconUnread: { backgroundColor: C.surface },
+    notifTitle: { color: C.ink900, fontSize: 13.5, fontWeight: '700', fontFamily: 'Inter' },
+    notifBody: { color: C.ink500, fontSize: 12.5, fontFamily: 'Inter', lineHeight: 16.5, marginTop: 3 },
+    notifTime: { color: C.ink300, fontSize: 11.5, fontFamily: 'Inter', marginTop: 4 },
+    deleteBtn: { alignSelf: 'center', padding: 4 },
+    unreadDot: {
+      position: 'absolute', left: 6, top: 17,
+      width: 7, height: 7, borderRadius: 4, backgroundColor: C.cyan500,
+    },
+  });
+  return { Colors, V6Colors, C, styles };
+}

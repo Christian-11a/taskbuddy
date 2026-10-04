@@ -7,7 +7,7 @@
  *
  * What it changes, stated on screen because it is not obvious: once the
  * account is active, a job the homeowner paid **by card** is sent to the
- * provider's Stripe account automatically when it completes, and Stripe pays
+ * provider's Stripe account automatically after the three-day warranty ends without an open complaint, and Stripe pays
  * it out to their bank. A job paid from the homeowner's wallet still lands in
  * the TaskBuddy wallet and is withdrawn the usual way. The split is Stripe's,
  * not ours: pesos can only be sent on from the card charge that brought them in.
@@ -21,6 +21,7 @@
  *                      and opened once, automatically.
  */
 
+import { useThemedStyles, type Palette as ThemePalette } from '../../../src/context/ThemeContext';
 import React, { useState } from 'react';
 import {
   ActivityIndicator,
@@ -44,11 +45,10 @@ import {
 } from 'lucide-react-native';
 import { api, type ConnectStatus } from '../../../src/lib/api';
 import { openRedirectSession } from '../../../src/lib/appRedirectSession';
+import { useRefreshOnForeground } from '../../../src/hooks/useRefreshOnForeground';
 import { useAsyncData } from '../../../src/hooks/useAsyncData';
-import { Spacing, V6Colors } from '../../../src/constants/theme';
+import { Spacing } from '../../../src/constants/theme';
 import { useHeaderTop } from '../../../src/hooks/useHeaderTop';
-
-const C = V6Colors;
 
 interface SPPayoutsScreenProps {
   onBack: () => void;
@@ -60,7 +60,7 @@ const COPY: Record<
 > = {
   not_started: {
     title: 'Get paid straight to your bank',
-    body: 'Connect a Stripe account and jobs paid by card are sent to it automatically when they are completed.',
+    body: 'Connect a Stripe account to receive card-funded earnings after the three-day warranty ends, unless a complaint is open.',
     action: 'Set up payouts',
     tone: 'neutral',
   },
@@ -78,23 +78,22 @@ const COPY: Record<
   },
   active: {
     title: 'Payouts are on',
-    body: 'Card-paid jobs are sent to your Stripe account as soon as the client confirms completion.',
+    body: 'Card-funded earnings become eligible for transfer after the three-day warranty ends without an open complaint. Stripe then processes the bank payout.',
     action: null,
     tone: 'good',
   },
 };
 
 export default function SPPayoutsScreen({ onBack }: SPPayoutsScreenProps) {
+  const { C, TONE, styles, V6Colors } = useThemedStyles(createThemedStyles);
   const headerTop = useHeaderTop();
-  const { data: status, loading, error, reload } = useAsyncData<ConnectStatus>(
-    () => api.connectStatus(),
+  const { data: current, loading, error, reload } = useAsyncData<ConnectStatus>(
+    () => api.connectSync(),
     [],
   );
   const [working, setWorking] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
-  const [synced, setSynced] = useState<ConnectStatus | null>(null);
-
-  const current = synced ?? status;
+  useRefreshOnForeground(reload, !working);
 
   /**
    * Opens Stripe's onboarding and handles the way back. `retryOnRefresh`
@@ -120,7 +119,7 @@ export default function SPPayoutsScreen({ onBack }: SPPayoutsScreenProps) {
     }
     // Returned, or dismissed the browser: either way Stripe may have what it
     // needs now, and only Stripe can say.
-    setSynced(await api.connectSync());
+    reload();
   };
 
   const startOrContinue = async () => {
@@ -141,6 +140,7 @@ export default function SPPayoutsScreen({ onBack }: SPPayoutsScreenProps) {
     try {
       const { url } = await api.connectDashboardLink();
       await WebBrowser.openBrowserAsync(url);
+      reload();
     } catch (e) {
       setActionError(e instanceof Error ? e.message : 'Could not open the Stripe dashboard.');
     } finally {
@@ -148,16 +148,9 @@ export default function SPPayoutsScreen({ onBack }: SPPayoutsScreenProps) {
     }
   };
 
-  const refresh = async () => {
-    setWorking(true);
+  const refresh = () => {
     setActionError(null);
-    try {
-      setSynced(await api.connectSync());
-    } catch (e) {
-      setActionError(e instanceof Error ? e.message : 'Could not refresh.');
-    } finally {
-      setWorking(false);
-    }
+    reload();
   };
 
   const copy = current ? COPY[current.state] : null;
@@ -171,7 +164,7 @@ export default function SPPayoutsScreen({ onBack }: SPPayoutsScreenProps) {
         <Text style={styles.headerTitle}>Payouts</Text>
       </View>
 
-      {loading && !current && <ActivityIndicator style={{ marginTop: 24 }} color={C.cyan700} />}
+      {loading && !current && <ActivityIndicator style={{ marginTop: 24 }} color={V6Colors.link} />}
       {!!error && !current && (
         <View style={styles.centered}>
           <Text style={styles.stateText}>{error}</Text>
@@ -197,18 +190,20 @@ export default function SPPayoutsScreen({ onBack }: SPPayoutsScreenProps) {
               </Text>
             )}
 
+            {loading && <Text style={styles.statusBody}>Refreshing payout status…</Text>}
+            {!!error && <Text style={styles.actionError}>{error}</Text>}
             {!!actionError && <Text style={styles.actionError}>{actionError}</Text>}
 
             {copy.action && (
               <TouchableOpacity
                 style={[styles.primaryBtn, working && styles.disabled]}
                 onPress={startOrContinue}
-                disabled={working}
+                disabled={working || loading}
                 activeOpacity={0.85}
                 testID="payouts-primary"
               >
                 {working ? (
-                  <ActivityIndicator color={C.white} />
+                  <ActivityIndicator color={C.onPrimary} />
                 ) : (
                   <Text style={styles.primaryBtnText}>{copy.action}</Text>
                 )}
@@ -219,7 +214,7 @@ export default function SPPayoutsScreen({ onBack }: SPPayoutsScreenProps) {
               <TouchableOpacity
                 style={[styles.outlineBtn, working && styles.disabled]}
                 onPress={openDashboard}
-                disabled={working}
+                disabled={working || loading}
                 activeOpacity={0.85}
                 testID="payouts-dashboard"
               >
@@ -229,7 +224,7 @@ export default function SPPayoutsScreen({ onBack }: SPPayoutsScreenProps) {
             )}
 
             {current.state !== 'not_started' && (
-              <TouchableOpacity onPress={refresh} disabled={working} activeOpacity={0.8}>
+              <TouchableOpacity onPress={refresh} disabled={working || loading} activeOpacity={0.8}>
                 <Text style={styles.link}>Refresh status</Text>
               </TouchableOpacity>
             )}
@@ -237,18 +232,18 @@ export default function SPPayoutsScreen({ onBack }: SPPayoutsScreenProps) {
 
           <Text style={styles.sectionTitle}>How you get paid</Text>
           <View style={styles.explainRow}>
-            <CreditCard size={18} color={C.cyan700} />
+            <CreditCard size={18} color={V6Colors.link} />
             <View style={{ flex: 1 }}>
               <Text style={styles.explainTitle}>Client paid by card</Text>
               <Text style={styles.explainBody}>
                 {current.state === 'active'
-                  ? 'Sent to your Stripe account when the job is completed, then paid to your bank by Stripe.'
-                  : 'Lands in your TaskBuddy wallet until payouts are set up.'}
+                  ? 'Eligible for transfer after the three-day warranty ends without an open complaint; Stripe then processes your bank payout.'
+                  : 'After the three-day warranty ends without an open complaint, earnings stay in your TaskBuddy wallet if Stripe payouts are not ready.'}
               </Text>
             </View>
           </View>
           <View style={styles.explainRow}>
-            <Wallet size={18} color={C.cyan700} />
+            <Wallet size={18} color={V6Colors.link} />
             <View style={{ flex: 1 }}>
               <Text style={styles.explainTitle}>Client paid from their wallet</Text>
               <Text style={styles.explainBody}>
@@ -266,72 +261,77 @@ export default function SPPayoutsScreen({ onBack }: SPPayoutsScreenProps) {
 }
 
 function StatusIcon({ state }: { state: ConnectStatus['state'] }) {
+  const { C, V6Colors } = useThemedStyles(createThemedStyles);
   if (state === 'active') return <BadgeCheck size={22} color={C.green600} />;
   if (state === 'restricted') return <CircleAlert size={22} color={C.amber700} />;
-  if (state === 'onboarding') return <Clock size={22} color={C.cyan700} />;
-  return <Landmark size={22} color={C.cyan700} />;
+  if (state === 'onboarding') return <Clock size={22} color={V6Colors.link} />;
+  return <Landmark size={22} color={V6Colors.link} />;
 }
 
-const TONE = {
-  neutral: StyleSheet.create({ card: {}, icon: { backgroundColor: C.cyan50 } }),
-  pending: StyleSheet.create({ card: {}, icon: { backgroundColor: C.cyan50 } }),
-  warning: StyleSheet.create({ card: { borderColor: '#fde68a' }, icon: { backgroundColor: '#fef3c7' } }),
-  good: StyleSheet.create({ card: { borderColor: '#bbf7d0' }, icon: { backgroundColor: '#dcfce7' } }),
-};
+function createThemedStyles(theme: ThemePalette) {
+  const { Colors, V6Colors } = theme;
+  const C = V6Colors;
+  const TONE = {
+    neutral: StyleSheet.create({ card: {}, icon: { backgroundColor: C.cyan50 } }),
+    pending: StyleSheet.create({ card: {}, icon: { backgroundColor: C.cyan50 } }),
+    warning: StyleSheet.create({ card: { borderColor: V6Colors.warningBorder }, icon: { backgroundColor: V6Colors.warningSurface } }),
+    good: StyleSheet.create({ card: { borderColor: V6Colors.successBorder }, icon: { backgroundColor: V6Colors.successSurface } }),
+  };
+  const styles = StyleSheet.create({
+    screen: { flex: 1, backgroundColor: C.canvas },
+    header: {
+      flexDirection: 'row', alignItems: 'center', gap: 12,
+      backgroundColor: C.surface,
+      paddingHorizontal: Spacing.screenH,
+      paddingBottom: 12,
+      borderBottomWidth: 1, borderBottomColor: C.hairline,
+    },
+    backBtn: {
+      width: 38, height: 38, borderRadius: 12,
+      backgroundColor: C.surface, borderWidth: 1, borderColor: C.line,
+      alignItems: 'center', justifyContent: 'center',
+    },
+    headerTitle: { color: C.ink900, fontSize: 19.5, fontWeight: '800', fontFamily: 'Inter' },
 
-const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: C.canvas },
-  header: {
-    flexDirection: 'row', alignItems: 'center', gap: 12,
-    backgroundColor: C.white,
-    paddingHorizontal: Spacing.screenH,
-    paddingBottom: 12,
-    borderBottomWidth: 1, borderBottomColor: C.hairline,
-  },
-  backBtn: {
-    width: 38, height: 38, borderRadius: 12,
-    backgroundColor: C.white, borderWidth: 1, borderColor: C.line,
-    alignItems: 'center', justifyContent: 'center',
-  },
-  headerTitle: { color: C.ink900, fontSize: 19.5, fontWeight: '800', fontFamily: 'Inter' },
+    body: { paddingHorizontal: Spacing.screenH, paddingTop: 16, paddingBottom: 32 },
+    centered: { alignItems: 'center', marginTop: 30, gap: 10 },
+    stateText: { color: C.ink500, fontSize: 15, fontFamily: 'Inter', textAlign: 'center' },
 
-  body: { paddingHorizontal: Spacing.screenH, paddingTop: 16, paddingBottom: 32 },
-  centered: { alignItems: 'center', marginTop: 30, gap: 10 },
-  stateText: { color: C.ink500, fontSize: 15, fontFamily: 'Inter', textAlign: 'center' },
+    statusCard: {
+      backgroundColor: C.surface, borderWidth: 1, borderColor: C.line,
+      borderRadius: 16, padding: 18, alignItems: 'center', gap: 8,
+    },
+    statusIcon: { width: 48, height: 48, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
+    statusTitle: { color: C.ink900, fontSize: 17, fontWeight: '800', fontFamily: 'Inter', textAlign: 'center' },
+    statusBody: { color: C.ink500, fontSize: 13.5, lineHeight: 19, fontFamily: 'Inter', textAlign: 'center' },
+    requirements: { color: C.amber700, fontSize: 12.5, fontWeight: '600', fontFamily: 'Inter' },
+    actionError: { color: V6Colors.dangerText, fontSize: 12.5, fontFamily: 'Inter', textAlign: 'center' },
 
-  statusCard: {
-    backgroundColor: C.white, borderWidth: 1, borderColor: C.line,
-    borderRadius: 16, padding: 18, alignItems: 'center', gap: 8,
-  },
-  statusIcon: { width: 48, height: 48, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
-  statusTitle: { color: C.ink900, fontSize: 17, fontWeight: '800', fontFamily: 'Inter', textAlign: 'center' },
-  statusBody: { color: C.ink500, fontSize: 13.5, lineHeight: 19, fontFamily: 'Inter', textAlign: 'center' },
-  requirements: { color: C.amber700, fontSize: 12.5, fontWeight: '600', fontFamily: 'Inter' },
-  actionError: { color: C.red700, fontSize: 12.5, fontFamily: 'Inter', textAlign: 'center' },
+    primaryBtn: {
+      alignSelf: 'stretch', marginTop: 6,
+      backgroundColor: C.cyan700, borderRadius: 12, paddingVertical: 12, alignItems: 'center',
+    },
+    primaryBtnText: { color: C.onPrimary, fontSize: 14.5, fontWeight: '700', fontFamily: 'Inter' },
+    outlineBtn: {
+      alignSelf: 'stretch', flexDirection: 'row', gap: 6, justifyContent: 'center',
+      borderWidth: 1, borderColor: C.fieldBorder, borderRadius: 12, paddingVertical: 11, alignItems: 'center',
+    },
+    outlineBtnText: { color: C.ink700, fontSize: 14, fontWeight: '700', fontFamily: 'Inter' },
+    link: { color: V6Colors.link, fontSize: 13, fontWeight: '700', fontFamily: 'Inter', marginTop: 4 },
+    disabled: { opacity: 0.6 },
 
-  primaryBtn: {
-    alignSelf: 'stretch', marginTop: 6,
-    backgroundColor: C.cyan700, borderRadius: 12, paddingVertical: 12, alignItems: 'center',
-  },
-  primaryBtnText: { color: C.white, fontSize: 14.5, fontWeight: '700', fontFamily: 'Inter' },
-  outlineBtn: {
-    alignSelf: 'stretch', flexDirection: 'row', gap: 6, justifyContent: 'center',
-    borderWidth: 1, borderColor: C.fieldBorder, borderRadius: 12, paddingVertical: 11, alignItems: 'center',
-  },
-  outlineBtnText: { color: C.ink700, fontSize: 14, fontWeight: '700', fontFamily: 'Inter' },
-  link: { color: C.cyan700, fontSize: 13, fontWeight: '700', fontFamily: 'Inter', marginTop: 4 },
-  disabled: { opacity: 0.6 },
-
-  sectionTitle: {
-    color: C.ink800, fontSize: 14, fontWeight: '800', fontFamily: 'Inter',
-    marginTop: 22, marginBottom: 10,
-  },
-  explainRow: {
-    flexDirection: 'row', gap: 12, alignItems: 'flex-start',
-    backgroundColor: C.white, borderWidth: 1, borderColor: C.line,
-    borderRadius: 14, padding: 13, marginBottom: 9,
-  },
-  explainTitle: { color: C.ink900, fontSize: 13.5, fontWeight: '700', fontFamily: 'Inter' },
-  explainBody: { color: C.ink500, fontSize: 12.5, lineHeight: 17, fontFamily: 'Inter', marginTop: 2 },
-  footnote: { color: C.ink400, fontSize: 11.5, fontFamily: 'Inter', textAlign: 'center', marginTop: 10 },
-});
+    sectionTitle: {
+      color: C.ink800, fontSize: 14, fontWeight: '800', fontFamily: 'Inter',
+      marginTop: 22, marginBottom: 10,
+    },
+    explainRow: {
+      flexDirection: 'row', gap: 12, alignItems: 'flex-start',
+      backgroundColor: C.surface, borderWidth: 1, borderColor: C.line,
+      borderRadius: 14, padding: 13, marginBottom: 9,
+    },
+    explainTitle: { color: C.ink900, fontSize: 13.5, fontWeight: '700', fontFamily: 'Inter' },
+    explainBody: { color: C.ink500, fontSize: 12.5, lineHeight: 17, fontFamily: 'Inter', marginTop: 2 },
+    footnote: { color: C.ink400, fontSize: 11.5, fontFamily: 'Inter', textAlign: 'center', marginTop: 10 },
+  });
+  return { Colors, V6Colors, C, TONE, styles };
+}

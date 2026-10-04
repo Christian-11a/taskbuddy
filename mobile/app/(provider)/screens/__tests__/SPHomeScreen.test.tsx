@@ -1,10 +1,14 @@
 import React from 'react';
 import { StyleSheet } from 'react-native';
-import { fireEvent, render, screen } from '@testing-library/react-native';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react-native';
 import SPHomeScreen from '../SPHomeScreen';
 import { api } from '../../../../src/lib/api';
 import { useAuth } from '../../../../src/context/AuthContext';
 import { clearAsyncDataCache } from '../../../../src/hooks/useAsyncData';
+
+jest.mock('../../../../src/context/NotificationsContext', () => ({
+  useNotifications: () => ({ notifications: [], unreadCount: 0, loading: false, error: null, reload: jest.fn() }),
+}));
 
 jest.mock('../../../../src/lib/api', () => ({
   ApiError: class ApiError extends Error {},
@@ -73,4 +77,28 @@ describe('SPHomeScreen — hero header keeps the avatar reachable with a long na
 
     expect(await screen.findByText('Hello, there')).toBeTruthy();
   });
+
+  it('opens confirmed bookings without asking the provider to accept again', async () => {
+    (api.assignedJobs as jest.Mock).mockResolvedValue([{ id: 'hired-job', title: 'Hired sink repair',
+      status: 'confirmed', address: 'QC', urgency: 'normal', budget: 500, scheduled_at: null }]);
+    const onNavigate = jest.fn();
+    render(<SPHomeScreen onNavigate={onNavigate} />);
+    fireEvent.press(await screen.findByText('Hired sink repair'));
+    expect(onNavigate).toHaveBeenCalledWith('Job Detail', 'hired-job');
+    expect(screen.getByText('Confirmed bookings')).toBeTruthy();
+    expect(screen.queryByText('Accept')).toBeNull();
+    expect(screen.queryByText('Decline')).toBeNull();
+  });
+  it('refetches eligible jobs when an additional service is approved', async () => {
+    const profile = { id: 'provider', full_name: LONG_NAME, latitude: 10.3, longitude: 123.9 };
+    const providerProfile = { category_id: 1, is_available: true, service_radius_km: 25, approved_secondary_services: [] };
+    const refreshProfile = jest.fn();
+    (useAuth as jest.Mock).mockReturnValue({ profile, providerProfile, isVerified: true, refreshProfile });
+    const view = render(<SPHomeScreen onNavigate={jest.fn()} />);
+    await waitFor(() => expect(api.browseJobs).toHaveBeenCalledTimes(1));
+    (useAuth as jest.Mock).mockReturnValue({ profile, providerProfile: { ...providerProfile, approved_secondary_services: [{ category_id: 2, service_categories: { id: 2, name: 'Pedicure' } }] }, isVerified: true, refreshProfile });
+    view.rerender(<SPHomeScreen onNavigate={jest.fn()} />);
+    await waitFor(() => expect(api.browseJobs).toHaveBeenCalledTimes(2));
+  });
+
 });

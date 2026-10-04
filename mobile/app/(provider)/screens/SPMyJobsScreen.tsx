@@ -16,6 +16,7 @@
  *     (indistinguishable in the data today), plus jobs that expired.
  */
 
+import { useThemedStyles, type Palette as ThemePalette } from '../../../src/context/ThemeContext';
 import React from 'react';
 import { useRetainedScroll, useRetainedState } from '../../../src/hooks/useRetainedState';
 import {
@@ -27,11 +28,10 @@ import {
   View,
 } from 'react-native';
 import { Briefcase, CalendarDays, FileText } from 'lucide-react-native';
-import { Spacing, V6Colors } from '../../../src/constants/theme';
+import { Spacing } from '../../../src/constants/theme';
 import { useHeaderTop } from '../../../src/hooks/useHeaderTop';
 import JobCard from '../../../src/components/JobCard';
 
-const C = V6Colors;
 import { SPScreen } from '../../../src/types/navigation';
 import { useAsyncData } from '../../../src/hooks/useAsyncData';
 import { api } from '../../../src/lib/api';
@@ -54,18 +54,12 @@ interface ApplicationRow {
   };
 }
 
-const APP_STATUS: Record<ApplicationRow['status'], { label: string; color: string; bg: string }> = {
-  pending: { label: 'Proposal sent', color: '#9a6700', bg: '#FFF7ED' },
-  accepted: { label: 'Hired', color: '#15803d', bg: '#F0FDF4' },
-  rejected: { label: 'Not selected', color: '#64748b', bg: '#F1F5F9' },
-  withdrawn: { label: 'Withdrawn', color: '#64748b', bg: '#F1F5F9' },
-};
-
 interface SPMyJobsScreenProps {
   onNavigate: (screen: SPScreen, jobId?: string) => void;
 }
 
 export default function SPMyJobsScreen({ onNavigate }: SPMyJobsScreenProps) {
+  const { C, APP_STATUS, styles, V6Colors } = useThemedStyles(createThemedStyles);
   const headerTop = useHeaderTop();
   // Retained so going back from a job lands on the filter it was opened from.
   const [tab, setTab] = useRetainedState<Tab>('sp.myWork.tab', 'Applications');
@@ -82,8 +76,8 @@ export default function SPMyJobsScreen({ onNavigate }: SPMyJobsScreenProps) {
     'sp-assigned',
   );
 
-  // 'assigned' is a booking request awaiting this provider's answer and
-  // 'confirmed' one they accepted — both are live work, so both are Active.
+  // Confirmed bookings and started work belong in Active. Legacy assigned
+  // records remain visible until migration 0039 promotes them to confirmed.
   const activeJobs = (assigned ?? []).filter((j) =>
     ['assigned', 'confirmed', 'in_progress'].includes(j.status),
   );
@@ -119,7 +113,7 @@ export default function SPMyJobsScreen({ onNavigate }: SPMyJobsScreenProps) {
       </View>
 
       <ScrollView key={tab} {...scroll} style={styles.body} contentContainerStyle={styles.bodyContent} showsVerticalScrollIndicator={false}>
-        {loading && <ActivityIndicator style={{ marginTop: 30 }} color={C.cyan700} />}
+        {loading && <ActivityIndicator style={{ marginTop: 30 }} color={V6Colors.link} />}
 
         {tab === 'Applications' && !loading && (
           openApplications.length === 0 ? (
@@ -166,7 +160,7 @@ export default function SPMyJobsScreen({ onNavigate }: SPMyJobsScreenProps) {
                 title={job.title}
                 budget={job.budget}
                 address={job.address}
-                status={providerJobStatusMeta(job.status)}
+                status={providerJobStatusMeta(job.status, V6Colors)}
                 urgency={job.urgency}
                 footer={[{
                   icon: <CalendarDays size={13} color={C.ink400} />,
@@ -184,28 +178,39 @@ export default function SPMyJobsScreen({ onNavigate }: SPMyJobsScreenProps) {
   );
 }
 
-const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: C.canvas },
+function createThemedStyles(theme: ThemePalette) {
+  const { Colors, V6Colors } = theme;
+  const C = V6Colors;
+  const APP_STATUS: Record<ApplicationRow['status'], { label: string; color: string; bg: string }> = {
+    pending: { label: 'Proposal sent', color: V6Colors.warningText, bg: V6Colors.warningSurface },
+    accepted: { label: 'Hired', color: V6Colors.successText, bg: V6Colors.successSurface },
+    rejected: { label: 'Not selected', color: V6Colors.ink500, bg: V6Colors.canvas },
+    withdrawn: { label: 'Withdrawn', color: V6Colors.ink500, bg: V6Colors.canvas },
+  };
+  const styles = StyleSheet.create({
+    screen: { flex: 1, backgroundColor: C.canvas },
 
-  header: {
-    backgroundColor: C.white,
-    paddingHorizontal: Spacing.screenH,
-    paddingBottom: 12,
-    borderBottomWidth: 1, borderBottomColor: '#edf1f4',
-  },
-  headerTitle: { color: C.ink900, fontSize: 21.5, fontWeight: '800', fontFamily: 'Inter', letterSpacing: -0.3 },
+    header: {
+      backgroundColor: C.surface,
+      paddingHorizontal: Spacing.screenH,
+      paddingBottom: 12,
+      borderBottomWidth: 1, borderBottomColor: V6Colors.line,
+    },
+    headerTitle: { color: C.ink900, fontSize: 21.5, fontWeight: '800', fontFamily: 'Inter', letterSpacing: -0.3 },
 
-  tabsWrap: { flexDirection: 'row', gap: 24, backgroundColor: C.white, borderBottomWidth: 1, borderBottomColor: C.line, paddingHorizontal: Spacing.screenH },
-  jobTab: { paddingVertical: 13, alignItems: 'center' },
-  jobTabText: { color: C.ink400, fontSize: 13.5, fontWeight: '600', fontFamily: 'Inter' },
-  jobTabTextActive: { color: C.ink900, fontWeight: '800' },
-  jobTabUnderline: { position: 'absolute', left: 0, right: 0, bottom: 0, height: 2.5, backgroundColor: C.cyan700, borderRadius: 999 },
+    tabsWrap: { flexDirection: 'row', gap: 24, backgroundColor: C.surface, borderBottomWidth: 1, borderBottomColor: C.line, paddingHorizontal: Spacing.screenH },
+    jobTab: { paddingVertical: 13, alignItems: 'center' },
+    jobTabText: { color: C.ink400, fontSize: 13.5, fontWeight: '600', fontFamily: 'Inter' },
+    jobTabTextActive: { color: C.ink900, fontWeight: '800' },
+    jobTabUnderline: { position: 'absolute', left: 0, right: 0, bottom: 0, height: 2.5, backgroundColor: C.cyan700, borderRadius: 999 },
 
-  body: { flex: 1 },
-  bodyContent: { paddingHorizontal: Spacing.screenH, paddingTop: 16, paddingBottom: 20 },
+    body: { flex: 1 },
+    bodyContent: { paddingHorizontal: Spacing.screenH, paddingTop: 16, paddingBottom: 20 },
 
-  emptyState: { alignItems: 'center', paddingVertical: 48, paddingHorizontal: 24 },
-  emptyTitle: { color: C.ink800, fontSize: 16, fontWeight: '700', fontFamily: 'Inter', marginTop: 10, marginBottom: 4 },
-  emptyText: { color: C.ink400, fontSize: 14, fontFamily: 'Inter', textAlign: 'center', lineHeight: 17 },
+    emptyState: { alignItems: 'center', paddingVertical: 48, paddingHorizontal: 24 },
+    emptyTitle: { color: C.ink800, fontSize: 16, fontWeight: '700', fontFamily: 'Inter', marginTop: 10, marginBottom: 4 },
+    emptyText: { color: C.ink400, fontSize: 14, fontFamily: 'Inter', textAlign: 'center', lineHeight: 17 },
 
-});
+  });
+  return { Colors, V6Colors, C, APP_STATUS, styles };
+}

@@ -28,6 +28,7 @@
  * closes the screen polls GET /verifications/me for a short while.
  */
 
+import { useThemedStyles, type Palette as ThemePalette } from '../../../src/context/ThemeContext';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
@@ -56,7 +57,7 @@ import {
 import { api, ApiError } from '../../../src/lib/api';
 import { useAsyncData } from '../../../src/hooks/useAsyncData';
 import { shortDate } from '../../../src/lib/format';
-import { Spacing, V6Colors, V6Radii, V6Shadows } from '../../../src/constants/theme';
+import { Spacing, V6Radii, V6Shadows } from '../../../src/constants/theme';
 import { useHeaderTop } from '../../../src/hooks/useHeaderTop';
 import { requestAppPermission } from '../../../src/lib/permissions';
 
@@ -70,18 +71,6 @@ const DOCUMENT_TYPES = [
 ] as const;
 type DocumentType = (typeof DOCUMENT_TYPES)[number]['value'];
 
-const Colors = {
-  ...V6Colors,
-  background: V6Colors.canvas,
-  backgroundAlt: V6Colors.ink50,
-  brandDark: V6Colors.ink900,
-  brandTeal: V6Colors.cyan700,
-  slate: V6Colors.ink500,
-  muted: V6Colors.ink400,
-  error: '#ef4444',
-  success: '#22c55e',
-  warning: '#f59e0b',
-} as const;
 const Radii = { card: V6Radii.card };
 const Shadows = { card: V6Shadows.sm };
 
@@ -104,6 +93,7 @@ interface SPVerificationScreenProps {
 type Slot = 'id' | 'selfie';
 
 export default function SPVerificationScreen({ onBack, onVerified }: SPVerificationScreenProps) {
+  const { Colors, styles, V6Colors } = useThemedStyles(createThemedStyles);
   const headerTop = useHeaderTop();
   const [step, setStep] = useState(1);
   const [documentType, setDocumentType] = useState<DocumentType | null>(null);
@@ -314,7 +304,7 @@ export default function SPVerificationScreen({ onBack, onVerified }: SPVerificat
         activeOpacity={0.85}
       >
         {continuing ? (
-          <ActivityIndicator color={Colors.white} />
+          <ActivityIndicator color={Colors.onPrimary} />
         ) : (
           <Text style={styles.submitText}>Go to Dashboard</Text>
         )}
@@ -348,14 +338,14 @@ export default function SPVerificationScreen({ onBack, onVerified }: SPVerificat
 
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
         {loading ? (
-          <ActivityIndicator color={Colors.brandTeal} style={styles.loader} />
+          <ActivityIndicator color={V6Colors.link} style={styles.loader} />
         ) : (
           <>
             {renderStatus()}
 
             {isApproved && (
               <View style={styles.notice}>
-                <ShieldCheck size={22} color={Colors.brandTeal} />
+                <ShieldCheck size={22} color={V6Colors.link} />
                 <Text style={styles.noticeText}>
                   Your documents are stored privately and are only visible to TaskBuddy
                   admins reviewing your account.
@@ -404,7 +394,7 @@ export default function SPVerificationScreen({ onBack, onVerified }: SPVerificat
                         <Image source={{ uri: idAsset.uri }} style={styles.preview} resizeMode="cover" />
                       ) : (
                         <>
-                          <IdCard size={29} color={Colors.brandTeal} />
+                          <IdCard size={29} color={V6Colors.link} />
                           <Text style={styles.dropzoneText}>Tap to choose a photo</Text>
                           <Text style={styles.dropzoneSubtext}>Max 5 MB · JPG, PNG</Text>
                         </>
@@ -440,7 +430,7 @@ export default function SPVerificationScreen({ onBack, onVerified }: SPVerificat
                         <Image source={{ uri: selfieAsset.uri }} style={styles.preview} resizeMode="cover" />
                       ) : (
                         <>
-                          <ScanFace size={30} color={Colors.brandTeal} />
+                          <ScanFace size={30} color={V6Colors.link} />
                           <Text style={styles.dropzoneText}>Take a selfie</Text>
                         </>
                       )}
@@ -469,19 +459,19 @@ export default function SPVerificationScreen({ onBack, onVerified }: SPVerificat
 
                     <View style={styles.summaryRow}>
                       <View style={[styles.summaryCheck, idAsset && styles.summaryCheckDone]}>
-                        {!!idAsset && <Check size={13} color={Colors.white} strokeWidth={3} />}
+                        {!!idAsset && <Check size={13} color={Colors.onPrimary} strokeWidth={3} />}
                       </View>
                       <Text style={styles.summaryText}>Government ID ready</Text>
                     </View>
                     <View style={styles.summaryRow}>
                       <View style={[styles.summaryCheck, selfieAsset && styles.summaryCheckDone]}>
-                        {!!selfieAsset && <Check size={13} color={Colors.white} strokeWidth={3} />}
+                        {!!selfieAsset && <Check size={13} color={Colors.onPrimary} strokeWidth={3} />}
                       </View>
                       <Text style={styles.summaryText}>Face scan ready</Text>
                     </View>
 
                     <View style={styles.privacyNote}>
-                      <Lock size={18} color={Colors.brandTeal} />
+                      <Lock size={18} color={V6Colors.link} />
                       <Text style={styles.privacyText}>
                         Your ID and selfie are uploaded to a private storage bucket that
                         only TaskBuddy admins can open, and are kept as a fallback in case
@@ -518,7 +508,7 @@ export default function SPVerificationScreen({ onBack, onVerified }: SPVerificat
                     disabled={!canAdvance || submitting}
                   >
                     {submitting ? (
-                      <ActivityIndicator color={Colors.white} />
+                      <ActivityIndicator color={Colors.onPrimary} />
                     ) : (
                       <Text style={styles.submitText}>
                         {step === 3 ? 'Start Verification' : 'Next'}
@@ -542,134 +532,150 @@ export default function SPVerificationScreen({ onBack, onVerified }: SPVerificat
   );
 }
 
-const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: Colors.background },
-  header: {
-    flexDirection: 'row', alignItems: 'center', gap: 12,
-    backgroundColor: Colors.white,
-    paddingHorizontal: Spacing.screenH,
-    paddingBottom: 12,
-    borderBottomWidth: 1, borderBottomColor: '#edf1f4',
-  },
-  backButton: {
-    width: 38, height: 38, borderRadius: 12,
-    backgroundColor: Colors.white, borderWidth: 1, borderColor: '#e8edf2',
-    alignItems: 'center', justifyContent: 'center',
-  },
-  headerTitle: { flex: 1, color: Colors.ink900, fontSize: 19.5, fontWeight: '800', fontFamily: 'Inter' },
+function createThemedStyles(theme: ThemePalette) {
+  const { V6Colors } = theme;
+  const Colors = {
+    ...V6Colors,
+    background: V6Colors.canvas,
+    backgroundAlt: V6Colors.ink50,
+    brandDark: V6Colors.ink900,
+    brandTeal: V6Colors.cyan700,
+    slate: V6Colors.ink500,
+    muted: V6Colors.ink400,
+    error: '#ef4444',
+    success: '#22c55e',
+    warning: '#f59e0b',
+  } as const;
+  const styles = StyleSheet.create({
+    screen: { flex: 1, backgroundColor: Colors.background },
+    header: {
+      flexDirection: 'row', alignItems: 'center', gap: 12,
+      backgroundColor: Colors.surface,
+      paddingHorizontal: Spacing.screenH,
+      paddingBottom: 12,
+      borderBottomWidth: 1, borderBottomColor: V6Colors.line,
+    },
+    backButton: {
+      width: 38, height: 38, borderRadius: 12,
+      backgroundColor: Colors.surface, borderWidth: 1, borderColor: V6Colors.line,
+      alignItems: 'center', justifyContent: 'center',
+    },
+    headerTitle: { flex: 1, color: Colors.ink900, fontSize: 19.5, fontWeight: '800', fontFamily: 'Inter' },
 
-  stepperWrap: { backgroundColor: Colors.white, paddingHorizontal: Spacing.screenH, paddingBottom: 14 },
-  stepper: { flexDirection: 'row', gap: 5 },
-  stepPill: { flex: 1, height: 5, borderRadius: 3, backgroundColor: Colors.ink100 },
-  stepPillDone: { backgroundColor: Colors.cyan600 },
-  stepperLabel: { color: Colors.muted, fontSize: 12.5, fontFamily: 'Inter', marginTop: 8 },
+    stepperWrap: { backgroundColor: Colors.surface, paddingHorizontal: Spacing.screenH, paddingBottom: 14 },
+    stepper: { flexDirection: 'row', gap: 5 },
+    stepPill: { flex: 1, height: 5, borderRadius: 3, backgroundColor: Colors.ink100 },
+    stepPillDone: { backgroundColor: Colors.cyan700 },
+    stepperLabel: { color: Colors.muted, fontSize: 12.5, fontFamily: 'Inter', marginTop: 8 },
 
-  content: { padding: Spacing.screenH, gap: 16 },
-  loader: { marginTop: 40 },
-  status: {
-    flexDirection: 'row',
-    gap: 10,
-    borderRadius: 14,
-    padding: 14,
-    borderWidth: 1,
-  },
-  statusApproved: { backgroundColor: '#ECFDF5', borderColor: '#A7F3D0' },
-  statusPending: { backgroundColor: '#FFFBEB', borderColor: '#FDE68A' },
-  statusRejected: { backgroundColor: '#FEF2F2', borderColor: '#FECACA' },
-  statusTextBox: { flex: 1, gap: 3 },
-  statusTitle: {
-    color: Colors.brandDark,
-    fontFamily: 'Inter',
-    fontSize: 16.5,
-    fontWeight: '800',
-  },
-  statusBody: { color: Colors.slate, fontFamily: 'Inter', fontSize: 15.5, lineHeight: 19 },
-  statusAction: { color: Colors.brandTeal, fontFamily: 'Inter', fontSize: 15, fontWeight: '700', marginTop: 6 },
-  notice: {
-    flexDirection: 'row',
-    gap: 10,
-    backgroundColor: Colors.backgroundAlt,
-    borderRadius: 14,
-    padding: 14,
-  },
-  noticeText: { flex: 1, color: Colors.slate, fontFamily: 'Inter', fontSize: 15.5, lineHeight: 19 },
-  card: { backgroundColor: Colors.white, borderRadius: Radii.card, padding: 18, ...Shadows.card },
-  label: { color: Colors.brandDark, fontFamily: 'Inter', fontSize: 18.5, fontWeight: '800' },
-  hint: { color: Colors.muted, fontFamily: 'Inter', fontSize: 15.5, marginTop: 4, marginBottom: 14, lineHeight: 20 },
-  docTypeLabel: { color: Colors.brandDark, fontFamily: 'Inter', fontSize: 14, fontWeight: '700', marginBottom: 8 },
-  docTypeRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 16 },
-  docTypeChip: { borderWidth: 1, borderColor: '#dce3e9', borderRadius: 999, paddingHorizontal: 12, paddingVertical: 7, backgroundColor: Colors.white },
-  docTypeChipOn: { borderColor: Colors.brandTeal, backgroundColor: V6Colors.cyan50 },
-  docTypeText: { color: V6Colors.ink700, fontFamily: 'Inter', fontSize: 13.5, fontWeight: '600' },
-  docTypeTextOn: { color: Colors.brandTeal, fontWeight: '700' },
-  dropzone: {
-    height: 150,
-    borderRadius: 12,
-    borderWidth: 1.5,
-    borderStyle: 'dashed',
-    borderColor: 'rgba(144,153,184,0.5)',
-    backgroundColor: Colors.backgroundAlt,
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    overflow: 'hidden',
-  },
-  dropzoneText: { color: Colors.muted, fontFamily: 'Inter', fontSize: 15.5 },
-  dropzoneSubtext: { color: Colors.muted, fontFamily: 'Inter', fontSize: 13.5, marginTop: 2 },
-  preview: { width: '100%', height: '100%' },
-  selfieDropzonePrimary: { height: 190 },
+    content: { padding: Spacing.screenH, gap: 16 },
+    loader: { marginTop: 40 },
+    status: {
+      flexDirection: 'row',
+      gap: 10,
+      borderRadius: 14,
+      padding: 14,
+      borderWidth: 1,
+    },
+    statusApproved: { backgroundColor: V6Colors.successSurface, borderColor: V6Colors.successBorder },
+    statusPending: { backgroundColor: V6Colors.warningSurface, borderColor: V6Colors.warningBorder },
+    statusRejected: { backgroundColor: V6Colors.dangerSurface, borderColor: V6Colors.dangerBorder },
+    statusTextBox: { flex: 1, gap: 3 },
+    statusTitle: {
+      color: V6Colors.ink900,
+      fontFamily: 'Inter',
+      fontSize: 16.5,
+      fontWeight: '800',
+    },
+    statusBody: { color: Colors.slate, fontFamily: 'Inter', fontSize: 15.5, lineHeight: 19 },
+    statusAction: { color: V6Colors.link, fontFamily: 'Inter', fontSize: 15, fontWeight: '700', marginTop: 6 },
+    notice: {
+      flexDirection: 'row',
+      gap: 10,
+      backgroundColor: Colors.backgroundAlt,
+      borderRadius: 14,
+      padding: 14,
+    },
+    noticeText: { flex: 1, color: Colors.slate, fontFamily: 'Inter', fontSize: 15.5, lineHeight: 19 },
+    card: { backgroundColor: Colors.surface, borderRadius: Radii.card, padding: 18, ...Shadows.card },
+    label: { color: V6Colors.ink900, fontFamily: 'Inter', fontSize: 18.5, fontWeight: '800' },
+    hint: { color: Colors.muted, fontFamily: 'Inter', fontSize: 15.5, marginTop: 4, marginBottom: 14, lineHeight: 20 },
+    docTypeLabel: { color: V6Colors.ink900, fontFamily: 'Inter', fontSize: 14, fontWeight: '700', marginBottom: 8 },
+    docTypeRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 16 },
+    docTypeChip: { borderWidth: 1, borderColor: V6Colors.fieldBorder, borderRadius: 999, paddingHorizontal: 12, paddingVertical: 7, backgroundColor: Colors.surface },
+    docTypeChipOn: { borderColor: Colors.brandTeal, backgroundColor: V6Colors.cyan50 },
+    docTypeText: { color: V6Colors.ink700, fontFamily: 'Inter', fontSize: 13.5, fontWeight: '600' },
+    docTypeTextOn: { color: V6Colors.link, fontWeight: '700' },
+    dropzone: {
+      height: 150,
+      borderRadius: 12,
+      borderWidth: 1.5,
+      borderStyle: 'dashed',
+      borderColor: 'rgba(144,153,184,0.5)',
+      backgroundColor: Colors.backgroundAlt,
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 8,
+      overflow: 'hidden',
+    },
+    dropzoneText: { color: Colors.muted, fontFamily: 'Inter', fontSize: 15.5 },
+    dropzoneSubtext: { color: Colors.muted, fontFamily: 'Inter', fontSize: 13.5, marginTop: 2 },
+    preview: { width: '100%', height: '100%' },
+    selfieDropzonePrimary: { height: 190 },
 
-  summaryRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 6 },
-  summaryCheck: {
-    width: 21, height: 21, borderRadius: 7,
-    borderWidth: 1.5, borderColor: '#cbd5e1',
-    alignItems: 'center', justifyContent: 'center',
-  },
-  summaryCheckDone: { backgroundColor: Colors.brandTeal, borderColor: Colors.brandTeal },
-  summaryText: { color: Colors.ink800, fontFamily: 'Inter', fontSize: 15.5 },
-  privacyNote: {
-    flexDirection: 'row', gap: 10,
-    backgroundColor: Colors.backgroundAlt, borderRadius: 12, padding: 13, marginTop: 12,
-  },
-  privacyText: { flex: 1, color: Colors.slate, fontFamily: 'Inter', fontSize: 14, lineHeight: 19 },
-  stageText: { color: Colors.brandTeal, fontFamily: 'Inter', fontSize: 14.5, marginTop: 12, textAlign: 'center' },
+    summaryRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 6 },
+    summaryCheck: {
+      width: 21, height: 21, borderRadius: 7,
+      borderWidth: 1.5, borderColor: V6Colors.ink200,
+      alignItems: 'center', justifyContent: 'center',
+    },
+    summaryCheckDone: { backgroundColor: Colors.brandTeal, borderColor: Colors.brandTeal },
+    summaryText: { color: Colors.ink800, fontFamily: 'Inter', fontSize: 15.5 },
+    privacyNote: {
+      flexDirection: 'row', gap: 10,
+      backgroundColor: Colors.backgroundAlt, borderRadius: 12, padding: 13, marginTop: 12,
+    },
+    privacyText: { flex: 1, color: Colors.slate, fontFamily: 'Inter', fontSize: 14, lineHeight: 19 },
+    stageText: { color: V6Colors.link, fontFamily: 'Inter', fontSize: 14.5, marginTop: 12, textAlign: 'center' },
 
-  wizardActions: { flexDirection: 'row', gap: 10 },
-  wizardPrimary: { flex: 1, marginTop: 0 },
-  wizardPrimaryFull: { width: '100%' },
-  backStepBtn: {
-    paddingHorizontal: 22, borderRadius: 24, borderWidth: 1, borderColor: '#dce3e9',
-    alignItems: 'center', justifyContent: 'center',
-  },
-  backStepText: { color: Colors.ink700, fontFamily: 'Inter', fontSize: 16.5, fontWeight: '700' },
-  submitButton: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: Colors.brandTeal,
-    borderRadius: 24,
-    paddingVertical: 15,
-    marginTop: 4,
-  },
-  submitButtonDisabled: { opacity: 0.5 },
-  submitText: { color: Colors.white, fontSize: 18.5, fontWeight: '700', fontFamily: 'Inter' },
-  errorText: { color: Colors.error, fontFamily: 'Inter', fontSize: 15.5, textAlign: 'center' },
-  retryHint: { color: Colors.muted, fontFamily: 'Inter', fontSize: 14, textAlign: 'center' },
+    wizardActions: { flexDirection: 'row', gap: 10 },
+    wizardPrimary: { flex: 1, marginTop: 0 },
+    wizardPrimaryFull: { width: '100%' },
+    backStepBtn: {
+      paddingHorizontal: 22, borderRadius: 24, borderWidth: 1, borderColor: V6Colors.fieldBorder,
+      alignItems: 'center', justifyContent: 'center',
+    },
+    backStepText: { color: Colors.ink700, fontFamily: 'Inter', fontSize: 16.5, fontWeight: '700' },
+    submitButton: {
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: Colors.brandTeal,
+      borderRadius: 24,
+      paddingVertical: 15,
+      marginTop: 4,
+    },
+    submitButtonDisabled: { opacity: 0.5 },
+    submitText: { color: Colors.onPrimary, fontSize: 18.5, fontWeight: '700', fontFamily: 'Inter' },
+    errorText: { color: Colors.error, fontFamily: 'Inter', fontSize: 15.5, textAlign: 'center' },
+    retryHint: { color: Colors.muted, fontFamily: 'Inter', fontSize: 14, textAlign: 'center' },
 
-  galleryBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    paddingVertical: 10,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: 'rgba(144,153,184,0.3)',
-    backgroundColor: Colors.backgroundAlt,
-    marginTop: 8,
-  },
-  galleryBtnText: {
-    color: Colors.muted,
-    fontFamily: 'Inter',
-    fontSize: 15.5,
-  },
-});
+    galleryBtn: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 6,
+      paddingVertical: 10,
+      borderRadius: 10,
+      borderWidth: 1,
+      borderColor: 'rgba(144,153,184,0.3)',
+      backgroundColor: Colors.backgroundAlt,
+      marginTop: 8,
+    },
+    galleryBtnText: {
+      color: Colors.muted,
+      fontFamily: 'Inter',
+      fontSize: 15.5,
+    },
+  });
+  return { Colors, V6Colors, styles };
+}

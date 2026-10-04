@@ -14,14 +14,14 @@
  * version had a decorative, non-functional arrow for.
  */
 
+import { useThemedStyles, type Palette as ThemePalette } from '../../../src/context/ThemeContext';
 import React, { useMemo, useState } from 'react';
 import { ActivityIndicator, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { Calendar } from 'react-native-calendars';
 import { CalendarDays, UserRound } from 'lucide-react-native';
-import { Spacing, V6Colors, V6Radii, V6Shadows } from '../../../src/constants/theme';
+import { Spacing, V6Radii, V6Shadows } from '../../../src/constants/theme';
 import { useHeaderTop } from '../../../src/hooks/useHeaderTop';
 
-const C = V6Colors;
 import { useAsyncData } from '../../../src/hooks/useAsyncData';
 import { api } from '../../../src/lib/api';
 import { jobStatusMeta, timeOfDay } from '../../../src/lib/format';
@@ -32,6 +32,7 @@ interface SPCalendarScreenProps {
 }
 
 export default function SPCalendarScreen({ onNavigate }: SPCalendarScreenProps) {
+  const { C, styles, V6Colors, appearance } = useThemedStyles(createThemedStyles);
   const headerTop = useHeaderTop();
   const todayKey = (() => {
     const d = new Date();
@@ -84,14 +85,20 @@ export default function SPCalendarScreen({ onNavigate }: SPCalendarScreenProps) 
 
       <ScrollView style={styles.body} contentContainerStyle={styles.bodyContent} showsVerticalScrollIndicator={false}>
         <View style={styles.calendarCard}>
-          <Calendar
-            current={selectedDate}
+          <Calendar key={appearance}
+            current={`${visibleMonth.year}-${String(visibleMonth.month + 1).padStart(2, '0')}-01`}
             onDayPress={(day) => setSelectedDate(day.dateString)}
             onMonthChange={(m) => setVisibleMonth({ year: m.year, month: m.month - 1 })}
             markedDates={markedDates}
             theme={{
-              todayTextColor: C.cyan700,
-              arrowColor: C.cyan700,
+              calendarBackground: V6Colors.surface,
+              backgroundColor: V6Colors.surface,
+              dayTextColor: V6Colors.ink900,
+              textDisabledColor: V6Colors.ink400,
+              monthTextColor: V6Colors.ink900,
+              textSectionTitleColor: V6Colors.ink500,
+              todayTextColor: V6Colors.link,
+              arrowColor: V6Colors.link,
               selectedDayBackgroundColor: C.cyan700,
             }}
           />
@@ -99,7 +106,7 @@ export default function SPCalendarScreen({ onNavigate }: SPCalendarScreenProps) 
 
         <Text style={styles.sectionTitle}>Your Schedule</Text>
 
-        {loading && <ActivityIndicator style={{ marginTop: 10 }} color={C.cyan700} />}
+        {loading && <ActivityIndicator style={{ marginTop: 10 }} color={V6Colors.link} />}
 
         {!loading && !!error && (
           <View style={styles.emptyState}>
@@ -136,8 +143,8 @@ export default function SPCalendarScreen({ onNavigate }: SPCalendarScreenProps) 
                   <Text style={styles.scheduleClientLabel}>{booking.client?.full_name ?? 'Client'}</Text>
                 </View>
               </View>
-              <View style={[styles.statusBadge, { backgroundColor: jobStatusMeta(booking.status === 'scheduled' ? 'assigned' : booking.status).bg }]}>
-                <Text style={[styles.statusBadgeText, { color: jobStatusMeta(booking.status === 'scheduled' ? 'assigned' : booking.status).color }]}>
+              <View style={[styles.statusBadge, { backgroundColor: jobStatusMeta(booking.status === 'scheduled' ? 'assigned' : booking.status, V6Colors).bg }]}>
+                <Text style={[styles.statusBadgeText, { color: jobStatusMeta(booking.status === 'scheduled' ? 'assigned' : booking.status, V6Colors).color }]}>
                   {booking.status === 'scheduled' ? 'Scheduled' : booking.status === 'completed' ? 'Completed' : 'Cancelled'}
                 </Text>
               </View>
@@ -151,41 +158,46 @@ export default function SPCalendarScreen({ onNavigate }: SPCalendarScreenProps) 
   );
 }
 
-const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: C.canvas },
+function createThemedStyles(theme: ThemePalette) {
+  const { Colors, V6Colors } = theme;
+  const C = V6Colors;
+  const styles = StyleSheet.create({
+    screen: { flex: 1, backgroundColor: C.canvas },
 
-  header: {
-    backgroundColor: C.white,
-    paddingHorizontal: Spacing.screenH,
-    paddingBottom: 12,
-    borderBottomWidth: 1, borderBottomColor: '#edf1f4',
-  },
-  headerTitle: { color: C.ink900, fontSize: 21.5, fontWeight: '800', fontFamily: 'Inter', letterSpacing: -0.3 },
+    header: {
+      backgroundColor: C.surface,
+      paddingHorizontal: Spacing.screenH,
+      paddingBottom: 12,
+      borderBottomWidth: 1, borderBottomColor: V6Colors.line,
+    },
+    headerTitle: { color: C.ink900, fontSize: 21.5, fontWeight: '800', fontFamily: 'Inter', letterSpacing: -0.3 },
 
-  body: { flex: 1 },
-  bodyContent: { paddingHorizontal: Spacing.screenH, paddingTop: 16, paddingBottom: 20 },
+    body: { flex: 1 },
+    bodyContent: { paddingHorizontal: Spacing.screenH, paddingTop: 16, paddingBottom: 20 },
 
-  calendarCard: {
-    backgroundColor: C.white, borderRadius: V6Radii.card, padding: 4,
-    borderWidth: 1, borderColor: C.line, marginBottom: 20,
-    ...V6Shadows.sm,
-  },
-  sectionTitle: { color: C.ink900, fontSize: 16, fontWeight: '800', fontFamily: 'Inter', marginBottom: 12 },
+    calendarCard: {
+      backgroundColor: C.surface, borderRadius: V6Radii.card, padding: 4,
+      borderWidth: 1, borderColor: C.line, marginBottom: 20,
+      ...V6Shadows.sm,
+    },
+    sectionTitle: { color: C.ink900, fontSize: 16, fontWeight: '800', fontFamily: 'Inter', marginBottom: 12 },
 
-  emptyState: { alignItems: 'center', paddingVertical: 44, paddingHorizontal: 24 },
-  emptyTitle: { color: C.ink800, fontSize: 16, fontWeight: '700', fontFamily: 'Inter', marginTop: 10, marginBottom: 4 },
-  emptyText: { color: C.ink400, fontSize: 14, fontFamily: 'Inter', textAlign: 'center', lineHeight: 17 },
-  retryLink: { color: C.cyan700, fontSize: 14.5, fontWeight: '700', fontFamily: 'Inter', marginTop: 10 },
+    emptyState: { alignItems: 'center', paddingVertical: 44, paddingHorizontal: 24 },
+    emptyTitle: { color: C.ink800, fontSize: 16, fontWeight: '700', fontFamily: 'Inter', marginTop: 10, marginBottom: 4 },
+    emptyText: { color: C.ink400, fontSize: 14, fontFamily: 'Inter', textAlign: 'center', lineHeight: 17 },
+    retryLink: { color: V6Colors.link, fontSize: 14.5, fontWeight: '700', fontFamily: 'Inter', marginTop: 10 },
 
-  scheduleCard: {
-    backgroundColor: C.white, borderWidth: 1, borderColor: C.line,
-    borderRadius: V6Radii.card, padding: 14, marginBottom: 10,
-    flexDirection: 'row', alignItems: 'center', gap: 10, ...V6Shadows.sm,
-  },
-  scheduleTitle: { color: C.ink900, fontSize: 15, fontWeight: '700', fontFamily: 'Inter' },
-  scheduleTime: { color: C.ink400, fontSize: 13, fontFamily: 'Inter', marginTop: 2 },
-  scheduleClientRow: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 5 },
-  scheduleClientLabel: { color: C.ink500, fontSize: 13.5, fontFamily: 'Inter' },
-  statusBadge: { borderRadius: 999, paddingHorizontal: 10, paddingVertical: 5 },
-  statusBadgeText: { fontSize: 12, fontWeight: '700', fontFamily: 'Inter' },
-});
+    scheduleCard: {
+      backgroundColor: C.surface, borderWidth: 1, borderColor: C.line,
+      borderRadius: V6Radii.card, padding: 14, marginBottom: 10,
+      flexDirection: 'row', alignItems: 'center', gap: 10, ...V6Shadows.sm,
+    },
+    scheduleTitle: { color: C.ink900, fontSize: 15, fontWeight: '700', fontFamily: 'Inter' },
+    scheduleTime: { color: C.ink400, fontSize: 13, fontFamily: 'Inter', marginTop: 2 },
+    scheduleClientRow: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 5 },
+    scheduleClientLabel: { color: C.ink500, fontSize: 13.5, fontFamily: 'Inter' },
+    statusBadge: { borderRadius: 999, paddingHorizontal: 10, paddingVertical: 5 },
+    statusBadgeText: { fontSize: 12, fontWeight: '700', fontFamily: 'Inter' },
+  });
+  return { appearance: theme.appearance, Colors, V6Colors, C, styles };
+}
