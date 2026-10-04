@@ -6,8 +6,8 @@ blocker. Earlier FCM setup notes are superseded by the clarification below.
 
 
 Status: local regression and project documentation complete; external release,
-integration and physical-device verification remain open. Approved Supabase/Render inspection, protected public-schema/data backups and controlled account preparation have run. Migrations 0039–0045 and the matching API release are deployed. Native artifact,
-web release and full cross-role/device gates remain open; no external payout ran.
+integration and physical-device verification remain open. Approved Supabase/Render inspection, protected public-schema/data backups and controlled account preparation have run. Migrations 0039–0045 and the matching API release are deployed. The signed preview APK was built and installed on an isolated emulator.
+Web release, native UI and full physical-device gates remain open; no external payout ran.
 
 ## Local evidence — October 4, 2026
 
@@ -321,10 +321,10 @@ dummy preferences. Native appearance/AsyncStorage remain unverified.
 APK lacks Firebase client resources and `googleServicesFile` is not configured.
 EAS FCM V1 service credential status remains unknown. Per
 [Expo's setup guide](https://docs.expo.dev/push-notifications/fcm-credentials/),
-a matching Android app config and EAS FCM V1 credentials are required. The user confirms no TaskBuddy Firebase project exists. Obtain new-project
-approval and identify its Google owner account, then configure the client, verify EAS credentials and
-build again before testing physical background delivery/taps. No new Firebase
-project or security access was created.
+a matching Android app config and EAS FCM V1 credentials are required for optional
+system push. The user declined adding Firebase; setup and background OS delivery
+are outside this implementation scope. No new Firebase project or security access
+was created.
 
 ## Superseding notification scope clarification
 

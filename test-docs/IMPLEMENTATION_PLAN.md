@@ -2,7 +2,7 @@
 
 Created: October 4, 2026 (Asia/Manila).
 
-Status: Phases 1–9 are implemented and verified locally. Final local regression and affected-project README updates are complete; focused implementation commits are recorded; Phase 10 target-database/release/integration/device gates remain. Approved read-only target inspection is recorded; no new migration or release has been applied externally by this task.
+Status: Phases 1–9 are implemented and verified locally. Final local regression and affected-project README updates are complete; focused commits are recorded. Supabase migrations 0039–0045 and the Render API are deployed. The signed preview APK was built and installed. Phase 10 remains open for native/physical-device verification, target-database lock-overlap verification, and the Vercel owner’s web deployment. See the completion record and linked evidence for current results.
 
 ## Objective and working rules
 
@@ -152,11 +152,11 @@ Current behavior: SQL creates a recipient notification per inserted chat message
 - [x] Update unread count, lists, and Home activity without manual refresh.
 - [x] Synchronize read/delete/clear actions immediately.
 - [x] Reconcile on reconnect/foreground and clean up on logout/account change.
-- [ ] Verify background push on physical devices. Existing scheduler/token/preferences/payload contracts pass locally; live delivery remains pending.
+- [ ] Verify native in-app bell/list updates and reconciliation after app return. Android system push is outside the selected current-stack scope.
 
 Tradeoff: existing SSE polls the database behind the stream. Reusing it minimizes complexity and dependencies; measure query load rather than introducing another realtime platform speculatively.
 
-Verification: two accounts/devices; text and photos; bursts; no self-notification; submission/approval/rejection; tap destinations; unread/read/delete synchronization; reconnect; expired session; account switching; background push.
+Verification: two accounts/devices; text and photos; bursts; no self-notification; submission/approval/rejection; tap destinations; unread/read/delete synchronization; reconnect; expired session; account switching; app return.
 
 Exit: required events create notices exactly once, taps reach the correct destination, and foreground badges update automatically.
 
@@ -662,8 +662,7 @@ were restored.
 
 Static inspection of the exact installed preview APK finds no Firebase app/sender
 resources, and app config has no `googleServicesFile`. The existing EAS FCM V1
-credential status is not inferred from that client artifact. The user confirms no Firebase project exists. New-project approval and the owner
-Google account are requested before configuration/new-build work; see
+credential status is not inferred from that client artifact. No Firebase project exists. The earlier request to create one was withdrawn; optional system push is outside scope. See
 [push preflight](ANDROID_PUSH_PREFLIGHT_EVIDENCE.json). No Firebase account or
 security permission was created. Native adb authorization is still pending.
 
