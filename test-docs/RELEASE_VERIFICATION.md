@@ -98,3 +98,20 @@ currently establish these gates. Final completion is unproven until they close.
 
 Commits are local; no push or deployment has been performed. Unrelated existing
 changes and supplied PDF/image/thesis assets remain outside these batches.
+
+## Prepared read-only preflight
+
+[release-preflight.sql](../backend/scripts/release-preflight.sql) reads applied
+versions, relevant function/trigger metadata, aggregate reservations/overdrawn
+wallets, legacy missing settlement references and the portfolio bucket from a
+read-only repeatable-read transaction, then rolls back. It was executed locally
+against migrated PGlite with a fixture migration-history table; no deployed
+evidence is implied. Target execution remains pending approval. Presence checks
+do not replace definition review or independent-connection contention checks.
+
+A local `git merge-tree --write-tree HEAD upstream/main` review found a conflict
+only in `web/README.md`; the working checkout was not merged or changed. Before
+a release from main, integrate the newer upstream CSV-privacy/admin-settings
+changes, resolve documentation, and rerun web gates so those changes are not
+regressed. No permission to merge unrelated upstream work or release was inferred
+from approval for history/build checks.
