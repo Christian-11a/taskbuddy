@@ -28,9 +28,13 @@ export class UploadsService {
    * verification documents.
    */
   async createSignedUpload(user: Profile, dto: CreateSignedUploadDto) {
-    if (dto.bucket === VERIFICATION_DOCS_BUCKET && user.role !== 'provider') {
+    if (
+      (dto.bucket === VERIFICATION_DOCS_BUCKET ||
+        dto.bucket === 'provider-portfolio') &&
+      user.role !== 'provider'
+    ) {
       throw new ForbiddenException(
-        'Only providers can upload verification documents',
+        'Only providers can upload verification documents or portfolio photos',
       );
     }
 

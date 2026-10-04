@@ -21,9 +21,9 @@ export class ProvidersController {
     const { data, error } = await this.supabase.admin
       .from('provider_profiles')
       .select(
-        'profile_id, bio, years_experience, is_available, service_radius_km, is_verified, ' +
+        'profile_id, category_id, bio, years_experience, is_available, service_radius_km, is_verified, ' +
           'cached_avg_rating, cached_ratings_count, cached_completed_jobs, ' +
-          'service_categories!category_id(name), ' +
+          'service_categories!category_id(id, name), approved_secondary_services:provider_secondary_categories(category_id, service_categories(id, name)), ' +
           'profiles!provider_profiles_profile_id_fkey(full_name, avatar_url, city)',
       )
       .eq('profile_id', id)
