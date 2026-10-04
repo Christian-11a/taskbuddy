@@ -1,9 +1,9 @@
 # Phase 10 release verification
 
 Status: local regression and project documentation complete; external release,
-integration and physical-device verification remain open. This task has not
-changed deployed services, applied migrations, rebuilt a native artifact or
-performed a real/sandbox external payout.
+integration and physical-device verification remain open. Approved read-only Supabase/Render inspection has now run. This task has not
+released code, applied migrations, rebuilt a native artifact or performed an
+external payout.
 
 ## Local evidence — October 4, 2026
 
@@ -34,7 +34,7 @@ contains only merges; upstream also adds CSV anonymization and admin-settings
 changes. Neither remote changes the migration folder or includes 0039–0045.
 The implementation branch has 12 task commits and is 2 commits behind origin /
 6 behind upstream at this inspection; no merge or history rewrite was performed.
-Target database versions remain unverified. The earlier handoff reports a database
+Applied registry versions were read on October 4; see the target findings below. The earlier handoff reports a database
 history mismatch: reconcile actual applied versions before deciding which migrations
 are missing. Never
 apply the whole directory blindly or rewrite already applied migrations.
@@ -75,9 +75,10 @@ apply the whole directory blindly or rewrite already applied migrations.
 
 The working agreement requires confirmation for network/deploy/configuration
 calls. The approved remote-history fetch and existing web build/font download completed
-successfully. Next, select the controlled environment and approve read-only
-inspection of its database history. Deployment then needs permission to apply
-reviewed migrations and release revisions;
+successfully. The user then approved read-only inspection of the existing linked environment;
+its migration registry and aggregate wallet snapshot were captured. Release still
+needs reconciliation of older registry gaps and permission to apply reviewed
+migrations/revisions;
 physical checks need device/build access. No supplied account/device artifacts
 currently establish these gates. Final completion is unproven until they close.
 
@@ -106,7 +107,7 @@ versions, relevant function/trigger metadata, aggregate reservations/overdrawn
 wallets, legacy missing settlement references and the portfolio bucket from a
 read-only repeatable-read transaction, then rolls back. It was executed locally
 against migrated PGlite with a fixture migration-history table; no deployed
-evidence is implied. Target execution remains pending approval. Presence checks
+evidence is implied. Approved target execution is captured in the snapshot below. Presence checks
 do not replace definition review or independent-connection contention checks.
 
 A local `git merge-tree --write-tree HEAD upstream/main` review found a conflict
@@ -115,3 +116,45 @@ a release from main, integrate the newer upstream CSV-privacy/admin-settings
 changes, resolve documentation, and rerun web gates so those changes are not
 regressed. No permission to merge unrelated upstream work or release was inferred
 from approval for history/build checks.
+
+## Approved target inspection — October 4
+
+[Sanitized evidence](TARGET_PREFLIGHT_EVIDENCE.json) contains the eight-section
+database snapshot and Render health response. No account identities/credentials
+are included. The preflight was corrected to return one structured result because
+the CLI exposed only the last nonempty result of the initial multi-query file;
+the actual application trigger table is `job_applications`. Local verification
+of all sections and the full 120-test SQL suite passed after this correction.
+
+- Registry: numbered 0001–0024, 0037–0038 and three dated versions. Numbered
+  0025–0036 and new 0039–0045 are absent; absence in the registry alone does not
+  mean the SQL is missing. Wallet lock/balance and all four 0036 admin functions
+  exist with authenticated execution denied. Historical mapping/definitions still
+  need verification before any repair/replay.
+- Financial snapshot: zero overreserved wallets/amount; one pending withdrawal
+  reserves ₱100; one legacy completed withdrawal lacks a reference. Do not
+  invent a reference or infer external delivery from that legacy row.
+- Zero active confirmed/in-progress jobs lack bookings. New wallet debit guard,
+  service-review/snapshot/cancellation-expiry/portfolio-cap functions and portfolio
+  bucket are absent. These observations are consistent with new migrations pending.
+- Render reports database up and overall status `ok`, while its ML check is down
+  with HTTP 429. The response contains no deployed commit/version identifier;
+  exact API revision and ML-dependent integration remain unverified.
+
+The definition read completed on sequential retry after temporary-role
+authentication failed during parallel CLI calls. Never run linked CLI login-role
+inspections concurrently. The four 0036 admin functions and wallet lock/balance
+match whitespace-normalized local definitions. Hire, escrow settlement, complaint
+and cancellation-review routines differ, consistent with the new release pending.
+The three dated registry names correspond to 0032–0034; only 0034's stored text
+hash matches its local file exactly. Names alone do not authorize repairing 0032/0033.
+No migration, history repair, payout or code release was performed.
+
+The next proposed batch is local integration of upstream CSV-privacy/admin-settings
+changes (resolve the known README conflict and retain existing user edits), rerun
+web gates, then apply only reviewed new 0039–0045 to the approved linked target
+and register each successful version. Do not replay/rewrite older history gaps.
+The existing pending ₱100 withdrawal remains reserved; the legacy missing payout
+reference must not be invented. Backend/web/mobile deployment and controlled
+transaction/device checks remain separate release steps. Target changes require
+explicit approval; no approval for them was inferred from read-only inspection.

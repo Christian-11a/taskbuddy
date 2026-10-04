@@ -16,7 +16,7 @@ Verification: `npm run test:sql` from `backend/`, including
 
 `release-preflight.sql` is a reviewable query file for the selected target before
 migration/release work. It reads a consistent snapshot of applied migration
-versions, relevant functions/permissions and trigger activation, aggregate wallet
+versions, relevant functions/permissions and trigger activation, missing active bookings, aggregate wallet
 reservations/overspending, legacy missing references, and portfolio bucket settings.
 It returns no profile IDs/names or credentials and rolls the transaction back.
 
@@ -28,3 +28,8 @@ before applying 0045; this file neither refunds nor repairs records. Legacy paid
 rows without references are reported separately, not treated as evidence of a
 new settlement. Verify exact function definitions and PostgreSQL contention as
 separate release checks; presence alone is insufficient.
+
+The preflight returns one structured result because the CLI may expose only the
+last nonempty result of a multi-query file. The linked-target execution confirmed
+all eight sections are visible. Target execution on October 4 found no negative
+available wallets; see the sanitized [snapshot](../../test-docs/TARGET_PREFLIGHT_EVIDENCE.json).

@@ -2,7 +2,7 @@
 
 Created: October 4, 2026 (Asia/Manila).
 
-Status: Phases 1–9 are implemented and verified locally. Final local regression and affected-project README updates are complete; focused implementation commits are recorded; Phase 10 target-database/release/integration/device gates remain. No new migration or release has been applied externally by this task.
+Status: Phases 1–9 are implemented and verified locally. Final local regression and affected-project README updates are complete; focused implementation commits are recorded; Phase 10 target-database/release/integration/device gates remain. Approved read-only target inspection is recorded; no new migration or release has been applied externally by this task.
 
 ## Objective and working rules
 
@@ -561,3 +561,22 @@ TypeScript, 38 generated pages). Origin main is `773003a`; upstream main is
 CSV-privacy/admin-settings work; neither adds migrations 0039–0045. No merge,
 push, deployment or database call was performed. Target database history, controlled
 release and deployed/device scenarios remain pending.
+
+## Phase 10 — Approved target preflight
+
+The existing linked Supabase/Render environment was inspected read-only with
+user approval. [Target snapshot](TARGET_PREFLIGHT_EVIDENCE.json): registry gaps
+remain, some unregistered older functions exist, 0039–0045/new guard functions
+and portfolio bucket are missing, zero wallets are overreserved, one pending
+withdrawal reserves ₱100, and one legacy paid request lacks a reference. Render
+database is healthy; ML remains HTTP 429 and health exposes no exact API commit.
+The preflight's CLI result-shape issue was fixed, all eight sections verified
+locally, and SQL 120 passed. Definition review, history reconciliation, releases,
+independent-connection verification and device evidence remain open.
+
+Read-only function review subsequently completed: four 0036 admin functions and
+wallet lock/balance match local definitions, while new hire/warranty/review
+routines are not installed. The dated 0034 entry's exact text hash matches;
+0032/0033 names match but text hashes differ. Older history must not be blindly
+replayed or repaired. Proposed next approval is upstream integration plus only
+new migrations 0039–0045, followed by separate release/integration/device gates.
