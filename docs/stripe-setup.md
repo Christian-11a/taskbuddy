@@ -68,9 +68,12 @@ on the account before `POST /verifications/identity-session` will succeed.
 ## 4. Philippine peso notes
 
 - Amounts are sent in **centavos** — the API multiplies by 100 and rounds.
-- Minimum charge is roughly **₱20**; `POST /payments/topup` enforces this so the failure is a
-  validation message rather than a confusing gateway error. Maximum is ₱100,000, a blast-radius
-  limit rather than a product rule.
+- TaskBuddy accepts card/top-up amounts from **₱50**. A sandbox check rejected
+  ₱20 because it converted below the account’s US$0.50 settlement minimum; ₱50
+  succeeded with `livemode=false`. This fixed product floor leaves conversion
+  room; Stripe still enforces its settlement-currency minimum. See
+  [Stripe currency guidance](https://docs.stripe.com/currencies#minimum-and-maximum-charge-amounts).
+  Maximum is ₱100,000, a blast-radius limit rather than a product rule.
 - The account's country determines which payment methods appear. Configure them under
   **Settings → Payment methods**; the API requests `automatic_payment_methods`, so whatever is
   enabled there shows up in the sheet without a code change.

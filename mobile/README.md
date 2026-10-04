@@ -859,3 +859,9 @@ android --profile preview --stage archive --output <new-local-directory>`.
 Local QA credentials must be absent. EAS did not honor the local Git exclude
 file during verification; the root `.gitignore` now excludes both supplied
 credential filenames. Keep dummy sessions and database backups outside the repo.
+
+Card/top-up amounts start at ₱50, matching the backend product floor. The
+verified sandbox account rejected ₱20 after settlement-currency conversion;
+₱50 succeeded and its webhook credited the dummy wallet once. Wallet-funded
+hiring remains available for smaller budgets. Payment copy describes the
+three-day completion warranty and open-complaint hold.

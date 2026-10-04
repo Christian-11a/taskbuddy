@@ -458,8 +458,8 @@ export default function HOWalletScreen() {
             <Text style={styles.modalTitle}>Add Money</Text>
             <Text style={styles.modalBody}>
               You'll be taken to Stripe to pay by card. Funds are held in escrow
-              when you hire a provider, and released to them when you mark the
-              job complete.
+              when you hire a provider, then released after the three-day warranty
+              ends unless a complaint is open.
             </Text>
 
             <View style={styles.amountRow}>

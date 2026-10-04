@@ -1139,7 +1139,7 @@ export default function HOCreateJobScreen({
               </View>
               {!!fieldErrors.budget && <Text style={styles.inputErrorText}>{fieldErrors.budget}</Text>}
               <Text style={styles.budgetHint}>
-                Held in escrow when you hire someone, released when you mark the job complete.
+                Held in escrow when you hire someone, then released after the three-day warranty unless a complaint is open.
               </Text>
             </View>
           </View>

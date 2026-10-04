@@ -547,8 +547,8 @@ export interface CheckoutSession {
   amount: number;
 }
 
-/** Backend rejects a top-up below this (Stripe's own PHP minimum charge). */
-export const MIN_TOPUP_PHP = 20;
+/** TaskBuddy's card/top-up floor; matches the backend's PHP50 bound. */
+export const MIN_TOPUP_PHP = 50;
 
 /** The most a single card payment may be — the backend's top-up/hire ceiling. */
 export const MAX_CARD_PHP = 100_000;

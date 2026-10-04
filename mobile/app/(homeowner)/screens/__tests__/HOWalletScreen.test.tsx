@@ -7,7 +7,7 @@ import { clearAsyncDataCache } from '../../../../src/hooks/useAsyncData';
 import { openRedirectSession } from '../../../../src/lib/appRedirectSession';
 
 jest.mock('../../../../src/lib/api', () => ({
-  MIN_TOPUP_PHP: 20,
+  MIN_TOPUP_PHP: 50,
   api: {
     wallet: jest.fn(),
     withdrawals: jest.fn(),
@@ -126,6 +126,19 @@ describe('HOWalletScreen — Add Money after Stripe returns', () => {
   afterEach(() => {
     jest.clearAllTimers();
     jest.useRealTimers();
+  });
+
+  it('blocks amounts below PHP50 before opening Checkout', async () => {
+    (api.wallet as jest.Mock).mockResolvedValue(walletAt(0));
+    render(<HOWalletScreen />);
+    await waitFor(() => expect(screen.getByText('Add Money')).toBeTruthy());
+    fireEvent.press(screen.getByText('Add Money'));
+    expect(screen.getByText('Minimum ₱50')).toBeTruthy();
+    fireEvent.changeText(screen.getByPlaceholderText('0.00'), '49.99');
+    fireEvent.press(screen.getByTestId('wallet-add-money-continue'));
+    expect(api.createCheckoutSession).not.toHaveBeenCalled();
+    fireEvent.changeText(screen.getByPlaceholderText('0.00'), '50');
+    expect(screen.getByTestId('wallet-add-money-continue')).not.toBeDisabled();
   });
 
   const startTopup = async () => {

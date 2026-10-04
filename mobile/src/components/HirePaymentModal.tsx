@@ -2,7 +2,7 @@
  * HirePaymentModal.tsx
  *
  * How the homeowner pays for a hire (BACKEND_SCHEMA.md §29.4). Two ways, same
- * outcome — the job's budget held in escrow until they confirm the work:
+ * outcome — the job's budget held in escrow through the three-day completion warranty:
  *
  *   Pay from wallet — held from the balance they already have. Instant.
  *   Pay by card     — the full budget on Stripe's hosted Checkout. The hire
@@ -13,7 +13,7 @@
  * Presentational: the caller owns the requests and passes their state in, so
  * the modal can stay open showing an error rather than disappearing on one.
  *
- * Card is offered only for budgets Stripe can charge (the same ₱20–₱100,000
+ * Card is offered only for budgets Stripe can charge (the same ₱50–₱100,000
  * bounds as a top-up). A job posted without a budget holds nothing, so it has
  * a single "Hire" button.
  */
@@ -78,7 +78,7 @@ export default function HirePaymentModal({
           </Text>
           <Text style={styles.body}>
             {hasBudget
-              ? `${peso(budget)} is held in escrow and released to ${providerName} only when you confirm the job is done.`
+              ? `${peso(budget)} is held in escrow and released to ${providerName} after the three-day warranty ends, unless a complaint is open.`
               : `This job has no budget, so nothing is held — ${providerName} is hired straight away.`}
           </Text>
 
