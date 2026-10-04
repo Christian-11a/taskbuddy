@@ -873,3 +873,15 @@ its APK signature verifies and installation passes on an isolated Android
 emulator. [Build evidence](../test-docs/ANDROID_BUILD_EVIDENCE.json) records the
 SHA-256 and provenance. Installation does not close native UI or physical-device
 gates in the [requirement matrix](../test-docs/VERIFICATION_MATRIX.md).
+
+Static inspection of that exact preview APK confirms missing Firebase client
+app/sender resources; `googleServicesFile` is absent from app configuration.
+[Push preflight](../test-docs/ANDROID_PUSH_PREFLIGHT_EVIDENCE.json) distinguishes
+this verified client blocker from the uninspected EAS FCM V1 credentials.
+The user confirms no Firebase project exists. A new project needs approval and
+a user-selected Google owner before matching app configuration can be supplied;
+verify EAS credentials and rebuild before remote-push device testing.
+
+The deployed theme preference API passes per-account persistence and isolation;
+[theme verification](../test-docs/THEME_VERIFICATION.md) keeps native appearance
+and restart checks separate.

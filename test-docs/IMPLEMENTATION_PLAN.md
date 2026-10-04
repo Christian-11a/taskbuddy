@@ -288,7 +288,7 @@ Exit: the selected sandbox/live outcome is demonstrated with traceable evidence;
 - [x] Run relevant tests/lint/typechecks after each phase; add meaningful SQL tests for transaction, concurrency, permission, deadline, and replay behavior.
 - [ ] Verify state changes across client, provider, and admin together.
 - [x] Add new migrations rather than rewriting already applied migrations.
-- [ ] Inspect remote history before migration work; the handoff documents a history mismatch. Do not blindly repair or include all migrations.
+- [x] Inspect remote history before migration work; reviewed 0039–0045 were applied/registered atomically without replaying older registry gaps.
 - [ ] Review migrations → deploy API → release web/mobile → verify integration → physical-device regression, with required confirmation before external operations.
 - [ ] Rebuild the native app if native packages/plugins/permissions change; verify exact release artifacts regardless.
 - [ ] Repeat all report scenarios on two role accounts/devices plus admin, covering small/larger screens, enlarged text, both Android navigation modes, foreground/background, and both themes.
@@ -326,21 +326,21 @@ Exit: every requirement below is implemented and appropriately verified; no unsu
 
 ## Phase completion record
 
-Update this table after each phase with concrete evidence. Keep product decisions and external blockers visible.
+Current integration status as of October 4. The automated column retains each original phase gate; the latest full regression is linked in Phase 10. Historical updates below record earlier states and do not override this table.
 
 | Phase | Status | Commits / implementation | Automated checks | Integration / device evidence | Remaining blockers |
 | --- | --- | --- | --- | --- | --- |
-| 0 | Local baseline established; integration setup pending | Removed stray `f`; fixed 10 lint findings; preserved unrelated local edits | All local suites/types and backend/web lint pass | Not checked | D2–D5; build/environment identity; controlled integration accounts |
-| 1 | Implemented and tested locally | Migration 0039; hire notifications; confirmed-booking UI; legacy handling | Backend 599; SQL 76; mobile 82; backend build and mobile types pass; changed backend files lint clean | Not applied/deployed; no device or rendered visual check | Apply 0039 before API/mobile release; external confirmation |
-| 2 | Implemented and verified locally | Migrations 0040–0041; 72-hour warranty; cancellation response/review; zero-budget complaints; statements/evidence/appeals; admin clarification and atomic decisions | Backend 603; SQL 98; mobile 90; web 218 passed / 1 live test skipped; backend build, lint and types pass | Not applied/deployed; device and multi-connection server verification pending | Apply migrations in order and verify controlled integration scenarios |
-| 3 | Implemented and verified locally | Migration 0042; atomic service notices/decisions; consistent notification snapshots; shared foreground SSE; tap destinations; synchronized mutations | Backend 616; SQL 104; mobile 111; backend lint/build and mobile typecheck pass. Web baseline 218 / 1 live-only skip | No migration/deployment or device check | Physical push/tap, controlled two-account SSE and server query-load verification |
-| 4 | Implemented and verified locally | Approved-service profile/display/refresh and feed invalidation; signed location references; migration 0043 strengthens assigned-category validation | Backend 627; SQL 109; mobile 134; backend lint/build and mobile typecheck pass; web baseline 218 / 1 live-only skip | No migration/deployment or physical GPS verification | Live geocoding, actual HSSi/Lipa save/reload, two-account service decisions and concurrent server requests |
-| 5 | Implemented and verified locally | Combined service/status filters, retained selection/scroll and complete bounded server-filtered pages | Backend 638; mobile 140; backend build/lint and mobile typecheck pass; SQL unchanged, 109 at Phase 4 gate | Rendered component tests pass; no deployed or device test | Controlled integration and physical small-screen checks |
-| 6 | Implemented; local gate passed | Private owned photos/captions, order/category, provider management and proposal-profile gallery | Backend 651; SQL 114; mobile 147; lint/build/types pass | Storage upload and device checks pending | Apply migration 0044 in controlled environment |
-| 7 | Implemented; local gate passed | Three signup consents; readable policy; shared image viewer; no posting checkbox | Mobile 154; backend 651; types/lint/build pass | Small-screen/font/keyboard and native navigation checks pending | Device layout matrix |
-| 8 | Implemented; local gate passed | Shared light/dark palettes; reactive screen/component factories; persisted settings; calendars/chat/keyboard/status bar/modal coverage | Mobile 174 tests / 40 suites; typecheck and diff check pass; mobile has no lint script | Rendered components and mocked persistence/API only; physical visual matrix pending | Controlled device/build verification |
-| 9 | Implemented; local gate passed | Authoritative Connect refresh; mandatory references; receiving simulator; migration 0045 debit reservation guard | Backend 656; SQL 120; mobile 184; web 219 / one live-only skip; lint/build/types passed where run | Local receiving ledger reconciles ₱1,100; no real bank/GCash delivery | Target PostgreSQL contention and live/device checks |
-| 10 | Local regression/README work complete; external gates pending | Release evidence/checklist prepared; focused implementation commits recorded | Backend 656; SQL 120; mobile 184; web 219 / one live-only skip | No deployed/device evidence | Target database history and release/account/device access |
+| 0 | Baseline/product decisions established; external gates remain | Removed stray `f`; fixed 10 lint findings; preserved unrelated local edits | All local suites/types and backend/web lint pass | Existing API, database, EAS artifact and dummy roles identified | Vercel owner; native UI authorization; physical devices |
+| 1 | Implemented; deployed wallet-hire cases pass | Migration 0039; hire notifications; confirmed-booking UI; legacy handling | Backend 599; SQL 76; mobile 82; backend build and mobile types pass; changed backend files lint clean | 0039 applied; funded future hire creates one confirmed booking; assigned provider starts later ([cases](DEPLOYED_WORKFLOW_EVIDENCE.json)) | Native hire/start UI; card-at-hire end-to-end checkout |
+| 2 | Implemented; deployed review/deadline cases pass | Migrations 0040–0041; 72-hour warranty; cancellation response/review; zero-budget complaints; statements/evidence/appeals; admin clarification and atomic decisions | Backend 603; SQL 98; mobile 90; web 218 passed / 1 live test skipped; backend build, lint and types pass | 0040–0041 applied; participant/admin cases, cancellation expiry and warranty scheduler pass on controlled clocks ([deadlines](DEPLOYED_DEADLINE_EVIDENCE.json)) | Native complaint/review UI and device coverage |
+| 3 | Implemented; deployed notices/SSE pass | Migration 0042; atomic service notices/decisions; consistent notification snapshots; shared foreground SSE; tap destinations; synchronized mutations | Backend 616; SQL 104; mobile 111; backend lint/build and mobile typecheck pass. Web baseline 218 / 1 live-only skip | 0042 applied; text/photo notices, badge/snapshot/SSE and service decisions pass ([chat](DEPLOYED_CHAT_EVIDENCE.json), [services](DEPLOYED_SERVICES_FILTER_EVIDENCE.json)) | Firebase client configuration/new APK; physical push/tap; native reconnect and mutations |
+| 4 | Implemented; deployed services/location APIs pass | Approved-service profile/display/refresh and feed invalidation; signed location references; migration 0043 strengthens assigned-category validation | Backend 627; SQL 109; mobile 134; backend lint/build and mobile typecheck pass; web baseline 218 / 1 live-only skip | 0043 applied; secondary-service browse/apply/hire and signed Lipa-area QA point save/reload pass ([evidence](DEPLOYED_SERVICES_FILTER_EVIDENCE.json), [location](DEPLOYED_LOCATION_EVIDENCE.json)) | Exact HSSi GPS; native refresh, manual-edit, permission and expiry scenarios |
+| 5 | Implemented; deployed nonempty filters pass | Combined service/status filters, retained selection/scroll and complete bounded server-filtered pages | Backend 638; mobile 140; backend build/lint and mobile typecheck pass; SQL unchanged, 109 at Phase 4 gate | Combined category/status and distinct one-row pages pass ([evidence](DEPLOYED_SERVICES_FILTER_EVIDENCE.json)) | Native selection/scroll/detail-back retention and small screens |
+| 6 | Implemented; deployed private portfolio pass | Private owned photos/captions, order/category, provider management and proposal-profile gallery | Backend 651; SQL 114; mobile 147; lint/build/types pass | 0044/private Storage applied; real owned PNG upload/edit/viewing and access checks pass ([evidence](DEPLOYED_PORTFOLIO_EVIDENCE.json)) | Native photo picker/gallery/viewer and device checks |
+| 7 | Implemented; local gate passes | Three signup consents; readable policy; shared image viewer; no posting checkbox | Mobile 154; backend 651; types/lint/build pass | Verified preview APK installed; signup/policy/photo layout not yet verified natively | Small-screen/font/keyboard/photo/native-navigation matrix |
+| 8 | Implemented; API preference persistence passes | Shared light/dark palettes; reactive screen/component factories; persisted settings; calendars/chat/keyboard/status bar/modal coverage | Mobile 174 tests / 40 suites; typecheck and diff check pass; mobile has no lint script | Both accounts persist independent theme settings ([evidence](DEPLOYED_THEME_SETTINGS_EVIDENCE.json)); physical appearance unverified | Native appearance/restart/account switching and full theme matrix |
+| 9 | Implemented; receiving demo and API reservation pass | Authoritative Connect refresh; mandatory references; receiving simulator; migration 0045 debit reservation guard | Backend 656; SQL 120; mobile 184; web 219 / one live-only skip; lint/build/types passed where run | 0045 applied; selected local receiving demo, independent local SQL races and target concurrent API reservation/cancel pass ([withdrawals](DEPLOYED_WITHDRAWAL_EVIDENCE.json)) | Native payout/setup/history; synchronized target SQL lock overlap not proved by API race |
+| 10 | Full local regression/README complete; final integration/device gates open | Release evidence/checklist prepared; focused implementation commits recorded | Backend 667; SQL 120; mobile 185; web 227 / one live-only skip; configured lint/types/build pass ([regression](LOCAL_REGRESSION_EVIDENCE.json)) | API/database deployed; APK signature/install verified; deployed cases recorded; no physical-device proof | Vercel owner release; Firebase config/new native build; adb UI authorization; physical role/device matrix |
 
 ## October 4 implementation evidence — Phase 0 / Phase 1
 
@@ -651,3 +651,18 @@ Both participants' late complaint filings are rejected. This is a controlled
 clock test of deployed scheduling, not elapsed real-world waiting time or
 external receiving-account delivery. [Deadline evidence](DEPLOYED_DEADLINE_EVIDENCE.json)
 records this alongside the automatic cancellation refund.
+
+### October 4 — withdrawal reservation, preferences and Firebase preflight
+
+Two simultaneous ₱30 requests against the dedicated provider's ₱42.50 balance
+produced one accepted reservation and one refusal. Ownership, cancellation and
+replay checks passed and the balance was restored. Both dummy accounts' theme
+preferences also persist independently across a fresh login; original settings
+were restored.
+
+Static inspection of the exact installed preview APK finds no Firebase app/sender
+resources, and app config has no `googleServicesFile`. The existing EAS FCM V1
+credential status is not inferred from that client artifact. The user confirms no Firebase project exists. New-project approval and the owner
+Google account are requested before configuration/new-build work; see
+[push preflight](ANDROID_PUSH_PREFLIGHT_EVIDENCE.json). No Firebase account or
+security permission was created. Native adb authorization is still pending.

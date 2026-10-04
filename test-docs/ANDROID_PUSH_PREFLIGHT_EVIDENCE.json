@@ -1,0 +1,26 @@
+{
+  "checked_at": "2026-10-04T07:45:58.626890+00:00",
+  "build_id": "a5a067c2-2bfa-4c48-aa26-93a8b99c9ba6",
+  "source_revision": "efb0047",
+  "apk_sha256": "e3655e7a1eb0074a9e7e40887baddce98237e0fa0615da21d6fffde75b970552",
+  "inspection": "aapt dump resources plus mobile/app.json",
+  "google_app_id_resource_present": false,
+  "gcm_defaultSenderId_resource_present": false,
+  "google_api_key_resource_present": false,
+  "googleServicesFile_configured": false,
+  "blocker": "Android app Firebase registration configuration absent from current artifact",
+  "eas_fcm_v1_service_account_status": "Not inspected; do not infer absence from client APK",
+  "required_next_steps": [
+    "Create a TaskBuddy Firebase project under the user-selected Google account after approval",
+    "Configure matching Android google-services.json for com.taskbuddy.app",
+    "Verify or configure FCM V1 service credentials in existing EAS project",
+    "Build and verify new native artifact",
+    "Verify token registration, background delivery and notification tap routing on devices"
+  ],
+  "reference": "https://docs.expo.dev/push-notifications/fcm-credentials/",
+  "limitations": [
+    "Static artifact inspection does not test push token registration or delivery",
+    "No Firebase project, credential, permission or configuration was created or changed"
+  ],
+  "firebase_project_status": "User confirms no TaskBuddy Firebase project exists"
+}

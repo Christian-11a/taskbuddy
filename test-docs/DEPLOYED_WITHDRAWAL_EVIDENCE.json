@@ -1,0 +1,30 @@
+{
+  "checked_at": "2026-10-04T07:40:34.238Z",
+  "api_revision": "15bc94a",
+  "funding": "Actual Stripe test webhook, wallet hold and scheduled warranty payout; no manual credit",
+  "initial_php": 42.5,
+  "concurrent_requested_php": [
+    30,
+    30
+  ],
+  "http_outcomes": [
+    201,
+    400
+  ],
+  "pending_reserved_php": 30,
+  "available_while_reserved_php": 12.5,
+  "final_php": 42.5,
+  "checks": [
+    "Two simultaneous authenticated withdrawal requests cannot reserve PHP60 from PHP42.50",
+    "Exactly one pending request is recorded",
+    "Settled balance stays unchanged while available balance reflects reservation",
+    "Other role account cannot cancel the request",
+    "Owner cancellation releases reservation without sending money",
+    "Cancellation replay is refused without changing funds"
+  ],
+  "limitations": [
+    "Concurrent API requests do not force a known database lock-overlap schedule",
+    "Independent synchronized SQL contention was separately verified on local PostgreSQL",
+    "No external payout or real account destination"
+  ]
+}

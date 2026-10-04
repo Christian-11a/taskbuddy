@@ -27,3 +27,10 @@ These are rendered component and local persistence/API-mock tests. They do not p
 ## Device matrix still required
 
 Run the report scenarios in light and dark modes on small and larger screens with default and enlarged text. Include auth/Google onboarding, both role home/profile/settings, job creation/detail/filtering, portfolio, verification, payouts/wallet, calendars, chat, notifications, disputes, toasts and every shared modal. Check loading/error/disabled states, open-modal theme switching, restart/login/logout, keyboards, status bar, Android gesture/three-button navigation, image failure/retry and Back. Capture screenshots and record the exact build/API/database environment. Deployed/device results remain pending until those checks are actually run.
+
+## Deployed preference API evidence
+
+[October 4 checks](DEPLOYED_THEME_SETTINGS_EVIDENCE.json) pass light/dark saves
+for both dummy roles, fresh-login persistence, invalid-value rejection and
+account isolation. Original preferences were restored. These checks cover the
+backend setting only; the native device matrix above remains open.

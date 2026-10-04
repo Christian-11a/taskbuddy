@@ -774,3 +774,9 @@ Controlled service-request approval/rejection, replay notice counts, approved
 secondary-service browse/apply/hire, nonempty job filters and account-bound
 location save/reload also pass on the existing API. Evidence and the remaining
 physical GPS/native gaps are in [release verification](../test-docs/RELEASE_VERIFICATION.md).
+
+The dedicated sandbox provider also passes concurrent withdrawal reservation,
+owner cancellation and replay checks, without external delivery. Both roles'
+theme preferences persist independently in the deployed settings API. See
+[withdrawal evidence](../test-docs/DEPLOYED_WITHDRAWAL_EVIDENCE.json) and
+[settings evidence](../test-docs/DEPLOYED_THEME_SETTINGS_EVIDENCE.json).

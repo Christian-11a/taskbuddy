@@ -63,3 +63,9 @@ Deployed collection was separately verified on October 4: a ₱50 Stripe test
 intent (`livemode=false`) credited the dedicated client wallet once via the
 real webhook. See [sandbox evidence](SANDBOX_PAYMENT_EVIDENCE.json). This does
 not establish withdrawal delivery or replace the selected local receiving demo.
+
+The dedicated provider's actual sandbox warranty payout also funded a deployed
+reservation test: two simultaneous ₱30 requests against ₱42.50 yielded one
+reservation and one refusal. Cancellation restored full availability; ownership
+and replay checks passed. [Evidence](DEPLOYED_WITHDRAWAL_EVIDENCE.json) explicitly
+does not claim external payout or synchronized SQL lock overlap.

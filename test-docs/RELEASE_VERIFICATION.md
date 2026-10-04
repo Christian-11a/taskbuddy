@@ -299,3 +299,24 @@ tests/120 SQL tests, mobile typecheck/185 tests, and web lint/typecheck/227 test
 and production build. One live-only web test is skipped; backend end-to-end
 has no test files and mobile has no lint script. Native and deployed evidence
 remain separate from these local results.
+
+## Reservation, preference persistence and Android push preflight
+
+[Deployed withdrawal evidence](DEPLOYED_WITHDRAWAL_EVIDENCE.json) passes two
+simultaneous ₱30 requests against the dedicated provider's ₱42.50 balance: one
+reservation, one refusal, ownership enforcement, cancellation and replay refusal.
+The original ₱42.50 remains available afterward; no external money was sent.
+This concurrent API test does not force a known database lock-overlap schedule.
+
+[Theme settings evidence](DEPLOYED_THEME_SETTINGS_EVIDENCE.json) passes account
+isolation, fresh-login persistence, invalid-value rejection and restoring both
+dummy preferences. Native appearance/AsyncStorage remain unverified.
+
+[Push preflight](ANDROID_PUSH_PREFLIGHT_EVIDENCE.json) confirms the exact preview
+APK lacks Firebase client resources and `googleServicesFile` is not configured.
+EAS FCM V1 service credential status remains unknown. Per
+[Expo's setup guide](https://docs.expo.dev/push-notifications/fcm-credentials/),
+a matching Android app config and EAS FCM V1 credentials are required. The user confirms no TaskBuddy Firebase project exists. Obtain new-project
+approval and identify its Google owner account, then configure the client, verify EAS credentials and
+build again before testing physical background delivery/taps. No new Firebase
+project or security access was created.

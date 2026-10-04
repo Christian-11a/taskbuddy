@@ -1,0 +1,15 @@
+{
+  "checked_at": "2026-10-04T07:41:47.685Z",
+  "api_revision": "15bc94a",
+  "checks": [
+    "Client and provider theme preferences persist independently",
+    "Fresh client login retains saved preference",
+    "Invalid nonboolean preference is rejected without overwrite",
+    "Both roles can switch light/dark preferences",
+    "Changing one account leaves the other unchanged",
+    "Original dummy preferences restored"
+  ],
+  "limitations": [
+    "No native appearance, AsyncStorage restart, screen contrast or keyboard evidence"
+  ]
+}
