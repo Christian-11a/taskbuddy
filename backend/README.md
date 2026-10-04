@@ -761,3 +761,11 @@ calls Stripe nor installs a production payout rail. [Evidence and limits](../tes
 `npm test -- --runInBand`, `npm run test:sql`, `npm run build` and `npm run lint`
 are the local gates. `npm run test:e2e -- --runInBand` currently exits with
 “No tests found”; there are no configured end-to-end test files.
+
+### Deployed QA evidence (October 4, 2026)
+
+The existing sandbox API/Storage passed controlled portfolio upload/edit/private
+viewing and ownership checks, plus text/photo notification and SSE snapshot
+checks. See [portfolio evidence](../test-docs/DEPLOYED_PORTFOLIO_EVIDENCE.json)
+and [chat evidence](../test-docs/DEPLOYED_CHAT_EVIDENCE.json). These API checks
+do not establish native photo viewing or background push delivery.

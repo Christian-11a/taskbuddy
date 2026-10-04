@@ -1,0 +1,21 @@
+{
+  "checked_at": "2026-10-04T06:37:38.218Z",
+  "api_revision": "15bc94a",
+  "asset": "Existing public app favicon PNG; no customer or personal image",
+  "checks": [
+    "Provider receives owned upload path",
+    "Client cannot obtain portfolio upload URL",
+    "Foreign-owned image path rejected",
+    "Provider uploads and creates a private portfolio entry",
+    "Provider updates persisted caption and ordering",
+    "Client cannot mutate owner endpoint",
+    "Owner and client reads receive matching signed image bytes",
+    "Storage object cannot be fetched through public URL",
+    "Response omits storage path",
+    "Client cannot read owner endpoint"
+  ],
+  "retained_fixture": "One clearly labeled QA portfolio entry retained; no deletion performed",
+  "limitations": [
+    "No photo-picker, viewer, or physical-device UI evidence"
+  ]
+}

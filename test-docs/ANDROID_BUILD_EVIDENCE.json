@@ -5,6 +5,12 @@
   "profile": "preview",
   "sha256": "e3655e7a1eb0074a9e7e40887baddce98237e0fa0615da21d6fffde75b970552",
   "bytes": 109626130,
-  "device_installation": "pending",
-  "physical_device_verification": "pending"
+  "device_installation": "adb install succeeded on isolated emulator-5556 with fresh private user-data image",
+  "physical_device_verification": "pending",
+  "signature_verification": "apksigner verify passed",
+  "package_id": "com.taskbuddy.app",
+  "version_name": "1.0.0",
+  "version_code": 1,
+  "existing_emulator_install": "Refused: existing app signing certificate differs; existing app/data preserved",
+  "emulator_ui_verification": "Pending authorization for adb UI automation; native CUA app unavailable"
 }

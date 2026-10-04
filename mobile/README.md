@@ -865,3 +865,11 @@ verified sandbox account rejected ₱20 after settlement-currency conversion;
 ₱50 succeeded and its webhook credited the dummy wallet once. Wallet-funded
 hiring remains available for smaller budgets. Payment copy describes the
 three-day completion warranty and open-complaint hold.
+
+### Preview artifact verification (October 4, 2026)
+
+Preview build `a5a067c2-2bfa-4c48-aa26-93a8b99c9ba6` from `efb0047` finished;
+its APK signature verifies and installation passes on an isolated Android
+emulator. [Build evidence](../test-docs/ANDROID_BUILD_EVIDENCE.json) records the
+SHA-256 and provenance. Installation does not close native UI or physical-device
+gates in the [requirement matrix](../test-docs/VERIFICATION_MATRIX.md).

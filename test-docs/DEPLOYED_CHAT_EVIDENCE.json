@@ -1,0 +1,18 @@
+{
+  "checked_at": "2026-10-04T06:40:34.051Z",
+  "api_revision": "15bc94a",
+  "checks": [
+    "Two text and one photo message persist for recipient",
+    "Photo attachment signed download responds successfully",
+    "Exactly one recipient notification per message",
+    "No sender notification for own message",
+    "Snapshot and badge counts agree",
+    "Actual deployed SSE emits a consistent recipient snapshot",
+    "Other participant cannot mark recipient notification read",
+    "Owner read reduces unread count by one"
+  ],
+  "limitations": [
+    "Foreground/background push delivery, reconnect and navigation require device evidence",
+    "No real personal or client images used"
+  ]
+}

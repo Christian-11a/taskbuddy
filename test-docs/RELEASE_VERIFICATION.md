@@ -247,3 +247,23 @@ its temporary verification flag was restored. The client wallet ends at ₱50.
 A request during deployment returned HTML; saved case state was checked before
 resuming without duplicate settlement. Automatic deadline expiry, native UI
 and Vercel owner deployment remain open.
+
+## Portfolio, chat and isolated Android installation
+
+[Portfolio checks](DEPLOYED_PORTFOLIO_EVIDENCE.json) passed on the existing API
+and private Storage bucket: provider upload/edit persistence, foreign-path
+rejection, client viewing, signed-image bytes, public-URL denial and owner-route
+restrictions. One clearly labeled fixture using the public app favicon remains;
+no customer image was uploaded and no fixture was deleted.
+
+[Chat checks](DEPLOYED_CHAT_EVIDENCE.json) passed two text messages and a photo,
+one recipient notice per message, no sender self-notice, snapshot/badge agreement,
+actual SSE snapshot delivery and read ownership. Background push, reconnect and
+notification navigation still require device verification.
+
+[Android evidence](ANDROID_BUILD_EVIDENCE.json): the downloaded preview APK
+matches build `a5a067c2`, source `efb0047`, package `com.taskbuddy.app`;
+`apksigner verify` passes. The existing emulator app had a different signature,
+so it was preserved. Installation succeeded in an isolated fresh user-data
+instance of the existing AVD. This proves installation only; native CUA cannot
+access its window and adb UI automation awaits the user's choice.
