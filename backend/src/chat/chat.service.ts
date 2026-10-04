@@ -255,8 +255,8 @@ export class ChatService {
           id: m.id,
           sender_id: m.sender_id,
           sender_name:
-            (m.sender as unknown as { full_name: string } | null)
-              ?.full_name ?? null,
+            (m.sender as unknown as { full_name: string } | null)?.full_name ??
+            null,
           body: m.body,
           attachment_path: m.attachment_path,
           attachment_url,

@@ -46,7 +46,12 @@ export class ChatController {
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: SendMessageDto,
   ) {
-    return this.chatService.sendMessage(user, id, dto.body, dto.attachment_path);
+    return this.chatService.sendMessage(
+      user,
+      id,
+      dto.body,
+      dto.attachment_path,
+    );
   }
 
   /**

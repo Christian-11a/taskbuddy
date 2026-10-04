@@ -1,4 +1,8 @@
+import { Observable, timer, exhaustMap } from 'rxjs';
 import {
+  BadRequestException,
+  Sse,
+  MessageEvent,
   Controller,
   Delete,
   Get,
@@ -26,9 +30,11 @@ export class NotificationsController {
       .select('*')
       .eq('recipient_id', user.id)
       .order('created_at', { ascending: false })
+      .order('id', { ascending: false })
       .limit(50);
     if (unread === 'true') builder = builder.is('read_at', null);
-    const { data } = await builder;
+    const { data, error } = await builder;
+    if (error) throw new BadRequestException(error.message);
     return data ?? [];
   }
 
@@ -38,12 +44,38 @@ export class NotificationsController {
    */
   @Get('unread-count')
   async unreadCount(@CurrentUser() user: Profile) {
-    const { count } = await this.supabase.admin
+    const { count, error } = await this.supabase.admin
       .from('notifications')
       .select('id', { count: 'exact', head: true })
       .eq('recipient_id', user.id)
       .is('read_at', null);
+    if (error) throw new BadRequestException(error.message);
     return { count: count ?? 0 };
+  }
+
+  @Get('snapshot')
+  async snapshot(@CurrentUser() user: Profile) {
+    const { data, error } = await this.supabase.admin.rpc(
+      'notification_snapshot',
+      { p_recipient: user.id },
+    );
+    if (error) throw new BadRequestException(error.message);
+    return data as { notifications: unknown[]; unreadCount: number };
+  }
+
+  /** One consistent snapshot every five seconds per foreground session. */
+  @Sse('stream')
+  stream(@CurrentUser() user: Profile): Observable<MessageEvent> {
+    let previous = '';
+    return timer(0, 5000).pipe(
+      exhaustMap(async () => {
+        const snapshot = await this.snapshot(user);
+        const serialized = JSON.stringify(snapshot);
+        if (serialized === previous) return { type: 'ping', data: {} };
+        previous = serialized;
+        return { type: 'message', data: snapshot };
+      }),
+    );
   }
 
   @Post(':id/read')
@@ -51,7 +83,7 @@ export class NotificationsController {
     @CurrentUser() user: Profile,
     @Param('id', ParseUUIDPipe) id: string,
   ) {
-    const { data } = await this.supabase.admin
+    const { data, error } = await this.supabase.admin
       .from('notifications')
       .update({ read_at: new Date().toISOString() })
       .eq('id', id)
@@ -59,16 +91,18 @@ export class NotificationsController {
       .is('read_at', null)
       .select()
       .maybeSingle();
+    if (error) throw new BadRequestException(error.message);
     return data ?? { success: true };
   }
 
   @Post('read-all')
   async markAllRead(@CurrentUser() user: Profile) {
-    await this.supabase.admin
+    const { error } = await this.supabase.admin
       .from('notifications')
       .update({ read_at: new Date().toISOString() })
       .eq('recipient_id', user.id)
       .is('read_at', null);
+    if (error) throw new BadRequestException(error.message);
     return { success: true };
   }
 
@@ -79,20 +113,22 @@ export class NotificationsController {
     @CurrentUser() user: Profile,
     @Param('id', ParseUUIDPipe) id: string,
   ) {
-    await this.supabase.admin
+    const { error } = await this.supabase.admin
       .from('notifications')
       .delete()
       .eq('id', id)
       .eq('recipient_id', user.id);
+    if (error) throw new BadRequestException(error.message);
   }
 
   /** Clears the caller's whole notification list. */
   @Delete()
   @HttpCode(204)
   async removeAll(@CurrentUser() user: Profile) {
-    await this.supabase.admin
+    const { error } = await this.supabase.admin
       .from('notifications')
       .delete()
       .eq('recipient_id', user.id);
+    if (error) throw new BadRequestException(error.message);
   }
 }
