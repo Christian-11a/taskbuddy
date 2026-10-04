@@ -1,6 +1,6 @@
 import React from 'react';
 import { StyleSheet } from 'react-native';
-import { fireEvent, render, screen } from '@testing-library/react-native';
+import { act, fireEvent, render, screen } from '@testing-library/react-native';
 import RegisterScreen from '../RegisterScreen';
 import { useAuth } from '../../../../src/context/AuthContext';
 
@@ -98,4 +98,31 @@ describe('RegisterScreen — skill category dropdown', () => {
     expect(screen.queryByText('Cleaning')).toBeNull();
     expect(screen.getByText('Select your skill…')).toBeTruthy();
   });
+});
+
+it.each(['Homeowner', 'Service Provider'])('registers %s with three consents and no identity-processing signup field', async role => {
+  const onRegister = jest.fn().mockResolvedValue({ needsEmailConfirmation: false });
+  (useAuth as jest.Mock).mockReturnValue({ verifyEmailOtp: jest.fn() });
+  render(<RegisterScreen {...baseProps} onRegister={onRegister} />);
+  if (role === 'Service Provider') {
+    fireEvent.press(screen.getByText(role));
+    fireEvent.press(screen.getByText('Select your skill…'));
+    fireEvent.press(screen.getByText('Plumbing'));
+  }
+  fireEvent.changeText(screen.getByTestId('input-name'), 'Test User');
+  fireEvent.changeText(screen.getByTestId('input-email'), 'test@example.test');
+  fireEvent.changeText(screen.getByTestId('input-password'), 'password123');
+  fireEvent.changeText(screen.getByTestId('input-confirm-password'), 'password123');
+  fireEvent.press(screen.getByTestId('chk-terms'));
+  fireEvent.press(screen.getByText('I agree to the Terms & Conditions'));
+  fireEvent.press(screen.getByTestId('chk-privacy'));
+  expect(screen.getByText('Your Rights (RA 10173)')).toBeTruthy();
+  fireEvent.press(screen.getByText('I agree to the Privacy Policy'));
+  fireEvent.press(screen.getByTestId('chk-data-collection'));
+  expect(screen.queryByTestId('chk-biometric')).toBeNull();
+  await act(async () => fireEvent.press(screen.getByText('Sign Up')));
+  expect(onRegister).toHaveBeenCalledWith(expect.objectContaining({
+    consentedTerms: true, consentedPrivacy: true, consentedDataCollection: true,
+  }));
+  expect(onRegister.mock.calls[0][0]).not.toHaveProperty('consentedBiometric');
 });

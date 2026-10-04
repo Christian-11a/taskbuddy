@@ -8,6 +8,7 @@
  * which experience (homeowner / provider) is shown.
  */
 
+import { useThemedStyles, type Palette as ThemePalette } from '../../../src/context/ThemeContext';
 import React, { useState } from 'react';
 import {
   ActivityIndicator,
@@ -26,10 +27,8 @@ import {
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Eye, EyeOff } from 'lucide-react-native';
-import { V6Colors, V6Radii, V6Shadows } from '../../../src/constants/theme';
+import { V6Radii, V6Shadows } from '../../../src/constants/theme';
 import { useAuthLayout } from '../../../src/hooks/useAuthLayout';
-
-const C = V6Colors;
 
 // ─── Props ────────────────────────────────────────────────────────────────────
 interface LoginScreenProps {
@@ -66,6 +65,7 @@ function InputField({
   secureTextEntry = false, keyboardType = 'default',
   error, rightElement, testID,
 }: InputFieldProps) {
+  const { C, styles, V6Colors, appearance } = useThemedStyles(createThemedStyles);
   const [focused, setFocused] = useState(false);
 
   // NOTE: previously there was a `keyboardDidShow` listener here that called
@@ -82,7 +82,7 @@ function InputField({
         focused && styles.inputBoxFocused,
         !!error && styles.inputBoxError,
       ]}>
-        <TextInput
+        <TextInput keyboardAppearance={appearance}
           testID={testID}
           style={styles.inputText}
           placeholder={placeholder}
@@ -114,6 +114,7 @@ export default function LoginScreen({
   signInError,
   onClearSignInError,
 }: LoginScreenProps) {
+  const { C, styles, compactStyles, V6Colors, appearance } = useThemedStyles(createThemedStyles);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -280,7 +281,7 @@ export default function LoginScreen({
         disabled={submitting}
       >
         {submitting ? (
-          <ActivityIndicator color={C.white} />
+          <ActivityIndicator color={C.onPrimary} />
         ) : (
           <Text style={styles.primaryBtnText}>Sign In</Text>
         )}
@@ -302,7 +303,7 @@ export default function LoginScreen({
         disabled={googleLoading || submitting}
       >
         {googleLoading ? (
-          <ActivityIndicator color={C.cyan700} />
+          <ActivityIndicator color={V6Colors.link} />
         ) : (
           <>
             <View style={styles.googleIcon}>
@@ -333,7 +334,7 @@ export default function LoginScreen({
     // touches, no workaround needed.
     <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
     <LinearGradient
-      colors={['#cdeef7', '#ffffff']}
+      colors={[V6Colors.infoSurface, V6Colors.surface]}
       locations={[0, 0.55]}
       style={styles.screen}
     >
@@ -359,127 +360,133 @@ export default function LoginScreen({
 }
 
 // ─── Styles ───────────────────────────────────────────────────────────────────
-const styles = StyleSheet.create({
-  flex: { flex: 1 },
-  screen: { flex: 1, backgroundColor: C.white },
-
-  // Scroll
-  loginContent: {
-    flexGrow: 1,
-    justifyContent: 'center',
-    paddingHorizontal: 30,
-  },
-
-  // Logo — matches .logo-mark (46x52)
-  logoSection: { marginBottom: 12, alignItems: 'center' },
-  logoMark: { width: 104, height: 117, alignSelf: 'center' },
-  logoText: {
-    fontFamily: 'Inter', fontSize: 31.5, fontWeight: '800',
-    color: C.cyan900, textAlign: 'center', marginTop: 12, marginBottom: 2,
-  },
-  tagline: {
-    fontFamily: 'Inter', fontSize: 18.5, fontWeight: '800',
-    color: C.cyan900, textAlign: 'center',
-  },
-
-  // Heading
-  headingSection: { marginTop: 28, marginBottom: 6 },
-  welcomeText: {
-    fontFamily: 'Inter', fontSize: 23, fontWeight: '800', color: C.ink900,
-  },
-  subtitleText: {
-    fontFamily: 'Inter', fontSize: 15.5, fontWeight: '400', color: C.ink400, marginTop: 2,
-  },
-
-  // Inputs — matches .field input (v3 cascaded-final)
-  inputGroup: { marginBottom: 16 },
-  inputLabel: {
-    fontFamily: 'Inter', fontSize: 15.5, fontWeight: '700', color: C.ink900, marginBottom: 6,
-  },
-  inputBox: {
-    flexDirection: 'row', alignItems: 'center',
-    backgroundColor: C.white, borderRadius: V6Radii.input,
-    paddingHorizontal: 14, minHeight: 46, borderWidth: 1,
-    borderColor: '#dce3e9',
-  },
-  // Border-colour ONLY — never add a shadow/elevation here.
-  //
-  // The mockup's focus ring is `box-shadow:0 0 0 3px rgba(6,182,212,.12)`, and
-  // porting that as `...V6Shadows.sm` (which carries `elevation: 1`) broke text
-  // entry app-wide on Android: changing `elevation` on the View that *wraps* a
-  // focused TextInput makes Android re-create that view, so the EditText loses
-  // focus and the keyboard closes the instant it opens. Symptom was focus
-  // visibly jumping between fields and the keyboard flashing shut.
-  //
-  // Verified on-device (Pixel emulator, Expo Go): with elevation, tapping Email
-  // left focused=false / mInputShown=false / mServedView=null; without it,
-  // focused=true / mInputShown=true and typing lands in the right field.
-  inputBoxFocused: {
-    borderColor: C.cyan500,
-  },
-  inputBoxError: { borderColor: '#fecaca' },
-  inputText: {
-    flex: 1, fontFamily: 'Inter', fontSize: 16.5, fontWeight: '400',
-    color: C.ink900, padding: 0, margin: 0,
-  },
-  inputError: {
-    fontFamily: 'Inter', fontSize: 14.5, color: '#b91c1c', marginTop: 4,
-  },
-
-  // Password
-  passwordSection: {},
-  passwordLabelRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 },
-  forgotText: { fontFamily: 'Inter', fontSize: 15.5, fontWeight: '700', color: C.cyan800 },
-  eyeBtn: { paddingLeft: 8 },
-
-  // Primary button — matches .btn-primary (solid cyan700, v3 cascaded-final)
-  primaryBtn: {
-    backgroundColor: C.cyan700, borderRadius: V6Radii.btn,
-    paddingVertical: 14, alignItems: 'center', marginTop: 8, marginBottom: 20, minHeight: 46,
-    ...V6Shadows.primaryButton,
-  },
-  primaryBtnDisabled: { opacity: 0.7 },
-  primaryBtnText: {
-    fontFamily: 'Inter', fontSize: 18.5, fontWeight: '700', color: C.white,
-  },
-  errorBanner: {
-    fontFamily: 'Inter', fontSize: 15.5, color: '#b91c1c', marginBottom: 12, lineHeight: 18,
-  },
-
-  // Divider
-  dividerRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 20, gap: 12 },
-  dividerLine: { flex: 1, height: 1, backgroundColor: C.ink100 },
-  dividerText: { fontFamily: 'Inter', fontSize: 15.5, color: C.ink300 },
-
-  // Google — matches .btn-outline
-  googleBtn: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-    borderWidth: 1, borderColor: '#dce3e9', borderRadius: V6Radii.btn,
-    paddingVertical: 12, paddingHorizontal: 24, marginBottom: 28, gap: 10,
-    minHeight: 46, backgroundColor: C.white,
-  },
-  googleIcon: {
-    width: 20, height: 20, borderRadius: 10,
-    backgroundColor: '#EA4335', alignItems: 'center', justifyContent: 'center',
-  },
-  googleIconText: { color: C.white, fontSize: 14.5, fontWeight: '700' },
-  googleBtnText: {
-    fontFamily: 'Inter', fontSize: 16.5, fontWeight: '600', color: C.ink700,
-  },
-
-  // Sign Up
-  signUpRow: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center' },
-  signUpPrompt: { fontFamily: 'Inter', fontSize: 15.5, fontWeight: '400', color: C.ink400 },
-  signUpLink: { fontFamily: 'Inter', fontSize: 15.5, fontWeight: '700', color: C.cyan800 },
-});
 
 // Short screens (small phones, 3-button Android nav): trims vertical space so
 // the whole form fits without scrolling.
-const compactStyles = StyleSheet.create({
-  logoMark: { width: 64, height: 72 },
-  logoText: { fontSize: 26, marginTop: 6 },
-  headingSection: { marginTop: 14 },
-  primaryBtn: { marginBottom: 12 },
-  dividerRow: { marginBottom: 12 },
-  googleBtn: { marginBottom: 16 },
-});
+
+function createThemedStyles(theme: ThemePalette) {
+  const { Colors, V6Colors } = theme;
+  const C = V6Colors;
+  const styles = StyleSheet.create({
+    flex: { flex: 1 },
+    screen: { flex: 1, backgroundColor: C.surface },
+
+    // Scroll
+    loginContent: {
+      flexGrow: 1,
+      justifyContent: 'center',
+      paddingHorizontal: 30,
+    },
+
+    // Logo — matches .logo-mark (46x52)
+    logoSection: { marginBottom: 12, alignItems: 'center' },
+    logoMark: { width: 104, height: 117, alignSelf: 'center' },
+    logoText: {
+      fontFamily: 'Inter', fontSize: 31.5, fontWeight: '800',
+      color: V6Colors.ink900, textAlign: 'center', marginTop: 12, marginBottom: 2,
+    },
+    tagline: {
+      fontFamily: 'Inter', fontSize: 18.5, fontWeight: '800',
+      color: V6Colors.ink900, textAlign: 'center',
+    },
+
+    // Heading
+    headingSection: { marginTop: 28, marginBottom: 6 },
+    welcomeText: {
+      fontFamily: 'Inter', fontSize: 23, fontWeight: '800', color: C.ink900,
+    },
+    subtitleText: {
+      fontFamily: 'Inter', fontSize: 15.5, fontWeight: '400', color: C.ink400, marginTop: 2,
+    },
+
+    // Inputs — matches .field input (v3 cascaded-final)
+    inputGroup: { marginBottom: 16 },
+    inputLabel: {
+      fontFamily: 'Inter', fontSize: 15.5, fontWeight: '700', color: C.ink900, marginBottom: 6,
+    },
+    inputBox: {
+      flexDirection: 'row', alignItems: 'center',
+      backgroundColor: C.surface, borderRadius: V6Radii.input,
+      paddingHorizontal: 14, minHeight: 46, borderWidth: 1,
+      borderColor: V6Colors.fieldBorder,
+    },
+    // Border-colour ONLY — never add a shadow/elevation here.
+    //
+    // The mockup's focus ring is `box-shadow:0 0 0 3px rgba(6,182,212,.12)`, and
+    // porting that as `...V6Shadows.sm` (which carries `elevation: 1`) broke text
+    // entry app-wide on Android: changing `elevation` on the View that *wraps* a
+    // focused TextInput makes Android re-create that view, so the EditText loses
+    // focus and the keyboard closes the instant it opens. Symptom was focus
+    // visibly jumping between fields and the keyboard flashing shut.
+    //
+    // Verified on-device (Pixel emulator, Expo Go): with elevation, tapping Email
+    // left focused=false / mInputShown=false / mServedView=null; without it,
+    // focused=true / mInputShown=true and typing lands in the right field.
+    inputBoxFocused: {
+      borderColor: C.cyan500,
+    },
+    inputBoxError: { borderColor: V6Colors.dangerBorder },
+    inputText: {
+      flex: 1, fontFamily: 'Inter', fontSize: 16.5, fontWeight: '400',
+      color: C.ink900, padding: 0, margin: 0,
+    },
+    inputError: {
+      fontFamily: 'Inter', fontSize: 14.5, color: V6Colors.dangerText, marginTop: 4,
+    },
+
+    // Password
+    passwordSection: {},
+    passwordLabelRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 },
+    forgotText: { fontFamily: 'Inter', fontSize: 15.5, fontWeight: '700', color: V6Colors.link },
+    eyeBtn: { paddingLeft: 8 },
+
+    // Primary button — matches .btn-primary (solid cyan700, v3 cascaded-final)
+    primaryBtn: {
+      backgroundColor: C.cyan700, borderRadius: V6Radii.btn,
+      paddingVertical: 14, alignItems: 'center', marginTop: 8, marginBottom: 20, minHeight: 46,
+      ...V6Shadows.primaryButton,
+    },
+    primaryBtnDisabled: { opacity: 0.7 },
+    primaryBtnText: {
+      fontFamily: 'Inter', fontSize: 18.5, fontWeight: '700', color: C.onPrimary,
+    },
+    errorBanner: {
+      fontFamily: 'Inter', fontSize: 15.5, color: V6Colors.dangerText, marginBottom: 12, lineHeight: 18,
+    },
+
+    // Divider
+    dividerRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 20, gap: 12 },
+    dividerLine: { flex: 1, height: 1, backgroundColor: C.ink100 },
+    dividerText: { fontFamily: 'Inter', fontSize: 15.5, color: C.ink300 },
+
+    // Google — matches .btn-outline
+    googleBtn: {
+      flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+      borderWidth: 1, borderColor: V6Colors.fieldBorder, borderRadius: V6Radii.btn,
+      paddingVertical: 12, paddingHorizontal: 24, marginBottom: 28, gap: 10,
+      minHeight: 46, backgroundColor: C.surface,
+    },
+    googleIcon: {
+      width: 20, height: 20, borderRadius: 10,
+      backgroundColor: '#EA4335', alignItems: 'center', justifyContent: 'center',
+    },
+    googleIconText: { color: C.onPrimary, fontSize: 14.5, fontWeight: '700' },
+    googleBtnText: {
+      fontFamily: 'Inter', fontSize: 16.5, fontWeight: '600', color: C.ink700,
+    },
+
+    // Sign Up
+    signUpRow: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center' },
+    signUpPrompt: { fontFamily: 'Inter', fontSize: 15.5, fontWeight: '400', color: C.ink400 },
+    signUpLink: { fontFamily: 'Inter', fontSize: 15.5, fontWeight: '700', color: V6Colors.link },
+  });
+  const compactStyles = StyleSheet.create({
+    logoMark: { width: 64, height: 72 },
+    logoText: { fontSize: 26, marginTop: 6 },
+    headingSection: { marginTop: 14 },
+    primaryBtn: { marginBottom: 12 },
+    dividerRow: { marginBottom: 12 },
+    googleBtn: { marginBottom: 16 },
+  });
+  return { appearance: theme.appearance, Colors, V6Colors, C, styles, compactStyles };
+}

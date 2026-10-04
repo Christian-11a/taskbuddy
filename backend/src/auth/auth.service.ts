@@ -821,7 +821,9 @@ export class AuthService implements OnModuleInit {
     if (user.role !== 'provider') return { profile, provider_profile: null };
     const { data, error } = await this.supabase.admin
       .from('provider_profiles')
-      .select('*, service_categories!category_id(name)')
+      .select(
+        '*, service_categories!category_id(id, name), approved_secondary_services:provider_secondary_categories(category_id, service_categories(id, name))',
+      )
       .eq('profile_id', user.id)
       .maybeSingle();
     if (error) throw new BadRequestException(error.message);

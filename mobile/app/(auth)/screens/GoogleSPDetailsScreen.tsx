@@ -7,13 +7,14 @@
  *   - Terms & Conditions acceptance
  *   - Privacy Policy acceptance
  *   - Data Collection consent
- *   - RA 10173 biometric/govt-ID consent
  *
  * On submit calls completeGoogleProfile({ role: 'provider', ... }).
  * After success the gate in App.tsx clears (google_signup_pending = false)
  * and the SP verification gate takes over (is_verified = false).
  */
 
+import { useThemedStyles, type Palette as ThemePalette } from '../../../src/context/ThemeContext';
+import { StatusBar } from 'expo-status-bar';
 import React, { useState } from 'react';
 import {
   ActivityIndicator,
@@ -26,21 +27,9 @@ import {
   View,
 } from 'react-native';
 import { ArrowLeft, Check, ChevronDown } from 'lucide-react-native';
-import { V6Colors, V6Radii, V6Shadows } from '../../../src/constants/theme';
+import { V6Radii, V6Shadows } from '../../../src/constants/theme';
 import TermsAndConditions from './TermsAndConditions';
 import { useAuthLayout } from '../../../src/hooks/useAuthLayout';
-
-const C = {
-  ...V6Colors,
-  bg: V6Colors.canvas,
-  dark: V6Colors.ink900,
-  slate: V6Colors.ink500,
-  muted: V6Colors.ink400,
-  mutedBorder: '#dce3e9',
-  brandDark: V6Colors.cyan900,
-  brandTeal: V6Colors.cyan700,
-  brandRed: '#ef4444',
-} as const;
 
 const SKILL_CATEGORIES = [
   { id: 1, name: 'Plumbing' },
@@ -57,7 +46,6 @@ interface GoogleSPDetailsScreenProps {
     consentedTerms: boolean;
     consentedPrivacy: boolean;
     consentedDataCollection: boolean;
-    consentedBiometric: boolean;
   }) => Promise<void>;
 }
 
@@ -72,6 +60,7 @@ interface ConsentCheckboxProps {
 }
 
 function ConsentCheckbox({ checked, onPress, label, error, testID }: ConsentCheckboxProps) {
+  const { C, styles, V6Colors } = useThemedStyles(createThemedStyles);
   return (
     <View style={styles.consentItem}>
       <View style={styles.consentRow}>
@@ -81,7 +70,7 @@ function ConsentCheckbox({ checked, onPress, label, error, testID }: ConsentChec
           onPress={onPress}
           activeOpacity={0.7}
         >
-          {checked ? <Check size={14} color={C.white} /> : null}
+          {checked ? <Check size={14} color={C.onPrimary} /> : null}
         </TouchableOpacity>
         <Text style={styles.consentText}>{label}</Text>
       </View>
@@ -99,13 +88,13 @@ type FieldErrors = {
   terms?: string;
   privacy?: string;
   dataCollection?: string;
-  biometric?: string;
 };
 
 export default function GoogleSPDetailsScreen({
   onBack,
   onComplete,
 }: GoogleSPDetailsScreenProps) {
+  const { C, styles, V6Colors } = useThemedStyles(createThemedStyles);
   const layout = useAuthLayout();
   const [termsMode, setTermsMode] = useState<TermsMode>(null);
 
@@ -115,7 +104,6 @@ export default function GoogleSPDetailsScreen({
   const [termsAccepted, setTermsAccepted] = useState(false);
   const [privacyAccepted, setPrivacyAccepted] = useState(false);
   const [dataCollectionAccepted, setDataCollectionAccepted] = useState(false);
-  const [biometricAccepted, setBiometricAccepted] = useState(false);
 
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -130,7 +118,6 @@ export default function GoogleSPDetailsScreen({
     if (!termsAccepted)          errors.terms          = 'Please accept the Terms & Conditions.';
     if (!privacyAccepted)        errors.privacy        = 'Please accept the Privacy Policy.';
     if (!dataCollectionAccepted) errors.dataCollection = 'Please accept the Data Collection consent.';
-    if (!biometricAccepted)      errors.biometric      = 'Please accept the RA 10173 biometric consent.';
     return errors;
   };
 
@@ -150,7 +137,6 @@ export default function GoogleSPDetailsScreen({
         consentedTerms: termsAccepted,
         consentedPrivacy: privacyAccepted,
         consentedDataCollection: dataCollectionAccepted,
-        consentedBiometric: biometricAccepted,
       });
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not save your details. Please try again.');
@@ -163,6 +149,7 @@ export default function GoogleSPDetailsScreen({
 
   return (
     <View style={styles.screen}>
+      <StatusBar style="light" />
       <View style={styles.headerBg} />
       <TermsAndConditions
         visible={termsMode !== null}
@@ -187,7 +174,7 @@ export default function GoogleSPDetailsScreen({
           {/* Back button */}
           <View style={styles.topRow}>
             <TouchableOpacity style={styles.backBtn} onPress={onBack} activeOpacity={0.8}>
-              <ArrowLeft size={22} color={C.white} />
+              <ArrowLeft size={22} color={C.onPrimary} />
             </TouchableOpacity>
           </View>
 
@@ -242,7 +229,7 @@ export default function GoogleSPDetailsScreen({
                       >
                         {cat.name}
                       </Text>
-                      {cat.id === categoryId && <Check size={15} color={C.brandTeal} />}
+                      {cat.id === categoryId && <Check size={15} color={V6Colors.link} />}
                     </TouchableOpacity>
                   ))}
                 </View>
@@ -308,22 +295,6 @@ export default function GoogleSPDetailsScreen({
                 error={fieldErrors.dataCollection}
               />
 
-              <ConsentCheckbox
-                testID="chk-gsp-biometric"
-                checked={biometricAccepted}
-                onPress={() => setBiometricAccepted((v) => !v)}
-                label={
-                  <Text style={styles.consentText}>
-                    I consent to the processing of my government-issued ID and
-                    biometric data for identity verification, in accordance with
-                    the{' '}
-                    <Text style={styles.link}>Data Privacy Act of 2012 (RA 10173)</Text>.
-                    <Text style={styles.asterisk}>*</Text>
-                  </Text>
-                }
-                error={fieldErrors.biometric}
-              />
-
               <Text style={styles.requiredNote}>
                 <Text style={styles.asterisk}>*</Text> Required to continue
               </Text>
@@ -338,7 +309,7 @@ export default function GoogleSPDetailsScreen({
               disabled={submitting}
             >
               {submitting ? (
-                <ActivityIndicator color={C.white} />
+                <ActivityIndicator color={C.onPrimary} />
               ) : (
                 <Text style={styles.primaryBtnText}>Complete Registration</Text>
               )}
@@ -350,116 +321,131 @@ export default function GoogleSPDetailsScreen({
   );
 }
 
-const styles = StyleSheet.create({
-  flex: { flex: 1 },
-  screen: { flex: 1, backgroundColor: C.bg },
+function createThemedStyles(theme: ThemePalette) {
+  const { Colors, V6Colors } = theme;
+  const C = {
+    ...V6Colors,
+    bg: V6Colors.canvas,
+    dark: V6Colors.ink900,
+    slate: V6Colors.ink500,
+    muted: V6Colors.ink400,
+    mutedBorder: '#dce3e9',
+    brandDark: V6Colors.cyan900,
+    brandTeal: V6Colors.cyan700,
+    brandRed: V6Colors.dangerText,
+  } as const;
+  const styles = StyleSheet.create({
+    flex: { flex: 1 },
+    screen: { flex: 1, backgroundColor: C.bg },
 
-  headerBg: {
-    position: 'absolute',
-    top: 0, left: 0, right: 0,
-    height: 200,
-    backgroundColor: C.brandDark,
-    borderBottomLeftRadius: 40,
-    borderBottomRightRadius: 40,
-  },
+    headerBg: {
+      position: 'absolute',
+      top: 0, left: 0, right: 0,
+      height: 200,
+      backgroundColor: C.brandDark,
+      borderBottomLeftRadius: 40,
+      borderBottomRightRadius: 40,
+    },
 
-  scrollContent: { paddingTop: 56, paddingHorizontal: 20, paddingBottom: 40 },
+    scrollContent: { paddingTop: 56, paddingHorizontal: 20, paddingBottom: 40 },
 
-  topRow: { flexDirection: 'row', marginBottom: 20 },
-  backBtn: {
-    width: 40, height: 40, borderRadius: 12,
-    backgroundColor: 'rgba(255,255,255,0.2)',
-    alignItems: 'center', justifyContent: 'center',
-  },
+    topRow: { flexDirection: 'row', marginBottom: 20 },
+    backBtn: {
+      width: 40, height: 40, borderRadius: 12,
+      backgroundColor: 'rgba(255,255,255,0.2)',
+      alignItems: 'center', justifyContent: 'center',
+    },
 
-  card: {
-    backgroundColor: C.white,
-    borderRadius: V6Radii.card,
-    padding: 24,
-    shadowColor: '#063D4D',
-    shadowOpacity: 0.08,
-    shadowOffset: { width: 0, height: 12 },
-    shadowRadius: 25,
-    elevation: 6,
-  },
+    card: {
+      backgroundColor: C.surface,
+      borderRadius: V6Radii.card,
+      padding: 24,
+      shadowColor: '#063D4D',
+      shadowOpacity: 0.08,
+      shadowOffset: { width: 0, height: 12 },
+      shadowRadius: 25,
+      elevation: 6,
+    },
 
-  title: { color: C.dark, fontSize: 29, fontWeight: '700', fontFamily: 'Inter', marginBottom: 4 },
-  subtitle: { color: C.slate, fontSize: 15.5, fontFamily: 'Inter', marginBottom: 20, lineHeight: 20 },
+    title: { color: C.dark, fontSize: 29, fontWeight: '700', fontFamily: 'Inter', marginBottom: 4 },
+    subtitle: { color: C.slate, fontSize: 15.5, fontFamily: 'Inter', marginBottom: 20, lineHeight: 20 },
 
-  fieldGroup: { marginBottom: 20 },
-  fieldLabel: { fontFamily: 'Inter', fontSize: 15.5, fontWeight: '600', color: C.brandDark, marginBottom: 6 },
-  asterisk: { color: C.brandRed, fontWeight: '700' },
+    fieldGroup: { marginBottom: 20 },
+    fieldLabel: { fontFamily: 'Inter', fontSize: 15.5, fontWeight: '600', color: V6Colors.ink900, marginBottom: 6 },
+    asterisk: { color: C.brandRed, fontWeight: '700' },
 
-  picker: {
-    backgroundColor: '#F8FAFC',
-    borderRadius: 12,
-    paddingHorizontal: 16,
-    paddingVertical: 13,
-    borderWidth: 1,
-    borderColor: C.mutedBorder,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  pickerError: { borderColor: C.brandRed },
-  pickerValue: { fontFamily: 'Inter', fontSize: 18.5, color: '#0F172A' },
-  pickerPlaceholder: { fontFamily: 'Inter', fontSize: 18.5, color: C.muted },
+    picker: {
+      backgroundColor: V6Colors.wellBg,
+      borderRadius: 12,
+      paddingHorizontal: 16,
+      paddingVertical: 13,
+      borderWidth: 1,
+      borderColor: C.mutedBorder,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+    },
+    pickerError: { borderColor: C.brandRed },
+    pickerValue: { fontFamily: 'Inter', fontSize: 18.5, color: V6Colors.ink900 },
+    pickerPlaceholder: { fontFamily: 'Inter', fontSize: 18.5, color: C.muted },
 
-  dropdown: {
-    marginTop: 4, borderRadius: 12, borderWidth: 1,
-    borderColor: C.mutedBorder, backgroundColor: C.white, overflow: 'hidden',
-  },
-  dropdownOption: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    paddingHorizontal: 16, paddingVertical: 13,
-    borderBottomWidth: 1, borderBottomColor: '#F1F5F9',
-  },
-  dropdownOptionActive: { backgroundColor: 'rgba(9,110,139,0.06)' },
-  dropdownOptionText: { fontFamily: 'Inter', fontSize: 16.5, color: C.dark },
-  dropdownOptionTextActive: { color: C.brandTeal, fontWeight: '700' },
+    dropdown: {
+      marginTop: 4, borderRadius: 12, borderWidth: 1,
+      borderColor: C.mutedBorder, backgroundColor: C.surface, overflow: 'hidden',
+    },
+    dropdownOption: {
+      flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+      paddingHorizontal: 16, paddingVertical: 13,
+      borderBottomWidth: 1, borderBottomColor: V6Colors.canvas,
+    },
+    dropdownOptionActive: { backgroundColor: 'rgba(9,110,139,0.06)' },
+    dropdownOptionText: { fontFamily: 'Inter', fontSize: 16.5, color: C.dark },
+    dropdownOptionTextActive: { color: V6Colors.link, fontWeight: '700' },
 
-  fieldError: {
-    fontFamily: 'Inter', fontSize: 14.5,
-    color: C.brandRed,
-    marginTop: 5, marginLeft: 2, lineHeight: 17,
-  },
+    fieldError: {
+      fontFamily: 'Inter', fontSize: 14.5,
+      color: C.brandRed,
+      marginTop: 5, marginLeft: 2, lineHeight: 17,
+    },
 
-  consentSection: {
-    borderTopWidth: 1, borderTopColor: '#F1F5F9',
-    paddingTop: 16, marginBottom: 8,
-  },
-  consentSectionTitle: {
-    fontFamily: 'Inter', fontSize: 14.5, fontWeight: '700',
-    color: C.brandDark, textTransform: 'uppercase',
-    letterSpacing: 0.5, marginBottom: 12,
-  },
-  consentItem: { marginBottom: 12 },
-  consentRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 10 },
-  checkbox: {
-    width: 22, height: 22, borderRadius: 6, borderWidth: 1.5,
-    borderColor: C.mutedBorder, backgroundColor: C.white,
-    alignItems: 'center', justifyContent: 'center',
-    marginTop: 1, flexShrink: 0,
-  },
-  checkboxChecked: { backgroundColor: C.brandTeal, borderColor: C.brandTeal },
-  consentText: { flex: 1, color: C.slate, fontSize: 15.5, fontFamily: 'Inter', lineHeight: 20 },
-  link: { color: C.brandTeal, fontWeight: '700', textDecorationLine: 'underline' },
-  requiredNote: { color: C.muted, fontSize: 13.5, fontFamily: 'Inter', marginTop: 4 },
+    consentSection: {
+      borderTopWidth: 1, borderTopColor: V6Colors.canvas,
+      paddingTop: 16, marginBottom: 8,
+    },
+    consentSectionTitle: {
+      fontFamily: 'Inter', fontSize: 14.5, fontWeight: '700',
+      color: V6Colors.ink900, textTransform: 'uppercase',
+      letterSpacing: 0.5, marginBottom: 12,
+    },
+    consentItem: { marginBottom: 12 },
+    consentRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 10 },
+    checkbox: {
+      width: 22, height: 22, borderRadius: 6, borderWidth: 1.5,
+      borderColor: C.mutedBorder, backgroundColor: C.surface,
+      alignItems: 'center', justifyContent: 'center',
+      marginTop: 1, flexShrink: 0,
+    },
+    checkboxChecked: { backgroundColor: C.brandTeal, borderColor: C.brandTeal },
+    consentText: { flex: 1, color: C.slate, fontSize: 15.5, fontFamily: 'Inter', lineHeight: 20 },
+    link: { color: V6Colors.link, fontWeight: '700', textDecorationLine: 'underline' },
+    requiredNote: { color: C.muted, fontSize: 13.5, fontFamily: 'Inter', marginTop: 4 },
 
-  errorBanner: {
-    color: C.brandRed,
-    fontFamily: 'Inter', fontSize: 15.5,
-    marginBottom: 12, lineHeight: 18,
-  },
+    errorBanner: {
+      color: C.brandRed,
+      fontFamily: 'Inter', fontSize: 15.5,
+      marginBottom: 12, lineHeight: 18,
+    },
 
-  primaryBtn: {
-    backgroundColor: C.brandTeal, borderRadius: V6Radii.btn, paddingVertical: 15,
-    alignItems: 'center', marginTop: 8,
-    ...V6Shadows.primaryButton,
-  },
-  primaryBtnDisabled: { opacity: 0.7 },
-  primaryBtnText: {
-    color: C.white, fontFamily: 'Inter',
-    fontSize: 18.5, fontWeight: '600', letterSpacing: 0.3,
-  },
-});
+    primaryBtn: {
+      backgroundColor: C.brandTeal, borderRadius: V6Radii.btn, paddingVertical: 15,
+      alignItems: 'center', marginTop: 8,
+      ...V6Shadows.primaryButton,
+    },
+    primaryBtnDisabled: { opacity: 0.7 },
+    primaryBtnText: {
+      color: C.onPrimary, fontFamily: 'Inter',
+      fontSize: 18.5, fontWeight: '600', letterSpacing: 0.3,
+    },
+  });
+  return { Colors, V6Colors, C, styles };
+}

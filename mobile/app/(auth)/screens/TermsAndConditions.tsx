@@ -1,3 +1,4 @@
+import { useThemedStyles, type Palette as ThemePalette } from '../../../src/context/ThemeContext';
 import React from 'react';
 import {
   Modal,
@@ -7,18 +8,11 @@ import {
   Text,
   TouchableOpacity,
   View,
+  useWindowDimensions,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { X } from 'lucide-react-native';
-import { V6Colors, V6Radii, V6Shadows } from '../../../src/constants/theme';
-
-const C = {
-  ...V6Colors,
-  bg: V6Colors.canvas,
-  dark: V6Colors.ink900,
-  slate: V6Colors.ink500,
-  brandDark: V6Colors.cyan900,
-  brandTeal: V6Colors.cyan700,
-} as const;
+import { V6Radii, V6Shadows } from '../../../src/constants/theme';
 
 interface TermsAndConditionsProps {
   visible: boolean;
@@ -93,13 +87,16 @@ export default function TermsAndConditions({
   onAccept,
   mode = 'terms',
 }: TermsAndConditionsProps) {
+  const { C, styles, V6Colors } = useThemedStyles(createThemedStyles);
+  const { height } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
   const content = mode === 'privacy' ? PRIVACY_CONTENT : TERMS_CONTENT;
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onBack} statusBarTranslucent>
-      <Pressable style={styles.overlay} onPress={onBack} accessible={false}>
+      <Pressable style={[styles.overlay, { paddingTop: insets.top + 12, paddingBottom: insets.bottom + 12 }]} onPress={onBack} accessible={false}>
         <Pressable
-          style={styles.dialog}
+          style={[styles.dialog, { height: Math.max(0, height - insets.top - insets.bottom - 24) }]}
           onPress={(event) => event.stopPropagation()}
           accessibilityViewIsModal
         >
@@ -142,42 +139,53 @@ export default function TermsAndConditions({
   );
 }
 
-const styles = StyleSheet.create({
-  overlay: {
-    flex: 1,
-    justifyContent: 'center',
-    padding: 20,
-    backgroundColor: 'rgba(6, 61, 77, 0.5)',
-  },
-  dialog: {
-    backgroundColor: C.white,
-    borderRadius: V6Radii.card,
-    paddingTop: 20,
-    paddingHorizontal: 20,
-    paddingBottom: 18,
-    height: '85%',
-    width: '100%',
-    maxWidth: 480,
-    alignSelf: 'center',
-  },
-  header: { flexDirection: 'row', alignItems: 'center', marginBottom: 12, gap: 12 },
-  title: { color: C.brandDark, fontSize: 19, fontWeight: '800', fontFamily: 'Inter', flex: 1 },
-  closeBtn: { padding: 2 },
+function createThemedStyles(theme: ThemePalette) {
+  const { Colors, V6Colors } = theme;
+  const C = {
+    ...V6Colors,
+    bg: V6Colors.canvas,
+    dark: V6Colors.ink900,
+    slate: V6Colors.ink500,
+    brandDark: V6Colors.cyan900,
+    brandTeal: V6Colors.cyan700,
+  } as const;
+  const styles = StyleSheet.create({
+    overlay: {
+      flex: 1,
+      justifyContent: 'center',
+      padding: 20,
+      backgroundColor: 'rgba(6, 61, 77, 0.5)',
+    },
+    dialog: {
+      backgroundColor: C.surface,
+      borderRadius: V6Radii.card,
+      paddingTop: 20,
+      paddingHorizontal: 20,
+      paddingBottom: 18,
+      width: '100%',
+      maxWidth: 480,
+      alignSelf: 'center',
+    },
+    header: { flexDirection: 'row', alignItems: 'center', marginBottom: 12, gap: 12 },
+    title: { color: V6Colors.ink900, fontSize: 19, fontWeight: '800', fontFamily: 'Inter', flex: 1 },
+    closeBtn: { padding: 2 },
 
-  body: { flex: 1, minHeight: 0 },
-  bodyContent: { paddingBottom: 6 },
-  section: { marginBottom: 14 },
-  sectionTitle: { color: C.dark, fontSize: 15.5, fontWeight: '700', fontFamily: 'Inter', marginBottom: 4 },
-  bodyText: { color: C.slate, fontSize: 14.5, fontFamily: 'Inter', lineHeight: 20 },
+    body: { flex: 1, minHeight: 0 },
+    bodyContent: { paddingBottom: 6 },
+    section: { marginBottom: 14 },
+    sectionTitle: { color: C.dark, fontSize: 15.5, fontWeight: '700', fontFamily: 'Inter', marginBottom: 4 },
+    bodyText: { color: C.slate, fontSize: 14.5, fontFamily: 'Inter', lineHeight: 20 },
 
-  primaryBtn: {
-    backgroundColor: C.brandTeal,
-    borderRadius: V6Radii.btn,
-    paddingVertical: 12,
-    paddingHorizontal: 12,
-    alignItems: 'center',
-    marginTop: 12,
-    ...V6Shadows.primaryButton,
-  },
-  primaryBtnText: { color: C.white, fontFamily: 'Inter', fontSize: 15, fontWeight: '700', textAlign: 'center' },
-});
+    primaryBtn: {
+      backgroundColor: C.brandTeal,
+      borderRadius: V6Radii.btn,
+      paddingVertical: 12,
+      paddingHorizontal: 12,
+      alignItems: 'center',
+      marginTop: 12,
+      ...V6Shadows.primaryButton,
+    },
+    primaryBtnText: { color: C.onPrimary, fontFamily: 'Inter', fontSize: 15, fontWeight: '700', textAlign: 'center' },
+  });
+  return { Colors, V6Colors, C, styles };
+}

@@ -17,6 +17,7 @@
  * reason — claiming the mail was sent would leak exactly what the 200 hides.
  */
 
+import { useThemedStyles, type Palette as ThemePalette } from '../../../src/context/ThemeContext';
 import React, { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
@@ -32,12 +33,11 @@ import {
 } from 'react-native';
 import { AlertCircle, ArrowLeft, CheckCircle2, Circle, KeyRound, MailCheck } from 'lucide-react-native';
 import PasswordInput from '../../../src/components/PasswordInput';
-import { V6Colors, V6Radii, V6Shadows } from '../../../src/constants/theme';
+import { V6Radii, V6Shadows } from '../../../src/constants/theme';
 import { useAuth } from '../../../src/context/AuthContext';
 import { api } from '../../../src/lib/api';
 import { useAuthLayout } from '../../../src/hooks/useAuthLayout';
 
-const C = V6Colors;
 const RESEND_COOLDOWN_S = 60;
 const MIN_PASSWORD = 8;
 
@@ -46,6 +46,7 @@ interface ForgotPasswordScreenProps {
 }
 
 export default function ForgotPasswordScreen({ onBackToLogin }: ForgotPasswordScreenProps) {
+  const { C, styles, V6Colors, appearance } = useThemedStyles(createThemedStyles);
   const layout = useAuthLayout();
   const { resetPassword } = useAuth();
   const [stage, setStage] = useState<'email' | 'code'>('email');
@@ -147,8 +148,8 @@ export default function ForgotPasswordScreen({ onBackToLogin }: ForgotPasswordSc
       <View style={styles.card}>
         <View style={styles.iconWell}>
           {stage === 'email'
-            ? <KeyRound size={26} color={C.cyan700} />
-            : <MailCheck size={26} color={C.cyan700} />}
+            ? <KeyRound size={26} color={V6Colors.link} />
+            : <MailCheck size={26} color={V6Colors.link} />}
         </View>
         <Text style={styles.stepLabel}>Step {stepIndex + 1} of 2</Text>
 
@@ -161,7 +162,7 @@ export default function ForgotPasswordScreen({ onBackToLogin }: ForgotPasswordSc
 
             <Text style={styles.inputLabel}>Email</Text>
             <View style={[styles.inputBox, focused === 'email' && styles.inputBoxFocused]}>
-              <TextInput
+              <TextInput keyboardAppearance={appearance}
                 style={styles.inputText}
                 placeholder="sample@mail.com"
                 placeholderTextColor={C.ink400}
@@ -189,7 +190,7 @@ export default function ForgotPasswordScreen({ onBackToLogin }: ForgotPasswordSc
               disabled={busy}
             >
               {busy
-                ? <ActivityIndicator color={C.white} />
+                ? <ActivityIndicator color={C.onPrimary} />
                 : <Text style={styles.primaryButtonText}>Send reset code</Text>}
             </TouchableOpacity>
           </>
@@ -203,7 +204,7 @@ export default function ForgotPasswordScreen({ onBackToLogin }: ForgotPasswordSc
 
             <Text style={styles.inputLabel}>Reset code</Text>
             <View style={[styles.inputBox, focused === 'code' && styles.inputBoxFocused]}>
-              <TextInput
+              <TextInput keyboardAppearance={appearance}
                 style={[styles.inputText, styles.codeText]}
                 placeholder="••••••"
                 placeholderTextColor={C.ink300}
@@ -264,7 +265,7 @@ export default function ForgotPasswordScreen({ onBackToLogin }: ForgotPasswordSc
             <View style={styles.rules}>
               {rules.map((rule) => (
                 <View key={rule.label} style={styles.ruleRow}>
-                  {rule.ok ? <CheckCircle2 size={15} color="#15803d" /> : <Circle size={15} color={C.ink300} />}
+                  {rule.ok ? <CheckCircle2 size={15} color={V6Colors.successText} /> : <Circle size={15} color={C.ink300} />}
                   <Text style={[styles.ruleText, rule.ok && styles.ruleTextOk]}>{rule.label}</Text>
                 </View>
               ))}
@@ -280,7 +281,7 @@ export default function ForgotPasswordScreen({ onBackToLogin }: ForgotPasswordSc
               disabled={busy}
             >
               {busy
-                ? <ActivityIndicator color={C.white} />
+                ? <ActivityIndicator color={C.onPrimary} />
                 : <Text style={styles.primaryButtonText}>Reset password</Text>}
             </TouchableOpacity>
 
@@ -322,60 +323,66 @@ export default function ForgotPasswordScreen({ onBackToLogin }: ForgotPasswordSc
 }
 
 function ErrorCard({ text }: { text: string }) {
+  const { styles, V6Colors, appearance } = useThemedStyles(createThemedStyles);
   return (
     <View style={styles.errorCard} accessibilityRole="alert">
-      <AlertCircle size={17} color="#b91c1c" />
+      <AlertCircle size={17} color={V6Colors.dangerText} />
       <Text style={styles.errorText}>{text}</Text>
     </View>
   );
 }
 
-const styles = StyleSheet.create({
-  flex: { flex: 1 },
-  screen: { flex: 1, backgroundColor: C.canvas },
-  scrollContent: { paddingHorizontal: 20 },
-  topSection: { flexDirection: 'row', alignItems: 'center', gap: 14, marginBottom: 18 },
-  backButton: { width: 38, height: 38, borderRadius: 12, backgroundColor: C.white, borderWidth: 1, borderColor: '#e8edf2', alignItems: 'center', justifyContent: 'center' },
-  steps: { flex: 1, flexDirection: 'row', gap: 6 },
-  stepBar: { flex: 1, height: 4, borderRadius: 2, backgroundColor: '#e2e8f0' },
-  stepBarActive: { backgroundColor: C.cyan700 },
-  card: { backgroundColor: C.white, borderRadius: V6Radii.card, padding: 22, borderWidth: 1, borderColor: C.line, ...V6Shadows.sm },
-  iconWell: { width: 52, height: 52, borderRadius: 16, backgroundColor: C.cyan50, alignItems: 'center', justifyContent: 'center', marginBottom: 14 },
-  stepLabel: { color: C.cyan700, fontFamily: 'Inter', fontSize: 12.5, fontWeight: '800', letterSpacing: 0.4, textTransform: 'uppercase', marginBottom: 4 },
-  title: { color: C.ink900, fontSize: 24, fontWeight: '800', fontFamily: 'Inter', marginBottom: 6 },
-  subtitle: { color: C.ink500, fontSize: 14.5, fontFamily: 'Inter', marginBottom: 20, lineHeight: 20 },
-  subtitleStrong: { color: C.ink900, fontWeight: '700' },
-  inputLabel: { color: C.ink900, fontFamily: 'Inter', fontSize: 14.5, fontWeight: '700', marginBottom: 6 },
-  inputLabelSpaced: { marginTop: 14 },
-  inputBox: { backgroundColor: C.white, borderRadius: V6Radii.input, paddingHorizontal: 14, minHeight: 46, justifyContent: 'center', borderWidth: 1, borderColor: '#dce3e9' },
-  // NOTE: deliberately border-colour only. Do NOT add a shadow/elevation to a
-  // focus style that wraps a TextInput: on Android, changing `elevation` on an
-  // ancestor while it holds focus makes the platform re-create that view, which
-  // drops the EditText's focus and dismisses the keyboard the instant it opens.
-  // Verified on-device — see LoginScreen's inputBoxFocused for the same fix.
-  inputBoxFocused: { borderColor: C.cyan500 },
-  inputText: { color: C.ink900, fontFamily: 'Inter', fontSize: 16, padding: 0 },
-  codeText: { fontSize: 20, fontWeight: '700', letterSpacing: 8 },
-  resendRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 8, marginBottom: 16 },
-  resendHint: { color: C.ink500, fontFamily: 'Inter', fontSize: 13.5 },
-  resendLink: { color: C.cyan700, fontFamily: 'Inter', fontSize: 13.5, fontWeight: '700' },
-  resendLinkDisabled: { color: C.ink400 },
-  rules: { gap: 6, marginTop: 12, marginBottom: 14 },
-  ruleRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  ruleText: { color: C.ink500, fontSize: 13, fontFamily: 'Inter' },
-  ruleTextOk: { color: '#15803d' },
-  primaryButton: { backgroundColor: C.cyan700, borderRadius: V6Radii.btn, minHeight: 48, justifyContent: 'center', alignItems: 'center', marginTop: 16, ...V6Shadows.primaryButton },
-  primaryButtonDisabled: { opacity: 0.6 },
-  primaryButtonText: { color: C.white, fontFamily: 'Inter', fontSize: 16.5, fontWeight: '700' },
-  secondaryLink: { alignItems: 'center', paddingTop: 14 },
-  secondaryLinkText: { color: C.cyan700, fontFamily: 'Inter', fontSize: 14, fontWeight: '700' },
-  noticeText: { color: '#15803d', fontFamily: 'Inter', fontSize: 13.5, marginBottom: 4 },
-  errorCard: {
-    flexDirection: 'row', alignItems: 'flex-start', gap: 8, marginTop: 14,
-    backgroundColor: '#fef2f2', borderWidth: 1, borderColor: '#fecaca', borderRadius: 12, padding: 11,
-  },
-  errorText: { flex: 1, color: '#b91c1c', fontFamily: 'Inter', fontSize: 13.5, lineHeight: 18 },
-  footerRow: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', marginTop: 20 },
-  footerText: { color: C.ink500, fontFamily: 'Inter', fontSize: 14 },
-  footerLink: { color: C.cyan700, fontFamily: 'Inter', fontSize: 14, fontWeight: '700' },
-});
+function createThemedStyles(theme: ThemePalette) {
+  const { Colors, V6Colors } = theme;
+  const C = V6Colors;
+  const styles = StyleSheet.create({
+    flex: { flex: 1 },
+    screen: { flex: 1, backgroundColor: C.canvas },
+    scrollContent: { paddingHorizontal: 20 },
+    topSection: { flexDirection: 'row', alignItems: 'center', gap: 14, marginBottom: 18 },
+    backButton: { width: 38, height: 38, borderRadius: 12, backgroundColor: C.surface, borderWidth: 1, borderColor: V6Colors.line, alignItems: 'center', justifyContent: 'center' },
+    steps: { flex: 1, flexDirection: 'row', gap: 6 },
+    stepBar: { flex: 1, height: 4, borderRadius: 2, backgroundColor: V6Colors.ink100 },
+    stepBarActive: { backgroundColor: C.cyan700 },
+    card: { backgroundColor: C.surface, borderRadius: V6Radii.card, padding: 22, borderWidth: 1, borderColor: C.line, ...V6Shadows.sm },
+    iconWell: { width: 52, height: 52, borderRadius: 16, backgroundColor: C.cyan50, alignItems: 'center', justifyContent: 'center', marginBottom: 14 },
+    stepLabel: { color: V6Colors.link, fontFamily: 'Inter', fontSize: 12.5, fontWeight: '800', letterSpacing: 0.4, textTransform: 'uppercase', marginBottom: 4 },
+    title: { color: C.ink900, fontSize: 24, fontWeight: '800', fontFamily: 'Inter', marginBottom: 6 },
+    subtitle: { color: C.ink500, fontSize: 14.5, fontFamily: 'Inter', marginBottom: 20, lineHeight: 20 },
+    subtitleStrong: { color: C.ink900, fontWeight: '700' },
+    inputLabel: { color: C.ink900, fontFamily: 'Inter', fontSize: 14.5, fontWeight: '700', marginBottom: 6 },
+    inputLabelSpaced: { marginTop: 14 },
+    inputBox: { backgroundColor: C.surface, borderRadius: V6Radii.input, paddingHorizontal: 14, minHeight: 46, justifyContent: 'center', borderWidth: 1, borderColor: V6Colors.fieldBorder },
+    // NOTE: deliberately border-colour only. Do NOT add a shadow/elevation to a
+    // focus style that wraps a TextInput: on Android, changing `elevation` on an
+    // ancestor while it holds focus makes the platform re-create that view, which
+    // drops the EditText's focus and dismisses the keyboard the instant it opens.
+    // Verified on-device — see LoginScreen's inputBoxFocused for the same fix.
+    inputBoxFocused: { borderColor: C.cyan500 },
+    inputText: { color: C.ink900, fontFamily: 'Inter', fontSize: 16, padding: 0 },
+    codeText: { fontSize: 20, fontWeight: '700', letterSpacing: 8 },
+    resendRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 8, marginBottom: 16 },
+    resendHint: { color: C.ink500, fontFamily: 'Inter', fontSize: 13.5 },
+    resendLink: { color: V6Colors.link, fontFamily: 'Inter', fontSize: 13.5, fontWeight: '700' },
+    resendLinkDisabled: { color: C.ink400 },
+    rules: { gap: 6, marginTop: 12, marginBottom: 14 },
+    ruleRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+    ruleText: { color: C.ink500, fontSize: 13, fontFamily: 'Inter' },
+    ruleTextOk: { color: V6Colors.successText },
+    primaryButton: { backgroundColor: C.cyan700, borderRadius: V6Radii.btn, minHeight: 48, justifyContent: 'center', alignItems: 'center', marginTop: 16, ...V6Shadows.primaryButton },
+    primaryButtonDisabled: { opacity: 0.6 },
+    primaryButtonText: { color: C.onPrimary, fontFamily: 'Inter', fontSize: 16.5, fontWeight: '700' },
+    secondaryLink: { alignItems: 'center', paddingTop: 14 },
+    secondaryLinkText: { color: V6Colors.link, fontFamily: 'Inter', fontSize: 14, fontWeight: '700' },
+    noticeText: { color: V6Colors.successText, fontFamily: 'Inter', fontSize: 13.5, marginBottom: 4 },
+    errorCard: {
+      flexDirection: 'row', alignItems: 'flex-start', gap: 8, marginTop: 14,
+      backgroundColor: V6Colors.dangerSurface, borderWidth: 1, borderColor: V6Colors.dangerBorder, borderRadius: 12, padding: 11,
+    },
+    errorText: { flex: 1, color: V6Colors.dangerText, fontFamily: 'Inter', fontSize: 13.5, lineHeight: 18 },
+    footerRow: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', marginTop: 20 },
+    footerText: { color: C.ink500, fontFamily: 'Inter', fontSize: 14 },
+    footerLink: { color: V6Colors.link, fontFamily: 'Inter', fontSize: 14, fontWeight: '700' },
+  });
+  return { appearance: theme.appearance, Colors, V6Colors, C, styles };
+}

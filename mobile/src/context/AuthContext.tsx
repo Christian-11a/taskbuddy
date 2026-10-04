@@ -32,6 +32,7 @@ import {
   type ProviderProfile,
   type Session,
 } from '../lib/api';
+import { clearAsyncDataCache } from '../hooks/useAsyncData';
 import { requestExpoPushRegistration } from '../lib/pushNotifications';
 import { openRedirectSession } from '../lib/appRedirectSession';
 
@@ -131,7 +132,6 @@ interface AuthContextValue {
     consentedTerms?: boolean;
     consentedPrivacy?: boolean;
     consentedDataCollection?: boolean;
-    consentedBiometric?: boolean;
   }) => Promise<{ needsEmailConfirmation: boolean }>;
   /** Initiates the Google OAuth browser flow and signs the user in on success. */
   signInWithGoogle: () => Promise<void>;
@@ -159,7 +159,6 @@ interface AuthContextValue {
     consentedTerms?: boolean;
     consentedPrivacy?: boolean;
     consentedDataCollection?: boolean;
-    consentedBiometric?: boolean;
   }) => Promise<void>;
   signOut: () => Promise<void>;
 }
@@ -177,6 +176,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   // Always-current token, read by the api client's auth accessor.
   const sessionRef = useRef<Session | null>(null);
   const pushTokenRef = useRef<string | null>(null);
+  const profileRefreshRevision = useRef(0);
 
   const persistSession = useCallback(async (next: Session | null) => {
     sessionRef.current = next;
@@ -462,7 +462,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const refreshProfile = useCallback(async () => {
     const token = sessionRef.current?.access_token;
     if (!token) return;
+    const revision = ++profileRefreshRevision.current;
     const me = await api.me(token);
+    if (revision !== profileRefreshRevision.current || sessionRef.current?.access_token !== token) return;
     setProfile(me.profile);
     setProviderProfile(me.provider_profile);
   }, []);
@@ -478,7 +480,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       consentedTerms?: boolean;
       consentedPrivacy?: boolean;
       consentedDataCollection?: boolean;
-      consentedBiometric?: boolean;
     }) => {
       // Category and consents go with the registration itself. The backend
       // writes them with the service-role client, so they persist even when
@@ -496,7 +497,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         consented_terms: input.consentedTerms,
         consented_privacy: input.consentedPrivacy,
         consented_data_collection: input.consentedDataCollection,
-        consented_biometric: input.consentedBiometric,
       });
 
       // If the project has email confirmation disabled, register returns a
@@ -581,6 +581,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const clearAuthError = useCallback(() => setAuthError(null), []);
 
   const signOut = useCallback(async () => {
+    clearAsyncDataCache();
     const token = session?.access_token;
     const pushToken = pushTokenRef.current;
     setProfile(null);
@@ -610,7 +611,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       consentedTerms?: boolean;
       consentedPrivacy?: boolean;
       consentedDataCollection?: boolean;
-      consentedBiometric?: boolean;
     }) => {
       if (!session) throw new Error('Not authenticated');
       await api.completeGoogleProfile(session.access_token, {
@@ -619,7 +619,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         consented_terms: input.consentedTerms,
         consented_privacy: input.consentedPrivacy,
         consented_data_collection: input.consentedDataCollection,
-        consented_biometric: input.consentedBiometric,
       });
       // Refresh the profile so the gate clears without requiring a re-login.
       await refreshProfile();
