@@ -84,12 +84,15 @@ real jobs. Credentials/sessions are stored outside the repository with mode
 No funds were added and no payment was attempted. These confirmed fixtures do
 not establish signup/OTP UI or provider-verification evidence.
 
-The currently signed-in Render workspace and Vercel team do not expose the
-TaskBuddy projects. The user must sign in to the owning accounts or grant the
-current account access. This is an access blocker, not missing authorization.
-Migrations remain unapplied until a matching API release can be coordinated.
-Physical-device/build evidence and deployed Stripe sandbox mode still need
-verification; a local test-key prefix does not prove the deployed key mode.
+Render access is now verified for the existing API and ML services. The API
+deploys `Eduard-K-A/taskbuddy`, branch `main`, root `backend`, with live revision
+`773003a`. The ML service is at `282adf1`; its own health endpoint and the API
+health check now both report the loaded model healthy. No ML config change was
+needed. The deployed Stripe publishable and secret key prefixes are test mode;
+no values were recorded or payments attempted. Actual payment `livemode` still
+needs verification. The user reports no Vercel access; web deployment needs the
+project owner. API/database work remains authorized independently. Physical
+device/build and deployed workflow evidence remain open.
 
 ## Protected backups — October 4
 
@@ -99,9 +102,13 @@ a protected directory, with mode 600. Schema export: 129,985 bytes, SHA-256
 `24bbdeec75c6dbc05093478e8218db87ddffde7e280da03fa0f5a4c78f8bede2`.
 Data export: 284,668 bytes, SHA-256
 `660afd3ce7308ed7fba71f5fec2f07b1791780e9abb6de26fc8f82ae35041f1b`.
-The exports include public application tables and financial records. They are
-not a full auth/storage/history backup, and restore verification is pending.
-Maintenance remains disabled while release access is unavailable.
+The exports include public application tables and financial records. The data export also contains 26 auth tables and seven storage metadata tables.
+Storage object bytes and migration registry are not part of these exports.
+[Local restore evidence](BACKUP_RESTORE_EVIDENCE.json) verifies all 28 public
+table counts and two sequences. Auth identities/publication were stubbed and
+Supabase-only cron/net/Vault extensions omitted locally, so full Supabase
+recovery is unverified. New migrations 0039–0045 passed on the restored public
+schema/data. Maintenance has not yet been enabled.
 
 ## Focused implementation commits
 
@@ -174,3 +181,12 @@ history registration. Do not replay/rewrite older history gaps. The existing
 pending ₱100 withdrawal remains reserved; do not invent its legacy payout
 reference. API/web/mobile releases and controlled transaction/device checks
 remain separate evidence gates.
+
+## Independent connection checks
+
+[Native PostgreSQL evidence](NATIVE_CONCURRENCY_EVIDENCE.json) records four
+checks using independent server connections: withdrawal versus withdrawal,
+withdrawal versus escrow hold, withdrawal versus Connect reservation, and
+rollback recovery. Competing unaffordable spending was rejected with `TB402`;
+rollback released the reservation. This verifies local PostgreSQL 18 contention,
+not deployed PostgreSQL 17 behavior. No real payment rail was called.

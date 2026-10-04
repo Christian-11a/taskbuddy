@@ -1,0 +1,23 @@
+{
+  "environment": "isolated local PostgreSQL 18; Unix socket only",
+  "source": "protected pre-migration schema/data exports",
+  "public_tables_checked": 28,
+  "public_row_counts_match_dump": true,
+  "local_only_omitted_extensions": [
+    "pg_cron",
+    "pg_net",
+    "supabase_vault"
+  ],
+  "local_supabase_publication": "empty stub",
+  "data_backup_scope": {
+    "public_tables": 28,
+    "auth_tables": 26,
+    "storage_metadata_tables": 7
+  },
+  "auth_users": "stub identity IDs only; actual auth recovery not verified",
+  "storage_recovery_verified": false,
+  "storage_object_bytes_backed_up": false,
+  "target_database_modified": false,
+  "public_sequences_restored": 2,
+  "new_migrations_on_restored_public_data": "0039\u20130045 passed"
+}

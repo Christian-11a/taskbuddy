@@ -597,3 +597,13 @@ Render/Vercel accounts lacking TaskBuddy project access. Migrations remain
 unapplied until the matching API release can be coordinated. Earlier references
 to pending release approval are superseded by this authorization; access and
 verification evidence remain required.
+
+## Phase 10 — Access retry and independent PostgreSQL verification
+
+Render access is verified for the existing API and ML services; Vercel release
+requires its project owner because the user has no access. The ML endpoint and
+API now both report healthy; deployed Stripe key prefixes are test mode, without
+payment attempts. Four independent-connection wallet checks passed on isolated
+PostgreSQL 18. Protected public backup restore verified 28 table counts and two
+sequences, then 0039–0045 passed on the restored target public schema/data.
+See the release evidence for Supabase-extension/auth/storage limitations.

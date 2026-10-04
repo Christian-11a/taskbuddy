@@ -18,5 +18,6 @@ receiving demo runs from root with `node backend/scripts/payout-demo.mjs`.
 Release work is authorized for the existing environments with sandbox payments
 only. Dedicated QA client/provider accounts and the admin login are verified.
 Upstream integration and its web gates passed; protected public backups exist.
-Render/Vercel project access, backup restore validation and deployed/device gates
-remain open. See the release record for scope and evidence.
+Render access is verified; the user lacks Vercel access, so its owner must
+release the web changes. Local public-data restore and independent connection
+checks passed; full Supabase recovery and deployed/device gates remain open. See the release record for scope and evidence.
