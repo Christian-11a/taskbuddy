@@ -188,6 +188,8 @@ export interface VerificationRow {
 }
 
 export interface DisputeRow {
+  entries?: import("../domain").CaseEntry[];
+  hasPayment?: boolean;
   id: string;
   jobId: string;
   jobTitle: string;
@@ -355,6 +357,8 @@ function payoutCell(t: Transaction): Pick<TransactionRow, "payout" | "payoutClas
 export function toDisputeRow(d: Dispute): DisputeRow {
   const display = DISPUTE_STATUS_DISPLAY[d.status];
   return {
+    entries: d.entries,
+    hasPayment: d.hasPayment,
     id: d.id,
     jobId: d.jobId,
     jobTitle: d.jobTitle,

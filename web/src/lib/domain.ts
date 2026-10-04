@@ -105,7 +105,16 @@ export type TransferStatus =
 export type DisputeStatus = "OPEN" | "RESOLVED" | "CANCELLED";
 export type DisputeResolution = "RELEASED_TO_PROVIDER" | "REFUNDED_TO_CLIENT" | "REVIEWED";
 
+export interface CaseEntry {
+  id: string; kind: string; body: string; created_at: string;
+  author: { id: string; full_name: string; role: string } | null;
+  message: { id: string; body: string; attachment_path: string | null } | null;
+  attachment_url: string | null;
+}
+
 export interface Dispute {
+  entries?: CaseEntry[];
+  hasPayment?: boolean;
   id: string;
   jobId: string;
   jobTitle: string;
@@ -259,6 +268,7 @@ export interface AuditAction {
 export interface ConversationMessage {
   id: string;
   senderName: string;
+  attachmentUrl?: string | null;
   body: string;
   createdAt: string;
 }

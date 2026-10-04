@@ -45,7 +45,7 @@ function statusTone(d: DisputeRow) {
 }
 
 export function DisputesPage() {
-  const { disputes, resolveDispute, loading } = useApp();
+  const { disputes, resolveDispute, refreshData, loading } = useApp();
   const { showToast } = useToast();
   const isWide = useIsWide();
   const [filter, setFilter] = useState<Filter>("open");
@@ -123,8 +123,20 @@ export function DisputesPage() {
     }
   }
 
+  async function requestClarification(id: string) {
+    setResolvingId(id);
+    try {
+      await services.requestDisputeClarification(id, notes[id].trim());
+      await refreshData();
+      setNotes((prev) => omit(prev, id));
+      showToast("Clarification requested from both participants.");
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : "Could not request clarification.", "error");
+    } finally { setResolvingId(null); }
+  }
+
   const noteTooLong = note.length > NOTE_MAX_LENGTH;
-  const canDecide = !!selected?.isOpen && resolvingId === null && !noteTooLong && (!selected.paymentSettled || !!note.trim());
+  const canDecide = !!selected?.isOpen && resolvingId === null && !noteTooLong && !!note.trim();
 
   useQueueKeys({
     ids,
@@ -251,7 +263,7 @@ export function DisputesPage() {
               <div className="mb-6 grid grid-cols-[1fr_auto_1fr] items-center gap-3 rounded-[12px] border border-border bg-surface-2/60 p-4">
                 <Party label="Client" name={selected.clientName} />
                 <div className="flex flex-col items-center gap-1 text-center">
-                  <span className="text-[11px] text-subtle">In escrow</span>
+                  <span className="text-[11px] text-subtle">{selected.hasPayment === false ? "No payment to settle" : selected.paymentSettled ? "Payment already settled" : "Payment under review"}</span>
                   <span className="tabular text-[18px] font-semibold tracking-tight">{selected.amount}</span>
                   <ArrowRight className="size-3.5 text-subtle" aria-hidden />
                 </div>
@@ -277,6 +289,19 @@ export function DisputesPage() {
                 </DetailSection>
               )}
 
+              <DetailSection title="Statements, appeals and case activity">
+                <ol className="space-y-3">
+                  {(selected.entries ?? []).map((entry) => <li key={entry.id} className="rounded border border-border p-3">
+                    <p className="text-sm font-medium">{entry.author?.full_name ?? "System"} · {entry.kind}</p>
+                    <p className="whitespace-pre-wrap text-sm">{entry.body}</p>
+                    <p className="text-xs text-muted-foreground">{new Date(entry.created_at).toLocaleString()}</p>
+                    {entry.message?.body && <p className="text-sm">Job chat evidence: {entry.message.body}</p>}
+                    {entry.attachment_url && <a href={entry.attachment_url} target="_blank" rel="noreferrer">View photo evidence</a>}
+                  </li>)}
+                </ol>
+                {!selected.entries?.length && <p className="text-sm text-muted-foreground">No additional case activity recorded.</p>}
+              </DetailSection>
+
               <DetailSection title="Job conversation">
                 <Conversation
                   state={conversations[selected.jobId]}
@@ -292,9 +317,10 @@ export function DisputesPage() {
                     value={note}
                     onChange={(value) => setNotes((prev) => ({ ...prev, [selected.id]: value }))}
                     max={NOTE_MAX_LENGTH}
-                    label={selected.paymentSettled ? "Resolution note (required)" : "Resolution note (optional)"}
+                    label="Resolution or clarification note (required)"
                     placeholder="Document the reason for the final decision…"
                   />
+                  <Button variant="outline" disabled={!canDecide} onClick={() => void requestClarification(selected.id)}>Request clarification</Button>
                 </DetailSection>
               )}
             </DetailCard>
@@ -310,7 +336,7 @@ export function DisputesPage() {
         message={
           !confirmTarget || !confirming
             ? ""
-            : confirming.resolution === "REVIEWED" ? "This payment is already settled. Save the decision note without moving money. Any compensation must use the existing Issue Credit action." : confirming.resolution === "RELEASED_TO_PROVIDER"
+            : confirming.resolution === "REVIEWED" ? "This case has no unsettled payment. Save the decision note without moving money. Any compensation must use the existing Issue Credit action." : confirming.resolution === "RELEASED_TO_PROVIDER"
               ? `Pay ${confirmTarget.amount} to ${confirmTarget.providerName}. This can't be undone.`
               : `Refund ${confirmTarget.amount} to ${confirmTarget.clientName}. This can't be undone.`
         }
@@ -396,6 +422,7 @@ function Conversation({
               )}
             >
               {m.body}
+              {m.attachmentUrl && <a href={m.attachmentUrl} target="_blank" rel="noreferrer" className="block underline">View job photo</a>}
             </div>
             <span className="mt-0.5 px-1 text-[11px] text-subtle">
               {m.senderName} · {new Date(m.createdAt).toLocaleString()}
