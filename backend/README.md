@@ -780,3 +780,13 @@ owner cancellation and replay checks, without external delivery. Both roles'
 theme preferences persist independently in the deployed settings API. See
 [withdrawal evidence](../test-docs/DEPLOYED_WITHDRAWAL_EVIDENCE.json) and
 [settings evidence](../test-docs/DEPLOYED_THEME_SETTINGS_EVIDENCE.json).
+
+
+### Target wallet concurrency verification (October 4, 2026)
+
+[Independent target transactions](../test-docs/TARGET_CONCURRENCY_EVIDENCE.json)
+confirm wallet lock overlap and rollback recovery on the deployed Supabase
+database. Both QA debit inserts were rolled back and the wallet balance was
+unchanged. [Concurrent API evidence](../test-docs/DEPLOYED_WITHDRAWAL_EVIDENCE.json)
+separately covers reservation affordability, cancellation and replay. These
+checks do not demonstrate external payout delivery.

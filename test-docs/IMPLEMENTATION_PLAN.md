@@ -2,7 +2,7 @@
 
 Created: October 4, 2026 (Asia/Manila).
 
-Status: Phases 1–9 are implemented and verified locally. Final local regression and affected-project README updates are complete; focused commits are recorded. Supabase migrations 0039–0045 and the Render API are deployed. The signed preview APK was built and installed. Phase 10 remains open for native/physical-device verification, target-database lock-overlap verification, and the Vercel owner’s web deployment. See the completion record and linked evidence for current results.
+Status: Phases 1–9 are implemented and verified locally. Final local regression and affected-project README updates are complete; focused commits are recorded. Supabase migrations 0039–0045 and the Render API are deployed. The signed preview APK was built and installed. Phase 10 remains open for native/physical-device verification and the Vercel owner’s web deployment. Target-database lock overlap and rollback now pass. See the completion record and linked evidence for current results.
 
 ## Objective and working rules
 
@@ -702,3 +702,21 @@ retention, photo taps, bell rendering, navigation and app return remain pending.
 No device was connected at this checkpoint. No source code changed; the prior
 full regression remains applicable. New evidence JSON and diff formatting were
 validated. Vercel deployment remains with the project owner.
+
+
+### October 4 — target database contention and rollback
+
+[Target concurrency evidence](TARGET_CONCURRENCY_EVIDENCE.json) verifies the
+deployed wallet-debit trigger on two independent PostgreSQL transactions. Each
+attempted a PHP30 pending withdrawal debit against the dedicated QA provider's
+PHP42.50 wallet. A third connection observed the second transaction blocked by
+the first using `pg_blocking_pids`. Rolling back the first allowed the second
+insert to finish. Both transactions rolled back; neither test ledger row
+persisted and the available balance remained unchanged.
+
+The existing Supabase CLI connection and its documented dump role were used;
+no credential or database configuration changed. This test proves target lock
+overlap and rollback recovery. The separate concurrent API case proves a
+committed reservation rejects competing unaffordable spending. Cross-kind
+withdrawal/escrow/Connect contention remains covered by local native PostgreSQL
+tests. No external payment rail was invoked.
