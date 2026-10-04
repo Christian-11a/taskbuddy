@@ -288,7 +288,11 @@ it was corrected before location evidence was recorded.
 [Deadline evidence](DEPLOYED_DEADLINE_EVIDENCE.json) records the existing scheduler
 automatically expiring one unanswered dummy cancellation and refunding ₱50 once.
 Only that dedicated case's deadline was backdated; no global tick was invoked.
-Warranty expiry is being observed separately on a dedicated completed fixture.
+Warranty expiry also passed on a dedicated completed fixture: the scheduler
+released ₱50 as ₱42.50 provider payout plus ₱7.50 commission. A replay produced
+no additional payout, and both participants' late complaint filings were rejected.
+Only the fixture timestamps were advanced; no real waiting period or external
+bank/GCash delivery is claimed.
 
 [Full regression](LOCAL_REGRESSION_EVIDENCE.json) passed backend lint/build/667
 tests/120 SQL tests, mobile typecheck/185 tests, and web lint/typecheck/227 tests

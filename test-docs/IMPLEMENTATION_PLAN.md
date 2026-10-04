@@ -641,3 +641,13 @@ with its deadline advanced for QA. See the linked evidence in
 Phase 10 remains open: exact HSSi GPS, native UI/device coverage and Vercel owner
 deployment are not proved. Native CUA cannot access the emulator; an explicit
 adb UI automation choice is pending.
+
+### October 4 — warranty scheduler verification
+
+The existing scheduler released a dedicated completed fixture after its timestamp
+was advanced past the 72-hour deadline. ₱42.50 provider payout plus ₱7.50
+commission conserves the original ₱50 hold; replay produces no second payout.
+Both participants' late complaint filings are rejected. This is a controlled
+clock test of deployed scheduling, not elapsed real-world waiting time or
+external receiving-account delivery. [Deadline evidence](DEPLOYED_DEADLINE_EVIDENCE.json)
+records this alongside the automatic cancellation refund.

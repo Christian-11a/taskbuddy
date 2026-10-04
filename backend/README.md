@@ -402,7 +402,7 @@ the flag can only be set by an approval or a Stripe Identity webhook.
 
 | Method & path | Description |
 |---|---|
-| `POST /jobs/:jobId/disputes` 🔒 (client/provider) | `{ reason (1–200), details? (≤1000) }` — participants can raise active/cancelled-job disputes or complain within seven days of completion; held escrow freezes, settled payments remain settled (0037) |
+| `POST /jobs/:jobId/disputes` 🔒 (client/provider) | `{ reason (1–200), details? (≤1000) }` — participants can raise active/cancelled-job disputes or complain before the 72-hour completion deadline; held escrow freezes, settled payments remain settled (0041) |
 | `GET /jobs/:jobId/disputes` 🔒 | the job's latest dispute (client or assigned provider) |
 
 **Settings** (🔒 — migration 0011)
