@@ -330,7 +330,7 @@ export default function HOWalletScreen() {
             <View style={styles.escrowCopy}>
               <Text style={styles.escrowLabel}>IN ESCROW</Text>
               <Text style={styles.escrowAmount}>{data ? peso(data.in_escrow) : '—'}</Text>
-              <Text style={styles.escrowNote}>Funds held securely until you approve completed work.</Text>
+              <Text style={styles.escrowNote}>Funds stay held through the three-day completion warranty and any open complaint.</Text>
             </View>
             <Shield size={24} color={V6Colors.link} />
           </View>

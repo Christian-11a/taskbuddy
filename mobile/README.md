@@ -911,3 +911,7 @@ do not establish physical GPS behavior or the full device/theme matrix.
 Emulator dark-mode review also corrected the client hero greeting and active
 navigation icon colors. They now use the existing on-primary and link tokens.
 The complete 187-test mobile suite and typecheck pass after these changes.
+
+The wallet escrow summary and pre-hire confirmation now also describe the
+three-day completion warranty and open-complaint hold, matching the deployed
+settlement behavior. Mobile regression and typecheck pass.

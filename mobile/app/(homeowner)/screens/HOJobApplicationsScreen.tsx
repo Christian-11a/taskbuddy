@@ -363,7 +363,7 @@ export default function HOJobApplicationsScreen({
       <ConfirmationModal
         visible={confirmAccept !== null}
         title="Hire this provider?"
-        message={`You're about to hire ${confirmAccept?.provider?.full_name ?? 'this provider'}. Next you'll choose how to pay; the job's budget is held in escrow until you confirm the work is done.`}
+        message={`You're about to hire ${confirmAccept?.provider?.full_name ?? 'this provider'}. Next you'll choose how to pay; the job's budget stays in escrow through the three-day completion warranty and any open complaint.`}
         confirmLabel="Continue"
         onConfirm={() => {
           const app = confirmAccept;
