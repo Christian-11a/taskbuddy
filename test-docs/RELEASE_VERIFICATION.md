@@ -1,7 +1,7 @@
 # Phase 10 release verification
 
 Status: local regression and project documentation complete; external release,
-integration and physical-device verification remain open. Approved read-only Supabase/Render inspection has now run. This task has not
+integration and physical-device verification remain open. Approved Supabase/Render inspection, protected public-schema/data backups and controlled account preparation have run. This task has not
 released code, applied migrations, rebuilt a native artifact or performed an
 external payout.
 
@@ -32,8 +32,7 @@ Both remotes were fetched with user approval on October 4. Origin main is
 `773003a`; upstream main is `d9af9d4`. Relative to the starting tree, origin
 contains only merges; upstream also adds CSV anonymization and admin-settings
 changes. Neither remote changes the migration folder or includes 0039–0045.
-The implementation branch has 12 task commits and is 2 commits behind origin /
-6 behind upstream at this inspection; no merge or history rewrite was performed.
+Upstream `d9af9d4` is integrated by merge commit `4a0dcdd`. The README conflict was resolved, the existing uncommitted AppContext comment edit was preserved, and web lint, typecheck, tests and production build passed after integration. No history rewrite was performed.
 Applied registry versions were read on October 4; see the target findings below. The earlier handoff reports a database
 history mismatch: reconcile actual applied versions before deciding which migrations
 are missing. Never
@@ -71,16 +70,38 @@ apply the whole directory blindly or rewrite already applied migrations.
    external bank delivery require their own receiving-account evidence; the
    selected simulator proves only its labeled local outcome.
 
-## Open approvals and evidence
+## Authorization and remaining access
 
-The working agreement requires confirmation for network/deploy/configuration
-calls. The approved remote-history fetch and existing web build/font download completed
-successfully. The user then approved read-only inspection of the existing linked environment;
-its migration registry and aggregate wallet snapshot were captured. Release still
-needs reconciliation of older registry gaps and permission to apply reviewed
-migrations/revisions;
-physical checks need device/build access. No supplied account/device artifacts
-currently establish these gates. Final completion is unproven until they close.
+The user approved pending work in the existing Supabase, Render and Vercel
+environments, including controlled dummy accounts and sandbox-only payment
+verification. No additional permission for these approved steps is pending.
+
+The supplied admin credentials authenticate successfully against the deployed
+API. Dedicated QA client/provider accounts were created; both API logins and
+roles were verified. The provider has a Cleaning profile and is unavailable for
+real jobs. Credentials/sessions are stored outside the repository with mode
+600; the supplied credential file is also mode 600 and locally excluded from Git.
+No funds were added and no payment was attempted. These confirmed fixtures do
+not establish signup/OTP UI or provider-verification evidence.
+
+The currently signed-in Render workspace and Vercel team do not expose the
+TaskBuddy projects. The user must sign in to the owning accounts or grant the
+current account access. This is an access blocker, not missing authorization.
+Migrations remain unapplied until a matching API release can be coordinated.
+Physical-device/build evidence and deployed Stripe sandbox mode still need
+verification; a local test-key prefix does not prove the deployed key mode.
+
+## Protected backups — October 4
+
+Public-schema and public-data exports completed successfully using the existing
+Supabase CLI and installed PostgreSQL tools. Files are outside the repository in
+a protected directory, with mode 600. Schema export: 129,985 bytes, SHA-256
+`24bbdeec75c6dbc05093478e8218db87ddffde7e280da03fa0f5a4c78f8bede2`.
+Data export: 284,668 bytes, SHA-256
+`660afd3ce7308ed7fba71f5fec2f07b1791780e9abb6de26fc8f82ae35041f1b`.
+The exports include public application tables and financial records. They are
+not a full auth/storage/history backup, and restore verification is pending.
+Maintenance remains disabled while release access is unavailable.
 
 ## Focused implementation commits
 
@@ -110,12 +131,9 @@ against migrated PGlite with a fixture migration-history table; no deployed
 evidence is implied. Approved target execution is captured in the snapshot below. Presence checks
 do not replace definition review or independent-connection contention checks.
 
-A local `git merge-tree --write-tree HEAD upstream/main` review found a conflict
-only in `web/README.md`; the working checkout was not merged or changed. Before
-a release from main, integrate the newer upstream CSV-privacy/admin-settings
-changes, resolve documentation, and rerun web gates so those changes are not
-regressed. No permission to merge unrelated upstream work or release was inferred
-from approval for history/build checks.
+The earlier merge preview identified only a README conflict. Upstream integration
+is now complete (`4a0dcdd`), including CSV privacy and admin settings updates;
+all web gates passed on the merged checkout. No push or deployment has occurred.
 
 ## Approved target inspection — October 4
 
@@ -150,11 +168,9 @@ The three dated registry names correspond to 0032–0034; only 0034's stored tex
 hash matches its local file exactly. Names alone do not authorize repairing 0032/0033.
 No migration, history repair, payout or code release was performed.
 
-The next proposed batch is local integration of upstream CSV-privacy/admin-settings
-changes (resolve the known README conflict and retain existing user edits), rerun
-web gates, then apply only reviewed new 0039–0045 to the approved linked target
-and register each successful version. Do not replay/rewrite older history gaps.
-The existing pending ₱100 withdrawal remains reserved; the legacy missing payout
-reference must not be invented. Backend/web/mobile deployment and controlled
-transaction/device checks remain separate release steps. Target changes require
-explicit approval; no approval for them was inferred from read-only inspection.
+The next release batch is coordinated deployment access, backup completion and
+restore verification, then only reviewed new 0039–0045 migrations with atomic
+history registration. Do not replay/rewrite older history gaps. The existing
+pending ₱100 withdrawal remains reserved; do not invent its legacy payout
+reference. API/web/mobile releases and controlled transaction/device checks
+remain separate evidence gates.

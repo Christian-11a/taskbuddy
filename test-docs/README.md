@@ -14,3 +14,9 @@ Phases 1–9 are implemented and verified locally. Phase 10 remains open until i
 release/integration/device gates have evidence. No deployment or real payout is
 proved by local tests. Run the project commands in each project's README; the
 receiving demo runs from root with `node backend/scripts/payout-demo.mjs`.
+
+Release work is authorized for the existing environments with sandbox payments
+only. Dedicated QA client/provider accounts and the admin login are verified.
+Upstream integration and its web gates passed; protected public backups exist.
+Render/Vercel project access, backup restore validation and deployed/device gates
+remain open. See the release record for scope and evidence.

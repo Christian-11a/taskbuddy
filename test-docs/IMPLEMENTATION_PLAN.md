@@ -580,3 +580,20 @@ routines are not installed. The dated 0034 entry's exact text hash matches;
 0032/0033 names match but text hashes differ. Older history must not be blindly
 replayed or repaired. Proposed next approval is upstream integration plus only
 new migrations 0039–0045, followed by separate release/integration/device gates.
+
+## Phase 10 — Authorized release preparation and dedicated accounts
+
+The user approved pending work using the existing Supabase/Render/Vercel
+projects and sandbox payments only. Upstream was merged in `4a0dcdd`; web lint,
+typecheck, tests and production build passed. Protected public-schema/data
+backups completed; their scope and pending restore verification are recorded in
+[release verification](RELEASE_VERIFICATION.md).
+
+The supplied admin login and newly created dedicated QA client/provider API
+logins and roles are verified. The dummy provider has a Cleaning profile and is
+unavailable for real jobs. Credentials remain protected outside version control.
+No funds or payments were created. Deployment remains blocked by the signed-in
+Render/Vercel accounts lacking TaskBuddy project access. Migrations remain
+unapplied until the matching API release can be coordinated. Earlier references
+to pending release approval are superseded by this authorization; access and
+verification evidence remain required.
