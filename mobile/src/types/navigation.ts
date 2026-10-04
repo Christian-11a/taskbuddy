@@ -41,6 +41,7 @@ export type SPScreen =
   | 'Edit Profile'
   | 'Verification'
   | 'Payouts'
+  | 'Portfolio'
   | 'My Services'
   | 'Settings'
   | 'Help & Support'

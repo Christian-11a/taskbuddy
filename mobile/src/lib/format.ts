@@ -1,3 +1,4 @@
+import { lightPalette, type Palette } from '../constants/palettes';
 /** Small display helpers shared across screens. */
 
 /** ₱ amount, e.g. 1234.5 → "₱1,234.50". */
@@ -70,63 +71,57 @@ export function dateBucket(iso: string | null | undefined): string {
 }
 
 /** Display label + colors for a backend job status. */
-export function jobStatusMeta(status: string): {
+export function jobStatusMeta(status: string, colors: Palette['V6Colors'] = lightPalette.V6Colors): {
   label: string;
   color: string;
   bg: string;
 } {
   switch (status) {
     case 'open':
-      return { label: 'Open', color: '#F59E0B', bg: '#FFF7ED' };
+      return { label: 'Open', color: colors.warningText, bg: colors.warningSurface };
     case 'recommending':
-      return { label: 'Finding Provider', color: '#F59E0B', bg: '#FFF7ED' };
+      return { label: 'Finding Provider', color: colors.warningText, bg: colors.warningSurface };
     case 'assigned':
-      // Hired, but the provider has not answered yet — from the homeowner's
-      // side this is a wait, not a settled booking.
-      return { label: 'Awaiting Provider', color: '#F59E0B', bg: '#FFF7ED' };
     case 'confirmed':
-      return { label: 'Confirmed', color: '#3B82F6', bg: '#EFF6FF' };
+      return { label: 'Confirmed', color: colors.infoText, bg: colors.infoSurface };
     case 'in_progress':
-      return { label: 'In Progress', color: '#22C55E', bg: '#F0FDF4' };
+      return { label: 'In Progress', color: colors.successText, bg: colors.successSurface };
     case 'completed':
-      return { label: 'Completed', color: '#3B82F6', bg: '#EFF6FF' };
+      return { label: 'Completed', color: colors.infoText, bg: colors.infoSurface };
     case 'cancelled':
-      return { label: 'Cancelled', color: '#EF4444', bg: '#FFF5F5' };
+      return { label: 'Cancelled', color: colors.dangerText, bg: colors.dangerSurface };
     case 'expired':
-      return { label: 'Expired', color: '#94A3B8', bg: '#F1F5F9' };
+      return { label: 'Expired', color: colors.ink400, bg: colors.ink50 };
     default:
-      return { label: status, color: '#94A3B8', bg: '#F1F5F9' };
+      return { label: status, color: colors.ink400, bg: colors.ink50 };
   }
 }
 
 /**
- * A job's status from the provider's side. The same 'assigned' that a client
- * reads as "Awaiting Provider" is, for the provider, their own move to make.
+ * Hiring confirms the booking for both participants. Legacy assigned records
+ * use the same label until migration 0039 promotes them to confirmed.
  */
-export function providerJobStatusMeta(status: string): {
+export function providerJobStatusMeta(status: string, colors: Palette['V6Colors'] = lightPalette.V6Colors): {
   label: string;
   color: string;
   bg: string;
 } {
-  if (status === 'assigned') {
-    return { label: 'Awaiting your confirmation', color: '#B45309', bg: '#FFF7ED' };
-  }
-  return jobStatusMeta(status);
+  return jobStatusMeta(status, colors);
 }
 
 /** Display label + colors for a job's urgency. */
-export function urgencyMeta(urgency: string): {
+export function urgencyMeta(urgency: string, colors: Palette['V6Colors'] = lightPalette.V6Colors): {
   label: string;
   color: string;
   bg: string;
 } {
   switch (urgency) {
     case 'urgent':
-      return { label: 'Urgent', color: '#B91C1C', bg: '#FEF2F2' };
+      return { label: 'Urgent', color: colors.dangerText, bg: colors.dangerSurface };
     case 'flexible':
-      return { label: 'Flexible', color: '#0E7490', bg: '#ECFEFF' };
+      return { label: 'Flexible', color: colors.link, bg: colors.infoSurface };
     default:
-      return { label: 'Normal', color: '#64748B', bg: '#F1F5F9' };
+      return { label: 'Normal', color: colors.ink500, bg: colors.ink50 };
   }
 }
 

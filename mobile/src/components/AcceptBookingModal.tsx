@@ -1,3 +1,4 @@
+import { useThemedStyles, type Palette as ThemePalette } from '../context/ThemeContext';
 import React, { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
@@ -12,11 +13,9 @@ import {
   View,
 } from 'react-native';
 import { MapPin } from 'lucide-react-native';
-import { V6Colors, V6Radii } from '../constants/theme';
+import { V6Radii } from '../constants/theme';
 import { api, type GeocodedAddress } from '../lib/api';
 import AddressField from './AddressField';
-
-const C = V6Colors;
 
 export interface AcceptLocation {
   address: string;
@@ -45,6 +44,7 @@ interface AcceptBookingModalProps {
 export default function AcceptBookingModal({
   visible, jobTitle, busy = false, error, onConfirm, onCancel,
 }: AcceptBookingModalProps) {
+  const { C, styles, V6Colors } = useThemedStyles(createThemedStyles);
   const [address, setAddress] = useState('');
   const [resolved, setResolved] = useState<GeocodedAddress | null>(null);
   const [checking, setChecking] = useState(false);
@@ -100,7 +100,7 @@ export default function AcceptBookingModal({
             accessibilityViewIsModal
           >
             <View style={styles.iconWell}>
-              <MapPin size={22} color={C.cyan700} />
+              <MapPin size={22} color={V6Colors.link} />
             </View>
             <Text style={styles.title} accessibilityRole="header">Confirm your location</Text>
             <Text style={styles.body}>
@@ -133,7 +133,7 @@ export default function AcceptBookingModal({
                 accessibilityRole="button"
                 testID="accept-location-confirm"
               >
-                {working ? <ActivityIndicator color={C.white} /> : <Text style={styles.primaryText}>Accept booking</Text>}
+                {working ? <ActivityIndicator color={C.onPrimary} /> : <Text style={styles.primaryText}>Accept booking</Text>}
               </TouchableOpacity>
             </View>
           </Pressable>
@@ -143,18 +143,23 @@ export default function AcceptBookingModal({
   );
 }
 
-const styles = StyleSheet.create({
-  flex: { flex: 1 },
-  overlay: { flex: 1, justifyContent: 'center', padding: 20, backgroundColor: 'rgba(6, 61, 77, 0.5)' },
-  dialog: { backgroundColor: C.white, borderRadius: V6Radii.card, padding: 22, width: '100%', maxWidth: 440, alignSelf: 'center' },
-  iconWell: { width: 44, height: 44, borderRadius: 13, backgroundColor: C.cyan50, alignItems: 'center', justifyContent: 'center', marginBottom: 10 },
-  title: { color: C.ink900, fontSize: 19, fontWeight: '800', fontFamily: 'Inter' },
-  body: { color: C.ink500, fontSize: 14, fontFamily: 'Inter', lineHeight: 19, marginTop: 4, marginBottom: 14 },
-  error: { color: '#b91c1c', fontSize: 13.5, fontFamily: 'Inter', marginTop: 8 },
-  actions: { flexDirection: 'row', gap: 10, marginTop: 16 },
-  secondaryBtn: { flex: 1, minHeight: 44, borderWidth: 1, borderColor: '#dce3e9', borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
-  secondaryText: { color: C.ink500, fontSize: 14.5, fontWeight: '700', fontFamily: 'Inter' },
-  primaryBtn: { flex: 1, minHeight: 44, backgroundColor: C.cyan700, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
-  primaryText: { color: C.white, fontSize: 14.5, fontWeight: '700', fontFamily: 'Inter' },
-  disabled: { opacity: 0.6 },
-});
+function createThemedStyles(theme: ThemePalette) {
+  const { Colors, V6Colors } = theme;
+  const C = V6Colors;
+  const styles = StyleSheet.create({
+    flex: { flex: 1 },
+    overlay: { flex: 1, justifyContent: 'center', padding: 20, backgroundColor: 'rgba(6, 61, 77, 0.5)' },
+    dialog: { backgroundColor: C.surface, borderRadius: V6Radii.card, padding: 22, width: '100%', maxWidth: 440, alignSelf: 'center' },
+    iconWell: { width: 44, height: 44, borderRadius: 13, backgroundColor: C.cyan50, alignItems: 'center', justifyContent: 'center', marginBottom: 10 },
+    title: { color: C.ink900, fontSize: 19, fontWeight: '800', fontFamily: 'Inter' },
+    body: { color: C.ink500, fontSize: 14, fontFamily: 'Inter', lineHeight: 19, marginTop: 4, marginBottom: 14 },
+    error: { color: V6Colors.dangerText, fontSize: 13.5, fontFamily: 'Inter', marginTop: 8 },
+    actions: { flexDirection: 'row', gap: 10, marginTop: 16 },
+    secondaryBtn: { flex: 1, minHeight: 44, borderWidth: 1, borderColor: V6Colors.fieldBorder, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
+    secondaryText: { color: C.ink500, fontSize: 14.5, fontWeight: '700', fontFamily: 'Inter' },
+    primaryBtn: { flex: 1, minHeight: 44, backgroundColor: C.cyan700, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
+    primaryText: { color: C.onPrimary, fontSize: 14.5, fontWeight: '700', fontFamily: 'Inter' },
+    disabled: { opacity: 0.6 },
+  });
+  return { Colors, V6Colors, C, styles };
+}

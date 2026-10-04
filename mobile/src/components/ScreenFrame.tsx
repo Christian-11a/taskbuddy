@@ -1,7 +1,7 @@
+import { useThemedStyles, type Palette as ThemePalette } from '../context/ThemeContext';
 import React, { ReactNode, useEffect, useState } from 'react';
 import { Keyboard, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { V6Colors } from '../constants/theme';
 
 interface ScreenFrameProps {
   children: ReactNode;
@@ -26,9 +26,12 @@ interface ScreenFrameProps {
  */
 export default function ScreenFrame({
   children,
-  background = V6Colors.canvas,
-  bottomColor = background,
+  background,
+  bottomColor,
 }: ScreenFrameProps) {
+  const { V6Colors, styles } = useThemedStyles(createThemedStyles);
+  const pageColor = background ?? V6Colors.canvas;
+  const footerColor = bottomColor ?? pageColor;
   const insets = useSafeAreaInsets();
   // With the keyboard up the nav-bar strip would sit between the input and
   // the keyboard as an empty gap.
@@ -43,16 +46,20 @@ export default function ScreenFrame({
   }, []);
 
   return (
-    <View style={[styles.frame, { backgroundColor: background }]}>
+    <View style={[styles.frame, { backgroundColor: pageColor }]}>
       <View style={styles.content}>{children}</View>
       {insets.bottom > 0 && !keyboardUp && (
-        <View style={{ height: insets.bottom, backgroundColor: bottomColor }} />
+        <View style={{ height: insets.bottom, backgroundColor: footerColor }} />
       )}
     </View>
   );
 }
 
-const styles = StyleSheet.create({
-  frame: { flex: 1 },
-  content: { flex: 1 },
-});
+function createThemedStyles(theme: ThemePalette) {
+  const { Colors, V6Colors } = theme;
+  const styles = StyleSheet.create({
+    frame: { flex: 1 },
+    content: { flex: 1 },
+  });
+  return { Colors, V6Colors, styles };
+}

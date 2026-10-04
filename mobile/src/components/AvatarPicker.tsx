@@ -11,6 +11,7 @@
  * back as a ready-to-render https URL, not a path.
  */
 
+import { useThemedStyles, type Palette as ThemePalette } from '../context/ThemeContext';
 import React, { useState } from 'react';
 import {
   ActivityIndicator,
@@ -21,15 +22,14 @@ import {
   View,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
-import { V6Colors } from '../constants/theme';
+
 import { useAuth } from '../context/AuthContext';
 import { api } from '../lib/api';
 import { initials } from '../lib/format';
 import { requestAppPermission } from '../lib/permissions';
 
-const C = V6Colors;
-
 export default function AvatarPicker({ name }: { name: string }) {
+  const { C, styles, V6Colors } = useThemedStyles(createThemedStyles);
   const { profile, refreshProfile } = useAuth();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -66,7 +66,7 @@ export default function AvatarPicker({ name }: { name: string }) {
     <View style={styles.avatarSection}>
       <View style={styles.avatarCircle}>
         {busy ? (
-          <ActivityIndicator color={C.white} />
+          <ActivityIndicator color={C.onPrimary} />
         ) : avatarUrl ? (
           <Image source={{ uri: avatarUrl }} style={styles.avatarImage} />
         ) : (
@@ -83,15 +83,20 @@ export default function AvatarPicker({ name }: { name: string }) {
   );
 }
 
-const styles = StyleSheet.create({
-  avatarSection: { alignItems: 'center', marginBottom: 20 },
-  avatarCircle: {
-    width: 76, height: 76, borderRadius: 38,
-    backgroundColor: C.cyan600, alignItems: 'center', justifyContent: 'center',
-    marginBottom: 8, overflow: 'hidden',
-  },
-  avatarImage: { width: '100%', height: '100%' },
-  avatarText: { color: C.white, fontSize: 26, fontWeight: '800', fontFamily: 'Inter' },
-  changePhotoLink: { fontSize: 14, color: C.cyan700, fontWeight: '700', fontFamily: 'Inter' },
-  errorText: { color: '#ef4444', fontSize: 13, fontFamily: 'Inter', marginTop: 6, textAlign: 'center' },
-});
+function createThemedStyles(theme: ThemePalette) {
+  const { Colors, V6Colors } = theme;
+  const C = V6Colors;
+  const styles = StyleSheet.create({
+    avatarSection: { alignItems: 'center', marginBottom: 20 },
+    avatarCircle: {
+      width: 76, height: 76, borderRadius: 38,
+      backgroundColor: C.cyan700, alignItems: 'center', justifyContent: 'center',
+      marginBottom: 8, overflow: 'hidden',
+    },
+    avatarImage: { width: '100%', height: '100%' },
+    avatarText: { color: C.onPrimary, fontSize: 26, fontWeight: '800', fontFamily: 'Inter' },
+    changePhotoLink: { fontSize: 14, color: V6Colors.link, fontWeight: '700', fontFamily: 'Inter' },
+    errorText: { color: V6Colors.dangerText, fontSize: 13, fontFamily: 'Inter', marginTop: 6, textAlign: 'center' },
+  });
+  return { Colors, V6Colors, C, styles };
+}

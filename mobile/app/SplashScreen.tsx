@@ -1,9 +1,11 @@
+import { useThemedStyles, type Palette as ThemePalette } from '../src/context/ThemeContext';
 import React, { useEffect, useRef } from 'react';
 import { Animated, Image, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 
 export default function SplashScreen() {
+  const { styles, V6Colors } = useThemedStyles(createThemedStyles);
   const fadeAnim = useRef(new Animated.Value(1)).current;
 
   useEffect(() => {
@@ -43,41 +45,45 @@ export default function SplashScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  safeArea: {
-    flex: 1,
-    backgroundColor: '#0f172a',
-  },
-  container: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingHorizontal: 24,
-  },
-  logoBox: {
-    alignItems: 'center',
-    marginBottom: 24,
-  },
-  logoImage: {
-    width: 220,
-    height: 100,
-    marginBottom: 18,
-    shadowColor: '#38bdf8',
-    shadowOpacity: 0.35,
-    shadowOffset: { width: 0, height: 8 },
-    shadowRadius: 22,
-    elevation: 8,
-  },
-  logoText: {
-    color: '#ffffff',
-    fontSize: 34.5,
-    fontWeight: '800',
-  },
-  tagline: {
-    color: '#cbd5e1',
-    fontSize: 17.5,
-    textAlign: 'center',
-    lineHeight: 24,
-    maxWidth: 280,
-  },
-});
+function createThemedStyles(theme: ThemePalette) {
+  const { Colors, V6Colors } = theme;
+  const styles = StyleSheet.create({
+    safeArea: {
+      flex: 1,
+      backgroundColor: V6Colors.hero,
+    },
+    container: {
+      flex: 1,
+      justifyContent: 'center',
+      alignItems: 'center',
+      paddingHorizontal: 24,
+    },
+    logoBox: {
+      alignItems: 'center',
+      marginBottom: 24,
+    },
+    logoImage: {
+      width: 220,
+      height: 100,
+      marginBottom: 18,
+      shadowColor: '#38bdf8',
+      shadowOpacity: 0.35,
+      shadowOffset: { width: 0, height: 8 },
+      shadowRadius: 22,
+      elevation: 8,
+    },
+    logoText: {
+      color: V6Colors.onPrimary,
+      fontSize: 34.5,
+      fontWeight: '800',
+    },
+    tagline: {
+      color: V6Colors.ink200,
+      fontSize: 17.5,
+      textAlign: 'center',
+      lineHeight: 24,
+      maxWidth: 280,
+    },
+  });
+  return { Colors, V6Colors, styles };
+}

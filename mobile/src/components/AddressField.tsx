@@ -22,6 +22,7 @@
  * blocks the form.
  */
 
+import { useThemedStyles, type Palette as ThemePalette } from '../context/ThemeContext';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
@@ -33,7 +34,7 @@ import {
 } from 'react-native';
 import * as Location from 'expo-location';
 import { LocateFixed, MapPin } from 'lucide-react-native';
-import { Colors } from '../constants/theme';
+
 import { requestAppPermission } from '../lib/permissions';
 import { api, type AddressSuggestion, type GeocodedAddress } from '../lib/api';
 
@@ -82,6 +83,7 @@ export default function AddressField({
   actionVariant = 'default',
   testID,
 }: Props) {
+  const { Colors, styles, V6Colors, appearance } = useThemedStyles(createThemedStyles);
   const [suggestions, setSuggestions] = useState<AddressSuggestion[]>([]);
   const [open, setOpen] = useState(false);
   const [searching, setSearching] = useState(false);
@@ -102,6 +104,7 @@ export default function AddressField({
     if (query.length < MIN_QUERY_LENGTH) {
       setSuggestions([]);
       setOpen(false);
+      setSearching(false);
       return;
     }
 
@@ -131,6 +134,7 @@ export default function AddressField({
 
   const handleChangeText = useCallback(
     (next: string) => {
+      ++queryIdRef.current;
       setNotice(null);
       // Editing resolved text invalidates the pin that came with it.
       if (resolvedTextRef.current !== null && next.trim() !== resolvedTextRef.current) {
@@ -144,6 +148,8 @@ export default function AddressField({
 
   const pick = useCallback(
     (suggestion: AddressSuggestion) => {
+      ++queryIdRef.current;
+      setSearching(false);
       onChangeText(suggestion.formatted_address);
       setSuggestions([]);
       setOpen(false);
@@ -164,12 +170,18 @@ export default function AddressField({
   );
 
   const useCurrentLocation = useCallback(async () => {
+    const request = ++queryIdRef.current;
+    setSearching(false);
+    setSuggestions([]);
+    setOpen(false);
     setNotice(null);
     setLocating(true);
     try {
       // Shows the OS prompt the first time, and offers Settings once the user
       // has denied it for good.
-      if (!(await requestAppPermission('location'))) {
+      const allowed = await requestAppPermission('location');
+      if (request !== queryIdRef.current) return;
+      if (!allowed) {
         setNotice('Location access is off — type the address instead.');
         return;
       }
@@ -177,17 +189,20 @@ export default function AddressField({
       const fix = await Location.getCurrentPositionAsync({
         accuracy: FIX_ACCURACY,
       });
+      if (request !== queryIdRef.current) return;
       const address = await api.reverseGeocode(
         fix.coords.latitude,
         fix.coords.longitude,
       );
 
+      if (request !== queryIdRef.current) return;
       onChangeText(address.formatted_address);
       resolvedTextRef.current = address.formatted_address.trim();
       onResolve(address);
       setSuggestions([]);
       setOpen(false);
     } catch (e) {
+      if (request !== queryIdRef.current) return;
       // A fix can fail indoors, and the backend answers 400 where GPS lands on
       // nothing addressable. Both leave the user typing, so both say so here.
       setNotice(
@@ -202,7 +217,7 @@ export default function AddressField({
 
   return (
     <View>
-      <TextInput
+      <TextInput keyboardAppearance={appearance}
         testID={testID}
         style={[
           styles.input,
@@ -274,62 +289,66 @@ export default function AddressField({
   );
 }
 
-const styles = StyleSheet.create({
-  input: {
-    backgroundColor: Colors.white,
-    borderRadius: 12,
-    paddingHorizontal: 14,
-    paddingTop: 12,
-    minHeight: 70,
-    borderWidth: 1,
-    borderColor: '#dce3e9',
-    fontFamily: 'Inter',
-    fontSize: 16.5,
-    color: Colors.brandDark,
-    textAlignVertical: 'top',
-  },
-  inputFocused: { borderColor: Colors.brandTeal, borderWidth: 2 },
-  inputError: { borderColor: Colors.error, borderWidth: 2 },
+function createThemedStyles(theme: ThemePalette) {
+  const { Colors, V6Colors } = theme;
+  const styles = StyleSheet.create({
+    input: {
+      backgroundColor: Colors.surface,
+      borderRadius: 12,
+      paddingHorizontal: 14,
+      paddingTop: 12,
+      minHeight: 70,
+      borderWidth: 1,
+      borderColor: V6Colors.fieldBorder,
+      fontFamily: 'Inter',
+      fontSize: 16.5,
+      color: V6Colors.ink900,
+      textAlignVertical: 'top',
+    },
+    inputFocused: { borderColor: Colors.brandTeal, borderWidth: 2 },
+    inputError: { borderColor: Colors.error, borderWidth: 2 },
 
-  locateBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    paddingVertical: 10,
-  },
-  locateBtnPrimary: {
-    justifyContent: 'center',
-    backgroundColor: Colors.brandTeal,
-    borderRadius: 13,
-    paddingVertical: 14,
-    marginTop: 10,
-  },
-  locateText: {
-    color: Colors.brandTeal,
-    fontFamily: 'Inter',
-    fontSize: 15,
-    fontWeight: '600',
-  },
-  locateTextPrimary: { color: Colors.white, fontWeight: '700' },
+    locateBtn: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+      paddingVertical: 10,
+    },
+    locateBtnPrimary: {
+      justifyContent: 'center',
+      backgroundColor: Colors.brandTeal,
+      borderRadius: 13,
+      paddingVertical: 14,
+      marginTop: 10,
+    },
+    locateText: {
+      color: V6Colors.link,
+      fontFamily: 'Inter',
+      fontSize: 15,
+      fontWeight: '600',
+    },
+    locateTextPrimary: { color: Colors.onPrimary, fontWeight: '700' },
 
-  dropdown: {
-    backgroundColor: Colors.white,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: Colors.divider,
-    overflow: 'hidden',
-  },
-  row: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-  },
-  rowDivider: { borderTopWidth: 1, borderTopColor: Colors.mutedLight },
-  rowText: { flex: 1, color: Colors.brandDark, fontFamily: 'Inter', fontSize: 15 },
+    dropdown: {
+      backgroundColor: Colors.surface,
+      borderRadius: 12,
+      borderWidth: 1,
+      borderColor: Colors.divider,
+      overflow: 'hidden',
+    },
+    row: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 10,
+      paddingHorizontal: 14,
+      paddingVertical: 12,
+    },
+    rowDivider: { borderTopWidth: 1, borderTopColor: Colors.mutedLight },
+    rowText: { flex: 1, color: V6Colors.ink900, fontFamily: 'Inter', fontSize: 15 },
 
-  hint: { color: Colors.slate, fontSize: 13.5, marginTop: 8, fontFamily: 'Inter' },
-  notice: { color: Colors.warning, fontSize: 13.5, marginTop: 8, fontFamily: 'Inter' },
-  error: { color: Colors.error, fontSize: 15.5, marginTop: 8, fontFamily: 'Inter' },
-});
+    hint: { color: Colors.slate, fontSize: 13.5, marginTop: 8, fontFamily: 'Inter' },
+    notice: { color: Colors.warning, fontSize: 13.5, marginTop: 8, fontFamily: 'Inter' },
+    error: { color: Colors.error, fontSize: 15.5, marginTop: 8, fontFamily: 'Inter' },
+  });
+  return { appearance: theme.appearance, Colors, V6Colors, styles };
+}

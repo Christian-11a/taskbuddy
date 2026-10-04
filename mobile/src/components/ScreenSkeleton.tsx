@@ -1,13 +1,14 @@
+import { useThemedStyles, type Palette as ThemePalette } from '../context/ThemeContext';
 import React from 'react';
 import { StyleSheet, View } from 'react-native';
-import { Spacing, V6Colors, V6Radii } from '../constants/theme';
+import { Spacing, V6Radii } from '../constants/theme';
 
-const Colors = { ...V6Colors, background: V6Colors.canvas } as const;
 const Radii = { card: V6Radii.card };
 
 type SkeletonVariant = 'dashboard' | 'list' | 'detail';
 
 export default function ScreenSkeleton({ variant = 'list' }: { variant?: SkeletonVariant }) {
+  const { styles, V6Colors } = useThemedStyles(createThemedStyles);
   const cards = variant === 'dashboard' ? 3 : variant === 'detail' ? 4 : 5;
   return (
     <View style={styles.screen} accessibilityLabel="Loading content">
@@ -26,15 +27,20 @@ export default function ScreenSkeleton({ variant = 'list' }: { variant?: Skeleto
   );
 }
 
-const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: Colors.background },
-  content: { padding: Spacing.screenH, gap: 12 },
-  block: { backgroundColor: '#E2E8F0', overflow: 'hidden' },
-  header: { height: 190, borderBottomLeftRadius: 28, borderBottomRightRadius: 28 },
-  heroCard: { height: 128, borderRadius: Radii.card, marginTop: -44, marginBottom: 12 },
-  title: { height: 20, width: '42%', borderRadius: 8, marginBottom: 4 },
-  card: { height: 100, borderRadius: Radii.card, padding: 16, gap: 12 },
-  detailRow: { height: 62, borderRadius: 12, padding: 14, gap: 10 },
-  line: { height: 14, borderRadius: 7, backgroundColor: '#CBD5E1' },
-  subline: { height: 10, width: '38%', borderRadius: 5, backgroundColor: '#CBD5E1' },
-});
+function createThemedStyles(theme: ThemePalette) {
+  const { V6Colors } = theme;
+  const Colors = { ...V6Colors, background: V6Colors.canvas } as const;
+  const styles = StyleSheet.create({
+    screen: { flex: 1, backgroundColor: Colors.background },
+    content: { padding: Spacing.screenH, gap: 12 },
+    block: { backgroundColor: V6Colors.ink100, overflow: 'hidden' },
+    header: { height: 190, borderBottomLeftRadius: 28, borderBottomRightRadius: 28 },
+    heroCard: { height: 128, borderRadius: Radii.card, marginTop: -44, marginBottom: 12 },
+    title: { height: 20, width: '42%', borderRadius: 8, marginBottom: 4 },
+    card: { height: 100, borderRadius: Radii.card, padding: 16, gap: 12 },
+    detailRow: { height: 62, borderRadius: 12, padding: 14, gap: 10 },
+    line: { height: 14, borderRadius: 7, backgroundColor: V6Colors.ink200 },
+    subline: { height: 10, width: '38%', borderRadius: 5, backgroundColor: V6Colors.ink200 },
+  });
+  return { Colors, V6Colors, styles };
+}

@@ -22,6 +22,7 @@
  * ledger entries still reference it.
  */
 
+import { useThemedStyles, type Palette as ThemePalette } from '../context/ThemeContext';
 import React, { useState } from 'react';
 import {
   ActivityIndicator,
@@ -33,10 +34,8 @@ import {
   View,
 } from 'react-native';
 import { AlertTriangle } from 'lucide-react-native';
-import { V6Colors, V6Radii } from '../constants/theme';
+import { V6Radii } from '../constants/theme';
 import { api, deletionBlockersFrom, type DeletionBlocker } from '../lib/api';
-
-const C = V6Colors;
 
 interface DeleteAccountModalProps {
   visible: boolean;
@@ -50,6 +49,7 @@ export default function DeleteAccountModal({
   onClose,
   onDeleted,
 }: DeleteAccountModalProps) {
+  const { C, styles, V6Colors } = useThemedStyles(createThemedStyles);
   const [deleting, setDeleting] = useState(false);
   const [blockers, setBlockers] = useState<DeletionBlocker[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -91,7 +91,7 @@ export default function DeleteAccountModal({
           accessibilityRole="alert"
         >
           <View style={styles.titleRow}>
-            <AlertTriangle size={20} color="#ef4444" />
+            <AlertTriangle size={20} color={V6Colors.dangerText} />
             <Text style={styles.title} accessibilityRole="header">
               {isBlocked ? 'Not just yet' : 'Delete your account?'}
             </Text>
@@ -146,7 +146,7 @@ export default function DeleteAccountModal({
                   accessibilityRole="button"
                 >
                   {deleting ? (
-                    <ActivityIndicator color={C.white} />
+                    <ActivityIndicator color={C.onPrimary} />
                   ) : (
                     <Text style={styles.dangerText}>Delete</Text>
                   )}
@@ -160,39 +160,44 @@ export default function DeleteAccountModal({
   );
 }
 
-const styles = StyleSheet.create({
-  backdrop: {
-    flex: 1,
-    backgroundColor: 'rgba(15,23,42,0.5)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 28,
-  },
-  card: { width: '100%', backgroundColor: C.white, borderRadius: V6Radii.card, padding: 22 },
-  titleRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  title: { color: C.ink900, fontSize: 20, fontWeight: '800', fontFamily: 'Inter', flex: 1 },
-  body: { color: C.ink500, fontSize: 15, fontFamily: 'Inter', lineHeight: 20, marginTop: 10 },
+function createThemedStyles(theme: ThemePalette) {
+  const { Colors, V6Colors } = theme;
+  const C = V6Colors;
+  const styles = StyleSheet.create({
+    backdrop: {
+      flex: 1,
+      backgroundColor: 'rgba(15,23,42,0.5)',
+      alignItems: 'center',
+      justifyContent: 'center',
+      padding: 28,
+    },
+    card: { width: '100%', backgroundColor: C.surface, borderRadius: V6Radii.card, padding: 22 },
+    titleRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+    title: { color: C.ink900, fontSize: 20, fontWeight: '800', fontFamily: 'Inter', flex: 1 },
+    body: { color: C.ink500, fontSize: 15, fontFamily: 'Inter', lineHeight: 20, marginTop: 10 },
 
-  blockerScroll: { maxHeight: 200, marginTop: 12 },
-  blockerRow: { flexDirection: 'row', gap: 8, marginBottom: 8 },
-  blockerBullet: { color: '#ef4444', fontSize: 15, fontFamily: 'Inter', lineHeight: 20 },
-  blockerText: { flex: 1, color: C.ink800, fontSize: 14.5, fontFamily: 'Inter', lineHeight: 20 },
+    blockerScroll: { maxHeight: 200, marginTop: 12 },
+    blockerRow: { flexDirection: 'row', gap: 8, marginBottom: 8 },
+    blockerBullet: { color: V6Colors.dangerText, fontSize: 15, fontFamily: 'Inter', lineHeight: 20 },
+    blockerText: { flex: 1, color: C.ink800, fontSize: 14.5, fontFamily: 'Inter', lineHeight: 20 },
 
-  error: { color: '#ef4444', fontSize: 14, fontFamily: 'Inter', marginTop: 10 },
+    error: { color: V6Colors.dangerText, fontSize: 14, fontFamily: 'Inter', marginTop: 10 },
 
-  actions: { flexDirection: 'row', gap: 10, marginTop: 18 },
-  btn: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: V6Radii.btn,
-    paddingVertical: 13,
-  },
-  btnDisabled: { opacity: 0.6 },
-  cancel: { backgroundColor: C.ink50 },
-  cancelText: { color: C.ink700, fontSize: 15, fontWeight: '700', fontFamily: 'Inter' },
-  danger: { backgroundColor: '#ef4444' },
-  dangerText: { color: C.white, fontSize: 15.5, fontWeight: '700', fontFamily: 'Inter' },
-  confirmNeutral: { backgroundColor: C.cyan700, marginTop: 18 },
-  confirmNeutralText: { color: C.white, fontSize: 16, fontWeight: '700', fontFamily: 'Inter' },
-});
+    actions: { flexDirection: 'row', gap: 10, marginTop: 18 },
+    btn: {
+      flex: 1,
+      alignItems: 'center',
+      justifyContent: 'center',
+      borderRadius: V6Radii.btn,
+      paddingVertical: 13,
+    },
+    btnDisabled: { opacity: 0.6 },
+    cancel: { backgroundColor: C.ink50 },
+    cancelText: { color: C.ink700, fontSize: 15, fontWeight: '700', fontFamily: 'Inter' },
+    danger: { backgroundColor: V6Colors.dangerSolid },
+    dangerText: { color: C.onPrimary, fontSize: 15.5, fontWeight: '700', fontFamily: 'Inter' },
+    confirmNeutral: { backgroundColor: C.cyan700, marginTop: 18 },
+    confirmNeutralText: { color: C.onPrimary, fontSize: 16, fontWeight: '700', fontFamily: 'Inter' },
+  });
+  return { Colors, V6Colors, C, styles };
+}

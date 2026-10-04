@@ -1,7 +1,7 @@
+import { useThemedStyles, type Palette as ThemePalette } from '../context/ThemeContext';
 import React, { useEffect, useRef, useState } from 'react';
 import { Animated, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { V6Colors } from '../constants/theme';
 
 type ToastKind = 'info' | 'success' | 'error';
 interface ToastMessage { id: number; text: string; kind: ToastKind }
@@ -21,6 +21,7 @@ const DURATION_MS = 2600;
 
 /** Mount once, near the root, above every screen. */
 export function ToastHost() {
+  const { styles, V6Colors } = useThemedStyles(createThemedStyles);
   const insets = useSafeAreaInsets();
   const [msg, setMsg] = useState<ToastMessage | null>(null);
   const opacity = useRef(new Animated.Value(0)).current;
@@ -58,16 +59,20 @@ export function ToastHost() {
   );
 }
 
-const styles = StyleSheet.create({
-  wrap: { position: 'absolute', left: 16, right: 16, alignItems: 'center' },
-  toast: {
-    backgroundColor: V6Colors.ink900,
-    borderRadius: 12,
-    paddingHorizontal: 16,
-    paddingVertical: 11,
-    maxWidth: 420,
-  },
-  error: { backgroundColor: '#b91c1c' },
-  success: { backgroundColor: '#15803d' },
-  text: { color: '#ffffff', fontSize: 14.5, fontWeight: '600', fontFamily: 'Inter', textAlign: 'center' },
-});
+function createThemedStyles(theme: ThemePalette) {
+  const { Colors, V6Colors } = theme;
+  const styles = StyleSheet.create({
+    wrap: { position: 'absolute', left: 16, right: 16, alignItems: 'center' },
+    toast: {
+      backgroundColor: V6Colors.hero,
+      borderRadius: 12,
+      paddingHorizontal: 16,
+      paddingVertical: 11,
+      maxWidth: 420,
+    },
+    error: { backgroundColor: V6Colors.dangerSolid },
+    success: { backgroundColor: '#15803d' },
+    text: { color: V6Colors.onPrimary, fontSize: 14.5, fontWeight: '600', fontFamily: 'Inter', textAlign: 'center' },
+  });
+  return { Colors, V6Colors, styles };
+}

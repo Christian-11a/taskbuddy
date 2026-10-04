@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 
 interface AsyncState<T> {
   data: T | null;
@@ -18,8 +18,7 @@ interface AsyncState<T> {
  */
 const cache = new Map<string, unknown>();
 
-/** Test-only: clears the cross-mount cache so tests don't leak state between
- * `it()` blocks that share a module instance. Not used by app code. */
+/** Clear account-owned results on logout, and between isolated tests. */
 export function clearAsyncDataCache() {
   cache.clear();
 }
@@ -44,8 +43,6 @@ export function useAsyncData<T>(
   const [loading, setLoading] = useState(cached === null);
   const [error, setError] = useState<string | null>(null);
   const [nonce, setNonce] = useState(0);
-  const keyRef = useRef(cacheKey);
-  keyRef.current = cacheKey;
 
   const reload = useCallback(() => setNonce((n) => n + 1), []);
 
@@ -54,14 +51,15 @@ export function useAsyncData<T>(
     // Only show the skeleton when there's nothing cached to show yet —
     // a background revalidation shouldn't yank a rendered screen back to
     // a loading state.
-    if (!keyRef.current || !cache.has(keyRef.current)) {
+    if (!cacheKey || !cache.has(cacheKey)) {
       setLoading(true);
     }
     setError(null);
     fetcher()
       .then((result) => {
-        if (keyRef.current) cache.set(keyRef.current, result);
-        if (active) setData(result);
+        if (!active) return;
+        if (cacheKey) cache.set(cacheKey, result);
+        setData(result);
       })
       .catch((e: unknown) => {
         if (active) {

@@ -18,6 +18,7 @@
  * a single "Hire" button.
  */
 
+import { useThemedStyles, type Palette as ThemePalette } from '../context/ThemeContext';
 import React from 'react';
 import {
   ActivityIndicator,
@@ -29,11 +30,9 @@ import {
   View,
 } from 'react-native';
 import { CreditCard, Wallet } from 'lucide-react-native';
-import { V6Colors, V6Radii } from '../constants/theme';
+import { V6Radii } from '../constants/theme';
 import { MAX_CARD_PHP, MIN_TOPUP_PHP } from '../lib/api';
 import { peso } from '../lib/format';
-
-const C = V6Colors;
 
 interface HirePaymentModalProps {
   visible: boolean;
@@ -64,6 +63,7 @@ export default function HirePaymentModal({
   onAddMoney,
   onClose,
 }: HirePaymentModalProps) {
+  const { C, styles, V6Colors } = useThemedStyles(createThemedStyles);
   const hasBudget = budget != null && budget > 0;
   const walletCovers = !hasBudget || (available != null && available >= budget);
   const cardAllowed = hasBudget && budget >= MIN_TOPUP_PHP && budget <= MAX_CARD_PHP;
@@ -89,7 +89,7 @@ export default function HirePaymentModal({
             activeOpacity={0.85}
             testID="hire-pay-wallet"
           >
-            <Wallet size={20} color={C.cyan700} />
+            <Wallet size={20} color={V6Colors.link} />
             <View style={styles.optionCopy}>
               <Text style={styles.optionTitle}>{hasBudget ? 'Pay from wallet' : 'Hire'}</Text>
               {hasBudget && (
@@ -100,7 +100,7 @@ export default function HirePaymentModal({
                 </Text>
               )}
             </View>
-            {busy === 'wallet' && <ActivityIndicator color={C.cyan700} />}
+            {busy === 'wallet' && <ActivityIndicator color={V6Colors.link} />}
           </TouchableOpacity>
 
           {hasBudget && available != null && !walletCovers && (
@@ -117,7 +117,7 @@ export default function HirePaymentModal({
               activeOpacity={0.85}
               testID="hire-pay-card"
             >
-              <CreditCard size={20} color={C.cyan700} />
+              <CreditCard size={20} color={V6Colors.link} />
               <View style={styles.optionCopy}>
                 <Text style={styles.optionTitle}>Pay by card</Text>
                 <Text style={styles.optionMeta}>
@@ -126,7 +126,7 @@ export default function HirePaymentModal({
                     : `Cards take ${peso(MIN_TOPUP_PHP)}–${peso(MAX_CARD_PHP)}`}
                 </Text>
               </View>
-              {busy === 'card' && <ActivityIndicator color={C.cyan700} />}
+              {busy === 'card' && <ActivityIndicator color={V6Colors.link} />}
             </TouchableOpacity>
           )}
 
@@ -148,37 +148,42 @@ export default function HirePaymentModal({
   );
 }
 
-const styles = StyleSheet.create({
-  backdrop: {
-    flex: 1,
-    backgroundColor: 'rgba(15,23,42,0.5)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 28,
-  },
-  card: { width: '100%', backgroundColor: C.white, borderRadius: V6Radii.card, padding: 22, gap: 10 },
-  title: { color: C.ink900, fontSize: 21, fontWeight: '800', fontFamily: 'Inter' },
-  body: { color: C.ink500, fontSize: 14, fontFamily: 'Inter', lineHeight: 19, marginBottom: 4 },
+function createThemedStyles(theme: ThemePalette) {
+  const { Colors, V6Colors } = theme;
+  const C = V6Colors;
+  const styles = StyleSheet.create({
+    backdrop: {
+      flex: 1,
+      backgroundColor: 'rgba(15,23,42,0.5)',
+      alignItems: 'center',
+      justifyContent: 'center',
+      padding: 28,
+    },
+    card: { width: '100%', backgroundColor: C.surface, borderRadius: V6Radii.card, padding: 22, gap: 10 },
+    title: { color: C.ink900, fontSize: 21, fontWeight: '800', fontFamily: 'Inter' },
+    body: { color: C.ink500, fontSize: 14, fontFamily: 'Inter', lineHeight: 19, marginBottom: 4 },
 
-  option: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    borderWidth: 1,
-    borderColor: C.fieldBorder,
-    borderRadius: 14,
-    padding: 14,
-  },
-  optionDisabled: { opacity: 0.5 },
-  optionCopy: { flex: 1 },
-  optionTitle: { color: C.ink900, fontSize: 15, fontWeight: '700', fontFamily: 'Inter' },
-  optionMeta: { color: C.ink500, fontSize: 12.5, fontFamily: 'Inter', marginTop: 2 },
+    option: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 12,
+      borderWidth: 1,
+      borderColor: C.fieldBorder,
+      borderRadius: 14,
+      padding: 14,
+    },
+    optionDisabled: { opacity: 0.5 },
+    optionCopy: { flex: 1 },
+    optionTitle: { color: C.ink900, fontSize: 15, fontWeight: '700', fontFamily: 'Inter' },
+    optionMeta: { color: C.ink500, fontSize: 12.5, fontFamily: 'Inter', marginTop: 2 },
 
-  link: { color: C.cyan700, fontSize: 13, fontWeight: '700', fontFamily: 'Inter' },
-  message: { fontSize: 13, lineHeight: 18, fontFamily: 'Inter' },
-  messageError: { color: C.red700 },
-  messageInfo: { color: C.ink700 },
+    link: { color: V6Colors.link, fontSize: 13, fontWeight: '700', fontFamily: 'Inter' },
+    message: { fontSize: 13, lineHeight: 18, fontFamily: 'Inter' },
+    messageError: { color: V6Colors.dangerText },
+    messageInfo: { color: C.ink700 },
 
-  cancel: { alignItems: 'center', paddingTop: 6 },
-  cancelText: { color: C.ink500, fontSize: 14, fontWeight: '700', fontFamily: 'Inter' },
-});
+    cancel: { alignItems: 'center', paddingTop: 6 },
+    cancelText: { color: C.ink500, fontSize: 14, fontWeight: '700', fontFamily: 'Inter' },
+  });
+  return { Colors, V6Colors, C, styles };
+}
