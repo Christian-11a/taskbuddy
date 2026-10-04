@@ -5,6 +5,7 @@ import { ArrowDownLeft, ArrowUpRight, Download, Gift, Landmark, Lock, PanelRight
 import * as services from "@/lib/services";
 import { useApp } from "@/context/AppContext";
 import { toTransactionRow, toWalletTxnRow, type TransactionRow, type WalletTxnRow } from "@/lib/adapters";
+import { exportMasks } from "@/lib/export/anonymize";
 import { datedFilename, downloadCsv, toCsv } from "@/lib/export/csv";
 import { RECOVERY_CREDIT_MAX_AMOUNT, RECOVERY_CREDIT_TITLE_MAX_LENGTH, validateRecoveryCreditAmount } from "@/lib/validation";
 import { ApiError } from "@/lib/api/client";
@@ -77,6 +78,8 @@ function useSelection(ids: string[]) {
 }
 
 const EscrowTab = forwardRef<ExportHandle, TabProps>(function EscrowTab({ onExportCountChange, onRequestExport }, ref) {
+  const { settings } = useApp();
+  const anonymizeExports = settings.anonymizeExports;
   const [search, setSearch] = useState("");
   const debouncedSearch = useDebouncedValue(search, 250);
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
@@ -159,14 +162,15 @@ const EscrowTab = forwardRef<ExportHandle, TabProps>(function EscrowTab({ onExpo
     ref,
     () => ({
       exportCsv: () => {
+        const mask = exportMasks(anonymizeExports);
         const csv = toCsv(
           ["Escrow ID", "Job ID", "Client", "Provider", "Service", "Amount", "Status", "Date", "Funding", "Payout"],
-          exportScope.map((t) => [t.id, t.jobId, t.customer, t.provider, t.service, t.amountValue, t.status, t.date, t.funding, t.payout]),
+          exportScope.map((t) => [t.id, t.jobId, mask.name(t.customer), mask.name(t.provider), t.service, t.amountValue, t.status, t.date, t.funding, t.payout]),
         );
         downloadCsv(datedFilename("taskbuddy-transactions"), csv);
       },
     }),
-    [exportScope],
+    [exportScope, anonymizeExports],
   );
   useEffect(() => {
     onExportCountChange({ total: transactions.length, selected: sel.selected.size });
@@ -374,7 +378,8 @@ const EscrowTab = forwardRef<ExportHandle, TabProps>(function EscrowTab({ onExpo
  * held for one job, this is a user's running balance.
  */
 const WalletTab = forwardRef<ExportHandle, TabProps>(function WalletTab({ onExportCountChange, onRequestExport }, ref) {
-  const { users } = useApp();
+  const { users, settings } = useApp();
+  const anonymizeExports = settings.anonymizeExports;
   const { showToast } = useToast();
   const [rows, setRows] = useState<WalletTxnRow[]>([]);
   const [totalCount, setTotalCount] = useState(0);
@@ -453,14 +458,15 @@ const WalletTab = forwardRef<ExportHandle, TabProps>(function WalletTab({ onExpo
     () => ({
       exportCsv: () => {
         if (exportUnavailable) return;
+        const mask = exportMasks(anonymizeExports);
         const csv = toCsv(
           ["ID", "User", "Kind", "Amount", "Title", "Date"],
-          exportScope.map((r) => [r.id, r.profileName, r.kindLabel, r.amountValue, r.title, r.createdAt]),
+          exportScope.map((r) => [r.id, mask.name(r.profileName), r.kindLabel, r.amountValue, r.title, r.createdAt]),
         );
         downloadCsv(datedFilename("taskbuddy-wallet-transactions"), csv);
       },
     }),
-    [exportScope, exportUnavailable],
+    [exportScope, exportUnavailable, anonymizeExports],
   );
   useEffect(() => {
     onExportCountChange({

@@ -20,16 +20,9 @@ function makeAppState() {
     sidebarCollapsed: false,
     setSidebarCollapsed: vi.fn(),
     settings: {
-      emailAlerts: true,
-      disputeNotify: true,
-      dailySummary: false,
-      newUserNotify: false,
       activityBadge: true,
-      autoPurge: false,
       anonymizeExports: true,
-      auditLog: true,
       platformName: "",
-      supportEmail: "not-an-email",
     },
     updateSettings: vi.fn(),
     maintenanceMode: false,
@@ -46,26 +39,30 @@ describe("SettingsPage", () => {
     mockedUseApp.mockReturnValue(app as unknown as ReturnType<typeof useApp>);
   });
 
-  it("marks local-only Notifications, Platform, and Data & Privacy options unavailable and disables their controls", () => {
+  it("marks Notifications and Platform unavailable, shows disabled controls as off, and drops the unbuilt options", () => {
     render(<SettingsPage />);
 
     expect(screen.getByText("Not available yet. Notification settings are not connected to a delivery service.")).toBeInTheDocument();
     expect(screen.getByText("Not available yet. These values are not connected to platform behavior.")).toBeInTheDocument();
-    expect(screen.getByText("Not available yet. These options do not change data handling or reports.")).toBeInTheDocument();
+
+    const alert = screen.getByRole("switch", { name: "Email alerts for new verifications" });
+    expect(alert).toBeDisabled();
+    expect(alert).toHaveAttribute("aria-checked", "false");
 
     for (const label of [
-      "Email alerts for new verifications",
       "Notify on disputed transactions",
       "Daily summary report",
       "New user registrations",
       "Auto-purge inactive accounts (1 year)",
-      "Report anonymization",
       "Audit log retention (90 days)",
     ]) {
-      expect(screen.getByRole("switch", { name: label })).toBeDisabled();
+      expect(screen.queryByRole("switch", { name: label })).not.toBeInTheDocument();
     }
     expect(screen.getByRole("textbox", { name: /Platform name/ })).toBeDisabled();
-    expect(screen.getByRole("textbox", { name: /Support email/ })).toBeDisabled();
+    const supportEmail = screen.getByRole("textbox", { name: /Support email/ });
+    expect(supportEmail).toBeDisabled();
+    expect(supportEmail).toHaveValue("");
+    expect(supportEmail).toHaveAttribute("placeholder", "Not set yet");
     expect(screen.queryByText("Sent every morning at 8 AM")).not.toBeInTheDocument();
     expect(screen.queryByText("Everything else on this page saves as you change it.")).not.toBeInTheDocument();
   });
@@ -91,6 +88,18 @@ describe("SettingsPage", () => {
 
     expect(app.setDarkMode).toHaveBeenCalledWith(true);
     expect(app.updateSettings).toHaveBeenCalledWith({ activityBadge: false });
+  });
+
+  it("lets the admin turn export anonymization on and off", async () => {
+    const user = userEvent.setup();
+    render(<SettingsPage />);
+
+    const toggle = screen.getByRole("switch", { name: "Anonymize exports" });
+    expect(toggle).toBeEnabled();
+    expect(toggle).toHaveAttribute("aria-checked", "true");
+
+    await user.click(toggle);
+    expect(app.updateSettings).toHaveBeenCalledWith({ anonymizeExports: false });
   });
 
   it("keeps Maintenance connected to the backend action", async () => {

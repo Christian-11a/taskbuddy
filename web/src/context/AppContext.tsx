@@ -38,29 +38,16 @@ import type {
 // ─── Preferences (persisted to localStorage) ──────────────────────────────────
 
 export interface ConsoleSettings {
-  emailAlerts: boolean;
-  disputeNotify: boolean;
-  dailySummary: boolean;
-  newUserNotify: boolean;
   activityBadge: boolean;
-  autoPurge: boolean;
+  /** Masks names, emails and phone numbers in CSV exports (this device only). */
   anonymizeExports: boolean;
-  auditLog: boolean;
   platformName: string;
-  supportEmail: string;
 }
 
 const DEFAULT_SETTINGS: ConsoleSettings = {
-  emailAlerts: true,
-  disputeNotify: true,
-  dailySummary: false,
-  newUserNotify: false,
   activityBadge: true,
-  autoPurge: false,
   anonymizeExports: true,
-  auditLog: true,
   platformName: "TaskBuddy",
-  supportEmail: "support@taskbuddy.io",
 };
 
 const PREFS_KEY = "tb-admin-prefs";

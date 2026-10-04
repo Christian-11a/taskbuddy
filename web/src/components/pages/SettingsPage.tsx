@@ -318,16 +318,13 @@ export function SettingsPage() {
           </Section>
 
           <Section id="notifications" title="Notifications" description="Not available yet. Notification settings are not connected to a delivery service." icon={Bell}>
-            <Toggle label="Email alerts for new verifications" value={settings.emailAlerts} onChange={setToggle("emailAlerts")} disabled />
-            <Toggle label="Notify on disputed transactions" value={settings.disputeNotify} onChange={setToggle("disputeNotify")} disabled />
-            <Toggle label="Daily summary report" value={settings.dailySummary} onChange={setToggle("dailySummary")} disabled />
-            <Toggle label="New user registrations" value={settings.newUserNotify} onChange={setToggle("newUserNotify")} disabled />
+            <Toggle label="Email alerts for new verifications" value={false} onChange={() => {}} disabled />
           </Section>
 
           <Section id="platform" title="Platform" description="Not available yet. These values are not connected to platform behavior." icon={Globe}>
             <div className="grid gap-x-4 sm:grid-cols-2">
               <Field label="Platform name" value={settings.platformName} disabled />
-              <Field label="Support email" value={settings.supportEmail} type="email" disabled />
+              <Field label="Support email" value="" type="email" placeholder="Not set yet" disabled />
               <Field label="Base currency" value="PHP (₱)" disabled />
             </div>
           </Section>
@@ -353,10 +350,13 @@ export function SettingsPage() {
             />
           </Section>
 
-          <Section id="privacy" title="Data & Privacy" description="Not available yet. These options do not change data handling or reports." icon={Database}>
-            <Toggle label="Auto-purge inactive accounts (1 year)" value={settings.autoPurge} onChange={setToggle("autoPurge")} disabled />
-            <Toggle label="Report anonymization" value={settings.anonymizeExports} onChange={setToggle("anonymizeExports")} disabled />
-            <Toggle label="Audit log retention (90 days)" value={settings.auditLog} onChange={setToggle("auditLog")} disabled />
+          <Section id="privacy" title="Data & Privacy" description="Applies to CSV exports from this console. The choice stays on this device." icon={Database}>
+            <Toggle
+              label="Anonymize exports"
+              sub="Names become initials; emails and phone numbers are masked. IDs, amounts and dates are kept."
+              value={settings.anonymizeExports}
+              onChange={setToggle("anonymizeExports")}
+            />
           </Section>
         </div>
       </div>

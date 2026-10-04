@@ -4,6 +4,7 @@ import { useState } from "react";
 import { AlertTriangle, CalendarRange, CheckCircle2, Download, Star, TrendingUp, Wallet } from "lucide-react";
 import { useApp } from "@/context/AppContext";
 import { formatCurrency, formatCurrencyCompact } from "@/lib/adapters";
+import { exportMasks } from "@/lib/export/anonymize";
 import { datedFilename, downloadCsv, toCsv } from "@/lib/export/csv";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { Button } from "@/components/ui/button";
@@ -27,6 +28,7 @@ export function ReportsPage() {
     analyticsUnavailable,
     analyticsInBrowser,
     retryLoad,
+    settings,
   } = useApp();
   const [confirmingExport, setConfirmingExport] = useState(false);
   // Only narrows what the charts show — the series already arrive from the server.
@@ -89,6 +91,7 @@ export function ReportsPage() {
    * forcing them into one incompatible header row.
    */
   function exportCsv() {
+    const mask = exportMasks(settings.anonymizeExports);
     const blocks = [
       toCsv(["Metric", "Value"], [
         ["Total revenue", stats.totalRevenue],
@@ -102,7 +105,7 @@ export function ReportsPage() {
       toCsv(["Month", "Revenue"], revenueSeries.map((r) => [r.month, r.value])),
       toCsv(["Month", "Bookings"], bookingsSeries.map((b) => [b.month, b.value])),
       toCsv(["Category", "Share (%)"], bookingsByCategory.map((c) => [c.label, c.value])),
-      toCsv(["Provider", "Completed jobs", "Rating"], topProviders.map((p) => [p.name, p.jobs, p.rating])),
+      toCsv(["Provider", "Completed jobs", "Rating"], topProviders.map((p) => [mask.name(p.name), p.jobs, p.rating])),
     ];
     const labels = ["SUMMARY", "REVENUE TREND", "MONTHLY BOOKINGS", "BOOKINGS BY CATEGORY", "TOP PROVIDERS"];
     const csv = blocks.map((b, i) => `${labels[i]}\r\n${b}`).join("\r\n\r\n");
