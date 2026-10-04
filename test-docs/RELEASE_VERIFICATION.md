@@ -214,3 +214,36 @@ Git exclusions. Root `.gitignore` now excludes both credential filenames; a new
 mobile preview archive verified their absence before any upload. Mobile
 typecheck and the full 184-test suite passed again. No Android device is
 currently attached; an existing Pixel_10a AVD and EAS project owner access exist.
+
+## Sandbox collection and corrective payment pass
+
+[Sandbox evidence](SANDBOX_PAYMENT_EVIDENCE.json) records a real deployed
+Stripe test intent and webhook: ₱20 was rejected below the account’s converted
+settlement minimum; ₱50 succeeded with `livemode=false` checked before/after
+confirmation and credited the dedicated client wallet exactly once. No manual
+ledger funding or live payment was used. Collection is not withdrawal delivery.
+
+The fixed API/mobile card floor is now ₱50; wallet-funded smaller jobs remain
+supported. Boundary validation and rendered wallet-form checks were added.
+Payment text on hiring, job creation, wallet and help screens now describes the
+three-day warranty and open-complaint hold. Backend lint/build and 667 tests,
+mobile typecheck and 185 tests passed. Render released the card minimum/copy revision `efb0047`; the matching preview
+Android build finished. Installation and device verification remain pending.
+
+## Completion response and deployed case verification
+
+A real funded completion exposed stale `UPDATE RETURNING` data: the database
+AFTER trigger stamps `completed_at` in another update. The endpoint now reads
+the persisted job before returning, including the warranty deadline. Backend
+lint/build and all 667 tests passed, including a stale-returning regression.
+Render shows corrective revision `15bc94a` live; a newly funded completion
+returned both timestamps exactly 72 hours apart.
+
+[Controlled deployed workflows](DEPLOYED_WORKFLOW_EVIDENCE.json) passed warranty
+holds, refused early release, participant statements, admin clarification and
+refund, settled-case appeal, agreed/contested prestart cancellation, poststart
+review and no-budget complaints. The dedicated provider remained unavailable;
+its temporary verification flag was restored. The client wallet ends at ₱50.
+A request during deployment returned HTML; saved case state was checked before
+resuming without duplicate settlement. Automatic deadline expiry, native UI
+and Vercel owner deployment remain open.

@@ -616,3 +616,15 @@ Database/ML health and ten authenticated role/API smoke checks passed, and
 maintenance is off. Full cross-role state changes/payment/device evidence and
 Vercel owner deployment remain open. EAS archive inspection caught and fixed
 credential-file inclusion before any upload; mobile typecheck/184 tests passed.
+
+### October 4 — deployed sandbox review cases and corrective completion response
+
+Render revision `15bc94a` fixes completion responses to include timestamps saved
+by the database AFTER trigger. Backend lint/build and 667 tests pass. Actual
+Stripe sandbox funds exercised warranty holds, complaints, admin statements and
+refunds, appeal reopening, cancellation responses and no-budget review; see
+[deployed evidence](DEPLOYED_WORKFLOW_EVIDENCE.json). Fixture provider flags were
+restored and no live payment was used. Preview Android build `a5a067c2` finished
+from mobile revision `efb0047`; device verification remains pending. The user
+has no Vercel access, so web release requires the existing project's owner.
+Phase 10 remains open for remaining deployed and device requirements.

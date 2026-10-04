@@ -58,3 +58,8 @@ typecheck passed; no lint script exists. Web: 219 passed, one live-only test
 skipped; lint/typecheck passed. The backend end-to-end command has no test files
 and exits with “No tests found.” Production web build subsequently passed after network approval. Live account
 eligibility, external payout delivery, and deployed/device checks remain pending.
+
+Deployed collection was separately verified on October 4: a ₱50 Stripe test
+intent (`livemode=false`) credited the dedicated client wallet once via the
+real webhook. See [sandbox evidence](SANDBOX_PAYMENT_EVIDENCE.json). This does
+not establish withdrawal delivery or replace the selected local receiving demo.
