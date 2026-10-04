@@ -56,5 +56,5 @@ establish PostgreSQL multi-connection concurrency.
 Backend: 656 tests, lint/build passed. SQL: 120 tests passed. Mobile: 184 tests,
 typecheck passed; no lint script exists. Web: 219 passed, one live-only test
 skipped; lint/typecheck passed. The backend end-to-end command has no test files
-and exits with “No tests found.” Production web build, live account eligibility,
-external payout delivery, and deployed/device checks remain separate pending gates.
+and exits with “No tests found.” Production web build subsequently passed after network approval. Live account
+eligibility, external payout delivery, and deployed/device checks remain pending.

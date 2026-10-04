@@ -4,7 +4,7 @@ Updated October 4, 2026. Source: [two-page report](./Real-Full%20Manuscript_IOTG
 
 This maps all **22 populated requirements** in the PDF. Blank numbered items define no requirement. A local passing test establishes only the behavior it exercises. Every row still lacks deployed integration and physical-device evidence; none is marked fully complete.
 
-Latest local regression: backend 656 tests and lint/build; SQL/PGlite 120; mobile 184 and typecheck; web 219 with one live-only skip plus lint/typecheck. Mobile has no lint script. Backend end-to-end command has no test files. Production web build awaits network approval; see [release verification](RELEASE_VERIFICATION.md).
+Latest local regression: backend 656 tests and lint/build; SQL/PGlite 120; mobile 184 and typecheck; web 219 with one live-only skip plus lint/typecheck. Mobile has no lint script. Backend end-to-end command has no test files. Production web build passed after network approval; see [release verification](RELEASE_VERIFICATION.md).
 
 | Report item | Requirement / phase | Implementation | Automated evidence and limits | Deployed integration | Physical device |
 | --- | --- | --- | --- | --- | --- |

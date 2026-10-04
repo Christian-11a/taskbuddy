@@ -2,7 +2,7 @@
 
 Created: October 4, 2026 (Asia/Manila).
 
-Status: Phases 1–9 are implemented and verified locally. Final local regression and affected-project README updates are complete; focused implementation commits are recorded; Phase 10 remote/build/release/integration/device gates remain. No new migration or release has been applied externally by this task.
+Status: Phases 1–9 are implemented and verified locally. Final local regression and affected-project README updates are complete; focused implementation commits are recorded; Phase 10 target-database/release/integration/device gates remain. No new migration or release has been applied externally by this task.
 
 ## Objective and working rules
 
@@ -340,7 +340,7 @@ Update this table after each phase with concrete evidence. Keep product decision
 | 7 | Implemented; local gate passed | Three signup consents; readable policy; shared image viewer; no posting checkbox | Mobile 154; backend 651; types/lint/build pass | Small-screen/font/keyboard and native navigation checks pending | Device layout matrix |
 | 8 | Implemented; local gate passed | Shared light/dark palettes; reactive screen/component factories; persisted settings; calendars/chat/keyboard/status bar/modal coverage | Mobile 174 tests / 40 suites; typecheck and diff check pass; mobile has no lint script | Rendered components and mocked persistence/API only; physical visual matrix pending | Controlled device/build verification |
 | 9 | Implemented; local gate passed | Authoritative Connect refresh; mandatory references; receiving simulator; migration 0045 debit reservation guard | Backend 656; SQL 120; mobile 184; web 219 / one live-only skip; lint/build/types passed where run | Local receiving ledger reconciles ₱1,100; no real bank/GCash delivery | Target PostgreSQL contention and live/device checks |
-| 10 | Local regression/README work complete; external gates pending | Release evidence/checklist prepared; focused implementation commits recorded | Backend 656; SQL 120; mobile 184; web 219 / one live-only skip | No deployed/device evidence | Network/build approval; target history and release/account/device access |
+| 10 | Local regression/README work complete; external gates pending | Release evidence/checklist prepared; focused implementation commits recorded | Backend 656; SQL 120; mobile 184; web 219 / one live-only skip | No deployed/device evidence | Target database history and release/account/device access |
 
 ## October 4 implementation evidence — Phase 0 / Phase 1
 
@@ -543,10 +543,21 @@ foreground; return URLs do not establish readiness. Copy reflects the 72-hour
 warranty. Setup-state, expiry and failure tests passed. Final local checks: backend
 656 tests and lint/build; SQL 120; mobile 184 and typecheck; web 219 with one
 live-only skip plus lint/typecheck. Mobile has no lint script. Backend end-to-end
-command exits with no tests found. Production web build requires the existing
-Google-font download; approval remains pending.
+command exits with no tests found. Production web build subsequently passed after approved Google-font download.
+Both Git remotes were fetched and their migration trees reviewed; target database
+history remains unverified.
 
 Affected root/backend/mobile/web/test-docs READMEs are updated.
 [Release verification](./RELEASE_VERIFICATION.md) records outstanding remote
 history, migration/release, cross-role deployed and physical-device gates.
 Local simulator/component/PGlite checks do not close those gates.
+
+## Phase 10 — Approved remote/build checks
+
+User approval covered Git remote history and the existing web build/font download.
+Both fetches succeeded; `npm run build` passed (optimized production compilation,
+TypeScript, 38 generated pages). Origin main is `773003a`; upstream main is
+`d9af9d4`. Origin adds merges of the prior handoff work. Upstream also contains
+CSV-privacy/admin-settings work; neither adds migrations 0039–0045. No merge,
+push, deployment or database call was performed. Target database history, controlled
+release and deployed/device scenarios remain pending.

@@ -15,7 +15,7 @@ performed a real/sandbox external payout.
 | Web | `npm run lint`; `npx --no-install tsc --noEmit`; `npm test` | Passed; 219 tests, one unconfigured live-login test skipped |
 | Payout demonstration | `node backend/scripts/payout-demo.mjs` | Matched simulated receipt and withdrawal; total ₱1,100 conserved |
 | Backend end-to-end command | `npm run test:e2e -- --runInBand` | No tests found, exit 1; no end-to-end files exist |
-| Production web build | `npm run build` | Pending approval for the existing Google-font download |
+| Production web build | `npm run build` | Passed after approved network access; optimized build and 38 generated pages |
 
 [The 22-item matrix](VERIFICATION_MATRIX.md) links each PDF requirement to local
 implementation/tests and records separate deployed/device gaps. Existing
@@ -28,10 +28,15 @@ multi-connection concurrency. No new production dependency/native plugin was add
 
 Current checkout: `codex/backend-handover-followups`; starting commit `dcebaae`.
 Configured origin is `Eduard-K-A/taskbuddy`; upstream is `erianthe17/taskbuddy`.
-These URLs and local cached history were inspected without network calls. Their
-current remote heads/applied database versions are unverified. The earlier
-handoff reports a history mismatch: obtain fresh history and reconcile the
-actual applied versions before deciding which migrations are missing. Never
+Both remotes were fetched with user approval on October 4. Origin main is
+`773003a`; upstream main is `d9af9d4`. Relative to the starting tree, origin
+contains only merges; upstream also adds CSV anonymization and admin-settings
+changes. Neither remote changes the migration folder or includes 0039–0045.
+The implementation branch has 12 task commits and is 2 commits behind origin /
+6 behind upstream at this inspection; no merge or history rewrite was performed.
+Target database versions remain unverified. The earlier handoff reports a database
+history mismatch: reconcile actual applied versions before deciding which migrations
+are missing. Never
 apply the whole directory blindly or rewrite already applied migrations.
 
 | Migration | Required behavior | Target verification |
@@ -69,9 +74,10 @@ apply the whole directory blindly or rewrite already applied migrations.
 ## Open approvals and evidence
 
 The working agreement requires confirmation for network/deploy/configuration
-calls. Approval requested for fresh remote history and the existing web build
-font download remains pending. Deployment additionally needs the selected
-controlled environment and permission to apply migrations/release revisions;
+calls. The approved remote-history fetch and existing web build/font download completed
+successfully. Next, select the controlled environment and approve read-only
+inspection of its database history. Deployment then needs permission to apply
+reviewed migrations and release revisions;
 physical checks need device/build access. No supplied account/device artifacts
 currently establish these gates. Final completion is unproven until they close.
 
