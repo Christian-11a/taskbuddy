@@ -1,0 +1,16 @@
+# Test-document implementation
+
+Start with [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md). It maps the supplied
+two-page PDF and screenshot folder to phased changes, product choices, gates and
+remaining work. [VERIFICATION_MATRIX.md](VERIFICATION_MATRIX.md) tracks all 22
+populated PDF requirements separately from deployed and physical-device evidence.
+
+- [Theme verification](THEME_VERIFICATION.md): implementation evidence and device matrix.
+- [Payout verification](PAYOUT_VERIFICATION.md): clearly labeled local receiving-ledger demo.
+- [Simulator output](PAYOUT_SIMULATION_EVIDENCE.json): generated reconciled balances/references.
+- [Release verification](RELEASE_VERIFICATION.md): local regression, release order and external gaps.
+
+Phases 1–9 are implemented and verified locally. Phase 10 remains open until its
+release/integration/device gates have evidence. No deployment or real payout is
+proved by local tests. Run the project commands in each project's README; the
+receiving demo runs from root with `node backend/scripts/payout-demo.mjs`.

@@ -2,7 +2,7 @@
 
 ## FullTest remediation — 2026-10-02
 
-Bug fixes cover approved skill filtering, job photos and lifecycle, escrow totals, cancellation/warranty dispute access, notification creation, and responsive auth/privacy/job forms. Dark-mode controls are explicitly unavailable; no new catalogue or theme was added.
+Bug fixes cover approved skill filtering, job photos and lifecycle, escrow totals, cancellation/warranty dispute access, notification creation, and responsive auth/privacy/job forms. The October 4 follow-up implements shared light/dark palettes and provider photo portfolios; see the current implementation section below.
 
 Migrations **0037 and 0038** are applied to the linked Supabase project. The
 Render API restarted after the fork's `main` push and passed `/health`, but
@@ -306,16 +306,16 @@ sign-in, and notification rows remain available in the in-app list either way.
 | `HOProfile` | Displays profile data; menu is Edit Profile / Settings / Help & Support |
 | `HOEditProfileScreen` | `PATCH /profiles/me`, then `refreshProfile()`. The backend geocodes a changed address and rejects the save with a readable message if it can't verify it |
 | `HONotificationsScreen` | `GET /notifications`; mark read / read-all |
-| `HOSettingsScreen` | `POST /auth/change-password` when `GET /auth/me` reports `has_password`, all five switches (`GET`/`PATCH /settings`), and `DELETE /profiles/me`. Google-only accounts without a password hide Change Password. Account deletion displays backend blockers and signs out after success; Dark Mode remains unavailable and Language remains a placeholder |
+| `HOSettingsScreen` | `POST /auth/change-password` when `GET /auth/me` reports `has_password`, all five switches (`GET`/`PATCH /settings`), and `DELETE /profiles/me`. Google-only accounts without a password hide Change Password. Account deletion displays backend blockers and signs out after success; Dark Mode applies the shared palette and Language remains a placeholder |
 | `HelpSupportScreen` (shared, `src/components/`) | Static FAQ + `mailto:` support link + the required Geoapify / OpenStreetMap attribution links — no backend |
 
 ### Provider (Service Provider — `SP*`)
 
 | Screen | Key API calls |
 |--------|--------------|
-| `SPHomeScreen` | `GET /jobs` (location-filtered feed + summary), `GET /jobs/assigned` (booking requests, with inline accept/decline); availability toggle; a "Verification required to apply" banner until verified |
+| `SPHomeScreen` | `GET /jobs` (location-filtered feed + summary), `GET /jobs/assigned` (confirmed bookings, with Start Job); availability toggle; a "Verification required to apply" banner until verified |
 | `SPMyJobsScreen` | `GET /jobs/assigned`, `GET /applications/mine` |
-| `SPJobDetailScreen` | `GET /jobs/:id`; apply to an open job, or accept / decline / start and tick off the task checklist once it's theirs |
+| `SPJobDetailScreen` | `GET /jobs/:id`; apply to an open job, or start confirmed work and tick off the task checklist once it's theirs |
 | `SPCalendarScreen` | `GET /calendar/bookings?from=&to=` for the current month |
 | `SPChatScreen` | Messaging (same flow as HO) |
 | `SPWalletScreen` | `GET /wallet` + `GET`/`POST /wallet/withdrawals` via `WithdrawModal`; Withdraw files/cancels manual payout requests, same as the homeowner wallet |
@@ -342,12 +342,13 @@ Hiring holds the job budget in escrow. Accept on a proposal
   `accepted`. If the proposal was taken in the meantime, the payment stays in
   the wallet and the screen says so.
 
-Funds are released to the provider when the client marks the job complete, and
-returned to the **wallet** if the job is cancelled or a dispute is resolved in
-the client's favour. That includes card-paid jobs.
+Client completion confirmation starts a **72-hour warranty hold**. Funds release
+after expiry without an open timely complaint. Hired-job cancellations retain
+funds during response/review; an approved refund returns to the **wallet**,
+including card-paid jobs.
 
 Providers who set up **Profile → Payouts** (Stripe Connect Express) have
-card-paid jobs sent straight to their Stripe account on completion. Everything
+card-paid jobs eligible for transfer to their Stripe account after warranty expiry. Everything
 else stays in the TaskBuddy wallet and is withdrawn by request. The wallet ledger
 is the only account of record. Full rules: `backend/BACKEND_SCHEMA.md` §18
 and §29.
@@ -408,7 +409,7 @@ also produced):
   only after an app restart or a revisit to Verification.
 - Change Password no longer burns a token refresh re-checking a wrong current
   password.
-- Confirm Completion (releases escrow) and the destructive actions (Reject
+- Confirm Completion (starts the warranty hold) and the destructive actions (Reject
   proposal, Discard draft, Cancel Job) now ask first / are styled red.
 - Several small polish items: matching button sizing on the post-job success
   screen, a scrollable success screen so a long title/address can't hide the
@@ -416,7 +417,7 @@ also produced):
   and no more empty-state flash on Home while jobs are still loading.
 
 **Deferred, not attempted this round:**
-- Dark mode (still a stubbed Settings toggle with no theme applied).
+- Dark mode was deferred in that historical pass; Phase 8 now implements it locally.
 - Provider avatars on the client's Proposals list and provider profile (the
   API already returns `avatar_url`; only initials are rendered).
 
@@ -542,7 +543,7 @@ signup OTP (item 5) remains available for a future registration-confirmation flo
   (`BACKEND_SCHEMA.md` §29.4).
 - **Provider payouts.** Providers onboard to Stripe Connect Express from
   Profile → Payouts. A card-paid job's payout is sent to their Stripe account
-  when it completes, as a transfer sourced from that job's own charge (§29.5).
+  after warranty expiry without an open complaint, as a transfer sourced from that job's own charge (§29.5).
 - **The wallet ledger stays the account of record** throughout.
 
 Wallet-funded payouts still withdraw through the manual queue, because Stripe
@@ -707,7 +708,7 @@ homeowner-facing recommendations do not map directly to the current product.
 - Job Details with status progress, task checklist, provider information,
   offers, cancel confirmation, completion, review-state gating, provider-matching
   retry, and chat
-- Provider job browsing, applications, booking-request accept/decline, job
+- Provider job browsing, applications, confirmed bookings and Start Job, job
   start, and task updates
 - Wallet balance, Stripe hosted Checkout top-ups, and manual withdrawal requests
 - In-app notifications, profile editing, self-service account deletion, provider
@@ -733,8 +734,8 @@ homeowner-facing recommendations do not map directly to the current product.
   with a map preview rendered by the API (`GET /jobs/static-map`; the key stays
   server-side). The preview hides itself on any error, so it needs the API
   deploy that carries that route before it appears.
-- Dark Mode persists a preference but does not change the palette. Language,
-  wallet transfer, and chat calls remain unwired.
+- Dark Mode now applies persisted shared palettes. Language, wallet transfer,
+  and chat calls remain unwired.
 
 ### 🔧 Remaining frontend tasks
 
@@ -773,8 +774,7 @@ homeowner-facing recommendations do not map directly to the current product.
   permissions, including denied and permanently denied permissions.
 - Verify iOS and Android date-picker behavior, back-stack restoration,
   logout reset, deep navigation, and offline/retry behavior.
-- Apply the persisted Dark Mode preference through shared theme tokens; add
-  i18n before presenting a language picker.
+- Verify shared themes on physical devices; add i18n before presenting a language picker.
 
 ### 🔧 Recent mobile updates
 
@@ -789,7 +789,7 @@ was trimmed to remove rows that duplicated a bottom-nav tab or a header icon.
 
 | Thing | Status |
 |-------|--------|
-| **Dark Mode** | Half done: the *preference* persists (`user_settings.dark_mode` via `PATCH /settings`), but nothing applies it — there is still no theme switching. Both Settings screens say so under the switch rather than implying a repaint that never comes. The blocker is the ~40 screens still using inline hex instead of `V6Colors` tokens; see [`CHANGELOG.md`](./CHANGELOG.md) for the theming approach that was built and then deliberately reverted to leave this open |
+| **Dark Mode** | Implemented locally: shared light/dark palettes, account/device persistence and explicit failed-save rollback. Physical rendering/native checks remain pending; see [theme verification](../test-docs/THEME_VERIFICATION.md). |
 | **Language** | Settings modal states English is the only option — no i18n system exists to back a real picker |
 | **Wallet Transfer** | Deliberately not built, backend or front. Wallet-to-wallet transfer turns the wallet into a money-transmission service, which is a licensing matter in PH, not an engineering one |
 | **Push delivery** | Code complete end to end, **but not yet functional**: the EAS `projectId` is set, but Firebase (FCM) credentials aren't, so no push token is obtained on Android. Remote push also needs a development build (not Expo Go) on SDK 57. The `notifications` table remains the source of truth and the in-app list is unaffected — see [Live chat and push notifications](#live-chat-and-push-notifications). Tap-routing (which screen a tapped notification opens) is already wired and needs no further mobile work — see "Follow-up pass (2026-09-24)" above — it just has nothing to route yet until a token exists |
@@ -827,3 +827,27 @@ One more piece was wired alongside them:
   list remains the source of truth.
 - `expo-crypto` remains in `package.json` but is no longer imported — nonce
   generation for Google auth moved to the backend. Safe to remove.
+
+## October 4 implementation and verification
+
+[The phased plan](../test-docs/IMPLEMENTATION_PLAN.md) replaces earlier lifecycle
+and theme descriptions where they differ. Hiring confirms immediately, providers
+start later, completion begins a three-day warranty, and both participants can
+file complaints/cancellation statements and appeals within the server deadlines.
+
+The app shares foreground notifications/unread state across both roles, routes
+recipient-owned push taps, retains job-filter state, saves signed resolved
+locations, displays approved services and private owned provider portfolios,
+and provides three-consent signup, full scrollable policy text and full-screen
+photo viewing. Shared palettes repaint auth/client/provider screens and dialogs;
+calendar theme changes preserve the viewed month and chat changes preserve drafts.
+
+Payout setup syncs authoritative Connect status on entry, browser return and
+foreground. Wallet history exposes ledger IDs, settlement references and Stripe
+transfer IDs. Pending requests are reserved funds, not delivered payments; failed
+transfers remain in the wallet. The receiving-ledger demonstration is local only.
+
+Run `npm run typecheck` and `npm test -- --runInBand` in this folder. There is no
+configured mobile lint command. See the [verification matrix](../test-docs/VERIFICATION_MATRIX.md)
+for outstanding deployed/device checks. Migrations 0039–0045 and matching API
+release are required; no native dependency/plugin/permission was added by this work.

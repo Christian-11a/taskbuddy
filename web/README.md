@@ -566,3 +566,20 @@ activate any feature. The separate Platform administration page works
 independently of the unavailable Platform fields in Settings.
 
 The analytics fallback is documented in [`lib/services/browserAnalytics.ts`](./src/lib/services/browserAnalytics.ts). [`HANDOFF.md`](../HANDOFF.md) describes the backend contracts; its older undeployed status is superseded for the endpoints verified above.
+
+## October 4 review and withdrawal contracts
+
+The dispute page supports participant complaints, cancellation statements and
+appeals, admin clarification, and atomic release/refund decisions. Settled-payment
+cases cannot release/refund a second time. A decision note is required.
+
+Marking a withdrawal paid requires a nonblank bank/GCash reference (1–500
+characters), enforced by both the form and API. This records external delivery;
+it does not call a payout rail. The selected [payout demo](../test-docs/PAYOUT_VERIFICATION.md)
+is a separate local simulator. Deploy matching API/migrations 0039–0045 before
+using the new contracts. Deployed and physical-device evidence is pending.
+
+Local gates: `npm run lint`, `npx --no-install tsc --noEmit`, `npm test`,
+`npm run build`. The production build fetches the existing Google font and
+requires approved network access. The live admin-login test stays skipped
+unless explicitly configured with controlled credentials.

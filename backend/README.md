@@ -514,7 +514,7 @@ The three `POST` routes carry the payments rate limit. Connect is optional: with
 | `POST /admin/wallet-transactions/recovery-credit` | `{ profile_id, amount, title, job_id? }` — issues a trust credit after a dispute, tagged `kind: 'recovery_credit'` (migration 0021). **The only route that adds balance outside a settled Stripe charge or an escrow release**, which is why it is admin-only and audited; `POST /wallet/transactions` still refuses credits from everyone. Refuses a deleted recipient, a `job_id` they are not on, and anything over ₱50,000. See `BACKEND_SCHEMA.md` §28.1 |
 | `POST /admin/escrow/:id/retry-transfer` | retries a card-funded payout's Stripe transfer that `failed`, was `abandoned`, or was `not_eligible` → `{ outcome }`. Audited (`escrow.retry_transfer`). The money is in the provider's wallet either way (`BACKEND_SCHEMA.md` §29.5) |
 | `GET /admin/withdrawals?status=&limit=&offset=` | the settlement queue — `pending` by default, oldest first (migration 0024) |
-| `POST /admin/withdrawals/:id/settle` | `{ reference? }` — records that the money was actually sent. This is what debits the wallet; the balance is re-checked first and the row is only settled once, whoever clicks |
+| `POST /admin/withdrawals/:id/settle` | `{ reference }` — records that the money was actually sent. This is what debits the wallet; the balance is re-checked first and the row is only settled once, whoever clicks |
 | `POST /admin/withdrawals/:id/reject` | `{ reason }` — the reason reaches the account holder and the amount returns to their available balance |
 | `GET /admin/categories` | every service category, active or not (`GET /categories` still serves the apps only active ones) |
 | `POST /admin/categories` | `{ name }` — 409 on a duplicate name |
@@ -547,9 +547,10 @@ application on a job with a `budget`, the client is **debited** and an
 `escrow_transactions` row is created as `held` — in one SQL transaction
 (`escrow_place_hold`, migration 0028). A client can also **pay the hire by
 card** (`POST /payments/hire-checkout-session`): Stripe's webhook credits the
-payment, holds it and accepts the application (`BACKEND_SCHEMA.md` §29.4). On completion it becomes `released` and the provider is **credited**.
-Cancelling returns the money to the client; a dispute freezes it until an admin
-resolves it either way (release → provider, refund → client).
+payment, holds it and confirms the application (`BACKEND_SCHEMA.md` §29.4).
+Client completion confirmation starts a **72-hour warranty hold**; only expiry
+without an open timely complaint makes payment eligible for release. Hired-job
+cancellation opens response/review with funds held; the decision releases or refunds.
 
 Because a hold needs real funds, **`POST /applications/:id/accept` returns 400
 `Insufficient wallet balance`** when the client can't cover the budget — the job
@@ -593,7 +594,7 @@ withheld at release, frozen onto `escrow_transactions.commission_amount`. It has
 no ledger row of its own, because `wallet_transactions` is keyed by profile and
 the platform is not a profile. The rate defaults to 0, so nothing is withheld
 until an admin sets one via `PATCH /admin/commission`. See `BACKEND_SCHEMA.md`
-§18 — including the documented concurrency caveat on the balance check — and
+§18 — including the wallet locking rules — and
 §27.5.
 
 ### Rate limiting
@@ -727,3 +728,32 @@ stubbed, then exercises the money functions from 0028, the RLS lockdown from
 0026, recommendation eligibility from 0032, and re-applying the latest migrations. The jest suites mock the
 database and cannot see SQL at all; this is what does. `0025` is skipped — it
 needs pg_cron, pg_net and Vault.
+
+## October 4 test-document contracts
+
+Apply reviewed migrations **0039–0045 in order** before the API/mobile release.
+They add confirmed hiring, warranty settlement, participant complaints and
+cancellation review/appeals, atomic service notices, approved-service guards,
+private provider portfolio metadata/storage, and wallet debit reservations.
+Never replay the entire migration folder against a live project without checking
+its applied versions and repository history. These migrations are locally tested;
+this task has not applied them externally.
+
+Portfolio ownership/read rules, signed location references, notification snapshot
+consistency and admin dispute actions are specified in [BACKEND_SCHEMA.md](BACKEND_SCHEMA.md).
+Withdrawal settlement requires a nonblank reference (1–500 characters). The
+admin records an actual external payment; this endpoint does not send money.
+Migration 0045 enforces debit affordability under the existing wallet advisory lock
+for direct ledger inserts/updates as well as escrow/Connect RPC paths.
+
+For a disposable receiving-ledger demonstration, run from repository root:
+
+```sh
+node backend/scripts/payout-demo.mjs
+```
+
+The simulator uses migrated PGlite and a local-only receiving schema; it neither
+calls Stripe nor installs a production payout rail. [Evidence and limits](../test-docs/PAYOUT_VERIFICATION.md).
+`npm test -- --runInBand`, `npm run test:sql`, `npm run build` and `npm run lint`
+are the local gates. `npm run test:e2e -- --runInBand` currently exits with
+“No tests found”; there are no configured end-to-end test files.

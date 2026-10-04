@@ -31,11 +31,13 @@ see the [backend README](./backend/README.md#base-url).
    them, and invites the **top 8** by notification.
 4. Invited providers apply like any other applicant; the client still approves
    exactly one.
-5. Approval **assigns** the job and **holds the budget in escrow**, debiting the
-   client's wallet. A booking and a chat thread open automatically.
-6. The provider starts and finishes the work. When the client marks it complete,
-   escrow **releases to the provider**. Cancelling, or a dispute resolved in the
-   client's favour, **refunds the client** instead.
+5. Approval **confirms** the job and **holds the budget in escrow**, debiting the
+   client's wallet. A booking and chat thread open automatically; the provider
+   starts actual work later, without another acceptance.
+6. Client completion confirmation starts a **72-hour warranty hold**. Funds
+   release after that window if no timely complaint remains open. Hired-job
+   cancellation keeps funds held during the response/admin-review process;
+   a decision determines whether they release or refund.
 7. The client leaves a rating, which feeds back into the provider's score for
    future recommendations.
 
@@ -180,3 +182,18 @@ database `up`, but exact deployed-commit identity and client releases remain
 unverified. Password-reset OTP expiry is configured in Supabase Auth to one
 hour; see [`docs/password-reset-setup.md`](./docs/password-reset-setup.md) for
 the template and failure-log checks.
+
+## Test-document implementation — October 4
+
+[Implementation plan](test-docs/IMPLEMENTATION_PLAN.md) and
+[requirement verification matrix](test-docs/VERIFICATION_MATRIX.md) track all 22
+populated PDF requirements. Phases 1–9 are implemented locally: confirmed hiring,
+warranty/cancellation review, shared notifications, approved services and saved
+location, job filters, owned portfolios, readable signup/policy/photo viewing,
+reactive themes, and traceable payout requests. Migrations **0039–0045** must be
+reviewed against the target history and applied before releasing these changes.
+
+The selected withdrawal demonstration is a **local simulator**, not bank/GCash
+delivery. Run `node backend/scripts/payout-demo.mjs`; see
+[payout evidence](test-docs/PAYOUT_VERIFICATION.md). Automated validation does not
+replace deployed two-role/admin or physical-device verification.

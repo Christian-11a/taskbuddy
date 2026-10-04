@@ -1,0 +1,94 @@
+# Phase 10 release verification
+
+Status: local regression and project documentation complete; external release,
+integration and physical-device verification remain open. This task has not
+changed deployed services, applied migrations, rebuilt a native artifact or
+performed a real/sandbox external payout.
+
+## Local evidence — October 4, 2026
+
+| Project | Commands run | Result |
+| --- | --- | --- |
+| Backend | `npm run lint`; `npm run build`; `npm test -- --runInBand` | Passed; 656 tests / 51 suites |
+| Database | `npm run test:sql` | Passed; 120 tests; production migration chain in disposable PGlite |
+| Mobile | `npm run typecheck`; `npm test -- --runInBand` | Passed; 184 tests / 42 suites; no configured lint command |
+| Web | `npm run lint`; `npx --no-install tsc --noEmit`; `npm test` | Passed; 219 tests, one unconfigured live-login test skipped |
+| Payout demonstration | `node backend/scripts/payout-demo.mjs` | Matched simulated receipt and withdrawal; total ₱1,100 conserved |
+| Backend end-to-end command | `npm run test:e2e -- --runInBand` | No tests found, exit 1; no end-to-end files exist |
+| Production web build | `npm run build` | Pending approval for the existing Google-font download |
+
+[The 22-item matrix](VERIFICATION_MATRIX.md) links each PDF requirement to local
+implementation/tests and records separate deployed/device gaps. Existing
+`job-lifecycle.spec.ts` exercises both participants and admin decisions against a
+shared in-memory store; SQL tests verify migrated constraints, transactions,
+permissions, deadlines and replay. Neither proves deployed integration nor real
+multi-connection concurrency. No new production dependency/native plugin was added.
+
+## History and migration review
+
+Current checkout: `codex/backend-handover-followups`; starting commit `dcebaae`.
+Configured origin is `Eduard-K-A/taskbuddy`; upstream is `erianthe17/taskbuddy`.
+These URLs and local cached history were inspected without network calls. Their
+current remote heads/applied database versions are unverified. The earlier
+handoff reports a history mismatch: obtain fresh history and reconcile the
+actual applied versions before deciding which migrations are missing. Never
+apply the whole directory blindly or rewrite already applied migrations.
+
+| Migration | Required behavior | Target verification |
+| --- | --- | --- |
+| 0039 | Hire confirms; provider starts later | Wallet/card hire, future schedule, booking/chat/notification replay |
+| 0040 | 72-hour warranty and release guard | Deadline boundary, open complaint blocking and scheduler replay |
+| 0041 | Participant complaints/cancellation review/appeals | Pre-start 48-hour response, contest/timeout, post-start review, zero-budget cases, settled appeals |
+| 0042 | Atomic service notices/decisions | Submit/approve/reject rollback and exact-once notices |
+| 0043 | Approved-service assignment consistency | Primary/secondary category eligibility and existing assignments |
+| 0044 | Private owned portfolio | Bucket/MIME/cap/RLS, signed image access, ownership and client viewing |
+| 0045 | Shared wallet debit affordability lock | Existing reservations audit; independent withdrawal/escrow/Connect contention and rollback |
+
+## Controlled release order
+
+1. Confirm the target environment, current remote/API revisions, migration
+   history, database backup and controlled client/provider/admin accounts.
+2. Review/apply only missing migrations 0039–0045 in order. Audit existing wallet
+   reservations and verify PostgreSQL contention with independent connections.
+3. Release matching API, then admin web and mobile. Record exact revision/build
+   identifiers. No native package change was introduced, but an old APK does not
+   establish that this JS revision was exercised.
+4. Exercise two-role/admin state changes against that environment: confirm/start,
+   completion/warranty, cancellation agreement/contest/timeout, complaint evidence,
+   clarification/appeals/decisions, service approval/rejection, notifications,
+   location reload, filters, portfolio and wallet reference visibility.
+5. Run every populated PDF scenario on small and larger devices, enlarged text,
+   light/dark modes, Android gesture/three-button navigation, native keyboard,
+   camera/gallery/location permissions, foreground/background/reconnect and
+   cold-start push taps. Include logout/account switch and failed requests.
+6. Capture expected/actual results, exact environment, sanitized screenshots and
+   case/ledger/payment references in the matrix. Real Stripe eligibility and
+   external bank delivery require their own receiving-account evidence; the
+   selected simulator proves only its labeled local outcome.
+
+## Open approvals and evidence
+
+The working agreement requires confirmation for network/deploy/configuration
+calls. Approval requested for fresh remote history and the existing web build
+font download remains pending. Deployment additionally needs the selected
+controlled environment and permission to apply migrations/release revisions;
+physical checks need device/build access. No supplied account/device artifacts
+currently establish these gates. Final completion is unproven until they close.
+
+## Focused implementation commits
+
+| Commit | Scope |
+| --- | --- |
+| `29fa7b2` | Confirmed hiring, warranty and complaint/cancellation review |
+| `f948dc1` | Notification consistency and approved-service decisions |
+| `7bbeac7` | Signed saved locations and approved-service profiles |
+| `dc134f5` | Private provider-owned portfolios |
+| `46117ce` | Debit reservation guard and traceable payout simulator |
+| `b797816` | Shared mobile palettes, state and photo components |
+| `ce7ae67` | Three-consent signup and readable themed auth forms |
+| `9e5b1e2` | Client job/review/filter/portfolio/theme screens |
+| `423c485` | Provider confirmed work, portfolios and payout screens |
+| `c24fdea` | Admin complaint review and required payout references |
+
+Commits are local; no push or deployment has been performed. Unrelated existing
+changes and supplied PDF/image/thesis assets remain outside these batches.
