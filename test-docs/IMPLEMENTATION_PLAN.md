@@ -682,3 +682,24 @@ shared Expo in-app list/bell and refresh on app return/reconnect. Native visual,
 tap navigation, read/delete/clear and app-return checks remain required. Legacy
 optional system-push code is not proof of these in-app requirements, and its
 missing Firebase configuration does not block this selected scope.
+
+
+### October 4 — active jobs and notification mutation verification
+
+[Active-job API evidence](DEPLOYED_ACTIVE_JOB_EVIDENCE.json) confirms three owned
+fixtures across two categories, combined active/category filtering, stable
+one-row pagination, and exact uploaded photo bytes in provider job details.
+All three unassigned jobs were cancelled afterward and disappear from active
+results. Records and the public QA icon remain for traceability.
+
+[Notification mutation evidence](DEPLOYED_NOTIFICATION_MUTATION_EVIDENCE.json)
+confirms recipient ownership, read timestamp preservation on replay, individual
+delete replay, mark-all-read, clear-all and zero unread count. Only the dedicated
+QA provider's notices were cleared; the client snapshot remained unchanged.
+Four QA messages remain in the controlled conversation. No new defect was found.
+
+These checks exercise the deployed API, not native screens. Native filter/back
+retention, photo taps, bell rendering, navigation and app return remain pending.
+No device was connected at this checkpoint. No source code changed; the prior
+full regression remains applicable. New evidence JSON and diff formatting were
+validated. Vercel deployment remains with the project owner.
