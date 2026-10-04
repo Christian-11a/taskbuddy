@@ -1,5 +1,5 @@
 import React from 'react';
-import { StyleSheet, Text, TouchableOpacity } from 'react-native';
+import { FlatList, StyleSheet, Text, TouchableOpacity } from 'react-native';
 import { act, fireEvent, render, screen } from '@testing-library/react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { ThemeProvider, useTheme, lightPalette, darkPalette } from '../ThemeContext';
@@ -37,4 +37,20 @@ it.each([HOChatScreen, SPChatScreen])('repaints received/sent messages and keybo
   expect(screen.getByPlaceholderText('Message…').props.keyboardAppearance).toBe('dark');
   expect(screen.getByPlaceholderText('Message…').props.value).toBe('Unsent draft');
   expect(api.streamMessages).toHaveBeenCalledTimes(1);
+});
+
+
+it.each([HOChatScreen, SPChatScreen])('scrolls after asynchronous message layout without resetting later reading position', async Chat => {
+  const scroll = jest.spyOn(FlatList.prototype, 'scrollToEnd').mockImplementation(() => {});
+  const view = render(<ThemeProvider><Chat jobId="job" onBack={jest.fn()} onViewJob={jest.fn()} /></ThemeProvider>);
+  const list = () => view.UNSAFE_getByType(FlatList);
+  fireEvent(list(), 'contentSizeChange', 375, 0);
+  expect(scroll).not.toHaveBeenCalled();
+  await screen.findByText('Incoming message');
+  fireEvent(list(), 'contentSizeChange', 375, 1800);
+  expect(scroll).toHaveBeenCalledWith({ animated: false });
+  scroll.mockClear();
+  fireEvent(list(), 'contentSizeChange', 375, 2100);
+  expect(scroll).not.toHaveBeenCalled();
+  scroll.mockRestore();
 });

@@ -894,3 +894,16 @@ or backgrounded; the user declined adding Firebase. Earlier FCM setup/new-build
 requirements apply only to the optional legacy system-push feature, not this
 implementation's completion gates. No Firebase project or credentials will be
 created. Native bell/list/navigation and app-return checks remain pending.
+
+
+### Native emulator verification (October 4, 2026)
+
+The signed preview APK was exercised through adb on an isolated Android emulator.
+Client signup scrolling and the privacy dialog, live unread bell updates,
+notification-to-chat navigation, deletion, mark-all-read and clear-all passed.
+A delayed-message-layout defect left the newest chat message offscreen on entry.
+Both role chat screens now scroll after their first nonempty content layout,
+without snapping back on subsequent content changes. Mobile regression passes
+187 tests in 42 suites plus typecheck; no mobile lint script exists. Native
+reverification of this correction requires the next preview build. These checks
+do not establish physical GPS behavior or the full device/theme matrix.

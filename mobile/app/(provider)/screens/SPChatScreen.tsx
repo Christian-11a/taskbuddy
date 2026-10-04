@@ -70,11 +70,14 @@ export default function SPChatScreen({ jobId, onBack, onViewJob }: SPChatScreenP
   const [sending, setSending] = useState(false);
   const [attaching, setAttaching] = useState(false);
   const listRef = useRef<FlatList>(null);
+  const initialScrollPending = useRef(true);
 
   useEffect(() => {
     let active = true;
     let stopStream: (() => void) | undefined;
     (async () => {
+      initialScrollPending.current = true;
+      setMessages([]);
       setLoading(true);
       setError(null);
       try {
@@ -200,6 +203,12 @@ export default function SPChatScreen({ jobId, onBack, onViewJob }: SPChatScreenP
           contentContainerStyle={styles.chatContent}
           showsVerticalScrollIndicator={false}
           onLayout={() => listRef.current?.scrollToEnd()}
+          onContentSizeChange={() => {
+            if (initialScrollPending.current && messages.length > 0) {
+              initialScrollPending.current = false;
+              listRef.current?.scrollToEnd({ animated: false });
+            }
+          }}
         />
 
         {/* Composer — matches .chat-composer */}
