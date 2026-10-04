@@ -309,7 +309,7 @@ function createThemedStyles(theme: ThemePalette) {
       alignItems: 'center',
       marginBottom: 16,
     },
-    greeting: { color: C.cyan100, fontSize: 14.5, fontFamily: 'Inter', fontWeight: '500' },
+    greeting: { color: C.onPrimary, fontSize: 14.5, fontFamily: 'Inter', fontWeight: '500' },
     userName: { color: C.onPrimary, fontSize: 24.5, fontWeight: '800', fontFamily: 'Inter', marginTop: 3 },
     // The name column yields to the actions, never the other way round: the
     // avatar is the only route to Profile (and Log out), so a long name must

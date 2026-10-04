@@ -98,7 +98,7 @@ function createThemedStyles(theme: ThemePalette) {
   const { V6Colors } = theme;
   const Colors = {
     ...V6Colors,
-    brandTeal: V6Colors.cyan700,
+    brandTeal: V6Colors.link,
     // Mockup's final inactive-icon color (#94a3b8) — not one of the standard
     // ink tokens, so it's spelled out here rather than approximated.
     navInactive: '#94a3b8',

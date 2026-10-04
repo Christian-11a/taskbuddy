@@ -907,3 +907,7 @@ without snapping back on subsequent content changes. Mobile regression passes
 187 tests in 42 suites plus typecheck; no mobile lint script exists. Native
 reverification of this correction requires the next preview build. These checks
 do not establish physical GPS behavior or the full device/theme matrix.
+
+Emulator dark-mode review also corrected the client hero greeting and active
+navigation icon colors. They now use the existing on-primary and link tokens.
+The complete 187-test mobile suite and typecheck pass after these changes.
