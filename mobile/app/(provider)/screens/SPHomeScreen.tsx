@@ -388,7 +388,7 @@ function createThemedStyles(theme: ThemePalette) {
       borderBottomRightRadius: 26,
     },
     heroTopRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingTop: 12 },
-    greeting: { color: C.ink400, fontSize: 13, fontFamily: 'Inter', marginBottom: 3 },
+    greeting: { color: C.onPrimary, fontSize: 13, fontFamily: 'Inter', marginBottom: 3 },
     heroTitle: { color: C.onPrimary, fontSize: 21.5, fontWeight: '800', fontFamily: 'Inter' },
     // The greeting column yields to the actions, never the other way round: the
     // avatar is the only route to Profile (and Log out), so a long name must
