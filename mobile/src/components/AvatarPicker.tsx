@@ -21,11 +21,11 @@ import {
   View,
 } from 'react-native';
 import Tap from './ui/Tap';
+import Silhouette from './ui/Silhouette';
 import * as ImagePicker from 'expo-image-picker';
 
 import { useAuth } from '../context/AuthContext';
 import { api } from '../lib/api';
-import { initials } from '../lib/format';
 import { requestAppPermission } from '../lib/permissions';
 
 export default function AvatarPicker({ name }: { name: string }) {
@@ -70,7 +70,7 @@ export default function AvatarPicker({ name }: { name: string }) {
         ) : avatarUrl ? (
           <Image source={{ uri: avatarUrl }} style={styles.avatarImage} />
         ) : (
-          <Text style={styles.avatarText}>{initials(name)}</Text>
+          <Silhouette name={name} textStyle={styles.avatarText} />
         )}
       </View>
       <Tap activeOpacity={0.7} onPress={() => void changePhoto()} disabled={busy}>

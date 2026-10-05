@@ -29,13 +29,14 @@ import {
   View,
 } from 'react-native';
 import Tap from '../../../src/components/ui/Tap';
+import Silhouette from '../../../src/components/ui/Silhouette';
 import { ArrowLeft, BadgeCheck, CheckCircle2, MessageCircle, ShieldAlert, Star } from 'lucide-react-native';
 import { Spacing } from '../../../src/constants/theme';
 import { useHeaderTop } from '../../../src/hooks/useHeaderTop';
 
 import { useAsyncData } from '../../../src/hooks/useAsyncData';
 import { api } from '../../../src/lib/api';
-import { initials, shortDate } from '../../../src/lib/format';
+import { shortDate } from '../../../src/lib/format';
 import { HOScreen } from '../../../src/types/navigation';
 
 interface HOProviderProfileScreenProps {
@@ -90,7 +91,7 @@ export default function HOProviderProfileScreen({
           {/* Hero — matches .public-hero */}
           <View style={styles.hero}>
             <View style={styles.avatar}>
-              <Text style={styles.avatarText}>{initials(provider.profiles?.full_name)}</Text>
+              <Silhouette name={provider.profiles?.full_name} textStyle={styles.avatarText} />
             </View>
             <Text style={styles.name}>{provider.profiles?.full_name ?? 'Provider'}</Text>
             {approvedServiceNames(provider).length > 0 && (
@@ -153,7 +154,7 @@ export default function HOProviderProfileScreen({
             {reviews.map((r) => (
               <View key={r.id} style={styles.reviewRow}>
                 <View style={styles.reviewAvatar}>
-                  <Text style={styles.reviewAvatarText}>{initials(r.client?.full_name)}</Text>
+                  <Silhouette name={r.client?.full_name} textStyle={styles.reviewAvatarText} />
                 </View>
                 <View style={{ flex: 1 }}>
                   <View style={styles.reviewHeader}>

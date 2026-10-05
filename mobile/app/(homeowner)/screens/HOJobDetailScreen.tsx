@@ -20,6 +20,7 @@ import {
   View,
 } from 'react-native';
 import Tap from '../../../src/components/ui/Tap';
+import Silhouette from '../../../src/components/ui/Silhouette';
 import {
   ArrowLeft,
   CalendarDays,
@@ -37,7 +38,7 @@ import { useHeaderTop } from '../../../src/hooks/useHeaderTop';
 import { HOScreen } from '../../../src/types/navigation';
 import { useAsyncData } from '../../../src/hooks/useAsyncData';
 import { api, ApiError, type Job } from '../../../src/lib/api';
-import { distanceLabel, initials, jobStatusMeta, peso, shortDate, timeAgo, timeOfDay, urgencyMeta } from '../../../src/lib/format';
+import { distanceLabel, jobStatusMeta, peso, shortDate, timeAgo, timeOfDay, urgencyMeta } from '../../../src/lib/format';
 import ConfirmationModal from '../../../src/components/ConfirmationModal';
 
 function acceptedDistanceKm(job: Job): number | null {
@@ -306,7 +307,7 @@ export default function HOJobDetailScreen({ jobId, onBack, onNavigate }: HOJobDe
               <Text style={styles.sectionTitle}>Service Provider</Text>
               <View style={styles.providerCard}>
                 <View style={styles.providerAvatar}>
-                  <Text style={styles.providerAvatarText}>{initials(provider.profiles?.full_name)}</Text>
+                  <Silhouette name={provider.profiles?.full_name} textStyle={styles.providerAvatarText} />
                 </View>
                 <View style={{ flex: 1 }}>
                   <Text style={styles.providerName}>{provider.profiles?.full_name ?? 'Provider'}</Text>
@@ -331,7 +332,7 @@ export default function HOJobDetailScreen({ jobId, onBack, onNavigate }: HOJobDe
               </View>
 
               {job.provider_accept_address && (
-                <Text style={styles.detailValue}>
+                <Text style={styles.acceptedFrom}>
                   Accepted from {job.provider_accept_address}
                   {acceptedDistance != null ? ` · ${distanceLabel(acceptedDistance)} from your job` : ''}
                 </Text>
@@ -555,11 +556,12 @@ function createThemedStyles(theme: ThemePalette) {
     detailLabel: { fontSize: 12.5, color: C.ink500, fontFamily: 'Inter', marginBottom: 2 },
     detailValue: { fontSize: 14.5, color: C.ink800, fontWeight: '600', fontFamily: 'Inter', lineHeight: 20, flexShrink: 1 },
     providerNotice: { marginBottom: 16 },
+    acceptedFrom: { fontSize: 13.5, color: C.ink500, fontFamily: 'Inter', lineHeight: 19, marginTop: 12 },
 
     // Provider card
     providerCard: { flexDirection: 'row', alignItems: 'center', gap: 11 },
-    providerAvatar: { width: 42, height: 42, borderRadius: 13, backgroundColor: C.cyan700, alignItems: 'center', justifyContent: 'center' },
-    providerAvatarText: { color: C.onPrimary, fontSize: 16, fontWeight: '800', fontFamily: 'Inter' },
+    providerAvatar: { width: 48, height: 48, borderRadius: 24, backgroundColor: C.primaryTonalStrong, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
+    providerAvatarText: { color: C.primaryDeep, fontSize: 16, fontWeight: '800', fontFamily: 'Inter' },
     providerName: { fontSize: 14.5, fontWeight: '700', color: C.ink900, fontFamily: 'Inter' },
     providerRatingRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 3 },
     providerRating: { fontSize: 11.5, color: C.ink400, fontFamily: 'Inter' },

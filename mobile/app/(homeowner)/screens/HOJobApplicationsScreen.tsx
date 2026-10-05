@@ -41,6 +41,7 @@ import {
   View,
 } from 'react-native';
 import Tap from '../../../src/components/ui/Tap';
+import Silhouette from '../../../src/components/ui/Silhouette';
 import { AlertCircle, ArrowLeft, ChevronRight, ShieldAlert, Star } from 'lucide-react-native';
 import { Spacing } from '../../../src/constants/theme';
 import { useHeaderTop } from '../../../src/hooks/useHeaderTop';
@@ -48,7 +49,6 @@ import { useHeaderTop } from '../../../src/hooks/useHeaderTop';
 import { useAsyncData } from '../../../src/hooks/useAsyncData';
 import { api, type JobApplication } from '../../../src/lib/api';
 import { openRedirectSession } from '../../../src/lib/appRedirectSession';
-import { initials } from '../../../src/lib/format';
 import HirePaymentModal from '../../../src/components/HirePaymentModal';
 import ConfirmationModal from '../../../src/components/ConfirmationModal';
 import { HOScreen } from '../../../src/types/navigation';
@@ -276,7 +276,7 @@ export default function HOJobApplicationsScreen({
                     testID={`applications-profile-${app.id}`}
                   >
                     <View style={styles.avatar}>
-                      <Text style={styles.avatarText}>{initials(provider?.full_name)}</Text>
+                      <Silhouette name={provider?.full_name} textStyle={styles.avatarText} />
                     </View>
                     <View style={styles.copy}>
                       <Text style={styles.providerName}>{provider?.full_name ?? 'Provider'}</Text>

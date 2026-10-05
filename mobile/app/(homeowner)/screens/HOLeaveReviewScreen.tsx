@@ -21,13 +21,13 @@ import {
   View,
 } from 'react-native';
 import Tap from '../../../src/components/ui/Tap';
+import Silhouette from '../../../src/components/ui/Silhouette';
 import { ArrowLeft, Star } from 'lucide-react-native';
 import { Spacing, V6Radii, V6Shadows } from '../../../src/constants/theme';
 import { useHeaderTop } from '../../../src/hooks/useHeaderTop';
 
 import { api } from '../../../src/lib/api';
 import { useAsyncData } from '../../../src/hooks/useAsyncData';
-import { initials } from '../../../src/lib/format';
 
 interface HOLeaveReviewScreenProps {
   jobId: string;
@@ -84,7 +84,7 @@ export default function HOLeaveReviewScreen({ jobId, onSubmitted, onBack }: HOLe
       >
         <ScrollView keyboardDismissMode="on-drag" contentContainerStyle={styles.bodyContent} keyboardShouldPersistTaps="handled">
           <View style={styles.avatar}>
-            <Text style={styles.avatarText}>{initials(providerName)}</Text>
+            <Silhouette name={providerName} textStyle={styles.avatarText} />
           </View>
           <Text style={styles.providerName}>{providerName}</Text>
           <Text style={styles.prompt}>How was your experience?</Text>
