@@ -20,8 +20,6 @@
 import { useThemedStyles, type Palette as ThemePalette } from '../../../src/context/ThemeContext';
 import React, { useState } from 'react';
 import {
-  Modal,
-  Pressable,
   ScrollView,
   StyleSheet,
   Switch,
@@ -29,6 +27,7 @@ import {
   View,
 } from 'react-native';
 import Tap from '../../../src/components/ui/Tap';
+import SheetFrame from '../../../src/components/ui/SheetFrame';
 import {
   ArrowLeft,
   ChevronRight,
@@ -195,14 +194,7 @@ export default function HOSettingsScreen({ onBack, onLogout }: HOSettingsScreenP
 
       <ChangePasswordModal visible={showPasswordModal} onClose={() => setShowPasswordModal(false)} />
 
-      <Modal visible={showLanguageModal} transparent animationType="fade" onRequestClose={() => setShowLanguageModal(false)}>
-        <Pressable style={styles.overlay} onPress={() => setShowLanguageModal(false)} accessible={false}>
-          <Pressable
-            style={styles.dialog}
-            onPress={(e) => e.stopPropagation()}
-            accessibilityViewIsModal
-            accessibilityRole="alert"
-          >
+      <SheetFrame visible={showLanguageModal} onClose={() => setShowLanguageModal(false)} contentStyle={styles.dialog} cardProps={{ accessibilityRole: "alert" }}>
             <Text style={styles.dialogTitle} accessibilityRole="header">Language</Text>
             <View style={styles.langRow}>
               <Text style={styles.langLabel}>English</Text>
@@ -218,9 +210,7 @@ export default function HOSettingsScreen({ onBack, onLogout }: HOSettingsScreenP
             >
               <Text style={styles.dialogCloseText}>Close</Text>
             </Tap>
-          </Pressable>
-        </Pressable>
-      </Modal>
+    </SheetFrame>
 
       <ConfirmationModal
         visible={showDeleteModal}

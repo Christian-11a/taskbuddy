@@ -189,7 +189,7 @@ export default function HOHomeScreen({ onNavigate }: HOHomeScreenProps) {
                     onPress={() => onNavigate('Create Job', String(cat.id))}
                   >
                     <View style={styles.categoryIconWell}>
-                      <Icon size={24} color={C.primary} strokeWidth={2} />
+                      <Icon size={24} color={C.link} strokeWidth={2} />
                     </View>
                     <Text style={styles.categoryLabel} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8}>{cat.name}</Text>
                   </Tap>
@@ -224,7 +224,7 @@ export default function HOHomeScreen({ onNavigate }: HOHomeScreenProps) {
               testID="home-post-job"
             >
               <View style={styles.taskIcon}>
-                <Sparkles size={22} color={C.primary} />
+                <Sparkles size={22} color={C.link} />
               </View>
               <View style={styles.taskCopy}>
                 <Text style={styles.taskTitle}>Need something done?</Text>
@@ -267,7 +267,7 @@ export default function HOHomeScreen({ onNavigate }: HOHomeScreenProps) {
                       style={[styles.activityRow, i < recentActivity.length - 1 && styles.activityRowBorder]}
                     >
                       <View style={styles.activityIcon}>
-                        <Icon size={18} color={C.primary} />
+                        <Icon size={18} color={C.link} />
                       </View>
                       <View style={styles.activityCopy}>
                         <Text style={styles.activityTitle} numberOfLines={1}>{n.title}</Text>

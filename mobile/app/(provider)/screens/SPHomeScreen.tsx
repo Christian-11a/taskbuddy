@@ -246,7 +246,7 @@ export default function SPHomeScreen({ onNavigate }: SPHomeScreenProps) {
             accessibilityRole="button"
           >
             <View style={styles.flowIcon}>
-              <ShieldCheck size={20} color={C.primary} />
+              <ShieldCheck size={20} color={C.link} />
             </View>
             <View style={{ flex: 1 }}>
               <Text style={styles.flowTitle}>Verification required to apply</Text>
@@ -262,7 +262,7 @@ export default function SPHomeScreen({ onNavigate }: SPHomeScreenProps) {
         {confirmedJobs.length > 0 && (
           <View style={styles.requestsBlock}>
             <View style={styles.requestsHeader}>
-              <Inbox size={17} color={C.primary} />
+              <Inbox size={17} color={C.link} />
               <Text style={styles.requestsTitle}>Confirmed bookings</Text>
               <View style={styles.requestsCount}>
                 <Text style={styles.requestsCountText}>{confirmedJobs.length}</Text>
@@ -328,7 +328,7 @@ export default function SPHomeScreen({ onNavigate }: SPHomeScreenProps) {
         {data && availableJobs.length === 0 && (
           <View style={styles.emptyState}>
             <View style={styles.emptyIcon}>
-              <Search size={28} color={C.primary} />
+              <Search size={28} color={C.link} />
             </View>
             <Text style={styles.emptyTitle}>No matching jobs</Text>
             <Text style={styles.emptyText}>Adjust your search or urgency filter to see more opportunities.</Text>

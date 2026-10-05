@@ -36,6 +36,9 @@ type SheetFrameProps = {
   contentStyle?: StyleProp<ViewStyle>;
   /** Extra props for the card (testID, accessibility…). */
   cardProps?: Omit<PressableProps, 'style' | 'onPress'>;
+  /** false = only the Back button closes it (no backdrop tap, no drag), for
+   * popups that never closed from outside. */
+  dismissible?: boolean;
   children: React.ReactNode;
 };
 
@@ -53,7 +56,7 @@ const DIALOG_MARGIN = 24;
  * Reduced motion: fade only.
  */
 export default function SheetFrame({
-  visible, onClose, variant = 'sheet', contentStyle, cardProps, children,
+  visible, onClose, variant = 'sheet', contentStyle, cardProps, dismissible = true, children,
 }: SheetFrameProps) {
   const { palette } = useTheme();
   const C = palette.V6Colors;
@@ -84,7 +87,7 @@ export default function SheetFrame({
   const available = windowHeight - insets.top - keyboardHeight - (isSheet ? 0 : DIALOG_MARGIN * 2);
 
   const pan = Gesture.Pan()
-    .enabled(isSheet && !!onClose)
+    .enabled(isSheet && dismissible && !!onClose)
     .onUpdate((e) => {
       dragY.set(Math.max(0, e.translationY));
     })
@@ -116,7 +119,7 @@ export default function SheetFrame({
             { backgroundColor: C.scrim, paddingTop: insets.top, paddingBottom: keyboardHeight },
             isSheet ? styles.backdropSheet : styles.backdropDialog,
           ]}
-          onPress={onClose}
+          onPress={dismissible ? onClose : undefined}
           accessible={false}
         >
           <Animated.View

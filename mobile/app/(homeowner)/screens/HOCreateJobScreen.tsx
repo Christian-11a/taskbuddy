@@ -63,6 +63,7 @@ import {
   KeyboardAvoidingView,
 } from 'react-native';
 import Tap from '../../../src/components/ui/Tap';
+import SheetFrame from '../../../src/components/ui/SheetFrame';
 import {
   ArrowLeft,
   BrushCleaning,
@@ -1249,14 +1250,12 @@ export default function HOCreateJobScreen({
         }}
       />
 
-      <Modal
+      <SheetFrame
         visible={showDatePicker}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setShowDatePicker(false)}
+        onClose={() => setShowDatePicker(false)}
+        dismissible={false}
+        contentStyle={styles.calendarModal}
       >
-        <View style={styles.calendarOverlay}>
-          <View style={styles.calendarModal}>
             <View style={styles.calendarHeader}>
               <Text style={styles.calendarTitle}>Select a date</Text>
               <Tap onPress={() => setShowDatePicker(false)} hitSlop={10}>
@@ -1279,9 +1278,7 @@ export default function HOCreateJobScreen({
               markedDates={date ? { [dateKey(date)]: { selected: true, selectedColor: Colors.brandTeal } } : undefined}
               theme={{ calendarBackground: V6Colors.surface, dayTextColor: V6Colors.ink900, monthTextColor: V6Colors.ink900, textDisabledColor: V6Colors.ink400, todayTextColor: V6Colors.link, arrowColor: V6Colors.link, selectedDayBackgroundColor: Colors.brandTeal }}
             />
-          </View>
-        </View>
-      </Modal>
+      </SheetFrame>
 
       {/*
         TIME PICKER — platform-specific rendering.

@@ -16,8 +16,6 @@ import React, { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Keyboard,
-  Modal,
-  Pressable,
   RefreshControl,
   ScrollView,
   StyleSheet,
@@ -26,6 +24,7 @@ import {
   View,
 } from 'react-native';
 import Tap from '../../../src/components/ui/Tap';
+import SheetFrame from '../../../src/components/ui/SheetFrame';
 import {
   ArrowDownLeft,
   ArrowUpRight,
@@ -436,19 +435,13 @@ export default function HOWalletScreen() {
         <View style={{ height: 20 }} />
       </ScrollView>
 
-      <Modal
+      <SheetFrame
         visible={showAddMoney}
-        transparent
-        animationType="fade"
-        onRequestClose={closeAddMoney}
+        onClose={closeAddMoney}
+        dismissible={false}
+        contentStyle={styles.modalCard}
+        cardProps={{ testID: 'add-money-dialog' }}
       >
-        <View style={styles.modalBackdrop}>
-          <Pressable
-            style={styles.modalCard}
-            testID="add-money-dialog"
-            // Taps on the card's empty space close the keyboard, not the modal.
-            onPress={() => Keyboard.dismiss()}
-          >
             <Text style={styles.modalTitle}>Add Money</Text>
             <Text style={styles.modalBody}>
               You'll be taken to Stripe to pay by card. Funds are held in escrow
@@ -529,23 +522,15 @@ export default function HOWalletScreen() {
                 )}
               </Tap>
             </View>
-          </Pressable>
-        </View>
-      </Modal>
+      </SheetFrame>
 
-      <Modal
+      <SheetFrame
         visible={showWithdraw}
-        transparent
-        animationType="fade"
-        onRequestClose={closeWithdraw}
+        onClose={closeWithdraw}
+        dismissible={false}
+        contentStyle={styles.modalCard}
+        cardProps={{ testID: 'withdraw-hw-dialog' }}
       >
-        <View style={styles.modalBackdrop}>
-          <Pressable
-            style={styles.modalCard}
-            testID="withdraw-hw-dialog"
-            // Taps on the card's empty space close the keyboard, not the modal.
-            onPress={() => Keyboard.dismiss()}
-          >
             <Text style={styles.modalTitle}>Withdraw</Text>
             <Text style={styles.modalBody}>
               Send a request to withdraw your available wallet balance. Our team will process it manually.
@@ -604,9 +589,7 @@ export default function HOWalletScreen() {
                 )}
               </Tap>
             </View>
-          </Pressable>
-        </View>
-      </Modal>
+      </SheetFrame>
     </View>
   );
 
@@ -634,7 +617,7 @@ function createThemedStyles(theme: ThemePalette) {
     balanceCard: {
       borderRadius: 18, padding: 20, marginBottom: 14,
     },
-    balanceLabel: { color: C.cyan100, fontSize: 13, fontFamily: 'Inter', marginBottom: 4 },
+    balanceLabel: { color: C.onHeroMuted, fontSize: 14, fontFamily: 'Inter', marginBottom: 4 },
     balanceAmount: { color: C.onPrimary, fontSize: 32.5, fontWeight: '800', fontFamily: 'Inter', marginBottom: 16 },
     balanceSub: { color: 'rgba(255,255,255,0.85)', fontSize: 13, fontFamily: 'Inter', marginTop: 12, textAlign: 'center' },
     quickActions: { flexDirection: 'row', alignItems: 'center' },
