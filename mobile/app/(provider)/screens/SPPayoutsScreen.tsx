@@ -128,7 +128,10 @@ export default function SPPayoutsScreen({ onBack }: SPPayoutsScreenProps) {
     try {
       await openOnboarding();
     } catch (e) {
-      setActionError(e instanceof Error ? e.message : 'Could not open Stripe.');
+      const message = e instanceof Error ? e.message : 'Could not open Stripe.';
+      setActionError(message.includes("You can only create new accounts if you've signed up for Connect")
+        ? 'Card payout setup is unavailable for this platform. Contact TaskBuddy support.'
+        : message);
     } finally {
       setWorking(false);
     }

@@ -49,3 +49,15 @@ it('reports refresh failure while retaining the last known snapshot', async () =
   expect(await screen.findByText('Sync failed')).toBeTruthy();
   expect(screen.getByTestId('payouts-status-active')).toBeTruthy();
 });
+
+it('shows actionable setup failure instead of Stripe platform-administration instructions', async () => {
+  (api.connectOnboardingLink as jest.Mock).mockRejectedValueOnce(new Error("You can only create new accounts if you've signed up for Connect, which you can do at https://stripe.com/connect."));
+  render(<SPPayoutsScreen onBack={jest.fn()} />);
+  await screen.findByTestId('payouts-status-not_started');
+  await waitFor(() => expect(screen.getByTestId('payouts-primary')).toBeEnabled());
+  await act(async () => fireEvent.press(screen.getByTestId('payouts-primary')));
+  expect(await screen.findByText('Card payout setup is unavailable for this platform. Contact TaskBuddy support.')).toBeTruthy();
+  expect(screen.getByTestId('payouts-status-not_started')).toBeTruthy();
+  expect(screen.getByTestId('payouts-primary')).toBeEnabled();
+  expect(openRedirectSession).not.toHaveBeenCalled();
+});

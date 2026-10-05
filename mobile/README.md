@@ -916,3 +916,9 @@ The complete 187-test mobile suite and typecheck pass after these changes.
 The wallet escrow summary and pre-hire confirmation now also describe the
 three-day completion warranty and open-complaint hold, matching the deployed
 settlement behavior. Mobile regression and typecheck pass.
+
+Native payout setup confirmed that Stripe Connect is not enabled on the existing
+platform. The app now explains that card payout setup is unavailable and directs
+the provider to support, instead of displaying Stripe administration commands.
+The selected local receiving demo is unchanged. Mobile regression passes 188
+tests in 42 suites plus typecheck; native wording retest remains pending.
