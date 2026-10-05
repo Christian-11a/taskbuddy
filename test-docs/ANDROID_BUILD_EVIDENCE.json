@@ -12,5 +12,5 @@
   "version_name": "1.0.0",
   "version_code": 1,
   "existing_emulator_install": "Refused: existing app signing certificate differs; existing app/data preserved",
-  "emulator_ui_verification": "Pending authorization for adb UI automation; native CUA app unavailable"
+  "emulator_ui_verification": "Partial authorized adb checks completed; see NATIVE_EMULATOR_EVIDENCE.json. This artifact exposed three corrected issues; newer APK retest pending."
 }

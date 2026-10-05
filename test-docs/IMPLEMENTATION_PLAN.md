@@ -736,3 +736,26 @@ hero/navigation contrast (`af243c3`), and remaining escrow wording (`8c5a498`).
 The full mobile suite passes 187 tests/42 suites plus typecheck. Preview build
 `6b051063-47b3-49ca-9bb4-2bb8112fa5ac` contains these fixes; native retests and
 provider/layout coverage continue. No physical-device completion claim is made.
+
+### October 5 — origin/main handoff
+
+The user requested wrapping up and pushing the implemented work to origin/main.
+Phases 1–9 are implemented. Phase 10 remains partially verified, not complete.
+This checkpoint supersedes earlier pending adb permission and Firebase gates:
+adb testing is authorized, and Firebase is outside the selected scope.
+
+Native verification rejected the initial chat timing fix. Commit `90089f4`
+uses an inverted message list; provider entry, keyboard visibility and sending
+passed in preview APK `48aa549`. Provider greeting/navigation contrast also
+passed. Commit `c5ebb83` replaces the known Stripe Connect configuration error
+with actionable user copy. Commit `3aed1c6` fixes compact-screen login scrolling;
+it passed with the development client at font scale 1.3. See
+[NATIVE_EMULATOR_EVIDENCE.json](NATIVE_EMULATOR_EVIDENCE.json).
+
+Remaining release verification: a final preview APK containing the latest fixes;
+client chat/hero and escrow-copy retests; friendly payout-error retest; remaining
+native hire/start, location permissions/persistence, app-return notifications,
+and full layout/theme coverage. Physical GPS accuracy is not established by an
+emulator. Stripe Connect is not enabled; sandbox ledger/simulator evidence does
+not establish external bank delivery. Web deployment follows the user's upstream
+merge. These are explicit handoff items, not claims of completed verification.

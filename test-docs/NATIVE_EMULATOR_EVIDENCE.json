@@ -1,5 +1,5 @@
 {
-  "checked_at": "2026-10-04",
+  "checked_at": "2026-10-05",
   "device": {
     "kind": "isolated emulator",
     "avd": "Pixel_10a",
@@ -18,32 +18,54 @@
     "Completed plus Plumbing filter returns expected job; detail/back retains filtered result",
     "Dark mode applies to settings and persists on force-stop/relaunch",
     "System photo picker attaches owned public QA icon; Step 5 photo opens full-screen and Back preserves review",
-    "Step 5 posts without terms checkbox; API confirms one persisted photo; unassigned test job cancelled without payment"
+    "Step 5 posts without terms checkbox; API confirms one persisted photo; unassigned test job cancelled without payment",
+    "Provider account loads its own light preference after client dark-mode logout",
+    "Provider live bell increases from zero to one; opening message notice marks it read and removes badge",
+    "Provider completed job exposes File a Complaint with warranty deadline and opens complaint form",
+    "Provider profile and My Services show approved Plumbing alongside primary Cleaning; rejected Handyman remains only in history",
+    "Owned private portfolio photo opens full-screen with its saved caption"
   ],
   "defects": [
     {
       "issue": "Chat entry stays above latest message after async load",
-      "fix": "cdb533f",
-      "native_retest": "pending updated build"
+      "first_fix": "cdb533f",
+      "native_retest": "Failed on 8c5a498; variable-height rows were not measured when scroll ran",
+      "replacement_fix": "90089f4",
+      "replacement_native_retest": "Passed for provider on 48aa549: newest message visible on entry, with keyboard, and after sending; client retest remains pending"
     },
     {
       "issue": "Dark-mode greeting and selected navigation icon lack contrast",
       "fix": "af243c3",
-      "native_retest": "pending updated build"
+      "native_retest": "Selected provider navigation passed on 48aa549; client greeting retest pending"
     },
     {
       "issue": "Wallet and hire confirmation describe release at completion approval",
       "fix": "8c5a498",
       "native_retest": "pending updated build"
+    },
+    {
+      "issue": "Provider hero greeting low contrast on dark header",
+      "fix": "48aa549",
+      "native_retest": "Passed on 48aa549"
+    },
+    {
+      "issue": "Stripe Connect setup exposes platform configuration instructions",
+      "fix": "c5ebb83",
+      "native_retest": "Automated regression passed; friendly native error retest pending"
+    },
+    {
+      "issue": "Compact login form cannot scroll to bottom controls",
+      "fix": "3aed1c6",
+      "native_retest": "Passed using development client and current Metro source at 1080x1920, density 480, font scale 1.3, three-button navigation; final preview APK pending"
     }
   ],
   "regression": {
-    "mobile_tests": 187,
+    "mobile_tests": 188,
     "suites": 42,
     "typecheck": "passed",
     "lint": "no mobile lint script"
   },
-  "latest_build_id": "6b051063-47b3-49ca-9bb4-2bb8112fa5ac",
+  "latest_build_id": "f4236530-d76f-46c1-9609-6b5715a5bf72",
   "screenshots": [
     {
       "name": "signup-light.png",
@@ -80,6 +102,26 @@
     {
       "name": "client-home-dark-persisted.png",
       "sha256": "c0500b0fdd798653bd5f5cdab7b3d3b5c9ef31acc7ff8ce19dcd5268a283471d"
+    },
+    {
+      "name": "anchor-provider-chat-visible.png",
+      "sha256": "2fd409b84891bfc62ab8035ccf7f2ffe29c93d13325e9c7ad76f10fa3ee3d09a"
+    },
+    {
+      "name": "provider-chat-keyboard.png",
+      "sha256": "64a178a96682c007a0f879ba3470a7598f9faea8e79ab2b18eb7d01226e3e9b1"
+    },
+    {
+      "name": "provider-chat-sent.png",
+      "sha256": "326d4538a28a7560da0756d274fd33b6e092f2fa41a6933bfd5092a91d6a8ac5"
+    },
+    {
+      "name": "provider-fixed-header.png",
+      "sha256": "52ae6b666824b0987b3293d0cca99f505b32ba0cff15c4083776de826f69967a"
+    },
+    {
+      "name": "dev-login-scroll-retest.png",
+      "sha256": "cacc1761d27e20a03e9c65f92317a57e4e5d95af92934ea7f1113689269f5485"
     }
   ],
   "limits": [
@@ -87,5 +129,13 @@
     "Provider flows, smaller/enlarged layout, full theme matrix and corrected APK retests still in progress",
     "Emulator checks do not prove physical GPS behavior",
     "Web deployment follows user upstream merge"
-  ]
+  ],
+  "installed_updated_apk": {
+    "revision": "48aa549",
+    "build_id": "f4236530-d76f-46c1-9609-6b5715a5bf72",
+    "sha256": "7c02086e94caddb5cdbd26fb49fb3b5148b9162651105d1c1a8b23fdb3697029",
+    "bytes": 109626454,
+    "signature": "apksigner verify passed",
+    "installation": "adb install -r succeeded"
+  }
 }

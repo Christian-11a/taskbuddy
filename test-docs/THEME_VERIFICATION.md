@@ -34,3 +34,19 @@ Run the report scenarios in light and dark modes on small and larger screens wit
 for both dummy roles, fresh-login persistence, invalid-value rejection and
 account isolation. Original preferences were restored. These checks cover the
 backend setting only; the native device matrix above remains open.
+
+
+## Initial native emulator evidence
+
+On Android 17 at 1080×2424, density 420 and font scale 1.0, the client Settings
+switch repaints the screen and dark mode survives a force-stop/relaunch. The
+provider then signs in with its own light preference. Dark home/calendar and
+the Step 5 photo viewer were visually inspected. Native QA found low contrast
+in the client greeting and selected navigation icon; commit `af243c3` uses
+existing semantic foreground tokens. A new APK retest is pending. These
+partial checks do not close the full device matrix above.
+
+October 5 follow-up: provider greeting and selected navigation contrast passed
+on preview `48aa549`. Compact login scrolling passed with `3aed1c6` served through
+the development client (360×640 logical size, font scale 1.3, three-button nav).
+Client greeting retest and the full theme matrix remain open.
