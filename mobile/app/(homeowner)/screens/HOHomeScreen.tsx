@@ -3,9 +3,8 @@ import { useNotifications } from '../../../src/context/NotificationsContext';
 /**
  * HOHomeScreen.tsx
  *
- * v6 design: matches taskbuddy_UI_update.html's #ho-dashboard screen —
- * hero-clean gradient header with balance strip, primary task card,
- * category strip, active jobs list.
+ * Theme C "Sky" (Figma "FINAL · Homeowner"): flat brand header with the
+ * wallet balance card, five service shortcuts in one row, active jobs list.
  */
 
 import { StatusBar } from 'expo-status-bar';
@@ -14,23 +13,22 @@ import {
   ScrollView,
   StyleSheet,
   Text,
-  TouchableOpacity,
   View,
 } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
 import {
   Bell,
   BriefcaseBusiness,
   BrushCleaning,
   CheckCircle2,
+  ChevronRight,
+  Footprints,
   Hammer,
   Hand,
   Clock,
-  Palette,
   Sparkles,
   Wrench,
 } from 'lucide-react-native';
-import { Spacing, V6Radii, V6Shadows } from '../../../src/constants/theme';
+import { Spacing } from '../../../src/constants/theme';
 import { HOScreen } from '../../../src/types/navigation';
 import { useAuth } from '../../../src/context/AuthContext';
 import { useAsyncData } from '../../../src/hooks/useAsyncData';
@@ -40,13 +38,14 @@ import { jobStatusMeta, peso, shortDate } from '../../../src/lib/format';
 import ScreenSkeleton from '../../../src/components/ScreenSkeleton';
 import JobCard from '../../../src/components/JobCard';
 import OwnAvatar from '../../../src/components/OwnAvatar';
+import Tap from '../../../src/components/ui/Tap';
 
 const CATEGORY_ICON: Record<string, typeof Wrench> = {
   Plumbing: Wrench,
   Cleaning: BrushCleaning,
   Handyman: Hammer,
   Manicure: Sparkles,
-  Pedicure: Palette,
+  Pedicure: Footprints,
 };
 
 const ACTIVE_STATUSES = [
@@ -68,19 +67,19 @@ interface HOHomeScreenProps {
 }
 
 function WidgetError({ message, onRetry }: { message: string; onRetry: () => void }) {
-  const { styles, V6Colors } = useThemedStyles(createThemedStyles);
+  const { styles } = useThemedStyles(createThemedStyles);
   return (
     <View style={styles.widgetError}>
       <Text style={styles.widgetErrorText}>{message}</Text>
-      <TouchableOpacity onPress={onRetry} activeOpacity={0.8}>
+      <Tap onPress={onRetry} style={styles.retryBtn} hitSlop={8} accessibilityRole="button">
         <Text style={styles.widgetRetry}>Retry</Text>
-      </TouchableOpacity>
+      </Tap>
     </View>
   );
 }
 
 export default function HOHomeScreen({ onNavigate }: HOHomeScreenProps) {
-  const { C, styles, V6Colors } = useThemedStyles(createThemedStyles);
+  const { C, styles } = useThemedStyles(createThemedStyles);
   const headerTop = useHeaderTop();
   const { profile } = useAuth();
   const wallet = useAsyncData(() => api.wallet(), [], 'ho-home-wallet');
@@ -92,8 +91,6 @@ export default function HOHomeScreen({ onNavigate }: HOHomeScreenProps) {
   const activeJobs = (jobs.data ?? []).filter((j) => ACTIVE_STATUSES.includes(j.status));
   const recentActivity = notifications.notifications.slice(0, 3);
   const unread = notifications.unreadCount;
-  const location =
-    [profile?.city, profile?.address].filter(Boolean).join(', ') || 'Set your location';
   const hour = new Date().getHours();
   const greeting = hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening';
 
@@ -108,13 +105,8 @@ export default function HOHomeScreen({ onNavigate }: HOHomeScreenProps) {
         style={styles.flex}
         showsVerticalScrollIndicator={false}
       >
-        {/* Hero — mockup's final hero-clean gradient: 145deg #078eaa->#0b7288 */}
-        <LinearGradient
-          colors={['#078eaa', '#0b7288']}
-          start={{ x: 0.15, y: 0 }}
-          end={{ x: 0.85, y: 1 }}
-          style={[styles.hero, { paddingTop: headerTop }]}
-        >
+        {/* Hero — flat brand header, rounded bottom corners. */}
+        <View style={[styles.hero, { paddingTop: headerTop }]}>
           <View style={styles.heroTopRow}>
             <View testID="hero-text" style={styles.heroText}>
               <Text style={styles.greeting}>{greeting}</Text>
@@ -128,41 +120,51 @@ export default function HOHomeScreen({ onNavigate }: HOHomeScreenProps) {
               </Text>
             </View>
             <View testID="hero-actions" style={styles.heroActions}>
-              <TouchableOpacity
-                style={styles.iconBtn}
-                onPress={() => onNavigate('Notifications')}
-                activeOpacity={0.8}
-              >
-                <Bell size={20} color={C.onPrimary} />
+              <View>
+                <Tap
+                  style={styles.iconBtn}
+                  rippleColor={C.rippleOnHero}
+                  accessibilityRole="button"
+                  accessibilityLabel={unread > 0 ? `Notifications, ${unread} unread` : 'Notifications'}
+                  onPress={() => onNavigate('Notifications')}
+                >
+                  <Bell size={21} color={C.onPrimary} strokeWidth={2.2} />
+                </Tap>
                 {unread > 0 && (
-                  <View style={styles.notifBadge}><Text style={styles.notifBadgeText}>{unread}</Text></View>
+                  <View pointerEvents="none" style={styles.notifBadge}>
+                    <Text style={styles.notifBadgeText} maxFontSizeMultiplier={1.2}>{unread > 99 ? '99+' : unread}</Text>
+                  </View>
                 )}
-              </TouchableOpacity>
-              <TouchableOpacity
+              </View>
+              <Tap
                 testID="btn-home-avatar"
                 style={styles.avatarCircle}
+                rippleColor={C.rippleOnHero}
+                accessibilityRole="button"
+                accessibilityLabel="Profile"
                 onPress={() => onNavigate('Profile')}
-                activeOpacity={0.8}
               >
                 <OwnAvatar name={name} textStyle={styles.avatarText} />
-              </TouchableOpacity>
+              </Tap>
             </View>
           </View>
 
           <View style={styles.balanceStrip}>
-            <View>
+            <View style={styles.balanceCopy}>
               <Text style={styles.balanceLabel}>Wallet balance</Text>
               {wallet.error ? (
                 <WidgetError message="Couldn't load your wallet" onRetry={wallet.reload} />
               ) : (
-                <Text style={styles.balanceAmount}>{wallet.data ? peso(wallet.data.balance) : '—'}</Text>
+                <Text style={styles.balanceAmount} numberOfLines={1} adjustsFontSizeToFit>
+                  {wallet.data ? peso(wallet.data.balance) : '—'}
+                </Text>
               )}
             </View>
-            <TouchableOpacity onPress={() => onNavigate('Wallet')} activeOpacity={0.8}>
+            <Tap style={styles.manageBtn} scale onPress={() => onNavigate('Wallet')} accessibilityRole="button">
               <Text style={styles.manageLink}>Manage wallet</Text>
-            </TouchableOpacity>
+            </Tap>
           </View>
-        </LinearGradient>
+        </View>
 
         {/* Body */}
         <View style={styles.body}>
@@ -171,45 +173,42 @@ export default function HOHomeScreen({ onNavigate }: HOHomeScreenProps) {
             <View style={styles.sectionHead}>
               <Text style={styles.sectionTitle}>Find a service</Text>
             </View>
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.categoryStrip}
-            >
+            <View style={styles.categoryStrip}>
               {categories.error ? (
                 <WidgetError message="Couldn't load services" onRetry={categories.reload} />
               ) : (categories.data ?? []).map((cat) => {
                 const Icon = CATEGORY_ICON[cat.name] ?? Hand;
                 return (
-                  <TouchableOpacity
+                  <Tap
                     key={cat.id}
                     style={styles.categoryTile}
+                    accessibilityRole="button"
+                    accessibilityLabel={cat.name}
                     // The tapped tile answers the flow's first question, so it
                     // travels with the navigation and step 1 is skipped.
                     onPress={() => onNavigate('Create Job', String(cat.id))}
-                    activeOpacity={0.85}
                   >
                     <View style={styles.categoryIconWell}>
-                      <Icon size={19} color={V6Colors.link} />
+                      <Icon size={24} color={C.primary} strokeWidth={2} />
                     </View>
-                    <Text style={styles.categoryLabel}>{cat.name}</Text>
-                  </TouchableOpacity>
+                    <Text style={styles.categoryLabel} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8}>{cat.name}</Text>
+                  </Tap>
                 );
               })}
-            </ScrollView>
+            </View>
           </View>
 
           {/* Active Jobs */}
           <View style={styles.sectionHead}>
             <Text style={styles.sectionTitle}>
-              Active Jobs
+              Active jobs
               {activeJobs.length > 0 ? (
-                <Text style={styles.sectionCount}>  {activeJobs.length} active {activeJobs.length === 1 ? 'job' : 'jobs'}</Text>
+                <Text style={styles.sectionCount}>  {activeJobs.length}</Text>
               ) : null}
             </Text>
-            <TouchableOpacity onPress={() => onNavigate('My Jobs')}>
+            <Tap onPress={() => onNavigate('My Jobs')} style={styles.linkBtn} hitSlop={8} accessibilityRole="button">
               <Text style={styles.textLink}>See all</Text>
-            </TouchableOpacity>
+            </Tap>
           </View>
 
           {jobs.error && <WidgetError message="Couldn't load your jobs" onRetry={jobs.reload} />}
@@ -217,23 +216,22 @@ export default function HOHomeScreen({ onNavigate }: HOHomeScreenProps) {
           {/* "Need something done?" is the empty state, not a permanent card:
               once there are active jobs, the list is what matters. */}
           {!jobs.loading && !jobs.error && activeJobs.length === 0 && (
-            <TouchableOpacity
+            <Tap
               style={styles.primaryTaskCard}
               onPress={() => onNavigate('Create Job')}
-              activeOpacity={0.9}
+              scale
+              accessibilityRole="button"
               testID="home-post-job"
             >
               <View style={styles.taskIcon}>
-                <Sparkles size={22} color={V6Colors.link} />
+                <Sparkles size={22} color={C.primary} />
               </View>
               <View style={styles.taskCopy}>
                 <Text style={styles.taskTitle}>Need something done?</Text>
                 <Text style={styles.taskDesc}>You have no active jobs. Post a task and connect with a nearby verified provider.</Text>
               </View>
-              <View style={styles.postBtn}>
-                <Text style={styles.postBtnText}>+ Post</Text>
-              </View>
-            </TouchableOpacity>
+              <ChevronRight size={20} color={C.ink400} />
+            </Tap>
           )}
 
           {activeJobs.map((job) => (
@@ -242,9 +240,9 @@ export default function HOHomeScreen({ onNavigate }: HOHomeScreenProps) {
               title={job.title}
               budget={job.budget}
               address={job.address}
-              status={jobStatusMeta(job.status, V6Colors)}
+              status={jobStatusMeta(job.status, C)}
               urgency={job.urgency}
-              footer={[{ icon: <Clock size={13} color={C.ink400} />, text: `Posted ${shortDate(job.posted_at)}` }]}
+              footer={[{ icon: <Clock size={14} color={C.ink400} />, text: `Posted ${shortDate(job.posted_at)}` }]}
               onPress={() => onNavigate('Job Detail', job.id)}
             />
           ))}
@@ -255,10 +253,10 @@ export default function HOHomeScreen({ onNavigate }: HOHomeScreenProps) {
           ) : recentActivity.length > 0 && (
             <>
               <View style={[styles.sectionHead, { marginTop: 22 }]}>
-                <Text style={styles.sectionTitle}>Recent Activity</Text>
-                <TouchableOpacity onPress={() => onNavigate('Notifications')}>
+                <Text style={styles.sectionTitle}>Recent activity</Text>
+                <Tap onPress={() => onNavigate('Notifications')} style={styles.linkBtn} hitSlop={8} accessibilityRole="button">
                   <Text style={styles.textLink}>View all</Text>
-                </TouchableOpacity>
+                </Tap>
               </View>
               <View style={styles.activityList}>
                 {recentActivity.map((n, i) => {
@@ -269,7 +267,7 @@ export default function HOHomeScreen({ onNavigate }: HOHomeScreenProps) {
                       style={[styles.activityRow, i < recentActivity.length - 1 && styles.activityRowBorder]}
                     >
                       <View style={styles.activityIcon}>
-                        <Icon size={19} color={V6Colors.link} />
+                        <Icon size={18} color={C.primary} />
                       </View>
                       <View style={styles.activityCopy}>
                         <Text style={styles.activityTitle} numberOfLines={1}>{n.title}</Text>
@@ -282,7 +280,8 @@ export default function HOHomeScreen({ onNavigate }: HOHomeScreenProps) {
             </>
           )}
 
-          <View style={{ height: 20 }} />
+          {/* Room for the floating "Post a job" button above the nav bar. */}
+          <View style={{ height: 96 }} />
         </View>
       </ScrollView>
     </View>
@@ -296,115 +295,115 @@ function createThemedStyles(theme: ThemePalette) {
     flex: { flex: 1 },
     screen: { flex: 1, backgroundColor: C.canvas },
 
-    // Hero — matches .hero-clean (linear-gradient 165deg cyan600->cyan700, rounded bottom corners)
     hero: {
+      backgroundColor: C.hero,
       paddingHorizontal: Spacing.screenH,
       paddingBottom: 20,
-      borderBottomLeftRadius: 26,
-      borderBottomRightRadius: 26,
+      borderBottomLeftRadius: 28,
+      borderBottomRightRadius: 28,
     },
     heroTopRow: {
       flexDirection: 'row',
       justifyContent: 'space-between',
       alignItems: 'center',
-      marginBottom: 16,
     },
-    greeting: { color: C.onPrimary, fontSize: 14.5, fontFamily: 'Inter', fontWeight: '500' },
-    userName: { color: C.onPrimary, fontSize: 24.5, fontWeight: '800', fontFamily: 'Inter', marginTop: 3 },
+    greeting: { color: C.onHeroMuted, fontSize: 15, fontFamily: 'Inter', fontWeight: '500' },
+    userName: { color: C.onPrimary, fontSize: 24, fontWeight: '800', fontFamily: 'Inter', marginTop: 2, letterSpacing: -0.3 },
     // The name column yields to the actions, never the other way round: the
     // avatar is the only route to Profile (and Log out), so a long name must
     // truncate rather than push it off-screen.
     heroText: { flex: 1, minWidth: 0, marginRight: 12 },
-    heroActions: { flexDirection: 'row', alignItems: 'center', gap: 8, flexShrink: 0 },
+    heroActions: { flexDirection: 'row', alignItems: 'center', gap: 10, flexShrink: 0 },
     iconBtn: {
-      width: 40, height: 40, borderRadius: 12,
-      backgroundColor: 'rgba(255,255,255,0.12)',
-      borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)',
-      alignItems: 'center', justifyContent: 'center', position: 'relative',
-    },
-    notifBadge: {
-      position: 'absolute', top: -5, right: -4,
-      width: 16, height: 16, borderRadius: 8,
-      backgroundColor: V6Colors.dangerSolid, alignItems: 'center', justifyContent: 'center',
-    },
-    notifBadgeText: { color: C.onPrimary, fontSize: 11, fontWeight: '800' },
-    avatarCircle: {
-      width: 40, height: 40, borderRadius: 20,
-      backgroundColor: 'rgba(255,255,255,0.16)',
-      borderWidth: 1, borderColor: 'rgba(255,255,255,0.12)',
+      width: 44, height: 44, borderRadius: 22,
+      backgroundColor: C.heroCard,
       alignItems: 'center', justifyContent: 'center', overflow: 'hidden',
     },
-    avatarText: { color: C.onPrimary, fontWeight: '800', fontSize: 14.5, fontFamily: 'Inter' },
+    notifBadge: {
+      position: 'absolute', top: -3, right: -3,
+      minWidth: 20, height: 20, borderRadius: 10, paddingHorizontal: 4,
+      backgroundColor: '#dc2626', alignItems: 'center', justifyContent: 'center',
+      borderWidth: 2, borderColor: C.hero,
+    },
+    notifBadgeText: { color: '#ffffff', fontSize: 10.5, fontWeight: '800', fontFamily: 'Inter' },
+    avatarCircle: {
+      width: 44, height: 44, borderRadius: 22,
+      backgroundColor: C.primaryTonalStrong,
+      borderWidth: 2, borderColor: 'rgba(255,255,255,0.85)',
+      alignItems: 'center', justifyContent: 'center', overflow: 'hidden',
+    },
+    avatarText: { color: C.primaryDeep, fontWeight: '800', fontSize: 15, fontFamily: 'Inter' },
 
-    // Balance strip
     balanceStrip: {
       flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
-      marginTop: 16, padding: 13,
-      backgroundColor: 'rgba(255,255,255,0.11)',
-      borderWidth: 1, borderColor: 'rgba(255,255,255,0.14)',
-      borderRadius: 14,
+      marginTop: 20, paddingVertical: 16, paddingHorizontal: 16, gap: 12,
+      backgroundColor: C.heroCard,
+      borderWidth: 1, borderColor: C.heroCardBorder,
+      borderRadius: 18,
     },
-    balanceLabel: { color: 'rgba(255,255,255,0.72)', fontSize: 13.5, fontFamily: 'Inter', marginBottom: 2 },
-    balanceAmount: { color: C.onPrimary, fontSize: 21.5, fontWeight: '800', fontFamily: 'Inter' },
-    manageLink: { color: C.onPrimary, fontSize: 14.5, fontWeight: '700', fontFamily: 'Inter' },
+    balanceCopy: { flex: 1, minWidth: 0 },
+    balanceLabel: { color: C.onHeroMuted, fontSize: 14, fontFamily: 'Inter', fontWeight: '500', marginBottom: 2 },
+    balanceAmount: { color: C.onPrimary, fontSize: 28, fontWeight: '800', fontFamily: 'Inter', letterSpacing: -0.5 },
+    manageBtn: {
+      backgroundColor: '#ffffff', borderRadius: 999, overflow: 'hidden',
+      paddingHorizontal: 16, minHeight: 44, justifyContent: 'center', flexShrink: 0,
+    },
+    manageLink: { color: '#0369a1', fontSize: 14.5, fontWeight: '700', fontFamily: 'Inter' },
     widgetError: { flexDirection: 'row', alignItems: 'center', gap: 9, paddingVertical: 8 },
     widgetErrorText: { color: C.ink500, fontSize: 13.5, fontFamily: 'Inter', flexShrink: 1 },
-    widgetRetry: { color: V6Colors.link, fontSize: 13.5, fontWeight: '800', fontFamily: 'Inter' },
+    retryBtn: { paddingHorizontal: 8, paddingVertical: 6, borderRadius: 8, overflow: 'hidden' },
+    widgetRetry: { color: C.link, fontSize: 13.5, fontWeight: '800', fontFamily: 'Inter' },
 
-    // Body
-    body: { paddingHorizontal: Spacing.screenH, paddingTop: 18 },
+    body: { paddingHorizontal: Spacing.screenH, paddingTop: 22 },
 
     primaryTaskCard: {
-      flexDirection: 'row', alignItems: 'center', gap: 13,
-      backgroundColor: C.surface, borderColor: C.cyan100, borderWidth: 1,
-      borderRadius: V6Radii.card, padding: 17, marginBottom: 22,
-      ...V6Shadows.sm,
+      flexDirection: 'row', alignItems: 'center', gap: 14,
+      backgroundColor: C.surface, borderColor: C.line, borderWidth: 1,
+      borderRadius: 20, padding: 16, marginBottom: 22, overflow: 'hidden',
     },
     taskIcon: {
-      width: 42, height: 42, borderRadius: 14,
-      backgroundColor: C.surface, borderWidth: 1, borderColor: C.cyan100,
+      width: 46, height: 46, borderRadius: 14,
+      backgroundColor: C.primaryTonal,
       alignItems: 'center', justifyContent: 'center', flexShrink: 0,
     },
     taskCopy: { flex: 1, minWidth: 0 },
     taskTitle: { fontSize: 16.5, fontWeight: '800', color: C.ink900, fontFamily: 'Inter', marginBottom: 3 },
-    taskDesc: { fontSize: 14, color: C.ink500, fontFamily: 'Inter', lineHeight: 16 },
-    postBtn: { backgroundColor: C.cyan700, borderRadius: V6Radii.btn, paddingHorizontal: 12, paddingVertical: 10 },
-    postBtnText: { color: C.onPrimary, fontSize: 14.5, fontWeight: '700', fontFamily: 'Inter' },
+    taskDesc: { fontSize: 14, color: C.ink500, fontFamily: 'Inter', lineHeight: 19 },
 
-    section: { marginBottom: 22 },
-    sectionHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 11 },
-    sectionTitle: { fontSize: 19, fontWeight: '800', color: C.ink900, fontFamily: 'Inter', letterSpacing: -0.15 },
-    sectionCount: { fontWeight: '600', color: C.ink400, fontSize: 13.5 },
-    textLink: { color: V6Colors.link, fontSize: 14.5, fontWeight: '700', fontFamily: 'Inter' },
+    section: { marginBottom: 26 },
+    sectionHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 },
+    sectionTitle: { fontSize: 19, fontWeight: '800', color: C.ink900, fontFamily: 'Inter', letterSpacing: -0.2 },
+    sectionCount: { fontWeight: '700', color: C.ink400, fontSize: 15 },
+    linkBtn: { paddingHorizontal: 6, paddingVertical: 4, borderRadius: 8, overflow: 'hidden' },
+    textLink: { color: C.link, fontSize: 15, fontWeight: '700', fontFamily: 'Inter' },
 
-    categoryStrip: { gap: 9, paddingRight: Spacing.screenH },
+    // Five equal shortcut tiles in one row (Figma). Wraps if more are added.
+    categoryStrip: { flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -4, rowGap: 12 },
     categoryTile: {
-      alignItems: 'center', width: 76,
-      borderWidth: 1, borderColor: C.line, backgroundColor: C.surface,
-      borderRadius: 14, paddingVertical: 11, paddingHorizontal: 6,
-    },
-    categoryIconWell: {
-      width: 34, height: 34, borderRadius: 11,
-      backgroundColor: V6Colors.wellBg,
-      alignItems: 'center', justifyContent: 'center',
-      marginBottom: 7,
-    },
-    categoryLabel: { fontSize: 11.5, fontWeight: '700', color: C.ink700, fontFamily: 'Inter', textAlign: 'center' },
-
-    // Recent Activity — matches .activity-list/.activity-row
-    activityList: {
-      backgroundColor: C.surface, borderWidth: 1, borderColor: C.line,
+      width: '20%', alignItems: 'center', paddingHorizontal: 4, paddingVertical: 4,
       borderRadius: 16, overflow: 'hidden',
     },
-    activityRow: { flexDirection: 'row', gap: 11, padding: 14, alignItems: 'flex-start' },
-    activityRowBorder: { borderBottomWidth: 1, borderBottomColor: V6Colors.wellBg },
+    categoryIconWell: {
+      width: 56, height: 56, borderRadius: 18,
+      backgroundColor: C.primaryTonal,
+      alignItems: 'center', justifyContent: 'center',
+      marginBottom: 8,
+    },
+    categoryLabel: { fontSize: 12.5, fontWeight: '600', color: C.ink800, fontFamily: 'Inter', textAlign: 'center' },
+
+    activityList: {
+      backgroundColor: C.surface, borderWidth: 1, borderColor: C.line,
+      borderRadius: 20, overflow: 'hidden',
+    },
+    activityRow: { flexDirection: 'row', gap: 12, padding: 14, alignItems: 'flex-start' },
+    activityRowBorder: { borderBottomWidth: 1, borderBottomColor: C.hairline },
     activityIcon: {
-      width: 32, height: 32, borderRadius: 11,
-      backgroundColor: V6Colors.wellBg, alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+      width: 36, height: 36, borderRadius: 12,
+      backgroundColor: C.primaryTonal, alignItems: 'center', justifyContent: 'center', flexShrink: 0,
     },
     activityCopy: { flex: 1 },
-    activityTitle: { color: C.ink900, fontSize: 13.5, fontWeight: '700', fontFamily: 'Inter', marginBottom: 2 },
-    activityBody: { color: C.ink400, fontSize: 12, fontFamily: 'Inter', lineHeight: 15 },
+    activityTitle: { color: C.ink900, fontSize: 14, fontWeight: '700', fontFamily: 'Inter', marginBottom: 2 },
+    activityBody: { color: C.ink500, fontSize: 13, fontFamily: 'Inter', lineHeight: 18 },
   });
   return { Colors, V6Colors, C, styles };
 }

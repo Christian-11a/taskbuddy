@@ -84,12 +84,14 @@ export function jobStatusMeta(status: string, colors: Palette['V6Colors'] = ligh
     case 'assigned':
     case 'confirmed':
       return { label: 'Confirmed', color: colors.infoText, bg: colors.infoSurface };
+    // Every status has its own color (Confirmed and Completed used to match,
+    // and Cancelled looked like the red Urgent pill).
     case 'in_progress':
-      return { label: 'In Progress', color: colors.successText, bg: colors.successSurface };
+      return { label: 'In Progress', color: colors.purpleText, bg: colors.purpleSurface };
     case 'completed':
-      return { label: 'Completed', color: colors.infoText, bg: colors.infoSurface };
+      return { label: 'Completed', color: colors.successText, bg: colors.successSurface };
     case 'cancelled':
-      return { label: 'Cancelled', color: colors.dangerText, bg: colors.dangerSurface };
+      return { label: 'Cancelled', color: colors.ink500, bg: colors.ink100 };
     case 'expired':
       return { label: 'Expired', color: colors.ink400, bg: colors.ink50 };
     default:
