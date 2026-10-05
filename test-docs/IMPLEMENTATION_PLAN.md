@@ -759,3 +759,16 @@ and full layout/theme coverage. Physical GPS accuracy is not established by an
 emulator. Stripe Connect is not enabled; sandbox ledger/simulator evidence does
 not establish external bank delivery. Web deployment follows the user's upstream
 merge. These are explicit handoff items, not claims of completed verification.
+
+### October 5 — Phase 10 continuation
+
+Client chat entry, greeting contrast, wallet warranty copy, app-return unread
+refresh, and friendly provider payout setup failure passed on the development
+client. Enlarged-text policy scrolling exposed a nested-Pressable gesture bug;
+`5254c3d` separates the backdrop and dialog. Retention and full rights text now
+scroll into view, with Close/Accept reachable. Mobile 188 tests and typecheck pass.
+Final preview build `2d621778-db43-4f45-877b-352c92f5be61` was submitted with this fix.
+Location permission denial passed; the emulator could not provide a usable GPS
+fix, so native resolved-location saving remains unverified. Temporary emulator
+location test providers were removed. Native hire/start and final APK verification
+remain open. The user is evaluating an upstream merge before Phase 10 completes.

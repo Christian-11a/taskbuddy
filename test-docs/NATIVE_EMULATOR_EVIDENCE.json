@@ -23,7 +23,13 @@
     "Provider live bell increases from zero to one; opening message notice marks it read and removes badge",
     "Provider completed job exposes File a Complaint with warranty deadline and opens complaint form",
     "Provider profile and My Services show approved Plumbing alongside primary Cleaning; rejected Handyman remains only in history",
-    "Owned private portfolio photo opens full-screen with its saved caption"
+    "Owned private portfolio photo opens full-screen with its saved caption",
+    "October 5 Metro source: client chat opens at newest message at font scale 1.3",
+    "Client dark hero greeting is readable; wallet displays three-day escrow warranty wording",
+    "Client unread bell refreshes after Android Home and app return",
+    "Provider payout setup shows friendly unavailable-platform error and remains retryable",
+    "Location permission denial leaves address editable; emulator failed to supply a usable GPS fix",
+    "Policy dialog enlarged-text scroll failure reproduced and corrected in 5254c3d; Retention and full rights text reachable with fixed Close/Accept controls"
   ],
   "defects": [
     {
@@ -31,17 +37,17 @@
       "first_fix": "cdb533f",
       "native_retest": "Failed on 8c5a498; variable-height rows were not measured when scroll ran",
       "replacement_fix": "90089f4",
-      "replacement_native_retest": "Passed for provider on 48aa549: newest message visible on entry, with keyboard, and after sending; client retest remains pending"
+      "replacement_native_retest": "Passed for provider on 48aa549: newest message visible on entry, with keyboard, and after sending; client retest remains pending; client passed through development client on October 5"
     },
     {
       "issue": "Dark-mode greeting and selected navigation icon lack contrast",
       "fix": "af243c3",
-      "native_retest": "Selected provider navigation passed on 48aa549; client greeting retest pending"
+      "native_retest": "Client greeting and provider navigation passed"
     },
     {
       "issue": "Wallet and hire confirmation describe release at completion approval",
       "fix": "8c5a498",
-      "native_retest": "pending updated build"
+      "native_retest": "Client wallet passed through development client; hire-confirmation retest remains pending"
     },
     {
       "issue": "Provider hero greeting low contrast on dark header",
@@ -51,12 +57,17 @@
     {
       "issue": "Stripe Connect setup exposes platform configuration instructions",
       "fix": "c5ebb83",
-      "native_retest": "Automated regression passed; friendly native error retest pending"
+      "native_retest": "Passed through development client on October 5"
     },
     {
       "issue": "Compact login form cannot scroll to bottom controls",
       "fix": "3aed1c6",
       "native_retest": "Passed using development client and current Metro source at 1080x1920, density 480, font scale 1.3, three-button navigation; final preview APK pending"
+    },
+    {
+      "issue": "Policy dialog gesture interception prevents scrolling to Retention at enlarged text",
+      "fix": "5254c3d",
+      "native_retest": "Passed through development client at font scale 1.3; final preview build 2d621778-db43-4f45-877b-352c92f5be61 pending"
     }
   ],
   "regression": {
@@ -122,6 +133,30 @@
     {
       "name": "dev-login-scroll-retest.png",
       "sha256": "cacc1761d27e20a03e9c65f92317a57e4e5d95af92934ea7f1113689269f5485"
+    },
+    {
+      "name": "phase10-privacy-fixed-bottom.png",
+      "sha256": "76a53172fec36ce2927d107a134eb3ddb13ee62a65d345b567c221e532494fce"
+    },
+    {
+      "name": "phase10-client-chat-loaded.png",
+      "sha256": "f49b7d034e682aca003f05fb9de703d164c955cfd6d39f9c179a4bc00825ee86"
+    },
+    {
+      "name": "phase10-client-wallet.png",
+      "sha256": "e0a1efe7c64934d7ecf1d957d9315ef4c0f3d19824559360da43e6331b9ae5bc"
+    },
+    {
+      "name": "phase10-app-return-refreshed.png",
+      "sha256": "beeab54fe87da4dc947ab6c557dfefa236737119c8159b846b3fd105d7867b69"
+    },
+    {
+      "name": "phase10-payout-error.png",
+      "sha256": "94c279c34d844d902b400fb43d2c03f4cdb523a132962bb803c200f06af3cf3b"
+    },
+    {
+      "name": "phase10-location-denied.png",
+      "sha256": "c3eb26fcc6cb9c08d037ef46f1496156f628401fc6ea11758c2707f834abdcf2"
     }
   ],
   "limits": [
