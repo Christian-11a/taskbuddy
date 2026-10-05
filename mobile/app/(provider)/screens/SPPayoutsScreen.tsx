@@ -28,9 +28,9 @@ import {
   ScrollView,
   StyleSheet,
   Text,
-  TouchableOpacity,
   View,
 } from 'react-native';
+import Tap from '../../../src/components/ui/Tap';
 import * as AuthSession from 'expo-auth-session';
 import * as WebBrowser from 'expo-web-browser';
 import {
@@ -161,9 +161,9 @@ export default function SPPayoutsScreen({ onBack }: SPPayoutsScreenProps) {
   return (
     <View style={styles.screen}>
       <View style={[styles.header, { paddingTop: headerTop }]}>
-        <TouchableOpacity style={styles.backBtn} onPress={onBack} activeOpacity={0.8}>
+        <Tap style={styles.backBtn} onPress={onBack} activeOpacity={0.8}>
           <ArrowLeft size={20} color={C.ink700} />
-        </TouchableOpacity>
+        </Tap>
         <Text style={styles.headerTitle}>Payouts</Text>
       </View>
 
@@ -171,9 +171,9 @@ export default function SPPayoutsScreen({ onBack }: SPPayoutsScreenProps) {
       {!!error && !current && (
         <View style={styles.centered}>
           <Text style={styles.stateText}>{error}</Text>
-          <TouchableOpacity onPress={reload} activeOpacity={0.8}>
+          <Tap onPress={reload} activeOpacity={0.8}>
             <Text style={styles.link}>Try again</Text>
-          </TouchableOpacity>
+          </Tap>
         </View>
       )}
 
@@ -198,7 +198,7 @@ export default function SPPayoutsScreen({ onBack }: SPPayoutsScreenProps) {
             {!!actionError && <Text style={styles.actionError}>{actionError}</Text>}
 
             {copy.action && (
-              <TouchableOpacity
+              <Tap
                 style={[styles.primaryBtn, working && styles.disabled]}
                 onPress={startOrContinue}
                 disabled={working || loading}
@@ -210,11 +210,11 @@ export default function SPPayoutsScreen({ onBack }: SPPayoutsScreenProps) {
                 ) : (
                   <Text style={styles.primaryBtnText}>{copy.action}</Text>
                 )}
-              </TouchableOpacity>
+              </Tap>
             )}
 
             {current.details_submitted && (
-              <TouchableOpacity
+              <Tap
                 style={[styles.outlineBtn, working && styles.disabled]}
                 onPress={openDashboard}
                 disabled={working || loading}
@@ -223,13 +223,13 @@ export default function SPPayoutsScreen({ onBack }: SPPayoutsScreenProps) {
               >
                 <ExternalLink size={15} color={C.ink700} />
                 <Text style={styles.outlineBtnText}>Open Stripe dashboard</Text>
-              </TouchableOpacity>
+              </Tap>
             )}
 
             {current.state !== 'not_started' && (
-              <TouchableOpacity onPress={refresh} disabled={working || loading} activeOpacity={0.8}>
+              <Tap onPress={refresh} disabled={working || loading} activeOpacity={0.8}>
                 <Text style={styles.link}>Refresh status</Text>
-              </TouchableOpacity>
+              </Tap>
             )}
           </View>
 

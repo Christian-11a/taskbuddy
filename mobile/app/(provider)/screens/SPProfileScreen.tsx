@@ -30,10 +30,9 @@ import {
   ScrollView,
   StyleSheet,
   Text,
-  TouchableOpacity,
   View,
 } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
+import Tap from '../../../src/components/ui/Tap';
 import {
   ArrowLeft,
   BadgeCheck,
@@ -107,21 +106,15 @@ export default function SPProfileScreen({ onNavigate, onLogout, onBack }: SPProf
     <View style={styles.screen}>
       <StatusBar style="light" />
       {/* Hero — matches .profile-hero.dark (same gradient as Feed's hero) */}
-      <LinearGradient
-        colors={['#111827', '#17283c', '#0c4a6e']}
-        locations={[0, 0.75, 1]}
-        start={{ x: 0.15, y: 0 }}
-        end={{ x: 0.85, y: 1 }}
-        style={[styles.hero, { paddingTop: headerTop }]}
-      >
-        <TouchableOpacity
+      <View style={[styles.hero, { paddingTop: headerTop }, { backgroundColor: C.providerHero }]}>
+        <Tap
           style={[styles.backBtn, { top: headerTop }]}
           onPress={onBack}
           activeOpacity={0.8}
           accessibilityLabel="Back to Feed"
         >
           <ArrowLeft size={20} color={C.onPrimary} />
-        </TouchableOpacity>
+        </Tap>
 
         <View style={styles.avatarCircle}>
           <OwnAvatar name={name} textStyle={styles.avatarText} />
@@ -139,7 +132,7 @@ export default function SPProfileScreen({ onNavigate, onLogout, onBack }: SPProf
             {isVerified ? 'Verified' : 'Not verified'}
           </Text>
         </View>
-      </LinearGradient>
+      </View>
 
       {/* Stats */}
       <View style={styles.statsRow}>
@@ -183,7 +176,7 @@ export default function SPProfileScreen({ onNavigate, onLogout, onBack }: SPProf
         {/* Menu — matches .navrow */}
         <View style={styles.card}>
           {MENU_ITEMS.filter((item) => !(isVerified && item.screen === 'Verification')).map((item) => (
-            <TouchableOpacity
+            <Tap
               key={item.label}
               style={styles.navrow}
               onPress={() => onNavigate(item.screen)}
@@ -194,9 +187,9 @@ export default function SPProfileScreen({ onNavigate, onLogout, onBack }: SPProf
               </View>
               <Text style={styles.rowLabel}>{item.label}</Text>
               <ChevronRight size={20} color={C.ink300} />
-            </TouchableOpacity>
+            </Tap>
           ))}
-          <TouchableOpacity
+          <Tap
             style={styles.navrow}
             onPress={() => setConfirmLogoutVisible(true)}
             activeOpacity={0.7}
@@ -206,7 +199,7 @@ export default function SPProfileScreen({ onNavigate, onLogout, onBack }: SPProf
             </View>
             <Text style={[styles.rowLabel, styles.rowLabelDanger]}>Log Out</Text>
             <ChevronRight size={20} color={C.ink300} />
-          </TouchableOpacity>
+          </Tap>
         </View>
 
         <ConfirmationModal

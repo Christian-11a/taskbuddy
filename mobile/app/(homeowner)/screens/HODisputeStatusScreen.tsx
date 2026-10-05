@@ -1,6 +1,7 @@
 import { useThemedStyles, type Palette as ThemePalette } from '../../../src/context/ThemeContext';
 import React, { useState } from 'react';
-import { ActivityIndicator, Image, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Image, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import Tap from '../../../src/components/ui/Tap';
 import { ArrowLeft } from 'lucide-react-native';
 import { Spacing } from '../../../src/constants/theme';
 import { useAsyncData } from '../../../src/hooks/useAsyncData';
@@ -47,9 +48,9 @@ export default function HODisputeStatusScreen({ jobId, onBack }: Props) {
 
   return <View style={styles.screen}>
     <View style={[styles.header, { paddingTop: headerTop }]}>
-      <TouchableOpacity onPress={onBack} accessibilityLabel="Back"><ArrowLeft size={22} color={C.ink700} /></TouchableOpacity>
+      <Tap onPress={onBack} accessibilityLabel="Back"><ArrowLeft size={22} color={C.ink700} /></Tap>
       <Text style={styles.title}>Complaint Status</Text>
-      <TouchableOpacity onPress={reload} accessibilityLabel="Refresh complaint"><Text style={styles.link}>Refresh</Text></TouchableOpacity>
+      <Tap onPress={reload} accessibilityLabel="Refresh complaint"><Text style={styles.link}>Refresh</Text></Tap>
     </View>
     {loading && <ActivityIndicator color={V6Colors.link} />}
     {!!error && <Text style={styles.error}>{error}</Text>}
@@ -75,19 +76,19 @@ export default function HODisputeStatusScreen({ jobId, onBack }: Props) {
       <Text style={styles.heading}>{dispute.status === 'open' ? 'Add a statement or appeal' : 'Appeal the recorded decision'}</Text>
       <Text style={styles.text}>Describe your position. Send photos in the job chat, then select your message below as evidence. An appeal reopens review without reversing settled payments.</Text>
       {dispute.status === 'open' && !pending && <View style={styles.header}>
-        <TouchableOpacity onPress={() => setKind('statement')} accessibilityRole="radio" accessibilityState={{ checked: kind === 'statement' }}><Text style={styles.link}>Statement</Text></TouchableOpacity>
-        <TouchableOpacity onPress={() => setKind('appeal')} accessibilityRole="radio" accessibilityState={{ checked: kind === 'appeal' }}><Text style={styles.link}>Appeal</Text></TouchableOpacity>
+        <Tap onPress={() => setKind('statement')} accessibilityRole="radio" accessibilityState={{ checked: kind === 'statement' }}><Text style={styles.link}>Statement</Text></Tap>
+        <Tap onPress={() => setKind('appeal')} accessibilityRole="radio" accessibilityState={{ checked: kind === 'appeal' }}><Text style={styles.link}>Appeal</Text></Tap>
       </View>}
       <TextInput keyboardAppearance={appearance} accessibilityLabel="Case statement" multiline value={body} onChangeText={setBody} maxLength={1000} placeholder="Explain what happened…" style={styles.input} />
-      <TouchableOpacity onPress={() => void loadEvidence()} disabled={busy}><Text style={styles.link}>Choose job chat evidence</Text></TouchableOpacity>
-      {evidence.map((message) => <TouchableOpacity key={message.id} onPress={() => setMessageId(messageId === message.id ? undefined : message.id)} accessibilityRole="checkbox" accessibilityState={{ checked: messageId === message.id }}>
+      <Tap onPress={() => void loadEvidence()} disabled={busy}><Text style={styles.link}>Choose job chat evidence</Text></Tap>
+      {evidence.map((message) => <Tap key={message.id} onPress={() => setMessageId(messageId === message.id ? undefined : message.id)} accessibilityRole="checkbox" accessibilityState={{ checked: messageId === message.id }}>
         <Text style={styles.text}>{messageId === message.id ? 'Selected: ' : ''}{message.body || 'Photo message'} · {new Date(message.created_at).toLocaleString()}</Text>
-      </TouchableOpacity>)}
+      </Tap>)}
       {!!actionError && <Text style={styles.error}>{actionError}</Text>}
       {canRespond ? <>
-        <TouchableOpacity style={styles.button} disabled={busy || !body.trim()} onPress={() => void submit(true)}><Text style={styles.buttonText}>Agree to cancellation and refund</Text></TouchableOpacity>
-        <TouchableOpacity style={styles.button} disabled={busy || !body.trim()} onPress={() => void submit(false)}><Text style={styles.buttonText}>Contest cancellation</Text></TouchableOpacity>
-      </> : <TouchableOpacity style={styles.button} disabled={busy || !body.trim()} onPress={() => void submit()}><Text style={styles.buttonText}>{busy ? 'Saving…' : dispute.status === 'open' ? 'Submit statement' : 'Submit appeal'}</Text></TouchableOpacity>}
+        <Tap style={styles.button} disabled={busy || !body.trim()} onPress={() => void submit(true)}><Text style={styles.buttonText}>Agree to cancellation and refund</Text></Tap>
+        <Tap style={styles.button} disabled={busy || !body.trim()} onPress={() => void submit(false)}><Text style={styles.buttonText}>Contest cancellation</Text></Tap>
+      </> : <Tap style={styles.button} disabled={busy || !body.trim()} onPress={() => void submit()}><Text style={styles.buttonText}>{busy ? 'Saving…' : dispute.status === 'open' ? 'Submit statement' : 'Submit appeal'}</Text></Tap>}
     </ScrollView>}
   </View>;
 }

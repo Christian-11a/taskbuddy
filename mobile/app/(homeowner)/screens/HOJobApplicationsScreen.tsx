@@ -38,9 +38,9 @@ import {
   ScrollView,
   StyleSheet,
   Text,
-  TouchableOpacity,
   View,
 } from 'react-native';
+import Tap from '../../../src/components/ui/Tap';
 import { AlertCircle, ArrowLeft, ChevronRight, ShieldAlert, Star } from 'lucide-react-native';
 import { Spacing } from '../../../src/constants/theme';
 import { useHeaderTop } from '../../../src/hooks/useHeaderTop';
@@ -220,9 +220,9 @@ export default function HOJobApplicationsScreen({
       {/* Header — matches .topbar (flat white) */}
       <View style={[styles.header, { paddingTop: headerTop }]}>
         {onBack && (
-          <TouchableOpacity style={styles.backBtn} onPress={onBack} activeOpacity={0.8}>
+          <Tap style={styles.backBtn} onPress={onBack} activeOpacity={0.8}>
             <ArrowLeft size={20} color={C.ink700} />
-          </TouchableOpacity>
+          </Tap>
         )}
         <Text style={styles.headerTitle}>Proposals</Text>
       </View>
@@ -244,9 +244,9 @@ export default function HOJobApplicationsScreen({
             <View style={styles.errorBanner} testID="applications-action-error">
               <AlertCircle size={16} color={V6Colors.dangerText} />
               <Text style={[styles.errorBannerText, { flex: 1 }]}>{actionError}</Text>
-              <TouchableOpacity onPress={() => reload()} activeOpacity={0.8}>
+              <Tap onPress={() => reload()} activeOpacity={0.8}>
                 <Text style={styles.retryText}>Retry</Text>
-              </TouchableOpacity>
+              </Tap>
             </View>
           )}
 
@@ -266,7 +266,7 @@ export default function HOJobApplicationsScreen({
                 <View key={app.id} style={styles.card}>
                   {/* The whole header opens the provider's profile — rating,
                       reviews and past work — before deciding. */}
-                  <TouchableOpacity
+                  <Tap
                     style={styles.cardHead}
                     onPress={() => onNavigate?.('Provider Profile', app.provider_id)}
                     disabled={!onNavigate}
@@ -302,7 +302,7 @@ export default function HOJobApplicationsScreen({
                         <ChevronRight size={15} color={V6Colors.link} />
                       </View>
                     )}
-                  </TouchableOpacity>
+                  </Tap>
 
                   <View style={styles.messageBox}>
                     <Text style={styles.messageText}>{app.cover_message ?? 'No cover message.'}</Text>
@@ -310,7 +310,7 @@ export default function HOJobApplicationsScreen({
 
                   {app.status === 'pending' ? (
                     <View style={styles.actionsRow}>
-                      <TouchableOpacity
+                      <Tap
                         style={[styles.outlineBtn, busyId !== null && styles.disabled]}
                         onPress={() => setConfirmReject(app)}
                         disabled={busyId !== null}
@@ -318,11 +318,11 @@ export default function HOJobApplicationsScreen({
                         testID={`applications-reject-${app.id}`}
                       >
                         <Text style={styles.outlineBtnText}>{busyId === app.id ? 'Working…' : 'Reject'}</Text>
-                      </TouchableOpacity>
+                      </Tap>
                       {/* Hiring an unverified provider is refused by the API
                           (409 provider_not_verified); disabling it here says
                           why before the tap rather than after. */}
-                      <TouchableOpacity
+                      <Tap
                         style={[styles.primaryBtn, (busyId !== null || !verified) && styles.disabled]}
                         onPress={() => setConfirmAccept(app)}
                         disabled={busyId !== null || !verified}
@@ -332,7 +332,7 @@ export default function HOJobApplicationsScreen({
                         <Text style={styles.primaryBtnText}>
                           {busyId === app.id ? 'Working…' : verified ? 'Accept' : 'Awaiting verification'}
                         </Text>
-                      </TouchableOpacity>
+                      </Tap>
                     </View>
                   ) : (
                     <Text style={styles.decidedText}>{DECIDED_LABEL[app.status]}</Text>

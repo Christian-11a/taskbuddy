@@ -11,7 +11,8 @@
 
 import { useThemedStyles, type Palette as ThemePalette } from '../context/ThemeContext';
 import React from 'react';
-import { Linking, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Linking, ScrollView, StyleSheet, Text, View } from 'react-native';
+import Tap from './ui/Tap';
 import { ArrowLeft, ExternalLink, Mail, PlayCircle } from 'lucide-react-native';
 import { Sizes, Spacing, V6Radii, V6Shadows } from '../constants/theme';
 
@@ -56,9 +57,9 @@ export default function HelpSupportScreen({ role, onBack, onViewTutorial }: Help
     <View style={styles.screen}>
       {/* Header — matches .topbar (flat white, not a colored hero) */}
       <View style={styles.header}>
-        <TouchableOpacity style={styles.backBtn} onPress={onBack} activeOpacity={0.8}>
+        <Tap style={styles.backBtn} onPress={onBack} activeOpacity={0.8}>
           <ArrowLeft size={20} color={C.ink700} />
-        </TouchableOpacity>
+        </Tap>
         <Text style={styles.headerTitle}>Help & Support</Text>
         <View style={{ width: 38 }} />
       </View>
@@ -69,7 +70,7 @@ export default function HelpSupportScreen({ role, onBack, onViewTutorial }: Help
         showsVerticalScrollIndicator={false}
       >
         {onViewTutorial && (
-          <TouchableOpacity
+          <Tap
             style={styles.contactCard}
             activeOpacity={0.8}
             onPress={onViewTutorial}
@@ -81,7 +82,7 @@ export default function HelpSupportScreen({ role, onBack, onViewTutorial }: Help
               <Text style={styles.contactTitle}>View tutorial</Text>
               <Text style={styles.contactEmail}>Replay the app walkthrough</Text>
             </View>
-          </TouchableOpacity>
+          </Tap>
         )}
 
         <Text style={[styles.sectionTitle, onViewTutorial && styles.sectionSpacing]}>Frequently Asked Questions</Text>
@@ -95,7 +96,7 @@ export default function HelpSupportScreen({ role, onBack, onViewTutorial }: Help
         </View>
 
         <Text style={styles.sectionTitle}>Still need help?</Text>
-        <TouchableOpacity
+        <Tap
           style={styles.contactCard}
           activeOpacity={0.8}
           onPress={() => Linking.openURL(`mailto:${SUPPORT_EMAIL}`)}
@@ -107,7 +108,7 @@ export default function HelpSupportScreen({ role, onBack, onViewTutorial }: Help
             <Text style={styles.contactTitle}>Email support</Text>
             <Text style={styles.contactEmail}>{SUPPORT_EMAIL}</Text>
           </View>
-        </TouchableOpacity>
+        </Tap>
 
         <Text style={[styles.sectionTitle, styles.sectionSpacing]}>Address data</Text>
         <View style={styles.card}>
@@ -115,7 +116,7 @@ export default function HelpSupportScreen({ role, onBack, onViewTutorial }: Help
             Addresses are located using these services.
           </Text>
           {ATTRIBUTIONS.map((item) => (
-            <TouchableOpacity
+            <Tap
               key={item.url}
               style={styles.attributionRow}
               activeOpacity={0.8}
@@ -124,7 +125,7 @@ export default function HelpSupportScreen({ role, onBack, onViewTutorial }: Help
             >
               <Text style={styles.attributionLink}>{item.label}</Text>
               <ExternalLink size={15} color={V6Colors.link} />
-            </TouchableOpacity>
+            </Tap>
           ))}
         </View>
 

@@ -15,9 +15,9 @@ import {
   StyleSheet,
   Text,
   TextInput,
-  TouchableOpacity,
   View,
 } from 'react-native';
+import Tap from '../../../src/components/ui/Tap';
 import { ArrowLeft, BadgeCheck, Clock, XCircle } from 'lucide-react-native';
 import { Spacing, V6Radii } from '../../../src/constants/theme';
 import { useHeaderTop } from '../../../src/hooks/useHeaderTop';
@@ -111,9 +111,9 @@ export default function SPSkillRequestScreen({ onBack }: SPSkillRequestScreenPro
   return (
     <View style={styles.screen}>
       <View style={[styles.header, { paddingTop: headerTop }]}>
-        <TouchableOpacity style={styles.backBtn} onPress={onBack} activeOpacity={0.8} accessibilityLabel="Back">
+        <Tap style={styles.backBtn} onPress={onBack} activeOpacity={0.8} accessibilityLabel="Back">
           <ArrowLeft size={20} color={C.ink700} />
-        </TouchableOpacity>
+        </Tap>
         <Text style={styles.headerTitle}>My Services</Text>
       </View>
 
@@ -154,9 +154,9 @@ export default function SPSkillRequestScreen({ onBack }: SPSkillRequestScreenPro
               <Text style={styles.bold}>{pending.category?.name ?? 'a service'}</Text> · sent {shortDate(pending.created_at)}
             </Text>
             <Text style={styles.reasonQuote}>“{pending.reason}”</Text>
-            <TouchableOpacity onPress={() => setConfirmCancel(pending)} activeOpacity={0.8} style={styles.cancelLink}>
+            <Tap onPress={() => setConfirmCancel(pending)} activeOpacity={0.8} style={styles.cancelLink}>
               <Text style={styles.cancelLinkText}>Cancel request</Text>
-            </TouchableOpacity>
+            </Tap>
           </View>
         )}
 
@@ -167,7 +167,7 @@ export default function SPSkillRequestScreen({ onBack }: SPSkillRequestScreenPro
             {TYPE_OPTIONS.map((opt) => {
               const selected = type === opt.value;
               return (
-                <TouchableOpacity
+                <Tap
                   key={opt.value}
                   style={[styles.option, selected && styles.optionOn]}
                   onPress={() => setType(opt.value)}
@@ -182,7 +182,7 @@ export default function SPSkillRequestScreen({ onBack }: SPSkillRequestScreenPro
                     <Text style={styles.optionLabel}>{opt.label}</Text>
                     <Text style={styles.optionHint}>{opt.hint}</Text>
                   </View>
-                </TouchableOpacity>
+                </Tap>
               );
             })}
 
@@ -191,14 +191,14 @@ export default function SPSkillRequestScreen({ onBack }: SPSkillRequestScreenPro
               {choices.map((cat) => {
                 const active = categoryId === cat.id;
                 return (
-                  <TouchableOpacity
+                  <Tap
                     key={cat.id}
                     style={[styles.chip, active && styles.chipActive]}
                     onPress={() => setCategoryId(cat.id)}
                     activeOpacity={0.8}
                   >
                     <Text style={[styles.chipText, active && styles.chipTextActive]}>{cat.name}</Text>
-                  </TouchableOpacity>
+                  </Tap>
                 );
               })}
             </View>
@@ -217,14 +217,14 @@ export default function SPSkillRequestScreen({ onBack }: SPSkillRequestScreenPro
             />
             <Text style={styles.counter}>{reason.length}/{REASON_MAX}</Text>
 
-            <TouchableOpacity
+            <Tap
               style={[styles.submitBtn, !canSubmit && styles.disabled]}
               onPress={() => void submit()}
               disabled={!canSubmit}
               activeOpacity={0.85}
             >
               {submitting ? <ActivityIndicator color={C.onPrimary} /> : <Text style={styles.submitText}>Send to admins</Text>}
-            </TouchableOpacity>
+            </Tap>
           </View>
         )}
 

@@ -21,10 +21,9 @@ import {
   StyleSheet,
   Text,
   TextInput,
-  TouchableOpacity,
   View,
 } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
+import Tap from '../../../src/components/ui/Tap';
 import { Eye, EyeOff } from 'lucide-react-native';
 import { V6Radii, V6Shadows } from '../../../src/constants/theme';
 import { useAuthLayout } from '../../../src/hooks/useAuthLayout';
@@ -236,9 +235,9 @@ export default function LoginScreen({
       <View style={styles.passwordSection}>
         <View style={styles.passwordLabelRow}>
           <Text style={styles.inputLabel}>Password</Text>
-          <TouchableOpacity onPress={onForgotPassword}>
+          <Tap onPress={onForgotPassword}>
             <Text style={styles.forgotText}>Forgot Password?</Text>
-          </TouchableOpacity>
+          </Tap>
         </View>
 
         <InputField
@@ -253,13 +252,13 @@ export default function LoginScreen({
           secureTextEntry={!showPassword}
           error={fieldErrors.password}
           rightElement={
-            <TouchableOpacity
+            <Tap
               onPress={() => setShowPassword((s) => !s)}
               style={styles.eyeBtn}
               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
             >
               {showPassword ? <EyeOff size={20} color={C.ink400} /> : <Eye size={20} color={C.ink400} />}
-            </TouchableOpacity>
+            </Tap>
           }
         />
       </View>
@@ -272,7 +271,7 @@ export default function LoginScreen({
       )}
 
       {/* Sign In */}
-      <TouchableOpacity
+      <Tap
         testID="btn-sign-in"
         style={[styles.primaryBtn, cs?.primaryBtn, submitting && styles.primaryBtnDisabled]}
         activeOpacity={0.85}
@@ -284,7 +283,7 @@ export default function LoginScreen({
         ) : (
           <Text style={styles.primaryBtnText}>Sign In</Text>
         )}
-      </TouchableOpacity>
+      </Tap>
 
       {/* Divider */}
       <View style={[styles.dividerRow, cs?.dividerRow]}>
@@ -294,7 +293,7 @@ export default function LoginScreen({
       </View>
 
       {/* Google */}
-      <TouchableOpacity
+      <Tap
         testID="btn-google"
         style={[styles.googleBtn, cs?.googleBtn, googleLoading && styles.primaryBtnDisabled]}
         activeOpacity={0.85}
@@ -311,7 +310,7 @@ export default function LoginScreen({
             <Text style={styles.googleBtnText}>Continue with Google</Text>
           </>
         )}
-      </TouchableOpacity>
+      </Tap>
 
       {/* Sign Up */}
       <View style={styles.signUpRow}>
@@ -331,11 +330,7 @@ export default function LoginScreen({
     // even with pointerEvents set, and this sidesteps that class of bug
     // entirely: children of a normal View-like container always receive
     // touches, no workaround needed.
-    <LinearGradient
-      colors={[V6Colors.infoSurface, V6Colors.surface]}
-      locations={[0, 0.55]}
-      style={styles.screen}
-    >
+    <View style={[styles.screen, { backgroundColor: V6Colors.surface }]}>
       {/* Keyboard handling: the ScrollView's keyboardShouldPersistTaps +
           keyboardDismissMode handle taps/dismissal; KeyboardAvoidingView on
           Android resizes the form so the focused field/Sign In button scrolls
@@ -352,7 +347,7 @@ export default function LoginScreen({
       ) : (
         <View style={styles.flex}>{scrollContent}</View>
       )}
-    </LinearGradient>
+    </View>
   );
 }
 

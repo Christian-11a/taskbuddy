@@ -19,10 +19,9 @@ import {
   ScrollView,
   StyleSheet,
   Text,
-  TouchableOpacity,
   View,
 } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
+import Tap from '../../../src/components/ui/Tap';
 import {
   ArrowLeft,
   ChevronRight,
@@ -80,27 +79,22 @@ export default function Profile({ onNavigate, onLogout, onBack }: ProfileProps) 
     <View style={styles.screen}>
       <StatusBar style="light" />
       {/* Hero — matches .profile-hero (same gradient as Home) */}
-      <LinearGradient
-        colors={['#078eaa', '#0b7288']}
-        start={{ x: 0.15, y: 0 }}
-        end={{ x: 0.85, y: 1 }}
-        style={[styles.hero, { paddingTop: headerTop }]}
-      >
-        <TouchableOpacity
+      <View style={[styles.hero, { paddingTop: headerTop }, { backgroundColor: C.hero }]}>
+        <Tap
           style={[styles.backBtn, { top: headerTop }]}
           onPress={onBack}
           activeOpacity={0.8}
           accessibilityLabel="Back to Home"
         >
           <ArrowLeft size={20} color={C.onPrimary} />
-        </TouchableOpacity>
+        </Tap>
 
         <View style={styles.avatarCircle}>
           <OwnAvatar name={name} textStyle={styles.avatarText} />
         </View>
         <Text style={styles.profileName}>{name || 'Your Profile'}</Text>
         {!!subtitle && <Text style={styles.profileSubtitle}>{subtitle}</Text>}
-      </LinearGradient>
+      </View>
 
       {/* Stats */}
       <View style={styles.statsRow}>
@@ -143,7 +137,7 @@ export default function Profile({ onNavigate, onLogout, onBack }: ProfileProps) 
         {/* Menu — matches .navrow */}
         <View style={styles.card}>
           {MENU_ITEMS.map((item) => (
-            <TouchableOpacity
+            <Tap
               key={item.label}
               style={styles.navrow}
               onPress={() => onNavigate(item.screen!)}
@@ -154,9 +148,9 @@ export default function Profile({ onNavigate, onLogout, onBack }: ProfileProps) 
               </View>
               <Text style={styles.rowLabel}>{item.label}</Text>
               <ChevronRight size={20} color={C.ink300} />
-            </TouchableOpacity>
+            </Tap>
           ))}
-          <TouchableOpacity
+          <Tap
             style={styles.navrow}
             onPress={() => setConfirmLogoutVisible(true)}
             activeOpacity={0.7}
@@ -166,7 +160,7 @@ export default function Profile({ onNavigate, onLogout, onBack }: ProfileProps) 
             </View>
             <Text style={[styles.rowLabel, styles.rowLabelDanger]}>Log Out</Text>
             <ChevronRight size={20} color={C.ink300} />
-          </TouchableOpacity>
+          </Tap>
         </View>
 
         <ConfirmationModal

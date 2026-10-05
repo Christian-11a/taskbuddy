@@ -28,10 +28,10 @@ import {
   StyleSheet,
   Text,
   TextInput,
-  TouchableOpacity,
   TouchableWithoutFeedback,
   View,
 } from 'react-native';
+import Tap from '../../../src/components/ui/Tap';
 import {
   ArrowLeft,
   ArrowRight,
@@ -164,9 +164,9 @@ export default function SPChatScreen({ jobId, onBack, onViewJob }: SPChatScreenP
     <View style={styles.screen}>
       {/* Header — matches .topbar (flat white, not a colored hero) */}
       <View style={[styles.header, { paddingTop: headerTop }]}>
-        <TouchableOpacity style={styles.backBtn} onPress={onBack} activeOpacity={0.8}>
+        <Tap style={styles.backBtn} onPress={onBack} activeOpacity={0.8}>
           <ArrowLeft size={20} color={C.ink700} />
-        </TouchableOpacity>
+        </Tap>
         <View style={styles.headerAvatar}>
           <Text style={styles.headerAvatarText}>{initials(conversation?.counterpart_name)}</Text>
         </View>
@@ -176,9 +176,9 @@ export default function SPChatScreen({ jobId, onBack, onViewJob }: SPChatScreenP
             <Text style={styles.headerStatus}>{conversation.job_status}</Text>
           )}
         </View>
-        <TouchableOpacity onPress={onViewJob} activeOpacity={0.8}>
+        <Tap onPress={onViewJob} activeOpacity={0.8}>
           <Text style={styles.viewJobLink}>View Job</Text>
-        </TouchableOpacity>
+        </Tap>
       </View>
 
       <KeyboardAvoidingView
@@ -206,7 +206,7 @@ export default function SPChatScreen({ jobId, onBack, onViewJob }: SPChatScreenP
 
         {/* Composer — matches .chat-composer */}
         <View style={styles.composer}>
-          <TouchableOpacity
+          <Tap
             style={styles.attachBtn}
             activeOpacity={0.8}
             onPress={() => void handleAttach()}
@@ -217,7 +217,7 @@ export default function SPChatScreen({ jobId, onBack, onViewJob }: SPChatScreenP
             ) : (
               <Paperclip size={20} color={C.ink500} />
             )}
-          </TouchableOpacity>
+          </Tap>
           <TextInput keyboardAppearance={appearance}
             style={styles.chatInput}
             placeholder="Message…"
@@ -227,14 +227,14 @@ export default function SPChatScreen({ jobId, onBack, onViewJob }: SPChatScreenP
             multiline
             maxLength={500}
           />
-          <TouchableOpacity
+          <Tap
             style={[styles.sendBtn, !text.trim() && styles.sendBtnDisabled]}
             onPress={handleSend}
             activeOpacity={0.85}
             disabled={!text.trim()}
           >
             <ArrowRight size={18} color={C.onPrimary} />
-          </TouchableOpacity>
+          </Tap>
         </View>
       </KeyboardAvoidingView>
     </View>

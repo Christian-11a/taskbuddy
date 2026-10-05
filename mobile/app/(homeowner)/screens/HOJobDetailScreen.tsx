@@ -17,9 +17,9 @@ import {
   ScrollView,
   StyleSheet,
   Text,
-  TouchableOpacity,
   View,
 } from 'react-native';
+import Tap from '../../../src/components/ui/Tap';
 import {
   ArrowLeft,
   CalendarDays,
@@ -166,9 +166,9 @@ export default function HOJobDetailScreen({ jobId, onBack, onNavigate }: HOJobDe
     <View style={styles.screen}>
       {/* Header — matches .topbar (flat white, not a colored hero) */}
       <View style={[styles.header, { paddingTop: headerTop }]}>
-        <TouchableOpacity style={styles.backBtn} onPress={onBack} activeOpacity={0.8}>
+        <Tap style={styles.backBtn} onPress={onBack} activeOpacity={0.8}>
           <ArrowLeft size={20} color={C.ink700} />
-        </TouchableOpacity>
+        </Tap>
         <Text style={styles.headerTitle}>Job Details</Text>
         <View style={{ width: 38 }} />
       </View>
@@ -290,9 +290,9 @@ export default function HOJobDetailScreen({ jobId, onBack, onNavigate }: HOJobDe
             {job.photo_urls?.length > 0 ? (
               <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.attachmentList}>
                 {job.photo_urls.map((url, index) => (
-                  <TouchableOpacity key={url} onPress={() => setPhotoIndex(index)} accessibilityLabel={`Open job photo ${index + 1}`} activeOpacity={0.85}>
+                  <Tap key={url} onPress={() => setPhotoIndex(index)} accessibilityLabel={`Open job photo ${index + 1}`} activeOpacity={0.85}>
                     <Image source={{ uri: url }} style={styles.attachmentImage} />
-                  </TouchableOpacity>
+                  </Tap>
                 ))}
               </ScrollView>
             ) : (
@@ -320,14 +320,14 @@ export default function HOJobDetailScreen({ jobId, onBack, onNavigate }: HOJobDe
                     </Text>
                   </View>
                 </View>
-                <TouchableOpacity
+                <Tap
                   style={styles.messageBtn}
                   onPress={() => onNavigate('Chat', job.id)}
                   activeOpacity={0.8}
                 >
                   <MessageCircle size={15} color={C.ink700} />
                   <Text style={styles.messageBtnText}>Message</Text>
-                </TouchableOpacity>
+                </Tap>
               </View>
 
               {job.provider_accept_address && (
@@ -346,14 +346,14 @@ export default function HOJobDetailScreen({ jobId, onBack, onNavigate }: HOJobDe
               </Text>
               {!!matchingMessage && <Text style={styles.matchingMessage}>{matchingMessage}</Text>}
               {['open', 'recommending'].includes(job.status) && (
-              <TouchableOpacity
+              <Tap
                 style={styles.primaryBtn}
                 onPress={() => onNavigate('Job Applications', job.id)}
                 activeOpacity={0.85}
                 testID="job-detail-view-offers"
               >
                 <Text style={styles.primaryBtnText}>View Offers</Text>
-              </TouchableOpacity>
+              </Tap>
               )}
             </View>
           )}
@@ -365,13 +365,13 @@ export default function HOJobDetailScreen({ jobId, onBack, onNavigate }: HOJobDe
                   show on every job, including ones with no provider yet, where
                   POST /jobs/:id/review can only come back as an error. */}
               {canReview && (
-                <TouchableOpacity
+                <Tap
                   style={[styles.linkRow, styles.detailRowBorder]}
                   onPress={() => onNavigate('Leave Review', job.id)}
                   activeOpacity={0.7}
                 >
                   <Text style={styles.linkRowText}>Leave Review</Text>
-                </TouchableOpacity>
+                </Tap>
               )}
               {job.has_review && (
                 <View style={[styles.linkRow, styles.detailRowBorder]}>
@@ -389,31 +389,31 @@ export default function HOJobDetailScreen({ jobId, onBack, onNavigate }: HOJobDe
         <View style={styles.actionBar}>
           {!!actionError && <Text style={styles.actionError}>{actionError}</Text>}
           {canComplete && (
-            <TouchableOpacity style={styles.primaryBtn} onPress={() => setConfirmComplete(true)} activeOpacity={0.85} disabled={busy}>
+            <Tap style={styles.primaryBtn} onPress={() => setConfirmComplete(true)} activeOpacity={0.85} disabled={busy}>
               <Text style={styles.primaryBtnText}>{busy ? 'Working…' : 'Confirm Completion'}</Text>
-            </TouchableOpacity>
+            </Tap>
           )}
           {canFindProviders && (
-            <TouchableOpacity style={styles.primaryBtn} onPress={() => void findProviders()} activeOpacity={0.85} disabled={busy}>
+            <Tap style={styles.primaryBtn} onPress={() => void findProviders()} activeOpacity={0.85} disabled={busy}>
               <Text style={styles.primaryBtnText}>{busy ? 'Looking…' : 'Find Providers'}</Text>
-            </TouchableOpacity>
+            </Tap>
           )}
           {canCancel && (
-            <TouchableOpacity style={styles.outlineDangerBtn} onPress={() => setConfirmCancel(true)} activeOpacity={0.85} disabled={busy}>
+            <Tap style={styles.outlineDangerBtn} onPress={() => setConfirmCancel(true)} activeOpacity={0.85} disabled={busy}>
               <View style={styles.outlineBtnContent}>
                 <CircleAlert size={17} color={V6Colors.dangerText} />
                 <Text style={styles.outlineDangerBtnText}>Cancel Job</Text>
               </View>
-            </TouchableOpacity>
+            </Tap>
           )}
           {job.status === 'completed' && job.warranty_expires_at && (
             <Text style={styles.detailLabel}>Warranty ends {new Date(job.warranty_expires_at).toLocaleString()}.</Text>
           )}
           {dispute?.status === 'open' && <Text style={styles.detailLabel}>{dispute.cancellation_state === 'pending' ? 'Cancellation awaiting provider response' : dispute.escrow_transactions?.status === 'disputed' ? 'Payment under admin review' : 'Complaint awaiting admin review'}</Text>}
           {(dispute || canDispute) && (
-            <TouchableOpacity style={styles.outlineBtn} onPress={() => onNavigate(dispute ? 'Dispute Status' : 'Dispute Filing', job.id)} activeOpacity={0.85}>
+            <Tap style={styles.outlineBtn} onPress={() => onNavigate(dispute ? 'Dispute Status' : 'Dispute Filing', job.id)} activeOpacity={0.85}>
               <Text style={styles.outlineDangerBtnText}>{dispute ? 'View Dispute Status' : 'File a Complaint'}</Text>
-            </TouchableOpacity>
+            </Tap>
           )}
         </View>
       )}

@@ -18,9 +18,9 @@ import {
   StyleSheet,
   Text,
   TextInput,
-  TouchableOpacity,
   View,
 } from 'react-native';
+import Tap from '../../../src/components/ui/Tap';
 import { ArrowLeft, Star } from 'lucide-react-native';
 import { Spacing, V6Radii, V6Shadows } from '../../../src/constants/theme';
 import { useHeaderTop } from '../../../src/hooks/useHeaderTop';
@@ -71,9 +71,9 @@ export default function HOLeaveReviewScreen({ jobId, onSubmitted, onBack }: HOLe
       {/* Header — matches .topbar (flat white, icon back button) */}
       <View style={[styles.header, { paddingTop: headerTop }]}>
         {onBack && (
-          <TouchableOpacity style={styles.backBtn} onPress={onBack} activeOpacity={0.8}>
+          <Tap style={styles.backBtn} onPress={onBack} activeOpacity={0.8}>
             <ArrowLeft size={20} color={C.ink700} />
-          </TouchableOpacity>
+          </Tap>
         )}
         <Text style={styles.headerTitle}>Rate Your Provider</Text>
       </View>
@@ -91,14 +91,14 @@ export default function HOLeaveReviewScreen({ jobId, onSubmitted, onBack }: HOLe
 
           <View style={styles.starPicker}>
             {[1, 2, 3, 4, 5].map((n) => (
-              <TouchableOpacity
+              <Tap
                 key={n}
                 onPress={() => setRating(n)}
                 activeOpacity={0.85}
                 style={styles.starBtn}
               >
                 <Star size={33} color={n <= rating ? '#f59e0b' : '#cbd5e1'} fill={n <= rating ? '#f59e0b' : 'none'} />
-              </TouchableOpacity>
+              </Tap>
             ))}
           </View>
 
@@ -121,14 +121,14 @@ export default function HOLeaveReviewScreen({ jobId, onSubmitted, onBack }: HOLe
           )}
           {error && <Text style={styles.errorText}>{error}</Text>}
 
-          <TouchableOpacity
+          <Tap
             style={[styles.submitBtn, (busy || alreadyReviewed) && styles.disabled]}
             onPress={submit}
             disabled={busy || alreadyReviewed}
             activeOpacity={0.85}
           >
             {busy ? <ActivityIndicator color={C.onPrimary} /> : <Text style={styles.submitText}>Submit Review</Text>}
-          </TouchableOpacity>
+          </Tap>
         </ScrollView>
       </KeyboardAvoidingView>
     </View>

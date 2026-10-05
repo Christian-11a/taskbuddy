@@ -23,9 +23,9 @@ import {
   StyleSheet,
   Text,
   TextInput,
-  TouchableOpacity,
   View,
 } from 'react-native';
+import Tap from '../../../src/components/ui/Tap';
 import {
   ArrowDownLeft,
   ArrowUpRight,
@@ -35,7 +35,6 @@ import {
   Shield,
   WalletCards,
 } from 'lucide-react-native';
-import { LinearGradient } from 'expo-linear-gradient';
 import * as AuthSession from 'expo-auth-session';
 import { Spacing, V6Radii, V6Shadows } from '../../../src/constants/theme';
 import { useHeaderTop } from '../../../src/hooks/useHeaderTop';
@@ -290,39 +289,34 @@ export default function HOWalletScreen() {
         }
       >
         {/* Balance card — mockup's linear-gradient(165deg, cyan600, cyan700) */}
-        <LinearGradient
-          colors={[C.cyan600, C.cyan700]}
-          start={{ x: 0.2, y: 0 }}
-          end={{ x: 0.8, y: 1 }}
-          style={styles.balanceCard}
-        >
+        <View style={[styles.balanceCard, { backgroundColor: C.hero }]}>
           <Text style={styles.balanceLabel}>Available Balance</Text>
           <Text style={styles.balanceAmount}>
             {data ? peso(data.balance) : '—'}
           </Text>
           <View style={styles.quickActions}>
-            <TouchableOpacity
+            <Tap
               style={styles.quickActionBtn}
               onPress={() => setShowAddMoney(true)}
               activeOpacity={0.8}
             >
               <ArrowUpRight size={22} color={C.onPrimary} />
               <Text style={styles.quickActionText}>Add Money</Text>
-            </TouchableOpacity>
+            </Tap>
             <View style={styles.actionDivider} />
-            <TouchableOpacity
+            <Tap
               style={styles.quickActionBtn}
               onPress={openWithdraw}
               activeOpacity={0.8}
             >
               <ArrowDownLeft size={22} color={C.onPrimary} />
               <Text style={styles.quickActionText}>Withdraw</Text>
-            </TouchableOpacity>
+            </Tap>
           </View>
           {data && availableToWithdraw !== data.balance && (
             <Text style={styles.balanceSub}>{peso(availableToWithdraw)} available to withdraw</Text>
           )}
-        </LinearGradient>
+        </View>
 
         {/* Escrow card */}
         <View style={styles.escrowCard}>
@@ -354,9 +348,9 @@ export default function HOWalletScreen() {
                   <View style={styles.withdrawalAction}>
                     <Text style={styles.withdrawalValue}>{peso(withdrawal.amount)}</Text>
                     {withdrawal.status === 'pending' && (
-                      <TouchableOpacity onPress={() => void cancelWithdrawal(withdrawal.id)} activeOpacity={0.8}>
+                      <Tap onPress={() => void cancelWithdrawal(withdrawal.id)} activeOpacity={0.8}>
                         <Text style={styles.withdrawalCancel}>Cancel</Text>
-                      </TouchableOpacity>
+                      </Tap>
                     )}
                   </View>
                 </View>
@@ -391,7 +385,7 @@ export default function HOWalletScreen() {
         {/* Filter tabs */}
         <View style={styles.tabRow}>
           {(['all', 'credit', 'debit'] as const).map((t) => (
-            <TouchableOpacity
+            <Tap
               key={t}
               style={[styles.tab, activeTab === t && styles.tabActive]}
               onPress={() => setActiveTab(t)}
@@ -400,7 +394,7 @@ export default function HOWalletScreen() {
               <Text style={[styles.tabText, activeTab === t && styles.tabTextActive]}>
                 {t === 'all' ? 'All' : t === 'credit' ? 'Added' : 'Spent'}
               </Text>
-            </TouchableOpacity>
+            </Tap>
           ))}
         </View>
 
@@ -480,7 +474,7 @@ export default function HOWalletScreen() {
               {QUICK_TOPUP_AMOUNTS.map((preset) => {
                 const selected = parsedAmount === preset;
                 return (
-                  <TouchableOpacity
+                  <Tap
                     key={preset}
                     testID={`wallet-quick-${preset}`}
                     style={[styles.quickAmount, selected && styles.quickAmountActive]}
@@ -499,7 +493,7 @@ export default function HOWalletScreen() {
                     >
                       {peso(preset)}
                     </Text>
-                  </TouchableOpacity>
+                  </Tap>
                 );
               })}
             </View>
@@ -509,15 +503,15 @@ export default function HOWalletScreen() {
             {addError && <Text style={styles.modalError}>{addError}</Text>}
 
             <View style={styles.modalActions}>
-              <TouchableOpacity
+              <Tap
                 style={[styles.modalBtn, styles.modalCancel]}
                 onPress={closeAddMoney}
                 disabled={adding}
                 activeOpacity={0.8}
               >
                 <Text style={styles.modalCancelText}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
+              </Tap>
+              <Tap
                 testID="wallet-add-money-continue"
                 style={[
                   styles.modalBtn,
@@ -533,7 +527,7 @@ export default function HOWalletScreen() {
                 ) : (
                   <Text style={styles.modalConfirmText}>Continue</Text>
                 )}
-              </TouchableOpacity>
+              </Tap>
             </View>
           </Pressable>
         </View>
@@ -585,15 +579,15 @@ export default function HOWalletScreen() {
             {!!withdrawError && <Text style={styles.modalError}>{withdrawError}</Text>}
 
             <View style={styles.modalActions}>
-              <TouchableOpacity
+              <Tap
                 style={[styles.modalBtn, styles.modalCancel]}
                 onPress={closeWithdraw}
                 disabled={withdrawing}
                 activeOpacity={0.8}
               >
                 <Text style={styles.modalCancelText}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
+              </Tap>
+              <Tap
                 style={[
                   styles.modalBtn,
                   styles.modalConfirm,
@@ -608,7 +602,7 @@ export default function HOWalletScreen() {
                 ) : (
                   <Text style={styles.modalConfirmText}>Withdraw</Text>
                 )}
-              </TouchableOpacity>
+              </Tap>
             </View>
           </Pressable>
         </View>

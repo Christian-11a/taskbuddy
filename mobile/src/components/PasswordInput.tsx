@@ -6,10 +6,10 @@ import {
   TextInput,
   TextInputProps,
   TextStyle,
-  TouchableOpacity,
   View,
   ViewStyle,
 } from 'react-native';
+import Tap from './ui/Tap';
 import { Eye, EyeOff } from 'lucide-react-native';
 
 interface PasswordInputProps extends Omit<TextInputProps, 'secureTextEntry' | 'style'> {
@@ -39,7 +39,7 @@ const PasswordInput = forwardRef<TextInput, PasswordInputProps>(function Passwor
         secureTextEntry={!visible}
         style={[styles.input, inputStyle]}
       />
-      <TouchableOpacity
+      <Tap
         onPress={() => setVisible((v) => !v)}
         hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
         style={styles.eye}
@@ -48,7 +48,7 @@ const PasswordInput = forwardRef<TextInput, PasswordInputProps>(function Passwor
         testID={inputProps.testID ? `${inputProps.testID}-toggle` : undefined}
       >
         {visible ? <EyeOff size={20} color={iconColor ?? V6Colors.ink400} /> : <Eye size={20} color={iconColor ?? V6Colors.ink400} />}
-      </TouchableOpacity>
+      </Tap>
     </View>
   );
 });

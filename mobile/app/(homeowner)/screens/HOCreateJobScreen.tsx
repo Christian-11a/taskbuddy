@@ -55,7 +55,6 @@ import {
   StyleSheet,
   Text,
   TextInput,
-  TouchableOpacity,
   View,
   Platform,
   Modal,
@@ -63,6 +62,7 @@ import {
   ActivityIndicator,
   KeyboardAvoidingView,
 } from 'react-native';
+import Tap from '../../../src/components/ui/Tap';
 import {
   ArrowLeft,
   BrushCleaning,
@@ -664,12 +664,12 @@ export default function HOCreateJobScreen({
               </Text>
             </View>
           </View>
-          <TouchableOpacity style={[styles.primaryBtn, styles.primaryBtnFullWidth]} onPress={onSuccess} activeOpacity={0.85}>
+          <Tap style={[styles.primaryBtn, styles.primaryBtnFullWidth]} onPress={onSuccess} activeOpacity={0.85}>
             <Text style={styles.primaryBtnText}>View My Jobs</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.secondaryBtn} onPress={startAnother} activeOpacity={0.8}>
+          </Tap>
+          <Tap style={styles.secondaryBtn} onPress={startAnother} activeOpacity={0.8}>
             <Text style={styles.secondaryBtnText}>Post Another Job</Text>
-          </TouchableOpacity>
+          </Tap>
         </ScrollView>
       </View>
     );
@@ -681,9 +681,9 @@ export default function HOCreateJobScreen({
       <PhotoViewer photos={photos} index={photoIndex} onIndexChange={setPhotoIndex}
         onClose={() => setPhotoIndex(null)} />
       <View style={[styles.header, { paddingTop: headerTop }]}>
-        <TouchableOpacity style={styles.backBtn} onPress={handleExit} activeOpacity={0.8}>
+        <Tap style={styles.backBtn} onPress={handleExit} activeOpacity={0.8}>
           <ArrowLeft size={22} color={Colors.ink700} />
-        </TouchableOpacity>
+        </Tap>
         <Text style={styles.headerTitle}>Post a Job</Text>
         <View style={{ width: 38 }} />
       </View>
@@ -724,7 +724,7 @@ export default function HOCreateJobScreen({
                 <Text style={styles.locationPromptTitle}>Use your default location?</Text>
                 <Text style={styles.locationPromptText}>{profile.address}</Text>
                 <View style={styles.locationPromptActions}>
-                  <TouchableOpacity
+                  <Tap
                     style={[styles.locationChoice, useProfileLocation && styles.locationChoiceActive]}
                     onPress={() => {
                       setUseProfileLocation(true);
@@ -732,8 +732,8 @@ export default function HOCreateJobScreen({
                     }}
                   >
                     <Text style={styles.locationChoiceText}>Use default</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
+                  </Tap>
+                  <Tap
                     style={[styles.locationChoice, !useProfileLocation && styles.locationChoiceActive]}
                     onPress={() => {
                       setUseProfileLocation(false);
@@ -741,7 +741,7 @@ export default function HOCreateJobScreen({
                     }}
                   >
                     <Text style={styles.locationChoiceText}>Enter custom</Text>
-                  </TouchableOpacity>
+                  </Tap>
                 </View>
               </View>
             )}
@@ -761,7 +761,7 @@ export default function HOCreateJobScreen({
                 const Icon = meta.icon;
                 const active = categoryId === cat.id;
                 return (
-                  <TouchableOpacity
+                  <Tap
                     key={cat.id}
                     style={[styles.serviceCard, active && styles.serviceCardActive]}
                     onPress={() => {
@@ -780,7 +780,7 @@ export default function HOCreateJobScreen({
                       {cat.name}
                     </Text>
                     <Text style={styles.serviceDesc}>{meta.desc}</Text>
-                  </TouchableOpacity>
+                  </Tap>
                 );
               })}
             </View>
@@ -839,7 +839,7 @@ export default function HOCreateJobScreen({
             )}
 
             {!!profile?.address && profile.address !== location && (
-              <TouchableOpacity
+              <Tap
                 style={styles.savedAddressBtn}
                 onPress={() => {
                   setLocation(profile.address!);
@@ -857,7 +857,7 @@ export default function HOCreateJobScreen({
                 <Text style={styles.savedAddressText} numberOfLines={1}>
                   Use my saved address — {profile.address}
                 </Text>
-              </TouchableOpacity>
+              </Tap>
             )}
 
             <View style={styles.noteCard}>
@@ -881,7 +881,7 @@ export default function HOCreateJobScreen({
               {presets.map((preset) => {
                 const selected = tasks.includes(preset);
                 return (
-                  <TouchableOpacity
+                  <Tap
                     key={preset}
                     style={[styles.taskChip, selected && styles.taskChipActive]}
                     onPress={() => toggleTask(preset)}
@@ -895,7 +895,7 @@ export default function HOCreateJobScreen({
                     <Text style={[styles.taskChipText, selected && styles.taskChipTextActive]}>
                       {preset}
                     </Text>
-                  </TouchableOpacity>
+                  </Tap>
                 );
               })}
             </View>
@@ -912,9 +912,9 @@ export default function HOCreateJobScreen({
                         <Check size={13} color={Colors.onPrimary} strokeWidth={3} />
                       </View>
                       <Text style={styles.customTaskText}>{t}</Text>
-                      <TouchableOpacity onPress={() => toggleTask(t)} hitSlop={10}>
+                      <Tap onPress={() => toggleTask(t)} hitSlop={10}>
                         <Text style={styles.removeTaskText}>Remove</Text>
-                      </TouchableOpacity>
+                      </Tap>
                     </View>
                   ))}
               </View>
@@ -933,14 +933,14 @@ export default function HOCreateJobScreen({
                 returnKeyType="done"
                 maxLength={120}
               />
-              <TouchableOpacity
+              <Tap
                 style={[styles.addTaskBtn, !customTask.trim() && styles.addTaskBtnDisabled]}
                 onPress={addCustomTask}
                 activeOpacity={0.85}
                 disabled={!customTask.trim()}
               >
                 <Plus size={20} color={Colors.onPrimary} />
-              </TouchableOpacity>
+              </Tap>
             </View>
             <Text style={styles.taskCount}>
               {tasks.length}/{MAX_TASKS} tasks selected
@@ -1013,7 +1013,7 @@ export default function HOCreateJobScreen({
 
             <View style={styles.inputGroup}>
               <Text style={styles.inputLabel}>Photos (optional)</Text>
-              <TouchableOpacity
+              <Tap
                 style={styles.photoPicker}
                 onPress={() => void pickPhotos()}
                 activeOpacity={0.8}
@@ -1030,14 +1030,14 @@ export default function HOCreateJobScreen({
                     <Text style={styles.photoPickerHint}>Up to 6 images to help providers understand the job.</Text>
                   </>
                 )}
-              </TouchableOpacity>
+              </Tap>
               {!!photoMessage && <Text style={styles.inputErrorText}>{photoMessage}</Text>}
               {photos.length > 0 && (
                 <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.photoList}>
                   {photos.map((photo, index) => (
                     <View key={`${photo.uri}-${index}`} style={styles.photoPreview}>
                       <Image source={{ uri: photo.uri }} style={styles.photoImage} />
-                      <TouchableOpacity
+                      <Tap
                         style={styles.removePhoto}
                         onPress={() => {
                           setPhotos((current) => current.filter((_, photoIndex) => photoIndex !== index));
@@ -1046,7 +1046,7 @@ export default function HOCreateJobScreen({
                         accessibilityLabel={`Remove photo ${index + 1}`}
                       >
                         <Text style={styles.removePhotoText}>×</Text>
-                      </TouchableOpacity>
+                      </Tap>
                     </View>
                   ))}
                 </ScrollView>
@@ -1068,7 +1068,7 @@ export default function HOCreateJobScreen({
               const active = urgency === option.value;
               const Icon = option.icon;
               return (
-                <TouchableOpacity
+                <Tap
                   key={option.value}
                   style={[styles.urgencyCard, active && { borderColor: option.accent, backgroundColor: V6Colors.infoSurface }]}
                   onPress={() => setUrgency(option.value)}
@@ -1086,7 +1086,7 @@ export default function HOCreateJobScreen({
                   <View style={[styles.radio, active && { borderColor: option.accent }]}>
                     {active && <View style={[styles.radioDot, { backgroundColor: option.accent }]} />}
                   </View>
-                </TouchableOpacity>
+                </Tap>
               );
             })}
 
@@ -1094,25 +1094,25 @@ export default function HOCreateJobScreen({
 
             <View onLayout={(event) => { fieldPositions.current.date = event.nativeEvent.layout.y; }} style={styles.inputGroup}>
               <Text style={styles.inputLabel}>Preferred Date<Text style={styles.requiredAsterisk}> *</Text></Text>
-              <TouchableOpacity
+              <Tap
                 style={[styles.input, styles.pickerInput, showDatePicker && styles.inputFocused, fieldErrors.date && styles.inputError]}
                 onPress={() => { setShowTimePicker(false); setShowDatePicker(true); clearError('date'); }}
                 activeOpacity={0.8}
               >
                 <Text style={[styles.pickerText, !date && styles.pickerPlaceholder]}>{dateLabel || 'Select a date'}</Text>
-              </TouchableOpacity>
+              </Tap>
               {!!fieldErrors.date && <Text style={styles.inputErrorText}>{fieldErrors.date}</Text>}
             </View>
 
             <View onLayout={(event) => { fieldPositions.current.time = event.nativeEvent.layout.y; }} style={styles.inputGroup}>
               <Text style={styles.inputLabel}>Preferred Time<Text style={styles.requiredAsterisk}> *</Text></Text>
-              <TouchableOpacity
+              <Tap
                 style={[styles.input, styles.pickerInput, showTimePicker && styles.inputFocused, fieldErrors.time && styles.inputError]}
                 onPress={() => { openTimePicker(); clearError('time'); }}
                 activeOpacity={0.8}
               >
                 <Text style={[styles.pickerText, !time && styles.pickerPlaceholder]}>{timeLabel || 'Select a time'}</Text>
-              </TouchableOpacity>
+              </Tap>
               {!!fieldErrors.time && <Text style={styles.inputErrorText}>{fieldErrors.time}</Text>}
             </View>
 
@@ -1171,11 +1171,11 @@ export default function HOCreateJobScreen({
             {photos.length > 0 && (
               <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.photoList}>
                 {photos.map((photo, index) => (
-                  <TouchableOpacity key={photo.uri} onPress={() => setPhotoIndex(index)}
+                  <Tap key={photo.uri} onPress={() => setPhotoIndex(index)}
                     accessibilityLabel={`Open selected photo ${index + 1}`}>
                     <Image source={{ uri: photo.uri }} style={styles.photoImage}
                       resizeMode="contain" />
-                  </TouchableOpacity>
+                  </Tap>
                 ))}
               </ScrollView>
             )}
@@ -1204,11 +1204,11 @@ export default function HOCreateJobScreen({
         {!!error && <Text style={styles.errorText}>{error}</Text>}
         <View style={styles.footerActions}>
           {step > 1 && (
-            <TouchableOpacity style={styles.previousBtn} onPress={handleStepBack} activeOpacity={0.85} disabled={submitting}>
+            <Tap style={styles.previousBtn} onPress={handleStepBack} activeOpacity={0.85} disabled={submitting}>
               <Text style={styles.previousBtnText}>Back</Text>
-            </TouchableOpacity>
+            </Tap>
           )}
-          <TouchableOpacity
+          <Tap
             style={[
               styles.primaryBtn,
               step === 1 && styles.primaryBtnFullWidth,
@@ -1231,7 +1231,7 @@ export default function HOCreateJobScreen({
                       : 'Next'}
               </Text>
             </View>
-          </TouchableOpacity>
+          </Tap>
         </View>
       </View>
 
@@ -1259,9 +1259,9 @@ export default function HOCreateJobScreen({
           <View style={styles.calendarModal}>
             <View style={styles.calendarHeader}>
               <Text style={styles.calendarTitle}>Select a date</Text>
-              <TouchableOpacity onPress={() => setShowDatePicker(false)} hitSlop={10}>
+              <Tap onPress={() => setShowDatePicker(false)} hitSlop={10}>
                 <Text style={styles.calendarClose}>Close</Text>
-              </TouchableOpacity>
+              </Tap>
             </View>
             <Calendar key={appearance}
               current={calendarMonth ?? (date ? dateKey(date) : undefined)}
@@ -1318,9 +1318,9 @@ export default function HOCreateJobScreen({
             <View style={styles.calendarModal}>
               <View style={styles.calendarHeader}>
                 <Text style={styles.calendarTitle}>Select a time</Text>
-                <TouchableOpacity onPress={() => setShowTimePicker(false)} hitSlop={10}>
+                <Tap onPress={() => setShowTimePicker(false)} hitSlop={10}>
                   <Text style={styles.calendarClose}>Close</Text>
-                </TouchableOpacity>
+                </Tap>
               </View>
 
               <DateTimePicker themeVariant={appearance}
@@ -1330,7 +1330,7 @@ export default function HOCreateJobScreen({
                 onChange={handleTimeChange}
               />
 
-              <TouchableOpacity
+              <Tap
                 style={[styles.primaryBtn, { marginTop: 16 }]}
                 onPress={() => {
                   if (tempTime) {
@@ -1342,7 +1342,7 @@ export default function HOCreateJobScreen({
                 activeOpacity={0.85}
               >
                 <Text style={styles.primaryBtnText}>Done</Text>
-              </TouchableOpacity>
+              </Tap>
             </View>
           </View>
         </Modal>

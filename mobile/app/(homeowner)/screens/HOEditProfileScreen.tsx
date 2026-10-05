@@ -16,9 +16,9 @@ import {
   StyleSheet,
   Text,
   TextInput,
-  TouchableOpacity,
   View,
 } from 'react-native';
+import Tap from '../../../src/components/ui/Tap';
 import { ArrowLeft } from 'lucide-react-native';
 import AvatarPicker from '../../../src/components/AvatarPicker';
 import ConfirmationModal from '../../../src/components/ConfirmationModal';
@@ -139,9 +139,9 @@ export default function HOEditProfileScreen({ onBack, onSave }: HOEditProfileScr
     <View style={styles.screen}>
       {/* Header — matches .topbar (flat white, not a colored hero) */}
       <View style={[styles.header, { paddingTop: headerTop }]}>
-        <TouchableOpacity style={styles.backBtn} onPress={onBack} activeOpacity={0.8}>
+        <Tap style={styles.backBtn} onPress={onBack} activeOpacity={0.8}>
           <ArrowLeft size={20} color={C.ink700} />
-        </TouchableOpacity>
+        </Tap>
         <Text style={styles.headerTitle}>Edit Profile</Text>
         <View style={{ width: 38 }} />
       </View>
@@ -178,14 +178,14 @@ export default function HOEditProfileScreen({ onBack, onSave }: HOEditProfileScr
 
           {!!error && <Text style={styles.errorText}>{error}</Text>}
 
-          <TouchableOpacity
+          <Tap
             style={[styles.saveBtn, saving && styles.saveBtnDisabled]}
             onPress={requestSave}
             activeOpacity={0.85}
             disabled={saving}
           >
             <Text style={styles.saveBtnText}>{saving ? 'Saving…' : 'Save Changes'}</Text>
-          </TouchableOpacity>
+          </Tap>
 
           <View style={{ height: 20 }} />
         </ScrollView>

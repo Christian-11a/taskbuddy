@@ -9,7 +9,8 @@
 
 import { useThemedStyles, type Palette as ThemePalette } from '../../../src/context/ThemeContext';
 import React, { useMemo, useState } from 'react';
-import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import Tap from '../../../src/components/ui/Tap';
 import { Calendar } from 'react-native-calendars';
 import { CalendarDays, User } from 'lucide-react-native';
 import { Spacing, V6Radii, V6Shadows } from '../../../src/constants/theme';
@@ -110,9 +111,9 @@ export default function HOCalendarScreen({ onNavigate }: HOCalendarScreenProps) 
           <Text style={styles.selectedDateTitle}>
             {new Date(selectedDate).toLocaleDateString(undefined, { month: 'long', day: 'numeric' })}
           </Text>
-          <TouchableOpacity onPress={() => setSelectedDate(todayKey)}>
+          <Tap onPress={() => setSelectedDate(todayKey)}>
             <Text style={styles.textLink}>Today</Text>
-          </TouchableOpacity>
+          </Tap>
         </View>
 
         {!!error && (
@@ -120,9 +121,9 @@ export default function HOCalendarScreen({ onNavigate }: HOCalendarScreenProps) 
             <CalendarDays size={30} color={C.ink300} />
             <Text style={styles.emptyTitle}>Couldn't load your jobs</Text>
             <Text style={styles.emptyText}>{error}</Text>
-            <TouchableOpacity onPress={reload} activeOpacity={0.8}>
+            <Tap onPress={reload} activeOpacity={0.8}>
               <Text style={[styles.textLink, { marginTop: 10 }]}>Retry</Text>
-            </TouchableOpacity>
+            </Tap>
           </View>
         )}
 

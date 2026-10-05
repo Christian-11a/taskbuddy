@@ -25,9 +25,9 @@ import {
   ScrollView,
   StyleSheet,
   Text,
-  TouchableOpacity,
   View,
 } from 'react-native';
+import Tap from '../../../src/components/ui/Tap';
 import {
   ArrowLeft,
   Check,
@@ -201,9 +201,9 @@ export default function SPJobDetailScreen({ jobId, onBack, onNavigate }: SPJobDe
         index={photoIndex} onIndexChange={setPhotoIndex} onClose={() => setPhotoIndex(null)} />
       {/* Header — matches .topbar (flat white) */}
       <View style={[styles.header, { paddingTop: headerTop }]}>
-        <TouchableOpacity style={styles.backBtn} onPress={onBack} activeOpacity={0.8}>
+        <Tap style={styles.backBtn} onPress={onBack} activeOpacity={0.8}>
           <ArrowLeft size={20} color={C.ink700} />
-        </TouchableOpacity>
+        </Tap>
         <Text style={styles.headerTitle}>Job Details</Text>
         <View style={{ width: 38 }} />
       </View>
@@ -274,7 +274,7 @@ export default function SPJobDetailScreen({ jobId, onBack, onNavigate }: SPJobDe
                 </Text>
               </View>
               {tasks.map((task) => (
-                <TouchableOpacity
+                <Tap
                   key={task.id}
                   style={styles.taskRow}
                   onPress={() => void toggleTask(task)}
@@ -299,7 +299,7 @@ export default function SPJobDetailScreen({ jobId, onBack, onNavigate }: SPJobDe
                   <Text style={[styles.taskLabel, task.is_done && styles.taskLabelDone]}>
                     {task.label}
                   </Text>
-                </TouchableOpacity>
+                </Tap>
               ))}
             </View>
           )}
@@ -314,11 +314,11 @@ export default function SPJobDetailScreen({ jobId, onBack, onNavigate }: SPJobDe
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Job Photos</Text>
             {job.photo_urls.length ? job.photo_urls.map((uri, index) => (
-              <TouchableOpacity key={uri} onPress={() => setPhotoIndex(index)}
+              <Tap key={uri} onPress={() => setPhotoIndex(index)}
                 accessibilityLabel={`Open job photo ${index + 1}`}>
                 <Image source={{ uri }} resizeMode="contain" accessibilityLabel={`Job photo ${index + 1}`}
                   style={{ width: '100%', height: 240, marginTop: 12 }} />
-              </TouchableOpacity>
+              </Tap>
             )) : <Text style={styles.detailValue}>No photos attached</Text>}
 
           </View>
@@ -343,14 +343,14 @@ export default function SPJobDetailScreen({ jobId, onBack, onNavigate }: SPJobDe
             )}
 
             {isConfirmed && (
-              <TouchableOpacity
+              <Tap
                 style={styles.primaryBtn}
                 onPress={() => runAction(() => api.startJob(job.id))}
                 activeOpacity={0.85}
                 disabled={busy}
               >
                 <Text style={styles.primaryBtnText}>{busy ? 'Starting…' : 'Start Job'}</Text>
-              </TouchableOpacity>
+              </Tap>
             )}
 
             {isWorking && (
@@ -360,10 +360,10 @@ export default function SPJobDetailScreen({ jobId, onBack, onNavigate }: SPJobDe
             )}
             {isAssignedToMe && dispute?.status === 'open' && <Text style={styles.lockedBtnText}>{dispute.cancellation_state === 'pending' ? 'Cancellation awaiting your response' : dispute.escrow_transactions?.status === 'disputed' ? 'Payment under admin review' : 'Complaint awaiting admin review'}</Text>}
             {isAssignedToMe && (isCancelled || isConfirmed || isWorking || (isDone && withinWarranty) || dispute) && (
-              <TouchableOpacity style={styles.primaryBtn}
+              <Tap style={styles.primaryBtn}
                 onPress={() => onNavigate(dispute ? 'Dispute Status' : 'Dispute Filing', job.id)}>
                 <Text style={styles.primaryBtnText}>{dispute ? 'View Dispute Status' : 'File a Complaint'}</Text>
-              </TouchableOpacity>
+              </Tap>
             )}
             {isDone && job.warranty_expires_at && (
               <Text style={styles.lockedBtnText}>Warranty ends {new Date(job.warranty_expires_at).toLocaleString()}.</Text>
@@ -387,15 +387,15 @@ export default function SPJobDetailScreen({ jobId, onBack, onNavigate }: SPJobDe
               </View>
             )}
             {!isAssignedToMe && !myApplication && canApply && !isVerified && (
-              <TouchableOpacity style={styles.primaryBtn} onPress={() => onNavigate('Verification')} activeOpacity={0.85}>
+              <Tap style={styles.primaryBtn} onPress={() => onNavigate('Verification')} activeOpacity={0.85}>
                 <View style={styles.primaryBtnContent}>
                   <ShieldCheck size={18} color={C.onPrimary} />
                   <Text style={styles.primaryBtnText}>Verify to Apply</Text>
                 </View>
-              </TouchableOpacity>
+              </Tap>
             )}
             {!isAssignedToMe && !myApplication && canApply && isVerified && (
-              <TouchableOpacity
+              <Tap
                 style={styles.primaryBtn}
                 onPress={() => {
                   setActionError(null);
@@ -406,7 +406,7 @@ export default function SPJobDetailScreen({ jobId, onBack, onNavigate }: SPJobDe
                 testID="btn-submit-proposal"
               >
                 <Text style={styles.primaryBtnText}>Submit Proposal</Text>
-              </TouchableOpacity>
+              </Tap>
             )}
             {!isAssignedToMe && !myApplication && !canApply && (
               <View style={styles.lockedBtn}>
@@ -415,23 +415,23 @@ export default function SPJobDetailScreen({ jobId, onBack, onNavigate }: SPJobDe
             )}
 
             {isAssignedToMe && (
-              <TouchableOpacity style={styles.outlineBtn} onPress={() => onNavigate('Chat', job.id)} activeOpacity={0.85}>
+              <Tap style={styles.outlineBtn} onPress={() => onNavigate('Chat', job.id)} activeOpacity={0.85}>
                 <View style={styles.primaryBtnContent}>
                   <MessageCircle size={17} color={C.ink700} />
                   <Text style={styles.outlineBtnText}>Message Client</Text>
                 </View>
-              </TouchableOpacity>
+              </Tap>
             )}
 
             {isConfirmed && (
-              <TouchableOpacity
+              <Tap
                 style={styles.outlineDangerBtn}
                 onPress={() => setDeclineOpen(true)}
                 activeOpacity={0.85}
                 disabled={busy}
               >
                 <Text style={styles.outlineDangerBtnText}>Decline Booking</Text>
-              </TouchableOpacity>
+              </Tap>
             )}
           </View>
 

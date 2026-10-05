@@ -7,9 +7,9 @@ import {
   Modal,
   StyleSheet,
   Text,
-  TouchableOpacity,
   View,
 } from 'react-native';
+import Tap from './ui/Tap';
 export default function PhotoViewer({
   photos,
   index,
@@ -34,16 +34,16 @@ export default function PhotoViewer({
     >
       {index !== null && <StatusBar style="light" />}
       <View style={[styles.screen, { paddingTop: insets.top + 12, paddingBottom: insets.bottom + 12 }]}>
-        <TouchableOpacity onPress={onClose} accessibilityLabel="Close photo">
+        <Tap onPress={onClose} accessibilityLabel="Close photo">
           <Text style={styles.action}>Close</Text>
-        </TouchableOpacity>
+        </Tap>
         {photo &&
           (failed ? (
             <View style={styles.center}>
               <Text style={styles.text}>Could not load this photo.</Text>
-              <TouchableOpacity onPress={() => setFailed(false)}>
+              <Tap onPress={() => setFailed(false)}>
                 <Text style={styles.action}>Retry photo</Text>
-              </TouchableOpacity>
+              </Tap>
             </View>
           ) : (
             <Image
@@ -57,18 +57,18 @@ export default function PhotoViewer({
         {!!photo?.caption && <Text style={styles.text}>{photo.caption}</Text>}
         {index !== null && (
           <View style={styles.controls}>
-            <TouchableOpacity
+            <Tap
               disabled={index === 0}
               onPress={() => onIndexChange(index - 1)}
             >
               <Text style={[styles.action, index === 0 && styles.disabled]}>
                 Previous photo
               </Text>
-            </TouchableOpacity>
+            </Tap>
             <Text style={styles.text}>
               {index + 1} / {photos.length}
             </Text>
-            <TouchableOpacity
+            <Tap
               disabled={index === photos.length - 1}
               onPress={() => onIndexChange(index + 1)}
             >
@@ -80,7 +80,7 @@ export default function PhotoViewer({
               >
                 Next photo
               </Text>
-            </TouchableOpacity>
+            </Tap>
           </View>
         )}
       </View>

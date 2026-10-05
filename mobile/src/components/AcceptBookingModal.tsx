@@ -9,9 +9,9 @@ import {
   Pressable,
   StyleSheet,
   Text,
-  TouchableOpacity,
   View,
 } from 'react-native';
+import Tap from './ui/Tap';
 import { MapPin } from 'lucide-react-native';
 import { V6Radii } from '../constants/theme';
 import { api, type GeocodedAddress } from '../lib/api';
@@ -122,10 +122,10 @@ export default function AcceptBookingModal({
             {!!shownError && <Text style={styles.error} accessibilityRole="alert">{shownError}</Text>}
 
             <View style={styles.actions}>
-              <TouchableOpacity style={styles.secondaryBtn} onPress={onCancel} disabled={working} activeOpacity={0.8} accessibilityRole="button">
+              <Tap style={styles.secondaryBtn} onPress={onCancel} disabled={working} activeOpacity={0.8} accessibilityRole="button">
                 <Text style={styles.secondaryText}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
+              </Tap>
+              <Tap
                 style={[styles.primaryBtn, working && styles.disabled]}
                 onPress={() => void confirm()}
                 disabled={working}
@@ -134,7 +134,7 @@ export default function AcceptBookingModal({
                 testID="accept-location-confirm"
               >
                 {working ? <ActivityIndicator color={C.onPrimary} /> : <Text style={styles.primaryText}>Accept booking</Text>}
-              </TouchableOpacity>
+              </Tap>
             </View>
           </Pressable>
         </Pressable>

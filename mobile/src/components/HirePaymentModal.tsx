@@ -26,9 +26,9 @@ import {
   Pressable,
   StyleSheet,
   Text,
-  TouchableOpacity,
   View,
 } from 'react-native';
+import Tap from './ui/Tap';
 import { CreditCard, Wallet } from 'lucide-react-native';
 import { V6Radii } from '../constants/theme';
 import { MAX_CARD_PHP, MIN_TOPUP_PHP } from '../lib/api';
@@ -82,7 +82,7 @@ export default function HirePaymentModal({
               : `This job has no budget, so nothing is held — ${providerName} is hired straight away.`}
           </Text>
 
-          <TouchableOpacity
+          <Tap
             style={[styles.option, (!walletCovers || locked) && styles.optionDisabled]}
             onPress={onPayWallet}
             disabled={!walletCovers || locked}
@@ -101,16 +101,16 @@ export default function HirePaymentModal({
               )}
             </View>
             {busy === 'wallet' && <ActivityIndicator color={V6Colors.link} />}
-          </TouchableOpacity>
+          </Tap>
 
           {hasBudget && available != null && !walletCovers && (
-            <TouchableOpacity onPress={onAddMoney} disabled={locked} activeOpacity={0.8} testID="hire-add-money">
+            <Tap onPress={onAddMoney} disabled={locked} activeOpacity={0.8} testID="hire-add-money">
               <Text style={styles.link}>Not enough in your wallet — add money →</Text>
-            </TouchableOpacity>
+            </Tap>
           )}
 
           {hasBudget && (
-            <TouchableOpacity
+            <Tap
               style={[styles.option, (!cardAllowed || locked) && styles.optionDisabled]}
               onPress={onPayCard}
               disabled={!cardAllowed || locked}
@@ -127,7 +127,7 @@ export default function HirePaymentModal({
                 </Text>
               </View>
               {busy === 'card' && <ActivityIndicator color={V6Colors.link} />}
-            </TouchableOpacity>
+            </Tap>
           )}
 
           {message && (
@@ -139,9 +139,9 @@ export default function HirePaymentModal({
             </Text>
           )}
 
-          <TouchableOpacity onPress={onClose} disabled={locked} activeOpacity={0.8} style={styles.cancel}>
+          <Tap onPress={onClose} disabled={locked} activeOpacity={0.8} style={styles.cancel}>
             <Text style={[styles.cancelText, locked && styles.optionDisabled]}>Cancel</Text>
-          </TouchableOpacity>
+          </Tap>
         </Pressable>
       </Pressable>
     </Modal>

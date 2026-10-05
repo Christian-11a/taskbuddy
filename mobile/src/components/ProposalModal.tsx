@@ -10,9 +10,9 @@ import {
   StyleSheet,
   Text,
   TextInput,
-  TouchableOpacity,
   View,
 } from 'react-native';
+import Tap from './ui/Tap';
 import { Send } from 'lucide-react-native';
 import { V6Radii } from '../constants/theme';
 
@@ -79,10 +79,10 @@ export default function ProposalModal({
             {!!error && <Text style={styles.error} accessibilityRole="alert">{error}</Text>}
 
             <View style={styles.actions}>
-              <TouchableOpacity style={styles.secondaryBtn} onPress={onCancel} disabled={busy} activeOpacity={0.8} accessibilityRole="button">
+              <Tap style={styles.secondaryBtn} onPress={onCancel} disabled={busy} activeOpacity={0.8} accessibilityRole="button">
                 <Text style={styles.secondaryText}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
+              </Tap>
+              <Tap
                 style={[styles.primaryBtn, busy && styles.disabled]}
                 onPress={() => onSubmit(message.trim())}
                 disabled={busy}
@@ -98,7 +98,7 @@ export default function ProposalModal({
                     <Text style={styles.primaryText}>Send proposal</Text>
                   </View>
                 )}
-              </TouchableOpacity>
+              </Tap>
             </View>
           </Pressable>
         </Pressable>

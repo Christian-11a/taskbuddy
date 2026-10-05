@@ -23,9 +23,9 @@ import {
   ScrollView,
   StyleSheet,
   Text,
-  TouchableOpacity,
   View,
 } from 'react-native';
+import Tap from '../../../src/components/ui/Tap';
 import { ArrowLeft, Check, ChevronDown } from 'lucide-react-native';
 import { V6Radii, V6Shadows } from '../../../src/constants/theme';
 import TermsAndConditions from './TermsAndConditions';
@@ -64,14 +64,14 @@ function ConsentCheckbox({ checked, onPress, label, error, testID }: ConsentChec
   return (
     <View style={styles.consentItem}>
       <View style={styles.consentRow}>
-        <TouchableOpacity
+        <Tap
           testID={testID}
           style={[styles.checkbox, checked && styles.checkboxChecked]}
           onPress={onPress}
           activeOpacity={0.7}
         >
           {checked ? <Check size={14} color={C.onPrimary} /> : null}
-        </TouchableOpacity>
+        </Tap>
         <Text style={styles.consentText}>{label}</Text>
       </View>
       {!!error && <Text style={styles.fieldError}>{error}</Text>}
@@ -173,9 +173,9 @@ export default function GoogleSPDetailsScreen({
         >
           {/* Back button */}
           <View style={styles.topRow}>
-            <TouchableOpacity style={styles.backBtn} onPress={onBack} activeOpacity={0.8}>
+            <Tap style={styles.backBtn} onPress={onBack} activeOpacity={0.8}>
               <ArrowLeft size={22} color={C.onPrimary} />
-            </TouchableOpacity>
+            </Tap>
           </View>
 
           {/* Form card */}
@@ -188,7 +188,7 @@ export default function GoogleSPDetailsScreen({
             {/* Skill category */}
             <View style={styles.fieldGroup}>
               <Text style={styles.fieldLabel}>Skill Category<Text style={styles.asterisk}> *</Text></Text>
-              <TouchableOpacity
+              <Tap
                 style={[
                   styles.picker,
                   fieldErrors.category ? styles.pickerError : undefined,
@@ -204,11 +204,11 @@ export default function GoogleSPDetailsScreen({
                   color={C.muted}
                   style={{ transform: [{ rotate: categoryOpen ? '180deg' : '0deg' }] }}
                 />
-              </TouchableOpacity>
+              </Tap>
               {categoryOpen && (
                 <View style={styles.dropdown}>
                   {SKILL_CATEGORIES.map((cat) => (
-                    <TouchableOpacity
+                    <Tap
                       key={cat.id}
                       style={[
                         styles.dropdownOption,
@@ -230,7 +230,7 @@ export default function GoogleSPDetailsScreen({
                         {cat.name}
                       </Text>
                       {cat.id === categoryId && <Check size={15} color={V6Colors.link} />}
-                    </TouchableOpacity>
+                    </Tap>
                   ))}
                 </View>
               )}
@@ -302,7 +302,7 @@ export default function GoogleSPDetailsScreen({
 
             {!!error && <Text style={styles.errorBanner}>{error}</Text>}
 
-            <TouchableOpacity
+            <Tap
               style={[styles.primaryBtn, submitting && styles.primaryBtnDisabled]}
               onPress={handleSubmit}
               activeOpacity={0.85}
@@ -313,7 +313,7 @@ export default function GoogleSPDetailsScreen({
               ) : (
                 <Text style={styles.primaryBtnText}>Complete Registration</Text>
               )}
-            </TouchableOpacity>
+            </Tap>
           </View>
         </ScrollView>
       </KeyboardAvoidingView>

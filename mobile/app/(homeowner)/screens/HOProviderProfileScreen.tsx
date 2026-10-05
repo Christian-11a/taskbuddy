@@ -26,9 +26,9 @@ import {
   ScrollView,
   StyleSheet,
   Text,
-  TouchableOpacity,
   View,
 } from 'react-native';
+import Tap from '../../../src/components/ui/Tap';
 import { ArrowLeft, BadgeCheck, CheckCircle2, MessageCircle, ShieldAlert, Star } from 'lucide-react-native';
 import { Spacing } from '../../../src/constants/theme';
 import { useHeaderTop } from '../../../src/hooks/useHeaderTop';
@@ -75,9 +75,9 @@ export default function HOProviderProfileScreen({
       {/* Header — matches .topbar (flat white) */}
       <View style={[styles.header, { paddingTop: headerTop }]}>
         {onBack && (
-          <TouchableOpacity style={styles.backBtn} onPress={onBack} activeOpacity={0.8}>
+          <Tap style={styles.backBtn} onPress={onBack} activeOpacity={0.8}>
             <ArrowLeft size={20} color={C.ink700} />
-          </TouchableOpacity>
+          </Tap>
         )}
         <Text style={styles.headerTitle}>Provider Profile</Text>
       </View>
@@ -124,7 +124,7 @@ export default function HOProviderProfileScreen({
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Portfolio</Text>
             {portfolio.loading && <ActivityIndicator color={V6Colors.link}/>}
-            {!!portfolio.error && <><Text style={styles.bio}>{portfolio.error}</Text><TouchableOpacity onPress={portfolio.reload}><Text style={styles.serviceText}>Retry portfolio</Text></TouchableOpacity></>}
+            {!!portfolio.error && <><Text style={styles.bio}>{portfolio.error}</Text><Tap onPress={portfolio.reload}><Text style={styles.serviceText}>Retry portfolio</Text></Tap></>}
             {!portfolio.loading && !portfolio.error && <PortfolioGallery entries={portfolio.data??[]}/>}
           </View>
           {/* Recent work */}
@@ -173,14 +173,14 @@ export default function HOProviderProfileScreen({
 
           {jobId && onNavigate && (
             <View style={styles.actionBar}>
-              <TouchableOpacity
+              <Tap
                 style={styles.messageBtn}
                 onPress={() => onNavigate('Chat', jobId)}
                 activeOpacity={0.85}
               >
                 <MessageCircle size={18} color={C.onPrimary} />
                 <Text style={styles.messageBtnText}>Message</Text>
-              </TouchableOpacity>
+              </Tap>
             </View>
           )}
 

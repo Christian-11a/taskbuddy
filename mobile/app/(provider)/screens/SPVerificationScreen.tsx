@@ -36,9 +36,9 @@ import {
   ScrollView,
   StyleSheet,
   Text,
-  TouchableOpacity,
   View,
 } from 'react-native';
+import Tap from '../../../src/components/ui/Tap';
 import * as ImagePicker from 'expo-image-picker';
 import * as WebBrowser from 'expo-web-browser';
 import {
@@ -262,9 +262,9 @@ export default function SPVerificationScreen({ onBack, onVerified }: SPVerificat
                 ? 'The automated check is running — this usually takes a couple of minutes. You can leave this screen; we’ll notify you when it finishes.'
                 : 'A TaskBuddy admin is reviewing your documents. We’ll notify you when it’s done.'}
             </Text>
-            <TouchableOpacity onPress={reload} activeOpacity={0.8}>
+            <Tap onPress={reload} activeOpacity={0.8}>
               <Text style={styles.statusAction}>Check again</Text>
-            </TouchableOpacity>
+            </Tap>
           </View>
         </View>
       );
@@ -297,7 +297,7 @@ export default function SPVerificationScreen({ onBack, onVerified }: SPVerificat
       }
     };
     return (
-      <TouchableOpacity
+      <Tap
         style={styles.submitButton}
         onPress={goToDashboard}
         disabled={continuing}
@@ -308,16 +308,16 @@ export default function SPVerificationScreen({ onBack, onVerified }: SPVerificat
         ) : (
           <Text style={styles.submitText}>Go to Dashboard</Text>
         )}
-      </TouchableOpacity>
+      </Tap>
     );
   };
 
   return (
     <View style={styles.screen}>
       <View style={[styles.header, { paddingTop: headerTop }]}>
-        <TouchableOpacity style={styles.backButton} onPress={onBack} activeOpacity={0.8}>
+        <Tap style={styles.backButton} onPress={onBack} activeOpacity={0.8}>
           <ArrowLeft size={20} color={Colors.ink700} />
-        </TouchableOpacity>
+        </Tap>
         <Text style={styles.headerTitle}>Get Verified</Text>
         <View style={{ width: 38 }} />
       </View>
@@ -371,7 +371,7 @@ export default function SPVerificationScreen({ onBack, onVerified }: SPVerificat
                       {DOCUMENT_TYPES.map((doc) => {
                         const selected = documentType === doc.value;
                         return (
-                          <TouchableOpacity
+                          <Tap
                             key={doc.value}
                             style={[styles.docTypeChip, selected && styles.docTypeChipOn]}
                             onPress={() => setDocumentType(doc.value)}
@@ -381,11 +381,11 @@ export default function SPVerificationScreen({ onBack, onVerified }: SPVerificat
                             testID={`verify-doc-${doc.value}`}
                           >
                             <Text style={[styles.docTypeText, selected && styles.docTypeTextOn]}>{doc.label}</Text>
-                          </TouchableOpacity>
+                          </Tap>
                         );
                       })}
                     </View>
-                    <TouchableOpacity
+                    <Tap
                       style={styles.dropzone}
                       onPress={() => void pick('id')}
                       activeOpacity={0.8}
@@ -399,16 +399,16 @@ export default function SPVerificationScreen({ onBack, onVerified }: SPVerificat
                           <Text style={styles.dropzoneSubtext}>Max 5 MB · JPG, PNG</Text>
                         </>
                       )}
-                    </TouchableOpacity>
+                    </Tap>
                     {!!idAsset && (
-                      <TouchableOpacity
+                      <Tap
                         style={styles.galleryBtn}
                         onPress={() => void pick('id')}
                         activeOpacity={0.8}
                       >
                         <ImageIcon size={18} color={Colors.muted} />
                         <Text style={styles.galleryBtnText}>Choose a different photo</Text>
-                      </TouchableOpacity>
+                      </Tap>
                     )}
                   </View>
                 )}
@@ -421,7 +421,7 @@ export default function SPVerificationScreen({ onBack, onVerified }: SPVerificat
                       Take a selfie holding the same ID. Good light, no hat or sunglasses
                       — this is matched against the ID photo.
                     </Text>
-                    <TouchableOpacity
+                    <Tap
                       style={[styles.dropzone, styles.selfieDropzonePrimary]}
                       onPress={() => void takeSelfie()}
                       activeOpacity={0.8}
@@ -434,8 +434,8 @@ export default function SPVerificationScreen({ onBack, onVerified }: SPVerificat
                           <Text style={styles.dropzoneText}>Take a selfie</Text>
                         </>
                       )}
-                    </TouchableOpacity>
-                    <TouchableOpacity
+                    </Tap>
+                    <Tap
                       style={styles.galleryBtn}
                       onPress={() => (selfieAsset ? void takeSelfie() : void pick('selfie'))}
                       activeOpacity={0.8}
@@ -444,7 +444,7 @@ export default function SPVerificationScreen({ onBack, onVerified }: SPVerificat
                       <Text style={styles.galleryBtnText}>
                         {selfieAsset ? 'Retake' : 'Choose from gallery'}
                       </Text>
-                    </TouchableOpacity>
+                    </Tap>
                   </View>
                 )}
 
@@ -487,16 +487,16 @@ export default function SPVerificationScreen({ onBack, onVerified }: SPVerificat
 
                 <View style={styles.wizardActions}>
                   {step > 1 && (
-                    <TouchableOpacity
+                    <Tap
                       style={styles.backStepBtn}
                       onPress={() => setStep((s) => s - 1)}
                       activeOpacity={0.85}
                       disabled={submitting}
                     >
                       <Text style={styles.backStepText}>Back</Text>
-                    </TouchableOpacity>
+                    </Tap>
                   )}
-                  <TouchableOpacity
+                  <Tap
                     style={[
                       styles.submitButton,
                       styles.wizardPrimary,
@@ -514,7 +514,7 @@ export default function SPVerificationScreen({ onBack, onVerified }: SPVerificat
                         {step === 3 ? 'Start Verification' : 'Next'}
                       </Text>
                     )}
-                  </TouchableOpacity>
+                  </Tap>
                 </View>
 
                 {isRejected && step === 1 && (

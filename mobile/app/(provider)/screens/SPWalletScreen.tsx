@@ -17,8 +17,8 @@
 
 import { useThemedStyles, type Palette as ThemePalette } from '../../../src/context/ThemeContext';
 import React, { useState } from 'react';
-import { ActivityIndicator, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
+import { ActivityIndicator, ScrollView, StyleSheet, Text, View } from 'react-native';
+import Tap from '../../../src/components/ui/Tap';
 import { Banknote, Building2, Sparkles, WalletCards } from 'lucide-react-native';
 import { Spacing, V6Radii, V6Shadows } from '../../../src/constants/theme';
 import { useHeaderTop } from '../../../src/hooks/useHeaderTop';
@@ -67,12 +67,7 @@ export default function SPWalletScreen() {
 
       <ScrollView style={styles.body} contentContainerStyle={styles.bodyContent} showsVerticalScrollIndicator={false}>
         {/* wallet-hero: linear-gradient(145deg,#111827,#0c4a6e) */}
-        <LinearGradient
-          colors={['#111827', '#0c4a6e']}
-          start={{ x: 0.15, y: 0 }}
-          end={{ x: 0.85, y: 1 }}
-          style={styles.heroCard}
-        >
+        <View style={[styles.heroCard, { backgroundColor: C.providerHero }]}>
           <Text style={styles.balanceLabel}>Available to withdraw</Text>
           <Text style={styles.balanceAmount}>{data ? peso(data.available) : '—'}</Text>
           {!!data && data.pending_withdrawals > 0 && (
@@ -80,7 +75,7 @@ export default function SPWalletScreen() {
               {peso(data.pending_withdrawals)} awaiting withdrawal · {peso(data.balance)} total
             </Text>
           )}
-          <TouchableOpacity
+          <Tap
             style={[styles.withdrawBtn, !canWithdraw && styles.withdrawBtnDisabled]}
             // Kept tappable when empty so the tap explains itself.
             onPress={() => {
@@ -96,8 +91,8 @@ export default function SPWalletScreen() {
           >
             <Banknote size={18} color={C.onPrimary} />
             <Text style={styles.withdrawBtnText}>Withdraw</Text>
-          </TouchableOpacity>
-        </LinearGradient>
+          </Tap>
+        </View>
 
         {pendingWithdrawals.length > 0 && (
           <View style={styles.pendingCard}>
@@ -110,7 +105,7 @@ export default function SPWalletScreen() {
                     Requested {shortDate(w.created_at)} · Pending
                   </Text>
                 </View>
-                <TouchableOpacity
+                <Tap
                   onPress={() => cancelWithdrawal(w.id)}
                   disabled={cancelling === w.id}
                   activeOpacity={0.7}
@@ -120,7 +115,7 @@ export default function SPWalletScreen() {
                   <Text style={styles.pendingCancel}>
                     {cancelling === w.id ? 'Cancelling…' : 'Cancel'}
                   </Text>
-                </TouchableOpacity>
+                </Tap>
               </View>
             ))}
           </View>

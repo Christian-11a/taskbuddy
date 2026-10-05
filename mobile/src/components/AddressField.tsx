@@ -29,9 +29,9 @@ import {
   StyleSheet,
   Text,
   TextInput,
-  TouchableOpacity,
   View,
 } from 'react-native';
+import Tap from './ui/Tap';
 import * as Location from 'expo-location';
 import { LocateFixed, MapPin } from 'lucide-react-native';
 
@@ -238,7 +238,7 @@ export default function AddressField({
         multiline
       />
 
-      <TouchableOpacity
+      <Tap
         style={[styles.locateBtn, actionVariant === 'primary' && styles.locateBtnPrimary]}
         onPress={() => void useCurrentLocation()}
         disabled={locating}
@@ -258,12 +258,12 @@ export default function AddressField({
         <Text style={[styles.locateText, actionVariant === 'primary' && styles.locateTextPrimary]}>
           {locating ? 'Finding your address…' : 'Use my current location'}
         </Text>
-      </TouchableOpacity>
+      </Tap>
 
       {open && (
         <View style={styles.dropdown} testID="address-suggestions">
           {suggestions.map((suggestion, index) => (
-            <TouchableOpacity
+            <Tap
               key={`${suggestion.latitude},${suggestion.longitude},${index}`}
               style={[styles.row, index > 0 && styles.rowDivider]}
               onPress={() => pick(suggestion)}
@@ -276,7 +276,7 @@ export default function AddressField({
               <Text style={styles.rowText} numberOfLines={2}>
                 {suggestion.formatted_address}
               </Text>
-            </TouchableOpacity>
+            </Tap>
           ))}
         </View>
       )}

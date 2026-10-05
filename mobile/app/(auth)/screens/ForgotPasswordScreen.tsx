@@ -28,9 +28,9 @@ import {
   StyleSheet,
   Text,
   TextInput,
-  TouchableOpacity,
   View,
 } from 'react-native';
+import Tap from '../../../src/components/ui/Tap';
 import { AlertCircle, ArrowLeft, CheckCircle2, Circle, KeyRound, MailCheck } from 'lucide-react-native';
 import PasswordInput from '../../../src/components/PasswordInput';
 import { V6Radii, V6Shadows } from '../../../src/constants/theme';
@@ -135,9 +135,9 @@ export default function ForgotPasswordScreen({ onBackToLogin }: ForgotPasswordSc
       automaticallyAdjustKeyboardInsets={Platform.OS === 'ios'}
     >
       <View style={styles.topSection}>
-        <TouchableOpacity style={styles.backButton} onPress={onBackToLogin} activeOpacity={0.8} accessibilityLabel="Return to sign in">
+        <Tap style={styles.backButton} onPress={onBackToLogin} activeOpacity={0.8} accessibilityLabel="Return to sign in">
           <ArrowLeft size={21} color={C.ink700} />
-        </TouchableOpacity>
+        </Tap>
         <View style={styles.steps} accessibilityLabel={`Step ${stepIndex + 1} of 2`}>
           {[0, 1].map((i) => (
             <View key={i} style={[styles.stepBar, i <= stepIndex && styles.stepBarActive]} />
@@ -183,7 +183,7 @@ export default function ForgotPasswordScreen({ onBackToLogin }: ForgotPasswordSc
 
             {!!error && <ErrorCard text={error} />}
 
-            <TouchableOpacity
+            <Tap
               style={[styles.primaryButton, busy && styles.primaryButtonDisabled]}
               activeOpacity={0.85}
               onPress={() => void sendCode()}
@@ -192,7 +192,7 @@ export default function ForgotPasswordScreen({ onBackToLogin }: ForgotPasswordSc
               {busy
                 ? <ActivityIndicator color={C.onPrimary} />
                 : <Text style={styles.primaryButtonText}>Send reset code</Text>}
-            </TouchableOpacity>
+            </Tap>
           </>
         ) : (
           <>
@@ -223,11 +223,11 @@ export default function ForgotPasswordScreen({ onBackToLogin }: ForgotPasswordSc
             </View>
             <View style={styles.resendRow}>
               <Text style={styles.resendHint}>Didn't get it?</Text>
-              <TouchableOpacity onPress={() => void sendCode(true)} disabled={busy || cooldown > 0} hitSlop={8}>
+              <Tap onPress={() => void sendCode(true)} disabled={busy || cooldown > 0} hitSlop={8}>
                 <Text style={[styles.resendLink, (busy || cooldown > 0) && styles.resendLinkDisabled]}>
                   {cooldown > 0 ? `Resend in ${cooldown}s` : 'Resend code'}
                 </Text>
-              </TouchableOpacity>
+              </Tap>
             </View>
 
             <Text style={styles.inputLabel}>New password</Text>
@@ -274,7 +274,7 @@ export default function ForgotPasswordScreen({ onBackToLogin }: ForgotPasswordSc
             {!!notice && <Text style={styles.noticeText}>{notice}</Text>}
             {!!error && <ErrorCard text={error} />}
 
-            <TouchableOpacity
+            <Tap
               style={[styles.primaryButton, busy && styles.primaryButtonDisabled]}
               activeOpacity={0.85}
               onPress={() => void submitReset()}
@@ -283,25 +283,25 @@ export default function ForgotPasswordScreen({ onBackToLogin }: ForgotPasswordSc
               {busy
                 ? <ActivityIndicator color={C.onPrimary} />
                 : <Text style={styles.primaryButtonText}>Reset password</Text>}
-            </TouchableOpacity>
+            </Tap>
 
-            <TouchableOpacity
+            <Tap
               style={styles.secondaryLink}
               activeOpacity={0.7}
               onPress={() => { setStage('email'); setError(null); setNotice(null); setCode(''); }}
               disabled={busy}
             >
               <Text style={styles.secondaryLinkText}>Use a different email</Text>
-            </TouchableOpacity>
+            </Tap>
           </>
         )}
       </View>
 
       <View style={styles.footerRow}>
         <Text style={styles.footerText}>Remembered it? </Text>
-        <TouchableOpacity onPress={onBackToLogin} hitSlop={8}>
+        <Tap onPress={onBackToLogin} hitSlop={8}>
           <Text style={styles.footerLink}>Back to sign in</Text>
-        </TouchableOpacity>
+        </Tap>
       </View>
     </ScrollView>
   );

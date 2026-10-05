@@ -10,9 +10,9 @@ import {
   StyleSheet,
   Text,
   TextInput,
-  TouchableOpacity,
   View,
 } from 'react-native';
+import Tap from './ui/Tap';
 import { CheckCircle2, Circle, KeyRound, ShieldCheck } from 'lucide-react-native';
 import { V6Radii } from '../constants/theme';
 import { api } from '../lib/api';
@@ -92,9 +92,9 @@ export default function ChangePasswordModal({ visible, onClose }: ChangePassword
                 </View>
                 <Text style={styles.title} accessibilityRole="header">Password updated</Text>
                 <Text style={styles.subtitle}>Use your new password the next time you sign in.</Text>
-                <TouchableOpacity style={[styles.primaryBtn, styles.fullWidth]} onPress={close} activeOpacity={0.85} accessibilityRole="button">
+                <Tap style={[styles.primaryBtn, styles.fullWidth]} onPress={close} activeOpacity={0.85} accessibilityRole="button">
                   <Text style={styles.primaryText}>Done</Text>
-                </TouchableOpacity>
+                </Tap>
               </View>
             ) : (
               <>
@@ -163,10 +163,10 @@ export default function ChangePasswordModal({ visible, onClose }: ChangePassword
                 {!!error && <Text style={styles.error} accessibilityRole="alert">{error}</Text>}
 
                 <View style={styles.actions}>
-                  <TouchableOpacity style={styles.secondaryBtn} onPress={close} disabled={saving} activeOpacity={0.8} accessibilityRole="button">
+                  <Tap style={styles.secondaryBtn} onPress={close} disabled={saving} activeOpacity={0.8} accessibilityRole="button">
                     <Text style={styles.secondaryText}>Cancel</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
+                  </Tap>
+                  <Tap
                     style={[styles.primaryBtn, !canSave && styles.disabled]}
                     onPress={handleSave}
                     disabled={!canSave}
@@ -176,7 +176,7 @@ export default function ChangePasswordModal({ visible, onClose }: ChangePassword
                     testID="btn-update-password"
                   >
                     {saving ? <ActivityIndicator color={C.onPrimary} /> : <Text style={styles.primaryText}>Update password</Text>}
-                  </TouchableOpacity>
+                  </Tap>
                 </View>
               </>
             )}

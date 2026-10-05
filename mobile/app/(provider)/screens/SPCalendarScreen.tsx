@@ -16,7 +16,8 @@
 
 import { useThemedStyles, type Palette as ThemePalette } from '../../../src/context/ThemeContext';
 import React, { useMemo, useState } from 'react';
-import { ActivityIndicator, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, ScrollView, StyleSheet, Text, View } from 'react-native';
+import Tap from '../../../src/components/ui/Tap';
 import { Calendar } from 'react-native-calendars';
 import { CalendarDays, UserRound } from 'lucide-react-native';
 import { Spacing, V6Radii, V6Shadows } from '../../../src/constants/theme';
@@ -113,9 +114,9 @@ export default function SPCalendarScreen({ onNavigate }: SPCalendarScreenProps) 
             <CalendarDays size={30} color={C.ink300} />
             <Text style={styles.emptyTitle}>Couldn't load your schedule</Text>
             <Text style={styles.emptyText}>{error}</Text>
-            <TouchableOpacity onPress={reload} activeOpacity={0.8}>
+            <Tap onPress={reload} activeOpacity={0.8}>
               <Text style={styles.retryLink}>Retry</Text>
-            </TouchableOpacity>
+            </Tap>
           </View>
         )}
 
@@ -129,7 +130,7 @@ export default function SPCalendarScreen({ onNavigate }: SPCalendarScreenProps) 
 
         {!loading && !error && daySchedule.map((booking) => {
           return (
-            <TouchableOpacity
+            <Tap
               key={booking.id}
               style={styles.scheduleCard}
               onPress={() => onNavigate?.('Job Detail', booking.job_id)}
@@ -148,7 +149,7 @@ export default function SPCalendarScreen({ onNavigate }: SPCalendarScreenProps) 
                   {booking.status === 'scheduled' ? 'Scheduled' : booking.status === 'completed' ? 'Completed' : 'Cancelled'}
                 </Text>
               </View>
-            </TouchableOpacity>
+            </Tap>
           );
         })}
 

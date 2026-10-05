@@ -7,9 +7,9 @@ import {
   StyleSheet,
   Text,
   TextInput,
-  TouchableOpacity,
   View,
 } from 'react-native';
+import Tap from '../../../src/components/ui/Tap';
 import * as ImagePicker from 'expo-image-picker';
 import { api, type PortfolioEntry } from '../../../src/lib/api';
 import { useAsyncData } from '../../../src/hooks/useAsyncData';
@@ -115,9 +115,9 @@ export default function SPPortfolioScreen({ onBack }: { onBack: () => void }) {
   };
   return (
     <View style={[styles.screen, { paddingTop: useHeaderTop() }]}>
-      <TouchableOpacity onPress={onBack}>
+      <Tap onPress={onBack}>
         <Text style={styles.action}>Back</Text>
-      </TouchableOpacity>
+      </Tap>
       <ScrollView
         contentContainerStyle={{ padding: 20 }}
         keyboardShouldPersistTaps="handled"
@@ -131,9 +131,9 @@ export default function SPPortfolioScreen({ onBack }: { onBack: () => void }) {
         {(editing || (portfolio.data?.length ?? 0) < 20) && (
           <View style={styles.form}>
             {!editing && (
-              <TouchableOpacity disabled={busy} onPress={() => void choose()}>
+              <Tap disabled={busy} onPress={() => void choose()}>
                 <Text style={styles.action}>Choose portfolio photo</Text>
-              </TouchableOpacity>
+              </Tap>
             )}
             {(uri || editing) && (
               <Image
@@ -166,7 +166,7 @@ export default function SPPortfolioScreen({ onBack }: { onBack: () => void }) {
               { id: null, name: 'No service category' },
               ...(categories.data ?? []),
             ].map((item) => (
-              <TouchableOpacity
+              <Tap
                 disabled={busy}
                 key={item.id ?? 'none'}
                 accessibilityRole="radio"
@@ -177,12 +177,12 @@ export default function SPPortfolioScreen({ onBack }: { onBack: () => void }) {
                   {category === item.id ? '✓ ' : ''}
                   {item.name}
                 </Text>
-              </TouchableOpacity>
+              </Tap>
             ))}
             {!!categories.error && (
               <Text style={styles.text}>{categories.error}</Text>
             )}
-            <TouchableOpacity
+            <Tap
               disabled={busy || portfolio.loading}
               onPress={() => void save()}
             >
@@ -193,11 +193,11 @@ export default function SPPortfolioScreen({ onBack }: { onBack: () => void }) {
                     ? 'Save photo details'
                     : 'Publish photo'}
               </Text>
-            </TouchableOpacity>
+            </Tap>
             {editing && (
-              <TouchableOpacity disabled={busy} onPress={reset}>
+              <Tap disabled={busy} onPress={reset}>
                 <Text style={styles.action}>Cancel edit</Text>
-              </TouchableOpacity>
+              </Tap>
             )}
           </View>
         )}
@@ -210,9 +210,9 @@ export default function SPPortfolioScreen({ onBack }: { onBack: () => void }) {
         {!!portfolio.error && (
           <View>
             <Text style={styles.text}>{portfolio.error}</Text>
-            <TouchableOpacity onPress={portfolio.reload}>
+            <Tap onPress={portfolio.reload}>
               <Text style={styles.action}>Retry portfolio</Text>
-            </TouchableOpacity>
+            </Tap>
           </View>
         )}
         {!portfolio.loading && !portfolio.error && (

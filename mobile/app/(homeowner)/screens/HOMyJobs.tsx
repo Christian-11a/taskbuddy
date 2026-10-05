@@ -22,9 +22,9 @@ import {
   ScrollView,
   StyleSheet,
   Text,
-  TouchableOpacity,
   View,
 } from 'react-native';
+import Tap from '../../../src/components/ui/Tap';
 import { ClipboardList, Clock, Plus, User } from 'lucide-react-native';
 import { Spacing } from '../../../src/constants/theme';
 import { useHeaderTop } from '../../../src/hooks/useHeaderTop';
@@ -67,14 +67,14 @@ export default function MyJobs({ onNavigate }: MyJobsProps) {
       <View style={[styles.header, { paddingTop: headerTop }]}>
         <View style={styles.headerTopRow}>
           <Text style={styles.headerTitle}>My Jobs</Text>
-          <TouchableOpacity
+          <Tap
             style={styles.newBtn}
             onPress={() => onNavigate('Create Job')}
             activeOpacity={0.8}
           >
             <Plus size={15} color={V6Colors.link} strokeWidth={2.5} />
             <Text style={styles.newBtnText}>New</Text>
-          </TouchableOpacity>
+          </Tap>
         </View>
       </View>
 
@@ -88,7 +88,7 @@ export default function MyJobs({ onNavigate }: MyJobsProps) {
           contentContainerStyle={styles.tabsContent}
         >
           {FILTER_TABS.map((tab) => (
-            <TouchableOpacity
+            <Tap
               key={tab}
               style={styles.jobTab}
               onPress={() => setActiveFilter(tab)}
@@ -98,7 +98,7 @@ export default function MyJobs({ onNavigate }: MyJobsProps) {
                 {tab}
               </Text>
               {activeFilter === tab && <View style={styles.jobTabUnderline} />}
-            </TouchableOpacity>
+            </Tap>
           ))}
         </ScrollView>
       </View>
@@ -107,16 +107,16 @@ export default function MyJobs({ onNavigate }: MyJobsProps) {
         <Text style={styles.categoryLabel}>Service category</Text>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.categoryChips}>
           {[{ id: null, name: 'All services' }, ...(categories.data ?? [])].map((category) => (
-            <TouchableOpacity key={category.id ?? 'all'} accessibilityRole="radio"
+            <Tap key={category.id ?? 'all'} accessibilityRole="radio"
               accessibilityState={{ selected: categoryId === category.id }}
               onPress={() => setCategoryId(category.id)}
               style={[styles.categoryChip, categoryId === category.id && styles.categoryChipActive]}>
               <Text style={[styles.categoryText, categoryId === category.id && styles.categoryTextActive]}>{category.name}</Text>
-            </TouchableOpacity>
+            </Tap>
           ))}
         </ScrollView>
         {!!categories.error && <Text style={styles.stateText}>{categories.error}</Text>}
-        {hasFilter && <TouchableOpacity onPress={() => { setActiveFilter('All'); setCategoryId(null); }}><Text style={styles.reset}>Clear filters</Text></TouchableOpacity>}
+        {hasFilter && <Tap onPress={() => { setActiveFilter('All'); setCategoryId(null); }}><Text style={styles.reset}>Clear filters</Text></Tap>}
       </View>
 
       {/* Job list */}
@@ -130,7 +130,7 @@ export default function MyJobs({ onNavigate }: MyJobsProps) {
         showsVerticalScrollIndicator={false}
       >
         {loading && <ScreenSkeleton variant="list" />}
-        {!!error && !loading && <View><Text style={styles.stateText}>{error}</Text><TouchableOpacity onPress={reload}><Text style={styles.reset}>Try again</Text></TouchableOpacity></View>}
+        {!!error && !loading && <View><Text style={styles.stateText}>{error}</Text><Tap onPress={reload}><Text style={styles.reset}>Try again</Text></Tap></View>}
 
         {!loading && !error && jobs.length === 0 && (
           <View style={styles.emptyState}>

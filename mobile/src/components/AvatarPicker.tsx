@@ -18,9 +18,9 @@ import {
   Image,
   StyleSheet,
   Text,
-  TouchableOpacity,
   View,
 } from 'react-native';
+import Tap from './ui/Tap';
 import * as ImagePicker from 'expo-image-picker';
 
 import { useAuth } from '../context/AuthContext';
@@ -73,11 +73,11 @@ export default function AvatarPicker({ name }: { name: string }) {
           <Text style={styles.avatarText}>{initials(name)}</Text>
         )}
       </View>
-      <TouchableOpacity activeOpacity={0.7} onPress={() => void changePhoto()} disabled={busy}>
+      <Tap activeOpacity={0.7} onPress={() => void changePhoto()} disabled={busy}>
         <Text style={styles.changePhotoLink}>
           {busy ? 'Uploading…' : 'Change Photo'}
         </Text>
-      </TouchableOpacity>
+      </Tap>
       {!!error && <Text style={styles.errorText}>{error}</Text>}
     </View>
   );

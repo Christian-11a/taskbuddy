@@ -49,7 +49,7 @@ export default function Tap({
         if (useScale) pressed.set(withTiming(1, { duration: DURATION.press, easing: EASE_OUT }));
         onPressOut?.(e);
       }}
-      style={[style, clip && styles.clip, useScale && animated]}
+      style={[flat, clip && styles.clip, useScale && animated]}
     >
       {children}
     </AnimatedPressable>

@@ -17,9 +17,9 @@ import {
   ScrollView,
   useWindowDimensions,
   Text,
-  TouchableOpacity,
   View,
 } from 'react-native';
+import Tap from '../../../src/components/ui/Tap';
 import { Home, Wrench } from 'lucide-react-native';
 import type { MobileRole } from '../../../src/lib/api';
 import { V6Radii } from '../../../src/constants/theme';
@@ -77,7 +77,7 @@ export default function GoogleRoleSelectionScreen({
         {/* Role cards */}
         <View style={[styles.cardsRow, (width < 480 || fontScale > 1.2) && { flexDirection: 'column' }]}>
           {/* Homeowner */}
-          <TouchableOpacity
+          <Tap
             style={[styles.card, styles.cardLeft]}
             onPress={handleHomeowner}
             disabled={loading}
@@ -97,10 +97,10 @@ export default function GoogleRoleSelectionScreen({
                 <Text style={[styles.cardBadgeText, styles.cardBadgeTextHO]}>I need help</Text>
               </View>
             )}
-          </TouchableOpacity>
+          </Tap>
 
           {/* Service Provider */}
-          <TouchableOpacity
+          <Tap
             style={[styles.card, styles.cardRight]}
             onPress={onSelectProvider}
             disabled={loading}
@@ -116,7 +116,7 @@ export default function GoogleRoleSelectionScreen({
             <View style={[styles.cardBadge, styles.cardBadgeSP]}>
               <Text style={[styles.cardBadgeText, styles.cardBadgeTextSP]}>I provide services</Text>
             </View>
-          </TouchableOpacity>
+          </Tap>
         </View>
 
         {!!error && <Text style={styles.errorText}>{error}</Text>}

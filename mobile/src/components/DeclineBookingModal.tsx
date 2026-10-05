@@ -23,9 +23,9 @@ import {
   StyleSheet,
   Text,
   TextInput,
-  TouchableOpacity,
   View,
 } from 'react-native';
+import Tap from './ui/Tap';
 import { X } from 'lucide-react-native';
 import { V6Radii } from '../constants/theme';
 
@@ -83,9 +83,9 @@ export default function DeclineBookingModal({
         >
           <View style={styles.headerRow}>
             <Text style={styles.title} accessibilityRole="header">Decline Booking</Text>
-            <TouchableOpacity onPress={onCancel} activeOpacity={0.8} accessibilityLabel="Close">
+            <Tap onPress={onCancel} activeOpacity={0.8} accessibilityLabel="Close">
               <X size={22} color={C.ink500} />
-            </TouchableOpacity>
+            </Tap>
           </View>
 
           <Text style={styles.message}>
@@ -97,7 +97,7 @@ export default function DeclineBookingModal({
 
           <View style={styles.quickRow}>
             {QUICK_REASONS.map((option) => (
-              <TouchableOpacity
+              <Tap
                 key={option}
                 style={[styles.quickChip, trimmed === option && styles.quickChipActive]}
                 onPress={() => setReason(option)}
@@ -108,7 +108,7 @@ export default function DeclineBookingModal({
                 >
                   {option}
                 </Text>
-              </TouchableOpacity>
+              </Tap>
             ))}
           </View>
 
@@ -131,15 +131,15 @@ export default function DeclineBookingModal({
           {!!error && <Text style={styles.error}>{error}</Text>}
 
           <View style={styles.actions}>
-            <TouchableOpacity
+            <Tap
               style={styles.cancelBtn}
               onPress={onCancel}
               activeOpacity={0.8}
               disabled={submitting}
             >
               <Text style={styles.cancelText}>Keep Booking</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
+            </Tap>
+            <Tap
               style={[styles.confirmBtn, !canSubmit && styles.confirmBtnDisabled]}
               onPress={() => onConfirm(trimmed)}
               activeOpacity={0.85}
@@ -150,7 +150,7 @@ export default function DeclineBookingModal({
               ) : (
                 <Text style={styles.confirmText}>Decline</Text>
               )}
-            </TouchableOpacity>
+            </Tap>
           </View>
         </Pressable>
       </Pressable>

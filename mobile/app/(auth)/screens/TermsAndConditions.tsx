@@ -6,10 +6,10 @@ import {
   ScrollView,
   StyleSheet,
   Text,
-  TouchableOpacity,
   View,
   useWindowDimensions,
 } from 'react-native';
+import Tap from '../../../src/components/ui/Tap';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { X } from 'lucide-react-native';
 import { V6Radii, V6Shadows } from '../../../src/constants/theme';
@@ -102,7 +102,7 @@ export default function TermsAndConditions({
         >
           <View style={styles.header}>
             <Text style={styles.title} accessibilityRole="header">{content.title}</Text>
-            <TouchableOpacity
+            <Tap
               onPress={onBack}
               style={styles.closeBtn}
               hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
@@ -110,7 +110,7 @@ export default function TermsAndConditions({
               accessibilityLabel="Close"
             >
               <X size={20} color={C.slate} />
-            </TouchableOpacity>
+            </Tap>
           </View>
 
           <ScrollView style={styles.body} contentContainerStyle={styles.bodyContent} showsVerticalScrollIndicator>
@@ -122,7 +122,7 @@ export default function TermsAndConditions({
             ))}
           </ScrollView>
 
-          <TouchableOpacity
+          <Tap
             style={styles.primaryBtn}
             onPress={() => {
               onAccept();
@@ -132,7 +132,7 @@ export default function TermsAndConditions({
             accessibilityRole="button"
           >
             <Text style={styles.primaryBtnText}>{content.acceptLabel}</Text>
-          </TouchableOpacity>
+          </Tap>
         </View>
       </View>
     </Modal>

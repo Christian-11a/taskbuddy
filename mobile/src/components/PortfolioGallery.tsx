@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { Image, Text, TouchableOpacity, View } from 'react-native';
+import { Image, Text, View } from 'react-native';
+import Tap from './ui/Tap';
 import type { PortfolioEntry } from '../lib/api';
 import PhotoViewer from './PhotoViewer';
 import { useTheme } from '../context/ThemeContext';
@@ -30,7 +31,7 @@ export default function PortfolioGallery({
       )}
       {entries.map((entry, index) => (
         <View key={entry.id} style={{ marginVertical: 10 }}>
-          <TouchableOpacity
+          <Tap
             accessibilityLabel={`View portfolio photo: ${entry.caption}`}
             onPress={() => setViewing(index)}
           >
@@ -40,7 +41,7 @@ export default function PortfolioGallery({
               resizeMode="cover"
               onError={() => setFailed((previous) => [...previous, entry.id])}
             />
-          </TouchableOpacity>
+          </Tap>
           {failed.includes(entry.id) && (
             <Text style={{ color: C.ink500 }}>
               Photo preview unavailable. Tap to open the full photo.
@@ -53,16 +54,16 @@ export default function PortfolioGallery({
             </Text>
           )}
           {onEdit && (
-            <TouchableOpacity disabled={busy} onPress={() => onEdit(entry)}>
+            <Tap disabled={busy} onPress={() => onEdit(entry)}>
               <Text style={{ color: C.link, padding: 8 }}>
                 Edit photo details
               </Text>
-            </TouchableOpacity>
+            </Tap>
           )}
           {onRemove && (
-            <TouchableOpacity disabled={busy} onPress={() => onRemove(entry)}>
+            <Tap disabled={busy} onPress={() => onRemove(entry)}>
               <Text style={{ color: C.ink700, padding: 8 }}>Remove photo</Text>
-            </TouchableOpacity>
+            </Tap>
           )}
         </View>
       ))}

@@ -15,9 +15,9 @@ import {
   ScrollView,
   StyleSheet,
   Text,
-  TouchableOpacity,
   View,
 } from 'react-native';
+import Tap from '../../../src/components/ui/Tap';
 import {
   AlertTriangle,
   ArrowLeft,
@@ -87,19 +87,19 @@ export default function SPNotificationsScreen({ onBack, onOpenJob, onOpenChat, o
     <View style={styles.screen}>
       {/* Header — matches .topbar (flat white, not a dark hero) */}
       <View style={[styles.header, { paddingTop: headerTop }]}>
-        <TouchableOpacity style={styles.backBtn} onPress={onBack} activeOpacity={0.8}>
+        <Tap style={styles.backBtn} onPress={onBack} activeOpacity={0.8}>
           <ArrowLeft size={20} color={C.ink700} />
-        </TouchableOpacity>
+        </Tap>
         <Text style={styles.headerTitle}>Notifications</Text>
         {unreadCount > 0 && (
-          <TouchableOpacity onPress={markAllRead} activeOpacity={0.8}>
+          <Tap onPress={markAllRead} activeOpacity={0.8}>
             <Text style={styles.markAllText}>Mark all read</Text>
-          </TouchableOpacity>
+          </Tap>
         )}
         {unreadCount === 0 && notifications.length > 0 && (
-          <TouchableOpacity onPress={() => setConfirmClear(true)} activeOpacity={0.8}>
+          <Tap onPress={() => setConfirmClear(true)} activeOpacity={0.8}>
             <Text style={styles.markAllText}>Clear all</Text>
-          </TouchableOpacity>
+          </Tap>
         )}
       </View>
 
@@ -148,7 +148,7 @@ export default function SPNotificationsScreen({ onBack, onOpenJob, onOpenChat, o
               const Icon = ICON_BY_TYPE[notif.type] ?? BriefcaseBusiness;
               const isUnread = !notif.read_at;
               return (
-                <TouchableOpacity
+                <Tap
                   key={notif.id}
                   style={[
                     styles.notifRow,
@@ -167,7 +167,7 @@ export default function SPNotificationsScreen({ onBack, onOpenJob, onOpenChat, o
                     <Text style={styles.notifTime}>{timeAgo(notif.created_at)}</Text>
                   </View>
                   {isUnread && <View style={styles.unreadDot} />}
-                  <TouchableOpacity
+                  <Tap
                     style={styles.deleteBtn}
                     onPress={() => setPendingDelete(notif)}
                     hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
@@ -175,8 +175,8 @@ export default function SPNotificationsScreen({ onBack, onOpenJob, onOpenChat, o
                     accessibilityLabel={`Delete notification: ${notif.title}`}
                   >
                     <Trash2 size={16} color={C.ink300} />
-                  </TouchableOpacity>
-                </TouchableOpacity>
+                  </Tap>
+                </Tap>
               );
             })}
           </View>

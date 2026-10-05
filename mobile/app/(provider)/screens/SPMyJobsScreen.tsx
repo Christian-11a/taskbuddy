@@ -24,9 +24,9 @@ import {
   ScrollView,
   StyleSheet,
   Text,
-  TouchableOpacity,
   View,
 } from 'react-native';
+import Tap from '../../../src/components/ui/Tap';
 import { Briefcase, CalendarDays, FileText } from 'lucide-react-native';
 import { Spacing } from '../../../src/constants/theme';
 import { useHeaderTop } from '../../../src/hooks/useHeaderTop';
@@ -105,10 +105,10 @@ export default function SPMyJobsScreen({ onNavigate }: SPMyJobsScreenProps) {
       {/* Filter tabs — matches .job-tabs (underline style) */}
       <View style={styles.tabsWrap}>
         {TABS.map((t) => (
-          <TouchableOpacity key={t} style={styles.jobTab} onPress={() => setTab(t)} activeOpacity={0.7}>
+          <Tap key={t} style={styles.jobTab} onPress={() => setTab(t)} activeOpacity={0.7}>
             <Text style={[styles.jobTabText, tab === t && styles.jobTabTextActive]}>{t}</Text>
             {tab === t && <View style={styles.jobTabUnderline} />}
-          </TouchableOpacity>
+          </Tap>
         ))}
       </View>
 
