@@ -1,0 +1,272 @@
+{
+  "captured_at": "2026-10-04T11:47:04.387118+08:00",
+  "scope": "Approved read-only inspection of existing linked Supabase/Render environment; no migration or release applied",
+  "database_preflight": {
+    "functions": [
+      {
+        "authenticated_can_execute": false,
+        "function_name": "admin_booking_status_counts",
+        "schema_name": "public"
+      },
+      {
+        "authenticated_can_execute": false,
+        "function_name": "admin_dashboard_counts",
+        "schema_name": "public"
+      },
+      {
+        "authenticated_can_execute": false,
+        "function_name": "admin_search_audit",
+        "schema_name": "public"
+      },
+      {
+        "authenticated_can_execute": false,
+        "function_name": "admin_search_wallet",
+        "schema_name": "public"
+      },
+      {
+        "authenticated_can_execute": true,
+        "function_name": "handle_application_accepted",
+        "schema_name": "public"
+      },
+      {
+        "authenticated_can_execute": false,
+        "function_name": "raise_job_dispute",
+        "schema_name": "public"
+      },
+      {
+        "authenticated_can_execute": false,
+        "function_name": "wallet_available_balance",
+        "schema_name": "public"
+      },
+      {
+        "authenticated_can_execute": false,
+        "function_name": "wallet_lock",
+        "schema_name": "public"
+      }
+    ],
+    "legacy_missing_references": {
+      "legacy_settlements_without_reference": 1
+    },
+    "migration_versions": [
+      "0001",
+      "0002",
+      "0003",
+      "0004",
+      "0005",
+      "0006",
+      "0007",
+      "0008",
+      "0009",
+      "0010",
+      "0011",
+      "0012",
+      "0013",
+      "0014",
+      "0015",
+      "0016",
+      "0017",
+      "0018",
+      "0019",
+      "0020",
+      "0021",
+      "0022",
+      "0023",
+      "0024",
+      "0037",
+      "0038",
+      "20260917160811",
+      "20260920220844",
+      "20260922160830"
+    ],
+    "missing_bookings": {
+      "active_jobs_without_booking": 0
+    },
+    "pending_withdrawals": {
+      "pending_withdrawal_count": 1,
+      "reserved_amount": 100
+    },
+    "portfolio_bucket": [],
+    "triggers": [
+      {
+        "table_name": "job_applications",
+        "tgenabled": "O",
+        "trigger_name": "trg_application_accepted"
+      },
+      {
+        "table_name": "job_applications",
+        "tgenabled": "O",
+        "trigger_name": "trg_application_approved_skill"
+      },
+      {
+        "table_name": "job_applications",
+        "tgenabled": "O",
+        "trigger_name": "trg_job_applications_updated_at"
+      },
+      {
+        "table_name": "jobs",
+        "tgenabled": "O",
+        "trigger_name": "trg_assignment_approved_skill"
+      },
+      {
+        "table_name": "jobs",
+        "tgenabled": "O",
+        "trigger_name": "trg_job_completion"
+      },
+      {
+        "table_name": "jobs",
+        "tgenabled": "O",
+        "trigger_name": "trg_jobs_log_created"
+      },
+      {
+        "table_name": "jobs",
+        "tgenabled": "O",
+        "trigger_name": "trg_jobs_log_status"
+      },
+      {
+        "table_name": "jobs",
+        "tgenabled": "O",
+        "trigger_name": "trg_jobs_set_deadline"
+      },
+      {
+        "table_name": "jobs",
+        "tgenabled": "O",
+        "trigger_name": "trg_jobs_terminal_state"
+      },
+      {
+        "table_name": "jobs",
+        "tgenabled": "O",
+        "trigger_name": "trg_jobs_updated_at"
+      },
+      {
+        "table_name": "jobs",
+        "tgenabled": "O",
+        "trigger_name": "trg_review_work_cancellation"
+      }
+    ],
+    "wallet_risks": {
+      "overreserved_amount": 0,
+      "overreserved_wallet_count": 0
+    }
+  },
+  "api_health": {
+    "status": "ok",
+    "uptime_s": 72870,
+    "timestamp": "2026-10-04T03:46:17.217Z",
+    "checks": {
+      "database": {
+        "status": "up",
+        "latency_ms": 169
+      },
+      "ml_service": {
+        "status": "down",
+        "latency_ms": 65,
+        "detail": "HTTP 429"
+      }
+    }
+  },
+  "limits": [
+    "Snapshot aggregates do not prove independent-connection contention",
+    "Health response does not identify the deployed API revision",
+    "Legacy missing references are not evidence of new payout delivery"
+  ],
+  "function_definition_comparison": [
+    {
+      "function_name": "admin_booking_status_counts",
+      "normalized_definition_matches_local": true,
+      "target_definition_sha256": "b8da53f65cc445386a208869c36f764d6366ed4ba2922031e046e406ff5d3ed8",
+      "local_definition_sha256": "b8da53f65cc445386a208869c36f764d6366ed4ba2922031e046e406ff5d3ed8"
+    },
+    {
+      "function_name": "admin_dashboard_counts",
+      "normalized_definition_matches_local": true,
+      "target_definition_sha256": "a5b5c9bdfb09297a6f76023405ba3f4178327dbcbfd2852c772e82dce9ae5e32",
+      "local_definition_sha256": "11a36c470514b82a93414a72f5cf7c0147f00d9a3852b933c9ac2b97b4fb9948"
+    },
+    {
+      "function_name": "admin_search_audit",
+      "normalized_definition_matches_local": true,
+      "target_definition_sha256": "00aacb7e4ea43d0ee11848fb88dc8b1cfb62d421fcf16dbab871616dc546ad43",
+      "local_definition_sha256": "a9633e0f3e8a30718b42a611526a0fd511608a731ae3cc7f1c6b4ede8612a6c3"
+    },
+    {
+      "function_name": "admin_search_wallet",
+      "normalized_definition_matches_local": true,
+      "target_definition_sha256": "58829033b9ef9552018caf4bce875dbef12da56f0ef6eb2bf77c456c63647461",
+      "local_definition_sha256": "c47e60ce26fc2c1bbced46a4e174a1d3c1e368f4392c55c3a8b1e99569410098"
+    },
+    {
+      "function_name": "escrow_settle",
+      "normalized_definition_matches_local": false,
+      "target_definition_sha256": "2f8a1da37e642a0d2978897a3a47f06dc421edcd69cd43ba5b1ac391d8c983cb",
+      "local_definition_sha256": "36e819a907af4564b97648df2e5f44d846f7d27cfef11781c6432aaf65786dab"
+    },
+    {
+      "function_name": "handle_application_accepted",
+      "normalized_definition_matches_local": false,
+      "target_definition_sha256": "2870f2e894eb676b9f7655ea3b1b63ddf76daa39a4b53640ffd26a6e92306fe7",
+      "local_definition_sha256": "5cb309863c8cde1493b13258ce066c8f075f7450a9e1b14584c0654a1d9dda60"
+    },
+    {
+      "function_name": "raise_job_dispute",
+      "normalized_definition_matches_local": false,
+      "target_definition_sha256": "c72a2e3b1207ea10c0acb6c991a625c356ba06e1d8ed86f4cfe824507ff14a71",
+      "local_definition_sha256": "16475485764a6100b0024dadc93eca05f847f99fd141e080476d206e215d0b80"
+    },
+    {
+      "function_name": "review_work_cancellation",
+      "normalized_definition_matches_local": false,
+      "target_definition_sha256": "7e5542d1f4480584567bcb804edaae77b996107911e10819674b3985ff4651cc",
+      "local_definition_sha256": "9474e82b68474020297d3696bf7803ae2677e3b7483795e137d7fd1e8e95390a"
+    },
+    {
+      "function_name": "wallet_available_balance",
+      "normalized_definition_matches_local": true,
+      "target_definition_sha256": "f24520de3eaba49d6b59712010ca9b481ee786540ded5a333794f4445a4d1b79",
+      "local_definition_sha256": "f24520de3eaba49d6b59712010ca9b481ee786540ded5a333794f4445a4d1b79"
+    },
+    {
+      "function_name": "wallet_lock",
+      "normalized_definition_matches_local": true,
+      "target_definition_sha256": "c8c0f5b65acd4abbcff7a3f5e0eb6aeb93c2115ee559da890d952da48cd33eea",
+      "local_definition_sha256": "c8c0f5b65acd4abbcff7a3f5e0eb6aeb93c2115ee559da890d952da48cd33eea"
+    }
+  ],
+  "later_migration_registry_metadata": [
+    {
+      "name": "fulltest_remediation",
+      "statement_count": 24,
+      "statements_md5": "3e68844de4a407119496781a552e8f6d",
+      "version": "0037"
+    },
+    {
+      "name": "admin_queue_search",
+      "statement_count": 8,
+      "statements_md5": "67e0837ddfb5561725d48562e7ccbafb",
+      "version": "0038"
+    },
+    {
+      "name": "matching_eligibility",
+      "statement_count": 1,
+      "statements_md5": "204e0c83591c795ed88fd60bc1596430",
+      "version": "20260917160811"
+    },
+    {
+      "name": "oauth_handoffs",
+      "statement_count": 1,
+      "statements_md5": "0f510f41ccfc9e29ed198109f630be9a",
+      "version": "20260920220844"
+    },
+    {
+      "name": "qa_provider_admin",
+      "statement_count": 1,
+      "statements_md5": "05ff086d173df3f88529c237fc6244a8",
+      "version": "20260922160830"
+    }
+  ],
+  "history_review_limits": [
+    "0034 qa_provider_admin dated entry statements hash matches the local file exactly",
+    "0032/0033 dated entry names match, but raw-text hashes differ; do not mark them equivalent without further review",
+    "0036 functions match but numbered registry version is absent",
+    "Initial parallel CLI definition query failed temporary-role authentication; sequential retry succeeded"
+  ]
+}

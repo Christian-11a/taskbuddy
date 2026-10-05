@@ -11,7 +11,11 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { Roles } from '../auth/roles.decorator';
 import { CurrentUser } from '../auth/current-user.decorator';
 import { DisputesService } from './disputes.service';
-import { RaiseDisputeDto } from './dto/escrow.dto';
+import {
+  AddDisputeEntryDto,
+  CancellationResponseDto,
+  RaiseDisputeDto,
+} from './dto/escrow.dto';
 import type { Profile } from '../common/types';
 
 /**
@@ -40,5 +44,23 @@ export class DisputesController {
     @Param('jobId', ParseUUIDPipe) jobId: string,
   ) {
     return this.disputesService.forJob(user, jobId);
+  }
+  @Post('disputes/:id/entries')
+  @Roles('client', 'provider')
+  addEntry(
+    @CurrentUser() user: Profile,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: AddDisputeEntryDto,
+  ) {
+    return this.disputesService.addEntry(user, id, dto);
+  }
+  @Post('disputes/:id/cancellation-response')
+  @Roles('provider')
+  respond(
+    @CurrentUser() user: Profile,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: CancellationResponseDto,
+  ) {
+    return this.disputesService.respond(user, id, dto);
   }
 }

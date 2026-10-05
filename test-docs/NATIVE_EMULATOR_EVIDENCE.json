@@ -1,0 +1,176 @@
+{
+  "checked_at": "2026-10-05",
+  "device": {
+    "kind": "isolated emulator",
+    "avd": "Pixel_10a",
+    "android": "17",
+    "resolution": "1080x2424",
+    "density": 420,
+    "font_scale": 1.0
+  },
+  "tested_apk_revision": "efb0047",
+  "checks": [
+    "Client signup has three consents and scroll-reachable bottom controls",
+    "Privacy dialog displays Your Rights and remaining content",
+    "Live bell increases 36 to 37 and Recent Activity gains provider message without refresh",
+    "Notification opens correct conversation; Android Back returns to notices",
+    "Native delete confirmation, mark-all-read and clear-all reach empty list and zero badge",
+    "Completed plus Plumbing filter returns expected job; detail/back retains filtered result",
+    "Dark mode applies to settings and persists on force-stop/relaunch",
+    "System photo picker attaches owned public QA icon; Step 5 photo opens full-screen and Back preserves review",
+    "Step 5 posts without terms checkbox; API confirms one persisted photo; unassigned test job cancelled without payment",
+    "Provider account loads its own light preference after client dark-mode logout",
+    "Provider live bell increases from zero to one; opening message notice marks it read and removes badge",
+    "Provider completed job exposes File a Complaint with warranty deadline and opens complaint form",
+    "Provider profile and My Services show approved Plumbing alongside primary Cleaning; rejected Handyman remains only in history",
+    "Owned private portfolio photo opens full-screen with its saved caption",
+    "October 5 Metro source: client chat opens at newest message at font scale 1.3",
+    "Client dark hero greeting is readable; wallet displays three-day escrow warranty wording",
+    "Client unread bell refreshes after Android Home and app return",
+    "Provider payout setup shows friendly unavailable-platform error and remains retryable",
+    "Location permission denial leaves address editable; emulator failed to supply a usable GPS fix",
+    "Policy dialog enlarged-text scroll failure reproduced and corrected in 5254c3d; Retention and full rights text reachable with fixed Close/Accept controls"
+  ],
+  "defects": [
+    {
+      "issue": "Chat entry stays above latest message after async load",
+      "first_fix": "cdb533f",
+      "native_retest": "Failed on 8c5a498; variable-height rows were not measured when scroll ran",
+      "replacement_fix": "90089f4",
+      "replacement_native_retest": "Passed for provider on 48aa549: newest message visible on entry, with keyboard, and after sending; client retest remains pending; client passed through development client on October 5"
+    },
+    {
+      "issue": "Dark-mode greeting and selected navigation icon lack contrast",
+      "fix": "af243c3",
+      "native_retest": "Client greeting and provider navigation passed"
+    },
+    {
+      "issue": "Wallet and hire confirmation describe release at completion approval",
+      "fix": "8c5a498",
+      "native_retest": "Client wallet passed through development client; hire-confirmation retest remains pending"
+    },
+    {
+      "issue": "Provider hero greeting low contrast on dark header",
+      "fix": "48aa549",
+      "native_retest": "Passed on 48aa549"
+    },
+    {
+      "issue": "Stripe Connect setup exposes platform configuration instructions",
+      "fix": "c5ebb83",
+      "native_retest": "Passed through development client on October 5"
+    },
+    {
+      "issue": "Compact login form cannot scroll to bottom controls",
+      "fix": "3aed1c6",
+      "native_retest": "Passed using development client and current Metro source at 1080x1920, density 480, font scale 1.3, three-button navigation; final preview APK pending"
+    },
+    {
+      "issue": "Policy dialog gesture interception prevents scrolling to Retention at enlarged text",
+      "fix": "5254c3d",
+      "native_retest": "Passed through development client at font scale 1.3; final preview build 2d621778-db43-4f45-877b-352c92f5be61 pending"
+    }
+  ],
+  "regression": {
+    "mobile_tests": 188,
+    "suites": 42,
+    "typecheck": "passed",
+    "lint": "no mobile lint script"
+  },
+  "latest_build_id": "f4236530-d76f-46c1-9609-6b5715a5bf72",
+  "screenshots": [
+    {
+      "name": "signup-light.png",
+      "sha256": "52bce57949ac325e0598bdff20fdee680f10944b5b2a904f33123110ff746379"
+    },
+    {
+      "name": "signup-bottom.png",
+      "sha256": "5f8a798c955e8de5358644acd536299b2d9789582676b521952a2f056194aa20"
+    },
+    {
+      "name": "privacy-top.png",
+      "sha256": "f5321bb0ee9dd0ab90888506b4d1b33b83654902e50c7adffc7be80e59bf6e49"
+    },
+    {
+      "name": "client-home-light.png",
+      "sha256": "f613bb57ff230577e41ff2bfaf8db49e1f3f6d779fa234810aa77bee0dad8411"
+    },
+    {
+      "name": "client-live-bell.png",
+      "sha256": "9fce74a33e587b6b92195ab09bc446a5e779e500f849c7afcb9b2131f96c26ef"
+    },
+    {
+      "name": "client-notifications-empty.png",
+      "sha256": "fb265becca249629c5be7da9a1fe247cfe7b767ed3482d9b26b51a1b1b713f6c"
+    },
+    {
+      "name": "client-review-photo-open.png",
+      "sha256": "f48c68af026ca6162030a44d5514f39a6e37d5f03c58c33bf00150ea12f52a5f"
+    },
+    {
+      "name": "client-native-post-finished.png",
+      "sha256": "84510075c0ee3d8c50f9b65d3716880136127cb9815dd627a92d31452afe6158"
+    },
+    {
+      "name": "client-home-dark-persisted.png",
+      "sha256": "c0500b0fdd798653bd5f5cdab7b3d3b5c9ef31acc7ff8ce19dcd5268a283471d"
+    },
+    {
+      "name": "anchor-provider-chat-visible.png",
+      "sha256": "2fd409b84891bfc62ab8035ccf7f2ffe29c93d13325e9c7ad76f10fa3ee3d09a"
+    },
+    {
+      "name": "provider-chat-keyboard.png",
+      "sha256": "64a178a96682c007a0f879ba3470a7598f9faea8e79ab2b18eb7d01226e3e9b1"
+    },
+    {
+      "name": "provider-chat-sent.png",
+      "sha256": "326d4538a28a7560da0756d274fd33b6e092f2fa41a6933bfd5092a91d6a8ac5"
+    },
+    {
+      "name": "provider-fixed-header.png",
+      "sha256": "52ae6b666824b0987b3293d0cca99f505b32ba0cff15c4083776de826f69967a"
+    },
+    {
+      "name": "dev-login-scroll-retest.png",
+      "sha256": "cacc1761d27e20a03e9c65f92317a57e4e5d95af92934ea7f1113689269f5485"
+    },
+    {
+      "name": "phase10-privacy-fixed-bottom.png",
+      "sha256": "76a53172fec36ce2927d107a134eb3ddb13ee62a65d345b567c221e532494fce"
+    },
+    {
+      "name": "phase10-client-chat-loaded.png",
+      "sha256": "f49b7d034e682aca003f05fb9de703d164c955cfd6d39f9c179a4bc00825ee86"
+    },
+    {
+      "name": "phase10-client-wallet.png",
+      "sha256": "e0a1efe7c64934d7ecf1d957d9315ef4c0f3d19824559360da43e6331b9ae5bc"
+    },
+    {
+      "name": "phase10-app-return-refreshed.png",
+      "sha256": "beeab54fe87da4dc947ab6c557dfefa236737119c8159b846b3fd105d7867b69"
+    },
+    {
+      "name": "phase10-payout-error.png",
+      "sha256": "94c279c34d844d902b400fb43d2c03f4cdb523a132962bb803c200f06af3cf3b"
+    },
+    {
+      "name": "phase10-location-denied.png",
+      "sha256": "c3eb26fcc6cb9c08d037ef46f1496156f628401fc6ea11758c2707f834abdcf2"
+    }
+  ],
+  "limits": [
+    "Screenshots retained in protected local QA directory; no credentials committed",
+    "Provider flows, smaller/enlarged layout, full theme matrix and corrected APK retests still in progress",
+    "Emulator checks do not prove physical GPS behavior",
+    "Web deployment follows user upstream merge"
+  ],
+  "installed_updated_apk": {
+    "revision": "48aa549",
+    "build_id": "f4236530-d76f-46c1-9609-6b5715a5bf72",
+    "sha256": "7c02086e94caddb5cdbd26fb49fb3b5148b9162651105d1c1a8b23fdb3697029",
+    "bytes": 109626454,
+    "signature": "apksigner verify passed",
+    "installation": "adb install -r succeeded"
+  }
+}

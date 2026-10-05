@@ -3,7 +3,7 @@
  *
  * v6 design: matches taskbuddy_UI_update.html's #ho-dispute screen — a flat
  * white .topbar (not a colored hero), flat .field-style inputs with no card
- * wrapping, and a single flat cyan-700 "Submit Dispute" button (the mockup
+ * wrapping, and a single flat cyan-700 "Submit Complaint" button (the mockup
  * does not use a red/danger button here).
  *
  * Deviation: kept the reason list as tappable radio rows rather than the
@@ -12,13 +12,13 @@
  * real, useful context the mockup's generic demo copy doesn't need.
  */
 
+import { useThemedStyles, type Palette as ThemePalette } from '../../../src/context/ThemeContext';
 import React, { useCallback, useState } from 'react';
 import { ActivityIndicator, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { ArrowLeft } from 'lucide-react-native';
 import ConfirmationModal from '../../../src/components/ConfirmationModal';
-import { Spacing, V6Colors, V6Radii, V6Shadows } from '../../../src/constants/theme';
+import { Spacing, V6Radii, V6Shadows } from '../../../src/constants/theme';
 
-const C = V6Colors;
 import { api } from '../../../src/lib/api';
 import { useAsyncData } from '../../../src/hooks/useAsyncData';
 import { useHeaderTop } from '../../../src/hooks/useHeaderTop';
@@ -29,9 +29,10 @@ interface HODisputeFilingScreenProps {
   onSubmitted: () => void;
 }
 
-const REASONS = ['Payment or cancellation issue', 'Work not completed', 'Work quality issue', 'Provider did not arrive', 'Payment issue', 'Other'];
+const REASONS = ['Payment or cancellation issue', 'Work not completed', 'Work quality issue', 'Participant did not arrive', 'Conduct issue', 'Other'];
 
 export default function HODisputeFilingScreen({ jobId, onBack, onSubmitted }: HODisputeFilingScreenProps) {
+  const { C, styles, V6Colors, appearance } = useThemedStyles(createThemedStyles);
   const headerTop = useHeaderTop();
   const [reason, setReason] = useState(REASONS[0]);
   const [details, setDetails] = useState('');
@@ -63,7 +64,7 @@ export default function HODisputeFilingScreen({ jobId, onBack, onSubmitted }: HO
       });
       onSubmitted();
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Could not file the dispute.');
+      setError(e instanceof Error ? e.message : 'Could not file the complaint.');
     } finally {
       setSubmitting(false);
     }
@@ -77,7 +78,7 @@ export default function HODisputeFilingScreen({ jobId, onBack, onSubmitted }: HO
           <ArrowLeft size={20} color={C.ink700} />
         </TouchableOpacity>
         <View style={{ flex: 1 }}>
-          <Text style={styles.headerTitle}>File a Dispute</Text>
+          <Text style={styles.headerTitle}>File a Complaint</Text>
           <Text style={styles.headerSubtitle} numberOfLines={1}>{subtitle}</Text>
         </View>
       </View>
@@ -100,11 +101,12 @@ export default function HODisputeFilingScreen({ jobId, onBack, onSubmitted }: HO
 
         <View style={styles.fieldGroup}>
           <Text style={styles.label}>Describe what happened</Text>
-          <TextInput
+          <TextInput keyboardAppearance={appearance}
             style={[styles.detailsInput, detailsFocused && styles.detailsInputFocused]}
             value={details}
             onChangeText={setDetails}
             multiline
+            maxLength={1000}
             textAlignVertical="top"
             placeholder="Give support enough detail to review the issue…"
             placeholderTextColor={C.ink400}
@@ -122,17 +124,17 @@ export default function HODisputeFilingScreen({ jobId, onBack, onSubmitted }: HO
           activeOpacity={0.85}
         >
           {submitting ? (
-            <ActivityIndicator color={C.white} />
+            <ActivityIndicator color={C.onPrimary} />
           ) : (
-            <Text style={styles.submitText}>Submit Dispute</Text>
+            <Text style={styles.submitText}>Submit Complaint</Text>
           )}
         </TouchableOpacity>
       </ScrollView>
 
       <ConfirmationModal
         visible={showConfirmation}
-        title="Submit dispute report?"
-        message="You are about to file this dispute for review. You can add more information when our support team contacts you."
+        title="Submit complaint report?"
+        message="You are about to file this complaint for review. Both participants can add statements and job chat evidence in Complaint Status."
         confirmLabel="Submit Report"
         onCancel={() => setShowConfirmation(false)}
         onConfirm={() => { setShowConfirmation(false); void submitDispute(); }}
@@ -141,47 +143,52 @@ export default function HODisputeFilingScreen({ jobId, onBack, onSubmitted }: HO
   );
 }
 
-const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: C.canvas },
-  header: {
-    flexDirection: 'row', alignItems: 'center', gap: 12,
-    backgroundColor: C.white,
-    paddingHorizontal: Spacing.screenH,
-    paddingBottom: 12,
-    borderBottomWidth: 1, borderBottomColor: '#edf1f4',
-  },
-  backButton: {
-    width: 38, height: 38, borderRadius: 12,
-    backgroundColor: C.white, borderWidth: 1, borderColor: '#e8edf2',
-    alignItems: 'center', justifyContent: 'center',
-  },
-  headerTitle: { color: C.ink900, fontSize: 19.5, fontWeight: '800', fontFamily: 'Inter' },
-  headerSubtitle: { color: C.ink500, fontSize: 13.5, fontFamily: 'Inter', marginTop: 1 },
+function createThemedStyles(theme: ThemePalette) {
+  const { Colors, V6Colors } = theme;
+  const C = V6Colors;
+  const styles = StyleSheet.create({
+    screen: { flex: 1, backgroundColor: C.canvas },
+    header: {
+      flexDirection: 'row', alignItems: 'center', gap: 12,
+      backgroundColor: C.surface,
+      paddingHorizontal: Spacing.screenH,
+      paddingBottom: 12,
+      borderBottomWidth: 1, borderBottomColor: V6Colors.line,
+    },
+    backButton: {
+      width: 38, height: 38, borderRadius: 12,
+      backgroundColor: C.surface, borderWidth: 1, borderColor: V6Colors.line,
+      alignItems: 'center', justifyContent: 'center',
+    },
+    headerTitle: { color: C.ink900, fontSize: 19.5, fontWeight: '800', fontFamily: 'Inter' },
+    headerSubtitle: { color: C.ink500, fontSize: 13.5, fontFamily: 'Inter', marginTop: 1 },
 
-  content: { padding: Spacing.screenH, paddingTop: 18, gap: 16 },
+    content: { padding: Spacing.screenH, paddingTop: 18, gap: 16 },
 
-  fieldGroup: { marginBottom: 2 },
-  label: { color: C.ink900, fontSize: 14, fontWeight: '700', fontFamily: 'Inter', marginBottom: 10 },
-  reasonList: { gap: 14 },
-  reasonRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  radio: { width: 20, height: 20, borderRadius: 10, borderWidth: 1.5, borderColor: C.ink300, alignItems: 'center', justifyContent: 'center' },
-  radioSelected: { borderColor: C.cyan700 },
-  radioDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: C.cyan700 },
-  reasonText: { color: C.ink700, fontSize: 15.5, fontFamily: 'Inter' },
+    fieldGroup: { marginBottom: 2 },
+    label: { color: C.ink900, fontSize: 14, fontWeight: '700', fontFamily: 'Inter', marginBottom: 10 },
+    reasonList: { gap: 14 },
+    reasonRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+    radio: { width: 20, height: 20, borderRadius: 10, borderWidth: 1.5, borderColor: C.ink300, alignItems: 'center', justifyContent: 'center' },
+    radioSelected: { borderColor: C.cyan700 },
+    radioDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: C.cyan700 },
+    reasonText: { color: C.ink700, fontSize: 15.5, fontFamily: 'Inter' },
 
-  detailsInput: {
-    minHeight: 120, borderRadius: 12, backgroundColor: C.white,
-    borderWidth: 1, borderColor: '#dce3e9',
-    padding: 14, color: C.ink900, fontFamily: 'Inter', fontSize: 15,
-  },
-  detailsInputFocused: { borderColor: C.cyan500 },
+    detailsInput: {
+      minHeight: 120, borderRadius: 12, backgroundColor: C.surface,
+      borderWidth: 1, borderColor: V6Colors.fieldBorder,
+      padding: 14, color: C.ink900, fontFamily: 'Inter', fontSize: 15,
+    },
+    detailsInputFocused: { borderColor: C.cyan500 },
 
-  submitButton: {
-    alignItems: 'center', justifyContent: 'center',
-    backgroundColor: C.cyan700, borderRadius: V6Radii.btn, paddingVertical: 14, marginTop: 4,
-    ...V6Shadows.primaryButton,
-  },
-  submitButtonDisabled: { opacity: 0.6 },
-  submitText: { color: C.white, fontSize: 16.5, fontWeight: '700', fontFamily: 'Inter' },
-  errorText: { color: '#ef4444', fontFamily: 'Inter', fontSize: 15, textAlign: 'center' },
-});
+    submitButton: {
+      alignItems: 'center', justifyContent: 'center',
+      backgroundColor: C.cyan700, borderRadius: V6Radii.btn, paddingVertical: 14, marginTop: 4,
+      ...V6Shadows.primaryButton,
+    },
+    submitButtonDisabled: { opacity: 0.6 },
+    submitText: { color: C.onPrimary, fontSize: 16.5, fontWeight: '700', fontFamily: 'Inter' },
+    errorText: { color: V6Colors.dangerText, fontFamily: 'Inter', fontSize: 15, textAlign: 'center' },
+  });
+  return { appearance: theme.appearance, Colors, V6Colors, C, styles };
+}

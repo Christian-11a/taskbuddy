@@ -1,3 +1,5 @@
+import { useThemedStyles, type Palette as ThemePalette } from '../../../src/context/ThemeContext';
+import { useNotifications } from '../../../src/context/NotificationsContext';
 /**
  * SPHomeScreen.tsx ("Feed" tab)
  *
@@ -16,10 +18,8 @@
  *
  * Two things run down this screen, and they are not the same thing:
  *
- *   Booking requests — jobs a client has already hired this provider for
- *   (status 'assigned'), waiting on an answer. These are commitments with a
- *   client on the other end, so they sit above everything else and carry
- *   Accept/Decline inline.
+ *   Confirmed bookings — jobs a client hired this provider for. Open the job
+ *   details to start actual work; no second acceptance is required.
  *
  *   The job feed — open work nobody has been hired for yet. Filtered to the
  *   provider's service radius and ordered by the backend: urgent first, then
@@ -27,6 +27,7 @@
  *   it counts what is in that filtered feed, not what exists platform-wide.
  */
 
+import { StatusBar } from 'expo-status-bar';
 import React, { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
@@ -50,19 +51,16 @@ import {
   TriangleAlert,
   Wallet,
 } from 'lucide-react-native';
-import { Spacing, V6Colors } from '../../../src/constants/theme';
+import { Spacing } from '../../../src/constants/theme';
 import { useHeaderTop } from '../../../src/hooks/useHeaderTop';
 import { SPScreen } from '../../../src/types/navigation';
 
-const C = V6Colors;
 import { useAuth } from '../../../src/context/AuthContext';
 import { useAsyncData } from '../../../src/hooks/useAsyncData';
-import { api, ApiError, Job } from '../../../src/lib/api';
+import { api } from '../../../src/lib/api';
 import { distanceLabel, peso, shortDate } from '../../../src/lib/format';
-import DeclineBookingModal from '../../../src/components/DeclineBookingModal';
 import OwnAvatar from '../../../src/components/OwnAvatar';
 import JobCard from '../../../src/components/JobCard';
-import AcceptBookingModal, { type AcceptLocation } from '../../../src/components/AcceptBookingModal';
 import { useRetainedState } from '../../../src/hooks/useRetainedState';
 import { useRefreshOnForeground } from '../../../src/hooks/useRefreshOnForeground';
 
@@ -82,7 +80,9 @@ interface SPHomeScreenProps {
 }
 
 export default function SPHomeScreen({ onNavigate }: SPHomeScreenProps) {
+  const { C, styles, V6Colors, appearance } = useThemedStyles(createThemedStyles);
   const headerTop = useHeaderTop();
+  const { unreadCount } = useNotifications();
   const { profile, providerProfile, isVerified, refreshProfile } = useAuth();
   const radiusKm = providerProfile?.service_radius_km ?? DEFAULT_RADIUS_KM;
 
@@ -98,6 +98,7 @@ export default function SPHomeScreen({ onNavigate }: SPHomeScreenProps) {
     // fetch that caused the flip.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+  const serviceKey = [providerProfile?.category_id, ...(providerProfile?.approved_secondary_services ?? []).map((service) => service.category_id).sort((a, b) => a - b)].join(':');
   const [urgency, setUrgency] = useRetainedState<UrgencyFilter>('sp.feed.urgency', 'all');
   const { data, reload } = useAsyncData(async () => {
     const [feed, assigned] = await Promise.all([
@@ -111,52 +112,14 @@ export default function SPHomeScreen({ onNavigate }: SPHomeScreenProps) {
       api.assignedJobs(),
     ]);
     return { jobs: feed.jobs, summary: feed.summary, assigned };
-  }, [profile?.latitude, profile?.longitude, radiusKm, urgency], `sp-home-${urgency}`);
+  }, [profile?.latitude, profile?.longitude, radiusKm, urgency, serviceKey], `sp-home-${profile?.id}-${serviceKey}-${profile?.latitude}-${profile?.longitude}-${radiusKm}-${urgency}`);
 
   const [available, setAvailable] = useState(providerProfile?.is_available ?? true);
   const [togglingAvail, setTogglingAvail] = useState(false);
   const [search, setSearch] = useState('');
-  const [actingOn, setActingOn] = useState<string | null>(null);
-  const [actionError, setActionError] = useState<string | null>(null);
-  const [decliningJob, setDecliningJob] = useState<Job | null>(null);
-  const [acceptingJob, setAcceptingJob] = useState<Job | null>(null);
   useEffect(() => {
     if (providerProfile) setAvailable(providerProfile.is_available);
   }, [providerProfile]);
-
-  const errorMessage = (e: unknown) =>
-    e instanceof ApiError ? e.message : 'Something went wrong. Please try again.';
-
-  const acceptBooking = async (job: Job, location: AcceptLocation) => {
-    if (actingOn) return;
-    setActingOn(job.id);
-    setActionError(null);
-    try {
-      await api.acceptJob(job.id, location);
-      setAcceptingJob(null);
-      reload();
-    } catch (e) {
-      setActionError(errorMessage(e));
-    } finally {
-      setActingOn(null);
-    }
-  };
-
-  const declineBooking = async (reason: string) => {
-    const job = decliningJob;
-    if (!job) return;
-    setActingOn(job.id);
-    setActionError(null);
-    try {
-      await api.declineJob(job.id, reason);
-      setDecliningJob(null);
-      reload();
-    } catch (e) {
-      setActionError(errorMessage(e));
-    } finally {
-      setActingOn(null);
-    }
-  };
 
   const toggleAvailability = async () => {
     if (togglingAvail) return;
@@ -174,7 +137,7 @@ export default function SPHomeScreen({ onNavigate }: SPHomeScreenProps) {
 
   const name = profile?.full_name ?? '';
   // Hired and waiting on this provider to answer — the top of the screen.
-  const bookingRequests = (data?.assigned ?? []).filter((j) => j.status === 'assigned');
+  const confirmedJobs = (data?.assigned ?? []).filter((j) => ['assigned', 'confirmed'].includes(j.status));
   const summary = data?.summary;
   const q = search.trim().toLowerCase();
   const availableJobs = (data?.jobs ?? []).filter(
@@ -186,6 +149,7 @@ export default function SPHomeScreen({ onNavigate }: SPHomeScreenProps) {
 
   return (
     <View style={styles.screen}>
+      <StatusBar style="light" />
       {/* Hero — matches .hero-clean.dark */}
       <LinearGradient
         colors={['#111827', '#18283b', '#0c4a6e']}
@@ -212,7 +176,8 @@ export default function SPHomeScreen({ onNavigate }: SPHomeScreenProps) {
               onPress={() => onNavigate('Notifications')}
               activeOpacity={0.8}
             >
-              <Bell size={20} color={C.white} />
+              <Bell size={20} color={C.onPrimary} />
+              {unreadCount > 0 && <Text accessibilityLabel={`${unreadCount} unread notifications`} style={{ color: C.onPrimary, fontSize: 10 }}>{unreadCount}</Text>}
             </TouchableOpacity>
             <TouchableOpacity
               testID="btn-home-avatar"
@@ -230,7 +195,7 @@ export default function SPHomeScreen({ onNavigate }: SPHomeScreenProps) {
         </Text>
 
         <View style={styles.locationPill}>
-          <MapPin size={14} color={C.white} />
+          <MapPin size={14} color={C.onPrimary} />
           <Text style={styles.locationPillText} numberOfLines={1}>
             {location} · within {radiusKm} km
           </Text>
@@ -281,7 +246,7 @@ export default function SPHomeScreen({ onNavigate }: SPHomeScreenProps) {
             activeOpacity={0.85}
           >
             <View style={styles.flowIcon}>
-              <ShieldCheck size={19} color={C.cyan700} />
+              <ShieldCheck size={19} color={V6Colors.link} />
             </View>
             <View style={{ flex: 1 }}>
               <Text style={styles.flowTitle}>Verification required to apply</Text>
@@ -293,79 +258,27 @@ export default function SPHomeScreen({ onNavigate }: SPHomeScreenProps) {
           </TouchableOpacity>
         )}
 
-        {/* Incoming booking requests — a homeowner has hired this provider and
-            is waiting for an answer. Accept/Decline are inline because the
-            answer rarely needs the full job screen to decide. */}
-        {bookingRequests.length > 0 && (
+        {confirmedJobs.length > 0 && (
           <View style={styles.requestsBlock}>
             <View style={styles.requestsHeader}>
-              <Inbox size={16} color={C.cyan700} />
-              <Text style={styles.requestsTitle}>
-                Booking Request{bookingRequests.length === 1 ? '' : 's'}
-              </Text>
+              <Inbox size={16} color={V6Colors.link} />
+              <Text style={styles.requestsTitle}>Confirmed bookings</Text>
               <View style={styles.requestsCount}>
-                <Text style={styles.requestsCountText}>{bookingRequests.length}</Text>
+                <Text style={styles.requestsCountText}>{confirmedJobs.length}</Text>
               </View>
             </View>
-
-            {!!actionError && !decliningJob && !acceptingJob && (
-              <Text style={styles.actionError}>{actionError}</Text>
-            )}
-
-            {bookingRequests.map((job) => {
-              const busy = actingOn === job.id;
-              return (
-                <View key={job.id} style={styles.requestCard}>
-                  <TouchableOpacity
-                    onPress={() => onNavigate('Job Detail', job.id)}
-                    activeOpacity={0.85}
-                  >
-                    <View style={styles.requestTopRow}>
-                      <Text style={styles.requestTitle} numberOfLines={1}>{job.title}</Text>
-                      {job.budget != null && (
-                        <Text style={styles.requestPrice}>{peso(job.budget)}</Text>
-                      )}
-                    </View>
-                    <View style={styles.requestMetaRow}>
-                      <MapPin size={13} color={C.ink400} />
-                      <Text style={styles.requestMeta} numberOfLines={1}>{job.address}</Text>
-                    </View>
-                    <View style={styles.requestMetaRow}>
-                      <CalendarDays size={13} color={C.ink400} />
-                      <Text style={styles.requestMeta}>
-                        {job.scheduled_at ? shortDate(job.scheduled_at) : 'Flexible schedule'}
-                      </Text>
-                      {job.urgency === 'urgent' && (
-                        <Text style={styles.urgentInline}>Urgent</Text>
-                      )}
-                    </View>
-                  </TouchableOpacity>
-
-                  <View style={styles.requestActions}>
-                    <TouchableOpacity
-                      style={[styles.declineBtn, busy && styles.btnBusy]}
-                      onPress={() => setDecliningJob(job)}
-                      activeOpacity={0.85}
-                      disabled={busy}
-                    >
-                      <Text style={styles.declineBtnText}>Decline</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      style={[styles.acceptBtn, busy && styles.btnBusy]}
-                      onPress={() => setAcceptingJob(job)}
-                      activeOpacity={0.85}
-                      disabled={busy}
-                    >
-                      {busy ? (
-                        <ActivityIndicator color={C.white} size="small" />
-                      ) : (
-                        <Text style={styles.acceptBtnText}>Accept</Text>
-                      )}
-                    </TouchableOpacity>
-                  </View>
-                </View>
-              );
-            })}
+            {confirmedJobs.map((job) => (
+              <JobCard
+                key={job.id}
+                title={job.title}
+                budget={job.budget}
+                address={job.address}
+                urgency={job.urgency}
+                footer={[{ icon: <CalendarDays size={13} color={C.ink400} />,
+                  text: job.scheduled_at ? shortDate(job.scheduled_at) : 'Flexible schedule' }]}
+                onPress={() => onNavigate('Job Detail', job.id)}
+              />
+            ))}
           </View>
         )}
 
@@ -394,7 +307,7 @@ export default function SPHomeScreen({ onNavigate }: SPHomeScreenProps) {
         {/* Search — matches .scope-search */}
         <View style={styles.scopeSearch}>
           <Search size={19} color={C.ink400} />
-          <TextInput
+          <TextInput keyboardAppearance={appearance}
             style={styles.scopeSearchInput}
             value={search}
             onChangeText={setSearch}
@@ -422,7 +335,7 @@ export default function SPHomeScreen({ onNavigate }: SPHomeScreenProps) {
           })}
         </ScrollView>
 
-        {!data && <ActivityIndicator style={{ marginTop: 20 }} color={C.cyan700} />}
+        {!data && <ActivityIndicator style={{ marginTop: 20 }} color={V6Colors.link} />}
         {data && availableJobs.length === 0 && (
           <View style={styles.emptyState}>
             <Search size={30} color={C.ink300} />
@@ -458,151 +371,109 @@ export default function SPHomeScreen({ onNavigate }: SPHomeScreenProps) {
         <View style={{ height: 20 }} />
       </ScrollView>
 
-      <AcceptBookingModal
-        visible={!!acceptingJob}
-        jobTitle={acceptingJob?.title}
-        busy={!!acceptingJob && actingOn === acceptingJob.id}
-        error={acceptingJob ? actionError : null}
-        onConfirm={(location) => acceptingJob && void acceptBooking(acceptingJob, location)}
-        onCancel={() => {
-          setAcceptingJob(null);
-          setActionError(null);
-        }}
-      />
-
-      <DeclineBookingModal
-        visible={!!decliningJob}
-        jobTitle={decliningJob?.title}
-        submitting={!!decliningJob && actingOn === decliningJob.id}
-        error={decliningJob ? actionError : null}
-        onCancel={() => {
-          setDecliningJob(null);
-          setActionError(null);
-        }}
-        onConfirm={(reason) => void declineBooking(reason)}
-      />
     </View>
   );
 }
 
-const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: C.canvas },
+function createThemedStyles(theme: ThemePalette) {
+  const { Colors, V6Colors } = theme;
+  const C = V6Colors;
+  const styles = StyleSheet.create({
+    screen: { flex: 1, backgroundColor: C.canvas },
 
-  hero: {
-    paddingHorizontal: Spacing.screenH,
-    paddingBottom: 18,
-    borderBottomLeftRadius: 26,
-    borderBottomRightRadius: 26,
-  },
-  heroTopRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingTop: 12 },
-  greeting: { color: C.ink400, fontSize: 13, fontFamily: 'Inter', marginBottom: 3 },
-  heroTitle: { color: C.white, fontSize: 21.5, fontWeight: '800', fontFamily: 'Inter' },
-  // The greeting column yields to the actions, never the other way round: the
-  // avatar is the only route to Profile (and Log out), so a long name must
-  // truncate rather than push it off-screen.
-  heroText: { flex: 1, minWidth: 0, marginRight: 12 },
-  heroActions: { flexDirection: 'row', gap: 8, alignItems: 'center', flexShrink: 0 },
-  iconBtn: {
-    width: 40, height: 40, borderRadius: 12,
-    backgroundColor: 'rgba(255,255,255,0.12)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)',
-    alignItems: 'center', justifyContent: 'center',
-  },
-  avatarCircle: {
-    width: 40, height: 40, borderRadius: 12,
-    backgroundColor: 'rgba(255,255,255,0.16)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.12)',
-    alignItems: 'center', justifyContent: 'center', overflow: 'hidden',
-  },
-  avatarText: { color: C.white, fontWeight: '800', fontSize: 14.5, fontFamily: 'Inter' },
+    hero: {
+      paddingHorizontal: Spacing.screenH,
+      paddingBottom: 18,
+      borderBottomLeftRadius: 26,
+      borderBottomRightRadius: 26,
+    },
+    heroTopRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingTop: 12 },
+    greeting: { color: C.onPrimary, fontSize: 13, fontFamily: 'Inter', marginBottom: 3 },
+    heroTitle: { color: C.onPrimary, fontSize: 21.5, fontWeight: '800', fontFamily: 'Inter' },
+    // The greeting column yields to the actions, never the other way round: the
+    // avatar is the only route to Profile (and Log out), so a long name must
+    // truncate rather than push it off-screen.
+    heroText: { flex: 1, minWidth: 0, marginRight: 12 },
+    heroActions: { flexDirection: 'row', gap: 8, alignItems: 'center', flexShrink: 0 },
+    iconBtn: {
+      width: 40, height: 40, borderRadius: 12,
+      backgroundColor: 'rgba(255,255,255,0.12)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)',
+      alignItems: 'center', justifyContent: 'center',
+    },
+    avatarCircle: {
+      width: 40, height: 40, borderRadius: 12,
+      backgroundColor: 'rgba(255,255,255,0.16)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.12)',
+      alignItems: 'center', justifyContent: 'center', overflow: 'hidden',
+    },
+    avatarText: { color: C.onPrimary, fontWeight: '800', fontSize: 14.5, fontFamily: 'Inter' },
 
-  feedSummary: { color: 'rgba(255,255,255,0.68)', fontSize: 12.5, fontFamily: 'Inter', marginTop: 12 },
+    feedSummary: { color: 'rgba(255,255,255,0.68)', fontSize: 12.5, fontFamily: 'Inter', marginTop: 12 },
 
-  locationPill: {
-    flexDirection: 'row', alignItems: 'center', gap: 6,
-    backgroundColor: 'rgba(255,255,255,0.1)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)',
-    borderRadius: 12, paddingHorizontal: 11, paddingVertical: 9, marginTop: 14, alignSelf: 'flex-start', maxWidth: '100%',
-  },
-  locationPillText: { color: C.white, fontSize: 12.5, fontFamily: 'Inter' },
+    locationPill: {
+      flexDirection: 'row', alignItems: 'center', gap: 6,
+      backgroundColor: 'rgba(255,255,255,0.1)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)',
+      borderRadius: 12, paddingHorizontal: 11, paddingVertical: 9, marginTop: 14, alignSelf: 'flex-start', maxWidth: '100%',
+    },
+    locationPillText: { color: C.onPrimary, fontSize: 12.5, fontFamily: 'Inter' },
 
-  summaryStrip: {
-    flexDirection: 'row', alignItems: 'center', marginTop: 14,
-    backgroundColor: 'rgba(255,255,255,0.08)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)',
-    borderRadius: 14, paddingVertical: 11,
-  },
-  summaryItem: { flex: 1, alignItems: 'center', gap: 3, paddingHorizontal: 4 },
-  summaryDivider: { width: 1, alignSelf: 'stretch', backgroundColor: 'rgba(255,255,255,0.12)' },
-  summaryValue: { color: C.white, fontSize: 15.5, fontWeight: '800', fontFamily: 'Inter' },
-  summaryLabel: { color: 'rgba(255,255,255,0.7)', fontSize: 11.5, fontFamily: 'Inter', fontWeight: '600' },
-  summaryLabelRow: { flexDirection: 'row', alignItems: 'center', gap: 5 },
+    summaryStrip: {
+      flexDirection: 'row', alignItems: 'center', marginTop: 14,
+      backgroundColor: 'rgba(255,255,255,0.08)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)',
+      borderRadius: 14, paddingVertical: 11,
+    },
+    summaryItem: { flex: 1, alignItems: 'center', gap: 3, paddingHorizontal: 4 },
+    summaryDivider: { width: 1, alignSelf: 'stretch', backgroundColor: 'rgba(255,255,255,0.12)' },
+    summaryValue: { color: C.onPrimary, fontSize: 15.5, fontWeight: '800', fontFamily: 'Inter' },
+    summaryLabel: { color: 'rgba(255,255,255,0.7)', fontSize: 11.5, fontFamily: 'Inter', fontWeight: '600' },
+    summaryLabelRow: { flexDirection: 'row', alignItems: 'center', gap: 5 },
 
-  requestsBlock: { marginBottom: 14 },
-  requestsHeader: { flexDirection: 'row', alignItems: 'center', gap: 7, marginBottom: 9 },
-  requestsTitle: { color: C.ink900, fontSize: 14, fontWeight: '800', fontFamily: 'Inter' },
-  requestsCount: {
-    minWidth: 20, height: 20, borderRadius: 10, paddingHorizontal: 6,
-    backgroundColor: C.cyan700, alignItems: 'center', justifyContent: 'center',
-  },
-  requestsCountText: { color: C.white, fontSize: 11.5, fontWeight: '800', fontFamily: 'Inter' },
-  requestCard: {
-    backgroundColor: C.white, borderWidth: 1, borderColor: C.cyan100,
-    borderRadius: 16, padding: 15, marginBottom: 10,
-  },
-  requestTopRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 },
-  requestTitle: { flex: 1, color: C.ink900, fontSize: 15.5, fontWeight: '800', fontFamily: 'Inter' },
-  requestPrice: { color: C.ink900, fontSize: 16, fontWeight: '800', fontFamily: 'Inter' },
-  requestMetaRow: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 6 },
-  requestMeta: { color: C.ink400, fontSize: 12.5, fontFamily: 'Inter', flexShrink: 1 },
-  requestActions: { flexDirection: 'row', gap: 9, marginTop: 14 },
-  declineBtn: {
-    flex: 1, borderWidth: 1, borderColor: '#ef4444', borderRadius: 12,
-    paddingVertical: 11, alignItems: 'center',
-  },
-  declineBtnText: { color: '#ef4444', fontSize: 14.5, fontWeight: '700', fontFamily: 'Inter' },
-  acceptBtn: {
-    flex: 1, backgroundColor: C.cyan700, borderRadius: 12,
-    paddingVertical: 11, alignItems: 'center', justifyContent: 'center',
-  },
-  acceptBtnText: { color: C.white, fontSize: 14.5, fontWeight: '700', fontFamily: 'Inter' },
-  btnBusy: { opacity: 0.6 },
-  actionError: { color: '#ef4444', fontSize: 13, fontFamily: 'Inter', marginBottom: 8 },
+    requestsBlock: { marginBottom: 14 },
+    requestsHeader: { flexDirection: 'row', alignItems: 'center', gap: 7, marginBottom: 9 },
+    requestsTitle: { color: C.ink900, fontSize: 14, fontWeight: '800', fontFamily: 'Inter' },
+    requestsCount: {
+      minWidth: 20, height: 20, borderRadius: 10, paddingHorizontal: 6,
+      backgroundColor: C.cyan700, alignItems: 'center', justifyContent: 'center',
+    },
+    requestsCountText: { color: C.onPrimary, fontSize: 11.5, fontWeight: '800', fontFamily: 'Inter' },
+    body: { flex: 1 },
+    bodyContent: { paddingHorizontal: Spacing.screenH, paddingTop: 16, paddingBottom: 20 },
 
-  body: { flex: 1 },
-  bodyContent: { paddingHorizontal: Spacing.screenH, paddingTop: 16, paddingBottom: 20 },
+    flowBanner: {
+      flexDirection: 'row', alignItems: 'flex-start', gap: 12,
+      backgroundColor: V6Colors.infoSurface, borderWidth: 1, borderColor: C.cyan100,
+      borderRadius: 16, padding: 14, marginBottom: 14,
+    },
+    flowIcon: { width: 36, height: 36, borderRadius: 11, backgroundColor: C.cyan50, alignItems: 'center', justifyContent: 'center' },
+    flowTitle: { fontSize: 13.5, color: C.ink900, fontWeight: '700', fontFamily: 'Inter' },
+    flowBody: { fontSize: 12, lineHeight: 16, color: C.ink500, fontFamily: 'Inter', marginTop: 3 },
+    flowAction: { color: V6Colors.link, fontSize: 12.5, fontWeight: '800', fontFamily: 'Inter', alignSelf: 'center' },
 
-  flowBanner: {
-    flexDirection: 'row', alignItems: 'flex-start', gap: 12,
-    backgroundColor: '#f2fbfd', borderWidth: 1, borderColor: C.cyan100,
-    borderRadius: 16, padding: 14, marginBottom: 14,
-  },
-  flowIcon: { width: 36, height: 36, borderRadius: 11, backgroundColor: C.cyan50, alignItems: 'center', justifyContent: 'center' },
-  flowTitle: { fontSize: 13.5, color: C.ink900, fontWeight: '700', fontFamily: 'Inter' },
-  flowBody: { fontSize: 12, lineHeight: 16, color: C.ink500, fontFamily: 'Inter', marginTop: 3 },
-  flowAction: { color: C.cyan700, fontSize: 12.5, fontWeight: '800', fontFamily: 'Inter', alignSelf: 'center' },
+    statusBar: {
+      flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 12, paddingHorizontal: 14,
+      backgroundColor: C.surface, borderWidth: 1, borderColor: C.line, borderRadius: 14, marginBottom: 14,
+    },
+    statusDot: { width: 8, height: 8, borderRadius: 4 },
+    statusText: { color: C.ink700, fontSize: 14.5, fontWeight: '700', fontFamily: 'Inter' },
+    statusHint: { color: C.ink400, fontSize: 12.5, fontFamily: 'Inter', marginTop: 1 },
+    sectionHeading: { color: C.ink400, fontSize: 12.5, fontWeight: '800', fontFamily: 'Inter', textTransform: 'uppercase', letterSpacing: 0.6, marginBottom: 8 },
+    chipRow: { gap: 8, paddingBottom: 12 },
+    chip: { borderWidth: 1, borderColor: C.line, backgroundColor: C.surface, borderRadius: 999, paddingHorizontal: 14, paddingVertical: 7 },
+    chipActive: { backgroundColor: C.cyan700, borderColor: C.cyan700 },
+    chipText: { color: C.ink700, fontSize: 13, fontWeight: '700', fontFamily: 'Inter' },
+    chipTextActive: { color: C.onPrimary },
 
-  statusBar: {
-    flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 12, paddingHorizontal: 14,
-    backgroundColor: C.white, borderWidth: 1, borderColor: C.line, borderRadius: 14, marginBottom: 14,
-  },
-  statusDot: { width: 8, height: 8, borderRadius: 4 },
-  statusText: { color: C.ink700, fontSize: 14.5, fontWeight: '700', fontFamily: 'Inter' },
-  statusHint: { color: C.ink400, fontSize: 12.5, fontFamily: 'Inter', marginTop: 1 },
-  sectionHeading: { color: C.ink400, fontSize: 12.5, fontWeight: '800', fontFamily: 'Inter', textTransform: 'uppercase', letterSpacing: 0.6, marginBottom: 8 },
-  chipRow: { gap: 8, paddingBottom: 12 },
-  chip: { borderWidth: 1, borderColor: C.line, backgroundColor: C.white, borderRadius: 999, paddingHorizontal: 14, paddingVertical: 7 },
-  chipActive: { backgroundColor: C.cyan700, borderColor: C.cyan700 },
-  chipText: { color: C.ink700, fontSize: 13, fontWeight: '700', fontFamily: 'Inter' },
-  chipTextActive: { color: C.white },
+    scopeSearch: {
+      flexDirection: 'row', alignItems: 'center', gap: 9,
+      backgroundColor: C.surface, borderWidth: 1, borderColor: C.line,
+      borderRadius: 14, paddingHorizontal: 13, paddingVertical: 11, marginBottom: 16,
+    },
+    scopeSearchInput: { flex: 1, fontSize: 14.5, color: C.ink900, fontFamily: 'Inter', padding: 0 },
 
+    emptyState: { alignItems: 'center', paddingVertical: 40, paddingHorizontal: 22 },
+    emptyTitle: { color: C.ink800, fontSize: 16, fontWeight: '700', fontFamily: 'Inter', marginTop: 10, marginBottom: 4 },
+    emptyText: { color: C.ink400, fontSize: 14, fontFamily: 'Inter', textAlign: 'center', lineHeight: 17 },
 
-  scopeSearch: {
-    flexDirection: 'row', alignItems: 'center', gap: 9,
-    backgroundColor: C.white, borderWidth: 1, borderColor: C.line,
-    borderRadius: 14, paddingHorizontal: 13, paddingVertical: 11, marginBottom: 16,
-  },
-  scopeSearchInput: { flex: 1, fontSize: 14.5, color: C.ink900, fontFamily: 'Inter', padding: 0 },
-
-  emptyState: { alignItems: 'center', paddingVertical: 40, paddingHorizontal: 22 },
-  emptyTitle: { color: C.ink800, fontSize: 16, fontWeight: '700', fontFamily: 'Inter', marginTop: 10, marginBottom: 4 },
-  emptyText: { color: C.ink400, fontSize: 14, fontFamily: 'Inter', textAlign: 'center', lineHeight: 17 },
-
-  urgentInline: { color: '#b91c1c', fontSize: 11, fontWeight: '800', letterSpacing: 0.5, textTransform: 'uppercase', fontFamily: 'Inter' },
-});
+    urgentInline: { color: V6Colors.dangerText, fontSize: 11, fontWeight: '800', letterSpacing: 0.5, textTransform: 'uppercase', fontFamily: 'Inter' },
+  });
+  return { appearance: theme.appearance, Colors, V6Colors, C, styles };
+}

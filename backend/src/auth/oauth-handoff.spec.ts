@@ -1,8 +1,5 @@
 import * as crypto from 'crypto';
-import {
-  NotFoundException,
-  ServiceUnavailableException,
-} from '@nestjs/common';
+import { NotFoundException, ServiceUnavailableException } from '@nestjs/common';
 import { AuthService } from './auth.service';
 import type { SupabaseService } from '../supabase/supabase.service';
 
@@ -94,10 +91,7 @@ function createHandoffSupabaseMock(
 }
 
 /** Drives the real callback so the handoff is written the way production writes it. */
-async function signInWithHandoff(
-  service: AuthService,
-  handoffId = HANDOFF_ID,
-) {
+async function signInWithHandoff(service: AuthService, handoffId = HANDOFF_ID) {
   const url = new URL(service.buildGoogleAuthUrl(APP_REDIRECT, handoffId));
   const state = url.searchParams.get('state')!;
   return service.handleGoogleCallback('auth-code', state);
@@ -120,7 +114,7 @@ describe('Google sign-in handoff', () => {
   function mockUpstream(supabase: SupabaseService) {
     global.fetch = jest.fn().mockResolvedValue({
       json: () => Promise.resolve({ id_token: 'id-token' }),
-    }) as unknown as typeof fetch;
+    });
 
     const admin = supabase as unknown as {
       anon: unknown;
@@ -186,7 +180,9 @@ describe('Google sign-in handoff', () => {
         },
       ],
     ]);
-    const service = new AuthService(createHandoffSupabaseMock({ rows }).supabase);
+    const service = new AuthService(
+      createHandoffSupabaseMock({ rows }).supabase,
+    );
 
     await expect(service.claimGoogleHandoff(HANDOFF_ID)).resolves.toEqual({
       session: SESSION,
@@ -214,7 +210,9 @@ describe('Google sign-in handoff', () => {
         },
       ],
     ]);
-    const service = new AuthService(createHandoffSupabaseMock({ rows }).supabase);
+    const service = new AuthService(
+      createHandoffSupabaseMock({ rows }).supabase,
+    );
 
     await expect(service.claimGoogleHandoff(HANDOFF_ID)).rejects.toThrow(
       NotFoundException,

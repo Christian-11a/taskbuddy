@@ -9,12 +9,11 @@
  * a short FAQ.
  */
 
+import { useThemedStyles, type Palette as ThemePalette } from '../context/ThemeContext';
 import React from 'react';
 import { Linking, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { ArrowLeft, ExternalLink, Mail, PlayCircle } from 'lucide-react-native';
-import { Sizes, Spacing, V6Colors, V6Radii, V6Shadows } from '../constants/theme';
-
-const C = V6Colors;
+import { Sizes, Spacing, V6Radii, V6Shadows } from '../constants/theme';
 
 const SUPPORT_EMAIL = 'support@taskbuddy.ph';
 
@@ -30,7 +29,7 @@ const ATTRIBUTIONS = [
 ];
 
 const HO_FAQS = [
-  { q: 'How do payments work?', a: 'Add money to your Wallet via Stripe Checkout. Funds are held in escrow once you hire a provider and released to them when you mark the job complete.' },
+  { q: 'How do payments work?', a: 'Add money to your Wallet via Stripe Checkout. Funds are held in escrow once you hire a provider and released after the three-day completion warranty ends, unless a complaint is open.' },
   { q: 'How do I hire a provider?', a: 'Post a job, review proposals from providers, and tap Hire on the one you choose from the job’s Applications screen.' },
   { q: 'How do I leave a review?', a: 'Once a job is marked complete, open it from My Jobs and tap Leave a Review.' },
   { q: 'How do I report a problem with a job?', a: 'Open the job from My Jobs and use Dispute Filing to describe the issue — an admin will review it.' },
@@ -39,7 +38,7 @@ const HO_FAQS = [
 const SP_FAQS = [
   { q: 'How do I get verified?', a: 'Go to Profile → Get Verified and submit a government ID photo plus a selfie. An admin reviews it, usually within a few days.' },
   { q: 'How do I submit a proposal?', a: 'Browse open jobs on the Feed tab and tap into one to submit a proposal. You need to be verified before proposals can be submitted.' },
-  { q: 'How do I get paid?', a: 'Earnings appear in your Wallet as jobs are completed and approved by the client. Withdrawals are made from the Wallet tab.' },
+  { q: 'How do I get paid?', a: 'Earnings appear in your Wallet after the three-day completion warranty ends, unless a complaint is open. Withdrawals are made from the Wallet tab.' },
   { q: 'How do I update my services or bio?', a: 'Go to Profile → Edit Profile to update your bio, category, and service radius.' },
 ];
 
@@ -50,6 +49,7 @@ interface HelpSupportScreenProps {
 }
 
 export default function HelpSupportScreen({ role, onBack, onViewTutorial }: HelpSupportScreenProps) {
+  const { C, styles, V6Colors } = useThemedStyles(createThemedStyles);
   const faqs = role === 'provider' ? SP_FAQS : HO_FAQS;
 
   return (
@@ -75,7 +75,7 @@ export default function HelpSupportScreen({ role, onBack, onViewTutorial }: Help
             onPress={onViewTutorial}
           >
             <View style={styles.contactIcon}>
-              <PlayCircle size={19} color={C.cyan700} />
+              <PlayCircle size={19} color={V6Colors.link} />
             </View>
             <View style={{ flex: 1 }}>
               <Text style={styles.contactTitle}>View tutorial</Text>
@@ -101,7 +101,7 @@ export default function HelpSupportScreen({ role, onBack, onViewTutorial }: Help
           onPress={() => Linking.openURL(`mailto:${SUPPORT_EMAIL}`)}
         >
           <View style={styles.contactIcon}>
-            <Mail size={19} color={C.cyan700} />
+            <Mail size={19} color={V6Colors.link} />
           </View>
           <View style={{ flex: 1 }}>
             <Text style={styles.contactTitle}>Email support</Text>
@@ -123,7 +123,7 @@ export default function HelpSupportScreen({ role, onBack, onViewTutorial }: Help
               onPress={() => Linking.openURL(item.url)}
             >
               <Text style={styles.attributionLink}>{item.label}</Text>
-              <ExternalLink size={15} color={C.cyan700} />
+              <ExternalLink size={15} color={V6Colors.link} />
             </TouchableOpacity>
           ))}
         </View>
@@ -134,55 +134,60 @@ export default function HelpSupportScreen({ role, onBack, onViewTutorial }: Help
   );
 }
 
-const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: C.canvas },
+function createThemedStyles(theme: ThemePalette) {
+  const { Colors, V6Colors } = theme;
+  const C = V6Colors;
+  const styles = StyleSheet.create({
+    screen: { flex: 1, backgroundColor: C.canvas },
 
-  header: {
-    flexDirection: 'row', alignItems: 'center', gap: 12,
-    backgroundColor: C.white,
-    paddingTop: Sizes.statusBarHeight,
-    paddingHorizontal: Spacing.screenH,
-    paddingBottom: 12,
-    borderBottomWidth: 1, borderBottomColor: '#edf1f4',
-  },
-  backBtn: {
-    width: 38, height: 38, borderRadius: 12,
-    backgroundColor: C.white, borderWidth: 1, borderColor: '#e8edf2',
-    alignItems: 'center', justifyContent: 'center',
-  },
-  headerTitle: { flex: 1, color: C.ink900, fontSize: 19.5, fontWeight: '800', fontFamily: 'Inter' },
+    header: {
+      flexDirection: 'row', alignItems: 'center', gap: 12,
+      backgroundColor: C.surface,
+      paddingTop: Sizes.statusBarHeight,
+      paddingHorizontal: Spacing.screenH,
+      paddingBottom: 12,
+      borderBottomWidth: 1, borderBottomColor: V6Colors.line,
+    },
+    backBtn: {
+      width: 38, height: 38, borderRadius: 12,
+      backgroundColor: C.surface, borderWidth: 1, borderColor: V6Colors.line,
+      alignItems: 'center', justifyContent: 'center',
+    },
+    headerTitle: { flex: 1, color: C.ink900, fontSize: 19.5, fontWeight: '800', fontFamily: 'Inter' },
 
-  body: { flex: 1 },
-  bodyContent: { paddingHorizontal: Spacing.screenH, paddingTop: 20, paddingBottom: 20 },
+    body: { flex: 1 },
+    bodyContent: { paddingHorizontal: Spacing.screenH, paddingTop: 20, paddingBottom: 20 },
 
-  sectionTitle: { fontSize: 13, fontWeight: '700', color: C.ink400, textTransform: 'uppercase', letterSpacing: 0.6, marginBottom: 10, fontFamily: 'Inter' },
-  card: {
-    backgroundColor: C.white, borderRadius: V6Radii.card,
-    borderWidth: 1, borderColor: C.line, overflow: 'hidden', marginBottom: 20,
-  },
-  rowBorder: { borderBottomWidth: 1, borderBottomColor: C.ink50 },
-  faqRow: { paddingHorizontal: 15, paddingVertical: 14 },
-  faqQ: { color: C.ink900, fontSize: 14.5, fontWeight: '700', fontFamily: 'Inter', marginBottom: 5 },
-  faqA: { color: C.ink500, fontSize: 13.5, fontFamily: 'Inter', lineHeight: 19 },
+    sectionTitle: { fontSize: 13, fontWeight: '700', color: C.ink400, textTransform: 'uppercase', letterSpacing: 0.6, marginBottom: 10, fontFamily: 'Inter' },
+    card: {
+      backgroundColor: C.surface, borderRadius: V6Radii.card,
+      borderWidth: 1, borderColor: C.line, overflow: 'hidden', marginBottom: 20,
+    },
+    rowBorder: { borderBottomWidth: 1, borderBottomColor: C.ink50 },
+    faqRow: { paddingHorizontal: 15, paddingVertical: 14 },
+    faqQ: { color: C.ink900, fontSize: 14.5, fontWeight: '700', fontFamily: 'Inter', marginBottom: 5 },
+    faqA: { color: C.ink500, fontSize: 13.5, fontFamily: 'Inter', lineHeight: 19 },
 
-  contactCard: {
-    flexDirection: 'row', alignItems: 'center', gap: 12,
-    backgroundColor: C.white, borderRadius: V6Radii.card,
-    borderWidth: 1, borderColor: C.line, padding: 14,
-    ...V6Shadows.sm,
-  },
-  contactIcon: {
-    width: 38, height: 38, borderRadius: 12,
-    backgroundColor: '#f5f8fa', alignItems: 'center', justifyContent: 'center',
-  },
-  contactTitle: { color: C.ink900, fontSize: 14.5, fontWeight: '700', fontFamily: 'Inter' },
-  contactEmail: { color: C.cyan700, fontSize: 13.5, fontFamily: 'Inter', marginTop: 2 },
+    contactCard: {
+      flexDirection: 'row', alignItems: 'center', gap: 12,
+      backgroundColor: C.surface, borderRadius: V6Radii.card,
+      borderWidth: 1, borderColor: C.line, padding: 14,
+      ...V6Shadows.sm,
+    },
+    contactIcon: {
+      width: 38, height: 38, borderRadius: 12,
+      backgroundColor: V6Colors.wellBg, alignItems: 'center', justifyContent: 'center',
+    },
+    contactTitle: { color: C.ink900, fontSize: 14.5, fontWeight: '700', fontFamily: 'Inter' },
+    contactEmail: { color: V6Colors.link, fontSize: 13.5, fontFamily: 'Inter', marginTop: 2 },
 
-  sectionSpacing: { marginTop: 24 },
-  attributionIntro: { color: C.ink500, fontSize: 13.5, fontFamily: 'Inter', paddingHorizontal: 15, paddingTop: 14, paddingBottom: 4 },
-  attributionRow: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    paddingHorizontal: 15, paddingVertical: 12,
-  },
-  attributionLink: { color: C.cyan700, fontSize: 14, fontWeight: '600', fontFamily: 'Inter' },
-});
+    sectionSpacing: { marginTop: 24 },
+    attributionIntro: { color: C.ink500, fontSize: 13.5, fontFamily: 'Inter', paddingHorizontal: 15, paddingTop: 14, paddingBottom: 4 },
+    attributionRow: {
+      flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+      paddingHorizontal: 15, paddingVertical: 12,
+    },
+    attributionLink: { color: V6Colors.link, fontSize: 14, fontWeight: '600', fontFamily: 'Inter' },
+  });
+  return { Colors, V6Colors, C, styles };
+}

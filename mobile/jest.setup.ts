@@ -28,3 +28,8 @@ jest.mock('react-native-safe-area-context', () => {
     useSafeAreaFrame: () => frame,
   };
 });
+
+// Appearance and session persistence use the existing native AsyncStorage module.
+jest.mock('@react-native-async-storage/async-storage', () =>
+  require('@react-native-async-storage/async-storage/jest/async-storage-mock'),
+);

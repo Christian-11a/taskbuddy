@@ -10,16 +10,17 @@
  * - Name, Email, Password, Confirm Password inputs
  * - Role selector: Homeowner / Service Provider
  * - Homeowner: T&C + Privacy Policy + Data Collection consent checkboxes
- * - Provider: above + RA 10173 biometric consent + Skill category picker
+ * - Provider: above + Skill category picker
  * - "Sign Up" primary button (teal, radius 24)
  * - "or" divider
  * - "Continue with Google" outline button
  *
  * TC-AUTH-001B: T&C checkbox is mandatory and blocks submit.
  * Privacy Policy and Data Collection consents are also mandatory.
- * RA 10173 biometric consent is mandatory for Service Providers only.
+ * Identity-document processing is explained in the verification flow.
  */
 
+import { useThemedStyles, type Palette as ThemePalette } from '../../../src/context/ThemeContext';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
@@ -39,7 +40,7 @@ import {
   type LayoutChangeEvent,
 } from 'react-native';
 import { AlertCircle, ArrowLeft, Check, ChevronDown, MailCheck } from 'lucide-react-native';
-import { V6Colors, V6Radii, V6Shadows } from '../../../src/constants/theme';
+import { V6Radii, V6Shadows } from '../../../src/constants/theme';
 import TermsAndConditions from './TermsAndConditions';
 import { ApiError, api } from '../../../src/lib/api';
 import type { MobileRole } from '../../../src/lib/api';
@@ -49,18 +50,6 @@ import { useAuthLayout } from '../../../src/hooks/useAuthLayout';
 
 /** Supabase issues 6-digit signup codes. */
 const OTP_LENGTH = 6;
-
-const C = {
-  ...V6Colors,
-  bg: V6Colors.canvas,
-  dark: V6Colors.ink900,
-  slate: V6Colors.ink500,
-  muted: V6Colors.ink400,
-  mutedBorder: '#dce3e9',
-  brandDark: V6Colors.cyan900,
-  brandTeal: V6Colors.cyan700,
-  brandRed: '#ef4444',
-} as const;
 
 const SKILL_CATEGORIES = [
   { id: 1, name: 'Plumbing' },
@@ -84,7 +73,6 @@ interface RegisterScreenProps {
     consentedTerms: boolean;
     consentedPrivacy: boolean;
     consentedDataCollection: boolean;
-    consentedBiometric?: boolean;
   }) => Promise<{ needsEmailConfirmation: boolean }>;
   /** Initiate Google OAuth. Should reject with an Error on failure. */
   onGoogleSignIn: () => Promise<void>;
@@ -120,6 +108,7 @@ function FormInput({
   label, required, placeholder, value, onChangeText,
   secureTextEntry, keyboardType, error, testID, onLayout,
 }: InputProps) {
+  const { C, styles, V6Colors, appearance } = useThemedStyles(createThemedStyles);
   const [focused, setFocused] = useState(false);
   return (
     <View onLayout={onLayout} style={styles.inputGroup}>
@@ -143,7 +132,7 @@ function FormInput({
         />
       ) : (
         <View style={[styles.inputBox, focused && styles.inputBoxFocused, error ? styles.inputBoxError : undefined]}>
-          <TextInput
+          <TextInput keyboardAppearance={appearance}
             style={styles.inputText}
             testID={testID}
             placeholder={placeholder}
@@ -174,6 +163,7 @@ interface ConsentCheckboxProps {
 }
 
 function ConsentCheckbox({ checked, onPress, label, error, testID }: ConsentCheckboxProps) {
+  const { C, styles, V6Colors, appearance } = useThemedStyles(createThemedStyles);
   return (
     <View style={styles.consentItem}>
       <View style={styles.consentRow}>
@@ -183,7 +173,7 @@ function ConsentCheckbox({ checked, onPress, label, error, testID }: ConsentChec
           onPress={onPress}
           activeOpacity={0.7}
         >
-          {checked ? <Check size={14} color={C.white} /> : null}
+          {checked ? <Check size={14} color={C.onPrimary} /> : null}
         </TouchableOpacity>
         <Text style={styles.termsText}>{label}</Text>
       </View>
@@ -207,10 +197,10 @@ type FieldErrors = {
   terms?: string;
   privacy?: string;
   dataCollection?: string;
-  biometric?: string;
 };
 
 export default function RegisterScreen({ onRegister, onLogin, onGoogleSignIn }: RegisterScreenProps) {
+  const { C, styles, V6Colors, appearance } = useThemedStyles(createThemedStyles);
   const layout = useAuthLayout();
   const scrollRef = useRef<ScrollView>(null);
   const cardTop = useRef(0);
@@ -245,7 +235,6 @@ export default function RegisterScreen({ onRegister, onLogin, onGoogleSignIn }: 
   const [termsAccepted, setTermsAccepted] = useState(false);
   const [privacyAccepted, setPrivacyAccepted] = useState(false);
   const [dataCollectionAccepted, setDataCollectionAccepted] = useState(false);
-  const [biometricAccepted, setBiometricAccepted] = useState(false);
 
   // Core fields
   const [name, setName] = useState('');
@@ -321,10 +310,8 @@ export default function RegisterScreen({ onRegister, onLogin, onGoogleSignIn }: 
     if (role === 'homeowner') {
       setCategoryId(null);
       setCategoryOpen(false);
-      setBiometricAccepted(false);
     }
   }, [role]);
-
 
   // ── Validation ─────────────────────────────────────────────────────────────
 
@@ -348,9 +335,6 @@ export default function RegisterScreen({ onRegister, onLogin, onGoogleSignIn }: 
     if (!termsAccepted)         errors.terms          = 'Please accept the Terms & Conditions to continue.';
     if (!privacyAccepted)       errors.privacy        = 'Please accept the Privacy Policy to continue.';
     if (!dataCollectionAccepted) errors.dataCollection = 'Please accept the Data Collection consent to continue.';
-    if (role === 'provider' && !biometricAccepted) {
-      errors.biometric = 'Please accept the biometric data processing consent to continue.';
-    }
 
     return errors;
   };
@@ -369,7 +353,7 @@ export default function RegisterScreen({ onRegister, onLogin, onGoogleSignIn }: 
     if (Object.keys(errors).length > 0) {
       setFieldErrors(errors);
       const first = Object.keys(errors)[0];
-      const field = ['terms', 'privacy', 'dataCollection', 'biometric'].includes(first) ? 'consents' : first;
+      const field = ['terms', 'privacy', 'dataCollection'].includes(first) ? 'consents' : first;
       scrollRef.current?.scrollTo({ y: cardTop.current + (fieldPositions.current[field] ?? 0), animated: true });
       return;
     }
@@ -386,7 +370,6 @@ export default function RegisterScreen({ onRegister, onLogin, onGoogleSignIn }: 
         consentedTerms: termsAccepted,
         consentedPrivacy: privacyAccepted,
         consentedDataCollection: dataCollectionAccepted,
-        consentedBiometric: role === 'provider' ? biometricAccepted : undefined,
       });
       if (needsEmailConfirmation) setConfirmationSent(true);
     } catch (e) {
@@ -429,7 +412,7 @@ export default function RegisterScreen({ onRegister, onLogin, onGoogleSignIn }: 
         >
           <View style={styles.confirmCard}>
             <View style={styles.confirmIcon}>
-              <MailCheck size={35} color={C.brandTeal} />
+              <MailCheck size={35} color={V6Colors.link} />
             </View>
             <Text style={styles.title}>Check your email</Text>
             <Text style={styles.confirmText}>
@@ -438,7 +421,7 @@ export default function RegisterScreen({ onRegister, onLogin, onGoogleSignIn }: 
               below to finish creating your account.
             </Text>
 
-            <TextInput
+            <TextInput keyboardAppearance={appearance}
               style={styles.otpInput}
               value={otp}
               onChangeText={(text) => {
@@ -465,7 +448,7 @@ export default function RegisterScreen({ onRegister, onLogin, onGoogleSignIn }: 
               accessibilityRole="button"
             >
               {verifying ? (
-                <ActivityIndicator color={C.white} />
+                <ActivityIndicator color={C.onPrimary} />
               ) : (
                 <Text style={styles.primaryBtnText}>Verify Email</Text>
               )}
@@ -643,7 +626,7 @@ export default function RegisterScreen({ onRegister, onLogin, onGoogleSignIn }: 
                         >
                           {cat.name}
                         </Text>
-                        {cat.id === categoryId && <Check size={15} color={C.brandTeal} />}
+                        {cat.id === categoryId && <Check size={15} color={V6Colors.link} />}
                       </TouchableOpacity>
                     ))}
                   </View>
@@ -713,27 +696,6 @@ export default function RegisterScreen({ onRegister, onLogin, onGoogleSignIn }: 
                 error={fieldErrors.dataCollection}
               />
 
-              {/* RA 10173 Biometric consent — SP only */}
-              {role === 'provider' && (
-                <ConsentCheckbox
-                  testID="chk-biometric"
-                  checked={biometricAccepted}
-                  onPress={() => setBiometricAccepted((v) => !v)}
-                  label={
-                    <Text style={styles.termsText}>
-                      I consent to the processing of my government-issued ID and
-                      biometric data for identity verification purposes, in
-                      accordance with the{' '}
-                      <Text style={styles.termsLink} onPress={() => setTermsMode('privacy')}>
-                        Data Privacy Act of 2012 (RA 10173)
-                      </Text>
-                      .<Text style={styles.requiredAsterisk}>*</Text>
-                    </Text>
-                  }
-                  error={fieldErrors.biometric}
-                />
-              )}
-
               <Text style={styles.requiredHint}>
                 <Text style={styles.requiredAsterisk}>*</Text> Required to create your account
               </Text>
@@ -767,7 +729,7 @@ export default function RegisterScreen({ onRegister, onLogin, onGoogleSignIn }: 
               disabled={submitting}
             >
               {submitting ? (
-                <ActivityIndicator color={C.white} />
+                <ActivityIndicator color={C.onPrimary} />
               ) : (
                 <Text style={styles.primaryBtnText}>Sign Up</Text>
               )}
@@ -788,7 +750,7 @@ export default function RegisterScreen({ onRegister, onLogin, onGoogleSignIn }: 
               disabled={googleLoading || submitting}
             >
               {googleLoading ? (
-                <ActivityIndicator color={C.brandTeal} />
+                <ActivityIndicator color={V6Colors.link} />
               ) : (
                 <>
                   <View style={styles.googleIcon}>
@@ -833,188 +795,203 @@ export default function RegisterScreen({ onRegister, onLogin, onGoogleSignIn }: 
   );
 }
 
-const styles = StyleSheet.create({
-  flex: { flex: 1 },
-  screen: { flex: 1, backgroundColor: C.bg },
+function createThemedStyles(theme: ThemePalette) {
+  const { Colors, V6Colors } = theme;
+  const C = {
+    ...V6Colors,
+    bg: V6Colors.canvas,
+    dark: V6Colors.ink900,
+    slate: V6Colors.ink500,
+    muted: V6Colors.ink400,
+    mutedBorder: '#dce3e9',
+    brandDark: V6Colors.cyan900,
+    brandTeal: V6Colors.cyan700,
+    brandRed: V6Colors.dangerText,
+  } as const;
+  const styles = StyleSheet.create({
+    flex: { flex: 1 },
+    screen: { flex: 1, backgroundColor: C.bg },
 
-  scrollContent: { width: '100%', maxWidth: 600, alignSelf: 'center', paddingTop: 56, paddingHorizontal: 16, paddingBottom: 40 },
+    scrollContent: { width: '100%', maxWidth: 600, alignSelf: 'center', paddingTop: 56, paddingHorizontal: 16, paddingBottom: 40 },
 
-  topSection: { marginBottom: 20, flexDirection: 'row' },
-  backBtn: {
-    width: 38, height: 38, borderRadius: 12,
-    backgroundColor: C.white, borderWidth: 1, borderColor: '#e8edf2',
-    alignItems: 'center', justifyContent: 'center',
-  },
+    topSection: { marginBottom: 20, flexDirection: 'row' },
+    backBtn: {
+      width: 38, height: 38, borderRadius: 12,
+      backgroundColor: C.surface, borderWidth: 1, borderColor: V6Colors.line,
+      alignItems: 'center', justifyContent: 'center',
+    },
 
-  card: {
-    backgroundColor: C.white,
-    borderRadius: V6Radii.card,
-    padding: 24,
-    shadowColor: '#0f172a',
-    shadowOpacity: 0.06,
-    shadowOffset: { width: 0, height: 12 },
-    shadowRadius: 25,
-    elevation: 6,
-    marginBottom: 20,
-  },
+    card: {
+      backgroundColor: C.surface,
+      borderRadius: V6Radii.card,
+      padding: 24,
+      shadowColor: '#0f172a',
+      shadowOpacity: 0.06,
+      shadowOffset: { width: 0, height: 12 },
+      shadowRadius: 25,
+      elevation: 6,
+      marginBottom: 20,
+    },
 
-  title: { color: C.dark, fontSize: 31.5, fontWeight: '700', fontFamily: 'Inter', marginBottom: 4 },
-  subtitle: { color: C.slate, fontSize: 15.5, fontFamily: 'Inter', marginBottom: 20 },
+    title: { color: C.dark, fontSize: 31.5, fontWeight: '700', fontFamily: 'Inter', marginBottom: 4 },
+    subtitle: { color: C.slate, fontSize: 15.5, fontFamily: 'Inter', marginBottom: 20 },
 
-  roleRow: { flexDirection: 'row', gap: 10, marginBottom: 20 },
-  roleBtn: {
-    flex: 1, paddingVertical: 12, borderRadius: V6Radii.btn,
-    borderWidth: 1, borderColor: '#dce3e9',
-    alignItems: 'center', backgroundColor: C.white,
-  },
-  roleBtnActive: { backgroundColor: C.ink900, borderColor: C.ink900 },
-  roleBtnText: { fontFamily: 'Inter', fontSize: 15.5, fontWeight: '600', color: C.muted },
-  roleBtnTextActive: { color: C.white },
+    roleRow: { flexDirection: 'row', gap: 10, marginBottom: 20 },
+    roleBtn: {
+      flex: 1, paddingVertical: 12, borderRadius: V6Radii.btn,
+      borderWidth: 1, borderColor: V6Colors.fieldBorder,
+      alignItems: 'center', backgroundColor: C.surface,
+    },
+    roleBtnActive: { backgroundColor: V6Colors.hero, borderColor: C.ink900 },
+    roleBtnText: { fontFamily: 'Inter', fontSize: 15.5, fontWeight: '600', color: C.muted },
+    roleBtnTextActive: { color: C.onPrimary },
 
-  inputGroup: { marginBottom: 16 },
-  inputLabel: { fontFamily: 'Inter', fontSize: 15.5, fontWeight: '600', color: C.brandDark, marginBottom: 6 },
-  inputBox: {
-    backgroundColor: '#F8FAFC', borderRadius: 12, paddingHorizontal: 16, paddingVertical: 13,
-    borderWidth: 1, borderColor: C.mutedBorder,
-  },
-  inputBoxFocused: { borderColor: C.brandTeal },
-  inputBoxError: { borderColor: C.brandRed },
-  inputText: { fontFamily: 'Inter', fontSize: 18.5, color: '#0F172A', padding: 0 },
-  inputErrorText: {
-    fontFamily: 'Inter', fontSize: 14.5, color: C.brandRed,
-    marginTop: 5, marginLeft: 2, lineHeight: 17,
-  },
+    inputGroup: { marginBottom: 16 },
+    inputLabel: { fontFamily: 'Inter', fontSize: 15.5, fontWeight: '600', color: V6Colors.ink900, marginBottom: 6 },
+    inputBox: {
+      backgroundColor: V6Colors.wellBg, borderRadius: 12, paddingHorizontal: 16, paddingVertical: 13,
+      borderWidth: 1, borderColor: C.mutedBorder,
+    },
+    inputBoxFocused: { borderColor: C.brandTeal },
+    inputBoxError: { borderColor: C.brandRed },
+    inputText: { fontFamily: 'Inter', fontSize: 18.5, color: V6Colors.ink900, padding: 0 },
+    inputErrorText: {
+      fontFamily: 'Inter', fontSize: 14.5, color: C.brandRed,
+      marginTop: 5, marginLeft: 2, lineHeight: 17,
+    },
 
-  // Category picker
-  categoryPicker: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-  },
-  categoryPlaceholder: { fontFamily: 'Inter', fontSize: 18.5, color: C.muted, padding: 0 },
-  categoryDropdown: {
-    marginTop: 8,
-    borderRadius: 12, borderWidth: 1, borderColor: C.mutedBorder,
-    backgroundColor: C.white, overflow: 'hidden',
-  },
-  categoryOption: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    paddingHorizontal: 16, paddingVertical: 13,
-    borderBottomWidth: 1, borderBottomColor: '#F1F5F9',
-  },
-  categoryOptionActive: { backgroundColor: 'rgba(9,110,139,0.06)' },
-  categoryOptionText: { fontFamily: 'Inter', fontSize: 16.5, color: C.dark },
-  categoryOptionTextActive: { color: C.brandTeal, fontWeight: '700' },
+    // Category picker
+    categoryPicker: {
+      flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    },
+    categoryPlaceholder: { fontFamily: 'Inter', fontSize: 18.5, color: C.muted, padding: 0 },
+    categoryDropdown: {
+      marginTop: 8,
+      borderRadius: 12, borderWidth: 1, borderColor: C.mutedBorder,
+      backgroundColor: C.surface, overflow: 'hidden',
+    },
+    categoryOption: {
+      flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+      paddingHorizontal: 16, paddingVertical: 13,
+      borderBottomWidth: 1, borderBottomColor: V6Colors.canvas,
+    },
+    categoryOptionActive: { backgroundColor: 'rgba(9,110,139,0.06)' },
+    categoryOptionText: { fontFamily: 'Inter', fontSize: 16.5, color: C.dark },
+    categoryOptionTextActive: { color: V6Colors.link, fontWeight: '700' },
 
-  // Consent section
-  consentSection: {
-    marginTop: 4,
-    marginBottom: 8,
-    borderTopWidth: 1,
-    borderTopColor: '#F1F5F9',
-    paddingTop: 16,
-    gap: 2,
-  },
-  consentSectionTitle: {
-    fontFamily: 'Inter',
-    fontSize: 14.5,
-    fontWeight: '700',
-    color: C.brandDark,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-    marginBottom: 10,
-  },
-  consentItem: { marginBottom: 10 },
-  consentRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 10 },
-  checkbox: {
-    width: 22, height: 22, borderRadius: 6, borderWidth: 1.5,
-    borderColor: C.mutedBorder, backgroundColor: C.white,
-    alignItems: 'center', justifyContent: 'center', marginTop: 1, flexShrink: 0,
-  },
-  checkboxChecked: { backgroundColor: C.brandTeal, borderColor: C.brandTeal },
-  termsText: { flex: 1, color: C.slate, fontSize: 15.5, fontFamily: 'Inter', lineHeight: 20 },
-  termsLink: { color: C.brandTeal, fontWeight: '700', textDecorationLine: 'underline' },
-  requiredAsterisk: { color: C.brandRed, fontWeight: '700' },
-  requiredHint: {
-    color: C.muted, fontSize: 13.5, fontFamily: 'Inter', marginTop: 4, lineHeight: 16,
-  },
+    // Consent section
+    consentSection: {
+      marginTop: 4,
+      marginBottom: 8,
+      borderTopWidth: 1,
+      borderTopColor: V6Colors.canvas,
+      paddingTop: 16,
+      gap: 2,
+    },
+    consentSectionTitle: {
+      fontFamily: 'Inter',
+      fontSize: 14.5,
+      fontWeight: '700',
+      color: V6Colors.ink900,
+      textTransform: 'uppercase',
+      letterSpacing: 0.5,
+      marginBottom: 10,
+    },
+    consentItem: { marginBottom: 10 },
+    consentRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 10 },
+    checkbox: {
+      width: 22, height: 22, borderRadius: 6, borderWidth: 1.5,
+      borderColor: C.mutedBorder, backgroundColor: C.surface,
+      alignItems: 'center', justifyContent: 'center', marginTop: 1, flexShrink: 0,
+    },
+    checkboxChecked: { backgroundColor: C.brandTeal, borderColor: C.brandTeal },
+    termsText: { flex: 1, color: C.slate, fontSize: 15.5, fontFamily: 'Inter', lineHeight: 20 },
+    termsLink: { color: V6Colors.link, fontWeight: '700', textDecorationLine: 'underline' },
+    requiredAsterisk: { color: C.brandRed, fontWeight: '700' },
+    requiredHint: {
+      color: C.muted, fontSize: 13.5, fontFamily: 'Inter', marginTop: 4, lineHeight: 16,
+    },
 
-  errorCard: {
-    flexDirection: 'row', alignItems: 'flex-start', gap: 10,
-    backgroundColor: '#fef2f2', borderWidth: 1, borderColor: '#fecaca',
-    borderRadius: 12, padding: 12, marginBottom: 14,
-  },
-  errorCardBody: { flex: 1 },
-  errorCardTitle: { fontFamily: 'Inter', fontSize: 14.5, fontWeight: '700', color: '#991b1b', marginBottom: 2 },
-  errorCardText: { fontFamily: 'Inter', fontSize: 14, color: '#b91c1c', lineHeight: 19 },
-  errorCardLink: { fontWeight: '700', textDecorationLine: 'underline', color: '#991b1b' },
+    errorCard: {
+      flexDirection: 'row', alignItems: 'flex-start', gap: 10,
+      backgroundColor: V6Colors.dangerSurface, borderWidth: 1, borderColor: V6Colors.dangerBorder,
+      borderRadius: 12, padding: 12, marginBottom: 14,
+    },
+    errorCardBody: { flex: 1 },
+    errorCardTitle: { fontFamily: 'Inter', fontSize: 14.5, fontWeight: '700', color: V6Colors.dangerText, marginBottom: 2 },
+    errorCardText: { fontFamily: 'Inter', fontSize: 14, color: V6Colors.dangerText, lineHeight: 19 },
+    errorCardLink: { fontWeight: '700', textDecorationLine: 'underline', color: V6Colors.dangerText },
 
-  primaryBtn: {
-    backgroundColor: C.brandTeal, borderRadius: V6Radii.btn, paddingVertical: 15,
-    alignItems: 'center', marginTop: 4, marginBottom: 18,
-    ...V6Shadows.primaryButton,
-  },
-  primaryBtnDisabled: { opacity: 0.7 },
-  primaryBtnText: { color: C.white, fontFamily: 'Inter', fontSize: 18.5, fontWeight: '700', letterSpacing: 0.1 },
+    primaryBtn: {
+      backgroundColor: C.brandTeal, borderRadius: V6Radii.btn, paddingVertical: 15,
+      alignItems: 'center', marginTop: 4, marginBottom: 18,
+      ...V6Shadows.primaryButton,
+    },
+    primaryBtnDisabled: { opacity: 0.7 },
+    primaryBtnText: { color: C.onPrimary, fontFamily: 'Inter', fontSize: 18.5, fontWeight: '700', letterSpacing: 0.1 },
 
-  // Email-confirmation success state
-  confirmWrap: { flex: 1, justifyContent: 'center', paddingHorizontal: 20 },
-  confirmCard: {
-    backgroundColor: C.white, borderRadius: V6Radii.card, padding: 28, alignItems: 'center',
-    shadowColor: '#0f172a', shadowOpacity: 0.06, shadowOffset: { width: 0, height: 12 },
-    shadowRadius: 25, elevation: 6,
-  },
-  confirmIcon: {
-    width: 64, height: 64, borderRadius: 32, marginBottom: 16,
-    backgroundColor: 'rgba(9,110,139,0.10)', alignItems: 'center', justifyContent: 'center',
-  },
-  confirmText: {
-    fontFamily: 'Inter', fontSize: 16.5, color: C.slate, textAlign: 'center',
-    lineHeight: 21, marginTop: 8, marginBottom: 24,
-  },
-  confirmEmail: { color: C.brandDark, fontWeight: '700' },
-  otpInput: {
-    alignSelf: 'stretch',
-    borderWidth: 1,
-    borderColor: C.line,
-    borderRadius: V6Radii.btn,
-    paddingVertical: 14,
-    marginTop: 18,
-    marginBottom: 4,
-    fontSize: 30,
-    fontWeight: '800',
-    fontFamily: 'Inter',
-    color: C.brandDark,
-    textAlign: 'center',
-    letterSpacing: 8,
-  },
-  otpError: { color: '#ef4444', fontSize: 14, fontFamily: 'Inter', textAlign: 'center', marginTop: 8 },
-  otpNote: { color: C.slate, fontSize: 13.5, fontFamily: 'Inter', textAlign: 'center', marginTop: 8, lineHeight: 18 },
-  otpLink: {
-    color: C.brandTeal, fontSize: 15, fontWeight: '700', fontFamily: 'Inter',
-    textAlign: 'center', marginTop: 16,
-  },
-  otpLinkMuted: {
-    color: C.slate, fontSize: 14.5, fontWeight: '600', fontFamily: 'Inter',
-    textAlign: 'center', marginTop: 12,
-  },
+    // Email-confirmation success state
+    confirmWrap: { flex: 1, justifyContent: 'center', paddingHorizontal: 20 },
+    confirmCard: {
+      backgroundColor: C.surface, borderRadius: V6Radii.card, padding: 28, alignItems: 'center',
+      shadowColor: '#0f172a', shadowOpacity: 0.06, shadowOffset: { width: 0, height: 12 },
+      shadowRadius: 25, elevation: 6,
+    },
+    confirmIcon: {
+      width: 64, height: 64, borderRadius: 32, marginBottom: 16,
+      backgroundColor: 'rgba(9,110,139,0.10)', alignItems: 'center', justifyContent: 'center',
+    },
+    confirmText: {
+      fontFamily: 'Inter', fontSize: 16.5, color: C.slate, textAlign: 'center',
+      lineHeight: 21, marginTop: 8, marginBottom: 24,
+    },
+    confirmEmail: { color: V6Colors.ink900, fontWeight: '700' },
+    otpInput: {
+      alignSelf: 'stretch',
+      borderWidth: 1,
+      borderColor: C.line,
+      borderRadius: V6Radii.btn,
+      paddingVertical: 14,
+      marginTop: 18,
+      marginBottom: 4,
+      fontSize: 30,
+      fontWeight: '800',
+      fontFamily: 'Inter',
+      color: V6Colors.ink900,
+      textAlign: 'center',
+      letterSpacing: 8,
+    },
+    otpError: { color: V6Colors.dangerText, fontSize: 14, fontFamily: 'Inter', textAlign: 'center', marginTop: 8 },
+    otpNote: { color: C.slate, fontSize: 13.5, fontFamily: 'Inter', textAlign: 'center', marginTop: 8, lineHeight: 18 },
+    otpLink: {
+      color: V6Colors.link, fontSize: 15, fontWeight: '700', fontFamily: 'Inter',
+      textAlign: 'center', marginTop: 16,
+    },
+    otpLinkMuted: {
+      color: C.slate, fontSize: 14.5, fontWeight: '600', fontFamily: 'Inter',
+      textAlign: 'center', marginTop: 12,
+    },
 
-  dividerRow: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 16 },
-  dividerLine: { flex: 1, height: 1, backgroundColor: '#E2E8F0' },
-  dividerText: { color: '#B3B3B3', fontSize: 15.5, fontFamily: 'Roboto' },
+    dividerRow: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 16 },
+    dividerLine: { flex: 1, height: 1, backgroundColor: V6Colors.ink100 },
+    dividerText: { color: '#B3B3B3', fontSize: 15.5, fontFamily: 'Roboto' },
 
-  googleBtn: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-    borderWidth: 1, borderColor: '#dce3e9',
-    borderRadius: V6Radii.btn, paddingVertical: 13, gap: 10, marginBottom: 20,
-    backgroundColor: C.white,
-  },
-  googleIcon: {
-    width: 20, height: 20, borderRadius: 10,
-    backgroundColor: '#EA4335', alignItems: 'center', justifyContent: 'center',
-  },
-  googleIconText: { color: C.white, fontSize: 14.5, fontWeight: '700' },
-  googleBtnText: { fontFamily: 'Inter', fontSize: 16.5, fontWeight: '500', color: '#757575' },
+    googleBtn: {
+      flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+      borderWidth: 1, borderColor: V6Colors.fieldBorder,
+      borderRadius: V6Radii.btn, paddingVertical: 13, gap: 10, marginBottom: 20,
+      backgroundColor: C.surface,
+    },
+    googleIcon: {
+      width: 20, height: 20, borderRadius: 10,
+      backgroundColor: '#EA4335', alignItems: 'center', justifyContent: 'center',
+    },
+    googleIconText: { color: C.onPrimary, fontSize: 14.5, fontWeight: '700' },
+    googleBtnText: { fontFamily: 'Inter', fontSize: 16.5, fontWeight: '500', color: V6Colors.ink500 },
 
-  signInRow: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', marginTop: 4 },
-  signInPrompt: { fontFamily: 'Inter', fontSize: 16.5, color: C.muted },
-  signInLink: { fontFamily: 'Roboto', fontSize: 16.5, fontWeight: '700', color: C.brandTeal },
-});
+    signInRow: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', marginTop: 4 },
+    signInPrompt: { fontFamily: 'Inter', fontSize: 16.5, color: C.muted },
+    signInLink: { fontFamily: 'Roboto', fontSize: 16.5, fontWeight: '700', color: V6Colors.link },
+  });
+  return { appearance: theme.appearance, Colors, V6Colors, C, styles };
+}

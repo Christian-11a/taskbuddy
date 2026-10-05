@@ -10,6 +10,7 @@ jest.mock('../../../../src/lib/api', () => ({
     jobDispute: jest.fn().mockResolvedValue(null),
     myApplications: jest.fn(),
     applyToJob: jest.fn(),
+    startJob: jest.fn(),
   },
   ApiError: class ApiError extends Error {
     status?: number;
@@ -140,13 +141,55 @@ describe('FullTest provider job details', () => {
     await screen.findByText('Start Job');
     expect(screen.getByRole('checkbox').props.accessibilityState.disabled).toBe(true);
     expect(screen.queryByText('Waiting for client to confirm completion')).toBeNull();
+    expect(screen.queryByText('Accept Booking')).toBeNull();
+  });
+
+  it('starts confirmed work directly without accepting the booking again', async () => {
+    const confirmed = { ...openJob, status: 'confirmed', assigned_provider_id: PROVIDER_ID };
+    (api.getJob as jest.Mock).mockResolvedValueOnce(confirmed)
+      .mockResolvedValue({ ...confirmed, status: 'in_progress' });
+    (api.startJob as jest.Mock).mockResolvedValue({ ...confirmed, status: 'in_progress' });
+    render(<SPJobDetailScreen jobId={JOB_ID} onBack={jest.fn()} onNavigate={jest.fn()} />);
+    fireEvent.press(await screen.findByText('Start Job'));
+    await waitFor(() => expect(api.startJob).toHaveBeenCalledWith(JOB_ID));
+    await screen.findByText('WORK IN PROGRESS');
+    expect(screen.queryByText('Start Job')).toBeNull();
+  });
+
+  it('lets a legacy assigned booking start without another acceptance', async () => {
+    (api.getJob as jest.Mock).mockResolvedValue({ ...openJob, status: 'assigned', assigned_provider_id: PROVIDER_ID });
+    render(<SPJobDetailScreen jobId={JOB_ID} onBack={jest.fn()} onNavigate={jest.fn()} />);
+    await screen.findByText('Start Job');
+    expect(screen.queryByText('Accept Booking')).toBeNull();
   });
 
   it('offers the existing dispute screen for a cancelled job', async () => {
     (api.getJob as jest.Mock).mockResolvedValue({ ...openJob, status: 'cancelled', assigned_provider_id: PROVIDER_ID });
     const onNavigate = jest.fn();
     render(<SPJobDetailScreen jobId={JOB_ID} onBack={jest.fn()} onNavigate={onNavigate} />);
-    fireEvent.press(await screen.findByText('Request Admin Review'));
+    fireEvent.press(await screen.findByText('File a Complaint'));
     expect(onNavigate).toHaveBeenCalledWith('Dispute Filing', JOB_ID);
   });
+  it.each([1, 4])('offers warranty review only during the three-day window (age %i)', async (days) => {
+    (api.getJob as jest.Mock).mockResolvedValue({ ...openJob, status: 'completed', assigned_provider_id: PROVIDER_ID,
+      completed_at: new Date(Date.now() - days * 86400000).toISOString(),
+      warranty_expires_at: new Date(Date.now() + (3 - days) * 86400000).toISOString() });
+    render(<SPJobDetailScreen jobId={JOB_ID} onBack={jest.fn()} onNavigate={jest.fn()} />);
+    await screen.findByText(openJob.title);
+    expect(!!screen.queryByText('File a Complaint')).toBe(days < 3);
+  });
+
+});
+
+it('opens the selected job image and keeps details intact on close', async () => {
+  (useAuth as jest.Mock).mockReturnValue({ profile: { id: PROVIDER_ID }, isVerified: true, refreshProfile: jest.fn() });
+  (api.getJob as jest.Mock).mockResolvedValue({ ...openJob, photo_urls: ['https://test/portrait', 'https://test/landscape'] });
+  (api.myApplications as jest.Mock).mockResolvedValue([]);
+  render(<SPJobDetailScreen jobId={JOB_ID} onBack={jest.fn()} onNavigate={jest.fn()} />);
+  fireEvent.press(await screen.findByLabelText('Open job photo 2'));
+  expect(screen.getByTestId('full-photo').props.source.uri).toBe('https://test/landscape');
+  expect(screen.getByTestId('full-photo').props.resizeMode).toBe('contain');
+  fireEvent.press(screen.getByLabelText('Close photo'));
+  expect(screen.queryByTestId('full-photo')).toBeNull();
+  expect(screen.getByLabelText('Open job photo 2')).toBeTruthy();
 });

@@ -29,20 +29,20 @@ it('cancellation after starting freezes funds and keeps the job and evidence for
   assert.equal((await db.query('select * from jobs where id = $1', [row.id])).rows.length, 1);
   assert.equal((await db.query('select * from wallet_transactions where job_id = $1', [row.id])).rows.length, 0);
 });
-it('accepts warranty complaints within seven days without reopening released money', async () => {
+it('accepts warranty complaints within three days without reopening released money', async () => {
   const row = await job();
   await db.query("update jobs set status = 'completed' where id = $1", [row.id]);
   await db.query("update escrow_transactions set status = 'released', released_at = now() where job_id = $1", [row.id]);
   await db.query('select raise_job_dispute($1, $2, $3, null)', [row.id, client, 'Work quality']);
   assert.equal((await db.query('select status from escrow_transactions where job_id = $1', [row.id])).rows[0].status, 'released');
-  await assert.rejects(db.query('select raise_job_dispute($1, $2, $3, null)', [row.id, client, 'Duplicate']), /duplicate/);
+  await assert.rejects(db.query('select raise_job_dispute($1, $2, $3, null)', [row.id, client, 'Duplicate']), /already an open complaint/);
 });
 it('rejects expired warranty complaints and outsiders', async () => {
   const row = await job();
   await assert.rejects(db.query('select raise_job_dispute($1, $2, $3, null)', [row.id, '33333333-3333-3333-3333-333333333333', 'Nope']), /Not your job/);
   await db.query("update jobs set status = 'completed' where id = $1", [row.id]);
-  await db.query("update jobs set completed_at = now() - interval '8 days' where id = $1", [row.id]);
-  await assert.rejects(db.query('select raise_job_dispute($1, $2, $3, null)', [row.id, client, 'Too late']), /seven-day/);
+  await db.query("update jobs set completed_at = now() - interval '4 days' where id = $1", [row.id]);
+  await assert.rejects(db.query('select raise_job_dispute($1, $2, $3, null)', [row.id, client, 'Too late']), /three-day/);
 });
 it('allows provider appeals for historical refunded cancellations without moving funds', async () => {
   const row = await job('cancelled');

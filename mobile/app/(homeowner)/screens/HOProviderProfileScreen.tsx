@@ -16,7 +16,11 @@
  * in place of the mockup's "Invite to Apply" (which isn't a feature here).
  */
 
+import { useThemedStyles, type Palette as ThemePalette } from '../../../src/context/ThemeContext';
 import React from 'react';
+import PortfolioGallery from '../../../src/components/PortfolioGallery';
+import { approvedServiceNames } from '../../../src/lib/providerServices';
+import { useRefreshOnForeground } from '../../../src/hooks/useRefreshOnForeground';
 import {
   ActivityIndicator,
   ScrollView,
@@ -26,10 +30,9 @@ import {
   View,
 } from 'react-native';
 import { ArrowLeft, BadgeCheck, CheckCircle2, MessageCircle, ShieldAlert, Star } from 'lucide-react-native';
-import { Spacing, V6Colors } from '../../../src/constants/theme';
+import { Spacing } from '../../../src/constants/theme';
 import { useHeaderTop } from '../../../src/hooks/useHeaderTop';
 
-const C = V6Colors;
 import { useAsyncData } from '../../../src/hooks/useAsyncData';
 import { api } from '../../../src/lib/api';
 import { initials, shortDate } from '../../../src/lib/format';
@@ -48,8 +51,9 @@ export default function HOProviderProfileScreen({
   onBack,
   onNavigate,
 }: HOProviderProfileScreenProps) {
+  const { C, styles, V6Colors } = useThemedStyles(createThemedStyles);
   const headerTop = useHeaderTop();
-  const { data, loading, error } = useAsyncData(async () => {
+  const { data, loading, error, reload } = useAsyncData(async () => {
     const [provider, reviews, work] = await Promise.all([
       api.getProvider(id),
       api.getProviderReviews(id),
@@ -59,6 +63,9 @@ export default function HOProviderProfileScreen({
     return { provider, reviews, work };
   }, [id]);
 
+  useRefreshOnForeground(reload, true);
+  const portfolio=useAsyncData(()=>api.providerPortfolio(id),[id]);
+  useRefreshOnForeground(portfolio.reload,true);
   const provider = data?.provider ?? null;
   const reviews: any[] = data?.reviews ?? [];
   const work = data?.work ?? [];
@@ -75,7 +82,7 @@ export default function HOProviderProfileScreen({
         <Text style={styles.headerTitle}>Provider Profile</Text>
       </View>
 
-      {loading && <ActivityIndicator style={{ marginTop: 24 }} color={C.cyan700} />}
+      {loading && <ActivityIndicator style={{ marginTop: 24 }} color={V6Colors.link} />}
       {!!error && !loading && <Text style={styles.stateText}>{error}</Text>}
 
       {!loading && provider && (
@@ -86,14 +93,14 @@ export default function HOProviderProfileScreen({
               <Text style={styles.avatarText}>{initials(provider.profiles?.full_name)}</Text>
             </View>
             <Text style={styles.name}>{provider.profiles?.full_name ?? 'Provider'}</Text>
-            {provider.service_categories?.name && (
-              <Text style={styles.serviceText}>{provider.service_categories.name}</Text>
+            {approvedServiceNames(provider).length > 0 && (
+              <Text style={styles.serviceText}>{approvedServiceNames(provider).join(' · ')}</Text>
             )}
             <View style={[styles.verifyPill, provider.is_verified ? styles.verifyPillOn : styles.verifyPillOff]}>
               {provider.is_verified
-                ? <BadgeCheck size={13} color="#15803d" />
+                ? <BadgeCheck size={13} color={V6Colors.successText} />
                 : <ShieldAlert size={13} color={C.amber700} />}
-              <Text style={[styles.verifyText, { color: provider.is_verified ? '#15803d' : C.amber700 }]}>
+              <Text style={[styles.verifyText, { color: provider.is_verified ? V6Colors.successText : V6Colors.warningText }]}>
                 {provider.is_verified ? 'ID verified' : 'Not verified yet'}
               </Text>
             </View>
@@ -114,13 +121,19 @@ export default function HOProviderProfileScreen({
             </View>
           </View>
 
-          {/* Recent work — the portfolio */}
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Portfolio</Text>
+            {portfolio.loading && <ActivityIndicator color={V6Colors.link}/>}
+            {!!portfolio.error && <><Text style={styles.bio}>{portfolio.error}</Text><TouchableOpacity onPress={portfolio.reload}><Text style={styles.serviceText}>Retry portfolio</Text></TouchableOpacity></>}
+            {!portfolio.loading && !portfolio.error && <PortfolioGallery entries={portfolio.data??[]}/>}
+          </View>
+          {/* Recent work */}
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Recent work</Text>
             {work.length === 0 && <Text style={styles.bio}>No completed jobs on TaskBuddy yet.</Text>}
             {work.map((item) => (
               <View key={item.id} style={styles.workRow}>
-                <CheckCircle2 size={16} color={C.cyan700} />
+                <CheckCircle2 size={16} color={V6Colors.link} />
                 <View style={{ flex: 1, minWidth: 0 }}>
                   <Text style={styles.workTitle} numberOfLines={1}>{item.title}</Text>
                   <Text style={styles.workMeta} numberOfLines={1}>
@@ -165,7 +178,7 @@ export default function HOProviderProfileScreen({
                 onPress={() => onNavigate('Chat', jobId)}
                 activeOpacity={0.85}
               >
-                <MessageCircle size={18} color={C.white} />
+                <MessageCircle size={18} color={C.onPrimary} />
                 <Text style={styles.messageBtnText}>Message</Text>
               </TouchableOpacity>
             </View>
@@ -178,61 +191,66 @@ export default function HOProviderProfileScreen({
   );
 }
 
-const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: C.canvas },
+function createThemedStyles(theme: ThemePalette) {
+  const { Colors, V6Colors } = theme;
+  const C = V6Colors;
+  const styles = StyleSheet.create({
+    screen: { flex: 1, backgroundColor: C.canvas },
 
-  header: {
-    flexDirection: 'row', alignItems: 'center', gap: 12,
-    backgroundColor: C.white,
-    paddingHorizontal: Spacing.screenH,
-    paddingBottom: 12,
-    borderBottomWidth: 1, borderBottomColor: '#edf1f4',
-  },
-  backBtn: {
-    width: 38, height: 38, borderRadius: 12,
-    backgroundColor: C.white, borderWidth: 1, borderColor: '#e8edf2',
-    alignItems: 'center', justifyContent: 'center',
-  },
-  headerTitle: { color: C.ink900, fontSize: 19.5, fontWeight: '800', fontFamily: 'Inter' },
+    header: {
+      flexDirection: 'row', alignItems: 'center', gap: 12,
+      backgroundColor: C.surface,
+      paddingHorizontal: Spacing.screenH,
+      paddingBottom: 12,
+      borderBottomWidth: 1, borderBottomColor: V6Colors.line,
+    },
+    backBtn: {
+      width: 38, height: 38, borderRadius: 12,
+      backgroundColor: C.surface, borderWidth: 1, borderColor: V6Colors.line,
+      alignItems: 'center', justifyContent: 'center',
+    },
+    headerTitle: { color: C.ink900, fontSize: 19.5, fontWeight: '800', fontFamily: 'Inter' },
 
-  body: { flex: 1 },
+    body: { flex: 1 },
 
-  hero: { padding: 22, paddingHorizontal: Spacing.screenH, backgroundColor: C.white, borderBottomWidth: 1, borderBottomColor: C.line, alignItems: 'center' },
-  avatar: { width: 72, height: 72, borderRadius: 22, backgroundColor: C.cyan700, alignItems: 'center', justifyContent: 'center', marginBottom: 10 },
-  avatarText: { color: C.white, fontSize: 24, fontWeight: '800', fontFamily: 'Inter' },
-  name: { color: C.ink900, fontSize: 20.5, fontWeight: '700', fontFamily: 'Inter' },
-  metaText: { color: C.ink400, fontSize: 12.5, fontFamily: 'Inter', marginTop: 4, textAlign: 'center' },
-  serviceText: { color: C.cyan700, fontSize: 13, fontWeight: '700', fontFamily: 'Inter', marginTop: 2 },
-  verifyPill: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 10, paddingVertical: 4, borderRadius: 999, marginTop: 8 },
-  verifyPillOn: { backgroundColor: '#f0fdf4' },
-  verifyPillOff: { backgroundColor: '#fffbeb' },
-  verifyText: { fontSize: 12, fontWeight: '700', fontFamily: 'Inter' },
-  workRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 8 },
-  workTitle: { color: C.ink900, fontSize: 14, fontWeight: '700', fontFamily: 'Inter' },
-  workMeta: { color: C.ink400, fontSize: 12.5, fontFamily: 'Inter', marginTop: 1 },
-  reviewJob: { color: C.ink400, fontSize: 12, fontFamily: 'Inter', marginTop: 2 },
+    hero: { padding: 22, paddingHorizontal: Spacing.screenH, backgroundColor: C.surface, borderBottomWidth: 1, borderBottomColor: C.line, alignItems: 'center' },
+    avatar: { width: 72, height: 72, borderRadius: 22, backgroundColor: C.cyan700, alignItems: 'center', justifyContent: 'center', marginBottom: 10 },
+    avatarText: { color: C.onPrimary, fontSize: 24, fontWeight: '800', fontFamily: 'Inter' },
+    name: { color: C.ink900, fontSize: 20.5, fontWeight: '700', fontFamily: 'Inter' },
+    metaText: { color: C.ink400, fontSize: 12.5, fontFamily: 'Inter', marginTop: 4, textAlign: 'center' },
+    serviceText: { color: V6Colors.link, fontSize: 13, fontWeight: '700', fontFamily: 'Inter', marginTop: 2 },
+    verifyPill: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 10, paddingVertical: 4, borderRadius: 999, marginTop: 8 },
+    verifyPillOn: { backgroundColor: V6Colors.successSurface },
+    verifyPillOff: { backgroundColor: V6Colors.warningSurface },
+    verifyText: { fontSize: 12, fontWeight: '700', fontFamily: 'Inter' },
+    workRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 8 },
+    workTitle: { color: C.ink900, fontSize: 14, fontWeight: '700', fontFamily: 'Inter' },
+    workMeta: { color: C.ink400, fontSize: 12.5, fontFamily: 'Inter', marginTop: 1 },
+    reviewJob: { color: C.ink400, fontSize: 12, fontFamily: 'Inter', marginTop: 2 },
 
-  section: { padding: 18, paddingHorizontal: Spacing.screenH, backgroundColor: C.white, borderBottomWidth: 1, borderBottomColor: C.line },
-  sectionTitle: { fontSize: 12, textTransform: 'uppercase', letterSpacing: 0.7, color: C.ink400, fontWeight: '700', fontFamily: 'Inter', marginBottom: 10 },
-  bio: { fontSize: 13.5, lineHeight: 20, color: C.ink700, fontFamily: 'Inter' },
+    section: { padding: 18, paddingHorizontal: Spacing.screenH, backgroundColor: C.surface, borderBottomWidth: 1, borderBottomColor: C.line },
+    sectionTitle: { fontSize: 12, textTransform: 'uppercase', letterSpacing: 0.7, color: C.ink400, fontWeight: '700', fontFamily: 'Inter', marginBottom: 10 },
+    bio: { fontSize: 13.5, lineHeight: 20, color: C.ink700, fontFamily: 'Inter' },
 
-  kvRow: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 12 },
-  kvLabel: { color: C.ink500, fontSize: 13.5, fontFamily: 'Inter' },
-  kvValue: { color: C.ink900, fontSize: 13.5, fontWeight: '700', fontFamily: 'Inter' },
+    kvRow: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 12 },
+    kvLabel: { color: C.ink500, fontSize: 13.5, fontFamily: 'Inter' },
+    kvValue: { color: C.ink900, fontSize: 13.5, fontWeight: '700', fontFamily: 'Inter' },
 
-  reviewRow: { flexDirection: 'row', marginBottom: 14, gap: 10 },
-  reviewAvatar: { width: 40, height: 40, borderRadius: 12, backgroundColor: C.ink50, alignItems: 'center', justifyContent: 'center' },
-  reviewAvatarText: { color: C.ink700, fontSize: 14.5, fontWeight: '700', fontFamily: 'Inter' },
-  reviewHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  reviewName: { color: C.ink900, fontSize: 13.5, fontWeight: '700', fontFamily: 'Inter' },
-  reviewDate: { color: C.ink400, fontSize: 12, fontFamily: 'Inter' },
-  reviewRatingRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 3 },
-  reviewRating: { color: C.ink500, fontSize: 12.5, fontFamily: 'Inter' },
-  reviewComment: { color: C.ink700, fontSize: 13.5, marginTop: 5, lineHeight: 18, fontFamily: 'Inter' },
+    reviewRow: { flexDirection: 'row', marginBottom: 14, gap: 10 },
+    reviewAvatar: { width: 40, height: 40, borderRadius: 12, backgroundColor: C.ink50, alignItems: 'center', justifyContent: 'center' },
+    reviewAvatarText: { color: C.ink700, fontSize: 14.5, fontWeight: '700', fontFamily: 'Inter' },
+    reviewHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+    reviewName: { color: C.ink900, fontSize: 13.5, fontWeight: '700', fontFamily: 'Inter' },
+    reviewDate: { color: C.ink400, fontSize: 12, fontFamily: 'Inter' },
+    reviewRatingRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 3 },
+    reviewRating: { color: C.ink500, fontSize: 12.5, fontFamily: 'Inter' },
+    reviewComment: { color: C.ink700, fontSize: 13.5, marginTop: 5, lineHeight: 18, fontFamily: 'Inter' },
 
-  stateText: { color: C.ink500, fontSize: 16.5, fontFamily: 'Inter', textAlign: 'center', marginTop: 30 },
+    stateText: { color: C.ink500, fontSize: 16.5, fontFamily: 'Inter', textAlign: 'center', marginTop: 30 },
 
-  actionBar: { padding: Spacing.screenH, paddingTop: 16 },
-  messageBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: C.cyan700, borderRadius: 13, paddingVertical: 14 },
-  messageBtnText: { color: C.white, fontSize: 16.5, fontWeight: '700', fontFamily: 'Inter' },
-});
+    actionBar: { padding: Spacing.screenH, paddingTop: 16 },
+    messageBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: C.cyan700, borderRadius: 13, paddingVertical: 14 },
+    messageBtnText: { color: C.onPrimary, fontSize: 16.5, fontWeight: '700', fontFamily: 'Inter' },
+  });
+  return { Colors, V6Colors, C, styles };
+}

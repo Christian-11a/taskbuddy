@@ -1,3 +1,4 @@
+import { notifyNotificationChange } from './notificationEvents';
 /**
  * api.ts — client for the TaskBuddy NestJS backend.
  *
@@ -41,6 +42,20 @@ let activeBaseUrl = PRIMARY_API_URL;
 let resolution: Promise<string> | null = null;
 
 /** True when the app is running against the fallback — surfaced for display. */
+export interface NotificationRow {
+  id: string;
+  type: string;
+  title: string;
+  body: string;
+  read_at: string | null;
+  created_at: string;
+  data: { job_id?: string; application_id?: string; conversation_id?: string; message_id?: string; request_id?: string; dispute_id?: string } | null;
+}
+export interface NotificationSnapshot {
+  notifications: NotificationRow[];
+  unreadCount: number;
+}
+
 export function isUsingFallbackApi(): boolean {
   return activeBaseUrl !== PRIMARY_API_URL;
 }
@@ -197,6 +212,12 @@ export interface Profile {
   [key: string]: unknown;
 }
 
+export interface PortfolioEntry {
+ id: string; provider_id: string; caption: string; position: number;
+ category_id: number | null; created_at: string; image_url: string;
+ service_categories: {id:number;name:string} | null;
+}
+
 export interface ProviderProfile {
   profile_id: string;
   category_id: number;
@@ -209,6 +230,7 @@ export interface ProviderProfile {
   cached_ratings_count: number;
   cached_completed_jobs: number;
   service_categories?: { name: string } | null;
+  approved_secondary_services?: { category_id: number; service_categories: Category }[];
   [key: string]: unknown;
 }
 
@@ -247,6 +269,8 @@ export interface MeResponse {
 /** Public provider card as returned by GET /providers/:id. */
 export interface ProviderCard {
   profile_id: string;
+  category_id?: number;
+  approved_secondary_services?: { category_id: number; service_categories: Category }[];
   bio: string;
   years_experience: number;
   is_available: boolean;
@@ -292,6 +316,8 @@ export interface GeocodedAddress {
   latitude: number;
   longitude: number;
   formatted_address: string;
+  city?: string;
+  location_reference?: string;
 }
 
 /**
@@ -325,8 +351,7 @@ export interface Job {
   status:
     | 'open'
     | 'recommending'
-    // 'assigned' = hired, waiting on the provider's answer; 'confirmed' = the
-    // provider accepted the booking (migration 0018).
+    // Hiring confirms the booking; assigned is retained for legacy records.
     | 'assigned'
     | 'confirmed'
     | 'in_progress'
@@ -343,6 +368,8 @@ export interface Job {
   assigned_provider_id: string | null;
   assigned_at: string | null;
   completed_at: string | null;
+  /** Server deadline; absent on API versions before migration 0040. */
+  warranty_expires_at?: string | null;
   /** Pricing/scheduling/photos — backend columns, migration 0007. */
   budget: number | null;
   /** Client's preferred start (ISO). Null = ASAP. */
@@ -376,8 +403,7 @@ export interface Job {
  *
  * `push_enabled` is the only flag anything currently consults (the push
  * scheduler). `email_enabled`/`sms_enabled` are stored honestly but no
- * transport reads them yet, and `dark_mode` is stored but the app has no
- * theme switching to apply it to — see mobile/README.md.
+ * transport reads them yet, and `dark_mode` controls the shared mobile palette and device appearance.
  */
 export interface UserSettings {
   profile_id: string;
@@ -422,10 +448,25 @@ export interface IdentitySession {
   publishable_key: string | null;
 }
 
+export interface DisputeEntry {
+  id: string;
+  kind: 'statement' | 'appeal' | 'clarification' | 'resolution' | 'cancellation_response' | 'system';
+  body: string;
+  created_at: string;
+  author: { id: string; full_name: string; role: string } | null;
+  message: { id: string; body: string; attachment_path: string | null } | null;
+  attachment_url: string | null;
+}
+
 export interface Dispute {
   id: string;
   job_id: string;
   reason: string;
+  cancellation_state?: 'pending' | 'contested' | 'accepted' | 'expired' | null;
+  cancellation_deadline?: string | null;
+  entries?: DisputeEntry[];
+  jobs?: { client_id: string; assigned_provider_id: string | null };
+  escrow_transactions?: { status: string; amount: number | string } | null;
   details: string | null;
   status: 'open' | 'resolved' | 'cancelled';
   resolution: 'released_to_provider' | 'refunded_to_client' | 'reviewed' | null;
@@ -476,6 +517,7 @@ export interface WalletTransaction {
   kind: WalletTxnKind;
   withdrawal_destination?: string | null;
   review_note?: string | null;
+  stripe_transfer_id?: string | null;
   created_at: string;
 }
 
@@ -505,8 +547,8 @@ export interface CheckoutSession {
   amount: number;
 }
 
-/** Backend rejects a top-up below this (Stripe's own PHP minimum charge). */
-export const MIN_TOPUP_PHP = 20;
+/** TaskBuddy's card/top-up floor; matches the backend's PHP50 bound. */
+export const MIN_TOPUP_PHP = 50;
 
 /** The most a single card payment may be — the backend's top-up/hire ceiling. */
 export const MAX_CARD_PHP = 100_000;
@@ -988,7 +1030,8 @@ export const api = {
 
   // ── Profiles & providers ────────────────────────────────────────────────────
   /**
-   * No latitude/longitude: the backend geocodes `address` + `city` and stores
+   * No latitude/longitude: the backend verifies a signed resolved-location reference
+   * or geocodes a manually entered `address` + `city`, and stores
    * the coordinates itself, and rejects them from the client with a 400
    * (backend/BACKEND_SCHEMA.md §32). An unverifiable address fails the save
    * with a message that can be shown as-is.
@@ -999,6 +1042,7 @@ export const api = {
     avatar_url: string;
     address: string;
     city: string;
+    location_reference: string;
   }>) {
     return authRequest<Profile>('/profiles/me', { method: 'PATCH', body: input });
   },
@@ -1145,8 +1189,19 @@ export const api = {
     }>(`/jobs${qs ? `?${qs}` : ''}`);
   },
 
-  myJobs() {
-    return authRequest<Job[]>('/jobs/mine');
+  async myJobs(filters?: { category_id?: number; status_group?: 'active' | 'ongoing' | 'completed' | 'cancelled' }) {
+    if (filters === undefined) return authRequest<Job[]>('/jobs/mine');
+    // My Jobs needs the full matching list; filter before each bounded page.
+    const jobs: Job[] = [];
+    const limit = 100;
+    for (let offset = 0; ; offset += limit) {
+      const query = new URLSearchParams({ limit: String(limit), offset: String(offset) });
+      if (filters.category_id !== undefined) query.set('category_id', String(filters.category_id));
+      if (filters.status_group !== undefined) query.set('status_group', filters.status_group);
+      const page = await authRequest<Job[]>(`/jobs/mine?${query.toString()}`);
+      jobs.push(...page);
+      if (page.length < limit) return jobs;
+    }
   },
 
   assignedJobs() {
@@ -1237,34 +1292,73 @@ export const api = {
     });
   },
 
-  // ── Notifications ─────────────────────────────────────────────────────────────
+  // ── Notifications ────────────────────────────────────────────────────────
   notifications(unreadOnly = false) {
-    return authRequest<unknown[]>(
-      `/notifications${unreadOnly ? '?unread=true' : ''}`,
-    );
+    return authRequest<NotificationRow[]>(`/notifications${unreadOnly ? '?unread=true' : ''}`);
   },
-
-  markNotificationRead(id: string) {
-    return authRequest<unknown>(`/notifications/${id}/read`, { method: 'POST' });
+  notificationSnapshot() {
+    return authRequest<NotificationSnapshot>('/notifications/snapshot');
   },
-
-  markAllNotificationsRead() {
-    return authRequest<{ success: boolean }>('/notifications/read-all', {
-      method: 'POST',
-    });
+  async markNotificationRead(id: string) {
+    const token = getAccessToken();
+    const result = await authRequest<unknown>(`/notifications/${id}/read`, { method: 'POST' });
+    if (getAccessToken() === token) notifyNotificationChange({ kind: 'read', id });
+    return result;
   },
-
-  deleteNotification(id: string) {
-    return authRequest<void>(`/notifications/${id}`, { method: 'DELETE' });
+  async markAllNotificationsRead() {
+    const token = getAccessToken();
+    const result = await authRequest<unknown>('/notifications/read-all', { method: 'POST' });
+    if (getAccessToken() === token) notifyNotificationChange({ kind: 'readAll' });
+    return result;
   },
-
-  clearNotifications() {
-    return authRequest<void>('/notifications', { method: 'DELETE' });
+  async deleteNotification(id: string) {
+    const token = getAccessToken();
+    await authRequest<void>(`/notifications/${id}`, { method: 'DELETE' });
+    if (getAccessToken() === token) notifyNotificationChange({ kind: 'delete', id });
   },
-
-  /** Server-side count — `notifications()` is capped at 50, so counting it caps the badge. */
+  async clearNotifications() {
+    const token = getAccessToken();
+    await authRequest<void>('/notifications', { method: 'DELETE' });
+    if (getAccessToken() === token) notifyNotificationChange({ kind: 'clear' });
+  },
   unreadNotificationCount() {
     return authRequest<{ count: number }>('/notifications/unread-count');
+  },
+  streamNotifications(onSnapshot: (snapshot: NotificationSnapshot) => void, onError: (error: Error) => void) {
+    let source: EventSource<'ping'> | null = null;
+    let retry: ReturnType<typeof setTimeout> | undefined;
+    let closed = false;
+    const connect = async () => {
+      try {
+        // Reconcile on reconnect and let authRequest refresh expired tokens.
+        const snapshot = await authRequest<NotificationSnapshot>('/notifications/snapshot');
+        if (closed) return;
+        onSnapshot(snapshot);
+        const baseUrl = await ensureApiBaseUrl();
+        const token = getAccessToken();
+        if (closed || !token) return;
+        source = new EventSource(`${baseUrl}/notifications/stream`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        source.addEventListener('message', (event) => {
+          if (!closed && event.data) onSnapshot(JSON.parse(event.data) as NotificationSnapshot);
+        });
+        source.addEventListener('error', () => {
+          source?.close();
+          if (closed) return;
+          onError(new Error('Notification connection interrupted. Reconnecting…'));
+          retry = setTimeout(() => { void connect(); }, 5000);
+        });
+      } catch (err) {
+        if (closed) return;
+        onError(err instanceof Error ? err : new Error('Could not connect to notifications.'));
+        if (!(err instanceof ApiError && (err.status === 401 || err.status === 403))) {
+          retry = setTimeout(() => { void connect(); }, 5000);
+        }
+      }
+    };
+    void connect();
+    return () => { closed = true; clearTimeout(retry); source?.close(); };
   },
 
   // ── Uploads ───────────────────────────────────────────────────────────────
@@ -1274,7 +1368,7 @@ export const api = {
    * storage *path*, which is what job/verification payloads carry.
    */
   async uploadImage(
-    bucket: 'job-photos' | 'verification-docs' | 'avatars' | 'chat-attachments',
+    bucket: 'job-photos' | 'verification-docs' | 'avatars' | 'chat-attachments' | 'provider-portfolio',
     uri: string,
   ): Promise<string> {
     const contentType = contentTypeFor(uri);
@@ -1300,6 +1394,12 @@ export const api = {
     }
     return signed.path;
   },
+
+  myPortfolio() { return authRequest<PortfolioEntry[]>('/providers/me/portfolio'); },
+  providerPortfolio(id:string) { return authRequest<PortfolioEntry[]>(`/providers/${id}/portfolio`); },
+  createPortfolio(input:{image_path:string;caption:string;position:number;category_id:number|null}) { return authRequest<{id:string}>('/providers/me/portfolio',{method:'POST',body:input}); },
+  updatePortfolio(id:string,input:{caption:string;position:number;category_id:number|null}) { return authRequest<{id:string}>(`/providers/me/portfolio/${id}`,{method:'PATCH',body:input}); },
+  removePortfolio(id:string) { return authRequest<{removed:boolean}>(`/providers/me/portfolio/${id}`,{method:'DELETE'}); },
 
   // ── Service change requests (migration 0034) ──────────────────────────────
   mySkillRequests() {
@@ -1358,6 +1458,13 @@ export const api = {
 
   jobDispute(jobId: string) {
     return authRequest<Dispute | null>(`/jobs/${jobId}/disputes`);
+  },
+
+  addDisputeEntry(id: string, input: { kind: 'statement' | 'appeal'; body: string; message_id?: string }) {
+    return authRequest(`/disputes/${id}/entries`, { method: 'POST', body: input });
+  },
+  respondToCancellation(id: string, accept: boolean, note: string, message_id?: string) {
+    return authRequest<Dispute>(`/disputes/${id}/cancellation-response`, { method: 'POST', body: { accept, note, message_id } });
   },
 
   // ── Wallet ──────────────────────────────────────────────────────────────────

@@ -1,0 +1,25 @@
+{
+  "checked_at": "2026-10-04T07:00:02.147Z",
+  "api_revision": "15bc94a",
+  "clock_setup": "Backdated only the dedicated dummy cancellation deadline; did not invoke global expiry or payment tick",
+  "checks": [
+    "Existing scheduler expires unanswered prestart cancellation",
+    "Case resolves as expired with client refund",
+    "Held sandbox PHP50 refunded exactly once",
+    "Existing scheduler releases expired warranty escrow",
+    "Provider payout plus commission equals held PHP50",
+    "Replay produces no second provider payout",
+    "Client and provider late complaint filings are rejected after warranty deadline"
+  ],
+  "limitations": [
+    "Clock boundaries simulated on dedicated QA records; not 48/72 hours of elapsed wall-clock time",
+    "No external bank or GCash delivery"
+  ],
+  "warranty_checked_at": "2026-10-04T07:05:12.705Z",
+  "warranty_clock_setup": "Backdated only dedicated completed QA job to 73 hours old; did not invoke a global tick",
+  "warranty": {
+    "held_php": 50,
+    "payout_php": 42.5,
+    "commission_php": 7.5
+  }
+}

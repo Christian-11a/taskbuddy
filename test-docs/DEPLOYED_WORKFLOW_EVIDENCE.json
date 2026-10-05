@@ -1,0 +1,58 @@
+{
+  "checked_at": "2026-10-04T06:33:53.131Z",
+  "environment": "https://taskbuddy-kpek.onrender.com",
+  "fixture_setup": "Temporary verification flag on unavailable dedicated dummy provider; restored afterward",
+  "funding": "Actual deployed Stripe test webhook credited PHP50; no manual ledger credit",
+  "cases": [
+    {
+      "name": "Funded future hire creates one booking and holds PHP50",
+      "observed_before_resume": true
+    },
+    {
+      "name": "Persisted completion retains escrow for a 72-hour warranty",
+      "observed_before_resume": true
+    },
+    {
+      "name": "Deployed database refuses premature automatic settlement without changing held escrow",
+      "observed_before_resume": true
+    },
+    {
+      "name": "Both participants submit statements and receive admin clarification",
+      "observed_before_resume": true
+    },
+    {
+      "name": "Admin refund settles held sandbox funds once",
+      "observed_before_resume": true
+    },
+    {
+      "name": "Settled-case appeal reopens review without a second settlement",
+      "observed_before_resume": true
+    },
+    {
+      "name": "Agreed prestart cancellation refunds only after provider agreement",
+      "observed_before_resume": true
+    },
+    {
+      "name": "Contested prestart cancellation stays frozen for admin decision"
+    },
+    {
+      "name": "Poststart cancellation requires admin review without an auto-refund deadline"
+    },
+    {
+      "name": "No-budget jobs support participant complaints and admin decisions"
+    },
+    {
+      "name": "Corrected completion response includes persisted 72-hour warranty",
+      "api_revision": "15bc94a"
+    }
+  ],
+  "provider_fixture_restored": true,
+  "api_revision": "15bc94a7a331b5533d35dbb7e11b5aafc3dcf61e",
+  "client_final_wallet_php": 50,
+  "limitations": [
+    "Dedicated unavailable provider was temporarily marked verified; this does not verify government-ID processing",
+    "No physical-device evidence",
+    "Vercel owner deployment pending",
+    "Automatic 72-hour release and cancellation expiry still require deployed clock-boundary evidence"
+  ]
+}

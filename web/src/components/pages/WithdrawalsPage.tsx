@@ -113,7 +113,7 @@ export function WithdrawalsPage() {
   }
 
   async function confirmSettle() {
-    if (!settling) return;
+    if (!settling || !reference.trim() || reference.trim().length > 500) return;
     const id = settling.id;
     setBusy(true);
     try {
@@ -296,10 +296,10 @@ export function WithdrawalsPage() {
         }
       />
 
-      <ConfirmDialog open={!!settling} title="Mark withdrawal as paid?" message={settling ? `${settling.profileName} will be told that ${formatCurrency(settling.amount)} was sent.` : ""} confirmLabel="Mark as paid" cancelLabel="Keep pending" danger={false} busy={busy} onConfirm={() => void confirmSettle()} onCancel={() => !busy && setSettling(null)}>
+      <ConfirmDialog open={!!settling} title="Mark withdrawal as paid?" message={settling ? `${settling.profileName} will be told that ${formatCurrency(settling.amount)} was sent.` : ""} confirmLabel="Mark as paid" cancelLabel="Keep pending" danger={false} busy={busy} confirmDisabled={!reference.trim() || reference.trim().length > 500} onConfirm={() => void confirmSettle()} onCancel={() => !busy && setSettling(null)}>
         <label className="block text-[12px] font-medium text-muted-foreground">
-          Payout reference <span className="font-normal text-subtle">(optional)</span>
-          <Input value={reference} onChange={(e) => setReference(e.target.value)} placeholder="GCash / bank reference" className="mt-1.5" />
+          Payout reference <span className="font-normal text-subtle">(required)</span>
+          <Input required maxLength={500} value={reference} onChange={(e) => setReference(e.target.value)} placeholder="GCash / bank reference" className="mt-1.5" />
         </label>
       </ConfirmDialog>
       <ConfirmDialog open={!!rejecting} title="Reject withdrawal?" message="The requester will be notified and the reserved amount will return to their available balance." confirmLabel="Reject withdrawal" busy={busy} confirmDisabled={!reason.trim() || reason.length > REASON_MAX} onConfirm={() => void confirmReject()} onCancel={() => !busy && setRejecting(null)}>

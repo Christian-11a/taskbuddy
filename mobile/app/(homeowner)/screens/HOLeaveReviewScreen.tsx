@@ -8,6 +8,7 @@
  * amber, not teal), and a flat .field-style textarea.
  */
 
+import { useThemedStyles, type Palette as ThemePalette } from '../../../src/context/ThemeContext';
 import React, { useCallback, useState } from 'react';
 import {
   ActivityIndicator,
@@ -21,10 +22,9 @@ import {
   View,
 } from 'react-native';
 import { ArrowLeft, Star } from 'lucide-react-native';
-import { Spacing, V6Colors, V6Radii, V6Shadows } from '../../../src/constants/theme';
+import { Spacing, V6Radii, V6Shadows } from '../../../src/constants/theme';
 import { useHeaderTop } from '../../../src/hooks/useHeaderTop';
 
-const C = V6Colors;
 import { api } from '../../../src/lib/api';
 import { useAsyncData } from '../../../src/hooks/useAsyncData';
 import { initials } from '../../../src/lib/format';
@@ -36,6 +36,7 @@ interface HOLeaveReviewScreenProps {
 }
 
 export default function HOLeaveReviewScreen({ jobId, onSubmitted, onBack }: HOLeaveReviewScreenProps) {
+  const { C, styles, V6Colors, appearance } = useThemedStyles(createThemedStyles);
   const headerTop = useHeaderTop();
   const [rating, setRating] = useState<number>(5);
   const [comment, setComment] = useState<string>('');
@@ -103,7 +104,7 @@ export default function HOLeaveReviewScreen({ jobId, onSubmitted, onBack }: HOLe
 
           <View style={styles.fieldGroup}>
             <Text style={styles.fieldLabel}>Write a review</Text>
-            <TextInput
+            <TextInput keyboardAppearance={appearance}
               style={styles.input}
               value={comment}
               onChangeText={setComment}
@@ -126,7 +127,7 @@ export default function HOLeaveReviewScreen({ jobId, onSubmitted, onBack }: HOLe
             disabled={busy || alreadyReviewed}
             activeOpacity={0.85}
           >
-            {busy ? <ActivityIndicator color={C.white} /> : <Text style={styles.submitText}>Submit Review</Text>}
+            {busy ? <ActivityIndicator color={C.onPrimary} /> : <Text style={styles.submitText}>Submit Review</Text>}
           </TouchableOpacity>
         </ScrollView>
       </KeyboardAvoidingView>
@@ -134,51 +135,56 @@ export default function HOLeaveReviewScreen({ jobId, onSubmitted, onBack }: HOLe
   );
 }
 
-const styles = StyleSheet.create({
-  flex: { flex: 1 },
-  screen: { flex: 1, backgroundColor: C.canvas },
+function createThemedStyles(theme: ThemePalette) {
+  const { Colors, V6Colors } = theme;
+  const C = V6Colors;
+  const styles = StyleSheet.create({
+    flex: { flex: 1 },
+    screen: { flex: 1, backgroundColor: C.canvas },
 
-  header: {
-    flexDirection: 'row', alignItems: 'center', gap: 12,
-    backgroundColor: C.white,
-    paddingHorizontal: Spacing.screenH,
-    paddingBottom: 12,
-    borderBottomWidth: 1, borderBottomColor: '#edf1f4',
-  },
-  backBtn: {
-    width: 38, height: 38, borderRadius: 12,
-    backgroundColor: C.white, borderWidth: 1, borderColor: '#e8edf2',
-    alignItems: 'center', justifyContent: 'center',
-  },
-  headerTitle: { color: C.ink900, fontSize: 19.5, fontWeight: '800', fontFamily: 'Inter' },
+    header: {
+      flexDirection: 'row', alignItems: 'center', gap: 12,
+      backgroundColor: C.surface,
+      paddingHorizontal: Spacing.screenH,
+      paddingBottom: 12,
+      borderBottomWidth: 1, borderBottomColor: V6Colors.line,
+    },
+    backBtn: {
+      width: 38, height: 38, borderRadius: 12,
+      backgroundColor: C.surface, borderWidth: 1, borderColor: V6Colors.line,
+      alignItems: 'center', justifyContent: 'center',
+    },
+    headerTitle: { color: C.ink900, fontSize: 19.5, fontWeight: '800', fontFamily: 'Inter' },
 
-  bodyContent: { paddingHorizontal: Spacing.screenH, paddingTop: 22, paddingBottom: 24, alignItems: 'center' },
+    bodyContent: { paddingHorizontal: Spacing.screenH, paddingTop: 22, paddingBottom: 24, alignItems: 'center' },
 
-  avatar: { width: 72, height: 72, borderRadius: 22, backgroundColor: C.cyan700, alignItems: 'center', justifyContent: 'center', marginBottom: 10 },
-  avatarText: { color: C.white, fontSize: 24, fontWeight: '800', fontFamily: 'Inter' },
-  providerName: { color: C.ink900, fontSize: 19.5, fontWeight: '700', fontFamily: 'Inter' },
-  prompt: { color: C.ink400, fontSize: 13, fontFamily: 'Inter', marginTop: 5 },
+    avatar: { width: 72, height: 72, borderRadius: 22, backgroundColor: C.cyan700, alignItems: 'center', justifyContent: 'center', marginBottom: 10 },
+    avatarText: { color: C.onPrimary, fontSize: 24, fontWeight: '800', fontFamily: 'Inter' },
+    providerName: { color: C.ink900, fontSize: 19.5, fontWeight: '700', fontFamily: 'Inter' },
+    prompt: { color: C.ink400, fontSize: 13, fontFamily: 'Inter', marginTop: 5 },
 
-  starPicker: { flexDirection: 'row', gap: 9, paddingVertical: 18 },
-  starBtn: { padding: 3 },
+    starPicker: { flexDirection: 'row', gap: 9, paddingVertical: 18 },
+    starBtn: { padding: 3 },
 
-  fieldGroup: { width: '100%', marginTop: 4 },
-  fieldLabel: { color: C.ink900, fontSize: 14, fontWeight: '700', fontFamily: 'Inter', marginBottom: 6 },
-  input: {
-    width: '100%',
-    borderWidth: 1, borderColor: '#dce3e9', borderRadius: 12,
-    padding: 14, minHeight: 90, fontSize: 16, fontFamily: 'Inter', color: C.ink900,
-    backgroundColor: C.white,
-  },
+    fieldGroup: { width: '100%', marginTop: 4 },
+    fieldLabel: { color: C.ink900, fontSize: 14, fontWeight: '700', fontFamily: 'Inter', marginBottom: 6 },
+    input: {
+      width: '100%',
+      borderWidth: 1, borderColor: V6Colors.fieldBorder, borderRadius: 12,
+      padding: 14, minHeight: 90, fontSize: 16, fontFamily: 'Inter', color: C.ink900,
+      backgroundColor: C.surface,
+    },
 
-  submitBtn: {
-    width: '100%', backgroundColor: C.cyan700, borderRadius: V6Radii.btn, paddingVertical: 14,
-    alignItems: 'center', marginTop: 18, ...V6Shadows.primaryButton,
-  },
-  submitText: { color: C.white, fontSize: 16.5, fontWeight: '700', fontFamily: 'Inter' },
+    submitBtn: {
+      width: '100%', backgroundColor: C.cyan700, borderRadius: V6Radii.btn, paddingVertical: 14,
+      alignItems: 'center', marginTop: 18, ...V6Shadows.primaryButton,
+    },
+    submitText: { color: C.onPrimary, fontSize: 16.5, fontWeight: '700', fontFamily: 'Inter' },
 
-  disabled: { opacity: 0.6 },
+    disabled: { opacity: 0.6 },
 
-  errorText: { color: '#ef4444', marginTop: 8, fontFamily: 'Inter', fontSize: 15 },
-  alreadyReviewedText: { color: C.cyan800, marginTop: 8, fontFamily: 'Inter', fontSize: 15, textAlign: 'center' },
-});
+    errorText: { color: V6Colors.dangerText, marginTop: 8, fontFamily: 'Inter', fontSize: 15 },
+    alreadyReviewedText: { color: V6Colors.link, marginTop: 8, fontFamily: 'Inter', fontSize: 15, textAlign: 'center' },
+  });
+  return { appearance: theme.appearance, Colors, V6Colors, C, styles };
+}

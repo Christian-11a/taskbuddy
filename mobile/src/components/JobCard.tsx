@@ -1,10 +1,9 @@
+import { useThemedStyles, type Palette as ThemePalette } from '../context/ThemeContext';
 import React, { ReactNode } from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { MapPin } from 'lucide-react-native';
-import { V6Colors, V6Radii, V6Shadows } from '../constants/theme';
+import { V6Radii, V6Shadows } from '../constants/theme';
 import { peso, urgencyMeta } from '../lib/format';
-
-const C = V6Colors;
 
 export interface JobCardPill {
   label: string;
@@ -43,9 +42,10 @@ interface JobCardProps {
 export default function JobCard({
   title, budget, address, status, urgency, pills = [], footer = [], onPress, testID,
 }: JobCardProps) {
+  const { C, styles, V6Colors } = useThemedStyles(createThemedStyles);
   const allPills: JobCardPill[] = [
     ...(status ? [{ ...status, dot: true }] : []),
-    ...(urgency ? [urgencyMeta(urgency)] : []),
+    ...(urgency ? [urgencyMeta(urgency, V6Colors)] : []),
     ...pills,
   ];
 
@@ -95,26 +95,31 @@ export default function JobCard({
   );
 }
 
-const styles = StyleSheet.create({
-  card: {
-    backgroundColor: C.white, borderRadius: V6Radii.cardSm,
-    marginBottom: 10, padding: 15,
-    borderWidth: 1, borderColor: C.line,
-    ...V6Shadows.sm,
-  },
-  topRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8, marginBottom: 5 },
-  title: { color: C.ink900, fontSize: 15.5, fontWeight: '800', fontFamily: 'Inter', flex: 1 },
-  price: { color: C.ink900, fontSize: 16, fontWeight: '800', fontFamily: 'Inter' },
-  metaRow: { flexDirection: 'row', alignItems: 'center', gap: 5, marginBottom: 10 },
-  meta: { color: C.ink400, fontSize: 12.5, fontFamily: 'Inter', flex: 1 },
-  pillRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 11 },
-  pill: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 9, paddingVertical: 5, borderRadius: 999 },
-  dot: { width: 7, height: 7, borderRadius: 4 },
-  pillText: { fontSize: 11.5, fontWeight: '800', fontFamily: 'Inter' },
-  bottomRow: {
-    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 10,
-    borderTopWidth: 1, borderTopColor: C.hairline, paddingTop: 10,
-  },
-  footItem: { flexDirection: 'row', alignItems: 'center', gap: 5, flexShrink: 1 },
-  footText: { color: C.ink500, fontSize: 12.5, fontWeight: '600', fontFamily: 'Inter', flexShrink: 1 },
-});
+function createThemedStyles(theme: ThemePalette) {
+  const { Colors, V6Colors } = theme;
+  const C = V6Colors;
+  const styles = StyleSheet.create({
+    card: {
+      backgroundColor: C.surface, borderRadius: V6Radii.cardSm,
+      marginBottom: 10, padding: 15,
+      borderWidth: 1, borderColor: C.line,
+      ...V6Shadows.sm,
+    },
+    topRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8, marginBottom: 5 },
+    title: { color: C.ink900, fontSize: 15.5, fontWeight: '800', fontFamily: 'Inter', flex: 1 },
+    price: { color: C.ink900, fontSize: 16, fontWeight: '800', fontFamily: 'Inter' },
+    metaRow: { flexDirection: 'row', alignItems: 'center', gap: 5, marginBottom: 10 },
+    meta: { color: C.ink400, fontSize: 12.5, fontFamily: 'Inter', flex: 1 },
+    pillRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 11 },
+    pill: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 9, paddingVertical: 5, borderRadius: 999 },
+    dot: { width: 7, height: 7, borderRadius: 4 },
+    pillText: { fontSize: 11.5, fontWeight: '800', fontFamily: 'Inter' },
+    bottomRow: {
+      flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 10,
+      borderTopWidth: 1, borderTopColor: C.hairline, paddingTop: 10,
+    },
+    footItem: { flexDirection: 'row', alignItems: 'center', gap: 5, flexShrink: 1 },
+    footText: { color: C.ink500, fontSize: 12.5, fontWeight: '600', fontFamily: 'Inter', flexShrink: 1 },
+  });
+  return { Colors, V6Colors, C, styles };
+}

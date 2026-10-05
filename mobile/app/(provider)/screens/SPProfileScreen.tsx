@@ -21,7 +21,10 @@
  *   support a single account holding both roles.
  */
 
+import { useThemedStyles, type Palette as ThemePalette } from '../../../src/context/ThemeContext';
+import { StatusBar } from 'expo-status-bar';
 import React, { useEffect, useState } from 'react';
+import { approvedServiceNames } from '../../../src/lib/providerServices';
 import { useRetainedScroll } from '../../../src/hooks/useRetainedState';
 import {
   ScrollView,
@@ -45,11 +48,10 @@ import {
   Wrench,
 } from 'lucide-react-native';
 import ConfirmationModal from '../../../src/components/ConfirmationModal';
-import { Spacing, V6Colors, V6Radii, V6Shadows } from '../../../src/constants/theme';
+import { Spacing, V6Radii, V6Shadows } from '../../../src/constants/theme';
 import { useHeaderTop } from '../../../src/hooks/useHeaderTop';
 import { useRefreshOnForeground } from '../../../src/hooks/useRefreshOnForeground';
 
-const C = V6Colors;
 import { SPScreen } from '../../../src/types/navigation';
 import { useAuth } from '../../../src/context/AuthContext';
 import OwnAvatar from '../../../src/components/OwnAvatar';
@@ -59,6 +61,7 @@ import { api } from '../../../src/lib/api';
 const MENU_ITEMS: { label: string; icon: typeof Pencil; screen: SPScreen }[] = [
   { label: 'Edit Profile', icon: Pencil, screen: 'Edit Profile' },
   { label: 'Get Verified', icon: ShieldCheck, screen: 'Verification' },
+  { label: 'My Portfolio', icon: Wrench, screen: 'Portfolio' },
   { label: 'My Services', icon: Wrench, screen: 'My Services' },
   { label: 'Payouts', icon: Landmark, screen: 'Payouts' },
   { label: 'Settings', icon: SettingsIcon, screen: 'Settings' },
@@ -72,6 +75,7 @@ interface SPProfileScreenProps {
 }
 
 export default function SPProfileScreen({ onNavigate, onLogout, onBack }: SPProfileScreenProps) {
+  const { C, styles, V6Colors } = useThemedStyles(createThemedStyles);
   const headerTop = useHeaderTop(4);
   // Coming back from Settings/Edit Profile keeps the list where it was.
   const scroll = useRetainedScroll('sp.profile');
@@ -82,7 +86,7 @@ export default function SPProfileScreen({ onNavigate, onLogout, onBack }: SPProf
   const jobsDone = providerProfile?.cached_completed_jobs ?? 0;
   const rating = providerProfile?.cached_avg_rating;
   const ratingLabel = rating != null ? Number(rating).toFixed(1) : '—';
-  const category = providerProfile?.service_categories?.name;
+  const category = providerProfile ? approvedServiceNames(providerProfile).join(' · ') : '';
   const isVerified = !!providerProfile?.is_verified;
   // Same as the Feed's banner: an approval lands server-side (admin or Stripe
   // webhook) while this screen may already be showing "Not verified".
@@ -101,6 +105,7 @@ export default function SPProfileScreen({ onNavigate, onLogout, onBack }: SPProf
 
   return (
     <View style={styles.screen}>
+      <StatusBar style="light" />
       {/* Hero — matches .profile-hero.dark (same gradient as Feed's hero) */}
       <LinearGradient
         colors={['#111827', '#17283c', '#0c4a6e']}
@@ -115,7 +120,7 @@ export default function SPProfileScreen({ onNavigate, onLogout, onBack }: SPProf
           activeOpacity={0.8}
           accessibilityLabel="Back to Feed"
         >
-          <ArrowLeft size={20} color={C.white} />
+          <ArrowLeft size={20} color={C.onPrimary} />
         </TouchableOpacity>
 
         <View style={styles.avatarCircle}>
@@ -197,7 +202,7 @@ export default function SPProfileScreen({ onNavigate, onLogout, onBack }: SPProf
             activeOpacity={0.7}
           >
             <View style={styles.rowIcon}>
-              <LogOut size={19} color="#ef4444" />
+              <LogOut size={19} color={V6Colors.dangerText} />
             </View>
             <Text style={[styles.rowLabel, styles.rowLabelDanger]}>Log Out</Text>
             <ChevronRight size={20} color={C.ink300} />
@@ -223,77 +228,82 @@ export default function SPProfileScreen({ onNavigate, onLogout, onBack }: SPProf
   );
 }
 
-const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: C.canvas },
+function createThemedStyles(theme: ThemePalette) {
+  const { Colors, V6Colors } = theme;
+  const C = V6Colors;
+  const styles = StyleSheet.create({
+    screen: { flex: 1, backgroundColor: C.canvas },
 
-  hero: {
-    paddingHorizontal: Spacing.screenH,
-    paddingBottom: 22,
-    borderBottomLeftRadius: 26,
-    borderBottomRightRadius: 26,
-    alignItems: 'center',
-    position: 'relative',
-  },
-  backBtn: {
-    position: 'absolute', left: Spacing.screenH,
-    width: 38, height: 38, borderRadius: 12,
-    backgroundColor: 'rgba(255,255,255,0.12)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.14)',
-    alignItems: 'center', justifyContent: 'center',
-  },
+    hero: {
+      paddingHorizontal: Spacing.screenH,
+      paddingBottom: 22,
+      borderBottomLeftRadius: 26,
+      borderBottomRightRadius: 26,
+      alignItems: 'center',
+      position: 'relative',
+    },
+    backBtn: {
+      position: 'absolute', left: Spacing.screenH,
+      width: 38, height: 38, borderRadius: 12,
+      backgroundColor: 'rgba(255,255,255,0.12)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.14)',
+      alignItems: 'center', justifyContent: 'center',
+    },
 
-  avatarCircle: {
-    width: 72, height: 72, borderRadius: 22,
-    backgroundColor: 'rgba(255,255,255,0.16)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.15)',
-    alignItems: 'center', justifyContent: 'center', marginBottom: 10, overflow: 'hidden',
-  },
-  avatarText: { color: C.white, fontWeight: '800', fontSize: 24, fontFamily: 'Inter' },
-  profileName: { color: C.white, fontSize: 19.5, fontWeight: '800', fontFamily: 'Inter' },
-  profileSubtitle: { color: C.cyan100, fontSize: 14, fontFamily: 'Inter', marginTop: 2 },
+    avatarCircle: {
+      width: 72, height: 72, borderRadius: 22,
+      backgroundColor: 'rgba(255,255,255,0.16)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.15)',
+      alignItems: 'center', justifyContent: 'center', marginBottom: 10, overflow: 'hidden',
+    },
+    avatarText: { color: C.onPrimary, fontWeight: '800', fontSize: 24, fontFamily: 'Inter' },
+    profileName: { color: C.onPrimary, fontSize: 19.5, fontWeight: '800', fontFamily: 'Inter' },
+    profileSubtitle: { color: C.cyan100, fontSize: 14, fontFamily: 'Inter', marginTop: 2 },
 
-  verifyPill: {
-    flexDirection: 'row', alignItems: 'center', gap: 5,
-    borderRadius: 999, paddingHorizontal: 11, paddingVertical: 5,
-    marginTop: 10, borderWidth: 1,
-  },
-  verifyPillOn: { backgroundColor: 'rgba(74,222,128,0.14)', borderColor: 'rgba(74,222,128,0.35)' },
-  verifyPillOff: { backgroundColor: 'rgba(251,191,36,0.14)', borderColor: 'rgba(251,191,36,0.35)' },
-  verifyPillText: { fontSize: 11.5, fontWeight: '700', fontFamily: 'Inter' },
-  verifyPillTextOn: { color: '#4ade80' },
-  verifyPillTextOff: { color: '#fbbf24' },
+    verifyPill: {
+      flexDirection: 'row', alignItems: 'center', gap: 5,
+      borderRadius: 999, paddingHorizontal: 11, paddingVertical: 5,
+      marginTop: 10, borderWidth: 1,
+    },
+    verifyPillOn: { backgroundColor: 'rgba(74,222,128,0.14)', borderColor: 'rgba(74,222,128,0.35)' },
+    verifyPillOff: { backgroundColor: 'rgba(251,191,36,0.14)', borderColor: 'rgba(251,191,36,0.35)' },
+    verifyPillText: { fontSize: 11.5, fontWeight: '700', fontFamily: 'Inter' },
+    verifyPillTextOn: { color: '#4ade80' },
+    verifyPillTextOff: { color: '#fbbf24' },
 
-  statsRow: {
-    flexDirection: 'row', backgroundColor: C.white, paddingVertical: 15, paddingHorizontal: Spacing.screenH,
-    borderBottomWidth: 1, borderBottomColor: '#e7ecf1',
-  },
-  statCard: { flex: 1, alignItems: 'center', paddingHorizontal: 8 },
-  statDivider: { width: 1, backgroundColor: '#e7ecf1' },
-  statValue: { color: C.ink900, fontSize: 17.5, fontWeight: '800', fontFamily: 'Inter', marginBottom: 2 },
-  statLabel: { color: C.ink400, fontSize: 11.5, fontFamily: 'Inter', textAlign: 'center' },
+    statsRow: {
+      flexDirection: 'row', backgroundColor: C.surface, paddingVertical: 15, paddingHorizontal: Spacing.screenH,
+      borderBottomWidth: 1, borderBottomColor: V6Colors.line,
+    },
+    statCard: { flex: 1, alignItems: 'center', paddingHorizontal: 8 },
+    statDivider: { width: 1, backgroundColor: V6Colors.line },
+    statValue: { color: C.ink900, fontSize: 17.5, fontWeight: '800', fontFamily: 'Inter', marginBottom: 2 },
+    statLabel: { color: C.ink400, fontSize: 11.5, fontFamily: 'Inter', textAlign: 'center' },
 
-  body: { flex: 1 },
-  bodyContent: { paddingHorizontal: Spacing.screenH, paddingTop: 18, paddingBottom: 20 },
+    body: { flex: 1 },
+    bodyContent: { paddingHorizontal: Spacing.screenH, paddingTop: 18, paddingBottom: 20 },
 
-  card: {
-    backgroundColor: C.white, borderRadius: V6Radii.card,
-    padding: 8, marginBottom: 16, overflow: 'hidden',
-    borderWidth: 1, borderColor: C.line,
-    ...V6Shadows.sm,
-  },
-  cardTitle: { color: C.ink900, fontSize: 16, fontWeight: '800', fontFamily: 'Inter', margin: 12, marginBottom: 4 },
+    card: {
+      backgroundColor: C.surface, borderRadius: V6Radii.card,
+      padding: 8, marginBottom: 16, overflow: 'hidden',
+      borderWidth: 1, borderColor: C.line,
+      ...V6Shadows.sm,
+    },
+    cardTitle: { color: C.ink900, fontSize: 16, fontWeight: '800', fontFamily: 'Inter', margin: 12, marginBottom: 4 },
 
-  infoRow: {
-    flexDirection: 'row', justifyContent: 'space-between',
-    paddingVertical: 10, paddingHorizontal: 12,
-  },
-  infoLabel: { color: C.ink500, fontSize: 14.5, fontFamily: 'Inter' },
-  infoValue: { color: C.ink900, fontSize: 14.5, fontWeight: '600', fontFamily: 'Inter', maxWidth: '60%', textAlign: 'right' },
+    infoRow: {
+      flexDirection: 'row', justifyContent: 'space-between',
+      paddingVertical: 10, paddingHorizontal: 12,
+    },
+    infoLabel: { color: C.ink500, fontSize: 14.5, fontFamily: 'Inter' },
+    infoValue: { color: C.ink900, fontSize: 14.5, fontWeight: '600', fontFamily: 'Inter', maxWidth: '60%', textAlign: 'right' },
 
-  // .navrow
-  navrow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 14, paddingHorizontal: 12 },
-  rowIcon: {
-    width: 34, height: 34, borderRadius: 10,
-    backgroundColor: '#f5f8fa', alignItems: 'center', justifyContent: 'center',
-  },
-  rowLabel: { flex: 1, color: C.ink900, fontSize: 14.5, fontWeight: '600', fontFamily: 'Inter' },
-  rowLabelDanger: { color: '#ef4444' },
-});
+    // .navrow
+    navrow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 14, paddingHorizontal: 12 },
+    rowIcon: {
+      width: 34, height: 34, borderRadius: 10,
+      backgroundColor: V6Colors.wellBg, alignItems: 'center', justifyContent: 'center',
+    },
+    rowLabel: { flex: 1, color: C.ink900, fontSize: 14.5, fontWeight: '600', fontFamily: 'Inter' },
+    rowLabelDanger: { color: V6Colors.dangerText },
+  });
+  return { Colors, V6Colors, C, styles };
+}

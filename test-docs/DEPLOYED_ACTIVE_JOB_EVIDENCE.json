@@ -1,0 +1,17 @@
+{
+  "checked_at": "2026-10-04T10:00:22.698Z",
+  "api_revision": "15bc94a",
+  "checks": [
+    "Three active fixtures across two service categories appear in owned active jobs",
+    "Each category filter matches the active subset and excludes other states/categories",
+    "Two one-row active-category pages have stable distinct ordering",
+    "Provider job-detail photo URL serves the exact uploaded owned PNG",
+    "Job creation succeeds without a terms checkbox field",
+    "All three unassigned fixtures cancelled afterward and absent from active results"
+  ],
+  "limits": [
+    "No native filter/detail-back retention or photo viewer interaction evidence",
+    "Only a public app icon was used; no personal photo"
+  ],
+  "cleanup": "All created jobs cancelled; records and test image retained"
+}

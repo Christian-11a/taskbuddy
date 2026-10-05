@@ -1,0 +1,254 @@
+{
+  "checked_at": "2026-10-04T05:58:39.618Z",
+  "render_revision": "68feb6ff9dac15327075ca2dbeb8a7f208a2c033",
+  "api_url": "https://taskbuddy-kpek.onrender.com",
+  "maintenance_mode": false,
+  "payment_mode": "Deployed secret and publishable key prefixes verified test; no payment attempted",
+  "cases": [
+    {
+      "name": "Client status/category filters",
+      "http_status": 200
+    },
+    {
+      "name": "Provider assigned jobs",
+      "http_status": 200
+    },
+    {
+      "name": "Provider private portfolio owner read",
+      "http_status": 200
+    },
+    {
+      "name": "Client portfolio access",
+      "http_status": 200
+    },
+    {
+      "name": "Client cannot use provider portfolio owner endpoint",
+      "http_status": 403
+    },
+    {
+      "name": "client consistent notification snapshot",
+      "http_status": 200
+    },
+    {
+      "name": "client wallet overview",
+      "http_status": 200
+    },
+    {
+      "name": "provider consistent notification snapshot",
+      "http_status": 200
+    },
+    {
+      "name": "provider wallet overview",
+      "http_status": 200
+    },
+    {
+      "name": "Admin session and maintenance off",
+      "http_status": 200
+    }
+  ],
+  "post_migration_preflight": {
+    "functions": [
+      {
+        "authenticated_can_execute": false,
+        "function_name": "admin_booking_status_counts",
+        "schema_name": "public"
+      },
+      {
+        "authenticated_can_execute": false,
+        "function_name": "admin_dashboard_counts",
+        "schema_name": "public"
+      },
+      {
+        "authenticated_can_execute": false,
+        "function_name": "admin_search_audit",
+        "schema_name": "public"
+      },
+      {
+        "authenticated_can_execute": false,
+        "function_name": "admin_search_wallet",
+        "schema_name": "public"
+      },
+      {
+        "authenticated_can_execute": false,
+        "function_name": "expire_job_cancellations",
+        "schema_name": "public"
+      },
+      {
+        "authenticated_can_execute": false,
+        "function_name": "guard_wallet_debit_reservation",
+        "schema_name": "public"
+      },
+      {
+        "authenticated_can_execute": true,
+        "function_name": "handle_application_accepted",
+        "schema_name": "public"
+      },
+      {
+        "authenticated_can_execute": true,
+        "function_name": "limit_provider_portfolio",
+        "schema_name": "public"
+      },
+      {
+        "authenticated_can_execute": false,
+        "function_name": "notification_snapshot",
+        "schema_name": "public"
+      },
+      {
+        "authenticated_can_execute": false,
+        "function_name": "raise_job_dispute",
+        "schema_name": "public"
+      },
+      {
+        "authenticated_can_execute": false,
+        "function_name": "resolve_job_dispute",
+        "schema_name": "public"
+      },
+      {
+        "authenticated_can_execute": false,
+        "function_name": "review_service_request",
+        "schema_name": "public"
+      },
+      {
+        "authenticated_can_execute": false,
+        "function_name": "wallet_available_balance",
+        "schema_name": "public"
+      },
+      {
+        "authenticated_can_execute": false,
+        "function_name": "wallet_lock",
+        "schema_name": "public"
+      }
+    ],
+    "legacy_missing_references": {
+      "legacy_settlements_without_reference": 1
+    },
+    "migration_versions": [
+      "0001",
+      "0002",
+      "0003",
+      "0004",
+      "0005",
+      "0006",
+      "0007",
+      "0008",
+      "0009",
+      "0010",
+      "0011",
+      "0012",
+      "0013",
+      "0014",
+      "0015",
+      "0016",
+      "0017",
+      "0018",
+      "0019",
+      "0020",
+      "0021",
+      "0022",
+      "0023",
+      "0024",
+      "0037",
+      "0038",
+      "0039",
+      "0040",
+      "0041",
+      "0042",
+      "0043",
+      "0044",
+      "0045",
+      "20260917160811",
+      "20260920220844",
+      "20260922160830"
+    ],
+    "missing_bookings": {
+      "active_jobs_without_booking": 0
+    },
+    "pending_withdrawals": {
+      "pending_withdrawal_count": 1,
+      "reserved_amount": 100
+    },
+    "portfolio_bucket": [
+      {
+        "allowed_mime_types": [
+          "image/jpeg",
+          "image/png",
+          "image/webp"
+        ],
+        "bucket": "provider-portfolio",
+        "file_size_limit": 10485760,
+        "public": false
+      }
+    ],
+    "triggers": [
+      {
+        "table_name": "job_applications",
+        "tgenabled": "O",
+        "trigger_name": "trg_application_accepted"
+      },
+      {
+        "table_name": "job_applications",
+        "tgenabled": "O",
+        "trigger_name": "trg_application_approved_skill"
+      },
+      {
+        "table_name": "job_applications",
+        "tgenabled": "O",
+        "trigger_name": "trg_job_applications_updated_at"
+      },
+      {
+        "table_name": "jobs",
+        "tgenabled": "O",
+        "trigger_name": "trg_assignment_approved_skill"
+      },
+      {
+        "table_name": "jobs",
+        "tgenabled": "O",
+        "trigger_name": "trg_job_completion"
+      },
+      {
+        "table_name": "jobs",
+        "tgenabled": "O",
+        "trigger_name": "trg_jobs_log_created"
+      },
+      {
+        "table_name": "jobs",
+        "tgenabled": "O",
+        "trigger_name": "trg_jobs_log_status"
+      },
+      {
+        "table_name": "jobs",
+        "tgenabled": "O",
+        "trigger_name": "trg_jobs_set_deadline"
+      },
+      {
+        "table_name": "jobs",
+        "tgenabled": "O",
+        "trigger_name": "trg_jobs_terminal_state"
+      },
+      {
+        "table_name": "jobs",
+        "tgenabled": "O",
+        "trigger_name": "trg_jobs_updated_at"
+      },
+      {
+        "table_name": "jobs",
+        "tgenabled": "O",
+        "trigger_name": "trg_review_work_cancellation"
+      },
+      {
+        "table_name": "provider_portfolio",
+        "tgenabled": "O",
+        "trigger_name": "provider_portfolio_limit"
+      },
+      {
+        "table_name": "wallet_transactions",
+        "tgenabled": "O",
+        "trigger_name": "guard_wallet_debit_reservation"
+      }
+    ],
+    "wallet_risks": {
+      "overreserved_amount": 0,
+      "overreserved_wallet_count": 0
+    }
+  }
+}

@@ -8,11 +8,12 @@
  * action bar.
  */
 
+import { useThemedStyles, type Palette as ThemePalette } from '../../../src/context/ThemeContext';
 import React, { useState } from 'react';
+import PhotoViewer from '../../../src/components/PhotoViewer';
 import {
   ActivityIndicator,
   Image,
-  Modal,
   ScrollView,
   StyleSheet,
   Text,
@@ -31,15 +32,13 @@ import {
   TriangleAlert,
   Wrench,
 } from 'lucide-react-native';
-import { Spacing, V6Colors } from '../../../src/constants/theme';
+import { Spacing } from '../../../src/constants/theme';
 import { useHeaderTop } from '../../../src/hooks/useHeaderTop';
 import { HOScreen } from '../../../src/types/navigation';
 import { useAsyncData } from '../../../src/hooks/useAsyncData';
 import { api, ApiError, type Job } from '../../../src/lib/api';
 import { distanceLabel, initials, jobStatusMeta, peso, shortDate, timeAgo, timeOfDay, urgencyMeta } from '../../../src/lib/format';
 import ConfirmationModal from '../../../src/components/ConfirmationModal';
-
-const C = V6Colors;
 
 function acceptedDistanceKm(job: Job): number | null {
   if (job.provider_accept_latitude == null || job.provider_accept_longitude == null) return null;
@@ -84,6 +83,7 @@ interface HOJobDetailScreenProps {
 }
 
 export default function HOJobDetailScreen({ jobId, onBack, onNavigate }: HOJobDetailScreenProps) {
+  const { C, styles, V6Colors } = useThemedStyles(createThemedStyles);
   const headerTop = useHeaderTop();
   const { data, loading, error, reload } = useAsyncData(async () => {
     if (!jobId) throw new Error('No job selected.');
@@ -100,13 +100,13 @@ export default function HOJobDetailScreen({ jobId, onBack, onNavigate }: HOJobDe
   const [matchingMessage, setMatchingMessage] = useState<string | null>(null);
   const [confirmCancel, setConfirmCancel] = useState(false);
   const [confirmComplete, setConfirmComplete] = useState(false);
-  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [photoIndex, setPhotoIndex] = useState<number | null>(null);
 
   const job = data?.job;
   const acceptedDistance = job ? acceptedDistanceKm(job) : null;
   const provider = data?.provider;
   const dispute = data?.dispute;
-  const meta = job ? jobStatusMeta(job.status) : null;
+  const meta = job ? jobStatusMeta(job.status, V6Colors) : null;
   const stage = job ? stageIndex(job.status) : 0;
   const tasks = [...(job?.job_tasks ?? [])].sort((a, b) => a.position - b.position);
   const doneCount = tasks.filter((t) => t.is_done).length;
@@ -153,7 +153,7 @@ export default function HOJobDetailScreen({ jobId, onBack, onNavigate }: HOJobDe
     ['open', 'recommending', 'assigned', 'confirmed', 'in_progress'].includes(job.status);
   const canDispute = job && !!job.assigned_provider_id && (
     ['assigned', 'confirmed', 'in_progress', 'cancelled'].includes(job.status) ||
-    (job.status === 'completed' && job.completed_at && Date.now() <= new Date(job.completed_at).getTime() + 7 * 24 * 60 * 60 * 1000)
+    (job.status === 'completed' && job.warranty_expires_at && Date.now() < new Date(job.warranty_expires_at).getTime())
   );
   const canComplete = job?.status === 'in_progress' && tasks.every((task) => task.is_done);
   const canReview =
@@ -173,7 +173,7 @@ export default function HOJobDetailScreen({ jobId, onBack, onNavigate }: HOJobDe
         <View style={{ width: 38 }} />
       </View>
 
-      {loading && <ActivityIndicator style={{ marginTop: 40 }} color={C.cyan700} />}
+      {loading && <ActivityIndicator style={{ marginTop: 40 }} color={V6Colors.link} />}
       {!!error && !loading && <Text style={styles.stateText}>{error}</Text>}
 
       {job && (
@@ -216,8 +216,8 @@ export default function HOJobDetailScreen({ jobId, onBack, onNavigate }: HOJobDe
                 {
                   icon: TriangleAlert,
                   label: 'Urgency',
-                  value: urgencyMeta(job.urgency).label,
-                  color: urgencyMeta(job.urgency).color,
+                  value: urgencyMeta(job.urgency, V6Colors).label,
+                  color: urgencyMeta(job.urgency, V6Colors).color,
                   wide: false,
                 },
                 { icon: MapPin, label: 'Location', value: job.address, wide: true },
@@ -275,7 +275,7 @@ export default function HOJobDetailScreen({ jobId, onBack, onNavigate }: HOJobDe
               {tasks.map((task) => (
                 <View key={task.id} style={styles.taskRow}>
                   <View style={[styles.taskBox, task.is_done && styles.taskBoxDone]}>
-                    {task.is_done && <Check size={13} color={C.white} strokeWidth={3} />}
+                    {task.is_done && <Check size={13} color={C.onPrimary} strokeWidth={3} />}
                   </View>
                   <Text style={[styles.taskLabel, task.is_done && styles.taskLabelDone]}>
                     {task.label}
@@ -289,8 +289,8 @@ export default function HOJobDetailScreen({ jobId, onBack, onNavigate }: HOJobDe
             <Text style={styles.sectionTitle}>Job Photos</Text>
             {job.photo_urls?.length > 0 ? (
               <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.attachmentList}>
-                {job.photo_urls.map((url) => (
-                  <TouchableOpacity key={url} onPress={() => setPreviewUrl(url)} activeOpacity={0.85}>
+                {job.photo_urls.map((url, index) => (
+                  <TouchableOpacity key={url} onPress={() => setPhotoIndex(index)} accessibilityLabel={`Open job photo ${index + 1}`} activeOpacity={0.85}>
                     <Image source={{ uri: url }} style={styles.attachmentImage} />
                   </TouchableOpacity>
                 ))}
@@ -401,24 +401,25 @@ export default function HOJobDetailScreen({ jobId, onBack, onNavigate }: HOJobDe
           {canCancel && (
             <TouchableOpacity style={styles.outlineDangerBtn} onPress={() => setConfirmCancel(true)} activeOpacity={0.85} disabled={busy}>
               <View style={styles.outlineBtnContent}>
-                <CircleAlert size={17} color="#ef4444" />
+                <CircleAlert size={17} color={V6Colors.dangerText} />
                 <Text style={styles.outlineDangerBtnText}>Cancel Job</Text>
               </View>
             </TouchableOpacity>
           )}
+          {job.status === 'completed' && job.warranty_expires_at && (
+            <Text style={styles.detailLabel}>Warranty ends {new Date(job.warranty_expires_at).toLocaleString()}.</Text>
+          )}
+          {dispute?.status === 'open' && <Text style={styles.detailLabel}>{dispute.cancellation_state === 'pending' ? 'Cancellation awaiting provider response' : dispute.escrow_transactions?.status === 'disputed' ? 'Payment under admin review' : 'Complaint awaiting admin review'}</Text>}
           {(dispute || canDispute) && (
             <TouchableOpacity style={styles.outlineBtn} onPress={() => onNavigate(dispute ? 'Dispute Status' : 'Dispute Filing', job.id)} activeOpacity={0.85}>
-              <Text style={styles.outlineDangerBtnText}>{dispute ? 'View Dispute Status' : 'File a Dispute'}</Text>
+              <Text style={styles.outlineDangerBtnText}>{dispute ? 'View Dispute Status' : 'File a Complaint'}</Text>
             </TouchableOpacity>
           )}
         </View>
       )}
 
-      <Modal visible={!!previewUrl} transparent animationType="fade" onRequestClose={() => setPreviewUrl(null)}>
-        <TouchableOpacity style={styles.previewBackdrop} activeOpacity={1} onPress={() => setPreviewUrl(null)}>
-          {previewUrl && <Image source={{ uri: previewUrl }} style={styles.previewImage} resizeMode="contain" />}
-        </TouchableOpacity>
-      </Modal>
+      <PhotoViewer photos={(job?.photo_urls ?? []).map(uri => ({ uri }))}
+        index={photoIndex} onIndexChange={setPhotoIndex} onClose={() => setPhotoIndex(null)} />
 
       {/* Cancelling is irreversible and moves money — ask first. */}
       <ConfirmationModal
@@ -428,8 +429,7 @@ export default function HOJobDetailScreen({ jobId, onBack, onNavigate }: HOJobDe
           job?.status === 'in_progress' || dispute?.status === 'open'
             ? 'This cancels the job and preserves its history. Any held payment stays frozen for an admin to review before release or refund.'
             : job?.assigned_provider_id
-            ? `This tells your provider the job is off${job?.budget != null ? ` and returns ${peso(job.budget)} to your wallet` : ''
-            }. It cannot be undone.`
+            ? 'This cancels the booking and holds any payment while the provider has 48 hours to agree or contest. Agreement or no response refunds the client; a contest goes to admin review.'
             : 'This takes the job down so providers can no longer apply. It cannot be undone.'
         }
         confirmLabel="Cancel Job"
@@ -446,16 +446,16 @@ export default function HOJobDetailScreen({ jobId, onBack, onNavigate }: HOJobDe
         }}
       />
 
-      {/* Releases escrow to the provider immediately — ask first (QA #6). */}
+      {/* Completion starts the three-day warranty before payment release. */}
       <ConfirmationModal
         visible={confirmComplete}
         title="Mark this job complete?"
         message={
           dispute?.status === 'open'
             ? 'This records completion of the work. The disputed payment stays frozen until an admin resolves it.'
-            : job?.budget != null
-            ? `This releases ${peso(job.budget)} to the provider. It cannot be undone.`
-            : 'This releases the held funds to the provider. It cannot be undone.'
+            : job && Number(job.budget) > 0
+            ? `This starts the three-day warranty. ${peso(job.budget!)} stays held until it ends. A complaint filed during the warranty freezes payment for admin review.`
+            : 'This records completion and starts the three-day warranty. You can file a complaint during this period.'
         }
         confirmLabel="Yes, Mark Complete"
         cancelLabel="Not Yet"
@@ -471,106 +471,111 @@ export default function HOJobDetailScreen({ jobId, onBack, onNavigate }: HOJobDe
   );
 }
 
-const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: C.canvas },
+function createThemedStyles(theme: ThemePalette) {
+  const { Colors, V6Colors } = theme;
+  const C = V6Colors;
+  const styles = StyleSheet.create({
+    screen: { flex: 1, backgroundColor: C.canvas },
 
-  header: {
-    flexDirection: 'row', alignItems: 'center', gap: 12,
-    backgroundColor: C.white,
-    paddingHorizontal: Spacing.screenH,
-    paddingBottom: 12,
-    borderBottomWidth: 1, borderBottomColor: '#edf1f4',
-  },
-  backBtn: {
-    width: 38, height: 38, borderRadius: 12,
-    backgroundColor: C.white, borderWidth: 1, borderColor: '#e8edf2',
-    alignItems: 'center', justifyContent: 'center',
-  },
-  headerTitle: { flex: 1, color: C.ink900, fontSize: 19.5, fontWeight: '800', fontFamily: 'Inter' },
+    header: {
+      flexDirection: 'row', alignItems: 'center', gap: 12,
+      backgroundColor: C.surface,
+      paddingHorizontal: Spacing.screenH,
+      paddingBottom: 12,
+      borderBottomWidth: 1, borderBottomColor: V6Colors.line,
+    },
+    backBtn: {
+      width: 38, height: 38, borderRadius: 12,
+      backgroundColor: C.surface, borderWidth: 1, borderColor: V6Colors.line,
+      alignItems: 'center', justifyContent: 'center',
+    },
+    headerTitle: { flex: 1, color: C.ink900, fontSize: 19.5, fontWeight: '800', fontFamily: 'Inter' },
 
-  body: { flex: 1 },
-  bodyContent: { paddingHorizontal: Spacing.screenH, paddingTop: 4, paddingBottom: 12 },
-  stateText: { color: C.ink500, fontSize: 16.5, fontFamily: 'Inter', textAlign: 'center', marginTop: 30, paddingHorizontal: Spacing.screenH },
+    body: { flex: 1 },
+    bodyContent: { paddingHorizontal: Spacing.screenH, paddingTop: 4, paddingBottom: 12 },
+    stateText: { color: C.ink500, fontSize: 16.5, fontFamily: 'Inter', textAlign: 'center', marginTop: 30, paddingHorizontal: Spacing.screenH },
 
-  // Hero
-  hero: { paddingVertical: 18, borderBottomWidth: 1, borderBottomColor: C.line },
-  kicker: { fontSize: 11.5, textTransform: 'uppercase', letterSpacing: 0.9, fontWeight: '800', color: C.cyan700, marginBottom: 8, fontFamily: 'Inter' },
-  heroTitleRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 },
-  heroTitle: { flex: 1, fontSize: 21.5, lineHeight: 25, letterSpacing: -0.5, color: C.ink900, fontWeight: '700', fontFamily: 'Inter' },
-  statusBadge: { borderRadius: 999, paddingHorizontal: 10, paddingVertical: 5 },
-  statusBadgeText: { fontSize: 12.5, fontWeight: '700', fontFamily: 'Inter' },
-  heroPrice: { fontSize: 26, fontWeight: '800', letterSpacing: -0.7, color: C.ink900, marginTop: 16, fontFamily: 'Inter' },
-  factsGrid: { flexDirection: 'row', gap: 8, marginTop: 14 },
-  fact: { flex: 1, flexDirection: 'row', alignItems: 'flex-start', gap: 8, padding: 10, backgroundColor: '#f5f8fa', borderRadius: 12 },
-  factLabel: { fontSize: 11.5, color: C.ink400, fontFamily: 'Inter' },
-  factValue: { fontSize: 13.5, color: C.ink800, fontWeight: '700', fontFamily: 'Inter', marginTop: 1 },
+    // Hero
+    hero: { paddingVertical: 18, borderBottomWidth: 1, borderBottomColor: C.line },
+    kicker: { fontSize: 11.5, textTransform: 'uppercase', letterSpacing: 0.9, fontWeight: '800', color: V6Colors.link, marginBottom: 8, fontFamily: 'Inter' },
+    heroTitleRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 },
+    heroTitle: { flex: 1, fontSize: 21.5, lineHeight: 25, letterSpacing: -0.5, color: C.ink900, fontWeight: '700', fontFamily: 'Inter' },
+    statusBadge: { borderRadius: 999, paddingHorizontal: 10, paddingVertical: 5 },
+    statusBadgeText: { fontSize: 12.5, fontWeight: '700', fontFamily: 'Inter' },
+    heroPrice: { fontSize: 26, fontWeight: '800', letterSpacing: -0.7, color: C.ink900, marginTop: 16, fontFamily: 'Inter' },
+    factsGrid: { flexDirection: 'row', gap: 8, marginTop: 14 },
+    fact: { flex: 1, flexDirection: 'row', alignItems: 'flex-start', gap: 8, padding: 10, backgroundColor: V6Colors.wellBg, borderRadius: 12 },
+    factLabel: { fontSize: 11.5, color: C.ink400, fontFamily: 'Inter' },
+    factValue: { fontSize: 13.5, color: C.ink800, fontWeight: '700', fontFamily: 'Inter', marginTop: 1 },
 
-  // Sections — borderless, bottom-divider only
-  section: { paddingVertical: 18, borderBottomWidth: 1, borderBottomColor: C.line },
-  sectionTitle: { fontSize: 14, color: C.ink900, fontWeight: '800', fontFamily: 'Inter', marginBottom: 12 },
-  sectionTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 7, marginBottom: 12 },
-  sectionTitleInline: { flex: 1, fontSize: 14, color: C.ink900, fontWeight: '800', fontFamily: 'Inter' },
-  taskCounter: { fontSize: 12, color: C.ink400, fontWeight: '700', fontFamily: 'Inter' },
-  taskRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 7 },
-  taskBox: {
-    width: 20, height: 20, borderRadius: 6,
-    borderWidth: 1.5, borderColor: '#cbd5e1',
-    alignItems: 'center', justifyContent: 'center',
-  },
-  taskBoxDone: { backgroundColor: C.cyan700, borderColor: C.cyan700 },
-  taskLabel: { flex: 1, fontSize: 13.5, lineHeight: 18, color: C.ink800, fontFamily: 'Inter' },
-  taskLabelDone: { color: C.ink400, textDecorationLine: 'line-through' },
-  actionError: { color: '#ef4444', fontSize: 13.5, fontFamily: 'Inter', textAlign: 'center' },
-  matchingMessage: { color: C.cyan800, fontSize: 13.5, fontFamily: 'Inter', textAlign: 'center', lineHeight: 18, marginBottom: 16 },
-  descText: { fontSize: 14, lineHeight: 21, color: C.ink700, fontFamily: 'Inter' },
-  attachmentList: { gap: 10 },
-  attachmentImage: { width: 92, height: 92, borderRadius: 10, backgroundColor: C.ink100 },
-  emptyAttachmentText: { color: C.ink500, fontSize: 13.5, fontFamily: 'Inter' },
+    // Sections — borderless, bottom-divider only
+    section: { paddingVertical: 18, borderBottomWidth: 1, borderBottomColor: C.line },
+    sectionTitle: { fontSize: 14, color: C.ink900, fontWeight: '800', fontFamily: 'Inter', marginBottom: 12 },
+    sectionTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 7, marginBottom: 12 },
+    sectionTitleInline: { flex: 1, fontSize: 14, color: C.ink900, fontWeight: '800', fontFamily: 'Inter' },
+    taskCounter: { fontSize: 12, color: C.ink400, fontWeight: '700', fontFamily: 'Inter' },
+    taskRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 7 },
+    taskBox: {
+      width: 20, height: 20, borderRadius: 6,
+      borderWidth: 1.5, borderColor: V6Colors.ink200,
+      alignItems: 'center', justifyContent: 'center',
+    },
+    taskBoxDone: { backgroundColor: C.cyan700, borderColor: C.cyan700 },
+    taskLabel: { flex: 1, fontSize: 13.5, lineHeight: 18, color: C.ink800, fontFamily: 'Inter' },
+    taskLabelDone: { color: C.ink400, textDecorationLine: 'line-through' },
+    actionError: { color: V6Colors.dangerText, fontSize: 13.5, fontFamily: 'Inter', textAlign: 'center' },
+    matchingMessage: { color: V6Colors.link, fontSize: 13.5, fontFamily: 'Inter', textAlign: 'center', lineHeight: 18, marginBottom: 16 },
+    descText: { fontSize: 14, lineHeight: 21, color: C.ink700, fontFamily: 'Inter' },
+    attachmentList: { gap: 10 },
+    attachmentImage: { width: 92, height: 92, borderRadius: 10, backgroundColor: C.ink100 },
+    emptyAttachmentText: { color: C.ink500, fontSize: 13.5, fontFamily: 'Inter' },
 
-  // Horizontal timeline
-  timeline: { flexDirection: 'row', justifyContent: 'space-between', position: 'relative', marginTop: 4 },
-  timelineLine: { position: 'absolute', left: '10%', right: '10%', top: 7, height: 2, backgroundColor: '#e6ebef' },
-  timelineStep: { width: '20%', alignItems: 'center' },
-  timelineDot: { width: 15, height: 15, borderRadius: 8, borderWidth: 2, borderColor: '#d6dde3', backgroundColor: C.white, marginBottom: 6 },
-  timelineDotDone: { backgroundColor: C.cyan700, borderColor: C.cyan700 },
-  timelineDotCurrent: { borderColor: C.cyan700 },
-  timelineLabel: { fontSize: 9.5, lineHeight: 12, color: C.ink400, fontFamily: 'Inter', textAlign: 'center' },
-  timelineLabelDone: { color: C.ink700, fontWeight: '700' },
+    // Horizontal timeline
+    timeline: { flexDirection: 'row', justifyContent: 'space-between', position: 'relative', marginTop: 4 },
+    timelineLine: { position: 'absolute', left: '10%', right: '10%', top: 7, height: 2, backgroundColor: V6Colors.line },
+    timelineStep: { width: '20%', alignItems: 'center' },
+    timelineDot: { width: 15, height: 15, borderRadius: 8, borderWidth: 2, borderColor: V6Colors.line, backgroundColor: C.surface, marginBottom: 6 },
+    timelineDotDone: { backgroundColor: C.cyan700, borderColor: C.cyan700 },
+    timelineDotCurrent: { borderColor: C.cyan700 },
+    timelineLabel: { fontSize: 9.5, lineHeight: 12, color: C.ink400, fontFamily: 'Inter', textAlign: 'center' },
+    timelineLabelDone: { color: C.ink700, fontWeight: '700' },
 
-  // Detail rows
-  detailsGrid: { flexDirection: 'row', flexWrap: 'wrap', rowGap: 14 },
-  detailRow: { width: '50%', flexDirection: 'row', alignItems: 'flex-start', gap: 10, paddingRight: 8 },
-  detailRowWide: { width: '100%' },
-  detailText: { flex: 1, minWidth: 0 },
-  detailIcon: { width: 30, height: 30, borderRadius: 9, backgroundColor: '#f6f8fa', alignItems: 'center', justifyContent: 'center' },
-  detailLabel: { fontSize: 11.5, color: C.ink400, fontFamily: 'Inter', marginBottom: 2 },
-  detailValue: { fontSize: 13.5, color: C.ink800, fontWeight: '600', fontFamily: 'Inter', lineHeight: 17, flexShrink: 1 },
-  providerNotice: { marginBottom: 16 },
+    // Detail rows
+    detailsGrid: { flexDirection: 'row', flexWrap: 'wrap', rowGap: 14 },
+    detailRow: { width: '50%', flexDirection: 'row', alignItems: 'flex-start', gap: 10, paddingRight: 8 },
+    detailRowWide: { width: '100%' },
+    detailText: { flex: 1, minWidth: 0 },
+    detailIcon: { width: 30, height: 30, borderRadius: 9, backgroundColor: V6Colors.wellBg, alignItems: 'center', justifyContent: 'center' },
+    detailLabel: { fontSize: 11.5, color: C.ink400, fontFamily: 'Inter', marginBottom: 2 },
+    detailValue: { fontSize: 13.5, color: C.ink800, fontWeight: '600', fontFamily: 'Inter', lineHeight: 17, flexShrink: 1 },
+    providerNotice: { marginBottom: 16 },
 
-  // Provider card
-  providerCard: { flexDirection: 'row', alignItems: 'center', gap: 11 },
-  providerAvatar: { width: 42, height: 42, borderRadius: 13, backgroundColor: C.cyan700, alignItems: 'center', justifyContent: 'center' },
-  providerAvatarText: { color: C.white, fontSize: 16, fontWeight: '800', fontFamily: 'Inter' },
-  providerName: { fontSize: 14.5, fontWeight: '700', color: C.ink900, fontFamily: 'Inter' },
-  providerRatingRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 3 },
-  providerRating: { fontSize: 11.5, color: C.ink400, fontFamily: 'Inter' },
-  messageBtn: { flexDirection: 'row', alignItems: 'center', gap: 5, borderWidth: 1, borderColor: C.line, borderRadius: 999, paddingHorizontal: 12, paddingVertical: 8 },
-  messageBtnText: { color: C.ink700, fontSize: 13, fontWeight: '700', fontFamily: 'Inter' },
+    // Provider card
+    providerCard: { flexDirection: 'row', alignItems: 'center', gap: 11 },
+    providerAvatar: { width: 42, height: 42, borderRadius: 13, backgroundColor: C.cyan700, alignItems: 'center', justifyContent: 'center' },
+    providerAvatarText: { color: C.onPrimary, fontSize: 16, fontWeight: '800', fontFamily: 'Inter' },
+    providerName: { fontSize: 14.5, fontWeight: '700', color: C.ink900, fontFamily: 'Inter' },
+    providerRatingRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 3 },
+    providerRating: { fontSize: 11.5, color: C.ink400, fontFamily: 'Inter' },
+    messageBtn: { flexDirection: 'row', alignItems: 'center', gap: 5, borderWidth: 1, borderColor: C.line, borderRadius: 999, paddingHorizontal: 12, paddingVertical: 8 },
+    messageBtnText: { color: C.ink700, fontSize: 13, fontWeight: '700', fontFamily: 'Inter' },
 
-  // Link rows
-  linkRow: { paddingVertical: 12 },
-  detailRowBorder: { borderTopWidth: 1, borderTopColor: '#f1f4f6' },
-  linkRowText: { color: C.cyan700, fontSize: 14.5, fontWeight: '700', fontFamily: 'Inter' },
+    // Link rows
+    linkRow: { paddingVertical: 12 },
+    detailRowBorder: { borderTopWidth: 1, borderTopColor: V6Colors.wellBg },
+    linkRowText: { color: V6Colors.link, fontSize: 14.5, fontWeight: '700', fontFamily: 'Inter' },
 
-  // Action bar
-  actionBar: { paddingHorizontal: Spacing.screenH, paddingTop: 12, paddingBottom: 10, gap: 8, backgroundColor: C.white, borderTopWidth: 1, borderTopColor: C.line },
-  previewBackdrop: { flex: 1, backgroundColor: 'rgba(15,23,42,0.9)', alignItems: 'center', justifyContent: 'center', padding: 20 },
-  previewImage: { width: '100%', height: '80%' },
-  primaryBtn: { backgroundColor: C.cyan700, borderRadius: 13, paddingVertical: 14, alignItems: 'center' },
-  primaryBtnText: { color: C.white, fontSize: 16.5, fontWeight: '700', fontFamily: 'Inter' },
-  outlineBtn: { borderWidth: 1, borderColor: '#dce3e9', borderRadius: 13, paddingVertical: 14, alignItems: 'center' },
-  outlineBtnText: { color: C.ink700, fontSize: 16.5, fontWeight: '700', fontFamily: 'Inter' },
-  outlineDangerBtn: { borderWidth: 1, borderColor: '#ef4444', borderRadius: 13, paddingVertical: 14, alignItems: 'center' },
-  outlineBtnContent: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  outlineDangerBtnText: { color: '#ef4444', fontSize: 16.5, fontWeight: '700', fontFamily: 'Inter' },
-});
+    // Action bar
+    actionBar: { paddingHorizontal: Spacing.screenH, paddingTop: 12, paddingBottom: 10, gap: 8, backgroundColor: C.surface, borderTopWidth: 1, borderTopColor: C.line },
+    previewBackdrop: { flex: 1, backgroundColor: 'rgba(15,23,42,0.9)', alignItems: 'center', justifyContent: 'center', padding: 20 },
+    previewImage: { width: '100%', height: '80%' },
+    primaryBtn: { backgroundColor: C.cyan700, borderRadius: 13, paddingVertical: 14, alignItems: 'center' },
+    primaryBtnText: { color: C.onPrimary, fontSize: 16.5, fontWeight: '700', fontFamily: 'Inter' },
+    outlineBtn: { borderWidth: 1, borderColor: V6Colors.fieldBorder, borderRadius: 13, paddingVertical: 14, alignItems: 'center' },
+    outlineBtnText: { color: C.ink700, fontSize: 16.5, fontWeight: '700', fontFamily: 'Inter' },
+    outlineDangerBtn: { borderWidth: 1, borderColor: '#ef4444', borderRadius: 13, paddingVertical: 14, alignItems: 'center' },
+    outlineBtnContent: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+    outlineDangerBtnText: { color: V6Colors.dangerText, fontSize: 16.5, fontWeight: '700', fontFamily: 'Inter' },
+  });
+  return { Colors, V6Colors, C, styles };
+}

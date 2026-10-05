@@ -1,7 +1,6 @@
 import { BadRequestException, ConflictException } from '@nestjs/common';
 import { SkillRequestsService } from './skill-requests.service';
 import type { SupabaseService } from '../supabase/supabase.service';
-import type { AdminActionsService } from '../admin/admin-actions.service';
 import type { Profile } from '../common/types';
 
 type QueryResult = {
@@ -56,11 +55,8 @@ const admin = { id: 'a1', role: 'admin' } as Profile;
 
 function createService(results: Record<string, QueryResult[]>) {
   const { supabase, calls, rpc } = createSupabaseMock(results);
-  const record = jest.fn().mockResolvedValue(undefined);
-  const service = new SkillRequestsService(supabase, {
-    record,
-  } as unknown as AdminActionsService);
-  return { service, calls, rpc, record };
+  const service = new SkillRequestsService(supabase);
+  return { service, calls, rpc };
 }
 
 const pendingRow = (overrides: Record<string, unknown> = {}) => ({
@@ -111,67 +107,40 @@ describe('SkillRequestsService.create', () => {
   });
 });
 
-describe('SkillRequestsService.approve', () => {
-  it('swaps the main service, logs the action and tells the provider', async () => {
-    const { service, calls, record } = createService({
-      skill_change_requests: [
-        ok(pendingRow()),
-        ok(pendingRow({ status: 'approved' })),
-      ],
-      provider_profiles: [ok(null)],
-      provider_secondary_categories: [ok(null)],
-      notifications: [ok(null)],
+describe('SkillRequestsService decisions', () => {
+  it('delegates approval, audit, services and notification to the atomic RPC', async () => {
+    const { service, rpc, calls } = createService({
+      rpc: [ok(pendingRow({ status: 'approved' }))],
     });
-
-    await service.approve(admin, 'r1');
-
-    const update = calls.find(
-      (c) => c.table === 'provider_profiles' && c.method === 'update',
-    );
-    expect(update?.args[0]).toEqual({ category_id: 2 });
-    expect(record).toHaveBeenCalledWith(
-      admin,
-      'skill_request.approve',
-      'skill_change_requests',
-      'r1',
-      expect.anything(),
-    );
-    const notification = calls.find(
-      (c) => c.table === 'notifications' && c.method === 'insert',
-    );
-    expect(notification?.args[0]).toMatchObject({
-      recipient_id: 'p1',
-      type: 'skill_request_update',
+    await expect(
+      service.approve(admin, 'r1', { note: 'Verified skills' }),
+    ).resolves.toMatchObject({ status: 'approved' });
+    expect(rpc).toHaveBeenCalledWith('review_service_request', {
+      p_id: 'r1',
+      p_admin: 'a1',
+      p_status: 'approved',
+      p_note: 'Verified skills',
     });
+    expect(calls).toEqual([]);
   });
-
-  it('adds a secondary service without touching the main one', async () => {
-    const { service, calls } = createService({
-      skill_change_requests: [
-        ok(pendingRow({ type: 'add_secondary' })),
-        ok(pendingRow({ status: 'approved' })),
-      ],
-      provider_secondary_categories: [ok(null)],
-      notifications: [ok(null)],
-    });
-
-    await service.approve(admin, 'r1');
-
-    expect(
-      calls.some(
-        (c) => c.table === 'provider_profiles' && c.method === 'update',
-      ),
-    ).toBe(false);
-    const insert = calls.find(
-      (c) =>
-        c.table === 'provider_secondary_categories' && c.method === 'insert',
-    );
-    expect(insert?.args[0]).toEqual({ provider_id: 'p1', category_id: 2 });
-  });
-
-  it('refuses a request that was already decided', async () => {
+  it('surfaces persistence failures instead of reporting success', async () => {
     const { service } = createService({
-      skill_change_requests: [ok(pendingRow({ status: 'rejected' }))],
+      rpc: [
+        { data: null, error: { message: 'Notification persistence failed' } },
+      ],
+    });
+    await expect(service.reject(admin, 'r1')).rejects.toThrow(
+      'Notification persistence failed',
+    );
+  });
+  it('rejects competing decisions', async () => {
+    const { service } = createService({
+      rpc: [
+        {
+          data: null,
+          error: { message: 'This request has already been decided' },
+        },
+      ],
     });
     await expect(service.approve(admin, 'r1')).rejects.toBeInstanceOf(
       ConflictException,

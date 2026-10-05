@@ -1,3 +1,4 @@
+import { useThemedStyles, type Palette as ThemePalette } from '../context/ThemeContext';
 import React, { useRef, useState } from 'react';
 import {
   ActivityIndicator,
@@ -13,11 +14,10 @@ import {
   View,
 } from 'react-native';
 import { CheckCircle2, Circle, KeyRound, ShieldCheck } from 'lucide-react-native';
-import { V6Colors, V6Radii } from '../constants/theme';
+import { V6Radii } from '../constants/theme';
 import { api } from '../lib/api';
 import PasswordInput from './PasswordInput';
 
-const C = V6Colors;
 const MIN_LENGTH = 8;
 
 interface ChangePasswordModalProps {
@@ -31,6 +31,7 @@ interface ChangePasswordModalProps {
  * is wrong before pressing Save rather than after.
  */
 export default function ChangePasswordModal({ visible, onClose }: ChangePasswordModalProps) {
+  const { C, styles, V6Colors } = useThemedStyles(createThemedStyles);
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -87,7 +88,7 @@ export default function ChangePasswordModal({ visible, onClose }: ChangePassword
             {success ? (
               <View style={styles.successWrap}>
                 <View style={[styles.iconWell, styles.iconWellSuccess]}>
-                  <ShieldCheck size={26} color="#15803d" />
+                  <ShieldCheck size={26} color={V6Colors.successText} />
                 </View>
                 <Text style={styles.title} accessibilityRole="header">Password updated</Text>
                 <Text style={styles.subtitle}>Use your new password the next time you sign in.</Text>
@@ -98,7 +99,7 @@ export default function ChangePasswordModal({ visible, onClose }: ChangePassword
             ) : (
               <>
                 <View style={styles.iconWell}>
-                  <KeyRound size={24} color={C.cyan700} />
+                  <KeyRound size={24} color={V6Colors.link} />
                 </View>
                 <Text style={styles.title} accessibilityRole="header">Change password</Text>
                 <Text style={styles.subtitle}>Enter your current password, then choose a new one.</Text>
@@ -153,7 +154,7 @@ export default function ChangePasswordModal({ visible, onClose }: ChangePassword
                 <View style={styles.rules}>
                   {rules.map((rule) => (
                     <View key={rule.label} style={styles.ruleRow}>
-                      {rule.ok ? <CheckCircle2 size={15} color="#15803d" /> : <Circle size={15} color={C.ink300} />}
+                      {rule.ok ? <CheckCircle2 size={15} color={V6Colors.successText} /> : <Circle size={15} color={C.ink300} />}
                       <Text style={[styles.ruleText, rule.ok && styles.ruleTextOk]}>{rule.label}</Text>
                     </View>
                   ))}
@@ -174,7 +175,7 @@ export default function ChangePasswordModal({ visible, onClose }: ChangePassword
                     accessibilityState={{ disabled: !canSave }}
                     testID="btn-update-password"
                   >
-                    {saving ? <ActivityIndicator color={C.white} /> : <Text style={styles.primaryText}>Update password</Text>}
+                    {saving ? <ActivityIndicator color={C.onPrimary} /> : <Text style={styles.primaryText}>Update password</Text>}
                   </TouchableOpacity>
                 </View>
               </>
@@ -186,40 +187,45 @@ export default function ChangePasswordModal({ visible, onClose }: ChangePassword
   );
 }
 
-const styles = StyleSheet.create({
-  flex: { flex: 1 },
-  overlay: { flex: 1, justifyContent: 'center', padding: 20, backgroundColor: 'rgba(6, 61, 77, 0.5)' },
-  dialog: { backgroundColor: C.white, borderRadius: V6Radii.card, padding: 22, width: '100%', maxWidth: 440, alignSelf: 'center' },
-  iconWell: {
-    width: 48, height: 48, borderRadius: 14, backgroundColor: C.cyan50,
-    alignItems: 'center', justifyContent: 'center', marginBottom: 12,
-  },
-  iconWellSuccess: { backgroundColor: '#f0fdf4' },
-  title: { color: C.ink900, fontSize: 19, fontWeight: '800', fontFamily: 'Inter' },
-  subtitle: { color: C.ink500, fontSize: 14, fontFamily: 'Inter', lineHeight: 19, marginTop: 4, marginBottom: 16 },
-  label: { color: C.ink700, fontSize: 13.5, fontWeight: '700', fontFamily: 'Inter', marginBottom: 6 },
-  inputBox: {
-    backgroundColor: '#f5f8fa', borderRadius: 12, paddingHorizontal: 14, minHeight: 46,
-    borderWidth: 1, borderColor: '#dce3e9', marginBottom: 12,
-  },
-  input: { fontFamily: 'Inter', fontSize: 15, color: C.ink900, paddingVertical: 10 },
-  rules: { gap: 6, marginTop: 2, marginBottom: 12 },
-  ruleRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  ruleText: { color: C.ink500, fontSize: 13, fontFamily: 'Inter' },
-  ruleTextOk: { color: '#15803d' },
-  error: { color: '#b91c1c', fontSize: 13.5, fontFamily: 'Inter', marginBottom: 10 },
-  actions: { flexDirection: 'row', gap: 10, marginTop: 4 },
-  secondaryBtn: {
-    flex: 1, borderWidth: 1, borderColor: '#dce3e9', borderRadius: 10,
-    minHeight: 44, alignItems: 'center', justifyContent: 'center',
-  },
-  secondaryText: { color: C.ink500, fontSize: 14.5, fontWeight: '700', fontFamily: 'Inter' },
-  primaryBtn: {
-    flex: 1, backgroundColor: C.cyan700, borderRadius: 10,
-    minHeight: 44, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 10,
-  },
-  primaryText: { color: C.white, fontSize: 14.5, fontWeight: '700', fontFamily: 'Inter' },
-  disabled: { opacity: 0.5 },
-  successWrap: { alignItems: 'center' },
-  fullWidth: { flex: 0, alignSelf: 'stretch', marginTop: 4 },
-});
+function createThemedStyles(theme: ThemePalette) {
+  const { Colors, V6Colors } = theme;
+  const C = V6Colors;
+  const styles = StyleSheet.create({
+    flex: { flex: 1 },
+    overlay: { flex: 1, justifyContent: 'center', padding: 20, backgroundColor: 'rgba(6, 61, 77, 0.5)' },
+    dialog: { backgroundColor: C.surface, borderRadius: V6Radii.card, padding: 22, width: '100%', maxWidth: 440, alignSelf: 'center' },
+    iconWell: {
+      width: 48, height: 48, borderRadius: 14, backgroundColor: C.cyan50,
+      alignItems: 'center', justifyContent: 'center', marginBottom: 12,
+    },
+    iconWellSuccess: { backgroundColor: V6Colors.successSurface },
+    title: { color: C.ink900, fontSize: 19, fontWeight: '800', fontFamily: 'Inter' },
+    subtitle: { color: C.ink500, fontSize: 14, fontFamily: 'Inter', lineHeight: 19, marginTop: 4, marginBottom: 16 },
+    label: { color: C.ink700, fontSize: 13.5, fontWeight: '700', fontFamily: 'Inter', marginBottom: 6 },
+    inputBox: {
+      backgroundColor: V6Colors.wellBg, borderRadius: 12, paddingHorizontal: 14, minHeight: 46,
+      borderWidth: 1, borderColor: V6Colors.fieldBorder, marginBottom: 12,
+    },
+    input: { fontFamily: 'Inter', fontSize: 15, color: C.ink900, paddingVertical: 10 },
+    rules: { gap: 6, marginTop: 2, marginBottom: 12 },
+    ruleRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+    ruleText: { color: C.ink500, fontSize: 13, fontFamily: 'Inter' },
+    ruleTextOk: { color: V6Colors.successText },
+    error: { color: V6Colors.dangerText, fontSize: 13.5, fontFamily: 'Inter', marginBottom: 10 },
+    actions: { flexDirection: 'row', gap: 10, marginTop: 4 },
+    secondaryBtn: {
+      flex: 1, borderWidth: 1, borderColor: V6Colors.fieldBorder, borderRadius: 10,
+      minHeight: 44, alignItems: 'center', justifyContent: 'center',
+    },
+    secondaryText: { color: C.ink500, fontSize: 14.5, fontWeight: '700', fontFamily: 'Inter' },
+    primaryBtn: {
+      flex: 1, backgroundColor: C.cyan700, borderRadius: 10,
+      minHeight: 44, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 10,
+    },
+    primaryText: { color: C.onPrimary, fontSize: 14.5, fontWeight: '700', fontFamily: 'Inter' },
+    disabled: { opacity: 0.5 },
+    successWrap: { alignItems: 'center' },
+    fullWidth: { flex: 0, alignSelf: 'stretch', marginTop: 4 },
+  });
+  return { Colors, V6Colors, C, styles };
+}

@@ -1,0 +1,24 @@
+{
+  "checked_at": "2026-10-04T07:45:58.626890+00:00",
+  "build_id": "a5a067c2-2bfa-4c48-aa26-93a8b99c9ba6",
+  "source_revision": "efb0047",
+  "apk_sha256": "e3655e7a1eb0074a9e7e40887baddce98237e0fa0615da21d6fffde75b970552",
+  "inspection": "aapt dump resources plus mobile/app.json",
+  "google_app_id_resource_present": false,
+  "gcm_defaultSenderId_resource_present": false,
+  "google_api_key_resource_present": false,
+  "googleServicesFile_configured": false,
+  "blocker": "Not a blocker for the selected in-app notification scope",
+  "eas_fcm_v1_service_account_status": "Not inspected; do not infer absence from client APK",
+  "required_next_steps": [],
+  "reference": "https://docs.expo.dev/push-notifications/fcm-credentials/",
+  "limitations": [
+    "Static artifact inspection does not test push token registration or delivery",
+    "No Firebase project, credential, permission or configuration was created or changed"
+  ],
+  "firebase_project_status": "User confirms no TaskBuddy Firebase project exists",
+  "scope": "Optional Android system push; not required by the PDF notification/bell items and excluded under the user current-stack instruction",
+  "decision": "Do not create Firebase project or change cloud/FCM configuration",
+  "scope_confirmed_at": "2026-10-04T07:49:51.995601+00:00",
+  "source_requirement": "PDF Core Shared #2: message notice in notification list; UI Shared #4: bell updates without refresh"
+}

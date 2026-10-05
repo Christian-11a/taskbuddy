@@ -64,7 +64,7 @@ describe('ProvidersController.getById', () => {
       new ProvidersController(supabase).getById('p1'),
     ).rejects.toThrow('database unavailable');
     expect(select).toHaveBeenCalledWith(
-      expect.stringContaining('service_categories!category_id(name)'),
+      expect.stringContaining('service_categories!category_id(id, name)'),
     );
   });
 });

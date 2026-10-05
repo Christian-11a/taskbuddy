@@ -21,6 +21,7 @@
  * checking the looser one here would just move the rejection to the server.
  */
 
+import { useThemedStyles, type Palette as ThemePalette } from '../context/ThemeContext';
 import React, { useState } from 'react';
 import {
   ActivityIndicator,
@@ -34,11 +35,9 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { V6Colors, V6Radii } from '../constants/theme';
+import { V6Radii } from '../constants/theme';
 import { api } from '../lib/api';
 import { peso } from '../lib/format';
-
-const C = V6Colors;
 
 /** Mirrors the backend DTO's `@Length(1, 200)` on `destination`. */
 const DESTINATION_MAX = 200;
@@ -58,6 +57,7 @@ export default function WithdrawModal({
   onClose,
   onFiled,
 }: WithdrawModalProps) {
+  const { C, styles, V6Colors, appearance } = useThemedStyles(createThemedStyles);
   const [amount, setAmount] = useState('');
   const [destination, setDestination] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -114,7 +114,7 @@ export default function WithdrawModal({
 
           <View style={styles.amountRow}>
             <Text style={styles.currency}>₱</Text>
-            <TextInput
+            <TextInput keyboardAppearance={appearance}
               style={styles.amountInput}
               value={amount}
               onChangeText={setAmount}
@@ -129,7 +129,7 @@ export default function WithdrawModal({
           <Text style={styles.hint}>{peso(available)} available</Text>
 
           <Text style={styles.label}>Where should we send it?</Text>
-          <TextInput
+          <TextInput keyboardAppearance={appearance}
             style={styles.destInput}
             value={destination}
             onChangeText={setDestination}
@@ -166,7 +166,7 @@ export default function WithdrawModal({
               accessibilityRole="button"
             >
               {submitting ? (
-                <ActivityIndicator color={C.white} />
+                <ActivityIndicator color={C.onPrimary} />
               ) : (
                 <Text style={styles.confirmText}>Withdraw</Text>
               )}
@@ -179,73 +179,78 @@ export default function WithdrawModal({
   );
 }
 
-const styles = StyleSheet.create({
-  flex: { flex: 1 },
-  backdrop: {
-    flex: 1,
-    backgroundColor: 'rgba(15,23,42,0.5)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 28,
-  },
-  card: { width: '100%', backgroundColor: C.white, borderRadius: V6Radii.card, padding: 22 },
-  title: { color: C.ink900, fontSize: 21.5, fontWeight: '800', fontFamily: 'Inter' },
-  body: { color: C.ink500, fontSize: 15, fontFamily: 'Inter', lineHeight: 19, marginTop: 6 },
+function createThemedStyles(theme: ThemePalette) {
+  const { Colors, V6Colors } = theme;
+  const C = V6Colors;
+  const styles = StyleSheet.create({
+    flex: { flex: 1 },
+    backdrop: {
+      flex: 1,
+      backgroundColor: 'rgba(15,23,42,0.5)',
+      alignItems: 'center',
+      justifyContent: 'center',
+      padding: 28,
+    },
+    card: { width: '100%', backgroundColor: C.surface, borderRadius: V6Radii.card, padding: 22 },
+    title: { color: C.ink900, fontSize: 21.5, fontWeight: '800', fontFamily: 'Inter' },
+    body: { color: C.ink500, fontSize: 15, fontFamily: 'Inter', lineHeight: 19, marginTop: 6 },
 
-  amountRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 16,
-    marginBottom: 4,
-  },
-  currency: { color: C.ink900, fontSize: 30, fontWeight: '800', fontFamily: 'Inter', marginRight: 4 },
-  amountInput: {
-    fontSize: 44,
-    fontWeight: '800',
-    fontFamily: 'Inter',
-    color: C.ink900,
-    minWidth: 120,
-    textAlign: 'center',
-  },
-  hint: { color: C.ink400, fontSize: 14, fontFamily: 'Inter', textAlign: 'center' },
+    amountRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      marginTop: 16,
+      marginBottom: 4,
+    },
+    currency: { color: C.ink900, fontSize: 30, fontWeight: '800', fontFamily: 'Inter', marginRight: 4 },
+    amountInput: {
+      fontSize: 44,
+      fontWeight: '800',
+      fontFamily: 'Inter',
+      color: C.ink900,
+      minWidth: 120,
+      textAlign: 'center',
+    },
+    hint: { color: C.ink400, fontSize: 14, fontFamily: 'Inter', textAlign: 'center' },
 
-  label: {
-    color: C.ink800,
-    fontSize: 14,
-    fontWeight: '700',
-    fontFamily: 'Inter',
-    marginTop: 18,
-    marginBottom: 6,
-  },
-  destInput: {
-    borderWidth: 1,
-    borderColor: C.line,
-    borderRadius: V6Radii.btn,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    fontSize: 15,
-    fontFamily: 'Inter',
-    color: C.ink900,
-    minHeight: 62,
-    textAlignVertical: 'top',
-  },
+    label: {
+      color: C.ink800,
+      fontSize: 14,
+      fontWeight: '700',
+      fontFamily: 'Inter',
+      marginTop: 18,
+      marginBottom: 6,
+    },
+    destInput: {
+      borderWidth: 1,
+      borderColor: C.line,
+      borderRadius: V6Radii.btn,
+      paddingHorizontal: 12,
+      paddingVertical: 10,
+      fontSize: 15,
+      fontFamily: 'Inter',
+      color: C.ink900,
+      minHeight: 62,
+      textAlignVertical: 'top',
+    },
 
-  error: { color: '#ef4444', fontSize: 14, fontFamily: 'Inter', marginTop: 8 },
+    error: { color: V6Colors.dangerText, fontSize: 14, fontFamily: 'Inter', marginTop: 8 },
 
-  actions: { flexDirection: 'row', justifyContent: 'flex-end', gap: 10, marginTop: 18 },
-  btn: {
-    minWidth: 104,
-    minHeight: 40,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: 10,
-    paddingHorizontal: 16,
-    paddingVertical: 9,
-  },
-  btnDisabled: { opacity: 0.5 },
-  cancel: { backgroundColor: C.ink50 },
-  cancelText: { color: C.ink500, fontSize: 14.5, fontWeight: '700', fontFamily: 'Inter' },
-  confirm: { backgroundColor: C.cyan700 },
-  confirmText: { color: C.white, fontSize: 14.5, fontWeight: '700', fontFamily: 'Inter' },
-});
+    actions: { flexDirection: 'row', justifyContent: 'flex-end', gap: 10, marginTop: 18 },
+    btn: {
+      minWidth: 104,
+      minHeight: 40,
+      alignItems: 'center',
+      justifyContent: 'center',
+      borderRadius: 10,
+      paddingHorizontal: 16,
+      paddingVertical: 9,
+    },
+    btnDisabled: { opacity: 0.5 },
+    cancel: { backgroundColor: C.ink50 },
+    cancelText: { color: C.ink500, fontSize: 14.5, fontWeight: '700', fontFamily: 'Inter' },
+    confirm: { backgroundColor: C.cyan700 },
+    confirmText: { color: C.onPrimary, fontSize: 14.5, fontWeight: '700', fontFamily: 'Inter' },
+  });
+  return { appearance: theme.appearance, Colors, V6Colors, C, styles };
+}

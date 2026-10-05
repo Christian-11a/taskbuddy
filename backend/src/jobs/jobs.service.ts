@@ -8,10 +8,11 @@ import {
 } from '@nestjs/common';
 import { SupabaseService } from '../supabase/supabase.service';
 import { UploadsService } from '../uploads/uploads.service';
-import { EscrowService } from '../escrow/escrow.service';
+import { EscrowService, WARRANTY_DURATION_MS } from '../escrow/escrow.service';
 import {
   AcceptJobDto,
   BrowseJobsQueryDto,
+  MineJobsQueryDto,
   CreateJobDto,
   DeclineJobDto,
   UpdateJobTaskDto,
@@ -232,12 +233,31 @@ export class JobsService {
     return { jobs: page, summary };
   }
 
-  async mine(user: Profile) {
-    const { data } = await this.supabase.admin
+  async mine(user: Profile, dto: MineJobsQueryDto = {}) {
+    let query = this.supabase.admin
       .from('jobs')
       .select(JOB_SELECT)
-      .eq('client_id', user.id)
-      .order('created_at', { ascending: false });
+      .eq('client_id', user.id);
+    if (dto.category_id !== undefined)
+      query = query.eq('category_id', dto.category_id);
+    if (dto.status_group !== undefined) {
+      const statuses = {
+        active: ['open', 'recommending'],
+        ongoing: ['assigned', 'confirmed', 'in_progress'],
+        completed: ['completed'],
+        cancelled: ['cancelled', 'expired'],
+      };
+      query = query.in('status', statuses[dto.status_group]);
+    }
+    query = query
+      .order('created_at', { ascending: false })
+      .order('id', { ascending: false });
+    if (dto.limit !== undefined || dto.offset !== undefined) {
+      const offset = dto.offset ?? 0;
+      query = query.range(offset, offset + (dto.limit ?? 100) - 1);
+    }
+    const { data, error } = await query;
+    if (error) throw new BadRequestException(error.message);
     return this.withReviews(data ?? []);
   }
 
@@ -266,25 +286,17 @@ export class JobsService {
   async cancel(user: Profile, jobId: string) {
     const job = await this.findJob(jobId);
     if (job.client_id !== user.id) throw new ForbiddenException('Not your job');
+    if (job.status === 'cancelled') return job;
     if (!CANCELLABLE.includes(job.status)) {
       throw new BadRequestException(
         `Cannot cancel a job in status '${job.status}'`,
       );
     }
-    const updated = await this.setStatus(jobId, 'cancelled', CANCELLABLE);
+    const updated = await this.setStatus(jobId, 'cancelled', CANCELLABLE, {
+      cancelled_by: user.id,
+    });
     // Release the hold. A disputed escrow is left for an admin to resolve.
     await this.escrow.cancelForJob(jobId);
-    if (job.assigned_provider_id) {
-      await this.notify(
-        job.assigned_provider_id,
-        'job_update',
-        'Job cancelled',
-        {
-          body: `The job "${job.title}" was cancelled by the client.${job.status === 'in_progress' ? ' Any held payment is frozen for admin review. Open the job to view the dispute.' : ''}`,
-          job_id: jobId,
-        },
-      );
-    }
     return updated;
   }
 
@@ -368,7 +380,9 @@ export class JobsService {
         `Cannot decline a job in status '${job.status}'`,
       );
     }
-    const updated = await this.setStatus(jobId, 'cancelled', PRE_START);
+    const updated = await this.setStatus(jobId, 'cancelled', PRE_START, {
+      cancelled_by: user.id,
+    });
     // Release the hold back to the client, same as a client-initiated cancel.
     await this.escrow.cancelForJob(jobId);
     await this.notify(job.client_id, 'job_update', 'Booking declined', {
@@ -392,17 +406,18 @@ export class JobsService {
         'The provider must finish the task checklist before you confirm completion',
       );
     }
-    const updated = await this.setStatus(jobId, 'completed', ['in_progress']);
-    // Pay the provider out of escrow. `releaseIfHeld`, not `release`: a job
-    // posted without a budget has no escrow row at all, and a disputed one is
-    // frozen for an admin. Anything else — an already-released hold reached a
-    // second time — raises rather than reporting a payout that did not happen.
-    await this.escrow.releaseIfHeld(jobId);
+    await this.setStatus(jobId, 'completed', ['in_progress']);
+    // The payments sweep releases escrow after the 72-hour warranty.
     await this.notify(job.assigned_provider_id, 'job_update', 'Job completed', {
-      body: `The client marked "${job.title}" as completed.`,
+      body:
+        Number(job.budget) > 0
+          ? `The client marked "${job.title}" as completed. Payment stays held for the three-day warranty; an open dispute blocks release.`
+          : `The client marked "${job.title}" as completed. The three-day warranty has started.`,
       job_id: jobId,
     });
-    return updated;
+    // The AFTER UPDATE trigger stamps completed_at in a second update, which
+    // is not included in the original UPDATE RETURNING row.
+    return this.findJob(jobId);
   }
 
   /**
@@ -475,6 +490,13 @@ export class JobsService {
       ),
       review,
       has_review: review !== null,
+      warranty_expires_at:
+        row.status === 'completed' && row.completed_at
+          ? new Date(
+              new Date(row.completed_at as string).getTime() +
+                WARRANTY_DURATION_MS,
+            ).toISOString()
+          : null,
     } as T;
   }
 
@@ -556,12 +578,18 @@ export class JobsService {
     title: string,
     payload: { body: string; job_id: string },
   ) {
-    await this.supabase.admin.from('notifications').insert({
-      recipient_id: recipientId,
-      type,
-      title,
-      body: payload.body,
-      data: { job_id: payload.job_id },
-    });
+    const { error: notificationError } = await this.supabase.admin
+      .from('notifications')
+      .insert({
+        recipient_id: recipientId,
+        type,
+        title,
+        body: payload.body,
+        data: { job_id: payload.job_id },
+      });
+    if (notificationError)
+      this.logger.error(
+        `Notification not written: ${notificationError.message}`,
+      );
   }
 }

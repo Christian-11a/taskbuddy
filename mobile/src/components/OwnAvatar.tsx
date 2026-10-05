@@ -17,6 +17,7 @@
  * to its radius.
  */
 
+import { useThemedStyles, type Palette as ThemePalette } from '../context/ThemeContext';
 import React from 'react';
 import { Image, StyleSheet, Text, type StyleProp, type TextStyle } from 'react-native';
 import { useAuth } from '../context/AuthContext';
@@ -29,6 +30,7 @@ export default function OwnAvatar({
   name?: string | null;
   textStyle?: StyleProp<TextStyle>;
 }) {
+  const { styles, V6Colors } = useThemedStyles(createThemedStyles);
   const { profile } = useAuth();
   if (profile?.avatar_url) {
     return <Image source={{ uri: profile.avatar_url }} style={styles.image} />;
@@ -36,6 +38,10 @@ export default function OwnAvatar({
   return <Text style={textStyle}>{initials(name)}</Text>;
 }
 
-const styles = StyleSheet.create({
-  image: { width: '100%', height: '100%' },
-});
+function createThemedStyles(theme: ThemePalette) {
+  const { Colors, V6Colors } = theme;
+  const styles = StyleSheet.create({
+    image: { width: '100%', height: '100%' },
+  });
+  return { Colors, V6Colors, styles };
+}

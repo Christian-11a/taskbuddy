@@ -524,12 +524,18 @@ export class VerificationsService {
   }
 
   private async notify(recipientId: string, title: string, body: string) {
-    await this.supabase.admin.from('notifications').insert({
-      recipient_id: recipientId,
-      type: 'verification_update',
-      title,
-      body,
-      data: {},
-    });
+    const { error: notificationError } = await this.supabase.admin
+      .from('notifications')
+      .insert({
+        recipient_id: recipientId,
+        type: 'verification_update',
+        title,
+        body,
+        data: {},
+      });
+    if (notificationError)
+      this.logger.error(
+        `Notification not written: ${notificationError.message}`,
+      );
   }
 }

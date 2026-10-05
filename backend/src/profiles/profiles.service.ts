@@ -37,7 +37,8 @@ export class ProfilesService {
   ) {}
 
   async updateProfile(user: Profile, dto: UpdateProfileDto) {
-    const patch: Record<string, unknown> = { ...dto };
+    const { location_reference: _reference, ...fields } = dto;
+    const patch: Record<string, unknown> = { ...fields };
     if (dto.avatar_url !== undefined) {
       patch.avatar_url = this.resolveAvatar(user, dto.avatar_url);
     }
@@ -54,8 +55,9 @@ export class ProfilesService {
   }
 
   /**
-   * Coordinates for a profile come only from geocoding its address, never from
-   * the client (BACKEND_SCHEMA.md §32). They matter most for providers:
+   * Coordinates come from a signed server-resolved location reference or
+   * geocoding its address (BACKEND_SCHEMA.md §32). Raw client coordinates are
+   * rejected. They matter most for providers:
    * `fn_job_provider_features` skips anyone without them, so a provider with no
    * coordinates is never recommended.
    *
@@ -75,6 +77,31 @@ export class ProfilesService {
     user: Profile,
     dto: UpdateProfileDto,
   ): Promise<Record<string, unknown>> {
+    if (dto.location_reference !== undefined) {
+      if (!dto.address?.trim())
+        throw new BadRequestException(
+          'An address is required with a location confirmation',
+        );
+      const resolved = this.geocoding.resolveLocationReference(
+        user.id,
+        dto.location_reference,
+        dto.address,
+      );
+      if (
+        resolved.city &&
+        dto.city !== undefined &&
+        dto.city.trim() !== resolved.city
+      ) {
+        throw new BadRequestException(
+          'City does not match the selected location',
+        );
+      }
+      return {
+        latitude: resolved.latitude,
+        longitude: resolved.longitude,
+        ...(resolved.city ? { city: resolved.city } : {}),
+      };
+    }
     if (dto.address === undefined && dto.city === undefined) return {};
 
     const address = (dto.address ?? user.address ?? '').trim();
@@ -281,7 +308,7 @@ export class ProfilesService {
    * told the truth and still been treated badly.
    */
   private async deletionBlockers(user: Profile): Promise<DeletionBlocker[]> {
-    const [balance, pendingWithdrawals, escrows, activeJobs] =
+    const [balance, pendingWithdrawals, escrows, activeJobs, complaints] =
       await Promise.all([
         this.wallet.balanceFor(user.id),
         this.countRows(
@@ -306,11 +333,23 @@ export class ProfilesService {
             .or(`client_id.eq.${user.id},assigned_provider_id.eq.${user.id}`)
             .in('status', [...ACTIVE_JOB_STATUSES]),
         ),
+        this.supabase.admin
+          .from('disputes')
+          .select('id, jobs!inner(client_id, assigned_provider_id)', {
+            count: 'exact',
+            head: true,
+          })
+          .eq('status', 'open')
+          .or(`client_id.eq.${user.id},assigned_provider_id.eq.${user.id}`, {
+            referencedTable: 'jobs',
+          }),
       ]);
 
     const escrowRows = (escrows.data ?? []) as { status: string }[];
     const held = escrowRows.filter((e) => e.status === 'held').length;
-    const disputed = escrowRows.filter((e) => e.status === 'disputed').length;
+    if (complaints.error)
+      throw new BadRequestException(complaints.error.message);
+    const disputed = complaints.count ?? 0;
 
     const blockers: DeletionBlocker[] = [];
     if (balance > 0) {

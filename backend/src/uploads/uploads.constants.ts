@@ -13,6 +13,7 @@ export const UPLOAD_BUCKETS = [
   'verification-docs',
   'avatars',
   'chat-attachments',
+  'provider-portfolio',
 ] as const;
 export type UploadBucket = (typeof UPLOAD_BUCKETS)[number];
 

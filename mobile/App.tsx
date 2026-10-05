@@ -1,3 +1,5 @@
+import { ThemeProvider, useTheme, useThemedStyles, type Palette as ThemePalette } from './src/context/ThemeContext';
+import { NotificationsProvider } from './src/context/NotificationsContext';
 /**
  * App.tsx — Root navigation controller
  *
@@ -11,7 +13,7 @@
  * AuthContext, which persists the session and resolves the account's role.
  */
 
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { BackHandler, LogBox, StyleSheet, View } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
@@ -71,14 +73,15 @@ import SPEditProfileScreen from './app/(provider)/screens/SPEditProfileScreen';
 import SPVerificationScreen from './app/(provider)/screens/SPVerificationScreen';
 import SPPayoutsScreen from './app/(provider)/screens/SPPayoutsScreen';
 import SPSettingsScreen from './app/(provider)/screens/SPSettingsScreen';
+import SPPortfolioScreen from './app/(provider)/screens/SPPortfolioScreen';
 import SPSkillRequestScreen from './app/(provider)/screens/SPSkillRequestScreen';
 
 // ── Shared navigation components ──────────────────────────────────────────────
 import BottomNavBar, { BottomNavItem } from './src/components/BottomNavBar';
 import HelpSupportScreen from './src/components/HelpSupportScreen';
 import ScreenFrame from './src/components/ScreenFrame';
-import { V6Colors } from './src/constants/theme';
-import { ToastHost } from './src/components/Toast';
+
+import { ToastHost, showToast } from './src/components/Toast';
 import { clearRetainedState } from './src/hooks/useRetainedState';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -128,6 +131,9 @@ interface HOStackEntry { screen: HOScreen; id: string | null }
 interface SPStackEntry { screen: SPScreen; id: string | null; urgent: boolean }
 
 function AppContent() {
+  const { error: themeError } = useTheme();
+  useEffect(() => { if (themeError) showToast(`Appearance: ${themeError}`, 'error'); }, [themeError]);
+  const { V6Colors, styles } = useThemedStyles(createThemedStyles);
   const {
     initializing, isAuthenticated, isGoogleSignupPending,
     role, profile,
@@ -318,40 +324,53 @@ function AppContent() {
   const handledNotificationIds = useRef(new Set<string>());
   const isAuthenticatedRef = useRef(isAuthenticated);
   isAuthenticatedRef.current = isAuthenticated;
+  const profileIdRef = useRef(profile?.id);
+  profileIdRef.current = profile?.id;
   const hoNavigateRef = useRef(hoNavigate);
   hoNavigateRef.current = hoNavigate;
   const spNavigateRef = useRef(spNavigate);
   spNavigateRef.current = spNavigate;
 
-  useEffect(() => {
-    const acceptTap = (data: Record<string, string>) => {
-      // A tap with no recipient context arriving while signed out can't be
-      // safely routed — drop it rather than guess who it was for.
-      if (!isAuthenticatedRef.current) return;
-      const id = data.notification_id;
-      if (id && handledNotificationIds.current.has(id)) return;
-      if (id) handledNotificationIds.current.add(id);
-      setPendingPushTarget(data);
-    };
-
-    let unsubscribe = () => {};
-    void subscribeToNotificationTaps(acceptTap).then((unsub) => {
-      unsubscribe = unsub;
-    });
-    void consumeLastNotificationTap().then((data) => {
-      if (data) acceptTap(data);
-    });
-
-    return () => unsubscribe();
+  const acceptTap = useCallback((data: Record<string, string>) => {
+    if (!isAuthenticatedRef.current || data.recipient_id !== profileIdRef.current) return;
+    const id = data.notification_id;
+    if (id && handledNotificationIds.current.has(id)) return;
+    if (id) handledNotificationIds.current.add(id);
+    setPendingPushTarget(data);
   }, []);
 
   useEffect(() => {
-    if (!pendingPushTarget) return;
+    let disposed = false;
+    let unsubscribe = () => {};
+    void subscribeToNotificationTaps(acceptTap).then((unsub) => {
+      if (disposed) unsub();
+      else unsubscribe = unsub;
+    }).catch((err: Error) => showToast(err.message, 'error'));
+    return () => { disposed = true; unsubscribe(); };
+  }, [acceptTap]);
+
+  useEffect(() => {
+    if (!isAuthenticated || !profile?.id) return;
+    let active = true;
+    void consumeLastNotificationTap().then((data) => {
+      if (active && data) acceptTap(data);
+    }).catch((err: Error) => showToast(err.message, 'error'));
+    return () => { active = false; };
+  }, [isAuthenticated, profile?.id, acceptTap]);
+
+  useEffect(() => {
+    if (!pendingPushTarget || pendingPushTarget.recipient_id !== profile?.id) return;
     if (!isAuthenticated || isGoogleSignupPending || showOnboarding !== false || !role) return;
 
     const target = resolveNotificationTarget(role, pendingPushTarget);
     if (target.kind === 'proposals') {
       hoNavigateRef.current('Job Applications', target.jobId);
+    } else if (target.kind === 'chat' || target.kind === 'dispute') {
+      const screen = target.kind === 'chat' ? 'Chat' : 'Dispute Status';
+      if (role === 'homeowner') hoNavigateRef.current(screen, target.jobId);
+      else spNavigateRef.current(screen, target.jobId);
+    } else if (target.kind === 'services') {
+      spNavigateRef.current('My Services');
     } else if (target.kind === 'job') {
       if (role === 'homeowner') hoNavigateRef.current('Job Detail', target.jobId);
       else spNavigateRef.current('Job Detail', target.jobId);
@@ -361,9 +380,9 @@ function AppContent() {
     }
 
     const notificationId = pendingPushTarget.notification_id;
-    if (notificationId) void api.markNotificationRead(notificationId).catch(() => {});
+    if (notificationId) void api.markNotificationRead(notificationId).catch((err: Error) => showToast(err.message, 'error'));
     setPendingPushTarget(null);
-  }, [pendingPushTarget, isAuthenticated, isGoogleSignupPending, showOnboarding, role]);
+  }, [pendingPushTarget, isAuthenticated, isGoogleSignupPending, showOnboarding, role, profile?.id]);
 
   useEffect(() => {
     // Pre-warm the browser on Android so Google OAuth opens instantly.
@@ -450,7 +469,6 @@ function AppContent() {
           consentedTerms: input.consentedTerms,
           consentedPrivacy: input.consentedPrivacy,
           consentedDataCollection: input.consentedDataCollection,
-          consentedBiometric: input.consentedBiometric,
         })}
         onGoogleSignIn={signInWithGoogle}
         onLogin={() => setPreAuth('login')}
@@ -475,7 +493,6 @@ function AppContent() {
               consentedTerms: input.consentedTerms,
               consentedPrivacy: input.consentedPrivacy,
               consentedDataCollection: input.consentedDataCollection,
-              consentedBiometric: input.consentedBiometric,
             });
             // After success the flag is cleared; the SP verification gate
             // (below) will take over automatically via re-render.
@@ -578,6 +595,8 @@ function AppContent() {
             onBack={hoBack}
             onOpenJob={(jobId) => hoNavigate('Job Detail', jobId)}
             onOpenProposals={(jobId) => hoNavigate('Job Applications', jobId)}
+            onOpenChat={(jobId) => hoNavigate('Chat', jobId)}
+            onOpenDispute={(jobId) => hoNavigate('Dispute Status', jobId)}
           />
         </ScreenFrame>
       );
@@ -705,6 +724,9 @@ function AppContent() {
         <SPNotificationsScreen
           onBack={spBack}
           onOpenJob={(jobId) => spNavigate('Job Detail', jobId)}
+          onOpenChat={(jobId) => spNavigate('Chat', jobId)}
+          onOpenDispute={(jobId) => spNavigate('Dispute Status', jobId)}
+          onOpenServices={() => spNavigate('My Services')}
         />
       </ScreenFrame>
     );
@@ -759,6 +781,7 @@ function AppContent() {
       </ScreenFrame>
     );
   }
+  if (spScreen === 'Portfolio') return <ScreenFrame><SPPortfolioScreen onBack={spBack}/></ScreenFrame>;
   if (spScreen === 'My Services') {
     return (
       <ScreenFrame>
@@ -812,22 +835,32 @@ export default function App() {
   return (
     <SafeAreaProvider>
       <AuthProvider>
-        <RootLayout>
-          <AppContent />
-          <ToastHost />
-        </RootLayout>
+        <ThemeProvider>
+          <NotificationsProvider>
+            <RootLayout>
+              <AppContent />
+              <ToastHost />
+            </RootLayout>
+          </NotificationsProvider>
+        </ThemeProvider>
       </AuthProvider>
     </SafeAreaProvider>
   );
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-const styles = StyleSheet.create({
-  screen: {
-    flex: 1,
-    backgroundColor: '#F1F5F9',
-  },
-  tabContent: {
-    flex: 1,
-  },
-});
+
+
+function createThemedStyles(theme: ThemePalette) {
+  const { Colors, V6Colors } = theme;
+  const styles = StyleSheet.create({
+    screen: {
+      flex: 1,
+      backgroundColor: V6Colors.canvas,
+    },
+    tabContent: {
+      flex: 1,
+    },
+  });
+  return { Colors, V6Colors, styles };
+}

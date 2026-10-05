@@ -198,3 +198,7 @@ docs/superpowers/
 
 # Local MCP server config (per-developer)
 .mcp.json
+
+# Local QA credentials; EAS archives honor this file, not .git/info/exclude.
+/test_account.txt
+/text_account.txt

@@ -6,6 +6,7 @@
  * "Continue" / "Get Started" primary button. The slides differ by role.
  */
 
+import { useThemedStyles, type Palette as ThemePalette } from '../../../src/context/ThemeContext';
 import React, { useRef, useState } from 'react';
 import {
   Dimensions,
@@ -17,11 +18,10 @@ import {
   ViewToken,
 } from 'react-native';
 import { BadgeCheck, CalendarCheck, Search, Shield, Sparkles, Users } from 'lucide-react-native';
-import { V6Colors, V6Radii, V6Shadows } from '../../../src/constants/theme';
+import { V6Radii, V6Shadows } from '../../../src/constants/theme';
 import { useAuthLayout } from '../../../src/hooks/useAuthLayout';
 
 const { width: W } = Dimensions.get('window');
-const C = V6Colors;
 
 interface Slide {
   id: string;
@@ -98,6 +98,7 @@ interface OnboardingScreenProps {
 }
 
 export default function OnboardingScreen({ role, onFinish, onLogin }: OnboardingScreenProps) {
+  const { C, styles, V6Colors } = useThemedStyles(createThemedStyles);
   const slides = role === 'provider' ? PROVIDER_SLIDES : CLIENT_SLIDES;
   const layout = useAuthLayout();
   const [currentIndex, setCurrentIndex] = useState(0);
@@ -126,7 +127,7 @@ export default function OnboardingScreen({ role, onFinish, onLogin }: Onboarding
   const renderSlide = ({ item }: { item: Slide }) => (
     <View style={styles.slide}>
       <View style={styles.iconWell}>
-        <item.Icon size={42} color={C.cyan700} strokeWidth={1.7} />
+        <item.Icon size={42} color={V6Colors.link} strokeWidth={1.7} />
       </View>
       <Text style={styles.title}>
         {item.title} <Text style={styles.titleAccent}>{item.titleAccent}</Text>
@@ -176,113 +177,118 @@ export default function OnboardingScreen({ role, onFinish, onLogin }: Onboarding
   );
 }
 
-const styles = StyleSheet.create({
-  screen: {
-    flex: 1,
-    backgroundColor: C.white,
-  },
-  skipRow: {
-    flexDirection: 'row',
-    justifyContent: 'flex-end',
-    paddingHorizontal: 20,
-  },
-  skipBtn: {
-    backgroundColor: C.ink50,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: V6Radii.pill,
-  },
-  skipText: {
-    color: C.ink700,
-    fontSize: 15,
-    fontWeight: '600',
-    fontFamily: 'Inter',
-  },
+function createThemedStyles(theme: ThemePalette) {
+  const { Colors, V6Colors } = theme;
+  const C = V6Colors;
+  const styles = StyleSheet.create({
+    screen: {
+      flex: 1,
+      backgroundColor: C.surface,
+    },
+    skipRow: {
+      flexDirection: 'row',
+      justifyContent: 'flex-end',
+      paddingHorizontal: 20,
+    },
+    skipBtn: {
+      backgroundColor: C.ink50,
+      paddingHorizontal: 14,
+      paddingVertical: 8,
+      borderRadius: V6Radii.pill,
+    },
+    skipText: {
+      color: C.ink700,
+      fontSize: 15,
+      fontWeight: '600',
+      fontFamily: 'Inter',
+    },
 
-  slide: {
-    width: W,
-    paddingHorizontal: 24,
-    paddingTop: 40,
-    alignItems: 'center',
-  },
+    slide: {
+      width: W,
+      paddingHorizontal: 24,
+      paddingTop: 40,
+      alignItems: 'center',
+    },
 
-  iconWell: {
-    width: 92,
-    height: 92,
-    borderRadius: 26,
-    backgroundColor: C.cyan50,
-    borderWidth: 1,
-    borderColor: C.cyan100,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 26,
-  },
+    iconWell: {
+      width: 92,
+      height: 92,
+      borderRadius: 26,
+      backgroundColor: C.cyan50,
+      borderWidth: 1,
+      borderColor: C.cyan100,
+      alignItems: 'center',
+      justifyContent: 'center',
+      marginBottom: 26,
+    },
 
-  title: {
-    fontFamily: 'Inter',
-    fontSize: 32.5,
-    fontWeight: '800',
-    letterSpacing: -0.81,
-    color: C.ink900,
-    textAlign: 'center',
-    lineHeight: 33,
-  },
-  titleAccent: {
-    color: C.cyan600,
-  },
-  subtitle: {
-    fontFamily: 'Inter',
-    fontSize: 19,
-    fontWeight: '700',
-    color: C.cyan900,
-    lineHeight: 22,
-    textAlign: 'center',
-    marginTop: 9,
-  },
-  body: {
-    fontFamily: 'Inter',
-    fontSize: 16.5,
-    fontWeight: '400',
-    color: C.ink500,
-    textAlign: 'center',
-    lineHeight: 22,
-    marginTop: 12,
-    maxWidth: 300,
-  },
+    title: {
+      fontFamily: 'Inter',
+      fontSize: 32.5,
+      fontWeight: '800',
+      letterSpacing: -0.81,
+      color: C.ink900,
+      textAlign: 'center',
+      lineHeight: 33,
+    },
+    titleAccent: {
+      color: C.cyan600,
+    },
+    subtitle: {
+      fontFamily: 'Inter',
+      fontSize: 19,
+      fontWeight: '700',
+      color: V6Colors.ink900,
+      lineHeight: 22,
+      textAlign: 'center',
+      marginTop: 9,
+    },
+    body: {
+      fontFamily: 'Inter',
+      fontSize: 16.5,
+      fontWeight: '400',
+      color: C.ink500,
+      textAlign: 'center',
+      lineHeight: 22,
+      marginTop: 12,
+      maxWidth: 300,
+    },
 
-  bottomBar: {
-    paddingHorizontal: 24,
-    paddingTop: 16,
-    alignItems: 'center',
-    gap: 16,
-  },
-  dots: {
-    flexDirection: 'row',
-    gap: 8,
-  },
-  dotIndicator: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: C.ink200,
-  },
-  dotIndicatorActive: {
-    width: 24,
-    backgroundColor: C.cyan600,
-    borderRadius: 4,
-  },
-  nextBtn: {
-    width: '100%',
-    backgroundColor: C.cyan700,
-    borderRadius: V6Radii.btn,
-    paddingVertical: 14,
-    alignItems: 'center',
-    ...V6Shadows.primaryButton,
-  },
-  nextBtnText: {
-    color: C.white,
-    fontSize: 18.5,
-    fontWeight: '700',
-    fontFamily: 'Inter',
-  },
-});
+    bottomBar: {
+      paddingHorizontal: 24,
+      paddingTop: 16,
+      alignItems: 'center',
+      gap: 16,
+    },
+    dots: {
+      flexDirection: 'row',
+      gap: 8,
+    },
+    dotIndicator: {
+      width: 8,
+      height: 8,
+      borderRadius: 4,
+      backgroundColor: C.ink200,
+    },
+    dotIndicatorActive: {
+      width: 24,
+      backgroundColor: C.cyan700,
+      borderRadius: 4,
+    },
+    nextBtn: {
+      width: '100%',
+      backgroundColor: C.cyan700,
+      borderRadius: V6Radii.btn,
+      paddingVertical: 14,
+      alignItems: 'center',
+      ...V6Shadows.primaryButton,
+    },
+    nextBtnText: {
+      color: C.onPrimary,
+      fontSize: 18.5,
+      fontWeight: '700',
+      fontFamily: 'Inter',
+    },
+  });
+  return { Colors, V6Colors, C, styles };
+}

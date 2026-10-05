@@ -6,16 +6,28 @@ import type { SupabaseService } from '../supabase/supabase.service';
 function build(rows: unknown[], error: { message: string } | null = null) {
   const calls: { method: string; args: unknown[] }[] = [];
   const builder: Record<string, unknown> = {};
-  for (const method of ['select', 'eq', 'in', 'lt', 'limit']) {
+  for (const method of ['select', 'eq', 'lte', 'order', 'limit']) {
     builder[method] = jest.fn((...args: unknown[]) => {
       calls.push({ method, args });
       return builder;
     });
   }
-  builder.then = (resolve: (v: unknown) => unknown) =>
-    Promise.resolve({ data: rows, error }).then(resolve);
+  builder.then = (resolve: (v: unknown) => unknown) => {
+    const status = calls
+      .filter((call) => call.method === 'eq' && call.args[0] === 'jobs.status')
+      .slice(-1)[0]?.args[1];
+    return Promise.resolve({
+      data: rows.filter(
+        (row) => (row as { jobs: { status: string } }).jobs.status === status,
+      ),
+      error,
+    }).then(resolve);
+  };
   const supabase = {
-    admin: { from: jest.fn(() => builder) },
+    admin: {
+      from: jest.fn(() => builder),
+      rpc: jest.fn().mockResolvedValue({ data: 0, error: null }),
+    },
   } as unknown as SupabaseService;
   const escrow = {
     releaseIfHeld: jest.fn(() => Promise.resolve({ id: 'e1' })),
@@ -51,15 +63,23 @@ describe('PaymentsScheduler.reconcileSettledJobs', () => {
       { id: 'e2', job_id: 'j2', jobs: { status: 'cancelled' } },
     ]);
 
-    expect(await scheduler.reconcileSettledJobs()).toBe(2);
+    const now = new Date('2026-10-04T00:00:00Z');
+    expect(await scheduler.reconcileSettledJobs(now)).toBe(2);
     expect(escrow.releaseIfHeld).toHaveBeenCalledWith('j1');
     expect(escrow.cancelForJob).toHaveBeenCalledWith('j2');
-    // Only escrows still held, on jobs that finished a while ago — a live
-    // request that is about to settle them is left to finish.
     expect(calls).toContainEqual({ method: 'eq', args: ['status', 'held'] });
-    expect(calls.find((c) => c.method === 'lt')?.args[0]).toBe(
-      'jobs.updated_at',
-    );
+    expect(calls).toContainEqual({
+      method: 'lte',
+      args: ['jobs.completed_at', '2026-10-01T00:00:00.000Z'],
+    });
+    expect(calls).toContainEqual({
+      method: 'lte',
+      args: ['jobs.updated_at', '2026-10-03T23:58:00.000Z'],
+    });
+    expect(calls).toContainEqual({
+      method: 'order',
+      args: ['held_at', { ascending: true }],
+    });
   });
 
   it('keeps going when one escrow cannot be settled', async () => {

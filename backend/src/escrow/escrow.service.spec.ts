@@ -13,7 +13,6 @@ import {
   moneyError,
 } from './escrow-errors';
 import type { SupabaseService } from '../supabase/supabase.service';
-import type { AdminActionsService } from '../admin/admin-actions.service';
 import type { ConnectPayoutsService } from '../payments/connect/connect-payouts.service';
 import type { Profile } from '../common/types';
 
@@ -29,11 +28,6 @@ import type { Profile } from '../common/types';
  * that is an error for some callers and quiet for others, and the SQLSTATEs
  * that become typed exceptions.
  */
-
-function createAdminActionsMock() {
-  const record = jest.fn().mockResolvedValue(undefined);
-  return { mock: { record } as unknown as AdminActionsService, record };
-}
 
 type QueryResult = {
   data: unknown;
@@ -641,196 +635,148 @@ describe('DisputesService', () => {
     rpcs: Record<string, QueryResult[]> = {},
   ) {
     const { supabase, calls, rpc } = createSupabaseMock(tables, rpcs);
-    const { mock: adminActions, record } = createAdminActionsMock();
-    const service = new DisputesService(
-      supabase,
-      new EscrowService(supabase, payouts),
-      adminActions,
-    );
-    return { service, calls, rpc, record };
+    return { service: new DisputesService(supabase, payouts), calls, rpc };
   }
-
-  describe('raise', () => {
-    it('uses the atomic dispute RPC and notifies the other participant', async () => {
-      const { service, rpc, calls } = build(
-        {
-          escrow_transactions: [ok(heldEscrow)],
-          notifications: [ok(null)],
-        },
-        { raise_job_dispute: [ok({ id: 'd1', status: 'open' })] },
-      );
-      expect(
-        await service.raise(client, 'j1', { reason: 'No show' }),
-      ).toMatchObject({ id: 'd1' });
-      expect(rpcArgs(rpc, 'raise_job_dispute')[0]).toMatchObject({
-        p_job_id: 'j1',
-        p_actor_id: client.id,
-        p_reason: 'No show',
-        p_details: null,
-      });
-      expect(
-        calls.some((c) => c.table === 'notifications' && c.method === 'insert'),
-      ).toBe(true);
-      expect(rpcArgs(rpc, 'escrow_settle')).toHaveLength(0);
+  const participantJob = {
+    client_id: client.id,
+    assigned_provider_id: heldEscrow.provider_id,
+  };
+  it('creates a complaint without requiring escrow; notifications are part of the RPC', async () => {
+    const { service, rpc, calls } = build(
+      { jobs: [ok(participantJob)] },
+      { raise_job_dispute: [ok({ id: 'd1', escrow_id: null })] },
+    );
+    expect(
+      await service.raise(client, 'j1', { reason: 'No show' }),
+    ).toMatchObject({ escrow_id: null });
+    expect(rpcArgs(rpc, 'raise_job_dispute')[0]).toEqual({
+      p_job_id: 'j1',
+      p_actor_id: client.id,
+      p_reason: 'No show',
+      p_details: null,
     });
-
-    it('propagates a rejected warranty window without changing money', async () => {
-      const { service } = build(
-        { escrow_transactions: [ok({ ...heldEscrow, status: 'released' })] },
-        {
-          raise_job_dispute: [
-            {
-              data: null,
-              error: { message: 'The seven-day dispute window has ended' },
-            },
-          ],
-        },
-      );
-      await expect(
-        service.raise(client, 'j1', { reason: 'Too late' }),
-      ).rejects.toThrow('seven-day');
+    expect(calls.some((c) => c.table === 'notifications')).toBe(false);
+  });
+  it('refuses outsiders before requesting case creation', async () => {
+    const { service, rpc } = build({ jobs: [ok(participantJob)] });
+    await expect(
+      service.raise({ id: 'other' } as Profile, 'j1', { reason: 'Nope' }),
+    ).rejects.toThrow(ForbiddenException);
+    expect(rpc).not.toHaveBeenCalled();
+  });
+  it('reports missing jobs explicitly', async () => {
+    const { service } = build({ jobs: [ok(null)] });
+    await expect(service.forJob(client, 'missing')).rejects.toThrow(
+      NotFoundException,
+    );
+  });
+  it.each([
+    'The three-day dispute window has ended',
+    'There is already an open complaint',
+  ])('propagates eligibility errors: %s', async (message) => {
+    const { service } = build(
+      { jobs: [ok(participantJob)] },
+      { raise_job_dispute: [{ data: null, error: { message } }] },
+    );
+    await expect(
+      service.raise(client, 'j1', { reason: 'Again' }),
+    ).rejects.toThrow(message);
+  });
+  it('returns existing cases after eligibility expires and without escrow', async () => {
+    const { service } = build({
+      jobs: [ok(participantJob)],
+      disputes: [
+        ok({
+          id: 'd1',
+          status: 'resolved',
+          escrow_id: null,
+          dispute_entries: [],
+        }),
+      ],
     });
-
-    it('allows the provider to request review of a cancelled payment', async () => {
-      const { service, rpc } = build(
-        {
-          escrow_transactions: [ok({ ...heldEscrow, status: 'cancelled' })],
-          notifications: [ok(null)],
-        },
-        { raise_job_dispute: [ok({ id: 'd1' })] },
-      );
-      await service.raise(
-        { id: heldEscrow.provider_id, role: 'provider' } as Profile,
-        'j1',
-        { reason: 'Work was done' },
-      );
-      expect(rpcArgs(rpc, 'escrow_settle')).toHaveLength(0);
-    });
-
-    it('refuses someone who is not a participant', async () => {
-      const { service } = build({ escrow_transactions: [ok(heldEscrow)] });
-      await expect(
-        service.raise({ id: 'other' } as Profile, 'j1', { reason: 'Nope' }),
-      ).rejects.toThrow(ForbiddenException);
-    });
-
-    it('reports a duplicate open dispute', async () => {
-      const { service } = build(
-        { escrow_transactions: [ok(heldEscrow)] },
-        {
-          raise_job_dispute: [
-            { data: null, error: { code: '23505', message: 'duplicate' } },
-          ],
-        },
-      );
-      await expect(
-        service.raise(client, 'j1', { reason: 'Again' }),
-      ).rejects.toThrow('already an open dispute');
+    expect(await service.forJob(client, 'j1')).toMatchObject({
+      id: 'd1',
+      entries: [],
+      status: 'resolved',
     });
   });
-
-  describe('resolve', () => {
-    const disputed = { ...heldEscrow, status: 'disputed' as const };
-
-    it('pays the provider when released, and audits the decision', async () => {
-      const { service, rpc, record } = build(
-        {
-          disputes: [
-            ok({ id: 'd1', job_id: 'j1', status: 'open' }),
-            ok({ id: 'd1', status: 'resolved' }),
-          ],
-          escrow_transactions: [ok(disputed)],
-          notifications: [ok(null), ok(null)],
-        },
-        { escrow_settle: [ok({ ...disputed, status: 'released' })] },
+  it('records participant evidence by message ID through the atomic entry RPC', async () => {
+    const { service, rpc } = build(
+      {},
+      { add_dispute_entry: [ok({ id: 'entry' })] },
+    );
+    await service.addEntry(client, 'd1', {
+      kind: 'appeal',
+      body: 'My evidence',
+      message_id: 'm1',
+    });
+    expect(rpcArgs(rpc, 'add_dispute_entry')[0]).toEqual({
+      p_dispute_id: 'd1',
+      p_actor_id: client.id,
+      p_kind: 'appeal',
+      p_body: 'My evidence',
+      p_message_id: 'm1',
+    });
+  });
+  it('requests clarification without writing into the participant chat', async () => {
+    const { service, rpc } = build(
+      {},
+      { add_dispute_entry: [ok({ id: 'entry' })] },
+    );
+    await service.clarify(admin, 'd1', 'Please explain the checklist');
+    expect(rpcArgs(rpc, 'add_dispute_entry')[0]).toMatchObject({
+      p_kind: 'clarification',
+      p_message_id: null,
+    });
+  });
+  it('submits the provider cancellation response and required note', async () => {
+    const { service, rpc } = build(
+      {},
+      { respond_job_cancellation: [ok({ id: 'd1' })] },
+    );
+    await service.respond({ id: heldEscrow.provider_id } as Profile, 'd1', {
+      accept: false,
+      note: 'Reserved time',
+    });
+    expect(rpcArgs(rpc, 'respond_job_cancellation')[0]).toMatchObject({
+      p_accept: false,
+      p_note: 'Reserved time',
+    });
+  });
+  it.each(['released_to_provider', 'refunded_to_client', 'reviewed'] as const)(
+    'uses atomic resolution and audit for %s',
+    async (resolution) => {
+      const { service, rpc, calls } = build(
+        {},
+        { resolve_job_dispute: [ok({ id: 'd1', status: 'resolved' })] },
       );
-
       await service.resolve(admin, 'd1', {
-        resolution: 'released_to_provider',
+        resolution,
+        note: 'Reviewed both sides.',
       });
-
-      expect(rpcArgs(rpc, 'escrow_settle')[0]).toMatchObject({
-        p_expected: 'disputed',
-        p_next: 'released',
+      expect(rpcArgs(rpc, 'resolve_job_dispute')[0]).toEqual({
+        p_dispute_id: 'd1',
+        p_actor_id: admin.id,
+        p_resolution: resolution,
+        p_note: 'Reviewed both sides.',
       });
-      expect(record).toHaveBeenCalledWith(
-        admin,
-        'dispute.resolve',
-        'disputes',
-        'd1',
-        { resolution: 'released_to_provider', note: null },
-      );
-    });
-
-    it('returns the money to the client when refunded', async () => {
-      const { service, rpc } = build(
-        {
-          disputes: [
-            ok({ id: 'd1', job_id: 'j1', status: 'open' }),
-            ok({ id: 'd1', status: 'resolved' }),
-          ],
-          escrow_transactions: [ok(disputed)],
-          notifications: [ok(null), ok(null)],
-        },
-        { escrow_settle: [ok({ ...disputed, status: 'refunded' })] },
-      );
-
-      await service.resolve(admin, 'd1', { resolution: 'refunded_to_client' });
-
-      expect(rpcArgs(rpc, 'escrow_settle')[0]).toMatchObject({
-        p_next: 'refunded',
-      });
-    });
-
-    it('lets only one of two admins resolving at once move the money', async () => {
-      const { service } = build(
-        {
-          disputes: [ok({ id: 'd1', job_id: 'j1', status: 'open' })],
-          escrow_transactions: [ok(disputed)],
-        },
-        { escrow_settle: [ok(null)] },
-      );
-
-      await expect(
-        service.resolve(admin, 'd1', { resolution: 'released_to_provider' }),
-      ).rejects.toThrow(ConflictException);
-    });
-
-    it('records a settled-payment review without paying or refunding twice', async () => {
-      const { service, rpc } = build({
-        disputes: [
-          ok({ id: 'd1', job_id: 'j1', status: 'open' }),
-          ok({ id: 'd1', status: 'resolved' }),
+      expect(calls).toEqual([]);
+    },
+  );
+  it('reports a competing decision instead of attempting another settlement', async () => {
+    const { service } = build(
+      {},
+      {
+        resolve_job_dispute: [
+          {
+            data: null,
+            error: { message: 'This complaint is already closed' },
+          },
         ],
-        escrow_transactions: [ok({ ...heldEscrow, status: 'released' })],
-        notifications: [ok(null), ok(null)],
-      });
-      await service.resolve(admin, 'd1', {
-        resolution: 'reviewed',
-        note: 'Compensation assessed separately.',
-      });
-      expect(rpcArgs(rpc, 'escrow_settle')).toHaveLength(0);
-    });
-
-    it('refuses to move a settled payment again', async () => {
-      const { service, rpc } = build({
-        disputes: [ok({ id: 'd1', job_id: 'j1', status: 'open' })],
-        escrow_transactions: [ok({ ...heldEscrow, status: 'released' })],
-      });
-      await expect(
-        service.resolve(admin, 'd1', { resolution: 'refunded_to_client' }),
-      ).rejects.toThrow('already settled');
-      expect(rpc).not.toHaveBeenCalled();
-    });
-
-    it('refuses an already-resolved dispute', async () => {
-      const { service } = build({
-        disputes: [ok({ id: 'd1', job_id: 'j1', status: 'resolved' })],
-      });
-
-      await expect(
-        service.resolve(admin, 'd1', { resolution: 'refunded_to_client' }),
-      ).rejects.toThrow(BadRequestException);
-    });
+      },
+    );
+    await expect(
+      service.resolve(admin, 'd1', { resolution: 'reviewed', note: 'Review' }),
+    ).rejects.toThrow('already closed');
   });
 });

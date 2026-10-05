@@ -1,0 +1,36 @@
+{
+  "environment": "isolated local PostgreSQL 18; Unix socket only",
+  "production_called": false,
+  "real_payments": false,
+  "migration_0025": "skipped; Supabase cron/net/Vault unavailable locally",
+  "scenarios": [
+    {
+      "scenario": "withdrawal versus withdrawal",
+      "first_transaction": "committed",
+      "second_transaction": "rejected_TB402",
+      "active_debits": 1,
+      "available_balance": 300.0
+    },
+    {
+      "scenario": "withdrawal versus escrow hold",
+      "first_transaction": "committed",
+      "second_transaction": "rejected_TB402",
+      "active_debits": 1,
+      "available_balance": 300.0
+    },
+    {
+      "scenario": "withdrawal versus Connect reservation",
+      "first_transaction": "committed",
+      "second_transaction": "rejected_TB402",
+      "active_debits": 1,
+      "available_balance": 200.0
+    },
+    {
+      "scenario": "rolled-back withdrawal versus withdrawal",
+      "first_transaction": "rolled_back",
+      "second_transaction": "committed",
+      "active_debits": 1,
+      "available_balance": 300.0
+    }
+  ]
+}

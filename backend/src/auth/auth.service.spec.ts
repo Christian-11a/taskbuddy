@@ -866,7 +866,7 @@ describe('AuthService handover fixes', () => {
       } as import('../common/types').Profile),
     ).rejects.toThrow('database unavailable');
     expect(builder.select).toHaveBeenCalledWith(
-      '*, service_categories!category_id(name)',
+      '*, service_categories!category_id(id, name), approved_secondary_services:provider_secondary_categories(category_id, service_categories(id, name))',
     );
   });
 });

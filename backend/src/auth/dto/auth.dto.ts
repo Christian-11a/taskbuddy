@@ -59,7 +59,7 @@ export class RegisterDto {
 
   /**
    * Provider accepted the RA 10173 biometric / govt-ID processing consent.
-   * Required for role='provider'; ignored for 'client'.
+   * Optional legacy signup field; current apps explain processing during verification.
    */
   @IsOptional()
   @IsBoolean()
@@ -156,7 +156,7 @@ export class CompleteGoogleProfileDto {
   @IsBoolean()
   consented_data_collection?: boolean;
 
-  /** RA 10173 biometric consent — required for providers. */
+  /** Optional legacy identity-processing consent. */
   @IsOptional()
   @IsBoolean()
   consented_biometric?: boolean;

@@ -268,13 +268,19 @@ export class PaymentsService {
       throw new BadRequestException(error.message);
     }
 
-    await this.supabase.admin.from('notifications').insert({
-      recipient_id: profileId,
-      type: 'payment_update',
-      title: 'Wallet topped up',
-      body: `₱${amount.toFixed(2)} has been added to your wallet.`,
-      data: { payment_intent_id: intent.id, amount },
-    });
+    const { error: notificationError } = await this.supabase.admin
+      .from('notifications')
+      .insert({
+        recipient_id: profileId,
+        type: 'payment_update',
+        title: 'Wallet topped up',
+        body: `₱${amount.toFixed(2)} has been added to your wallet.`,
+        data: { payment_intent_id: intent.id, amount },
+      });
+    if (notificationError)
+      this.logger.error(
+        `Notification not written: ${notificationError.message}`,
+      );
     this.logger.log(`Credited ₱${amount} to ${profileId} (${intent.id})`);
   }
 }

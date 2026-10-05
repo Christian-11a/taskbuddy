@@ -168,25 +168,33 @@ export class RecommendationsService {
     if (candidatesError) throw new BadRequestException(candidatesError.message);
 
     const invitees = ranked.slice(0, TOP_N);
+    let notified = 0;
     if (invitees.length > 0) {
-      await this.supabase.admin.from('notifications').insert(
-        invitees.map(({ row }) => ({
-          recipient_id: row.provider_id,
-          type: 'recommendation_invite',
-          title: 'A job near you needs your skills',
-          body: `You were matched to the job "${jobTitle}". Check it out and apply!`,
-          data: { job_id: jobId, run_id: run.id },
-        })),
-      );
+      const { error: notificationError } = await this.supabase.admin
+        .from('notifications')
+        .insert(
+          invitees.map(({ row }) => ({
+            recipient_id: row.provider_id,
+            type: 'recommendation_invite',
+            title: 'A job near you needs your skills',
+            body: `You were matched to the job "${jobTitle}". Check it out and apply!`,
+            data: { job_id: jobId, run_id: run.id },
+          })),
+        );
+      if (notificationError)
+        this.logger.error(
+          `Notification not written: ${notificationError.message}`,
+        );
+      else notified = invitees.length;
     }
 
     this.logger.log(
-      `Job ${jobId}: scored ${pool.length} providers (model ${model_version}), invited top ${invitees.length}`,
+      `Job ${jobId}: scored ${pool.length} providers (model ${model_version}), notified ${notified}`,
     );
     return {
       run_id: run.id,
       pool_size: pool.length,
-      notified: invitees.length,
+      notified,
     };
   }
 

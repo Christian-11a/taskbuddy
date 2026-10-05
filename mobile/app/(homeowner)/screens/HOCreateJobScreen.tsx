@@ -48,6 +48,7 @@
  *  - iOS: keep the existing custom Modal + spinner + Done button flow.
  */
 
+import { useThemedStyles, type Palette as ThemePalette } from '../../../src/context/ThemeContext';
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   ScrollView,
@@ -83,26 +84,16 @@ import DateTimePicker, {
 import { Calendar } from 'react-native-calendars';
 import * as ImagePicker from 'expo-image-picker';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Spacing, V6Colors, V6Shadows } from '../../../src/constants/theme';
+import { Spacing, V6Shadows } from '../../../src/constants/theme';
 import { useAuth } from '../../../src/context/AuthContext';
 import { useAsyncData } from '../../../src/hooks/useAsyncData';
 import { api, type GeocodedAddress } from '../../../src/lib/api';
 import { peso } from '../../../src/lib/format';
-import TermsAndConditions from '../../(auth)/screens/TermsAndConditions';
+import PhotoViewer from '../../../src/components/PhotoViewer';
 import ConfirmationModal from '../../../src/components/ConfirmationModal';
 import AddressField from '../../../src/components/AddressField';
 import { requestAppPermission } from '../../../src/lib/permissions';
 
-const Colors = {
-  ...V6Colors,
-  background: V6Colors.canvas,
-  brandDark: V6Colors.cyan900,
-  brandTeal: V6Colors.cyan700,
-  brandCyan: V6Colors.cyan600,
-  slate: V6Colors.ink500,
-  muted: V6Colors.ink400,
-  error: '#ef4444',
-} as const;
 const Shadows = { card: V6Shadows.sm, input: V6Shadows.sm };
 
 // Icon + blurb per real service category (the 5 seeded in the DB).
@@ -163,35 +154,12 @@ const TASK_PRESETS: Record<string, string[]> = {
 };
 
 /** The three real `job_urgency` values, with what each one actually does. */
-const URGENCY_OPTIONS = [
-  {
-    value: 'urgent' as const,
-    label: 'Urgent',
-    blurb: 'Needed right away — providers are matched after 5 minutes.',
-    icon: Zap,
-    accent: '#ef4444',
-  },
-  {
-    value: 'normal' as const,
-    label: 'Normal',
-    blurb: 'Within the next few days — matched after 10 minutes.',
-    icon: Clock,
-    accent: V6Colors.cyan700,
-  },
-  {
-    value: 'flexible' as const,
-    label: 'Flexible',
-    blurb: 'No rush — the widest choice of providers, matched after 15 minutes.',
-    icon: CheckCircle2,
-    accent: '#0f766e',
-  },
-];
 
 const MAX_TASKS = 20;
 
 type FieldErrors = Partial<
   Record<
-    'title' | 'description' | 'location' | 'tasks' | 'date' | 'time' | 'budget' | 'terms',
+    'title' | 'description' | 'location' | 'tasks' | 'date' | 'time' | 'budget',
     string
   >
 >;
@@ -213,6 +181,7 @@ export default function HOCreateJobScreen({
   onSuccess,
   initialCategoryId = null,
 }: HOCreateJobScreenProps) {
+  const { Colors, URGENCY_OPTIONS, styles, V6Colors, appearance } = useThemedStyles(createThemedStyles);
   const { profile } = useAuth();
   const categories = useAsyncData(() => api.categories(), []);
   const insets = useSafeAreaInsets();
@@ -251,8 +220,8 @@ export default function HOCreateJobScreen({
   const [budget, setBudget] = useState('');
   const [photos, setPhotos] = useState<ImagePicker.ImagePickerAsset[]>([]);
   const [urgency, setUrgency] = useState<'urgent' | 'normal' | 'flexible'>('normal');
-  const [showTerms, setShowTerms] = useState(false);
-  const [termsAccepted, setTermsAccepted] = useState(false);
+  const [calendarMonth, setCalendarMonth] = useState<string | undefined>(undefined);
+  const [photoIndex, setPhotoIndex] = useState<number | null>(null);
   const [showExitConfirmation, setShowExitConfirmation] = useState(false);
   const [focusedField, setFocusedField] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
@@ -476,10 +445,6 @@ export default function HOCreateJobScreen({
       }
     }
 
-    if (step === 5 && !termsAccepted) {
-      errors.terms = 'Please accept the Terms & Conditions to post this job.';
-    }
-
     setFieldErrors(errors);
     if (Object.keys(errors).length > 0) {
       const first = Object.keys(errors)[0] as keyof FieldErrors;
@@ -594,7 +559,7 @@ export default function HOCreateJobScreen({
 
   const hasProgress = Boolean(
     categoryId || titleTouched || descriptionTouched || location.trim() || tasks.length ||
-    date || time || budget.trim() || photos.length || termsAccepted,
+    date || time || budget.trim() || photos.length,
   );
 
   const handleStepBack = () => {
@@ -625,7 +590,7 @@ export default function HOCreateJobScreen({
     setPhotos([]);
     setPhotoMessage(null);
     setUrgency('normal');
-    setTermsAccepted(false);
+    setPhotoIndex(null);
     setFieldErrors({});
     setError(null);
     setStep(1);
@@ -673,7 +638,7 @@ export default function HOCreateJobScreen({
       <View style={styles.screen}>
         <ScrollView contentContainerStyle={styles.successScreen}>
           <View style={styles.successIcon}>
-            <CheckCircle2 size={48} color={Colors.brandTeal} />
+            <CheckCircle2 size={48} color={V6Colors.link} />
           </View>
           <Text style={styles.successTitle}>Job Posted!</Text>
           <Text style={styles.successSubtitle}>
@@ -713,14 +678,8 @@ export default function HOCreateJobScreen({
   return (
     <View style={styles.screen}>
       {/* Header — matches .topbar (flat white, not a dark hero) */}
-      <TermsAndConditions
-        visible={showTerms}
-        onBack={() => setShowTerms(false)}
-        onAccept={() => {
-          setTermsAccepted(true);
-          clearError('terms');
-        }}
-      />
+      <PhotoViewer photos={photos} index={photoIndex} onIndexChange={setPhotoIndex}
+        onClose={() => setPhotoIndex(null)} />
       <View style={[styles.header, { paddingTop: headerTop }]}>
         <TouchableOpacity style={styles.backBtn} onPress={handleExit} activeOpacity={0.8}>
           <ArrowLeft size={22} color={Colors.ink700} />
@@ -864,7 +823,7 @@ export default function HOCreateJobScreen({
 
             {resolvedCoordinates ? (
               <View style={styles.mapConfirmed}>
-                <MapPin size={20} color={Colors.brandTeal} />
+                <MapPin size={20} color={V6Colors.link} />
                 <View style={styles.mapConfirmedBody}>
                   <Text style={styles.mapConfirmedTitle}>Location confirmed</Text>
                   <Text style={styles.mapConfirmedText} numberOfLines={2}>
@@ -894,7 +853,7 @@ export default function HOCreateJobScreen({
                 }}
                 activeOpacity={0.8}
               >
-                <MapPin size={16} color={Colors.brandTeal} />
+                <MapPin size={16} color={V6Colors.link} />
                 <Text style={styles.savedAddressText} numberOfLines={1}>
                   Use my saved address — {profile.address}
                 </Text>
@@ -931,7 +890,7 @@ export default function HOCreateJobScreen({
                     accessibilityState={{ checked: selected }}
                   >
                     <View style={[styles.taskCheck, selected && styles.taskCheckActive]}>
-                      {selected && <Check size={13} color={Colors.white} strokeWidth={3} />}
+                      {selected && <Check size={13} color={Colors.onPrimary} strokeWidth={3} />}
                     </View>
                     <Text style={[styles.taskChipText, selected && styles.taskChipTextActive]}>
                       {preset}
@@ -950,7 +909,7 @@ export default function HOCreateJobScreen({
                   .map((t) => (
                     <View key={t} style={styles.customTaskRow}>
                       <View style={[styles.taskCheck, styles.taskCheckActive]}>
-                        <Check size={13} color={Colors.white} strokeWidth={3} />
+                        <Check size={13} color={Colors.onPrimary} strokeWidth={3} />
                       </View>
                       <Text style={styles.customTaskText}>{t}</Text>
                       <TouchableOpacity onPress={() => toggleTask(t)} hitSlop={10}>
@@ -962,7 +921,7 @@ export default function HOCreateJobScreen({
             )}
 
             <View style={styles.addTaskRow}>
-              <TextInput
+              <TextInput keyboardAppearance={appearance}
                 style={[styles.input, styles.addTaskInput, focusedField === 'customTask' && styles.inputFocused]}
                 placeholder="Add your own task"
                 placeholderTextColor={Colors.muted}
@@ -980,7 +939,7 @@ export default function HOCreateJobScreen({
                 activeOpacity={0.85}
                 disabled={!customTask.trim()}
               >
-                <Plus size={20} color={Colors.white} />
+                <Plus size={20} color={Colors.onPrimary} />
               </TouchableOpacity>
             </View>
             <Text style={styles.taskCount}>
@@ -992,7 +951,7 @@ export default function HOCreateJobScreen({
 
             <View onLayout={(event) => { fieldPositions.current.title = event.nativeEvent.layout.y; }} style={styles.inputGroup}>
               <Text style={styles.inputLabel}>Job Title<Text style={styles.requiredAsterisk}> *</Text></Text>
-              <TextInput
+              <TextInput keyboardAppearance={appearance}
                 style={[styles.input, focusedField === 'title' && styles.inputFocused, fieldErrors.title && styles.inputError]}
                 placeholder="e.g. 3-bedroom apartment deep clean"
                 placeholderTextColor={Colors.muted}
@@ -1016,7 +975,7 @@ export default function HOCreateJobScreen({
             <View style={styles.inputGroup}>
               <Text style={styles.inputLabel}>Description<Text style={styles.requiredAsterisk}> *</Text></Text>
               <View style={styles.textAreaWrap}>
-                <TextInput
+                <TextInput keyboardAppearance={appearance}
                   style={[
                     styles.input,
                     styles.textArea,
@@ -1062,7 +1021,7 @@ export default function HOCreateJobScreen({
               >
                 {pickingPhotos ? (
                   <>
-                    <ActivityIndicator size="small" color={Colors.brandTeal} />
+                    <ActivityIndicator size="small" color={V6Colors.link} />
                     <Text style={styles.photoPickerHint}>Opening your photo library…</Text>
                   </>
                 ) : (
@@ -1111,7 +1070,7 @@ export default function HOCreateJobScreen({
               return (
                 <TouchableOpacity
                   key={option.value}
-                  style={[styles.urgencyCard, active && { borderColor: option.accent, backgroundColor: '#f8fdff' }]}
+                  style={[styles.urgencyCard, active && { borderColor: option.accent, backgroundColor: V6Colors.infoSurface }]}
                   onPress={() => setUrgency(option.value)}
                   activeOpacity={0.85}
                   accessibilityRole="radio"
@@ -1161,7 +1120,7 @@ export default function HOCreateJobScreen({
               <Text style={styles.inputLabel}>Budget<Text style={styles.requiredAsterisk}> *</Text></Text>
               <View style={[styles.budgetCard, focusedField === 'budget' && styles.budgetCardFocused, !!fieldErrors.budget && styles.inputError]}>
                 <Text style={styles.budgetCurrency}>₱</Text>
-                <TextInput
+                <TextInput keyboardAppearance={appearance}
                   style={styles.budgetInput}
                   placeholder="0.00"
                   placeholderTextColor={Colors.muted}
@@ -1180,7 +1139,7 @@ export default function HOCreateJobScreen({
               </View>
               {!!fieldErrors.budget && <Text style={styles.inputErrorText}>{fieldErrors.budget}</Text>}
               <Text style={styles.budgetHint}>
-                Held in escrow when you hire someone, released when you mark the job complete.
+                Held in escrow when you hire someone, then released after the three-day warranty unless a complaint is open.
               </Text>
             </View>
           </View>
@@ -1212,8 +1171,11 @@ export default function HOCreateJobScreen({
             {photos.length > 0 && (
               <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.photoList}>
                 {photos.map((photo, index) => (
-                  <Image key={photo.uri} source={{ uri: photo.uri }} style={styles.photoImage}
-                    resizeMode="contain" accessibilityLabel={`Selected photo ${index + 1}`} />
+                  <TouchableOpacity key={photo.uri} onPress={() => setPhotoIndex(index)}
+                    accessibilityLabel={`Open selected photo ${index + 1}`}>
+                    <Image source={{ uri: photo.uri }} style={styles.photoImage}
+                      resizeMode="contain" />
+                  </TouchableOpacity>
                 ))}
               </ScrollView>
             )}
@@ -1222,31 +1184,12 @@ export default function HOCreateJobScreen({
             <View style={styles.reviewCard}>
               {tasks.map((t) => (
                 <View key={t} style={styles.reviewTaskRow}>
-                  <Check size={15} color={Colors.brandTeal} strokeWidth={3} />
+                  <Check size={15} color={V6Colors.link} strokeWidth={3} />
                   <Text style={styles.reviewTaskText}>{t}</Text>
                 </View>
               ))}
             </View>
 
-            <TouchableOpacity
-              style={styles.termsRow}
-              onLayout={(event) => { fieldPositions.current.terms = event.nativeEvent.layout.y; }}
-              onPress={() => {
-                setTermsAccepted((accepted) => !accepted);
-                clearError('terms');
-              }}
-              activeOpacity={0.8}
-              accessibilityRole="checkbox"
-              accessibilityState={{ checked: termsAccepted }}
-            >
-              <View style={[styles.termsCheck, termsAccepted && styles.termsCheckAccepted]}>
-                {termsAccepted && <Check size={15} color={Colors.white} />}
-              </View>
-              <Text style={styles.termsText}>
-                I agree to the <Text style={styles.termsLink} onPress={() => setShowTerms(true)}>Terms & Conditions</Text><Text style={styles.requiredAsterisk}> *</Text> and understand that TaskBuddy holds payment until job completion.
-              </Text>
-            </TouchableOpacity>
-            {!!fieldErrors.terms && <Text style={styles.inputErrorText}>{fieldErrors.terms}</Text>}
           </View>
         )}
 
@@ -1277,7 +1220,7 @@ export default function HOCreateJobScreen({
             disabled={submitting || stepBusy}
           >
             <View style={styles.primaryBtnInner}>
-              {(submitting || stepBusy) && <ActivityIndicator size="small" color={Colors.white} />}
+              {(submitting || stepBusy) && <ActivityIndicator size="small" color={Colors.onPrimary} />}
               <Text style={styles.primaryBtnText}>
                 {submitPhase === 'uploading'
                   ? 'Uploading photos…'
@@ -1320,8 +1263,9 @@ export default function HOCreateJobScreen({
                 <Text style={styles.calendarClose}>Close</Text>
               </TouchableOpacity>
             </View>
-            <Calendar
-              current={date ? dateKey(date) : undefined}
+            <Calendar key={appearance}
+              current={calendarMonth ?? (date ? dateKey(date) : undefined)}
+              onMonthChange={(month) => setCalendarMonth(month.dateString)}
               // Past days are not selectable at all — the inline error below is
               // for the case the calendar cannot catch: today, but a time that
               // has already gone.
@@ -1333,7 +1277,7 @@ export default function HOCreateJobScreen({
                 setShowDatePicker(false);
               }}
               markedDates={date ? { [dateKey(date)]: { selected: true, selectedColor: Colors.brandTeal } } : undefined}
-              theme={{ todayTextColor: Colors.brandTeal, arrowColor: Colors.brandTeal, selectedDayBackgroundColor: Colors.brandTeal }}
+              theme={{ calendarBackground: V6Colors.surface, dayTextColor: V6Colors.ink900, monthTextColor: V6Colors.ink900, textDisabledColor: V6Colors.ink400, todayTextColor: V6Colors.link, arrowColor: V6Colors.link, selectedDayBackgroundColor: Colors.brandTeal }}
             />
           </View>
         </View>
@@ -1350,7 +1294,7 @@ export default function HOCreateJobScreen({
         which is what prevents the native dialog from reappearing.
       */}
       {Platform.OS === 'android' && showTimePicker && (
-        <DateTimePicker
+        <DateTimePicker themeVariant={appearance}
           value={tempTime ?? new Date()}
           mode="time"
           display="spinner"
@@ -1379,7 +1323,7 @@ export default function HOCreateJobScreen({
                 </TouchableOpacity>
               </View>
 
-              <DateTimePicker
+              <DateTimePicker themeVariant={appearance}
                 value={tempTime ?? new Date()}
                 mode="time"
                 display="spinner"
@@ -1407,240 +1351,271 @@ export default function HOCreateJobScreen({
   );
 }
 
-const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: Colors.background },
+function createThemedStyles(theme: ThemePalette) {
+  const { V6Colors } = theme;
+  const Colors = {
+    ...V6Colors,
+    background: V6Colors.canvas,
+    brandDark: V6Colors.cyan900,
+    brandTeal: V6Colors.cyan700,
+    brandCyan: V6Colors.cyan600,
+    slate: V6Colors.ink500,
+    muted: V6Colors.ink400,
+    error: '#ef4444',
+  } as const;
+  const URGENCY_OPTIONS = [
+    {
+      value: 'urgent' as const,
+      label: 'Urgent',
+      blurb: 'Needed right away — providers are matched after 5 minutes.',
+      icon: Zap,
+      accent: '#ef4444',
+    },
+    {
+      value: 'normal' as const,
+      label: 'Normal',
+      blurb: 'Within the next few days — matched after 10 minutes.',
+      icon: Clock,
+      accent: V6Colors.cyan700,
+    },
+    {
+      value: 'flexible' as const,
+      label: 'Flexible',
+      blurb: 'No rush — the widest choice of providers, matched after 15 minutes.',
+      icon: CheckCircle2,
+      accent: '#0f766e',
+    },
+  ];
+  const styles = StyleSheet.create({
+    screen: { flex: 1, backgroundColor: Colors.background },
 
-  header: {
-    backgroundColor: Colors.white,
-    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
-    paddingHorizontal: Spacing.screenH,
-    paddingBottom: 12,
-    borderBottomWidth: 1, borderBottomColor: '#edf1f4',
-  },
-  headerTitle: { color: Colors.ink900, fontSize: 18.5, fontWeight: '800', fontFamily: 'Inter' },
-  backBtn: {
-    width: 38, height: 38, borderRadius: 12,
-    backgroundColor: Colors.white, borderWidth: 1, borderColor: '#e8edf2',
-    alignItems: 'center', justifyContent: 'center',
-  },
+    header: {
+      backgroundColor: Colors.surface,
+      flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
+      paddingHorizontal: Spacing.screenH,
+      paddingBottom: 12,
+      borderBottomWidth: 1, borderBottomColor: V6Colors.line,
+    },
+    headerTitle: { color: Colors.ink900, fontSize: 18.5, fontWeight: '800', fontFamily: 'Inter' },
+    backBtn: {
+      width: 38, height: 38, borderRadius: 12,
+      backgroundColor: Colors.surface, borderWidth: 1, borderColor: V6Colors.line,
+      alignItems: 'center', justifyContent: 'center',
+    },
 
-  // Stepper — matches .stepper/.step (5 equal pills)
-  stepperWrap: { backgroundColor: Colors.white, paddingHorizontal: Spacing.screenH, paddingVertical: 14 },
-  stepper: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  step: { flex: 1, height: 5, borderRadius: 3, backgroundColor: Colors.ink100 },
-  stepDone: { backgroundColor: Colors.cyan600 },
-  stepperLabel: { color: Colors.muted, fontSize: 12.5, fontFamily: 'Inter', marginTop: 8 },
+    // Stepper — matches .stepper/.step (5 equal pills)
+    stepperWrap: { backgroundColor: Colors.surface, paddingHorizontal: Spacing.screenH, paddingVertical: 14 },
+    stepper: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+    step: { flex: 1, height: 5, borderRadius: 3, backgroundColor: Colors.ink100 },
+    stepDone: { backgroundColor: Colors.cyan700 },
+    stepperLabel: { color: Colors.muted, fontSize: 12.5, fontFamily: 'Inter', marginTop: 8 },
 
-  body: { flex: 1 },
-  bodyContent: { paddingHorizontal: Spacing.screenH, paddingTop: 24, paddingBottom: 20 },
+    body: { flex: 1 },
+    bodyContent: { paddingHorizontal: Spacing.screenH, paddingTop: 24, paddingBottom: 20 },
 
-  stepTitle: { color: Colors.brandDark, fontSize: 23, fontWeight: '800', fontFamily: 'Inter', marginBottom: 4 },
-  stepSubtitle: { color: Colors.muted, fontSize: 16.5, fontFamily: 'Inter', marginBottom: 20, lineHeight: 21 },
-  locationPrompt: { backgroundColor: Colors.white, borderWidth: 1, borderColor: Colors.line, borderRadius: 14, padding: 14, marginBottom: 16 },
-  locationPromptTitle: { color: Colors.ink900, fontSize: 14.5, fontWeight: '800', fontFamily: 'Inter' },
-  locationPromptText: { color: Colors.muted, fontSize: 13, fontFamily: 'Inter', marginTop: 4 },
-  locationPromptActions: { flexDirection: 'row', gap: 8, marginTop: 12 },
-  locationChoice: { flex: 1, alignItems: 'center', borderWidth: 1, borderColor: Colors.line, borderRadius: 10, paddingVertical: 9 },
-  locationChoiceActive: { backgroundColor: '#e6f8fb', borderColor: Colors.brandTeal },
-  locationChoiceDisabled: { opacity: 0.55 },
-  locationChoiceText: { color: Colors.brandDark, fontSize: 13, fontWeight: '700', fontFamily: 'Inter' },
-  locationChoiceTextDisabled: { color: Colors.muted },
+    stepTitle: { color: V6Colors.ink900, fontSize: 23, fontWeight: '800', fontFamily: 'Inter', marginBottom: 4 },
+    stepSubtitle: { color: Colors.muted, fontSize: 16.5, fontFamily: 'Inter', marginBottom: 20, lineHeight: 21 },
+    locationPrompt: { backgroundColor: Colors.surface, borderWidth: 1, borderColor: Colors.line, borderRadius: 14, padding: 14, marginBottom: 16 },
+    locationPromptTitle: { color: Colors.ink900, fontSize: 14.5, fontWeight: '800', fontFamily: 'Inter' },
+    locationPromptText: { color: Colors.muted, fontSize: 13, fontFamily: 'Inter', marginTop: 4 },
+    locationPromptActions: { flexDirection: 'row', gap: 8, marginTop: 12 },
+    locationChoice: { flex: 1, alignItems: 'center', borderWidth: 1, borderColor: Colors.line, borderRadius: 10, paddingVertical: 9 },
+    locationChoiceActive: { backgroundColor: V6Colors.infoSurface, borderColor: Colors.brandTeal },
+    locationChoiceDisabled: { opacity: 0.55 },
+    locationChoiceText: { color: V6Colors.ink900, fontSize: 13, fontWeight: '700', fontFamily: 'Inter' },
+    locationChoiceTextDisabled: { color: Colors.muted },
 
-  serviceGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },
-  serviceCard: {
-    width: '47%', backgroundColor: Colors.white, borderRadius: 16,
-    padding: 16, borderWidth: 2, borderColor: 'transparent',
-    ...Shadows.card,
-  },
-  serviceCardActive: { borderColor: Colors.brandTeal, backgroundColor: '#F0FAFF' },
-  // Same footprint as a real service card so the grid doesn't reflow on load.
-  serviceCardSkeleton: { height: 118, backgroundColor: Colors.ink100 },
-  serviceLabel: { color: Colors.brandDark, fontSize: 16.5, fontWeight: '700', fontFamily: 'Inter', marginBottom: 4 },
-  serviceLabelActive: { color: Colors.brandTeal },
-  serviceDesc: { color: Colors.slate, fontSize: 14.5, fontFamily: 'Inter' },
+    serviceGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },
+    serviceCard: {
+      width: '47%', backgroundColor: Colors.surface, borderRadius: 16,
+      padding: 16, borderWidth: 2, borderColor: 'transparent',
+      ...Shadows.card,
+    },
+    serviceCardActive: { borderColor: Colors.brandTeal, backgroundColor: V6Colors.infoSurface },
+    // Same footprint as a real service card so the grid doesn't reflow on load.
+    serviceCardSkeleton: { height: 118, backgroundColor: Colors.ink100 },
+    serviceLabel: { color: V6Colors.ink900, fontSize: 16.5, fontWeight: '700', fontFamily: 'Inter', marginBottom: 4 },
+    serviceLabelActive: { color: V6Colors.link },
+    serviceDesc: { color: Colors.slate, fontSize: 14.5, fontFamily: 'Inter' },
 
-  inputGroup: { marginBottom: 16 },
-  inputLabel: { color: Colors.brandDark, fontSize: 16.5, fontWeight: '600', fontFamily: 'Inter', marginBottom: 8 },
-  input: {
-    backgroundColor: Colors.white, borderRadius: 12, paddingHorizontal: 14, minHeight: 46,
-    borderWidth: 1, borderColor: '#dce3e9',
-    fontFamily: 'Inter', fontSize: 16.5, color: Colors.ink900,
-  },
-  addressInput: { minHeight: 70, paddingTop: 12, textAlignVertical: 'top' },
-  inputFocused: { borderColor: Colors.brandTeal, borderWidth: 2 },
-  inputError: { borderColor: Colors.error, borderWidth: 2 },
-  inputErrorText: { color: Colors.error, fontSize: 15.5, marginTop: 8, fontFamily: 'Inter' },
-  inputHint: { color: Colors.slate, fontSize: 13.5, marginTop: 8, fontFamily: 'Inter' },
-  requiredAsterisk: { color: Colors.error, fontWeight: '800' },
-  pickerInput: { justifyContent: 'center', minHeight: 48 },
-  pickerText: { color: Colors.brandDark, fontFamily: 'Inter', fontSize: 18.5 },
-  pickerPlaceholder: { color: Colors.muted },
+    inputGroup: { marginBottom: 16 },
+    inputLabel: { color: V6Colors.ink900, fontSize: 16.5, fontWeight: '600', fontFamily: 'Inter', marginBottom: 8 },
+    input: {
+      backgroundColor: Colors.surface, borderRadius: 12, paddingHorizontal: 14, minHeight: 46,
+      borderWidth: 1, borderColor: V6Colors.fieldBorder,
+      fontFamily: 'Inter', fontSize: 16.5, color: Colors.ink900,
+    },
+    addressInput: { minHeight: 70, paddingTop: 12, textAlignVertical: 'top' },
+    inputFocused: { borderColor: Colors.brandTeal, borderWidth: 2 },
+    inputError: { borderColor: Colors.error, borderWidth: 2 },
+    inputErrorText: { color: Colors.error, fontSize: 15.5, marginTop: 8, fontFamily: 'Inter' },
+    inputHint: { color: Colors.slate, fontSize: 13.5, marginTop: 8, fontFamily: 'Inter' },
+    requiredAsterisk: { color: Colors.error, fontWeight: '800' },
+    pickerInput: { justifyContent: 'center', minHeight: 48 },
+    pickerText: { color: V6Colors.ink900, fontFamily: 'Inter', fontSize: 18.5 },
+    pickerPlaceholder: { color: Colors.muted },
 
-  savedAddressBtn: {
-    flexDirection: 'row', alignItems: 'center', gap: 8,
-    borderWidth: 1, borderColor: Colors.cyan100, backgroundColor: '#f2fbfd',
-    borderRadius: 12, padding: 12, marginBottom: 16,
-  },
-  savedAddressText: { flex: 1, color: Colors.brandTeal, fontSize: 14, fontWeight: '600', fontFamily: 'Inter' },
-  noteCard: { backgroundColor: Colors.ink50, borderRadius: 14, padding: 14 },
-  mapPlaceholder: { height: 190, borderRadius: 14, marginBottom: 16, backgroundColor: Colors.ink50, alignItems: 'center', justifyContent: 'center', gap: 8, padding: 20 },
-  mapPlaceholderText: { color: Colors.muted, fontSize: 14, fontFamily: 'Inter', textAlign: 'center' },
-  mapPreview: { borderRadius: 14, overflow: 'hidden', marginBottom: 8, backgroundColor: Colors.ink50 },
-  // Matches the 2:1 image the backend renders (600×300). `cover` at that ratio
-  // never crops, which keeps Geoapify's attribution line in its bottom corner.
-  mapPreviewImage: { width: '100%', aspectRatio: 2 },
-  mapConfirmed: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    borderRadius: 14,
-    marginBottom: 16,
-    padding: 16,
-    backgroundColor: Colors.ink50,
-    borderWidth: 1,
-    borderColor: Colors.brandTeal,
-  },
-  mapConfirmedBody: { flex: 1, gap: 2 },
-  mapConfirmedTitle: { color: Colors.brandTeal, fontSize: 14, fontWeight: '700', fontFamily: 'Inter' },
-  mapConfirmedText: { color: Colors.ink900, fontSize: 14, fontFamily: 'Inter' },
-  noteText: { color: Colors.slate, fontSize: 14, lineHeight: 19, fontFamily: 'Inter' },
+    savedAddressBtn: {
+      flexDirection: 'row', alignItems: 'center', gap: 8,
+      borderWidth: 1, borderColor: Colors.cyan100, backgroundColor: V6Colors.infoSurface,
+      borderRadius: 12, padding: 12, marginBottom: 16,
+    },
+    savedAddressText: { flex: 1, color: V6Colors.link, fontSize: 14, fontWeight: '600', fontFamily: 'Inter' },
+    noteCard: { backgroundColor: Colors.ink50, borderRadius: 14, padding: 14 },
+    mapPlaceholder: { height: 190, borderRadius: 14, marginBottom: 16, backgroundColor: Colors.ink50, alignItems: 'center', justifyContent: 'center', gap: 8, padding: 20 },
+    mapPlaceholderText: { color: Colors.muted, fontSize: 14, fontFamily: 'Inter', textAlign: 'center' },
+    mapPreview: { borderRadius: 14, overflow: 'hidden', marginBottom: 8, backgroundColor: Colors.ink50 },
+    // Matches the 2:1 image the backend renders (600×300). `cover` at that ratio
+    // never crops, which keeps Geoapify's attribution line in its bottom corner.
+    mapPreviewImage: { width: '100%', aspectRatio: 2 },
+    mapConfirmed: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 12,
+      borderRadius: 14,
+      marginBottom: 16,
+      padding: 16,
+      backgroundColor: Colors.ink50,
+      borderWidth: 1,
+      borderColor: Colors.brandTeal,
+    },
+    mapConfirmedBody: { flex: 1, gap: 2 },
+    mapConfirmedTitle: { color: V6Colors.link, fontSize: 14, fontWeight: '700', fontFamily: 'Inter' },
+    mapConfirmedText: { color: Colors.ink900, fontSize: 14, fontFamily: 'Inter' },
+    noteText: { color: Colors.slate, fontSize: 14, lineHeight: 19, fontFamily: 'Inter' },
 
-  calendarOverlay: { flex: 1, backgroundColor: 'rgba(15,23,42,0.45)', justifyContent: 'center', padding: 20 },
-  calendarModal: { backgroundColor: Colors.white, borderRadius: 24, padding: 20, ...Shadows.card },
-  calendarHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 },
-  calendarTitle: { color: Colors.brandDark, fontSize: 21.5, fontWeight: '800', fontFamily: 'Inter' },
-  calendarClose: { color: Colors.brandTeal, fontSize: 16.5, fontWeight: '700', fontFamily: 'Inter' },
+    calendarOverlay: { flex: 1, backgroundColor: 'rgba(15,23,42,0.45)', justifyContent: 'center', padding: 20 },
+    calendarModal: { backgroundColor: Colors.surface, borderRadius: 24, padding: 20, ...Shadows.card },
+    calendarHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 },
+    calendarTitle: { color: V6Colors.ink900, fontSize: 21.5, fontWeight: '800', fontFamily: 'Inter' },
+    calendarClose: { color: V6Colors.link, fontSize: 16.5, fontWeight: '700', fontFamily: 'Inter' },
 
-  textArea: { textAlignVertical: 'top', minHeight: 20 * 3, paddingTop: 12 },
-  textAreaWrap: { position: 'relative' },
-  charCount: { position: 'absolute', right: 12, bottom: 8, color: Colors.muted, fontSize: 14.5 },
+    textArea: { textAlignVertical: 'top', minHeight: 20 * 3, paddingTop: 12 },
+    textAreaWrap: { position: 'relative' },
+    charCount: { position: 'absolute', right: 12, bottom: 8, color: Colors.muted, fontSize: 14.5 },
 
-  // Task selection
-  taskList: { gap: 9 },
-  taskChip: {
-    flexDirection: 'row', alignItems: 'center', gap: 11,
-    backgroundColor: Colors.white, borderRadius: 14, padding: 14,
-    borderWidth: 1.5, borderColor: '#e6ecf1',
-  },
-  taskChipActive: { borderColor: Colors.brandTeal, backgroundColor: '#F5FCFF' },
-  taskCheck: {
-    width: 21, height: 21, borderRadius: 7,
-    borderWidth: 1.5, borderColor: '#cbd5e1',
-    alignItems: 'center', justifyContent: 'center',
-  },
-  taskCheckActive: { backgroundColor: Colors.brandTeal, borderColor: Colors.brandTeal },
-  taskChipText: { flex: 1, color: Colors.ink800, fontSize: 15.5, fontFamily: 'Inter' },
-  taskChipTextActive: { color: Colors.brandDark, fontWeight: '700' },
+    // Task selection
+    taskList: { gap: 9 },
+    taskChip: {
+      flexDirection: 'row', alignItems: 'center', gap: 11,
+      backgroundColor: Colors.surface, borderRadius: 14, padding: 14,
+      borderWidth: 1.5, borderColor: V6Colors.line,
+    },
+    taskChipActive: { borderColor: Colors.brandTeal, backgroundColor: V6Colors.infoSurface },
+    taskCheck: {
+      width: 21, height: 21, borderRadius: 7,
+      borderWidth: 1.5, borderColor: V6Colors.ink200,
+      alignItems: 'center', justifyContent: 'center',
+    },
+    taskCheckActive: { backgroundColor: Colors.brandTeal, borderColor: Colors.brandTeal },
+    taskChipText: { flex: 1, color: Colors.ink800, fontSize: 15.5, fontFamily: 'Inter' },
+    taskChipTextActive: { color: V6Colors.ink900, fontWeight: '700' },
 
-  customList: { marginTop: 9, gap: 9 },
-  customTaskRow: {
-    flexDirection: 'row', alignItems: 'center', gap: 11,
-    backgroundColor: '#F5FCFF', borderRadius: 14, padding: 14,
-    borderWidth: 1.5, borderColor: Colors.brandTeal,
-  },
-  customTaskText: { flex: 1, color: Colors.brandDark, fontSize: 15.5, fontWeight: '700', fontFamily: 'Inter' },
-  removeTaskText: { color: Colors.error, fontSize: 13.5, fontWeight: '700', fontFamily: 'Inter' },
+    customList: { marginTop: 9, gap: 9 },
+    customTaskRow: {
+      flexDirection: 'row', alignItems: 'center', gap: 11,
+      backgroundColor: V6Colors.infoSurface, borderRadius: 14, padding: 14,
+      borderWidth: 1.5, borderColor: Colors.brandTeal,
+    },
+    customTaskText: { flex: 1, color: V6Colors.ink900, fontSize: 15.5, fontWeight: '700', fontFamily: 'Inter' },
+    removeTaskText: { color: Colors.error, fontSize: 13.5, fontWeight: '700', fontFamily: 'Inter' },
 
-  addTaskRow: { flexDirection: 'row', gap: 9, marginTop: 12 },
-  addTaskInput: { flex: 1 },
-  addTaskBtn: {
-    width: 48, borderRadius: 12, backgroundColor: Colors.brandTeal,
-    alignItems: 'center', justifyContent: 'center',
-  },
-  addTaskBtnDisabled: { opacity: 0.4 },
-  taskCount: { color: Colors.muted, fontSize: 13.5, fontFamily: 'Inter', marginTop: 8 },
+    addTaskRow: { flexDirection: 'row', gap: 9, marginTop: 12 },
+    addTaskInput: { flex: 1 },
+    addTaskBtn: {
+      width: 48, borderRadius: 12, backgroundColor: Colors.brandTeal,
+      alignItems: 'center', justifyContent: 'center',
+    },
+    addTaskBtnDisabled: { opacity: 0.4 },
+    taskCount: { color: Colors.muted, fontSize: 13.5, fontFamily: 'Inter', marginTop: 8 },
 
-  divider: { height: 1, backgroundColor: '#e6ecf1', marginVertical: 22 },
+    divider: { height: 1, backgroundColor: V6Colors.line, marginVertical: 22 },
 
-  photoPicker: {
-    backgroundColor: Colors.white, borderRadius: 12, padding: 16,
-    borderWidth: 1, borderStyle: 'dashed', borderColor: Colors.brandTeal,
-  },
-  photoPickerTitle: { color: Colors.brandTeal, fontSize: 18.5, fontWeight: '700', fontFamily: 'Inter', marginBottom: 4 },
-  photoPickerHint: { color: Colors.slate, fontSize: 14.5, fontFamily: 'Inter', lineHeight: 18 },
-  photoList: { gap: 10, paddingTop: 12 },
-  photoPreview: { width: 72, height: 72, borderRadius: 10, overflow: 'visible' },
-  photoImage: { width: 72, height: 72, borderRadius: 10, backgroundColor: '#E2E8F0' },
-  removePhoto: { position: 'absolute', top: -6, right: -6, width: 22, height: 22, borderRadius: 11, backgroundColor: Colors.error, alignItems: 'center', justifyContent: 'center' },
-  removePhotoText: { color: Colors.white, fontSize: 21.5, lineHeight: 20, fontWeight: '700' },
+    photoPicker: {
+      backgroundColor: Colors.surface, borderRadius: 12, padding: 16,
+      borderWidth: 1, borderStyle: 'dashed', borderColor: Colors.brandTeal,
+    },
+    photoPickerTitle: { color: V6Colors.link, fontSize: 18.5, fontWeight: '700', fontFamily: 'Inter', marginBottom: 4 },
+    photoPickerHint: { color: Colors.slate, fontSize: 14.5, fontFamily: 'Inter', lineHeight: 18 },
+    photoList: { gap: 10, paddingTop: 12 },
+    photoPreview: { width: 72, height: 72, borderRadius: 10, overflow: 'visible' },
+    photoImage: { width: 72, height: 72, borderRadius: 10, backgroundColor: V6Colors.ink100 },
+    removePhoto: { position: 'absolute', top: -6, right: -6, width: 22, height: 22, borderRadius: 11, backgroundColor: Colors.error, alignItems: 'center', justifyContent: 'center' },
+    removePhotoText: { color: Colors.onPrimary, fontSize: 21.5, lineHeight: 20, fontWeight: '700' },
 
-  // Urgency
-  urgencyCard: {
-    flexDirection: 'row', alignItems: 'center', gap: 12,
-    backgroundColor: Colors.white, borderRadius: 16, padding: 16,
-    borderWidth: 2, borderColor: 'transparent', marginBottom: 10,
-    ...Shadows.card,
-  },
-  urgencyInfo: { flex: 1 },
-  urgencyLabel: { color: Colors.brandDark, fontSize: 16.5, fontWeight: '700', fontFamily: 'Inter', marginBottom: 2 },
-  urgencyBlurb: { color: Colors.slate, fontSize: 14, fontFamily: 'Inter', lineHeight: 18 },
-  radio: {
-    width: 22, height: 22, borderRadius: 11,
-    borderWidth: 2, borderColor: '#cbd5e1',
-    alignItems: 'center', justifyContent: 'center',
-  },
-  radioDot: { width: 11, height: 11, borderRadius: 6 },
+    // Urgency
+    urgencyCard: {
+      flexDirection: 'row', alignItems: 'center', gap: 12,
+      backgroundColor: Colors.surface, borderRadius: 16, padding: 16,
+      borderWidth: 2, borderColor: 'transparent', marginBottom: 10,
+      ...Shadows.card,
+    },
+    urgencyInfo: { flex: 1 },
+    urgencyLabel: { color: V6Colors.ink900, fontSize: 16.5, fontWeight: '700', fontFamily: 'Inter', marginBottom: 2 },
+    urgencyBlurb: { color: Colors.slate, fontSize: 14, fontFamily: 'Inter', lineHeight: 18 },
+    radio: {
+      width: 22, height: 22, borderRadius: 11,
+      borderWidth: 2, borderColor: V6Colors.ink200,
+      alignItems: 'center', justifyContent: 'center',
+    },
+    radioDot: { width: 11, height: 11, borderRadius: 6 },
 
-  budgetCard: {
-    backgroundColor: Colors.white, borderRadius: 20, padding: 24,
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-    borderWidth: 1, borderColor: 'transparent', ...Shadows.card,
-  },
-  budgetCardFocused: { borderColor: Colors.brandTeal, borderWidth: 2 },
-  budgetCurrency: { color: Colors.brandDark, fontSize: 39, fontWeight: '800', fontFamily: 'Inter', marginRight: 4 },
-  budgetInput: { fontSize: 40, fontWeight: '800', fontFamily: 'Inter', color: Colors.brandDark, minWidth: 120 },
-  budgetHint: { color: Colors.muted, fontSize: 14, fontFamily: 'Inter', textAlign: 'center', marginTop: 12, lineHeight: 19 },
+    budgetCard: {
+      backgroundColor: Colors.surface, borderRadius: 20, padding: 24,
+      flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+      borderWidth: 1, borderColor: 'transparent', ...Shadows.card,
+    },
+    budgetCardFocused: { borderColor: Colors.brandTeal, borderWidth: 2 },
+    budgetCurrency: { color: V6Colors.ink900, fontSize: 39, fontWeight: '800', fontFamily: 'Inter', marginRight: 4 },
+    budgetInput: { fontSize: 40, fontWeight: '800', fontFamily: 'Inter', color: V6Colors.ink900, minWidth: 120 },
+    budgetHint: { color: Colors.muted, fontSize: 14, fontFamily: 'Inter', textAlign: 'center', marginTop: 12, lineHeight: 19 },
 
-  reviewCard: { backgroundColor: Colors.white, borderRadius: 20, padding: 20, marginBottom: 16, ...Shadows.card },
-  reviewSectionTitle: { color: Colors.brandDark, fontSize: 16.5, fontWeight: '800', fontFamily: 'Inter', marginBottom: 10 },
-  reviewRow: {
-    flexDirection: 'row', justifyContent: 'space-between',
-    paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: 'rgba(144,153,184,0.15)',
-  },
-  reviewLabel: { color: Colors.slate, fontSize: 16.5, fontFamily: 'Inter' },
-  reviewValue: { color: Colors.brandDark, fontSize: 16.5, fontWeight: '700', fontFamily: 'Inter', maxWidth: '55%', textAlign: 'right' },
-  reviewTaskRow: { flexDirection: 'row', alignItems: 'center', gap: 9, paddingVertical: 7 },
-  reviewTaskText: { flex: 1, color: Colors.brandDark, fontSize: 15.5, fontFamily: 'Inter' },
+    reviewCard: { backgroundColor: Colors.surface, borderRadius: 20, padding: 20, marginBottom: 16, ...Shadows.card },
+    reviewSectionTitle: { color: V6Colors.ink900, fontSize: 16.5, fontWeight: '800', fontFamily: 'Inter', marginBottom: 10 },
+    reviewRow: {
+      flexDirection: 'row', justifyContent: 'space-between',
+      paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: 'rgba(144,153,184,0.15)',
+    },
+    reviewLabel: { color: Colors.slate, fontSize: 16.5, fontFamily: 'Inter' },
+    reviewValue: { color: V6Colors.ink900, fontSize: 16.5, fontWeight: '700', fontFamily: 'Inter', maxWidth: '55%', textAlign: 'right' },
+    reviewTaskRow: { flexDirection: 'row', alignItems: 'center', gap: 9, paddingVertical: 7 },
+    reviewTaskText: { flex: 1, color: V6Colors.ink900, fontSize: 15.5, fontFamily: 'Inter' },
 
-  termsRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 12 },
-  termsCheck: { width: 20, height: 20, borderRadius: 6, borderWidth: 1, borderColor: '#64748B', backgroundColor: '#CBD5E1', marginTop: 2, alignItems: 'center', justifyContent: 'center' },
-  termsCheckAccepted: { backgroundColor: Colors.brandTeal, borderColor: Colors.brandTeal },
-  termsText: { flex: 1, color: Colors.slate, fontSize: 15.5, fontFamily: 'Inter', lineHeight: 20 },
-  termsLink: { color: Colors.brandTeal, fontWeight: '700', textDecorationLine: 'underline' },
+    footer: { paddingHorizontal: Spacing.screenH, paddingVertical: 12, backgroundColor: Colors.surface, borderTopWidth: 1, borderTopColor: Colors.ink100 },
+    footerActions: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'stretch' },
+    previousBtn: { width: '48%', height: 44, borderWidth: 1, borderColor: V6Colors.fieldBorder, borderRadius: 12, backgroundColor: Colors.surface, alignItems: 'center', justifyContent: 'center' },
+    previousBtnText: { color: Colors.ink700, fontSize: 15, fontWeight: '700', fontFamily: 'Inter' },
+    primaryBtn: {
+      backgroundColor: Colors.cyan700, borderRadius: 12, paddingVertical: 12, minHeight: 44, justifyContent: 'center',
+      alignItems: 'center',
+      shadowColor: '#0891b2', shadowOffset: { width: 0, height: 5 },
+      shadowOpacity: 0.16, shadowRadius: 14, elevation: 4,
+    },
+    primaryBtnFullWidth: { width: '100%' },
+    primaryBtnWithBack: { width: '48%', height: 44, paddingVertical: 0, justifyContent: 'center' },
+    primaryBtnInner: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
+    primaryBtnText: { color: Colors.onPrimary, fontSize: 15, fontWeight: '700', fontFamily: 'Inter', letterSpacing: -0.005 },
+    primaryBtnDisabled: { opacity: 0.7 },
+    errorText: { color: Colors.error, fontSize: 15.5, fontFamily: 'Inter', marginBottom: 10, textAlign: 'center' },
 
-  footer: { paddingHorizontal: Spacing.screenH, paddingVertical: 12, backgroundColor: Colors.white, borderTopWidth: 1, borderTopColor: Colors.ink100 },
-  footerActions: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'stretch' },
-  previousBtn: { width: '48%', height: 44, borderWidth: 1, borderColor: '#dce3e9', borderRadius: 12, backgroundColor: Colors.white, alignItems: 'center', justifyContent: 'center' },
-  previousBtnText: { color: Colors.ink700, fontSize: 15, fontWeight: '700', fontFamily: 'Inter' },
-  primaryBtn: {
-    backgroundColor: Colors.cyan700, borderRadius: 12, paddingVertical: 12, minHeight: 44, justifyContent: 'center',
-    alignItems: 'center',
-    shadowColor: '#0891b2', shadowOffset: { width: 0, height: 5 },
-    shadowOpacity: 0.16, shadowRadius: 14, elevation: 4,
-  },
-  primaryBtnFullWidth: { width: '100%' },
-  primaryBtnWithBack: { width: '48%', height: 44, paddingVertical: 0, justifyContent: 'center' },
-  primaryBtnInner: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
-  primaryBtnText: { color: Colors.white, fontSize: 15, fontWeight: '700', fontFamily: 'Inter', letterSpacing: -0.005 },
-  primaryBtnDisabled: { opacity: 0.7 },
-  errorText: { color: Colors.error, fontSize: 15.5, fontFamily: 'Inter', marginBottom: 10, textAlign: 'center' },
-
-  // Success
-  successScreen: { flexGrow: 1, alignItems: 'center', justifyContent: 'center', padding: 32 },
-  successIcon: {
-    width: 100, height: 100, borderRadius: 50,
-    backgroundColor: '#F0FDF4', alignItems: 'center', justifyContent: 'center', marginBottom: 24,
-  },
-  successTitle: { color: Colors.brandDark, fontSize: 28, fontWeight: '800', fontFamily: 'Inter', marginBottom: 12, textAlign: 'center' },
-  successSubtitle: { color: Colors.slate, fontSize: 16.5, fontFamily: 'Inter', lineHeight: 22, textAlign: 'center', marginBottom: 28 },
-  successCard: { backgroundColor: Colors.white, borderRadius: 20, padding: 20, width: '100%', marginBottom: 28, ...Shadows.card },
-  successRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: 'rgba(144,153,184,0.15)' },
-  successLabel: { color: Colors.slate, fontSize: 15, fontFamily: 'Inter' },
-  // flexShrink + a width cap: a long address used to run past the card edge.
-  successValue: { color: Colors.brandDark, fontSize: 15, fontWeight: '700', fontFamily: 'Inter', flexShrink: 1, maxWidth: '65%', textAlign: 'right' },
-  secondaryBtn: {
-    marginTop: 12, paddingVertical: 12, minHeight: 44, justifyContent: 'center', alignItems: 'center', borderRadius: 13,
-    borderWidth: 1, borderColor: Colors.brandTeal, width: '100%',
-  },
-  secondaryBtnText: { color: Colors.brandTeal, fontSize: 15, fontWeight: '700', fontFamily: 'Inter' },
-});
+    // Success
+    successScreen: { flexGrow: 1, alignItems: 'center', justifyContent: 'center', padding: 32 },
+    successIcon: {
+      width: 100, height: 100, borderRadius: 50,
+      backgroundColor: V6Colors.successSurface, alignItems: 'center', justifyContent: 'center', marginBottom: 24,
+    },
+    successTitle: { color: V6Colors.ink900, fontSize: 28, fontWeight: '800', fontFamily: 'Inter', marginBottom: 12, textAlign: 'center' },
+    successSubtitle: { color: Colors.slate, fontSize: 16.5, fontFamily: 'Inter', lineHeight: 22, textAlign: 'center', marginBottom: 28 },
+    successCard: { backgroundColor: Colors.surface, borderRadius: 20, padding: 20, width: '100%', marginBottom: 28, ...Shadows.card },
+    successRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: 'rgba(144,153,184,0.15)' },
+    successLabel: { color: Colors.slate, fontSize: 15, fontFamily: 'Inter' },
+    // flexShrink + a width cap: a long address used to run past the card edge.
+    successValue: { color: V6Colors.ink900, fontSize: 15, fontWeight: '700', fontFamily: 'Inter', flexShrink: 1, maxWidth: '65%', textAlign: 'right' },
+    secondaryBtn: {
+      marginTop: 12, paddingVertical: 12, minHeight: 44, justifyContent: 'center', alignItems: 'center', borderRadius: 13,
+      borderWidth: 1, borderColor: Colors.brandTeal, width: '100%',
+    },
+    secondaryBtnText: { color: V6Colors.link, fontSize: 15, fontWeight: '700', fontFamily: 'Inter' },
+  });
+  return { appearance: theme.appearance, Colors, V6Colors, URGENCY_OPTIONS, styles };
+}

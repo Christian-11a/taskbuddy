@@ -702,6 +702,14 @@ describe("getDisputes", () => {
   });
 });
 
+it("maps zero-budget case participants and evidence without a transaction fallback", async () => {
+  const activity = { id: "e1", kind: "statement", body: "Provider evidence", created_at: "2026-10-04T00:00:00Z", author: { id: "p1", full_name: "Provider", role: "provider" }, message: null, attachment_url: null };
+  global.fetch = vi.fn()
+    .mockResolvedValueOnce(jsonResponse({ disputes: [{ id: "d-zero", job_id: "j-zero", escrow_id: null, reason: "Work quality", details: null, status: "open", resolution: null, resolution_note: null, resolved_at: null, created_at: "2026-10-04", escrow_transactions: null, entries: [activity], jobs: { title: "Zero budget repair", service_categories: { name: "Plumbing" }, client: { full_name: "Client" }, provider: { full_name: "Provider" } } }], total: 1 }))
+    .mockResolvedValueOnce(jsonResponse({ transactions: [], total: 0 })) as unknown as typeof fetch;
+  expect(await services.getDisputes()).toEqual([expect.objectContaining({ clientName: "Client", providerName: "Provider", hasPayment: false, paymentSettled: true, amount: 0, entries: [activity] })]);
+});
+
 describe("resolveDispute", () => {
   it("posts the backend resolution enum then refetches disputes", async () => {
     const fetchMock = vi

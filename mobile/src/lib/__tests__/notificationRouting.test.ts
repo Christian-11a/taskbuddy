@@ -34,3 +34,18 @@ describe('resolveNotificationTarget', () => {
     });
   });
 });
+
+it('routes text/photo message taps to chat ahead of job and application routes', () => {
+  for (const role of ['homeowner', 'provider'] as const) {
+    expect(resolveNotificationTarget(role, { job_id: 'j1', conversation_id: 'c1', application_id: 'a1' })).toEqual({ kind: 'chat', jobId: 'j1' });
+  }
+});
+it('routes service acknowledgements and decisions to provider My Services', () => {
+  expect(resolveNotificationTarget('provider', { request_id: 'r1' })).toEqual({ kind: 'services' });
+  expect(resolveNotificationTarget('homeowner', { request_id: 'r1' })).toEqual({ kind: 'none' });
+});
+it('routes complaint notices to the case screen for either participant', () => {
+  for (const role of ['homeowner', 'provider'] as const) {
+    expect(resolveNotificationTarget(role, { job_id: 'j1', dispute_id: 'd1' })).toEqual({ kind: 'dispute', jobId: 'j1' });
+  }
+});

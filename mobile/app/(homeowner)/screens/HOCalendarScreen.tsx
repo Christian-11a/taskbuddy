@@ -7,11 +7,12 @@
  * screen existed in the mockup as its own bottom-nav tab).
  */
 
+import { useThemedStyles, type Palette as ThemePalette } from '../../../src/context/ThemeContext';
 import React, { useMemo, useState } from 'react';
 import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { Calendar } from 'react-native-calendars';
 import { CalendarDays, User } from 'lucide-react-native';
-import { Spacing, V6Colors, V6Radii, V6Shadows } from '../../../src/constants/theme';
+import { Spacing, V6Radii, V6Shadows } from '../../../src/constants/theme';
 import { HOScreen } from '../../../src/types/navigation';
 import { useAsyncData } from '../../../src/hooks/useAsyncData';
 import { api } from '../../../src/lib/api';
@@ -20,19 +21,19 @@ import ScreenSkeleton from '../../../src/components/ScreenSkeleton';
 import JobCard from '../../../src/components/JobCard';
 import { useHeaderTop } from '../../../src/hooks/useHeaderTop';
 
-const C = V6Colors;
-
 interface HOCalendarScreenProps {
   onNavigate: (screen: HOScreen, jobId?: string) => void;
 }
 
 export default function HOCalendarScreen({ onNavigate }: HOCalendarScreenProps) {
+  const { C, styles, V6Colors, appearance } = useThemedStyles(createThemedStyles);
   const headerTop = useHeaderTop();
   const todayKey = (() => {
     const d = new Date();
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
   })();
   const [selectedDate, setSelectedDate] = useState<string>(todayKey);
+  const [visibleMonth, setVisibleMonth] = useState(selectedDate);
   const { data, loading, error, reload } = useAsyncData(() => api.myJobs(), [], 'ho-jobs');
   const jobs = data ?? [];
 
@@ -86,13 +87,20 @@ export default function HOCalendarScreen({ onNavigate }: HOCalendarScreenProps) 
         showsVerticalScrollIndicator={false}
       >
         <View style={styles.calendarCard}>
-          <Calendar
-            current={selectedDate}
+          <Calendar key={appearance}
+            current={visibleMonth}
+            onMonthChange={(month) => setVisibleMonth(month.dateString)}
             onDayPress={(day) => setSelectedDate(day.dateString)}
             markedDates={markedDates}
             theme={{
-              todayTextColor: C.cyan700,
-              arrowColor: C.cyan700,
+              calendarBackground: V6Colors.surface,
+              backgroundColor: V6Colors.surface,
+              dayTextColor: V6Colors.ink900,
+              textDisabledColor: V6Colors.ink400,
+              monthTextColor: V6Colors.ink900,
+              textSectionTitleColor: V6Colors.ink500,
+              todayTextColor: V6Colors.link,
+              arrowColor: V6Colors.link,
               selectedDayBackgroundColor: C.cyan700,
             }}
           />
@@ -132,7 +140,7 @@ export default function HOCalendarScreen({ onNavigate }: HOCalendarScreenProps) 
             title={job.title}
             budget={job.budget}
             address={job.address}
-            status={jobStatusMeta(job.status)}
+            status={jobStatusMeta(job.status, V6Colors)}
             urgency={job.urgency}
             footer={[{
               icon: <User size={13} color={C.ink400} />,
@@ -148,32 +156,37 @@ export default function HOCalendarScreen({ onNavigate }: HOCalendarScreenProps) 
   );
 }
 
-const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: C.canvas },
+function createThemedStyles(theme: ThemePalette) {
+  const { Colors, V6Colors } = theme;
+  const C = V6Colors;
+  const styles = StyleSheet.create({
+    screen: { flex: 1, backgroundColor: C.canvas },
 
-  header: {
-    backgroundColor: C.white,
-    paddingHorizontal: Spacing.screenH,
-    paddingBottom: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: '#edf1f4',
-  },
-  headerTitle: { color: C.ink900, fontSize: 21.5, fontWeight: '800', fontFamily: 'Inter', letterSpacing: -0.3 },
+    header: {
+      backgroundColor: C.surface,
+      paddingHorizontal: Spacing.screenH,
+      paddingBottom: 12,
+      borderBottomWidth: 1,
+      borderBottomColor: V6Colors.line,
+    },
+    headerTitle: { color: C.ink900, fontSize: 21.5, fontWeight: '800', fontFamily: 'Inter', letterSpacing: -0.3 },
 
-  body: { flex: 1 },
-  bodyContent: { paddingHorizontal: Spacing.screenH, paddingTop: 16, paddingBottom: 20 },
+    body: { flex: 1 },
+    bodyContent: { paddingHorizontal: Spacing.screenH, paddingTop: 16, paddingBottom: 20 },
 
-  calendarCard: {
-    backgroundColor: C.white, borderRadius: V6Radii.card, padding: 4,
-    borderWidth: 1, borderColor: C.line, marginBottom: 20,
-    ...V6Shadows.sm,
-  },
-  selectedDateHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 11 },
-  selectedDateTitle: { color: C.ink900, fontSize: 16, fontWeight: '800', fontFamily: 'Inter' },
-  textLink: { color: C.cyan700, fontSize: 14.5, fontWeight: '700', fontFamily: 'Inter' },
+    calendarCard: {
+      backgroundColor: C.surface, borderRadius: V6Radii.card, padding: 4,
+      borderWidth: 1, borderColor: C.line, marginBottom: 20,
+      ...V6Shadows.sm,
+    },
+    selectedDateHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 11 },
+    selectedDateTitle: { color: C.ink900, fontSize: 16, fontWeight: '800', fontFamily: 'Inter' },
+    textLink: { color: V6Colors.link, fontSize: 14.5, fontWeight: '700', fontFamily: 'Inter' },
 
-  emptyState: { alignItems: 'center', paddingVertical: 44, paddingHorizontal: 22 },
-  emptyTitle: { color: C.ink800, fontSize: 16, fontWeight: '700', fontFamily: 'Inter', marginTop: 10, marginBottom: 4 },
-  emptyText: { color: C.ink400, fontSize: 14, fontFamily: 'Inter', textAlign: 'center', lineHeight: 17 },
+    emptyState: { alignItems: 'center', paddingVertical: 44, paddingHorizontal: 22 },
+    emptyTitle: { color: C.ink800, fontSize: 16, fontWeight: '700', fontFamily: 'Inter', marginTop: 10, marginBottom: 4 },
+    emptyText: { color: C.ink400, fontSize: 14, fontFamily: 'Inter', textAlign: 'center', lineHeight: 17 },
 
-});
+  });
+  return { appearance: theme.appearance, Colors, V6Colors, C, styles };
+}

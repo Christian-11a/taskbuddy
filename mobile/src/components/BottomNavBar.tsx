@@ -1,17 +1,10 @@
+import { useThemedStyles, type Palette as ThemePalette } from '../context/ThemeContext';
 import React from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { LucideIcon } from 'lucide-react-native';
-import { Sizes, V6Colors } from '../constants/theme';
-
-const Colors = {
-  ...V6Colors,
-  brandTeal: V6Colors.cyan700,
-  // Mockup's final inactive-icon color (#94a3b8) — not one of the standard
-  // ink tokens, so it's spelled out here rather than approximated.
-  navInactive: '#94a3b8',
-} as const;
+import { Sizes } from '../constants/theme';
 
 export type BottomNavItem<T extends string> = {
   key: T;
@@ -33,6 +26,7 @@ export default function BottomNavBar<T extends string>({
   tabs,
   onTabPress,
 }: BottomNavBarProps<T>) {
+  const { Colors, styles, V6Colors } = useThemedStyles(createThemedStyles);
   // The app is edge-to-edge (enforced on targetSdk 36), so without the real
   // bottom inset the bar renders under the system navigation bar and the OS
   // eats every tap (BUG-002). Drive the bottom padding + height from the inset.
@@ -63,12 +57,12 @@ export default function BottomNavBar<T extends string>({
               activeOpacity={0.85}
             >
               <LinearGradient
-                colors={[Colors.cyan500, Colors.cyan700]}
+                colors={[Colors.cyan700, Colors.cyan900]}
                 start={{ x: 0, y: 0 }}
                 end={{ x: 1, y: 1 }}
                 style={styles.primaryButton}
               >
-                <Icon size={25} color={Colors.white} strokeWidth={2.25} />
+                <Icon size={25} color={Colors.onPrimary} strokeWidth={2.25} />
               </LinearGradient>
             </TouchableOpacity>
           );
@@ -100,60 +94,71 @@ export default function BottomNavBar<T extends string>({
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    backgroundColor: Colors.white,
-    // height and paddingBottom are set inline from the safe-area inset (BUG-002).
-    paddingHorizontal: 12,
-    paddingTop: 7,
-    borderTopWidth: 1,
-    borderTopColor: '#edf1f4',
-    shadowColor: '#0f172a',
-    shadowOffset: { width: 0, height: -4 },
-    shadowOpacity: 0.04,
-    shadowRadius: 16,
-  },
-  tabButton: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 2,
-  },
-  iconWell: {
-    width: 42,
-    height: 38,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  tabLabel: {
-    color: Colors.navInactive,
-    fontSize: 11.5,
-    fontWeight: '600',
-    fontFamily: 'Inter',
-  },
-  tabLabelActive: {
-    color: Colors.brandTeal,
-    fontWeight: '800',
-  },
-  primaryButtonWrap: {
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  primaryButton: {
-    width: 54,
-    height: 54,
-    borderRadius: 27,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: -24,
-    shadowColor: '#0891b2',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.4,
-    shadowRadius: 18,
-    elevation: 8,
-  },
-});
+function createThemedStyles(theme: ThemePalette) {
+  const { V6Colors } = theme;
+  const Colors = {
+    ...V6Colors,
+    brandTeal: V6Colors.link,
+    // Mockup's final inactive-icon color (#94a3b8) — not one of the standard
+    // ink tokens, so it's spelled out here rather than approximated.
+    navInactive: '#94a3b8',
+  } as const;
+  const styles = StyleSheet.create({
+    container: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      backgroundColor: Colors.surface,
+      // height and paddingBottom are set inline from the safe-area inset (BUG-002).
+      paddingHorizontal: 12,
+      paddingTop: 7,
+      borderTopWidth: 1,
+      borderTopColor: V6Colors.line,
+      shadowColor: '#0f172a',
+      shadowOffset: { width: 0, height: -4 },
+      shadowOpacity: 0.04,
+      shadowRadius: 16,
+    },
+    tabButton: {
+      flex: 1,
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 2,
+    },
+    iconWell: {
+      width: 42,
+      height: 38,
+      borderRadius: 12,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    tabLabel: {
+      color: Colors.navInactive,
+      fontSize: 11.5,
+      fontWeight: '600',
+      fontFamily: 'Inter',
+    },
+    tabLabelActive: {
+      color: V6Colors.link,
+      fontWeight: '800',
+    },
+    primaryButtonWrap: {
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    primaryButton: {
+      width: 54,
+      height: 54,
+      borderRadius: 27,
+      alignItems: 'center',
+      justifyContent: 'center',
+      marginTop: -24,
+      shadowColor: '#0891b2',
+      shadowOffset: { width: 0, height: 8 },
+      shadowOpacity: 0.4,
+      shadowRadius: 18,
+      elevation: 8,
+    },
+  });
+  return { Colors, V6Colors, styles };
+}

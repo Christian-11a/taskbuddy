@@ -221,23 +221,26 @@ describe('HireFundingService.createCheckout', () => {
     ).rejects.toThrow(ForbiddenException);
   });
 
-  it('refuses a budget outside what a card may be charged', async () => {
-    const { service } = build({
-      job_applications: [ok(application({ jobs: { ...job, budget: 10 } }))],
-    });
+  it.each([20, 49.99])(
+    'refuses a PHP%s budget before creating card Checkout',
+    async (budget) => {
+      const { service } = build({
+        job_applications: [ok(application({ jobs: { ...job, budget } }))],
+      });
 
-    const err: unknown = await service
-      .createCheckout(
-        client,
-        { application_id: 'app1', app_redirect: APP },
-        BASE,
-      )
-      .catch((e: unknown) => e);
+      const err: unknown = await service
+        .createCheckout(
+          client,
+          { application_id: 'app1', app_redirect: APP },
+          BASE,
+        )
+        .catch((e: unknown) => e);
 
-    expect((err as BadRequestException).getResponse()).toMatchObject({
-      code: 'card_amount_out_of_range',
-    });
-  });
+      expect((err as BadRequestException).getResponse()).toMatchObject({
+        code: 'card_amount_out_of_range',
+      });
+    },
+  );
 
   it('refuses a redirect outside the allowlist before reading anything', async () => {
     const { service, calls } = build({});

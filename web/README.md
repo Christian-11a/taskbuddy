@@ -510,3 +510,28 @@ features that are disabled today.
 |---|---|---|
 | **Email admins on new provider verification** | Send one email to every active admin when a provider submits for verification. Always on, no duplicates, and a failed send must not block the submission. | Replace the disabled Notifications switch with a note once it works. |
 | **Platform name and support email** | Store both once on the server (public read, admin-only update, stale edits rejected, changes audited). Used in the website footer and outgoing emails. **The support mailbox is not created yet**, so the email starts empty and the footer and emails show no contact line until it is set. | Settings shows the email as "Not set yet". Connect the fields and the footer. |
+
+## October 4 review and withdrawal contracts
+
+The dispute page supports participant complaints, cancellation statements and
+appeals, admin clarification, and atomic release/refund decisions. Settled-payment
+cases cannot release/refund a second time. A decision note is required.
+
+Marking a withdrawal paid requires a nonblank bank/GCash reference (1–500
+characters), enforced by both the form and API. This records external delivery;
+it does not call a payout rail. The selected [payout demo](../test-docs/PAYOUT_VERIFICATION.md)
+is a separate local simulator. Deploy matching API/migrations 0039–0045 before
+using the new contracts. Deployed and physical-device evidence is pending.
+
+Local gates: `npm run lint`, `npx --no-install tsc --noEmit`, `npm test`,
+`npm run build`. The production build fetches the existing Google font and
+requires approved network access. The live admin-login test stays skipped
+unless explicitly configured with controlled credentials.
+
+### Release verification (October 4, 2026)
+
+The matching Supabase migrations and Render API are deployed. Web lint,
+TypeScript checks, 227 tests and production build pass; one live-only test is
+skipped. Deployment of this web revision still requires the existing Vercel
+project owner. Local build/test results do not establish deployed admin UI
+behavior. See [release evidence](../test-docs/RELEASE_VERIFICATION.md).

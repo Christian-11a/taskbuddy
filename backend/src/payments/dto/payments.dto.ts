@@ -11,13 +11,13 @@ import {
 /**
  * Bounds are in pesos.
  *
- * The floor is Stripe's own minimum charge for PHP — anything under it is
- * rejected by the API, so catching it here turns a confusing gateway error
- * into a validation message. The ceiling is a blast-radius limit, not a
- * product rule: this is a marketplace wallet for home services, and a
+ * The fixed PHP50 floor leaves room for this account's USD settlement
+ * conversion minimum. Stripe still enforces the converted minimum; this is
+ * TaskBuddy's product floor, not a universal Stripe PHP minimum.
+ * The ceiling is a blast-radius limit, not a product rule: this is a marketplace wallet for home services, and a
  * six-figure top-up is a mistake or a test of our fraud handling.
  */
-export const MIN_TOPUP_PHP = 20;
+export const MIN_TOPUP_PHP = 50;
 export const MAX_TOPUP_PHP = 100_000;
 
 export class CreateTopupDto {

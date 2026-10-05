@@ -14,10 +14,11 @@ function createSupabaseMock(
     data: new Blob([new Uint8Array(fileBytes)]),
     error: null,
   });
+  const storageFrom = jest.fn(() => ({ list, download }));
   const supabase = {
-    admin: { storage: { from: jest.fn(() => ({ list, download })) } },
+    admin: { storage: { from: storageFrom } },
   } as unknown as SupabaseService;
-  return { supabase, list, download };
+  return { supabase, list, download, storageFrom };
 }
 
 describe('UploadsService.assertValidImage', () => {
@@ -125,5 +126,22 @@ describe('UploadsService.assertValidImage', () => {
     await expect(
       service.assertValidImage('verification-docs', 'p1/id.jpg'),
     ).rejects.toThrow(BadRequestException);
+  });
+});
+
+describe('portfolio signed uploads', () => {
+  it('refuses clients before touching storage', async () => {
+    const { supabase, storageFrom } = createSupabaseMock({
+      data: [],
+      error: null,
+    });
+    const service = new UploadsService(supabase);
+    await expect(
+      service.createSignedUpload({ id: 'client', role: 'client' } as never, {
+        bucket: 'provider-portfolio',
+        content_type: 'image/jpeg',
+      }),
+    ).rejects.toThrow('Only providers');
+    expect(storageFrom).not.toHaveBeenCalled();
   });
 });

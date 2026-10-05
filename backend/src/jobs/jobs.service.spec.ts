@@ -1,10 +1,11 @@
 import {
   BadRequestException,
+  ValidationPipe,
   ConflictException,
   ForbiddenException,
 } from '@nestjs/common';
 import { JobsService } from './jobs.service';
-import { IsNotPastInstantConstraint } from './dto/jobs.dto';
+import { IsNotPastInstantConstraint, MineJobsQueryDto } from './dto/jobs.dto';
 import type { SupabaseService } from '../supabase/supabase.service';
 import type { UploadsService } from '../uploads/uploads.service';
 import type { EscrowService } from '../escrow/escrow.service';
@@ -29,7 +30,15 @@ function createSupabaseMock(resultsByTable: Record<string, QueryResult[]>) {
         calls.push({ table, method, args });
         return builder;
       });
-    for (const method of ['select', 'update', 'insert', 'eq', 'in', 'order']) {
+    for (const method of [
+      'select',
+      'update',
+      'insert',
+      'eq',
+      'in',
+      'order',
+      'range',
+    ]) {
       builder[method] = chain(method);
     }
     builder.single = jest.fn(() => Promise.resolve(result));
@@ -216,6 +225,7 @@ describe('JobsService.accept', () => {
     });
     await expect(service.accept(provider, 'j1')).rejects.toBeInstanceOf(
       BadRequestException,
+      ValidationPipe,
     );
   });
 });
@@ -444,24 +454,51 @@ describe('CreateJobDto scheduled_at', () => {
 });
 
 describe('JobsService.complete', () => {
-  it('pays the provider out of escrow and tells them the job closed', async () => {
+  it('returns the persisted warranty when the completion trigger stamps a later update', async () => {
     const { service, calls, releaseIfHeld } = createService({
       jobs: [
-        ok(job({ client_id: 'c1', status: 'in_progress' })),
-        ok(job({ status: 'completed' })),
+        ok(job({ client_id: 'c1', status: 'in_progress', budget: 1500 })),
+        ok(job({ status: 'completed', completed_at: null })),
+        ok(
+          job({
+            status: 'completed',
+            completed_at: '2026-10-04T00:00:00.000Z',
+          }),
+        ),
       ],
       notifications: [ok(null)],
     });
 
-    await service.complete({ id: 'c1' } as Profile, 'j1');
+    const completed = await service.complete({ id: 'c1' } as Profile, 'j1');
+    expect(completed.warranty_expires_at).toBe('2026-10-07T00:00:00.000Z');
 
-    // `releaseIfHeld`, not `release`: a job posted without a budget has no
-    // escrow row and a disputed one is an admin's to decide, but an
-    // already-released hold reached a second time must still raise.
-    expect(releaseIfHeld).toHaveBeenCalledWith('j1');
+    expect(releaseIfHeld).not.toHaveBeenCalled();
     expect(
       calls.find((c) => c.table === 'jobs' && c.method === 'update')?.args[0],
     ).toEqual({ status: 'completed' });
+  });
+
+  it('does not claim a payment is held for a job without a budget', async () => {
+    const { service, calls } = createService({
+      jobs: [
+        ok(job({ status: 'in_progress', budget: null })),
+        ok(job({ status: 'completed' })),
+        ok(
+          job({
+            status: 'completed',
+            completed_at: '2026-10-04T00:00:00.000Z',
+          }),
+        ),
+      ],
+      notifications: [ok(null)],
+    });
+    await service.complete({ id: 'c1' } as Profile, 'j1');
+    expect(
+      calls.find((c) => c.table === 'notifications' && c.method === 'insert')
+        ?.args[0],
+    ).toMatchObject({
+      body: 'The client marked "Fix the sink" as completed. The three-day warranty has started.',
+    });
   });
 
   it('refuses to complete a job that is not under way', async () => {
@@ -690,4 +727,91 @@ describe('JobsService handover fixes', () => {
       ]);
     },
   );
+});
+
+describe('JobsService.mine filters', () => {
+  it.each([
+    ['active', ['open', 'recommending']],
+    ['ongoing', ['assigned', 'confirmed', 'in_progress']],
+    ['completed', ['completed']],
+    ['cancelled', ['cancelled', 'expired']],
+  ] as const)(
+    'filters %s and category before paging, scoped to the client',
+    async (status_group, statuses) => {
+      const { service, calls } = createService({ jobs: [ok([])] });
+      await service.mine({ id: 'c1', role: 'client' } as Profile, {
+        category_id: 2,
+        status_group,
+        limit: 100,
+        offset: 1000,
+      });
+      expect(calls).toContainEqual({
+        table: 'jobs',
+        method: 'eq',
+        args: ['client_id', 'c1'],
+      });
+      expect(calls).toContainEqual({
+        table: 'jobs',
+        method: 'eq',
+        args: ['category_id', 2],
+      });
+      expect(calls).toContainEqual({
+        table: 'jobs',
+        method: 'in',
+        args: ['status', [...statuses]],
+      });
+      expect(calls).toContainEqual({
+        table: 'jobs',
+        method: 'range',
+        args: [1000, 1099],
+      });
+      expect(calls.findIndex((call) => call.method === 'in')).toBeLessThan(
+        calls.findIndex((call) => call.method === 'range'),
+      );
+    },
+  );
+  it('surfaces failures rather than returning an empty owned-job list', async () => {
+    const { service } = createService({
+      jobs: [{ data: null, error: { message: 'Database unavailable' } }],
+    });
+    await expect(service.mine({ id: 'c1' } as Profile)).rejects.toThrow(
+      'Database unavailable',
+    );
+  });
+});
+
+describe('owned-job query validation', () => {
+  const pipe = new ValidationPipe({
+    whitelist: true,
+    forbidNonWhitelisted: true,
+    transform: true,
+  });
+  const metadata = { type: 'query' as const, metatype: MineJobsQueryDto };
+  it.each([
+    { limit: '101' },
+    { limit: '0' },
+    { offset: '-1' },
+    { category_id: '0' },
+    { status_group: 'unknown' },
+  ])('rejects invalid filter/page values %j', async (query) => {
+    await expect(pipe.transform(query, metadata)).rejects.toThrow();
+  });
+  it('accepts and transforms the bounded client request', async () => {
+    await expect(
+      pipe.transform(
+        {
+          category_id: '2',
+          status_group: 'ongoing',
+          limit: '100',
+          offset: '1000',
+        },
+        metadata,
+      ),
+    ).resolves.toEqual({
+      category_id: 2,
+      status_group: 'ongoing',
+      limit: 100,
+      offset: 1000,
+    });
+  });
 });

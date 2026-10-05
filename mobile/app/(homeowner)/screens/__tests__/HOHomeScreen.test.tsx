@@ -5,6 +5,10 @@ import HOHomeScreen from '../HOHomeScreen';
 import { api } from '../../../../src/lib/api';
 import { useAuth } from '../../../../src/context/AuthContext';
 
+jest.mock('../../../../src/context/NotificationsContext', () => ({
+  useNotifications: () => ({ notifications: [], unreadCount: 0, loading: false, error: null, reload: jest.fn() }),
+}));
+
 jest.mock('../../../../src/lib/api', () => ({
   api: {
     wallet: jest.fn(),

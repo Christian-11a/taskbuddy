@@ -7,7 +7,8 @@
  * Only one request can be open at a time (enforced by the API, 0034).
  */
 
-import React, { useState } from 'react';
+import { useThemedStyles, type Palette as ThemePalette } from '../../../src/context/ThemeContext';
+import React, { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   ScrollView,
@@ -18,16 +19,17 @@ import {
   View,
 } from 'react-native';
 import { ArrowLeft, BadgeCheck, Clock, XCircle } from 'lucide-react-native';
-import { Spacing, V6Colors, V6Radii } from '../../../src/constants/theme';
+import { Spacing, V6Radii } from '../../../src/constants/theme';
 import { useHeaderTop } from '../../../src/hooks/useHeaderTop';
+import { useNotifications } from '../../../src/context/NotificationsContext';
 import { useAuth } from '../../../src/context/AuthContext';
+import { useRefreshOnForeground } from '../../../src/hooks/useRefreshOnForeground';
 import { useAsyncData } from '../../../src/hooks/useAsyncData';
 import { api, type SkillRequest, type SkillRequestType } from '../../../src/lib/api';
 import { shortDate } from '../../../src/lib/format';
 import { showToast } from '../../../src/components/Toast';
 import ConfirmationModal from '../../../src/components/ConfirmationModal';
 
-const C = V6Colors;
 const REASON_MIN = 10;
 const REASON_MAX = 500;
 
@@ -36,22 +38,18 @@ const TYPE_OPTIONS: { value: SkillRequestType; label: string; hint: string }[] =
   { value: 'add_secondary', label: 'Add another service', hint: 'Offer a second service alongside your main one.' },
 ];
 
-const STATUS_META: Record<SkillRequest['status'], { label: string; color: string; bg: string }> = {
-  pending: { label: 'Under review', color: '#B45309', bg: '#FFF7ED' },
-  approved: { label: 'Approved', color: '#15803d', bg: '#F0FDF4' },
-  rejected: { label: 'Not approved', color: '#b91c1c', bg: '#FEF2F2' },
-  cancelled: { label: 'Cancelled', color: '#64748b', bg: '#F1F5F9' },
-};
-
 interface SPSkillRequestScreenProps {
   onBack: () => void;
 }
 
 export default function SPSkillRequestScreen({ onBack }: SPSkillRequestScreenProps) {
+  const { C, STATUS_META, styles, V6Colors, appearance } = useThemedStyles(createThemedStyles);
   const headerTop = useHeaderTop();
   const { providerProfile, refreshProfile } = useAuth();
   const categories = useAsyncData(() => api.categories(), []);
-  const requests = useAsyncData(() => api.mySkillRequests(), []);
+  const { notifications } = useNotifications();
+  const serviceNoticeKey = notifications.filter((notice) => notice.data?.request_id).map((notice) => notice.id).join(',');
+  const requests = useAsyncData(() => api.mySkillRequests(), [serviceNoticeKey]);
 
   const [type, setType] = useState<SkillRequestType>('change_primary');
   const [categoryId, setCategoryId] = useState<number | null>(null);
@@ -60,14 +58,21 @@ export default function SPSkillRequestScreen({ onBack }: SPSkillRequestScreenPro
   const [error, setError] = useState<string | null>(null);
   const [confirmCancel, setConfirmCancel] = useState<SkillRequest | null>(null);
 
+  useEffect(() => {
+    void refreshProfile().catch((err: unknown) => setError(err instanceof Error ? err.message : 'Could not refresh your services.'));
+  }, [refreshProfile]);
+
+  useRefreshOnForeground(requests.reload, true);
+  const secondaryServices = providerProfile?.approved_secondary_services ?? [];
   const mainService = providerProfile?.service_categories?.name ?? '—';
   const pending = (requests.data ?? []).find((r) => r.status === 'pending') ?? null;
   const history = (requests.data ?? []).filter((r) => r.status !== 'pending');
-  const choices = (categories.data ?? []).filter((c) => c.id !== providerProfile?.category_id);
-  const canSubmit = !!categoryId && reason.trim().length >= REASON_MIN && !submitting;
+  const offeredIds = new Set([providerProfile?.category_id, ...secondaryServices.map((service) => service.category_id)]);
+  const choices = (categories.data ?? []).filter((c) => !offeredIds.has(c.id));
+  const canSubmit = !!categoryId && !offeredIds.has(categoryId) && reason.trim().length >= REASON_MIN && !submitting;
 
   const submit = async () => {
-    if (!categoryId) {
+    if (!categoryId || offeredIds.has(categoryId)) {
       setError('Choose a service.');
       return;
     }
@@ -97,7 +102,7 @@ export default function SPSkillRequestScreen({ onBack }: SPSkillRequestScreenPro
       showToast('Request cancelled');
       requests.reload();
       // An approval may have landed meanwhile; keep the main service honest.
-      void refreshProfile();
+      await refreshProfile();
     } catch (e) {
       showToast(e instanceof Error ? e.message : 'Could not cancel the request.', 'error');
     }
@@ -122,21 +127,26 @@ export default function SPSkillRequestScreen({ onBack }: SPSkillRequestScreenPro
         <View style={styles.card}>
           <Text style={styles.cardLabel}>MAIN SERVICE</Text>
           <View style={styles.mainRow}>
-            <BadgeCheck size={18} color={C.cyan700} />
+            <BadgeCheck size={18} color={V6Colors.link} />
             <Text style={styles.mainService}>{mainService}</Text>
           </View>
+          {secondaryServices.length > 0 && <>
+            <Text style={styles.cardLabel}>APPROVED ADDITIONAL SERVICES</Text>
+            {secondaryServices.map((service) => <Text key={service.category_id} style={styles.mainService}>{service.service_categories.name}</Text>)}
+          </>}
           <Text style={styles.cardNote}>
             Changes to your services are reviewed by the TaskBuddy team, so clients can trust what
             you're listed for.
           </Text>
         </View>
 
-        {requests.loading && <ActivityIndicator color={C.cyan700} style={{ marginTop: 16 }} />}
+        {requests.loading && <ActivityIndicator color={V6Colors.link} style={{ marginTop: 16 }} />}
+        {!!error && <Text style={styles.error}>{error}</Text>}
 
         {pending && (
           <View style={styles.card}>
             <View style={styles.pendingHead}>
-              <Clock size={16} color="#B45309" />
+              <Clock size={16} color={V6Colors.warningText} />
               <Text style={styles.pendingTitle}>Request under review</Text>
             </View>
             <Text style={styles.pendingBody}>
@@ -194,7 +204,7 @@ export default function SPSkillRequestScreen({ onBack }: SPSkillRequestScreenPro
             </View>
 
             <Text style={styles.fieldLabel}>Why are you qualified?</Text>
-            <TextInput
+            <TextInput keyboardAppearance={appearance}
               style={styles.reasonInput}
               value={reason}
               onChangeText={setReason}
@@ -207,15 +217,13 @@ export default function SPSkillRequestScreen({ onBack }: SPSkillRequestScreenPro
             />
             <Text style={styles.counter}>{reason.length}/{REASON_MAX}</Text>
 
-            {!!error && <Text style={styles.error}>{error}</Text>}
-
             <TouchableOpacity
               style={[styles.submitBtn, !canSubmit && styles.disabled]}
               onPress={() => void submit()}
               disabled={!canSubmit}
               activeOpacity={0.85}
             >
-              {submitting ? <ActivityIndicator color={C.white} /> : <Text style={styles.submitText}>Send to admins</Text>}
+              {submitting ? <ActivityIndicator color={C.onPrimary} /> : <Text style={styles.submitText}>Send to admins</Text>}
             </TouchableOpacity>
           </View>
         )}
@@ -261,67 +269,78 @@ export default function SPSkillRequestScreen({ onBack }: SPSkillRequestScreenPro
   );
 }
 
-const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: C.canvas },
-  header: {
-    flexDirection: 'row', alignItems: 'center', gap: 12,
-    backgroundColor: C.white,
-    paddingHorizontal: Spacing.screenH,
-    paddingBottom: 12,
-    borderBottomWidth: 1, borderBottomColor: C.hairline,
-  },
-  backBtn: {
-    width: 38, height: 38, borderRadius: 12,
-    backgroundColor: C.white, borderWidth: 1, borderColor: C.line,
-    alignItems: 'center', justifyContent: 'center',
-  },
-  headerTitle: { flex: 1, color: C.ink900, fontSize: 19.5, fontWeight: '800', fontFamily: 'Inter' },
-  body: { flex: 1 },
-  bodyContent: { padding: Spacing.screenH, paddingBottom: 32 },
+function createThemedStyles(theme: ThemePalette) {
+  const { Colors, V6Colors } = theme;
+  const C = V6Colors;
+  const STATUS_META: Record<SkillRequest['status'], { label: string; color: string; bg: string }> = {
+    pending: { label: 'Under review', color: V6Colors.warningText, bg: V6Colors.warningSurface },
+    approved: { label: 'Approved', color: V6Colors.successText, bg: V6Colors.successSurface },
+    rejected: { label: 'Not approved', color: V6Colors.dangerText, bg: V6Colors.dangerSurface },
+    cancelled: { label: 'Cancelled', color: V6Colors.ink500, bg: V6Colors.canvas },
+  };
+  const styles = StyleSheet.create({
+    screen: { flex: 1, backgroundColor: C.canvas },
+    header: {
+      flexDirection: 'row', alignItems: 'center', gap: 12,
+      backgroundColor: C.surface,
+      paddingHorizontal: Spacing.screenH,
+      paddingBottom: 12,
+      borderBottomWidth: 1, borderBottomColor: C.hairline,
+    },
+    backBtn: {
+      width: 38, height: 38, borderRadius: 12,
+      backgroundColor: C.surface, borderWidth: 1, borderColor: C.line,
+      alignItems: 'center', justifyContent: 'center',
+    },
+    headerTitle: { flex: 1, color: C.ink900, fontSize: 19.5, fontWeight: '800', fontFamily: 'Inter' },
+    body: { flex: 1 },
+    bodyContent: { padding: Spacing.screenH, paddingBottom: 32 },
 
-  card: { backgroundColor: C.white, borderRadius: V6Radii.card, borderWidth: 1, borderColor: C.line, padding: 16, marginBottom: 14 },
-  cardLabel: { color: C.ink400, fontSize: 11.5, fontWeight: '800', letterSpacing: 0.6, fontFamily: 'Inter' },
-  mainRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 6 },
-  mainService: { color: C.ink900, fontSize: 18, fontWeight: '800', fontFamily: 'Inter' },
-  cardNote: { color: C.ink500, fontSize: 13, fontFamily: 'Inter', lineHeight: 18, marginTop: 8 },
+    card: { backgroundColor: C.surface, borderRadius: V6Radii.card, borderWidth: 1, borderColor: C.line, padding: 16, marginBottom: 14 },
+    cardLabel: { color: C.ink400, fontSize: 11.5, fontWeight: '800', letterSpacing: 0.6, fontFamily: 'Inter' },
+    mainRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 6 },
+    mainService: { color: C.ink900, fontSize: 18, fontWeight: '800', fontFamily: 'Inter' },
+    cardNote: { color: C.ink500, fontSize: 13, fontFamily: 'Inter', lineHeight: 18, marginTop: 8 },
 
-  pendingHead: { flexDirection: 'row', alignItems: 'center', gap: 7 },
-  pendingTitle: { color: '#B45309', fontSize: 14.5, fontWeight: '800', fontFamily: 'Inter' },
-  pendingBody: { color: C.ink700, fontSize: 14, fontFamily: 'Inter', marginTop: 6 },
-  bold: { fontWeight: '800' },
-  reasonQuote: { color: C.ink500, fontSize: 13.5, fontStyle: 'italic', fontFamily: 'Inter', marginTop: 8, lineHeight: 19 },
-  cancelLink: { alignSelf: 'flex-start', marginTop: 10 },
-  cancelLinkText: { color: '#b91c1c', fontSize: 13.5, fontWeight: '700', fontFamily: 'Inter' },
+    pendingHead: { flexDirection: 'row', alignItems: 'center', gap: 7 },
+    pendingTitle: { color: V6Colors.warningText, fontSize: 14.5, fontWeight: '800', fontFamily: 'Inter' },
+    pendingBody: { color: C.ink700, fontSize: 14, fontFamily: 'Inter', marginTop: 6 },
+    bold: { fontWeight: '800' },
+    reasonQuote: { color: C.ink500, fontSize: 13.5, fontStyle: 'italic', fontFamily: 'Inter', marginTop: 8, lineHeight: 19 },
+    cancelLink: { alignSelf: 'flex-start', marginTop: 10 },
+    cancelLinkText: { color: V6Colors.dangerText, fontSize: 13.5, fontWeight: '700', fontFamily: 'Inter' },
 
-  formTitle: { color: C.ink900, fontSize: 16, fontWeight: '800', fontFamily: 'Inter', marginBottom: 10 },
-  option: { flexDirection: 'row', alignItems: 'center', gap: 12, borderWidth: 1, borderColor: C.line, borderRadius: 12, padding: 12, marginBottom: 8 },
-  optionOn: { borderColor: C.cyan600, backgroundColor: C.cyan50 },
-  radio: { width: 18, height: 18, borderRadius: 9, borderWidth: 2, borderColor: C.ink300, alignItems: 'center', justifyContent: 'center' },
-  radioOn: { borderColor: C.cyan700 },
-  radioDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: C.cyan700 },
-  optionLabel: { color: C.ink900, fontSize: 14, fontWeight: '700', fontFamily: 'Inter' },
-  optionHint: { color: C.ink500, fontSize: 12.5, fontFamily: 'Inter', marginTop: 1 },
+    formTitle: { color: C.ink900, fontSize: 16, fontWeight: '800', fontFamily: 'Inter', marginBottom: 10 },
+    option: { flexDirection: 'row', alignItems: 'center', gap: 12, borderWidth: 1, borderColor: C.line, borderRadius: 12, padding: 12, marginBottom: 8 },
+    optionOn: { borderColor: C.cyan600, backgroundColor: C.cyan50 },
+    radio: { width: 18, height: 18, borderRadius: 9, borderWidth: 2, borderColor: C.ink300, alignItems: 'center', justifyContent: 'center' },
+    radioOn: { borderColor: C.cyan700 },
+    radioDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: C.cyan700 },
+    optionLabel: { color: C.ink900, fontSize: 14, fontWeight: '700', fontFamily: 'Inter' },
+    optionHint: { color: C.ink500, fontSize: 12.5, fontFamily: 'Inter', marginTop: 1 },
 
-  fieldLabel: { color: C.ink900, fontSize: 14, fontWeight: '700', fontFamily: 'Inter', marginTop: 10, marginBottom: 8 },
-  chipGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  chip: { borderWidth: 1, borderColor: C.line, borderRadius: 999, paddingHorizontal: 13, paddingVertical: 7, backgroundColor: C.white },
-  chipActive: { backgroundColor: C.cyan700, borderColor: C.cyan700 },
-  chipText: { color: C.ink700, fontSize: 13, fontWeight: '600', fontFamily: 'Inter' },
-  chipTextActive: { color: C.white, fontWeight: '700' },
-  reasonInput: {
-    minHeight: 96, borderWidth: 1, borderColor: '#dce3e9', borderRadius: 12, backgroundColor: '#f8fafc',
-    paddingHorizontal: 12, paddingTop: 10, paddingBottom: 10, fontSize: 14.5, color: C.ink900, fontFamily: 'Inter',
-  },
-  counter: { alignSelf: 'flex-end', color: C.ink400, fontSize: 12, fontFamily: 'Inter', marginTop: 4 },
-  error: { color: '#b91c1c', fontSize: 13.5, fontFamily: 'Inter', marginTop: 6 },
-  submitBtn: { backgroundColor: C.cyan700, borderRadius: 12, minHeight: 46, alignItems: 'center', justifyContent: 'center', marginTop: 12 },
-  submitText: { color: C.white, fontSize: 15, fontWeight: '700', fontFamily: 'Inter' },
-  disabled: { opacity: 0.5 },
+    fieldLabel: { color: C.ink900, fontSize: 14, fontWeight: '700', fontFamily: 'Inter', marginTop: 10, marginBottom: 8 },
+    chipGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+    chip: { borderWidth: 1, borderColor: C.line, borderRadius: 999, paddingHorizontal: 13, paddingVertical: 7, backgroundColor: C.surface },
+    chipActive: { backgroundColor: C.cyan700, borderColor: C.cyan700 },
+    chipText: { color: C.ink700, fontSize: 13, fontWeight: '600', fontFamily: 'Inter' },
+    chipTextActive: { color: C.onPrimary, fontWeight: '700' },
+    reasonInput: {
+      minHeight: 96, borderWidth: 1, borderColor: V6Colors.fieldBorder, borderRadius: 12, backgroundColor: V6Colors.wellBg,
+      paddingHorizontal: 12, paddingTop: 10, paddingBottom: 10, fontSize: 14.5, color: C.ink900, fontFamily: 'Inter',
+    },
+    counter: { alignSelf: 'flex-end', color: C.ink400, fontSize: 12, fontFamily: 'Inter', marginTop: 4 },
+    error: { color: V6Colors.dangerText, fontSize: 13.5, fontFamily: 'Inter', marginTop: 6 },
+    submitBtn: { backgroundColor: C.cyan700, borderRadius: 12, minHeight: 46, alignItems: 'center', justifyContent: 'center', marginTop: 12 },
+    submitText: { color: C.onPrimary, fontSize: 15, fontWeight: '700', fontFamily: 'Inter' },
+    disabled: { opacity: 0.5 },
 
-  sectionTitle: { color: C.ink400, fontSize: 12.5, fontWeight: '800', letterSpacing: 0.6, textTransform: 'uppercase', fontFamily: 'Inter', marginTop: 6, marginBottom: 8 },
-  historyRow: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: C.white, borderWidth: 1, borderColor: C.line, borderRadius: 12, padding: 12, marginBottom: 8 },
-  historyTitle: { color: C.ink900, fontSize: 14, fontWeight: '700', fontFamily: 'Inter' },
-  historyMeta: { color: C.ink400, fontSize: 12.5, fontFamily: 'Inter', marginTop: 1 },
-  pill: { borderRadius: 999, paddingHorizontal: 9, paddingVertical: 4 },
-  pillText: { fontSize: 11.5, fontWeight: '800', fontFamily: 'Inter' },
-});
+    sectionTitle: { color: C.ink400, fontSize: 12.5, fontWeight: '800', letterSpacing: 0.6, textTransform: 'uppercase', fontFamily: 'Inter', marginTop: 6, marginBottom: 8 },
+    historyRow: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: C.surface, borderWidth: 1, borderColor: C.line, borderRadius: 12, padding: 12, marginBottom: 8 },
+    historyTitle: { color: C.ink900, fontSize: 14, fontWeight: '700', fontFamily: 'Inter' },
+    historyMeta: { color: C.ink400, fontSize: 12.5, fontFamily: 'Inter', marginTop: 1 },
+    pill: { borderRadius: 999, paddingHorizontal: 9, paddingVertical: 4 },
+    pillText: { fontSize: 11.5, fontWeight: '800', fontFamily: 'Inter' },
+  });
+  return { appearance: theme.appearance, Colors, V6Colors, C, STATUS_META, styles };
+}

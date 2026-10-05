@@ -92,11 +92,15 @@ describe('renderAppRedirectPage', () => {
 
     expect(html).toContain(`window.location.replace(${JSON.stringify(link)})`);
     expect(html).toContain('<a id="continue"');
-    expect(html).toContain('href="taskbuddy://?access_token=abc&amp;refresh_token=def"');
+    expect(html).toContain(
+      'href="taskbuddy://?access_token=abc&amp;refresh_token=def"',
+    );
   });
 
   it('escapes a link that would otherwise close the attribute or the script', () => {
-    const html = renderAppRedirectPage('taskbuddy://?a="><script>alert(1)</script>');
+    const html = renderAppRedirectPage(
+      'taskbuddy://?a="><script>alert(1)</script>',
+    );
 
     expect(html).not.toContain('"><script>alert(1)');
     expect(html).toContain('&quot;&gt;&lt;script&gt;');

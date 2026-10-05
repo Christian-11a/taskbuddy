@@ -1,0 +1,15 @@
+{
+  "checked_at": "2026-10-04T06:17:57.115240+00:00",
+  "environment": "existing Render API / Stripe test mode / dedicated dummy client",
+  "rejected_amount_php": 20,
+  "rejection": "Converted amount below USD0.50 settlement minimum",
+  "succeeded_amount_php": 50,
+  "livemode_before_confirmation": false,
+  "livemode_after_confirmation": false,
+  "payment_intent_status": "succeeded",
+  "webhook_credit_count": 1,
+  "wallet_balance_after_credit_php": 50,
+  "manual_wallet_credit_used": false,
+  "live_payment_attempted": false,
+  "external_payout_verified": false
+}

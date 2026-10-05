@@ -9,6 +9,7 @@
  *   (category + consents) before completing.
  */
 
+import { useThemedStyles, type Palette as ThemePalette } from '../../../src/context/ThemeContext';
 import React, { useState } from 'react';
 import {
   ActivityIndicator,
@@ -21,20 +22,8 @@ import {
 } from 'react-native';
 import { Home, Wrench } from 'lucide-react-native';
 import type { MobileRole } from '../../../src/lib/api';
-import { V6Colors, V6Radii } from '../../../src/constants/theme';
+import { V6Radii } from '../../../src/constants/theme';
 import { useAuthLayout } from '../../../src/hooks/useAuthLayout';
-
-const C = {
-  ...V6Colors,
-  bg: V6Colors.canvas,
-  dark: V6Colors.ink900,
-  slate: V6Colors.ink500,
-  muted: V6Colors.ink400,
-  cardBorder: V6Colors.line,
-  brandDark: V6Colors.cyan900,
-  brandTeal: V6Colors.cyan700,
-  brandRed: '#ef4444',
-} as const;
 
 interface GoogleRoleSelectionScreenProps {
   /** Called when the user picks Homeowner — no extra fields needed. */
@@ -50,6 +39,7 @@ export default function GoogleRoleSelectionScreen({
   onSelectProvider,
   email,
 }: GoogleRoleSelectionScreenProps) {
+  const { C, styles, V6Colors } = useThemedStyles(createThemedStyles);
   const layout = useAuthLayout();
   const { width, fontScale } = useWindowDimensions();
   const [loading, setLoading] = useState(false);
@@ -70,7 +60,6 @@ export default function GoogleRoleSelectionScreen({
 
   return (
     <View style={[styles.screen, { paddingBottom: layout.paddingBottom }]}>
-
 
       <ScrollView contentContainerStyle={[styles.content, { paddingTop: layout.paddingTop }]} >
         {/* Title block */}
@@ -95,14 +84,14 @@ export default function GoogleRoleSelectionScreen({
             activeOpacity={0.85}
           >
             <View style={[styles.iconCircle, styles.iconCircleHO]}>
-              <Home size={31} color={C.brandTeal} />
+              <Home size={31} color={V6Colors.link} />
             </View>
             <Text style={styles.cardTitle}>Client</Text>
             <Text style={styles.cardDesc}>
               Post jobs and hire trusted local service providers.
             </Text>
             {loading ? (
-              <ActivityIndicator color={C.brandTeal} style={{ marginTop: 16 }} />
+              <ActivityIndicator color={V6Colors.link} style={{ marginTop: 16 }} />
             ) : (
               <View style={[styles.cardBadge, styles.cardBadgeHO]}>
                 <Text style={[styles.cardBadgeText, styles.cardBadgeTextHO]}>I need help</Text>
@@ -118,7 +107,7 @@ export default function GoogleRoleSelectionScreen({
             activeOpacity={0.85}
           >
             <View style={[styles.iconCircle, styles.iconCircleSP]}>
-              <Wrench size={31} color={C.white} />
+              <Wrench size={31} color={C.onPrimary} />
             </View>
             <Text style={styles.cardTitle}>Service Provider</Text>
             <Text style={styles.cardDesc}>
@@ -140,130 +129,145 @@ export default function GoogleRoleSelectionScreen({
   );
 }
 
-const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: C.bg },
+function createThemedStyles(theme: ThemePalette) {
+  const { Colors, V6Colors } = theme;
+  const C = {
+    ...V6Colors,
+    bg: V6Colors.canvas,
+    dark: V6Colors.ink900,
+    slate: V6Colors.ink500,
+    muted: V6Colors.ink400,
+    cardBorder: V6Colors.line,
+    brandDark: V6Colors.cyan900,
+    brandTeal: V6Colors.cyan700,
+    brandRed: V6Colors.dangerText,
+  } as const;
+  const styles = StyleSheet.create({
+    screen: { flex: 1, backgroundColor: C.bg },
 
-  headerAccent: {
-    position: 'absolute',
-    top: 0, left: 0, right: 0,
-    height: 220,
-    backgroundColor: C.brandDark,
-    borderBottomLeftRadius: 48,
-    borderBottomRightRadius: 48,
-  },
+    headerAccent: {
+      position: 'absolute',
+      top: 0, left: 0, right: 0,
+      height: 220,
+      backgroundColor: C.brandDark,
+      borderBottomLeftRadius: 48,
+      borderBottomRightRadius: 48,
+    },
 
-  content: {
-    flexGrow: 1,
-    width: '100%',
-    maxWidth: 600,
-    alignSelf: 'center',
-    paddingHorizontal: 24,
-    // paddingTop overridden inline with layout.paddingTop (insets.top-based).
-    paddingBottom: 16,
-    justifyContent: 'center',
-  },
+    content: {
+      flexGrow: 1,
+      width: '100%',
+      maxWidth: 600,
+      alignSelf: 'center',
+      paddingHorizontal: 24,
+      // paddingTop overridden inline with layout.paddingTop (insets.top-based).
+      paddingBottom: 16,
+      justifyContent: 'center',
+    },
 
-  titleBlock: { marginBottom: 32, alignItems: 'center' },
-  welcomeLabel: {
-    color: C.brandTeal,
-    fontFamily: 'Inter',
-    fontSize: 15.5,
-    fontWeight: '500',
-    letterSpacing: 0.5,
-    marginBottom: 4,
-  },
-  emailLabel: {
-    color: C.slate,
-    fontFamily: 'Inter',
-    fontSize: 15.5,
-    marginBottom: 24,
-    opacity: 0.85,
-  },
-  title: {
-    color: C.dark,
-    fontFamily: 'Inter',
-    fontSize: 31.5,
-    fontWeight: '700',
-    textAlign: 'center',
-    marginBottom: 8,
-  },
-  subtitle: {
-    color: C.slate,
-    fontFamily: 'Inter',
-    fontSize: 16.5,
-    textAlign: 'center',
-    lineHeight: 21,
-  },
+    titleBlock: { marginBottom: 32, alignItems: 'center' },
+    welcomeLabel: {
+      color: V6Colors.link,
+      fontFamily: 'Inter',
+      fontSize: 15.5,
+      fontWeight: '500',
+      letterSpacing: 0.5,
+      marginBottom: 4,
+    },
+    emailLabel: {
+      color: C.slate,
+      fontFamily: 'Inter',
+      fontSize: 15.5,
+      marginBottom: 24,
+      opacity: 0.85,
+    },
+    title: {
+      color: C.dark,
+      fontFamily: 'Inter',
+      fontSize: 31.5,
+      fontWeight: '700',
+      textAlign: 'center',
+      marginBottom: 8,
+    },
+    subtitle: {
+      color: C.slate,
+      fontFamily: 'Inter',
+      fontSize: 16.5,
+      textAlign: 'center',
+      lineHeight: 21,
+    },
 
-  cardsRow: { flexDirection: 'row', gap: 14, marginBottom: 24 },
+    cardsRow: { flexDirection: 'row', gap: 14, marginBottom: 24 },
 
-  card: {
-    flex: 1,
-    backgroundColor: C.white,
-    borderRadius: V6Radii.card,
-    padding: 20,
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: C.cardBorder,
-    shadowColor: '#0f172a',
-    shadowOpacity: 0.06,
-    shadowOffset: { width: 0, height: 8 },
-    shadowRadius: 16,
-    elevation: 4,
-  },
-  cardLeft: {},
-  cardRight: {},
+    card: {
+      flex: 1,
+      backgroundColor: C.surface,
+      borderRadius: V6Radii.card,
+      padding: 20,
+      alignItems: 'center',
+      borderWidth: 1,
+      borderColor: C.cardBorder,
+      shadowColor: '#0f172a',
+      shadowOpacity: 0.06,
+      shadowOffset: { width: 0, height: 8 },
+      shadowRadius: 16,
+      elevation: 4,
+    },
+    cardLeft: {},
+    cardRight: {},
 
-  iconCircle: {
-    width: 60, height: 60, borderRadius: 30,
-    alignItems: 'center', justifyContent: 'center',
-    marginBottom: 14,
-  },
-  iconCircleHO: { backgroundColor: 'rgba(9,110,139,0.10)' },
-  iconCircleSP: { backgroundColor: C.brandTeal },
+    iconCircle: {
+      width: 60, height: 60, borderRadius: 30,
+      alignItems: 'center', justifyContent: 'center',
+      marginBottom: 14,
+    },
+    iconCircleHO: { backgroundColor: 'rgba(9,110,139,0.10)' },
+    iconCircleSP: { backgroundColor: C.brandTeal },
 
-  cardTitle: {
-    color: C.dark,
-    fontFamily: 'Inter',
-    fontSize: 18.5,
-    fontWeight: '700',
-    textAlign: 'center',
-    marginBottom: 8,
-  },
-  cardDesc: {
-    color: C.slate,
-    fontFamily: 'Inter',
-    fontSize: 14.5,
-    textAlign: 'center',
-    lineHeight: 18,
-    marginBottom: 16,
-  },
+    cardTitle: {
+      color: C.dark,
+      fontFamily: 'Inter',
+      fontSize: 18.5,
+      fontWeight: '700',
+      textAlign: 'center',
+      marginBottom: 8,
+    },
+    cardDesc: {
+      color: C.slate,
+      fontFamily: 'Inter',
+      fontSize: 14.5,
+      textAlign: 'center',
+      lineHeight: 18,
+      marginBottom: 16,
+    },
 
-  cardBadge: {
-    borderRadius: V6Radii.pill,
-    paddingHorizontal: 14,
-    paddingVertical: 7,
-  },
-  cardBadgeHO: { backgroundColor: 'rgba(9,110,139,0.10)' },
-  cardBadgeSP: { backgroundColor: C.brandTeal },
-  cardBadgeText: { fontFamily: 'Inter', fontSize: 14.5, fontWeight: '700' },
-  cardBadgeTextHO: { color: C.brandTeal },
-  cardBadgeTextSP: { color: C.white },
+    cardBadge: {
+      borderRadius: V6Radii.pill,
+      paddingHorizontal: 14,
+      paddingVertical: 7,
+    },
+    cardBadgeHO: { backgroundColor: 'rgba(9,110,139,0.10)' },
+    cardBadgeSP: { backgroundColor: C.brandTeal },
+    cardBadgeText: { fontFamily: 'Inter', fontSize: 14.5, fontWeight: '700' },
+    cardBadgeTextHO: { color: V6Colors.link },
+    cardBadgeTextSP: { color: C.onPrimary },
 
-  errorText: {
-    color: C.brandRed,
-    fontFamily: 'Inter',
-    fontSize: 15.5,
-    textAlign: 'center',
-    marginBottom: 12,
-  },
+    errorText: {
+      color: C.brandRed,
+      fontFamily: 'Inter',
+      fontSize: 15.5,
+      textAlign: 'center',
+      marginBottom: 12,
+    },
 
-  footerNote: {
-    color: C.muted,
-    fontFamily: 'Inter',
-    fontSize: 13.5,
-    textAlign: 'center',
-    lineHeight: 17,
-    paddingHorizontal: 12,
-  },
-});
+    footerNote: {
+      color: C.muted,
+      fontFamily: 'Inter',
+      fontSize: 13.5,
+      textAlign: 'center',
+      lineHeight: 17,
+      paddingHorizontal: 12,
+    },
+  });
+  return { Colors, V6Colors, C, styles };
+}

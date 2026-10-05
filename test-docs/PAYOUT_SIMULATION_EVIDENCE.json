@@ -1,0 +1,76 @@
+{
+  "label": "LOCAL SIMULATION — no real bank/GCash delivery",
+  "before": {
+    "simulated": true,
+    "currency": "PHP",
+    "wallet": {
+      "settled": "1000.00",
+      "available": "1000.00"
+    },
+    "receiver": {
+      "destination": "SIM-RECEIVER-001",
+      "balance": "100.00"
+    },
+    "receipts": [],
+    "withdrawals": [],
+    "reconciled_total": "1100.00"
+  },
+  "reserved": {
+    "simulated": true,
+    "currency": "PHP",
+    "wallet": {
+      "settled": "1000.00",
+      "available": "650.00"
+    },
+    "receiver": {
+      "destination": "SIM-RECEIVER-001",
+      "balance": "100.00"
+    },
+    "receipts": [],
+    "withdrawals": [
+      {
+        "id": "404380bf-d804-47ca-afae-903bf17e3389",
+        "status": "pending",
+        "amount": "350.00",
+        "review_note": null
+      }
+    ],
+    "reconciled_total": "1100.00"
+  },
+  "settlement_reference": "SIM-404380bf-d804-47ca-afae-903bf17e3389",
+  "after": {
+    "simulated": true,
+    "currency": "PHP",
+    "wallet": {
+      "settled": "650.00",
+      "available": "650.00"
+    },
+    "receiver": {
+      "destination": "SIM-RECEIVER-001",
+      "balance": "450.00"
+    },
+    "receipts": [
+      {
+        "withdrawal_id": "404380bf-d804-47ca-afae-903bf17e3389",
+        "destination": "SIM-RECEIVER-001",
+        "amount": "350.00",
+        "reference": "SIM-404380bf-d804-47ca-afae-903bf17e3389"
+      }
+    ],
+    "withdrawals": [
+      {
+        "id": "404380bf-d804-47ca-afae-903bf17e3389",
+        "status": "completed",
+        "amount": "350.00",
+        "review_note": "SIM-404380bf-d804-47ca-afae-903bf17e3389"
+      },
+      {
+        "id": "46cfa017-647f-41e5-82e5-395e6b47710c",
+        "status": "failed",
+        "amount": "200.00",
+        "review_note": "SIMULATED receiver rejection"
+      }
+    ],
+    "reconciled_total": "1100.00"
+  }
+}

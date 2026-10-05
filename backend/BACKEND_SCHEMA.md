@@ -441,11 +441,12 @@ Rules:
 - The `open → recommending` transition happens at most once per job via the timeout path;
   additional runs are only possible with `triggered_by = 'manual'`.
 - Accepting an application (from either an `open` or `recommending` job) sets
-  `jobs.assigned_provider_id`, `assigned_at`, `status = 'assigned'`, and auto-rejects all other
+  `jobs.assigned_provider_id`, `assigned_at`, `status = 'confirmed'` (migration 0039), and auto-rejects all other
   pending applications for that job.
-- The assigned provider then either accepts (`assigned → confirmed`) or declines with a reason
-  (`→ cancelled`, escrow refunded) — see §26.1. Starting work is allowed from either
-  `assigned` or `confirmed`.
+- Hiring confirms the booking and creates a calendar entry using the selected schedule or
+  assignment time. The provider starts actual work (`confirmed → in_progress`) later; no
+  second acceptance is required. Legacy `assigned` records can also start, and migration 0039
+  promotes them to `confirmed`. Pre-start decline still requires a reason — see §26.1.
 - Every status change is recorded in `job_status_history` by trigger.
 - On terminal states (`completed`, `cancelled`, `expired`), backfill
   `recommendation_candidates.was_hired` for all candidates of that job:
@@ -699,7 +700,7 @@ Retraining then reuses the ML repository's `run_training.py` methodology (GroupS
 Do **not** design or implement the following (deliberately deferred; adding them now would
 bloat the schema beyond the validated recommendation flow):
 
-- Provider portfolios and certifications
+- Provider certifications (photo portfolios were added by migration 0044)
 - Multi-category providers (one category per provider for now — matches the model)
 - Push-notification delivery infrastructure (the `notifications` table is the source of truth;
   delivery transport is a later concern)
@@ -847,13 +848,16 @@ partial unique index on `(escrow_id) where status = 'open'` allows only one live
 | Event | Escrow | Wallet movement |
 |---|---|---|
 | Application accepted, `jobs.budget` not null | → `held` | client **debit** (`escrow_hold`) |
-| Job completed | → `released` | provider **credit** (`payout`) |
-| Job cancelled | → `cancelled` | client **credit** (`refund`) |
-| Client raises a dispute | → `disputed` | none — funds frozen |
+| Client confirms completion | remains held for 72-hour warranty | none |
+| Warranty expires without open complaint | → `released` | provider **credit** (`payout`) |
+| Hired job cancellation requested | → `disputed` during response/review | none |
+| Cancellation refund approved or uncontested response expires | → `refunded` | client **credit** (`refund`) |
+| Either participant raises a complaint | → `disputed` | none — funds frozen |
 | Admin resolves `released_to_provider` | → `released` | provider **credit** (`payout`) |
 | Admin resolves `refunded_to_client` | → `refunded` | client **credit** (`refund`) |
 
-Jobs with no budget get no escrow, and every step above no-ops for them.
+Jobs with no budget get no escrow or wallet movement, but participant complaints
+and cancellation review remain available. Migration 0041 allows cases without escrow.
 
 ### Funding a hold
 
@@ -1298,6 +1302,16 @@ selfie for automated verification.
 
 ### 26.1 `'confirmed'` — the provider's answer (migration 0018)
 
+> **Current behavior, migration 0039 (October 4, 2026; local, not applied):** client hiring
+> confirms the booking for both wallet-funded and card-webhook-funded applications. The shared
+> acceptance trigger creates a booking for scheduled and ASAP jobs and the participant chat in
+> the same transaction.
+> Actual work starts only through `POST /jobs/:id/start`. Existing `assigned` jobs are promoted
+> without changing assignment timestamps, schedules, existing bookings, or closed jobs. The
+> `/accept` endpoint remains for older clients; the new mobile UI no longer calls it.
+> Apply 0039 before deploying the changed hire notifications and mobile screens. The original
+> 0018 behavior below is retained as migration history, not the current UX.
+
 `job_status` gains `'confirmed'`, between `'assigned'` and `'in_progress'`:
 
 ```
@@ -1323,7 +1337,8 @@ allowed from `'confirmed'` too — plans change between confirming a job and tur
 a provider who backs out should say so rather than silently not appearing.
 
 **No money moves at this step.** Escrow is placed when the client accepts the application (§18)
-and is released on completion or refunded on cancellation, exactly as before. `'confirmed'` is
+and stays held through the 72-hour completion warranty. Hired-job cancellation
+retains funds during response/review (migrations 0040–0041). `'confirmed'` is
 added to `chk_assignment_consistency`, so a confirmed job still must carry an
 `assigned_provider_id`.
 
@@ -1497,7 +1512,7 @@ GET  /wallet/withdrawals            🔒  own requests
 POST /wallet/withdrawals/:id/cancel 🔒  retract while still pending
 
 GET  /admin/withdrawals             🔒 admin  ?status=pending (default), oldest first
-POST /admin/withdrawals/:id/settle  🔒 admin  { reference? }  → completed
+POST /admin/withdrawals/:id/settle  🔒 admin  { reference }  → completed
 POST /admin/withdrawals/:id/reject  🔒 admin  { reason }      → failed
 ```
 
@@ -2094,7 +2109,7 @@ wallet exactly as it does for a wallet-funded hold (§18), not the card. Two con
 
 ### 29.5 Card-funded payouts go on to Stripe
 
-When a card-funded escrow is released (job completed, or a dispute resolved for the provider),
+When a card-funded escrow is released (the completed job’s 72-hour warranty ends, or an admin resolves a dispute for the provider),
 `escrow_settle` credits the provider's wallet as always **and** marks `transfer_status = 'pending'`
 in the same transaction. `EscrowService.payOut` then starts `ConnectPayoutsService.processEscrow`
 without awaiting it: a slow or failing Stripe call must never hold up a job's completion. It never
@@ -2163,11 +2178,25 @@ two jobs:
 1. **Transfers**: `ConnectPayoutsService.sweep()` retries a `pending` transfer untouched for 5
    minutes (the inline attempt may still be running) and a `failed` one once its backoff has passed
    (1 h after the first failure, 6 h after the second).
-2. **Reconciliation**: an escrow still `held` on a job that is `completed` or `cancelled` and was
-   last updated more than 2 minutes ago is settled with `releaseIfHeld` / `cancelForJob`. The job's
-   status flip and the escrow move are separate calls, and a failure between them used to leave the
-   money held with nothing to retry it. Settlement is conditional, so racing a live request is
-   harmless.
+2. **Warranty settlement and cancellation reconciliation**: completed jobs remain held until
+   72 hours after `completed_at`; cancelled jobs retain the two-minute reconciliation delay.
+   Each query selects at most 50 eligible held escrows, oldest first. Migration 0040 makes
+   `escrow_settle` recheck completion, the deadline, and open disputes while locking the job
+   before its escrow, matching `raise_job_dispute`. A timely complaint freezes the payment;
+   only admin resolution can settle a disputed escrow. The conditional escrow update and
+   ledger insert still ensure that a retry credits nobody twice. Card transfers start only
+   after settlement. Automatic release occurs on the first successful sweep after the deadline,
+   rather than necessarily at the exact second it expires.
+
+`JobsService.complete` records completion without releasing money. Job responses include
+`warranty_expires_at` (completion plus 72 hours, null otherwise), which both mobile role screens
+use for filing eligibility and the displayed deadline. Completed-work complaints are accepted
+strictly before the deadline; at or after it they are rejected. Existing cases remain readable.
+Existing settled escrow is preserved by the migration; historical complaints do not reopen money.
+Deploy migration 0040 with the updated API; an older API’s immediate release attempt will be
+rejected by the settlement guard. Apply 0039 first as usual. Neither migration has been applied
+externally as part of this local implementation.
+
 
 **Verification on a live project:**
 
@@ -2393,7 +2422,9 @@ nothing in the product ever wrote them: the Edit Profile screens send `address` 
 `ProfilesService.updateProfile` now geocodes the address through the shared `GeocodingService`
 (§31) and stores the result, for **both roles** (a homeowner's coordinates prefill job creation):
 
-- A **changed** `address` or `city` is geocoded. If it cannot be verified, the whole save is
+- A valid `location_reference` from autocomplete/reverse lookup saves the exact selected point
+  without forward-geocoding its label again. See the Phase 4 contract below.
+- A **manually changed** `address` or `city` is geocoded. If it cannot be verified, the whole save is
   rejected (below).
 - An **unchanged** address that still has **no coordinates** (every profile saved before this
   change — and the apps resend the address on every save) is geocoded **opportunistically**:
@@ -2547,3 +2578,77 @@ renders, because a Google failure can outlive the screen that started it.
   then posted_at. Existing rows are never changed; reruns do not duplicate rows.
 
 Both migrations are locally tested; production application/deployment is pending.
+
+
+## Phase 2 complaint and cancellation review (0041)
+
+Apply `0039_confirm_jobs_on_hire.sql`, `0040_three_day_warranty.sql`, and `0041_complaints_and_cancellation_review.sql` in numeric order before the matching API release. Migration 0041 makes dispute escrow optional and adds `dispute_entries`, cancellation state/deadline, and `jobs.cancelled_by`. Participant read access follows the job relationship rather than escrow; writes use service-role RPCs only.
+
+Client cancellation before starting freezes held funds and opens a 48-hour provider response window. Agreement or expiry refunds once; contest and cancellation after starting require admin review. Provider decline before starting refunds unless an existing case blocks settlement. The payments scheduler expires pending requests before reconciliation. Completed-work escrow stays held for 72 hours and an open case blocks automatic release.
+
+`raise_job_dispute`, `add_dispute_entry`, `respond_job_cancellation`, `expire_job_cancellations`, and `resolve_job_dispute` own case changes in database transactions. Admin settlement, history, audit, and both participants' notifications commit together. A reason is required; settled/no-payment cases accept only `reviewed`. Appeals reopen review without reopening settled money. Evidence references must belong to the submitting participant and the same job; linked messages cannot be deleted. Photo reads use one-hour signed URLs from `chat-attachments`.
+
+API additions: participant `POST /disputes/:id/entries`, provider `POST /disputes/:id/cancellation-response`, and admin `POST /admin/disputes/:id/clarification`. Job-case reads and admin lists include recorded activity and signed photo evidence. Resolution notes are mandatory. Account deletion blocks all open participant cases, including those without escrow.
+
+Verification is local only: SQL/PGlite covers boundaries, ownership, duplicate settlement, replay, and failure rollback. Migration application, production concurrent requests, storage URLs, scheduler execution and device workflows require controlled integration verification.
+
+
+## Phase 3 notifications (0042)
+
+After 0039–0041, apply `0042_service_request_notifications.sql` and deploy the matching API/mobile changes. It adds transactional service-request acknowledgement/decision notices and service-role-only `review_service_request` and `notification_snapshot` RPCs. Review atomically changes approved services, request status, admin audit and notifications. Remove the older API-side decision producers by deploying this backend; running the old build with the new trigger duplicates decision notices.
+
+Authenticated `GET /notifications/snapshot` returns the latest 50 recipient rows and an uncapped unread count from one database snapshot. `GET /notifications/stream` polls that RPC every five seconds, skips overlapping polls, emits changed snapshots and idle pings, and stops on unsubscribe. Database errors propagate instead of becoming empty lists/counts or successful mutations. Existing best-effort notification producers log write failures without replaying already committed financial operations.
+
+Mobile uses one foreground stream for both roles, pauses it in background, reconciles and refreshes auth on reconnect, and clears it on account changes. Successful read/delete/clear mutations update shared state and reconcile. Chat, service and dispute IDs route taps to Chat, My Services and Dispute Status. Push payloads include a trusted recipient ID; taps without matching recipient context are ignored. New request notices refresh My Services data and the cached profile.
+
+Local tests cover notice atomicity/replay, text/photo single delivery, consistent/scoped snapshots, stream polling/cleanup, reconnect/auth, account isolation, mutations and routing. Live SSE load, registered-device/background delivery and cold-start behavior remain unverified. No new production dependencies are needed.
+
+
+## Phase 4 approved services and profile locations (0043)
+
+`GET /auth/me`'s provider profile and `GET /providers/:id` include `category_id`, primary `service_categories`, and `approved_secondary_services: [{ category_id, service_categories: { id, name } }]`. Only `provider_secondary_categories` rows are offered services; request history is not an eligibility source. Mobile updates its cached profile on service notices and foreground return, and its browse cache varies by account/location/approved categories. Older profile/feed responses cannot overwrite later results or leak through logout.
+
+Apply `0043_approved_services_consistency.sql` after 0042. It reuses 0037's `guard_job_skill` and profile-row lock, extending the assignment trigger to category changes. Primary-service changes during accepted work remain forbidden by the existing guard. Main-service review and hiring retain their shared lock, and 0042 retains atomic service/status/audit/notice decisions. Approved secondary services remain eligible for browsing, matching, applications and hiring.
+
+`GET /geocoding/autocomplete` returns a `location_reference` only for precise suggestions. `GET /geocoding/reverse` returns one for the resolved GPS fix. Both may include canonical `city`. The reference expires exactly 15 minutes after issuance, is bound to the authenticated account, label and coordinates, and is signed using HMAC-SHA256 with a domain-separated key derived from the configured `SUPABASE_SERVICE_ROLE_KEY`. It contains no API credential. Instances sharing the configured key can verify it; changing that key invalidates outstanding references. No new config or secret is introduced.
+
+`PATCH /profiles/me` accepts optional string `location_reference` (1–4096 characters) with a nonempty matching `address`. If canonical city is present, a supplied city must match it. The signature/account/label/expiry must validate before any update. Valid references save their exact coordinates and canonical city without another geocode. Expired references return an actionable 400 asking for another selection. Raw client latitude/longitude, null/invalid references and mismatched labels/accounts/cities are refused. References are transient request fields and are not persisted. Manual edits invalidate the mobile reference, and manual address geocoding retains the existing street/confidence requirements.
+
+Local validation covers exact point save patches, HTTP validation, tampering, cross-account use, exact expiry, multi-instance signatures, service eligibility, rollback and migration replay. SQL/PGlite does not prove contention on separate production connections. Live Geoapify/device GPS, PostgREST relationship responses and target-database save/reload remain integration checks.
+
+
+## Client My Jobs filtering and paging (Phase 5)
+
+`GET /jobs/mine` remains client-only and always scopes rows to the authenticated owner. Optional query fields: `category_id` (positive integer), `status_group` (`active`, `ongoing`, `completed`, `cancelled`), `limit` (1–100), `offset` (nonnegative integer). Active means open/recommending; ongoing means assigned/confirmed/in-progress; cancelled includes expired. Category and status filters apply before stable `created_at DESC, id DESC` ordering and range selection. Responses retain the job-array contract and review/photo normalization. Database errors propagate rather than returning an empty list. Calls without paging parameters retain the existing behavior.
+
+Mobile My Jobs retrieves every matching page in bounded 100-row requests, retains status/category and scroll through detail navigation, and provides clear/retry/empty states. A failure on a later page does not expose a partial list as complete. Local tests exercise 1,101 results, ownership/filter/range calls, query validation, combinations/reset, and restoration; deployed PostgREST and device interaction remain unverified.
+
+## Provider photo portfolio (migration 0044)
+
+`provider_portfolio` contains provider-owned private image paths, caption (1–400 characters), order (0–10000), optional service category and creation time. A provider-row lock serializes insertion against the 20-entry cap. The private `provider-portfolio` bucket accepts JPEG/PNG/WebP up to 10 MB.
+
+Provider-only `/providers/me/portfolio` POST/PATCH/DELETE mutations enforce owner scope and validate uploaded image ownership/content before publication. GET of the same route returns the owner's gallery; authenticated clients may GET `/providers/:id/portfolio`. Other providers cannot browse portfolios. Deleted/deactivated provider profiles are hidden. Direct authenticated database access has no RLS policy; the guarded API uses service-role queries and issues one-hour image URLs without exposing object paths. Metadata removal does not remove private stored objects or invalidate already issued URLs. Client job images are never copied into portfolios.
+
+## Wallet debit reservations (migration 0045)
+
+`guard_wallet_debit_reservation` runs before ledger inserts and changes to amount,
+direction, status or owner. Owners are immutable. Pending/completed debits acquire
+`wallet_lock(profile_id)` and require sufficient `wallet_available_balance`,
+excluding the old row contribution during an update. A pending withdrawal therefore
+cannot be reused by another debit or escrow/Connect reservation. Insufficiency
+raises `TB402`; ownership changes raise `TB409`. The security-definer trigger
+function has an explicit search path and is not directly executable by public,
+anonymous or authenticated roles. Migration replay recreates the trigger without
+changing ledger balances.
+
+`POST /admin/withdrawals/:id/settle` requires `{ reference: string }`, containing
+non-whitespace text and 1–500 characters. The service trims the reference, records
+it as `review_note`, and conditionally updates only a pending row. This records
+external payment; it does not initiate it. Existing transfers expose
+`stripe_transfer_id` through the wallet overview. Transfers to Stripe and payments
+to an external bank remain different events.
+
+The selected demo is a local-only receiving ledger, described in
+[Phase 9 verification](../test-docs/PAYOUT_VERIFICATION.md); it is not a production
+payout rail. Independent-connection contention, applied migration history and
+external delivery still require controlled target-environment verification.

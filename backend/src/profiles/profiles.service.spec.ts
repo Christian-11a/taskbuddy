@@ -7,7 +7,8 @@ import { ProfilesService } from './profiles.service';
 import type { SupabaseService } from '../supabase/supabase.service';
 import type { UploadsService } from '../uploads/uploads.service';
 import type { WalletService } from '../wallet/wallet.service';
-import type { GeocodingService } from '../geocoding/geocoding.service';
+import { ConfigService } from '@nestjs/config';
+import { GeocodingService } from '../geocoding/geocoding.service';
 import type { Profile } from '../common/types';
 
 type QueryResult = {
@@ -229,6 +230,75 @@ describe('ProfilesService', () => {
           Record<string, unknown> | undefined;
       return { service, geocoding, update };
     }
+
+    it('saves a server-resolved GPS label and point without another street lookup', async () => {
+      const geo = new GeocodingService(
+        new ConfigService({ SUPABASE_SERVICE_ROLE_KEY: 'unit-location-key' }),
+      );
+      const geocode = jest
+        .spyOn(geo, 'geocode')
+        .mockRejectedValue(new Error('Must not forward geocode'));
+      const resolved = geo.issueLocationReference('u1', {
+        latitude: 13.9417,
+        longitude: 121.1631,
+        formatted_address: 'HSSi Building, Lipa, Batangas, Philippines',
+        city: 'Lipa',
+      });
+      const { service, update } = setup(geo);
+      await service.updateProfile(located, {
+        address: resolved.formatted_address,
+        city: resolved.city,
+        location_reference: resolved.location_reference,
+      });
+      expect(geocode).not.toHaveBeenCalled();
+      expect(update()).toEqual({
+        address: resolved.formatted_address,
+        city: 'Lipa',
+        latitude: 13.9417,
+        longitude: 121.1631,
+      });
+      expect(update()).not.toHaveProperty('location_reference');
+    });
+    it('rejects stale, mismatched and foreign confirmations without changing a profile', async () => {
+      const geo = new GeocodingService(
+        new ConfigService({ SUPABASE_SERVICE_ROLE_KEY: 'unit-location-key' }),
+      );
+      const resolved = geo.issueLocationReference('u1', {
+        latitude: 13.94,
+        longitude: 121.16,
+        formatted_address: 'HSSi, Lipa',
+        city: 'Lipa',
+      });
+      const { service, update } = setup(geo);
+      await expect(
+        service.updateProfile(located, {
+          address: 'Different address',
+          location_reference: resolved.location_reference,
+        }),
+      ).rejects.toThrow('does not match');
+      await expect(
+        service.updateProfile(
+          { ...located, id: 'u2' },
+          {
+            address: resolved.formatted_address,
+            location_reference: resolved.location_reference,
+          },
+        ),
+      ).rejects.toThrow('does not match');
+      await expect(
+        service.updateProfile(located, {
+          address: resolved.formatted_address,
+          city: 'Quezon City',
+          location_reference: resolved.location_reference,
+        }),
+      ).rejects.toThrow('City does not match');
+      await expect(
+        service.updateProfile(located, {
+          location_reference: resolved.location_reference,
+        }),
+      ).rejects.toThrow('An address is required');
+      expect(update()).toBeUndefined();
+    });
 
     it('geocodes a new address with its city and stores the coordinates', async () => {
       const { service, geocoding, update } = setup();
@@ -492,6 +562,7 @@ describe('ProfilesService', () => {
         { data: null, error: null, count: 0 }, // pending withdrawals
         { data: [], error: null }, // escrow held/disputed
         { data: null, error: null, count: 0 }, // active jobs
+        { data: null, error: null, count: 0 }, // open complaints
         { data: null, error: null }, // profiles update
       ];
     }
@@ -565,6 +636,7 @@ describe('ProfilesService', () => {
         { data: null, error: null, count: 1 }, // a pending withdrawal
         { data: [{ status: 'held' }, { status: 'disputed' }], error: null },
         { data: null, error: null, count: 2 }, // active jobs
+        { data: null, error: null, count: 1 }, // open complaints
       ]);
       const service = new ProfilesService(
         supabase,
@@ -584,6 +656,22 @@ describe('ProfilesService', () => {
           ],
         },
       });
+    });
+
+    it('blocks deletion for an open complaint even when there is no escrow', async () => {
+      const results = clearResults();
+      results[3] = { data: null, error: null, count: 1 };
+      const { supabase, calls } = createSupabaseMock(results);
+      const service = new ProfilesService(
+        supabase,
+        createUploadsMock(),
+        createWalletMock(0),
+        createGeocodingMock(),
+      );
+      await expect(service.deleteAccount(user, 'token')).rejects.toMatchObject({
+        response: { blockers: [{ code: 'open_dispute' }] },
+      });
+      expect(calls.some((c) => c.method === 'update')).toBe(false);
     });
 
     it('takes a deleted provider out of the marketplace', async () => {

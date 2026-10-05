@@ -227,19 +227,21 @@ function mapDisputeRow(
 ): Dispute {
   const linked = txnByJob.get(row.job_id);
   return {
+    ...(row.entries && { entries: row.entries }),
+    ...(row.escrow_id !== undefined && { hasPayment: row.escrow_id !== null }),
     id: row.id,
     jobId: row.job_id,
     jobTitle: row.jobs?.title ?? linked?.service ?? "Unknown job",
     service: row.jobs?.service_categories?.name ?? linked?.service ?? "Uncategorized",
-    clientName: linked?.customerName ?? "Unknown homeowner",
-    providerName: linked?.providerName ?? "Unknown provider",
+    clientName: row.jobs?.client?.full_name ?? linked?.customerName ?? "Unknown homeowner",
+    providerName: row.jobs?.provider?.full_name ?? linked?.providerName ?? "Unknown provider",
     amount: Number(row.escrow_transactions?.amount ?? linked?.amount ?? 0),
     reason: row.reason,
     details: row.details,
     status: DISPUTE_STATUS[row.status] ?? "OPEN",
     resolution: row.resolution ? DISPUTE_RESOLUTION[row.resolution] : null,
     resolutionNote: row.resolution_note,
-    paymentSettled: ["released", "refunded", "cancelled"].includes(row.escrow_transactions?.status ?? ""),
+    paymentSettled: row.escrow_id === null || ["released", "refunded", "cancelled"].includes(row.escrow_transactions?.status ?? ""),
     createdAt: row.created_at,
     resolvedAt: row.resolved_at,
   };
@@ -302,6 +304,7 @@ function mapAuditRow(row: AdminActionApiRow): AuditAction {
 
 function mapMessageRow(row: AdminMessageApiRow): ConversationMessage {
   return {
+    ...(row.attachment_url !== undefined && { attachmentUrl: row.attachment_url }),
     id: row.id,
     senderName: row.sender_name ?? "Unknown",
     body: row.body,
@@ -593,8 +596,8 @@ export async function getWithdrawals(status: "pending" | "completed" | "failed" 
   return { items: rows.map(mapWithdrawalRow), total: rows.length };
 }
 
-export async function settleWithdrawal(id: string, reference?: string): Promise<AdminWithdrawal> {
-  const row = await client.post<AdminWithdrawalApiRow>(`/admin/withdrawals/${id}/settle`, reference?.trim() ? { reference: reference.trim() } : {});
+export async function settleWithdrawal(id: string, reference: string): Promise<AdminWithdrawal> {
+  const row = await client.post<AdminWithdrawalApiRow>(`/admin/withdrawals/${id}/settle`, { reference: reference.trim() });
   return mapWithdrawalRow(row);
 }
 
@@ -1066,4 +1069,8 @@ export async function approveSkillRequest(id: string, note?: string): Promise<vo
 
 export async function rejectSkillRequest(id: string, note?: string): Promise<void> {
   await client.post(`/admin/skill-requests/${id}/reject`, note ? { note } : undefined);
+}
+
+export async function requestDisputeClarification(id: string, body: string): Promise<void> {
+  await client.post(`/admin/disputes/${id}/clarification`, { body });
 }

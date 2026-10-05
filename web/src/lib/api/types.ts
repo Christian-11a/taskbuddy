@@ -170,7 +170,7 @@ export interface AdminTransactionApiRow {
   amount: number | string;
   status: EscrowStatusApi;
   held_at: string;
-  jobs: { title: string; service_categories: { name: string } | null } | null;
+  jobs: { title: string; service_categories: { name: string } | null; client?: { full_name: string }; provider?: { full_name: string } } | null;
   client: { id: string; full_name: string } | null;
   provider: { id: string; full_name: string } | null;
   /**
@@ -203,6 +203,8 @@ export type DisputeStatusApi = "open" | "resolved" | "cancelled";
 export type DisputeResolutionApi = "released_to_provider" | "refunded_to_client" | "reviewed";
 
 export interface AdminDisputeApiRow {
+  escrow_id?: string | null;
+  entries?: import("../domain").CaseEntry[];
   id: string;
   job_id: string;
   reason: string;
@@ -212,7 +214,7 @@ export interface AdminDisputeApiRow {
   resolution_note: string | null;
   created_at: string;
   resolved_at: string | null;
-  jobs: { title: string; service_categories: { name: string } | null } | null;
+  jobs: { title: string; service_categories: { name: string } | null; client?: { full_name: string }; provider?: { full_name: string } } | null;
   /** Postgres numeric arrives as a string over PostgREST. */
   escrow_transactions: { amount: number | string; status: EscrowStatusApi } | null;
   /** The client or assigned provider who requested admin review. */
@@ -350,6 +352,7 @@ export interface BroadcastApiResponse {
 }
 
 export interface AdminMessageApiRow {
+  attachment_url?: string | null;
   id: string;
   sender_id: string;
   sender_name: string | null;

@@ -64,13 +64,14 @@ export class PushScheduler {
   }
 
   private async deliverPending() {
-    const { data: pending } = await this.supabase.admin
+    const { data: pending, error } = await this.supabase.admin
       .from('notifications')
       .select('id, recipient_id, type, title, body, data')
       .is('pushed_at', null)
       .order('created_at', { ascending: true })
       .limit(CLAIM_LIMIT);
 
+    if (error) throw new Error(`Notification read failed: ${error.message}`);
     const rows = (pending ?? []) as NotificationRow[];
     if (rows.length === 0) return;
 
@@ -108,9 +109,10 @@ export class PushScheduler {
           // which screen; `data` already holds the job/application id the
           // trigger recorded.
           data: {
-            notification_id: row.id,
-            type: row.type,
             ...(row.data ?? {}),
+            notification_id: row.id,
+            recipient_id: row.recipient_id,
+            type: row.type,
           },
         });
       }

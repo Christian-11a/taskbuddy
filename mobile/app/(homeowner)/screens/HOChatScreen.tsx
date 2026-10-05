@@ -13,6 +13,7 @@
  * which has no real functionality behind it.
  */
 
+import { useThemedStyles, type Palette as ThemePalette } from '../../../src/context/ThemeContext';
 import React, { useEffect, useState, useRef } from 'react';
 import {
   ActivityIndicator,
@@ -35,10 +36,9 @@ import {
 } from 'lucide-react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { requestAppPermission } from '../../../src/lib/permissions';
-import { Spacing, V6Colors } from '../../../src/constants/theme';
+import { Spacing } from '../../../src/constants/theme';
 import { useHeaderTop } from '../../../src/hooks/useHeaderTop';
 
-const C = V6Colors;
 import { useAuth } from '../../../src/context/AuthContext';
 import {
   api,
@@ -56,6 +56,7 @@ interface HOChatScreenProps {
 }
 
 export default function HOChatScreen({ jobId, onBack, onViewJob }: HOChatScreenProps) {
+  const { C, styles, V6Colors, appearance } = useThemedStyles(createThemedStyles);
   const headerTop = useHeaderTop();
   const { profile } = useAuth();
   const [conversation, setConversation] = useState<Conversation | null>(null);
@@ -71,6 +72,7 @@ export default function HOChatScreen({ jobId, onBack, onViewJob }: HOChatScreenP
     let active = true;
     let stopStream: (() => void) | undefined;
     (async () => {
+      setMessages([]);
       setLoading(true);
       setError(null);
       try {
@@ -109,7 +111,7 @@ export default function HOChatScreen({ jobId, onBack, onViewJob }: HOChatScreenP
       const msg = await api.sendMessage(conversation.id, body);
       setMessages((previous) => mergeMessageById(previous, msg));
       setText('');
-      setTimeout(() => listRef.current?.scrollToEnd({ animated: true }), 100);
+      setTimeout(() => listRef.current?.scrollToOffset({ offset: 0, animated: true }), 100);
     } catch {
       // Keep the text so the user can retry.
     } finally {
@@ -130,7 +132,7 @@ export default function HOChatScreen({ jobId, onBack, onViewJob }: HOChatScreenP
       const path = await api.uploadImage('chat-attachments', result.assets[0].uri);
       const msg = await api.sendMessage(conversation.id, '', path);
       setMessages((previous) => mergeMessageById(previous, msg));
-      setTimeout(() => listRef.current?.scrollToEnd({ animated: true }), 100);
+      setTimeout(() => listRef.current?.scrollToOffset({ offset: 0, animated: true }), 100);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not send the photo.');
     } finally {
@@ -181,7 +183,7 @@ export default function HOChatScreen({ jobId, onBack, onViewJob }: HOChatScreenP
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         keyboardVerticalOffset={0}
       >
-        {loading && <ActivityIndicator style={{ marginTop: 30 }} color={C.cyan700} />}
+        {loading && <ActivityIndicator style={{ marginTop: 30 }} color={V6Colors.link} />}
         {!!error && !loading && <Text style={styles.stateText}>{error}</Text>}
         {!loading && !error && messages.length === 0 && (
           <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
@@ -190,12 +192,13 @@ export default function HOChatScreen({ jobId, onBack, onViewJob }: HOChatScreenP
         )}
         <FlatList keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag"
           ref={listRef}
-          data={messages}
+          inverted
+          data={[...messages].reverse()}
           renderItem={renderBubble}
           keyExtractor={(item) => item.id}
           contentContainerStyle={styles.chatContent}
           showsVerticalScrollIndicator={false}
-          onLayout={() => listRef.current?.scrollToEnd()}
+          onLayout={() => listRef.current?.scrollToOffset({ offset: 0, animated: false })}
         />
 
         {/* Composer — matches .chat-composer */}
@@ -212,7 +215,7 @@ export default function HOChatScreen({ jobId, onBack, onViewJob }: HOChatScreenP
               <Paperclip size={20} color={C.ink500} />
             )}
           </TouchableOpacity>
-          <TextInput
+          <TextInput keyboardAppearance={appearance}
             style={styles.chatInput}
             placeholder="Message…"
             placeholderTextColor={C.ink400}
@@ -227,7 +230,7 @@ export default function HOChatScreen({ jobId, onBack, onViewJob }: HOChatScreenP
             activeOpacity={0.85}
             disabled={!text.trim()}
           >
-            <ArrowRight size={18} color={C.white} />
+            <ArrowRight size={18} color={C.onPrimary} />
           </TouchableOpacity>
         </View>
       </KeyboardAvoidingView>
@@ -235,72 +238,77 @@ export default function HOChatScreen({ jobId, onBack, onViewJob }: HOChatScreenP
   );
 }
 
-const styles = StyleSheet.create({
-  flex: { flex: 1 },
-  screen: { flex: 1, backgroundColor: C.canvas },
+function createThemedStyles(theme: ThemePalette) {
+  const { Colors, V6Colors } = theme;
+  const C = V6Colors;
+  const styles = StyleSheet.create({
+    flex: { flex: 1 },
+    screen: { flex: 1, backgroundColor: C.canvas },
 
-  header: {
-    flexDirection: 'row', alignItems: 'center', gap: 10,
-    backgroundColor: C.white,
-    paddingHorizontal: Spacing.screenH,
-    paddingBottom: 12,
-    borderBottomWidth: 1, borderBottomColor: '#edf1f4',
-  },
-  backBtn: {
-    width: 38, height: 38, borderRadius: 12,
-    backgroundColor: C.white, borderWidth: 1, borderColor: '#e8edf2',
-    alignItems: 'center', justifyContent: 'center',
-  },
-  headerAvatar: {
-    width: 36, height: 36, borderRadius: 12,
-    backgroundColor: C.cyan600, alignItems: 'center', justifyContent: 'center',
-  },
-  headerAvatarText: { color: C.white, fontSize: 14, fontWeight: '800', fontFamily: 'Inter' },
-  headerInfo: { flex: 1 },
-  headerName: { color: C.ink900, fontSize: 16, fontWeight: '800', fontFamily: 'Inter' },
-  headerStatus: { color: '#16a34a', fontSize: 12, fontWeight: '600', fontFamily: 'Inter', marginTop: 1 },
-  viewJobLink: { color: C.cyan700, fontSize: 14, fontWeight: '700', fontFamily: 'Inter' },
+    header: {
+      flexDirection: 'row', alignItems: 'center', gap: 10,
+      backgroundColor: C.surface,
+      paddingHorizontal: Spacing.screenH,
+      paddingBottom: 12,
+      borderBottomWidth: 1, borderBottomColor: V6Colors.line,
+    },
+    backBtn: {
+      width: 38, height: 38, borderRadius: 12,
+      backgroundColor: C.surface, borderWidth: 1, borderColor: V6Colors.line,
+      alignItems: 'center', justifyContent: 'center',
+    },
+    headerAvatar: {
+      width: 36, height: 36, borderRadius: 12,
+      backgroundColor: C.cyan700, alignItems: 'center', justifyContent: 'center',
+    },
+    headerAvatarText: { color: C.onPrimary, fontSize: 14, fontWeight: '800', fontFamily: 'Inter' },
+    headerInfo: { flex: 1 },
+    headerName: { color: C.ink900, fontSize: 16, fontWeight: '800', fontFamily: 'Inter' },
+    headerStatus: { color: V6Colors.successText, fontSize: 12, fontWeight: '600', fontFamily: 'Inter', marginTop: 1 },
+    viewJobLink: { color: V6Colors.link, fontSize: 14, fontWeight: '700', fontFamily: 'Inter' },
 
-  chatContent: { paddingHorizontal: 16, paddingVertical: 16, gap: 10 },
-  stateText: { color: C.ink500, fontSize: 15.5, fontFamily: 'Inter', textAlign: 'center', marginTop: 20 },
+    chatContent: { paddingHorizontal: 16, paddingVertical: 16, gap: 10 },
+    stateText: { color: C.ink500, fontSize: 15.5, fontFamily: 'Inter', textAlign: 'center', marginTop: 20 },
 
-  bubbleWrap: { maxWidth: '75%' },
-  bubbleWrapSent: { alignSelf: 'flex-end' },
-  bubbleWrapReceived: { alignSelf: 'flex-start' },
-  bubble: { paddingHorizontal: 14, paddingVertical: 10 },
-  bubbleSent: {
-    backgroundColor: C.cyan600, borderColor: 'transparent',
-    borderTopLeftRadius: 16, borderTopRightRadius: 4, borderBottomLeftRadius: 16, borderBottomRightRadius: 16,
-  },
-  bubbleReceived: {
-    backgroundColor: C.white, borderWidth: 1, borderColor: C.ink100,
-    borderTopLeftRadius: 4, borderTopRightRadius: 16, borderBottomLeftRadius: 16, borderBottomRightRadius: 16,
-  },
-  bubbleText: { fontFamily: 'Inter', fontSize: 14.5, color: C.ink900, lineHeight: 18 },
-  bubbleTextSent: { color: C.white },
-  bubbleImage: {
-    width: 200, height: 150, borderRadius: 10, marginBottom: 6,
-  },
-  bubbleTime: { fontFamily: 'Inter', fontSize: 11, color: C.ink300, marginTop: 4 },
-  bubbleTimeSent: { textAlign: 'right' },
+    bubbleWrap: { maxWidth: '75%' },
+    bubbleWrapSent: { alignSelf: 'flex-end' },
+    bubbleWrapReceived: { alignSelf: 'flex-start' },
+    bubble: { paddingHorizontal: 14, paddingVertical: 10 },
+    bubbleSent: {
+      backgroundColor: C.cyan700, borderColor: 'transparent',
+      borderTopLeftRadius: 16, borderTopRightRadius: 4, borderBottomLeftRadius: 16, borderBottomRightRadius: 16,
+    },
+    bubbleReceived: {
+      backgroundColor: C.surface, borderWidth: 1, borderColor: C.ink100,
+      borderTopLeftRadius: 4, borderTopRightRadius: 16, borderBottomLeftRadius: 16, borderBottomRightRadius: 16,
+    },
+    bubbleText: { fontFamily: 'Inter', fontSize: 14.5, color: C.ink900, lineHeight: 18 },
+    bubbleTextSent: { color: C.onPrimary },
+    bubbleImage: {
+      width: 200, height: 150, borderRadius: 10, marginBottom: 6,
+    },
+    bubbleTime: { fontFamily: 'Inter', fontSize: 11, color: C.ink300, marginTop: 4 },
+    bubbleTimeSent: { textAlign: 'right' },
 
-  composer: {
-    flexDirection: 'row', alignItems: 'center', gap: 8,
-    paddingHorizontal: 14, paddingTop: 10, paddingBottom: 24,
-    backgroundColor: C.white, borderTopWidth: 1, borderTopColor: C.line,
-  },
-  attachBtn: {
-    width: 40, height: 40, borderRadius: 12,
-    backgroundColor: '#f4f7f9', alignItems: 'center', justifyContent: 'center',
-  },
-  chatInput: {
-    flex: 1, minWidth: 0, borderWidth: 1, borderColor: '#dce3e9', borderRadius: 14,
-    paddingHorizontal: 13, paddingVertical: 11, maxHeight: 100,
-    fontFamily: 'Inter', fontSize: 14.5, color: C.ink900,
-  },
-  sendBtn: {
-    width: 42, height: 42, borderRadius: 12,
-    backgroundColor: C.cyan700, alignItems: 'center', justifyContent: 'center',
-  },
-  sendBtnDisabled: { opacity: 0.4 },
-});
+    composer: {
+      flexDirection: 'row', alignItems: 'center', gap: 8,
+      paddingHorizontal: 14, paddingTop: 10, paddingBottom: 24,
+      backgroundColor: C.surface, borderTopWidth: 1, borderTopColor: C.line,
+    },
+    attachBtn: {
+      width: 40, height: 40, borderRadius: 12,
+      backgroundColor: V6Colors.wellBg, alignItems: 'center', justifyContent: 'center',
+    },
+    chatInput: {
+      flex: 1, minWidth: 0, borderWidth: 1, borderColor: V6Colors.fieldBorder, borderRadius: 14,
+      paddingHorizontal: 13, paddingVertical: 11, maxHeight: 100,
+      fontFamily: 'Inter', fontSize: 14.5, color: C.ink900,
+    },
+    sendBtn: {
+      width: 42, height: 42, borderRadius: 12,
+      backgroundColor: C.cyan700, alignItems: 'center', justifyContent: 'center',
+    },
+    sendBtnDisabled: { opacity: 0.4 },
+  });
+  return { appearance: theme.appearance, Colors, V6Colors, C, styles };
+}

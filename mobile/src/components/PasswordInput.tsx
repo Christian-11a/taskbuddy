@@ -1,3 +1,4 @@
+import { useThemedStyles, type Palette as ThemePalette } from '../context/ThemeContext';
 import React, { forwardRef, useState } from 'react';
 import {
   StyleProp,
@@ -10,7 +11,6 @@ import {
   ViewStyle,
 } from 'react-native';
 import { Eye, EyeOff } from 'lucide-react-native';
-import { V6Colors } from '../constants/theme';
 
 interface PasswordInputProps extends Omit<TextInputProps, 'secureTextEntry' | 'style'> {
   /** The bordered box around the field — each screen keeps its own look. */
@@ -24,13 +24,14 @@ interface PasswordInputProps extends Omit<TextInputProps, 'secureTextEntry' | 's
  * it drops into any form; this only owns the secure-entry state and the eye.
  */
 const PasswordInput = forwardRef<TextInput, PasswordInputProps>(function PasswordInput(
-  { containerStyle, inputStyle, iconColor = V6Colors.ink400, ...inputProps },
+  { containerStyle, inputStyle, iconColor, ...inputProps },
   ref,
 ) {
+  const { V6Colors, styles, appearance } = useThemedStyles(createThemedStyles);
   const [visible, setVisible] = useState(false);
   return (
     <View style={[styles.row, containerStyle]}>
-      <TextInput
+      <TextInput keyboardAppearance={appearance}
         ref={ref}
         autoCapitalize="none"
         autoCorrect={false}
@@ -46,7 +47,7 @@ const PasswordInput = forwardRef<TextInput, PasswordInputProps>(function Passwor
         accessibilityLabel={visible ? 'Hide password' : 'Show password'}
         testID={inputProps.testID ? `${inputProps.testID}-toggle` : undefined}
       >
-        {visible ? <EyeOff size={20} color={iconColor} /> : <Eye size={20} color={iconColor} />}
+        {visible ? <EyeOff size={20} color={iconColor ?? V6Colors.ink400} /> : <Eye size={20} color={iconColor ?? V6Colors.ink400} />}
       </TouchableOpacity>
     </View>
   );
@@ -54,8 +55,12 @@ const PasswordInput = forwardRef<TextInput, PasswordInputProps>(function Passwor
 
 export default PasswordInput;
 
-const styles = StyleSheet.create({
-  row: { flexDirection: 'row', alignItems: 'center' },
-  input: { flex: 1 },
-  eye: { paddingLeft: 8 },
-});
+function createThemedStyles(theme: ThemePalette) {
+  const { Colors, V6Colors } = theme;
+  const styles = StyleSheet.create({
+    row: { flexDirection: 'row', alignItems: 'center' },
+    input: { flex: 1 },
+    eye: { paddingLeft: 8 },
+  });
+  return { appearance: theme.appearance, Colors, V6Colors, styles };
+}

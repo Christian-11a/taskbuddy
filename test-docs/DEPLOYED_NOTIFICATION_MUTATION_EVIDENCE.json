@@ -1,0 +1,15 @@
+{
+  "checked_at": "2026-10-04T10:04:19.534Z",
+  "checks": [
+    "Other recipient cannot delete a notification",
+    "Owner read marks a notice once; replay preserves read timestamp",
+    "Owner delete and replay remove only the selected notice",
+    "Read-all clears unread count in both snapshot and count endpoints",
+    "Clear-all and replay leave an empty list and zero count",
+    "Client notification snapshot is unchanged by provider mutations"
+  ],
+  "scope": "Dedicated QA provider notices cleared; four QA text messages retained. No other account notices changed.",
+  "limits": [
+    "API verification only; native bell, navigation and app return remain pending"
+  ]
+}

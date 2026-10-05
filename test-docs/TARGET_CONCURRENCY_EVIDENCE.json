@@ -1,0 +1,15 @@
+{
+  "checked_at": "2026-10-04T10:09:44Z",
+  "environment": "Existing Supabase target PostgreSQL",
+  "server_version": "17.6",
+  "checks": [
+    "Two independent transactions insert competing PHP30 pending debits against dedicated QA PHP42.50 wallet",
+    "pg_blocking_pids confirms second transaction waits on first transaction",
+    "First rollback releases wallet lock; second insert succeeds",
+    "Both transactions rolled back; neither ledger row persists; available balance unchanged"
+  ],
+  "limits": [
+    "Proves target lock overlap and rollback for common wallet-debit trigger; no external payment rail called",
+    "Committed affordability refusal is covered separately by concurrent deployed API evidence, not this rollback-only transaction test"
+  ]
+}
