@@ -706,8 +706,8 @@ function AppContent() {
           activeTab={hoTab}
           tabs={HOMEOWNER_TABS}
           onTabPress={hoNavigate}
-          // My Jobs has its own "+ New"; Wallet is not a job context.
-          hidePrimary={hoTab === 'My Jobs' || hoTab === 'Wallet'}
+          // My Jobs has its own "+ New" button, so no second one there.
+          hidePrimary={hoTab === 'My Jobs'}
         />
       </View>
     );

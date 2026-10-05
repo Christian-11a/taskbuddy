@@ -40,7 +40,6 @@ export default function Tap({
     <AnimatedPressable
       {...rest}
       android_ripple={{ color: rippleColor ?? palette.V6Colors.ripple, borderless: borderlessRipple, foreground: true }}
-      pressRetentionOffset={{ top: 12, bottom: 12, left: 12, right: 12 }}
       onPressIn={(e) => {
         if (useScale) pressed.set(withTiming(0.97, { duration: DURATION.press, easing: EASE_OUT }));
         onPressIn?.(e);

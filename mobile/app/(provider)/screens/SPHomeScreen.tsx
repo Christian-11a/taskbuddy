@@ -199,7 +199,7 @@ export default function SPHomeScreen({ onNavigate }: SPHomeScreenProps) {
           <View style={styles.statusCopy}>
             <Text style={styles.statusText}>{available ? 'Available for jobs' : 'Not available'}</Text>
             <Text style={styles.statusHint} numberOfLines={2}>
-              {available ? `Clients can invite and hire you · within ${radiusKm} km of ${location}` : "You won't be invited to new jobs."}
+              {available ? 'Clients can invite and hire you' : "You won't be invited to new jobs"} · within {radiusKm} km of {location}
             </Text>
           </View>
           <Switch
@@ -313,6 +313,12 @@ export default function SPHomeScreen({ onNavigate }: SPHomeScreenProps) {
             );
           })}
         </ScrollView>
+
+        {data && (
+          <Text style={styles.feedSummary}>
+            {availableJobs.length} job{availableJobs.length === 1 ? '' : 's'} available around your service area
+          </Text>
+        )}
 
         {!data && (
           <Pulse>
@@ -470,6 +476,7 @@ function createThemedStyles(theme: ThemePalette) {
     },
     skeletonLine: { height: 14, borderRadius: 7, backgroundColor: C.skeleton },
 
+    feedSummary: { color: C.ink500, fontSize: 13.5, fontFamily: 'Inter', marginBottom: 12 },
     emptyState: { alignItems: 'center', paddingVertical: 36, paddingHorizontal: 22 },
     emptyIcon: {
       width: 64, height: 64, borderRadius: 32, backgroundColor: C.primaryTonal,

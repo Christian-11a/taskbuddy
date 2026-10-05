@@ -432,7 +432,8 @@ export default function HOWalletScreen() {
           })}
         </View>
         )}
-        <View style={{ height: 20 }} />
+        {/* Room for the floating "Post a job" button above the nav bar. */}
+        <View style={{ height: 96 }} />
       </ScrollView>
 
       <SheetFrame
