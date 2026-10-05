@@ -20,6 +20,7 @@ import {
   View,
 } from 'react-native';
 import Tap from '../../../src/components/ui/Tap';
+import ContentSkeleton from '../../../src/components/ui/ContentSkeleton';
 import Silhouette from '../../../src/components/ui/Silhouette';
 import {
   ArrowLeft,
@@ -174,7 +175,7 @@ export default function HOJobDetailScreen({ jobId, onBack, onNavigate }: HOJobDe
         <View style={{ width: 38 }} />
       </View>
 
-      {loading && <ActivityIndicator style={{ marginTop: 40 }} color={V6Colors.link} />}
+      {loading && <ContentSkeleton variant="detail" />}
       {!!error && !loading && <Text style={styles.stateText}>{error}</Text>}
 
       {job && (

@@ -18,6 +18,7 @@ import {
   View,
 } from 'react-native';
 import Tap from '../../../src/components/ui/Tap';
+import ContentSkeleton from '../../../src/components/ui/ContentSkeleton';
 import {
   AlertTriangle,
   ArrowLeft,
@@ -136,7 +137,7 @@ export default function SPNotificationsScreen({ onBack, onOpenJob, onOpenChat, o
         contentContainerStyle={styles.bodyContent}
         showsVerticalScrollIndicator={false}
       >
-        {loading && <ActivityIndicator style={{ marginTop: 20 }} color={V6Colors.link} />}
+        {loading && <ContentSkeleton variant="list" />}
         {!!error && !loading && <Text style={styles.stateText}>{error}</Text>}
         {!loading && !error && notifications.length === 0 && (
           <Text style={styles.stateText}>You have no notifications yet.</Text>

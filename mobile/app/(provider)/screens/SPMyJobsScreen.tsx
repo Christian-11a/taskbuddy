@@ -27,6 +27,7 @@ import {
   View,
 } from 'react-native';
 import Tap from '../../../src/components/ui/Tap';
+import ContentSkeleton from '../../../src/components/ui/ContentSkeleton';
 import { Briefcase, CalendarDays, FileText } from 'lucide-react-native';
 import { Spacing } from '../../../src/constants/theme';
 import { useHeaderTop } from '../../../src/hooks/useHeaderTop';
@@ -113,7 +114,7 @@ export default function SPMyJobsScreen({ onNavigate }: SPMyJobsScreenProps) {
       </View>
 
       <ScrollView key={tab} {...scroll} style={styles.body} contentContainerStyle={styles.bodyContent} showsVerticalScrollIndicator={false}>
-        {loading && <ActivityIndicator style={{ marginTop: 30 }} color={V6Colors.link} />}
+        {loading && <ContentSkeleton variant="list" />}
 
         {tab === 'Applications' && !loading && (
           openApplications.length === 0 ? (

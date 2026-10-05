@@ -32,6 +32,7 @@ import {
   View,
 } from 'react-native';
 import Tap from '../../../src/components/ui/Tap';
+import ContentSkeleton from '../../../src/components/ui/ContentSkeleton';
 import Silhouette from '../../../src/components/ui/Silhouette';
 import {
   ArrowLeft,
@@ -187,7 +188,7 @@ export default function SPChatScreen({ jobId, onBack, onViewJob }: SPChatScreenP
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         keyboardVerticalOffset={0}
       >
-        {loading && <ActivityIndicator style={{ marginTop: 30 }} color={V6Colors.link} />}
+        {loading && <ContentSkeleton variant="chat" />}
         {!!error && !loading && <Text style={styles.stateText}>{error}</Text>}
         {!loading && !error && messages.length === 0 && (
           <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>

@@ -31,6 +31,7 @@ import {
   View,
 } from 'react-native';
 import Tap from '../../../src/components/ui/Tap';
+import ContentSkeleton from '../../../src/components/ui/ContentSkeleton';
 import * as AuthSession from 'expo-auth-session';
 import * as WebBrowser from 'expo-web-browser';
 import {
@@ -167,7 +168,7 @@ export default function SPPayoutsScreen({ onBack }: SPPayoutsScreenProps) {
         <Text style={styles.headerTitle}>Payouts</Text>
       </View>
 
-      {loading && !current && <ActivityIndicator style={{ marginTop: 24 }} color={V6Colors.link} />}
+      {loading && !current && <ContentSkeleton variant="list" />}
       {!!error && !current && (
         <View style={styles.centered}>
           <Text style={styles.stateText}>{error}</Text>

@@ -28,6 +28,7 @@ import {
   View,
 } from 'react-native';
 import Tap from '../../../src/components/ui/Tap';
+import ContentSkeleton from '../../../src/components/ui/ContentSkeleton';
 import {
   ArrowLeft,
   Check,
@@ -208,7 +209,7 @@ export default function SPJobDetailScreen({ jobId, onBack, onNavigate }: SPJobDe
         <View style={{ width: 38 }} />
       </View>
 
-      {loading && <ActivityIndicator style={{ marginTop: 40 }} color={V6Colors.link} />}
+      {loading && <ContentSkeleton variant="detail" />}
       {!!error && !loading && <Text style={styles.stateText}>{error}</Text>}
 
       {job && (

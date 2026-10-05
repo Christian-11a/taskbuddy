@@ -19,6 +19,7 @@ import { useThemedStyles, type Palette as ThemePalette } from '../../../src/cont
 import React, { useState } from 'react';
 import { ActivityIndicator, ScrollView, StyleSheet, Text, View } from 'react-native';
 import Tap from '../../../src/components/ui/Tap';
+import ContentSkeleton from '../../../src/components/ui/ContentSkeleton';
 import { Banknote, Building2, Sparkles, WalletCards } from 'lucide-react-native';
 import { Spacing, V6Radii, V6Shadows } from '../../../src/constants/theme';
 import { useHeaderTop } from '../../../src/hooks/useHeaderTop';
@@ -153,7 +154,7 @@ export default function SPWalletScreen() {
         </View>
 
         <Text style={styles.sectionTitle}>Payout History</Text>
-        {loading && <ActivityIndicator style={{ marginTop: 10 }} color={V6Colors.link} />}
+        {loading && <ContentSkeleton variant="list" />}
         {!!error && !loading && <Text style={styles.stateText}>{error}</Text>}
         {!loading && !error && transactions.length === 0 && (
           <View style={styles.emptyState}>

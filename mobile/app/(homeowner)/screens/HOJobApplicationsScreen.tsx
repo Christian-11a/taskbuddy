@@ -41,6 +41,7 @@ import {
   View,
 } from 'react-native';
 import Tap from '../../../src/components/ui/Tap';
+import ContentSkeleton from '../../../src/components/ui/ContentSkeleton';
 import Silhouette from '../../../src/components/ui/Silhouette';
 import { AlertCircle, ArrowLeft, ChevronRight, ShieldAlert, Star } from 'lucide-react-native';
 import { Spacing } from '../../../src/constants/theme';
@@ -227,7 +228,7 @@ export default function HOJobApplicationsScreen({
         <Text style={styles.headerTitle}>Proposals</Text>
       </View>
 
-      {loading && <ActivityIndicator style={{ marginTop: 24 }} color={V6Colors.link} />}
+      {loading && <ContentSkeleton variant="list" />}
       {!!error && !loading && <Text style={styles.stateText}>{error}</Text>}
 
       {!loading && apps && (

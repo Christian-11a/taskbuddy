@@ -29,6 +29,7 @@ import {
   View,
 } from 'react-native';
 import Tap from '../../../src/components/ui/Tap';
+import ContentSkeleton from '../../../src/components/ui/ContentSkeleton';
 import Silhouette from '../../../src/components/ui/Silhouette';
 import { ArrowLeft, BadgeCheck, CheckCircle2, MessageCircle, ShieldAlert, Star } from 'lucide-react-native';
 import { Spacing } from '../../../src/constants/theme';
@@ -83,7 +84,7 @@ export default function HOProviderProfileScreen({
         <Text style={styles.headerTitle}>Provider Profile</Text>
       </View>
 
-      {loading && <ActivityIndicator style={{ marginTop: 24 }} color={V6Colors.link} />}
+      {loading && <ContentSkeleton variant="detail" />}
       {!!error && !loading && <Text style={styles.stateText}>{error}</Text>}
 
       {!loading && provider && (

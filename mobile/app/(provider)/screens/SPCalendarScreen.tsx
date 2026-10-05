@@ -18,6 +18,7 @@ import { useThemedStyles, type Palette as ThemePalette } from '../../../src/cont
 import React, { useMemo, useState } from 'react';
 import { ActivityIndicator, ScrollView, StyleSheet, Text, View } from 'react-native';
 import Tap from '../../../src/components/ui/Tap';
+import ContentSkeleton from '../../../src/components/ui/ContentSkeleton';
 import { Calendar } from 'react-native-calendars';
 import { CalendarDays, UserRound } from 'lucide-react-native';
 import { Spacing, V6Radii, V6Shadows } from '../../../src/constants/theme';
@@ -107,7 +108,7 @@ export default function SPCalendarScreen({ onNavigate }: SPCalendarScreenProps) 
 
         <Text style={styles.sectionTitle}>Your Schedule</Text>
 
-        {loading && <ActivityIndicator style={{ marginTop: 10 }} color={V6Colors.link} />}
+        {loading && <ContentSkeleton variant="list" />}
 
         {!loading && !!error && (
           <View style={styles.emptyState}>
