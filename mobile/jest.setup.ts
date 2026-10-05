@@ -45,6 +45,11 @@ jest.mock('expo-haptics', () => ({
   NotificationFeedbackType: { Success: 'success', Warning: 'warning', Error: 'error' },
 }));
 
+jest.mock('lottie-react-native', () => {
+  const { View } = require('react-native');
+  return { __esModule: true, default: (props: Record<string, unknown>) => require('react').createElement(View, props) };
+});
+
 // Appearance and session persistence use the existing native AsyncStorage module.
 jest.mock('@react-native-async-storage/async-storage', () =>
   require('@react-native-async-storage/async-storage/jest/async-storage-mock'),

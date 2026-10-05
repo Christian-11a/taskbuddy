@@ -64,6 +64,7 @@ import {
 } from 'react-native';
 import Tap from '../../../src/components/ui/Tap';
 import SheetFrame from '../../../src/components/ui/SheetFrame';
+import SuccessMark from '../../../src/components/ui/SuccessMark';
 import {
   ArrowLeft,
   BrushCleaning,
@@ -638,8 +639,15 @@ export default function HOCreateJobScreen({
     return (
       <View style={styles.screen}>
         <ScrollView contentContainerStyle={styles.successScreen}>
-          <View style={styles.successIcon}>
-            <CheckCircle2 size={48} color={V6Colors.link} />
+          <View style={styles.successMarkWrap}>
+            <SuccessMark
+              size={112}
+              fallback={(
+                <View style={styles.successIcon}>
+                  <CheckCircle2 size={48} color={V6Colors.link} />
+                </View>
+              )}
+            />
           </View>
           <Text style={styles.successTitle}>Job Posted!</Text>
           <Text style={styles.successSubtitle}>
@@ -1597,6 +1605,7 @@ function createThemedStyles(theme: ThemePalette) {
 
     // Success
     successScreen: { flexGrow: 1, alignItems: 'center', justifyContent: 'center', padding: 32 },
+    successMarkWrap: { alignItems: 'center', marginBottom: 12 },
     successIcon: {
       width: 100, height: 100, borderRadius: 50,
       backgroundColor: V6Colors.successSurface, alignItems: 'center', justifyContent: 'center', marginBottom: 24,
