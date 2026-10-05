@@ -226,7 +226,7 @@ export default function SPJobDetailScreen({ jobId, onBack, onNavigate }: SPJobDe
                 <MapPin size={17} color={C.ink500} />
                 <View style={{ flex: 1, minWidth: 0 }}>
                   <Text style={styles.factLabel}>Location</Text>
-                  <Text style={styles.factValue} numberOfLines={2}>{job.address}</Text>
+                  <Text style={styles.factValue} numberOfLines={3}>{job.address}</Text>
                   {!!distanceLabel(job.distance_km) && (
                     <Text style={styles.factSub}>{distanceLabel(job.distance_km)}</Text>
                   )}
@@ -360,9 +360,9 @@ export default function SPJobDetailScreen({ jobId, onBack, onNavigate }: SPJobDe
             )}
             {isAssignedToMe && dispute?.status === 'open' && <Text style={styles.lockedBtnText}>{dispute.cancellation_state === 'pending' ? 'Cancellation awaiting your response' : dispute.escrow_transactions?.status === 'disputed' ? 'Payment under admin review' : 'Complaint awaiting admin review'}</Text>}
             {isAssignedToMe && (isCancelled || isConfirmed || isWorking || (isDone && withinWarranty) || dispute) && (
-              <Tap style={styles.primaryBtn}
+              <Tap style={styles.outlineBtn}
                 onPress={() => onNavigate(dispute ? 'Dispute Status' : 'Dispute Filing', job.id)}>
-                <Text style={styles.primaryBtnText}>{dispute ? 'View Dispute Status' : 'File a Complaint'}</Text>
+                <Text style={styles.outlineBtnText}>{dispute ? 'View Dispute Status' : 'File a Complaint'}</Text>
               </Tap>
             )}
             {isDone && job.warranty_expires_at && (
@@ -538,16 +538,16 @@ function createThemedStyles(theme: ThemePalette) {
     },
     trustNoteText: { flex: 1, color: V6Colors.link, fontSize: 12, lineHeight: 16, fontFamily: 'Inter' },
 
-    actionBar: { paddingTop: 16, paddingBottom: 10, gap: 8 },
+    actionBar: { paddingTop: 16, paddingBottom: 10, gap: 10 },
     actionError: { color: V6Colors.dangerText, fontSize: 13.5, fontFamily: 'Inter', textAlign: 'center' },
-    primaryBtn: { backgroundColor: C.cyan700, borderRadius: V6Radii.btn, paddingVertical: 14, alignItems: 'center' },
+    primaryBtn: { backgroundColor: C.cyan700, borderRadius: 16, minHeight: 52, justifyContent: 'center', alignItems: 'center' },
     primaryBtnContent: { flexDirection: 'row', alignItems: 'center', gap: 8 },
     primaryBtnText: { color: C.onPrimary, fontSize: 16.5, fontWeight: '700', fontFamily: 'Inter' },
-    outlineBtn: { borderWidth: 1, borderColor: V6Colors.fieldBorder, borderRadius: V6Radii.btn, paddingVertical: 14, alignItems: 'center' },
-    outlineBtnText: { color: C.ink700, fontSize: 16.5, fontWeight: '700', fontFamily: 'Inter' },
-    outlineDangerBtn: { borderWidth: 1, borderColor: '#ef4444', borderRadius: V6Radii.btn, paddingVertical: 14, alignItems: 'center' },
+    outlineBtn: { borderWidth: 1, borderColor: V6Colors.fieldBorder, borderRadius: 16, minHeight: 52, justifyContent: 'center', alignItems: 'center' },
+    outlineBtnText: { color: C.ink800, fontSize: 16.5, fontWeight: '700', fontFamily: 'Inter' },
+    outlineDangerBtn: { borderWidth: 1, borderColor: V6Colors.dangerBorder, backgroundColor: V6Colors.dangerSurface, borderRadius: 16, minHeight: 52, justifyContent: 'center', alignItems: 'center' },
     outlineDangerBtnText: { color: V6Colors.dangerText, fontSize: 16.5, fontWeight: '700', fontFamily: 'Inter' },
-    lockedBtn: { backgroundColor: C.ink100, borderRadius: V6Radii.btn, paddingVertical: 14, alignItems: 'center' },
+    lockedBtn: { backgroundColor: C.ink100, borderRadius: 16, minHeight: 52, paddingHorizontal: 12, justifyContent: 'center', alignItems: 'center' },
     lockedBtnText: { color: C.ink400, fontSize: 15, fontWeight: '700', fontFamily: 'Inter', textAlign: 'center' },
   });
   return { Colors, V6Colors, C, styles };

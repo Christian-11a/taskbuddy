@@ -45,6 +45,7 @@ type SheetFrameProps = {
 const DISMISS_DISTANCE = 90;
 const DISMISS_VELOCITY = 900;
 const DIALOG_MARGIN = 24;
+const MIN_KEYBOARD_HEIGHT = 120;
 
 /**
  * Shared frame for every popup. Keeps React Native's Modal (so visibility and
@@ -69,12 +70,16 @@ export default function SheetFrame({
   const [keyboardHeight, setKeyboardHeight] = useState(0);
 
   useEffect(() => {
-    // The Modal draws under the translucent nav bar, but the reported keyboard
-    // height leaves that strip out, so add it back for the real overlap.
-    const show = Keyboard.addListener('keyboardDidShow', (e) => setKeyboardHeight(e.endCoordinates.height + insets.bottom));
+    // Real overlap = everything below the keyboard's top edge (the Modal is
+    // full-screen, nav bar included). Edge-to-edge Android can also fire a
+    // phantom "show" sized like the nav bar; nothing that short is a keyboard.
+    const show = Keyboard.addListener('keyboardDidShow', (e) => {
+      const overlap = Math.max(0, windowHeight - e.endCoordinates.screenY);
+      setKeyboardHeight(overlap >= MIN_KEYBOARD_HEIGHT ? overlap : 0);
+    });
     const hide = Keyboard.addListener('keyboardDidHide', () => setKeyboardHeight(0));
     return () => { show.remove(); hide.remove(); };
-  }, [insets.bottom]);
+  }, [windowHeight]);
 
   // Keyboard open: bring the sheet's last row (its actions) into view (K1).
   useEffect(() => {
@@ -110,7 +115,10 @@ export default function SheetFrame({
       statusBarTranslucent
       navigationBarTranslucent
       onRequestClose={onClose}
-      onShow={() => dragY.set(0)}
+      onShow={() => {
+        dragY.set(0);
+        if (!Keyboard.isVisible()) setKeyboardHeight(0);
+      }}
     >
       <GestureHandlerRootView style={styles.flex}>
         <Pressable

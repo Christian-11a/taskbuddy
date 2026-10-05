@@ -234,7 +234,7 @@ function createThemedStyles(theme: ThemePalette) {
     bodyContent: { paddingHorizontal: Spacing.screenH, paddingTop: 16, paddingBottom: 20 },
 
     heroCard: { borderRadius: 18, padding: 20, marginBottom: 16 },
-    balanceLabel: { color: C.ink400, fontSize: 13, fontFamily: 'Inter', marginBottom: 4 },
+    balanceLabel: { color: C.onHeroMuted, fontSize: 14, fontFamily: 'Inter', marginBottom: 4 },
     balanceAmount: { color: C.onPrimary, fontSize: 32.5, fontWeight: '800', fontFamily: 'Inter', marginBottom: 14 },
     withdrawBtn: {
       flexDirection: 'row', alignSelf: 'flex-start', alignItems: 'center', gap: 8,
