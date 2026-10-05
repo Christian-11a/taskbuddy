@@ -922,3 +922,9 @@ platform. The app now explains that card payout setup is unavailable and directs
 the provider to support, instead of displaying Stripe administration commands.
 The selected local receiving demo is unchanged. Mobile regression passes 188
 tests in 42 suites plus typecheck; native wording retest remains pending.
+
+A 360×640 emulator with font scale 1.3 and three-button navigation exposed
+a login scrolling defect. Removing the outer keyboard-dismiss touch wrapper
+lets the existing ScrollView handle gestures and keyboard dismissal. Native
+retest reaches Google sign-in and Sign Up above the system bar. The full mobile
+suite passes 188 tests plus typecheck; final preview verification follows.
