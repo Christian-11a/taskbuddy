@@ -928,3 +928,8 @@ a login scrolling defect. Removing the outer keyboard-dismiss touch wrapper
 lets the existing ScrollView handle gestures and keyboard dismissal. Native
 retest reaches Google sign-in and Sign Up above the system bar. The full mobile
 suite passes 188 tests plus typecheck; final preview verification follows.
+
+Privacy/terms dialogs keep the dismissible backdrop separate from the scrollable
+content. Native enlarged-text verification exposed gesture interception by the
+nested pressable dialog; the body now scrolls through Retention while keeping
+Close and Accept reachable.

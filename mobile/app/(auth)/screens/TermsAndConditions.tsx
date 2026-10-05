@@ -94,10 +94,10 @@ export default function TermsAndConditions({
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onBack} statusBarTranslucent>
-      <Pressable style={[styles.overlay, { paddingTop: insets.top + 12, paddingBottom: insets.bottom + 12 }]} onPress={onBack} accessible={false}>
-        <Pressable
+      <View style={[styles.overlay, { paddingTop: insets.top + 12, paddingBottom: insets.bottom + 12 }]}>
+        <Pressable style={StyleSheet.absoluteFill} onPress={onBack} accessible={false} />
+        <View
           style={[styles.dialog, { height: Math.max(0, height - insets.top - insets.bottom - 24) }]}
-          onPress={(event) => event.stopPropagation()}
           accessibilityViewIsModal
         >
           <View style={styles.header}>
@@ -133,8 +133,8 @@ export default function TermsAndConditions({
           >
             <Text style={styles.primaryBtnText}>{content.acceptLabel}</Text>
           </TouchableOpacity>
-        </Pressable>
-      </Pressable>
+        </View>
+      </View>
     </Modal>
   );
 }
