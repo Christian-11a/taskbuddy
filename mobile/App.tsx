@@ -678,7 +678,13 @@ function AppContent() {
       // every homeowner tab screen. SP tabs below already avoid this.
       <View style={styles.screen}>
         <View style={styles.tabContent}>{renderHOTabContent()}</View>
-        <BottomNavBar activeTab={hoTab} tabs={HOMEOWNER_TABS} onTabPress={hoNavigate} />
+        <BottomNavBar
+          activeTab={hoTab}
+          tabs={HOMEOWNER_TABS}
+          onTabPress={hoNavigate}
+          // My Jobs has its own "+ New"; Wallet is not a job context.
+          hidePrimary={hoTab === 'My Jobs' || hoTab === 'Wallet'}
+        />
       </View>
     );
   }

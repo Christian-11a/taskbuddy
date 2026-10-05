@@ -72,7 +72,7 @@ import {
   Hammer,
   Hand,
   MapPin,
-  Palette,
+  Footprints,
   Plus,
   Sparkles,
   Wrench,
@@ -102,7 +102,7 @@ const CATEGORY_META: Record<string, { icon: typeof Wrench; desc: string }> = {
   Cleaning: { icon: BrushCleaning, desc: 'Home & deep cleaning' },
   Handyman: { icon: Hammer, desc: 'Repairs & odd jobs' },
   Manicure: { icon: Sparkles, desc: 'Nail care & manicure' },
-  Pedicure: { icon: Palette, desc: 'Foot care & pedicure' },
+  Pedicure: { icon: Footprints, desc: 'Foot care & pedicure' },
 };
 
 /**

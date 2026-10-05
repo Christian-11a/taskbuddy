@@ -230,7 +230,7 @@ export default function HOJobDetailScreen({ jobId, onBack, onNavigate }: HOJobDe
                   </View>
                   <View style={styles.detailText}>
                     <Text style={styles.detailLabel}>{item.label}</Text>
-                    <Text style={[styles.detailValue, item.color && { color: item.color }]} numberOfLines={item.wide ? 3 : 1}>
+                    <Text style={[styles.detailValue, item.color && { color: item.color }]} numberOfLines={item.wide ? 3 : 2}>
                       {item.value}
                     </Text>
                   </View>
@@ -398,22 +398,28 @@ export default function HOJobDetailScreen({ jobId, onBack, onNavigate }: HOJobDe
               <Text style={styles.primaryBtnText}>{busy ? 'Looking…' : 'Find Providers'}</Text>
             </Tap>
           )}
-          {canCancel && (
-            <Tap style={styles.outlineDangerBtn} onPress={() => setConfirmCancel(true)} activeOpacity={0.85} disabled={busy}>
-              <View style={styles.outlineBtnContent}>
-                <CircleAlert size={17} color={V6Colors.dangerText} />
-                <Text style={styles.outlineDangerBtnText}>Cancel Job</Text>
-              </View>
-            </Tap>
-          )}
           {job.status === 'completed' && job.warranty_expires_at && (
-            <Text style={styles.detailLabel}>Warranty ends {new Date(job.warranty_expires_at).toLocaleString()}.</Text>
+            <Text style={styles.barNote}>Warranty ends {new Date(job.warranty_expires_at).toLocaleString()}.</Text>
           )}
-          {dispute?.status === 'open' && <Text style={styles.detailLabel}>{dispute.cancellation_state === 'pending' ? 'Cancellation awaiting provider response' : dispute.escrow_transactions?.status === 'disputed' ? 'Payment under admin review' : 'Complaint awaiting admin review'}</Text>}
-          {(dispute || canDispute) && (
-            <Tap style={styles.outlineBtn} onPress={() => onNavigate(dispute ? 'Dispute Status' : 'Dispute Filing', job.id)} activeOpacity={0.85}>
-              <Text style={styles.outlineDangerBtnText}>{dispute ? 'View Dispute Status' : 'File a Complaint'}</Text>
-            </Tap>
+          {dispute?.status === 'open' && <Text style={styles.barNote}>{dispute.cancellation_state === 'pending' ? 'Cancellation awaiting provider response' : dispute.escrow_transactions?.status === 'disputed' ? 'Payment under admin review' : 'Complaint awaiting admin review'}</Text>}
+          {/* Secondary actions share one row so the primary action stays the
+              clear first choice; only cancelling is styled as destructive. */}
+          {(canCancel || dispute || canDispute) && (
+            <View style={styles.secondaryRow}>
+              {canCancel && (
+                <Tap style={[styles.outlineDangerBtn, styles.secondaryBtn]} onPress={() => setConfirmCancel(true)} activeOpacity={0.85} disabled={busy}>
+                  <View style={styles.outlineBtnContent}>
+                    <CircleAlert size={17} color={V6Colors.dangerText} />
+                    <Text style={styles.outlineDangerBtnText} numberOfLines={1}>Cancel Job</Text>
+                  </View>
+                </Tap>
+              )}
+              {(dispute || canDispute) && (
+                <Tap style={[styles.outlineBtn, styles.secondaryBtn]} onPress={() => onNavigate(dispute ? 'Dispute Status' : 'Dispute Filing', job.id)} activeOpacity={0.85}>
+                  <Text style={styles.outlineBtnText} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.85}>{dispute ? 'View Dispute Status' : 'File a Complaint'}</Text>
+                </Tap>
+              )}
+            </View>
           )}
         </View>
       )}
@@ -485,7 +491,7 @@ function createThemedStyles(theme: ThemePalette) {
       borderBottomWidth: 1, borderBottomColor: V6Colors.line,
     },
     backBtn: {
-      width: 38, height: 38, borderRadius: 12,
+      width: 44, height: 44, borderRadius: 22,
       backgroundColor: C.surface, borderWidth: 1, borderColor: V6Colors.line,
       alignItems: 'center', justifyContent: 'center',
     },
@@ -510,9 +516,9 @@ function createThemedStyles(theme: ThemePalette) {
 
     // Sections — borderless, bottom-divider only
     section: { paddingVertical: 18, borderBottomWidth: 1, borderBottomColor: C.line },
-    sectionTitle: { fontSize: 14, color: C.ink900, fontWeight: '800', fontFamily: 'Inter', marginBottom: 12 },
+    sectionTitle: { fontSize: 16, color: C.ink900, fontWeight: '800', fontFamily: 'Inter', marginBottom: 12 },
     sectionTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 7, marginBottom: 12 },
-    sectionTitleInline: { flex: 1, fontSize: 14, color: C.ink900, fontWeight: '800', fontFamily: 'Inter' },
+    sectionTitleInline: { flex: 1, fontSize: 16, color: C.ink900, fontWeight: '800', fontFamily: 'Inter' },
     taskCounter: { fontSize: 12, color: C.ink400, fontWeight: '700', fontFamily: 'Inter' },
     taskRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 7 },
     taskBox: {
@@ -525,7 +531,7 @@ function createThemedStyles(theme: ThemePalette) {
     taskLabelDone: { color: C.ink400, textDecorationLine: 'line-through' },
     actionError: { color: V6Colors.dangerText, fontSize: 13.5, fontFamily: 'Inter', textAlign: 'center' },
     matchingMessage: { color: V6Colors.link, fontSize: 13.5, fontFamily: 'Inter', textAlign: 'center', lineHeight: 18, marginBottom: 16 },
-    descText: { fontSize: 14, lineHeight: 21, color: C.ink700, fontFamily: 'Inter' },
+    descText: { fontSize: 15, lineHeight: 22, color: C.ink700, fontFamily: 'Inter' },
     attachmentList: { gap: 10 },
     attachmentImage: { width: 92, height: 92, borderRadius: 10, backgroundColor: C.ink100 },
     emptyAttachmentText: { color: C.ink500, fontSize: 13.5, fontFamily: 'Inter' },
@@ -537,7 +543,7 @@ function createThemedStyles(theme: ThemePalette) {
     timelineDot: { width: 15, height: 15, borderRadius: 8, borderWidth: 2, borderColor: V6Colors.line, backgroundColor: C.surface, marginBottom: 6 },
     timelineDotDone: { backgroundColor: C.cyan700, borderColor: C.cyan700 },
     timelineDotCurrent: { borderColor: C.cyan700 },
-    timelineLabel: { fontSize: 9.5, lineHeight: 12, color: C.ink400, fontFamily: 'Inter', textAlign: 'center' },
+    timelineLabel: { fontSize: 11, lineHeight: 14, color: C.ink400, fontFamily: 'Inter', textAlign: 'center' },
     timelineLabelDone: { color: C.ink700, fontWeight: '700' },
 
     // Detail rows
@@ -546,8 +552,8 @@ function createThemedStyles(theme: ThemePalette) {
     detailRowWide: { width: '100%' },
     detailText: { flex: 1, minWidth: 0 },
     detailIcon: { width: 30, height: 30, borderRadius: 9, backgroundColor: V6Colors.wellBg, alignItems: 'center', justifyContent: 'center' },
-    detailLabel: { fontSize: 11.5, color: C.ink400, fontFamily: 'Inter', marginBottom: 2 },
-    detailValue: { fontSize: 13.5, color: C.ink800, fontWeight: '600', fontFamily: 'Inter', lineHeight: 17, flexShrink: 1 },
+    detailLabel: { fontSize: 12.5, color: C.ink500, fontFamily: 'Inter', marginBottom: 2 },
+    detailValue: { fontSize: 14.5, color: C.ink800, fontWeight: '600', fontFamily: 'Inter', lineHeight: 20, flexShrink: 1 },
     providerNotice: { marginBottom: 16 },
 
     // Provider card
@@ -566,16 +572,19 @@ function createThemedStyles(theme: ThemePalette) {
     linkRowText: { color: V6Colors.link, fontSize: 14.5, fontWeight: '700', fontFamily: 'Inter' },
 
     // Action bar
-    actionBar: { paddingHorizontal: Spacing.screenH, paddingTop: 12, paddingBottom: 10, gap: 8, backgroundColor: C.surface, borderTopWidth: 1, borderTopColor: C.line },
+    actionBar: { paddingHorizontal: Spacing.screenH, paddingTop: 12, paddingBottom: 12, gap: 10, backgroundColor: C.surface, borderTopWidth: 1, borderTopColor: C.line },
     previewBackdrop: { flex: 1, backgroundColor: 'rgba(15,23,42,0.9)', alignItems: 'center', justifyContent: 'center', padding: 20 },
     previewImage: { width: '100%', height: '80%' },
-    primaryBtn: { backgroundColor: C.cyan700, borderRadius: 13, paddingVertical: 14, alignItems: 'center' },
+    primaryBtn: { backgroundColor: C.cyan700, borderRadius: 16, minHeight: 52, justifyContent: 'center', alignItems: 'center' },
     primaryBtnText: { color: C.onPrimary, fontSize: 16.5, fontWeight: '700', fontFamily: 'Inter' },
-    outlineBtn: { borderWidth: 1, borderColor: V6Colors.fieldBorder, borderRadius: 13, paddingVertical: 14, alignItems: 'center' },
-    outlineBtnText: { color: C.ink700, fontSize: 16.5, fontWeight: '700', fontFamily: 'Inter' },
-    outlineDangerBtn: { borderWidth: 1, borderColor: '#ef4444', borderRadius: 13, paddingVertical: 14, alignItems: 'center' },
+    outlineBtn: { borderWidth: 1, borderColor: V6Colors.fieldBorder, borderRadius: 16, minHeight: 52, justifyContent: 'center', alignItems: 'center' },
+    secondaryRow: { flexDirection: 'row', gap: 10 },
+    secondaryBtn: { flex: 1, paddingHorizontal: 10 },
+    barNote: { fontSize: 13, color: C.ink500, fontFamily: 'Inter', textAlign: 'center' },
+    outlineBtnText: { color: C.ink800, fontSize: 15.5, fontWeight: '700', fontFamily: 'Inter' },
+    outlineDangerBtn: { borderWidth: 1, borderColor: V6Colors.dangerBorder, backgroundColor: V6Colors.dangerSurface, borderRadius: 16, minHeight: 52, justifyContent: 'center', alignItems: 'center' },
     outlineBtnContent: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-    outlineDangerBtnText: { color: V6Colors.dangerText, fontSize: 16.5, fontWeight: '700', fontFamily: 'Inter' },
+    outlineDangerBtnText: { color: V6Colors.dangerText, fontSize: 15.5, fontWeight: '700', fontFamily: 'Inter' },
   });
   return { Colors, V6Colors, C, styles };
 }

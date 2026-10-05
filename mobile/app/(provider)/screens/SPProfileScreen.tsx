@@ -243,13 +243,13 @@ function createThemedStyles(theme: ThemePalette) {
     },
 
     avatarCircle: {
-      width: 72, height: 72, borderRadius: 22,
-      backgroundColor: 'rgba(255,255,255,0.16)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.15)',
+      width: 80, height: 80, borderRadius: 40,
+      backgroundColor: '#2b4a66', borderWidth: 3, borderColor: 'rgba(255,255,255,0.85)',
       alignItems: 'center', justifyContent: 'center', marginBottom: 10, overflow: 'hidden',
     },
-    avatarText: { color: C.onPrimary, fontWeight: '800', fontSize: 24, fontFamily: 'Inter' },
+    avatarText: { color: '#bae6fd', fontWeight: '800', fontSize: 24, fontFamily: 'Inter' },
     profileName: { color: C.onPrimary, fontSize: 19.5, fontWeight: '800', fontFamily: 'Inter' },
-    profileSubtitle: { color: C.cyan100, fontSize: 14, fontFamily: 'Inter', marginTop: 2 },
+    profileSubtitle: { color: C.onHeroMuted, fontSize: 14, fontFamily: 'Inter', marginTop: 2 },
 
     verifyPill: {
       flexDirection: 'row', alignItems: 'center', gap: 5,

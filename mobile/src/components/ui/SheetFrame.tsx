@@ -1,11 +1,12 @@
-import React from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   Keyboard,
-  KeyboardAvoidingView,
   Modal,
   Pressable,
+  ScrollView,
   StyleSheet,
   View,
+  useWindowDimensions,
   type PressableProps,
   type StyleProp,
   type ViewStyle,
@@ -40,12 +41,16 @@ type SheetFrameProps = {
 
 const DISMISS_DISTANCE = 90;
 const DISMISS_VELOCITY = 900;
+const DIALOG_MARGIN = 24;
 
 /**
  * Shared frame for every popup. Keeps React Native's Modal (so visibility and
  * close callbacks behave exactly as before) and only changes presentation:
- * a bottom sheet that slides up, can be dragged down by its grip, and rides
- * above the keyboard on Android too (K1). Reduced motion: fade only.
+ * a bottom sheet that slides up, can be dragged down by its grip, and sits on
+ * top of the keyboard on Android too (K1). The card never grows past the space
+ * between the status bar and the keyboard; when it would, it scrolls, and on
+ * keyboard-open it scrolls to its last row so the actions stay reachable.
+ * Reduced motion: fade only.
  */
 export default function SheetFrame({
   visible, onClose, variant = 'sheet', contentStyle, cardProps, children,
@@ -53,9 +58,30 @@ export default function SheetFrame({
   const { palette } = useTheme();
   const C = palette.V6Colors;
   const insets = useSafeAreaInsets();
+  const { height: windowHeight } = useWindowDimensions();
   const reduced = useReducedMotion();
   const dragY = useSharedValue(0);
   const isSheet = variant === 'sheet';
+  const scrollRef = useRef<ScrollView>(null);
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
+
+  useEffect(() => {
+    // The Modal draws under the translucent nav bar, but the reported keyboard
+    // height leaves that strip out, so add it back for the real overlap.
+    const show = Keyboard.addListener('keyboardDidShow', (e) => setKeyboardHeight(e.endCoordinates.height + insets.bottom));
+    const hide = Keyboard.addListener('keyboardDidHide', () => setKeyboardHeight(0));
+    return () => { show.remove(); hide.remove(); };
+  }, [insets.bottom]);
+
+  // Keyboard open: bring the sheet's last row (its actions) into view (K1).
+  useEffect(() => {
+    if (keyboardHeight === 0) return;
+    const t = setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 80);
+    return () => clearTimeout(t);
+  }, [keyboardHeight]);
+
+  const keyboardUp = keyboardHeight > 0;
+  const available = windowHeight - insets.top - keyboardHeight - (isSheet ? 0 : DIALOG_MARGIN * 2);
 
   const pan = Gesture.Pan()
     .enabled(isSheet && !!onClose)
@@ -84,13 +110,27 @@ export default function SheetFrame({
       onShow={() => dragY.set(0)}
     >
       <GestureHandlerRootView style={styles.flex}>
-        <KeyboardAvoidingView style={styles.flex} behavior="padding">
-          <Pressable
-            style={[styles.backdrop, { backgroundColor: C.scrim }, isSheet ? styles.backdropSheet : styles.backdropDialog]}
-            onPress={onClose}
-            accessible={false}
+        <Pressable
+          style={[
+            styles.backdrop,
+            { backgroundColor: C.scrim, paddingTop: insets.top, paddingBottom: keyboardHeight },
+            isSheet ? styles.backdropSheet : styles.backdropDialog,
+          ]}
+          onPress={onClose}
+          accessible={false}
+        >
+          <Animated.View
+            entering={entering}
+            style={[isSheet ? styles.sheetWrap : styles.dialogWrap, { maxHeight: available }, dragStyle]}
           >
-            <Animated.View entering={entering} style={[isSheet ? styles.sheetWrap : styles.dialogWrap, dragStyle]}>
+            <ScrollView
+              ref={scrollRef}
+              style={styles.scroll}
+              bounces={false}
+              overScrollMode="never"
+              keyboardShouldPersistTaps="handled"
+              showsVerticalScrollIndicator={false}
+            >
               <Pressable
                 {...cardProps}
                 // Tapping the card (outside a field) hides the keyboard; it never closes the sheet.
@@ -100,7 +140,7 @@ export default function SheetFrame({
                   contentStyle,
                   isSheet ? styles.sheet : styles.dialog,
                   { backgroundColor: C.surface },
-                  isSheet && { paddingBottom: Math.max(insets.bottom, 12) + 12 },
+                  isSheet && { paddingBottom: keyboardUp ? 16 : Math.max(insets.bottom, 12) + 12 },
                 ]}
               >
                 {isSheet && (
@@ -112,9 +152,9 @@ export default function SheetFrame({
                 )}
                 {children}
               </Pressable>
-            </Animated.View>
-          </Pressable>
-        </KeyboardAvoidingView>
+            </ScrollView>
+          </Animated.View>
+        </Pressable>
       </GestureHandlerRootView>
     </Modal>
   );
@@ -124,15 +164,15 @@ const styles = StyleSheet.create({
   flex: { flex: 1 },
   backdrop: { flex: 1 },
   backdropSheet: { justifyContent: 'flex-end' },
-  backdropDialog: { justifyContent: 'center', padding: 24 },
+  backdropDialog: { justifyContent: 'center', paddingHorizontal: DIALOG_MARGIN },
   sheetWrap: { width: '100%', maxWidth: 600, alignSelf: 'center' },
   dialogWrap: { width: '100%', maxWidth: 440, alignSelf: 'center' },
+  scroll: { flexGrow: 0 },
   sheet: {
     width: '100%',
     maxWidth: '100%',
     margin: 0,
     alignSelf: 'stretch',
-    maxHeight: '100%',
     borderTopLeftRadius: 28,
     borderTopRightRadius: 28,
     borderBottomLeftRadius: 0,

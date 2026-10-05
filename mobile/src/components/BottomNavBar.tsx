@@ -19,6 +19,8 @@ type BottomNavBarProps<T extends string> = {
   activeTab: T;
   tabs: readonly BottomNavItem<T>[];
   onTabPress: (tab: T) => void;
+  /** Hide the floating primary action on tabs that already offer it. */
+  hidePrimary?: boolean;
 };
 
 /** Height of the bar above the system inset; screens pad their lists by it. */
@@ -33,6 +35,7 @@ export default function BottomNavBar<T extends string>({
   activeTab,
   tabs,
   onTabPress,
+  hidePrimary = false,
 }: BottomNavBarProps<T>) {
   const { Colors, styles } = useThemedStyles(createThemedStyles);
   // The app is edge-to-edge (enforced on targetSdk 36), so without the real
@@ -44,7 +47,7 @@ export default function BottomNavBar<T extends string>({
 
   return (
     <View>
-      {primary && PrimaryIcon && (
+      {primary && PrimaryIcon && !hidePrimary && (
         <View pointerEvents="box-none" style={styles.fabLayer}>
           <View style={styles.fabShadow}>
             <Tap
@@ -79,10 +82,11 @@ export default function BottomNavBar<T extends string>({
               accessibilityRole="tab"
               accessibilityState={{ selected: isActive }}
               style={styles.tabButton}
-              borderlessRipple
               onPress={() => onTabPress(tab.key)}
             >
-              <View style={[styles.indicator, isActive && styles.indicatorActive]}>
+              {/* Keyed so the pill remounts when it turns on: Android drops the
+                  rounded corners if the background is applied on a re-render. */}
+              <View key={isActive ? 'on' : 'off'} style={[styles.indicator, isActive && styles.indicatorActive]}>
                 <Icon
                   size={22}
                   color={isActive ? Colors.activeIcon : Colors.navInactive}
@@ -137,7 +141,7 @@ function createThemedStyles(theme: ThemePalette) {
       justifyContent: 'center',
     },
     indicatorActive: {
-      backgroundColor: dark ? V6Colors.primaryTonalStrong : V6Colors.primaryTonalStrong,
+      backgroundColor: V6Colors.primaryTonalStrong,
     },
     tabLabel: {
       color: Colors.navInactive,
