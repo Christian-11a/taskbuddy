@@ -3,16 +3,13 @@ import React, { useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Keyboard,
-  KeyboardAvoidingView,
-  Modal,
-  Platform,
-  Pressable,
   StyleSheet,
   Text,
   TextInput,
   View,
 } from 'react-native';
 import Tap from './ui/Tap';
+import SheetFrame from './ui/SheetFrame';
 import { CheckCircle2, Circle, KeyRound, ShieldCheck } from 'lucide-react-native';
 import { V6Radii } from '../constants/theme';
 import { api } from '../lib/api';
@@ -73,18 +70,7 @@ export default function ChangePasswordModal({ visible, onClose }: ChangePassword
   };
 
   return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={saving ? undefined : close} statusBarTranslucent>
-      <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-        <Pressable style={styles.overlay} onPress={saving ? undefined : close} accessible={false}>
-          <Pressable
-            style={styles.dialog}
-            // Taps on the dialog's empty space close the keyboard, not the dialog.
-            onPress={(e) => {
-              e.stopPropagation();
-              Keyboard.dismiss();
-            }}
-            accessibilityViewIsModal
-          >
+    <SheetFrame visible={visible} onClose={saving ? undefined : close} contentStyle={styles.dialog}>
             {success ? (
               <View style={styles.successWrap}>
                 <View style={[styles.iconWell, styles.iconWellSuccess]}>
@@ -180,10 +166,7 @@ export default function ChangePasswordModal({ visible, onClose }: ChangePassword
                 </View>
               </>
             )}
-          </Pressable>
-        </Pressable>
-      </KeyboardAvoidingView>
-    </Modal>
+    </SheetFrame>
   );
 }
 

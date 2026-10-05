@@ -26,13 +26,13 @@ import { useThemedStyles, type Palette as ThemePalette } from '../context/ThemeC
 import React, { useState } from 'react';
 import {
   ActivityIndicator,
-  Modal,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
   View,
 } from 'react-native';
+import SheetFrame from './ui/SheetFrame';
 import { AlertTriangle } from 'lucide-react-native';
 import { V6Radii } from '../constants/theme';
 import { api, deletionBlockersFrom, type DeletionBlocker } from '../lib/api';
@@ -82,14 +82,7 @@ export default function DeleteAccountModal({
   const isBlocked = blockers.length > 0;
 
   return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={close}>
-      <Pressable style={styles.backdrop} onPress={close} accessible={false}>
-        <Pressable
-          style={styles.card}
-          onPress={(event) => event.stopPropagation()}
-          accessibilityViewIsModal
-          accessibilityRole="alert"
-        >
+    <SheetFrame visible={visible} onClose={close} variant="dialog" contentStyle={styles.card} cardProps={{ accessibilityRole: "alert" }}>
           <View style={styles.titleRow}>
             <AlertTriangle size={20} color={V6Colors.dangerText} />
             <Text style={styles.title} accessibilityRole="header">
@@ -154,9 +147,7 @@ export default function DeleteAccountModal({
               </View>
             </>
           )}
-        </Pressable>
-      </Pressable>
-    </Modal>
+    </SheetFrame>
   );
 }
 

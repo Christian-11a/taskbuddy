@@ -3,16 +3,13 @@ import React, { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Keyboard,
-  KeyboardAvoidingView,
-  Modal,
-  Platform,
-  Pressable,
   StyleSheet,
   Text,
   TextInput,
   View,
 } from 'react-native';
 import Tap from './ui/Tap';
+import SheetFrame from './ui/SheetFrame';
 import { Send } from 'lucide-react-native';
 import { V6Radii } from '../constants/theme';
 
@@ -44,17 +41,7 @@ export default function ProposalModal({
   }, [visible]);
 
   return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={busy ? undefined : onCancel} statusBarTranslucent>
-      <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-        <Pressable style={styles.overlay} onPress={busy ? undefined : onCancel} accessible={false}>
-          <Pressable
-            style={styles.dialog}
-            onPress={(e) => {
-              e.stopPropagation();
-              Keyboard.dismiss();
-            }}
-            accessibilityViewIsModal
-          >
+    <SheetFrame visible={visible} onClose={busy ? undefined : onCancel} contentStyle={styles.dialog}>
             <Text style={styles.title} accessibilityRole="header">Send a proposal</Text>
             <Text style={styles.body}>
               {jobTitle ? `Tell the client why you're a good fit for "${jobTitle}".` : "Tell the client why you're a good fit."}{' '}
@@ -100,10 +87,7 @@ export default function ProposalModal({
                 )}
               </Tap>
             </View>
-          </Pressable>
-        </Pressable>
-      </KeyboardAvoidingView>
-    </Modal>
+    </SheetFrame>
   );
 }
 

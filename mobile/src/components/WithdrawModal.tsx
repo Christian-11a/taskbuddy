@@ -26,15 +26,13 @@ import React, { useState } from 'react';
 import {
   ActivityIndicator,
   Keyboard,
-  KeyboardAvoidingView,
-  Modal,
-  Platform,
   Pressable,
   StyleSheet,
   Text,
   TextInput,
   View,
 } from 'react-native';
+import SheetFrame from './ui/SheetFrame';
 import { V6Radii } from '../constants/theme';
 import { api } from '../lib/api';
 import { peso } from '../lib/format';
@@ -93,19 +91,7 @@ export default function WithdrawModal({
   };
 
   return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={close}>
-      <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-        <Pressable style={styles.backdrop} onPress={close} accessible={false}>
-          <Pressable
-          style={styles.card}
-          testID="withdraw-dialog"
-          // Taps on the card's empty space close the keyboard, not the modal.
-          onPress={(event) => {
-            event.stopPropagation();
-            Keyboard.dismiss();
-          }}
-          accessibilityViewIsModal
-        >
+    <SheetFrame visible={visible} onClose={close} contentStyle={styles.card} cardProps={{ testID: "withdraw-dialog" }}>
           <Text style={styles.title} accessibilityRole="header">Withdraw Funds</Text>
           <Text style={styles.body}>
             We'll review this and send the money by hand, so it isn't instant.
@@ -172,10 +158,7 @@ export default function WithdrawModal({
               )}
             </Pressable>
           </View>
-          </Pressable>
-        </Pressable>
-      </KeyboardAvoidingView>
-    </Modal>
+    </SheetFrame>
   );
 }
 

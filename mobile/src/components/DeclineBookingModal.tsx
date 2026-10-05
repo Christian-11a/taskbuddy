@@ -18,14 +18,13 @@ import React, { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Keyboard,
-  Modal,
-  Pressable,
   StyleSheet,
   Text,
   TextInput,
   View,
 } from 'react-native';
 import Tap from './ui/Tap';
+import SheetFrame from './ui/SheetFrame';
 import { X } from 'lucide-react-native';
 import { V6Radii } from '../constants/theme';
 
@@ -69,18 +68,7 @@ export default function DeclineBookingModal({
   const canSubmit = trimmed.length > 0 && !submitting;
 
   return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onCancel}>
-      <Pressable style={styles.overlay} onPress={onCancel} accessible={false}>
-        <Pressable
-          style={styles.dialog}
-          testID="decline-dialog"
-          // Taps on the dialog's empty space close the keyboard, not the dialog.
-          onPress={(event) => {
-            event.stopPropagation();
-            Keyboard.dismiss();
-          }}
-          accessibilityViewIsModal
-        >
+    <SheetFrame visible={visible} onClose={onCancel} contentStyle={styles.dialog} cardProps={{ testID: "decline-dialog" }}>
           <View style={styles.headerRow}>
             <Text style={styles.title} accessibilityRole="header">Decline Booking</Text>
             <Tap onPress={onCancel} activeOpacity={0.8} accessibilityLabel="Close">
@@ -152,9 +140,7 @@ export default function DeclineBookingModal({
               )}
             </Tap>
           </View>
-        </Pressable>
-      </Pressable>
-    </Modal>
+    </SheetFrame>
   );
 }
 

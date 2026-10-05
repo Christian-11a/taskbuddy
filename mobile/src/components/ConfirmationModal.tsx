@@ -1,7 +1,8 @@
 import { useThemedStyles, type Palette as ThemePalette } from '../context/ThemeContext';
 import React from 'react';
-import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 import Tap from './ui/Tap';
+import SheetFrame from './ui/SheetFrame';
 import { V6Radii } from '../constants/theme';
 
 const Radii = { card: V6Radii.card };
@@ -25,14 +26,7 @@ export default function ConfirmationModal({
 }: ConfirmationModalProps) {
   const { styles, V6Colors } = useThemedStyles(createThemedStyles);
   return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={busy ? undefined : onCancel}>
-      <Pressable style={styles.overlay} onPress={busy ? undefined : onCancel} accessible={false}>
-        <Pressable
-          style={styles.dialog}
-          onPress={(event) => event.stopPropagation()}
-          accessibilityViewIsModal
-          accessibilityRole="alert"
-        >
+    <SheetFrame visible={visible} onClose={busy ? undefined : onCancel} variant="dialog" contentStyle={styles.dialog} cardProps={{ accessibilityRole: "alert" }}>
           <Text style={styles.title} accessibilityRole="header">{title}</Text>
           <Text style={styles.message}>{message}</Text>
           <View style={styles.actions}>
@@ -57,9 +51,7 @@ export default function ConfirmationModal({
               <Text style={styles.confirmText}>{confirmLabel}</Text>
             </Tap>
           </View>
-        </Pressable>
-      </Pressable>
-    </Modal>
+    </SheetFrame>
   );
 }
 
