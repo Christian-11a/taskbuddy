@@ -1,5 +1,6 @@
 import { useTheme, useThemedStyles, type Palette as ThemePalette } from '../src/context/ThemeContext';
 import { StatusBar } from 'expo-status-bar';
+import { NavigationBar } from 'expo-navigation-bar';
 import React, { ReactNode } from 'react';
 import {
   StyleSheet,
@@ -28,6 +29,8 @@ export default function RootLayout({ children }: RootLayoutProps) {
   return (
     <View style={styles.root}>
       <StatusBar style={dark ? 'light' : 'dark'} />
+      {/* Light icons on the dark theme, dark icons on the light one. */}
+      <NavigationBar style={dark ? 'dark' : 'light'} />
       <View style={[styles.content, { width: contentWidth }]}>{children}</View>
     </View>
   );

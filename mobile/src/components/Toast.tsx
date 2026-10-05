@@ -1,7 +1,11 @@
 import { useThemedStyles, type Palette as ThemePalette } from '../context/ThemeContext';
-import React, { useEffect, useRef, useState } from 'react';
-import { Animated, StyleSheet, Text, View } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { StyleSheet, Text, View } from 'react-native';
+import Animated, { useAnimatedStyle, useReducedMotion, useSharedValue, withTiming } from 'react-native-reanimated';
+import { scheduleOnRN } from 'react-native-worklets';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { CircleAlert, CircleCheck, Info } from 'lucide-react-native';
+import { DURATION, EASE_OUT, haptic } from './ui/motion';
 
 type ToastKind = 'info' | 'success' | 'error';
 interface ToastMessage { id: number; text: string; kind: ToastKind }
@@ -18,13 +22,15 @@ export function showToast(text: string, kind: ToastKind = 'info') {
 }
 
 const DURATION_MS = 2600;
+const ICONS = { info: Info, success: CircleCheck, error: CircleAlert } as const;
 
 /** Mount once, near the root, above every screen. */
 export function ToastHost() {
   const { styles, V6Colors } = useThemedStyles(createThemedStyles);
   const insets = useSafeAreaInsets();
+  const reduced = useReducedMotion();
   const [msg, setMsg] = useState<ToastMessage | null>(null);
-  const opacity = useRef(new Animated.Value(0)).current;
+  const progress = useSharedValue(0);
 
   useEffect(() => {
     listener = setMsg;
@@ -35,24 +41,34 @@ export function ToastHost() {
 
   useEffect(() => {
     if (!msg) return;
-    opacity.setValue(0);
-    Animated.timing(opacity, { toValue: 1, duration: 160, useNativeDriver: true }).start();
+    if (msg.kind === 'success') haptic.success();
+    else if (msg.kind === 'error') haptic.error();
+    progress.set(0);
+    progress.set(withTiming(1, { duration: DURATION.toast, easing: EASE_OUT }));
+    const clear = (id: number) => setMsg((current) => (current?.id === id ? null : current));
     const timer = setTimeout(() => {
-      Animated.timing(opacity, { toValue: 0, duration: 200, useNativeDriver: true }).start(
-        () => setMsg((current) => (current?.id === msg.id ? null : current)),
-      );
+      progress.set(withTiming(0, { duration: DURATION.toast, easing: EASE_OUT }, (finished) => {
+        if (finished) scheduleOnRN(clear, msg.id);
+      }));
     }, DURATION_MS);
     return () => clearTimeout(timer);
-  }, [msg, opacity]);
+  }, [msg, progress]);
+
+  const animated = useAnimatedStyle(() => ({
+    opacity: progress.get(),
+    transform: [{ translateY: reduced ? 0 : (1 - progress.get()) * 16 }],
+  }));
 
   if (!msg) return null;
+  const Icon = ICONS[msg.kind];
   return (
     <View pointerEvents="none" style={[styles.wrap, { bottom: insets.bottom + 96 }]}>
       <Animated.View
-        style={[styles.toast, msg.kind === 'error' && styles.error, msg.kind === 'success' && styles.success, { opacity }]}
+        style={[styles.toast, msg.kind === 'error' && styles.error, msg.kind === 'success' && styles.success, animated]}
         accessibilityLiveRegion="polite"
         accessibilityRole="alert"
       >
+        <Icon size={18} color={V6Colors.onPrimary} strokeWidth={2.4} />
         <Text style={styles.text}>{msg.text}</Text>
       </Animated.View>
     </View>
@@ -64,15 +80,19 @@ function createThemedStyles(theme: ThemePalette) {
   const styles = StyleSheet.create({
     wrap: { position: 'absolute', left: 16, right: 16, alignItems: 'center' },
     toast: {
-      backgroundColor: V6Colors.hero,
-      borderRadius: 12,
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 10,
+      backgroundColor: theme.appearance === 'dark' ? '#2c3238' : '#1e293b',
+      borderRadius: 14,
       paddingHorizontal: 16,
-      paddingVertical: 11,
+      paddingVertical: 12,
       maxWidth: 420,
+      elevation: 6,
     },
     error: { backgroundColor: V6Colors.dangerSolid },
     success: { backgroundColor: '#15803d' },
-    text: { color: V6Colors.onPrimary, fontSize: 14.5, fontWeight: '600', fontFamily: 'Inter', textAlign: 'center' },
+    text: { flexShrink: 1, color: V6Colors.onPrimary, fontSize: 14.5, fontWeight: '600', fontFamily: 'Inter' },
   });
   return { Colors, V6Colors, styles };
 }

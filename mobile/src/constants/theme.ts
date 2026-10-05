@@ -11,11 +11,11 @@ import { Platform, StatusBar } from 'react-native';
 // ─── Color palette ───────────────────────────────────────────────────────────
 
 export const Colors = {
-  // Brand
-  brandDark: '#063D4D',
-  brandTeal: '#096E8B',
-  brandCyan: '#0AA2CB',
-  brandCyanLight: '#99DEF1',
+  // Brand (Theme C "Sky")
+  brandDark: '#0C4A6E',
+  brandTeal: '#0369A1',
+  brandCyan: '#0284C7',
+  brandCyanLight: '#BAE6FD',
   brandRed: '#E03434',
 
   // Neutrals
@@ -44,13 +44,13 @@ export const Colors = {
   statusBar: '#1D1B20',
   skipText: '#657B8B',
 
-  // Hero gradient approx
-  heroStart: '#063D4D',
-  heroEnd: '#096E8B',
+  // Hero (flat; kept as two names for older consumers)
+  heroStart: '#0369A1',
+  heroEnd: '#0369A1',
 
   // Logo background colors
-  logoBg: '#0AA2CB',
-  logoAccent: '#096F8B',
+  logoBg: '#0284C7',
+  logoAccent: '#0369A1',
   logoSkin: '#FFEECF',
 } as const;
 
@@ -211,28 +211,28 @@ export const Radii = {
 
 export const Shadows = {
   card: {
-    shadowColor: '#063D4D',
+    shadowColor: '#0C4A6E',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.08,
     shadowRadius: 16,
     elevation: 4,
   },
   input: {
-    shadowColor: '#063D4D',
+    shadowColor: '#0C4A6E',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.06,
     shadowRadius: 6,
     elevation: 2,
   },
   primaryButton: {
-    shadowColor: '#096E8B',
+    shadowColor: '#0369A1',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.35,
     shadowRadius: 12,
     elevation: 5,
   },
   navBar: {
-    shadowColor: '#063D4D',
+    shadowColor: '#0C4A6E',
     shadowOffset: { width: 0, height: -2 },
     shadowOpacity: 0.06,
     shadowRadius: 8,
@@ -296,15 +296,18 @@ export const colors = {
 // actually rendered and what's captured here.
 // ─────────────────────────────────────────────────────────────────────────────
 
+// The `cyan*` names are historical: since the Theme C "Sky" redesign they hold
+// the sky-blue brand scale. Renaming them would touch every screen for no
+// visual gain, so only the values changed.
 export const V6Colors = {
-  cyan50: '#ecfeff',
-  cyan100: '#cffafe',
-  cyan200: '#a5f3fc',
-  cyan500: '#06b6d4',
-  cyan600: '#0891b2',
-  cyan700: '#0e7490',
-  cyan800: '#096f8b',
-  cyan900: '#063e4d',
+  cyan50: '#f0f9ff',
+  cyan100: '#e0f2fe',
+  cyan200: '#bae6fd',
+  cyan500: '#0ea5e9',
+  cyan600: '#0284c7',
+  cyan700: '#0369a1',
+  cyan800: '#075985',
+  cyan900: '#0c4a6e',
 
   ink25: '#f8fafc',
   ink50: '#f1f5f9',
@@ -326,9 +329,9 @@ export const V6Colors = {
   purple600: '#7c3aed',
 
   white: '#ffffff',
-  canvas: '#f7f9fb',
+  canvas: '#f6f8fa',
   surface: '#ffffff',
-  line: '#e8edf2',
+  line: '#e5eaef',
   // Extra neutral tokens: same shape as `line`, just the specific shades
   // that recur across screens (topbar bottom borders, form field borders,
   // icon-well fills).
@@ -341,7 +344,7 @@ export const V6Colors = {
   statusPendingReview: '#7c3aed',
   statusCompleted: '#22c55e',
   statusOpen: '#3b82f6',
-  statusAccepted: '#3b82f6',
+  statusAccepted: '#4f46e5',
   statusCancelled: '#94a3b8',
 } as const;
 
@@ -364,7 +367,7 @@ export const V6Shadows = {
     elevation: 1,
   },
   primaryButton: {
-    shadowColor: '#0891b2',
+    shadowColor: '#0369a1',
     shadowOffset: { width: 0, height: 5 },
     shadowOpacity: 0.16,
     shadowRadius: 14,

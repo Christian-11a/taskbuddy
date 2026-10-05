@@ -16,6 +16,8 @@ import { NotificationsProvider } from './src/context/NotificationsContext';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { BackHandler, LogBox, StyleSheet, View } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import { BottomSheetModalProvider } from '@gorhom/bottom-sheet';
 
 // The LogBox notification renders over the bottom of the screen and, in dev
 // builds, intercepts the bottom navigation bar's touches (BUG-002) — breaking
@@ -30,7 +32,7 @@ if (__DEV__) {
 }
 import * as ExpoSplashScreen from 'expo-splash-screen';
 import * as WebBrowser from 'expo-web-browser';
-import { CalendarDays, CirclePlus, ClipboardList, Home, Search, Wallet } from 'lucide-react-native';
+import { CalendarDays, ClipboardList, Home, Plus, Search, Wallet } from 'lucide-react-native';
 import RootLayout from './app/layout';
 
 // ── Auth screens ──────────────────────────────────────────────────────────────
@@ -97,7 +99,7 @@ import { resolveNotificationTarget } from './src/lib/notificationRouting';
 const HOMEOWNER_TABS: readonly BottomNavItem<HOScreen>[] = [
   { key: 'Home', label: 'Home', icon: Home },
   { key: 'My Jobs', label: 'My Jobs', icon: ClipboardList },
-  { key: 'Create Job', label: 'Create job', icon: CirclePlus, primary: true },
+  { key: 'Create Job', label: 'Create job', title: 'Post a job', icon: Plus, primary: true },
   { key: 'Calendar', label: 'Calendar', icon: CalendarDays },
   { key: 'Wallet', label: 'Wallet', icon: Wallet },
 ];
@@ -534,7 +536,7 @@ function AppContent() {
     // Non-tab sub-screens (no bottom nav)
     if (hoScreen === 'Job Detail') {
       return (
-        <ScreenFrame bottomColor={V6Colors.white}>
+        <ScreenFrame bottomColor={V6Colors.surface}>
           <HOJobDetailScreen jobId={hoSelectedId} onBack={hoBack} onNavigate={hoNavigate} />
         </ScreenFrame>
       );
@@ -555,14 +557,14 @@ function AppContent() {
     }
     if (hoScreen === 'Leave Review') {
       return (
-        <ScreenFrame bottomColor={V6Colors.white}>
+        <ScreenFrame bottomColor={V6Colors.surface}>
           <HOLeaveReviewScreen jobId={hoSelectedId ?? ''} onSubmitted={hoBack} onBack={hoBack} />
         </ScreenFrame>
       );
     }
     if (hoScreen === 'Chat') {
       return (
-        <ScreenFrame bottomColor={V6Colors.white}>
+        <ScreenFrame bottomColor={V6Colors.surface}>
           <HOChatScreen
             jobId={hoSelectedId}
             onBack={hoBack}
@@ -576,7 +578,7 @@ function AppContent() {
     }
     if (hoScreen === 'Dispute Filing') {
       return (
-        <ScreenFrame bottomColor={V6Colors.white}>
+        <ScreenFrame bottomColor={V6Colors.surface}>
           <HODisputeFilingScreen jobId={hoSelectedId} onBack={hoBack} onSubmitted={hoBack} />
         </ScreenFrame>
       );
@@ -688,7 +690,7 @@ function AppContent() {
   // Non-tab sub-screens (no bottom nav)
   if (spScreen === 'Job Detail' || spScreen === 'Urgent Job') {
     return (
-      <ScreenFrame bottomColor={V6Colors.white}>
+      <ScreenFrame bottomColor={V6Colors.surface}>
         <SPJobDetailScreen
           jobId={spJobId}
           onBack={spBack}
@@ -699,14 +701,14 @@ function AppContent() {
     );
   }
   if (spScreen === 'Dispute Filing') {
-    return <ScreenFrame bottomColor={V6Colors.white}><HODisputeFilingScreen jobId={spJobId} onBack={spBack} onSubmitted={spBack} /></ScreenFrame>;
+    return <ScreenFrame bottomColor={V6Colors.surface}><HODisputeFilingScreen jobId={spJobId} onBack={spBack} onSubmitted={spBack} /></ScreenFrame>;
   }
   if (spScreen === 'Dispute Status') {
-    return <ScreenFrame bottomColor={V6Colors.white}><HODisputeStatusScreen jobId={spJobId} onBack={spBack} /></ScreenFrame>;
+    return <ScreenFrame bottomColor={V6Colors.surface}><HODisputeStatusScreen jobId={spJobId} onBack={spBack} /></ScreenFrame>;
   }
   if (spScreen === 'Chat') {
     return (
-      <ScreenFrame bottomColor={V6Colors.white}>
+      <ScreenFrame bottomColor={V6Colors.surface}>
         <SPChatScreen
           jobId={spJobId}
           onBack={spBack}
@@ -833,23 +835,28 @@ function AppContent() {
 /** Every route above is rendered inside the shared responsive root layout. */
 export default function App() {
   return (
-    <SafeAreaProvider>
-      <AuthProvider>
-        <ThemeProvider>
-          <NotificationsProvider>
-            <RootLayout>
-              <AppContent />
-              <ToastHost />
-            </RootLayout>
-          </NotificationsProvider>
-        </ThemeProvider>
-      </AuthProvider>
-    </SafeAreaProvider>
+    <GestureHandlerRootView style={rootStyles.fill}>
+      <SafeAreaProvider>
+        <AuthProvider>
+          <ThemeProvider>
+            <NotificationsProvider>
+              <BottomSheetModalProvider>
+                <RootLayout>
+                  <AppContent />
+                  <ToastHost />
+                </RootLayout>
+              </BottomSheetModalProvider>
+            </NotificationsProvider>
+          </ThemeProvider>
+        </AuthProvider>
+      </SafeAreaProvider>
+    </GestureHandlerRootView>
   );
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
+const rootStyles = StyleSheet.create({ fill: { flex: 1 } });
 
+// ─────────────────────────────────────────────────────────────────────────────
 
 function createThemedStyles(theme: ThemePalette) {
   const { Colors, V6Colors } = theme;
