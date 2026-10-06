@@ -22,9 +22,16 @@ import ContentSkeleton from '../../../src/components/ui/ContentSkeleton';
 import {
   AlertTriangle,
   ArrowLeft,
+  BadgeCheck,
   BriefcaseBusiness,
   CircleCheckBig,
+  ClipboardList,
+  type LucideIcon,
+  Megaphone,
+  MessageCircle,
+  ShieldAlert,
   Trash2,
+  Wallet,
 } from 'lucide-react-native';
 import ConfirmationModal from '../../../src/components/ConfirmationModal';
 import { useNotificationDeletion } from '../../../src/hooks/useNotificationDeletion';
@@ -48,10 +55,15 @@ interface NotificationRow {
   data: { job_id?: string } | null;
 }
 
-const ICON_BY_TYPE: Record<string, typeof BriefcaseBusiness> = {
+const ICON_BY_TYPE: Record<string, LucideIcon> = {
   recommendation_invite: BriefcaseBusiness,
   application_update: CircleCheckBig,
-  job_update: AlertTriangle,
+  job_update: ClipboardList,
+  message: MessageCircle,
+  verification_update: BadgeCheck,
+  wallet_update: Wallet,
+  payment_update: Wallet,
+  announcement: Megaphone,
 };
 
 interface SPNotificationsScreenProps {
@@ -146,7 +158,10 @@ export default function SPNotificationsScreen({ onBack, onOpenJob, onOpenChat, o
         {notifications.length > 0 && (
           <View style={styles.notificationList}>
             {notifications.map((notif, i) => {
-              const Icon = ICON_BY_TYPE[notif.type] ?? BriefcaseBusiness;
+              // Icon only: the same resolver that decides where a tap goes
+              // tells chat and complaint notifications apart from job updates.
+              const kind = resolveNotificationTarget('provider', notif.data ?? {}).kind;
+              const Icon = kind === 'chat' ? MessageCircle : kind === 'dispute' ? ShieldAlert : ICON_BY_TYPE[notif.type] ?? BriefcaseBusiness;
               const isUnread = !notif.read_at;
               return (
                 <Tap

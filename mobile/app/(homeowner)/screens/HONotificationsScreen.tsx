@@ -25,10 +25,18 @@ import Tap from '../../../src/components/ui/Tap';
 import ContentSkeleton from '../../../src/components/ui/ContentSkeleton';
 import {
   ArrowLeft,
+  BadgeCheck,
   BellRing,
+  BriefcaseBusiness,
   CircleCheckBig,
+  ClipboardList,
+  type LucideIcon,
+  Megaphone,
+  MessageCircle,
+  ShieldAlert,
   Trash2,
   Trophy,
+  Wallet,
 } from 'lucide-react-native';
 import ConfirmationModal from '../../../src/components/ConfirmationModal';
 import { useNotificationDeletion } from '../../../src/hooks/useNotificationDeletion';
@@ -52,10 +60,15 @@ interface NotificationRow {
   data: { job_id?: string; application_id?: string; conversation_id?: string; request_id?: string; dispute_id?: string } | null;
 }
 
-const ICON_BY_TYPE: Record<string, typeof BellRing> = {
-  recommendation_invite: Trophy,
+const ICON_BY_TYPE: Record<string, LucideIcon> = {
+  recommendation_invite: BriefcaseBusiness,
   application_update: CircleCheckBig,
-  job_update: BellRing,
+  job_update: ClipboardList,
+  message: MessageCircle,
+  verification_update: BadgeCheck,
+  wallet_update: Wallet,
+  payment_update: Wallet,
+  announcement: Megaphone,
 };
 
 interface HONotificationsProps {
@@ -187,7 +200,10 @@ export default function HONotificationsScreen({ onBack, onOpenJob, onOpenProposa
         {notifications.length > 0 && (
           <View style={styles.notificationList}>
             {notifications.map((notif, i) => {
-              const Icon = ICON_BY_TYPE[notif.type] ?? BellRing;
+              // Icon only: the same resolver that decides where a tap goes
+              // tells chat and complaint notifications apart from job updates.
+              const kind = resolveNotificationTarget('homeowner', notif.data ?? {}).kind;
+              const Icon = kind === 'chat' ? MessageCircle : kind === 'dispute' ? ShieldAlert : ICON_BY_TYPE[notif.type] ?? BellRing;
               const isUnread = !notif.read_at;
               return (
                 <Tap
