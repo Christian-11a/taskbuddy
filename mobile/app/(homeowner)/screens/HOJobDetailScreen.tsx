@@ -254,7 +254,15 @@ export default function HOJobDetailScreen({ jobId, onBack, onNavigate }: HOJobDe
                     (i < stage || (i === stage && i === JOB_STAGES.length - 1)) && styles.timelineDotDone,
                     i === stage && i < JOB_STAGES.length - 1 && styles.timelineDotCurrent,
                   ]} />
-                  <Text style={[styles.timelineLabel, i <= stage && styles.timelineLabelDone]}>{label}</Text>
+                  {/* Five steps share one row: cap the scale so large system text
+                      doesn't break words like "Confirmed" mid-word. */}
+                  <Text
+                    style={[styles.timelineLabel, i <= stage && styles.timelineLabelDone]}
+                    maxFontSizeMultiplier={1.1}
+                    numberOfLines={2}
+                  >
+                    {label}
+                  </Text>
                 </View>
               ))}
             </View>
