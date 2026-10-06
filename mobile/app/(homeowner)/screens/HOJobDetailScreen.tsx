@@ -39,7 +39,7 @@ import { useHeaderTop } from '../../../src/hooks/useHeaderTop';
 import { HOScreen } from '../../../src/types/navigation';
 import { useAsyncData } from '../../../src/hooks/useAsyncData';
 import { api, ApiError, type Job } from '../../../src/lib/api';
-import { distanceLabel, jobStatusMeta, peso, shortDate, timeAgo, timeOfDay, urgencyMeta } from '../../../src/lib/format';
+import { distanceLabel, jobStatusMeta, peso, plural, shortDate, timeAgo, timeOfDay, urgencyMeta } from '../../../src/lib/format';
 import ConfirmationModal from '../../../src/components/ConfirmationModal';
 
 function acceptedDistanceKm(job: Job): number | null {
@@ -318,7 +318,7 @@ export default function HOJobDetailScreen({ jobId, onBack, onNavigate }: HOJobDe
                       {provider.cached_avg_rating != null
                         ? `${Number(provider.cached_avg_rating).toFixed(1)} · `
                         : 'New · '}
-                      {provider.cached_completed_jobs} jobs completed
+                      {plural(provider.cached_completed_jobs, 'job')} completed
                     </Text>
                   </View>
                 </View>

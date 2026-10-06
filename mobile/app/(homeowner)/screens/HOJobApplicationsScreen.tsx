@@ -41,6 +41,7 @@ import {
   View,
 } from 'react-native';
 import Tap from '../../../src/components/ui/Tap';
+import { plural } from '../../../src/lib/format';
 import ContentSkeleton from '../../../src/components/ui/ContentSkeleton';
 import Silhouette from '../../../src/components/ui/Silhouette';
 import { AlertCircle, ArrowLeft, ChevronRight, ShieldAlert, Star } from 'lucide-react-native';
@@ -287,7 +288,7 @@ export default function HOJobApplicationsScreen({
                           {stats?.cached_avg_rating != null
                             ? `${Number(stats.cached_avg_rating).toFixed(1)} · `
                             : 'New · '}
-                          {stats?.cached_completed_jobs ?? 0} jobs
+                          {plural(stats?.cached_completed_jobs, 'job')}
                         </Text>
                       </View>
                       {!verified && (

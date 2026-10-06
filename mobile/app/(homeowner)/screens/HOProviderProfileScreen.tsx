@@ -37,7 +37,7 @@ import { useHeaderTop } from '../../../src/hooks/useHeaderTop';
 
 import { useAsyncData } from '../../../src/hooks/useAsyncData';
 import { api } from '../../../src/lib/api';
-import { shortDate } from '../../../src/lib/format';
+import { plural, shortDate } from '../../../src/lib/format';
 import { HOScreen } from '../../../src/types/navigation';
 
 interface HOProviderProfileScreenProps {
@@ -108,7 +108,7 @@ export default function HOProviderProfileScreen({
             </View>
             <Text style={styles.metaText}>
               {provider.cached_avg_rating != null ? `${Number(provider.cached_avg_rating).toFixed(1)}★ · ` : 'New · '}
-              {provider.cached_completed_jobs ?? 0} completed jobs
+              {plural(provider.cached_completed_jobs, 'completed job')}
               {provider.profiles?.city ? ` · ${provider.profiles.city}` : ''}
             </Text>
           </View>
@@ -119,7 +119,7 @@ export default function HOProviderProfileScreen({
             <Text style={styles.bio}>{provider.bio ?? 'No bio provided.'}</Text>
             <View style={styles.kvRow}>
               <Text style={styles.kvLabel}>Experience</Text>
-              <Text style={styles.kvValue}>{provider.years_experience ?? '—'} yrs</Text>
+              <Text style={styles.kvValue}>{provider.years_experience == null ? '—' : plural(provider.years_experience, 'yr')}</Text>
             </View>
           </View>
 

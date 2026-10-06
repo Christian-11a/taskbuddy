@@ -150,3 +150,9 @@ export function monthYear(iso: string | null | undefined): string {
   if (Number.isNaN(d.getTime())) return '';
   return d.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
 }
+
+/** "1 job" / "2 jobs" — display only; the count itself is unchanged. */
+export function plural(count: number | null | undefined, singular: string, pluralForm = `${singular}s`): string {
+  const n = count ?? 0;
+  return `${n} ${n === 1 ? singular : pluralForm}`;
+}
