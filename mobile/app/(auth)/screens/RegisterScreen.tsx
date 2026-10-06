@@ -45,6 +45,7 @@ import TermsAndConditions from './TermsAndConditions';
 import { ApiError, api } from '../../../src/lib/api';
 import type { MobileRole } from '../../../src/lib/api';
 import { useAuth } from '../../../src/context/AuthContext';
+import GoogleGlyph from '../../../src/components/GoogleGlyph';
 import PasswordInput from '../../../src/components/PasswordInput';
 import { useAuthLayout } from '../../../src/hooks/useAuthLayout';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -752,12 +753,10 @@ export default function RegisterScreen({ onRegister, onLogin, onGoogleSignIn }: 
               disabled={googleLoading || submitting}
             >
               {googleLoading ? (
-                <ActivityIndicator color={V6Colors.link} />
+                <ActivityIndicator color="#ffffff" />
               ) : (
                 <>
-                  <View style={styles.googleIcon}>
-                    <Text style={styles.googleIconText}>G</Text>
-                  </View>
+                  <GoogleGlyph size={20} />
                   <Text style={styles.googleBtnText}>Continue with Google</Text>
                 </>
               )}
@@ -982,18 +981,15 @@ function createThemedStyles(theme: ThemePalette) {
     dividerLine: { flex: 1, height: 1, backgroundColor: V6Colors.ink100 },
     dividerText: { color: '#B3B3B3', fontSize: 15.5, fontFamily: 'Roboto' },
 
+    // Google's dark sign-in button: #131314 pill, light text, four-colour G.
+    // The light border only shows in dark mode, where the page is near-black.
     googleBtn: {
-      flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-      borderWidth: 1, borderColor: V6Colors.fieldBorder,
-      borderRadius: V6Radii.btn, paddingVertical: 13, gap: 10, marginBottom: 20,
-      backgroundColor: C.surface,
+      flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10,
+      backgroundColor: '#131314', borderRadius: 999, minHeight: 50, paddingHorizontal: 24,
+      borderWidth: 1, borderColor: theme.appearance === 'dark' ? '#8E918F' : '#131314',
+      marginBottom: 20,
     },
-    googleIcon: {
-      width: 20, height: 20, borderRadius: 10,
-      backgroundColor: '#EA4335', alignItems: 'center', justifyContent: 'center',
-    },
-    googleIconText: { color: C.onPrimary, fontSize: 14.5, fontWeight: '700' },
-    googleBtnText: { fontFamily: 'Inter', fontSize: 16.5, fontWeight: '500', color: V6Colors.ink500 },
+    googleBtnText: { fontFamily: 'Inter', fontSize: 16, fontWeight: '700', color: '#ffffff' },
 
     signInRow: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', marginTop: 4 },
     signInPrompt: { fontFamily: 'Inter', fontSize: 16.5, color: C.muted },

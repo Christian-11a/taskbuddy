@@ -24,6 +24,7 @@ import {
   View,
 } from 'react-native';
 import Tap from '../../../src/components/ui/Tap';
+import GoogleGlyph from '../../../src/components/GoogleGlyph';
 import { Eye, EyeOff } from 'lucide-react-native';
 import { V6Radii, V6Shadows } from '../../../src/constants/theme';
 import { useAuthLayout } from '../../../src/hooks/useAuthLayout';
@@ -301,12 +302,10 @@ export default function LoginScreen({
         disabled={googleLoading || submitting}
       >
         {googleLoading ? (
-          <ActivityIndicator color={V6Colors.link} />
+          <ActivityIndicator color="#ffffff" />
         ) : (
           <>
-            <View style={styles.googleIcon}>
-              <Text style={styles.googleIconText}>G</Text>
-            </View>
+            <GoogleGlyph size={20} />
             <Text style={styles.googleBtnText}>Continue with Google</Text>
           </>
         )}
@@ -452,20 +451,15 @@ function createThemedStyles(theme: ThemePalette) {
     dividerText: { fontFamily: 'Inter', fontSize: 15.5, color: C.ink300 },
 
     // Google — matches .btn-outline
+    // Google's dark sign-in button: #131314 pill, light text, four-colour G.
+    // The light border only shows in dark mode, where the page is near-black.
     googleBtn: {
-      flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-      borderWidth: 1, borderColor: V6Colors.fieldBorder, borderRadius: V6Radii.btn,
-      paddingVertical: 12, paddingHorizontal: 24, marginBottom: 28, gap: 10,
-      minHeight: 46, backgroundColor: C.surface,
+      flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10,
+      backgroundColor: '#131314', borderRadius: 999, minHeight: 50, paddingHorizontal: 24,
+      borderWidth: 1, borderColor: theme.appearance === 'dark' ? '#8E918F' : '#131314',
+      marginBottom: 28,
     },
-    googleIcon: {
-      width: 20, height: 20, borderRadius: 10,
-      backgroundColor: '#EA4335', alignItems: 'center', justifyContent: 'center',
-    },
-    googleIconText: { color: C.onPrimary, fontSize: 14.5, fontWeight: '700' },
-    googleBtnText: {
-      fontFamily: 'Inter', fontSize: 16.5, fontWeight: '600', color: C.ink700,
-    },
+    googleBtnText: { fontFamily: 'Inter', fontSize: 16, fontWeight: '700', color: '#ffffff' },
 
     // Sign Up
     signUpRow: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center' },
