@@ -35,6 +35,8 @@ interface HOLeaveReviewScreenProps {
   onBack?: () => void;
 }
 
+const RATING_WORDS: Record<number, string> = { 1: 'Poor', 2: 'Fair', 3: 'Good', 4: 'Very good', 5: 'Excellent' };
+
 export default function HOLeaveReviewScreen({ jobId, onSubmitted, onBack }: HOLeaveReviewScreenProps) {
   const { C, styles, V6Colors, appearance } = useThemedStyles(createThemedStyles);
   const headerTop = useHeaderTop();
@@ -96,11 +98,18 @@ export default function HOLeaveReviewScreen({ jobId, onSubmitted, onBack }: HOLe
                 onPress={() => setRating(n)}
                 activeOpacity={0.85}
                 style={styles.starBtn}
+                borderlessRipple
+                accessibilityRole="button"
+                accessibilityLabel={`${n} star${n === 1 ? '' : 's'}`}
+                accessibilityState={{ selected: n <= rating }}
               >
                 <Star size={33} color={n <= rating ? '#f59e0b' : '#cbd5e1'} fill={n <= rating ? '#f59e0b' : 'none'} />
               </Tap>
             ))}
           </View>
+          {/* Says what the stars currently mean, so a pre-filled rating
+              reads as a choice the user can change. */}
+          <Text style={styles.ratingLabel}>{rating} of 5 · {RATING_WORDS[rating]}</Text>
 
           <View style={styles.fieldGroup}>
             <Text style={styles.fieldLabel}>Write a review</Text>
@@ -158,13 +167,14 @@ function createThemedStyles(theme: ThemePalette) {
 
     bodyContent: { paddingHorizontal: Spacing.screenH, paddingTop: 22, paddingBottom: 24, alignItems: 'center' },
 
-    avatar: { width: 72, height: 72, borderRadius: 22, backgroundColor: C.cyan700, alignItems: 'center', justifyContent: 'center', marginBottom: 10 },
-    avatarText: { color: C.onPrimary, fontSize: 24, fontWeight: '800', fontFamily: 'Inter' },
+    avatar: { width: 80, height: 80, borderRadius: 40, backgroundColor: C.primaryTonalStrong, alignItems: 'center', justifyContent: 'center', marginBottom: 10, overflow: 'hidden' },
+    avatarText: { color: C.primaryDeep, fontSize: 24, fontWeight: '800', fontFamily: 'Inter' },
     providerName: { color: C.ink900, fontSize: 19.5, fontWeight: '700', fontFamily: 'Inter' },
     prompt: { color: C.ink400, fontSize: 13, fontFamily: 'Inter', marginTop: 5 },
 
     starPicker: { flexDirection: 'row', gap: 9, paddingVertical: 18 },
-    starBtn: { padding: 3 },
+    starBtn: { padding: 6, borderRadius: 24 },
+    ratingLabel: { color: C.ink700, fontSize: 15, fontWeight: '700', fontFamily: 'Inter', textAlign: 'center', marginTop: 4, marginBottom: 8 },
 
     fieldGroup: { width: '100%', marginTop: 4 },
     fieldLabel: { color: C.ink900, fontSize: 14, fontWeight: '700', fontFamily: 'Inter', marginBottom: 6 },
