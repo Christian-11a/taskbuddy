@@ -26,8 +26,8 @@ import {
 import Tap from '../../../src/components/ui/Tap';
 import SheetFrame from '../../../src/components/ui/SheetFrame';
 import {
-  ArrowDownLeft,
   ArrowUpRight,
+  Plus,
   CircleDollarSign,
   Gift,
   Package,
@@ -295,20 +295,23 @@ export default function HOWalletScreen() {
           </Text>
           <View style={styles.quickActions}>
             <Tap
-              style={styles.quickActionBtn}
+              style={[styles.quickActionBtn, styles.quickActionPrimary]}
               onPress={() => setShowAddMoney(true)}
               activeOpacity={0.8}
+              accessibilityRole="button"
+              scale
             >
-              <ArrowUpRight size={22} color={C.onPrimary} />
-              <Text style={styles.quickActionText}>Add Money</Text>
+              <Plus size={18} color="#0369a1" strokeWidth={2.5} />
+              <Text style={[styles.quickActionText, styles.quickActionTextPrimary]}>Add Money</Text>
             </Tap>
-            <View style={styles.actionDivider} />
             <Tap
               style={styles.quickActionBtn}
               onPress={openWithdraw}
               activeOpacity={0.8}
+              accessibilityRole="button"
+              rippleColor={C.rippleOnHero}
             >
-              <ArrowDownLeft size={22} color={C.onPrimary} />
+              <ArrowUpRight size={18} color={C.onPrimary} strokeWidth={2.5} />
               <Text style={styles.quickActionText}>Withdraw</Text>
             </Tap>
           </View>
@@ -485,7 +488,7 @@ export default function HOWalletScreen() {
                         selected && styles.quickAmountTextActive,
                       ]}
                     >
-                      {peso(preset)}
+                      ₱{preset.toLocaleString()}
                     </Text>
                   </Tap>
                 );
@@ -519,7 +522,7 @@ export default function HOWalletScreen() {
                 {adding ? (
                   <ActivityIndicator color={C.onPrimary} />
                 ) : (
-                  <Text style={styles.modalConfirmText}>Continue</Text>
+                  <Text style={[styles.modalConfirmText, !isValidAmount && styles.modalConfirmTextDisabled]}>Continue</Text>
                 )}
               </Tap>
             </View>
@@ -586,7 +589,7 @@ export default function HOWalletScreen() {
                 {withdrawing ? (
                   <ActivityIndicator color={C.onPrimary} />
                 ) : (
-                  <Text style={styles.modalConfirmText}>Withdraw</Text>
+                  <Text style={[styles.modalConfirmText, (!isValidWithdrawal || !canWithdrawBalance(availableToWithdraw)) && styles.modalConfirmTextDisabled]}>Withdraw</Text>
                 )}
               </Tap>
             </View>
@@ -621,10 +624,15 @@ function createThemedStyles(theme: ThemePalette) {
     balanceLabel: { color: C.onHeroMuted, fontSize: 14, fontFamily: 'Inter', marginBottom: 4 },
     balanceAmount: { color: C.onPrimary, fontSize: 32.5, fontWeight: '800', fontFamily: 'Inter', marginBottom: 16 },
     balanceSub: { color: 'rgba(255,255,255,0.85)', fontSize: 13, fontFamily: 'Inter', marginTop: 12, textAlign: 'center' },
-    quickActions: { flexDirection: 'row', alignItems: 'center' },
-    quickActionBtn: { flex: 1, alignItems: 'center', gap: 4 },
-    quickActionText: { color: 'rgba(255,255,255,0.85)', fontSize: 13.5, fontWeight: '600', fontFamily: 'Inter' },
-    actionDivider: { width: 1, height: 34, backgroundColor: 'rgba(255,255,255,0.2)' },
+    quickActions: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+    quickActionBtn: {
+      flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
+      minHeight: 46, borderRadius: 999,
+      backgroundColor: 'rgba(255,255,255,0.14)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.22)',
+    },
+    quickActionPrimary: { backgroundColor: '#ffffff', borderColor: '#ffffff' },
+    quickActionText: { color: C.onPrimary, fontSize: 15, fontWeight: '700', fontFamily: 'Inter' },
+    quickActionTextPrimary: { color: '#0369a1' },
 
     escrowCard: {
       backgroundColor: V6Colors.infoSurface, borderWidth: 1, borderColor: V6Colors.infoSurface,
@@ -703,27 +711,29 @@ function createThemedStyles(theme: ThemePalette) {
     amountInput: { fontSize: 48.5, fontWeight: '800', fontFamily: 'Inter', color: C.ink900, minWidth: 120, textAlign: 'center' },
     modalError: { color: V6Colors.dangerText, fontSize: 15.5, fontFamily: 'Inter', textAlign: 'center', marginTop: 4 },
     modalHint: { color: C.ink400, fontSize: 14.5, fontFamily: 'Inter', textAlign: 'center', marginTop: 6 },
-    quickAmounts: { flexDirection: 'row', justifyContent: 'center', flexWrap: 'wrap', gap: 8, marginTop: 10 },
+    quickAmounts: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 10 },
     quickAmount: {
-      paddingHorizontal: 14, paddingVertical: 8, borderRadius: 999,
-      borderWidth: 1, borderColor: V6Colors.fieldBorder, backgroundColor: C.surface,
+      flexBasis: '48%', flexGrow: 1, minHeight: 44, alignItems: 'center', justifyContent: 'center',
+      borderWidth: 1, borderColor: C.line, borderRadius: 12, backgroundColor: C.surface,
     },
-    quickAmountActive: { borderColor: C.cyan700, backgroundColor: C.cyan50 },
-    quickAmountText: { color: C.ink700, fontSize: 14.5, fontWeight: '600', fontFamily: 'Inter' },
-    quickAmountTextActive: { color: V6Colors.link },
+    quickAmountActive: { borderColor: C.primaryTonalStrong, backgroundColor: C.primaryTonalStrong },
+    quickAmountText: { color: C.ink800, fontSize: 15, fontWeight: '700', fontFamily: 'Inter' },
+    quickAmountTextActive: { color: theme.appearance === 'dark' ? '#e0f2fe' : '#0c4a6e' },
     withdrawAvailable: { color: V6Colors.link, fontSize: 14, fontWeight: '700', fontFamily: 'Inter', marginTop: 12 },
     destinationInput: {
       backgroundColor: V6Colors.wellBg, borderRadius: 12, paddingHorizontal: 14, minHeight: 48,
       borderWidth: 1, borderColor: V6Colors.fieldBorder, fontFamily: 'Inter', fontSize: 15, color: C.ink900,
       marginTop: 12,
     },
-    modalActions: { flexDirection: 'row', justifyContent: 'flex-end', gap: 10, marginTop: 18 },
-    modalBtn: { minWidth: 104, minHeight: 40, alignItems: 'center', justifyContent: 'center', borderRadius: 10, paddingHorizontal: 16, paddingVertical: 9 },
-    modalBtnDisabled: { opacity: 0.5 },
-    modalCancel: { backgroundColor: C.ink50 },
-    modalCancelText: { color: C.ink500, fontSize: 14.5, fontWeight: '700', fontFamily: 'Inter' },
-    modalConfirm: { backgroundColor: C.cyan700 },
-    modalConfirmText: { color: C.onPrimary, fontSize: 14.5, fontWeight: '700', fontFamily: 'Inter' },
+    modalActions: { flexDirection: 'row', gap: 10, marginTop: 18 },
+    modalBtn: { flex: 1, minHeight: 52, alignItems: 'center', justifyContent: 'center', borderRadius: 16, paddingHorizontal: 16 },
+    // Readable disabled state: grey fill with dark text instead of a faded button.
+    modalBtnDisabled: { backgroundColor: C.ink100 },
+    modalConfirmTextDisabled: { color: C.ink700 },
+    modalCancel: { backgroundColor: C.surface, borderWidth: 1, borderColor: C.fieldBorder },
+    modalCancelText: { color: C.ink800, fontSize: 15.5, fontWeight: '700', fontFamily: 'Inter' },
+    modalConfirm: { backgroundColor: C.primary },
+    modalConfirmText: { color: C.onPrimary, fontSize: 15.5, fontWeight: '700', fontFamily: 'Inter' },
   });
   return { appearance: theme.appearance, Colors, V6Colors, C, styles };
 }
