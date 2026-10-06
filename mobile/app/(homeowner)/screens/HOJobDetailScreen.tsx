@@ -232,7 +232,7 @@ export default function HOJobDetailScreen({ jobId, onBack, onNavigate }: HOJobDe
                   </View>
                   <View style={styles.detailText}>
                     <Text style={styles.detailLabel}>{item.label}</Text>
-                    <Text style={[styles.detailValue, item.color && { color: item.color }]} numberOfLines={item.wide ? 3 : 2}>
+                    <Text style={[styles.detailValue, item.color && { color: item.color }]} numberOfLines={item.wide ? 3 : 4}>
                       {item.value}
                     </Text>
                   </View>
