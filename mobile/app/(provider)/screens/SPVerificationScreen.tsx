@@ -58,6 +58,7 @@ import { api, ApiError } from '../../../src/lib/api';
 import { useAsyncData } from '../../../src/hooks/useAsyncData';
 import { shortDate } from '../../../src/lib/format';
 import { Spacing, V6Radii, V6Shadows } from '../../../src/constants/theme';
+import { useAuth } from '../../../src/context/AuthContext';
 import { useHeaderTop } from '../../../src/hooks/useHeaderTop';
 import { requestAppPermission } from '../../../src/lib/permissions';
 
@@ -95,6 +96,10 @@ type Slot = 'id' | 'selfie';
 export default function SPVerificationScreen({ onBack, onVerified }: SPVerificationScreenProps) {
   const { Colors, styles, V6Colors } = useThemedStyles(createThemedStyles);
   const headerTop = useHeaderTop();
+  // The API refuses a verification without a service profile; say so up
+  // front instead of after all three steps.
+  const { providerProfile } = useAuth();
+  const profileIncomplete = !providerProfile;
   const [step, setStep] = useState(1);
   const [documentType, setDocumentType] = useState<DocumentType | null>(null);
   const [idAsset, setIdAsset] = useState<ImagePicker.ImagePickerAsset | null>(null);
@@ -359,6 +364,14 @@ export default function SPVerificationScreen({ onBack, onVerified }: SPVerificat
             {inWizard && (
               <>
                 {/* ── Step 1 · Government ID ─────────────────────────── */}
+                {step === 1 && profileIncomplete && (
+                  <View style={styles.profileNotice}>
+                    <Text style={styles.profileNoticeTitle}>Finish your profile first</Text>
+                    <Text style={styles.profileNoticeBody}>
+                      Pick your service and add a bio in Profile → Edit Profile. Verification can't be sent until they're saved.
+                    </Text>
+                  </View>
+                )}
                 {step === 1 && (
                   <View style={styles.card}>
                     <Text style={styles.label}>Government ID</Text>
@@ -658,6 +671,12 @@ function createThemedStyles(theme: ThemePalette) {
     submitButtonDisabled: { backgroundColor: V6Colors.ink100 },
     submitTextDisabled: { color: V6Colors.ink700 },
     submitText: { color: Colors.onPrimary, fontSize: 18.5, fontWeight: '700', fontFamily: 'Inter' },
+    profileNotice: {
+      backgroundColor: V6Colors.warningSurface, borderWidth: 1, borderColor: V6Colors.warningBorder,
+      borderRadius: 14, padding: 14, gap: 4, marginBottom: 14,
+    },
+    profileNoticeTitle: { color: V6Colors.warningText, fontFamily: 'Inter', fontSize: 15, fontWeight: '700' },
+    profileNoticeBody: { color: V6Colors.ink700, fontFamily: 'Inter', fontSize: 14, lineHeight: 20 },
     errorText: { color: Colors.error, fontFamily: 'Inter', fontSize: 15.5, textAlign: 'center' },
     retryHint: { color: Colors.muted, fontFamily: 'Inter', fontSize: 14, textAlign: 'center' },
 
