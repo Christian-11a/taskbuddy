@@ -90,8 +90,8 @@ export default function SPWalletScreen() {
             activeOpacity={0.85}
             accessibilityRole="button"
           >
-            <Banknote size={18} color="#13283c" />
-            <Text style={styles.withdrawBtnText}>Withdraw</Text>
+            <Banknote size={18} color={canWithdraw ? '#13283c' : C.onPrimary} />
+            <Text style={[styles.withdrawBtnText, !canWithdraw && styles.withdrawBtnTextDisabled]}>Withdraw</Text>
           </Tap>
         </View>
 
@@ -242,8 +242,13 @@ function createThemedStyles(theme: ThemePalette) {
       // White pill on the navy card, same as the homeowner wallet action.
       backgroundColor: '#ffffff', borderRadius: 999, paddingHorizontal: 18, minHeight: 44,
     },
-    withdrawBtnDisabled: { opacity: 0.6 },
+    // Nothing to withdraw: a translucent outline pill with light text, so it
+    // reads as unavailable without turning into low-contrast grey.
+    withdrawBtnDisabled: {
+      backgroundColor: 'rgba(255,255,255,0.12)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.28)',
+    },
     withdrawBtnText: { color: '#13283c', fontSize: 15, fontWeight: '700', fontFamily: 'Inter' },
+    withdrawBtnTextDisabled: { color: C.onPrimary },
     balanceSubnote: {
       color: 'rgba(255,255,255,0.75)', fontSize: 12.5, fontFamily: 'Inter',
       marginTop: -10, marginBottom: 12,
