@@ -40,7 +40,7 @@ const RATING_WORDS: Record<number, string> = { 1: 'Poor', 2: 'Fair', 3: 'Good', 
 export default function HOLeaveReviewScreen({ jobId, onSubmitted, onBack }: HOLeaveReviewScreenProps) {
   const { C, styles, V6Colors, appearance } = useThemedStyles(createThemedStyles);
   const headerTop = useHeaderTop();
-  const [rating, setRating] = useState<number>(5);
+  const [rating, setRating] = useState<number>(0);
   const [comment, setComment] = useState<string>('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -107,9 +107,10 @@ export default function HOLeaveReviewScreen({ jobId, onSubmitted, onBack }: HOLe
               </Tap>
             ))}
           </View>
-          {/* Says what the stars currently mean, so a pre-filled rating
-              reads as a choice the user can change. */}
-          <Text style={styles.ratingLabel}>{rating} of 5 · {RATING_WORDS[rating]}</Text>
+          {/* Stars start empty so the rating is always the user's own choice. */}
+          <Text style={[styles.ratingLabel, rating === 0 && styles.ratingHint]}>
+            {rating === 0 ? 'Tap a star to rate' : `${rating} of 5 · ${RATING_WORDS[rating]}`}
+          </Text>
 
           <View style={styles.fieldGroup}>
             <Text style={styles.fieldLabel}>Write a review</Text>
@@ -131,12 +132,12 @@ export default function HOLeaveReviewScreen({ jobId, onSubmitted, onBack }: HOLe
           {error && <Text style={styles.errorText}>{error}</Text>}
 
           <Tap
-            style={[styles.submitBtn, (busy || alreadyReviewed) && styles.disabled]}
+            style={[styles.submitBtn, (busy || alreadyReviewed) && styles.disabled, rating === 0 && styles.submitBtnEmpty]}
             onPress={submit}
-            disabled={busy || alreadyReviewed}
+            disabled={busy || alreadyReviewed || rating === 0}
             activeOpacity={0.85}
           >
-            {busy ? <ActivityIndicator color={C.onPrimary} /> : <Text style={styles.submitText}>Submit Review</Text>}
+            {busy ? <ActivityIndicator color={C.onPrimary} /> : <Text style={[styles.submitText, rating === 0 && styles.submitTextEmpty]}>Submit Review</Text>}
           </Tap>
         </ScrollView>
       </KeyboardAvoidingView>
@@ -192,6 +193,10 @@ function createThemedStyles(theme: ThemePalette) {
     submitText: { color: C.onPrimary, fontSize: 16.5, fontWeight: '700', fontFamily: 'Inter' },
 
     disabled: { opacity: 0.6 },
+    // No rating picked yet: grey fill with dark text, like the other disabled buttons.
+    submitBtnEmpty: { backgroundColor: C.ink100, shadowOpacity: 0, elevation: 0 },
+    submitTextEmpty: { color: C.ink700 },
+    ratingHint: { color: C.ink500, fontWeight: '600' },
 
     errorText: { color: V6Colors.dangerText, marginTop: 8, fontFamily: 'Inter', fontSize: 15 },
     alreadyReviewedText: { color: V6Colors.link, marginTop: 8, fontFamily: 'Inter', fontSize: 15, textAlign: 'center' },
