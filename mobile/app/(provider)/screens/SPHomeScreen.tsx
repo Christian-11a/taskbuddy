@@ -47,6 +47,7 @@ import {
 } from 'lucide-react-native';
 import { Spacing } from '../../../src/constants/theme';
 import { useHeaderTop } from '../../../src/hooks/useHeaderTop';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { SPScreen } from '../../../src/types/navigation';
 
 import { useAuth } from '../../../src/context/AuthContext';
@@ -79,6 +80,7 @@ interface SPHomeScreenProps {
 export default function SPHomeScreen({ onNavigate }: SPHomeScreenProps) {
   const { C, styles, appearance } = useThemedStyles(createThemedStyles);
   const headerTop = useHeaderTop();
+  const insets = useSafeAreaInsets();
   const { unreadCount } = useNotifications();
   const { profile, providerProfile, isVerified, refreshProfile } = useAuth();
   const radiusKm = providerProfile?.service_radius_km ?? DEFAULT_RADIUS_KM;
@@ -147,97 +149,98 @@ export default function SPHomeScreen({ onNavigate }: SPHomeScreenProps) {
   return (
     <View style={styles.screen}>
       <StatusBar style="light" />
-      {/* Hero — flat navy, provider identity. */}
-      <View style={[styles.hero, { paddingTop: headerTop }]}>
-        <View style={styles.heroTopRow}>
-          <View testID="hero-text" style={styles.heroText}>
-            <Text
-              style={styles.greeting}
-              numberOfLines={1}
-              ellipsizeMode="tail"
-              maxFontSizeMultiplier={1.3}
-            >
-              Hello, {name || 'there'}
-            </Text>
-            <Text style={styles.heroTitle}>Jobs near you</Text>
-          </View>
-          <View testID="hero-actions" style={styles.heroActions}>
-            <View>
-              <Tap
-                style={styles.iconBtn}
-                rippleColor={C.rippleOnHero}
-                accessibilityRole="button"
-                accessibilityLabel="Notifications"
-                onPress={() => onNavigate('Notifications')}
-              >
-                <Bell size={21} color={C.onPrimary} strokeWidth={2.2} />
-              </Tap>
-              {unreadCount > 0 && (
-                <View pointerEvents="none" style={styles.notifBadge}>
-                  <Text accessibilityLabel={`${unreadCount} unread notifications`} style={styles.notifBadgeText} maxFontSizeMultiplier={1.2}>
-                    {unreadCount > 99 ? '99+' : unreadCount}
-                  </Text>
-                </View>
-              )}
-            </View>
-            <Tap
-              testID="btn-home-avatar"
-              style={styles.avatarCircle}
-              rippleColor={C.rippleOnHero}
-              accessibilityRole="button"
-              accessibilityLabel="Profile"
-              onPress={() => onNavigate('Profile')}
-            >
-              <OwnAvatar name={name} textStyle={styles.avatarText} />
-            </Tap>
-          </View>
-        </View>
-
-        {/* Availability — decides whether new work is offered to this provider. */}
-        <View style={styles.statusCard}>
-          <View style={[styles.statusDot, { backgroundColor: available ? '#4ade80' : 'rgba(255,255,255,0.45)' }]} />
-          <View style={styles.statusCopy}>
-            <Text style={styles.statusText}>{available ? 'Available for jobs' : 'Not available'}</Text>
-            <Text style={styles.statusHint} numberOfLines={2}>
-              {available ? 'Clients can invite and hire you' : "You won't be invited to new jobs"} · within {radiusKm} km of {location}
-            </Text>
-          </View>
-          <Switch
-            value={available}
-            onValueChange={() => { haptic.tick(); void toggleAvailability(); }}
-            disabled={togglingAvail}
-            trackColor={{ false: 'rgba(255,255,255,0.25)', true: '#22c55e' }}
-            thumbColor={C.white}
-            accessibilityLabel="Available for jobs"
-            testID="toggle-availability"
-          />
-        </View>
-
-        {/* Feed summary — what's out there and what's urgent, both counted
-            from the location-filtered feed below. */}
-        <View style={styles.summaryStrip}>
-          <View style={styles.summaryItem}>
-            <Text style={styles.summaryValue}>{summary?.open_count ?? '—'}</Text>
-            <View style={styles.summaryLabelRow}>
-              <Search size={13} color={C.onHeroMuted} />
-              <Text style={styles.summaryLabel}>Open</Text>
-            </View>
-          </View>
-          <View style={styles.summaryItem}>
-            <Text style={styles.summaryValue}>{summary?.urgent_count ?? '—'}</Text>
-            <View style={styles.summaryLabelRow}>
-              <TriangleAlert size={13} color="#fca5a5" />
-              <Text style={styles.summaryLabel}>Urgent</Text>
-            </View>
-          </View>
-        </View>
-      </View>
-
       <ScrollView keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag"
         style={styles.body}
-        contentContainerStyle={styles.bodyContent}
         showsVerticalScrollIndicator={false}
       >
+        {/* The hero scrolls with the feed so small phones and large text
+            sizes are not left with a thin strip of jobs under it. */}
+        {/* Hero — flat navy, provider identity. */}
+        <View style={[styles.hero, { paddingTop: headerTop }]}>
+          <View style={styles.heroTopRow}>
+            <View testID="hero-text" style={styles.heroText}>
+              <Text
+                style={styles.greeting}
+                numberOfLines={1}
+                ellipsizeMode="tail"
+                maxFontSizeMultiplier={1.3}
+              >
+                Hello, {name || 'there'}
+              </Text>
+              <Text style={styles.heroTitle}>Jobs near you</Text>
+            </View>
+            <View testID="hero-actions" style={styles.heroActions}>
+              <View>
+                <Tap
+                  style={styles.iconBtn}
+                  rippleColor={C.rippleOnHero}
+                  accessibilityRole="button"
+                  accessibilityLabel="Notifications"
+                  onPress={() => onNavigate('Notifications')}
+                >
+                  <Bell size={21} color={C.onPrimary} strokeWidth={2.2} />
+                </Tap>
+                {unreadCount > 0 && (
+                  <View pointerEvents="none" style={styles.notifBadge}>
+                    <Text accessibilityLabel={`${unreadCount} unread notifications`} style={styles.notifBadgeText} maxFontSizeMultiplier={1.2}>
+                      {unreadCount > 99 ? '99+' : unreadCount}
+                    </Text>
+                  </View>
+                )}
+              </View>
+              <Tap
+                testID="btn-home-avatar"
+                style={styles.avatarCircle}
+                rippleColor={C.rippleOnHero}
+                accessibilityRole="button"
+                accessibilityLabel="Profile"
+                onPress={() => onNavigate('Profile')}
+              >
+                <OwnAvatar name={name} textStyle={styles.avatarText} />
+              </Tap>
+            </View>
+          </View>
+
+          {/* Availability — decides whether new work is offered to this provider. */}
+          <View style={styles.statusCard}>
+            <View style={[styles.statusDot, { backgroundColor: available ? '#4ade80' : 'rgba(255,255,255,0.45)' }]} />
+            <View style={styles.statusCopy}>
+              <Text style={styles.statusText}>{available ? 'Available for jobs' : 'Not available'}</Text>
+              <Text style={styles.statusHint} numberOfLines={3}>
+                {available ? 'Clients can invite and hire you' : "You won't be invited to new jobs"} · within {radiusKm} km of {location}
+              </Text>
+            </View>
+            <Switch
+              value={available}
+              onValueChange={() => { haptic.tick(); void toggleAvailability(); }}
+              disabled={togglingAvail}
+              trackColor={{ false: 'rgba(255,255,255,0.25)', true: '#22c55e' }}
+              thumbColor={C.white}
+              accessibilityLabel="Available for jobs"
+              testID="toggle-availability"
+            />
+          </View>
+
+          {/* Feed summary — what's out there and what's urgent, both counted
+              from the location-filtered feed below. */}
+          <View style={styles.summaryStrip}>
+            <View style={styles.summaryItem}>
+              <Text style={styles.summaryValue}>{summary?.open_count ?? '—'}</Text>
+              <View style={styles.summaryLabelRow}>
+                <Search size={13} color={C.onHeroMuted} />
+                <Text style={styles.summaryLabel}>Open</Text>
+              </View>
+            </View>
+            <View style={styles.summaryItem}>
+              <Text style={styles.summaryValue}>{summary?.urgent_count ?? '—'}</Text>
+              <View style={styles.summaryLabelRow}>
+                <TriangleAlert size={13} color="#fca5a5" />
+                <Text style={styles.summaryLabel}>Urgent</Text>
+              </View>
+            </View>
+          </View>
+        </View>
+        <View style={styles.bodyContent}>
         {/* Verification banner */}
         {!isVerified && (
           <Tap
@@ -366,7 +369,10 @@ export default function SPHomeScreen({ onNavigate }: SPHomeScreenProps) {
         ))}
 
         <View style={{ height: 24 }} />
+        </View>
       </ScrollView>
+      {/* Keeps the status bar area navy once the hero has scrolled away. */}
+      <View pointerEvents="none" style={[styles.statusStrip, { height: insets.top }]} />
 
     </View>
   );
@@ -442,6 +448,7 @@ function createThemedStyles(theme: ThemePalette) {
     },
     requestsCountText: { color: C.onPrimary, fontSize: 12, fontWeight: '800', fontFamily: 'Inter' },
     body: { flex: 1 },
+    statusStrip: { position: 'absolute', top: 0, left: 0, right: 0, backgroundColor: C.providerHero },
     bodyContent: { paddingHorizontal: Spacing.screenH, paddingTop: 18, paddingBottom: 20 },
 
     flowBanner: {
