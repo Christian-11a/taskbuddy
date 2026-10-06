@@ -23,6 +23,7 @@
 
 import { useThemedStyles, type Palette as ThemePalette } from '../../../src/context/ThemeContext';
 import { StatusBar } from 'expo-status-bar';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import React, { useEffect, useState } from 'react';
 import { approvedServiceNames } from '../../../src/lib/providerServices';
 import { useRetainedScroll } from '../../../src/hooks/useRetainedState';
@@ -44,6 +45,7 @@ import {
   Settings as SettingsIcon,
   ShieldAlert,
   ShieldCheck,
+  Images,
   Wrench,
 } from 'lucide-react-native';
 import ConfirmationModal from '../../../src/components/ConfirmationModal';
@@ -60,7 +62,7 @@ import { api } from '../../../src/lib/api';
 const MENU_ITEMS: { label: string; icon: typeof Pencil; screen: SPScreen }[] = [
   { label: 'Edit Profile', icon: Pencil, screen: 'Edit Profile' },
   { label: 'Get Verified', icon: ShieldCheck, screen: 'Verification' },
-  { label: 'My Portfolio', icon: Wrench, screen: 'Portfolio' },
+  { label: 'My Portfolio', icon: Images, screen: 'Portfolio' },
   { label: 'My Services', icon: Wrench, screen: 'My Services' },
   { label: 'Payouts', icon: Landmark, screen: 'Payouts' },
   { label: 'Settings', icon: SettingsIcon, screen: 'Settings' },
@@ -76,6 +78,7 @@ interface SPProfileScreenProps {
 export default function SPProfileScreen({ onNavigate, onLogout, onBack }: SPProfileScreenProps) {
   const { C, styles, V6Colors } = useThemedStyles(createThemedStyles);
   const headerTop = useHeaderTop(4);
+  const insets = useSafeAreaInsets();
   // Coming back from Settings/Edit Profile keeps the list where it was.
   const scroll = useRetainedScroll('sp.profile');
   const { profile, providerProfile, refreshProfile } = useAuth();
@@ -105,59 +108,61 @@ export default function SPProfileScreen({ onNavigate, onLogout, onBack }: SPProf
   return (
     <View style={styles.screen}>
       <StatusBar style="light" />
-      {/* Hero — matches .profile-hero.dark (same gradient as Feed's hero) */}
-      <View style={[styles.hero, { paddingTop: headerTop }, { backgroundColor: C.providerHero }]}>
-        <Tap
-          style={[styles.backBtn, { top: headerTop }]}
-          onPress={onBack}
-          activeOpacity={0.8}
-          accessibilityLabel="Back to Feed"
-        >
-          <ArrowLeft size={20} color={C.onPrimary} />
-        </Tap>
-
-        <View style={styles.avatarCircle}>
-          <OwnAvatar name={name} textStyle={styles.avatarText} />
-        </View>
-        <Text style={styles.profileName}>{name || 'Your Profile'}</Text>
-        <Text style={styles.profileSubtitle}>{category ? `${category} · Provider profile` : 'Provider profile'}</Text>
-
-        <View style={[styles.verifyPill, isVerified ? styles.verifyPillOn : styles.verifyPillOff]}>
-          {isVerified ? (
-            <BadgeCheck size={13} color="#4ade80" />
-          ) : (
-            <ShieldAlert size={13} color="#fbbf24" />
-          )}
-          <Text style={[styles.verifyPillText, isVerified ? styles.verifyPillTextOn : styles.verifyPillTextOff]}>
-            {isVerified ? 'Verified' : 'Not verified'}
-          </Text>
-        </View>
-      </View>
-
-      {/* Stats */}
-      <View style={styles.statsRow}>
-        <View style={styles.statCard}>
-          <Text style={styles.statValue}>{jobsDone}</Text>
-          <Text style={styles.statLabel}>Jobs Done</Text>
-        </View>
-        <View style={styles.statDivider} />
-        <View style={styles.statCard}>
-          <Text style={styles.statValue}>{ratingLabel}</Text>
-          <Text style={styles.statLabel}>Rating</Text>
-        </View>
-        <View style={styles.statDivider} />
-        <View style={styles.statCard}>
-          <Text style={styles.statValue}>{active.data ?? '—'}</Text>
-          <Text style={styles.statLabel}>Active</Text>
-        </View>
-      </View>
 
       <ScrollView
         {...scroll}
         style={styles.body}
-        contentContainerStyle={styles.bodyContent}
+        contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
+        {/* Hero — matches .profile-hero.dark (same gradient as Feed's hero) */}
+        <View style={[styles.hero, { paddingTop: headerTop }, { backgroundColor: C.providerHero }]}>
+          <Tap
+            style={[styles.backBtn, { top: headerTop }]}
+            onPress={onBack}
+            activeOpacity={0.8}
+            accessibilityLabel="Back to Feed"
+          >
+            <ArrowLeft size={20} color={C.onPrimary} />
+          </Tap>
+
+          <View style={styles.avatarCircle}>
+            <OwnAvatar name={name} textStyle={styles.avatarText} />
+          </View>
+          <Text style={styles.profileName}>{name || 'Your Profile'}</Text>
+          <Text style={styles.profileSubtitle}>{category ? `${category} · Provider profile` : 'Provider profile'}</Text>
+
+          <View style={[styles.verifyPill, isVerified ? styles.verifyPillOn : styles.verifyPillOff]}>
+            {isVerified ? (
+              <BadgeCheck size={13} color="#4ade80" />
+            ) : (
+              <ShieldAlert size={13} color="#fbbf24" />
+            )}
+            <Text style={[styles.verifyPillText, isVerified ? styles.verifyPillTextOn : styles.verifyPillTextOff]}>
+              {isVerified ? 'Verified' : 'Not verified'}
+            </Text>
+          </View>
+        </View>
+
+        {/* Stats */}
+        <View style={styles.statsRow}>
+          <View style={styles.statCard}>
+            <Text style={styles.statValue}>{jobsDone}</Text>
+            <Text style={styles.statLabel}>Jobs Done</Text>
+          </View>
+          <View style={styles.statDivider} />
+          <View style={styles.statCard}>
+            <Text style={styles.statValue}>{ratingLabel}</Text>
+            <Text style={styles.statLabel}>Rating</Text>
+          </View>
+          <View style={styles.statDivider} />
+          <View style={styles.statCard}>
+            <Text style={styles.statValue}>{active.data ?? '—'}</Text>
+            <Text style={styles.statLabel}>Active</Text>
+          </View>
+        </View>
+
+        <View style={styles.bodyContent}>
         {/* Account Info */}
         <View style={styles.card}>
           <Text style={styles.cardTitle}>Account Info</Text>
@@ -168,7 +173,7 @@ export default function SPProfileScreen({ onNavigate, onLogout, onBack }: SPProf
           ].map((item) => (
             <View key={item.label} style={styles.infoRow}>
               <Text style={styles.infoLabel}>{item.label}</Text>
-              <Text style={styles.infoValue}>{item.value}</Text>
+              <Text style={styles.infoValue} selectable>{item.value}</Text>
             </View>
           ))}
         </View>
@@ -189,17 +194,22 @@ export default function SPProfileScreen({ onNavigate, onLogout, onBack }: SPProf
               <ChevronRight size={20} color={C.ink300} />
             </Tap>
           ))}
+        </View>
+
+        {/* Log Out sits on its own, without a chevron, so it isn't tapped by
+            accident while moving down the menu. */}
+        <View style={styles.card}>
           <Tap
             style={styles.navrow}
             onPress={() => setConfirmLogoutVisible(true)}
             activeOpacity={0.7}
           >
-            <View style={styles.rowIcon}>
+            <View style={[styles.rowIcon, styles.rowIconDanger]}>
               <LogOut size={19} color={V6Colors.dangerText} />
             </View>
             <Text style={[styles.rowLabel, styles.rowLabelDanger]}>Log Out</Text>
-            <ChevronRight size={20} color={C.ink300} />
           </Tap>
+        </View>
         </View>
 
         <ConfirmationModal
@@ -217,6 +227,9 @@ export default function SPProfileScreen({ onNavigate, onLogout, onBack }: SPProf
 
         <View style={{ height: 20 }} />
       </ScrollView>
+      {/* Keeps the status bar on navy once the header scrolls away, so the
+          light status icons never sit on the white page. */}
+      <View pointerEvents="none" style={[styles.statusStrip, { height: insets.top, backgroundColor: C.providerHero }]} />
     </View>
   );
 }
@@ -226,6 +239,7 @@ function createThemedStyles(theme: ThemePalette) {
   const C = V6Colors;
   const styles = StyleSheet.create({
     screen: { flex: 1, backgroundColor: C.canvas },
+    statusStrip: { position: 'absolute', top: 0, left: 0, right: 0 },
 
     hero: {
       paddingHorizontal: Spacing.screenH,
@@ -272,7 +286,8 @@ function createThemedStyles(theme: ThemePalette) {
     statLabel: { color: C.ink400, fontSize: 11.5, fontFamily: 'Inter', textAlign: 'center' },
 
     body: { flex: 1 },
-    bodyContent: { paddingHorizontal: Spacing.screenH, paddingTop: 18, paddingBottom: 20 },
+    scrollContent: { paddingBottom: 20 },
+    bodyContent: { paddingHorizontal: Spacing.screenH, paddingTop: 18 },
 
     card: {
       backgroundColor: C.surface, borderRadius: V6Radii.card,
@@ -282,12 +297,9 @@ function createThemedStyles(theme: ThemePalette) {
     },
     cardTitle: { color: C.ink900, fontSize: 16, fontWeight: '800', fontFamily: 'Inter', margin: 12, marginBottom: 4 },
 
-    infoRow: {
-      flexDirection: 'row', justifyContent: 'space-between',
-      paddingVertical: 10, paddingHorizontal: 12,
-    },
-    infoLabel: { color: C.ink500, fontSize: 14.5, fontFamily: 'Inter' },
-    infoValue: { color: C.ink900, fontSize: 14.5, fontWeight: '600', fontFamily: 'Inter', maxWidth: '60%', textAlign: 'right' },
+    infoRow: { paddingVertical: 9, paddingHorizontal: 12, gap: 2 },
+    infoLabel: { color: C.ink500, fontSize: 13, fontFamily: 'Inter' },
+    infoValue: { color: C.ink900, fontSize: 15, fontWeight: '600', fontFamily: 'Inter' },
 
     // .navrow
     navrow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 14, paddingHorizontal: 12 },
@@ -297,6 +309,7 @@ function createThemedStyles(theme: ThemePalette) {
     },
     rowLabel: { flex: 1, color: C.ink900, fontSize: 14.5, fontWeight: '600', fontFamily: 'Inter' },
     rowLabelDanger: { color: V6Colors.dangerText },
+    rowIconDanger: { backgroundColor: V6Colors.dangerSurface },
   });
   return { Colors, V6Colors, C, styles };
 }

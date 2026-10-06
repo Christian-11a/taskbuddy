@@ -13,6 +13,7 @@
 
 import { useThemedStyles, type Palette as ThemePalette } from '../../../src/context/ThemeContext';
 import { StatusBar } from 'expo-status-bar';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import React, { useState } from 'react';
 import { useRetainedScroll } from '../../../src/hooks/useRetainedState';
 import {
@@ -56,6 +57,7 @@ interface ProfileProps {
 export default function Profile({ onNavigate, onLogout, onBack }: ProfileProps) {
   const { C, styles, V6Colors } = useThemedStyles(createThemedStyles);
   const headerTop = useHeaderTop(4);
+  const insets = useSafeAreaInsets();
   // Coming back from Settings/Edit Profile keeps the list where it was.
   const scroll = useRetainedScroll('ho.profile');
   const { profile } = useAuth();
@@ -78,47 +80,49 @@ export default function Profile({ onNavigate, onLogout, onBack }: ProfileProps) 
   return (
     <View style={styles.screen}>
       <StatusBar style="light" />
-      {/* Hero — matches .profile-hero (same gradient as Home) */}
-      <View style={[styles.hero, { paddingTop: headerTop }, { backgroundColor: C.hero }]}>
-        <Tap
-          style={[styles.backBtn, { top: headerTop }]}
-          onPress={onBack}
-          activeOpacity={0.8}
-          accessibilityLabel="Back to Home"
-        >
-          <ArrowLeft size={20} color={C.onPrimary} />
-        </Tap>
-
-        <View style={styles.avatarCircle}>
-          <OwnAvatar name={name} textStyle={styles.avatarText} />
-        </View>
-        <Text style={styles.profileName}>{name || 'Your Profile'}</Text>
-        {!!subtitle && <Text style={styles.profileSubtitle}>{subtitle}</Text>}
-      </View>
-
-      {/* Stats */}
-      <View style={styles.statsRow}>
-        <View style={styles.statCard}>
-          <Text style={styles.statValue}>
-            {stats.data ? stats.data.jobsPosted : '—'}
-          </Text>
-          <Text style={styles.statLabel}>Jobs Posted</Text>
-        </View>
-        <View style={styles.statDivider} />
-        <View style={styles.statCard}>
-          <Text style={styles.statValue}>
-            {stats.data ? peso(stats.data.balance) : '—'}
-          </Text>
-          <Text style={styles.statLabel}>Balance</Text>
-        </View>
-      </View>
 
       <ScrollView
         {...scroll}
         style={styles.body}
-        contentContainerStyle={styles.bodyContent}
+        contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
+        {/* Hero — matches .profile-hero (same gradient as Home) */}
+        <View style={[styles.hero, { paddingTop: headerTop }, { backgroundColor: C.hero }]}>
+          <Tap
+            style={[styles.backBtn, { top: headerTop }]}
+            onPress={onBack}
+            activeOpacity={0.8}
+            accessibilityLabel="Back to Home"
+          >
+            <ArrowLeft size={20} color={C.onPrimary} />
+          </Tap>
+
+          <View style={styles.avatarCircle}>
+            <OwnAvatar name={name} textStyle={styles.avatarText} />
+          </View>
+          <Text style={styles.profileName}>{name || 'Your Profile'}</Text>
+          {!!subtitle && <Text style={styles.profileSubtitle}>{subtitle}</Text>}
+        </View>
+
+        {/* Stats */}
+        <View style={styles.statsRow}>
+          <View style={styles.statCard}>
+            <Text style={styles.statValue}>
+              {stats.data ? stats.data.jobsPosted : '—'}
+            </Text>
+            <Text style={styles.statLabel}>Jobs Posted</Text>
+          </View>
+          <View style={styles.statDivider} />
+          <View style={styles.statCard}>
+            <Text style={styles.statValue}>
+              {stats.data ? peso(stats.data.balance) : '—'}
+            </Text>
+            <Text style={styles.statLabel}>Balance</Text>
+          </View>
+        </View>
+
+        <View style={styles.bodyContent}>
         {/* Account Info */}
         <View style={styles.card}>
           <Text style={styles.cardTitle}>Account Info</Text>
@@ -129,7 +133,7 @@ export default function Profile({ onNavigate, onLogout, onBack }: ProfileProps) 
           ].map((item) => (
             <View key={item.label} style={styles.infoRow}>
               <Text style={styles.infoLabel}>{item.label}</Text>
-              <Text style={styles.infoValue}>{item.value}</Text>
+              <Text style={styles.infoValue} selectable>{item.value}</Text>
             </View>
           ))}
         </View>
@@ -150,17 +154,22 @@ export default function Profile({ onNavigate, onLogout, onBack }: ProfileProps) 
               <ChevronRight size={20} color={C.ink300} />
             </Tap>
           ))}
+        </View>
+
+        {/* Log Out sits on its own, without a chevron, so it isn't tapped by
+            accident while moving down the menu. */}
+        <View style={styles.card}>
           <Tap
             style={styles.navrow}
             onPress={() => setConfirmLogoutVisible(true)}
             activeOpacity={0.7}
           >
-            <View style={styles.rowIcon}>
+            <View style={[styles.rowIcon, styles.rowIconDanger]}>
               <LogOut size={19} color={V6Colors.dangerText} />
             </View>
             <Text style={[styles.rowLabel, styles.rowLabelDanger]}>Log Out</Text>
-            <ChevronRight size={20} color={C.ink300} />
           </Tap>
+        </View>
         </View>
 
         <ConfirmationModal
@@ -178,6 +187,9 @@ export default function Profile({ onNavigate, onLogout, onBack }: ProfileProps) 
 
         <View style={{ height: 20 }} />
       </ScrollView>
+      {/* Keeps the status bar on the header colour once the header scrolls
+          away, so the light status icons never sit on the white page. */}
+      <View pointerEvents="none" style={[styles.statusStrip, { height: insets.top, backgroundColor: C.hero }]} />
     </View>
   );
 }
@@ -187,6 +199,7 @@ function createThemedStyles(theme: ThemePalette) {
   const C = V6Colors;
   const styles = StyleSheet.create({
     screen: { flex: 1, backgroundColor: C.canvas },
+    statusStrip: { position: 'absolute', top: 0, left: 0, right: 0 },
 
     hero: {
       paddingHorizontal: Spacing.screenH,
@@ -222,7 +235,8 @@ function createThemedStyles(theme: ThemePalette) {
     statLabel: { color: C.ink400, fontSize: 11.5, fontFamily: 'Inter', textAlign: 'center' },
 
     body: { flex: 1 },
-    bodyContent: { paddingHorizontal: Spacing.screenH, paddingTop: 18, paddingBottom: 20 },
+    scrollContent: { paddingBottom: 20 },
+    bodyContent: { paddingHorizontal: Spacing.screenH, paddingTop: 18 },
 
     card: {
       backgroundColor: C.surface, borderRadius: V6Radii.card,
@@ -232,12 +246,9 @@ function createThemedStyles(theme: ThemePalette) {
     },
     cardTitle: { color: C.ink900, fontSize: 16, fontWeight: '800', fontFamily: 'Inter', margin: 12, marginBottom: 4 },
 
-    infoRow: {
-      flexDirection: 'row', justifyContent: 'space-between',
-      paddingVertical: 10, paddingHorizontal: 12,
-    },
-    infoLabel: { color: C.ink500, fontSize: 14.5, fontFamily: 'Inter' },
-    infoValue: { color: C.ink900, fontSize: 14.5, fontWeight: '600', fontFamily: 'Inter', maxWidth: '60%', textAlign: 'right' },
+    infoRow: { paddingVertical: 9, paddingHorizontal: 12, gap: 2 },
+    infoLabel: { color: C.ink500, fontSize: 13, fontFamily: 'Inter' },
+    infoValue: { color: C.ink900, fontSize: 15, fontWeight: '600', fontFamily: 'Inter' },
 
     // .navrow
     navrow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 14, paddingHorizontal: 12 },
@@ -247,6 +258,7 @@ function createThemedStyles(theme: ThemePalette) {
     },
     rowLabel: { flex: 1, color: C.ink900, fontSize: 14.5, fontWeight: '600', fontFamily: 'Inter' },
     rowLabelDanger: { color: V6Colors.dangerText },
+    rowIconDanger: { backgroundColor: V6Colors.dangerSurface },
   });
   return { Colors, V6Colors, C, styles };
 }
