@@ -44,7 +44,7 @@ import Tap from '../../../src/components/ui/Tap';
 import { plural } from '../../../src/lib/format';
 import ContentSkeleton from '../../../src/components/ui/ContentSkeleton';
 import Silhouette from '../../../src/components/ui/Silhouette';
-import { AlertCircle, ArrowLeft, ChevronRight, ShieldAlert, Star } from 'lucide-react-native';
+import { AlertCircle, ArrowLeft, CheckCircle2, ChevronRight, ShieldAlert, Star } from 'lucide-react-native';
 import { Spacing } from '../../../src/constants/theme';
 import { useHeaderTop } from '../../../src/hooks/useHeaderTop';
 
@@ -98,6 +98,7 @@ export default function HOJobApplicationsScreen({
   };
 
   const pendingCount = apps?.filter((a) => a.status === 'pending').length ?? 0;
+  const hasHired = apps?.some((a) => a.status === 'accepted') ?? false;
 
   // Accept and Reject both ask first: rejecting can't be undone, and accepting
   // goes straight on to payment.
@@ -239,7 +240,7 @@ export default function HOJobApplicationsScreen({
           showsVerticalScrollIndicator={false}
         >
           <Text style={styles.countText}>
-            {pendingCount} active proposal{pendingCount === 1 ? '' : 's'} · Hire exactly one provider
+            {hasHired ? 'Provider hired · Follow the job from Job Details' : `${pendingCount} active proposal${pendingCount === 1 ? '' : 's'} · Hire exactly one provider`}
           </Text>
 
           {actionError && (
@@ -337,7 +338,14 @@ export default function HOJobApplicationsScreen({
                       </Tap>
                     </View>
                   ) : (
-                    <Text style={styles.decidedText}>{DECIDED_LABEL[app.status]}</Text>
+                    app.status === 'accepted' ? (
+                      <View style={styles.hiredBadge}>
+                        <CheckCircle2 size={16} color={V6Colors.successText} />
+                        <Text style={styles.hiredText}>{DECIDED_LABEL[app.status]}</Text>
+                      </View>
+                    ) : (
+                      <Text style={styles.decidedText}>{DECIDED_LABEL[app.status]}</Text>
+                    )
                   )}
                 </View>
               );
@@ -462,6 +470,11 @@ function createThemedStyles(theme: ThemePalette) {
       paddingHorizontal: 8, paddingVertical: 3, marginTop: 2,
     },
     unverifiedChipText: { color: C.amber700, fontSize: 10.5, fontWeight: '700', fontFamily: 'Inter' },
+    hiredBadge: {
+      flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, minHeight: 44,
+      borderRadius: 12, backgroundColor: V6Colors.successSurface, borderWidth: 1, borderColor: V6Colors.successBorder,
+    },
+    hiredText: { color: V6Colors.successText, fontSize: 15, fontWeight: '700', fontFamily: 'Inter' },
     decidedText: { color: C.ink500, fontSize: 12.5, fontWeight: '600', fontFamily: 'Inter', textAlign: 'center' },
 
     errorBanner: {
