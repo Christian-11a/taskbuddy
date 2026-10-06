@@ -358,12 +358,12 @@ export default function HOJobDetailScreen({ jobId, onBack, onNavigate }: HOJobDe
               {!!matchingMessage && <Text style={styles.matchingMessage}>{matchingMessage}</Text>}
               {['open', 'recommending'].includes(job.status) && (
               <Tap
-                style={styles.primaryBtn}
+                style={styles.outlineBtn}
                 onPress={() => onNavigate('Job Applications', job.id)}
                 activeOpacity={0.85}
                 testID="job-detail-view-offers"
               >
-                <Text style={styles.primaryBtnText}>View Offers</Text>
+                <Text style={styles.outlineBtnText}>View Offers</Text>
               </Tap>
               )}
             </View>
@@ -431,7 +431,7 @@ export default function HOJobDetailScreen({ jobId, onBack, onNavigate }: HOJobDe
               )}
               {(dispute || canDispute) && (
                 <Tap style={[styles.outlineBtn, styles.secondaryBtn]} onPress={() => onNavigate(dispute ? 'Dispute Status' : 'Dispute Filing', job.id)} activeOpacity={0.85}>
-                  <Text style={styles.outlineBtnText} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.85}>{dispute ? 'View Dispute Status' : 'File a Complaint'}</Text>
+                  <Text style={styles.outlineBtnText} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.85}>{dispute ? 'View Complaint Status' : 'File a Complaint'}</Text>
                 </Tap>
               )}
             </View>
