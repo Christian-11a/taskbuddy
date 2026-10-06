@@ -90,7 +90,7 @@ export default function SPWalletScreen() {
             activeOpacity={0.85}
             accessibilityRole="button"
           >
-            <Banknote size={18} color={C.onPrimary} />
+            <Banknote size={18} color="#13283c" />
             <Text style={styles.withdrawBtnText}>Withdraw</Text>
           </Tap>
         </View>
@@ -141,7 +141,7 @@ export default function SPWalletScreen() {
             <Text style={styles.statLabel}>Total Earned</Text>
           </View>
           <View style={styles.statCard}>
-            <Text style={[styles.statValue, { color: V6Colors.warningText }]}>{peso(data?.total_debited ?? 0)}</Text>
+            <Text style={styles.statValue}>{peso(data?.total_debited ?? 0)}</Text>
             <Text style={styles.statLabel}>Total Withdrawn</Text>
           </View>
         </View>
@@ -176,7 +176,7 @@ export default function SPWalletScreen() {
                 <View key={txn.id} style={[styles.txnRow, i < transactions.length - 1 && styles.txnRowBorder]}>
                   <View style={styles.txnIcon}><Icon size={19} color={V6Colors.link} /></View>
                   <View style={styles.txnInfo}>
-                    <Text style={styles.txnTitle} numberOfLines={1}>{txn.title}</Text>
+                    <Text style={styles.txnTitle} numberOfLines={2}>{txn.title}</Text>
                     <Text style={styles.txnDate}>{shortDate(txn.created_at)} · {statusLabel}</Text>
                     <Text style={styles.txnDate}>Transaction: {txn.id}</Text>
                     {!!txn.stripe_transfer_id && <Text style={styles.txnDate}>Stripe transfer: {txn.stripe_transfer_id}</Text>}
@@ -239,10 +239,11 @@ function createThemedStyles(theme: ThemePalette) {
     balanceAmount: { color: C.onPrimary, fontSize: 32.5, fontWeight: '800', fontFamily: 'Inter', marginBottom: 14 },
     withdrawBtn: {
       flexDirection: 'row', alignSelf: 'flex-start', alignItems: 'center', gap: 8,
-      backgroundColor: V6Colors.successSolid, borderRadius: V6Radii.btn, paddingHorizontal: 16, paddingVertical: 10,
+      // White pill on the navy card, same as the homeowner wallet action.
+      backgroundColor: '#ffffff', borderRadius: 999, paddingHorizontal: 18, minHeight: 44,
     },
-    withdrawBtnDisabled: { opacity: 0.45 },
-    withdrawBtnText: { color: C.onPrimary, fontSize: 14, fontWeight: '700', fontFamily: 'Inter' },
+    withdrawBtnDisabled: { opacity: 0.6 },
+    withdrawBtnText: { color: '#13283c', fontSize: 15, fontWeight: '700', fontFamily: 'Inter' },
     balanceSubnote: {
       color: 'rgba(255,255,255,0.75)', fontSize: 12.5, fontFamily: 'Inter',
       marginTop: -10, marginBottom: 12,

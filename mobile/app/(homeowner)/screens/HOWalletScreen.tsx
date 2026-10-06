@@ -370,7 +370,7 @@ export default function HOWalletScreen() {
               {vouchers.map((v) => (
                 <View key={v.id} style={styles.voucherRow}>
                   <View style={styles.voucherInfo}>
-                    <Text style={styles.voucherTitle} numberOfLines={1}>{v.title}</Text>
+                    <Text style={styles.voucherTitle} numberOfLines={2}>{v.title}</Text>
                     <Text style={styles.voucherDate}>{shortDate(v.created_at)}</Text>
                   </View>
                   <Text style={styles.voucherAmount}>+{peso(v.amount)}</Text>
@@ -418,7 +418,7 @@ export default function HOWalletScreen() {
                   <Icon size={19} color={V6Colors.link} />
                 </View>
                 <View style={styles.txnInfo}>
-                  <Text style={styles.txnTitle} numberOfLines={1}>{txn.title}</Text>
+                  <Text style={styles.txnTitle} numberOfLines={2}>{txn.title}</Text>
                   <Text style={styles.txnDate}>{shortDate(txn.created_at)} · {statusLabel}</Text>
                 </View>
                 <Text style={[
