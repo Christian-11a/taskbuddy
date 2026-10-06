@@ -154,7 +154,7 @@ export default function WithdrawModal({
               {submitting ? (
                 <ActivityIndicator color={C.onPrimary} />
               ) : (
-                <Text style={styles.confirmText}>Withdraw</Text>
+                <Text style={[styles.confirmText, !canSubmit && styles.confirmTextDisabled]}>Withdraw</Text>
               )}
             </Pressable>
           </View>
@@ -229,7 +229,9 @@ function createThemedStyles(theme: ThemePalette) {
       paddingHorizontal: 16,
       paddingVertical: 9,
     },
-    btnDisabled: { opacity: 0.5 },
+    // Readable disabled state: grey fill with dark text, like the other forms.
+    btnDisabled: { backgroundColor: C.ink100 },
+    confirmTextDisabled: { color: C.ink700 },
     cancel: { backgroundColor: C.ink50 },
     cancelText: { color: C.ink500, fontSize: 14.5, fontWeight: '700', fontFamily: 'Inter' },
     confirm: { backgroundColor: C.cyan700 },

@@ -136,7 +136,7 @@ export default function DeclineBookingModal({
               {submitting ? (
                 <ActivityIndicator color={C.onPrimary} size="small" />
               ) : (
-                <Text style={styles.confirmText}>Decline</Text>
+                <Text style={[styles.confirmText, !canSubmit && styles.confirmTextDisabled]}>Decline</Text>
               )}
             </Tap>
           </View>
@@ -175,7 +175,9 @@ function createThemedStyles(theme: ThemePalette) {
     cancelBtn: { borderWidth: 1, borderColor: V6Colors.fieldBorder, borderRadius: 12, paddingHorizontal: 16, paddingVertical: 11 },
     cancelText: { color: C.ink500, fontSize: 15.5, fontWeight: '700', fontFamily: 'Inter' },
     confirmBtn: { backgroundColor: V6Colors.dangerSolid, borderRadius: 12, paddingHorizontal: 20, paddingVertical: 11, minWidth: 96, alignItems: 'center' },
-    confirmBtnDisabled: { opacity: 0.5 },
+    // Readable disabled state: grey fill with dark text, like the other forms.
+    confirmBtnDisabled: { backgroundColor: C.ink100 },
+    confirmTextDisabled: { color: C.ink700 },
     confirmText: { color: C.onPrimary, fontSize: 15.5, fontWeight: '700', fontFamily: 'Inter' },
   });
   return { appearance: theme.appearance, Colors, V6Colors, C, styles };
