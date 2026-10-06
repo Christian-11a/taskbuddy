@@ -306,11 +306,12 @@ export default function HOCreateJobScreen({
   // under the field. Once the keyboard is up, scroll the Address label to the
   // top so the suggestions have room.
   const addressFocused = useRef(false);
+  useEffect(() => { addressFocused.current = false; }, [step]);
   useEffect(() => {
-    if (keyboardUp && addressFocused.current) {
+    if (step === 2 && keyboardUp && addressFocused.current) {
       scrollRef.current?.scrollTo({ y: Math.max(0, (fieldPositions.current.location ?? 0) - 8), animated: true });
     }
-  }, [keyboardUp]);
+  }, [keyboardUp, step]);
   useEffect(() => {
     scrollRef.current?.scrollTo({ y: 0, animated: false });
   }, [step]);
