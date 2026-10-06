@@ -70,8 +70,11 @@ export default function Profile({ onNavigate, onLogout, onBack }: ProfileProps) 
   }, [], 'ho-profile-stats');
 
   const name = profile?.full_name ?? '';
+  // A geocoded address usually already contains the city; don't repeat it.
   const location =
-    [profile?.city, profile?.address].filter(Boolean).join(', ') || null;
+    (profile?.address && profile?.city && profile.address.includes(profile.city)
+      ? profile.address
+      : [profile?.city, profile?.address].filter(Boolean).join(', ')) || null;
   const memberSince = monthYear(profile?.created_at) || null;
   const subtitle = [memberSince ? `Member since ${memberSince}` : null, location]
     .filter(Boolean)
@@ -128,7 +131,7 @@ export default function Profile({ onNavigate, onLogout, onBack }: ProfileProps) 
           <Text style={styles.cardTitle}>Account Info</Text>
           {[
             { label: 'Email', value: profile?.email ?? '—' },
-            { label: 'Phone', value: profile?.phone ?? '—' },
+            { label: 'Phone', value: profile?.phone?.trim() || '—' },
             { label: 'Location', value: location ?? '—' },
           ].map((item) => (
             <View key={item.label} style={styles.infoRow}>

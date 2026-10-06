@@ -168,8 +168,8 @@ export default function SPProfileScreen({ onNavigate, onLogout, onBack }: SPProf
           <Text style={styles.cardTitle}>Account Info</Text>
           {[
             { label: 'Email', value: profile?.email ?? '—' },
-            { label: 'Phone', value: profile?.phone ?? '—' },
-            { label: 'Location', value: [profile?.city, profile?.address].filter(Boolean).join(', ') || '—' },
+            { label: 'Phone', value: profile?.phone?.trim() || '—' },
+            { label: 'Location', value: (profile?.address && profile?.city && profile.address.includes(profile.city) ? profile.address : [profile?.city, profile?.address].filter(Boolean).join(', ')) || '—' },
           ].map((item) => (
             <View key={item.label} style={styles.infoRow}>
               <Text style={styles.infoLabel}>{item.label}</Text>
