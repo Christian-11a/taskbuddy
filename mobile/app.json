@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "mobile",
+    "name": "TaskBuddy",
     "slug": "mobile",
     "scheme": "taskbuddy",
     "version": "1.0.0",
