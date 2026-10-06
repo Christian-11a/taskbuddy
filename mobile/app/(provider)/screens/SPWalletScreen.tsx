@@ -290,10 +290,10 @@ function createThemedStyles(theme: ThemePalette) {
     txnRow: { flexDirection: 'row', alignItems: 'center', padding: 14 },
     txnRowBorder: { borderBottomWidth: 1, borderBottomColor: V6Colors.wellBg },
     txnIcon: { width: 34, height: 34, borderRadius: 12, backgroundColor: V6Colors.canvas, alignItems: 'center', justifyContent: 'center', marginRight: 12 },
-    txnInfo: { flex: 1 },
+    txnInfo: { flex: 1, marginRight: 12 },
     txnTitle: { color: C.ink900, fontSize: 14.5, fontWeight: '600', fontFamily: 'Inter', marginBottom: 2 },
     txnDate: { color: C.ink400, fontSize: 12.5, fontFamily: 'Inter' },
-    txnAmount: { fontSize: 14.5, fontWeight: '800', fontFamily: 'Inter' },
+    txnAmount: { flexShrink: 0, fontSize: 14.5, fontWeight: '800', fontFamily: 'Inter' },
     txnCredit: { color: V6Colors.successText },
     txnDebit: { color: C.ink900 },
   });
