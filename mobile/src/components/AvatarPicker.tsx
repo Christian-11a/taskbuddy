@@ -89,12 +89,12 @@ function createThemedStyles(theme: ThemePalette) {
   const styles = StyleSheet.create({
     avatarSection: { alignItems: 'center', marginBottom: 20 },
     avatarCircle: {
-      width: 76, height: 76, borderRadius: 38,
-      backgroundColor: C.cyan700, alignItems: 'center', justifyContent: 'center',
+      width: 80, height: 80, borderRadius: 40,
+      backgroundColor: C.primaryTonalStrong, alignItems: 'center', justifyContent: 'center',
       marginBottom: 8, overflow: 'hidden',
     },
     avatarImage: { width: '100%', height: '100%' },
-    avatarText: { color: C.onPrimary, fontSize: 26, fontWeight: '800', fontFamily: 'Inter' },
+    avatarText: { color: C.primaryDeep, fontSize: 26, fontWeight: '800', fontFamily: 'Inter' },
     changePhotoLink: { fontSize: 14, color: V6Colors.link, fontWeight: '700', fontFamily: 'Inter' },
     errorText: { color: V6Colors.dangerText, fontSize: 13, fontFamily: 'Inter', marginTop: 6, textAlign: 'center' },
   });

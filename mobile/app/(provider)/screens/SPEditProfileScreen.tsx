@@ -85,6 +85,8 @@ function FormField({
         multiline={multiline}
         keyboardType={keyboardType}
         editable={editable}
+        // Locked fields (email) show the start of the value, not the end.
+        selection={editable === false ? { start: 0, end: 0 } : undefined}
         autoCapitalize={keyboardType === 'email-address' ? 'none' : 'words'}
         onFocus={() => setFocused(true)}
         onBlur={() => setFocused(false)}
@@ -285,7 +287,7 @@ function createThemedStyles(theme: ThemePalette) {
     },
     fieldInputMultiline: { height: 90, textAlignVertical: 'top', paddingTop: 12 },
     fieldInputFocused: { borderColor: C.cyan500 },
-    fieldInputDisabled: { color: C.ink400, backgroundColor: C.ink50 },
+    fieldInputDisabled: { color: C.ink500, backgroundColor: C.ink50 },
 
     chipGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
     serviceLocked: {
