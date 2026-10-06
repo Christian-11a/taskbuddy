@@ -55,6 +55,8 @@ interface NotificationRow {
   data: { job_id?: string } | null;
 }
 
+const NEGATIVE_TITLE = /reject|declin|not approved|failed/i;
+
 const ICON_BY_TYPE: Record<string, LucideIcon> = {
   recommendation_invite: BriefcaseBusiness,
   application_update: CircleCheckBig,
@@ -161,7 +163,10 @@ export default function SPNotificationsScreen({ onBack, onOpenJob, onOpenChat, o
               // Icon only: the same resolver that decides where a tap goes
               // tells chat and complaint notifications apart from job updates.
               const kind = resolveNotificationTarget('provider', notif.data ?? {}).kind;
-              const Icon = kind === 'chat' ? MessageCircle : kind === 'dispute' ? ShieldAlert : ICON_BY_TYPE[notif.type] ?? BriefcaseBusiness;
+              // A rejection or decline should not wear the same check badge as an
+              // approval: same type, different outcome.
+              const negative = NEGATIVE_TITLE.test(notif.title ?? '');
+              const Icon = negative ? ShieldAlert : kind === 'chat' ? MessageCircle : kind === 'dispute' ? ShieldAlert : ICON_BY_TYPE[notif.type] ?? BriefcaseBusiness;
               const isUnread = !notif.read_at;
               return (
                 <Tap
@@ -175,7 +180,7 @@ export default function SPNotificationsScreen({ onBack, onOpenJob, onOpenChat, o
                   onPress={() => openNotification(notif)}
                 >
                   <View style={[styles.notifIcon, isUnread && styles.notifIconUnread]}>
-                    <Icon size={19} color={V6Colors.link} />
+                    <Icon size={19} color={negative ? V6Colors.dangerText : V6Colors.link} />
                   </View>
                   <View style={{ flex: 1 }}>
                     <Text style={styles.notifTitle}>{notif.title}</Text>

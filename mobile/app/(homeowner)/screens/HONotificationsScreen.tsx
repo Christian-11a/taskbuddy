@@ -60,6 +60,8 @@ interface NotificationRow {
   data: { job_id?: string; application_id?: string; conversation_id?: string; request_id?: string; dispute_id?: string } | null;
 }
 
+const NEGATIVE_TITLE = /reject|declin|not approved|failed/i;
+
 const ICON_BY_TYPE: Record<string, LucideIcon> = {
   recommendation_invite: BriefcaseBusiness,
   application_update: CircleCheckBig,
@@ -203,7 +205,10 @@ export default function HONotificationsScreen({ onBack, onOpenJob, onOpenProposa
               // Icon only: the same resolver that decides where a tap goes
               // tells chat and complaint notifications apart from job updates.
               const kind = resolveNotificationTarget('homeowner', notif.data ?? {}).kind;
-              const Icon = kind === 'chat' ? MessageCircle : kind === 'dispute' ? ShieldAlert : ICON_BY_TYPE[notif.type] ?? BellRing;
+              // A rejection or decline should not wear the same check badge as an
+              // approval: same type, different outcome.
+              const negative = NEGATIVE_TITLE.test(notif.title ?? '');
+              const Icon = negative ? ShieldAlert : kind === 'chat' ? MessageCircle : kind === 'dispute' ? ShieldAlert : ICON_BY_TYPE[notif.type] ?? BellRing;
               const isUnread = !notif.read_at;
               return (
                 <Tap
@@ -219,7 +224,7 @@ export default function HONotificationsScreen({ onBack, onOpenJob, onOpenProposa
                   disabled={pendingReadId === notif.id}
                 >
                   <View style={[styles.notifIcon, isUnread && styles.notifIconUnread]}>
-                    <Icon size={19} color={V6Colors.link} />
+                    <Icon size={19} color={negative ? V6Colors.dangerText : V6Colors.link} />
                   </View>
                   <View style={{ flex: 1 }}>
                     <Text style={styles.notifTitle}>{notif.title}</Text>
