@@ -137,10 +137,10 @@ export default function HONotificationsScreen({ onBack, onOpenJob, onOpenProposa
         <Tap style={styles.backBtn} onPress={onBack} activeOpacity={0.8}>
           <ArrowLeft size={20} color={C.ink700} />
         </Tap>
-        <Text style={styles.headerTitle}>Notifications</Text>
+        <Text style={styles.headerTitle} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8}>Notifications</Text>
         {unreadCount > 0 && (
           <Tap onPress={markAllRead} activeOpacity={0.8}>
-            <Text style={styles.markAllText}>Mark all read</Text>
+            <Text style={styles.markAllText} numberOfLines={1} maxFontSizeMultiplier={1.15}>Mark all read</Text>
           </Tap>
         )}
         {unreadCount === 0 && notifications.length > 0 && (
