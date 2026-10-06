@@ -124,7 +124,10 @@ export default function SheetFrame({
         <Pressable
           style={[
             styles.backdrop,
-            { backgroundColor: C.scrim, paddingTop: insets.top, paddingBottom: keyboardHeight },
+            // Explicit full-window size: on some Android setups the Modal's root
+            // is sized as "screen minus system bars" yet drawn from the top, which
+            // left the sheet floating above the bottom edge.
+            { backgroundColor: C.scrim, paddingTop: insets.top, paddingBottom: keyboardHeight, height: windowHeight },
             isSheet ? styles.backdropSheet : styles.backdropDialog,
           ]}
           onPress={dismissible ? onClose : undefined}
@@ -173,7 +176,7 @@ export default function SheetFrame({
 
 const styles = StyleSheet.create({
   flex: { flex: 1 },
-  backdrop: { flex: 1 },
+  backdrop: { position: 'absolute', top: 0, left: 0, right: 0 },
   backdropSheet: { justifyContent: 'flex-end' },
   backdropDialog: { justifyContent: 'center', paddingHorizontal: DIALOG_MARGIN },
   sheetWrap: { width: '100%', maxWidth: 600, alignSelf: 'center' },
