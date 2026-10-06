@@ -133,7 +133,7 @@ export default function Profile({ onNavigate, onLogout, onBack }: ProfileProps) 
           ].map((item) => (
             <View key={item.label} style={styles.infoRow}>
               <Text style={styles.infoLabel}>{item.label}</Text>
-              <Text style={styles.infoValue} selectable>{item.value}</Text>
+              <Text style={styles.infoValue}>{item.value}</Text>
             </View>
           ))}
         </View>

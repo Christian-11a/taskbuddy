@@ -144,7 +144,7 @@ export default function SPPortfolioScreen({ onBack }: { onBack: () => void }) {
               <Image
                 source={{ uri: uri ?? editing!.image_url }}
                 style={styles.preview}
-                resizeMode="cover"
+                resizeMode="contain"
               />
             )}
             {!editing && !!uri && (
