@@ -47,6 +47,7 @@ import type { MobileRole } from '../../../src/lib/api';
 import { useAuth } from '../../../src/context/AuthContext';
 import PasswordInput from '../../../src/components/PasswordInput';
 import { useAuthLayout } from '../../../src/hooks/useAuthLayout';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 /** Supabase issues 6-digit signup codes. */
 const OTP_LENGTH = 6;
@@ -202,6 +203,7 @@ type FieldErrors = {
 export default function RegisterScreen({ onRegister, onLogin, onGoogleSignIn }: RegisterScreenProps) {
   const { C, styles, V6Colors, appearance } = useThemedStyles(createThemedStyles);
   const layout = useAuthLayout();
+  const insets = useSafeAreaInsets();
   const scrollRef = useRef<ScrollView>(null);
   const cardTop = useRef(0);
   const fieldPositions = useRef<Record<string, number>>({});
@@ -557,7 +559,7 @@ export default function RegisterScreen({ onRegister, onLogin, onGoogleSignIn }: 
             <FormInput
               label="Password"
               required
-              placeholder="••••••••"
+              placeholder="At least 8 characters"
               testID="input-password"
               value={password}
               onChangeText={(v) => { setPassword(v); clearError('password'); }}
@@ -568,7 +570,7 @@ export default function RegisterScreen({ onRegister, onLogin, onGoogleSignIn }: 
             <FormInput
               label="Confirm Password"
               required
-              placeholder="••••••••"
+              placeholder="Re-enter your password"
               testID="input-confirm-password"
               value={confirmPassword}
               onChangeText={(v) => { setConfirmPassword(v); clearError('confirmPassword'); }}
@@ -791,6 +793,9 @@ export default function RegisterScreen({ onRegister, onLogin, onGoogleSignIn }: 
       >
         {scrollContent}
       </KeyboardAvoidingView>
+      {/* The form scrolls under a transparent status bar; this strip keeps
+          the clock from sitting on top of the fields. */}
+      <View pointerEvents="none" style={[styles.statusStrip, { height: insets.top }]} />
     </Animated.View>
   );
 }
@@ -811,6 +816,7 @@ function createThemedStyles(theme: ThemePalette) {
   const styles = StyleSheet.create({
     flex: { flex: 1 },
     screen: { flex: 1, backgroundColor: C.bg },
+    statusStrip: { position: 'absolute', top: 0, left: 0, right: 0, backgroundColor: C.bg },
 
     scrollContent: { width: '100%', maxWidth: 600, alignSelf: 'center', paddingTop: 56, paddingHorizontal: 16, paddingBottom: 40 },
 
