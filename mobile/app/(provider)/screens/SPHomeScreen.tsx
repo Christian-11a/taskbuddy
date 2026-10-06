@@ -38,6 +38,8 @@ import {
 import {
   Bell,
   CalendarDays,
+  Clock,
+  ShieldAlert,
   ChevronRight,
   Inbox,
   Navigation,
@@ -89,7 +91,15 @@ export default function SPHomeScreen({ onNavigate }: SPHomeScreenProps) {
   // verification is approved async by a webhook while the app may be
   // backgrounded — without this it stays stale until the user happens to
   // revisit Verification or restart the app (QA P2.1).
-  useRefreshOnForeground(() => void refreshProfile(), !isVerified);
+  // Where an unverified provider's request stands, so the banner says
+  // "under review" instead of asking them to verify again.
+  const { data: verification, reload: reloadVerification } = useAsyncData(async () => {
+    if (isVerified) return null;
+    try { return await api.myVerification(); } catch { return null; }
+  }, [isVerified]);
+  useRefreshOnForeground(() => { void refreshProfile(); reloadVerification(); }, !isVerified);
+  const verifyState = verification?.status === 'pending' ? 'pending'
+    : verification?.status === 'rejected' ? 'rejected' : 'none';
   useEffect(() => {
     if (!isVerified) void refreshProfile();
     // Only on mount — refreshProfile itself is stable (useCallback([])), and
@@ -244,19 +254,31 @@ export default function SPHomeScreen({ onNavigate }: SPHomeScreenProps) {
         {/* Verification banner */}
         {!isVerified && (
           <Tap
-            style={styles.flowBanner}
+            style={[styles.flowBanner, verifyState === 'pending' && styles.flowBannerPending, verifyState === 'rejected' && styles.flowBannerRejected]}
             onPress={() => onNavigate('Verification')}
             accessibilityRole="button"
           >
             <View style={styles.flowIcon}>
-              <ShieldCheck size={20} color={C.link} />
+              {verifyState === 'pending' ? <Clock size={20} color={C.warningText} />
+                : verifyState === 'rejected' ? <ShieldAlert size={20} color={C.dangerText} />
+                : <ShieldCheck size={20} color={C.link} />}
             </View>
             <View style={{ flex: 1 }}>
-              <Text style={styles.flowTitle}>Verification required to apply</Text>
-              <Text style={styles.flowBody}>
-                You can browse jobs now, but you must verify your identity before you can send proposals or be hired.
+              <Text style={styles.flowTitle}>
+                {verifyState === 'pending' ? 'Verification under review'
+                  : verifyState === 'rejected' ? 'Verification not approved'
+                  : 'Verification required to apply'}
               </Text>
-              <Text style={styles.flowAction}>Verify now</Text>
+              <Text style={styles.flowBody}>
+                {verifyState === 'pending'
+                  ? "An admin is checking your documents. You can browse jobs now and apply once you're approved."
+                  : verifyState === 'rejected'
+                  ? 'Your documents were not accepted. Upload new photos to try again.'
+                  : 'You can browse jobs now, but you must verify your identity before you can send proposals or be hired.'}
+              </Text>
+              <Text style={styles.flowAction}>
+                {verifyState === 'pending' ? 'View status' : verifyState === 'rejected' ? 'Try again' : 'Verify now'}
+              </Text>
             </View>
             <ChevronRight size={20} color={C.ink400} style={{ alignSelf: 'center' }} />
           </Tap>
@@ -456,6 +478,8 @@ function createThemedStyles(theme: ThemePalette) {
       backgroundColor: C.primaryTonal, borderWidth: 1, borderColor: C.primaryTonalStrong,
       borderRadius: 18, padding: 14, marginBottom: 18, overflow: 'hidden',
     },
+    flowBannerPending: { backgroundColor: C.warningSurface, borderColor: C.warningBorder },
+    flowBannerRejected: { backgroundColor: C.dangerSurface, borderColor: C.dangerBorder },
     flowIcon: { width: 40, height: 40, borderRadius: 12, backgroundColor: C.surface, alignItems: 'center', justifyContent: 'center' },
     flowTitle: { fontSize: 15, color: C.ink900, fontWeight: '700', fontFamily: 'Inter' },
     flowBody: { fontSize: 13.5, lineHeight: 19, color: C.ink500, fontFamily: 'Inter', marginTop: 3 },
