@@ -406,7 +406,7 @@ export default function SPVerificationScreen({ onBack, onVerified }: SPVerificat
                         onPress={() => void pick('id')}
                         activeOpacity={0.8}
                       >
-                        <ImageIcon size={18} color={Colors.muted} />
+                        <ImageIcon size={18} color={V6Colors.link} />
                         <Text style={styles.galleryBtnText}>Choose a different photo</Text>
                       </Tap>
                     )}
@@ -440,7 +440,7 @@ export default function SPVerificationScreen({ onBack, onVerified }: SPVerificat
                       onPress={() => (selfieAsset ? void takeSelfie() : void pick('selfie'))}
                       activeOpacity={0.8}
                     >
-                      {!selfieAsset && <ImageIcon size={18} color={Colors.muted} />}
+                      {selfieAsset ? <Camera size={18} color={V6Colors.link} /> : <ImageIcon size={18} color={V6Colors.link} />}
                       <Text style={styles.galleryBtnText}>
                         {selfieAsset ? 'Retake' : 'Choose from gallery'}
                       </Text>
@@ -666,17 +666,21 @@ function createThemedStyles(theme: ThemePalette) {
       alignItems: 'center',
       justifyContent: 'center',
       gap: 6,
+      minHeight: 44,
       paddingVertical: 10,
-      borderRadius: 10,
+      borderRadius: 12,
       borderWidth: 1,
-      borderColor: 'rgba(144,153,184,0.3)',
-      backgroundColor: Colors.backgroundAlt,
+      borderColor: V6Colors.fieldBorder,
+      backgroundColor: V6Colors.surface,
       marginTop: 8,
     },
+    // Secondary action: dark label and a brand icon so it reads as a
+    // button, not as disabled text.
     galleryBtnText: {
-      color: Colors.muted,
+      color: V6Colors.ink800,
       fontFamily: 'Inter',
       fontSize: 15.5,
+      fontWeight: '600',
     },
   });
   return { Colors, V6Colors, styles };
