@@ -62,20 +62,18 @@ function createThemedStyles(theme: ThemePalette) {
       alignItems: 'center',
       marginBottom: 24,
     },
+    // Flat (no elevation): an Android shadow on a transparent image renders
+    // unreliably and could hide the logo.
     logoImage: {
-      width: 220,
-      height: 100,
+      width: 120,
+      height: 120,
       marginBottom: 18,
-      shadowColor: '#38bdf8',
-      shadowOpacity: 0.35,
-      shadowOffset: { width: 0, height: 8 },
-      shadowRadius: 22,
-      elevation: 8,
     },
     logoText: {
       color: V6Colors.onPrimary,
       fontSize: 34.5,
       fontWeight: '800',
+      fontFamily: 'Inter',
     },
     tagline: {
       color: V6Colors.ink200,
@@ -83,6 +81,7 @@ function createThemedStyles(theme: ThemePalette) {
       textAlign: 'center',
       lineHeight: 24,
       maxWidth: 280,
+      fontFamily: 'Inter',
     },
   });
   return { Colors, V6Colors, styles };
