@@ -60,7 +60,7 @@ const CLIENT_SLIDES: Slide[] = [
     title: 'Pay with',
     titleAccent: 'peace of mind',
     subtitle: 'Your payment is held until the job is done.',
-    body: 'Top up your Wallet, hire, then confirm completion to release payment. Something wrong? File a dispute from the job.',
+    body: 'Top up your Wallet, hire, then confirm completion to release payment. Something wrong? File a complaint from the job.',
   },
 ];
 
@@ -226,10 +226,12 @@ function createThemedStyles(theme: ThemePalette) {
       fontFamily: 'Inter',
       fontSize: 32.5,
       fontWeight: '800',
-      letterSpacing: -0.81,
+      // A line height near the font size made Android clip the second line
+      // of two-line titles ("Confirm and get / paid").
+      letterSpacing: -0.5,
       color: C.ink900,
       textAlign: 'center',
-      lineHeight: 33,
+      lineHeight: 40,
     },
     titleAccent: {
       color: C.cyan600,
