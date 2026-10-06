@@ -83,8 +83,10 @@ export default function JobCard({
 
       {footer.length > 0 && (
         <View style={styles.bottomRow}>
-          {footer.map((item) => (
-            <View key={item.text} style={styles.footItem}>
+          {/* Only the first item (usually a name) gives up width; the time
+              or distance after it is short and stays whole. */}
+          {footer.map((item, i) => (
+            <View key={item.text} style={[styles.footItem, i > 0 && styles.footItemFixed]}>
               {item.icon}
               <Text style={styles.footText} numberOfLines={1}>{item.text}</Text>
             </View>
@@ -121,6 +123,7 @@ function createThemedStyles(theme: ThemePalette) {
       flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 10,
     },
     footItem: { flexDirection: 'row', alignItems: 'center', gap: 6, flexShrink: 1 },
+    footItemFixed: { flexShrink: 0 },
     footText: { color: C.ink500, fontSize: 13, fontWeight: '500', fontFamily: 'Inter', flexShrink: 1 },
   });
   return { Colors, V6Colors, C, styles };
