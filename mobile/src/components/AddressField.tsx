@@ -250,10 +250,10 @@ export default function AddressField({
         {locating ? (
           <ActivityIndicator
             size="small"
-            color={actionVariant === 'primary' ? Colors.white : Colors.brandTeal}
+            color={V6Colors.link}
           />
         ) : (
-          <LocateFixed size={18} color={actionVariant === 'primary' ? Colors.white : Colors.brandTeal} />
+          <LocateFixed size={18} color={V6Colors.link} />
         )}
         <Text style={[styles.locateText, actionVariant === 'primary' && styles.locateTextPrimary]}>
           {locating ? 'Finding your address…' : 'Use my current location'}
@@ -314,11 +314,12 @@ function createThemedStyles(theme: ThemePalette) {
       gap: 8,
       paddingVertical: 10,
     },
+    // Tonal, not filled: the step's Next button stays the one primary action (G5).
     locateBtnPrimary: {
       justifyContent: 'center',
-      backgroundColor: Colors.brandTeal,
-      borderRadius: 13,
-      paddingVertical: 14,
+      backgroundColor: V6Colors.primaryTonal,
+      borderRadius: 14,
+      minHeight: 48,
       marginTop: 10,
     },
     locateText: {
@@ -327,7 +328,7 @@ function createThemedStyles(theme: ThemePalette) {
       fontSize: 15,
       fontWeight: '600',
     },
-    locateTextPrimary: { color: Colors.onPrimary, fontWeight: '700' },
+    locateTextPrimary: { color: V6Colors.link, fontWeight: '700' },
 
     dropdown: {
       backgroundColor: Colors.surface,

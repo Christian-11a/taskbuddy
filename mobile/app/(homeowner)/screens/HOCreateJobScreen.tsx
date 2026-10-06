@@ -70,11 +70,13 @@ import {
   BrushCleaning,
   Check,
   CheckCircle2,
+  ChevronLeft,
+  ChevronRight,
   Clock,
+  Footprints,
   Hammer,
   Hand,
   MapPin,
-  Footprints,
   Plus,
   Sparkles,
   Wrench,
@@ -1284,6 +1286,9 @@ export default function HOCreateJobScreen({
                 setShowDatePicker(false);
               }}
               markedDates={date ? { [dateKey(date)]: { selected: true, selectedColor: Colors.brandTeal } } : undefined}
+              renderArrow={(direction: 'left' | 'right') => (direction === 'left'
+                ? <ChevronLeft size={22} color={V6Colors.link} />
+                : <ChevronRight size={22} color={V6Colors.link} />)}
               theme={{ calendarBackground: V6Colors.surface, dayTextColor: V6Colors.ink900, monthTextColor: V6Colors.ink900, textDisabledColor: V6Colors.ink400, todayTextColor: V6Colors.link, arrowColor: V6Colors.link, selectedDayBackgroundColor: V6Colors.primary, textSectionTitleColor: V6Colors.ink700, textDayFontFamily: 'Inter', textMonthFontFamily: 'Inter', textDayHeaderFontFamily: 'Inter', textMonthFontWeight: '700', textDayHeaderFontWeight: '600', textMonthFontSize: 17, arrowStyle: { padding: 12 } }}
             />
       </SheetFrame>
@@ -1467,7 +1472,7 @@ function createThemedStyles(theme: ThemePalette) {
     },
     savedAddressText: { flex: 1, color: V6Colors.link, fontSize: 14, fontWeight: '600', fontFamily: 'Inter' },
     noteCard: { backgroundColor: Colors.ink50, borderRadius: 14, padding: 14 },
-    mapPlaceholder: { height: 190, borderRadius: 14, marginBottom: 16, backgroundColor: Colors.ink50, alignItems: 'center', justifyContent: 'center', gap: 8, padding: 20 },
+    mapPlaceholder: { height: 120, borderRadius: 14, marginBottom: 16, backgroundColor: Colors.ink50, alignItems: 'center', justifyContent: 'center', gap: 8, padding: 20 },
     mapPlaceholderText: { color: Colors.muted, fontSize: 14, fontFamily: 'Inter', textAlign: 'center' },
     mapPreview: { borderRadius: 14, overflow: 'hidden', marginBottom: 8, backgroundColor: Colors.ink50 },
     // Matches the 2:1 image the backend renders (600×300). `cover` at that ratio
@@ -1495,7 +1500,8 @@ function createThemedStyles(theme: ThemePalette) {
     calendarTitle: { color: V6Colors.ink900, fontSize: 21.5, fontWeight: '800', fontFamily: 'Inter' },
     calendarClose: { color: V6Colors.link, fontSize: 16.5, fontWeight: '700', fontFamily: 'Inter' },
 
-    textArea: { textAlignVertical: 'top', minHeight: 20 * 3, paddingTop: 12 },
+    // Room for a few lines plus the counter in the corner (I9).
+    textArea: { textAlignVertical: 'top', minHeight: 128, paddingTop: 12, paddingBottom: 28 },
     textAreaWrap: { position: 'relative' },
     charCount: { position: 'absolute', right: 12, bottom: 8, color: Colors.muted, fontSize: 14.5 },
 
