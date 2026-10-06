@@ -150,9 +150,14 @@ export default function HOJobDetailScreen({ jobId, onBack, onNavigate }: HOJobDe
     }
   };
 
+  // Once the provider has ticked every task the work is done: the next step
+  // is Confirm Completion, and a problem goes through File a Complaint rather
+  // than a cancellation.
+  const allTasksDone = tasks.length > 0 && tasks.every((task) => task.is_done);
   const canCancel =
     job &&
-    ['open', 'recommending', 'assigned', 'confirmed', 'in_progress'].includes(job.status);
+    ['open', 'recommending', 'assigned', 'confirmed', 'in_progress'].includes(job.status) &&
+    !(job.status === 'in_progress' && allTasksDone);
   const canDispute = job && !!job.assigned_provider_id && (
     ['assigned', 'confirmed', 'in_progress', 'cancelled'].includes(job.status) ||
     (job.status === 'completed' && job.warranty_expires_at && Date.now() < new Date(job.warranty_expires_at).getTime())
