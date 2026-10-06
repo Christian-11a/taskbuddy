@@ -375,7 +375,7 @@ export default function SPJobDetailScreen({ jobId, onBack, onNavigate }: SPJobDe
             {isAssignedToMe && (isCancelled || isConfirmed || isWorking || (isDone && withinWarranty) || dispute) && (
               <Tap style={styles.outlineBtn}
                 onPress={() => onNavigate(dispute ? 'Dispute Status' : 'Dispute Filing', job.id)}>
-                <Text style={styles.outlineBtnText}>{dispute ? 'View Complaint Status' : 'File a Complaint'}</Text>
+                <Text style={[styles.outlineBtnText, { textAlign: 'center' }]} numberOfLines={2} maxFontSizeMultiplier={1.15}>{dispute ? 'View Complaint Status' : 'File a Complaint'}</Text>
               </Tap>
             )}
             {isDone && job.warranty_expires_at && (

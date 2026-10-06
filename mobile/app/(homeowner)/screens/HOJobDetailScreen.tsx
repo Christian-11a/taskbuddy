@@ -254,11 +254,12 @@ export default function HOJobDetailScreen({ jobId, onBack, onNavigate }: HOJobDe
                     (i < stage || (i === stage && i === JOB_STAGES.length - 1)) && styles.timelineDotDone,
                     i === stage && i < JOB_STAGES.length - 1 && styles.timelineDotCurrent,
                   ]} />
-                  {/* Five steps share one row: cap the scale so large system text
-                      doesn't break words like "Confirmed" mid-word. */}
+                  {/* Five steps share one row: on 360 dp phones even 1.1x broke
+                      "Confirmed" mid-word, so these short labels stay at 1x
+                      (the status pill above repeats the current stage). */}
                   <Text
                     style={[styles.timelineLabel, i <= stage && styles.timelineLabelDone]}
-                    maxFontSizeMultiplier={1.1}
+                    maxFontSizeMultiplier={1}
                     numberOfLines={2}
                   >
                     {label}
@@ -320,7 +321,7 @@ export default function HOJobDetailScreen({ jobId, onBack, onNavigate }: HOJobDe
                   <Silhouette name={provider.profiles?.full_name} textStyle={styles.providerAvatarText} />
                 </View>
                 <View style={{ flex: 1 }}>
-                  <Text style={styles.providerName}>{provider.profiles?.full_name ?? 'Provider'}</Text>
+                  <Text style={styles.providerName} numberOfLines={1}>{provider.profiles?.full_name ?? 'Provider'}</Text>
                   <View style={styles.providerRatingRow}>
                     <Star size={12} color={C.ink400} fill={C.ink400} />
                     <Text style={styles.providerRating}>
@@ -431,7 +432,7 @@ export default function HOJobDetailScreen({ jobId, onBack, onNavigate }: HOJobDe
               )}
               {(dispute || canDispute) && (
                 <Tap style={[styles.outlineBtn, styles.secondaryBtn]} onPress={() => onNavigate(dispute ? 'Dispute Status' : 'Dispute Filing', job.id)} activeOpacity={0.85}>
-                  <Text style={styles.outlineBtnText} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.85}>{dispute ? 'View Complaint Status' : 'File a Complaint'}</Text>
+                  <Text style={[styles.outlineBtnText, { textAlign: 'center' }]} numberOfLines={2} maxFontSizeMultiplier={1.15}>{dispute ? 'View Complaint Status' : 'File a Complaint'}</Text>
                 </Tap>
               )}
             </View>
