@@ -14,7 +14,7 @@
 
 import { useThemedStyles, type Palette as ThemePalette } from '../../../src/context/ThemeContext';
 import React, { useCallback, useState } from 'react';
-import { ActivityIndicator, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, KeyboardAvoidingView, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import Tap from '../../../src/components/ui/Tap';
 import { ArrowLeft } from 'lucide-react-native';
 import ConfirmationModal from '../../../src/components/ConfirmationModal';
@@ -84,6 +84,8 @@ export default function HODisputeFilingScreen({ jobId, onBack, onSubmitted }: HO
         </View>
       </View>
 
+      {/* Keeps the description box and Submit above the keyboard (K2). */}
+      <KeyboardAvoidingView style={styles.flex} behavior="padding">
       <ScrollView keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag" contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
         <View style={styles.fieldGroup}>
           <Text style={styles.label}>Issue</Text>
@@ -131,6 +133,7 @@ export default function HODisputeFilingScreen({ jobId, onBack, onSubmitted }: HO
           )}
         </Tap>
       </ScrollView>
+      </KeyboardAvoidingView>
 
       <ConfirmationModal
         visible={showConfirmation}
@@ -148,6 +151,7 @@ function createThemedStyles(theme: ThemePalette) {
   const { Colors, V6Colors } = theme;
   const C = V6Colors;
   const styles = StyleSheet.create({
+    flex: { flex: 1 },
     screen: { flex: 1, backgroundColor: C.canvas },
     header: {
       flexDirection: 'row', alignItems: 'center', gap: 12,
@@ -180,7 +184,7 @@ function createThemedStyles(theme: ThemePalette) {
       borderWidth: 1, borderColor: V6Colors.fieldBorder,
       padding: 14, color: C.ink900, fontFamily: 'Inter', fontSize: 15,
     },
-    detailsInputFocused: { borderColor: C.cyan500 },
+    detailsInputFocused: { borderColor: C.cyan700, borderWidth: 2 },
 
     submitButton: {
       alignItems: 'center', justifyContent: 'center',
