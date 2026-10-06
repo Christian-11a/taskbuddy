@@ -25,7 +25,7 @@ export default function PortfolioGallery({
   return (
     <View>
       {entries.length === 0 && (
-        <Text style={{ color: C.ink500, padding: 12 }}>
+        <Text style={{ color: C.ink500, fontSize: 13.5, lineHeight: 20, fontFamily: 'Inter' }}>
           No portfolio photos yet.
         </Text>
       )}
