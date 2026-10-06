@@ -223,7 +223,7 @@ export default function SPSkillRequestScreen({ onBack }: SPSkillRequestScreenPro
               disabled={!canSubmit}
               activeOpacity={0.85}
             >
-              {submitting ? <ActivityIndicator color={C.onPrimary} /> : <Text style={styles.submitText}>Send to admins</Text>}
+              {submitting ? <ActivityIndicator color={C.onPrimary} /> : <Text style={[styles.submitText, !canSubmit && styles.disabledText]}>Send to admins</Text>}
             </Tap>
           </View>
         )}
@@ -333,7 +333,9 @@ function createThemedStyles(theme: ThemePalette) {
     error: { color: V6Colors.dangerText, fontSize: 13.5, fontFamily: 'Inter', marginTop: 6 },
     submitBtn: { backgroundColor: C.cyan700, borderRadius: 12, minHeight: 46, alignItems: 'center', justifyContent: 'center', marginTop: 12 },
     submitText: { color: C.onPrimary, fontSize: 15, fontWeight: '700', fontFamily: 'Inter' },
-    disabled: { opacity: 0.5 },
+    // Readable disabled state: grey fill with dark text instead of a faded button.
+    disabled: { backgroundColor: V6Colors.ink100 },
+    disabledText: { color: V6Colors.ink700 },
 
     sectionTitle: { color: C.ink400, fontSize: 12.5, fontWeight: '800', letterSpacing: 0.6, textTransform: 'uppercase', fontFamily: 'Inter', marginTop: 6, marginBottom: 8 },
     historyRow: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: C.surface, borderWidth: 1, borderColor: C.line, borderRadius: 12, padding: 12, marginBottom: 8 },

@@ -161,7 +161,7 @@ export default function ChangePasswordModal({ visible, onClose }: ChangePassword
                     accessibilityState={{ disabled: !canSave }}
                     testID="btn-update-password"
                   >
-                    {saving ? <ActivityIndicator color={C.onPrimary} /> : <Text style={styles.primaryText}>Update password</Text>}
+                    {saving ? <ActivityIndicator color={C.onPrimary} /> : <Text style={[styles.primaryText, !canSave && styles.disabledText]}>Update password</Text>}
                   </Tap>
                 </View>
               </>
@@ -206,7 +206,9 @@ function createThemedStyles(theme: ThemePalette) {
       minHeight: 44, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 10,
     },
     primaryText: { color: C.onPrimary, fontSize: 14.5, fontWeight: '700', fontFamily: 'Inter' },
-    disabled: { opacity: 0.5 },
+    // Readable disabled state: grey fill with dark text instead of a faded button.
+    disabled: { backgroundColor: V6Colors.ink100 },
+    disabledText: { color: V6Colors.ink700 },
     successWrap: { alignItems: 'center' },
     fullWidth: { flex: 0, alignSelf: 'stretch', marginTop: 4 },
   });

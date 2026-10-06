@@ -510,7 +510,7 @@ export default function SPVerificationScreen({ onBack, onVerified }: SPVerificat
                     {submitting ? (
                       <ActivityIndicator color={Colors.onPrimary} />
                     ) : (
-                      <Text style={styles.submitText}>
+                      <Text style={[styles.submitText, !canAdvance && styles.submitTextDisabled]}>
                         {step === 3 ? 'Start Verification' : 'Next'}
                       </Text>
                     )}
@@ -654,7 +654,9 @@ function createThemedStyles(theme: ThemePalette) {
       paddingVertical: 15,
       marginTop: 4,
     },
-    submitButtonDisabled: { opacity: 0.5 },
+    // Readable disabled state: grey fill with dark text instead of a faded button.
+    submitButtonDisabled: { backgroundColor: V6Colors.ink100 },
+    submitTextDisabled: { color: V6Colors.ink700 },
     submitText: { color: Colors.onPrimary, fontSize: 18.5, fontWeight: '700', fontFamily: 'Inter' },
     errorText: { color: Colors.error, fontFamily: 'Inter', fontSize: 15.5, textAlign: 'center' },
     retryHint: { color: Colors.muted, fontFamily: 'Inter', fontSize: 14, textAlign: 'center' },

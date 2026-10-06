@@ -549,7 +549,7 @@ function createThemedStyles(theme: ThemePalette) {
     outlineDangerBtn: { borderWidth: 1, borderColor: V6Colors.dangerBorder, backgroundColor: V6Colors.dangerSurface, borderRadius: 16, minHeight: 52, justifyContent: 'center', alignItems: 'center' },
     outlineDangerBtnText: { color: V6Colors.dangerText, fontSize: 16.5, fontWeight: '700', fontFamily: 'Inter' },
     lockedBtn: { backgroundColor: C.ink100, borderRadius: 16, minHeight: 52, paddingHorizontal: 12, justifyContent: 'center', alignItems: 'center' },
-    lockedBtnText: { color: C.ink400, fontSize: 15, fontWeight: '700', fontFamily: 'Inter', textAlign: 'center' },
+    lockedBtnText: { color: C.ink700, fontSize: 15, fontWeight: '700', fontFamily: 'Inter', textAlign: 'center' },
   });
   return { Colors, V6Colors, C, styles };
 }
