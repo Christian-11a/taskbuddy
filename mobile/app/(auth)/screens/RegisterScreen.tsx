@@ -981,11 +981,12 @@ function createThemedStyles(theme: ThemePalette) {
     dividerLine: { flex: 1, height: 1, backgroundColor: V6Colors.ink100 },
     dividerText: { color: '#B3B3B3', fontSize: 15.5, fontFamily: 'Roboto' },
 
-    // Google's dark sign-in button: #131314 pill, light text, four-colour G.
+    // Google's dark sign-in button: #131314, light text, four-colour G; same
+    // shape and height as the primary button above it.
     // The light border only shows in dark mode, where the page is near-black.
     googleBtn: {
       flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10,
-      backgroundColor: '#131314', borderRadius: 999, minHeight: 50, paddingHorizontal: 24,
+      backgroundColor: '#131314', borderRadius: V6Radii.btn, paddingVertical: 15, paddingHorizontal: 24,
       borderWidth: 1, borderColor: theme.appearance === 'dark' ? '#8E918F' : '#131314',
       marginBottom: 20,
     },
