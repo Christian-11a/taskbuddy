@@ -131,7 +131,7 @@ export default function SPSkillRequestScreen({ onBack }: SPSkillRequestScreenPro
             <Text style={styles.mainService}>{mainService}</Text>
           </View>
           {secondaryServices.length > 0 && <>
-            <Text style={styles.cardLabel}>APPROVED ADDITIONAL SERVICES</Text>
+            <Text style={[styles.cardLabel, styles.cardLabelSpaced]}>APPROVED ADDITIONAL SERVICES</Text>
             {secondaryServices.map((service) => <Text key={service.category_id} style={styles.mainService}>{service.service_categories.name}</Text>)}
           </>}
           <Text style={styles.cardNote}>
@@ -298,6 +298,7 @@ function createThemedStyles(theme: ThemePalette) {
 
     card: { backgroundColor: C.surface, borderRadius: V6Radii.card, borderWidth: 1, borderColor: C.line, padding: 16, marginBottom: 14 },
     cardLabel: { color: C.ink400, fontSize: 11.5, fontWeight: '800', letterSpacing: 0.6, fontFamily: 'Inter' },
+    cardLabelSpaced: { marginTop: 14 },
     mainRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 6 },
     mainService: { color: C.ink900, fontSize: 18, fontWeight: '800', fontFamily: 'Inter' },
     cardNote: { color: C.ink500, fontSize: 13, fontFamily: 'Inter', lineHeight: 18, marginTop: 8 },
