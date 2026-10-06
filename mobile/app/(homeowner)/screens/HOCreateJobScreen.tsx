@@ -302,6 +302,15 @@ export default function HOCreateJobScreen({
   // step wherever the previous one had been scrolled to (usually the bottom).
   const scrollRef = useRef<ScrollView>(null);
   const fieldPositions = useRef<Partial<Record<keyof FieldErrors, number>>>({});
+  // On short screens the keyboard covers the address suggestions, which sit
+  // under the field. Once the keyboard is up, scroll the Address label to the
+  // top so the suggestions have room.
+  const addressFocused = useRef(false);
+  useEffect(() => {
+    if (keyboardUp && addressFocused.current) {
+      scrollRef.current?.scrollTo({ y: Math.max(0, (fieldPositions.current.location ?? 0) - 8), animated: true });
+    }
+  }, [keyboardUp]);
   useEffect(() => {
     scrollRef.current?.scrollTo({ y: 0, animated: false });
   }, [step]);
@@ -824,6 +833,8 @@ export default function HOCreateJobScreen({
                   clearError('location');
                 }}
                 onResolve={handleResolvedAddress}
+                onFocus={() => { addressFocused.current = true; }}
+                onBlur={() => { addressFocused.current = false; }}
                 error={fieldErrors.location}
                 hint={geocoding ? 'Verifying address…' : undefined}
               />

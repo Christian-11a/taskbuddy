@@ -70,6 +70,9 @@ interface Props {
   inputStyle?: object;
   actionVariant?: 'default' | 'primary';
   testID?: string;
+  /** Lets the screen scroll the field into view when the keyboard opens. */
+  onFocus?: () => void;
+  onBlur?: () => void;
 }
 
 export default function AddressField({
@@ -82,6 +85,8 @@ export default function AddressField({
   inputStyle,
   actionVariant = 'default',
   testID,
+  onFocus,
+  onBlur,
 }: Props) {
   const { Colors, styles, V6Colors, appearance } = useThemedStyles(createThemedStyles);
   const [suggestions, setSuggestions] = useState<AddressSuggestion[]>([]);
@@ -232,8 +237,12 @@ export default function AddressField({
         onFocus={() => {
           setFocused(true);
           if (suggestions.length > 0) setOpen(true);
+          onFocus?.();
         }}
-        onBlur={() => setFocused(false)}
+        onBlur={() => {
+          setFocused(false);
+          onBlur?.();
+        }}
         autoCorrect={false}
         multiline
       />
