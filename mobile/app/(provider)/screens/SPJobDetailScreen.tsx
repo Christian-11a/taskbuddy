@@ -38,7 +38,7 @@ import {
   MessageCircle,
   ShieldCheck,
 } from 'lucide-react-native';
-import { CalendarDays } from 'lucide-react-native';
+import { CalendarDays, Lock } from 'lucide-react-native';
 import { Spacing, V6Radii } from '../../../src/constants/theme';
 import { useHeaderTop } from '../../../src/hooks/useHeaderTop';
 
@@ -210,7 +210,19 @@ export default function SPJobDetailScreen({ jobId, onBack, onNavigate }: SPJobDe
       </View>
 
       {loading && <ContentSkeleton variant="detail" />}
-      {!!error && !loading && <Text style={styles.stateText}>{error}</Text>}
+      {/* F7: an unavailable job (e.g. hired by someone else) gets a real
+          error card instead of a bare grey line on an empty page. */}
+      {!!error && !loading && (
+        <View style={styles.errorCard}>
+          <View style={styles.errorIcon}><Lock size={24} color={C.ink700} /></View>
+          <Text style={styles.errorTitle}>This job isn't available</Text>
+          <Text style={styles.stateText}>{error}</Text>
+          <Text style={styles.errorHint}>It may have been filled by another provider or closed by the client.</Text>
+          <Tap style={styles.errorBtn} onPress={onBack} activeOpacity={0.85} accessibilityRole="button">
+            <Text style={styles.errorBtnText}>Go back</Text>
+          </Tap>
+        </View>
+      )}
 
       {job && (
         <ScrollView style={styles.body} contentContainerStyle={styles.bodyContent} showsVerticalScrollIndicator={false}>
@@ -488,7 +500,19 @@ function createThemedStyles(theme: ThemePalette) {
 
     body: { flex: 1 },
     bodyContent: { paddingHorizontal: Spacing.screenH, paddingTop: 4 },
-    stateText: { color: C.ink500, fontSize: 16.5, fontFamily: 'Inter', textAlign: 'center', marginTop: 30, paddingHorizontal: Spacing.screenH },
+    stateText: { color: C.ink700, fontSize: 15, lineHeight: 22, fontFamily: 'Inter', textAlign: 'center' },
+    errorCard: {
+      margin: Spacing.screenH, marginTop: 32, padding: 24, alignItems: 'center', gap: 8,
+      backgroundColor: C.surface, borderRadius: V6Radii.card, borderWidth: 1, borderColor: C.line,
+    },
+    errorIcon: { width: 56, height: 56, borderRadius: 28, backgroundColor: C.ink100, alignItems: 'center', justifyContent: 'center', marginBottom: 4 },
+    errorTitle: { color: C.ink900, fontSize: 18, fontWeight: '800', fontFamily: 'Inter', textAlign: 'center' },
+    errorHint: { color: C.ink500, fontSize: 13.5, lineHeight: 20, fontFamily: 'Inter', textAlign: 'center' },
+    errorBtn: {
+      marginTop: 10, minHeight: 48, alignSelf: 'stretch', alignItems: 'center', justifyContent: 'center',
+      borderRadius: V6Radii.btn, borderWidth: 1, borderColor: C.fieldBorder, backgroundColor: C.surface,
+    },
+    errorBtnText: { color: C.ink800, fontSize: 15.5, fontWeight: '700', fontFamily: 'Inter' },
 
     hero: { paddingVertical: 18, borderBottomWidth: 1, borderBottomColor: C.line },
     kicker: { fontSize: 11.5, textTransform: 'uppercase', letterSpacing: 0.9, fontWeight: '800', color: V6Colors.link, marginBottom: 8, fontFamily: 'Inter' },
