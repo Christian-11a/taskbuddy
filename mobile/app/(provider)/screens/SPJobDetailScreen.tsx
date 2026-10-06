@@ -496,10 +496,11 @@ function createThemedStyles(theme: ThemePalette) {
     heroTitle: { flex: 1, fontSize: 21.5, lineHeight: 25, letterSpacing: -0.5, color: C.ink900, fontWeight: '700', fontFamily: 'Inter' },
     heroPrice: { fontSize: 21.5, fontWeight: '800', color: C.ink900, fontFamily: 'Inter' },
     urgentTag: { color: V6Colors.dangerText, fontSize: 12, fontWeight: '800', letterSpacing: 0.6, marginTop: 8, fontFamily: 'Inter' },
-    factsGrid: { flexDirection: 'row', gap: 8, marginTop: 14 },
-    fact: { flex: 1, flexDirection: 'row', alignItems: 'flex-start', gap: 8, padding: 10, backgroundColor: V6Colors.wellBg, borderRadius: 12 },
+    // Stacked full width so a long address isn't squeezed into half the row.
+    factsGrid: { gap: 8, marginTop: 14 },
+    fact: { flexDirection: 'row', alignItems: 'flex-start', gap: 10, padding: 12, backgroundColor: V6Colors.wellBg, borderRadius: 14 },
     factLabel: { fontSize: 11.5, color: C.ink400, fontFamily: 'Inter' },
-    factValue: { fontSize: 13.5, color: C.ink800, fontWeight: '700', fontFamily: 'Inter', marginTop: 1 },
+    factValue: { fontSize: 14.5, color: C.ink800, fontWeight: '700', fontFamily: 'Inter', marginTop: 1, lineHeight: 20 },
     factSub: { fontSize: 11.5, color: C.ink400, fontFamily: 'Inter', marginTop: 2 },
 
     section: { paddingVertical: 18, borderBottomWidth: 1, borderBottomColor: C.line },
