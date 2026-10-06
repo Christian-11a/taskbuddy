@@ -163,3 +163,31 @@ it('preserves client job details when closing the shared image viewer', async ()
   expect(screen.queryByTestId('full-photo')).toBeNull();
   expect(screen.getByText('Confirm Completion')).toBeTruthy();
 });
+
+describe('HOJobDetailScreen — Cancel Job once the work is done', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    (api.getProvider as jest.Mock).mockResolvedValue({ profile_id: 'provider-1', profiles: { full_name: 'Jane Provider' }, cached_completed_jobs: 1 });
+    (api.jobDispute as jest.Mock).mockResolvedValue(null);
+  });
+  const task = (is_done: boolean, position: number) => ({ id: `t${position}`, job_id: 'job-1', label: `Task ${position}`, is_done, position });
+
+  it('keeps Cancel Job while tasks are still open', async () => {
+    (api.getJob as jest.Mock).mockResolvedValue({ ...inProgressJob, job_tasks: [task(true, 1), task(false, 2)] });
+    render(<HOJobDetailScreen jobId="job-1" onBack={jest.fn()} onNavigate={jest.fn()} />);
+    expect(await screen.findByText('Cancel Job')).toBeTruthy();
+  });
+
+  it('hides Cancel Job when every task is done, leaving Confirm Completion', async () => {
+    (api.getJob as jest.Mock).mockResolvedValue({ ...inProgressJob, job_tasks: [task(true, 1), task(true, 2)] });
+    render(<HOJobDetailScreen jobId="job-1" onBack={jest.fn()} onNavigate={jest.fn()} />);
+    expect(await screen.findByText('Confirm Completion')).toBeTruthy();
+    expect(screen.queryByText('Cancel Job')).toBeNull();
+  });
+
+  it('keeps Cancel Job for an in-progress job with no task list', async () => {
+    (api.getJob as jest.Mock).mockResolvedValue({ ...inProgressJob, job_tasks: [] });
+    render(<HOJobDetailScreen jobId="job-1" onBack={jest.fn()} onNavigate={jest.fn()} />);
+    expect(await screen.findByText('Cancel Job')).toBeTruthy();
+  });
+});

@@ -16,6 +16,7 @@ jest.mock('../../../../src/lib/api', () => ({
     browseJobs: jest.fn(),
     assignedJobs: jest.fn(),
     setAvailability: jest.fn(),
+    myVerification: jest.fn(),
   },
 }));
 
@@ -101,4 +102,51 @@ describe('SPHomeScreen — hero header keeps the avatar reachable with a long na
     await waitFor(() => expect(api.browseJobs).toHaveBeenCalledTimes(2));
   });
 
+
+  describe('verification banner', () => {
+    const unverified = (refreshProfile = jest.fn()) => (useAuth as jest.Mock).mockReturnValue({
+      profile: { full_name: 'New Provider', city: 'Lipa', latitude: null, longitude: null },
+      providerProfile: { is_available: false, service_radius_km: 15 },
+      isVerified: false,
+      refreshProfile,
+    });
+
+    it('asks to verify when there is no request yet', async () => {
+      unverified();
+      (api.myVerification as jest.Mock).mockResolvedValue(null);
+      render(<SPHomeScreen onNavigate={jest.fn()} />);
+      expect(await screen.findByText('Verification required to apply')).toBeTruthy();
+      expect(screen.getByText('Verify now')).toBeTruthy();
+    });
+
+    it('says the request is under review while it is pending', async () => {
+      unverified();
+      (api.myVerification as jest.Mock).mockResolvedValue({ status: 'pending' });
+      render(<SPHomeScreen onNavigate={jest.fn()} />);
+      expect(await screen.findByText('Verification under review')).toBeTruthy();
+      expect(screen.queryByText('Verify now')).toBeNull();
+    });
+
+    it('asks to try again after a rejection', async () => {
+      unverified();
+      (api.myVerification as jest.Mock).mockResolvedValue({ status: 'rejected', rejection_reason: 'Blurry' });
+      render(<SPHomeScreen onNavigate={jest.fn()} />);
+      expect(await screen.findByText('Verification not approved')).toBeTruthy();
+      expect(screen.getByText('Try again')).toBeTruthy();
+    });
+
+    it('falls back to the default banner if the status cannot be loaded', async () => {
+      unverified();
+      (api.myVerification as jest.Mock).mockRejectedValue(new Error('offline'));
+      render(<SPHomeScreen onNavigate={jest.fn()} />);
+      expect(await screen.findByText('Verification required to apply')).toBeTruthy();
+    });
+
+    it('does not fetch the verification status for a verified provider', async () => {
+      render(<SPHomeScreen onNavigate={jest.fn()} />);
+      await screen.findByTestId('btn-home-avatar');
+      expect(api.myVerification).not.toHaveBeenCalled();
+      expect(screen.queryByText('Verification required to apply')).toBeNull();
+    });
+  });
 });
