@@ -32,8 +32,8 @@ const ATTRIBUTIONS = [
 const HO_FAQS = [
   { q: 'How do payments work?', a: 'Add money to your Wallet via Stripe Checkout. Funds are held in escrow once you hire a provider and released after the three-day completion warranty ends, unless a complaint is open.' },
   { q: 'How do I hire a provider?', a: 'Post a job, review proposals from providers, and tap Hire on the one you choose from the job’s Applications screen.' },
-  { q: 'How do I leave a review?', a: 'Once a job is marked complete, open it from My Jobs and tap Leave a Review.' },
-  { q: 'How do I report a problem with a job?', a: 'Open the job from My Jobs and use Dispute Filing to describe the issue — an admin will review it.' },
+  { q: 'How do I leave a review?', a: 'Once a job is marked complete, open it from My Jobs and tap Leave Review.' },
+  { q: 'How do I report a problem with a job?', a: 'Open the job from My Jobs and tap File a Complaint to describe the issue — an admin will review it.' },
 ];
 
 const SP_FAQS = [
