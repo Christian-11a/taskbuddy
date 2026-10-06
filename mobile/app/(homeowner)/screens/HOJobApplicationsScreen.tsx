@@ -444,10 +444,10 @@ function createThemedStyles(theme: ThemePalette) {
     card: { backgroundColor: C.surface, borderWidth: 1, borderColor: C.line, borderRadius: 16, padding: 15 },
     cardHead: { flexDirection: 'row', alignItems: 'flex-start', gap: 11 },
     avatar: {
-      width: 42, height: 42, borderRadius: 13,
-      backgroundColor: C.cyan700, alignItems: 'center', justifyContent: 'center',
+      width: 44, height: 44, borderRadius: 22, overflow: 'hidden',
+      backgroundColor: C.primaryTonalStrong, alignItems: 'center', justifyContent: 'center',
     },
-    avatarText: { color: C.onPrimary, fontSize: 16, fontWeight: '800', fontFamily: 'Inter' },
+    avatarText: { color: C.primaryDeep, fontSize: 16, fontWeight: '800', fontFamily: 'Inter' },
     copy: { flex: 1 },
     providerName: { color: C.ink900, fontSize: 14.5, fontWeight: '700', fontFamily: 'Inter' },
     ratingRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 3 },
