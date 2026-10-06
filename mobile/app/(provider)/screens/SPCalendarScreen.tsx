@@ -20,7 +20,12 @@ import { ActivityIndicator, ScrollView, StyleSheet, Text, View } from 'react-nat
 import Tap from '../../../src/components/ui/Tap';
 import ContentSkeleton from '../../../src/components/ui/ContentSkeleton';
 import { Calendar } from 'react-native-calendars';
-import { CalendarDays, UserRound } from 'lucide-react-native';
+import {
+  CalendarDays,
+  ChevronLeft,
+  ChevronRight,
+  UserRound,
+} from 'lucide-react-native';
 import { Spacing, V6Radii, V6Shadows } from '../../../src/constants/theme';
 import { useHeaderTop } from '../../../src/hooks/useHeaderTop';
 
@@ -92,13 +97,24 @@ export default function SPCalendarScreen({ onNavigate }: SPCalendarScreenProps) 
             onDayPress={(day) => setSelectedDate(day.dateString)}
             onMonthChange={(m) => setVisibleMonth({ year: m.year, month: m.month - 1 })}
             markedDates={markedDates}
+            renderArrow={(direction: 'left' | 'right') => (direction === 'left'
+              ? <ChevronLeft size={22} color={V6Colors.link} />
+              : <ChevronRight size={22} color={V6Colors.link} />)}
             theme={{
               calendarBackground: V6Colors.surface,
               backgroundColor: V6Colors.surface,
               dayTextColor: V6Colors.ink900,
               textDisabledColor: V6Colors.ink400,
               monthTextColor: V6Colors.ink900,
-              textSectionTitleColor: V6Colors.ink500,
+              textSectionTitleColor: V6Colors.ink700,
+              textDayFontFamily: 'Inter',
+              textMonthFontFamily: 'Inter',
+              textDayHeaderFontFamily: 'Inter',
+              textMonthFontWeight: '700',
+              textDayHeaderFontWeight: '600',
+              textMonthFontSize: 17,
+              textDayFontSize: 15,
+              arrowStyle: { padding: 12 },
               todayTextColor: V6Colors.link,
               arrowColor: V6Colors.link,
               selectedDayBackgroundColor: C.cyan700,

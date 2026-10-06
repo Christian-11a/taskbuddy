@@ -1284,7 +1284,7 @@ export default function HOCreateJobScreen({
                 setShowDatePicker(false);
               }}
               markedDates={date ? { [dateKey(date)]: { selected: true, selectedColor: Colors.brandTeal } } : undefined}
-              theme={{ calendarBackground: V6Colors.surface, dayTextColor: V6Colors.ink900, monthTextColor: V6Colors.ink900, textDisabledColor: V6Colors.ink400, todayTextColor: V6Colors.link, arrowColor: V6Colors.link, selectedDayBackgroundColor: Colors.brandTeal }}
+              theme={{ calendarBackground: V6Colors.surface, dayTextColor: V6Colors.ink900, monthTextColor: V6Colors.ink900, textDisabledColor: V6Colors.ink400, todayTextColor: V6Colors.link, arrowColor: V6Colors.link, selectedDayBackgroundColor: V6Colors.primary, textSectionTitleColor: V6Colors.ink700, textDayFontFamily: 'Inter', textMonthFontFamily: 'Inter', textDayHeaderFontFamily: 'Inter', textMonthFontWeight: '700', textDayHeaderFontWeight: '600', textMonthFontSize: 17, arrowStyle: { padding: 12 } }}
             />
       </SheetFrame>
 
