@@ -46,7 +46,7 @@ import { SPScreen } from '../../../src/types/navigation';
 import { useAuth } from '../../../src/context/AuthContext';
 import { useAsyncData } from '../../../src/hooks/useAsyncData';
 import { api, ApiError, Job, JobTask } from '../../../src/lib/api';
-import { distanceLabel, peso, shortDate } from '../../../src/lib/format';
+import { distanceLabel, peso, shortDate, timeOfDay } from '../../../src/lib/format';
 import ProposalModal from '../../../src/components/ProposalModal';
 import { showToast } from '../../../src/components/Toast';
 import DeclineBookingModal from '../../../src/components/DeclineBookingModal';
@@ -379,7 +379,7 @@ export default function SPJobDetailScreen({ jobId, onBack, onNavigate }: SPJobDe
               </Tap>
             )}
             {isDone && job.warranty_expires_at && (
-              <Text style={styles.lockedBtnText}>Warranty ends {new Date(job.warranty_expires_at).toLocaleString()}.</Text>
+              <Text style={styles.lockedBtnText}>Warranty ends {shortDate(job.warranty_expires_at)}, {timeOfDay(job.warranty_expires_at)}.</Text>
             )}
             {isDone && (
               <View style={styles.lockedBtn}>

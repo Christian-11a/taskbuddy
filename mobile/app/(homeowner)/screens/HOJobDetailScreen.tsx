@@ -415,7 +415,7 @@ export default function HOJobDetailScreen({ jobId, onBack, onNavigate }: HOJobDe
             </Tap>
           )}
           {job.status === 'completed' && job.warranty_expires_at && (
-            <Text style={styles.barNote}>Warranty ends {new Date(job.warranty_expires_at).toLocaleString()}.</Text>
+            <Text style={styles.barNote}>Warranty ends {shortDate(job.warranty_expires_at)}, {timeOfDay(job.warranty_expires_at)}.</Text>
           )}
           {dispute?.status === 'open' && <Text style={styles.barNote}>{dispute.cancellation_state === 'pending' ? 'Cancellation awaiting provider response' : dispute.escrow_transactions?.status === 'disputed' ? 'Payment under admin review' : 'Complaint awaiting admin review'}</Text>}
           {/* Secondary actions share one row so the primary action stays the
