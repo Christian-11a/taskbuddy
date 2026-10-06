@@ -40,7 +40,7 @@ export default function ChangePasswordModal({ visible, onClose }: ChangePassword
 
   const rules = [
     { label: `At least ${MIN_LENGTH} characters`, ok: newPassword.length >= MIN_LENGTH },
-    { label: 'Different from your current password', ok: !!newPassword && newPassword !== currentPassword },
+    { label: 'Different from your current password', ok: !!newPassword && !!currentPassword && newPassword !== currentPassword },
     { label: 'Both new passwords match', ok: !!confirmPassword && newPassword === confirmPassword },
   ];
   const canSave = !!currentPassword && rules.every((r) => r.ok) && !saving;
