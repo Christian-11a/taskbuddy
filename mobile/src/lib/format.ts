@@ -156,3 +156,14 @@ export function plural(count: number | null | undefined, singular: string, plura
   const n = count ?? 0;
   return `${n} ${n === 1 ? singular : pluralForm}`;
 }
+
+/** Display text for an error shown to users. A bare server failure message
+ * ("Internal server error") is replaced with a friendly sentence; every other
+ * message (validation, conflicts, explanations) is shown unchanged. */
+export function friendlyError(message: string | null | undefined): string {
+  const text = (message ?? '').trim();
+  if (!text || /^internal server error\.?$/i.test(text)) {
+    return 'Something went wrong on our side. Please try again in a moment.';
+  }
+  return text;
+}
