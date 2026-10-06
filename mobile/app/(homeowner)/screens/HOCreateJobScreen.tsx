@@ -60,6 +60,7 @@ import {
   Modal,
   Image,
   ActivityIndicator,
+  Keyboard,
   KeyboardAvoidingView,
 } from 'react-native';
 import Tap from '../../../src/components/ui/Tap';
@@ -211,6 +212,14 @@ export default function HOCreateJobScreen({
     [resolvedCoordinates],
   );
   useEffect(() => setMapPreviewFailed(false), [mapPreviewSource]);
+  // While typing, the Back/Next bar would ride up with the keyboard and cover
+  // the address suggestions (I3); it comes back as soon as the keyboard closes.
+  const [keyboardUp, setKeyboardUp] = useState(false);
+  useEffect(() => {
+    const show = Keyboard.addListener('keyboardDidShow', () => setKeyboardUp(true));
+    const hide = Keyboard.addListener('keyboardDidHide', () => setKeyboardUp(false));
+    return () => { show.remove(); hide.remove(); };
+  }, []);
   const [geocodedAddress, setGeocodedAddress] = useState('');
   const [geocoding, setGeocoding] = useState(false);
   const [useProfileLocation, setUseProfileLocation] = useState(true);
@@ -1211,7 +1220,7 @@ export default function HOCreateJobScreen({
       {/* Footer */}
       {/* BUG-005: same edge-to-edge safe-area gap as BUG-002's bottom nav — pad
           for the system nav bar so the Back/Next buttons aren't under it. */}
-      <View style={[styles.footer, { paddingBottom: 14 + insets.bottom }]}>
+      <View style={[styles.footer, { paddingBottom: 14 + insets.bottom }, keyboardUp && styles.footerHidden]}>
         {!!error && <Text style={styles.errorText}>{error}</Text>}
         <View style={styles.footerActions}>
           {step > 1 && (
@@ -1592,6 +1601,7 @@ function createThemedStyles(theme: ThemePalette) {
     reviewTaskRow: { flexDirection: 'row', alignItems: 'center', gap: 9, paddingVertical: 7 },
     reviewTaskText: { flex: 1, color: V6Colors.ink900, fontSize: 15.5, fontFamily: 'Inter' },
 
+    footerHidden: { display: 'none' },
     footer: { paddingHorizontal: Spacing.screenH, paddingVertical: 12, backgroundColor: Colors.surface, borderTopWidth: 1, borderTopColor: Colors.ink100 },
     footerActions: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'stretch' },
     previousBtn: { width: '48%', height: 44, borderWidth: 1, borderColor: V6Colors.fieldBorder, borderRadius: 12, backgroundColor: Colors.surface, alignItems: 'center', justifyContent: 'center' },
