@@ -250,8 +250,9 @@ export default function HOJobDetailScreen({ jobId, onBack, onNavigate }: HOJobDe
                 <View key={label} style={styles.timelineStep}>
                   <View style={[
                     styles.timelineDot,
-                    i < stage && styles.timelineDotDone,
-                    i === stage && styles.timelineDotCurrent,
+                    // The last step is "Done": once reached it is complete, not "current".
+                    (i < stage || (i === stage && i === JOB_STAGES.length - 1)) && styles.timelineDotDone,
+                    i === stage && i < JOB_STAGES.length - 1 && styles.timelineDotCurrent,
                   ]} />
                   <Text style={[styles.timelineLabel, i <= stage && styles.timelineLabelDone]}>{label}</Text>
                 </View>
@@ -368,16 +369,20 @@ export default function HOJobDetailScreen({ jobId, onBack, onNavigate }: HOJobDe
                   POST /jobs/:id/review can only come back as an error. */}
               {canReview && (
                 <Tap
-                  style={[styles.linkRow, styles.detailRowBorder]}
+                  style={styles.reviewBtn}
                   onPress={() => onNavigate('Leave Review', job.id)}
                   activeOpacity={0.7}
+                  accessibilityRole="button"
+                  scale
                 >
-                  <Text style={styles.linkRowText}>Leave Review</Text>
+                  <Star size={18} color={C.onPrimary} fill={C.onPrimary} />
+                  <Text style={styles.reviewBtnText}>Leave Review</Text>
                 </Tap>
               )}
               {job.has_review && (
-                <View style={[styles.linkRow, styles.detailRowBorder]}>
-                  <Text style={styles.linkRowText}>Review submitted</Text>
+                <View style={styles.reviewDone}>
+                  <Check size={18} color={V6Colors.successText} strokeWidth={2.5} />
+                  <Text style={styles.reviewDoneText}>Review submitted</Text>
                 </View>
               )}
             </View>
@@ -573,6 +578,16 @@ function createThemedStyles(theme: ThemePalette) {
     linkRow: { paddingVertical: 12 },
     detailRowBorder: { borderTopWidth: 1, borderTopColor: V6Colors.wellBg },
     linkRowText: { color: V6Colors.link, fontSize: 14.5, fontWeight: '700', fontFamily: 'Inter' },
+    reviewBtn: {
+      flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
+      backgroundColor: C.primary, borderRadius: 16, minHeight: 52,
+    },
+    reviewBtnText: { color: C.onPrimary, fontSize: 16, fontWeight: '700', fontFamily: 'Inter' },
+    reviewDone: {
+      flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
+      backgroundColor: V6Colors.successSurface, borderRadius: 16, minHeight: 48,
+    },
+    reviewDoneText: { color: V6Colors.successText, fontSize: 15, fontWeight: '700', fontFamily: 'Inter' },
 
     // Action bar
     actionBar: { paddingHorizontal: Spacing.screenH, paddingTop: 12, paddingBottom: 12, gap: 10, backgroundColor: C.surface, borderTopWidth: 1, borderTopColor: C.line },
