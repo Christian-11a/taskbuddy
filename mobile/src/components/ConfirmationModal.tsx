@@ -1,11 +1,9 @@
 import { useThemedStyles, type Palette as ThemePalette } from '../context/ThemeContext';
 import React from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
+import { ShieldCheck, Trash2, type LucideIcon } from 'lucide-react-native';
 import Tap from './ui/Tap';
 import SheetFrame from './ui/SheetFrame';
-import { V6Radii } from '../constants/theme';
-
-const Radii = { card: V6Radii.card };
 
 interface ConfirmationModalProps {
   visible: boolean;
@@ -16,72 +14,80 @@ interface ConfirmationModalProps {
   busy?: boolean;
   /** Red confirm button, for actions that discard or reject something. */
   destructive?: boolean;
+  /** Icon in the header circle. Defaults to a shield, or a bin when destructive. */
+  icon?: LucideIcon;
   onConfirm: () => void;
   onCancel: () => void;
 }
 
-/** Reusable confirmation dialog for actions that require an explicit user choice. */
+/**
+ * Reusable confirmation for actions that require an explicit user choice.
+ * Opens as a bottom sheet. Back, drag down and a backdrop tap all cancel, and
+ * all three are locked while `busy`.
+ */
 export default function ConfirmationModal({
-  visible, title, message, confirmLabel = 'Confirm', cancelLabel = 'Cancel', busy = false, destructive = false, onConfirm, onCancel,
+  visible, title, message, confirmLabel = 'Confirm', cancelLabel = 'Cancel', busy = false, destructive = false, icon, onConfirm, onCancel,
 }: ConfirmationModalProps) {
-  const { styles, V6Colors } = useThemedStyles(createThemedStyles);
+  const { styles, tones, onPrimary } = useThemedStyles(createThemedStyles);
+  const tone = destructive ? tones.destructive : tones.default;
+  const Icon = icon ?? (destructive ? Trash2 : ShieldCheck);
   return (
-    <SheetFrame visible={visible} onClose={busy ? undefined : onCancel} variant="dialog" contentStyle={styles.dialog} cardProps={{ accessibilityRole: "alert" }}>
-          <Text style={styles.title} accessibilityRole="header">{title}</Text>
-          <Text style={styles.message}>{message}</Text>
-          <View style={styles.actions}>
-            <Tap
-              style={styles.cancelButton}
-              onPress={onCancel}
-              disabled={busy}
-              activeOpacity={0.8}
-              accessibilityRole="button"
-              accessibilityLabel={cancelLabel}
-            >
-              <Text style={styles.cancelText}>{cancelLabel}</Text>
-            </Tap>
-            <Tap
-              style={[styles.confirmButton, destructive && styles.confirmButtonDestructive]}
-              onPress={onConfirm}
-              disabled={busy}
-              activeOpacity={0.85}
-              accessibilityRole="button"
-              accessibilityLabel={confirmLabel}
-            >
-              <Text style={styles.confirmText}>{confirmLabel}</Text>
-            </Tap>
-          </View>
+    <SheetFrame visible={visible} onClose={busy ? undefined : onCancel} variant="sheet" contentStyle={styles.sheet} cardProps={{ accessibilityRole: 'alert' }}>
+      <View style={[styles.iconCircle, { backgroundColor: tone.surface }]} testID="confirm-icon-circle">
+        <Icon size={22} color={tone.icon} />
+      </View>
+      <Text style={styles.title} accessibilityRole="header">{title}</Text>
+      <Text style={styles.message}>{message}</Text>
+      <Tap
+        style={[styles.confirmButton, destructive && styles.confirmButtonDestructive]}
+        onPress={onConfirm}
+        disabled={busy}
+        scale
+        hitSlop={{ top: 1, bottom: 1 }}
+        accessibilityRole="button"
+        accessibilityLabel={confirmLabel}
+      >
+        {busy
+          ? <ActivityIndicator color={onPrimary} testID="confirm-spinner" />
+          : <Text style={styles.confirmText}>{confirmLabel}</Text>}
+      </Tap>
+      <Tap
+        style={styles.cancelButton}
+        onPress={onCancel}
+        disabled={busy}
+        hitSlop={{ top: 7, bottom: 7, left: 12, right: 12 }}
+        accessibilityRole="button"
+        accessibilityLabel={cancelLabel}
+      >
+        <Text style={styles.cancelText}>{cancelLabel}</Text>
+      </Tap>
     </SheetFrame>
   );
 }
 
 function createThemedStyles(theme: ThemePalette) {
-  const { V6Colors } = theme;
-  const Colors = {
-    ...V6Colors,
-    brandDark: V6Colors.cyan900,
-    brandTeal: V6Colors.cyan700,
-    slate: V6Colors.ink500,
-  } as const;
+  const { Colors, V6Colors } = theme;
   const styles = StyleSheet.create({
-    overlay: { flex: 1, justifyContent: 'center', padding: 24, backgroundColor: 'rgba(6, 61, 77, 0.5)' },
-    dialog: { backgroundColor: Colors.surface, borderRadius: Radii.card, padding: 22, width: '100%', maxWidth: 420, alignSelf: 'center' },
-    title: { color: V6Colors.ink900, fontSize: 19, fontWeight: '800', fontFamily: 'Inter', marginBottom: 8 },
-    message: { color: Colors.slate, fontSize: 15, fontFamily: 'Inter', lineHeight: 21, marginBottom: 20 },
-    // Two equal-width buttons: long labels ("Keep Editing" / "Discard & Exit")
-    // used to push the row past the dialog edge on narrow phones.
-    actions: { flexDirection: 'row', alignItems: 'stretch', gap: 10 },
-    cancelButton: {
-      flex: 1, alignItems: 'center', justifyContent: 'center', minHeight: 42,
-      borderWidth: 1, borderColor: 'rgba(144,153,184,0.45)', borderRadius: 10, paddingHorizontal: 12, paddingVertical: 9,
+    // Padding top is 0 because SheetFrame draws the grip above the content.
+    sheet: { gap: 14, paddingHorizontal: 20 },
+    iconCircle: {
+      width: 48, height: 48, borderRadius: 24, alignSelf: 'flex-start',
+      alignItems: 'center', justifyContent: 'center',
     },
+    title: { fontFamily: 'Inter', fontSize: 20, fontWeight: '700', lineHeight: 26, color: V6Colors.ink900 },
+    message: { fontFamily: 'Inter', fontSize: 15, fontWeight: '400', lineHeight: 22, color: V6Colors.ink700 },
+    // Visible height is 46; the 1 dp hitSlop above and below brings the touch area to 48.
     confirmButton: {
-      flex: 1, alignItems: 'center', justifyContent: 'center', minHeight: 42,
-      backgroundColor: Colors.brandTeal, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 9,
+      height: 46, borderRadius: 16, alignItems: 'center', justifyContent: 'center', backgroundColor: Colors.primary,
     },
-    confirmButtonDestructive: { backgroundColor: Colors.red700 },
-    cancelText: { color: Colors.slate, fontSize: 14.5, fontWeight: '700', fontFamily: 'Inter', textAlign: 'center' },
-    confirmText: { color: Colors.onPrimary, fontSize: 14.5, fontWeight: '700', fontFamily: 'Inter', textAlign: 'center' },
+    confirmButtonDestructive: { backgroundColor: Colors.dangerSolid },
+    confirmText: { fontFamily: 'Inter', fontSize: 14, fontWeight: '600', lineHeight: 18, color: Colors.onPrimary },
+    cancelButton: { alignSelf: 'center', paddingHorizontal: 12, paddingVertical: 8 },
+    cancelText: { fontFamily: 'Inter', fontSize: 14, fontWeight: '600', lineHeight: 18, color: Colors.link },
   });
-  return { Colors, V6Colors, styles };
+  const tones = {
+    default: { surface: Colors.primaryTonal, icon: Colors.link },
+    destructive: { surface: Colors.dangerSurface, icon: Colors.dangerText },
+  };
+  return { styles, tones, onPrimary: Colors.onPrimary };
 }

@@ -1,5 +1,7 @@
 import React from 'react';
+import { Modal } from 'react-native';
 import { fireEvent, render, screen } from '@testing-library/react-native';
+import type { LucideIcon } from 'lucide-react-native';
 import ConfirmationModal from '../ConfirmationModal';
 
 describe('ConfirmationModal', () => {
@@ -58,5 +60,86 @@ describe('ConfirmationModal', () => {
 
     expect(screen.getByLabelText('Confirm').props.accessibilityState?.disabled).toBe(true);
     expect(screen.getByLabelText('Cancel').props.accessibilityState?.disabled).toBe(true);
+  });
+
+  it('calls onCancel when the Back gesture closes it', () => {
+    const onCancel = jest.fn();
+    render(
+      <ConfirmationModal
+        visible
+        title="Discard changes?"
+        message="Your draft will be lost."
+        onConfirm={jest.fn()}
+        onCancel={onCancel}
+      />,
+    );
+
+    fireEvent(screen.UNSAFE_getByType(Modal), 'requestClose');
+    expect(onCancel).toHaveBeenCalledTimes(1);
+  });
+
+  it('ignores the Back gesture while busy, so the sheet stays locked', () => {
+    const onCancel = jest.fn();
+    render(
+      <ConfirmationModal
+        visible
+        busy
+        title="Discard changes?"
+        message="Your draft will be lost."
+        onConfirm={jest.fn()}
+        onCancel={onCancel}
+      />,
+    );
+
+    fireEvent(screen.UNSAFE_getByType(Modal), 'requestClose');
+    expect(onCancel).not.toHaveBeenCalled();
+  });
+
+  it('shows a spinner in place of the confirm label while busy, and keeps the button name', () => {
+    render(
+      <ConfirmationModal
+        visible
+        busy
+        title="Discard changes?"
+        message="Your draft will be lost."
+        onConfirm={jest.fn()}
+        onCancel={jest.fn()}
+      />,
+    );
+
+    expect(screen.getByTestId('confirm-spinner')).toBeTruthy();
+    expect(screen.queryByText('Confirm')).toBeNull();
+    expect(screen.getByLabelText('Confirm')).toBeTruthy();
+  });
+
+  it('shows the confirm label and no spinner when idle', () => {
+    render(
+      <ConfirmationModal
+        visible
+        title="Discard changes?"
+        message="Your draft will be lost."
+        onConfirm={jest.fn()}
+        onCancel={jest.fn()}
+      />,
+    );
+
+    expect(screen.queryByTestId('confirm-spinner')).toBeNull();
+    expect(screen.getByText('Confirm')).toBeTruthy();
+  });
+
+  it('draws the icon it is given in place of the default icon', () => {
+    const CustomIcon = jest.fn(() => null);
+    render(
+      <ConfirmationModal
+        visible
+        icon={CustomIcon as unknown as LucideIcon}
+        title="Mark complete?"
+        message="This releases funds."
+        onConfirm={jest.fn()}
+        onCancel={jest.fn()}
+      />,
+    );
+
+    expect(CustomIcon).toHaveBeenCalled();
   });
 });
