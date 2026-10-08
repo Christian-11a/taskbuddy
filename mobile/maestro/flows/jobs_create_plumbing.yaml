@@ -8,7 +8,7 @@ appId: com.taskbuddy.app
 - runFlow: _helpers/login_client.yaml
 # Create job starts from the New button on My Jobs; the floating button is gone.
 - tapOn: { id: "nav-tab-My Jobs" }
-- extendedWaitUntil: { visible: "Service category", timeout: 15000 }
+- extendedWaitUntil: { visible: "New", timeout: 15000 }
 - tapOn: "New"
 # The heading renders as "Select a Service *" (required-field asterisk), which an
 # exact "Select a Service" match misses — anchor on the subtitle instead.
