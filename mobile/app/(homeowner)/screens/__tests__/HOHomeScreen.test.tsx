@@ -87,8 +87,30 @@ describe('HOHomeScreen — hero header keeps the avatar reachable with a long na
 
     const column = StyleSheet.flatten((await screen.findByTestId('hero-text')).props.style);
     expect(column.flex).toBe(1);
+    expect(column.flexShrink).toBe(1);
     expect(column.minWidth).toBe(0);
-    expect(screen.getByText(LONG_NAME).props.numberOfLines).toBe(2);
+    expect(screen.getByText(LONG_NAME).props.numberOfLines).toBe(1);
+  });
+
+  // At 1.3x text the greeting and the name must stay on one line (with an
+  // ellipsis) rather than wrap, or the header stops fitting in one row.
+  it('keeps the greeting and the name on one line, with an ellipsis, at large text', async () => {
+    render(<HOHomeScreen onNavigate={jest.fn()} />);
+
+    const greeting = await screen.findByText(/^Good (morning|afternoon|evening)$/);
+    expect(greeting.props.numberOfLines).toBe(1);
+    expect(greeting.props.ellipsizeMode).toBe('tail');
+    const name = screen.getByText(LONG_NAME);
+    expect(name.props.numberOfLines).toBe(1);
+    expect(name.props.ellipsizeMode).toBe('tail');
+  });
+
+  it('caps the wallet amount at 1.2x text, so the wallet chip keeps its size', async () => {
+    render(<HOHomeScreen onNavigate={jest.fn()} />);
+
+    const amount = await screen.findByText('₱0.00');
+    expect(amount.props.maxFontSizeMultiplier).toBe(1.2);
+    expect(amount.props.numberOfLines).toBe(1);
   });
 
   it('never lets the action buttons shrink away', async () => {

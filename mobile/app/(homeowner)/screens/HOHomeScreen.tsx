@@ -248,12 +248,12 @@ export default function HOHomeScreen({ onNavigate }: HOHomeScreenProps) {
                 <Text style={styles.avatarText}>{initials(name)}</Text>
               )}
             </Tap>
-            {/* The name column yields to the actions, never the other way round: a long name truncates. */}
+            {/* The name column yields first: at large text the greeting and the name truncate on one line, and the actions keep their size. */}
             <View testID="hero-text" style={styles.greetingColumn}>
-              <Text style={styles.greeting}>{greeting}</Text>
+              <Text style={styles.greeting} numberOfLines={1} ellipsizeMode="tail">{greeting}</Text>
               <Text
                 style={styles.userName}
-                numberOfLines={2}
+                numberOfLines={1}
                 ellipsizeMode="tail"
                 maxFontSizeMultiplier={1.3}
               >
@@ -270,7 +270,7 @@ export default function HOHomeScreen({ onNavigate }: HOHomeScreenProps) {
                 onPress={() => onNavigate('Wallet')}
               >
                 <Wallet size={16} color={Colors.link} strokeWidth={2.2} />
-                <Text style={styles.walletAmount} numberOfLines={1}>
+                <Text style={styles.walletAmount} numberOfLines={1} maxFontSizeMultiplier={1.2}>
                   {wallet.data ? peso(wallet.data.balance) : '—'}
                 </Text>
               </Tap>
@@ -403,7 +403,7 @@ function createThemedStyles(theme: ThemePalette) {
       alignItems: 'center', justifyContent: 'center', overflow: 'hidden',
     },
     avatarText: { color: Colors.primaryDeep, fontSize: 14, fontWeight: '600', fontFamily: 'Inter' },
-    greetingColumn: { flex: 1, minWidth: 0, gap: 2 },
+    greetingColumn: { flex: 1, flexShrink: 1, minWidth: 0, gap: 2 },
     greeting: { color: C.ink500, fontSize: 13, fontWeight: '400', fontFamily: 'Inter', lineHeight: 18 },
     userName: { color: C.ink900, fontSize: 18, fontWeight: '700', fontFamily: 'Inter', lineHeight: 24 },
     headerActions: { flexDirection: 'row', alignItems: 'center', gap: 8, flexShrink: 0 },
