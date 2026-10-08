@@ -45,11 +45,25 @@ interface HOCalendarScreenProps {
   headerRight?: ReactNode;
 }
 
-/** The month row above the grid replaces the calendar's own header. */
+/**
+ * The calendar's own header (its title, arrows and weekday names) is hidden: the
+ * month row and the weekday row above the grid replace it.
+ */
 const NoCalendarHeader = () => null;
 
 const NAV_HIT_SLOP = { top: 6, bottom: 6, left: 6, right: 6 };
 const LINK_HIT_SLOP = { top: 15, bottom: 15, left: 8, right: 8 };
+
+/** The weekday names over the grid. The grid starts on Sunday (firstDay 0). */
+const WEEKDAYS: readonly { letter: string; name: string }[] = [
+  { letter: 'S', name: 'Sunday' },
+  { letter: 'M', name: 'Monday' },
+  { letter: 'T', name: 'Tuesday' },
+  { letter: 'W', name: 'Wednesday' },
+  { letter: 'T', name: 'Thursday' },
+  { letter: 'F', name: 'Friday' },
+  { letter: 'S', name: 'Saturday' },
+];
 
 export default function HOCalendarScreen({ onNavigate, title = 'Calendar', headerRight }: HOCalendarScreenProps) {
   const { styles, V6Colors, appearance } = useThemedStyles(createThemedStyles);
@@ -133,11 +147,13 @@ export default function HOCalendarScreen({ onNavigate, title = 'Calendar', heade
               </Tap>
             </View>
           </View>
+          <CalendarWeekdays />
           <Calendar
             key={appearance}
             current={visibleMonth}
             customHeader={NoCalendarHeader}
             hideExtraDays
+            firstDay={0}
             onMonthChange={(month) => setVisibleMonth(month.dateString)}
             onDayPress={(day) => setSelectedDate(day.dateString)}
             markedDates={marks}
@@ -145,10 +161,6 @@ export default function HOCalendarScreen({ onNavigate, title = 'Calendar', heade
             theme={{
               calendarBackground: V6Colors.surface,
               backgroundColor: V6Colors.surface,
-              textSectionTitleColor: V6Colors.ink500,
-              textDayHeaderFontFamily: 'Inter',
-              textDayHeaderFontWeight: '600',
-              textDayHeaderFontSize: 12,
             }}
           />
         </View>
@@ -201,6 +213,36 @@ export default function HOCalendarScreen({ onNavigate, title = 'Calendar', heade
   );
 }
 
+/**
+ * The weekday names above the grid. The calendar's header that would draw them
+ * is hidden, so this row draws them: seven equal columns in the grid's inset,
+ * so each name sits over its column.
+ */
+function CalendarWeekdays() {
+  const { styles } = useThemedStyles(createWeekdayStyles);
+  return (
+    <View style={styles.row} testID="calendar-weekdays">
+      {WEEKDAYS.map((day) => (
+        <Text key={day.name} style={styles.name} accessibilityLabel={day.name}>
+          {day.letter}
+        </Text>
+      ))}
+    </View>
+  );
+}
+
+function createWeekdayStyles(theme: ThemePalette) {
+  const { V6Colors } = theme;
+  const styles = StyleSheet.create({
+    // The library lays the grid out inside 5 dp of padding, so the names use the same inset.
+    row: { flexDirection: 'row', marginHorizontal: 5, marginBottom: 7 },
+    name: {
+      flex: 1, textAlign: 'center', color: V6Colors.ink500, fontFamily: 'Inter', fontSize: 12, fontWeight: '600',
+    },
+  });
+  return { styles };
+}
+
 type CalendarDayProps = {
   date?: DateData;
   marking?: { marked?: boolean; selected?: boolean; today?: boolean };
@@ -226,7 +268,10 @@ function CalendarDay({ date, marking, onPress }: CalendarDayProps) {
       accessibilityLabel={label}
       accessibilityState={{ selected }}
     >
-      <View style={[styles.circle, selected && styles.circleSelected, today && !selected && styles.circleToday]}>
+      <View
+        testID={`calendar-day-circle-${date.dateString}`}
+        style={[styles.circle, selected && styles.circleSelected, today && !selected && styles.circleToday]}
+      >
         <Text style={[styles.dayText, selected && styles.dayTextSelected]}>{date.day}</Text>
       </View>
       <View style={[styles.dot, !hasJobs && styles.dotHidden]} />

@@ -1,25 +1,49 @@
 import React from 'react';
-import { Text } from 'react-native';
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react-native';
+import { StyleSheet, Text } from 'react-native';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react-native';
 import HOCalendarScreen from '../HOCalendarScreen';
 import { api, type Job } from '../../../../src/lib/api';
 import { clearAsyncDataCache } from '../../../../src/hooks/useAsyncData';
 import { dayHeading, monthTitle, shiftMonth } from '../../../../src/lib/jobCalendar';
 import { dateKey } from '../../../../src/lib/localDate';
+import { lightPalette } from '../../../../src/constants/palettes';
 
 jest.mock('../../../../src/lib/api', () => ({
   api: { myJobs: jest.fn(), jobApplications: jest.fn() },
 }));
 
 // The library draws the month grid natively. The mock keeps the props it is
-// given, so a test can pick a day or read the marks the way a tap on the grid would.
-const mockCalendar: { props: Record<string, any> | null } = { props: null };
-jest.mock('react-native-calendars', () => ({
-  Calendar: (props: Record<string, any>) => {
-    mockCalendar.props = props;
-    return null;
-  },
-}));
+// given, so a test can pick a day or read the marks the way a tap on the grid
+// would. With renderDays on, it also draws a cell for each marked day through
+// the screen's own dayComponent, so those cells can be checked.
+const mockCalendar: { props: Record<string, any> | null; renderDays: boolean } = {
+  props: null,
+  renderDays: false,
+};
+jest.mock('react-native-calendars', () => {
+  const React = require('react');
+  const { View } = require('react-native');
+  return {
+    Calendar: (props: Record<string, any>) => {
+      mockCalendar.props = props;
+      if (!mockCalendar.renderDays) return null;
+      return React.createElement(
+        View,
+        null,
+        Object.keys(props.markedDates ?? {}).map((dateString) => {
+          const [year, month, day] = dateString.split('-').map(Number);
+          return React.createElement(props.dayComponent, {
+            key: dateString,
+            date: { dateString, day, month, year, timestamp: new Date(year, month - 1, day).getTime() },
+            marking: props.markedDates[dateString],
+            onPress: props.onDayPress,
+            state: '',
+          });
+        }),
+      );
+    },
+  };
+});
 
 /** A local time `days` from today. */
 function dayAt(days: number, hour = 9): Date {
@@ -85,6 +109,7 @@ const jobs = [
 beforeEach(() => {
   jest.clearAllMocks();
   clearAsyncDataCache();
+  mockCalendar.renderDays = false;
   (api.myJobs as jest.Mock).mockResolvedValue([]);
   (api.jobApplications as jest.Mock).mockResolvedValue([]);
 });
@@ -216,4 +241,29 @@ it('a failed load shows the error, and Retry loads again', async () => {
 
   await waitFor(() => expect(api.myJobs).toHaveBeenCalledTimes(2));
   await waitFor(() => expect(screen.queryByText('Unable to load jobs')).toBeNull());
+});
+
+it('draws the seven weekday names above the grid, Sunday first', async () => {
+  render(<HOCalendarScreen onNavigate={jest.fn()} />);
+
+  const row = await screen.findByTestId('calendar-weekdays');
+  const letters = within(row).getAllByText(/^[A-Z]$/).map((node) => node.props.children);
+  expect(letters).toEqual(['S', 'M', 'T', 'W', 'T', 'F', 'S']);
+  expect(within(row).getByLabelText('Sunday')).toBeTruthy();
+  expect(within(row).getByLabelText('Saturday')).toBeTruthy();
+});
+
+it('today keeps its ring when another day is picked, and the picked day is filled', async () => {
+  mockCalendar.renderDays = true;
+  (api.myJobs as jest.Mock).mockResolvedValue(jobs);
+  render(<HOCalendarScreen onNavigate={jest.fn()} />);
+  await screen.findByText('Not scheduled yet');
+
+  pickDay(laterDay);
+
+  const todayCircle = StyleSheet.flatten(screen.getByTestId(`calendar-day-circle-${todayKey}`).props.style);
+  expect(todayCircle.borderColor).toBe(lightPalette.Colors.link);
+  expect(todayCircle.backgroundColor).toBeUndefined();
+  const pickedCircle = StyleSheet.flatten(screen.getByTestId(`calendar-day-circle-${laterKey}`).props.style);
+  expect(pickedCircle.backgroundColor).toBe(lightPalette.Colors.primary);
 });
