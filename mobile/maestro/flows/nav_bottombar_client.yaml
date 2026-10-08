@@ -2,8 +2,8 @@ appId: com.taskbuddy.app
 ---
 # Regression cover for BUG-002: the homeowner bottom nav bar was unresponsive
 # (rendered under the system nav bar on an edge-to-edge build; the dev LogBox
-# toast also overlaid it). Asserts a regular tab, the Home tab, and the raised
-# "Create job" FAB each navigate. Uses the nav testIDs, not text — "Home"
+# toast also overlaid it). Asserts each of the four homeowner tabs navigates:
+# Wallet, Home, My Jobs and Profile. Uses the nav testIDs, not text — "Home"
 # collides with the OS launcher's own Home button in the accessibility tree.
 # extendedWaitUntil rides out the dev bundle's transition latency.
 - runFlow: _helpers/login_client.yaml
@@ -15,5 +15,9 @@ appId: com.taskbuddy.app
 - tapOn: "Cancel"
 - tapOn: { id: "nav-tab-Home" }
 - extendedWaitUntil: { visible: "Find a service", timeout: 15000 }
-- tapOn: { id: "nav-tab-Create Job" }
-- extendedWaitUntil: { visible: "What service do you need?", timeout: 15000 }
+- tapOn: { id: "nav-tab-My Jobs" }
+- extendedWaitUntil: { visible: "Service category", timeout: 15000 }
+# Profile is a tab now. It has no back arrow, so none may be visible there.
+- tapOn: { id: "nav-tab-Profile" }
+- extendedWaitUntil: { visible: "Account Info", timeout: 15000 }
+- assertNotVisible: "Back to Home"

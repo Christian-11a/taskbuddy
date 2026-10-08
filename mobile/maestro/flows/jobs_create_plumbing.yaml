@@ -6,7 +6,10 @@ appId: com.taskbuddy.app
 # 9.1.0 -> 8.4.4 for the SDK 54 realignment? (Date uses a custom calendar
 # component, not the native picker — only the time step exercises it.)
 - runFlow: _helpers/login_client.yaml
-- tapOn: "Create job"
+# Create job starts from the New button on My Jobs; the floating button is gone.
+- tapOn: { id: "nav-tab-My Jobs" }
+- extendedWaitUntil: { visible: "Service category", timeout: 15000 }
+- tapOn: "New"
 # The heading renders as "Select a Service *" (required-field asterisk), which an
 # exact "Select a Service" match misses — anchor on the subtitle instead.
 - extendedWaitUntil: { visible: "What service do you need?", timeout: 15000 }
