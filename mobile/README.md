@@ -141,13 +141,22 @@ per role, plus a selected `jobId` threaded through
 initializing         → SplashScreen
 not authenticated    → Login / Register / Forgot Password
 first login, once    → Onboarding
-role 'homeowner'     → HO tab bar (Home, My Jobs, Create, Calendar, Wallet)
-role 'provider'      → SP tab bar (Feed, My Work, Calendar, Wallet)
+role 'homeowner'     → HO tab bar (Home, My Jobs, Wallet, Profile)
+role 'provider'      → SP tab bar (Feed, My Work, Wallet, Profile)
 ```
 
-Neither tab bar has a Profile tab — Profile is reached via the avatar button
-in Home's/Feed's header, matching the design mockup rather than the app's
-earlier Figma-era layout.
+Each bar has four tabs and no floating button. Profile is a tab on both sides,
+and the avatar button in Home's/Feed's header switches to it. The Profile tab
+has no back arrow (`onBack` is optional on both profile screens); Edit Profile,
+Settings and the other screens pushed from it still return to it through the
+back stack.
+
+Calendar is not a tab. My Jobs (homeowner) and My Work (provider) show the job
+list, or the calendar behind a List/Calendar switch at the right of the title
+row. The choice survives tab switches and resets to the list on logout.
+Navigating to `'Calendar'` (`hoNavigate` / `spNavigate`) opens My Jobs or My
+Work in calendar view. Post a job has no floating button: start it from Home's
+Post field or service chips, or from the New button on My Jobs.
 
 Non-tab screens (Job Detail, Chat, Edit Profile, Settings, Help & Support,
 …) are tracked on a small back-stack (`hoStack`/`spStack` in `App.tsx`), not
