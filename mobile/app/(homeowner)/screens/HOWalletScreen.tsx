@@ -1,21 +1,18 @@
 /**
  * HOWalletScreen.tsx
  *
- * v6 design: matches taskbuddy_UI_update.html's #ho-payments screen — flat
- * white topbar, a small rounded gradient balance card (not a full-bleed dark
- * hero), an escrow card, and a transaction list.
+ * Figma "Wallet · new" (74:1393): the title on the canvas, a balance card with
+ * Add money and Withdraw, two tiles (Held safely, Rewards), and the history with
+ * filter pills and day headings. Every transaction is a row with a signed amount.
  *
- * Trimmed after QA (Sep 2026) because it was too crowded: the balance card
- * has Add Money and Withdraw only (Transfer was never implemented), and the
- * spent/added stats, trust-note banner and duplicate "Request" link are gone.
- * Withdrawals and recovery vouchers only appear once there are some.
+ * Trimmed after QA (Sep 2026): the balance card has Add money and Withdraw only
+ * (Transfer was never implemented). Withdrawals show once there are some.
  */
 
 import { useThemedStyles, type Palette as ThemePalette } from '../../../src/context/ThemeContext';
 import React, { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
-  Keyboard,
   RefreshControl,
   ScrollView,
   StyleSheet,
@@ -25,23 +22,33 @@ import {
 } from 'react-native';
 import Tap from '../../../src/components/ui/Tap';
 import SheetFrame from '../../../src/components/ui/SheetFrame';
+import FilterPill from '../../../src/components/ui/FilterPill';
+import SectionHeader from '../../../src/components/ui/SectionHeader';
+import EmptyRow from '../../../src/components/ui/EmptyRow';
+import Banner from '../../../src/components/ui/Banner';
 import {
+  ArrowDownLeft,
   ArrowUpRight,
-  Plus,
-  CircleDollarSign,
   Gift,
-  Package,
   Shield,
   WalletCards,
+  type LucideIcon,
 } from 'lucide-react-native';
 import * as AuthSession from 'expo-auth-session';
-import { Spacing, V6Radii, V6Shadows } from '../../../src/constants/theme';
+import { Spacing, V6Radii } from '../../../src/constants/theme';
 import { useHeaderTop } from '../../../src/hooks/useHeaderTop';
 
 import { useAsyncData } from '../../../src/hooks/useAsyncData';
-import { api, MIN_TOPUP_PHP } from '../../../src/lib/api';
+import { api, MIN_TOPUP_PHP, type WalletTransaction } from '../../../src/lib/api';
 import { openRedirectSession } from '../../../src/lib/appRedirectSession';
-import { peso, shortDate } from '../../../src/lib/format';
+import { peso, plural, shortDate } from '../../../src/lib/format';
+import {
+  WALLET_FILTERS,
+  countWalletByFilter,
+  filterWalletTransactions,
+  groupWalletByDay,
+  type WalletFilter,
+} from '../../../src/lib/walletHistory';
 import ScreenSkeleton from '../../../src/components/ScreenSkeleton';
 import { canWithdrawBalance, getWithdrawalHint } from '../../../src/lib/walletRules';
 import { showToast } from '../../../src/components/Toast';
@@ -65,10 +72,21 @@ const CONFIRM_POLL_INTERVAL_MS = 1500;
 
 const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
+/** What an empty filter says. The whole history being empty gets the first line. */
+const EMPTY_COPY: Record<WalletFilter, { title: string; body?: string }> = {
+  all: { title: 'No transactions yet', body: 'Your payments and wallet activity will appear here.' },
+  in: { title: 'No money in yet' },
+  out: { title: 'No money out yet' },
+  held: { title: 'Nothing held right now' },
+};
+
+/** Minus sign (U+2212), as in the Figma amounts. */
+const MINUS = '−';
+
 export default function HOWalletScreen() {
-  const { C, styles, V6Colors, appearance } = useThemedStyles(createThemedStyles);
+  const { C, Colors, styles, appearance } = useThemedStyles(createThemedStyles);
   const headerTop = useHeaderTop();
-  const [activeTab, setActiveTab] = useState<'all' | 'credit' | 'debit'>('all');
+  const [filter, setFilter] = useState<WalletFilter>('all');
   const { data, loading, error, reload } = useAsyncData(() => api.wallet(), [], 'ho-wallet');
   const {
     data: withdrawalData,
@@ -255,20 +273,54 @@ export default function HOWalletScreen() {
   };
 
   const transactions = data?.transactions ?? [];
-  const filtered =
-    activeTab === 'all'
-      ? transactions
-      : transactions.filter((t) => t.direction === activeTab);
+  const filtered = filterWalletTransactions(transactions, filter);
+  const counts = countWalletByFilter(transactions);
+  const groups = groupWalletByDay(filtered, new Date());
   const vouchers = transactions.filter((t) => t.kind === 'recovery_credit');
+  const rewardsTotal = vouchers.reduce((total, voucher) => total + Number(voucher.amount), 0);
   const withdrawals = withdrawalData ?? [];
 
   if (loading) return <ScreenSkeleton variant="dashboard" />;
 
+  /** One history row: a tonal icon, the title and its status, and the signed amount. */
+  const renderTransaction = (txn: WalletTransaction) => {
+    const incoming = txn.direction === 'credit';
+    const Icon: LucideIcon =
+      txn.kind === 'escrow_hold' ? Shield
+        : txn.kind === 'recovery_credit' ? Gift
+          : incoming ? ArrowDownLeft
+            : ArrowUpRight;
+    const detail = txn.kind === 'escrow_hold' ? 'Escrow funded' : `Payment ${txn.status}`;
+    const amountText = `${incoming ? '+' : MINUS}${peso(txn.amount)}`;
+    return (
+      <View
+        key={txn.id}
+        testID={`wallet-txn-${txn.id}`}
+        style={styles.txnRow}
+        accessible
+        accessibilityLabel={`${txn.title}. ${detail}. ${amountText}`}
+      >
+        <View style={styles.txnIcon}>
+          <Icon size={18} color={Colors.link} strokeWidth={2.2} />
+        </View>
+        <View style={styles.txnCopy}>
+          <Text style={styles.txnTitle} numberOfLines={2}>{txn.title}</Text>
+          <Text style={styles.txnDetail} numberOfLines={1}>{detail}</Text>
+        </View>
+        <Text
+          style={[styles.txnAmount, incoming ? styles.txnAmountIn : styles.txnAmountOut]}
+          numberOfLines={1}
+        >
+          {amountText}
+        </Text>
+      </View>
+    );
+  };
+
   const content = (
     <View style={styles.screen}>
-      {/* Header — matches .topbar (flat white, not a dark hero) */}
       <View style={[styles.header, { paddingTop: headerTop }]}>
-        <Text style={styles.headerTitle}>Wallet</Text>
+        <Text style={styles.headerTitle} accessibilityRole="header">Wallet</Text>
       </View>
 
       <ScrollView
@@ -287,32 +339,33 @@ export default function HOWalletScreen() {
           />
         }
       >
-        {/* Balance card — mockup's linear-gradient(165deg, cyan600, cyan700) */}
-        <View style={[styles.balanceCard, { backgroundColor: C.hero }]}>
-          <Text style={styles.balanceLabel}>Available Balance</Text>
-          <Text style={styles.balanceAmount}>
+        {/* Balance card: the hero blue, with Add money (white) and Withdraw (translucent). */}
+        <View style={styles.balanceCard}>
+          <Text style={styles.balanceLabel}>Available balance</Text>
+          <Text style={styles.balanceAmount} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.6}>
             {data ? peso(data.balance) : '—'}
           </Text>
-          <View style={styles.quickActions}>
+          <View style={styles.balanceActions}>
             <Tap
-              style={[styles.quickActionBtn, styles.quickActionPrimary]}
+              style={[styles.balanceButton, styles.balanceButtonPrimary]}
               onPress={() => setShowAddMoney(true)}
-              activeOpacity={0.8}
-              accessibilityRole="button"
               scale
+              accessibilityRole="button"
+              accessibilityLabel="Add money"
             >
-              <Plus size={18} color="#0369a1" strokeWidth={2.5} />
-              <Text style={[styles.quickActionText, styles.quickActionTextPrimary]}>Add Money</Text>
+              <Text style={[styles.balanceButtonText, styles.balanceButtonTextPrimary]} numberOfLines={1}>
+                Add money
+              </Text>
             </Tap>
             <Tap
-              style={styles.quickActionBtn}
+              style={styles.balanceButton}
               onPress={openWithdraw}
-              activeOpacity={0.8}
+              scale
+              rippleColor={Colors.rippleOnHero}
               accessibilityRole="button"
-              rippleColor={C.rippleOnHero}
+              accessibilityLabel="Withdraw"
             >
-              <ArrowUpRight size={18} color={C.onPrimary} strokeWidth={2.5} />
-              <Text style={styles.quickActionText}>Withdraw</Text>
+              <Text style={styles.balanceButtonText} numberOfLines={1}>Withdraw</Text>
             </Tap>
           </View>
           {data && availableToWithdraw !== data.balance && (
@@ -320,123 +373,93 @@ export default function HOWalletScreen() {
           )}
         </View>
 
-        {/* Escrow card */}
-        <View style={styles.escrowCard}>
-          <View style={styles.escrowTopRow}>
-            <View style={styles.escrowCopy}>
-              <Text style={styles.escrowLabel}>IN ESCROW</Text>
-              <Text style={styles.escrowAmount}>{data ? peso(data.in_escrow) : '—'}</Text>
-              <Text style={styles.escrowNote}>Funds stay held through the three-day completion warranty and any open complaint.</Text>
-            </View>
-            <Shield size={24} color={V6Colors.link} />
-          </View>
+        {/* Held safely: money in escrow. Rewards: the recovery vouchers the wallet holds. */}
+        <View style={styles.tiles}>
+          <WalletTile
+            icon={Shield}
+            label="Held safely"
+            amount={data ? peso(data.in_escrow) : '—'}
+            note="Released when each job is done"
+          />
+          <WalletTile
+            icon={Gift}
+            label="Rewards"
+            amount={data ? peso(rewardsTotal) : '—'}
+            note={data ? plural(vouchers.length, 'voucher') : undefined}
+          />
         </View>
 
         {withdrawals.length > 0 && (
-          <View style={styles.withdrawalCard}>
-            <Text style={styles.withdrawalLabel}>RECENT WITHDRAWALS</Text>
-            <View style={styles.withdrawalList}>
-              {withdrawals.slice(0, 3).map((withdrawal) => (
-                <View key={withdrawal.id} style={styles.withdrawalRow}>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.withdrawalTitle}>{withdrawal.title}</Text>
-                    <Text style={styles.withdrawalMeta}>
-                      {shortDate(withdrawal.created_at)} · {withdrawal.status}
-                    </Text>
-                    {!!withdrawal.review_note && (
-                      <Text style={styles.withdrawalMeta}>{withdrawal.review_note}</Text>
-                    )}
-                  </View>
-                  <View style={styles.withdrawalAction}>
-                    <Text style={styles.withdrawalValue}>{peso(withdrawal.amount)}</Text>
-                    {withdrawal.status === 'pending' && (
-                      <Tap onPress={() => void cancelWithdrawal(withdrawal.id)} activeOpacity={0.8}>
-                        <Text style={styles.withdrawalCancel}>Cancel</Text>
-                      </Tap>
-                    )}
-                  </View>
+          <View style={styles.card}>
+            <Text style={styles.sectionLabel} accessibilityRole="header">Recent withdrawals</Text>
+            {withdrawals.slice(0, 3).map((withdrawal) => (
+              <View key={withdrawal.id} style={styles.withdrawalRow}>
+                <View style={styles.withdrawalCopy}>
+                  <Text style={styles.rowTitle} numberOfLines={2}>{withdrawal.title}</Text>
+                  <Text style={styles.rowMeta} numberOfLines={1}>
+                    {shortDate(withdrawal.created_at)} · {withdrawal.status}
+                  </Text>
+                  {!!withdrawal.review_note && (
+                    <Text style={styles.rowMeta}>{withdrawal.review_note}</Text>
+                  )}
                 </View>
-              ))}
-            </View>
+                <View style={styles.withdrawalAmountCol}>
+                  <Text style={styles.rowAmount}>{peso(withdrawal.amount)}</Text>
+                  {withdrawal.status === 'pending' && (
+                    <Tap
+                      onPress={() => void cancelWithdrawal(withdrawal.id)}
+                      hitSlop={{ top: 12, bottom: 12, left: 8, right: 8 }}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Cancel withdrawal, ${withdrawal.title}`}
+                    >
+                      <Text style={styles.cancelText}>Cancel</Text>
+                    </Tap>
+                  )}
+                </View>
+              </View>
+            ))}
           </View>
         )}
 
-        {/* Recovery Vouchers — trust credits an admin issues after resolving a
-            dispute in the client's favour. Only shown once there is one. */}
-        {vouchers.length > 0 && (
-          <View style={styles.voucherCard}>
-            <View style={styles.voucherHeader}>
-              <Gift size={17} color={V6Colors.purpleText} />
-              <Text style={styles.voucherHeaderText}>Recovery Vouchers</Text>
-            </View>
-            <View style={styles.voucherList}>
-              {vouchers.map((v) => (
-                <View key={v.id} style={styles.voucherRow}>
-                  <View style={styles.voucherInfo}>
-                    <Text style={styles.voucherTitle} numberOfLines={2}>{v.title}</Text>
-                    <Text style={styles.voucherDate}>{shortDate(v.created_at)}</Text>
-                  </View>
-                  <Text style={styles.voucherAmount}>+{peso(v.amount)}</Text>
-                </View>
-              ))}
-            </View>
-          </View>
-        )}
+        <View style={styles.history}>
+          <SectionHeader title="History" />
+          <ScrollView
+            horizontal
+            testID="wallet-filters"
+            showsHorizontalScrollIndicator={false}
+            style={styles.filterScroll}
+            contentContainerStyle={styles.filterRow}
+          >
+            {WALLET_FILTERS.map(({ key, label }) => (
+              <FilterPill
+                key={key}
+                label={label}
+                count={data ? counts[key] : undefined}
+                selected={filter === key}
+                onPress={() => setFilter(key)}
+              />
+            ))}
+          </ScrollView>
 
-        <Text style={styles.sectionTitle}>Transaction History</Text>
-        {/* Filter tabs */}
-        <View style={styles.tabRow}>
-          {(['all', 'credit', 'debit'] as const).map((t) => (
-            <Tap
-              key={t}
-              style={[styles.tab, activeTab === t && styles.tabActive]}
-              onPress={() => setActiveTab(t)}
-              activeOpacity={0.8}
-            >
-              <Text style={[styles.tabText, activeTab === t && styles.tabTextActive]}>
-                {t === 'all' ? 'All' : t === 'credit' ? 'Added' : 'Spent'}
-              </Text>
-            </Tap>
+          {!!error && <Banner tone="error" message={error} />}
+
+          {!error && filtered.length === 0 && (
+            <EmptyRow
+              icon={WalletCards}
+              title={EMPTY_COPY[filter].title}
+              body={EMPTY_COPY[filter].body}
+            />
+          )}
+
+          {groups.map((group) => (
+            <View key={group.key} style={styles.group}>
+              <Text style={styles.sectionLabel} accessibilityRole="header">{group.label}</Text>
+              <View style={styles.rows}>
+                {group.transactions.map((txn) => renderTransaction(txn))}
+              </View>
+            </View>
           ))}
         </View>
-
-        {!!error && !loading && <Text style={styles.stateText}>{error}</Text>}
-        {!loading && !error && filtered.length === 0 && (
-          <View style={styles.emptyState}>
-            <WalletCards size={30} color={C.ink300} />
-            <Text style={styles.emptyTitle}>No transactions yet</Text>
-            <Text style={styles.emptyText}>Your payments and wallet activity will appear here.</Text>
-          </View>
-        )}
-
-        {filtered.length > 0 && (
-        <View style={styles.txnList}>
-          {filtered.map((txn, i) => {
-            const Icon = txn.direction === 'credit' ? CircleDollarSign : Package;
-            const statusLabel =
-              txn.kind === 'escrow_hold' ? 'Escrow funded' : `Payment ${txn.status}`;
-            return (
-              <View key={txn.id} style={[styles.txnRow, i < filtered.length - 1 && styles.txnRowBorder]}>
-                <View style={styles.txnIcon}>
-                  <Icon size={19} color={V6Colors.link} />
-                </View>
-                <View style={styles.txnInfo}>
-                  <Text style={styles.txnTitle} numberOfLines={2}>{txn.title}</Text>
-                  <Text style={styles.txnDate}>{shortDate(txn.created_at)} · {statusLabel}</Text>
-                </View>
-                <Text style={[
-                  styles.txnAmount,
-                  txn.direction === 'credit' ? styles.txnCredit : styles.txnDebit,
-                ]}>
-                  {txn.direction === 'debit' ? '-' : '+'}{peso(txn.amount)}
-                </Text>
-              </View>
-            );
-          })}
-        </View>
-        )}
-        {/* Room for the floating "Post a job" button above the nav bar. */}
-        <View style={{ height: 96 }} />
       </ScrollView>
 
       <SheetFrame
@@ -600,109 +623,108 @@ export default function HOWalletScreen() {
   return content;
 }
 
+/** One of the two tiles under the balance: a tonal icon, a label, the amount, and an optional note. */
+function WalletTile({ icon: Icon, label, amount, note }: {
+  icon: LucideIcon; label: string; amount: string; note?: string;
+}) {
+  const { Colors, styles } = useThemedStyles(createThemedStyles);
+  return (
+    <View style={styles.tile} accessible accessibilityLabel={[label, amount, note].filter(Boolean).join('. ')}>
+      <View style={styles.tileIcon}>
+        <Icon size={17} color={Colors.link} strokeWidth={2.2} />
+      </View>
+      <Text style={styles.tileLabel}>{label}</Text>
+      <Text style={styles.tileAmount} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>
+        {amount}
+      </Text>
+      {!!note && <Text style={styles.tileNote}>{note}</Text>}
+    </View>
+  );
+}
+
 function createThemedStyles(theme: ThemePalette) {
   const { Colors, V6Colors } = theme;
   const C = V6Colors;
   const styles = StyleSheet.create({
     screen: { flex: 1, backgroundColor: C.canvas },
 
-    header: {
-      backgroundColor: C.surface,
-      paddingHorizontal: Spacing.screenH,
-      paddingBottom: 12,
-      borderBottomWidth: 1,
-      borderBottomColor: V6Colors.line,
-    },
+    header: { paddingHorizontal: Spacing.screenH, paddingBottom: 12 },
     headerTitle: { color: C.ink900, fontSize: 21.5, fontWeight: '800', fontFamily: 'Inter', letterSpacing: -0.3 },
 
     body: { flex: 1 },
-    bodyContent: { paddingHorizontal: Spacing.screenH, paddingTop: 16, paddingBottom: 20 },
+    bodyContent: { paddingHorizontal: Spacing.screenH, paddingTop: 4, paddingBottom: 20, gap: 18 },
 
-    balanceCard: {
-      borderRadius: 18, padding: 20, marginBottom: 14,
+    // Balance card: hero blue, white text, two pill buttons.
+    balanceCard: { backgroundColor: Colors.hero, borderRadius: 20, padding: 18 },
+    balanceLabel: { color: Colors.onHeroMuted, fontSize: 14, fontWeight: '400', fontFamily: 'Inter', lineHeight: 18 },
+    balanceAmount: {
+      color: Colors.onPrimary, fontSize: 34, fontWeight: '800', fontFamily: 'Inter', lineHeight: 40, marginTop: 4,
     },
-    balanceLabel: { color: C.onHeroMuted, fontSize: 14, fontFamily: 'Inter', marginBottom: 4 },
-    balanceAmount: { color: C.onPrimary, fontSize: 32.5, fontWeight: '800', fontFamily: 'Inter', marginBottom: 16 },
-    balanceSub: { color: 'rgba(255,255,255,0.85)', fontSize: 13, fontFamily: 'Inter', marginTop: 12, textAlign: 'center' },
-    quickActions: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-    quickActionBtn: {
-      flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
-      minHeight: 46, borderRadius: 999,
-      backgroundColor: 'rgba(255,255,255,0.14)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.22)',
+    balanceActions: { flexDirection: 'row', gap: 10, marginTop: 16 },
+    balanceButton: {
+      flex: 1, minWidth: 0, minHeight: 48, borderRadius: 999, paddingHorizontal: 12,
+      alignItems: 'center', justifyContent: 'center', backgroundColor: Colors.heroCard,
     },
-    quickActionPrimary: { backgroundColor: '#ffffff', borderColor: '#ffffff' },
-    quickActionText: { color: C.onPrimary, fontSize: 15, fontWeight: '700', fontFamily: 'Inter' },
-    quickActionTextPrimary: { color: '#0369a1' },
+    balanceButtonPrimary: { backgroundColor: Colors.onPrimary },
+    balanceButtonText: { color: Colors.onPrimary, fontSize: 15, fontWeight: '600', fontFamily: 'Inter', lineHeight: 20 },
+    balanceButtonTextPrimary: { color: Colors.primary },
+    balanceSub: { color: Colors.onHeroMuted, fontSize: 13, fontFamily: 'Inter', lineHeight: 18, marginTop: 12 },
 
-    escrowCard: {
-      backgroundColor: V6Colors.infoSurface, borderWidth: 1, borderColor: V6Colors.infoSurface,
-      borderRadius: 15, padding: 14, marginBottom: 14,
-    },
-    escrowTopRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
-    escrowCopy: { flex: 1, marginRight: 12 },
-    escrowLabel: { fontSize: 11, textTransform: 'uppercase', letterSpacing: 0.6, fontWeight: '800', color: V6Colors.link },
-    escrowAmount: { fontSize: 24, fontWeight: '800', color: C.ink900, marginVertical: 3, fontFamily: 'Inter' },
-    escrowNote: { fontSize: 12, color: C.ink500, lineHeight: 16, fontFamily: 'Inter' },
-
-    withdrawalCard: {
+    // Held safely and Rewards: two equal tiles.
+    tiles: { flexDirection: 'row', gap: 10 },
+    tile: {
+      flex: 1, minWidth: 0, gap: 4, padding: 14, borderRadius: 16,
       backgroundColor: C.surface, borderWidth: 1, borderColor: C.line,
-      borderRadius: 15, padding: 14, marginBottom: 14,
     },
-    withdrawalLabel: { fontSize: 11, textTransform: 'uppercase', letterSpacing: 0.6, fontWeight: '800', color: V6Colors.link, fontFamily: 'Inter' },
-    withdrawalList: { marginTop: 12, borderTopWidth: 1, borderTopColor: C.line },
-    withdrawalRow: { flexDirection: 'row', gap: 10, paddingTop: 10, marginTop: 2 },
-    withdrawalTitle: { color: C.ink900, fontSize: 13.5, fontWeight: '700', fontFamily: 'Inter' },
-    withdrawalMeta: { color: C.ink400, fontSize: 11.5, fontFamily: 'Inter', marginTop: 2 },
-    withdrawalAction: { alignItems: 'flex-end' },
-    withdrawalValue: { color: C.ink900, fontSize: 13.5, fontWeight: '800', fontFamily: 'Inter' },
-    withdrawalCancel: { color: V6Colors.dangerText, fontSize: 12, fontWeight: '700', fontFamily: 'Inter', marginTop: 4 },
-
-    voucherCard: {
-      backgroundColor: V6Colors.purpleSurface, borderWidth: 1, borderColor: V6Colors.purpleBorder,
-      borderRadius: 15, padding: 14, marginBottom: 14,
+    tileIcon: {
+      width: 34, height: 34, borderRadius: 11, marginBottom: 6,
+      backgroundColor: Colors.primaryTonal, alignItems: 'center', justifyContent: 'center',
     },
-    voucherHeader: { flexDirection: 'row', alignItems: 'center', gap: 7, marginBottom: 8 },
-    voucherHeaderText: { color: V6Colors.purpleText, fontSize: 13.5, fontWeight: '800', fontFamily: 'Inter' },
-    voucherList: { gap: 8 },
-    voucherRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-    voucherInfo: { flex: 1, marginRight: 10 },
-    voucherTitle: { color: C.ink900, fontSize: 13.5, fontWeight: '600', fontFamily: 'Inter' },
-    voucherDate: { color: C.ink400, fontSize: 11.5, fontFamily: 'Inter', marginTop: 1 },
-    voucherAmount: { color: V6Colors.purpleText, fontSize: 14, fontWeight: '800', fontFamily: 'Inter' },
+    tileLabel: { color: C.ink700, fontSize: 13, fontWeight: '600', fontFamily: 'Inter', lineHeight: 18 },
+    tileAmount: { color: C.ink900, fontSize: 18, fontWeight: '700', fontFamily: 'Inter', lineHeight: 24 },
+    tileNote: { color: C.ink500, fontSize: 12, fontFamily: 'Inter', lineHeight: 16 },
 
-    tabRow: { flexDirection: 'row', gap: 8, marginBottom: 18 },
-    tab: {
-      paddingHorizontal: 18, paddingVertical: 7, borderRadius: 999,
-      backgroundColor: C.ink50,
+    // Recent withdrawals (only once there are some).
+    card: { backgroundColor: C.surface, borderRadius: 16, borderWidth: 1, borderColor: C.line, padding: 14 },
+    sectionLabel: {
+      color: C.ink500, fontSize: 12, fontWeight: '700', fontFamily: 'Inter', letterSpacing: 0.6,
+      textTransform: 'uppercase', marginBottom: 8,
     },
-    tabActive: { backgroundColor: V6Colors.hero },
-    tabText: { color: C.ink500, fontSize: 14.5, fontWeight: '600', fontFamily: 'Inter' },
-    tabTextActive: { color: C.onPrimary },
-
-    sectionTitle: { color: C.ink900, fontSize: 16, fontWeight: '800', fontFamily: 'Inter', marginBottom: 12 },
-    stateText: { color: C.ink500, fontSize: 16.5, fontFamily: 'Inter', textAlign: 'center', marginTop: 20 },
-    emptyState: { alignItems: 'center', paddingVertical: 44, paddingHorizontal: 24 },
-    emptyTitle: { color: C.ink800, fontSize: 16, fontWeight: '700', fontFamily: 'Inter', marginTop: 10, marginBottom: 4 },
-    emptyText: { color: C.ink400, fontSize: 14, fontFamily: 'Inter', textAlign: 'center', lineHeight: 17 },
-
-    txnList: {
-      backgroundColor: C.surface, borderRadius: 16, borderWidth: 1, borderColor: C.line, overflow: 'hidden',
+    withdrawalRow: {
+      flexDirection: 'row', alignItems: 'flex-start', gap: 10,
+      paddingVertical: 10, borderTopWidth: 1, borderTopColor: C.line,
     },
-    txnRow: { flexDirection: 'row', alignItems: 'center', padding: 14 },
-    txnRowBorder: { borderBottomWidth: 1, borderBottomColor: V6Colors.wellBg },
+    withdrawalCopy: { flex: 1, minWidth: 0, gap: 2 },
+    withdrawalAmountCol: { alignItems: 'flex-end', flexShrink: 0, gap: 4 },
+    rowTitle: { color: C.ink900, fontSize: 14, fontWeight: '600', fontFamily: 'Inter', lineHeight: 19 },
+    rowMeta: { color: C.ink500, fontSize: 12, fontFamily: 'Inter', lineHeight: 16 },
+    rowAmount: { color: C.ink900, fontSize: 14, fontWeight: '700', fontFamily: 'Inter' },
+    cancelText: { color: Colors.dangerText, fontSize: 12, fontWeight: '700', fontFamily: 'Inter' },
+
+    // History: the section header, the pills (scroll past the edge), then day groups.
+    history: { gap: 12 },
+    filterScroll: { flexGrow: 0, marginHorizontal: -Spacing.screenH },
+    filterRow: { gap: 8, paddingHorizontal: Spacing.screenH },
+    group: { gap: 8 },
+    rows: { gap: 8 },
+
+    txnRow: {
+      flexDirection: 'row', alignItems: 'center', gap: 12,
+      paddingHorizontal: 14, paddingVertical: 12, borderRadius: 16,
+      backgroundColor: C.surface, elevation: 2,
+    },
     txnIcon: {
-      width: 34, height: 34, borderRadius: 12,
-      backgroundColor: V6Colors.canvas, alignItems: 'center', justifyContent: 'center', marginRight: 12,
+      width: 40, height: 40, borderRadius: 12,
+      backgroundColor: Colors.primaryTonal, alignItems: 'center', justifyContent: 'center',
     },
-    txnInfo: { flex: 1, marginRight: 12 },
-    txnTitle: { color: C.ink900, fontSize: 14.5, fontWeight: '600', fontFamily: 'Inter', marginBottom: 2 },
-    txnDate: { color: C.ink400, fontSize: 12.5, fontFamily: 'Inter' },
-    txnAmount: { flexShrink: 0, fontSize: 14.5, fontWeight: '800', fontFamily: 'Inter' },
-    txnCredit: { color: V6Colors.successText },
-    txnDebit: { color: C.ink900 },
+    txnCopy: { flex: 1, minWidth: 0, gap: 3 },
+    txnTitle: { color: C.ink900, fontSize: 15, fontWeight: '600', fontFamily: 'Inter', lineHeight: 20 },
+    txnDetail: { color: C.ink500, fontSize: 13, fontFamily: 'Inter', lineHeight: 18 },
+    txnAmount: { flexShrink: 0, fontSize: 15, fontWeight: '700', fontFamily: 'Inter' },
+    txnAmountIn: { color: Colors.successText },
+    txnAmountOut: { color: C.ink900 },
 
-    // Add Money modal
-    modalBackdrop: { flex: 1, backgroundColor: 'rgba(15,23,42,0.5)', alignItems: 'center', justifyContent: 'center', padding: 28 },
+    // Add Money / Withdraw sheets (unchanged).
     modalCard: { width: '100%', backgroundColor: C.surface, borderRadius: V6Radii.card, padding: 22 },
     modalTitle: { color: C.ink900, fontSize: 21.5, fontWeight: '800', fontFamily: 'Inter' },
     modalBody: { color: C.ink500, fontSize: 15.5, fontFamily: 'Inter', lineHeight: 19, marginTop: 6 },
@@ -718,7 +740,7 @@ function createThemedStyles(theme: ThemePalette) {
     },
     quickAmountActive: { borderColor: C.primaryTonalStrong, backgroundColor: C.primaryTonalStrong },
     quickAmountText: { color: C.ink800, fontSize: 15, fontWeight: '700', fontFamily: 'Inter' },
-    quickAmountTextActive: { color: theme.appearance === 'dark' ? '#e0f2fe' : '#0c4a6e' },
+    quickAmountTextActive: { color: Colors.primaryDeep },
     withdrawAvailable: { color: V6Colors.link, fontSize: 14, fontWeight: '700', fontFamily: 'Inter', marginTop: 12 },
     destinationInput: {
       backgroundColor: V6Colors.wellBg, borderRadius: 12, paddingHorizontal: 14, minHeight: 48,

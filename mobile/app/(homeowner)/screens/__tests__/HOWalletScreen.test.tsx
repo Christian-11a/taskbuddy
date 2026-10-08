@@ -1,7 +1,7 @@
 import React from 'react';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react-native';
 import HOWalletScreen from '../HOWalletScreen';
-import { api } from '../../../../src/lib/api';
+import { api, type WalletTransaction } from '../../../../src/lib/api';
 import { showToast } from '../../../../src/components/Toast';
 import { clearAsyncDataCache } from '../../../../src/hooks/useAsyncData';
 import { openRedirectSession } from '../../../../src/lib/appRedirectSession';
@@ -11,6 +11,7 @@ jest.mock('../../../../src/lib/api', () => ({
   api: {
     wallet: jest.fn(),
     withdrawals: jest.fn(),
+    cancelWithdrawal: jest.fn(),
     createCheckoutSession: jest.fn(),
   },
 }));
@@ -131,8 +132,8 @@ describe('HOWalletScreen — Add Money after Stripe returns', () => {
   it('blocks amounts below PHP50 before opening Checkout', async () => {
     (api.wallet as jest.Mock).mockResolvedValue(walletAt(0));
     render(<HOWalletScreen />);
-    await waitFor(() => expect(screen.getByText('Add Money')).toBeTruthy());
-    fireEvent.press(screen.getByText('Add Money'));
+    await waitFor(() => expect(screen.getByText('Add money')).toBeTruthy());
+    fireEvent.press(screen.getByText('Add money'));
     expect(screen.getByText('Minimum ₱50')).toBeTruthy();
     fireEvent.changeText(screen.getByPlaceholderText('0.00'), '49.99');
     fireEvent.press(screen.getByTestId('wallet-add-money-continue'));
@@ -143,8 +144,8 @@ describe('HOWalletScreen — Add Money after Stripe returns', () => {
 
   const startTopup = async () => {
     render(<HOWalletScreen />);
-    await waitFor(() => expect(screen.getByText('Add Money')).toBeTruthy());
-    fireEvent.press(screen.getByText('Add Money'));
+    await waitFor(() => expect(screen.getByText('Add money')).toBeTruthy());
+    fireEvent.press(screen.getByText('Add money'));
     fireEvent.press(screen.getByTestId('wallet-quick-500'));
     await act(async () => {
       fireEvent.press(screen.getByTestId('wallet-add-money-continue'));
@@ -196,7 +197,7 @@ describe('HOWalletScreen — Add Money after Stripe returns', () => {
     await startTopup();
     await waitFor(() => expect(screen.queryByTestId('add-money-dialog')).toBeNull());
 
-    fireEvent.press(screen.getByText('Add Money'));
+    fireEvent.press(screen.getByText('Add money'));
 
     expect(screen.getByTestId('wallet-add-money-continue')).toBeTruthy();
   });
@@ -264,5 +265,150 @@ describe('FullTest escrow display', () => {
     expect(screen.getByText('₱400.00')).toBeTruthy();
     expect(screen.getByText(/Escrow funded/)).toBeTruthy();
     expect(screen.queryByText(/ · Completed/)).toBeNull();
+  });
+});
+
+describe('HOWalletScreen — balance card, tiles and history', () => {
+  // Days are relative to today, so the Today and Yesterday headings hold whatever day the tests run.
+  const dayAt = (daysAgo: number) => {
+    const now = new Date();
+    return new Date(now.getFullYear(), now.getMonth(), now.getDate() - daysAgo, 12).toISOString();
+  };
+  const txn = (
+    fields: Partial<WalletTransaction> & Pick<WalletTransaction, 'id' | 'direction' | 'kind' | 'amount' | 'title'>,
+  ): WalletTransaction => ({
+    profile_id: 'homeowner',
+    status: 'completed',
+    job_id: null,
+    created_at: dayAt(0),
+    ...fields,
+  }) as WalletTransaction;
+
+  const topUp = txn({ id: 'topup', direction: 'credit', kind: 'topup', amount: 500, title: 'Wallet top-up' });
+  const voucher = txn({
+    id: 'voucher', direction: 'credit', kind: 'recovery_credit', amount: 150,
+    title: 'Recovery voucher', created_at: dayAt(1),
+  });
+  const hold = txn({
+    id: 'hold', direction: 'debit', kind: 'escrow_hold', amount: 300, title: 'Held for: Plumbing: Fix toilet',
+  });
+  const withdrawal = txn({
+    id: 'withdrawal', direction: 'debit', kind: 'withdrawal', amount: 100, title: 'GCash cash-out', created_at: dayAt(1),
+  });
+  const walletAt = (overrides: Record<string, unknown> = {}) => ({
+    balance: 1250,
+    available: 1000,
+    pending: 0,
+    pending_withdrawals: 0,
+    total_credited: 1650,
+    total_debited: 400,
+    in_escrow: 300,
+    transactions: [topUp, voucher, hold, withdrawal],
+    ...overrides,
+  });
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    clearAsyncDataCache();
+    (api.withdrawals as jest.Mock).mockResolvedValue([]);
+    (api.cancelWithdrawal as jest.Mock).mockResolvedValue({});
+    (api.wallet as jest.Mock).mockResolvedValue(walletAt());
+  });
+
+  it('shows the available balance, the withdrawable amount, and the Add money and Withdraw buttons', async () => {
+    render(<HOWalletScreen />);
+
+    expect(await screen.findByText('₱1,250.00')).toBeTruthy();
+    expect(screen.getByText('Available balance')).toBeTruthy();
+    expect(screen.getByText('₱1,000.00 available to withdraw')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Add money' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Withdraw' })).toBeTruthy();
+  });
+
+  it('shows Held safely from escrow and Rewards from the recovery vouchers', async () => {
+    render(<HOWalletScreen />);
+
+    await screen.findByText('₱1,250.00');
+    expect(screen.getByText('Held safely')).toBeTruthy();
+    expect(screen.getByText('₱300.00')).toBeTruthy();
+    expect(screen.getByText('Released when each job is done')).toBeTruthy();
+    expect(screen.getByText('Rewards')).toBeTruthy();
+    expect(screen.getByText('₱150.00')).toBeTruthy();
+    expect(screen.getByText('1 voucher')).toBeTruthy();
+  });
+
+  it('counts each History pill, and pressing one shows only its transactions', async () => {
+    render(<HOWalletScreen />);
+    await screen.findByText('Wallet top-up');
+
+    // Money in: top-up and voucher. Money out: the withdrawal. Held: the escrow hold.
+    expect(screen.getByLabelText('All, 4')).toBeTruthy();
+    expect(screen.getByLabelText('Money in, 2')).toBeTruthy();
+    expect(screen.getByLabelText('Money out, 1')).toBeTruthy();
+    expect(screen.getByLabelText('Held, 1')).toBeTruthy();
+
+    fireEvent.press(screen.getByLabelText('Held, 1'));
+
+    expect(screen.getByLabelText('Held, 1').props.accessibilityState).toMatchObject({ selected: true });
+    expect(screen.getByTestId('wallet-txn-hold')).toBeTruthy();
+    expect(screen.queryByTestId('wallet-txn-topup')).toBeNull();
+  });
+
+  it('groups the history under Today and Yesterday, with a plus or minus on each amount', async () => {
+    render(<HOWalletScreen />);
+    await screen.findByText('Wallet top-up');
+
+    expect(screen.getByText('Today')).toBeTruthy();
+    expect(screen.getByText('Yesterday')).toBeTruthy();
+    expect(screen.getByText('+₱500.00')).toBeTruthy();
+    expect(screen.getByText('−₱300.00')).toBeTruthy();
+    expect(screen.getByText('+₱150.00')).toBeTruthy();
+    expect(screen.getByText('−₱100.00')).toBeTruthy();
+  });
+
+  it('says what is missing when a filter has nothing to show', async () => {
+    (api.wallet as jest.Mock).mockResolvedValue(walletAt({ transactions: [topUp] }));
+    render(<HOWalletScreen />);
+    await screen.findByText('Wallet top-up');
+
+    fireEvent.press(screen.getByLabelText('Held, 0'));
+
+    expect(screen.getByText('Nothing held right now')).toBeTruthy();
+  });
+
+  it('shows the empty history when the wallet has no transactions yet', async () => {
+    (api.wallet as jest.Mock).mockResolvedValue(walletAt({ transactions: [] }));
+    render(<HOWalletScreen />);
+
+    expect(await screen.findByText('No transactions yet')).toBeTruthy();
+    expect(screen.getByText('Your payments and wallet activity will appear here.')).toBeTruthy();
+  });
+
+  it('shows a failed wallet request as an error, not as an empty history', async () => {
+    (api.wallet as jest.Mock).mockRejectedValue(new Error('Network error'));
+    render(<HOWalletScreen />);
+
+    expect(await screen.findByText('Network error')).toBeTruthy();
+    expect(screen.queryByText('No transactions yet')).toBeNull();
+  });
+
+  it('lists a pending withdrawal under Recent withdrawals, and Cancel withdraws it and reloads', async () => {
+    (api.withdrawals as jest.Mock).mockResolvedValue([
+      { id: 'w1', title: 'Cash out to GCash', status: 'pending', amount: 100, created_at: dayAt(1), review_note: null },
+    ]);
+    render(<HOWalletScreen />);
+
+    expect(await screen.findByText('Recent withdrawals')).toBeTruthy();
+    expect(screen.getByText('Cash out to GCash')).toBeTruthy();
+
+    // The reload after a cancel settles inside act, so no state update lands after the test.
+    await act(async () => {
+      fireEvent.press(screen.getByLabelText('Cancel withdrawal, Cash out to GCash'));
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+
+    expect(api.cancelWithdrawal).toHaveBeenCalledWith('w1');
+    expect(api.wallet).toHaveBeenCalledTimes(2);
+    expect(api.withdrawals).toHaveBeenCalledTimes(2);
   });
 });
