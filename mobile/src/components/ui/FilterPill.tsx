@@ -7,12 +7,14 @@ export default function FilterPill({ label, count, selected, onPress }: {
   label: string; count?: number; selected: boolean; onPress: () => void;
 }) {
   const s = useThemedStyles(createStyles);
-  // Keyed on the selected state, so a pill that is picked is recreated rather than
-  // repainted in place. Android does not reliably redraw a rounded background, or
-  // the text colour that goes with it, when the same view re-renders; BottomNavBar
-  // keys its indicator for the same reason.
+  // Keyed on how the pill is drawn: picked or not, and whether it has a count yet.
+  // A pill that changes either is recreated rather than repainted in place, because
+  // Android does not reliably redraw a rounded background, or the text colour that
+  // goes with it, when the same view re-renders. BottomNavBar keys its indicator
+  // for the same reason.
+  const drawnAs = `${selected ? 'on' : 'off'}:${count != null ? 'counted' : 'bare'}`;
   return (
-    <Tap key={selected ? 'on' : 'off'} style={[s.pill, selected ? s.on : s.off]} onPress={onPress} hitSlop={{ top: 7, bottom: 7 }}
+    <Tap key={drawnAs} style={[s.pill, selected ? s.on : s.off]} onPress={onPress} hitSlop={{ top: 7, bottom: 7 }}
       accessibilityRole="button" accessibilityState={{ selected }}
       accessibilityLabel={count != null ? `${label}, ${count}` : label}>
       <Text style={[s.label, selected && s.labelOn]}>{label}</Text>

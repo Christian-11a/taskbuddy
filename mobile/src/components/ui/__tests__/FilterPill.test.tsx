@@ -84,3 +84,19 @@ it('a pill is recreated when it is picked, so Android repaints its background an
 
   expect(screen.getByRole('button', { name: 'Booked, 2' })).not.toBe(before);
 });
+
+it('a pill is recreated when its count arrives, so the count is painted with the label', async () => {
+  const onPress = jest.fn();
+  const view = await renderPill(<FilterPill label="All" selected onPress={onPress} />, 'homeowner', false);
+  const before = screen.getByRole('button', { name: 'All' });
+
+  view.rerender(
+    <ThemeProvider>
+      <FilterPill label="All" count={13} selected onPress={onPress} />
+    </ThemeProvider>,
+  );
+
+  const after = screen.getByRole('button', { name: 'All, 13' });
+  expect(after).not.toBe(before);
+  expect(styleOf(screen.getByText('13')).color).toBe(lightPalette.Colors.onPrimary);
+});
