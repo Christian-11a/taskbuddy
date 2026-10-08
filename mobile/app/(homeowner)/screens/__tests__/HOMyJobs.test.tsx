@@ -96,13 +96,15 @@ it('shows each filter with its count, counting proposals once they load', async 
   expect(screen.getByRole('button', { name: 'Closed, 2' })).toBeTruthy();
 });
 
-it('groups All by date and shows only the headings that have jobs', async () => {
+it('groups the live jobs by date, and shows the finished ones under FINISHED', async () => {
   render(<MyJobs onNavigate={jest.fn()} />);
   await screen.findByText('Cleaning: Window cleaning');
   expect(screen.getByText('Later')).toBeTruthy();
   expect(screen.getByText('No date yet')).toBeTruthy();
-  expect(screen.getByText('Earlier')).toBeTruthy();
+  expect(screen.getByText('Finished')).toBeTruthy();
+  expect(screen.getByText('Plumbing: Leaking faucet')).toBeTruthy();
   expect(screen.queryByText('This week')).toBeNull();
+  expect(screen.queryByText('Earlier')).toBeNull();
 });
 
 it('shows each job with its status line', async () => {

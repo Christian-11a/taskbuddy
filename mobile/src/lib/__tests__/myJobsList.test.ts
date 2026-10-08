@@ -163,6 +163,55 @@ describe('jobListSections for All', () => {
   it('has no sections when there are no jobs', () => {
     expect(jobListSections([], 'all', {}, NOW)).toEqual([]);
   });
+
+  it('groups only the live jobs by date, then puts finished jobs last in a FINISHED group, newest posted first', () => {
+    const jobs = [
+      job({ id: 'today', status: 'confirmed', scheduled_at: at(2026, 9, 9, 18) }),
+      job({ id: 'later', status: 'confirmed', scheduled_at: at(2026, 9, 15) }),
+      job({ id: 'no-date', status: 'open', posted_at: at(2026, 9, 2, 9) }),
+      job({ id: 'earlier', status: 'confirmed', scheduled_at: at(2026, 9, 8, 10) }),
+      job({ id: 'done-this-week', status: 'completed', scheduled_at: at(2026, 9, 9), posted_at: at(2026, 9, 5) }),
+      job({ id: 'expired-later', status: 'expired', scheduled_at: at(2026, 9, 20), posted_at: at(2026, 9, 4) }),
+      job({ id: 'cancelled-no-date', status: 'cancelled', posted_at: at(2026, 9, 2, 15) }),
+      job({ id: 'done-old', status: 'completed', scheduled_at: at(2026, 9, 9), posted_at: at(2026, 8, 1) }),
+    ];
+
+    expect(shape(jobListSections(jobs, 'all', {}, NOW))).toEqual([
+      { label: 'This week', ids: ['today'] },
+      { label: 'Later', ids: ['later'] },
+      { label: 'No date yet', ids: ['no-date'] },
+      { label: 'Earlier', ids: ['earlier'] },
+      { label: 'Finished', ids: ['done-this-week', 'expired-later', 'cancelled-no-date', 'done-old'] },
+    ]);
+  });
+
+  it('a list of only finished jobs under All is one FINISHED group', () => {
+    const jobs = [
+      job({ id: 'older', status: 'completed', posted_at: at(2026, 9, 1) }),
+      job({ id: 'newer', status: 'cancelled', posted_at: at(2026, 9, 3) }),
+    ];
+
+    expect(shape(jobListSections(jobs, 'all', {}, NOW))).toEqual([
+      { label: 'Finished', ids: ['newer', 'older'] },
+    ]);
+  });
+
+  it('the other filters keep their date groups and never show a FINISHED group', () => {
+    const jobs = [
+      job({ id: 'open', status: 'open', posted_at: at(2026, 9, 2) }),
+      job({ id: 'confirmed', status: 'confirmed', scheduled_at: at(2026, 9, 15) }),
+    ];
+
+    expect(shape(jobListSections(jobs, 'needs', { open: 1 }, NOW))).toEqual([
+      { label: 'No date yet', ids: ['open'] },
+    ]);
+    expect(shape(jobListSections(jobs, 'waiting', {}, NOW))).toEqual([
+      { label: 'No date yet', ids: ['open'] },
+    ]);
+    expect(shape(jobListSections(jobs, 'booked', {}, NOW))).toEqual([
+      { label: 'Later', ids: ['confirmed'] },
+    ]);
+  });
 });
 
 describe('jobListSections for Done and Closed', () => {

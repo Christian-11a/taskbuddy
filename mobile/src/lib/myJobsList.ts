@@ -17,11 +17,15 @@ export const JOB_LIST_FILTERS: readonly { key: JobListFilter; label: string }[] 
 const BOOKED_STATUSES: ReadonlySet<string> = new Set(['assigned', 'confirmed', 'in_progress']);
 const CLOSED_STATUSES: ReadonlySet<string> = new Set(['cancelled', 'expired']);
 
+/** Jobs that are over: completed, cancelled or expired. */
+const FINISHED_STATUSES: ReadonlySet<string> = new Set(['completed', 'cancelled', 'expired']);
+
 /** Done and Closed are one newest-first list; the other filters group by date. */
 const FLAT_FILTERS: ReadonlySet<JobListFilter> = new Set(['done', 'closed']);
 
 const scheduledAt = (job: Job): number => timeOf(job.scheduled_at) ?? 0;
 const postedAt = (job: Job): number => timeOf(job.posted_at) ?? 0;
+const isFinished = (job: Job): boolean => FINISHED_STATUSES.has(job.status);
 
 /** Whether a job belongs under a filter pill. "Needs you" and "Waiting" split open jobs by pending proposals. */
 export function matchesJobFilter(job: Job, filter: JobListFilter, proposals: ProposalCounts): boolean {
@@ -57,16 +61,19 @@ export function countJobsByFilter(jobs: readonly Job[], proposals: ProposalCount
 }
 
 export interface JobListSection {
-  key: 'thisWeek' | 'later' | 'noDate' | 'earlier' | 'list';
+  key: 'thisWeek' | 'later' | 'noDate' | 'earlier' | 'finished' | 'list';
   /** Heading text (the screen shows it in capitals). Absent for the flat list. */
   label?: string;
   jobs: Job[];
 }
 
 /**
- * The sections shown under a filter. All, Needs you, Booked and Waiting group
- * by scheduled date: this week (Sunday to Saturday), later, no date yet, and
- * earlier for dates already past. Done and Closed are one newest-first list.
+ * The sections shown under a filter. Needs you, Booked and Waiting group by
+ * scheduled date: this week (Sunday to Saturday), later, no date yet, and
+ * earlier for dates already past. All groups its live jobs the same way, then
+ * adds a FINISHED group last for completed, cancelled and expired jobs, newest
+ * posted first, so a finished job never reads as upcoming. Done and Closed are
+ * one newest-first list.
  */
 export function jobListSections(
   jobs: readonly Job[],
@@ -79,7 +86,10 @@ export function jobListSections(
   if (FLAT_FILTERS.has(filter)) {
     return [{ key: 'list', jobs: visible.sort((a, b) => postedAt(b) - postedAt(a)) }];
   }
-  return groupByDate(visible, now);
+  if (filter !== 'all') return groupByDate(visible, now);
+  const dated = groupByDate(visible.filter((job) => !isFinished(job)), now);
+  const finished = visible.filter(isFinished).sort((a, b) => postedAt(b) - postedAt(a));
+  return finished.length > 0 ? [...dated, { key: 'finished', label: 'Finished', jobs: finished }] : dated;
 }
 
 function groupByDate(jobs: readonly Job[], now: Date): JobListSection[] {
