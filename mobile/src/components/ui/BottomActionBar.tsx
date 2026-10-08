@@ -25,8 +25,9 @@ export default function BottomActionBar({
       </Tap>
       {!!secondaryLabel && onSecondary && (
         // The 8 dp top slop fills the gap above the text, so it never takes presses from the primary button.
-        <Tap onPress={onSecondary} hitSlop={{ top: 8, bottom: 22, left: 12, right: 12 }}
-          accessibilityRole="button" accessibilityLabel={secondaryLabel}>
+        <Tap onPress={onSecondary} disabled={busy} style={busy && s.disabled}
+          hitSlop={{ top: 8, bottom: 22, left: 12, right: 12 }}
+          accessibilityRole="button" accessibilityLabel={secondaryLabel} accessibilityState={{ disabled: busy }}>
           <Text style={s.secondary}>{secondaryLabel}</Text>
         </Tap>
       )}

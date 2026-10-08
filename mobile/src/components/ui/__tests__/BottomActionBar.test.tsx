@@ -42,6 +42,15 @@ it('shows a spinner instead of the label while busy, keeps the name, and blocks 
   expect(onPrimary).not.toHaveBeenCalled();
 });
 
+it('locks the secondary action while busy so it cannot be backed out of mid-request', () => {
+  const onSecondary = jest.fn();
+  render(<BottomActionBar primaryLabel="Post job" onPrimary={jest.fn()} busy secondaryLabel="Save draft" onSecondary={onSecondary} />);
+  const secondary = screen.getByRole('button', { name: 'Save draft' });
+  expect(secondary.props.accessibilityState).toEqual(expect.objectContaining({ disabled: true }));
+  fireEvent.press(secondary);
+  expect(onSecondary).not.toHaveBeenCalled();
+});
+
 it('renders the danger tone with the same behaviour', () => {
   const onPrimary = jest.fn();
   render(<BottomActionBar primaryLabel="Cancel job" onPrimary={onPrimary} tone="danger" />);
