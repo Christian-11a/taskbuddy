@@ -32,7 +32,7 @@ if (__DEV__) {
 }
 import * as ExpoSplashScreen from 'expo-splash-screen';
 import * as WebBrowser from 'expo-web-browser';
-import { CalendarDays, ClipboardList, Home, Plus, Search, Wallet } from 'lucide-react-native';
+import { CalendarDays, ClipboardList, Home, Search, Wallet } from 'lucide-react-native';
 import RootLayout from './app/layout';
 
 // ── Auth screens ──────────────────────────────────────────────────────────────
@@ -100,7 +100,6 @@ import { resolveNotificationTarget } from './src/lib/notificationRouting';
 const HOMEOWNER_TABS: readonly BottomNavItem<HOScreen>[] = [
   { key: 'Home', label: 'Home', icon: Home },
   { key: 'My Jobs', label: 'My Jobs', icon: ClipboardList },
-  { key: 'Create Job', label: 'Create job', title: 'Post a job', icon: Plus, primary: true },
   { key: 'Calendar', label: 'Calendar', icon: CalendarDays },
   { key: 'Wallet', label: 'Wallet', icon: Wallet },
 ];
@@ -199,8 +198,9 @@ function AppContent() {
     if (screen === 'Create Job') {
       setHOStack((prev) => [...prev, { screen: hoScreen, id: hoSelectedId }]);
       // `id` here is a category id from Home's "Book a Job" strip. Always
-      // assign it — including clearing it when the flow is opened from the FAB
-      // — so a previous tile's category can't leak into the next job.
+      // assign it — including clearing it when the flow is opened without one
+      // (My Jobs' "New" button) — so a previous tile's category can't leak
+      // into the next job.
       setHOSelectedId(id ?? null);
       setHOScreen(screen);
       return;
@@ -706,8 +706,6 @@ function AppContent() {
           activeTab={hoTab}
           tabs={HOMEOWNER_TABS}
           onTabPress={hoNavigate}
-          // My Jobs has its own "+ New" button, so no second one there.
-          hidePrimary={hoTab === 'My Jobs'}
         />
       </View>
     );
