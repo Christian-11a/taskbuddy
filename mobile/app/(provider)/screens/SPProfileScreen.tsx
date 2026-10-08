@@ -3,11 +3,11 @@
  *
  * v6 design: matches taskbuddy_UI_update.html's #sp-profile screen — a dark
  * navy `.profile-hero.dark` gradient (same gradient as SPHomeScreen's hero,
- * not the teal gradient homeowner profile uses) with a squircle avatar and a
- * back button, a 3-stat row (Jobs Done, Rating, Active — the one place
- * these show; the Feed used to repeat them), and a .navrow-style menu
- * list. Not a bottom-nav tab (matches the mockup — reached via Feed's
- * avatar button instead).
+ * not the teal gradient homeowner profile uses) with a squircle avatar, a
+ * 3-stat row (Jobs Done, Rating, Active — the one place these show; the Feed
+ * used to repeat them), and a .navrow-style menu list. It is the Profile
+ * bottom tab, which has no back button; the back button only appears when
+ * onBack is passed.
  *
  * Deviations:
  * - Dropped the mockup's "On-time" stat — no on-time tracking exists in the
@@ -72,7 +72,8 @@ const MENU_ITEMS: { label: string; icon: typeof Pencil; screen: SPScreen }[] = [
 interface SPProfileScreenProps {
   onNavigate: (screen: SPScreen) => void;
   onLogout: () => void;
-  onBack: () => void;
+  /** Omit on the Profile tab, which has no back arrow. */
+  onBack?: () => void;
 }
 
 export default function SPProfileScreen({ onNavigate, onLogout, onBack }: SPProfileScreenProps) {
@@ -117,14 +118,16 @@ export default function SPProfileScreen({ onNavigate, onLogout, onBack }: SPProf
       >
         {/* Hero — matches .profile-hero.dark (same gradient as Feed's hero) */}
         <View style={[styles.hero, { paddingTop: headerTop }, { backgroundColor: C.providerHero }]}>
-          <Tap
-            style={[styles.backBtn, { top: headerTop }]}
-            onPress={onBack}
-            activeOpacity={0.8}
-            accessibilityLabel="Back to Feed"
-          >
-            <ArrowLeft size={20} color={C.onPrimary} />
-          </Tap>
+          {onBack && (
+            <Tap
+              style={[styles.backBtn, { top: headerTop }]}
+              onPress={onBack}
+              activeOpacity={0.8}
+              accessibilityLabel="Back to Feed"
+            >
+              <ArrowLeft size={20} color={C.onPrimary} />
+            </Tap>
+          )}
 
           <View style={styles.avatarCircle}>
             <OwnAvatar name={name} textStyle={styles.avatarText} />

@@ -32,7 +32,7 @@ if (__DEV__) {
 }
 import * as ExpoSplashScreen from 'expo-splash-screen';
 import * as WebBrowser from 'expo-web-browser';
-import { ClipboardList, Home, Search, Wallet } from 'lucide-react-native';
+import { ClipboardList, Home, Search, User, Wallet } from 'lucide-react-native';
 import RootLayout from './app/layout';
 
 // ── Auth screens ──────────────────────────────────────────────────────────────
@@ -98,18 +98,20 @@ import { api } from './src/lib/api';
 import { consumeLastNotificationTap, subscribeToNotificationTaps } from './src/lib/pushNotifications';
 import { resolveNotificationTarget } from './src/lib/notificationRouting';
 
-const HOMEOWNER_TABS: readonly BottomNavItem<HOScreen>[] = [
+export const HOMEOWNER_TABS: readonly BottomNavItem<HOScreen>[] = [
   { key: 'Home', label: 'Home', icon: Home },
   { key: 'My Jobs', label: 'My Jobs', icon: ClipboardList },
   { key: 'Wallet', label: 'Wallet', icon: Wallet },
+  { key: 'Profile', label: 'Profile', icon: User },
 ];
 
 // Plain tabs and no floating button: providers browse and claim jobs, they
 // don't post them. Calendar is a view of My Work (see JobsView below).
-const PROVIDER_TABS: readonly BottomNavItem<SPScreen>[] = [
+export const PROVIDER_TABS: readonly BottomNavItem<SPScreen>[] = [
   { key: 'Dashboard', label: 'Feed', icon: Search },
   { key: 'My Jobs', label: 'My Work', icon: ClipboardList },
   { key: 'Wallet', label: 'Wallet', icon: Wallet },
+  { key: 'Profile', label: 'Profile', icon: User },
 ];
 
 // My Jobs / My Work show the job list, or the calendar behind the List/Calendar
@@ -189,8 +191,8 @@ function AppContent() {
   const [spStack, setSPStack] = useState<SPStackEntry[]>([]); // non-tab screens navigated away from
   const [spJobsView, setSPJobsView] = useState<JobsView>('list'); // My Work: list or calendar
 
-  const HO_TAB_SCREENS: HOScreen[] = ['Home', 'My Jobs', 'Wallet'];
-  const SP_TAB_SCREENS: SPScreen[] = ['Dashboard', 'My Jobs', 'Wallet'];
+  const HO_TAB_SCREENS: HOScreen[] = ['Home', 'My Jobs', 'Wallet', 'Profile'];
+  const SP_TAB_SCREENS: SPScreen[] = ['Dashboard', 'My Jobs', 'Wallet', 'Profile'];
 
   // ── HO helpers ────────────────────────────────────────────────────────────
   // Jumping to a tab is a "root" navigation — it clears the back stack rather
@@ -693,16 +695,6 @@ function AppContent() {
         </View>
       );
     }
-    if (hoScreen === 'Profile') {
-      // Not a bottom-nav tab (matches the mockup — Profile is reached via
-      // Home's avatar button, see hero avatarCircle in HOHomeScreen).
-      return wrap(
-        <ScreenFrame>
-          <Profile onNavigate={hoNavigate} onLogout={handleLogout} onBack={hoBack} />
-        </ScreenFrame>
-      );
-    }
-
     // The List/Calendar switch sits at the right end of the My Jobs title row.
     const hoJobsSwitch = (
       <ViewSwitch options={JOBS_VIEW_OPTIONS} value={hoJobsView} onChange={setHOJobsView} />
@@ -719,6 +711,10 @@ function AppContent() {
             : <MyJobs headerRight={hoJobsSwitch} onNavigate={hoNavigate} />;
         case 'Wallet':
           return <HOWalletScreen />;
+        case 'Profile':
+          // No onBack: the Profile tab has no back arrow. Edit Profile and the
+          // other pushed screens still return here through the back stack.
+          return <Profile onNavigate={hoNavigate} onLogout={handleLogout} />;
         default:
           return <HOHomeScreen onNavigate={hoNavigate} />;
       }
@@ -854,16 +850,6 @@ function AppContent() {
       </ScreenFrame>
     );
   }
-  if (spScreen === 'Profile') {
-    // Not a bottom-nav tab (matches the mockup — Profile is reached via
-    // Feed's avatar button, see hero avatar in SPHomeScreen).
-    return wrap(
-      <ScreenFrame>
-        <SPProfileScreen onNavigate={spNavigate} onLogout={handleLogout} onBack={spBack} />
-      </ScreenFrame>
-    );
-  }
-
   // The List/Calendar switch sits at the right end of the My Work title row.
   const spJobsSwitch = (
     <ViewSwitch options={JOBS_VIEW_OPTIONS} value={spJobsView} onChange={setSPJobsView} />
@@ -880,6 +866,10 @@ function AppContent() {
           : <SPMyJobsScreen headerRight={spJobsSwitch} onNavigate={spNavigate} />;
       case 'Wallet':
         return <SPWalletScreen />;
+      case 'Profile':
+        // No onBack: the Profile tab has no back arrow. Edit Profile and the
+        // other pushed screens still return here through the back stack.
+        return <SPProfileScreen onNavigate={spNavigate} onLogout={handleLogout} />;
       default:
         return <SPHomeScreen onNavigate={spNavigate} />;
     }

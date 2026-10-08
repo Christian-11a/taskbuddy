@@ -2,9 +2,9 @@
  * Profile.tsx (HO - My Profile)
  *
  * v6 design: matches taskbuddy_UI_update.html's #ho-profile screen — teal
- * gradient hero (same gradient as Home) with a squircle avatar and a back
- * button, a 2-stat row, and a .navrow-style menu list. Not a bottom-nav tab
- * (matches the mockup — reached via Home's avatar button instead).
+ * gradient hero (same gradient as Home) with a squircle avatar, a 2-stat row,
+ * and a .navrow-style menu list. It is the Profile bottom tab, which has no
+ * back button; the back button only appears when onBack is passed.
  *
  * Deviation: dropped "Payment Methods" (there's no stored-card backend yet,
  * and it previously just pointed at Wallet, duplicating the bottom tab) and
@@ -51,7 +51,8 @@ const MENU_ITEMS: { label: string; icon: typeof Pencil; screen: HOScreen | null 
 interface ProfileProps {
   onNavigate: (screen: HOScreen) => void;
   onLogout: () => void;
-  onBack: () => void;
+  /** Omit on the Profile tab, which has no back arrow. */
+  onBack?: () => void;
 }
 
 export default function Profile({ onNavigate, onLogout, onBack }: ProfileProps) {
@@ -92,14 +93,16 @@ export default function Profile({ onNavigate, onLogout, onBack }: ProfileProps) 
       >
         {/* Hero — matches .profile-hero (same gradient as Home) */}
         <View style={[styles.hero, { paddingTop: headerTop }, { backgroundColor: C.hero }]}>
-          <Tap
-            style={[styles.backBtn, { top: headerTop }]}
-            onPress={onBack}
-            activeOpacity={0.8}
-            accessibilityLabel="Back to Home"
-          >
-            <ArrowLeft size={20} color={C.onPrimary} />
-          </Tap>
+          {onBack && (
+            <Tap
+              style={[styles.backBtn, { top: headerTop }]}
+              onPress={onBack}
+              activeOpacity={0.8}
+              accessibilityLabel="Back to Home"
+            >
+              <ArrowLeft size={20} color={C.onPrimary} />
+            </Tap>
+          )}
 
           <View style={styles.avatarCircle}>
             <OwnAvatar name={name} textStyle={styles.avatarText} />
