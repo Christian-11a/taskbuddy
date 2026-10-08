@@ -23,12 +23,12 @@ env:
 - tapOn:
     id: "btn-sign-in"
 - extendedWaitUntil:
-    visible: ".*(Skip|Find a service).*"
+    visible: ".*(Skip|Book a service).*"
     timeout: 60000
 - tapOn:
     text: "Skip"
     optional: true
-- assertVisible: "Find a service"
+- assertVisible: "Book a service"
 - tapOn:
     id: "btn-home-avatar"
 - tapOn: "Settings"

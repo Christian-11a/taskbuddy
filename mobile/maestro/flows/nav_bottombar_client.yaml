@@ -14,7 +14,7 @@ appId: com.taskbuddy.app
 - assertVisible: { id: "wallet-add-money-continue" }
 - tapOn: "Cancel"
 - tapOn: { id: "nav-tab-Home" }
-- extendedWaitUntil: { visible: "Find a service", timeout: 15000 }
+- extendedWaitUntil: { visible: "Book a service", timeout: 15000 }
 - tapOn: { id: "nav-tab-My Jobs" }
 - extendedWaitUntil: { visible: "Service category", timeout: 15000 }
 # Profile is a tab now. It has no back arrow, so none may be visible there.

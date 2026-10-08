@@ -5,12 +5,12 @@ appId: com.taskbuddy.app
 # role switching on a single device is the structural assumption every
 # cross-role flow from Phase 5 onward depends on.
 - runFlow: _helpers/login_client.yaml
-- assertVisible: "Find a service"
+- assertVisible: "Book a service"
 # Login itself already proved the backend answers — reaching a home screen
 # requires POST /auth/login and GET /auth/me to have succeeded. This extra
 # assertion is a structural canary on the home screen rendering its cards,
-# not a backend check; "Wallet balance" is a static label.
-- assertVisible: "Wallet balance"
+# not a backend check; "Active jobs" is a static label.
+- assertVisible: "Active jobs"
 
 # Second role. login_provider.yaml starts with its own launch_fresh, which
 # clears state — that IS the sign-out, and it is more reliable than driving
