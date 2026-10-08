@@ -106,6 +106,11 @@ export default function SheetFrame({
   const dragStyle = useAnimatedStyle(() => ({ transform: [{ translateY: dragY.get() }] }));
 
   const entering = reduced ? FadeIn.duration(150) : isSheet ? SlideInDown.duration(280) : FadeIn.duration(180);
+  // The dialog wrapper is the one rounded, clipped, elevated surface; the card
+  // inside it paints the same colour, so the two can never show a seam.
+  const wrapStyle: StyleProp<ViewStyle> = isSheet
+    ? styles.sheetWrap
+    : [styles.dialogWrap, { backgroundColor: C.surface }];
 
   return (
     <Modal
@@ -135,7 +140,7 @@ export default function SheetFrame({
         >
           <Animated.View
             entering={entering}
-            style={[isSheet ? styles.sheetWrap : styles.dialogWrap, { maxHeight: available }, dragStyle]}
+            style={[wrapStyle, { maxHeight: available }, dragStyle]}
           >
             <ScrollView
               ref={scrollRef}
@@ -180,7 +185,10 @@ const styles = StyleSheet.create({
   backdropSheet: { justifyContent: 'flex-end' },
   backdropDialog: { justifyContent: 'center', paddingHorizontal: DIALOG_MARGIN },
   sheetWrap: { width: '100%', maxWidth: 600, alignSelf: 'center' },
-  dialogWrap: { width: '100%', maxWidth: 440, alignSelf: 'center' },
+  // The rounded clip and the shadow live on this wrapper, not on the card: the
+  // ScrollView around the card clipped the card's own shadow to a square,
+  // which showed as faint corners behind the rounded card.
+  dialogWrap: { width: '100%', maxWidth: 440, alignSelf: 'center', borderRadius: 24, overflow: 'hidden', elevation: 16 },
   scroll: { flexGrow: 0 },
   sheet: {
     width: '100%',
@@ -197,7 +205,6 @@ const styles = StyleSheet.create({
   dialog: {
     width: '100%',
     borderRadius: 24,
-    elevation: 16,
   },
   gripArea: { alignItems: 'center', paddingTop: 10, paddingBottom: 6, marginHorizontal: -24 },
   grip: { width: 36, height: 4, borderRadius: 2 },
