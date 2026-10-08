@@ -17,7 +17,7 @@
  */
 
 import { useThemedStyles, type Palette as ThemePalette } from '../../../src/context/ThemeContext';
-import React from 'react';
+import React, { ReactNode } from 'react';
 import { useRetainedScroll, useRetainedState } from '../../../src/hooks/useRetainedState';
 import {
   ActivityIndicator,
@@ -57,9 +57,11 @@ interface ApplicationRow {
 
 interface SPMyJobsScreenProps {
   onNavigate: (screen: SPScreen, jobId?: string) => void;
+  /** Rendered at the right end of the title row (App puts the List/Calendar switch here). */
+  headerRight?: ReactNode;
 }
 
-export default function SPMyJobsScreen({ onNavigate }: SPMyJobsScreenProps) {
+export default function SPMyJobsScreen({ onNavigate, headerRight }: SPMyJobsScreenProps) {
   const { C, APP_STATUS, styles, V6Colors } = useThemedStyles(createThemedStyles);
   const headerTop = useHeaderTop();
   // Retained so going back from a job lands on the filter it was opened from.
@@ -100,7 +102,10 @@ export default function SPMyJobsScreen({ onNavigate }: SPMyJobsScreenProps) {
     <View style={styles.screen}>
       {/* Header — matches .topbar (flat white) */}
       <View style={[styles.header, { paddingTop: headerTop }]}>
-        <Text style={styles.headerTitle}>My Work</Text>
+        <View style={styles.headerTopRow}>
+          <Text style={styles.headerTitle}>My Work</Text>
+          {headerRight}
+        </View>
       </View>
 
       {/* Filter tabs — matches .job-tabs (underline style) */}
@@ -198,6 +203,7 @@ function createThemedStyles(theme: ThemePalette) {
       borderBottomWidth: 1, borderBottomColor: V6Colors.line,
     },
     headerTitle: { color: C.ink900, fontSize: 21.5, fontWeight: '800', fontFamily: 'Inter', letterSpacing: -0.3 },
+    headerTopRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
 
     tabsWrap: { flexDirection: 'row', gap: 24, backgroundColor: C.surface, borderBottomWidth: 1, borderBottomColor: C.line, paddingHorizontal: Spacing.screenH },
     jobTab: { paddingVertical: 13, alignItems: 'center' },

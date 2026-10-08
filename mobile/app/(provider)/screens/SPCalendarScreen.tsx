@@ -15,7 +15,7 @@
  */
 
 import { useThemedStyles, type Palette as ThemePalette } from '../../../src/context/ThemeContext';
-import React, { useMemo, useState } from 'react';
+import React, { ReactNode, useMemo, useState } from 'react';
 import { ActivityIndicator, ScrollView, StyleSheet, Text, View } from 'react-native';
 import Tap from '../../../src/components/ui/Tap';
 import ContentSkeleton from '../../../src/components/ui/ContentSkeleton';
@@ -36,9 +36,13 @@ import { SPScreen } from '../../../src/types/navigation';
 
 interface SPCalendarScreenProps {
   onNavigate?: (screen: SPScreen, jobId?: string) => void;
+  /** Screen title. My Work passes its own title so it doesn't change when the view switches. */
+  title?: string;
+  /** Rendered at the right end of the title row (App puts the List/Calendar switch here). */
+  headerRight?: ReactNode;
 }
 
-export default function SPCalendarScreen({ onNavigate }: SPCalendarScreenProps) {
+export default function SPCalendarScreen({ onNavigate, title = 'Calendar', headerRight }: SPCalendarScreenProps) {
   const { C, styles, V6Colors, appearance } = useThemedStyles(createThemedStyles);
   const headerTop = useHeaderTop();
   const todayKey = (() => {
@@ -87,7 +91,10 @@ export default function SPCalendarScreen({ onNavigate }: SPCalendarScreenProps) 
     <View style={styles.screen}>
       {/* Header — matches .topbar (flat white) */}
       <View style={[styles.header, { paddingTop: headerTop }]}>
-        <Text style={styles.headerTitle}>Calendar</Text>
+        <View style={styles.headerTopRow}>
+          <Text style={styles.headerTitle}>{title}</Text>
+          {headerRight}
+        </View>
       </View>
 
       <ScrollView style={styles.body} contentContainerStyle={styles.bodyContent} showsVerticalScrollIndicator={false}>
@@ -189,6 +196,7 @@ function createThemedStyles(theme: ThemePalette) {
       borderBottomWidth: 1, borderBottomColor: V6Colors.line,
     },
     headerTitle: { color: C.ink900, fontSize: 21.5, fontWeight: '800', fontFamily: 'Inter', letterSpacing: -0.3 },
+    headerTopRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
 
     body: { flex: 1 },
     bodyContent: { paddingHorizontal: Spacing.screenH, paddingTop: 16, paddingBottom: 20 },

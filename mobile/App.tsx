@@ -32,7 +32,7 @@ if (__DEV__) {
 }
 import * as ExpoSplashScreen from 'expo-splash-screen';
 import * as WebBrowser from 'expo-web-browser';
-import { CalendarDays, ClipboardList, Home, Search, Wallet } from 'lucide-react-native';
+import { ClipboardList, Home, Search, Wallet } from 'lucide-react-native';
 import RootLayout from './app/layout';
 
 // ── Auth screens ──────────────────────────────────────────────────────────────
@@ -85,6 +85,7 @@ import ScreenFrame from './src/components/ScreenFrame';
 
 import { ToastHost, showToast } from './src/components/Toast';
 import ScreenTransition, { useTransitionDirection } from './src/components/ui/ScreenTransition';
+import ViewSwitch from './src/components/ui/ViewSwitch';
 import { clearRetainedState } from './src/hooks/useRetainedState';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -100,19 +101,25 @@ import { resolveNotificationTarget } from './src/lib/notificationRouting';
 const HOMEOWNER_TABS: readonly BottomNavItem<HOScreen>[] = [
   { key: 'Home', label: 'Home', icon: Home },
   { key: 'My Jobs', label: 'My Jobs', icon: ClipboardList },
-  { key: 'Calendar', label: 'Calendar', icon: CalendarDays },
   { key: 'Wallet', label: 'Wallet', icon: Wallet },
 ];
 
-// Matches the mockup's sp-dashboard nav exactly: 4 plain tabs, no FAB (providers
-// browse/claim jobs, they don't post them) and no Profile tab (reached via the
-// avatar button in Feed's header instead, same pattern as the homeowner side).
+// Plain tabs and no floating button: providers browse and claim jobs, they
+// don't post them. Calendar is a view of My Work (see JobsView below).
 const PROVIDER_TABS: readonly BottomNavItem<SPScreen>[] = [
   { key: 'Dashboard', label: 'Feed', icon: Search },
   { key: 'My Jobs', label: 'My Work', icon: ClipboardList },
-  { key: 'Calendar', label: 'Calendar', icon: CalendarDays },
   { key: 'Wallet', label: 'Wallet', icon: Wallet },
 ];
+
+// My Jobs / My Work show the job list, or the calendar behind the List/Calendar
+// switch. Calendar is not a tab: navigating to 'Calendar' opens My Jobs / My
+// Work in calendar view. The view survives tab switches and resets on logout.
+type JobsView = 'list' | 'calendar';
+const JOBS_VIEW_OPTIONS = [
+  { key: 'list', label: 'List' },
+  { key: 'calendar', label: 'Calendar' },
+] as const;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Root app state
@@ -160,9 +167,11 @@ function AppContent() {
     setHOTab('Home');
     setHOScreen('Home');
     setHOStack([]);
+    setHOJobsView('list');
     setSPTab('Dashboard');
     setSPScreen('Dashboard');
     setSPStack([]);
+    setSPJobsView('list');
   };
 
   // ── HO navigation state ───────────────────────────────────────────────────
@@ -170,6 +179,7 @@ function AppContent() {
   const [hoScreen, setHOScreen] = useState<HOScreen>('Home'); // for non-tab sub-screens
   const [hoSelectedId, setHOSelectedId] = useState<string | null>(null); // selected job/provider context
   const [hoStack, setHOStack] = useState<HOStackEntry[]>([]); // non-tab screens navigated away from
+  const [hoJobsView, setHOJobsView] = useState<JobsView>('list'); // My Jobs: list or calendar
 
   // ── SP navigation state ───────────────────────────────────────────────────
   const [spTab, setSPTab] = useState<SPScreen>('Dashboard');
@@ -177,9 +187,10 @@ function AppContent() {
   const [spUrgentJob, setSPUrgentJob] = useState(false);
   const [spJobId, setSPJobId] = useState<string | null>(null);
   const [spStack, setSPStack] = useState<SPStackEntry[]>([]); // non-tab screens navigated away from
+  const [spJobsView, setSPJobsView] = useState<JobsView>('list'); // My Work: list or calendar
 
-  const HO_TAB_SCREENS: HOScreen[] = ['Home', 'My Jobs', 'Calendar', 'Wallet'];
-  const SP_TAB_SCREENS: SPScreen[] = ['Dashboard', 'My Jobs', 'Calendar', 'Wallet'];
+  const HO_TAB_SCREENS: HOScreen[] = ['Home', 'My Jobs', 'Wallet'];
+  const SP_TAB_SCREENS: SPScreen[] = ['Dashboard', 'My Jobs', 'Wallet'];
 
   // ── HO helpers ────────────────────────────────────────────────────────────
   // Jumping to a tab is a "root" navigation — it clears the back stack rather
@@ -188,6 +199,12 @@ function AppContent() {
   // "My Jobs" → New → back returns to My Jobs, not Home), and its own
   // onBack/onSuccess handlers land it on the right tab when the flow ends.
   const hoNavigate = (screen: HOScreen, id?: string) => {
+    // Calendar is a view of My Jobs, not a tab of its own.
+    if (screen === 'Calendar') {
+      setHOJobsView('calendar');
+      hoNavigate('My Jobs', id);
+      return;
+    }
     if (HO_TAB_SCREENS.includes(screen)) {
       setHOStack([]);
       setHOTab(screen);
@@ -225,6 +242,12 @@ function AppContent() {
 
   // ── SP helpers ────────────────────────────────────────────────────────────
   const spNavigate = (screen: SPScreen, jobId?: string) => {
+    // Calendar is a view of My Work, not a tab of its own.
+    if (screen === 'Calendar') {
+      setSPJobsView('calendar');
+      spNavigate('My Jobs', jobId);
+      return;
+    }
     if (SP_TAB_SCREENS.includes(screen)) {
       setSPStack([]);
       setSPUrgentJob(false);
@@ -680,15 +703,20 @@ function AppContent() {
       );
     }
 
+    // The List/Calendar switch sits at the right end of the My Jobs title row.
+    const hoJobsSwitch = (
+      <ViewSwitch options={JOBS_VIEW_OPTIONS} value={hoJobsView} onChange={setHOJobsView} />
+    );
+
     // Tab screens (with bottom nav)
     const renderHOTabContent = () => {
       switch (hoTab) {
         case 'Home':
           return <HOHomeScreen onNavigate={hoNavigate} />;
         case 'My Jobs':
-          return <MyJobs onNavigate={hoNavigate} />;
-        case 'Calendar':
-          return <HOCalendarScreen onNavigate={hoNavigate} />;
+          return hoJobsView === 'calendar'
+            ? <HOCalendarScreen title="My Jobs" headerRight={hoJobsSwitch} onNavigate={hoNavigate} />
+            : <MyJobs headerRight={hoJobsSwitch} onNavigate={hoNavigate} />;
         case 'Wallet':
           return <HOWalletScreen />;
         default:
@@ -836,15 +864,20 @@ function AppContent() {
     );
   }
 
+  // The List/Calendar switch sits at the right end of the My Work title row.
+  const spJobsSwitch = (
+    <ViewSwitch options={JOBS_VIEW_OPTIONS} value={spJobsView} onChange={setSPJobsView} />
+  );
+
   // Tab screens (with bottom nav)
   const renderSPTabContent = () => {
     switch (spTab) {
       case 'Dashboard':
         return <SPHomeScreen onNavigate={spNavigate} />;
       case 'My Jobs':
-        return <SPMyJobsScreen onNavigate={spNavigate} />;
-      case 'Calendar':
-        return <SPCalendarScreen onNavigate={spNavigate} />;
+        return spJobsView === 'calendar'
+          ? <SPCalendarScreen title="My Work" headerRight={spJobsSwitch} onNavigate={spNavigate} />
+          : <SPMyJobsScreen headerRight={spJobsSwitch} onNavigate={spNavigate} />;
       case 'Wallet':
         return <SPWalletScreen />;
       default:

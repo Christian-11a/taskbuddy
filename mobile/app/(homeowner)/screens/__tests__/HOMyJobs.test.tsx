@@ -11,6 +11,7 @@ import MyJobs from '../HOMyJobs';
 import { api } from '../../../../src/lib/api';
 import { clearAsyncDataCache } from '../../../../src/hooks/useAsyncData';
 import { clearRetainedState } from '../../../../src/hooks/useRetainedState';
+import ViewSwitch from '../../../../src/components/ui/ViewSwitch';
 jest.mock('../../../../src/context/AuthContext', () => ({
   useAuth: () => ({ profile: { id: 'client' } }),
 }));
@@ -118,4 +119,24 @@ it('shows loading and errors, and retries without losing filters', async () => {
   fireEvent.press(screen.getByText('Try again'));
   await screen.findByText('Open plumbing job');
   expect(screen.queryByText('Unable to load jobs')).toBeNull();
+});
+it('renders the headerRight switch in the title row and forwards its presses', async () => {
+  const onChange = jest.fn();
+  render(
+    <MyJobs
+      onNavigate={jest.fn()}
+      headerRight={
+        <ViewSwitch
+          options={[{ key: 'list', label: 'List' }, { key: 'calendar', label: 'Calendar' }] as const}
+          value="list"
+          onChange={onChange}
+        />
+      }
+    />,
+  );
+  await screen.findByText('Open plumbing job');
+  expect(screen.getByText('My Jobs')).toBeTruthy();
+  expect(screen.getByText('New')).toBeTruthy();
+  fireEvent.press(screen.getByRole('tab', { name: 'Calendar' }));
+  expect(onChange).toHaveBeenCalledWith('calendar');
 });

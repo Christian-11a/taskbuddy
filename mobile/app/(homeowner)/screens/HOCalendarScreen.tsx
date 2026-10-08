@@ -8,7 +8,7 @@
  */
 
 import { useThemedStyles, type Palette as ThemePalette } from '../../../src/context/ThemeContext';
-import React, { useMemo, useState } from 'react';
+import React, { ReactNode, useMemo, useState } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import Tap from '../../../src/components/ui/Tap';
 import { Calendar } from 'react-native-calendars';
@@ -29,9 +29,13 @@ import { useHeaderTop } from '../../../src/hooks/useHeaderTop';
 
 interface HOCalendarScreenProps {
   onNavigate: (screen: HOScreen, jobId?: string) => void;
+  /** Screen title. My Jobs passes its own title so it doesn't change when the view switches. */
+  title?: string;
+  /** Rendered at the right end of the title row (App puts the List/Calendar switch here). */
+  headerRight?: ReactNode;
 }
 
-export default function HOCalendarScreen({ onNavigate }: HOCalendarScreenProps) {
+export default function HOCalendarScreen({ onNavigate, title = 'Calendar', headerRight }: HOCalendarScreenProps) {
   const { C, styles, V6Colors, appearance } = useThemedStyles(createThemedStyles);
   const headerTop = useHeaderTop();
   const todayKey = (() => {
@@ -78,14 +82,30 @@ export default function HOCalendarScreen({ onNavigate }: HOCalendarScreenProps) 
     });
   }, [jobs, selectedDate]);
 
-  if (loading) return <ScreenSkeleton variant="list" />;
+  // The title row stays up while jobs load, so switching views from the list
+  // doesn't blank the header or the List/Calendar switch.
+  const header = (
+    <View style={[styles.header, { paddingTop: headerTop }]}>
+      <View style={styles.headerTopRow}>
+        <Text style={styles.headerTitle}>{title}</Text>
+        {headerRight}
+      </View>
+    </View>
+  );
+
+  if (loading) {
+    return (
+      <View style={styles.screen}>
+        {header}
+        <ScreenSkeleton variant="list" />
+      </View>
+    );
+  }
 
   return (
     <View style={styles.screen}>
       {/* Header — matches .topbar */}
-      <View style={[styles.header, { paddingTop: headerTop }]}>
-        <Text style={styles.headerTitle}>Calendar</Text>
-      </View>
+      {header}
 
       <ScrollView
         style={styles.body}
@@ -187,6 +207,7 @@ function createThemedStyles(theme: ThemePalette) {
       borderBottomColor: V6Colors.line,
     },
     headerTitle: { color: C.ink900, fontSize: 21.5, fontWeight: '800', fontFamily: 'Inter', letterSpacing: -0.3 },
+    headerTopRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
 
     body: { flex: 1 },
     bodyContent: { paddingHorizontal: Spacing.screenH, paddingTop: 16, paddingBottom: 20 },

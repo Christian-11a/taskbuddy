@@ -16,7 +16,7 @@
  */
 
 import { useThemedStyles, type Palette as ThemePalette } from '../../../src/context/ThemeContext';
-import React from 'react';
+import React, { ReactNode } from 'react';
 import { useRetainedScroll, useRetainedState } from '../../../src/hooks/useRetainedState';
 import {
   ScrollView,
@@ -44,9 +44,11 @@ type FilterTab = (typeof FILTER_TABS)[number];
 
 interface MyJobsProps {
   onNavigate: (screen: HOScreen, jobId?: string) => void;
+  /** Rendered at the right end of the title row (App puts the List/Calendar switch here). */
+  headerRight?: ReactNode;
 }
 
-export default function MyJobs({ onNavigate }: MyJobsProps) {
+export default function MyJobs({ onNavigate, headerRight }: MyJobsProps) {
   const { C, styles, V6Colors } = useThemedStyles(createThemedStyles);
   const headerTop = useHeaderTop();
   const [activeFilter, setActiveFilter] = useRetainedState<FilterTab>('ho.myJobs.filter', 'All');
@@ -67,14 +69,17 @@ export default function MyJobs({ onNavigate }: MyJobsProps) {
       <View style={[styles.header, { paddingTop: headerTop }]}>
         <View style={styles.headerTopRow}>
           <Text style={styles.headerTitle}>My Jobs</Text>
-          <Tap
-            style={styles.newBtn}
-            onPress={() => onNavigate('Create Job')}
-            activeOpacity={0.8}
-          >
-            <Plus size={15} color={V6Colors.link} strokeWidth={2.5} />
-            <Text style={styles.newBtnText}>New</Text>
-          </Tap>
+          <View style={styles.headerActions}>
+            <Tap
+              style={styles.newBtn}
+              onPress={() => onNavigate('Create Job')}
+              activeOpacity={0.8}
+            >
+              <Plus size={15} color={V6Colors.link} strokeWidth={2.5} />
+              <Text style={styles.newBtnText}>New</Text>
+            </Tap>
+            {headerRight}
+          </View>
         </View>
       </View>
 
@@ -193,6 +198,7 @@ function createThemedStyles(theme: ThemePalette) {
       paddingVertical: 6, paddingHorizontal: 4,
     },
     newBtnText: { color: V6Colors.link, fontWeight: '700', fontSize: 14.5, fontFamily: 'Inter' },
+    headerActions: { flexDirection: 'row', alignItems: 'center', gap: 12 },
 
     tabsWrap: { backgroundColor: C.surface, borderBottomWidth: 1, borderBottomColor: C.line, paddingHorizontal: Spacing.screenH },
     tabsContent: { gap: 24, paddingRight: Spacing.screenH },
