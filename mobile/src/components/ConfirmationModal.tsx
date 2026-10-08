@@ -21,9 +21,9 @@ interface ConfirmationModalProps {
 }
 
 /**
- * Reusable confirmation for actions that require an explicit user choice.
- * Opens as a bottom sheet. Back, drag down and a backdrop tap all cancel, and
- * all three are locked while `busy`.
+ * Reusable confirmation for short yes/no questions with no fields. Opens as a
+ * centered dialog. Back and a backdrop tap cancel, and both are locked while
+ * `busy`. Anything with fields or choices belongs in a bottom sheet instead.
  */
 export default function ConfirmationModal({
   visible, title, message, confirmLabel = 'Confirm', cancelLabel = 'Cancel', busy = false, destructive = false, icon, onConfirm, onCancel,
@@ -32,7 +32,7 @@ export default function ConfirmationModal({
   const tone = destructive ? tones.destructive : tones.default;
   const Icon = icon ?? (destructive ? Trash2 : ShieldCheck);
   return (
-    <SheetFrame visible={visible} onClose={busy ? undefined : onCancel} variant="sheet" contentStyle={styles.sheet} cardProps={{ accessibilityRole: 'alert' }}>
+    <SheetFrame visible={visible} onClose={busy ? undefined : onCancel} variant="dialog" contentStyle={styles.dialog} cardProps={{ accessibilityRole: 'alert' }}>
       <View style={[styles.iconCircle, { backgroundColor: tone.surface }]} testID="confirm-icon-circle">
         <Icon size={22} color={tone.icon} />
       </View>
@@ -68,14 +68,18 @@ export default function ConfirmationModal({
 function createThemedStyles(theme: ThemePalette) {
   const { Colors, V6Colors } = theme;
   const styles = StyleSheet.create({
-    // Padding top is 0 because SheetFrame draws the grip above the content.
-    sheet: { gap: 14, paddingHorizontal: 20 },
+    // Centered dialog (no grip), so the padding is even on all sides.
+    dialog: { gap: 14, padding: 24 },
     iconCircle: {
-      width: 48, height: 48, borderRadius: 24, alignSelf: 'flex-start',
+      width: 48, height: 48, borderRadius: 24, alignSelf: 'center',
       alignItems: 'center', justifyContent: 'center',
     },
-    title: { fontFamily: 'Inter', fontSize: 20, fontWeight: '700', lineHeight: 26, color: V6Colors.ink900 },
-    message: { fontFamily: 'Inter', fontSize: 15, fontWeight: '400', lineHeight: 22, color: V6Colors.ink700 },
+    title: {
+      fontFamily: 'Inter', fontSize: 20, fontWeight: '700', lineHeight: 26, textAlign: 'center', color: V6Colors.ink900,
+    },
+    message: {
+      fontFamily: 'Inter', fontSize: 15, fontWeight: '400', lineHeight: 22, textAlign: 'center', color: V6Colors.ink700,
+    },
     // Visible height is 46; the 1 dp hitSlop above and below brings the touch area to 48.
     confirmButton: {
       height: 46, borderRadius: 16, alignItems: 'center', justifyContent: 'center', backgroundColor: Colors.primary,

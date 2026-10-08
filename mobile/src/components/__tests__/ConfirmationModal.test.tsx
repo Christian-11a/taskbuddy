@@ -1,8 +1,9 @@
 import React from 'react';
-import { Modal } from 'react-native';
+import { Modal, StyleSheet } from 'react-native';
 import { fireEvent, render, screen } from '@testing-library/react-native';
 import type { LucideIcon } from 'lucide-react-native';
 import ConfirmationModal from '../ConfirmationModal';
+import SheetFrame from '../ui/SheetFrame';
 
 describe('ConfirmationModal', () => {
   it('shows the title and message, and calls onConfirm when the confirm button is pressed', () => {
@@ -141,5 +142,81 @@ describe('ConfirmationModal', () => {
     );
 
     expect(CustomIcon).toHaveBeenCalled();
+  });
+
+  it('opens as a centered dialog, not a bottom sheet', () => {
+    render(
+      <ConfirmationModal
+        visible
+        title="Discard changes?"
+        message="Your draft will be lost."
+        onConfirm={jest.fn()}
+        onCancel={jest.fn()}
+      />,
+    );
+
+    expect(screen.UNSAFE_getByType(SheetFrame).props.variant).toBe('dialog');
+  });
+
+  it('centers the icon, title, message and cancel link', () => {
+    render(
+      <ConfirmationModal
+        visible
+        title="Discard changes?"
+        message="Your draft will be lost."
+        onConfirm={jest.fn()}
+        onCancel={jest.fn()}
+      />,
+    );
+
+    expect(StyleSheet.flatten(screen.getByTestId('confirm-icon-circle').props.style).alignSelf).toBe('center');
+    expect(StyleSheet.flatten(screen.getByText('Discard changes?').props.style).textAlign).toBe('center');
+    expect(StyleSheet.flatten(screen.getByText('Your draft will be lost.').props.style).textAlign).toBe('center');
+    expect(StyleSheet.flatten(screen.getByLabelText('Cancel').props.style).alignSelf).toBe('center');
+  });
+
+  it('pads the card 24 with a 14 gap between its rows', () => {
+    render(
+      <ConfirmationModal
+        visible
+        title="Discard changes?"
+        message="Your draft will be lost."
+        onConfirm={jest.fn()}
+        onCancel={jest.fn()}
+      />,
+    );
+
+    expect(StyleSheet.flatten(screen.getByRole('alert').props.style)).toEqual(
+      expect.objectContaining({ padding: 24, gap: 14 }),
+    );
+  });
+
+  it('wires the backdrop tap to onCancel, and removes it while busy', () => {
+    const onCancel = jest.fn();
+    const { rerender } = render(
+      <ConfirmationModal
+        visible
+        title="Discard changes?"
+        message="Your draft will be lost."
+        onConfirm={jest.fn()}
+        onCancel={onCancel}
+      />,
+    );
+
+    screen.UNSAFE_getByType(SheetFrame).props.onClose?.();
+    expect(onCancel).toHaveBeenCalledTimes(1);
+
+    rerender(
+      <ConfirmationModal
+        visible
+        busy
+        title="Discard changes?"
+        message="Your draft will be lost."
+        onConfirm={jest.fn()}
+        onCancel={onCancel}
+      />,
+    );
+
+    expect(screen.UNSAFE_getByType(SheetFrame).props.onClose).toBeUndefined();
   });
 });
