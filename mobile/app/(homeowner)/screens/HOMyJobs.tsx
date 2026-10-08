@@ -32,7 +32,7 @@ import { useAsyncData } from '../../../src/hooks/useAsyncData';
 import { useRetainedScroll, useRetainedState } from '../../../src/hooks/useRetainedState';
 import { useHeaderTop } from '../../../src/hooks/useHeaderTop';
 import { useProposalCounts } from '../../../src/hooks/useProposalCounts';
-import { api, type Job } from '../../../src/lib/api';
+import { api } from '../../../src/lib/api';
 import { peso } from '../../../src/lib/format';
 import { jobRowStatus } from '../../../src/lib/jobRowStatus';
 import {
