@@ -34,7 +34,7 @@ describe('HOHomeScreen — empty state does not flash while jobs are still loadi
     (api.unreadNotificationCount as jest.Mock).mockResolvedValue({ count: 0 });
   });
 
-  it('does not show "Need something done?" while only the jobs request is still pending', async () => {
+  it('does not show "No active jobs" while only the jobs request is still pending', async () => {
     // Never resolves during this test — jobs.loading stays true while the
     // other three requests above resolve, so the whole-screen skeleton
     // (which requires ALL four loading) is no longer showing.
@@ -45,15 +45,15 @@ describe('HOHomeScreen — empty state does not flash while jobs are still loadi
     // Wait for the other three requests to settle and the main content to render.
     await waitFor(() => expect(screen.getByText('Alex')).toBeTruthy());
 
-    expect(screen.queryByText('Need something done?')).toBeNull();
+    expect(screen.queryByText('No active jobs')).toBeNull();
   });
 
-  it('shows "Need something done?" once jobs have actually loaded with none active', async () => {
+  it('shows "No active jobs" once jobs have actually loaded with none active', async () => {
     (api.myJobs as jest.Mock).mockResolvedValue([]);
 
     render(<HOHomeScreen onNavigate={jest.fn()} />);
 
-    await waitFor(() => expect(screen.getByText('Need something done?')).toBeTruthy());
+    await waitFor(() => expect(screen.getByText('No active jobs')).toBeTruthy());
   });
 });
 
@@ -185,9 +185,72 @@ describe('HOHomeScreen — hero card shows the one job that needs you', () => {
     (api.jobApplications as jest.Mock).mockRejectedValue(new Error('offline'));
     render(<HOHomeScreen onNavigate={jest.fn()} />);
 
-    expect(await screen.findByText('Find a service')).toBeTruthy();
+    expect(await screen.findByText('Book a service')).toBeTruthy();
     await waitFor(() => expect(api.jobApplications).toHaveBeenCalledWith('job-open'));
     expect(screen.queryByText(/proposals? waiting/)).toBeNull();
     expect(screen.queryByText('Next booking')).toBeNull();
+  });
+});
+
+describe('HOHomeScreen — field, service chips, active jobs and wallet chip', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    (useAuth as jest.Mock).mockReturnValue({ profile: { full_name: 'Alex', city: null, address: null } });
+    (api.wallet as jest.Mock).mockResolvedValue({ balance: 8397, available: 8397, held: 0 });
+    (api.categories as jest.Mock).mockResolvedValue([{ id: 2, name: 'Cleaning' }]);
+    (api.notifications as jest.Mock).mockResolvedValue([]);
+    (api.unreadNotificationCount as jest.Mock).mockResolvedValue({ count: 0 });
+    (api.jobApplications as jest.Mock).mockResolvedValue([]);
+  });
+
+  it('opens the job form with no category from "What do you need done?"', async () => {
+    (api.myJobs as jest.Mock).mockResolvedValue([]);
+    const onNavigate = jest.fn();
+    render(<HOHomeScreen onNavigate={onNavigate} />);
+
+    fireEvent.press(await screen.findByLabelText('What do you need done?'));
+    expect(onNavigate).toHaveBeenCalledWith('Create Job');
+  });
+
+  it('opens the job form with that category picked from a service chip', async () => {
+    (api.myJobs as jest.Mock).mockResolvedValue([]);
+    const onNavigate = jest.fn();
+    render(<HOHomeScreen onNavigate={onNavigate} />);
+
+    fireEvent.press(await screen.findByLabelText('Book Cleaning'));
+    expect(onNavigate).toHaveBeenCalledWith('Create Job', '2');
+  });
+
+  it('lists active jobs with their status and amount, and opens the job', async () => {
+    (api.myJobs as jest.Mock).mockResolvedValue([
+      { ...OPEN_JOB, id: 'job-booked', title: 'Plumbing: Fix toilet', status: 'confirmed', budget: 1200, scheduled_at: '2020-01-05T09:00:00+08:00' },
+      { ...OPEN_JOB, id: 'job-progress', title: 'Handyman: Hang shelf', status: 'in_progress', budget: null, scheduled_at: null },
+    ]);
+    const onNavigate = jest.fn();
+    render(<HOHomeScreen onNavigate={onNavigate} />);
+
+    expect(await screen.findByText('Plumbing: Fix toilet')).toBeTruthy();
+    expect(screen.getByText('Confirmed')).toBeTruthy();
+    expect(screen.getByText('In progress')).toBeTruthy();
+    expect(screen.getByText('₱1,200.00')).toBeTruthy();
+    fireEvent.press(screen.getByTestId('home-job-job-booked'));
+    expect(onNavigate).toHaveBeenCalledWith('Job Detail', 'job-booked');
+  });
+
+  it('says an open job with no proposals is waiting for offers', async () => {
+    (api.myJobs as jest.Mock).mockResolvedValue([OPEN_JOB]);
+    render(<HOHomeScreen onNavigate={jest.fn()} />);
+
+    expect(await screen.findByText('Open · waiting for offers')).toBeTruthy();
+  });
+
+  it('shows the wallet balance in the header and opens Wallet from the chip', async () => {
+    (api.myJobs as jest.Mock).mockResolvedValue([]);
+    const onNavigate = jest.fn();
+    render(<HOHomeScreen onNavigate={onNavigate} />);
+
+    expect(await screen.findByText('₱8,397.00')).toBeTruthy();
+    fireEvent.press(screen.getByTestId('home-wallet'));
+    expect(onNavigate).toHaveBeenCalledWith('Wallet');
   });
 });

@@ -1,10 +1,12 @@
-import { useThemedStyles, type Palette as ThemePalette } from '../../../src/context/ThemeContext';
+import { useTheme, useThemedStyles, type Palette as ThemePalette } from '../../../src/context/ThemeContext';
 import { useNotifications } from '../../../src/context/NotificationsContext';
 /**
  * HOHomeScreen.tsx
  *
- * Theme C "Sky" (Figma "FINAL · Homeowner"): flat brand header with the
- * wallet balance card, five service shortcuts in one row, active jobs list.
+ * Figma "Home · final (Variation A)": a light header (avatar, greeting and
+ * name, wallet chip, bell), a "What do you need done?" field, the hero card for
+ * the one thing that needs the homeowner, service chips, and up to three
+ * active jobs.
  */
 
 import { StatusBar } from 'expo-status-bar';
@@ -18,15 +20,15 @@ import {
 import {
   ArrowRight,
   Bell,
-  BriefcaseBusiness,
   BrushCleaning,
-  CheckCircle2,
   ChevronRight,
+  ClipboardList,
   Footprints,
   Hammer,
   Hand,
-  Clock,
+  Plus,
   Sparkles,
+  Wallet,
   Wrench,
 } from 'lucide-react-native';
 import { Spacing } from '../../../src/constants/theme';
@@ -35,12 +37,21 @@ import { useAuth } from '../../../src/context/AuthContext';
 import { useAsyncData } from '../../../src/hooks/useAsyncData';
 import { useHeaderTop } from '../../../src/hooks/useHeaderTop';
 import { api, type Job } from '../../../src/lib/api';
-import { initials, jobStatusMeta, peso, shortDate } from '../../../src/lib/format';
-import { pickHomeHero, proposalCandidates, type ApplicationsByJob, type HomeHero } from '../../../src/lib/homeJobs';
+import { initials, peso } from '../../../src/lib/format';
+import {
+  pendingApplicants,
+  pickHomeHero,
+  proposalCandidates,
+  type ApplicationsByJob,
+  type HomeHero,
+} from '../../../src/lib/homeJobs';
+import { jobRowStatus } from '../../../src/lib/jobRowStatus';
 import ScreenSkeleton from '../../../src/components/ScreenSkeleton';
-import JobCard from '../../../src/components/JobCard';
 import OwnAvatar from '../../../src/components/OwnAvatar';
 import Tap from '../../../src/components/ui/Tap';
+import SectionHeader from '../../../src/components/ui/SectionHeader';
+import JobRow from '../../../src/components/ui/JobRow';
+import EmptyRow from '../../../src/components/ui/EmptyRow';
 
 const CATEGORY_ICON: Record<string, typeof Wrench> = {
   Plumbing: Wrench,
@@ -58,11 +69,8 @@ const ACTIVE_STATUSES = [
   'in_progress',
 ];
 
-const ACTIVITY_ICON: Record<string, typeof BriefcaseBusiness> = {
-  recommendation_invite: BriefcaseBusiness,
-  application_update: CheckCircle2,
-  job_update: BriefcaseBusiness,
-};
+/** How many active jobs the Home list shows; the section count shows them all. */
+const ACTIVE_LIST_LIMIT = 3;
 
 /**
  * Pending-proposal lookups for the open jobs Home checks. They run after the
@@ -178,7 +186,8 @@ function HomeHeroCard({ hero, onNavigate }: { hero: HomeHero; onNavigate: HOHome
 }
 
 export default function HOHomeScreen({ onNavigate }: HOHomeScreenProps) {
-  const { C, styles } = useThemedStyles(createThemedStyles);
+  const { Colors, C, styles } = useThemedStyles(createThemedStyles);
+  const { dark } = useTheme();
   const headerTop = useHeaderTop();
   const { profile } = useAuth();
   const wallet = useAsyncData(() => api.wallet(), [], 'ho-home-wallet');
@@ -200,15 +209,16 @@ export default function HOHomeScreen({ onNavigate }: HOHomeScreenProps) {
     return () => { active = false; };
   }, [jobs.data]);
 
-  // The hero waits for the lookups made for the jobs it is computed from, so a
-  // booking never flashes up in place of a proposal that is still being checked.
-  const hero = jobs.data && proposalLookup.jobs === jobs.data
-    ? pickHomeHero(jobs.data, proposalLookup.byJob, new Date())
-    : null;
+  // The hero and the proposal counts on job rows wait for the lookups made for
+  // the jobs they are computed from, so nothing flips from "waiting" to "to
+  // review" while a lookup for the same list is still in flight.
+  const proposalsReady = jobs.data !== null && proposalLookup.jobs === jobs.data;
+  const hero = proposalsReady && jobs.data ? pickHomeHero(jobs.data, proposalLookup.byJob, new Date()) : null;
+  const pendingCountFor = (jobId: string): number | undefined =>
+    proposalsReady ? pendingApplicants(proposalLookup.byJob[jobId]).length : undefined;
 
   const name = profile?.full_name ?? '';
   const activeJobs = (jobs.data ?? []).filter((j) => ACTIVE_STATUSES.includes(j.status));
-  const recentActivity = notifications.notifications.slice(0, 3);
   const unread = notifications.unreadCount;
   const hour = new Date().getHours();
   const greeting = hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening';
@@ -219,15 +229,30 @@ export default function HOHomeScreen({ onNavigate }: HOHomeScreenProps) {
 
   return (
     <View style={styles.screen}>
-      <StatusBar style="light" />
+      <StatusBar style={dark ? 'light' : 'dark'} />
       <ScrollView
         style={styles.flex}
         showsVerticalScrollIndicator={false}
       >
-        {/* Hero — flat brand header, rounded bottom corners. */}
-        <View style={[styles.hero, { paddingTop: headerTop }]}>
-          <View style={styles.heroTopRow}>
-            <View testID="hero-text" style={styles.heroText}>
+        {/* Header: the avatar opens Profile, the wallet chip opens Wallet, the bell opens Notifications. */}
+        <View style={[styles.header, { paddingTop: headerTop }]}>
+          <View style={styles.headerRow}>
+            <Tap
+              testID="btn-home-avatar"
+              style={styles.avatar}
+              hitSlop={4}
+              accessibilityRole="button"
+              accessibilityLabel="Profile"
+              onPress={() => onNavigate('Profile')}
+            >
+              {profile?.avatar_url || !name ? (
+                <OwnAvatar name={name} textStyle={styles.avatarText} />
+              ) : (
+                <Text style={styles.avatarText}>{initials(name)}</Text>
+              )}
+            </Tap>
+            {/* The name column yields to the actions, never the other way round: a long name truncates. */}
+            <View testID="hero-text" style={styles.greetingColumn}>
               <Text style={styles.greeting}>{greeting}</Text>
               <Text
                 style={styles.userName}
@@ -238,172 +263,129 @@ export default function HOHomeScreen({ onNavigate }: HOHomeScreenProps) {
                 {name || 'there'}
               </Text>
             </View>
-            <View testID="hero-actions" style={styles.heroActions}>
+            <View testID="hero-actions" style={styles.headerActions}>
+              <Tap
+                testID="home-wallet"
+                style={styles.walletChip}
+                hitSlop={6}
+                accessibilityRole="button"
+                accessibilityLabel={wallet.data ? `Wallet, balance ${peso(wallet.data.balance)}` : 'Wallet'}
+                onPress={() => onNavigate('Wallet')}
+              >
+                <Wallet size={16} color={Colors.link} strokeWidth={2.2} />
+                <Text style={styles.walletAmount} numberOfLines={1}>
+                  {wallet.data ? peso(wallet.data.balance) : '—'}
+                </Text>
+              </Tap>
               <View>
                 <Tap
-                  style={styles.iconBtn}
-                  rippleColor={C.rippleOnHero}
+                  style={styles.bell}
+                  hitSlop={2}
                   accessibilityRole="button"
                   accessibilityLabel={unread > 0 ? `Notifications, ${unread} unread` : 'Notifications'}
                   onPress={() => onNavigate('Notifications')}
                 >
-                  <Bell size={21} color={C.onPrimary} strokeWidth={2.2} />
+                  <Bell size={20} color={C.ink900} strokeWidth={2.2} />
                 </Tap>
                 {unread > 0 && (
-                  <View pointerEvents="none" style={styles.notifBadge}>
-                    <Text style={styles.notifBadgeText} maxFontSizeMultiplier={1.2}>{unread > 99 ? '99+' : unread}</Text>
+                  <View pointerEvents="none" style={styles.bellBadge}>
+                    <Text style={styles.bellBadgeText} maxFontSizeMultiplier={1.2}>{unread > 99 ? '99+' : unread}</Text>
                   </View>
                 )}
               </View>
-              <Tap
-                testID="btn-home-avatar"
-                style={styles.avatarCircle}
-                rippleColor={C.rippleOnHero}
-                accessibilityRole="button"
-                accessibilityLabel="Profile"
-                onPress={() => onNavigate('Profile')}
-              >
-                <OwnAvatar name={name} textStyle={styles.avatarText} />
-              </Tap>
             </View>
           </View>
-
-          <View style={styles.balanceStrip}>
-            <View style={styles.balanceCopy}>
-              <Text style={styles.balanceLabel}>Wallet balance</Text>
-              {wallet.error ? (
-                <WidgetError message="Couldn't load your wallet" onRetry={wallet.reload} />
-              ) : (
-                <Text style={styles.balanceAmount} numberOfLines={1} adjustsFontSizeToFit>
-                  {wallet.data ? peso(wallet.data.balance) : '—'}
-                </Text>
-              )}
-            </View>
-            <Tap style={styles.manageBtn} scale onPress={() => onNavigate('Wallet')} accessibilityRole="button">
-              <Text style={styles.manageLink}>Manage wallet</Text>
-            </Tap>
-          </View>
+          {wallet.error && <WidgetError message="Couldn't load your wallet" onRetry={wallet.reload} />}
         </View>
 
         {/* Body */}
         <View style={styles.body}>
+          {/* What do you need done? opens the job form with no category, as My Jobs' "New" does. */}
+          <Tap
+            testID="home-post-job"
+            style={styles.askField}
+            scale
+            accessibilityRole="button"
+            accessibilityLabel="What do you need done?"
+            accessibilityHint="Opens the new job form"
+            onPress={() => onNavigate('Create Job')}
+          >
+            <View style={styles.askPlus}>
+              <Plus size={18} color={Colors.onPrimary} strokeWidth={2.4} />
+            </View>
+            <Text style={styles.askText} numberOfLines={1}>What do you need done?</Text>
+            <ChevronRight size={18} color={C.ink500} />
+          </Tap>
+
           {hero && <HomeHeroCard hero={hero} onNavigate={onNavigate} />}
 
-          {/* Find a service */}
-          <View style={styles.section}>
-            <View style={styles.sectionHead}>
-              <Text style={styles.sectionTitle}>Find a service</Text>
-            </View>
-            <View style={styles.categoryStrip}>
-              {categories.error ? (
-                <WidgetError message="Couldn't load services" onRetry={categories.reload} />
-              ) : (categories.data ?? []).map((cat) => {
+          {/* Book a service: each chip opens the job form with that category already picked. */}
+          <SectionHeader title="Book a service" />
+          {categories.error ? (
+            <WidgetError message="Couldn't load services" onRetry={categories.reload} />
+          ) : (
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              style={styles.chipScroll}
+              contentContainerStyle={styles.chipRow}
+            >
+              {(categories.data ?? []).map((cat) => {
                 const Icon = CATEGORY_ICON[cat.name] ?? Hand;
                 return (
                   <Tap
                     key={cat.id}
-                    style={styles.categoryTile}
+                    style={styles.chip}
+                    hitSlop={2}
                     accessibilityRole="button"
-                    accessibilityLabel={cat.name}
-                    // The tapped tile answers the flow's first question, so it
-                    // travels with the navigation and step 1 is skipped.
+                    accessibilityLabel={`Book ${cat.name}`}
                     onPress={() => onNavigate('Create Job', String(cat.id))}
                   >
-                    <View style={styles.categoryIconWell}>
-                      <Icon size={24} color={C.link} strokeWidth={2} />
+                    <View style={styles.chipIcon}>
+                      <Icon size={17} color={Colors.link} strokeWidth={2} />
                     </View>
-                    <Text style={styles.categoryLabel} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8}>{cat.name}</Text>
+                    <Text style={styles.chipText}>{cat.name}</Text>
                   </Tap>
                 );
               })}
-            </View>
-          </View>
+            </ScrollView>
+          )}
 
-          {/* Active Jobs */}
-          <View style={styles.sectionHead}>
-            <Text style={styles.sectionTitle}>
-              Active jobs
-              {activeJobs.length > 0 ? (
-                <Text style={styles.sectionCount}>  {activeJobs.length}</Text>
-              ) : null}
-            </Text>
-            <Tap onPress={() => onNavigate('My Jobs')} style={styles.linkBtn} hitSlop={8} accessibilityRole="button">
-              <Text style={styles.textLink}>See all</Text>
-            </Tap>
-          </View>
+          {/* Active jobs: the count covers every active job, the list shows the first few. */}
+          <SectionHeader
+            title="Active jobs"
+            count={activeJobs.length > 0 ? activeJobs.length : undefined}
+            linkLabel="See all"
+            onLinkPress={() => onNavigate('My Jobs')}
+          />
 
           {jobs.error && <WidgetError message="Couldn't load your jobs" onRetry={jobs.reload} />}
 
-          {/* "Need something done?" is the empty state, not a permanent card:
-              once there are active jobs, the list is what matters. */}
           {!jobs.loading && !jobs.error && activeJobs.length === 0 && (
-            <Tap
-              style={styles.primaryTaskCard}
-              onPress={() => onNavigate('Create Job')}
-              scale
-              accessibilityRole="button"
-              testID="home-post-job"
-            >
-              <View style={styles.taskIcon}>
-                <Sparkles size={22} color={C.link} />
-              </View>
-              <View style={styles.taskCopy}>
-                <Text style={styles.taskTitle}>Need something done?</Text>
-                <Text style={styles.taskDesc}>You have no active jobs. Post a task and connect with a nearby verified provider.</Text>
-              </View>
-              <ChevronRight size={20} color={C.ink400} />
-            </Tap>
+            <EmptyRow icon={ClipboardList} title="No active jobs" body="Jobs you post show up here." />
           )}
 
-          {activeJobs.map((job) => (
-            <JobCard
-              key={job.id}
-              title={job.title}
-              budget={job.budget}
-              address={job.address}
-              status={jobStatusMeta(job.status, C)}
-              urgency={job.urgency}
-              footer={[{ icon: <Clock size={14} color={C.ink400} />, text: `Posted ${shortDate(job.posted_at)}` }]}
-              onPress={() => onNavigate('Job Detail', job.id)}
-            />
-          ))}
-
-          {/* Recent Activity */}
-          {notifications.error ? (
-            <WidgetError message="Couldn't load your notifications" onRetry={notifications.reload} />
-          ) : recentActivity.length > 0 && (
-            <>
-              <View style={[styles.sectionHead, { marginTop: 22 }]}>
-                <Text style={styles.sectionTitle}>Recent activity</Text>
-                <Tap onPress={() => onNavigate('Notifications')} style={styles.linkBtn} hitSlop={8} accessibilityRole="button">
-                  <Text style={styles.textLink}>View all</Text>
-                </Tap>
-              </View>
-              <View style={styles.activityList}>
-                {recentActivity.map((n, i) => {
-                  const Icon = ACTIVITY_ICON[n.type] ?? BriefcaseBusiness;
-                  return (
-                    <View
-                      key={n.id}
-                      style={[styles.activityRow, i < recentActivity.length - 1 && styles.activityRowBorder]}
-                    >
-                      <View style={styles.activityIcon}>
-                        <Icon size={18} color={C.link} />
-                      </View>
-                      <View style={styles.activityCopy}>
-                        <Text style={styles.activityTitle} numberOfLines={1}>{n.title}</Text>
-                        <Text style={styles.activityBody} numberOfLines={2}>{n.body}</Text>
-                      </View>
-                    </View>
-                  );
-                })}
-              </View>
-            </>
+          {activeJobs.length > 0 && (
+            <View style={styles.jobList}>
+              {activeJobs.slice(0, ACTIVE_LIST_LIMIT).map((job) => {
+                const status = jobRowStatus(job, pendingCountFor(job.id));
+                return (
+                  <JobRow
+                    key={job.id}
+                    testID={`home-job-${job.id}`}
+                    title={job.title}
+                    meta={status.meta}
+                    tone={status.tone}
+                    amount={job.budget != null ? peso(job.budget) : ''}
+                    date={job.scheduled_at}
+                    onPress={() => onNavigate('Job Detail', job.id)}
+                  />
+                );
+              })}
+            </View>
           )}
-
-          {/* Room for the floating "Post a job" button above the nav bar. */}
-          <View style={{ height: 96 }} />
         </View>
+        <View style={{ height: 24 }} />
       </ScrollView>
     </View>
   );
@@ -416,74 +398,76 @@ function createThemedStyles(theme: ThemePalette) {
     flex: { flex: 1 },
     screen: { flex: 1, backgroundColor: C.canvas },
 
-    hero: {
-      backgroundColor: C.hero,
-      paddingHorizontal: Spacing.screenH,
-      paddingBottom: 20,
-      borderBottomLeftRadius: 28,
-      borderBottomRightRadius: 28,
-    },
-    heroTopRow: {
-      flexDirection: 'row',
-      justifyContent: 'space-between',
-      alignItems: 'center',
-    },
-    greeting: { color: C.onHeroMuted, fontSize: 15, fontFamily: 'Inter', fontWeight: '500' },
-    userName: { color: C.onPrimary, fontSize: 24, fontWeight: '800', fontFamily: 'Inter', marginTop: 2, letterSpacing: -0.3 },
-    // The name column yields to the actions, never the other way round: the
-    // avatar is the only route to Profile (and Log out), so a long name must
-    // truncate rather than push it off-screen.
-    heroText: { flex: 1, minWidth: 0, marginRight: 12 },
-    heroActions: { flexDirection: 'row', alignItems: 'center', gap: 10, flexShrink: 0 },
-    iconBtn: {
-      width: 44, height: 44, borderRadius: 22,
-      backgroundColor: C.heroCard,
+    header: { paddingHorizontal: Spacing.screenH },
+    headerRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+    avatar: {
+      width: 40, height: 40, borderRadius: 20,
+      backgroundColor: Colors.primaryTonal,
       alignItems: 'center', justifyContent: 'center', overflow: 'hidden',
     },
-    notifBadge: {
-      position: 'absolute', top: -3, right: -3,
-      minWidth: 20, height: 20, borderRadius: 10, paddingHorizontal: 4,
-      backgroundColor: '#dc2626', alignItems: 'center', justifyContent: 'center',
-      borderWidth: 2, borderColor: C.hero,
+    avatarText: { color: Colors.primaryDeep, fontSize: 14, fontWeight: '600', fontFamily: 'Inter' },
+    greetingColumn: { flex: 1, minWidth: 0, gap: 2 },
+    greeting: { color: C.ink500, fontSize: 13, fontWeight: '400', fontFamily: 'Inter', lineHeight: 18 },
+    userName: { color: C.ink900, fontSize: 18, fontWeight: '700', fontFamily: 'Inter', lineHeight: 24 },
+    headerActions: { flexDirection: 'row', alignItems: 'center', gap: 8, flexShrink: 0 },
+    walletChip: {
+      flexDirection: 'row', alignItems: 'center', gap: 6,
+      paddingLeft: 10, paddingRight: 12, paddingVertical: 8,
+      borderRadius: 999, backgroundColor: C.surface, borderWidth: 1, borderColor: C.line,
     },
-    notifBadgeText: { color: '#ffffff', fontSize: 10.5, fontWeight: '800', fontFamily: 'Inter' },
-    avatarCircle: {
+    walletAmount: { color: C.ink900, fontSize: 14, fontWeight: '600', fontFamily: 'Inter', lineHeight: 18 },
+    bell: {
       width: 44, height: 44, borderRadius: 22,
-      backgroundColor: C.primaryTonalStrong,
-      borderWidth: 2, borderColor: 'rgba(255,255,255,0.85)',
+      backgroundColor: C.surface, borderWidth: 1, borderColor: C.line,
       alignItems: 'center', justifyContent: 'center', overflow: 'hidden',
     },
-    avatarText: { color: C.primaryDeep, fontWeight: '800', fontSize: 15, fontFamily: 'Inter' },
-
-    balanceStrip: {
-      flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
-      marginTop: 20, paddingVertical: 16, paddingHorizontal: 16, gap: 12,
-      backgroundColor: C.heroCard,
-      borderWidth: 1, borderColor: C.heroCardBorder,
-      borderRadius: 18,
+    bellBadge: {
+      position: 'absolute', top: -4, right: -3,
+      minWidth: 22, height: 18, borderRadius: 9, paddingHorizontal: 5,
+      backgroundColor: Colors.dangerSolid, borderWidth: 2, borderColor: C.surface,
+      alignItems: 'center', justifyContent: 'center',
     },
-    balanceCopy: { flex: 1, minWidth: 0 },
-    balanceLabel: { color: C.onHeroMuted, fontSize: 14, fontFamily: 'Inter', fontWeight: '500', marginBottom: 2 },
-    balanceAmount: { color: C.onPrimary, fontSize: 28, fontWeight: '800', fontFamily: 'Inter', letterSpacing: -0.5 },
-    manageBtn: {
-      backgroundColor: '#ffffff', borderRadius: 999, overflow: 'hidden',
-      paddingHorizontal: 16, minHeight: 44, justifyContent: 'center', flexShrink: 0,
+    bellBadgeText: {
+      color: Colors.onPrimary, fontSize: 10, fontWeight: '700', fontFamily: 'Inter',
+      lineHeight: 12, letterSpacing: 0.5,
     },
-    manageLink: { color: '#0369a1', fontSize: 14.5, fontWeight: '700', fontFamily: 'Inter' },
     widgetError: { flexDirection: 'row', alignItems: 'center', gap: 9, paddingVertical: 8 },
     widgetErrorText: { color: C.ink500, fontSize: 13.5, fontFamily: 'Inter', flexShrink: 1 },
     retryBtn: { paddingHorizontal: 8, paddingVertical: 6, borderRadius: 8, overflow: 'hidden' },
     widgetRetry: { color: C.link, fontSize: 13.5, fontWeight: '800', fontFamily: 'Inter' },
 
-    body: { paddingHorizontal: Spacing.screenH, paddingTop: 22 },
+    body: { paddingHorizontal: Spacing.screenH, paddingTop: 18, gap: 18 },
+
+    askField: {
+      flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 54,
+      paddingLeft: 10, paddingRight: 16, paddingVertical: 10,
+      borderRadius: 18, backgroundColor: C.surface, borderWidth: 1, borderColor: C.line,
+    },
+    askPlus: {
+      width: 34, height: 34, borderRadius: 12,
+      backgroundColor: Colors.primary, alignItems: 'center', justifyContent: 'center',
+    },
+    askText: {
+      flex: 1, minWidth: 0, color: C.ink500,
+      fontSize: 15, fontWeight: '500', fontFamily: 'Inter', lineHeight: 20,
+    },
 
     // The hero card: the one thing that needs the homeowner. Blue, with white text.
-    attentionCard: { backgroundColor: Colors.hero, borderRadius: 20, padding: 18, gap: 8, marginBottom: 26 },
-    attentionChip: { alignSelf: 'flex-start', backgroundColor: Colors.heroCard, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 4 },
+    attentionCard: { backgroundColor: Colors.hero, borderRadius: 20, padding: 18, gap: 8 },
+    attentionChip: {
+      alignSelf: 'flex-start', backgroundColor: Colors.heroCard,
+      borderRadius: 999, paddingHorizontal: 10, paddingVertical: 4,
+    },
     attentionChipText: { color: Colors.onHeroMuted, fontSize: 12, fontWeight: '600', fontFamily: 'Inter', lineHeight: 16 },
-    attentionTitle: { color: Colors.onPrimary, fontSize: 24, fontWeight: '700', fontFamily: 'Inter', lineHeight: 30, letterSpacing: -0.2 },
+    attentionTitle: {
+      color: Colors.onPrimary, fontSize: 24, fontWeight: '700', fontFamily: 'Inter',
+      lineHeight: 30, letterSpacing: -0.2,
+    },
     attentionLine: { color: Colors.onPrimary, fontSize: 13, fontWeight: '400', fontFamily: 'Inter', lineHeight: 18 },
-    attentionFooter: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12, paddingTop: 8 },
+    attentionFooter: {
+      flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+      gap: 12, paddingTop: 8,
+    },
     attentionApplicants: { flexDirection: 'row', alignItems: 'center', gap: 10, flexShrink: 1 },
     attentionAvatars: { flexDirection: 'row' },
     attentionAvatar: {
@@ -491,7 +475,10 @@ function createThemedStyles(theme: ThemePalette) {
       backgroundColor: Colors.primaryTonal, alignItems: 'center', justifyContent: 'center',
     },
     attentionAvatarOverlap: { marginRight: -8 },
-    attentionAvatarText: { color: Colors.primaryDeep, fontSize: 10, fontWeight: '700', fontFamily: 'Inter', lineHeight: 12, letterSpacing: 0.5 },
+    attentionAvatarText: {
+      color: Colors.primaryDeep, fontSize: 10, fontWeight: '700', fontFamily: 'Inter',
+      lineHeight: 12, letterSpacing: 0.5,
+    },
     attentionApplied: { color: Colors.onPrimary, fontSize: 13, fontWeight: '600', fontFamily: 'Inter', lineHeight: 18 },
     attentionButton: {
       flexDirection: 'row', alignItems: 'center', gap: 6,
@@ -500,54 +487,21 @@ function createThemedStyles(theme: ThemePalette) {
     },
     attentionButtonText: { color: Colors.primary, fontSize: 14, fontWeight: '600', fontFamily: 'Inter', lineHeight: 18 },
 
-    section: { marginBottom: 26 },
-    sectionHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 },
-    sectionTitle: { fontSize: 19, fontWeight: '800', color: C.ink900, fontFamily: 'Inter', letterSpacing: -0.2 },
-    sectionCount: { fontWeight: '700', color: C.ink400, fontSize: 15 },
-    linkBtn: { paddingHorizontal: 6, paddingVertical: 4, borderRadius: 8, overflow: 'hidden' },
-    textLink: { color: C.link, fontSize: 15, fontWeight: '700', fontFamily: 'Inter' },
+    // Service chips scroll sideways past the screen edge, as in Figma.
+    chipScroll: { marginHorizontal: -Spacing.screenH },
+    chipRow: { paddingHorizontal: Spacing.screenH, gap: 10 },
+    chip: {
+      flexDirection: 'row', alignItems: 'center', gap: 8,
+      paddingLeft: 6, paddingRight: 14, paddingVertical: 6,
+      borderRadius: 999, backgroundColor: C.surface, borderWidth: 1, borderColor: C.line,
+    },
+    chipIcon: {
+      width: 32, height: 32, borderRadius: 16,
+      backgroundColor: Colors.primaryTonal, alignItems: 'center', justifyContent: 'center',
+    },
+    chipText: { color: C.ink700, fontSize: 14, fontWeight: '600', fontFamily: 'Inter', lineHeight: 18 },
 
-    primaryTaskCard: {
-      flexDirection: 'row', alignItems: 'center', gap: 14,
-      backgroundColor: C.surface, borderColor: C.line, borderWidth: 1,
-      borderRadius: 20, padding: 16, marginBottom: 22, overflow: 'hidden',
-    },
-    taskIcon: {
-      width: 46, height: 46, borderRadius: 14,
-      backgroundColor: C.primaryTonal,
-      alignItems: 'center', justifyContent: 'center', flexShrink: 0,
-    },
-    taskCopy: { flex: 1, minWidth: 0 },
-    taskTitle: { fontSize: 16.5, fontWeight: '800', color: C.ink900, fontFamily: 'Inter', marginBottom: 3 },
-    taskDesc: { fontSize: 14, color: C.ink500, fontFamily: 'Inter', lineHeight: 19 },
-
-    // Five equal shortcut tiles in one row (Figma). Wraps if more are added.
-    categoryStrip: { flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -4, rowGap: 12 },
-    categoryTile: {
-      width: '20%', alignItems: 'center', paddingHorizontal: 4, paddingVertical: 4,
-      borderRadius: 16, overflow: 'hidden',
-    },
-    categoryIconWell: {
-      width: 56, height: 56, borderRadius: 18,
-      backgroundColor: C.primaryTonal,
-      alignItems: 'center', justifyContent: 'center',
-      marginBottom: 8,
-    },
-    categoryLabel: { fontSize: 12.5, fontWeight: '600', color: C.ink800, fontFamily: 'Inter', textAlign: 'center' },
-
-    activityList: {
-      backgroundColor: C.surface, borderWidth: 1, borderColor: C.line,
-      borderRadius: 20, overflow: 'hidden',
-    },
-    activityRow: { flexDirection: 'row', gap: 12, padding: 14, alignItems: 'flex-start' },
-    activityRowBorder: { borderBottomWidth: 1, borderBottomColor: C.hairline },
-    activityIcon: {
-      width: 36, height: 36, borderRadius: 12,
-      backgroundColor: C.primaryTonal, alignItems: 'center', justifyContent: 'center', flexShrink: 0,
-    },
-    activityCopy: { flex: 1 },
-    activityTitle: { color: C.ink900, fontSize: 14, fontWeight: '700', fontFamily: 'Inter', marginBottom: 2 },
-    activityBody: { color: C.ink500, fontSize: 13, fontFamily: 'Inter', lineHeight: 18 },
+    jobList: { gap: 8 },
   });
   return { Colors, V6Colors, C, styles };
 }
