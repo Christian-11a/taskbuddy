@@ -41,8 +41,10 @@ export type Palette = {
 };
 export const lightPalette: Palette = {
   appearance: 'light',
-  Colors: { ...Colors, ...lightSemantic, muted: '#64748b', slateLight: '#64748b', surface: Colors.cardBg, onPrimary: '#ffffff', link: Colors.brandTeal },
-  V6Colors: { ...V6Colors, ...lightSemantic, ink300: '#64748b', ink400: '#64748b', onPrimary: '#ffffff', link: V6Colors.cyan700 },
+  // Muted text is #526073 (not slate-500 #64748b) so it keeps 4.5:1 on the
+  // canvas and on grey chips, not just on white cards.
+  Colors: { ...Colors, ...lightSemantic, muted: '#526073', slateLight: '#526073', surface: Colors.cardBg, onPrimary: '#ffffff', link: Colors.brandTeal },
+  V6Colors: { ...V6Colors, ...lightSemantic, ink300: '#526073', ink400: '#526073', ink500: '#526073', onPrimary: '#ffffff', link: V6Colors.cyan700 },
 };
 // Neutral graphite surfaces (no blue cast) so the sky accent carries the
 // brand; the primary fill stays #0369a1 so white button text keeps 5.9:1.
