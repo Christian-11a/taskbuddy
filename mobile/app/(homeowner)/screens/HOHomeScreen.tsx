@@ -8,7 +8,7 @@ import { useNotifications } from '../../../src/context/NotificationsContext';
  */
 
 import { StatusBar } from 'expo-status-bar';
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   ScrollView,
   StyleSheet,
@@ -16,6 +16,7 @@ import {
   View,
 } from 'react-native';
 import {
+  ArrowRight,
   Bell,
   BriefcaseBusiness,
   BrushCleaning,
@@ -33,8 +34,9 @@ import { HOScreen } from '../../../src/types/navigation';
 import { useAuth } from '../../../src/context/AuthContext';
 import { useAsyncData } from '../../../src/hooks/useAsyncData';
 import { useHeaderTop } from '../../../src/hooks/useHeaderTop';
-import { api } from '../../../src/lib/api';
-import { jobStatusMeta, peso, shortDate } from '../../../src/lib/format';
+import { api, type Job } from '../../../src/lib/api';
+import { initials, jobStatusMeta, peso, shortDate } from '../../../src/lib/format';
+import { pickHomeHero, proposalCandidates, type ApplicationsByJob, type HomeHero } from '../../../src/lib/homeJobs';
 import ScreenSkeleton from '../../../src/components/ScreenSkeleton';
 import JobCard from '../../../src/components/JobCard';
 import OwnAvatar from '../../../src/components/OwnAvatar';
@@ -62,6 +64,39 @@ const ACTIVITY_ICON: Record<string, typeof BriefcaseBusiness> = {
   job_update: BriefcaseBusiness,
 };
 
+/**
+ * Pending-proposal lookups for the open jobs Home checks. They run after the
+ * jobs load and never block Home. A failed lookup is left out, so that job
+ * counts as having no proposals and the hero falls back to the next rule.
+ */
+async function loadProposalApplications(jobs: Job[]): Promise<ApplicationsByJob> {
+  const results = await Promise.allSettled(
+    proposalCandidates(jobs).map((job) =>
+      Promise.resolve()
+        .then(() => api.jobApplications(job.id))
+        .then((applications) => ({ id: job.id, applications })),
+    ),
+  );
+  const byJob: ApplicationsByJob = {};
+  for (const result of results) {
+    if (result.status === 'fulfilled') byJob[result.value.id] = result.value.applications;
+  }
+  return byJob;
+}
+
+/** "Oct 6" */
+function shortMonthDay(value: string | Date): string {
+  const date = typeof value === 'string' ? new Date(value) : value;
+  if (Number.isNaN(date.getTime())) return '';
+  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+}
+
+/** "Oct 12 · 9:00 AM · Juan Dela Cruz" */
+function bookingLine(when: Date, providerName: string | null): string {
+  const time = when.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+  return [shortMonthDay(when), time, ...(providerName ? [providerName] : [])].join(' · ');
+}
+
 interface HOHomeScreenProps {
   onNavigate: (screen: HOScreen, jobId?: string) => void;
 }
@@ -78,6 +113,70 @@ function WidgetError({ message, onRetry }: { message: string; onRetry: () => voi
   );
 }
 
+/** The one thing that needs the homeowner: proposals to review, or the next booking. */
+function HomeHeroCard({ hero, onNavigate }: { hero: HomeHero; onNavigate: HOHomeScreenProps['onNavigate'] }) {
+  const { Colors, styles } = useThemedStyles(createThemedStyles);
+  if (hero.kind === 'booking') {
+    return (
+      <View style={styles.attentionCard}>
+        <View style={styles.attentionChip}>
+          <Text style={styles.attentionChipText}>Next booking</Text>
+        </View>
+        <Text style={styles.attentionTitle} numberOfLines={2}>{hero.job.title}</Text>
+        <Text style={styles.attentionLine} numberOfLines={1}>{bookingLine(hero.when, hero.providerName)}</Text>
+        <View style={styles.attentionFooter}>
+          <Tap
+            style={styles.attentionButton}
+            hitSlop={5}
+            accessibilityRole="button"
+            accessibilityLabel={`View ${hero.job.title}`}
+            onPress={() => onNavigate('Job Detail', hero.job.id)}
+          >
+            <Text style={styles.attentionButtonText}>View</Text>
+          </Tap>
+        </View>
+      </View>
+    );
+  }
+  const count = hero.pending.length;
+  return (
+    <View style={styles.attentionCard}>
+      <View style={styles.attentionChip}>
+        <Text style={styles.attentionChipText}>Needs your attention</Text>
+      </View>
+      <Text style={styles.attentionTitle}>{`${count} ${count === 1 ? 'proposal' : 'proposals'} waiting`}</Text>
+      <Text style={styles.attentionLine} numberOfLines={1}>
+        {`${hero.job.title} · posted ${shortMonthDay(hero.job.posted_at)}`}
+      </Text>
+      <View style={styles.attentionFooter}>
+        <View style={styles.attentionApplicants}>
+          <View style={styles.attentionAvatars}>
+            {hero.pending.slice(0, 2).map((application, index, shown) => (
+              <View
+                key={application.id}
+                style={[styles.attentionAvatar, index < shown.length - 1 && styles.attentionAvatarOverlap]}
+              >
+                <Text style={styles.attentionAvatarText}>{initials(application.provider?.full_name)}</Text>
+              </View>
+            ))}
+          </View>
+          <Text style={styles.attentionApplied}>{`${hero.applied} applied`}</Text>
+        </View>
+        <Tap
+          style={styles.attentionButton}
+          hitSlop={5}
+          accessibilityRole="button"
+          accessibilityLabel={`Review proposals for ${hero.job.title}`}
+          onPress={() => onNavigate('Job Applications', hero.job.id)}
+        >
+          <Text style={styles.attentionButtonText}>Review</Text>
+          <ArrowRight size={16} color={Colors.primary} strokeWidth={2.4} />
+        </Tap>
+      </View>
+    </View>
+  );
+}
+
 export default function HOHomeScreen({ onNavigate }: HOHomeScreenProps) {
   const { C, styles } = useThemedStyles(createThemedStyles);
   const headerTop = useHeaderTop();
@@ -86,6 +185,26 @@ export default function HOHomeScreen({ onNavigate }: HOHomeScreenProps) {
   const jobs = useAsyncData(() => api.myJobs(), [], 'ho-home-jobs');
   const categories = useAsyncData(() => api.categories(), [], 'ho-home-categories');
   const notifications = useNotifications();
+  const [proposalLookup, setProposalLookup] = useState<{ jobs: Job[] | null; byJob: ApplicationsByJob }>({
+    jobs: null,
+    byJob: {},
+  });
+
+  useEffect(() => {
+    const list = jobs.data;
+    if (!list) return;
+    let active = true;
+    loadProposalApplications(list).then((byJob) => {
+      if (active) setProposalLookup({ jobs: list, byJob });
+    });
+    return () => { active = false; };
+  }, [jobs.data]);
+
+  // The hero waits for the lookups made for the jobs it is computed from, so a
+  // booking never flashes up in place of a proposal that is still being checked.
+  const hero = jobs.data && proposalLookup.jobs === jobs.data
+    ? pickHomeHero(jobs.data, proposalLookup.byJob, new Date())
+    : null;
 
   const name = profile?.full_name ?? '';
   const activeJobs = (jobs.data ?? []).filter((j) => ACTIVE_STATUSES.includes(j.status));
@@ -168,6 +287,8 @@ export default function HOHomeScreen({ onNavigate }: HOHomeScreenProps) {
 
         {/* Body */}
         <View style={styles.body}>
+          {hero && <HomeHeroCard hero={hero} onNavigate={onNavigate} />}
+
           {/* Find a service */}
           <View style={styles.section}>
             <View style={styles.sectionHead}>
@@ -356,6 +477,36 @@ function createThemedStyles(theme: ThemePalette) {
 
     body: { paddingHorizontal: Spacing.screenH, paddingTop: 22 },
 
+    // The hero card: the one thing that needs the homeowner. Blue, with white text.
+    attentionCard: { backgroundColor: Colors.hero, borderRadius: 20, padding: 18, gap: 8, marginBottom: 26 },
+    attentionChip: { alignSelf: 'flex-start', backgroundColor: Colors.heroCard, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 4 },
+    attentionChipText: { color: Colors.onHeroMuted, fontSize: 12, fontWeight: '600', fontFamily: 'Inter', lineHeight: 16 },
+    attentionTitle: { color: Colors.onPrimary, fontSize: 24, fontWeight: '700', fontFamily: 'Inter', lineHeight: 30, letterSpacing: -0.2 },
+    attentionLine: { color: Colors.onPrimary, fontSize: 13, fontWeight: '400', fontFamily: 'Inter', lineHeight: 18 },
+    attentionFooter: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12, paddingTop: 8 },
+    attentionApplicants: { flexDirection: 'row', alignItems: 'center', gap: 10, flexShrink: 1 },
+    attentionAvatars: { flexDirection: 'row' },
+    attentionAvatar: {
+      width: 32, height: 32, borderRadius: 16, borderWidth: 2, borderColor: Colors.hero,
+      backgroundColor: Colors.primaryTonal, alignItems: 'center', justifyContent: 'center',
+    },
+    attentionAvatarOverlap: { marginRight: -8 },
+    attentionAvatarText: { color: Colors.primaryDeep, fontSize: 10, fontWeight: '700', fontFamily: 'Inter', lineHeight: 12, letterSpacing: 0.5 },
+    attentionApplied: { color: Colors.onPrimary, fontSize: 13, fontWeight: '600', fontFamily: 'Inter', lineHeight: 18 },
+    attentionButton: {
+      flexDirection: 'row', alignItems: 'center', gap: 6,
+      backgroundColor: Colors.onPrimary, borderRadius: 999,
+      paddingLeft: 16, paddingRight: 14, paddingVertical: 10, flexShrink: 0,
+    },
+    attentionButtonText: { color: Colors.primary, fontSize: 14, fontWeight: '600', fontFamily: 'Inter', lineHeight: 18 },
+
+    section: { marginBottom: 26 },
+    sectionHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 },
+    sectionTitle: { fontSize: 19, fontWeight: '800', color: C.ink900, fontFamily: 'Inter', letterSpacing: -0.2 },
+    sectionCount: { fontWeight: '700', color: C.ink400, fontSize: 15 },
+    linkBtn: { paddingHorizontal: 6, paddingVertical: 4, borderRadius: 8, overflow: 'hidden' },
+    textLink: { color: C.link, fontSize: 15, fontWeight: '700', fontFamily: 'Inter' },
+
     primaryTaskCard: {
       flexDirection: 'row', alignItems: 'center', gap: 14,
       backgroundColor: C.surface, borderColor: C.line, borderWidth: 1,
@@ -369,13 +520,6 @@ function createThemedStyles(theme: ThemePalette) {
     taskCopy: { flex: 1, minWidth: 0 },
     taskTitle: { fontSize: 16.5, fontWeight: '800', color: C.ink900, fontFamily: 'Inter', marginBottom: 3 },
     taskDesc: { fontSize: 14, color: C.ink500, fontFamily: 'Inter', lineHeight: 19 },
-
-    section: { marginBottom: 26 },
-    sectionHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 },
-    sectionTitle: { fontSize: 19, fontWeight: '800', color: C.ink900, fontFamily: 'Inter', letterSpacing: -0.2 },
-    sectionCount: { fontWeight: '700', color: C.ink400, fontSize: 15 },
-    linkBtn: { paddingHorizontal: 6, paddingVertical: 4, borderRadius: 8, overflow: 'hidden' },
-    textLink: { color: C.link, fontSize: 15, fontWeight: '700', fontFamily: 'Inter' },
 
     // Five equal shortcut tiles in one row (Figma). Wraps if more are added.
     categoryStrip: { flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -4, rowGap: 12 },

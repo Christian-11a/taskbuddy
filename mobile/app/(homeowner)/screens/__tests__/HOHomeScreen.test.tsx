@@ -16,6 +16,7 @@ jest.mock('../../../../src/lib/api', () => ({
     categories: jest.fn(),
     notifications: jest.fn(),
     unreadNotificationCount: jest.fn(),
+    jobApplications: jest.fn(),
   },
 }));
 
@@ -101,5 +102,92 @@ describe('HOHomeScreen — hero header keeps the avatar reachable with a long na
     render(<HOHomeScreen onNavigate={jest.fn()} />);
 
     expect(await screen.findByText('there')).toBeTruthy();
+  });
+});
+
+// The hero card names the one thing that needs the homeowner: proposals on an
+// open job first, otherwise the next booking. Dates are far in the future so
+// these tests do not depend on the day they run.
+function pendingApplication(id: string, name: string) {
+  return {
+    id,
+    job_id: 'job-open',
+    provider_id: `provider-${id}`,
+    status: 'pending',
+    source: 'organic',
+    cover_message: null,
+    applied_at: '2027-05-07T09:00:00+08:00',
+    decided_at: null,
+    provider: { id: `provider-${id}`, full_name: name, avatar_url: null, city: null, provider_profiles: null },
+  };
+}
+
+const OPEN_JOB = {
+  id: 'job-open',
+  title: 'Cleaning: Window cleaning',
+  status: 'open',
+  urgency: 'normal',
+  address: 'Makati',
+  budget: 1200,
+  posted_at: '2027-05-06T09:00:00+08:00',
+  created_at: '2027-05-06T09:00:00+08:00',
+  scheduled_at: null,
+  assigned_provider: null,
+};
+
+describe('HOHomeScreen — hero card shows the one job that needs you', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    (useAuth as jest.Mock).mockReturnValue({ profile: { full_name: 'Alex', city: null, address: null } });
+    (api.wallet as jest.Mock).mockResolvedValue({ balance: 0, available: 0, held: 0 });
+    (api.categories as jest.Mock).mockResolvedValue([]);
+    (api.notifications as jest.Mock).mockResolvedValue([]);
+    (api.unreadNotificationCount as jest.Mock).mockResolvedValue({ count: 0 });
+  });
+
+  it("shows the proposals waiting on an open job and opens that job's proposals", async () => {
+    (api.myJobs as jest.Mock).mockResolvedValue([OPEN_JOB]);
+    (api.jobApplications as jest.Mock).mockResolvedValue([
+      pendingApplication('a', 'Ana Reyes'),
+      pendingApplication('b', 'Ben Cruz'),
+    ]);
+    const onNavigate = jest.fn();
+    render(<HOHomeScreen onNavigate={onNavigate} />);
+
+    expect(await screen.findByText('2 proposals waiting')).toBeTruthy();
+    expect(screen.getByText('2 applied')).toBeTruthy();
+    fireEvent.press(screen.getByLabelText('Review proposals for Cleaning: Window cleaning'));
+    expect(onNavigate).toHaveBeenCalledWith('Job Applications', 'job-open');
+  });
+
+  it('shows the next booking when no open job has proposals', async () => {
+    (api.myJobs as jest.Mock).mockResolvedValue([
+      {
+        ...OPEN_JOB,
+        id: 'job-booked',
+        title: 'Plumbing: Fix toilet',
+        status: 'confirmed',
+        scheduled_at: '2027-06-01T09:00:00+08:00',
+        assigned_provider: { full_name: 'Juan Dela Cruz' },
+      },
+    ]);
+    const onNavigate = jest.fn();
+    render(<HOHomeScreen onNavigate={onNavigate} />);
+
+    expect(await screen.findByText('Next booking')).toBeTruthy();
+    expect(screen.getByText(/Juan Dela Cruz$/)).toBeTruthy();
+    fireEvent.press(screen.getByLabelText('View Plumbing: Fix toilet'));
+    expect(onNavigate).toHaveBeenCalledWith('Job Detail', 'job-booked');
+  });
+
+  it('still renders Home without the hero when the proposal lookup fails', async () => {
+    (api.myJobs as jest.Mock).mockResolvedValue([OPEN_JOB]);
+    (api.jobApplications as jest.Mock).mockRejectedValue(new Error('offline'));
+    render(<HOHomeScreen onNavigate={jest.fn()} />);
+
+    expect(await screen.findByText('Find a service')).toBeTruthy();
+    await waitFor(() => expect(api.jobApplications).toHaveBeenCalledWith('job-open'));
+    expect(screen.queryByText(/proposals? waiting/)).toBeNull();
+    expect(screen.queryByText('Next booking')).toBeNull();
   });
 });
