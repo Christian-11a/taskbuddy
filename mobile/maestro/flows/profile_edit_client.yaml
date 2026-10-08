@@ -128,7 +128,7 @@ env:
 # the only keyboard-dismiss method that held up under repeat testing.
 - tapOn:
     id: "btn-home-avatar"
-- tapOn: "Edit Profile"
+- tapOn: "Edit profile"
 - assertVisible: "Full name"
 - tapOn:
     below: "Phone"

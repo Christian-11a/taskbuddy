@@ -19,5 +19,5 @@ appId: com.taskbuddy.app
 - extendedWaitUntil: { visible: "New", timeout: 15000 }
 # Profile is a tab now. It has no back arrow, so none may be visible there.
 - tapOn: { id: "nav-tab-Profile" }
-- extendedWaitUntil: { visible: "Account Info", timeout: 15000 }
+- extendedWaitUntil: { visible: "Jobs posted", timeout: 15000 }
 - assertNotVisible: "Back to Home"
