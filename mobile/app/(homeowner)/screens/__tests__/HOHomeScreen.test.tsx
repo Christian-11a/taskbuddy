@@ -307,3 +307,38 @@ describe('HOHomeScreen — field, service chips, active jobs and wallet chip', (
     expect(onNavigate).toHaveBeenCalledWith('Wallet');
   });
 });
+
+// The Active jobs count covers every active job, so the list shows every one of
+// them: the count and the rows must always agree.
+describe('HOHomeScreen — active jobs list shows every active job', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    (useAuth as jest.Mock).mockReturnValue({ profile: { full_name: 'Alex', city: null, address: null } });
+    (api.wallet as jest.Mock).mockResolvedValue({ balance: 0, available: 0, held: 0 });
+    (api.categories as jest.Mock).mockResolvedValue([]);
+    (api.notifications as jest.Mock).mockResolvedValue([]);
+    (api.unreadNotificationCount as jest.Mock).mockResolvedValue({ count: 0 });
+    (api.jobApplications as jest.Mock).mockResolvedValue([]);
+  });
+
+  it('lists all four active jobs, not three, and the count matches the rows', async () => {
+    const jobs = [1, 2, 3, 4].map((n) => ({
+      ...OPEN_JOB,
+      id: `job-${n}`,
+      title: `Cleaning: Job ${n}`,
+      posted_at: `2027-05-0${n}T09:00:00+08:00`,
+      created_at: `2027-05-0${n}T09:00:00+08:00`,
+    }));
+    (api.myJobs as jest.Mock).mockResolvedValue(jobs);
+    const onNavigate = jest.fn();
+    render(<HOHomeScreen onNavigate={onNavigate} />);
+
+    await screen.findByTestId('home-job-job-1');
+    expect(screen.getByText('4')).toBeTruthy();
+    for (const job of jobs) {
+      expect(screen.getByTestId(`home-job-${job.id}`)).toBeTruthy();
+    }
+    fireEvent.press(screen.getByTestId('home-job-job-4'));
+    expect(onNavigate).toHaveBeenCalledWith('Job Detail', 'job-4');
+  });
+});

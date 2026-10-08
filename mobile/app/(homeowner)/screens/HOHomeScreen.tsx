@@ -5,8 +5,7 @@ import { useNotifications } from '../../../src/context/NotificationsContext';
  *
  * Figma "Home · final (Variation A)": a light header (avatar, greeting and
  * name, wallet chip, bell), a "What do you need done?" field, the hero card for
- * the one thing that needs the homeowner, service chips, and up to three
- * active jobs.
+ * the one thing that needs the homeowner, service chips, and every active job.
  */
 
 import { StatusBar } from 'expo-status-bar';
@@ -68,9 +67,6 @@ const ACTIVE_STATUSES = [
   'confirmed',
   'in_progress',
 ];
-
-/** How many active jobs the Home list shows; the section count shows them all. */
-const ACTIVE_LIST_LIMIT = 3;
 
 /**
  * Pending-proposal lookups for the open jobs Home checks. They run after the
@@ -352,7 +348,7 @@ export default function HOHomeScreen({ onNavigate }: HOHomeScreenProps) {
             </ScrollView>
           )}
 
-          {/* Active jobs: the count covers every active job, the list shows the first few. */}
+          {/* Active jobs: the list shows every active job, so the count matches the rows. */}
           <SectionHeader
             title="Active jobs"
             count={activeJobs.length > 0 ? activeJobs.length : undefined}
@@ -368,7 +364,7 @@ export default function HOHomeScreen({ onNavigate }: HOHomeScreenProps) {
 
           {activeJobs.length > 0 && (
             <View style={styles.jobList}>
-              {activeJobs.slice(0, ACTIVE_LIST_LIMIT).map((job) => {
+              {activeJobs.map((job) => {
                 const status = jobRowStatus(job, pendingCountFor(job.id));
                 return (
                   <JobRow
