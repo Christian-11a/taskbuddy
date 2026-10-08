@@ -24,6 +24,8 @@ export default function RadioRow({ label, selected, onSelect, disabled = false }
       style={[s.row, selected ? s.rowOn : s.rowOff, disabled && s.disabled]}
       onPress={onSelect}
       disabled={disabled}
+      // The row is 46 dp tall at one line; 1 dp above and below brings the touch area to 48.
+      hitSlop={{ top: 1, bottom: 1 }}
       accessibilityRole="radio"
       accessibilityLabel={label}
       // `checked` is the state screen readers announce for radios; `selected` is what the spec and callers use.

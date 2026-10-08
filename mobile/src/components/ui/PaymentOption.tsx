@@ -35,8 +35,8 @@ export default function PaymentOption({ title, meta, icon: Icon, selected, disab
         <Icon size={18} color={iconColor} />
       </View>
       <View style={s.text}>
-        <Text style={s.title}>{title}</Text>
-        {!!meta && <Text style={s.meta}>{meta}</Text>}
+        <Text style={s.title} numberOfLines={1}>{title}</Text>
+        {!!meta && <Text style={s.meta} numberOfLines={1}>{meta}</Text>}
       </View>
     </Tap>
   );
