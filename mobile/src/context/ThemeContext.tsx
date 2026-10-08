@@ -3,8 +3,8 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useAuth } from './AuthContext';
 import { api } from '../lib/api';
 
-import { lightPalette, darkPalette, type Palette } from '../constants/palettes';
-export { lightPalette, darkPalette, type Palette } from '../constants/palettes';
+import { lightPalette, darkPalette, providerLightPalette, providerDarkPalette, type Palette } from '../constants/palettes';
+export { lightPalette, darkPalette, providerLightPalette, providerDarkPalette, type Palette } from '../constants/palettes';
 const STORAGE_KEY = 'taskbuddy:dark-mode';
 const ThemeContext = createContext({
   palette: lightPalette, dark: false, error: null as string | null,
@@ -53,7 +53,13 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
       .then(() => AsyncStorage.setItem(STORAGE_KEY, String(dark)))
       .catch((e: Error) => setError(e.message));
   }, [dark, restored, error]);
-  const value = useMemo(() => ({ palette: dark ? darkPalette : lightPalette, dark, error, setDark }), [dark, error, setDark]);
+  // Providers get navy accents so the two roles never look alike; signed-out
+  // screens and homeowners keep the blue palette.
+  const isProvider = profile?.role === 'provider';
+  const value = useMemo(() => ({
+    palette: isProvider ? (dark ? providerDarkPalette : providerLightPalette) : (dark ? darkPalette : lightPalette),
+    dark, error, setDark,
+  }), [dark, error, setDark, isProvider]);
   return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>;
 }
 export const useTheme = () => useContext(ThemeContext);
