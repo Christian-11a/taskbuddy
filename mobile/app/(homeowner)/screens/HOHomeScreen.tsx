@@ -124,24 +124,24 @@ function WidgetError({ message, onRetry }: { message: string; onRetry: () => voi
 /** The one thing that needs the homeowner: proposals to review, or the next booking. */
 function HomeHeroCard({ hero, onNavigate }: { hero: HomeHero; onNavigate: HOHomeScreenProps['onNavigate'] }) {
   const { Colors, styles } = useThemedStyles(createThemedStyles);
+  // The hero is always sky blue: the proposals and the booking cards share one layout.
   if (hero.kind === 'booking') {
-    // Nothing needs a decision, so the card is a quiet surface, not the blue hero.
     return (
-      <View testID="home-hero-booking" style={styles.nextCard}>
-        <View style={styles.nextChip}>
-          <Text style={styles.nextChipText}>Next booking</Text>
+      <View testID="home-hero-booking" style={styles.attentionCard}>
+        <View style={styles.attentionChip}>
+          <Text style={styles.attentionChipText}>Next booking</Text>
         </View>
-        <Text style={styles.nextTitle} numberOfLines={2}>{hero.job.title}</Text>
-        <Text style={styles.nextLine} numberOfLines={1}>{bookingLine(hero.when, hero.providerName)}</Text>
-        <View style={styles.nextFooter}>
+        <Text style={styles.attentionTitle} numberOfLines={2}>{hero.job.title}</Text>
+        <Text style={styles.attentionLine} numberOfLines={1}>{bookingLine(hero.when, hero.providerName)}</Text>
+        <View style={[styles.attentionFooter, styles.attentionFooterEnd]}>
           <Tap
-            style={styles.nextButton}
+            style={styles.attentionButton}
             hitSlop={5}
             accessibilityRole="button"
             accessibilityLabel={`View ${hero.job.title}`}
             onPress={() => onNavigate('Job Detail', hero.job.id)}
           >
-            <Text style={styles.nextButtonText}>View</Text>
+            <Text style={styles.attentionButtonText}>View</Text>
           </Tap>
         </View>
       </View>
@@ -153,7 +153,7 @@ function HomeHeroCard({ hero, onNavigate }: { hero: HomeHero; onNavigate: HOHome
       <View style={styles.attentionChip}>
         <Text style={styles.attentionChipText}>Needs your attention</Text>
       </View>
-      <Text style={styles.attentionTitle}>{`${count} ${count === 1 ? 'proposal' : 'proposals'} waiting`}</Text>
+      <Text style={styles.attentionTitle} numberOfLines={2}>{`${count} ${count === 1 ? 'proposal' : 'proposals'} waiting`}</Text>
       <Text style={styles.attentionLine} numberOfLines={1}>
         {`${hero.job.title} · posted ${shortMonthDay(hero.job.posted_at)}`}
       </Text>
@@ -453,7 +453,7 @@ function createThemedStyles(theme: ThemePalette) {
       fontSize: 15, fontWeight: '500', fontFamily: 'Inter', lineHeight: 20,
     },
 
-    // The blue hero card: used only while proposals need a decision. White text.
+    // The hero card, always sky blue: for proposals to review and for the next booking.
     attentionCard: { backgroundColor: Colors.hero, borderRadius: 20, padding: 18, gap: 8 },
     attentionChip: {
       alignSelf: 'flex-start', backgroundColor: Colors.heroCard,
@@ -461,14 +461,15 @@ function createThemedStyles(theme: ThemePalette) {
     },
     attentionChipText: { color: Colors.onHeroMuted, fontSize: 12, fontWeight: '600', fontFamily: 'Inter', lineHeight: 16 },
     attentionTitle: {
-      color: Colors.onPrimary, fontSize: 24, fontWeight: '700', fontFamily: 'Inter',
-      lineHeight: 30, letterSpacing: -0.2,
+      color: Colors.onPrimary, fontSize: 20, fontWeight: '700', fontFamily: 'Inter', lineHeight: 26,
     },
     attentionLine: { color: Colors.onPrimary, fontSize: 13, fontWeight: '400', fontFamily: 'Inter', lineHeight: 18 },
     attentionFooter: {
       flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
       gap: 12, paddingTop: 8,
     },
+    // A lone button (the booking's View) sits at the right, where the Review button is.
+    attentionFooterEnd: { justifyContent: 'flex-end' },
     attentionApplicants: { flexDirection: 'row', alignItems: 'center', gap: 10, flexShrink: 1 },
     attentionAvatars: { flexDirection: 'row' },
     attentionAvatar: {
@@ -487,30 +488,6 @@ function createThemedStyles(theme: ThemePalette) {
       paddingLeft: 16, paddingRight: 14, paddingVertical: 10, flexShrink: 0,
     },
     attentionButtonText: { color: Colors.primary, fontSize: 14, fontWeight: '600', fontFamily: 'Inter', lineHeight: 18 },
-
-    // Caught-up hero: nothing needs a decision, so it is a quiet surface with a blue
-    // View button. Sizes match the blue card so the hierarchy reads the same.
-    nextCard: {
-      backgroundColor: V6Colors.surface, borderWidth: 1, borderColor: V6Colors.line,
-      borderRadius: 20, padding: 18, gap: 8,
-    },
-    nextChip: {
-      alignSelf: 'flex-start', backgroundColor: Colors.primaryTonal,
-      borderRadius: 999, paddingHorizontal: 10, paddingVertical: 4,
-    },
-    nextChipText: { color: Colors.primaryDeep, fontSize: 12, fontWeight: '600', fontFamily: 'Inter', lineHeight: 16 },
-    nextTitle: {
-      color: V6Colors.ink900, fontSize: 24, fontWeight: '700', fontFamily: 'Inter',
-      lineHeight: 30, letterSpacing: -0.2,
-    },
-    nextLine: { color: V6Colors.ink700, fontSize: 13, fontWeight: '400', fontFamily: 'Inter', lineHeight: 18 },
-    nextFooter: { flexDirection: 'row', justifyContent: 'flex-end', paddingTop: 8 },
-    nextButton: {
-      flexDirection: 'row', alignItems: 'center',
-      backgroundColor: Colors.primary, borderRadius: 999,
-      paddingLeft: 16, paddingRight: 14, paddingVertical: 10, flexShrink: 0,
-    },
-    nextButtonText: { color: Colors.onPrimary, fontSize: 14, fontWeight: '600', fontFamily: 'Inter', lineHeight: 18 },
 
     // Service chips scroll sideways past the screen edge, as in Figma.
     chipScroll: { marginHorizontal: -Spacing.screenH },

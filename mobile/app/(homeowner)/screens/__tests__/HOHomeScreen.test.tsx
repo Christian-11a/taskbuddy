@@ -1,6 +1,6 @@
 import React from 'react';
 import { StyleSheet } from 'react-native';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react-native';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react-native';
 import HOHomeScreen from '../HOHomeScreen';
 import { api } from '../../../../src/lib/api';
 import { useAuth } from '../../../../src/context/AuthContext';
@@ -175,13 +175,16 @@ describe('HOHomeScreen — hero card shows the one job that needs you', () => {
     expect(screen.getByText('2 applied')).toBeTruthy();
   });
 
-  it('keeps the blue hero while proposals need a decision', async () => {
+  it('keeps the sky-blue hero while proposals need a decision, with a 20 point title', async () => {
     (api.myJobs as jest.Mock).mockResolvedValue([OPEN_JOB]);
     (api.jobApplications as jest.Mock).mockResolvedValue([pendingApplication('a', 'Ana Reyes')]);
     render(<HOHomeScreen onNavigate={jest.fn()} />);
 
-    const card = StyleSheet.flatten((await screen.findByTestId('home-hero-proposals')).props.style);
-    expect(card.backgroundColor).toBe(lightPalette.Colors.hero);
+    const hero = await screen.findByTestId('home-hero-proposals');
+    expect(StyleSheet.flatten(hero.props.style).backgroundColor).toBe(lightPalette.Colors.hero);
+    const title = screen.getByText('1 proposal waiting');
+    expect(StyleSheet.flatten(title.props.style).fontSize).toBe(20);
+    expect(title.props.numberOfLines).toBe(2);
   });
 
   it('shows the next booking when no open job has proposals', async () => {
@@ -204,7 +207,7 @@ describe('HOHomeScreen — hero card shows the one job that needs you', () => {
     expect(onNavigate).toHaveBeenCalledWith('Job Detail', 'job-booked');
   });
 
-  it('shows the next booking as a caught-up card: a surface, dark text and a blue View button', async () => {
+  it('shows the next booking in the same sky-blue hero, with a white View button', async () => {
     (api.myJobs as jest.Mock).mockResolvedValue([
       {
         ...OPEN_JOB,
@@ -217,14 +220,17 @@ describe('HOHomeScreen — hero card shows the one job that needs you', () => {
     ]);
     render(<HOHomeScreen onNavigate={jest.fn()} />);
 
-    const card = StyleSheet.flatten((await screen.findByTestId('home-hero-booking')).props.style);
-    expect(card.backgroundColor).toBe(lightPalette.V6Colors.surface);
-    expect(card.borderColor).toBe(lightPalette.V6Colors.line);
-    expect(StyleSheet.flatten(screen.getByText('Next booking').props.style).color).toBe(lightPalette.Colors.primaryDeep);
+    const hero = await screen.findByTestId('home-hero-booking');
+    expect(StyleSheet.flatten(hero.props.style).backgroundColor).toBe(lightPalette.Colors.hero);
+    expect(StyleSheet.flatten(screen.getByText('Next booking').props.style).color).toBe(lightPalette.Colors.onHeroMuted);
+    const title = within(hero).getByText('Plumbing: Fix toilet');
+    expect(StyleSheet.flatten(title.props.style).color).toBe(lightPalette.Colors.onPrimary);
+    expect(StyleSheet.flatten(title.props.style).fontSize).toBe(20);
+    expect(title.props.numberOfLines).toBe(2);
     expect(StyleSheet.flatten(screen.getByLabelText('View Plumbing: Fix toilet').props.style).backgroundColor).toBe(
-      lightPalette.Colors.primary,
+      lightPalette.Colors.onPrimary,
     );
-    expect(StyleSheet.flatten(screen.getByText('View').props.style).color).toBe(lightPalette.Colors.onPrimary);
+    expect(StyleSheet.flatten(screen.getByText('View').props.style).color).toBe(lightPalette.Colors.primary);
   });
 
   it('still renders Home without the hero when the proposal lookup fails', async () => {
