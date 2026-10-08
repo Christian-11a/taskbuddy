@@ -28,7 +28,7 @@ export default function RadioRow({ label, selected, onSelect, disabled = false }
       hitSlop={{ top: 1, bottom: 1 }}
       accessibilityRole="radio"
       accessibilityLabel={label}
-      // `checked` is the state screen readers announce for radios; `selected` is what the spec and callers use.
+      // Screen readers read "checked" for a radio. "selected" is set too, for consumers that read it.
       accessibilityState={{ checked: selected, selected, disabled }}
     >
       <Radio on={selected} />

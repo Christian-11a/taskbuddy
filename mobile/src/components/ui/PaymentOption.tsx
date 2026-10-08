@@ -27,7 +27,7 @@ export default function PaymentOption({ title, meta, icon: Icon, selected, disab
       disabled={disabled}
       accessibilityRole="radio"
       accessibilityLabel={meta ? `${title}, ${meta}` : title}
-      // `checked` is the state screen readers announce for radios; `selected` is what the spec and callers use.
+      // Screen readers read "checked" for a radio. "selected" is set too, for consumers that read it.
       accessibilityState={{ checked: selected, selected, disabled }}
     >
       <Radio on={selected} />
