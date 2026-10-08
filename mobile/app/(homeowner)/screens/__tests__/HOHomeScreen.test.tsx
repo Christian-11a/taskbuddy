@@ -4,6 +4,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react-nativ
 import HOHomeScreen from '../HOHomeScreen';
 import { api } from '../../../../src/lib/api';
 import { useAuth } from '../../../../src/context/AuthContext';
+import { lightPalette } from '../../../../src/constants/palettes';
 
 jest.mock('../../../../src/context/NotificationsContext', () => ({
   useNotifications: () => ({ notifications: [], unreadCount: 0, loading: false, error: null, reload: jest.fn() }),
@@ -160,6 +161,29 @@ describe('HOHomeScreen — hero card shows the one job that needs you', () => {
     expect(onNavigate).toHaveBeenCalledWith('Job Applications', 'job-open');
   });
 
+  it('counts only pending applicants in "N applied", so it always matches the proposals waiting', async () => {
+    (api.myJobs as jest.Mock).mockResolvedValue([OPEN_JOB]);
+    (api.jobApplications as jest.Mock).mockResolvedValue([
+      pendingApplication('a', 'Ana Reyes'),
+      pendingApplication('b', 'Ben Cruz'),
+      { ...pendingApplication('c', 'Cy Diaz'), status: 'rejected' },
+      { ...pendingApplication('d', 'Dee Gomez'), status: 'withdrawn' },
+    ]);
+    render(<HOHomeScreen onNavigate={jest.fn()} />);
+
+    expect(await screen.findByText('2 proposals waiting')).toBeTruthy();
+    expect(screen.getByText('2 applied')).toBeTruthy();
+  });
+
+  it('keeps the blue hero while proposals need a decision', async () => {
+    (api.myJobs as jest.Mock).mockResolvedValue([OPEN_JOB]);
+    (api.jobApplications as jest.Mock).mockResolvedValue([pendingApplication('a', 'Ana Reyes')]);
+    render(<HOHomeScreen onNavigate={jest.fn()} />);
+
+    const card = StyleSheet.flatten((await screen.findByTestId('home-hero-proposals')).props.style);
+    expect(card.backgroundColor).toBe(lightPalette.Colors.hero);
+  });
+
   it('shows the next booking when no open job has proposals', async () => {
     (api.myJobs as jest.Mock).mockResolvedValue([
       {
@@ -178,6 +202,29 @@ describe('HOHomeScreen — hero card shows the one job that needs you', () => {
     expect(screen.getByText(/Juan Dela Cruz$/)).toBeTruthy();
     fireEvent.press(screen.getByLabelText('View Plumbing: Fix toilet'));
     expect(onNavigate).toHaveBeenCalledWith('Job Detail', 'job-booked');
+  });
+
+  it('shows the next booking as a caught-up card: a surface, dark text and a blue View button', async () => {
+    (api.myJobs as jest.Mock).mockResolvedValue([
+      {
+        ...OPEN_JOB,
+        id: 'job-booked',
+        title: 'Plumbing: Fix toilet',
+        status: 'confirmed',
+        scheduled_at: '2027-06-01T09:00:00+08:00',
+        assigned_provider: { full_name: 'Juan Dela Cruz' },
+      },
+    ]);
+    render(<HOHomeScreen onNavigate={jest.fn()} />);
+
+    const card = StyleSheet.flatten((await screen.findByTestId('home-hero-booking')).props.style);
+    expect(card.backgroundColor).toBe(lightPalette.V6Colors.surface);
+    expect(card.borderColor).toBe(lightPalette.V6Colors.line);
+    expect(StyleSheet.flatten(screen.getByText('Next booking').props.style).color).toBe(lightPalette.Colors.primaryDeep);
+    expect(StyleSheet.flatten(screen.getByLabelText('View Plumbing: Fix toilet').props.style).backgroundColor).toBe(
+      lightPalette.Colors.primary,
+    );
+    expect(StyleSheet.flatten(screen.getByText('View').props.style).color).toBe(lightPalette.Colors.onPrimary);
   });
 
   it('still renders Home without the hero when the proposal lookup fails', async () => {

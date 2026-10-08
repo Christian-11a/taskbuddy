@@ -9,9 +9,13 @@ export const PROPOSAL_CHECK_LIMIT = 5;
 /** Applications per job id from `api.jobApplications`; undefined when that lookup failed or has not finished. */
 export type ApplicationsByJob = Record<string, JobApplication[] | undefined>;
 
-/** What Home's hero card shows: proposals to review, or the next booking. */
+/**
+ * What Home's hero card shows: proposals to review, or the next booking.
+ * `pending` is the only applicant list the hero uses: its length is both the
+ * "N proposals waiting" title and the "N applied" label, so they never disagree.
+ */
 export type HomeHero =
-  | { kind: 'proposals'; job: Job; pending: JobApplication[]; applied: number }
+  | { kind: 'proposals'; job: Job; pending: JobApplication[] }
   | { kind: 'booking'; job: Job; when: Date; providerName: string | null };
 
 function postedAt(job: Job): number {
@@ -57,9 +61,7 @@ export function pickHomeHero(jobs: Job[], applicationsByJob: ApplicationsByJob, 
     }
   }
   if (proposal !== null) {
-    // Everyone who applied and has not withdrawn, including declined applicants.
-    const applied = (applicationsByJob[proposal.job.id] ?? []).filter((a) => a.status !== 'withdrawn').length;
-    return { kind: 'proposals', job: proposal.job, pending: proposal.pending, applied };
+    return { kind: 'proposals', job: proposal.job, pending: proposal.pending };
   }
 
   const nowMs = now.getTime();

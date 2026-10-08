@@ -68,7 +68,7 @@ describe('pickHomeHero', () => {
     ).toBeNull();
   });
 
-  it('picks the open job with the most pending proposals and counts applicants who have not withdrawn', () => {
+  it('picks the open job with the most pending proposals and lists only its pending applicants', () => {
     const hero = pickHomeHero(
       [
         job('older', { posted_at: '2026-10-01T09:00:00+08:00' }),
@@ -85,8 +85,13 @@ describe('pickHomeHero', () => {
       },
       NOW,
     );
-    expect(hero).toMatchObject({ kind: 'proposals', job: { id: 'older' }, applied: 3 });
-    expect(hero?.kind === 'proposals' && hero.pending.map((a) => a.id)).toEqual(['a', 'b']);
+    // Declined and withdrawn applicants are not counted anywhere on the hero:
+    // "N applied" and "N proposals waiting" are both the pending count.
+    expect(hero).toEqual({
+      kind: 'proposals',
+      job: expect.objectContaining({ id: 'older' }),
+      pending: [expect.objectContaining({ id: 'a' }), expect.objectContaining({ id: 'b' })],
+    });
   });
 
   it('breaks a tie on pending proposals in favour of the newest job', () => {
