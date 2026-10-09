@@ -8,6 +8,7 @@ import { openRedirectSession } from '../../../../src/lib/appRedirectSession';
 
 jest.mock('../../../../src/lib/api', () => ({
   MIN_TOPUP_PHP: 50,
+  MAX_CARD_PHP: 100000,
   api: {
     wallet: jest.fn(),
     withdrawals: jest.fn(),
@@ -136,7 +137,7 @@ describe('HOWalletScreen — Add Money after Stripe returns', () => {
     render(<HOWalletScreen />);
     await waitFor(() => expect(screen.getByText('Add money')).toBeTruthy());
     fireEvent.press(screen.getByText('Add money'));
-    expect(screen.getByText('Minimum ₱50')).toBeTruthy();
+    expect(screen.getByText('Minimum ₱50. It goes to your TaskBuddy wallet and is used when you hire.')).toBeTruthy();
     fireEvent.changeText(screen.getByPlaceholderText('0.00'), '49.99');
     fireEvent.press(screen.getByTestId('wallet-add-money-continue'));
     expect(api.createCheckoutSession).not.toHaveBeenCalled();
@@ -148,7 +149,7 @@ describe('HOWalletScreen — Add Money after Stripe returns', () => {
     render(<HOWalletScreen />);
     await waitFor(() => expect(screen.getByText('Add money')).toBeTruthy());
     fireEvent.press(screen.getByText('Add money'));
-    fireEvent.press(screen.getByTestId('wallet-quick-500'));
+    fireEvent.press(screen.getByRole('button', { name: '₱500' }));
     await act(async () => {
       fireEvent.press(screen.getByTestId('wallet-add-money-continue'));
     });
@@ -252,6 +253,135 @@ describe('HOWalletScreen — Add Money after Stripe returns', () => {
     });
 
     await waitFor(() => expect(api.wallet).toHaveBeenCalledTimes(2));
+  });
+});
+
+describe('HOWalletScreen — Add money sheet: quick amounts, limits and Continue', () => {
+  const walletAt = (balance: number) => ({
+    balance,
+    available: balance,
+    pending: 0,
+    pending_withdrawals: 0,
+    total_credited: balance,
+    total_debited: 0,
+    in_escrow: 0,
+    transactions: [],
+  });
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    clearAsyncDataCache();
+    jest.useFakeTimers();
+    (api.withdrawals as jest.Mock).mockResolvedValue([]);
+    (api.wallet as jest.Mock).mockResolvedValue(walletAt(0));
+    (api.createCheckoutSession as jest.Mock).mockResolvedValue({
+      url: 'https://checkout.stripe.com/c/pay/cs_test_2',
+      session_id: 'cs_test_2',
+      amount: 2500,
+    });
+    (openRedirectSession as jest.Mock).mockResolvedValue({ type: 'dismiss' });
+  });
+
+  afterEach(() => {
+    jest.clearAllTimers();
+    jest.useRealTimers();
+  });
+
+  /** Renders the wallet and opens Add money from the balance card. */
+  const openAddMoney = async () => {
+    render(<HOWalletScreen />);
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Add money' })).toBeTruthy());
+    fireEvent.press(screen.getByRole('button', { name: 'Add money' }));
+    return screen.getByTestId('add-money-dialog');
+  };
+  const amountField = () => screen.getByLabelText('Amount to add');
+  const continueButton = () => screen.getByTestId('wallet-add-money-continue');
+  const isDisabled = (element: { props: Record<string, any> }) =>
+    element.props.accessibilityState?.disabled === true;
+
+  it('titles the sheet Add money and says that Stripe takes the payment', async () => {
+    await openAddMoney();
+
+    expect(screen.getByRole('header', { name: 'Add money' })).toBeTruthy();
+    expect(screen.getByText("You'll pay on Stripe's secure page, then come right back here.")).toBeTruthy();
+  });
+
+  it('offers four quick amounts, and picking one fills the field and marks it selected', async () => {
+    await openAddMoney();
+    for (const label of ['₱500', '₱1,000', '₱2,500', '₱5,000']) {
+      expect(screen.getByRole('button', { name: label })).toBeTruthy();
+    }
+    expect(screen.getByRole('button', { name: '₱2,500' }).props.accessibilityState).toMatchObject({ selected: false });
+
+    fireEvent.press(screen.getByRole('button', { name: '₱2,500' }));
+
+    expect(amountField().props.value).toBe('2500');
+    expect(screen.getByRole('button', { name: '₱2,500' }).props.accessibilityState).toMatchObject({ selected: true });
+  });
+
+  it('shows the minimum as a helper, moves it to an error once the field is left, and disables Continue below ₱50', async () => {
+    await openAddMoney();
+    fireEvent.changeText(amountField(), '20');
+
+    expect(screen.getByText('Minimum ₱50. It goes to your TaskBuddy wallet and is used when you hire.')).toBeTruthy();
+    expect(screen.queryByText('The minimum is ₱50')).toBeNull();
+    expect(isDisabled(continueButton())).toBe(true);
+
+    fireEvent(amountField(), 'blur');
+
+    expect(screen.getByText('The minimum is ₱50')).toBeTruthy();
+    expect(screen.queryByText(/Minimum ₱50\./)).toBeNull();
+  });
+
+  it('clears the minimum error as soon as the amount is valid, and enables Continue', async () => {
+    await openAddMoney();
+    fireEvent.changeText(amountField(), '20');
+    fireEvent(amountField(), 'blur');
+
+    fireEvent.changeText(amountField(), '50');
+
+    expect(screen.queryByText('The minimum is ₱50')).toBeNull();
+    expect(isDisabled(continueButton())).toBe(false);
+  });
+
+  it('says the most a top-up can be once the field is submitted, and disables Continue above ₱100,000', async () => {
+    await openAddMoney();
+    fireEvent.changeText(amountField(), '100001');
+    fireEvent(amountField(), 'submitEditing');
+
+    expect(screen.getByText('The most you can add is ₱100,000')).toBeTruthy();
+    expect(isDisabled(continueButton())).toBe(true);
+    expect(api.createCheckoutSession).not.toHaveBeenCalled();
+  });
+
+  it('accepts exactly ₱100,000', async () => {
+    await openAddMoney();
+    fireEvent.changeText(amountField(), '100000');
+
+    expect(isDisabled(continueButton())).toBe(false);
+  });
+
+  it('labels Continue with the amount, and opens Checkout once with that amount', async () => {
+    await openAddMoney();
+    fireEvent.press(screen.getByRole('button', { name: '₱2,500' }));
+    expect(screen.getByRole('button', { name: 'Continue to payment · ₱2,500' })).toBeTruthy();
+
+    await act(async () => {
+      fireEvent.press(continueButton());
+    });
+
+    await waitFor(() => expect(api.createCheckoutSession).toHaveBeenCalledTimes(1));
+    expect(api.createCheckoutSession).toHaveBeenCalledWith({ amount: 2500, app_redirect: 'taskbuddy://' });
+  });
+
+  it('Cancel closes the sheet without opening Checkout', async () => {
+    await openAddMoney();
+    fireEvent.press(screen.getByRole('button', { name: '₱500' }));
+
+    fireEvent.press(screen.getByRole('button', { name: 'Cancel' }));
+
+    await waitFor(() => expect(screen.queryByTestId('add-money-dialog')).toBeNull());
+    expect(api.createCheckoutSession).not.toHaveBeenCalled();
   });
 });
 

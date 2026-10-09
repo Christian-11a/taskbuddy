@@ -12,12 +12,10 @@
 import { useThemedStyles, type Palette as ThemePalette } from '../../../src/context/ThemeContext';
 import React, { useEffect, useState } from 'react';
 import {
-  ActivityIndicator,
   RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
-  TextInput,
   View,
 } from 'react-native';
 import Tap from '../../../src/components/ui/Tap';
@@ -35,11 +33,11 @@ import {
   type LucideIcon,
 } from 'lucide-react-native';
 import * as AuthSession from 'expo-auth-session';
-import { Spacing, V6Radii } from '../../../src/constants/theme';
+import { Spacing } from '../../../src/constants/theme';
 import { useHeaderTop } from '../../../src/hooks/useHeaderTop';
 
 import { useAsyncData } from '../../../src/hooks/useAsyncData';
-import { api, MIN_TOPUP_PHP, type WalletTransaction } from '../../../src/lib/api';
+import { api, MAX_CARD_PHP, MIN_TOPUP_PHP, type WalletTransaction } from '../../../src/lib/api';
 import { openRedirectSession } from '../../../src/lib/appRedirectSession';
 import { peso, plural, shortDate } from '../../../src/lib/format';
 import {
@@ -53,6 +51,11 @@ import ScreenSkeleton from '../../../src/components/ScreenSkeleton';
 import { canWithdrawBalance, getWithdrawalHint } from '../../../src/lib/walletRules';
 import { showToast } from '../../../src/components/Toast';
 import {
+  MoneyAmountField,
+  MoneyInfoBox,
+  MoneySheetButton,
+  MoneySheetError,
+  MoneySheetLink,
   WithdrawSheetBody,
   readWithdrawal,
   type WithdrawStep,
@@ -88,8 +91,22 @@ const EMPTY_COPY: Record<WalletFilter, { title: string; body?: string }> = {
 /** Minus sign (U+2212), as in the Figma amounts. */
 const MINUS = '−';
 
+/** Whole pesos for the quick amounts and the button (₱1,000). Centavos stay when there are some. */
+function wholePeso(amount: number): string {
+  return Number.isInteger(amount) ? `₱${amount.toLocaleString('en-PH')}` : peso(amount);
+}
+
+/** Why an amount can't be added, or undefined while the field is empty or the amount is valid. */
+function topUpError(text: string, amount: number): string | undefined {
+  if (text.trim() === '') return undefined;
+  if (!Number.isFinite(amount)) return 'Enter a valid amount.';
+  if (amount < MIN_TOPUP_PHP) return `The minimum is ₱${MIN_TOPUP_PHP}`;
+  if (amount > MAX_CARD_PHP) return `The most you can add is ₱${MAX_CARD_PHP.toLocaleString('en-PH')}`;
+  return undefined;
+}
+
 export default function HOWalletScreen() {
-  const { C, Colors, styles, appearance } = useThemedStyles(createThemedStyles);
+  const { C, Colors, styles } = useThemedStyles(createThemedStyles);
   const headerTop = useHeaderTop();
   const [filter, setFilter] = useState<WalletFilter>('all');
   const { data, loading, error, reload } = useAsyncData(() => api.wallet(), [], 'ho-wallet');
@@ -115,7 +132,7 @@ export default function HOWalletScreen() {
 
   const parsedAmount = Number(amount.replace(/,/g, ''));
   const isValidAmount =
-    Number.isFinite(parsedAmount) && parsedAmount >= MIN_TOPUP_PHP;
+    Number.isFinite(parsedAmount) && parsedAmount >= MIN_TOPUP_PHP && parsedAmount <= MAX_CARD_PHP;
 
   const closeAddMoney = () => {
     setShowAddMoney(false);
@@ -470,89 +487,51 @@ export default function HOWalletScreen() {
         visible={showAddMoney}
         onClose={closeAddMoney}
         dismissible={false}
-        contentStyle={styles.modalCard}
         cardProps={{ testID: 'add-money-dialog' }}
       >
-            <Text style={styles.modalTitle}>Add Money</Text>
-            <Text style={styles.modalBody}>
-              You'll be taken to Stripe to pay by card. Funds are held in escrow
-              when you hire a provider, then released after the three-day warranty
-              ends unless a complaint is open.
-            </Text>
+        <View style={styles.sheetBody}>
+          <Text style={styles.sheetTitle} accessibilityRole="header">Add money</Text>
 
-            <View style={styles.amountRow}>
-              <Text style={styles.amountCurrency}>₱</Text>
-              <TextInput keyboardAppearance={appearance}
-                style={styles.amountInput}
-                value={amount}
-                onChangeText={setAmount}
-                keyboardType="decimal-pad"
-                placeholder="0.00"
-                placeholderTextColor={C.ink400}
-                editable={!adding}
-                autoFocus
+          <MoneyAmountField
+            accessibilityLabel="Amount to add"
+            value={amount}
+            onChangeText={setAmount}
+            error={topUpError(amount, parsedAmount)}
+            helper={`Minimum ₱${MIN_TOPUP_PHP}. It goes to your TaskBuddy wallet and is used when you hire.`}
+            editable={!adding}
+            autoFocus
+          />
+
+          {/* Locked while Checkout is opening, so a tap cannot change the amount mid-request. */}
+          <View style={styles.quickAmounts} pointerEvents={adding ? 'none' : 'auto'}>
+            {QUICK_TOPUP_AMOUNTS.map((preset) => (
+              <FilterPill
+                key={preset}
+                label={wholePeso(preset)}
+                selected={parsedAmount === preset}
+                onPress={() => {
+                  setAmount(String(preset));
+                  setAddError(null);
+                }}
               />
-            </View>
+            ))}
+          </View>
 
-            <View style={styles.quickAmounts}>
-              {QUICK_TOPUP_AMOUNTS.map((preset) => {
-                const selected = parsedAmount === preset;
-                return (
-                  <Tap
-                    key={preset}
-                    testID={`wallet-quick-${preset}`}
-                    style={[styles.quickAmount, selected && styles.quickAmountActive]}
-                    onPress={() => {
-                      setAmount(String(preset));
-                      setAddError(null);
-                    }}
-                    disabled={adding}
-                    activeOpacity={0.8}
-                  >
-                    <Text
-                      style={[
-                        styles.quickAmountText,
-                        selected && styles.quickAmountTextActive,
-                      ]}
-                    >
-                      ₱{preset.toLocaleString()}
-                    </Text>
-                  </Tap>
-                );
-              })}
-            </View>
+          <MoneyInfoBox
+            rows={[{ icon: Shield, text: "You'll pay on Stripe's secure page, then come right back here." }]}
+          />
 
-            <Text style={styles.modalHint}>Minimum ₱{MIN_TOPUP_PHP}</Text>
+          {addError ? <MoneySheetError message={addError} /> : null}
 
-            {addError && <Text style={styles.modalError}>{addError}</Text>}
-
-            <View style={styles.modalActions}>
-              <Tap
-                style={[styles.modalBtn, styles.modalCancel]}
-                onPress={closeAddMoney}
-                disabled={adding}
-                activeOpacity={0.8}
-              >
-                <Text style={styles.modalCancelText}>Cancel</Text>
-              </Tap>
-              <Tap
-                testID="wallet-add-money-continue"
-                style={[
-                  styles.modalBtn,
-                  styles.modalConfirm,
-                  (!isValidAmount || adding) && styles.modalBtnDisabled,
-                ]}
-                onPress={addMoney}
-                disabled={!isValidAmount || adding}
-                activeOpacity={0.85}
-              >
-                {adding ? (
-                  <ActivityIndicator color={C.onPrimary} />
-                ) : (
-                  <Text style={[styles.modalConfirmText, !isValidAmount && styles.modalConfirmTextDisabled]}>Continue</Text>
-                )}
-              </Tap>
-            </View>
+          <MoneySheetButton
+            testID="wallet-add-money-continue"
+            label={isValidAmount ? `Continue to payment · ${wholePeso(parsedAmount)}` : 'Continue to payment'}
+            onPress={addMoney}
+            disabled={!isValidAmount || adding}
+            busy={adding}
+          />
+          <MoneySheetLink label="Cancel" onPress={closeAddMoney} disabled={adding} />
+        </View>
       </SheetFrame>
 
       <SheetFrame
@@ -684,32 +663,11 @@ function createThemedStyles(theme: ThemePalette) {
     txnAmountIn: { color: Colors.successText },
     txnAmountOut: { color: C.ink900 },
 
-    // Add Money / Withdraw sheets (unchanged).
-    modalCard: { width: '100%', backgroundColor: C.surface, borderRadius: V6Radii.card, padding: 22 },
-    modalTitle: { color: C.ink900, fontSize: 21.5, fontWeight: '800', fontFamily: 'Inter' },
-    modalBody: { color: C.ink500, fontSize: 15.5, fontFamily: 'Inter', lineHeight: 19, marginTop: 6 },
-    amountRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginTop: 18, marginBottom: 6 },
-    amountCurrency: { color: C.ink900, fontSize: 34, fontWeight: '800', fontFamily: 'Inter', marginRight: 4 },
-    amountInput: { fontSize: 48.5, fontWeight: '800', fontFamily: 'Inter', color: C.ink900, minWidth: 120, textAlign: 'center' },
-    modalError: { color: V6Colors.dangerText, fontSize: 15.5, fontFamily: 'Inter', textAlign: 'center', marginTop: 4 },
-    modalHint: { color: C.ink400, fontSize: 14.5, fontFamily: 'Inter', textAlign: 'center', marginTop: 6 },
-    quickAmounts: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 10 },
-    quickAmount: {
-      flexBasis: '48%', flexGrow: 1, minHeight: 44, alignItems: 'center', justifyContent: 'center',
-      borderWidth: 1, borderColor: C.line, borderRadius: 12, backgroundColor: C.surface,
-    },
-    quickAmountActive: { borderColor: C.primaryTonalStrong, backgroundColor: C.primaryTonalStrong },
-    quickAmountText: { color: C.ink800, fontSize: 15, fontWeight: '700', fontFamily: 'Inter' },
-    quickAmountTextActive: { color: Colors.primaryDeep },
-    modalActions: { flexDirection: 'row', gap: 10, marginTop: 18 },
-    modalBtn: { flex: 1, minHeight: 52, alignItems: 'center', justifyContent: 'center', borderRadius: 16, paddingHorizontal: 16 },
-    // Readable disabled state: grey fill with dark text instead of a faded button.
-    modalBtnDisabled: { backgroundColor: C.ink100 },
-    modalConfirmTextDisabled: { color: C.ink700 },
-    modalCancel: { backgroundColor: C.surface, borderWidth: 1, borderColor: C.fieldBorder },
-    modalCancelText: { color: C.ink800, fontSize: 15.5, fontWeight: '700', fontFamily: 'Inter' },
-    modalConfirm: { backgroundColor: C.primary },
-    modalConfirmText: { color: C.onPrimary, fontSize: 15.5, fontWeight: '700', fontFamily: 'Inter' },
+    // Add money sheet (the withdraw sheet draws its own styles in WithdrawModal).
+    sheetBody: { gap: 12 },
+    sheetTitle: { color: C.ink900, fontSize: 21.5, fontWeight: '800', fontFamily: 'Inter' },
+    // Four quick amounts in one row; they wrap onto two rows when the text is large.
+    quickAmounts: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, justifyContent: 'space-between' },
   });
   return { appearance: theme.appearance, Colors, V6Colors, C, styles };
 }

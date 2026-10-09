@@ -154,6 +154,7 @@ export function WithdrawSheetBody({
         error={reading.amountError}
         helper={blockedHint}
         editable={!locked}
+        autoFocus
       />
       <TextField
         label="Send to"
@@ -187,6 +188,7 @@ export function MoneyAmountField({
   error,
   helper,
   editable,
+  autoFocus = false,
 }: {
   accessibilityLabel: string;
   value: string;
@@ -194,6 +196,7 @@ export function MoneyAmountField({
   error?: string;
   helper?: string;
   editable: boolean;
+  autoFocus?: boolean;
 }) {
   const { styles, V6Colors, appearance } = useThemedStyles(createThemedStyles);
   const [focused, setFocused] = useState(false);
@@ -214,6 +217,7 @@ export function MoneyAmountField({
           placeholder="0.00"
           placeholderTextColor={V6Colors.ink500}
           editable={editable}
+          autoFocus={autoFocus}
           accessibilityLabel={accessibilityLabel}
           accessibilityHint={shownError}
           onFocus={() => setFocused(true)}
