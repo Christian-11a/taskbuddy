@@ -45,3 +45,21 @@ it('reports cancellation failure and retains the pending request', async () => {
   expect(screen.getByText('Transaction: pending-request')).toBeTruthy();
   expect(api.wallet).toHaveBeenCalledTimes(1);
 });
+it('shows the escrow hold and the total earned, with the jobs done under it', async () => {
+  (api.wallet as jest.Mock).mockResolvedValue({...wallet([]), in_escrow:120, total_credited:1000});
+  render(<SPWalletScreen />);
+  expect(await screen.findByText('₱120.00')).toBeTruthy();
+  expect(screen.getByText('On hold')).toBeTruthy();
+  expect(screen.getByText('₱1,000.00')).toBeTruthy();
+  expect(screen.getByText('Earned so far')).toBeTruthy();
+  expect(screen.getByText('1 job done')).toBeTruthy();
+});
+it('signs money coming in with a plus, and leaves a refused payout unsigned', async () => {
+  (api.wallet as jest.Mock).mockResolvedValue(wallet([
+    {...transaction('paid-job','completed','connect_transfer'),direction:'credit',amount:425,title:'Paid: Plumbing'},
+    transaction('refused-payout','failed','connect_transfer'),
+  ]));
+  render(<SPWalletScreen />);
+  expect(await screen.findByText('+₱425.00')).toBeTruthy();
+  expect(screen.getByText('₱350.00')).toBeTruthy();
+});
