@@ -8,12 +8,14 @@
  * Also fixes a real bug found while restyling: `onBack` was already a wired
  * prop but the old header never rendered a back button.
  *
- * Reached from a proposal card, so a client can check a provider before
- * hiring. The mockup's portfolio grid becomes "Recent work": the provider's
- * last completed jobs (title, service, date — never another client's photos
- * or address), alongside About and Reviews. No hourly rates: this is a
- * per-job marketplace. The bottom action is "Message" (this app's real functionality)
- * in place of the mockup's "Invite to Apply" (which isn't a feature here).
+ * Reached from a proposal, so a client can check a provider before hiring.
+ * With a `proposal`, the profile shows that proposal's offer for the job and
+ * ends with the Hire action (the same payment sheet as on the proposals list)
+ * and a link back to the proposals. Without one there is no Hire action.
+ * Sections with nothing in them are hidden rather than shown empty.
+ * The mockup's portfolio grid becomes "Recent work": the provider's last
+ * completed jobs (title, service, date — never another client's photos or
+ * address). No hourly rates: this is a per-job marketplace.
  */
 
 import { useThemedStyles, type Palette as ThemePalette } from '../../../src/context/ThemeContext';
@@ -29,6 +31,7 @@ import {
   View,
 } from 'react-native';
 import Tap from '../../../src/components/ui/Tap';
+import BottomActionBar from '../../../src/components/ui/BottomActionBar';
 import ContentSkeleton from '../../../src/components/ui/ContentSkeleton';
 import Silhouette from '../../../src/components/ui/Silhouette';
 import { ArrowLeft, BadgeCheck, CheckCircle2, MessageCircle, ShieldAlert, Star } from 'lucide-react-native';
@@ -40,9 +43,18 @@ import { api } from '../../../src/lib/api';
 import { plural, shortDate } from '../../../src/lib/format';
 import { HOScreen } from '../../../src/types/navigation';
 
+/** The proposal this profile was opened from: its offer, and the way to hire from it. */
+export interface ProfileProposal {
+  providerName: string;
+  jobTitle: string | null;
+  message: string | null;
+  onHire: () => void;
+}
+
 interface HOProviderProfileScreenProps {
   id: string;
   jobId?: string | null;
+  proposal?: ProfileProposal;
   onBack?: () => void;
   onNavigate?: (screen: HOScreen, jobId?: string) => void;
 }
@@ -50,6 +62,7 @@ interface HOProviderProfileScreenProps {
 export default function HOProviderProfileScreen({
   id,
   jobId,
+  proposal,
   onBack,
   onNavigate,
 }: HOProviderProfileScreenProps) {
@@ -71,13 +84,16 @@ export default function HOProviderProfileScreen({
   const provider = data?.provider ?? null;
   const reviews: any[] = data?.reviews ?? [];
   const work = data?.work ?? [];
+  const portfolioEntries = portfolio.data ?? [];
+  // Portfolio only shows while it loads, when it failed, or when there are photos.
+  const showPortfolio = portfolio.loading || !!portfolio.error || portfolioEntries.length > 0;
 
   return (
     <View style={styles.screen}>
       {/* Header — matches .topbar (flat white) */}
       <View style={[styles.header, { paddingTop: headerTop }]}>
         {onBack && (
-          <Tap style={styles.backBtn} onPress={onBack} activeOpacity={0.8}>
+          <Tap style={styles.backBtn} onPress={onBack} activeOpacity={0.8} accessibilityRole="button" accessibilityLabel="Back">
             <ArrowLeft size={20} color={C.ink700} />
           </Tap>
         )}
@@ -106,72 +122,105 @@ export default function HOProviderProfileScreen({
                 {provider.is_verified ? 'ID verified' : 'Not verified yet'}
               </Text>
             </View>
-            <Text style={styles.metaText}>
-              {provider.cached_avg_rating != null ? `${Number(provider.cached_avg_rating).toFixed(1)}★ · ` : 'New · '}
-              {plural(provider.cached_completed_jobs, 'completed job')}
-              {provider.profiles?.city ? ` · ${provider.profiles.city}` : ''}
-            </Text>
+            {!!provider.profiles?.city && <Text style={styles.metaText}>{provider.profiles.city}</Text>}
           </View>
 
-          {/* About */}
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>About</Text>
-            <Text style={styles.bio}>{provider.bio ?? 'No bio provided.'}</Text>
-            <View style={styles.kvRow}>
-              <Text style={styles.kvLabel}>Experience</Text>
-              <Text style={styles.kvValue}>{provider.years_experience == null ? '—' : plural(provider.years_experience, 'yr')}</Text>
+          {/* Rating, jobs done and experience, as one card */}
+          <View style={styles.statsCard}>
+            <View style={styles.stat}>
+              <Text style={styles.statValue}>
+                {provider.cached_avg_rating != null ? Number(provider.cached_avg_rating).toFixed(1) : 'New'}
+              </Text>
+              <Text style={styles.statLabel}>Rating</Text>
+            </View>
+            <View style={styles.statDivider} />
+            <View style={styles.stat}>
+              <Text style={styles.statValue}>{String(provider.cached_completed_jobs)}</Text>
+              <Text style={styles.statLabel}>Jobs done</Text>
+            </View>
+            <View style={styles.statDivider} />
+            <View style={styles.stat}>
+              <Text style={styles.statValue}>
+                {provider.years_experience == null ? '—' : plural(provider.years_experience, 'yr')}
+              </Text>
+              <Text style={styles.statLabel}>Experience</Text>
             </View>
           </View>
 
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Portfolio</Text>
-            {portfolio.loading && <ActivityIndicator color={V6Colors.link}/>}
-            {!!portfolio.error && <><Text style={styles.bio}>{portfolio.error}</Text><Tap onPress={portfolio.reload}><Text style={styles.serviceText}>Retry portfolio</Text></Tap></>}
-            {!portfolio.loading && !portfolio.error && <PortfolioGallery entries={portfolio.data??[]}/>}
-          </View>
-          {/* Recent work */}
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Recent work</Text>
-            {work.length === 0 && <Text style={styles.bio}>No completed jobs on TaskBuddy yet.</Text>}
-            {work.map((item) => (
-              <View key={item.id} style={styles.workRow}>
-                <CheckCircle2 size={16} color={V6Colors.link} />
-                <View style={{ flex: 1, minWidth: 0 }}>
-                  <Text style={styles.workTitle} numberOfLines={1}>{item.title}</Text>
-                  <Text style={styles.workMeta} numberOfLines={1}>
-                    {[item.service_categories?.name, item.completed_at ? shortDate(item.completed_at) : null]
-                      .filter(Boolean)
-                      .join(' · ')}
-                  </Text>
-                </View>
+          {/* The offer on this job, when the profile was opened from a proposal */}
+          {!!proposal?.message && (
+            <View style={styles.section}>
+              <Text style={styles.offerTitle}>
+                {proposal.jobTitle ? `Their offer for ${proposal.jobTitle}` : 'Their offer'}
+              </Text>
+              <View style={styles.offerBubble}>
+                <Text style={styles.offerText}>{proposal.message}</Text>
               </View>
-            ))}
-          </View>
+            </View>
+          )}
+
+          {/* About */}
+          {!!provider.bio && (
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>About</Text>
+              <Text style={styles.bio}>{provider.bio}</Text>
+            </View>
+          )}
+
+          {showPortfolio && (
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>Portfolio</Text>
+              {portfolio.loading && <ActivityIndicator color={V6Colors.link}/>}
+              {!!portfolio.error && <><Text style={styles.bio}>{portfolio.error}</Text><Tap onPress={portfolio.reload}><Text style={styles.serviceText}>Retry portfolio</Text></Tap></>}
+              {!portfolio.loading && !portfolio.error && <PortfolioGallery entries={portfolioEntries}/>}
+            </View>
+          )}
+
+          {/* Recent work */}
+          {work.length > 0 && (
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>Recent work</Text>
+              {work.map((item) => (
+                <View key={item.id} style={styles.workRow}>
+                  <CheckCircle2 size={16} color={V6Colors.link} />
+                  <View style={{ flex: 1, minWidth: 0 }}>
+                    <Text style={styles.workTitle} numberOfLines={1}>{item.title}</Text>
+                    <Text style={styles.workMeta} numberOfLines={1}>
+                      {[item.service_categories?.name, item.completed_at ? shortDate(item.completed_at) : null]
+                        .filter(Boolean)
+                        .join(' · ')}
+                    </Text>
+                  </View>
+                </View>
+              ))}
+            </View>
+          )}
 
           {/* Reviews */}
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Reviews</Text>
-            {reviews.length === 0 && <Text style={styles.emptyText}>No reviews yet.</Text>}
-            {reviews.map((r) => (
-              <View key={r.id} style={styles.reviewRow}>
-                <View style={styles.reviewAvatar}>
-                  <Silhouette name={r.client?.full_name} textStyle={styles.reviewAvatarText} />
-                </View>
-                <View style={{ flex: 1 }}>
-                  <View style={styles.reviewHeader}>
-                    <Text style={styles.reviewName}>{r.client?.full_name ?? 'Client'}</Text>
-                    <Text style={styles.reviewDate}>{shortDate(r.created_at)}</Text>
+          {reviews.length > 0 && (
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>Reviews</Text>
+              {reviews.map((r) => (
+                <View key={r.id} style={styles.reviewRow}>
+                  <View style={styles.reviewAvatar}>
+                    <Silhouette name={r.client?.full_name} textStyle={styles.reviewAvatarText} />
                   </View>
-                  <View style={styles.reviewRatingRow}>
-                    <Star size={12} color={C.ink400} fill={C.ink400} />
-                    <Text style={styles.reviewRating}>{r.rating ?? '—'}</Text>
+                  <View style={{ flex: 1 }}>
+                    <View style={styles.reviewHeader}>
+                      <Text style={styles.reviewName}>{r.client?.full_name ?? 'Client'}</Text>
+                      <Text style={styles.reviewDate}>{shortDate(r.created_at)}</Text>
+                    </View>
+                    <View style={styles.reviewRatingRow}>
+                      <Star size={12} color={C.ink400} fill={C.ink400} />
+                      <Text style={styles.reviewRating}>{r.rating ?? '—'}</Text>
+                    </View>
+                    {!!r.jobs?.title && <Text style={styles.reviewJob} numberOfLines={1}>For: {r.jobs.title}</Text>}
+                    {!!r.comment && <Text style={styles.reviewComment}>{r.comment}</Text>}
                   </View>
-                  {!!r.jobs?.title && <Text style={styles.reviewJob} numberOfLines={1}>For: {r.jobs.title}</Text>}
-                  {!!r.comment && <Text style={styles.reviewComment}>{r.comment}</Text>}
                 </View>
-              </View>
-            ))}
-          </View>
+              ))}
+            </View>
+          )}
 
           {jobId && onNavigate && (
             <View style={styles.actionBar}>
@@ -188,6 +237,15 @@ export default function HOProviderProfileScreen({
 
           <View style={{ height: 20 }} />
         </ScrollView>
+      )}
+
+      {proposal && (
+        <BottomActionBar
+          primaryLabel={`Hire ${proposal.providerName}`}
+          onPrimary={proposal.onHire}
+          secondaryLabel="Back to proposals"
+          onSecondary={onBack}
+        />
       )}
     </View>
   );
@@ -218,13 +276,23 @@ function createThemedStyles(theme: ThemePalette) {
     hero: { padding: 22, paddingHorizontal: Spacing.screenH, backgroundColor: C.surface, borderBottomWidth: 1, borderBottomColor: C.line, alignItems: 'center' },
     avatar: { width: 80, height: 80, borderRadius: 40, backgroundColor: C.primaryTonalStrong, alignItems: 'center', justifyContent: 'center', marginBottom: 10, overflow: 'hidden' },
     avatarText: { color: C.primaryDeep, fontSize: 24, fontWeight: '800', fontFamily: 'Inter' },
-    name: { color: C.ink900, fontSize: 20.5, fontWeight: '700', fontFamily: 'Inter' },
+    name: { color: C.ink900, fontSize: 20.5, fontWeight: '700', fontFamily: 'Inter', textAlign: 'center' },
     metaText: { color: C.ink400, fontSize: 12.5, fontFamily: 'Inter', marginTop: 4, textAlign: 'center' },
-    serviceText: { color: V6Colors.link, fontSize: 13, fontWeight: '700', fontFamily: 'Inter', marginTop: 2 },
+    serviceText: { color: V6Colors.link, fontSize: 13, fontWeight: '700', fontFamily: 'Inter', marginTop: 2, textAlign: 'center' },
     verifyPill: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 10, paddingVertical: 4, borderRadius: 999, marginTop: 8 },
     verifyPillOn: { backgroundColor: V6Colors.successSurface },
     verifyPillOff: { backgroundColor: V6Colors.warningSurface },
     verifyText: { fontSize: 12, fontWeight: '700', fontFamily: 'Inter' },
+
+    statsCard: {
+      flexDirection: 'row', alignItems: 'center', marginHorizontal: Spacing.screenH, marginTop: 14,
+      backgroundColor: C.surface, borderWidth: 1, borderColor: C.line, borderRadius: 16, paddingVertical: 14,
+    },
+    stat: { flex: 1, alignItems: 'center', gap: 2, minWidth: 0 },
+    statValue: { color: C.ink900, fontSize: 18, fontWeight: '800', fontFamily: 'Inter' },
+    statLabel: { color: C.ink500, fontSize: 12, fontFamily: 'Inter', textAlign: 'center' },
+    statDivider: { width: 1, alignSelf: 'stretch', backgroundColor: C.line },
+
     workRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 8 },
     workTitle: { color: C.ink900, fontSize: 14, fontWeight: '700', fontFamily: 'Inter' },
     workMeta: { color: C.ink400, fontSize: 12.5, fontFamily: 'Inter', marginTop: 1 },
@@ -232,12 +300,10 @@ function createThemedStyles(theme: ThemePalette) {
 
     section: { padding: 18, paddingHorizontal: Spacing.screenH, backgroundColor: C.surface, borderBottomWidth: 1, borderBottomColor: C.line },
     sectionTitle: { fontSize: 12, textTransform: 'uppercase', letterSpacing: 0.7, color: C.ink400, fontWeight: '700', fontFamily: 'Inter', marginBottom: 10 },
+    offerTitle: { color: C.ink900, fontSize: 15, fontWeight: '700', fontFamily: 'Inter', marginBottom: 10 },
+    offerBubble: { backgroundColor: Colors.primaryTonal, borderRadius: 16, padding: 14 },
+    offerText: { color: C.ink900, fontSize: 14, lineHeight: 20, fontFamily: 'Inter' },
     bio: { fontSize: 13.5, lineHeight: 20, color: C.ink700, fontFamily: 'Inter' },
-    emptyText: { fontSize: 13.5, lineHeight: 20, color: C.ink500, fontFamily: 'Inter' },
-
-    kvRow: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 12 },
-    kvLabel: { color: C.ink500, fontSize: 13.5, fontFamily: 'Inter' },
-    kvValue: { color: C.ink900, fontSize: 13.5, fontWeight: '700', fontFamily: 'Inter' },
 
     reviewRow: { flexDirection: 'row', marginBottom: 14, gap: 10 },
     reviewAvatar: { width: 40, height: 40, borderRadius: 12, backgroundColor: C.ink50, alignItems: 'center', justifyContent: 'center' },

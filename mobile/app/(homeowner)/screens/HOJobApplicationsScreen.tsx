@@ -24,10 +24,11 @@
  */
 
 import { useThemedStyles, type Palette as ThemePalette } from '../../../src/context/ThemeContext';
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import * as AuthSession from 'expo-auth-session';
 import {
   ActivityIndicator,
+  BackHandler,
   ScrollView,
   StyleSheet,
   Text,
@@ -46,6 +47,7 @@ import { api, type Job, type JobApplication } from '../../../src/lib/api';
 import { openRedirectSession } from '../../../src/lib/appRedirectSession';
 import HirePaymentModal from '../../../src/components/HirePaymentModal';
 import ConfirmationModal from '../../../src/components/ConfirmationModal';
+import HOProviderProfileScreen from './HOProviderProfileScreen';
 import { HOScreen } from '../../../src/types/navigation';
 
 interface HOJobApplicationsScreenProps {
@@ -107,6 +109,26 @@ export default function HOJobApplicationsScreen({
   // Decline asks first: it can't be undone. Hire goes straight to the payment
   // sheet, whose confirm page is the one check before any money moves.
   const [confirmReject, setConfirmReject] = useState<JobApplication | null>(null);
+
+  // The provider profile opened from a proposal. It is shown in place of the
+  // list, so the payment sheet below is the same one the list opens.
+  const [profileOf, setProfileOf] = useState<JobApplication | null>(null);
+  // Read the proposal's current status, not the copy the profile was opened
+  // with: it can have been hired since. Only a pending one, with nobody hired
+  // yet, can be hired from its profile.
+  const profileLatest = profileOf ? apps?.find((a) => a.id === profileOf.id) ?? profileOf : null;
+  const profileHireable = profileLatest?.status === 'pending' && hiredApp === null;
+
+  useEffect(() => {
+    if (!profileOf) return;
+    // Android back closes the profile first. React Native calls the most recently
+    // added listener first, so this runs before the app's own back handler.
+    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+      setProfileOf(null);
+      return true;
+    });
+    return () => sub.remove();
+  }, [profileOf]);
 
   // ── Hiring: the payment choice ─────────────────────────────────────────────
   const [hireTarget, setHireTarget] = useState<JobApplication | null>(null);
@@ -295,8 +317,7 @@ export default function HOJobApplicationsScreen({
               <View style={styles.linkRow}>
                 <Tap
                   style={styles.linkTap}
-                  onPress={() => onNavigate?.('Provider Profile', app.provider_id)}
-                  disabled={!onNavigate}
+                  onPress={() => setProfileOf(app)}
                   activeOpacity={0.8}
                   accessibilityRole="button"
                   accessibilityLabel={`View ${name}'s profile`}
@@ -347,6 +368,67 @@ export default function HOJobApplicationsScreen({
       </View>
     );
   };
+
+  // The two sheets, shared by the proposals list and the profile opened from it.
+  const sheets = (
+    <>
+      <ConfirmationModal
+        visible={confirmReject !== null}
+        title="Reject this proposal?"
+        message={`${confirmReject?.provider?.full_name ?? 'This provider'} will be told they weren't selected. You can't undo this.`}
+        confirmLabel="Reject"
+        destructive
+        onConfirm={() => {
+          const app = confirmReject;
+          setConfirmReject(null);
+          if (app) void runAction(app.id, () => api.rejectApplication(app.id));
+        }}
+        onCancel={() => setConfirmReject(null)}
+      />
+
+      <HirePaymentModal
+        visible={hireTarget !== null}
+        providerName={hireTarget?.provider?.full_name ?? 'this provider'}
+        jobTitle={jobTitle}
+        budget={budget}
+        available={available}
+        loading={hireLoading}
+        busy={hireBusy}
+        message={hireMessage}
+        onPayWallet={payFromWallet}
+        onPayCard={payByCard}
+        onAddMoney={() => {
+          closeHire();
+          onNavigate?.('Wallet');
+        }}
+        onClose={closeHire}
+      />
+    </>
+  );
+
+  if (profileOf) {
+    return (
+      <View style={styles.screen}>
+        <HOProviderProfileScreen
+          id={profileOf.provider_id}
+          proposal={
+            profileHireable
+              ? {
+                  providerName: profileOf.provider?.full_name ?? 'this provider',
+                  jobTitle: job?.title ?? null,
+                  message: profileOf.cover_message,
+                  onHire: () => {
+                    void openHire(profileOf);
+                  },
+                }
+              : undefined
+          }
+          onBack={() => setProfileOf(null)}
+        />
+        {sheets}
+      </View>
+    );
+  }
 
   return (
     <View style={styles.screen}>
@@ -410,37 +492,7 @@ export default function HOJobApplicationsScreen({
         </ScrollView>
       )}
 
-      <ConfirmationModal
-        visible={confirmReject !== null}
-        title="Reject this proposal?"
-        message={`${confirmReject?.provider?.full_name ?? 'This provider'} will be told they weren't selected. You can't undo this.`}
-        confirmLabel="Reject"
-        destructive
-        onConfirm={() => {
-          const app = confirmReject;
-          setConfirmReject(null);
-          if (app) void runAction(app.id, () => api.rejectApplication(app.id));
-        }}
-        onCancel={() => setConfirmReject(null)}
-      />
-
-      <HirePaymentModal
-        visible={hireTarget !== null}
-        providerName={hireTarget?.provider?.full_name ?? 'this provider'}
-        jobTitle={jobTitle}
-        budget={budget}
-        available={available}
-        loading={hireLoading}
-        busy={hireBusy}
-        message={hireMessage}
-        onPayWallet={payFromWallet}
-        onPayCard={payByCard}
-        onAddMoney={() => {
-          closeHire();
-          onNavigate?.('Wallet');
-        }}
-        onClose={closeHire}
-      />
+      {sheets}
     </View>
   );
 }

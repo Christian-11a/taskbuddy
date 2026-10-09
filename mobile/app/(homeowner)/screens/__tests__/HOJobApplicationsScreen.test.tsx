@@ -1,4 +1,5 @@
 import React from 'react';
+import { BackHandler } from 'react-native';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react-native';
 import HOJobApplicationsScreen from '../HOJobApplicationsScreen';
 import { api, type JobApplication } from '../../../../src/lib/api';
@@ -14,6 +15,10 @@ jest.mock('../../../../src/lib/api', () => ({
     acceptApplication: jest.fn(),
     rejectApplication: jest.fn(),
     createHireCheckoutSession: jest.fn(),
+    getProvider: jest.fn(),
+    getProviderReviews: jest.fn(),
+    getProviderWork: jest.fn(),
+    providerPortfolio: jest.fn(),
   },
 }));
 
@@ -71,6 +76,20 @@ beforeEach(() => {
   (api.wallet as jest.Mock).mockResolvedValue({ available: 5000 });
   (api.acceptApplication as jest.Mock).mockResolvedValue({});
   (api.rejectApplication as jest.Mock).mockResolvedValue({});
+  (api.getProvider as jest.Mock).mockResolvedValue({
+    profile_id: 'prov-app-1',
+    years_experience: 2,
+    is_verified: true,
+    cached_avg_rating: 4,
+    cached_completed_jobs: 2,
+    bio: 'Ten years of window work.',
+    service_categories: { name: 'Cleaning' },
+    approved_secondary_services: [],
+    profiles: { full_name: 'Alex Reyes', avatar_url: null, city: 'Cebu' },
+  });
+  (api.getProviderReviews as jest.Mock).mockResolvedValue([]);
+  (api.getProviderWork as jest.Mock).mockResolvedValue([]);
+  (api.providerPortfolio as jest.Mock).mockResolvedValue([]);
   mockJob(1000);
 });
 
@@ -178,14 +197,69 @@ describe('HOJobApplicationsScreen: the proposals list', () => {
     await waitFor(() => expect(api.rejectApplication).toHaveBeenCalledTimes(1));
     expect(api.rejectApplication).toHaveBeenCalledWith('app-1');
   });
+});
 
-  it('View profile opens the provider for this job', async () => {
-    const onNavigate = jest.fn();
-    await renderScreen(onNavigate);
+describe('HOJobApplicationsScreen: the provider profile from a proposal', () => {
+  it("View profile shows the provider in place of the proposals, with this job's offer", async () => {
+    await renderScreen();
 
     fireEvent.press(await screen.findByRole('button', { name: "View Alex Reyes's profile" }));
 
-    expect(onNavigate).toHaveBeenCalledWith('Provider Profile', 'prov-app-1');
+    expect(await screen.findByText('Their offer for Window cleaning')).toBeTruthy();
+    expect(screen.getByText('I can come Friday evening.')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Hire Alex Reyes' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Hire Alex Reyes for this job' })).toBeNull();
+  });
+
+  it('Back to proposals returns to the list', async () => {
+    await renderScreen();
+
+    fireEvent.press(await screen.findByRole('button', { name: "View Alex Reyes's profile" }));
+    fireEvent.press(await screen.findByRole('button', { name: 'Back to proposals' }));
+
+    expect(await screen.findByRole('button', { name: 'Hire Alex Reyes for this job' })).toBeTruthy();
+    expect(screen.queryByText('Their offer for Window cleaning')).toBeNull();
+  });
+
+  it('Android back on the profile returns to the proposals instead of leaving the screen', async () => {
+    const addListener = jest.spyOn(BackHandler, 'addEventListener');
+    try {
+      await renderScreen();
+      fireEvent.press(await screen.findByRole('button', { name: "View Alex Reyes's profile" }));
+      await screen.findByText('Their offer for Window cleaning');
+
+      const handler = addListener.mock.calls.filter(([name]) => name === 'hardwareBackPress').pop()?.[1];
+      expect(handler).toBeDefined();
+
+      let handled: boolean | null | undefined;
+      act(() => {
+        handled = handler?.({} as never);
+      });
+
+      expect(handled).toBe(true);
+      expect(await screen.findByRole('button', { name: 'Hire Alex Reyes for this job' })).toBeTruthy();
+    } finally {
+      addListener.mockRestore();
+    }
+  });
+
+  it('Hire on the profile opens the same payment sheet for this proposal, and pays only on its confirm page', async () => {
+    await renderScreen();
+
+    fireEvent.press(await screen.findByRole('button', { name: "View Alex Reyes's profile" }));
+    fireEvent.press(await screen.findByRole('button', { name: 'Hire Alex Reyes' }));
+
+    expect(await screen.findByRole('header', { name: 'Hire Alex Reyes' })).toBeTruthy();
+    expect(api.getJob).toHaveBeenCalledWith('job-1');
+
+    fireEvent.press(await screen.findByRole('radio', { name: 'Wallet, ₱5,000.00 available' }));
+    fireEvent.press(screen.getByRole('button', { name: 'Continue' }));
+    expect(api.acceptApplication).not.toHaveBeenCalled();
+
+    fireEvent.press(screen.getByRole('button', { name: 'Confirm and hire · ₱1,000.00' }));
+
+    await waitFor(() => expect(api.acceptApplication).toHaveBeenCalledTimes(1));
+    expect(api.acceptApplication).toHaveBeenCalledWith('app-1');
   });
 });
 
