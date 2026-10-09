@@ -1,33 +1,26 @@
 /**
  * HOJobApplicationsScreen.tsx
  *
- * v6 design: matches taskbuddy_UI_update.html's #ho-applicants screen —
- * flat white .topbar + .proposal-card list (bordered white cards, avatar +
- * name + rating/jobs meta, cover message in a shaded quote block, and two
- * actions per card).
+ * The proposals on one job, decided by the homeowner. Each pending proposal has
+ * one main action, Hire (the filled pill on the right); View profile and Decline
+ * are small links, so there is no equal Reject / Accept pair. Declined and
+ * withdrawn proposals sit in a greyed NOT SELECTED group with no actions.
  *
  * Also fixes a real bug found while restyling: `onBack` was already a wired
  * prop (App.tsx passes it) but the old header never rendered a back button,
  * so there was no in-app way off this screen except the OS back gesture.
  *
- * Deviation: the mockup's proposal cards show a provider's bid amount and a
- * "View Profile" + "Hire" action pair; this app's applications don't carry a
- * bid amount (providers apply to the homeowner's posted budget, not counter
- * -offer), so the actions here are the real ones this screen supports —
- * Accept / Reject — restyled to the same outline/primary button pair.
- *
- * Accept is where the hire's money is held, so it is also where the hire's
- * refusals surface: an insufficient wallet (400), a provider who is not
- * verified (409 `provider_not_verified`), or a rate limit (429). Each shows in
- * the payment modal (or, for Reject, the banner above the list) rather than
- * disappearing — the actions used to have no catch at all, so a short wallet
- * looked like a button that did nothing.
- *
- * Accept opens `HirePaymentModal`: pay from the wallet (the accept call holds
+ * Hire opens `HirePaymentModal`: pay from the wallet (the accept call holds
  * the budget), or pay by card on Stripe Checkout (BACKEND_SCHEMA.md §29.4).
+ * Nothing is paid until the sheet's own "Confirm and hire" is pressed.
  * A card hire is made by Stripe's webhook, not by this screen, so after the
  * browser closes the screen polls the application until it turns `accepted`
  * — the same "the server decides, the app waits" shape as Add Money.
+ *
+ * Refusals still surface where they happen: an insufficient wallet (400), a
+ * provider who is not verified (409 `provider_not_verified`), or a rate limit
+ * (429). Each shows in the payment sheet, or in the banner above the list for
+ * Decline, rather than disappearing.
  */
 
 import { useThemedStyles, type Palette as ThemePalette } from '../../../src/context/ThemeContext';
@@ -41,15 +34,15 @@ import {
   View,
 } from 'react-native';
 import Tap from '../../../src/components/ui/Tap';
-import { plural } from '../../../src/lib/format';
+import { peso, plural, timeAgo } from '../../../src/lib/format';
 import ContentSkeleton from '../../../src/components/ui/ContentSkeleton';
 import Silhouette from '../../../src/components/ui/Silhouette';
-import { AlertCircle, ArrowLeft, CheckCircle2, ChevronRight, ShieldAlert, Star } from 'lucide-react-native';
+import { AlertCircle, ArrowLeft, BadgeCheck, CheckCircle2, ShieldAlert, Star } from 'lucide-react-native';
 import { Spacing } from '../../../src/constants/theme';
 import { useHeaderTop } from '../../../src/hooks/useHeaderTop';
 
 import { useAsyncData } from '../../../src/hooks/useAsyncData';
-import { api, type JobApplication } from '../../../src/lib/api';
+import { api, type Job, type JobApplication } from '../../../src/lib/api';
 import { openRedirectSession } from '../../../src/lib/appRedirectSession';
 import HirePaymentModal from '../../../src/components/HirePaymentModal';
 import ConfirmationModal from '../../../src/components/ConfirmationModal';
@@ -75,6 +68,14 @@ export default function HOJobApplicationsScreen({
     },
     [jobId],
   );
+  // The job's title, budget and date for the summary chip. Listing the
+  // proposals doesn't need it, so if it fails the chip is simply left out.
+  const jobInfo = useAsyncData<Job | null>(
+    async () => (jobId ? api.getJob(jobId) : null),
+    [jobId],
+  );
+  const job = jobInfo.data;
+  const jobHasBudget = job != null && job.budget != null && Number(job.budget) > 0;
 
   const [busyId, setBusyId] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -97,13 +98,15 @@ export default function HOJobApplicationsScreen({
     }
   };
 
-  const pendingCount = apps?.filter((a) => a.status === 'pending').length ?? 0;
-  const hasHired = apps?.some((a) => a.status === 'accepted') ?? false;
+  const hiredApp = apps?.find((a) => a.status === 'accepted') ?? null;
+  const pending = apps?.filter((a) => a.status === 'pending') ?? [];
+  const declined = apps?.filter((a) => a.status === 'rejected' || a.status === 'withdrawn') ?? [];
+  // Once someone is hired, the other open proposals can no longer be hired.
+  const notSelected = hiredApp ? [...pending, ...declined] : declined;
 
-  // Accept and Reject both ask first: rejecting can't be undone, and accepting
-  // goes straight on to payment.
+  // Decline asks first: it can't be undone. Hire goes straight to the payment
+  // sheet, whose confirm page is the one check before any money moves.
   const [confirmReject, setConfirmReject] = useState<JobApplication | null>(null);
-  const [confirmAccept, setConfirmAccept] = useState<JobApplication | null>(null);
 
   // ── Hiring: the payment choice ─────────────────────────────────────────────
   const [hireTarget, setHireTarget] = useState<JobApplication | null>(null);
@@ -227,6 +230,124 @@ export default function HOJobApplicationsScreen({
     }
   };
 
+  const subline = hiredApp
+    ? 'Provider hired · Follow the job from Job Details'
+    : job == null
+      ? 'Pick one provider.'
+      : jobHasBudget
+        ? 'Pick one provider. You only pay when you hire, and the money is held safely until the job is done.'
+        : "Pick one provider. Nothing is held: they're hired straight away.";
+
+  const chipText = job
+    ? [job.title, jobHasBudget ? peso(job.budget) : null, job.scheduled_at ? dayLabel(job.scheduled_at) : 'ASAP']
+        .filter(Boolean)
+        .join(' · ')
+    : null;
+
+  /** One proposal. `open`: can still be hired. `hired`: the accepted one. `closed`: greyed, no actions. */
+  const renderProposal = (app: JobApplication, state: 'open' | 'hired' | 'closed') => {
+    const provider = app.provider;
+    const name = provider?.full_name ?? 'Provider';
+    const stats = provider?.provider_profiles ?? null;
+    const verified = stats?.is_verified === true;
+    const sent = timeAgo(app.applied_at);
+    const actionsDisabled = busyId !== null || !verified;
+    return (
+      <View key={app.id} style={[styles.card, state === 'closed' && styles.cardMuted]}>
+        <View style={styles.cardHead}>
+          <View style={styles.avatar}>
+            <Silhouette name={provider?.full_name} textStyle={styles.avatarText} />
+          </View>
+          <View style={styles.copy}>
+            <View style={styles.nameRow}>
+              <Text style={styles.providerName} numberOfLines={1}>{name}</Text>
+              {verified && (
+                <View style={styles.verifiedChip}>
+                  <BadgeCheck size={12} color={V6Colors.successText} />
+                  <Text style={styles.verifiedChipText}>Verified</Text>
+                </View>
+              )}
+            </View>
+            <View style={styles.ratingRow}>
+              <Star size={12} color={C.ink400} fill={C.ink400} />
+              <Text style={styles.providerMeta}>
+                {stats?.cached_avg_rating != null ? `${Number(stats.cached_avg_rating).toFixed(1)} · ` : 'New · '}
+                {plural(stats?.cached_completed_jobs, 'job')} done
+              </Text>
+            </View>
+            {state === 'open' && !verified && (
+              <View style={styles.unverifiedChip}>
+                <ShieldAlert size={11} color={C.amber700} />
+                <Text style={styles.unverifiedChipText}>Not verified</Text>
+              </View>
+            )}
+          </View>
+        </View>
+
+        <View style={[styles.messageBox, state === 'closed' && styles.messageBoxMuted]}>
+          <Text style={styles.messageText}>{app.cover_message ?? 'No cover message.'}</Text>
+          {!!sent && <Text style={styles.sentText}>Sent {sent}</Text>}
+        </View>
+
+        {state === 'open' && (
+          <>
+            <View style={styles.actionsRow}>
+              <View style={styles.linkRow}>
+                <Tap
+                  style={styles.linkTap}
+                  onPress={() => onNavigate?.('Provider Profile', app.provider_id)}
+                  disabled={!onNavigate}
+                  activeOpacity={0.8}
+                  accessibilityRole="button"
+                  accessibilityLabel={`View ${name}'s profile`}
+                  testID={`applications-profile-${app.id}`}
+                >
+                  <Text style={styles.linkText}>View profile</Text>
+                </Tap>
+                <Tap
+                  style={styles.linkTap}
+                  onPress={() => setConfirmReject(app)}
+                  disabled={busyId !== null}
+                  activeOpacity={0.8}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Decline ${name}`}
+                  testID={`applications-reject-${app.id}`}
+                >
+                  <Text style={[styles.linkText, styles.linkTextMuted]}>{busyId === app.id ? 'Working…' : 'Decline'}</Text>
+                </Tap>
+              </View>
+              {/* Hiring an unverified provider is refused by the API
+                  (409 provider_not_verified); disabling it here says why
+                  before the tap rather than after. */}
+              <Tap
+                style={[styles.hirePill, actionsDisabled && styles.disabled]}
+                onPress={() => openHire(app)}
+                disabled={actionsDisabled}
+                activeOpacity={0.85}
+                accessibilityRole="button"
+                accessibilityLabel={`Hire ${name} for this job`}
+                accessibilityState={{ disabled: actionsDisabled }}
+                testID={`applications-accept-${app.id}`}
+              >
+                <Text style={styles.hirePillText}>Hire</Text>
+              </Tap>
+            </View>
+            {!verified && <Text style={styles.unverifiedNote}>Hiring unlocks once they&apos;re verified.</Text>}
+          </>
+        )}
+
+        {state === 'hired' && (
+          <View style={styles.hiredBadge}>
+            <CheckCircle2 size={16} color={V6Colors.successText} />
+            <Text style={styles.hiredText}>Hired</Text>
+          </View>
+        )}
+
+        {state === 'closed' && <Text style={styles.closedText}>{CLOSED_LABEL[app.status]}</Text>}
+      </View>
+    );
+  };
+
   return (
     <View style={styles.screen}>
       {/* Header — matches .topbar (flat white) */}
@@ -248,9 +369,12 @@ export default function HOJobApplicationsScreen({
           contentContainerStyle={styles.bodyContent}
           showsVerticalScrollIndicator={false}
         >
-          <Text style={styles.countText}>
-            {hasHired ? 'Provider hired · Follow the job from Job Details' : `${pendingCount} active proposal${pendingCount === 1 ? '' : 's'} · Hire exactly one provider`}
-          </Text>
+          {!!chipText && (
+            <View style={styles.chip}>
+              <Text style={styles.chipText}>{chipText}</Text>
+            </View>
+          )}
+          <Text style={styles.subline}>{subline}</Text>
 
           {actionError && (
             <View style={styles.errorBanner} testID="applications-action-error">
@@ -270,96 +394,17 @@ export default function HOJobApplicationsScreen({
           )}
 
           <View style={styles.list}>
-            {apps.map((app) => {
-              const provider = app.provider;
-              const stats = provider?.provider_profiles ?? null;
-              const verified = stats?.is_verified === true;
-              return (
-                <View key={app.id} style={styles.card}>
-                  {/* The whole header opens the provider's profile — rating,
-                      reviews and past work — before deciding. */}
-                  <Tap
-                    style={styles.cardHead}
-                    onPress={() => onNavigate?.('Provider Profile', app.provider_id)}
-                    disabled={!onNavigate}
-                    activeOpacity={0.8}
-                    accessibilityRole="button"
-                    accessibilityLabel={`View ${provider?.full_name ?? 'provider'}'s profile`}
-                    testID={`applications-profile-${app.id}`}
-                  >
-                    <View style={styles.avatar}>
-                      <Silhouette name={provider?.full_name} textStyle={styles.avatarText} />
-                    </View>
-                    <View style={styles.copy}>
-                      <Text style={styles.providerName}>{provider?.full_name ?? 'Provider'}</Text>
-                      <View style={styles.ratingRow}>
-                        <Star size={12} color={C.ink400} fill={C.ink400} />
-                        <Text style={styles.providerMeta}>
-                          {stats?.cached_avg_rating != null
-                            ? `${Number(stats.cached_avg_rating).toFixed(1)} · `
-                            : 'New · '}
-                          {plural(stats?.cached_completed_jobs, 'job')}
-                        </Text>
-                      </View>
-                      {!verified && (
-                        <View style={styles.unverifiedChip}>
-                          <ShieldAlert size={11} color={C.amber700} />
-                          <Text style={styles.unverifiedChipText}>Not verified</Text>
-                        </View>
-                      )}
-                    </View>
-                    {onNavigate && (
-                      <View style={styles.profileLink}>
-                        <Text style={styles.profileLinkText}>Profile</Text>
-                        <ChevronRight size={15} color={V6Colors.link} />
-                      </View>
-                    )}
-                  </Tap>
-
-                  <View style={styles.messageBox}>
-                    <Text style={styles.messageText}>{app.cover_message ?? 'No cover message.'}</Text>
-                  </View>
-
-                  {app.status === 'pending' ? (
-                    <View style={styles.actionsRow}>
-                      <Tap
-                        style={[styles.outlineBtn, busyId !== null && styles.disabled]}
-                        onPress={() => setConfirmReject(app)}
-                        disabled={busyId !== null}
-                        activeOpacity={0.85}
-                        testID={`applications-reject-${app.id}`}
-                      >
-                        <Text style={styles.outlineBtnText}>{busyId === app.id ? 'Working…' : 'Reject'}</Text>
-                      </Tap>
-                      {/* Hiring an unverified provider is refused by the API
-                          (409 provider_not_verified); disabling it here says
-                          why before the tap rather than after. */}
-                      <Tap
-                        style={[styles.primaryBtn, (busyId !== null || !verified) && styles.disabled]}
-                        onPress={() => setConfirmAccept(app)}
-                        disabled={busyId !== null || !verified}
-                        activeOpacity={0.85}
-                        testID={`applications-accept-${app.id}`}
-                      >
-                        <Text style={styles.primaryBtnText}>
-                          {busyId === app.id ? 'Working…' : verified ? 'Accept' : 'Awaiting verification'}
-                        </Text>
-                      </Tap>
-                    </View>
-                  ) : (
-                    app.status === 'accepted' ? (
-                      <View style={styles.hiredBadge}>
-                        <CheckCircle2 size={16} color={V6Colors.successText} />
-                        <Text style={styles.hiredText}>{DECIDED_LABEL[app.status]}</Text>
-                      </View>
-                    ) : (
-                      <Text style={styles.decidedText}>{DECIDED_LABEL[app.status]}</Text>
-                    )
-                  )}
-                </View>
-              );
-            })}
+            {hiredApp ? renderProposal(hiredApp, 'hired') : pending.map((app) => renderProposal(app, 'open'))}
           </View>
+
+          {notSelected.length > 0 && (
+            <>
+              <Text style={styles.groupLabel}>NOT SELECTED ({notSelected.length})</Text>
+              <View style={styles.list}>
+                {notSelected.map((app) => renderProposal(app, 'closed'))}
+              </View>
+            </>
+          )}
 
           <View style={{ height: 20 }} />
         </ScrollView>
@@ -377,19 +422,6 @@ export default function HOJobApplicationsScreen({
           if (app) void runAction(app.id, () => api.rejectApplication(app.id));
         }}
         onCancel={() => setConfirmReject(null)}
-      />
-
-      <ConfirmationModal
-        visible={confirmAccept !== null}
-        title="Hire this provider?"
-        message={`You're about to hire ${confirmAccept?.provider?.full_name ?? 'this provider'}. Next you'll choose how to pay; the job's budget stays in escrow through the three-day completion warranty and any open complaint.`}
-        confirmLabel="Continue"
-        onConfirm={() => {
-          const app = confirmAccept;
-          setConfirmAccept(null);
-          if (app) void openHire(app);
-        }}
-        onCancel={() => setConfirmAccept(null)}
       />
 
       <HirePaymentModal
@@ -417,11 +449,19 @@ export default function HOJobApplicationsScreen({
 const HIRE_POLL_ATTEMPTS = 8;
 const HIRE_POLL_INTERVAL_MS = 1500;
 
-const DECIDED_LABEL: Record<Exclude<JobApplication['status'], 'pending'>, string> = {
+const CLOSED_LABEL: Record<JobApplication['status'], string> = {
+  pending: 'Not selected',
   accepted: 'Hired',
   rejected: 'Not selected',
   withdrawn: 'Withdrawn by the provider',
 };
+
+/** "Fri, Oct 10", or '' when the date can't be read. */
+function dayLabel(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  return d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+}
 
 function createThemedStyles(theme: ThemePalette) {
   const { Colors, V6Colors } = theme;
@@ -445,40 +485,63 @@ function createThemedStyles(theme: ThemePalette) {
 
     body: { flex: 1 },
     bodyContent: { paddingHorizontal: Spacing.screenH, paddingTop: 16, paddingBottom: 20 },
-    countText: { color: C.ink400, fontSize: 12.5, fontFamily: 'Inter', marginBottom: 14 },
+
+    chip: {
+      alignSelf: 'flex-start', maxWidth: '100%', backgroundColor: Colors.primaryTonal,
+      borderRadius: 999, paddingHorizontal: 12, paddingVertical: 6, marginBottom: 10,
+    },
+    chipText: { color: Colors.primaryDeep, fontSize: 13, fontWeight: '600', fontFamily: 'Inter' },
+    subline: { color: C.ink500, fontSize: 13, lineHeight: 18, fontFamily: 'Inter', marginBottom: 14 },
 
     emptyState: { alignItems: 'center', paddingVertical: 44, paddingHorizontal: 24 },
     emptyTitle: { color: C.ink800, fontSize: 16, fontWeight: '700', fontFamily: 'Inter', marginBottom: 4 },
     emptyText: { color: C.ink400, fontSize: 14, fontFamily: 'Inter', textAlign: 'center' },
 
     list: { gap: 11 },
+    groupLabel: {
+      color: C.ink500, fontSize: 12, fontWeight: '700', fontFamily: 'Inter',
+      letterSpacing: 0.6, marginTop: 20, marginBottom: 10,
+    },
     card: { backgroundColor: C.surface, borderWidth: 1, borderColor: C.line, borderRadius: 16, padding: 15 },
+    cardMuted: { backgroundColor: C.ink50 },
     cardHead: { flexDirection: 'row', alignItems: 'flex-start', gap: 11 },
     avatar: {
       width: 44, height: 44, borderRadius: 22, overflow: 'hidden',
       backgroundColor: C.primaryTonalStrong, alignItems: 'center', justifyContent: 'center',
     },
     avatarText: { color: C.primaryDeep, fontSize: 16, fontWeight: '800', fontFamily: 'Inter' },
-    copy: { flex: 1 },
-    providerName: { color: C.ink900, fontSize: 14.5, fontWeight: '700', fontFamily: 'Inter' },
+    copy: { flex: 1, minWidth: 0 },
+    nameRow: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 6 },
+    providerName: { flexShrink: 1, color: C.ink900, fontSize: 14.5, fontWeight: '700', fontFamily: 'Inter' },
+    verifiedChip: {
+      flexDirection: 'row', alignItems: 'center', gap: 4,
+      backgroundColor: V6Colors.successSurface, borderRadius: 999, paddingHorizontal: 7, paddingVertical: 2,
+    },
+    verifiedChipText: { color: V6Colors.successText, fontSize: 11, fontWeight: '700', fontFamily: 'Inter' },
     ratingRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 3 },
-    providerMeta: { color: C.ink400, fontSize: 11.5, fontFamily: 'Inter' },
-    profileLink: { flexDirection: 'row', alignItems: 'center', gap: 2, alignSelf: 'center' },
-    profileLinkText: { color: V6Colors.link, fontSize: 13, fontWeight: '700', fontFamily: 'Inter' },
+    providerMeta: { color: C.ink500, fontSize: 12, fontFamily: 'Inter', flexShrink: 1 },
 
     messageBox: { backgroundColor: V6Colors.wellBg, borderRadius: 11, padding: 11, marginVertical: 11 },
+    messageBoxMuted: { backgroundColor: C.surface },
     messageText: { color: C.ink700, fontSize: 12.5, lineHeight: 17, fontFamily: 'Inter' },
+    sentText: { color: C.ink500, fontSize: 11.5, fontFamily: 'Inter', marginTop: 6 },
 
-    actionsRow: { flexDirection: 'row', gap: 8 },
-    outlineBtn: { flex: 1, borderWidth: 1, borderColor: V6Colors.fieldBorder, borderRadius: 11, paddingVertical: 9, alignItems: 'center' },
-    outlineBtnText: { color: C.ink700, fontSize: 13.5, fontWeight: '700', fontFamily: 'Inter' },
-    primaryBtn: { flex: 1, backgroundColor: C.cyan700, borderRadius: 11, paddingVertical: 9, alignItems: 'center' },
-    primaryBtnText: { color: C.onPrimary, fontSize: 13.5, fontWeight: '700', fontFamily: 'Inter' },
+    actionsRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10 },
+    linkRow: { flexDirection: 'row', alignItems: 'center', flexShrink: 1, gap: 14 },
+    linkTap: { minHeight: 44, justifyContent: 'center' },
+    linkText: { color: V6Colors.link, fontSize: 13.5, fontWeight: '700', fontFamily: 'Inter' },
+    linkTextMuted: { color: C.ink700 },
+    hirePill: {
+      minHeight: 40, minWidth: 84, borderRadius: 999, backgroundColor: Colors.primary,
+      alignItems: 'center', justifyContent: 'center', paddingHorizontal: 20,
+    },
+    hirePillText: { color: Colors.onPrimary, fontSize: 14, fontWeight: '700', fontFamily: 'Inter' },
+    unverifiedNote: { color: C.ink500, fontSize: 12, fontFamily: 'Inter', marginTop: 8 },
 
     unverifiedChip: {
-      flexDirection: 'row', alignItems: 'center', gap: 4,
+      flexDirection: 'row', alignItems: 'center', gap: 4, alignSelf: 'flex-start',
       backgroundColor: V6Colors.warningSurface, borderRadius: 999,
-      paddingHorizontal: 8, paddingVertical: 3, marginTop: 2,
+      paddingHorizontal: 8, paddingVertical: 3, marginTop: 4,
     },
     unverifiedChipText: { color: C.amber700, fontSize: 10.5, fontWeight: '700', fontFamily: 'Inter' },
     hiredBadge: {
@@ -486,7 +549,7 @@ function createThemedStyles(theme: ThemePalette) {
       borderRadius: 12, backgroundColor: V6Colors.successSurface, borderWidth: 1, borderColor: V6Colors.successBorder,
     },
     hiredText: { color: V6Colors.successText, fontSize: 15, fontWeight: '700', fontFamily: 'Inter' },
-    decidedText: { color: C.ink500, fontSize: 12.5, fontWeight: '600', fontFamily: 'Inter', textAlign: 'center' },
+    closedText: { color: C.ink500, fontSize: 12.5, fontWeight: '600', fontFamily: 'Inter', marginTop: 10 },
 
     errorBanner: {
       flexDirection: 'row', alignItems: 'center', gap: 8,
@@ -496,7 +559,7 @@ function createThemedStyles(theme: ThemePalette) {
     retryText: { color: V6Colors.link, fontSize: 12.5, fontWeight: '700', fontFamily: 'Inter' },
     errorBannerText: { color: V6Colors.dangerText, fontSize: 12.5, lineHeight: 17, fontFamily: 'Inter' },
 
-    disabled: { opacity: 0.6 },
+    disabled: { opacity: 0.5 },
     stateText: { color: C.ink500, fontSize: 16.5, fontFamily: 'Inter', textAlign: 'center', marginTop: 30 },
   });
   return { Colors, V6Colors, C, styles };
