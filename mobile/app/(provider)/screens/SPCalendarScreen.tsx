@@ -1,37 +1,30 @@
 /**
- * SPCalendarScreen.tsx
+ * SPCalendarScreen.tsx (My Work · Calendar view)
  *
- * v6 design: matches taskbuddy_UI_update.html's #sp-calendar screen — a flat
- * white .topbar, a full month-grid `.card` (react-native-calendars, same
- * component the homeowner side's calendar uses, not the old horizontal
- * day-scroller), and a "Your Schedule" list of flat bordered rows below.
- *
- * Deviation: the mockup's schedule list shows all upcoming jobs, un-filtered
- * by date. This app already had a more useful real feature — filtering
- * bookings by the calendar's selected day — which is kept, since it's more
- * capable than what the mockup demo needs to show. Also wired the schedule
- * rows to actually navigate to Job Detail (`booking.job_id`), which the old
- * version had a decorative, non-functional arrow for.
+ * Figma "My Work · calendar" (144:7290): the calendar of My Jobs, for the
+ * provider. A month card with round chevrons, a dot on each day with a booking,
+ * today ringed and the picked day filled. Below it, the picked day's bookings
+ * as JobRows. App.tsx passes the title and the List/Calendar switch.
  */
 
-import { useThemedStyles, type Palette as ThemePalette } from '../../../src/context/ThemeContext';
 import React, { ReactNode, useMemo, useState } from 'react';
-import { ActivityIndicator, ScrollView, StyleSheet, Text, View } from 'react-native';
-import Tap from '../../../src/components/ui/Tap';
-import ContentSkeleton from '../../../src/components/ui/ContentSkeleton';
+import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Calendar } from 'react-native-calendars';
-import {
-  CalendarDays,
-  ChevronLeft,
-  ChevronRight,
-  UserRound,
-} from 'lucide-react-native';
-import { Spacing, V6Radii, V6Shadows } from '../../../src/constants/theme';
-import { useHeaderTop } from '../../../src/hooks/useHeaderTop';
-
+import { CalendarDays, ChevronLeft, ChevronRight } from 'lucide-react-native';
+import { useThemedStyles, type Palette as ThemePalette } from '../../../src/context/ThemeContext';
+import { Spacing, V6Shadows } from '../../../src/constants/theme';
+import Tap from '../../../src/components/ui/Tap';
+import JobRow from '../../../src/components/ui/JobRow';
+import EmptyRow from '../../../src/components/ui/EmptyRow';
+import ContentSkeleton from '../../../src/components/ui/ContentSkeleton';
+import { CalendarDay, CalendarWeekdays } from '../../../src/components/ui/MonthGrid';
 import { useAsyncData } from '../../../src/hooks/useAsyncData';
-import { api } from '../../../src/lib/api';
-import { jobStatusMeta, timeOfDay } from '../../../src/lib/format';
+import { useHeaderTop } from '../../../src/hooks/useHeaderTop';
+import { api, type Booking } from '../../../src/lib/api';
+import { plural, timeOfDay } from '../../../src/lib/format';
+import { bookingMarks, bookingRowStatus, bookingsOnDay } from '../../../src/lib/bookingCalendar';
+import { dayHeading, monthTitle, shiftMonth } from '../../../src/lib/jobCalendar';
+import { dateKey, parseDateKey } from '../../../src/lib/localDate';
 import { SPScreen } from '../../../src/types/navigation';
 
 interface SPCalendarScreenProps {
@@ -42,140 +35,145 @@ interface SPCalendarScreenProps {
   headerRight?: ReactNode;
 }
 
-export default function SPCalendarScreen({ onNavigate, title = 'Calendar', headerRight }: SPCalendarScreenProps) {
-  const { C, styles, V6Colors, appearance } = useThemedStyles(createThemedStyles);
-  const headerTop = useHeaderTop();
-  const todayKey = (() => {
-    const d = new Date();
-    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-  })();
-  const [selectedDate, setSelectedDate] = useState<string>(todayKey);
+const NAV_HIT_SLOP = { top: 6, bottom: 6, left: 6, right: 6 };
+const LINK_HIT_SLOP = { top: 15, bottom: 15, left: 8, right: 8 };
 
-  // The month on screen, not today's month: paging the calendar used to show
-  // empty months because only the current one was ever fetched.
-  const [visibleMonth, setVisibleMonth] = useState(() => {
-    const d = new Date();
-    return { year: d.getFullYear(), month: d.getMonth() };
-  });
-  const from = new Date(visibleMonth.year, visibleMonth.month, 1).toISOString();
-  const to = new Date(visibleMonth.year, visibleMonth.month + 1, 0, 23, 59, 59).toISOString();
+/**
+ * The calendar's own header (its title, arrows and weekday names) is hidden: the
+ * month row and the weekday row above the grid replace it.
+ */
+const NoCalendarHeader = () => null;
+
+export default function SPCalendarScreen({ onNavigate, title = 'Calendar', headerRight }: SPCalendarScreenProps) {
+  const { styles, V6Colors, appearance } = useThemedStyles(createThemedStyles);
+  const headerTop = useHeaderTop();
+  const todayKey = dateKey(new Date());
+  const [selectedDate, setSelectedDate] = useState<string>(todayKey);
+  // "YYYY-MM-DD" of a day in the month on screen. Paging the calendar fetches that month.
+  const [visibleMonth, setVisibleMonth] = useState<string>(todayKey);
+
+  const monthStart = parseDateKey(visibleMonth);
+  const from = new Date(monthStart.getFullYear(), monthStart.getMonth(), 1).toISOString();
+  const to = new Date(monthStart.getFullYear(), monthStart.getMonth() + 1, 0, 23, 59, 59).toISOString();
   const { data, loading, error, reload } = useAsyncData(
     () => api.bookings({ from, to }),
     [from, to],
   );
-  const bookings = data ?? [];
+  const bookings = useMemo(() => data ?? [], [data]);
 
-  const dateKey = (iso: string) => {
-    const d = new Date(iso);
-    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  const marks = useMemo(() => bookingMarks(bookings, selectedDate, new Date()), [bookings, selectedDate]);
+  const dayBookings = useMemo(() => bookingsOnDay(bookings, selectedDate), [bookings, selectedDate]);
+  const settled = !loading && !error;
+
+  const renderBooking = (booking: Booking) => {
+    const status = bookingRowStatus(booking);
+    return (
+      <JobRow
+        key={booking.id}
+        title={booking.jobs?.title ?? 'Booking'}
+        meta={status.meta}
+        tone={status.tone}
+        amount={timeOfDay(booking.scheduled_at)}
+        date={booking.scheduled_at}
+        onPress={() => onNavigate?.('Job Detail', booking.job_id)}
+      />
+    );
   };
-
-  const markedDates = useMemo(() => {
-    const m: Record<string, any> = {};
-    bookings.forEach((b) => {
-      const key = dateKey(b.scheduled_at);
-      m[key] = { ...(m[key] || {}), marked: true, dotColor: C.cyan700 };
-    });
-    if (selectedDate) {
-      m[selectedDate] = { ...(m[selectedDate] || {}), selected: true, selectedColor: C.cyan700 };
-    }
-    return m;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [bookings, selectedDate]);
-
-  const daySchedule = bookings
-    .filter((b) => dateKey(b.scheduled_at) === selectedDate)
-    .sort((a, b) => a.scheduled_at.localeCompare(b.scheduled_at));
 
   return (
     <View style={styles.screen}>
-      {/* Header — matches .topbar (flat white) */}
+      {/* The title row stays up while the bookings load, so the List/Calendar switch doesn't blank. */}
       <View style={[styles.header, { paddingTop: headerTop }]}>
-        <View style={styles.headerTopRow}>
-          <Text style={styles.headerTitle}>{title}</Text>
+        <View style={styles.headerRow}>
+          <Text style={styles.headerTitle} numberOfLines={1}>{title}</Text>
           {headerRight}
         </View>
       </View>
 
       <ScrollView style={styles.body} contentContainerStyle={styles.bodyContent} showsVerticalScrollIndicator={false}>
         <View style={styles.calendarCard}>
-          <Calendar key={appearance}
-            current={`${visibleMonth.year}-${String(visibleMonth.month + 1).padStart(2, '0')}-01`}
+          <View style={styles.monthRow}>
+            <Text style={styles.monthTitle} accessibilityRole="header">{monthTitle(visibleMonth)}</Text>
+            <View style={styles.monthNav}>
+              <Tap
+                style={styles.navButton}
+                hitSlop={NAV_HIT_SLOP}
+                onPress={() => setVisibleMonth((month) => shiftMonth(month, -1))}
+                accessibilityRole="button"
+                accessibilityLabel="Previous month"
+              >
+                <ChevronLeft size={18} color={V6Colors.ink700} />
+              </Tap>
+              <Tap
+                style={styles.navButton}
+                hitSlop={NAV_HIT_SLOP}
+                onPress={() => setVisibleMonth((month) => shiftMonth(month, 1))}
+                accessibilityRole="button"
+                accessibilityLabel="Next month"
+              >
+                <ChevronRight size={18} color={V6Colors.ink700} />
+              </Tap>
+            </View>
+          </View>
+          <CalendarWeekdays />
+          <Calendar
+            key={appearance}
+            current={visibleMonth}
+            customHeader={NoCalendarHeader}
+            hideExtraDays
+            firstDay={0}
+            onMonthChange={(month) => setVisibleMonth(month.dateString)}
             onDayPress={(day) => setSelectedDate(day.dateString)}
-            onMonthChange={(m) => setVisibleMonth({ year: m.year, month: m.month - 1 })}
-            markedDates={markedDates}
-            renderArrow={(direction: 'left' | 'right') => (direction === 'left'
-              ? <ChevronLeft size={22} color={V6Colors.link} />
-              : <ChevronRight size={22} color={V6Colors.link} />)}
+            markedDates={marks}
+            dayComponent={CalendarDay}
             theme={{
               calendarBackground: V6Colors.surface,
               backgroundColor: V6Colors.surface,
-              dayTextColor: V6Colors.ink900,
-              textDisabledColor: V6Colors.ink400,
-              monthTextColor: V6Colors.ink900,
-              textSectionTitleColor: V6Colors.ink700,
-              textDayFontFamily: 'Inter',
-              textMonthFontFamily: 'Inter',
-              textDayHeaderFontFamily: 'Inter',
-              textMonthFontWeight: '700',
-              textDayHeaderFontWeight: '600',
-              textMonthFontSize: 17,
-              textDayFontSize: 15,
-              arrowStyle: { padding: 12 },
-              todayTextColor: V6Colors.link,
-              arrowColor: V6Colors.link,
-              selectedDayBackgroundColor: C.cyan700,
             }}
           />
         </View>
 
-        <Text style={styles.sectionTitle}>Your Schedule</Text>
+        <View style={styles.dayHeader}>
+          <Text style={styles.dayTitle} accessibilityRole="header">{dayHeading(selectedDate)}</Text>
+          <View style={styles.dayMeta}>
+            {settled && <Text style={styles.dayCount}>{plural(dayBookings.length, 'job')}</Text>}
+            {selectedDate !== todayKey && (
+              <Tap
+                onPress={() => {
+                  setSelectedDate(todayKey);
+                  setVisibleMonth(todayKey);
+                }}
+                hitSlop={LINK_HIT_SLOP}
+                accessibilityRole="button"
+                accessibilityLabel="Go to today"
+              >
+                <Text style={styles.textLink}>Today</Text>
+              </Tap>
+            )}
+          </View>
+        </View>
 
         {loading && <ContentSkeleton variant="list" />}
 
         {!loading && !!error && (
-          <View style={styles.emptyState}>
-            <CalendarDays size={30} color={C.ink300} />
-            <Text style={styles.emptyTitle}>Couldn't load your schedule</Text>
-            <Text style={styles.emptyText}>{error}</Text>
-            <Tap onPress={reload} activeOpacity={0.8}>
-              <Text style={styles.retryLink}>Retry</Text>
-            </Tap>
-          </View>
+          <EmptyRow
+            icon={CalendarDays}
+            title="Couldn't load your schedule"
+            body={error}
+            actionLabel="Retry"
+            onAction={reload}
+          />
         )}
 
-        {!loading && !error && daySchedule.length === 0 && (
-          <View style={styles.emptyState}>
-            <CalendarDays size={30} color={C.ink300} />
-            <Text style={styles.emptyTitle}>Nothing scheduled</Text>
-            <Text style={styles.emptyText}>Jobs appear here after a client hires you.</Text>
-          </View>
+        {settled && dayBookings.length === 0 && (
+          <EmptyRow
+            icon={CalendarDays}
+            title="Nothing scheduled"
+            body="Jobs appear here after a client hires you."
+          />
         )}
 
-        {!loading && !error && daySchedule.map((booking) => {
-          return (
-            <Tap
-              key={booking.id}
-              style={styles.scheduleCard}
-              onPress={() => onNavigate?.('Job Detail', booking.job_id)}
-              activeOpacity={0.85}
-            >
-              <View style={{ flex: 1, minWidth: 0 }}>
-                <Text style={styles.scheduleTitle} numberOfLines={1}>{booking.jobs?.title ?? 'Booking'}</Text>
-                <Text style={styles.scheduleTime}>{timeOfDay(booking.scheduled_at)}</Text>
-                <View style={styles.scheduleClientRow}>
-                  <UserRound size={13} color={C.ink400} />
-                  <Text style={styles.scheduleClientLabel}>{booking.client?.full_name ?? 'Client'}</Text>
-                </View>
-              </View>
-              <View style={[styles.statusBadge, { backgroundColor: jobStatusMeta(booking.status === 'scheduled' ? 'assigned' : booking.status, V6Colors).bg }]}>
-                <Text style={[styles.statusBadgeText, { color: jobStatusMeta(booking.status === 'scheduled' ? 'assigned' : booking.status, V6Colors).color }]}>
-                  {booking.status === 'scheduled' ? 'Scheduled' : booking.status === 'completed' ? 'Completed' : 'Cancelled'}
-                </Text>
-              </View>
-            </Tap>
-          );
-        })}
+        {settled && dayBookings.length > 0 && <View style={styles.rows}>{dayBookings.map(renderBooking)}</View>}
 
         <View style={{ height: 20 }} />
       </ScrollView>
@@ -185,45 +183,51 @@ export default function SPCalendarScreen({ onNavigate, title = 'Calendar', heade
 
 function createThemedStyles(theme: ThemePalette) {
   const { Colors, V6Colors } = theme;
-  const C = V6Colors;
   const styles = StyleSheet.create({
-    screen: { flex: 1, backgroundColor: C.canvas },
+    screen: { flex: 1, backgroundColor: V6Colors.canvas },
 
     header: {
-      backgroundColor: C.surface,
+      backgroundColor: V6Colors.surface,
       paddingHorizontal: Spacing.screenH,
       paddingBottom: 12,
-      borderBottomWidth: 1, borderBottomColor: V6Colors.line,
+      borderBottomWidth: 1,
+      borderBottomColor: V6Colors.line,
     },
-    headerTitle: { color: C.ink900, fontSize: 21.5, fontWeight: '800', fontFamily: 'Inter', letterSpacing: -0.3 },
-    headerTopRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+    headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 12 },
+    headerTitle: {
+      flexShrink: 1, color: V6Colors.ink900, fontSize: 21.5, fontWeight: '800', fontFamily: 'Inter', letterSpacing: -0.3,
+    },
 
     body: { flex: 1 },
     bodyContent: { paddingHorizontal: Spacing.screenH, paddingTop: 16, paddingBottom: 20 },
 
     calendarCard: {
-      backgroundColor: C.surface, borderRadius: V6Radii.card, padding: 4,
-      borderWidth: 1, borderColor: C.line, marginBottom: 20,
+      backgroundColor: V6Colors.surface,
+      borderRadius: 20,
+      borderWidth: 1,
+      borderColor: V6Colors.line,
+      paddingHorizontal: 10,
+      paddingTop: 12,
+      paddingBottom: 8,
       ...V6Shadows.sm,
     },
-    sectionTitle: { color: C.ink900, fontSize: 16, fontWeight: '800', fontFamily: 'Inter', marginBottom: 12 },
-
-    emptyState: { alignItems: 'center', paddingVertical: 44, paddingHorizontal: 24 },
-    emptyTitle: { color: C.ink800, fontSize: 16, fontWeight: '700', fontFamily: 'Inter', marginTop: 10, marginBottom: 4 },
-    emptyText: { color: C.ink400, fontSize: 14, fontFamily: 'Inter', textAlign: 'center', lineHeight: 17 },
-    retryLink: { color: V6Colors.link, fontSize: 14.5, fontWeight: '700', fontFamily: 'Inter', marginTop: 10 },
-
-    scheduleCard: {
-      backgroundColor: C.surface, borderWidth: 1, borderColor: C.line,
-      borderRadius: V6Radii.card, padding: 14, marginBottom: 10,
-      flexDirection: 'row', alignItems: 'center', gap: 10, ...V6Shadows.sm,
+    monthRow: {
+      flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 4, marginBottom: 8,
     },
-    scheduleTitle: { color: C.ink900, fontSize: 15, fontWeight: '700', fontFamily: 'Inter' },
-    scheduleTime: { color: C.ink400, fontSize: 13, fontFamily: 'Inter', marginTop: 2 },
-    scheduleClientRow: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 5 },
-    scheduleClientLabel: { color: C.ink500, fontSize: 13.5, fontFamily: 'Inter' },
-    statusBadge: { borderRadius: 999, paddingHorizontal: 10, paddingVertical: 5 },
-    statusBadgeText: { fontSize: 12, fontWeight: '700', fontFamily: 'Inter' },
+    monthTitle: { color: V6Colors.ink900, fontSize: 17, fontWeight: '700', fontFamily: 'Inter' },
+    monthNav: { flexDirection: 'row', gap: 8 },
+    navButton: {
+      width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center',
+      borderWidth: 1, borderColor: V6Colors.line, backgroundColor: V6Colors.surface,
+    },
+
+    dayHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 20, marginBottom: 10 },
+    dayTitle: { color: V6Colors.ink900, fontSize: 16, fontWeight: '700', fontFamily: 'Inter' },
+    dayMeta: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+    dayCount: { color: V6Colors.ink500, fontSize: 13, fontWeight: '500', fontFamily: 'Inter' },
+    textLink: { color: Colors.link, fontSize: 14, fontWeight: '600', fontFamily: 'Inter' },
+
+    rows: { gap: 8 },
   });
-  return { appearance: theme.appearance, Colors, V6Colors, C, styles };
+  return { appearance: theme.appearance, V6Colors, styles };
 }
