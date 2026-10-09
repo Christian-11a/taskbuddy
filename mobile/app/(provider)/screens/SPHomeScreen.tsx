@@ -7,6 +7,10 @@ import { useNotifications } from '../../../src/context/NotificationsContext';
  * the name, bell), the next booking as a navy hero card, the availability switch,
  * search, urgency pills, and the open jobs as rows.
  *
+ * A provider who is not verified yet sees the setup instead (Figma "Feed · new
+ * provider", 79:2514): a progress hero, a three-step checklist (address, bio,
+ * verification), and where jobs will show up once they are approved.
+ *
  * Two things run down this screen, and they are not the same thing:
  *
  *   Bookings: jobs a client hired this provider for. The hero shows the one to
@@ -30,11 +34,9 @@ import {
 import {
   ArrowRight,
   Bell,
-  ChevronRight,
-  Clock,
+  Check,
   Inbox,
   Search,
-  ShieldAlert,
   ShieldCheck,
 } from 'lucide-react-native';
 import { Spacing } from '../../../src/constants/theme';
@@ -53,6 +55,14 @@ import {
   type FeedUrgency,
   type ProviderHero,
 } from '../../../src/lib/providerFeed';
+import {
+  nextSetupStep,
+  providerSetupSteps,
+  setupProgress,
+  type SetupStep,
+  type SetupStepId,
+  type VerifyState,
+} from '../../../src/lib/providerSetup';
 import OwnAvatar from '../../../src/components/OwnAvatar';
 import Tap from '../../../src/components/ui/Tap';
 import Pulse from '../../../src/components/ui/Pulse';
@@ -74,6 +84,22 @@ const URGENCY_FILTERS: { key: FeedUrgency; label: string }[] = [
 /** Feed radius when the provider has not set one on their profile. */
 const DEFAULT_RADIUS_KM = 50;
 
+/** The unverified hero's title and body: Figma's copy, or today's copy for a request already in review. */
+const VERIFY_HERO: Record<VerifyState, { title: string; body: string }> = {
+  none: {
+    title: 'Get verified to see jobs near you',
+    body: 'Clients only see verified providers. It takes about 2 minutes.',
+  },
+  pending: {
+    title: 'Verification under review',
+    body: "An admin is checking your documents. You'll see jobs once you're approved.",
+  },
+  rejected: {
+    title: 'Verification not approved',
+    body: 'Your documents were not accepted. Upload new photos to try again.',
+  },
+};
+
 interface SPHomeScreenProps {
   onNavigate: (screen: SPScreen, jobId?: string) => void;
 }
@@ -89,6 +115,100 @@ function heroLine(hero: ProviderHero): string {
   return [...when, hero.job.address].filter(Boolean).join(' · ');
 }
 
+/**
+ * What an unverified provider sees instead of the feed: the setup hero (three
+ * segments, one per step), the checklist with its next-step button, and the
+ * note on where jobs will appear.
+ */
+function SetupPanel({ steps, verifyState, categoryName, onStep }: {
+  steps: SetupStep[];
+  verifyState: VerifyState;
+  categoryName: string | null;
+  onStep: (id: SetupStepId) => void;
+}) {
+  const { Colors, styles } = useThemedStyles(createThemedStyles);
+  const { done, total } = setupProgress(steps);
+  const next = nextSetupStep(steps);
+  const copy = VERIFY_HERO[verifyState];
+  return (
+    <>
+      <View testID="setup-hero" style={styles.heroCard}>
+        <View style={styles.heroChip}>
+          <Text style={styles.heroChipText}>{`Finish setting up · ${done} of ${total}`}</Text>
+        </View>
+        <Text style={styles.heroTitle} numberOfLines={3}>{copy.title}</Text>
+        <Text style={styles.heroLine} numberOfLines={3}>{copy.body}</Text>
+        <View style={styles.progressRow} accessible accessibilityLabel={`Setup progress, ${done} of ${total} steps done`}>
+          {steps.map((step) => (
+            <View key={step.id} style={[styles.progressSegment, step.done && styles.progressSegmentDone]} />
+          ))}
+        </View>
+      </View>
+
+      <View testID="setup-checklist" style={styles.checklist}>
+        {steps.map((step, index) => {
+          const stateWord = step.done ? 'done' : step.state === 'next' ? 'next' : 'later';
+          return (
+            <View
+              key={step.id}
+              style={styles.stepRow}
+              accessible
+              accessibilityLabel={`${index + 1}. ${step.title}. ${step.subtitle}. ${stateWord}`}
+            >
+              <View style={[
+                styles.stepBadge,
+                step.done ? styles.stepBadgeDone : step.state === 'next' ? styles.stepBadgeNext : styles.stepBadgeLater,
+              ]}>
+                {step.done ? (
+                  <Check size={16} color={Colors.successText} strokeWidth={2.6} />
+                ) : (
+                  <Text style={[styles.stepNumber, step.state === 'next' ? styles.stepNumberNext : styles.stepNumberLater]}>
+                    {index + 1}
+                  </Text>
+                )}
+              </View>
+              <View style={styles.stepCopy}>
+                <Text
+                  style={[
+                    styles.stepTitle,
+                    step.state === 'next' && styles.stepTitleNext,
+                    step.state === 'locked' && styles.stepTitleLater,
+                  ]}
+                  numberOfLines={1}
+                >
+                  {step.title}
+                </Text>
+                <Text style={styles.stepSubtitle} numberOfLines={2}>{step.subtitle}</Text>
+              </View>
+            </View>
+          );
+        })}
+        {next && (
+          <Tap
+            style={styles.setupButton}
+            hitSlop={4}
+            accessibilityRole="button"
+            accessibilityLabel={next.actionLabel}
+            onPress={() => onStep(next.id)}
+          >
+            <Text style={styles.setupButtonText}>{next.actionLabel}</Text>
+            <ArrowRight size={16} color={Colors.onPrimary} strokeWidth={2.4} />
+          </Tap>
+        )}
+      </View>
+
+      <SectionHeader title="Jobs near you" />
+      <View style={styles.lockedCard}>
+        <EmptyRow
+          icon={ShieldCheck}
+          title="Jobs show up after verification"
+          body={`We'll notify you as soon as you're approved.${categoryName ? ` Then nearby ${categoryName} jobs appear here.` : ''}`}
+        />
+      </View>
+    </>
+  );
+}
+
 export default function SPHomeScreen({ onNavigate }: SPHomeScreenProps) {
   const { Colors, C, styles, appearance } = useThemedStyles(createThemedStyles);
   const { dark } = useTheme();
@@ -97,18 +217,16 @@ export default function SPHomeScreen({ onNavigate }: SPHomeScreenProps) {
   const { profile, providerProfile, isVerified, refreshProfile } = useAuth();
   const radiusKm = providerProfile?.service_radius_km ?? DEFAULT_RADIUS_KM;
 
-  // The verification banner below reflects cached profile state, but
-  // verification is approved async by a webhook while the app may be
-  // backgrounded — without this it stays stale until the user happens to
-  // revisit Verification or restart the app (QA P2.1).
-  // Where an unverified provider's request stands, so the banner says
-  // "under review" instead of asking them to verify again.
+  // Verification is approved async by a webhook while the app may be
+  // backgrounded, so the setup panel re-reads the request on foreground (QA P2.1).
+  // Where an unverified provider's request stands: "under review" or "not approved"
+  // changes the setup copy instead of asking them to verify again.
   const { data: verification, reload: reloadVerification } = useAsyncData(async () => {
     if (isVerified) return null;
     try { return await api.myVerification(); } catch { return null; }
   }, [isVerified]);
   useRefreshOnForeground(() => { void refreshProfile(); reloadVerification(); }, !isVerified);
-  const verifyState = verification?.status === 'pending' ? 'pending'
+  const verifyState: VerifyState = verification?.status === 'pending' ? 'pending'
     : verification?.status === 'rejected' ? 'rejected' : 'none';
   useEffect(() => {
     if (!isVerified) void refreshProfile();
@@ -161,6 +279,7 @@ export default function SPHomeScreen({ onNavigate }: SPHomeScreenProps) {
   };
 
   const name = profile?.full_name ?? '';
+  const setupSteps = providerSetupSteps(profile, providerProfile, verifyState);
   const hero = pickProviderHero(data?.assigned ?? [], new Date());
   const q = search.trim().toLowerCase();
   const availableJobs = (data?.jobs ?? []).filter(
@@ -226,149 +345,127 @@ export default function SPHomeScreen({ onNavigate }: SPHomeScreenProps) {
         </View>
 
         <View style={styles.bodyContent}>
-          {/* Verification banner */}
-          {!isVerified && (
-            <Tap
-              style={[styles.flowBanner, verifyState === 'pending' && styles.flowBannerPending, verifyState === 'rejected' && styles.flowBannerRejected]}
-              onPress={() => onNavigate('Verification')}
-              accessibilityRole="button"
-            >
-              <View style={styles.flowIcon}>
-                {verifyState === 'pending' ? <Clock size={20} color={C.warningText} />
-                  : verifyState === 'rejected' ? <ShieldAlert size={20} color={C.dangerText} />
-                  : <ShieldCheck size={20} color={C.link} />}
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.flowTitle}>
-                  {verifyState === 'pending' ? 'Verification under review'
-                    : verifyState === 'rejected' ? 'Verification not approved'
-                    : 'Verification required to apply'}
-                </Text>
-                <Text style={styles.flowBody}>
-                  {verifyState === 'pending'
-                    ? "An admin is checking your documents. You can browse jobs now and apply once you're approved."
-                    : verifyState === 'rejected'
-                    ? 'Your documents were not accepted. Upload new photos to try again.'
-                    : 'You can browse jobs now, but you must verify your identity before you can send proposals or be hired.'}
-                </Text>
-                <Text style={styles.flowAction}>
-                  {verifyState === 'pending' ? 'View status' : verifyState === 'rejected' ? 'Try again' : 'Verify now'}
-                </Text>
-              </View>
-              <ChevronRight size={20} color={C.ink400} style={{ alignSelf: 'center' }} />
-            </Tap>
-          )}
-
-          {/* The next booking: the hired job to start, or the soonest one still ahead. */}
-          {hero && (
-            <View testID="feed-hero" style={styles.heroCard}>
-              <View style={styles.heroChip}>
-                <Text style={styles.heroChipText}>Next booking</Text>
-              </View>
-              <Text style={styles.heroTitle} numberOfLines={2}>{hero.job.title}</Text>
-              <Text style={styles.heroLine} numberOfLines={2}>{heroLine(hero)}</Text>
-              <View style={styles.heroFooter}>
-                {hero.moreThisWeek > 0 && (
-                  <Text style={styles.heroMore} numberOfLines={1}>{`+${hero.moreThisWeek} more this week`}</Text>
-                )}
-                <Tap
-                  style={styles.heroButton}
-                  hitSlop={5}
-                  accessibilityRole="button"
-                  accessibilityLabel={`Open ${hero.job.title}`}
-                  onPress={() => onNavigate('Job Detail', hero.job.id)}
-                >
-                  <Text style={styles.heroButtonText}>Open</Text>
-                  <ArrowRight size={16} color={Colors.primary} strokeWidth={2.4} />
-                </Tap>
-              </View>
-            </View>
-          )}
-
-          {/* Availability: decides whether new work is offered to this provider. */}
-          <View style={styles.availability}>
-            <View style={[styles.availabilityDot, { backgroundColor: available ? Colors.successText : C.ink400 }]} />
-            <View style={styles.availabilityCopy}>
-              <Text style={styles.availabilityTitle}>{available ? 'Available for jobs' : 'Not available'}</Text>
-              <Text style={styles.availabilityHint} numberOfLines={2}>
-                {available ? `Clients within ${radiusKm} km can invite you` : "You won't be invited to new jobs"}
-              </Text>
-            </View>
-            <Switch
-              value={available}
-              onValueChange={() => { haptic.tick(); void toggleAvailability(); }}
-              disabled={togglingAvail}
-              trackColor={{ false: C.ink200, true: Colors.successSolid }}
-              thumbColor={C.white}
-              accessibilityLabel="Available for jobs"
-              testID="toggle-availability"
+          {!isVerified ? (
+            <SetupPanel
+              steps={setupSteps}
+              verifyState={verifyState}
+              categoryName={providerProfile?.service_categories?.name ?? null}
+              onStep={(id) => onNavigate(id === 'verify' ? 'Verification' : 'Edit Profile')}
             />
-          </View>
-
-          <View style={styles.search}>
-            <Search size={20} color={C.ink400} />
-            <TextInput keyboardAppearance={appearance}
-              style={styles.searchInput}
-              value={search}
-              onChangeText={setSearch}
-              placeholder="Search open jobs"
-              placeholderTextColor={C.ink400}
-              returnKeyType="search"
-            />
-          </View>
-
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.pillScroll} contentContainerStyle={styles.pillRow}>
-            {URGENCY_FILTERS.map((f) => (
-              <FilterPill
-                key={f.key}
-                label={f.label}
-                count={counts[f.key]}
-                selected={urgency === f.key}
-                onPress={() => setUrgency(f.key)}
-              />
-            ))}
-          </ScrollView>
-
-          <SectionHeader title="Open jobs near you" count={data ? availableJobs.length : undefined} />
-
-          {!data && (
-            <Pulse>
-              {[0, 1].map((i) => (
-                <View key={i} style={styles.skeletonCard} accessibilityLabel="Loading jobs">
-                  <View style={[styles.skeletonLine, { width: i ? '55%' : '72%' }]} />
-                  <View style={[styles.skeletonLine, { width: '45%', height: 10 }]} />
-                  <View style={[styles.skeletonLine, { width: '30%', height: 22, borderRadius: 11 }]} />
+          ) : (
+            <>
+              {/* The next booking: the hired job to start, or the soonest one still ahead. */}
+              {hero && (
+                <View testID="feed-hero" style={styles.heroCard}>
+                  <View style={styles.heroChip}>
+                    <Text style={styles.heroChipText}>Next booking</Text>
+                  </View>
+                  <Text style={styles.heroTitle} numberOfLines={2}>{hero.job.title}</Text>
+                  <Text style={styles.heroLine} numberOfLines={2}>{heroLine(hero)}</Text>
+                  <View style={styles.heroFooter}>
+                    {hero.moreThisWeek > 0 && (
+                      <Text style={styles.heroMore} numberOfLines={1}>{`+${hero.moreThisWeek} more this week`}</Text>
+                    )}
+                    <Tap
+                      style={styles.heroButton}
+                      hitSlop={5}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Open ${hero.job.title}`}
+                      onPress={() => onNavigate('Job Detail', hero.job.id)}
+                    >
+                      <Text style={styles.heroButtonText}>Open</Text>
+                      <ArrowRight size={16} color={Colors.primary} strokeWidth={2.4} />
+                    </Tap>
+                  </View>
                 </View>
-              ))}
-            </Pulse>
-          )}
+              )}
 
-          {data && availableJobs.length === 0 && (
-            <EmptyRow
-              icon={Inbox}
-              title="No open jobs near you"
-              body="Adjust your search or urgency filter to see more opportunities."
-            />
-          )}
+              {/* Availability: decides whether new work is offered to this provider. */}
+              <View style={styles.availability}>
+                <View style={[styles.availabilityDot, { backgroundColor: available ? Colors.successText : C.ink400 }]} />
+                <View style={styles.availabilityCopy}>
+                  <Text style={styles.availabilityTitle}>{available ? 'Available for jobs' : 'Not available'}</Text>
+                  <Text style={styles.availabilityHint} numberOfLines={2}>
+                    {available ? `Clients within ${radiusKm} km can invite you` : "You won't be invited to new jobs"}
+                  </Text>
+                </View>
+                <Switch
+                  value={available}
+                  onValueChange={() => { haptic.tick(); void toggleAvailability(); }}
+                  disabled={togglingAvail}
+                  trackColor={{ false: C.ink200, true: Colors.successSolid }}
+                  thumbColor={C.white}
+                  accessibilityLabel="Available for jobs"
+                  testID="toggle-availability"
+                />
+              </View>
 
-          {availableJobs.length > 0 && (
-            <View style={styles.jobList}>
-              {availableJobs.map((job) => {
-                const isApplied = applied.has(job.id);
-                return (
-                  <JobRow
-                    key={job.id}
-                    testID={`feed-job-${job.id}`}
-                    title={job.title}
-                    meta={feedRowMeta(job, isApplied)}
-                    tone={isApplied ? 'applied' : 'open'}
-                    amount={job.budget != null ? peso(job.budget) : ''}
-                    date={job.scheduled_at}
-                    onPress={() => onNavigate('Job Detail', job.id)}
+              <View style={styles.search}>
+                <Search size={20} color={C.ink400} />
+                <TextInput keyboardAppearance={appearance}
+                  style={styles.searchInput}
+                  value={search}
+                  onChangeText={setSearch}
+                  placeholder="Search open jobs"
+                  placeholderTextColor={C.ink400}
+                  returnKeyType="search"
+                />
+              </View>
+
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.pillScroll} contentContainerStyle={styles.pillRow}>
+                {URGENCY_FILTERS.map((f) => (
+                  <FilterPill
+                    key={f.key}
+                    label={f.label}
+                    count={counts[f.key]}
+                    selected={urgency === f.key}
+                    onPress={() => setUrgency(f.key)}
                   />
-                );
-              })}
-            </View>
+                ))}
+              </ScrollView>
+
+              <SectionHeader title="Open jobs near you" count={data ? availableJobs.length : undefined} />
+
+              {!data && (
+                <Pulse>
+                  {[0, 1].map((i) => (
+                    <View key={i} style={styles.skeletonCard} accessibilityLabel="Loading jobs">
+                      <View style={[styles.skeletonLine, { width: i ? '55%' : '72%' }]} />
+                      <View style={[styles.skeletonLine, { width: '45%', height: 10 }]} />
+                      <View style={[styles.skeletonLine, { width: '30%', height: 22, borderRadius: 11 }]} />
+                    </View>
+                  ))}
+                </Pulse>
+              )}
+
+              {data && availableJobs.length === 0 && (
+                <EmptyRow
+                  icon={Inbox}
+                  title="No open jobs near you"
+                  body="Adjust your search or urgency filter to see more opportunities."
+                />
+              )}
+
+              {availableJobs.length > 0 && (
+                <View style={styles.jobList}>
+                  {availableJobs.map((job) => {
+                    const isApplied = applied.has(job.id);
+                    return (
+                      <JobRow
+                        key={job.id}
+                        testID={`feed-job-${job.id}`}
+                        title={job.title}
+                        meta={feedRowMeta(job, isApplied)}
+                        tone={isApplied ? 'applied' : 'open'}
+                        amount={job.budget != null ? peso(job.budget) : ''}
+                        date={job.scheduled_at}
+                        onPress={() => onNavigate('Job Detail', job.id)}
+                      />
+                    );
+                  })}
+                </View>
+              )}
+            </>
           )}
 
           <View style={{ height: 24 }} />
@@ -418,20 +515,7 @@ function createThemedStyles(theme: ThemePalette) {
 
     bodyContent: { paddingHorizontal: Spacing.screenH, paddingTop: 18, paddingBottom: 20, gap: 14 },
 
-    // Verification banner (shown until the provider is verified).
-    flowBanner: {
-      flexDirection: 'row', alignItems: 'flex-start', gap: 12,
-      backgroundColor: Colors.primaryTonal, borderWidth: 1, borderColor: Colors.primaryTonalStrong,
-      borderRadius: 18, padding: 14, overflow: 'hidden',
-    },
-    flowBannerPending: { backgroundColor: C.warningSurface, borderColor: C.warningBorder },
-    flowBannerRejected: { backgroundColor: C.dangerSurface, borderColor: C.dangerBorder },
-    flowIcon: { width: 40, height: 40, borderRadius: 12, backgroundColor: C.surface, alignItems: 'center', justifyContent: 'center' },
-    flowTitle: { fontSize: 15, color: C.ink900, fontWeight: '700', fontFamily: 'Inter' },
-    flowBody: { fontSize: 13.5, lineHeight: 19, color: C.ink500, fontFamily: 'Inter', marginTop: 3 },
-    flowAction: { color: C.link, fontSize: 14, fontWeight: '800', fontFamily: 'Inter', marginTop: 8 },
-
-    // The hero card, always navy: the next booking.
+    // The hero card, always navy: the next booking, or the setup progress.
     heroCard: { backgroundColor: Colors.hero, borderRadius: 20, padding: 18, gap: 8 },
     heroChip: {
       alignSelf: 'flex-start', backgroundColor: Colors.heroCard,
@@ -448,6 +532,39 @@ function createThemedStyles(theme: ThemePalette) {
       paddingLeft: 16, paddingRight: 14, paddingVertical: 10, flexShrink: 0,
     },
     heroButtonText: { color: Colors.primary, fontSize: 14, fontWeight: '600', fontFamily: 'Inter', lineHeight: 18 },
+
+    // Setup progress: one segment per step, filled white once the step is done.
+    progressRow: { flexDirection: 'row', gap: 6, paddingTop: 6 },
+    progressSegment: { flex: 1, height: 6, borderRadius: 3, backgroundColor: Colors.heroCardBorder },
+    progressSegmentDone: { backgroundColor: Colors.onPrimary },
+
+    // Setup checklist.
+    checklist: {
+      backgroundColor: C.surface, borderWidth: 1, borderColor: C.line, borderRadius: 20,
+      padding: 16, gap: 14,
+    },
+    stepRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+    stepBadge: { width: 30, height: 30, borderRadius: 15, alignItems: 'center', justifyContent: 'center' },
+    stepBadgeDone: { backgroundColor: C.successSurface },
+    stepBadgeNext: { backgroundColor: Colors.primaryTonal },
+    stepBadgeLater: { backgroundColor: C.ink50 },
+    stepNumber: { fontFamily: 'Inter', fontSize: 14, fontWeight: '700', lineHeight: 18 },
+    stepNumberNext: { color: Colors.primaryDeep },
+    stepNumberLater: { color: C.ink500 },
+    stepCopy: { flex: 1, minWidth: 0, gap: 2 },
+    stepTitle: { color: C.ink700, fontSize: 15, fontWeight: '600', fontFamily: 'Inter', lineHeight: 20 },
+    stepTitleNext: { color: C.ink900, fontWeight: '700' },
+    stepTitleLater: { color: C.ink500 },
+    stepSubtitle: { color: C.ink500, fontSize: 13, fontFamily: 'Inter', lineHeight: 18 },
+    setupButton: {
+      flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
+      minHeight: 48, borderRadius: 16, backgroundColor: Colors.primary,
+    },
+    setupButtonText: { color: Colors.onPrimary, fontSize: 15, fontWeight: '600', fontFamily: 'Inter', lineHeight: 20 },
+    lockedCard: {
+      backgroundColor: C.surface, borderWidth: 1, borderColor: C.line, borderRadius: 20,
+      paddingHorizontal: 16,
+    },
 
     // Availability row.
     availability: {

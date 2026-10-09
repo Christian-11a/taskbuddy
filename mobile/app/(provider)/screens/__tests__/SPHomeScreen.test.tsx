@@ -184,51 +184,107 @@ describe('SPHomeScreen — hero header keeps the avatar reachable with a long na
     await waitFor(() => expect(api.browseJobs).toHaveBeenCalledTimes(2));
   });
 
-
-  describe('verification banner', () => {
-    const unverified = (refreshProfile = jest.fn()) => (useAuth as jest.Mock).mockReturnValue({
-      profile: { full_name: 'New Provider', city: 'Lipa', latitude: null, longitude: null },
-      providerProfile: { is_available: false, service_radius_km: 15 },
+  describe('new provider setup (not verified yet)', () => {
+    /** An unverified provider. `city` alone counts as an address; a bio and verification come from the args. */
+    const unverified = ({ address = null, bio = null, categoryName }: { address?: string | null; bio?: string | null; categoryName?: string } = {}, refreshProfile = jest.fn()) => (useAuth as jest.Mock).mockReturnValue({
+      profile: { full_name: 'New Provider', address, city: 'Lipa', latitude: null, longitude: null },
+      providerProfile: {
+        is_available: false,
+        service_radius_km: 15,
+        bio,
+        is_verified: false,
+        ...(categoryName ? { service_categories: { name: categoryName } } : {}),
+      },
       isVerified: false,
       refreshProfile,
     });
 
-    it('asks to verify when there is no request yet', async () => {
-      unverified();
+    it('shows how many setup steps are done and the step the next button runs', async () => {
+      unverified({ address: 'Arturo Tanco Drive, Lipa' });
       (api.myVerification as jest.Mock).mockResolvedValue(null);
       render(<SPHomeScreen onNavigate={jest.fn()} />);
-      expect(await screen.findByText('Verification required to apply')).toBeTruthy();
-      expect(screen.getByText('Verify now')).toBeTruthy();
+
+      expect(await screen.findByText('Get verified to see jobs near you')).toBeTruthy();
+      expect(screen.getByText('Finish setting up · 1 of 3')).toBeTruthy();
+      expect(screen.getByText('Arturo Tanco Drive, Lipa')).toBeTruthy();
+      expect(screen.getByText('ID photo + selfie · about 2 minutes')).toBeTruthy();
+      expect(screen.getByRole('button', { name: 'Add a short bio' })).toBeTruthy();
+    });
+
+    it('opens Edit Profile from the button while the bio is missing', async () => {
+      unverified({ address: 'Arturo Tanco Drive, Lipa' });
+      (api.myVerification as jest.Mock).mockResolvedValue(null);
+      const onNavigate = jest.fn();
+      render(<SPHomeScreen onNavigate={onNavigate} />);
+
+      fireEvent.press(await screen.findByRole('button', { name: 'Add a short bio' }));
+
+      expect(onNavigate).toHaveBeenCalledWith('Edit Profile');
+    });
+
+    it('opens Verification from the button once the address and bio are saved', async () => {
+      unverified({ address: 'Arturo Tanco Drive, Lipa', bio: 'Plumber for eight years' });
+      (api.myVerification as jest.Mock).mockResolvedValue(null);
+      const onNavigate = jest.fn();
+      render(<SPHomeScreen onNavigate={onNavigate} />);
+
+      expect(await screen.findByText('Finish setting up · 2 of 3')).toBeTruthy();
+      fireEvent.press(screen.getByRole('button', { name: 'Get verified' }));
+
+      expect(onNavigate).toHaveBeenCalledWith('Verification');
     });
 
     it('says the request is under review while it is pending', async () => {
-      unverified();
+      unverified({ address: 'Arturo Tanco Drive, Lipa', bio: 'Plumber for eight years' });
       (api.myVerification as jest.Mock).mockResolvedValue({ status: 'pending' });
       render(<SPHomeScreen onNavigate={jest.fn()} />);
+
       expect(await screen.findByText('Verification under review')).toBeTruthy();
-      expect(screen.queryByText('Verify now')).toBeNull();
+      expect(screen.getByText('Under review')).toBeTruthy();
+      expect(screen.getByRole('button', { name: 'View status' })).toBeTruthy();
     });
 
     it('asks to try again after a rejection', async () => {
-      unverified();
+      unverified({ address: 'Arturo Tanco Drive, Lipa', bio: 'Plumber for eight years' });
       (api.myVerification as jest.Mock).mockResolvedValue({ status: 'rejected', rejection_reason: 'Blurry' });
       render(<SPHomeScreen onNavigate={jest.fn()} />);
+
       expect(await screen.findByText('Verification not approved')).toBeTruthy();
-      expect(screen.getByText('Try again')).toBeTruthy();
+      expect(screen.getByText('Not accepted · upload new photos')).toBeTruthy();
+      expect(screen.getByRole('button', { name: 'Try again' })).toBeTruthy();
     });
 
-    it('falls back to the default banner if the status cannot be loaded', async () => {
+    it('falls back to the default setup copy if the status cannot be loaded', async () => {
       unverified();
       (api.myVerification as jest.Mock).mockRejectedValue(new Error('offline'));
       render(<SPHomeScreen onNavigate={jest.fn()} />);
-      expect(await screen.findByText('Verification required to apply')).toBeTruthy();
+      expect(await screen.findByText('Get verified to see jobs near you')).toBeTruthy();
+    });
+
+    it('explains that jobs show up after verification, and skips the job feed controls', async () => {
+      unverified({ address: 'Arturo Tanco Drive, Lipa' }, jest.fn());
+      (api.myVerification as jest.Mock).mockResolvedValue(null);
+      render(<SPHomeScreen onNavigate={jest.fn()} />);
+
+      expect(await screen.findByText('Jobs show up after verification')).toBeTruthy();
+      expect(screen.getByText("We'll notify you as soon as you're approved.")).toBeTruthy();
+      expect(screen.queryByPlaceholderText('Search open jobs')).toBeNull();
+      expect(screen.queryByTestId('toggle-availability')).toBeNull();
+    });
+
+    it('names the provider category in the locked jobs note', async () => {
+      unverified({ address: 'Arturo Tanco Drive, Lipa', categoryName: 'Cleaning' });
+      (api.myVerification as jest.Mock).mockResolvedValue(null);
+      render(<SPHomeScreen onNavigate={jest.fn()} />);
+
+      expect(await screen.findByText("We'll notify you as soon as you're approved. Then nearby Cleaning jobs appear here.")).toBeTruthy();
     });
 
     it('does not fetch the verification status for a verified provider', async () => {
       render(<SPHomeScreen onNavigate={jest.fn()} />);
       await screen.findByTestId('btn-home-avatar');
       expect(api.myVerification).not.toHaveBeenCalled();
-      expect(screen.queryByText('Verification required to apply')).toBeNull();
+      expect(screen.queryByText('Get verified to see jobs near you')).toBeNull();
     });
   });
 });
