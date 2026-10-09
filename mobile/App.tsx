@@ -865,7 +865,7 @@ function AppContent() {
           ? <SPCalendarScreen title="My Work" headerRight={spJobsSwitch} onNavigate={spNavigate} />
           : <SPMyJobsScreen headerRight={spJobsSwitch} onNavigate={spNavigate} />;
       case 'Wallet':
-        return <SPWalletScreen />;
+        return <SPWalletScreen onNavigate={spNavigate} />;
       case 'Profile':
         // No onBack: the Profile tab has no back arrow. Edit Profile and the
         // other pushed screens still return here through the back stack.

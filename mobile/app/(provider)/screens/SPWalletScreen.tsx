@@ -2,8 +2,8 @@
  * SPWalletScreen.tsx
  *
  * Figma "Wallet · provider" (79:2794): the title on the canvas, a navy balance
- * card with one Withdraw action, two tiles (On hold, Earned so far), the payout
- * note, and the payout history grouped by day.
+ * card with one Withdraw action, two tiles (On hold, Earned so far), a payouts
+ * notice while Stripe payouts are not set up, and the payout history grouped by day.
  *
  * Withdraw files a request against `POST /wallet/withdrawals` that an admin
  * settles by hand; there is still no automated payout rail, which is why the
@@ -29,12 +29,22 @@ import { peso, plural, shortDate } from '../../../src/lib/format';
 import { groupWalletByDay } from '../../../src/lib/walletHistory';
 import WithdrawModal from '../../../src/components/WithdrawModal';
 import { showToast } from '../../../src/components/Toast';
+import { SPScreen } from '../../../src/types/navigation';
 
-export default function SPWalletScreen() {
+interface SPWalletScreenProps {
+  onNavigate: (screen: SPScreen, jobId?: string) => void;
+}
+
+export default function SPWalletScreen({ onNavigate }: SPWalletScreenProps) {
   const { Colors, styles } = useThemedStyles(createThemedStyles);
   const headerTop = useHeaderTop();
   const { providerProfile } = useAuth();
   const { data, loading, error, reload } = useAsyncData(() => api.wallet(), [], 'sp-wallet');
+  // Whether card payments can reach the provider's bank yet. Only a status that has loaded and says
+  // payouts are off shows the notice: while it loads, or if it fails, nothing shows, and the wallet
+  // does not wait for it.
+  const { data: payouts } = useAsyncData(() => api.connectStatus(), []);
+  const payoutsOff = payouts !== null && !payouts.payouts_enabled;
   const transactions = data?.transactions ?? [];
   const jobsDone = providerProfile?.cached_completed_jobs ?? 0;
 
@@ -180,7 +190,14 @@ export default function SPWalletScreen() {
           />
         </View>
 
-        <Banner tone="info" message="Card-paid earnings become eligible for Stripe transfer after the three-day warranty ends without an open complaint, once payouts are set up (Profile → Payouts). Everything else lands here — withdraw it with the button above." />
+        {payoutsOff && (
+          <Banner
+            tone="info"
+            message="Card payments need Payouts set up."
+            actionLabel="Set up"
+            onAction={() => onNavigate('Payouts')}
+          />
+        )}
 
         <View style={styles.history}>
           <SectionHeader title="Payouts" />
