@@ -141,6 +141,8 @@ export default function HOJobApplicationsScreen({
   const [jobTitle, setJobTitle] = useState<string | null>(null);
   const [hireScheduledAt, setHireScheduledAt] = useState<string | null>(null);
   const [hireLoading, setHireLoading] = useState(false);
+  // The job or wallet could not be read, so the budget is unknown: no hire is offered.
+  const [hireLoadFailed, setHireLoadFailed] = useState(false);
   const [hireBusy, setHireBusy] = useState<'wallet' | 'card' | null>(null);
   const [hireMessage, setHireMessage] = useState<{ text: string; tone: 'error' | 'info' } | null>(null);
 
@@ -155,6 +157,7 @@ export default function HOJobApplicationsScreen({
     // Until the job and wallet are read, the sheet cannot offer a payment: the
     // budget decides what is charged, so no option is usable yet.
     setHireLoading(true);
+    setHireLoadFailed(false);
     setHireTarget(app);
     try {
       const [job, wallet] = await Promise.all([api.getJob(jobId), api.wallet()]);
@@ -163,6 +166,9 @@ export default function HOJobApplicationsScreen({
       setBudget(job.budget == null ? null : Number(job.budget));
       setAvailable(wallet.available);
     } catch (e) {
+      // A failed read leaves the budget unknown. It must not fall through to the
+      // no-budget "hire straight away" path, so the sheet offers no hire.
+      setHireLoadFailed(true);
       setHireMessage({
         text: e instanceof Error ? e.message : 'Could not load your balance.',
         tone: 'error',
@@ -412,6 +418,7 @@ export default function HOJobApplicationsScreen({
         budget={budget}
         available={available}
         loading={hireLoading}
+        loadFailed={hireLoadFailed}
         busy={hireBusy}
         message={hireMessage}
         onPayWallet={payFromWallet}

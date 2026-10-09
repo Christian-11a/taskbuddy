@@ -206,6 +206,50 @@ describe('HirePaymentModal: choosing how to pay', () => {
   });
 });
 
+describe('HirePaymentModal: when the job or wallet could not be loaded', () => {
+  const loadError = { text: 'Could not reach TaskBuddy.', tone: 'error' as const };
+
+  it('offers no hire: no escrow or no-budget copy, no options, Continue disabled, Cancel still works', () => {
+    const { props } = renderSheet({ budget: null, available: null, jobTitle: null, loadFailed: true, message: loadError });
+
+    expect(screen.getByTestId('hire-payment-message').props.children).toBe('Could not reach TaskBuddy.');
+    expect(screen.queryByText(/Nothing is held/)).toBeNull();
+    expect(screen.queryByText(/no budget/)).toBeNull();
+    expect(screen.queryByText(/held in escrow/)).toBeNull();
+    expect(screen.queryByText('Pay with')).toBeNull();
+    expect(screen.queryByRole('radio')).toBeNull();
+    expect(screen.getByRole('button', { name: 'Continue', disabled: true })).toBeTruthy();
+
+    fireEvent.press(screen.getByRole('button', { name: 'Cancel' }));
+
+    expect(props.onClose).toHaveBeenCalledTimes(1);
+    expect(props.onPayWallet).not.toHaveBeenCalled();
+    expect(props.onPayCard).not.toHaveBeenCalled();
+  });
+
+  it('Continue cannot reach the confirm page, so nothing is paid', () => {
+    const { props } = renderSheet({ budget: null, available: null, loadFailed: true, message: loadError });
+
+    fireEvent.press(screen.getByRole('button', { name: 'Continue', disabled: true }));
+
+    expect(screen.queryByRole('button', { name: 'Confirm and hire' })).toBeNull();
+    expect(props.onPayWallet).not.toHaveBeenCalled();
+  });
+
+  it('a job that loaded with a zero budget still hires straight away, as a real no-budget job does', () => {
+    const { props } = renderSheet({ budget: 0, available: null });
+
+    expect(screen.queryByText('Pay with')).toBeNull();
+
+    fireEvent.press(screen.getByRole('button', { name: 'Hire Alex Reyes' }));
+    expect(screen.getByText("Nothing is held — they're hired straight away.")).toBeTruthy();
+
+    fireEvent.press(screen.getByRole('button', { name: 'Confirm and hire' }));
+    expect(props.onPayWallet).toHaveBeenCalledTimes(1);
+    expect(props.onPayCard).not.toHaveBeenCalled();
+  });
+});
+
 describe('HirePaymentModal: the sheet stays locked while a payment is in flight', () => {
   it('disables Cancel and Back, and keeps the confirm button labelled while busy', () => {
     const { props, view } = renderSheet({ busy: null });

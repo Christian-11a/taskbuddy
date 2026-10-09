@@ -50,6 +50,12 @@ interface HirePaymentModalProps {
   available: number | null;
   /** True while the job and wallet are still being read: nothing can be paid yet. */
   loading?: boolean;
+  /**
+   * True when the job or wallet could not be read, so the budget is unknown. The
+   * sheet then offers no hire at all: no options, no escrow or no-budget copy,
+   * and Continue stays disabled. Only the error message and Cancel remain.
+   */
+  loadFailed?: boolean;
   /** Which option is in flight, if any. */
   busy: 'wallet' | 'card' | null;
   /** A line under the options: an error, or where a card payment stands. */
@@ -72,6 +78,7 @@ export default function HirePaymentModal({
   budget,
   available,
   loading = false,
+  loadFailed = false,
   busy,
   message,
   onPayWallet,
@@ -99,7 +106,9 @@ export default function HirePaymentModal({
 
   // With no budget the only way to hire is the wallet path, which holds nothing.
   const payingByCard = hasBudget && choice === 'card';
-  const usable = !loading && (!hasBudget || (choice === 'wallet' ? walletCovers : choice === 'card' ? cardAllowed : false));
+  const usable = !loading && !loadFailed && (!hasBudget || (choice === 'wallet' ? walletCovers : choice === 'card' ? cardAllowed : false));
+  // A failed load can't be a hire: the label says Continue, not a no-budget "Hire".
+  const primaryLabel = hasBudget || loadFailed ? 'Continue' : `Hire ${providerName}`;
 
   const escrowLine = hasBudget
     ? `${peso(budget)} is held in escrow and released to ${providerName} after the three-day warranty ends, unless a complaint is open.`
@@ -132,7 +141,7 @@ export default function HirePaymentModal({
         Hire {providerName}
       </Text>
 
-      {(!!jobTitle || hasBudget) && (
+      {!loadFailed && (!!jobTitle || hasBudget) && (
         <View style={styles.summary}>
           {!!jobTitle && (
             <View style={styles.summaryRow}>
@@ -149,10 +158,12 @@ export default function HirePaymentModal({
         </View>
       )}
 
-      <View style={styles.noteRow}>
-        <ShieldCheck size={16} color={V6Colors.link} />
-        <Text style={styles.noteText}>{escrowLine}</Text>
-      </View>
+      {!loadFailed && (
+        <View style={styles.noteRow}>
+          <ShieldCheck size={16} color={V6Colors.link} />
+          <Text style={styles.noteText}>{escrowLine}</Text>
+        </View>
+      )}
 
       {loading && (
         <View style={styles.loadingRow}>
@@ -161,7 +172,7 @@ export default function HirePaymentModal({
         </View>
       )}
 
-      {hasBudget && !loading && (
+      {hasBudget && !loading && !loadFailed && (
         <>
           <Text style={styles.sectionLabel}>Pay with</Text>
           <PaymentOption
@@ -199,14 +210,16 @@ export default function HirePaymentModal({
 
       <Tap
         style={[styles.primary, (!usable || locked) && styles.disabled]}
-        onPress={() => setPage('confirm')}
+        onPress={() => {
+          if (usable) setPage('confirm');
+        }}
         disabled={!usable || locked}
         scale
         accessibilityRole="button"
-        accessibilityLabel={hasBudget ? 'Continue' : `Hire ${providerName}`}
+        accessibilityLabel={primaryLabel}
         accessibilityState={{ disabled: !usable || locked }}
       >
-        <Text style={styles.primaryText}>{hasBudget ? 'Continue' : `Hire ${providerName}`}</Text>
+        <Text style={styles.primaryText}>{primaryLabel}</Text>
       </Tap>
 
       <Tap

@@ -364,6 +364,52 @@ describe('HOJobApplicationsScreen: a hire made from the profile', () => {
   });
 });
 
+describe('HOJobApplicationsScreen: when the job or wallet cannot be loaded', () => {
+  async function expectNoHire(message: string) {
+    await renderScreen();
+    fireEvent.press(await screen.findByRole('button', { name: 'Hire Alex Reyes for this job' }));
+
+    expect(await screen.findByText(message)).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Continue', disabled: true })).toBeTruthy();
+    expect(screen.queryByText(/Nothing is held/)).toBeNull();
+    expect(screen.queryByText(/no budget/)).toBeNull();
+    expect(screen.queryByRole('radio')).toBeNull();
+
+    fireEvent.press(screen.getByRole('button', { name: 'Continue', disabled: true }));
+    expect(screen.queryByRole('button', { name: /Confirm and hire/ })).toBeNull();
+    expect(api.acceptApplication).not.toHaveBeenCalled();
+    expect(api.createHireCheckoutSession).not.toHaveBeenCalled();
+  }
+
+  it('a job that fails to load shows the error, offers no hire, and never claims nothing is held', async () => {
+    (api.getJob as jest.Mock).mockRejectedValue(new Error('Could not reach TaskBuddy.'));
+
+    await expectNoHire('Could not reach TaskBuddy.');
+  });
+
+  it('a wallet that fails to load shows the error and offers no hire', async () => {
+    (api.wallet as jest.Mock).mockRejectedValue(new Error('Your wallet is unavailable right now.'));
+
+    await expectNoHire('Your wallet is unavailable right now.');
+  });
+
+  it('a job that loads with a zero budget still hires straight away, with nothing held', async () => {
+    mockJob(0);
+    await renderScreen();
+
+    fireEvent.press(await screen.findByRole('button', { name: 'Hire Alex Reyes for this job' }));
+
+    const hire = await waitFor(() => screen.getByRole('button', { name: 'Hire Alex Reyes', disabled: false }));
+    fireEvent.press(hire);
+    expect(screen.getByText("Nothing is held — they're hired straight away.")).toBeTruthy();
+
+    fireEvent.press(screen.getByRole('button', { name: 'Confirm and hire' }));
+
+    await waitFor(() => expect(api.acceptApplication).toHaveBeenCalledTimes(1));
+    expect(api.acceptApplication).toHaveBeenCalledWith('app-1');
+  });
+});
+
 describe('HOJobApplicationsScreen: paying for a hire', () => {
   it('Hire opens the payment sheet straight away, with no extra dialog', async () => {
     await renderScreen();
