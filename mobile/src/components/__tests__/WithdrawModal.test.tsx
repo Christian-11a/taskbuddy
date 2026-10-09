@@ -1,8 +1,14 @@
 import React from 'react';
-import { ActivityIndicator, Keyboard, Modal } from 'react-native';
+import { ActivityIndicator, Keyboard, Modal, StyleSheet } from 'react-native';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react-native';
 import WithdrawModal from '../WithdrawModal';
 import { api } from '../../lib/api';
+import { lightPalette } from '../../constants/palettes';
+
+/** The colours a host element is drawn with: its style, flattened. */
+function styleOf(element: { props: Record<string, any> }): Record<string, any> {
+  return StyleSheet.flatten(element.props.style) ?? {};
+}
 
 jest.mock('../../lib/api', () => ({
   api: { requestWithdrawal: jest.fn() },
@@ -219,5 +225,45 @@ describe('WithdrawModal — confirmation page', () => {
 
     await act(async () => { finish({}); });
     expect(onClose).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('WithdrawModal — button labels always render (FLOWS bug 3)', () => {
+  it('draws the Continue label in onPrimary on the primary colour once the form is complete', () => {
+    renderSheet();
+    fill('400', 'GCash 0917 123 4567');
+
+    expect(styleOf(screen.getByRole('button', { name: 'Continue' })).backgroundColor).toBe(lightPalette.Colors.primary);
+    expect(styleOf(screen.getByText('Continue')).color).toBe(lightPalette.Colors.onPrimary);
+  });
+
+  it('draws the Continue label in ink700 on ink100 while the form is incomplete', () => {
+    renderSheet();
+
+    expect(styleOf(screen.getByRole('button', { name: 'Continue' })).backgroundColor).toBe(lightPalette.V6Colors.ink100);
+    expect(styleOf(screen.getByText('Continue')).color).toBe(lightPalette.V6Colors.ink700);
+  });
+
+  it('recreates the Continue button when the form becomes complete, so Android repaints its fill and label', () => {
+    renderSheet();
+    const before = screen.getByRole('button', { name: 'Continue' });
+    const beforeLabel = screen.getByText('Continue');
+
+    fill('400', 'GCash 0917 123 4567');
+
+    expect(screen.getByRole('button', { name: 'Continue' })).not.toBe(before);
+    expect(screen.getByText('Continue')).not.toBe(beforeLabel);
+  });
+
+  it('shows the Request label again, in onPrimary on the primary colour, once a failed request ends', async () => {
+    (api.requestWithdrawal as jest.Mock).mockRejectedValue(new Error('Try again'));
+    renderSheet();
+    fill('400', 'GCash 0917 123 4567');
+    fireEvent.press(screen.getByRole('button', { name: 'Continue' }));
+    fireEvent.press(screen.getByRole('button', { name: 'Request ₱400.00' }));
+
+    expect(await screen.findByText('Try again')).toBeTruthy();
+    expect(styleOf(screen.getByText('Request ₱400.00')).color).toBe(lightPalette.Colors.onPrimary);
+    expect(styleOf(screen.getByRole('button', { name: 'Request ₱400.00' })).backgroundColor).toBe(lightPalette.Colors.primary);
   });
 });

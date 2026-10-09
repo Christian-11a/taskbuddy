@@ -254,8 +254,12 @@ export function MoneySheetButton({
 }) {
   const { styles, Colors } = useThemedStyles(createThemedStyles);
   const inactive = disabled && !busy;
+  // Keyed on how the button is drawn: when that changes the button is recreated rather than repainted in
+  // place, because Android keeps the old fill and label colour on a view that re-renders (see FilterPill).
+  const drawnAs = busy ? 'busy' : inactive ? 'off' : 'on';
   return (
     <Tap
+      key={drawnAs}
       testID={testID}
       style={[styles.primary, inactive ? styles.primaryOff : styles.primaryOn]}
       onPress={onPress}

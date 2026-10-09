@@ -1,14 +1,20 @@
 import React from 'react';
-import { Modal } from 'react-native';
+import { Modal, StyleSheet } from 'react-native';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react-native';
 import HOWalletScreen from '../HOWalletScreen';
 import { api, type WalletTransaction } from '../../../../src/lib/api';
 import { showToast } from '../../../../src/components/Toast';
 import { clearAsyncDataCache } from '../../../../src/hooks/useAsyncData';
 import { openRedirectSession } from '../../../../src/lib/appRedirectSession';
+import { lightPalette } from '../../../../src/constants/palettes';
 
 /** The popup that is open right now: each SheetFrame renders its own Modal, and only one is visible. */
 const visibleModal = () => screen.UNSAFE_getAllByType(Modal).find((modal) => modal.props.visible === true);
+
+/** The colours a host element is drawn with: its style, flattened. */
+function styleOf(element: { props: Record<string, any> }): Record<string, any> {
+  return StyleSheet.flatten(element.props.style) ?? {};
+}
 
 jest.mock('../../../../src/lib/api', () => ({
   MIN_TOPUP_PHP: 50,
@@ -376,6 +382,18 @@ describe('HOWalletScreen — Add money sheet: quick amounts, limits and Continue
 
     await waitFor(() => expect(api.createCheckoutSession).toHaveBeenCalledTimes(1));
     expect(api.createCheckoutSession).toHaveBeenCalledWith({ amount: 2500, app_redirect: 'taskbuddy://' });
+  });
+
+  it('recreates Continue when the amount becomes valid, and draws its label in onPrimary on primary', async () => {
+    await openAddMoney();
+    const before = continueButton();
+    expect(styleOf(screen.getByText('Continue to payment')).color).toBe(lightPalette.V6Colors.ink700);
+
+    fireEvent.press(screen.getByRole('button', { name: '₱500' }));
+
+    expect(continueButton()).not.toBe(before);
+    expect(styleOf(continueButton()).backgroundColor).toBe(lightPalette.Colors.primary);
+    expect(styleOf(screen.getByText('Continue to payment · ₱500')).color).toBe(lightPalette.Colors.onPrimary);
   });
 
   it('cannot be closed, and a second tap does not open a second Checkout, while Checkout is opening', async () => {
