@@ -31,7 +31,7 @@ import WithdrawModal from '../../../src/components/WithdrawModal';
 import { showToast } from '../../../src/components/Toast';
 
 export default function SPWalletScreen() {
-  const { C, Colors, styles, V6Colors } = useThemedStyles(createThemedStyles);
+  const { Colors, styles } = useThemedStyles(createThemedStyles);
   const headerTop = useHeaderTop();
   const { providerProfile } = useAuth();
   const { data, loading, error, reload } = useAsyncData(() => api.wallet(), [], 'sp-wallet');
