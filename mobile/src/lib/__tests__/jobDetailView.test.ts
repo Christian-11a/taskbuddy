@@ -148,7 +148,7 @@ describe('homeownerJobView: hired (assigned or confirmed)', () => {
         tone: 'booked',
         overline: 'BOOKED',
         title: 'TaskBuddyProvider comes Thu, Oct 15',
-        body: `${timeOfDay(SCHEDULED)} · Arturo Tanco Drive, Lipa. Your ₱1,500.00 is held safely until the job is done.`,
+        body: `${timeOfDay(SCHEDULED)} · Arturo Tanco Drive, Lipa. Your ₱1,500.00 is held safely and only released after the job is done.`,
       },
       step: 'hired',
       main: { kind: 'message', name: 'TaskBuddyProvider' },
@@ -163,7 +163,7 @@ describe('homeownerJobView: hired (assigned or confirmed)', () => {
       tone: 'booked',
       overline: 'BOOKED',
       title: 'TaskBuddyProvider is booked',
-      body: 'Arturo Tanco Drive, Lipa. Your ₱1,500.00 is held safely until the job is done.',
+      body: 'Arturo Tanco Drive, Lipa. Your ₱1,500.00 is held safely and only released after the job is done.',
     });
   });
 
@@ -178,7 +178,7 @@ describe('homeownerJobView: hired (assigned or confirmed)', () => {
 
   it('no budget: the held line does not invent an amount', () => {
     const view = viewFor({ job: { status: 'confirmed', assigned_provider_id: 'p1', budget: null } });
-    expect(view.card.body).toBe('Arturo Tanco Drive, Lipa. Your payment is held safely until the job is done.');
+    expect(view.card.body).toBe('Arturo Tanco Drive, Lipa. Your payment is held safely and only released after the job is done.');
   });
 
   it('a complaint on a booked job reaches its case from the menu instead of reporting a new one', () => {
@@ -226,7 +226,7 @@ describe('homeownerJobView: in progress', () => {
         tone: 'action',
         overline: 'YOUR TURN',
         title: 'The provider finished all tasks',
-        body: 'Check the work, then confirm. Payment is released when you confirm.',
+        body: 'Check the work, then confirm. Payment is released to the provider after the 3-day warranty.',
       },
       step: 'working',
       main: { kind: 'confirmDone' },
@@ -242,7 +242,7 @@ describe('homeownerJobView: in progress', () => {
         tone: 'action',
         overline: 'YOUR TURN',
         title: 'Confirm when the work is done',
-        body: 'This job has no checklist. Payment is released when you confirm.',
+        body: 'This job has no checklist. Payment is released to the provider after the 3-day warranty.',
       },
       step: 'working',
       main: { kind: 'confirmDone' },
@@ -258,7 +258,7 @@ describe('homeownerJobView: in progress', () => {
     });
     expect(view.main).toEqual({ kind: 'confirmDone' });
     expect(view.link).toEqual({ kind: 'viewCase' });
-    expect(view.card.body).toBe('Check the work, then confirm. Payment is released when you confirm. Complaint awaiting admin review.');
+    expect(view.card.body).toBe('Check the work, then confirm. Payment is released to the provider after the 3-day warranty. Complaint awaiting admin review.');
   });
 
   it('in progress without a provider on the job: no report or case is offered', () => {

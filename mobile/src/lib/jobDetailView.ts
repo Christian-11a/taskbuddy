@@ -119,7 +119,7 @@ export function homeownerJobView(input: HomeownerJobInput): JobView {
       const when = formatDate(job.scheduled_at, WEEKDAY_MONTH_DAY);
       const time = job.scheduled_at ? timeOfDay(job.scheduled_at) : '';
       const where = [time, job.address].filter(Boolean).join(' · ');
-      const held = `${yourPayment} is held safely until the job is done.`;
+      const held = `${yourPayment} is held safely and only released after the job is done.`;
       return {
         card: {
           tone: 'booked',
@@ -145,8 +145,8 @@ export function homeownerJobView(input: HomeownerJobInput): JobView {
             title: noTasks ? 'Confirm when the work is done' : 'The provider finished all tasks',
             body: withNote(
               noTasks
-                ? 'This job has no checklist. Payment is released when you confirm.'
-                : 'Check the work, then confirm. Payment is released when you confirm.',
+                ? 'This job has no checklist. Payment is released to the provider after the 3-day warranty.'
+                : 'Check the work, then confirm. Payment is released to the provider after the 3-day warranty.',
               note,
             ),
           },
