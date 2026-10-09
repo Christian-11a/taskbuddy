@@ -1,28 +1,20 @@
-import { useThemedStyles, type Palette as ThemePalette } from '../../../src/context/ThemeContext';
+import { useTheme, useThemedStyles, type Palette as ThemePalette } from '../../../src/context/ThemeContext';
 import { useNotifications } from '../../../src/context/NotificationsContext';
 /**
  * SPHomeScreen.tsx ("Feed" tab)
  *
- * Theme C (Figma "FINAL · Provider"): a flat navy header — deliberately
- * different from the homeowner side's sky blue so the two roles never look
- * alike — holding the availability switch and the Open / Urgent counts,
- * then search, urgency chips and the job cards.
- *
- * Jobs Done / Rating / Active live on the Profile screen, not here (QA: they
- * were shown twice). The availability switch sits in the header because it
- * decides whether this feed brings in work.
- * Urgency chips filter the feed. The mockup's "For You"/"All Jobs"
- * recommendation-score tabs are dropped — there's no match-scoring backend.
+ * Figma "Feed · verified" (79:2375): the header on the canvas (avatar, Hello and
+ * the name, bell), the next booking as a navy hero card, the availability switch,
+ * search, urgency pills, and the open jobs as rows.
  *
  * Two things run down this screen, and they are not the same thing:
  *
- *   Confirmed bookings — jobs a client hired this provider for. Open the job
- *   details to start actual work; no second acceptance is required.
+ *   Bookings: jobs a client hired this provider for. The hero shows the one to
+ *   start next; the rest are listed under My Work. No second acceptance is needed.
  *
- *   The job feed — open work nobody has been hired for yet. Filtered to the
+ *   The job feed: open work nobody has been hired for yet. It is filtered to the
  *   provider's service radius and ordered by the backend: urgent first, then
- *   nearest, then newest (jobs.service.ts `browse`). The summary strip above
- *   it counts what is in that filtered feed, not what exists platform-wide.
+ *   nearest, then newest (jobs.service.ts `browse`).
  */
 
 import { StatusBar } from 'expo-status-bar';
@@ -36,41 +28,48 @@ import {
   View,
 } from 'react-native';
 import {
+  ArrowRight,
   Bell,
-  CalendarDays,
-  Clock,
-  ShieldAlert,
   ChevronRight,
+  Clock,
   Inbox,
-  Navigation,
   Search,
+  ShieldAlert,
   ShieldCheck,
-  TriangleAlert,
 } from 'lucide-react-native';
 import { Spacing } from '../../../src/constants/theme';
 import { useHeaderTop } from '../../../src/hooks/useHeaderTop';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { SPScreen } from '../../../src/types/navigation';
 
 import { useAuth } from '../../../src/context/AuthContext';
 import { useAsyncData } from '../../../src/hooks/useAsyncData';
 import { api } from '../../../src/lib/api';
-import { distanceLabel, shortDate } from '../../../src/lib/format';
+import { peso } from '../../../src/lib/format';
+import {
+  appliedJobIds,
+  feedFilterCounts,
+  feedRowMeta,
+  pickProviderHero,
+  type FeedUrgency,
+  type ProviderHero,
+} from '../../../src/lib/providerFeed';
 import OwnAvatar from '../../../src/components/OwnAvatar';
-import JobCard from '../../../src/components/JobCard';
 import Tap from '../../../src/components/ui/Tap';
 import Pulse from '../../../src/components/ui/Pulse';
+import FilterPill from '../../../src/components/ui/FilterPill';
+import SectionHeader from '../../../src/components/ui/SectionHeader';
+import JobRow from '../../../src/components/ui/JobRow';
+import EmptyRow from '../../../src/components/ui/EmptyRow';
 import { haptic } from '../../../src/components/ui/motion';
 import { useRetainedState } from '../../../src/hooks/useRetainedState';
 import { useRefreshOnForeground } from '../../../src/hooks/useRefreshOnForeground';
 
-const URGENCY_FILTERS = [
+const URGENCY_FILTERS: { key: FeedUrgency; label: string }[] = [
   { key: 'all', label: 'All' },
   { key: 'urgent', label: 'Urgent' },
   { key: 'normal', label: 'Normal' },
   { key: 'flexible', label: 'Flexible' },
-] as const;
-type UrgencyFilter = (typeof URGENCY_FILTERS)[number]['key'];
+];
 
 /** Feed radius when the provider has not set one on their profile. */
 const DEFAULT_RADIUS_KM = 50;
@@ -79,15 +78,26 @@ interface SPHomeScreenProps {
   onNavigate: (screen: SPScreen, jobId?: string) => void;
 }
 
+/** "Wed, Oct 15 · 12:22 AM · Arturo Tanco Drive, Lipa"; without a date, "No date yet · address". */
+function heroLine(hero: ProviderHero): string {
+  const when = hero.when
+    ? [
+        hero.when.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }),
+        hero.when.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }),
+      ]
+    : ['No date yet'];
+  return [...when, hero.job.address].filter(Boolean).join(' · ');
+}
+
 export default function SPHomeScreen({ onNavigate }: SPHomeScreenProps) {
-  const { C, styles, appearance } = useThemedStyles(createThemedStyles);
+  const { Colors, C, styles, appearance } = useThemedStyles(createThemedStyles);
+  const { dark } = useTheme();
   const headerTop = useHeaderTop();
-  const insets = useSafeAreaInsets();
   const { unreadCount } = useNotifications();
   const { profile, providerProfile, isVerified, refreshProfile } = useAuth();
   const radiusKm = providerProfile?.service_radius_km ?? DEFAULT_RADIUS_KM;
 
-  // The "Verify to Apply" banner (below) reflects cached profile state, but
+  // The verification banner below reflects cached profile state, but
   // verification is approved async by a webhook while the app may be
   // backgrounded — without this it stays stale until the user happens to
   // revisit Verification or restart the app (QA P2.1).
@@ -108,7 +118,7 @@ export default function SPHomeScreen({ onNavigate }: SPHomeScreenProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   const serviceKey = [providerProfile?.category_id, ...(providerProfile?.approved_secondary_services ?? []).map((service) => service.category_id).sort((a, b) => a - b)].join(':');
-  const [urgency, setUrgency] = useRetainedState<UrgencyFilter>('sp.feed.urgency', 'all');
+  const [urgency, setUrgency] = useRetainedState<FeedUrgency>('sp.feed.urgency', 'all');
   const { data } = useAsyncData(async () => {
     const [feed, assigned] = await Promise.all([
       api.browseJobs({
@@ -120,8 +130,14 @@ export default function SPHomeScreen({ onNavigate }: SPHomeScreenProps) {
       }),
       api.assignedJobs(),
     ]);
-    return { jobs: feed.jobs, summary: feed.summary, assigned };
+    // `loaded` is the urgency the server filtered by, which the pill counts need.
+    return { jobs: feed.jobs, summary: feed.summary, assigned, loaded: urgency };
   }, [profile?.latitude, profile?.longitude, radiusKm, urgency, serviceKey], `sp-home-${profile?.id}-${serviceKey}-${profile?.latitude}-${profile?.longitude}-${radiusKm}-${urgency}`);
+
+  // Pending applications only label feed rows "Applied · waiting". The feed
+  // never waits for this lookup, and a failed one leaves every row unlabelled.
+  const { data: applications } = useAsyncData(async () => api.myApplications(), [], 'sp-applications');
+  const applied = appliedJobIds(applications);
 
   const [available, setAvailable] = useState(providerProfile?.is_available ?? true);
   const [togglingAvail, setTogglingAvail] = useState(false);
@@ -145,257 +161,219 @@ export default function SPHomeScreen({ onNavigate }: SPHomeScreenProps) {
   };
 
   const name = profile?.full_name ?? '';
-  // Hired and waiting on this provider to answer — the top of the screen.
-  const confirmedJobs = (data?.assigned ?? []).filter((j) => ['assigned', 'confirmed'].includes(j.status));
-  const summary = data?.summary;
+  const hero = pickProviderHero(data?.assigned ?? [], new Date());
   const q = search.trim().toLowerCase();
   const availableJobs = (data?.jobs ?? []).filter(
     (job) =>
       (urgency === 'all' || job.urgency === urgency) &&
       (!q || job.title.toLowerCase().includes(q) || (job.service_categories?.name ?? '').toLowerCase().includes(q)),
   );
-  const location = profile?.city || 'your location';
+  const counts: Partial<Record<FeedUrgency, number>> = data ? feedFilterCounts(data.loaded, data.summary, data.jobs) : {};
 
   return (
     <View style={styles.screen}>
-      <StatusBar style="light" />
+      <StatusBar style={dark ? 'light' : 'dark'} />
       <ScrollView keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag"
         style={styles.body}
         showsVerticalScrollIndicator={false}
       >
-        {/* The hero scrolls with the feed so small phones and large text
-            sizes are not left with a thin strip of jobs under it. */}
-        {/* Hero — flat navy, provider identity. */}
-        <View style={[styles.hero, { paddingTop: headerTop }]}>
-          <View style={styles.heroTopRow}>
-            <View testID="hero-text" style={styles.heroText}>
+        {/* Header on the canvas: the avatar opens Profile, the bell opens Notifications. */}
+        <View style={[styles.header, { paddingTop: headerTop }]}>
+          <View style={styles.headerRow}>
+            <Tap
+              testID="btn-home-avatar"
+              style={styles.avatar}
+              hitSlop={4}
+              accessibilityRole="button"
+              accessibilityLabel="Profile"
+              onPress={() => onNavigate('Profile')}
+            >
+              <OwnAvatar name={name} textStyle={styles.avatarText} />
+            </Tap>
+            {/* The name column yields first: at large text the greeting and the name truncate on one line, and the actions keep their size. */}
+            <View testID="hero-text" style={styles.greetingColumn}>
+              <Text style={styles.greeting} numberOfLines={1} ellipsizeMode="tail">Hello</Text>
               <Text
-                style={styles.greeting}
+                style={styles.userName}
                 numberOfLines={1}
                 ellipsizeMode="tail"
                 maxFontSizeMultiplier={1.3}
               >
-                Hello, {name || 'there'}
+                {name || 'there'}
               </Text>
-              <Text style={styles.heroTitle}>Jobs near you</Text>
             </View>
-            <View testID="hero-actions" style={styles.heroActions}>
+            <View testID="hero-actions" style={styles.headerActions}>
               <View>
                 <Tap
-                  style={styles.iconBtn}
-                  rippleColor={C.rippleOnHero}
+                  style={styles.bell}
+                  hitSlop={2}
                   accessibilityRole="button"
-                  accessibilityLabel="Notifications"
+                  accessibilityLabel={unreadCount > 0 ? `Notifications, ${unreadCount} unread` : 'Notifications'}
                   onPress={() => onNavigate('Notifications')}
                 >
-                  <Bell size={21} color={C.onPrimary} strokeWidth={2.2} />
+                  <Bell size={20} color={C.ink900} strokeWidth={2.2} />
                 </Tap>
                 {unreadCount > 0 && (
-                  <View pointerEvents="none" style={styles.notifBadge}>
-                    <Text accessibilityLabel={`${unreadCount} unread notifications`} style={styles.notifBadgeText} maxFontSizeMultiplier={1.2}>
+                  <View pointerEvents="none" style={styles.bellBadge}>
+                    <Text style={styles.bellBadgeText} maxFontSizeMultiplier={1.2}>
                       {unreadCount > 99 ? '99+' : unreadCount}
                     </Text>
                   </View>
                 )}
               </View>
-              <Tap
-                testID="btn-home-avatar"
-                style={styles.avatarCircle}
-                rippleColor={C.rippleOnHero}
-                accessibilityRole="button"
-                accessibilityLabel="Profile"
-                onPress={() => onNavigate('Profile')}
-              >
-                <OwnAvatar name={name} textStyle={styles.avatarText} />
-              </Tap>
             </View>
           </View>
+        </View>
 
-          {/* Availability — decides whether new work is offered to this provider. */}
-          <View style={styles.statusCard}>
-            <View style={[styles.statusDot, { backgroundColor: available ? '#4ade80' : 'rgba(255,255,255,0.45)' }]} />
-            <View style={styles.statusCopy}>
-              <Text style={styles.statusText}>{available ? 'Available for jobs' : 'Not available'}</Text>
-              <Text style={styles.statusHint} numberOfLines={3}>
-                {available ? 'Clients can invite and hire you' : "You won't be invited to new jobs"} · within {radiusKm} km of {location}
+        <View style={styles.bodyContent}>
+          {/* Verification banner */}
+          {!isVerified && (
+            <Tap
+              style={[styles.flowBanner, verifyState === 'pending' && styles.flowBannerPending, verifyState === 'rejected' && styles.flowBannerRejected]}
+              onPress={() => onNavigate('Verification')}
+              accessibilityRole="button"
+            >
+              <View style={styles.flowIcon}>
+                {verifyState === 'pending' ? <Clock size={20} color={C.warningText} />
+                  : verifyState === 'rejected' ? <ShieldAlert size={20} color={C.dangerText} />
+                  : <ShieldCheck size={20} color={C.link} />}
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.flowTitle}>
+                  {verifyState === 'pending' ? 'Verification under review'
+                    : verifyState === 'rejected' ? 'Verification not approved'
+                    : 'Verification required to apply'}
+                </Text>
+                <Text style={styles.flowBody}>
+                  {verifyState === 'pending'
+                    ? "An admin is checking your documents. You can browse jobs now and apply once you're approved."
+                    : verifyState === 'rejected'
+                    ? 'Your documents were not accepted. Upload new photos to try again.'
+                    : 'You can browse jobs now, but you must verify your identity before you can send proposals or be hired.'}
+                </Text>
+                <Text style={styles.flowAction}>
+                  {verifyState === 'pending' ? 'View status' : verifyState === 'rejected' ? 'Try again' : 'Verify now'}
+                </Text>
+              </View>
+              <ChevronRight size={20} color={C.ink400} style={{ alignSelf: 'center' }} />
+            </Tap>
+          )}
+
+          {/* The next booking: the hired job to start, or the soonest one still ahead. */}
+          {hero && (
+            <View testID="feed-hero" style={styles.heroCard}>
+              <View style={styles.heroChip}>
+                <Text style={styles.heroChipText}>Next booking</Text>
+              </View>
+              <Text style={styles.heroTitle} numberOfLines={2}>{hero.job.title}</Text>
+              <Text style={styles.heroLine} numberOfLines={2}>{heroLine(hero)}</Text>
+              <View style={styles.heroFooter}>
+                {hero.moreThisWeek > 0 && (
+                  <Text style={styles.heroMore} numberOfLines={1}>{`+${hero.moreThisWeek} more this week`}</Text>
+                )}
+                <Tap
+                  style={styles.heroButton}
+                  hitSlop={5}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Open ${hero.job.title}`}
+                  onPress={() => onNavigate('Job Detail', hero.job.id)}
+                >
+                  <Text style={styles.heroButtonText}>Open</Text>
+                  <ArrowRight size={16} color={Colors.primary} strokeWidth={2.4} />
+                </Tap>
+              </View>
+            </View>
+          )}
+
+          {/* Availability: decides whether new work is offered to this provider. */}
+          <View style={styles.availability}>
+            <View style={[styles.availabilityDot, { backgroundColor: available ? Colors.successText : C.ink400 }]} />
+            <View style={styles.availabilityCopy}>
+              <Text style={styles.availabilityTitle}>{available ? 'Available for jobs' : 'Not available'}</Text>
+              <Text style={styles.availabilityHint} numberOfLines={2}>
+                {available ? `Clients within ${radiusKm} km can invite you` : "You won't be invited to new jobs"}
               </Text>
             </View>
             <Switch
               value={available}
               onValueChange={() => { haptic.tick(); void toggleAvailability(); }}
               disabled={togglingAvail}
-              trackColor={{ false: 'rgba(255,255,255,0.25)', true: '#22c55e' }}
+              trackColor={{ false: C.ink200, true: Colors.successSolid }}
               thumbColor={C.white}
               accessibilityLabel="Available for jobs"
               testID="toggle-availability"
             />
           </View>
 
-          {/* Feed summary — what's out there and what's urgent, both counted
-              from the location-filtered feed below. */}
-          <View style={styles.summaryStrip}>
-            <View style={styles.summaryItem}>
-              <Text style={styles.summaryValue}>{summary?.open_count ?? '—'}</Text>
-              <View style={styles.summaryLabelRow}>
-                <Search size={13} color={C.onHeroMuted} />
-                <Text style={styles.summaryLabel}>Open</Text>
-              </View>
-            </View>
-            <View style={styles.summaryItem}>
-              <Text style={styles.summaryValue}>{summary?.urgent_count ?? '—'}</Text>
-              <View style={styles.summaryLabelRow}>
-                <TriangleAlert size={13} color="#fca5a5" />
-                <Text style={styles.summaryLabel}>Urgent</Text>
-              </View>
-            </View>
+          <View style={styles.search}>
+            <Search size={20} color={C.ink400} />
+            <TextInput keyboardAppearance={appearance}
+              style={styles.searchInput}
+              value={search}
+              onChangeText={setSearch}
+              placeholder="Search open jobs"
+              placeholderTextColor={C.ink400}
+              returnKeyType="search"
+            />
           </View>
-        </View>
-        <View style={styles.bodyContent}>
-        {/* Verification banner */}
-        {!isVerified && (
-          <Tap
-            style={[styles.flowBanner, verifyState === 'pending' && styles.flowBannerPending, verifyState === 'rejected' && styles.flowBannerRejected]}
-            onPress={() => onNavigate('Verification')}
-            accessibilityRole="button"
-          >
-            <View style={styles.flowIcon}>
-              {verifyState === 'pending' ? <Clock size={20} color={C.warningText} />
-                : verifyState === 'rejected' ? <ShieldAlert size={20} color={C.dangerText} />
-                : <ShieldCheck size={20} color={C.link} />}
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.flowTitle}>
-                {verifyState === 'pending' ? 'Verification under review'
-                  : verifyState === 'rejected' ? 'Verification not approved'
-                  : 'Verification required to apply'}
-              </Text>
-              <Text style={styles.flowBody}>
-                {verifyState === 'pending'
-                  ? "An admin is checking your documents. You can browse jobs now and apply once you're approved."
-                  : verifyState === 'rejected'
-                  ? 'Your documents were not accepted. Upload new photos to try again.'
-                  : 'You can browse jobs now, but you must verify your identity before you can send proposals or be hired.'}
-              </Text>
-              <Text style={styles.flowAction}>
-                {verifyState === 'pending' ? 'View status' : verifyState === 'rejected' ? 'Try again' : 'Verify now'}
-              </Text>
-            </View>
-            <ChevronRight size={20} color={C.ink400} style={{ alignSelf: 'center' }} />
-          </Tap>
-        )}
 
-        {confirmedJobs.length > 0 && (
-          <View style={styles.requestsBlock}>
-            <View style={styles.requestsHeader}>
-              <Inbox size={17} color={C.link} />
-              <Text style={styles.requestsTitle}>Confirmed bookings</Text>
-              <View style={styles.requestsCount}>
-                <Text style={styles.requestsCountText}>{confirmedJobs.length}</Text>
-              </View>
-            </View>
-            {confirmedJobs.map((job) => (
-              <JobCard
-                key={job.id}
-                title={job.title}
-                budget={job.budget}
-                address={job.address}
-                urgency={job.urgency}
-                footer={[{ icon: <CalendarDays size={14} color={C.ink400} />,
-                  text: job.scheduled_at ? shortDate(job.scheduled_at) : 'Flexible schedule' }]}
-                onPress={() => onNavigate('Job Detail', job.id)}
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.pillScroll} contentContainerStyle={styles.pillRow}>
+            {URGENCY_FILTERS.map((f) => (
+              <FilterPill
+                key={f.key}
+                label={f.label}
+                count={counts[f.key]}
+                selected={urgency === f.key}
+                onPress={() => setUrgency(f.key)}
               />
             ))}
-          </View>
-        )}
+          </ScrollView>
 
-        {/* Search */}
-        <View style={styles.scopeSearch}>
-          <Search size={20} color={C.ink400} />
-          <TextInput keyboardAppearance={appearance}
-            style={styles.scopeSearchInput}
-            value={search}
-            onChangeText={setSearch}
-            placeholder="Search open jobs"
-            placeholderTextColor={C.ink400}
-            returnKeyType="search"
-          />
-        </View>
+          <SectionHeader title="Open jobs near you" count={data ? availableJobs.length : undefined} />
 
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipRow}>
-          {URGENCY_FILTERS.map((f) => {
-            const active = urgency === f.key;
-            return (
-              <Tap
-                key={f.key}
-                style={[styles.chip, active && styles.chipActive]}
-                onPress={() => setUrgency(f.key)}
-                accessibilityRole="button"
-                accessibilityState={{ selected: active }}
-                testID={`feed-urgency-${f.key}`}
-              >
-                <Text style={[styles.chipText, active && styles.chipTextActive]}>{f.label}</Text>
-              </Tap>
-            );
-          })}
-        </ScrollView>
+          {!data && (
+            <Pulse>
+              {[0, 1].map((i) => (
+                <View key={i} style={styles.skeletonCard} accessibilityLabel="Loading jobs">
+                  <View style={[styles.skeletonLine, { width: i ? '55%' : '72%' }]} />
+                  <View style={[styles.skeletonLine, { width: '45%', height: 10 }]} />
+                  <View style={[styles.skeletonLine, { width: '30%', height: 22, borderRadius: 11 }]} />
+                </View>
+              ))}
+            </Pulse>
+          )}
 
-        {data && (
-          <Text style={styles.feedSummary}>
-            {availableJobs.length} job{availableJobs.length === 1 ? '' : 's'} available around your service area
-          </Text>
-        )}
+          {data && availableJobs.length === 0 && (
+            <EmptyRow
+              icon={Inbox}
+              title="No open jobs near you"
+              body="Adjust your search or urgency filter to see more opportunities."
+            />
+          )}
 
-        {!data && (
-          <Pulse>
-            {[0, 1].map((i) => (
-              <View key={i} style={styles.skeletonCard} accessibilityLabel="Loading jobs">
-                <View style={[styles.skeletonLine, { width: i ? '55%' : '72%' }]} />
-                <View style={[styles.skeletonLine, { width: '45%', height: 10 }]} />
-                <View style={[styles.skeletonLine, { width: '30%', height: 22, borderRadius: 11 }]} />
-              </View>
-            ))}
-          </Pulse>
-        )}
-        {data && availableJobs.length === 0 && (
-          <View style={styles.emptyState}>
-            <View style={styles.emptyIcon}>
-              <Search size={28} color={C.link} />
+          {availableJobs.length > 0 && (
+            <View style={styles.jobList}>
+              {availableJobs.map((job) => {
+                const isApplied = applied.has(job.id);
+                return (
+                  <JobRow
+                    key={job.id}
+                    testID={`feed-job-${job.id}`}
+                    title={job.title}
+                    meta={feedRowMeta(job, isApplied)}
+                    tone={isApplied ? 'applied' : 'open'}
+                    amount={job.budget != null ? peso(job.budget) : ''}
+                    date={job.scheduled_at}
+                    onPress={() => onNavigate('Job Detail', job.id)}
+                  />
+                );
+              })}
             </View>
-            <Text style={styles.emptyTitle}>No matching jobs</Text>
-            <Text style={styles.emptyText}>Adjust your search or urgency filter to see more opportunities.</Text>
-          </View>
-        )}
+          )}
 
-        {/* Feed — the same card clients see for their own jobs. */}
-        {availableJobs.map((job) => (
-          <JobCard
-            key={job.id}
-            title={job.title}
-            budget={job.budget}
-            address={job.address}
-            urgency={job.urgency}
-            pills={job.service_categories?.name
-              ? [{ label: job.service_categories.name, color: C.ink700, bg: C.ink50 }]
-              : []}
-            footer={[
-              {
-                icon: <CalendarDays size={14} color={C.ink400} />,
-                text: job.scheduled_at ? shortDate(job.scheduled_at) : 'Flexible schedule',
-              },
-              ...(distanceLabel(job.distance_km)
-                ? [{ icon: <Navigation size={14} color={C.ink400} />, text: distanceLabel(job.distance_km) }]
-                : []),
-            ]}
-            onPress={() => onNavigate('Job Detail', job.id)}
-          />
-        ))}
-
-        <View style={{ height: 24 }} />
+          <View style={{ height: 24 }} />
         </View>
       </ScrollView>
-      {/* Keeps the status bar area navy once the hero has scrolled away. */}
-      <View pointerEvents="none" style={[styles.statusStrip, { height: insets.top }]} />
-
     </View>
   );
 }
@@ -405,78 +383,46 @@ function createThemedStyles(theme: ThemePalette) {
   const C = V6Colors;
   const styles = StyleSheet.create({
     screen: { flex: 1, backgroundColor: C.canvas },
+    body: { flex: 1 },
 
-    hero: {
-      backgroundColor: C.providerHero,
-      paddingHorizontal: Spacing.screenH,
-      paddingBottom: 18,
-      borderBottomLeftRadius: 28,
-      borderBottomRightRadius: 28,
+    header: { paddingHorizontal: Spacing.screenH },
+    headerRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+    avatar: {
+      width: 40, height: 40, borderRadius: 20,
+      backgroundColor: Colors.primaryTonal,
+      alignItems: 'center', justifyContent: 'center', overflow: 'hidden',
     },
-    heroTopRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-    greeting: { color: C.onHeroMuted, fontSize: 15, fontFamily: 'Inter', fontWeight: '500', marginBottom: 2 },
-    heroTitle: { color: C.onPrimary, fontSize: 24, fontWeight: '800', fontFamily: 'Inter', letterSpacing: -0.3 },
+    avatarText: { color: Colors.primaryDeep, fontSize: 14, fontWeight: '600', fontFamily: 'Inter' },
     // The greeting column yields to the actions, never the other way round: the
     // avatar is the only route to Profile (and Log out), so a long name must
     // truncate rather than push it off-screen.
-    heroText: { flex: 1, minWidth: 0, marginRight: 12 },
-    heroActions: { flexDirection: 'row', gap: 10, alignItems: 'center', flexShrink: 0 },
-    iconBtn: {
+    greetingColumn: { flex: 1, flexShrink: 1, minWidth: 0, gap: 2 },
+    greeting: { color: C.ink500, fontSize: 13, fontWeight: '400', fontFamily: 'Inter', lineHeight: 18 },
+    userName: { color: C.ink900, fontSize: 18, fontWeight: '700', fontFamily: 'Inter', lineHeight: 24 },
+    headerActions: { flexDirection: 'row', alignItems: 'center', gap: 8, flexShrink: 0 },
+    bell: {
       width: 44, height: 44, borderRadius: 22,
-      backgroundColor: 'rgba(255,255,255,0.1)',
+      backgroundColor: C.surface, borderWidth: 1, borderColor: C.line,
       alignItems: 'center', justifyContent: 'center', overflow: 'hidden',
     },
-    notifBadge: {
-      position: 'absolute', top: -3, right: -3,
-      minWidth: 20, height: 20, borderRadius: 10, paddingHorizontal: 4,
-      backgroundColor: '#dc2626', alignItems: 'center', justifyContent: 'center',
-      borderWidth: 2, borderColor: C.providerHero,
+    bellBadge: {
+      position: 'absolute', top: -4, right: -3,
+      minWidth: 22, height: 18, borderRadius: 9, paddingHorizontal: 5,
+      backgroundColor: Colors.dangerSolid, borderWidth: 2, borderColor: C.surface,
+      alignItems: 'center', justifyContent: 'center',
     },
-    notifBadgeText: { color: '#ffffff', fontSize: 10.5, fontWeight: '800', fontFamily: 'Inter' },
-    avatarCircle: {
-      width: 44, height: 44, borderRadius: 22,
-      backgroundColor: '#2b4a66',
-      borderWidth: 2, borderColor: 'rgba(255,255,255,0.7)',
-      alignItems: 'center', justifyContent: 'center', overflow: 'hidden',
+    bellBadgeText: {
+      color: Colors.onPrimary, fontSize: 10, fontWeight: '700', fontFamily: 'Inter',
+      lineHeight: 12, letterSpacing: 0.5,
     },
-    avatarText: { color: '#bae6fd', fontWeight: '800', fontSize: 15, fontFamily: 'Inter' },
 
-    statusCard: {
-      flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: 18,
-      backgroundColor: 'rgba(255,255,255,0.08)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)',
-      borderRadius: 18, paddingVertical: 12, paddingLeft: 16, paddingRight: 12,
-    },
-    statusDot: { width: 10, height: 10, borderRadius: 5 },
-    statusCopy: { flex: 1, minWidth: 0 },
-    statusText: { color: C.onPrimary, fontSize: 15.5, fontWeight: '700', fontFamily: 'Inter' },
-    statusHint: { color: C.onHeroMuted, fontSize: 13, fontFamily: 'Inter', marginTop: 1, lineHeight: 18 },
+    bodyContent: { paddingHorizontal: Spacing.screenH, paddingTop: 18, paddingBottom: 20, gap: 14 },
 
-    summaryStrip: { flexDirection: 'row', gap: 10, marginTop: 10 },
-    summaryItem: {
-      flex: 1, gap: 2, paddingVertical: 12, paddingHorizontal: 14,
-      backgroundColor: 'rgba(255,255,255,0.08)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)',
-      borderRadius: 16,
-    },
-    summaryValue: { color: C.onPrimary, fontSize: 22, fontWeight: '800', fontFamily: 'Inter' },
-    summaryLabel: { color: C.onHeroMuted, fontSize: 13, fontFamily: 'Inter', fontWeight: '600' },
-    summaryLabelRow: { flexDirection: 'row', alignItems: 'center', gap: 5 },
-
-    requestsBlock: { marginBottom: 10 },
-    requestsHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 12 },
-    requestsTitle: { color: C.ink900, fontSize: 17, fontWeight: '800', fontFamily: 'Inter' },
-    requestsCount: {
-      minWidth: 22, height: 22, borderRadius: 11, paddingHorizontal: 6,
-      backgroundColor: C.primary, alignItems: 'center', justifyContent: 'center',
-    },
-    requestsCountText: { color: C.onPrimary, fontSize: 12, fontWeight: '800', fontFamily: 'Inter' },
-    body: { flex: 1 },
-    statusStrip: { position: 'absolute', top: 0, left: 0, right: 0, backgroundColor: C.providerHero },
-    bodyContent: { paddingHorizontal: Spacing.screenH, paddingTop: 18, paddingBottom: 20 },
-
+    // Verification banner (shown until the provider is verified).
     flowBanner: {
       flexDirection: 'row', alignItems: 'flex-start', gap: 12,
-      backgroundColor: C.primaryTonal, borderWidth: 1, borderColor: C.primaryTonalStrong,
-      borderRadius: 18, padding: 14, marginBottom: 18, overflow: 'hidden',
+      backgroundColor: Colors.primaryTonal, borderWidth: 1, borderColor: Colors.primaryTonalStrong,
+      borderRadius: 18, padding: 14, overflow: 'hidden',
     },
     flowBannerPending: { backgroundColor: C.warningSurface, borderColor: C.warningBorder },
     flowBannerRejected: { backgroundColor: C.dangerSurface, borderColor: C.dangerBorder },
@@ -485,36 +431,54 @@ function createThemedStyles(theme: ThemePalette) {
     flowBody: { fontSize: 13.5, lineHeight: 19, color: C.ink500, fontFamily: 'Inter', marginTop: 3 },
     flowAction: { color: C.link, fontSize: 14, fontWeight: '800', fontFamily: 'Inter', marginTop: 8 },
 
-    chipRow: { gap: 8, paddingBottom: 16 },
-    chip: {
-      borderWidth: 1, borderColor: C.line, backgroundColor: C.surface, borderRadius: 12,
-      paddingHorizontal: 16, minHeight: 40, justifyContent: 'center', overflow: 'hidden',
+    // The hero card, always navy: the next booking.
+    heroCard: { backgroundColor: Colors.hero, borderRadius: 20, padding: 18, gap: 8 },
+    heroChip: {
+      alignSelf: 'flex-start', backgroundColor: Colors.heroCard,
+      borderRadius: 999, paddingHorizontal: 10, paddingVertical: 4,
     },
-    chipActive: { backgroundColor: C.primaryTonalStrong, borderColor: C.primaryTonalStrong },
-    chipText: { color: C.ink700, fontSize: 14, fontWeight: '600', fontFamily: 'Inter' },
-    chipTextActive: { color: theme.appearance === 'dark' ? '#e0f2fe' : '#0c4a6e', fontWeight: '700' },
+    heroChipText: { color: Colors.onHeroMuted, fontSize: 12, fontWeight: '600', fontFamily: 'Inter', lineHeight: 16 },
+    heroTitle: { color: Colors.onPrimary, fontSize: 20, fontWeight: '700', fontFamily: 'Inter', lineHeight: 26 },
+    heroLine: { color: Colors.onPrimary, fontSize: 13, fontWeight: '400', fontFamily: 'Inter', lineHeight: 18 },
+    heroFooter: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingTop: 8 },
+    heroMore: { flex: 1, minWidth: 0, color: Colors.onHeroMuted, fontSize: 13, fontWeight: '600', fontFamily: 'Inter', lineHeight: 18 },
+    heroButton: {
+      flexDirection: 'row', alignItems: 'center', gap: 6, marginLeft: 'auto',
+      backgroundColor: Colors.onPrimary, borderRadius: 999,
+      paddingLeft: 16, paddingRight: 14, paddingVertical: 10, flexShrink: 0,
+    },
+    heroButtonText: { color: Colors.primary, fontSize: 14, fontWeight: '600', fontFamily: 'Inter', lineHeight: 18 },
 
-    scopeSearch: {
+    // Availability row.
+    availability: {
+      flexDirection: 'row', alignItems: 'center', gap: 12,
+      backgroundColor: C.surface, borderWidth: 1, borderColor: C.line, borderRadius: 18,
+      paddingVertical: 12, paddingLeft: 16, paddingRight: 12,
+    },
+    availabilityDot: { width: 10, height: 10, borderRadius: 5 },
+    availabilityCopy: { flex: 1, minWidth: 0 },
+    availabilityTitle: { color: C.ink900, fontSize: 15, fontWeight: '600', fontFamily: 'Inter', lineHeight: 20 },
+    availabilityHint: { color: C.ink500, fontSize: 13, fontFamily: 'Inter', lineHeight: 18, marginTop: 1 },
+
+    // Search field, a pill on the canvas.
+    search: {
       flexDirection: 'row', alignItems: 'center', gap: 10,
       backgroundColor: C.surface, borderWidth: 1, borderColor: C.line,
-      borderRadius: 999, paddingHorizontal: 16, minHeight: 52, marginBottom: 14,
+      borderRadius: 999, paddingHorizontal: 16, minHeight: 52,
     },
-    scopeSearchInput: { flex: 1, fontSize: 15.5, color: C.ink900, fontFamily: 'Inter', paddingVertical: 12 },
+    searchInput: { flex: 1, minWidth: 0, fontSize: 15.5, color: C.ink900, fontFamily: 'Inter', paddingVertical: 12 },
+
+    // Urgency pills scroll past the screen edge, as in Figma.
+    pillScroll: { flexGrow: 0, marginHorizontal: -Spacing.screenH },
+    pillRow: { gap: 8, paddingHorizontal: Spacing.screenH },
+
+    jobList: { gap: 8 },
 
     skeletonCard: {
       backgroundColor: C.surface, borderRadius: 20, padding: 16, marginBottom: 12, gap: 12,
       borderWidth: 1, borderColor: C.line,
     },
     skeletonLine: { height: 14, borderRadius: 7, backgroundColor: C.skeleton },
-
-    feedSummary: { color: C.ink500, fontSize: 13.5, fontFamily: 'Inter', marginBottom: 12 },
-    emptyState: { alignItems: 'center', paddingVertical: 36, paddingHorizontal: 22 },
-    emptyIcon: {
-      width: 64, height: 64, borderRadius: 32, backgroundColor: C.primaryTonal,
-      alignItems: 'center', justifyContent: 'center',
-    },
-    emptyTitle: { color: C.ink900, fontSize: 17, fontWeight: '700', fontFamily: 'Inter', marginTop: 14, marginBottom: 4 },
-    emptyText: { color: C.ink500, fontSize: 14.5, fontFamily: 'Inter', textAlign: 'center', lineHeight: 20 },
   });
   return { appearance: theme.appearance, Colors, V6Colors, C, styles };
 }

@@ -15,6 +15,7 @@ jest.mock('../../../../src/lib/api', () => ({
   api: {
     browseJobs: jest.fn(),
     assignedJobs: jest.fn(),
+    myApplications: jest.fn(),
     setAvailability: jest.fn(),
     myVerification: jest.fn(),
   },
@@ -23,6 +24,9 @@ jest.mock('../../../../src/lib/api', () => ({
 jest.mock('../../../../src/context/AuthContext', () => ({
   useAuth: jest.fn(),
 }));
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+const inDays = (days: number) => new Date(Date.now() + days * DAY_MS).toISOString();
 
 // A long name used to widen the greeting column until the bell + avatar were
 // pushed off the right edge — the avatar is the only route to Profile (and Log out).
@@ -40,6 +44,7 @@ describe('SPHomeScreen — hero header keeps the avatar reachable with a long na
     });
     (api.browseJobs as jest.Mock).mockResolvedValue({ jobs: [], summary: null });
     (api.assignedJobs as jest.Mock).mockResolvedValue([]);
+    (api.myApplications as jest.Mock).mockResolvedValue([]);
   });
 
   it('still navigates to Profile from the avatar', async () => {
@@ -57,7 +62,8 @@ describe('SPHomeScreen — hero header keeps the avatar reachable with a long na
     const column = StyleSheet.flatten((await screen.findByTestId('hero-text')).props.style);
     expect(column.flex).toBe(1);
     expect(column.minWidth).toBe(0);
-    expect(screen.getByText(`Hello, ${LONG_NAME}`).props.numberOfLines).toBe(1);
+    expect(screen.getByText('Hello')).toBeTruthy();
+    expect(screen.getByText(LONG_NAME).props.numberOfLines).toBe(1);
   });
 
   it('never lets the action buttons shrink away', async () => {
@@ -76,20 +82,96 @@ describe('SPHomeScreen — hero header keeps the avatar reachable with a long na
     });
     render(<SPHomeScreen onNavigate={jest.fn()} />);
 
-    expect(await screen.findByText('Hello, there')).toBeTruthy();
+    expect(await screen.findByText('there')).toBeTruthy();
   });
 
-  it('opens confirmed bookings without asking the provider to accept again', async () => {
+  it('opens a hired job from the next-booking hero without asking the provider to accept again', async () => {
     (api.assignedJobs as jest.Mock).mockResolvedValue([{ id: 'hired-job', title: 'Hired sink repair',
       status: 'confirmed', address: 'QC', urgency: 'normal', budget: 500, scheduled_at: null }]);
     const onNavigate = jest.fn();
     render(<SPHomeScreen onNavigate={onNavigate} />);
-    fireEvent.press(await screen.findByText('Hired sink repair'));
+
+    expect(await screen.findByText('Hired sink repair')).toBeTruthy();
+    expect(screen.getByText('Next booking')).toBeTruthy();
+    fireEvent.press(screen.getByLabelText('Open Hired sink repair'));
+
     expect(onNavigate).toHaveBeenCalledWith('Job Detail', 'hired-job');
-    expect(screen.getByText('Confirmed bookings')).toBeTruthy();
     expect(screen.queryByText('Accept')).toBeNull();
     expect(screen.queryByText('Decline')).toBeNull();
   });
+
+  it('leads with the soonest booking and says how many more start in the next week', async () => {
+    (api.assignedJobs as jest.Mock).mockResolvedValue([
+      { id: 'far', title: 'Far job', status: 'confirmed', address: 'Lipa', scheduled_at: inDays(20) },
+      { id: 'soon', title: 'Plumbing: Fix toilet', status: 'confirmed', address: 'Arturo Tanco Drive, Lipa', scheduled_at: inDays(1) },
+      { id: 'week', title: 'Second job', status: 'confirmed', address: 'Lipa', scheduled_at: inDays(3) },
+    ]);
+    render(<SPHomeScreen onNavigate={jest.fn()} />);
+
+    expect(await screen.findByText('Plumbing: Fix toilet')).toBeTruthy();
+    expect(screen.getByText(/Arturo Tanco Drive, Lipa/)).toBeTruthy();
+    expect(screen.getByText('+1 more this week')).toBeTruthy();
+  });
+
+  it('labels open jobs the provider already applied to', async () => {
+    (api.browseJobs as jest.Mock).mockResolvedValue({
+      jobs: [
+        { id: 'job-1', title: 'TEST ONLY - UI check', status: 'open', urgency: 'normal', address: 'Lipa', budget: 1, scheduled_at: null, distance_km: 2.4 },
+        { id: 'job-2', title: 'Window cleaning', status: 'open', urgency: 'flexible', address: 'Lipa', budget: 800, scheduled_at: null, distance_km: 1.2 },
+      ],
+      summary: { open_count: 2, urgent_count: 0, potential_payout: 0 },
+    });
+    (api.myApplications as jest.Mock).mockResolvedValue([{ id: 'app-1', status: 'pending', jobs: { id: 'job-1' } }]);
+    render(<SPHomeScreen onNavigate={jest.fn()} />);
+
+    expect(await screen.findByText('Applied · waiting')).toBeTruthy();
+    expect(screen.getByText('1.2 km away · Flexible')).toBeTruthy();
+  });
+
+  it('puts the feed summary counts on the urgency pills', async () => {
+    (api.browseJobs as jest.Mock).mockResolvedValue({
+      jobs: [{ id: 'job-u', title: 'Burst pipe', status: 'open', urgency: 'urgent', address: 'Lipa', budget: 900, scheduled_at: null, distance_km: null }],
+      summary: { open_count: 7, urgent_count: 2, potential_payout: 0 },
+    });
+    render(<SPHomeScreen onNavigate={jest.fn()} />);
+
+    expect(await screen.findByLabelText('All, 7')).toBeTruthy();
+    expect(screen.getByLabelText('Urgent, 2')).toBeTruthy();
+  });
+
+  it('opens an open job from its row', async () => {
+    (api.browseJobs as jest.Mock).mockResolvedValue({
+      jobs: [{ id: 'job-9', title: 'Fix a leaking tap', status: 'open', urgency: 'urgent', address: 'Lipa', budget: 300, scheduled_at: null, distance_km: 0.5 }],
+      summary: null,
+    });
+    const onNavigate = jest.fn();
+    render(<SPHomeScreen onNavigate={onNavigate} />);
+
+    fireEvent.press(await screen.findByText('Fix a leaking tap'));
+
+    expect(onNavigate).toHaveBeenCalledWith('Job Detail', 'job-9');
+  });
+
+  it('explains the availability switch with the search radius', async () => {
+    render(<SPHomeScreen onNavigate={jest.fn()} />);
+
+    expect(await screen.findByText('Clients within 25 km can invite you')).toBeTruthy();
+    expect(screen.getByText('Available for jobs')).toBeTruthy();
+  });
+
+  it('says when the provider will not be invited to new jobs', async () => {
+    (useAuth as jest.Mock).mockReturnValue({
+      profile: { full_name: 'Ana', city: 'Lipa', latitude: null, longitude: null },
+      providerProfile: { is_available: false, service_radius_km: 25 },
+      isVerified: true,
+      refreshProfile: jest.fn(),
+    });
+    render(<SPHomeScreen onNavigate={jest.fn()} />);
+
+    expect(await screen.findByText("You won't be invited to new jobs")).toBeTruthy();
+    expect(screen.getByText('Not available')).toBeTruthy();
+  });
+
   it('refetches eligible jobs when an additional service is approved', async () => {
     const profile = { id: 'provider', full_name: LONG_NAME, latitude: 10.3, longitude: 123.9 };
     const providerProfile = { category_id: 1, is_available: true, service_radius_km: 25, approved_secondary_services: [] };
