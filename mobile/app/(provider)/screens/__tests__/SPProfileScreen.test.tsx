@@ -1,5 +1,5 @@
 import React from 'react';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react-native';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react-native';
 import SPProfileScreen from '../SPProfileScreen';
 import { api } from '../../../../src/lib/api';
 import { useAuth } from '../../../../src/context/AuthContext';
@@ -26,6 +26,22 @@ function mockAuth(isVerified: boolean) {
   return refreshProfile;
 }
 
+function mockAuthWith({
+  profile = {},
+  providerProfile = {},
+}: {
+  profile?: Record<string, unknown>;
+  providerProfile?: Record<string, unknown>;
+}) {
+  const refreshProfile = jest.fn().mockResolvedValue(undefined);
+  (useAuth as jest.Mock).mockReturnValue({
+    profile: { full_name: 'Testo Provider', ...profile },
+    providerProfile: { is_verified: true, cached_completed_jobs: 0, cached_avg_rating: null, ...providerProfile },
+    refreshProfile,
+  });
+  return refreshProfile;
+}
+
 describe('SPProfileScreen — verification status', () => {
   beforeEach(() => {
     jest.clearAllMocks();
@@ -39,15 +55,15 @@ describe('SPProfileScreen — verification status', () => {
 
     await waitFor(() => expect(refreshProfile).toHaveBeenCalledTimes(1));
     expect(screen.getByText('Not verified')).toBeTruthy();
-    expect(screen.getByText('Get Verified')).toBeTruthy();
+    expect(screen.getByText('Get verified')).toBeTruthy();
   });
 
-  it('does not re-fetch once verified, and hides the Get Verified row', async () => {
+  it('does not re-fetch once verified, and hides the Get verified row', async () => {
     const refreshProfile = mockAuth(true);
     render(<SPProfileScreen onNavigate={jest.fn()} onLogout={jest.fn()} onBack={jest.fn()} />);
 
     expect(await screen.findByText('Verified')).toBeTruthy();
-    expect(screen.queryByText('Get Verified')).toBeNull();
+    expect(screen.queryByText('Get verified')).toBeNull();
     expect(refreshProfile).not.toHaveBeenCalled();
   });
 
@@ -58,10 +74,20 @@ describe('SPProfileScreen — verification status', () => {
       providerProfile: null,
       refreshProfile,
     });
-    render(<SPProfileScreen onNavigate={jest.fn()} onLogout={jest.fn()} onBack={jest.fn()} />);
+    render(<SPProfileScreen onNavigate={jest.fn()} onLogout={jest.fn()} />);
 
     await waitFor(() => expect(refreshProfile).toHaveBeenCalledTimes(1));
     expect(screen.getByText('Not verified')).toBeTruthy();
+  });
+
+  it('Get verified opens Verification while unverified', () => {
+    mockAuth(false);
+    const onNavigate = jest.fn();
+    render(<SPProfileScreen onNavigate={onNavigate} onLogout={jest.fn()} />);
+
+    fireEvent.press(screen.getByRole('button', { name: 'Get verified' }));
+
+    expect(onNavigate).toHaveBeenCalledWith('Verification');
   });
 });
 
@@ -87,5 +113,117 @@ describe('SPProfileScreen — back arrow', () => {
     fireEvent.press(screen.getByLabelText('Back to Feed'));
 
     expect(onBack).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('SPProfileScreen — profile', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    clearAsyncDataCache();
+    // Left pending unless a test needs the count: the stat would otherwise settle after the test ends.
+    (api.assignedJobs as jest.Mock).mockReturnValue(new Promise(() => {}));
+  });
+
+  it('shows the services under the name, with a Verified chip once verified', async () => {
+    mockAuthWith({
+      providerProfile: {
+        is_verified: true,
+        service_categories: { name: 'Plumbing' },
+        approved_secondary_services: [{ category_id: 2, service_categories: { id: 2, name: 'Cleaning' } }],
+      },
+    });
+    render(<SPProfileScreen onNavigate={jest.fn()} onLogout={jest.fn()} />);
+
+    expect(screen.getByText('Plumbing · Cleaning')).toBeTruthy();
+    expect(await screen.findByText('Verified')).toBeTruthy();
+  });
+
+  it('shows Jobs done and Rating from the profile, and Active from the hired jobs', async () => {
+    mockAuthWith({ providerProfile: { cached_completed_jobs: 3, cached_avg_rating: 4.5 } });
+    (api.assignedJobs as jest.Mock).mockResolvedValue([
+      { status: 'confirmed' },
+      { status: 'in_progress' },
+      { status: 'completed' },
+    ]);
+    render(<SPProfileScreen onNavigate={jest.fn()} onLogout={jest.fn()} />);
+
+    expect(screen.getByText('Jobs done')).toBeTruthy();
+    expect(screen.getByText('3')).toBeTruthy();
+    expect(screen.getByText('Rating')).toBeTruthy();
+    expect(screen.getByText('4.5')).toBeTruthy();
+    expect(await screen.findByText('2')).toBeTruthy();
+    expect(screen.getByText('Active')).toBeTruthy();
+  });
+
+  it('the camera badge and Edit profile both open Edit Profile', () => {
+    mockAuthWith({});
+    const onNavigate = jest.fn();
+    render(<SPProfileScreen onNavigate={onNavigate} onLogout={jest.fn()} />);
+
+    fireEvent.press(screen.getByLabelText('Change photo'));
+    fireEvent.press(screen.getByRole('button', { name: 'Edit profile' }));
+
+    expect(onNavigate).toHaveBeenNthCalledWith(1, 'Edit Profile');
+    expect(onNavigate).toHaveBeenNthCalledWith(2, 'Edit Profile');
+  });
+
+  it('the Your work rows open their screens', () => {
+    mockAuthWith({});
+    const onNavigate = jest.fn();
+    render(<SPProfileScreen onNavigate={onNavigate} onLogout={jest.fn()} />);
+
+    fireEvent.press(screen.getByRole('button', { name: 'My services' }));
+    fireEvent.press(screen.getByRole('button', { name: 'Portfolio' }));
+    fireEvent.press(screen.getByRole('button', { name: 'Payouts' }));
+
+    expect(onNavigate.mock.calls).toEqual([['My Services'], ['Portfolio'], ['Payouts']]);
+  });
+
+  it('the Account card shows the location without repeating the city, and an empty phone links to Edit Profile', () => {
+    mockAuthWith({
+      profile: { email: 'provider@example.com', phone: '', address: '12 Rizal St, Lipa City', city: 'Lipa City' },
+    });
+    const onNavigate = jest.fn();
+    render(<SPProfileScreen onNavigate={onNavigate} onLogout={jest.fn()} />);
+
+    expect(screen.getByText('provider@example.com')).toBeTruthy();
+    expect(screen.getByText('12 Rizal St, Lipa City')).toBeTruthy();
+    fireEvent.press(screen.getByRole('button', { name: 'Add phone number' }));
+
+    expect(onNavigate).toHaveBeenCalledWith('Edit Profile');
+  });
+
+  it('a saved phone number is shown, without the add link', () => {
+    mockAuthWith({ profile: { phone: '0917 000 0000' } });
+    render(<SPProfileScreen onNavigate={jest.fn()} onLogout={jest.fn()} />);
+
+    expect(screen.getByText('0917 000 0000')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Add phone number' })).toBeNull();
+  });
+
+  it('Settings and Help & support open their screens', () => {
+    mockAuthWith({});
+    const onNavigate = jest.fn();
+    render(<SPProfileScreen onNavigate={onNavigate} onLogout={jest.fn()} />);
+
+    fireEvent.press(screen.getByRole('button', { name: 'Settings' }));
+    fireEvent.press(screen.getByRole('button', { name: 'Help & support' }));
+
+    expect(onNavigate.mock.calls).toEqual([['Settings'], ['Help & Support']]);
+  });
+
+  it('Log Out asks first, and logs out only when confirmed', () => {
+    mockAuthWith({});
+    const onLogout = jest.fn();
+    render(<SPProfileScreen onNavigate={jest.fn()} onLogout={onLogout} />);
+
+    fireEvent.press(screen.getByRole('button', { name: 'Log Out' }));
+
+    expect(screen.getByText('Are you sure you want to log out?')).toBeTruthy();
+    expect(onLogout).not.toHaveBeenCalled();
+
+    fireEvent.press(within(screen.getByRole('alert')).getByLabelText('Log Out'));
+
+    expect(onLogout).toHaveBeenCalledTimes(1);
   });
 });
