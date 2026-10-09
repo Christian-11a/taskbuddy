@@ -50,6 +50,7 @@ import { distanceLabel, peso, shortDate, timeOfDay } from '../../../src/lib/form
 import ProposalModal from '../../../src/components/ProposalModal';
 import { showToast } from '../../../src/components/Toast';
 import DeclineBookingModal from '../../../src/components/DeclineBookingModal';
+import ConfirmationModal from '../../../src/components/ConfirmationModal';
 
 interface MyApplication {
   id: string;
@@ -92,6 +93,7 @@ export default function SPJobDetailScreen({ jobId, onBack, onNavigate }: SPJobDe
   const [busy, setBusy] = useState(false);
   const [declineOpen, setDeclineOpen] = useState(false);
   const [proposalOpen, setProposalOpen] = useState(false);
+  const [withdrawOpen, setWithdrawOpen] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   // Which checklist row is mid-flight, so only that row shows a spinner.
   const [pendingTaskId, setPendingTaskId] = useState<string | null>(null);
@@ -168,6 +170,25 @@ export default function SPJobDetailScreen({ jobId, onBack, onNavigate }: SPJobDe
       setDeclineOpen(false);
       reload();
     } catch (e) {
+      setActionError(errorMessage(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  // The client sees the withdrawn proposal as gone. Both caches reload: this
+  // job's own (`job`) and the applications list shared with My Work.
+  const submitWithdraw = async () => {
+    if (!myApplication) return;
+    setBusy(true);
+    setActionError(null);
+    try {
+      await api.withdrawApplication(myApplication.id);
+      setWithdrawOpen(false);
+      reload();
+      reloadApps();
+    } catch (e) {
+      setWithdrawOpen(false);
       setActionError(errorMessage(e));
     } finally {
       setBusy(false);
@@ -399,6 +420,12 @@ export default function SPJobDetailScreen({ jobId, onBack, onNavigate }: SPJobDe
                 </Text>
               </View>
             )}
+            {!isAssignedToMe && myApplication?.status === 'pending' && (
+              <Tap style={styles.outlineBtn} onPress={() => setWithdrawOpen(true)} activeOpacity={0.85}
+                disabled={busy} accessibilityRole="button" accessibilityLabel="Withdraw proposal">
+                <Text style={styles.outlineBtnText}>Withdraw proposal</Text>
+              </Tap>
+            )}
             {!isAssignedToMe && !myApplication && canApply && !isVerified && (
               <Tap style={styles.primaryBtn} onPress={() => onNavigate('Verification')} activeOpacity={0.85}>
                 <View style={styles.primaryBtnContent}>
@@ -474,6 +501,18 @@ export default function SPJobDetailScreen({ jobId, onBack, onNavigate }: SPJobDe
           setActionError(null);
         }}
         onConfirm={(reason) => void submitDecline(reason)}
+      />
+
+      <ConfirmationModal
+        visible={withdrawOpen}
+        title="Withdraw your proposal?"
+        message="The client won't see it any more. You can't send another proposal for this job."
+        confirmLabel="Withdraw"
+        cancelLabel="Keep it"
+        destructive
+        busy={busy}
+        onConfirm={() => void submitWithdraw()}
+        onCancel={() => setWithdrawOpen(false)}
       />
     </View>
   );

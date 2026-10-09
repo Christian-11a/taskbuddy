@@ -3,6 +3,7 @@ import { act, fireEvent, render, screen, waitFor } from '@testing-library/react-
 import SPJobDetailScreen from '../SPJobDetailScreen';
 import { api } from '../../../../src/lib/api';
 import { useAuth } from '../../../../src/context/AuthContext';
+import { clearAsyncDataCache } from '../../../../src/hooks/useAsyncData';
 
 jest.mock('../../../../src/lib/api', () => ({
   api: {
@@ -11,6 +12,7 @@ jest.mock('../../../../src/lib/api', () => ({
     myApplications: jest.fn(),
     applyToJob: jest.fn(),
     startJob: jest.fn(),
+    withdrawApplication: jest.fn(),
   },
   ApiError: class ApiError extends Error {
     status?: number;
@@ -179,6 +181,56 @@ describe('FullTest provider job details', () => {
     expect(!!screen.queryByText('File a Complaint')).toBe(days < 3);
   });
 
+});
+
+describe('SPJobDetailScreen — withdrawing a pending proposal', () => {
+  const pending = { id: 'app-1', status: 'pending' as const, jobs: { id: JOB_ID } };
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    clearAsyncDataCache();
+    (useAuth as jest.Mock).mockReturnValue({ profile: { id: PROVIDER_ID }, isVerified: true, refreshProfile: jest.fn() });
+    (api.getJob as jest.Mock).mockResolvedValue(openJob);
+  });
+
+  it('asks first, then withdraws the proposal and reloads the applications', async () => {
+    (api.myApplications as jest.Mock)
+      .mockResolvedValueOnce([pending])
+      .mockResolvedValueOnce([{ ...pending, status: 'withdrawn' }]);
+    (api.withdrawApplication as jest.Mock).mockResolvedValue({});
+    render(<SPJobDetailScreen jobId={JOB_ID} onBack={jest.fn()} onNavigate={jest.fn()} />);
+
+    fireEvent.press(await screen.findByLabelText('Withdraw proposal'));
+    expect(screen.getByText('Withdraw your proposal?')).toBeTruthy();
+    expect(api.withdrawApplication).not.toHaveBeenCalled();
+
+    await act(async () => {
+      fireEvent.press(screen.getByLabelText('Withdraw'));
+    });
+    await waitFor(() => expect(api.withdrawApplication).toHaveBeenCalledWith('app-1'));
+    await waitFor(() => expect(api.myApplications).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(screen.queryByText('Withdraw your proposal?')).toBeNull());
+  });
+
+  it('keeps the proposal when the client cancels the confirm', async () => {
+    (api.myApplications as jest.Mock).mockResolvedValue([pending]);
+    render(<SPJobDetailScreen jobId={JOB_ID} onBack={jest.fn()} onNavigate={jest.fn()} />);
+
+    fireEvent.press(await screen.findByLabelText('Withdraw proposal'));
+    fireEvent.press(screen.getByLabelText('Keep it'));
+
+    await waitFor(() => expect(screen.queryByText('Withdraw your proposal?')).toBeNull());
+    expect(api.withdrawApplication).not.toHaveBeenCalled();
+    expect(screen.getByText('Proposal Pending')).toBeTruthy();
+  });
+
+  it('offers no withdraw once the proposal was not selected', async () => {
+    (api.myApplications as jest.Mock).mockResolvedValue([{ ...pending, status: 'rejected' }]);
+    render(<SPJobDetailScreen jobId={JOB_ID} onBack={jest.fn()} onNavigate={jest.fn()} />);
+
+    await screen.findByText('Not Selected');
+    expect(screen.queryByLabelText('Withdraw proposal')).toBeNull();
+  });
 });
 
 it('opens the selected job image and keeps details intact on close', async () => {
