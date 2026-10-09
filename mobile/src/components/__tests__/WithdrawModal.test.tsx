@@ -267,3 +267,19 @@ describe('WithdrawModal — button labels always render (FLOWS bug 3)', () => {
     expect(styleOf(screen.getByRole('button', { name: 'Request ₱400.00' })).backgroundColor).toBe(lightPalette.Colors.primary);
   });
 });
+
+describe('WithdrawModal — the sheet body keeps a margin from the screen edges', () => {
+  it('pads the form page 20 dp on both sides', () => {
+    renderSheet();
+
+    expect(styleOf(screen.getByTestId('withdraw-sheet-body')).paddingHorizontal).toBe(20);
+  });
+
+  it('pads the confirmation page 20 dp on both sides too', () => {
+    renderSheet();
+    fill('400', 'GCash 0917 123 4567');
+    fireEvent.press(screen.getByRole('button', { name: 'Continue' }));
+
+    expect(styleOf(screen.getByTestId('withdraw-sheet-body')).paddingHorizontal).toBe(20);
+  });
+});

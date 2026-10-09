@@ -309,6 +309,12 @@ describe('HOWalletScreen — Add money sheet: quick amounts, limits and Continue
   const isDisabled = (element: { props: Record<string, any> }) =>
     element.props.accessibilityState?.disabled === true;
 
+  it('keeps the Add money body 20 dp from the screen edges', async () => {
+    await openAddMoney();
+
+    expect(styleOf(screen.getByTestId('add-money-body')).paddingHorizontal).toBe(20);
+  });
+
   it('titles the sheet Add money and says that Stripe takes the payment', async () => {
     await openAddMoney();
 
@@ -492,6 +498,17 @@ describe('HOWalletScreen — withdraw sheet: form, confirmation and request', ()
     expect(amountField().props.value).toBe('400');
     expect(destinationField().props.value).toBe('GCash 0917 123 4567');
     expect(api.requestWithdrawal).not.toHaveBeenCalled();
+  });
+
+  it('keeps the withdraw sheet body 20 dp from the screen edges on both pages', async () => {
+    await openWithdraw();
+    expect(styleOf(screen.getByTestId('withdraw-sheet-body')).paddingHorizontal).toBe(20);
+
+    fireEvent.changeText(amountField(), '400');
+    fireEvent.changeText(destinationField(), 'GCash 0917 123 4567');
+    fireEvent.press(screen.getByRole('button', { name: 'Continue' }));
+
+    expect(styleOf(screen.getByTestId('withdraw-sheet-body')).paddingHorizontal).toBe(20);
   });
 
   it('cannot be closed while the request is in flight, and a second Request does not file again', async () => {

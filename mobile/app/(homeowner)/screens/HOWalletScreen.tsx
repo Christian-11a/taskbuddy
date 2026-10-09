@@ -496,7 +496,7 @@ export default function HOWalletScreen() {
         dismissible={false}
         cardProps={{ testID: 'add-money-dialog' }}
       >
-        <View style={styles.sheetBody}>
+        <View testID="add-money-body" style={styles.sheetBody}>
           <Text style={styles.sheetTitle} accessibilityRole="header">Add money</Text>
 
           <MoneyAmountField
@@ -671,7 +671,8 @@ function createThemedStyles(theme: ThemePalette) {
     txnAmountOut: { color: C.ink900 },
 
     // Add money sheet (the withdraw sheet draws its own styles in WithdrawModal).
-    sheetBody: { gap: 12 },
+    // The sheet draws only its grip, so the body keeps its own 20 dp margin from the screen edges.
+    sheetBody: { gap: 12, paddingHorizontal: 20 },
     sheetTitle: { color: C.ink900, fontSize: 21.5, fontWeight: '800', fontFamily: 'Inter' },
     // Four quick amounts in one row; they wrap onto two rows when the text is large.
     quickAmounts: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, justifyContent: 'space-between' },

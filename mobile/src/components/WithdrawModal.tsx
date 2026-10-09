@@ -117,7 +117,7 @@ export function WithdrawSheetBody({
   if (step === 'confirm') {
     const pageError = error ?? (reading.amountValid ? undefined : reading.amountError);
     return (
-      <View style={styles.body}>
+      <View testID="withdraw-sheet-body" style={styles.body}>
         <Text style={styles.overline}>You're withdrawing</Text>
         <Text style={styles.bigAmount} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.6}>
           {peso(reading.amount)}
@@ -141,7 +141,7 @@ export function WithdrawSheetBody({
   }
 
   return (
-    <View style={styles.body}>
+    <View testID="withdraw-sheet-body" style={styles.body}>
       <Text style={styles.title} accessibilityRole="header">Withdraw</Text>
       <View style={styles.availableRow}>
         <Text style={styles.availableLabel}>Available</Text>
@@ -420,7 +420,8 @@ function createThemedStyles(theme: ThemePalette) {
   const { Colors, V6Colors } = theme;
   const C = V6Colors;
   const styles = StyleSheet.create({
-    body: { gap: 12 },
+    // The sheet draws only its grip, so the body keeps its own 20 dp margin from the screen edges.
+    body: { gap: 12, paddingHorizontal: 20 },
 
     title: { color: C.ink900, fontSize: 21.5, fontWeight: '800', fontFamily: 'Inter' },
     availableRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
