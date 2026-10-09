@@ -344,6 +344,26 @@ describe('HOJobApplicationsScreen: the hired screen', () => {
   });
 });
 
+describe('HOJobApplicationsScreen: a hire made from the profile', () => {
+  it('shows the hired screen, and drops the profile back listener so Android back is not swallowed', async () => {
+    const remove = jest.fn();
+    const addListener = jest.spyOn(BackHandler, 'addEventListener').mockImplementation(() => ({ remove }));
+    try {
+      await renderScreen();
+      fireEvent.press(await screen.findByRole('button', { name: "View Alex Reyes's profile" }));
+      fireEvent.press(await screen.findByRole('button', { name: 'Hire Alex Reyes' }));
+      fireEvent.press(await screen.findByRole('radio', { name: 'Wallet, ₱5,000.00 available' }));
+      fireEvent.press(screen.getByRole('button', { name: 'Continue' }));
+      fireEvent.press(screen.getByRole('button', { name: 'Confirm and hire · ₱1,000.00' }));
+
+      expect(await screen.findByRole('header', { name: 'Alex Reyes is hired!' })).toBeTruthy();
+      expect(remove).toHaveBeenCalled();
+    } finally {
+      addListener.mockRestore();
+    }
+  });
+});
+
 describe('HOJobApplicationsScreen: paying for a hire', () => {
   it('Hire opens the payment sheet straight away, with no extra dialog', async () => {
     await renderScreen();

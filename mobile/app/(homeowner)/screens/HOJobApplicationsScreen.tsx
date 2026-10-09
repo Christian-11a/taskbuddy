@@ -177,8 +177,9 @@ export default function HOJobApplicationsScreen({
     setHireMessage(null);
   };
 
-  /** The hire went through: the hired screen replaces the list. */
+  /** The hire went through: the hired screen replaces the list, or the profile it was made from. */
   const showHired = (app: JobApplication) => {
+    setProfileOf(null);
     setHired({
       providerName: app.provider?.full_name ?? 'Your provider',
       budget,
