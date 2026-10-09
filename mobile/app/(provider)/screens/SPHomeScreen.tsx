@@ -138,9 +138,10 @@ function SetupPanel({ steps, verifyState, categoryName, onStep }: {
         </View>
         <Text style={styles.heroTitle} numberOfLines={3}>{copy.title}</Text>
         <Text style={styles.heroLine} numberOfLines={3}>{copy.body}</Text>
+        {/* Each segment is keyed on done and each badge on its state, so a step that finishes is recreated rather than repainted in place (see FilterPill). */}
         <View style={styles.progressRow} accessible accessibilityLabel={`Setup progress, ${done} of ${total} steps done`}>
           {steps.map((step) => (
-            <View key={step.id} style={[styles.progressSegment, step.done && styles.progressSegmentDone]} />
+            <View key={`${step.id}:${step.done ? 'done' : 'todo'}`} testID={`setup-segment-${step.id}`} style={[styles.progressSegment, step.done && styles.progressSegmentDone]} />
           ))}
         </View>
       </View>
@@ -155,7 +156,7 @@ function SetupPanel({ steps, verifyState, categoryName, onStep }: {
               accessible
               accessibilityLabel={`${index + 1}. ${step.title}. ${step.subtitle}. ${stateWord}`}
             >
-              <View style={[
+              <View key={`${step.id}:${step.state}`} testID={`setup-badge-${step.id}`} style={[
                 styles.stepBadge,
                 step.done ? styles.stepBadgeDone : step.state === 'next' ? styles.stepBadgeNext : styles.stepBadgeLater,
               ]}>
@@ -169,6 +170,7 @@ function SetupPanel({ steps, verifyState, categoryName, onStep }: {
               </View>
               <View style={styles.stepCopy}>
                 <Text
+                  key={`${step.id}:${step.state}`}
                   style={[
                     styles.stepTitle,
                     step.state === 'next' && styles.stepTitleNext,
@@ -382,7 +384,7 @@ export default function SPHomeScreen({ onNavigate }: SPHomeScreenProps) {
 
               {/* Availability: decides whether new work is offered to this provider. */}
               <View style={styles.availability}>
-                <View style={[styles.availabilityDot, { backgroundColor: available ? Colors.successText : C.ink400 }]} />
+                <View key={available ? 'on' : 'off'} testID="availability-dot" style={[styles.availabilityDot, { backgroundColor: available ? Colors.successText : C.ink400 }]} />
                 <View style={styles.availabilityCopy}>
                   <Text style={styles.availabilityTitle}>{available ? 'Available for jobs' : 'Not available'}</Text>
                   <Text style={styles.availabilityHint} numberOfLines={2}>

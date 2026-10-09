@@ -5,6 +5,7 @@ import SPHomeScreen from '../SPHomeScreen';
 import { api } from '../../../../src/lib/api';
 import { useAuth } from '../../../../src/context/AuthContext';
 import { clearAsyncDataCache } from '../../../../src/hooks/useAsyncData';
+import { lightPalette } from '../../../../src/constants/palettes';
 
 jest.mock('../../../../src/context/NotificationsContext', () => ({
   useNotifications: () => ({ notifications: [], unreadCount: 0, loading: false, error: null, reload: jest.fn() }),
@@ -172,6 +173,24 @@ describe('SPHomeScreen — hero header keeps the avatar reachable with a long na
     expect(screen.getByText('Not available')).toBeTruthy();
   });
 
+  it('recreates the availability dot when the switch changes, so Android repaints its colour', async () => {
+    const view = render(<SPHomeScreen onNavigate={jest.fn()} />);
+    const dotBefore = await screen.findByTestId('availability-dot');
+    expect(StyleSheet.flatten(dotBefore.props.style).backgroundColor).toBe(lightPalette.Colors.successText);
+
+    (useAuth as jest.Mock).mockReturnValue({
+      profile: { full_name: LONG_NAME, city: 'Cebu', latitude: null, longitude: null },
+      providerProfile: { is_available: false, service_radius_km: 25 },
+      isVerified: true,
+      refreshProfile: jest.fn(),
+    });
+    view.rerender(<SPHomeScreen onNavigate={jest.fn()} />);
+
+    expect(await screen.findByText('Not available')).toBeTruthy();
+    expect(screen.getByTestId('availability-dot')).not.toBe(dotBefore);
+    expect(StyleSheet.flatten(screen.getByTestId('availability-dot').props.style).backgroundColor).toBe(lightPalette.V6Colors.ink400);
+  });
+
   it('refetches eligible jobs when an additional service is approved', async () => {
     const profile = { id: 'provider', full_name: LONG_NAME, latitude: 10.3, longitude: 123.9 };
     const providerProfile = { category_id: 1, is_available: true, service_radius_km: 25, approved_secondary_services: [] };
@@ -209,6 +228,23 @@ describe('SPHomeScreen — hero header keeps the avatar reachable with a long na
       expect(screen.getByText('Arturo Tanco Drive, Lipa')).toBeTruthy();
       expect(screen.getByText('ID photo + selfie · about 2 minutes')).toBeTruthy();
       expect(screen.getByRole('button', { name: 'Add a short bio' })).toBeTruthy();
+    });
+
+    it('recreates a setup step\'s segment and badge when the step is finished, so Android repaints them', async () => {
+      unverified({ address: 'Arturo Tanco Drive, Lipa' });
+      (api.myVerification as jest.Mock).mockResolvedValue(null);
+      const view = render(<SPHomeScreen onNavigate={jest.fn()} />);
+      const badgeBefore = await screen.findByTestId('setup-badge-bio');
+      const segmentBefore = screen.getByTestId('setup-segment-bio');
+      expect(StyleSheet.flatten(segmentBefore.props.style).backgroundColor).toBe(lightPalette.Colors.heroCardBorder);
+
+      unverified({ address: 'Arturo Tanco Drive, Lipa', bio: 'Plumber for eight years' });
+      view.rerender(<SPHomeScreen onNavigate={jest.fn()} />);
+
+      expect(await screen.findByText('Finish setting up · 2 of 3')).toBeTruthy();
+      expect(screen.getByTestId('setup-badge-bio')).not.toBe(badgeBefore);
+      expect(screen.getByTestId('setup-segment-bio')).not.toBe(segmentBefore);
+      expect(StyleSheet.flatten(screen.getByTestId('setup-segment-bio').props.style).backgroundColor).toBe(lightPalette.Colors.onPrimary);
     });
 
     it('opens Edit Profile from the button while the bio is missing', async () => {
