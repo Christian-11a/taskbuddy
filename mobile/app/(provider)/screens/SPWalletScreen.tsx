@@ -45,6 +45,11 @@ export default function SPWalletScreen() {
     (t) => t.kind === 'withdrawal' && t.status === 'pending',
   );
   const canWithdraw = (data?.available ?? 0) > 0;
+  // Keyed on whether funds are available, so the button and its label are recreated when that
+  // changes: Android keeps the old fill and label colour when the same view re-renders (see
+  // FilterPill). Until the balance loads the label is white on the translucent button; after
+  // that it is primary on white.
+  const withdrawDrawn = canWithdraw ? 'on' : 'off';
   const groups = groupWalletByDay(transactions, new Date());
 
   const cancelWithdrawal = async (id: string) => {
@@ -113,6 +118,7 @@ export default function SPWalletScreen() {
             </Text>
           )}
           <Tap
+            key={`withdraw-${withdrawDrawn}`}
             style={[styles.withdrawButton, !canWithdraw && styles.withdrawButtonDisabled]}
             // Kept tappable when empty so the tap explains itself.
             onPress={() => {
@@ -127,7 +133,7 @@ export default function SPWalletScreen() {
             accessibilityRole="button"
             accessibilityLabel="Withdraw"
           >
-            <Text style={[styles.withdrawText, !canWithdraw && styles.withdrawTextDisabled]} numberOfLines={1}>Withdraw</Text>
+            <Text key={`withdraw-label-${withdrawDrawn}`} style={[styles.withdrawText, !canWithdraw && styles.withdrawTextDisabled]} numberOfLines={1}>Withdraw</Text>
           </Tap>
         </View>
 
@@ -262,7 +268,7 @@ function createThemedStyles(theme: ThemePalette) {
     },
     // Nothing to withdraw: a translucent outline pill with light text, so it reads as unavailable.
     withdrawButtonDisabled: { backgroundColor: Colors.heroCard, borderWidth: 1, borderColor: Colors.heroCardBorder },
-    withdrawText: { color: Colors.hero, fontSize: 15, fontWeight: '700', fontFamily: 'Inter', lineHeight: 20 },
+    withdrawText: { color: Colors.primary, fontSize: 15, fontWeight: '700', fontFamily: 'Inter', lineHeight: 20 },
     withdrawTextDisabled: { color: Colors.onPrimary },
 
     // Withdrawal requests still waiting for an admin (cancellable).

@@ -1,6 +1,8 @@
 import React from 'react';
+import {StyleSheet} from 'react-native';
 import {act, fireEvent, render, screen, waitFor} from '@testing-library/react-native';
 import SPWalletScreen from '../SPWalletScreen';
+import {lightPalette} from '../../../../src/constants/palettes';
 import {api} from '../../../../src/lib/api';
 import {showToast} from '../../../../src/components/Toast';
 import {clearAsyncDataCache} from '../../../../src/hooks/useAsyncData';
@@ -12,6 +14,10 @@ const transaction = (id:string, status:'pending'|'completed'|'failed', kind = 'w
   id, profile_id:'p1',direction:'debit',status,kind,amount:350,title:id,job_id:null,created_at:'2026-10-04T00:00:00Z',
 });
 const wallet = (transactions:unknown[]) => ({balance:650,available:300,pending:350,pending_withdrawals:350,total_credited:1000,total_debited:350,in_escrow:0,transactions});
+/** The colours a host element is drawn with: its style, flattened. */
+function styleOf(element: {props: Record<string, any>}): Record<string, any> {
+  return StyleSheet.flatten(element.props.style) ?? {};
+}
 beforeEach(() => {jest.clearAllMocks();clearAsyncDataCache();});
 it('shows settlement and Stripe references without calling a pending request delivered money', async () => {
   (api.wallet as jest.Mock).mockResolvedValue(wallet([
@@ -62,4 +68,26 @@ it('signs money coming in with a plus, and leaves a refused payout unsigned', as
   render(<SPWalletScreen />);
   expect(await screen.findByText('+₱425.00')).toBeTruthy();
   expect(screen.getByText('₱350.00')).toBeTruthy();
+});
+it('recreates the Withdraw button when its funds arrive, so Android repaints its fill and label', async () => {
+  (api.wallet as jest.Mock).mockResolvedValue(wallet([]));
+  render(<SPWalletScreen />);
+  const before = screen.getByRole('button', {name: 'Withdraw'});
+  await screen.findByText('₱300.00');
+  expect(screen.getByRole('button', {name: 'Withdraw'})).not.toBe(before);
+});
+it('draws the Withdraw label in the primary colour on the white button once funds are available', async () => {
+  (api.wallet as jest.Mock).mockResolvedValue(wallet([]));
+  render(<SPWalletScreen />);
+  await screen.findByText('₱300.00');
+  expect(styleOf(screen.getByRole('button', {name: 'Withdraw'})).backgroundColor).toBe(lightPalette.Colors.onPrimary);
+  expect(styleOf(screen.getByText('Withdraw')).color).toBe(lightPalette.Colors.primary);
+});
+it('keeps the Withdraw label visible on the translucent button when nothing can be withdrawn', async () => {
+  (api.wallet as jest.Mock).mockResolvedValue({...wallet([]), available: 0});
+  render(<SPWalletScreen />);
+  await waitFor(() => expect(api.wallet).toHaveBeenCalled());
+  await act(async () => {});
+  expect(styleOf(screen.getByRole('button', {name: 'Withdraw'})).backgroundColor).toBe(lightPalette.Colors.heroCard);
+  expect(styleOf(screen.getByText('Withdraw')).color).toBe(lightPalette.Colors.onPrimary);
 });
