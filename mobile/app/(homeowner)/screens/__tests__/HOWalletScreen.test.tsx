@@ -1,10 +1,14 @@
 import React from 'react';
+import { Modal } from 'react-native';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react-native';
 import HOWalletScreen from '../HOWalletScreen';
 import { api, type WalletTransaction } from '../../../../src/lib/api';
 import { showToast } from '../../../../src/components/Toast';
 import { clearAsyncDataCache } from '../../../../src/hooks/useAsyncData';
 import { openRedirectSession } from '../../../../src/lib/appRedirectSession';
+
+/** The popup that is open right now: each SheetFrame renders its own Modal, and only one is visible. */
+const visibleModal = () => screen.UNSAFE_getAllByType(Modal).find((modal) => modal.props.visible === true);
 
 jest.mock('../../../../src/lib/api', () => ({
   MIN_TOPUP_PHP: 50,
@@ -374,6 +378,19 @@ describe('HOWalletScreen — Add money sheet: quick amounts, limits and Continue
     expect(api.createCheckoutSession).toHaveBeenCalledWith({ amount: 2500, app_redirect: 'taskbuddy://' });
   });
 
+  it('cannot be closed, and a second tap does not open a second Checkout, while Checkout is opening', async () => {
+    (api.createCheckoutSession as jest.Mock).mockReturnValue(new Promise(() => {}));
+    await openAddMoney();
+    fireEvent.press(screen.getByRole('button', { name: '₱500' }));
+    await act(async () => {
+      fireEvent.press(continueButton());
+    });
+
+    expect(visibleModal()?.props.onRequestClose).toBeUndefined();
+    fireEvent.press(continueButton());
+    expect(api.createCheckoutSession).toHaveBeenCalledTimes(1);
+  });
+
   it('Cancel closes the sheet without opening Checkout', async () => {
     await openAddMoney();
     fireEvent.press(screen.getByRole('button', { name: '₱500' }));
@@ -457,6 +474,22 @@ describe('HOWalletScreen — withdraw sheet: form, confirmation and request', ()
     expect(amountField().props.value).toBe('400');
     expect(destinationField().props.value).toBe('GCash 0917 123 4567');
     expect(api.requestWithdrawal).not.toHaveBeenCalled();
+  });
+
+  it('cannot be closed while the request is in flight, and a second Request does not file again', async () => {
+    let finish: (value: unknown) => void = () => {};
+    (api.requestWithdrawal as jest.Mock).mockReturnValue(new Promise((resolve) => { finish = resolve; }));
+    await openWithdraw();
+    fireEvent.changeText(amountField(), '400');
+    fireEvent.changeText(destinationField(), 'GCash 0917 123 4567');
+    fireEvent.press(screen.getByRole('button', { name: 'Continue' }));
+    fireEvent.press(screen.getByRole('button', { name: 'Request ₱400.00' }));
+
+    expect(visibleModal()?.props.onRequestClose).toBeUndefined();
+    fireEvent.press(screen.getByRole('button', { name: 'Request ₱400.00' }));
+    expect(api.requestWithdrawal).toHaveBeenCalledTimes(1);
+
+    await act(async () => { finish({}); });
   });
 
   it('Cancel closes the sheet without filing anything', async () => {

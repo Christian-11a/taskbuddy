@@ -27,7 +27,7 @@
  */
 
 import { useThemedStyles, type Palette as ThemePalette } from '../context/ThemeContext';
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { ActivityIndicator, StyleSheet, Text, TextInput, View } from 'react-native';
 import { CircleAlert, Clock, type LucideIcon } from 'lucide-react-native';
 import SheetFrame from './ui/SheetFrame';
@@ -359,6 +359,8 @@ export default function WithdrawModal({
   const [destination, setDestination] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Set before the first await, so a second tap in the same frame cannot file a second request.
+  const inFlight = useRef(false);
 
   const close = () => {
     setStep('form');
@@ -370,7 +372,8 @@ export default function WithdrawModal({
 
   const submit = async () => {
     const reading = readWithdrawal(amount, destination, available);
-    if (!reading.amountValid || !reading.destinationValid || submitting) return;
+    if (!reading.amountValid || !reading.destinationValid || inFlight.current) return;
+    inFlight.current = true;
     setSubmitting(true);
     setError(null);
     try {
@@ -383,12 +386,14 @@ export default function WithdrawModal({
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not file the request.');
     } finally {
+      inFlight.current = false;
       setSubmitting(false);
     }
   };
 
+  // Locked while the request is in flight: no backdrop tap, drag or Android back until it settles.
   return (
-    <SheetFrame visible={visible} onClose={close} cardProps={{ testID: 'withdraw-dialog' }}>
+    <SheetFrame visible={visible} onClose={submitting ? undefined : close} cardProps={{ testID: 'withdraw-dialog' }}>
       <WithdrawSheetBody
         step={step}
         available={available}

@@ -10,7 +10,7 @@
  */
 
 import { useThemedStyles, type Palette as ThemePalette } from '../../../src/context/ThemeContext';
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   RefreshControl,
   ScrollView,
@@ -122,6 +122,9 @@ export default function HOWalletScreen() {
   const [adding, setAdding] = useState(false);
   const [addError, setAddError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  // Set before the first await, so a second tap in the same frame cannot start a second Checkout or request.
+  const addInFlight = useRef(false);
+  const withdrawInFlight = useRef(false);
 
   const [showWithdraw, setShowWithdraw] = useState(false);
   const [withdrawAmount, setWithdrawAmount] = useState('');
@@ -186,7 +189,8 @@ export default function HOWalletScreen() {
   };
 
   const submitWithdrawal = async () => {
-    if (!isValidWithdrawal) return;
+    if (!isValidWithdrawal || withdrawInFlight.current) return;
+    withdrawInFlight.current = true;
     setWithdrawing(true);
     setWithdrawError(null);
     try {
@@ -200,6 +204,7 @@ export default function HOWalletScreen() {
     } catch (e) {
       setWithdrawError(e instanceof Error ? e.message : 'Could not request a withdrawal.');
     } finally {
+      withdrawInFlight.current = false;
       setWithdrawing(false);
     }
   };
@@ -243,7 +248,8 @@ export default function HOWalletScreen() {
    * `openAuthSessionAsync` hangs on Android.
    */
   const addMoney = async () => {
-    if (!isValidAmount) return;
+    if (!isValidAmount || addInFlight.current) return;
+    addInFlight.current = true;
     setAdding(true);
     setAddError(null);
 
@@ -289,6 +295,7 @@ export default function HOWalletScreen() {
     } catch (e) {
       setAddError(e instanceof Error ? e.message : 'Could not add money.');
     } finally {
+      addInFlight.current = false;
       setAdding(false);
     }
   };
@@ -485,7 +492,7 @@ export default function HOWalletScreen() {
 
       <SheetFrame
         visible={showAddMoney}
-        onClose={closeAddMoney}
+        onClose={adding ? undefined : closeAddMoney}
         dismissible={false}
         cardProps={{ testID: 'add-money-dialog' }}
       >
@@ -536,7 +543,7 @@ export default function HOWalletScreen() {
 
       <SheetFrame
         visible={showWithdraw}
-        onClose={closeWithdraw}
+        onClose={withdrawing ? undefined : closeWithdraw}
         dismissible={false}
         cardProps={{ testID: 'withdraw-hw-dialog' }}
       >

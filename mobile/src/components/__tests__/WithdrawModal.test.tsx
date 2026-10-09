@@ -1,5 +1,5 @@
 import React from 'react';
-import { ActivityIndicator, Keyboard } from 'react-native';
+import { ActivityIndicator, Keyboard, Modal } from 'react-native';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react-native';
 import WithdrawModal from '../WithdrawModal';
 import { api } from '../../lib/api';
@@ -204,5 +204,20 @@ describe('WithdrawModal — confirmation page', () => {
     expect(api.requestWithdrawal).toHaveBeenCalledTimes(1);
 
     await act(async () => { finish({}); });
+  });
+
+  it('cannot be closed by the Android back button while the request is in flight', async () => {
+    let finish: (value: unknown) => void = () => {};
+    (api.requestWithdrawal as jest.Mock).mockReturnValue(new Promise((resolve) => { finish = resolve; }));
+    const { onClose } = renderSheet();
+    expect(screen.UNSAFE_getByType(Modal).props.onRequestClose).toBeDefined();
+    fill('400', 'GCash 0917 123 4567');
+    fireEvent.press(screen.getByRole('button', { name: 'Continue' }));
+    fireEvent.press(screen.getByRole('button', { name: 'Request ₱400.00' }));
+
+    expect(screen.UNSAFE_getByType(Modal).props.onRequestClose).toBeUndefined();
+
+    await act(async () => { finish({}); });
+    expect(onClose).toHaveBeenCalledTimes(1);
   });
 });
