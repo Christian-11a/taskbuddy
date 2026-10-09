@@ -52,6 +52,11 @@ import {
 import ScreenSkeleton from '../../../src/components/ScreenSkeleton';
 import { canWithdrawBalance, getWithdrawalHint } from '../../../src/lib/walletRules';
 import { showToast } from '../../../src/components/Toast';
+import {
+  WithdrawSheetBody,
+  readWithdrawal,
+  type WithdrawStep,
+} from '../../../src/components/WithdrawModal';
 
 /**
  * How long to wait for the top-up to appear after Stripe says it succeeded.
@@ -106,6 +111,7 @@ export default function HOWalletScreen() {
   const [withdrawDestination, setWithdrawDestination] = useState('');
   const [withdrawing, setWithdrawing] = useState(false);
   const [withdrawError, setWithdrawError] = useState<string | null>(null);
+  const [withdrawStep, setWithdrawStep] = useState<WithdrawStep>('form');
 
   const parsedAmount = Number(amount.replace(/,/g, ''));
   const isValidAmount =
@@ -129,13 +135,10 @@ export default function HOWalletScreen() {
     setRefreshing(false);
   }, [data, error]);
 
-  const parsedWithdrawalAmount = Number(withdrawAmount.replace(/,/g, ''));
   const availableToWithdraw = data?.available ?? 0;
+  const withdrawal = readWithdrawal(withdrawAmount, withdrawDestination, availableToWithdraw);
   const isValidWithdrawal =
-    Number.isFinite(parsedWithdrawalAmount) &&
-    parsedWithdrawalAmount > 0 &&
-    parsedWithdrawalAmount <= availableToWithdraw &&
-    withdrawDestination.trim().length > 0;
+    withdrawal.amountValid && withdrawal.destinationValid && canWithdrawBalance(availableToWithdraw);
 
   // No point opening a form that can't be submitted: say why instead.
   const openWithdraw = () => {
@@ -159,6 +162,7 @@ export default function HOWalletScreen() {
 
   const closeWithdraw = () => {
     setShowWithdraw(false);
+    setWithdrawStep('form');
     setWithdrawAmount('');
     setWithdrawDestination('');
     setWithdrawError(null);
@@ -170,8 +174,8 @@ export default function HOWalletScreen() {
     setWithdrawError(null);
     try {
       await api.requestWithdrawal({
-        amount: parsedWithdrawalAmount,
-        destination: withdrawDestination.trim(),
+        amount: withdrawal.amount,
+        destination: withdrawal.destination,
       });
       closeWithdraw();
       reload();
@@ -555,67 +559,23 @@ export default function HOWalletScreen() {
         visible={showWithdraw}
         onClose={closeWithdraw}
         dismissible={false}
-        contentStyle={styles.modalCard}
         cardProps={{ testID: 'withdraw-hw-dialog' }}
       >
-            <Text style={styles.modalTitle}>Withdraw</Text>
-            <Text style={styles.modalBody}>
-              Send a request to withdraw your available wallet balance. Our team will process it manually.
-            </Text>
-            <Text style={styles.withdrawAvailable}>Available: {peso(availableToWithdraw)}</Text>
-
-            <View style={styles.amountRow}>
-              <Text style={styles.amountCurrency}>₱</Text>
-              <TextInput keyboardAppearance={appearance}
-                style={styles.amountInput}
-                value={withdrawAmount}
-                onChangeText={setWithdrawAmount}
-                keyboardType="decimal-pad"
-                placeholder="0.00"
-                placeholderTextColor={C.ink400}
-                editable={!withdrawing && canWithdrawBalance(availableToWithdraw)}
-              />
-            </View>
-            {!canWithdrawBalance(availableToWithdraw) && (
-              <Text style={styles.modalHint}>{getWithdrawalHint(availableToWithdraw)}</Text>
-            )}
-            <TextInput keyboardAppearance={appearance}
-              style={styles.destinationInput}
-              value={withdrawDestination}
-              onChangeText={setWithdrawDestination}
-              placeholder="GCash number or bank account details"
-              placeholderTextColor={C.ink400}
-              editable={!withdrawing && canWithdrawBalance(availableToWithdraw)}
-            />
-
-            {!!withdrawError && <Text style={styles.modalError}>{withdrawError}</Text>}
-
-            <View style={styles.modalActions}>
-              <Tap
-                style={[styles.modalBtn, styles.modalCancel]}
-                onPress={closeWithdraw}
-                disabled={withdrawing}
-                activeOpacity={0.8}
-              >
-                <Text style={styles.modalCancelText}>Cancel</Text>
-              </Tap>
-              <Tap
-                style={[
-                  styles.modalBtn,
-                  styles.modalConfirm,
-                  (!isValidWithdrawal || withdrawing || !canWithdrawBalance(availableToWithdraw)) && styles.modalBtnDisabled,
-                ]}
-                onPress={() => void submitWithdrawal()}
-                disabled={!isValidWithdrawal || withdrawing || !canWithdrawBalance(availableToWithdraw)}
-                activeOpacity={0.85}
-              >
-                {withdrawing ? (
-                  <ActivityIndicator color={C.onPrimary} />
-                ) : (
-                  <Text style={[styles.modalConfirmText, (!isValidWithdrawal || !canWithdrawBalance(availableToWithdraw)) && styles.modalConfirmTextDisabled]}>Withdraw</Text>
-                )}
-              </Tap>
-            </View>
+        <WithdrawSheetBody
+          step={withdrawStep}
+          available={availableToWithdraw}
+          amount={withdrawAmount}
+          onAmountChange={setWithdrawAmount}
+          destination={withdrawDestination}
+          onDestinationChange={setWithdrawDestination}
+          blockedHint={canWithdrawBalance(availableToWithdraw) ? undefined : getWithdrawalHint(availableToWithdraw)}
+          busy={withdrawing}
+          error={withdrawError}
+          onContinue={() => setWithdrawStep('confirm')}
+          onRequest={() => void submitWithdrawal()}
+          onBack={() => setWithdrawStep('form')}
+          onCancel={closeWithdraw}
+        />
       </SheetFrame>
     </View>
   );
@@ -741,12 +701,6 @@ function createThemedStyles(theme: ThemePalette) {
     quickAmountActive: { borderColor: C.primaryTonalStrong, backgroundColor: C.primaryTonalStrong },
     quickAmountText: { color: C.ink800, fontSize: 15, fontWeight: '700', fontFamily: 'Inter' },
     quickAmountTextActive: { color: Colors.primaryDeep },
-    withdrawAvailable: { color: V6Colors.link, fontSize: 14, fontWeight: '700', fontFamily: 'Inter', marginTop: 12 },
-    destinationInput: {
-      backgroundColor: V6Colors.wellBg, borderRadius: 12, paddingHorizontal: 14, minHeight: 48,
-      borderWidth: 1, borderColor: V6Colors.fieldBorder, fontFamily: 'Inter', fontSize: 15, color: C.ink900,
-      marginTop: 12,
-    },
     modalActions: { flexDirection: 'row', gap: 10, marginTop: 18 },
     modalBtn: { flex: 1, minHeight: 52, alignItems: 'center', justifyContent: 'center', borderRadius: 16, paddingHorizontal: 16 },
     // Readable disabled state: grey fill with dark text instead of a faded button.

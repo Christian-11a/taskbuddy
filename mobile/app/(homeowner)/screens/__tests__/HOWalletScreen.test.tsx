@@ -13,6 +13,7 @@ jest.mock('../../../../src/lib/api', () => ({
     withdrawals: jest.fn(),
     cancelWithdrawal: jest.fn(),
     createCheckoutSession: jest.fn(),
+    requestWithdrawal: jest.fn(),
   },
 }));
 
@@ -94,10 +95,11 @@ describe('HOWalletScreen — Withdraw when the wallet failed to load (QA #19)', 
     expect(showToast).not.toHaveBeenCalledWith(
       expect.stringMatching(/couldn.t load your wallet/i),
     );
-    // The withdraw modal opened (its body copy is unique — the button and
-    // the modal title both just say "Withdraw").
+    // The withdraw sheet opened (its test id is unique — the button and the
+    // sheet title both just say "Withdraw").
+    expect(screen.getByTestId('withdraw-hw-dialog')).toBeTruthy();
     expect(
-      screen.getByText(/Send a request to withdraw your available wallet balance/),
+      screen.getByText("Shows as Pending in your wallet until it's sent"),
     ).toBeTruthy();
   });
 });
@@ -250,6 +252,132 @@ describe('HOWalletScreen — Add Money after Stripe returns', () => {
     });
 
     await waitFor(() => expect(api.wallet).toHaveBeenCalledTimes(2));
+  });
+});
+
+describe('HOWalletScreen — withdraw sheet: form, confirmation and request', () => {
+  const walletAt = (overrides: Record<string, unknown> = {}) => ({
+    balance: 1250,
+    available: 1000,
+    pending: 0,
+    pending_withdrawals: 0,
+    total_credited: 1250,
+    total_debited: 0,
+    in_escrow: 0,
+    transactions: [],
+    ...overrides,
+  });
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    clearAsyncDataCache();
+    (api.withdrawals as jest.Mock).mockResolvedValue([]);
+    (api.wallet as jest.Mock).mockResolvedValue(walletAt());
+    (api.requestWithdrawal as jest.Mock).mockResolvedValue({});
+  });
+
+  /** Renders the wallet and opens the withdraw sheet from the balance card. */
+  const openWithdraw = async () => {
+    render(<HOWalletScreen />);
+    await waitFor(() => expect(screen.getByText('₱1,250.00')).toBeTruthy());
+    fireEvent.press(screen.getByRole('button', { name: 'Withdraw' }));
+    return screen.getByTestId('withdraw-hw-dialog');
+  };
+  const amountField = () => screen.getByLabelText('Amount to withdraw');
+  const destinationField = () => screen.getByLabelText('Send to');
+
+  it('opens on the form page with the balance it can withdraw and what happens next', async () => {
+    await openWithdraw();
+
+    expect(screen.getByText('Available')).toBeTruthy();
+    expect(screen.getByText('₱1,000.00')).toBeTruthy();
+    expect(screen.getByText("Shows as Pending in your wallet until it's sent")).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Continue' })).toBeTruthy();
+    expect(api.requestWithdrawal).not.toHaveBeenCalled();
+  });
+
+  it('Continue shows the confirmation without filing; Request files one withdrawal with the trimmed destination, then reloads', async () => {
+    await openWithdraw();
+    fireEvent.changeText(amountField(), '400');
+    fireEvent.changeText(destinationField(), '  GCash 0917 123 4567  ');
+    fireEvent.press(screen.getByRole('button', { name: 'Continue' }));
+
+    expect(screen.getByText("You're withdrawing")).toBeTruthy();
+    expect(screen.getByText('₱400.00')).toBeTruthy();
+    expect(screen.getByText('₱600.00')).toBeTruthy();
+    expect(api.requestWithdrawal).not.toHaveBeenCalled();
+
+    fireEvent.press(screen.getByRole('button', { name: 'Request ₱400.00' }));
+
+    await waitFor(() => expect(screen.queryByTestId('withdraw-hw-dialog')).toBeNull());
+    expect(api.requestWithdrawal).toHaveBeenCalledTimes(1);
+    expect(api.requestWithdrawal).toHaveBeenCalledWith({ amount: 400, destination: 'GCash 0917 123 4567' });
+    expect(api.wallet).toHaveBeenCalledTimes(2);
+    expect(api.withdrawals).toHaveBeenCalledTimes(2);
+  });
+
+  it('Back returns to the form with the amount and destination still filled in', async () => {
+    await openWithdraw();
+    fireEvent.changeText(amountField(), '400');
+    fireEvent.changeText(destinationField(), 'GCash 0917 123 4567');
+    fireEvent.press(screen.getByRole('button', { name: 'Continue' }));
+
+    fireEvent.press(screen.getByRole('button', { name: 'Back' }));
+
+    expect(amountField().props.value).toBe('400');
+    expect(destinationField().props.value).toBe('GCash 0917 123 4567');
+    expect(api.requestWithdrawal).not.toHaveBeenCalled();
+  });
+
+  it('Cancel closes the sheet without filing anything', async () => {
+    await openWithdraw();
+    fireEvent.changeText(amountField(), '400');
+    fireEvent.changeText(destinationField(), 'GCash 0917 123 4567');
+
+    fireEvent.press(screen.getByRole('button', { name: 'Cancel' }));
+
+    await waitFor(() => expect(screen.queryByTestId('withdraw-hw-dialog')).toBeNull());
+    expect(api.requestWithdrawal).not.toHaveBeenCalled();
+  });
+
+  it('shows a failed request on the confirmation page and keeps the sheet open, without reloading', async () => {
+    (api.requestWithdrawal as jest.Mock).mockRejectedValue(new Error('Amount is over your balance'));
+    await openWithdraw();
+    fireEvent.changeText(amountField(), '400');
+    fireEvent.changeText(destinationField(), 'GCash 0917 123 4567');
+    fireEvent.press(screen.getByRole('button', { name: 'Continue' }));
+
+    fireEvent.press(screen.getByRole('button', { name: 'Request ₱400.00' }));
+
+    expect(await screen.findByText('Amount is over your balance')).toBeTruthy();
+    expect(api.requestWithdrawal).toHaveBeenCalledTimes(1);
+    expect(screen.getByTestId('withdraw-hw-dialog')).toBeTruthy();
+    expect(api.wallet).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps its own message when a failed request carries none', async () => {
+    (api.requestWithdrawal as jest.Mock).mockRejectedValue('offline');
+    await openWithdraw();
+    fireEvent.changeText(amountField(), '400');
+    fireEvent.changeText(destinationField(), 'GCash 0917 123 4567');
+    fireEvent.press(screen.getByRole('button', { name: 'Continue' }));
+
+    fireEvent.press(screen.getByRole('button', { name: 'Request ₱400.00' }));
+
+    expect(await screen.findByText('Could not request a withdrawal.')).toBeTruthy();
+  });
+
+  it('caps the destination at 200 characters and refuses an amount above the available balance', async () => {
+    await openWithdraw();
+    expect(destinationField().props.maxLength).toBe(200);
+
+    fireEvent.changeText(amountField(), '1000.01');
+    fireEvent(amountField(), 'blur');
+
+    expect(screen.getByText("That's more than your ₱1,000.00 available.")).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Continue' }).props.accessibilityState).toEqual(
+      expect.objectContaining({ disabled: true }),
+    );
   });
 });
 
