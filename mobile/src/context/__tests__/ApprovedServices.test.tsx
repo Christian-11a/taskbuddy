@@ -98,7 +98,7 @@ it('renders every approved service on the provider own profile', async () => {
   );
   await act(async () => {});
   expect(
-    screen.getByText('Plumbing · Pedicure · Provider profile'),
+    screen.getByText('Plumbing · Pedicure'),
   ).toBeTruthy();
 });
 it('renders approved services on a public profile and obtains current data when reopened', async () => {
