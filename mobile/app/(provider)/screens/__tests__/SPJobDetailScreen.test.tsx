@@ -13,6 +13,8 @@ jest.mock('../../../../src/lib/api', () => ({
     applyToJob: jest.fn(),
     startJob: jest.fn(),
     withdrawApplication: jest.fn(),
+    updateJobTask: jest.fn(),
+    conversations: jest.fn(),
   },
   ApiError: class ApiError extends Error {
     status?: number;
@@ -78,9 +80,9 @@ describe('SPJobDetailScreen — proposal submission refreshes the applications c
     );
 
     // Wait for the job + applications to load and the button to appear.
-    await waitFor(() => expect(screen.getByTestId('btn-submit-proposal')).toBeTruthy());
+    await waitFor(() => expect(screen.getByLabelText('Send proposal')).toBeTruthy());
 
-    fireEvent.press(screen.getByTestId('btn-submit-proposal'));
+    fireEvent.press(screen.getByLabelText('Send proposal'));
     fireEvent.changeText(screen.getByTestId('proposal-message'), 'I can start tomorrow.');
     await act(async () => {
       fireEvent.press(screen.getByTestId('proposal-send'));
@@ -89,8 +91,8 @@ describe('SPJobDetailScreen — proposal submission refreshes the applications c
     // The bug: without reloading `myApps`, this button stays visible and a
     // second tap 400s as a duplicate application.
     await waitFor(() => expect(api.myApplications as jest.Mock).toHaveBeenCalledTimes(2));
-    await waitFor(() => expect(screen.queryByTestId('btn-submit-proposal')).toBeNull());
-    expect(screen.getByText('Proposal Pending')).toBeTruthy();
+    await waitFor(() => expect(screen.queryByLabelText('Send proposal')).toBeNull());
+    expect(screen.getByText('Your proposal is in')).toBeTruthy();
   });
 });
 
@@ -113,12 +115,12 @@ describe('SPJobDetailScreen — cancelled booking shows a locked row (declined-j
     (api.myApplications as jest.Mock).mockResolvedValue([]);
   });
 
-  it('shows a locked "Booking Cancelled" row instead of an empty action bar', async () => {
+  it('shows the cancelled status card instead of an empty action bar', async () => {
     render(<SPJobDetailScreen jobId={JOB_ID} onBack={jest.fn()} onNavigate={jest.fn()} />);
 
-    await waitFor(() => expect(screen.getByText('Booking Cancelled')).toBeTruthy());
-    expect(screen.getByText('CANCELLED BOOKING')).toBeTruthy();
-    expect(screen.queryByTestId('btn-submit-proposal')).toBeNull();
+    await waitFor(() => expect(screen.getByText('This job was cancelled')).toBeTruthy());
+    expect(screen.getByText('CANCELLED')).toBeTruthy();
+    expect(screen.queryByLabelText('Send proposal')).toBeNull();
   });
 });
 
@@ -133,14 +135,14 @@ describe('FullTest provider job details', () => {
     (api.getJob as jest.Mock).mockResolvedValue({ ...openJob, photo_urls: ['https://example.test/photo.jpg'] });
     render(<SPJobDetailScreen jobId={JOB_ID} onBack={jest.fn()} onNavigate={jest.fn()} />);
     expect((await screen.findByLabelText('Job photo 1')).props.source).toEqual({ uri: 'https://example.test/photo.jpg' });
-    expect(screen.getByTestId('btn-submit-proposal')).toBeTruthy();
+    expect(screen.getByLabelText('Send proposal')).toBeTruthy();
   });
 
   it('keeps the checklist locked before Start Job and does not claim completion', async () => {
     (api.getJob as jest.Mock).mockResolvedValue({ ...openJob, status: 'confirmed', assigned_provider_id: PROVIDER_ID,
       job_tasks: [{ id: 'task-1', label: 'Fix tap', position: 0, is_done: false }] });
     render(<SPJobDetailScreen jobId={JOB_ID} onBack={jest.fn()} onNavigate={jest.fn()} />);
-    await screen.findByText('Start Job');
+    await screen.findByText('Start job');
     expect(screen.getByRole('checkbox').props.accessibilityState.disabled).toBe(true);
     expect(screen.queryByText('Waiting for client to confirm completion')).toBeNull();
     expect(screen.queryByText('Accept Booking')).toBeNull();
@@ -152,16 +154,16 @@ describe('FullTest provider job details', () => {
       .mockResolvedValue({ ...confirmed, status: 'in_progress' });
     (api.startJob as jest.Mock).mockResolvedValue({ ...confirmed, status: 'in_progress' });
     render(<SPJobDetailScreen jobId={JOB_ID} onBack={jest.fn()} onNavigate={jest.fn()} />);
-    fireEvent.press(await screen.findByText('Start Job'));
+    fireEvent.press(await screen.findByText('Start job'));
     await waitFor(() => expect(api.startJob).toHaveBeenCalledWith(JOB_ID));
-    await screen.findByText('WORK IN PROGRESS');
-    expect(screen.queryByText('Start Job')).toBeNull();
+    await screen.findByText('WORKING');
+    expect(screen.queryByText('Start job')).toBeNull();
   });
 
   it('lets a legacy assigned booking start without another acceptance', async () => {
     (api.getJob as jest.Mock).mockResolvedValue({ ...openJob, status: 'assigned', assigned_provider_id: PROVIDER_ID });
     render(<SPJobDetailScreen jobId={JOB_ID} onBack={jest.fn()} onNavigate={jest.fn()} />);
-    await screen.findByText('Start Job');
+    await screen.findByText('Start job');
     expect(screen.queryByText('Accept Booking')).toBeNull();
   });
 
@@ -169,7 +171,8 @@ describe('FullTest provider job details', () => {
     (api.getJob as jest.Mock).mockResolvedValue({ ...openJob, status: 'cancelled', assigned_provider_id: PROVIDER_ID });
     const onNavigate = jest.fn();
     render(<SPJobDetailScreen jobId={JOB_ID} onBack={jest.fn()} onNavigate={onNavigate} />);
-    fireEvent.press(await screen.findByText('File a Complaint'));
+    fireEvent.press(await screen.findByLabelText('More job options'));
+    fireEvent.press(screen.getByText('File a Complaint'));
     expect(onNavigate).toHaveBeenCalledWith('Dispute Filing', JOB_ID);
   });
   it.each([1, 4])('offers warranty review only during the three-day window (age %i)', async (days) => {
@@ -178,7 +181,12 @@ describe('FullTest provider job details', () => {
       warranty_expires_at: new Date(Date.now() + (3 - days) * 86400000).toISOString() });
     render(<SPJobDetailScreen jobId={JOB_ID} onBack={jest.fn()} onNavigate={jest.fn()} />);
     await screen.findByText(openJob.title);
-    expect(!!screen.queryByText('File a Complaint')).toBe(days < 3);
+    if (days < 3) {
+      fireEvent.press(screen.getByLabelText('More job options'));
+      expect(await screen.findByText('File a Complaint')).toBeTruthy();
+    } else {
+      expect(screen.queryByLabelText('More job options')).toBeNull();
+    }
   });
 
 });
@@ -221,15 +229,164 @@ describe('SPJobDetailScreen — withdrawing a pending proposal', () => {
 
     await waitFor(() => expect(screen.queryByText('Withdraw your proposal?')).toBeNull());
     expect(api.withdrawApplication).not.toHaveBeenCalled();
-    expect(screen.getByText('Proposal Pending')).toBeTruthy();
+    expect(screen.getByText('Your proposal is in')).toBeTruthy();
   });
 
   it('offers no withdraw once the proposal was not selected', async () => {
     (api.myApplications as jest.Mock).mockResolvedValue([{ ...pending, status: 'rejected' }]);
     render(<SPJobDetailScreen jobId={JOB_ID} onBack={jest.fn()} onNavigate={jest.fn()} />);
 
-    await screen.findByText('Not Selected');
+    await screen.findByText("Your proposal wasn't accepted");
     expect(screen.queryByLabelText('Withdraw proposal')).toBeNull();
+  });
+});
+
+describe('SPJobDetailScreen — status card, one main action and the client card', () => {
+  const inDays = (days: number) => new Date(Date.now() + days * 86_400_000).toISOString();
+  const hired = {
+    ...openJob,
+    status: 'confirmed' as const,
+    assigned_provider_id: PROVIDER_ID,
+    scheduled_at: inDays(5),
+  };
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    clearAsyncDataCache();
+    (useAuth as jest.Mock).mockReturnValue({ profile: { id: PROVIDER_ID }, isVerified: true, refreshProfile: jest.fn() });
+    (api.myApplications as jest.Mock).mockResolvedValue([]);
+    (api.jobDispute as jest.Mock).mockResolvedValue(null);
+    (api.conversations as jest.Mock).mockResolvedValue([]);
+  });
+
+  it('a pending proposal shows what was sent, and Find more jobs opens the Feed', async () => {
+    (api.getJob as jest.Mock).mockResolvedValue(openJob);
+    (api.myApplications as jest.Mock).mockResolvedValue([
+      {
+        id: 'app-1',
+        status: 'pending',
+        jobs: { id: JOB_ID },
+        applied_at: '2026-10-07T12:00:00.000Z',
+        cover_message: 'I can do this on Oct 14.',
+      },
+    ]);
+    const onNavigate = jest.fn();
+    render(<SPJobDetailScreen jobId={JOB_ID} onBack={jest.fn()} onNavigate={onNavigate} />);
+
+    expect(await screen.findByText('Your proposal is in')).toBeTruthy();
+    expect(screen.getByText('Your proposal')).toBeTruthy();
+    expect(screen.getByText('I can do this on Oct 14.')).toBeTruthy();
+    fireEvent.press(screen.getByLabelText('Find more jobs'));
+    expect(onNavigate).toHaveBeenCalledWith('Dashboard');
+  });
+
+  it('an unverified provider is sent to Verification from the main button', async () => {
+    (useAuth as jest.Mock).mockReturnValue({ profile: { id: PROVIDER_ID }, isVerified: false, refreshProfile: jest.fn() });
+    (api.getJob as jest.Mock).mockResolvedValue(openJob);
+    const onNavigate = jest.fn();
+    render(<SPJobDetailScreen jobId={JOB_ID} onBack={jest.fn()} onNavigate={onNavigate} />);
+
+    fireEvent.press(await screen.findByLabelText('Verify to apply'));
+    expect(onNavigate).toHaveBeenCalledWith('Verification');
+  });
+
+  it('a booked job starts from the main button and opens the decline dialog from the link', async () => {
+    (api.getJob as jest.Mock).mockResolvedValue(hired);
+    render(<SPJobDetailScreen jobId={JOB_ID} onBack={jest.fn()} onNavigate={jest.fn()} />);
+
+    expect(await screen.findByLabelText('Start job')).toBeTruthy();
+    fireEvent.press(screen.getByLabelText("Can't make it? Decline booking"));
+    expect(await screen.findByText('Decline Booking')).toBeTruthy();
+  });
+
+  it('a working job lets the provider tick a task and then message the client', async () => {
+    const working = {
+      ...hired,
+      status: 'in_progress' as const,
+      job_tasks: [{ id: 'task-1', label: 'Fix tap', position: 0, is_done: false, completed_at: null }],
+    };
+    (api.getJob as jest.Mock).mockResolvedValue(working);
+    (api.updateJobTask as jest.Mock).mockResolvedValue(working);
+    const onNavigate = jest.fn();
+    render(<SPJobDetailScreen jobId={JOB_ID} onBack={jest.fn()} onNavigate={onNavigate} />);
+
+    fireEvent.press(await screen.findByLabelText('Fix tap'));
+    await waitFor(() => expect(api.updateJobTask).toHaveBeenCalledWith(JOB_ID, 'task-1', true));
+
+    fireEvent.press(screen.getByLabelText('Message client'));
+    expect(onNavigate).toHaveBeenCalledWith('Chat', JOB_ID);
+  });
+
+  it('a hired job shows the homeowner from the conversation list and opens the chat', async () => {
+    (api.getJob as jest.Mock).mockResolvedValue(hired);
+    (api.conversations as jest.Mock).mockResolvedValue([
+      {
+        id: 'conv-1',
+        job_id: JOB_ID,
+        job_title: 'Fix the sink',
+        job_status: 'confirmed',
+        counterpart_name: 'Maria Santos',
+        counterpart_avatar_url: null,
+        last_message_at: null,
+        created_at: '2026-10-01T00:00:00.000Z',
+      },
+    ]);
+    const onNavigate = jest.fn();
+    render(<SPJobDetailScreen jobId={JOB_ID} onBack={jest.fn()} onNavigate={onNavigate} />);
+
+    expect(await screen.findByText('Maria Santos')).toBeTruthy();
+    expect(screen.getByText('Homeowner')).toBeTruthy();
+    fireEvent.press(screen.getByLabelText('Message Maria Santos'));
+    expect(onNavigate).toHaveBeenCalledWith('Chat', JOB_ID);
+  });
+
+  it('a hired job with no conversation yet shows Client', async () => {
+    (api.getJob as jest.Mock).mockResolvedValue(hired);
+    render(<SPJobDetailScreen jobId={JOB_ID} onBack={jest.fn()} onNavigate={jest.fn()} />);
+
+    expect(await screen.findByText('Client')).toBeTruthy();
+  });
+
+  it('a completed job shows the earnings and View in wallet opens the Wallet', async () => {
+    (api.getJob as jest.Mock).mockResolvedValue({
+      ...hired,
+      status: 'completed',
+      completed_at: inDays(-2),
+      warranty_expires_at: inDays(1),
+    });
+    const onNavigate = jest.fn();
+    render(<SPJobDetailScreen jobId={JOB_ID} onBack={jest.fn()} onNavigate={onNavigate} />);
+
+    expect(await screen.findByText('Job price')).toBeTruthy();
+    expect(screen.getByText('Released to you')).toBeTruthy();
+    fireEvent.press(screen.getByLabelText('View in wallet'));
+    expect(onNavigate).toHaveBeenCalledWith('Wallet');
+  });
+
+  it('an open complaint on a booked job says so and keeps Start job as the main action', async () => {
+    (api.getJob as jest.Mock).mockResolvedValue(hired);
+    (api.jobDispute as jest.Mock).mockResolvedValue({ id: 'd-1', status: 'open', escrow_transactions: null });
+    render(<SPJobDetailScreen jobId={JOB_ID} onBack={jest.fn()} onNavigate={jest.fn()} />);
+
+    expect(await screen.findByText('Complaint awaiting admin review')).toBeTruthy();
+    expect(screen.getByLabelText('Start job')).toBeTruthy();
+  });
+
+  it('a cancelled job with a pending cancellation opens the complaint status as its main action', async () => {
+    (api.getJob as jest.Mock).mockResolvedValue({ ...hired, status: 'cancelled' });
+    (api.jobDispute as jest.Mock).mockResolvedValue({
+      id: 'd-1',
+      status: 'open',
+      cancellation_state: 'pending',
+      cancellation_deadline: inDays(2),
+      escrow_transactions: null,
+    });
+    const onNavigate = jest.fn();
+    render(<SPJobDetailScreen jobId={JOB_ID} onBack={jest.fn()} onNavigate={onNavigate} />);
+
+    expect(await screen.findByText('The client asked to cancel')).toBeTruthy();
+    fireEvent.press(screen.getByLabelText('View Complaint Status'));
+    expect(onNavigate).toHaveBeenCalledWith('Dispute Status', JOB_ID);
   });
 });
 

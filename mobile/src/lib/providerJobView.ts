@@ -5,8 +5,8 @@
  * isDone, isCancelled, the verification gate and the complaint rules), so a
  * money action is offered in exactly the states it was offered before.
  *
- * The `Action` and `JobView` types match the homeowner side (jobDetailView.ts)
- * so the two can be merged without changes here.
+ * The `Action` and `JobView` types are copied from the phase 6 plan, which
+ * defines them for jobDetailView.ts too. This copy keeps the two identical.
  */
 
 import type { Dispute, Job, JobTask } from './api';
@@ -296,7 +296,7 @@ function heading(iso: string | null | undefined): string | null {
 }
 
 /** "Oct 15" for a timestamp's local day, or null when it has none. */
-function monthDay(iso: string | null | undefined): string | null {
+export function monthDay(iso: string | null | undefined): string | null {
   const key = dateKeyOf(iso);
   return key ? parseDateKey(key).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : null;
 }
