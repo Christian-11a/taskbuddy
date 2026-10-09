@@ -40,6 +40,22 @@ export function timeOfDay(iso: string | null | undefined): string {
   return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 }
 
+/** "Fri, Oct 10", or '' when the date can't be read. */
+export function dayLabel(iso: string | null | undefined): string {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  return d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+}
+
+/** "7:10 PM", or '' when the time can't be read. */
+export function clockLabel(iso: string | null | undefined): string {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  return d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+}
+
 /** "just now" / "10 mins ago" / "3 hours ago" / "May 13" */
 export function timeAgo(iso: string | null | undefined): string {
   if (!iso) return '';

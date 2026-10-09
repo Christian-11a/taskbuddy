@@ -4,6 +4,7 @@ import { act, fireEvent, render, screen, waitFor } from '@testing-library/react-
 import HOJobApplicationsScreen from '../HOJobApplicationsScreen';
 import { api, type JobApplication } from '../../../../src/lib/api';
 import { clearAsyncDataCache } from '../../../../src/hooks/useAsyncData';
+import { openRedirectSession } from '../../../../src/lib/appRedirectSession';
 
 jest.mock('../../../../src/lib/api', () => ({
   MIN_TOPUP_PHP: 50,
@@ -90,6 +91,8 @@ beforeEach(() => {
   (api.getProviderReviews as jest.Mock).mockResolvedValue([]);
   (api.getProviderWork as jest.Mock).mockResolvedValue([]);
   (api.providerPortfolio as jest.Mock).mockResolvedValue([]);
+  (api.createHireCheckoutSession as jest.Mock).mockResolvedValue({ url: 'https://checkout.example/session' });
+  (openRedirectSession as jest.Mock).mockResolvedValue({ type: 'cancel' });
   mockJob(1000);
 });
 
@@ -260,6 +263,84 @@ describe('HOJobApplicationsScreen: the provider profile from a proposal', () => 
 
     await waitFor(() => expect(api.acceptApplication).toHaveBeenCalledTimes(1));
     expect(api.acceptApplication).toHaveBeenCalledWith('app-1');
+  });
+});
+
+describe('HOJobApplicationsScreen: the hired screen', () => {
+  async function hireWithWallet(onNavigate: jest.Mock) {
+    await renderScreen(onNavigate);
+    fireEvent.press(await screen.findByRole('button', { name: 'Hire Alex Reyes for this job' }));
+    fireEvent.press(await screen.findByRole('radio', { name: 'Wallet, ₱5,000.00 available' }));
+    fireEvent.press(screen.getByRole('button', { name: 'Continue' }));
+    fireEvent.press(screen.getByRole('button', { name: 'Confirm and hire · ₱1,000.00' }));
+    await waitFor(() => expect(api.acceptApplication).toHaveBeenCalledTimes(1));
+  }
+
+  it('after a wallet hire, says who is hired and what is held, and Message opens the chat', async () => {
+    const onNavigate = jest.fn();
+    await hireWithWallet(onNavigate);
+
+    expect(await screen.findByRole('header', { name: 'Alex Reyes is hired!' })).toBeTruthy();
+    expect(screen.getByText('₱1,000.00 is held safely until the job is done.')).toBeTruthy();
+    expect(screen.getByText('You can now chat with them')).toBeTruthy();
+
+    fireEvent.press(screen.getByRole('button', { name: 'Message Alex Reyes' }));
+    expect(onNavigate).toHaveBeenCalledWith('Chat', 'job-1');
+  });
+
+  it('View job on the hired screen opens the job', async () => {
+    const onNavigate = jest.fn();
+    await hireWithWallet(onNavigate);
+
+    fireEvent.press(await screen.findByRole('button', { name: 'View job' }));
+    expect(onNavigate).toHaveBeenCalledWith('Job Detail', 'job-1');
+  });
+
+  it('shows when the provider comes when the job has a set time', async () => {
+    mockJob(1000, new Date(2026, 9, 10, 19, 10).toISOString());
+    await hireWithWallet(jest.fn());
+
+    expect(await screen.findByText(/^They come \w{3}, Oct 10 · 7:10\s?PM$/)).toBeTruthy();
+  });
+
+  it('a card hire shows the hired screen only once the server has accepted the proposal', async () => {
+    (api.jobApplications as jest.Mock)
+      .mockResolvedValueOnce([pendingApp])
+      .mockResolvedValue([application({ id: 'app-1', status: 'accepted' })]);
+    (api.createHireCheckoutSession as jest.Mock).mockResolvedValue({ url: 'https://checkout.example/session' });
+    (openRedirectSession as jest.Mock).mockResolvedValue({ type: 'success', url: 'taskbuddy://hire?hire=success' });
+    await renderScreen();
+
+    fireEvent.press(await screen.findByRole('button', { name: 'Hire Alex Reyes for this job' }));
+    fireEvent.press(await screen.findByRole('radio', { name: "Card, ₱1,000.00 on Stripe's secure page" }));
+    fireEvent.press(screen.getByRole('button', { name: 'Continue' }));
+    fireEvent.press(screen.getByRole('button', { name: 'Confirm and hire · ₱1,000.00' }));
+
+    expect(await screen.findByRole('header', { name: 'Alex Reyes is hired!' }, { timeout: 5000 })).toBeTruthy();
+    expect(api.createHireCheckoutSession).toHaveBeenCalledTimes(1);
+    expect(api.createHireCheckoutSession).toHaveBeenCalledWith({
+      application_id: 'app-1',
+      app_redirect: 'taskbuddy://hire',
+    });
+    expect(api.acceptApplication).not.toHaveBeenCalled();
+  });
+
+  it('a card payment the browser cancelled stays on the sheet with the message, and is not hired', async () => {
+    (api.createHireCheckoutSession as jest.Mock).mockResolvedValue({ url: 'https://checkout.example/session' });
+    (openRedirectSession as jest.Mock).mockResolvedValue({ type: 'success', url: 'taskbuddy://hire?hire=cancelled' });
+    await renderScreen();
+
+    fireEvent.press(await screen.findByRole('button', { name: 'Hire Alex Reyes for this job' }));
+    fireEvent.press(await screen.findByRole('radio', { name: "Card, ₱1,000.00 on Stripe's secure page" }));
+    fireEvent.press(screen.getByRole('button', { name: 'Continue' }));
+    fireEvent.press(screen.getByRole('button', { name: 'Confirm and hire · ₱1,000.00' }));
+
+    expect(await screen.findByText('Payment was cancelled.')).toBeTruthy();
+    // Still on the sheet's confirm page, so the payment can be confirmed again or backed out of.
+    expect(screen.getByRole('button', { name: 'Confirm and hire · ₱1,000.00' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Back' })).toBeTruthy();
+    expect(screen.queryByRole('header', { name: 'Alex Reyes is hired!' })).toBeNull();
+    expect(api.acceptApplication).not.toHaveBeenCalled();
   });
 });
 

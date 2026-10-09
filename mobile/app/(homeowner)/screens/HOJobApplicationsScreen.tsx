@@ -35,7 +35,7 @@ import {
   View,
 } from 'react-native';
 import Tap from '../../../src/components/ui/Tap';
-import { peso, plural, timeAgo } from '../../../src/lib/format';
+import { dayLabel, peso, plural, timeAgo } from '../../../src/lib/format';
 import ContentSkeleton from '../../../src/components/ui/ContentSkeleton';
 import Silhouette from '../../../src/components/ui/Silhouette';
 import { AlertCircle, ArrowLeft, BadgeCheck, CheckCircle2, ShieldAlert, Star } from 'lucide-react-native';
@@ -46,6 +46,7 @@ import { useAsyncData } from '../../../src/hooks/useAsyncData';
 import { api, type Job, type JobApplication } from '../../../src/lib/api';
 import { openRedirectSession } from '../../../src/lib/appRedirectSession';
 import HirePaymentModal from '../../../src/components/HirePaymentModal';
+import HiredView from '../../../src/components/HiredView';
 import ConfirmationModal from '../../../src/components/ConfirmationModal';
 import HOProviderProfileScreen from './HOProviderProfileScreen';
 import { HOScreen } from '../../../src/types/navigation';
@@ -119,6 +120,9 @@ export default function HOJobApplicationsScreen({
   const profileLatest = profileOf ? apps?.find((a) => a.id === profileOf.id) ?? profileOf : null;
   const profileHireable = profileLatest?.status === 'pending' && hiredApp === null;
 
+  // Set once a hire goes through; the hired screen replaces the list until left.
+  const [hired, setHired] = useState<HiredState | null>(null);
+
   useEffect(() => {
     if (!profileOf) return;
     // Android back closes the profile first. React Native calls the most recently
@@ -135,6 +139,7 @@ export default function HOJobApplicationsScreen({
   const [budget, setBudget] = useState<number | null>(null);
   const [available, setAvailable] = useState<number | null>(null);
   const [jobTitle, setJobTitle] = useState<string | null>(null);
+  const [hireScheduledAt, setHireScheduledAt] = useState<string | null>(null);
   const [hireLoading, setHireLoading] = useState(false);
   const [hireBusy, setHireBusy] = useState<'wallet' | 'card' | null>(null);
   const [hireMessage, setHireMessage] = useState<{ text: string; tone: 'error' | 'info' } | null>(null);
@@ -146,6 +151,7 @@ export default function HOJobApplicationsScreen({
     setBudget(null);
     setAvailable(null);
     setJobTitle(null);
+    setHireScheduledAt(null);
     // Until the job and wallet are read, the sheet cannot offer a payment: the
     // budget decides what is charged, so no option is usable yet.
     setHireLoading(true);
@@ -153,6 +159,7 @@ export default function HOJobApplicationsScreen({
     try {
       const [job, wallet] = await Promise.all([api.getJob(jobId), api.wallet()]);
       setJobTitle(job.title);
+      setHireScheduledAt(job.scheduled_at ?? null);
       setBudget(job.budget == null ? null : Number(job.budget));
       setAvailable(wallet.available);
     } catch (e) {
@@ -170,12 +177,22 @@ export default function HOJobApplicationsScreen({
     setHireMessage(null);
   };
 
+  /** The hire went through: the hired screen replaces the list. */
+  const showHired = (app: JobApplication) => {
+    setHired({
+      providerName: app.provider?.full_name ?? 'Your provider',
+      budget,
+      scheduledAt: hireScheduledAt,
+    });
+  };
+
   const payFromWallet = async () => {
     if (!hireTarget) return;
     setHireBusy('wallet');
     setHireMessage(null);
     try {
       await api.acceptApplication(hireTarget.id);
+      showHired(hireTarget);
       closeHire();
       reload();
     } catch (e) {
@@ -227,6 +244,7 @@ export default function HOJobApplicationsScreen({
       const status = await awaitHire(hireTarget.id);
       reload();
       if (status === 'accepted') {
+        showHired(hireTarget);
         closeHire();
       } else if (status === 'pending') {
         setHireMessage({
@@ -406,6 +424,21 @@ export default function HOJobApplicationsScreen({
     </>
   );
 
+  if (hired) {
+    return (
+      <View style={styles.screen}>
+        <HiredView
+          providerName={hired.providerName}
+          budget={hired.budget}
+          scheduledAt={hired.scheduledAt}
+          onMessage={() => onNavigate?.('Chat', jobId ?? undefined)}
+          onViewJob={() => onNavigate?.('Job Detail', jobId ?? undefined)}
+        />
+        {sheets}
+      </View>
+    );
+  }
+
   if (profileOf) {
     return (
       <View style={styles.screen}>
@@ -497,6 +530,13 @@ export default function HOJobApplicationsScreen({
   );
 }
 
+/** What the hired screen says, captured when the hire goes through. */
+interface HiredState {
+  providerName: string;
+  budget: number | null;
+  scheduledAt: string | null;
+}
+
 /** How long to wait for Stripe's webhook to turn a card payment into a hire. */
 const HIRE_POLL_ATTEMPTS = 8;
 const HIRE_POLL_INTERVAL_MS = 1500;
@@ -507,13 +547,6 @@ const CLOSED_LABEL: Record<JobApplication['status'], string> = {
   rejected: 'Not selected',
   withdrawn: 'Withdrawn by the provider',
 };
-
-/** "Fri, Oct 10", or '' when the date can't be read. */
-function dayLabel(iso: string): string {
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return '';
-  return d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
-}
 
 function createThemedStyles(theme: ThemePalette) {
   const { Colors, V6Colors } = theme;
