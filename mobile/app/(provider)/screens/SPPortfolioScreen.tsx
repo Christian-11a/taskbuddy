@@ -29,11 +29,10 @@ export const PHOTO_MAX_BYTES = 10 * 1024 * 1024;
 /** Longest caption: the `caption` check on `provider_portfolio` (1 to 400 characters). */
 export const CAPTION_MAX = 400;
 /**
- * The API requires `position` (0 to 10000) on every portfolio write, and the
- * screen no longer asks for it. A new photo sends this value; an edit keeps
- * the position the photo already has.
+ * Highest `position` the API accepts: `PortfolioDetailsDto` and the
+ * `provider_portfolio` position check (0 to 10000).
  */
-export const DEFAULT_POSITION = 0;
+export const PORTFOLIO_POSITION_MAX = 10000;
 
 const PHOTO_TIPS = ['Your own work only', 'No client faces or house numbers', 'Good light'];
 
@@ -41,11 +40,22 @@ export function portfolioIsFull(count: number): boolean {
   return count >= PORTFOLIO_LIMIT;
 }
 
+/**
+ * Where a new photo goes: after the highest position already in the portfolio,
+ * so it lands at the end of the list. An empty portfolio starts at 0. Past the
+ * cap, photos share the last position and are ordered by upload time.
+ */
+export function nextPortfolioPosition(entries: ReadonlyArray<{ position: number }>): number {
+  if (entries.length === 0) return 0;
+  const highest = Math.max(...entries.map((entry) => entry.position));
+  return Math.min(highest + 1, PORTFOLIO_POSITION_MAX);
+}
+
 /** The details sent with a photo: caption, position and service, in the shape the API takes. */
-export function portfolioDetails(input: { caption: string; categoryId: number | null; storedPosition?: number }) {
+export function portfolioDetails(input: { caption: string; categoryId: number | null; position: number }) {
   return {
     caption: input.caption.trim(),
-    position: input.storedPosition ?? DEFAULT_POSITION,
+    position: input.position,
     category_id: input.categoryId,
   };
 }
@@ -119,13 +129,18 @@ export default function SPPortfolioScreen({ onBack }: { onBack: () => void }) {
       setError(problem);
       return;
     }
+    // A new photo needs the loaded list to know which position puts it last.
+    if (!editing && !portfolio.data) {
+      setError('Your portfolio has not loaded yet. Try again.');
+      return;
+    }
     setBusy(true);
     setError(null);
     try {
       const details = portfolioDetails({
         caption,
         categoryId: category,
-        storedPosition: editing?.position,
+        position: editing ? editing.position : nextPortfolioPosition(portfolio.data ?? []),
       });
       if (editing) {
         setStage('saving');
@@ -341,7 +356,7 @@ export default function SPPortfolioScreen({ onBack }: { onBack: () => void }) {
             primaryLabel={progress ? progress.label : editing ? 'Save photo details' : 'Publish photo'}
             onPrimary={() => void save()}
             busy={stage !== null}
-            primaryDisabled={busy || portfolio.loading}
+            primaryDisabled={busy || portfolio.loading || (!editing && !portfolio.data)}
             secondaryLabel={editing ? 'Cancel edit' : undefined}
             onSecondary={reset}
           />

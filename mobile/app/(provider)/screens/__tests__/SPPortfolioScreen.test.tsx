@@ -9,6 +9,8 @@ import {
 import SPPortfolioScreen, {
   PHOTO_MAX_BYTES,
   PORTFOLIO_LIMIT,
+  nextPortfolioPosition,
+  PORTFOLIO_POSITION_MAX,
   portfolioDetails,
   portfolioIsFull,
   publishProblem,
@@ -127,17 +129,33 @@ describe('portfolio rules', () => {
     expect(portfolioIsFull(20)).toBe(true);
   });
 
-  it('sends display order 0 for a new photo and keeps the stored order on edit', () => {
-    expect(portfolioDetails({ caption: '  Sink repair  ', categoryId: null })).toEqual({
+  it('sends the position it is given: the next one for a new photo, the stored one for an edit', () => {
+    expect(portfolioDetails({ caption: '  Sink repair  ', categoryId: null, position: 3 })).toEqual({
       caption: 'Sink repair',
-      position: 0,
+      position: 3,
       category_id: null,
     });
-    expect(portfolioDetails({ caption: 'New caption', categoryId: 3, storedPosition: 4 })).toEqual({
+    expect(portfolioDetails({ caption: 'New caption', categoryId: 3, position: 4 })).toEqual({
       caption: 'New caption',
       position: 4,
       category_id: 3,
     });
+  });
+
+  it('puts a new photo after the highest position, and at 0 in an empty portfolio', () => {
+    expect(nextPortfolioPosition([])).toBe(0);
+    expect(nextPortfolioPosition([{ position: 0 }, { position: 1 }, { position: 2 }])).toBe(3);
+    expect(nextPortfolioPosition([{ position: 7 }, { position: 3 }])).toBe(8);
+  });
+
+  it('does not fill gaps: the new photo goes after the highest position', () => {
+    expect(nextPortfolioPosition([{ position: 0 }, { position: 5 }, { position: 2 }])).toBe(6);
+  });
+
+  it('never goes past the API maximum position of 10000', () => {
+    expect(PORTFOLIO_POSITION_MAX).toBe(10000);
+    expect(nextPortfolioPosition([{ position: 9999 }])).toBe(10000);
+    expect(nextPortfolioPosition([{ position: 10000 }])).toBe(10000);
   });
 
   it('names the first thing missing from a publish', () => {
@@ -213,4 +231,29 @@ it('stops the form at 20 photos and says why', async () => {
   expect(await screen.findByText(/Your portfolio is full: 20 of 20 photos/)).toBeTruthy();
   expect(screen.queryByText('Publish photo')).toBeNull();
   expect(screen.queryByLabelText('Caption')).toBeNull();
+});
+
+it('gives a new photo the position after the last one in the list', async () => {
+  (api.myPortfolio as jest.Mock).mockResolvedValue([
+    { ...entry, id: 'first', position: 0 },
+    { ...entry, id: 'second', position: 4 },
+  ]);
+  render(<SPPortfolioScreen onBack={jest.fn()} />);
+  await screen.findAllByText('Remove photo');
+  await act(async () => fireEvent.press(screen.getByText('Choose portfolio photo')));
+  fireEvent.changeText(screen.getByLabelText('Caption'), 'Sink repair');
+  await act(async () => fireEvent.press(screen.getByText('Publish photo')));
+  expect(api.createPortfolio).toHaveBeenCalledWith({
+    image_path: 'owner/photo.jpg',
+    caption: 'Sink repair',
+    position: 5,
+    category_id: null,
+  });
+});
+
+it('does not publish a new photo until the portfolio has loaded', async () => {
+  (api.myPortfolio as jest.Mock).mockRejectedValue(new Error('Portfolio unavailable'));
+  render(<SPPortfolioScreen onBack={jest.fn()} />);
+  await screen.findByText(/Portfolio unavailable/);
+  expect(screen.getByRole('button', { name: 'Publish photo' })).toBeDisabled();
 });
