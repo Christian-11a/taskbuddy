@@ -1,9 +1,16 @@
 import React from 'react';
 import { StyleSheet, type FlatList } from 'react-native';
-import { fireEvent, render, screen } from '@testing-library/react-native';
+import { fireEvent, render, screen, within } from '@testing-library/react-native';
 import ChatThread, { type ChatThreadProps } from '../ChatThread';
 import type { Message } from '../../lib/api';
 import { lightPalette } from '../../constants/palettes';
+
+// Mutable window metrics, so a test can set the system text size (fontScale) before rendering.
+const mockDims = { width: 390, height: 844, fontScale: 1, scale: 3 };
+jest.mock('react-native/Libraries/Utilities/useWindowDimensions', () => ({
+  __esModule: true,
+  default: () => mockDims,
+}));
 
 const message = (
   id: string,
@@ -68,6 +75,53 @@ describe('ChatThread header and system line', () => {
 
     expect(props.onBack).toHaveBeenCalledTimes(1);
     expect(props.onViewJob).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('ChatThread header at large text', () => {
+  afterEach(() => {
+    mockDims.fontScale = 1;
+  });
+
+  it('keeps View job beside the name at normal text size', () => {
+    render(<ChatThread {...baseProps()} />);
+
+    const info = screen.getByTestId('chat-header-info');
+    expect(within(info).queryByLabelText('View job')).toBeNull();
+    expect(screen.getByLabelText('View job')).toBeTruthy();
+    expect(screen.getByText('TaskBuddyProvider').props.numberOfLines).toBe(1);
+    expect(screen.getByText('Plumbing: Fix toilet · Confirmed').props.numberOfLines).toBe(2);
+  });
+
+  it('moves View job to its own row under the subtitle at 1.3x text size', () => {
+    mockDims.fontScale = 1.3;
+    render(<ChatThread {...baseProps()} />);
+
+    const info = screen.getByTestId('chat-header-info');
+    expect(within(info).getByLabelText('View job')).toBeTruthy();
+    expect(screen.getByText('TaskBuddyProvider').props.numberOfLines).toBe(1);
+    expect(screen.getByText('Plumbing: Fix toilet · Confirmed').props.numberOfLines).toBe(2);
+  });
+
+  it('gives View job a 48dp touch area that does not shrink', () => {
+    render(<ChatThread {...baseProps()} />);
+
+    const link = StyleSheet.flatten(screen.getByLabelText('View job').props.style);
+    expect(link.minWidth).toBe(48);
+    expect(link.minHeight).toBe(48);
+    expect(link.flexShrink).toBe(0);
+  });
+
+  it('keeps View job and Back working at 1.3x text size', () => {
+    mockDims.fontScale = 1.3;
+    const props = baseProps();
+    render(<ChatThread {...props} />);
+
+    fireEvent.press(screen.getByLabelText('View job'));
+    fireEvent.press(screen.getByLabelText('Back'));
+
+    expect(props.onViewJob).toHaveBeenCalledTimes(1);
+    expect(props.onBack).toHaveBeenCalledTimes(1);
   });
 });
 

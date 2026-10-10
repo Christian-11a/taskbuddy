@@ -19,6 +19,7 @@ import {
   Text,
   TextInput,
   TouchableWithoutFeedback,
+  useWindowDimensions,
   View,
 } from 'react-native';
 import { ArrowLeft, ArrowRight, Camera } from 'lucide-react-native';
@@ -62,11 +63,27 @@ export default function ChatThread({
 }: ChatThreadProps) {
   const { C, styles, V6Colors, appearance } = useThemedStyles(createThemedStyles);
   const headerTop = useHeaderTop();
+  const { fontScale } = useWindowDimensions();
+  // At large system text the link moves under the subtitle, so the name and job line keep the width.
+  const largeText = fontScale >= 1.2;
   const [viewerIndex, setViewerIndex] = useState<number | null>(null);
   const canSend = text.trim().length > 0;
 
   const photoMessages = messages.filter((message): message is Message & { attachment_url: string } => !!message.attachment_url);
   const photos = photoMessages.map((message) => ({ uri: message.attachment_url }));
+
+  const viewJobLink = (
+    <Tap
+      style={[styles.viewJobTap, largeText && styles.viewJobTapBelow]}
+      onPress={onViewJob}
+      activeOpacity={0.8}
+      hitSlop={{ top: 15, bottom: 15, left: 8, right: 8 }}
+      accessibilityRole="button"
+      accessibilityLabel="View job"
+    >
+      <Text style={styles.viewJobLink}>View job</Text>
+    </Tap>
+  );
 
   const renderItem = ({ item }: { item: Message }) => {
     const sent = item.sender_id === profileId;
@@ -114,19 +131,12 @@ export default function ChatThread({
         <View style={styles.headerAvatar}>
           <Silhouette name={counterpartName} textStyle={styles.headerAvatarText} />
         </View>
-        <View style={styles.headerInfo}>
+        <View style={styles.headerInfo} testID="chat-header-info">
           <Text style={styles.headerName} numberOfLines={1}>{counterpartName?.trim() || 'Chat'}</Text>
-          {!!subtitle && <Text style={styles.headerSubtitle} numberOfLines={1}>{subtitle}</Text>}
+          {!!subtitle && <Text style={styles.headerSubtitle} numberOfLines={2}>{subtitle}</Text>}
+          {largeText && viewJobLink}
         </View>
-        <Tap
-          onPress={onViewJob}
-          activeOpacity={0.8}
-          hitSlop={{ top: 15, bottom: 15, left: 8, right: 8 }}
-          accessibilityRole="button"
-          accessibilityLabel="View job"
-        >
-          <Text style={styles.viewJobLink}>View job</Text>
-        </Tap>
+        {!largeText && viewJobLink}
       </View>
 
       {!!systemLine && <Text style={styles.systemLine}>{systemLine}</Text>}
@@ -230,6 +240,8 @@ function createThemedStyles(theme: ThemePalette) {
     headerInfo: { flex: 1, minWidth: 0 },
     headerName: { color: C.ink900, fontSize: 16, fontWeight: '800', fontFamily: 'Inter' },
     headerSubtitle: { color: C.ink500, fontSize: 12.5, fontWeight: '500', fontFamily: 'Inter', marginTop: 1 },
+    viewJobTap: { minWidth: 48, minHeight: 48, flexShrink: 0, justifyContent: 'center' },
+    viewJobTapBelow: { alignSelf: 'flex-start' },
     viewJobLink: { color: V6Colors.link, fontSize: 14, fontWeight: '700', fontFamily: 'Inter' },
 
     systemLine: {
