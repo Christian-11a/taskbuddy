@@ -835,17 +835,17 @@ function AppContent() {
       </ScreenFrame>
     );
   }
-  if (spScreen === 'Portfolio') return wrap(<ScreenFrame><SPPortfolioScreen onBack={spBack}/></ScreenFrame>);
+  if (spScreen === 'Portfolio') return wrap(<ScreenFrame bottomColor={V6Colors.surface}><SPPortfolioScreen onBack={spBack}/></ScreenFrame>);
   if (spScreen === 'My Services') {
     return wrap(
-      <ScreenFrame>
+      <ScreenFrame bottomColor={V6Colors.surface}>
         <SPSkillRequestScreen onBack={spBack} />
       </ScreenFrame>
     );
   }
   if (spScreen === 'Payouts') {
     return wrap(
-      <ScreenFrame>
+      <ScreenFrame bottomColor={V6Colors.surface}>
         <SPPayoutsScreen onBack={spBack} />
       </ScreenFrame>
     );
