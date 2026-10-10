@@ -123,6 +123,8 @@ export default function HOLeaveReviewScreen({ jobId, onSubmitted, onBack }: HOLe
                 activeOpacity={0.85}
                 style={styles.starBtn}
                 borderlessRipple
+                // The 46 dp star button plus 1 dp around it reaches the 48 dp touch area.
+                hitSlop={1}
                 accessibilityRole="button"
                 accessibilityLabel={`${n} star${n === 1 ? '' : 's'}`}
                 accessibilityState={{ selected: n <= rating }}
