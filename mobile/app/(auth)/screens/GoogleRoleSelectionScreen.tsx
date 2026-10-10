@@ -4,23 +4,28 @@
  * Shown to new Google OAuth users before they reach their dashboard.
  * They pick either "Homeowner" or "Service Provider".
  *
+ * Picking a card opens a confirm sheet first, because the role cannot be
+ * changed later. Only "Yes" runs the real action, once:
  * - Homeowner: calls completeGoogleProfile({ role: 'homeowner' }) and done.
  * - Provider:  navigates to GoogleSPDetailsScreen to collect the extra fields
  *   (category + consents) before completing.
+ * "Choose again" closes the sheet and saves nothing.
  */
 
 import { useThemedStyles, type Palette as ThemePalette } from '../../../src/context/ThemeContext';
-import React, { useState } from 'react';
-import { ActivityIndicator, ScrollView, StyleSheet, Text, View } from 'react-native';
+import React, { useRef, useState } from 'react';
+import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import RoleChoiceCard from '../../../src/components/auth/RoleChoiceCard';
+import RoleConfirmSheet from '../../../src/components/auth/RoleConfirmSheet';
+import { confirmRoleChoice, type GoogleRole } from '../../../src/components/auth/roleConfirm';
 import { useAuthLayout } from '../../../src/hooks/useAuthLayout';
 
 interface GoogleRoleSelectionScreenProps {
-  /** Called when the user picks Homeowner — no extra fields needed. */
+  /** Called when the user confirms Homeowner — no extra fields needed. */
   onSelectHomeowner: () => Promise<void>;
-  /** Called when the user picks Service Provider — opens SP details form. */
+  /** Called when the user confirms Service Provider — opens SP details form. */
   onSelectProvider: () => void;
-  /** Displayed below the name — typically the Google account email. */
+  /** Displayed in the sheet — the Google account email. */
   email?: string | null;
 }
 
@@ -29,22 +34,46 @@ export default function GoogleRoleSelectionScreen({
   onSelectProvider,
   email,
 }: GoogleRoleSelectionScreenProps) {
-  const { styles, V6Colors } = useThemedStyles(createThemedStyles);
+  const { styles } = useThemedStyles(createThemedStyles);
   const layout = useAuthLayout();
-  const [loading, setLoading] = useState(false);
+  const [sheetOpen, setSheetOpen] = useState(false);
+  // The role the sheet is about. Kept after the sheet closes so the text does
+  // not change while it fades out.
+  const [sheetRole, setSheetRole] = useState<GoogleRole>('homeowner');
+  const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // A ref, not state, so a second "Yes" in the same frame sees the first one.
+  const savingRef = useRef(false);
 
-  const handleHomeowner = async () => {
-    if (loading) return;
+  const pick = (role: GoogleRole) => {
+    if (savingRef.current) return;
     setError(null);
-    setLoading(true);
+    setSheetRole(role);
+    setSheetOpen(true);
+  };
+
+  const handleConfirm = async () => {
+    if (savingRef.current) return;
+    savingRef.current = true;
+    setSaving(true);
+    setError(null);
     try {
-      await onSelectHomeowner();
+      await confirmRoleChoice(sheetRole, {
+        saveHomeowner: onSelectHomeowner,
+        continueToProvider: onSelectProvider,
+      });
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Something went wrong. Please try again.');
     } finally {
-      setLoading(false);
+      savingRef.current = false;
+      setSaving(false);
+      setSheetOpen(false);
     }
+  };
+
+  const handleChooseAgain = () => {
+    if (savingRef.current) return;
+    setSheetOpen(false);
   };
 
   return (
@@ -63,27 +92,37 @@ export default function GoogleRoleSelectionScreen({
         <View accessibilityRole="radiogroup" style={styles.cards}>
           <RoleChoiceCard
             role="homeowner"
-            selected={false}
-            onSelect={handleHomeowner}
-            disabled={loading}
+            selected={sheetOpen && sheetRole === 'homeowner'}
+            onSelect={() => pick('homeowner')}
+            disabled={saving}
             testID="google-role-homeowner"
           />
           <RoleChoiceCard
             role="provider"
-            selected={false}
-            onSelect={onSelectProvider}
-            disabled={loading}
+            selected={sheetOpen && sheetRole === 'provider'}
+            onSelect={() => pick('provider')}
+            disabled={saving}
             testID="google-role-provider"
           />
         </View>
 
-        {loading ? <ActivityIndicator color={V6Colors.link} style={styles.spinner} /> : null}
         {!!error && <Text style={styles.errorText}>{error}</Text>}
 
         <Text style={styles.footerNote}>
-          Your Google account ({email ?? 'email'}) will be linked to this role permanently.
+          {email
+            ? `Your Google account (${email}) will be linked to this role permanently.`
+            : 'Your Google account will be linked to this role permanently.'}
         </Text>
       </ScrollView>
+
+      <RoleConfirmSheet
+        visible={sheetOpen}
+        role={sheetRole}
+        email={email}
+        busy={saving}
+        onConfirm={handleConfirm}
+        onChooseAgain={handleChooseAgain}
+      />
     </View>
   );
 }
@@ -131,7 +170,6 @@ function createThemedStyles(theme: ThemePalette) {
       marginBottom: 20,
     },
     cards: { gap: 12, marginBottom: 16 },
-    spinner: { marginBottom: 12 },
     errorText: {
       color: V6Colors.dangerText,
       fontFamily: 'Inter',
