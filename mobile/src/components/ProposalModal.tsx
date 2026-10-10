@@ -1,20 +1,25 @@
 import { useThemedStyles, type Palette as ThemePalette } from '../context/ThemeContext';
 import React, { useEffect, useState } from 'react';
-import {
-  ActivityIndicator,
-  Keyboard,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from 'react-native';
+import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
+import { Check } from 'lucide-react-native';
 import Tap from './ui/Tap';
 import SheetFrame from './ui/SheetFrame';
-import { Send } from 'lucide-react-native';
-import { V6Radii } from '../constants/theme';
+import TextField from './ui/TextField';
 
 /** Matches ApplyDto.cover_message's MaxLength on the backend. */
 export const PROPOSAL_MAX_LENGTH = 300;
+/**
+ * The shortest message that can be sent. An approved UX gate: the backend
+ * still accepts an empty message, but the app no longer sends one.
+ */
+export const PROPOSAL_MIN_LENGTH = 20;
+
+const TIPS = ['When you can come', "What's included (tools, parts)", "Similar jobs you've done"];
+
+/** True once the message is long enough, not counting spaces at either end. */
+export function canSendProposal(message: string): boolean {
+  return message.trim().length >= PROPOSAL_MIN_LENGTH;
+}
 
 interface ProposalModalProps {
   visible: boolean;
@@ -33,60 +38,76 @@ interface ProposalModalProps {
 export default function ProposalModal({
   visible, jobTitle, busy = false, error, onSubmit, onCancel,
 }: ProposalModalProps) {
-  const { C, styles, V6Colors, appearance } = useThemedStyles(createThemedStyles);
+  const { C, styles, V6Colors, Colors, appearance } = useThemedStyles(createThemedStyles);
   const [message, setMessage] = useState('');
 
   useEffect(() => {
     if (visible) setMessage('');
   }, [visible]);
 
+  const ready = canSendProposal(message);
+  const counter = ready
+    ? `${message.length} / ${PROPOSAL_MAX_LENGTH}`
+    : `${message.length} / ${PROPOSAL_MAX_LENGTH} · at least ${PROPOSAL_MIN_LENGTH} characters`;
+
   return (
-    <SheetFrame visible={visible} onClose={busy ? undefined : onCancel} contentStyle={styles.dialog}>
-            <Text style={styles.title} accessibilityRole="header">Send a proposal</Text>
-            <Text style={styles.body}>
-              {jobTitle ? `Tell the client why you're a good fit for "${jobTitle}".` : "Tell the client why you're a good fit."}{' '}
-              Mention your experience, when you can start, or anything they should know.
-            </Text>
+    <SheetFrame visible={visible} onClose={busy ? undefined : onCancel} contentStyle={styles.sheet}>
+      <Text style={styles.title} accessibilityRole="header">Send a proposal</Text>
+      {!!jobTitle && <Text style={styles.forJob} numberOfLines={2}>{`For "${jobTitle}"`}</Text>}
 
-            <TextInput keyboardAppearance={appearance}
-              style={styles.input}
-              value={message}
-              onChangeText={setMessage}
-              placeholder="Hi! I've done this kind of job many times and can come tomorrow morning…"
-              placeholderTextColor={C.ink400}
-              multiline
-              maxLength={PROPOSAL_MAX_LENGTH}
-              textAlignVertical="top"
-              editable={!busy}
-              testID="proposal-message"
-              accessibilityLabel="Message to the client"
-            />
-            <Text style={styles.counter}>{message.length}/{PROPOSAL_MAX_LENGTH}</Text>
+      <View style={styles.tips}>
+        <Text style={styles.tipsTitle}>Good proposals mention:</Text>
+        {TIPS.map((tip) => (
+          <View key={tip} style={styles.tipRow}>
+            <Check size={14} color={C.ink700} strokeWidth={2.6} />
+            <Text style={styles.tipText}>{tip}</Text>
+          </View>
+        ))}
+      </View>
 
-            {!!error && <Text style={styles.error} accessibilityRole="alert">{error}</Text>}
+      <TextField
+        label="Your message"
+        value={message}
+        onChangeText={setMessage}
+        placeholder="Hi! I can come on Oct 14 at 2 PM…"
+        helper={counter}
+        multiline
+        maxLength={PROPOSAL_MAX_LENGTH}
+        editable={!busy}
+        keyboardAppearance={appearance}
+        testID="proposal-message"
+      />
 
-            <View style={styles.actions}>
-              <Tap style={styles.secondaryBtn} onPress={onCancel} disabled={busy} activeOpacity={0.8} accessibilityRole="button">
-                <Text style={styles.secondaryText}>Cancel</Text>
-              </Tap>
-              <Tap
-                style={[styles.primaryBtn, busy && styles.disabled]}
-                onPress={() => onSubmit(message.trim())}
-                disabled={busy}
-                activeOpacity={0.85}
-                accessibilityRole="button"
-                testID="proposal-send"
-              >
-                {busy ? (
-                  <ActivityIndicator color={C.onPrimary} />
-                ) : (
-                  <View style={styles.primaryContent}>
-                    <Send size={15} color={C.onPrimary} />
-                    <Text style={styles.primaryText}>Send proposal</Text>
-                  </View>
-                )}
-              </Tap>
-            </View>
+      <Text style={styles.notice}>The client compares offers and hires one provider. You'll be notified.</Text>
+
+      {!!error && <Text style={styles.error} accessibilityRole="alert">{error}</Text>}
+
+      <Tap
+        style={[styles.sendBtn, !ready && !busy && styles.sendBtnOff, busy && styles.dimmed]}
+        onPress={() => onSubmit(message.trim())}
+        disabled={busy || !ready}
+        scale
+        hitSlop={{ top: 1, bottom: 1 }}
+        accessibilityRole="button"
+        accessibilityLabel="Send proposal"
+        testID="proposal-send"
+      >
+        {busy ? (
+          <ActivityIndicator color={Colors.onPrimary} />
+        ) : (
+          <Text style={[styles.sendText, !ready && styles.sendTextOff]}>Send proposal</Text>
+        )}
+      </Tap>
+      <Tap
+        style={styles.cancelBtn}
+        onPress={onCancel}
+        disabled={busy}
+        hitSlop={{ top: 7, bottom: 7, left: 12, right: 12 }}
+        accessibilityRole="button"
+        accessibilityLabel="Cancel"
+      >
+        <Text style={styles.cancelText}>Cancel</Text>
+      </Tap>
     </SheetFrame>
   );
 }
@@ -95,24 +116,29 @@ function createThemedStyles(theme: ThemePalette) {
   const { Colors, V6Colors } = theme;
   const C = V6Colors;
   const styles = StyleSheet.create({
-    flex: { flex: 1 },
-    overlay: { flex: 1, justifyContent: 'center', padding: 20, backgroundColor: 'rgba(6, 61, 77, 0.5)' },
-    dialog: { backgroundColor: C.surface, borderRadius: V6Radii.card, padding: 22, width: '100%', maxWidth: 440, alignSelf: 'center' },
-    title: { color: C.ink900, fontSize: 19, fontWeight: '800', fontFamily: 'Inter' },
-    body: { color: C.ink500, fontSize: 14, fontFamily: 'Inter', lineHeight: 19, marginTop: 4, marginBottom: 14 },
-    input: {
-      minHeight: 110, borderWidth: 1, borderColor: V6Colors.fieldBorder, borderRadius: 12, backgroundColor: V6Colors.wellBg,
-      paddingHorizontal: 14, paddingTop: 12, paddingBottom: 12, fontSize: 15, color: C.ink900, fontFamily: 'Inter',
+    sheet: { paddingHorizontal: 20, gap: 14 },
+    title: { color: C.ink900, fontSize: 20, fontWeight: '700', lineHeight: 26, fontFamily: 'Inter' },
+    forJob: { color: C.ink500, fontSize: 13, lineHeight: 18, fontFamily: 'Inter', marginTop: -6 },
+
+    tips: { backgroundColor: C.wellBg, borderRadius: 14, padding: 14, gap: 8 },
+    tipsTitle: { color: C.ink900, fontSize: 13, fontWeight: '600', lineHeight: 18, fontFamily: 'Inter' },
+    tipRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+    tipText: { flex: 1, color: C.ink700, fontSize: 14, lineHeight: 20, fontFamily: 'Inter' },
+
+    notice: { color: C.ink500, fontSize: 13, lineHeight: 18, fontFamily: 'Inter' },
+    error: { color: V6Colors.dangerText, fontSize: 13, lineHeight: 18, fontFamily: 'Inter' },
+
+    sendBtn: {
+      height: 46, borderRadius: 16, alignItems: 'center', justifyContent: 'center', backgroundColor: Colors.primary,
     },
-    counter: { alignSelf: 'flex-end', color: C.ink400, fontSize: 12, fontFamily: 'Inter', marginTop: 4 },
-    error: { color: V6Colors.dangerText, fontSize: 13.5, fontFamily: 'Inter', marginTop: 8 },
-    actions: { flexDirection: 'row', gap: 10, marginTop: 14 },
-    secondaryBtn: { flex: 1, minHeight: 44, borderWidth: 1, borderColor: V6Colors.fieldBorder, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
-    secondaryText: { color: C.ink500, fontSize: 14.5, fontWeight: '700', fontFamily: 'Inter' },
-    primaryBtn: { flex: 1, minHeight: 44, backgroundColor: C.cyan700, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
-    primaryContent: { flexDirection: 'row', alignItems: 'center', gap: 7 },
-    primaryText: { color: C.onPrimary, fontSize: 14.5, fontWeight: '700', fontFamily: 'Inter' },
-    disabled: { opacity: 0.6 },
+    // Readable disabled state: grey fill with dark text, like the other forms.
+    sendBtnOff: { backgroundColor: C.ink100 },
+    sendText: { color: Colors.onPrimary, fontSize: 14, fontWeight: '600', lineHeight: 18, fontFamily: 'Inter' },
+    sendTextOff: { color: C.ink700 },
+    dimmed: { opacity: 0.6 },
+
+    cancelBtn: { alignSelf: 'center', paddingHorizontal: 12, paddingVertical: 8 },
+    cancelText: { color: Colors.link, fontSize: 14, fontWeight: '600', lineHeight: 18, fontFamily: 'Inter' },
   });
   return { appearance: theme.appearance, Colors, V6Colors, C, styles };
 }
