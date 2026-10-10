@@ -48,11 +48,12 @@ import PrepCard from '../../../src/components/verify/PrepCard';
 import ProtectSheet from '../../../src/components/verify/ProtectSheet';
 import CheckList from '../../../src/components/verify/CheckList';
 import IdExamples from '../../../src/components/verify/IdExamples';
+import PhotoCard from '../../../src/components/verify/PhotoCard';
+import CheckRow from '../../../src/components/ui/CheckRow';
 import * as ImagePicker from 'expo-image-picker';
 import * as WebBrowser from 'expo-web-browser';
 import {
   BadgeCheck,
-  Check,
   CircleAlert,
   Clock,
   IdCard,
@@ -63,7 +64,7 @@ import {
 import { api, ApiError } from '../../../src/lib/api';
 import { useAsyncData } from '../../../src/hooks/useAsyncData';
 import { shortDate } from '../../../src/lib/format';
-import { Spacing, V6Radii, V6Shadows } from '../../../src/constants/theme';
+import { Spacing } from '../../../src/constants/theme';
 import { useAuth } from '../../../src/context/AuthContext';
 import { useHeaderTop } from '../../../src/hooks/useHeaderTop';
 import { requestAppPermission } from '../../../src/lib/permissions';
@@ -76,9 +77,6 @@ import {
   type IdPhase,
   type VerifyDocumentType,
 } from '../../../src/lib/verifyFlow';
-
-const Radii = { card: V6Radii.card };
-const Shadows = { card: V6Shadows.sm };
 
 /** Stripe's decision comes by webhook; poll for it, but not forever. */
 const POLL_INTERVAL_MS = 4000;
@@ -101,6 +99,9 @@ const PHOTO_TIPS = [
 
 /** Reminders on the photo check. The app cannot verify these itself, so they are not ticked. */
 const PHOTO_CHECKS = ['Name and photo are sharp', 'All 4 corners are visible', 'No glare or shadows on the text'];
+
+/** The consent the provider ticks before anything is sent. Only a UI gate: what is sent does not change. */
+const CONSENT_TEXT = 'This is my own valid ID, and I agree to TaskBuddy using these photos to verify me.';
 
 /** Tips shown before the selfie. The selfie is taken with the front camera only. */
 const SELFIE_TIPS = [
@@ -134,6 +135,8 @@ export default function SPVerificationScreen({ onBack, onVerified }: SPVerificat
   /** Inside step 1: choosing the ID, then the photo tips, then the photo check. */
   const [idPhase, setIdPhase] = useState<IdPhase>('choose');
   const [documentType, setDocumentType] = useState<VerifyDocumentType | null>(null);
+  /** The consent checkbox on the review step. */
+  const [consented, setConsented] = useState(false);
   const [idAsset, setIdAsset] = useState<ImagePicker.ImagePickerAsset | null>(null);
   const [selfieAsset, setSelfieAsset] = useState<ImagePicker.ImagePickerAsset | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -299,9 +302,6 @@ export default function SPVerificationScreen({ onBack, onVerified }: SPVerificat
   const showWizard = view === 'wizard' || view === 'sending';
   const showIntro = view === 'intro' || view === 'rejected';
 
-  const canAdvance =
-    (step === 1 && !!documentType && !!idAsset) || (step === 2 && !!selfieAsset) || step === 3;
-
   /**
    * One screen back inside the wizard: selfie to ID photo, ID photo to ID
    * choice, ID choice to the intro. Anywhere else the arrow leaves the screen.
@@ -323,6 +323,8 @@ export default function SPVerificationScreen({ onBack, onVerified }: SPVerificat
 
   const onChoosingId = step === 1 && idPhase === 'choose';
   const chosenIdLabel = VERIFY_ID_TYPES.find((type) => type.value === documentType)?.label ?? 'ID';
+  /** A passport's photo is of its photo page, not its front. */
+  const idSideName = documentType === 'passport' ? 'Photo page' : 'Front';
 
   const renderStatus = () => {
     if (!verification) return null;
@@ -543,75 +545,50 @@ export default function SPVerificationScreen({ onBack, onVerified }: SPVerificat
                   </>
                 )}
 
-                {/* ── Step 3 · Automated check ───────────────────────── */}
+                {/* ── Step 3 · Review and send ───────────────────────── */}
                 {step === 3 && (
-                  <View style={styles.card}>
-                    <Text style={styles.label}>Automated Check</Text>
-                    <Text style={styles.hint}>
-                      Stripe Identity checks your ID and selfie automatically. It opens in
-                      a secure browser window and takes about a minute.
+                  <>
+                    <Text style={styles.stepTitle} accessibilityRole="header">
+                      Ready to send
                     </Text>
-
-                    <View style={styles.summaryRow}>
-                      <View style={[styles.summaryCheck, idAsset && styles.summaryCheckDone]}>
-                        {!!idAsset && <Check size={13} color={Colors.onPrimary} strokeWidth={3} />}
-                      </View>
-                      <Text style={styles.summaryText}>Government ID ready</Text>
+                    <View style={styles.photoRow}>
+                      {!!idAsset && (
+                        <PhotoCard
+                          title={idSideName}
+                          uri={idAsset.uri}
+                          retakeLabel="Retake ID photo"
+                          onRetake={() => {
+                            setIdPhase('tips');
+                            setStep(1);
+                          }}
+                        />
+                      )}
+                      {!!selfieAsset && (
+                        <PhotoCard
+                          title="Selfie"
+                          uri={selfieAsset.uri}
+                          retakeLabel="Retake selfie"
+                          onRetake={() => setStep(2)}
+                        />
+                      )}
                     </View>
-                    <View style={styles.summaryRow}>
-                      <View style={[styles.summaryCheck, selfieAsset && styles.summaryCheckDone]}>
-                        {!!selfieAsset && <Check size={13} color={Colors.onPrimary} strokeWidth={3} />}
-                      </View>
-                      <Text style={styles.summaryText}>Face scan ready</Text>
-                    </View>
-
-                    <View style={styles.privacyNote}>
-                      <Lock size={18} color={V6Colors.link} />
-                      <Text style={styles.privacyText}>
-                        Your ID and selfie are uploaded to a private storage bucket that
-                        only TaskBuddy admins can open, and are kept as a fallback in case
-                        the automated check cannot decide.
-                      </Text>
-                    </View>
-
+                    <CheckRow
+                      label={CONSENT_TEXT}
+                      checked={consented}
+                      onToggle={() => setConsented((value) => !value)}
+                    />
+                    <CalmNote
+                      icon={Lock}
+                      text="Next, Stripe opens a secure page and asks you to scan your ID and face once more to confirm it's you. Only TaskBuddy admins can see the photos you took here."
+                    />
+                    <Text style={styles.stepHint}>
+                      If Stripe isn't available, your photos go to a TaskBuddy admin for manual review.
+                    </Text>
                     {!!submitStage && <Text style={styles.stageText}>{submitStage}</Text>}
-                  </View>
+                  </>
                 )}
 
                 {!!error && <Text style={styles.errorText}>{error}</Text>}
-
-                {step === 3 && (
-                <View style={styles.wizardActions}>
-                  {step > 1 && (
-                    <Tap
-                      style={styles.backStepBtn}
-                      onPress={goBack}
-                      activeOpacity={0.85}
-                      disabled={submitting}
-                    >
-                      <Text style={styles.backStepText}>Back</Text>
-                    </Tap>
-                  )}
-                  <Tap
-                    style={[
-                      styles.submitButton,
-                      styles.wizardPrimary,
-                      !canAdvance && styles.submitButtonDisabled,
-                    ]}
-                    onPress={() => void startVerification()}
-                    activeOpacity={0.85}
-                    disabled={!canAdvance || submitting}
-                  >
-                    {submitting ? (
-                      <ActivityIndicator color={Colors.onPrimary} />
-                    ) : (
-                      <Text style={[styles.submitText, !canAdvance && styles.submitTextDisabled]}>
-                        {step === 3 ? 'Start Verification' : 'Next'}
-                      </Text>
-                    )}
-                  </Tap>
-                </View>
-                )}
 
                 {isRejected && step === 1 && (
                   <Text style={styles.retryHint}>
@@ -668,6 +645,15 @@ export default function SPVerificationScreen({ onBack, onVerified }: SPVerificat
         />
       )}
 
+      {showWizard && step === 3 && (
+        <BottomActionBar
+          primaryLabel="Continue to secure check"
+          onPrimary={() => void startVerification()}
+          primaryDisabled={!consented || profileIncomplete}
+          busy={submitting}
+        />
+      )}
+
       <ProtectSheet visible={protectOpen} onClose={() => setProtectOpen(false)} />
     </View>
   );
@@ -710,9 +696,7 @@ function createThemedStyles(theme: ThemePalette) {
       padding: 14,
     },
     noticeText: { flex: 1, color: V6Colors.ink700, fontFamily: 'Inter', fontSize: 15.5, lineHeight: 19 },
-    card: { backgroundColor: V6Colors.surface, borderRadius: Radii.card, padding: 18, ...Shadows.card },
-    label: { color: V6Colors.ink900, fontFamily: 'Inter', fontSize: 18.5, fontWeight: '800' },
-    hint: { color: V6Colors.ink500, fontFamily: 'Inter', fontSize: 15.5, marginTop: 4, marginBottom: 14, lineHeight: 20 },
+    photoRow: { flexDirection: 'row', gap: 12 },
     stepTitle: { color: V6Colors.ink900, fontFamily: 'Inter', fontSize: 22, fontWeight: '700', lineHeight: 28 },
     optionList: { gap: 8 },
     previewFrame: { height: 280, borderRadius: 14, overflow: 'hidden', backgroundColor: V6Colors.ink50 },
@@ -727,29 +711,8 @@ function createThemedStyles(theme: ThemePalette) {
       borderWidth: 1.5, borderStyle: 'dashed', borderColor: V6Colors.fieldBorder,
     },
 
-    summaryRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 6 },
-    summaryCheck: {
-      width: 21, height: 21, borderRadius: 7,
-      borderWidth: 1.5, borderColor: V6Colors.ink200,
-      alignItems: 'center', justifyContent: 'center',
-    },
-    summaryCheckDone: { backgroundColor: Colors.primary, borderColor: Colors.primary },
-    summaryText: { color: V6Colors.ink800, fontFamily: 'Inter', fontSize: 15.5 },
-    privacyNote: {
-      flexDirection: 'row', gap: 10,
-      backgroundColor: V6Colors.ink50, borderRadius: 12, padding: 13, marginTop: 12,
-    },
-    privacyText: { flex: 1, color: V6Colors.ink700, fontFamily: 'Inter', fontSize: 14, lineHeight: 19 },
     stageText: { color: V6Colors.link, fontFamily: 'Inter', fontSize: 14.5, marginTop: 12, textAlign: 'center' },
 
-    wizardActions: { flexDirection: 'row', gap: 10 },
-    wizardPrimary: { flex: 1, marginTop: 0 },
-    wizardPrimaryFull: { width: '100%' },
-    backStepBtn: {
-      paddingHorizontal: 22, borderRadius: 24, borderWidth: 1, borderColor: V6Colors.fieldBorder,
-      alignItems: 'center', justifyContent: 'center',
-    },
-    backStepText: { color: V6Colors.ink700, fontFamily: 'Inter', fontSize: 16.5, fontWeight: '700' },
     submitButton: {
       alignItems: 'center',
       justifyContent: 'center',
@@ -758,9 +721,6 @@ function createThemedStyles(theme: ThemePalette) {
       paddingVertical: 15,
       marginTop: 4,
     },
-    // Readable disabled state: grey fill with dark text instead of a faded button.
-    submitButtonDisabled: { backgroundColor: V6Colors.ink100 },
-    submitTextDisabled: { color: V6Colors.ink700 },
     submitText: { color: Colors.onPrimary, fontSize: 18.5, fontWeight: '700', fontFamily: 'Inter' },
     profileNotice: {
       backgroundColor: V6Colors.warningSurface, borderWidth: 1, borderColor: V6Colors.warningBorder,

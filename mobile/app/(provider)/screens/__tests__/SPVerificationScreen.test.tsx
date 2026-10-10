@@ -1,7 +1,8 @@
 import React from 'react';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react-native';
 import SPVerificationScreen from '../SPVerificationScreen';
-import { api } from '../../../../src/lib/api';
+import { api, ApiError } from '../../../../src/lib/api';
+import * as WebBrowser from 'expo-web-browser';
 import { useAuth } from '../../../../src/context/AuthContext';
 import { clearAsyncDataCache } from '../../../../src/hooks/useAsyncData';
 import * as ImagePicker from 'expo-image-picker';
@@ -334,5 +335,124 @@ describe('SPVerificationScreen — selfie tips and retake', () => {
     fireEvent.press(screen.getByRole('button', { name: 'Continue' }));
 
     expect(screen.getByText('STEP 4 OF 4 · REVIEW')).toBeTruthy();
+  });
+});
+
+const CONSENT = 'This is my own valid ID, and I agree to TaskBuddy using these photos to verify me.';
+const CONTINUE_LABEL = 'Continue to secure check';
+
+describe('SPVerificationScreen — review and send', () => {
+  async function toReview() {
+    (ImagePicker.launchCameraAsync as jest.Mock)
+      .mockResolvedValueOnce({ canceled: false, assets: [{ uri: 'file:///id.jpg' }] })
+      .mockResolvedValueOnce({ canceled: false, assets: [{ uri: 'file:///selfie.jpg' }] });
+    await startWizard();
+    fireEvent.press(screen.getByLabelText('PhilSys National ID, Photo of the front'));
+    fireEvent.press(screen.getByRole('button', { name: 'Continue' }));
+    fireEvent.press(screen.getByRole('button', { name: 'Take photo of the front' }));
+    await screen.findByText('Is everything readable?');
+    fireEvent.press(screen.getByRole('button', { name: 'Use this photo' }));
+    fireEvent.press(screen.getByRole('button', { name: 'Take selfie' }));
+    await screen.findByRole('button', { name: 'Continue' });
+    fireEvent.press(screen.getByRole('button', { name: 'Continue' }));
+    await screen.findByText('Ready to send');
+  }
+
+  it('shows both photos with their own Retake, and explains Stripe before anything opens', async () => {
+    await toReview();
+
+    expect(screen.getByLabelText('Front photo')).toBeTruthy();
+    expect(screen.getByLabelText('Selfie photo')).toBeTruthy();
+    expect(screen.getByLabelText('Retake ID photo')).toBeTruthy();
+    expect(screen.getByLabelText('Retake selfie')).toBeTruthy();
+    expect(
+      screen.getByText(/Next, Stripe opens a secure page and asks you to scan your ID and face once more/),
+    ).toBeTruthy();
+    expect(screen.getByText(/Only TaskBuddy admins can see the photos you took here/)).toBeTruthy();
+    expect(
+      screen.getByText(/If Stripe isn't available, your photos go to a TaskBuddy admin for manual review/),
+    ).toBeTruthy();
+    expect(WebBrowser.openBrowserAsync).not.toHaveBeenCalled();
+  });
+
+  it('keeps Continue to secure check off until the consent is ticked', async () => {
+    await toReview();
+
+    expect(screen.getByRole('button', { name: CONTINUE_LABEL })).toBeDisabled();
+    fireEvent.press(screen.getByRole('checkbox', { name: CONSENT }));
+    expect(screen.getByRole('button', { name: CONTINUE_LABEL })).not.toBeDisabled();
+  });
+
+  it('starts the same uploads and identity session as before, with the chosen ID type', async () => {
+    (api.uploadImage as jest.Mock)
+      .mockResolvedValueOnce('verification-docs/id.jpg')
+      .mockResolvedValueOnce('verification-docs/selfie.jpg');
+    (api.startIdentitySession as jest.Mock).mockResolvedValueOnce({ url: 'https://stripe.test/session' });
+    (WebBrowser.openBrowserAsync as jest.Mock).mockResolvedValueOnce({ type: 'cancel' });
+    await toReview();
+
+    fireEvent.press(screen.getByRole('checkbox', { name: CONSENT }));
+    fireEvent.press(screen.getByRole('button', { name: CONTINUE_LABEL }));
+
+    await waitFor(() => expect(api.startIdentitySession).toHaveBeenCalledTimes(1));
+    expect(api.uploadImage).toHaveBeenNthCalledWith(1, 'verification-docs', 'file:///id.jpg');
+    expect(api.uploadImage).toHaveBeenNthCalledWith(2, 'verification-docs', 'file:///selfie.jpg');
+    expect(api.startIdentitySession).toHaveBeenCalledWith({
+      id_document_path: 'verification-docs/id.jpg',
+      selfie_path: 'verification-docs/selfie.jpg',
+      document_type: 'philsys',
+    });
+    expect(WebBrowser.openBrowserAsync).toHaveBeenCalledWith('https://stripe.test/session');
+    expect(api.submitVerification).not.toHaveBeenCalled();
+  });
+
+  it('falls back to a manual review when Stripe answers with a server error, as before', async () => {
+    (api.uploadImage as jest.Mock)
+      .mockResolvedValueOnce('verification-docs/id.jpg')
+      .mockResolvedValueOnce('verification-docs/selfie.jpg');
+    (api.startIdentitySession as jest.Mock).mockRejectedValueOnce(
+      new ApiError('Stripe Identity is not configured', 503),
+    );
+    (api.submitVerification as jest.Mock).mockResolvedValueOnce({ id: 'v1', status: 'pending' });
+    await toReview();
+
+    fireEvent.press(screen.getByRole('checkbox', { name: CONSENT }));
+    fireEvent.press(screen.getByRole('button', { name: CONTINUE_LABEL }));
+
+    await waitFor(() =>
+      expect(api.submitVerification).toHaveBeenCalledWith({
+        id_document_path: 'verification-docs/id.jpg',
+        selfie_path: 'verification-docs/selfie.jpg',
+        document_type: 'philsys',
+      }),
+    );
+  });
+
+  it('shows a client error such as a rate limit as it is, with no manual submission', async () => {
+    (api.uploadImage as jest.Mock)
+      .mockResolvedValueOnce('verification-docs/id.jpg')
+      .mockResolvedValueOnce('verification-docs/selfie.jpg');
+    (api.startIdentitySession as jest.Mock).mockRejectedValueOnce(
+      new ApiError('Too many attempts. Try later.', 429),
+    );
+    await toReview();
+
+    fireEvent.press(screen.getByRole('checkbox', { name: CONSENT }));
+    fireEvent.press(screen.getByRole('button', { name: CONTINUE_LABEL }));
+
+    expect(await screen.findByText('Too many attempts. Try later.')).toBeTruthy();
+    expect(api.submitVerification).not.toHaveBeenCalled();
+  });
+
+  it('sends each Retake back to its own photo step', async () => {
+    await toReview();
+
+    fireEvent.press(screen.getByLabelText('Retake selfie'));
+    expect(screen.getByText('Now a quick selfie')).toBeTruthy();
+    fireEvent.press(screen.getByRole('button', { name: 'Continue' }));
+    await screen.findByText('Ready to send');
+
+    fireEvent.press(screen.getByLabelText('Retake ID photo'));
+    expect(screen.getByText('Get a clear photo of your PhilSys National ID')).toBeTruthy();
   });
 });
