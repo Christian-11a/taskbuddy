@@ -92,7 +92,7 @@ for (const Screen of [HOEditProfileScreen, SPEditProfileScreen]) {
     );
     await act(async () => {});
     fireEvent.press(screen.getByText('Select GPS address'));
-    fireEvent.press(screen.getByText('Save Changes'));
+    fireEvent.press(screen.getByText('Save changes'));
     await act(async () => fireEvent.press(screen.getByText('Confirm save')));
     expect(api.updateProfile).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -116,7 +116,7 @@ for (const Screen of [HOEditProfileScreen, SPEditProfileScreen]) {
     await act(async () => {});
     fireEvent.press(screen.getByText('Select GPS address'));
     fireEvent.changeText(screen.getByTestId('address'), 'New street');
-    fireEvent.press(screen.getByText('Save Changes'));
+    fireEvent.press(screen.getByText('Save changes'));
     await act(async () => fireEvent.press(screen.getByText('Confirm save')));
     expect(api.updateProfile).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -139,7 +139,7 @@ for (const Screen of [HOEditProfileScreen, SPEditProfileScreen]) {
       screen.getByPlaceholderText('City / Municipality'),
       'Batangas',
     );
-    fireEvent.press(screen.getByText('Save Changes'));
+    fireEvent.press(screen.getByText('Save changes'));
     await act(async () => fireEvent.press(screen.getByText('Confirm save')));
     expect(api.updateProfile).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -155,7 +155,7 @@ it('shows an expired-reference error and leaves the form available for a new sel
   );
   render(<HOEditProfileScreen onBack={jest.fn()} onSave={jest.fn()} />);
   fireEvent.press(screen.getByText('Select GPS address'));
-  fireEvent.press(screen.getByText('Save Changes'));
+  fireEvent.press(screen.getByText('Save changes'));
   await act(async () => fireEvent.press(screen.getByText('Confirm save')));
   await waitFor(() =>
     expect(

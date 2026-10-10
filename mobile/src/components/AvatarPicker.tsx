@@ -23,6 +23,7 @@ import {
 import Tap from './ui/Tap';
 import Silhouette from './ui/Silhouette';
 import * as ImagePicker from 'expo-image-picker';
+import { Camera } from 'lucide-react-native';
 
 import { useAuth } from '../context/AuthContext';
 import { api } from '../lib/api';
@@ -73,9 +74,18 @@ export default function AvatarPicker({ name }: { name: string }) {
           <Silhouette name={name} textStyle={styles.avatarText} />
         )}
       </View>
-      <Tap activeOpacity={0.7} onPress={() => void changePhoto()} disabled={busy}>
+      <Tap
+        style={styles.changePhotoBtn}
+        activeOpacity={0.7}
+        onPress={() => void changePhoto()}
+        disabled={busy}
+        hitSlop={14}
+        accessibilityRole="button"
+        accessibilityLabel="Change photo"
+      >
+        {!busy && <Camera size={14} color={V6Colors.link} />}
         <Text style={styles.changePhotoLink}>
-          {busy ? 'Uploading…' : 'Change Photo'}
+          {busy ? 'Uploading…' : 'Change photo'}
         </Text>
       </Tap>
       {!!error && <Text style={styles.errorText}>{error}</Text>}
@@ -95,6 +105,7 @@ function createThemedStyles(theme: ThemePalette) {
     },
     avatarImage: { width: '100%', height: '100%' },
     avatarText: { color: C.primaryDeep, fontSize: 26, fontWeight: '800', fontFamily: 'Inter' },
+    changePhotoBtn: { flexDirection: 'row', alignItems: 'center', gap: 6 },
     changePhotoLink: { fontSize: 14, color: V6Colors.link, fontWeight: '700', fontFamily: 'Inter' },
     errorText: { color: V6Colors.dangerText, fontSize: 13, fontFamily: 'Inter', marginTop: 6, textAlign: 'center' },
   });
