@@ -140,3 +140,37 @@ it('the review lists everything entered, and each Edit link goes back to its ste
   fireEvent.press(screen.getByRole('button', { name: 'Edit Description' }));
   expect(await screen.findByText('What needs doing?')).toBeTruthy();
 });
+
+it('while posting shows only the steps that really run, and a failed post returns to Review', async () => {
+  (api.categories as jest.Mock).mockResolvedValue([{ id: 1, name: 'Plumbing' }]);
+  (api.uploadImage as jest.Mock).mockResolvedValue('client/photo.jpg');
+  let rejectPost: (error: Error) => void = () => {};
+  (api.createJob as jest.Mock).mockImplementation(
+    () => new Promise((_resolve, reject) => { rejectPost = reject; }),
+  );
+  (ImagePicker.launchImageLibraryAsync as jest.Mock).mockResolvedValue({ canceled: false, assets: [{ uri: 'file:///one' }] });
+  render(<HOCreateJobScreen initialCategoryId={1} onBack={jest.fn()} onSuccess={jest.fn()} />);
+  await screen.findByText('Location confirmed');
+  fireEvent.press(screen.getByText('Next'));
+  fireEvent.press(await screen.findByText('Fix leaking faucet'));
+  await act(async () => fireEvent.press(screen.getByText('Add photos (optional)')));
+  fireEvent.press(screen.getByText('Next'));
+  fireEvent.press(await screen.findByText('Pick a date'));
+  fireEvent.press(screen.getByText('Choose test date'));
+  fireEvent.press(screen.getByText('Pick a time'));
+  fireEvent.press(screen.getByText('Choose test time'));
+  if (screen.queryByText('Done')) fireEvent.press(screen.getByText('Done'));
+  fireEvent.changeText(screen.getByPlaceholderText('0.00'), '1500');
+  fireEvent.press(screen.getByText('Next'));
+  await act(async () => fireEvent.press(screen.getByText('Post job')));
+
+  expect(await screen.findByText('Posting your job...')).toBeTruthy();
+  expect(screen.getByLabelText('Uploading photos: done')).toBeTruthy();
+  expect(screen.getByLabelText('Posting your job: in progress', { exact: false })).toBeTruthy();
+  expect(screen.queryByText('Post job')).toBeNull();
+
+  await act(async () => rejectPost(new Error('Network is down')));
+  expect(await screen.findByText('Network is down')).toBeTruthy();
+  expect(screen.getByTestId('create-job-review')).toBeTruthy();
+  expect(screen.getByText('Post job')).toBeTruthy();
+});

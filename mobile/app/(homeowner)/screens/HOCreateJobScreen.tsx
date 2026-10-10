@@ -103,6 +103,7 @@ import PostProgress from '../../../src/components/post/PostProgress';
 import ServiceTile from '../../../src/components/post/ServiceTile';
 import CalmNote from '../../../src/components/post/CalmNote';
 import ReviewRow from '../../../src/components/post/ReviewRow';
+import PostingChecklist, { type PostingStep } from '../../../src/components/post/PostingChecklist';
 import Banner from '../../../src/components/ui/Banner';
 import AddTaskRow from '../../../src/components/post/AddTaskRow';
 import UrgencyRow from '../../../src/components/post/UrgencyRow';
@@ -617,6 +618,16 @@ export default function HOCreateJobScreen({
 
   const urgencyLabel = URGENCY_OPTIONS.find((o) => o.value === urgency)?.label ?? '';
   const whenLine = [dateLabel, timeLabel, urgencyLabel].filter(Boolean).join(' · ') || 'Not set';
+  // Only the steps the submit really runs: photos go up first, but only when there are any.
+  const photoStep: PostingStep = {
+    key: 'photos',
+    label: 'Uploading photos',
+    state: submitPhase === 'posting' ? 'done' : 'active',
+  };
+  const postingSteps: PostingStep[] = [
+    ...(photos.length > 0 ? [photoStep] : []),
+    { key: 'post', label: 'Posting your job', state: 'active' },
+  ];
 
   if (step === 6) {
     // Success screen. Scrolls rather than a fixed centered View — a long
@@ -675,7 +686,7 @@ export default function HOCreateJobScreen({
       <PhotoViewer photos={photos} index={photoIndex} onIndexChange={setPhotoIndex}
         onClose={() => setPhotoIndex(null)} />
       <PostAppBar title="Post a job" onBack={handleExit} topInset={headerTop} />
-      <PostProgress step={step} total={totalSteps} label={STEP_LABELS[step - 1]} />
+      {!submitting && <PostProgress step={step} total={totalSteps} label={STEP_LABELS[step - 1]} />}
 
       <KeyboardAvoidingView
         style={styles.body}
@@ -692,7 +703,16 @@ export default function HOCreateJobScreen({
           keyboardShouldPersistTaps="handled"
         >
         {/* ── Step 1 · Service ─────────────────────────────────────────── */}
-        {step === 1 && (
+        {/* ── Posting · the submit, shown as the steps that really happen ──── */}
+        {submitting && (
+          <View>
+            <Text style={styles.stepTitle}>Posting your job...</Text>
+            <Text style={styles.stepSubtitle}>This usually takes a few seconds. Please keep the app open.</Text>
+            <PostingChecklist steps={postingSteps} />
+          </View>
+        )}
+
+        {!submitting && step === 1 && (
           <View>
             <Text style={styles.stepTitle}>What do you need help with?</Text>
             {/* Skeleton tiles in the grid's own shape, so the step doesn't
@@ -736,7 +756,7 @@ export default function HOCreateJobScreen({
         )}
 
         {/* ── Step 2 · Location ────────────────────────────────────────── */}
-        {step === 2 && (
+        {!submitting && step === 2 && (
           <View>
             <Text style={styles.stepTitle}>Where is the job?</Text>
             <Text style={styles.stepSubtitle}>Providers see this on the job.</Text>
@@ -806,7 +826,7 @@ export default function HOCreateJobScreen({
         )}
 
         {/* ── Step 3 · Tasks ───────────────────────────────────────────── */}
-        {step === 3 && (
+        {!submitting && step === 3 && (
           <View>
             <Text style={styles.stepTitle}>What needs doing?</Text>
             <Text style={styles.stepSubtitle}>
@@ -927,7 +947,7 @@ export default function HOCreateJobScreen({
         )}
 
         {/* ── Step 4 · Urgency, schedule & budget ──────────────────────── */}
-        {step === 4 && (
+        {!submitting && step === 4 && (
           <View>
             <Text style={styles.stepTitle}>When, and how much?</Text>
             <Text style={styles.sectionLabel}>How soon?</Text>
@@ -1001,7 +1021,7 @@ export default function HOCreateJobScreen({
         )}
 
         {/* ── Step 5 · Review ──────────────────────────────────────────── */}
-        {step === 5 && (
+        {!submitting && step === 5 && (
           <View testID="create-job-review">
             <Text testID="create-job-review-title" style={styles.stepTitle}>Check your job</Text>
 
@@ -1049,21 +1069,14 @@ export default function HOCreateJobScreen({
         </ScrollView>
         {/* The bar lives inside the keyboard-avoiding view, so it rises above the keyboard
             instead of hiding under it. BUG-005: the bar keeps clear of the system nav bar. */}
-        <PostFooter
-          onBack={step > 1 ? handleStepBack : undefined}
-          backDisabled={submitting}
-          onNext={handleNext}
-          nextLabel={
-            submitPhase === 'uploading'
-              ? 'Uploading photos…'
-              : submitPhase === 'posting'
-                ? 'Posting…'
-                : step === totalSteps
-                  ? 'Post job'
-                  : 'Next'
-          }
-          busy={submitting || stepBusy}
-        />
+        {!submitting && (
+          <PostFooter
+            onBack={step > 1 ? handleStepBack : undefined}
+            onNext={handleNext}
+            nextLabel={step === totalSteps ? 'Post job' : 'Next'}
+            busy={stepBusy}
+          />
+        )}
       </KeyboardAvoidingView>
 
       <ConfirmationModal
