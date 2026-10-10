@@ -121,7 +121,7 @@ export default function ChatThread({
         <Tap
           onPress={onViewJob}
           activeOpacity={0.8}
-          hitSlop={{ top: 12, bottom: 12, left: 8, right: 8 }}
+          hitSlop={{ top: 15, bottom: 15, left: 8, right: 8 }}
           accessibilityRole="button"
           accessibilityLabel="View job"
         >
