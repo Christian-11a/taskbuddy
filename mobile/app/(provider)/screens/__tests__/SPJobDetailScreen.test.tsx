@@ -148,16 +148,37 @@ describe('FullTest provider job details', () => {
     expect(screen.queryByText('Accept Booking')).toBeNull();
   });
 
-  it('starts confirmed work directly without accepting the booking again', async () => {
+  it('starts confirmed work after the provider confirms, without accepting the booking again', async () => {
     const confirmed = { ...openJob, status: 'confirmed', assigned_provider_id: PROVIDER_ID };
     (api.getJob as jest.Mock).mockResolvedValueOnce(confirmed)
       .mockResolvedValue({ ...confirmed, status: 'in_progress' });
     (api.startJob as jest.Mock).mockResolvedValue({ ...confirmed, status: 'in_progress' });
     render(<SPJobDetailScreen jobId={JOB_ID} onBack={jest.fn()} onNavigate={jest.fn()} />);
     fireEvent.press(await screen.findByText('Start job'));
+    fireEvent.press(screen.getByLabelText("I'm here, start job"));
     await waitFor(() => expect(api.startJob).toHaveBeenCalledWith(JOB_ID));
+    expect(api.startJob).toHaveBeenCalledTimes(1);
     await screen.findByText('WORKING');
     expect(screen.queryByText('Start job')).toBeNull();
+  });
+
+  it('Start job asks first and does not start the job on its own', async () => {
+    (api.getJob as jest.Mock).mockResolvedValue({ ...openJob, status: 'confirmed', assigned_provider_id: PROVIDER_ID });
+    render(<SPJobDetailScreen jobId={JOB_ID} onBack={jest.fn()} onNavigate={jest.fn()} />);
+    fireEvent.press(await screen.findByText('Start job'));
+    expect(screen.getByText('Start the job now?')).toBeTruthy();
+    expect(screen.getByText("Do this when you're at 123 Main St. The client gets a notification that you've started.")).toBeTruthy();
+    expect(api.startJob).not.toHaveBeenCalled();
+  });
+
+  it('Not yet closes the confirm and does not start the job', async () => {
+    (api.getJob as jest.Mock).mockResolvedValue({ ...openJob, status: 'confirmed', assigned_provider_id: PROVIDER_ID });
+    render(<SPJobDetailScreen jobId={JOB_ID} onBack={jest.fn()} onNavigate={jest.fn()} />);
+    fireEvent.press(await screen.findByText('Start job'));
+    fireEvent.press(screen.getByLabelText('Not yet'));
+    await waitFor(() => expect(screen.queryByText('Start the job now?')).toBeNull());
+    expect(api.startJob).not.toHaveBeenCalled();
+    expect(screen.getByText('Start job')).toBeTruthy();
   });
 
   it('lets a legacy assigned booking start without another acceptance', async () => {

@@ -125,6 +125,7 @@ export default function SPJobDetailScreen({ jobId, onBack, onNavigate }: SPJobDe
   const [declineOpen, setDeclineOpen] = useState(false);
   const [proposalOpen, setProposalOpen] = useState(false);
   const [withdrawOpen, setWithdrawOpen] = useState(false);
+  const [startOpen, setStartOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   // Which checklist row is mid-flight, so only that row shows a spinner.
@@ -153,6 +154,10 @@ export default function SPJobDetailScreen({ jobId, onBack, onNavigate }: SPJobDe
     name: clientConversation?.counterpart_name || 'Client',
     avatarUrl: clientConversation?.counterpart_avatar_url ?? null,
   };
+  const startAddress = job?.address?.trim();
+  const startMessage = startAddress
+    ? `Do this when you're at ${startAddress}. The client gets a notification that you've started.`
+    : "Do this when you're at the job.";
 
   const errorMessage = (e: unknown) =>
     e instanceof ApiError ? e.message : 'Something went wrong. Please try again.';
@@ -235,6 +240,14 @@ export default function SPJobDetailScreen({ jobId, onBack, onNavigate }: SPJobDe
     }
   };
 
+  // The same call the Start job button made before the confirm existed. The
+  // dialog stays open (and locked) while it runs, then closes; a failure shows
+  // under the bar.
+  const confirmStart = async (current: Job) => {
+    await runAction(() => api.startJob(current.id));
+    setStartOpen(false);
+  };
+
   const toggleTask = async (task: JobTask) => {
     if (!job || !tasksEditable || pendingTaskId) return;
     setPendingTaskId(task.id);
@@ -268,7 +281,8 @@ export default function SPJobDetailScreen({ jobId, onBack, onNavigate }: SPJobDe
         onNavigate('Dashboard');
         return;
       case 'startJob':
-        void runAction(() => api.startJob(current.id));
+        // Asks first: starting the job notifies the client, so a stray tap must not do it.
+        setStartOpen(true);
         return;
       case 'declineBooking':
         setDeclineOpen(true);
@@ -511,6 +525,19 @@ export default function SPJobDetailScreen({ jobId, onBack, onNavigate }: SPJobDe
         busy={busy}
         onConfirm={() => void submitWithdraw()}
         onCancel={() => setWithdrawOpen(false)}
+      />
+
+      <ConfirmationModal
+        visible={startOpen}
+        title="Start the job now?"
+        message={startMessage}
+        confirmLabel="I'm here, start job"
+        cancelLabel="Not yet"
+        busy={busy}
+        onConfirm={() => {
+          if (job) void confirmStart(job);
+        }}
+        onCancel={() => setStartOpen(false)}
       />
     </View>
   );
