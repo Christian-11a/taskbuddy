@@ -45,7 +45,7 @@ it('posts from review without another terms acceptance and retains form state af
   await screen.findByText('Location confirmed');
   fireEvent.press(screen.getByText('Next'));
   fireEvent.press(await screen.findByText('Fix leaking faucet'));
-  await act(async () => fireEvent.press(screen.getByText('Add photos')));
+  await act(async () => fireEvent.press(screen.getByText('Add photos (optional)')));
   fireEvent.press(screen.getByText('Next'));
   fireEvent.press(await screen.findByText('Select a date'));
   fireEvent.press(screen.getByText('Choose test date'));

@@ -68,6 +68,7 @@ import SheetFrame from '../../../src/components/ui/SheetFrame';
 import SuccessMark from '../../../src/components/ui/SuccessMark';
 import {
   BrushCleaning,
+  Camera,
   Check,
   CheckCircle2,
   ChevronLeft,
@@ -77,7 +78,6 @@ import {
   Hammer,
   Hand,
   MapPin,
-  Plus,
   Sparkles,
   Wrench,
   Zap,
@@ -101,6 +101,9 @@ import PostFooter from '../../../src/components/post/PostFooter';
 import PostProgress from '../../../src/components/post/PostProgress';
 import ServiceTile from '../../../src/components/post/ServiceTile';
 import CalmNote from '../../../src/components/post/CalmNote';
+import AddTaskRow from '../../../src/components/post/AddTaskRow';
+import CheckRow from '../../../src/components/ui/CheckRow';
+import TextField from '../../../src/components/ui/TextField';
 import { requestAppPermission } from '../../../src/lib/permissions';
 
 const Shadows = { card: V6Shadows.sm, input: V6Shadows.sm };
@@ -851,69 +854,22 @@ export default function HOCreateJobScreen({
             </Text>
 
             <View style={styles.taskList}>
-              {presets.map((preset) => {
-                const selected = tasks.includes(preset);
-                return (
-                  <Tap
-                    key={preset}
-                    style={[styles.taskChip, selected && styles.taskChipActive]}
-                    onPress={() => toggleTask(preset)}
-                    activeOpacity={0.85}
-                    accessibilityRole="checkbox"
-                    accessibilityState={{ checked: selected }}
-                  >
-                    <View style={[styles.taskCheck, selected && styles.taskCheckActive]}>
-                      {selected && <Check size={13} color={Colors.onPrimary} strokeWidth={3} />}
-                    </View>
-                    <Text style={[styles.taskChipText, selected && styles.taskChipTextActive]}>
-                      {preset}
-                    </Text>
-                  </Tap>
-                );
-              })}
+              {presets.map((preset) => (
+                <CheckRow
+                  key={preset}
+                  label={preset}
+                  checked={tasks.includes(preset)}
+                  onToggle={() => toggleTask(preset)}
+                />
+              ))}
+              {/* Tasks the homeowner added themselves: checked, so tapping one takes it off. */}
+              {tasks.filter((t) => !presets.includes(t)).map((t) => (
+                <CheckRow key={`custom-${t}`} label={t} checked onToggle={() => toggleTask(t)} />
+              ))}
             </View>
 
-            {/* Tasks the homeowner added themselves — shown apart so they can
-                be removed even though they are not in the preset list. */}
-            {tasks.filter((t) => !presets.includes(t)).length > 0 && (
-              <View style={styles.customList}>
-                {tasks
-                  .filter((t) => !presets.includes(t))
-                  .map((t) => (
-                    <View key={t} style={styles.customTaskRow}>
-                      <View style={[styles.taskCheck, styles.taskCheckActive]}>
-                        <Check size={13} color={Colors.onPrimary} strokeWidth={3} />
-                      </View>
-                      <Text style={styles.customTaskText}>{t}</Text>
-                      <Tap onPress={() => toggleTask(t)} hitSlop={10}>
-                        <Text style={styles.removeTaskText}>Remove</Text>
-                      </Tap>
-                    </View>
-                  ))}
-              </View>
-            )}
-
             <View style={styles.addTaskRow}>
-              <TextInput keyboardAppearance={appearance}
-                style={[styles.input, styles.addTaskInput, focusedField === 'customTask' && styles.inputFocused]}
-                placeholder="Add your own task"
-                placeholderTextColor={Colors.muted}
-                value={customTask}
-                onChangeText={setCustomTask}
-                onFocus={() => setFocusedField('customTask')}
-                onBlur={() => setFocusedField(null)}
-                onSubmitEditing={addCustomTask}
-                returnKeyType="done"
-                maxLength={120}
-              />
-              <Tap
-                style={[styles.addTaskBtn, !customTask.trim() && styles.addTaskBtnDisabled]}
-                onPress={addCustomTask}
-                activeOpacity={0.85}
-                disabled={!customTask.trim()}
-              >
-                <Plus size={20} color={Colors.onPrimary} />
-              </Tap>
+              <AddTaskRow value={customTask} onChangeText={setCustomTask} onSubmit={addCustomTask} />
             </View>
             <Text style={styles.taskCount}>
               {tasks.length}/{MAX_TASKS} tasks selected
@@ -923,86 +879,70 @@ export default function HOCreateJobScreen({
             <View style={styles.divider} />
 
             <View onLayout={(event) => { fieldPositions.current.title = event.nativeEvent.layout.y; }} style={styles.inputGroup}>
-              <Text style={styles.inputLabel}>Job Title<Text style={styles.requiredAsterisk}> *</Text></Text>
-              <TextInput keyboardAppearance={appearance}
-                style={[styles.input, focusedField === 'title' && styles.inputFocused, fieldErrors.title && styles.inputError]}
+              <TextField
+                label="Job title"
                 placeholder="e.g. 3-bedroom apartment deep clean"
-                placeholderTextColor={Colors.muted}
                 value={title}
                 onChangeText={(value) => {
                   setTitle(value);
                   setTitleTouched(true);
                   clearError('title');
                 }}
-                onFocus={() => {
-                  setFocusedField('title');
-                  clearError('title');
-                }}
-                onBlur={() => setFocusedField(null)}
+                helper="Written for you from the tasks; edit if you like"
+                error={fieldErrors.title}
+                submitted
                 maxLength={120}
               />
-              {!!fieldErrors.title && <Text style={styles.inputErrorText}>{fieldErrors.title}</Text>}
             </View>
 
             <KeyboardAvoidingView onLayout={(event) => { fieldPositions.current.description = event.nativeEvent.layout.y; }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
             <View style={styles.inputGroup}>
-              <Text style={styles.inputLabel}>Description<Text style={styles.requiredAsterisk}> *</Text></Text>
-              <View style={styles.textAreaWrap}>
-                <TextInput keyboardAppearance={appearance}
-                  style={[
-                    styles.input,
-                    styles.textArea,
-                    focusedField === 'description' && styles.inputFocused,
-                    fieldErrors.description && styles.inputError,
-                    descriptionHeight ? { height: descriptionHeight } : {},
-                  ]}
-                  placeholder="Describe the job in detail..."
-                  placeholderTextColor={Colors.muted}
-                  value={description}
-                  onChangeText={(value) => {
-                    setDescription(value);
-                    setDescriptionTouched(true);
-                    clearError('description');
-                  }}
-                  onFocus={() => {
-                    setFocusedField('description');
-                    clearError('description');
-                  }}
-                  onBlur={() => setFocusedField(null)}
-                  multiline
-                  numberOfLines={3}
-                  onContentSizeChange={(e) => {
-                    const h = e.nativeEvent.contentSize.height;
-                    const minH = 20 * 3; // approx lineHeight 20
-                    setDescriptionHeight(Math.max(h, minH));
-                  }}
-                  maxLength={750}
-                />
-                <Text style={styles.charCount}>{description.length}/750</Text>
-              </View>
-              {!!fieldErrors.description && <Text style={styles.inputErrorText}>{fieldErrors.description}</Text>}
+              <TextField
+                label="Description"
+                placeholder="Describe the job in detail..."
+                value={description}
+                onChangeText={(value) => {
+                  setDescription(value);
+                  setDescriptionTouched(true);
+                  clearError('description');
+                }}
+                helper="Written for you from the tasks; edit if you like"
+                error={fieldErrors.description}
+                submitted
+                multiline
+                numberOfLines={3}
+                style={descriptionHeight ? { height: descriptionHeight } : undefined}
+                onContentSizeChange={(e) => {
+                  const h = e.nativeEvent.contentSize.height;
+                  const minH = 20 * 3; // approx lineHeight 20
+                  setDescriptionHeight(Math.max(h, minH));
+                }}
+                maxLength={750}
+              />
+              <Text style={styles.charCount}>{description.length}/750</Text>
             </View>
             </KeyboardAvoidingView>
 
             <View style={styles.inputGroup}>
-              <Text style={styles.inputLabel}>Photos (optional)</Text>
               <Tap
                 style={styles.photoPicker}
                 onPress={() => void pickPhotos()}
                 activeOpacity={0.8}
                 disabled={pickingPhotos}
+                accessibilityRole="button"
+                accessibilityLabel="Add photos (optional)"
               >
-                {pickingPhotos ? (
-                  <>
-                    <ActivityIndicator size="small" color={V6Colors.link} />
-                    <Text style={styles.photoPickerHint}>Opening your photo library…</Text>
-                  </>
-                ) : (
-                  <>
-                    <Text style={styles.photoPickerTitle}>Add photos</Text>
-                    <Text style={styles.photoPickerHint}>Up to 6 images to help providers understand the job.</Text>
-                  </>
-                )}
+                <View style={styles.photoWell}>
+                  {pickingPhotos
+                    ? <ActivityIndicator size="small" color={V6Colors.link} />
+                    : <Camera size={22} color={V6Colors.link} />}
+                </View>
+                <View style={styles.photoText}>
+                  <Text style={styles.photoPickerTitle}>
+                    {pickingPhotos ? 'Opening your photo library…' : 'Add photos (optional)'}
+                  </Text>
+                  <Text style={styles.photoPickerHint}>Helps providers understand the job</Text>
+                </View>
               </Tap>
               {!!photoMessage && <Text style={styles.inputErrorText}>{photoMessage}</Text>}
               {photos.length > 0 && (
@@ -1388,54 +1328,26 @@ function createThemedStyles(theme: ThemePalette) {
     calendarTitle: { color: V6Colors.ink900, fontSize: 21.5, fontWeight: '800', fontFamily: 'Inter' },
     calendarClose: { color: V6Colors.link, fontSize: 16.5, fontWeight: '700', fontFamily: 'Inter' },
 
-    // Room for a few lines plus the counter in the corner (I9).
-    textArea: { textAlignVertical: 'top', minHeight: 128, paddingTop: 12, paddingBottom: 28 },
-    textAreaWrap: { position: 'relative' },
-    charCount: { position: 'absolute', right: 12, bottom: 8, color: Colors.muted, fontSize: 14.5 },
+    charCount: { alignSelf: 'flex-end', color: V6Colors.ink500, fontSize: 13, fontFamily: 'Inter', marginTop: 6 },
 
-    // Task selection
-    taskList: { gap: 9 },
-    taskChip: {
-      flexDirection: 'row', alignItems: 'center', gap: 11,
-      backgroundColor: Colors.surface, borderRadius: 14, padding: 14,
-      borderWidth: 1.5, borderColor: V6Colors.line,
-    },
-    taskChipActive: { borderColor: Colors.brandTeal, backgroundColor: V6Colors.infoSurface },
-    taskCheck: {
-      width: 21, height: 21, borderRadius: 7,
-      borderWidth: 1.5, borderColor: V6Colors.ink200,
-      alignItems: 'center', justifyContent: 'center',
-    },
-    taskCheckActive: { backgroundColor: Colors.brandTeal, borderColor: Colors.brandTeal },
-    taskChipText: { flex: 1, color: Colors.ink800, fontSize: 15.5, fontFamily: 'Inter' },
-    taskChipTextActive: { color: V6Colors.ink900, fontWeight: '700' },
-
-    customList: { marginTop: 9, gap: 9 },
-    customTaskRow: {
-      flexDirection: 'row', alignItems: 'center', gap: 11,
-      backgroundColor: V6Colors.infoSurface, borderRadius: 14, padding: 14,
-      borderWidth: 1.5, borderColor: Colors.brandTeal,
-    },
-    customTaskText: { flex: 1, color: V6Colors.ink900, fontSize: 15.5, fontWeight: '700', fontFamily: 'Inter' },
-    removeTaskText: { color: Colors.error, fontSize: 13.5, fontWeight: '700', fontFamily: 'Inter' },
-
-    addTaskRow: { flexDirection: 'row', gap: 9, marginTop: 12 },
-    addTaskInput: { flex: 1 },
-    addTaskBtn: {
-      width: 48, borderRadius: 12, backgroundColor: Colors.brandTeal,
-      alignItems: 'center', justifyContent: 'center',
-    },
-    addTaskBtnDisabled: { opacity: 0.4 },
-    taskCount: { color: Colors.muted, fontSize: 13.5, fontFamily: 'Inter', marginTop: 8 },
+    // Task selection: whole-row CheckRows, then the add row
+    taskList: { gap: 8 },
+    addTaskRow: { marginTop: 12 },
+    taskCount: { color: V6Colors.ink500, fontSize: 13, fontFamily: 'Inter', marginTop: 10 },
 
     divider: { height: 1, backgroundColor: V6Colors.line, marginVertical: 22 },
 
     photoPicker: {
-      backgroundColor: Colors.surface, borderRadius: 12, padding: 16,
-      borderWidth: 1, borderStyle: 'dashed', borderColor: Colors.brandTeal,
+      flexDirection: 'row', alignItems: 'center', gap: 14, minHeight: 72, padding: 14, borderRadius: 16,
+      backgroundColor: Colors.surface, borderWidth: 1.5, borderStyle: 'dashed', borderColor: Colors.primary,
     },
-    photoPickerTitle: { color: V6Colors.link, fontSize: 18.5, fontWeight: '700', fontFamily: 'Inter', marginBottom: 4 },
-    photoPickerHint: { color: Colors.slate, fontSize: 14.5, fontFamily: 'Inter', lineHeight: 18 },
+    photoWell: {
+      width: 48, height: 48, borderRadius: 12, alignItems: 'center', justifyContent: 'center',
+      backgroundColor: Colors.primaryTonal,
+    },
+    photoText: { flex: 1 },
+    photoPickerTitle: { color: V6Colors.ink900, fontSize: 15, fontWeight: '700', fontFamily: 'Inter' },
+    photoPickerHint: { color: V6Colors.ink500, fontSize: 13.5, fontFamily: 'Inter', lineHeight: 18, marginTop: 2 },
     photoList: { gap: 10, paddingTop: 12 },
     photoPreview: { width: 72, height: 72, borderRadius: 10, overflow: 'visible' },
     photoImage: { width: 72, height: 72, borderRadius: 10, backgroundColor: V6Colors.ink100 },
