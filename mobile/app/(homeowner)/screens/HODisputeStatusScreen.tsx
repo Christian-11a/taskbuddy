@@ -1,13 +1,13 @@
 import { useThemedStyles, type Palette as ThemePalette } from '../../../src/context/ThemeContext';
 import React, { useRef, useState } from 'react';
-import { ActivityIndicator, Image, KeyboardAvoidingView, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Image, KeyboardAvoidingView, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import Tap from '../../../src/components/ui/Tap';
 import StatusCard from '../../../src/components/ui/StatusCard';
 import TextField from '../../../src/components/ui/TextField';
 import BottomActionBar from '../../../src/components/ui/BottomActionBar';
 import SheetFrame from '../../../src/components/ui/SheetFrame';
 import ConfirmationModal from '../../../src/components/ConfirmationModal';
-import { ArrowLeft, Check, Paperclip, RefreshCw, Undo2 } from 'lucide-react-native';
+import { ArrowLeft, Check, Paperclip, Undo2 } from 'lucide-react-native';
 import { Spacing, V6Radii, V6Shadows } from '../../../src/constants/theme';
 import { useAsyncData } from '../../../src/hooks/useAsyncData';
 import { useHeaderTop } from '../../../src/hooks/useHeaderTop';
@@ -96,16 +96,15 @@ export default function HODisputeStatusScreen({ jobId, onBack, onMessage }: Prop
     <View style={[styles.header, { paddingTop: headerTop }]}>
       <Tap style={styles.backButton} onPress={onBack} accessibilityLabel="Back" activeOpacity={0.8}><ArrowLeft size={20} color={C.ink700} /></Tap>
       <Text style={styles.title} numberOfLines={1}>{view?.heading ?? 'Report'}</Text>
-      <Tap style={styles.refreshButton} onPress={reload} accessibilityLabel="Refresh complaint" activeOpacity={0.8}>
-        <RefreshCw size={15} color={V6Colors.link} />
-        <Text style={styles.refreshText}>Refresh</Text>
-      </Tap>
     </View>
     {loading && <ActivityIndicator style={styles.loader} color={V6Colors.link} />}
     {!!error && <Text style={styles.error}>{error}</Text>}
     {!loading && !error && !dispute && <Text style={[styles.text, styles.emptyPage]}>No complaint has been filed for this job.</Text>}
     {dispute && view && <KeyboardAvoidingView style={styles.flex} behavior="padding">
-      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag">
+      <ScrollView
+        testID="case-scroll" contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag"
+        refreshControl={<RefreshControl refreshing={loading} onRefresh={reload} tintColor={V6Colors.link} colors={[V6Colors.link]} />}
+      >
         {!!view.jobChip && <Text style={styles.jobChip} numberOfLines={1}>{view.jobChip}</Text>}
 
         {/* Where the case stands, in plain words */}
@@ -133,7 +132,7 @@ export default function HODisputeStatusScreen({ jobId, onBack, onMessage }: Prop
                 {!!step.detail && <Text style={styles.stepDetail}>{step.detail}</Text>}
                 {!!step.chatNote && <Text style={styles.stepDetail}>{step.chatNote}</Text>}
                 {!!step.photoUrl && <Image accessibilityLabel="Case photo evidence" source={{ uri: step.photoUrl }} style={styles.photo} resizeMode="contain" />}
-                {!!step.photoUnavailable && !step.photoUrl && <Text style={styles.error}>Photo evidence is unavailable. Refresh to retry.</Text>}
+                {!!step.photoUnavailable && !step.photoUrl && <Text style={styles.error}>Photo evidence is unavailable. Pull down to retry.</Text>}
                 {!!step.meta && <Text style={styles.stepMeta}>{step.meta}</Text>}
               </View>
             </View>;
@@ -218,11 +217,6 @@ function createThemedStyles(theme: ThemePalette) {
       borderWidth: 1, borderColor: C.line, alignItems: 'center', justifyContent: 'center',
     },
     title: { flex: 1, fontSize: 19.5, fontWeight: '800', color: C.ink900, fontFamily: 'Inter' },
-    refreshButton: {
-      flexDirection: 'row', alignItems: 'center', gap: 6, minHeight: 36,
-      paddingHorizontal: 12, borderRadius: 999, backgroundColor: C.primaryTonal,
-    },
-    refreshText: { color: V6Colors.link, fontSize: 13.5, fontWeight: '700', fontFamily: 'Inter' },
     loader: { marginTop: 24 },
     emptyPage: { padding: Spacing.screenH },
     content: { padding: Spacing.screenH, paddingTop: 16, gap: 14, paddingBottom: 40 },

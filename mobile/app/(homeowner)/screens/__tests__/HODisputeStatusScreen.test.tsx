@@ -194,3 +194,12 @@ it('hides the Message link when no chat handler is given', async () => {
   await screen.findByText('Add details or photos');
   expect(screen.queryByText('Message the client')).toBeNull();
 });
+it('refreshes the case by pulling down, with no Refresh button', async () => {
+  show();
+  await screen.findByText('An admin is reviewing this report');
+  expect(screen.queryByLabelText('Refresh complaint')).toBeNull();
+  expect(screen.queryByText('Refresh')).toBeNull();
+  const pullToRefresh = screen.getByTestId('case-scroll').props.refreshControl;
+  act(() => { pullToRefresh.props.onRefresh(); });
+  await waitFor(() => expect(api.jobDispute).toHaveBeenCalledTimes(2));
+});
