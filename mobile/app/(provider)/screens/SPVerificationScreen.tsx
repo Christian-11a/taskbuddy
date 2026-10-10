@@ -50,6 +50,7 @@ import CheckList from '../../../src/components/verify/CheckList';
 import IdExamples from '../../../src/components/verify/IdExamples';
 import PhotoCard from '../../../src/components/verify/PhotoCard';
 import CheckRow from '../../../src/components/ui/CheckRow';
+import SendingChecklist from '../../../src/components/verify/SendingChecklist';
 import * as ImagePicker from 'expo-image-picker';
 import * as WebBrowser from 'expo-web-browser';
 import {
@@ -69,9 +70,12 @@ import { useAuth } from '../../../src/context/AuthContext';
 import { useHeaderTop } from '../../../src/hooks/useHeaderTop';
 import { requestAppPermission } from '../../../src/lib/permissions';
 import {
+  SESSION_STAGE,
+  UPLOAD_STAGE,
   VERIFY_ID_TYPES,
   pickVerifyView,
   profileChecks,
+  sendingRows,
   takePhotoLabel,
   wizardProgress,
   type IdPhase,
@@ -137,6 +141,8 @@ export default function SPVerificationScreen({ onBack, onVerified }: SPVerificat
   const [documentType, setDocumentType] = useState<VerifyDocumentType | null>(null);
   /** The consent checkbox on the review step. */
   const [consented, setConsented] = useState(false);
+  /** Set when a submission has finished and the reload has not yet brought the new status. */
+  const [awaitingReload, setAwaitingReload] = useState(false);
   const [idAsset, setIdAsset] = useState<ImagePicker.ImagePickerAsset | null>(null);
   const [selfieAsset, setSelfieAsset] = useState<ImagePicker.ImagePickerAsset | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -151,6 +157,19 @@ export default function SPVerificationScreen({ onBack, onVerified }: SPVerificat
     loading,
     reload,
   } = useAsyncData(useCallback(() => api.myVerification(), []));
+
+  // After a submission the old status stays loaded until the reload has run.
+  // Keep the loader up until then, so that old status never shows again.
+  const sawLoading = useRef(false);
+  useEffect(() => {
+    if (!awaitingReload) return;
+    if (loading) {
+      sawLoading.current = true;
+    } else if (sawLoading.current) {
+      sawLoading.current = false;
+      setAwaitingReload(false);
+    }
+  }, [awaitingReload, loading]);
 
   // Any timer still running when the screen goes away must not call setState.
   const pollTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -237,13 +256,13 @@ export default function SPVerificationScreen({ onBack, onVerified }: SPVerificat
     setError(null);
     setFellBackToManual(false);
     try {
-      setSubmitStage('Uploading your documents…');
+      setSubmitStage(UPLOAD_STAGE);
       const [id_document_path, selfie_path] = await Promise.all([
         api.uploadImage('verification-docs', idAsset.uri),
         api.uploadImage('verification-docs', selfieAsset.uri),
       ]);
 
-      setSubmitStage('Opening the automated check…');
+      setSubmitStage(SESSION_STAGE);
       try {
         const session = await api.startIdentitySession({
           id_document_path,
@@ -278,6 +297,9 @@ export default function SPVerificationScreen({ onBack, onVerified }: SPVerificat
       setSelfieAsset(null);
       setDocumentType(null);
       setStep(1);
+      setIdPhase('choose');
+      setConsented(false);
+      setAwaitingReload(true);
       reload();
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not submit your documents.');
@@ -298,8 +320,8 @@ export default function SPVerificationScreen({ onBack, onVerified }: SPVerificat
     status: verification?.status ?? null,
     submitting,
     started,
+    settling: awaitingReload,
   });
-  const showWizard = view === 'wizard' || view === 'sending';
   const showIntro = view === 'intro' || view === 'rejected';
 
   /**
@@ -415,7 +437,7 @@ export default function SPVerificationScreen({ onBack, onVerified }: SPVerificat
       />
 
       {/* Progress: only while the wizard is on screen. */}
-      {showWizard && !loading && <PostProgress {...wizardProgress(step, idPhase)} />}
+      {view === 'wizard' && <PostProgress {...wizardProgress(step, idPhase)} />}
 
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
         {view === 'loading' ? (
@@ -467,7 +489,17 @@ export default function SPVerificationScreen({ onBack, onVerified }: SPVerificat
               </>
             )}
 
-            {showWizard && (
+            {view === 'sending' && (
+              <>
+                <Text style={styles.stepTitle} accessibilityRole="header">
+                  Sending your documents…
+                </Text>
+                <Text style={styles.stepHint}>Please keep the app open. This takes a few seconds.</Text>
+                <SendingChecklist rows={sendingRows(submitStage)} />
+              </>
+            )}
+
+            {view === 'wizard' && (
               <>
                 {/* ── Step 1 · Government ID ─────────────────────────── */}
                 {step === 1 && profileIncomplete && (
@@ -584,7 +616,6 @@ export default function SPVerificationScreen({ onBack, onVerified }: SPVerificat
                     <Text style={styles.stepHint}>
                       If Stripe isn't available, your photos go to a TaskBuddy admin for manual review.
                     </Text>
-                    {!!submitStage && <Text style={styles.stageText}>{submitStage}</Text>}
                   </>
                 )}
 
@@ -645,12 +676,11 @@ export default function SPVerificationScreen({ onBack, onVerified }: SPVerificat
         />
       )}
 
-      {showWizard && step === 3 && (
+      {view === 'wizard' && step === 3 && (
         <BottomActionBar
           primaryLabel="Continue to secure check"
           onPrimary={() => void startVerification()}
           primaryDisabled={!consented || profileIncomplete}
-          busy={submitting}
         />
       )}
 
@@ -711,7 +741,6 @@ function createThemedStyles(theme: ThemePalette) {
       borderWidth: 1.5, borderStyle: 'dashed', borderColor: V6Colors.fieldBorder,
     },
 
-    stageText: { color: V6Colors.link, fontFamily: 'Inter', fontSize: 14.5, marginTop: 12, textAlign: 'center' },
 
     submitButton: {
       alignItems: 'center',

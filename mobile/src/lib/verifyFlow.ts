@@ -37,8 +37,12 @@ export function pickVerifyView(input: {
   status: VerifyStatus | null;
   submitting: boolean;
   started: boolean;
+  /** True from a finished submission until the reload brings the new status. */
+  settling?: boolean;
 }): VerifyView {
   if (input.submitting) return 'sending';
+  // The old status is still loaded at this point; show the loader rather than a stale screen.
+  if (input.settling) return 'loading';
   if (input.status === 'approved') return 'approved';
   if (input.status === 'pending') return 'pending';
   // The loader is for the first load only; a reload keeps what is on screen.
@@ -74,5 +78,44 @@ export function profileChecks(
   return [
     { label: 'Service picked', done: providerProfile != null },
     { label: 'Bio added', done: (providerProfile?.bio ?? '').trim() !== '' },
+  ];
+}
+
+/**
+ * The stage text the screen's upload code sets while it works. The sending
+ * checklist reads these exact strings, so they must stay in step with the screen.
+ */
+export const UPLOAD_STAGE = 'Uploading your documents…';
+export const SESSION_STAGE = 'Opening the automated check…';
+
+export type ChecklistStatus = 'done' | 'active' | 'pending';
+
+export type SendingRow = {
+  key: 'id' | 'selfie' | 'check';
+  label: string;
+  status: ChecklistStatus;
+};
+
+/**
+ * The sending checklist, read from the stage the upload code reports. The two
+ * photos upload together, so they share one state. Nothing is ticked before the
+ * stage says it happened, and a stage the screen does not know ticks nothing.
+ */
+export function sendingRows(stage: string | null): SendingRow[] {
+  const uploading = stage === UPLOAD_STAGE;
+  const checking = stage === SESSION_STAGE;
+  const photosStatus: ChecklistStatus = checking ? 'done' : uploading ? 'active' : 'pending';
+  return [
+    {
+      key: 'id',
+      label: checking ? 'ID photo uploaded' : uploading ? 'Uploading ID photo' : 'ID photo',
+      status: photosStatus,
+    },
+    {
+      key: 'selfie',
+      label: checking ? 'Selfie uploaded' : uploading ? 'Uploading selfie' : 'Selfie',
+      status: photosStatus,
+    },
+    { key: 'check', label: 'Starting the secure check', status: checking ? 'active' : 'pending' },
   ];
 }

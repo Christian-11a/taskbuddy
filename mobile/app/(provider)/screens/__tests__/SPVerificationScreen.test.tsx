@@ -341,8 +341,7 @@ describe('SPVerificationScreen — selfie tips and retake', () => {
 const CONSENT = 'This is my own valid ID, and I agree to TaskBuddy using these photos to verify me.';
 const CONTINUE_LABEL = 'Continue to secure check';
 
-describe('SPVerificationScreen — review and send', () => {
-  async function toReview() {
+async function toReview() {
     (ImagePicker.launchCameraAsync as jest.Mock)
       .mockResolvedValueOnce({ canceled: false, assets: [{ uri: 'file:///id.jpg' }] })
       .mockResolvedValueOnce({ canceled: false, assets: [{ uri: 'file:///selfie.jpg' }] });
@@ -356,8 +355,9 @@ describe('SPVerificationScreen — review and send', () => {
     await screen.findByRole('button', { name: 'Continue' });
     fireEvent.press(screen.getByRole('button', { name: 'Continue' }));
     await screen.findByText('Ready to send');
-  }
+}
 
+describe('SPVerificationScreen — review and send', () => {
   it('shows both photos with their own Retake, and explains Stripe before anything opens', async () => {
     await toReview();
 
@@ -454,5 +454,68 @@ describe('SPVerificationScreen — review and send', () => {
 
     fireEvent.press(screen.getByLabelText('Retake ID photo'));
     expect(screen.getByText('Get a clear photo of your PhilSys National ID')).toBeTruthy();
+  });
+});
+
+describe('SPVerificationScreen — sending', () => {
+  const NEVER = () => new Promise<never>(() => {});
+
+  it('shows each step as it really happens, starting with the uploads', async () => {
+    (api.uploadImage as jest.Mock).mockReturnValueOnce(NEVER()).mockReturnValueOnce(NEVER());
+    await toReview();
+
+    fireEvent.press(screen.getByRole('checkbox', { name: CONSENT }));
+    fireEvent.press(screen.getByRole('button', { name: CONTINUE_LABEL }));
+
+    expect(await screen.findByText('Sending your documents…')).toBeTruthy();
+    expect(screen.getByText('Please keep the app open. This takes a few seconds.')).toBeTruthy();
+    expect(screen.getByLabelText('Uploading ID photo: in progress')).toBeTruthy();
+    expect(screen.getByLabelText('Uploading selfie: in progress')).toBeTruthy();
+    expect(screen.getByLabelText('Starting the secure check: waiting')).toBeTruthy();
+    expect(screen.queryByText('Ready to send')).toBeNull();
+  });
+
+  it('moves to the secure check once both photos are up', async () => {
+    (api.uploadImage as jest.Mock)
+      .mockResolvedValueOnce('verification-docs/id.jpg')
+      .mockResolvedValueOnce('verification-docs/selfie.jpg');
+    (api.startIdentitySession as jest.Mock).mockReturnValueOnce(NEVER());
+    await toReview();
+
+    fireEvent.press(screen.getByRole('checkbox', { name: CONSENT }));
+    fireEvent.press(screen.getByRole('button', { name: CONTINUE_LABEL }));
+
+    expect(await screen.findByLabelText('ID photo uploaded: done')).toBeTruthy();
+    expect(screen.getByLabelText('Selfie uploaded: done')).toBeTruthy();
+    expect(screen.getByLabelText('Starting the secure check: in progress')).toBeTruthy();
+  });
+
+  it('returns to the review with the error when an upload fails', async () => {
+    (api.uploadImage as jest.Mock).mockRejectedValueOnce(new Error('Could not upload the image. Try again.'));
+    await toReview();
+
+    fireEvent.press(screen.getByRole('checkbox', { name: CONSENT }));
+    fireEvent.press(screen.getByRole('button', { name: CONTINUE_LABEL }));
+
+    expect(await screen.findByText('Could not upload the image. Try again.')).toBeTruthy();
+    expect(screen.getByText('Ready to send')).toBeTruthy();
+    expect(screen.getByRole('button', { name: CONTINUE_LABEL })).not.toBeDisabled();
+  });
+
+  it('after a submission, shows the status the reload brings rather than the old one', async () => {
+    const REJECTED = { ...PENDING, status: 'rejected', rejection_reason: 'The ID text is blurry.' };
+    (api.myVerification as jest.Mock).mockResolvedValueOnce(REJECTED).mockResolvedValueOnce(PENDING);
+    (api.uploadImage as jest.Mock)
+      .mockResolvedValueOnce('verification-docs/id.jpg')
+      .mockResolvedValueOnce('verification-docs/selfie.jpg');
+    (api.startIdentitySession as jest.Mock).mockResolvedValueOnce({ url: null });
+    await toReview();
+
+    fireEvent.press(screen.getByRole('checkbox', { name: CONSENT }));
+    fireEvent.press(screen.getByRole('button', { name: CONTINUE_LABEL }));
+
+    expect(await screen.findByText('Pending verification')).toBeTruthy();
+    expect(screen.queryByText('Ready to send')).toBeNull();
+    expect(screen.queryByText('Not approved')).toBeNull();
   });
 });

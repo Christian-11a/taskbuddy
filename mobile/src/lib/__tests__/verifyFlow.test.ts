@@ -1,10 +1,43 @@
 import {
+  SESSION_STAGE,
+  UPLOAD_STAGE,
   VERIFY_ID_TYPES,
   pickVerifyView,
   profileChecks,
+  sendingRows,
   takePhotoLabel,
   wizardProgress,
 } from '../verifyFlow';
+
+describe('sendingRows', () => {
+  it('keeps the stage text the upload code sets, so the checklist can read it', () => {
+    expect(UPLOAD_STAGE).toBe('Uploading your documents…');
+    expect(SESSION_STAGE).toBe('Opening the automated check…');
+  });
+
+  it('shows nothing done before the first stage', () => {
+    expect(sendingRows(null).map((row) => row.status)).toEqual(['pending', 'pending', 'pending']);
+  });
+
+  it('shows the photos as uploading while the files go up', () => {
+    const rows = sendingRows(UPLOAD_STAGE);
+    expect(rows.map((row) => row.status)).toEqual(['active', 'active', 'pending']);
+    expect(rows[0].label).toBe('Uploading ID photo');
+    expect(rows[1].label).toBe('Uploading selfie');
+  });
+
+  it('shows the photos as uploaded once the secure check starts', () => {
+    const rows = sendingRows(SESSION_STAGE);
+    expect(rows.map((row) => row.status)).toEqual(['done', 'done', 'active']);
+    expect(rows[0].label).toBe('ID photo uploaded');
+    expect(rows[1].label).toBe('Selfie uploaded');
+    expect(rows[2].label).toBe('Starting the secure check');
+  });
+
+  it('ticks nothing for a stage it does not know', () => {
+    expect(sendingRows('Something else').map((row) => row.status)).toEqual(['pending', 'pending', 'pending']);
+  });
+});
 
 describe('takePhotoLabel', () => {
   it('names the side of the ID the camera button photographs', () => {
@@ -67,6 +100,11 @@ describe('pickVerifyView', () => {
 
   it('shows the sending view while submitting, over anything else', () => {
     expect(pickVerifyView({ ...base, submitting: true, started: true, status: 'rejected' })).toBe('sending');
+  });
+
+  it('keeps the loader up after a submission until the new status arrives', () => {
+    // The old "rejected" status is still loaded here; it must not flash back on screen.
+    expect(pickVerifyView({ ...base, status: 'rejected', started: true, settling: true })).toBe('loading');
   });
 });
 
