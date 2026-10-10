@@ -152,7 +152,7 @@ export default function SPProfileScreen({ onNavigate, onLogout, onBack }: SPProf
             </Tap>
           </View>
 
-          <Text style={styles.name} numberOfLines={2}>{name || 'Your Profile'}</Text>
+          <Text style={styles.name}>{name || 'Your Profile'}</Text>
           <View style={styles.metaRow}>
             {!!services && <Text style={styles.services} numberOfLines={2}>{services}</Text>}
             {isVerified ? (
@@ -224,7 +224,7 @@ export default function SPProfileScreen({ onNavigate, onLogout, onBack }: SPProf
             </InfoRow>
             <View style={styles.divider} />
             <InfoRow icon={MapPin} label="Location">
-              <Text style={styles.infoValue} numberOfLines={2}>{location ?? '—'}</Text>
+              <Text style={styles.infoValue}>{location ?? '—'}</Text>
             </InfoRow>
           </View>
         </View>

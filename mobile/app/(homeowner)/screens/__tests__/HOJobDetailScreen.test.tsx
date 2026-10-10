@@ -137,6 +137,14 @@ describe('FullTest homeowner job details', () => {
     await screen.findByText(/Accepted from Quezon City.*from your job/);
   });
 
+  it('shows the whole job address, with no line limit', async () => {
+    const address = 'Blk 4 Lot 12 Sampaguita Street, Barangay Mayaman, Lipa City, Batangas, Philippines 4217';
+    (api.getJob as jest.Mock).mockResolvedValue({ ...inProgressJob, address });
+    render(<HOJobDetailScreen jobId="job-1" onBack={jest.fn()} onNavigate={jest.fn()} />);
+    expect(await screen.findByText(address)).toBeTruthy();
+    expect(screen.getByText(address).props.numberOfLines).toBeUndefined();
+  });
+
   it('hides the accepted-from line when the provider accepted from the job itself (0 m away)', async () => {
     (api.getJob as jest.Mock).mockResolvedValue({
       ...inProgressJob,

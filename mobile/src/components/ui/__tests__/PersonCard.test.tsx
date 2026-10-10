@@ -30,9 +30,9 @@ it('shows the photo instead of initials when there is one', () => {
   expect(screen.queryByText('JD', HIDDEN)).toBeNull();
 });
 
-it('keeps the name and subtitle to one line each', () => {
+it('shows the whole name on detail screens, and keeps the subtitle to one line', () => {
   render(<PersonCard name={LONG_NAME} subtitle={LONG_SUBTITLE} />);
-  expect(screen.getByText(LONG_NAME).props.numberOfLines).toBe(1);
+  expect(screen.getByText(LONG_NAME).props.numberOfLines).toBeUndefined();
   expect(screen.getByText(LONG_SUBTITLE).props.numberOfLines).toBe(1);
 });
 

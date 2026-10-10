@@ -133,7 +133,7 @@ export default function Profile({ onNavigate, onLogout, onBack }: ProfileProps) 
             </Tap>
           </View>
 
-          <Text style={styles.name} numberOfLines={2}>{name || 'Your Profile'}</Text>
+          <Text style={styles.name}>{name || 'Your Profile'}</Text>
           <Text style={styles.subtitle} numberOfLines={2}>{subtitle}</Text>
           <Tap
             style={styles.editButton}
@@ -182,7 +182,7 @@ export default function Profile({ onNavigate, onLogout, onBack }: ProfileProps) 
             </InfoRow>
             <View style={styles.divider} />
             <InfoRow icon={MapPin} label="Location">
-              <Text style={styles.infoValue} numberOfLines={2}>{location ?? '—'}</Text>
+              <Text style={styles.infoValue}>{location ?? '—'}</Text>
             </InfoRow>
           </View>
         </View>

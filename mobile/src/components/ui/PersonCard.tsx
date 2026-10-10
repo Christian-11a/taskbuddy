@@ -24,7 +24,7 @@ export default function PersonCard({ name, avatarUrl, subtitle, rating = false, 
           : <Text style={s.initials}>{initialsOf(name)}</Text>}
       </View>
       <View style={s.text}>
-        <Text style={s.name} numberOfLines={1}>{name}</Text>
+        <Text style={s.name}>{name}</Text>
         {(!!subtitle || rating) && (
           <View style={s.subRow}>
             {rating && <View testID="person-card-rating"><Star size={13} color={STAR} fill={STAR} /></View>}

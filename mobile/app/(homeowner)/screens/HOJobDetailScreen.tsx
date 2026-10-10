@@ -514,7 +514,7 @@ function InfoRow({ icon: Icon, label, value }: { icon: LucideIcon; label: string
       <Icon size={18} color={C.ink500} />
       <View style={styles.infoText}>
         <Text style={styles.infoLabel}>{label}</Text>
-        <Text style={styles.infoValue} numberOfLines={3}>{value}</Text>
+        <Text style={styles.infoValue}>{value}</Text>
       </View>
     </View>
   );
