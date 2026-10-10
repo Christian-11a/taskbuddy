@@ -12,6 +12,13 @@ import { lightPalette } from '../../../../src/constants/palettes';
 /** The popup that is open right now: each SheetFrame renders its own Modal, and only one is visible. */
 const visibleModal = () => screen.UNSAFE_getAllByType(Modal).find((modal) => modal.props.visible === true);
 
+/**
+ * Whether a popup is still in the tree. The waits below compare this boolean instead of
+ * expect(queryByTestId(id)).toBeNull(): when a waitFor retries a failing toBeNull, Jest prints
+ * the whole rendered element each time, which made each wait take seconds under load.
+ */
+const isShown = (testId: string) => !!screen.queryByTestId(testId);
+
 /** The colours a host element is drawn with: its style, flattened. */
 function styleOf(element: { props: Record<string, any> }): Record<string, any> {
   return StyleSheet.flatten(element.props.style) ?? {};
@@ -177,7 +184,7 @@ describe('HOWalletScreen — Add Money after Stripe returns', () => {
 
     await startTopup();
 
-    await waitFor(() => expect(screen.queryByTestId('add-money-dialog')).toBeNull());
+    await waitFor(() => expect(isShown('add-money-dialog')).toBe(false));
     expect(showToast).toHaveBeenCalledWith('Payment received. Your wallet is updating.');
     expect(api.createCheckoutSession).toHaveBeenCalledTimes(1);
     await act(async () => { await jest.runAllTimersAsync(); });
@@ -193,7 +200,7 @@ describe('HOWalletScreen — Add Money after Stripe returns', () => {
 
     await startTopup();
 
-    await waitFor(() => expect(screen.queryByTestId('add-money-dialog')).toBeNull());
+    await waitFor(() => expect(isShown('add-money-dialog')).toBe(false));
     expect(api.wallet).toHaveBeenCalledTimes(2); // initial load and immediate refresh
     expect(api.createCheckoutSession).toHaveBeenCalledTimes(1);
     expect(openRedirectSession).toHaveBeenCalledTimes(1);
@@ -209,7 +216,7 @@ describe('HOWalletScreen — Add Money after Stripe returns', () => {
     });
 
     await startTopup();
-    await waitFor(() => expect(screen.queryByTestId('add-money-dialog')).toBeNull());
+    await waitFor(() => expect(isShown('add-money-dialog')).toBe(false));
 
     fireEvent.press(screen.getByText('Add money'));
 
@@ -225,7 +232,7 @@ describe('HOWalletScreen — Add Money after Stripe returns', () => {
 
     await startTopup();
 
-    await waitFor(() => expect(screen.queryByTestId('add-money-dialog')).toBeNull());
+    await waitFor(() => expect(isShown('add-money-dialog')).toBe(false));
     expect(showToast).toHaveBeenCalledWith('Payment was cancelled.');
     expect(api.createCheckoutSession).toHaveBeenCalledTimes(1);
   });
@@ -236,7 +243,7 @@ describe('HOWalletScreen — Add Money after Stripe returns', () => {
 
     await startTopup();
 
-    await waitFor(() => expect(screen.queryByTestId('add-money-dialog')).toBeNull());
+    await waitFor(() => expect(isShown('add-money-dialog')).toBe(false));
     expect(openRedirectSession).toHaveBeenCalledTimes(1);
     expect(api.wallet).toHaveBeenCalledTimes(2);
   });
@@ -422,7 +429,7 @@ describe('HOWalletScreen — Add money sheet: quick amounts, limits and Continue
 
     fireEvent.press(screen.getByRole('button', { name: 'Cancel' }));
 
-    await waitFor(() => expect(screen.queryByTestId('add-money-dialog')).toBeNull());
+    await waitFor(() => expect(isShown('add-money-dialog')).toBe(false));
     expect(api.createCheckoutSession).not.toHaveBeenCalled();
   });
 });
@@ -481,7 +488,7 @@ describe('HOWalletScreen — withdraw sheet: form, confirmation and request', ()
 
     fireEvent.press(screen.getByRole('button', { name: 'Request ₱400.00' }));
 
-    await waitFor(() => expect(screen.queryByTestId('withdraw-hw-dialog')).toBeNull());
+    await waitFor(() => expect(isShown('withdraw-hw-dialog')).toBe(false));
     expect(api.requestWithdrawal).toHaveBeenCalledTimes(1);
     expect(api.requestWithdrawal).toHaveBeenCalledWith({ amount: 400, destination: 'GCash 0917 123 4567' });
     expect(api.wallet).toHaveBeenCalledTimes(2);
@@ -535,7 +542,7 @@ describe('HOWalletScreen — withdraw sheet: form, confirmation and request', ()
 
     fireEvent.press(screen.getByRole('button', { name: 'Cancel' }));
 
-    await waitFor(() => expect(screen.queryByTestId('withdraw-hw-dialog')).toBeNull());
+    await waitFor(() => expect(isShown('withdraw-hw-dialog')).toBe(false));
     expect(api.requestWithdrawal).not.toHaveBeenCalled();
   });
 
