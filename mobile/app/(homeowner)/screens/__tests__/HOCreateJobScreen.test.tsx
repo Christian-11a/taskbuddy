@@ -213,6 +213,16 @@ it('hides the map card only when the map image really fails', async () => {
   expect(screen.queryByLabelText(MAP_LABEL)).toBeNull();
   expect(screen.getByText('Location confirmed')).toBeTruthy();
 });
+
+it('explains the written title once, under the job title and not under the description', async () => {
+  (api.categories as jest.Mock).mockResolvedValue([{ id: 1, name: 'Plumbing' }]);
+  render(<HOCreateJobScreen initialCategoryId={1} onBack={jest.fn()} onSuccess={jest.fn()} />);
+  await screen.findByText('Location confirmed');
+  fireEvent.press(screen.getByText('Next'));
+  await screen.findByText('Fix leaking faucet');
+  expect(screen.getAllByText('Written for you from the tasks; edit if you like')).toHaveLength(1);
+  expect(screen.getByText('0/750')).toBeTruthy();
+});
 it('while posting shows only the steps that really run, and a failed post returns to Review', async () => {
   (api.categories as jest.Mock).mockResolvedValue([{ id: 1, name: 'Plumbing' }]);
   (api.uploadImage as jest.Mock).mockResolvedValue('client/photo.jpg');

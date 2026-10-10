@@ -877,7 +877,6 @@ export default function HOCreateJobScreen({
                   setDescription(value);
                   setDescriptionTouched(true);
                 }}
-                helper="Written for you from the tasks; edit if you like"
                 error={fieldErrors.description}
                 submitted
                 multiline
