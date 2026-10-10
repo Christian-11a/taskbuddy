@@ -39,7 +39,7 @@ import {
   type LayoutChangeEvent,
 } from 'react-native';
 import Tap from '../../../src/components/ui/Tap';
-import { AlertCircle, ArrowLeft, Check, ChevronDown, MailCheck } from 'lucide-react-native';
+import { AlertCircle, Check, ChevronDown, MailCheck } from 'lucide-react-native';
 import { V6Radii, V6Shadows } from '../../../src/constants/theme';
 import TermsAndConditions from './TermsAndConditions';
 import { ApiError, api } from '../../../src/lib/api';
@@ -47,6 +47,8 @@ import type { MobileRole } from '../../../src/lib/api';
 import { useAuth } from '../../../src/context/AuthContext';
 import GoogleGlyph from '../../../src/components/GoogleGlyph';
 import PasswordInput from '../../../src/components/PasswordInput';
+import AuthStepHeader from '../../../src/components/auth/AuthStepHeader';
+import RoleChoiceCard from '../../../src/components/auth/RoleChoiceCard';
 import { useAuthLayout } from '../../../src/hooks/useAuthLayout';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -211,7 +213,7 @@ export default function RegisterScreen({ onRegister, onLogin, onGoogleSignIn }: 
   const locateField = (field: string) => (event: LayoutChangeEvent) => {
     fieldPositions.current[field] = event.nativeEvent.layout.y;
   };
-  const { width, fontScale } = useWindowDimensions();
+  const { width } = useWindowDimensions();
   const { verifyEmailOtp } = useAuth();
   // Entrance transition — matches the mockup's `.screen{animation:fadeIn .22s ease}`
   // (fade in + slide up 6px). Runs once on mount, when this screen first opens.
@@ -245,6 +247,8 @@ export default function RegisterScreen({ onRegister, onLogin, onGoogleSignIn }: 
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [role, setRole] = useState<MobileRole>('homeowner');
+  // Step 1 picks the role; step 2 is the details form. Both submit together.
+  const [step, setStep] = useState<'role' | 'details'>('role');
 
   // SP-only: category
   const [categoryId, setCategoryId] = useState<number | null>(null);
@@ -482,6 +486,54 @@ export default function RegisterScreen({ onRegister, onLogin, onGoogleSignIn }: 
 
   const selectedCategory = categories.find((c) => c.id === categoryId);
 
+  // ── Step 1: how will you use TaskBuddy? ────────────────────────────────────
+  // Same two role values as before. Continue opens the details form; the back
+  // arrow here returns to sign in, as it always did.
+  const roleContent = (
+    <View style={styles.flex}>
+      <ScrollView
+        style={styles.flex}
+        contentContainerStyle={[styles.roleContent, { paddingTop: layout.paddingTop }]}
+        showsVerticalScrollIndicator={false}
+      >
+        <AuthStepHeader
+          title="Create account"
+          onBack={onLogin}
+          backLabel="Back to sign in"
+          progress={{ step: 1, total: 2, label: 'Role' }}
+        />
+        <Text style={styles.roleTitle} accessibilityRole="header">How will you use TaskBuddy?</Text>
+        <Text style={styles.roleSubtitle}>You can't switch later, so pick the one that fits.</Text>
+        <View accessibilityRole="radiogroup" style={styles.roleCards}>
+          <RoleChoiceCard
+            role="homeowner"
+            selected={role === 'homeowner'}
+            onSelect={() => setRole('homeowner')}
+            testID="role-homeowner"
+          />
+          <RoleChoiceCard
+            role="provider"
+            selected={role === 'provider'}
+            onSelect={() => setRole('provider')}
+            testID="role-provider"
+          />
+        </View>
+      </ScrollView>
+      <View style={[styles.roleFooter, { paddingBottom: layout.paddingBottom }]}>
+        <Tap
+          testID="btn-role-continue"
+          style={styles.primaryBtn}
+          onPress={() => setStep('details')}
+          activeOpacity={0.85}
+          accessibilityRole="button"
+          accessibilityLabel="Continue"
+        >
+          <Text style={styles.primaryBtnText}>Continue</Text>
+        </Tap>
+      </View>
+    </View>
+  );
+
   const scrollContent = (
     <ScrollView
       ref={scrollRef}
@@ -507,33 +559,18 @@ export default function RegisterScreen({ onRegister, onLogin, onGoogleSignIn }: 
           else if (termsMode === 'privacy') setPrivacyAccepted(true);
         }}
       />
-          {/* Top section */}
-          <View style={styles.topSection}>
-            <Tap style={styles.backBtn} onPress={onLogin} activeOpacity={0.8}>
-              <ArrowLeft size={21} color={C.ink700} />
-            </Tap>
-          </View>
+          {/* Top bar: back returns to the role step */}
+          <AuthStepHeader
+            title="Create account"
+            onBack={() => setStep('role')}
+            backLabel="Back to role choice"
+            progress={{ step: 2, total: 2, label: 'Details' }}
+          />
 
           {/* Form card */}
           <View onLayout={(event) => { cardTop.current = event.nativeEvent.layout.y; }} style={[styles.card, { padding: width < 380 ? 16 : 24 }]}>
-            <Text style={styles.title}>Create account</Text>
+            <Text style={styles.title}>Create your account</Text>
             <Text style={styles.subtitle}>Let's get started!</Text>
-
-            {/* Role toggle */}
-            <View style={[styles.roleRow, fontScale > 1.2 && { flexDirection: 'column' }]}>
-              {(['homeowner', 'provider'] as const).map((r) => (
-                <Tap
-                  key={r}
-                  style={[styles.roleBtn, role === r && styles.roleBtnActive]}
-                  onPress={() => setRole(r)}
-                  activeOpacity={0.8}
-                >
-                  <Text style={[styles.roleBtnText, role === r && styles.roleBtnTextActive]}>
-                    {r === 'homeowner' ? 'Client' : 'Service Provider'}
-                  </Text>
-                </Tap>
-              ))}
-            </View>
 
             {/* Shared fields */}
             <FormInput
@@ -790,7 +827,7 @@ export default function RegisterScreen({ onRegister, onLogin, onGoogleSignIn }: 
         style={styles.flex}
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       >
-        {scrollContent}
+        {step === 'role' ? roleContent : scrollContent}
       </KeyboardAvoidingView>
       {/* The form scrolls under a transparent status bar; this strip keeps
           the clock from sitting on top of the fields. */}
@@ -819,12 +856,11 @@ function createThemedStyles(theme: ThemePalette) {
 
     scrollContent: { width: '100%', maxWidth: 600, alignSelf: 'center', paddingTop: 56, paddingHorizontal: 16, paddingBottom: 40 },
 
-    topSection: { marginBottom: 20, flexDirection: 'row' },
-    backBtn: {
-      width: 38, height: 38, borderRadius: 12,
-      backgroundColor: C.surface, borderWidth: 1, borderColor: V6Colors.line,
-      alignItems: 'center', justifyContent: 'center',
-    },
+    roleContent: { width: '100%', maxWidth: 600, alignSelf: 'center', paddingHorizontal: 20, paddingBottom: 16 },
+    roleTitle: { color: V6Colors.ink900, fontSize: 26, fontWeight: '800', fontFamily: 'Inter', lineHeight: 32, marginBottom: 6 },
+    roleSubtitle: { color: V6Colors.ink500, fontSize: 15, fontFamily: 'Inter', lineHeight: 20, marginBottom: 20 },
+    roleCards: { gap: 12 },
+    roleFooter: { paddingHorizontal: 20, paddingTop: 12 },
 
     card: {
       backgroundColor: C.surface,
@@ -841,15 +877,6 @@ function createThemedStyles(theme: ThemePalette) {
     title: { color: C.dark, fontSize: 31.5, fontWeight: '700', fontFamily: 'Inter', marginBottom: 4 },
     subtitle: { color: C.slate, fontSize: 15.5, fontFamily: 'Inter', marginBottom: 20 },
 
-    roleRow: { flexDirection: 'row', gap: 10, marginBottom: 20 },
-    roleBtn: {
-      flex: 1, paddingVertical: 12, borderRadius: V6Radii.btn,
-      borderWidth: 1, borderColor: V6Colors.fieldBorder,
-      alignItems: 'center', backgroundColor: C.surface,
-    },
-    roleBtnActive: { backgroundColor: V6Colors.hero, borderColor: C.ink900 },
-    roleBtnText: { fontFamily: 'Inter', fontSize: 15.5, fontWeight: '600', color: C.muted },
-    roleBtnTextActive: { color: C.onPrimary },
 
     inputGroup: { marginBottom: 16 },
     inputLabel: { fontFamily: 'Inter', fontSize: 15.5, fontWeight: '600', color: V6Colors.ink900, marginBottom: 6 },

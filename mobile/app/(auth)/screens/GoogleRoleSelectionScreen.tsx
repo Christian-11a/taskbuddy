@@ -11,18 +11,8 @@
 
 import { useThemedStyles, type Palette as ThemePalette } from '../../../src/context/ThemeContext';
 import React, { useState } from 'react';
-import {
-  ActivityIndicator,
-  StyleSheet,
-  ScrollView,
-  useWindowDimensions,
-  Text,
-  View,
-} from 'react-native';
-import Tap from '../../../src/components/ui/Tap';
-import { Home, Wrench } from 'lucide-react-native';
-import type { MobileRole } from '../../../src/lib/api';
-import { V6Radii } from '../../../src/constants/theme';
+import { ActivityIndicator, ScrollView, StyleSheet, Text, View } from 'react-native';
+import RoleChoiceCard from '../../../src/components/auth/RoleChoiceCard';
 import { useAuthLayout } from '../../../src/hooks/useAuthLayout';
 
 interface GoogleRoleSelectionScreenProps {
@@ -39,9 +29,8 @@ export default function GoogleRoleSelectionScreen({
   onSelectProvider,
   email,
 }: GoogleRoleSelectionScreenProps) {
-  const { C, styles, V6Colors } = useThemedStyles(createThemedStyles);
+  const { styles, V6Colors } = useThemedStyles(createThemedStyles);
   const layout = useAuthLayout();
-  const { width, fontScale } = useWindowDimensions();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -60,65 +49,35 @@ export default function GoogleRoleSelectionScreen({
 
   return (
     <View style={[styles.screen, { paddingBottom: layout.paddingBottom }]}>
+      <ScrollView
+        contentContainerStyle={[styles.content, { paddingTop: layout.paddingTop }]}
+        showsVerticalScrollIndicator={false}
+      >
+        <Text style={styles.welcomeLabel}>Welcome to TaskBuddy</Text>
+        {email ? (
+          <Text style={styles.emailLabel} numberOfLines={1}>{email}</Text>
+        ) : null}
+        <Text style={styles.title} accessibilityRole="header">How will you use TaskBuddy?</Text>
+        <Text style={styles.subtitle}>You can't switch later, so pick the one that fits.</Text>
 
-      <ScrollView contentContainerStyle={[styles.content, { paddingTop: layout.paddingTop }]} >
-        {/* Title block */}
-        <View style={styles.titleBlock}>
-          <Text style={styles.welcomeLabel}>Welcome to TaskBuddy</Text>
-          {email ? (
-            <Text style={styles.emailLabel} numberOfLines={1}>{email}</Text>
-          ) : null}
-          <Text style={styles.title}>How will you use TaskBuddy?</Text>
-          <Text style={styles.subtitle}>
-            Choose your role. You can only have one role per account.
-          </Text>
+        <View accessibilityRole="radiogroup" style={styles.cards}>
+          <RoleChoiceCard
+            role="homeowner"
+            selected={false}
+            onSelect={handleHomeowner}
+            disabled={loading}
+            testID="google-role-homeowner"
+          />
+          <RoleChoiceCard
+            role="provider"
+            selected={false}
+            onSelect={onSelectProvider}
+            disabled={loading}
+            testID="google-role-provider"
+          />
         </View>
 
-        {/* Role cards */}
-        <View style={[styles.cardsRow, (width < 480 || fontScale > 1.2) && { flexDirection: 'column' }]}>
-          {/* Homeowner */}
-          <Tap
-            style={[styles.card, styles.cardLeft]}
-            onPress={handleHomeowner}
-            disabled={loading}
-            activeOpacity={0.85}
-          >
-            <View style={[styles.iconCircle, styles.iconCircleHO]}>
-              <Home size={31} color={V6Colors.link} />
-            </View>
-            <Text style={styles.cardTitle}>Client</Text>
-            <Text style={styles.cardDesc}>
-              Post jobs and hire trusted local service providers.
-            </Text>
-            {loading ? (
-              <ActivityIndicator color={V6Colors.link} style={{ marginTop: 16 }} />
-            ) : (
-              <View style={[styles.cardBadge, styles.cardBadgeHO]}>
-                <Text style={[styles.cardBadgeText, styles.cardBadgeTextHO]}>I need help</Text>
-              </View>
-            )}
-          </Tap>
-
-          {/* Service Provider */}
-          <Tap
-            style={[styles.card, styles.cardRight]}
-            onPress={onSelectProvider}
-            disabled={loading}
-            activeOpacity={0.85}
-          >
-            <View style={[styles.iconCircle, styles.iconCircleSP]}>
-              <Wrench size={31} color={C.onPrimary} />
-            </View>
-            <Text style={styles.cardTitle}>Service Provider</Text>
-            <Text style={styles.cardDesc}>
-              Offer your skills and grow your client base.
-            </Text>
-            <View style={[styles.cardBadge, styles.cardBadgeSP]}>
-              <Text style={[styles.cardBadgeText, styles.cardBadgeTextSP]}>I provide services</Text>
-            </View>
-          </Tap>
-        </View>
-
+        {loading ? <ActivityIndicator color={V6Colors.link} style={styles.spinner} /> : null}
         {!!error && <Text style={styles.errorText}>{error}</Text>}
 
         <Text style={styles.footerNote}>
@@ -131,143 +90,63 @@ export default function GoogleRoleSelectionScreen({
 
 function createThemedStyles(theme: ThemePalette) {
   const { Colors, V6Colors } = theme;
-  const C = {
-    ...V6Colors,
-    bg: V6Colors.canvas,
-    dark: V6Colors.ink900,
-    slate: V6Colors.ink500,
-    muted: V6Colors.ink400,
-    cardBorder: V6Colors.line,
-    brandDark: V6Colors.cyan900,
-    brandTeal: V6Colors.cyan700,
-    brandRed: V6Colors.dangerText,
-  } as const;
   const styles = StyleSheet.create({
-    screen: { flex: 1, backgroundColor: C.bg },
-
-    headerAccent: {
-      position: 'absolute',
-      top: 0, left: 0, right: 0,
-      height: 220,
-      backgroundColor: C.brandDark,
-      borderBottomLeftRadius: 48,
-      borderBottomRightRadius: 48,
-    },
-
+    screen: { flex: 1, backgroundColor: V6Colors.canvas },
     content: {
       flexGrow: 1,
       width: '100%',
       maxWidth: 600,
       alignSelf: 'center',
-      paddingHorizontal: 24,
-      // paddingTop overridden inline with layout.paddingTop (insets.top-based).
+      paddingHorizontal: 20,
       paddingBottom: 16,
       justifyContent: 'center',
     },
-
-    titleBlock: { marginBottom: 32, alignItems: 'center' },
     welcomeLabel: {
       color: V6Colors.link,
       fontFamily: 'Inter',
-      fontSize: 15.5,
-      fontWeight: '500',
-      letterSpacing: 0.5,
+      fontSize: 14,
+      fontWeight: '700',
+      letterSpacing: 0.4,
       marginBottom: 4,
     },
     emailLabel: {
-      color: C.slate,
+      color: V6Colors.ink500,
       fontFamily: 'Inter',
-      fontSize: 15.5,
-      marginBottom: 24,
-      opacity: 0.85,
-    },
-    title: {
-      color: C.dark,
-      fontFamily: 'Inter',
-      fontSize: 31.5,
-      fontWeight: '700',
-      textAlign: 'center',
-      marginBottom: 8,
-    },
-    subtitle: {
-      color: C.slate,
-      fontFamily: 'Inter',
-      fontSize: 16.5,
-      textAlign: 'center',
-      lineHeight: 21,
-    },
-
-    cardsRow: { flexDirection: 'row', gap: 14, marginBottom: 24 },
-
-    card: {
-      flex: 1,
-      backgroundColor: C.surface,
-      borderRadius: V6Radii.card,
-      padding: 20,
-      alignItems: 'center',
-      borderWidth: 1,
-      borderColor: C.cardBorder,
-      shadowColor: '#0f172a',
-      shadowOpacity: 0.06,
-      shadowOffset: { width: 0, height: 8 },
-      shadowRadius: 16,
-      elevation: 4,
-    },
-    cardLeft: {},
-    cardRight: {},
-
-    iconCircle: {
-      width: 60, height: 60, borderRadius: 30,
-      alignItems: 'center', justifyContent: 'center',
-      marginBottom: 14,
-    },
-    iconCircleHO: { backgroundColor: 'rgba(9,110,139,0.10)' },
-    iconCircleSP: { backgroundColor: C.brandTeal },
-
-    cardTitle: {
-      color: C.dark,
-      fontFamily: 'Inter',
-      fontSize: 18.5,
-      fontWeight: '700',
-      textAlign: 'center',
-      marginBottom: 8,
-    },
-    cardDesc: {
-      color: C.slate,
-      fontFamily: 'Inter',
-      fontSize: 14.5,
-      textAlign: 'center',
-      lineHeight: 18,
+      fontSize: 14,
       marginBottom: 16,
     },
-
-    cardBadge: {
-      borderRadius: V6Radii.pill,
-      paddingHorizontal: 14,
-      paddingVertical: 7,
-    },
-    cardBadgeHO: { backgroundColor: 'rgba(9,110,139,0.10)' },
-    cardBadgeSP: { backgroundColor: C.brandTeal },
-    cardBadgeText: { fontFamily: 'Inter', fontSize: 14.5, fontWeight: '700' },
-    cardBadgeTextHO: { color: V6Colors.link },
-    cardBadgeTextSP: { color: C.onPrimary },
-
-    errorText: {
-      color: C.brandRed,
+    title: {
+      color: V6Colors.ink900,
       fontFamily: 'Inter',
-      fontSize: 15.5,
+      fontSize: 26,
+      fontWeight: '800',
+      lineHeight: 32,
+      marginBottom: 6,
+    },
+    subtitle: {
+      color: V6Colors.ink500,
+      fontFamily: 'Inter',
+      fontSize: 15,
+      lineHeight: 20,
+      marginBottom: 20,
+    },
+    cards: { gap: 12, marginBottom: 16 },
+    spinner: { marginBottom: 12 },
+    errorText: {
+      color: V6Colors.dangerText,
+      fontFamily: 'Inter',
+      fontSize: 14,
       textAlign: 'center',
       marginBottom: 12,
     },
-
     footerNote: {
-      color: C.muted,
+      color: V6Colors.ink500,
       fontFamily: 'Inter',
-      fontSize: 13.5,
+      fontSize: 13,
       textAlign: 'center',
-      lineHeight: 17,
+      lineHeight: 18,
       paddingHorizontal: 12,
     },
   });
-  return { Colors, V6Colors, C, styles };
+  return { Colors, V6Colors, styles };
 }
