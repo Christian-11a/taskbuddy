@@ -48,17 +48,22 @@ describe('caseView: heading and job chip', () => {
     expect(caseView(pending, CLIENT, BEFORE_DEADLINE).heading).toBe('Cancellation request');
   });
 
-  it('builds the job chip from the category, title and held amount', () => {
-    expect(caseView(base, CLIENT, BEFORE_DEADLINE).jobChip).toBe('Plumbing: Fix leaking faucet · ₱800.00');
-  });
-
-  it('leaves out the category and the amount when they are unknown', () => {
-    const view = caseView({ ...base, escrow_transactions: null, jobs: { ...base.jobs!, service_categories: null } }, CLIENT, BEFORE_DEADLINE);
-    expect(view.jobChip).toBe('Fix leaking faucet');
-  });
-
-  it('has no job chip without a job title', () => {
-    expect(caseView({ ...base, jobs: { client_id: 'client', assigned_provider_id: 'provider' } }, CLIENT, BEFORE_DEADLINE).jobChip).toBeNull();
+  // The job title already carries its category ("Cleaning: Window cleaning"), so the chip never adds it again.
+  it.each([
+    ['an already-prefixed title', { title: 'Cleaning: Window cleaning', category: 'Cleaning', amount: 1 }, 'Cleaning: Window cleaning · ₱1.00'],
+    ['a plain title', { title: 'Fix leaking faucet', category: 'Plumbing', amount: 800 }, 'Fix leaking faucet · ₱800.00'],
+    ['a missing title (falls back to the category)', { title: null, category: 'Plumbing', amount: 800 }, 'Plumbing · ₱800.00'],
+    ['a missing amount', { title: 'Fix leaking faucet', category: 'Plumbing', amount: null }, 'Fix leaking faucet'],
+    ['a missing title and amount', { title: null, category: 'Plumbing', amount: null }, 'Plumbing'],
+    ['a missing title and category', { title: null, category: null, amount: 800 }, null],
+    ['no title, category or amount', { title: null, category: null, amount: null }, null],
+  ])('builds the job chip for %s', (_label, { title, category, amount }, expected) => {
+    const view = caseView({
+      ...base,
+      escrow_transactions: amount == null ? null : { status: 'disputed', amount },
+      jobs: { ...base.jobs!, title, service_categories: category == null ? null : { name: category } },
+    }, CLIENT, BEFORE_DEADLINE);
+    expect(view.jobChip).toBe(expected);
   });
 });
 

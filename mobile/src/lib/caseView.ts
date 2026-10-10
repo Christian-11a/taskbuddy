@@ -311,9 +311,10 @@ export function caseView(dispute: CaseDispute, me: string | null | undefined, no
   }
   if (isOpen) steps.push(...openSteps());
 
+  // Job titles already carry their category ("Cleaning: Window cleaning"), so the chip shows the title alone.
   const title = job?.title?.trim();
   const category = job?.service_categories?.name?.trim();
-  const jobHead = title ? (category ? `${category}: ${title}` : title) : null;
+  const jobHead = title || category || null;
   const jobChip = jobHead && amount ? `${jobHead} · ${amount}` : jobHead;
 
   const moneyLine = dispute.escrow_transactions
