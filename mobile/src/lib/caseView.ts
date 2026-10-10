@@ -65,7 +65,7 @@ function toDate(iso: string | null | undefined): Date | null {
 }
 
 /** "Oct 6 · 6:59 PM": no seconds, plain spaces. */
-function caseDate(iso: string | null | undefined): string {
+export function caseDate(iso: string | null | undefined): string {
   const date = toDate(iso);
   if (!date) return '';
   const day = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });

@@ -1,10 +1,11 @@
 import { useThemedStyles, type Palette as ThemePalette } from '../../../src/context/ThemeContext';
 import React, { useRef, useState } from 'react';
-import { ActivityIndicator, Image, KeyboardAvoidingView, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Image, KeyboardAvoidingView, ScrollView, StyleSheet, Text, View } from 'react-native';
 import Tap from '../../../src/components/ui/Tap';
 import StatusCard from '../../../src/components/ui/StatusCard';
 import TextField from '../../../src/components/ui/TextField';
 import BottomActionBar from '../../../src/components/ui/BottomActionBar';
+import SheetFrame from '../../../src/components/ui/SheetFrame';
 import ConfirmationModal from '../../../src/components/ConfirmationModal';
 import { ArrowLeft, Check, Paperclip, RefreshCw, Undo2 } from 'lucide-react-native';
 import { Spacing, V6Radii, V6Shadows } from '../../../src/constants/theme';
@@ -12,11 +13,16 @@ import { useAsyncData } from '../../../src/hooks/useAsyncData';
 import { useHeaderTop } from '../../../src/hooks/useHeaderTop';
 import { useAuth } from '../../../src/context/AuthContext';
 import { api, type Message } from '../../../src/lib/api';
-import { caseView, type CaseStep } from '../../../src/lib/caseView';
+import { caseDate, caseView, type CaseStep } from '../../../src/lib/caseView';
 
-interface Props { jobId: string | null; onBack: () => void }
+interface Props {
+  jobId: string | null;
+  onBack: () => void;
+  /** Opens the job chat with the other party. Optional: the link shows only when given. */
+  onMessage?: () => void;
+}
 
-export default function HODisputeStatusScreen({ jobId, onBack }: Props) {
+export default function HODisputeStatusScreen({ jobId, onBack, onMessage }: Props) {
   const { C, Colors, styles, V6Colors, appearance } = useThemedStyles(createThemedStyles);
   const headerTop = useHeaderTop();
   const { profile } = useAuth();
@@ -24,49 +30,65 @@ export default function HODisputeStatusScreen({ jobId, onBack }: Props) {
   const [body, setBody] = useState('');
   const [kind, setKind] = useState<'statement' | 'appeal'>('statement');
   const [evidence, setEvidence] = useState<Message[]>([]);
+  const [evidenceLoaded, setEvidenceLoaded] = useState(false);
+  const [evidenceLoading, setEvidenceLoading] = useState(false);
   const [messageId, setMessageId] = useState<string | undefined>();
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const [confirm, setConfirm] = useState<'agree' | 'contest' | null>(null);
+  const [sheetOpen, setSheetOpen] = useState(false);
   const inFlight = useRef(false);
+  const open = dispute?.status === 'open';
   const pending = dispute?.status === 'open' && dispute.cancellation_state === 'pending';
   const canRespond = pending && dispute.jobs?.assigned_provider_id === profile?.id &&
     !!dispute.cancellation_deadline && Date.now() < new Date(dispute.cancellation_deadline).getTime();
   const view = dispute ? caseView(dispute, profile?.id) : null;
+  // Statement or appeal: the segment only applies while the case is open and not awaiting a response.
+  const entryKind = open ? kind : 'appeal';
+  const sendLabel = entryKind === 'appeal' ? 'Send appeal' : 'Send details';
+  const noNote = busy || !body.trim();
 
-  async function submit(accept?: boolean) {
-    if (!dispute || !body.trim() || busy || inFlight.current) return;
+  async function submit(accept?: boolean): Promise<boolean> {
+    if (!dispute || !body.trim() || busy || inFlight.current) return false;
     inFlight.current = true; setBusy(true); setActionError(null);
     try {
       if (accept !== undefined) await api.respondToCancellation(dispute.id, accept, body.trim(), messageId);
       else await api.addDisputeEntry(dispute.id, { kind: dispute.status === 'open' ? kind : 'appeal', body: body.trim(), message_id: messageId });
       setBody(''); setMessageId(undefined); reload();
-    } catch (e) { setActionError(e instanceof Error ? e.message : 'Could not update the complaint.'); }
+      return true;
+    } catch (e) { setActionError(e instanceof Error ? e.message : 'Could not update the complaint.'); return false; }
     finally { inFlight.current = false; setBusy(false); }
   }
   // Each confirm closes itself, then runs the same submit call exactly once.
   function confirmAgree() { setConfirm(null); void submit(true); }
   function confirmContest() { setConfirm(null); void submit(false); }
+  async function sendDetails() { if (await submit()) setSheetOpen(false); }
   async function loadEvidence() {
-    if (!jobId || busy) return;
-    setBusy(true); setActionError(null);
+    if (!jobId || busy || evidenceLoading) return;
+    setEvidenceLoading(true); setActionError(null);
     try {
       const conversation = await api.openConversation(jobId);
       setEvidence((await api.messages(conversation.id)).filter((message) => message.sender_id === profile?.id));
+      setEvidenceLoaded(true);
     } catch (e) { setActionError(e instanceof Error ? e.message : 'Could not load job evidence.'); }
-    finally { setBusy(false); }
+    finally { setEvidenceLoading(false); }
   }
+  function openSheet() { setSheetOpen(true); void loadEvidence(); }
 
-  const open = dispute?.status === 'open';
-  const noNote = busy || !body.trim();
+  // Inline evidence picker, used by the provider's answer.
   const evidenceTrigger = <Tap style={styles.evidenceButton} onPress={() => void loadEvidence()} disabled={busy} activeOpacity={0.8}>
     <Paperclip size={16} color={V6Colors.link} />
     <Text style={styles.evidenceText}>Choose job chat evidence</Text>
   </Tap>;
   const evidenceRows = evidence.map((message) => {
     const selected = messageId === message.id;
-    return <Tap key={message.id} style={[styles.evidenceRow, selected && styles.evidenceRowOn]} onPress={() => setMessageId(selected ? undefined : message.id)} accessibilityRole="checkbox" accessibilityState={{ checked: selected }} activeOpacity={0.85}>
-      <Text style={[styles.text, selected && styles.evidenceRowTextOn]}>{selected ? 'Selected: ' : ''}{message.body || 'Photo message'} · {new Date(message.created_at).toLocaleString()}</Text>
+    return <Tap key={message.id} style={[styles.evidenceRow, selected && styles.evidenceRowOn]} onPress={() => setMessageId(selected ? undefined : message.id)} accessibilityRole="checkbox" accessibilityState={{ checked: selected }} accessibilityLabel={message.body || 'Photo message'} activeOpacity={0.85}>
+      {!!message.attachment_url && <Image accessibilityLabel="Photo from the job chat" source={{ uri: message.attachment_url }} style={styles.thumb} resizeMode="cover" />}
+      <View style={styles.evidenceBodyWrap}>
+        <Text style={[styles.evidenceBody, selected && styles.evidenceRowTextOn]}>{message.body || 'Photo message'}</Text>
+        <Text style={styles.stepMeta}>{caseDate(message.created_at)}</Text>
+      </View>
+      {selected && <Check size={16} color={Colors.link} strokeWidth={3} />}
     </Tap>;
   });
 
@@ -118,7 +140,7 @@ export default function HODisputeStatusScreen({ jobId, onBack }: Props) {
           })}
         </View>
 
-        {canRespond ? <View style={styles.card}>
+        {canRespond && <View style={styles.card}>
           <TextField
             label="Your note" value={body} onChangeText={setBody} helper="They'll see this with your answer."
             placeholder="Add a note for the client and admin" multiline maxLength={1000} keyboardAppearance={appearance}
@@ -130,22 +152,17 @@ export default function HODisputeStatusScreen({ jobId, onBack }: Props) {
             accessibilityRole="button" accessibilityLabel="Contest and explain" accessibilityState={{ disabled: noNote }}>
             <Text style={[styles.linkText, noNote && styles.linkTextDisabled]}>Contest and explain</Text>
           </Tap>
-        </View> : <View style={styles.card}>
-          <Text style={styles.sectionTitle}>{dispute.status === 'open' ? 'Add a statement or appeal' : 'Appeal the recorded decision'}</Text>
-          <Text style={styles.text}>Describe your position. Send photos in the job chat, then select your message below as evidence. An appeal reopens review without reversing settled payments.</Text>
-          {dispute.status === 'open' && !pending && <View style={styles.segment}>
-            <Tap style={[styles.segmentItem, kind === 'statement' && styles.segmentItemOn]} onPress={() => setKind('statement')} accessibilityRole="radio" accessibilityState={{ checked: kind === 'statement' }} activeOpacity={0.85}><Text style={[styles.segmentText, kind === 'statement' && styles.segmentTextOn]}>Statement</Text></Tap>
-            <Tap style={[styles.segmentItem, kind === 'appeal' && styles.segmentItemOn]} onPress={() => setKind('appeal')} accessibilityRole="radio" accessibilityState={{ checked: kind === 'appeal' }} activeOpacity={0.85}><Text style={[styles.segmentText, kind === 'appeal' && styles.segmentTextOn]}>Appeal</Text></Tap>
-          </View>}
-          <TextInput keyboardAppearance={appearance} accessibilityLabel="Case statement" multiline value={body} onChangeText={setBody} maxLength={1000} placeholder="Explain what happened…" placeholderTextColor={C.ink400} textAlignVertical="top" style={styles.input} />
-          {evidenceTrigger}
-          {evidenceRows}
-          {!!actionError && <Text style={styles.error}>{actionError}</Text>}
-          <Tap style={[styles.button, (busy || !body.trim()) && styles.buttonDisabled]} disabled={busy || !body.trim()} onPress={() => void submit()}><Text style={[styles.buttonText, (busy || !body.trim()) && styles.buttonTextDisabled]}>{busy ? 'Saving…' : dispute.status === 'open' ? 'Submit statement' : 'Submit appeal'}</Text></Tap>
         </View>}
       </ScrollView>
-      {canRespond && <BottomActionBar primaryLabel="Agree to cancel" onPrimary={() => setConfirm('agree')} primaryDisabled={noNote} busy={busy} />}
+      {canRespond
+        ? <BottomActionBar primaryLabel="Agree to cancel" onPrimary={() => setConfirm('agree')} primaryDisabled={noNote} busy={busy} />
+        : open
+          ? <BottomActionBar primaryLabel="Add details or photos" onPrimary={openSheet}
+            secondaryLabel={onMessage ? `Message ${view.counterpartName}` : undefined} onSecondary={onMessage} />
+          : <BottomActionBar primaryLabel={view.closedBackLabel} onPrimary={onBack}
+            secondaryLabel="Disagree? Appeal this decision" onSecondary={openSheet} />}
     </KeyboardAvoidingView>}
+
     {canRespond && view && <>
       <ConfirmationModal
         visible={confirm === 'agree'} title={view.agree.title} message={view.agree.message} confirmLabel={view.agree.confirmLabel}
@@ -156,6 +173,32 @@ export default function HODisputeStatusScreen({ jobId, onBack }: Props) {
         cancelLabel="Go back" busy={busy} onConfirm={confirmContest} onCancel={() => setConfirm(null)}
       />
     </>}
+
+    {!canRespond && view && <SheetFrame visible={sheetOpen} onClose={busy ? undefined : () => setSheetOpen(false)} contentStyle={styles.sheet}>
+      <Text style={styles.sheetTitle} accessibilityRole="header">{view.sheetTitle}</Text>
+      <Text style={styles.text}>{view.sheetIntro}</Text>
+      {open && !pending && <View style={styles.segment}>
+        <Tap style={[styles.segmentItem, kind === 'statement' && styles.segmentItemOn]} onPress={() => setKind('statement')} accessibilityRole="radio" accessibilityState={{ checked: kind === 'statement' }} activeOpacity={0.85}><Text style={[styles.segmentText, kind === 'statement' && styles.segmentTextOn]}>Details</Text></Tap>
+        <Tap style={[styles.segmentItem, kind === 'appeal' && styles.segmentItemOn]} onPress={() => setKind('appeal')} accessibilityRole="radio" accessibilityState={{ checked: kind === 'appeal' }} activeOpacity={0.85}><Text style={[styles.segmentText, kind === 'appeal' && styles.segmentTextOn]}>Appeal</Text></Tap>
+      </View>}
+      <TextField
+        label="What else should the admin know?" value={body} onChangeText={setBody} helper={`${body.length} / 1000`}
+        placeholder="Explain what happened…" multiline maxLength={1000} keyboardAppearance={appearance}
+      />
+      <Text style={styles.sectionTitle}>From this job's chat</Text>
+      <Text style={styles.text}>Pick one of your messages to attach it as evidence.</Text>
+      {evidenceLoading ? <ActivityIndicator color={V6Colors.link} /> : evidenceRows}
+      {evidenceLoaded && !evidenceLoading && evidence.length === 0 && <Text style={styles.text}>No messages from you in this job's chat yet.</Text>}
+      {!!actionError && <Text style={styles.error}>{actionError}</Text>}
+      <Tap style={[styles.button, (busy || !body.trim()) && styles.buttonDisabled]} disabled={busy || !body.trim()} onPress={() => void sendDetails()}
+        accessibilityRole="button" accessibilityLabel={sendLabel} accessibilityState={{ disabled: busy || !body.trim() }}>
+        <Text style={[styles.buttonText, (busy || !body.trim()) && styles.buttonTextDisabled]}>{busy ? 'Saving…' : sendLabel}</Text>
+      </Tap>
+      <Tap style={styles.linkButton} onPress={() => setSheetOpen(false)} disabled={busy} activeOpacity={0.8}
+        accessibilityRole="button" accessibilityLabel="Cancel" accessibilityState={{ disabled: busy }}>
+        <Text style={styles.linkText}>Cancel</Text>
+      </Tap>
+    </SheetFrame>}
   </View>;
 }
 
@@ -210,20 +253,21 @@ function createThemedStyles(theme: ThemePalette) {
     stepMeta: { color: C.ink500, fontSize: 12, lineHeight: 16, fontFamily: 'Inter' },
     body: { color: C.ink800, fontSize: 15, lineHeight: 22, fontFamily: 'Inter' },
     text: { color: C.ink500, fontSize: 14, lineHeight: 21, fontFamily: 'Inter' },
+    sheet: { gap: 14, paddingHorizontal: 20, paddingTop: 4 },
+    sheetTitle: { color: C.ink900, fontSize: 20, fontWeight: '700', lineHeight: 26, fontFamily: 'Inter' },
     segment: { flexDirection: 'row', padding: 4, borderRadius: 12, backgroundColor: C.ink100, gap: 4 },
     segmentItem: { flex: 1, minHeight: 40, alignItems: 'center', justifyContent: 'center', borderRadius: 9 },
     segmentItemOn: { backgroundColor: C.surface, ...V6Shadows.sm },
     segmentText: { color: C.ink500, fontSize: 14.5, fontWeight: '600', fontFamily: 'Inter' },
     segmentTextOn: { color: C.ink900, fontWeight: '700' },
-    input: {
-      minHeight: 110, padding: 14, backgroundColor: C.surface, borderWidth: 1, borderColor: C.fieldBorder,
-      borderRadius: V6Radii.input, color: C.ink900, fontSize: 15, fontFamily: 'Inter',
-    },
     evidenceButton: { flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: 40, alignSelf: 'flex-start' },
     evidenceText: { color: V6Colors.link, fontSize: 14.5, fontWeight: '700', fontFamily: 'Inter' },
-    evidenceRow: { padding: 12, borderRadius: 12, borderWidth: 1, borderColor: C.line },
+    evidenceRow: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 12, borderRadius: 14, borderWidth: 1, borderColor: C.line, backgroundColor: C.surface },
     evidenceRowOn: { borderColor: C.cyan700, backgroundColor: C.primaryTonal },
     evidenceRowTextOn: { color: C.ink900 },
+    evidenceBodyWrap: { flex: 1, gap: 2 },
+    evidenceBody: { color: C.ink700, fontSize: 14, lineHeight: 20, fontFamily: 'Inter' },
+    thumb: { width: 56, height: 56, borderRadius: 10, backgroundColor: C.ink100 },
     linkButton: { minHeight: 48, alignItems: 'center', justifyContent: 'center' },
     linkText: { color: Colors.link, fontSize: 14, fontWeight: '600', lineHeight: 18, fontFamily: 'Inter' },
     linkTextDisabled: { color: C.ink500 },
