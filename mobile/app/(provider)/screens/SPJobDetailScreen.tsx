@@ -78,7 +78,7 @@ function labelFor(action: Action, pending: boolean): string {
     case 'declineBooking': return "Can't make it? Decline booking";
     case 'message': return 'Message client';
     case 'viewWallet': return 'View in wallet';
-    case 'reportProblem': return 'File a Complaint';
+    case 'reportProblem': return 'Report a problem';
     case 'viewCase': return 'View Complaint Status';
     default: return '';
   }

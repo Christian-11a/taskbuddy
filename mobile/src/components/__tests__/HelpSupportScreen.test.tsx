@@ -18,3 +18,12 @@ describe('HelpSupportScreen — tutorial replay entry point', () => {
     expect(screen.queryByText('View tutorial')).toBeNull();
   });
 });
+
+describe('HelpSupportScreen — report a problem wording', () => {
+  it('tells the homeowner to open the job, tap ⋮, then Report a problem', () => {
+    render(<HelpSupportScreen role="homeowner" onBack={jest.fn()} />);
+
+    expect(screen.getByText(/Open the job from My Jobs, tap ⋮, then Report a problem/)).toBeTruthy();
+    expect(screen.queryByText(/File a Complaint/)).toBeNull();
+  });
+});

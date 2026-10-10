@@ -172,7 +172,7 @@ describe('FullTest provider job details', () => {
     const onNavigate = jest.fn();
     render(<SPJobDetailScreen jobId={JOB_ID} onBack={jest.fn()} onNavigate={onNavigate} />);
     fireEvent.press(await screen.findByLabelText('More job options'));
-    fireEvent.press(screen.getByText('File a Complaint'));
+    fireEvent.press(screen.getByText('Report a problem'));
     expect(onNavigate).toHaveBeenCalledWith('Dispute Filing', JOB_ID);
   });
   it.each([1, 4])('offers warranty review only during the three-day window (age %i)', async (days) => {
@@ -183,7 +183,7 @@ describe('FullTest provider job details', () => {
     await screen.findByText(openJob.title);
     if (days < 3) {
       fireEvent.press(screen.getByLabelText('More job options'));
-      expect(await screen.findByText('File a Complaint')).toBeTruthy();
+      expect(await screen.findByText('Report a problem')).toBeTruthy();
     } else {
       expect(screen.queryByLabelText('More job options')).toBeNull();
     }
