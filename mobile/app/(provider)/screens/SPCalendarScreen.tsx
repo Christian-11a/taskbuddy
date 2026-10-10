@@ -17,12 +17,12 @@ import Tap from '../../../src/components/ui/Tap';
 import JobRow from '../../../src/components/ui/JobRow';
 import EmptyRow from '../../../src/components/ui/EmptyRow';
 import ContentSkeleton from '../../../src/components/ui/ContentSkeleton';
-import { CalendarDay, CalendarWeekdays } from '../../../src/components/ui/MonthGrid';
+import { CalendarDay, CalendarWeekdays, type CalendarDayProps } from '../../../src/components/ui/MonthGrid';
 import { useAsyncData } from '../../../src/hooks/useAsyncData';
 import { useHeaderTop } from '../../../src/hooks/useHeaderTop';
 import { api, type Booking } from '../../../src/lib/api';
 import { plural, timeOfDay } from '../../../src/lib/format';
-import { bookingMarks, bookingRowStatus, bookingsOnDay } from '../../../src/lib/bookingCalendar';
+import { bookingCounts, bookingMarks, bookingRowStatus, bookingsOnDay } from '../../../src/lib/bookingCalendar';
 import { dayHeading, monthTitle, shiftMonth } from '../../../src/lib/jobCalendar';
 import { dateKey, parseDateKey } from '../../../src/lib/localDate';
 import { SPScreen } from '../../../src/types/navigation';
@@ -62,6 +62,14 @@ export default function SPCalendarScreen({ onNavigate, title = 'Calendar', heade
   const bookings = useMemo(() => data ?? [], [data]);
 
   const marks = useMemo(() => bookingMarks(bookings, selectedDate, new Date()), [bookings, selectedDate]);
+  // Each day's booking count, for its label. The day cell is rebuilt only when the bookings change, so the cells are not remounted on every render.
+  const counts = useMemo(() => bookingCounts(bookings), [bookings]);
+  const DayCell = useMemo(
+    () => function BookingDay(props: CalendarDayProps) {
+      return <CalendarDay {...props} jobCount={props.date ? counts[props.date.dateString] : undefined} />;
+    },
+    [counts],
+  );
   const dayBookings = useMemo(() => bookingsOnDay(bookings, selectedDate), [bookings, selectedDate]);
   const settled = !loading && !error;
 
@@ -125,7 +133,7 @@ export default function SPCalendarScreen({ onNavigate, title = 'Calendar', heade
             onMonthChange={(month) => setVisibleMonth(month.dateString)}
             onDayPress={(day) => setSelectedDate(day.dateString)}
             markedDates={marks}
-            dayComponent={CalendarDay}
+            dayComponent={DayCell}
             theme={{
               calendarBackground: V6Colors.surface,
               backgroundColor: V6Colors.surface,

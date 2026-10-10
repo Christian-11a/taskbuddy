@@ -10,7 +10,7 @@ import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import type { DateData } from 'react-native-calendars';
 import { useThemedStyles, type Palette as ThemePalette } from '../../context/ThemeContext';
-import { dayLabel } from '../../lib/jobCalendar';
+import { calendarDayLabel } from '../../lib/jobCalendar';
 import Tap from './Tap';
 
 /** The weekday names over the grid. The grid starts on Sunday (firstDay 0). */
@@ -57,24 +57,29 @@ function createWeekdayStyles(theme: ThemePalette) {
 export type CalendarDayProps = {
   date?: DateData;
   marking?: { marked?: boolean; selected?: boolean; today?: boolean };
+  /** How many jobs fall on this day, for the label. Left out when the screen does not count them. */
+  jobCount?: number;
   onPress?: (date?: DateData) => void;
 };
 
 /**
  * One day in the month grid: a 36 dp circle (filled when picked, ringed when it
- * is today) with a dot under it when something falls on that day.
+ * is today) with a dot under it when something falls on that day. The label
+ * says the date, "today" and how many jobs, e.g. "October 10, 1 job".
  */
-export function CalendarDay({ date, marking, onPress }: CalendarDayProps) {
+export function CalendarDay({ date, marking, jobCount, onPress }: CalendarDayProps) {
   const { styles } = useThemedStyles(createDayStyles);
   if (!date) return <View style={styles.cell} />;
   const selected = !!marking?.selected;
   const today = !!marking?.today;
   const hasItems = !!marking?.marked;
-  const label = `${dayLabel(date.dateString)}${today ? ', today' : ''}${hasItems ? ', has jobs' : ''}`;
+  const label = calendarDayLabel(date.dateString, today, jobCount ?? 0);
   return (
     <Tap
       style={styles.cell}
       onPress={() => onPress?.(date)}
+      // The 36 dp circle sits in a 48 dp row; 4 dp more on each side keeps a press near the day's edge.
+      hitSlop={4}
       accessibilityRole="button"
       accessibilityLabel={label}
       accessibilityState={{ selected }}
@@ -85,7 +90,7 @@ export function CalendarDay({ date, marking, onPress }: CalendarDayProps) {
       >
         <Text style={[styles.dayText, selected && styles.dayTextSelected]}>{date.day}</Text>
       </View>
-      <View style={[styles.dot, !hasItems && styles.dotHidden]} />
+      <View accessible={false} style={[styles.dot, !hasItems && styles.dotHidden]} />
     </Tap>
   );
 }

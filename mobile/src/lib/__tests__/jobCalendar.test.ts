@@ -1,3 +1,4 @@
+import { calendarCounts, calendarDayLabel } from '../jobCalendar';
 import type { Job } from '../api';
 import {
   calendarMarks,
@@ -117,5 +118,27 @@ describe('month and day text', () => {
   it('headings and labels a day', () => {
     expect(dayHeading('2026-10-09')).toBe('Fri, Oct 9');
     expect(dayLabel('2026-10-09')).toBe('Friday, October 9');
+  });
+});
+
+describe('calendarCounts', () => {
+  it('counts the calendar jobs on each day, and leaves out the ones that are not on the calendar', () => {
+    const jobs = [
+      job({ id: 'a', status: 'confirmed', scheduled_at: at(2026, 9, 12) }),
+      job({ id: 'b', status: 'open', scheduled_at: at(2026, 9, 12, 17) }),
+      job({ id: 'c', status: 'open', scheduled_at: at(2026, 9, 2) }), // unfilled and past: off the calendar
+    ];
+
+    expect(calendarCounts(jobs, NOW)).toEqual({ '2026-10-12': 2 });
+  });
+});
+
+describe('calendarDayLabel', () => {
+  it('says the date, then today, then how many jobs', () => {
+    expect(calendarDayLabel('2026-10-10', false, 1)).toBe('October 10, 1 job');
+    expect(calendarDayLabel('2026-10-10', false, 3)).toBe('October 10, 3 jobs');
+    expect(calendarDayLabel('2026-10-07', true, 0)).toBe('October 7, today');
+    expect(calendarDayLabel('2026-10-07', true, 2)).toBe('October 7, today, 2 jobs');
+    expect(calendarDayLabel('2026-10-12', false, 0)).toBe('October 12');
   });
 });

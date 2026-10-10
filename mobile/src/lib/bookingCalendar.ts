@@ -33,6 +33,16 @@ export function bookingMarks(
   return marks;
 }
 
+/** How many bookings fall on each day ("YYYY-MM-DD"), for the day labels. Days with none are left out. */
+export function bookingCounts(bookings: readonly Booking[]): Record<string, number> {
+  const counts: Record<string, number> = {};
+  for (const booking of bookings) {
+    const key = dateKeyOf(booking.scheduled_at);
+    if (key) counts[key] = (counts[key] ?? 0) + 1;
+  }
+  return counts;
+}
+
 /** A booking's status line and tone. The client's name comes with the booking. */
 export function bookingRowStatus(
   booking: Pick<Booking, 'status' | 'client'>,

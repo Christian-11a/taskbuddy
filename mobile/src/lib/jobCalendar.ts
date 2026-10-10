@@ -55,6 +55,16 @@ export function calendarMarks(
   return marks;
 }
 
+/** How many calendar jobs fall on each day ("YYYY-MM-DD"), for the day labels. Days with none are left out. */
+export function calendarCounts(jobs: readonly Job[], now: Date): Record<string, number> {
+  const counts: Record<string, number> = {};
+  for (const job of jobs) {
+    const key = dateKeyOf(job.scheduled_at);
+    if (key && isOnCalendar(job, now)) counts[key] = (counts[key] ?? 0) + 1;
+  }
+  return counts;
+}
+
 /** "YYYY-MM-01" for the month `delta` months away from the month of `key`. */
 export function shiftMonth(key: string, delta: number): string {
   const month = parseDateKey(key);
@@ -74,4 +84,11 @@ export function dayHeading(key: string): string {
 /** "Friday, October 9", for screen readers. */
 export function dayLabel(key: string): string {
   return parseDateKey(key).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
+}
+
+/** A calendar day for screen readers: "October 10, 1 job", "October 7, today", "October 7, today, 2 jobs". */
+export function calendarDayLabel(key: string, today: boolean, jobCount: number): string {
+  const day = parseDateKey(key).toLocaleDateString('en-US', { month: 'long', day: 'numeric' });
+  const jobs = jobCount > 0 ? `${jobCount} job${jobCount === 1 ? '' : 's'}` : '';
+  return [day, today ? 'today' : '', jobs].filter(Boolean).join(', ');
 }

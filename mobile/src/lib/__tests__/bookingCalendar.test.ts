@@ -1,3 +1,4 @@
+import { bookingCounts } from '../bookingCalendar';
 import type { Booking } from '../api';
 import { bookingMarks, bookingRowStatus, bookingsOnDay } from '../bookingCalendar';
 import { dateKey } from '../localDate';
@@ -87,5 +88,18 @@ describe('bookingRowStatus', () => {
       tone: 'booked',
       meta: 'Booked',
     });
+  });
+});
+
+describe('bookingCounts', () => {
+  it('counts the bookings on each day', () => {
+    const bookings = [
+      makeBooking({ id: 'a', scheduled_at: onOct(12) }),
+      makeBooking({ id: 'b', scheduled_at: onOct(12, 14) }),
+      makeBooking({ id: 'c', scheduled_at: onOct(13) }),
+    ];
+
+    expect(bookingCounts(bookings)).toEqual({ '2026-10-12': 2, '2026-10-13': 1 });
+    expect(bookingCounts([])).toEqual({});
   });
 });
