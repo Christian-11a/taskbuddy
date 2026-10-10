@@ -834,7 +834,7 @@ function createThemedStyles(theme: ThemePalette) {
     dark: V6Colors.ink900,
     slate: V6Colors.ink500,
     muted: V6Colors.ink400,
-    mutedBorder: '#dce3e9',
+    mutedBorder: V6Colors.fieldBorder,
     brandDark: V6Colors.cyan900,
     brandTeal: V6Colors.cyan700,
     brandRed: V6Colors.dangerText,
@@ -898,7 +898,7 @@ function createThemedStyles(theme: ThemePalette) {
       paddingHorizontal: 16, paddingVertical: 13,
       borderBottomWidth: 1, borderBottomColor: V6Colors.canvas,
     },
-    categoryOptionActive: { backgroundColor: 'rgba(9,110,139,0.06)' },
+    categoryOptionActive: { backgroundColor: Colors.primaryTonal },
     categoryOptionText: { fontFamily: 'Inter', fontSize: 16.5, color: C.dark },
     categoryOptionTextActive: { color: V6Colors.link, fontWeight: '700' },
 
@@ -971,7 +971,7 @@ function createThemedStyles(theme: ThemePalette) {
     },
     confirmIcon: {
       width: 64, height: 64, borderRadius: 32, marginBottom: 16,
-      backgroundColor: 'rgba(9,110,139,0.10)', alignItems: 'center', justifyContent: 'center',
+      backgroundColor: Colors.primaryTonal, alignItems: 'center', justifyContent: 'center',
     },
     confirmText: {
       fontFamily: 'Inter', fontSize: 16.5, color: C.slate, textAlign: 'center',
@@ -1006,7 +1006,7 @@ function createThemedStyles(theme: ThemePalette) {
 
     dividerRow: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 16 },
     dividerLine: { flex: 1, height: 1, backgroundColor: V6Colors.ink100 },
-    dividerText: { color: '#B3B3B3', fontSize: 15.5, fontFamily: 'Roboto' },
+    dividerText: { color: V6Colors.ink500, fontSize: 15.5, fontFamily: 'Inter' },
 
     // Google's dark sign-in button: #131314, light text, four-colour G; same
     // shape and height as the primary button above it.
@@ -1021,7 +1021,7 @@ function createThemedStyles(theme: ThemePalette) {
 
     signInRow: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', marginTop: 4 },
     signInPrompt: { fontFamily: 'Inter', fontSize: 16.5, color: C.muted },
-    signInLink: { fontFamily: 'Roboto', fontSize: 16.5, fontWeight: '700', color: V6Colors.link },
+    signInLink: { fontFamily: 'Inter', fontSize: 16.5, fontWeight: '700', color: V6Colors.link },
   });
   return { appearance: theme.appearance, Colors, V6Colors, C, styles };
 }
