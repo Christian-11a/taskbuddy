@@ -23,27 +23,14 @@
 
 import { useThemedStyles, type Palette as ThemePalette } from '../../../src/context/ThemeContext';
 import React, { useState } from 'react';
-import {
-  ActivityIndicator,
-  ScrollView,
-  StyleSheet,
-  Text,
-  View,
-} from 'react-native';
+import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import Tap from '../../../src/components/ui/Tap';
 import ContentSkeleton from '../../../src/components/ui/ContentSkeleton';
+import StatusCard, { type StatusCardTone } from '../../../src/components/ui/StatusCard';
+import BottomActionBar from '../../../src/components/ui/BottomActionBar';
 import * as AuthSession from 'expo-auth-session';
 import * as WebBrowser from 'expo-web-browser';
-import {
-  ArrowLeft,
-  BadgeCheck,
-  CircleAlert,
-  Clock,
-  CreditCard,
-  ExternalLink,
-  Landmark,
-  Wallet,
-} from 'lucide-react-native';
+import { ArrowLeft, Check, CreditCard, ExternalLink, Lock, Wallet } from 'lucide-react-native';
 import { api, type ConnectStatus } from '../../../src/lib/api';
 import { openRedirectSession } from '../../../src/lib/appRedirectSession';
 import { useRefreshOnForeground } from '../../../src/hooks/useRefreshOnForeground';
@@ -55,38 +42,58 @@ interface SPPayoutsScreenProps {
   onBack: () => void;
 }
 
-const COPY: Record<
-  ConnectStatus['state'],
-  { title: string; body: string; action: string | null; tone: 'neutral' | 'pending' | 'warning' | 'good' }
-> = {
-  not_started: {
-    title: 'Get paid straight to your bank',
-    body: 'Connect a Stripe account to receive card-funded earnings after the three-day warranty ends, unless a complaint is open.',
-    action: 'Set up payouts',
-    tone: 'neutral',
-  },
-  onboarding: {
-    title: 'Finish setting up payouts',
-    body: 'You started connecting a Stripe account but have not finished. It only takes a few minutes.',
-    action: 'Continue setup',
-    tone: 'pending',
-  },
-  restricted: {
-    title: 'Stripe needs something from you',
-    body: 'Your account is connected, but Stripe cannot send you money until you update your details.',
-    action: 'Update details',
-    tone: 'warning',
-  },
-  active: {
-    title: 'Payouts are on',
-    body: 'Card-funded earnings become eligible for transfer after the three-day warranty ends without an open complaint. Stripe then processes the bank payout.',
-    action: null,
-    tone: 'good',
-  },
-};
+export interface PayoutsCopy {
+  tone: StatusCardTone;
+  overline: string;
+  title: string;
+  body: string;
+  /** Label of the bottom action, or null when the state needs none. */
+  action: string | null;
+}
+
+/** What the status card and the bottom action say for each Stripe state. */
+export function payoutsCopy(state: ConnectStatus['state']): PayoutsCopy {
+  switch (state) {
+    case 'not_started':
+      return {
+        tone: 'attention',
+        overline: 'Not set up',
+        title: 'Get paid straight to your bank',
+        body: 'Connect a Stripe account to receive card-funded earnings after the three-day warranty ends, unless a complaint is open.',
+        action: 'Set up payouts',
+      };
+    case 'onboarding':
+      return {
+        tone: 'attention',
+        overline: 'Setup not finished',
+        title: 'Finish setting up payouts',
+        body: 'You started connecting a Stripe account but have not finished. It only takes a few minutes.',
+        action: 'Continue setup',
+      };
+    case 'restricted':
+      return {
+        tone: 'attention',
+        overline: 'Action needed',
+        title: 'Stripe needs something from you',
+        body: 'Your account is connected, but Stripe cannot send you money until you update your details.',
+        action: 'Update details',
+      };
+    case 'active':
+      return {
+        tone: 'done',
+        overline: 'Payouts on',
+        title: 'Payouts are on',
+        body: 'Card-funded earnings become eligible for transfer after the three-day warranty ends without an open complaint. Stripe then processes the bank payout.',
+        action: null,
+      };
+  }
+}
+
+/** What a provider needs ready before Stripe's form. Stripe asks for both on its own pages. */
+const NEEDED = ['A valid ID', 'Your bank account details'];
 
 export default function SPPayoutsScreen({ onBack }: SPPayoutsScreenProps) {
-  const { C, TONE, styles, V6Colors } = useThemedStyles(createThemedStyles);
+  const { styles, Colors, V6Colors } = useThemedStyles(createThemedStyles);
   const headerTop = useHeaderTop();
   const { data: current, loading, error, reload } = useAsyncData<ConnectStatus>(
     () => api.connectSync(),
@@ -157,185 +164,205 @@ export default function SPPayoutsScreen({ onBack }: SPPayoutsScreenProps) {
     reload();
   };
 
-  const copy = current ? COPY[current.state] : null;
+  const copy = current ? payoutsCopy(current.state) : null;
 
   return (
     <View style={styles.screen}>
       <View style={[styles.header, { paddingTop: headerTop }]}>
-        <Tap style={styles.backBtn} onPress={onBack} activeOpacity={0.8}>
-          <ArrowLeft size={20} color={C.ink700} />
+        <Tap
+          style={styles.backBtn}
+          onPress={onBack}
+          activeOpacity={0.8}
+          hitSlop={{ top: 5, bottom: 5, left: 5, right: 5 }}
+          accessibilityRole="button"
+          accessibilityLabel="Back"
+        >
+          <ArrowLeft size={20} color={V6Colors.ink700} />
         </Tap>
-        <Text style={styles.headerTitle}>Payouts</Text>
+        <Text style={styles.headerTitle} accessibilityRole="header">Payouts</Text>
       </View>
 
       {loading && !current && <ContentSkeleton variant="list" />}
       {!!error && !current && (
         <View style={styles.centered}>
           <Text style={styles.stateText}>{error}</Text>
-          <Tap onPress={reload} activeOpacity={0.8}>
+          <Tap
+            onPress={reload}
+            activeOpacity={0.8}
+            hitSlop={{ top: 15, bottom: 15, left: 8, right: 8 }}
+            accessibilityRole="button"
+            accessibilityLabel="Try again"
+          >
             <Text style={styles.link}>Try again</Text>
           </Tap>
         </View>
       )}
 
       {current && copy && (
-        <ScrollView contentContainerStyle={styles.body} showsVerticalScrollIndicator={false}>
-          <View style={[styles.statusCard, TONE[copy.tone].card]} testID={`payouts-status-${current.state}`}>
-            <View style={[styles.statusIcon, TONE[copy.tone].icon]}>
-              <StatusIcon state={current.state} />
-            </View>
-            <Text style={styles.statusTitle}>{copy.title}</Text>
-            <Text style={styles.statusBody}>{copy.body}</Text>
-
-            {current.state === 'restricted' && current.requirements_due.length > 0 && (
-              <Text style={styles.requirements}>
-                Stripe is asking for {current.requirements_due.length} more detail
-                {current.requirements_due.length === 1 ? '' : 's'}.
-              </Text>
-            )}
-
-            {loading && <Text style={styles.statusBody}>Refreshing payout status…</Text>}
-            {!!error && <Text style={styles.actionError}>{error}</Text>}
-            {!!actionError && <Text style={styles.actionError}>{actionError}</Text>}
-
-            {copy.action && (
-              <Tap
-                style={[styles.primaryBtn, working && styles.disabled]}
-                onPress={startOrContinue}
-                disabled={working || loading}
-                activeOpacity={0.85}
-                testID="payouts-primary"
-              >
-                {working ? (
-                  <ActivityIndicator color={C.onPrimary} />
-                ) : (
-                  <Text style={styles.primaryBtnText}>{copy.action}</Text>
+        <>
+          <ScrollView style={styles.scroll} contentContainerStyle={styles.body} showsVerticalScrollIndicator={false}>
+            <View testID={`payouts-status-${current.state}`}>
+              <StatusCard tone={copy.tone} overline={copy.overline} title={copy.title} body={copy.body}>
+                {current.state === 'restricted' && current.requirements_due.length > 0 && (
+                  <Text style={styles.requirements}>
+                    Stripe is asking for {current.requirements_due.length} more detail
+                    {current.requirements_due.length === 1 ? '' : 's'}.
+                  </Text>
                 )}
-              </Tap>
+                {loading && <Text style={styles.note}>Refreshing payout status…</Text>}
+                {!!error && <Text style={styles.actionError}>{error}</Text>}
+                {!!actionError && <Text style={styles.actionError}>{actionError}</Text>}
+
+                {current.details_submitted && (
+                  <Tap
+                    style={[styles.outlineBtn, working && styles.disabled]}
+                    onPress={openDashboard}
+                    disabled={working || loading}
+                    activeOpacity={0.85}
+                    testID="payouts-dashboard"
+                    accessibilityRole="button"
+                    accessibilityLabel="Open Stripe dashboard"
+                  >
+                    <ExternalLink size={15} color={V6Colors.ink700} />
+                    <Text style={styles.outlineBtnText}>Open Stripe dashboard</Text>
+                  </Tap>
+                )}
+
+                {current.state !== 'not_started' && (
+                  <Tap
+                    onPress={refresh}
+                    disabled={working || loading}
+                    activeOpacity={0.8}
+                    hitSlop={{ top: 15, bottom: 15, left: 8, right: 8 }}
+                    accessibilityRole="button"
+                    accessibilityLabel="Refresh status"
+                  >
+                    <Text style={styles.link}>Refresh status</Text>
+                  </Tap>
+                )}
+              </StatusCard>
+            </View>
+
+            <Text style={styles.sectionTitle}>How you get paid</Text>
+            <View style={styles.card}>
+              <View style={styles.explainRow}>
+                <View style={styles.tile}>
+                  <CreditCard size={18} color={V6Colors.ink700} />
+                </View>
+                <View style={styles.explainText}>
+                  <Text style={styles.explainTitle}>Card-paid jobs → your bank</Text>
+                  <Text style={styles.explainBody}>
+                    {current.state === 'active'
+                      ? 'Eligible for transfer after the three-day warranty ends without an open complaint; Stripe then processes your bank payout.'
+                      : 'After the three-day warranty ends without an open complaint, earnings stay in your TaskBuddy wallet if Stripe payouts are not ready.'}
+                  </Text>
+                </View>
+              </View>
+              <View style={styles.explainRow}>
+                <View style={styles.tile}>
+                  <Wallet size={18} color={V6Colors.ink700} />
+                </View>
+                <View style={styles.explainText}>
+                  <Text style={styles.explainTitle}>Wallet-paid jobs → your TaskBuddy wallet</Text>
+                  <Text style={styles.explainBody}>
+                    Withdraw it from the Wallet tab as usual.
+                  </Text>
+                </View>
+              </View>
+            </View>
+
+            {current.state !== 'active' && (
+              <>
+                <Text style={styles.sectionTitle}>You'll need</Text>
+                <View style={styles.card}>
+                  {NEEDED.map((item) => (
+                    <View key={item} style={styles.checkRow}>
+                      <Check size={16} color={V6Colors.ink700} />
+                      <Text style={styles.checkText}>{item}</Text>
+                    </View>
+                  ))}
+                </View>
+                <Text style={styles.hint}>Setup takes a few minutes on Stripe's pages.</Text>
+              </>
             )}
 
-            {current.details_submitted && (
-              <Tap
-                style={[styles.outlineBtn, working && styles.disabled]}
-                onPress={openDashboard}
-                disabled={working || loading}
-                activeOpacity={0.85}
-                testID="payouts-dashboard"
-              >
-                <ExternalLink size={15} color={C.ink700} />
-                <Text style={styles.outlineBtnText}>Open Stripe dashboard</Text>
-              </Tap>
-            )}
-
-            {current.state !== 'not_started' && (
-              <Tap onPress={refresh} disabled={working || loading} activeOpacity={0.8}>
-                <Text style={styles.link}>Refresh status</Text>
-              </Tap>
-            )}
-          </View>
-
-          <Text style={styles.sectionTitle}>How you get paid</Text>
-          <View style={styles.explainRow}>
-            <CreditCard size={18} color={V6Colors.link} />
-            <View style={{ flex: 1 }}>
-              <Text style={styles.explainTitle}>Client paid by card</Text>
-              <Text style={styles.explainBody}>
-                {current.state === 'active'
-                  ? 'Eligible for transfer after the three-day warranty ends without an open complaint; Stripe then processes your bank payout.'
-                  : 'After the three-day warranty ends without an open complaint, earnings stay in your TaskBuddy wallet if Stripe payouts are not ready.'}
+            <View style={styles.footnote}>
+              <Lock size={14} color={V6Colors.ink500} />
+              <Text style={styles.footnoteText}>
+                Your bank details are entered on Stripe's pages and never reach TaskBuddy.
               </Text>
             </View>
-          </View>
-          <View style={styles.explainRow}>
-            <Wallet size={18} color={V6Colors.link} />
-            <View style={{ flex: 1 }}>
-              <Text style={styles.explainTitle}>Client paid from their wallet</Text>
-              <Text style={styles.explainBody}>
-                Lands in your TaskBuddy wallet. Withdraw it from the Wallet tab as usual.
-              </Text>
-            </View>
-          </View>
-          <Text style={styles.footnote}>
-            Your bank details are entered on Stripe's pages and never reach TaskBuddy.
-          </Text>
-        </ScrollView>
+          </ScrollView>
+
+          {copy.action && (
+            <BottomActionBar
+              primaryLabel={copy.action}
+              onPrimary={() => void startOrContinue()}
+              busy={working}
+              primaryDisabled={loading}
+            />
+          )}
+        </>
       )}
     </View>
   );
 }
 
-function StatusIcon({ state }: { state: ConnectStatus['state'] }) {
-  const { C, V6Colors } = useThemedStyles(createThemedStyles);
-  if (state === 'active') return <BadgeCheck size={22} color={C.green600} />;
-  if (state === 'restricted') return <CircleAlert size={22} color={C.amber700} />;
-  if (state === 'onboarding') return <Clock size={22} color={V6Colors.link} />;
-  return <Landmark size={22} color={V6Colors.link} />;
-}
-
 function createThemedStyles(theme: ThemePalette) {
   const { Colors, V6Colors } = theme;
-  const C = V6Colors;
-  const TONE = {
-    neutral: StyleSheet.create({ card: {}, icon: { backgroundColor: C.cyan50 } }),
-    pending: StyleSheet.create({ card: {}, icon: { backgroundColor: C.cyan50 } }),
-    warning: StyleSheet.create({ card: { borderColor: V6Colors.warningBorder }, icon: { backgroundColor: V6Colors.warningSurface } }),
-    good: StyleSheet.create({ card: { borderColor: V6Colors.successBorder }, icon: { backgroundColor: V6Colors.successSurface } }),
-  };
   const styles = StyleSheet.create({
-    screen: { flex: 1, backgroundColor: C.canvas },
+    screen: { flex: 1, backgroundColor: V6Colors.canvas },
     header: {
       flexDirection: 'row', alignItems: 'center', gap: 12,
-      backgroundColor: C.surface,
+      backgroundColor: V6Colors.surface,
       paddingHorizontal: Spacing.screenH,
       paddingBottom: 12,
-      borderBottomWidth: 1, borderBottomColor: C.hairline,
+      borderBottomWidth: 1, borderBottomColor: V6Colors.hairline,
     },
     backBtn: {
       width: 38, height: 38, borderRadius: 12,
-      backgroundColor: C.surface, borderWidth: 1, borderColor: C.line,
+      backgroundColor: V6Colors.surface, borderWidth: 1, borderColor: V6Colors.line,
       alignItems: 'center', justifyContent: 'center',
     },
-    headerTitle: { color: C.ink900, fontSize: 19.5, fontWeight: '800', fontFamily: 'Inter' },
-
-    body: { paddingHorizontal: Spacing.screenH, paddingTop: 16, paddingBottom: 32 },
+    headerTitle: { color: V6Colors.ink900, fontSize: 19.5, fontWeight: '800', fontFamily: 'Inter' },
+    scroll: { flex: 1 },
+    body: { paddingHorizontal: Spacing.screenH, paddingTop: 16, paddingBottom: 24 },
     centered: { alignItems: 'center', marginTop: 30, gap: 10 },
-    stateText: { color: C.ink500, fontSize: 15, fontFamily: 'Inter', textAlign: 'center' },
+    stateText: { color: V6Colors.ink500, fontSize: 15, lineHeight: 20, fontFamily: 'Inter', textAlign: 'center' },
 
-    statusCard: {
-      backgroundColor: C.surface, borderWidth: 1, borderColor: C.line,
-      borderRadius: 16, padding: 18, alignItems: 'center', gap: 8,
-    },
-    statusIcon: { width: 48, height: 48, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
-    statusTitle: { color: C.ink900, fontSize: 17, fontWeight: '800', fontFamily: 'Inter', textAlign: 'center' },
-    statusBody: { color: C.ink500, fontSize: 13.5, lineHeight: 19, fontFamily: 'Inter', textAlign: 'center' },
-    requirements: { color: C.amber700, fontSize: 12.5, fontWeight: '600', fontFamily: 'Inter' },
-    actionError: { color: V6Colors.dangerText, fontSize: 12.5, fontFamily: 'Inter', textAlign: 'center' },
-
-    primaryBtn: {
-      alignSelf: 'stretch', marginTop: 6,
-      backgroundColor: C.cyan700, borderRadius: 12, paddingVertical: 12, alignItems: 'center',
-    },
-    primaryBtnText: { color: C.onPrimary, fontSize: 14.5, fontWeight: '700', fontFamily: 'Inter' },
+    requirements: { color: Colors.warningText, fontSize: 13, fontWeight: '600', lineHeight: 18, fontFamily: 'Inter' },
+    note: { color: V6Colors.ink500, fontSize: 13, lineHeight: 18, fontFamily: 'Inter' },
+    actionError: { color: Colors.dangerText, fontSize: 13, lineHeight: 18, fontFamily: 'Inter' },
     outlineBtn: {
-      alignSelf: 'stretch', flexDirection: 'row', gap: 6, justifyContent: 'center',
-      borderWidth: 1, borderColor: C.fieldBorder, borderRadius: 12, paddingVertical: 11, alignItems: 'center',
+      flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
+      minHeight: 46, borderRadius: 14, borderWidth: 1, borderColor: V6Colors.line,
+      backgroundColor: V6Colors.surface, marginTop: 4,
     },
-    outlineBtnText: { color: C.ink700, fontSize: 14, fontWeight: '700', fontFamily: 'Inter' },
-    link: { color: V6Colors.link, fontSize: 13, fontWeight: '700', fontFamily: 'Inter', marginTop: 4 },
-    disabled: { opacity: 0.6 },
+    outlineBtnText: { color: V6Colors.ink700, fontSize: 14, fontWeight: '600', fontFamily: 'Inter' },
+    disabled: { opacity: 0.5 },
+    link: { color: Colors.link, fontSize: 14, fontWeight: '600', lineHeight: 18, fontFamily: 'Inter' },
 
     sectionTitle: {
-      color: C.ink800, fontSize: 14, fontWeight: '800', fontFamily: 'Inter',
+      color: V6Colors.ink900, fontSize: 17, fontWeight: '700', lineHeight: 22, fontFamily: 'Inter',
       marginTop: 22, marginBottom: 10,
     },
-    explainRow: {
-      flexDirection: 'row', gap: 12, alignItems: 'flex-start',
-      backgroundColor: C.surface, borderWidth: 1, borderColor: C.line,
-      borderRadius: 14, padding: 13, marginBottom: 9,
+    card: {
+      backgroundColor: V6Colors.surface, borderWidth: 1, borderColor: V6Colors.line,
+      borderRadius: 18, padding: 14, gap: 14,
     },
-    explainTitle: { color: C.ink900, fontSize: 13.5, fontWeight: '700', fontFamily: 'Inter' },
-    explainBody: { color: C.ink500, fontSize: 12.5, lineHeight: 17, fontFamily: 'Inter', marginTop: 2 },
-    footnote: { color: C.ink400, fontSize: 11.5, fontFamily: 'Inter', textAlign: 'center', marginTop: 10 },
+    explainRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 12 },
+    tile: {
+      width: 40, height: 40, borderRadius: 12, backgroundColor: Colors.skeleton,
+      alignItems: 'center', justifyContent: 'center',
+    },
+    explainText: { flex: 1, gap: 2 },
+    explainTitle: { color: V6Colors.ink900, fontSize: 15, fontWeight: '600', lineHeight: 20, fontFamily: 'Inter' },
+    explainBody: { color: V6Colors.ink500, fontSize: 13, lineHeight: 18, fontFamily: 'Inter' },
+    checkRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+    checkText: { color: V6Colors.ink900, fontSize: 15, fontWeight: '500', lineHeight: 20, fontFamily: 'Inter' },
+    hint: { color: V6Colors.ink500, fontSize: 13, lineHeight: 18, fontFamily: 'Inter', marginTop: 8 },
+    footnote: { flexDirection: 'row', alignItems: 'flex-start', gap: 8, marginTop: 18 },
+    footnoteText: { flex: 1, color: V6Colors.ink500, fontSize: 13, lineHeight: 18, fontFamily: 'Inter' },
   });
-  return { Colors, V6Colors, C, TONE, styles };
+  return { Colors, V6Colors, styles };
 }
