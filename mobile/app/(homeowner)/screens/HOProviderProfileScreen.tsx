@@ -93,7 +93,7 @@ export default function HOProviderProfileScreen({
       {/* Header — matches .topbar (flat white) */}
       <View style={[styles.header, { paddingTop: headerTop }]}>
         {onBack && (
-          <Tap style={styles.backBtn} onPress={onBack} activeOpacity={0.8} accessibilityRole="button" accessibilityLabel="Back">
+          <Tap style={styles.backBtn} onPress={onBack} hitSlop={5} activeOpacity={0.8} accessibilityRole="button" accessibilityLabel="Back">
             <ArrowLeft size={20} color={C.ink700} />
           </Tap>
         )}
@@ -162,14 +162,14 @@ export default function HOProviderProfileScreen({
           {/* About */}
           {!!provider.bio && (
             <View style={styles.section}>
-              <Text style={styles.sectionTitle}>About</Text>
+              <Text style={styles.sectionTitle} accessibilityRole="header">About</Text>
               <Text style={styles.bio}>{provider.bio}</Text>
             </View>
           )}
 
           {showPortfolio && (
             <View style={styles.section}>
-              <Text style={styles.sectionTitle}>Portfolio</Text>
+              <Text style={styles.sectionTitle} accessibilityRole="header">Portfolio</Text>
               {portfolio.loading && <ActivityIndicator color={V6Colors.link}/>}
               {!!portfolio.error && <><Text style={styles.bio}>{portfolio.error}</Text><Tap onPress={portfolio.reload}><Text style={styles.serviceText}>Retry portfolio</Text></Tap></>}
               {!portfolio.loading && !portfolio.error && <PortfolioGallery entries={portfolioEntries}/>}
@@ -179,7 +179,7 @@ export default function HOProviderProfileScreen({
           {/* Recent work */}
           {work.length > 0 && (
             <View style={styles.section}>
-              <Text style={styles.sectionTitle}>Recent work</Text>
+              <Text style={styles.sectionTitle} accessibilityRole="header">Recent work</Text>
               {work.map((item) => (
                 <View key={item.id} style={styles.workRow}>
                   <CheckCircle2 size={16} color={V6Colors.link} />
@@ -199,7 +199,7 @@ export default function HOProviderProfileScreen({
           {/* Reviews */}
           {reviews.length > 0 && (
             <View style={styles.section}>
-              <Text style={styles.sectionTitle}>Reviews</Text>
+              <Text style={styles.sectionTitle} accessibilityRole="header">Reviews</Text>
               {reviews.map((r) => (
                 <View key={r.id} style={styles.reviewRow}>
                   <View style={styles.reviewAvatar}>

@@ -14,7 +14,8 @@ export default function SectionHeader({ title, count, linkLabel, onLinkPress }: 
         {count != null && <View style={s.badge}><Text style={s.badgeText}>{count}</Text></View>}
       </View>
       {!!linkLabel && (
-        <Tap onPress={onLinkPress} hitSlop={{ top: 12, bottom: 12, left: 8, right: 8 }} accessibilityRole="link">
+        // The 14 dp link is about 17 dp tall; 16 dp above and below brings the touch area to 48.
+        <Tap onPress={onLinkPress} hitSlop={{ top: 16, bottom: 16, left: 8, right: 8 }} accessibilityRole="link">
           <Text style={s.link}>{linkLabel}</Text>
         </Tap>
       )}
