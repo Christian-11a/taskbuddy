@@ -29,7 +29,7 @@ it('keeps the urgency step visible and reports missing required fields when Next
   await screen.findByText('Fix leaking faucet');
   fireEvent.press(screen.getByText('Fix leaking faucet'));
   fireEvent.press(screen.getByText('Next'));
-  await screen.findByText('Select a date');
+  await screen.findByText('Pick a date');
   fireEvent.press(screen.getByText('Next'));
   await waitFor(() => expect(screen.getAllByText('Please select a preferred date.').length).toBeGreaterThan(0));
   expect(screen.getByText('Please set a budget for this job.')).toBeTruthy();
@@ -47,9 +47,9 @@ it('posts from review without another terms acceptance and retains form state af
   fireEvent.press(await screen.findByText('Fix leaking faucet'));
   await act(async () => fireEvent.press(screen.getByText('Add photos (optional)')));
   fireEvent.press(screen.getByText('Next'));
-  fireEvent.press(await screen.findByText('Select a date'));
+  fireEvent.press(await screen.findByText('Pick a date'));
   fireEvent.press(screen.getByText('Choose test date'));
-  fireEvent.press(screen.getByText('Select a time'));
+  fireEvent.press(screen.getByText('Pick a time'));
   fireEvent.press(screen.getByText('Choose test time'));
   if (screen.queryByText('Done')) fireEvent.press(screen.getByText('Done'));
   fireEvent.changeText(screen.getByPlaceholderText('0.00'), '1500');

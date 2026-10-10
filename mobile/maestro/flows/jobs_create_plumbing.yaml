@@ -23,5 +23,5 @@ appId: com.taskbuddy.app
 - tapOn: "Fix leaking faucet"
 - tapOn: "Next"
 - assertVisible: "When, and how much?"
-- tapOn: "Select a date"
+- tapOn: "Pick a date"
 - takeScreenshot: jobs_create_date_picker

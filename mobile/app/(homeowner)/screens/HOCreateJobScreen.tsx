@@ -68,6 +68,7 @@ import SheetFrame from '../../../src/components/ui/SheetFrame';
 import SuccessMark from '../../../src/components/ui/SuccessMark';
 import {
   BrushCleaning,
+  CalendarDays,
   Camera,
   Check,
   CheckCircle2,
@@ -102,6 +103,7 @@ import PostProgress from '../../../src/components/post/PostProgress';
 import ServiceTile from '../../../src/components/post/ServiceTile';
 import CalmNote from '../../../src/components/post/CalmNote';
 import AddTaskRow from '../../../src/components/post/AddTaskRow';
+import UrgencyRow from '../../../src/components/post/UrgencyRow';
 import CheckRow from '../../../src/components/ui/CheckRow';
 import TextField from '../../../src/components/ui/TextField';
 import { requestAppPermission } from '../../../src/lib/permissions';
@@ -972,62 +974,57 @@ export default function HOCreateJobScreen({
         {step === 4 && (
           <View>
             <Text style={styles.stepTitle}>When, and how much?</Text>
-            <Text style={styles.stepSubtitle}>How soon?</Text>
+            <Text style={styles.sectionLabel}>How soon?</Text>
 
-            {URGENCY_OPTIONS.map((option) => {
-              const active = urgency === option.value;
-              const Icon = option.icon;
-              return (
+            {URGENCY_OPTIONS.map((option) => (
+              <UrgencyRow
+                key={option.value}
+                label={option.label}
+                blurb={option.blurb}
+                icon={option.icon}
+                selected={urgency === option.value}
+                onSelect={() => setUrgency(option.value)}
+              />
+            ))}
+
+            <View
+              style={styles.dateTimeRow}
+              onLayout={(event) => {
+                // Both pickers share this row, so both scroll to its top edge.
+                fieldPositions.current.date = event.nativeEvent.layout.y;
+                fieldPositions.current.time = event.nativeEvent.layout.y;
+              }}
+            >
+              <View style={styles.dateTimeCol}>
+                <Text style={styles.inputLabel}>Date</Text>
                 <Tap
-                  key={option.value}
-                  style={[styles.urgencyCard, active && { borderColor: option.accent, backgroundColor: V6Colors.infoSurface }]}
-                  onPress={() => setUrgency(option.value)}
-                  activeOpacity={0.85}
-                  accessibilityRole="radio"
-                  accessibilityState={{ selected: active }}
+                  style={[styles.input, styles.pickerInput, showDatePicker && styles.inputFocused, fieldErrors.date && styles.inputError]}
+                  onPress={() => { setShowTimePicker(false); setShowDatePicker(true); clearError('date'); }}
+                  activeOpacity={0.8}
+                  accessibilityRole="button"
+                  accessibilityLabel="Date"
                 >
-                  <Icon size={22} color={active ? option.accent : Colors.slate} />
-                  <View style={styles.urgencyInfo}>
-                    <Text style={[styles.urgencyLabel, active && { color: option.accent }]}>
-                      {option.label}
-                    </Text>
-                    <Text style={styles.urgencyBlurb}>{option.blurb}</Text>
-                  </View>
-                  <View style={[styles.radio, active && { borderColor: option.accent }]}>
-                    {active && <View style={[styles.radioDot, { backgroundColor: option.accent }]} />}
-                  </View>
+                  <Text style={[styles.pickerText, !date && styles.pickerPlaceholder]}>{dateLabel || 'Pick a date'}</Text>
                 </Tap>
-              );
-            })}
-
-            <View style={styles.divider} />
-
-            <View onLayout={(event) => { fieldPositions.current.date = event.nativeEvent.layout.y; }} style={styles.inputGroup}>
-              <Text style={styles.inputLabel}>Preferred Date<Text style={styles.requiredAsterisk}> *</Text></Text>
-              <Tap
-                style={[styles.input, styles.pickerInput, showDatePicker && styles.inputFocused, fieldErrors.date && styles.inputError]}
-                onPress={() => { setShowTimePicker(false); setShowDatePicker(true); clearError('date'); }}
-                activeOpacity={0.8}
-              >
-                <Text style={[styles.pickerText, !date && styles.pickerPlaceholder]}>{dateLabel || 'Select a date'}</Text>
-              </Tap>
-              {!!fieldErrors.date && <Text style={styles.inputErrorText}>{fieldErrors.date}</Text>}
-            </View>
-
-            <View onLayout={(event) => { fieldPositions.current.time = event.nativeEvent.layout.y; }} style={styles.inputGroup}>
-              <Text style={styles.inputLabel}>Preferred Time<Text style={styles.requiredAsterisk}> *</Text></Text>
-              <Tap
-                style={[styles.input, styles.pickerInput, showTimePicker && styles.inputFocused, fieldErrors.time && styles.inputError]}
-                onPress={() => { openTimePicker(); clearError('time'); }}
-                activeOpacity={0.8}
-              >
-                <Text style={[styles.pickerText, !time && styles.pickerPlaceholder]}>{timeLabel || 'Select a time'}</Text>
-              </Tap>
-              {!!fieldErrors.time && <Text style={styles.inputErrorText}>{fieldErrors.time}</Text>}
+                {!!fieldErrors.date && <Text style={styles.inputErrorText}>{fieldErrors.date}</Text>}
+              </View>
+              <View style={styles.dateTimeCol}>
+                <Text style={styles.inputLabel}>Time</Text>
+                <Tap
+                  style={[styles.input, styles.pickerInput, showTimePicker && styles.inputFocused, fieldErrors.time && styles.inputError]}
+                  onPress={() => { openTimePicker(); clearError('time'); }}
+                  activeOpacity={0.8}
+                  accessibilityRole="button"
+                  accessibilityLabel="Time"
+                >
+                  <Text style={[styles.pickerText, !time && styles.pickerPlaceholder]}>{timeLabel || 'Pick a time'}</Text>
+                </Tap>
+                {!!fieldErrors.time && <Text style={styles.inputErrorText}>{fieldErrors.time}</Text>}
+              </View>
             </View>
 
             <View onLayout={(event) => { fieldPositions.current.budget = event.nativeEvent.layout.y; }} style={styles.inputGroup}>
-              <Text style={styles.inputLabel}>Budget<Text style={styles.requiredAsterisk}> *</Text></Text>
+              <Text style={styles.inputLabel}>Budget</Text>
               <View style={[styles.budgetCard, focusedField === 'budget' && styles.budgetCardFocused, !!fieldErrors.budget && styles.inputError]}>
                 <Text style={styles.budgetCurrency}>₱</Text>
                 <TextInput keyboardAppearance={appearance}
@@ -1048,9 +1045,7 @@ export default function HOCreateJobScreen({
                 />
               </View>
               {!!fieldErrors.budget && <Text style={styles.inputErrorText}>{fieldErrors.budget}</Text>}
-              <Text style={styles.budgetHint}>
-                Held in escrow when you hire someone, then released after the three-day warranty unless a complaint is open.
-              </Text>
+              <Text style={styles.budgetHint}>You only pay when you hire. It's held safely until the job is done.</Text>
             </View>
           </View>
         )}
@@ -1255,28 +1250,12 @@ function createThemedStyles(theme: ThemePalette) {
     muted: V6Colors.ink400,
     error: '#ef4444',
   } as const;
+  // What each urgency means, in plain words. The backend's matching windows
+  // (see the note at the top of this file) still apply; they are not repeated here.
   const URGENCY_OPTIONS = [
-    {
-      value: 'urgent' as const,
-      label: 'Urgent',
-      blurb: 'Needed right away — providers are matched after 5 minutes.',
-      icon: Zap,
-      accent: '#ef4444',
-    },
-    {
-      value: 'normal' as const,
-      label: 'Normal',
-      blurb: 'Within the next few days — matched after 10 minutes.',
-      icon: Clock,
-      accent: V6Colors.cyan700,
-    },
-    {
-      value: 'flexible' as const,
-      label: 'Flexible',
-      blurb: 'No rush — the widest choice of providers, matched after 15 minutes.',
-      icon: CheckCircle2,
-      accent: '#0f766e',
-    },
+    { value: 'flexible' as const, label: 'Flexible', blurb: 'Any day that works for you', icon: CalendarDays },
+    { value: 'normal' as const, label: 'Normal', blurb: 'Within a few days', icon: Clock },
+    { value: 'urgent' as const, label: 'Urgent', blurb: 'You need someone today', icon: Zap },
   ];
   const styles = StyleSheet.create({
     screen: { flex: 1, backgroundColor: Colors.background },
@@ -1300,10 +1279,8 @@ function createThemedStyles(theme: ThemePalette) {
     },
     addressInput: { minHeight: 70, paddingTop: 12, textAlignVertical: 'top' },
     inputFocused: { borderColor: Colors.brandTeal, borderWidth: 2 },
-    inputError: { borderColor: Colors.error, borderWidth: 2 },
-    inputErrorText: { color: Colors.error, fontSize: 15.5, marginTop: 8, fontFamily: 'Inter' },
-    inputHint: { color: Colors.slate, fontSize: 13.5, marginTop: 8, fontFamily: 'Inter' },
-    requiredAsterisk: { color: Colors.error, fontWeight: '800' },
+    inputError: { borderColor: Colors.dangerText, borderWidth: 1.5 },
+    inputErrorText: { color: Colors.dangerText, fontSize: 13.5, lineHeight: 18, marginTop: 6, fontFamily: 'Inter' },
     pickerInput: { justifyContent: 'center', minHeight: 48 },
     pickerText: { color: V6Colors.ink900, fontFamily: 'Inter', fontSize: 18.5 },
     pickerPlaceholder: { color: Colors.muted },
@@ -1354,32 +1331,19 @@ function createThemedStyles(theme: ThemePalette) {
     removePhoto: { position: 'absolute', top: -6, right: -6, width: 22, height: 22, borderRadius: 11, backgroundColor: Colors.error, alignItems: 'center', justifyContent: 'center' },
     removePhotoText: { color: Colors.onPrimary, fontSize: 21.5, lineHeight: 20, fontWeight: '700' },
 
-    // Urgency
-    urgencyCard: {
-      flexDirection: 'row', alignItems: 'center', gap: 12,
-      backgroundColor: Colors.surface, borderRadius: 16, padding: 16,
-      borderWidth: 2, borderColor: 'transparent', marginBottom: 10,
-      ...Shadows.card,
-    },
-    urgencyInfo: { flex: 1 },
-    urgencyLabel: { color: V6Colors.ink900, fontSize: 16.5, fontWeight: '700', fontFamily: 'Inter', marginBottom: 2 },
-    urgencyBlurb: { color: Colors.slate, fontSize: 14, fontFamily: 'Inter', lineHeight: 18 },
-    radio: {
-      width: 22, height: 22, borderRadius: 11,
-      borderWidth: 2, borderColor: V6Colors.ink200,
-      alignItems: 'center', justifyContent: 'center',
-    },
-    radioDot: { width: 11, height: 11, borderRadius: 6 },
+    dateTimeRow: { flexDirection: 'row', gap: 12, marginTop: 8, marginBottom: 16 },
+    dateTimeCol: { flex: 1 },
+    sectionLabel: { color: V6Colors.ink900, fontSize: 16, fontWeight: '700', fontFamily: 'Inter', marginBottom: 10 },
 
+    // Budget: a big, plain field. Nothing is red until a Next press says so.
     budgetCard: {
-      backgroundColor: Colors.surface, borderRadius: 20, padding: 24,
-      flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-      borderWidth: 1, borderColor: 'transparent', ...Shadows.card,
+      flexDirection: 'row', alignItems: 'center', gap: 6, minHeight: 64, paddingHorizontal: 16,
+      backgroundColor: Colors.surface, borderRadius: 16, borderWidth: 1.5, borderColor: V6Colors.fieldBorder,
     },
-    budgetCardFocused: { borderColor: Colors.brandTeal, borderWidth: 2 },
-    budgetCurrency: { color: V6Colors.ink900, fontSize: 39, fontWeight: '800', fontFamily: 'Inter', marginRight: 4 },
-    budgetInput: { fontSize: 40, fontWeight: '800', fontFamily: 'Inter', color: V6Colors.ink900, minWidth: 120 },
-    budgetHint: { color: Colors.muted, fontSize: 14, fontFamily: 'Inter', textAlign: 'center', marginTop: 12, lineHeight: 19 },
+    budgetCardFocused: { borderColor: Colors.link, borderWidth: 2 },
+    budgetCurrency: { color: V6Colors.ink700, fontSize: 28, fontWeight: '700', fontFamily: 'Inter' },
+    budgetInput: { flex: 1, fontSize: 30, fontWeight: '700', fontFamily: 'Inter', color: V6Colors.ink900, paddingVertical: 8 },
+    budgetHint: { color: V6Colors.ink500, fontSize: 13.5, fontFamily: 'Inter', lineHeight: 18, marginTop: 8 },
 
     reviewCard: { backgroundColor: Colors.surface, borderRadius: 20, padding: 20, marginBottom: 16, ...Shadows.card },
     reviewSectionTitle: { color: V6Colors.ink900, fontSize: 16.5, fontWeight: '800', fontFamily: 'Inter', marginBottom: 10 },
