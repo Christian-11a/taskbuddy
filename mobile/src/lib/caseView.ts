@@ -79,6 +79,13 @@ function caseDay(iso: string | null | undefined): string {
   return date ? date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '';
 }
 
+/** True when the title already starts with the category name, case-insensitively, followed by ':', a space or the end. */
+function titleHasCategory(title: string, category: string): boolean {
+  if (!title.toLowerCase().startsWith(category.toLowerCase())) return false;
+  const next = title.charAt(category.length);
+  return next === '' || next === ':' || next === ' ';
+}
+
 const nameOf = (party: Party | undefined): string | null => party?.full_name?.trim() || null;
 const capitalise = (text: string) => text.charAt(0).toUpperCase() + text.slice(1);
 const isSide = (entry: DisputeEntry) => entry.kind === 'statement' || entry.kind === 'appeal';
@@ -311,10 +318,11 @@ export function caseView(dispute: CaseDispute, me: string | null | undefined, no
   }
   if (isOpen) steps.push(...openSteps());
 
-  // Job titles already carry their category ("Cleaning: Window cleaning"), so the chip shows the title alone.
   const title = job?.title?.trim();
   const category = job?.service_categories?.name?.trim();
-  const jobHead = title || category || null;
+  const jobHead = title
+    ? (category && !titleHasCategory(title, category) ? `${category}: ${title}` : title)
+    : (category || null);
   const jobChip = jobHead && amount ? `${jobHead} · ${amount}` : jobHead;
 
   const moneyLine = dispute.escrow_transactions

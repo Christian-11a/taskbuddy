@@ -48,15 +48,15 @@ describe('caseView: heading and job chip', () => {
     expect(caseView(pending, CLIENT, BEFORE_DEADLINE).heading).toBe('Cancellation request');
   });
 
-  // The job title already carries its category ("Cleaning: Window cleaning"), so the chip never adds it again.
+  // The category is prepended only when the title does not already start with it.
   it.each([
     ['an already-prefixed title', { title: 'Cleaning: Window cleaning', category: 'Cleaning', amount: 1 }, 'Cleaning: Window cleaning · ₱1.00'],
-    ['a plain title', { title: 'Fix leaking faucet', category: 'Plumbing', amount: 800 }, 'Fix leaking faucet · ₱800.00'],
+    ['a plain title', { title: 'Fix leaking faucet', category: 'Plumbing', amount: 800 }, 'Plumbing: Fix leaking faucet · ₱800.00'],
     ['a missing title (falls back to the category)', { title: null, category: 'Plumbing', amount: 800 }, 'Plumbing · ₱800.00'],
-    ['a missing amount', { title: 'Fix leaking faucet', category: 'Plumbing', amount: null }, 'Fix leaking faucet'],
-    ['a missing title and amount', { title: null, category: 'Plumbing', amount: null }, 'Plumbing'],
+    ['a missing amount', { title: 'Fix leaking faucet', category: 'Plumbing', amount: null }, 'Plumbing: Fix leaking faucet'],
+    ['a prefix in different case', { title: 'cleaning: Window cleaning', category: 'Cleaning', amount: 1 }, 'cleaning: Window cleaning · ₱1.00'],
+    ['a title that only starts with the category letters', { title: 'Cleaning services', category: 'Clean', amount: 1 }, 'Clean: Cleaning services · ₱1.00'],
     ['a missing title and category', { title: null, category: null, amount: 800 }, null],
-    ['no title, category or amount', { title: null, category: null, amount: null }, null],
   ])('builds the job chip for %s', (_label, { title, category, amount }, expected) => {
     const view = caseView({
       ...base,
