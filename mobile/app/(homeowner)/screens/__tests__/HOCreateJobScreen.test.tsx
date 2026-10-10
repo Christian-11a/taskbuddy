@@ -7,9 +7,10 @@ import { api } from '../../../../src/lib/api';
 jest.mock('../../../../src/lib/api', () => ({ api: {
   categories: jest.fn(), createJob: jest.fn(), uploadImage: jest.fn(), staticMapSource: jest.fn(() => ({ uri: 'https://example.test/map.png' })),
 } }));
-jest.mock('../../../../src/context/AuthContext', () => ({ useAuth: () => ({ profile: {
-  address: 'Quezon City', latitude: 14.6, longitude: 121,
-} }) }));
+const DEFAULT_PROFILE = { address: 'Quezon City', latitude: 14.6, longitude: 121 };
+let mockProfile: { address: string | null; latitude: number | null; longitude: number | null } = { ...DEFAULT_PROFILE };
+jest.mock('../../../../src/context/AuthContext', () => ({ useAuth: () => ({ profile: mockProfile }) }));
+beforeEach(() => { mockProfile = { ...DEFAULT_PROFILE }; });
 jest.mock('../../../../src/lib/permissions', () => ({ requestAppPermission: jest.fn().mockResolvedValue(true) }));
 jest.mock('react-native-calendars', () => ({ Calendar: ({ onDayPress }: any) => {
   const { Text } = jest.requireActual('react-native');
@@ -187,6 +188,31 @@ it('Post another job starts a blank form at the first step', async () => {
   expect(screen.queryByRole('radio', { name: 'Plumbing', checked: true })).toBeNull();
 });
 
+const MAP_LABEL = 'Map of the confirmed job location';
+
+it('shows the map card once a confirmed address has coordinates', async () => {
+  (api.categories as jest.Mock).mockResolvedValue([{ id: 1, name: 'Plumbing' }]);
+  render(<HOCreateJobScreen initialCategoryId={1} onBack={jest.fn()} onSuccess={jest.fn()} />);
+  await screen.findByText('Location confirmed');
+  expect(screen.getByLabelText(MAP_LABEL)).toBeTruthy();
+});
+
+it('shows no map card while the address has no coordinates', async () => {
+  mockProfile = { address: null, latitude: null, longitude: null };
+  (api.categories as jest.Mock).mockResolvedValue([{ id: 1, name: 'Plumbing' }]);
+  render(<HOCreateJobScreen initialCategoryId={1} onBack={jest.fn()} onSuccess={jest.fn()} />);
+  expect(await screen.findByText("Location is off, so we couldn't find you. Typing the address works just as well.")).toBeTruthy();
+  expect(screen.queryByLabelText(MAP_LABEL)).toBeNull();
+});
+
+it('hides the map card only when the map image really fails', async () => {
+  (api.categories as jest.Mock).mockResolvedValue([{ id: 1, name: 'Plumbing' }]);
+  render(<HOCreateJobScreen initialCategoryId={1} onBack={jest.fn()} onSuccess={jest.fn()} />);
+  await screen.findByText('Location confirmed');
+  fireEvent(screen.getByLabelText(MAP_LABEL), 'error');
+  expect(screen.queryByLabelText(MAP_LABEL)).toBeNull();
+  expect(screen.getByText('Location confirmed')).toBeTruthy();
+});
 it('while posting shows only the steps that really run, and a failed post returns to Review', async () => {
   (api.categories as jest.Mock).mockResolvedValue([{ id: 1, name: 'Plumbing' }]);
   (api.uploadImage as jest.Mock).mockResolvedValue('client/photo.jpg');

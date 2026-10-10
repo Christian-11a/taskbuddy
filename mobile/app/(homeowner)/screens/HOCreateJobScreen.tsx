@@ -101,6 +101,7 @@ import PostFooter from '../../../src/components/post/PostFooter';
 import PostProgress from '../../../src/components/post/PostProgress';
 import ServiceTile from '../../../src/components/post/ServiceTile';
 import CalmNote from '../../../src/components/post/CalmNote';
+import MapPreview from '../../../src/components/post/MapPreview';
 import ReviewRow from '../../../src/components/post/ReviewRow';
 import BottomActionBar from '../../../src/components/ui/BottomActionBar';
 import PostingChecklist, { type PostingStep } from '../../../src/components/post/PostingChecklist';
@@ -776,16 +777,13 @@ export default function HOCreateJobScreen({
               )}
             </View>
 
+            {/* The map under the confirmed address: a placeholder while it loads, and gone only if the image really fails. */}
             {mapPreviewSource && !mapPreviewFailed && (
-              <View style={styles.mapPreview}>
-                <Image
-                  source={mapPreviewSource}
-                  style={styles.mapPreviewImage}
-                  resizeMode="cover"
-                  onError={() => setMapPreviewFailed(true)}
-                  accessibilityLabel="Map of the confirmed job location"
-                />
-              </View>
+              <MapPreview
+                key={`${resolvedCoordinates?.latitude},${resolvedCoordinates?.longitude}`}
+                source={mapPreviewSource}
+                onError={() => setMapPreviewFailed(true)}
+              />
             )}
 
             {/* The one place this step explains a location that is not confirmed yet. */}
@@ -1238,13 +1236,6 @@ function createThemedStyles(theme: ThemePalette) {
     confirmedRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 8 },
     confirmedText: { color: V6Colors.ink700, fontSize: 14, fontWeight: '600', fontFamily: 'Inter' },
     calmWrap: { marginTop: 16 },
-    mapPreview: {
-      borderRadius: 16, overflow: 'hidden', marginTop: 16, borderWidth: 1, borderColor: V6Colors.line,
-      backgroundColor: Colors.ink50,
-    },
-    // Matches the 2:1 image the backend renders (600×300). `cover` at that ratio
-    // never crops, which keeps Geoapify's attribution line in its bottom corner.
-    mapPreviewImage: { width: '100%', aspectRatio: 2 },
 
     calendarOverlay: { flex: 1, backgroundColor: Colors.scrim, justifyContent: 'center', padding: 20 },
     calendarModal: { backgroundColor: Colors.surface, borderRadius: 24, padding: 20, ...Shadows.card },
