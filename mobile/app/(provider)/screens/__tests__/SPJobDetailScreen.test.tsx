@@ -369,6 +369,32 @@ describe('SPJobDetailScreen — status card, one main action and the client card
     expect(await screen.findByText('Client')).toBeTruthy();
   });
 
+  it('keeps the homeowner name on screen when the job is opened again, while the list reloads', async () => {
+    const conversation = {
+      id: 'conv-1',
+      job_id: JOB_ID,
+      job_title: 'Fix the sink',
+      job_status: 'confirmed',
+      counterpart_name: 'Maria Santos',
+      counterpart_avatar_url: null,
+      last_message_at: null,
+      created_at: '2026-10-01T00:00:00.000Z',
+    };
+    (api.getJob as jest.Mock).mockResolvedValue(hired);
+    (api.conversations as jest.Mock).mockResolvedValue([conversation]);
+    const first = render(<SPJobDetailScreen jobId={JOB_ID} onBack={jest.fn()} onNavigate={jest.fn()} />);
+    expect(await screen.findByText('Maria Santos')).toBeTruthy();
+    first.unmount();
+
+    // The second visit asks for the list again, and that request does not finish while the test looks.
+    (api.conversations as jest.Mock).mockReturnValue(new Promise(() => {}));
+    render(<SPJobDetailScreen jobId={JOB_ID} onBack={jest.fn()} onNavigate={jest.fn()} />);
+
+    expect(await screen.findByText('Homeowner')).toBeTruthy();
+    expect(screen.getByText('Maria Santos')).toBeTruthy();
+    expect(screen.queryByText('Client')).toBeNull();
+  });
+
   it('a completed job shows the earnings and View in wallet opens the Wallet', async () => {
     (api.getJob as jest.Mock).mockResolvedValue({
       ...hired,

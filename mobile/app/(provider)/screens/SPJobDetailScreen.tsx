@@ -41,7 +41,7 @@ import { useAuth } from '../../../src/context/AuthContext';
 import { useAsyncData } from '../../../src/hooks/useAsyncData';
 import { useHeaderTop } from '../../../src/hooks/useHeaderTop';
 import { SPScreen } from '../../../src/types/navigation';
-import { api, ApiError, type Conversation, type Job, type JobTask } from '../../../src/lib/api';
+import { api, ApiError, type Job, type JobTask } from '../../../src/lib/api';
 import { distanceLabel, peso, timeOfDay, urgencyMeta } from '../../../src/lib/format';
 import { dayHeading } from '../../../src/lib/jobCalendar';
 import { dateKeyOf } from '../../../src/lib/localDate';
@@ -108,15 +108,13 @@ export default function SPJobDetailScreen({ jobId, onBack, onNavigate }: SPJobDe
     [jobId, job?.assigned_provider_id, profile?.id],
   );
   const isAssignedToMe = job?.assigned_provider_id === profile?.id;
-  // Non-blocking: the client card reads "Client" until the conversation list arrives.
+  // Non-blocking. Cached across visits, so the client's name is there at once. While the job is not
+  // ours yet (or not loaded), the lookup rejects instead of resolving an empty list: a failed lookup
+  // keeps the list already on screen, so the name never flashes back to "Client" during a reload.
   const { data: conversations } = useAsyncData(async () => {
-    if (!jobId || !isAssignedToMe) return [] as Conversation[];
-    try {
-      return await api.conversations();
-    } catch {
-      return [] as Conversation[];
-    }
-  }, [jobId, isAssignedToMe]);
+    if (!jobId || !isAssignedToMe) throw new Error('The client is looked up once the job is yours.');
+    return api.conversations();
+  }, [jobId, isAssignedToMe], 'sp-job-conversations');
   const myApplication = (myApps ?? []).find((a) => a.jobs?.id === jobId);
   const clientConversation = (conversations ?? []).find((c) => c.job_id === jobId);
 
