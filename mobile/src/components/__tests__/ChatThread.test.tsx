@@ -205,3 +205,13 @@ describe('ChatThread bubbles and photos', () => {
     expect(screen.getByText('No messages yet')).toBeTruthy();
   });
 });
+
+describe('ChatThread payment safety note', () => {
+  it('pins the payment reminder at the top of the conversation until it is dismissed', async () => {
+    render(<ChatThread {...baseProps()} />);
+
+    expect(await screen.findByText('Stay protected')).toBeTruthy();
+    fireEvent.press(screen.getByRole('button', { name: 'Got it' }));
+    expect(screen.queryByText('Stay protected')).toBeNull();
+  });
+});

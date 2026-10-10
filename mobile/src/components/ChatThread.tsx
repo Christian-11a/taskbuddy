@@ -28,6 +28,7 @@ import ContentSkeleton from './ui/ContentSkeleton';
 import Silhouette from './ui/Silhouette';
 import PhotoViewer from './PhotoViewer';
 import ChatEmptyState from './ChatEmptyState';
+import ChatSafetyNote from './ChatSafetyNote';
 import { Spacing } from '../constants/theme';
 import { useHeaderTop } from '../hooks/useHeaderTop';
 import type { Message } from '../lib/api';
@@ -138,6 +139,8 @@ export default function ChatThread({
         </View>
         {!largeText && viewJobLink}
       </View>
+
+      <ChatSafetyNote />
 
       {!!systemLine && <Text style={styles.systemLine}>{systemLine}</Text>}
 
