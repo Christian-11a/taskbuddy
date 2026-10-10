@@ -183,14 +183,96 @@ it.each([
   fireEvent.changeText(screen.getByTestId('input-confirm-password'), 'password123');
   fireEvent.press(screen.getByTestId('chk-terms'));
   fireEvent.press(screen.getByText('I agree to the Terms & Conditions'));
-  fireEvent.press(screen.getByTestId('chk-privacy'));
+  fireEvent.press(screen.getByTestId('chk-terms'));
   expect(screen.getByText('Your Rights (RA 10173)')).toBeTruthy();
   fireEvent.press(screen.getByText('I agree to the Privacy Policy'));
   fireEvent.press(screen.getByTestId('chk-data-collection'));
   expect(screen.queryByTestId('chk-biometric')).toBeNull();
-  await act(async () => fireEvent.press(screen.getByText('Sign Up')));
+  await act(async () => fireEvent.press(screen.getByTestId('btn-create-account')));
   expect(onRegister).toHaveBeenCalledWith(expect.objectContaining({
     consentedTerms: true, consentedPrivacy: true, consentedDataCollection: true,
   }));
   expect(onRegister.mock.calls[0][0]).not.toHaveProperty('consentedBiometric');
+});
+
+describe('RegisterScreen — create account', () => {
+  beforeEach(() => {
+    (useAuth as jest.Mock).mockReturnValue({ verifyEmailOtp: jest.fn() });
+  });
+
+  it('shows the 8+ characters rule and ticks it at eight characters', () => {
+    render(<RegisterScreen {...baseProps} />);
+    fireEvent.press(screen.getByText('Continue'));
+
+    fireEvent.changeText(screen.getByTestId('input-password'), 'abcdefg');
+    expect(screen.getByLabelText('8+ characters: not yet')).toBeTruthy();
+
+    fireEvent.changeText(screen.getByTestId('input-password'), 'abcdefgh');
+    expect(screen.getByLabelText('8+ characters: met')).toBeTruthy();
+  });
+
+  it('does not show a number rule, because sign-up does not enforce one', () => {
+    render(<RegisterScreen {...baseProps} />);
+    fireEvent.press(screen.getByText('Continue'));
+
+    fireEvent.changeText(screen.getByTestId('input-password'), 'abcdefgh');
+
+    expect(screen.queryByText(/a number/i)).toBeNull();
+  });
+
+  it('presents Terms and Privacy as one checkbox, ticked only after both documents are accepted', () => {
+    render(<RegisterScreen {...baseProps} />);
+    fireEvent.press(screen.getByText('Continue'));
+    const termsRow = () => screen.getByRole('checkbox', { name: 'I agree to the Terms and Privacy Policy' });
+
+    expect(screen.getAllByRole('checkbox')).toHaveLength(2);
+    expect(termsRow().props.accessibilityState).toMatchObject({ checked: false });
+
+    fireEvent.press(screen.getByTestId('chk-terms'));
+    fireEvent.press(screen.getByText('I agree to the Terms & Conditions'));
+    expect(termsRow().props.accessibilityState).toMatchObject({ checked: false });
+
+    fireEvent.press(screen.getByTestId('chk-terms'));
+    fireEvent.press(screen.getByText('I agree to the Privacy Policy'));
+    expect(termsRow().props.accessibilityState).toMatchObject({ checked: true });
+
+    fireEvent.press(screen.getByTestId('chk-terms'));
+    expect(termsRow().props.accessibilityState).toMatchObject({ checked: false });
+  });
+
+  it('will not create the account until the consents are ticked', async () => {
+    const onRegister = jest.fn();
+    render(<RegisterScreen {...baseProps} onRegister={onRegister} />);
+    fireEvent.press(screen.getByText('Continue'));
+    fireEvent.changeText(screen.getByTestId('input-name'), 'Test User');
+    fireEvent.changeText(screen.getByTestId('input-email'), 'test@example.test');
+    fireEvent.changeText(screen.getByTestId('input-password'), 'password123');
+    fireEvent.changeText(screen.getByTestId('input-confirm-password'), 'password123');
+
+    await act(async () => fireEvent.press(screen.getByTestId('btn-create-account')));
+
+    expect(screen.getByText('Please accept the Terms & Conditions to continue.')).toBeTruthy();
+    expect(screen.getByText('Please accept the Data Collection consent to continue.')).toBeTruthy();
+    expect(onRegister).not.toHaveBeenCalled();
+  });
+
+  it('refuses a password that does not match its confirmation', async () => {
+    const onRegister = jest.fn();
+    render(<RegisterScreen {...baseProps} onRegister={onRegister} />);
+    fireEvent.press(screen.getByText('Continue'));
+    fireEvent.changeText(screen.getByTestId('input-password'), 'password123');
+    fireEvent.changeText(screen.getByTestId('input-confirm-password'), 'password124');
+
+    await act(async () => fireEvent.press(screen.getByTestId('btn-create-account')));
+
+    expect(screen.getByText('Passwords do not match.')).toBeTruthy();
+    expect(onRegister).not.toHaveBeenCalled();
+  });
+
+  it('keeps Continue with Google on the create-account step', () => {
+    render(<RegisterScreen {...baseProps} />);
+    fireEvent.press(screen.getByText('Continue'));
+
+    expect(screen.getByText('Continue with Google')).toBeTruthy();
+  });
 });

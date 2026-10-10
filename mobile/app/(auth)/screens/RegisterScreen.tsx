@@ -39,14 +39,14 @@ import {
   type LayoutChangeEvent,
 } from 'react-native';
 import Tap from '../../../src/components/ui/Tap';
-import { AlertCircle, Check, ChevronDown, MailCheck } from 'lucide-react-native';
+import { AlertCircle, Check, CheckCircle2, ChevronDown, Circle, MailCheck } from 'lucide-react-native';
 import { V6Radii, V6Shadows } from '../../../src/constants/theme';
 import TermsAndConditions from './TermsAndConditions';
 import { ApiError, api } from '../../../src/lib/api';
 import type { MobileRole } from '../../../src/lib/api';
 import { useAuth } from '../../../src/context/AuthContext';
 import GoogleGlyph from '../../../src/components/GoogleGlyph';
-import PasswordInput from '../../../src/components/PasswordInput';
+import AuthField from '../../../src/components/auth/AuthField';
 import AuthStepHeader from '../../../src/components/auth/AuthStepHeader';
 import RoleChoiceCard from '../../../src/components/auth/RoleChoiceCard';
 import { useAuthLayout } from '../../../src/hooks/useAuthLayout';
@@ -108,52 +108,25 @@ interface InputProps {
   testID?: string;
 }
 
+/** One form field in the shared AuthField style; `onLayout` keeps the scroll-to-error position. */
 function FormInput({
   label, required, placeholder, value, onChangeText,
   secureTextEntry, keyboardType, error, testID, onLayout,
 }: InputProps) {
-  const { C, styles, V6Colors, appearance } = useThemedStyles(createThemedStyles);
-  const [focused, setFocused] = useState(false);
   return (
-    <View onLayout={onLayout} style={styles.inputGroup}>
-      <Text style={styles.inputLabel}>
-        {label}
-        {required && <Text style={styles.requiredAsterisk}> *</Text>}
-      </Text>
-      {secureTextEntry ? (
-        <PasswordInput
-          containerStyle={[styles.inputBox, focused && styles.inputBoxFocused, error ? styles.inputBoxError : undefined]}
-          inputStyle={styles.inputText}
-          testID={testID}
-          placeholder={placeholder}
-          placeholderTextColor={C.muted}
-          value={value}
-          onChangeText={onChangeText}
-          onFocus={() => setFocused(true)}
-          onBlur={() => setFocused(false)}
-          onSubmitEditing={Keyboard.dismiss}
-          enablesReturnKeyAutomatically
-        />
-      ) : (
-        <View style={[styles.inputBox, focused && styles.inputBoxFocused, error ? styles.inputBoxError : undefined]}>
-          <TextInput keyboardAppearance={appearance}
-            style={styles.inputText}
-            testID={testID}
-            placeholder={placeholder}
-            placeholderTextColor={C.muted}
-            value={value}
-            onChangeText={onChangeText}
-            keyboardType={keyboardType}
-            autoCapitalize="none"
-            autoCorrect={false}
-            onFocus={() => setFocused(true)}
-            onBlur={() => setFocused(false)}
-            onSubmitEditing={Keyboard.dismiss}
-            enablesReturnKeyAutomatically
-          />
-        </View>
-      )}
-      {!!error && <Text style={styles.inputErrorText}>{error}</Text>}
+    <View onLayout={onLayout} style={{ marginBottom: 16 }}>
+      <AuthField
+        label={label}
+        required={required}
+        placeholder={placeholder}
+        testID={testID}
+        value={value}
+        onChangeText={onChangeText}
+        secure={secureTextEntry}
+        keyboardType={keyboardType}
+        onSubmitEditing={Keyboard.dismiss}
+        error={error}
+      />
     </View>
   );
 }
@@ -164,18 +137,24 @@ interface ConsentCheckboxProps {
   label: React.ReactNode;
   error?: string;
   testID?: string;
+  /** Plain-text name for screen readers, because the label above holds links. */
+  accessibilityLabel?: string;
 }
 
-function ConsentCheckbox({ checked, onPress, label, error, testID }: ConsentCheckboxProps) {
-  const { C, styles, V6Colors, appearance } = useThemedStyles(createThemedStyles);
+function ConsentCheckbox({ checked, onPress, label, error, testID, accessibilityLabel }: ConsentCheckboxProps) {
+  const { C, styles } = useThemedStyles(createThemedStyles);
   return (
-    <View style={styles.consentItem}>
+    <View style={[styles.consentItem, checked && styles.consentItemChecked, !!error && styles.consentItemError]}>
       <View style={styles.consentRow}>
         <Tap
           testID={testID}
           style={[styles.checkbox, checked && styles.checkboxChecked]}
           onPress={onPress}
           activeOpacity={0.7}
+          hitSlop={13}
+          accessibilityRole="checkbox"
+          accessibilityState={{ checked }}
+          accessibilityLabel={accessibilityLabel}
         >
           {checked ? <Check size={14} color={C.onPrimary} /> : null}
         </Tap>
@@ -605,6 +584,20 @@ export default function RegisterScreen({ onRegister, onLogin, onGoogleSignIn }: 
               onLayout={locateField('password')}
               error={fieldErrors.password}
             />
+            {/* Live password rule. Only the rule the sign-up check enforces (8+). */}
+            <View style={styles.rules}>
+              <View
+                style={styles.ruleRow}
+                accessible
+                accessibilityLabel={password.length >= 8 ? '8+ characters: met' : '8+ characters: not yet'}
+              >
+                {password.length >= 8
+                  ? <CheckCircle2 size={15} color={V6Colors.successText} />
+                  : <Circle size={15} color={V6Colors.ink300} />}
+                <Text style={[styles.ruleText, password.length >= 8 && styles.ruleTextOk]}>8+ characters</Text>
+              </View>
+            </View>
+
             <FormInput
               label="Confirm Password"
               required
@@ -681,49 +674,43 @@ export default function RegisterScreen({ onRegister, onLogin, onGoogleSignIn }: 
             <View onLayout={locateField('consents')} style={styles.consentSection}>
               <Text style={styles.consentSectionTitle}>Consents & Agreements</Text>
 
-              {/* T&C */}
+              {/* Terms + Privacy: one row. Ticking it opens the first document
+                  that is not accepted yet; each document still needs its own
+                  "I agree" at the bottom. Unticking clears both. */}
               <ConsentCheckbox
                 testID="chk-terms"
-                checked={termsAccepted}
+                accessibilityLabel="I agree to the Terms and Privacy Policy"
+                checked={termsAccepted && privacyAccepted}
                 onPress={() => {
-                  if (!termsAccepted) setTermsMode('terms');
-                  else setTermsAccepted(false);
+                  if (termsAccepted && privacyAccepted) {
+                    setTermsAccepted(false);
+                    setPrivacyAccepted(false);
+                  } else if (!termsAccepted) {
+                    setTermsMode('terms');
+                  } else {
+                    setTermsMode('privacy');
+                  }
                 }}
                 label={
                   <Text style={styles.termsText}>
-                    I have read and agree to the{' '}
+                    I agree to the{' '}
                     <Text style={styles.termsLink} onPress={() => setTermsMode('terms')}>
                       Terms & Conditions
                     </Text>
-                    <Text style={styles.requiredAsterisk}>*</Text>
-                  </Text>
-                }
-                error={fieldErrors.terms}
-              />
-
-              {/* Privacy Policy */}
-              <ConsentCheckbox
-                testID="chk-privacy"
-                checked={privacyAccepted}
-                onPress={() => {
-                  if (!privacyAccepted) setTermsMode('privacy');
-                  else setPrivacyAccepted(false);
-                }}
-                label={
-                  <Text style={styles.termsText}>
-                    I have read and agree to the{' '}
+                    {' and '}
                     <Text style={styles.termsLink} onPress={() => setTermsMode('privacy')}>
                       Privacy Policy
                     </Text>
                     <Text style={styles.requiredAsterisk}>*</Text>
                   </Text>
                 }
-                error={fieldErrors.privacy}
+                error={fieldErrors.terms ?? fieldErrors.privacy}
               />
 
               {/* Data Collection */}
               <ConsentCheckbox
                 testID="chk-data-collection"
+                accessibilityLabel="I consent to the collection and use of my personal data"
                 checked={dataCollectionAccepted}
                 onPress={() => setDataCollectionAccepted((v) => !v)}
                 label={
@@ -761,17 +748,20 @@ export default function RegisterScreen({ onRegister, onLogin, onGoogleSignIn }: 
               </View>
             )}
 
-            {/* Sign Up */}
+            {/* Create account */}
             <Tap
+              testID="btn-create-account"
               style={[styles.primaryBtn, submitting && styles.primaryBtnDisabled]}
               onPress={handleSignUp}
               activeOpacity={0.85}
               disabled={submitting}
+              accessibilityRole="button"
+              accessibilityLabel="Create account"
             >
               {submitting ? (
                 <ActivityIndicator color={C.onPrimary} />
               ) : (
-                <Text style={styles.primaryBtnText}>Sign Up</Text>
+                <Text style={styles.primaryBtnText}>Create account</Text>
               )}
             </Tap>
 
@@ -880,13 +870,14 @@ function createThemedStyles(theme: ThemePalette) {
 
     inputGroup: { marginBottom: 16 },
     inputLabel: { fontFamily: 'Inter', fontSize: 15.5, fontWeight: '600', color: V6Colors.ink900, marginBottom: 6 },
+    // Same box as AuthField (used here by the skill category picker).
     inputBox: {
-      backgroundColor: V6Colors.wellBg, borderRadius: 12, paddingHorizontal: 16, paddingVertical: 13,
-      borderWidth: 1, borderColor: C.mutedBorder,
+      backgroundColor: V6Colors.surface, borderRadius: 14, paddingHorizontal: 14, paddingVertical: 10,
+      minHeight: 48, borderWidth: 1, borderColor: V6Colors.line,
     },
-    inputBoxFocused: { borderColor: C.brandTeal },
-    inputBoxError: { borderColor: C.brandRed },
-    inputText: { fontFamily: 'Inter', fontSize: 18.5, color: V6Colors.ink900, padding: 0 },
+    inputBoxFocused: { borderWidth: 1.5, borderColor: Colors.link },
+    inputBoxError: { borderWidth: 1.5, borderColor: V6Colors.dangerText },
+    inputText: { fontFamily: 'Inter', fontSize: 16, fontWeight: '500', color: V6Colors.ink900, padding: 0 },
     inputErrorText: {
       fontFamily: 'Inter', fontSize: 14.5, color: C.brandRed,
       marginTop: 5, marginLeft: 2, lineHeight: 17,
@@ -896,7 +887,7 @@ function createThemedStyles(theme: ThemePalette) {
     categoryPicker: {
       flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
     },
-    categoryPlaceholder: { fontFamily: 'Inter', fontSize: 18.5, color: C.muted, padding: 0 },
+    categoryPlaceholder: { fontFamily: 'Inter', fontSize: 16, color: C.muted, padding: 0 },
     categoryDropdown: {
       marginTop: 8,
       borderRadius: 12, borderWidth: 1, borderColor: C.mutedBorder,
@@ -929,7 +920,16 @@ function createThemedStyles(theme: ThemePalette) {
       letterSpacing: 0.5,
       marginBottom: 10,
     },
-    consentItem: { marginBottom: 10 },
+    consentItem: {
+      marginBottom: 10, padding: 12, borderRadius: 14, borderWidth: 1,
+      borderColor: V6Colors.line, backgroundColor: V6Colors.surface,
+    },
+    consentItemChecked: { borderColor: Colors.link, backgroundColor: Colors.primaryTonal },
+    consentItemError: { borderColor: V6Colors.dangerBorder },
+    rules: { gap: 6, marginTop: -8, marginBottom: 16 },
+    ruleRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+    ruleText: { color: V6Colors.ink500, fontSize: 13.5, fontFamily: 'Inter' },
+    ruleTextOk: { color: V6Colors.successText },
     consentRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 10 },
     checkbox: {
       width: 22, height: 22, borderRadius: 6, borderWidth: 1.5,
