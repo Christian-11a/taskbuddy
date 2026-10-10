@@ -263,7 +263,6 @@ function createThemedStyles(theme: ThemePalette) {
     footer: { color: V6Colors.ink500, fontSize: 12.5, fontFamily: 'Inter', textAlign: 'center', marginTop: 4 },
 
     // Language dialog
-    overlay: { flex: 1, justifyContent: 'center', padding: 24, backgroundColor: 'rgba(6, 61, 77, 0.5)' },
     dialog: { backgroundColor: C.surface, borderRadius: 20, padding: 22 },
     dialogTitle: { color: C.ink900, fontSize: 19, fontWeight: '800', fontFamily: 'Inter', marginBottom: 14 },
     dialogBody: { color: C.ink500, fontSize: 14, fontFamily: 'Inter', lineHeight: 19, marginTop: 4, marginBottom: 16 },
