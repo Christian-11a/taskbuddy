@@ -1,3 +1,4 @@
+import { findUnnamedControls } from '../../../../src/testing/a11yAudit';
 import React from 'react';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react-native';
 import HOJobDetailScreen from '../HOJobDetailScreen';
@@ -394,5 +395,34 @@ describe('HOJobDetailScreen — offers, the main action and the ⋮ menu', () =>
 
     expect(await screen.findByText('WORKING')).toBeTruthy();
     expect(screen.getByText('1 of 2 tasks done.')).toBeTruthy();
+  });
+});
+
+describe('HOJobDetailScreen — every control has an accessible name', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    (api.getProvider as jest.Mock).mockResolvedValue({ profile_id: 'provider-1', profiles: { full_name: 'Jane Provider' }, cached_completed_jobs: 1 });
+    (api.jobDispute as jest.Mock).mockResolvedValue(null);
+  });
+
+  it('names the back arrow, the ⋮ menu and the proposals of an open job', async () => {
+    (api.getJob as jest.Mock).mockResolvedValue({ ...inProgressJob, status: 'open', assigned_provider_id: null, job_tasks: [] });
+    (api.jobApplications as jest.Mock).mockResolvedValue([{
+      id: 'a1', job_id: 'job-1', provider_id: 'p-a1', status: 'pending', source: 'organic', cover_message: null,
+      applied_at: new Date().toISOString(), decided_at: null,
+      provider: { id: 'p-a1', full_name: 'Ana Cruz', avatar_url: null, city: null, provider_profiles: { is_verified: true, cached_avg_rating: 4, cached_completed_jobs: 2 } },
+    }]);
+    render(<HOJobDetailScreen jobId="job-1" onBack={jest.fn()} onNavigate={jest.fn()} />);
+
+    expect(await screen.findByText('Ana Cruz')).toBeTruthy();
+    expect(findUnnamedControls(screen.UNSAFE_root)).toEqual([]);
+  });
+
+  it('names the controls of a job in progress, with its checklist', async () => {
+    (api.getJob as jest.Mock).mockResolvedValue({ ...inProgressJob, job_tasks: [{ id: 't1', job_id: 'job-1', label: 'Check the trap', is_done: false, position: 1, completed_at: null }] });
+    render(<HOJobDetailScreen jobId="job-1" onBack={jest.fn()} onNavigate={jest.fn()} />);
+
+    expect(await screen.findByText('Fix the sink')).toBeTruthy();
+    expect(findUnnamedControls(screen.UNSAFE_root)).toEqual([]);
   });
 });

@@ -1,3 +1,4 @@
+import { findUnnamedControls } from '../../../../src/testing/a11yAudit';
 import React from 'react';
 import { fireEvent, render, screen, within } from '@testing-library/react-native';
 import Profile from '../HOProfile';
@@ -143,4 +144,10 @@ it('Log Out asks for confirmation first, and logs out only when confirmed', () =
   fireEvent.press(within(screen.getByRole('alert')).getByLabelText('Log Out'));
 
   expect(onLogout).toHaveBeenCalledTimes(1);
+});
+
+it('every control has an accessible name: back arrow, menu rows and log out', () => {
+  render(<Profile onNavigate={jest.fn()} onLogout={jest.fn()} onBack={jest.fn()} />);
+
+  expect(findUnnamedControls(screen.UNSAFE_root)).toEqual([]);
 });

@@ -1,3 +1,4 @@
+import { findUnnamedControls } from '../../../../src/testing/a11yAudit';
 import React from 'react';
 import { Modal, StyleSheet } from 'react-native';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react-native';
@@ -736,5 +737,21 @@ describe('HOWalletScreen — balance card, tiles and history', () => {
     expect(api.cancelWithdrawal).toHaveBeenCalledWith('w1');
     expect(api.wallet).toHaveBeenCalledTimes(2);
     expect(api.withdrawals).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('HOWalletScreen — every control has an accessible name', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    clearAsyncDataCache();
+    (api.wallet as jest.Mock).mockResolvedValue({ balance: 8397, available: 8397, held: 0 });
+    (api.withdrawals as jest.Mock).mockResolvedValue([]);
+  });
+
+  it('names the back arrow, the balance actions and the withdrawal history', async () => {
+    render(<HOWalletScreen />);
+
+    await screen.findByText('₱8,397.00');
+    expect(findUnnamedControls(screen.UNSAFE_root)).toEqual([]);
   });
 });

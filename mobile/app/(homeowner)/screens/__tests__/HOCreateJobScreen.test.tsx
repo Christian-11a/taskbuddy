@@ -1,3 +1,4 @@
+import { findUnnamedControls } from '../../../../src/testing/a11yAudit';
 import React from 'react';
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react-native';
 import * as ImagePicker from 'expo-image-picker';
@@ -255,4 +256,12 @@ it('while posting shows only the steps that really run, and a failed post return
   expect(await screen.findByText('Network is down')).toBeTruthy();
   expect(screen.getByTestId('create-job-review')).toBeTruthy();
   expect(screen.getByText('Post job')).toBeTruthy();
+});
+
+it('every control has an accessible name on the first step: back, the service and the location', async () => {
+  (api.categories as jest.Mock).mockResolvedValue([{ id: 1, name: 'Plumbing' }]);
+  render(<HOCreateJobScreen initialCategoryId={1} onBack={jest.fn()} onSuccess={jest.fn()} />);
+  await screen.findByText('Location confirmed');
+
+  expect(findUnnamedControls(screen.UNSAFE_root)).toEqual([]);
 });

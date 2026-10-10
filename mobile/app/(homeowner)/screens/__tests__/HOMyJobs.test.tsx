@@ -1,3 +1,4 @@
+import { findUnnamedControls } from '../../../../src/testing/a11yAudit';
 import React from 'react';
 import { ScrollView } from 'react-native';
 import {
@@ -272,4 +273,11 @@ it('renders the headerRight switch in the title row and forwards its presses', a
   expect(screen.getByText('New')).toBeTruthy();
   fireEvent.press(screen.getByRole('tab', { name: 'Calendar' }));
   expect(onChange).toHaveBeenCalledWith('calendar');
+});
+
+it('every control has an accessible name: the filters, the title row switch and the job rows', async () => {
+  render(<MyJobs onNavigate={jest.fn()} />);
+  await screen.findByText('Cleaning: Window cleaning');
+
+  expect(findUnnamedControls(screen.UNSAFE_root)).toEqual([]);
 });

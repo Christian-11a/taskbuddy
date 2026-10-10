@@ -1,3 +1,4 @@
+import { findUnnamedControls } from '../../../../src/testing/a11yAudit';
 import React from 'react';
 import {StyleSheet} from 'react-native';
 import {act, fireEvent, render, screen, waitFor} from '@testing-library/react-native';
@@ -134,4 +135,11 @@ it('keeps the Withdraw label visible on the translucent button when nothing can 
   await act(async () => {});
   expect(styleOf(screen.getByRole('button', {name: 'Withdraw'})).backgroundColor).toBe(lightPalette.Colors.heroCard);
   expect(styleOf(screen.getByText('Withdraw')).color).toBe(lightPalette.Colors.onPrimary);
+});
+
+it('every control has an accessible name: header, pending withdrawal and its cancel button', async () => {
+  (api.wallet as jest.Mock).mockResolvedValue(wallet([transaction('pending-request', 'pending')]));
+  render(<SPWalletScreen onNavigate={jest.fn()} />);
+  await screen.findByText('Transaction: pending-request');
+  expect(findUnnamedControls(screen.UNSAFE_root)).toEqual([]);
 });

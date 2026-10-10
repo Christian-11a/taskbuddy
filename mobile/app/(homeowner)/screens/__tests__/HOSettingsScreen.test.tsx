@@ -1,3 +1,4 @@
+import { findUnnamedControls } from '../../../../src/testing/a11yAudit';
 import React from 'react';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react-native';
 import { ThemeProvider } from '../../../../src/context/ThemeContext';
@@ -163,5 +164,26 @@ describe('HOSettingsScreen — layout', () => {
     fireEvent.press(screen.getByText('Language'));
 
     expect(await screen.findByText('More languages are coming soon.')).toBeTruthy();
+  });
+});
+
+describe('HOSettingsScreen — every control has an accessible name', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockUseAuth.mockReturnValue({ profile: { has_password: true } });
+    (api.settings as jest.Mock).mockResolvedValue({
+      push_enabled: true,
+      email_enabled: true,
+      sms_enabled: false,
+      location_sharing: true,
+      dark_mode: false,
+    });
+  });
+
+  it('names the back arrow, the switches and the account rows', async () => {
+    renderScreen();
+    await waitFor(() => expect(screen.getByTestId('toggle-push_enabled').props.disabled).toBe(false));
+
+    expect(findUnnamedControls(screen.UNSAFE_root)).toEqual([]);
   });
 });

@@ -1,3 +1,4 @@
+import { findUnnamedControls } from '../../testing/a11yAudit';
 import React from 'react';
 import { Linking } from 'react-native';
 import { fireEvent, render, screen } from '@testing-library/react-native';
@@ -114,4 +115,10 @@ describe('HelpSupportScreen — contact and credits', () => {
     expect(screen.getByText('Powered by Geoapify')).toBeTruthy();
     expect(screen.getByText('© OpenStreetMap contributors')).toBeTruthy();
   });
+});
+
+it('every control has an accessible name: the back arrow, the questions and the tutorial', () => {
+  render(<HelpSupportScreen role="homeowner" onBack={jest.fn()} onViewTutorial={jest.fn()} />);
+
+  expect(findUnnamedControls(screen.UNSAFE_root)).toEqual([]);
 });

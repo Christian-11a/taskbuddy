@@ -1,3 +1,4 @@
+import { findUnnamedControls } from '../../../../src/testing/a11yAudit';
 import React from 'react';
 import { StyleSheet, Text } from 'react-native';
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react-native';
@@ -259,4 +260,11 @@ it('today keeps its ring when another day is picked, and the picked day is fille
   expect(todayCircle.backgroundColor).toBeUndefined();
   const pickedCircle = StyleSheet.flatten(screen.getByTestId(`calendar-day-circle-${laterKey}`).props.style);
   expect(pickedCircle.backgroundColor).toBe(lightPalette.Colors.primary);
+});
+
+it('every control has an accessible name: the month chevrons, the day cells and the List/Calendar switch', async () => {
+  render(<SPCalendarScreen onNavigate={jest.fn()} />);
+  await screen.findByText(dayHeading(todayKey));
+
+  expect(findUnnamedControls(screen.UNSAFE_root)).toEqual([]);
 });

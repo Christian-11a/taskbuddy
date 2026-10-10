@@ -1,3 +1,4 @@
+import { findUnnamedControls } from '../../testing/a11yAudit';
 import React from 'react';
 import { render, screen, fireEvent, act } from '@testing-library/react-native';
 import HONotificationsScreen from '../../../app/(homeowner)/screens/HONotificationsScreen';
@@ -207,3 +208,12 @@ describe('deleting a notification', () => {
     expect(screen.getByText('New message')).toBeTruthy();
   });
 });
+
+it.each([HONotificationsScreen, SPNotificationsScreen])(
+  'every control has an accessible name: back, the notification rows and their delete buttons',
+  async (Screen) => {
+    render(<Screen {...callbacks} />);
+    expect(await screen.findByText('New message')).toBeTruthy();
+    expect(findUnnamedControls(screen.UNSAFE_root)).toEqual([]);
+  },
+);

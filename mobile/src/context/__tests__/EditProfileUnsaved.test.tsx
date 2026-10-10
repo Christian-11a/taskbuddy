@@ -1,3 +1,4 @@
+import { findUnnamedControls } from '../../testing/a11yAudit';
 import React from 'react';
 import { BackHandler, Modal } from 'react-native';
 import { act, fireEvent, render, screen, within } from '@testing-library/react-native';
@@ -233,4 +234,12 @@ it('counts a changed bio as unsaved for a provider', async () => {
 
   expect(onBack).not.toHaveBeenCalled();
   expect(screen.getByText('You changed your bio. If you leave now, that change is lost.')).toBeTruthy();
+});
+
+describe.each<Role>(['homeowner', 'provider'])('%s edit profile accessibility', (role) => {
+  it('every control has an accessible name: back, the fields and the save button', async () => {
+    await renderEditor(role);
+
+    expect(findUnnamedControls(screen.UNSAFE_root)).toEqual([]);
+  });
 });

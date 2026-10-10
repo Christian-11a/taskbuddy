@@ -5,6 +5,7 @@ import HOHomeScreen from '../HOHomeScreen';
 import { api } from '../../../../src/lib/api';
 import { useAuth } from '../../../../src/context/AuthContext';
 import { lightPalette } from '../../../../src/constants/palettes';
+import { findUnnamedControls } from '../../../../src/testing/a11yAudit';
 
 jest.mock('../../../../src/context/NotificationsContext', () => ({
   useNotifications: () => ({ notifications: [], unreadCount: 0, loading: false, error: null, reload: jest.fn() }),
@@ -327,6 +328,16 @@ describe('HOHomeScreen — field, service chips, active jobs and wallet chip', (
     expect(await screen.findByText('₱8,397.00')).toBeTruthy();
     fireEvent.press(screen.getByTestId('home-wallet'));
     expect(onNavigate).toHaveBeenCalledWith('Wallet');
+  });
+
+  it('every control has an accessible name: bell, avatar, wallet chip, field, service chips and job rows', async () => {
+    (api.myJobs as jest.Mock).mockResolvedValue([
+      { ...OPEN_JOB, id: 'job-booked', title: 'Plumbing: Fix toilet', status: 'confirmed', budget: 1200, scheduled_at: '2020-01-05T09:00:00+08:00' },
+    ]);
+    render(<HOHomeScreen onNavigate={jest.fn()} />);
+
+    await screen.findByTestId('home-job-job-booked');
+    expect(findUnnamedControls(screen.UNSAFE_root)).toEqual([]);
   });
 });
 

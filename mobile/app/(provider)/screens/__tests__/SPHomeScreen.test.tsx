@@ -6,6 +6,7 @@ import { api } from '../../../../src/lib/api';
 import { useAuth } from '../../../../src/context/AuthContext';
 import { clearAsyncDataCache } from '../../../../src/hooks/useAsyncData';
 import { lightPalette } from '../../../../src/constants/palettes';
+import { findUnnamedControls } from '../../../../src/testing/a11yAudit';
 
 jest.mock('../../../../src/context/NotificationsContext', () => ({
   useNotifications: () => ({ notifications: [], unreadCount: 0, loading: false, error: null, reload: jest.fn() }),
@@ -127,6 +128,21 @@ describe('SPHomeScreen — hero header keeps the avatar reachable with a long na
 
     expect(await screen.findByText('Applied · waiting')).toBeTruthy();
     expect(screen.getByText('1.2 km away · Flexible')).toBeTruthy();
+  });
+
+  it('every control has an accessible name: bell, avatar, availability switch, feed rows and urgency pills', async () => {
+    (api.browseJobs as jest.Mock).mockResolvedValue({
+      jobs: [
+        { id: 'job-1', title: 'TEST ONLY - UI check', status: 'open', urgency: 'normal', address: 'Lipa', budget: 1, scheduled_at: null, distance_km: 2.4 },
+        { id: 'job-2', title: 'Window cleaning', status: 'open', urgency: 'flexible', address: 'Lipa', budget: 800, scheduled_at: null, distance_km: 1.2 },
+      ],
+      summary: { open_count: 2, urgent_count: 1, potential_payout: 0 },
+    });
+    (api.myApplications as jest.Mock).mockResolvedValue([{ id: 'app-1', status: 'pending', jobs: { id: 'job-1' } }]);
+    render(<SPHomeScreen onNavigate={jest.fn()} />);
+
+    await screen.findByText('Applied · waiting');
+    expect(findUnnamedControls(screen.UNSAFE_root)).toEqual([]);
   });
 
   it('puts the feed summary counts on the urgency pills', async () => {

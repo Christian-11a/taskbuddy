@@ -1,3 +1,4 @@
+import { findUnnamedControls } from '../../../../src/testing/a11yAudit';
 import React from 'react';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react-native';
 import SPProfileScreen from '../SPProfileScreen';
@@ -225,5 +226,22 @@ describe('SPProfileScreen — profile', () => {
     fireEvent.press(within(screen.getByRole('alert')).getByLabelText('Log Out'));
 
     expect(onLogout).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('SPProfileScreen — every control has an accessible name', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    clearAsyncDataCache();
+    (api.assignedJobs as jest.Mock).mockReturnValue(new Promise(() => {}));
+  });
+
+  it('names the back arrow, the menu rows and the verification action', () => {
+    mockAuthWith({
+      providerProfile: { is_verified: true, service_categories: { name: 'Plumbing' } },
+    });
+    render(<SPProfileScreen onNavigate={jest.fn()} onLogout={jest.fn()} onBack={jest.fn()} />);
+
+    expect(findUnnamedControls(screen.UNSAFE_root)).toEqual([]);
   });
 });

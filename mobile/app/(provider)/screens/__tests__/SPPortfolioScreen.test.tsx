@@ -1,3 +1,4 @@
+import { findUnnamedControls } from '../../../../src/testing/a11yAudit';
 import React from 'react';
 import {
   act,
@@ -256,4 +257,12 @@ it('does not publish a new photo until the portfolio has loaded', async () => {
   render(<SPPortfolioScreen onBack={jest.fn()} />);
   await screen.findByText(/Portfolio unavailable/);
   expect(screen.getByRole('button', { name: 'Publish photo' })).toBeDisabled();
+});
+
+it('every control has an accessible name: photo thumbnails, edit and remove', async () => {
+  (api.myPortfolio as jest.Mock).mockResolvedValue([entry]);
+  render(<SPPortfolioScreen onBack={jest.fn()} />);
+  await screen.findByText('Old caption');
+
+  expect(findUnnamedControls(screen.UNSAFE_root)).toEqual([]);
 });

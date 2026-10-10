@@ -1,3 +1,4 @@
+import { findUnnamedControls } from '../../../../src/testing/a11yAudit';
 import React from 'react';
 import { Text } from 'react-native';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react-native';
@@ -271,5 +272,22 @@ describe('SPMyJobsScreen — empty, error and title row', () => {
     expect(screen.getByText('My Work')).toBeTruthy();
     expect(screen.getByText('List or Calendar')).toBeTruthy();
     expect(await screen.findByText('No jobs yet')).toBeTruthy();
+  });
+});
+
+describe('SPMyJobsScreen — every control has an accessible name', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    clearAsyncDataCache();
+    clearRetainedState();
+    (api.myApplications as jest.Mock).mockResolvedValue([]);
+    (api.assignedJobs as jest.Mock).mockResolvedValue([]);
+  });
+
+  it('names the filters, the title row and the empty state', async () => {
+    render(<SPMyJobsScreen onNavigate={jest.fn()} />);
+
+    await screen.findByText('No jobs yet');
+    expect(findUnnamedControls(screen.UNSAFE_root)).toEqual([]);
   });
 });
