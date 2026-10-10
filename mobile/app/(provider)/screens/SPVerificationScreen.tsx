@@ -39,10 +39,14 @@ import {
   View,
 } from 'react-native';
 import Tap from '../../../src/components/ui/Tap';
+import BottomActionBar from '../../../src/components/ui/BottomActionBar';
+import PostProgress from '../../../src/components/post/PostProgress';
+import VerifyAppBar from '../../../src/components/verify/VerifyAppBar';
+import PrepCard from '../../../src/components/verify/PrepCard';
+import ProtectSheet from '../../../src/components/verify/ProtectSheet';
 import * as ImagePicker from 'expo-image-picker';
 import * as WebBrowser from 'expo-web-browser';
 import {
-  ArrowLeft,
   BadgeCheck,
   Camera,
   Check,
@@ -61,6 +65,7 @@ import { Spacing, V6Radii, V6Shadows } from '../../../src/constants/theme';
 import { useAuth } from '../../../src/context/AuthContext';
 import { useHeaderTop } from '../../../src/hooks/useHeaderTop';
 import { requestAppPermission } from '../../../src/lib/permissions';
+import { pickVerifyView, profileChecks, wizardProgress } from '../../../src/lib/verifyFlow';
 
 /** The IDs we accept, in the order most providers are likely to have them. */
 const DOCUMENT_TYPES = [
@@ -79,7 +84,13 @@ const Shadows = { card: V6Shadows.sm };
 const POLL_INTERVAL_MS = 4000;
 const POLL_ATTEMPTS = 8;
 
-const STEPS = ['Government ID', 'Face Scan', 'Automated Check'];
+/** The "Before you start" card: the four things the provider will do, in order. */
+const PREP_STEPS = [
+  { title: 'Choose your ID', detail: "PhilSys, driver's licence, UMID, passport or postal ID" },
+  { title: 'Photo of your ID', detail: 'A clear, full photo of your ID' },
+  { title: 'Selfie', detail: 'To match you with your ID' },
+  { title: 'Review and send', detail: 'Then a short secure check with Stripe' },
+];
 
 interface SPVerificationScreenProps {
   onBack: () => void;
@@ -94,13 +105,16 @@ interface SPVerificationScreenProps {
 type Slot = 'id' | 'selfie';
 
 export default function SPVerificationScreen({ onBack, onVerified }: SPVerificationScreenProps) {
-  const { Colors, styles, V6Colors } = useThemedStyles(createThemedStyles);
+  const { Colors, V6Colors, styles } = useThemedStyles(createThemedStyles);
   const headerTop = useHeaderTop();
   // The API refuses a verification without a service profile; say so up
   // front instead of after all three steps.
   const { providerProfile } = useAuth();
   const profileIncomplete = !providerProfile;
   const [step, setStep] = useState(1);
+  /** False until the provider taps Start on the intro (or Try again after a rejection). */
+  const [started, setStarted] = useState(false);
+  const [protectOpen, setProtectOpen] = useState(false);
   const [documentType, setDocumentType] = useState<DocumentType | null>(null);
   const [idAsset, setIdAsset] = useState<ImagePicker.ImagePickerAsset | null>(null);
   const [selfieAsset, setSelfieAsset] = useState<ImagePicker.ImagePickerAsset | null>(null);
@@ -235,17 +249,37 @@ export default function SPVerificationScreen({ onBack, onVerified }: SPVerificat
   const isPending = verification?.status === 'pending';
   const isApproved = verification?.status === 'approved';
   const isRejected = verification?.status === 'rejected';
-  const inWizard = !isPending && !isApproved;
+
+  /** Which view is on screen; the rules live in src/lib/verifyFlow.ts. */
+  const view = pickVerifyView({
+    loading,
+    status: verification?.status ?? null,
+    submitting,
+    started,
+  });
+  const showWizard = view === 'wizard' || view === 'sending';
+  const showIntro = view === 'intro' || view === 'rejected';
 
   const canAdvance =
     (step === 1 && !!documentType && !!idAsset) || (step === 2 && !!selfieAsset) || step === 3;
+
+  /** The header arrow goes back one wizard step; from the first step it returns to the intro. */
+  const onHeaderBack = () => {
+    if (submitting) return;
+    if (view === 'wizard') {
+      if (step > 1) setStep((s) => s - 1);
+      else setStarted(false);
+      return;
+    }
+    onBack();
+  };
 
   const renderStatus = () => {
     if (!verification) return null;
     if (isApproved) {
       return (
         <View style={[styles.status, styles.statusApproved]}>
-          <BadgeCheck size={22} color={Colors.success} />
+          <BadgeCheck size={22} color={Colors.successText} />
           <View style={styles.statusTextBox}>
             <Text style={styles.statusTitle}>You&apos;re verified</Text>
             <Text style={styles.statusBody}>
@@ -258,7 +292,7 @@ export default function SPVerificationScreen({ onBack, onVerified }: SPVerificat
     if (isPending) {
       return (
         <View style={[styles.status, styles.statusPending]}>
-          <Clock size={22} color={Colors.warning} />
+          <Clock size={22} color={Colors.warningText} />
           <View style={styles.statusTextBox}>
             <Text style={styles.statusTitle}>Pending verification</Text>
             <Text style={styles.statusBody}>
@@ -276,7 +310,7 @@ export default function SPVerificationScreen({ onBack, onVerified }: SPVerificat
     }
     return (
       <View style={[styles.status, styles.statusRejected]}>
-        <CircleAlert size={22} color={Colors.error} />
+        <CircleAlert size={22} color={Colors.dangerText} />
         <View style={styles.statusTextBox}>
           <Text style={styles.statusTitle}>Not approved</Text>
           <Text style={styles.statusBody}>
@@ -319,30 +353,18 @@ export default function SPVerificationScreen({ onBack, onVerified }: SPVerificat
 
   return (
     <View style={styles.screen}>
-      <View style={[styles.header, { paddingTop: headerTop }]}>
-        <Tap style={styles.backButton} onPress={onBack} activeOpacity={0.8}>
-          <ArrowLeft size={20} color={Colors.ink700} />
-        </Tap>
-        <Text style={styles.headerTitle}>Get Verified</Text>
-        <View style={{ width: 38 }} />
-      </View>
+      <VerifyAppBar
+        title="Get verified"
+        onBack={onHeaderBack}
+        backLabel={view === 'wizard' && step > 1 ? 'Back to the previous step' : view === 'wizard' ? 'Back to the start' : 'Leave verification'}
+        topInset={headerTop}
+      />
 
-      {/* Stepper — only while there is something to step through. */}
-      {inWizard && !loading && (
-        <View style={styles.stepperWrap}>
-          <View style={styles.stepper}>
-            {STEPS.map((label, i) => (
-              <View key={label} style={[styles.stepPill, i < step && styles.stepPillDone]} />
-            ))}
-          </View>
-          <Text style={styles.stepperLabel}>
-            Step {step} of {STEPS.length} · {STEPS[step - 1]}
-          </Text>
-        </View>
-      )}
+      {/* Progress: only while the wizard is on screen. */}
+      {showWizard && !loading && <PostProgress {...wizardProgress(step, 'choose')} />}
 
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-        {loading ? (
+        {view === 'loading' ? (
           <ActivityIndicator color={V6Colors.link} style={styles.loader} />
         ) : (
           <>
@@ -361,7 +383,37 @@ export default function SPVerificationScreen({ onBack, onVerified }: SPVerificat
             {renderApprovedContinue()}
             {isApproved && error && <Text style={styles.errorText}>{error}</Text>}
 
-            {inWizard && (
+            {showIntro && (
+              <>
+                <Text style={styles.introTitle} accessibilityRole="header">
+                  Get verified to start getting jobs
+                </Text>
+                <Text style={styles.introBody}>
+                  Clients only see and hire verified providers. It takes about 3 minutes.
+                </Text>
+                {profileIncomplete && (
+                  <View style={styles.profileNotice}>
+                    <Text style={styles.profileNoticeTitle}>Finish your profile first</Text>
+                    <Text style={styles.profileNoticeBody}>
+                      Pick your service and add a bio in Profile → Edit Profile. Verification can't be sent until they're saved.
+                    </Text>
+                  </View>
+                )}
+                <PrepCard steps={PREP_STEPS} profileItems={profileChecks(providerProfile)} />
+                <Tap
+                  style={styles.protectLink}
+                  onPress={() => setProtectOpen(true)}
+                  hitSlop={{ top: 12, bottom: 12 }}
+                  accessibilityRole="button"
+                  accessibilityLabel="How we protect your ID"
+                >
+                  <ShieldCheck size={16} color={Colors.link} />
+                  <Text style={styles.protectLinkText}>How we protect your ID</Text>
+                </Tap>
+              </>
+            )}
+
+            {showWizard && (
               <>
                 {/* ── Step 1 · Government ID ─────────────────────────── */}
                 {step === 1 && profileIncomplete && (
@@ -541,48 +593,30 @@ export default function SPVerificationScreen({ onBack, onVerified }: SPVerificat
         )}
         <View style={{ height: 24 }} />
       </ScrollView>
+
+      {showIntro && (
+        <BottomActionBar
+          primaryLabel="Start"
+          onPrimary={() => setStarted(true)}
+          primaryDisabled={profileIncomplete}
+        />
+      )}
+
+      <ProtectSheet visible={protectOpen} onClose={() => setProtectOpen(false)} />
     </View>
   );
 }
 
 function createThemedStyles(theme: ThemePalette) {
-  const { V6Colors } = theme;
-  const Colors = {
-    ...V6Colors,
-    background: V6Colors.canvas,
-    backgroundAlt: V6Colors.ink50,
-    brandDark: V6Colors.ink900,
-    brandTeal: V6Colors.cyan700,
-    slate: V6Colors.ink500,
-    muted: V6Colors.ink400,
-    error: '#ef4444',
-    success: '#22c55e',
-    warning: '#f59e0b',
-  } as const;
+  const { Colors, V6Colors } = theme;
   const styles = StyleSheet.create({
-    screen: { flex: 1, backgroundColor: Colors.background },
-    header: {
-      flexDirection: 'row', alignItems: 'center', gap: 12,
-      backgroundColor: Colors.surface,
-      paddingHorizontal: Spacing.screenH,
-      paddingBottom: 12,
-      borderBottomWidth: 1, borderBottomColor: V6Colors.line,
-    },
-    backButton: {
-      width: 38, height: 38, borderRadius: 12,
-      backgroundColor: Colors.surface, borderWidth: 1, borderColor: V6Colors.line,
-      alignItems: 'center', justifyContent: 'center',
-    },
-    headerTitle: { flex: 1, color: Colors.ink900, fontSize: 19.5, fontWeight: '800', fontFamily: 'Inter' },
-
-    stepperWrap: { backgroundColor: Colors.surface, paddingHorizontal: Spacing.screenH, paddingBottom: 14 },
-    stepper: { flexDirection: 'row', gap: 5 },
-    stepPill: { flex: 1, height: 5, borderRadius: 3, backgroundColor: Colors.ink100 },
-    stepPillDone: { backgroundColor: Colors.cyan700 },
-    stepperLabel: { color: Colors.muted, fontSize: 12.5, fontFamily: 'Inter', marginTop: 8 },
-
-    content: { padding: Spacing.screenH, gap: 16 },
+    screen: { flex: 1, backgroundColor: V6Colors.canvas },
     loader: { marginTop: 40 },
+    content: { padding: Spacing.screenH, gap: 16 },
+    introTitle: { color: V6Colors.ink900, fontFamily: 'Inter', fontSize: 24, fontWeight: '700', lineHeight: 30 },
+    introBody: { color: V6Colors.ink700, fontFamily: 'Inter', fontSize: 15, lineHeight: 21, marginTop: -8 },
+    protectLink: { flexDirection: 'row', alignItems: 'center', gap: 6, alignSelf: 'flex-start', minHeight: 40 },
+    protectLinkText: { color: Colors.link, fontFamily: 'Inter', fontSize: 14, fontWeight: '600', lineHeight: 18 },
     status: {
       flexDirection: 'row',
       gap: 10,
@@ -600,23 +634,23 @@ function createThemedStyles(theme: ThemePalette) {
       fontSize: 16.5,
       fontWeight: '800',
     },
-    statusBody: { color: Colors.slate, fontFamily: 'Inter', fontSize: 15.5, lineHeight: 19 },
+    statusBody: { color: V6Colors.ink700, fontFamily: 'Inter', fontSize: 15.5, lineHeight: 19 },
     statusAction: { color: V6Colors.link, fontFamily: 'Inter', fontSize: 15, fontWeight: '700', marginTop: 6 },
     notice: {
       flexDirection: 'row',
       gap: 10,
-      backgroundColor: Colors.backgroundAlt,
+      backgroundColor: V6Colors.ink50,
       borderRadius: 14,
       padding: 14,
     },
-    noticeText: { flex: 1, color: Colors.slate, fontFamily: 'Inter', fontSize: 15.5, lineHeight: 19 },
-    card: { backgroundColor: Colors.surface, borderRadius: Radii.card, padding: 18, ...Shadows.card },
+    noticeText: { flex: 1, color: V6Colors.ink700, fontFamily: 'Inter', fontSize: 15.5, lineHeight: 19 },
+    card: { backgroundColor: V6Colors.surface, borderRadius: Radii.card, padding: 18, ...Shadows.card },
     label: { color: V6Colors.ink900, fontFamily: 'Inter', fontSize: 18.5, fontWeight: '800' },
-    hint: { color: Colors.muted, fontFamily: 'Inter', fontSize: 15.5, marginTop: 4, marginBottom: 14, lineHeight: 20 },
+    hint: { color: V6Colors.ink500, fontFamily: 'Inter', fontSize: 15.5, marginTop: 4, marginBottom: 14, lineHeight: 20 },
     docTypeLabel: { color: V6Colors.ink900, fontFamily: 'Inter', fontSize: 14, fontWeight: '700', marginBottom: 8 },
     docTypeRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 16 },
-    docTypeChip: { borderWidth: 1, borderColor: V6Colors.fieldBorder, borderRadius: 999, paddingHorizontal: 12, paddingVertical: 7, backgroundColor: Colors.surface },
-    docTypeChipOn: { borderColor: Colors.brandTeal, backgroundColor: V6Colors.cyan50 },
+    docTypeChip: { borderWidth: 1, borderColor: V6Colors.fieldBorder, borderRadius: 999, paddingHorizontal: 12, paddingVertical: 7, backgroundColor: V6Colors.surface },
+    docTypeChipOn: { borderColor: Colors.link, backgroundColor: Colors.primaryTonal },
     docTypeText: { color: V6Colors.ink700, fontFamily: 'Inter', fontSize: 13.5, fontWeight: '600' },
     docTypeTextOn: { color: V6Colors.link, fontWeight: '700' },
     dropzone: {
@@ -624,15 +658,15 @@ function createThemedStyles(theme: ThemePalette) {
       borderRadius: 12,
       borderWidth: 1.5,
       borderStyle: 'dashed',
-      borderColor: 'rgba(144,153,184,0.5)',
-      backgroundColor: Colors.backgroundAlt,
+      borderColor: V6Colors.fieldBorder,
+      backgroundColor: V6Colors.ink50,
       alignItems: 'center',
       justifyContent: 'center',
       gap: 8,
       overflow: 'hidden',
     },
-    dropzoneText: { color: Colors.muted, fontFamily: 'Inter', fontSize: 15.5 },
-    dropzoneSubtext: { color: Colors.muted, fontFamily: 'Inter', fontSize: 13.5, marginTop: 2 },
+    dropzoneText: { color: V6Colors.ink500, fontFamily: 'Inter', fontSize: 15.5 },
+    dropzoneSubtext: { color: V6Colors.ink500, fontFamily: 'Inter', fontSize: 13.5, marginTop: 2 },
     preview: { width: '100%', height: '100%' },
     selfieDropzonePrimary: { height: 190 },
 
@@ -642,13 +676,13 @@ function createThemedStyles(theme: ThemePalette) {
       borderWidth: 1.5, borderColor: V6Colors.ink200,
       alignItems: 'center', justifyContent: 'center',
     },
-    summaryCheckDone: { backgroundColor: Colors.brandTeal, borderColor: Colors.brandTeal },
-    summaryText: { color: Colors.ink800, fontFamily: 'Inter', fontSize: 15.5 },
+    summaryCheckDone: { backgroundColor: Colors.primary, borderColor: Colors.primary },
+    summaryText: { color: V6Colors.ink800, fontFamily: 'Inter', fontSize: 15.5 },
     privacyNote: {
       flexDirection: 'row', gap: 10,
-      backgroundColor: Colors.backgroundAlt, borderRadius: 12, padding: 13, marginTop: 12,
+      backgroundColor: V6Colors.ink50, borderRadius: 12, padding: 13, marginTop: 12,
     },
-    privacyText: { flex: 1, color: Colors.slate, fontFamily: 'Inter', fontSize: 14, lineHeight: 19 },
+    privacyText: { flex: 1, color: V6Colors.ink700, fontFamily: 'Inter', fontSize: 14, lineHeight: 19 },
     stageText: { color: V6Colors.link, fontFamily: 'Inter', fontSize: 14.5, marginTop: 12, textAlign: 'center' },
 
     wizardActions: { flexDirection: 'row', gap: 10 },
@@ -658,11 +692,11 @@ function createThemedStyles(theme: ThemePalette) {
       paddingHorizontal: 22, borderRadius: 24, borderWidth: 1, borderColor: V6Colors.fieldBorder,
       alignItems: 'center', justifyContent: 'center',
     },
-    backStepText: { color: Colors.ink700, fontFamily: 'Inter', fontSize: 16.5, fontWeight: '700' },
+    backStepText: { color: V6Colors.ink700, fontFamily: 'Inter', fontSize: 16.5, fontWeight: '700' },
     submitButton: {
       alignItems: 'center',
       justifyContent: 'center',
-      backgroundColor: Colors.brandTeal,
+      backgroundColor: Colors.primary,
       borderRadius: 24,
       paddingVertical: 15,
       marginTop: 4,
@@ -673,12 +707,12 @@ function createThemedStyles(theme: ThemePalette) {
     submitText: { color: Colors.onPrimary, fontSize: 18.5, fontWeight: '700', fontFamily: 'Inter' },
     profileNotice: {
       backgroundColor: V6Colors.warningSurface, borderWidth: 1, borderColor: V6Colors.warningBorder,
-      borderRadius: 14, padding: 14, gap: 4, marginBottom: 14,
+      borderRadius: 14, padding: 14, gap: 4,
     },
     profileNoticeTitle: { color: V6Colors.warningText, fontFamily: 'Inter', fontSize: 15, fontWeight: '700' },
     profileNoticeBody: { color: V6Colors.ink700, fontFamily: 'Inter', fontSize: 14, lineHeight: 20 },
-    errorText: { color: Colors.error, fontFamily: 'Inter', fontSize: 15.5, textAlign: 'center' },
-    retryHint: { color: Colors.muted, fontFamily: 'Inter', fontSize: 14, textAlign: 'center' },
+    errorText: { color: Colors.dangerText, fontFamily: 'Inter', fontSize: 15.5, textAlign: 'center' },
+    retryHint: { color: V6Colors.ink500, fontFamily: 'Inter', fontSize: 14, textAlign: 'center' },
 
     galleryBtn: {
       flexDirection: 'row',
