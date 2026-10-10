@@ -1,0 +1,143 @@
+import React from 'react';
+import { StyleSheet, type FlatList } from 'react-native';
+import { fireEvent, render, screen } from '@testing-library/react-native';
+import ChatThread, { type ChatThreadProps } from '../ChatThread';
+import type { Message } from '../../lib/api';
+import { lightPalette } from '../../constants/palettes';
+
+const message = (
+  id: string,
+  senderId: string,
+  body: string,
+  createdAt: string,
+  attachmentUrl: string | null = null,
+): Message => ({
+  id,
+  conversation_id: 'conversation',
+  sender_id: senderId,
+  body,
+  attachment_path: null,
+  attachment_url: attachmentUrl,
+  read_at: null,
+  created_at: createdAt,
+});
+
+const baseProps = (overrides: Partial<ChatThreadProps> = {}): ChatThreadProps => ({
+  counterpartName: 'TaskBuddyProvider',
+  subtitle: 'Plumbing: Fix toilet · Confirmed',
+  systemLine: 'You hired TaskBuddyProvider · ₱1.00 held safely',
+  dayHeads: {},
+  messages: [],
+  profileId: 'me',
+  loading: false,
+  error: null,
+  listRef: React.createRef<FlatList<Message>>(),
+  text: '',
+  onChangeText: jest.fn(),
+  onSend: jest.fn(),
+  attaching: false,
+  onAttach: jest.fn(),
+  onBack: jest.fn(),
+  onViewJob: jest.fn(),
+  ...overrides,
+});
+
+describe('ChatThread header and system line', () => {
+  it('names the other person, the job and its status, and pins the system line', () => {
+    render(<ChatThread {...baseProps()} />);
+
+    expect(screen.getByText('TaskBuddyProvider')).toBeTruthy();
+    expect(screen.getByText('Plumbing: Fix toilet · Confirmed')).toBeTruthy();
+    expect(screen.getByText('You hired TaskBuddyProvider · ₱1.00 held safely')).toBeTruthy();
+  });
+
+  it('leaves out the subtitle and the system line when they are not known', () => {
+    render(<ChatThread {...baseProps({ subtitle: null, systemLine: null, counterpartName: null })} />);
+
+    expect(screen.getByText('Chat')).toBeTruthy();
+    expect(screen.queryByText(/held safely/)).toBeNull();
+    expect(screen.queryByText('Plumbing: Fix toilet · Confirmed')).toBeNull();
+  });
+
+  it('calls back from the back button and opens the job from View job', () => {
+    const props = baseProps();
+    render(<ChatThread {...props} />);
+
+    fireEvent.press(screen.getByLabelText('Back'));
+    fireEvent.press(screen.getByLabelText('View job'));
+
+    expect(props.onBack).toHaveBeenCalledTimes(1);
+    expect(props.onViewJob).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('ChatThread day separators', () => {
+  it('shows one label above the first message of each day and none between them', () => {
+    const messages = [
+      message('a', 'other', 'Hi', '2026-10-06T09:00:00Z'),
+      message('b', 'me', 'Hello', '2026-10-06T09:05:00Z'),
+      message('c', 'other', 'Today works', '2026-10-11T08:00:00Z'),
+    ];
+    render(<ChatThread {...baseProps({ messages, dayHeads: { a: 'OCT 6', c: 'TODAY' } })} />);
+
+    expect(screen.getByText('OCT 6')).toBeTruthy();
+    expect(screen.getByText('TODAY')).toBeTruthy();
+    expect(screen.getAllByText(/^(OCT 6|TODAY)$/)).toHaveLength(2);
+  });
+});
+
+describe('ChatThread composer', () => {
+  it('keeps Send message disabled while the box is empty, and sends once there is text', () => {
+    const props = baseProps();
+    const { rerender } = render(<ChatThread {...props} />);
+    const send = () => screen.getByRole('button', { name: 'Send message' });
+
+    expect(send().props.accessibilityState?.disabled).toBe(true);
+    fireEvent.press(send());
+    expect(props.onSend).not.toHaveBeenCalled();
+
+    fireEvent.changeText(screen.getByPlaceholderText('Message…'), 'On my way');
+    rerender(<ChatThread {...props} text="On my way" />);
+    expect(send().props.accessibilityState?.disabled).toBe(false);
+    fireEvent.press(send());
+    expect(props.onSend).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps the attach button labelled for what it does', () => {
+    const props = baseProps();
+    render(<ChatThread {...props} />);
+
+    fireEvent.press(screen.getByRole('button', { name: 'Attach a photo' }));
+    expect(props.onAttach).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('ChatThread bubbles and photos', () => {
+  it('colours my messages with the primary colour and white text, and theirs on the surface', () => {
+    const messages = [
+      message('theirs', 'other', 'Incoming message', '2026-10-11T08:00:00Z'),
+      message('mine', 'me', 'Outgoing message', '2026-10-11T08:01:00Z'),
+    ];
+    render(<ChatThread {...baseProps({ messages })} />);
+
+    const background = (testID: string) => StyleSheet.flatten(screen.getByTestId(testID).props.style).backgroundColor;
+    expect(background('chat-bubble-mine')).toBe(lightPalette.Colors.primary);
+    expect(background('chat-bubble-theirs')).toBe(lightPalette.V6Colors.surface);
+    expect(StyleSheet.flatten(screen.getByText('Outgoing message').props.style).color).toBe(lightPalette.Colors.onPrimary);
+  });
+
+  it('opens a photo full screen from its thumbnail', () => {
+    const messages = [message('photo', 'me', '', '2026-10-11T08:00:00Z', 'https://storage.test/tank.jpg')];
+    render(<ChatThread {...baseProps({ messages })} />);
+
+    expect(screen.queryByTestId('full-photo')).toBeNull();
+    fireEvent.press(screen.getByLabelText('View photo'));
+
+    expect(screen.getByTestId('full-photo').props.source.uri).toBe('https://storage.test/tank.jpg');
+  });
+
+  it('shows the empty state until the first message arrives', () => {
+    render(<ChatThread {...baseProps()} />);
+    expect(screen.getByText('No messages yet')).toBeTruthy();
+  });
+});
