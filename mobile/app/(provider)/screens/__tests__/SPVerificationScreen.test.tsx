@@ -4,6 +4,8 @@ import SPVerificationScreen from '../SPVerificationScreen';
 import { api } from '../../../../src/lib/api';
 import { useAuth } from '../../../../src/context/AuthContext';
 import { clearAsyncDataCache } from '../../../../src/hooks/useAsyncData';
+import * as ImagePicker from 'expo-image-picker';
+import { requestAppPermission } from '../../../../src/lib/permissions';
 
 jest.mock('../../../../src/lib/api', () => {
   class MockApiError extends Error {
@@ -65,6 +67,7 @@ beforeEach(() => {
   clearAsyncDataCache();
   (useAuth as jest.Mock).mockReturnValue({ providerProfile: PROVIDER_PROFILE });
   (api.myVerification as jest.Mock).mockResolvedValue(null);
+  (requestAppPermission as jest.Mock).mockResolvedValue(true);
 });
 
 describe('SPVerificationScreen — before you start', () => {
@@ -161,10 +164,100 @@ describe('SPVerificationScreen — choose your ID', () => {
     fireEvent.press(screen.getByRole('button', { name: 'Continue' }));
 
     expect(screen.getByText('STEP 2 OF 4 · ID PHOTO')).toBeTruthy();
-    expect(screen.getByText('Tap to choose a photo')).toBeTruthy();
+    expect(screen.getByText('Get a clear photo of your UMID')).toBeTruthy();
 
     fireEvent.press(screen.getByLabelText('Back to the previous step'));
     expect(screen.getByText('Which ID will you use?')).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Continue' })).not.toBeDisabled();
+  });
+});
+
+describe('SPVerificationScreen — photo tips and check', () => {
+  async function toPhotoTips() {
+    await startWizard();
+    fireEvent.press(screen.getByLabelText('PhilSys National ID, Photo of the front'));
+    fireEvent.press(screen.getByRole('button', { name: 'Continue' }));
+  }
+
+  it('shows the tips for the chosen ID, with good and bad examples, before any camera opens', async () => {
+    await toPhotoTips();
+
+    expect(screen.getByText('STEP 2 OF 4 · ID PHOTO')).toBeTruthy();
+    expect(screen.getByText('Get a clear photo of your PhilSys National ID')).toBeTruthy();
+    expect(screen.getByLabelText('Good example: clear, all 4 corners visible')).toBeTruthy();
+    expect(screen.getByText('Keep all 4 corners inside the frame')).toBeTruthy();
+    expect(ImagePicker.launchCameraAsync).not.toHaveBeenCalled();
+  });
+
+  it('takes the ID photo with the back camera, then shows it to check', async () => {
+    (ImagePicker.launchCameraAsync as jest.Mock).mockResolvedValue({
+      canceled: false,
+      assets: [{ uri: 'file:///id.jpg', fileSize: 1000 }],
+    });
+    await toPhotoTips();
+
+    fireEvent.press(screen.getByRole('button', { name: 'Take photo of the front' }));
+
+    expect(await screen.findByText('Is everything readable?')).toBeTruthy();
+    expect(requestAppPermission).toHaveBeenCalledWith('camera');
+    const options = (ImagePicker.launchCameraAsync as jest.Mock).mock.calls[0][0];
+    expect(options.cameraType).toBeUndefined();
+    expect(screen.getByText('Name and photo are sharp')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Use this photo' })).toBeTruthy();
+  });
+
+  it('stays on the tips when the camera is cancelled', async () => {
+    (ImagePicker.launchCameraAsync as jest.Mock).mockResolvedValue({ canceled: true, assets: [] });
+    await toPhotoTips();
+
+    fireEvent.press(screen.getByRole('button', { name: 'Take photo of the front' }));
+
+    await waitFor(() => expect(ImagePicker.launchCameraAsync).toHaveBeenCalledTimes(1));
+    expect(screen.getByText('Get a clear photo of your PhilSys National ID')).toBeTruthy();
+  });
+
+  it('refuses a photo over 5 MB and keeps the tips', async () => {
+    (ImagePicker.launchCameraAsync as jest.Mock).mockResolvedValue({
+      canceled: false,
+      assets: [{ uri: 'file:///big.jpg', fileSize: 6 * 1024 * 1024 }],
+    });
+    await toPhotoTips();
+
+    fireEvent.press(screen.getByRole('button', { name: 'Take photo of the front' }));
+
+    expect(await screen.findByText('Photo is too large. Please retake under 5 MB.')).toBeTruthy();
+    expect(screen.getByText('Get a clear photo of your PhilSys National ID')).toBeTruthy();
+  });
+
+  it('takes the ID from the gallery as the alternative', async () => {
+    (ImagePicker.launchImageLibraryAsync as jest.Mock).mockResolvedValue({
+      canceled: false,
+      assets: [{ uri: 'file:///gallery.jpg' }],
+    });
+    await toPhotoTips();
+
+    fireEvent.press(screen.getByRole('button', { name: 'Upload from gallery' }));
+
+    expect(await screen.findByText('Is everything readable?')).toBeTruthy();
+    expect(requestAppPermission).toHaveBeenCalledWith('gallery');
+  });
+
+  it('moves on to the selfie with Use this photo, and Retake returns to the tips', async () => {
+    (ImagePicker.launchCameraAsync as jest.Mock).mockResolvedValue({
+      canceled: false,
+      assets: [{ uri: 'file:///id.jpg' }],
+    });
+    await toPhotoTips();
+    fireEvent.press(screen.getByRole('button', { name: 'Take photo of the front' }));
+    await screen.findByText('Is everything readable?');
+
+    fireEvent.press(screen.getByRole('button', { name: 'Retake' }));
+    expect(screen.getByText('Get a clear photo of your PhilSys National ID')).toBeTruthy();
+
+    fireEvent.press(screen.getByRole('button', { name: 'Take photo of the front' }));
+    await screen.findByText('Is everything readable?');
+    fireEvent.press(screen.getByRole('button', { name: 'Use this photo' }));
+
+    expect(screen.getByText('STEP 3 OF 4 · SELFIE')).toBeTruthy();
   });
 });

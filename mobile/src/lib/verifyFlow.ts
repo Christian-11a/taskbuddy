@@ -18,6 +18,11 @@ export const VERIFY_ID_TYPES = [
 
 export type VerifyDocumentType = (typeof VERIFY_ID_TYPES)[number]['value'];
 
+/** The camera button names the side of the ID it photographs. */
+export function takePhotoLabel(documentType: VerifyDocumentType | null): string {
+  return documentType === 'passport' ? 'Take photo of the photo page' : 'Take photo of the front';
+}
+
 export type VerifyStatus = 'pending' | 'approved' | 'rejected';
 
 export type VerifyView = 'loading' | 'intro' | 'wizard' | 'sending' | 'pending' | 'rejected' | 'approved';

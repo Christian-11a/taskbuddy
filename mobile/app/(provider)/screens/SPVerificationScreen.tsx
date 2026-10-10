@@ -46,6 +46,8 @@ import CalmNote from '../../../src/components/post/CalmNote';
 import VerifyAppBar from '../../../src/components/verify/VerifyAppBar';
 import PrepCard from '../../../src/components/verify/PrepCard';
 import ProtectSheet from '../../../src/components/verify/ProtectSheet';
+import CheckList from '../../../src/components/verify/CheckList';
+import IdExamples from '../../../src/components/verify/IdExamples';
 import * as ImagePicker from 'expo-image-picker';
 import * as WebBrowser from 'expo-web-browser';
 import {
@@ -71,6 +73,7 @@ import {
   VERIFY_ID_TYPES,
   pickVerifyView,
   profileChecks,
+  takePhotoLabel,
   wizardProgress,
   type IdPhase,
   type VerifyDocumentType,
@@ -90,6 +93,16 @@ const PREP_STEPS = [
   { title: 'Selfie', detail: 'To match you with your ID' },
   { title: 'Review and send', detail: 'Then a short secure check with Stripe' },
 ];
+
+/** Tips shown before the ID photo is taken. */
+const PHOTO_TIPS = [
+  'Place it on a flat, dark surface',
+  'Use good light, and turn off the flash',
+  'Keep all 4 corners inside the frame',
+];
+
+/** Reminders on the photo check. The app cannot verify these itself, so they are not ticked. */
+const PHOTO_CHECKS = ['Name and photo are sharp', 'All 4 corners are visible', 'No glare or shadows on the text'];
 
 interface SPVerificationScreenProps {
   onBack: () => void;
@@ -157,8 +170,12 @@ export default function SPVerificationScreen({ onBack, onVerified }: SPVerificat
     }
 
     setError(null);
-    if (slot === 'id') setIdAsset(asset);
-    else setSelfieAsset(asset);
+    if (slot === 'id') {
+      setIdAsset(asset);
+      setIdPhase('check');
+    } else {
+      setSelfieAsset(asset);
+    }
   };
 
   /** Camera capture — the selfie should be a live shot, not a saved photo. */
@@ -179,6 +196,26 @@ export default function SPVerificationScreen({ onBack, onVerified }: SPVerificat
 
     setError(null);
     setSelfieAsset(asset);
+  };
+
+  /** Camera capture for the ID photo. The back camera is the default, as in the system camera. */
+  const takeIdPhoto = async () => {
+    if (!(await requestAppPermission('camera'))) return;
+    const result = await ImagePicker.launchCameraAsync({
+      mediaTypes: ['images'],
+      quality: 0.85,
+    });
+    if (result.canceled) return;
+    const asset = result.assets[0];
+
+    if (asset.fileSize && asset.fileSize > 5 * 1024 * 1024) {
+      setError('Photo is too large. Please retake under 5 MB.');
+      return;
+    }
+
+    setError(null);
+    setIdAsset(asset);
+    setIdPhase('check');
   };
 
   /** Re-checks the submission a few times, since the verdict lands by webhook. */
@@ -284,6 +321,7 @@ export default function SPVerificationScreen({ onBack, onVerified }: SPVerificat
   };
 
   const onChoosingId = step === 1 && idPhase === 'choose';
+  const chosenIdLabel = VERIFY_ID_TYPES.find((type) => type.value === documentType)?.label ?? 'ID';
 
   const renderStatus = () => {
     if (!verification) return null;
@@ -461,37 +499,29 @@ export default function SPVerificationScreen({ onBack, onVerified }: SPVerificat
                   </>
                 )}
                 {step === 1 && idPhase === 'tips' && (
-                  <View style={styles.card}>
-                    <Text style={styles.label}>Government ID</Text>
-                    <Text style={styles.hint}>
-                      Add a clear photo showing your full name and picture.
+                  <>
+                    <Text style={styles.stepTitle} accessibilityRole="header">
+                      {`Get a clear photo of your ${chosenIdLabel}`}
                     </Text>
-                    <Tap
-                      style={styles.dropzone}
-                      onPress={() => void pick('id')}
-                      activeOpacity={0.8}
-                    >
-                      {idAsset ? (
-                        <Image source={{ uri: idAsset.uri }} style={styles.preview} resizeMode="cover" />
-                      ) : (
-                        <>
-                          <IdCard size={29} color={V6Colors.link} />
-                          <Text style={styles.dropzoneText}>Tap to choose a photo</Text>
-                          <Text style={styles.dropzoneSubtext}>Max 5 MB · JPG, PNG</Text>
-                        </>
-                      )}
-                    </Tap>
+                    <IdExamples />
+                    <CheckList items={PHOTO_TIPS} />
+                  </>
+                )}
+
+                {step === 1 && idPhase === 'check' && (
+                  <>
+                    <Text style={styles.stepTitle} accessibilityRole="header">
+                      Is everything readable?
+                    </Text>
                     {!!idAsset && (
-                      <Tap
-                        style={styles.galleryBtn}
-                        onPress={() => void pick('id')}
-                        activeOpacity={0.8}
-                      >
-                        <ImageIcon size={18} color={V6Colors.link} />
-                        <Text style={styles.galleryBtnText}>Choose a different photo</Text>
-                      </Tap>
+                      <View style={styles.previewFrame}>
+                        <Image source={{ uri: idAsset.uri }} style={styles.preview} resizeMode="cover" />
+                      </View>
                     )}
-                  </View>
+                    <View style={styles.checkBox}>
+                      <CheckList items={PHOTO_CHECKS} muted />
+                    </View>
+                  </>
                 )}
 
                 {/* ── Step 2 · Face scan ─────────────────────────────── */}
@@ -566,7 +596,7 @@ export default function SPVerificationScreen({ onBack, onVerified }: SPVerificat
 
                 {!!error && <Text style={styles.errorText}>{error}</Text>}
 
-                {!onChoosingId && (
+                {step > 1 && (
                 <View style={styles.wizardActions}>
                   {step > 1 && (
                     <Tap
@@ -628,6 +658,24 @@ export default function SPVerificationScreen({ onBack, onVerified }: SPVerificat
         />
       )}
 
+      {view === 'wizard' && step === 1 && idPhase === 'tips' && (
+        <BottomActionBar
+          primaryLabel={takePhotoLabel(documentType)}
+          onPrimary={() => void takeIdPhoto()}
+          secondaryLabel="Upload from gallery"
+          onSecondary={() => void pick('id')}
+        />
+      )}
+
+      {view === 'wizard' && step === 1 && idPhase === 'check' && (
+        <BottomActionBar
+          primaryLabel="Use this photo"
+          onPrimary={() => setStep(2)}
+          secondaryLabel="Retake"
+          onSecondary={() => setIdPhase('tips')}
+        />
+      )}
+
       <ProtectSheet visible={protectOpen} onClose={() => setProtectOpen(false)} />
     </View>
   );
@@ -675,6 +723,10 @@ function createThemedStyles(theme: ThemePalette) {
     hint: { color: V6Colors.ink500, fontFamily: 'Inter', fontSize: 15.5, marginTop: 4, marginBottom: 14, lineHeight: 20 },
     stepTitle: { color: V6Colors.ink900, fontFamily: 'Inter', fontSize: 22, fontWeight: '700', lineHeight: 28 },
     optionList: { gap: 8 },
+    previewFrame: { height: 280, borderRadius: 14, overflow: 'hidden', backgroundColor: V6Colors.ink50 },
+    checkBox: {
+      backgroundColor: V6Colors.surface, borderRadius: 14, borderWidth: 1, borderColor: V6Colors.line, padding: 14,
+    },
     dropzone: {
       height: 150,
       borderRadius: 12,

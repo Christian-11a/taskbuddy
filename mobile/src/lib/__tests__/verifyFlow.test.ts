@@ -1,4 +1,18 @@
-import { VERIFY_ID_TYPES, pickVerifyView, profileChecks, wizardProgress } from '../verifyFlow';
+import {
+  VERIFY_ID_TYPES,
+  pickVerifyView,
+  profileChecks,
+  takePhotoLabel,
+  wizardProgress,
+} from '../verifyFlow';
+
+describe('takePhotoLabel', () => {
+  it('names the side of the ID the camera button photographs', () => {
+    expect(takePhotoLabel('philsys')).toBe('Take photo of the front');
+    expect(takePhotoLabel('passport')).toBe('Take photo of the photo page');
+    expect(takePhotoLabel(null)).toBe('Take photo of the front');
+  });
+});
 
 describe('VERIFY_ID_TYPES', () => {
   it('keeps the document_type values the API receives, in the same order', () => {
