@@ -104,6 +104,14 @@ import ServiceTile from '../../../src/components/post/ServiceTile';
 import CalmNote from '../../../src/components/post/CalmNote';
 import AddTaskRow from '../../../src/components/post/AddTaskRow';
 import UrgencyRow from '../../../src/components/post/UrgencyRow';
+import {
+  combineDateAndTime,
+  isValidBudget,
+  reviseStepErrors,
+  stepErrors,
+  type PostFieldErrors,
+  type PostFormValues,
+} from '../../../src/lib/postJobRules';
 import CheckRow from '../../../src/components/ui/CheckRow';
 import TextField from '../../../src/components/ui/TextField';
 import { requestAppPermission } from '../../../src/lib/permissions';
@@ -171,12 +179,7 @@ const TASK_PRESETS: Record<string, string[]> = {
 
 const MAX_TASKS = 20;
 
-type FieldErrors = Partial<
-  Record<
-    'title' | 'description' | 'location' | 'tasks' | 'date' | 'time' | 'budget',
-    string
-  >
->;
+type FieldErrors = PostFieldErrors;
 
 interface HOCreateJobScreenProps {
   onBack: () => void;
@@ -261,37 +264,13 @@ export default function HOCreateJobScreen({
   const dateKey = (value: Date) => `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, '0')}-${String(value.getDate()).padStart(2, '0')}`;
   const clearError = (field: keyof FieldErrors) =>
     setFieldErrors((prev) => (prev[field] ? { ...prev, [field]: undefined } : prev));
+  const formValues = (): PostFormValues => ({
+    categoryId, location, tasks, title, description, date, time, budget,
+  });
 
   const presets = TASK_PRESETS[categoryName] ?? [];
 
-  /**
-   * The picker collects a date and a time as two separate Date objects; the
-   * backend stores one `timestamptz`. Combine them in the device's own time
-   * zone so "9:00 AM" means 9:00 AM where the client is.
-   */
-  const combineDateAndTime = (day: Date, clock: Date) =>
-    new Date(
-      day.getFullYear(),
-      day.getMonth(),
-      day.getDate(),
-      clock.getHours(),
-      clock.getMinutes(),
-      0,
-      0,
-    );
-
   const scheduledAt = date && time ? combineDateAndTime(date, time) : null;
-
-  const isValidBudget = (value: string) => {
-    const normalized = value.trim().replace(/,/g, '');
-    if (normalized === '') return false;
-    const n = Number(normalized);
-    if (!Number.isFinite(n) || n <= 0) return false;
-    // allow at most 2 decimal places
-    const parts = normalized.split('.');
-    if (parts[1] && parts[1].length > 2) return false;
-    return true;
-  };
 
   const formatBudget = () => {
     if (!isValidBudget(budget)) return;
@@ -323,6 +302,12 @@ export default function HOCreateJobScreen({
   useEffect(() => {
     scrollRef.current?.scrollTo({ y: 0, animated: false });
   }, [step]);
+  // An error stays only while it is still true (see reviseStepErrors), so a field
+  // that has become valid loses its message the moment it changes. Nothing new
+  // appears here: errors come from Next alone.
+  useEffect(() => {
+    setFieldErrors((prev) => reviseStepErrors(prev, step, formValues(), new Date()));
+  }, [step, categoryId, location, tasks, title, description, date, time, budget]);
   useEffect(() => {
     // Once only: "Post another job" clears the form back to step 1, and it
     // would be wrong for the tile tapped on Home three screens ago to reappear.
@@ -414,7 +399,6 @@ export default function HOCreateJobScreen({
   }, [categoryName, tasks, titleTouched, descriptionTouched]);
 
   const toggleTask = (label: string) => {
-    clearError('tasks');
     setTasks((current) =>
       current.includes(label)
         ? current.filter((t) => t !== label)
@@ -427,60 +411,21 @@ export default function HOCreateJobScreen({
   const addCustomTask = () => {
     const label = customTask.trim();
     if (!label || tasks.includes(label) || tasks.length >= MAX_TASKS) return;
-    clearError('tasks');
     setTasks((current) => [...current, label.slice(0, 120)]);
     setCustomTask('');
   };
 
+  /**
+   * Checks the step on screen. Errors appear only here, after Next, each under
+   * the field that caused it; the first one scrolls into view. There is no
+   * separate banner: a message above the buttons would say the same thing twice.
+   */
   const validateStep = (): boolean => {
-    const errors: FieldErrors = {};
-
-    if (step === 1 && !categoryId) {
-      setFieldErrors({});
-      setError('Please select a service.');
-      return false;
-    }
-
-    if (step === 2 && !location.trim()) errors.location = 'Please enter where the job is.';
-
-    if (step === 3) {
-      if (tasks.length === 0) {
-        errors.tasks = 'Pick at least one task so providers know what the job involves.';
-      }
-      const t = title.trim();
-      if (t.length < 5) errors.title = 'Title must be at least 5 characters.';
-      else if (t.length > 120) errors.title = 'Title cannot exceed 120 characters.';
-
-      const d = description.trim();
-      if (d.length < 20) errors.description = 'Description must be at least 20 characters.';
-      else if (d.length > 750) errors.description = 'Description cannot exceed 750 characters.';
-    }
-
-    if (step === 4) {
-      if (!date) errors.date = 'Please select a preferred date.';
-      if (!time) errors.time = 'Please select a preferred time.';
-      // A booking in the past is the one thing the API will refuse outright,
-      // so it is caught here against the field that caused it.
-      if (date && time && combineDateAndTime(date, time).getTime() < Date.now()) {
-        const startOfToday = new Date();
-        startOfToday.setHours(0, 0, 0, 0);
-        if (date < startOfToday) {
-          errors.date = 'That date has already passed. Choose today or later.';
-        } else {
-          errors.time = 'That time has already passed today. Choose a later time.';
-        }
-      }
-      if (!budget.trim()) errors.budget = 'Please set a budget for this job.';
-      else if (!isValidBudget(budget)) {
-        errors.budget = 'Enter a valid amount greater than 0, up to 2 decimal places.';
-      }
-    }
-
+    const errors = stepErrors(step, formValues(), new Date());
     setFieldErrors(errors);
-    if (Object.keys(errors).length > 0) {
-      const first = Object.keys(errors)[0] as keyof FieldErrors;
+    const first = Object.keys(errors)[0] as keyof FieldErrors | undefined;
+    if (first) {
       scrollRef.current?.scrollTo({ y: Math.max(0, (fieldPositions.current[first] ?? 0) - 12), animated: true });
-      setError(errors[first] ?? null);
       return false;
     }
     return true;
@@ -595,6 +540,7 @@ export default function HOCreateJobScreen({
 
   const handleStepBack = () => {
     setError(null);
+    setFieldErrors({});
     if (step > 1 && step <= totalSteps) setStep((s) => s - 1);
   };
 
@@ -652,7 +598,6 @@ export default function HOCreateJobScreen({
       setShowTimePicker(false);
       if (event.type === 'set' && selectedTime) {
         setTime(selectedTime);
-        clearError('time');
       }
       // event.type === 'dismissed' -> user tapped Cancel/back; keep old time.
       return;
@@ -748,7 +693,10 @@ export default function HOCreateJobScreen({
               </View>
             )}
             {!!categories.error && <Text style={styles.errorText}>{categories.error}</Text>}
-            <View style={styles.serviceGrid}>
+            <View
+              style={styles.serviceGrid}
+              onLayout={(event) => { fieldPositions.current.service = event.nativeEvent.layout.y; }}
+            >
               {(categories.data ?? []).map((cat) => {
                 const meta = CATEGORY_META[cat.name] ?? { icon: Hand, desc: '' };
                 return (
@@ -771,6 +719,7 @@ export default function HOCreateJobScreen({
                 );
               })}
             </View>
+            {!!fieldErrors.service && <Text style={styles.inputErrorText}>{fieldErrors.service}</Text>}
           </View>
         )}
 
@@ -785,10 +734,7 @@ export default function HOCreateJobScreen({
               <AddressField
                 testID="create-job-address"
                 value={location}
-                onChangeText={(value) => {
-                  setLocation(value);
-                  clearError('location');
-                }}
+                onChangeText={setLocation}
                 onResolve={handleResolvedAddress}
                 onFocus={() => { addressFocused.current = true; }}
                 onBlur={() => { addressFocused.current = false; }}
@@ -888,7 +834,6 @@ export default function HOCreateJobScreen({
                 onChangeText={(value) => {
                   setTitle(value);
                   setTitleTouched(true);
-                  clearError('title');
                 }}
                 helper="Written for you from the tasks; edit if you like"
                 error={fieldErrors.title}
@@ -906,7 +851,6 @@ export default function HOCreateJobScreen({
                 onChangeText={(value) => {
                   setDescription(value);
                   setDescriptionTouched(true);
-                  clearError('description');
                 }}
                 helper="Written for you from the tasks; edit if you like"
                 error={fieldErrors.description}
@@ -999,7 +943,7 @@ export default function HOCreateJobScreen({
                 <Text style={styles.inputLabel}>Date</Text>
                 <Tap
                   style={[styles.input, styles.pickerInput, showDatePicker && styles.inputFocused, fieldErrors.date && styles.inputError]}
-                  onPress={() => { setShowTimePicker(false); setShowDatePicker(true); clearError('date'); }}
+                  onPress={() => { setShowTimePicker(false); setShowDatePicker(true); }}
                   activeOpacity={0.8}
                   accessibilityRole="button"
                   accessibilityLabel="Date"
@@ -1012,7 +956,7 @@ export default function HOCreateJobScreen({
                 <Text style={styles.inputLabel}>Time</Text>
                 <Tap
                   style={[styles.input, styles.pickerInput, showTimePicker && styles.inputFocused, fieldErrors.time && styles.inputError]}
-                  onPress={() => { openTimePicker(); clearError('time'); }}
+                  onPress={openTimePicker}
                   activeOpacity={0.8}
                   accessibilityRole="button"
                   accessibilityLabel="Time"
@@ -1032,14 +976,8 @@ export default function HOCreateJobScreen({
                   placeholder="0.00"
                   placeholderTextColor={Colors.muted}
                   value={budget}
-                  onChangeText={(value) => {
-                    setBudget(value);
-                    clearError('budget');
-                  }}
-                  onFocus={() => {
-                    setFocusedField('budget');
-                    clearError('budget');
-                  }}
+                  onChangeText={setBudget}
+                  onFocus={() => setFocusedField('budget')}
                   onBlur={() => { setFocusedField(null); formatBudget(); }}
                   keyboardType="decimal-pad"
                 />
@@ -1159,7 +1097,6 @@ export default function HOCreateJobScreen({
               onDayPress={(day) => {
                 const [year, month, dayOfMonth] = day.dateString.split('-').map(Number);
                 setDate(new Date(year, month - 1, dayOfMonth));
-                clearError('date');
                 setShowDatePicker(false);
               }}
               markedDates={date ? { [dateKey(date)]: { selected: true, selectedColor: Colors.brandTeal } } : undefined}
@@ -1222,7 +1159,6 @@ export default function HOCreateJobScreen({
                 onPress={() => {
                   if (tempTime) {
                     setTime(tempTime);
-                    clearError('time');
                   }
                   setShowTimePicker(false);
                 }}
@@ -1248,7 +1184,6 @@ function createThemedStyles(theme: ThemePalette) {
     brandCyan: V6Colors.cyan600,
     slate: V6Colors.ink500,
     muted: V6Colors.ink400,
-    error: '#ef4444',
   } as const;
   // What each urgency means, in plain words. The backend's matching windows
   // (see the note at the top of this file) still apply; they are not repeated here.
@@ -1277,7 +1212,6 @@ function createThemedStyles(theme: ThemePalette) {
       borderWidth: 1, borderColor: V6Colors.fieldBorder,
       fontFamily: 'Inter', fontSize: 16.5, color: Colors.ink900,
     },
-    addressInput: { minHeight: 70, paddingTop: 12, textAlignVertical: 'top' },
     inputFocused: { borderColor: Colors.brandTeal, borderWidth: 2 },
     inputError: { borderColor: Colors.dangerText, borderWidth: 1.5 },
     inputErrorText: { color: Colors.dangerText, fontSize: 13.5, lineHeight: 18, marginTop: 6, fontFamily: 'Inter' },
@@ -1328,7 +1262,7 @@ function createThemedStyles(theme: ThemePalette) {
     photoList: { gap: 10, paddingTop: 12 },
     photoPreview: { width: 72, height: 72, borderRadius: 10, overflow: 'visible' },
     photoImage: { width: 72, height: 72, borderRadius: 10, backgroundColor: V6Colors.ink100 },
-    removePhoto: { position: 'absolute', top: -6, right: -6, width: 22, height: 22, borderRadius: 11, backgroundColor: Colors.error, alignItems: 'center', justifyContent: 'center' },
+    removePhoto: { position: 'absolute', top: -6, right: -6, width: 22, height: 22, borderRadius: 11, backgroundColor: Colors.dangerSolid, alignItems: 'center', justifyContent: 'center' },
     removePhotoText: { color: Colors.onPrimary, fontSize: 21.5, lineHeight: 20, fontWeight: '700' },
 
     dateTimeRow: { flexDirection: 'row', gap: 12, marginTop: 8, marginBottom: 16 },
@@ -1365,7 +1299,7 @@ function createThemedStyles(theme: ThemePalette) {
     },
     primaryBtnFullWidth: { width: '100%' },
     primaryBtnText: { color: Colors.onPrimary, fontSize: 15, fontWeight: '700', fontFamily: 'Inter', letterSpacing: -0.005 },
-    errorText: { color: Colors.error, fontSize: 15.5, fontFamily: 'Inter', marginBottom: 10, textAlign: 'center' },
+    errorText: { color: Colors.dangerText, fontSize: 15, lineHeight: 20, fontFamily: 'Inter', marginBottom: 10, textAlign: 'center' },
 
     // Success
     successScreen: { flexGrow: 1, alignItems: 'center', justifyContent: 'center', padding: 32 },

@@ -63,3 +63,54 @@ it('posts from review without another terms acceptance and retains form state af
   expect(api.createJob).toHaveBeenCalledWith(expect.objectContaining({budget: 1500, tasks: ['Fix leaking faucet']}));
   expect(await screen.findByText('Post Another Job')).toBeTruthy();
 });
+
+const NO_TASKS_MESSAGE = 'Pick at least one task so providers know what the job involves.';
+
+it('shows an error only after Next, once, under the field that is wrong', async () => {
+  (api.categories as jest.Mock).mockResolvedValue([{ id: 1, name: 'Plumbing' }]);
+  render(<HOCreateJobScreen initialCategoryId={1} onBack={jest.fn()} onSuccess={jest.fn()} />);
+  await screen.findByText('Location confirmed');
+  fireEvent.press(screen.getByText('Next'));
+  await screen.findByText('Fix leaking faucet');
+  expect(screen.queryByText(NO_TASKS_MESSAGE)).toBeNull();
+
+  fireEvent.press(screen.getByText('Next'));
+  expect(await screen.findByText(NO_TASKS_MESSAGE)).toBeTruthy();
+  expect(screen.getAllByText(NO_TASKS_MESSAGE)).toHaveLength(1);
+});
+
+it('clears an error as soon as its field is fixed, and keeps it while the edit is still wrong', async () => {
+  (api.categories as jest.Mock).mockResolvedValue([{ id: 1, name: 'Plumbing' }]);
+  render(<HOCreateJobScreen initialCategoryId={1} onBack={jest.fn()} onSuccess={jest.fn()} />);
+  await screen.findByText('Location confirmed');
+  fireEvent.press(screen.getByText('Next'));
+  await screen.findByText('Fix leaking faucet');
+  fireEvent.press(screen.getByText('Next'));
+
+  const tooShort = 'Description must be at least 20 characters.';
+  const description = screen.getByPlaceholderText('Describe the job in detail...');
+  expect(await screen.findByText(tooShort)).toBeTruthy();
+
+  fireEvent.changeText(description, 'Short one');
+  expect(screen.getByText(tooShort)).toBeTruthy();
+
+  fireEvent.changeText(description, 'A leaking kitchen faucet that needs replacing.');
+  expect(screen.queryByText(tooShort)).toBeNull();
+});
+
+it('clears a budget error as soon as a valid amount is typed, and leaves other errors alone', async () => {
+  (api.categories as jest.Mock).mockResolvedValue([{ id: 1, name: 'Plumbing' }]);
+  render(<HOCreateJobScreen initialCategoryId={1} onBack={jest.fn()} onSuccess={jest.fn()} />);
+  await screen.findByText('Location confirmed');
+  fireEvent.press(screen.getByText('Next'));
+  fireEvent.press(await screen.findByText('Fix leaking faucet'));
+  fireEvent.press(screen.getByText('Next'));
+  await screen.findByText('Pick a date');
+  fireEvent.press(screen.getByText('Next'));
+
+  const budgetMessage = 'Please set a budget for this job.';
+  expect(await screen.findByText(budgetMessage)).toBeTruthy();
+  fireEvent.changeText(screen.getByPlaceholderText('0.00'), '1500');
+  expect(screen.queryByText(budgetMessage)).toBeNull();
+  expect(screen.getByText('Please select a preferred date.')).toBeTruthy();
+});
