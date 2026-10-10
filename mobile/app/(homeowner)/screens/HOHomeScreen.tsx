@@ -36,7 +36,7 @@ import { useAuth } from '../../../src/context/AuthContext';
 import { useAsyncData } from '../../../src/hooks/useAsyncData';
 import { useHeaderTop } from '../../../src/hooks/useHeaderTop';
 import { api, type Job } from '../../../src/lib/api';
-import { initials, peso } from '../../../src/lib/format';
+import { formatPesoShort, initials, peso } from '../../../src/lib/format';
 import {
   pendingApplicants,
   pickHomeHero,
@@ -270,8 +270,15 @@ export default function HOHomeScreen({ onNavigate }: HOHomeScreenProps) {
                 onPress={() => onNavigate('Wallet')}
               >
                 <Wallet size={16} color={Colors.link} strokeWidth={2.2} />
-                <Text style={styles.walletAmount} numberOfLines={1} maxFontSizeMultiplier={1.2}>
-                  {wallet.data ? peso(wallet.data.balance) : '—'}
+                {/* A short form from ₱100,000, so the name keeps its room; the label above keeps the full amount. */}
+                <Text
+                  style={styles.walletAmount}
+                  numberOfLines={1}
+                  adjustsFontSizeToFit
+                  minimumFontScale={0.7}
+                  maxFontSizeMultiplier={1.2}
+                >
+                  {wallet.data ? formatPesoShort(wallet.data.balance) : '—'}
                 </Text>
               </Tap>
               <View>

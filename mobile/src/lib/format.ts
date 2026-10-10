@@ -10,6 +10,21 @@ export function peso(amount: number | string | null | undefined): string {
   })}`;
 }
 
+/**
+ * A short ₱ amount for small spaces (the Home wallet chip). Below ₱100,000 it is
+ * the full peso() amount; from there it is K ("₱125.5K") and then M
+ * ("₱1.25M"), with M taking over where K would round up to 1000K.
+ */
+export function formatPesoShort(amount: number | string | null | undefined): string {
+  const n = Number(amount ?? 0);
+  if (!Number.isFinite(n) || Math.abs(n) < 100000) return peso(n);
+  const sign = n < 0 ? '-' : '';
+  const abs = Math.abs(n);
+  const trimmed = (value: number) => String(Number(value.toFixed(2)));
+  if (abs < 999950) return `₱${sign}${trimmed(Math.round(abs / 100) / 10)}K`;
+  return `₱${sign}${trimmed(Math.round(abs / 10000) / 100)}M`;
+}
+
 /** Initials from a full name, e.g. "Alex Chen" → "AC". */
 export function initials(name: string | null | undefined): string {
   if (!name) return '?';

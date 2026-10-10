@@ -339,6 +339,17 @@ describe('HOHomeScreen — field, service chips, active jobs and wallet chip', (
     await screen.findByTestId('home-job-job-booked');
     expect(findUnnamedControls(screen.UNSAFE_root)).toEqual([]);
   });
+
+  it('shows a short amount in the wallet chip from ₱100,000, and keeps the full amount for the label', async () => {
+    (api.wallet as jest.Mock).mockResolvedValue({ balance: 1248397, available: 1248397, held: 0 });
+    (api.myJobs as jest.Mock).mockResolvedValue([]);
+    render(<HOHomeScreen onNavigate={jest.fn()} />);
+
+    const chip = await screen.findByTestId('home-wallet');
+    expect(within(chip).getByText('₱1.25M')).toBeTruthy();
+    expect(within(chip).queryByText('₱1,248,397.00')).toBeNull();
+    expect(screen.getByLabelText(/₱1,248,397\.00/)).toBeTruthy();
+  });
 });
 
 // The Active jobs count covers every active job, so the list shows every one of
