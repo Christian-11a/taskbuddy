@@ -61,7 +61,7 @@ it('posts from review without another terms acceptance and retains form state af
   expect(screen.queryByText(/I agree to the/)).toBeNull();
   await act(async () => fireEvent.press(screen.getByText('Post job')));
   expect(api.createJob).toHaveBeenCalledWith(expect.objectContaining({budget: 1500, tasks: ['Fix leaking faucet']}));
-  expect(await screen.findByText('Post Another Job')).toBeTruthy();
+  expect(await screen.findByText('Post another job')).toBeTruthy();
 });
 
 const NO_TASKS_MESSAGE = 'Pick at least one task so providers know what the job involves.';
@@ -139,6 +139,52 @@ it('the review lists everything entered, and each Edit link goes back to its ste
 
   fireEvent.press(screen.getByRole('button', { name: 'Edit Description' }));
   expect(await screen.findByText('What needs doing?')).toBeTruthy();
+});
+
+async function postTheJob() {
+  fireEvent.press(screen.getByText('Next'));
+  fireEvent.press(await screen.findByText('Fix leaking faucet'));
+  fireEvent.press(screen.getByText('Next'));
+  fireEvent.press(await screen.findByText('Pick a date'));
+  fireEvent.press(screen.getByText('Choose test date'));
+  fireEvent.press(screen.getByText('Pick a time'));
+  fireEvent.press(screen.getByText('Choose test time'));
+  if (screen.queryByText('Done')) fireEvent.press(screen.getByText('Done'));
+  fireEvent.changeText(screen.getByPlaceholderText('0.00'), '1500');
+  fireEvent.press(screen.getByText('Next'));
+  await act(async () => fireEvent.press(screen.getByText('Post job')));
+}
+
+it('the job posted screen names the real service and offers View my jobs', async () => {
+  (api.categories as jest.Mock).mockResolvedValue([{ id: 1, name: 'Plumbing' }]);
+  (api.createJob as jest.Mock).mockResolvedValue({ id: 'new-job' });
+  const onSuccess = jest.fn();
+  render(<HOCreateJobScreen initialCategoryId={1} onBack={jest.fn()} onSuccess={onSuccess} />);
+  await screen.findByText('Location confirmed');
+  await postTheJob();
+
+  expect(await screen.findByText('Job posted!')).toBeTruthy();
+  expect(screen.getByText(
+    "Nearby Plumbing providers can now send you proposals. We'll notify you when the first one arrives.",
+  )).toBeTruthy();
+  expect(screen.getByText('Compare proposals on the job page')).toBeTruthy();
+  expect(screen.getByText('Hire one; your money is held safely')).toBeTruthy();
+  expect(screen.getByText('Pay only when the work is done')).toBeTruthy();
+
+  fireEvent.press(screen.getByRole('button', { name: 'View my jobs' }));
+  expect(onSuccess).toHaveBeenCalledTimes(1);
+});
+
+it('Post another job starts a blank form at the first step', async () => {
+  (api.categories as jest.Mock).mockResolvedValue([{ id: 1, name: 'Plumbing' }]);
+  (api.createJob as jest.Mock).mockResolvedValue({ id: 'new-job' });
+  render(<HOCreateJobScreen initialCategoryId={1} onBack={jest.fn()} onSuccess={jest.fn()} />);
+  await screen.findByText('Location confirmed');
+  await postTheJob();
+
+  fireEvent.press(await screen.findByRole('button', { name: 'Post another job' }));
+  expect(await screen.findByText('What do you need help with?')).toBeTruthy();
+  expect(screen.queryByRole('radio', { name: 'Plumbing', checked: true })).toBeNull();
 });
 
 it('while posting shows only the steps that really run, and a failed post returns to Review', async () => {

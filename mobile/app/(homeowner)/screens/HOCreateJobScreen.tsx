@@ -71,7 +71,6 @@ import {
   CalendarDays,
   Camera,
   Check,
-  CheckCircle2,
   ChevronLeft,
   ChevronRight,
   Clock,
@@ -103,6 +102,7 @@ import PostProgress from '../../../src/components/post/PostProgress';
 import ServiceTile from '../../../src/components/post/ServiceTile';
 import CalmNote from '../../../src/components/post/CalmNote';
 import ReviewRow from '../../../src/components/post/ReviewRow';
+import BottomActionBar from '../../../src/components/ui/BottomActionBar';
 import PostingChecklist, { type PostingStep } from '../../../src/components/post/PostingChecklist';
 import Banner from '../../../src/components/ui/Banner';
 import AddTaskRow from '../../../src/components/post/AddTaskRow';
@@ -129,6 +129,13 @@ const CATEGORY_META: Record<string, { icon: typeof Wrench; desc: string }> = {
   Manicure: { icon: Sparkles, desc: 'Nail care & manicure' },
   Pedicure: { icon: Footprints, desc: 'Foot care & pedicure' },
 };
+
+/** What the job posted screen says happens next, in order. */
+const NEXT_STEPS = [
+  'Compare proposals on the job page',
+  'Hire one; your money is held safely',
+  'Pay only when the work is done',
+];
 
 /**
  * Suggested tasks per category. Deliberately client-side: these are a starting
@@ -619,6 +626,7 @@ export default function HOCreateJobScreen({
   const urgencyLabel = URGENCY_OPTIONS.find((o) => o.value === urgency)?.label ?? '';
   const whenLine = [dateLabel, timeLabel, urgencyLabel].filter(Boolean).join(' · ') || 'Not set';
   // Only the steps the submit really runs: photos go up first, but only when there are any.
+  const providersLine = categoryName ? `Nearby ${categoryName} providers` : 'Nearby providers';
   const photoStep: PostingStep = {
     key: 'photos',
     label: 'Uploading photos',
@@ -630,9 +638,8 @@ export default function HOCreateJobScreen({
   ];
 
   if (step === 6) {
-    // Success screen. Scrolls rather than a fixed centered View — a long
-    // job title or address (QA #3) used to push the buttons off-screen on a
-    // short phone with nothing to scroll to reach them.
+    // Scrolls rather than a fixed centred view, so a long job title or address
+    // can never push the buttons off a short phone.
     return (
       <View style={styles.screen}>
         <ScrollView contentContainerStyle={styles.successScreen}>
@@ -641,42 +648,30 @@ export default function HOCreateJobScreen({
               size={112}
               fallback={(
                 <View style={styles.successIcon}>
-                  <CheckCircle2 size={48} color={V6Colors.link} />
+                  <Check size={48} color={Colors.onPrimary} strokeWidth={2.5} />
                 </View>
               )}
             />
           </View>
-          <Text style={styles.successTitle}>Job Posted!</Text>
+          <Text style={styles.successTitle}>Job posted!</Text>
           <Text style={styles.successSubtitle}>
-            Your job "{title || categoryName}" has been posted successfully. Service providers in your area will be notified.
+            {providersLine} can now send you proposals. We'll notify you when the first one arrives.
           </Text>
           <View style={styles.successCard}>
-            <View style={styles.successRow}>
-              <Text style={styles.successLabel}>Service</Text>
-              <Text style={styles.successValue}>{categoryName}</Text>
-            </View>
-            <View style={styles.successRow}>
-              <Text style={styles.successLabel}>Location</Text>
-              <Text style={styles.successValue} numberOfLines={3}>{location}</Text>
-            </View>
-            <View style={styles.successRow}>
-              <Text style={styles.successLabel}>Tasks</Text>
-              <Text style={styles.successValue}>{tasks.length}</Text>
-            </View>
-            <View style={styles.successRow}>
-              <Text style={styles.successLabel}>Urgency</Text>
-              <Text style={styles.successValue}>
-                {URGENCY_OPTIONS.find((o) => o.value === urgency)?.label}
-              </Text>
-            </View>
+            {NEXT_STEPS.map((line) => (
+              <View key={line} style={styles.nextRow}>
+                <Check size={16} color={V6Colors.link} strokeWidth={3} />
+                <Text style={styles.nextText}>{line}</Text>
+              </View>
+            ))}
           </View>
-          <Tap style={[styles.primaryBtn, styles.primaryBtnFullWidth]} onPress={onSuccess} activeOpacity={0.85}>
-            <Text style={styles.primaryBtnText}>View My Jobs</Text>
-          </Tap>
-          <Tap style={styles.secondaryBtn} onPress={startAnother} activeOpacity={0.8}>
-            <Text style={styles.secondaryBtnText}>Post Another Job</Text>
-          </Tap>
         </ScrollView>
+        <BottomActionBar
+          primaryLabel="View my jobs"
+          onPrimary={onSuccess}
+          secondaryLabel="Post another job"
+          onSecondary={startAnother}
+        />
       </View>
     );
   }
@@ -1251,7 +1246,7 @@ function createThemedStyles(theme: ThemePalette) {
     // never crops, which keeps Geoapify's attribution line in its bottom corner.
     mapPreviewImage: { width: '100%', aspectRatio: 2 },
 
-    calendarOverlay: { flex: 1, backgroundColor: 'rgba(15,23,42,0.45)', justifyContent: 'center', padding: 20 },
+    calendarOverlay: { flex: 1, backgroundColor: Colors.scrim, justifyContent: 'center', padding: 20 },
     calendarModal: { backgroundColor: Colors.surface, borderRadius: 24, padding: 20, ...Shadows.card },
     calendarHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 },
     calendarTitle: { color: V6Colors.ink900, fontSize: 21.5, fontWeight: '800', fontFamily: 'Inter' },
@@ -1304,34 +1299,27 @@ function createThemedStyles(theme: ThemePalette) {
     reviewError: { marginTop: 12 },
 
     primaryBtn: {
-      backgroundColor: Colors.cyan700, borderRadius: 12, paddingVertical: 12, minHeight: 44, justifyContent: 'center',
+      backgroundColor: Colors.primary, borderRadius: 12, paddingVertical: 12, minHeight: 44, justifyContent: 'center',
       alignItems: 'center',
-      shadowColor: '#0891b2', shadowOffset: { width: 0, height: 5 },
+      shadowColor: Colors.primary, shadowOffset: { width: 0, height: 5 },
       shadowOpacity: 0.16, shadowRadius: 14, elevation: 4,
     },
-    primaryBtnFullWidth: { width: '100%' },
     primaryBtnText: { color: Colors.onPrimary, fontSize: 15, fontWeight: '700', fontFamily: 'Inter', letterSpacing: -0.005 },
     errorText: { color: Colors.dangerText, fontSize: 15, lineHeight: 20, fontFamily: 'Inter', marginBottom: 10, textAlign: 'center' },
 
     // Success
     successScreen: { flexGrow: 1, alignItems: 'center', justifyContent: 'center', padding: 32 },
-    successMarkWrap: { alignItems: 'center', marginBottom: 12 },
-    successIcon: {
-      width: 100, height: 100, borderRadius: 50,
-      backgroundColor: V6Colors.successSurface, alignItems: 'center', justifyContent: 'center', marginBottom: 24,
-    },
+    successMarkWrap: { alignItems: 'center', marginBottom: 20 },
+    // The static fallback for reduced motion: the same solid green disc the animation draws.
+    successIcon: { width: 100, height: 100, borderRadius: 50, backgroundColor: Colors.successSolid, alignItems: 'center', justifyContent: 'center' },
     successTitle: { color: V6Colors.ink900, fontSize: 28, fontWeight: '800', fontFamily: 'Inter', marginBottom: 12, textAlign: 'center' },
-    successSubtitle: { color: Colors.slate, fontSize: 16.5, fontFamily: 'Inter', lineHeight: 22, textAlign: 'center', marginBottom: 28 },
-    successCard: { backgroundColor: Colors.surface, borderRadius: 20, padding: 20, width: '100%', marginBottom: 28, ...Shadows.card },
-    successRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: 'rgba(144,153,184,0.15)' },
-    successLabel: { color: Colors.slate, fontSize: 15, fontFamily: 'Inter' },
-    // flexShrink + a width cap: a long address used to run past the card edge.
-    successValue: { color: V6Colors.ink900, fontSize: 15, fontWeight: '700', fontFamily: 'Inter', flexShrink: 1, maxWidth: '65%', textAlign: 'right' },
-    secondaryBtn: {
-      marginTop: 12, paddingVertical: 12, minHeight: 44, justifyContent: 'center', alignItems: 'center', borderRadius: 13,
-      borderWidth: 1, borderColor: Colors.brandTeal, width: '100%',
+    successSubtitle: { color: V6Colors.ink700, fontSize: 16, fontFamily: 'Inter', lineHeight: 22, textAlign: 'center', marginBottom: 24 },
+    successCard: {
+      backgroundColor: Colors.surface, borderRadius: 18, borderWidth: 1, borderColor: V6Colors.line,
+      padding: 18, width: '100%', gap: 12,
     },
-    secondaryBtnText: { color: V6Colors.link, fontSize: 15, fontWeight: '700', fontFamily: 'Inter' },
+    nextRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 10 },
+    nextText: { flex: 1, color: V6Colors.ink900, fontSize: 15, lineHeight: 21, fontFamily: 'Inter' },
   });
   return { appearance: theme.appearance, Colors, V6Colors, URGENCY_OPTIONS, styles };
 }
