@@ -261,3 +261,78 @@ describe('SPVerificationScreen — photo tips and check', () => {
     expect(screen.getByText('STEP 3 OF 4 · SELFIE')).toBeTruthy();
   });
 });
+
+describe('SPVerificationScreen — selfie tips and retake', () => {
+  async function toSelfieTips() {
+    (ImagePicker.launchCameraAsync as jest.Mock).mockResolvedValueOnce({
+      canceled: false,
+      assets: [{ uri: 'file:///id.jpg' }],
+    });
+    await startWizard();
+    fireEvent.press(screen.getByLabelText('PhilSys National ID, Photo of the front'));
+    fireEvent.press(screen.getByRole('button', { name: 'Continue' }));
+    fireEvent.press(screen.getByRole('button', { name: 'Take photo of the front' }));
+    await screen.findByText('Is everything readable?');
+    fireEvent.press(screen.getByRole('button', { name: 'Use this photo' }));
+  }
+
+  it('shows the selfie tips and asks for a live photo only, with no gallery', async () => {
+    await toSelfieTips();
+
+    expect(screen.getByText('STEP 3 OF 4 · SELFIE')).toBeTruthy();
+    expect(screen.getByText('Now a quick selfie')).toBeTruthy();
+    expect(screen.getByText('We match your face with the photo on your ID.')).toBeTruthy();
+    expect(screen.getByText('Take off glasses, hat and face mask')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Take selfie' })).toBeTruthy();
+    expect(screen.queryByText('Choose from gallery')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Upload from gallery' })).toBeNull();
+  });
+
+  it('takes the selfie with the front camera, then offers Retake and Continue', async () => {
+    await toSelfieTips();
+    (ImagePicker.launchCameraAsync as jest.Mock).mockResolvedValueOnce({
+      canceled: false,
+      assets: [{ uri: 'file:///selfie.jpg' }],
+    });
+
+    fireEvent.press(screen.getByRole('button', { name: 'Take selfie' }));
+
+    expect(await screen.findByRole('button', { name: 'Continue' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Retake' })).toBeTruthy();
+    expect(requestAppPermission).toHaveBeenLastCalledWith('camera');
+    const calls = (ImagePicker.launchCameraAsync as jest.Mock).mock.calls;
+    expect(calls[calls.length - 1][0].cameraType).toBe('front');
+    expect(ImagePicker.launchImageLibraryAsync).not.toHaveBeenCalled();
+  });
+
+  it('refuses a selfie over 5 MB and keeps the Take selfie button', async () => {
+    await toSelfieTips();
+    (ImagePicker.launchCameraAsync as jest.Mock).mockResolvedValueOnce({
+      canceled: false,
+      assets: [{ uri: 'file:///big.jpg', fileSize: 6 * 1024 * 1024 }],
+    });
+
+    fireEvent.press(screen.getByRole('button', { name: 'Take selfie' }));
+
+    expect(await screen.findByText('Photo is too large. Please retake under 5 MB.')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Take selfie' })).toBeTruthy();
+  });
+
+  it('goes on to the review with Continue, and Back from the selfie returns to the ID photo check', async () => {
+    await toSelfieTips();
+    (ImagePicker.launchCameraAsync as jest.Mock).mockResolvedValueOnce({
+      canceled: false,
+      assets: [{ uri: 'file:///selfie.jpg' }],
+    });
+    fireEvent.press(screen.getByRole('button', { name: 'Take selfie' }));
+    await screen.findByRole('button', { name: 'Continue' });
+
+    fireEvent.press(screen.getByLabelText('Back to the previous step'));
+    expect(screen.getByText('Is everything readable?')).toBeTruthy();
+
+    fireEvent.press(screen.getByRole('button', { name: 'Use this photo' }));
+    fireEvent.press(screen.getByRole('button', { name: 'Continue' }));
+
+    expect(screen.getByText('STEP 4 OF 4 · REVIEW')).toBeTruthy();
+  });
+});

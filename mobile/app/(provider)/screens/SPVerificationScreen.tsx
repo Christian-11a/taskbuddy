@@ -52,12 +52,10 @@ import * as ImagePicker from 'expo-image-picker';
 import * as WebBrowser from 'expo-web-browser';
 import {
   BadgeCheck,
-  Camera,
   Check,
   CircleAlert,
   Clock,
   IdCard,
-  ImageIcon,
   Lock,
   ScanFace,
   ShieldCheck,
@@ -104,6 +102,14 @@ const PHOTO_TIPS = [
 /** Reminders on the photo check. The app cannot verify these itself, so they are not ticked. */
 const PHOTO_CHECKS = ['Name and photo are sharp', 'All 4 corners are visible', 'No glare or shadows on the text'];
 
+/** Tips shown before the selfie. The selfie is taken with the front camera only. */
+const SELFIE_TIPS = [
+  'Take off glasses, hat and face mask',
+  'Face a window or a bright light',
+  'Hold the phone at eye level',
+  'Only you in the photo',
+];
+
 interface SPVerificationScreenProps {
   onBack: () => void;
   /**
@@ -113,8 +119,6 @@ interface SPVerificationScreenProps {
    */
   onVerified?: () => Promise<void>;
 }
-
-type Slot = 'id' | 'selfie';
 
 export default function SPVerificationScreen({ onBack, onVerified }: SPVerificationScreenProps) {
   const { Colors, V6Colors, styles } = useThemedStyles(createThemedStyles);
@@ -154,7 +158,8 @@ export default function SPVerificationScreen({ onBack, onVerified }: SPVerificat
     [],
   );
 
-  const pick = async (slot: Slot) => {
+  /** The gallery is offered for the ID photo only. The selfie is always a live camera shot. */
+  const pickIdPhoto = async () => {
     if (!(await requestAppPermission('gallery'))) return;
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ['images'],
@@ -170,12 +175,8 @@ export default function SPVerificationScreen({ onBack, onVerified }: SPVerificat
     }
 
     setError(null);
-    if (slot === 'id') {
-      setIdAsset(asset);
-      setIdPhase('check');
-    } else {
-      setSelfieAsset(asset);
-    }
+    setIdAsset(asset);
+    setIdPhase('check');
   };
 
   /** Camera capture — the selfie should be a live shot, not a saved photo. */
@@ -312,7 +313,7 @@ export default function SPVerificationScreen({ onBack, onVerified }: SPVerificat
       return;
     }
     if (step > 1) {
-      if (step === 2) setIdPhase('tips');
+      if (step === 2) setIdPhase(idAsset ? 'check' : 'tips');
       setStep(step - 1);
       return;
     }
@@ -526,37 +527,20 @@ export default function SPVerificationScreen({ onBack, onVerified }: SPVerificat
 
                 {/* ── Step 2 · Face scan ─────────────────────────────── */}
                 {step === 2 && (
-                  <View style={styles.card}>
-                    <Text style={styles.label}>Face Scan</Text>
-                    <Text style={styles.hint}>
-                      Take a selfie holding the same ID. Good light, no hat or sunglasses
-                      — this is matched against the ID photo.
+                  <>
+                    <Text style={styles.stepTitle} accessibilityRole="header">
+                      Now a quick selfie
                     </Text>
-                    <Tap
-                      style={[styles.dropzone, styles.selfieDropzonePrimary]}
-                      onPress={() => void takeSelfie()}
-                      activeOpacity={0.8}
-                    >
+                    <Text style={styles.stepHint}>We match your face with the photo on your ID.</Text>
+                    <View style={styles.faceFrame}>
                       {selfieAsset ? (
                         <Image source={{ uri: selfieAsset.uri }} style={styles.preview} resizeMode="cover" />
                       ) : (
-                        <>
-                          <ScanFace size={30} color={V6Colors.link} />
-                          <Text style={styles.dropzoneText}>Take a selfie</Text>
-                        </>
+                        <ScanFace size={56} color={V6Colors.link} />
                       )}
-                    </Tap>
-                    <Tap
-                      style={styles.galleryBtn}
-                      onPress={() => (selfieAsset ? void takeSelfie() : void pick('selfie'))}
-                      activeOpacity={0.8}
-                    >
-                      {selfieAsset ? <Camera size={18} color={V6Colors.link} /> : <ImageIcon size={18} color={V6Colors.link} />}
-                      <Text style={styles.galleryBtnText}>
-                        {selfieAsset ? 'Retake' : 'Choose from gallery'}
-                      </Text>
-                    </Tap>
-                  </View>
+                    </View>
+                    <CheckList items={SELFIE_TIPS} />
+                  </>
                 )}
 
                 {/* ── Step 3 · Automated check ───────────────────────── */}
@@ -596,7 +580,7 @@ export default function SPVerificationScreen({ onBack, onVerified }: SPVerificat
 
                 {!!error && <Text style={styles.errorText}>{error}</Text>}
 
-                {step > 1 && (
+                {step === 3 && (
                 <View style={styles.wizardActions}>
                   {step > 1 && (
                     <Tap
@@ -612,10 +596,9 @@ export default function SPVerificationScreen({ onBack, onVerified }: SPVerificat
                     style={[
                       styles.submitButton,
                       styles.wizardPrimary,
-                      step === 1 && styles.wizardPrimaryFull,
                       !canAdvance && styles.submitButtonDisabled,
                     ]}
-                    onPress={() => (step === 3 ? void startVerification() : setStep((s) => s + 1))}
+                    onPress={() => void startVerification()}
                     activeOpacity={0.85}
                     disabled={!canAdvance || submitting}
                   >
@@ -663,7 +646,7 @@ export default function SPVerificationScreen({ onBack, onVerified }: SPVerificat
           primaryLabel={takePhotoLabel(documentType)}
           onPrimary={() => void takeIdPhoto()}
           secondaryLabel="Upload from gallery"
-          onSecondary={() => void pick('id')}
+          onSecondary={() => void pickIdPhoto()}
         />
       )}
 
@@ -673,6 +656,15 @@ export default function SPVerificationScreen({ onBack, onVerified }: SPVerificat
           onPrimary={() => setStep(2)}
           secondaryLabel="Retake"
           onSecondary={() => setIdPhase('tips')}
+        />
+      )}
+
+      {view === 'wizard' && step === 2 && (
+        <BottomActionBar
+          primaryLabel={selfieAsset ? 'Continue' : 'Take selfie'}
+          onPrimary={() => (selfieAsset ? setStep(3) : void takeSelfie())}
+          secondaryLabel={selfieAsset ? 'Retake' : undefined}
+          onSecondary={selfieAsset ? () => void takeSelfie() : undefined}
         />
       )}
 
@@ -727,22 +719,13 @@ function createThemedStyles(theme: ThemePalette) {
     checkBox: {
       backgroundColor: V6Colors.surface, borderRadius: 14, borderWidth: 1, borderColor: V6Colors.line, padding: 14,
     },
-    dropzone: {
-      height: 150,
-      borderRadius: 12,
-      borderWidth: 1.5,
-      borderStyle: 'dashed',
-      borderColor: V6Colors.fieldBorder,
-      backgroundColor: V6Colors.ink50,
-      alignItems: 'center',
-      justifyContent: 'center',
-      gap: 8,
-      overflow: 'hidden',
-    },
-    dropzoneText: { color: V6Colors.ink500, fontFamily: 'Inter', fontSize: 15.5 },
-    dropzoneSubtext: { color: V6Colors.ink500, fontFamily: 'Inter', fontSize: 13.5, marginTop: 2 },
     preview: { width: '100%', height: '100%' },
-    selfieDropzonePrimary: { height: 190 },
+    stepHint: { color: V6Colors.ink700, fontFamily: 'Inter', fontSize: 15.5, lineHeight: 21, marginTop: -8 },
+    faceFrame: {
+      width: 200, height: 200, borderRadius: 100, alignSelf: 'center', overflow: 'hidden',
+      alignItems: 'center', justifyContent: 'center', backgroundColor: V6Colors.ink50,
+      borderWidth: 1.5, borderStyle: 'dashed', borderColor: V6Colors.fieldBorder,
+    },
 
     summaryRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 6 },
     summaryCheck: {
@@ -788,27 +771,6 @@ function createThemedStyles(theme: ThemePalette) {
     errorText: { color: Colors.dangerText, fontFamily: 'Inter', fontSize: 15.5, textAlign: 'center' },
     retryHint: { color: V6Colors.ink500, fontFamily: 'Inter', fontSize: 14, textAlign: 'center' },
 
-    galleryBtn: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'center',
-      gap: 6,
-      minHeight: 44,
-      paddingVertical: 10,
-      borderRadius: 12,
-      borderWidth: 1,
-      borderColor: V6Colors.fieldBorder,
-      backgroundColor: V6Colors.surface,
-      marginTop: 8,
-    },
-    // Secondary action: dark label and a brand icon so it reads as a
-    // button, not as disabled text.
-    galleryBtnText: {
-      color: V6Colors.ink800,
-      fontFamily: 'Inter',
-      fontSize: 15.5,
-      fontWeight: '600',
-    },
   });
   return { Colors, V6Colors, styles };
 }
