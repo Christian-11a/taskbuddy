@@ -32,7 +32,7 @@ export default function PostingChecklist({ steps }: { steps: PostingStep[] }) {
           <View style={[s.mark, step.state === 'done' ? s.markDone : s.markOpen]}>
             {step.state === 'done' && <Check size={14} color={c.done} strokeWidth={3} />}
             {step.state === 'active' && <ActivityIndicator size="small" color={c.active} />}
-            {step.state === 'waiting' && <View style={s.dot} />}
+            {step.state === 'waiting' && <View accessible={false} style={s.dot} />}
           </View>
           <Text style={[s.label, step.state === 'active' && s.labelActive]}>{step.label}</Text>
         </View>

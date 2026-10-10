@@ -24,7 +24,7 @@ export default function PendingTimeline({ rows }: PendingTimelineProps) {
           <View style={s.rail}>
             <View style={s.mark}>
               {row.state === 'done' && <CircleCheck size={20} color={c.done} />}
-              {row.state === 'current' && <View style={s.dot} />}
+              {row.state === 'current' && <View accessible={false} style={s.dot} />}
               {row.state === 'upcoming' && <Circle size={20} color={c.todo} />}
             </View>
             {index < rows.length - 1 && <View style={s.line} />}

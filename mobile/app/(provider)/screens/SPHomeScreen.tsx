@@ -382,25 +382,36 @@ export default function SPHomeScreen({ onNavigate }: SPHomeScreenProps) {
                 </View>
               )}
 
-              {/* Availability: decides whether new work is offered to this provider. */}
-              <View style={styles.availability}>
-                <View key={available ? 'on' : 'off'} testID="availability-dot" style={[styles.availabilityDot, { backgroundColor: available ? Colors.successText : C.ink400 }]} />
+              {/* Availability: decides whether new work is offered to this provider. The whole row is the switch. */}
+              <Tap
+                style={styles.availability}
+                onPress={() => { haptic.tick(); void toggleAvailability(); }}
+                disabled={togglingAvail}
+                accessibilityRole="switch"
+                accessibilityLabel="Available for jobs"
+                accessibilityHint={available ? `Clients within ${radiusKm} km can invite you` : "You won't be invited to new jobs"}
+                accessibilityState={{ checked: available, disabled: togglingAvail }}
+              >
+                <View key={available ? 'on' : 'off'} testID="availability-dot" accessible={false} style={[styles.availabilityDot, { backgroundColor: available ? Colors.successText : C.ink400 }]} />
                 <View style={styles.availabilityCopy}>
                   <Text style={styles.availabilityTitle}>{available ? 'Available for jobs' : 'Not available'}</Text>
                   <Text style={styles.availabilityHint} numberOfLines={2}>
                     {available ? `Clients within ${radiusKm} km can invite you` : "You won't be invited to new jobs"}
                   </Text>
                 </View>
-                <Switch
-                  value={available}
-                  onValueChange={() => { haptic.tick(); void toggleAvailability(); }}
-                  disabled={togglingAvail}
-                  trackColor={{ false: C.ink200, true: Colors.successSolid }}
-                  thumbColor={C.white}
-                  accessibilityLabel="Available for jobs"
-                  testID="toggle-availability"
-                />
-              </View>
+                {/* The switch only shows the state. The row takes the press, so the switch never takes it or gets its own focus. */}
+                <View pointerEvents="none" accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
+                  <Switch
+                    value={available}
+                    onValueChange={() => { haptic.tick(); void toggleAvailability(); }}
+                    disabled={togglingAvail}
+                    trackColor={{ false: C.ink200, true: Colors.successSolid }}
+                    thumbColor={C.white}
+                    accessibilityLabel="Available for jobs"
+                    testID="toggle-availability"
+                  />
+                </View>
+              </Tap>
 
               <View style={styles.search}>
                 <Search size={20} color={C.ink400} />

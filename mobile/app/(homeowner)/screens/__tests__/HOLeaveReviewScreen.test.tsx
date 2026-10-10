@@ -1,3 +1,4 @@
+import { findUnnamedControls } from '../../../../src/testing/a11yAudit';
 import React from 'react';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react-native';
 import HOLeaveReviewScreen from '../HOLeaveReviewScreen';
@@ -30,7 +31,7 @@ const renderScreen = (onSubmitted = jest.fn()) => {
   return onSubmitted;
 };
 const submit = () => screen.getByRole('button', { name: 'Submit review' });
-const star = (n: number) => screen.getByRole('button', { name: `${n} star${n === 1 ? '' : 's'}` });
+const star = (n: number) => screen.getByRole('radio', { name: `Rate ${n} out of 5 stars` });
 
 describe('HOLeaveReviewScreen — rating, tags and the public notice', () => {
   it('shows the provider, the job, the tags, the comment box and that the review is public', async () => {
@@ -104,4 +105,11 @@ describe('HOLeaveReviewScreen — rating, tags and the public notice', () => {
     expect(submit().props.accessibilityState?.disabled).toBe(true);
     expect(api.reviewJob).not.toHaveBeenCalled();
   });
+});
+
+it('every control has an accessible name: the five stars and the submit button', async () => {
+  renderScreen();
+  await waitFor(() => expect(star(1)).toBeTruthy());
+
+  expect(findUnnamedControls(screen.UNSAFE_root)).toEqual([]);
 });

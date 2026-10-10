@@ -266,7 +266,7 @@ export default function HOHomeScreen({ onNavigate }: HOHomeScreenProps) {
                 style={styles.walletChip}
                 hitSlop={6}
                 accessibilityRole="button"
-                accessibilityLabel={wallet.data ? `Wallet, balance ${peso(wallet.data.balance)}` : 'Wallet'}
+                accessibilityLabel={wallet.data ? `Wallet balance ${peso(wallet.data.balance)}. Opens Wallet` : 'Wallet. Opens Wallet'}
                 onPress={() => onNavigate('Wallet')}
               >
                 <Wallet size={16} color={Colors.link} strokeWidth={2.2} />

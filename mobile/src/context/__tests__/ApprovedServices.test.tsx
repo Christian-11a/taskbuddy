@@ -130,7 +130,7 @@ it('loads and opens the portfolio from the client proposal profile', async () =>
   ]);
   render(<HOProviderProfileScreen id="provider" />);
   fireEvent.press(
-    await screen.findByLabelText('View portfolio photo: Published sink repair'),
+    await screen.findByLabelText('Photo 1 of 1: Published sink repair'),
   );
   expect(api.providerPortfolio).toHaveBeenCalledWith('provider');
   expect(screen.getByTestId('full-photo').props.source.uri).toBe(

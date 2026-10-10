@@ -125,9 +125,10 @@ export default function HOLeaveReviewScreen({ jobId, onSubmitted, onBack }: HOLe
                 borderlessRipple
                 // The 46 dp star button plus 1 dp around it reaches the 48 dp touch area.
                 hitSlop={1}
-                accessibilityRole="button"
-                accessibilityLabel={`${n} star${n === 1 ? '' : 's'}`}
-                accessibilityState={{ selected: n <= rating }}
+                // The five stars are one choice: a radio group, read as "Rate 4 out of 5 stars, checked".
+                accessibilityRole="radio"
+                accessibilityLabel={`Rate ${n} out of 5 stars`}
+                accessibilityState={{ checked: n === rating, selected: n <= rating }}
               >
                 <Star size={38} color={n <= rating ? '#f59e0b' : '#cbd5e1'} fill={n <= rating ? '#f59e0b' : 'none'} />
               </Tap>

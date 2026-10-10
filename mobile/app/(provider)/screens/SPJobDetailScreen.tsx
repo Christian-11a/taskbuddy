@@ -326,7 +326,7 @@ export default function SPJobDetailScreen({ jobId, onBack, onNavigate }: SPJobDe
         <Text style={styles.headerTitle}>Job details</Text>
         {menuItems.length > 0 ? (
           <Tap style={styles.iconBtn} onPress={() => setMenuOpen(true)} activeOpacity={0.8} hitSlop={5}
-            accessibilityRole="button" accessibilityLabel="More job options">
+            accessibilityRole="button" accessibilityLabel="More job actions">
             <EllipsisVertical size={20} color={V6Colors.ink700} />
           </Tap>
         ) : (

@@ -21,7 +21,7 @@ const entries = [
 ] as PortfolioEntry[];
 it('opens the selected image, changes images and handles failure/close without losing the gallery', () => {
   render(<PortfolioGallery entries={entries} />);
-  fireEvent.press(screen.getByLabelText('View portfolio photo: Paintwork'));
+  fireEvent.press(screen.getByLabelText('Photo 2 of 2: Paintwork'));
   expect(screen.getByTestId('full-photo').props.source.uri).toBe(
     'https://test/two',
   );
@@ -55,7 +55,7 @@ it('shows empty state and exposes editing/removal only when supplied by the owne
 
 it('Android Back closes the image while preserving the gallery entries', () => {
   render(<PortfolioGallery entries={entries} />);
-  fireEvent.press(screen.getByLabelText('View portfolio photo: Sink repair'));
+  fireEvent.press(screen.getByLabelText('Photo 1 of 2: Sink repair'));
   fireEvent(screen.UNSAFE_getByType(Modal), 'requestClose');
   expect(screen.queryByTestId('full-photo')).toBeNull();
   expect(screen.getByText('Sink repair')).toBeTruthy();

@@ -94,11 +94,11 @@ export default function HODisputeStatusScreen({ jobId, onBack, onMessage }: Prop
 
   return <View style={styles.screen}>
     <View style={[styles.header, { paddingTop: headerTop }]}>
-      <Tap style={styles.backButton} onPress={onBack} accessibilityLabel="Back" activeOpacity={0.8}><ArrowLeft size={20} color={C.ink700} /></Tap>
+      <Tap style={styles.backButton} onPress={onBack} hitSlop={5} accessibilityRole="button" accessibilityLabel="Back" activeOpacity={0.8}><ArrowLeft size={20} color={C.ink700} /></Tap>
       <Text style={styles.title} numberOfLines={1}>{view?.heading ?? 'Report'}</Text>
     </View>
     {loading && <ActivityIndicator style={styles.loader} color={V6Colors.link} />}
-    {!!error && <Text style={styles.error}>{error}</Text>}
+    {!!error && <Text style={styles.error} accessibilityLiveRegion="polite">{error}</Text>}
     {!loading && !error && !dispute && <Text style={[styles.text, styles.emptyPage]}>No complaint has been filed for this job.</Text>}
     {dispute && view && <KeyboardAvoidingView style={styles.flex} behavior="padding">
       <ScrollView
@@ -114,7 +114,7 @@ export default function HODisputeStatusScreen({ jobId, onBack, onMessage }: Prop
           <Text style={styles.body}>{view.theirReason}</Text>
         </View>}
 
-        <Text style={styles.sectionTitle}>What happened</Text>
+        <Text style={styles.sectionTitle} accessibilityRole="header">What happened</Text>
         <View style={styles.timeline}>
           {view.steps.map((step: CaseStep, index) => {
             const last = index === view.steps.length - 1;
@@ -123,7 +123,7 @@ export default function HODisputeStatusScreen({ jobId, onBack, onMessage }: Prop
               <View style={styles.rail}>
                 <View style={[styles.marker, marker]}>
                   {step.state === 'done' && <Check size={12} color={Colors.successText} strokeWidth={3} />}
-                  {step.state === 'current' && <View style={styles.dot} />}
+                  {step.state === 'current' && <View accessible={false} style={styles.dot} />}
                 </View>
                 {!last && <View style={styles.connector} />}
               </View>
@@ -132,7 +132,7 @@ export default function HODisputeStatusScreen({ jobId, onBack, onMessage }: Prop
                 {!!step.detail && <Text style={styles.stepDetail}>{step.detail}</Text>}
                 {!!step.chatNote && <Text style={styles.stepDetail}>{step.chatNote}</Text>}
                 {!!step.photoUrl && <Image accessibilityLabel="Case photo evidence" source={{ uri: step.photoUrl }} style={styles.photo} resizeMode="contain" />}
-                {!!step.photoUnavailable && !step.photoUrl && <Text style={styles.error}>Photo evidence is unavailable. Pull down to retry.</Text>}
+                {!!step.photoUnavailable && !step.photoUrl && <Text style={styles.error} accessibilityLiveRegion="polite">Photo evidence is unavailable. Pull down to retry.</Text>}
                 {!!step.meta && <Text style={styles.stepMeta}>{step.meta}</Text>}
               </View>
             </View>;
@@ -146,7 +146,7 @@ export default function HODisputeStatusScreen({ jobId, onBack, onMessage }: Prop
           />
           {evidenceTrigger}
           {evidenceRows}
-          {!!actionError && <Text style={styles.error}>{actionError}</Text>}
+          {!!actionError && <Text style={styles.error} accessibilityLiveRegion="polite">{actionError}</Text>}
           <Tap style={styles.linkButton} onPress={() => setConfirm('contest')} disabled={noNote} activeOpacity={0.8}
             accessibilityRole="button" accessibilityLabel="Contest and explain" accessibilityState={{ disabled: noNote }}>
             <Text style={[styles.linkText, noNote && styles.linkTextDisabled]}>Contest and explain</Text>
@@ -184,11 +184,11 @@ export default function HODisputeStatusScreen({ jobId, onBack, onMessage }: Prop
         label="What else should the admin know?" value={body} onChangeText={setBody} helper={`${body.length} / 1000`}
         placeholder="Explain what happened…" multiline maxLength={1000} keyboardAppearance={appearance}
       />
-      <Text style={styles.sectionTitle}>From this job's chat</Text>
+      <Text style={styles.sectionTitle} accessibilityRole="header">From this job's chat</Text>
       <Text style={styles.text}>Pick one of your messages to attach it as evidence.</Text>
       {evidenceLoading ? <ActivityIndicator color={V6Colors.link} /> : evidenceRows}
       {evidenceLoaded && !evidenceLoading && evidence.length === 0 && <Text style={styles.text}>No messages from you in this job's chat yet.</Text>}
-      {!!actionError && <Text style={styles.error}>{actionError}</Text>}
+      {!!actionError && <Text style={styles.error} accessibilityLiveRegion="polite">{actionError}</Text>}
       <Tap style={[styles.button, (busy || !body.trim()) && styles.buttonDisabled]} disabled={busy || !body.trim()} onPress={() => void sendDetails()}
         accessibilityRole="button" accessibilityLabel={sendLabel} accessibilityState={{ disabled: busy || !body.trim() }}>
         <Text style={[styles.buttonText, (busy || !body.trim()) && styles.buttonTextDisabled]}>{busy ? 'Saving…' : sendLabel}</Text>

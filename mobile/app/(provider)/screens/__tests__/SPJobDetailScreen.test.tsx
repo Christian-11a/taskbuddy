@@ -1,3 +1,4 @@
+import { findUnnamedControls } from '../../../../src/testing/a11yAudit';
 import React from 'react';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react-native';
 import SPJobDetailScreen from '../SPJobDetailScreen';
@@ -192,7 +193,7 @@ describe('FullTest provider job details', () => {
     (api.getJob as jest.Mock).mockResolvedValue({ ...openJob, status: 'cancelled', assigned_provider_id: PROVIDER_ID });
     const onNavigate = jest.fn();
     render(<SPJobDetailScreen jobId={JOB_ID} onBack={jest.fn()} onNavigate={onNavigate} />);
-    fireEvent.press(await screen.findByLabelText('More job options'));
+    fireEvent.press(await screen.findByLabelText('More job actions'));
     fireEvent.press(screen.getByText('Report a problem'));
     expect(onNavigate).toHaveBeenCalledWith('Dispute Filing', JOB_ID);
   });
@@ -203,10 +204,10 @@ describe('FullTest provider job details', () => {
     render(<SPJobDetailScreen jobId={JOB_ID} onBack={jest.fn()} onNavigate={jest.fn()} />);
     await screen.findByText(openJob.title);
     if (days < 3) {
-      fireEvent.press(screen.getByLabelText('More job options'));
+      fireEvent.press(screen.getByLabelText('More job actions'));
       expect(await screen.findByText('Report a problem')).toBeTruthy();
     } else {
-      expect(screen.queryByLabelText('More job options')).toBeNull();
+      expect(screen.queryByLabelText('More job actions')).toBeNull();
     }
   });
 
@@ -422,4 +423,23 @@ it('opens the selected job image and keeps details intact on close', async () =>
   fireEvent.press(screen.getByLabelText('Close photo'));
   expect(screen.queryByTestId('full-photo')).toBeNull();
   expect(screen.getByLabelText('Open job photo 2')).toBeTruthy();
+});
+
+describe('SPJobDetailScreen — every control has an accessible name', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    clearAsyncDataCache();
+    (useAuth as jest.Mock).mockReturnValue({ profile: { id: PROVIDER_ID }, isVerified: true, refreshProfile: jest.fn() });
+    (api.myApplications as jest.Mock).mockResolvedValue([]);
+    (api.jobDispute as jest.Mock).mockResolvedValue(null);
+    (api.conversations as jest.Mock).mockResolvedValue([]);
+  });
+
+  it('names the back arrow, the ⋮ menu and the main action of an open job', async () => {
+    (api.getJob as jest.Mock).mockResolvedValue(openJob);
+    render(<SPJobDetailScreen jobId={JOB_ID} onBack={jest.fn()} onNavigate={jest.fn()} />);
+
+    expect(await screen.findByText('Fix the sink')).toBeTruthy();
+    expect(findUnnamedControls(screen.UNSAFE_root)).toEqual([]);
+  });
 });

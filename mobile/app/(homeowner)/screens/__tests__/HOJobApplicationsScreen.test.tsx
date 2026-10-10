@@ -1,6 +1,7 @@
+import { findUnnamedControls } from '../../../../src/testing/a11yAudit';
 import React from 'react';
-import { BackHandler } from 'react-native';
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react-native';
+import { BackHandler, Modal } from 'react-native';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react-native';
 import HOJobApplicationsScreen from '../HOJobApplicationsScreen';
 import { api, type JobApplication } from '../../../../src/lib/api';
 import { clearAsyncDataCache } from '../../../../src/hooks/useAsyncData';
@@ -338,7 +339,9 @@ describe('HOJobApplicationsScreen: the hired screen', () => {
     expect(await screen.findByText('Payment was cancelled.')).toBeTruthy();
     // Still on the sheet's confirm page, so the payment can be confirmed again or backed out of.
     expect(screen.getByRole('button', { name: 'Confirm and hire · ₱1,000.00' })).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Back' })).toBeTruthy();
+    // The screen's own Back arrow is labelled too and stays in the tree behind the sheet, so look for Back inside the open sheet.
+    const openSheet = screen.UNSAFE_getAllByType(Modal).find((modal) => modal.props.visible === true);
+    expect(within(openSheet!).getByRole('button', { name: 'Back' })).toBeTruthy();
     expect(screen.queryByRole('header', { name: 'Alex Reyes is hired!' })).toBeNull();
     expect(api.acceptApplication).not.toHaveBeenCalled();
   });
@@ -471,4 +474,13 @@ describe('HOJobApplicationsScreen: paying for a hire', () => {
     await waitFor(() => expect(api.acceptApplication).toHaveBeenCalledTimes(1));
     expect(api.acceptApplication).toHaveBeenCalledWith('app-1');
   });
+});
+
+it('every control has an accessible name: back, the proposal card and its actions', async () => {
+  mockJob(1500);
+  (api.jobApplications as jest.Mock).mockResolvedValue([pendingApp]);
+  await renderScreen();
+
+  expect(await screen.findByText('Alex Reyes')).toBeTruthy();
+  expect(findUnnamedControls(screen.UNSAFE_root)).toEqual([]);
 });

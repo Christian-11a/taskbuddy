@@ -32,7 +32,8 @@ export default function PortfolioGallery({
       {entries.map((entry, index) => (
         <View key={entry.id} style={{ marginVertical: 10 }}>
           <Tap
-            accessibilityLabel={`View portfolio photo: ${entry.caption}`}
+            accessibilityRole="imagebutton"
+            accessibilityLabel={`Photo ${index + 1} of ${entries.length}${entry.caption ? `: ${entry.caption}` : ''}`}
             onPress={() => setViewing(index)}
           >
             <Image
@@ -54,14 +55,14 @@ export default function PortfolioGallery({
             </Text>
           )}
           {onEdit && (
-            <Tap disabled={busy} onPress={() => onEdit(entry)}>
+            <Tap disabled={busy} onPress={() => onEdit(entry)} accessibilityRole="button">
               <Text style={{ color: C.link, padding: 8 }}>
                 Edit photo details
               </Text>
             </Tap>
           )}
           {onRemove && (
-            <Tap disabled={busy} onPress={() => onRemove(entry)}>
+            <Tap disabled={busy} onPress={() => onRemove(entry)} accessibilityRole="button">
               <Text style={{ color: C.ink700, padding: 8 }}>Remove photo</Text>
             </Tap>
           )}

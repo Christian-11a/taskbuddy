@@ -476,7 +476,7 @@ export default function HOJobApplicationsScreen({
       {/* Header — matches .topbar (flat white) */}
       <View style={[styles.header, { paddingTop: headerTop }]}>
         {onBack && (
-          <Tap style={styles.backBtn} onPress={onBack} activeOpacity={0.8}>
+          <Tap style={styles.backBtn} onPress={onBack} hitSlop={5} activeOpacity={0.8} accessibilityRole="button" accessibilityLabel="Back">
             <ArrowLeft size={20} color={C.ink700} />
           </Tap>
         )}

@@ -44,7 +44,7 @@ export default function NotificationCard({
       <View style={s.text}>
         <View style={s.titleRow}>
           <Text style={[s.title, unread && s.titleUnread]} numberOfLines={2}>{title}</Text>
-          {unread && <View style={[s.dot, { backgroundColor: dot }]} testID="unread-dot" />}
+          {unread && <View accessible={false} style={[s.dot, { backgroundColor: dot }]} testID="unread-dot" />}
         </View>
         <Text style={s.body} numberOfLines={1}>{body}</Text>
         <Text style={s.time}>{time}</Text>
