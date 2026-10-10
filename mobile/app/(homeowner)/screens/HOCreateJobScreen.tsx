@@ -100,6 +100,7 @@ import PostAppBar from '../../../src/components/post/PostAppBar';
 import PostFooter from '../../../src/components/post/PostFooter';
 import PostProgress from '../../../src/components/post/PostProgress';
 import ServiceTile from '../../../src/components/post/ServiceTile';
+import CalmNote from '../../../src/components/post/CalmNote';
 import { requestAppPermission } from '../../../src/lib/permissions';
 
 const Shadows = { card: V6Shadows.sm, input: V6Shadows.sm };
@@ -775,10 +776,9 @@ export default function HOCreateJobScreen({
             <Text style={styles.stepSubtitle}>Providers see this on the job.</Text>
 
             <View onLayout={(event) => { fieldPositions.current.location = event.nativeEvent.layout.y; }} style={styles.inputGroup}>
-              <Text style={styles.inputLabel}>Address<Text style={styles.requiredAsterisk}> *</Text></Text>
+              <Text style={styles.inputLabel}>Address</Text>
               <AddressField
                 testID="create-job-address"
-                actionVariant="primary"
                 value={location}
                 onChangeText={(value) => {
                   setLocation(value);
@@ -790,6 +790,12 @@ export default function HOCreateJobScreen({
                 error={fieldErrors.location}
                 hint={geocoding ? 'Verifying address…' : undefined}
               />
+              {!!resolvedCoordinates && (
+                <View style={styles.confirmedRow}>
+                  <Check size={14} color={Colors.successText} strokeWidth={3} />
+                  <Text style={styles.confirmedText}>Location confirmed</Text>
+                </View>
+              )}
             </View>
 
             {mapPreviewSource && !mapPreviewFailed && (
@@ -804,20 +810,10 @@ export default function HOCreateJobScreen({
               </View>
             )}
 
-            {resolvedCoordinates ? (
-              <View style={styles.mapConfirmed}>
-                <MapPin size={20} color={V6Colors.link} />
-                <View style={styles.mapConfirmedBody}>
-                  <Text style={styles.mapConfirmedTitle}>Location confirmed</Text>
-                  <Text style={styles.mapConfirmedText} numberOfLines={2}>
-                    {geocodedAddress || location.trim()}
-                  </Text>
-                </View>
-              </View>
-            ) : (
-              <View style={styles.mapPlaceholder}>
-                <MapPin size={20} color={Colors.muted} />
-                <Text style={styles.mapPlaceholderText}>Verify the address to preview its location.</Text>
+            {/* The one place this step explains a location that is not confirmed yet. */}
+            {!resolvedCoordinates && !fieldErrors.location && (
+              <View style={styles.calmWrap}>
+                <CalmNote text="Location is off, so we couldn't find you. Typing the address works just as well." />
               </View>
             )}
 
@@ -843,12 +839,6 @@ export default function HOCreateJobScreen({
               </Tap>
             )}
 
-            <View style={styles.noteCard}>
-              <Text style={styles.noteText}>
-                Providers see this address and its verified coordinates on the job.
-                A job cannot be posted until the address is resolved precisely.
-              </Text>
-            </View>
           </View>
         )}
 
@@ -1362,7 +1352,7 @@ function createThemedStyles(theme: ThemePalette) {
     serviceSkeleton: { width: '48%', height: 124, borderRadius: 16, backgroundColor: Colors.ink100 },
 
     inputGroup: { marginBottom: 16 },
-    inputLabel: { color: V6Colors.ink900, fontSize: 16.5, fontWeight: '600', fontFamily: 'Inter', marginBottom: 8 },
+    inputLabel: { color: V6Colors.ink700, fontSize: 14, fontWeight: '600', fontFamily: 'Inter', marginBottom: 6 },
     input: {
       backgroundColor: Colors.surface, borderRadius: 12, paddingHorizontal: 14, minHeight: 46,
       borderWidth: 1, borderColor: V6Colors.fieldBorder,
@@ -1378,34 +1368,19 @@ function createThemedStyles(theme: ThemePalette) {
     pickerText: { color: V6Colors.ink900, fontFamily: 'Inter', fontSize: 18.5 },
     pickerPlaceholder: { color: Colors.muted },
 
-    savedAddressBtn: {
-      flexDirection: 'row', alignItems: 'center', gap: 8,
-      borderWidth: 1, borderColor: Colors.cyan100, backgroundColor: V6Colors.infoSurface,
-      borderRadius: 12, padding: 12, marginBottom: 16,
+    // A text action, styled like the locate link under the field.
+    savedAddressBtn: { flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: 48, marginTop: 8 },
+    savedAddressText: { flex: 1, color: V6Colors.link, fontSize: 15, fontWeight: '600', fontFamily: 'Inter' },
+    confirmedRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 8 },
+    confirmedText: { color: V6Colors.ink700, fontSize: 14, fontWeight: '600', fontFamily: 'Inter' },
+    calmWrap: { marginTop: 16 },
+    mapPreview: {
+      borderRadius: 16, overflow: 'hidden', marginTop: 16, borderWidth: 1, borderColor: V6Colors.line,
+      backgroundColor: Colors.ink50,
     },
-    savedAddressText: { flex: 1, color: V6Colors.link, fontSize: 14, fontWeight: '600', fontFamily: 'Inter' },
-    noteCard: { backgroundColor: Colors.ink50, borderRadius: 14, padding: 14 },
-    mapPlaceholder: { height: 120, borderRadius: 14, marginBottom: 16, backgroundColor: Colors.ink50, alignItems: 'center', justifyContent: 'center', gap: 8, padding: 20 },
-    mapPlaceholderText: { color: Colors.muted, fontSize: 14, fontFamily: 'Inter', textAlign: 'center' },
-    mapPreview: { borderRadius: 14, overflow: 'hidden', marginBottom: 8, backgroundColor: Colors.ink50 },
     // Matches the 2:1 image the backend renders (600×300). `cover` at that ratio
     // never crops, which keeps Geoapify's attribution line in its bottom corner.
     mapPreviewImage: { width: '100%', aspectRatio: 2 },
-    mapConfirmed: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 12,
-      borderRadius: 14,
-      marginBottom: 16,
-      padding: 16,
-      backgroundColor: Colors.ink50,
-      borderWidth: 1,
-      borderColor: Colors.brandTeal,
-    },
-    mapConfirmedBody: { flex: 1, gap: 2 },
-    mapConfirmedTitle: { color: V6Colors.link, fontSize: 14, fontWeight: '700', fontFamily: 'Inter' },
-    mapConfirmedText: { color: Colors.ink900, fontSize: 14, fontFamily: 'Inter' },
-    noteText: { color: Colors.slate, fontSize: 14, lineHeight: 19, fontFamily: 'Inter' },
 
     calendarOverlay: { flex: 1, backgroundColor: 'rgba(15,23,42,0.45)', justifyContent: 'center', padding: 20 },
     calendarModal: { backgroundColor: Colors.surface, borderRadius: 24, padding: 20, ...Shadows.card },
