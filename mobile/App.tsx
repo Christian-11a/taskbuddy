@@ -635,7 +635,7 @@ function AppContent() {
     if (hoScreen === 'Dispute Status') {
       return wrap(
         <ScreenFrame>
-          <HODisputeStatusScreen jobId={hoSelectedId} onBack={hoBack} />
+          <HODisputeStatusScreen jobId={hoSelectedId} onBack={hoBack} onMessage={() => hoNavigate('Chat', hoSelectedId ?? undefined)} />
         </ScreenFrame>
       );
     }
@@ -756,7 +756,7 @@ function AppContent() {
     return wrap(<ScreenFrame bottomColor={V6Colors.surface}><HODisputeFilingScreen jobId={spJobId} onBack={spBack} onSubmitted={spBack} /></ScreenFrame>);
   }
   if (spScreen === 'Dispute Status') {
-    return wrap(<ScreenFrame bottomColor={V6Colors.surface}><HODisputeStatusScreen jobId={spJobId} onBack={spBack} /></ScreenFrame>);
+    return wrap(<ScreenFrame bottomColor={V6Colors.surface}><HODisputeStatusScreen jobId={spJobId} onBack={spBack} onMessage={() => spNavigate('Chat', spJobId ?? undefined)} /></ScreenFrame>);
   }
   if (spScreen === 'Chat') {
     return wrap(
