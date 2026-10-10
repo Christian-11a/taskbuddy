@@ -126,3 +126,45 @@ describe('SPVerificationScreen — before you start', () => {
     expect(screen.queryByRole('button', { name: 'Start' })).toBeNull();
   });
 });
+
+async function startWizard() {
+  renderScreen();
+  fireEvent.press(await screen.findByRole('button', { name: 'Start' }));
+}
+
+describe('SPVerificationScreen — choose your ID', () => {
+  it('lists the five IDs with the side to photograph, and the original-ID rule', async () => {
+    await startWizard();
+
+    expect(screen.getByText('Which ID will you use?')).toBeTruthy();
+    expect(screen.getByLabelText('PhilSys National ID, Photo of the front')).toBeTruthy();
+    expect(screen.getByLabelText("Driver's licence, Photo of the front")).toBeTruthy();
+    expect(screen.getByLabelText('UMID, Photo of the front')).toBeTruthy();
+    expect(screen.getByLabelText('Passport, Photo page')).toBeTruthy();
+    expect(screen.getByLabelText('Postal ID, Photo of the front')).toBeTruthy();
+    expect(
+      screen.getByText("Use your original, valid ID. Photocopies, screenshots and expired IDs can't be accepted."),
+    ).toBeTruthy();
+  });
+
+  it('keeps Continue disabled until one ID is chosen', async () => {
+    await startWizard();
+
+    expect(screen.getByRole('button', { name: 'Continue' })).toBeDisabled();
+    fireEvent.press(screen.getByLabelText('UMID, Photo of the front'));
+    expect(screen.getByRole('button', { name: 'Continue' })).not.toBeDisabled();
+  });
+
+  it('moves on to the ID photo step, and the header goes back to the ID choice', async () => {
+    await startWizard();
+    fireEvent.press(screen.getByLabelText('UMID, Photo of the front'));
+    fireEvent.press(screen.getByRole('button', { name: 'Continue' }));
+
+    expect(screen.getByText('STEP 2 OF 4 · ID PHOTO')).toBeTruthy();
+    expect(screen.getByText('Tap to choose a photo')).toBeTruthy();
+
+    fireEvent.press(screen.getByLabelText('Back to the previous step'));
+    expect(screen.getByText('Which ID will you use?')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Continue' })).not.toBeDisabled();
+  });
+});

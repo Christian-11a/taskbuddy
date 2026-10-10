@@ -1,4 +1,26 @@
-import { pickVerifyView, profileChecks, wizardProgress } from '../verifyFlow';
+import { VERIFY_ID_TYPES, pickVerifyView, profileChecks, wizardProgress } from '../verifyFlow';
+
+describe('VERIFY_ID_TYPES', () => {
+  it('keeps the document_type values the API receives, in the same order', () => {
+    expect(VERIFY_ID_TYPES.map((type) => type.value)).toEqual([
+      'philsys',
+      'drivers_license',
+      'umid',
+      'passport',
+      'postal_id',
+    ]);
+  });
+
+  it('says which side of each ID to photograph', () => {
+    expect(VERIFY_ID_TYPES.map((type) => type.side)).toEqual([
+      'Photo of the front',
+      'Photo of the front',
+      'Photo of the front',
+      'Photo page',
+      'Photo of the front',
+    ]);
+  });
+});
 
 describe('pickVerifyView', () => {
   const base = {

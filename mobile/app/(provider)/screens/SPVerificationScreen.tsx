@@ -40,7 +40,9 @@ import {
 } from 'react-native';
 import Tap from '../../../src/components/ui/Tap';
 import BottomActionBar from '../../../src/components/ui/BottomActionBar';
+import PaymentOption from '../../../src/components/ui/PaymentOption';
 import PostProgress from '../../../src/components/post/PostProgress';
+import CalmNote from '../../../src/components/post/CalmNote';
 import VerifyAppBar from '../../../src/components/verify/VerifyAppBar';
 import PrepCard from '../../../src/components/verify/PrepCard';
 import ProtectSheet from '../../../src/components/verify/ProtectSheet';
@@ -65,17 +67,14 @@ import { Spacing, V6Radii, V6Shadows } from '../../../src/constants/theme';
 import { useAuth } from '../../../src/context/AuthContext';
 import { useHeaderTop } from '../../../src/hooks/useHeaderTop';
 import { requestAppPermission } from '../../../src/lib/permissions';
-import { pickVerifyView, profileChecks, wizardProgress } from '../../../src/lib/verifyFlow';
-
-/** The IDs we accept, in the order most providers are likely to have them. */
-const DOCUMENT_TYPES = [
-  { value: 'philsys', label: 'PhilSys (National ID)' },
-  { value: 'drivers_license', label: "Driver's licence" },
-  { value: 'umid', label: 'UMID' },
-  { value: 'passport', label: 'Passport' },
-  { value: 'postal_id', label: 'Postal ID' },
-] as const;
-type DocumentType = (typeof DOCUMENT_TYPES)[number]['value'];
+import {
+  VERIFY_ID_TYPES,
+  pickVerifyView,
+  profileChecks,
+  wizardProgress,
+  type IdPhase,
+  type VerifyDocumentType,
+} from '../../../src/lib/verifyFlow';
 
 const Radii = { card: V6Radii.card };
 const Shadows = { card: V6Shadows.sm };
@@ -115,7 +114,9 @@ export default function SPVerificationScreen({ onBack, onVerified }: SPVerificat
   /** False until the provider taps Start on the intro (or Try again after a rejection). */
   const [started, setStarted] = useState(false);
   const [protectOpen, setProtectOpen] = useState(false);
-  const [documentType, setDocumentType] = useState<DocumentType | null>(null);
+  /** Inside step 1: choosing the ID, then the photo tips, then the photo check. */
+  const [idPhase, setIdPhase] = useState<IdPhase>('choose');
+  const [documentType, setDocumentType] = useState<VerifyDocumentType | null>(null);
   const [idAsset, setIdAsset] = useState<ImagePicker.ImagePickerAsset | null>(null);
   const [selfieAsset, setSelfieAsset] = useState<ImagePicker.ImagePickerAsset | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -263,16 +264,26 @@ export default function SPVerificationScreen({ onBack, onVerified }: SPVerificat
   const canAdvance =
     (step === 1 && !!documentType && !!idAsset) || (step === 2 && !!selfieAsset) || step === 3;
 
-  /** The header arrow goes back one wizard step; from the first step it returns to the intro. */
-  const onHeaderBack = () => {
+  /**
+   * One screen back inside the wizard: selfie to ID photo, ID photo to ID
+   * choice, ID choice to the intro. Anywhere else the arrow leaves the screen.
+   */
+  const goBack = () => {
     if (submitting) return;
-    if (view === 'wizard') {
-      if (step > 1) setStep((s) => s - 1);
-      else setStarted(false);
+    if (view !== 'wizard') {
+      onBack();
       return;
     }
-    onBack();
+    if (step > 1) {
+      if (step === 2) setIdPhase('tips');
+      setStep(step - 1);
+      return;
+    }
+    if (idPhase === 'choose') setStarted(false);
+    else setIdPhase('choose');
   };
+
+  const onChoosingId = step === 1 && idPhase === 'choose';
 
   const renderStatus = () => {
     if (!verification) return null;
@@ -355,13 +366,15 @@ export default function SPVerificationScreen({ onBack, onVerified }: SPVerificat
     <View style={styles.screen}>
       <VerifyAppBar
         title="Get verified"
-        onBack={onHeaderBack}
-        backLabel={view === 'wizard' && step > 1 ? 'Back to the previous step' : view === 'wizard' ? 'Back to the start' : 'Leave verification'}
+        onBack={goBack}
+        backLabel={
+          view !== 'wizard' ? 'Leave verification' : onChoosingId ? 'Back to the start' : 'Back to the previous step'
+        }
         topInset={headerTop}
       />
 
       {/* Progress: only while the wizard is on screen. */}
-      {showWizard && !loading && <PostProgress {...wizardProgress(step, 'choose')} />}
+      {showWizard && !loading && <PostProgress {...wizardProgress(step, idPhase)} />}
 
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
         {view === 'loading' ? (
@@ -424,32 +437,35 @@ export default function SPVerificationScreen({ onBack, onVerified }: SPVerificat
                     </Text>
                   </View>
                 )}
-                {step === 1 && (
+                {step === 1 && idPhase === 'choose' && (
+                  <>
+                    <Text style={styles.stepTitle} accessibilityRole="header">
+                      Which ID will you use?
+                    </Text>
+                    <View style={styles.optionList} accessibilityRole="radiogroup">
+                      {VERIFY_ID_TYPES.map((doc) => (
+                        <PaymentOption
+                          key={doc.value}
+                          title={doc.label}
+                          meta={doc.side}
+                          icon={IdCard}
+                          selected={documentType === doc.value}
+                          onSelect={() => setDocumentType(doc.value)}
+                        />
+                      ))}
+                    </View>
+                    <CalmNote
+                      icon={ShieldCheck}
+                      text="Use your original, valid ID. Photocopies, screenshots and expired IDs can't be accepted."
+                    />
+                  </>
+                )}
+                {step === 1 && idPhase === 'tips' && (
                   <View style={styles.card}>
                     <Text style={styles.label}>Government ID</Text>
                     <Text style={styles.hint}>
-                      Choose the ID you'll upload, then add a clear photo showing your
-                      full name and picture.
+                      Add a clear photo showing your full name and picture.
                     </Text>
-                    <Text style={styles.docTypeLabel}>ID type</Text>
-                    <View style={styles.docTypeRow} accessibilityRole="radiogroup">
-                      {DOCUMENT_TYPES.map((doc) => {
-                        const selected = documentType === doc.value;
-                        return (
-                          <Tap
-                            key={doc.value}
-                            style={[styles.docTypeChip, selected && styles.docTypeChipOn]}
-                            onPress={() => setDocumentType(doc.value)}
-                            activeOpacity={0.8}
-                            accessibilityRole="radio"
-                            accessibilityState={{ selected }}
-                            testID={`verify-doc-${doc.value}`}
-                          >
-                            <Text style={[styles.docTypeText, selected && styles.docTypeTextOn]}>{doc.label}</Text>
-                          </Tap>
-                        );
-                      })}
-                    </View>
                     <Tap
                       style={styles.dropzone}
                       onPress={() => void pick('id')}
@@ -550,11 +566,12 @@ export default function SPVerificationScreen({ onBack, onVerified }: SPVerificat
 
                 {!!error && <Text style={styles.errorText}>{error}</Text>}
 
+                {!onChoosingId && (
                 <View style={styles.wizardActions}>
                   {step > 1 && (
                     <Tap
                       style={styles.backStepBtn}
-                      onPress={() => setStep((s) => s - 1)}
+                      onPress={goBack}
                       activeOpacity={0.85}
                       disabled={submitting}
                     >
@@ -581,6 +598,7 @@ export default function SPVerificationScreen({ onBack, onVerified }: SPVerificat
                     )}
                   </Tap>
                 </View>
+                )}
 
                 {isRejected && step === 1 && (
                   <Text style={styles.retryHint}>
@@ -599,6 +617,14 @@ export default function SPVerificationScreen({ onBack, onVerified }: SPVerificat
           primaryLabel="Start"
           onPrimary={() => setStarted(true)}
           primaryDisabled={profileIncomplete}
+        />
+      )}
+
+      {view === 'wizard' && onChoosingId && (
+        <BottomActionBar
+          primaryLabel="Continue"
+          onPrimary={() => setIdPhase('tips')}
+          primaryDisabled={!documentType || profileIncomplete}
         />
       )}
 
@@ -647,12 +673,8 @@ function createThemedStyles(theme: ThemePalette) {
     card: { backgroundColor: V6Colors.surface, borderRadius: Radii.card, padding: 18, ...Shadows.card },
     label: { color: V6Colors.ink900, fontFamily: 'Inter', fontSize: 18.5, fontWeight: '800' },
     hint: { color: V6Colors.ink500, fontFamily: 'Inter', fontSize: 15.5, marginTop: 4, marginBottom: 14, lineHeight: 20 },
-    docTypeLabel: { color: V6Colors.ink900, fontFamily: 'Inter', fontSize: 14, fontWeight: '700', marginBottom: 8 },
-    docTypeRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 16 },
-    docTypeChip: { borderWidth: 1, borderColor: V6Colors.fieldBorder, borderRadius: 999, paddingHorizontal: 12, paddingVertical: 7, backgroundColor: V6Colors.surface },
-    docTypeChipOn: { borderColor: Colors.link, backgroundColor: Colors.primaryTonal },
-    docTypeText: { color: V6Colors.ink700, fontFamily: 'Inter', fontSize: 13.5, fontWeight: '600' },
-    docTypeTextOn: { color: V6Colors.link, fontWeight: '700' },
+    stepTitle: { color: V6Colors.ink900, fontFamily: 'Inter', fontSize: 22, fontWeight: '700', lineHeight: 28 },
+    optionList: { gap: 8 },
     dropzone: {
       height: 150,
       borderRadius: 12,

@@ -4,6 +4,20 @@
  * calls the API; the screen keeps every upload, session and submit call.
  */
 
+/**
+ * The IDs we accept. `value` is sent as `document_type`; it must not change.
+ * `side` is the photo the provider takes, shown under each ID in the list.
+ */
+export const VERIFY_ID_TYPES = [
+  { value: 'philsys', label: 'PhilSys National ID', side: 'Photo of the front' },
+  { value: 'drivers_license', label: "Driver's licence", side: 'Photo of the front' },
+  { value: 'umid', label: 'UMID', side: 'Photo of the front' },
+  { value: 'passport', label: 'Passport', side: 'Photo page' },
+  { value: 'postal_id', label: 'Postal ID', side: 'Photo of the front' },
+] as const;
+
+export type VerifyDocumentType = (typeof VERIFY_ID_TYPES)[number]['value'];
+
 export type VerifyStatus = 'pending' | 'approved' | 'rejected';
 
 export type VerifyView = 'loading' | 'intro' | 'wizard' | 'sending' | 'pending' | 'rejected' | 'approved';
