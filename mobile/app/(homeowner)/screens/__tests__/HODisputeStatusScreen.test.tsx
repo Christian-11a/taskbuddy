@@ -20,7 +20,7 @@ function show() { render(<HODisputeStatusScreen jobId="job" onBack={jest.fn()} /
 
 it('shows a zero-budget case without claiming that an admin has reviewed it', async () => {
   show();
-  await screen.findByText('Complaint awaiting admin review');
+  await screen.findByText('An admin is reviewing this report');
   expect(screen.queryByText('Under Review')).toBeNull();
   expect(screen.queryByText('Our support team is looking into this.')).toBeNull();
   fireEvent.changeText(screen.getByLabelText('Case statement'), 'My account of the repair');
@@ -33,7 +33,8 @@ it('shows actual clarification activity, its author, timestamp, and photo eviden
     author: { id: 'admin', full_name: 'Admin Reviewer', role: 'admin' },
     message: { id: 'message', body: 'Repair photo', attachment_path: 'photo.jpg' }, attachment_url: 'https://storage.test/photo' }] });
   show();
-  await screen.findByText('Admin Reviewer · clarification');
+  await screen.findByText(/Admin Reviewer/);
+  expect(screen.queryByText(/clarification/)).toBeNull();
   expect(screen.getByText('Explain the missing checklist task')).toBeTruthy();
   expect(screen.getByLabelText('Case photo evidence').props.source.uri).toBe('https://storage.test/photo');
 });
@@ -72,9 +73,18 @@ it('attaches only the selected own job message as case evidence', async () => {
 it('shows save failures and preserves the draft for retry', async () => {
   (api.addDisputeEntry as jest.Mock).mockRejectedValue(new Error('Case is already closed'));
   show();
-  await screen.findByText('Complaint awaiting admin review');
+  await screen.findByText('An admin is reviewing this report');
   fireEvent.changeText(screen.getByLabelText('Case statement'), 'Keep this draft');
   await act(async () => { fireEvent.press(screen.getByText('Submit statement')); });
   await screen.findByText('Case is already closed');
   expect(screen.getByLabelText('Case statement').props.value).toBe('Keep this draft');
+});
+it('shows the decision in plain words with a timeline, never a raw code', async () => {
+  (api.jobDispute as jest.Mock).mockResolvedValue({ ...base, status: 'resolved', resolution: 'refunded_to_client',
+    resolution_note: 'Refund approved after review', resolved_at: '2026-10-07T04:33:00Z', escrow_transactions: { status: 'refunded', amount: 800 } });
+  show();
+  await screen.findByText('₱800.00 refunded to the client');
+  expect(screen.getByText('What happened')).toBeTruthy();
+  expect(screen.getByText('Case closed · ₱800.00 refunded to the client')).toBeTruthy();
+  expect(screen.queryByText(/refunded_to_client/)).toBeNull();
 });
