@@ -126,7 +126,7 @@ describe('SPVerificationScreen — before you start', () => {
     (api.myVerification as jest.Mock).mockResolvedValue(PENDING);
     renderScreen();
 
-    expect(await screen.findByText('Pending verification')).toBeTruthy();
+    expect(await screen.findByText("We're checking your documents")).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'Start' })).toBeNull();
   });
 });
@@ -509,13 +509,109 @@ describe('SPVerificationScreen — sending', () => {
       .mockResolvedValueOnce('verification-docs/id.jpg')
       .mockResolvedValueOnce('verification-docs/selfie.jpg');
     (api.startIdentitySession as jest.Mock).mockResolvedValueOnce({ url: null });
-    await toReview();
+    (ImagePicker.launchCameraAsync as jest.Mock)
+      .mockResolvedValueOnce({ canceled: false, assets: [{ uri: 'file:///id.jpg' }] })
+      .mockResolvedValueOnce({ canceled: false, assets: [{ uri: 'file:///selfie.jpg' }] });
+    renderScreen();
 
+    // A rejected provider starts again with Try again, not Start.
+    fireEvent.press(await screen.findByRole('button', { name: 'Try again' }));
+    fireEvent.press(screen.getByLabelText('PhilSys National ID, Photo of the front'));
+    fireEvent.press(screen.getByRole('button', { name: 'Continue' }));
+    fireEvent.press(screen.getByRole('button', { name: 'Take photo of the front' }));
+    await screen.findByText('Is everything readable?');
+    fireEvent.press(screen.getByRole('button', { name: 'Use this photo' }));
+    fireEvent.press(screen.getByRole('button', { name: 'Take selfie' }));
+    await screen.findByRole('button', { name: 'Continue' });
+    fireEvent.press(screen.getByRole('button', { name: 'Continue' }));
+    await screen.findByText('Ready to send');
     fireEvent.press(screen.getByRole('checkbox', { name: CONSENT }));
     fireEvent.press(screen.getByRole('button', { name: CONTINUE_LABEL }));
 
-    expect(await screen.findByText('Pending verification')).toBeTruthy();
+    expect(await screen.findByText("We're checking your documents")).toBeTruthy();
     expect(screen.queryByText('Ready to send')).toBeNull();
-    expect(screen.queryByText('Not approved')).toBeNull();
+    expect(screen.queryByText('Your documents were rejected.')).toBeNull();
+  });
+});
+
+describe('SPVerificationScreen — the status after a review', () => {
+  it('pending: says what is happening, never that jobs are open, and goes back to the feed', async () => {
+    (api.myVerification as jest.Mock).mockResolvedValue(PENDING);
+    const onBack = jest.fn();
+    renderScreen({ onBack });
+
+    expect(await screen.findByText("We're checking your documents")).toBeTruthy();
+    expect(screen.getByText("An admin is reviewing them. We'll notify you as soon as there's a decision.")).toBeTruthy();
+    expect(screen.getByLabelText('Admin review, now. An admin is reviewing your documents now.')).toBeTruthy();
+    expect(screen.queryByText(/jobs? (are )?open/i)).toBeNull();
+
+    fireEvent.press(screen.getByRole('button', { name: 'Back to Feed' }));
+    expect(onBack).toHaveBeenCalledTimes(1);
+  });
+
+  it('pending from the automated check: shows the check as running, not finished', async () => {
+    (api.myVerification as jest.Mock).mockResolvedValue({ ...PENDING, method: 'stripe_identity' });
+    renderScreen();
+
+    expect(
+      await screen.findByLabelText('Automated check, now. Running. This usually takes a couple of minutes.'),
+    ).toBeTruthy();
+    expect(screen.queryByLabelText(/Automated check, done/)).toBeNull();
+  });
+
+  it('pending: Check again asks for the status again', async () => {
+    (api.myVerification as jest.Mock).mockResolvedValue(PENDING);
+    renderScreen();
+    await screen.findByText("We're checking your documents");
+
+    fireEvent.press(screen.getByText('Check again'));
+
+    await waitFor(() => expect(api.myVerification).toHaveBeenCalledTimes(2));
+  });
+
+  it('rejected: quotes the admin reason, lists how to fix it, and Try again opens the ID choice', async () => {
+    (api.myVerification as jest.Mock).mockResolvedValue({
+      ...PENDING,
+      status: 'rejected',
+      rejection_reason: 'The ID text is blurry.',
+    });
+    renderScreen();
+
+    expect(await screen.findByText('Your documents were rejected.')).toBeTruthy();
+    expect(screen.getByText('Admin note: The ID text is blurry.')).toBeTruthy();
+    expect(screen.getByText('How to fix it')).toBeTruthy();
+    expect(screen.getByText('Retake the ID photo in good, even light')).toBeTruthy();
+
+    fireEvent.press(screen.getByRole('button', { name: 'Try again' }));
+
+    expect(screen.getByText('Which ID will you use?')).toBeTruthy();
+    expect(screen.getByText('STEP 1 OF 4 · YOUR ID')).toBeTruthy();
+  });
+
+  it('rejected without a reason: uses the plain wording and invents no reason', async () => {
+    (api.myVerification as jest.Mock).mockResolvedValue({ ...PENDING, status: 'rejected', rejection_reason: null });
+    renderScreen();
+
+    expect(await screen.findByText('Your documents were rejected.')).toBeTruthy();
+    expect(screen.queryByText(/Admin note/)).toBeNull();
+  });
+
+  it('approved: says clients can see the provider, and See jobs near you goes to the feed', async () => {
+    const onVerified = jest.fn().mockResolvedValue(undefined);
+    (api.myVerification as jest.Mock).mockResolvedValue({
+      ...PENDING,
+      status: 'approved',
+      reviewed_at: '2026-10-09T10:00:00Z',
+    });
+    renderScreen({ onVerified });
+
+    expect(await screen.findByText("You're verified!")).toBeTruthy();
+    expect(
+      screen.getByText('Clients can now see you, and jobs near you are open. Your profile shows the Verified badge.'),
+    ).toBeTruthy();
+
+    fireEvent.press(screen.getByRole('button', { name: 'See jobs near you' }));
+
+    await waitFor(() => expect(onVerified).toHaveBeenCalledTimes(1));
   });
 });

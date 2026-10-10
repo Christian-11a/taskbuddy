@@ -2,8 +2,10 @@ import {
   SESSION_STAGE,
   UPLOAD_STAGE,
   VERIFY_ID_TYPES,
+  pendingRows,
   pickVerifyView,
   profileChecks,
+  rejectionNote,
   sendingRows,
   takePhotoLabel,
   wizardProgress,
@@ -127,5 +129,48 @@ describe('profileChecks', () => {
   it('ticks the bio only when it has text', () => {
     expect(profileChecks({ bio: '   ' })[1]).toEqual({ label: 'Bio added', done: false });
     expect(profileChecks({ bio: 'Plumber, 8 years' })[1]).toEqual({ label: 'Bio added', done: true });
+  });
+});
+
+describe('pendingRows', () => {
+  it('for a manual review, says an admin is reviewing now', () => {
+    const rows = pendingRows({ method: 'manual', fellBackToManual: false });
+    expect(rows.map((row) => [row.title, row.state])).toEqual([
+      ['Documents sent', 'done'],
+      ['Admin review', 'current'],
+      ['You can apply to jobs', 'upcoming'],
+    ]);
+  });
+
+  it('for the automated check, shows the check as running and never as finished', () => {
+    const rows = pendingRows({ method: 'stripe_identity', fellBackToManual: false });
+    expect(rows.map((row) => [row.title, row.state])).toEqual([
+      ['Documents sent', 'done'],
+      ['Automated check', 'current'],
+      ['Admin review', 'upcoming'],
+      ['You can apply to jobs', 'upcoming'],
+    ]);
+  });
+
+  it('treats a manual fallback as a manual review', () => {
+    const rows = pendingRows({ method: 'stripe_identity', fellBackToManual: true });
+    expect(rows.map((row) => row.title)).not.toContain('Automated check');
+  });
+
+  it('never says jobs are open while the review is pending', () => {
+    for (const method of ['manual', 'stripe_identity'] as const) {
+      expect(JSON.stringify(pendingRows({ method, fellBackToManual: false }))).not.toMatch(/jobs? (are )?open/i);
+    }
+  });
+});
+
+describe('rejectionNote', () => {
+  it('quotes the admin reason as written', () => {
+    expect(rejectionNote('The ID text is blurry.')).toBe('Admin note: The ID text is blurry.');
+  });
+
+  it('returns nothing when there is no reason, so the screen does not invent one', () => {
+    expect(rejectionNote(null)).toBeNull();
+    expect(rejectionNote('   ')).toBeNull();
   });
 });

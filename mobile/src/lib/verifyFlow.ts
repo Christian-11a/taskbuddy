@@ -119,3 +119,56 @@ export function sendingRows(stage: string | null): SendingRow[] {
     { key: 'check', label: 'Starting the secure check', status: checking ? 'active' : 'pending' },
   ];
 }
+
+export type TimelineState = 'done' | 'current' | 'upcoming';
+
+export type TimelineRow = {
+  key: 'sent' | 'check' | 'review' | 'apply';
+  title: string;
+  detail: string;
+  state: TimelineState;
+};
+
+/**
+ * The timeline for a pending review. The automated check is shown as running,
+ * not finished: the status alone cannot say that the check has ended, and an
+ * admin may still review the documents if the check cannot decide.
+ */
+export function pendingRows(input: {
+  method: 'manual' | 'stripe_identity';
+  fellBackToManual: boolean;
+}): TimelineRow[] {
+  const automated = input.method === 'stripe_identity' && !input.fellBackToManual;
+  const rows: TimelineRow[] = [
+    { key: 'sent', title: 'Documents sent', detail: 'Your ID and selfie reached TaskBuddy.', state: 'done' },
+  ];
+  if (automated) {
+    rows.push({
+      key: 'check',
+      title: 'Automated check',
+      detail: 'Running. This usually takes a couple of minutes.',
+      state: 'current',
+    });
+    rows.push({
+      key: 'review',
+      title: 'Admin review',
+      detail: 'Only if the automated check cannot decide.',
+      state: 'upcoming',
+    });
+  } else {
+    rows.push({
+      key: 'review',
+      title: 'Admin review',
+      detail: 'An admin is reviewing your documents now.',
+      state: 'current',
+    });
+  }
+  rows.push({ key: 'apply', title: 'You can apply to jobs', detail: 'After you are approved.', state: 'upcoming' });
+  return rows;
+}
+
+/** The admin's reason, as written. Null when there is none, so the screen does not invent one. */
+export function rejectionNote(reason: string | null | undefined): string | null {
+  const text = (reason ?? '').trim();
+  return text === '' ? null : `Admin note: ${text}`;
+}

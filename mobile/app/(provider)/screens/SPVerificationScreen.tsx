@@ -40,7 +40,10 @@ import {
 } from 'react-native';
 import Tap from '../../../src/components/ui/Tap';
 import BottomActionBar from '../../../src/components/ui/BottomActionBar';
+import CheckRow from '../../../src/components/ui/CheckRow';
 import PaymentOption from '../../../src/components/ui/PaymentOption';
+import StatusCard from '../../../src/components/ui/StatusCard';
+import SuccessMark from '../../../src/components/ui/SuccessMark';
 import PostProgress from '../../../src/components/post/PostProgress';
 import CalmNote from '../../../src/components/post/CalmNote';
 import VerifyAppBar from '../../../src/components/verify/VerifyAppBar';
@@ -49,19 +52,11 @@ import ProtectSheet from '../../../src/components/verify/ProtectSheet';
 import CheckList from '../../../src/components/verify/CheckList';
 import IdExamples from '../../../src/components/verify/IdExamples';
 import PhotoCard from '../../../src/components/verify/PhotoCard';
-import CheckRow from '../../../src/components/ui/CheckRow';
 import SendingChecklist from '../../../src/components/verify/SendingChecklist';
+import PendingTimeline from '../../../src/components/verify/PendingTimeline';
 import * as ImagePicker from 'expo-image-picker';
 import * as WebBrowser from 'expo-web-browser';
-import {
-  BadgeCheck,
-  CircleAlert,
-  Clock,
-  IdCard,
-  Lock,
-  ScanFace,
-  ShieldCheck,
-} from 'lucide-react-native';
+import { IdCard, Lock, ScanFace, ShieldCheck } from 'lucide-react-native';
 import { api, ApiError } from '../../../src/lib/api';
 import { useAsyncData } from '../../../src/hooks/useAsyncData';
 import { shortDate } from '../../../src/lib/format';
@@ -73,8 +68,10 @@ import {
   SESSION_STAGE,
   UPLOAD_STAGE,
   VERIFY_ID_TYPES,
+  pendingRows,
   pickVerifyView,
   profileChecks,
+  rejectionNote,
   sendingRows,
   takePhotoLabel,
   wizardProgress,
@@ -113,6 +110,13 @@ const SELFIE_TIPS = [
   'Face a window or a bright light',
   'Hold the phone at eye level',
   'Only you in the photo',
+];
+
+/** Generic tips for a rejection. The app does not know which part failed, so these cover the usual causes. */
+const HOW_TO_FIX = [
+  'Retake the ID photo in good, even light',
+  'Make sure your name and photo are sharp',
+  'Take the selfie without glasses, a hat or a face mask',
 ];
 
 interface SPVerificationScreenProps {
@@ -309,11 +313,6 @@ export default function SPVerificationScreen({ onBack, onVerified }: SPVerificat
     }
   };
 
-  // A pending submission is terminal for the UI — only one review may be open.
-  const isPending = verification?.status === 'pending';
-  const isApproved = verification?.status === 'approved';
-  const isRejected = verification?.status === 'rejected';
-
   /** Which view is on screen; the rules live in src/lib/verifyFlow.ts. */
   const view = pickVerifyView({
     loading,
@@ -322,7 +321,8 @@ export default function SPVerificationScreen({ onBack, onVerified }: SPVerificat
     started,
     settling: awaitingReload,
   });
-  const showIntro = view === 'intro' || view === 'rejected';
+  // A rejected provider who has not yet tapped Try again still needs the wizard's photo hint.
+  const isRejected = verification?.status === 'rejected';
 
   /**
    * One screen back inside the wizard: selfie to ID photo, ID photo to ID
@@ -343,301 +343,304 @@ export default function SPVerificationScreen({ onBack, onVerified }: SPVerificat
     else setIdPhase('choose');
   };
 
+  /** Try again after a rejection: the wizard opens at the ID choice. */
+  const tryAgain = () => {
+    setStarted(true);
+    setStep(1);
+    setIdPhase('choose');
+  };
+
+  /** Approved: refresh the profile and go to the feed, as the Go to Dashboard button always did. */
+  const continueToFeed = async () => {
+    if (!onVerified) return;
+    setContinuing(true);
+    setError(null);
+    try {
+      await onVerified();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not refresh your profile. Try again.');
+    } finally {
+      setContinuing(false);
+    }
+  };
+
   const onChoosingId = step === 1 && idPhase === 'choose';
   const chosenIdLabel = VERIFY_ID_TYPES.find((type) => type.value === documentType)?.label ?? 'ID';
   /** A passport's photo is of its photo page, not its front. */
   const idSideName = documentType === 'passport' ? 'Photo page' : 'Front';
 
-  const renderStatus = () => {
-    if (!verification) return null;
-    if (isApproved) {
-      return (
-        <View style={[styles.status, styles.statusApproved]}>
-          <BadgeCheck size={22} color={Colors.successText} />
-          <View style={styles.statusTextBox}>
-            <Text style={styles.statusTitle}>You&apos;re verified</Text>
-            <Text style={styles.statusBody}>
-              Approved on {shortDate(verification.reviewed_at ?? verification.submitted_at)}.
-            </Text>
-          </View>
-        </View>
-      );
-    }
-    if (isPending) {
-      return (
-        <View style={[styles.status, styles.statusPending]}>
-          <Clock size={22} color={Colors.warningText} />
-          <View style={styles.statusTextBox}>
-            <Text style={styles.statusTitle}>Pending verification</Text>
-            <Text style={styles.statusBody}>
-              Submitted {shortDate(verification.submitted_at)}.{' '}
-              {verification.method === 'stripe_identity' && !fellBackToManual
-                ? 'The automated check is running — this usually takes a couple of minutes. You can leave this screen; we’ll notify you when it finishes.'
-                : 'A TaskBuddy admin is reviewing your documents. We’ll notify you when it’s done.'}
-            </Text>
-            <Tap onPress={reload} activeOpacity={0.8}>
-              <Text style={styles.statusAction}>Check again</Text>
-            </Tap>
-          </View>
-        </View>
-      );
-    }
-    return (
-      <View style={[styles.status, styles.statusRejected]}>
-        <CircleAlert size={22} color={Colors.dangerText} />
-        <View style={styles.statusTextBox}>
-          <Text style={styles.statusTitle}>Not approved</Text>
-          <Text style={styles.statusBody}>
-            {verification.rejection_reason ?? 'Your documents were rejected.'} You can
-            start again below.
-          </Text>
-        </View>
-      </View>
-    );
-  };
-
-  const renderApprovedContinue = () => {
-    if (!isApproved || !onVerified) return null;
-    const goToDashboard = async () => {
-      setContinuing(true);
-      setError(null);
-      try {
-        await onVerified();
-      } catch (e) {
-        setError(e instanceof Error ? e.message : 'Could not refresh your profile. Try again.');
-      } finally {
-        setContinuing(false);
-      }
-    };
-    return (
-      <Tap
-        style={styles.submitButton}
-        onPress={goToDashboard}
-        disabled={continuing}
-        activeOpacity={0.85}
-      >
-        {continuing ? (
-          <ActivityIndicator color={Colors.onPrimary} />
-        ) : (
-          <Text style={styles.submitText}>Go to Dashboard</Text>
-        )}
-      </Tap>
-    );
-  };
+  const headerTitle = view === 'pending' || view === 'rejected' ? 'Verification' : 'Get verified';
 
   return (
     <View style={styles.screen}>
-      <VerifyAppBar
-        title="Get verified"
-        onBack={goBack}
-        backLabel={
-          view !== 'wizard' ? 'Leave verification' : onChoosingId ? 'Back to the start' : 'Back to the previous step'
-        }
-        topInset={headerTop}
-      />
+      {view !== 'approved' && (
+        <VerifyAppBar
+          title={headerTitle}
+          onBack={goBack}
+          backLabel={
+            view !== 'wizard'
+              ? 'Leave verification'
+              : onChoosingId
+                ? 'Back to the start'
+                : 'Back to the previous step'
+          }
+          topInset={headerTop}
+        />
+      )}
 
       {/* Progress: only while the wizard is on screen. */}
       {view === 'wizard' && <PostProgress {...wizardProgress(step, idPhase)} />}
 
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-        {view === 'loading' ? (
-          <ActivityIndicator color={V6Colors.link} style={styles.loader} />
-        ) : (
-          <>
-            {renderStatus()}
+        {view === 'loading' && <ActivityIndicator color={V6Colors.link} style={styles.loader} />}
 
-            {isApproved && (
-              <View style={styles.notice}>
-                <ShieldCheck size={22} color={V6Colors.link} />
-                <Text style={styles.noticeText}>
-                  Your documents are stored privately and are only visible to TaskBuddy
-                  admins reviewing your account.
+        {view === 'pending' && verification && (
+          <>
+            <StatusCard
+              tone="attention"
+              overline={`In review · sent ${shortDate(verification.submitted_at)}`}
+              title="We're checking your documents"
+              body={
+                verification.method === 'stripe_identity' && !fellBackToManual
+                  ? 'The automated check is running — this usually takes a couple of minutes. You can leave this screen; we’ll notify you when it finishes.'
+                  : "An admin is reviewing them. We'll notify you as soon as there's a decision."
+              }
+            >
+              <Tap onPress={reload} hitSlop={8} accessibilityRole="button" accessibilityLabel="Check again">
+                <Text style={styles.checkAgain}>Check again</Text>
+              </Tap>
+            </StatusCard>
+            <Text style={styles.sectionTitle}>Progress</Text>
+            <PendingTimeline rows={pendingRows({ method: verification.method, fellBackToManual })} />
+          </>
+        )}
+
+        {view === 'rejected' && verification && (
+          <>
+            <StatusCard
+              tone="closed"
+              overline={`Not approved · ${shortDate(verification.reviewed_at ?? verification.submitted_at)}`}
+              title="Your documents were rejected."
+              body={rejectionNote(verification.rejection_reason) ?? undefined}
+            />
+            <Text style={styles.sectionTitle}>How to fix it</Text>
+            <CheckList items={HOW_TO_FIX} />
+          </>
+        )}
+
+        {view === 'approved' && (
+          <View style={styles.celebrate}>
+            <SuccessMark
+              size={96}
+              fallback={
+                <View style={styles.badge}>
+                  <ShieldCheck size={44} color={Colors.successText} />
+                </View>
+              }
+            />
+            <Text style={styles.approvedTitle} accessibilityRole="header">
+              {"You're verified!"}
+            </Text>
+            <Text style={styles.approvedBody}>
+              Clients can now see you, and jobs near you are open. Your profile shows the Verified badge.
+            </Text>
+            <CalmNote
+              icon={ShieldCheck}
+              text="Your documents are stored privately and are only visible to TaskBuddy admins reviewing your account."
+            />
+            {!!error && <Text style={styles.errorText}>{error}</Text>}
+          </View>
+        )}
+
+        {view === 'intro' && (
+          <>
+            <Text style={styles.introTitle} accessibilityRole="header">
+              Get verified to start getting jobs
+            </Text>
+            <Text style={styles.introBody}>
+              Clients only see and hire verified providers. It takes about 3 minutes.
+            </Text>
+            {profileIncomplete && (
+              <View style={styles.profileNotice}>
+                <Text style={styles.profileNoticeTitle}>Finish your profile first</Text>
+                <Text style={styles.profileNoticeBody}>
+                  Pick your service and add a bio in Profile → Edit Profile. Verification can't be sent until they're saved.
                 </Text>
               </View>
             )}
+            <PrepCard steps={PREP_STEPS} profileItems={profileChecks(providerProfile)} />
+            <Tap
+              style={styles.protectLink}
+              onPress={() => setProtectOpen(true)}
+              hitSlop={{ top: 12, bottom: 12 }}
+              accessibilityRole="button"
+              accessibilityLabel="How we protect your ID"
+            >
+              <ShieldCheck size={16} color={Colors.link} />
+              <Text style={styles.protectLinkText}>How we protect your ID</Text>
+            </Tap>
+          </>
+        )}
 
-            {renderApprovedContinue()}
-            {isApproved && error && <Text style={styles.errorText}>{error}</Text>}
+        {view === 'sending' && (
+          <>
+            <Text style={styles.stepTitle} accessibilityRole="header">
+              Sending your documents…
+            </Text>
+            <Text style={styles.stepHint}>Please keep the app open. This takes a few seconds.</Text>
+            <SendingChecklist rows={sendingRows(submitStage)} />
+          </>
+        )}
 
-            {showIntro && (
-              <>
-                <Text style={styles.introTitle} accessibilityRole="header">
-                  Get verified to start getting jobs
+        {view === 'wizard' && (
+          <>
+            {/* ── Step 1 · Government ID ─────────────────────────── */}
+            {step === 1 && profileIncomplete && (
+              <View style={styles.profileNotice}>
+                <Text style={styles.profileNoticeTitle}>Finish your profile first</Text>
+                <Text style={styles.profileNoticeBody}>
+                  Pick your service and add a bio in Profile → Edit Profile. Verification can't be sent until they're saved.
                 </Text>
-                <Text style={styles.introBody}>
-                  Clients only see and hire verified providers. It takes about 3 minutes.
-                </Text>
-                {profileIncomplete && (
-                  <View style={styles.profileNotice}>
-                    <Text style={styles.profileNoticeTitle}>Finish your profile first</Text>
-                    <Text style={styles.profileNoticeBody}>
-                      Pick your service and add a bio in Profile → Edit Profile. Verification can't be sent until they're saved.
-                    </Text>
-                  </View>
-                )}
-                <PrepCard steps={PREP_STEPS} profileItems={profileChecks(providerProfile)} />
-                <Tap
-                  style={styles.protectLink}
-                  onPress={() => setProtectOpen(true)}
-                  hitSlop={{ top: 12, bottom: 12 }}
-                  accessibilityRole="button"
-                  accessibilityLabel="How we protect your ID"
-                >
-                  <ShieldCheck size={16} color={Colors.link} />
-                  <Text style={styles.protectLinkText}>How we protect your ID</Text>
-                </Tap>
-              </>
+              </View>
             )}
-
-            {view === 'sending' && (
+            {step === 1 && idPhase === 'choose' && (
               <>
                 <Text style={styles.stepTitle} accessibilityRole="header">
-                  Sending your documents…
+                  Which ID will you use?
                 </Text>
-                <Text style={styles.stepHint}>Please keep the app open. This takes a few seconds.</Text>
-                <SendingChecklist rows={sendingRows(submitStage)} />
+                <View style={styles.optionList} accessibilityRole="radiogroup">
+                  {VERIFY_ID_TYPES.map((doc) => (
+                    <PaymentOption
+                      key={doc.value}
+                      title={doc.label}
+                      meta={doc.side}
+                      icon={IdCard}
+                      selected={documentType === doc.value}
+                      onSelect={() => setDocumentType(doc.value)}
+                    />
+                  ))}
+                </View>
+                <CalmNote
+                  icon={ShieldCheck}
+                  text="Use your original, valid ID. Photocopies, screenshots and expired IDs can't be accepted."
+                />
+              </>
+            )}
+            {step === 1 && idPhase === 'tips' && (
+              <>
+                <Text style={styles.stepTitle} accessibilityRole="header">
+                  {`Get a clear photo of your ${chosenIdLabel}`}
+                </Text>
+                <IdExamples />
+                <CheckList items={PHOTO_TIPS} />
               </>
             )}
 
-            {view === 'wizard' && (
+            {step === 1 && idPhase === 'check' && (
               <>
-                {/* ── Step 1 · Government ID ─────────────────────────── */}
-                {step === 1 && profileIncomplete && (
-                  <View style={styles.profileNotice}>
-                    <Text style={styles.profileNoticeTitle}>Finish your profile first</Text>
-                    <Text style={styles.profileNoticeBody}>
-                      Pick your service and add a bio in Profile → Edit Profile. Verification can't be sent until they're saved.
-                    </Text>
+                <Text style={styles.stepTitle} accessibilityRole="header">
+                  Is everything readable?
+                </Text>
+                {!!idAsset && (
+                  <View style={styles.previewFrame}>
+                    <Image source={{ uri: idAsset.uri }} style={styles.preview} resizeMode="cover" />
                   </View>
                 )}
-                {step === 1 && idPhase === 'choose' && (
-                  <>
-                    <Text style={styles.stepTitle} accessibilityRole="header">
-                      Which ID will you use?
-                    </Text>
-                    <View style={styles.optionList} accessibilityRole="radiogroup">
-                      {VERIFY_ID_TYPES.map((doc) => (
-                        <PaymentOption
-                          key={doc.value}
-                          title={doc.label}
-                          meta={doc.side}
-                          icon={IdCard}
-                          selected={documentType === doc.value}
-                          onSelect={() => setDocumentType(doc.value)}
-                        />
-                      ))}
-                    </View>
-                    <CalmNote
-                      icon={ShieldCheck}
-                      text="Use your original, valid ID. Photocopies, screenshots and expired IDs can't be accepted."
-                    />
-                  </>
-                )}
-                {step === 1 && idPhase === 'tips' && (
-                  <>
-                    <Text style={styles.stepTitle} accessibilityRole="header">
-                      {`Get a clear photo of your ${chosenIdLabel}`}
-                    </Text>
-                    <IdExamples />
-                    <CheckList items={PHOTO_TIPS} />
-                  </>
-                )}
-
-                {step === 1 && idPhase === 'check' && (
-                  <>
-                    <Text style={styles.stepTitle} accessibilityRole="header">
-                      Is everything readable?
-                    </Text>
-                    {!!idAsset && (
-                      <View style={styles.previewFrame}>
-                        <Image source={{ uri: idAsset.uri }} style={styles.preview} resizeMode="cover" />
-                      </View>
-                    )}
-                    <View style={styles.checkBox}>
-                      <CheckList items={PHOTO_CHECKS} muted />
-                    </View>
-                  </>
-                )}
-
-                {/* ── Step 2 · Face scan ─────────────────────────────── */}
-                {step === 2 && (
-                  <>
-                    <Text style={styles.stepTitle} accessibilityRole="header">
-                      Now a quick selfie
-                    </Text>
-                    <Text style={styles.stepHint}>We match your face with the photo on your ID.</Text>
-                    <View style={styles.faceFrame}>
-                      {selfieAsset ? (
-                        <Image source={{ uri: selfieAsset.uri }} style={styles.preview} resizeMode="cover" />
-                      ) : (
-                        <ScanFace size={56} color={V6Colors.link} />
-                      )}
-                    </View>
-                    <CheckList items={SELFIE_TIPS} />
-                  </>
-                )}
-
-                {/* ── Step 3 · Review and send ───────────────────────── */}
-                {step === 3 && (
-                  <>
-                    <Text style={styles.stepTitle} accessibilityRole="header">
-                      Ready to send
-                    </Text>
-                    <View style={styles.photoRow}>
-                      {!!idAsset && (
-                        <PhotoCard
-                          title={idSideName}
-                          uri={idAsset.uri}
-                          retakeLabel="Retake ID photo"
-                          onRetake={() => {
-                            setIdPhase('tips');
-                            setStep(1);
-                          }}
-                        />
-                      )}
-                      {!!selfieAsset && (
-                        <PhotoCard
-                          title="Selfie"
-                          uri={selfieAsset.uri}
-                          retakeLabel="Retake selfie"
-                          onRetake={() => setStep(2)}
-                        />
-                      )}
-                    </View>
-                    <CheckRow
-                      label={CONSENT_TEXT}
-                      checked={consented}
-                      onToggle={() => setConsented((value) => !value)}
-                    />
-                    <CalmNote
-                      icon={Lock}
-                      text="Next, Stripe opens a secure page and asks you to scan your ID and face once more to confirm it's you. Only TaskBuddy admins can see the photos you took here."
-                    />
-                    <Text style={styles.stepHint}>
-                      If Stripe isn't available, your photos go to a TaskBuddy admin for manual review.
-                    </Text>
-                  </>
-                )}
-
-                {!!error && <Text style={styles.errorText}>{error}</Text>}
-
-                {isRejected && step === 1 && (
-                  <Text style={styles.retryHint}>
-                    Upload fresh photos — the previous ones were not accepted.
-                  </Text>
-                )}
+                <View style={styles.checkBox}>
+                  <CheckList items={PHOTO_CHECKS} muted />
+                </View>
               </>
+            )}
+
+            {/* ── Step 2 · Selfie: live camera only ─────────────── */}
+            {step === 2 && (
+              <>
+                <Text style={styles.stepTitle} accessibilityRole="header">
+                  Now a quick selfie
+                </Text>
+                <Text style={styles.stepHint}>We match your face with the photo on your ID.</Text>
+                <View style={styles.faceFrame}>
+                  {selfieAsset ? (
+                    <Image source={{ uri: selfieAsset.uri }} style={styles.preview} resizeMode="cover" />
+                  ) : (
+                    <ScanFace size={56} color={V6Colors.link} />
+                  )}
+                </View>
+                <CheckList items={SELFIE_TIPS} />
+              </>
+            )}
+
+            {/* ── Step 3 · Review and send ───────────────────────── */}
+            {step === 3 && (
+              <>
+                <Text style={styles.stepTitle} accessibilityRole="header">
+                  Ready to send
+                </Text>
+                <View style={styles.photoRow}>
+                  {!!idAsset && (
+                    <PhotoCard
+                      title={idSideName}
+                      uri={idAsset.uri}
+                      retakeLabel="Retake ID photo"
+                      onRetake={() => {
+                        setIdPhase('tips');
+                        setStep(1);
+                      }}
+                    />
+                  )}
+                  {!!selfieAsset && (
+                    <PhotoCard
+                      title="Selfie"
+                      uri={selfieAsset.uri}
+                      retakeLabel="Retake selfie"
+                      onRetake={() => setStep(2)}
+                    />
+                  )}
+                </View>
+                <CheckRow
+                  label={CONSENT_TEXT}
+                  checked={consented}
+                  onToggle={() => setConsented((value) => !value)}
+                />
+                <CalmNote
+                  icon={Lock}
+                  text="Next, Stripe opens a secure page and asks you to scan your ID and face once more to confirm it's you. Only TaskBuddy admins can see the photos you took here."
+                />
+                <Text style={styles.stepHint}>
+                  If Stripe isn't available, your photos go to a TaskBuddy admin for manual review.
+                </Text>
+              </>
+            )}
+
+            {!!error && <Text style={styles.errorText}>{error}</Text>}
+
+            {isRejected && step === 1 && (
+              <Text style={styles.retryHint}>
+                Upload fresh photos — the previous ones were not accepted.
+              </Text>
             )}
           </>
         )}
         <View style={{ height: 24 }} />
       </ScrollView>
 
-      {showIntro && (
+      {view === 'intro' && (
         <BottomActionBar
           primaryLabel="Start"
           onPrimary={() => setStarted(true)}
           primaryDisabled={profileIncomplete}
+        />
+      )}
+
+      {view === 'pending' && <BottomActionBar primaryLabel="Back to Feed" onPrimary={onBack} />}
+
+      {view === 'rejected' && <BottomActionBar primaryLabel="Try again" onPrimary={tryAgain} />}
+
+      {view === 'approved' && onVerified && (
+        <BottomActionBar
+          primaryLabel="See jobs near you"
+          onPrimary={() => void continueToFeed()}
+          busy={continuing}
         />
       )}
 
@@ -699,58 +702,29 @@ function createThemedStyles(theme: ThemePalette) {
     introBody: { color: V6Colors.ink700, fontFamily: 'Inter', fontSize: 15, lineHeight: 21, marginTop: -8 },
     protectLink: { flexDirection: 'row', alignItems: 'center', gap: 6, alignSelf: 'flex-start', minHeight: 40 },
     protectLinkText: { color: Colors.link, fontFamily: 'Inter', fontSize: 14, fontWeight: '600', lineHeight: 18 },
-    status: {
-      flexDirection: 'row',
-      gap: 10,
-      borderRadius: 14,
-      padding: 14,
-      borderWidth: 1,
+    sectionTitle: { color: V6Colors.ink900, fontFamily: 'Inter', fontSize: 16, fontWeight: '700', lineHeight: 22, marginTop: 4 },
+    checkAgain: { color: Colors.link, fontFamily: 'Inter', fontSize: 15, fontWeight: '700', lineHeight: 20, marginTop: 8 },
+    celebrate: { alignItems: 'center', gap: 14, paddingTop: 24 },
+    badge: {
+      width: 96, height: 96, borderRadius: 48, alignItems: 'center', justifyContent: 'center',
+      backgroundColor: Colors.successSurface,
     },
-    statusApproved: { backgroundColor: V6Colors.successSurface, borderColor: V6Colors.successBorder },
-    statusPending: { backgroundColor: V6Colors.warningSurface, borderColor: V6Colors.warningBorder },
-    statusRejected: { backgroundColor: V6Colors.dangerSurface, borderColor: V6Colors.dangerBorder },
-    statusTextBox: { flex: 1, gap: 3 },
-    statusTitle: {
-      color: V6Colors.ink900,
-      fontFamily: 'Inter',
-      fontSize: 16.5,
-      fontWeight: '800',
-    },
-    statusBody: { color: V6Colors.ink700, fontFamily: 'Inter', fontSize: 15.5, lineHeight: 19 },
-    statusAction: { color: V6Colors.link, fontFamily: 'Inter', fontSize: 15, fontWeight: '700', marginTop: 6 },
-    notice: {
-      flexDirection: 'row',
-      gap: 10,
-      backgroundColor: V6Colors.ink50,
-      borderRadius: 14,
-      padding: 14,
-    },
-    noticeText: { flex: 1, color: V6Colors.ink700, fontFamily: 'Inter', fontSize: 15.5, lineHeight: 19 },
-    photoRow: { flexDirection: 'row', gap: 12 },
+    approvedTitle: { color: V6Colors.ink900, fontFamily: 'Inter', fontSize: 24, fontWeight: '700', lineHeight: 30, textAlign: 'center' },
+    approvedBody: { color: V6Colors.ink700, fontFamily: 'Inter', fontSize: 15, lineHeight: 21, textAlign: 'center' },
     stepTitle: { color: V6Colors.ink900, fontFamily: 'Inter', fontSize: 22, fontWeight: '700', lineHeight: 28 },
+    stepHint: { color: V6Colors.ink700, fontFamily: 'Inter', fontSize: 15.5, lineHeight: 21 },
     optionList: { gap: 8 },
     previewFrame: { height: 280, borderRadius: 14, overflow: 'hidden', backgroundColor: V6Colors.ink50 },
     checkBox: {
       backgroundColor: V6Colors.surface, borderRadius: 14, borderWidth: 1, borderColor: V6Colors.line, padding: 14,
     },
     preview: { width: '100%', height: '100%' },
-    stepHint: { color: V6Colors.ink700, fontFamily: 'Inter', fontSize: 15.5, lineHeight: 21, marginTop: -8 },
     faceFrame: {
       width: 200, height: 200, borderRadius: 100, alignSelf: 'center', overflow: 'hidden',
       alignItems: 'center', justifyContent: 'center', backgroundColor: V6Colors.ink50,
       borderWidth: 1.5, borderStyle: 'dashed', borderColor: V6Colors.fieldBorder,
     },
-
-
-    submitButton: {
-      alignItems: 'center',
-      justifyContent: 'center',
-      backgroundColor: Colors.primary,
-      borderRadius: 24,
-      paddingVertical: 15,
-      marginTop: 4,
-    },
-    submitText: { color: Colors.onPrimary, fontSize: 18.5, fontWeight: '700', fontFamily: 'Inter' },
+    photoRow: { flexDirection: 'row', gap: 12 },
     profileNotice: {
       backgroundColor: V6Colors.warningSurface, borderWidth: 1, borderColor: V6Colors.warningBorder,
       borderRadius: 14, padding: 14, gap: 4,
@@ -759,7 +733,6 @@ function createThemedStyles(theme: ThemePalette) {
     profileNoticeBody: { color: V6Colors.ink700, fontFamily: 'Inter', fontSize: 14, lineHeight: 20 },
     errorText: { color: Colors.dangerText, fontFamily: 'Inter', fontSize: 15.5, textAlign: 'center' },
     retryHint: { color: V6Colors.ink500, fontFamily: 'Inter', fontSize: 14, textAlign: 'center' },
-
   });
   return { Colors, V6Colors, styles };
 }
