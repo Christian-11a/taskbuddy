@@ -1,28 +1,19 @@
 /**
  * HONotificationsScreen.tsx
  *
- * v6 design: matches taskbuddy_UI_update.html's #ho-notifications screen —
- * flat white .topbar (not a dark hero), a single bordered .notification-list
- * card with hairline-divided .notif-row items (no date-group headers — the
- * mockup renders one flat list), unread rows tinted `#f2fbfd` with a small
- * dot, read rows plain.
- *
- * A notification about a job opens it: "New application" goes straight to
- * that job's proposals, anything else to the job itself. Each row can be
- * deleted, and "Clear all" empties the list.
+ * Notifications for the homeowner, grouped Today / Earlier. A row opens the job
+ * it is about (a new application goes to its proposals). The trash button hides
+ * the row and offers Undo; the delete is sent only once that window passes.
+ * "Clear all" keeps its confirm, because it removes the whole list.
  */
 
 import { useThemedStyles, type Palette as ThemePalette } from '../../../src/context/ThemeContext';
 import React, { useState } from 'react';
-import {
-  ActivityIndicator,
-  ScrollView,
-  StyleSheet,
-  Text,
-  View,
-} from 'react-native';
+import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import Tap from '../../../src/components/ui/Tap';
 import ContentSkeleton from '../../../src/components/ui/ContentSkeleton';
+import EmptyRow from '../../../src/components/ui/EmptyRow';
+import NotificationCard from '../../../src/components/ui/NotificationCard';
 import {
   ArrowLeft,
   BadgeCheck,
@@ -34,8 +25,6 @@ import {
   Megaphone,
   MessageCircle,
   ShieldAlert,
-  Trash2,
-  Trophy,
   Wallet,
 } from 'lucide-react-native';
 import ConfirmationModal from '../../../src/components/ConfirmationModal';
@@ -48,6 +37,7 @@ import { showToast } from '../../../src/components/Toast';
 import { api } from '../../../src/lib/api';
 import { timeAgo } from '../../../src/lib/format';
 import { resolveNotificationTarget } from '../../../src/lib/notificationRouting';
+import { groupNotificationsByDay, notificationTone } from '../../../src/lib/notificationPresentation';
 
 interface NotificationRow {
   id: string;
@@ -60,8 +50,6 @@ interface NotificationRow {
   data: { job_id?: string; application_id?: string; conversation_id?: string; request_id?: string; dispute_id?: string } | null;
 }
 
-const NEGATIVE_TITLE = /reject|declin|not approved|failed/i;
-
 const ICON_BY_TYPE: Record<string, LucideIcon> = {
   recommendation_invite: BriefcaseBusiness,
   application_update: CircleCheckBig,
@@ -72,6 +60,10 @@ const ICON_BY_TYPE: Record<string, LucideIcon> = {
   payment_update: Wallet,
   announcement: Megaphone,
 };
+
+// The header back button is 38 dp; the extra 5 dp on each side reaches 48.
+const BACK_HIT_SLOP = { top: 5, bottom: 5, left: 5, right: 5 } as const;
+const LINK_HIT_SLOP = { top: 15, bottom: 15, left: 8, right: 8 } as const;
 
 interface HONotificationsProps {
   onBack: () => void;
@@ -85,12 +77,18 @@ interface HONotificationsProps {
 export default function HONotificationsScreen({ onBack, onOpenJob, onOpenProposals, onOpenChat, onOpenDispute }: HONotificationsProps) {
   const { C, styles, V6Colors } = useThemedStyles(createThemedStyles);
   const headerTop = useHeaderTop();
-  const { notifications: data, loading, error, reload, unreadCount } = useNotifications();  const [actionError, setActionError] = useState<string | null>(null);
+  const { notifications, loading, error, reload, unreadCount } = useNotifications();
+  const [actionError, setActionError] = useState<string | null>(null);
   const [pendingReadId, setPendingReadId] = useState<string | null>(null);
   const deletion = useNotificationDeletion();
   const [confirmClear, setConfirmClear] = useState(false);
-  const [pendingDelete, setPendingDelete] = useState<NotificationRow | null>(null);
-  const notifications = data;
+
+  // Rows waiting out their Undo window are hidden; their unread count leaves the header too.
+  const waiting = deletion.pendingIds;
+  const visible = notifications.filter((n) => !waiting.has(n.id));
+  const hiddenUnread = notifications.filter((n) => waiting.has(n.id) && !n.read_at).length;
+  const shownUnread = Math.max(0, unreadCount - hiddenUnread);
+  const groups = groupNotificationsByDay(visible);
 
   const markAllRead = async () => {
     try {
@@ -132,24 +130,45 @@ export default function HONotificationsScreen({ onBack, onOpenJob, onOpenProposa
     else if (target.kind === 'job') onOpenJob(target.jobId);
   };
 
+  const renderRow = (notif: NotificationRow) => {
+    // The same resolver that decides where a tap goes tells chat and complaint
+    // notifications apart from job updates; a problem outcome wears the alert icon.
+    const kind = resolveNotificationTarget('homeowner', notif.data ?? {}).kind;
+    const tone = notificationTone({ title: notif.title, body: notif.body, type: notif.type });
+    const Icon = tone === 'danger' ? ShieldAlert : kind === 'chat' ? MessageCircle : kind === 'dispute' ? ShieldAlert : ICON_BY_TYPE[notif.type] ?? BellRing;
+    return (
+      <NotificationCard
+        key={notif.id}
+        title={notif.title}
+        body={notif.body}
+        time={timeAgo(notif.created_at)}
+        tone={tone}
+        icon={Icon}
+        unread={!notif.read_at}
+        pending={pendingReadId === notif.id}
+        onPress={() => openNotification(notif)}
+        onDelete={() => deletion.removeWithUndo(notif.id)}
+      />
+    );
+  };
+
+  const renderGroup = (label: string, rows: NotificationRow[]) => {
+    if (rows.length === 0) return null;
+    return (
+      <View>
+        <Text style={styles.groupTitle}>{label}</Text>
+        <View style={styles.cards}>{rows.map(renderRow)}</View>
+      </View>
+    );
+  };
+
   return (
     <View style={styles.screen}>
-      {/* Header — matches .topbar (flat white, not a dark hero) */}
       <View style={[styles.header, { paddingTop: headerTop }]}>
-        <Tap style={styles.backBtn} onPress={onBack} activeOpacity={0.8}>
+        <Tap style={styles.backBtn} onPress={onBack} activeOpacity={0.8} hitSlop={BACK_HIT_SLOP} accessibilityRole="button" accessibilityLabel="Back">
           <ArrowLeft size={20} color={C.ink700} />
         </Tap>
         <Text style={styles.headerTitle} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8}>Notifications</Text>
-        {unreadCount > 0 && (
-          <Tap onPress={markAllRead} activeOpacity={0.8}>
-            <Text style={styles.markAllText} numberOfLines={1} maxFontSizeMultiplier={1.15}>Mark all read</Text>
-          </Tap>
-        )}
-        {unreadCount === 0 && notifications.length > 0 && (
-          <Tap onPress={() => setConfirmClear(true)} activeOpacity={0.8}>
-            <Text style={styles.markAllText}>Clear all</Text>
-          </Tap>
-        )}
       </View>
 
       <ConfirmationModal
@@ -164,88 +183,50 @@ export default function HONotificationsScreen({ onBack, onOpenJob, onOpenProposa
         onCancel={() => setConfirmClear(false)}
       />
 
-      <ConfirmationModal
-        visible={pendingDelete !== null}
-        title="Delete notification?"
-        message={pendingDelete ? `Delete “${pendingDelete.title}” from your notifications?` : ''}
-        confirmLabel="Delete"
-        cancelLabel="Keep"
-        destructive
-        onConfirm={() => {
-          if (!pendingDelete) return;
-          const id = pendingDelete.id;
-          setPendingDelete(null);
-          void deletion.remove(id);
-        }}
-        onCancel={() => setPendingDelete(null)}
-      />
-
       <ScrollView
         style={styles.body}
         contentContainerStyle={styles.bodyContent}
         showsVerticalScrollIndicator={false}
       >
+        {notifications.length > 0 && (
+          <View style={styles.summaryRow}>
+            <Text style={styles.summaryText} numberOfLines={1}>
+              {shownUnread > 0 ? `${shownUnread} unread` : ''}
+            </Text>
+            {unreadCount > 0 ? (
+              <Tap onPress={markAllRead} activeOpacity={0.8} hitSlop={LINK_HIT_SLOP} accessibilityRole="button" accessibilityLabel="Mark all read">
+                <Text style={styles.linkText} numberOfLines={1} maxFontSizeMultiplier={1.15}>Mark all read</Text>
+              </Tap>
+            ) : (
+              <Tap onPress={() => setConfirmClear(true)} activeOpacity={0.8} hitSlop={LINK_HIT_SLOP} accessibilityRole="button" accessibilityLabel="Clear all notifications">
+                <Text style={styles.linkText}>Clear all</Text>
+              </Tap>
+            )}
+          </View>
+        )}
+
         {actionError && (
           <View style={styles.banner}>
             <Text style={styles.bannerText}>{actionError}</Text>
-            <Tap onPress={() => void reload()} activeOpacity={0.8}>
+            <Tap onPress={() => void reload()} activeOpacity={0.8} hitSlop={LINK_HIT_SLOP} accessibilityRole="button" accessibilityLabel="Retry">
               <Text style={styles.bannerAction}>Retry</Text>
             </Tap>
           </View>
         )}
         {loading && <ContentSkeleton variant="list" />}
         {!!error && !loading && <Text style={styles.stateText}>{error}</Text>}
-        {!loading && !error && notifications.length === 0 && (
-          <Text style={styles.stateText}>You have no notifications yet.</Text>
-        )}
-
-        {notifications.length > 0 && (
-          <View style={styles.notificationList}>
-            {notifications.map((notif, i) => {
-              // Icon only: the same resolver that decides where a tap goes
-              // tells chat and complaint notifications apart from job updates.
-              const kind = resolveNotificationTarget('homeowner', notif.data ?? {}).kind;
-              // A rejection or decline should not wear the same check badge as an
-              // approval: same type, different outcome.
-              const negative = NEGATIVE_TITLE.test(notif.title ?? '');
-              const Icon = negative ? ShieldAlert : kind === 'chat' ? MessageCircle : kind === 'dispute' ? ShieldAlert : ICON_BY_TYPE[notif.type] ?? BellRing;
-              const isUnread = !notif.read_at;
-              return (
-                <Tap
-                  key={notif.id}
-                  style={[
-                    styles.notifRow,
-                    i < notifications.length - 1 && styles.notifRowBorder,
-                    isUnread && styles.notifRowUnread,
-                    pendingReadId === notif.id && styles.notifRowPending,
-                  ]}
-                  activeOpacity={0.85}
-                  onPress={() => openNotification(notif)}
-                  disabled={pendingReadId === notif.id}
-                >
-                  <View style={[styles.notifIcon, isUnread && styles.notifIconUnread]}>
-                    <Icon size={19} color={negative ? V6Colors.dangerText : V6Colors.link} />
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.notifTitle}>{notif.title}</Text>
-                    <Text style={styles.notifBody}>{notif.body}</Text>
-                    <Text style={styles.notifTime}>{timeAgo(notif.created_at)}</Text>
-                  </View>
-                  {isUnread && <View style={styles.unreadDot} />}
-                  <Tap
-                    style={styles.deleteBtn}
-                    onPress={() => setPendingDelete(notif)}
-                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                    accessibilityRole="button"
-                    accessibilityLabel={`Delete notification: ${notif.title}`}
-                  >
-                    <Trash2 size={16} color={C.ink300} />
-                  </Tap>
-                </Tap>
-              );
-            })}
+        {!loading && !error && visible.length === 0 && (
+          <View style={styles.emptyCard}>
+            <EmptyRow
+              icon={BellRing}
+              title="You're all caught up"
+              body="New proposals, bookings and messages will show up here."
+            />
           </View>
         )}
+
+        {renderGroup('Today', groups.today)}
+        {renderGroup('Earlier', groups.earlier)}
         <View style={{ height: 20 }} />
       </ScrollView>
     </View>
@@ -271,10 +252,23 @@ function createThemedStyles(theme: ThemePalette) {
       alignItems: 'center', justifyContent: 'center', flexShrink: 0,
     },
     headerTitle: { flex: 1, color: C.ink900, fontSize: 19.5, fontWeight: '800', fontFamily: 'Inter', letterSpacing: -0.27 },
-    markAllText: { color: V6Colors.link, fontSize: 14, fontWeight: '700', fontFamily: 'Inter' },
 
     body: { flex: 1 },
     bodyContent: { paddingHorizontal: Spacing.screenH, paddingTop: 14, paddingBottom: 20 },
+
+    summaryRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 12 },
+    summaryText: { flex: 1, color: V6Colors.ink500, fontSize: 13, fontWeight: '600', fontFamily: 'Inter' },
+    linkText: { color: Colors.link, fontSize: 14, fontWeight: '700', fontFamily: 'Inter' },
+
+    groupTitle: {
+      color: V6Colors.ink500, fontSize: 13, fontWeight: '700', fontFamily: 'Inter',
+      letterSpacing: 0.6, textTransform: 'uppercase', marginBottom: 8,
+    },
+    cards: { gap: 8, marginBottom: 16 },
+    emptyCard: {
+      backgroundColor: C.surface, borderWidth: 1, borderColor: V6Colors.line,
+      borderRadius: 16, paddingHorizontal: 16,
+    },
 
     stateText: { color: C.ink500, fontSize: 16.5, fontFamily: 'Inter', textAlign: 'center', marginTop: 30 },
     banner: {
@@ -283,29 +277,7 @@ function createThemedStyles(theme: ThemePalette) {
       borderRadius: 12, padding: 10, marginBottom: 12,
     },
     bannerText: { flex: 1, color: V6Colors.dangerText, fontSize: 12.5, fontFamily: 'Inter', lineHeight: 18 },
-    bannerAction: { color: V6Colors.link, fontSize: 12.5, fontWeight: '700', fontFamily: 'Inter', marginLeft: 12 },
-
-    notificationList: {
-      backgroundColor: C.surface, borderWidth: 1, borderColor: C.line,
-      borderRadius: 16, overflow: 'hidden',
-    },
-    notifRow: { flexDirection: 'row', gap: 11, padding: 14, position: 'relative' },
-    notifRowBorder: { borderBottomWidth: 1, borderBottomColor: V6Colors.wellBg },
-    notifRowUnread: { backgroundColor: V6Colors.infoSurface },
-    notifRowPending: { opacity: 0.7 },
-    notifIcon: {
-      width: 34, height: 34, borderRadius: 12,
-      backgroundColor: V6Colors.canvas, alignItems: 'center', justifyContent: 'center', flexShrink: 0,
-    },
-    notifIconUnread: { backgroundColor: C.surface },
-    notifTitle: { color: C.ink900, fontSize: 13.5, fontWeight: '700', fontFamily: 'Inter' },
-    notifBody: { color: C.ink500, fontSize: 12.5, fontFamily: 'Inter', lineHeight: 16.5, marginTop: 3 },
-    notifTime: { color: C.ink300, fontSize: 11.5, fontFamily: 'Inter', marginTop: 4 },
-    deleteBtn: { alignSelf: 'center', padding: 4 },
-    unreadDot: {
-      position: 'absolute', left: 6, top: 17,
-      width: 7, height: 7, borderRadius: 4, backgroundColor: C.cyan500,
-    },
+    bannerAction: { color: Colors.link, fontSize: 12.5, fontWeight: '700', fontFamily: 'Inter', marginLeft: 12 },
   });
   return { Colors, V6Colors, C, styles };
 }
