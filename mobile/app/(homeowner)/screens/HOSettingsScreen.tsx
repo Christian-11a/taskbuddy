@@ -39,11 +39,10 @@ import {
 import { Spacing } from '../../../src/constants/theme';
 import { useHeaderTop } from '../../../src/hooks/useHeaderTop';
 
-import ConfirmationModal from '../../../src/components/ConfirmationModal';
+import DeleteAccountModal from '../../../src/components/DeleteAccountModal';
 import ChangePasswordModal from '../../../src/components/ChangePasswordModal';
 import { useSettings } from '../../../src/hooks/useSettings';
 import { useAuth } from '../../../src/context/AuthContext';
-import { api, ApiError } from '../../../src/lib/api';
 import { appVersion } from '../../../src/lib/appVersion';
 
 // The header back button is 38 dp; the extra 5 dp on each side reaches 48.
@@ -65,31 +64,6 @@ export default function HOSettingsScreen({ onBack, onLogout }: HOSettingsScreenP
   const [showPasswordModal, setShowPasswordModal] = useState(false);
   const [showLanguageModal, setShowLanguageModal] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
-  const [deleting, setDeleting] = useState(false);
-  const [deleteError, setDeleteError] = useState<string | null>(null);
-
-  const handleDelete = async () => {
-    setDeleting(true);
-    setDeleteError(null);
-    try {
-      await api.deleteAccount();
-      setShowDeleteModal(false);
-      onLogout();
-    } catch (e) {
-      if (e instanceof ApiError && e.status === 409) {
-        const blockers = (e.details as { blockers?: { message?: string }[] } | undefined)?.blockers;
-        if (blockers?.length) {
-          setDeleteError(blockers.map((blocker) => blocker.message).filter(Boolean).join('\n'));
-        } else {
-          setDeleteError(e.message);
-        }
-      } else {
-        setDeleteError(e instanceof Error ? e.message : 'Could not delete your account. Please try again.');
-      }
-    } finally {
-      setDeleting(false);
-    }
-  };
 
   return (
     <View style={styles.screen}>
@@ -233,20 +207,10 @@ export default function HOSettingsScreen({ onBack, onLogout }: HOSettingsScreenP
             </Tap>
     </SheetFrame>
 
-      <ConfirmationModal
+      <DeleteAccountModal
         visible={showDeleteModal}
-        title="Delete your account?"
-        message={deleteError ?? 'This permanently removes your personal details and signs you out. You must first clear any wallet balance, pending withdrawal, active job, escrow hold, or dispute.'}
-        confirmLabel={deleting ? 'Deleting…' : deleteError ? 'Try Again' : 'Delete Account'}
-        cancelLabel="Cancel"
-        destructive
-        onConfirm={() => void handleDelete()}
-        onCancel={() => {
-          if (deleting) return;
-          setDeleteError(null);
-          setShowDeleteModal(false);
-        }}
-        busy={deleting}
+        onClose={() => setShowDeleteModal(false)}
+        onDeleted={onLogout}
       />
     </View>
   );

@@ -21,7 +21,7 @@ jest.mock('../../../../src/lib/api', () => ({
 const renderScreen = () =>
   render(<ThemeProvider><HOSettingsScreen onBack={jest.fn()} onLogout={jest.fn()} /></ThemeProvider>);
 
-describe('HOSettingsScreen — Delete Account confirm styling (code-review finding 5)', () => {
+describe('HOSettingsScreen — Delete account confirm styling (code-review finding 5)', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockUseAuth.mockReturnValue({ profile: { has_password: true } });
@@ -34,15 +34,15 @@ describe('HOSettingsScreen — Delete Account confirm styling (code-review findi
     });
   });
 
-  it('renders the Delete Account confirm button red, like the other destructive dialogs', async () => {
+  it('renders the Delete my account button red, like the other destructive sheets', async () => {
     render(<ThemeProvider><HOSettingsScreen onBack={jest.fn()} onLogout={jest.fn()} /></ThemeProvider>);
     await waitFor(() => expect(screen.getByTestId('toggle-push_enabled').props.disabled).toBe(false));
 
     fireEvent.press(screen.getByTestId('settings-delete-account-row'));
 
-    await waitFor(() => expect(screen.getByLabelText('Delete Account')).toBeTruthy());
+    await waitFor(() => expect(screen.getByLabelText('Delete my account')).toBeTruthy());
 
-    const button = screen.getByLabelText('Delete Account');
+    const button = screen.getByLabelText('Delete my account');
     const flatStyle = ([] as Record<string, unknown>[]).concat(button.props.style).reduce(
       (acc: Record<string, unknown>, s: Record<string, unknown>) => ({ ...acc, ...s }),
       {},
@@ -55,6 +55,35 @@ describe('HOSettingsScreen — Delete Account confirm styling (code-review findi
     render(<ThemeProvider><HOSettingsScreen onBack={jest.fn()} onLogout={jest.fn()} /></ThemeProvider>);
     await waitFor(() => expect(screen.getByTestId('toggle-push_enabled').props.disabled).toBe(false));
     expect(screen.queryByText('Change password')).toBeNull();
+  });
+});
+
+describe('HOSettingsScreen — delete account', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockUseAuth.mockReturnValue({ profile: { has_password: true } });
+    (api.settings as jest.Mock).mockResolvedValue({
+      push_enabled: true,
+      email_enabled: true,
+      sms_enabled: false,
+      location_sharing: true,
+      dark_mode: false,
+    });
+  });
+
+  it('deletes through the shared sheet and signs out once, after the delete succeeds', async () => {
+    (api.deleteAccount as jest.Mock).mockResolvedValue(undefined);
+    const onLogout = jest.fn();
+    render(<ThemeProvider><HOSettingsScreen onBack={jest.fn()} onLogout={onLogout} /></ThemeProvider>);
+    await waitFor(() => expect(screen.getByTestId('toggle-push_enabled').props.disabled).toBe(false));
+
+    fireEvent.press(screen.getByTestId('settings-delete-account-row'));
+    expect(api.deleteAccount).not.toHaveBeenCalled();
+
+    fireEvent.press(await screen.findByRole('button', { name: 'Delete my account' }));
+
+    await waitFor(() => expect(onLogout).toHaveBeenCalledTimes(1));
+    expect(api.deleteAccount).toHaveBeenCalledTimes(1);
   });
 });
 
