@@ -338,6 +338,8 @@ export default function HOWalletScreen() {
         <Text
           style={[styles.txnAmount, incoming ? styles.txnAmountIn : styles.txnAmountOut]}
           numberOfLines={1}
+          adjustsFontSizeToFit
+          minimumFontScale={0.7}
         >
           {amountText}
         </Text>
@@ -370,7 +372,7 @@ export default function HOWalletScreen() {
         {/* Balance card: the hero blue, with Add money (white) and Withdraw (translucent). */}
         <View style={styles.balanceCard}>
           <Text style={styles.balanceLabel}>Available balance</Text>
-          <Text style={styles.balanceAmount} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.6}>
+          <Text style={styles.balanceAmount} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>
             {data ? peso(data.balance) : '—'}
           </Text>
           <View style={styles.balanceActions}>
@@ -432,7 +434,7 @@ export default function HOWalletScreen() {
                   )}
                 </View>
                 <View style={styles.withdrawalAmountCol}>
-                  <Text style={styles.rowAmount}>{peso(withdrawal.amount)}</Text>
+                  <Text style={styles.rowAmount} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>{peso(withdrawal.amount)}</Text>
                   {withdrawal.status === 'pending' && (
                     <Tap
                       onPress={() => void cancelWithdrawal(withdrawal.id)}

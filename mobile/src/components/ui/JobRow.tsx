@@ -23,7 +23,7 @@ export default function JobRow({ title, meta, amount, date, tone, onPress, testI
         <View style={s.metaRow} testID="job-row-meta">
           <View style={[s.dot, { backgroundColor: t.dot }]} accessible={false} />
           <Text style={[s.meta, { color: t.text }, tone === 'applied' && s.metaStrong]} numberOfLines={1}>{meta}</Text>
-          <Text style={s.amount} numberOfLines={1}>{amount}</Text>
+          <Text style={s.amount} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>{amount}</Text>
         </View>
       </View>
     </Tap>

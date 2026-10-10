@@ -89,6 +89,17 @@ describe('HirePaymentModal: choosing how to pay', () => {
     expect(props.onPayCard).not.toHaveBeenCalled();
   });
 
+  it('the confirm page amount, the wallet-after figure and the confirm button shrink instead of being cut off', () => {
+    renderSheet();
+    fireEvent.press(walletRadio());
+    fireEvent.press(screen.getByRole('button', { name: 'Continue' }));
+
+    const fit = expect.objectContaining({ numberOfLines: 1, adjustsFontSizeToFit: true, minimumFontScale: 0.7 });
+    expect(screen.getByLabelText('Amount ₱1,000.00').props).toEqual(fit);
+    expect(screen.getByText('₱4,000.00').props).toEqual(fit);
+    expect(screen.getByText('Confirm and hire · ₱1,000.00').props).toEqual(fit);
+  });
+
   it('Confirm pays by card exactly once when the card was chosen', () => {
     const { props } = renderSheet();
 

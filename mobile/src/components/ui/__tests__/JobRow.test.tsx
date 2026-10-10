@@ -27,3 +27,10 @@ it('renders the needs-you tone without crashing', () => {
   render(<JobRow title="Cleaning" meta="2 proposals to review" amount="₱1.00" tone="needsYou" />);
   expect(screen.getByText('2 proposals to review')).toBeTruthy();
 });
+
+it('shrinks a big amount to fit on one line instead of cutting it off', () => {
+  render(<JobRow title={LONG} meta="Confirmed" amount="₱1,248,397.00" tone="booked" />);
+  expect(screen.getByText('₱1,248,397.00').props).toEqual(
+    expect.objectContaining({ numberOfLines: 1, adjustsFontSizeToFit: true, minimumFontScale: 0.7 }),
+  );
+});

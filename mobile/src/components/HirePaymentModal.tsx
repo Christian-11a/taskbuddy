@@ -152,7 +152,7 @@ export default function HirePaymentModal({
           {hasBudget && (
             <View style={styles.summaryRow}>
               <Text style={styles.summaryLabel}>Amount</Text>
-              <Text style={styles.summaryValue} accessibilityLabel={`Amount ${peso(budget)}`}>{peso(budget)}</Text>
+              <Text style={styles.summaryValue} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7} accessibilityLabel={`Amount ${peso(budget)}`}>{peso(budget)}</Text>
             </View>
           )}
         </View>
@@ -242,7 +242,7 @@ export default function HirePaymentModal({
     <>
       <Text style={styles.eyebrow}>{hasBudget ? "You're paying" : "You're hiring"}</Text>
       {hasBudget ? (
-        <Text style={styles.amount} accessibilityLabel={`Amount ${peso(budget)}`}>{peso(budget)}</Text>
+        <Text style={styles.amount} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7} accessibilityLabel={`Amount ${peso(budget)}`}>{peso(budget)}</Text>
       ) : (
         <Text style={styles.hireName} numberOfLines={2}>{providerName}</Text>
       )}
@@ -260,7 +260,7 @@ export default function HirePaymentModal({
         {hasBudget && !payingByCard && available != null && (
           <View style={styles.summaryRow}>
             <Text style={styles.summaryLabel}>Wallet after</Text>
-            <Text style={styles.summaryValue}>{peso(available - budget)}</Text>
+            <Text style={styles.summaryValue} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>{peso(available - budget)}</Text>
           </View>
         )}
         {!!jobTitle && (
@@ -292,7 +292,7 @@ export default function HirePaymentModal({
         {busy !== null ? (
           <ActivityIndicator color={Colors.onPrimary} />
         ) : (
-          <Text style={styles.primaryText}>{confirmLabel}</Text>
+          <Text style={styles.primaryText} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>{confirmLabel}</Text>
         )}
       </Tap>
 

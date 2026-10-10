@@ -37,6 +37,14 @@ describe('PaymentOption', () => {
     expect(screen.getByRole('radio', { name: 'GCash, 0917 *** 4821', selected: true })).toBeTruthy();
   });
 
+  it('shrinks a detail that carries an amount instead of cutting it off', () => {
+    render(<PaymentOption title="Wallet" meta="₱1,248,397.00 available" icon={Wallet} selected={false} onSelect={jest.fn()} />);
+
+    expect(screen.getByText('₱1,248,397.00 available').props).toEqual(
+      expect.objectContaining({ numberOfLines: 1, adjustsFontSizeToFit: true, minimumFontScale: 0.7 }),
+    );
+  });
+
   it('cannot be selected while disabled', () => {
     const onSelect = jest.fn();
     render(

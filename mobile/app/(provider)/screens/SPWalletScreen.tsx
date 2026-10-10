@@ -102,7 +102,7 @@ export default function SPWalletScreen({ onNavigate }: SPWalletScreenProps) {
             {txn.status === 'completed' ? 'Settlement reference' : 'Review note'}: {txn.review_note}
           </Text>}
         </View>
-        <Text style={[styles.txnAmount, incoming ? styles.txnAmountIn : styles.txnAmountOut]} numberOfLines={1}>
+        <Text style={[styles.txnAmount, incoming ? styles.txnAmountIn : styles.txnAmountOut]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>
           {amountText}
         </Text>
       </View>
@@ -119,7 +119,7 @@ export default function SPWalletScreen({ onNavigate }: SPWalletScreenProps) {
         {/* Balance: the navy card, with the one Withdraw action. */}
         <View style={styles.balanceCard}>
           <Text style={styles.balanceLabel}>Available to withdraw</Text>
-          <Text style={styles.balanceAmount} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.6}>
+          <Text style={styles.balanceAmount} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>
             {data ? peso(data.available) : '—'}
           </Text>
           {!!data && data.pending_withdrawals > 0 && (
@@ -153,7 +153,7 @@ export default function SPWalletScreen({ onNavigate }: SPWalletScreenProps) {
             {pendingWithdrawals.map((w) => (
               <View key={w.id} style={styles.pendingRow}>
                 <View style={styles.pendingInfo}>
-                  <Text style={styles.pendingAmount}>{peso(w.amount)}</Text>
+                  <Text style={styles.pendingAmount} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>{peso(w.amount)}</Text>
                   <Text style={styles.pendingDate}>
                     Requested {shortDate(w.created_at)} · Pending
                   </Text>

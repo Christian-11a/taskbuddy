@@ -119,7 +119,7 @@ export function WithdrawSheetBody({
     return (
       <View testID="withdraw-sheet-body" style={styles.body}>
         <Text style={styles.overline}>You're withdrawing</Text>
-        <Text style={styles.bigAmount} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.6}>
+        <Text style={styles.bigAmount} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>
           {peso(reading.amount)}
         </Text>
         <View style={styles.details}>
@@ -145,7 +145,7 @@ export function WithdrawSheetBody({
       <Text style={styles.title} accessibilityRole="header">Withdraw</Text>
       <View style={styles.availableRow}>
         <Text style={styles.availableLabel}>Available</Text>
-        <Text style={styles.availableValue}>{peso(available)}</Text>
+        <Text style={styles.availableValue} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>{peso(available)}</Text>
       </View>
       <MoneyAmountField
         accessibilityLabel="Amount to withdraw"
@@ -180,6 +180,15 @@ export function WithdrawSheetBody({
   );
 }
 
+/**
+ * A text field cannot shrink its text the way a Text does, so the figure steps
+ * down as it grows. A long amount then stays inside the box at 1.3x system text.
+ */
+function amountFontSize(text: string): number {
+  if (text.length <= 7) return 40;
+  return text.length <= 9 ? 32 : 26;
+}
+
 /** A big amount field with the peso sign, for the Add money and Withdraw sheets. Errors show after it is left or submitted. */
 export function MoneyAmountField({
   accessibilityLabel,
@@ -210,7 +219,7 @@ export function MoneyAmountField({
         <Text style={styles.currency}>₱</Text>
         <TextInput
           keyboardAppearance={appearance}
-          style={styles.amountInput}
+          style={[styles.amountInput, { fontSize: amountFontSize(value) }]}
           value={value}
           onChangeText={onChangeText}
           keyboardType="decimal-pad"
@@ -272,7 +281,14 @@ export function MoneySheetButton({
       {busy ? (
         <ActivityIndicator color={Colors.onPrimary} />
       ) : (
-        <Text style={[styles.primaryLabel, inactive ? styles.primaryLabelOff : styles.primaryLabelOn]}>{label}</Text>
+        <Text
+          style={[styles.primaryLabel, inactive ? styles.primaryLabelOff : styles.primaryLabelOn]}
+          numberOfLines={1}
+          adjustsFontSizeToFit
+          minimumFontScale={0.7}
+        >
+          {label}
+        </Text>
       )}
     </Tap>
   );

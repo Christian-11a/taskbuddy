@@ -268,6 +268,36 @@ describe('WithdrawModal — button labels always render (FLOWS bug 3)', () => {
   });
 });
 
+describe('WithdrawModal — money text fits its line instead of being cut off', () => {
+  const fit = expect.objectContaining({ numberOfLines: 1, adjustsFontSizeToFit: true, minimumFontScale: 0.7 });
+
+  it('the available amount on the form page shrinks to fit', () => {
+    renderSheet();
+
+    expect(screen.getByText('₱425.00').props).toEqual(fit);
+  });
+
+  it('the amount field steps its text down for a long figure, so it stays inside the box at 1.3x text', () => {
+    renderSheet();
+    const field = () => screen.getByLabelText('Amount to withdraw');
+
+    fireEvent.changeText(field(), '400');
+    expect(styleOf(field()).fontSize).toBe(40);
+
+    fireEvent.changeText(field(), '1248397.00');
+    expect(styleOf(field()).fontSize).toBeLessThan(40);
+  });
+
+  it('the amount on the confirmation page and the Request button shrink to fit', () => {
+    renderSheet();
+    fill('400', 'GCash 0917 123 4567');
+    fireEvent.press(screen.getByRole('button', { name: 'Continue' }));
+
+    expect(screen.getByText('₱400.00').props).toEqual(fit);
+    expect(screen.getByText('Request ₱400.00').props).toEqual(fit);
+  });
+});
+
 describe('WithdrawModal — the sheet body keeps a margin from the screen edges', () => {
   it('pads the form page 20 dp on both sides', () => {
     renderSheet();

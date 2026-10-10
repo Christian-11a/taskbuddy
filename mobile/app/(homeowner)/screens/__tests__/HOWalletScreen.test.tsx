@@ -652,6 +652,15 @@ describe('HOWalletScreen — balance card, tiles and history', () => {
     expect(screen.getByRole('button', { name: 'Withdraw' })).toBeTruthy();
   });
 
+  it('the balance, a tile amount and a history amount shrink to fit instead of being cut off', async () => {
+    render(<HOWalletScreen />);
+
+    const fit = expect.objectContaining({ numberOfLines: 1, adjustsFontSizeToFit: true, minimumFontScale: 0.7 });
+    expect((await screen.findByText('₱1,250.00')).props).toEqual(fit);
+    expect(screen.getByText('₱300.00').props).toEqual(fit);
+    expect(screen.getByText('−₱100.00').props).toEqual(fit);
+  });
+
   it('shows Held safely from escrow and Rewards from the recovery vouchers', async () => {
     render(<HOWalletScreen />);
 
@@ -727,6 +736,9 @@ describe('HOWalletScreen — balance card, tiles and history', () => {
 
     expect(await screen.findByText('Recent withdrawals')).toBeTruthy();
     expect(screen.getByText('Cash out to GCash')).toBeTruthy();
+    expect(screen.getByText('₱100.00').props).toEqual(
+      expect.objectContaining({ numberOfLines: 1, adjustsFontSizeToFit: true, minimumFontScale: 0.7 }),
+    );
 
     // The reload after a cancel settles inside act, so no state update lands after the test.
     await act(async () => {

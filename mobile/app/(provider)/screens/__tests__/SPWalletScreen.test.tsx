@@ -70,6 +70,13 @@ it('shows the escrow hold and the total earned, with the jobs done under it', as
   expect(screen.getByText('Earned so far')).toBeTruthy();
   expect(screen.getByText('1 job done')).toBeTruthy();
 });
+it('the balance and a pending withdrawal amount shrink to fit instead of being cut off', async () => {
+  (api.wallet as jest.Mock).mockResolvedValue(wallet([transaction('pending-request','pending')]));
+  render(<SPWalletScreen onNavigate={jest.fn()} />);
+  const fit = expect.objectContaining({numberOfLines:1, adjustsFontSizeToFit:true, minimumFontScale:0.7});
+  expect((await screen.findByText('₱300.00')).props).toEqual(fit);
+  expect(screen.getByText('₱350.00').props).toEqual(fit);
+});
 it('signs money coming in with a plus, and leaves a refused payout unsigned', async () => {
   (api.wallet as jest.Mock).mockResolvedValue(wallet([
     {...transaction('paid-job','completed','connect_transfer'),direction:'credit',amount:425,title:'Paid: Plumbing'},
