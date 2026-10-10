@@ -99,6 +99,7 @@ import AddressField from '../../../src/components/AddressField';
 import PostAppBar from '../../../src/components/post/PostAppBar';
 import PostFooter from '../../../src/components/post/PostFooter';
 import PostProgress from '../../../src/components/post/PostProgress';
+import ServiceTile from '../../../src/components/post/ServiceTile';
 import { requestAppPermission } from '../../../src/lib/permissions';
 
 const Shadows = { card: V6Shadows.sm, input: V6Shadows.sm };
@@ -224,7 +225,6 @@ export default function HOCreateJobScreen({
   }, []);
   const [geocodedAddress, setGeocodedAddress] = useState('');
   const [geocoding, setGeocoding] = useState(false);
-  const [useProfileLocation, setUseProfileLocation] = useState(true);
   const [tasks, setTasks] = useState<string[]>([]);
   const [customTask, setCustomTask] = useState('');
   const [date, setDate] = useState<Date | null>(null);
@@ -732,38 +732,12 @@ export default function HOCreateJobScreen({
         {step === 1 && (
           <View>
             <Text style={styles.stepTitle}>What do you need help with?</Text>
-            {!!profile?.address && (
-              <View style={styles.locationPrompt}>
-                <Text style={styles.locationPromptTitle}>Use your default location?</Text>
-                <Text style={styles.locationPromptText}>{profile.address}</Text>
-                <View style={styles.locationPromptActions}>
-                  <Tap
-                    style={[styles.locationChoice, useProfileLocation && styles.locationChoiceActive]}
-                    onPress={() => {
-                      setUseProfileLocation(true);
-                      setLocation(profile.address ?? '');
-                    }}
-                  >
-                    <Text style={styles.locationChoiceText}>Use default</Text>
-                  </Tap>
-                  <Tap
-                    style={[styles.locationChoice, !useProfileLocation && styles.locationChoiceActive]}
-                    onPress={() => {
-                      setUseProfileLocation(false);
-                      setLocation('');
-                    }}
-                  >
-                    <Text style={styles.locationChoiceText}>Enter custom</Text>
-                  </Tap>
-                </View>
-              </View>
-            )}
             {/* Skeleton tiles in the grid's own shape, so the step doesn't
                 jump from a line of text to a two-column grid on arrival. */}
             {categories.loading && (
               <View style={styles.serviceGrid} accessibilityLabel="Loading services">
                 {Array.from({ length: 4 }).map((_, i) => (
-                  <View key={i} style={[styles.serviceCard, styles.serviceCardSkeleton]} />
+                  <View key={i} style={styles.serviceSkeleton} />
                 ))}
               </View>
             )}
@@ -771,13 +745,14 @@ export default function HOCreateJobScreen({
             <View style={styles.serviceGrid}>
               {(categories.data ?? []).map((cat) => {
                 const meta = CATEGORY_META[cat.name] ?? { icon: Hand, desc: '' };
-                const Icon = meta.icon;
-                const active = categoryId === cat.id;
                 return (
-                  <Tap
+                  <ServiceTile
                     key={cat.id}
-                    style={[styles.serviceCard, active && styles.serviceCardActive]}
-                    onPress={() => {
+                    name={cat.name}
+                    detail={meta.desc || undefined}
+                    icon={meta.icon}
+                    selected={categoryId === cat.id}
+                    onSelect={() => {
                       if (cat.id !== categoryId) {
                         // Tasks belong to the category they were picked from.
                         setTasks([]);
@@ -786,14 +761,7 @@ export default function HOCreateJobScreen({
                       setCategoryName(cat.name);
                       setError(null);
                     }}
-                    activeOpacity={0.85}
-                  >
-                    <Icon size={31} color={active ? Colors.brandTeal : Colors.brandDark} />
-                    <Text style={[styles.serviceLabel, active && styles.serviceLabelActive]}>
-                      {cat.name}
-                    </Text>
-                    <Text style={styles.serviceDesc}>{meta.desc}</Text>
-                  </Tap>
+                  />
                 );
               })}
             </View>
@@ -1389,28 +1357,9 @@ function createThemedStyles(theme: ThemePalette) {
 
     stepTitle: { color: V6Colors.ink900, fontSize: 23, fontWeight: '800', fontFamily: 'Inter', marginBottom: 4 },
     stepSubtitle: { color: Colors.muted, fontSize: 16.5, fontFamily: 'Inter', marginBottom: 20, lineHeight: 21 },
-    locationPrompt: { backgroundColor: Colors.surface, borderWidth: 1, borderColor: Colors.line, borderRadius: 14, padding: 14, marginBottom: 16 },
-    locationPromptTitle: { color: Colors.ink900, fontSize: 14.5, fontWeight: '800', fontFamily: 'Inter' },
-    locationPromptText: { color: Colors.muted, fontSize: 13, fontFamily: 'Inter', marginTop: 4 },
-    locationPromptActions: { flexDirection: 'row', gap: 8, marginTop: 12 },
-    locationChoice: { flex: 1, alignItems: 'center', borderWidth: 1, borderColor: Colors.line, borderRadius: 10, paddingVertical: 9 },
-    locationChoiceActive: { backgroundColor: V6Colors.infoSurface, borderColor: Colors.brandTeal },
-    locationChoiceDisabled: { opacity: 0.55 },
-    locationChoiceText: { color: V6Colors.ink900, fontSize: 13, fontWeight: '700', fontFamily: 'Inter' },
-    locationChoiceTextDisabled: { color: Colors.muted },
-
     serviceGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },
-    serviceCard: {
-      width: '47%', backgroundColor: Colors.surface, borderRadius: 16,
-      padding: 16, borderWidth: 2, borderColor: 'transparent',
-      ...Shadows.card,
-    },
-    serviceCardActive: { borderColor: Colors.brandTeal, backgroundColor: V6Colors.infoSurface },
-    // Same footprint as a real service card so the grid doesn't reflow on load.
-    serviceCardSkeleton: { height: 118, backgroundColor: Colors.ink100 },
-    serviceLabel: { color: V6Colors.ink900, fontSize: 16.5, fontWeight: '700', fontFamily: 'Inter', marginBottom: 4 },
-    serviceLabelActive: { color: V6Colors.link },
-    serviceDesc: { color: Colors.slate, fontSize: 14.5, fontFamily: 'Inter' },
+    // Same footprint as a real service tile so the grid doesn't reflow on load.
+    serviceSkeleton: { width: '48%', height: 124, borderRadius: 16, backgroundColor: Colors.ink100 },
 
     inputGroup: { marginBottom: 16 },
     inputLabel: { color: V6Colors.ink900, fontSize: 16.5, fontWeight: '600', fontFamily: 'Inter', marginBottom: 8 },
