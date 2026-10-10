@@ -47,13 +47,58 @@ it('allows appeals on closed cases without offering payment reversal', async () 
   await waitFor(() => expect(api.addDisputeEntry).toHaveBeenCalledWith('case', expect.objectContaining({ kind: 'appeal' })));
   expect(screen.queryByText('Agree to cancellation and refund')).toBeNull();
 });
+const pendingCase = { ...base, escrow_transactions: { status: 'disputed', amount: 800 }, cancellation_state: 'pending',
+  cancellation_deadline: new Date(Date.now() + 3600000).toISOString() };
 it('lets the assigned provider agree or contest before the response deadline', async () => {
-  (api.jobDispute as jest.Mock).mockResolvedValue({ ...base, cancellation_state: 'pending', cancellation_deadline: new Date(Date.now() + 3600000).toISOString() });
+  (api.jobDispute as jest.Mock).mockResolvedValue(pendingCase);
   show();
-  await screen.findByText('Agree to cancellation and refund');
-  fireEvent.changeText(screen.getByLabelText('Case statement'), 'I contest the cancellation');
-  await act(async () => { fireEvent.press(screen.getByText('Contest cancellation')); });
+  await screen.findByText('Agree to cancel');
+  fireEvent.changeText(screen.getByLabelText('Your note'), 'I contest the cancellation');
+  fireEvent.press(screen.getByLabelText('Contest and explain'));
+  await act(async () => { fireEvent.press(await screen.findByLabelText('Contest')); });
   await waitFor(() => expect(api.respondToCancellation).toHaveBeenCalledWith('case', false, 'I contest the cancellation', undefined));
+  expect(api.respondToCancellation).toHaveBeenCalledTimes(1);
+});
+it('asks before agreeing, and sends the answer only once the refund is confirmed', async () => {
+  (api.jobDispute as jest.Mock).mockResolvedValue(pendingCase);
+  show();
+  await screen.findByText('Agree to cancel');
+  fireEvent.changeText(screen.getByLabelText('Your note'), 'Agreed, sorry for the trouble');
+  fireEvent.press(screen.getByText('Agree to cancel'));
+  expect(await screen.findByText('Agree to cancel?')).toBeTruthy();
+  expect(screen.getByText(/₱800.00 goes back to the client's wallet/)).toBeTruthy();
+  expect(api.respondToCancellation).not.toHaveBeenCalled();
+  fireEvent.press(screen.getByLabelText('Go back'));
+  await waitFor(() => expect(screen.queryByText('Agree to cancel?')).toBeNull());
+  expect(api.respondToCancellation).not.toHaveBeenCalled();
+  fireEvent.press(screen.getByText('Agree to cancel'));
+  await act(async () => { fireEvent.press(await screen.findByLabelText('Agree and refund ₱800.00')); });
+  await waitFor(() => expect(api.respondToCancellation).toHaveBeenCalledWith('case', true, 'Agreed, sorry for the trouble', undefined));
+  expect(api.respondToCancellation).toHaveBeenCalledTimes(1);
+});
+it('does not open a confirm from "Go back" on the contest sheet', async () => {
+  (api.jobDispute as jest.Mock).mockResolvedValue(pendingCase);
+  show();
+  await screen.findByText('Agree to cancel');
+  fireEvent.changeText(screen.getByLabelText('Your note'), 'The work was finished');
+  fireEvent.press(screen.getByLabelText('Contest and explain'));
+  expect(await screen.findByText('Contest this cancellation?')).toBeTruthy();
+  fireEvent.press(screen.getByLabelText('Go back'));
+  await waitFor(() => expect(screen.queryByText('Contest this cancellation?')).toBeNull());
+  expect(api.respondToCancellation).not.toHaveBeenCalled();
+});
+it('keeps both answers disabled until the required note has text', async () => {
+  (api.jobDispute as jest.Mock).mockResolvedValue(pendingCase);
+  show();
+  await screen.findByText('Agree to cancel');
+  expect(screen.getByText('No reason given')).toBeTruthy();
+  expect(screen.getByRole('button', { name: 'Agree to cancel', disabled: true })).toBeTruthy();
+  expect(screen.getByRole('button', { name: 'Contest and explain', disabled: true })).toBeTruthy();
+  fireEvent.press(screen.getByLabelText('Contest and explain'));
+  fireEvent.press(screen.getByLabelText('Agree to cancel'));
+  expect(screen.queryByText('Agree to cancel?')).toBeNull();
+  expect(screen.queryByText('Contest this cancellation?')).toBeNull();
+  expect(api.respondToCancellation).not.toHaveBeenCalled();
 });
 it('attaches only the selected own job message as case evidence', async () => {
   (api.openConversation as jest.Mock).mockResolvedValue({ id: 'conversation' });

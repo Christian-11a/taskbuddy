@@ -1,9 +1,12 @@
 import { useThemedStyles, type Palette as ThemePalette } from '../../../src/context/ThemeContext';
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { ActivityIndicator, Image, KeyboardAvoidingView, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import Tap from '../../../src/components/ui/Tap';
 import StatusCard from '../../../src/components/ui/StatusCard';
-import { ArrowLeft, Check, Paperclip, RefreshCw } from 'lucide-react-native';
+import TextField from '../../../src/components/ui/TextField';
+import BottomActionBar from '../../../src/components/ui/BottomActionBar';
+import ConfirmationModal from '../../../src/components/ConfirmationModal';
+import { ArrowLeft, Check, Paperclip, RefreshCw, Undo2 } from 'lucide-react-native';
 import { Spacing, V6Radii, V6Shadows } from '../../../src/constants/theme';
 import { useAsyncData } from '../../../src/hooks/useAsyncData';
 import { useHeaderTop } from '../../../src/hooks/useHeaderTop';
@@ -24,21 +27,26 @@ export default function HODisputeStatusScreen({ jobId, onBack }: Props) {
   const [messageId, setMessageId] = useState<string | undefined>();
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [confirm, setConfirm] = useState<'agree' | 'contest' | null>(null);
+  const inFlight = useRef(false);
   const pending = dispute?.status === 'open' && dispute.cancellation_state === 'pending';
   const canRespond = pending && dispute.jobs?.assigned_provider_id === profile?.id &&
     !!dispute.cancellation_deadline && Date.now() < new Date(dispute.cancellation_deadline).getTime();
   const view = dispute ? caseView(dispute, profile?.id) : null;
 
   async function submit(accept?: boolean) {
-    if (!dispute || !body.trim() || busy) return;
-    setBusy(true); setActionError(null);
+    if (!dispute || !body.trim() || busy || inFlight.current) return;
+    inFlight.current = true; setBusy(true); setActionError(null);
     try {
       if (accept !== undefined) await api.respondToCancellation(dispute.id, accept, body.trim(), messageId);
       else await api.addDisputeEntry(dispute.id, { kind: dispute.status === 'open' ? kind : 'appeal', body: body.trim(), message_id: messageId });
       setBody(''); setMessageId(undefined); reload();
     } catch (e) { setActionError(e instanceof Error ? e.message : 'Could not update the complaint.'); }
-    finally { setBusy(false); }
+    finally { inFlight.current = false; setBusy(false); }
   }
+  // Each confirm closes itself, then runs the same submit call exactly once.
+  function confirmAgree() { setConfirm(null); void submit(true); }
+  function confirmContest() { setConfirm(null); void submit(false); }
   async function loadEvidence() {
     if (!jobId || busy) return;
     setBusy(true); setActionError(null);
@@ -50,6 +58,17 @@ export default function HODisputeStatusScreen({ jobId, onBack }: Props) {
   }
 
   const open = dispute?.status === 'open';
+  const noNote = busy || !body.trim();
+  const evidenceTrigger = <Tap style={styles.evidenceButton} onPress={() => void loadEvidence()} disabled={busy} activeOpacity={0.8}>
+    <Paperclip size={16} color={V6Colors.link} />
+    <Text style={styles.evidenceText}>Choose job chat evidence</Text>
+  </Tap>;
+  const evidenceRows = evidence.map((message) => {
+    const selected = messageId === message.id;
+    return <Tap key={message.id} style={[styles.evidenceRow, selected && styles.evidenceRowOn]} onPress={() => setMessageId(selected ? undefined : message.id)} accessibilityRole="checkbox" accessibilityState={{ checked: selected }} activeOpacity={0.85}>
+      <Text style={[styles.text, selected && styles.evidenceRowTextOn]}>{selected ? 'Selected: ' : ''}{message.body || 'Photo message'} · {new Date(message.created_at).toLocaleString()}</Text>
+    </Tap>;
+  });
 
   return <View style={styles.screen}>
     <View style={[styles.header, { paddingTop: headerTop }]}>
@@ -63,66 +82,80 @@ export default function HODisputeStatusScreen({ jobId, onBack }: Props) {
     {loading && <ActivityIndicator style={styles.loader} color={V6Colors.link} />}
     {!!error && <Text style={styles.error}>{error}</Text>}
     {!loading && !error && !dispute && <Text style={[styles.text, styles.emptyPage]}>No complaint has been filed for this job.</Text>}
-    {dispute && view && <KeyboardAvoidingView style={styles.flex} behavior="padding"><ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag">
-      {!!view.jobChip && <Text style={styles.jobChip} numberOfLines={1}>{view.jobChip}</Text>}
+    {dispute && view && <KeyboardAvoidingView style={styles.flex} behavior="padding">
+      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag">
+        {!!view.jobChip && <Text style={styles.jobChip} numberOfLines={1}>{view.jobChip}</Text>}
 
-      {/* Where the case stands, in plain words */}
-      <StatusCard tone={view.status.tone} overline={view.status.overline} title={view.status.title} body={view.status.body} />
-      {canRespond && <View style={styles.card}>
-        <Text style={styles.label}>Their reason</Text>
-        <Text style={styles.body}>{view.theirReason}</Text>
-      </View>}
-
-      <Text style={styles.sectionTitle}>What happened</Text>
-      <View style={styles.timeline}>
-        {view.steps.map((step: CaseStep, index) => {
-          const last = index === view.steps.length - 1;
-          const marker = step.state === 'done' ? styles.markerDone : step.state === 'current' ? styles.markerCurrent : styles.markerNext;
-          return <View key={step.id} style={styles.step}>
-            <View style={styles.rail}>
-              <View style={[styles.marker, marker]}>
-                {step.state === 'done' && <Check size={12} color={Colors.successText} strokeWidth={3} />}
-                {step.state === 'current' && <View style={styles.dot} />}
-              </View>
-              {!last && <View style={styles.connector} />}
-            </View>
-            <View style={styles.stepBody}>
-              <Text style={[styles.stepTitle, step.state === 'next' && styles.stepTitleNext]}>{step.title}</Text>
-              {!!step.detail && <Text style={styles.stepDetail}>{step.detail}</Text>}
-              {!!step.chatNote && <Text style={styles.stepDetail}>{step.chatNote}</Text>}
-              {!!step.photoUrl && <Image accessibilityLabel="Case photo evidence" source={{ uri: step.photoUrl }} style={styles.photo} resizeMode="contain" />}
-              {!!step.photoUnavailable && !step.photoUrl && <Text style={styles.error}>Photo evidence is unavailable. Refresh to retry.</Text>}
-              {!!step.meta && <Text style={styles.stepMeta}>{step.meta}</Text>}
-            </View>
-          </View>;
-        })}
-      </View>
-
-      <View style={styles.card}>
-        <Text style={styles.sectionTitle}>{dispute.status === 'open' ? 'Add a statement or appeal' : 'Appeal the recorded decision'}</Text>
-        <Text style={styles.text}>Describe your position. Send photos in the job chat, then select your message below as evidence. An appeal reopens review without reversing settled payments.</Text>
-        {dispute.status === 'open' && !pending && <View style={styles.segment}>
-          <Tap style={[styles.segmentItem, kind === 'statement' && styles.segmentItemOn]} onPress={() => setKind('statement')} accessibilityRole="radio" accessibilityState={{ checked: kind === 'statement' }} activeOpacity={0.85}><Text style={[styles.segmentText, kind === 'statement' && styles.segmentTextOn]}>Statement</Text></Tap>
-          <Tap style={[styles.segmentItem, kind === 'appeal' && styles.segmentItemOn]} onPress={() => setKind('appeal')} accessibilityRole="radio" accessibilityState={{ checked: kind === 'appeal' }} activeOpacity={0.85}><Text style={[styles.segmentText, kind === 'appeal' && styles.segmentTextOn]}>Appeal</Text></Tap>
+        {/* Where the case stands, in plain words */}
+        <StatusCard tone={view.status.tone} overline={view.status.overline} title={view.status.title} body={view.status.body} />
+        {canRespond && <View style={styles.card}>
+          <Text style={styles.label}>Their reason</Text>
+          <Text style={styles.body}>{view.theirReason}</Text>
         </View>}
-        <TextInput keyboardAppearance={appearance} accessibilityLabel="Case statement" multiline value={body} onChangeText={setBody} maxLength={1000} placeholder="Explain what happened…" placeholderTextColor={C.ink400} textAlignVertical="top" style={styles.input} />
-        <Tap style={styles.evidenceButton} onPress={() => void loadEvidence()} disabled={busy} activeOpacity={0.8}>
-          <Paperclip size={16} color={V6Colors.link} />
-          <Text style={styles.evidenceText}>Choose job chat evidence</Text>
-        </Tap>
-        {evidence.map((message) => {
-          const selected = messageId === message.id;
-          return <Tap key={message.id} style={[styles.evidenceRow, selected && styles.evidenceRowOn]} onPress={() => setMessageId(selected ? undefined : message.id)} accessibilityRole="checkbox" accessibilityState={{ checked: selected }} activeOpacity={0.85}>
-            <Text style={[styles.text, selected && styles.evidenceRowTextOn]}>{selected ? 'Selected: ' : ''}{message.body || 'Photo message'} · {new Date(message.created_at).toLocaleString()}</Text>
-          </Tap>;
-        })}
-        {!!actionError && <Text style={styles.error}>{actionError}</Text>}
-        {canRespond ? <>
-          <Tap style={[styles.button, (busy || !body.trim()) && styles.buttonDisabled]} disabled={busy || !body.trim()} onPress={() => void submit(true)}><Text style={[styles.buttonText, (busy || !body.trim()) && styles.buttonTextDisabled]}>Agree to cancellation and refund</Text></Tap>
-          <Tap style={styles.outlineButton} disabled={busy || !body.trim()} onPress={() => void submit(false)}><Text style={styles.outlineButtonText}>Contest cancellation</Text></Tap>
-        </> : <Tap style={[styles.button, (busy || !body.trim()) && styles.buttonDisabled]} disabled={busy || !body.trim()} onPress={() => void submit()}><Text style={[styles.buttonText, (busy || !body.trim()) && styles.buttonTextDisabled]}>{busy ? 'Saving…' : dispute.status === 'open' ? 'Submit statement' : 'Submit appeal'}</Text></Tap>}
-      </View>
-    </ScrollView></KeyboardAvoidingView>}
+
+        <Text style={styles.sectionTitle}>What happened</Text>
+        <View style={styles.timeline}>
+          {view.steps.map((step: CaseStep, index) => {
+            const last = index === view.steps.length - 1;
+            const marker = step.state === 'done' ? styles.markerDone : step.state === 'current' ? styles.markerCurrent : styles.markerNext;
+            return <View key={step.id} style={styles.step}>
+              <View style={styles.rail}>
+                <View style={[styles.marker, marker]}>
+                  {step.state === 'done' && <Check size={12} color={Colors.successText} strokeWidth={3} />}
+                  {step.state === 'current' && <View style={styles.dot} />}
+                </View>
+                {!last && <View style={styles.connector} />}
+              </View>
+              <View style={styles.stepBody}>
+                <Text style={[styles.stepTitle, step.state === 'next' && styles.stepTitleNext]}>{step.title}</Text>
+                {!!step.detail && <Text style={styles.stepDetail}>{step.detail}</Text>}
+                {!!step.chatNote && <Text style={styles.stepDetail}>{step.chatNote}</Text>}
+                {!!step.photoUrl && <Image accessibilityLabel="Case photo evidence" source={{ uri: step.photoUrl }} style={styles.photo} resizeMode="contain" />}
+                {!!step.photoUnavailable && !step.photoUrl && <Text style={styles.error}>Photo evidence is unavailable. Refresh to retry.</Text>}
+                {!!step.meta && <Text style={styles.stepMeta}>{step.meta}</Text>}
+              </View>
+            </View>;
+          })}
+        </View>
+
+        {canRespond ? <View style={styles.card}>
+          <TextField
+            label="Your note" value={body} onChangeText={setBody} helper="They'll see this with your answer."
+            placeholder="Add a note for the client and admin" multiline maxLength={1000} keyboardAppearance={appearance}
+          />
+          {evidenceTrigger}
+          {evidenceRows}
+          {!!actionError && <Text style={styles.error}>{actionError}</Text>}
+          <Tap style={styles.linkButton} onPress={() => setConfirm('contest')} disabled={noNote} activeOpacity={0.8}
+            accessibilityRole="button" accessibilityLabel="Contest and explain" accessibilityState={{ disabled: noNote }}>
+            <Text style={[styles.linkText, noNote && styles.linkTextDisabled]}>Contest and explain</Text>
+          </Tap>
+        </View> : <View style={styles.card}>
+          <Text style={styles.sectionTitle}>{dispute.status === 'open' ? 'Add a statement or appeal' : 'Appeal the recorded decision'}</Text>
+          <Text style={styles.text}>Describe your position. Send photos in the job chat, then select your message below as evidence. An appeal reopens review without reversing settled payments.</Text>
+          {dispute.status === 'open' && !pending && <View style={styles.segment}>
+            <Tap style={[styles.segmentItem, kind === 'statement' && styles.segmentItemOn]} onPress={() => setKind('statement')} accessibilityRole="radio" accessibilityState={{ checked: kind === 'statement' }} activeOpacity={0.85}><Text style={[styles.segmentText, kind === 'statement' && styles.segmentTextOn]}>Statement</Text></Tap>
+            <Tap style={[styles.segmentItem, kind === 'appeal' && styles.segmentItemOn]} onPress={() => setKind('appeal')} accessibilityRole="radio" accessibilityState={{ checked: kind === 'appeal' }} activeOpacity={0.85}><Text style={[styles.segmentText, kind === 'appeal' && styles.segmentTextOn]}>Appeal</Text></Tap>
+          </View>}
+          <TextInput keyboardAppearance={appearance} accessibilityLabel="Case statement" multiline value={body} onChangeText={setBody} maxLength={1000} placeholder="Explain what happened…" placeholderTextColor={C.ink400} textAlignVertical="top" style={styles.input} />
+          {evidenceTrigger}
+          {evidenceRows}
+          {!!actionError && <Text style={styles.error}>{actionError}</Text>}
+          <Tap style={[styles.button, (busy || !body.trim()) && styles.buttonDisabled]} disabled={busy || !body.trim()} onPress={() => void submit()}><Text style={[styles.buttonText, (busy || !body.trim()) && styles.buttonTextDisabled]}>{busy ? 'Saving…' : dispute.status === 'open' ? 'Submit statement' : 'Submit appeal'}</Text></Tap>
+        </View>}
+      </ScrollView>
+      {canRespond && <BottomActionBar primaryLabel="Agree to cancel" onPrimary={() => setConfirm('agree')} primaryDisabled={noNote} busy={busy} />}
+    </KeyboardAvoidingView>}
+    {canRespond && view && <>
+      <ConfirmationModal
+        visible={confirm === 'agree'} title={view.agree.title} message={view.agree.message} confirmLabel={view.agree.confirmLabel}
+        cancelLabel="Go back" destructive icon={Undo2} busy={busy} onConfirm={confirmAgree} onCancel={() => setConfirm(null)}
+      />
+      <ConfirmationModal
+        visible={confirm === 'contest'} title={view.contest.title} message={view.contest.message} confirmLabel={view.contest.confirmLabel}
+        cancelLabel="Go back" busy={busy} onConfirm={confirmContest} onCancel={() => setConfirm(null)}
+      />
+    </>}
   </View>;
 }
 
@@ -191,6 +224,9 @@ function createThemedStyles(theme: ThemePalette) {
     evidenceRow: { padding: 12, borderRadius: 12, borderWidth: 1, borderColor: C.line },
     evidenceRowOn: { borderColor: C.cyan700, backgroundColor: C.primaryTonal },
     evidenceRowTextOn: { color: C.ink900 },
+    linkButton: { minHeight: 48, alignItems: 'center', justifyContent: 'center' },
+    linkText: { color: Colors.link, fontSize: 14, fontWeight: '600', lineHeight: 18, fontFamily: 'Inter' },
+    linkTextDisabled: { color: C.ink500 },
     button: {
       minHeight: 52, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 16,
       backgroundColor: C.primary, borderRadius: V6Radii.btn, marginTop: 2,
@@ -199,11 +235,6 @@ function createThemedStyles(theme: ThemePalette) {
     buttonDisabled: { backgroundColor: C.ink100 },
     buttonText: { color: C.onPrimary, fontSize: 16, fontWeight: '700', fontFamily: 'Inter', textAlign: 'center' },
     buttonTextDisabled: { color: C.ink700 },
-    outlineButton: {
-      minHeight: 52, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 16,
-      borderRadius: V6Radii.btn, borderWidth: 1, borderColor: C.fieldBorder, backgroundColor: C.surface,
-    },
-    outlineButtonText: { color: C.ink800, fontSize: 16, fontWeight: '700', fontFamily: 'Inter' },
     photo: { width: '100%', height: 200, borderRadius: 12 },
     error: { color: V6Colors.dangerText, padding: 12, fontFamily: 'Inter' },
   });
