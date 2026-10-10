@@ -197,10 +197,8 @@ export function homeownerJobView(input: HomeownerJobInput): JobView {
           tone: 'closed',
           overline: closed ? `EXPIRED · ${closed}` : 'EXPIRED',
           title: 'No one was hired in time',
-          body: withNote(
-            closed ? `This job closed on ${closed}. Post it again to get new offers.` : 'Post it again to get new offers.',
-            note,
-          ),
+          // The backend expires an unhired job a day after posting; naming a date here read oddly next to a later "When".
+          body: withNote('No one was hired within 24 hours of posting. Post it again to get new offers.', note),
         },
         step: 'posted',
         main: { kind: 'postAgain', categoryId: job.category_id },

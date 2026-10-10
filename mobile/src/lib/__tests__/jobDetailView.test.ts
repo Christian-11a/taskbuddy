@@ -351,7 +351,7 @@ describe('homeownerJobView: expired', () => {
         tone: 'closed',
         overline: 'EXPIRED · Oct 1',
         title: 'No one was hired in time',
-        body: 'This job closed on Oct 1. Post it again to get new offers.',
+        body: 'No one was hired within 24 hours of posting. Post it again to get new offers.',
       },
       step: 'posted',
       main: { kind: 'postAgain', categoryId: 7 },
@@ -363,7 +363,7 @@ describe('homeownerJobView: expired', () => {
   it('a date that cannot be read: no date in the overline or body', () => {
     const view = viewFor({ job: { status: 'expired', posted_at: 'not a date' } });
     expect(view.card.overline).toBe('EXPIRED');
-    expect(view.card.body).toBe('Post it again to get new offers.');
+    expect(view.card.body).toBe('No one was hired within 24 hours of posting. Post it again to get new offers.');
   });
 
   it('a complaint on an expired job still reaches its case, from the menu', () => {
