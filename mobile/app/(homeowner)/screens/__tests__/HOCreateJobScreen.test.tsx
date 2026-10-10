@@ -1,5 +1,5 @@
 import React from 'react';
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react-native';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react-native';
 import * as ImagePicker from 'expo-image-picker';
 import HOCreateJobScreen from '../HOCreateJobScreen';
 import { api } from '../../../../src/lib/api';
@@ -113,4 +113,30 @@ it('clears a budget error as soon as a valid amount is typed, and leaves other e
   fireEvent.changeText(screen.getByPlaceholderText('0.00'), '1500');
   expect(screen.queryByText(budgetMessage)).toBeNull();
   expect(screen.getByText('Please select a preferred date.')).toBeTruthy();
+});
+
+it('the review lists everything entered, and each Edit link goes back to its step', async () => {
+  (api.categories as jest.Mock).mockResolvedValue([{ id: 1, name: 'Plumbing' }]);
+  render(<HOCreateJobScreen initialCategoryId={1} onBack={jest.fn()} onSuccess={jest.fn()} />);
+  await screen.findByText('Location confirmed');
+  fireEvent.press(screen.getByText('Next'));
+  fireEvent.press(await screen.findByText('Fix leaking faucet'));
+  fireEvent.press(screen.getByText('Next'));
+  fireEvent.press(await screen.findByText('Pick a date'));
+  fireEvent.press(screen.getByText('Choose test date'));
+  fireEvent.press(screen.getByText('Pick a time'));
+  fireEvent.press(screen.getByText('Choose test time'));
+  if (screen.queryByText('Done')) fireEvent.press(screen.getByText('Done'));
+  fireEvent.changeText(screen.getByPlaceholderText('0.00'), '1500');
+  fireEvent.press(screen.getByText('Next'));
+
+  const review = await screen.findByTestId('create-job-review');
+  expect(within(review).getByText('Plumbing: Fix leaking faucet')).toBeTruthy();
+  expect(within(review).getByText('Fix leaking faucet')).toBeTruthy();
+  expect(within(review).getByText('Plumbing service needed. Tasks: Fix leaking faucet.')).toBeTruthy();
+  expect(within(review).getAllByRole('button', { name: /^Edit / })).toHaveLength(7);
+  expect(screen.getByText('You only pay when you hire. You can cancel for free until then.')).toBeTruthy();
+
+  fireEvent.press(screen.getByRole('button', { name: 'Edit Description' }));
+  expect(await screen.findByText('What needs doing?')).toBeTruthy();
 });

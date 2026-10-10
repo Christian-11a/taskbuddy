@@ -102,6 +102,8 @@ import PostFooter from '../../../src/components/post/PostFooter';
 import PostProgress from '../../../src/components/post/PostProgress';
 import ServiceTile from '../../../src/components/post/ServiceTile';
 import CalmNote from '../../../src/components/post/CalmNote';
+import ReviewRow from '../../../src/components/post/ReviewRow';
+import Banner from '../../../src/components/ui/Banner';
 import AddTaskRow from '../../../src/components/post/AddTaskRow';
 import UrgencyRow from '../../../src/components/post/UrgencyRow';
 import {
@@ -544,6 +546,13 @@ export default function HOCreateJobScreen({
     if (step > 1 && step <= totalSteps) setStep((s) => s - 1);
   };
 
+  /** The review's Edit links jump straight to a step. Next and Back still walk the flow in order. */
+  const goToStep = (target: number) => {
+    setError(null);
+    setFieldErrors({});
+    setStep(target);
+  };
+
   /**
    * Back to step 1 with nothing carried over. Posting another job from the
    * success screen used to keep the previous job's answers, which is a good
@@ -605,6 +614,9 @@ export default function HOCreateJobScreen({
     // iOS
     if (selectedTime) setTempTime(selectedTime);
   };
+
+  const urgencyLabel = URGENCY_OPTIONS.find((o) => o.value === urgency)?.label ?? '';
+  const whenLine = [dateLabel, timeLabel, urgencyLabel].filter(Boolean).join(' · ') || 'Not set';
 
   if (step === 6) {
     // Success screen. Scrolls rather than a fixed centered View — a long
@@ -993,55 +1005,48 @@ export default function HOCreateJobScreen({
           <View testID="create-job-review">
             <Text testID="create-job-review-title" style={styles.stepTitle}>Check your job</Text>
 
+            {/* Everything entered, one answer per row. Each Edit goes back to the step that holds it. */}
             <View style={styles.reviewCard}>
-              {[
-                { label: 'Service', value: categoryName || 'Not selected' },
-                { label: 'Title', value: title || 'Untitled' },
-                { label: 'Location', value: location || 'Not set' },
-                { label: 'Date', value: dateLabel || 'Not set' },
-                { label: 'Time', value: timeLabel || 'Not set' },
-                { label: 'Urgency', value: URGENCY_OPTIONS.find((o) => o.value === urgency)?.label ?? '' },
-                { label: 'Budget', value: budget ? peso(budget) : 'Not set' },
-              ].map((item) => (
-                <View key={item.label} style={styles.reviewRow}>
-                  <Text style={styles.reviewLabel}>{item.label}</Text>
-                  <Text style={styles.reviewValue}>{item.value}</Text>
-                </View>
-              ))}
+              <ReviewRow first label="Service" value={categoryName || 'Not selected'} onEdit={() => goToStep(1)} />
+              <ReviewRow label="Title" value={title || 'Untitled'} onEdit={() => goToStep(3)} />
+              <ReviewRow label="Where" value={location || 'Not set'} onEdit={() => goToStep(2)} />
+              <ReviewRow
+                label="Tasks"
+                value={tasks.length ? tasks.join(' · ') : 'Not set'}
+                onEdit={() => goToStep(3)}
+              />
+              <ReviewRow label="Description" value={description || 'Not set'} onEdit={() => goToStep(3)} />
+              <ReviewRow label="When" value={whenLine} onEdit={() => goToStep(4)} />
+              <ReviewRow
+                label="Budget"
+                value={budget ? peso(budget) : 'Not set'}
+                strong
+                onEdit={() => goToStep(4)}
+              />
+              {photos.length > 0 && (
+                <ReviewRow label={`Photos (${photos.length})`} onEdit={() => goToStep(3)}>
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.photoList}>
+                    {photos.map((photo, index) => (
+                      <Tap key={photo.uri} onPress={() => setPhotoIndex(index)}
+                        accessibilityLabel={`Open selected photo ${index + 1}`}>
+                        <Image source={{ uri: photo.uri }} style={styles.photoImage}
+                          resizeMode="contain" />
+                      </Tap>
+                    ))}
+                  </ScrollView>
+                </ReviewRow>
+              )}
             </View>
 
-            {photos.length > 0 && (
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.photoList}>
-                {photos.map((photo, index) => (
-                  <Tap key={photo.uri} onPress={() => setPhotoIndex(index)}
-                    accessibilityLabel={`Open selected photo ${index + 1}`}>
-                    <Image source={{ uri: photo.uri }} style={styles.photoImage}
-                      resizeMode="contain" />
-                  </Tap>
-                ))}
-              </ScrollView>
-            )}
-
-            <Text style={styles.reviewSectionTitle}>Tasks ({tasks.length})</Text>
-            <View style={styles.reviewCard}>
-              {tasks.map((t) => (
-                <View key={t} style={styles.reviewTaskRow}>
-                  <Check size={15} color={V6Colors.link} strokeWidth={3} />
-                  <Text style={styles.reviewTaskText}>{t}</Text>
-                </View>
-              ))}
-            </View>
+            <Banner tone="info" message="You only pay when you hire. You can cancel for free until then." />
+            {/* A failed post comes back here, with the Post job button still available. */}
+            {!!error && <View style={styles.reviewError}><Banner tone="error" message={error} /></View>}
 
           </View>
         )}
 
         <View style={{ height: 20 }} />
         </ScrollView>
-        {!!error && (
-          <View style={styles.footerError}>
-            <Text style={styles.errorText}>{error}</Text>
-          </View>
-        )}
         {/* The bar lives inside the keyboard-avoiding view, so it rises above the keyboard
             instead of hiding under it. BUG-005: the bar keeps clear of the system nav bar. */}
         <PostFooter
@@ -1279,18 +1284,12 @@ function createThemedStyles(theme: ThemePalette) {
     budgetInput: { flex: 1, fontSize: 30, fontWeight: '700', fontFamily: 'Inter', color: V6Colors.ink900, paddingVertical: 8 },
     budgetHint: { color: V6Colors.ink500, fontSize: 13.5, fontFamily: 'Inter', lineHeight: 18, marginTop: 8 },
 
-    reviewCard: { backgroundColor: Colors.surface, borderRadius: 20, padding: 20, marginBottom: 16, ...Shadows.card },
-    reviewSectionTitle: { color: V6Colors.ink900, fontSize: 16.5, fontWeight: '800', fontFamily: 'Inter', marginBottom: 10 },
-    reviewRow: {
-      flexDirection: 'row', justifyContent: 'space-between',
-      paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: 'rgba(144,153,184,0.15)',
+    reviewCard: {
+      backgroundColor: Colors.surface, borderRadius: 18, borderWidth: 1, borderColor: V6Colors.line,
+      paddingHorizontal: 16, paddingBottom: 4, marginBottom: 16,
     },
-    reviewLabel: { color: Colors.slate, fontSize: 16.5, fontFamily: 'Inter' },
-    reviewValue: { color: V6Colors.ink900, fontSize: 16.5, fontWeight: '700', fontFamily: 'Inter', maxWidth: '55%', textAlign: 'right' },
-    reviewTaskRow: { flexDirection: 'row', alignItems: 'center', gap: 9, paddingVertical: 7 },
-    reviewTaskText: { flex: 1, color: V6Colors.ink900, fontSize: 15.5, fontFamily: 'Inter' },
+    reviewError: { marginTop: 12 },
 
-    footerError: { backgroundColor: Colors.surface, paddingHorizontal: Spacing.screenH, paddingTop: 12 },
     primaryBtn: {
       backgroundColor: Colors.cyan700, borderRadius: 12, paddingVertical: 12, minHeight: 44, justifyContent: 'center',
       alignItems: 'center',
