@@ -5,11 +5,13 @@ import {
   ScrollView,
   StyleSheet,
   Text,
-  TextInput,
   View,
 } from 'react-native';
 import Tap from '../../../src/components/ui/Tap';
 import ContentSkeleton from '../../../src/components/ui/ContentSkeleton';
+import Banner from '../../../src/components/ui/Banner';
+import BottomActionBar from '../../../src/components/ui/BottomActionBar';
+import TextField from '../../../src/components/ui/TextField';
 import * as ImagePicker from 'expo-image-picker';
 import { ArrowLeft, Check, ImagePlus } from 'lucide-react-native';
 import { api, type PortfolioEntry } from '../../../src/lib/api';
@@ -20,24 +22,71 @@ import { useHeaderTop } from '../../../src/hooks/useHeaderTop';
 import PortfolioGallery from '../../../src/components/PortfolioGallery';
 import ConfirmationModal from '../../../src/components/ConfirmationModal';
 
+/** Most photos one portfolio holds: the `limit_provider_portfolio` trigger (migration 0044). */
+export const PORTFOLIO_LIMIT = 20;
+/** Largest photo accepted: the `provider-portfolio` bucket's `file_size_limit` (migration 0044). */
+export const PHOTO_MAX_BYTES = 10 * 1024 * 1024;
+/** Longest caption: the `caption` check on `provider_portfolio` (1 to 400 characters). */
+export const CAPTION_MAX = 400;
+/**
+ * The API requires `position` (0 to 10000) on every portfolio write, and the
+ * screen no longer asks for it. A new photo sends this value; an edit keeps
+ * the position the photo already has.
+ */
+export const DEFAULT_POSITION = 0;
+
+const PHOTO_TIPS = ['Your own work only', 'No client faces or house numbers', 'Good light'];
+
+export function portfolioIsFull(count: number): boolean {
+  return count >= PORTFOLIO_LIMIT;
+}
+
+/** The details sent with a photo: caption, position and service, in the shape the API takes. */
+export function portfolioDetails(input: { caption: string; categoryId: number | null; storedPosition?: number }) {
+  return {
+    caption: input.caption.trim(),
+    position: input.storedPosition ?? DEFAULT_POSITION,
+    category_id: input.categoryId,
+  };
+}
+
+/** The first thing missing from a publish, or null when it can go ahead. */
+export function publishProblem(input: { caption: string; hasPhoto: boolean; editing: boolean }): string | null {
+  if (!input.editing && !input.hasPhoto) return 'Choose a photo to publish.';
+  if (!input.caption.trim()) return 'Add a caption to publish this photo.';
+  return null;
+}
+
+export type PublishStage = 'uploading' | 'saving';
+export type SegmentState = 'done' | 'active' | 'todo';
+
+/**
+ * The label and step bar for a publish in progress. A new photo uploads and
+ * then saves; an edit only saves. Each stage is a real call, not a guess.
+ */
+export function publishProgress(stage: PublishStage, editing: boolean): { label: string; segments: SegmentState[] } {
+  if (editing) return { label: 'Saving changes…', segments: ['active'] };
+  if (stage === 'uploading') return { label: 'Uploading photo…', segments: ['active', 'todo'] };
+  return { label: 'Saving to your portfolio…', segments: ['done', 'active'] };
+}
+
 export default function SPPortfolioScreen({ onBack }: { onBack: () => void }) {
-  const { styles, C, appearance } = useThemedStyles(createThemedStyles);
+  const { styles, Colors, V6Colors, appearance } = useThemedStyles(createThemedStyles);
   const headerTop = useHeaderTop();
   const portfolio = useAsyncData(() => api.myPortfolio(), []);
   const categories = useAsyncData(() => api.categories(), []);
   useRefreshOnForeground(portfolio.reload, true);
   const [uri, setUri] = useState<string | null>(null);
   const [caption, setCaption] = useState('');
-  const [position, setPosition] = useState('0');
   const [category, setCategory] = useState<number | null>(null);
   const [editing, setEditing] = useState<PortfolioEntry | null>(null);
   const [removing, setRemoving] = useState<PortfolioEntry | null>(null);
+  const [stage, setStage] = useState<PublishStage | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const reset = () => {
     setUri(null);
     setCaption('');
-    setPosition('0');
     setCategory(null);
     setEditing(null);
   };
@@ -54,7 +103,7 @@ export default function SPPortfolioScreen({ onBack }: { onBack: () => void }) {
       });
       if (!result.canceled) {
         const asset = result.assets[0];
-        if (asset.fileSize && asset.fileSize > 10 * 1024 * 1024) {
+        if (asset.fileSize && asset.fileSize > PHOTO_MAX_BYTES) {
           setError('Choose a photo no larger than 10 MB.');
           return;
         }
@@ -65,31 +114,26 @@ export default function SPPortfolioScreen({ onBack }: { onBack: () => void }) {
     }
   };
   const save = async () => {
-    const order = Number(position);
-    if (
-      !caption.trim() ||
-      (!editing && !uri) ||
-      !position.trim() ||
-      !Number.isInteger(order) ||
-      order < 0 ||
-      order > 10000
-    ) {
-      setError(
-        'Choose a photo, add a caption and enter an order from 0 to 10000.',
-      );
+    const problem = publishProblem({ caption, hasPhoto: !!uri, editing: !!editing });
+    if (problem) {
+      setError(problem);
       return;
     }
     setBusy(true);
     setError(null);
     try {
-      const details = {
-        caption: caption.trim(),
-        position: order,
-        category_id: category,
-      };
-      if (editing) await api.updatePortfolio(editing.id, details);
-      else {
+      const details = portfolioDetails({
+        caption,
+        categoryId: category,
+        storedPosition: editing?.position,
+      });
+      if (editing) {
+        setStage('saving');
+        await api.updatePortfolio(editing.id, details);
+      } else {
+        setStage('uploading');
         const image_path = await api.uploadImage('provider-portfolio', uri!);
+        setStage('saving');
         await api.createPortfolio({ ...details, image_path });
       }
       reset();
@@ -97,6 +141,7 @@ export default function SPPortfolioScreen({ onBack }: { onBack: () => void }) {
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not save this photo.');
     } finally {
+      setStage(null);
       setBusy(false);
     }
   };
@@ -115,62 +160,88 @@ export default function SPPortfolioScreen({ onBack }: { onBack: () => void }) {
       setBusy(false);
     }
   };
+
+  const count = portfolio.data?.length ?? 0;
+  // A full portfolio can still edit an existing photo, but cannot add one.
+  const showForm = !!editing || !portfolioIsFull(count);
+  const progress = stage ? publishProgress(stage, !!editing) : null;
+
   return (
     <View style={styles.screen}>
       <View style={[styles.header, { paddingTop: headerTop }]}>
-        <Tap onPress={onBack} style={styles.backBtn} accessibilityRole="button" accessibilityLabel="Back">
-          <ArrowLeft size={20} color={C.ink700} />
+        <Tap
+          onPress={onBack}
+          style={styles.backBtn}
+          hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
+          accessibilityRole="button"
+          accessibilityLabel="Back"
+        >
+          <ArrowLeft size={20} color={V6Colors.ink700} />
         </Tap>
-        <Text style={styles.headerTitle}>My Portfolio</Text>
+        <Text style={styles.headerTitle} accessibilityRole="header">My Portfolio</Text>
       </View>
       <ScrollView
+        style={styles.scroll}
         contentContainerStyle={styles.content}
         keyboardShouldPersistTaps="handled"
       >
         <Text style={styles.intro}>
-          Publish up to 20 of your own work photos, at most 10 MB each.
-          Signed-in clients can view them. Only upload photos you have
-          permission to share.
+          {`Up to ${PORTFOLIO_LIMIT} photos, ${PHOTO_MAX_BYTES / (1024 * 1024)} MB each (JPEG, PNG or WebP). Signed-in clients can see them.`}
         </Text>
-        {(editing || (portfolio.data?.length ?? 0) < 20) && (
-          <View style={styles.form}>
+
+        {!showForm && (
+          <Banner
+            tone="info"
+            message={`Your portfolio is full: ${count} of ${PORTFOLIO_LIMIT} photos. Remove one to add another.`}
+          />
+        )}
+
+        {showForm && (
+          <>
             {!editing && !uri && (
-              <Tap disabled={busy} onPress={() => void choose()} style={styles.pickBox} accessibilityRole="button">
-                <ImagePlus size={28} color={C.link} />
+              <Tap
+                disabled={busy}
+                onPress={() => void choose()}
+                style={styles.pickTile}
+                accessibilityRole="button"
+                accessibilityLabel="Choose portfolio photo"
+              >
+                <ImagePlus size={28} color={Colors.link} />
                 <Text style={styles.pickText}>Choose portfolio photo</Text>
               </Tap>
             )}
             {(uri || editing) && (
               <Image
+                accessible
+                accessibilityLabel="Selected portfolio photo"
                 source={{ uri: uri ?? editing!.image_url }}
                 style={styles.preview}
                 resizeMode="contain"
               />
             )}
             {!editing && !!uri && (
-              <Tap disabled={busy} onPress={() => void choose()} style={styles.linkBtn} accessibilityRole="button">
+              <Tap
+                disabled={busy}
+                onPress={() => void choose()}
+                style={styles.linkBtn}
+                accessibilityRole="button"
+                accessibilityLabel="Choose portfolio photo"
+              >
                 <Text style={styles.link}>Choose portfolio photo</Text>
               </Tap>
             )}
-            <Text style={styles.label}>Caption</Text>
-            <TextInput keyboardAppearance={appearance}
-              accessibilityLabel="Portfolio caption"
-              style={[styles.input, styles.inputMulti]}
+
+            <TextField
+              label="Caption"
               value={caption}
               onChangeText={setCaption}
-              maxLength={400}
+              helper="Shown under the photo"
               multiline
+              maxLength={CAPTION_MAX}
               editable={!busy}
+              keyboardAppearance={appearance}
             />
-            <Text style={styles.label}>Display order (lower numbers first)</Text>
-            <TextInput keyboardAppearance={appearance}
-              accessibilityLabel="Portfolio display order"
-              style={styles.input}
-              value={position}
-              onChangeText={setPosition}
-              keyboardType="number-pad"
-              editable={!busy}
-            />
+
             <Text style={styles.label}>Service (optional)</Text>
             <View style={styles.chips}>
               {[
@@ -183,12 +254,13 @@ export default function SPPortfolioScreen({ onBack }: { onBack: () => void }) {
                     disabled={busy}
                     key={item.id ?? 'none'}
                     accessibilityRole="radio"
-                    accessibilityState={{ selected }}
+                    accessibilityLabel={item.name}
+                    accessibilityState={{ selected, disabled: busy }}
+                    hitSlop={{ top: 4, bottom: 4 }}
                     onPress={() => setCategory(item.id)}
-                    style={[styles.chip, selected && styles.chipActive]}
+                    style={[styles.chip, selected && styles.chipOn]}
                   >
-                    {selected && <Check size={14} color={C.chipActiveText} strokeWidth={3} />}
-                    <Text style={[styles.chipText, selected && styles.chipTextActive]}>
+                    <Text style={[styles.chipText, selected && styles.chipTextOn]}>
                       {item.name}
                     </Text>
                   </Tap>
@@ -198,28 +270,18 @@ export default function SPPortfolioScreen({ onBack }: { onBack: () => void }) {
             {!!categories.error && (
               <Text style={styles.errorText}>{categories.error}</Text>
             )}
-            <Tap
-              disabled={busy || portfolio.loading}
-              onPress={() => void save()}
-              style={[styles.primaryBtn, (busy || portfolio.loading) && styles.primaryBtnDisabled]}
-              accessibilityRole="button"
-              scale
-            >
-              <Text style={styles.primaryBtnText}>
-                {busy
-                  ? 'Saving…'
-                  : editing
-                    ? 'Save photo details'
-                    : 'Publish photo'}
-              </Text>
-            </Tap>
-            {editing && (
-              <Tap disabled={busy} onPress={reset} style={styles.secondaryBtn} accessibilityRole="button">
-                <Text style={styles.secondaryBtnText}>Cancel edit</Text>
-              </Tap>
-            )}
-          </View>
+
+            <View style={styles.tips}>
+              {PHOTO_TIPS.map((tip) => (
+                <View key={tip} style={styles.tipRow}>
+                  <Check size={16} color={V6Colors.ink700} />
+                  <Text style={styles.tipText}>{tip}</Text>
+                </View>
+              ))}
+            </View>
+          </>
         )}
+
         {!!error && (
           <Text accessibilityRole="alert" style={styles.errorText}>
             {error}
@@ -229,7 +291,12 @@ export default function SPPortfolioScreen({ onBack }: { onBack: () => void }) {
         {!!portfolio.error && (
           <View>
             <Text style={styles.errorText}>{portfolio.error}</Text>
-            <Tap onPress={portfolio.reload} style={styles.linkBtn} accessibilityRole="button">
+            <Tap
+              onPress={portfolio.reload}
+              style={styles.linkBtn}
+              accessibilityRole="button"
+              accessibilityLabel="Retry portfolio"
+            >
               <Text style={styles.link}>Retry portfolio</Text>
             </Tap>
           </View>
@@ -242,13 +309,45 @@ export default function SPPortfolioScreen({ onBack }: { onBack: () => void }) {
               setEditing(entry);
               setUri(null);
               setCaption(entry.caption);
-              setPosition(String(entry.position));
               setCategory(entry.category_id);
             }}
             onRemove={setRemoving}
           />
         )}
       </ScrollView>
+
+      {showForm && (
+        <>
+          {progress && (
+            <View style={styles.progress}>
+              <Text style={styles.progressLabel} accessibilityLiveRegion="polite">
+                {progress.label}
+              </Text>
+              <View style={styles.segments}>
+                {progress.segments.map((segment, index) => (
+                  <View
+                    key={index}
+                    style={[
+                      styles.segment,
+                      segment === 'done' && styles.segmentDone,
+                      segment === 'active' && styles.segmentActive,
+                    ]}
+                  />
+                ))}
+              </View>
+            </View>
+          )}
+          <BottomActionBar
+            primaryLabel={progress ? progress.label : editing ? 'Save photo details' : 'Publish photo'}
+            onPrimary={() => void save()}
+            busy={stage !== null}
+            primaryDisabled={busy || portfolio.loading}
+            secondaryLabel={editing ? 'Cancel edit' : undefined}
+            onSecondary={reset}
+          />
+        </>
+      )}
+
       <ConfirmationModal
         visible={removing !== null}
         title="Remove portfolio photo?"
@@ -264,62 +363,59 @@ export default function SPPortfolioScreen({ onBack }: { onBack: () => void }) {
 
 function createThemedStyles(theme: ThemePalette) {
   const { Colors, V6Colors } = theme;
-  const chipActiveText = theme.appearance === 'dark' ? '#e0f2fe' : '#0c4a6e';
-  const C = { ...V6Colors, chipActiveText };
   const styles = StyleSheet.create({
-    screen: { flex: 1, backgroundColor: C.canvas },
+    screen: { flex: 1, backgroundColor: V6Colors.canvas },
     header: {
       flexDirection: 'row', alignItems: 'center', gap: 12,
-      backgroundColor: C.surface, paddingHorizontal: 20, paddingBottom: 12,
-      borderBottomWidth: 1, borderBottomColor: C.line,
+      backgroundColor: V6Colors.surface, paddingHorizontal: 20, paddingBottom: 12,
+      borderBottomWidth: 1, borderBottomColor: V6Colors.line,
     },
     backBtn: {
-      width: 44, height: 44, borderRadius: 22, borderWidth: 1, borderColor: C.line,
+      width: 44, height: 44, borderRadius: 22, borderWidth: 1, borderColor: V6Colors.line,
       alignItems: 'center', justifyContent: 'center',
     },
-    headerTitle: { flex: 1, color: C.ink900, fontSize: 19.5, fontWeight: '800', fontFamily: 'Inter' },
-    content: { padding: 20, paddingBottom: 32 },
-    intro: { color: C.ink500, fontSize: 14.5, lineHeight: 21, fontFamily: 'Inter' },
-    form: {
-      marginVertical: 18, padding: 16, gap: 4,
-      backgroundColor: C.surface, borderRadius: 20, borderWidth: 1, borderColor: C.line,
+    headerTitle: { flex: 1, color: V6Colors.ink900, fontSize: 19.5, fontWeight: '800', fontFamily: 'Inter' },
+    scroll: { flex: 1 },
+    content: { padding: 20, paddingBottom: 24, gap: 14 },
+    intro: { color: V6Colors.ink500, fontSize: 14, lineHeight: 20, fontFamily: 'Inter' },
+
+    pickTile: {
+      alignItems: 'center', justifyContent: 'center', gap: 8, minHeight: 160,
+      borderRadius: 16, backgroundColor: Colors.primaryTonal,
     },
-    pickBox: {
-      alignItems: 'center', justifyContent: 'center', gap: 8, minHeight: 132,
-      borderRadius: 16, borderWidth: 1.5, borderStyle: 'dashed', borderColor: C.primaryTonalStrong,
-      backgroundColor: C.primaryTonal, marginBottom: 8,
-    },
-    pickText: { color: C.link, fontSize: 15, fontWeight: '700', fontFamily: 'Inter' },
-    preview: { height: 180, width: '100%', borderRadius: 16, backgroundColor: C.ink100, marginBottom: 4 },
-    label: { color: C.ink700, fontSize: 14, fontWeight: '700', fontFamily: 'Inter', marginTop: 12, marginBottom: 6 },
-    input: {
-      backgroundColor: C.surface, color: C.ink900, fontFamily: 'Inter', fontSize: 15,
-      borderWidth: 1, borderColor: C.fieldBorder, paddingHorizontal: 14, paddingVertical: 12, borderRadius: 12,
-    },
-    inputMulti: { minHeight: 88, textAlignVertical: 'top' },
+    pickText: { color: Colors.link, fontSize: 15, fontWeight: '600', lineHeight: 20, fontFamily: 'Inter' },
+    preview: { height: 180, width: '100%', borderRadius: 16, backgroundColor: V6Colors.ink100 },
+    linkBtn: { alignSelf: 'flex-start', paddingVertical: 8, paddingHorizontal: 4, borderRadius: 8 },
+    link: { color: Colors.link, fontSize: 14, fontWeight: '600', lineHeight: 18, fontFamily: 'Inter' },
+
+    label: { color: V6Colors.ink700, fontSize: 13, fontWeight: '600', lineHeight: 18, fontFamily: 'Inter' },
     chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
     chip: {
-      flexDirection: 'row', alignItems: 'center', gap: 6,
-      borderWidth: 1, borderColor: C.line, backgroundColor: C.surface,
-      borderRadius: 12, paddingHorizontal: 14, minHeight: 40,
+      minHeight: 40, paddingHorizontal: 14, borderRadius: 999, justifyContent: 'center',
+      borderWidth: 1, borderColor: V6Colors.line, backgroundColor: V6Colors.surface,
     },
-    chipActive: { backgroundColor: C.primaryTonalStrong, borderColor: C.primaryTonalStrong },
-    chipText: { color: C.ink700, fontSize: 14, fontWeight: '600', fontFamily: 'Inter' },
-    chipTextActive: { color: chipActiveText, fontWeight: '700' },
-    primaryBtn: {
-      backgroundColor: C.primary, borderRadius: 16, minHeight: 52, marginTop: 18,
-      alignItems: 'center', justifyContent: 'center',
+    chipOn: { backgroundColor: Colors.primary, borderColor: Colors.primary },
+    chipText: { color: V6Colors.ink700, fontSize: 14, fontWeight: '600', lineHeight: 18, fontFamily: 'Inter' },
+    chipTextOn: { color: Colors.onPrimary, fontWeight: '700' },
+
+    tips: {
+      backgroundColor: V6Colors.surface, borderWidth: 1, borderColor: V6Colors.line,
+      borderRadius: 16, padding: 14, gap: 10,
     },
-    primaryBtnDisabled: { opacity: 0.6 },
-    primaryBtnText: { color: C.onPrimary, fontSize: 16, fontWeight: '700', fontFamily: 'Inter' },
-    secondaryBtn: {
-      borderWidth: 1, borderColor: C.fieldBorder, borderRadius: 16, minHeight: 48, marginTop: 10,
-      alignItems: 'center', justifyContent: 'center',
+    tipRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+    tipText: { flex: 1, color: V6Colors.ink700, fontSize: 14, lineHeight: 20, fontFamily: 'Inter' },
+
+    progress: {
+      gap: 8, paddingHorizontal: 20, paddingTop: 12,
+      backgroundColor: V6Colors.surface, borderTopWidth: 1, borderTopColor: V6Colors.line,
     },
-    secondaryBtnText: { color: C.ink800, fontSize: 15, fontWeight: '700', fontFamily: 'Inter' },
-    linkBtn: { alignSelf: 'flex-start', paddingVertical: 8, paddingHorizontal: 4, borderRadius: 8 },
-    link: { color: C.link, fontSize: 14.5, fontWeight: '700', fontFamily: 'Inter' },
-    errorText: { color: C.dangerText, fontSize: 14, fontFamily: 'Inter', marginVertical: 8 },
+    progressLabel: { color: V6Colors.ink700, fontSize: 13, fontWeight: '600', lineHeight: 18, fontFamily: 'Inter' },
+    segments: { flexDirection: 'row', gap: 6 },
+    segment: { flex: 1, height: 6, borderRadius: 3, backgroundColor: V6Colors.line },
+    segmentDone: { backgroundColor: Colors.primary },
+    segmentActive: { backgroundColor: Colors.link },
+
+    errorText: { color: Colors.dangerText, fontSize: 14, lineHeight: 20, fontFamily: 'Inter' },
   });
-  return { appearance: theme.appearance, Colors, V6Colors, C, styles };
+  return { appearance: theme.appearance, Colors, V6Colors, styles };
 }
