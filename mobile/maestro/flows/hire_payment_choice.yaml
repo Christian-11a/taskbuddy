@@ -1,9 +1,9 @@
 appId: com.taskbuddy.app
 ---
-# Accept on a proposal opens the payment choice (BACKEND_SCHEMA.md §29.4):
-# Pay from wallet, or Pay by card. Asserts the choice is offered and stops —
-# Stripe's hosted Checkout runs in a browser Maestro does not drive, so the
-# card path end to end is the manual recipe in docs/stripe-setup.md.
+# Hire on a proposal opens the Hire sheet on its payment choice (BACKEND_SCHEMA.md
+# §29.4): Wallet or Card under "Pay with". Asserts the choice is offered and
+# cancels. Stripe's hosted Checkout runs in a browser Maestro does not drive, so
+# the card path end to end is the manual recipe in docs/stripe-setup.md.
 #
 # Precondition (00_setup_test_accounts.md): the client test account has an
 # open job with a pending proposal from the *verified* provider test account,
@@ -12,21 +12,18 @@ appId: com.taskbuddy.app
 - tapOn: "My Jobs"
 - tapOn:
     id: "my-jobs-card-0"
-- tapOn:
-    id: "job-detail-view-offers"
+# While proposals wait, the job's main action reads "Review proposals (n)".
+- tapOn: 'Review proposals.*'
 - extendedWaitUntil:
     visible: "Proposals"
     timeout: 60000
 - tapOn:
     id: "applications-accept-.*"
     index: 0
-# Accept asks for confirmation before the payment choice.
-- assertVisible: "Hire this provider?"
-- tapOn: "Continue"
+# Hire opens straight on the payment choice; there is no separate confirm first.
 - extendedWaitUntil:
-    visible:
-      id: "hire-pay-wallet"
+    visible: "Pay with"
     timeout: 30000
-- assertVisible:
-    id: "hire-pay-card"
+- assertVisible: "Wallet"
+- assertVisible: "Card"
 - tapOn: "Cancel"

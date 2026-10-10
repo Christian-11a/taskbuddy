@@ -14,9 +14,10 @@ env:
 # with every editable field blank, so the happy path never needs to clear a
 # pre-filled value — only tapOn + inputText are used.
 #
-# Selectors: FormField renders a Text label directly above its TextInput with
-# no testID (HOEditProfileScreen.tsx), so fields are addressed with `below:`
-# anchored on the label — the nearest element below a unique label text.
+# Selectors: each field is a shared TextField with its label above the input as
+# a plain Text. Fields are addressed with `below:` anchored on the label — the
+# nearest element below a unique label text. The phone label reads "Phone
+# (optional)", so its parentheses are escaped in the pattern.
 #
 # Not covered here (see bug-log.md): the "empty full name blocks save"
 # validation, confirmed correct by manual exploration this session but not
@@ -26,21 +27,27 @@ env:
 - runFlow: _helpers/launch_fresh.yaml
 - waitForAnimationToEnd:
     timeout: 10000
-- tapOn: "Sign Up"
-# The `when: visible "Welcome!"` check races the first tap's own navigation:
+- tapOn: "Create an account"
+# The `when: visible "Welcome back"` check races the first tap's own navigation:
 # by the time this retry runs, the app may have already moved to Create
 # Account, making the retry's own tapOn fail even though nothing is wrong.
 # optional: true keeps that race from hard-failing the flow.
 - runFlow:
     when:
-      visible: "Welcome!"
+      visible: "Welcome back"
     commands:
       - tapOn:
-          text: "Sign Up"
+          text: "Create an account"
           optional: true
 - extendedWaitUntil:
     visible: "Create account"
     timeout: 30000
+- tapOn: "I need help at home"
+- tapOn: "Continue"
+- extendedWaitUntil:
+    visible:
+      id: "input-name"
+    timeout: 20000
 - tapOn:
     id: "input-name"
 - inputText: ${BURNER_NAME}
@@ -76,13 +83,8 @@ env:
     direction: DOWN
     timeout: 20000
 - tapOn: "I agree to the Terms & Conditions"
-- scrollUntilVisible:
-    element:
-      id: "chk-privacy"
-    direction: DOWN
-    timeout: 20000
 - tapOn:
-    id: "chk-privacy"
+    id: "chk-terms"
 - extendedWaitUntil:
     visible: "Privacy Policy"
     timeout: 20000
@@ -101,10 +103,11 @@ env:
     id: "chk-data-collection"
 - scrollUntilVisible:
     element:
-      text: "Sign Up"
+      id: "btn-create-account"
     direction: DOWN
     timeout: 20000
-- tapOn: "Sign Up"
+- tapOn:
+    id: "btn-create-account"
 - extendedWaitUntil:
     visible: ".*(Skip|Book a service).*"
     timeout: 60000
@@ -131,7 +134,7 @@ env:
 - tapOn: "Edit profile"
 - assertVisible: "Full name"
 - tapOn:
-    below: "Phone"
+    below: 'Phone \(optional\)'
 - inputText: "+639171234567"
 - tapOn: "Full name"
 - tapOn:
@@ -142,20 +145,21 @@ env:
     below: "City"
 - inputText: "Quezon City"
 - tapOn: "Full name"
-- tapOn: "Save Changes"
-- assertVisible: "Save profile changes?"
-- tapOn: "Save Changes"
+- tapOn: "Save changes"
+- assertVisible: 'Save profile changes\?'
+# The confirm sits under the question, and its label matches the bottom button.
+- tapOn:
+    text: "Save changes"
+    below: 'Save profile changes\?'
 - assertVisible: "Quezon City, 123 Test Street"
 
-# --- Clean up: delete the burner (Settings > Delete Account) ---
-# Already on the Profile screen here (Save Changes navigates back to it),
+# --- Clean up: delete the burner (Settings > Delete account) ---
+# Already on the Profile screen here (Save changes navigates back to it),
 # not Home, so no second btn-home-avatar tap is needed/possible.
 - tapOn: "Settings"
-- tapOn: "Delete Account"
-- assertVisible: "Delete your account?"
-- tapOn:
-    text: "Delete Account"
-    rightOf: "Cancel"
+- tapOn: "Delete account"
+- assertVisible: 'Delete your account\?'
+- tapOn: "Delete my account"
 - extendedWaitUntil:
-    visible: "Welcome!"
+    visible: "Welcome back"
     timeout: 20000

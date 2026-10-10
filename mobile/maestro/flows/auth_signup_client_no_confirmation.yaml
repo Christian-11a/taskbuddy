@@ -8,27 +8,39 @@ appId: com.taskbuddy.app
 # If Confirm email is ever switched back on, this flow's final assertion goes
 # back to "Check your email" like 00_setup_register_client.yaml's does.
 #
+# Sign-up starts with a role step: two cards, then Continue. The consents are
+# one Terms and Privacy row (it opens each document in turn) plus the
+# data-consent row, and the create button is btn-create-account.
+#
 # Re-running needs a new email each time — this account is not deleted after.
 - runFlow: _helpers/launch_fresh.yaml
 # Cold-launch swallowed-tap: the Login screen paints before React attaches
 # press handlers, so the very first tap after clearState can be a no-op.
 - waitForAnimationToEnd:
     timeout: 10000
-- tapOn: "Sign Up"
+# Login's link to sign-up reads "Create an account".
+- tapOn: "Create an account"
 - runFlow:
     when:
-      visible: "Welcome!"
+      visible: "Welcome back"
     commands:
       # Race guard (see profile_edit_client.yaml / bug-log.md session note,
       # 2026-09-13): this retry can run after the first tap's own navigation
-      # already left "Sign Up" behind, where it isn't visible text yet —
+      # already left "Create an account" behind, where it isn't visible text yet —
       # optional so that case is a no-op instead of a hard failure.
       - tapOn:
-          text: "Sign Up"
+          text: "Create an account"
           optional: true
 - extendedWaitUntil:
     visible: "Create account"
     timeout: 30000
+# Role step first: "I need help at home" is the homeowner card.
+- tapOn: "I need help at home"
+- tapOn: "Continue"
+- extendedWaitUntil:
+    visible:
+      id: "input-name"
+    timeout: 20000
 - tapOn:
     id: "input-name"
 - inputText: "Maestro Signup Burner"
@@ -48,6 +60,8 @@ appId: com.taskbuddy.app
     id: "input-confirm-password"
 - inputText: "TestPass123!"
 - hideKeyboard
+# One row covers both documents: the first tap opens Terms, and once Terms is
+# accepted the next tap opens Privacy. Each document has its own "I agree".
 - scrollUntilVisible:
     element:
       id: "chk-terms"
@@ -64,13 +78,8 @@ appId: com.taskbuddy.app
     direction: DOWN
     timeout: 20000
 - tapOn: "I agree to the Terms & Conditions"
-- scrollUntilVisible:
-    element:
-      id: "chk-privacy"
-    direction: DOWN
-    timeout: 20000
 - tapOn:
-    id: "chk-privacy"
+    id: "chk-terms"
 - extendedWaitUntil:
     visible: "Privacy Policy"
     timeout: 20000
@@ -89,10 +98,11 @@ appId: com.taskbuddy.app
     id: "chk-data-collection"
 - scrollUntilVisible:
     element:
-      text: "Sign Up"
+      id: "btn-create-account"
     direction: DOWN
     timeout: 20000
-- tapOn: "Sign Up"
+- tapOn:
+    id: "btn-create-account"
 # A brand-new account genuinely sees onboarding here (unlike login_client.yaml's
 # Skip, which is working around clearState wiping AsyncStorage on a returning
 # account) — this is the real first-run onboarding gate.

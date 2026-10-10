@@ -6,12 +6,12 @@ env:
 # Phase 2: delete account, happy path (no blockers — burner has no balance,
 # jobs, or escrow). Uses a disposable burner account created this session by
 # auth_signup_client_no_confirmation.yaml, NOT the persistent maestro.client
-# account. Two "Delete Account" texts are on screen at once here (the modal
-# isn't a full-screen overlay, so the Settings row behind it stays visible,
-# unlike Log Out's fully-covering modal) — disambiguated with `rightOf:
-# "Cancel"`, since Cancel/Delete Account are side-by-side buttons, not
-# stacked (a `below:` anchor here is geometrically wrong, confirmed by
-# running it first and watching it fail to find any match).
+# account.
+#
+# Settings has a red "Delete account" row. It opens a sheet titled "Delete your
+# account?" with "Delete my account" (the confirm) and "Keep my account" under
+# it. "Delete my account" appears only on that sheet, so no position anchor is
+# needed.
 - runFlow: _helpers/launch_fresh.yaml
 - tapOn:
     id: "input-email"
@@ -32,11 +32,9 @@ env:
 - tapOn:
     id: "btn-home-avatar"
 - tapOn: "Settings"
-- tapOn: "Delete Account"
-- assertVisible: "Delete your account?"
-- tapOn:
-    text: "Delete Account"
-    rightOf: "Cancel"
+- tapOn: "Delete account"
+- assertVisible: 'Delete your account\?'
+- tapOn: "Delete my account"
 - extendedWaitUntil:
-    visible: "Welcome!"
+    visible: "Welcome back"
     timeout: 20000

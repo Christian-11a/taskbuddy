@@ -16,5 +16,5 @@ appId: com.taskbuddy.app
 # clears state — that IS the sign-out, and it is more reliable than driving
 # the Settings sign-out button for a harness check.
 - runFlow: _helpers/login_provider.yaml
-- assertVisible: "Jobs Near You"
+- assertVisible: "Jobs near you"
 - assertVisible: "Open"
