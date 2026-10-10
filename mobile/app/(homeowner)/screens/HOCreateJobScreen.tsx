@@ -720,7 +720,7 @@ export default function HOCreateJobScreen({
                 ))}
               </View>
             )}
-            {!!categories.error && <Text style={styles.errorText}>{categories.error}</Text>}
+            {!!categories.error && <Text style={styles.errorText} accessibilityLiveRegion="polite">{categories.error}</Text>}
             <View
               style={styles.serviceGrid}
               onLayout={(event) => { fieldPositions.current.service = event.nativeEvent.layout.y; }}
@@ -747,7 +747,7 @@ export default function HOCreateJobScreen({
                 );
               })}
             </View>
-            {!!fieldErrors.service && <Text style={styles.inputErrorText}>{fieldErrors.service}</Text>}
+            {!!fieldErrors.service && <Text style={styles.inputErrorText} accessibilityLiveRegion="polite">{fieldErrors.service}</Text>}
           </View>
         )}
 
@@ -847,7 +847,7 @@ export default function HOCreateJobScreen({
             <Text style={styles.taskCount}>
               {tasks.length}/{MAX_TASKS} tasks selected
             </Text>
-            {!!fieldErrors.tasks && <Text style={styles.inputErrorText}>{fieldErrors.tasks}</Text>}
+            {!!fieldErrors.tasks && <Text style={styles.inputErrorText} accessibilityLiveRegion="polite">{fieldErrors.tasks}</Text>}
 
             <View style={styles.divider} />
 
@@ -914,7 +914,7 @@ export default function HOCreateJobScreen({
                   <Text style={styles.photoPickerHint}>Helps providers understand the job</Text>
                 </View>
               </Tap>
-              {!!photoMessage && <Text style={styles.inputErrorText}>{photoMessage}</Text>}
+              {!!photoMessage && <Text style={styles.inputErrorText} accessibilityLiveRegion="polite">{photoMessage}</Text>}
               {photos.length > 0 && (
                 <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.photoList}>
                   {photos.map((photo, index) => (
@@ -974,7 +974,7 @@ export default function HOCreateJobScreen({
                 >
                   <Text style={[styles.pickerText, !date && styles.pickerPlaceholder]}>{dateLabel || 'Pick a date'}</Text>
                 </Tap>
-                {!!fieldErrors.date && <Text style={styles.inputErrorText}>{fieldErrors.date}</Text>}
+                {!!fieldErrors.date && <Text style={styles.inputErrorText} accessibilityLiveRegion="polite">{fieldErrors.date}</Text>}
               </View>
               <View style={styles.dateTimeCol}>
                 <Text style={styles.inputLabel}>Time</Text>
@@ -987,7 +987,7 @@ export default function HOCreateJobScreen({
                 >
                   <Text style={[styles.pickerText, !time && styles.pickerPlaceholder]}>{timeLabel || 'Pick a time'}</Text>
                 </Tap>
-                {!!fieldErrors.time && <Text style={styles.inputErrorText}>{fieldErrors.time}</Text>}
+                {!!fieldErrors.time && <Text style={styles.inputErrorText} accessibilityLiveRegion="polite">{fieldErrors.time}</Text>}
               </View>
             </View>
 
@@ -1006,7 +1006,7 @@ export default function HOCreateJobScreen({
                   keyboardType="decimal-pad"
                 />
               </View>
-              {!!fieldErrors.budget && <Text style={styles.inputErrorText}>{fieldErrors.budget}</Text>}
+              {!!fieldErrors.budget && <Text style={styles.inputErrorText} accessibilityLiveRegion="polite">{fieldErrors.budget}</Text>}
               <Text style={styles.budgetHint}>You only pay when you hire. It's held safely until the job is done.</Text>
             </View>
           </View>

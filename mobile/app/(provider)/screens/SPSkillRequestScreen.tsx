@@ -210,7 +210,7 @@ export default function SPSkillRequestScreen({ onBack }: SPSkillRequestScreenPro
         </View>
 
         {requests.loading && <ActivityIndicator color={Colors.link} style={styles.spinner} />}
-        {!!error && <Text style={styles.error}>{error}</Text>}
+        {!!error && <Text style={styles.error} accessibilityLiveRegion="polite">{error}</Text>}
 
         {pending && (
           <StatusCard
@@ -235,7 +235,7 @@ export default function SPSkillRequestScreen({ onBack }: SPSkillRequestScreenPro
 
         {!pending && !requests.loading && (
           <>
-            <Text style={styles.sectionTitle}>Request a change</Text>
+            <Text style={styles.sectionTitle} accessibilityRole="header">Request a change</Text>
             <View style={styles.typeGroup}>
               {TYPE_OPTIONS.map((opt) => (
                 <View key={opt.value}>
@@ -293,7 +293,7 @@ export default function SPSkillRequestScreen({ onBack }: SPSkillRequestScreenPro
 
         {history.length > 0 && (
           <>
-            <Text style={styles.sectionTitle}>Past requests</Text>
+            <Text style={styles.sectionTitle} accessibilityRole="header">Past requests</Text>
             {history.map((r) => {
               const meta = STATUS_META[r.status];
               const kind = requestIconKind(r.status);

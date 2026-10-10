@@ -160,7 +160,7 @@ function ConsentCheckbox({ checked, onPress, label, error, testID, accessibility
         </Tap>
         <Text style={styles.termsText}>{label}</Text>
       </View>
-      {!!error && <Text style={styles.inputErrorText}>{error}</Text>}
+      {!!error && <Text style={styles.inputErrorText} accessibilityLiveRegion="polite">{error}</Text>}
     </View>
   );
 }
@@ -423,7 +423,7 @@ export default function RegisterScreen({ onRegister, onLogin, onGoogleSignIn }: 
               autoFocus
             />
 
-            {!!otpError && <Text style={styles.otpError}>{otpError}</Text>}
+            {!!otpError && <Text style={styles.otpError} accessibilityLiveRegion="polite">{otpError}</Text>}
             {!!resendNote && <Text style={styles.otpNote}>{resendNote}</Text>}
 
             <Tap
@@ -665,7 +665,7 @@ export default function RegisterScreen({ onRegister, onLogin, onGoogleSignIn }: 
                   </View>
                 )}
                 {!!fieldErrors.category && (
-                  <Text style={styles.inputErrorText}>{fieldErrors.category}</Text>
+                  <Text style={styles.inputErrorText} accessibilityLiveRegion="polite">{fieldErrors.category}</Text>
                 )}
               </View>
             )}

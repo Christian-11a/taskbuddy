@@ -98,7 +98,7 @@ export default function AvatarPicker({ name }: { name: string }) {
           {busy ? 'Uploading…' : 'Change photo'}
         </Text>
       </Tap>
-      {!!error && <Text style={styles.errorText}>{error}</Text>}
+      {!!error && <Text style={styles.errorText} accessibilityLiveRegion="polite">{error}</Text>}
 
       <SheetFrame visible={sheetOpen} onClose={() => setSheetOpen(false)} contentStyle={styles.sheet}>
         <Text style={styles.sheetTitle} accessibilityRole="header">Profile photo</Text>

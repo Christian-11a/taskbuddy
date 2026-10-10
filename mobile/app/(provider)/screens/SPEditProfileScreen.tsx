@@ -288,7 +288,7 @@ export default function SPEditProfileScreen({ onBack, onSave, onManageServices }
             ) : null}
           </View>
 
-          {!!error && <Text style={styles.errorText}>{error}</Text>}
+          {!!error && <Text style={styles.errorText} accessibilityLiveRegion="polite">{error}</Text>}
         </ScrollView>
 
         <BottomActionBar primaryLabel="Save changes" busy={saving} onPrimary={requestSave} />

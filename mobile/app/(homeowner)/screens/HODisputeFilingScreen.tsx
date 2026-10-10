@@ -129,7 +129,7 @@ export default function HODisputeFilingScreen({ jobId, onBack, onSubmitted }: HO
 
           <Text style={styles.photoNote}>You can add photos from the job chat after you send this.</Text>
 
-          {error && <Text style={styles.errorText}>{error}</Text>}
+          {error && <Text style={styles.errorText} accessibilityLiveRegion="polite">{error}</Text>}
 
           <Tap
             style={[styles.submitButton, !canSend && styles.submitButtonDisabled]}

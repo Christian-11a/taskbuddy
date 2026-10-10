@@ -81,7 +81,7 @@ export default function HOSettingsScreen({ onBack, onLogout }: HOSettingsScreenP
         contentContainerStyle={styles.bodyContent}
         showsVerticalScrollIndicator={false}
       >
-        <Text style={styles.sectionTitle}>Appearance</Text>
+        <Text style={styles.sectionTitle} accessibilityRole="header">Appearance</Text>
         <View style={styles.card}>
           <View style={styles.row}>
             <View style={styles.rowIcon}>
@@ -104,7 +104,7 @@ export default function HOSettingsScreen({ onBack, onLogout }: HOSettingsScreenP
           </View>
         </View>
 
-        <Text style={styles.sectionTitle}>Notifications</Text>
+        <Text style={styles.sectionTitle} accessibilityRole="header">Notifications</Text>
         <View style={styles.card}>
           <View style={styles.row}>
             <View style={styles.rowIcon}>
@@ -128,14 +128,14 @@ export default function HOSettingsScreen({ onBack, onLogout }: HOSettingsScreenP
         </View>
         {!!settingsError && (
           <View>
-            <Text style={styles.settingsError}>{settingsError}</Text>
+            <Text style={styles.settingsError} accessibilityLiveRegion="polite">{settingsError}</Text>
             <Tap onPress={reloadSettings} activeOpacity={0.8} hitSlop={LINK_HIT_SLOP} accessibilityRole="button" accessibilityLabel="Retry settings">
               <Text style={styles.retryText}>Retry settings</Text>
             </Tap>
           </View>
         )}
 
-        <Text style={styles.sectionTitle}>Account</Text>
+        <Text style={styles.sectionTitle} accessibilityRole="header">Account</Text>
         <View style={styles.card}>
           {!!profile?.has_password && (
             <Tap

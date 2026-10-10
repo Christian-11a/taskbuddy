@@ -118,7 +118,7 @@ export default function HelpSupportScreen({ role, onBack, onViewTutorial }: Help
           </Tap>
         )}
 
-        <Text style={styles.sectionTitle}>Common questions</Text>
+        <Text style={styles.sectionTitle} accessibilityRole="header">Common questions</Text>
         {matches.length === 0 ? (
           <Text style={styles.noMatch}>{`No questions match “${query}”.`}</Text>
         ) : (
@@ -145,7 +145,7 @@ export default function HelpSupportScreen({ role, onBack, onViewTutorial }: Help
           </View>
         )}
 
-        <Text style={styles.sectionTitle}>Still need help?</Text>
+        <Text style={styles.sectionTitle} accessibilityRole="header">Still need help?</Text>
         <Tap
           style={styles.contactRow}
           activeOpacity={0.8}

@@ -293,7 +293,7 @@ export default function AddressField({
       {searching && !open && <Text style={styles.hint}>Looking up addresses…</Text>}
       {!!notice && <Text style={styles.notice}>{notice}</Text>}
       {!!hint && !notice && <Text style={styles.hint}>{hint}</Text>}
-      {!!error && <Text style={styles.error}>{error}</Text>}
+      {!!error && <Text style={styles.error} accessibilityLiveRegion="polite">{error}</Text>}
     </View>
   );
 }

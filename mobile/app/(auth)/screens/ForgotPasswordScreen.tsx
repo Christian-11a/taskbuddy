@@ -356,7 +356,7 @@ function ErrorCard({ text }: { text: string }) {
   return (
     <View style={styles.errorCard} accessibilityRole="alert">
       <AlertCircle size={17} color={V6Colors.dangerText} />
-      <Text style={styles.errorText}>{text}</Text>
+      <Text style={styles.errorText} accessibilityLiveRegion="polite">{text}</Text>
     </View>
   );
 }

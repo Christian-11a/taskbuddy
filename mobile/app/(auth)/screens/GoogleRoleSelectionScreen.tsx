@@ -106,7 +106,7 @@ export default function GoogleRoleSelectionScreen({
           />
         </View>
 
-        {!!error && <Text style={styles.errorText}>{error}</Text>}
+        {!!error && <Text style={styles.errorText} accessibilityLiveRegion="polite">{error}</Text>}
 
         <Text style={styles.footerNote}>
           {email

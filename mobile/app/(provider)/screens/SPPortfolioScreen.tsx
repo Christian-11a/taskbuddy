@@ -283,7 +283,7 @@ export default function SPPortfolioScreen({ onBack }: { onBack: () => void }) {
               })}
             </View>
             {!!categories.error && (
-              <Text style={styles.errorText}>{categories.error}</Text>
+              <Text style={styles.errorText} accessibilityLiveRegion="polite">{categories.error}</Text>
             )}
 
             <View style={styles.tips}>
@@ -305,7 +305,7 @@ export default function SPPortfolioScreen({ onBack }: { onBack: () => void }) {
         {portfolio.loading && <ContentSkeleton variant="list" />}
         {!!portfolio.error && (
           <View>
-            <Text style={styles.errorText}>{portfolio.error}</Text>
+            <Text style={styles.errorText} accessibilityLiveRegion="polite">{portfolio.error}</Text>
             <Tap
               onPress={portfolio.reload}
               style={styles.linkBtn}

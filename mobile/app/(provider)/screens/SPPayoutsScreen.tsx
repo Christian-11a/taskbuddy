@@ -210,8 +210,8 @@ export default function SPPayoutsScreen({ onBack }: SPPayoutsScreenProps) {
                   </Text>
                 )}
                 {loading && <Text style={styles.note}>Refreshing payout status…</Text>}
-                {!!error && <Text style={styles.actionError}>{error}</Text>}
-                {!!actionError && <Text style={styles.actionError}>{actionError}</Text>}
+                {!!error && <Text style={styles.actionError} accessibilityLiveRegion="polite">{error}</Text>}
+                {!!actionError && <Text style={styles.actionError} accessibilityLiveRegion="polite">{actionError}</Text>}
 
                 {current.details_submitted && (
                   <Tap
@@ -243,7 +243,7 @@ export default function SPPayoutsScreen({ onBack }: SPPayoutsScreenProps) {
               </StatusCard>
             </View>
 
-            <Text style={styles.sectionTitle}>How you get paid</Text>
+            <Text style={styles.sectionTitle} accessibilityRole="header">How you get paid</Text>
             <View style={styles.card}>
               <View style={styles.explainRow}>
                 <View style={styles.tile}>
@@ -273,7 +273,7 @@ export default function SPPayoutsScreen({ onBack }: SPPayoutsScreenProps) {
 
             {current.state !== 'active' && (
               <>
-                <Text style={styles.sectionTitle}>You'll need</Text>
+                <Text style={styles.sectionTitle} accessibilityRole="header">You'll need</Text>
                 <View style={styles.card}>
                   {NEEDED.map((item) => (
                     <View key={item} style={styles.checkRow}>

@@ -410,7 +410,7 @@ export default function SPVerificationScreen({ onBack, onVerified }: SPVerificat
                 <Text style={styles.checkAgain}>Check again</Text>
               </Tap>
             </StatusCard>
-            <Text style={styles.sectionTitle}>Progress</Text>
+            <Text style={styles.sectionTitle} accessibilityRole="header">Progress</Text>
             <PendingTimeline rows={pendingRows({ method: verification.method, fellBackToManual })} />
           </>
         )}
@@ -423,7 +423,7 @@ export default function SPVerificationScreen({ onBack, onVerified }: SPVerificat
               title="Your documents were rejected."
               body={rejectionNote(verification.rejection_reason) ?? undefined}
             />
-            <Text style={styles.sectionTitle}>How to fix it</Text>
+            <Text style={styles.sectionTitle} accessibilityRole="header">How to fix it</Text>
             <CheckList items={HOW_TO_FIX} />
           </>
         )}
@@ -448,7 +448,7 @@ export default function SPVerificationScreen({ onBack, onVerified }: SPVerificat
               icon={ShieldCheck}
               text="Your documents are stored privately and are only visible to TaskBuddy admins reviewing your account."
             />
-            {!!error && <Text style={styles.errorText}>{error}</Text>}
+            {!!error && <Text style={styles.errorText} accessibilityLiveRegion="polite">{error}</Text>}
           </View>
         )}
 
@@ -612,7 +612,7 @@ export default function SPVerificationScreen({ onBack, onVerified }: SPVerificat
               </>
             )}
 
-            {!!error && <Text style={styles.errorText}>{error}</Text>}
+            {!!error && <Text style={styles.errorText} accessibilityLiveRegion="polite">{error}</Text>}
 
             {isRejected && step === 1 && (
               <Text style={styles.retryHint}>

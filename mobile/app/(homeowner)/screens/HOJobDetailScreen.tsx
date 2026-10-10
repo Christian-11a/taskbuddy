@@ -383,7 +383,7 @@ export default function HOJobDetailScreen({ jobId, onBack, onNavigate }: HOJobDe
           </View>
 
           <View style={styles.block}>
-            <Text style={styles.sectionTitle}>Job Description</Text>
+            <Text style={styles.sectionTitle} accessibilityRole="header">Job Description</Text>
             <Text style={styles.description}>{job.description || 'No description provided.'}</Text>
             <Text style={styles.muted}>Posted {timeAgo(job.posted_at)}</Text>
           </View>
@@ -392,7 +392,7 @@ export default function HOJobDetailScreen({ jobId, onBack, onNavigate }: HOJobDe
           {tasks.length > 0 && (
             <View style={styles.block}>
               <View style={styles.rowBetween}>
-                <Text style={styles.sectionTitle}>Tasks</Text>
+                <Text style={styles.sectionTitle} accessibilityRole="header">Tasks</Text>
                 <Text style={styles.counter}>{doneCount}/{tasks.length} done</Text>
               </View>
               {tasks.map((task) => (
@@ -407,7 +407,7 @@ export default function HOJobDetailScreen({ jobId, onBack, onNavigate }: HOJobDe
           )}
 
           <View style={styles.block}>
-            <Text style={styles.sectionTitle}>Job Photos</Text>
+            <Text style={styles.sectionTitle} accessibilityRole="header">Job Photos</Text>
             {job.photo_urls?.length > 0 ? (
               <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.attachmentList}>
                 {job.photo_urls.map((url, index) => (
