@@ -1,6 +1,6 @@
 import React from 'react';
-import { StyleSheet } from 'react-native';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react-native';
+import { AppState, type AppStateStatus, StyleSheet } from 'react-native';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react-native';
 import SPHomeScreen from '../SPHomeScreen';
 import { api } from '../../../../src/lib/api';
 import { useAuth } from '../../../../src/context/AuthContext';
@@ -338,5 +338,60 @@ describe('SPHomeScreen — hero header keeps the avatar reachable with a long na
       expect(api.myVerification).not.toHaveBeenCalled();
       expect(screen.queryByText('Get verified to see jobs near you')).toBeNull();
     });
+  });
+});
+
+describe('SPHomeScreen — the feed shows open jobs posted since it was last read', () => {
+  const feedJob = (id: string, title: string) => (
+    { id, title, status: 'open', urgency: 'normal', address: 'Lipa', budget: 500, scheduled_at: null, distance_km: 1.0 }
+  );
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    clearAsyncDataCache();
+    (useAuth as jest.Mock).mockReturnValue({
+      profile: { id: 'provider', full_name: 'Alex', city: 'Lipa', latitude: 13.9, longitude: 121.1 },
+      providerProfile: { category_id: 1, is_available: true, service_radius_km: 25, approved_secondary_services: [] },
+      isVerified: true,
+      refreshProfile: jest.fn(),
+    });
+    (api.assignedJobs as jest.Mock).mockResolvedValue([]);
+    (api.myApplications as jest.Mock).mockResolvedValue([]);
+  });
+
+  it('asks for the feed again on a pull down, and shows a job posted since the last read', async () => {
+    (api.browseJobs as jest.Mock)
+      .mockResolvedValueOnce({ jobs: [feedJob('job-a', 'Fix the sink')], summary: null })
+      .mockResolvedValueOnce({ jobs: [feedJob('job-a', 'Fix the sink'), feedJob('job-b', 'Paint the gate')], summary: null });
+    render(<SPHomeScreen onNavigate={jest.fn()} />);
+    expect(await screen.findByText('Fix the sink')).toBeTruthy();
+    expect(screen.queryByText('Paint the gate')).toBeNull();
+
+    await act(async () => {
+      screen.getByTestId('feed-scroll').props.refreshControl.props.onRefresh();
+    });
+
+    expect(await screen.findByText('Paint the gate')).toBeTruthy();
+    expect(api.browseJobs).toHaveBeenCalledTimes(2);
+  });
+
+  it('asks for the feed again when the app comes back to the foreground', async () => {
+    const listeners: Array<(state: AppStateStatus) => void> = [];
+    const subscribe = jest.spyOn(AppState, 'addEventListener').mockImplementation((_type, listener) => {
+      listeners.push(listener);
+      return { remove: jest.fn() };
+    });
+    (api.browseJobs as jest.Mock)
+      .mockResolvedValueOnce({ jobs: [feedJob('job-a', 'Fix the sink')], summary: null })
+      .mockResolvedValueOnce({ jobs: [feedJob('job-a', 'Fix the sink'), feedJob('job-c', 'Mow the lawn')], summary: null });
+    render(<SPHomeScreen onNavigate={jest.fn()} />);
+    expect(await screen.findByText('Fix the sink')).toBeTruthy();
+
+    act(() => listeners.forEach((listener) => listener('background')));
+    act(() => listeners.forEach((listener) => listener('active')));
+
+    expect(await screen.findByText('Mow the lawn')).toBeTruthy();
+    expect(api.browseJobs).toHaveBeenCalledTimes(2);
+    subscribe.mockRestore();
   });
 });

@@ -24,6 +24,7 @@ import { useNotifications } from '../../../src/context/NotificationsContext';
 import { StatusBar } from 'expo-status-bar';
 import React, { useEffect, useState } from 'react';
 import {
+  RefreshControl,
   ScrollView,
   StyleSheet,
   Switch,
@@ -239,7 +240,7 @@ export default function SPHomeScreen({ onNavigate }: SPHomeScreenProps) {
   }, []);
   const serviceKey = [providerProfile?.category_id, ...(providerProfile?.approved_secondary_services ?? []).map((service) => service.category_id).sort((a, b) => a - b)].join(':');
   const [urgency, setUrgency] = useRetainedState<FeedUrgency>('sp.feed.urgency', 'all');
-  const { data } = useAsyncData(async () => {
+  const { data, reload: reloadFeed, error: feedError } = useAsyncData(async () => {
     const [feed, assigned] = await Promise.all([
       api.browseJobs({
         limit: 20,
@@ -253,6 +254,18 @@ export default function SPHomeScreen({ onNavigate }: SPHomeScreenProps) {
     // `loaded` is the urgency the server filtered by, which the pill counts need.
     return { jobs: feed.jobs, summary: feed.summary, assigned, loaded: urgency };
   }, [profile?.latitude, profile?.longitude, radiusKm, urgency, serviceKey], `sp-home-${profile?.id}-${serviceKey}-${profile?.latitude}-${profile?.longitude}-${radiusKm}-${urgency}`);
+
+  // Open work changes on the server while the app is away, and nothing else asks for it again until the
+  // tab is opened, so the feed is fetched again on a pull down and when the app comes back to the foreground.
+  useRefreshOnForeground(reloadFeed, isVerified);
+  const [feedRefreshing, setFeedRefreshing] = useState(false);
+  useEffect(() => {
+    setFeedRefreshing(false);
+  }, [data, feedError]);
+  const refreshFeed = () => {
+    setFeedRefreshing(true);
+    reloadFeed();
+  };
 
   // Pending applications only label feed rows "Applied · waiting". The feed
   // never waits for this lookup, and a failed one leaves every row unlabelled.
@@ -297,6 +310,10 @@ export default function SPHomeScreen({ onNavigate }: SPHomeScreenProps) {
       <ScrollView keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag"
         style={styles.body}
         showsVerticalScrollIndicator={false}
+        testID="feed-scroll"
+        refreshControl={isVerified ? (
+          <RefreshControl refreshing={feedRefreshing} onRefresh={refreshFeed} tintColor={Colors.primary} colors={[Colors.primary]} />
+        ) : undefined}
       >
         {/* Header on the canvas: the avatar opens Profile, the bell opens Notifications. */}
         <View style={[styles.header, { paddingTop: headerTop }]}>
