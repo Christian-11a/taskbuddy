@@ -1,6 +1,6 @@
 import { BackHandler } from 'react-native';
 import { act, renderHook } from '@testing-library/react-native';
-import { useLeaveGuard } from '../useLeaveGuard';
+import { isBackBlockedByScreen, useLeaveGuard } from '../useLeaveGuard';
 
 function backPressHandlers(spy: jest.SpyInstance) {
   return spy.mock.calls
@@ -72,5 +72,34 @@ describe('useLeaveGuard', () => {
 
     rerender({ dirty: false });
     expect(remove).toHaveBeenCalledTimes(1);
+  });
+
+  it('reports that back is blocked only while something is unsaved', () => {
+    const { rerender, unmount } = renderHook(
+      ({ dirty }: { dirty: boolean }) => useLeaveGuard(dirty, jest.fn()),
+      { initialProps: { dirty: false } },
+    );
+    expect(isBackBlockedByScreen()).toBe(false);
+
+    rerender({ dirty: true });
+    expect(isBackBlockedByScreen()).toBe(true);
+
+    rerender({ dirty: false });
+    expect(isBackBlockedByScreen()).toBe(false);
+
+    rerender({ dirty: true });
+    unmount();
+    expect(isBackBlockedByScreen()).toBe(false);
+  });
+
+  it('stays blocked until every form with unsaved changes has let go', () => {
+    const first = renderHook(() => useLeaveGuard(true, jest.fn()));
+    const second = renderHook(() => useLeaveGuard(true, jest.fn()));
+
+    first.unmount();
+    expect(isBackBlockedByScreen()).toBe(true);
+
+    second.unmount();
+    expect(isBackBlockedByScreen()).toBe(false);
   });
 });

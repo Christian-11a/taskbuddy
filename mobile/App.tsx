@@ -16,6 +16,7 @@ import { NotificationsProvider } from './src/context/NotificationsContext';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { BackHandler, LogBox, StyleSheet, View } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { isBackBlockedByScreen } from './src/hooks/useLeaveGuard';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { BottomSheetModalProvider } from '@gorhom/bottom-sheet';
 
@@ -288,6 +289,8 @@ function AppContent() {
   // screen) lets the OS's real exit happen where it should.
   useEffect(() => {
     const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+      // A form with unsaved changes is asking about leaving (useLeaveGuard). Step aside so its question wins.
+      if (isBackBlockedByScreen()) return false;
       if (!isAuthenticated) {
         if (preAuth !== 'login') {
           setPreAuth('login');

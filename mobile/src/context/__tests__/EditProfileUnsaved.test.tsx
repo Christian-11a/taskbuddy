@@ -6,6 +6,7 @@ import HOEditProfileScreen from '../../../app/(homeowner)/screens/HOEditProfileS
 import SPEditProfileScreen from '../../../app/(provider)/screens/SPEditProfileScreen';
 import { useAuth } from '../AuthContext';
 import { api } from '../../lib/api';
+import { isBackBlockedByScreen } from '../../hooks/useLeaveGuard';
 
 jest.mock('../AuthContext', () => ({ useAuth: jest.fn() }));
 jest.mock('../../lib/api', () => ({
@@ -70,6 +71,11 @@ function backPressHandlers(spy: jest.SpyInstance) {
   return spy.mock.calls
     .filter(([eventName]) => eventName === 'hardwareBackPress')
     .map(([, handler]) => handler);
+}
+
+/** Android back as React Native delivers it: the most recently added listener first, until one takes it. */
+function pressHardwareBack(spy: jest.SpyInstance): boolean {
+  return [...backPressHandlers(spy)].reverse().some((handler) => handler() === true);
 }
 
 beforeEach(() => {
@@ -171,6 +177,50 @@ describe.each<Role>(['homeowner', 'provider'])('%s edit profile leaving', (role)
     expect(handled).toBe(true);
     expect(onBack).not.toHaveBeenCalled();
     expect(screen.getByText(PHONE_MESSAGE)).toBeTruthy();
+    add.mockRestore();
+  });
+
+  it('keeps asking when an app back handler, added after the form turned dirty, is called first', async () => {
+    const add = jest.spyOn(BackHandler, 'addEventListener');
+    const onBack = jest.fn();
+    const onAppBack = jest.fn();
+    await renderEditor(role, onBack);
+    fireEvent.changeText(screen.getByLabelText('Phone (optional)'), '09990000000');
+
+    // App's own back handler is added after the form's, as it is each time App's state changes. It
+    // steps aside while a form is asking about unsaved changes (App.tsx checks isBackBlockedByScreen).
+    const appBack = BackHandler.addEventListener('hardwareBackPress', () => {
+      if (isBackBlockedByScreen()) return false;
+      onAppBack();
+      return true;
+    });
+
+    let handled = false;
+    act(() => {
+      handled = pressHardwareBack(add);
+    });
+
+    expect(handled).toBe(true);
+    expect(onAppBack).not.toHaveBeenCalled();
+    expect(onBack).not.toHaveBeenCalled();
+    expect(screen.getByText(PHONE_MESSAGE)).toBeTruthy();
+    appBack.remove();
+    add.mockRestore();
+  });
+
+  it('lets the app back handler act once the form has nothing unsaved', async () => {
+    const add = jest.spyOn(BackHandler, 'addEventListener');
+    const onAppBack = jest.fn();
+    await renderEditor(role);
+    const appBack = BackHandler.addEventListener('hardwareBackPress', () => {
+      if (isBackBlockedByScreen()) return false;
+      onAppBack();
+      return true;
+    });
+
+    expect(pressHardwareBack(add)).toBe(true);
+    expect(onAppBack).toHaveBeenCalledTimes(1);
+    appBack.remove();
     add.mockRestore();
   });
 
