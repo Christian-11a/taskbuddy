@@ -120,6 +120,8 @@ export default function HOJobDetailScreen({ jobId, onBack, onNavigate }: HOJobDe
   const provider: ProviderCard | null = data?.provider ?? null;
   const dispute = data?.dispute ?? null;
   const acceptedDistance = job ? acceptedDistanceKm(job) : null;
+  // "0 m away" (the provider accepted from the job itself) and an unknown distance add nothing, so the line is left out.
+  const acceptedAway = acceptedDistance != null && Math.round(acceptedDistance * 1000) > 0 ? acceptedDistance : null;
   const tasks = [...(job?.job_tasks ?? [])].sort((a, b) => a.position - b.position);
   const doneCount = tasks.filter((t) => t.is_done).length;
 
@@ -363,10 +365,10 @@ export default function HOJobDetailScreen({ jobId, onBack, onNavigate }: HOJobDe
                 rating
                 onMessage={() => onNavigate('Chat', job.id)}
               />
-              {!!job.provider_accept_address && (
+              {!!job.provider_accept_address && acceptedAway != null && (
                 <Text style={styles.acceptedFrom}>
                   Accepted from {job.provider_accept_address}
-                  {acceptedDistance != null ? ` · ${distanceLabel(acceptedDistance)} from your job` : ''}
+                  {` · ${distanceLabel(acceptedAway)} from your job`}
                 </Text>
               )}
             </View>
@@ -406,9 +408,10 @@ export default function HOJobDetailScreen({ jobId, onBack, onNavigate }: HOJobDe
             </View>
           )}
 
-          <View style={styles.block}>
-            <Text style={styles.sectionTitle} accessibilityRole="header">Job Photos</Text>
-            {job.photo_urls?.length > 0 ? (
+          {/* No photos: no heading and no empty block. */}
+          {job.photo_urls?.length > 0 && (
+            <View style={styles.block}>
+              <Text style={styles.sectionTitle} accessibilityRole="header">Job Photos</Text>
               <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.attachmentList}>
                 {job.photo_urls.map((url, index) => (
                   <Tap
@@ -422,10 +425,8 @@ export default function HOJobDetailScreen({ jobId, onBack, onNavigate }: HOJobDe
                   </Tap>
                 ))}
               </ScrollView>
-            ) : (
-              <Text style={styles.muted}>No photos were added to this job.</Text>
-            )}
-          </View>
+            </View>
+          )}
         </ScrollView>
       )}
 

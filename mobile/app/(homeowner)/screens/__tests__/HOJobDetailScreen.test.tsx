@@ -137,6 +137,44 @@ describe('FullTest homeowner job details', () => {
     await screen.findByText(/Accepted from Quezon City.*from your job/);
   });
 
+  it('hides the accepted-from line when the provider accepted from the job itself (0 m away)', async () => {
+    (api.getJob as jest.Mock).mockResolvedValue({
+      ...inProgressJob,
+      provider_accept_address: 'Arturo Tanco Drive',
+      provider_accept_latitude: inProgressJob.latitude,
+      provider_accept_longitude: inProgressJob.longitude,
+    });
+    render(<HOJobDetailScreen jobId="job-1" onBack={jest.fn()} onNavigate={jest.fn()} />);
+    await screen.findByText('Jane Provider');
+    expect(screen.queryByText(/Accepted from/)).toBeNull();
+  });
+
+  it('hides the accepted-from line when its distance is unknown', async () => {
+    (api.getJob as jest.Mock).mockResolvedValue({
+      ...inProgressJob,
+      provider_accept_address: 'Quezon City',
+      provider_accept_latitude: null,
+      provider_accept_longitude: null,
+    });
+    render(<HOJobDetailScreen jobId="job-1" onBack={jest.fn()} onNavigate={jest.fn()} />);
+    await screen.findByText('Jane Provider');
+    expect(screen.queryByText(/Accepted from/)).toBeNull();
+  });
+
+  it('leaves out the Job Photos heading when the job has no photos', async () => {
+    (api.getJob as jest.Mock).mockResolvedValue({ ...inProgressJob, photo_urls: [] });
+    render(<HOJobDetailScreen jobId="job-1" onBack={jest.fn()} onNavigate={jest.fn()} />);
+    await screen.findByText('Jane Provider');
+    expect(screen.queryByText('Job Photos')).toBeNull();
+  });
+
+  it('shows the Job Photos heading above the photos when there are some', async () => {
+    (api.getJob as jest.Mock).mockResolvedValue({ ...inProgressJob, photo_urls: ['https://test/one'] });
+    render(<HOJobDetailScreen jobId="job-1" onBack={jest.fn()} onNavigate={jest.fn()} />);
+    expect(await screen.findByText('Job Photos')).toBeTruthy();
+    expect(screen.getByLabelText('Open job photo 1')).toBeTruthy();
+  });
+
   it('hides offers after hiring and completion until the checklist is done', async () => {
     (api.getJob as jest.Mock).mockResolvedValue({ ...inProgressJob,
       job_tasks: [{ id: 't1', label: 'Fix tap', position: 0, is_done: false }] });
