@@ -103,13 +103,23 @@ describe('ChatThread header at large text', () => {
     expect(screen.getByText('Plumbing: Fix toilet · Confirmed').props.numberOfLines).toBe(2);
   });
 
-  it('gives View job a 48dp touch area that does not shrink', () => {
+  it('keeps View job from shrinking, and at normal size reaches 48dp with hit slop so the header does not grow', () => {
     render(<ChatThread {...baseProps()} />);
 
-    const link = StyleSheet.flatten(screen.getByLabelText('View job').props.style);
-    expect(link.minWidth).toBe(48);
-    expect(link.minHeight).toBe(48);
-    expect(link.flexShrink).toBe(0);
+    const link = screen.getByLabelText('View job');
+    const style = StyleSheet.flatten(link.props.style);
+    expect(style.flexShrink).toBe(0);
+    expect(style.minHeight).toBeUndefined();
+    expect(link.props.hitSlop.top + link.props.hitSlop.bottom).toBeGreaterThanOrEqual(32);
+  });
+
+  it('gives View job a 48dp minimum size when it is stacked under the subtitle at 1.3x', () => {
+    mockDims.fontScale = 1.3;
+    render(<ChatThread {...baseProps()} />);
+
+    const style = StyleSheet.flatten(screen.getByLabelText('View job').props.style);
+    expect(style.minWidth).toBe(48);
+    expect(style.minHeight).toBe(48);
   });
 
   it('keeps View job and Back working at 1.3x text size', () => {

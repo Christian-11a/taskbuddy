@@ -77,7 +77,7 @@ export default function ChatThread({
       style={[styles.viewJobTap, largeText && styles.viewJobTapBelow]}
       onPress={onViewJob}
       activeOpacity={0.8}
-      hitSlop={{ top: 15, bottom: 15, left: 8, right: 8 }}
+      hitSlop={{ top: 16, bottom: 16, left: 8, right: 8 }}
       accessibilityRole="button"
       accessibilityLabel="View job"
     >
@@ -240,8 +240,10 @@ function createThemedStyles(theme: ThemePalette) {
     headerInfo: { flex: 1, minWidth: 0 },
     headerName: { color: C.ink900, fontSize: 16, fontWeight: '800', fontFamily: 'Inter' },
     headerSubtitle: { color: C.ink500, fontSize: 12.5, fontWeight: '500', fontFamily: 'Inter', marginTop: 1 },
-    viewJobTap: { minWidth: 48, minHeight: 48, flexShrink: 0, justifyContent: 'center' },
-    viewJobTapBelow: { alignSelf: 'flex-start' },
+    // Normal size: the 48dp touch area comes from hitSlop, so the header row keeps its height.
+    viewJobTap: { flexShrink: 0, justifyContent: 'center' },
+    // Stacked under the subtitle at large text: the row has room for a real 48dp box.
+    viewJobTapBelow: { alignSelf: 'flex-start', minWidth: 48, minHeight: 48 },
     viewJobLink: { color: V6Colors.link, fontSize: 14, fontWeight: '700', fontFamily: 'Inter' },
 
     systemLine: {
