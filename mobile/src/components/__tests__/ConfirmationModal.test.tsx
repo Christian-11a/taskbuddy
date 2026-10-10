@@ -219,4 +219,68 @@ describe('ConfirmationModal', () => {
 
     expect(screen.UNSAFE_getByType(SheetFrame).props.onClose).toBeUndefined();
   });
+
+  it('sends Back and the backdrop to onDismiss when one is given, and leaves onCancel alone', () => {
+    const onCancel = jest.fn();
+    const onDismiss = jest.fn();
+    render(
+      <ConfirmationModal
+        visible
+        title="Leave without saving?"
+        message="You changed your phone number."
+        confirmLabel="Keep editing"
+        cancelLabel="Discard changes"
+        onConfirm={jest.fn()}
+        onCancel={onCancel}
+        onDismiss={onDismiss}
+      />,
+    );
+
+    fireEvent(screen.UNSAFE_getByType(Modal), 'requestClose');
+    expect(onDismiss).toHaveBeenCalledTimes(1);
+    expect(onCancel).not.toHaveBeenCalled();
+  });
+
+  it('keeps the cancel button on onCancel when onDismiss is given', () => {
+    const onCancel = jest.fn();
+    const onDismiss = jest.fn();
+    render(
+      <ConfirmationModal
+        visible
+        title="Leave without saving?"
+        message="You changed your phone number."
+        confirmLabel="Keep editing"
+        cancelLabel="Discard changes"
+        onConfirm={jest.fn()}
+        onCancel={onCancel}
+        onDismiss={onDismiss}
+      />,
+    );
+
+    fireEvent.press(screen.getByLabelText('Discard changes'));
+    expect(onCancel).toHaveBeenCalledTimes(1);
+    expect(onDismiss).not.toHaveBeenCalled();
+  });
+
+  it('colours the cancel text for the danger tone only when asked, and leaves the confirm button alone', () => {
+    const props = {
+      visible: true,
+      title: 'Leave without saving?',
+      message: 'You changed your phone number.',
+      confirmLabel: 'Keep editing',
+      cancelLabel: 'Discard changes',
+      onConfirm: jest.fn(),
+      onCancel: jest.fn(),
+    };
+    const { unmount } = render(<ConfirmationModal {...props} />);
+    const defaultCancelColour = StyleSheet.flatten(screen.getByText('Discard changes').props.style).color;
+    const defaultConfirmFill = StyleSheet.flatten(screen.getByLabelText('Keep editing').props.style).backgroundColor;
+    unmount();
+
+    render(<ConfirmationModal {...props} cancelTone="danger" />);
+    expect(StyleSheet.flatten(screen.getByText('Discard changes').props.style).color).not.toBe(defaultCancelColour);
+    expect(StyleSheet.flatten(screen.getByLabelText('Keep editing').props.style).backgroundColor).toBe(
+      defaultConfirmFill,
+    );
+  });
 });

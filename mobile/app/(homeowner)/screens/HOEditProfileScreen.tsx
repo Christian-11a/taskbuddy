@@ -3,7 +3,8 @@
  *
  * Edit profile for the homeowner. Fields use the shared TextField. The address
  * keeps its suggestions and GPS (AddressField), scrolled above the keyboard when
- * it takes focus, and "Save changes" is the one pinned action. Saving is
+ * it takes focus, and "Save changes" is the one pinned action. Leaving with
+ * unsaved changes asks first, from the back arrow or Android back. Saving is
  * unchanged: the same confirmation, then the same updateProfile call.
  */
 
@@ -20,7 +21,7 @@ import {
 import Tap from '../../../src/components/ui/Tap';
 import TextField from '../../../src/components/ui/TextField';
 import BottomActionBar from '../../../src/components/ui/BottomActionBar';
-import { ArrowLeft } from 'lucide-react-native';
+import { ArrowLeft, Save } from 'lucide-react-native';
 import AvatarPicker from '../../../src/components/AvatarPicker';
 import ConfirmationModal from '../../../src/components/ConfirmationModal';
 import AddressField from '../../../src/components/AddressField';
@@ -28,7 +29,9 @@ import { Spacing } from '../../../src/constants/theme';
 
 import { useAuth } from '../../../src/context/AuthContext';
 import { api, type GeocodedAddress } from '../../../src/lib/api';
+import { changedFields, leaveMessageFor } from '../../../src/lib/editProfileChanges';
 import { useHeaderTop } from '../../../src/hooks/useHeaderTop';
+import { useLeaveGuard } from '../../../src/hooks/useLeaveGuard';
 
 interface HOEditProfileScreenProps {
   onBack: () => void;
@@ -39,10 +42,18 @@ export default function HOEditProfileScreen({ onBack, onSave }: HOEditProfileScr
   const { C, styles, appearance } = useThemedStyles(createThemedStyles);
   const headerTop = useHeaderTop();
   const { profile, refreshProfile } = useAuth();
-  const [name, setName] = useState(profile?.full_name ?? '');
-  const [phone, setPhone] = useState(profile?.phone ?? '');
-  const [location, setLocation] = useState(profile?.address ?? '');
-  const [city, setCity] = useState(profile?.city ?? '');
+  // What the screen loaded. Anything that differs from it is unsaved.
+  const [loaded] = useState(() => ({
+    name: profile?.full_name ?? '',
+    phone: profile?.phone ?? '',
+    address: profile?.address ?? '',
+    city: profile?.city ?? '',
+    pickedAddress: false,
+  }));
+  const [name, setName] = useState(loaded.name);
+  const [phone, setPhone] = useState(loaded.phone);
+  const [location, setLocation] = useState(loaded.address);
+  const [city, setCity] = useState(loaded.city);
   const [resolvedLocation, setResolvedLocation] = useState<GeocodedAddress | null>(null);
   const [submitted, setSubmitted] = useState(false);
   const [showSaveConfirmation, setShowSaveConfirmation] = useState(false);
@@ -52,11 +63,14 @@ export default function HOEditProfileScreen({ onBack, onSave }: HOEditProfileScr
   const addressTop = useRef(0);
   const email = profile?.email ?? '';
 
-  const hasChanges =
-    name !== (profile?.full_name ?? '') ||
-    phone !== (profile?.phone ?? '') ||
-    location !== (profile?.address ?? '') ||
-    city !== (profile?.city ?? '') || resolvedLocation !== null;
+  const changed = changedFields(loaded, {
+    name,
+    phone,
+    address: location,
+    city,
+    pickedAddress: resolvedLocation !== null,
+  });
+  const { asking, requestLeave, keepEditing, leave } = useLeaveGuard(changed.length > 0, onBack);
 
   // Moves the address to the top of the visible area as it takes focus, so the
   // suggestions it opens sit above the keyboard instead of under it.
@@ -70,7 +84,7 @@ export default function HOEditProfileScreen({ onBack, onSave }: HOEditProfileScr
     setError(null);
     setSubmitted(true);
     if (!name.trim()) return;
-    if (hasChanges) setShowSaveConfirmation(true);
+    if (changed.length > 0) setShowSaveConfirmation(true);
     else onSave();
   };
 
@@ -100,7 +114,7 @@ export default function HOEditProfileScreen({ onBack, onSave }: HOEditProfileScr
       <View style={[styles.header, { paddingTop: headerTop }]}>
         <Tap
           style={styles.backBtn}
-          onPress={onBack}
+          onPress={requestLeave}
           activeOpacity={0.8}
           hitSlop={5}
           accessibilityRole="button"
@@ -196,6 +210,19 @@ export default function HOEditProfileScreen({ onBack, onSave }: HOEditProfileScr
         confirmLabel="Save changes"
         onCancel={() => setShowSaveConfirmation(false)}
         onConfirm={performSave}
+      />
+
+      <ConfirmationModal
+        visible={asking}
+        icon={Save}
+        title="Leave without saving?"
+        message={leaveMessageFor(changed)}
+        confirmLabel="Keep editing"
+        cancelLabel="Discard changes"
+        cancelTone="danger"
+        onConfirm={keepEditing}
+        onDismiss={keepEditing}
+        onCancel={leave}
       />
     </View>
   );

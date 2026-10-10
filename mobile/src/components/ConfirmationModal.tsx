@@ -14,25 +14,30 @@ interface ConfirmationModalProps {
   busy?: boolean;
   /** Red confirm button, for actions that discard or reject something. */
   destructive?: boolean;
+  /** Red cancel text, for a second action that discards something. */
+  cancelTone?: 'default' | 'danger';
   /** Icon in the header circle. Defaults to a shield, or a bin when destructive. */
   icon?: LucideIcon;
   onConfirm: () => void;
   onCancel: () => void;
+  /** Back and a backdrop tap. Defaults to onCancel. */
+  onDismiss?: () => void;
 }
 
 /**
  * Reusable confirmation for short yes/no questions with no fields. Opens as a
- * centered dialog. Back and a backdrop tap cancel, and both are locked while
- * `busy`. Anything with fields or choices belongs in a bottom sheet instead.
+ * centered dialog. Back and a backdrop tap dismiss (onDismiss, else onCancel),
+ * and both are locked while `busy`. Anything with fields or choices belongs in
+ * a bottom sheet instead.
  */
 export default function ConfirmationModal({
-  visible, title, message, confirmLabel = 'Confirm', cancelLabel = 'Cancel', busy = false, destructive = false, icon, onConfirm, onCancel,
+  visible, title, message, confirmLabel = 'Confirm', cancelLabel = 'Cancel', busy = false, destructive = false, cancelTone = 'default', icon, onConfirm, onCancel, onDismiss,
 }: ConfirmationModalProps) {
   const { styles, tones, onPrimary } = useThemedStyles(createThemedStyles);
   const tone = destructive ? tones.destructive : tones.default;
   const Icon = icon ?? (destructive ? Trash2 : ShieldCheck);
   return (
-    <SheetFrame visible={visible} onClose={busy ? undefined : onCancel} variant="dialog" contentStyle={styles.dialog} cardProps={{ accessibilityRole: 'alert' }}>
+    <SheetFrame visible={visible} onClose={busy ? undefined : (onDismiss ?? onCancel)} variant="dialog" contentStyle={styles.dialog} cardProps={{ accessibilityRole: 'alert' }}>
       <View style={[styles.iconCircle, { backgroundColor: tone.surface }]} testID="confirm-icon-circle">
         <Icon size={22} color={tone.icon} />
       </View>
@@ -59,7 +64,7 @@ export default function ConfirmationModal({
         accessibilityRole="button"
         accessibilityLabel={cancelLabel}
       >
-        <Text style={styles.cancelText}>{cancelLabel}</Text>
+        <Text style={[styles.cancelText, cancelTone === 'danger' && styles.cancelTextDanger]}>{cancelLabel}</Text>
       </Tap>
     </SheetFrame>
   );
@@ -88,6 +93,7 @@ function createThemedStyles(theme: ThemePalette) {
     confirmText: { fontFamily: 'Inter', fontSize: 14, fontWeight: '600', lineHeight: 18, color: Colors.onPrimary },
     cancelButton: { alignSelf: 'center', paddingHorizontal: 12, paddingVertical: 8 },
     cancelText: { fontFamily: 'Inter', fontSize: 14, fontWeight: '600', lineHeight: 18, color: Colors.link },
+    cancelTextDanger: { color: Colors.dangerText },
   });
   const tones = {
     default: { surface: Colors.primaryTonal, icon: Colors.link },
