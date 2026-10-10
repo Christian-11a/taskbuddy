@@ -67,7 +67,6 @@ import Tap from '../../../src/components/ui/Tap';
 import SheetFrame from '../../../src/components/ui/SheetFrame';
 import SuccessMark from '../../../src/components/ui/SuccessMark';
 import {
-  ArrowLeft,
   BrushCleaning,
   Check,
   CheckCircle2,
@@ -97,6 +96,9 @@ import { peso } from '../../../src/lib/format';
 import PhotoViewer from '../../../src/components/PhotoViewer';
 import ConfirmationModal from '../../../src/components/ConfirmationModal';
 import AddressField from '../../../src/components/AddressField';
+import PostAppBar from '../../../src/components/post/PostAppBar';
+import PostFooter from '../../../src/components/post/PostFooter';
+import PostProgress from '../../../src/components/post/PostProgress';
 import { requestAppPermission } from '../../../src/lib/permissions';
 
 const Shadows = { card: V6Shadows.sm, input: V6Shadows.sm };
@@ -247,7 +249,7 @@ export default function HOCreateJobScreen({
   const [error, setError] = useState<string | null>(null);
 
   const totalSteps = 5;
-  const STEP_LABELS = ['Service', 'Location', 'Tasks', 'Urgency', 'Review'];
+  const STEP_LABELS = ['Service', 'Where', 'Tasks', 'When & budget', 'Review'];
   const dateLabel = date?.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) ?? '';
   const timeLabel = time?.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' }) ?? '';
   const dateKey = (value: Date) => `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, '0')}-${String(value.getDate()).padStart(2, '0')}`;
@@ -707,28 +709,10 @@ export default function HOCreateJobScreen({
 
   return (
     <View style={styles.screen}>
-      {/* Header — matches .topbar (flat white, not a dark hero) */}
       <PhotoViewer photos={photos} index={photoIndex} onIndexChange={setPhotoIndex}
         onClose={() => setPhotoIndex(null)} />
-      <View style={[styles.header, { paddingTop: headerTop }]}>
-        <Tap style={styles.backBtn} onPress={handleExit} activeOpacity={0.8}>
-          <ArrowLeft size={22} color={Colors.ink700} />
-        </Tap>
-        <Text style={styles.headerTitle}>Post a Job</Text>
-        <View style={{ width: 38 }} />
-      </View>
-
-      {/* Stepper — matches .stepper/.step: 5 equal pills, filled for done/current */}
-      <View style={styles.stepperWrap}>
-        <View style={styles.stepper}>
-          {Array.from({ length: totalSteps }).map((_, i) => (
-            <View key={i} style={[styles.step, i < step && styles.stepDone]} />
-          ))}
-        </View>
-        <Text style={styles.stepperLabel}>
-          Step {step} of {totalSteps} · {STEP_LABELS[step - 1]}
-        </Text>
-      </View>
+      <PostAppBar title="Post a job" onBack={handleExit} topInset={headerTop} />
+      <PostProgress step={step} total={totalSteps} label={STEP_LABELS[step - 1]} />
 
       <KeyboardAvoidingView
         style={styles.body}
@@ -739,7 +723,7 @@ export default function HOCreateJobScreen({
           ref={scrollRef}
           testID="create-job-form-scroll"
           style={styles.body}
-          contentContainerStyle={[styles.bodyContent, { paddingBottom: 140 + insets.bottom }]}
+          contentContainerStyle={styles.bodyContent}
           contentInsetAdjustmentBehavior="automatic"
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
@@ -747,8 +731,7 @@ export default function HOCreateJobScreen({
         {/* ── Step 1 · Service ─────────────────────────────────────────── */}
         {step === 1 && (
           <View>
-            <Text style={styles.stepTitle}>Select a Service<Text style={styles.requiredAsterisk}> *</Text></Text>
-            <Text style={styles.stepSubtitle}>What service do you need?</Text>
+            <Text style={styles.stepTitle}>What do you need help with?</Text>
             {!!profile?.address && (
               <View style={styles.locationPrompt}>
                 <Text style={styles.locationPromptTitle}>Use your default location?</Text>
@@ -820,8 +803,8 @@ export default function HOCreateJobScreen({
         {/* ── Step 2 · Location ────────────────────────────────────────── */}
         {step === 2 && (
           <View>
-            <Text style={styles.stepTitle}>Location</Text>
-            <Text style={styles.stepSubtitle}>Where does the work need to happen?</Text>
+            <Text style={styles.stepTitle}>Where is the job?</Text>
+            <Text style={styles.stepSubtitle}>Providers see this on the job.</Text>
 
             <View onLayout={(event) => { fieldPositions.current.location = event.nativeEvent.layout.y; }} style={styles.inputGroup}>
               <Text style={styles.inputLabel}>Address<Text style={styles.requiredAsterisk}> *</Text></Text>
@@ -904,7 +887,7 @@ export default function HOCreateJobScreen({
         {/* ── Step 3 · Tasks ───────────────────────────────────────────── */}
         {step === 3 && (
           <View>
-            <Text style={styles.stepTitle}>What Needs Doing<Text style={styles.requiredAsterisk}> *</Text></Text>
+            <Text style={styles.stepTitle}>What needs doing?</Text>
             <Text style={styles.stepSubtitle}>
               Pick the tasks for this job. Your provider ticks these off as they work.
             </Text>
@@ -1090,11 +1073,8 @@ export default function HOCreateJobScreen({
         {/* ── Step 4 · Urgency, schedule & budget ──────────────────────── */}
         {step === 4 && (
           <View>
-            <Text style={styles.stepTitle}>How Soon?</Text>
-            <Text style={styles.stepSubtitle}>
-              Urgency decides how long providers get to apply before we match you
-              automatically.
-            </Text>
+            <Text style={styles.stepTitle}>When, and how much?</Text>
+            <Text style={styles.stepSubtitle}>How soon?</Text>
 
             {URGENCY_OPTIONS.map((option) => {
               const active = urgency === option.value;
@@ -1180,8 +1160,7 @@ export default function HOCreateJobScreen({
         {/* ── Step 5 · Review ──────────────────────────────────────────── */}
         {step === 5 && (
           <View testID="create-job-review">
-            <Text testID="create-job-review-title" style={styles.stepTitle}>Review & Post</Text>
-            <Text style={styles.stepSubtitle}>Check everything before posting</Text>
+            <Text testID="create-job-review-title" style={styles.stepTitle}>Check your job</Text>
 
             <View style={styles.reviewCard}>
               {[
@@ -1227,45 +1206,29 @@ export default function HOCreateJobScreen({
 
         <View style={{ height: 20 }} />
         </ScrollView>
+        {!!error && (
+          <View style={styles.footerError}>
+            <Text style={styles.errorText}>{error}</Text>
+          </View>
+        )}
+        {/* The bar lives inside the keyboard-avoiding view, so it rises above the keyboard
+            instead of hiding under it. BUG-005: the bar keeps clear of the system nav bar. */}
+        <PostFooter
+          onBack={step > 1 ? handleStepBack : undefined}
+          backDisabled={submitting}
+          onNext={handleNext}
+          nextLabel={
+            submitPhase === 'uploading'
+              ? 'Uploading photos…'
+              : submitPhase === 'posting'
+                ? 'Posting…'
+                : step === totalSteps
+                  ? 'Post job'
+                  : 'Next'
+          }
+          busy={submitting || stepBusy}
+        />
       </KeyboardAvoidingView>
-
-      {/* Footer */}
-      {/* BUG-005: same edge-to-edge safe-area gap as BUG-002's bottom nav — pad
-          for the system nav bar so the Back/Next buttons aren't under it. */}
-      <View style={[styles.footer, { paddingBottom: 14 + insets.bottom }, keyboardUp && styles.footerHidden]}>
-        {!!error && <Text style={styles.errorText}>{error}</Text>}
-        <View style={styles.footerActions}>
-          {step > 1 && (
-            <Tap style={styles.previousBtn} onPress={handleStepBack} activeOpacity={0.85} disabled={submitting}>
-              <Text style={styles.previousBtnText}>Back</Text>
-            </Tap>
-          )}
-          <Tap
-            style={[
-              styles.primaryBtn,
-              step === 1 && styles.primaryBtnFullWidth,
-              step > 1 && styles.primaryBtnWithBack,
-              (submitting || stepBusy) && styles.primaryBtnDisabled,
-            ]}
-            onPress={handleNext}
-            activeOpacity={0.85}
-            disabled={submitting || stepBusy}
-          >
-            <View style={styles.primaryBtnInner}>
-              {(submitting || stepBusy) && <ActivityIndicator size="small" color={Colors.onPrimary} />}
-              <Text style={styles.primaryBtnText}>
-                {submitPhase === 'uploading'
-                  ? 'Uploading photos…'
-                  : submitPhase === 'posting'
-                    ? 'Posting…'
-                    : step === totalSteps
-                      ? 'Post Job'
-                      : 'Next'}
-              </Text>
-            </View>
-          </Tap>
-        </View>
-      </View>
 
       <ConfirmationModal
         visible={showExitConfirmation}
@@ -1420,26 +1383,6 @@ function createThemedStyles(theme: ThemePalette) {
   const styles = StyleSheet.create({
     screen: { flex: 1, backgroundColor: Colors.background },
 
-    header: {
-      backgroundColor: Colors.surface,
-      flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
-      paddingHorizontal: Spacing.screenH,
-      paddingBottom: 12,
-      borderBottomWidth: 1, borderBottomColor: V6Colors.line,
-    },
-    headerTitle: { color: Colors.ink900, fontSize: 18.5, fontWeight: '800', fontFamily: 'Inter' },
-    backBtn: {
-      width: 38, height: 38, borderRadius: 12,
-      backgroundColor: Colors.surface, borderWidth: 1, borderColor: V6Colors.line,
-      alignItems: 'center', justifyContent: 'center',
-    },
-
-    // Stepper — matches .stepper/.step (5 equal pills)
-    stepperWrap: { backgroundColor: Colors.surface, paddingHorizontal: Spacing.screenH, paddingVertical: 14 },
-    stepper: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-    step: { flex: 1, height: 5, borderRadius: 3, backgroundColor: Colors.ink100 },
-    stepDone: { backgroundColor: Colors.cyan700 },
-    stepperLabel: { color: Colors.muted, fontSize: 12.5, fontFamily: 'Inter', marginTop: 8 },
 
     body: { flex: 1 },
     bodyContent: { paddingHorizontal: Spacing.screenH, paddingTop: 24, paddingBottom: 20 },
@@ -1613,11 +1556,7 @@ function createThemedStyles(theme: ThemePalette) {
     reviewTaskRow: { flexDirection: 'row', alignItems: 'center', gap: 9, paddingVertical: 7 },
     reviewTaskText: { flex: 1, color: V6Colors.ink900, fontSize: 15.5, fontFamily: 'Inter' },
 
-    footerHidden: { display: 'none' },
-    footer: { paddingHorizontal: Spacing.screenH, paddingVertical: 12, backgroundColor: Colors.surface, borderTopWidth: 1, borderTopColor: Colors.ink100 },
-    footerActions: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'stretch' },
-    previousBtn: { width: '48%', height: 44, borderWidth: 1, borderColor: V6Colors.fieldBorder, borderRadius: 12, backgroundColor: Colors.surface, alignItems: 'center', justifyContent: 'center' },
-    previousBtnText: { color: Colors.ink700, fontSize: 15, fontWeight: '700', fontFamily: 'Inter' },
+    footerError: { backgroundColor: Colors.surface, paddingHorizontal: Spacing.screenH, paddingTop: 12 },
     primaryBtn: {
       backgroundColor: Colors.cyan700, borderRadius: 12, paddingVertical: 12, minHeight: 44, justifyContent: 'center',
       alignItems: 'center',
@@ -1625,10 +1564,7 @@ function createThemedStyles(theme: ThemePalette) {
       shadowOpacity: 0.16, shadowRadius: 14, elevation: 4,
     },
     primaryBtnFullWidth: { width: '100%' },
-    primaryBtnWithBack: { width: '48%', height: 44, paddingVertical: 0, justifyContent: 'center' },
-    primaryBtnInner: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
     primaryBtnText: { color: Colors.onPrimary, fontSize: 15, fontWeight: '700', fontFamily: 'Inter', letterSpacing: -0.005 },
-    primaryBtnDisabled: { opacity: 0.7 },
     errorText: { color: Colors.error, fontSize: 15.5, fontFamily: 'Inter', marginBottom: 10, textAlign: 'center' },
 
     // Success

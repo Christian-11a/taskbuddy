@@ -59,7 +59,7 @@ it('posts from review without another terms acceptance and retains form state af
   fireEvent.press(screen.getByLabelText('Close photo'));
   expect(screen.getByTestId('create-job-review')).toBeTruthy();
   expect(screen.queryByText(/I agree to the/)).toBeNull();
-  await act(async () => fireEvent.press(screen.getByText('Post Job')));
+  await act(async () => fireEvent.press(screen.getByText('Post job')));
   expect(api.createJob).toHaveBeenCalledWith(expect.objectContaining({budget: 1500, tasks: ['Fix leaking faucet']}));
   expect(await screen.findByText('Post Another Job')).toBeTruthy();
 });

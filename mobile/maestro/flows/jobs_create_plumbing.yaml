@@ -10,19 +10,18 @@ appId: com.taskbuddy.app
 - tapOn: { id: "nav-tab-My Jobs" }
 - extendedWaitUntil: { visible: "New", timeout: 15000 }
 - tapOn: "New"
-# The heading renders as "Select a Service *" (required-field asterisk), which an
-# exact "Select a Service" match misses — anchor on the subtitle instead.
-- extendedWaitUntil: { visible: "What service do you need?", timeout: 15000 }
+# Step 1 asks one question, and that question is the screen's heading.
+- extendedWaitUntil: { visible: "What do you need help with?", timeout: 15000 }
 - tapOn: "Plumbing"
 - tapOn: "Next"
-- assertVisible: "Location"
+- assertVisible: "Where is the job?"
 - tapOn: "Brgy. Sampaguita, Lipa City"
 - inputText: "123 Test Street, Lipa City"
 - hideKeyboard
 - tapOn: "Next"
-- assertVisible: "What Needs Doing"
+- assertVisible: "What needs doing?"
 - tapOn: "Fix leaking faucet"
 - tapOn: "Next"
-- assertVisible: "How Soon?"
+- assertVisible: "When, and how much?"
 - tapOn: "Select a date"
 - takeScreenshot: jobs_create_date_picker
