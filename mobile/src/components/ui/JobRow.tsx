@@ -14,8 +14,10 @@ export type JobRowProps = {
 export default function JobRow({ title, meta, amount, date, tone, onPress, testID }: JobRowProps) {
   const { s, tones } = useThemedStyles(createStyles);
   const t = tones[tone];
+  // Keyed on the tone, like FilterPill: a row whose tone changes (open to applied) is drawn again rather
+  // than repainted in place, because Android does not reliably redraw the card and its text colours then.
   return (
-    <Tap style={s.card} onPress={onPress} disabled={!onPress} testID={testID}
+    <Tap key={tone} style={s.card} onPress={onPress} disabled={!onPress} testID={testID}
       accessibilityRole={onPress ? 'button' : undefined} accessibilityLabel={`${title}. ${meta}. ${amount}`}>
       <DateBlock date={date} />
       <View style={s.text}>

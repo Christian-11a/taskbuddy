@@ -28,6 +28,16 @@ it('renders the needs-you tone without crashing', () => {
   expect(screen.getByText('2 proposals to review')).toBeTruthy();
 });
 
+it('is drawn again when its tone changes, so an open job that gets applied to repaints', () => {
+  const { rerender } = render(<JobRow title={LONG} meta="Open" amount="₱1.00" tone="open" testID="feed-row" />);
+  const before = screen.getByTestId('feed-row');
+
+  rerender(<JobRow title={LONG} meta="Applied · waiting" amount="₱1.00" tone="applied" testID="feed-row" />);
+
+  expect(screen.getByTestId('feed-row')).not.toBe(before);
+  expect(screen.getByText('Applied · waiting')).toBeTruthy();
+});
+
 it('shrinks a big amount to fit on one line instead of cutting it off', () => {
   render(<JobRow title={LONG} meta="Confirmed" amount="₱1,248,397.00" tone="booked" />);
   expect(screen.getByText('₱1,248,397.00').props).toEqual(
