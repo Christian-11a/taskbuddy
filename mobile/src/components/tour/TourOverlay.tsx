@@ -3,10 +3,11 @@
  * rounded hole cut around the step's control, a soft ring pulses around the
  * hole, and a card explains the control. It sits in a Modal above everything.
  * The dim layer takes every touch, so the control under the hole cannot be
- * pressed during the tour; a tap anywhere outside the card moves on.
+ * pressed during the tour; a tap anywhere outside the card moves on. Until the
+ * control is measured the Modal only blocks: no dim, no card, and a tap does nothing.
  */
 import React, { useEffect, useRef, useState } from 'react';
-import { Modal, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { Modal, Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
 import Animated, {
   FadeIn, cancelAnimation, useAnimatedProps, useAnimatedStyle, useReducedMotion, useSharedValue,
@@ -67,8 +68,8 @@ type TourOverlayProps = {
   /** Zero-based position of the step, for "Step 2 of 4". */
   index: number;
   total: number;
-  /** The control's rectangle in window coordinates; the spotlight adds its padding. */
-  hole: TourRect;
+  /** The control's rectangle in window coordinates; the spotlight adds its padding. Null until the control is measured. */
+  hole: TourRect | null;
   onNext: () => void;
   onSkip: () => void;
 };
@@ -83,24 +84,30 @@ export default function TourOverlay({ step, index, total, hole, onNext, onSkip }
   // The card block (card + hint) is placed once its height is known; until then it stays hidden.
   const [blockHeight, setBlockHeight] = useState(0);
 
+  // Until the control is measured there is no spotlight to place; the values wait at zero.
+  const measured = hole !== null;
   const spot = {
-    x: hole.x - HOLE_PADDING,
-    y: hole.y - HOLE_PADDING,
-    width: hole.width + 2 * HOLE_PADDING,
-    height: hole.height + 2 * HOLE_PADDING,
+    x: (hole?.x ?? 0) - HOLE_PADDING,
+    y: (hole?.y ?? 0) - HOLE_PADDING,
+    width: (hole?.width ?? 0) + 2 * HOLE_PADDING,
+    height: (hole?.height ?? 0) + 2 * HOLE_PADDING,
   };
-  // The spotlight glides from one control to the next; reduced motion jumps.
+  // The spotlight glides from one control to the next; reduced motion jumps. The first one appears in place.
+  const spotPlaced = useRef(false);
   const spotX = useSharedValue(spot.x);
   const spotY = useSharedValue(spot.y);
   const spotWidth = useSharedValue(spot.width);
   const spotHeight = useSharedValue(spot.height);
   const pulse = useSharedValue(0.9);
   useEffect(() => {
-    moveTo(spotX, spot.x, !reduced);
-    moveTo(spotY, spot.y, !reduced);
-    moveTo(spotWidth, spot.width, !reduced);
-    moveTo(spotHeight, spot.height, !reduced);
-  }, [spot.x, spot.y, spot.width, spot.height, reduced, spotX, spotY, spotWidth, spotHeight]);
+    if (!measured) return;
+    const animate = spotPlaced.current && !reduced;
+    moveTo(spotX, spot.x, animate);
+    moveTo(spotY, spot.y, animate);
+    moveTo(spotWidth, spot.width, animate);
+    moveTo(spotHeight, spot.height, animate);
+    spotPlaced.current = true;
+  }, [measured, spot.x, spot.y, spot.width, spot.height, reduced, spotX, spotY, spotWidth, spotHeight]);
   useEffect(() => {
     if (reduced) return;
     pulse.set(withRepeat(withTiming(PULSE_LOW, { duration: PULSE_HALF_MS, easing: EASE_IN_OUT }), -1, true));
@@ -153,82 +160,87 @@ export default function TourOverlay({ step, index, total, hole, onNext, onSkip }
       navigationBarTranslucent
       onRequestClose={onSkip}
     >
-      <Animated.View entering={FadeIn.duration(DURATION.content)} style={styles.root}>
-        <Svg width={width} height={height} style={StyleSheet.absoluteFill} pointerEvents="none">
-          <AnimatedPath
-            animatedProps={dimProps}
-            fill={dark ? DIM_DARK : DIM_LIGHT}
-            fillRule="evenodd"
-          />
-        </Svg>
-        {/* Covers the whole window, so every tap outside the card moves the tour on. */}
-        <Tap testID="tour-dim" accessible={false} style={StyleSheet.absoluteFill} onPress={onNext} />
-        {!reduced && (
+      {hole ? (
+        <Animated.View entering={FadeIn.duration(DURATION.content)} style={styles.root}>
+          <Svg width={width} height={height} style={StyleSheet.absoluteFill} pointerEvents="none">
+            <AnimatedPath
+              animatedProps={dimProps}
+              fill={dark ? DIM_DARK : DIM_LIGHT}
+              fillRule="evenodd"
+            />
+          </Svg>
+          {/* Covers the whole window, so every tap outside the card moves the tour on. */}
+          <Tap testID="tour-dim" accessible={false} style={StyleSheet.absoluteFill} onPress={onNext} />
+          {!reduced && (
+            <Animated.View
+              testID="tour-ring"
+              pointerEvents="none"
+              style={[styles.ring, { borderRadius: HOLE_RADIUS + RING_GAP }, ringStyle]}
+            />
+          )}
           <Animated.View
-            testID="tour-ring"
-            pointerEvents="none"
-            style={[styles.ring, { borderRadius: HOLE_RADIUS + RING_GAP }, ringStyle]}
-          />
-        )}
-        <Animated.View
-          testID="tour-card"
-          pointerEvents="box-none"
-          onLayout={(event) => setBlockHeight(event.nativeEvent.layout.height)}
-          style={[styles.block, { width: cardWidth, opacity: blockHeight > 0 ? 1 : 0 }, cardStyle]}
-        >
-          <View accessibilityViewIsModal style={[styles.card, { backgroundColor: C.surface }]}>
-            <View style={styles.topRow}>
-              <Tap
-                testID="tour-skip"
-                hitSlop={SKIP_HIT_SLOP}
-                accessibilityRole="button"
-                accessibilityLabel="Skip tour"
-                onPress={onSkip}
-              >
-                <Text maxFontSizeMultiplier={1.3} style={[styles.skipText, { color: C.ink500 }]}>Skip tour</Text>
-              </Tap>
-            </View>
-            <View
-              accessible
-              accessibilityLiveRegion="polite"
-              accessibilityLabel={`Step ${index + 1} of ${total}. ${step.title}. ${step.body}`}
-              style={styles.copy}
-            >
-              <Text maxFontSizeMultiplier={1.3} style={[styles.title, { color: C.ink900 }]}>{step.title}</Text>
-              <Text maxFontSizeMultiplier={1.3} style={[styles.body, { color: C.ink700 }]}>{step.body}</Text>
-            </View>
-            <View style={styles.footer}>
-              <View style={styles.dots}>
-                {Array.from({ length: total }, (_, i) => (
-                  <View
-                    key={i}
-                    testID="tour-dot"
-                    style={[styles.dot, { backgroundColor: C.ink200 }, i === index && [styles.dotActive, { backgroundColor: C.primary }]]}
-                  />
-                ))}
+            testID="tour-card"
+            pointerEvents="box-none"
+            onLayout={(event) => setBlockHeight(event.nativeEvent.layout.height)}
+            style={[styles.block, { width: cardWidth, opacity: blockHeight > 0 ? 1 : 0 }, cardStyle]}
+          >
+            <View accessibilityViewIsModal style={[styles.card, { backgroundColor: C.surface }]}>
+              <View style={styles.topRow}>
+                <Tap
+                  testID="tour-skip"
+                  hitSlop={SKIP_HIT_SLOP}
+                  accessibilityRole="button"
+                  accessibilityLabel="Skip tour"
+                  onPress={onSkip}
+                >
+                  <Text maxFontSizeMultiplier={1.3} style={[styles.skipText, { color: C.ink500 }]}>Skip tour</Text>
+                </Tap>
               </View>
-              <Tap
-                scale
-                testID="tour-next"
-                style={[styles.next, { backgroundColor: C.primary }]}
-                onPress={onNext}
-                accessibilityRole="button"
-                accessibilityLabel={isLast ? 'Done' : 'Next'}
+              <View
+                accessible
+                accessibilityLiveRegion="polite"
+                accessibilityLabel={`Step ${index + 1} of ${total}. ${step.title}. ${step.body}`}
+                style={styles.copy}
               >
-                <Text maxFontSizeMultiplier={1.3} style={[styles.nextText, { color: C.onPrimary }]}>
-                  {isLast ? 'Done' : 'Next'}
-                </Text>
-              </Tap>
+                <Text maxFontSizeMultiplier={1.3} style={[styles.title, { color: C.ink900 }]}>{step.title}</Text>
+                <Text maxFontSizeMultiplier={1.3} style={[styles.body, { color: C.ink700 }]}>{step.body}</Text>
+              </View>
+              <View style={styles.footer}>
+                <View style={styles.dots}>
+                  {Array.from({ length: total }, (_, i) => (
+                    <View
+                      key={i}
+                      testID="tour-dot"
+                      style={[styles.dot, { backgroundColor: C.ink200 }, i === index && [styles.dotActive, { backgroundColor: C.primary }]]}
+                    />
+                  ))}
+                </View>
+                <Tap
+                  scale
+                  testID="tour-next"
+                  style={[styles.next, { backgroundColor: C.primary }]}
+                  onPress={onNext}
+                  accessibilityRole="button"
+                  accessibilityLabel={isLast ? 'Done' : 'Next'}
+                >
+                  <Text maxFontSizeMultiplier={1.3} style={[styles.nextText, { color: C.onPrimary }]}>
+                    {isLast ? 'Done' : 'Next'}
+                  </Text>
+                </Tap>
+              </View>
             </View>
-          </View>
-          {/* A small pill under the card, centred, so the hint reads over the dimmed page. Taps pass through it. */}
-          <View testID="tour-hint" pointerEvents="none" style={styles.hintPill}>
-            <Text maxFontSizeMultiplier={1.3} style={styles.hint}>
-              Tap anywhere to continue
-            </Text>
-          </View>
+            {/* A small pill under the card, centred, so the hint reads over the dimmed page. Taps pass through it. */}
+            <View testID="tour-hint" pointerEvents="none" style={styles.hintPill}>
+              <Text maxFontSizeMultiplier={1.3} style={styles.hint}>
+                Tap anywhere to continue
+              </Text>
+            </View>
+          </Animated.View>
         </Animated.View>
-      </Animated.View>
+      ) : (
+        /* Until the control is measured the window is only blocked: no dim, no card, and a tap does nothing. */
+        <Pressable testID="tour-blocker" accessible={false} style={styles.root} />
+      )}
     </Modal>
   );
 }

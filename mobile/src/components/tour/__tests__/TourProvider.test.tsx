@@ -1,5 +1,5 @@
 import React from 'react';
-import { Modal, View } from 'react-native';
+import { Modal, StyleSheet, View } from 'react-native';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react-native';
 import { TourProvider, useTour, useTourAnchor, type TourControls } from '../TourProvider';
 import type { TourRect, TourStep } from '../types';
@@ -377,5 +377,89 @@ describe('useTour without a TourProvider', () => {
     render(<Probe />);
 
     expect(controls.anchorState('home.post')).toBe('rendered');
+  });
+});
+
+describe('TourProvider — the tour blocks touches and Back from the moment it starts', () => {
+  it('shows the Modal while the first control is measured, with no dim and no card yet', async () => {
+    jest.useFakeTimers();
+    rects = {};
+    renderTour(['a']);
+
+    act(() => controls.startTour({ steps: [step('a', 'First')], onFinish: jest.fn(), onSkip: jest.fn() }));
+    await pump(16);
+
+    expect(screen.UNSAFE_getByType(Modal).props.visible).toBe(true);
+    expect(screen.getByTestId('tour-blocker')).toBeTruthy();
+    expect(screen.queryByTestId('tour-dim')).toBeNull();
+    expect(screen.queryByTestId('tour-card')).toBeNull();
+    expect(screen.queryByText('First')).toBeNull();
+  });
+
+  it('covers the whole window with the blocker while measuring, and a tap on it moves nothing on', async () => {
+    jest.useFakeTimers();
+    rects = {};
+    renderTour(['a']);
+    const onFinish = jest.fn();
+    const onSkip = jest.fn();
+
+    act(() => controls.startTour({ steps: [step('a', 'First'), step('b', 'Second')], onFinish, onSkip }));
+    await pump(16);
+    expect(StyleSheet.flatten(screen.getByTestId('tour-blocker').props.style)).toMatchObject({
+      position: 'absolute', top: 0, right: 0, bottom: 0, left: 0,
+    });
+
+    fireEvent.press(screen.getByTestId('tour-blocker'));
+    await pump(50);
+
+    expect(controls.isTourActive).toBe(true);
+    expect(onFinish).not.toHaveBeenCalled();
+    expect(onSkip).not.toHaveBeenCalled();
+    expect(screen.queryByText('Second')).toBeNull();
+  });
+
+  it('then shows the dim and the card once the control is measured, and the blocker goes', async () => {
+    jest.useFakeTimers();
+    rects = {};
+    renderTour(['a']);
+
+    act(() => controls.startTour({ steps: [step('a', 'First')], onFinish: jest.fn(), onSkip: jest.fn() }));
+    await pump(16);
+    expect(screen.queryByText('First')).toBeNull();
+
+    rects = { a: RECT_A };
+    await pump(200);
+
+    expect(screen.getByText('First')).toBeTruthy();
+    expect(screen.getByTestId('tour-dim')).toBeTruthy();
+    expect(screen.queryByTestId('tour-blocker')).toBeNull();
+  });
+
+  it('Android Back skips a tour that is still measuring its first control', async () => {
+    jest.useFakeTimers();
+    rects = {};
+    renderTour(['a']);
+    const onSkip = jest.fn();
+    const onFinish = jest.fn();
+
+    act(() => controls.startTour({ steps: [step('a', 'First')], onFinish, onSkip }));
+    await pump(16);
+    fireEvent(screen.UNSAFE_getByType(Modal), 'requestClose');
+
+    expect(onSkip).toHaveBeenCalledTimes(1);
+    expect(onFinish).not.toHaveBeenCalled();
+    expect(controls.isTourActive).toBe(false);
+    expect(screen.UNSAFE_queryByType(Modal)).toBeNull();
+  });
+
+  it('a tour whose every step is skipped finishes at once, and its Modal goes with it', async () => {
+    renderTour([]);
+    const onFinish = jest.fn();
+
+    act(() => controls.startTour({ steps: [step('ghost1', 'One'), step('ghost2', 'Two')], onFinish, onSkip: jest.fn() }));
+
+    await waitFor(() => expect(onFinish).toHaveBeenCalledTimes(1));
+    expect(controls.isTourActive).toBe(false);
+    expect(screen.UNSAFE_queryByType(Modal)).toBeNull();
   });
 });

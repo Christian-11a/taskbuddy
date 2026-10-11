@@ -212,7 +212,8 @@ export function TourProvider({ children }: { children: React.ReactNode }) {
     <AnchorContext.Provider value={registry}>
       <TourContext.Provider value={controls}>
         {children}
-        {step && hole ? (
+        {/* Up from the start of the tour, so touches and Back are blocked while the first control is measured. */}
+        {step ? (
           <TourOverlay
             step={step}
             index={tour.stepIndex}
