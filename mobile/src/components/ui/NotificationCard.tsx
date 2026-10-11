@@ -19,9 +19,9 @@ export type NotificationCardProps = {
 };
 
 /**
- * One notification: a tonal icon tile (its colour says the kind of outcome),
- * the title with a dot while unread, one line of body, when it happened, and a
- * delete button. Tapping the card opens what it is about.
+ * One notification: a solid circle holding a white icon (its colour says the
+ * kind of outcome), the title with a dot while unread, one line of body, when
+ * it happened, and a delete button. Tapping the card opens what it is about.
  */
 export default function NotificationCard({
   title, body, time, tone, icon: Icon, unread, pending = false, onPress, onDelete,
@@ -38,8 +38,8 @@ export default function NotificationCard({
       accessibilityRole="button"
       accessibilityLabel={`${title}. ${body}. ${time}${unread ? '. Unread' : ''}`}
     >
-      <View style={[s.tile, { backgroundColor: colors.background }]}>
-        <Icon size={18} color={colors.icon} />
+      <View testID="notification-tile" style={[s.tile, { backgroundColor: colors.background }]}>
+        <Icon size={22} color={colors.icon} strokeWidth={2.25} />
       </View>
       <View style={s.text}>
         <View style={s.titleRow}>
@@ -70,7 +70,7 @@ const createStyles = ({ Colors, V6Colors }: Palette) => ({
       borderRadius: 16, padding: 14,
     },
     pending: { opacity: 0.6 },
-    tile: { width: 36, height: 36, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
+    tile: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center' },
     text: { flex: 1, gap: 2 },
     titleRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
     title: { flex: 1, fontFamily: 'Inter', fontSize: 15, fontWeight: '600', lineHeight: 20, color: V6Colors.ink900 },
@@ -80,10 +80,12 @@ const createStyles = ({ Colors, V6Colors }: Palette) => ({
     time: { fontFamily: 'Inter', fontSize: 12, lineHeight: 16, color: V6Colors.ink500, marginTop: 2 },
     delete: { alignSelf: 'center', padding: 4 },
   }),
+  // Each tone is a solid circle. onPrimary is white in every palette, and the
+  // three solids keep at least 4.5:1 against it in light, dark and provider navy.
   tones: {
-    info: { background: Colors.primaryTonal, icon: Colors.primaryDeep },
-    success: { background: Colors.successSurface, icon: Colors.successText },
-    danger: { background: Colors.dangerSurface, icon: Colors.dangerText },
+    info: { background: Colors.primary, icon: Colors.onPrimary },
+    success: { background: Colors.successSolid, icon: Colors.onPrimary },
+    danger: { background: Colors.dangerSolid, icon: Colors.onPrimary },
   } satisfies Record<NotificationTone, { background: string; icon: string }>,
   dot: Colors.link,
   deleteIcon: V6Colors.ink500,
