@@ -71,7 +71,17 @@ interface HOJobApplicationsScreenProps {
   onNavigate?: (screen: HOScreen, jobId?: string) => void;
 }
 
-export default function HOJobApplicationsScreen({
+/**
+ * App.tsx can move this screen to another job without unmounting it (a proposal notification for
+ * that job does). Keying on the job gives each job a fresh screen, so its proposals and the waits
+ * remembered on this device are read again before any pay action is offered. The proposals keep
+ * the previous job's list until the new one arrives, so resetting in place could match against it.
+ */
+export default function HOJobApplicationsScreen(props: HOJobApplicationsScreenProps) {
+  return <JobProposals key={props.jobId ?? ''} {...props} />;
+}
+
+function JobProposals({
   jobId,
   onBack,
   onNavigate,

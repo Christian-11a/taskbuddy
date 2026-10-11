@@ -1096,6 +1096,90 @@ describe('HOJobApplicationsScreen: what a remembered wait is checked against whe
   });
 });
 
+describe('HOJobApplicationsScreen: switching to another job while the screen stays open', () => {
+  const WALLET = 'Wallet, ₱5,000.00 available';
+  const WAITING_NOTE = "We're still confirming your payment. Tap Hire to check on it.";
+  const STILL_CONFIRMING = "We're still confirming your payment. If you already paid, please don't pay again.";
+  const HIRE_ALEX = 'Hire Alex Reyes for this job';
+  const DECLINE_ALEX = 'Decline Alex Reyes';
+  const HIRE_BLAIR = 'Hire Blair Santos for this job';
+  const DECLINE_BLAIR = 'Decline Blair Santos';
+  const blair = application({
+    id: 'app-2',
+    job_id: 'job-2',
+    provider: {
+      id: 'prov-app-2',
+      full_name: 'Blair Santos',
+      avatar_url: null,
+      city: 'Cebu',
+      provider_profiles: { is_verified: true, cached_avg_rating: 5, cached_completed_jobs: 9 },
+    },
+  });
+
+  beforeEach(() => {
+    (api.jobApplications as jest.Mock).mockImplementation(async (jobId: string) =>
+      jobId === 'job-2' ? [blair] : [pendingApp],
+    );
+  });
+
+  function showJob(jobId: string) {
+    return <HOJobApplicationsScreen jobId={jobId} onBack={jest.fn()} onNavigate={jest.fn()} />;
+  }
+
+  it("a wait remembered for the new job holds its proposal, and coming back to the first job restores its actions", async () => {
+    await AsyncStorage.setItem(
+      PENDING_HIRE_PAYMENTS_KEY,
+      JSON.stringify({ 'app-2': { returnedPaid: false, startedAt: Date.now() } }),
+    );
+    const view = render(showJob('job-1'));
+    await act(async () => {});
+    expect(await screen.findByRole('button', { name: HIRE_ALEX, disabled: false })).toBeTruthy();
+
+    // App.tsx switches the job on the same mounted screen, as a proposal notification for another job does.
+    view.rerender(showJob('job-2'));
+    await act(async () => {});
+
+    expect(await screen.findByText(WAITING_NOTE)).toBeTruthy();
+    expect(screen.getByRole('button', { name: DECLINE_BLAIR, disabled: true })).toBeTruthy();
+    fireEvent.press(screen.getByRole('button', { name: HIRE_BLAIR, disabled: false }));
+    expect(await screen.findByText(STILL_CONFIRMING)).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Check payment status' })).toBeTruthy();
+    expect(screen.queryByRole('radio')).toBeNull();
+    expect(api.createHireCheckoutSession).not.toHaveBeenCalled();
+    expect(api.acceptApplication).not.toHaveBeenCalled();
+
+    view.rerender(showJob('job-1'));
+    await act(async () => {});
+
+    expect(await screen.findByRole('button', { name: DECLINE_ALEX, disabled: false })).toBeTruthy();
+    fireEvent.press(await screen.findByRole('button', { name: HIRE_ALEX, disabled: false }));
+    expect(await screen.findByRole('radio', { name: WALLET })).toBeTruthy();
+    expect(screen.queryByText(STILL_CONFIRMING)).toBeNull();
+  });
+
+  it("while the new job's proposals load, the previous job's proposals are not offered", async () => {
+    let finishLoad: (apps: JobApplication[]) => void = () => undefined;
+    (api.jobApplications as jest.Mock).mockImplementation(async (jobId: string) =>
+      jobId === 'job-2'
+        ? new Promise<JobApplication[]>((resolve) => {
+            finishLoad = resolve;
+          })
+        : [pendingApp],
+    );
+    const view = render(showJob('job-1'));
+    await act(async () => {});
+    expect(await screen.findByRole('button', { name: HIRE_ALEX, disabled: false })).toBeTruthy();
+
+    view.rerender(showJob('job-2'));
+    await act(async () => {});
+
+    expect(screen.queryByRole('button', { name: HIRE_ALEX })).toBeNull();
+    expect(screen.queryByRole('button', { name: DECLINE_ALEX })).toBeNull();
+    await act(async () => finishLoad([blair]));
+    expect(await screen.findByRole('button', { name: HIRE_BLAIR, disabled: false })).toBeTruthy();
+  });
+});
+
 describe('HOJobApplicationsScreen: when the proposals cannot be loaded', () => {
   it('shows the error with Try again, and Try again loads the proposals', async () => {
     (api.jobApplications as jest.Mock)
