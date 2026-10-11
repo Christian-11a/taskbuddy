@@ -330,7 +330,7 @@ export default function HOJobDetailScreen({ jobId, onBack, onNavigate }: HOJobDe
             <Text style={styles.title}>{job.title}</Text>
             <View style={styles.priceRow}>
               {job.budget != null && (
-                <Text style={styles.price}>₱{Number(job.budget).toLocaleString()}</Text>
+                <Text style={styles.price}>{peso(job.budget)}</Text>
               )}
               {urgency && (
                 <View style={[styles.urgencyChip, { backgroundColor: urgency.bg }]}>

@@ -122,6 +122,26 @@ describe('HOJobDetailScreen — Confirm Completion asks first (QA #6)', () => {
   });
 });
 
+describe('HOJobDetailScreen — the budget reads like the job lists', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    (api.getProvider as jest.Mock).mockResolvedValue({ profile_id: 'provider-1', profiles: { full_name: 'Jane Provider' }, cached_completed_jobs: 1 });
+    (api.jobDispute as jest.Mock).mockResolvedValue(null);
+  });
+
+  it.each<[number, string]>([
+    [1, '₱1.00'],
+    [800, '₱800.00'],
+    [1500, '₱1,500.00'],
+  ])('a budget of %p shows as %s in the header, with two decimals', async (budget, shown) => {
+    (api.getJob as jest.Mock).mockResolvedValue({ ...inProgressJob, budget });
+
+    render(<HOJobDetailScreen jobId="job-1" onBack={jest.fn()} onNavigate={jest.fn()} />);
+
+    expect(await screen.findByText(shown)).toBeTruthy();
+  });
+});
+
 describe('FullTest homeowner job details', () => {
   beforeEach(() => {
     jest.clearAllMocks();
