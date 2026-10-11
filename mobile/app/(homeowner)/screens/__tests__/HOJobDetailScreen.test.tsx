@@ -444,6 +444,104 @@ describe('HOJobDetailScreen — offers, the main action and the ⋮ menu', () =>
   });
 });
 
+describe('HOJobDetailScreen — a job action cannot start twice', () => {
+  const hiredJob = { ...inProgressJob, status: 'confirmed' as const, job_tasks: [] };
+
+  /** A promise the test settles by hand, so an action can be seen while it is still running. */
+  function deferred<T>() {
+    let resolve!: (value: T) => void;
+    const promise = new Promise<T>((done) => {
+      resolve = done;
+    });
+    return { promise, resolve };
+  }
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    (api.getProvider as jest.Mock).mockResolvedValue({ profile_id: 'provider-1', profiles: { full_name: 'Jane Provider' }, cached_completed_jobs: 1 });
+    (api.jobDispute as jest.Mock).mockResolvedValue(null);
+    (api.jobApplications as jest.Mock).mockResolvedValue([]);
+  });
+
+  it('two quick taps on Cancel Job call the cancel endpoint once', async () => {
+    (api.getJob as jest.Mock).mockResolvedValue(hiredJob);
+    const cancel = deferred<unknown>();
+    (api.cancelJob as jest.Mock).mockReturnValue(cancel.promise);
+    const onBack = jest.fn();
+    render(<HOJobDetailScreen jobId="job-1" onBack={onBack} onNavigate={jest.fn()} />);
+
+    fireEvent.press(await screen.findByLabelText('More job actions'));
+    fireEvent.press(await screen.findByText('Cancel job'));
+    const confirm = await screen.findByLabelText('Cancel Job');
+    // Both taps land before React re-renders, so they reach the same handler.
+    act(() => {
+      fireEvent.press(confirm);
+      fireEvent.press(confirm);
+    });
+
+    expect(api.cancelJob).toHaveBeenCalledTimes(1);
+    await act(async () => cancel.resolve({}));
+    await waitFor(() => expect(onBack).toHaveBeenCalled());
+    expect(api.cancelJob).toHaveBeenCalledTimes(1);
+  });
+
+  it('while Cancel Job is running, the ⋮ menu cannot open the confirmation again', async () => {
+    (api.getJob as jest.Mock).mockResolvedValue(hiredJob);
+    const cancel = deferred<unknown>();
+    (api.cancelJob as jest.Mock).mockReturnValue(cancel.promise);
+    render(<HOJobDetailScreen jobId="job-1" onBack={jest.fn()} onNavigate={jest.fn()} />);
+
+    fireEvent.press(await screen.findByLabelText('More job actions'));
+    fireEvent.press(await screen.findByText('Cancel job'));
+    fireEvent.press(await screen.findByLabelText('Cancel Job'));
+    expect(api.cancelJob).toHaveBeenCalledTimes(1);
+
+    // The ⋮ button stays, and its Cancel job row does nothing while the first cancel is pending.
+    fireEvent.press(screen.getByLabelText('More job actions'));
+    fireEvent.press(await screen.findByText('Cancel job'));
+    expect(screen.queryByText('Cancel this job?')).toBeNull();
+
+    await act(async () => cancel.resolve({}));
+    expect(api.cancelJob).toHaveBeenCalledTimes(1);
+  });
+
+  it('two quick taps on Yes, Mark Complete call completeJob once', async () => {
+    (api.getJob as jest.Mock).mockResolvedValue(inProgressJob);
+    const complete = deferred<unknown>();
+    (api.completeJob as jest.Mock).mockReturnValue(complete.promise);
+    render(<HOJobDetailScreen jobId="job-1" onBack={jest.fn()} onNavigate={jest.fn()} />);
+
+    fireEvent.press(await screen.findByText('Confirm job is done'));
+    const yes = await screen.findByLabelText('Yes, Mark Complete');
+    act(() => {
+      fireEvent.press(yes);
+      fireEvent.press(yes);
+    });
+
+    expect(api.completeJob).toHaveBeenCalledTimes(1);
+    await act(async () => complete.resolve({}));
+    expect(api.completeJob).toHaveBeenCalledTimes(1);
+  });
+
+  it('two quick taps on Find providers send one invitation request', async () => {
+    (api.getJob as jest.Mock).mockResolvedValue({ ...inProgressJob, status: 'open', assigned_provider_id: null, job_tasks: [] });
+    const invite = deferred<unknown>();
+    (api.triggerRecommendations as jest.Mock).mockReturnValue(invite.promise);
+    render(<HOJobDetailScreen jobId="job-1" onBack={jest.fn()} onNavigate={jest.fn()} />);
+
+    const find = await screen.findByText('Find providers');
+    act(() => {
+      fireEvent.press(find);
+      fireEvent.press(find);
+    });
+
+    expect(api.triggerRecommendations).toHaveBeenCalledTimes(1);
+    await act(async () => invite.resolve({ run_id: null, pool_size: 0, notified: 0 }));
+    expect(await screen.findByText('No providers matched yet. You can try again later while the job remains open.')).toBeTruthy();
+    expect(api.triggerRecommendations).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe('HOJobDetailScreen — every control has an accessible name', () => {
   beforeEach(() => {
     jest.clearAllMocks();

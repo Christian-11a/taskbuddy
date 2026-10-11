@@ -7,7 +7,7 @@
  * menu. Which card, step and buttons show is decided in src/lib/jobDetailView.ts.
  */
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Image, ScrollView, StyleSheet, Text, View } from 'react-native';
 import {
   ArrowLeft,
@@ -115,6 +115,8 @@ export default function HOJobDetailScreen({ jobId, onBack, onNavigate }: HOJobDe
   const [photoIndex, setPhotoIndex] = useState<number | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const [offers, setOffers] = useState<{ jobId: string; list: JobApplication[] } | null>(null);
+  // Checked and set synchronously, so two taps before React re-renders cannot start two actions.
+  const inFlight = useRef(false);
 
   const job = data?.job;
   const provider: ProviderCard | null = data?.provider ?? null;
@@ -147,6 +149,8 @@ export default function HOJobDetailScreen({ jobId, onBack, onNavigate }: HOJobDe
   const pendingCount = offerList ? countPendingProposals(offerList) : 0;
 
   const runAction = async (fn: () => Promise<unknown>) => {
+    if (inFlight.current) return;
+    inFlight.current = true;
     setBusy(true);
     setActionError(null);
     try {
@@ -157,12 +161,14 @@ export default function HOJobDetailScreen({ jobId, onBack, onNavigate }: HOJobDe
         e instanceof ApiError ? e.message : 'Something went wrong. Please try again.',
       );
     } finally {
+      inFlight.current = false;
       setBusy(false);
     }
   };
 
   const findProviders = async () => {
-    if (!job) return;
+    if (!job || inFlight.current) return;
+    inFlight.current = true;
     setBusy(true);
     setActionError(null);
     setMatchingMessage(null);
@@ -179,6 +185,7 @@ export default function HOJobDetailScreen({ jobId, onBack, onNavigate }: HOJobDe
         e instanceof ApiError ? e.message : 'Could not look for providers. Please try again.',
       );
     } finally {
+      inFlight.current = false;
       setBusy(false);
     }
   };
@@ -191,7 +198,8 @@ export default function HOJobDetailScreen({ jobId, onBack, onNavigate }: HOJobDe
   const urgency = job ? urgencyMeta(job.urgency, V6Colors) : null;
 
   const perform = (action: Action) => {
-    if (!job) return;
+    // While an action is running, the main button, the link and the ⋮ menu are all inert.
+    if (!job || inFlight.current) return;
     switch (action.kind) {
       case 'reviewProposals':
         onNavigate('Job Applications', job.id);
@@ -229,15 +237,16 @@ export default function HOJobDetailScreen({ jobId, onBack, onNavigate }: HOJobDe
   const menuItems: MenuSheetItem[] = (view?.menu ?? []).flatMap((action): MenuSheetItem[] => {
     switch (action.kind) {
       case 'reportProblem':
-        return [{ label: 'Report a problem', icon: TriangleAlert, onPress: () => perform(action) }];
+        return [{ label: 'Report a problem', icon: TriangleAlert, disabled: busy, onPress: () => perform(action) }];
       case 'viewCase':
-        return [{ label: 'View case', icon: FileText, onPress: () => perform(action) }];
+        return [{ label: 'View case', icon: FileText, disabled: busy, onPress: () => perform(action) }];
       case 'cancelJob':
         return [{
           label: 'Cancel job',
           icon: CircleX,
           tone: 'danger',
           hint: job?.assigned_provider_id ? CANCEL_HINT : undefined,
+          disabled: busy,
           onPress: () => perform(action),
         }];
       default:

@@ -11,6 +11,8 @@ export type MenuSheetItem = {
   tone?: 'default' | 'danger';
   /** A line under a danger row, saying what the action does to money or to the other person. */
   hint?: string;
+  /** Dimmed and not pressable, e.g. while another action on the screen is still running. */
+  disabled?: boolean;
   onPress: () => void;
 };
 
@@ -36,7 +38,8 @@ export default function MenuSheet({ visible, title, items, onClose }: MenuSheetP
         return (
           <View key={item.label}>
             <Tap
-              style={s.row}
+              style={[s.row, item.disabled && s.rowDisabled]}
+              disabled={item.disabled}
               onPress={() => {
                 onClose();
                 item.onPress();
@@ -64,6 +67,7 @@ const createStyles = ({ V6Colors }: Palette) => ({
     content: { gap: 2, paddingHorizontal: 20, paddingTop: 4 },
     title: { fontFamily: 'Inter', fontSize: 15, fontWeight: '600', lineHeight: 20, color: V6Colors.ink900, marginBottom: 6 },
     row: { minHeight: 52, flexDirection: 'row', alignItems: 'center', gap: 12 },
+    rowDisabled: { opacity: 0.5 },
     label: { flex: 1, fontFamily: 'Inter', fontSize: 15, fontWeight: '500', lineHeight: 20 },
     hint: { fontFamily: 'Inter', fontSize: 13, lineHeight: 18, color: V6Colors.ink500, paddingLeft: 32, paddingBottom: 10 },
   }),
