@@ -145,6 +145,17 @@ describe('ChangePasswordModal — field messages', () => {
     expect(screen.getByText('Enter your current password')).toBeTruthy();
   });
 
+  it('treats a current password made only of spaces as empty: Update stays disabled, and the field says so', () => {
+    renderModal();
+    fill('        ', 'newpassword1', 'newpassword1');
+
+    expect(isDisabled()).toBe(true);
+
+    blurField('Current password');
+
+    expect(screen.getByText('Enter your current password')).toBeTruthy();
+  });
+
   it('does not show a reuse message when the new password differs from the current one', () => {
     renderModal();
     fill('oldpassword', 'newpassword1', 'newpassword1');

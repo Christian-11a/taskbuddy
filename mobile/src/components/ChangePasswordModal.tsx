@@ -52,7 +52,7 @@ export default function ChangePasswordModal({ visible, onClose }: ChangePassword
     { label: 'Different from your current password', ok: !!newPassword && !!currentPassword && newPassword !== currentPassword },
     { label: 'Both new passwords match', ok: !!confirmPassword && newPassword === confirmPassword },
   ];
-  const canSave = !!currentPassword && rules.every((r) => r.ok) && !saving;
+  const canSave = !!currentPassword.trim() && rules.every((r) => r.ok) && !saving;
 
   // Each message is computed from the values now, and shown only for a field the user has left.
   const currentError = touched.current && !currentPassword.trim() ? 'Enter your current password' : undefined;
