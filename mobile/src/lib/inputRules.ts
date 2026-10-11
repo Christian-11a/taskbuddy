@@ -13,27 +13,47 @@
 // ── Phone ─────────────────────────────────────────────────────────────────────
 
 const PHONE_DIGITS = 11;
-
-/**
- * Native cap for the phone box. It is not 11 on purpose: a native cap cuts a
- * pasted "+63 917 123 4567" before sanitizePhone sees the whole number. The
- * eleven-digit cap is enforced by sanitizePhone.
- */
-export const PHONE_INPUT_MAX_LENGTH = 20;
+/** The most digits a paste keeps. A longer paste is cut here, and the validator then refuses the number. */
+const PHONE_PASTE_DIGITS = 15;
 
 const PHONE_FORMAT_MESSAGE = 'Enter an 11-digit mobile number starting with 09, e.g. 09171234567';
 const PHONE_REQUIRED_MESSAGE = 'Phone number is required';
 
+/** How a phone number is written, not what it is: spaces, dashes, dots, brackets and the plus sign. */
+const PHONE_FORMATTING = /[\s+\-.()]/g;
+
+/**
+ * A number with the country code 63 that is longer than a mobile number reads with the 0 that starts
+ * one: "6391712345678" becomes "091712345678" and "639171234567" becomes "09171234567".
+ */
+function readCountryCode(digits: string): string {
+  return digits.length > PHONE_DIGITS && digits.startsWith('63') ? `0${digits.slice(2).replace(/^0/, '')}` : digits;
+}
+
 /**
  * Digits only, at most eleven. A country-code form such as "+63 917 123 4567" or
- * "+63 0917 123 4567" becomes the local form "09171234567".
+ * "+63 0917 123 4567" becomes the local form "09171234567". This is the form a checked
+ * number is saved in; what the field shows while it is typed or pasted is nextPhoneText.
  */
 export function sanitizePhone(raw: string | null | undefined): string {
-  let digits = (raw ?? '').replace(/\D/g, '');
-  if (digits.length > PHONE_DIGITS && digits.startsWith('63')) {
-    digits = `0${digits.slice(2).replace(/^0/, '')}`;
-  }
-  return digits.slice(0, PHONE_DIGITS);
+  return readCountryCode((raw ?? '').replace(/\D/g, '')).slice(0, PHONE_DIGITS);
+}
+
+/**
+ * What the phone field shows once `incoming` replaces `previous`. Formatting (see PHONE_FORMATTING)
+ * is dropped, and a letter or any other symbol refuses the whole change, so the field keeps `previous`.
+ *
+ * A typed character cannot take the number past eleven digits, so a 12th typed digit is ignored; a
+ * number with the country code 63 reads as its 09 form as soon as it is long enough. A paste is never
+ * shortened to look valid: it keeps every digit (up to 15), so the validator can refuse what is wrong.
+ * Deleting is always allowed, so a long pasted number can be shortened by hand.
+ */
+export function nextPhoneText(previous: string, incoming: string): string {
+  const digits = incoming.replace(PHONE_FORMATTING, '');
+  if (/\D/.test(digits)) return previous;
+  const local = readCountryCode(digits);
+  if (incoming.length - previous.length > 1) return local.slice(0, PHONE_PASTE_DIGITS);
+  return local.length > PHONE_DIGITS && incoming.length > previous.length ? previous : local;
 }
 
 /** Valid only as 09 followed by nine digits. Empty is allowed unless `required`. */

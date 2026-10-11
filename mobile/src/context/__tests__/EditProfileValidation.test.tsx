@@ -134,6 +134,30 @@ describe.each<Role>(ROLES)('%s edit profile phone', (role) => {
     expect(phoneField().props.value).toBe('09171234567');
   });
 
+  it('has no native length cap, so a pasted 21-character +63 number is read whole', async () => {
+    mockProfile({ phone: '' });
+    await renderEditor(role);
+    expect(phoneField().props.maxLength).toBeUndefined();
+
+    fireEvent.changeText(phoneField(), '+63 (0998) 765 - 4321');
+
+    expect(phoneField().props.value).toBe('09987654321');
+    await saveAndConfirm();
+    expect(api.updateProfile).toHaveBeenCalledWith(expect.objectContaining({ phone: '09987654321' }));
+  });
+
+  it('keeps a pasted 12-digit number as it was pasted, and Save says why it cannot be sent', async () => {
+    mockProfile({ phone: '' });
+    await renderEditor(role);
+
+    fireEvent.changeText(phoneField(), '091712345678');
+
+    expect(phoneField().props.value).toBe('091712345678');
+    fireEvent.press(screen.getByLabelText('Save changes'));
+    expect(screen.getByText(PHONE_FORMAT)).toBeTruthy();
+    expect(api.updateProfile).not.toHaveBeenCalled();
+  });
+
   it('does not show the phone message while the number is still being typed', async () => {
     await renderEditor(role);
 

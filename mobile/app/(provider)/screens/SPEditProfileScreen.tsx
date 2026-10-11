@@ -44,7 +44,7 @@ import {
   ADDRESS_MAX,
   CITY_MAX,
   FULL_NAME_MAX,
-  PHONE_INPUT_MAX_LENGTH,
+  nextPhoneText,
   normalizeName,
   sanitizePhone,
   validateAddress,
@@ -226,11 +226,10 @@ export default function SPEditProfileScreen({ onBack, onSave, onManageServices }
           <TextField
             label="Phone (optional)"
             value={phone}
-            onChangeText={(value) => setPhone(sanitizePhone(value))}
+            onChangeText={(value) => setPhone((previous) => nextPhoneText(previous, value))}
             placeholder="09XX XXX XXXX"
             helper="11 digits, starts with 09"
             keyboardType="number-pad"
-            maxLength={PHONE_INPUT_MAX_LENGTH}
             keyboardAppearance={appearance}
             error={phoneError}
             submitted={submitted}

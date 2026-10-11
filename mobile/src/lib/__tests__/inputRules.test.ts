@@ -5,9 +5,9 @@ import {
   FULL_NAME_MAX,
   OTP_LENGTH,
   PASSWORD_MIN_LENGTH,
-  PHONE_INPUT_MAX_LENGTH,
   normalizeEmail,
   normalizeName,
+  nextPhoneText,
   sanitizeOtp,
   sanitizePhone,
   validateAddress,
@@ -81,8 +81,57 @@ describe('sanitizePhone', () => {
     expect(sanitizePhone('0917123456789')).toBe('09171234567');
   });
 
-  it('exposes a native input cap large enough for a pasted +63 number', () => {
-    expect(PHONE_INPUT_MAX_LENGTH).toBeGreaterThanOrEqual('+63 917 123 4567'.length);
+});
+
+/** Types `text` one character at a time into an empty phone field, the way a keyboard does. */
+function typePhone(text: string): string {
+  let shown = '';
+  for (const ch of text) shown = nextPhoneText(shown, shown + ch);
+  return shown;
+}
+
+describe('nextPhoneText: what the phone field shows after a change', () => {
+  it('types a 09 number as it is typed, with its spaces and dashes left out', () => {
+    expect(typePhone('09171234567')).toBe('09171234567');
+    expect(typePhone('0917 123 4567')).toBe('09171234567');
+    expect(typePhone('0917-123-4567')).toBe('09171234567');
+  });
+
+  it('ignores a 12th typed digit, so a typed number stops at eleven', () => {
+    expect(nextPhoneText('09171234567', '091712345678')).toBe('09171234567');
+    expect(typePhone('0917123456789')).toBe('09171234567');
+  });
+
+  it('reads a +63 number typed digit by digit as its 09 form', () => {
+    expect(typePhone('+63 917 123 4567')).toBe('09171234567');
+  });
+
+  it('keeps every digit of a pasted 21-character +63 number, so it reads as the 09 form', () => {
+    expect(nextPhoneText('', '+63 (0917) 123 - 4567')).toBe('09171234567');
+  });
+
+  it('keeps all 12 digits of a pasted 12-digit number, so the validator can refuse it', () => {
+    expect(nextPhoneText('', '091712345678')).toBe('091712345678');
+  });
+
+  it('reads 12 pasted digits that start with 63 as the 09 form', () => {
+    expect(nextPhoneText('', '639171234567')).toBe('09171234567');
+  });
+
+  it('caps a paste at 15 digits', () => {
+    expect(nextPhoneText('', '0917123456789012345')).toBe('091712345678901');
+  });
+
+  it('refuses a change with a letter or another symbol, and the field keeps its value', () => {
+    expect(nextPhoneText('', 'abc')).toBe('');
+    expect(nextPhoneText('0917', '0917a')).toBe('0917');
+    expect(nextPhoneText('09171234567', '0917-abc 123 4567!')).toBe('09171234567');
+    expect(nextPhoneText('09171234567', '09171234567@')).toBe('09171234567');
+  });
+
+  it('lets a number that was pasted too long be shortened by deleting digits', () => {
+    expect(nextPhoneText('091712345678', '09171234567')).toBe('09171234567');
+    expect(nextPhoneText('091712345678901', '09171234567890')).toBe('09171234567890');
   });
 });
 
