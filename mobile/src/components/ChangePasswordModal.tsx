@@ -52,13 +52,14 @@ export default function ChangePasswordModal({ visible, onClose }: ChangePassword
     { label: 'Different from your current password', ok: !!newPassword && !!currentPassword && newPassword !== currentPassword },
     { label: 'Both new passwords match', ok: !!confirmPassword && newPassword === confirmPassword },
   ];
-  const canSave = !!currentPassword.trim() && rules.every((r) => r.ok) && !saving;
+  // The message the new-password field shows, whether or not it is shown yet. A password it refuses (such as
+  // only spaces) is not sent, even when the checklist above is complete.
+  const newRuleError = validatePasswordRules(newPassword, 'New password') ?? validateNewPasswordDiffers(currentPassword, newPassword);
+  const canSave = !!currentPassword.trim() && rules.every((r) => r.ok) && newRuleError === null && !saving;
 
   // Each message is computed from the values now, and shown only for a field the user has left.
   const currentError = touched.current && !currentPassword.trim() ? 'Enter your current password' : undefined;
-  const newError = touched.next
-    ? validatePasswordRules(newPassword, 'New password') ?? validateNewPasswordDiffers(currentPassword, newPassword) ?? undefined
-    : undefined;
+  const newError = touched.next ? newRuleError ?? undefined : undefined;
   const confirmError = touched.confirm
     ? (!confirmPassword ? 'Type your new password again' : newPassword !== confirmPassword ? 'Passwords do not match.' : undefined)
     : undefined;

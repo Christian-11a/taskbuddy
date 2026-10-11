@@ -165,4 +165,19 @@ describe('ChangePasswordModal — field messages', () => {
     expect(screen.queryByText(REUSED)).toBeNull();
     expect(isDisabled()).toBe(false);
   });
+
+  it('a new password made only of spaces shows its message, and Update password cannot send it', async () => {
+    renderModal();
+    fill('oldpassword', '        ', '        ');
+
+    blurField('New password');
+
+    expect(screen.getByText("New password can't be only spaces.")).toBeTruthy();
+    expect(isDisabled()).toBe(true);
+    fireEvent.press(updateButton());
+    await act(async () => {
+      fireEvent(screen.getByLabelText('Confirm new password'), 'submitEditing');
+    });
+    expect(api.changePassword).not.toHaveBeenCalled();
+  });
 });
