@@ -4,11 +4,14 @@ import { StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LucideIcon } from 'lucide-react-native';
 import Tap from './ui/Tap';
+import { useTourAnchor } from './tour';
 
 export type BottomNavItem<T extends string> = {
   key: T;
   label: string;
   icon: LucideIcon;
+  /** Name the guided tour uses for this tab's anchor, `tab.<tourId>`. Defaults to the key. */
+  tourId?: string;
 };
 
 type BottomNavBarProps<T extends string> = {
@@ -29,7 +32,8 @@ export default function BottomNavBar<T extends string>({
   tabs,
   onTabPress,
 }: BottomNavBarProps<T>) {
-  const { Colors, styles } = useThemedStyles(createThemedStyles);
+  const theme = useThemedStyles(createThemedStyles);
+  const { styles } = theme;
   // The app is edge-to-edge (enforced on targetSdk 36), so without the real
   // bottom inset the bar renders under the system navigation bar and the OS
   // eats every tap (BUG-002). Drive the bottom padding + height from the inset.
@@ -43,39 +47,61 @@ export default function BottomNavBar<T extends string>({
           { height: NAV_BAR_HEIGHT + insets.bottom, paddingBottom: insets.bottom },
         ]}
       >
-        {tabs.map((tab) => {
-          const Icon = tab.icon;
-          const isActive = tab.key === activeTab;
-          return (
-            <Tap
-              key={tab.key}
-              testID={`nav-tab-${tab.key}`}
-              accessibilityLabel={tab.label}
-              accessibilityRole="tab"
-              accessibilityState={{ selected: isActive }}
-              style={styles.tabButton}
-              onPress={() => onTabPress(tab.key)}
-            >
-              {/* Keyed so the pill remounts when it turns on: Android drops the
-                  rounded corners if the background is applied on a re-render. */}
-              <View key={isActive ? 'on' : 'off'} style={[styles.indicator, isActive && styles.indicatorActive]}>
-                <Icon
-                  size={22}
-                  color={isActive ? Colors.activeIcon : Colors.navInactive}
-                  strokeWidth={isActive ? 2.4 : 2}
-                />
-              </View>
-              <Text
-                numberOfLines={1}
-                style={[styles.tabLabel, isActive && styles.tabLabelActive]}
-              >
-                {tab.label}
-              </Text>
-            </Tap>
-          );
-        })}
+        {tabs.map((tab) => (
+          <NavTab
+            key={tab.key}
+            tab={tab}
+            isActive={tab.key === activeTab}
+            theme={theme}
+            onPress={() => onTabPress(tab.key)}
+          />
+        ))}
       </View>
     </View>
+  );
+}
+
+type NavTheme = ReturnType<typeof createThemedStyles>;
+
+/**
+ * One tab. It is also a tour anchor, `tab.<tourId>` (or `tab.<key>`), so the
+ * guided tour can point at it. Look, layout, labels and presses are unchanged.
+ */
+function NavTab<T extends string>({ tab, isActive, theme, onPress }: {
+  tab: BottomNavItem<T>;
+  isActive: boolean;
+  theme: NavTheme;
+  onPress: () => void;
+}) {
+  const { Colors, styles } = theme;
+  const anchor = useTourAnchor(`tab.${tab.tourId ?? tab.key}`);
+  const Icon = tab.icon;
+  return (
+    <Tap
+      {...anchor}
+      testID={`nav-tab-${tab.key}`}
+      accessibilityLabel={tab.label}
+      accessibilityRole="tab"
+      accessibilityState={{ selected: isActive }}
+      style={styles.tabButton}
+      onPress={onPress}
+    >
+      {/* Keyed so the pill remounts when it turns on: Android drops the
+          rounded corners if the background is applied on a re-render. */}
+      <View key={isActive ? 'on' : 'off'} style={[styles.indicator, isActive && styles.indicatorActive]}>
+        <Icon
+          size={22}
+          color={isActive ? Colors.activeIcon : Colors.navInactive}
+          strokeWidth={isActive ? 2.4 : 2}
+        />
+      </View>
+      <Text
+        numberOfLines={1}
+        style={[styles.tabLabel, isActive && styles.tabLabelActive]}
+      >
+        {tab.label}
+      </Text>
+    </Tap>
   );
 }
 
