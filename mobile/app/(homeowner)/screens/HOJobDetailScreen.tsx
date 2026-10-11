@@ -33,6 +33,7 @@ import ProgressStepper from '../../../src/components/ui/ProgressStepper';
 import SectionHeader from '../../../src/components/ui/SectionHeader';
 import StatusCard from '../../../src/components/ui/StatusCard';
 import Tap from '../../../src/components/ui/Tap';
+import { showToast } from '../../../src/components/Toast';
 import { useThemedStyles, type Palette as ThemePalette } from '../../../src/context/ThemeContext';
 import { Spacing } from '../../../src/constants/theme';
 import { useHeaderTop } from '../../../src/hooks/useHeaderTop';
@@ -66,6 +67,8 @@ function acceptedDistanceKm(job: Job): number | null {
 /** Shown under the cancel row: cancelling after a hire is not an instant refund. */
 const CANCEL_HINT = 'Cancelling after hiring asks the provider to agree. Your money comes back once they do.';
 const HIT_SLOP = { top: 2, bottom: 2, left: 2, right: 2 };
+/** Said when a tap lands while the last action on this job is still running. */
+const BUSY_MESSAGE = 'Still working on your last request. Please wait.';
 
 /** Button text for an action, in the main slot or as the link under it. */
 function actionLabel(action: Action, slot: 'main' | 'link'): string {
@@ -156,7 +159,10 @@ export default function HOJobDetailScreen({ jobId, onBack, onNavigate }: HOJobDe
   const pendingCount = offerEntry ? (offerList ? countPendingProposals(offerList) : null) : 0;
 
   const runAction = async (fn: () => Promise<unknown>) => {
-    if (inFlight.current) return;
+    if (inFlight.current) {
+      showToast(BUSY_MESSAGE, 'info');
+      return;
+    }
     inFlight.current = true;
     setBusy(true);
     setActionError(null);
@@ -174,7 +180,11 @@ export default function HOJobDetailScreen({ jobId, onBack, onNavigate }: HOJobDe
   };
 
   const findProviders = async () => {
-    if (!job || inFlight.current) return;
+    if (!job) return;
+    if (inFlight.current) {
+      showToast(BUSY_MESSAGE, 'info');
+      return;
+    }
     inFlight.current = true;
     setBusy(true);
     setActionError(null);
@@ -205,8 +215,13 @@ export default function HOJobDetailScreen({ jobId, onBack, onNavigate }: HOJobDe
   const urgency = job ? urgencyMeta(job.urgency, V6Colors) : null;
 
   const perform = (action: Action) => {
-    // While an action is running, the main button, the link and the ⋮ menu are all inert.
-    if (!job || inFlight.current) return;
+    if (!job) return;
+    // While an action is running, a tap that gets here is a repeat, so say why it did nothing.
+    // The ⋮ menu rows are disabled instead, so they stay silent.
+    if (inFlight.current) {
+      showToast(BUSY_MESSAGE, 'info');
+      return;
+    }
     switch (action.kind) {
       case 'reviewProposals':
         onNavigate('Job Applications', job.id);
