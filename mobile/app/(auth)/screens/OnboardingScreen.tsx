@@ -13,6 +13,7 @@ import { useThemedStyles, type Palette as ThemePalette } from '../../../src/cont
 import React, { useRef, useState } from 'react';
 import {
   FlatList,
+  ScrollView,
   StyleSheet,
   Text,
   useWindowDimensions,
@@ -33,6 +34,11 @@ const ILLUSTRATIONS: Record<WelcomeRole, readonly IllustrationKind[]> = {
   provider: ['feed', 'proposalToBooking', 'incoming'],
 };
 
+/** The picture tile takes about a third of the screen height, kept between these heights in dp. */
+const TILE_MIN_HEIGHT = 210;
+const TILE_MAX_HEIGHT = 280;
+const TILE_SHARE_OF_SCREEN = 0.34;
+
 interface OnboardingScreenProps {
   role: 'homeowner' | 'provider' | null;
   /** The name to greet on the first card. Missing means "there". */
@@ -50,7 +56,8 @@ export default function OnboardingScreen({ role, firstName, replay = false, onFi
   const welcomeRole: WelcomeRole = role === 'provider' ? 'provider' : 'homeowner';
   const cards = introCards(welcomeRole, firstName);
   const layout = useAuthLayout();
-  const { width } = useWindowDimensions();
+  const { width, height } = useWindowDimensions();
+  const tileHeight = Math.max(TILE_MIN_HEIGHT, Math.min(TILE_MAX_HEIGHT, height * TILE_SHARE_OF_SCREEN));
   const [currentIndex, setCurrentIndex] = useState(0);
   const flatListRef = useRef<FlatList>(null);
   const isLast = currentIndex === cards.length - 1;
@@ -79,11 +86,17 @@ export default function OnboardingScreen({ role, firstName, replay = false, onFi
     }
   };
 
+  // The card's content is centred in the space above the dots. A screen too small for it scrolls instead.
   const renderCard = ({ item, index }: { item: IntroCard; index: number }) => {
     const active = index === currentIndex;
     return (
-      <View style={[styles.slide, { width }]}>
-        <View style={styles.illustration}>
+      <ScrollView
+        testID="intro-card"
+        style={{ width }}
+        contentContainerStyle={styles.slide}
+        showsVerticalScrollIndicator={false}
+      >
+        <View testID="intro-illustration" style={[styles.illustration, { minHeight: tileHeight }]}>
           {/* Keyed by `active`, so a card's parts ease in each time it comes on screen. */}
           <IntroIllustration
             key={active ? 'on' : 'off'}
@@ -92,9 +105,10 @@ export default function OnboardingScreen({ role, firstName, replay = false, onFi
             services={services}
           />
         </View>
-        <Text style={styles.title} accessibilityRole="header">{item.title}</Text>
+        {/* Balanced breaks (Android) keep one word off a line of its own. */}
+        <Text style={styles.title} accessibilityRole="header" textBreakStrategy="balanced">{item.title}</Text>
         <Text style={styles.body}>{item.body}</Text>
-      </View>
+      </ScrollView>
     );
   };
 
@@ -181,17 +195,20 @@ function createThemedStyles(theme: ThemePalette) {
       fontFamily: 'Inter',
     },
 
+    // The card's block grows to fill the space above the dots and centres its content there.
     slide: {
+      flexGrow: 1,
+      justifyContent: 'center',
       paddingHorizontal: 24,
-      paddingTop: 24,
+      paddingVertical: 24,
       alignItems: 'center',
     },
 
-    // The picture well: the role's tint, holding the card's parts. It grows to fit larger text.
+    // The picture well: the role's tint, holding the card's parts. Its height comes from the screen (see the
+    // tile height above) and it grows further to fit larger text.
     illustration: {
       width: '100%',
       maxWidth: 360,
-      minHeight: 210,
       borderRadius: 28,
       backgroundColor: Colors.primaryTonal,
       alignItems: 'center',

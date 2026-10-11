@@ -1,5 +1,5 @@
 import React from 'react';
-import { FlatList } from 'react-native';
+import { FlatList, ScrollView, StyleSheet } from 'react-native';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react-native';
 import OnboardingScreen from '../OnboardingScreen';
 import { api } from '../../../../src/lib/api';
@@ -7,6 +7,13 @@ import { clearAsyncDataCache } from '../../../../src/hooks/useAsyncData';
 
 jest.mock('../../../../src/lib/api', () => ({
   api: { categories: jest.fn() },
+}));
+
+// Mutable window metrics, so a test can set the screen size before rendering.
+const mockDims = { width: 390, height: 844, fontScale: 1, scale: 3 };
+jest.mock('react-native/Libraries/Utilities/useWindowDimensions', () => ({
+  __esModule: true,
+  default: () => mockDims,
 }));
 
 type Props = Partial<React.ComponentProps<typeof OnboardingScreen>>;
@@ -33,6 +40,7 @@ function showSlide(index: number) {
 beforeEach(() => {
   clearAsyncDataCache();
   jest.clearAllMocks();
+  Object.assign(mockDims, { width: 390, height: 844 });
   // Pending by default, so no lookup settles after a test ends unless the test sets one up.
   (api.categories as jest.Mock).mockReturnValue(new Promise(() => {}));
 });
@@ -148,5 +156,50 @@ describe('OnboardingScreen — skip', () => {
 
     expect(onLogin).toHaveBeenCalledTimes(1);
     expect(onFinish).not.toHaveBeenCalled();
+  });
+});
+
+describe('OnboardingScreen — layout', () => {
+  /** The picture tile's minimum height on each card, in dp. */
+  const tileHeights = () => screen.getAllByTestId('intro-illustration').map((tile) => StyleSheet.flatten(tile.props.style).minHeight);
+
+  /** Each card's content style, from the ScrollView each card renders (the list renders all three). */
+  const cardContentStyles = () => screen.UNSAFE_getAllByProps({ testID: 'intro-card' })
+    .filter((element) => element.type === ScrollView)
+    .map((element) => StyleSheet.flatten(element.props.contentContainerStyle));
+
+  it('grows the picture to 280 dp on a tall screen', async () => {
+    mockDims.height = 1600;
+    await renderOnboarding('homeowner');
+
+    expect(tileHeights()).toEqual([280, 280, 280]);
+  });
+
+  it('sizes the picture at 34% of the screen height while that stays between 210 and 280 dp', async () => {
+    mockDims.height = 640;
+    await renderOnboarding('homeowner');
+
+    tileHeights().forEach((height) => expect(height).toBeCloseTo(0.34 * 640));
+  });
+
+  it('keeps the picture at least 210 dp tall on a short screen', async () => {
+    mockDims.height = 500;
+    await renderOnboarding('homeowner');
+
+    expect(tileHeights()).toEqual([210, 210, 210]);
+  });
+
+  it('centres each card\'s content in the space above the dots, and lets it scroll when it does not fit', async () => {
+    await renderOnboarding('homeowner');
+
+    const styles = cardContentStyles();
+    expect(styles).toHaveLength(3);
+    styles.forEach((style) => expect(style).toEqual(expect.objectContaining({ flexGrow: 1, justifyContent: 'center' })));
+  });
+
+  it('breaks the card title into balanced lines, so no single word is left alone on a line', async () => {
+    await renderOnboarding('homeowner', { firstName: 'Juan' });
+
+    expect(screen.getByText('Hi Juan, help is close by').props.textBreakStrategy).toBe('balanced');
   });
 });
