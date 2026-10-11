@@ -50,7 +50,7 @@ import AuthField from '../../../src/components/auth/AuthField';
 import AuthStepHeader from '../../../src/components/auth/AuthStepHeader';
 import RoleChoiceCard from '../../../src/components/auth/RoleChoiceCard';
 import { useAuthLayout } from '../../../src/hooks/useAuthLayout';
-import { normalizeName, validateEmail, validateFullName } from '../../../src/lib/inputRules';
+import { normalizeName, validateEmail, validateFullName, validatePasswordRules } from '../../../src/lib/inputRules';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 /** Supabase issues 6-digit signup codes. */
@@ -314,7 +314,8 @@ export default function RegisterScreen({ onRegister, onLogin, onGoogleSignIn }: 
     if (nameError) errors.name = nameError;
     const emailError = validateEmail(email);
     if (emailError) errors.email = emailError;
-    if (password.length < 8) errors.password = 'Password must be at least 8 characters.';
+    const passwordError = validatePasswordRules(password);
+    if (passwordError) errors.password = passwordError;
     if (password !== confirmPassword) errors.confirmPassword = 'Passwords do not match.';
 
     if (role === 'provider' && !categoryId) {
@@ -588,6 +589,7 @@ export default function RegisterScreen({ onRegister, onLogin, onGoogleSignIn }: 
               testID="input-password"
               value={password}
               onChangeText={(v) => { setPassword(v); clearError('password'); }}
+              onBlur={() => setFieldErrors((prev) => ({ ...prev, password: validatePasswordRules(password) ?? undefined }))}
               secureTextEntry
               onLayout={locateField('password')}
               error={fieldErrors.password}

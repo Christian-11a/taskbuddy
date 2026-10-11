@@ -79,7 +79,8 @@ export default function LoginScreen({
     if (emailError) errors.email = emailError;
 
     // Presence only: whether the password is right is for the server to say.
-    if (!password) {
+    // Spaces alone are no password.
+    if (!password.trim()) {
       errors.password = 'Please enter your password.';
     }
 

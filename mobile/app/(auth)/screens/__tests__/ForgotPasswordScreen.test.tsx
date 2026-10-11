@@ -180,3 +180,21 @@ describe('ForgotPasswordScreen — the new password', () => {
     expect(resetPassword).not.toHaveBeenCalled();
   });
 });
+
+describe('ForgotPasswordScreen — a spaces-only new password', () => {
+  it('refuses a new password made only of spaces, and does not reset', async () => {
+    render(<ForgotPasswordScreen onBackToLogin={jest.fn()} />);
+    await requestCode();
+    reportCodeText('482931');
+    await pressVerify();
+    fireEvent.changeText(screen.getByLabelText('New password'), '        ');
+    fireEvent.changeText(screen.getByLabelText('Confirm new password'), '        ');
+
+    await act(async () => {
+      fireEvent.press(screen.getByText('Reset password'));
+    });
+
+    expect(screen.getByText("New password can't be only spaces.")).toBeTruthy();
+    expect(resetPassword).not.toHaveBeenCalled();
+  });
+});

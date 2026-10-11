@@ -45,7 +45,7 @@ import { CODE_LENGTH, formatCooldown, maskEmail } from '../../../src/components/
 import { V6Radii, V6Shadows } from '../../../src/constants/theme';
 import { useAuth } from '../../../src/context/AuthContext';
 import { api } from '../../../src/lib/api';
-import { validateEmail } from '../../../src/lib/inputRules';
+import { validateEmail, validatePasswordRules } from '../../../src/lib/inputRules';
 import { useAuthLayout } from '../../../src/hooks/useAuthLayout';
 
 const RESEND_COOLDOWN_S = 60;
@@ -131,10 +131,13 @@ export default function ForgotPasswordScreen({ onBackToLogin }: ForgotPasswordSc
       return;
     }
     // Mirrors the backend's MinLength(8) on ResetPasswordDto.new_password.
-    if (!rules.every((r) => r.ok)) {
-      setError(newPassword.length < MIN_PASSWORD
-        ? `New password must be at least ${MIN_PASSWORD} characters.`
-        : 'Those passwords do not match.');
+    const passwordError = validatePasswordRules(newPassword, 'New password');
+    if (passwordError) {
+      setError(passwordError);
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      setError('Those passwords do not match.');
       return;
     }
     Keyboard.dismiss();

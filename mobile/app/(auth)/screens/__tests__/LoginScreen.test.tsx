@@ -121,3 +121,16 @@ describe('LoginScreen', () => {
     expect(props.onGoogleSignIn).toHaveBeenCalledTimes(1);
   });
 });
+
+describe('LoginScreen — a spaces-only password', () => {
+  it('treats a password made only of spaces as no password, and does not call the API', () => {
+    const props = renderLogin();
+
+    fireEvent.changeText(screen.getByTestId('input-email'), 'owner@example.test');
+    fireEvent.changeText(screen.getByTestId('input-password'), '        ');
+    fireEvent.press(screen.getByTestId('btn-sign-in'));
+
+    expect(screen.getByText('Please enter your password.')).toBeTruthy();
+    expect(props.onLogin).not.toHaveBeenCalled();
+  });
+});

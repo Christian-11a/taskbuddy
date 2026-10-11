@@ -358,3 +358,33 @@ describe('RegisterScreen — name and email are checked', () => {
     }));
   });
 });
+
+describe('RegisterScreen — passwords', () => {
+  beforeEach(() => {
+    (useAuth as jest.Mock).mockReturnValue({ verifyEmailOtp: jest.fn() });
+  });
+
+  it('refuses a password made only of spaces, even when it is eight characters long', async () => {
+    const onRegister = jest.fn();
+    render(<RegisterScreen {...baseProps} onRegister={onRegister} />);
+    fireEvent.press(screen.getByText('Continue'));
+    fireEvent.changeText(screen.getByTestId('input-password'), '        ');
+    fireEvent.changeText(screen.getByTestId('input-confirm-password'), '        ');
+
+    await act(async () => fireEvent.press(screen.getByTestId('btn-create-account')));
+
+    expect(screen.getByText("Password can't be only spaces.")).toBeTruthy();
+    expect(onRegister).not.toHaveBeenCalled();
+  });
+
+  it('shows the eight-character message once the password field is left', () => {
+    render(<RegisterScreen {...baseProps} />);
+    fireEvent.press(screen.getByText('Continue'));
+    fireEvent.changeText(screen.getByTestId('input-password'), 'short');
+    expect(screen.queryByText('Password must be at least 8 characters.')).toBeNull();
+
+    fireEvent(screen.getByTestId('input-password'), 'blur');
+
+    expect(screen.getByText('Password must be at least 8 characters.')).toBeTruthy();
+  });
+});
