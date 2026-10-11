@@ -104,8 +104,8 @@ export function fieldError(field: PostField, values: PostFormValues, now: Date):
     case 'title':
       return validateTitle(values.title) ?? undefined;
     case 'description': {
-      if (textLength(values.description) < DESCRIPTION_MIN) return 'Description must be at least 20 characters.';
-      if (textUnits(values.description) > DESCRIPTION_MAX) return 'Description cannot exceed 750 characters.';
+      if (textLength(values.description) < DESCRIPTION_MIN) return `Description must be at least ${DESCRIPTION_MIN} characters.`;
+      if (textUnits(values.description) > DESCRIPTION_MAX) return `Description cannot exceed ${DESCRIPTION_MAX} characters.`;
       return undefined;
     }
     case 'date':
