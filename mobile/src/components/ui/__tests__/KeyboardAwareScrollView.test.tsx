@@ -2,6 +2,7 @@ import React, { createRef } from 'react';
 import { Keyboard, ScrollView, TextInput } from 'react-native';
 import { act, fireEvent, render, screen } from '@testing-library/react-native';
 import KeyboardAwareScrollView, { FIELD_MARGIN, scrollTargetFor } from '../KeyboardAwareScrollView';
+import SheetFrame from '../SheetFrame';
 import TextField from '../TextField';
 
 type MeasureCallback = (x: number, y: number, width: number, height: number) => void;
@@ -155,5 +156,27 @@ describe('KeyboardAwareScrollView', () => {
     render(<TextField label="Name" value="" onChangeText={jest.fn()} />);
 
     expect(() => fireEvent(screen.getByLabelText('Name'), 'focus')).not.toThrow();
+  });
+
+  it('a field inside a sheet is scrolled above the keyboard the same way', () => {
+    render(
+      <SheetFrame visible onClose={jest.fn()}>
+        <TextField label="Amount" value="" onChangeText={jest.fn()} />
+      </SheetFrame>,
+    );
+    const scroll = screen.UNSAFE_getByType(ScrollView).instance;
+    const scrollTo = jest.spyOn(scroll, 'scrollTo');
+    jest.spyOn(scroll, 'getNativeScrollRef').mockReturnValue({
+      measureInWindow: (callback: MeasureCallback) => callback(0, 100, 375, 400),
+    } as never);
+    act(() => {
+      screen.UNSAFE_getByType(ScrollView).props.onLayout({ nativeEvent: { layout: { x: 0, y: 0, width: 375, height: 400 } } });
+    });
+    const field: { measureInWindow: (callback: MeasureCallback) => void } = screen.UNSAFE_getByType(TextInput).instance;
+    jest.spyOn(field, 'measureInWindow').mockImplementation((callback) => callback(0, 600, 375, 48));
+
+    fireEvent(screen.getByLabelText('Amount'), 'focus');
+
+    expect(scrollTo).toHaveBeenCalledWith({ y: 172, animated: true });
   });
 });
