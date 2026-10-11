@@ -31,13 +31,14 @@ import { HOScreen } from '../../../src/types/navigation';
 import { useAsyncData } from '../../../src/hooks/useAsyncData';
 import { useRetainedScroll, useRetainedState } from '../../../src/hooks/useRetainedState';
 import { useHeaderTop } from '../../../src/hooks/useHeaderTop';
-import { useProposalCounts } from '../../../src/hooks/useProposalCounts';
+import { useProposalCountsStatus } from '../../../src/hooks/useProposalCounts';
 import { api } from '../../../src/lib/api';
 import { peso } from '../../../src/lib/format';
 import { jobRowStatus } from '../../../src/lib/jobRowStatus';
 import {
   JOB_LIST_FILTERS,
   countJobsByFilter,
+  filterPillCount,
   jobListSections,
   type JobListFilter,
 } from '../../../src/lib/myJobsList';
@@ -71,7 +72,7 @@ export default function MyJobs({ onNavigate, headerRight }: MyJobsProps) {
   }, [data, error]);
 
   const jobs = useMemo(() => data ?? [], [data]);
-  const proposals = useProposalCounts(jobs);
+  const { counts: proposals, loading: proposalsLoading } = useProposalCountsStatus(jobs);
   const counts = useMemo(() => countJobsByFilter(jobs, proposals), [jobs, proposals]);
   const sections = useMemo(
     () => jobListSections(jobs, filter, proposals, new Date()),
@@ -123,7 +124,7 @@ export default function MyJobs({ onNavigate, headerRight }: MyJobsProps) {
             <FilterPill
               key={key}
               label={label}
-              count={settled ? counts[key] : undefined}
+              count={settled ? filterPillCount(key, counts, proposalsLoading) : undefined}
               selected={filter === key}
               onPress={() => setFilter(key)}
             />

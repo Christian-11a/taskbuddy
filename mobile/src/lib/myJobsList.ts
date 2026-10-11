@@ -60,6 +60,22 @@ export function countJobsByFilter(jobs: readonly Job[], proposals: ProposalCount
   return counts;
 }
 
+/** Needs you and Waiting split open jobs by their proposal counts. */
+const PROPOSAL_FILTERS: ReadonlySet<JobListFilter> = new Set(['needs', 'waiting']);
+
+/**
+ * The number on a filter pill, or undefined while it cannot be known yet. Until
+ * the proposal counts are in, Needs you and Waiting have no number: a job whose
+ * count has not arrived would read as waiting. The other pills need only the jobs.
+ */
+export function filterPillCount(
+  filter: JobListFilter,
+  counts: Readonly<Record<JobListFilter, number>>,
+  proposalsLoading: boolean,
+): number | undefined {
+  return proposalsLoading && PROPOSAL_FILTERS.has(filter) ? undefined : counts[filter];
+}
+
 export interface JobListSection {
   key: 'thisWeek' | 'later' | 'noDate' | 'earlier' | 'finished' | 'list';
   /** Heading text (the screen shows it in capitals). Absent for the flat list. */

@@ -1,5 +1,5 @@
-import { renderHook, waitFor } from '@testing-library/react-native';
-import { useProposalCounts } from '../useProposalCounts';
+import { act, renderHook, waitFor } from '@testing-library/react-native';
+import { useProposalCounts, useProposalCountsStatus } from '../useProposalCounts';
 import { api, type Job, type JobApplication } from '../../lib/api';
 
 jest.mock('../../lib/api', () => ({
@@ -70,4 +70,26 @@ it('looks again when the jobs are reloaded', async () => {
 
   await waitFor(() => expect(result.current).toEqual({ a: 0 }));
   expect(api.jobApplications).toHaveBeenCalledTimes(2);
+});
+
+it('is loading until every looked-up job has an answer, and a failed lookup is an answer', async () => {
+  let answerA: (applications: JobApplication[]) => void = () => {};
+  (api.jobApplications as jest.Mock).mockImplementation((id: string) =>
+    id === 'a'
+      ? new Promise<JobApplication[]>((resolve) => {
+        answerA = resolve;
+      })
+      : Promise.reject(new Error('offline')),
+  );
+  const jobs = [job('a', 'open'), job('b', 'open')];
+
+  const { result } = renderHook(() => useProposalCountsStatus(jobs));
+
+  expect(result.current.loading).toBe(true);
+  await act(async () => {
+    answerA([application('pending')]);
+  });
+
+  await waitFor(() => expect(result.current.loading).toBe(false));
+  expect(result.current.counts).toEqual({ a: 1 });
 });

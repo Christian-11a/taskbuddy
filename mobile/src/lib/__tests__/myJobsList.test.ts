@@ -2,6 +2,7 @@ import type { Job } from '../api';
 import {
   countJobsByFilter,
   filterJobs,
+  filterPillCount,
   jobListSections,
   matchesJobFilter,
 } from '../myJobsList';
@@ -95,6 +96,27 @@ describe('filterJobs and countJobsByFilter', () => {
     expect(countJobsByFilter([], {})).toEqual({
       all: 0, needs: 0, booked: 0, waiting: 0, done: 0, closed: 0,
     });
+  });
+});
+
+describe('filterPillCount', () => {
+  const counts = { all: 7, needs: 1, booked: 2, waiting: 1, done: 1, closed: 2 };
+
+  it('shows no number on Needs you or Waiting while the proposal counts load', () => {
+    expect(filterPillCount('needs', counts, true)).toBeUndefined();
+    expect(filterPillCount('waiting', counts, true)).toBeUndefined();
+  });
+
+  it('shows the counts on Needs you and Waiting once the proposal counts are in', () => {
+    expect(filterPillCount('needs', counts, false)).toBe(1);
+    expect(filterPillCount('waiting', counts, false)).toBe(1);
+  });
+
+  it('shows the other pills while the proposal counts load, since they need only the jobs', () => {
+    expect(filterPillCount('all', counts, true)).toBe(7);
+    expect(filterPillCount('booked', counts, true)).toBe(2);
+    expect(filterPillCount('done', counts, true)).toBe(1);
+    expect(filterPillCount('closed', counts, true)).toBe(2);
   });
 });
 

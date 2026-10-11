@@ -185,7 +185,31 @@ it('renders the list before proposal counts arrive', async () => {
 
   await screen.findByText('Cleaning: Window cleaning');
   expect(screen.getAllByText('Open · waiting for offers')).toHaveLength(2);
-  expect(screen.getByRole('button', { name: 'Needs you, 0' })).toBeTruthy();
+  expect(screen.getByLabelText('Needs you')).toBeTruthy();
+});
+
+it('Needs you and Waiting show no number until the proposal counts arrive, then their real counts', async () => {
+  const answers: Array<() => void> = [];
+  (api.jobApplications as jest.Mock).mockImplementation(
+    (id: string) => new Promise((resolve) => {
+      answers.push(() => resolve(proposalsByJob[id] ?? []));
+    }),
+  );
+  render(<MyJobs onNavigate={jest.fn()} />);
+
+  await screen.findByText('Cleaning: Window cleaning');
+  await waitFor(() => expect(api.jobApplications).toHaveBeenCalledTimes(2));
+  expect(screen.getByLabelText('Needs you')).toBeTruthy();
+  expect(screen.getByLabelText('Waiting')).toBeTruthy();
+  expect(screen.getByRole('button', { name: 'All, 7' })).toBeTruthy();
+  expect(screen.getByRole('button', { name: 'Booked, 2' })).toBeTruthy();
+
+  await act(async () => {
+    answers.forEach((answer) => answer());
+  });
+
+  expect(await screen.findByRole('button', { name: 'Needs you, 1' })).toBeTruthy();
+  expect(screen.getByRole('button', { name: 'Waiting, 1' })).toBeTruthy();
 });
 
 it('a failed proposal lookup leaves that job under Waiting', async () => {
