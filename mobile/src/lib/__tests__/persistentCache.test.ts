@@ -1,6 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   NEVER_PERSIST,
+  clearLastAccountPersisted,
   clearPersisted,
   getCacheAccount,
   isPersistable,
@@ -268,6 +269,9 @@ describe('what is never written', () => {
   it.each(['ho-withdrawals', 'hire-checkout', 'payment-methods'])(
     '%s is not written even when a caller asks',
     async (key) => {
+      // The account set in beforeEach records itself on the device first. That write is not one for this key.
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      jest.mocked(AsyncStorage.setItem).mockClear();
       await expect(writePersisted(key, ['x'])).resolves.toBeUndefined();
 
       expect(await AsyncStorage.getItem(entryKey(ALICE, key))).toBeNull();
@@ -405,5 +409,50 @@ describe('a saved copy the caller rejects as the wrong shape', () => {
     await writePersisted('ho-jobs', ['x']);
 
     expect(await readPersisted('ho-jobs', { validate: isList })).toEqual({ value: ['x'], savedAt: START });
+  });
+});
+
+describe('the account this device last had', () => {
+  const LAST_ACCOUNT = 'taskbuddy.cache.lastAccount';
+
+  /** Lets the queued storage writes land. */
+  const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
+
+  it('is recorded when an account is set, so a launch with no session can still find its copies', async () => {
+    setCacheAccount(BOB);
+    await flush();
+
+    expect(await AsyncStorage.getItem(LAST_ACCOUNT)).toBe(BOB);
+  });
+
+  it('lets a launch with no account in memory clear the copies of the account it last had, and the record too', async () => {
+    await writePersisted('ho-jobs', ['alice job']);
+    await flush();
+    setCacheAccount(null);
+
+    await clearLastAccountPersisted();
+
+    expect(await cacheKeys()).toEqual([]);
+    expect(await AsyncStorage.getItem(LAST_ACCOUNT)).toBeNull();
+  });
+
+  it('is removed when its own account is cleared, and kept when some other account is cleared', async () => {
+    await flush();
+    expect(await AsyncStorage.getItem(LAST_ACCOUNT)).toBe(ALICE);
+
+    await clearPersisted(BOB);
+    expect(await AsyncStorage.getItem(LAST_ACCOUNT)).toBe(ALICE);
+
+    await clearPersisted(ALICE);
+    expect(await AsyncStorage.getItem(LAST_ACCOUNT)).toBeNull();
+  });
+
+  it('does nothing when no account was ever recorded', async () => {
+    // The record written when the account was set in beforeEach must land first, or it would survive this clear.
+    await flush();
+    await AsyncStorage.clear();
+
+    await expect(clearLastAccountPersisted()).resolves.toBeUndefined();
+    expect(await AsyncStorage.getAllKeys()).toEqual([]);
   });
 });

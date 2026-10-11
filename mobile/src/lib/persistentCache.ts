@@ -4,7 +4,8 @@
  *
  * Each saved value belongs to one profile id. Nothing is read or written while no account is set, and
  * a copy saved for one account is never read while another is signed in. Signing out removes that
- * account's copies (clearPersisted).
+ * account's copies (clearPersisted). The account last set is also recorded on the device, so a launch whose
+ * stored session is rejected before its profile loads can still clear it (clearLastAccountPersisted).
  *
  * Every call is best-effort: a storage failure or unreadable data counts as "nothing saved", and
  * nothing here throws into a screen.
@@ -15,6 +16,8 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 /** Bump when the envelope changes: a copy with another version is ignored. */
 const VERSION = 1;
 const ROOT = 'taskbuddy.cache.v1.';
+/** The account this device last had, so a launch that finds no profile can still clear its copies. */
+const LAST_ACCOUNT_KEY = 'taskbuddy.cache.lastAccount';
 const DEFAULT_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 /** For data that changes rarely, such as the service categories: a saved copy stays usable for a week. */
 export const SEVEN_DAYS_MS = 7 * DEFAULT_MAX_AGE_MS;
@@ -69,9 +72,16 @@ function runInStorageOrder<T>(task: () => Promise<T>): Promise<T> {
   return run;
 }
 
-/** Sets the account whose saved values are read and written. `null` (signed out) turns the cache off. */
+/**
+ * Sets the account whose saved values are read and written. `null` (signed out) turns the cache off. The
+ * account set is also recorded on the device, in the same storage order as the saves.
+ */
 export function setCacheAccount(profileId: string | null): void {
   activeAccount = profileId || null;
+  if (activeAccount) {
+    const recorded = activeAccount;
+    void runInStorageOrder(() => AsyncStorage.setItem(LAST_ACCOUNT_KEY, recorded)).catch(() => undefined);
+  }
 }
 
 /** The account currently set, or null. */
@@ -248,32 +258,60 @@ export async function readPersisted<T>(
 }
 
 /**
+ * Removes one account's saved values and its index, and the record of the account this device last had when
+ * that is the one it names. Runs inside storage order, so callers queue it through runInStorageOrder. Works
+ * from the index and also from a listing of the device's keys, so copies survive a lost index. Never throws.
+ */
+async function clearAccountNow(profileId: string): Promise<void> {
+  try {
+    const doomed = new Set<string>([indexKeyFor(profileId)]);
+    try {
+      for (const entry of await readIndex(profileId)) {
+        doomed.add(entryKeyFor(profileId, entry.key));
+      }
+    } catch {
+      // Index unreadable: the listing below still finds the copies.
+    }
+    try {
+      for (const storageKey of await AsyncStorage.getAllKeys()) {
+        if (storageKey.startsWith(accountPrefix(profileId))) doomed.add(storageKey);
+      }
+    } catch {
+      // Listing unavailable: the index above is all there is.
+    }
+    try {
+      if ((await AsyncStorage.getItem(LAST_ACCOUNT_KEY)) === profileId) doomed.add(LAST_ACCOUNT_KEY);
+    } catch {
+      // Record unreadable: it is left as it is, and the next clear for this account finds it.
+    }
+    await AsyncStorage.multiRemove(Array.from(doomed));
+  } catch {
+    // Best-effort: a copy that survives is never read for another account.
+  }
+}
+
+/**
  * Removes every value saved for an account, and its index. Saves already queued for the account land
- * first, so none of them comes back afterwards. Works from the index and also from a listing of the
- * device's keys, so copies survive a lost index. Never throws.
+ * first, so none of them comes back afterwards. Never throws.
  */
 export function clearPersisted(profileId: string): Promise<void> {
   if (!profileId) return Promise.resolve();
+  return runInStorageOrder(() => clearAccountNow(profileId));
+}
+
+/**
+ * Removes the saved values of the account this device last had, and the record of it. For a launch whose
+ * stored session is rejected before any profile loads, when the account is not in memory. Nothing happens
+ * when no account was recorded. Never throws.
+ */
+export function clearLastAccountPersisted(): Promise<void> {
   return runInStorageOrder(async () => {
     try {
-      const doomed = new Set<string>([indexKeyFor(profileId)]);
-      try {
-        for (const entry of await readIndex(profileId)) {
-          doomed.add(entryKeyFor(profileId, entry.key));
-        }
-      } catch {
-        // Index unreadable: the listing below still finds the copies.
-      }
-      try {
-        for (const storageKey of await AsyncStorage.getAllKeys()) {
-          if (storageKey.startsWith(accountPrefix(profileId))) doomed.add(storageKey);
-        }
-      } catch {
-        // Listing unavailable: the index above is all there is.
-      }
-      await AsyncStorage.multiRemove(Array.from(doomed));
+      const lastAccount = await AsyncStorage.getItem(LAST_ACCOUNT_KEY);
+      if (lastAccount) await clearAccountNow(lastAccount);
+      await AsyncStorage.removeItem(LAST_ACCOUNT_KEY);
     } catch {
-      // Best-effort: a copy that survives is never read for another account.
+      // Best-effort: storage that cannot be read leaves the record and the copies in place.
     }
   });
 }

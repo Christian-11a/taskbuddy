@@ -196,3 +196,25 @@ it('a session the server rejects also clears what screens kept in memory', async
   const later = render(<ShowsMemoryOnly />);
   expect(later.getByText('kept:none')).toBeTruthy();
 });
+
+it('a stored session the server rejects at launch wipes the saved copies of the account it belonged to', async () => {
+  const first = renderAuth();
+  fireEvent.press(first.getByText('Sign in Alice'));
+  expect(await first.findByText('Alice')).toBeTruthy();
+  await act(async () => {
+    await writePersisted('ho-jobs', ['alice job']);
+  });
+  expect(await savedKeys()).not.toEqual([]);
+  // The app closes with the copies still on the device. When it opens again the server rejects the stored session.
+  first.unmount();
+  (api.me as jest.Mock).mockRejectedValue(new ApiError('Session rejected', 403));
+
+  renderAuth();
+
+  expect(await screen.findByText('Signed out')).toBeTruthy();
+  await settle();
+  expect(await savedKeys()).toEqual([]);
+  expect(await AsyncStorage.getItem('taskbuddy.cache.lastAccount')).toBeNull();
+  expect(await AsyncStorage.getItem('taskbuddy.session')).toBeNull();
+  expect(await readPersisted('ho-jobs')).toBeNull();
+});

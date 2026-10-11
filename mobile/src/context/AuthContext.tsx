@@ -34,7 +34,7 @@ import {
   type Session,
 } from '../lib/api';
 import { clearAsyncDataCache } from '../hooks/useAsyncData';
-import { clearPersisted, setCacheAccount } from '../lib/persistentCache';
+import { clearLastAccountPersisted, clearPersisted, setCacheAccount } from '../lib/persistentCache';
 import { requestExpoPushRegistration } from '../lib/pushNotifications';
 import { openRedirectSession } from '../lib/appRedirectSession';
 
@@ -97,11 +97,13 @@ async function fetchProfileWithRetry(accessToken: string) {
 
 /**
  * Ends the saved copies of an account that is signing out: nothing more is saved for it, and what is on
- * the device is removed. Fire and forget, so sign-out is never held up by storage.
+ * the device is removed. With no profile in memory, the account this device last had is the one that ends.
+ * Fire and forget, so sign-out is never held up by storage.
  */
 function forgetSavedAccount(profileId: string | null) {
   setCacheAccount(null);
-  if (profileId) void clearPersisted(profileId).catch(() => {});
+  const forgotten = profileId ? clearPersisted(profileId) : clearLastAccountPersisted();
+  void forgotten.catch(() => {});
 }
 
 interface AuthContextValue {
@@ -415,6 +417,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         // API was slow to wake.
         if (isRejectedSession(err)) {
           await AsyncStorage.removeItem(SESSION_KEY);
+          // No profile loaded, so no account is in memory: the one this device last had is the one that ends.
+          await clearLastAccountPersisted();
         } else if (__DEV__) {
           console.warn('[auth] session kept despite a failed restore', err);
         }
