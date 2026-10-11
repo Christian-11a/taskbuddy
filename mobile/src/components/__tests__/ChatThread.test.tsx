@@ -1,7 +1,7 @@
 import React from 'react';
 import { StyleSheet, type FlatList } from 'react-native';
 import { fireEvent, render, screen, within } from '@testing-library/react-native';
-import ChatThread, { type ChatThreadProps } from '../ChatThread';
+import ChatThread, { CHAT_MESSAGE_MAX, type ChatThreadProps } from '../ChatThread';
 import type { Message } from '../../lib/api';
 import { lightPalette } from '../../constants/palettes';
 
@@ -213,5 +213,39 @@ describe('ChatThread payment safety note', () => {
     expect(await screen.findByText('Stay protected')).toBeTruthy();
     fireEvent.press(screen.getByRole('button', { name: 'Got it' }));
     expect(screen.queryByText('Stay protected')).toBeNull();
+  });
+});
+
+describe('ChatThread composer limits', () => {
+  const send = () => screen.getByRole('button', { name: 'Send message' });
+
+  it('keeps Send message disabled for a message of spaces or blank lines alone', () => {
+    const { rerender } = render(<ChatThread {...baseProps({ text: '   ' })} />);
+    expect(send().props.accessibilityState?.disabled).toBe(true);
+
+    rerender(<ChatThread {...baseProps({ text: '\n\n\n' })} />);
+    expect(send().props.accessibilityState?.disabled).toBe(true);
+  });
+
+  it('caps the box at the composer limit of 500 characters', () => {
+    render(<ChatThread {...baseProps()} />);
+
+    expect(screen.getByPlaceholderText('Message…').props.maxLength).toBe(CHAT_MESSAGE_MAX);
+    expect(CHAT_MESSAGE_MAX).toBe(500);
+  });
+
+  it('shows how much room is left only once the message is 400 characters or more', () => {
+    const { rerender } = render(<ChatThread {...baseProps({ text: 'a'.repeat(399) })} />);
+    expect(screen.queryByText('399/500')).toBeNull();
+
+    rerender(<ChatThread {...baseProps({ text: 'a'.repeat(400) })} />);
+    expect(screen.getByText('400/500')).toBeTruthy();
+  });
+
+  it('keeps a message of exactly 500 characters sendable, with the counter at its limit', () => {
+    render(<ChatThread {...baseProps({ text: 'a'.repeat(500) })} />);
+
+    expect(screen.getByText('500/500')).toBeTruthy();
+    expect(send().props.accessibilityState?.disabled).toBe(false);
   });
 });

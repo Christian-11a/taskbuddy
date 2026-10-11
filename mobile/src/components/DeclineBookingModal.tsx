@@ -22,6 +22,7 @@ import SheetFrame from './ui/SheetFrame';
 import RadioRow from './ui/RadioRow';
 import TextField from './ui/TextField';
 import { plural } from '../lib/format';
+import { cleanText } from '../lib/textRules';
 
 /** Mirrors DeclineJobDto's @Length(1, 200) — see backend/src/jobs/dto. */
 export const DECLINE_REASON_MAX = 200;
@@ -40,7 +41,7 @@ export function noteLimitFor(choice: string | null): number {
 
 /** The reason sent to the API: the chosen reason, then the trimmed note if there is one. */
 export function declineReason(choice: string, note: string): string {
-  const extra = note.trim();
+  const extra = cleanText(note);
   return extra ? `${choice}. ${extra}` : choice;
 }
 
@@ -78,10 +79,14 @@ export default function DeclineBookingModal({
   const pick = (option: string) => setChoice(option);
 
   // The reason as the API receives it: the chosen reason with the trimmed note after it, or the note alone.
-  const trimmedNote = note.trim();
+  const trimmedNote = cleanText(note);
   const reasonToSend = choice !== null ? declineReason(choice, note) : trimmedNote;
   const over = Math.max(0, reasonToSend.length - DECLINE_REASON_MAX);
   const ready = (choice !== null || trimmedNote.length > 0) && over === 0;
+  // Spaces alone are not a reason: when no reason is picked, the note has to say one.
+  const noteError = choice === null && note.length > 0 && trimmedNote.length === 0
+    ? 'Pick a reason above, or write one here.'
+    : undefined;
   const canSubmit = ready && !submitting;
   // Room left for the note once the chosen reason and its separator are counted.
   const limit = noteLimitFor(choice);
@@ -118,6 +123,7 @@ export default function DeclineBookingModal({
         onChangeText={setNote}
         placeholder="Anything the client should know"
         helper={`${note.length}/${limit}`}
+        error={noteError}
         multiline
         // The API's limit, not the room left: a limit that shrinks when a reason is picked could cut the note.
         maxLength={DECLINE_REASON_MAX}

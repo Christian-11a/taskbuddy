@@ -145,3 +145,14 @@ it('a failed send shows the message and keeps the form for another try', async (
   expect(onSubmitted).not.toHaveBeenCalled();
   expect(sendButton().props.accessibilityState?.disabled).toBe(false);
 });
+
+it('sends no details when they are only spaces, since the details are optional', async () => {
+  renderFiling();
+  await screen.findByText('Plumbing: Fix leaking faucet · TaskBuddyProvider');
+  fireEvent.press(screen.getByRole('radio', { name: 'Work quality issue' }));
+  fireEvent.changeText(screen.getByLabelText('Tell us what happened'), '   \n\n  ');
+
+  fireEvent.press(within(await openConfirm()).getByRole('button', { name: 'Send report' }));
+
+  await waitFor(() => expect(api.raiseDispute).toHaveBeenCalledWith('job-1', { reason: 'Work quality issue', details: undefined }));
+});

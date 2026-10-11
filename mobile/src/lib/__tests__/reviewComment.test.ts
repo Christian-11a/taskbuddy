@@ -17,9 +17,19 @@ describe('review tags and the comment they become', () => {
     expect(orderedTags([])).toEqual([]);
   });
 
-  it('sends the comment as typed when no tag is chosen, and nothing when both are empty', () => {
-    expect(reviewCommentFor([], '  Fixed it  ')).toBe('  Fixed it  ');
+  it('sends the comment without the spaces around it when no tag is chosen, and nothing when it is empty', () => {
+    expect(reviewCommentFor([], '  Fixed it  ')).toBe('Fixed it');
     expect(reviewCommentFor([], '')).toBeUndefined();
+  });
+
+  it('sends nothing for a comment that is only spaces or blank lines, with no tag', () => {
+    expect(reviewCommentFor([], '   ')).toBeUndefined();
+    expect(reviewCommentFor([], '\n\n\n\n')).toBeUndefined();
+  });
+
+  it('cuts a run of blank lines inside the comment to one blank line', () => {
+    expect(reviewCommentFor([], 'Great\n\n\n\nwork')).toBe('Great\n\nwork');
+    expect(reviewCommentFor(['On time'], 'Great\r\n\r\n\r\nwork')).toBe('On time · Great\n\nwork');
   });
 
   it('caps a comment sent without tags at the 500 characters the API accepts', () => {

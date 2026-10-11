@@ -14,6 +14,7 @@ import { useHeaderTop } from '../../../src/hooks/useHeaderTop';
 import { useAuth } from '../../../src/context/AuthContext';
 import { api, type Message } from '../../../src/lib/api';
 import { caseDate, caseView, type CaseStep } from '../../../src/lib/caseView';
+import { cleanText, validateText } from '../../../src/lib/textRules';
 
 interface Props {
   jobId: string | null;
@@ -46,14 +47,16 @@ export default function HODisputeStatusScreen({ jobId, onBack, onMessage }: Prop
   // Statement or appeal: the segment only applies while the case is open and not awaiting a response.
   const entryKind = open ? kind : 'appeal';
   const sendLabel = entryKind === 'appeal' ? 'Send appeal' : 'Send details';
-  const noNote = busy || !body.trim();
+  const noNote = busy || !cleanText(body);
+  // The note is required, so spaces alone are refused; the message shows once the field is left.
+  const noteError = validateText(body, { required: true, max: 1000, label: 'a note' }) ?? undefined;
 
   async function submit(accept?: boolean): Promise<boolean> {
-    if (!dispute || !body.trim() || busy || inFlight.current) return false;
+    if (!dispute || !cleanText(body) || busy || inFlight.current) return false;
     inFlight.current = true; setBusy(true); setActionError(null);
     try {
-      if (accept !== undefined) await api.respondToCancellation(dispute.id, accept, body.trim(), messageId);
-      else await api.addDisputeEntry(dispute.id, { kind: dispute.status === 'open' ? kind : 'appeal', body: body.trim(), message_id: messageId });
+      if (accept !== undefined) await api.respondToCancellation(dispute.id, accept, cleanText(body), messageId);
+      else await api.addDisputeEntry(dispute.id, { kind: dispute.status === 'open' ? kind : 'appeal', body: cleanText(body), message_id: messageId });
       setBody(''); setMessageId(undefined); reload();
       return true;
     } catch (e) { setActionError(e instanceof Error ? e.message : 'Could not update the complaint.'); return false; }
@@ -141,7 +144,7 @@ export default function HODisputeStatusScreen({ jobId, onBack, onMessage }: Prop
 
         {canRespond && <View style={styles.card}>
           <TextField
-            label="Your note" value={body} onChangeText={setBody} helper="They'll see this with your answer."
+            label="Your note" value={body} onChangeText={setBody} helper="They'll see this with your answer." error={noteError}
             placeholder="Add a note for the client and admin" multiline maxLength={1000} keyboardAppearance={appearance}
           />
           {evidenceTrigger}
@@ -181,7 +184,7 @@ export default function HODisputeStatusScreen({ jobId, onBack, onMessage }: Prop
         <Tap style={[styles.segmentItem, kind === 'appeal' && styles.segmentItemOn]} onPress={() => setKind('appeal')} accessibilityRole="radio" accessibilityState={{ checked: kind === 'appeal' }} activeOpacity={0.85}><Text style={[styles.segmentText, kind === 'appeal' && styles.segmentTextOn]}>Appeal</Text></Tap>
       </View>}
       <TextField
-        label="What else should the admin know?" value={body} onChangeText={setBody} helper={`${body.length} / 1000`}
+        label="What else should the admin know?" value={body} onChangeText={setBody} helper={`${body.length} / 1000`} error={noteError}
         placeholder="Explain what happened…" multiline maxLength={1000} keyboardAppearance={appearance}
       />
       <Text style={styles.sectionTitle} accessibilityRole="header">From this job's chat</Text>
@@ -189,9 +192,9 @@ export default function HODisputeStatusScreen({ jobId, onBack, onMessage }: Prop
       {evidenceLoading ? <ActivityIndicator color={V6Colors.link} /> : evidenceRows}
       {evidenceLoaded && !evidenceLoading && evidence.length === 0 && <Text style={styles.text}>No messages from you in this job's chat yet.</Text>}
       {!!actionError && <Text style={styles.error} accessibilityLiveRegion="polite">{actionError}</Text>}
-      <Tap style={[styles.button, (busy || !body.trim()) && styles.buttonDisabled]} disabled={busy || !body.trim()} onPress={() => void sendDetails()}
-        accessibilityRole="button" accessibilityLabel={sendLabel} accessibilityState={{ disabled: busy || !body.trim() }}>
-        <Text style={[styles.buttonText, (busy || !body.trim()) && styles.buttonTextDisabled]}>{busy ? 'Saving…' : sendLabel}</Text>
+      <Tap style={[styles.button, noNote && styles.buttonDisabled]} disabled={noNote} onPress={() => void sendDetails()}
+        accessibilityRole="button" accessibilityLabel={sendLabel} accessibilityState={{ disabled: noNote }}>
+        <Text style={[styles.buttonText, noNote && styles.buttonTextDisabled]}>{busy ? 'Saving…' : sendLabel}</Text>
       </Tap>
       <Tap style={styles.linkButton} onPress={() => setSheetOpen(false)} disabled={busy} activeOpacity={0.8}
         accessibilityRole="button" accessibilityLabel="Cancel" accessibilityState={{ disabled: busy }}>

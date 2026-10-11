@@ -6,6 +6,8 @@
  * one comment string as before.
  */
 
+import { cleanText } from './textRules';
+
 /** The tags, in the order the screen shows them. */
 export const REVIEW_TAGS = ['On time', 'Friendly', 'Clean work', 'Fair price', 'Explained clearly'] as const;
 
@@ -31,19 +33,20 @@ export function reviewCommentLimit(tags: readonly string[]): number {
  * is how the screen knows to ask for a shorter comment instead of cutting it.
  */
 export function reviewCommentLength(tags: readonly string[], comment: string): number {
-  if (tags.length === 0) return comment.length;
+  if (tags.length === 0) return cleanText(comment).length;
   const prefix = tags.join(SEPARATOR).length;
-  const text = comment.trim().length;
+  const text = cleanText(comment).length;
   return text > 0 ? prefix + SEPARATOR.length + text : prefix;
 }
 
 /**
- * The `comment` the API receives. With no tag it is the comment as typed (or
- * nothing when empty), so a review without tags is sent exactly as before.
+ * The `comment` the API receives: the comment cleaned (see cleanText), so spaces
+ * and blank lines around it are not sent. Spaces alone send nothing. With no tag
+ * it is the comment on its own, or nothing when it is empty.
  */
 export function reviewCommentFor(tags: readonly string[], comment: string): string | undefined {
-  if (tags.length === 0) return comment.slice(0, REVIEW_COMMENT_MAX) || undefined;
+  if (tags.length === 0) return cleanText(comment).slice(0, REVIEW_COMMENT_MAX).trimEnd() || undefined;
   const prefix = tags.join(SEPARATOR);
-  const text = comment.trim().slice(0, reviewCommentLimit(tags)).trim();
+  const text = cleanText(comment).slice(0, reviewCommentLimit(tags)).trim();
   return text ? `${prefix}${SEPARATOR}${text}` : prefix;
 }

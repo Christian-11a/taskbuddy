@@ -103,3 +103,42 @@ describe('ProposalModal — a bottom sheet with tips and a minimum length', () =
     expect(screen.getByText('Could not send your proposal.')).toBeTruthy();
   });
 });
+
+describe('ProposalModal — the message is checked once the field is left', () => {
+  const renderOpen = (onSubmit = jest.fn()) => {
+    render(<ProposalModal visible jobTitle="Fix the sink" onSubmit={onSubmit} onCancel={jest.fn()} />);
+    return { onSubmit };
+  };
+  const send = () => screen.getByRole('button', { name: 'Send proposal' });
+  const message = () => screen.getByTestId('proposal-message');
+
+  it('refuses a message of spaces alone, and says so only once the field is left', () => {
+    renderOpen();
+    fireEvent.changeText(message(), '        ');
+
+    expect(send().props.accessibilityState?.disabled).toBe(true);
+    expect(screen.queryByText('Add your message')).toBeNull();
+    fireEvent(message(), 'blur');
+    expect(screen.getByText('Add your message')).toBeTruthy();
+  });
+
+  it('names how many more words a short message needs, and clears the words once it is long enough', () => {
+    renderOpen();
+    fireEvent.changeText(message(), 'a'.repeat(19));
+    fireEvent(message(), 'blur');
+    expect(screen.getByText('Add a few more words (at least 20 characters)')).toBeTruthy();
+
+    fireEvent.changeText(message(), 'a'.repeat(20));
+    expect(screen.queryByText('Add a few more words (at least 20 characters)')).toBeNull();
+    expect(send().props.accessibilityState?.disabled).toBe(false);
+  });
+
+  it('sends the message with the spaces and blank lines at its ends removed, and the lines inside cut to one', () => {
+    const { onSubmit } = renderOpen();
+    fireEvent.changeText(message(), '\n\n  I can come Friday.\n\n\n\nBring tools.  \n');
+
+    fireEvent.press(send());
+
+    expect(onSubmit).toHaveBeenCalledWith('I can come Friday.\n\nBring tools.');
+  });
+});

@@ -22,6 +22,7 @@ import { api } from '../../../src/lib/api';
 import { useAsyncData } from '../../../src/hooks/useAsyncData';
 import { useHeaderTop } from '../../../src/hooks/useHeaderTop';
 import { heldAmount } from '../../../src/lib/heldMoney';
+import { cleanText } from '../../../src/lib/textRules';
 import {
   REPORT_REASONS,
   reasonLabel,
@@ -64,7 +65,8 @@ export default function HODisputeFilingScreen({ jobId, onBack, onSubmitted }: HO
     try {
       await api.raiseDispute(jobId, {
         reason,
-        details: details.trim() || undefined,
+        // Optional: spaces alone are no details, so nothing is sent for them.
+        details: cleanText(details) || undefined,
       });
       onSubmitted();
     } catch (e) {

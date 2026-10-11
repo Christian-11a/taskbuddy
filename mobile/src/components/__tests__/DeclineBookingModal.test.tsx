@@ -196,3 +196,33 @@ describe('DeclineBookingModal — reason choices, an optional note and Keep book
     expect(screen.getByRole('radio', { name: REASONS[0] }).props.accessibilityState?.checked).toBe(false);
   });
 });
+
+describe('DeclineBookingModal — a note of spaces is not a reason', () => {
+  const renderOpen = () => {
+    const onConfirm = jest.fn();
+    render(<DeclineBookingModal visible jobTitle="Fix the sink" onCancel={jest.fn()} onConfirm={onConfirm} />);
+    return { onConfirm };
+  };
+  const note = () => screen.getByPlaceholderText('Anything the client should know');
+  const decline = () => screen.getByRole('button', { name: 'Decline booking' });
+
+  it('keeps Decline booking off for a note of spaces alone, and says a reason is needed once the note is left', () => {
+    renderOpen();
+    fireEvent.changeText(note(), '   ');
+
+    expect(decline().props.accessibilityState?.disabled).toBe(true);
+    expect(screen.queryByText('Pick a reason above, or write one here.')).toBeNull();
+    fireEvent(note(), 'blur');
+    expect(screen.getByText('Pick a reason above, or write one here.')).toBeTruthy();
+  });
+
+  it('with a reason picked, spaces in the note are not sent after the reason', () => {
+    const { onConfirm } = renderOpen();
+    fireEvent.press(screen.getByRole('radio', { name: 'Too far from my service area' }));
+    fireEvent.changeText(note(), '   \n\n  ');
+
+    fireEvent.press(decline());
+
+    expect(onConfirm).toHaveBeenCalledWith('Too far from my service area');
+  });
+});

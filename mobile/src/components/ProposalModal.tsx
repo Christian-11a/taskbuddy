@@ -5,6 +5,7 @@ import { Check } from 'lucide-react-native';
 import Tap from './ui/Tap';
 import SheetFrame from './ui/SheetFrame';
 import TextField from './ui/TextField';
+import { cleanText, validateText } from '../lib/textRules';
 
 /** Matches ApplyDto.cover_message's MaxLength on the backend. */
 export const PROPOSAL_MAX_LENGTH = 300;
@@ -16,9 +17,19 @@ export const PROPOSAL_MIN_LENGTH = 20;
 
 const TIPS = ['When you can come', "What's included (tools, parts)", "Similar jobs you've done"];
 
+/** Why the message can't be sent yet, or null. Spaces at either end do not count. */
+export function proposalError(message: string): string | null {
+  return validateText(message, {
+    min: PROPOSAL_MIN_LENGTH,
+    max: PROPOSAL_MAX_LENGTH,
+    label: 'your message',
+    required: true,
+  });
+}
+
 /** True once the message is long enough, not counting spaces at either end. */
 export function canSendProposal(message: string): boolean {
-  return message.trim().length >= PROPOSAL_MIN_LENGTH;
+  return proposalError(message) === null;
 }
 
 interface ProposalModalProps {
@@ -46,6 +57,8 @@ export default function ProposalModal({
   }, [visible]);
 
   const ready = canSendProposal(message);
+  // Shown once the field is left or Send is tapped, never while the first words are being typed.
+  const messageError = proposalError(message) ?? undefined;
   const counter = ready
     ? `${message.length} / ${PROPOSAL_MAX_LENGTH}`
     : `${message.length} / ${PROPOSAL_MAX_LENGTH} · at least ${PROPOSAL_MIN_LENGTH} characters`;
@@ -71,6 +84,7 @@ export default function ProposalModal({
         onChangeText={setMessage}
         placeholder="Hi! I can come on Oct 14 at 2 PM…"
         helper={counter}
+        error={messageError}
         multiline
         maxLength={PROPOSAL_MAX_LENGTH}
         editable={!busy}
@@ -84,7 +98,7 @@ export default function ProposalModal({
 
       <Tap
         style={[styles.sendBtn, !ready && !busy && styles.sendBtnOff, busy && styles.dimmed]}
-        onPress={() => onSubmit(message.trim())}
+        onPress={() => onSubmit(cleanText(message))}
         disabled={busy || !ready}
         scale
         hitSlop={{ top: 1, bottom: 1 }}

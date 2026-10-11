@@ -184,3 +184,25 @@ describe('HOLeaveReviewScreen — a tag never deletes what was typed', () => {
     expect(api.reviewJob).toHaveBeenCalledWith(JOB_ID, { rating: 4, comment: undefined });
   });
 });
+
+it('sends the rating with no comment when the comment is only spaces, and the comment without its ends otherwise', async () => {
+  const onSubmitted = renderScreen();
+  await screen.findByText('TaskBuddyProvider');
+  fireEvent.press(star(3));
+  fireEvent.changeText(screen.getByLabelText('Add a comment (optional)'), '   \n\n  ');
+  fireEvent.press(submit());
+
+  await waitFor(() => expect(onSubmitted).toHaveBeenCalledTimes(1));
+  expect(api.reviewJob).toHaveBeenCalledWith(JOB_ID, { rating: 3, comment: undefined });
+});
+
+it('trims the comment it sends when no tag is chosen', async () => {
+  const onSubmitted = renderScreen();
+  await screen.findByText('TaskBuddyProvider');
+  fireEvent.press(star(4));
+  fireEvent.changeText(screen.getByLabelText('Add a comment (optional)'), '  Fixed it fast  ');
+  fireEvent.press(submit());
+
+  await waitFor(() => expect(onSubmitted).toHaveBeenCalledTimes(1));
+  expect(api.reviewJob).toHaveBeenCalledWith(JOB_ID, { rating: 4, comment: 'Fixed it fast' });
+});

@@ -25,6 +25,7 @@ import {
 } from '../../../src/lib/api';
 import { jobStatusMeta } from '../../../src/lib/format';
 import { chatSubtitle, chatSystemLine, dayHeadLabels } from '../../../src/lib/chatView';
+import { cleanText } from '../../../src/lib/textRules';
 
 interface HOChatScreenProps {
   jobId: string | null;
@@ -80,7 +81,7 @@ export default function HOChatScreen({ jobId, onBack, onViewJob }: HOChatScreenP
   }, [jobId]);
 
   const handleSend = async () => {
-    const body = text.trim();
+    const body = cleanText(text);
     if (!body || !conversation || sending || attaching) return;
     setSending(true);
     try {

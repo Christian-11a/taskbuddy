@@ -33,6 +33,12 @@ import { Spacing } from '../constants/theme';
 import { useHeaderTop } from '../hooks/useHeaderTop';
 import type { Message } from '../lib/api';
 import { timeOfDay } from '../lib/format';
+import { cleanText } from '../lib/textRules';
+
+/** The composer's cap on one message. It is under the API's 1,000 characters, and the screen never lets more be typed. */
+export const CHAT_MESSAGE_MAX = 500;
+/** From this many characters the composer shows how much room is left. */
+export const CHAT_COUNTER_FROM = 400;
 
 export interface ChatThreadProps {
   /** The other person's name. The header shows "Chat" until it is known. */
@@ -68,7 +74,9 @@ export default function ChatThread({
   // At large system text the link moves under the subtitle, so the name and job line keep the width.
   const largeText = fontScale >= 1.2;
   const [viewerIndex, setViewerIndex] = useState<number | null>(null);
-  const canSend = text.trim().length > 0;
+  // What is sent is the cleaned text: a message of spaces alone cannot be sent.
+  const body = cleanText(text);
+  const canSend = body.length > 0 && body.length <= CHAT_MESSAGE_MAX;
 
   const photoMessages = messages.filter((message): message is Message & { attachment_url: string } => !!message.attachment_url);
   const photos = photoMessages.map((message) => ({ uri: message.attachment_url }));
@@ -167,6 +175,10 @@ export default function ChatThread({
           onLayout={() => listRef.current?.scrollToOffset({ offset: 0, animated: false })}
         />
 
+        {text.length >= CHAT_COUNTER_FROM && (
+          <Text style={styles.counter}>{`${text.length}/${CHAT_MESSAGE_MAX}`}</Text>
+        )}
+
         <View style={styles.composer}>
           <Tap
             style={styles.attachBtn}
@@ -190,7 +202,7 @@ export default function ChatThread({
             value={text}
             onChangeText={onChangeText}
             multiline
-            maxLength={500}
+            maxLength={CHAT_MESSAGE_MAX}
           />
           <Tap
             style={[styles.sendBtn, !canSend && styles.sendBtnDisabled]}
@@ -279,6 +291,10 @@ function createThemedStyles(theme: ThemePalette) {
     bubbleTime: { fontFamily: 'Inter', fontSize: 11, color: C.ink300, marginTop: 4 },
     bubbleTimeSent: { textAlign: 'right' },
 
+    counter: {
+      alignSelf: 'flex-end', paddingHorizontal: 18, paddingTop: 8, backgroundColor: C.surface,
+      color: C.ink500, fontSize: 12, fontWeight: '600', fontFamily: 'Inter',
+    },
     composer: {
       flexDirection: 'row', alignItems: 'center', gap: 8,
       paddingHorizontal: 14, paddingTop: 10, paddingBottom: 24,

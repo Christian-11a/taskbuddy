@@ -203,3 +203,27 @@ it('refreshes the case by pulling down, with no Refresh button', async () => {
   act(() => { pullToRefresh.props.onRefresh(); });
   await waitFor(() => expect(api.jobDispute).toHaveBeenCalledTimes(2));
 });
+
+it('refuses a details note of spaces alone, and names the need once the field is left', async () => {
+  show();
+  await openDetailsSheet();
+  fireEvent.changeText(screen.getByLabelText(SHEET_FIELD), '   ');
+
+  expect(screen.getByRole('button', { name: 'Send details', disabled: true })).toBeTruthy();
+  expect(screen.queryByText('Add a note')).toBeNull();
+  fireEvent(screen.getByLabelText(SHEET_FIELD), 'blur');
+  expect(screen.getByText('Add a note')).toBeTruthy();
+  expect(api.addDisputeEntry).not.toHaveBeenCalled();
+});
+
+it('sends the note with the spaces and blank lines at its ends removed', async () => {
+  show();
+  await openDetailsSheet();
+  fireEvent.changeText(screen.getByLabelText(SHEET_FIELD), '\n  My account of the repair.\n\n\n\nThanks.  \n');
+
+  await act(async () => { fireEvent.press(screen.getByText('Send details')); });
+
+  await waitFor(() => expect(api.addDisputeEntry).toHaveBeenCalledWith(
+    'case', expect.objectContaining({ body: 'My account of the repair.\n\nThanks.' }),
+  ));
+});
