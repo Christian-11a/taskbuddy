@@ -67,6 +67,24 @@ describe('TourOverlay card', () => {
     expect(screen.getByText('Tap anywhere to continue', { includeHiddenElements: true })).toBeTruthy();
   });
 
+  it('sets the hint on a small dark pill, centred under the card, so it reads over the page text', () => {
+    renderOverlay();
+
+    // Like the hint itself, the pill passes taps through (pointerEvents="none"), so queries need includeHiddenElements.
+    const pill = screen.getByTestId('tour-hint', { includeHiddenElements: true });
+    expect(StyleSheet.flatten(pill.props.style)).toEqual(expect.objectContaining({
+      alignSelf: 'center',
+      backgroundColor: 'rgba(0,0,0,0.45)',
+      borderRadius: 999,
+      paddingVertical: 6,
+      paddingHorizontal: 12,
+    }));
+    expect(pill.props.pointerEvents).toBe('none');
+    const hint = screen.getByText('Tap anywhere to continue', { includeHiddenElements: true });
+    expect(StyleSheet.flatten(hint.props.style).color).toBe('#ffffff');
+    expect(hint.props.maxFontSizeMultiplier).toBe(1.3);
+  });
+
   it('keeps the card hidden until its height is known, then shows it', () => {
     renderOverlay();
     const card = screen.getByTestId('tour-card');

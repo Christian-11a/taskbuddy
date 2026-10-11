@@ -28,6 +28,8 @@ const CARD_MAX_WIDTH = 340;
 const SCREEN_EDGE = 16;
 const DIM_LIGHT = 'rgba(15,23,42,0.72)';
 const DIM_DARK = 'rgba(0,0,0,0.8)';
+/** The hint's pill: dark enough to read over the dimmed page text in both themes. */
+const HINT_PILL = 'rgba(0,0,0,0.45)';
 /** The ring fades from 0.9 to 0.3 and back again: 2 x 600 ms, a 1.2 s loop. */
 const PULSE_LOW = 0.3;
 const PULSE_HALF_MS = 600;
@@ -219,9 +221,12 @@ export default function TourOverlay({ step, index, total, hole, onNext, onSkip }
               </Tap>
             </View>
           </View>
-          <Text pointerEvents="none" maxFontSizeMultiplier={1.3} style={styles.hint}>
-            Tap anywhere to continue
-          </Text>
+          {/* A small pill under the card, centred, so the hint reads over the dimmed page. Taps pass through it. */}
+          <View testID="tour-hint" pointerEvents="none" style={styles.hintPill}>
+            <Text maxFontSizeMultiplier={1.3} style={styles.hint}>
+              Tap anywhere to continue
+            </Text>
+          </View>
         </Animated.View>
       </Animated.View>
     </Modal>
@@ -253,5 +258,12 @@ const styles = StyleSheet.create({
   dotActive: { width: 24 },
   next: { minHeight: 48, minWidth: 96, paddingHorizontal: 20, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
   nextText: { fontFamily: 'Inter', fontSize: 15, fontWeight: '600' },
-  hint: { fontFamily: 'Inter', fontSize: 12, lineHeight: 16, textAlign: 'center', color: 'rgba(255,255,255,0.85)' },
+  hintPill: {
+    alignSelf: 'center',
+    borderRadius: 999,
+    backgroundColor: HINT_PILL,
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+  },
+  hint: { fontFamily: 'Inter', fontSize: 12, lineHeight: 16, textAlign: 'center', color: '#ffffff' },
 });
