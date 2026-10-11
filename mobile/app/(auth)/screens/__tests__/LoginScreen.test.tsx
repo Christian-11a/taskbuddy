@@ -31,7 +31,7 @@ describe('LoginScreen', () => {
 
     fireEvent.press(screen.getByTestId('btn-sign-in'));
 
-    expect(screen.getByText('Please enter your email address.')).toBeTruthy();
+    expect(screen.getByText('Enter your email address')).toBeTruthy();
     expect(screen.getByText('Please enter your password.')).toBeTruthy();
     expect(props.onLogin).not.toHaveBeenCalled();
   });
@@ -43,8 +43,30 @@ describe('LoginScreen', () => {
     fireEvent.changeText(screen.getByTestId('input-password'), 'anything');
     fireEvent.press(screen.getByTestId('btn-sign-in'));
 
-    expect(screen.getByText('Please enter a valid email address.')).toBeTruthy();
+    expect(screen.getByText('Enter a valid email address')).toBeTruthy();
     expect(props.onLogin).not.toHaveBeenCalled();
+  });
+
+  it('shows the email message once the email field is left, not while typing', () => {
+    renderLogin();
+
+    fireEvent.changeText(screen.getByTestId('input-email'), 'owner@');
+    expect(screen.queryByText('Enter a valid email address')).toBeNull();
+
+    fireEvent(screen.getByTestId('input-email'), 'blur');
+    expect(screen.getByText('Enter a valid email address')).toBeTruthy();
+  });
+
+  it('signs in with the email trimmed of the spaces around it', async () => {
+    const props = renderLogin();
+
+    fireEvent.changeText(screen.getByTestId('input-email'), '  owner@example.test  ');
+    fireEvent.changeText(screen.getByTestId('input-password'), 'correct horse');
+    await act(async () => {
+      fireEvent.press(screen.getByTestId('btn-sign-in'));
+    });
+
+    expect(props.onLogin).toHaveBeenCalledWith('owner@example.test', 'correct horse');
   });
 
   it('signs in with the typed email and password exactly as entered', async () => {

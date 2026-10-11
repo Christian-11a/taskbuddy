@@ -67,7 +67,19 @@ describe('ForgotPasswordScreen — requesting the code', () => {
       fireEvent.press(screen.getByText('Send reset code'));
     });
 
-    expect(screen.getByText('Enter the email address on your account.')).toBeTruthy();
+    expect(screen.getByText('Enter your email address')).toBeTruthy();
+    expect(api.forgotPassword).not.toHaveBeenCalled();
+  });
+
+  it('refuses a malformed address under the field before sending anything', async () => {
+    render(<ForgotPasswordScreen onBackToLogin={jest.fn()} />);
+    fireEvent.changeText(screen.getByLabelText('Email'), 'taskbuddy@example');
+
+    await act(async () => {
+      fireEvent.press(screen.getByText('Send reset code'));
+    });
+
+    expect(screen.getByText('Enter a valid email address')).toBeTruthy();
     expect(api.forgotPassword).not.toHaveBeenCalled();
   });
 });

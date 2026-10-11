@@ -30,6 +30,7 @@ import GoogleGlyph from '../../../src/components/GoogleGlyph';
 import AuthField from '../../../src/components/auth/AuthField';
 import { V6Radii, V6Shadows } from '../../../src/constants/theme';
 import { useAuthLayout } from '../../../src/hooks/useAuthLayout';
+import { validateEmail } from '../../../src/lib/inputRules';
 
 // ─── Props ────────────────────────────────────────────────────────────────────
 interface LoginScreenProps {
@@ -74,15 +75,10 @@ export default function LoginScreen({
 
   const validateFields = () => {
     const errors: { email?: string; password?: string } = {};
-    const trimmedEmail = email.trim();
-    const validEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmedEmail);
+    const emailError = validateEmail(email);
+    if (emailError) errors.email = emailError;
 
-    if (!trimmedEmail) {
-      errors.email = 'Please enter your email address.';
-    } else if (!validEmail) {
-      errors.email = 'Please enter a valid email address.';
-    }
-
+    // Presence only: whether the password is right is for the server to say.
     if (!password) {
       errors.password = 'Please enter your password.';
     }
@@ -103,7 +99,7 @@ export default function LoginScreen({
     setFieldErrors({});
     setSubmitting(true);
     try {
-      await onLogin(email, password);
+      await onLogin(email.trim(), password);
       // On success the root navigator swaps to the authenticated experience.
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Unable to sign in.');
@@ -162,14 +158,11 @@ export default function LoginScreen({
         value={email}
         onChangeText={(value) => {
           setEmail(value);
-          if (fieldErrors.email) {
-            const trimmed = value.trim();
-            const validEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed);
-            if (trimmed && validEmail) {
-              setFieldErrors((prev) => ({ ...prev, email: undefined }));
-            }
+          if (fieldErrors.email && validateEmail(value) === null) {
+            setFieldErrors((prev) => ({ ...prev, email: undefined }));
           }
         }}
+        onBlur={() => setFieldErrors((prev) => ({ ...prev, email: validateEmail(email) ?? undefined }))}
         keyboardType="email-address"
         returnKeyType="next"
         onSubmitEditing={() => passwordRef.current?.focus()}

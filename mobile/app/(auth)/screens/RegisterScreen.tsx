@@ -50,6 +50,7 @@ import AuthField from '../../../src/components/auth/AuthField';
 import AuthStepHeader from '../../../src/components/auth/AuthStepHeader';
 import RoleChoiceCard from '../../../src/components/auth/RoleChoiceCard';
 import { useAuthLayout } from '../../../src/hooks/useAuthLayout';
+import { normalizeName, validateEmail, validateFullName } from '../../../src/lib/inputRules';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 /** Supabase issues 6-digit signup codes. */
@@ -106,12 +107,15 @@ interface InputProps {
    * the wrong field and both entries end up in the first one.
    */
   testID?: string;
+  /** Runs when the field is left, so its message shows without waiting for Create account. */
+  onBlur?: () => void;
+  autoCapitalize?: 'words' | 'none';
 }
 
 /** One form field in the shared AuthField style; `onLayout` keeps the scroll-to-error position. */
 function FormInput({
   label, required, placeholder, value, onChangeText,
-  secureTextEntry, keyboardType, error, testID, onLayout,
+  secureTextEntry, keyboardType, error, testID, onLayout, onBlur, autoCapitalize = 'none',
 }: InputProps) {
   return (
     <View onLayout={onLayout} style={{ marginBottom: 16 }}>
@@ -124,6 +128,8 @@ function FormInput({
         onChangeText={onChangeText}
         secure={secureTextEntry}
         keyboardType={keyboardType}
+        autoCapitalize={autoCapitalize}
+        onBlur={onBlur}
         onSubmitEditing={Keyboard.dismiss}
         error={error}
       />
@@ -303,14 +309,11 @@ export default function RegisterScreen({ onRegister, onLogin, onGoogleSignIn }: 
 
   const validate = (): FieldErrors => {
     const errors: FieldErrors = {};
-    const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-    if (!name.trim()) errors.name = 'Please enter your full name.';
-    if (!email.trim()) {
-      errors.email = 'Please enter your email address.';
-    } else if (!emailPattern.test(email.trim())) {
-      errors.email = 'Please enter a valid email address.';
-    }
+    const nameError = validateFullName(name);
+    if (nameError) errors.name = nameError;
+    const emailError = validateEmail(email);
+    if (emailError) errors.email = emailError;
     if (password.length < 8) errors.password = 'Password must be at least 8 characters.';
     if (password !== confirmPassword) errors.confirmPassword = 'Passwords do not match.';
 
@@ -348,9 +351,9 @@ export default function RegisterScreen({ onRegister, onLogin, onGoogleSignIn }: 
     setSubmitting(true);
     try {
       const { needsEmailConfirmation } = await onRegister({
-        email,
+        email: email.trim(),
         password,
-        fullName: name,
+        fullName: normalizeName(name),
         role,
         categoryId: role === 'provider' ? (categoryId ?? undefined) : undefined,
         consentedTerms: termsAccepted,
@@ -559,6 +562,8 @@ export default function RegisterScreen({ onRegister, onLogin, onGoogleSignIn }: 
               testID="input-name"
               value={name}
               onChangeText={(v) => { setName(v); clearError('name'); }}
+              autoCapitalize="words"
+              onBlur={() => setFieldErrors((prev) => ({ ...prev, name: validateFullName(name) ?? undefined }))}
               onLayout={locateField('name')}
               error={fieldErrors.name}
             />
@@ -570,6 +575,9 @@ export default function RegisterScreen({ onRegister, onLogin, onGoogleSignIn }: 
               value={email}
               onChangeText={(v) => { setEmail(v); clearError('email'); setEmailTaken(false); }}
               keyboardType="email-address"
+              onBlur={() => {
+                if (!emailTaken) setFieldErrors((prev) => ({ ...prev, email: validateEmail(email) ?? undefined }));
+              }}
               onLayout={locateField('email')}
               error={fieldErrors.email}
             />

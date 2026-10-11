@@ -45,6 +45,7 @@ import { CODE_LENGTH, formatCooldown, maskEmail } from '../../../src/components/
 import { V6Radii, V6Shadows } from '../../../src/constants/theme';
 import { useAuth } from '../../../src/context/AuthContext';
 import { api } from '../../../src/lib/api';
+import { validateEmail } from '../../../src/lib/inputRules';
 import { useAuthLayout } from '../../../src/hooks/useAuthLayout';
 
 const RESEND_COOLDOWN_S = 60;
@@ -64,6 +65,7 @@ export default function ForgotPasswordScreen({ onBackToLogin }: ForgotPasswordSc
   const { resetPassword } = useAuth();
   const [stage, setStage] = useState<Stage>('email');
   const [email, setEmail] = useState('');
+  const [emailError, setEmailError] = useState<string | undefined>(undefined);
   const [code, setCode] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -90,8 +92,9 @@ export default function ForgotPasswordScreen({ onBackToLogin }: ForgotPasswordSc
   const sendCode = async (resend = false) => {
     setError(null);
     setNotice(null);
-    if (!email.trim()) {
-      setError('Enter the email address on your account.');
+    const message = validateEmail(email);
+    if (message) {
+      setEmailError(message);
       return;
     }
     Keyboard.dismiss();
@@ -174,7 +177,9 @@ export default function ForgotPasswordScreen({ onBackToLogin }: ForgotPasswordSc
         label="Email"
         placeholder="sample@mail.com"
         value={email}
-        onChangeText={setEmail}
+        onChangeText={(value) => { setEmail(value); setEmailError(undefined); }}
+        onBlur={() => setEmailError(validateEmail(email) ?? undefined)}
+        error={emailError}
         keyboardType="email-address"
         autoComplete="email"
         editable={!busy}

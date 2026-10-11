@@ -187,3 +187,73 @@ describe.each<Role>(ROLES)('%s edit profile phone', (role) => {
     }));
   });
 });
+
+const NAME_NUMBERS = "Full name can't include numbers";
+const NAME_SHORT = 'Full name must be at least 2 characters';
+const NAME_EMPTY = 'Enter your full name';
+
+describe.each<Role>(ROLES)('%s edit profile name', (role) => {
+  it('shows the name message once the name field is left, not while typing', async () => {
+    await renderEditor(role);
+
+    fireEvent.changeText(screen.getByLabelText('Full name'), 'A');
+    expect(screen.queryByText(NAME_SHORT)).toBeNull();
+
+    fireEvent(screen.getByLabelText('Full name'), 'blur');
+    expect(screen.getByText(NAME_SHORT)).toBeTruthy();
+  });
+
+  it('blocks Save for digits in the name, and says why', async () => {
+    await renderEditor(role);
+    fireEvent.changeText(screen.getByLabelText('Full name'), 'Alex 2');
+
+    fireEvent.press(screen.getByLabelText('Save changes'));
+
+    expect(screen.getByText(NAME_NUMBERS)).toBeTruthy();
+    expect(screen.queryByRole('alert')).toBeNull();
+    expect(api.updateProfile).not.toHaveBeenCalled();
+  });
+
+  it('blocks Save for a name made only of spaces', async () => {
+    await renderEditor(role);
+    fireEvent.changeText(screen.getByLabelText('Full name'), '   ');
+
+    fireEvent.press(screen.getByLabelText('Save changes'));
+
+    expect(screen.getByText(NAME_EMPTY)).toBeTruthy();
+    expect(api.updateProfile).not.toHaveBeenCalled();
+  });
+
+  it('blocks Save for a one-letter name', async () => {
+    await renderEditor(role);
+    fireEvent.changeText(screen.getByLabelText('Full name'), 'A');
+
+    fireEvent.press(screen.getByLabelText('Save changes'));
+
+    expect(screen.getByText(NAME_SHORT)).toBeTruthy();
+    expect(api.updateProfile).not.toHaveBeenCalled();
+  });
+
+  it('sends the name trimmed, with single spaces between words', async () => {
+    await renderEditor(role);
+    fireEvent.changeText(screen.getByLabelText('Full name'), '  Alex   Reyes  ');
+
+    await saveAndConfirm();
+
+    expect(api.updateProfile).toHaveBeenCalledWith(expect.objectContaining({ full_name: 'Alex Reyes' }));
+  });
+
+  it('does not block saving other fields while an older name with digits is left untouched', async () => {
+    mockProfile({ full_name: 'Test 02' });
+    await renderEditor(role);
+    fireEvent.changeText(phoneField(), '09990000000');
+
+    await saveAndConfirm();
+
+    expect(screen.queryByText(NAME_NUMBERS)).toBeNull();
+    expect(api.updateProfile).toHaveBeenCalledWith(expect.objectContaining({
+      full_name: 'Test 02',
+      phone: '09990000000',
+    }));
+  });
+});

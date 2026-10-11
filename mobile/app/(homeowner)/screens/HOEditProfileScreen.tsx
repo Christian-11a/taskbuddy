@@ -30,7 +30,13 @@ import { Spacing } from '../../../src/constants/theme';
 import { useAuth } from '../../../src/context/AuthContext';
 import { api, type GeocodedAddress } from '../../../src/lib/api';
 import { changedFields, leaveMessageFor } from '../../../src/lib/editProfileChanges';
-import { PHONE_INPUT_MAX_LENGTH, sanitizePhone, validatePhone } from '../../../src/lib/inputRules';
+import {
+  PHONE_INPUT_MAX_LENGTH,
+  normalizeName,
+  sanitizePhone,
+  validateFullName,
+  validatePhone,
+} from '../../../src/lib/inputRules';
 import { useHeaderTop } from '../../../src/hooks/useHeaderTop';
 import { useLeaveGuard } from '../../../src/hooks/useLeaveGuard';
 
@@ -73,8 +79,10 @@ export default function HOEditProfileScreen({ onBack, onSave }: HOEditProfileScr
   });
   const { asking, requestLeave, keepEditing, leave } = useLeaveGuard(changed.length > 0, onBack);
 
-  // An older phone format the user did not touch is not re-checked, so it cannot
-  // block saving other fields. A phone the user changed must be a 09 number (or empty).
+  // A value the user did not change is not re-checked, so an older format cannot
+  // block saving other fields. An empty name is always refused; an empty phone is
+  // allowed, because the phone is optional.
+  const nameError = (changed.includes('name') || !name.trim()) ? validateFullName(name) ?? undefined : undefined;
   const phoneChanged = changed.includes('phone');
   const phoneError = phoneChanged ? validatePhone(phone) ?? undefined : undefined;
 
@@ -89,7 +97,7 @@ export default function HOEditProfileScreen({ onBack, onSave }: HOEditProfileScr
   const requestSave = () => {
     setError(null);
     setSubmitted(true);
-    if (!name.trim() || phoneError) return;
+    if (nameError || phoneError) return;
     if (changed.length > 0) setShowSaveConfirmation(true);
     else onSave();
   };
@@ -100,7 +108,7 @@ export default function HOEditProfileScreen({ onBack, onSave }: HOEditProfileScr
     setError(null);
     try {
       await api.updateProfile({
-        full_name: name.trim(),
+        full_name: normalizeName(name),
         phone: phoneChanged ? sanitizePhone(phone) : phone.trim(),
         address: location.trim(),
         city: city.trim(),
@@ -154,7 +162,7 @@ export default function HOEditProfileScreen({ onBack, onSave }: HOEditProfileScr
             placeholder="Your full name"
             autoCapitalize="words"
             keyboardAppearance={appearance}
-            error={name.trim() ? undefined : 'Full name cannot be empty.'}
+            error={nameError}
             submitted={submitted}
           />
 

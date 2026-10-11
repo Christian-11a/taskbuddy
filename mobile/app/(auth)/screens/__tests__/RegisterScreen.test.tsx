@@ -276,3 +276,85 @@ describe('RegisterScreen — create account', () => {
     expect(screen.getByText('Continue with Google')).toBeTruthy();
   });
 });
+
+describe('RegisterScreen — name and email are checked', () => {
+  beforeEach(() => {
+    (useAuth as jest.Mock).mockReturnValue({ verifyEmailOtp: jest.fn() });
+  });
+
+  /** Ticks the three consents the same way the registration test does. */
+  function tickConsents() {
+    fireEvent.press(screen.getByTestId('chk-terms'));
+    fireEvent.press(screen.getByText('I agree to the Terms & Conditions'));
+    fireEvent.press(screen.getByTestId('chk-terms'));
+    fireEvent.press(screen.getByText('I agree to the Privacy Policy'));
+    fireEvent.press(screen.getByTestId('chk-data-collection'));
+  }
+
+  it('capitalises the name as words, and gives the email field the plain email keyboard', () => {
+    render(<RegisterScreen {...baseProps} />);
+    fireEvent.press(screen.getByText('Continue'));
+
+    expect(screen.getByTestId('input-name').props.autoCapitalize).toBe('words');
+    const email = screen.getByTestId('input-email');
+    expect(email.props.keyboardType).toBe('email-address');
+    expect(email.props.autoCapitalize).toBe('none');
+    expect(email.props.autoCorrect).toBe(false);
+  });
+
+  it('shows the name message once the name field is left, not while typing', () => {
+    render(<RegisterScreen {...baseProps} />);
+    fireEvent.press(screen.getByText('Continue'));
+
+    fireEvent.changeText(screen.getByTestId('input-name'), 'Test 2');
+    expect(screen.queryByText("Full name can't include numbers")).toBeNull();
+
+    fireEvent(screen.getByTestId('input-name'), 'blur');
+    expect(screen.getByText("Full name can't include numbers")).toBeTruthy();
+  });
+
+  it('refuses to create the account for a name with digits, and says why', async () => {
+    const onRegister = jest.fn();
+    render(<RegisterScreen {...baseProps} onRegister={onRegister} />);
+    fireEvent.press(screen.getByText('Continue'));
+    fireEvent.changeText(screen.getByTestId('input-name'), 'Test User 2');
+    fireEvent.changeText(screen.getByTestId('input-email'), 'test@example.test');
+    fireEvent.changeText(screen.getByTestId('input-password'), 'password123');
+    fireEvent.changeText(screen.getByTestId('input-confirm-password'), 'password123');
+    tickConsents();
+
+    await act(async () => fireEvent.press(screen.getByTestId('btn-create-account')));
+
+    expect(screen.getByText("Full name can't include numbers")).toBeTruthy();
+    expect(onRegister).not.toHaveBeenCalled();
+  });
+
+  it('shows the email message under the field once the field is left', () => {
+    render(<RegisterScreen {...baseProps} />);
+    fireEvent.press(screen.getByText('Continue'));
+
+    fireEvent.changeText(screen.getByTestId('input-email'), 'test@example');
+    fireEvent(screen.getByTestId('input-email'), 'blur');
+
+    expect(screen.getByText('Enter a valid email address')).toBeTruthy();
+  });
+
+  it('sends the trimmed email and the name with single spaces', async () => {
+    const onRegister = jest.fn().mockResolvedValue({ needsEmailConfirmation: false });
+    render(<RegisterScreen {...baseProps} onRegister={onRegister} />);
+    fireEvent.press(screen.getByText('Continue'));
+    fireEvent.changeText(screen.getByTestId('input-name'), '  Test   User ');
+    fireEvent.changeText(screen.getByTestId('input-email'), '  test@example.test ');
+    fireEvent.changeText(screen.getByTestId('input-password'), 'password123');
+    fireEvent.changeText(screen.getByTestId('input-confirm-password'), 'password123');
+    tickConsents();
+
+    await act(async () => fireEvent.press(screen.getByTestId('btn-create-account')));
+
+    expect(onRegister).toHaveBeenCalledWith(expect.objectContaining({
+      email: 'test@example.test',
+      fullName: 'Test User',
+      password: 'password123',
+    }));
+  });
+});

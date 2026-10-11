@@ -40,7 +40,13 @@ import { useAuth } from '../../../src/context/AuthContext';
 import { useAsyncData } from '../../../src/hooks/useAsyncData';
 import { api, type GeocodedAddress } from '../../../src/lib/api';
 import { changedFields, leaveMessageFor } from '../../../src/lib/editProfileChanges';
-import { PHONE_INPUT_MAX_LENGTH, sanitizePhone, validatePhone } from '../../../src/lib/inputRules';
+import {
+  PHONE_INPUT_MAX_LENGTH,
+  normalizeName,
+  sanitizePhone,
+  validateFullName,
+  validatePhone,
+} from '../../../src/lib/inputRules';
 
 interface SPEditProfileScreenProps {
   onBack: () => void;
@@ -100,8 +106,9 @@ export default function SPEditProfileScreen({ onBack, onSave, onManageServices }
   const phoneError = phoneChanged ? validatePhone(phone) ?? undefined : undefined;
 
   // Same rules and messages as before. Each one now shows under its own field
-  // once the user has tried to save (or has left the field).
-  const nameError = name.trim() ? undefined : 'Full name cannot be empty.';
+  // once the user has tried to save (or has left the field). A name the user did
+  // not change is only refused when it is empty (see the phone rule above).
+  const nameError = (changed.includes('name') || !name.trim()) ? validateFullName(name) ?? undefined : undefined;
   // Recommendations match providers to jobs within their service radius of
   // this address; without one a provider is never invited to anything.
   const addressError = location.trim() ? undefined : 'Enter your address so nearby jobs can be matched to you.';
@@ -129,7 +136,7 @@ export default function SPEditProfileScreen({ onBack, onSave, onManageServices }
     setError(null);
     try {
       await api.updateProfile({
-        full_name: name.trim(),
+        full_name: normalizeName(name),
         phone: phoneChanged ? sanitizePhone(phone) : phone.trim(),
         address: location.trim(),
         city: city.trim(),

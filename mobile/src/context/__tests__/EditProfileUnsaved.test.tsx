@@ -241,7 +241,7 @@ describe.each<Role>(['homeowner', 'provider'])('%s edit profile leaving', (role)
 
     fireEvent.press(screen.getByLabelText('Save changes'));
 
-    expect(screen.getByText('Full name cannot be empty.')).toBeTruthy();
+    expect(screen.getByText('Enter your full name')).toBeTruthy();
     expect(api.updateProfile).not.toHaveBeenCalled();
   });
 
