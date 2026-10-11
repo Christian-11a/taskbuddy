@@ -1,4 +1,5 @@
 import React from 'react';
+import { BrushCleaning, Wrench } from 'lucide-react-native';
 import { act, fireEvent, render, screen } from '@testing-library/react-native';
 import SPSkillRequestScreen, {
   REASON_MAX,
@@ -110,6 +111,13 @@ it('shows what clients see now: the main service, approved extras and verificati
   expect(screen.getByText('Cleaning')).toBeTruthy();
   expect(screen.getByText('Approved additional service')).toBeTruthy();
   expect(screen.getByText('ID verified')).toBeTruthy();
+});
+
+it('gives each service in What clients see now its own icon: the wrench for plumbing, not for cleaning', async () => {
+  render(<SPSkillRequestScreen onBack={jest.fn()} />);
+  await screen.findByText('What clients see now');
+  expect(screen.UNSAFE_getAllByType(Wrench)).toHaveLength(1);
+  expect(screen.UNSAFE_getAllByType(BrushCleaning)).toHaveLength(1);
 });
 
 it('hides the verified mark when the provider is not verified', async () => {

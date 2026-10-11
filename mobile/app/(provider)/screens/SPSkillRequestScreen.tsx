@@ -21,7 +21,7 @@ import RadioRow from '../../../src/components/ui/RadioRow';
 import TextField from '../../../src/components/ui/TextField';
 import StatusCard from '../../../src/components/ui/StatusCard';
 import BottomActionBar from '../../../src/components/ui/BottomActionBar';
-import { ArrowLeft, CircleCheck, CircleSlash, CircleX, Clock, ShieldCheck, Wrench, type LucideIcon } from 'lucide-react-native';
+import { ArrowLeft, CircleCheck, CircleSlash, CircleX, Clock, ShieldCheck, type LucideIcon } from 'lucide-react-native';
 import { Spacing, V6Radii } from '../../../src/constants/theme';
 import { useHeaderTop } from '../../../src/hooks/useHeaderTop';
 import { useNotifications } from '../../../src/context/NotificationsContext';
@@ -30,6 +30,7 @@ import { useRefreshOnForeground } from '../../../src/hooks/useRefreshOnForegroun
 import { useAsyncData } from '../../../src/hooks/useAsyncData';
 import { api, type SkillRequest, type SkillRequestType } from '../../../src/lib/api';
 import { shortDate } from '../../../src/lib/format';
+import { categoryIcon } from '../../../src/lib/categoryIcon';
 import { showToast } from '../../../src/components/Toast';
 import ConfirmationModal from '../../../src/components/ConfirmationModal';
 
@@ -160,23 +161,26 @@ export default function SPSkillRequestScreen({ onBack }: SPSkillRequestScreenPro
   };
 
   /** One service a client can see: the main one, or an approved extra. */
-  const renderService = (name: string, meta: string, showVerified = false) => (
-    <View key={`${meta}-${name}`} style={styles.serviceRow}>
-      <View style={styles.serviceTile}>
-        <Wrench size={18} color={Colors.link} />
-      </View>
-      <View style={styles.serviceText}>
-        <Text style={styles.serviceName} numberOfLines={1}>{name}</Text>
-        <Text style={styles.serviceMeta}>{meta}</Text>
-      </View>
-      {showVerified && (
-        <View style={styles.verified}>
-          <ShieldCheck size={13} color={Colors.successText} />
-          <Text style={styles.verifiedText}>ID verified</Text>
+  const renderService = (name: string, meta: string, showVerified = false) => {
+    const Icon = categoryIcon(name);
+    return (
+      <View key={`${meta}-${name}`} style={styles.serviceRow}>
+        <View style={styles.serviceTile}>
+          <Icon size={18} color={Colors.link} />
         </View>
-      )}
-    </View>
-  );
+        <View style={styles.serviceText}>
+          <Text style={styles.serviceName} numberOfLines={1}>{name}</Text>
+          <Text style={styles.serviceMeta}>{meta}</Text>
+        </View>
+        {showVerified && (
+          <View style={styles.verified}>
+            <ShieldCheck size={13} color={Colors.successText} />
+            <Text style={styles.verifiedText}>ID verified</Text>
+          </View>
+        )}
+      </View>
+    );
+  };
 
   return (
     <View style={styles.screen}>

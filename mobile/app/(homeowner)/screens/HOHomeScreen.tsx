@@ -19,16 +19,11 @@ import {
 import {
   ArrowRight,
   Bell,
-  BrushCleaning,
   ChevronRight,
   ClipboardList,
-  Footprints,
-  Hammer,
   Hand,
   Plus,
-  Sparkles,
   Wallet,
-  Wrench,
 } from 'lucide-react-native';
 import { Spacing } from '../../../src/constants/theme';
 import { HOScreen } from '../../../src/types/navigation';
@@ -46,6 +41,7 @@ import {
   type HomeHero,
 } from '../../../src/lib/homeJobs';
 import { jobRowStatus } from '../../../src/lib/jobRowStatus';
+import { categoryIcon } from '../../../src/lib/categoryIcon';
 import ScreenSkeleton from '../../../src/components/ScreenSkeleton';
 import OwnAvatar from '../../../src/components/OwnAvatar';
 import Tap from '../../../src/components/ui/Tap';
@@ -53,14 +49,6 @@ import ContentSkeleton from '../../../src/components/ui/ContentSkeleton';
 import SectionHeader from '../../../src/components/ui/SectionHeader';
 import JobRow from '../../../src/components/ui/JobRow';
 import EmptyRow from '../../../src/components/ui/EmptyRow';
-
-const CATEGORY_ICON: Record<string, typeof Wrench> = {
-  Plumbing: Wrench,
-  Cleaning: BrushCleaning,
-  Handyman: Hammer,
-  Manicure: Sparkles,
-  Pedicure: Footprints,
-};
 
 const ACTIVE_STATUSES = [
   'open',
@@ -347,7 +335,7 @@ export default function HOHomeScreen({ onNavigate }: HOHomeScreenProps) {
               contentContainerStyle={styles.chipRow}
             >
               {(categories.data ?? []).map((cat) => {
-                const Icon = CATEGORY_ICON[cat.name] ?? Hand;
+                const Icon = categoryIcon(cat.name, Hand);
                 return (
                   <Tap
                     key={cat.id}
