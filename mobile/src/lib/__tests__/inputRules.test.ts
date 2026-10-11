@@ -166,11 +166,30 @@ describe('validateFullName', () => {
     expect(validateFullName(`  ${'a'.repeat(120)}  `)).toBeNull();
   });
 
+  it.each([
+    'Ana (Nena) Santos',
+    'Ana Reyes, Jr.',
+    '李明',
+    'さくら',
+    '김철수',
+  ])('accepts %j: parentheses, commas and Chinese, Japanese and Korean letters are names too', (name) => {
+    expect(validateFullName(name)).toBeNull();
+  });
+
+  it.each([
+    ['Juan123', "Full name can't include numbers"],
+    ['Ana 😀', NAME_CHARACTERS],
+    ['<b>x</b>', NAME_CHARACTERS],
+    ['@@', NAME_CHARACTERS],
+  ])('still refuses %j', (name, message) => {
+    expect(validateFullName(name)).toBe(message);
+  });
+
   it.each(['Ana1', 'Ana 2', '2024', 'Test User 02'])('refuses digits in %j', (name) => {
     expect(validateFullName(name)).toBe("Full name can't include numbers");
   });
 
-  it.each(['Ana@Reyes', 'Ana_Reyes', 'Ana #', 'Ana/Reyes', '(Ana)', 'Ana,Reyes', 'Ana😀', '😀', 'Ana!'])(
+  it.each(['Ana@Reyes', 'Ana_Reyes', 'Ana #', 'Ana/Reyes', 'Ana😀', '😀', 'Ana!'])(
     'refuses symbols and emoji in %j',
     (name) => {
       expect(validateFullName(name)).toBe(NAME_CHARACTERS);
@@ -181,15 +200,21 @@ describe('validateFullName', () => {
     expect(validateFullName('-')).toBe('Full name must include a letter');
     expect(validateFullName('. .')).toBe('Full name must include a letter');
     expect(validateFullName("''")).toBe('Full name must include a letter');
+    expect(validateFullName('()')).toBe('Full name must include a letter');
   });
 
-  it('refuses scripts outside Latin letters, which the rule does not cover', () => {
+  it('counts a Chinese, Japanese or Korean character as a letter, so two of them make a name', () => {
+    expect(validateFullName('李')).toBe('Full name must be at least 2 characters');
+    expect(validateFullName('李明')).toBeNull();
+  });
+
+  it('refuses scripts outside Latin, Chinese, Japanese and Korean letters, which the rule does not cover', () => {
     expect(validateFullName('Иван Петров')).toBe(NAME_CHARACTERS);
   });
 });
 
 describe('validateCity', () => {
-  it.each(['Cebu', 'Lipa', 'Quezon City', 'Lapu-Lapu City', 'Dela Paz', 'Ñaga', 'Batangas'])(
+  it.each(['Cebu', 'Lipa', 'Quezon City', 'Quezon City (QC)', 'Lapu-Lapu City', 'Dela Paz', 'Ñaga', 'Batangas'])(
     'accepts %j, including short Philippine city names',
     (city) => {
       expect(validateCity(city)).toBeNull();

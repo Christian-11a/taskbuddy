@@ -60,11 +60,16 @@ export function normalizeName(raw: string | null | undefined): string {
 
 /**
  * Latin letters with accents (ñ, é, Ø, Vietnamese letters), the combining marks
- * that decomposed accents use, space, apostrophe (straight or curly), hyphen and
- * period. Written out rather than with \p{L}, so the check never depends on the
- * engine's Unicode property support. Names in other scripts are refused.
+ * that decomposed accents use, Japanese kana (U+3040 to U+30FF), Chinese characters
+ * (U+4E00 to U+9FFF) and Korean hangul (U+AC00 to U+D7AF), space, apostrophe (straight
+ * or curly), hyphen, period, comma and parentheses.
+ * Written out as ranges rather than with \p{L}, so the check never depends on the
+ * engine's Unicode property support. Digits, emoji, other symbols and other scripts
+ * are refused.
  */
-const NAME_CHARACTERS = /^[A-Za-zÀ-ÖØ-öø-ɏḀ-ỿ̀-ͯ '’.-]+$/;
+const NAME_CHARACTERS = /^[A-Za-zÀ-ÖØ-öø-ɏḀ-ỿ̀-ͯ぀-ヿ一-鿿가-힯 '’.,()-]+$/;
+/** A letter a name can hold: the letters above, without the marks and punctuation. */
+const NAME_LETTER = /[A-Za-zÀ-ÖØ-öø-ɏḀ-ỿ぀-ヿ一-鿿가-힯]/;
 const LETTER = /[A-Za-zÀ-ÖØ-öø-ɏḀ-ỿ]/;
 const DIGIT = /[0-9]/;
 
@@ -74,13 +79,13 @@ function checkNameLike(text: string, label: string, min: number, max: number): s
   if (!NAME_CHARACTERS.test(text)) {
     return `${label} can only use letters, spaces, hyphens, apostrophes and periods`;
   }
-  if (!LETTER.test(text)) return `${label} must include a letter`;
+  if (!NAME_LETTER.test(text)) return `${label} must include a letter`;
   if (text.length < min) return `${label} must be at least ${min} characters`;
   if (text.length > max) return `${label} must be ${max} characters or fewer`;
   return null;
 }
 
-/** A full name: 2 to 120 characters, letters only apart from spaces, hyphens, apostrophes and periods. */
+/** A full name: 2 to 120 characters, letters only apart from spaces, hyphens, apostrophes, periods, commas and parentheses. */
 export function validateFullName(value: string | null | undefined): string | null {
   const name = normalizeName(value);
   if (!name) return 'Enter your full name';
