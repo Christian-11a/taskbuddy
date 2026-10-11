@@ -62,7 +62,7 @@ export interface AmountLimits {
 }
 
 /** A whole peso amount reads without centavos (₱50, ₱100,000); anything else keeps two. */
-function pesoWords(value: number): string {
+export function pesoWords(value: number): string {
   const options = Number.isInteger(value)
     ? undefined
     : { minimumFractionDigits: AMOUNT_DECIMALS, maximumFractionDigits: AMOUNT_DECIMALS };

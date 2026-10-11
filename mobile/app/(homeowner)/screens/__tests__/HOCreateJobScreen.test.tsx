@@ -342,18 +342,18 @@ describe('HOCreateJobScreen — fields are checked against the backend limits', 
     expect(budget().props.value).toBe('1500.99');
   });
 
-  it('refuses a budget above ₱1,000,000 once Next is pressed', async () => {
+  it('refuses a budget above the ₱100,000 a card can pay once Next is pressed', async () => {
     await openBudgetStep();
     fireEvent.press(screen.getByText('Pick a date'));
     fireEvent.press(screen.getByText('Choose test date'));
     fireEvent.press(screen.getByText('Pick a time'));
     fireEvent.press(screen.getByText('Choose test time'));
     if (screen.queryByText('Done')) fireEvent.press(screen.getByText('Done'));
-    fireEvent.changeText(screen.getByPlaceholderText('0.00'), '1000001');
+    fireEvent.changeText(screen.getByPlaceholderText('0.00'), '100001');
 
     fireEvent.press(screen.getByText('Next'));
 
-    expect(await screen.findByText("You can't go over ₱1,000,000")).toBeTruthy();
+    expect(await screen.findByText("Budgets above ₱100,000 can't be paid by card. Keep it at ₱100,000 or less.")).toBeTruthy();
     expect(api.createJob).not.toHaveBeenCalled();
   });
 

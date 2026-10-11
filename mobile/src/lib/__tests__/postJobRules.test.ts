@@ -1,4 +1,6 @@
 import {
+  BUDGET_MAX_PHP,
+  budgetOverMessage,
   combineDateAndTime,
   fieldError,
   isValidBudget,
@@ -7,9 +9,12 @@ import {
   stepFields,
   type PostFormValues,
 } from '../postJobRules';
+import { MAX_CARD_PHP, MIN_TOPUP_PHP } from '../cardLimits';
 
 // Fixed clock: 10 June 2030 at noon, local time.
 const NOW = new Date(2030, 5, 10, 12, 0, 0);
+
+const OVER_CARD_LIMIT = "Budgets above ₱100,000 can't be paid by card. Keep it at ₱100,000 or less.";
 const TODAY = new Date(2030, 5, 10);
 const YESTERDAY = new Date(2030, 5, 9);
 const TOMORROW = new Date(2030, 5, 11);
@@ -229,13 +234,22 @@ describe('the job form against the backend limits', () => {
     expect(tasks([])).toBe('Pick at least one task so providers know what the job involves.');
   });
 
-  it('keeps the budget a positive amount of at most two decimals, and no more than ₱1,000,000', () => {
+  it('keeps the budget a positive amount of at most two decimals, and no more than the ₱100,000 a card can pay', () => {
     const budget = (value: string) => fieldError('budget', at({ budget: value }), NOW);
-    expect(budget('1000000')).toBeUndefined();
-    expect(budget('1,000,000.00')).toBeUndefined();
-    expect(budget('1000000.01')).toBe("You can't go over ₱1,000,000");
-    expect(budget('1000001')).toBe("You can't go over ₱1,000,000");
+    expect(budget('100000')).toBeUndefined();
+    expect(budget('100,000.00')).toBeUndefined();
+    expect(budget('100000.01')).toBe(OVER_CARD_LIMIT);
+    expect(budget('1,000,000.00')).toBe(OVER_CARD_LIMIT);
+    expect(budget('100001')).toBe(OVER_CARD_LIMIT);
     expect(budget('0.01')).toBeUndefined();
     expect(budget('0')).toBe('Enter a valid amount greater than 0, up to 2 decimal places.');
+  });
+
+  it('caps the budget at the card limit, and the minimum stays where it was', () => {
+    expect(MAX_CARD_PHP).toBe(100000);
+    expect(BUDGET_MAX_PHP).toBe(MAX_CARD_PHP);
+    expect(MIN_TOPUP_PHP).toBe(50);
+    expect(budgetOverMessage(100000)).toBe(OVER_CARD_LIMIT);
+    expect(fieldError('budget', at({ budget: '0.01' }), NOW)).toBeUndefined();
   });
 });
