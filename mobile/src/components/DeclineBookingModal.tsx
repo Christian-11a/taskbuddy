@@ -8,9 +8,10 @@
  *
  * A reason is required, not encouraged: the backend rejects an empty one
  * (DeclineJobDto, 1–200 characters) and the homeowner is told what it was, so
- * the Decline button stays disabled until one of the reasons is chosen. A
- * short optional note can follow the chosen reason. Typing on a phone mid-job
- * is not something to ask for, hence the choices.
+ * the Decline button stays disabled until a reason is chosen or written. A
+ * chosen reason can take a short note after it, and a note alone can be the
+ * whole reason. Typing on a phone mid-job is not something to ask for, hence
+ * the choices.
  */
 
 import { useThemedStyles, type Palette as ThemePalette } from '../context/ThemeContext';
@@ -20,6 +21,7 @@ import Tap from './ui/Tap';
 import SheetFrame from './ui/SheetFrame';
 import RadioRow from './ui/RadioRow';
 import TextField from './ui/TextField';
+import { plural } from '../lib/format';
 
 /** Mirrors DeclineJobDto's @Length(1, 200) — see backend/src/jobs/dto. */
 export const DECLINE_REASON_MAX = 200;
@@ -72,17 +74,20 @@ export default function DeclineBookingModal({
     }
   }, [visible]);
 
-  const pick = (reason: string) => {
-    setChoice(reason);
-    // Keep the note inside the room the newly chosen reason leaves.
-    setNote((current) => current.slice(0, noteLimitFor(reason)));
-  };
+  // Picking a reason only sets it: a typed note is never cut to make room for it.
+  const pick = (option: string) => setChoice(option);
 
-  const canSubmit = choice !== null && !submitting;
+  // The reason as the API receives it: the chosen reason with the trimmed note after it, or the note alone.
+  const trimmedNote = note.trim();
+  const reasonToSend = choice !== null ? declineReason(choice, note) : trimmedNote;
+  const over = Math.max(0, reasonToSend.length - DECLINE_REASON_MAX);
+  const ready = (choice !== null || trimmedNote.length > 0) && over === 0;
+  const canSubmit = ready && !submitting;
+  // Room left for the note once the chosen reason and its separator are counted.
   const limit = noteLimitFor(choice);
 
   const confirm = () => {
-    if (choice !== null) onConfirm(declineReason(choice, note));
+    if (canSubmit) onConfirm(reasonToSend);
   };
 
   return (
@@ -114,15 +119,21 @@ export default function DeclineBookingModal({
         placeholder="Anything the client should know"
         helper={`${note.length}/${limit}`}
         multiline
-        maxLength={limit}
+        // The API's limit, not the room left: a limit that shrinks when a reason is picked could cut the note.
+        maxLength={DECLINE_REASON_MAX}
         editable={!submitting}
         keyboardAppearance={appearance}
       />
 
+      {over > 0 && (
+        <Text style={styles.error} accessibilityRole="alert">
+          {`Shorten your reason by ${plural(over, 'character')}.`}
+        </Text>
+      )}
       {!!error && <Text style={styles.error} accessibilityRole="alert">{error}</Text>}
 
       <Tap
-        style={[styles.declineBtn, choice === null && styles.declineBtnIdle, submitting && styles.dimmed]}
+        style={[styles.declineBtn, !ready && styles.declineBtnIdle, submitting && styles.dimmed]}
         onPress={confirm}
         disabled={!canSubmit}
         scale
@@ -133,7 +144,7 @@ export default function DeclineBookingModal({
         {submitting ? (
           <ActivityIndicator color={Colors.onPrimary} />
         ) : (
-          <Text style={[styles.declineText, choice === null && styles.declineTextIdle]}>Decline booking</Text>
+          <Text style={[styles.declineText, !ready && styles.declineTextIdle]}>Decline booking</Text>
         )}
       </Tap>
       <Tap
