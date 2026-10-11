@@ -59,6 +59,13 @@ beforeEach(() => {
   });
 });
 
+/** Lets the lookups that settle right after mount finish inside act, so no update lands after the test ends. */
+async function settle() {
+  await act(async () => {
+    await new Promise<void>((resolve) => setTimeout(resolve, 0));
+  });
+}
+
 describe('HOHomeScreen — welcome tour anchors', () => {
   // A one-step tour on the anchor shows its card only if the control was found and measured;
   // a missing anchor would pass the step over and the card would never appear.
@@ -74,6 +81,7 @@ describe('HOHomeScreen — welcome tour anchors', () => {
       </TourProvider>,
     );
     await waitFor(() => expect(screen.getByLabelText('What do you need done?')).toBeTruthy());
+    await settle();
 
     act(() => {
       controls.startTour({ steps: [{ anchorId, title, body: 'Body copy' }], onFinish: jest.fn(), onSkip: jest.fn() });
@@ -89,6 +97,7 @@ describe('HOHomeScreen — take-the-tour card', () => {
     const onStart = jest.fn();
     const onDismiss = jest.fn();
     render(<HOHomeScreen onNavigate={jest.fn()} tourOffer={{ onStart, onDismiss }} />);
+    await settle();
 
     fireEvent.press(await screen.findByRole('button', { name: 'Take the tour' }));
     expect(onStart).toHaveBeenCalledTimes(1);
@@ -100,6 +109,7 @@ describe('HOHomeScreen — take-the-tour card', () => {
   it('shows no offer when the App is not offering one', async () => {
     render(<HOHomeScreen onNavigate={jest.fn()} />);
     await waitFor(() => expect(screen.getByLabelText('What do you need done?')).toBeTruthy());
+    await settle();
 
     expect(screen.queryByText('New: take a quick tour')).toBeNull();
   });

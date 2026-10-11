@@ -62,6 +62,13 @@ beforeEach(() => {
   });
 });
 
+/** Lets the lookups that settle right after mount finish inside act, so no update lands after the test ends. */
+async function settle() {
+  await act(async () => {
+    await new Promise<void>((resolve) => setTimeout(resolve, 0));
+  });
+}
+
 describe('SPHomeScreen — welcome tour anchors', () => {
   // A one-step tour on the anchor shows its card only if the control was found and measured.
   it.each([
@@ -75,6 +82,7 @@ describe('SPHomeScreen — welcome tour anchors', () => {
       </TourProvider>,
     );
     await waitFor(() => expect(screen.getByPlaceholderText('Search open jobs')).toBeTruthy());
+    await settle();
 
     act(() => {
       controls.startTour({ steps: [{ anchorId, title, body: 'Body copy' }], onFinish: jest.fn(), onSkip: jest.fn() });
@@ -90,6 +98,7 @@ describe('SPHomeScreen — take-the-tour card', () => {
     const onStart = jest.fn();
     const onDismiss = jest.fn();
     render(<SPHomeScreen onNavigate={jest.fn()} tourOffer={{ onStart, onDismiss }} />);
+    await settle();
 
     fireEvent.press(await screen.findByRole('button', { name: 'Take the tour' }));
     expect(onStart).toHaveBeenCalledTimes(1);
@@ -101,6 +110,7 @@ describe('SPHomeScreen — take-the-tour card', () => {
   it('shows no offer when the App is not offering one', async () => {
     render(<SPHomeScreen onNavigate={jest.fn()} />);
     await waitFor(() => expect(screen.getByPlaceholderText('Search open jobs')).toBeTruthy());
+    await settle();
 
     expect(screen.queryByText('New: take a quick tour')).toBeNull();
   });
