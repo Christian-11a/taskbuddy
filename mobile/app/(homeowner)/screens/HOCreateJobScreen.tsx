@@ -54,7 +54,6 @@ import {
   ScrollView,
   StyleSheet,
   Text,
-  TextInput,
   View,
   Platform,
   Modal,
@@ -64,7 +63,7 @@ import {
   KeyboardAvoidingView,
 } from 'react-native';
 import Tap from '../../../src/components/ui/Tap';
-import KeyboardAwareScrollView, { useRevealOnFocus } from '../../../src/components/ui/KeyboardAwareScrollView';
+import KeyboardAwareScrollView from '../../../src/components/ui/KeyboardAwareScrollView';
 import SheetFrame from '../../../src/components/ui/SheetFrame';
 import SuccessMark from '../../../src/components/ui/SuccessMark';
 import {
@@ -109,6 +108,7 @@ import PostingChecklist, { type PostingStep } from '../../../src/components/post
 import Banner from '../../../src/components/ui/Banner';
 import AddTaskRow from '../../../src/components/post/AddTaskRow';
 import UrgencyRow from '../../../src/components/post/UrgencyRow';
+import BudgetField from '../../../src/components/post/BudgetField';
 import {
   DESCRIPTION_MAX,
   LOCATION_MAX,
@@ -256,7 +256,6 @@ export default function HOCreateJobScreen({
   const [calendarMonth, setCalendarMonth] = useState<string | undefined>(undefined);
   const [photoIndex, setPhotoIndex] = useState<number | null>(null);
   const [showExitConfirmation, setShowExitConfirmation] = useState(false);
-  const [focusedField, setFocusedField] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
   const [submitting, setSubmitting] = useState(false);
   const [pickingPhotos, setPickingPhotos] = useState(false);
@@ -299,9 +298,6 @@ export default function HOCreateJobScreen({
   // One ScrollView holds every step, so without this "Next" opened the new
   // step wherever the previous one had been scrolled to (usually the bottom).
   const scrollRef = useRef<ScrollView>(null);
-  // The budget is a plain TextInput, so it takes the same reveal the shared fields do.
-  const budgetRef = useRef<TextInput>(null);
-  const revealBudget = useRevealOnFocus(budgetRef);
   const fieldPositions = useRef<Partial<Record<keyof FieldErrors, number>>>({});
   // On short screens the keyboard covers the address suggestions, which sit
   // under the field. Once the keyboard is up, scroll the Address label to the
@@ -1037,23 +1033,13 @@ export default function HOCreateJobScreen({
 
             <View onLayout={(event) => { fieldPositions.current.budget = event.nativeEvent.layout.y; }} style={styles.inputGroup}>
               <Text style={styles.inputLabel}>Budget</Text>
-              <View style={[styles.budgetCard, focusedField === 'budget' && styles.budgetCardFocused, !!fieldErrors.budget && styles.inputError]}>
-                <Text style={styles.budgetCurrency}>₱</Text>
-                <TextInput keyboardAppearance={appearance}
-                  ref={budgetRef}
-                  style={styles.budgetInput}
-                  placeholder="0.00"
-                  placeholderTextColor={Colors.muted}
-                  value={budget}
-                  onChangeText={(text) => setBudget((previous) => nextAmountText(previous, text))}
-                  onFocus={() => {
-                    setFocusedField('budget');
-                    revealBudget();
-                  }}
-                  onBlur={() => { setFocusedField(null); formatBudget(); }}
-                  keyboardType="decimal-pad"
-                />
-              </View>
+              {/* Its own component, so the reveal finds the scroll view around it (see BudgetField). */}
+              <BudgetField
+                value={budget}
+                invalid={!!fieldErrors.budget}
+                onChangeText={(text) => setBudget((previous) => nextAmountText(previous, text))}
+                onBlur={formatBudget}
+              />
               {!!fieldErrors.budget && <Text style={styles.inputErrorText} accessibilityLiveRegion="polite">{fieldErrors.budget}</Text>}
               <Text style={styles.budgetHint}>You only pay when you hire. It's held safely until the job is done.</Text>
             </View>
@@ -1320,14 +1306,6 @@ function createThemedStyles(theme: ThemePalette) {
     dateTimeCol: { flex: 1 },
     sectionLabel: { color: V6Colors.ink900, fontSize: 16, fontWeight: '700', fontFamily: 'Inter', marginBottom: 10 },
 
-    // Budget: a big, plain field. Nothing is red until a Next press says so.
-    budgetCard: {
-      flexDirection: 'row', alignItems: 'center', gap: 6, minHeight: 64, paddingHorizontal: 16,
-      backgroundColor: Colors.surface, borderRadius: 16, borderWidth: 1.5, borderColor: V6Colors.fieldBorder,
-    },
-    budgetCardFocused: { borderColor: Colors.link, borderWidth: 2 },
-    budgetCurrency: { color: V6Colors.ink700, fontSize: 28, fontWeight: '700', fontFamily: 'Inter' },
-    budgetInput: { flex: 1, fontSize: 30, fontWeight: '700', fontFamily: 'Inter', color: V6Colors.ink900, paddingVertical: 8 },
     budgetHint: { color: V6Colors.ink500, fontSize: 13.5, fontFamily: 'Inter', lineHeight: 18, marginTop: 8 },
 
     reviewCard: {

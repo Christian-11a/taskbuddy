@@ -1,6 +1,6 @@
 import { findUnnamedControls } from '../../../../src/testing/a11yAudit';
 import React from 'react';
-import { BackHandler } from 'react-native';
+import { BackHandler, ScrollView, TextInput } from 'react-native';
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react-native';
 import * as ImagePicker from 'expo-image-picker';
 import HOCreateJobScreen from '../HOCreateJobScreen';
@@ -342,6 +342,35 @@ describe('HOCreateJobScreen — fields are checked against the backend limits', 
 
     fireEvent.changeText(budget(), '1500.999');
     expect(budget().props.value).toBe('1500.99');
+  });
+
+  it('focusing the budget scrolls the form so the field clears the keyboard and the footer', async () => {
+    await openBudgetStep();
+    fireEvent(screen.getByTestId('create-job-form-scroll'), 'layout', {
+      nativeEvent: { layout: { x: 0, y: 0, width: 375, height: 400 } },
+    });
+    // Measured the way the KeyboardAwareScrollView tests measure: the view's window top is 100, the budget's is 600.
+    type MeasureCallback = (x: number, y: number, width: number, height: number) => void;
+    const scroll = screen.UNSAFE_getAllByType(ScrollView)
+      .find((node) => node.props.testID === 'create-job-form-scroll')!.instance;
+    // The ScrollView and TextInput mocks share one jest.fn per method across instances, so clear the earlier step calls.
+    const scrollTo = jest.spyOn(scroll, 'scrollTo');
+    scrollTo.mockClear();
+    const measureScroller = jest.spyOn(scroll, 'getNativeScrollRef').mockReturnValue({
+      measureInWindow: (callback: MeasureCallback) => callback(0, 100, 375, 400),
+    } as never);
+    const budget: { measureInWindow: (callback: MeasureCallback) => void } = screen.UNSAFE_getAllByType(TextInput)
+      .find((node) => node.props.placeholder === '0.00')!.instance;
+    const measureBudget = jest.spyOn(budget, 'measureInWindow').mockImplementation((callback) => callback(0, 600, 375, 48));
+
+    fireEvent(screen.getByPlaceholderText('0.00'), 'focus');
+
+    // The budget is 500 dp into a 400 dp view; its bottom plus the 24 dp margin is 172 past the view's bottom edge.
+    expect(scrollTo).toHaveBeenCalledWith({ y: 172, animated: true });
+
+    // Those mocks are shared by every instance in this file, so put them back to the defaults the other tests get.
+    measureScroller.mockReset();
+    measureBudget.mockReset();
   });
 
   it('a pasted 1e3 or -1000 leaves the budget as it was, instead of 13 or 1000', async () => {
