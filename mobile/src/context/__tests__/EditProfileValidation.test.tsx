@@ -490,14 +490,14 @@ describe('provider edit profile bio', () => {
     expect(api.upsertProviderProfile).toHaveBeenCalledWith(expect.objectContaining({ bio: 'Plumbing and drains.' }));
   });
 
-  it('sends the bio trimmed, with the extra blank lines inside it closed up', async () => {
+  it('sends the bio trimmed, with the blank lines inside it kept as typed', async () => {
     await renderEditor('provider');
     fireEvent.changeText(bioField(), '  Ten years of plumbing work.\n\n\n\nFully insured.  \n');
 
     await saveAndConfirm();
 
     expect(api.upsertProviderProfile).toHaveBeenCalledWith(
-      expect.objectContaining({ bio: 'Ten years of plumbing work.\n\nFully insured.' }),
+      expect.objectContaining({ bio: 'Ten years of plumbing work.\n\n\n\nFully insured.' }),
     );
   });
 });

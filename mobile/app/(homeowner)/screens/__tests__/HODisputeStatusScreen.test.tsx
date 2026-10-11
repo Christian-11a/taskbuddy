@@ -224,6 +224,6 @@ it('sends the note with the spaces and blank lines at its ends removed', async (
   await act(async () => { fireEvent.press(screen.getByText('Send details')); });
 
   await waitFor(() => expect(api.addDisputeEntry).toHaveBeenCalledWith(
-    'case', expect.objectContaining({ body: 'My account of the repair.\n\nThanks.' }),
+    'case', expect.objectContaining({ body: 'My account of the repair.\n\n\n\nThanks.' }),
   ));
 });
