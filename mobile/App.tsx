@@ -82,6 +82,10 @@ import SPSkillRequestScreen from './app/(provider)/screens/SPSkillRequestScreen'
 // ── Shared navigation components ──────────────────────────────────────────────
 import BottomNavBar, { BottomNavItem } from './src/components/BottomNavBar';
 import HelpSupportScreen from './src/components/HelpSupportScreen';
+import TourFinishCard from './src/components/tour/TourFinishCard';
+import {
+  TourProvider, useTour, hasCompletedTour, hasDismissedTourOffer, markTourCompleted, markTourOfferDismissed,
+} from './src/components/tour';
 import ScreenFrame from './src/components/ScreenFrame';
 
 import { ToastHost, showToast } from './src/components/Toast';
@@ -95,6 +99,8 @@ import { HOScreen, SPScreen } from './src/types/navigation';
 // ── Auth ───────────────────────────────────────────────────────────────────────
 import { AuthProvider, useAuth } from './src/context/AuthContext';
 import { hasCompletedOnboarding, markOnboardingCompleted } from './src/lib/onboarding';
+import { firstNameFrom, tourSteps, type FinishAction } from './src/lib/tourContent';
+import { idleTourFlow, nextTourFlow, shouldOfferTour, TOUR_START_DELAY_MS, tourIsOnScreen, type TourFlow } from './src/lib/tourFlow';
 import { api } from './src/lib/api';
 import { consumeLastNotificationTap, subscribeToNotificationTaps } from './src/lib/pushNotifications';
 import { resolveNotificationTarget } from './src/lib/notificationRouting';
@@ -142,13 +148,22 @@ type PreAuthScreen = 'login' | 'forgotPassword' | 'register';
 interface HOStackEntry { screen: HOScreen; id: string | null }
 interface SPStackEntry { screen: SPScreen; id: string | null; urgent: boolean }
 
+/** The signed-in app and its welcome tour. TourProvider sits above every screen, so a tour can cover any of them. */
 function AppContent() {
+  return (
+    <TourProvider>
+      <AppFlow />
+    </TourProvider>
+  );
+}
+
+function AppFlow() {
   const { error: themeError } = useTheme();
   useEffect(() => { if (themeError) showToast(`Appearance: ${themeError}`, 'error'); }, [themeError]);
   const { V6Colors, styles } = useThemedStyles(createThemedStyles);
   const {
     initializing, isAuthenticated, isGoogleSignupPending,
-    role, profile,
+    role, profile, isVerified,
     signIn, signUp, signOut, signInWithGoogle, completeGoogleProfile,
     refreshProfile, authError, clearAuthError,
   } = useAuth();
@@ -157,6 +172,12 @@ function AppContent() {
   const [preAuth, setPreAuth] = useState<PreAuthScreen>('login');
   // null = still reading the flag for this account; true = show the slides.
   const [showOnboarding, setShowOnboarding] = useState<boolean | null>(null);
+  // The welcome flow after the intro cards (see tourFlow.ts), and whether the take-the-tour card is offered.
+  const [tourFlow, setTourFlow] = useState<TourFlow>(idleTourFlow);
+  const [tourOfferOpen, setTourOfferOpen] = useState(false);
+  const { startTour, stopTour } = useTour();
+  const tourBusy = tourIsOnScreen(tourFlow);
+  const firstName = firstNameFrom(profile?.full_name);
   // The splash plays for a minimum duration; we also wait for session restore.
   const [minSplashDone, setMinSplashDone] = useState(false);
   // Sub-screen within the Google signup pending gate (role → SP details)
@@ -165,6 +186,9 @@ function AppContent() {
   const handleLogout = () => {
     void signOut();
     clearRetainedState();
+    stopTour();
+    setTourFlow(idleTourFlow);
+    setTourOfferOpen(false);
     setPreAuth('login');
     setShowOnboarding(null);
     setHOTab('Home');
@@ -391,7 +415,8 @@ function AppContent() {
 
   useEffect(() => {
     if (!pendingPushTarget || pendingPushTarget.recipient_id !== profile?.id) return;
-    if (!isAuthenticated || isGoogleSignupPending || showOnboarding !== false || !role) return;
+    // A tour on screen holds the push, so its overlay never sits over the screen the push opens.
+    if (!isAuthenticated || isGoogleSignupPending || showOnboarding !== false || !role || tourBusy) return;
 
     const target = resolveNotificationTarget(role, pendingPushTarget);
     if (target.kind === 'proposals') {
@@ -413,7 +438,7 @@ function AppContent() {
     const notificationId = pendingPushTarget.notification_id;
     if (notificationId) void api.markNotificationRead(notificationId).catch((err: Error) => showToast(err.message, 'error'));
     setPendingPushTarget(null);
-  }, [pendingPushTarget, isAuthenticated, isGoogleSignupPending, showOnboarding, role, profile?.id]);
+  }, [pendingPushTarget, isAuthenticated, isGoogleSignupPending, showOnboarding, role, profile?.id, tourBusy]);
 
   useEffect(() => {
     // Pre-warm the browser on Android so Google OAuth opens instantly.
@@ -439,21 +464,117 @@ function AppContent() {
   useEffect(() => {
     if (!profileId) {
       setShowOnboarding(null);
+      setTourOfferOpen(false);
       return;
     }
     let mounted = true;
-    void hasCompletedOnboarding(profileId).then((done) => {
-      if (mounted) setShowOnboarding(!done);
+    // Read once per sign-in, so the take-the-tour card only ever means an existing account (not this session's first run).
+    void Promise.all([
+      hasCompletedOnboarding(profileId),
+      hasCompletedTour(profileId),
+      hasDismissedTourOffer(profileId),
+    ]).then(([done, toured, dismissed]) => {
+      if (!mounted) return;
+      setShowOnboarding(!done);
+      setTourOfferOpen(shouldOfferTour({ onboardingDone: done, tourDone: toured, offerDismissed: dismissed }));
     });
     return () => {
       mounted = false;
     };
   }, [profileId]);
 
+  // ── Welcome flow: intro cards, then the spotlight tour, then the finish card (phases in tourFlow.ts) ──
+  // "Show me around" on the last intro card of a first run. The tour starts once Home is on screen.
   const finishOnboarding = () => {
     if (profileId) void markOnboardingCompleted(profileId);
     setShowOnboarding(false);
+    setTourFlow((flow) => nextTourFlow(flow, { type: 'introDone', firstRun: true }));
   };
+
+  // Ends the flow early (Skip, Android Back, sign-out): the tour counts as done for this account and no finish card follows.
+  const endTourFlow = () => {
+    if (profileId) void markTourCompleted(profileId);
+    setTourOfferOpen(false);
+    setTourFlow((flow) => nextTourFlow(flow, { type: 'ended' }));
+  };
+
+  // Skip on a first run's intro cards: the onboarding and the tour are both done for this account.
+  const skipOnboarding = () => {
+    if (profileId) void markOnboardingCompleted(profileId);
+    setShowOnboarding(false);
+    endTourFlow();
+  };
+
+  // Opens the welcome walkthrough again, from Help or the Home card: the intro cards first, then the tour.
+  const openTutorial = () => {
+    setTourOfferOpen(false);
+    setTourFlow(idleTourFlow);
+    if (role === 'homeowner') hoNavigate('Tutorial');
+    else spNavigate('Tutorial');
+  };
+
+  // The replay's intro cards are done: back to the first tab, where the tour starts. No confetti on a replay.
+  const finishReplay = () => {
+    if (role === 'homeowner') hoNavigate('Home');
+    else spNavigate('Dashboard');
+    setTourFlow((flow) => nextTourFlow(flow, { type: 'introDone', firstRun: false }));
+  };
+
+  // Skip (Close) on a replay: back to the first tab with no tour.
+  const skipReplay = () => {
+    endTourFlow();
+    if (role === 'homeowner') hoNavigate('Home');
+    else spNavigate('Dashboard');
+  };
+
+  // The take-the-tour card: taking it counts as dismissing it, so it never comes back.
+  const startTourFromOffer = () => {
+    if (profileId) void markTourOfferDismissed(profileId);
+    openTutorial();
+  };
+  const dismissTourOffer = () => {
+    if (profileId) void markTourOfferDismissed(profileId);
+    setTourOfferOpen(false);
+  };
+  const tourOffer = tourOfferOpen ? { onStart: startTourFromOffer, onDismiss: dismissTourOffer } : undefined;
+
+  // The finish card's buttons close it for good, then go where the button points.
+  const handleFinishAction = (action: FinishAction) => {
+    endTourFlow();
+    if (action === 'postJob' && role === 'homeowner') hoNavigate('Create Job');
+    if (action === 'getVerified' && role === 'provider') spNavigate('Verification');
+  };
+
+  // Home is on screen: give its controls a moment to lay out, then the tour is due.
+  const onHome = showOnboarding === false && !!role && (role === 'homeowner' ? hoScreen === 'Home' : spScreen === 'Dashboard');
+  useEffect(() => {
+    if (tourFlow.phase !== 'waiting' || !onHome) return;
+    const timer = setTimeout(() => setTourFlow((flow) => nextTourFlow(flow, { type: 'homeReady' })), TOUR_START_DELAY_MS);
+    return () => clearTimeout(timer);
+  }, [tourFlow.phase, onHome]);
+
+  // The phase turns to touring once, so the tour starts once. Its own callbacks move the flow on.
+  useEffect(() => {
+    if (tourFlow.phase !== 'touring' || !role) return;
+    startTour({
+      steps: tourSteps(role),
+      onFinish: () => setTourFlow((flow) => nextTourFlow(flow, { type: 'tourFinished' })),
+      onSkip: endTourFlow,
+    });
+    // Only the phase matters here: startTour and endTourFlow are rebuilt on every render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tourFlow.phase]);
+
+  // The finish card, drawn over Home once the tour is over.
+  const tourFinish = tourFlow.phase === 'finishing' && role ? (
+    <TourFinishCard
+      role={role}
+      verified={isVerified}
+      firstName={firstName}
+      firstRun={tourFlow.firstRun}
+      onAction={handleFinishAction}
+    />
+  ) : null;
 
   // ─────────────────────────────────────────────────────────────────────────
   // Auth flow
@@ -575,9 +696,9 @@ function AppContent() {
     return wrap(<SplashScreenComponent />);
   }
   if (showOnboarding) {
-    // Post-login there is nowhere to "skip to" but the dashboard, so Skip and
-    // Get Started do the same thing — both count as having seen them.
-    return wrap(<OnboardingScreen role={role} onFinish={finishOnboarding} onLogin={finishOnboarding} />);
+    // "Show me around" starts the spotlight tour on Home. Skip leaves the welcome
+    // for good: no tour and no finish card.
+    return wrap(<OnboardingScreen role={role} firstName={firstName} onFinish={finishOnboarding} onLogin={skipOnboarding} />);
   }
 
   // ─────────────────────────────────────────────────────────────────────────
@@ -675,13 +796,15 @@ function AppContent() {
           <HelpSupportScreen
             role="homeowner"
             onBack={hoBack}
-            onReplayTour={() => hoNavigate('Tutorial')}
+            onReplayTour={openTutorial}
           />
         </ScreenFrame>
       );
     }
     if (hoScreen === 'Tutorial') {
-      return wrap(<OnboardingScreen role="homeowner" onFinish={hoBack} onLogin={hoBack} />);
+      return wrap(
+        <OnboardingScreen role="homeowner" firstName={firstName} replay onFinish={finishReplay} onLogin={skipReplay} />,
+      );
     }
     if (hoScreen === 'Create Job') {
       return wrap(
@@ -707,7 +830,7 @@ function AppContent() {
     const renderHOTabContent = () => {
       switch (hoTab) {
         case 'Home':
-          return <HOHomeScreen onNavigate={hoNavigate} />;
+          return <HOHomeScreen onNavigate={hoNavigate} tourOffer={tourOffer} />;
         case 'My Jobs':
           return hoJobsView === 'calendar'
             ? <HOCalendarScreen title="My Jobs" headerRight={hoJobsSwitch} onNavigate={hoNavigate} />
@@ -719,7 +842,7 @@ function AppContent() {
           // other pushed screens still return here through the back stack.
           return <Profile onNavigate={hoNavigate} onLogout={handleLogout} />;
         default:
-          return <HOHomeScreen onNavigate={hoNavigate} />;
+          return <HOHomeScreen onNavigate={hoNavigate} tourOffer={tourOffer} />;
       }
     };
 
@@ -729,6 +852,7 @@ function AppContent() {
       // every homeowner tab screen. SP tabs below already avoid this.
       <View style={styles.screen}>
         <View style={styles.tabContent}>{renderHOTabContent()}</View>
+        {tourFinish}
         <BottomNavBar
           activeTab={hoTab}
           tabs={HOMEOWNER_TABS}
@@ -812,13 +936,15 @@ function AppContent() {
         <HelpSupportScreen
           role="provider"
           onBack={spBack}
-          onReplayTour={() => spNavigate('Tutorial')}
+          onReplayTour={openTutorial}
         />
       </ScreenFrame>
     );
   }
   if (spScreen === 'Tutorial') {
-    return wrap(<OnboardingScreen role="provider" onFinish={spBack} onLogin={spBack} />);
+    return wrap(
+      <OnboardingScreen role="provider" firstName={firstName} replay onFinish={finishReplay} onLogin={skipReplay} />,
+    );
   }
   if (spScreen === 'Verification') {
     return wrap(
@@ -862,7 +988,7 @@ function AppContent() {
   const renderSPTabContent = () => {
     switch (spTab) {
       case 'Dashboard':
-        return <SPHomeScreen onNavigate={spNavigate} />;
+        return <SPHomeScreen onNavigate={spNavigate} tourOffer={tourOffer} />;
       case 'My Jobs':
         return spJobsView === 'calendar'
           ? <SPCalendarScreen title="My Work" headerRight={spJobsSwitch} onNavigate={spNavigate} />
@@ -874,13 +1000,14 @@ function AppContent() {
         // other pushed screens still return here through the back stack.
         return <SPProfileScreen onNavigate={spNavigate} onLogout={handleLogout} />;
       default:
-        return <SPHomeScreen onNavigate={spNavigate} />;
+        return <SPHomeScreen onNavigate={spNavigate} tourOffer={tourOffer} />;
     }
   };
 
   return wrap(
     <View style={styles.screen}>
       <View style={styles.tabContent}>{renderSPTabContent()}</View>
+      {tourFinish}
       <BottomNavBar activeTab={spTab} tabs={PROVIDER_TABS} onTabPress={spNavigate} />
     </View>
   );
