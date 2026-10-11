@@ -48,6 +48,7 @@ import OwnAvatar from '../../../src/components/OwnAvatar';
 import Tap from '../../../src/components/ui/Tap';
 import ContentSkeleton from '../../../src/components/ui/ContentSkeleton';
 import SectionHeader from '../../../src/components/ui/SectionHeader';
+import StaleHint from '../../../src/components/ui/StaleHint';
 import JobRow from '../../../src/components/ui/JobRow';
 import Banner from '../../../src/components/ui/Banner';
 import EmptyCard from '../../../src/components/ui/EmptyCard';
@@ -216,6 +217,17 @@ export default function HOHomeScreen({ onNavigate, tourOffer }: HOHomeScreenProp
   const hour = new Date().getHours();
   const greeting = hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening';
 
+  // One hint for the screen: a saved copy says it is being updated, and a failed refresh of one says so, with Try again.
+  const sources = [wallet, jobs, categories];
+  const hintStale = sources.some((source) => source.stale);
+  const hintRefreshing = sources.some((source) => source.stale && source.refreshing);
+  const hintError = sources.find((source) => source.stale && source.error)?.error ?? null;
+  const retryStale = () => {
+    for (const source of sources) {
+      if (source.stale && source.error) source.reload();
+    }
+  };
+
   if (wallet.loading && jobs.loading && categories.loading && notifications.loading) {
     return <ScreenSkeleton variant="dashboard" />;
   }
@@ -298,11 +310,17 @@ export default function HOHomeScreen({ onNavigate, tourOffer }: HOHomeScreenProp
               </View>
             </View>
           </View>
-          {wallet.error && <Banner tone="error" message="Couldn't load your wallet" actionLabel="Try again" onAction={wallet.reload} />}
+          {wallet.error && !wallet.data && <Banner tone="error" message="Couldn't load your wallet" actionLabel="Try again" onAction={wallet.reload} />}
         </View>
 
         {/* Body */}
         <View style={styles.body}>
+          <StaleHint
+            stale={hintStale}
+            refreshing={hintRefreshing}
+            error={hintError}
+            onRetry={retryStale}
+          />
           {tourOffer && <TourOfferCard onStart={tourOffer.onStart} onDismiss={tourOffer.onDismiss} />}
 
           {/* What do you need done? opens the job form with no category, as My Jobs' "New" does. */}
@@ -334,7 +352,7 @@ export default function HOHomeScreen({ onNavigate, tourOffer }: HOHomeScreenProp
 
           {/* Book a service: each chip opens the job form with that category already picked. */}
           <SectionHeader title="Book a service" />
-          {categories.error ? (
+          {categories.error && !categories.data ? (
             <LoadErrorCard title="Couldn't load services" onRetry={categories.reload} />
           ) : (
             <ScrollView
@@ -372,9 +390,9 @@ export default function HOHomeScreen({ onNavigate, tourOffer }: HOHomeScreenProp
             onLinkPress={() => onNavigate('My Jobs')}
           />
 
-          {jobs.error && <LoadErrorCard title="Couldn't load your jobs" onRetry={jobs.reload} />}
+          {jobs.error && !jobs.data && <LoadErrorCard title="Couldn't load your jobs" onRetry={jobs.reload} />}
 
-          {!jobs.loading && !jobs.error && activeJobs.length === 0 && (
+          {!jobs.loading && jobs.data !== null && activeJobs.length === 0 && (
             <EmptyCard>
               <EmptyRow icon={ClipboardList} title="No active jobs" body="Jobs you post show up here." />
             </EmptyCard>

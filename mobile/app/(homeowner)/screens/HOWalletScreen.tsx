@@ -25,7 +25,7 @@ import SectionHeader from '../../../src/components/ui/SectionHeader';
 import EmptyCard from '../../../src/components/ui/EmptyCard';
 import EmptyRow from '../../../src/components/ui/EmptyRow';
 import LoadErrorCard from '../../../src/components/ui/LoadErrorCard';
-import Banner from '../../../src/components/ui/Banner';
+import StaleHint from '../../../src/components/ui/StaleHint';
 import {
   ArrowDownLeft,
   ArrowUpRight,
@@ -115,12 +115,14 @@ export default function HOWalletScreen() {
   const { C, Colors, styles } = useThemedStyles(createThemedStyles);
   const headerTop = useHeaderTop();
   const [filter, setFilter] = useState<WalletFilter>('all');
-  const { data, loading, error, reload, savedOnly } = useAsyncData(
+  const { data, loading, error, reload, savedOnly, stale, refreshing: fetching } = useAsyncData(
     () => api.wallet(),
     [],
     'ho-wallet',
     { persist: true },
   );
+  // A failed refresh with a saved balance keeps the history on screen, so only a wallet with no data is a failure.
+  const walletFailed = !!error && !data;
   const {
     data: withdrawalData,
     reload: reloadWithdrawals,
@@ -409,6 +411,14 @@ export default function HOWalletScreen() {
           />
         }
       >
+        <StaleHint
+          stale={stale}
+          refreshing={fetching}
+          error={error}
+          onRetry={reload}
+          updatingLabel="Updating balance…"
+        />
+
         {/* Balance card: the hero blue, with Add money (white) and Withdraw (translucent). */}
         <View style={styles.balanceCard}>
           <Text style={styles.balanceLabel}>Available balance</Text>
@@ -514,14 +524,11 @@ export default function HOWalletScreen() {
             ))}
           </ScrollView>
 
-          {!!error && !data && (
+          {walletFailed && (
             <LoadErrorCard title="Couldn't load your wallet" message={error} onRetry={reload} />
           )}
-          {!!error && !!data && (
-            <Banner tone="error" message={error} actionLabel="Try again" onAction={reload} />
-          )}
 
-          {!error && filtered.length === 0 && (
+          {!walletFailed && filtered.length === 0 && (
             <EmptyCard>
               <EmptyRow
                 icon={WalletCards}

@@ -1039,6 +1039,15 @@ describe('HOWalletScreen — money buttons wait for a fresh balance', () => {
     expect(screen.getByRole('button', { name: 'Withdraw' })).toBeEnabled();
     expect(screen.getByRole('button', { name: 'Add money' })).toBeEnabled();
   });
+
+  it('keeps the saved balance on screen and says the balance is being updated', async () => {
+    await saveBalance(walletAt());
+    (api.wallet as jest.Mock).mockReturnValue(new Promise(() => {}));
+    render(<HOWalletScreen />);
+
+    expect(await screen.findByText('₱1,250.00')).toBeTruthy();
+    expect(within(screen.getByTestId('stale-hint')).getByText('Updating balance…')).toBeTruthy();
+  });
 });
 
 describe('HOWalletScreen — every control has an accessible name', () => {

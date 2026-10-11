@@ -27,6 +27,7 @@ import JobRow from '../../../src/components/ui/JobRow';
 import EmptyCard from '../../../src/components/ui/EmptyCard';
 import EmptyRow from '../../../src/components/ui/EmptyRow';
 import LoadErrorCard from '../../../src/components/ui/LoadErrorCard';
+import StaleHint from '../../../src/components/ui/StaleHint';
 import ScreenSkeleton from '../../../src/components/ScreenSkeleton';
 import { HOScreen } from '../../../src/types/navigation';
 import { useAsyncData } from '../../../src/hooks/useAsyncData';
@@ -65,7 +66,12 @@ export default function MyJobs({ onNavigate, headerRight }: MyJobsProps) {
   const headerTop = useHeaderTop();
   const [filter, setFilter] = useRetainedState<JobListFilter>('ho.myJobs.filter', 'all');
   const scroll = useRetainedScroll(`ho.myJobs.${filter}`);
-  const { data, loading, error, reload } = useAsyncData(() => api.myJobs(), [], 'ho-jobs', { persist: true });
+  const { data, loading, error, reload, stale, refreshing: fetching } = useAsyncData(
+    () => api.myJobs(),
+    [],
+    'ho-jobs',
+    { persist: true },
+  );
   const [refreshing, setRefreshing] = useState(false);
   // useAsyncData's reload() is fire-and-forget; a new `data` or `error` means the fetch settled.
   useEffect(() => {
@@ -84,7 +90,8 @@ export default function MyJobs({ onNavigate, headerRight }: MyJobsProps) {
     () => new Map(sections.flatMap((section) => section.jobs).map((job, index): [string, number] => [job.id, index])),
     [sections],
   );
-  const settled = !loading && !error;
+  // Rows show whenever there is data, even when a refresh failed: the hint says it is saved data.
+  const settled = !loading && data !== null;
   const empty = EMPTY_COPY[filter];
 
   const onRefresh = () => {
@@ -150,8 +157,9 @@ export default function MyJobs({ onNavigate, headerRight }: MyJobsProps) {
           />
         }
       >
+        <StaleHint stale={stale} refreshing={fetching} error={error} onRetry={reload} />
         {loading && <ScreenSkeleton variant="list" />}
-        {!!error && !loading && (
+        {!!error && !loading && data === null && (
           <LoadErrorCard title="Couldn't load your jobs" message={error} onRetry={reload} />
         )}
 

@@ -7,6 +7,8 @@ import { useAuth } from '../../../../src/context/AuthContext';
 import { lightPalette } from '../../../../src/constants/palettes';
 import { findUnnamedControls } from '../../../../src/testing/a11yAudit';
 import { clearAsyncDataCache } from '../../../../src/hooks/useAsyncData';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { setCacheAccount } from '../../../../src/lib/persistentCache';
 
 jest.mock('../../../../src/context/NotificationsContext', () => ({
   useNotifications: () => ({ notifications: [], unreadCount: 0, loading: false, error: null, reload: jest.fn() }),
@@ -524,5 +526,75 @@ describe('HOHomeScreen — hero placeholder holds the hero place while it may st
     fireEvent.press(screen.getByRole('button', { name: 'Try again' }));
 
     await waitFor(() => expect(api.wallet).toHaveBeenCalledTimes(2));
+  });
+});
+
+describe('HOHomeScreen — saved data shows first, and says when it is being updated', () => {
+  const ACCOUNT = 'acct-alex';
+  const SAVED_JOB = {
+    ...OPEN_JOB,
+    id: 'job-saved',
+    title: 'Plumbing: Fix toilet',
+    status: 'confirmed',
+    budget: 1200,
+    scheduled_at: '2020-01-05T09:00:00+08:00',
+  };
+
+  beforeEach(async () => {
+    jest.clearAllMocks();
+    clearAsyncDataCache();
+    await AsyncStorage.clear();
+    setCacheAccount(ACCOUNT);
+    (useAuth as jest.Mock).mockReturnValue({ profile: { full_name: 'Alex', city: null, address: null } });
+    (api.wallet as jest.Mock).mockResolvedValue({ balance: 8397, available: 8397, held: 0 });
+    (api.categories as jest.Mock).mockResolvedValue([{ id: 2, name: 'Cleaning' }]);
+    (api.notifications as jest.Mock).mockResolvedValue([]);
+    (api.unreadNotificationCount as jest.Mock).mockResolvedValue({ count: 0 });
+    (api.jobApplications as jest.Mock).mockResolvedValue([]);
+  });
+
+  afterEach(() => {
+    setCacheAccount(null);
+  });
+
+  /** Saves a copy under this account, as an earlier launch would have. */
+  const save = (key: string, value: unknown) =>
+    AsyncStorage.setItem(
+      `taskbuddy.cache.v1.${ACCOUNT}.${key}`,
+      JSON.stringify({ v: 1, savedAt: Date.now(), value }),
+    );
+
+  it('shows the saved jobs at once, marked Updating… until the fresh list lands', async () => {
+    await save('ho-home-jobs', [SAVED_JOB]);
+    let landJobs!: (value: unknown) => void;
+    (api.myJobs as jest.Mock).mockReturnValue(new Promise((resolve) => { landJobs = resolve; }));
+    render(<HOHomeScreen onNavigate={jest.fn()} />);
+
+    expect(await screen.findByText('Plumbing: Fix toilet')).toBeTruthy();
+    expect(within(screen.getByTestId('stale-hint')).getByText('Updating…')).toBeTruthy();
+
+    await act(async () => landJobs([{ ...SAVED_JOB, title: 'Plumbing: Fix sink' }]));
+
+    expect(await screen.findByText('Plumbing: Fix sink')).toBeTruthy();
+    expect(screen.queryByTestId('stale-hint')).toBeNull();
+  });
+
+  it('a failed refresh keeps the saved jobs, says the saved data could not be refreshed, and Try again reads them again', async () => {
+    await save('ho-home-jobs', [SAVED_JOB]);
+    (api.myJobs as jest.Mock)
+      .mockRejectedValueOnce(new Error('Network request failed'))
+      .mockResolvedValue([SAVED_JOB]);
+    render(<HOHomeScreen onNavigate={jest.fn()} />);
+
+    const hint = await screen.findByTestId('stale-hint');
+    expect(within(hint).getByText("Showing saved data. Couldn't refresh.")).toBeTruthy();
+    expect(screen.getByText('Plumbing: Fix toilet')).toBeTruthy();
+    expect(screen.queryByText("Couldn't load your jobs")).toBeNull();
+
+    fireEvent.press(within(hint).getByRole('button', { name: 'Try again' }));
+
+    await waitFor(() => expect(screen.queryByTestId('stale-hint')).toBeNull());
+    expect(api.myJobs).toHaveBeenCalledTimes(2);
+    expect(screen.getByText('Plumbing: Fix toilet')).toBeTruthy();
   });
 });

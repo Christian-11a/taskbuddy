@@ -26,6 +26,7 @@ import JobRow from '../../../src/components/ui/JobRow';
 import EmptyCard from '../../../src/components/ui/EmptyCard';
 import EmptyRow from '../../../src/components/ui/EmptyRow';
 import LoadErrorCard from '../../../src/components/ui/LoadErrorCard';
+import StaleHint from '../../../src/components/ui/StaleHint';
 import ContentSkeleton from '../../../src/components/ui/ContentSkeleton';
 import { useHeaderTop } from '../../../src/hooks/useHeaderTop';
 import { useRetainedScroll, useRetainedState } from '../../../src/hooks/useRetainedState';
@@ -99,7 +100,10 @@ export default function SPMyJobsScreen({ onNavigate, headerRight }: SPMyJobsScre
 
   const loading = applications.loading || assigned.loading;
   const error = applications.error ?? assigned.error;
-  const settled = !loading && !error;
+  // The rows need both lists. With both on screen (saved or fetched) the rows stay up through a failed refresh,
+  // and the hint says the data is saved.
+  const hasData = applications.data !== null && assigned.data !== null;
+  const settled = !loading && hasData;
   const reload = () => {
     applications.reload();
     assigned.reload();
@@ -150,8 +154,14 @@ export default function SPMyJobsScreen({ onNavigate, headerRight }: SPMyJobsScre
         contentContainerStyle={styles.bodyContent}
         showsVerticalScrollIndicator={false}
       >
+        <StaleHint
+          stale={hasData && (applications.stale || assigned.stale)}
+          refreshing={applications.refreshing || assigned.refreshing}
+          error={hasData ? error : null}
+          onRetry={reload}
+        />
         {loading && <ContentSkeleton variant="list" />}
-        {!!error && !loading && (
+        {!!error && !loading && !hasData && (
           <LoadErrorCard title="Couldn't load your jobs" message={error} onRetry={reload} />
         )}
 

@@ -73,7 +73,7 @@ import Pulse from '../../../src/components/ui/Pulse';
 import FilterPill from '../../../src/components/ui/FilterPill';
 import SectionHeader from '../../../src/components/ui/SectionHeader';
 import JobRow from '../../../src/components/ui/JobRow';
-import Banner from '../../../src/components/ui/Banner';
+import StaleHint from '../../../src/components/ui/StaleHint';
 import EmptyCard from '../../../src/components/ui/EmptyCard';
 import EmptyRow from '../../../src/components/ui/EmptyRow';
 import LoadErrorCard from '../../../src/components/ui/LoadErrorCard';
@@ -276,7 +276,7 @@ export default function SPHomeScreen({ onNavigate, tourOffer }: SPHomeScreenProp
   }, []);
   const serviceKey = [providerProfile?.category_id, ...(providerProfile?.approved_secondary_services ?? []).map((service) => service.category_id).sort((a, b) => a - b)].join(':');
   const [urgency, setUrgency] = useRetainedState<FeedUrgency>('sp.feed.urgency', 'all');
-  const { data, reload: reloadFeed, error: feedError } = useAsyncData(async () => {
+  const { data, reload: reloadFeed, error: feedError, stale: feedStale, refreshing: feedFetching } = useAsyncData(async () => {
     const [feed, assigned] = await Promise.all([
       api.browseJobs({
         limit: 20,
@@ -503,9 +503,12 @@ export default function SPHomeScreen({ onNavigate, tourOffer }: SPHomeScreenProp
               {!!feedError && !data && (
                 <LoadErrorCard title="Couldn't load open jobs" message={feedError} onRetry={reloadFeed} />
               )}
-              {!!feedError && !!data && (
-                <Banner tone="error" message={feedError} actionLabel="Try again" onAction={reloadFeed} />
-              )}
+              <StaleHint
+                stale={feedStale}
+                refreshing={feedFetching}
+                error={feedError}
+                onRetry={reloadFeed}
+              />
 
               {data && availableJobs.length === 0 && (
                 <EmptyCard>

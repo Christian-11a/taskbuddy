@@ -19,6 +19,7 @@ import EmptyCard from '../../../src/components/ui/EmptyCard';
 import EmptyRow from '../../../src/components/ui/EmptyRow';
 import LoadErrorCard from '../../../src/components/ui/LoadErrorCard';
 import SectionHeader from '../../../src/components/ui/SectionHeader';
+import StaleHint from '../../../src/components/ui/StaleHint';
 import { CalendarDay, CalendarWeekdays } from '../../../src/components/ui/MonthGrid';
 import ScreenSkeleton from '../../../src/components/ScreenSkeleton';
 import { HOScreen } from '../../../src/types/navigation';
@@ -61,7 +62,14 @@ export default function HOCalendarScreen({ onNavigate, title = 'Calendar', heade
   const todayKey = dateKey(new Date());
   const [selectedDate, setSelectedDate] = useState<string>(todayKey);
   const [visibleMonth, setVisibleMonth] = useState<string>(todayKey);
-  const { data, loading, error, reload } = useAsyncData(() => api.myJobs(), [], 'ho-jobs', { persist: true });
+  const { data, loading, error, reload, stale, refreshing } = useAsyncData(
+    () => api.myJobs(),
+    [],
+    'ho-jobs',
+    { persist: true },
+  );
+  // A failed refresh with saved jobs keeps the jobs on screen; the hint says so. The error card is for no data.
+  const failedWithoutData = !!error && data === null;
   const jobs = useMemo(() => data ?? [], [data]);
   const proposals = useProposalCounts(jobs);
 
@@ -113,6 +121,7 @@ export default function HOCalendarScreen({ onNavigate, title = 'Calendar', heade
         contentContainerStyle={styles.bodyContent}
         showsVerticalScrollIndicator={false}
       >
+        <StaleHint stale={stale} refreshing={refreshing} error={error} onRetry={reload} />
         <View style={styles.calendarCard}>
           <View style={styles.monthRow}>
             <Text style={styles.monthTitle} accessibilityRole="header">{monthTitle(visibleMonth)}</Text>
@@ -157,7 +166,7 @@ export default function HOCalendarScreen({ onNavigate, title = 'Calendar', heade
 
         <View style={styles.dayHeader}>
           <Text style={styles.dayTitle} accessibilityRole="header">{dayHeading(selectedDate)}</Text>
-          {!error && (
+          {!failedWithoutData && (
             <View style={styles.dayMeta}>
               <Text style={styles.dayCount}>{plural(dayJobs.length, 'job')}</Text>
               {selectedDate !== todayKey && (
@@ -177,9 +186,9 @@ export default function HOCalendarScreen({ onNavigate, title = 'Calendar', heade
           )}
         </View>
 
-        {!!error && <LoadErrorCard title="Couldn't load your schedule" message={error} onRetry={reload} />}
+        {failedWithoutData && <LoadErrorCard title="Couldn't load your schedule" message={error} onRetry={reload} />}
 
-        {!error && dayJobs.length === 0 && (
+        {!failedWithoutData && dayJobs.length === 0 && (
           <EmptyCard>
             <EmptyRow
               icon={CalendarDays}
@@ -188,9 +197,9 @@ export default function HOCalendarScreen({ onNavigate, title = 'Calendar', heade
             />
           </EmptyCard>
         )}
-        {!error && dayJobs.length > 0 && <View style={styles.rows}>{dayJobs.map(renderJob)}</View>}
+        {!failedWithoutData && dayJobs.length > 0 && <View style={styles.rows}>{dayJobs.map(renderJob)}</View>}
 
-        {!error && unscheduled.length > 0 && (
+        {!failedWithoutData && unscheduled.length > 0 && (
           <>
             <View style={styles.notScheduled}>
               <SectionHeader title="Not scheduled yet" count={unscheduled.length} />

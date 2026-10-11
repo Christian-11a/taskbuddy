@@ -20,6 +20,7 @@ import EmptyCard from '../../../src/components/ui/EmptyCard';
 import EmptyRow from '../../../src/components/ui/EmptyRow';
 import LoadErrorCard from '../../../src/components/ui/LoadErrorCard';
 import SectionHeader from '../../../src/components/ui/SectionHeader';
+import StaleHint from '../../../src/components/ui/StaleHint';
 import { ArrowDownLeft, Building2, Shield, Wallet, WalletCards, type LucideIcon } from 'lucide-react-native';
 import { Spacing } from '../../../src/constants/theme';
 import { useHeaderTop } from '../../../src/hooks/useHeaderTop';
@@ -41,7 +42,7 @@ export default function SPWalletScreen({ onNavigate }: SPWalletScreenProps) {
   const { Colors, styles } = useThemedStyles(createThemedStyles);
   const headerTop = useHeaderTop();
   const { providerProfile } = useAuth();
-  const { data, loading, error, reload, savedOnly } = useAsyncData(
+  const { data, loading, error, reload, savedOnly, stale, refreshing } = useAsyncData(
     () => api.wallet(),
     [],
     'sp-wallet',
@@ -49,6 +50,8 @@ export default function SPWalletScreen({ onNavigate }: SPWalletScreenProps) {
   );
   // The balance on screen is the saved copy and no fetch has confirmed it: Withdraw waits.
   const awaitingFreshBalance = !!data && savedOnly;
+  // A failed refresh with a saved balance keeps the payouts on screen, so only a wallet with no data is a failure.
+  const walletFailed = !!error && !data;
   // Whether card payments can reach the provider's bank yet. Only a status that has loaded and says
   // payouts are off shows the notice: while it loads, or if it fails, nothing shows, and the wallet
   // does not wait for it.
@@ -133,6 +136,14 @@ export default function SPWalletScreen({ onNavigate }: SPWalletScreenProps) {
       </View>
 
       <ScrollView style={styles.body} contentContainerStyle={styles.bodyContent} showsVerticalScrollIndicator={false}>
+        <StaleHint
+          stale={stale}
+          refreshing={refreshing}
+          error={error}
+          onRetry={reload}
+          updatingLabel="Updating balance…"
+        />
+
         {/* Balance: the navy card, with the one Withdraw action. */}
         <View style={styles.balanceCard}>
           <Text style={styles.balanceLabel}>Available to withdraw</Text>
@@ -224,10 +235,7 @@ export default function SPWalletScreen({ onNavigate }: SPWalletScreenProps) {
           {!!error && !loading && !data && (
             <LoadErrorCard title="Couldn't load your wallet" message={error} onRetry={reload} />
           )}
-          {!!error && !loading && !!data && (
-            <Banner tone="error" message={error} actionLabel="Try again" onAction={reload} />
-          )}
-          {!loading && !error && transactions.length === 0 && (
+          {!loading && !walletFailed && transactions.length === 0 && (
             <EmptyCard>
               <EmptyRow
                 icon={WalletCards}
