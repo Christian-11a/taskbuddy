@@ -91,6 +91,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Spacing, V6Shadows } from '../../../src/constants/theme';
 import { useAuth } from '../../../src/context/AuthContext';
 import { useAsyncData } from '../../../src/hooks/useAsyncData';
+import { isList } from '../../../src/lib/savedShapes';
 import { SEVEN_DAYS_MS } from '../../../src/lib/persistentCache';
 import { useScreenBackHandler } from '../../../src/hooks/useLeaveGuard';
 import { api, type GeocodedAddress } from '../../../src/lib/api';
@@ -221,6 +222,7 @@ export default function HOCreateJobScreen({
   const categories = useAsyncData(() => api.categories(), [], 'categories', {
     persist: true,
     maxAgeMs: SEVEN_DAYS_MS,
+    validate: isList,
   });
   const insets = useSafeAreaInsets();
   const headerTop = insets.top + 28;

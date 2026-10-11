@@ -9,6 +9,7 @@ import {showToast} from '../../../../src/components/Toast';
 import {clearAsyncDataCache} from '../../../../src/hooks/useAsyncData';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {setCacheAccount} from '../../../../src/lib/persistentCache';
+import {expectSavedCopyIgnored} from '../../../../src/testing/savedCopy';
 import WithdrawModal from '../../../../src/components/WithdrawModal';
 jest.mock('../../../../src/lib/api', () => ({api:{wallet:jest.fn(),cancelWithdrawal:jest.fn(),connectStatus:jest.fn()}}));
 jest.mock('../../../../src/context/AuthContext', () => ({useAuth:() => ({providerProfile:{cached_completed_jobs:1}})}));
@@ -295,4 +296,10 @@ describe('SPWalletScreen — Cancel waits for a fresh balance', () => {
     await waitFor(() => expect(screen.getByRole('button', CANCEL)).toBeEnabled());
     expect(screen.queryByText(REASON)).toBeNull();
   });
+});
+
+it('a saved wallet of the wrong shape is ignored, and the screen loads as it does with nothing saved', async () => {
+  (api.wallet as jest.Mock).mockReturnValue(new Promise(() => {}));
+
+  await expectSavedCopyIgnored('sp-wallet', {}, () => render(<SPWalletScreen onNavigate={jest.fn()} />));
 });

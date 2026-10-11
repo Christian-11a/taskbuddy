@@ -42,6 +42,7 @@ import { useSlowLoad } from '../../../src/hooks/useSlowLoad';
 
 import { useAsyncData } from '../../../src/hooks/useAsyncData';
 import { api, MAX_CARD_PHP, MIN_TOPUP_PHP, type WalletTransaction } from '../../../src/lib/api';
+import { isWallet } from '../../../src/lib/savedShapes';
 import { openRedirectSession } from '../../../src/lib/appRedirectSession';
 import { peso, plural, shortDate } from '../../../src/lib/format';
 import {
@@ -121,7 +122,7 @@ export default function HOWalletScreen() {
     () => api.wallet(),
     [],
     'ho-wallet',
-    { persist: true },
+    { persist: true, validate: isWallet },
   );
   // A failed refresh with a saved balance keeps the history on screen, so only a wallet with no data is a failure.
   const walletFailed = !!error && !data;

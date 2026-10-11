@@ -1,4 +1,5 @@
 import { findUnnamedControls } from '../../../../src/testing/a11yAudit';
+import { expectSavedCopyIgnored } from '../../../../src/testing/savedCopy';
 import React from 'react';
 import {
   act,
@@ -322,4 +323,10 @@ it('every control has an accessible name: photo thumbnails, edit and remove', as
   await screen.findByText('Old caption');
 
   expect(findUnnamedControls(screen.UNSAFE_root)).toEqual([]);
+});
+
+it('a saved service list of the wrong shape is ignored, and the screen loads as it does with nothing saved', async () => {
+  (api.categories as jest.Mock).mockReturnValue(new Promise(() => {}));
+
+  await expectSavedCopyIgnored('categories', {}, () => render(<SPPortfolioScreen onBack={jest.fn()} />));
 });

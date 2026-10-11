@@ -31,6 +31,7 @@ import { useNotifications } from '../../../src/context/NotificationsContext';
 import { useAuth } from '../../../src/context/AuthContext';
 import { useRefreshOnForeground } from '../../../src/hooks/useRefreshOnForeground';
 import { useAsyncData } from '../../../src/hooks/useAsyncData';
+import { isList } from '../../../src/lib/savedShapes';
 import { SEVEN_DAYS_MS } from '../../../src/lib/persistentCache';
 import { api, type SkillRequest, type SkillRequestType } from '../../../src/lib/api';
 import { shortDate } from '../../../src/lib/format';
@@ -111,6 +112,7 @@ export default function SPSkillRequestScreen({ onBack }: SPSkillRequestScreenPro
   const categories = useAsyncData(() => api.categories(), [], 'categories', {
     persist: true,
     maxAgeMs: SEVEN_DAYS_MS,
+    validate: isList,
   });
   const { notifications } = useNotifications();
   const serviceNoticeKey = notifications.filter((notice) => notice.data?.request_id).map((notice) => notice.id).join(',');

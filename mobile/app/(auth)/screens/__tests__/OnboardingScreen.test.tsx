@@ -4,6 +4,7 @@ import { act, fireEvent, render, screen, waitFor } from '@testing-library/react-
 import OnboardingScreen from '../OnboardingScreen';
 import { api } from '../../../../src/lib/api';
 import { clearAsyncDataCache } from '../../../../src/hooks/useAsyncData';
+import { expectSavedCopyIgnored } from '../../../../src/testing/savedCopy';
 
 jest.mock('../../../../src/lib/api', () => ({
   api: { categories: jest.fn() },
@@ -202,4 +203,10 @@ describe('OnboardingScreen — layout', () => {
 
     expect(screen.getByText('Hi Juan, help is close by').props.textBreakStrategy).toBe('balanced');
   });
+});
+
+it('a saved service list of the wrong shape is ignored, and the screen loads as it does with nothing saved', async () => {
+  (api.categories as jest.Mock).mockReturnValue(new Promise(() => {}));
+
+  await expectSavedCopyIgnored('categories', {}, () => render(<OnboardingScreen role="homeowner" onFinish={jest.fn()} onLogin={jest.fn()} />));
 });

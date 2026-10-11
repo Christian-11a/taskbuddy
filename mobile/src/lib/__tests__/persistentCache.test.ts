@@ -153,8 +153,8 @@ describe('how old a saved value may be', () => {
     await writePersisted('ho-jobs', ['x']);
     clock = START + 2 * HOUR;
 
-    expect(await readPersisted('ho-jobs', HOUR)).toBeNull();
-    expect(await readPersisted('ho-jobs', 3 * HOUR)).not.toBeNull();
+    expect(await readPersisted('ho-jobs', { maxAgeMs: HOUR })).toBeNull();
+    expect(await readPersisted('ho-jobs', { maxAgeMs: 3 * HOUR })).not.toBeNull();
   });
 
   it('does not trust a save dated after now, such as after the clock was moved back', async () => {
@@ -382,5 +382,28 @@ describe('when storage fails', () => {
     await expect(writePersisted('ho-jobs', undefined)).resolves.toBeUndefined();
 
     expect(await cacheKeys()).toEqual([]);
+  });
+});
+
+describe('a saved copy the caller rejects as the wrong shape', () => {
+  const isList = (value: unknown) => Array.isArray(value);
+
+  it('is not returned, and is removed from the device along with its index line', async () => {
+    await writePersisted('ho-jobs', {});
+    await writePersisted('ho-wallet', { balance: 1 });
+
+    expect(await readPersisted('ho-jobs', { validate: isList })).toBeNull();
+
+    expect(await AsyncStorage.getItem(entryKey(ALICE, 'ho-jobs'))).toBeNull();
+    const index = JSON.parse((await AsyncStorage.getItem(indexKey(ALICE))) ?? '[]') as Array<{ key: string }>;
+    expect(index.map((entry) => entry.key)).toEqual(['ho-wallet']);
+    expect(await readPersisted('ho-jobs')).toBeNull();
+    expect(await readPersisted('ho-wallet')).not.toBeNull();
+  });
+
+  it('is returned as usual when the caller accepts its shape', async () => {
+    await writePersisted('ho-jobs', ['x']);
+
+    expect(await readPersisted('ho-jobs', { validate: isList })).toEqual({ value: ['x'], savedAt: START });
   });
 });

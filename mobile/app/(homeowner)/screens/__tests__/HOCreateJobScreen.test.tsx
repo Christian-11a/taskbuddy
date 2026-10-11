@@ -7,6 +7,7 @@ import HOCreateJobScreen from '../HOCreateJobScreen';
 import { api } from '../../../../src/lib/api';
 import { showToast } from '../../../../src/components/Toast';
 import { isBackBlockedByScreen } from '../../../../src/hooks/useLeaveGuard';
+import { expectSavedCopyIgnored } from '../../../../src/testing/savedCopy';
 
 jest.mock('../../../../src/lib/api', () => ({ api: {
   categories: jest.fn(), createJob: jest.fn(), uploadImage: jest.fn(),
@@ -625,4 +626,10 @@ describe('HOCreateJobScreen — back and exit', () => {
 
     expect(isBackBlockedByScreen()).toBe(false);
   });
+});
+
+it('a saved category list of the wrong shape is ignored, and the screen loads as it does with nothing saved', async () => {
+  (api.categories as jest.Mock).mockReturnValue(new Promise(() => {}));
+
+  await expectSavedCopyIgnored('categories', {}, () => render(<HOCreateJobScreen initialCategoryId={1} onBack={jest.fn()} onSuccess={jest.fn()} />));
 });

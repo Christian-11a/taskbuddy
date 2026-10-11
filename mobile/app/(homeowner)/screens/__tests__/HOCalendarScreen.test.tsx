@@ -5,6 +5,7 @@ import { act, fireEvent, render, screen, waitFor, within } from '@testing-librar
 import HOCalendarScreen from '../HOCalendarScreen';
 import { api, type Job } from '../../../../src/lib/api';
 import { clearAsyncDataCache } from '../../../../src/hooks/useAsyncData';
+import { expectSavedCopyIgnored } from '../../../../src/testing/savedCopy';
 import { dayHeading, monthTitle, shiftMonth } from '../../../../src/lib/jobCalendar';
 import { dateKey } from '../../../../src/lib/localDate';
 import { lightPalette } from '../../../../src/constants/palettes';
@@ -276,4 +277,10 @@ it('every control has an accessible name: the month chevrons, the day cells and 
   await screen.findByText(dayHeading(todayKey));
 
   expect(findUnnamedControls(screen.UNSAFE_root)).toEqual([]);
+});
+
+it('a saved job list of the wrong shape is ignored, and the screen loads as it does with nothing saved', async () => {
+  (api.myJobs as jest.Mock).mockReturnValue(new Promise(() => {}));
+
+  await expectSavedCopyIgnored('ho-jobs', {}, () => render(<HOCalendarScreen onNavigate={jest.fn()} />));
 });

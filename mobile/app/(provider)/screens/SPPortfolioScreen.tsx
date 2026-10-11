@@ -17,6 +17,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { ArrowLeft, Check, ImagePlus } from 'lucide-react-native';
 import { api, type PortfolioEntry } from '../../../src/lib/api';
 import { useAsyncData } from '../../../src/hooks/useAsyncData';
+import { isList } from '../../../src/lib/savedShapes';
 import { SEVEN_DAYS_MS } from '../../../src/lib/persistentCache';
 import { useRefreshOnForeground } from '../../../src/hooks/useRefreshOnForeground';
 import { requestAppPermission } from '../../../src/lib/permissions';
@@ -94,6 +95,7 @@ export default function SPPortfolioScreen({ onBack }: { onBack: () => void }) {
   const categories = useAsyncData(() => api.categories(), [], 'categories', {
     persist: true,
     maxAgeMs: SEVEN_DAYS_MS,
+    validate: isList,
   });
   useRefreshOnForeground(portfolio.reload, true);
   const [uri, setUri] = useState<string | null>(null);

@@ -12,6 +12,7 @@ import SPSkillRequestScreen, {
 import { api } from '../../../../src/lib/api';
 import { useAuth } from '../../../../src/context/AuthContext';
 import { showToast } from '../../../../src/components/Toast';
+import { expectSavedCopyIgnored } from '../../../../src/testing/savedCopy';
 
 jest.mock('../../../../src/lib/api', () => ({
   api: {
@@ -265,4 +266,10 @@ it('shows a pending request as under review, hides the form, and can cancel it',
   const cancelButtons = screen.getAllByRole('button', { name: 'Cancel request' });
   await act(async () => fireEvent.press(cancelButtons[cancelButtons.length - 1]));
   expect(api.cancelSkillRequest).toHaveBeenCalledWith('r1');
+});
+
+it('a saved service list of the wrong shape is ignored, and the screen loads as it does with nothing saved', async () => {
+  (api.categories as jest.Mock).mockReturnValue(new Promise(() => {}));
+
+  await expectSavedCopyIgnored('categories', {}, () => render(<SPSkillRequestScreen onBack={jest.fn()} />));
 });

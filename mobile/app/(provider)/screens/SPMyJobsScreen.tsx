@@ -32,6 +32,7 @@ import ContentSkeleton from '../../../src/components/ui/ContentSkeleton';
 import { useHeaderTop } from '../../../src/hooks/useHeaderTop';
 import { useRetainedScroll, useRetainedState } from '../../../src/hooks/useRetainedState';
 import { useAsyncData } from '../../../src/hooks/useAsyncData';
+import { isList } from '../../../src/lib/savedShapes';
 import { useSlowLoad } from '../../../src/hooks/useSlowLoad';
 import { api } from '../../../src/lib/api';
 import { peso } from '../../../src/lib/format';
@@ -96,9 +97,9 @@ export default function SPMyJobsScreen({ onNavigate, headerRight }: SPMyJobsScre
     () => api.myApplications() as Promise<MyWorkApplication[]>,
     [],
     'sp-applications',
-    { persist: true },
+    { persist: true, validate: isList },
   );
-  const assigned = useAsyncData(() => api.assignedJobs(), [], 'sp-assigned', { persist: true });
+  const assigned = useAsyncData(() => api.assignedJobs(), [], 'sp-assigned', { persist: true, validate: isList });
 
   const loading = applications.loading || assigned.loading;
   const error = applications.error ?? assigned.error;

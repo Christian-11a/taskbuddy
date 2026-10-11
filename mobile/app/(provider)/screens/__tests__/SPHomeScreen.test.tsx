@@ -5,6 +5,8 @@ import SPHomeScreen from '../SPHomeScreen';
 import { api } from '../../../../src/lib/api';
 import { useAuth } from '../../../../src/context/AuthContext';
 import { clearAsyncDataCache } from '../../../../src/hooks/useAsyncData';
+import { clearRetainedState } from '../../../../src/hooks/useRetainedState';
+import { expectSavedCopyIgnored } from '../../../../src/testing/savedCopy';
 import { lightPalette } from '../../../../src/constants/palettes';
 import { findUnnamedControls } from '../../../../src/testing/a11yAudit';
 import KeyboardAwareScrollView from '../../../../src/components/ui/KeyboardAwareScrollView';
@@ -536,5 +538,32 @@ describe('SPHomeScreen — the feed search stays above the keyboard', () => {
 
     // The search box is 500 dp into a 400 dp view. Its bottom plus the 24 dp margin (572) is 172 past the view.
     expect(scrollTo).toHaveBeenCalledWith({ y: 172, animated: true });
+  });
+});
+
+describe('SPHomeScreen — saved copies of the wrong shape', () => {
+  // A provider with an id, so the feed's saved key is known: the profile, the service and radius the feed was
+  // loaded for (no service here, so it is empty), the coordinates (none), and the urgency filter ('all').
+  const FEED_KEY = 'sp-feed-sp-sam--null-null-25-all';
+
+  beforeEach(() => {
+    clearRetainedState();
+    (useAuth as jest.Mock).mockReturnValue({
+      profile: { id: 'sp-sam', full_name: 'Sam Reyes', city: 'Cebu', latitude: null, longitude: null },
+      providerProfile: { is_available: true, service_radius_km: 25 },
+      isVerified: true,
+      refreshProfile: jest.fn(),
+    });
+    (api.browseJobs as jest.Mock).mockReturnValue(new Promise(() => {}));
+    (api.assignedJobs as jest.Mock).mockReturnValue(new Promise(() => {}));
+    (api.myApplications as jest.Mock).mockReturnValue(new Promise(() => {}));
+  });
+
+  it('a saved feed of the wrong shape is ignored, and the screen loads as it does with nothing saved', async () => {
+    await expectSavedCopyIgnored(FEED_KEY, {}, () => render(<SPHomeScreen onNavigate={jest.fn()} />));
+  });
+
+  it('a saved application list of the wrong shape is ignored, and the screen loads as it does with nothing saved', async () => {
+    await expectSavedCopyIgnored('sp-applications', {}, () => render(<SPHomeScreen onNavigate={jest.fn()} />));
   });
 });

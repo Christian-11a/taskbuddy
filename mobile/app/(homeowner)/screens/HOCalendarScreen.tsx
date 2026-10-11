@@ -25,6 +25,7 @@ import ScreenSkeleton from '../../../src/components/ScreenSkeleton';
 import { HOScreen } from '../../../src/types/navigation';
 import { useAsyncData } from '../../../src/hooks/useAsyncData';
 import { useHeaderTop } from '../../../src/hooks/useHeaderTop';
+import { isList } from '../../../src/lib/savedShapes';
 import { useProposalCounts } from '../../../src/hooks/useProposalCounts';
 import { api, type Job } from '../../../src/lib/api';
 import { peso, plural } from '../../../src/lib/format';
@@ -66,7 +67,7 @@ export default function HOCalendarScreen({ onNavigate, title = 'Calendar', heade
     () => api.myJobs(),
     [],
     'ho-jobs',
-    { persist: true },
+    { persist: true, validate: isList },
   );
   // A failed refresh with saved jobs keeps the jobs on screen; the hint says so. The error card is for no data.
   const failedWithoutData = !!error && data === null;

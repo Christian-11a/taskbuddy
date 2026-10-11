@@ -28,6 +28,7 @@ import { useHeaderTop } from '../../../src/hooks/useHeaderTop';
 
 import { useAuth } from '../../../src/context/AuthContext';
 import { useAsyncData } from '../../../src/hooks/useAsyncData';
+import { isWallet } from '../../../src/lib/savedShapes';
 import { useSlowLoad } from '../../../src/hooks/useSlowLoad';
 import { api, type WalletTransaction } from '../../../src/lib/api';
 import { peso, plural, shortDate } from '../../../src/lib/format';
@@ -48,7 +49,7 @@ export default function SPWalletScreen({ onNavigate }: SPWalletScreenProps) {
     () => api.wallet(),
     [],
     'sp-wallet',
-    { persist: true },
+    { persist: true, validate: isWallet },
   );
   // The balance on screen is the saved copy and no fetch has confirmed it: Withdraw waits.
   const awaitingFreshBalance = !!data && savedOnly;

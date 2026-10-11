@@ -10,6 +10,7 @@ import { openRedirectSession } from '../../../../src/lib/appRedirectSession';
 import { lightPalette } from '../../../../src/constants/palettes';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { setCacheAccount } from '../../../../src/lib/persistentCache';
+import { expectSavedCopyIgnored } from '../../../../src/testing/savedCopy';
 
 /** The popup that is open right now: each SheetFrame renders its own Modal, and only one is visible. */
 const visibleModal = () => screen.UNSAFE_getAllByType(Modal).find((modal) => modal.props.visible === true);
@@ -1064,4 +1065,10 @@ describe('HOWalletScreen — every control has an accessible name', () => {
     await screen.findByText('₱8,397.00');
     expect(findUnnamedControls(screen.UNSAFE_root)).toEqual([]);
   });
+});
+
+it('a saved wallet of the wrong shape is ignored, and the screen loads as it does with nothing saved', async () => {
+  (api.wallet as jest.Mock).mockReturnValue(new Promise(() => {}));
+
+  await expectSavedCopyIgnored('ho-wallet', {}, () => render(<HOWalletScreen />));
 });

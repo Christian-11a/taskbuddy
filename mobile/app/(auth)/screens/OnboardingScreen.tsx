@@ -23,6 +23,7 @@ import {
 import Tap from '../../../src/components/ui/Tap';
 import IntroIllustration, { type IllustrationKind } from '../../../src/components/onboarding/IntroIllustrations';
 import { useAsyncData } from '../../../src/hooks/useAsyncData';
+import { isList } from '../../../src/lib/savedShapes';
 import { SEVEN_DAYS_MS } from '../../../src/lib/persistentCache';
 import { useAuthLayout } from '../../../src/hooks/useAuthLayout';
 import { api, type Category } from '../../../src/lib/api';
@@ -70,7 +71,7 @@ export default function OnboardingScreen({ role, firstName, replay = false, onFi
     () => (isClient ? api.categories() : Promise.resolve<Category[]>([])),
     [welcomeRole],
     isClient ? 'categories' : `onboarding-services-${welcomeRole}`,
-    isClient ? { persist: true, maxAgeMs: SEVEN_DAYS_MS } : undefined,
+    isClient ? { persist: true, maxAgeMs: SEVEN_DAYS_MS, validate: isList } : undefined,
   );
   const services = categories.data ?? [];
 

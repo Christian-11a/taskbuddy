@@ -33,6 +33,7 @@ import ScreenSkeleton from '../../../src/components/ScreenSkeleton';
 import { HOScreen } from '../../../src/types/navigation';
 import { useAsyncData } from '../../../src/hooks/useAsyncData';
 import { useRetainedScroll, useRetainedState } from '../../../src/hooks/useRetainedState';
+import { isList } from '../../../src/lib/savedShapes';
 import { useSlowLoad } from '../../../src/hooks/useSlowLoad';
 import { useHeaderTop } from '../../../src/hooks/useHeaderTop';
 import { useProposalCountsStatus } from '../../../src/hooks/useProposalCounts';
@@ -72,7 +73,7 @@ export default function MyJobs({ onNavigate, headerRight }: MyJobsProps) {
     () => api.myJobs(),
     [],
     'ho-jobs',
-    { persist: true },
+    { persist: true, validate: isList },
   );
   const [refreshing, setRefreshing] = useState(false);
   // useAsyncData's reload() is fire-and-forget; a new `data` or `error` means the fetch settled.

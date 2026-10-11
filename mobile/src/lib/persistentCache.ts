@@ -205,18 +205,30 @@ export async function writePersisted(key: string, value: unknown): Promise<void>
   }
 }
 
+/** How a saved copy is read: how old it may be, and the shape the caller needs from it. */
+export interface PersistedReadOptions {
+  /** A copy older than this is not returned. Defaults to 24 hours. */
+  maxAgeMs?: number;
+  /**
+   * The caller's check on the saved value. A copy that fails it is not returned, and it is removed from the
+   * device, so no later read meets it again.
+   */
+  validate?: (value: unknown) => boolean;
+}
+
 /**
  * The value saved for the active account under `key`, with when it was saved. Null when no account is
  * set, nothing is saved, the copy is older than `maxAgeMs`, it was saved under another schema version,
  * it is unreadable, or storage fails. A copy dated after now (the clock was moved back) is not trusted
- * either. Never throws.
+ * either. A copy whose value fails `validate` is removed and treated as nothing saved. Never throws.
  */
 export async function readPersisted<T>(
   key: string,
-  maxAgeMs: number = DEFAULT_MAX_AGE_MS,
+  options: PersistedReadOptions = {},
 ): Promise<SavedValue<T> | null> {
   const profileId = activeAccount;
   if (!profileId || !isPersistable(key)) return null;
+  const maxAgeMs = options.maxAgeMs ?? DEFAULT_MAX_AGE_MS;
   try {
     const raw = await AsyncStorage.getItem(entryKeyFor(profileId, key));
     if (raw === null) return null;
@@ -224,6 +236,11 @@ export async function readPersisted<T>(
     if (!isEnvelope(envelope)) return null;
     const age = Date.now() - envelope.savedAt;
     if (age < 0 || age > maxAgeMs) return null;
+    if (options.validate && !options.validate(envelope.value)) {
+      // Removed through the same queue as saves, so it cannot interleave with another index update.
+      await runInStorageOrder(() => dropEntry(profileId, key));
+      return null;
+    }
     return { value: envelope.value as T, savedAt: envelope.savedAt };
   } catch {
     return null;

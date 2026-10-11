@@ -49,6 +49,7 @@ import { useTourAnchor } from '../../../src/components/tour';
 import TourOfferCard from '../../../src/components/tour/TourOfferCard';
 import { useAsyncData } from '../../../src/hooks/useAsyncData';
 import { api } from '../../../src/lib/api';
+import { isFeed, isList } from '../../../src/lib/savedShapes';
 import { peso } from '../../../src/lib/format';
 import {
   appliedJobIds,
@@ -291,7 +292,7 @@ export default function SPHomeScreen({ onNavigate, tourOffer }: SPHomeScreenProp
     ]);
     // `loaded` is the urgency the server filtered by, which the pill counts need.
     return { jobs: feed.jobs, summary: feed.summary, assigned, loaded: urgency };
-  }, [profile?.latitude, profile?.longitude, radiusKm, urgency, serviceKey], `sp-feed-${profile?.id}-${serviceKey}-${profile?.latitude}-${profile?.longitude}-${radiusKm}-${urgency}`, { persist: true });
+  }, [profile?.latitude, profile?.longitude, radiusKm, urgency, serviceKey], `sp-feed-${profile?.id}-${serviceKey}-${profile?.latitude}-${profile?.longitude}-${radiusKm}-${urgency}`, { persist: true, validate: isFeed });
 
   const feedSlow = useSlowLoad(feedLoading, data !== null);
 
@@ -309,7 +310,7 @@ export default function SPHomeScreen({ onNavigate, tourOffer }: SPHomeScreenProp
 
   // Pending applications only label feed rows "Applied · waiting". The feed
   // never waits for this lookup, and a failed one leaves every row unlabelled.
-  const { data: applications } = useAsyncData(async () => api.myApplications(), [], 'sp-applications', { persist: true });
+  const { data: applications } = useAsyncData(async () => api.myApplications(), [], 'sp-applications', { persist: true, validate: isList });
   const applied = appliedJobIds(applications);
 
   const [available, setAvailable] = useState(providerProfile?.is_available ?? true);

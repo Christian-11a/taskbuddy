@@ -9,6 +9,7 @@ import { findUnnamedControls } from '../../../../src/testing/a11yAudit';
 import { clearAsyncDataCache } from '../../../../src/hooks/useAsyncData';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { setCacheAccount } from '../../../../src/lib/persistentCache';
+import { expectSavedCopyIgnored } from '../../../../src/testing/savedCopy';
 
 jest.mock('../../../../src/context/NotificationsContext', () => ({
   useNotifications: () => ({ notifications: [], unreadCount: 0, loading: false, error: null, reload: jest.fn() }),
@@ -631,5 +632,26 @@ describe('HOHomeScreen — a slow first load says the server is waking up', () =
       jest.advanceTimersByTime(1);
     });
     expect(screen.getByText(WAKING)).toBeTruthy();
+  });
+});
+
+describe('HOHomeScreen — saved copies of the wrong shape', () => {
+  // Every lookup stays pending, so only a saved copy could draw anything on the screen.
+  beforeEach(() => {
+    (api.wallet as jest.Mock).mockReturnValue(new Promise(() => {}));
+    (api.myJobs as jest.Mock).mockReturnValue(new Promise(() => {}));
+    (api.categories as jest.Mock).mockReturnValue(new Promise(() => {}));
+  });
+
+  it('a saved wallet of the wrong shape is ignored, and the screen loads as it does with nothing saved', async () => {
+    await expectSavedCopyIgnored('ho-home-wallet', {}, () => render(<HOHomeScreen onNavigate={jest.fn()} />));
+  });
+
+  it('a saved job list of the wrong shape is ignored, and the screen loads as it does with nothing saved', async () => {
+    await expectSavedCopyIgnored('ho-home-jobs', {}, () => render(<HOHomeScreen onNavigate={jest.fn()} />));
+  });
+
+  it('a saved service list of the wrong shape is ignored, and the screen loads as it does with nothing saved', async () => {
+    await expectSavedCopyIgnored('categories', {}, () => render(<HOHomeScreen onNavigate={jest.fn()} />));
   });
 });

@@ -13,6 +13,7 @@ import MyJobs from '../HOMyJobs';
 import { api, type Job, type JobApplication } from '../../../../src/lib/api';
 import { clearAsyncDataCache } from '../../../../src/hooks/useAsyncData';
 import { clearRetainedState } from '../../../../src/hooks/useRetainedState';
+import { expectSavedCopyIgnored } from '../../../../src/testing/savedCopy';
 import ViewSwitch from '../../../../src/components/ui/ViewSwitch';
 
 jest.mock('../../../../src/context/AuthContext', () => ({
@@ -308,4 +309,10 @@ it('every control has an accessible name: the filters, the title row switch and 
   await screen.findByText('Cleaning: Window cleaning');
 
   expect(findUnnamedControls(screen.UNSAFE_root)).toEqual([]);
+});
+
+it('a saved copy of the wrong shape is ignored, and the screen loads as it does with nothing saved', async () => {
+  (api.myJobs as jest.Mock).mockReturnValue(new Promise(() => {}));
+
+  await expectSavedCopyIgnored('ho-jobs', {}, () => render(<MyJobs onNavigate={jest.fn()} />));
 });

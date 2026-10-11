@@ -37,6 +37,11 @@ export interface AsyncDataOptions {
   persist?: boolean;
   /** A saved result older than this is not shown. Defaults to 24 hours. */
   maxAgeMs?: number;
+  /**
+   * The shape a saved result must have to be shown (see savedShapes.ts). A saved copy that fails it is
+   * removed and the screen loads as it would with nothing saved, so a malformed copy never reaches a render.
+   */
+  validate?: (value: unknown) => boolean;
 }
 
 /**
@@ -128,6 +133,7 @@ export function useAsyncData<T>(
 ): AsyncState<T> {
   const persist = options?.persist === true;
   const maxAgeMs = options?.maxAgeMs;
+  const validate = options?.validate;
   const [state, setState] = useState<Core<T>>(() => {
     const cached = cacheKey && cache.has(cacheKey) ? (cache.get(cacheKey) as T) : null;
     return {
@@ -159,7 +165,7 @@ export function useAsyncData<T>(
     // Read once per run. Resolves to null when nothing usable is saved, or when the read fails.
     const savedRead: Promise<SavedValue<T> | null> | null =
       savedKey && !hadMemory
-        ? readPersisted<T>(savedKey, maxAgeMs).catch(() => null)
+        ? readPersisted<T>(savedKey, { maxAgeMs, validate }).catch(() => null)
         : null;
 
     const showSaved = (saved: SavedValue<T> | null) => {

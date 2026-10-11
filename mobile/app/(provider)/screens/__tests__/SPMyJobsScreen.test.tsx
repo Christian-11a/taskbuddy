@@ -6,6 +6,7 @@ import SPMyJobsScreen from '../SPMyJobsScreen';
 import { api } from '../../../../src/lib/api';
 import { clearAsyncDataCache } from '../../../../src/hooks/useAsyncData';
 import { clearRetainedState } from '../../../../src/hooks/useRetainedState';
+import { expectSavedCopyIgnored } from '../../../../src/testing/savedCopy';
 
 jest.mock('../../../../src/lib/api', () => ({
   api: {
@@ -292,4 +293,18 @@ describe('SPMyJobsScreen — every control has an accessible name', () => {
     await screen.findByText('No jobs yet');
     expect(findUnnamedControls(screen.UNSAFE_root)).toEqual([]);
   });
+});
+
+it('a saved application list of the wrong shape is ignored, and the screen loads as it does with nothing saved', async () => {
+  (api.myApplications as jest.Mock).mockReturnValue(new Promise(() => {}));
+  (api.assignedJobs as jest.Mock).mockReturnValue(new Promise(() => {}));
+
+  await expectSavedCopyIgnored('sp-applications', {}, () => render(<SPMyJobsScreen onNavigate={jest.fn()} />));
+});
+
+it('a saved assigned list of the wrong shape is ignored, and the screen loads as it does with nothing saved', async () => {
+  (api.myApplications as jest.Mock).mockReturnValue(new Promise(() => {}));
+  (api.assignedJobs as jest.Mock).mockReturnValue(new Promise(() => {}));
+
+  await expectSavedCopyIgnored('sp-assigned', {}, () => render(<SPMyJobsScreen onNavigate={jest.fn()} />));
 });

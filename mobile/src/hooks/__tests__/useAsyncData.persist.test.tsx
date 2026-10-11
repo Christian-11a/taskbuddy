@@ -504,3 +504,29 @@ describe('without persist', () => {
     expect(screen.getByText('refreshing:false')).toBeTruthy();
   });
 });
+
+describe('with a validator for the saved copy', () => {
+  const isText = (value: unknown) => typeof value === 'string';
+  const neverFetches = () => new Promise<string>(() => {});
+
+  it('a saved copy the validator rejects is never shown, is removed, and the screen loads as with nothing saved', async () => {
+    await seed('ho-jobs', { not: 'a string' });
+    render(<Probe cacheKey="ho-jobs" fetcher={neverFetches} options={{ persist: true, validate: isText }} />);
+
+    await settle();
+
+    expect(screen.getByText('nothing yet')).toBeTruthy();
+    expect(screen.getByText('loading:true')).toBeTruthy();
+    expect(screen.getByText('stale:false')).toBeTruthy();
+    expect(screen.getByText('savedOnly:false')).toBeTruthy();
+    expect(await AsyncStorage.getItem(`taskbuddy.cache.v1.${ACCOUNT}.ho-jobs`)).toBeNull();
+  });
+
+  it('a saved copy the validator accepts is shown at once, as before', async () => {
+    await seed('ho-jobs', 'saved jobs');
+    render(<Probe cacheKey="ho-jobs" fetcher={neverFetches} options={{ persist: true, validate: isText }} />);
+
+    expect(await screen.findByText('saved jobs')).toBeTruthy();
+    expect(screen.getByText('savedOnly:true')).toBeTruthy();
+  });
+});

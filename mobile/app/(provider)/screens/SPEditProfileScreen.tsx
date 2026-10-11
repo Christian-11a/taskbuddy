@@ -39,6 +39,7 @@ import { useLeaveGuard } from '../../../src/hooks/useLeaveGuard';
 
 import { useAuth } from '../../../src/context/AuthContext';
 import { useAsyncData } from '../../../src/hooks/useAsyncData';
+import { isList } from '../../../src/lib/savedShapes';
 import { SEVEN_DAYS_MS } from '../../../src/lib/persistentCache';
 import { api, type GeocodedAddress } from '../../../src/lib/api';
 import { changedFields, leaveMessageFor } from '../../../src/lib/editProfileChanges';
@@ -71,6 +72,7 @@ export default function SPEditProfileScreen({ onBack, onSave, onManageServices }
   const categories = useAsyncData(() => api.categories(), [], 'categories', {
     persist: true,
     maxAgeMs: SEVEN_DAYS_MS,
+    validate: isList,
   });
 
   // What the screen loaded. Anything that differs from it is unsaved.
