@@ -52,6 +52,8 @@ export default function SPWalletScreen({ onNavigate }: SPWalletScreenProps) {
   );
   // The balance on screen is the saved copy and no fetch has confirmed it: Withdraw waits.
   const awaitingFreshBalance = !!data && savedOnly;
+  // Cancelling a pending withdrawal waits on the same freshness: a saved copy, or one a failed refresh left, is not acted on.
+  const cancelWaits = !!data && (savedOnly || stale);
   // A failed refresh with a saved balance keeps the payouts on screen, so only a wallet with no data is a failure.
   const walletFailed = !!error && !data;
   const walletSlow = useSlowLoad(loading, data !== null);
@@ -80,6 +82,7 @@ export default function SPWalletScreen({ onNavigate }: SPWalletScreenProps) {
   const groups = groupWalletByDay(transactions, new Date());
 
   const cancelWithdrawal = async (id: string) => {
+    if (cancelWaits) return;
     if (cancelInFlight.current) {
       showToast("We're already cancelling this withdrawal. Please wait.", 'info');
       return;
@@ -193,17 +196,20 @@ export default function SPWalletScreen({ onNavigate }: SPWalletScreenProps) {
                 </View>
                 <Tap
                   onPress={() => cancelWithdrawal(w.id)}
+                  // Off, not hidden, while the balance is not confirmed: the reason is said under the rows.
+                  disabled={cancelWaits}
                   hitSlop={{ top: 12, bottom: 12, left: 8, right: 8 }}
                   accessibilityRole="button"
                   accessibilityLabel={`Cancel withdrawal of ${peso(w.amount)}`}
                   accessibilityState={{ busy: cancelling === w.id }}
                 >
-                  <Text style={styles.pendingCancel}>
+                  <Text style={[styles.pendingCancel, cancelWaits && styles.pendingCancelWaiting]}>
                     {cancelling === w.id ? 'Cancelling…' : 'Cancel'}
                   </Text>
                 </Tap>
               </View>
             ))}
+            {cancelWaits && <Text style={styles.pendingHold}>Updating… try again in a moment</Text>}
           </View>
         )}
 
@@ -342,6 +348,8 @@ function createThemedStyles(theme: ThemePalette) {
     pendingAmount: { color: C.ink900, fontSize: 15, fontWeight: '700', fontFamily: 'Inter' },
     pendingDate: { color: V6Colors.warningText, fontSize: 11.5, fontFamily: 'Inter', marginTop: 1 },
     pendingCancel: { color: V6Colors.warningText, fontSize: 13.5, fontWeight: '700', fontFamily: 'Inter' },
+    pendingCancelWaiting: { color: C.ink500 },
+    pendingHold: { color: V6Colors.warningText, fontSize: 12, fontFamily: 'Inter', lineHeight: 16, marginTop: 6 },
 
     // On hold and Earned so far: two equal tiles.
     tiles: { flexDirection: 'row', gap: 10 },

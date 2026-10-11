@@ -235,3 +235,64 @@ describe('SPWalletScreen — Withdraw waits for a fresh balance', () => {
     expect(lastWithdrawProps()).toMatchObject({ visible: true, available: 300 });
   });
 });
+
+describe('SPWalletScreen — Cancel waits for a fresh balance', () => {
+  const ACCOUNT = 'acct-sam';
+  const CANCEL = { name: 'Cancel withdrawal of ₱350.00' };
+  const REASON = 'Updating… try again in a moment';
+
+  beforeEach(async () => {
+    jest.clearAllMocks();
+    clearAsyncDataCache();
+    await AsyncStorage.clear();
+    setCacheAccount(ACCOUNT);
+    (api.connectStatus as jest.Mock).mockResolvedValue(stripe(true));
+  });
+
+  afterEach(() => {
+    setCacheAccount(null);
+  });
+
+  it('keeps Cancel off on a saved balance, says why, and turns it on once a fresh balance lands', async () => {
+    await AsyncStorage.setItem(
+      `taskbuddy.cache.v1.${ACCOUNT}.sp-wallet`,
+      JSON.stringify({ v: 1, savedAt: Date.now(), value: wallet([transaction('pending-request', 'pending')]) }),
+    );
+    let landFresh!: (value: unknown) => void;
+    (api.wallet as jest.Mock).mockReturnValue(new Promise((resolve) => { landFresh = resolve; }));
+    render(<SPWalletScreen onNavigate={jest.fn()} />);
+
+    expect(await screen.findByText('₱300.00')).toBeTruthy();
+    expect(screen.getByRole('button', CANCEL)).toBeDisabled();
+    expect(screen.getByText(REASON)).toBeTruthy();
+    fireEvent.press(screen.getByRole('button', CANCEL));
+    expect(api.cancelWithdrawal).not.toHaveBeenCalled();
+
+    await act(async () => landFresh(wallet([transaction('pending-request', 'pending')])));
+
+    await waitFor(() => expect(screen.getByRole('button', CANCEL)).toBeEnabled());
+    expect(screen.queryByText(REASON)).toBeNull();
+  });
+
+  it('turns Cancel off again when a refresh fails after the balance was confirmed, until Try again lands', async () => {
+    (api.wallet as jest.Mock)
+      .mockResolvedValueOnce(wallet([transaction('pending-request', 'pending')]))
+      .mockRejectedValueOnce(new Error('Wallet unavailable'))
+      .mockResolvedValueOnce(wallet([transaction('pending-request', 'pending')]));
+    (api.cancelWithdrawal as jest.Mock).mockResolvedValue({});
+    render(<SPWalletScreen onNavigate={jest.fn()} />);
+    await screen.findByText('Transaction: pending-request');
+
+    // Cancelling reloads the wallet, and that reload fails.
+    await act(async () => fireEvent.press(screen.getByRole('button', CANCEL)));
+
+    expect(await screen.findByText("Showing saved data. Couldn't refresh.")).toBeTruthy();
+    expect(screen.getByRole('button', CANCEL)).toBeDisabled();
+    expect(screen.getByText(REASON)).toBeTruthy();
+
+    await act(async () => fireEvent.press(screen.getByRole('button', { name: 'Try again' })));
+
+    await waitFor(() => expect(screen.getByRole('button', CANCEL)).toBeEnabled());
+    expect(screen.queryByText(REASON)).toBeNull();
+  });
+});
