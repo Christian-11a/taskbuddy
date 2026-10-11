@@ -34,6 +34,7 @@ import { CircleAlert, Clock, type LucideIcon } from 'lucide-react-native';
 import SheetFrame from './ui/SheetFrame';
 import Tap from './ui/Tap';
 import TextField from './ui/TextField';
+import { useRevealOnFocus } from './ui/KeyboardAwareScrollView';
 import { showToast } from './Toast';
 import { api } from '../lib/api';
 import { peso } from '../lib/format';
@@ -223,12 +224,15 @@ export function MoneyAmountField({
   const [touched, setTouched] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const shownError = error && (touched || submitted) ? error : undefined;
+  const inputRef = useRef<TextInput>(null);
+  const revealField = useRevealOnFocus(inputRef);
 
   return (
     <View style={styles.amountWrap}>
       <View style={[styles.amountBox, focused && styles.boxFocused, !!shownError && styles.boxError]}>
         <Text style={styles.currency}>₱</Text>
         <TextInput
+          ref={inputRef}
           keyboardAppearance={appearance}
           style={[styles.amountInput, { fontSize: amountFontSize(value) }]}
           value={value}
@@ -241,7 +245,10 @@ export function MoneyAmountField({
           autoFocus={autoFocus}
           accessibilityLabel={accessibilityLabel}
           accessibilityHint={shownError}
-          onFocus={() => setFocused(true)}
+          onFocus={() => {
+            setFocused(true);
+            revealField();
+          }}
           onBlur={() => {
             setFocused(false);
             setTouched(true);

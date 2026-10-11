@@ -1,8 +1,9 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { StyleSheet, Text, TextInput, View } from 'react-native';
 import { Plus } from 'lucide-react-native';
 import { useThemedStyles, type Palette } from '../../context/ThemeContext';
 import Tap from '../ui/Tap';
+import { useRevealOnFocus } from '../ui/KeyboardAwareScrollView';
 
 export type AddTaskRowProps = {
   value: string;
@@ -16,11 +17,14 @@ export type AddTaskRowProps = {
 export default function AddTaskRow({ value, onChangeText, onSubmit, maxLength = 120 }: AddTaskRowProps) {
   const { s, c, appearance } = useThemedStyles(createStyles);
   const [focused, setFocused] = useState(false);
+  const inputRef = useRef<TextInput>(null);
+  const revealField = useRevealOnFocus(inputRef);
   const ready = value.trim().length > 0;
   return (
     <View style={[s.row, focused && s.rowFocused]}>
       <Plus size={18} color={c.link} />
       <TextInput
+        ref={inputRef}
         keyboardAppearance={appearance}
         style={s.input}
         placeholder="Add your own task"
@@ -28,7 +32,10 @@ export default function AddTaskRow({ value, onChangeText, onSubmit, maxLength = 
         accessibilityLabel="Add your own task"
         value={value}
         onChangeText={onChangeText}
-        onFocus={() => setFocused(true)}
+        onFocus={() => {
+          setFocused(true);
+          revealField();
+        }}
         onBlur={() => setFocused(false)}
         onSubmitEditing={onSubmit}
         returnKeyType="done"

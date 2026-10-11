@@ -1,8 +1,9 @@
-import React, { forwardRef, useState } from 'react';
+import React, { forwardRef, useImperativeHandle, useRef, useState } from 'react';
 import { StyleSheet, Text, TextInput, View, type TextInputProps } from 'react-native';
 import { CircleAlert } from 'lucide-react-native';
 import { useThemedStyles, type Palette } from '../../context/ThemeContext';
 import PasswordInput from '../PasswordInput';
+import { useRevealOnFocus } from '../ui/KeyboardAwareScrollView';
 
 export type AuthFieldProps = Omit<TextInputProps, 'value' | 'onChangeText' | 'style' | 'secureTextEntry'> & {
   label: string;
@@ -34,6 +35,10 @@ const AuthField = forwardRef<TextInput, AuthFieldProps>(function AuthField(
   const { styles, Colors, V6Colors, appearance } = useThemedStyles(createStyles);
   const [focused, setFocused] = useState(false);
   const boxStyle = [styles.box, focused && styles.boxFocused, !!error && styles.boxError];
+  // The input keeps its own handle so it can be scrolled into view; the caller's ref still gets the TextInput.
+  const inputRef = useRef<TextInput>(null);
+  const revealField = useRevealOnFocus(inputRef);
+  useImperativeHandle(ref, () => inputRef.current as TextInput, [ref]);
 
   const handleFocus: TextInputProps['onFocus'] = (e) => {
     setFocused(true);
@@ -44,9 +49,10 @@ const AuthField = forwardRef<TextInput, AuthFieldProps>(function AuthField(
     onBlur?.(e);
   };
 
+  // The secure field's PasswordInput does its own reveal on focus.
   const input = secure ? (
     <PasswordInput
-      ref={ref}
+      ref={inputRef}
       containerStyle={boxStyle}
       inputStyle={styles.input}
       testID={testID}
@@ -62,7 +68,7 @@ const AuthField = forwardRef<TextInput, AuthFieldProps>(function AuthField(
   ) : (
     <View style={boxStyle}>
       <TextInput
-        ref={ref}
+        ref={inputRef}
         keyboardAppearance={appearance}
         testID={testID}
         accessibilityLabel={label}
@@ -74,7 +80,10 @@ const AuthField = forwardRef<TextInput, AuthFieldProps>(function AuthField(
         autoCapitalize="none"
         autoCorrect={false}
         enablesReturnKeyAutomatically
-        onFocus={handleFocus}
+        onFocus={(e) => {
+          revealField();
+          handleFocus(e);
+        }}
         onBlur={handleBlur}
         {...inputProps}
       />

@@ -37,6 +37,7 @@ import { LocateFixed, MapPin } from 'lucide-react-native';
 
 import { requestAppPermission } from '../lib/permissions';
 import { api, type AddressSuggestion, type GeocodedAddress } from '../lib/api';
+import { useRevealOnFocus } from './ui/KeyboardAwareScrollView';
 
 /**
  * Long enough that a steady typist spends one lookup on a street name rather
@@ -98,6 +99,8 @@ export default function AddressField({
   const [locating, setLocating] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [focused, setFocused] = useState(false);
+  const inputRef = useRef<TextInput>(null);
+  const revealField = useRevealOnFocus(inputRef);
 
   // The text a suggestion or GPS fix produced. While the field still holds it,
   // there is nothing to look up — and no dropdown to reopen on the next render.
@@ -226,6 +229,7 @@ export default function AddressField({
   return (
     <View>
       <TextInput keyboardAppearance={appearance}
+        ref={inputRef}
         testID={testID}
         style={[
           styles.input,
@@ -239,6 +243,7 @@ export default function AddressField({
         onChangeText={handleChangeText}
         onFocus={() => {
           setFocused(true);
+          revealField();
           if (suggestions.length > 0) setOpen(true);
           onFocus?.();
         }}

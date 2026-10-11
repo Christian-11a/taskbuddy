@@ -1,6 +1,7 @@
-import React, { forwardRef, useState } from 'react';
+import React, { forwardRef, useImperativeHandle, useRef, useState } from 'react';
 import { StyleSheet, Text, TextInput, View } from 'react-native';
 import { useThemedStyles, type Palette } from '../../context/ThemeContext';
+import { useRevealOnFocus } from '../ui/KeyboardAwareScrollView';
 import { activeBoxIndex, applyCodeInput, boxCharacters } from './resetCode';
 
 type CodeBoxesProps = {
@@ -23,6 +24,9 @@ const CodeBoxes = forwardRef<TextInput, CodeBoxesProps>(function CodeBoxes(
 ) {
   const { styles } = useThemedStyles(createStyles);
   const [focused, setFocused] = useState(false);
+  const inputRef = useRef<TextInput>(null);
+  const revealField = useRevealOnFocus(inputRef);
+  useImperativeHandle(ref, () => inputRef.current as TextInput, [ref]);
   const characters = boxCharacters(value);
   const current = activeBoxIndex(value);
 
@@ -43,7 +47,7 @@ const CodeBoxes = forwardRef<TextInput, CodeBoxesProps>(function CodeBoxes(
         })}
       </View>
       <TextInput
-        ref={ref}
+        ref={inputRef}
         testID="reset-code-input"
         value={value}
         onChangeText={(text) => onChange(applyCodeInput(value, text))}
@@ -55,7 +59,10 @@ const CodeBoxes = forwardRef<TextInput, CodeBoxesProps>(function CodeBoxes(
         caretHidden
         accessibilityLabel="Reset code"
         accessibilityHint="Enter the six-digit code from your email"
-        onFocus={() => setFocused(true)}
+        onFocus={() => {
+          setFocused(true);
+          revealField();
+        }}
         onBlur={() => setFocused(false)}
         style={styles.hiddenInput}
       />

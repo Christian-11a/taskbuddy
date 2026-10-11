@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { StyleSheet, Text, TextInput, View, type TextInputProps } from 'react-native';
 import { CircleAlert } from 'lucide-react-native';
 import { useThemedStyles, type Palette } from '../../context/ThemeContext';
+import { useRevealOnFocus } from './KeyboardAwareScrollView';
 
 export type TextFieldProps = Omit<TextInputProps, 'value' | 'onChangeText'> & {
   label: string;
@@ -27,6 +28,8 @@ export default function TextField({
   const { styles, Colors, V6Colors } = useThemedStyles(createThemedStyles);
   const [focused, setFocused] = useState(false);
   const [touched, setTouched] = useState(false);
+  const inputRef = useRef<TextInput>(null);
+  const revealField = useRevealOnFocus(inputRef);
   const showError = !!error && (touched || submitted);
   const footer = showError ? (
     <View style={styles.helperRow}>
@@ -43,11 +46,14 @@ export default function TextField({
       <View style={[styles.box, focused && styles.boxFocused, showError && styles.boxError]}>
         <TextInput
           {...inputProps}
+          ref={inputRef}
           multiline={multiline}
           value={value}
           onChangeText={onChangeText}
           onFocus={(e) => {
             setFocused(true);
+            // Keeps the field above the keyboard and any sticky footer, inside a KeyboardAwareScrollView.
+            revealField();
             onFocus?.(e);
           }}
           onBlur={(e) => {
