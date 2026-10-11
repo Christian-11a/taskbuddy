@@ -40,10 +40,12 @@ import {
   View,
 } from 'react-native';
 import Tap from '../../../src/components/ui/Tap';
+import EmptyCard from '../../../src/components/ui/EmptyCard';
+import EmptyRow from '../../../src/components/ui/EmptyRow';
 import { dayLabel, peso, plural, timeAgo } from '../../../src/lib/format';
 import ContentSkeleton from '../../../src/components/ui/ContentSkeleton';
 import Silhouette from '../../../src/components/ui/Silhouette';
-import { AlertCircle, ArrowLeft, BadgeCheck, CheckCircle2, ShieldAlert, Star } from 'lucide-react-native';
+import { AlertCircle, ArrowLeft, BadgeCheck, CheckCircle2, Inbox, ShieldAlert, Star } from 'lucide-react-native';
 import { Spacing } from '../../../src/constants/theme';
 import { useHeaderTop } from '../../../src/hooks/useHeaderTop';
 
@@ -717,10 +719,9 @@ function JobProposals({
           )}
 
           {apps.length === 0 && (
-            <View style={styles.emptyState}>
-              <Text style={styles.emptyTitle}>No applications yet</Text>
-              <Text style={styles.emptyText}>No providers have applied to this job yet.</Text>
-            </View>
+            <EmptyCard>
+              <EmptyRow icon={Inbox} title="No applications yet" body="No providers have applied to this job yet." />
+            </EmptyCard>
           )}
 
           <View style={styles.list}>
@@ -804,10 +805,6 @@ function createThemedStyles(theme: ThemePalette) {
     },
     chipText: { color: Colors.primaryDeep, fontSize: 13, fontWeight: '600', fontFamily: 'Inter' },
     subline: { color: C.ink500, fontSize: 13, lineHeight: 18, fontFamily: 'Inter', marginBottom: 14 },
-
-    emptyState: { alignItems: 'center', paddingVertical: 44, paddingHorizontal: 24 },
-    emptyTitle: { color: C.ink800, fontSize: 16, fontWeight: '700', fontFamily: 'Inter', marginBottom: 4 },
-    emptyText: { color: C.ink400, fontSize: 14, fontFamily: 'Inter', textAlign: 'center' },
 
     list: { gap: 11 },
     groupLabel: {

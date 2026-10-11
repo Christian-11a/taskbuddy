@@ -12,6 +12,7 @@ import React, { useState } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import Tap from '../../../src/components/ui/Tap';
 import ContentSkeleton from '../../../src/components/ui/ContentSkeleton';
+import EmptyCard from '../../../src/components/ui/EmptyCard';
 import EmptyRow from '../../../src/components/ui/EmptyRow';
 import NotificationCard, { NOTIFICATION_ICONS } from '../../../src/components/ui/NotificationCard';
 import { ArrowLeft, BellRing } from 'lucide-react-native';
@@ -156,13 +157,13 @@ export default function SPNotificationsScreen({ onBack, onOpenJob, onOpenChat, o
         {loading && <ContentSkeleton variant="list" />}
         {!!error && !loading && <Text style={styles.stateText}>{error}</Text>}
         {!loading && !error && visible.length === 0 && (
-          <View style={styles.emptyCard}>
+          <EmptyCard>
             <EmptyRow
               icon={BellRing}
               title="You're all caught up"
               body="Job invites, proposal updates, bookings and messages will show up here."
             />
-          </View>
+          </EmptyCard>
         )}
 
         {renderGroup('Today', groups.today)}
@@ -205,10 +206,6 @@ function createThemedStyles(theme: ThemePalette) {
       letterSpacing: 0.6, textTransform: 'uppercase', marginBottom: 8,
     },
     cards: { gap: 8, marginBottom: 16 },
-    emptyCard: {
-      backgroundColor: C.surface, borderWidth: 1, borderColor: V6Colors.line,
-      borderRadius: 16, paddingHorizontal: 16,
-    },
 
     stateText: { color: C.ink500, fontSize: 16.5, fontFamily: 'Inter', textAlign: 'center', marginTop: 30 },
   });

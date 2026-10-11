@@ -204,6 +204,11 @@ describe('ChatThread bubbles and photos', () => {
     render(<ChatThread {...baseProps()} />);
     expect(screen.getByText('No messages yet')).toBeTruthy();
   });
+
+  it('shows the empty state inside the card, like the other empty states', () => {
+    render(<ChatThread {...baseProps()} />);
+    expect(within(screen.getByTestId('empty-card')).getByText('No messages yet')).toBeTruthy();
+  });
 });
 
 describe('ChatThread payment safety note', () => {

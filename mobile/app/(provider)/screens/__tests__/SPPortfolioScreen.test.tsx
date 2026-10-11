@@ -6,6 +6,7 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from '@testing-library/react-native';
 import SPPortfolioScreen, {
   PHOTO_MAX_BYTES,
@@ -55,9 +56,15 @@ beforeEach(() => {
     assets: [{ uri: 'file:///photo.jpg' }],
   });
 });
+it('an empty portfolio shows the card, with the hint to add a photo', async () => {
+  render(<SPPortfolioScreen onBack={jest.fn()} />);
+  const card = await screen.findByTestId('empty-card');
+  expect(within(card).getByText('No portfolio photos yet')).toBeTruthy();
+  expect(within(card).getByText('Add a photo of finished work so clients can see what you do.')).toBeTruthy();
+});
 it('uploads an owned image, publishes details and refreshes the saved gallery', async () => {
   render(<SPPortfolioScreen onBack={jest.fn()} />);
-  await screen.findByText('No portfolio photos yet.');
+  await screen.findByText('No portfolio photos yet');
   await act(async () =>
     fireEvent.press(screen.getByText('Choose portfolio photo')),
   );
@@ -103,12 +110,12 @@ it('edits caption/order without reupload and removes only after confirmation', a
   (api.myPortfolio as jest.Mock).mockResolvedValue([]);
   await act(async () => fireEvent.press(screen.getByText('Remove')));
   expect(api.removePortfolio).toHaveBeenCalledWith('photo');
-  await screen.findByText('No portfolio photos yet.');
+  await screen.findByText('No portfolio photos yet');
 });
 it('keeps the form on upload failure and never publishes a missing upload', async () => {
   (api.uploadImage as jest.Mock).mockRejectedValue(new Error('Upload failed'));
   render(<SPPortfolioScreen onBack={jest.fn()} />);
-  await screen.findByText('No portfolio photos yet.');
+  await screen.findByText('No portfolio photos yet');
   await act(async () =>
     fireEvent.press(screen.getByText('Choose portfolio photo')),
   );
@@ -176,7 +183,7 @@ describe('portfolio rules', () => {
 
 it('states the limits and photo tips before publishing, with no display order field', async () => {
   render(<SPPortfolioScreen onBack={jest.fn()} />);
-  await screen.findByText('No portfolio photos yet.');
+  await screen.findByText('No portfolio photos yet');
   expect(screen.getByText('Up to 20 photos, 10 MB each (JPEG, PNG or WebP). Signed-in clients can see them.')).toBeTruthy();
   expect(screen.getByText('Your own work only')).toBeTruthy();
   expect(screen.getByText('No client faces or house numbers')).toBeTruthy();
@@ -187,13 +194,13 @@ it('states the limits and photo tips before publishing, with no display order fi
 
 it('caps the caption at 400 characters', async () => {
   render(<SPPortfolioScreen onBack={jest.fn()} />);
-  await screen.findByText('No portfolio photos yet.');
+  await screen.findByText('No portfolio photos yet');
   expect(screen.getByLabelText('Caption').props.maxLength).toBe(400);
 });
 
 it('counts the caption as it is typed, out of 400', async () => {
   render(<SPPortfolioScreen onBack={jest.fn()} />);
-  await screen.findByText('No portfolio photos yet.');
+  await screen.findByText('No portfolio photos yet');
   const typed = 'Sink repair';
 
   fireEvent.changeText(screen.getByLabelText('Caption'), typed);
@@ -230,7 +237,7 @@ it('rejects a photo over 10 MB before uploading it', async () => {
     assets: [{ uri: 'file:///big.jpg', fileSize: 10 * 1024 * 1024 + 1 }],
   });
   render(<SPPortfolioScreen onBack={jest.fn()} />);
-  await screen.findByText('No portfolio photos yet.');
+  await screen.findByText('No portfolio photos yet');
   await act(async () => fireEvent.press(screen.getByText('Choose portfolio photo')));
   expect(await screen.findByText('Choose a photo no larger than 10 MB.')).toBeTruthy();
   expect(api.uploadImage).not.toHaveBeenCalled();
@@ -242,7 +249,7 @@ it('shows the real upload and save stages while a photo publishes', async () => 
   (api.uploadImage as jest.Mock).mockReturnValue(new Promise<string>((resolve) => { finishUpload = resolve; }));
   (api.createPortfolio as jest.Mock).mockReturnValue(new Promise<{ id: string }>((resolve) => { finishSave = resolve; }));
   render(<SPPortfolioScreen onBack={jest.fn()} />);
-  await screen.findByText('No portfolio photos yet.');
+  await screen.findByText('No portfolio photos yet');
   await act(async () => fireEvent.press(screen.getByText('Choose portfolio photo')));
   fireEvent.changeText(screen.getByLabelText('Caption'), 'Sink repair');
   fireEvent.press(screen.getByText('Publish photo'));

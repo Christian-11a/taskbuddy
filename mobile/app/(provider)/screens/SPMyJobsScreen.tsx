@@ -23,6 +23,7 @@ import { useThemedStyles, type Palette as ThemePalette } from '../../../src/cont
 import { Spacing } from '../../../src/constants/theme';
 import FilterPill from '../../../src/components/ui/FilterPill';
 import JobRow from '../../../src/components/ui/JobRow';
+import EmptyCard from '../../../src/components/ui/EmptyCard';
 import EmptyRow from '../../../src/components/ui/EmptyRow';
 import Banner from '../../../src/components/ui/Banner';
 import ContentSkeleton from '../../../src/components/ui/ContentSkeleton';
@@ -154,7 +155,9 @@ export default function SPMyJobsScreen({ onNavigate, headerRight }: SPMyJobsScre
         )}
 
         {settled && sections.length === 0 && (
-          <EmptyRow icon={empty.icon} title={empty.title} body={empty.body} />
+          <EmptyCard>
+            <EmptyRow icon={empty.icon} title={empty.title} body={empty.body} />
+          </EmptyCard>
         )}
 
         {settled && sections.map((section) => (

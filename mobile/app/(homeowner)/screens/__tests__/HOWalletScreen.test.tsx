@@ -1,7 +1,7 @@
 import { findUnnamedControls } from '../../../../src/testing/a11yAudit';
 import React from 'react';
 import { Modal, StyleSheet } from 'react-native';
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react-native';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react-native';
 import HOWalletScreen from '../HOWalletScreen';
 import { api, type WalletTransaction } from '../../../../src/lib/api';
 import { showToast } from '../../../../src/components/Toast';
@@ -808,6 +808,7 @@ describe('HOWalletScreen — balance card, tiles and history', () => {
 
     fireEvent.press(screen.getByLabelText('Added, 0'));
     expect(screen.getByText('No added money yet')).toBeTruthy();
+    expect(within(screen.getByTestId('empty-card')).getByText('No added money yet')).toBeTruthy();
 
     // The hold has no refund on its job, so the money paid for the job reads as Spent.
     fireEvent.press(screen.getByLabelText('Spent, 1'));
@@ -842,6 +843,7 @@ describe('HOWalletScreen — balance card, tiles and history', () => {
     render(<HOWalletScreen />);
 
     expect(await screen.findByText('No transactions yet')).toBeTruthy();
+    expect(within(screen.getByTestId('empty-card')).getByText('No transactions yet')).toBeTruthy();
     expect(screen.getByText('Your payments and wallet activity will appear here.')).toBeTruthy();
   });
 

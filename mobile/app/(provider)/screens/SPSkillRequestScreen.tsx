@@ -21,7 +21,9 @@ import RadioRow from '../../../src/components/ui/RadioRow';
 import TextField from '../../../src/components/ui/TextField';
 import StatusCard from '../../../src/components/ui/StatusCard';
 import BottomActionBar from '../../../src/components/ui/BottomActionBar';
-import { ArrowLeft, CircleCheck, CircleSlash, CircleX, Clock, ShieldCheck, type LucideIcon } from 'lucide-react-native';
+import EmptyCard from '../../../src/components/ui/EmptyCard';
+import EmptyRow from '../../../src/components/ui/EmptyRow';
+import { ArrowLeft, CircleCheck, CircleSlash, CircleX, Clock, FileText, ShieldCheck, type LucideIcon } from 'lucide-react-native';
 import { Spacing, V6Radii } from '../../../src/constants/theme';
 import { useHeaderTop } from '../../../src/hooks/useHeaderTop';
 import { useNotifications } from '../../../src/context/NotificationsContext';
@@ -304,6 +306,15 @@ export default function SPSkillRequestScreen({ onBack }: SPSkillRequestScreenPro
               <ShieldCheck size={18} color={V6Colors.ink700} />
               <Text style={styles.infoText}>{requestCopy(chosenName)}</Text>
             </View>
+          </>
+        )}
+
+        {requests.data && !requests.loading && history.length === 0 && (
+          <>
+            <Text style={styles.sectionTitle} accessibilityRole="header">Past requests</Text>
+            <EmptyCard>
+              <EmptyRow icon={FileText} title="No past requests" body="Requests you send and their decisions show up here." />
+            </EmptyCard>
           </>
         )}
 

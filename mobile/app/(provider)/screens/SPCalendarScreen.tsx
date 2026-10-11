@@ -15,6 +15,7 @@ import { useThemedStyles, type Palette as ThemePalette } from '../../../src/cont
 import { Spacing, V6Shadows } from '../../../src/constants/theme';
 import Tap from '../../../src/components/ui/Tap';
 import JobRow from '../../../src/components/ui/JobRow';
+import EmptyCard from '../../../src/components/ui/EmptyCard';
 import EmptyRow from '../../../src/components/ui/EmptyRow';
 import ContentSkeleton from '../../../src/components/ui/ContentSkeleton';
 import { CalendarDay, CalendarWeekdays, type CalendarDayProps } from '../../../src/components/ui/MonthGrid';
@@ -174,11 +175,13 @@ export default function SPCalendarScreen({ onNavigate, title = 'Calendar', heade
         )}
 
         {settled && dayBookings.length === 0 && (
-          <EmptyRow
-            icon={CalendarDays}
-            title="Nothing scheduled"
-            body="Jobs appear here after a client hires you."
-          />
+          <EmptyCard>
+            <EmptyRow
+              icon={CalendarDays}
+              title="Nothing scheduled"
+              body="Jobs appear here after a client hires you."
+            />
+          </EmptyCard>
         )}
 
         {settled && dayBookings.length > 0 && <View style={styles.rows}>{dayBookings.map(renderBooking)}</View>}

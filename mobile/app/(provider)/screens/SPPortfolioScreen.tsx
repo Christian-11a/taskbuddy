@@ -326,6 +326,7 @@ export default function SPPortfolioScreen({ onBack }: { onBack: () => void }) {
           <PortfolioGallery
             entries={portfolio.data ?? []}
             busy={busy}
+            emptyBody="Add a photo of finished work so clients can see what you do."
             onEdit={(entry) => {
               setEditing(entry);
               setUri(null);

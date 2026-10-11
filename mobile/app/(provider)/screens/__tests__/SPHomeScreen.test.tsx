@@ -1,6 +1,6 @@
 import React from 'react';
 import { AppState, type AppStateStatus, ScrollView, StyleSheet, TextInput } from 'react-native';
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react-native';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react-native';
 import SPHomeScreen from '../SPHomeScreen';
 import { api } from '../../../../src/lib/api';
 import { useAuth } from '../../../../src/context/AuthContext';
@@ -383,6 +383,7 @@ describe('SPHomeScreen — hero header keeps the avatar reachable with a long na
       render(<SPHomeScreen onNavigate={jest.fn()} />);
 
       expect(await screen.findByText('Jobs show up after verification')).toBeTruthy();
+      expect(within(screen.getByTestId('empty-card')).getByText('Jobs show up after verification')).toBeTruthy();
       expect(screen.getByText("We'll notify you as soon as you're approved.")).toBeTruthy();
       expect(screen.queryByPlaceholderText('Search open jobs')).toBeNull();
       expect(screen.queryByTestId('toggle-availability')).toBeNull();
@@ -493,6 +494,12 @@ describe('SPHomeScreen — the feed search stays above the keyboard', () => {
     await renderFeed();
 
     expect(screen.UNSAFE_getByType(KeyboardAwareScrollView)).toBeTruthy();
+  });
+
+  it('shows an empty feed inside the card, like the client empty states', async () => {
+    await renderFeed();
+
+    expect(within(screen.getByTestId('empty-card')).getByText('No open jobs near you')).toBeTruthy();
   });
 
   it('scrolls the search box above the keyboard when it takes focus', async () => {

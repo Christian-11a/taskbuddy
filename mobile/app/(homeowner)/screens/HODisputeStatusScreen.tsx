@@ -4,11 +4,13 @@ import { ActivityIndicator, Image, KeyboardAvoidingView, RefreshControl, StyleSh
 import Tap from '../../../src/components/ui/Tap';
 import KeyboardAwareScrollView from '../../../src/components/ui/KeyboardAwareScrollView';
 import StatusCard from '../../../src/components/ui/StatusCard';
+import EmptyCard from '../../../src/components/ui/EmptyCard';
+import EmptyRow from '../../../src/components/ui/EmptyRow';
 import TextField from '../../../src/components/ui/TextField';
 import BottomActionBar from '../../../src/components/ui/BottomActionBar';
 import SheetFrame from '../../../src/components/ui/SheetFrame';
 import ConfirmationModal from '../../../src/components/ConfirmationModal';
-import { ArrowLeft, Check, Paperclip, Undo2 } from 'lucide-react-native';
+import { ArrowLeft, Check, MessageCircle, Paperclip, ShieldCheck, Undo2 } from 'lucide-react-native';
 import { Spacing, V6Radii, V6Shadows } from '../../../src/constants/theme';
 import { useAsyncData } from '../../../src/hooks/useAsyncData';
 import { useHeaderTop } from '../../../src/hooks/useHeaderTop';
@@ -103,7 +105,13 @@ export default function HODisputeStatusScreen({ jobId, onBack, onMessage }: Prop
     </View>
     {loading && <ActivityIndicator style={styles.loader} color={V6Colors.link} />}
     {!!error && <Text style={styles.error} accessibilityLiveRegion="polite">{error}</Text>}
-    {!loading && !error && !dispute && <Text style={[styles.text, styles.emptyPage]}>No complaint has been filed for this job.</Text>}
+    {!loading && !error && !dispute && (
+      <View style={styles.emptyPage}>
+        <EmptyCard>
+          <EmptyRow icon={ShieldCheck} title="No complaint filed" body="Nothing has been reported for this job." />
+        </EmptyCard>
+      </View>
+    )}
     {dispute && view && <KeyboardAvoidingView style={styles.flex} behavior="padding">
       <KeyboardAwareScrollView
         testID="case-scroll" contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag"
@@ -191,7 +199,11 @@ export default function HODisputeStatusScreen({ jobId, onBack, onMessage }: Prop
       <Text style={styles.sectionTitle} accessibilityRole="header">From this job's chat</Text>
       <Text style={styles.text}>Pick one of your messages to attach it as evidence.</Text>
       {evidenceLoading ? <ActivityIndicator color={V6Colors.link} /> : evidenceRows}
-      {evidenceLoaded && !evidenceLoading && evidence.length === 0 && <Text style={styles.text}>No messages from you in this job's chat yet.</Text>}
+      {evidenceLoaded && !evidenceLoading && evidence.length === 0 && (
+        <EmptyCard>
+          <EmptyRow icon={MessageCircle} title="No messages from you yet" body="Send a message in this job's chat, then attach it here." />
+        </EmptyCard>
+      )}
       {!!actionError && <Text style={styles.error} accessibilityLiveRegion="polite">{actionError}</Text>}
       <Tap style={[styles.button, noNote && styles.buttonDisabled]} disabled={noNote} onPress={() => void sendDetails()}
         accessibilityRole="button" accessibilityLabel={sendLabel} accessibilityState={{ disabled: noNote }}>

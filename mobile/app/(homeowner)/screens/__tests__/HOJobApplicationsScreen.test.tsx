@@ -1226,6 +1226,18 @@ describe('HOJobApplicationsScreen: switching to another job while the screen sta
   });
 });
 
+describe('HOJobApplicationsScreen: no proposals yet', () => {
+  it('says so inside the card, with the one-line explanation', async () => {
+    (api.jobApplications as jest.Mock).mockResolvedValue([]);
+    await renderScreen();
+
+    expect(await screen.findByText('No applications yet')).toBeTruthy();
+    const card = screen.getByTestId('empty-card');
+    expect(within(card).getByText('No applications yet')).toBeTruthy();
+    expect(within(card).getByText('No providers have applied to this job yet.')).toBeTruthy();
+  });
+});
+
 describe('HOJobApplicationsScreen: when the proposals cannot be loaded', () => {
   it('shows the error with Try again, and Try again loads the proposals', async () => {
     (api.jobApplications as jest.Mock)

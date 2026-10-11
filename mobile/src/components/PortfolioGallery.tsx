@@ -1,6 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import { Image, Text, View } from 'react-native';
+import { Camera } from 'lucide-react-native';
 import Tap from './ui/Tap';
+import EmptyCard from './ui/EmptyCard';
+import EmptyRow from './ui/EmptyRow';
 import type { PortfolioEntry } from '../lib/api';
 import PhotoViewer from './PhotoViewer';
 import { useTheme } from '../context/ThemeContext';
@@ -9,11 +12,14 @@ export default function PortfolioGallery({
   onEdit,
   onRemove,
   busy = false,
+  emptyBody = 'Photos of finished work show up here.',
 }: {
   entries: PortfolioEntry[];
   onEdit?: (entry: PortfolioEntry) => void;
   onRemove?: (entry: PortfolioEntry) => void;
   busy?: boolean;
+  /** The one-line hint under the empty title. The owner's screen says what the person should do next. */
+  emptyBody?: string;
 }) {
   const { palette: { V6Colors: C } } = useTheme();
   const [viewing, setViewing] = useState<number | null>(null);
@@ -25,9 +31,9 @@ export default function PortfolioGallery({
   return (
     <View>
       {entries.length === 0 && (
-        <Text style={{ color: C.ink500, fontSize: 13.5, lineHeight: 20, fontFamily: 'Inter' }}>
-          No portfolio photos yet.
-        </Text>
+        <EmptyCard>
+          <EmptyRow icon={Camera} title="No portfolio photos yet" body={emptyBody} />
+        </EmptyCard>
       )}
       {entries.map((entry, index) => (
         <View key={entry.id} style={{ marginVertical: 10 }}>

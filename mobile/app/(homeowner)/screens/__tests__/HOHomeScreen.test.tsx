@@ -57,6 +57,7 @@ describe('HOHomeScreen — empty state does not flash while jobs are still loadi
     render(<HOHomeScreen onNavigate={jest.fn()} />);
 
     await waitFor(() => expect(screen.getByText('No active jobs')).toBeTruthy());
+    expect(within(screen.getByTestId('empty-card')).getByText('No active jobs')).toBeTruthy();
   });
 });
 

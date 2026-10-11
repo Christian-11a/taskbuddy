@@ -120,6 +120,7 @@ it('titles itself Calendar when no title is passed', async () => {
   render(<SPCalendarScreen onNavigate={jest.fn()} />);
 
   expect(await screen.findByText('Nothing scheduled')).toBeTruthy();
+  expect(within(screen.getByTestId('empty-card')).getByText('Nothing scheduled')).toBeTruthy();
   expect(screen.getByText('Calendar')).toBeTruthy();
 });
 

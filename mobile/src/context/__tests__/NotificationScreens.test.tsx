@@ -1,7 +1,7 @@
 import { findUnnamedControls } from '../../testing/a11yAudit';
 import React from 'react';
 import { Ban, ShieldAlert, UserPlus } from 'lucide-react-native';
-import { render, screen, fireEvent, act } from '@testing-library/react-native';
+import { render, screen, fireEvent, act, within } from '@testing-library/react-native';
 import HONotificationsScreen from '../../../app/(homeowner)/screens/HONotificationsScreen';
 import SPNotificationsScreen from '../../../app/(provider)/screens/SPNotificationsScreen';
 import { api } from '../../lib/api';
@@ -136,6 +136,15 @@ describe('notification list layout', () => {
     expect(screen.getByText("You're all caught up")).toBeTruthy();
     expect(screen.getByText(body)).toBeTruthy();
   });
+
+  it.each([HONotificationsScreen, SPNotificationsScreen])(
+    'puts the caught-up state inside the card, like the other empty states',
+    (Screen) => {
+      setNotifications([]);
+      render(<Screen {...callbacks} />);
+      expect(within(screen.getByTestId('empty-card')).getByText("You're all caught up")).toBeTruthy();
+    },
+  );
 });
 
 describe('deleting a notification', () => {

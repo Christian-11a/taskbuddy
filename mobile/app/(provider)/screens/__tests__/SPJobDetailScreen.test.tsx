@@ -1,6 +1,6 @@
 import { findUnnamedControls } from '../../../../src/testing/a11yAudit';
 import React from 'react';
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react-native';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react-native';
 import SPJobDetailScreen from '../SPJobDetailScreen';
 import { api } from '../../../../src/lib/api';
 import { useAuth } from '../../../../src/context/AuthContext';
@@ -137,6 +137,13 @@ describe('FullTest provider job details', () => {
     render(<SPJobDetailScreen jobId={JOB_ID} onBack={jest.fn()} onNavigate={jest.fn()} />);
     expect((await screen.findByLabelText('Job photo 1')).props.source).toEqual({ uri: 'https://example.test/photo.jpg' });
     expect(screen.getByLabelText('Send proposal')).toBeTruthy();
+  });
+
+  it('a job with no photos says so inside the card', async () => {
+    (api.getJob as jest.Mock).mockResolvedValue(openJob);
+    render(<SPJobDetailScreen jobId={JOB_ID} onBack={jest.fn()} onNavigate={jest.fn()} />);
+    expect(await screen.findByText('No photos attached')).toBeTruthy();
+    expect(within(screen.getByTestId('empty-card')).getByText('No photos attached')).toBeTruthy();
   });
 
   it('keeps the checklist locked before Start Job and does not claim completion', async () => {

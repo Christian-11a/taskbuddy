@@ -1,5 +1,5 @@
 import React from 'react';
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react-native';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react-native';
 import HODisputeStatusScreen from '../HODisputeStatusScreen';
 import { api } from '../../../../src/lib/api';
 
@@ -193,6 +193,18 @@ it('hides the Message link when no chat handler is given', async () => {
   show();
   await screen.findByText('Add details or photos');
   expect(screen.queryByText('Message the client')).toBeNull();
+});
+it('a job with no complaint says so inside the card', async () => {
+  (api.jobDispute as jest.Mock).mockResolvedValue(null);
+  show();
+  const card = await screen.findByTestId('empty-card');
+  expect(within(card).getByText('No complaint filed')).toBeTruthy();
+});
+it('the sheet says when there is no message of the person’s own to attach, inside the card', async () => {
+  show();
+  await openDetailsSheet();
+  const card = await screen.findByTestId('empty-card');
+  expect(within(card).getByText('No messages from you yet')).toBeTruthy();
 });
 it('refreshes the case by pulling down, with no Refresh button', async () => {
   show();

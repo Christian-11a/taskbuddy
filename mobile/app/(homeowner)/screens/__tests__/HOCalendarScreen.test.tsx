@@ -206,6 +206,7 @@ it('an empty day says so', async () => {
   pickDay(dayAt(45));
 
   expect(screen.getByText('No jobs on this day')).toBeTruthy();
+  expect(within(screen.getByTestId('empty-card')).getByText('No jobs on this day')).toBeTruthy();
 });
 
 it('Go to today returns to today and its month', async () => {

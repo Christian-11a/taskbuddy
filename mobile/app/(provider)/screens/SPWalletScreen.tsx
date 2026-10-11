@@ -16,6 +16,7 @@ import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import Tap from '../../../src/components/ui/Tap';
 import ContentSkeleton from '../../../src/components/ui/ContentSkeleton';
 import Banner from '../../../src/components/ui/Banner';
+import EmptyCard from '../../../src/components/ui/EmptyCard';
 import EmptyRow from '../../../src/components/ui/EmptyRow';
 import SectionHeader from '../../../src/components/ui/SectionHeader';
 import { ArrowDownLeft, Building2, Shield, Wallet, WalletCards, type LucideIcon } from 'lucide-react-native';
@@ -212,11 +213,13 @@ export default function SPWalletScreen({ onNavigate }: SPWalletScreenProps) {
           {loading && <ContentSkeleton variant="list" />}
           {!!error && !loading && <Banner tone="error" message={error} />}
           {!loading && !error && transactions.length === 0 && (
-            <EmptyRow
-              icon={WalletCards}
-              title="No transactions yet"
-              body="Your payouts and job earnings will appear here."
-            />
+            <EmptyCard>
+              <EmptyRow
+                icon={WalletCards}
+                title="No transactions yet"
+                body="Your payouts and job earnings will appear here."
+              />
+            </EmptyCard>
           )}
 
           {groups.map((group) => (

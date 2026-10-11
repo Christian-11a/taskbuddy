@@ -1,6 +1,6 @@
 import { findUnnamedControls } from '../../../../src/testing/a11yAudit';
 import React from 'react';
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react-native';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react-native';
 import HOJobDetailScreen from '../HOJobDetailScreen';
 import { api } from '../../../../src/lib/api';
 import { showToast } from '../../../../src/components/Toast';
@@ -334,6 +334,7 @@ describe('HOJobDetailScreen — offers, the main action and the ⋮ menu', () =>
     renderJob();
 
     expect(await screen.findByText('No offers yet')).toBeTruthy();
+    expect(within(screen.getByTestId('empty-card')).getByText('No offers yet')).toBeTruthy();
     fireEvent.press(screen.getByText('Find providers'));
     expect(await screen.findByText('We invited 2 matched providers to apply.')).toBeTruthy();
     expect(api.triggerRecommendations).toHaveBeenCalledWith('job-1');

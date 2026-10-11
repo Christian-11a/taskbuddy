@@ -1,6 +1,6 @@
 import React from 'react';
 import { BrushCleaning, Wrench } from 'lucide-react-native';
-import { act, fireEvent, render, screen } from '@testing-library/react-native';
+import { act, fireEvent, render, screen, within } from '@testing-library/react-native';
 import SPSkillRequestScreen, {
   REASON_MAX,
   REASON_MIN,
@@ -228,6 +228,12 @@ it('shows the right icon for each past request: check, cross and slash, never a 
   expect(screen.getByText('Approved')).toBeTruthy();
   expect(screen.getByText('Not approved')).toBeTruthy();
   expect(screen.getByText('Cancelled')).toBeTruthy();
+});
+
+it('an empty past-requests list says so inside the card', async () => {
+  render(<SPSkillRequestScreen onBack={jest.fn()} />);
+  expect(await screen.findByText('Past requests')).toBeTruthy();
+  expect(within(screen.getByTestId('empty-card')).getByText('No past requests')).toBeTruthy();
 });
 
 it('shows a pending request as under review, hides the form, and can cancel it', async () => {

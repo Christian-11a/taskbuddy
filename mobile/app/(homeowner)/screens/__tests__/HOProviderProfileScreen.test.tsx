@@ -88,7 +88,7 @@ describe('HOProviderProfileScreen: the public profile', () => {
     await screen.findByText('Alex Reyes');
     expect(screen.queryByText('About')).toBeNull();
     expect(screen.queryByText('Portfolio')).toBeNull();
-    expect(screen.queryByText('No portfolio photos yet.')).toBeNull();
+    expect(screen.queryByText('No portfolio photos yet')).toBeNull();
     expect(screen.queryByText('Recent work')).toBeNull();
     expect(screen.queryByText('No completed jobs on TaskBuddy yet.')).toBeNull();
     expect(screen.queryByText('Reviews')).toBeNull();

@@ -22,6 +22,7 @@ import Tap from '../../../src/components/ui/Tap';
 import SheetFrame from '../../../src/components/ui/SheetFrame';
 import FilterPill from '../../../src/components/ui/FilterPill';
 import SectionHeader from '../../../src/components/ui/SectionHeader';
+import EmptyCard from '../../../src/components/ui/EmptyCard';
 import EmptyRow from '../../../src/components/ui/EmptyRow';
 import Banner from '../../../src/components/ui/Banner';
 import {
@@ -499,11 +500,13 @@ export default function HOWalletScreen() {
           {!!error && <Banner tone="error" message={error} />}
 
           {!error && filtered.length === 0 && (
-            <EmptyRow
-              icon={WalletCards}
-              title={EMPTY_COPY[filter].title}
-              body={EMPTY_COPY[filter].body}
-            />
+            <EmptyCard>
+              <EmptyRow
+                icon={WalletCards}
+                title={EMPTY_COPY[filter].title}
+                body={EMPTY_COPY[filter].body}
+              />
+            </EmptyCard>
           )}
 
           {groups.map((group) => (

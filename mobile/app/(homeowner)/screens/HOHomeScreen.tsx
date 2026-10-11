@@ -48,6 +48,7 @@ import Tap from '../../../src/components/ui/Tap';
 import ContentSkeleton from '../../../src/components/ui/ContentSkeleton';
 import SectionHeader from '../../../src/components/ui/SectionHeader';
 import JobRow from '../../../src/components/ui/JobRow';
+import EmptyCard from '../../../src/components/ui/EmptyCard';
 import EmptyRow from '../../../src/components/ui/EmptyRow';
 import { useTourAnchor } from '../../../src/components/tour';
 import TourOfferCard from '../../../src/components/tour/TourOfferCard';
@@ -380,7 +381,9 @@ export default function HOHomeScreen({ onNavigate, tourOffer }: HOHomeScreenProp
           {jobs.error && <WidgetError message="Couldn't load your jobs" onRetry={jobs.reload} />}
 
           {!jobs.loading && !jobs.error && activeJobs.length === 0 && (
-            <EmptyRow icon={ClipboardList} title="No active jobs" body="Jobs you post show up here." />
+            <EmptyCard>
+              <EmptyRow icon={ClipboardList} title="No active jobs" body="Jobs you post show up here." />
+            </EmptyCard>
           )}
 
           {activeJobs.length > 0 && (

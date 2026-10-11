@@ -7,6 +7,7 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from '@testing-library/react-native';
 import MyJobs from '../HOMyJobs';
 import { api, type Job, type JobApplication } from '../../../../src/lib/api';
@@ -165,6 +166,7 @@ it('an empty filter says what would show up there', async () => {
   fireEvent.press(screen.getByRole('button', { name: 'Done, 0' }));
 
   expect(screen.getByText('No completed jobs')).toBeTruthy();
+  expect(within(screen.getByTestId('empty-card')).getByText('No completed jobs')).toBeTruthy();
   expect(screen.queryByText('Open one')).toBeNull();
 });
 
@@ -174,6 +176,7 @@ it('a new account is invited to post a job, which opens Create Job', async () =>
   render(<MyJobs onNavigate={navigate} />);
 
   await screen.findByText('No jobs yet');
+  expect(within(screen.getByTestId('empty-card')).getByText('No jobs yet')).toBeTruthy();
   fireEvent.press(screen.getByRole('button', { name: 'Post a job' }));
 
   expect(navigate).toHaveBeenCalledWith('Create Job');

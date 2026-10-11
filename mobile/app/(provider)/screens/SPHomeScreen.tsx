@@ -73,6 +73,7 @@ import Pulse from '../../../src/components/ui/Pulse';
 import FilterPill from '../../../src/components/ui/FilterPill';
 import SectionHeader from '../../../src/components/ui/SectionHeader';
 import JobRow from '../../../src/components/ui/JobRow';
+import EmptyCard from '../../../src/components/ui/EmptyCard';
 import EmptyRow from '../../../src/components/ui/EmptyRow';
 import { haptic } from '../../../src/components/ui/motion';
 import { useRetainedState } from '../../../src/hooks/useRetainedState';
@@ -207,13 +208,13 @@ function SetupPanel({ steps, verifyState, categoryName, onStep }: {
       </View>
 
       <SectionHeader title="Jobs near you" />
-      <View style={styles.lockedCard}>
+      <EmptyCard>
         <EmptyRow
           icon={ShieldCheck}
           title="Jobs show up after verification"
           body={`We'll notify you as soon as you're approved.${categoryName ? ` Then nearby ${categoryName} jobs appear here.` : ''}`}
         />
-      </View>
+      </EmptyCard>
     </>
   );
 }
@@ -498,11 +499,13 @@ export default function SPHomeScreen({ onNavigate, tourOffer }: SPHomeScreenProp
               )}
 
               {data && availableJobs.length === 0 && (
-                <EmptyRow
-                  icon={Inbox}
-                  title="No open jobs near you"
-                  body="Adjust your search or urgency filter to see more opportunities."
-                />
+                <EmptyCard>
+                  <EmptyRow
+                    icon={Inbox}
+                    title="No open jobs near you"
+                    body="Adjust your search or urgency filter to see more opportunities."
+                  />
+                </EmptyCard>
               )}
 
               {availableJobs.length > 0 && (
@@ -620,10 +623,6 @@ function createThemedStyles(theme: ThemePalette) {
       minHeight: 48, borderRadius: 16, backgroundColor: Colors.primary,
     },
     setupButtonText: { color: Colors.onPrimary, fontSize: 15, fontWeight: '600', fontFamily: 'Inter', lineHeight: 20 },
-    lockedCard: {
-      backgroundColor: C.surface, borderWidth: 1, borderColor: C.line, borderRadius: 20,
-      paddingHorizontal: 16,
-    },
 
     // Availability row.
     availability: {

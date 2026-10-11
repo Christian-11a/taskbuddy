@@ -20,6 +20,7 @@ import {
   EllipsisVertical,
   FileWarning,
   Flag,
+  ImageOff,
   Lock,
   MapPin,
 } from 'lucide-react-native';
@@ -36,6 +37,8 @@ import PersonCard from '../../../src/components/ui/PersonCard';
 import ProgressStepper from '../../../src/components/ui/ProgressStepper';
 import StatusCard from '../../../src/components/ui/StatusCard';
 import Tap from '../../../src/components/ui/Tap';
+import EmptyCard from '../../../src/components/ui/EmptyCard';
+import EmptyRow from '../../../src/components/ui/EmptyRow';
 import { Spacing, V6Radii } from '../../../src/constants/theme';
 import { useAuth } from '../../../src/context/AuthContext';
 import { useAsyncData } from '../../../src/hooks/useAsyncData';
@@ -464,7 +467,11 @@ export default function SPJobDetailScreen({ jobId, onBack, onNavigate }: SPJobDe
                 <Image source={{ uri }} resizeMode="contain" accessibilityLabel={`Job photo ${index + 1}`}
                   style={styles.photo} />
               </Tap>
-            )) : <Text style={styles.bodyText}>No photos attached</Text>}
+            )) : (
+              <EmptyCard>
+                <EmptyRow icon={ImageOff} title="No photos attached" body="The client did not add any photos to this job." />
+              </EmptyCard>
+            )}
           </View>
         </ScrollView>
       )}

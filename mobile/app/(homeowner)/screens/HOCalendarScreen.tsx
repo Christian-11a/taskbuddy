@@ -15,6 +15,7 @@ import { useThemedStyles, type Palette as ThemePalette } from '../../../src/cont
 import { Spacing, V6Shadows } from '../../../src/constants/theme';
 import Tap from '../../../src/components/ui/Tap';
 import JobRow from '../../../src/components/ui/JobRow';
+import EmptyCard from '../../../src/components/ui/EmptyCard';
 import EmptyRow from '../../../src/components/ui/EmptyRow';
 import SectionHeader from '../../../src/components/ui/SectionHeader';
 import Banner from '../../../src/components/ui/Banner';
@@ -179,11 +180,13 @@ export default function HOCalendarScreen({ onNavigate, title = 'Calendar', heade
         </View>
 
         {!error && dayJobs.length === 0 && (
-          <EmptyRow
-            icon={CalendarDays}
-            title="No jobs on this day"
-            body="Jobs with a scheduled date will show up here."
-          />
+          <EmptyCard>
+            <EmptyRow
+              icon={CalendarDays}
+              title="No jobs on this day"
+              body="Jobs with a scheduled date will show up here."
+            />
+          </EmptyCard>
         )}
         {!error && dayJobs.length > 0 && <View style={styles.rows}>{dayJobs.map(renderJob)}</View>}
 

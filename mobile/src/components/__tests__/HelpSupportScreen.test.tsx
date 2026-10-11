@@ -1,7 +1,7 @@
 import { findUnnamedControls } from '../../testing/a11yAudit';
 import React from 'react';
 import { Linking, ScrollView, TextInput } from 'react-native';
-import { act, fireEvent, render, screen } from '@testing-library/react-native';
+import { act, fireEvent, render, screen, within } from '@testing-library/react-native';
 import HelpSupportScreen from '../HelpSupportScreen';
 import KeyboardAwareScrollView from '../ui/KeyboardAwareScrollView';
 
@@ -78,7 +78,7 @@ describe('HelpSupportScreen — search', () => {
 
     fireEvent.changeText(screen.getByLabelText('Search help'), 'zebra');
 
-    expect(screen.getByText('No questions match “zebra”.')).toBeTruthy();
+    expect(within(screen.getByTestId('empty-card')).getByText('No questions match “zebra”.')).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Contact support' })).toBeTruthy();
   });
 });

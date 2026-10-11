@@ -16,6 +16,8 @@ import React, { useRef, useState } from 'react';
 import { Linking, StyleSheet, Text, TextInput, View } from 'react-native';
 import KeyboardAwareScrollView, { useRevealOnFocus } from './ui/KeyboardAwareScrollView';
 import Tap from './ui/Tap';
+import EmptyCard from './ui/EmptyCard';
+import EmptyRow from './ui/EmptyRow';
 import {
   ArrowLeft,
   ChevronDown,
@@ -25,6 +27,7 @@ import {
   Mail,
   PlayCircle,
   Search,
+  SearchX,
 } from 'lucide-react-native';
 import { Sizes, Spacing, V6Radii } from '../constants/theme';
 import { filterHelpEntries } from '../lib/helpSearch';
@@ -112,7 +115,9 @@ export default function HelpSupportScreen({ role, onBack, onReplayTour }: HelpSu
 
         <Text style={styles.sectionTitle} accessibilityRole="header">Common questions</Text>
         {matches.length === 0 ? (
-          <Text style={styles.noMatch}>{`No questions match “${query}”.`}</Text>
+          <EmptyCard>
+            <EmptyRow icon={SearchX} title={`No questions match “${query}”.`} body="Try a different word." />
+          </EmptyCard>
         ) : (
           <View style={styles.card}>
             {matches.map((item, i) => {
@@ -270,7 +275,6 @@ function createThemedStyles(theme: ThemePalette) {
       color: V6Colors.ink700, fontSize: 13.5, fontFamily: 'Inter', lineHeight: 19,
       paddingHorizontal: 16, paddingBottom: 14,
     },
-    noMatch: { color: V6Colors.ink500, fontSize: 14, fontFamily: 'Inter', lineHeight: 20, marginBottom: 16 },
 
     contactRow: {
       flexDirection: 'row', alignItems: 'center', gap: 12,

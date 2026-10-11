@@ -1,7 +1,7 @@
 import { findUnnamedControls } from '../../../../src/testing/a11yAudit';
 import React from 'react';
 import {StyleSheet} from 'react-native';
-import {act, fireEvent, render, screen, waitFor} from '@testing-library/react-native';
+import {act, fireEvent, render, screen, waitFor, within} from '@testing-library/react-native';
 import SPWalletScreen from '../SPWalletScreen';
 import {lightPalette} from '../../../../src/constants/palettes';
 import {api} from '../../../../src/lib/api';
@@ -43,6 +43,12 @@ it('shows settlement and Stripe references without calling a pending request del
   expect(screen.getByText('Transaction: pending-request')).toBeTruthy();
   expect(screen.getByText(/Requested .* · Pending/)).toBeTruthy();
   expect(screen.getAllByText('-₱350.00')).toHaveLength(3);
+});
+it('an empty payout history says so inside the card', async () => {
+  (api.wallet as jest.Mock).mockResolvedValue(wallet([]));
+  render(<SPWalletScreen onNavigate={jest.fn()} />);
+  expect(await screen.findByText('No transactions yet')).toBeTruthy();
+  expect(within(screen.getByTestId('empty-card')).getByText('No transactions yet')).toBeTruthy();
 });
 it('reports load failure instead of claiming the account has no money', async () => {
   (api.wallet as jest.Mock).mockRejectedValue(new Error('Wallet unavailable'));

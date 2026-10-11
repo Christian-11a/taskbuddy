@@ -1,7 +1,7 @@
 import { findUnnamedControls } from '../../../../src/testing/a11yAudit';
 import React from 'react';
 import { Text } from 'react-native';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react-native';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react-native';
 import SPMyJobsScreen from '../SPMyJobsScreen';
 import { api } from '../../../../src/lib/api';
 import { clearAsyncDataCache } from '../../../../src/hooks/useAsyncData';
@@ -217,7 +217,7 @@ describe('SPMyJobsScreen — filters, groups and rows', () => {
 
     fireEvent.press(screen.getByRole('button', { name: 'Working, 0' }));
 
-    expect(screen.getByText('Nothing in progress')).toBeTruthy();
+    expect(within(screen.getByTestId('empty-card')).getByText('Nothing in progress')).toBeTruthy();
     expect(screen.queryByText('Only finished job')).toBeNull();
   });
 
@@ -247,6 +247,7 @@ describe('SPMyJobsScreen — empty, error and title row', () => {
     render(<SPMyJobsScreen onNavigate={jest.fn()} />);
 
     expect(await screen.findByText('No jobs yet')).toBeTruthy();
+    expect(within(screen.getByTestId('empty-card')).getByText('No jobs yet')).toBeTruthy();
     expect(screen.getByRole('button', { name: 'All, 0' })).toBeTruthy();
   });
 

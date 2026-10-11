@@ -26,6 +26,7 @@ import ConfirmationModal from '../../../src/components/ConfirmationModal';
 import BottomActionBar from '../../../src/components/ui/BottomActionBar';
 import Banner from '../../../src/components/ui/Banner';
 import ContentSkeleton from '../../../src/components/ui/ContentSkeleton';
+import EmptyCard from '../../../src/components/ui/EmptyCard';
 import EmptyRow from '../../../src/components/ui/EmptyRow';
 import MenuSheet, { type MenuSheetItem } from '../../../src/components/ui/MenuSheet';
 import PersonCard from '../../../src/components/ui/PersonCard';
@@ -378,11 +379,13 @@ export default function HOJobDetailScreen({ jobId, onBack, onNavigate }: HOJobDe
                 />
               ))}
               {offerList !== null && pendingOffers.length === 0 && (
-                <EmptyRow
-                  icon={ClipboardList}
-                  title="No offers yet"
-                  body="Providers who apply show up here."
-                />
+                <EmptyCard>
+                  <EmptyRow
+                    icon={ClipboardList}
+                    title="No offers yet"
+                    body="Providers who apply show up here."
+                  />
+                </EmptyCard>
               )}
             </View>
           )}

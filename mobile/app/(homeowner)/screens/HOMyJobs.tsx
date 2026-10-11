@@ -24,6 +24,7 @@ import { Spacing } from '../../../src/constants/theme';
 import Tap from '../../../src/components/ui/Tap';
 import FilterPill from '../../../src/components/ui/FilterPill';
 import JobRow from '../../../src/components/ui/JobRow';
+import EmptyCard from '../../../src/components/ui/EmptyCard';
 import EmptyRow from '../../../src/components/ui/EmptyRow';
 import Banner from '../../../src/components/ui/Banner';
 import ScreenSkeleton from '../../../src/components/ScreenSkeleton';
@@ -155,13 +156,15 @@ export default function MyJobs({ onNavigate, headerRight }: MyJobsProps) {
         )}
 
         {settled && sections.length === 0 && (
-          <EmptyRow
-            icon={empty.icon}
-            title={empty.title}
-            body={empty.body}
-            actionLabel={filter === 'all' ? 'Post a job' : undefined}
-            onAction={filter === 'all' ? () => onNavigate('Create Job') : undefined}
-          />
+          <EmptyCard>
+            <EmptyRow
+              icon={empty.icon}
+              title={empty.title}
+              body={empty.body}
+              actionLabel={filter === 'all' ? 'Post a job' : undefined}
+              onAction={filter === 'all' ? () => onNavigate('Create Job') : undefined}
+            />
+          </EmptyCard>
         )}
 
         {settled && sections.map((section) => (
