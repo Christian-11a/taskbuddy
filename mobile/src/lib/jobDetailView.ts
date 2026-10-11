@@ -233,15 +233,12 @@ export function homeownerJobView(input: HomeownerJobInput): JobView {
           menu: [],
         };
       }
-      const released = dispute?.resolution === 'released_to_provider';
       return {
         card: {
           tone: 'closed',
           overline: 'CANCELLED',
           title: 'Job cancelled',
-          body: hired
-            ? `${yourPayment} was ${released ? 'released to the provider' : 'returned to your wallet'}.`
-            : 'Providers can no longer apply.',
+          body: hired ? cancelledPayment(dispute?.resolution, yourPayment) : 'Providers can no longer apply.',
         },
         step: 'cancelled',
         main: { kind: 'postAgain', categoryId: job.category_id },
@@ -272,6 +269,20 @@ function disputeNote(dispute: Dispute | null): string | null {
   if (dispute.cancellation_state === 'pending') return 'Cancellation awaiting provider response.';
   if (dispute.escrow_transactions?.status === 'disputed') return 'Payment under admin review.';
   return 'Complaint awaiting admin review.';
+}
+
+/** Where a cancelled job's payment went. Only a resolution that says so may claim it. */
+function cancelledPayment(resolution: Dispute['resolution'] | undefined, yourPayment: string): string {
+  switch (resolution) {
+    case 'released_to_provider':
+      return `${yourPayment} was released to the provider.`;
+    case 'reviewed':
+      // An admin closed the case without moving the money, so no destination is named.
+      return `${yourPayment} was settled by an admin review. Open the case for the outcome.`;
+    default:
+      // Refunded to the client, or nothing recorded: the refund line as before.
+      return `${yourPayment} was returned to your wallet.`;
+  }
 }
 
 function withNote(body: string | null, note: string | null): string | undefined {

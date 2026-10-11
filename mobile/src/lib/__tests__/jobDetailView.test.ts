@@ -450,6 +450,48 @@ describe('homeownerJobView: cancelled', () => {
     expect(view.card.body).toBe('Your payment was returned to your wallet.');
   });
 
+  it('hired, cancelled, complaint reviewed by an admin: no claim about the money, and the case has the outcome', () => {
+    const view = viewFor({
+      job: hired,
+      dispute: dispute({ status: 'resolved', resolution: 'reviewed', resolved_at: at(2026, 9, 8) }),
+    });
+    expect(view.card.body).toBe('Your ₱1,500.00 was settled by an admin review. Open the case for the outcome.');
+    expect(view.main).toEqual({ kind: 'postAgain', categoryId: 7 });
+    expect(view.link).toEqual({ kind: 'viewCase' });
+  });
+
+  it('a reviewed complaint on a job with no budget names no amount and still claims no destination', () => {
+    const view = viewFor({
+      job: { ...hired, budget: null },
+      dispute: dispute({ status: 'resolved', resolution: 'reviewed', resolved_at: at(2026, 9, 8) }),
+    });
+    expect(view.card.body).toBe('Your payment was settled by an admin review. Open the case for the outcome.');
+  });
+
+  it('a resolved complaint with no resolution recorded keeps the refund line', () => {
+    const view = viewFor({
+      job: hired,
+      dispute: dispute({ status: 'resolved', resolution: null, resolved_at: at(2026, 9, 8) }),
+    });
+    expect(view.card.body).toBe('Your ₱1,500.00 was returned to your wallet.');
+  });
+
+  it('a complaint closed without a resolution keeps the refund line', () => {
+    const view = viewFor({
+      job: hired,
+      dispute: dispute({ status: 'cancelled', resolution: null, resolved_at: at(2026, 9, 8) }),
+    });
+    expect(view.card.body).toBe('Your ₱1,500.00 was returned to your wallet.');
+  });
+
+  it('a released complaint on a job with no budget says only that the payment went to the provider', () => {
+    const view = viewFor({
+      job: { ...hired, budget: null },
+      dispute: dispute({ status: 'resolved', resolution: 'released_to_provider', resolved_at: at(2026, 9, 8) }),
+    });
+    expect(view.card.body).toBe('Your payment was released to the provider.');
+  });
+
   it('never hired: providers can no longer apply, post again, nothing in the menu', () => {
     expect(viewFor({ job: { status: 'cancelled' } })).toEqual({
       card: {
