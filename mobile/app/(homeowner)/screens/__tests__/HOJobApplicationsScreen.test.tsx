@@ -963,6 +963,52 @@ describe('HOJobApplicationsScreen: a card payment waits across leaving the scree
     expect(screen.queryByText(WAITING_FOR_PROPOSAL)).toBeNull();
     expect(api.rejectApplication).not.toHaveBeenCalled();
   });
+
+  it('a wait open on this screen for 24 hours is over at the next Check payment status, here and on the device', async () => {
+    await startWaitingCardPayment();
+    // A minute short of 24 hours since the checkout started, the check still keeps the wait.
+    await passTime(PENDING_HIRE_PAYMENT_TTL_MS - 60_000 - FULL_WAIT_MS);
+    fireEvent.press(screen.getByRole('button', { name: 'Check payment status' }));
+    await passTime(FULL_WAIT_MS);
+    expect(screen.getByText(STILL_CONFIRMING)).toBeTruthy();
+
+    await passTime(60_001);
+    fireEvent.press(screen.getByRole('button', { name: 'Check payment status' }));
+
+    expect(await screen.findByText('This payment was not confirmed within 24 hours, so it is no longer waiting.')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Confirm and hire · ₱1,000.00' })).toBeTruthy();
+    expect(screen.queryByText(STILL_CONFIRMING)).toBeNull();
+    await waitFor(async () => expect(await storedWaits()).toEqual({}));
+    expect(api.createHireCheckoutSession).toHaveBeenCalledTimes(1);
+    expect(api.acceptApplication).not.toHaveBeenCalled();
+  });
+
+  it("a wait open on this screen for 24 hours is cleared when the screen's proposals reload", async () => {
+    const blair = application({
+      id: 'app-2',
+      provider: {
+        id: 'prov-app-2',
+        full_name: 'Blair Santos',
+        avatar_url: null,
+        city: 'Cebu',
+        provider_profiles: { is_verified: true, cached_avg_rating: 5, cached_completed_jobs: 9 },
+      },
+    });
+    // A new list each time, as the server gives one, so a reload is a change the screen can see.
+    (api.jobApplications as jest.Mock).mockImplementation(async () => [pendingApp, blair]);
+    await startWaitingCardPayment();
+    fireEvent.press(screen.getByRole('button', { name: 'Close' }));
+    await passTime(PENDING_HIRE_PAYMENT_TTL_MS);
+
+    // Declining the other proposal reloads this screen's proposals, with no payment check.
+    fireEvent.press(await screen.findByRole('button', { name: 'Decline Blair Santos', disabled: false }));
+    fireEvent.press(screen.getByRole('button', { name: 'Reject' }));
+
+    await waitFor(() => expect(api.rejectApplication).toHaveBeenCalledWith('app-2'));
+    expect(await screen.findByRole('button', { name: HIRE_ALEX, disabled: false })).toBeTruthy();
+    expect(screen.queryByText(WAITING_NOTE)).toBeNull();
+    await waitFor(async () => expect(await storedWaits()).toEqual({}));
+  });
 });
 
 describe('HOJobApplicationsScreen: a proposal whose card payment is waiting cannot be declined', () => {

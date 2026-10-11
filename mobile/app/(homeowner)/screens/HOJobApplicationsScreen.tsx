@@ -53,6 +53,7 @@ import { openRedirectSession } from '../../../src/lib/appRedirectSession';
 import {
   clearPendingHirePayment,
   getPendingHirePayment,
+  isPendingHirePaymentExpired,
   loadPendingHirePayments,
   markPendingHirePayment,
   type PendingHirePayment,
@@ -217,7 +218,7 @@ function JobProposals({
     for (const app of apps) {
       const wait = rememberedWaits.get(app.id);
       if (app.status === 'pending' && wait && (restored === null || wait.startedAt > restoredAt)) {
-        restored = { applicationId: app.id, returnedPaid: wait.returnedPaid };
+        restored = { applicationId: app.id, returnedPaid: wait.returnedPaid, startedAt: wait.startedAt };
         restoredAt = wait.startedAt;
       }
     }
@@ -235,10 +236,15 @@ function JobProposals({
     }
   }, [apps, rememberedWaits]);
 
-  /** A card payment has started for this proposal: the wait shows here and is remembered on the device. */
+  /**
+   * A card payment has started for this proposal: the wait shows here and is remembered on the device.
+   * Marking again keeps the time the checkout first started, so the screen takes that time from the device.
+   */
   const beginWait = (applicationId: string, returnedPaid: boolean) => {
-    setAwaitingConfirmation({ applicationId, returnedPaid });
-    return markPendingHirePayment(applicationId, returnedPaid);
+    const marking = markPendingHirePayment(applicationId, returnedPaid);
+    const startedAt = getPendingHirePayment(applicationId)?.startedAt ?? Date.now();
+    setAwaitingConfirmation({ applicationId, returnedPaid, startedAt });
+    return marking;
   };
 
   /** The wait for this proposal is over, here and on the device. */
@@ -246,6 +252,15 @@ function JobProposals({
     setAwaitingConfirmation(null);
     return clearPendingHirePayment(applicationId);
   };
+
+  // A wait open on this screen for 24 hours is over, as a remembered one is. It is checked each time the
+  // proposals load, so a screen left open cannot hold its proposal longer than the device's copy would.
+  useEffect(() => {
+    if (!awaitingConfirmation || !apps) return;
+    if (!isPendingHirePaymentExpired(awaitingConfirmation, Date.now())) return;
+    setAwaitingConfirmation(null);
+    void clearPendingHirePayment(awaitingConfirmation.applicationId);
+  }, [apps, awaitingConfirmation]);
 
   const openHire = async (app: JobApplication) => {
     if (!jobId || !hydrated || waitingOnAnother(app.id)) return;
@@ -412,6 +427,17 @@ function JobProposals({
       return;
     }
     if (!awaitingConfirmation || !hireTarget || hireTarget.id !== awaitingConfirmation.applicationId) return;
+    if (isPendingHirePaymentExpired(awaitingConfirmation, Date.now())) {
+      // Open for 24 hours without a decision: the wait is over, so the proposal can be paid for again.
+      // The proposals reload, so a hire the server did decide in the meantime shows as it is.
+      void endWait(awaitingConfirmation.applicationId);
+      reload();
+      setHireMessage({
+        text: 'This payment was not confirmed within 24 hours, so it is no longer waiting.',
+        tone: 'info',
+      });
+      return;
+    }
     hireInFlight.current = true;
     setHireBusy('check');
     setHireMessage(null);
@@ -731,6 +757,8 @@ interface AwaitingConfirmation {
   applicationId: string;
   /** The browser came back saying the payment went through, so the wait says so. */
   returnedPaid: boolean;
+  /** When the checkout started, the same time the device keeps. The wait is over 24 hours after it. */
+  startedAt: number;
 }
 
 /** How long to wait for Stripe's webhook to turn a card payment into a hire. */
