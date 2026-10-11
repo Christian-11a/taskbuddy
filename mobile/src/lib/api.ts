@@ -17,6 +17,7 @@ import { notifyNotificationChange } from './notificationEvents';
  */
 
 import EventSource from 'react-native-sse';
+import { friendlyApiMessage } from './apiMessages';
 
 const PRIMARY_API_URL =
   process.env.EXPO_PUBLIC_API_URL ?? 'https://taskbuddy-kpek.onrender.com';
@@ -782,9 +783,11 @@ async function rawRequest<T>(
         wait,
       );
     }
-    const message =
+    const serverMessage =
       (data && (Array.isArray(data.message) ? data.message[0] : data.message)) ||
       'Something went wrong. Please try again.';
+    // Validation output is technical ("full_name must be ..."); say it in plain words.
+    const message = typeof serverMessage === 'string' ? friendlyApiMessage(serverMessage) : serverMessage;
     throw new ApiError(message, response.status, data);
   }
 
