@@ -1,107 +1,67 @@
 /**
  * OnboardingScreen.tsx
  *
- * Three slides with an illustration tile, a title, and body copy. Skip is
- * always on screen, a dot marks each slide, and one button moves on: Next,
- * then Get started on the last slide. The tile takes the role's colour from
- * the palette (homeowner blue, provider navy). The slides differ by role.
+ * Three story cards per role (copy from tourContent.introCards). Each card has
+ * a small picture made of the app's own parts (IntroIllustrations), the
+ * greeting uses the person's first name, and the cards set expectations only:
+ * the spotlight tour on Home teaches the controls. Skip is always on screen and
+ * a dot marks each card. The last card's button, "Show me around", starts the
+ * tour. On a replay (from Help or the Home card) Skip reads "Close".
  */
 
 import { useThemedStyles, type Palette as ThemePalette } from '../../../src/context/ThemeContext';
 import React, { useRef, useState } from 'react';
 import {
-  Dimensions,
   FlatList,
   StyleSheet,
   Text,
+  useWindowDimensions,
   View,
   ViewToken,
 } from 'react-native';
 import Tap from '../../../src/components/ui/Tap';
-import { BadgeCheck, CalendarCheck, FileText, Search, Shield, ShieldCheck, Sparkles, Users } from 'lucide-react-native';
-import { V6Shadows } from '../../../src/constants/theme';
+import IntroIllustration, { type IllustrationKind } from '../../../src/components/onboarding/IntroIllustrations';
+import { useAsyncData } from '../../../src/hooks/useAsyncData';
 import { useAuthLayout } from '../../../src/hooks/useAuthLayout';
+import { api, type Category } from '../../../src/lib/api';
+import { introCards, type IntroCard, type WelcomeRole } from '../../../src/lib/tourContent';
+import { V6Shadows } from '../../../src/constants/theme';
 
-const { width: W } = Dimensions.get('window');
-
-interface Slide {
-  id: string;
-  Icon: typeof Sparkles;
-  title: string;
-  /** Second part of the title, in the accent colour. */
-  titleAccent?: string;
-  subtitle?: string;
-  body: string;
-}
-
-/**
- * Each role gets its own walkthrough: what to do first, and where in the app
- * to do it. Doubles as the first-run tutorial — the slides name the actual
- * tabs and buttons the user is about to see.
- */
-const CLIENT_SLIDES: Slide[] = [
-  {
-    id: 'c1',
-    Icon: FileText,
-    title: 'Post what you need',
-    body: 'Tap "What do you need done?" on Home, pick a service and describe the job. It takes about a minute.',
-  },
-  {
-    id: 'c2',
-    Icon: Users,
-    title: 'Pick the',
-    titleAccent: 'right provider',
-    subtitle: 'Compare proposals from My Jobs.',
-    body: 'Open a job to see who applied. Check each provider’s rating, reviews and past work before you hire.',
-  },
-  {
-    id: 'c3',
-    Icon: Shield,
-    title: 'Pay with',
-    titleAccent: 'peace of mind',
-    subtitle: 'Your payment is held until the job is done.',
-    body: 'Top up your Wallet, hire, then confirm completion to release payment. Something wrong? File a complaint from the job.',
-  },
-];
-
-const PROVIDER_SLIDES: Slide[] = [
-  {
-    id: 'p1',
-    Icon: BadgeCheck,
-    title: 'Get',
-    titleAccent: 'verified first',
-    subtitle: 'Profile → Get Verified.',
-    body: 'Upload a government ID and a quick face scan. Verified providers are trusted more and hired sooner.',
-  },
-  {
-    id: 'p2',
-    Icon: Search,
-    title: 'Find jobs',
-    titleAccent: 'near you',
-    subtitle: 'Your Feed lists open jobs in your service area.',
-    body: 'Open a job and tap Submit Proposal with a short message. Track your applications under My Work.',
-  },
-  {
-    id: 'p3',
-    Icon: ShieldCheck,
-    title: 'Get hired, get paid safely',
-    body: 'When a client hires you, the booking is confirmed automatically. Their payment is held safely and released to you after the job.',
-  },
-];
+/** The picture on each card, in order, per role. */
+const ILLUSTRATIONS: Record<WelcomeRole, readonly IllustrationKind[]> = {
+  homeowner: ['services', 'proposals', 'heldMoney'],
+  provider: ['feed', 'proposalToBooking', 'incoming'],
+};
 
 interface OnboardingScreenProps {
   role: 'homeowner' | 'provider' | null;
+  /** The name to greet on the first card. Missing means "there". */
+  firstName?: string;
+  /** Opened from Help or the Home card, not on first sign-in: Skip reads "Close". */
+  replay?: boolean;
+  /** The last card's button: starts the spotlight tour on Home. */
   onFinish: () => void;
+  /** Skip, or Close on a replay. Kept under this name for the existing callers. */
   onLogin: () => void;
 }
 
-export default function OnboardingScreen({ role, onFinish, onLogin }: OnboardingScreenProps) {
+export default function OnboardingScreen({ role, firstName, replay = false, onFinish, onLogin }: OnboardingScreenProps) {
   const { styles, Colors } = useThemedStyles(createThemedStyles);
-  const slides = role === 'provider' ? PROVIDER_SLIDES : CLIENT_SLIDES;
+  const welcomeRole: WelcomeRole = role === 'provider' ? 'provider' : 'homeowner';
+  const cards = introCards(welcomeRole, firstName);
   const layout = useAuthLayout();
+  const { width } = useWindowDimensions();
   const [currentIndex, setCurrentIndex] = useState(0);
   const flatListRef = useRef<FlatList>(null);
-  const isLast = currentIndex === slides.length - 1;
+  const isLast = currentIndex === cards.length - 1;
+
+  // The client's first card shows real service chips. Providers never see them, so their lookup is skipped.
+  const categories = useAsyncData(
+    () => (welcomeRole === 'homeowner' ? api.categories() : Promise.resolve<Category[]>([])),
+    [welcomeRole],
+    `onboarding-services-${welcomeRole}`,
+  );
+  const services = categories.data ?? [];
 
   const handleViewableItemsChanged = useRef(
     ({ viewableItems }: { viewableItems: ViewToken[] }) => {
@@ -112,58 +72,53 @@ export default function OnboardingScreen({ role, onFinish, onLogin }: Onboarding
   ).current;
 
   const handleNext = () => {
-    if (!isLast) {
-      flatListRef.current?.scrollToIndex({ index: currentIndex + 1 });
-    } else {
+    if (isLast) {
       onFinish();
+    } else {
+      flatListRef.current?.scrollToIndex({ index: currentIndex + 1 });
     }
   };
 
-  const handleSkip = () => {
-    onLogin();
-  };
-
-  const renderSlide = ({ item }: { item: Slide }) => (
-    <View style={styles.slide}>
-      <View style={styles.illustration}>
-        <View style={styles.illustrationDisc}>
-          <item.Icon size={44} color={Colors.primary} strokeWidth={1.8} />
+  const renderCard = ({ item, index }: { item: IntroCard; index: number }) => {
+    const active = index === currentIndex;
+    return (
+      <View style={[styles.slide, { width }]}>
+        <View style={styles.illustration}>
+          {/* Keyed by `active`, so a card's parts ease in each time it comes on screen. */}
+          <IntroIllustration
+            key={active ? 'on' : 'off'}
+            kind={ILLUSTRATIONS[welcomeRole][index]}
+            active={active}
+            services={services}
+          />
         </View>
+        <Text style={styles.title} accessibilityRole="header">{item.title}</Text>
+        <Text style={styles.body}>{item.body}</Text>
       </View>
-      <Text style={styles.title} accessibilityRole="header">
-        {item.title}
-        {item.titleAccent ? (
-          <>
-            {' '}
-            <Text style={styles.titleAccent}>{item.titleAccent}</Text>
-          </>
-        ) : null}
-      </Text>
-      {item.subtitle ? <Text style={styles.subtitle}>{item.subtitle}</Text> : null}
-      <Text style={styles.body}>{item.body}</Text>
-    </View>
-  );
+    );
+  };
 
   return (
     <View style={[styles.screen, { paddingTop: layout.paddingTop, paddingBottom: layout.paddingBottom }]}>
       <View style={styles.skipRow}>
         <Tap
           style={styles.skipBtn}
-          onPress={handleSkip}
+          onPress={onLogin}
           activeOpacity={0.8}
           hitSlop={8}
           accessibilityRole="button"
-          accessibilityLabel="Skip"
+          accessibilityLabel={replay ? 'Close' : 'Skip'}
         >
-          <Text style={styles.skipText}>Skip</Text>
+          <Text style={styles.skipText}>{replay ? 'Close' : 'Skip'}</Text>
         </Tap>
       </View>
 
       <FlatList
         ref={flatListRef}
-        data={slides}
-        renderItem={renderSlide}
-        keyExtractor={(item) => item.id}
+        data={cards}
+        renderItem={renderCard}
+        extraData={`${currentIndex}-${services.length}`}
+        keyExtractor={(_, index) => String(index)}
         horizontal
         pagingEnabled
         showsHorizontalScrollIndicator={false}
@@ -176,9 +131,9 @@ export default function OnboardingScreen({ role, onFinish, onLogin }: Onboarding
           style={styles.dots}
           accessible
           accessibilityRole="progressbar"
-          accessibilityLabel={`Slide ${currentIndex + 1} of ${slides.length}`}
+          accessibilityLabel={`Slide ${currentIndex + 1} of ${cards.length}`}
         >
-          {slides.map((_, i) => (
+          {cards.map((_, i) => (
             <View
               key={i}
               style={[styles.dotIndicator, i === currentIndex && styles.dotIndicatorActive]}
@@ -191,9 +146,9 @@ export default function OnboardingScreen({ role, onFinish, onLogin }: Onboarding
           onPress={handleNext}
           activeOpacity={0.85}
           accessibilityRole="button"
-          accessibilityLabel={isLast ? 'Get started' : 'Next'}
+          accessibilityLabel={isLast ? 'Show me around' : 'Next'}
         >
-          <Text style={styles.nextBtnText}>{isLast ? 'Get started' : 'Next'}</Text>
+          <Text style={styles.nextBtnText}>{isLast ? 'Show me around' : 'Next'}</Text>
         </Tap>
       </View>
     </View>
@@ -227,55 +182,35 @@ function createThemedStyles(theme: ThemePalette) {
     },
 
     slide: {
-      width: W,
       paddingHorizontal: 24,
-      paddingTop: 28,
+      paddingTop: 24,
       alignItems: 'center',
     },
 
-    // The illustration: a tile in the role's tint with a white disc and the icon.
+    // The picture well: the role's tint, holding the card's parts. It grows to fit larger text.
     illustration: {
       width: '100%',
       maxWidth: 360,
-      height: 210,
+      minHeight: 210,
       borderRadius: 28,
       backgroundColor: Colors.primaryTonal,
       alignItems: 'center',
       justifyContent: 'center',
+      padding: 16,
       marginBottom: 28,
-    },
-    illustrationDisc: {
-      width: 96,
-      height: 96,
-      borderRadius: 48,
-      backgroundColor: C.surface,
-      alignItems: 'center',
-      justifyContent: 'center',
-      ...V6Shadows.sm,
+      overflow: 'hidden',
     },
 
     title: {
       fontFamily: 'Inter',
-      fontSize: 30,
+      fontSize: 26,
       fontWeight: '800',
       // A line height near the font size made Android clip the second line
-      // of two-line titles ("Confirm and get / paid").
-      letterSpacing: -0.5,
+      // of two-line titles, so the line height stays well above the size.
+      letterSpacing: -0.4,
       color: C.ink900,
       textAlign: 'center',
-      lineHeight: 38,
-    },
-    titleAccent: {
-      color: Colors.link,
-    },
-    subtitle: {
-      fontFamily: 'Inter',
-      fontSize: 18,
-      fontWeight: '700',
-      color: C.ink900,
-      lineHeight: 22,
-      textAlign: 'center',
-      marginTop: 9,
+      lineHeight: 33,
     },
     body: {
       fontFamily: 'Inter',
@@ -283,7 +218,7 @@ function createThemedStyles(theme: ThemePalette) {
       fontWeight: '400',
       color: C.ink500,
       textAlign: 'center',
-      lineHeight: 22,
+      lineHeight: 23,
       marginTop: 12,
       maxWidth: 320,
     },

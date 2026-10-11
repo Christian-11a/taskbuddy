@@ -1,16 +1,26 @@
 import React from 'react';
 import { FlatList } from 'react-native';
-import { act, fireEvent, render, screen } from '@testing-library/react-native';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react-native';
 import OnboardingScreen from '../OnboardingScreen';
+import { api } from '../../../../src/lib/api';
+import { clearAsyncDataCache } from '../../../../src/hooks/useAsyncData';
 
-function renderOnboarding(role: 'homeowner' | 'provider' | null = 'homeowner') {
+jest.mock('../../../../src/lib/api', () => ({
+  api: { categories: jest.fn() },
+}));
+
+type Props = Partial<React.ComponentProps<typeof OnboardingScreen>>;
+
+/** Renders, then flushes the lookup that settles right after mount, so no update lands outside act. */
+async function renderOnboarding(role: 'homeowner' | 'provider' | null = 'homeowner', extra: Props = {}) {
   const onFinish = jest.fn();
   const onLogin = jest.fn();
-  render(<OnboardingScreen role={role} onFinish={onFinish} onLogin={onLogin} />);
+  render(<OnboardingScreen role={role} onFinish={onFinish} onLogin={onLogin} {...extra} />);
+  await act(async () => {});
   return { onFinish, onLogin };
 }
 
-/** Tells the pager which slide is on screen, as a swipe would. */
+/** Tells the pager which card is on screen, as a swipe would. */
 function showSlide(index: number) {
   const list = screen.UNSAFE_getByType(FlatList);
   act(() => {
@@ -20,54 +30,121 @@ function showSlide(index: number) {
   });
 }
 
-describe('OnboardingScreen — homeowner', () => {
-  it('first slide points at "What do you need done?" on Home, not the old + button', () => {
-    renderOnboarding('homeowner');
+beforeEach(() => {
+  clearAsyncDataCache();
+  jest.clearAllMocks();
+  // Pending by default, so no lookup settles after a test ends unless the test sets one up.
+  (api.categories as jest.Mock).mockReturnValue(new Promise(() => {}));
+});
 
-    expect(screen.getByText('Post what you need')).toBeTruthy();
-    expect(screen.getByText(
-      'Tap "What do you need done?" on Home, pick a service and describe the job. It takes about a minute.',
-    )).toBeTruthy();
-    expect(screen.queryByText(/Tap the \+ button/)).toBeNull();
+describe('OnboardingScreen — homeowner (client)', () => {
+  it('greets the client by first name on the first card', async () => {
+    await renderOnboarding('homeowner', { firstName: 'Juan' });
+
+    expect(screen.getByText('Hi Juan, help is close by')).toBeTruthy();
+    expect(screen.getByText('Book trusted local pros for plumbing, cleaning, repairs and more.')).toBeTruthy();
   });
 
-  it('moves on with Next and finishes with Get started on the last slide', () => {
-    const { onFinish } = renderOnboarding('homeowner');
+  it('says "there" when the name is not known yet', async () => {
+    await renderOnboarding('homeowner');
+
+    expect(screen.getByText('Hi there, help is close by')).toBeTruthy();
+  });
+
+  it('shows the three cards in order, and no card says "File a complaint"', async () => {
+    await renderOnboarding('homeowner', { firstName: 'Juan' });
+
+    expect(screen.getByText('You choose who comes')).toBeTruthy();
+    expect(screen.getByText('Your money waits until the job is done')).toBeTruthy();
+    expect(screen.queryByText(/File a complaint/i)).toBeNull();
+  });
+
+  it('moves on with Next and ends on "Show me around", which finishes the walkthrough', async () => {
+    const { onFinish } = await renderOnboarding('homeowner');
     expect(screen.getByText('Next')).toBeTruthy();
 
     showSlide(2);
-    expect(screen.getByText('Get started')).toBeTruthy();
-    fireEvent.press(screen.getByText('Get started'));
+    expect(screen.getByText('Show me around')).toBeTruthy();
+    fireEvent.press(screen.getByText('Show me around'));
 
     expect(onFinish).toHaveBeenCalledTimes(1);
   });
 });
 
-describe('OnboardingScreen — provider', () => {
-  it('last slide says a hire confirms the booking and the payment is held until released after the job', () => {
-    renderOnboarding('provider');
+describe('OnboardingScreen — the client\'s service chips', () => {
+  it('shows up to three real service names on the first card once they load', async () => {
+    (api.categories as jest.Mock).mockResolvedValue([
+      { id: 1, name: 'Plumbing' },
+      { id: 2, name: 'Cleaning' },
+      { id: 3, name: 'Handyman' },
+      { id: 4, name: 'Manicure' },
+    ]);
+    await renderOnboarding('homeowner', { firstName: 'Juan' });
 
-    expect(screen.getByText('Get hired, get paid safely')).toBeTruthy();
-    expect(screen.getByText(
-      'When a client hires you, the booking is confirmed automatically. Their payment is held safely and released to you after the job.',
-    )).toBeTruthy();
+    await waitFor(() => expect(screen.getByText('Plumbing')).toBeTruthy());
+    expect(screen.getByText('Cleaning')).toBeTruthy();
+    expect(screen.getByText('Handyman')).toBeTruthy();
+    expect(screen.queryByText('Manicure')).toBeNull();
   });
 
-  it('the final button reads Get started and finishes the slides', () => {
-    const { onFinish } = renderOnboarding('provider');
+  it('shows no service names when the categories cannot load, and the card still reads normally', async () => {
+    (api.categories as jest.Mock).mockRejectedValue(new Error('offline'));
+    await renderOnboarding('homeowner', { firstName: 'Juan' });
+
+    await waitFor(() => expect(api.categories).toHaveBeenCalled());
+    expect(screen.queryByText('Plumbing')).toBeNull();
+    expect(screen.getByText('Hi Juan, help is close by')).toBeTruthy();
+  });
+});
+
+describe('OnboardingScreen — provider', () => {
+  it('greets the provider by first name and says the work comes from the services they offer', async () => {
+    await renderOnboarding('provider', { firstName: 'Ana' });
+
+    expect(screen.getByText("Hi Ana, let's get you hired")).toBeTruthy();
+    expect(screen.getByText('Find jobs near you in the services you offer.')).toBeTruthy();
+  });
+
+  it('last card says the payment is held and released after the job and the warranty', async () => {
+    await renderOnboarding('provider');
 
     showSlide(2);
-    fireEvent.press(screen.getByText('Get started'));
+
+    expect(screen.getByText('Get paid safely')).toBeTruthy();
+    expect(screen.getByText("The client's payment is held and released to you after the job and a 3-day warranty.")).toBeTruthy();
+  });
+
+  it('does not look up service categories, since its pictures are icon-only', async () => {
+    await renderOnboarding('provider');
+
+    expect(api.categories).not.toHaveBeenCalled();
+  });
+
+  it('the final button reads Show me around and finishes the walkthrough', async () => {
+    const { onFinish } = await renderOnboarding('provider');
+
+    showSlide(2);
+    fireEvent.press(screen.getByText('Show me around'));
 
     expect(onFinish).toHaveBeenCalledTimes(1);
   });
 });
 
 describe('OnboardingScreen — skip', () => {
-  it('Skip is on screen from the first slide and calls the skip handler, not finish', () => {
-    const { onLogin, onFinish } = renderOnboarding('homeowner');
+  it('Skip is on screen from the first card and calls the skip handler, not finish', async () => {
+    const { onLogin, onFinish } = await renderOnboarding('homeowner');
 
     fireEvent.press(screen.getByText('Skip'));
+
+    expect(onLogin).toHaveBeenCalledTimes(1);
+    expect(onFinish).not.toHaveBeenCalled();
+  });
+
+  it('on a replay the same control reads Close and still leaves without finishing', async () => {
+    const { onLogin, onFinish } = await renderOnboarding('homeowner', { replay: true });
+
+    expect(screen.queryByText('Skip')).toBeNull();
+    fireEvent.press(screen.getByRole('button', { name: 'Close' }));
 
     expect(onLogin).toHaveBeenCalledTimes(1);
     expect(onFinish).not.toHaveBeenCalled();
