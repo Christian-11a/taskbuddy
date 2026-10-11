@@ -83,9 +83,9 @@ describe('sanitizePhone', () => {
 
 });
 
-/** Types `text` one character at a time into an empty phone field, the way a keyboard does. */
-function typePhone(text: string): string {
-  let shown = '';
+/** Types `text` one character at a time after `start` (an empty field by default), the way a keyboard does. */
+function typePhone(text: string, start = ''): string {
+  let shown = start;
   for (const ch of text) shown = nextPhoneText(shown, shown + ch);
   return shown;
 }
@@ -132,6 +132,47 @@ describe('nextPhoneText: what the phone field shows after a change', () => {
   it('lets a number that was pasted too long be shortened by deleting digits', () => {
     expect(nextPhoneText('091712345678', '09171234567')).toBe('09171234567');
     expect(nextPhoneText('091712345678901', '09171234567890')).toBe('09171234567890');
+  });
+});
+
+/** A value saved before validation existed can hold letters; the field must still let it be cleared and typed over. */
+describe('nextPhoneText: a stored value that still has letters', () => {
+  it.each([
+    ['Backspace on the stored asdsad clears it', 'asdsad', 'asdsa', ''],
+    ['Backspace on the stored 0917a keeps its digits', '0917a', '0917', '0917'],
+    ['typing 0 after asdsad shows the 0, and the letters go', 'asdsad', 'asdsad0', '0'],
+    ['typing 5 after 0917a keeps the digits and drops the letters', '0917a', '0917a5', '09175'],
+    ['typing a letter after asdsad, which has no digits to keep, leaves the field empty', 'asdsad', 'asdsadx', ''],
+    ['pasting +63 917 123 4567 after asdsad gives the 09 form', 'asdsad', 'asdsad+63 917 123 4567', '09171234567'],
+    ['pasting digits with letters after asdsad keeps the digits', 'asdsad', 'asdsadabc0917', '0917'],
+  ])('%s', (_label, previous, incoming, expected) => {
+    expect(nextPhoneText(previous, incoming)).toBe(expected);
+  });
+
+  it('types 0917 after asdsad as 0917', () => {
+    expect(typePhone('0917', 'asdsad')).toBe('0917');
+  });
+});
+
+/** The edits that already worked, and the paste rules, which must not change. */
+describe('nextPhoneText: normal typing, Backspace and paste', () => {
+  it.each([
+    ['typing 1 after 0917', '0917', '09171', '09171'],
+    ['typing a space after 0917 adds nothing', '0917', '0917 ', '0917'],
+    ['a 12th typed digit is ignored', '09171234567', '091712345678', '09171234567'],
+    ['typing a letter after 0917 is refused', '0917', '0917a', '0917'],
+    ['Backspace on 09171234567', '09171234567', '0917123456', '0917123456'],
+    ['Backspace on 0917', '0917', '091', '091'],
+    ['Backspace on a stored +63 917 123 4567 leaves its digits', '+63 917 123 4567', '+63 917 123 456', '63917123456'],
+    ['pasting +63 (0917) 123 - 4567 into an empty field', '', '+63 (0917) 123 - 4567', '09171234567'],
+    ['pasting 12 digits keeps all of them', '', '091712345678', '091712345678'],
+    ['pasting 639171234567 gives the 09 form', '', '639171234567', '09171234567'],
+    ['pasting 19 digits is cut at 15', '', '0917123456789012345', '091712345678901'],
+    ['pasting letters into an empty field is refused', '', 'abc', ''],
+    ['pasting letters after a number is refused', '09171234567', '09171234567abc', '09171234567'],
+    ['pasting a full number over 0917 replaces it', '0917', '09171234567', '09171234567'],
+  ])('%s', (_label, previous, incoming, expected) => {
+    expect(nextPhoneText(previous, incoming)).toBe(expected);
   });
 });
 

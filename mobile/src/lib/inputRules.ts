@@ -39,21 +39,36 @@ export function sanitizePhone(raw: string | null | undefined): string {
   return readCountryCode((raw ?? '').replace(/\D/g, '')).slice(0, PHONE_DIGITS);
 }
 
+/** Digits only: every letter, space, dash, plus sign and other symbol is dropped. */
+function digitsOnly(text: string): string {
+  return text.replace(/\D/g, '');
+}
+
 /**
  * What the phone field shows once `incoming` replaces `previous`. Formatting (see PHONE_FORMATTING)
  * is dropped, and a letter or any other symbol refuses the whole change, so the field keeps `previous`.
  *
+ * Deleting always takes effect, reduced to its digits, so a long pasted number can be shortened by hand
+ * and a value saved before validation existed, which can hold letters, can be cleared. Adding text to a
+ * value that holds non-digits drops them: the digits of the new text are kept, or, when the new text has
+ * none, the value's own digits.
+ *
  * A typed character cannot take the number past eleven digits, so a 12th typed digit is ignored; a
  * number with the country code 63 reads as its 09 form as soon as it is long enough. A paste is never
  * shortened to look valid: it keeps every digit (up to 15), so the validator can refuse what is wrong.
- * Deleting is always allowed, so a long pasted number can be shortened by hand.
  */
 export function nextPhoneText(previous: string, incoming: string): string {
-  const digits = incoming.replace(PHONE_FORMATTING, '');
+  const grew = incoming.length - previous.length;
+  if (grew < 0) return digitsOnly(incoming);
+
+  const replacesLetters = grew > 0 && /\D/.test(previous);
+  const digits = replacesLetters ? digitsOnly(incoming) : incoming.replace(PHONE_FORMATTING, '');
+  if (replacesLetters && !digits) return digitsOnly(previous);
   if (/\D/.test(digits)) return previous;
+
   const local = readCountryCode(digits);
-  if (incoming.length - previous.length > 1) return local.slice(0, PHONE_PASTE_DIGITS);
-  return local.length > PHONE_DIGITS && incoming.length > previous.length ? previous : local;
+  if (grew > 1) return local.slice(0, PHONE_PASTE_DIGITS);
+  return local.length > PHONE_DIGITS && grew > 0 ? digitsOnly(previous) : local;
 }
 
 /** Valid only as 09 followed by nine digits. Empty is allowed unless `required`. */

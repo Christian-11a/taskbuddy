@@ -202,6 +202,19 @@ describe.each<Role>(ROLES)('%s edit profile phone', (role) => {
     expect(api.updateProfile).toHaveBeenCalledWith(expect.objectContaining({ phone: '' }));
   });
 
+  it('clears a stored phone with letters when its last letter is deleted, and then Save is allowed', async () => {
+    mockProfile({ phone: 'asdsad' });
+    await renderEditor(role);
+    expect(phoneField().props.value).toBe('asdsad');
+
+    fireEvent.changeText(phoneField(), 'asdsa');
+
+    expect(phoneField().props.value).toBe('');
+    expect(screen.queryByText(PHONE_FORMAT)).toBeNull();
+    await saveAndConfirm();
+    expect(api.updateProfile).toHaveBeenCalledWith(expect.objectContaining({ phone: '' }));
+  });
+
   it('sends the cleaned phone when the phone was changed', async () => {
     await renderEditor(role);
     fireEvent.changeText(phoneField(), '+63 998 765 4321');
