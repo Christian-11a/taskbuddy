@@ -34,6 +34,8 @@ import {
   PHONE_INPUT_MAX_LENGTH,
   normalizeName,
   sanitizePhone,
+  validateAddress,
+  validateCity,
   validateFullName,
   validatePhone,
 } from '../../../src/lib/inputRules';
@@ -63,6 +65,7 @@ export default function HOEditProfileScreen({ onBack, onSave }: HOEditProfileScr
   const [city, setCity] = useState(loaded.city);
   const [resolvedLocation, setResolvedLocation] = useState<GeocodedAddress | null>(null);
   const [submitted, setSubmitted] = useState(false);
+  const [addressTouched, setAddressTouched] = useState(false);
   const [showSaveConfirmation, setShowSaveConfirmation] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -85,6 +88,9 @@ export default function HOEditProfileScreen({ onBack, onSave }: HOEditProfileScr
   const nameError = (changed.includes('name') || !name.trim()) ? validateFullName(name) ?? undefined : undefined;
   const phoneChanged = changed.includes('phone');
   const phoneError = phoneChanged ? validatePhone(phone) ?? undefined : undefined;
+  // The address and city are optional here, so only a value the user typed is checked.
+  const addressError = changed.includes('address') ? validateAddress(location) ?? undefined : undefined;
+  const cityError = changed.includes('city') ? validateCity(city) ?? undefined : undefined;
 
   // Moves the address to the top of the visible area as it takes focus, so the
   // suggestions it opens sit above the keyboard instead of under it.
@@ -97,7 +103,7 @@ export default function HOEditProfileScreen({ onBack, onSave }: HOEditProfileScr
   const requestSave = () => {
     setError(null);
     setSubmitted(true);
-    if (nameError || phoneError) return;
+    if (nameError || phoneError || addressError || cityError) return;
     if (changed.length > 0) setShowSaveConfirmation(true);
     else onSave();
   };
@@ -111,7 +117,7 @@ export default function HOEditProfileScreen({ onBack, onSave }: HOEditProfileScr
         full_name: normalizeName(name),
         phone: phoneChanged ? sanitizePhone(phone) : phone.trim(),
         address: location.trim(),
-        city: city.trim(),
+        city: normalizeName(city),
         location_reference: resolvedLocation?.location_reference,
       });
       await refreshProfile();
@@ -199,8 +205,10 @@ export default function HOEditProfileScreen({ onBack, onSave }: HOEditProfileScr
               onChangeText={(value) => { setLocation(value); setResolvedLocation(null); }}
               onResolve={(resolved) => { setResolvedLocation(resolved); if (resolved?.city) setCity(resolved.city); }}
               onFocus={keepAddressAboveKeyboard}
+              onBlur={() => setAddressTouched(true)}
               placeholder="House no., Barangay, Street"
               hint="Used as the default for new jobs"
+              error={addressTouched || submitted ? addressError : undefined}
               inputStyle={styles.addressInput}
             />
           </View>
@@ -212,6 +220,8 @@ export default function HOEditProfileScreen({ onBack, onSave }: HOEditProfileScr
             placeholder="City / Municipality"
             autoCapitalize="words"
             keyboardAppearance={appearance}
+            error={cityError}
+            submitted={submitted}
           />
 
           {!!error && <Text style={styles.errorText} accessibilityLiveRegion="polite">{error}</Text>}

@@ -44,6 +44,8 @@ import {
   PHONE_INPUT_MAX_LENGTH,
   normalizeName,
   sanitizePhone,
+  validateAddress,
+  validateCity,
   validateFullName,
   validatePhone,
 } from '../../../src/lib/inputRules';
@@ -81,6 +83,7 @@ export default function SPEditProfileScreen({ onBack, onSave, onManageServices }
   const [radius, setRadius] = useState(loaded.radius);
   const [categoryId, setCategoryId] = useState<number | null>(loaded.service);
   const [submitted, setSubmitted] = useState(false);
+  const [addressTouched, setAddressTouched] = useState(false);
   const [showSaveConfirmation, setShowSaveConfirmation] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -110,8 +113,15 @@ export default function SPEditProfileScreen({ onBack, onSave, onManageServices }
   // not change is only refused when it is empty (see the phone rule above).
   const nameError = (changed.includes('name') || !name.trim()) ? validateFullName(name) ?? undefined : undefined;
   // Recommendations match providers to jobs within their service radius of
-  // this address; without one a provider is never invited to anything.
-  const addressError = location.trim() ? undefined : 'Enter your address so nearby jobs can be matched to you.';
+  // this address; without one a provider is never invited to anything. The city
+  // is optional, so it is only checked when it was typed.
+  const addressError = (changed.includes('address') || !location.trim())
+    ? validateAddress(location, {
+      required: true,
+      requiredMessage: 'Enter your address so nearby jobs can be matched to you.',
+    }) ?? undefined
+    : undefined;
+  const cityError = changed.includes('city') ? validateCity(city) ?? undefined : undefined;
   const serviceError = categoryId ? undefined : 'Please select the service you offer.';
   const bioError = bio.trim().length < 20 ? 'Bio must be at least 20 characters.' : undefined;
 
@@ -126,7 +136,7 @@ export default function SPEditProfileScreen({ onBack, onSave, onManageServices }
   const requestSave = () => {
     setError(null);
     setSubmitted(true);
-    if (nameError || phoneError || addressError || serviceError || bioError) return;
+    if (nameError || phoneError || addressError || cityError || serviceError || bioError) return;
     setShowSaveConfirmation(true);
   };
 
@@ -139,7 +149,7 @@ export default function SPEditProfileScreen({ onBack, onSave, onManageServices }
         full_name: normalizeName(name),
         phone: phoneChanged ? sanitizePhone(phone) : phone.trim(),
         address: location.trim(),
-        city: city.trim(),
+        city: normalizeName(city),
         location_reference: resolvedLocation?.location_reference,
       });
       await api.upsertProviderProfile({
@@ -229,8 +239,9 @@ export default function SPEditProfileScreen({ onBack, onSave, onManageServices }
               onChangeText={(value) => { setLocation(value); setResolvedLocation(null); }}
               onResolve={(resolved) => { setResolvedLocation(resolved); if (resolved?.city) setCity(resolved.city); }}
               onFocus={keepAddressAboveKeyboard}
+              onBlur={() => setAddressTouched(true)}
               placeholder="House no., Barangay, Street"
-              error={submitted ? addressError : undefined}
+              error={addressTouched || submitted ? addressError : undefined}
               inputStyle={styles.addressInput}
             />
           </View>
@@ -242,6 +253,8 @@ export default function SPEditProfileScreen({ onBack, onSave, onManageServices }
             placeholder="City / Municipality"
             autoCapitalize="words"
             keyboardAppearance={appearance}
+            error={cityError}
+            submitted={submitted}
           />
 
           <TextField

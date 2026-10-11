@@ -20,13 +20,18 @@ jest.mock('../../components/AddressField', () => {
     value,
     onChangeText,
     onResolve,
+    onBlur,
+    error,
   }: {
     value: string;
     onChangeText: (value: string) => void;
     onResolve: (value: unknown) => void;
+    onBlur?: () => void;
+    error?: string;
   }) => (
     <>
-      <TextInput testID="address" value={value} onChangeText={onChangeText} />
+      <TextInput testID="address" value={value} onChangeText={onChangeText} onBlur={onBlur} />
+      {!!error && <Text accessibilityLiveRegion="polite">{error}</Text>}
       <Text
         onPress={() => {
           onChangeText('Old address');
@@ -255,5 +260,93 @@ describe.each<Role>(ROLES)('%s edit profile name', (role) => {
       full_name: 'Test 02',
       phone: '09990000000',
     }));
+  });
+});
+
+const ADDRESS_SHORT = 'Address must be at least 5 characters';
+const CITY_SHORT = 'City must be at least 2 characters';
+const SP_ADDRESS_REQUIRED = 'Enter your address so nearby jobs can be matched to you.';
+const cityField = () => screen.getByPlaceholderText('City / Municipality');
+
+describe.each<Role>(ROLES)('%s edit profile address and city', (role) => {
+  it('shows the address message once the address is left, not while typing', async () => {
+    await renderEditor(role);
+
+    fireEvent.changeText(screen.getByTestId('address'), 'Lipa');
+    expect(screen.queryByText(ADDRESS_SHORT)).toBeNull();
+
+    fireEvent(screen.getByTestId('address'), 'blur');
+    expect(screen.getByText(ADDRESS_SHORT)).toBeTruthy();
+  });
+
+  it('blocks Save for an address shorter than five characters', async () => {
+    await renderEditor(role);
+    fireEvent.changeText(screen.getByTestId('address'), 'Lipa');
+
+    fireEvent.press(screen.getByLabelText('Save changes'));
+
+    expect(screen.getByText(ADDRESS_SHORT)).toBeTruthy();
+    expect(api.updateProfile).not.toHaveBeenCalled();
+  });
+
+  it('blocks Save for a city of one letter', async () => {
+    await renderEditor(role);
+    fireEvent.changeText(cityField(), 'C');
+
+    fireEvent.press(screen.getByLabelText('Save changes'));
+
+    expect(screen.getByText(CITY_SHORT)).toBeTruthy();
+    expect(api.updateProfile).not.toHaveBeenCalled();
+  });
+
+  it('accepts a short Philippine city such as Lipa', async () => {
+    await renderEditor(role);
+    fireEvent.changeText(cityField(), 'Lipa');
+
+    await saveAndConfirm();
+
+    expect(api.updateProfile).toHaveBeenCalledWith(expect.objectContaining({ city: 'Lipa' }));
+  });
+
+  it('sends the city with single spaces between its words', async () => {
+    await renderEditor(role);
+    fireEvent.changeText(cityField(), '  Lapu   Lapu City ');
+
+    await saveAndConfirm();
+
+    expect(api.updateProfile).toHaveBeenCalledWith(expect.objectContaining({ city: 'Lapu Lapu City' }));
+  });
+
+  it('does not block saving while an older short address or city is left untouched', async () => {
+    mockProfile({ address: 'Ok', city: 'Q' });
+    await renderEditor(role);
+    fireEvent.changeText(screen.getByLabelText('Full name'), 'Alex Reyes');
+
+    await saveAndConfirm();
+
+    expect(api.updateProfile).toHaveBeenCalledWith(expect.objectContaining({ address: 'Ok', city: 'Q' }));
+  });
+});
+
+describe('provider edit profile address', () => {
+  it('asks for an address, because nearby jobs are matched from it', async () => {
+    await renderEditor('provider');
+    fireEvent.changeText(screen.getByTestId('address'), '');
+
+    fireEvent.press(screen.getByLabelText('Save changes'));
+
+    expect(screen.getByText(SP_ADDRESS_REQUIRED)).toBeTruthy();
+    expect(api.updateProfile).not.toHaveBeenCalled();
+  });
+});
+
+describe('homeowner edit profile address', () => {
+  it('allows an empty address, because the address is optional on the homeowner profile', async () => {
+    await renderEditor('homeowner');
+    fireEvent.changeText(screen.getByTestId('address'), '');
+
+    await saveAndConfirm();
+
+    expect(api.updateProfile).toHaveBeenCalledWith(expect.objectContaining({ address: '' }));
   });
 });
