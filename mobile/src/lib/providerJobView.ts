@@ -19,6 +19,7 @@ import { dateKeyOf, parseDateKey } from './localDate';
 export type Action =
   | { kind: 'reviewProposals'; count: number }   // → onNavigate('Job Applications', job.id)
   | { kind: 'findProviders' }                    // → existing findProviders() (api.triggerRecommendations)
+  | { kind: 'viewOffers' }                       // → onNavigate('Job Applications', job.id) (homeowner only; kept so the two copies match)
   | { kind: 'message'; name: string }            // → onNavigate('Chat', job.id)
   | { kind: 'confirmDone' }                      // → existing confirm-completion modal → api.completeJob
   | { kind: 'reportProblem' }                    // → onNavigate('Dispute Filing', job.id)

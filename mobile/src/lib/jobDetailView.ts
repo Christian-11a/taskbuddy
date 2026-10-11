@@ -17,6 +17,7 @@ export type ProgressStep = 'posted' | 'hired' | 'working' | 'done' | 'cancelled'
 export type Action =
   | { kind: 'reviewProposals'; count: number }
   | { kind: 'findProviders' }
+  | { kind: 'viewOffers' }
   | { kind: 'message'; name: string }
   | { kind: 'confirmDone' }
   | { kind: 'reportProblem' }
@@ -44,8 +45,11 @@ export type JobView = {
 export type HomeownerJobInput = {
   job: Job;
   dispute: Dispute | null;
-  /** Proposals still waiting for the homeowner's decision. Use 0 while they are unknown. */
-  pendingCount: number;
+  /**
+   * Proposals still waiting for the homeowner's decision. 0 while the lookup is running;
+   * null when it failed, so the count is unknown and the offers are offered without a number.
+   */
+  pendingCount: number | null;
   tasks: readonly JobTask[];
   /** The hired provider, or null when none is assigned or the lookup failed. */
   provider: { profiles?: { full_name: string } | null } | null;
@@ -87,6 +91,21 @@ export function homeownerJobView(input: HomeownerJobInput): JobView {
   switch (job.status) {
     case 'open':
     case 'recommending':
+      if (pendingCount === null) {
+        // The lookup failed: no count and no "waiting", but the offers stay one tap away.
+        return {
+          card: {
+            tone: 'action',
+            overline: 'OPEN',
+            title: 'Open for offers',
+            body: withNote("Providers near you can apply. We'll notify you.", note),
+          },
+          step: 'posted',
+          main: { kind: 'findProviders' },
+          link: { kind: 'viewOffers' },
+          menu: menuItems(complaint, cancel),
+        };
+      }
       if (pendingCount > 0) {
         return {
           card: {

@@ -72,6 +72,7 @@ function actionLabel(action: Action, slot: 'main' | 'link'): string {
   switch (action.kind) {
     case 'reviewProposals': return `Review proposals (${action.count})`;
     case 'findProviders': return slot === 'link' ? 'Find providers near you' : 'Find providers';
+    case 'viewOffers': return 'View offers';
     case 'message': return `Message ${action.name}`;
     case 'confirmDone': return 'Confirm job is done';
     case 'reportProblem': return 'Report a problem';
@@ -114,7 +115,8 @@ export default function HOJobDetailScreen({ jobId, onBack, onNavigate }: HOJobDe
   const [confirmComplete, setConfirmComplete] = useState(false);
   const [photoIndex, setPhotoIndex] = useState<number | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
-  const [offers, setOffers] = useState<{ jobId: string; list: JobApplication[] } | null>(null);
+  // list is null when the lookup failed, so the count of pending offers is unknown.
+  const [offers, setOffers] = useState<{ jobId: string; list: JobApplication[] | null } | null>(null);
   // Checked and set synchronously, so two taps before React re-renders cannot start two actions.
   const inFlight = useRef(false);
 
@@ -128,7 +130,8 @@ export default function HOJobDetailScreen({ jobId, onBack, onNavigate }: HOJobDe
   const doneCount = tasks.filter((t) => t.is_done).length;
 
   // Proposals on an open job. Loaded after the job and never blocks the screen:
-  // until they arrive the job reads as having none, and an error keeps that.
+  // until they arrive the job reads as having none. A failed lookup is kept as
+  // unknown (list null), so the card offers the list without claiming a count.
   useEffect(() => {
     const current = data?.job;
     if (!current || !isOpenJob(current)) return;
@@ -138,15 +141,19 @@ export default function HOJobDetailScreen({ jobId, onBack, onNavigate }: HOJobDe
       .then((list) => {
         if (active) setOffers({ jobId: current.id, list });
       })
-      .catch(() => undefined);
+      .catch(() => {
+        if (active) setOffers({ jobId: current.id, list: null });
+      });
     return () => {
       active = false;
     };
   }, [data]);
 
-  const offerList = offers && job && offers.jobId === job.id ? offers.list : null;
+  const offerEntry = offers && job && offers.jobId === job.id ? offers : null;
+  const offerList = offerEntry?.list ?? null;
   const pendingOffers = offerList ? offerList.filter((application) => application.status === 'pending') : [];
-  const pendingCount = offerList ? countPendingProposals(offerList) : 0;
+  // 0 until the lookup answers; null when it failed, so the count is unknown and no number is shown.
+  const pendingCount = offerEntry ? (offerList ? countPendingProposals(offerList) : null) : 0;
 
   const runAction = async (fn: () => Promise<unknown>) => {
     if (inFlight.current) return;
@@ -206,6 +213,9 @@ export default function HOJobDetailScreen({ jobId, onBack, onNavigate }: HOJobDe
         return;
       case 'findProviders':
         void findProviders();
+        return;
+      case 'viewOffers':
+        onNavigate('Job Applications', job.id);
         return;
       case 'message':
         onNavigate('Chat', job.id);
@@ -334,7 +344,7 @@ export default function HOJobDetailScreen({ jobId, onBack, onNavigate }: HOJobDe
             <View style={styles.block}>
               <SectionHeader
                 title="Offers"
-                count={pendingCount > 0 ? pendingCount : undefined}
+                count={pendingCount ? pendingCount : undefined}
                 linkLabel="See all"
                 onLinkPress={() => onNavigate('Job Applications', job.id)}
               />

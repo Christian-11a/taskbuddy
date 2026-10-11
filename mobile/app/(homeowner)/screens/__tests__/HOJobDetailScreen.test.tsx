@@ -326,6 +326,19 @@ describe('HOJobDetailScreen — offers, the main action and the ⋮ menu', () =>
     expect(screen.queryByText('No offers yet')).toBeNull();
   });
 
+  it('a failed proposals lookup still offers View offers, which opens Job Applications, and claims no count', async () => {
+    (api.getJob as jest.Mock).mockResolvedValue(openJob);
+    (api.jobApplications as jest.Mock).mockRejectedValue(new Error('offline'));
+    const onNavigate = jest.fn();
+    renderJob(onNavigate);
+
+    fireEvent.press(await screen.findByText('View offers'));
+    expect(onNavigate).toHaveBeenCalledWith('Job Applications', 'job-1');
+    expect(screen.getByText('Find providers')).toBeTruthy();
+    expect(screen.queryByText(/Review proposals/)).toBeNull();
+    expect(screen.queryByText('No offers yet')).toBeNull();
+  });
+
   it('a booked job: the main button messages the provider', async () => {
     (api.getJob as jest.Mock).mockResolvedValue({ ...inProgressJob, status: 'confirmed', job_tasks: [] });
     const onNavigate = jest.fn();

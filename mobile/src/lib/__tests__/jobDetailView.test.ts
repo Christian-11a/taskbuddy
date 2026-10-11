@@ -65,7 +65,8 @@ const task = (is_done: boolean, position = 0): JobTask => ({
 type Setup = {
   job?: Partial<Job>;
   dispute?: Dispute | null;
-  pending?: number;
+  /** null: the proposals lookup failed, so the count is unknown. */
+  pending?: number | null;
   tasks?: JobTask[];
   provider?: typeof PROVIDER | null;
 };
@@ -138,6 +139,45 @@ describe('homeownerJobView: open or recommending', () => {
     expect(view.main).toEqual({ kind: 'findProviders' });
     expect(view.menu).toEqual([{ kind: 'viewCase' }, { kind: 'cancelJob' }]);
     expect(view.card.body).toBe("Providers near you can apply. We'll notify you. Complaint awaiting admin review.");
+  });
+});
+
+describe('homeownerJobView: open, and the proposals lookup failed', () => {
+  // A failed lookup leaves the count unknown: the card claims no number and no "waiting", and the offers stay reachable.
+  it('open job: find providers is the main action, View offers is the link, and the card claims no count', () => {
+    expect(viewFor({ pending: null })).toEqual({
+      card: {
+        tone: 'action',
+        overline: 'OPEN',
+        title: 'Open for offers',
+        body: "Providers near you can apply. We'll notify you.",
+      },
+      step: 'posted',
+      main: { kind: 'findProviders' },
+      link: { kind: 'viewOffers' },
+      menu: [{ kind: 'cancelJob' }],
+    });
+  });
+
+  it('recommending counts the same as open', () => {
+    const view = viewFor({ job: { status: 'recommending' }, pending: null });
+    expect(view.card.title).toBe('Open for offers');
+    expect(view.main).toEqual({ kind: 'findProviders' });
+    expect(view.link).toEqual({ kind: 'viewOffers' });
+  });
+
+  it('a complaint stays in the menu and its note stays in the body', () => {
+    const view = viewFor({ pending: null, dispute: dispute() });
+    expect(view.link).toEqual({ kind: 'viewOffers' });
+    expect(view.menu).toEqual([{ kind: 'viewCase' }, { kind: 'cancelJob' }]);
+    expect(view.card.body).toBe("Providers near you can apply. We'll notify you. Complaint awaiting admin review.");
+  });
+
+  it('a job that is no longer open never offers View offers, whatever the lookup did', () => {
+    for (const status of ['assigned', 'in_progress', 'completed', 'cancelled', 'expired'] as const) {
+      const view = viewFor({ job: { status, assigned_provider_id: 'p1' }, pending: null });
+      expect(reachable(view).some((action) => action.kind === 'viewOffers')).toBe(false);
+    }
   });
 });
 
