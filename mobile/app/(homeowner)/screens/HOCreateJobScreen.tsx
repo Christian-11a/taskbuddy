@@ -118,6 +118,7 @@ import {
 import CheckRow from '../../../src/components/ui/CheckRow';
 import TextField from '../../../src/components/ui/TextField';
 import { requestAppPermission } from '../../../src/lib/permissions';
+import { showToast } from '../../../src/components/Toast';
 
 const Shadows = { card: V6Shadows.sm, input: V6Shadows.sm };
 
@@ -256,6 +257,8 @@ export default function HOCreateJobScreen({
   // wait, so saying so beats a single undifferentiated "Posting…".
   const [submitPhase, setSubmitPhase] = useState<'uploading' | 'posting' | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // Set before the first await, so a second tap in the same frame cannot post the job twice.
+  const postInFlight = useRef(false);
 
   const totalSteps = 5;
   const STEP_LABELS = ['Service', 'Where', 'Tasks', 'When & budget', 'Review'];
@@ -480,6 +483,7 @@ export default function HOCreateJobScreen({
   }, [step]);
 
   const submitJob = async () => {
+    postInFlight.current = true;
     setSubmitting(true);
     setError(null);
     try {
@@ -507,6 +511,7 @@ export default function HOCreateJobScreen({
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not post the job.');
     } finally {
+      postInFlight.current = false;
       setSubmitting(false);
       setSubmitPhase(null);
     }
@@ -523,6 +528,10 @@ export default function HOCreateJobScreen({
     (step === 1 && categories.loading) || (step === 3 && pickingPhotos);
 
   const handleNext = async () => {
+    if (postInFlight.current) {
+      showToast("We're already posting your job. Please wait.", 'info');
+      return;
+    }
     if (!validateStep()) return;
     if (step === 2 && !(await resolveAddress())) return;
     setError(null);

@@ -4,10 +4,12 @@ import { act, fireEvent, render, screen, waitFor, within } from '@testing-librar
 import * as ImagePicker from 'expo-image-picker';
 import HOCreateJobScreen from '../HOCreateJobScreen';
 import { api } from '../../../../src/lib/api';
+import { showToast } from '../../../../src/components/Toast';
 
 jest.mock('../../../../src/lib/api', () => ({ api: {
   categories: jest.fn(), createJob: jest.fn(), uploadImage: jest.fn(),
 } }));
+jest.mock('../../../../src/components/Toast', () => ({ showToast: jest.fn() }));
 const DEFAULT_PROFILE = { address: 'Quezon City', latitude: 14.6, longitude: 121 };
 let mockProfile: { address: string | null; latitude: number | null; longitude: number | null } = { ...DEFAULT_PROFILE };
 jest.mock('../../../../src/context/AuthContext', () => ({ useAuth: () => ({ profile: mockProfile }) }));
@@ -237,6 +239,63 @@ it('while posting shows only the steps that really run, and a failed post return
   expect(await screen.findByText('Network is down')).toBeTruthy();
   expect(screen.getByTestId('create-job-review')).toBeTruthy();
   expect(screen.getByText('Post job')).toBeTruthy();
+});
+
+/** Fills in the job the way the posting tests do, and stops on the review, before Post job is pressed. */
+async function reachReview() {
+  fireEvent.press(screen.getByText('Next'));
+  fireEvent.press(await screen.findByText('Fix leaking faucet'));
+  fireEvent.press(screen.getByText('Next'));
+  fireEvent.press(await screen.findByText('Pick a date'));
+  fireEvent.press(screen.getByText('Choose test date'));
+  fireEvent.press(screen.getByText('Pick a time'));
+  fireEvent.press(screen.getByText('Choose test time'));
+  if (screen.queryByText('Done')) fireEvent.press(screen.getByText('Done'));
+  fireEvent.changeText(screen.getByPlaceholderText('0.00'), '1500');
+  fireEvent.press(screen.getByText('Next'));
+  await screen.findByTestId('create-job-review');
+}
+
+it('two quick taps on Post job post the job once, and the second says why it was ignored', async () => {
+  jest.clearAllMocks();
+  (api.categories as jest.Mock).mockResolvedValue([{ id: 1, name: 'Plumbing' }]);
+  let finishPost: (value: unknown) => void = () => {};
+  (api.createJob as jest.Mock).mockReturnValue(new Promise((resolve) => { finishPost = resolve; }));
+  render(<HOCreateJobScreen initialCategoryId={1} onBack={jest.fn()} onSuccess={jest.fn()} />);
+  await screen.findByText('Location confirmed');
+  await reachReview();
+
+  const post = screen.getByText('Post job');
+  await act(async () => {
+    fireEvent.press(post);
+    fireEvent.press(post);
+  });
+
+  expect(api.createJob).toHaveBeenCalledTimes(1);
+  expect(showToast).toHaveBeenCalledWith("We're already posting your job. Please wait.", 'info');
+
+  await act(async () => finishPost({ id: 'new-job' }));
+  expect(await screen.findByText('Job posted!')).toBeTruthy();
+  expect(api.createJob).toHaveBeenCalledTimes(1);
+});
+
+it('a post that failed can be tried again, without any notice about a repeated tap', async () => {
+  jest.clearAllMocks();
+  (api.categories as jest.Mock).mockResolvedValue([{ id: 1, name: 'Plumbing' }]);
+  (api.createJob as jest.Mock)
+    .mockRejectedValueOnce(new Error('Network is down'))
+    .mockResolvedValueOnce({ id: 'new-job' });
+  render(<HOCreateJobScreen initialCategoryId={1} onBack={jest.fn()} onSuccess={jest.fn()} />);
+  await screen.findByText('Location confirmed');
+  await reachReview();
+
+  await act(async () => fireEvent.press(screen.getByText('Post job')));
+  expect(await screen.findByText('Network is down')).toBeTruthy();
+
+  await act(async () => fireEvent.press(screen.getByText('Post job')));
+  expect(await screen.findByText('Job posted!')).toBeTruthy();
+  expect(api.createJob).toHaveBeenCalledTimes(2);
+  expect(showToast).not.toHaveBeenCalled();
 });
 
 it('every control has an accessible name on the first step: back, the service and the location', async () => {
