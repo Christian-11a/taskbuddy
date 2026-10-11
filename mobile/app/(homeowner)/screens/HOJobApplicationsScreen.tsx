@@ -16,6 +16,9 @@
  * A card hire is made by Stripe's webhook, not by this screen, so after the
  * browser closes the screen polls the application until it turns `accepted`
  * — the same "the server decides, the app waits" shape as Add Money.
+ * Until the server decides a card payment, that proposal waits: its pay
+ * options are not offered, and only a status check or an explicit start-over
+ * comes back. No other proposal can be paid for meanwhile.
  *
  * Refusals still surface where they happen: an insufficient wallet (400), a
  * provider who is not verified (409 `provider_not_verified`), or a rate limit
@@ -83,6 +86,15 @@ export default function HOJobApplicationsScreen({
 
   const [busyId, setBusyId] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  // A card payment for one proposal that the server has not decided yet. Until it is decided,
+  // that proposal cannot be paid for again, and no other proposal can be paid for either.
+  const [awaitingConfirmation, setAwaitingConfirmation] = useState<AwaitingConfirmation | null>(null);
+  const waitingOnAnother = (applicationId: string) =>
+    awaitingConfirmation !== null && awaitingConfirmation.applicationId !== applicationId;
+  const waitingApp = awaitingConfirmation
+    ? apps?.find((a) => a.id === awaitingConfirmation.applicationId)
+    : undefined;
+  const waitingName = waitingApp?.provider?.full_name ?? 'this provider';
 
   const runAction = async (id: string, fn: () => Promise<unknown>) => {
     setBusyId(id);
@@ -119,7 +131,8 @@ export default function HOJobApplicationsScreen({
   // with: it can have been hired since. Only a pending one, with nobody hired
   // yet, can be hired from its profile.
   const profileLatest = profileOf ? apps?.find((a) => a.id === profileOf.id) ?? profileOf : null;
-  const profileHireable = profileLatest?.status === 'pending' && hiredApp === null;
+  const profileHireable =
+    profileLatest?.status === 'pending' && hiredApp === null && !waitingOnAnother(profileLatest.id);
 
   // Set once a hire goes through; the hired screen replaces the list until left.
   const [hired, setHired] = useState<HiredState | null>(null);
@@ -144,13 +157,23 @@ export default function HOJobApplicationsScreen({
   const [hireLoading, setHireLoading] = useState(false);
   // The job or wallet could not be read, so the budget is unknown: no hire is offered.
   const [hireLoadFailed, setHireLoadFailed] = useState(false);
-  const [hireBusy, setHireBusy] = useState<'wallet' | 'card' | null>(null);
+  const [hireBusy, setHireBusy] = useState<'wallet' | 'card' | 'check' | null>(null);
   const [hireMessage, setHireMessage] = useState<{ text: string; tone: 'error' | 'info' } | null>(null);
   // Checked and set synchronously, so a second tap before React re-renders cannot start a second payment.
   const hireInFlight = useRef(false);
 
+  // The server decided the waiting proposal (hired, or declined or withdrawn) while the sheet was
+  // shut, so nothing is waiting any more. With the sheet open for it, the check on it settles the wait.
+  useEffect(() => {
+    if (!awaitingConfirmation || !apps) return;
+    const decided = apps.find((a) => a.id === awaitingConfirmation.applicationId);
+    if (decided && decided.status !== 'pending' && hireTarget?.id !== decided.id) {
+      setAwaitingConfirmation(null);
+    }
+  }, [apps, awaitingConfirmation, hireTarget]);
+
   const openHire = async (app: JobApplication) => {
-    if (!jobId) return;
+    if (!jobId || waitingOnAnother(app.id)) return;
     setActionError(null);
     setHireMessage(null);
     setBudget(null);
@@ -232,6 +255,33 @@ export default function HOJobApplicationsScreen({
     return 'pending' as const;
   };
 
+  /**
+   * Asks the server what it decided about a card payment, and shows it: hired (the hired
+   * screen), still unconfirmed (the wait goes on), or no longer available (the wait ends).
+   */
+  const settleCardPayment = async (app: JobApplication, returnedPaid: boolean) => {
+    const status = await awaitHire(app.id);
+    reload();
+    if (status === 'accepted') {
+      setAwaitingConfirmation(null);
+      showHired(app);
+      closeHire();
+    } else if (status === 'pending') {
+      setHireMessage({
+        text: returnedPaid
+          ? 'Payment received. Your hire is still being confirmed — check back in a moment.'
+          : 'No payment was confirmed. If you did pay, your hire will appear shortly.',
+        tone: 'info',
+      });
+    } else {
+      setAwaitingConfirmation(null);
+      setHireMessage({
+        text: 'Your payment is in your wallet, but the hire could not be completed — this proposal is no longer available.',
+        tone: 'error',
+      });
+    }
+  };
+
   const payByCard = async () => {
     if (hireInFlight.current) {
       showToast(HIRE_BUSY_MESSAGE, 'info');
@@ -249,6 +299,10 @@ export default function HOJobApplicationsScreen({
         application_id: hireTarget.id,
         app_redirect: appRedirect,
       });
+      // A checkout now exists, so a payment can be made. From here the proposal
+      // waits until the server decides it, whatever the browser reports; only an
+      // explicit cancel ends the wait.
+      setAwaitingConfirmation({ applicationId: hireTarget.id, returnedPaid: false });
       const result = await openRedirectSession(session.url, appRedirect);
       const outcome =
         result.type === 'success'
@@ -256,31 +310,15 @@ export default function HOJobApplicationsScreen({
           : null;
 
       if (outcome === 'cancelled') {
+        setAwaitingConfirmation(null);
         setHireMessage({ text: 'Payment was cancelled.', tone: 'info' });
         return;
       }
       // Paid, or the browser was dismissed — which is not proof they didn't
       // pay. Either way only the server knows, so ask it.
+      setAwaitingConfirmation({ applicationId: hireTarget.id, returnedPaid: outcome === 'success' });
       setHireMessage({ text: 'Confirming your payment…', tone: 'info' });
-      const status = await awaitHire(hireTarget.id);
-      reload();
-      if (status === 'accepted') {
-        showHired(hireTarget);
-        closeHire();
-      } else if (status === 'pending') {
-        setHireMessage({
-          text:
-            outcome === 'success'
-              ? 'Payment received. Your hire is still being confirmed — check back in a moment.'
-              : 'No payment was confirmed. If you did pay, your hire will appear shortly.',
-          tone: 'info',
-        });
-      } else {
-        setHireMessage({
-          text: 'Your payment is in your wallet, but the hire could not be completed — this proposal is no longer available.',
-          tone: 'error',
-        });
-      }
+      await settleCardPayment(hireTarget, outcome === 'success');
     } catch (e) {
       setHireMessage({
         text: e instanceof Error ? e.message : 'Could not open the payment page.',
@@ -290,6 +328,35 @@ export default function HOJobApplicationsScreen({
       hireInFlight.current = false;
       setHireBusy(null);
     }
+  };
+
+  /** One more round of checks on a card payment that is still waiting. It never starts a payment. */
+  const checkPayment = async () => {
+    if (hireInFlight.current) {
+      showToast(HIRE_BUSY_MESSAGE, 'info');
+      return;
+    }
+    if (!awaitingConfirmation || !hireTarget || hireTarget.id !== awaitingConfirmation.applicationId) return;
+    hireInFlight.current = true;
+    setHireBusy('check');
+    setHireMessage(null);
+    try {
+      await settleCardPayment(hireTarget, awaitingConfirmation.returnedPaid);
+    } catch (e) {
+      setHireMessage({
+        text: e instanceof Error ? e.message : 'Something went wrong. Please try again.',
+        tone: 'error',
+      });
+    } finally {
+      hireInFlight.current = false;
+      setHireBusy(null);
+    }
+  };
+
+  /** The person chose to start over, so the pay options come back. */
+  const startNewPayment = () => {
+    setAwaitingConfirmation(null);
+    setHireMessage(null);
   };
 
   const subline = hiredApp
@@ -313,7 +380,9 @@ export default function HOJobApplicationsScreen({
     const stats = provider?.provider_profiles ?? null;
     const verified = stats?.is_verified === true;
     const sent = timeAgo(app.applied_at);
-    const actionsDisabled = busyId !== null || !verified;
+    const waitingHere = awaitingConfirmation?.applicationId === app.id;
+    const waitingElsewhere = waitingOnAnother(app.id);
+    const actionsDisabled = busyId !== null || !verified || waitingElsewhere;
     return (
       <View key={app.id} style={[styles.card, state === 'closed' && styles.cardMuted]}>
         <View style={styles.cardHead}>
@@ -393,7 +462,13 @@ export default function HOJobApplicationsScreen({
                 <Text style={styles.hirePillText}>Hire</Text>
               </Tap>
             </View>
-            {!verified && <Text style={styles.unverifiedNote}>Hiring unlocks once they&apos;re verified.</Text>}
+            {!verified && <Text style={styles.hireNote}>Hiring unlocks once they&apos;re verified.</Text>}
+            {waitingHere && (
+              <Text style={styles.hireNote}>We&apos;re still confirming your payment. Tap Hire to check on it.</Text>
+            )}
+            {waitingElsewhere && (
+              <Text style={styles.hireNote}>Hiring pauses until {waitingName}&apos;s payment is confirmed.</Text>
+            )}
           </>
         )}
 
@@ -436,6 +511,11 @@ export default function HOJobApplicationsScreen({
         loadFailed={hireLoadFailed}
         busy={hireBusy}
         message={hireMessage}
+        awaiting={
+          awaitingConfirmation !== null && hireTarget?.id === awaitingConfirmation.applicationId
+            ? { onCheckPayment: checkPayment, onStartNewPayment: startNewPayment }
+            : null
+        }
         onPayWallet={payFromWallet}
         onPayCard={payByCard}
         onAddMoney={() => {
@@ -560,6 +640,13 @@ interface HiredState {
   scheduledAt: string | null;
 }
 
+/** A card payment that started for one proposal, which the server has not decided yet. */
+interface AwaitingConfirmation {
+  applicationId: string;
+  /** The browser came back saying the payment went through, so the wait says so. */
+  returnedPaid: boolean;
+}
+
 /** How long to wait for Stripe's webhook to turn a card payment into a hire. */
 const HIRE_POLL_ATTEMPTS = 8;
 const HIRE_POLL_INTERVAL_MS = 1500;
@@ -647,7 +734,7 @@ function createThemedStyles(theme: ThemePalette) {
       alignItems: 'center', justifyContent: 'center', paddingHorizontal: 20,
     },
     hirePillText: { color: Colors.onPrimary, fontSize: 14, fontWeight: '700', fontFamily: 'Inter' },
-    unverifiedNote: { color: C.ink500, fontSize: 12, fontFamily: 'Inter', marginTop: 8 },
+    hireNote: { color: C.ink500, fontSize: 12, fontFamily: 'Inter', marginTop: 8 },
 
     unverifiedChip: {
       flexDirection: 'row', alignItems: 'center', gap: 4, alignSelf: 'flex-start',

@@ -15,6 +15,10 @@
  * from where, and what is left, with "Confirm and hire" as the only thing that
  * pays. Nothing is charged by choosing or by opening page 2.
  *
+ * A card payment the server has not confirmed yet is a wait, not a choice: the
+ * sheet explains it and offers one status check. No pay option is shown during
+ * the wait; they come back only after the person starts over on purpose.
+ *
  * Presentational: the caller owns the requests and passes their state in, so
  * the modal can stay open showing an error rather than disappearing on one.
  *
@@ -35,6 +39,8 @@ import {
 import Tap from './ui/Tap';
 import SheetFrame from './ui/SheetFrame';
 import PaymentOption from './ui/PaymentOption';
+import Banner from './ui/Banner';
+import ConfirmationModal from './ConfirmationModal';
 import { CreditCard, ShieldCheck, Wallet } from 'lucide-react-native';
 import { MAX_CARD_PHP, MIN_TOPUP_PHP } from '../lib/api';
 import { peso } from '../lib/format';
@@ -56,10 +62,16 @@ interface HirePaymentModalProps {
    * and Continue stays disabled. Only the error message and Cancel remain.
    */
   loadFailed?: boolean;
-  /** Which option is in flight, if any. */
-  busy: 'wallet' | 'card' | null;
+  /** Which action is in flight, if any: a payment, or a status check during a wait. */
+  busy: 'wallet' | 'card' | 'check' | null;
   /** A line under the options: an error, or where a card payment stands. */
   message: { text: string; tone: 'error' | 'info' } | null;
+  /**
+   * Set while a card payment for this proposal waits for the server. The sheet
+   * then shows the wait instead of the pay options: one status check, and a
+   * deliberate way to start over, which asks first.
+   */
+  awaiting?: { onCheckPayment: () => void; onStartNewPayment: () => void } | null;
   onPayWallet: () => void;
   onPayCard: () => void;
   onAddMoney: () => void;
@@ -81,6 +93,7 @@ export default function HirePaymentModal({
   loadFailed = false,
   busy,
   message,
+  awaiting = null,
   onPayWallet,
   onPayCard,
   onAddMoney,
@@ -89,6 +102,7 @@ export default function HirePaymentModal({
   const { C, styles, V6Colors, Colors } = useThemedStyles(createThemedStyles);
   const [page, setPage] = useState<Page>('choose');
   const [choice, setChoice] = useState<Choice | null>(null);
+  const [startOverOpen, setStartOverOpen] = useState(false);
 
   // Every opening starts on the choice with nothing selected. Layout effect, so
   // the previous visit's confirm page is never painted for a frame.
@@ -135,28 +149,30 @@ export default function HirePaymentModal({
     </Text>
   );
 
+  const summary = !loadFailed && (!!jobTitle || hasBudget) && (
+    <View style={styles.summary}>
+      {!!jobTitle && (
+        <View style={styles.summaryRow}>
+          <Text style={styles.summaryLabel}>Job</Text>
+          <Text style={styles.summaryValue} numberOfLines={2}>{jobTitle}</Text>
+        </View>
+      )}
+      {hasBudget && (
+        <View style={styles.summaryRow}>
+          <Text style={styles.summaryLabel}>Amount</Text>
+          <Text style={styles.summaryValue} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7} accessibilityLabel={`Amount ${peso(budget)}`}>{peso(budget)}</Text>
+        </View>
+      )}
+    </View>
+  );
+
   const choosePage = (
     <>
       <Text style={styles.title} accessibilityRole="header">
         Hire {providerName}
       </Text>
 
-      {!loadFailed && (!!jobTitle || hasBudget) && (
-        <View style={styles.summary}>
-          {!!jobTitle && (
-            <View style={styles.summaryRow}>
-              <Text style={styles.summaryLabel}>Job</Text>
-              <Text style={styles.summaryValue} numberOfLines={2}>{jobTitle}</Text>
-            </View>
-          )}
-          {hasBudget && (
-            <View style={styles.summaryRow}>
-              <Text style={styles.summaryLabel}>Amount</Text>
-              <Text style={styles.summaryValue} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7} accessibilityLabel={`Amount ${peso(budget)}`}>{peso(budget)}</Text>
-            </View>
-          )}
-        </View>
-      )}
+      {summary}
 
       {!loadFailed && (
         <View style={styles.noteRow}>
@@ -310,9 +326,81 @@ export default function HirePaymentModal({
     </>
   );
 
+  // The card payment is with the server. No pay option is offered; the one way
+  // back is "Start a new payment", which asks first.
+  const waitingPage = (
+    <>
+      <Text style={styles.title} accessibilityRole="header">
+        Hire {providerName}
+      </Text>
+
+      <Banner tone="warning" message="We're still confirming your payment. If you already paid, please don't pay again." />
+
+      {summary}
+
+      {messageView}
+
+      <Tap
+        style={[styles.primary, locked && styles.disabled]}
+        onPress={() => awaiting?.onCheckPayment()}
+        disabled={locked}
+        scale
+        accessibilityRole="button"
+        accessibilityLabel="Check payment status"
+        accessibilityState={{ disabled: locked }}
+      >
+        {busy === 'check' ? (
+          <ActivityIndicator color={Colors.onPrimary} />
+        ) : (
+          <Text style={styles.primaryText}>Check payment status</Text>
+        )}
+      </Tap>
+
+      <Tap
+        onPress={() => setStartOverOpen(true)}
+        disabled={locked}
+        activeOpacity={0.8}
+        style={styles.startOver}
+        accessibilityRole="button"
+        accessibilityLabel="Start a new payment"
+        accessibilityState={{ disabled: locked }}
+      >
+        <Text style={[styles.startOverText, locked && styles.disabled]}>Start a new payment</Text>
+      </Tap>
+
+      <Tap
+        onPress={onClose}
+        disabled={locked}
+        activeOpacity={0.8}
+        style={styles.cancel}
+        accessibilityRole="button"
+        accessibilityLabel="Close"
+        accessibilityState={{ disabled: locked }}
+      >
+        <Text style={[styles.cancelText, locked && styles.disabled]}>Close</Text>
+      </Tap>
+
+      <ConfirmationModal
+        visible={startOverOpen}
+        title="Start a new payment?"
+        message="Only do this if you did not complete the payment. If you already paid, wait a moment and check the status instead."
+        confirmLabel="Yes, start over"
+        cancelLabel="Keep waiting"
+        onConfirm={() => {
+          setStartOverOpen(false);
+          // The pay options come back on a clean choice, with nothing selected.
+          setPage('choose');
+          setChoice(null);
+          awaiting?.onStartNewPayment();
+        }}
+        onCancel={() => setStartOverOpen(false)}
+      />
+    </>
+  );
+
   return (
     <SheetFrame visible={visible} onClose={locked ? undefined : onClose} contentStyle={styles.card}>
-      {page === 'choose' ? choosePage : confirmPage}
+      {awaiting ? waitingPage : page === 'choose' ? choosePage : confirmPage}
     </SheetFrame>
   );
 }
@@ -358,6 +446,8 @@ function createThemedStyles(theme: ThemePalette) {
     cancel: { alignItems: 'center', justifyContent: 'center', minHeight: 48, borderRadius: 14 },
     cancelText: { color: C.ink700, fontSize: 15, fontWeight: '700', fontFamily: 'Inter' },
     backText: { color: Colors.link, fontSize: 15, fontWeight: '600', fontFamily: 'Inter' },
+    startOver: { alignItems: 'center', justifyContent: 'center', minHeight: 44, borderRadius: 14 },
+    startOverText: { color: Colors.link, fontSize: 14, fontWeight: '600', fontFamily: 'Inter', textAlign: 'center' },
     disabled: { opacity: 0.5 },
   });
   return { Colors, V6Colors, C, styles };

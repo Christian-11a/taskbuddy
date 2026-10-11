@@ -261,6 +261,91 @@ describe('HirePaymentModal: when the job or wallet could not be loaded', () => {
   });
 });
 
+describe('HirePaymentModal: a card payment that is still being confirmed', () => {
+  const STILL_CONFIRMING = "We're still confirming your payment. If you already paid, please don't pay again.";
+
+  it('explains the wait, and offers only a status check and starting over', () => {
+    renderSheet({
+      awaiting: { onCheckPayment: jest.fn(), onStartNewPayment: jest.fn() },
+      message: { text: 'No payment was confirmed. If you did pay, your hire will appear shortly.', tone: 'info' },
+    });
+
+    expect(screen.getByRole('header', { name: 'Hire Alex Reyes' })).toBeTruthy();
+    expect(screen.getByText(STILL_CONFIRMING)).toBeTruthy();
+    expect(screen.getByText('Window cleaning')).toBeTruthy();
+    expect(screen.getByTestId('hire-payment-message').props.children).toBe(
+      'No payment was confirmed. If you did pay, your hire will appear shortly.',
+    );
+    expect(screen.getByRole('button', { name: 'Check payment status' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Start a new payment' })).toBeTruthy();
+    expect(screen.queryByText('Pay with')).toBeNull();
+    expect(screen.queryByRole('radio')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Continue' })).toBeNull();
+    expect(screen.queryByRole('button', { name: /Confirm and hire/ })).toBeNull();
+  });
+
+  it('Check payment status runs one check, and while the check runs the sheet is locked', () => {
+    const { props, view } = renderSheet({ awaiting: { onCheckPayment: jest.fn(), onStartNewPayment: jest.fn() } });
+
+    fireEvent.press(screen.getByRole('button', { name: 'Check payment status' }));
+    expect(props.awaiting!.onCheckPayment).toHaveBeenCalledTimes(1);
+
+    view.rerender(<HirePaymentModal {...props} busy="check" />);
+    expect(screen.getByRole('button', { name: 'Check payment status', disabled: true })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Start a new payment', disabled: true })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Close', disabled: true })).toBeTruthy();
+
+    fireEvent.press(screen.getByRole('button', { name: 'Check payment status' }));
+    fireEvent.press(screen.getByRole('button', { name: 'Close' }));
+    expect(props.awaiting!.onCheckPayment).toHaveBeenCalledTimes(1);
+    expect(props.onClose).not.toHaveBeenCalled();
+  });
+
+  it('Start a new payment asks in a centred dialog first: Keep waiting changes nothing, Yes, start over calls onStartNewPayment', () => {
+    const { props } = renderSheet({ awaiting: { onCheckPayment: jest.fn(), onStartNewPayment: jest.fn() } });
+
+    fireEvent.press(screen.getByRole('button', { name: 'Start a new payment' }));
+    expect(screen.getByText('Start a new payment?')).toBeTruthy();
+    expect(
+      screen.getByText(
+        'Only do this if you did not complete the payment. If you already paid, wait a moment and check the status instead.',
+      ),
+    ).toBeTruthy();
+
+    fireEvent.press(screen.getByRole('button', { name: 'Keep waiting' }));
+    expect(props.awaiting!.onStartNewPayment).not.toHaveBeenCalled();
+    expect(screen.getByRole('button', { name: 'Check payment status' })).toBeTruthy();
+
+    fireEvent.press(screen.getByRole('button', { name: 'Start a new payment' }));
+    fireEvent.press(screen.getByRole('button', { name: 'Yes, start over' }));
+    expect(props.awaiting!.onStartNewPayment).toHaveBeenCalledTimes(1);
+    expect(props.onPayWallet).not.toHaveBeenCalled();
+    expect(props.onPayCard).not.toHaveBeenCalled();
+  });
+
+  it('once the wait is over, the pay options return on the choice page with nothing selected', () => {
+    const onStartNewPayment = jest.fn();
+    const { props, view } = renderSheet();
+
+    // The payment was started from the confirm page, then the wait began.
+    fireEvent.press(walletRadio());
+    fireEvent.press(screen.getByRole('button', { name: 'Continue' }));
+    view.rerender(
+      <HirePaymentModal {...props} awaiting={{ onCheckPayment: jest.fn(), onStartNewPayment }} />,
+    );
+    expect(screen.getByRole('button', { name: 'Check payment status' })).toBeTruthy();
+
+    fireEvent.press(screen.getByRole('button', { name: 'Start a new payment' }));
+    fireEvent.press(screen.getByRole('button', { name: 'Yes, start over' }));
+    expect(onStartNewPayment).toHaveBeenCalledTimes(1);
+
+    view.rerender(<HirePaymentModal {...props} awaiting={null} />);
+    expect(screen.getByText('Pay with')).toBeTruthy();
+    expect(screen.getByRole('radio', { name: 'Wallet, ₱5,000.00 available', selected: false })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Continue', disabled: true })).toBeTruthy();
+  });
+});
+
 describe('HirePaymentModal: the sheet stays locked while a payment is in flight', () => {
   it('disables Cancel and Back, and keeps the confirm button labelled while busy', () => {
     const { props, view } = renderSheet({ busy: null });

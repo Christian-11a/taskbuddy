@@ -577,6 +577,235 @@ describe('HOJobApplicationsScreen: a hire cannot be submitted twice', () => {
   });
 });
 
+describe('HOJobApplicationsScreen: a card payment the server has not confirmed yet', () => {
+  const CARD = "Card, ₱1,000.00 on Stripe's secure page";
+  const STILL_CONFIRMING = "We're still confirming your payment. If you already paid, please don't pay again.";
+  const PAID_STILL_PENDING = 'Payment received. Your hire is still being confirmed — check back in a moment.';
+  const NOT_CONFIRMED = 'No payment was confirmed. If you did pay, your hire will appear shortly.';
+  const NO_LONGER_AVAILABLE =
+    'Your payment is in your wallet, but the hire could not be completed — this proposal is no longer available.';
+  /** The server is asked 8 times, 1.5 s apart, before a wait gives up (HIRE_POLL_ATTEMPTS × HIRE_POLL_INTERVAL_MS). */
+  const FULL_WAIT_MS = 8 * 1500;
+
+  beforeEach(() => {
+    jest.useFakeTimers();
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  /** Hires Alex Reyes with the card from the proposals list, and presses Confirm and hire. */
+  async function payByCard() {
+    fireEvent.press(await screen.findByRole('button', { name: 'Hire Alex Reyes for this job' }));
+    fireEvent.press(await screen.findByRole('radio', { name: CARD }));
+    fireEvent.press(screen.getByRole('button', { name: 'Continue' }));
+    fireEvent.press(screen.getByRole('button', { name: 'Confirm and hire · ₱1,000.00' }));
+  }
+
+  async function passTime(ms: number) {
+    await act(async () => {
+      await jest.advanceTimersByTimeAsync(ms);
+    });
+  }
+
+  it('a payment the webhook has not confirmed keeps the proposal waiting: no pay button, and no tap starts a second checkout', async () => {
+    (openRedirectSession as jest.Mock).mockResolvedValue({ type: 'success', url: 'taskbuddy://hire?hire=success' });
+    await renderScreen();
+    await payByCard();
+    await passTime(FULL_WAIT_MS);
+
+    expect(await screen.findByText(STILL_CONFIRMING)).toBeTruthy();
+    expect(screen.getByText(PAID_STILL_PENDING)).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Check payment status' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Start a new payment' })).toBeTruthy();
+    expect(screen.queryByRole('radio')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Continue' })).toBeNull();
+    expect(screen.queryByRole('button', { name: /Confirm and hire/ })).toBeNull();
+
+    // Closing the sheet and opening it again from the list keeps the wait.
+    fireEvent.press(screen.getByRole('button', { name: 'Close' }));
+    fireEvent.press(await screen.findByRole('button', { name: 'Hire Alex Reyes for this job' }));
+    expect(await screen.findByText(STILL_CONFIRMING)).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Continue' })).toBeNull();
+
+    expect(api.createHireCheckoutSession).toHaveBeenCalledTimes(1);
+    expect(api.acceptApplication).not.toHaveBeenCalled();
+  });
+
+  it('Check payment status: once the server confirms the hire, the hired screen shows, with no new checkout', async () => {
+    let proposal: JobApplication[] = [pendingApp];
+    (api.jobApplications as jest.Mock).mockImplementation(async () => proposal);
+    (openRedirectSession as jest.Mock).mockResolvedValue({ type: 'success', url: 'taskbuddy://hire?hire=success' });
+    await renderScreen();
+    await payByCard();
+    await passTime(FULL_WAIT_MS);
+    await screen.findByText(STILL_CONFIRMING);
+
+    proposal = [application({ id: 'app-1', status: 'accepted' })];
+    fireEvent.press(screen.getByRole('button', { name: 'Check payment status' }));
+    await passTime(1500);
+
+    expect(await screen.findByRole('header', { name: 'Alex Reyes is hired!' })).toBeTruthy();
+    expect(api.createHireCheckoutSession).toHaveBeenCalledTimes(1);
+    expect(api.acceptApplication).not.toHaveBeenCalled();
+  });
+
+  it('Check payment status: still unconfirmed keeps the wait, and says the same as before', async () => {
+    (openRedirectSession as jest.Mock).mockResolvedValue({ type: 'success', url: 'taskbuddy://hire?hire=success' });
+    await renderScreen();
+    await payByCard();
+    await passTime(FULL_WAIT_MS);
+    await screen.findByText(STILL_CONFIRMING);
+
+    fireEvent.press(screen.getByRole('button', { name: 'Check payment status' }));
+    await passTime(FULL_WAIT_MS);
+
+    expect(await screen.findByText(PAID_STILL_PENDING)).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Check payment status' })).toBeTruthy();
+    expect(screen.queryByRole('header', { name: 'Alex Reyes is hired!' })).toBeNull();
+    expect(api.createHireCheckoutSession).toHaveBeenCalledTimes(1);
+  });
+
+  it('a browser closed before Stripe finished also waits for the server, and says no payment was confirmed yet', async () => {
+    (openRedirectSession as jest.Mock).mockResolvedValue({ type: 'cancel' });
+    await renderScreen();
+    await payByCard();
+    await passTime(FULL_WAIT_MS);
+
+    expect(await screen.findByText(NOT_CONFIRMED)).toBeTruthy();
+    expect(screen.getByText(STILL_CONFIRMING)).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Check payment status' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Continue' })).toBeNull();
+    expect(api.createHireCheckoutSession).toHaveBeenCalledTimes(1);
+  });
+
+  it('a payment cancelled on Stripe is not waiting: the pay buttons stay, and nothing is polled', async () => {
+    (openRedirectSession as jest.Mock).mockResolvedValue({ type: 'success', url: 'taskbuddy://hire?hire=cancelled' });
+    await renderScreen();
+    await payByCard();
+
+    expect(await screen.findByText('Payment was cancelled.')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Check payment status' })).toBeNull();
+    expect(screen.queryByText(STILL_CONFIRMING)).toBeNull();
+    expect(screen.getByRole('button', { name: 'Confirm and hire · ₱1,000.00' })).toBeTruthy();
+    expect(api.jobApplications).toHaveBeenCalledTimes(1);
+  });
+
+  it('a network error while the server is asked keeps the payment waiting, so Confirm and hire stays hidden', async () => {
+    let reads = 0;
+    (api.jobApplications as jest.Mock).mockImplementation(async () => {
+      reads += 1;
+      if (reads === 1) return [pendingApp];
+      throw new Error('Could not reach TaskBuddy.');
+    });
+    (openRedirectSession as jest.Mock).mockResolvedValue({ type: 'success', url: 'taskbuddy://hire?hire=success' });
+    await renderScreen();
+    await payByCard();
+    await passTime(1500);
+
+    expect(await screen.findByText('Could not reach TaskBuddy.')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Check payment status' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /Confirm and hire/ })).toBeNull();
+    expect(api.createHireCheckoutSession).toHaveBeenCalledTimes(1);
+  });
+
+  it('a check that finds the proposal no longer available ends the wait, with the existing wording', async () => {
+    let proposal: JobApplication[] = [pendingApp];
+    (api.jobApplications as jest.Mock).mockImplementation(async () => proposal);
+    (openRedirectSession as jest.Mock).mockResolvedValue({ type: 'success', url: 'taskbuddy://hire?hire=success' });
+    await renderScreen();
+    await payByCard();
+    await passTime(FULL_WAIT_MS);
+    await screen.findByText(STILL_CONFIRMING);
+
+    proposal = [application({ id: 'app-1', status: 'withdrawn' })];
+    fireEvent.press(screen.getByRole('button', { name: 'Check payment status' }));
+    await passTime(1500);
+
+    expect(await screen.findByText(NO_LONGER_AVAILABLE)).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Check payment status' })).toBeNull();
+    expect(screen.queryByText(STILL_CONFIRMING)).toBeNull();
+  });
+
+  it('Start a new payment asks first: Keep waiting leaves the wait, and Yes, start over brings the pay buttons back', async () => {
+    (openRedirectSession as jest.Mock).mockResolvedValue({ type: 'success', url: 'taskbuddy://hire?hire=success' });
+    await renderScreen();
+    await payByCard();
+    await passTime(FULL_WAIT_MS);
+    await screen.findByText(STILL_CONFIRMING);
+
+    fireEvent.press(screen.getByRole('button', { name: 'Start a new payment' }));
+    expect(await screen.findByText('Start a new payment?')).toBeTruthy();
+    expect(
+      screen.getByText('Only do this if you did not complete the payment. If you already paid, wait a moment and check the status instead.'),
+    ).toBeTruthy();
+    fireEvent.press(screen.getByRole('button', { name: 'Keep waiting' }));
+    expect(screen.getByRole('button', { name: 'Check payment status' })).toBeTruthy();
+    expect(api.createHireCheckoutSession).toHaveBeenCalledTimes(1);
+
+    fireEvent.press(screen.getByRole('button', { name: 'Start a new payment' }));
+    fireEvent.press(await screen.findByRole('button', { name: 'Yes, start over' }));
+
+    fireEvent.press(await screen.findByRole('radio', { name: CARD }));
+    fireEvent.press(screen.getByRole('button', { name: 'Continue' }));
+    fireEvent.press(screen.getByRole('button', { name: 'Confirm and hire · ₱1,000.00' }));
+    await passTime(FULL_WAIT_MS);
+
+    expect(api.createHireCheckoutSession).toHaveBeenCalledTimes(2);
+  });
+
+  it('while one payment waits, the other open proposals cannot be hired, and the list says why', async () => {
+    const blair = application({
+      id: 'app-2',
+      provider: {
+        id: 'prov-app-2',
+        full_name: 'Blair Santos',
+        avatar_url: null,
+        city: 'Cebu',
+        provider_profiles: { is_verified: true, cached_avg_rating: 5, cached_completed_jobs: 9 },
+      },
+    });
+    (api.jobApplications as jest.Mock).mockResolvedValue([pendingApp, blair]);
+    (openRedirectSession as jest.Mock).mockResolvedValue({ type: 'success', url: 'taskbuddy://hire?hire=success' });
+    await renderScreen();
+    await payByCard();
+    await passTime(FULL_WAIT_MS);
+    await screen.findByText(STILL_CONFIRMING);
+    fireEvent.press(screen.getByRole('button', { name: 'Close' }));
+
+    expect(await screen.findByRole('button', { name: 'Hire Blair Santos for this job', disabled: true })).toBeTruthy();
+    expect(screen.getByText("Hiring pauses until Alex Reyes's payment is confirmed.")).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Hire Alex Reyes for this job', disabled: false })).toBeTruthy();
+    expect(screen.getByText("We're still confirming your payment. Tap Hire to check on it.")).toBeTruthy();
+  });
+
+  it("while one payment waits, another proposal's profile offers no hire", async () => {
+    const blair = application({
+      id: 'app-2',
+      provider: {
+        id: 'prov-app-2',
+        full_name: 'Blair Santos',
+        avatar_url: null,
+        city: 'Cebu',
+        provider_profiles: { is_verified: true, cached_avg_rating: 5, cached_completed_jobs: 9 },
+      },
+    });
+    (api.jobApplications as jest.Mock).mockResolvedValue([pendingApp, blair]);
+    (openRedirectSession as jest.Mock).mockResolvedValue({ type: 'success', url: 'taskbuddy://hire?hire=success' });
+    await renderScreen();
+    await payByCard();
+    await passTime(FULL_WAIT_MS);
+    await screen.findByText(STILL_CONFIRMING);
+    fireEvent.press(screen.getByRole('button', { name: 'Close' }));
+
+    fireEvent.press(await screen.findByRole('button', { name: "View Blair Santos's profile" }));
+
+    await waitFor(() => expect(screen.queryByRole('button', { name: "View Blair Santos's profile" })).toBeNull());
+    expect(screen.queryByRole('button', { name: 'Hire Blair Santos' })).toBeNull();
+  });
+});
+
 it('every control has an accessible name: back, the proposal card and its actions', async () => {
   mockJob(1500);
   (api.jobApplications as jest.Mock).mockResolvedValue([pendingApp]);
