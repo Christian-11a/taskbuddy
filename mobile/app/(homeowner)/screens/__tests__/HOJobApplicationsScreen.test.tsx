@@ -942,6 +942,88 @@ describe('HOJobApplicationsScreen: a card payment waits across leaving the scree
     expect(await screen.findByRole('radio', { name: CARD })).toBeTruthy();
     expect(screen.queryByText(STILL_CONFIRMING)).toBeNull();
   });
+
+  it('while the payment waits, Decline is disabled with its note, and it is available again once the person starts over', async () => {
+    const DECLINE = 'Decline Alex Reyes';
+    const WAITING_FOR_PROPOSAL = "We're still confirming your payment for this proposal.";
+    await startWaitingCardPayment();
+    fireEvent.press(screen.getByRole('button', { name: 'Close' }));
+
+    expect(await screen.findByText(WAITING_FOR_PROPOSAL)).toBeTruthy();
+    expect(screen.getByRole('button', { name: DECLINE, disabled: true })).toBeTruthy();
+    fireEvent.press(screen.getByRole('button', { name: DECLINE, disabled: true }));
+    expect(screen.queryByText('Reject this proposal?')).toBeNull();
+
+    fireEvent.press(await screen.findByRole('button', { name: HIRE_ALEX, disabled: false }));
+    fireEvent.press(screen.getByRole('button', { name: 'Start a new payment' }));
+    fireEvent.press(await screen.findByRole('button', { name: 'Yes, start over' }));
+    fireEvent.press(screen.getByRole('button', { name: 'Cancel' }));
+
+    expect(await screen.findByRole('button', { name: DECLINE, disabled: false })).toBeTruthy();
+    expect(screen.queryByText(WAITING_FOR_PROPOSAL)).toBeNull();
+    expect(api.rejectApplication).not.toHaveBeenCalled();
+  });
+});
+
+describe('HOJobApplicationsScreen: a proposal whose card payment is waiting cannot be declined', () => {
+  const DECLINE_ALEX = 'Decline Alex Reyes';
+  const WAITING_FOR_PROPOSAL = "We're still confirming your payment for this proposal.";
+
+  it('a remembered wait keeps Decline disabled on its proposal, with the reason beside it, and a tap opens no dialog', async () => {
+    await AsyncStorage.setItem(
+      PENDING_HIRE_PAYMENTS_KEY,
+      JSON.stringify({ 'app-1': { returnedPaid: true, startedAt: Date.now() } }),
+    );
+    await renderScreen();
+
+    expect(await screen.findByText(WAITING_FOR_PROPOSAL)).toBeTruthy();
+    fireEvent.press(screen.getByRole('button', { name: DECLINE_ALEX, disabled: true }));
+
+    expect(screen.queryByText('Reject this proposal?')).toBeNull();
+    expect(api.rejectApplication).not.toHaveBeenCalled();
+  });
+
+  it('the other proposals on the job can still be declined while one payment waits', async () => {
+    const blair = application({
+      id: 'app-2',
+      provider: {
+        id: 'prov-app-2',
+        full_name: 'Blair Santos',
+        avatar_url: null,
+        city: 'Cebu',
+        provider_profiles: { is_verified: true, cached_avg_rating: 5, cached_completed_jobs: 9 },
+      },
+    });
+    (api.jobApplications as jest.Mock).mockResolvedValue([pendingApp, blair]);
+    await AsyncStorage.setItem(
+      PENDING_HIRE_PAYMENTS_KEY,
+      JSON.stringify({ 'app-1': { returnedPaid: false, startedAt: Date.now() } }),
+    );
+    await renderScreen();
+
+    expect(await screen.findByText(WAITING_FOR_PROPOSAL)).toBeTruthy();
+    fireEvent.press(screen.getByRole('button', { name: 'Decline Blair Santos', disabled: false }));
+
+    expect(screen.getByText('Reject this proposal?')).toBeTruthy();
+    expect(api.rejectApplication).not.toHaveBeenCalled();
+  });
+
+  it('Decline is held until the remembered waits have been read, as Hire is', async () => {
+    let finishRead: (value: string | null) => void = () => undefined;
+    jest.spyOn(AsyncStorage, 'getItem').mockImplementationOnce(
+      () =>
+        new Promise<string | null>((resolve) => {
+          finishRead = resolve;
+        }),
+    );
+    await renderScreen();
+
+    expect(await screen.findByRole('button', { name: DECLINE_ALEX, disabled: true })).toBeTruthy();
+
+    await act(async () => finishRead(null));
+
+    expect(await screen.findByRole('button', { name: DECLINE_ALEX, disabled: false })).toBeTruthy();
+  });
 });
 
 describe('HOJobApplicationsScreen: what a remembered wait is checked against when the proposals load', () => {

@@ -448,6 +448,9 @@ export default function HOJobApplicationsScreen({
     const waitingHere = awaitingConfirmation?.applicationId === app.id;
     const waitingElsewhere = waitingOnAnother(app.id);
     const actionsDisabled = busyId !== null || !verified || waitingElsewhere || !hydrated;
+    // A card payment for this proposal is still with the server, so it cannot be declined meanwhile.
+    // Until the remembered waits are read, it is not known whether it is waiting, so it is held too.
+    const declineDisabled = busyId !== null || waitingHere || !hydrated;
     return (
       <View key={app.id} style={[styles.card, state === 'closed' && styles.cardMuted]}>
         <View style={styles.cardHead}>
@@ -500,12 +503,13 @@ export default function HOJobApplicationsScreen({
                   <Text style={styles.linkText}>View profile</Text>
                 </Tap>
                 <Tap
-                  style={styles.linkTap}
+                  style={[styles.linkTap, declineDisabled && styles.disabled]}
                   onPress={() => setConfirmReject(app)}
-                  disabled={busyId !== null}
+                  disabled={declineDisabled}
                   activeOpacity={0.8}
                   accessibilityRole="button"
                   accessibilityLabel={`Decline ${name}`}
+                  accessibilityState={{ disabled: declineDisabled }}
                   testID={`applications-reject-${app.id}`}
                 >
                   <Text style={[styles.linkText, styles.linkTextMuted]}>{busyId === app.id ? 'Working…' : 'Decline'}</Text>
@@ -530,6 +534,9 @@ export default function HOJobApplicationsScreen({
             {!verified && <Text style={styles.hireNote}>Hiring unlocks once they&apos;re verified.</Text>}
             {waitingHere && (
               <Text style={styles.hireNote}>We&apos;re still confirming your payment. Tap Hire to check on it.</Text>
+            )}
+            {waitingHere && (
+              <Text style={styles.hireNote}>We&apos;re still confirming your payment for this proposal.</Text>
             )}
             {waitingElsewhere && (
               <Text style={styles.hireNote}>Hiring pauses until {waitingName}&apos;s payment is confirmed.</Text>
