@@ -148,7 +148,7 @@ export async function ensureApiBaseUrl(): Promise<string> {
 }
 
 // ── Backend role vocabulary ↔ mobile role vocabulary ───────────────────────────
-// The backend calls homeowners "client"; the mobile UI calls them "homeowner".
+// The backend calls homeowners "client"; the mobile role value stays "homeowner", and the UI says "Client".
 export type BackendRole = 'client' | 'provider' | 'admin';
 export type MobileRole = 'homeowner' | 'provider';
 

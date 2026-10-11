@@ -2,7 +2,7 @@
  * GoogleRoleSelectionScreen.tsx
  *
  * Shown to new Google OAuth users before they reach their dashboard.
- * They pick either "Homeowner" or "Service Provider".
+ * They pick either "Client" or "Service Provider".
  *
  * Picking a card opens a confirm sheet first, because the role cannot be
  * changed later. Only "Yes" runs the real action, once:

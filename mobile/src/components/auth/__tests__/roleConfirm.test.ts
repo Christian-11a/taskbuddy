@@ -10,9 +10,9 @@ describe('roleConfirmCopy', () => {
     });
   });
 
-  it('asks a homeowner to confirm for hiring', () => {
+  it('asks a client to confirm for hiring', () => {
     expect(roleConfirmCopy('homeowner', 'ana@gmail.com')).toMatchObject({
-      title: 'Sign up as a homeowner?',
+      title: 'Sign up as a client?',
       body: "Your Google account ana@gmail.com will be set up for hiring. This can't be changed later.",
       confirmLabel: 'Yes, I want to hire',
     });

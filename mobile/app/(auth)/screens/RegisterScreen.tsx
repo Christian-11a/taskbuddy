@@ -8,8 +8,8 @@
  * - "Create account" — Roboto 700 30px #1E1E1E
  * - "Let's get started!" — Roboto 400 13px #757575
  * - Name, Email, Password, Confirm Password inputs
- * - Role selector: Homeowner / Service Provider
- * - Homeowner: T&C + Privacy Policy + Data Collection consent checkboxes
+ * - Role selector: Client / Service Provider
+ * - Client: T&C + Privacy Policy + Data Collection consent checkboxes
  * - Provider: above + Skill category picker
  * - "Sign Up" primary button (teal, radius 24)
  * - "or" divider

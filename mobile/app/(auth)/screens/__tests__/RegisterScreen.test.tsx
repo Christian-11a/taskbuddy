@@ -35,6 +35,8 @@ describe('RegisterScreen — role step', () => {
     expect(screen.getByText("You can't switch later, so pick the one that fits.")).toBeTruthy();
     expect(screen.getByText(HOMEOWNER_CARD)).toBeTruthy();
     expect(screen.getByText(PROVIDER_CARD)).toBeTruthy();
+    expect(screen.getByText('Client')).toBeTruthy();
+    expect(screen.queryByText('Homeowner')).toBeNull();
     expect(screen.getByText('Continue')).toBeTruthy();
     expect(screen.queryByTestId('input-name')).toBeNull();
   });

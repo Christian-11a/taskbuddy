@@ -56,7 +56,7 @@ it('shows the back arrow when pushed from another screen, and runs onBack', () =
   expect(onBack).toHaveBeenCalledTimes(1);
 });
 
-it('shows the name, the Homeowner line with the join month, and Edit profile, which opens Edit Profile', () => {
+it('shows the name, the Client line with the join month, and Edit profile, which opens Edit Profile', () => {
   (useAuth as jest.Mock).mockReturnValue({
     profile: { ...homeownerProfile, created_at: new Date(2026, 8, 15).toISOString() },
   });
@@ -64,7 +64,7 @@ it('shows the name, the Homeowner line with the join month, and Edit profile, wh
   render(<Profile onNavigate={onNavigate} onLogout={jest.fn()} />);
 
   expect(screen.getByText('Testo Homeowner')).toBeTruthy();
-  expect(screen.getByText('Homeowner · Member since Sep 2026')).toBeTruthy();
+  expect(screen.getByText('Client · Member since Sep 2026')).toBeTruthy();
 
   fireEvent.press(screen.getByRole('button', { name: 'Edit profile' }));
 

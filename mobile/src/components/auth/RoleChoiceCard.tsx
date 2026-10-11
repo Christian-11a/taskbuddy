@@ -11,7 +11,7 @@ export const ROLE_CHOICE_COPY: Record<RoleChoice, { title: string; body: string;
   homeowner: {
     title: 'I need help at home',
     body: 'Post jobs, compare offers, hire and pay safely.',
-    tag: 'Homeowner',
+    tag: 'Client',
   },
   provider: {
     title: 'I want to work',

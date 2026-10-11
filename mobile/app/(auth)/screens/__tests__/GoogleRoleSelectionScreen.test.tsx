@@ -21,7 +21,7 @@ describe('GoogleRoleSelectionScreen — the role is confirmed before it is saved
 
     fireEvent.press(screen.getByText('I need help at home'));
 
-    expect(screen.getByText('Sign up as a homeowner?')).toBeTruthy();
+    expect(screen.getByText('Sign up as a client?')).toBeTruthy();
     expect(props.onSelectHomeowner).not.toHaveBeenCalled();
     expect(props.onSelectProvider).not.toHaveBeenCalled();
   });
@@ -40,7 +40,7 @@ describe('GoogleRoleSelectionScreen — the role is confirmed before it is saved
 
     fireEvent.press(screen.getByText('Choose again'));
 
-    expect(screen.queryByText('Sign up as a homeowner?')).toBeNull();
+    expect(screen.queryByText('Sign up as a client?')).toBeNull();
     expect(props.onSelectHomeowner).not.toHaveBeenCalled();
     expect(props.onSelectProvider).not.toHaveBeenCalled();
   });
@@ -68,7 +68,7 @@ describe('GoogleRoleSelectionScreen — the role is confirmed before it is saved
     });
 
     expect(screen.getByText('Could not finish your sign-up.')).toBeTruthy();
-    expect(screen.queryByText('Sign up as a homeowner?')).toBeNull();
+    expect(screen.queryByText('Sign up as a client?')).toBeNull();
   });
 
   it('the provider path opens the provider details step and saves nothing', async () => {

@@ -85,7 +85,7 @@ export default function Profile({ onNavigate, onLogout, onBack }: ProfileProps) 
       ? profile.address
       : [profile?.city, profile?.address].filter(Boolean).join(', ')) || null;
   const memberSince = shortMonthYear(profile?.created_at);
-  const subtitle = ['Homeowner', memberSince ? `Member since ${memberSince}` : null]
+  const subtitle = ['Client', memberSince ? `Member since ${memberSince}` : null]
     .filter(Boolean)
     .join(' · ');
   const phone = profile?.phone?.trim() || '';

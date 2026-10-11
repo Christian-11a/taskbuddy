@@ -14,7 +14,7 @@ export function roleConfirmCopy(role: GoogleRole, email?: string | null) {
     ? `Your Google account ${trimmed} will be set up for ${purpose}.`
     : `Your Google account will be set up for ${purpose}.`;
   return {
-    title: isProvider ? 'Sign up as a service provider?' : 'Sign up as a homeowner?',
+    title: isProvider ? 'Sign up as a service provider?' : 'Sign up as a client?',
     body: `${account} This can't be changed later.`,
     confirmLabel: isProvider ? 'Yes, I want to work' : 'Yes, I want to hire',
     chooseAgainLabel: 'Choose again',
