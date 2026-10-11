@@ -22,12 +22,15 @@ describe('HelpSupportScreen — welcome tour replay entry point', () => {
 });
 
 describe('HelpSupportScreen — report a problem wording', () => {
-  it('tells the homeowner to open the job, tap ⋮, then Report a problem', () => {
+  it('says where Report a problem sits: the ⋮ menu, or a link once every task is done', () => {
     render(<HelpSupportScreen role="homeowner" onBack={jest.fn()} />);
 
     fireEvent.press(screen.getByRole('button', { name: 'How do I report a problem with a job?' }));
 
-    expect(screen.getByText(/Open the job from My Jobs, tap ⋮, then Report a problem/)).toBeTruthy();
+    expect(screen.getByText(/Open the job and tap Report a problem/)).toBeTruthy();
+    expect(screen.getByText(/under the ⋮ menu on a booked or in-progress job/)).toBeTruthy();
+    expect(screen.getByText(/a link once the provider has finished every task/)).toBeTruthy();
+    expect(screen.getByText(/can be reported during its three-day warranty/)).toBeTruthy();
     expect(screen.queryByText(/File a Complaint/)).toBeNull();
   });
 });
