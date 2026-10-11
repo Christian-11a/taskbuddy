@@ -10,8 +10,9 @@
 import { useThemedStyles, type Palette as ThemePalette } from '../../../src/context/ThemeContext';
 import { useAuth } from '../../../src/context/AuthContext';
 import React, { useCallback, useState } from 'react';
-import { ActivityIndicator, KeyboardAvoidingView, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, KeyboardAvoidingView, StyleSheet, Text, View } from 'react-native';
 import Tap from '../../../src/components/ui/Tap';
+import KeyboardAwareScrollView from '../../../src/components/ui/KeyboardAwareScrollView';
 import RadioRow from '../../../src/components/ui/RadioRow';
 import TextField from '../../../src/components/ui/TextField';
 import { ArrowLeft } from 'lucide-react-native';
@@ -97,7 +98,7 @@ export default function HODisputeFilingScreen({ jobId, onBack, onSubmitted }: HO
 
       {/* Keeps the description box and Send report above the keyboard (K2). */}
       <KeyboardAvoidingView style={styles.flex} behavior="padding">
-        <ScrollView keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag" contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+        <KeyboardAwareScrollView keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag" contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
           <View style={styles.chip}>
             <Text style={styles.chipText} numberOfLines={2}>{chip}</Text>
           </View>
@@ -147,7 +148,7 @@ export default function HODisputeFilingScreen({ jobId, onBack, onSubmitted }: HO
               <Text style={styles.submitText}>Send report</Text>
             )}
           </Tap>
-        </ScrollView>
+        </KeyboardAwareScrollView>
       </KeyboardAvoidingView>
 
       <ConfirmationModal

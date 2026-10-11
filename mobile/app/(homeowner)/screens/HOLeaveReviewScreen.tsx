@@ -12,12 +12,12 @@ import React, { useCallback, useState } from 'react';
 import {
   KeyboardAvoidingView,
   Platform,
-  ScrollView,
   StyleSheet,
   Text,
   View,
 } from 'react-native';
 import Tap from '../../../src/components/ui/Tap';
+import KeyboardAwareScrollView from '../../../src/components/ui/KeyboardAwareScrollView';
 import Silhouette from '../../../src/components/ui/Silhouette';
 import Banner from '../../../src/components/ui/Banner';
 import FilterPill from '../../../src/components/ui/FilterPill';
@@ -112,7 +112,7 @@ export default function HOLeaveReviewScreen({ jobId, onSubmitted, onBack }: HOLe
         style={styles.flex}
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       >
-        <ScrollView keyboardDismissMode="on-drag" contentContainerStyle={styles.bodyContent} keyboardShouldPersistTaps="handled">
+        <KeyboardAwareScrollView keyboardDismissMode="on-drag" contentContainerStyle={styles.bodyContent} keyboardShouldPersistTaps="handled">
           <View style={styles.avatar}>
             <Silhouette name={providerName} textStyle={styles.avatarText} />
           </View>
@@ -175,7 +175,7 @@ export default function HOLeaveReviewScreen({ jobId, onSubmitted, onBack }: HOLe
             <Text style={styles.alreadyReviewedText}>You already submitted a review for this job.</Text>
           )}
           {!!error && <Text style={styles.errorText} accessibilityRole="alert">{error}</Text>}
-        </ScrollView>
+        </KeyboardAwareScrollView>
 
         <BottomActionBar
           primaryLabel="Submit review"

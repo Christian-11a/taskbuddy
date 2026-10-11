@@ -39,6 +39,7 @@ import {
   type LayoutChangeEvent,
 } from 'react-native';
 import Tap from '../../../src/components/ui/Tap';
+import KeyboardAwareScrollView from '../../../src/components/ui/KeyboardAwareScrollView';
 import { AlertCircle, Check, CheckCircle2, ChevronDown, Circle, MailCheck } from 'lucide-react-native';
 import { V6Radii, V6Shadows } from '../../../src/constants/theme';
 import TermsAndConditions from './TermsAndConditions';
@@ -530,7 +531,7 @@ export default function RegisterScreen({ onRegister, onLogin, onGoogleSignIn }: 
   );
 
   const scrollContent = (
-    <ScrollView
+    <KeyboardAwareScrollView
       ref={scrollRef}
       style={styles.flex}
       contentContainerStyle={[styles.scrollContent, { paddingTop: layout.paddingTop, paddingBottom: layout.paddingBottom }]}
@@ -821,7 +822,7 @@ export default function RegisterScreen({ onRegister, onLogin, onGoogleSignIn }: 
               <Text style={styles.signInLink}>Sign In</Text>
             </Pressable>
           </View>
-    </ScrollView>
+    </KeyboardAwareScrollView>
   );
 
   return (

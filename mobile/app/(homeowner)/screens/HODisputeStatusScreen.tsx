@@ -1,7 +1,8 @@
 import { useThemedStyles, type Palette as ThemePalette } from '../../../src/context/ThemeContext';
 import React, { useRef, useState } from 'react';
-import { ActivityIndicator, Image, KeyboardAvoidingView, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Image, KeyboardAvoidingView, RefreshControl, StyleSheet, Text, View } from 'react-native';
 import Tap from '../../../src/components/ui/Tap';
+import KeyboardAwareScrollView from '../../../src/components/ui/KeyboardAwareScrollView';
 import StatusCard from '../../../src/components/ui/StatusCard';
 import TextField from '../../../src/components/ui/TextField';
 import BottomActionBar from '../../../src/components/ui/BottomActionBar';
@@ -104,7 +105,7 @@ export default function HODisputeStatusScreen({ jobId, onBack, onMessage }: Prop
     {!!error && <Text style={styles.error} accessibilityLiveRegion="polite">{error}</Text>}
     {!loading && !error && !dispute && <Text style={[styles.text, styles.emptyPage]}>No complaint has been filed for this job.</Text>}
     {dispute && view && <KeyboardAvoidingView style={styles.flex} behavior="padding">
-      <ScrollView
+      <KeyboardAwareScrollView
         testID="case-scroll" contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag"
         refreshControl={<RefreshControl refreshing={loading} onRefresh={reload} tintColor={V6Colors.link} colors={[V6Colors.link]} />}
       >
@@ -155,7 +156,7 @@ export default function HODisputeStatusScreen({ jobId, onBack, onMessage }: Prop
             <Text style={[styles.linkText, noNote && styles.linkTextDisabled]}>Contest and explain</Text>
           </Tap>
         </View>}
-      </ScrollView>
+      </KeyboardAwareScrollView>
       {canRespond
         ? <BottomActionBar primaryLabel="Agree to cancel" onPrimary={() => setConfirm('agree')} primaryDisabled={noNote} busy={busy} />
         : open

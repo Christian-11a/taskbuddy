@@ -30,13 +30,13 @@ import {
   Keyboard,
   KeyboardAvoidingView,
   Platform,
-  ScrollView,
   StyleSheet,
   Text,
   TextInput,
   View,
 } from 'react-native';
 import Tap from '../../../src/components/ui/Tap';
+import KeyboardAwareScrollView from '../../../src/components/ui/KeyboardAwareScrollView';
 import { AlertCircle, CheckCircle2, Circle, KeyRound, MailCheck } from 'lucide-react-native';
 import AuthField from '../../../src/components/auth/AuthField';
 import AuthStepHeader from '../../../src/components/auth/AuthStepHeader';
@@ -313,7 +313,7 @@ export default function ForgotPasswordScreen({ onBackToLogin }: ForgotPasswordSc
   );
 
   const scrollContent = (
-    <ScrollView
+    <KeyboardAwareScrollView
       style={styles.flex}
       contentContainerStyle={[styles.scrollContent, { paddingTop: layout.paddingTop, paddingBottom: layout.paddingBottom }]}
       showsVerticalScrollIndicator={false}
@@ -343,7 +343,7 @@ export default function ForgotPasswordScreen({ onBackToLogin }: ForgotPasswordSc
           <Text style={styles.footerLink}>Back to sign in</Text>
         </Tap>
       </View>
-    </ScrollView>
+    </KeyboardAwareScrollView>
   );
 
   return (

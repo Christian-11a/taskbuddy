@@ -19,13 +19,13 @@ import {
   KeyboardAvoidingView,
   Platform,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   TextInput,
   View,
 } from 'react-native';
 import Tap from '../../../src/components/ui/Tap';
+import KeyboardAwareScrollView from '../../../src/components/ui/KeyboardAwareScrollView';
 import GoogleGlyph from '../../../src/components/GoogleGlyph';
 import AuthField from '../../../src/components/auth/AuthField';
 import { V6Radii, V6Shadows } from '../../../src/constants/theme';
@@ -124,7 +124,7 @@ export default function LoginScreen({
   };
 
   const scrollContent = (
-    <ScrollView
+    <KeyboardAwareScrollView
       style={styles.flex}
       contentContainerStyle={[
         styles.loginContent,
@@ -263,7 +263,7 @@ export default function LoginScreen({
           <Text style={styles.signUpLink}>Create an account</Text>
         </Pressable>
       </View>
-    </ScrollView>
+    </KeyboardAwareScrollView>
   );
 
   return (

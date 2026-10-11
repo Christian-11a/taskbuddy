@@ -64,6 +64,7 @@ import {
   KeyboardAvoidingView,
 } from 'react-native';
 import Tap from '../../../src/components/ui/Tap';
+import KeyboardAwareScrollView, { useRevealOnFocus } from '../../../src/components/ui/KeyboardAwareScrollView';
 import SheetFrame from '../../../src/components/ui/SheetFrame';
 import SuccessMark from '../../../src/components/ui/SuccessMark';
 import {
@@ -297,6 +298,9 @@ export default function HOCreateJobScreen({
   // One ScrollView holds every step, so without this "Next" opened the new
   // step wherever the previous one had been scrolled to (usually the bottom).
   const scrollRef = useRef<ScrollView>(null);
+  // The budget is a plain TextInput, so it takes the same reveal the shared fields do.
+  const budgetRef = useRef<TextInput>(null);
+  const revealBudget = useRevealOnFocus(budgetRef);
   const fieldPositions = useRef<Partial<Record<keyof FieldErrors, number>>>({});
   // On short screens the keyboard covers the address suggestions, which sit
   // under the field. Once the keyboard is up, scroll the Address label to the
@@ -708,7 +712,7 @@ export default function HOCreateJobScreen({
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         keyboardVerticalOffset={24}
       >
-        <ScrollView keyboardDismissMode="on-drag"
+        <KeyboardAwareScrollView keyboardDismissMode="on-drag"
           ref={scrollRef}
           testID="create-job-form-scroll"
           style={styles.body}
@@ -1012,12 +1016,16 @@ export default function HOCreateJobScreen({
               <View style={[styles.budgetCard, focusedField === 'budget' && styles.budgetCardFocused, !!fieldErrors.budget && styles.inputError]}>
                 <Text style={styles.budgetCurrency}>₱</Text>
                 <TextInput keyboardAppearance={appearance}
+                  ref={budgetRef}
                   style={styles.budgetInput}
                   placeholder="0.00"
                   placeholderTextColor={Colors.muted}
                   value={budget}
                   onChangeText={(text) => setBudget((previous) => nextAmountText(previous, text))}
-                  onFocus={() => setFocusedField('budget')}
+                  onFocus={() => {
+                    setFocusedField('budget');
+                    revealBudget();
+                  }}
                   onBlur={() => { setFocusedField(null); formatBudget(); }}
                   keyboardType="decimal-pad"
                 />
@@ -1074,7 +1082,7 @@ export default function HOCreateJobScreen({
         )}
 
         <View style={{ height: 20 }} />
-        </ScrollView>
+        </KeyboardAwareScrollView>
         {/* The bar lives inside the keyboard-avoiding view, so it rises above the keyboard
             instead of hiding under it. BUG-005: the bar keeps clear of the system nav bar. */}
         {!submitting && (

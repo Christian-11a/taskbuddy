@@ -2,12 +2,12 @@ import { useThemedStyles, type Palette as ThemePalette } from '../../../src/cont
 import React, { useState } from 'react';
 import {
   Image,
-  ScrollView,
   StyleSheet,
   Text,
   View,
 } from 'react-native';
 import Tap from '../../../src/components/ui/Tap';
+import KeyboardAwareScrollView from '../../../src/components/ui/KeyboardAwareScrollView';
 import ContentSkeleton from '../../../src/components/ui/ContentSkeleton';
 import Banner from '../../../src/components/ui/Banner';
 import BottomActionBar from '../../../src/components/ui/BottomActionBar';
@@ -200,7 +200,7 @@ export default function SPPortfolioScreen({ onBack }: { onBack: () => void }) {
         </Tap>
         <Text style={styles.headerTitle} accessibilityRole="header">My Portfolio</Text>
       </View>
-      <ScrollView
+      <KeyboardAwareScrollView
         style={styles.scroll}
         contentContainerStyle={styles.content}
         keyboardShouldPersistTaps="handled"
@@ -335,7 +335,7 @@ export default function SPPortfolioScreen({ onBack }: { onBack: () => void }) {
             onRemove={setRemoving}
           />
         )}
-      </ScrollView>
+      </KeyboardAwareScrollView>
 
       {showForm && (
         <>

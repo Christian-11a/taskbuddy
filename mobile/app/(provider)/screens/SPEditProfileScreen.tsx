@@ -26,6 +26,7 @@ import {
   View,
 } from 'react-native';
 import Tap from '../../../src/components/ui/Tap';
+import KeyboardAwareScrollView from '../../../src/components/ui/KeyboardAwareScrollView';
 import TextField from '../../../src/components/ui/TextField';
 import BottomActionBar from '../../../src/components/ui/BottomActionBar';
 import { ArrowLeft, CircleAlert, Save } from 'lucide-react-native';
@@ -193,7 +194,7 @@ export default function SPEditProfileScreen({ onBack, onSave, onManageServices }
       </View>
 
       <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
-        <ScrollView
+        <KeyboardAwareScrollView
           ref={scrollRef}
           keyboardDismissMode="on-drag"
           style={styles.body}
@@ -332,7 +333,7 @@ export default function SPEditProfileScreen({ onBack, onSave, onManageServices }
           </View>
 
           {!!error && <Text style={styles.errorText} accessibilityLiveRegion="polite">{error}</Text>}
-        </ScrollView>
+        </KeyboardAwareScrollView>
 
         <BottomActionBar primaryLabel="Save changes" busy={saving} onPrimary={requestSave} />
       </KeyboardAvoidingView>

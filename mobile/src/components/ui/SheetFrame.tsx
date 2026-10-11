@@ -1,9 +1,8 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Keyboard,
   Modal,
   Pressable,
-  ScrollView,
   StyleSheet,
   View,
   useWindowDimensions,
@@ -24,6 +23,7 @@ import { scheduleOnRN } from 'react-native-worklets';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../../context/ThemeContext';
 import { SHEET_SPRING } from './motion';
+import KeyboardAwareScrollView from './KeyboardAwareScrollView';
 
 type SheetFrameProps = {
   visible: boolean;
@@ -52,8 +52,8 @@ const MIN_KEYBOARD_HEIGHT = 120;
  * close callbacks behave exactly as before) and only changes presentation:
  * a bottom sheet that slides up, can be dragged down by its grip, and sits on
  * top of the keyboard on Android too (K1). The card never grows past the space
- * between the status bar and the keyboard; when it would, it scrolls, and on
- * keyboard-open it scrolls to its last row so the actions stay reachable.
+ * between the status bar and the keyboard; when it would, it scrolls, and a
+ * focused field is scrolled above the keyboard (KeyboardAwareScrollView).
  * Reduced motion: fade only.
  */
 export default function SheetFrame({
@@ -66,7 +66,6 @@ export default function SheetFrame({
   const reduced = useReducedMotion();
   const dragY = useSharedValue(0);
   const isSheet = variant === 'sheet';
-  const scrollRef = useRef<ScrollView>(null);
   const [keyboardHeight, setKeyboardHeight] = useState(0);
 
   useEffect(() => {
@@ -80,13 +79,6 @@ export default function SheetFrame({
     const hide = Keyboard.addListener('keyboardDidHide', () => setKeyboardHeight(0));
     return () => { show.remove(); hide.remove(); };
   }, [windowHeight]);
-
-  // Keyboard open: bring the sheet's last row (its actions) into view (K1).
-  useEffect(() => {
-    if (keyboardHeight === 0) return;
-    const t = setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 80);
-    return () => clearTimeout(t);
-  }, [keyboardHeight]);
 
   const keyboardUp = keyboardHeight > 0;
   const available = windowHeight - insets.top - keyboardHeight - (isSheet ? 0 : DIALOG_MARGIN * 2);
@@ -142,8 +134,7 @@ export default function SheetFrame({
             entering={entering}
             style={[wrapStyle, { maxHeight: available }, dragStyle]}
           >
-            <ScrollView
-              ref={scrollRef}
+            <KeyboardAwareScrollView
               style={styles.scroll}
               bounces={false}
               overScrollMode="never"
@@ -171,7 +162,7 @@ export default function SheetFrame({
                 )}
                 {children}
               </Pressable>
-            </ScrollView>
+            </KeyboardAwareScrollView>
           </Animated.View>
         </Pressable>
       </GestureHandlerRootView>

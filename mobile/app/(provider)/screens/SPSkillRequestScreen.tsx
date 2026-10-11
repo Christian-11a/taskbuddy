@@ -11,12 +11,12 @@ import { useThemedStyles, type Palette as ThemePalette } from '../../../src/cont
 import React, { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
-  ScrollView,
   StyleSheet,
   Text,
   View,
 } from 'react-native';
 import Tap from '../../../src/components/ui/Tap';
+import KeyboardAwareScrollView from '../../../src/components/ui/KeyboardAwareScrollView';
 import RadioRow from '../../../src/components/ui/RadioRow';
 import TextField from '../../../src/components/ui/TextField';
 import StatusCard from '../../../src/components/ui/StatusCard';
@@ -211,7 +211,7 @@ export default function SPSkillRequestScreen({ onBack }: SPSkillRequestScreenPro
         <Text style={styles.headerTitle} accessibilityRole="header">My Services</Text>
       </View>
 
-      <ScrollView
+      <KeyboardAwareScrollView
         style={styles.body}
         contentContainerStyle={styles.bodyContent}
         keyboardShouldPersistTaps="handled"
@@ -337,7 +337,7 @@ export default function SPSkillRequestScreen({ onBack }: SPSkillRequestScreenPro
             })}
           </>
         )}
-      </ScrollView>
+      </KeyboardAwareScrollView>
 
       {!pending && !requests.loading && (
         <BottomActionBar
