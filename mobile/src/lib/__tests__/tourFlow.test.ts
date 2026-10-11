@@ -1,6 +1,6 @@
 import {
   firstRunKind, homeContentReady, idleTourFlow, NEW_ACCOUNT_WINDOW_MS, nextTourFlow, shouldOfferTour, shouldStartTour,
-  TOUR_CONTENT_WAIT_MS, tourIsOnScreen, type FirstRunKind, type TourFlow, type TourFlowEvent,
+  TOUR_CONTENT_WAIT_MS, welcomeHoldsPushes, type FirstRunKind, type TourFlow, type TourFlowEvent,
 } from '../tourFlow';
 import type { AnchorState } from '../../components/tour/types';
 
@@ -65,14 +65,16 @@ describe('nextTourFlow — a replay after a stale wait', () => {
   });
 });
 
-describe('tourIsOnScreen', () => {
+describe('welcomeHoldsPushes', () => {
+  // A tapped notification opens its own screen, which would take Home's tour anchors off the screen. So it waits
+  // from the end of the intro cards, through the wait for Home, the tour and the finish card, until the flow is idle.
   it.each([
-    ['idle', idleTourFlow, false],
-    ['waiting', waiting(true), false],
-    ['touring', touring(true), true],
-    ['finishing', finishing(false), true],
-  ] as const)('is true only while the tour or its finish card is up (%s)', (_name, state, expected) => {
-    expect(tourIsOnScreen(state)).toBe(expected);
+    ['idle: a notification opens at once', idleTourFlow, false],
+    ['waiting for Home: the notification waits', waiting(true), true],
+    ['touring: the notification waits', touring(true), true],
+    ['finishing: the notification waits for the finish card to close', finishing(false), true],
+  ] as const)('%s', (_name, state, expected) => {
+    expect(welcomeHoldsPushes(state)).toBe(expected);
   });
 });
 

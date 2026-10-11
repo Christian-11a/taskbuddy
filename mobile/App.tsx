@@ -102,7 +102,7 @@ import { hasCompletedOnboarding, markOnboardingCompleted } from './src/lib/onboa
 import { firstNameFrom, tourSteps, type FinishAction } from './src/lib/tourContent';
 import {
   firstRunKind, homeContentReady, idleTourFlow, nextTourFlow, shouldOfferTour, shouldStartTour, TOUR_CONTENT_POLL_MS,
-  tourIsOnScreen, type TourFlow,
+  welcomeHoldsPushes, type TourFlow,
 } from './src/lib/tourFlow';
 import { api } from './src/lib/api';
 import { consumeLastNotificationTap, subscribeToNotificationTaps } from './src/lib/pushNotifications';
@@ -180,7 +180,8 @@ function AppFlow() {
   const [tourFlow, setTourFlow] = useState<TourFlow>(idleTourFlow);
   const [tourOfferOpen, setTourOfferOpen] = useState(false);
   const { startTour, stopTour, anchorState } = useTour();
-  const tourBusy = tourIsOnScreen(tourFlow);
+  // A tapped notification waits for the whole welcome (see welcomeHoldsPushes).
+  const pushHeld = welcomeHoldsPushes(tourFlow);
   const firstName = firstNameFrom(profile?.full_name);
   // The splash plays for a minimum duration; we also wait for session restore.
   const [minSplashDone, setMinSplashDone] = useState(false);
@@ -419,8 +420,8 @@ function AppFlow() {
 
   useEffect(() => {
     if (!pendingPushTarget || pendingPushTarget.recipient_id !== profile?.id) return;
-    // A tour on screen holds the push, so its overlay never sits over the screen the push opens.
-    if (!isAuthenticated || isGoogleSignupPending || showOnboarding !== false || !role || tourBusy) return;
+    // The welcome holds the push until it is over, so its tour and finish card never sit over the screen the push opens.
+    if (!isAuthenticated || isGoogleSignupPending || showOnboarding !== false || !role || pushHeld) return;
 
     const target = resolveNotificationTarget(role, pendingPushTarget);
     if (target.kind === 'proposals') {
@@ -442,7 +443,7 @@ function AppFlow() {
     const notificationId = pendingPushTarget.notification_id;
     if (notificationId) void api.markNotificationRead(notificationId).catch((err: Error) => showToast(err.message, 'error'));
     setPendingPushTarget(null);
-  }, [pendingPushTarget, isAuthenticated, isGoogleSignupPending, showOnboarding, role, profile?.id, tourBusy]);
+  }, [pendingPushTarget, isAuthenticated, isGoogleSignupPending, showOnboarding, role, profile?.id, pushHeld]);
 
   useEffect(() => {
     // Pre-warm the browser on Android so Google OAuth opens instantly.
@@ -592,8 +593,8 @@ function AppFlow() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tourFlow.phase]);
 
-  // The finish card, drawn over Home once the tour is over.
-  const tourFinish = tourFlow.phase === 'finishing' && role ? (
+  // The finish card, once the tour is over. It is drawn beside whichever screen is up (see wrap).
+  const tourFinish = tourFlow.phase === 'finishing' && isAuthenticated && role ? (
     <TourFinishCard
       role={role}
       verified={isVerified}
@@ -626,8 +627,12 @@ function AppFlow() {
       : role === 'homeowner' ? (HO_TAB_SCREENS.includes(hoScreen) ? 0 : hoStack.length + 1)
       : (SP_TAB_SCREENS.includes(spScreen) ? 0 : spStack.length + 1);
   const transitionDirection = useTransitionDirection(transitionKey, transitionDepth);
+  // Every screen goes through here, with the finish card beside it, so the card shows whichever screen the tour ends on.
   const wrap = (screen: React.ReactElement) => (
-    <ScreenTransition screenKey={transitionKey} direction={transitionDirection}>{screen}</ScreenTransition>
+    <>
+      <ScreenTransition screenKey={transitionKey} direction={transitionDirection}>{screen}</ScreenTransition>
+      {tourFinish}
+    </>
   );
 
   // Hold on the splash until the minimum time has elapsed AND any persisted
@@ -879,7 +884,6 @@ function AppFlow() {
       // every homeowner tab screen. SP tabs below already avoid this.
       <View style={styles.screen}>
         <View style={styles.tabContent}>{renderHOTabContent()}</View>
-        {tourFinish}
         <BottomNavBar
           activeTab={hoTab}
           tabs={HOMEOWNER_TABS}
@@ -1034,7 +1038,6 @@ function AppFlow() {
   return wrap(
     <View style={styles.screen}>
       <View style={styles.tabContent}>{renderSPTabContent()}</View>
-      {tourFinish}
       <BottomNavBar activeTab={spTab} tabs={PROVIDER_TABS} onTabPress={spNavigate} />
     </View>
   );

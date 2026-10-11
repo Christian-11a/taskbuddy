@@ -169,6 +169,14 @@ async function pass(ms = 30) {
   });
 }
 
+/** Taps Next until the spotlight tour is gone, letting each step's measurement run in between. */
+async function tapThroughTour() {
+  for (let i = 0; i < 12 && screen.queryByTestId('tour-next'); i++) {
+    fireEvent.press(screen.getByTestId('tour-next'));
+    await pass();
+  }
+}
+
 /** A tapped notification for this account, as the push handler receives it. */
 function tapNotification() {
   act(() => {
@@ -197,5 +205,40 @@ describe('welcome tour — a session that ends on its own', () => {
     expect(screen.queryByText('Start here')).toBeNull();
     tapNotification();
     expect(await screen.findByTestId('job-applications-stand-in')).toBeTruthy();
+  }, 15000);
+});
+
+describe('welcome tour — notifications and the finish card', () => {
+  it('holds a notification tapped during the welcome until the tour and its finish card are done', async () => {
+    render(<App />);
+    await screen.findByRole('button', { name: 'Show me around' });
+    // Tapped while the intro cards are still up.
+    tapNotification();
+    fireEvent.press(screen.getByRole('button', { name: 'Show me around' }));
+
+    expect(await screen.findByText('Start here')).toBeTruthy();
+    expect(screen.queryByTestId('job-applications-stand-in')).toBeNull();
+
+    await tapThroughTour();
+    expect(await screen.findByTestId('tour-finish')).toBeTruthy();
+    expect(screen.queryByTestId('job-applications-stand-in')).toBeNull();
+
+    fireEvent.press(screen.getByTestId('tour-finish-secondary'));
+    expect(await screen.findByTestId('job-applications-stand-in')).toBeTruthy();
+  }, 15000);
+
+  it('shows the finish card over a pushed screen when the tour ends with Home gone', async () => {
+    render(<App />);
+    fireEvent.press(await screen.findByRole('button', { name: 'Show me around' }));
+    expect(await screen.findByText('Start here')).toBeTruthy();
+
+    // A pushed screen comes up over Home while the tour is running, so Home's anchors leave the screen.
+    fireEvent.press(screen.getByRole('button', { name: 'Open applications' }));
+    expect(await screen.findByTestId('job-applications-stand-in')).toBeTruthy();
+
+    await tapThroughTour();
+
+    expect(await screen.findByTestId('tour-finish')).toBeTruthy();
+    expect(screen.getByTestId('job-applications-stand-in')).toBeTruthy();
   }, 15000);
 });

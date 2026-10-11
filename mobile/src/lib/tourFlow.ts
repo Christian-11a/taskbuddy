@@ -53,9 +53,13 @@ export function nextTourFlow(state: TourFlow, event: TourFlowEvent): TourFlow {
   }
 }
 
-/** True while the spotlight tour or its finish card is on screen. */
-export function tourIsOnScreen(state: TourFlow): boolean {
-  return state.phase === 'touring' || state.phase === 'finishing';
+/**
+ * Whether a tapped notification must wait. It opens a screen of its own, which would take Home's tour anchors off
+ * the screen, so it waits from the end of the intro cards until the flow is idle: through the wait for Home, the
+ * tour and the finish card.
+ */
+export function welcomeHoldsPushes(state: TourFlow): boolean {
+  return state.phase !== 'idle';
 }
 
 /**
