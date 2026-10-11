@@ -675,7 +675,7 @@ function AppContent() {
           <HelpSupportScreen
             role="homeowner"
             onBack={hoBack}
-            onViewTutorial={() => hoNavigate('Tutorial')}
+            onReplayTour={() => hoNavigate('Tutorial')}
           />
         </ScreenFrame>
       );
@@ -812,7 +812,7 @@ function AppContent() {
         <HelpSupportScreen
           role="provider"
           onBack={spBack}
-          onViewTutorial={() => spNavigate('Tutorial')}
+          onReplayTour={() => spNavigate('Tutorial')}
         />
       </ScreenFrame>
     );

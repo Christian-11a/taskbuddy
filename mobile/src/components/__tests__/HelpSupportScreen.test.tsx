@@ -4,20 +4,20 @@ import { Linking } from 'react-native';
 import { fireEvent, render, screen } from '@testing-library/react-native';
 import HelpSupportScreen from '../HelpSupportScreen';
 
-describe('HelpSupportScreen — tutorial replay entry point', () => {
-  it('shows a "How TaskBuddy works" card and calls onViewTutorial when pressed', () => {
-    const onViewTutorial = jest.fn();
-    render(<HelpSupportScreen role="homeowner" onBack={jest.fn()} onViewTutorial={onViewTutorial} />);
+describe('HelpSupportScreen — welcome tour replay entry point', () => {
+  it('shows a "Replay the welcome tour" card and calls onReplayTour when pressed', () => {
+    const onReplayTour = jest.fn();
+    render(<HelpSupportScreen role="homeowner" onBack={jest.fn()} onReplayTour={onReplayTour} />);
 
-    fireEvent.press(screen.getByText('How TaskBuddy works'));
+    fireEvent.press(screen.getByText('Replay the welcome tour'));
 
-    expect(onViewTutorial).toHaveBeenCalledTimes(1);
+    expect(onReplayTour).toHaveBeenCalledTimes(1);
   });
 
-  it('does not show the card when onViewTutorial is not provided', () => {
+  it('does not show the card when onReplayTour is not provided', () => {
     render(<HelpSupportScreen role="provider" onBack={jest.fn()} />);
 
-    expect(screen.queryByText('How TaskBuddy works')).toBeNull();
+    expect(screen.queryByText('Replay the welcome tour')).toBeNull();
   });
 });
 
@@ -118,7 +118,7 @@ describe('HelpSupportScreen — contact and credits', () => {
 });
 
 it('every control has an accessible name: the back arrow, the questions and the tutorial', () => {
-  render(<HelpSupportScreen role="homeowner" onBack={jest.fn()} onViewTutorial={jest.fn()} />);
+  render(<HelpSupportScreen role="homeowner" onBack={jest.fn()} onReplayTour={jest.fn()} />);
 
   expect(findUnnamedControls(screen.UNSAFE_root)).toEqual([]);
 });

@@ -6,8 +6,9 @@
  * the questions differ per role.
  *
  * Search filters the questions as you type. One question is open at a time.
- * The tour card replays the onboarding slides when the caller passes
- * onViewTutorial. Contact support opens a mail to the support address.
+ * The replay card runs the welcome walkthrough (intro cards, then the spotlight
+ * tour) when the caller passes onReplayTour. Contact support opens a mail to the
+ * support address.
  */
 
 import { useThemedStyles, type Palette as ThemePalette } from '../context/ThemeContext';
@@ -59,10 +60,11 @@ const SP_FAQS = [
 interface HelpSupportScreenProps {
   role: 'homeowner' | 'provider';
   onBack: () => void;
-  onViewTutorial?: () => void;
+  /** Replays the welcome walkthrough. The row is hidden when this is not passed. */
+  onReplayTour?: () => void;
 }
 
-export default function HelpSupportScreen({ role, onBack, onViewTutorial }: HelpSupportScreenProps) {
+export default function HelpSupportScreen({ role, onBack, onReplayTour }: HelpSupportScreenProps) {
   const { C, styles, V6Colors, Colors } = useThemedStyles(createThemedStyles);
   const faqs = role === 'provider' ? SP_FAQS : HO_FAQS;
   const [search, setSearch] = useState('');
@@ -102,19 +104,19 @@ export default function HelpSupportScreen({ role, onBack, onViewTutorial }: Help
           />
         </View>
 
-        {onViewTutorial && (
+        {onReplayTour && (
           <Tap
             style={styles.tourCard}
             activeOpacity={0.85}
             scale
-            onPress={onViewTutorial}
+            onPress={onReplayTour}
             accessibilityRole="button"
-            accessibilityLabel="How TaskBuddy works. Replay the app walkthrough"
+            accessibilityLabel="Replay the welcome tour. A short welcome, then a quick look around the app"
           >
             <PlayCircle size={24} color={Colors.onPrimary} />
             <View style={styles.tourText}>
-              <Text style={styles.tourTitle}>How TaskBuddy works</Text>
-              <Text style={styles.tourBody}>Replay the app walkthrough</Text>
+              <Text style={styles.tourTitle}>Replay the welcome tour</Text>
+              <Text style={styles.tourBody}>A short welcome, then a quick look around the app</Text>
             </View>
             <ChevronRight size={20} color={Colors.onPrimary} />
           </Tap>
