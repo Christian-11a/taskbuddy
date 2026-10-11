@@ -40,6 +40,7 @@ import { useAuth } from '../../../src/context/AuthContext';
 import { useAsyncData } from '../../../src/hooks/useAsyncData';
 import { api, type GeocodedAddress } from '../../../src/lib/api';
 import { changedFields, leaveMessageFor } from '../../../src/lib/editProfileChanges';
+import { PHONE_INPUT_MAX_LENGTH, sanitizePhone, validatePhone } from '../../../src/lib/inputRules';
 
 interface SPEditProfileScreenProps {
   onBack: () => void;
@@ -93,6 +94,11 @@ export default function SPEditProfileScreen({ onBack, onSave, onManageServices }
   });
   const { asking, requestLeave, keepEditing, leave } = useLeaveGuard(changed.length > 0, onBack);
 
+  // An older phone format the user did not touch is not re-checked, so it cannot
+  // block saving other fields. A phone the user changed must be a 09 number (or empty).
+  const phoneChanged = changed.includes('phone');
+  const phoneError = phoneChanged ? validatePhone(phone) ?? undefined : undefined;
+
   // Same rules and messages as before. Each one now shows under its own field
   // once the user has tried to save (or has left the field).
   const nameError = name.trim() ? undefined : 'Full name cannot be empty.';
@@ -113,7 +119,7 @@ export default function SPEditProfileScreen({ onBack, onSave, onManageServices }
   const requestSave = () => {
     setError(null);
     setSubmitted(true);
-    if (nameError || addressError || serviceError || bioError) return;
+    if (nameError || phoneError || addressError || serviceError || bioError) return;
     setShowSaveConfirmation(true);
   };
 
@@ -124,7 +130,7 @@ export default function SPEditProfileScreen({ onBack, onSave, onManageServices }
     try {
       await api.updateProfile({
         full_name: name.trim(),
-        phone: phone.trim(),
+        phone: phoneChanged ? sanitizePhone(phone) : phone.trim(),
         address: location.trim(),
         city: city.trim(),
         location_reference: resolvedLocation?.location_reference,
@@ -194,11 +200,14 @@ export default function SPEditProfileScreen({ onBack, onSave, onManageServices }
           <TextField
             label="Phone (optional)"
             value={phone}
-            onChangeText={setPhone}
+            onChangeText={(value) => setPhone(sanitizePhone(value))}
             placeholder="09XX XXX XXXX"
-            helper="Lets the client call you about the job"
-            keyboardType="phone-pad"
+            helper="11 digits, starts with 09"
+            keyboardType="number-pad"
+            maxLength={PHONE_INPUT_MAX_LENGTH}
             keyboardAppearance={appearance}
+            error={phoneError}
+            submitted={submitted}
           />
 
           {/* The address a provider is matched from — same suggestions + GPS

@@ -30,6 +30,7 @@ import { Spacing } from '../../../src/constants/theme';
 import { useAuth } from '../../../src/context/AuthContext';
 import { api, type GeocodedAddress } from '../../../src/lib/api';
 import { changedFields, leaveMessageFor } from '../../../src/lib/editProfileChanges';
+import { PHONE_INPUT_MAX_LENGTH, sanitizePhone, validatePhone } from '../../../src/lib/inputRules';
 import { useHeaderTop } from '../../../src/hooks/useHeaderTop';
 import { useLeaveGuard } from '../../../src/hooks/useLeaveGuard';
 
@@ -72,6 +73,11 @@ export default function HOEditProfileScreen({ onBack, onSave }: HOEditProfileScr
   });
   const { asking, requestLeave, keepEditing, leave } = useLeaveGuard(changed.length > 0, onBack);
 
+  // An older phone format the user did not touch is not re-checked, so it cannot
+  // block saving other fields. A phone the user changed must be a 09 number (or empty).
+  const phoneChanged = changed.includes('phone');
+  const phoneError = phoneChanged ? validatePhone(phone) ?? undefined : undefined;
+
   // Moves the address to the top of the visible area as it takes focus, so the
   // suggestions it opens sit above the keyboard instead of under it.
   const keepAddressAboveKeyboard = () => {
@@ -83,7 +89,7 @@ export default function HOEditProfileScreen({ onBack, onSave }: HOEditProfileScr
   const requestSave = () => {
     setError(null);
     setSubmitted(true);
-    if (!name.trim()) return;
+    if (!name.trim() || phoneError) return;
     if (changed.length > 0) setShowSaveConfirmation(true);
     else onSave();
   };
@@ -95,7 +101,7 @@ export default function HOEditProfileScreen({ onBack, onSave }: HOEditProfileScr
     try {
       await api.updateProfile({
         full_name: name.trim(),
-        phone: phone.trim(),
+        phone: phoneChanged ? sanitizePhone(phone) : phone.trim(),
         address: location.trim(),
         city: city.trim(),
         location_reference: resolvedLocation?.location_reference,
@@ -162,11 +168,14 @@ export default function HOEditProfileScreen({ onBack, onSave }: HOEditProfileScr
           <TextField
             label="Phone (optional)"
             value={phone}
-            onChangeText={setPhone}
+            onChangeText={(value) => setPhone(sanitizePhone(value))}
             placeholder="09XX XXX XXXX"
-            helper="Lets your provider call you about the job"
-            keyboardType="phone-pad"
+            helper="11 digits, starts with 09"
+            keyboardType="number-pad"
+            maxLength={PHONE_INPUT_MAX_LENGTH}
             keyboardAppearance={appearance}
+            error={phoneError}
+            submitted={submitted}
           />
 
           {/* The saved address is what job posts prefill and what the backend
