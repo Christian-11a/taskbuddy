@@ -1,6 +1,6 @@
 import { BackHandler } from 'react-native';
 import { act, renderHook } from '@testing-library/react-native';
-import { isBackBlockedByScreen, useLeaveGuard } from '../useLeaveGuard';
+import { isBackBlockedByScreen, useLeaveGuard, useScreenBackHandler } from '../useLeaveGuard';
 
 function backPressHandlers(spy: jest.SpyInstance) {
   return spy.mock.calls
@@ -101,5 +101,55 @@ describe('useLeaveGuard', () => {
 
     second.unmount();
     expect(isBackBlockedByScreen()).toBe(false);
+  });
+});
+
+describe('useScreenBackHandler', () => {
+  afterEach(() => {
+    jest.restoreAllMocks();
+  });
+
+  it('takes every back press, blocks App\'s handler while mounted, and lets go on unmount', () => {
+    const remove = jest.fn();
+    const add = jest
+      .spyOn(BackHandler, 'addEventListener')
+      .mockImplementation(() => ({ remove }) as unknown as ReturnType<typeof BackHandler.addEventListener>);
+    const onBack = jest.fn();
+    const { unmount } = renderHook(() => useScreenBackHandler(onBack));
+    expect(isBackBlockedByScreen()).toBe(true);
+
+    const [handler] = backPressHandlers(add);
+    let handled: boolean | null | undefined = false;
+    act(() => {
+      handled = handler();
+    });
+
+    expect(handled).toBe(true);
+    expect(onBack).toHaveBeenCalledTimes(1);
+
+    unmount();
+    expect(remove).toHaveBeenCalledTimes(1);
+    expect(isBackBlockedByScreen()).toBe(false);
+  });
+
+  it('answers a press with the onBack of the latest render', () => {
+    const add = jest
+      .spyOn(BackHandler, 'addEventListener')
+      .mockImplementation(() => ({ remove: jest.fn() }) as unknown as ReturnType<typeof BackHandler.addEventListener>);
+    const first = jest.fn();
+    const second = jest.fn();
+    const { rerender } = renderHook(
+      ({ onBack }: { onBack: () => void }) => useScreenBackHandler(onBack),
+      { initialProps: { onBack: first } },
+    );
+    rerender({ onBack: second });
+
+    const [handler] = backPressHandlers(add);
+    act(() => {
+      handler();
+    });
+
+    expect(first).not.toHaveBeenCalled();
+    expect(second).toHaveBeenCalledTimes(1);
   });
 });

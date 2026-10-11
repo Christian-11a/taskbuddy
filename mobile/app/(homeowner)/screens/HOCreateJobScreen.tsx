@@ -92,6 +92,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Spacing, V6Shadows } from '../../../src/constants/theme';
 import { useAuth } from '../../../src/context/AuthContext';
 import { useAsyncData } from '../../../src/hooks/useAsyncData';
+import { useScreenBackHandler } from '../../../src/hooks/useLeaveGuard';
 import { api, type GeocodedAddress } from '../../../src/lib/api';
 import { peso } from '../../../src/lib/format';
 import PhotoViewer from '../../../src/components/PhotoViewer';
@@ -567,8 +568,10 @@ export default function HOCreateJobScreen({
     }
   };
 
+  // The saved address is filled in up front, so it only counts once the homeowner types over it.
+  const typedLocation = location.trim() !== '' && location.trim() !== (profile?.address ?? '').trim();
   const hasProgress = Boolean(
-    categoryId || titleTouched || descriptionTouched || location.trim() || tasks.length ||
+    categoryId || titleTouched || descriptionTouched || typedLocation || tasks.length || customTask.trim() ||
     date || time || budget.trim() || photos.length,
   );
 
@@ -614,13 +617,29 @@ export default function HOCreateJobScreen({
     setStep(1);
   };
 
-  const handleExit = () => {
+  /**
+   * The header arrow and Android back do the same thing: one step back, and on the
+   * first step leave, asking first if anything was entered. Nothing happens while
+   * a post is in flight, and once the job is posted there is nothing to ask about.
+   */
+  const handleBack = () => {
+    if (postInFlight.current) return;
+    if (step === 6) {
+      onBack();
+      return;
+    }
+    if (step > 1) {
+      handleStepBack();
+      return;
+    }
     if (hasProgress) {
       setShowExitConfirmation(true);
       return;
     }
     onBack();
   };
+  // Android back comes here, not to App's handler, so each press steps back a step.
+  useScreenBackHandler(handleBack);
 
   const openTimePicker = () => {
     setShowDatePicker(false);
@@ -704,7 +723,12 @@ export default function HOCreateJobScreen({
     <View style={styles.screen}>
       <PhotoViewer photos={photos} index={photoIndex} onIndexChange={setPhotoIndex}
         onClose={() => setPhotoIndex(null)} />
-      <PostAppBar title="Post a job" onBack={handleExit} topInset={headerTop} />
+      <PostAppBar
+        title="Post a job"
+        onBack={handleBack}
+        backLabel={step > 1 ? 'Previous step' : undefined}
+        topInset={headerTop}
+      />
       {!submitting && <PostProgress step={step} total={totalSteps} label={STEP_LABELS[step - 1]} />}
 
       <KeyboardAvoidingView
@@ -1097,10 +1121,10 @@ export default function HOCreateJobScreen({
 
       <ConfirmationModal
         visible={showExitConfirmation}
-        title="Discard job draft?"
-        message="Leaving now will delete the job details you have entered."
-        confirmLabel="Discard & Exit"
-        cancelLabel="Keep Editing"
+        title="Discard this job?"
+        message="Your answers will be lost."
+        confirmLabel="Discard"
+        cancelLabel="Keep editing"
         destructive
         onCancel={() => setShowExitConfirmation(false)}
         onConfirm={() => {

@@ -6,14 +6,16 @@ import Tap from '../ui/Tap';
 
 export type PostAppBarProps = {
   title: string;
-  /** The back arrow leaves the job form (the screen decides whether to confirm first). */
+  /** The back arrow: one step back, or leaving the job form on the first step (the screen decides whether to confirm). */
   onBack: () => void;
+  /** What the arrow is announced as. Defaults to "Exit job form", for the arrow that leaves. */
+  backLabel?: string;
   /** Space above the bar, for the status bar. */
   topInset?: number;
 };
 
 /** The top bar of the job form: a round back button, then the screen name. */
-export default function PostAppBar({ title, onBack, topInset = 0 }: PostAppBarProps) {
+export default function PostAppBar({ title, onBack, backLabel = 'Exit job form', topInset = 0 }: PostAppBarProps) {
   const { s, c } = useThemedStyles(createStyles);
   return (
     <View style={[s.bar, { paddingTop: topInset }]}>
@@ -22,7 +24,7 @@ export default function PostAppBar({ title, onBack, topInset = 0 }: PostAppBarPr
         onPress={onBack}
         hitSlop={4}
         accessibilityRole="button"
-        accessibilityLabel="Exit job form"
+        accessibilityLabel={backLabel}
       >
         <ArrowLeft size={20} color={c.icon} />
       </Tap>

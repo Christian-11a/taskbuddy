@@ -1,10 +1,12 @@
 import { findUnnamedControls } from '../../../../src/testing/a11yAudit';
 import React from 'react';
+import { BackHandler } from 'react-native';
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react-native';
 import * as ImagePicker from 'expo-image-picker';
 import HOCreateJobScreen from '../HOCreateJobScreen';
 import { api } from '../../../../src/lib/api';
 import { showToast } from '../../../../src/components/Toast';
+import { isBackBlockedByScreen } from '../../../../src/hooks/useLeaveGuard';
 
 jest.mock('../../../../src/lib/api', () => ({ api: {
   categories: jest.fn(), createJob: jest.fn(), uploadImage: jest.fn(),
@@ -423,5 +425,175 @@ describe('HOCreateJobScreen — fields are checked against the backend limits', 
 
     expect(screen.getByPlaceholderText('Describe the job in detail...').props.maxLength).toBe(750);
     expect(screen.getByText('0/750')).toBeTruthy();
+  });
+});
+
+describe('HOCreateJobScreen — back and exit', () => {
+  beforeEach(() => {
+    (api.categories as jest.Mock).mockResolvedValue([{ id: 1, name: 'Plumbing' }]);
+  });
+  afterEach(() => {
+    jest.restoreAllMocks();
+  });
+
+  /** Android back as the system delivers it: the newest listener is asked first, until one takes the press. */
+  function pressHardwareBack(addListener: jest.SpyInstance) {
+    const handlers = addListener.mock.calls
+      .filter(([eventName]) => eventName === 'hardwareBackPress')
+      .map(([, handler]) => handler as () => boolean | null | undefined);
+    for (const handler of [...handlers].reverse()) {
+      if (handler()) return;
+    }
+  }
+
+  /** From a fresh form, through every step to the review, with one task, a date, a time and a budget. */
+  const fillInJobToReview = async () => {
+    await screen.findByText('Location confirmed');
+    fireEvent.press(screen.getByText('Next'));
+    fireEvent.press(await screen.findByText('Fix leaking faucet'));
+    fireEvent.press(screen.getByText('Next'));
+    fireEvent.press(await screen.findByText('Pick a date'));
+    fireEvent.press(screen.getByText('Choose test date'));
+    fireEvent.press(screen.getByText('Pick a time'));
+    fireEvent.press(screen.getByText('Choose test time'));
+    if (screen.queryByText('Done')) fireEvent.press(screen.getByText('Done'));
+    fireEvent.changeText(screen.getByPlaceholderText('0.00'), '1500');
+    fireEvent.press(screen.getByText('Next'));
+    await screen.findByTestId('create-job-review');
+  };
+
+  it('hardware back on the budget step goes to the tasks step and does not leave the form', async () => {
+    const onBack = jest.fn();
+    const addListener = jest.spyOn(BackHandler, 'addEventListener');
+    render(<HOCreateJobScreen initialCategoryId={1} onBack={onBack} onSuccess={jest.fn()} />);
+    await screen.findByText('Location confirmed');
+    fireEvent.press(screen.getByText('Next'));
+    fireEvent.press(await screen.findByText('Fix leaking faucet'));
+    fireEvent.press(screen.getByText('Next'));
+    await screen.findByText('Pick a date');
+
+    act(() => pressHardwareBack(addListener));
+
+    expect(screen.getByText('What needs doing?')).toBeTruthy();
+    expect(onBack).not.toHaveBeenCalled();
+  });
+
+  it('the header arrow goes back a step too, and is announced as going back', async () => {
+    const onBack = jest.fn();
+    render(<HOCreateJobScreen initialCategoryId={1} onBack={onBack} onSuccess={jest.fn()} />);
+    await screen.findByText('Location confirmed');
+    fireEvent.press(screen.getByText('Next'));
+    await screen.findByText('Fix leaking faucet');
+
+    fireEvent.press(screen.getByRole('button', { name: 'Previous step' }));
+
+    expect(screen.getByText('Where is the job?')).toBeTruthy();
+    expect(onBack).not.toHaveBeenCalled();
+  });
+
+  it('on the first step, back asks before discarding a job with a service chosen', async () => {
+    const onBack = jest.fn();
+    const addListener = jest.spyOn(BackHandler, 'addEventListener');
+    render(<HOCreateJobScreen onBack={onBack} onSuccess={jest.fn()} />);
+    fireEvent.press(await screen.findByText('Plumbing'));
+
+    act(() => pressHardwareBack(addListener));
+
+    expect(screen.getByText('Discard this job?')).toBeTruthy();
+    expect(screen.getByText('Your answers will be lost.')).toBeTruthy();
+    expect(onBack).not.toHaveBeenCalled();
+  });
+
+  it('Discard leaves the form', async () => {
+    const onBack = jest.fn();
+    const addListener = jest.spyOn(BackHandler, 'addEventListener');
+    render(<HOCreateJobScreen onBack={onBack} onSuccess={jest.fn()} />);
+    fireEvent.press(await screen.findByText('Plumbing'));
+    act(() => pressHardwareBack(addListener));
+
+    fireEvent.press(screen.getByLabelText('Discard'));
+
+    expect(onBack).toHaveBeenCalledTimes(1);
+  });
+
+  it('Keep editing closes the question and stays on the form', async () => {
+    const onBack = jest.fn();
+    const addListener = jest.spyOn(BackHandler, 'addEventListener');
+    render(<HOCreateJobScreen onBack={onBack} onSuccess={jest.fn()} />);
+    fireEvent.press(await screen.findByText('Plumbing'));
+    act(() => pressHardwareBack(addListener));
+
+    fireEvent.press(screen.getByLabelText('Keep editing'));
+
+    expect(screen.queryByText('Discard this job?')).toBeNull();
+    expect(onBack).not.toHaveBeenCalled();
+    expect(screen.getByText('What do you need help with?')).toBeTruthy();
+  });
+
+  it('with nothing entered, back leaves at once; the saved address prefilled by the app does not count', async () => {
+    const onBack = jest.fn();
+    const addListener = jest.spyOn(BackHandler, 'addEventListener');
+    render(<HOCreateJobScreen onBack={onBack} onSuccess={jest.fn()} />);
+    await screen.findByText('Plumbing');
+
+    act(() => pressHardwareBack(addListener));
+
+    expect(onBack).toHaveBeenCalledTimes(1);
+    expect(screen.queryByText('Discard this job?')).toBeNull();
+  });
+
+  it('Exit job form on the first step behaves like back there: asks with progress, leaves without', async () => {
+    const onBack = jest.fn();
+    const { unmount } = render(<HOCreateJobScreen onBack={onBack} onSuccess={jest.fn()} />);
+    await screen.findByText('Plumbing');
+    fireEvent.press(screen.getByLabelText('Exit job form'));
+    expect(onBack).toHaveBeenCalledTimes(1);
+    unmount();
+
+    const withProgress = jest.fn();
+    render(<HOCreateJobScreen onBack={withProgress} onSuccess={jest.fn()} />);
+    fireEvent.press(await screen.findByText('Plumbing'));
+    fireEvent.press(screen.getByLabelText('Exit job form'));
+
+    expect(screen.getByText('Discard this job?')).toBeTruthy();
+    expect(withProgress).not.toHaveBeenCalled();
+  });
+
+  it('back does nothing while the job is being posted', async () => {
+    const onBack = jest.fn();
+    const addListener = jest.spyOn(BackHandler, 'addEventListener');
+    (api.createJob as jest.Mock).mockReturnValueOnce(new Promise(() => {}));
+    render(<HOCreateJobScreen initialCategoryId={1} onBack={onBack} onSuccess={jest.fn()} />);
+    await fillInJobToReview();
+    await act(async () => { fireEvent.press(screen.getByText('Post job')); });
+    await screen.findByText('Posting your job...');
+
+    act(() => pressHardwareBack(addListener));
+
+    expect(onBack).not.toHaveBeenCalled();
+    expect(screen.getByText('Posting your job...')).toBeTruthy();
+  });
+
+  it('after the job is posted, back leaves the form as it always did', async () => {
+    const onBack = jest.fn();
+    const addListener = jest.spyOn(BackHandler, 'addEventListener');
+    (api.createJob as jest.Mock).mockResolvedValueOnce({ id: 'new-job' });
+    render(<HOCreateJobScreen initialCategoryId={1} onBack={onBack} onSuccess={jest.fn()} />);
+    await fillInJobToReview();
+    await act(async () => { fireEvent.press(screen.getByText('Post job')); });
+    await screen.findByText('Job posted!');
+
+    act(() => pressHardwareBack(addListener));
+
+    expect(onBack).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps App\'s own back handler out of the way for as long as the form is open', () => {
+    const { unmount } = render(<HOCreateJobScreen onBack={jest.fn()} onSuccess={jest.fn()} />);
+    expect(isBackBlockedByScreen()).toBe(true);
+
+    unmount();
+
+    expect(isBackBlockedByScreen()).toBe(false);
   });
 });

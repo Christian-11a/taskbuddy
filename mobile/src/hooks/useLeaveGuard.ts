@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { BackHandler } from 'react-native';
 
 /** How many forms with unsaved changes are asking about Android back right now. */
@@ -50,4 +50,27 @@ export function useLeaveGuard(dirty: boolean, onLeave: () => void) {
   }, [onLeave]);
 
   return { asking, requestLeave, keepEditing, leave };
+}
+
+/**
+ * For a screen that answers every Android back press itself, such as a multi-step
+ * form that goes back a step before it leaves. While mounted, App's back handler
+ * steps aside (isBackBlockedByScreen), and `onBack` gets each press. `onBack` must
+ * do the leaving or the stepping itself, because the press is always taken here.
+ */
+export function useScreenBackHandler(onBack: () => void) {
+  const latest = useRef(onBack);
+  latest.current = onBack;
+
+  useEffect(() => {
+    formsBlockingBack += 1;
+    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+      latest.current();
+      return true;
+    });
+    return () => {
+      formsBlockingBack -= 1;
+      sub.remove();
+    };
+  }, []);
 }

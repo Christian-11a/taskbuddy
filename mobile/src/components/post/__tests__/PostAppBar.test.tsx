@@ -13,3 +13,11 @@ it('calls onBack from the round back button', () => {
   fireEvent.press(screen.getByRole('button', { name: 'Exit job form' }));
   expect(onBack).toHaveBeenCalledTimes(1);
 });
+
+it('is announced with the given label when the arrow only steps back', () => {
+  const onBack = jest.fn();
+  render(<PostAppBar title="Post a job" onBack={onBack} backLabel="Previous step" />);
+  fireEvent.press(screen.getByRole('button', { name: 'Previous step' }));
+  expect(onBack).toHaveBeenCalledTimes(1);
+  expect(screen.queryByRole('button', { name: 'Exit job form' })).toBeNull();
+});
