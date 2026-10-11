@@ -35,6 +35,15 @@ const inDays = (days: number) => new Date(Date.now() + days * DAY_MS).toISOStrin
 describe('SPHomeScreen — hero header keeps the avatar reachable with a long name', () => {
   const LONG_NAME = 'MYRE LECTOR ANDRE MORADA DELA CRUZ SANTIAGO VILLANUEVA';
 
+  function signedInAs(fullName: string) {
+    (useAuth as jest.Mock).mockReturnValue({
+      profile: { full_name: fullName, city: 'Cebu', latitude: null, longitude: null },
+      providerProfile: { is_available: true, service_radius_km: 25 },
+      isVerified: true,
+      refreshProfile: jest.fn(),
+    });
+  }
+
   beforeEach(() => {
     jest.clearAllMocks();
     clearAsyncDataCache();
@@ -65,7 +74,42 @@ describe('SPHomeScreen — hero header keeps the avatar reachable with a long na
     expect(column.flex).toBe(1);
     expect(column.minWidth).toBe(0);
     expect(screen.getByText('Hello')).toBeTruthy();
-    expect(screen.getByText(LONG_NAME).props.numberOfLines).toBe(1);
+    expect(screen.getByText(LONG_NAME).props.numberOfLines).toBe(2);
+  });
+
+  // At 1.3x text "Hello" stays on one line and the name may wrap to two lines before
+  // it is cut with an ellipsis, so the header never grows a third line.
+  it('keeps "Hello" on one line and lets the name wrap to two, with an ellipsis, at large text', async () => {
+    render(<SPHomeScreen onNavigate={jest.fn()} />);
+
+    const hello = await screen.findByText('Hello');
+    expect(hello.props.numberOfLines).toBe(1);
+    expect(hello.props.ellipsizeMode).toBe('tail');
+    const name = screen.getByText(LONG_NAME);
+    expect(name.props.numberOfLines).toBe(2);
+    expect(name.props.ellipsizeMode).toBe('tail');
+    expect(name.props.maxFontSizeMultiplier).toBe(1.3);
+    expect(name.props.adjustsFontSizeToFit).toBeFalsy();
+  });
+
+  it('wraps "Maria Cristina Dela Cruz-Santos" to two lines before it is cut', async () => {
+    signedInAs('Maria Cristina Dela Cruz-Santos');
+    render(<SPHomeScreen onNavigate={jest.fn()} />);
+
+    const name = await screen.findByText('Maria Cristina Dela Cruz-Santos');
+    expect(name.props.numberOfLines).toBe(2);
+    expect(name.props.ellipsizeMode).toBe('tail');
+  });
+
+  it('wraps a 40-character name to two lines before it is cut', async () => {
+    const fortyChars = 'Ana Beatriz Ramos Villanueva de los Pena';
+    expect(fortyChars).toHaveLength(40);
+    signedInAs(fortyChars);
+    render(<SPHomeScreen onNavigate={jest.fn()} />);
+
+    const name = await screen.findByText(fortyChars);
+    expect(name.props.numberOfLines).toBe(2);
+    expect(name.props.ellipsizeMode).toBe('tail');
   });
 
   it('never lets the action buttons shrink away', async () => {

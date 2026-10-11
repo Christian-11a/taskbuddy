@@ -241,12 +241,12 @@ export default function HOHomeScreen({ onNavigate }: HOHomeScreenProps) {
                 <Text style={styles.avatarText}>{initials(name)}</Text>
               )}
             </Tap>
-            {/* The name column yields first: at large text the greeting and the name truncate on one line, and the actions keep their size. */}
+            {/* The name column yields first: the greeting stays on one line and a long name wraps to two before it truncates, and the actions keep their size. */}
             <View testID="hero-text" style={styles.greetingColumn}>
               <Text style={styles.greeting} numberOfLines={1} ellipsizeMode="tail">{greeting}</Text>
               <Text
                 style={styles.userName}
-                numberOfLines={1}
+                numberOfLines={2}
                 ellipsizeMode="tail"
                 maxFontSizeMultiplier={1.3}
               >

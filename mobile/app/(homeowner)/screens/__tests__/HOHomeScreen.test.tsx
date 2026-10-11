@@ -91,19 +91,41 @@ describe('HOHomeScreen — hero header keeps the avatar reachable with a long na
     expect(column.flex).toBe(1);
     expect(column.flexShrink).toBe(1);
     expect(column.minWidth).toBe(0);
-    expect(screen.getByText(LONG_NAME).props.numberOfLines).toBe(1);
+    expect(screen.getByText(LONG_NAME).props.numberOfLines).toBe(2);
   });
 
-  // At 1.3x text the greeting and the name must stay on one line (with an
-  // ellipsis) rather than wrap, or the header stops fitting in one row.
-  it('keeps the greeting and the name on one line, with an ellipsis, at large text', async () => {
+  // At 1.3x text the greeting stays on one line and the name may wrap to two
+  // lines before it is cut with an ellipsis, so the header never grows a third line.
+  it('keeps the greeting on one line and lets the name wrap to two, with an ellipsis, at large text', async () => {
     render(<HOHomeScreen onNavigate={jest.fn()} />);
 
     const greeting = await screen.findByText(/^Good (morning|afternoon|evening)$/);
     expect(greeting.props.numberOfLines).toBe(1);
     expect(greeting.props.ellipsizeMode).toBe('tail');
     const name = screen.getByText(LONG_NAME);
-    expect(name.props.numberOfLines).toBe(1);
+    expect(name.props.numberOfLines).toBe(2);
+    expect(name.props.ellipsizeMode).toBe('tail');
+    expect(name.props.maxFontSizeMultiplier).toBe(1.3);
+    expect(name.props.adjustsFontSizeToFit).toBeFalsy();
+  });
+
+  it('wraps "Maria Cristina Dela Cruz-Santos" to two lines before it is cut', async () => {
+    (useAuth as jest.Mock).mockReturnValue({ profile: { full_name: 'Maria Cristina Dela Cruz-Santos', city: null, address: null } });
+    render(<HOHomeScreen onNavigate={jest.fn()} />);
+
+    const name = await screen.findByText('Maria Cristina Dela Cruz-Santos');
+    expect(name.props.numberOfLines).toBe(2);
+    expect(name.props.ellipsizeMode).toBe('tail');
+  });
+
+  it('wraps a 40-character name to two lines before it is cut', async () => {
+    const fortyChars = 'Ana Beatriz Ramos Villanueva de los Pena';
+    expect(fortyChars).toHaveLength(40);
+    (useAuth as jest.Mock).mockReturnValue({ profile: { full_name: fortyChars, city: null, address: null } });
+    render(<HOHomeScreen onNavigate={jest.fn()} />);
+
+    const name = await screen.findByText(fortyChars);
+    expect(name.props.numberOfLines).toBe(2);
     expect(name.props.ellipsizeMode).toBe('tail');
   });
 
