@@ -33,11 +33,15 @@ import { CircleAlert, Clock, type LucideIcon } from 'lucide-react-native';
 import SheetFrame from './ui/SheetFrame';
 import Tap from './ui/Tap';
 import TextField from './ui/TextField';
+import { showToast } from './Toast';
 import { api } from '../lib/api';
 import { peso } from '../lib/format';
 
 /** Mirrors the backend DTO's `@Length(1, 200)` on `destination`. */
 export const WITHDRAW_DESTINATION_MAX = 200;
+
+/** Said when Request is tapped again while the withdrawal is still being filed. */
+export const WITHDRAW_BUSY_MESSAGE = "We're already filing your withdrawal request. Please wait.";
 
 /**
  * Reads the two fields the way the request sends them, and says what is wrong
@@ -391,8 +395,12 @@ export default function WithdrawModal({
   };
 
   const submit = async () => {
+    if (inFlight.current) {
+      showToast(WITHDRAW_BUSY_MESSAGE, 'info');
+      return;
+    }
     const reading = readWithdrawal(amount, destination, available);
-    if (!reading.amountValid || !reading.destinationValid || inFlight.current) return;
+    if (!reading.amountValid || !reading.destinationValid) return;
     inFlight.current = true;
     setSubmitting(true);
     setError(null);

@@ -4,6 +4,9 @@ import { act, fireEvent, render, screen, waitFor } from '@testing-library/react-
 import WithdrawModal from '../WithdrawModal';
 import { api } from '../../lib/api';
 import { lightPalette } from '../../constants/palettes';
+import { showToast } from '../Toast';
+
+jest.mock('../Toast', () => ({ showToast: jest.fn() }));
 
 /** The colours a host element is drawn with: its style, flattened. */
 function styleOf(element: { props: Record<string, any> }): Record<string, any> {
@@ -225,6 +228,28 @@ describe('WithdrawModal — confirmation page', () => {
 
     await act(async () => { finish({}); });
     expect(onClose).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('WithdrawModal — a repeated Request says why it was ignored', () => {
+  it('two taps on Request inside one act() file one withdrawal, and the second shows the notice', async () => {
+    let finish: (value: unknown) => void = () => {};
+    (api.requestWithdrawal as jest.Mock).mockReturnValue(new Promise((resolve) => { finish = resolve; }));
+    renderSheet();
+    fill('400', 'GCash 0917 123 4567');
+    fireEvent.press(screen.getByRole('button', { name: 'Continue' }));
+    const request = screen.getByRole('button', { name: 'Request ₱400.00' });
+
+    // Both taps land before React re-renders, so they reach the same handler.
+    act(() => {
+      fireEvent.press(request);
+      fireEvent.press(request);
+    });
+
+    expect(api.requestWithdrawal).toHaveBeenCalledTimes(1);
+    expect(showToast).toHaveBeenCalledWith("We're already filing your withdrawal request. Please wait.", 'info');
+
+    await act(async () => { finish({}); });
   });
 });
 

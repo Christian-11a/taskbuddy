@@ -423,6 +423,22 @@ describe('HOWalletScreen — Add money sheet: quick amounts, limits and Continue
     expect(api.createCheckoutSession).toHaveBeenCalledTimes(1);
   });
 
+  it('two taps on Continue inside one act() open Checkout once, and the second says why it was ignored', async () => {
+    (api.createCheckoutSession as jest.Mock).mockReturnValue(new Promise(() => {}));
+    await openAddMoney();
+    fireEvent.press(screen.getByRole('button', { name: '₱500' }));
+    const continueBtn = continueButton();
+
+    // Both taps land before React re-renders, so they reach the same handler.
+    act(() => {
+      fireEvent.press(continueBtn);
+      fireEvent.press(continueBtn);
+    });
+
+    expect(api.createCheckoutSession).toHaveBeenCalledTimes(1);
+    expect(showToast).toHaveBeenCalledWith("We're already opening the payment page. Please wait.", 'info');
+  });
+
   it('Cancel closes the sheet without opening Checkout', async () => {
     await openAddMoney();
     fireEvent.press(screen.getByRole('button', { name: '₱500' }));
@@ -531,6 +547,26 @@ describe('HOWalletScreen — withdraw sheet: form, confirmation and request', ()
     expect(visibleModal()?.props.onRequestClose).toBeUndefined();
     fireEvent.press(screen.getByRole('button', { name: 'Request ₱400.00' }));
     expect(api.requestWithdrawal).toHaveBeenCalledTimes(1);
+
+    await act(async () => { finish({}); });
+  });
+
+  it('two taps on Request inside one act() file one withdrawal, and the second says why it was ignored', async () => {
+    let finish: (value: unknown) => void = () => {};
+    (api.requestWithdrawal as jest.Mock).mockReturnValue(new Promise((resolve) => { finish = resolve; }));
+    await openWithdraw();
+    fireEvent.changeText(amountField(), '400');
+    fireEvent.changeText(destinationField(), 'GCash 0917 123 4567');
+    fireEvent.press(screen.getByRole('button', { name: 'Continue' }));
+    const request = screen.getByRole('button', { name: 'Request ₱400.00' });
+
+    act(() => {
+      fireEvent.press(request);
+      fireEvent.press(request);
+    });
+
+    expect(api.requestWithdrawal).toHaveBeenCalledTimes(1);
+    expect(showToast).toHaveBeenCalledWith("We're already filing your withdrawal request. Please wait.", 'info');
 
     await act(async () => { finish({}); });
   });

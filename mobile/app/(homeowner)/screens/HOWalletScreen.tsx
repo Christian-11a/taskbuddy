@@ -56,6 +56,7 @@ import {
   MoneySheetButton,
   MoneySheetError,
   MoneySheetLink,
+  WITHDRAW_BUSY_MESSAGE,
   WithdrawSheetBody,
   readWithdrawal,
   type WithdrawStep,
@@ -192,7 +193,11 @@ export default function HOWalletScreen() {
   };
 
   const submitWithdrawal = async () => {
-    if (!isValidWithdrawal || withdrawInFlight.current) return;
+    if (withdrawInFlight.current) {
+      showToast(WITHDRAW_BUSY_MESSAGE, 'info');
+      return;
+    }
+    if (!isValidWithdrawal) return;
     withdrawInFlight.current = true;
     setWithdrawing(true);
     setWithdrawError(null);
@@ -251,7 +256,11 @@ export default function HOWalletScreen() {
    * `openAuthSessionAsync` hangs on Android.
    */
   const addMoney = async () => {
-    if (!isValidAmount || addInFlight.current) return;
+    if (addInFlight.current) {
+      showToast("We're already opening the payment page. Please wait.", 'info');
+      return;
+    }
+    if (!isValidAmount) return;
     addInFlight.current = true;
     setAdding(true);
     setAddError(null);
