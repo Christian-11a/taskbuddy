@@ -32,3 +32,9 @@ it('renders the provider bar as four tabs with no floating action', () => {
   expect(screen.getAllByRole('tab')).toHaveLength(4);
   expect(screen.queryByRole('button')).toBeNull();
 });
+
+// The welcome tour points at these tabs as tab.jobs (client) and tab.work (provider); the rest use their key.
+it('names the Jobs tab and the My Work tab for the welcome tour', () => {
+  expect(HOMEOWNER_TABS.find((tab) => tab.key === 'My Jobs')?.tourId).toBe('jobs');
+  expect(PROVIDER_TABS.find((tab) => tab.key === 'My Jobs')?.tourId).toBe('work');
+});

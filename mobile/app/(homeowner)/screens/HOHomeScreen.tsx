@@ -49,6 +49,7 @@ import ContentSkeleton from '../../../src/components/ui/ContentSkeleton';
 import SectionHeader from '../../../src/components/ui/SectionHeader';
 import JobRow from '../../../src/components/ui/JobRow';
 import EmptyRow from '../../../src/components/ui/EmptyRow';
+import { useTourAnchor } from '../../../src/components/tour';
 
 const ACTIVE_STATUSES = [
   'open',
@@ -181,6 +182,10 @@ export default function HOHomeScreen({ onNavigate }: HOHomeScreenProps) {
   const jobs = useAsyncData(() => api.myJobs(), [], 'ho-home-jobs');
   const categories = useAsyncData(() => api.categories(), [], 'ho-home-categories');
   const notifications = useNotifications();
+  // The welcome tour points at these three controls (the post field, the wallet chip and the bell).
+  const postTour = useTourAnchor('home.post');
+  const walletTour = useTourAnchor('home.wallet');
+  const bellTour = useTourAnchor('home.bell');
   const [proposalLookup, setProposalLookup] = useState<{ jobs: Job[] | null; byJob: ApplicationsByJob }>({
     jobs: null,
     byJob: {},
@@ -256,6 +261,7 @@ export default function HOHomeScreen({ onNavigate }: HOHomeScreenProps) {
             <View testID="hero-actions" style={styles.headerActions}>
               <Tap
                 testID="home-wallet"
+                {...walletTour}
                 style={styles.walletChip}
                 hitSlop={6}
                 accessibilityRole="button"
@@ -276,6 +282,8 @@ export default function HOHomeScreen({ onNavigate }: HOHomeScreenProps) {
               </Tap>
               <View>
                 <Tap
+                  testID="home-bell"
+                  {...bellTour}
                   style={styles.bell}
                   hitSlop={2}
                   accessibilityRole="button"
@@ -300,6 +308,7 @@ export default function HOHomeScreen({ onNavigate }: HOHomeScreenProps) {
           {/* What do you need done? opens the job form with no category, as My Jobs' "New" does. */}
           <Tap
             testID="home-post-job"
+            {...postTour}
             style={styles.askField}
             scale
             accessibilityRole="button"

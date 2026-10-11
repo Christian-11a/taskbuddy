@@ -101,7 +101,7 @@ import { resolveNotificationTarget } from './src/lib/notificationRouting';
 
 export const HOMEOWNER_TABS: readonly BottomNavItem<HOScreen>[] = [
   { key: 'Home', label: 'Home', icon: Home },
-  { key: 'My Jobs', label: 'My Jobs', icon: ClipboardList },
+  { key: 'My Jobs', label: 'My Jobs', icon: ClipboardList, tourId: 'jobs' },
   { key: 'Wallet', label: 'Wallet', icon: Wallet },
   { key: 'Profile', label: 'Profile', icon: User },
 ];
@@ -110,7 +110,7 @@ export const HOMEOWNER_TABS: readonly BottomNavItem<HOScreen>[] = [
 // don't post them. Calendar is a view of My Work (see JobsView below).
 export const PROVIDER_TABS: readonly BottomNavItem<SPScreen>[] = [
   { key: 'Dashboard', label: 'Feed', icon: Search },
-  { key: 'My Jobs', label: 'My Work', icon: ClipboardList },
+  { key: 'My Jobs', label: 'My Work', icon: ClipboardList, tourId: 'work' },
   { key: 'Wallet', label: 'Wallet', icon: Wallet },
   { key: 'Profile', label: 'Profile', icon: User },
 ];

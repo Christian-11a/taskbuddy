@@ -45,6 +45,7 @@ import { useHeaderTop } from '../../../src/hooks/useHeaderTop';
 import { SPScreen } from '../../../src/types/navigation';
 
 import { useAuth } from '../../../src/context/AuthContext';
+import { useTourAnchor } from '../../../src/components/tour';
 import { useAsyncData } from '../../../src/hooks/useAsyncData';
 import { api } from '../../../src/lib/api';
 import { peso } from '../../../src/lib/format';
@@ -219,6 +220,9 @@ export default function SPHomeScreen({ onNavigate }: SPHomeScreenProps) {
   const headerTop = useHeaderTop();
   const { unreadCount } = useNotifications();
   const { profile, providerProfile, isVerified, refreshProfile } = useAuth();
+  // The welcome tour points at the availability row and the feed search (both shown once verified).
+  const availabilityTour = useTourAnchor('home.availability');
+  const feedTour = useTourAnchor('home.feed');
   const radiusKm = providerProfile?.service_radius_km ?? DEFAULT_RADIUS_KM;
 
   // Verification is approved async by a webhook while the app may be
@@ -402,6 +406,8 @@ export default function SPHomeScreen({ onNavigate }: SPHomeScreenProps) {
 
               {/* Availability: decides whether new work is offered to this provider. The whole row is the switch. */}
               <Tap
+                testID="home-availability"
+                {...availabilityTour}
                 style={styles.availability}
                 onPress={() => { haptic.tick(); void toggleAvailability(); }}
                 disabled={togglingAvail}
@@ -431,7 +437,7 @@ export default function SPHomeScreen({ onNavigate }: SPHomeScreenProps) {
                 </View>
               </Tap>
 
-              <View style={styles.search}>
+              <View testID="feed-search" {...feedTour} style={styles.search}>
                 <Search size={20} color={C.ink400} />
                 <TextInput keyboardAppearance={appearance}
                   style={styles.searchInput}
