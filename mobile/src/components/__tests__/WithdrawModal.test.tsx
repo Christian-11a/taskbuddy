@@ -403,3 +403,48 @@ describe('WithdrawModal — the amount field takes only amounts', () => {
     expect(api.requestWithdrawal).toHaveBeenCalledWith({ amount: 400.99, destination: 'GCash 0917 123 4567' });
   });
 });
+
+describe('WithdrawModal — the destination is one GCash or bank account number', () => {
+  const destinationField = () => screen.getByLabelText('Send to');
+
+  it.each([
+    ['Cash pickup at Ortigas', 'Add your GCash number or bank account number.'],
+    ['GCash 0917123456', 'A GCash number is 09 followed by 9 digits.'],
+    ['GCash 09XX XXX XXXX', 'A GCash number is 09 followed by 9 digits.'],
+    ['BDO 1234567', 'A bank account number is 8 to 20 digits.'],
+    ['+639171234567', 'Use digits only, with no + sign.'],
+    ['GCash 0917 123 4567 BDO 12345678', 'Keep it to one number: your GCash or bank account number.'],
+  ])('refuses %j once the field is left, with %j, and keeps Continue disabled', (destination, message) => {
+    renderSheet();
+    fireEvent.changeText(screen.getByLabelText('Amount to withdraw'), '400');
+    fireEvent.changeText(destinationField(), destination);
+    fireEvent(destinationField(), 'blur');
+
+    expect(screen.getByText(message)).toBeTruthy();
+    expect(isDisabled('Continue')).toBe(true);
+  });
+
+  it.each([
+    ['09171234567'],
+    ['GCash 0917 123 4567'],
+    ['BDO 1234 5678 9012'],
+    ['Juan dela Cruz BPI 00123456789'],
+  ])('accepts %j and lets Continue through', (destination) => {
+    renderSheet();
+    fill('400', destination);
+
+    expect(isDisabled('Continue')).toBe(false);
+  });
+
+  it('sends the destination without the spaces and blank lines around it', async () => {
+    (api.requestWithdrawal as jest.Mock).mockResolvedValue({});
+    const { onFiled } = renderSheet();
+    fill('400', '\n  GCash 0917 123 4567  \n\n\n\n');
+    fireEvent.press(screen.getByRole('button', { name: 'Continue' }));
+
+    fireEvent.press(screen.getByRole('button', { name: 'Request ₱400.00' }));
+
+    await waitFor(() => expect(onFiled).toHaveBeenCalledTimes(1));
+    expect(api.requestWithdrawal).toHaveBeenCalledWith({ amount: 400, destination: 'GCash 0917 123 4567' });
+  });
+});

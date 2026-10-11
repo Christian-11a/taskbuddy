@@ -15,8 +15,9 @@
  *   becoming a request — BACKEND_SCHEMA.md §29.5.) The copy says so rather
  *   than showing a success state that implies a transfer.
  * - **`destination` is free text.** A person reads it to make the payment, so
- *   there is nothing to validate it against beyond "not empty" and the 200
- *   character limit. Placeholder text carries the expectation instead.
+ *   it is not matched against any rail. It is checked for one GCash or bank
+ *   account number (validateAccountNumber) and the 200 character limit, and
+ *   the placeholder text carries the expectation.
  *
  * The cap is the wallet's `available` (balance minus already-pending
  * withdrawals), never `balance` — the backend checks the same figure, and
@@ -37,6 +38,7 @@ import { showToast } from './Toast';
 import { api } from '../lib/api';
 import { peso } from '../lib/format';
 import { parseAmount, sanitizeAmountInput, validateAmount } from '../lib/amountRules';
+import { cleanText, validateAccountNumber } from '../lib/textRules';
 import { MIN_WITHDRAWAL_PHP } from '../lib/walletRules';
 
 /** Mirrors the backend DTO's `@Length(1, 200)` on `destination`. */
@@ -53,18 +55,19 @@ export const WITHDRAW_BUSY_MESSAGE = "We're already filing your withdrawal reque
  */
 export function readWithdrawal(amountText: string, destinationText: string, available: number) {
   const amount = parseAmount(amountText) ?? 0;
-  const destination = destinationText.trim();
+  const destination = cleanText(destinationText);
   const amountError = validateAmount(amountText, {
     min: MIN_WITHDRAWAL_PHP,
     max: available,
     label: 'an amount',
     overMessage: (limit) => `That's more than your ${peso(limit)} available.`,
   }) ?? undefined;
+  // The destination is a GCash or bank account number with a name beside it; see validateAccountNumber.
   const destinationError = destination.length === 0
     ? 'Add where to send it.'
     : destination.length > WITHDRAW_DESTINATION_MAX
       ? `Keep it to ${WITHDRAW_DESTINATION_MAX} characters.`
-      : undefined;
+      : validateAccountNumber(destination) ?? undefined;
   return {
     amount,
     destination,
