@@ -2,7 +2,24 @@
  * The job form's rules as pure functions. The screen asks these questions and
  * shows the answers; it does not decide them. The messages are the product's
  * wording and must not drift from what the form has always said.
+ *
+ * The limits are the backend's: CreateJobDto and the `jobs` CHECKs for the title,
+ * description and tasks, and GeocodeQueryDto for the address (it is geocoded by
+ * the same text, so it must be a length the geocoder accepts). The budget has no
+ * ceiling on the backend; BUDGET_MAX_PHP is a sanity cap, so one stray digit
+ * cannot post a job for millions.
  */
+
+import { validateAmount } from './amountRules';
+import { textLength, textUnits, validateText, validateTitle } from './textRules';
+
+export const DESCRIPTION_MIN = 20;
+export const DESCRIPTION_MAX = 750;
+export const LOCATION_MIN = 5;
+export const LOCATION_MAX = 300;
+export const TASKS_MAX = 20;
+export const TASK_MAX = 120;
+export const BUDGET_MAX_PHP = 1_000_000;
 
 export type PostField = 'service' | 'location' | 'tasks' | 'title' | 'description' | 'date' | 'time' | 'budget';
 export type PostFieldErrors = Partial<Record<PostField, string>>;
@@ -74,22 +91,21 @@ export function fieldError(field: PostField, values: PostFormValues, now: Date):
   switch (field) {
     case 'service':
       return values.categoryId ? undefined : 'Please select a service.';
-    case 'location':
-      return values.location.trim() ? undefined : 'Please enter where the job is.';
-    case 'tasks':
-      return values.tasks.length > 0
-        ? undefined
-        : 'Pick at least one task so providers know what the job involves.';
-    case 'title': {
-      const length = values.title.trim().length;
-      if (length < 5) return 'Title must be at least 5 characters.';
-      if (length > 120) return 'Title cannot exceed 120 characters.';
-      return undefined;
+    case 'location': {
+      if (!values.location.trim()) return 'Please enter where the job is.';
+      return validateText(values.location, { min: LOCATION_MIN, max: LOCATION_MAX }) ?? undefined;
     }
+    case 'tasks': {
+      if (values.tasks.length === 0) return 'Pick at least one task so providers know what the job involves.';
+      if (values.tasks.length > TASKS_MAX) return `You can add up to ${TASKS_MAX} tasks.`;
+      const tooLong = values.tasks.some((task) => textUnits(task) > TASK_MAX || textLength(task) === 0);
+      return tooLong ? `Each task needs 1 to ${TASK_MAX} characters.` : undefined;
+    }
+    case 'title':
+      return validateTitle(values.title) ?? undefined;
     case 'description': {
-      const length = values.description.trim().length;
-      if (length < 20) return 'Description must be at least 20 characters.';
-      if (length > 750) return 'Description cannot exceed 750 characters.';
+      if (textLength(values.description) < DESCRIPTION_MIN) return 'Description must be at least 20 characters.';
+      if (textUnits(values.description) > DESCRIPTION_MAX) return 'Description cannot exceed 750 characters.';
       return undefined;
     }
     case 'date':
@@ -110,7 +126,7 @@ export function fieldError(field: PostField, values: PostFormValues, now: Date):
     case 'budget':
       if (!values.budget.trim()) return 'Please set a budget for this job.';
       if (!isValidBudget(values.budget)) return 'Enter a valid amount greater than 0, up to 2 decimal places.';
-      return undefined;
+      return validateAmount(values.budget, { max: BUDGET_MAX_PHP }) ?? undefined;
   }
 }
 

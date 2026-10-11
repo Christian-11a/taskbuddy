@@ -108,6 +108,9 @@ import Banner from '../../../src/components/ui/Banner';
 import AddTaskRow from '../../../src/components/post/AddTaskRow';
 import UrgencyRow from '../../../src/components/post/UrgencyRow';
 import {
+  DESCRIPTION_MAX,
+  TASKS_MAX,
+  TASK_MAX,
   combineDateAndTime,
   isValidBudget,
   reviseStepErrors,
@@ -115,6 +118,8 @@ import {
   type PostFieldErrors,
   type PostFormValues,
 } from '../../../src/lib/postJobRules';
+import { sanitizeAmountInput } from '../../../src/lib/amountRules';
+import { TITLE_MAX, cleanText } from '../../../src/lib/textRules';
 import CheckRow from '../../../src/components/ui/CheckRow';
 import TextField from '../../../src/components/ui/TextField';
 import { requestAppPermission } from '../../../src/lib/permissions';
@@ -188,8 +193,6 @@ const TASK_PRESETS: Record<string, string[]> = {
 
 /** The three real `job_urgency` values, with what each one actually does. */
 
-const MAX_TASKS = 20;
-
 type FieldErrors = PostFieldErrors;
 
 interface HOCreateJobScreenProps {
@@ -237,6 +240,8 @@ export default function HOCreateJobScreen({
   const [geocoding, setGeocoding] = useState(false);
   const [tasks, setTasks] = useState<string[]>([]);
   const [customTask, setCustomTask] = useState('');
+  // Why a task was not added (the list is full, or it is already there), said under the list.
+  const [taskNotice, setTaskNotice] = useState<string | null>(null);
   const [date, setDate] = useState<Date | null>(null);
   const [time, setTime] = useState<Date | null>(null);
   const [tempTime, setTempTime] = useState<Date | null>(null);
@@ -389,33 +394,48 @@ export default function HOCreateJobScreen({
    */
   useEffect(() => {
     if (!categoryName) return;
+    // A draft is cut to the limit it has to meet, so it never fails the check it was written for.
     if (!titleTouched) {
-      setTitle(tasks.length ? `${categoryName}: ${tasks[0]}` : `${categoryName} service`);
+      setTitle((tasks.length ? `${categoryName}: ${tasks[0]}` : `${categoryName} service`).slice(0, TITLE_MAX));
     }
     if (!descriptionTouched) {
       setDescription(
         tasks.length
-          ? `${categoryName} service needed. Tasks: ${tasks.join(', ')}.`
+          ? `${categoryName} service needed. Tasks: ${tasks.join(', ')}.`.slice(0, DESCRIPTION_MAX)
           : '',
       );
     }
   }, [categoryName, tasks, titleTouched, descriptionTouched]);
 
+  const taskLimitNotice = `You can add up to ${TASKS_MAX} tasks.`;
+
   const toggleTask = (label: string) => {
+    if (!tasks.includes(label) && tasks.length >= TASKS_MAX) {
+      setTaskNotice(taskLimitNotice);
+      return;
+    }
+    setTaskNotice(null);
     setTasks((current) =>
       current.includes(label)
         ? current.filter((t) => t !== label)
-        : current.length >= MAX_TASKS
-          ? current
-          : [...current, label],
+        : [...current, label],
     );
   };
 
   const addCustomTask = () => {
     const label = customTask.trim();
-    if (!label || tasks.includes(label) || tasks.length >= MAX_TASKS) return;
-    setTasks((current) => [...current, label.slice(0, 120)]);
+    if (!label) return;
+    if (tasks.includes(label)) {
+      setTaskNotice('That task is already on your list.');
+      return;
+    }
+    if (tasks.length >= TASKS_MAX) {
+      setTaskNotice(taskLimitNotice);
+      return;
+    }
+    setTasks((current) => [...current, label.slice(0, TASK_MAX)]);
     setCustomTask('');
+    setTaskNotice(null);
   };
 
   /**
@@ -496,8 +516,8 @@ export default function HOCreateJobScreen({
       setSubmitPhase('posting');
       await api.createJob({
         category_id: categoryId!,
-        title: title.trim(),
-        description: description.trim(),
+        title: cleanText(title),
+        description: cleanText(description),
         urgency,
         address: location.trim(),
         latitude: resolvedCoordinates!.latitude,
@@ -831,11 +851,16 @@ export default function HOCreateJobScreen({
             </View>
 
             <View style={styles.addTaskRow}>
-              <AddTaskRow value={customTask} onChangeText={setCustomTask} onSubmit={addCustomTask} />
+              <AddTaskRow
+                value={customTask}
+                onChangeText={(text) => { setCustomTask(text); setTaskNotice(null); }}
+                onSubmit={addCustomTask}
+              />
             </View>
             <Text style={styles.taskCount}>
-              {tasks.length}/{MAX_TASKS} tasks selected
+              {tasks.length}/{TASKS_MAX} tasks selected
             </Text>
+            {!!taskNotice && <Text style={styles.inputErrorText} accessibilityLiveRegion="polite">{taskNotice}</Text>}
             {!!fieldErrors.tasks && <Text style={styles.inputErrorText} accessibilityLiveRegion="polite">{fieldErrors.tasks}</Text>}
 
             <View style={styles.divider} />
@@ -852,7 +877,7 @@ export default function HOCreateJobScreen({
                 helper="Written for you from the tasks; edit if you like"
                 error={fieldErrors.title}
                 submitted
-                maxLength={120}
+                maxLength={TITLE_MAX}
               />
             </View>
 
@@ -876,9 +901,9 @@ export default function HOCreateJobScreen({
                   const minH = 20 * 3; // approx lineHeight 20
                   setDescriptionHeight(Math.max(h, minH));
                 }}
-                maxLength={750}
+                maxLength={DESCRIPTION_MAX}
               />
-              <Text style={styles.charCount}>{description.length}/750</Text>
+              <Text style={styles.charCount}>{description.length}/{DESCRIPTION_MAX}</Text>
             </View>
             </KeyboardAvoidingView>
 
@@ -989,7 +1014,7 @@ export default function HOCreateJobScreen({
                   placeholder="0.00"
                   placeholderTextColor={Colors.muted}
                   value={budget}
-                  onChangeText={setBudget}
+                  onChangeText={(text) => setBudget(sanitizeAmountInput(text))}
                   onFocus={() => setFocusedField('budget')}
                   onBlur={() => { setFocusedField(null); formatBudget(); }}
                   keyboardType="decimal-pad"

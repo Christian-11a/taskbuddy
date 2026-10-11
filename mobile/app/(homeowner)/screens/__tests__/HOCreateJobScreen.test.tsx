@@ -305,3 +305,103 @@ it('every control has an accessible name on the first step: back, the service an
 
   expect(findUnnamedControls(screen.UNSAFE_root)).toEqual([]);
 });
+
+describe('HOCreateJobScreen — fields are checked against the backend limits', () => {
+  beforeEach(() => {
+    (api.createJob as jest.Mock).mockClear();
+  });
+
+  /** Opens the job on its tasks step, with Plumbing chosen and the saved address in place. */
+  const openTasksStep = async () => {
+    (api.categories as jest.Mock).mockResolvedValue([{ id: 1, name: 'Plumbing' }]);
+    render(<HOCreateJobScreen initialCategoryId={1} onBack={jest.fn()} onSuccess={jest.fn()} />);
+    await screen.findByText('Location confirmed');
+    fireEvent.press(screen.getByText('Next'));
+    await screen.findByText('Fix leaking faucet');
+  };
+  const addOwnTask = (text: string) => {
+    const input = screen.getByLabelText('Add your own task');
+    fireEvent.changeText(input, text);
+    fireEvent(input, 'submitEditing');
+  };
+  const openBudgetStep = async () => {
+    await openTasksStep();
+    fireEvent.press(screen.getByText('Fix leaking faucet'));
+    fireEvent.press(screen.getByText('Next'));
+    await screen.findByText('Pick a date');
+  };
+
+  it('keeps letters out of the budget and cuts a third decimal place', async () => {
+    await openBudgetStep();
+    const budget = () => screen.getByPlaceholderText('0.00');
+
+    fireEvent.changeText(budget(), 'pesos');
+    expect(budget().props.value).toBe('');
+
+    fireEvent.changeText(budget(), '1500.999');
+    expect(budget().props.value).toBe('1500.99');
+  });
+
+  it('refuses a budget above ₱1,000,000 once Next is pressed', async () => {
+    await openBudgetStep();
+    fireEvent.press(screen.getByText('Pick a date'));
+    fireEvent.press(screen.getByText('Choose test date'));
+    fireEvent.press(screen.getByText('Pick a time'));
+    fireEvent.press(screen.getByText('Choose test time'));
+    if (screen.queryByText('Done')) fireEvent.press(screen.getByText('Done'));
+    fireEvent.changeText(screen.getByPlaceholderText('0.00'), '1000001');
+
+    fireEvent.press(screen.getByText('Next'));
+
+    expect(await screen.findByText("You can't go over ₱1,000,000")).toBeTruthy();
+    expect(api.createJob).not.toHaveBeenCalled();
+  });
+
+  it('refuses an address shorter than 5 characters, before it is checked with the geocoder', async () => {
+    (api.categories as jest.Mock).mockResolvedValue([{ id: 1, name: 'Plumbing' }]);
+    render(<HOCreateJobScreen initialCategoryId={1} onBack={jest.fn()} onSuccess={jest.fn()} />);
+    await screen.findByText('Location confirmed');
+    fireEvent.changeText(screen.getByTestId('create-job-address'), 'Qc');
+
+    fireEvent.press(screen.getByText('Next'));
+
+    expect(await screen.findByText('Add a few more words (at least 5 characters)')).toBeTruthy();
+    expect(screen.queryByText('Pick a date')).toBeNull();
+  });
+
+  it('allows up to 20 tasks and says so when a 21st is typed', async () => {
+    await openTasksStep();
+    for (let i = 1; i <= 20; i++) addOwnTask(`Own task ${i}`);
+    expect(screen.getByText('20/20 tasks selected')).toBeTruthy();
+
+    addOwnTask('One too many');
+
+    expect(screen.getByText('You can add up to 20 tasks.')).toBeTruthy();
+    expect(screen.getByText('20/20 tasks selected')).toBeTruthy();
+    expect(screen.getByLabelText('Add your own task').props.value).toBe('One too many');
+  });
+
+  it('says a task already on the list is not added twice', async () => {
+    await openTasksStep();
+    addOwnTask('Mop the floor');
+    addOwnTask('Mop the floor');
+
+    expect(screen.getByText('That task is already on your list.')).toBeTruthy();
+    expect(screen.getAllByText('Mop the floor')).toHaveLength(1);
+  });
+
+  it('keeps a drafted title within 120 characters when a long task starts it', async () => {
+    await openTasksStep();
+    addOwnTask('x'.repeat(120));
+
+    expect(screen.getByLabelText('Job title').props.value.length).toBeLessThanOrEqual(120);
+    expect(screen.getByLabelText('Job title').props.maxLength).toBe(120);
+  });
+
+  it('caps the description at 750 characters and shows the limit', async () => {
+    await openTasksStep();
+
+    expect(screen.getByPlaceholderText('Describe the job in detail...').props.maxLength).toBe(750);
+    expect(screen.getByText('0/750')).toBeTruthy();
+  });
+});

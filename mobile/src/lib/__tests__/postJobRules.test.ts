@@ -182,3 +182,60 @@ describe('combineDateAndTime', () => {
     expect(combined.getSeconds()).toBe(0);
   });
 });
+
+describe('the job form against the backend limits', () => {
+  const at = (patch: Partial<PostFormValues>) => ({ ...valid, ...patch });
+
+  it('keeps the address between 5 and 300 characters, the range the geocoder accepts', () => {
+    const location = (value: string) => fieldError('location', at({ location: value }), NOW);
+    expect(location('   ')).toBe('Please enter where the job is.');
+    expect(location('abcd')).toBe('Add a few more words (at least 5 characters)');
+    expect(location('  abcd  ')).toBe('Add a few more words (at least 5 characters)');
+    expect(location('abcde')).toBeUndefined();
+    expect(location('x'.repeat(300))).toBeUndefined();
+    expect(location('x'.repeat(301))).toBe("Keep it under 300 characters (you're 1 over)");
+  });
+
+  it('does not count blank lines around a description as its length', () => {
+    expect(fieldError('description', at({ description: `${'x'.repeat(19)}\n\n\n\n\n` }), NOW))
+      .toBe('Description must be at least 20 characters.');
+    expect(fieldError('description', at({ description: `${'x'.repeat(20)}\n\n\n\n\n` }), NOW)).toBeUndefined();
+  });
+
+  it('keeps the description at 750 UTF-16 units at most, and 20 characters at least', () => {
+    expect(fieldError('description', at({ description: 'x'.repeat(750) }), NOW)).toBeUndefined();
+    expect(fieldError('description', at({ description: 'x'.repeat(751) }), NOW))
+      .toBe('Description cannot exceed 750 characters.');
+    expect(fieldError('description', at({ description: '😀'.repeat(10) }), NOW))
+      .toBe('Description must be at least 20 characters.');
+  });
+
+  it('keeps the title at 5 to 120 characters, measured after trimming', () => {
+    const title = (value: string) => fieldError('title', at({ title: value }), NOW);
+    expect(title('     ')).toBe('Title must be at least 5 characters.');
+    expect(title('😀😀😀😀')).toBe('Title must be at least 5 characters.');
+    expect(title('😀😀😀😀😀')).toBeUndefined();
+    expect(title('x'.repeat(120))).toBeUndefined();
+    expect(title('x'.repeat(121))).toBe('Title cannot exceed 120 characters.');
+  });
+
+  it('allows up to 20 tasks, each of 1 to 120 characters', () => {
+    const tasks = (list: string[]) => fieldError('tasks', at({ tasks: list }), NOW);
+    expect(tasks(Array.from({ length: 20 }, (_, i) => `Task ${i}`))).toBeUndefined();
+    expect(tasks(Array.from({ length: 21 }, (_, i) => `Task ${i}`))).toBe('You can add up to 20 tasks.');
+    expect(tasks(['x'.repeat(120)])).toBeUndefined();
+    expect(tasks(['x'.repeat(121)])).toBe('Each task needs 1 to 120 characters.');
+    expect(tasks(['   '])).toBe('Each task needs 1 to 120 characters.');
+    expect(tasks([])).toBe('Pick at least one task so providers know what the job involves.');
+  });
+
+  it('keeps the budget a positive amount of at most two decimals, and no more than ₱1,000,000', () => {
+    const budget = (value: string) => fieldError('budget', at({ budget: value }), NOW);
+    expect(budget('1000000')).toBeUndefined();
+    expect(budget('1,000,000.00')).toBeUndefined();
+    expect(budget('1000000.01')).toBe("You can't go over ₱1,000,000");
+    expect(budget('1000001')).toBe("You can't go over ₱1,000,000");
+    expect(budget('0.01')).toBeUndefined();
+    expect(budget('0')).toBe('Enter a valid amount greater than 0, up to 2 decimal places.');
+  });
+});
