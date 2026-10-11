@@ -101,7 +101,7 @@ import { AuthProvider, useAuth } from './src/context/AuthContext';
 import { hasCompletedOnboarding, markOnboardingCompleted } from './src/lib/onboarding';
 import { firstNameFrom, tourSteps, type FinishAction } from './src/lib/tourContent';
 import {
-  homeContentReady, idleTourFlow, nextTourFlow, shouldOfferTour, shouldStartTour, TOUR_CONTENT_POLL_MS,
+  firstRunKind, homeContentReady, idleTourFlow, nextTourFlow, shouldOfferTour, shouldStartTour, TOUR_CONTENT_POLL_MS,
   tourIsOnScreen, type TourFlow,
 } from './src/lib/tourFlow';
 import { api } from './src/lib/api';
@@ -461,9 +461,12 @@ function AppFlow() {
   }, []);
 
   // Read the onboarding flag for whoever is signed in. Runs on every sign-in
-  // (and on restore of a persisted session), so the slides appear exactly once
-  // per account: right after the first successful login, never again.
+  // (and on restore of a persisted session). Only a new account gets the slides,
+  // right after its first login. An older account on a device with no flags (a new
+  // phone, a reinstall, Expo Go) is marked done here and sees only the tour offer
+  // (see firstRunKind in tourFlow.ts).
   const profileId = profile?.id ?? null;
+  const profileCreatedAt = profile?.created_at ?? null;
   useEffect(() => {
     if (!profileId) {
       setShowOnboarding(null);
@@ -478,13 +481,15 @@ function AppFlow() {
       hasDismissedTourOffer(profileId),
     ]).then(([done, toured, dismissed]) => {
       if (!mounted) return;
-      setShowOnboarding(!done);
-      setTourOfferOpen(shouldOfferTour({ onboardingDone: done, tourDone: toured, offerDismissed: dismissed }));
+      const kind = firstRunKind({ onboardingDone: done, createdAt: profileCreatedAt, now: Date.now() });
+      if (kind === 'offerOnly') void markOnboardingCompleted(profileId);
+      setShowOnboarding(kind === 'full');
+      setTourOfferOpen(shouldOfferTour({ onboardingDone: kind !== 'full', tourDone: toured, offerDismissed: dismissed }));
     });
     return () => {
       mounted = false;
     };
-  }, [profileId]);
+  }, [profileId, profileCreatedAt]);
 
   // ── Welcome flow: intro cards, then the spotlight tour, then the finish card (phases in tourFlow.ts) ──
   // "Show me around" on the last intro card of a first run. The tour starts once Home is on screen.

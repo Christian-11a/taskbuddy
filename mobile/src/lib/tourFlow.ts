@@ -80,3 +80,23 @@ export function shouldStartTour(contentReady: boolean, waitedMs: number): boolea
 export function shouldOfferTour(flags: { onboardingDone: boolean; tourDone: boolean; offerDismissed: boolean }): boolean {
   return flags.onboardingDone && !flags.tourDone && !flags.offerDismissed;
 }
+
+/** An account created longer ago than this is an existing account, not a new one. */
+export const NEW_ACCOUNT_WINDOW_MS = 3 * 24 * 60 * 60 * 1000;
+
+/**
+ * Which welcome path an account takes on this device. 'full' is the first run (intro cards, tour, finish card).
+ * 'offerOnly' is an existing account on a device with no flags (a new phone, a reinstall, Expo Go): nothing replays,
+ * only the take-the-tour card. 'none' means the intro was already finished or skipped on this device.
+ * A creation date that cannot be read, or lies ahead of this device's clock, counts as a new account.
+ */
+export type FirstRunKind = 'full' | 'offerOnly' | 'none';
+
+export function firstRunKind(input: { onboardingDone: boolean; createdAt: string | null | undefined; now: number }): FirstRunKind {
+  if (input.onboardingDone) return 'none';
+  const created = input.createdAt ? Date.parse(input.createdAt) : Number.NaN;
+  if (Number.isNaN(created)) return 'full';
+  const ageMs = input.now - created;
+  if (ageMs < 0) return 'full';
+  return ageMs > NEW_ACCOUNT_WINDOW_MS ? 'offerOnly' : 'full';
+}

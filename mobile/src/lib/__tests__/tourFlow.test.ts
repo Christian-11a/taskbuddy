@@ -1,6 +1,6 @@
 import {
-  homeContentReady, idleTourFlow, nextTourFlow, shouldOfferTour, shouldStartTour, TOUR_CONTENT_WAIT_MS,
-  tourIsOnScreen, type TourFlow, type TourFlowEvent,
+  firstRunKind, homeContentReady, idleTourFlow, NEW_ACCOUNT_WINDOW_MS, nextTourFlow, shouldOfferTour, shouldStartTour,
+  TOUR_CONTENT_WAIT_MS, tourIsOnScreen, type FirstRunKind, type TourFlow, type TourFlowEvent,
 } from '../tourFlow';
 import type { AnchorState } from '../../components/tour/types';
 
@@ -124,4 +124,46 @@ describe('shouldOfferTour', () => {
   ])('onboarding done %s, tour done %s, card dismissed %s → offered %s', (onboardingDone, tourDone, offerDismissed, expected) => {
     expect(shouldOfferTour({ onboardingDone, tourDone, offerDismissed })).toBe(expected);
   });
+});
+
+describe('firstRunKind', () => {
+  const DAY_MS = 24 * 60 * 60 * 1000;
+  const NOW = Date.parse('2026-10-12T12:00:00Z');
+  const createdAgo = (ageMs: number) => new Date(NOW - ageMs).toISOString();
+
+  it('an account counts as new for three days after it was created', () => {
+    expect(NEW_ACCOUNT_WINDOW_MS).toBe(3 * DAY_MS);
+  });
+
+  it.each<[string, Parameters<typeof firstRunKind>[0], FirstRunKind]>([
+    ['a new account just created gets the full first run', { onboardingDone: false, createdAt: createdAgo(0), now: NOW }, 'full'],
+    ['a new account created a day ago gets the full first run', { onboardingDone: false, createdAt: createdAgo(DAY_MS), now: NOW }, 'full'],
+    // Only an account older than the window is returning, so exactly three days is still new.
+    ['an account exactly three days old is still new', { onboardingDone: false, createdAt: createdAgo(3 * DAY_MS), now: NOW }, 'full'],
+    ['an account one millisecond past three days is returning', { onboardingDone: false, createdAt: createdAgo(3 * DAY_MS + 1), now: NOW }, 'offerOnly'],
+    ['an account created a month ago is returning', { onboardingDone: false, createdAt: createdAgo(30 * DAY_MS), now: NOW }, 'offerOnly'],
+    ['an account created a year ago is returning', { onboardingDone: false, createdAt: createdAgo(365 * DAY_MS), now: NOW }, 'offerOnly'],
+    // Clock skew: a creation date ahead of this device's clock counts as new.
+    ['a creation date a day ahead of this device counts as new', { onboardingDone: false, createdAt: new Date(NOW + DAY_MS).toISOString(), now: NOW }, 'full'],
+    ['a creation date one millisecond ahead counts as new', { onboardingDone: false, createdAt: new Date(NOW + 1).toISOString(), now: NOW }, 'full'],
+    // No readable creation date: treated as new, as the first run was before this check existed.
+    ['a missing (null) creation date counts as new', { onboardingDone: false, createdAt: null, now: NOW }, 'full'],
+    ['a missing (undefined) creation date counts as new', { onboardingDone: false, createdAt: undefined, now: NOW }, 'full'],
+    ['an empty creation date counts as new', { onboardingDone: false, createdAt: '', now: NOW }, 'full'],
+    ['an unreadable creation date counts as new', { onboardingDone: false, createdAt: 'not a date', now: NOW }, 'full'],
+    // Already finished or skipped on this device: nothing replays, whatever the account's age.
+    ['an old account already done on this device is done', { onboardingDone: true, createdAt: createdAgo(30 * DAY_MS), now: NOW }, 'none'],
+    ['a new account already done on this device is done', { onboardingDone: true, createdAt: createdAgo(0), now: NOW }, 'none'],
+    ['an account with no creation date, already done on this device, is done', { onboardingDone: true, createdAt: null, now: NOW }, 'none'],
+  ])('%s', (_name, input, expected) => {
+    expect(firstRunKind(input)).toBe(expected);
+  });
+
+  // The onboarding gate opens only for a 'full' first run, so an old account on a device with no flags never sees the intro.
+  it.each([3 * DAY_MS + 1, 4 * DAY_MS, 90 * DAY_MS])(
+    'an account %d ms old on a device with no flags never opens the intro gate',
+    (ageMs) => {
+      expect(firstRunKind({ onboardingDone: false, createdAt: createdAgo(ageMs), now: NOW })).toBe('offerOnly');
+    },
+  );
 });
