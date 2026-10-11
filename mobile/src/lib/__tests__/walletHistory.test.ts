@@ -5,6 +5,7 @@ import {
   groupWalletByDay,
   matchesWalletFilter,
   walletDayLabel,
+  walletFiltersFor,
 } from '../walletHistory';
 
 // Friday 9 October 2026, mid-afternoon, local time.
@@ -46,11 +47,11 @@ describe('Wallet history filters', () => {
     expect(ids(filterWalletTransactions(ledger, 'all'))).toEqual(ids(ledger));
   });
 
-  it('Money in is every credit, including vouchers and refunds', () => {
+  it('In is every credit, including vouchers and refunds', () => {
     expect(ids(filterWalletTransactions(ledger, 'in'))).toEqual(['topup', 'voucher', 'refund']);
   });
 
-  it('Money out is every debit except escrow holds, including pending withdrawals', () => {
+  it('Out is every debit except escrow holds, including pending withdrawals', () => {
     expect(ids(filterWalletTransactions(ledger, 'out'))).toEqual(['withdrawal', 'adjustment']);
     expect(matchesWalletFilter(hold, 'out')).toBe(false);
     expect(matchesWalletFilter(pendingWithdrawal, 'out')).toBe(true);
@@ -63,6 +64,26 @@ describe('Wallet history filters', () => {
   it('counts each pill from the loaded transactions, and in and out add up to every debit or credit', () => {
     expect(countWalletByFilter(ledger)).toEqual({ all: 6, in: 3, out: 2, held: 1 });
     expect(countWalletByFilter([])).toEqual({ all: 0, in: 0, out: 0, held: 0 });
+  });
+});
+
+describe('walletFiltersFor', () => {
+  it('labels a homeowner wallet Added and Spent, in the same order', () => {
+    expect(walletFiltersFor('homeowner')).toEqual([
+      { key: 'all', label: 'All' },
+      { key: 'in', label: 'Added' },
+      { key: 'out', label: 'Spent' },
+      { key: 'held', label: 'Held' },
+    ]);
+  });
+
+  it('keeps Money in and Money out for a provider wallet', () => {
+    expect(walletFiltersFor('provider')).toEqual([
+      { key: 'all', label: 'All' },
+      { key: 'in', label: 'Money in' },
+      { key: 'out', label: 'Money out' },
+      { key: 'held', label: 'Held' },
+    ]);
   });
 });
 

@@ -41,10 +41,10 @@ import { api, MAX_CARD_PHP, MIN_TOPUP_PHP, type WalletTransaction } from '../../
 import { openRedirectSession } from '../../../src/lib/appRedirectSession';
 import { peso, plural, shortDate } from '../../../src/lib/format';
 import {
-  WALLET_FILTERS,
   countWalletByFilter,
   filterWalletTransactions,
   groupWalletByDay,
+  walletFiltersFor,
   type WalletFilter,
 } from '../../../src/lib/walletHistory';
 import ScreenSkeleton from '../../../src/components/ScreenSkeleton';
@@ -80,11 +80,14 @@ const CONFIRM_POLL_INTERVAL_MS = 1500;
 
 const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
+/** The History pills, worded for a homeowner: Added and Spent. */
+const FILTER_PILLS = walletFiltersFor('homeowner');
+
 /** What an empty filter says. The whole history being empty gets the first line. */
 const EMPTY_COPY: Record<WalletFilter, { title: string; body?: string }> = {
   all: { title: 'No transactions yet', body: 'Your payments and wallet activity will appear here.' },
-  in: { title: 'No money in yet' },
-  out: { title: 'No money out yet' },
+  in: { title: 'No added money yet' },
+  out: { title: 'No money spent yet' },
   held: { title: 'Nothing held right now' },
 };
 
@@ -460,7 +463,7 @@ export default function HOWalletScreen() {
             style={styles.filterScroll}
             contentContainerStyle={styles.filterRow}
           >
-            {WALLET_FILTERS.map(({ key, label }) => (
+            {FILTER_PILLS.map(({ key, label }) => (
               <FilterPill
                 key={key}
                 label={label}

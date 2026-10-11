@@ -4,17 +4,25 @@ import { dateKeyOf, parseDateKey, timeOf } from './localDate';
 /** The filter pills on the Wallet history, in display order. */
 export type WalletFilter = 'all' | 'in' | 'out' | 'held';
 
-export const WALLET_FILTERS: readonly { key: WalletFilter; label: string }[] = [
-  { key: 'all', label: 'All' },
-  { key: 'in', label: 'Money in' },
-  { key: 'out', label: 'Money out' },
-  { key: 'held', label: 'Held' },
-];
+/** Whose wallet the history is. A homeowner's money pills read Added and Spent. */
+export type WalletRole = 'homeowner' | 'provider';
+
+const FILTER_KEYS: readonly WalletFilter[] = ['all', 'in', 'out', 'held'];
+
+const FILTER_LABELS: Record<WalletRole, Record<WalletFilter, string>> = {
+  homeowner: { all: 'All', in: 'Added', out: 'Spent', held: 'Held' },
+  provider: { all: 'All', in: 'Money in', out: 'Money out', held: 'Held' },
+};
+
+/** The filter pills for a wallet's history, in display order. The labels depend on the role; what each filter matches does not. */
+export function walletFiltersFor(role: WalletRole): readonly { key: WalletFilter; label: string }[] {
+  return FILTER_KEYS.map((key) => ({ key, label: FILTER_LABELS[role][key] }));
+}
 
 /**
- * Which pill a transaction falls under. Money in is every credit. Held is the
- * escrow hold, the debit taken when a job is assigned. Money out is every other
- * debit, so an escrow hold is never counted there too.
+ * Which pill a transaction falls under. In (Added, or Money in) is every credit.
+ * Held is the escrow hold, the debit taken when a job is assigned. Out (Spent, or
+ * Money out) is every other debit, so an escrow hold is never counted there too.
  */
 export function matchesWalletFilter(txn: WalletTransaction, filter: WalletFilter): boolean {
   switch (filter) {
@@ -40,7 +48,7 @@ export function filterWalletTransactions(
 export function countWalletByFilter(txns: readonly WalletTransaction[]): Record<WalletFilter, number> {
   const counts: Record<WalletFilter, number> = { all: 0, in: 0, out: 0, held: 0 };
   for (const txn of txns) {
-    for (const { key } of WALLET_FILTERS) {
+    for (const key of FILTER_KEYS) {
       if (matchesWalletFilter(txn, key)) counts[key] += 1;
     }
   }

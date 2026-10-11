@@ -684,10 +684,10 @@ describe('HOWalletScreen — balance card, tiles and history', () => {
     render(<HOWalletScreen />);
     await screen.findByText('Wallet top-up');
 
-    // Money in: top-up and voucher. Money out: the withdrawal. Held: the escrow hold.
+    // Added: top-up and voucher. Spent: the withdrawal. Held: the escrow hold.
     expect(screen.getByLabelText('All, 4')).toBeTruthy();
-    expect(screen.getByLabelText('Money in, 2')).toBeTruthy();
-    expect(screen.getByLabelText('Money out, 1')).toBeTruthy();
+    expect(screen.getByLabelText('Added, 2')).toBeTruthy();
+    expect(screen.getByLabelText('Spent, 1')).toBeTruthy();
     expect(screen.getByLabelText('Held, 1')).toBeTruthy();
 
     fireEvent.press(screen.getByLabelText('Held, 1'));
@@ -717,6 +717,23 @@ describe('HOWalletScreen — balance card, tiles and history', () => {
     fireEvent.press(screen.getByLabelText('Held, 0'));
 
     expect(screen.getByText('Nothing held right now')).toBeTruthy();
+  });
+
+  it('words the money filters Added and Spent for a homeowner, in the pills and in the empty messages', async () => {
+    (api.wallet as jest.Mock).mockResolvedValue(walletAt({ transactions: [hold] }));
+    render(<HOWalletScreen />);
+
+    expect(await screen.findByLabelText('Added, 0')).toBeTruthy();
+    expect(screen.getByText('Added')).toBeTruthy();
+    expect(screen.getByText('Spent')).toBeTruthy();
+    expect(screen.queryByText('Money in')).toBeNull();
+    expect(screen.queryByText('Money out')).toBeNull();
+
+    fireEvent.press(screen.getByLabelText('Added, 0'));
+    expect(screen.getByText('No added money yet')).toBeTruthy();
+
+    fireEvent.press(screen.getByLabelText('Spent, 0'));
+    expect(screen.getByText('No money spent yet')).toBeTruthy();
   });
 
   it('shows the empty history when the wallet has no transactions yet', async () => {
