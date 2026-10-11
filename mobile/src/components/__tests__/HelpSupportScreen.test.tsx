@@ -28,7 +28,7 @@ describe('HelpSupportScreen — report a problem wording', () => {
     fireEvent.press(screen.getByRole('button', { name: 'How do I report a problem with a job?' }));
 
     expect(screen.getByText(/Open the job and tap Report a problem/)).toBeTruthy();
-    expect(screen.getByText(/under the ⋮ menu on a booked or in-progress job/)).toBeTruthy();
+    expect(screen.getByText(/On a booked or in-progress job it is under the ⋮ menu/)).toBeTruthy();
     expect(screen.getByText(/a link once the provider has finished every task/)).toBeTruthy();
     expect(screen.getByText(/can be reported during its three-day warranty/)).toBeTruthy();
     expect(screen.queryByText(/File a Complaint/)).toBeNull();
