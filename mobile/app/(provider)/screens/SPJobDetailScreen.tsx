@@ -427,7 +427,7 @@ export default function SPJobDetailScreen({ jobId, onBack, onNavigate }: SPJobDe
             <PersonCard
               name={client.name}
               avatarUrl={client.avatarUrl}
-              subtitle="Homeowner"
+              subtitle="Client"
               onMessage={() => onNavigate('Chat', job.id)}
             />
           )}

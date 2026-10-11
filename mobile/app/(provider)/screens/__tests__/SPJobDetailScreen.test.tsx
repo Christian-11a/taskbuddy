@@ -357,7 +357,7 @@ describe('SPJobDetailScreen — status card, one main action and the client card
     render(<SPJobDetailScreen jobId={JOB_ID} onBack={jest.fn()} onNavigate={onNavigate} />);
 
     expect(await screen.findByText('Maria Santos')).toBeTruthy();
-    expect(screen.getByText('Homeowner')).toBeTruthy();
+    expect(screen.getByText('Client')).toBeTruthy();
     fireEvent.press(screen.getByLabelText('Message Maria Santos'));
     expect(onNavigate).toHaveBeenCalledWith('Chat', JOB_ID);
   });
@@ -366,7 +366,8 @@ describe('SPJobDetailScreen — status card, one main action and the client card
     (api.getJob as jest.Mock).mockResolvedValue(hired);
     render(<SPJobDetailScreen jobId={JOB_ID} onBack={jest.fn()} onNavigate={jest.fn()} />);
 
-    expect(await screen.findByText('Client')).toBeTruthy();
+    // The name falls back to "Client", and the role line under it says "Client" as well.
+    expect(await screen.findAllByText('Client')).toHaveLength(2);
   });
 
   it('keeps the homeowner name on screen when the job is opened again, while the list reloads', async () => {
@@ -390,9 +391,10 @@ describe('SPJobDetailScreen — status card, one main action and the client card
     (api.conversations as jest.Mock).mockReturnValue(new Promise(() => {}));
     render(<SPJobDetailScreen jobId={JOB_ID} onBack={jest.fn()} onNavigate={jest.fn()} />);
 
-    expect(await screen.findByText('Homeowner')).toBeTruthy();
+    expect(await screen.findByText('Client')).toBeTruthy();
     expect(screen.getByText('Maria Santos')).toBeTruthy();
-    expect(screen.queryByText('Client')).toBeNull();
+    // Only the role line says "Client": the name is still the homeowner's, not the fallback.
+    expect(screen.getAllByText('Client')).toHaveLength(1);
   });
 
   it('a completed job shows the earnings and View in wallet opens the Wallet', async () => {
