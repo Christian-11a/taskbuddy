@@ -113,3 +113,74 @@ it('every control has an accessible name: the five stars and the submit button',
 
   expect(findUnnamedControls(screen.UNSAFE_root)).toEqual([]);
 });
+
+describe('HOLeaveReviewScreen — a tag never deletes what was typed', () => {
+  const comment = () => screen.getByLabelText('Add a comment (optional)');
+  const tag = (name: string) => fireEvent.press(screen.getByRole('button', { name }));
+
+  beforeEach(async () => {
+    renderScreen();
+    await screen.findByText('TaskBuddyProvider');
+    fireEvent.press(star(4));
+  });
+
+  it('keeps the typed comment as it is when a tag is picked and unpicked', () => {
+    fireEvent.changeText(comment(), 'Fixed it fast');
+    tag('On time');
+    expect(screen.getByDisplayValue('Fixed it fast')).toBeTruthy();
+    tag('On time');
+    expect(screen.getByDisplayValue('Fixed it fast')).toBeTruthy();
+  });
+
+  it('never cuts a long comment when a tag is picked', () => {
+    const long = 'x'.repeat(490);
+    fireEvent.changeText(comment(), long);
+    tag('Explained clearly');
+    expect(screen.getByDisplayValue(long)).toBeTruthy();
+    tag('Explained clearly');
+    expect(screen.getByDisplayValue(long)).toBeTruthy();
+  });
+
+  it('counts the review as it will be sent, tags included', () => {
+    expect(screen.getByText('0/500')).toBeTruthy();
+    tag('On time');
+    expect(screen.getByText('7/500')).toBeTruthy();
+    fireEvent.changeText(comment(), 'Fixed it fast');
+    expect(screen.getByText('23/500')).toBeTruthy();
+  });
+
+  it('when the tag does not fit, says how much to cut and keeps Submit review disabled until it fits', () => {
+    fireEvent.changeText(comment(), 'x'.repeat(490));
+    tag('Explained clearly');
+
+    expect(screen.getByText('Shorten your review by 10 characters.')).toBeTruthy();
+    expect(submit().props.accessibilityState?.disabled).toBe(true);
+    fireEvent.press(submit());
+    expect(api.reviewJob).not.toHaveBeenCalled();
+
+    tag('Explained clearly');
+    expect(screen.queryByText('Shorten your review by 10 characters.')).toBeNull();
+    expect(submit().props.accessibilityState?.disabled).toBe(false);
+  });
+
+  it('shortening the comment clears the helper and sends the tag with the shorter comment', async () => {
+    fireEvent.changeText(comment(), 'x'.repeat(490));
+    tag('Explained clearly');
+    fireEvent.changeText(comment(), 'x'.repeat(480));
+
+    expect(screen.queryByText(/Shorten your review/)).toBeNull();
+    fireEvent.press(submit());
+
+    await waitFor(() => expect(api.reviewJob).toHaveBeenCalledTimes(1));
+    expect(api.reviewJob).toHaveBeenCalledWith(JOB_ID, { rating: 4, comment: `Explained clearly · ${'x'.repeat(480)}` });
+  });
+
+  it('a tag picked and then unpicked with no comment still sends no comment', async () => {
+    tag('On time');
+    tag('On time');
+    fireEvent.press(submit());
+
+    await waitFor(() => expect(api.reviewJob).toHaveBeenCalledTimes(1));
+    expect(api.reviewJob).toHaveBeenCalledWith(JOB_ID, { rating: 4, comment: undefined });
+  });
+});

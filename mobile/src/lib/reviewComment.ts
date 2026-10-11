@@ -26,6 +26,18 @@ export function reviewCommentLimit(tags: readonly string[]): number {
 }
 
 /**
+ * The review's length as reviewCommentFor sends it, uncut: the tags, the
+ * separator, then the comment trimmed. It can be over REVIEW_COMMENT_MAX, which
+ * is how the screen knows to ask for a shorter comment instead of cutting it.
+ */
+export function reviewCommentLength(tags: readonly string[], comment: string): number {
+  if (tags.length === 0) return comment.length;
+  const prefix = tags.join(SEPARATOR).length;
+  const text = comment.trim().length;
+  return text > 0 ? prefix + SEPARATOR.length + text : prefix;
+}
+
+/**
  * The `comment` the API receives. With no tag it is the comment as typed (or
  * nothing when empty), so a review without tags is sent exactly as before.
  */

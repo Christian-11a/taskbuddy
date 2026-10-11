@@ -27,11 +27,13 @@ import { ArrowLeft, Star } from 'lucide-react-native';
 import { Spacing } from '../../../src/constants/theme';
 import { useHeaderTop } from '../../../src/hooks/useHeaderTop';
 import {
+  REVIEW_COMMENT_MAX,
   REVIEW_TAGS,
   orderedTags,
   reviewCommentFor,
-  reviewCommentLimit,
+  reviewCommentLength,
 } from '../../../src/lib/reviewComment';
+import { plural } from '../../../src/lib/format';
 
 import { api } from '../../../src/lib/api';
 import { useAsyncData } from '../../../src/hooks/useAsyncData';
@@ -60,12 +62,13 @@ export default function HOLeaveReviewScreen({ jobId, onSubmitted, onBack }: HOLe
   const jobLine = [job?.service_categories?.name, job?.title].filter(Boolean).join(': ');
   const alreadyReviewed = job?.has_review === true;
   const chosenTags = orderedTags(tags);
+  // The review as it will be sent (tags in front). Over the limit it is not cut: the user shortens it.
+  const reviewLength = reviewCommentLength(chosenTags, comment);
+  const overBy = Math.max(0, reviewLength - REVIEW_COMMENT_MAX);
 
+  // Picking a tag changes only the tag list; the typed comment stays as it is.
   const toggleTag = (tag: string) => {
-    const next = tags.includes(tag) ? tags.filter((t) => t !== tag) : [...tags, tag];
-    setTags(next);
-    // A tag in front of the comment leaves it less room, so trim what no longer fits.
-    setComment((text) => text.slice(0, reviewCommentLimit(orderedTags(next))));
+    setTags((current) => (current.includes(tag) ? current.filter((t) => t !== tag) : [...current, tag]));
   };
 
   const submit = async () => {
@@ -73,6 +76,7 @@ export default function HOLeaveReviewScreen({ jobId, onSubmitted, onBack }: HOLe
       setError('You have already submitted a review for this job.');
       return;
     }
+    if (overBy > 0) return;
     setError(null);
     setBusy(true);
     try {
@@ -154,9 +158,16 @@ export default function HOLeaveReviewScreen({ jobId, onSubmitted, onBack }: HOLe
             onChangeText={setComment}
             placeholder="Tell others about the job"
             multiline
-            maxLength={reviewCommentLimit(chosenTags)}
+            // A fixed cap: a limit that shrinks when a tag is picked could cut the text already typed.
+            maxLength={REVIEW_COMMENT_MAX}
+            helper={`${reviewLength}/${REVIEW_COMMENT_MAX}`}
             keyboardAppearance={appearance}
           />
+          {overBy > 0 && (
+            <Text style={styles.errorText} accessibilityRole="alert">
+              {`Shorten your review by ${plural(overBy, 'character')}.`}
+            </Text>
+          )}
 
           <Banner tone="info" message="Your review is public." />
 
@@ -169,7 +180,7 @@ export default function HOLeaveReviewScreen({ jobId, onSubmitted, onBack }: HOLe
         <BottomActionBar
           primaryLabel="Submit review"
           onPrimary={() => void submit()}
-          primaryDisabled={rating === 0 || alreadyReviewed}
+          primaryDisabled={rating === 0 || alreadyReviewed || overBy > 0}
           busy={busy}
         />
       </KeyboardAvoidingView>

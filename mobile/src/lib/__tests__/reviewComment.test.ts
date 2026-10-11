@@ -3,6 +3,7 @@ import {
   REVIEW_TAGS,
   orderedTags,
   reviewCommentFor,
+  reviewCommentLength,
   reviewCommentLimit,
 } from '../reviewComment';
 
@@ -47,5 +48,21 @@ describe('review tags and the comment they become', () => {
   it('leaves the comment box room for the tags in front of it', () => {
     expect(reviewCommentLimit([])).toBe(500);
     expect(reviewCommentLimit(['On time'])).toBe(500 - 'On time'.length - ' · '.length);
+  });
+
+  it('measures the review as reviewCommentFor sends it, when it fits', () => {
+    const tags = ['On time', 'Friendly'];
+    expect(reviewCommentLength(tags, '  Fixed it fast ')).toBe(reviewCommentFor(tags, '  Fixed it fast ')!.length);
+    expect(reviewCommentLength([], '  Fixed it  ')).toBe(reviewCommentFor([], '  Fixed it  ')!.length);
+  });
+
+  it('measures the tags alone when the comment is blank, and nothing when neither is given', () => {
+    expect(reviewCommentLength(['Clean work'], '   ')).toBe('Clean work'.length);
+    expect(reviewCommentLength([], '')).toBe(0);
+  });
+
+  it('measures a comment past the limit in full, so the overflow can be shown and not cut', () => {
+    expect(reviewCommentLength(['On time'], 'x'.repeat(600))).toBe('On time · '.length + 600);
+    expect(reviewCommentLength([], 'x'.repeat(600))).toBe(600);
   });
 });
