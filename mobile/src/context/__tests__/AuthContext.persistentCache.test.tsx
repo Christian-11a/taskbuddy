@@ -163,3 +163,36 @@ it("a session the server rejects wipes the account's saved copies too", async ()
   expect(await savedKeys()).toEqual([]);
   expect(await readPersisted('ho-jobs')).toBeNull();
 });
+
+/** A screen that fetches 'ho-jobs' and keeps the result in memory, as the tab screens do. */
+function ResultsKeptInMemory() {
+  const state = useAsyncData(() => Promise.resolve(['alice memory']), [], 'ho-jobs');
+  return <Text>{`kept:${state.data?.join(',') ?? 'none'}`}</Text>;
+}
+
+/** A screen that shows what is kept in memory for 'ho-jobs', and never fetches anything itself. */
+function ShowsMemoryOnly() {
+  const state = useAsyncData(() => new Promise<string[]>(() => {}), [], 'ho-jobs');
+  return <Text>{`kept:${state.data?.join(',') ?? 'none'}`}</Text>;
+}
+
+it('a session the server rejects also clears what screens kept in memory', async () => {
+  // Kept as a handle: `screen` follows the latest render, and the second render below would take it over.
+  const auth = renderAuth();
+  fireEvent.press(auth.getByText('Sign in Alice'));
+  expect(await auth.findByText('Alice')).toBeTruthy();
+  const kept = render(<ResultsKeptInMemory />);
+  expect(await kept.findByText('kept:alice memory')).toBeTruthy();
+  kept.unmount();
+  const calls = (configureApiAuth as jest.Mock).mock.calls;
+  const refreshWithStoredSession = calls[calls.length - 1][1] as () => Promise<string | null>;
+  (api.refresh as jest.Mock).mockRejectedValueOnce(new ApiError('Refresh token expired', 401));
+
+  await act(async () => {
+    await refreshWithStoredSession();
+  });
+
+  expect(await auth.findByText('Signed out')).toBeTruthy();
+  const later = render(<ShowsMemoryOnly />);
+  expect(later.getByText('kept:none')).toBeTruthy();
+});

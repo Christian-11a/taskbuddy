@@ -230,6 +230,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           // the screen that got the 401 shows its own error instead.
           if (!isRejectedSession(err)) return null;
           await persistSession(null);
+          clearAsyncDataCache();
           forgetSavedAccount(profileIdRef.current);
           setProfile(null);
           setProviderProfile(null);
