@@ -3,7 +3,7 @@
  * decoration only: it ignores touches, plays once each time `active` turns on,
  * and under reduced motion it is skipped entirely and reports done at once.
  */
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { StyleSheet, useWindowDimensions, View } from 'react-native';
 import Animated, {
   cancelAnimation, useAnimatedStyle, useReducedMotion, useSharedValue, withTiming, type SharedValue,
@@ -84,6 +84,11 @@ export default function Confetti({ active, onDone }: ConfettiProps) {
   useEffect(() => {
     onDoneRef.current = onDone;
   }, [onDone]);
+  // Defined on the RN side and passed by reference: the timing callback runs on the UI
+  // thread, and scheduleOnRN rejects a function created there, such as an inline arrow.
+  const finishBurst = useCallback(() => {
+    onDoneRef.current?.();
+  }, []);
 
   // A new burst starts each time `active` turns on; the colours and size are read at that moment.
   useEffect(() => {
@@ -100,7 +105,7 @@ export default function Confetti({ active, onDone }: ConfettiProps) {
     }));
     progress.set(0);
     progress.set(withTiming(1, { duration: BURST_MS, easing: EASE_OUT }, (finished) => {
-      if (finished) scheduleOnRN(() => onDoneRef.current?.());
+      if (finished) scheduleOnRN(finishBurst);
     }));
     return () => cancelAnimation(progress);
   }, [active, reduced]);

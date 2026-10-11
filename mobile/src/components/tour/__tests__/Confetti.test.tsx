@@ -7,6 +7,9 @@ const reanimated = require('react-native-reanimated') as {
   useReducedMotion: () => boolean;
   withTiming: (...args: unknown[]) => unknown;
 };
+const worklets = require('react-native-worklets') as {
+  scheduleOnRN: (fun: (...args: unknown[]) => void, ...args: unknown[]) => void;
+};
 
 const COLORS = ['#111111', '#222222', '#333333'];
 const AREA = { width: 390, height: 844 };
@@ -87,6 +90,29 @@ describe('Confetti', () => {
     expect(withTiming).toHaveBeenCalledWith(1, expect.objectContaining({ duration: 1400 }), expect.any(Function));
     // The Worklets mock hands the callback back to JS on a microtask, so wait for it.
     await waitFor(() => expect(onDone).toHaveBeenCalledTimes(1));
+  });
+
+  it('hands scheduleOnRN the same RN-side onDone on every completion, not a new closure each time', () => {
+    // The Worklets mock would run the scheduled function at once, so stub it and run it by hand.
+    const scheduleOnRN = jest.spyOn(worklets, 'scheduleOnRN').mockImplementation(() => undefined);
+    // This stub skips the timing callback, so the test runs each burst's completion, as the UI thread would.
+    const withTiming = jest.spyOn(reanimated, 'withTiming').mockImplementation((toValue) => toValue);
+    const onDone = jest.fn();
+
+    const { rerender } = render(<Confetti active onDone={onDone} />);
+    (withTiming.mock.calls[0][2] as (finished: boolean) => void)(true);
+    rerender(<Confetti active={false} onDone={onDone} />);
+    rerender(<Confetti active onDone={onDone} />);
+    (withTiming.mock.calls[1][2] as (finished: boolean) => void)(true);
+
+    expect(scheduleOnRN).toHaveBeenCalledTimes(2);
+    const [first] = scheduleOnRN.mock.calls[0];
+    const [second] = scheduleOnRN.mock.calls[1];
+    expect(second).toBe(first);
+
+    expect(onDone).not.toHaveBeenCalled();
+    first();
+    expect(onDone).toHaveBeenCalledTimes(1);
   });
 
   it('under reduced motion draws nothing and reports done at once', () => {
