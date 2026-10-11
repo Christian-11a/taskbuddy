@@ -36,6 +36,8 @@ import TextField from './ui/TextField';
 import { showToast } from './Toast';
 import { api } from '../lib/api';
 import { peso } from '../lib/format';
+import { parseAmount, sanitizeAmountInput, validateAmount } from '../lib/amountRules';
+import { MIN_WITHDRAWAL_PHP } from '../lib/walletRules';
 
 /** Mirrors the backend DTO's `@Length(1, 200)` on `destination`. */
 export const WITHDRAW_DESTINATION_MAX = 200;
@@ -46,17 +48,18 @@ export const WITHDRAW_BUSY_MESSAGE = "We're already filing your withdrawal reque
 /**
  * Reads the two fields the way the request sends them, and says what is wrong
  * with them. `amount` and `destination` are the exact values `requestWithdrawal`
- * receives.
+ * receives. The amount may not be more than the wallet's `available`, and not less
+ * than the withdrawal minimum.
  */
 export function readWithdrawal(amountText: string, destinationText: string, available: number) {
-  const amount = Number(amountText.replace(/,/g, ''));
+  const amount = parseAmount(amountText) ?? 0;
   const destination = destinationText.trim();
-  const amountValid = Number.isFinite(amount) && amount > 0 && amount <= available;
-  const amountError = amountText.trim() !== '' && !amountValid
-    ? Number.isFinite(amount) && amount > available
-      ? `That's more than your ${peso(available)} available.`
-      : 'Enter an amount greater than zero.'
-    : undefined;
+  const amountError = validateAmount(amountText, {
+    min: MIN_WITHDRAWAL_PHP,
+    max: available,
+    label: 'an amount',
+    overMessage: (limit) => `That's more than your ${peso(limit)} available.`,
+  }) ?? undefined;
   const destinationError = destination.length === 0
     ? 'Add where to send it.'
     : destination.length > WITHDRAW_DESTINATION_MAX
@@ -65,7 +68,7 @@ export function readWithdrawal(amountText: string, destinationText: string, avai
   return {
     amount,
     destination,
-    amountValid,
+    amountValid: amountError === undefined,
     destinationValid: destinationError === undefined,
     amountError,
     destinationError,
@@ -225,7 +228,8 @@ export function MoneyAmountField({
           keyboardAppearance={appearance}
           style={[styles.amountInput, { fontSize: amountFontSize(value) }]}
           value={value}
-          onChangeText={onChangeText}
+          // Letters and symbols never reach the field: the text is cut to what an amount can hold while it is typed.
+          onChangeText={(text) => onChangeText(sanitizeAmountInput(text))}
           keyboardType="decimal-pad"
           placeholder="0.00"
           placeholderTextColor={V6Colors.ink500}

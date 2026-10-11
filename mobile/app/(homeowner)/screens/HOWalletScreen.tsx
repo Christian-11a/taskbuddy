@@ -49,6 +49,7 @@ import {
 } from '../../../src/lib/walletHistory';
 import ScreenSkeleton from '../../../src/components/ScreenSkeleton';
 import { canWithdrawBalance, getWithdrawalHint } from '../../../src/lib/walletRules';
+import { parseAmount, validateAmount } from '../../../src/lib/amountRules';
 import { showToast } from '../../../src/components/Toast';
 import {
   MoneyAmountField,
@@ -100,13 +101,12 @@ function wholePeso(amount: number): string {
   return Number.isInteger(amount) ? `₱${amount.toLocaleString('en-PH')}` : peso(amount);
 }
 
-/** Why an amount can't be added, or undefined while the field is empty or the amount is valid. */
-function topUpError(text: string, amount: number): string | undefined {
-  if (text.trim() === '') return undefined;
-  if (!Number.isFinite(amount)) return 'Enter a valid amount.';
-  if (amount < MIN_TOPUP_PHP) return `The minimum is ₱${MIN_TOPUP_PHP}`;
-  if (amount > MAX_CARD_PHP) return `The most you can add is ₱${MAX_CARD_PHP.toLocaleString('en-PH')}`;
-  return undefined;
+/** The top-up's limits: the same ₱50 floor and ₱100,000 ceiling the backend checks. */
+const TOPUP_LIMITS = { min: MIN_TOPUP_PHP, max: MAX_CARD_PHP, label: 'an amount' };
+
+/** Why an amount can't be added, or undefined while the amount is valid. */
+function topUpError(text: string): string | undefined {
+  return validateAmount(text, TOPUP_LIMITS) ?? undefined;
 }
 
 export default function HOWalletScreen() {
@@ -141,9 +141,8 @@ export default function HOWalletScreen() {
   // The withdrawal whose Cancel is running, so its row can say so.
   const [cancellingId, setCancellingId] = useState<string | null>(null);
 
-  const parsedAmount = Number(amount.replace(/,/g, ''));
-  const isValidAmount =
-    Number.isFinite(parsedAmount) && parsedAmount >= MIN_TOPUP_PHP && parsedAmount <= MAX_CARD_PHP;
+  const parsedAmount = parseAmount(amount) ?? Number.NaN;
+  const isValidAmount = validateAmount(amount, TOPUP_LIMITS) === null;
 
   const closeAddMoney = () => {
     setShowAddMoney(false);
@@ -531,7 +530,7 @@ export default function HOWalletScreen() {
             accessibilityLabel="Amount to add"
             value={amount}
             onChangeText={setAmount}
-            error={topUpError(amount, parsedAmount)}
+            error={topUpError(amount)}
             helper={`Minimum ₱${MIN_TOPUP_PHP}. It goes to your TaskBuddy wallet and is used when you hire.`}
             editable={!adding}
             autoFocus

@@ -101,7 +101,7 @@ export function validateAccountNumber(value: string): string | null {
   const numbers = text.match(NUMBER_RUN) ?? [];
   if (numbers.length === 0) return 'Add your GCash number or bank account number.';
   if (numbers.length > 1) return 'Keep it to one number: your GCash or bank account number.';
-  const digits = numbers[0].replace(/[^0-9]/g, '');
+  const digits = (numbers[0] ?? '').replace(/[^0-9]/g, '');
   const isWallet = /\b(gcash|maya)\b/i.test(text) || (!/[a-z]/i.test(text) && digits.startsWith('09'));
   if (isWallet) {
     return /^09[0-9]{9}$/.test(digits) ? null : 'A GCash number is 09 followed by 9 digits.';

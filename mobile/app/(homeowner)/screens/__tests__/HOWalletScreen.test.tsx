@@ -348,12 +348,12 @@ describe('HOWalletScreen — Add money sheet: quick amounts, limits and Continue
     fireEvent.changeText(amountField(), '20');
 
     expect(screen.getByText('Minimum ₱50. It goes to your TaskBuddy wallet and is used when you hire.')).toBeTruthy();
-    expect(screen.queryByText('The minimum is ₱50')).toBeNull();
+    expect(screen.queryByText('Minimum is ₱50')).toBeNull();
     expect(isDisabled(continueButton())).toBe(true);
 
     fireEvent(amountField(), 'blur');
 
-    expect(screen.getByText('The minimum is ₱50')).toBeTruthy();
+    expect(screen.getByText('Minimum is ₱50')).toBeTruthy();
     expect(screen.queryByText(/Minimum ₱50\./)).toBeNull();
   });
 
@@ -364,7 +364,7 @@ describe('HOWalletScreen — Add money sheet: quick amounts, limits and Continue
 
     fireEvent.changeText(amountField(), '50');
 
-    expect(screen.queryByText('The minimum is ₱50')).toBeNull();
+    expect(screen.queryByText('Minimum is ₱50')).toBeNull();
     expect(isDisabled(continueButton())).toBe(false);
   });
 
@@ -373,7 +373,7 @@ describe('HOWalletScreen — Add money sheet: quick amounts, limits and Continue
     fireEvent.changeText(amountField(), '100001');
     fireEvent(amountField(), 'submitEditing');
 
-    expect(screen.getByText('The most you can add is ₱100,000')).toBeTruthy();
+    expect(screen.getByText("You can't go over ₱100,000")).toBeTruthy();
     expect(isDisabled(continueButton())).toBe(true);
     expect(api.createCheckoutSession).not.toHaveBeenCalled();
   });
@@ -447,6 +447,47 @@ describe('HOWalletScreen — Add money sheet: quick amounts, limits and Continue
 
     await waitFor(() => expect(isShown('add-money-dialog')).toBe(false));
     expect(api.createCheckoutSession).not.toHaveBeenCalled();
+  });
+
+  it('leaves the amount empty when letters are typed into it, and Continue stays disabled', async () => {
+    await openAddMoney();
+    fireEvent.changeText(amountField(), 'pesos');
+
+    expect(amountField().props.value).toBe('');
+    expect(isDisabled(continueButton())).toBe(true);
+  });
+
+  it('cuts a third decimal place, so 1000.999 is kept as 1000.99', async () => {
+    await openAddMoney();
+    fireEvent.changeText(amountField(), '1000.999');
+
+    expect(amountField().props.value).toBe('1000.99');
+  });
+
+  it('drops a minus sign, so -500 is read as 500', async () => {
+    await openAddMoney();
+    fireEvent.changeText(amountField(), '-500');
+
+    expect(amountField().props.value).toBe('500');
+    expect(isDisabled(continueButton())).toBe(false);
+  });
+
+  it('blocks zero, and says the minimum once the field is left', async () => {
+    await openAddMoney();
+    fireEvent.changeText(amountField(), '0');
+    fireEvent(amountField(), 'blur');
+
+    expect(screen.getByText('Minimum is ₱50')).toBeTruthy();
+    expect(isDisabled(continueButton())).toBe(true);
+    expect(api.createCheckoutSession).not.toHaveBeenCalled();
+  });
+
+  it('asks for an amount once the empty field is left', async () => {
+    await openAddMoney();
+    fireEvent(amountField(), 'blur');
+
+    expect(screen.getByText('Enter an amount')).toBeTruthy();
+    expect(isDisabled(continueButton())).toBe(true);
   });
 });
 

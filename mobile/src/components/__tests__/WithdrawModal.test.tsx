@@ -338,3 +338,68 @@ describe('WithdrawModal — the sheet body keeps a margin from the screen edges'
     expect(styleOf(screen.getByTestId('withdraw-sheet-body')).paddingHorizontal).toBe(20);
   });
 });
+
+describe('WithdrawModal — the amount field takes only amounts', () => {
+  const amountField = () => screen.getByLabelText('Amount to withdraw');
+
+  it('leaves the amount empty when letters are typed into it', () => {
+    renderSheet();
+    fireEvent.changeText(amountField(), 'abc');
+
+    expect(amountField().props.value).toBe('');
+    expect(isDisabled('Continue')).toBe(true);
+  });
+
+  it('keeps 12.34 and cuts a third decimal place, so 12.345 becomes 12.34', () => {
+    renderSheet();
+    fireEvent.changeText(amountField(), '12.345');
+
+    expect(amountField().props.value).toBe('12.34');
+  });
+
+  it('drops a minus sign, so a negative amount cannot be typed', () => {
+    renderSheet();
+    fireEvent.changeText(amountField(), '-400');
+
+    expect(amountField().props.value).toBe('400');
+  });
+
+  it('blocks zero and names the minimum once the field is left', () => {
+    renderSheet();
+    fireEvent.changeText(amountField(), '0');
+    fireEvent(amountField(), 'blur');
+
+    expect(screen.getByText('Minimum is ₱1')).toBeTruthy();
+    expect(isDisabled('Continue')).toBe(true);
+  });
+
+  it('blocks an amount below the ₱1 minimum', () => {
+    renderSheet();
+    fireEvent.changeText(amountField(), '0.5');
+    fireEvent(amountField(), 'blur');
+
+    expect(screen.getByText('Minimum is ₱1')).toBeTruthy();
+    expect(isDisabled('Continue')).toBe(true);
+  });
+
+  it('asks for an amount once the empty field is left, and keeps Continue disabled', () => {
+    renderSheet();
+    fireEvent.changeText(screen.getByLabelText('Send to'), 'GCash 0917 123 4567');
+    fireEvent(amountField(), 'blur');
+
+    expect(screen.getByText('Enter an amount')).toBeTruthy();
+    expect(isDisabled('Continue')).toBe(true);
+  });
+
+  it('files the request with the cut amount, so 400.999 is requested as 400.99', async () => {
+    (api.requestWithdrawal as jest.Mock).mockResolvedValue({});
+    const { onFiled } = renderSheet();
+    fill('400.999', 'GCash 0917 123 4567');
+    fireEvent.press(screen.getByRole('button', { name: 'Continue' }));
+
+    fireEvent.press(screen.getByRole('button', { name: 'Request ₱400.99' }));
+
+    await waitFor(() => expect(onFiled).toHaveBeenCalledTimes(1));
+    expect(api.requestWithdrawal).toHaveBeenCalledWith({ amount: 400.99, destination: 'GCash 0917 123 4567' });
+  });
+});
