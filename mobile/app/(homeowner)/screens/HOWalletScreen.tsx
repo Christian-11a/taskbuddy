@@ -304,8 +304,8 @@ export default function HOWalletScreen() {
   };
 
   const transactions = data?.transactions ?? [];
-  const filtered = filterWalletTransactions(transactions, filter);
-  const counts = countWalletByFilter(transactions);
+  const filtered = filterWalletTransactions(transactions, filter, 'homeowner');
+  const counts = countWalletByFilter(transactions, 'homeowner');
   const groups = groupWalletByDay(filtered, new Date());
   const vouchers = transactions.filter((t) => t.kind === 'recovery_credit');
   const rewardsTotal = vouchers.reduce((total, voucher) => total + Number(voucher.amount), 0);

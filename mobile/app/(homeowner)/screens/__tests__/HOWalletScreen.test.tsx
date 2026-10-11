@@ -684,10 +684,10 @@ describe('HOWalletScreen — balance card, tiles and history', () => {
     render(<HOWalletScreen />);
     await screen.findByText('Wallet top-up');
 
-    // Added: top-up and voucher. Spent: the withdrawal. Held: the escrow hold.
+    // Added: top-up and voucher. Spent: the withdrawal, and the hold, since no refund came back for its job. Held: the escrow hold.
     expect(screen.getByLabelText('All, 4')).toBeTruthy();
     expect(screen.getByLabelText('Added, 2')).toBeTruthy();
-    expect(screen.getByLabelText('Spent, 1')).toBeTruthy();
+    expect(screen.getByLabelText('Spent, 2')).toBeTruthy();
     expect(screen.getByLabelText('Held, 1')).toBeTruthy();
 
     fireEvent.press(screen.getByLabelText('Held, 1'));
@@ -732,8 +732,32 @@ describe('HOWalletScreen — balance card, tiles and history', () => {
     fireEvent.press(screen.getByLabelText('Added, 0'));
     expect(screen.getByText('No added money yet')).toBeTruthy();
 
-    fireEvent.press(screen.getByLabelText('Spent, 0'));
-    expect(screen.getByText('No money spent yet')).toBeTruthy();
+    // The hold has no refund on its job, so the money paid for the job reads as Spent.
+    fireEvent.press(screen.getByLabelText('Spent, 1'));
+    expect(screen.getByTestId('wallet-txn-hold')).toBeTruthy();
+    expect(screen.queryByText('No money spent yet')).toBeNull();
+  });
+
+  it('a hold whose job was refunded is not Spent, one whose job was not refunded is, and the refund reads as Added', async () => {
+    const refundedHold = txn({
+      id: 'job-hold', direction: 'debit', kind: 'escrow_hold', amount: 800, title: 'Held for: Fix toilet', job_id: 'job-7',
+    });
+    const refundOfJob = txn({
+      id: 'job-refund', direction: 'credit', kind: 'refund', amount: 800, title: 'Refund: Fix toilet', job_id: 'job-7',
+    });
+    const paidHold = txn({
+      id: 'paid-hold', direction: 'debit', kind: 'escrow_hold', amount: 450, title: 'Held for: Paint gate', job_id: 'job-8',
+    });
+    (api.wallet as jest.Mock).mockResolvedValue(walletAt({ transactions: [refundedHold, refundOfJob, paidHold] }));
+    render(<HOWalletScreen />);
+
+    expect(await screen.findByLabelText('Added, 1')).toBeTruthy();
+    expect(screen.getByLabelText('Spent, 1')).toBeTruthy();
+    expect(screen.getByLabelText('Held, 2')).toBeTruthy();
+
+    fireEvent.press(screen.getByLabelText('Spent, 1'));
+    expect(screen.getByTestId('wallet-txn-paid-hold')).toBeTruthy();
+    expect(screen.queryByTestId('wallet-txn-job-hold')).toBeNull();
   });
 
   it('shows the empty history when the wallet has no transactions yet', async () => {

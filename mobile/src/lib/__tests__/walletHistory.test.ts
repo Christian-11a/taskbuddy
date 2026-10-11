@@ -4,6 +4,7 @@ import {
   filterWalletTransactions,
   groupWalletByDay,
   matchesWalletFilter,
+  refundedJobIds,
   walletDayLabel,
   walletFiltersFor,
 } from '../walletHistory';
@@ -40,30 +41,68 @@ const adjustment = txn('adjustment', { direction: 'debit', kind: 'adjustment' })
 
 const ledger = [topUp, voucher, refund, hold, pendingWithdrawal, adjustment];
 
+// Escrow holds on two jobs. Job 2's hold came back as a refund on the same job_id; job 1's stayed paid.
+const paidHold = txn('paid-hold', { direction: 'debit', kind: 'escrow_hold', job_id: 'job-1' });
+const refundedHold = txn('refunded-hold', { direction: 'debit', kind: 'escrow_hold', job_id: 'job-2' });
+const refundForJob2 = txn('refund-for-job-2', { direction: 'credit', kind: 'refund', job_id: 'job-2' });
+
 const ids = (list: WalletTransaction[]) => list.map((item) => item.id);
 
 describe('Wallet history filters', () => {
   it('All keeps every transaction in its original order', () => {
-    expect(ids(filterWalletTransactions(ledger, 'all'))).toEqual(ids(ledger));
+    expect(ids(filterWalletTransactions(ledger, 'all', 'homeowner'))).toEqual(ids(ledger));
   });
 
   it('In is every credit, including vouchers and refunds', () => {
-    expect(ids(filterWalletTransactions(ledger, 'in'))).toEqual(['topup', 'voucher', 'refund']);
+    expect(ids(filterWalletTransactions(ledger, 'in', 'homeowner'))).toEqual(['topup', 'voucher', 'refund']);
   });
 
-  it('Out is every debit except escrow holds, including pending withdrawals', () => {
-    expect(ids(filterWalletTransactions(ledger, 'out'))).toEqual(['withdrawal', 'adjustment']);
-    expect(matchesWalletFilter(hold, 'out')).toBe(false);
-    expect(matchesWalletFilter(pendingWithdrawal, 'out')).toBe(true);
+  it('Spent is every debit for a homeowner, including an escrow hold whose job was not refunded', () => {
+    expect(ids(filterWalletTransactions(ledger, 'out', 'homeowner'))).toEqual(['hold', 'withdrawal', 'adjustment']);
+    expect(matchesWalletFilter(hold, 'out', 'homeowner', refundedJobIds(ledger))).toBe(true);
+    expect(matchesWalletFilter(pendingWithdrawal, 'out', 'homeowner', refundedJobIds(ledger))).toBe(true);
   });
 
   it('Held is only the escrow holds', () => {
-    expect(ids(filterWalletTransactions(ledger, 'held'))).toEqual(['hold']);
+    expect(ids(filterWalletTransactions(ledger, 'held', 'homeowner'))).toEqual(['hold']);
   });
 
   it('counts each pill from the loaded transactions, and in and out add up to every debit or credit', () => {
-    expect(countWalletByFilter(ledger)).toEqual({ all: 6, in: 3, out: 2, held: 1 });
-    expect(countWalletByFilter([])).toEqual({ all: 0, in: 0, out: 0, held: 0 });
+    expect(countWalletByFilter(ledger, 'homeowner')).toEqual({ all: 6, in: 3, out: 3, held: 1 });
+    expect(countWalletByFilter([], 'homeowner')).toEqual({ all: 0, in: 0, out: 0, held: 0 });
+  });
+});
+
+describe('a homeowner escrow hold once its job is refunded', () => {
+  const history = [paidHold, refundedHold, refundForJob2];
+  const refunded = refundedJobIds(history);
+
+  it.each([
+    ['a hold whose job was not refunded: Spent and Held', paidHold, { in: false, out: true, held: true }],
+    ['a hold whose job was refunded: Held only', refundedHold, { in: false, out: false, held: true }],
+    ['the refund credit: Added only', refundForJob2, { in: true, out: false, held: false }],
+    ['a plain debit: Spent only', adjustment, { in: false, out: true, held: false }],
+    ['a debit withdrawal: Spent only', pendingWithdrawal, { in: false, out: true, held: false }],
+  ])('%s', (_label, transaction, expected) => {
+    expect(matchesWalletFilter(transaction, 'in', 'homeowner', refunded)).toBe(expected.in);
+    expect(matchesWalletFilter(transaction, 'out', 'homeowner', refunded)).toBe(expected.out);
+    expect(matchesWalletFilter(transaction, 'held', 'homeowner', refunded)).toBe(expected.held);
+  });
+
+  it('a refund only clears the hold on the same job, and a hold or refund with no job never matches', () => {
+    const otherJobRefund = txn('other-refund', { direction: 'credit', kind: 'refund', job_id: 'job-9' });
+
+    expect(ids(filterWalletTransactions([paidHold, otherJobRefund, hold, refund], 'out', 'homeowner')))
+      .toEqual(['paid-hold', 'hold']);
+    expect(ids(filterWalletTransactions([hold, refund], 'out', 'homeowner'))).toEqual(['hold']);
+  });
+
+  it('counts the pills for a history with a refunded hold, and a provider Money out never counts a hold', () => {
+    const withRefund = [paidHold, refundedHold, refundForJob2, pendingWithdrawal];
+
+    expect(countWalletByFilter(withRefund, 'homeowner')).toEqual({ all: 4, in: 1, out: 2, held: 2 });
+    expect(countWalletByFilter(withRefund, 'provider')).toEqual({ all: 4, in: 1, out: 1, held: 2 });
+    expect(matchesWalletFilter(paidHold, 'out', 'provider', refundedJobIds(withRefund))).toBe(false);
   });
 });
 

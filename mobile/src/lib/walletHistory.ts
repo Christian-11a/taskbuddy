@@ -14,24 +14,52 @@ const FILTER_LABELS: Record<WalletRole, Record<WalletFilter, string>> = {
   provider: { all: 'All', in: 'Money in', out: 'Money out', held: 'Held' },
 };
 
-/** The filter pills for a wallet's history, in display order. The labels depend on the role; what each filter matches does not. */
+/**
+ * The filter pills for a wallet's history, in display order. The labels and what
+ * Spent matches both depend on the role: see `matchesWalletFilter`.
+ */
 export function walletFiltersFor(role: WalletRole): readonly { key: WalletFilter; label: string }[] {
   return FILTER_KEYS.map((key) => ({ key, label: FILTER_LABELS[role][key] }));
 }
 
 /**
- * Which pill a transaction falls under. In (Added, or Money in) is every credit.
- * Held is the escrow hold, the debit taken when a job is assigned. Out (Spent, or
- * Money out) is every other debit, so an escrow hold is never counted there too.
+ * The jobs whose escrow hold came back. The backend never edits a hold when its job
+ * is refunded; it adds a separate credit of kind `refund` on the same `job_id`
+ * (migrations 0028 and 0040). A refund with no job cannot match any hold.
  */
-export function matchesWalletFilter(txn: WalletTransaction, filter: WalletFilter): boolean {
+export function refundedJobIds(txns: readonly WalletTransaction[]): ReadonlySet<string> {
+  const ids = new Set<string>();
+  for (const txn of txns) {
+    if (txn.direction === 'credit' && txn.kind === 'refund' && txn.job_id != null) ids.add(txn.job_id);
+  }
+  return ids;
+}
+
+/**
+ * Which pill a transaction falls under. `refunded` is `refundedJobIds` of the whole
+ * history, so the answer can depend on the other rows.
+ *
+ * In (Added, or Money in) is every credit. Held is the escrow hold, the debit taken
+ * when a job is assigned, for both roles. Out is every other debit. For a homeowner
+ * an escrow hold also counts as Spent, unless a refund came back for its job: a hold
+ * that stayed is money paid for a job, and it can be in Spent and Held at once. For
+ * a provider, Money out never counts an escrow hold.
+ */
+export function matchesWalletFilter(
+  txn: WalletTransaction,
+  filter: WalletFilter,
+  role: WalletRole,
+  refunded: ReadonlySet<string>,
+): boolean {
   switch (filter) {
     case 'all':
       return true;
     case 'in':
       return txn.direction === 'credit';
     case 'out':
-      return txn.direction === 'debit' && txn.kind !== 'escrow_hold';
+      if (txn.direction !== 'debit') return false;
+      if (txn.kind !== 'escrow_hold') return true;
+      return role === 'homeowner' && !(txn.job_id != null && refunded.has(txn.job_id));
     case 'held':
       return txn.kind === 'escrow_hold';
   }
@@ -40,16 +68,22 @@ export function matchesWalletFilter(txn: WalletTransaction, filter: WalletFilter
 export function filterWalletTransactions(
   txns: readonly WalletTransaction[],
   filter: WalletFilter,
+  role: WalletRole,
 ): WalletTransaction[] {
-  return txns.filter((txn) => matchesWalletFilter(txn, filter));
+  const refunded = refundedJobIds(txns);
+  return txns.filter((txn) => matchesWalletFilter(txn, filter, role, refunded));
 }
 
 /** The number on each filter pill, counted from the loaded transactions. */
-export function countWalletByFilter(txns: readonly WalletTransaction[]): Record<WalletFilter, number> {
+export function countWalletByFilter(
+  txns: readonly WalletTransaction[],
+  role: WalletRole,
+): Record<WalletFilter, number> {
+  const refunded = refundedJobIds(txns);
   const counts: Record<WalletFilter, number> = { all: 0, in: 0, out: 0, held: 0 };
   for (const txn of txns) {
     for (const key of FILTER_KEYS) {
-      if (matchesWalletFilter(txn, key)) counts[key] += 1;
+      if (matchesWalletFilter(txn, key, role, refunded)) counts[key] += 1;
     }
   }
   return counts;
