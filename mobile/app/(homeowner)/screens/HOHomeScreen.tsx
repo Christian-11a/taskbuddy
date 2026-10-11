@@ -50,6 +50,7 @@ import SectionHeader from '../../../src/components/ui/SectionHeader';
 import JobRow from '../../../src/components/ui/JobRow';
 import EmptyRow from '../../../src/components/ui/EmptyRow';
 import { useTourAnchor } from '../../../src/components/tour';
+import TourOfferCard from '../../../src/components/tour/TourOfferCard';
 
 const ACTIVE_STATUSES = [
   'open',
@@ -94,6 +95,8 @@ function bookingLine(when: Date, providerName: string | null): string {
 
 interface HOHomeScreenProps {
   onNavigate: (screen: HOScreen, jobId?: string) => void;
+  /** Shows the one-time "take a quick tour" card at the top of Home, when the App is offering it. */
+  tourOffer?: { onStart: () => void; onDismiss: () => void };
 }
 
 function WidgetError({ message, onRetry }: { message: string; onRetry: () => void }) {
@@ -173,7 +176,7 @@ function HomeHeroCard({ hero, onNavigate }: { hero: HomeHero; onNavigate: HOHome
   );
 }
 
-export default function HOHomeScreen({ onNavigate }: HOHomeScreenProps) {
+export default function HOHomeScreen({ onNavigate, tourOffer }: HOHomeScreenProps) {
   const { Colors, C, styles } = useThemedStyles(createThemedStyles);
   const { dark } = useTheme();
   const headerTop = useHeaderTop();
@@ -305,6 +308,8 @@ export default function HOHomeScreen({ onNavigate }: HOHomeScreenProps) {
 
         {/* Body */}
         <View style={styles.body}>
+          {tourOffer && <TourOfferCard onStart={tourOffer.onStart} onDismiss={tourOffer.onDismiss} />}
+
           {/* What do you need done? opens the job form with no category, as My Jobs' "New" does. */}
           <Tap
             testID="home-post-job"

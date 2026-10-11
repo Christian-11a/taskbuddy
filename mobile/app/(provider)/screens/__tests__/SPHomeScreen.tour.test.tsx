@@ -1,6 +1,6 @@
 import React from 'react';
 import { View } from 'react-native';
-import { act, render, screen, waitFor } from '@testing-library/react-native';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react-native';
 import SPHomeScreen from '../SPHomeScreen';
 import { TourProvider, useTour, type TourControls } from '../../../../src/components/tour';
 import type { TourRect } from '../../../../src/components/tour/types';
@@ -82,5 +82,26 @@ describe('SPHomeScreen — welcome tour anchors', () => {
 
     // The card reads "Step 1 of 1. {title}. {body}", which only the tour card has, unlike the title alone.
     await waitFor(() => expect(screen.getByLabelText(`Step 1 of 1. ${title}. Body copy`)).toBeTruthy());
+  });
+});
+
+describe('SPHomeScreen — take-the-tour card', () => {
+  it('shows the offer at the top of Home and passes its two taps on', async () => {
+    const onStart = jest.fn();
+    const onDismiss = jest.fn();
+    render(<SPHomeScreen onNavigate={jest.fn()} tourOffer={{ onStart, onDismiss }} />);
+
+    fireEvent.press(await screen.findByRole('button', { name: 'Take the tour' }));
+    expect(onStart).toHaveBeenCalledTimes(1);
+
+    fireEvent.press(screen.getByRole('button', { name: 'Dismiss the tour offer' }));
+    expect(onDismiss).toHaveBeenCalledTimes(1);
+  });
+
+  it('shows no offer when the App is not offering one', async () => {
+    render(<SPHomeScreen onNavigate={jest.fn()} />);
+    await waitFor(() => expect(screen.getByPlaceholderText('Search open jobs')).toBeTruthy());
+
+    expect(screen.queryByText('New: take a quick tour')).toBeNull();
   });
 });

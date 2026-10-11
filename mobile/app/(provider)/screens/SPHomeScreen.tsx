@@ -46,6 +46,7 @@ import { SPScreen } from '../../../src/types/navigation';
 
 import { useAuth } from '../../../src/context/AuthContext';
 import { useTourAnchor } from '../../../src/components/tour';
+import TourOfferCard from '../../../src/components/tour/TourOfferCard';
 import { useAsyncData } from '../../../src/hooks/useAsyncData';
 import { api } from '../../../src/lib/api';
 import { peso } from '../../../src/lib/format';
@@ -105,6 +106,8 @@ const VERIFY_HERO: Record<VerifyState, { title: string; body: string }> = {
 
 interface SPHomeScreenProps {
   onNavigate: (screen: SPScreen, jobId?: string) => void;
+  /** Shows the one-time "take a quick tour" card at the top of Home, when the App is offering it. */
+  tourOffer?: { onStart: () => void; onDismiss: () => void };
 }
 
 /** "Wed, Oct 15 · 12:22 AM · Arturo Tanco Drive, Lipa"; without a date, "No date yet · address". */
@@ -214,7 +217,7 @@ function SetupPanel({ steps, verifyState, categoryName, onStep }: {
   );
 }
 
-export default function SPHomeScreen({ onNavigate }: SPHomeScreenProps) {
+export default function SPHomeScreen({ onNavigate, tourOffer }: SPHomeScreenProps) {
   const { Colors, C, styles, appearance } = useThemedStyles(createThemedStyles);
   const { dark } = useTheme();
   const headerTop = useHeaderTop();
@@ -369,6 +372,7 @@ export default function SPHomeScreen({ onNavigate }: SPHomeScreenProps) {
         </View>
 
         <View style={styles.bodyContent}>
+          {tourOffer && <TourOfferCard onStart={tourOffer.onStart} onDismiss={tourOffer.onDismiss} />}
           {!isVerified ? (
             <SetupPanel
               steps={setupSteps}
