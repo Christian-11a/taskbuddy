@@ -24,7 +24,7 @@
  */
 
 import { useThemedStyles, type Palette as ThemePalette } from '../../../src/context/ThemeContext';
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import * as AuthSession from 'expo-auth-session';
 import {
   ActivityIndicator,
@@ -48,6 +48,7 @@ import { openRedirectSession } from '../../../src/lib/appRedirectSession';
 import HirePaymentModal from '../../../src/components/HirePaymentModal';
 import HiredView from '../../../src/components/HiredView';
 import ConfirmationModal from '../../../src/components/ConfirmationModal';
+import { showToast } from '../../../src/components/Toast';
 import HOProviderProfileScreen from './HOProviderProfileScreen';
 import { HOScreen } from '../../../src/types/navigation';
 
@@ -145,6 +146,8 @@ export default function HOJobApplicationsScreen({
   const [hireLoadFailed, setHireLoadFailed] = useState(false);
   const [hireBusy, setHireBusy] = useState<'wallet' | 'card' | null>(null);
   const [hireMessage, setHireMessage] = useState<{ text: string; tone: 'error' | 'info' } | null>(null);
+  // Checked and set synchronously, so a second tap before React re-renders cannot start a second payment.
+  const hireInFlight = useRef(false);
 
   const openHire = async (app: JobApplication) => {
     if (!jobId) return;
@@ -194,7 +197,12 @@ export default function HOJobApplicationsScreen({
   };
 
   const payFromWallet = async () => {
+    if (hireInFlight.current) {
+      showToast(HIRE_BUSY_MESSAGE, 'info');
+      return;
+    }
     if (!hireTarget) return;
+    hireInFlight.current = true;
     setHireBusy('wallet');
     setHireMessage(null);
     try {
@@ -209,6 +217,7 @@ export default function HOJobApplicationsScreen({
       });
       reload();
     } finally {
+      hireInFlight.current = false;
       setHireBusy(null);
     }
   };
@@ -224,7 +233,12 @@ export default function HOJobApplicationsScreen({
   };
 
   const payByCard = async () => {
+    if (hireInFlight.current) {
+      showToast(HIRE_BUSY_MESSAGE, 'info');
+      return;
+    }
     if (!hireTarget || !jobId) return;
+    hireInFlight.current = true;
     setHireBusy('card');
     setHireMessage(null);
     try {
@@ -273,6 +287,7 @@ export default function HOJobApplicationsScreen({
         tone: 'error',
       });
     } finally {
+      hireInFlight.current = false;
       setHireBusy(null);
     }
   };
@@ -548,6 +563,9 @@ interface HiredState {
 /** How long to wait for Stripe's webhook to turn a card payment into a hire. */
 const HIRE_POLL_ATTEMPTS = 8;
 const HIRE_POLL_INTERVAL_MS = 1500;
+
+/** Said when Confirm and hire is tapped again while the first hire is still being paid for. */
+const HIRE_BUSY_MESSAGE = "We're still processing your payment. Please wait a moment.";
 
 const CLOSED_LABEL: Record<JobApplication['status'], string> = {
   pending: 'Not selected',

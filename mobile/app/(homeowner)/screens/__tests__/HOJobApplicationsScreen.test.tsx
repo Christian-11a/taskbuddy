@@ -6,6 +6,7 @@ import HOJobApplicationsScreen from '../HOJobApplicationsScreen';
 import { api, type JobApplication } from '../../../../src/lib/api';
 import { clearAsyncDataCache } from '../../../../src/hooks/useAsyncData';
 import { openRedirectSession } from '../../../../src/lib/appRedirectSession';
+import { showToast } from '../../../../src/components/Toast';
 
 jest.mock('../../../../src/lib/api', () => ({
   MIN_TOPUP_PHP: 50,
@@ -30,6 +31,10 @@ jest.mock('expo-auth-session', () => ({
 
 jest.mock('../../../../src/lib/appRedirectSession', () => ({
   openRedirectSession: jest.fn(),
+}));
+
+jest.mock('../../../../src/components/Toast', () => ({
+  showToast: jest.fn(),
 }));
 
 const TWO_HOURS_AGO = new Date(Date.now() - 2 * 3600_000 - 1000).toISOString();
@@ -473,6 +478,102 @@ describe('HOJobApplicationsScreen: paying for a hire', () => {
 
     await waitFor(() => expect(api.acceptApplication).toHaveBeenCalledTimes(1));
     expect(api.acceptApplication).toHaveBeenCalledWith('app-1');
+  });
+});
+
+describe('HOJobApplicationsScreen: a hire cannot be submitted twice', () => {
+  const HIRE_BUSY = "We're still processing your payment. Please wait a moment.";
+
+  /** A promise the test settles by hand, so a payment can be seen while it is still running. */
+  function deferred<T>() {
+    let resolve!: (value: T) => void;
+    const promise = new Promise<T>((done) => {
+      resolve = done;
+    });
+    return { promise, resolve };
+  }
+
+  /** Opens the hire sheet, picks the wallet and goes to its confirm page. */
+  async function confirmWalletHire() {
+    await renderScreen();
+    fireEvent.press(await screen.findByRole('button', { name: 'Hire Alex Reyes for this job' }));
+    fireEvent.press(await screen.findByRole('radio', { name: 'Wallet, ₱5,000.00 available' }));
+    fireEvent.press(screen.getByRole('button', { name: 'Continue' }));
+    return screen.getByRole('button', { name: 'Confirm and hire · ₱1,000.00' });
+  }
+
+  /** Opens the hire sheet, picks the card and goes to its confirm page. */
+  async function confirmCardHire() {
+    await renderScreen();
+    fireEvent.press(await screen.findByRole('button', { name: 'Hire Alex Reyes for this job' }));
+    fireEvent.press(await screen.findByRole('radio', { name: "Card, ₱1,000.00 on Stripe's secure page" }));
+    fireEvent.press(screen.getByRole('button', { name: 'Continue' }));
+    return screen.getByRole('button', { name: 'Confirm and hire · ₱1,000.00' });
+  }
+
+  it('two taps on Confirm and hire inside one act() pay from the wallet once, and say the payment is still being processed', async () => {
+    const accept = deferred<unknown>();
+    (api.acceptApplication as jest.Mock).mockReturnValue(accept.promise);
+    const confirm = await confirmWalletHire();
+
+    // Both taps land before React re-renders, so they reach the same handler.
+    act(() => {
+      fireEvent.press(confirm);
+      fireEvent.press(confirm);
+    });
+
+    expect(api.acceptApplication).toHaveBeenCalledTimes(1);
+    expect(showToast).toHaveBeenCalledWith(HIRE_BUSY, 'info');
+
+    await act(async () => accept.resolve({}));
+    expect(await screen.findByRole('header', { name: 'Alex Reyes is hired!' })).toBeTruthy();
+    expect(api.acceptApplication).toHaveBeenCalledTimes(1);
+  });
+
+  it('two taps on Confirm and hire inside one act() start one card Checkout, and the second says why it was ignored', async () => {
+    const browser = deferred<unknown>();
+    (openRedirectSession as jest.Mock).mockReturnValue(browser.promise);
+    const confirm = await confirmCardHire();
+
+    act(() => {
+      fireEvent.press(confirm);
+      fireEvent.press(confirm);
+    });
+
+    expect(api.createHireCheckoutSession).toHaveBeenCalledTimes(1);
+    expect(showToast).toHaveBeenCalledWith(HIRE_BUSY, 'info');
+
+    await act(async () => browser.resolve({ type: 'success', url: 'taskbuddy://hire?hire=cancelled' }));
+    expect(await screen.findByText('Payment was cancelled.')).toBeTruthy();
+    expect(api.createHireCheckoutSession).toHaveBeenCalledTimes(1);
+    expect(api.acceptApplication).not.toHaveBeenCalled();
+  });
+
+  it('after a wallet hire fails, the next Confirm and hire tries again', async () => {
+    (api.acceptApplication as jest.Mock)
+      .mockRejectedValueOnce(new Error('Your wallet balance changed. Try again.'))
+      .mockResolvedValueOnce({});
+    const confirm = await confirmWalletHire();
+
+    fireEvent.press(confirm);
+    expect(await screen.findByText('Your wallet balance changed. Try again.')).toBeTruthy();
+
+    fireEvent.press(screen.getByRole('button', { name: 'Confirm and hire · ₱1,000.00' }));
+    expect(await screen.findByRole('header', { name: 'Alex Reyes is hired!' })).toBeTruthy();
+    expect(api.acceptApplication).toHaveBeenCalledTimes(2);
+    expect(showToast).not.toHaveBeenCalled();
+  });
+
+  it('after a card payment the browser cancelled, the next Confirm and hire starts a new payment', async () => {
+    (openRedirectSession as jest.Mock).mockResolvedValue({ type: 'success', url: 'taskbuddy://hire?hire=cancelled' });
+    await confirmCardHire();
+
+    fireEvent.press(screen.getByRole('button', { name: 'Confirm and hire · ₱1,000.00' }));
+    expect(await screen.findByText('Payment was cancelled.')).toBeTruthy();
+
+    fireEvent.press(screen.getByRole('button', { name: 'Confirm and hire · ₱1,000.00' }));
+    await waitFor(() => expect(api.createHireCheckoutSession).toHaveBeenCalledTimes(2));
+    expect(showToast).not.toHaveBeenCalled();
   });
 });
 
