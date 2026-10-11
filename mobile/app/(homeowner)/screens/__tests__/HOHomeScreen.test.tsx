@@ -598,3 +598,38 @@ describe('HOHomeScreen — saved data shows first, and says when it is being upd
     expect(screen.getByText('Plumbing: Fix toilet')).toBeTruthy();
   });
 });
+
+describe('HOHomeScreen — a slow first load says the server is waking up', () => {
+  const WAKING = 'The server is waking up. This can take up to a minute.';
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    clearAsyncDataCache();
+    (useAuth as jest.Mock).mockReturnValue({ profile: { full_name: 'Alex', city: null, address: null } });
+    (api.wallet as jest.Mock).mockReturnValue(new Promise(() => {}));
+    (api.myJobs as jest.Mock).mockReturnValue(new Promise(() => {}));
+    (api.categories as jest.Mock).mockReturnValue(new Promise(() => {}));
+    (api.notifications as jest.Mock).mockResolvedValue([]);
+    (api.unreadNotificationCount as jest.Mock).mockResolvedValue({ count: 0 });
+    (api.jobApplications as jest.Mock).mockResolvedValue([]);
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  it('shows the line once 8 seconds pass with nothing to show, and not before', () => {
+    jest.useFakeTimers();
+    render(<HOHomeScreen onNavigate={jest.fn()} />);
+
+    act(() => {
+      jest.advanceTimersByTime(7999);
+    });
+    expect(screen.queryByText(WAKING)).toBeNull();
+
+    act(() => {
+      jest.advanceTimersByTime(1);
+    });
+    expect(screen.getByText(WAKING)).toBeTruthy();
+  });
+});

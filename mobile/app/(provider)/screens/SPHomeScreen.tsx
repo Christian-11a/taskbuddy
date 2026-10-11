@@ -74,12 +74,14 @@ import FilterPill from '../../../src/components/ui/FilterPill';
 import SectionHeader from '../../../src/components/ui/SectionHeader';
 import JobRow from '../../../src/components/ui/JobRow';
 import StaleHint from '../../../src/components/ui/StaleHint';
+import SlowLoadNote from '../../../src/components/ui/SlowLoadNote';
 import EmptyCard from '../../../src/components/ui/EmptyCard';
 import EmptyRow from '../../../src/components/ui/EmptyRow';
 import LoadErrorCard from '../../../src/components/ui/LoadErrorCard';
 import { haptic } from '../../../src/components/ui/motion';
 import { useRetainedState } from '../../../src/hooks/useRetainedState';
 import { useRefreshOnForeground } from '../../../src/hooks/useRefreshOnForeground';
+import { useSlowLoad } from '../../../src/hooks/useSlowLoad';
 import { SEARCH_MAX_LENGTH } from '../../../src/lib/textRules';
 
 const URGENCY_FILTERS: { key: FeedUrgency; label: string }[] = [
@@ -276,7 +278,7 @@ export default function SPHomeScreen({ onNavigate, tourOffer }: SPHomeScreenProp
   }, []);
   const serviceKey = [providerProfile?.category_id, ...(providerProfile?.approved_secondary_services ?? []).map((service) => service.category_id).sort((a, b) => a - b)].join(':');
   const [urgency, setUrgency] = useRetainedState<FeedUrgency>('sp.feed.urgency', 'all');
-  const { data, reload: reloadFeed, error: feedError, stale: feedStale, refreshing: feedFetching } = useAsyncData(async () => {
+  const { data, reload: reloadFeed, error: feedError, loading: feedLoading, stale: feedStale, refreshing: feedFetching } = useAsyncData(async () => {
     const [feed, assigned] = await Promise.all([
       api.browseJobs({
         limit: 20,
@@ -290,6 +292,8 @@ export default function SPHomeScreen({ onNavigate, tourOffer }: SPHomeScreenProp
     // `loaded` is the urgency the server filtered by, which the pill counts need.
     return { jobs: feed.jobs, summary: feed.summary, assigned, loaded: urgency };
   }, [profile?.latitude, profile?.longitude, radiusKm, urgency, serviceKey], `sp-feed-${profile?.id}-${serviceKey}-${profile?.latitude}-${profile?.longitude}-${radiusKm}-${urgency}`, { persist: true });
+
+  const feedSlow = useSlowLoad(feedLoading, data !== null);
 
   // Open work changes on the server while the app is away, and nothing else asks for it again until the
   // tab is opened, so the feed is fetched again on a pull down and when the app comes back to the foreground.
@@ -488,6 +492,7 @@ export default function SPHomeScreen({ onNavigate, tourOffer }: SPHomeScreenProp
 
               <SectionHeader title="Open jobs near you" count={data ? availableJobs.length : undefined} />
 
+              {feedSlow && <SlowLoadNote />}
               {!data && !feedError && (
                 <Pulse>
                   {[0, 1].map((i) => (

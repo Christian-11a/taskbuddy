@@ -27,10 +27,12 @@ import EmptyCard from '../../../src/components/ui/EmptyCard';
 import EmptyRow from '../../../src/components/ui/EmptyRow';
 import LoadErrorCard from '../../../src/components/ui/LoadErrorCard';
 import StaleHint from '../../../src/components/ui/StaleHint';
+import SlowLoadNote from '../../../src/components/ui/SlowLoadNote';
 import ContentSkeleton from '../../../src/components/ui/ContentSkeleton';
 import { useHeaderTop } from '../../../src/hooks/useHeaderTop';
 import { useRetainedScroll, useRetainedState } from '../../../src/hooks/useRetainedState';
 import { useAsyncData } from '../../../src/hooks/useAsyncData';
+import { useSlowLoad } from '../../../src/hooks/useSlowLoad';
 import { api } from '../../../src/lib/api';
 import { peso } from '../../../src/lib/format';
 import { SPScreen } from '../../../src/types/navigation';
@@ -104,6 +106,7 @@ export default function SPMyJobsScreen({ onNavigate, headerRight }: SPMyJobsScre
   // and the hint says the data is saved.
   const hasData = applications.data !== null && assigned.data !== null;
   const settled = !loading && hasData;
+  const slow = useSlowLoad(loading, hasData);
   const reload = () => {
     applications.reload();
     assigned.reload();
@@ -160,6 +163,7 @@ export default function SPMyJobsScreen({ onNavigate, headerRight }: SPMyJobsScre
           error={hasData ? error : null}
           onRetry={reload}
         />
+        {slow && <SlowLoadNote />}
         {loading && <ContentSkeleton variant="list" />}
         {!!error && !loading && !hasData && (
           <LoadErrorCard title="Couldn't load your jobs" message={error} onRetry={reload} />

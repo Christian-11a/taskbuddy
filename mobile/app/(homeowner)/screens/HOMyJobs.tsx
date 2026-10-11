@@ -28,10 +28,12 @@ import EmptyCard from '../../../src/components/ui/EmptyCard';
 import EmptyRow from '../../../src/components/ui/EmptyRow';
 import LoadErrorCard from '../../../src/components/ui/LoadErrorCard';
 import StaleHint from '../../../src/components/ui/StaleHint';
+import SlowLoadNote from '../../../src/components/ui/SlowLoadNote';
 import ScreenSkeleton from '../../../src/components/ScreenSkeleton';
 import { HOScreen } from '../../../src/types/navigation';
 import { useAsyncData } from '../../../src/hooks/useAsyncData';
 import { useRetainedScroll, useRetainedState } from '../../../src/hooks/useRetainedState';
+import { useSlowLoad } from '../../../src/hooks/useSlowLoad';
 import { useHeaderTop } from '../../../src/hooks/useHeaderTop';
 import { useProposalCountsStatus } from '../../../src/hooks/useProposalCounts';
 import { api } from '../../../src/lib/api';
@@ -92,6 +94,7 @@ export default function MyJobs({ onNavigate, headerRight }: MyJobsProps) {
   );
   // Rows show whenever there is data, even when a refresh failed: the hint says it is saved data.
   const settled = !loading && data !== null;
+  const slow = useSlowLoad(loading, data !== null);
   const empty = EMPTY_COPY[filter];
 
   const onRefresh = () => {
@@ -158,6 +161,7 @@ export default function MyJobs({ onNavigate, headerRight }: MyJobsProps) {
         }
       >
         <StaleHint stale={stale} refreshing={fetching} error={error} onRetry={reload} />
+        {slow && <SlowLoadNote />}
         {loading && <ScreenSkeleton variant="list" />}
         {!!error && !loading && data === null && (
           <LoadErrorCard title="Couldn't load your jobs" message={error} onRetry={reload} />

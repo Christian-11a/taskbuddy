@@ -31,6 +31,7 @@ import { useAuth } from '../../../src/context/AuthContext';
 import { useAsyncData } from '../../../src/hooks/useAsyncData';
 import { useHeaderTop } from '../../../src/hooks/useHeaderTop';
 import { SEVEN_DAYS_MS } from '../../../src/lib/persistentCache';
+import { useSlowLoad } from '../../../src/hooks/useSlowLoad';
 import { api, type Job } from '../../../src/lib/api';
 import { formatPesoShort, initials, peso } from '../../../src/lib/format';
 import {
@@ -49,6 +50,7 @@ import Tap from '../../../src/components/ui/Tap';
 import ContentSkeleton from '../../../src/components/ui/ContentSkeleton';
 import SectionHeader from '../../../src/components/ui/SectionHeader';
 import StaleHint from '../../../src/components/ui/StaleHint';
+import SlowLoadNote from '../../../src/components/ui/SlowLoadNote';
 import JobRow from '../../../src/components/ui/JobRow';
 import Banner from '../../../src/components/ui/Banner';
 import EmptyCard from '../../../src/components/ui/EmptyCard';
@@ -217,6 +219,10 @@ export default function HOHomeScreen({ onNavigate, tourOffer }: HOHomeScreenProp
   const hour = new Date().getHours();
   const greeting = hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening';
 
+  // A first load with nothing to show yet: after a while, say the server is probably waking up.
+  const hasHomeData = wallet.data !== null || jobs.data !== null || categories.data !== null;
+  const homeSlow = useSlowLoad(wallet.loading || jobs.loading || categories.loading, hasHomeData);
+
   // One hint for the screen: a saved copy says it is being updated, and a failed refresh of one says so, with Try again.
   const sources = [wallet, jobs, categories];
   const hintStale = sources.some((source) => source.stale);
@@ -229,7 +235,12 @@ export default function HOHomeScreen({ onNavigate, tourOffer }: HOHomeScreenProp
   };
 
   if (wallet.loading && jobs.loading && categories.loading && notifications.loading) {
-    return <ScreenSkeleton variant="dashboard" />;
+    return (
+      <View style={styles.screen}>
+        {homeSlow && <SlowLoadNote />}
+        <ScreenSkeleton variant="dashboard" />
+      </View>
+    );
   }
 
   return (
@@ -315,6 +326,7 @@ export default function HOHomeScreen({ onNavigate, tourOffer }: HOHomeScreenProp
 
         {/* Body */}
         <View style={styles.body}>
+          {homeSlow && <SlowLoadNote />}
           <StaleHint
             stale={hintStale}
             refreshing={hintRefreshing}

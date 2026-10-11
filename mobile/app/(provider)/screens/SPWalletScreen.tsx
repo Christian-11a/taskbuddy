@@ -21,12 +21,14 @@ import EmptyRow from '../../../src/components/ui/EmptyRow';
 import LoadErrorCard from '../../../src/components/ui/LoadErrorCard';
 import SectionHeader from '../../../src/components/ui/SectionHeader';
 import StaleHint from '../../../src/components/ui/StaleHint';
+import SlowLoadNote from '../../../src/components/ui/SlowLoadNote';
 import { ArrowDownLeft, Building2, Shield, Wallet, WalletCards, type LucideIcon } from 'lucide-react-native';
 import { Spacing } from '../../../src/constants/theme';
 import { useHeaderTop } from '../../../src/hooks/useHeaderTop';
 
 import { useAuth } from '../../../src/context/AuthContext';
 import { useAsyncData } from '../../../src/hooks/useAsyncData';
+import { useSlowLoad } from '../../../src/hooks/useSlowLoad';
 import { api, type WalletTransaction } from '../../../src/lib/api';
 import { peso, plural, shortDate } from '../../../src/lib/format';
 import { groupWalletByDay } from '../../../src/lib/walletHistory';
@@ -52,6 +54,7 @@ export default function SPWalletScreen({ onNavigate }: SPWalletScreenProps) {
   const awaitingFreshBalance = !!data && savedOnly;
   // A failed refresh with a saved balance keeps the payouts on screen, so only a wallet with no data is a failure.
   const walletFailed = !!error && !data;
+  const walletSlow = useSlowLoad(loading, data !== null);
   // Whether card payments can reach the provider's bank yet. Only a status that has loaded and says
   // payouts are off shows the notice: while it loads, or if it fails, nothing shows, and the wallet
   // does not wait for it.
@@ -231,6 +234,7 @@ export default function SPWalletScreen({ onNavigate }: SPWalletScreenProps) {
 
         <View style={styles.history}>
           <SectionHeader title="Payouts" />
+          {walletSlow && <SlowLoadNote />}
           {loading && <ContentSkeleton variant="list" />}
           {!!error && !loading && !data && (
             <LoadErrorCard title="Couldn't load your wallet" message={error} onRetry={reload} />

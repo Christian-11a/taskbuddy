@@ -26,6 +26,7 @@ import EmptyCard from '../../../src/components/ui/EmptyCard';
 import EmptyRow from '../../../src/components/ui/EmptyRow';
 import LoadErrorCard from '../../../src/components/ui/LoadErrorCard';
 import StaleHint from '../../../src/components/ui/StaleHint';
+import SlowLoadNote from '../../../src/components/ui/SlowLoadNote';
 import {
   ArrowDownLeft,
   ArrowUpRight,
@@ -37,6 +38,7 @@ import {
 import * as AuthSession from 'expo-auth-session';
 import { Spacing } from '../../../src/constants/theme';
 import { useHeaderTop } from '../../../src/hooks/useHeaderTop';
+import { useSlowLoad } from '../../../src/hooks/useSlowLoad';
 
 import { useAsyncData } from '../../../src/hooks/useAsyncData';
 import { api, MAX_CARD_PHP, MIN_TOPUP_PHP, type WalletTransaction } from '../../../src/lib/api';
@@ -123,6 +125,7 @@ export default function HOWalletScreen() {
   );
   // A failed refresh with a saved balance keeps the history on screen, so only a wallet with no data is a failure.
   const walletFailed = !!error && !data;
+  const walletSlow = useSlowLoad(loading, data !== null);
   const {
     data: withdrawalData,
     reload: reloadWithdrawals,
@@ -350,7 +353,14 @@ export default function HOWalletScreen() {
   const rewardsTotal = vouchers.reduce((total, voucher) => total + Number(voucher.amount), 0);
   const withdrawals = withdrawalData ?? [];
 
-  if (loading) return <ScreenSkeleton variant="dashboard" />;
+  if (loading) {
+    return (
+      <View style={styles.screen}>
+        {walletSlow && <SlowLoadNote />}
+        <ScreenSkeleton variant="dashboard" />
+      </View>
+    );
+  }
 
   /** One history row: a tonal icon, the title and its status, and the signed amount. */
   const renderTransaction = (txn: WalletTransaction) => {
