@@ -1,4 +1,20 @@
-import { formatPesoShort, peso } from '../format';
+import { experienceLabel, formatPesoShort, peso } from '../format';
+
+describe('experienceLabel: the years chip on a provider profile', () => {
+  it('reads a set number of years, singular and plural', () => {
+    expect(experienceLabel(1)).toBe('1 yr');
+    expect(experienceLabel(2)).toBe('2 yrs');
+    expect(experienceLabel(0.5)).toBe('0.5 yrs');
+  });
+
+  it('is null when the years were never set or are not positive, so the chip is hidden', () => {
+    expect(experienceLabel(null)).toBeNull();
+    expect(experienceLabel(undefined)).toBeNull();
+    expect(experienceLabel(0)).toBeNull();
+    expect(experienceLabel(-2)).toBeNull();
+    expect(experienceLabel(Number.NaN)).toBeNull();
+  });
+});
 
 describe('formatPesoShort', () => {
   it('keeps the full amount below ₱100,000, exactly as peso() shows it', () => {

@@ -188,6 +188,17 @@ export function plural(count: number | null | undefined, singular: string, plura
   return `${n} ${n === 1 ? singular : pluralForm}`;
 }
 
+/**
+ * "2 yrs" for a provider who has set their years of experience. Null when it was
+ * never set (the API stores 0 until the provider saves one), so the screen hides
+ * the chip rather than tell a client the provider has no experience.
+ */
+export function experienceLabel(years: number | null | undefined): string | null {
+  if (years == null) return null;
+  const n = Number(years);
+  return Number.isFinite(n) && n > 0 ? plural(n, 'yr') : null;
+}
+
 /** Display text for an error shown to users. A bare server failure message
  * ("Internal server error") is replaced with a friendly sentence; every other
  * message (validation, conflicts, explanations) is shown unchanged. */

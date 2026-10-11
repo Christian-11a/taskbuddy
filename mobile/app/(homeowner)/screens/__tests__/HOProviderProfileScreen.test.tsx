@@ -63,6 +63,24 @@ describe('HOProviderProfileScreen: the public profile', () => {
     expect(screen.getByText('2 yrs')).toBeTruthy();
   });
 
+  it('hides the experience chip when the provider never set their years, instead of showing 0 yrs', async () => {
+    (api.getProvider as jest.Mock).mockResolvedValue({ ...provider, years_experience: 0 });
+    await renderProfile();
+
+    expect(await screen.findByText('Jobs done')).toBeTruthy();
+    expect(screen.queryByText('0 yrs')).toBeNull();
+    expect(screen.queryByText('Experience')).toBeNull();
+    expect(screen.getByText('Rating')).toBeTruthy();
+  });
+
+  it('hides the experience chip when the years are missing altogether', async () => {
+    (api.getProvider as jest.Mock).mockResolvedValue({ ...provider, years_experience: null });
+    await renderProfile();
+
+    expect(await screen.findByText('Jobs done')).toBeTruthy();
+    expect(screen.queryByText('Experience')).toBeNull();
+  });
+
   it('hides the sections that have nothing in them', async () => {
     (api.getProvider as jest.Mock).mockResolvedValue({ ...provider, bio: null });
     await renderProfile();

@@ -40,7 +40,7 @@ import { useHeaderTop } from '../../../src/hooks/useHeaderTop';
 
 import { useAsyncData } from '../../../src/hooks/useAsyncData';
 import { api } from '../../../src/lib/api';
-import { plural, shortDate } from '../../../src/lib/format';
+import { experienceLabel, shortDate } from '../../../src/lib/format';
 import { HOScreen } from '../../../src/types/navigation';
 
 /** The proposal this profile was opened from: its offer, and the way to hire from it. */
@@ -87,6 +87,8 @@ export default function HOProviderProfileScreen({
   const portfolioEntries = portfolio.data ?? [];
   // Portfolio only shows while it loads, when it failed, or when there are photos.
   const showPortfolio = portfolio.loading || !!portfolio.error || portfolioEntries.length > 0;
+  // Null until the provider has set their years, so the chip is hidden rather than showing "0 yrs".
+  const experience = experienceLabel(provider?.years_experience);
 
   return (
     <View style={styles.screen}>
@@ -138,13 +140,15 @@ export default function HOProviderProfileScreen({
               <Text style={styles.statValue}>{String(provider.cached_completed_jobs)}</Text>
               <Text style={styles.statLabel}>Jobs done</Text>
             </View>
-            <View style={styles.statDivider} />
-            <View style={styles.stat}>
-              <Text style={styles.statValue}>
-                {provider.years_experience == null ? '—' : plural(provider.years_experience, 'yr')}
-              </Text>
-              <Text style={styles.statLabel}>Experience</Text>
-            </View>
+            {experience && (
+              <>
+                <View style={styles.statDivider} />
+                <View style={styles.stat}>
+                  <Text style={styles.statValue}>{experience}</Text>
+                  <Text style={styles.statLabel}>Experience</Text>
+                </View>
+              </>
+            )}
           </View>
 
           {/* The offer on this job, when the profile was opened from a proposal */}
