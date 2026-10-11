@@ -253,6 +253,8 @@ export default function SPProfileScreen({ onNavigate, onLogout, onBack }: SPProf
           message="Are you sure you want to log out?"
           confirmLabel="Log Out"
           cancelLabel="Cancel"
+          destructive
+          icon={LogOut}
           onConfirm={() => {
             setConfirmLogoutVisible(false);
             onLogout();

@@ -1,7 +1,10 @@
 import { findUnnamedControls } from '../../../../src/testing/a11yAudit';
 import React from 'react';
+import { StyleSheet } from 'react-native';
 import { fireEvent, render, screen, within } from '@testing-library/react-native';
+import { LogOut, Trash2 } from 'lucide-react-native';
 import Profile from '../HOProfile';
+import { lightPalette } from '../../../../src/constants/palettes';
 import { api, type Job } from '../../../../src/lib/api';
 import { useAuth } from '../../../../src/context/AuthContext';
 import { clearAsyncDataCache } from '../../../../src/hooks/useAsyncData';
@@ -152,6 +155,19 @@ it('Log Out asks for confirmation first, and logs out only when confirmed', () =
   fireEvent.press(within(screen.getByRole('alert')).getByLabelText('Log Out'));
 
   expect(onLogout).toHaveBeenCalledTimes(1);
+});
+
+it('Log Out confirms in the red destructive style, with a log-out icon rather than a bin', () => {
+  render(<Profile onNavigate={jest.fn()} onLogout={jest.fn()} />);
+
+  fireEvent.press(screen.getByRole('button', { name: 'Log Out' }));
+
+  const alert = screen.getByRole('alert');
+  expect(StyleSheet.flatten(within(alert).getByLabelText('Log Out').props.style).backgroundColor).toBe(
+    lightPalette.Colors.dangerSolid,
+  );
+  expect(within(alert).UNSAFE_getByType(LogOut)).toBeTruthy();
+  expect(within(alert).UNSAFE_queryByType(Trash2)).toBeNull();
 });
 
 it('every control has an accessible name: back arrow, menu rows and log out', () => {

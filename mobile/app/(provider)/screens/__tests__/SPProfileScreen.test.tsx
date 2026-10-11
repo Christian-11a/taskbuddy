@@ -1,7 +1,10 @@
 import { findUnnamedControls } from '../../../../src/testing/a11yAudit';
 import React from 'react';
+import { StyleSheet } from 'react-native';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react-native';
+import { LogOut, Trash2 } from 'lucide-react-native';
 import SPProfileScreen from '../SPProfileScreen';
+import { lightPalette } from '../../../../src/constants/palettes';
 import { api } from '../../../../src/lib/api';
 import { useAuth } from '../../../../src/context/AuthContext';
 import { clearAsyncDataCache } from '../../../../src/hooks/useAsyncData';
@@ -219,6 +222,20 @@ describe('SPProfileScreen — profile', () => {
     fireEvent.press(screen.getByRole('button', { name: 'Help & support' }));
 
     expect(onNavigate.mock.calls).toEqual([['Settings'], ['Help & Support']]);
+  });
+
+  it('Log Out confirms in the red destructive style, with a log-out icon rather than a bin', () => {
+    mockAuthWith({});
+    render(<SPProfileScreen onNavigate={jest.fn()} onLogout={jest.fn()} />);
+
+    fireEvent.press(screen.getByRole('button', { name: 'Log Out' }));
+
+    const alert = screen.getByRole('alert');
+    expect(StyleSheet.flatten(within(alert).getByLabelText('Log Out').props.style).backgroundColor).toBe(
+      lightPalette.Colors.dangerSolid,
+    );
+    expect(within(alert).UNSAFE_getByType(LogOut)).toBeTruthy();
+    expect(within(alert).UNSAFE_queryByType(Trash2)).toBeNull();
   });
 
   it('Log Out asks first, and logs out only when confirmed', () => {
