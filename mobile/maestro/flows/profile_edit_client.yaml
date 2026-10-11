@@ -159,6 +159,10 @@ env:
 - tapOn: "Settings"
 - tapOn: "Delete account"
 - assertVisible: 'Delete your account\?'
+# The red button stays disabled until DELETE is typed in the confirm field.
+- tapOn:
+    id: "input-delete-account-confirm"
+- inputText: "DELETE"
 - tapOn: "Delete my account"
 - extendedWaitUntil:
     visible: "Welcome back"

@@ -13,6 +13,9 @@ const onClose = jest.fn();
 const onDeleted = jest.fn();
 const renderModal = () => render(<DeleteAccountModal visible onClose={onClose} onDeleted={onDeleted} />);
 
+/** Types the word the red button asks for, so the button can be pressed. */
+const typeDelete = () => fireEvent.changeText(screen.getByLabelText('Type DELETE to confirm'), 'DELETE');
+
 const blockedError = () =>
   new ApiError('This account still has obligations in flight', 409, {
     blockers: [
@@ -52,6 +55,7 @@ describe('DeleteAccountModal — confirm state', () => {
 
   it('Delete my account calls the delete once, closes, and then signs out through onDeleted', async () => {
     renderModal();
+    typeDelete();
 
     fireEvent.press(screen.getByRole('button', { name: 'Delete my account' }));
 
@@ -63,6 +67,7 @@ describe('DeleteAccountModal — confirm state', () => {
   it('keeps the sheet open with the error when the delete fails for another reason', async () => {
     (api.deleteAccount as jest.Mock).mockRejectedValueOnce(new Error('Network request failed'));
     renderModal();
+    typeDelete();
 
     fireEvent.press(screen.getByRole('button', { name: 'Delete my account' }));
 
@@ -74,6 +79,7 @@ describe('DeleteAccountModal — confirm state', () => {
   it('locks Keep my account while the delete is in flight', async () => {
     (api.deleteAccount as jest.Mock).mockReturnValueOnce(new Promise(() => {}));
     renderModal();
+    typeDelete();
 
     fireEvent.press(screen.getByRole('button', { name: 'Delete my account' }));
 
@@ -88,6 +94,7 @@ describe('DeleteAccountModal — blocked state (409)', () => {
   it('lists every blocker the server returned, with a Close button and no delete', async () => {
     (api.deleteAccount as jest.Mock).mockRejectedValueOnce(blockedError());
     renderModal();
+    typeDelete();
 
     fireEvent.press(screen.getByRole('button', { name: 'Delete my account' }));
 
@@ -104,6 +111,7 @@ describe('DeleteAccountModal — blocked state (409)', () => {
   it('Close dismisses the sheet and never signs out', async () => {
     (api.deleteAccount as jest.Mock).mockRejectedValueOnce(blockedError());
     renderModal();
+    typeDelete();
     fireEvent.press(screen.getByRole('button', { name: 'Delete my account' }));
     await screen.findByText("You can't delete your account yet");
 
@@ -112,5 +120,69 @@ describe('DeleteAccountModal — blocked state (409)', () => {
     expect(onClose).toHaveBeenCalledTimes(1);
     expect(onDeleted).not.toHaveBeenCalled();
     expect(api.deleteAccount).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('DeleteAccountModal — the word DELETE is typed first', () => {
+  const field = () => screen.getByLabelText('Type DELETE to confirm');
+  const deleteButton = () => screen.getByRole('button', { name: 'Delete my account' });
+
+  it('keeps the red button disabled until DELETE is typed', () => {
+    renderModal();
+    expect(deleteButton()).toBeDisabled();
+
+    fireEvent.changeText(field(), 'DELET');
+    expect(deleteButton()).toBeDisabled();
+
+    fireEvent.changeText(field(), 'DELETE');
+    expect(deleteButton()).toBeEnabled();
+  });
+
+  it('accepts the word in any case, and ignores spaces around it', () => {
+    renderModal();
+
+    fireEvent.changeText(field(), '  delete ');
+
+    expect(deleteButton()).toBeEnabled();
+  });
+
+  it('keeps the button disabled for a wrong word, and sends nothing when it is pressed', () => {
+    renderModal();
+
+    fireEvent.changeText(field(), 'REMOVE');
+    fireEvent.press(deleteButton());
+
+    expect(deleteButton()).toBeDisabled();
+    expect(api.deleteAccount).not.toHaveBeenCalled();
+  });
+
+  it('calls the delete once, even when the button is pressed again while it runs', () => {
+    (api.deleteAccount as jest.Mock).mockReturnValueOnce(new Promise(() => {}));
+    renderModal();
+    typeDelete();
+
+    fireEvent.press(deleteButton());
+    fireEvent.press(deleteButton());
+
+    expect(api.deleteAccount).toHaveBeenCalledTimes(1);
+  });
+
+  it('explains why the word is needed, and types it in capitals without autocorrect', () => {
+    renderModal();
+
+    expect(screen.getByText("This can't be undone, so please type DELETE.")).toBeTruthy();
+    expect(field().props.autoCapitalize).toBe('characters');
+    expect(field().props.autoCorrect).toBe(false);
+  });
+
+  it('clears the typed word each time the sheet opens', () => {
+    const { rerender } = render(<DeleteAccountModal visible onClose={onClose} onDeleted={onDeleted} />);
+    fireEvent.changeText(field(), 'DELETE');
+
+    rerender(<DeleteAccountModal visible={false} onClose={onClose} onDeleted={onDeleted} />);
+    rerender(<DeleteAccountModal visible onClose={onClose} onDeleted={onDeleted} />);
+
+    expect(field().props.value).toBe('');
+    expect(deleteButton()).toBeDisabled();
   });
 });

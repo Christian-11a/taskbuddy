@@ -81,6 +81,7 @@ describe('HOSettingsScreen — delete account', () => {
     fireEvent.press(screen.getByTestId('settings-delete-account-row'));
     expect(api.deleteAccount).not.toHaveBeenCalled();
 
+    fireEvent.changeText(await screen.findByLabelText('Type DELETE to confirm'), 'DELETE');
     fireEvent.press(await screen.findByRole('button', { name: 'Delete my account' }));
 
     await waitFor(() => expect(onLogout).toHaveBeenCalledTimes(1));

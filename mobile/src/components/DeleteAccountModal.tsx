@@ -7,8 +7,9 @@
  *
  * Two states, because the backend has two answers:
  *
- * - **confirm** — what deletion actually does, before it happens. Nothing is
- *   sent until "Delete my account" is pressed.
+ * - **confirm** — what deletion actually does, before it happens. The word DELETE
+ *   must be typed first, so a stray tap on the red button cannot delete anything,
+ *   and nothing is sent until "Delete my account" is pressed.
  * - **blocked** — the 409. The API lists *every* outstanding obligation at
  *   once, so they are all rendered together; a user who has both a balance and
  *   a live job should not have to delete twice to learn that. Nothing is deleted.
@@ -23,7 +24,7 @@
  */
 
 import { useThemedStyles, type Palette as ThemePalette } from '../context/ThemeContext';
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   ScrollView,
@@ -33,10 +34,19 @@ import {
 } from 'react-native';
 import Tap from './ui/Tap';
 import SheetFrame from './ui/SheetFrame';
+import TextField from './ui/TextField';
 import { Trash2 } from 'lucide-react-native';
 import { api, deletionBlockersFrom, type DeletionBlocker } from '../lib/api';
 
 const LINK_HIT_SLOP = { top: 15, bottom: 15, left: 8, right: 8 } as const;
+
+/** The word the person types before the account can be deleted. */
+export const CONFIRM_WORD = 'DELETE';
+
+/** True when the typed text is the confirm word, ignoring case and the spaces around it. */
+export function confirmsDeletion(typed: string): boolean {
+  return typed.trim().toUpperCase() === CONFIRM_WORD;
+}
 
 const WHAT_HAPPENS = [
   "Your account is closed right away and you're signed out.",
@@ -60,14 +70,26 @@ export default function DeleteAccountModal({
   const [deleting, setDeleting] = useState(false);
   const [blockers, setBlockers] = useState<DeletionBlocker[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [typed, setTyped] = useState('');
+  // Set before the request starts, so a second press before the re-render cannot send another.
+  const inFlight = useRef(false);
+  const confirmed = confirmsDeletion(typed);
+
+  // Each time the sheet opens, the word has to be typed again.
+  useEffect(() => {
+    if (visible) setTyped('');
+  }, [visible]);
 
   const close = () => {
     setBlockers([]);
     setError(null);
+    setTyped('');
     onClose();
   };
 
   const confirmDelete = async () => {
+    if (inFlight.current || !confirmsDeletion(typed)) return;
+    inFlight.current = true;
     setDeleting(true);
     setError(null);
     try {
@@ -82,6 +104,7 @@ export default function DeleteAccountModal({
         setError(e instanceof Error ? e.message : 'Could not delete the account.');
       }
     } finally {
+      inFlight.current = false;
       setDeleting(false);
     }
   };
@@ -134,15 +157,27 @@ export default function DeleteAccountModal({
               </View>
             ))}
           </View>
+          <View style={styles.confirmField}>
+            <TextField
+              label="Type DELETE to confirm"
+              value={typed}
+              onChangeText={setTyped}
+              helper="This can't be undone, so please type DELETE."
+              autoCapitalize="characters"
+              autoCorrect={false}
+              editable={!deleting}
+              testID="input-delete-account-confirm"
+            />
+          </View>
           {!!error && <Text style={styles.error} accessibilityRole="alert">{error}</Text>}
           <Tap
-            style={[styles.dangerBtn, deleting && styles.disabled]}
+            style={[styles.dangerBtn, (deleting || !confirmed) && styles.disabled]}
             onPress={confirmDelete}
-            disabled={deleting}
+            disabled={deleting || !confirmed}
             activeOpacity={0.85}
             accessibilityRole="button"
             accessibilityLabel="Delete my account"
-            accessibilityState={{ disabled: deleting }}
+            accessibilityState={{ disabled: deleting || !confirmed }}
             testID="btn-delete-account-confirm"
           >
             {deleting ? (
@@ -182,6 +217,7 @@ function createThemedStyles(theme: ThemePalette) {
     body: { color: C.ink500, fontSize: 14.5, fontFamily: 'Inter', lineHeight: 20, marginTop: 10 },
 
     list: { gap: 10, marginTop: 12, marginBottom: 16 },
+    confirmField: { marginBottom: 16 },
     listScroll: { maxHeight: 220, marginTop: 12, marginBottom: 4 },
     bulletRow: { flexDirection: 'row', gap: 8 },
     bullet: { color: C.ink500, fontSize: 15, fontFamily: 'Inter', lineHeight: 21 },
