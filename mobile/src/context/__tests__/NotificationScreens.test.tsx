@@ -1,5 +1,6 @@
 import { findUnnamedControls } from '../../testing/a11yAudit';
 import React from 'react';
+import { Ban, ShieldAlert, UserPlus } from 'lucide-react-native';
 import { render, screen, fireEvent, act } from '@testing-library/react-native';
 import HONotificationsScreen from '../../../app/(homeowner)/screens/HONotificationsScreen';
 import SPNotificationsScreen from '../../../app/(provider)/screens/SPNotificationsScreen';
@@ -215,5 +216,26 @@ it.each([HONotificationsScreen, SPNotificationsScreen])(
     render(<Screen {...callbacks} />);
     expect(await screen.findByText('New message')).toBeTruthy();
     expect(findUnnamedControls(screen.UNSAFE_root)).toEqual([]);
+  },
+);
+
+it.each([HONotificationsScreen, SPNotificationsScreen])(
+  'shows the icon for what happened: an applicant for a new application, a ban for a cancellation, never the alert shield',
+  (Screen) => {
+    setNotifications([
+      { ...row, id: 'n3', type: 'application_update', title: 'New application', body: 'Ana applied to "Fix sink".', data: { job_id: 'j1' } },
+      {
+        ...row,
+        id: 'n4',
+        type: 'dispute_update',
+        title: 'Cancellation agreed',
+        body: 'Cancellation agreed. Any unsettled escrow was refunded to the client.',
+        data: { job_id: 'j1', dispute_id: 'd1' },
+      },
+    ]);
+    render(<Screen {...callbacks} />);
+    expect(screen.UNSAFE_getByType(UserPlus)).toBeTruthy();
+    expect(screen.UNSAFE_getByType(Ban)).toBeTruthy();
+    expect(screen.UNSAFE_queryByType(ShieldAlert)).toBeNull();
   },
 );

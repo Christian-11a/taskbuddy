@@ -13,20 +13,8 @@ import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import Tap from '../../../src/components/ui/Tap';
 import ContentSkeleton from '../../../src/components/ui/ContentSkeleton';
 import EmptyRow from '../../../src/components/ui/EmptyRow';
-import NotificationCard from '../../../src/components/ui/NotificationCard';
-import {
-  ArrowLeft,
-  BadgeCheck,
-  BellRing,
-  BriefcaseBusiness,
-  CircleCheckBig,
-  ClipboardList,
-  type LucideIcon,
-  Megaphone,
-  MessageCircle,
-  ShieldAlert,
-  Wallet,
-} from 'lucide-react-native';
+import NotificationCard, { NOTIFICATION_ICONS } from '../../../src/components/ui/NotificationCard';
+import { ArrowLeft, BellRing } from 'lucide-react-native';
 import ConfirmationModal from '../../../src/components/ConfirmationModal';
 import { useNotificationDeletion } from '../../../src/hooks/useNotificationDeletion';
 import { Spacing } from '../../../src/constants/theme';
@@ -37,7 +25,7 @@ import { showToast } from '../../../src/components/Toast';
 import { api } from '../../../src/lib/api';
 import { timeAgo } from '../../../src/lib/format';
 import { resolveNotificationTarget } from '../../../src/lib/notificationRouting';
-import { groupNotificationsByDay, notificationTone } from '../../../src/lib/notificationPresentation';
+import { groupNotificationsByDay, notificationIconName, notificationTone } from '../../../src/lib/notificationPresentation';
 
 interface NotificationRow {
   id: string;
@@ -49,17 +37,6 @@ interface NotificationRow {
   /** Recommendation invites and job/application updates carry the job they are about. */
   data: { job_id?: string } | null;
 }
-
-const ICON_BY_TYPE: Record<string, LucideIcon> = {
-  recommendation_invite: BriefcaseBusiness,
-  application_update: CircleCheckBig,
-  job_update: ClipboardList,
-  message: MessageCircle,
-  verification_update: BadgeCheck,
-  wallet_update: Wallet,
-  payment_update: Wallet,
-  announcement: Megaphone,
-};
 
 // The header back button is 38 dp; the extra 5 dp on each side reaches 48.
 const BACK_HIT_SLOP = { top: 5, bottom: 5, left: 5, right: 5 } as const;
@@ -104,10 +81,10 @@ export default function SPNotificationsScreen({ onBack, onOpenJob, onOpenChat, o
 
   const renderRow = (notif: NotificationRow) => {
     // The same resolver that decides where a tap goes tells chat and complaint
-    // notifications apart from job updates; a problem outcome wears the alert icon.
+    // notifications apart from job updates; the icon follows what happened.
     const kind = resolveNotificationTarget('provider', notif.data ?? {}).kind;
     const tone = notificationTone({ title: notif.title, body: notif.body, type: notif.type });
-    const Icon = tone === 'danger' ? ShieldAlert : kind === 'chat' ? MessageCircle : kind === 'dispute' ? ShieldAlert : ICON_BY_TYPE[notif.type] ?? BriefcaseBusiness;
+    const icon = NOTIFICATION_ICONS[notificationIconName({ type: notif.type, title: notif.title, body: notif.body, kind, tone })];
     return (
       <NotificationCard
         key={notif.id}
@@ -115,7 +92,7 @@ export default function SPNotificationsScreen({ onBack, onOpenJob, onOpenChat, o
         body={notif.body}
         time={timeAgo(notif.created_at)}
         tone={tone}
-        icon={Icon}
+        icon={icon}
         unread={!notif.read_at}
         onPress={() => openNotification(notif)}
         onDelete={() => deletion.removeWithUndo(notif.id)}

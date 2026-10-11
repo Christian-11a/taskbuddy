@@ -1,8 +1,11 @@
 import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
-import { type LucideIcon, Trash2 } from 'lucide-react-native';
+import {
+  Ban, BadgeCheck, BellRing, BriefcaseBusiness, CircleCheckBig, CircleX, ClipboardList,
+  type LucideIcon, Megaphone, MessageCircle, ShieldAlert, Trash2, UserPlus, Wallet,
+} from 'lucide-react-native';
 import { useThemedStyles, type Palette } from '../../context/ThemeContext';
-import type { NotificationTone } from '../../lib/notificationPresentation';
+import type { NotificationIconName, NotificationTone } from '../../lib/notificationPresentation';
 import Tap from './Tap';
 
 export type NotificationCardProps = {
@@ -16,6 +19,12 @@ export type NotificationCardProps = {
   pending?: boolean;
   onPress: () => void;
   onDelete: () => void;
+};
+
+/** The Lucide icon for each name notificationIconName returns. Both screens share this map. */
+export const NOTIFICATION_ICONS: Record<NotificationIconName, LucideIcon> = {
+  Ban, BadgeCheck, BellRing, BriefcaseBusiness, CircleCheckBig, CircleX, ClipboardList,
+  Megaphone, MessageCircle, ShieldAlert, UserPlus, Wallet,
 };
 
 /**
