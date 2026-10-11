@@ -48,6 +48,7 @@ import {
   validateCity,
   validateFullName,
   validatePhone,
+  validateServiceRadius,
 } from '../../../src/lib/inputRules';
 
 interface SPEditProfileScreenProps {
@@ -122,6 +123,8 @@ export default function SPEditProfileScreen({ onBack, onSave, onManageServices }
     }) ?? undefined
     : undefined;
   const cityError = changed.includes('city') ? validateCity(city) ?? undefined : undefined;
+  // The backend keeps the radius between 0.5 and 1000 km. A stored radius left alone is not re-checked.
+  const radiusError = changed.includes('radius') ? validateServiceRadius(radius) ?? undefined : undefined;
   const serviceError = categoryId ? undefined : 'Please select the service you offer.';
   const bioError = bio.trim().length < 20 ? 'Bio must be at least 20 characters.' : undefined;
 
@@ -136,7 +139,7 @@ export default function SPEditProfileScreen({ onBack, onSave, onManageServices }
   const requestSave = () => {
     setError(null);
     setSubmitted(true);
-    if (nameError || phoneError || addressError || cityError || serviceError || bioError) return;
+    if (nameError || phoneError || addressError || cityError || radiusError || serviceError || bioError) return;
     setShowSaveConfirmation(true);
   };
 
@@ -275,6 +278,8 @@ export default function SPEditProfileScreen({ onBack, onSave, onManageServices }
             placeholder="8"
             keyboardType="number-pad"
             keyboardAppearance={appearance}
+            error={radiusError}
+            submitted={submitted}
           />
 
           <View style={styles.serviceGroup}>

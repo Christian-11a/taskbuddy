@@ -350,3 +350,47 @@ describe('homeowner edit profile address', () => {
     expect(api.updateProfile).toHaveBeenCalledWith(expect.objectContaining({ address: '' }));
   });
 });
+
+const RADIUS_RANGE = 'Enter a service radius from 0.5 to 1000 km';
+const radiusField = () => screen.getByLabelText('Service radius (km)');
+
+describe('provider edit profile service radius', () => {
+  it('refuses a radius below 0.5 km, and says why, without saving', async () => {
+    await renderEditor('provider');
+    fireEvent.changeText(radiusField(), '0');
+
+    fireEvent.press(screen.getByLabelText('Save changes'));
+
+    expect(screen.getByText(RADIUS_RANGE)).toBeTruthy();
+    expect(api.updateProfile).not.toHaveBeenCalled();
+    expect(api.upsertProviderProfile).not.toHaveBeenCalled();
+  });
+
+  it('refuses a radius above 1000 km', async () => {
+    await renderEditor('provider');
+    fireEvent.changeText(radiusField(), '1500');
+
+    fireEvent.press(screen.getByLabelText('Save changes'));
+
+    expect(screen.getByText(RADIUS_RANGE)).toBeTruthy();
+    expect(api.upsertProviderProfile).not.toHaveBeenCalled();
+  });
+
+  it('sends a radius inside the range as a number', async () => {
+    await renderEditor('provider');
+    fireEvent.changeText(radiusField(), '8');
+
+    await saveAndConfirm();
+
+    expect(api.upsertProviderProfile).toHaveBeenCalledWith(expect.objectContaining({ service_radius_km: 8 }));
+  });
+
+  it('keeps the stored radius when the field is left alone', async () => {
+    await renderEditor('provider');
+    fireEvent.changeText(screen.getByLabelText('Full name'), 'Alex Reyes');
+
+    await saveAndConfirm();
+
+    expect(api.upsertProviderProfile).toHaveBeenCalledWith(expect.objectContaining({ service_radius_km: 25 }));
+  });
+});
