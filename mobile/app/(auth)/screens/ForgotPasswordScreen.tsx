@@ -45,7 +45,7 @@ import { formatCooldown, maskEmail } from '../../../src/components/auth/resetCod
 import { V6Radii, V6Shadows } from '../../../src/constants/theme';
 import { useAuth } from '../../../src/context/AuthContext';
 import { api } from '../../../src/lib/api';
-import { validateEmail, validateOtpCode, validatePasswordRules } from '../../../src/lib/inputRules';
+import { EMAIL_MAX, validateEmail, validateOtpCode, validatePasswordRules } from '../../../src/lib/inputRules';
 import { useAuthLayout } from '../../../src/hooks/useAuthLayout';
 
 const RESEND_COOLDOWN_S = 60;
@@ -187,6 +187,7 @@ export default function ForgotPasswordScreen({ onBackToLogin }: ForgotPasswordSc
         error={emailError}
         keyboardType="email-address"
         autoComplete="email"
+        maxLength={EMAIL_MAX}
         editable={!busy}
         returnKeyType="send"
         onSubmitEditing={() => void sendCode()}

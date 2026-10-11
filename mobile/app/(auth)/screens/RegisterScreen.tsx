@@ -51,6 +51,8 @@ import AuthStepHeader from '../../../src/components/auth/AuthStepHeader';
 import RoleChoiceCard from '../../../src/components/auth/RoleChoiceCard';
 import { useAuthLayout } from '../../../src/hooks/useAuthLayout';
 import {
+  EMAIL_MAX,
+  FULL_NAME_MAX,
   normalizeName,
   sanitizeOtp,
   validateEmail,
@@ -104,6 +106,8 @@ interface InputProps {
   onChangeText: (v: string) => void;
   secureTextEntry?: boolean;
   keyboardType?: 'default' | 'email-address';
+  /** The most characters the field takes; the limit the rule checks against. */
+  maxLength?: number;
   error?: string;
   /**
    * Test hook only — inert, same as ConsentCheckbox's. Needed because the two
@@ -121,7 +125,7 @@ interface InputProps {
 /** One form field in the shared AuthField style; `onLayout` keeps the scroll-to-error position. */
 function FormInput({
   label, required, placeholder, value, onChangeText,
-  secureTextEntry, keyboardType, error, testID, onLayout, onBlur, autoCapitalize = 'none',
+  secureTextEntry, keyboardType, maxLength, error, testID, onLayout, onBlur, autoCapitalize = 'none',
 }: InputProps) {
   return (
     <View onLayout={onLayout} style={{ marginBottom: 16 }}>
@@ -134,6 +138,7 @@ function FormInput({
         onChangeText={onChangeText}
         secure={secureTextEntry}
         keyboardType={keyboardType}
+        maxLength={maxLength}
         autoCapitalize={autoCapitalize}
         onBlur={onBlur}
         onSubmitEditing={Keyboard.dismiss}
@@ -571,6 +576,7 @@ export default function RegisterScreen({ onRegister, onLogin, onGoogleSignIn }: 
               value={name}
               onChangeText={(v) => { setName(v); clearError('name'); }}
               autoCapitalize="words"
+              maxLength={FULL_NAME_MAX}
               onBlur={() => setFieldErrors((prev) => ({ ...prev, name: validateFullName(name) ?? undefined }))}
               onLayout={locateField('name')}
               error={fieldErrors.name}
@@ -583,6 +589,7 @@ export default function RegisterScreen({ onRegister, onLogin, onGoogleSignIn }: 
               value={email}
               onChangeText={(v) => { setEmail(v); clearError('email'); setEmailTaken(false); }}
               keyboardType="email-address"
+              maxLength={EMAIL_MAX}
               onBlur={() => {
                 if (!emailTaken) setFieldErrors((prev) => ({ ...prev, email: validateEmail(email) ?? undefined }));
               }}

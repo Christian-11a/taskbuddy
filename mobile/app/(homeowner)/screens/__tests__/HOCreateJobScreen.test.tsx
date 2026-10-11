@@ -369,6 +369,14 @@ describe('HOCreateJobScreen — fields are checked against the backend limits', 
     expect(screen.queryByText('Pick a date')).toBeNull();
   });
 
+  it('stops the job address at 300 characters, the most the geocoder is asked to take', async () => {
+    (api.categories as jest.Mock).mockResolvedValue([{ id: 1, name: 'Plumbing' }]);
+    render(<HOCreateJobScreen initialCategoryId={1} onBack={jest.fn()} onSuccess={jest.fn()} />);
+    await screen.findByText('Location confirmed');
+
+    expect(screen.getByTestId('create-job-address').props.maxLength).toBe(300);
+  });
+
   it('allows up to 20 tasks and says so when a 21st is typed', async () => {
     await openTasksStep();
     for (let i = 1; i <= 20; i++) addOwnTask(`Own task ${i}`);

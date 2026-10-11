@@ -41,6 +41,14 @@ function boxAt(index: number) {
   return screen.getByTestId(`reset-code-box-${index}`);
 }
 
+describe('ForgotPasswordScreen — the email limit', () => {
+  it('stops the email at 254 characters, the longest a real address can be', () => {
+    render(<ForgotPasswordScreen onBackToLogin={jest.fn()} />);
+
+    expect(screen.getByLabelText('Email').props.maxLength).toBe(254);
+  });
+});
+
 describe('ForgotPasswordScreen — requesting the code', () => {
   it('sends the trimmed address, then asks for the code with the address masked', async () => {
     render(<ForgotPasswordScreen onBackToLogin={jest.fn()} />);

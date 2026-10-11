@@ -21,15 +21,17 @@ jest.mock('../../components/AddressField', () => {
     onResolve,
     onBlur,
     error,
+    maxLength,
   }: {
     value: string;
     onChangeText: (value: string) => void;
     onResolve: (value: unknown) => void;
     onBlur?: () => void;
     error?: string;
+    maxLength?: number;
   }) => (
     <>
-      <TextInput testID="address" value={value} onChangeText={onChangeText} onBlur={onBlur} />
+      <TextInput testID="address" value={value} onChangeText={onChangeText} onBlur={onBlur} maxLength={maxLength} />
       {!!error && <Text accessibilityLiveRegion="polite">{error}</Text>}
       <Text
         onPress={() => {
@@ -400,6 +402,23 @@ describe('provider edit profile service radius', () => {
     await saveAndConfirm();
 
     expect(api.upsertProviderProfile).toHaveBeenCalledWith(expect.objectContaining({ service_radius_km: 25 }));
+  });
+});
+
+describe.each<Role>(ROLES)('%s edit profile field limits', (role) => {
+  it('stops the full name at 120 characters', async () => {
+    await renderEditor(role);
+    expect(screen.getByLabelText('Full name').props.maxLength).toBe(120);
+  });
+
+  it('stops the city at 80 characters', async () => {
+    await renderEditor(role);
+    expect(screen.getByLabelText('City').props.maxLength).toBe(80);
+  });
+
+  it('stops the address at 200 characters', async () => {
+    await renderEditor(role);
+    expect(screen.getByTestId('address').props.maxLength).toBe(200);
   });
 });
 

@@ -35,6 +35,22 @@ function Harness() {
     </>
   );
 }
+describe('AddressField limit', () => {
+  it('passes the maxLength to the input, so the field stops at the limit', () => {
+    render(
+      <AddressField
+        testID="limited-address"
+        value=""
+        onChangeText={jest.fn()}
+        onResolve={jest.fn()}
+        maxLength={200}
+      />,
+    );
+
+    expect(screen.getByTestId('limited-address').props.maxLength).toBe(200);
+  });
+});
+
 beforeEach(() => {
   jest.useFakeTimers();
   jest.clearAllMocks();

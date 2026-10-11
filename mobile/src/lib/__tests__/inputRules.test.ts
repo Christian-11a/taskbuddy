@@ -1,4 +1,8 @@
 import {
+  ADDRESS_MAX,
+  CITY_MAX,
+  EMAIL_MAX,
+  FULL_NAME_MAX,
   OTP_LENGTH,
   PASSWORD_MIN_LENGTH,
   PHONE_INPUT_MAX_LENGTH,
@@ -19,6 +23,27 @@ import {
 
 const PHONE_FORMAT = 'Enter an 11-digit mobile number starting with 09, e.g. 09171234567';
 const NAME_CHARACTERS = 'Full name can only use letters, spaces, hyphens, apostrophes and periods';
+
+/** The limits the fields hold as maxLength, and the rules check against the same numbers. */
+describe('the field limits', () => {
+  it('are the backend limits: email 254, full name 120, city 80, address 200', () => {
+    expect(EMAIL_MAX).toBe(254);
+    expect(FULL_NAME_MAX).toBe(120);
+    expect(CITY_MAX).toBe(80);
+    expect(ADDRESS_MAX).toBe(200);
+  });
+
+  it('give the same messages as the rules at the limit and one past it', () => {
+    expect(validateFullName('a'.repeat(FULL_NAME_MAX))).toBeNull();
+    expect(validateFullName('a'.repeat(FULL_NAME_MAX + 1))).toBe('Full name must be 120 characters or fewer');
+    expect(validateCity('a'.repeat(CITY_MAX))).toBeNull();
+    expect(validateCity('a'.repeat(CITY_MAX + 1))).toBe('City must be 80 characters or fewer');
+    expect(validateAddress('a'.repeat(ADDRESS_MAX))).toBeNull();
+    expect(validateAddress('a'.repeat(ADDRESS_MAX + 1))).toBe('Address must be 200 characters or fewer');
+    expect(validateEmail(`${'a'.repeat(64)}@example.com`)).toBeNull();
+    expect(validateEmail(`${'a'.repeat(250)}@x.co`)).toBe('Enter a valid email address');
+  });
+});
 
 describe('sanitizePhone', () => {
   it.each([

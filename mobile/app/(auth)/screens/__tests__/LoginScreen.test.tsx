@@ -16,6 +16,14 @@ function renderLogin(overrides: Partial<Props> = {}) {
   return props;
 }
 
+describe('LoginScreen email limit', () => {
+  it('stops the email at 254 characters, the longest a real address can be', () => {
+    renderLogin();
+
+    expect(screen.getByLabelText('Email').props.maxLength).toBe(254);
+  });
+});
+
 describe('LoginScreen', () => {
   it('shows the welcome line and the email and password fields', () => {
     renderLogin();

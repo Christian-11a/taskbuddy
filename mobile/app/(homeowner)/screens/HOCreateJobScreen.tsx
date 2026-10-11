@@ -109,6 +109,7 @@ import AddTaskRow from '../../../src/components/post/AddTaskRow';
 import UrgencyRow from '../../../src/components/post/UrgencyRow';
 import {
   DESCRIPTION_MAX,
+  LOCATION_MAX,
   TASKS_MAX,
   TASK_MAX,
   combineDateAndTime,
@@ -780,6 +781,7 @@ export default function HOCreateJobScreen({
               <AddressField
                 testID="create-job-address"
                 value={location}
+                maxLength={LOCATION_MAX}
                 onChangeText={setLocation}
                 onResolve={handleResolvedAddress}
                 onFocus={() => { addressFocused.current = true; }}

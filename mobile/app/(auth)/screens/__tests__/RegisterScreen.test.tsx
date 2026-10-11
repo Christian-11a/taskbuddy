@@ -95,6 +95,14 @@ describe('RegisterScreen — required-field asterisks (#15)', () => {
     expect(screen.queryByText(/Skill Category/)).toBeNull();
   });
 
+  it('stops the full name at 120 characters and the email at 254', () => {
+    render(<RegisterScreen {...baseProps} />);
+    fireEvent.press(screen.getByText('Continue'));
+
+    expect(screen.getByTestId('input-name').props.maxLength).toBe(120);
+    expect(screen.getByTestId('input-email').props.maxLength).toBe(254);
+  });
+
   it('also marks Skill Category as required for the provider role', () => {
     render(<RegisterScreen {...baseProps} />);
 

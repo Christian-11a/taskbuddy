@@ -31,6 +31,9 @@ import { useAuth } from '../../../src/context/AuthContext';
 import { api, type GeocodedAddress } from '../../../src/lib/api';
 import { changedFields, leaveMessageFor } from '../../../src/lib/editProfileChanges';
 import {
+  ADDRESS_MAX,
+  CITY_MAX,
+  FULL_NAME_MAX,
   PHONE_INPUT_MAX_LENGTH,
   normalizeName,
   sanitizePhone,
@@ -167,6 +170,7 @@ export default function HOEditProfileScreen({ onBack, onSave }: HOEditProfileScr
             onChangeText={setName}
             placeholder="Your full name"
             autoCapitalize="words"
+            maxLength={FULL_NAME_MAX}
             keyboardAppearance={appearance}
             error={nameError}
             submitted={submitted}
@@ -207,6 +211,7 @@ export default function HOEditProfileScreen({ onBack, onSave }: HOEditProfileScr
               onFocus={keepAddressAboveKeyboard}
               onBlur={() => setAddressTouched(true)}
               placeholder="House no., Barangay, Street"
+              maxLength={ADDRESS_MAX}
               hint="Used as the default for new jobs"
               error={addressTouched || submitted ? addressError : undefined}
               inputStyle={styles.addressInput}
@@ -219,6 +224,7 @@ export default function HOEditProfileScreen({ onBack, onSave }: HOEditProfileScr
             onChangeText={(value) => { setCity(value); setResolvedLocation(null); }}
             placeholder="City / Municipality"
             autoCapitalize="words"
+            maxLength={CITY_MAX}
             keyboardAppearance={appearance}
             error={cityError}
             submitted={submitted}

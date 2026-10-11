@@ -70,6 +70,8 @@ interface Props {
   inputStyle?: object;
   actionVariant?: 'default' | 'primary';
   testID?: string;
+  /** The most characters the field takes; the text is cut there, as a native field does. */
+  maxLength?: number;
   /** Lets the screen scroll the field into view when the keyboard opens. */
   onFocus?: () => void;
   onBlur?: () => void;
@@ -85,6 +87,7 @@ export default function AddressField({
   inputStyle,
   actionVariant = 'default',
   testID,
+  maxLength,
   onFocus,
   onBlur,
 }: Props) {
@@ -243,6 +246,7 @@ export default function AddressField({
           setFocused(false);
           onBlur?.();
         }}
+        maxLength={maxLength}
         autoCorrect={false}
         multiline
       />

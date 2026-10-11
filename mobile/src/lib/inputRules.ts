@@ -48,6 +48,11 @@ export function validatePhone(
 
 // ── Names and cities ──────────────────────────────────────────────────────────
 
+/** The longest full name, the backend's profile bound (1 to 120). Also the field's maxLength. */
+export const FULL_NAME_MAX = 120;
+/** The longest city or municipality the rule takes. Also the field's maxLength. */
+export const CITY_MAX = 80;
+
 /** Trims and collapses runs of whitespace to one space. */
 export function normalizeName(raw: string | null | undefined): string {
   return (raw ?? '').replace(/\s+/g, ' ').trim();
@@ -79,7 +84,7 @@ function checkNameLike(text: string, label: string, min: number, max: number): s
 export function validateFullName(value: string | null | undefined): string | null {
   const name = normalizeName(value);
   if (!name) return 'Enter your full name';
-  return checkNameLike(name, 'Full name', 2, 120);
+  return checkNameLike(name, 'Full name', 2, FULL_NAME_MAX);
 }
 
 /** A city or municipality: optional unless `required`, 2 to 80 characters (short Philippine names such as "Cebu" pass). */
@@ -89,10 +94,13 @@ export function validateCity(
 ): string | null {
   const city = normalizeName(value);
   if (!city) return options.required ? 'Enter your city' : null;
-  return checkNameLike(city, 'City', 2, 80);
+  return checkNameLike(city, 'City', 2, CITY_MAX);
 }
 
 // ── Email ─────────────────────────────────────────────────────────────────────
+
+/** The longest email address: 254 characters, the limit of the address format. Also the field's maxLength. */
+export const EMAIL_MAX = 254;
 
 const EMAIL_PATTERN = /^[A-Za-z0-9!#$%&'*+\/=?^_`{|}~-]+(\.[A-Za-z0-9!#$%&'*+\/=?^_`{|}~-]+)*@([A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?\.)+[A-Za-z]{2,}$/;
 
@@ -106,13 +114,16 @@ export function validateEmail(value: string | null | undefined): string | null {
   const email = normalizeEmail(value);
   if (!email) return 'Enter your email address';
   const localLength = email.indexOf('@');
-  if (email.length > 254 || localLength > 64 || !EMAIL_PATTERN.test(email)) {
+  if (email.length > EMAIL_MAX || localLength > 64 || !EMAIL_PATTERN.test(email)) {
     return 'Enter a valid email address';
   }
   return null;
 }
 
 // ── Address ───────────────────────────────────────────────────────────────────
+
+/** The longest street address the profile takes. Also the field's maxLength. */
+export const ADDRESS_MAX = 200;
 
 /** A street address: 5 to 200 characters after trimming, with at least one letter or number. */
 export function validateAddress(
@@ -122,7 +133,7 @@ export function validateAddress(
   const address = (value ?? '').trim();
   if (!address) return options.required ? (options.requiredMessage ?? 'Enter your address') : null;
   if (address.length < 5) return 'Address must be at least 5 characters';
-  if (address.length > 200) return 'Address must be 200 characters or fewer';
+  if (address.length > ADDRESS_MAX) return 'Address must be 200 characters or fewer';
   if (!LETTER.test(address) && !DIGIT.test(address)) return 'Address must include a letter or number';
   return null;
 }

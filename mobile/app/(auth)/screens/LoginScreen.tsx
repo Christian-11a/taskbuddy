@@ -30,7 +30,7 @@ import GoogleGlyph from '../../../src/components/GoogleGlyph';
 import AuthField from '../../../src/components/auth/AuthField';
 import { V6Radii, V6Shadows } from '../../../src/constants/theme';
 import { useAuthLayout } from '../../../src/hooks/useAuthLayout';
-import { validateEmail } from '../../../src/lib/inputRules';
+import { EMAIL_MAX, validateEmail } from '../../../src/lib/inputRules';
 
 // ─── Props ────────────────────────────────────────────────────────────────────
 interface LoginScreenProps {
@@ -165,6 +165,7 @@ export default function LoginScreen({
         }}
         onBlur={() => setFieldErrors((prev) => ({ ...prev, email: validateEmail(email) ?? undefined }))}
         keyboardType="email-address"
+        maxLength={EMAIL_MAX}
         returnKeyType="next"
         onSubmitEditing={() => passwordRef.current?.focus()}
         error={fieldErrors.email}
