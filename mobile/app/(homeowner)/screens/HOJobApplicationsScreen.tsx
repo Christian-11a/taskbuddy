@@ -18,7 +18,9 @@
  * — the same "the server decides, the app waits" shape as Add Money.
  * Until the server decides a card payment, that proposal waits: its pay
  * options are not offered, and only a status check or an explicit start-over
- * comes back. No other proposal can be paid for meanwhile.
+ * comes back. No other proposal can be paid for meanwhile. The wait is
+ * remembered on this device (src/lib/pendingHirePayments), so leaving this
+ * screen or restarting the app does not offer to pay again.
  *
  * Refusals still surface where they happen: an insufficient wallet (400), a
  * provider who is not verified (409 `provider_not_verified`), or a rate limit
@@ -48,6 +50,13 @@ import { useHeaderTop } from '../../../src/hooks/useHeaderTop';
 import { useAsyncData } from '../../../src/hooks/useAsyncData';
 import { api, type Job, type JobApplication } from '../../../src/lib/api';
 import { openRedirectSession } from '../../../src/lib/appRedirectSession';
+import {
+  clearPendingHirePayment,
+  getPendingHirePayment,
+  loadPendingHirePayments,
+  markPendingHirePayment,
+  type PendingHirePayment,
+} from '../../../src/lib/pendingHirePayments';
 import HirePaymentModal from '../../../src/components/HirePaymentModal';
 import HiredView from '../../../src/components/HiredView';
 import ConfirmationModal from '../../../src/components/ConfirmationModal';
@@ -90,6 +99,10 @@ export default function HOJobApplicationsScreen({
   // A card payment for one proposal that the server has not decided yet. Until it is decided,
   // that proposal cannot be paid for again, and no other proposal can be paid for either.
   const [awaitingConfirmation, setAwaitingConfirmation] = useState<AwaitingConfirmation | null>(null);
+  // The waits this device remembers, read once on mount. Until they are in and the wait has been
+  // taken from them (`hydrated`), no pay action is offered, so a remembered wait is never missed.
+  const [rememberedWaits, setRememberedWaits] = useState<Map<string, PendingHirePayment> | null>(null);
+  const [hydrated, setHydrated] = useState(false);
   const waitingOnAnother = (applicationId: string) =>
     awaitingConfirmation !== null && awaitingConfirmation.applicationId !== applicationId;
   const waitingApp = awaitingConfirmation
@@ -133,7 +146,7 @@ export default function HOJobApplicationsScreen({
   // yet, can be hired from its profile.
   const profileLatest = profileOf ? apps?.find((a) => a.id === profileOf.id) ?? profileOf : null;
   const profileHireable =
-    profileLatest?.status === 'pending' && hiredApp === null && !waitingOnAnother(profileLatest.id);
+    profileLatest?.status === 'pending' && hiredApp === null && hydrated && !waitingOnAnother(profileLatest.id);
 
   // Set once a hire goes through; the hired screen replaces the list until left.
   const [hired, setHired] = useState<HiredState | null>(null);
@@ -170,11 +183,62 @@ export default function HOJobApplicationsScreen({
     const decided = apps.find((a) => a.id === awaitingConfirmation.applicationId);
     if (decided && decided.status !== 'pending' && hireTarget?.id !== decided.id) {
       setAwaitingConfirmation(null);
+      void clearPendingHirePayment(decided.id);
     }
   }, [apps, awaitingConfirmation, hireTarget]);
 
+  // Read what this device remembers about waiting card payments, once, on mount.
+  useEffect(() => {
+    let active = true;
+    void loadPendingHirePayments().then((waits) => {
+      if (active) setRememberedWaits(waits);
+    });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  // Once the proposals and the remembered waits are both in, the most recent wait on one of this
+  // job's pending proposals becomes the screen's wait. Waits on other jobs' proposals are not this screen's.
+  useEffect(() => {
+    if (hydrated || !apps || !rememberedWaits) return;
+    let restored: AwaitingConfirmation | null = null;
+    let restoredAt = 0;
+    for (const app of apps) {
+      const wait = rememberedWaits.get(app.id);
+      if (app.status === 'pending' && wait && (restored === null || wait.startedAt > restoredAt)) {
+        restored = { applicationId: app.id, returnedPaid: wait.returnedPaid };
+        restoredAt = wait.startedAt;
+      }
+    }
+    setAwaitingConfirmation(restored);
+    setHydrated(true);
+  }, [apps, rememberedWaits, hydrated]);
+
+  // A remembered wait whose proposal the server has since decided (hired, declined or withdrawn) is over.
+  useEffect(() => {
+    if (!apps || !rememberedWaits) return;
+    for (const app of apps) {
+      if (app.status !== 'pending' && getPendingHirePayment(app.id) !== null) {
+        void clearPendingHirePayment(app.id);
+      }
+    }
+  }, [apps, rememberedWaits]);
+
+  /** A card payment has started for this proposal: the wait shows here and is remembered on the device. */
+  const beginWait = (applicationId: string, returnedPaid: boolean) => {
+    setAwaitingConfirmation({ applicationId, returnedPaid });
+    return markPendingHirePayment(applicationId, returnedPaid);
+  };
+
+  /** The wait for this proposal is over, here and on the device. */
+  const endWait = (applicationId: string) => {
+    setAwaitingConfirmation(null);
+    return clearPendingHirePayment(applicationId);
+  };
+
   const openHire = async (app: JobApplication) => {
-    if (!jobId || waitingOnAnother(app.id)) return;
+    if (!jobId || !hydrated || waitingOnAnother(app.id)) return;
     setActionError(null);
     setHireMessage(null);
     setBudget(null);
@@ -264,7 +328,7 @@ export default function HOJobApplicationsScreen({
     const status = await awaitHire(app.id);
     reload();
     if (status === 'accepted') {
-      setAwaitingConfirmation(null);
+      void endWait(app.id);
       showHired(app);
       closeHire();
     } else if (status === 'pending') {
@@ -275,7 +339,7 @@ export default function HOJobApplicationsScreen({
         tone: 'info',
       });
     } else {
-      setAwaitingConfirmation(null);
+      void endWait(app.id);
       setHireMessage({
         text: 'Your payment is in your wallet, but the hire could not be completed — this proposal is no longer available.',
         tone: 'error',
@@ -302,8 +366,8 @@ export default function HOJobApplicationsScreen({
       });
       // A checkout now exists, so a payment can be made. From here the proposal
       // waits until the server decides it, whatever the browser reports; only an
-      // explicit cancel ends the wait.
-      setAwaitingConfirmation({ applicationId: hireTarget.id, returnedPaid: false });
+      // explicit cancel ends the wait. The wait is on the device before the browser opens.
+      await beginWait(hireTarget.id, false);
       const result = await openRedirectSession(session.url, appRedirect);
       const outcome =
         result.type === 'success'
@@ -311,13 +375,13 @@ export default function HOJobApplicationsScreen({
           : null;
 
       if (outcome === 'cancelled') {
-        setAwaitingConfirmation(null);
+        await endWait(hireTarget.id);
         setHireMessage({ text: 'Payment was cancelled.', tone: 'info' });
         return;
       }
       // Paid, or the browser was dismissed — which is not proof they didn't
       // pay. Either way only the server knows, so ask it.
-      setAwaitingConfirmation({ applicationId: hireTarget.id, returnedPaid: outcome === 'success' });
+      await beginWait(hireTarget.id, outcome === 'success');
       setHireMessage({ text: 'Confirming your payment…', tone: 'info' });
       await settleCardPayment(hireTarget, outcome === 'success');
     } catch (e) {
@@ -356,7 +420,7 @@ export default function HOJobApplicationsScreen({
 
   /** The person chose to start over, so the pay options come back. */
   const startNewPayment = () => {
-    setAwaitingConfirmation(null);
+    if (awaitingConfirmation) void endWait(awaitingConfirmation.applicationId);
     setHireMessage(null);
   };
 
@@ -383,7 +447,7 @@ export default function HOJobApplicationsScreen({
     const sent = timeAgo(app.applied_at);
     const waitingHere = awaitingConfirmation?.applicationId === app.id;
     const waitingElsewhere = waitingOnAnother(app.id);
-    const actionsDisabled = busyId !== null || !verified || waitingElsewhere;
+    const actionsDisabled = busyId !== null || !verified || waitingElsewhere || !hydrated;
     return (
       <View key={app.id} style={[styles.card, state === 'closed' && styles.cardMuted]}>
         <View style={styles.cardHead}>

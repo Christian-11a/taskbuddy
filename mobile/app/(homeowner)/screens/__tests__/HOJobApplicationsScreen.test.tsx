@@ -7,6 +7,12 @@ import { api, type JobApplication } from '../../../../src/lib/api';
 import { clearAsyncDataCache } from '../../../../src/hooks/useAsyncData';
 import { openRedirectSession } from '../../../../src/lib/appRedirectSession';
 import { showToast } from '../../../../src/components/Toast';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import {
+  PENDING_HIRE_PAYMENT_TTL_MS,
+  PENDING_HIRE_PAYMENTS_KEY,
+  resetPendingHirePaymentsForTests,
+} from '../../../../src/lib/pendingHirePayments';
 
 jest.mock('../../../../src/lib/api', () => ({
   MIN_TOPUP_PHP: 50,
@@ -76,6 +82,12 @@ async function renderScreen(onNavigate: jest.Mock = jest.fn()) {
   await act(async () => {});
 }
 
+/** The waits the device holds, as parsed JSON, or null when nothing is stored. */
+async function storedWaits(): Promise<unknown> {
+  const raw = await AsyncStorage.getItem(PENDING_HIRE_PAYMENTS_KEY);
+  return raw === null ? null : JSON.parse(raw);
+}
+
 beforeEach(() => {
   jest.clearAllMocks();
   clearAsyncDataCache();
@@ -100,6 +112,12 @@ beforeEach(() => {
   (api.createHireCheckoutSession as jest.Mock).mockResolvedValue({ url: 'https://checkout.example/session' });
   (openRedirectSession as jest.Mock).mockResolvedValue({ type: 'cancel' });
   mockJob(1000);
+});
+
+// A card payment's wait is remembered on the device, so each test starts with nothing remembered.
+beforeEach(async () => {
+  await AsyncStorage.clear();
+  await resetPendingHirePaymentsForTests();
 });
 
 describe('HOJobApplicationsScreen: the proposals list', () => {
@@ -803,6 +821,196 @@ describe('HOJobApplicationsScreen: a card payment the server has not confirmed y
 
     await waitFor(() => expect(screen.queryByRole('button', { name: "View Blair Santos's profile" })).toBeNull());
     expect(screen.queryByRole('button', { name: 'Hire Blair Santos' })).toBeNull();
+  });
+});
+
+describe('HOJobApplicationsScreen: a card payment waits across leaving the screen and restarts', () => {
+  const CARD = "Card, ₱1,000.00 on Stripe's secure page";
+  const STILL_CONFIRMING = "We're still confirming your payment. If you already paid, please don't pay again.";
+  const PAID_STILL_PENDING = 'Payment received. Your hire is still being confirmed — check back in a moment.';
+  const WAITING_NOTE = "We're still confirming your payment. Tap Hire to check on it.";
+  const HIRE_ALEX = 'Hire Alex Reyes for this job';
+  const FULL_WAIT_MS = 8 * 1500;
+
+  beforeEach(() => {
+    jest.useFakeTimers();
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  /** Mounts the screen as a new tree, the way the app shows it again after leaving it. */
+  async function mountScreen() {
+    const view = render(<HOJobApplicationsScreen jobId="job-1" onBack={jest.fn()} onNavigate={jest.fn()} />);
+    await act(async () => {});
+    return view;
+  }
+
+  async function passTime(ms: number) {
+    await act(async () => {
+      await jest.advanceTimersByTimeAsync(ms);
+    });
+  }
+
+  /** Hires Alex Reyes by card from the proposals list, and presses Confirm and hire. */
+  async function payByCard() {
+    fireEvent.press(await screen.findByRole('button', { name: HIRE_ALEX, disabled: false }));
+    fireEvent.press(await screen.findByRole('radio', { name: CARD }));
+    fireEvent.press(screen.getByRole('button', { name: 'Continue' }));
+    fireEvent.press(screen.getByRole('button', { name: 'Confirm and hire · ₱1,000.00' }));
+  }
+
+  /** A card payment the browser reports as paid, then the wait the server has not decided yet. */
+  async function startWaitingCardPayment() {
+    (openRedirectSession as jest.Mock).mockResolvedValue({ type: 'success', url: 'taskbuddy://hire?hire=success' });
+    const view = await mountScreen();
+    await payByCard();
+    await passTime(FULL_WAIT_MS);
+    expect(await screen.findByText(STILL_CONFIRMING)).toBeTruthy();
+    return view;
+  }
+
+  it('leaving the screen and coming back keeps the wait: the pay options stay hidden, and no second checkout starts', async () => {
+    const view = await startWaitingCardPayment();
+    view.unmount();
+
+    await mountScreen();
+    fireEvent.press(await screen.findByRole('button', { name: HIRE_ALEX, disabled: false }));
+
+    expect(await screen.findByText(STILL_CONFIRMING)).toBeTruthy();
+    expect(screen.queryByRole('radio')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Continue' })).toBeNull();
+    expect(api.createHireCheckoutSession).toHaveBeenCalledTimes(1);
+    expect(api.acceptApplication).not.toHaveBeenCalled();
+  });
+
+  it('after an app restart the wait is read from the device, keeps what the browser reported, and still offers no pay option', async () => {
+    const view = await startWaitingCardPayment();
+    expect(await storedWaits()).toEqual({ 'app-1': { returnedPaid: true, startedAt: expect.any(Number) } });
+    view.unmount();
+    // A restart: this session's memory is gone, but the device still holds the wait.
+    await resetPendingHirePaymentsForTests();
+
+    await mountScreen();
+    expect(await screen.findByText(WAITING_NOTE)).toBeTruthy();
+    fireEvent.press(await screen.findByRole('button', { name: HIRE_ALEX, disabled: false }));
+    expect(await screen.findByText(STILL_CONFIRMING)).toBeTruthy();
+    expect(screen.queryByRole('radio')).toBeNull();
+
+    fireEvent.press(screen.getByRole('button', { name: 'Check payment status' }));
+    await passTime(FULL_WAIT_MS);
+
+    expect(await screen.findByText(PAID_STILL_PENDING)).toBeTruthy();
+    expect(api.createHireCheckoutSession).toHaveBeenCalledTimes(1);
+    expect(api.acceptApplication).not.toHaveBeenCalled();
+  });
+
+  it('the wait is on the device before the payment page opens', async () => {
+    let onDeviceWhenPageOpened: unknown = 'page not opened';
+    (openRedirectSession as jest.Mock).mockImplementation(async () => {
+      onDeviceWhenPageOpened = await storedWaits();
+      return { type: 'cancel' };
+    });
+    await mountScreen();
+    await payByCard();
+
+    await waitFor(() => expect(onDeviceWhenPageOpened).not.toBe('page not opened'));
+    expect(onDeviceWhenPageOpened).toEqual({ 'app-1': { returnedPaid: false, startedAt: expect.any(Number) } });
+  });
+
+  it('a payment the browser reports as cancelled is not remembered', async () => {
+    (openRedirectSession as jest.Mock).mockResolvedValue({ type: 'success', url: 'taskbuddy://hire?hire=cancelled' });
+    await mountScreen();
+    await payByCard();
+
+    expect(await screen.findByText('Payment was cancelled.')).toBeTruthy();
+    expect(await storedWaits()).toEqual({});
+  });
+
+  it('starting a new payment forgets the device copy too, so after a restart the pay options come back', async () => {
+    const view = await startWaitingCardPayment();
+    fireEvent.press(screen.getByRole('button', { name: 'Start a new payment' }));
+    fireEvent.press(await screen.findByRole('button', { name: 'Yes, start over' }));
+    await waitFor(async () => expect(await storedWaits()).toEqual({}));
+
+    view.unmount();
+    await resetPendingHirePaymentsForTests();
+    await mountScreen();
+    fireEvent.press(await screen.findByRole('button', { name: HIRE_ALEX, disabled: false }));
+
+    expect(await screen.findByRole('radio', { name: CARD })).toBeTruthy();
+    expect(screen.queryByText(STILL_CONFIRMING)).toBeNull();
+  });
+});
+
+describe('HOJobApplicationsScreen: what a remembered wait is checked against when the proposals load', () => {
+  const WALLET = 'Wallet, ₱5,000.00 available';
+  const WAITING_NOTE = "We're still confirming your payment. Tap Hire to check on it.";
+  const STILL_CONFIRMING = "We're still confirming your payment. If you already paid, please don't pay again.";
+  const HIRE_ALEX = 'Hire Alex Reyes for this job';
+
+  it.each([
+    ['accepted', 'Provider hired · Follow the job from Job Details'],
+    ['rejected', 'NOT SELECTED (1)'],
+    ['withdrawn', 'NOT SELECTED (1)'],
+  ] as const)('a wait whose proposal is now %s is forgotten on load, and no wait is shown', async (status, shown) => {
+    await AsyncStorage.setItem(
+      PENDING_HIRE_PAYMENTS_KEY,
+      JSON.stringify({ 'app-1': { returnedPaid: true, startedAt: Date.now() } }),
+    );
+    (api.jobApplications as jest.Mock).mockResolvedValue([application({ id: 'app-1', status })]);
+
+    await renderScreen();
+
+    expect(await screen.findByText(shown)).toBeTruthy();
+    expect(screen.queryByText(WAITING_NOTE)).toBeNull();
+    await waitFor(async () => expect(await storedWaits()).toEqual({}));
+  });
+
+  it('a remembered wait older than 24 hours is ignored: Hire offers the pay options, and the old entry is removed', async () => {
+    await AsyncStorage.setItem(
+      PENDING_HIRE_PAYMENTS_KEY,
+      JSON.stringify({ 'app-1': { returnedPaid: false, startedAt: Date.now() - PENDING_HIRE_PAYMENT_TTL_MS - 1 } }),
+    );
+    await renderScreen();
+
+    fireEvent.press(await screen.findByRole('button', { name: HIRE_ALEX, disabled: false }));
+
+    expect(await screen.findByRole('radio', { name: WALLET })).toBeTruthy();
+    expect(screen.queryByText(STILL_CONFIRMING)).toBeNull();
+    await waitFor(async () => expect(await storedWaits()).toEqual({}));
+  });
+
+  it("a wait on a proposal that is not on this job is not this screen's, does not block Hire, and stays on the device", async () => {
+    await AsyncStorage.setItem(
+      PENDING_HIRE_PAYMENTS_KEY,
+      JSON.stringify({ 'app-9': { returnedPaid: true, startedAt: Date.now() } }),
+    );
+    await renderScreen();
+
+    fireEvent.press(await screen.findByRole('button', { name: HIRE_ALEX, disabled: false }));
+
+    expect(await screen.findByRole('radio', { name: WALLET })).toBeTruthy();
+    expect(screen.queryByText(STILL_CONFIRMING)).toBeNull();
+    expect(await storedWaits()).toEqual({ 'app-9': { returnedPaid: true, startedAt: expect.any(Number) } });
+  });
+
+  it('Hire stays disabled until the remembered waits have been read', async () => {
+    let finishRead: (value: string | null) => void = () => undefined;
+    jest.spyOn(AsyncStorage, 'getItem').mockImplementationOnce(
+      () =>
+        new Promise<string | null>((resolve) => {
+          finishRead = resolve;
+        }),
+    );
+
+    await renderScreen();
+    expect(await screen.findByRole('button', { name: HIRE_ALEX, disabled: true })).toBeTruthy();
+
+    await act(async () => finishRead(null));
+
+    expect(await screen.findByRole('button', { name: HIRE_ALEX, disabled: false })).toBeTruthy();
   });
 });
 
