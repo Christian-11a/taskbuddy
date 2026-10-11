@@ -12,6 +12,7 @@ import React, {
   useCallback,
   useContext,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -33,6 +34,7 @@ import {
   type Session,
 } from '../lib/api';
 import { clearAsyncDataCache } from '../hooks/useAsyncData';
+import { clearPersisted, setCacheAccount } from '../lib/persistentCache';
 import { requestExpoPushRegistration } from '../lib/pushNotifications';
 import { openRedirectSession } from '../lib/appRedirectSession';
 
@@ -91,6 +93,15 @@ async function fetchProfileWithRetry(accessToken: string) {
     }
   }
   throw lastError;
+}
+
+/**
+ * Ends the saved copies of an account that is signing out: nothing more is saved for it, and what is on
+ * the device is removed. Fire and forget, so sign-out is never held up by storage.
+ */
+function forgetSavedAccount(profileId: string | null) {
+  setCacheAccount(null);
+  if (profileId) void clearPersisted(profileId).catch(() => {});
 }
 
 interface AuthContextValue {
@@ -177,6 +188,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const sessionRef = useRef<Session | null>(null);
   const pushTokenRef = useRef<string | null>(null);
   const profileRefreshRevision = useRef(0);
+  // The signed-in profile id, for the paths that end a session from inside an effect set up once.
+  const profileIdRef = useRef<string | null>(null);
+
+  // Read data is saved per account (persistentCache). A layout effect runs before the effects of any
+  // screen in the same commit, so the account is in place when a screen first reads its saved copy.
+  const profileId = profile?.id ?? null;
+  useLayoutEffect(() => {
+    profileIdRef.current = profileId;
+    setCacheAccount(profileId);
+  }, [profileId]);
 
   const persistSession = useCallback(async (next: Session | null) => {
     sessionRef.current = next;
@@ -209,6 +230,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           // the screen that got the 401 shows its own error instead.
           if (!isRejectedSession(err)) return null;
           await persistSession(null);
+          forgetSavedAccount(profileIdRef.current);
           setProfile(null);
           setProviderProfile(null);
           return null;
@@ -581,7 +603,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const clearAuthError = useCallback(() => setAuthError(null), []);
 
   const signOut = useCallback(async () => {
+    // Captured before the profile is cleared below: the saved copies are kept under this id.
+    const leavingProfileId = profileIdRef.current;
     clearAsyncDataCache();
+    forgetSavedAccount(leavingProfileId);
     const token = session?.access_token;
     const pushToken = pushTokenRef.current;
     setProfile(null);
