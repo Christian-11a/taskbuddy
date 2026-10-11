@@ -21,6 +21,7 @@ import { requestAppPermission } from '../../../src/lib/permissions';
 import { useHeaderTop } from '../../../src/hooks/useHeaderTop';
 import PortfolioGallery from '../../../src/components/PortfolioGallery';
 import ConfirmationModal from '../../../src/components/ConfirmationModal';
+import { cleanText, textLength, textUnits } from '../../../src/lib/textRules';
 
 /** Most photos one portfolio holds: the `limit_provider_portfolio` trigger (migration 0044). */
 export const PORTFOLIO_LIMIT = 20;
@@ -54,16 +55,20 @@ export function nextPortfolioPosition(entries: ReadonlyArray<{ position: number 
 /** The details sent with a photo: caption, position and service, in the shape the API takes. */
 export function portfolioDetails(input: { caption: string; categoryId: number | null; position: number }) {
   return {
-    caption: input.caption.trim(),
+    caption: cleanText(input.caption),
     position: input.position,
     category_id: input.categoryId,
   };
 }
 
-/** The first thing missing from a publish, or null when it can go ahead. */
+/**
+ * The first thing missing from a publish, or null when it can go ahead. A caption
+ * of only spaces is no caption, and the cleaned caption must fit the API's 400.
+ */
 export function publishProblem(input: { caption: string; hasPhoto: boolean; editing: boolean }): string | null {
   if (!input.editing && !input.hasPhoto) return 'Choose a photo to publish.';
-  if (!input.caption.trim()) return 'Add a caption to publish this photo.';
+  if (textLength(input.caption) === 0) return 'Add a caption to publish this photo.';
+  if (textUnits(input.caption) > CAPTION_MAX) return `Shorten the caption to ${CAPTION_MAX} characters or fewer.`;
   return null;
 }
 
@@ -253,6 +258,7 @@ export default function SPPortfolioScreen({ onBack }: { onBack: () => void }) {
               helper="Shown under the photo"
               multiline
               maxLength={CAPTION_MAX}
+              counter={`${caption.length} / ${CAPTION_MAX}`}
               editable={!busy}
               keyboardAppearance={appearance}
             />

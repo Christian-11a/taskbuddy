@@ -191,6 +191,39 @@ it('caps the caption at 400 characters', async () => {
   expect(screen.getByLabelText('Caption').props.maxLength).toBe(400);
 });
 
+it('counts the caption as it is typed, out of 400', async () => {
+  render(<SPPortfolioScreen onBack={jest.fn()} />);
+  await screen.findByText('No portfolio photos yet.');
+  const typed = 'Sink repair';
+
+  fireEvent.changeText(screen.getByLabelText('Caption'), typed);
+
+  expect(screen.getByText(`${typed.length} / 400`)).toBeTruthy();
+});
+
+describe('caption rules', () => {
+  it('refuses a caption over 400 characters, and says how to shorten it', () => {
+    expect(publishProblem({ caption: 'x'.repeat(400), hasPhoto: true, editing: false })).toBeNull();
+    expect(publishProblem({ caption: 'x'.repeat(401), hasPhoto: true, editing: false })).toBe(
+      'Shorten the caption to 400 characters or fewer.',
+    );
+  });
+
+  it('treats a caption of only spaces or blank lines as empty', () => {
+    expect(publishProblem({ caption: ' \n\n\t ', hasPhoto: true, editing: false })).toBe(
+      'Add a caption to publish this photo.',
+    );
+  });
+
+  it('sends the caption cleaned: trimmed, with the extra blank lines inside it closed up', () => {
+    expect(portfolioDetails({ caption: '  Sink repair\n\n\n\nDone.  ', categoryId: 1, position: 0 })).toEqual({
+      caption: 'Sink repair\n\nDone.',
+      position: 0,
+      category_id: 1,
+    });
+  });
+});
+
 it('rejects a photo over 10 MB before uploading it', async () => {
   (ImagePicker.launchImageLibraryAsync as jest.Mock).mockResolvedValue({
     canceled: false,

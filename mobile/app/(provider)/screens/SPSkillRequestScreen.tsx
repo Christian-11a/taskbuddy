@@ -33,6 +33,7 @@ import { shortDate } from '../../../src/lib/format';
 import { categoryIcon } from '../../../src/lib/categoryIcon';
 import { showToast } from '../../../src/components/Toast';
 import ConfirmationModal from '../../../src/components/ConfirmationModal';
+import { cleanText, textLength, textUnits } from '../../../src/lib/textRules';
 
 export const REASON_MIN = 10;
 export const REASON_MAX = 500;
@@ -67,8 +68,19 @@ export function requestCopy(serviceName: string | null): string {
 }
 
 /**
+ * What is wrong with the reason, or undefined when it can be sent. The length
+ * is of the cleaned text, so spaces alone are no reason: at least REASON_MIN
+ * characters, and at most REASON_MAX UTF-16 units, the count the API uses.
+ */
+export function reasonProblem(reason: string): string | undefined {
+  if (textLength(reason) < REASON_MIN) return `Tell the admins a little more (at least ${REASON_MIN} characters).`;
+  if (textUnits(reason) > REASON_MAX) return `Keep it to ${REASON_MAX} characters or fewer.`;
+  return undefined;
+}
+
+/**
  * Send is live only for a service the provider does not already offer, with a
- * reason of at least REASON_MIN characters, and while no send is in flight.
+ * reason that passes reasonProblem, and while no send is in flight.
  */
 export function canSendRequest(input: {
   categoryId: number | null;
@@ -79,7 +91,7 @@ export function canSendRequest(input: {
   return (
     !!input.categoryId &&
     !input.offeredIds.has(input.categoryId) &&
-    input.reason.trim().length >= REASON_MIN &&
+    reasonProblem(input.reason) === undefined &&
     !input.submitting
   );
 }
@@ -128,14 +140,15 @@ export default function SPSkillRequestScreen({ onBack }: SPSkillRequestScreenPro
       setError('Choose a service.');
       return;
     }
-    if (reason.trim().length < REASON_MIN) {
-      setError(`Tell the admins a little more (at least ${REASON_MIN} characters).`);
+    const problem = reasonProblem(reason);
+    if (problem) {
+      setError(problem);
       return;
     }
     setSubmitting(true);
     setError(null);
     try {
-      await api.createSkillRequest({ type, category_id: categoryId, reason: reason.trim() });
+      await api.createSkillRequest({ type, category_id: categoryId, reason: cleanText(reason) });
       setCategoryId(null);
       setReason('');
       showToast('Request sent to the admins', 'success');
@@ -274,19 +287,18 @@ export default function SPSkillRequestScreen({ onBack }: SPSkillRequestScreenPro
               })}
             </View>
 
-            <View style={styles.reasonBlock}>
-              <TextField
-                label="Why are you qualified?"
-                value={reason}
-                onChangeText={setReason}
-                placeholder="Years of experience, licences or certificates, past jobs…"
-                multiline
-                maxLength={REASON_MAX}
-                editable={!submitting}
-                keyboardAppearance={appearance}
-              />
-              <Text style={styles.counter}>{`${reason.length} / ${REASON_MAX}`}</Text>
-            </View>
+            <TextField
+              label="Why are you qualified?"
+              value={reason}
+              onChangeText={setReason}
+              placeholder="Years of experience, licences or certificates, past jobs…"
+              multiline
+              maxLength={REASON_MAX}
+              counter={`${reason.length} / ${REASON_MAX}`}
+              error={reasonProblem(reason)}
+              editable={!submitting}
+              keyboardAppearance={appearance}
+            />
 
             <View style={styles.infoBox}>
               <ShieldCheck size={18} color={V6Colors.ink700} />
@@ -417,8 +429,6 @@ function createThemedStyles(theme: ThemePalette) {
     chipOn: { backgroundColor: Colors.primary, borderColor: Colors.primary },
     chipText: { color: C.ink700, fontSize: 14, fontWeight: '600', lineHeight: 18, fontFamily: 'Inter' },
     chipTextOn: { color: Colors.onPrimary, fontWeight: '700' },
-    reasonBlock: { gap: 6 },
-    counter: { color: C.ink500, fontSize: 12, lineHeight: 16, fontFamily: 'Inter' },
     infoBox: {
       flexDirection: 'row', alignItems: 'flex-start', gap: 10,
       padding: 14, borderRadius: 14, backgroundColor: Colors.primaryTonal,

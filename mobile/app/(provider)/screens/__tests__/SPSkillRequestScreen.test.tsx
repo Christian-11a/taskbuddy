@@ -5,6 +5,7 @@ import SPSkillRequestScreen, {
   REASON_MAX,
   REASON_MIN,
   canSendRequest,
+  reasonProblem,
   requestCopy,
   requestIconKind,
 } from '../SPSkillRequestScreen';
@@ -101,6 +102,27 @@ describe('service request rules', () => {
     expect(canSendRequest({ categoryId: null, offeredIds: offered, reason: 'a'.repeat(20), submitting: false })).toBe(false);
     expect(canSendRequest({ categoryId: 3, offeredIds: offered, reason: 'a'.repeat(20), submitting: true })).toBe(false);
   });
+
+  it('does not count spaces as a reason, and stops at the 500 maximum', () => {
+    const offered = new Set([1, 2]);
+    expect(canSendRequest({ categoryId: 3, offeredIds: offered, reason: ' '.repeat(40), submitting: false })).toBe(false);
+    expect(canSendRequest({ categoryId: 3, offeredIds: offered, reason: 'a'.repeat(REASON_MAX), submitting: false })).toBe(true);
+    expect(canSendRequest({ categoryId: 3, offeredIds: offered, reason: 'a'.repeat(REASON_MAX + 1), submitting: false })).toBe(false);
+  });
+});
+
+describe('reasonProblem: the message under the reason box', () => {
+  it('asks for at least 10 characters, in the wording the screen has always used', () => {
+    expect(reasonProblem('')).toBe('Tell the admins a little more (at least 10 characters).');
+    expect(reasonProblem(' '.repeat(12))).toBe('Tell the admins a little more (at least 10 characters).');
+    expect(reasonProblem('a'.repeat(REASON_MIN - 1))).toBe('Tell the admins a little more (at least 10 characters).');
+    expect(reasonProblem('a'.repeat(REASON_MIN))).toBeUndefined();
+  });
+
+  it('refuses more than 500 characters and says how to fix it', () => {
+    expect(reasonProblem('a'.repeat(REASON_MAX))).toBeUndefined();
+    expect(reasonProblem('a'.repeat(REASON_MAX + 1))).toBe('Keep it to 500 characters or fewer.');
+  });
 });
 
 it('shows what clients see now: the main service, approved extras and verification', async () => {
@@ -161,6 +183,34 @@ it('names the chosen service in the request copy and sends the same request fiel
     reason: 'Ten years of plumbing work',
   });
   expect(showToast).toHaveBeenCalledWith('Request sent to the admins', 'success');
+});
+
+it('shows the reason message once the box is left, not while typing', async () => {
+  render(<SPSkillRequestScreen onBack={jest.fn()} />);
+  await screen.findByRole('radio', { name: 'Handyman' });
+  const reason = screen.getByLabelText('Why are you qualified?');
+  fireEvent.changeText(reason, 'Ten years');
+  expect(screen.queryByText('Tell the admins a little more (at least 10 characters).')).toBeNull();
+
+  fireEvent(reason, 'blur');
+
+  expect(screen.getByText('Tell the admins a little more (at least 10 characters).')).toBeTruthy();
+});
+
+it('sends the reason cleaned: trimmed, with the extra blank lines inside it closed up', async () => {
+  render(<SPSkillRequestScreen onBack={jest.fn()} />);
+  await screen.findByRole('radio', { name: 'Handyman' });
+  fireEvent.press(screen.getByRole('radio', { name: 'Handyman' }));
+  fireEvent.changeText(
+    screen.getByLabelText('Why are you qualified?'),
+    '  Ten years of plumbing work.\n\n\n\nLicensed.  ',
+  );
+  await act(async () => fireEvent.press(screen.getByRole('button', { name: 'Send request' })));
+  expect(api.createSkillRequest).toHaveBeenLastCalledWith({
+    type: 'change_primary',
+    category_id: 3,
+    reason: 'Ten years of plumbing work.\n\nLicensed.',
+  });
 });
 
 it('shows the right icon for each past request: check, cross and slash, never a clock for approved', async () => {
