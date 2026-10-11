@@ -83,3 +83,12 @@ describe('GoogleRoleSelectionScreen — the role is confirmed before it is saved
     expect(props.onSelectHomeowner).not.toHaveBeenCalled();
   });
 });
+
+describe('GoogleRoleSelectionScreen — the Google email is shown in full', () => {
+  it('does not cut the email to one line, so a long address wraps onto the next line', () => {
+    const email = 'maria.dela.cruz.santos.family.account@example-company-mail.com';
+    renderScreen({ email });
+
+    expect(screen.getByText(email).props.numberOfLines).toBeUndefined();
+  });
+});

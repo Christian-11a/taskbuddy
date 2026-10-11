@@ -84,7 +84,7 @@ export default function GoogleRoleSelectionScreen({
       >
         <Text style={styles.welcomeLabel}>Welcome to TaskBuddy</Text>
         {email ? (
-          <Text style={styles.emailLabel} numberOfLines={1}>{email}</Text>
+          <Text style={styles.emailLabel}>{email}</Text>
         ) : null}
         <Text style={styles.title} accessibilityRole="header">How will you use TaskBuddy?</Text>
         <Text style={styles.subtitle}>You can't switch later, so pick the one that fits.</Text>
