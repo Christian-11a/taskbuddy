@@ -357,10 +357,28 @@ describe('WithdrawModal — the amount field takes only amounts', () => {
     expect(amountField().props.value).toBe('12.34');
   });
 
-  it('drops a minus sign, so a negative amount cannot be typed', () => {
+  it('refuses a pasted minus sign, so -400 is not read as 400', () => {
     renderSheet();
     fireEvent.changeText(amountField(), '-400');
 
+    expect(amountField().props.value).toBe('');
+  });
+
+  it('refuses a minus sign typed after an amount, and the amount already in the field stays', () => {
+    renderSheet();
+    fireEvent.changeText(amountField(), '400');
+    fireEvent.changeText(amountField(), '-400');
+
+    expect(amountField().props.value).toBe('400');
+  });
+
+  it('refuses a pasted 1e3 or -1000 rather than reading it as 13 or 1000', () => {
+    renderSheet();
+    fireEvent.changeText(amountField(), '400');
+    fireEvent.changeText(amountField(), '1e3');
+    expect(amountField().props.value).toBe('400');
+
+    fireEvent.changeText(amountField(), '-1000');
     expect(amountField().props.value).toBe('400');
   });
 

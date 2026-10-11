@@ -464,12 +464,12 @@ describe('HOWalletScreen — Add money sheet: quick amounts, limits and Continue
     expect(amountField().props.value).toBe('1000.99');
   });
 
-  it('drops a minus sign, so -500 is read as 500', async () => {
+  it('refuses a pasted minus sign, so -500 does not become 500, and Continue stays disabled', async () => {
     await openAddMoney();
     fireEvent.changeText(amountField(), '-500');
 
-    expect(amountField().props.value).toBe('500');
-    expect(isDisabled(continueButton())).toBe(false);
+    expect(amountField().props.value).toBe('');
+    expect(isDisabled(continueButton())).toBe(true);
   });
 
   it('blocks zero, and says the minimum once the field is left', async () => {

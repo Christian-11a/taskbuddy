@@ -119,7 +119,7 @@ import {
   type PostFieldErrors,
   type PostFormValues,
 } from '../../../src/lib/postJobRules';
-import { sanitizeAmountInput } from '../../../src/lib/amountRules';
+import { nextAmountText } from '../../../src/lib/amountRules';
 import { TITLE_MAX, cleanText } from '../../../src/lib/textRules';
 import CheckRow from '../../../src/components/ui/CheckRow';
 import TextField from '../../../src/components/ui/TextField';
@@ -1016,7 +1016,7 @@ export default function HOCreateJobScreen({
                   placeholder="0.00"
                   placeholderTextColor={Colors.muted}
                   value={budget}
-                  onChangeText={(text) => setBudget(sanitizeAmountInput(text))}
+                  onChangeText={(text) => setBudget((previous) => nextAmountText(previous, text))}
                   onFocus={() => setFocusedField('budget')}
                   onBlur={() => { setFocusedField(null); formatBudget(); }}
                   keyboardType="decimal-pad"

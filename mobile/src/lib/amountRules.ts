@@ -1,34 +1,46 @@
 /**
- * Money amounts as they are typed. Three questions, each answered in one place:
- * what an amount field may show while it is typed (sanitizeAmountInput), which
- * number the text stands for (parseAmount), and why an amount is refused
- * (validateAmount).
+ * Money amounts as they are typed or pasted. Three questions, each answered in one place:
+ * what an amount field shows after a change (nextAmountText), which number the text stands
+ * for (parseAmount), and why an amount is refused (validateAmount).
  *
- * Commas are read as thousands separators and dropped, as the screens have
- * always read them. Nothing here sends anything: the screens send the number
- * that parseAmount gives, exactly as they did before.
+ * Commas are read as thousands separators and dropped, as the screens have always read
+ * them. Nothing here sends anything: the screens send the number that parseAmount gives,
+ * exactly as they did before.
  */
 
 /** A peso amount has centavos, and no more than two of them. */
 export const AMOUNT_DECIMALS = 2;
 
+/** Formatting only, dropped from a change: commas, any whitespace, and the peso sign. */
+const FORMATTING = /[,\s₱]/g;
+
 /**
- * What an amount field may show: digits and one dot, at most two decimal places,
- * no leading zeros. Letters, symbols, spaces, commas and any further dots are
- * dropped. "12.345" becomes "12.34", "007" becomes "7" and a leading "." becomes "0.".
+ * What an amount field shows once `incoming` replaces `previous`. Formatting is dropped.
+ * Any other character that is not a digit or a dot (a letter, "-", "+", "e", a symbol)
+ * refuses the whole change, and the field keeps `previous`: a pasted "1e3" is not read as
+ * 13, nor "-1000" as 1000. Digits and the dot are then shaped as an amount: one dot, at
+ * most two decimal places ("12.345" becomes "12.34"), no leading zeros ("007" becomes
+ * "7"), and a leading dot reads as 0 (".5" becomes "0.5").
  */
-export function sanitizeAmountInput(raw: string): string {
+export function nextAmountText(previous: string, incoming: string): string {
+  const digitsAndDot = incoming.replace(FORMATTING, '');
+  if (/[^0-9.]/.test(digitsAndDot)) return previous;
+  return shapeDigits(digitsAndDot);
+}
+
+/** Digits and dots only: keeps the first dot and two decimal places at most, with no leading zeros. */
+function shapeDigits(text: string): string {
   let whole = '';
   let fraction = '';
   let seenDot = false;
-  for (const ch of raw) {
-    if (/[0-9]/.test(ch)) {
+  for (const ch of text) {
+    if (ch !== '.') {
       if (seenDot) {
         if (fraction.length < AMOUNT_DECIMALS) fraction += ch;
       } else {
         whole += ch;
       }
-    } else if (ch === '.' && !seenDot) {
+    } else if (!seenDot) {
       seenDot = true;
     }
   }

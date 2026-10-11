@@ -1,6 +1,13 @@
-import { parseAmount, sanitizeAmountInput, validateAmount } from '../amountRules';
+import { nextAmountText, parseAmount, validateAmount } from '../amountRules';
 
-describe('sanitizeAmountInput: what an amount field shows while it is typed', () => {
+/** Types `text` one character at a time into an empty field, the way a keyboard does. */
+function typeOneByOne(text: string): string {
+  let shown = '';
+  for (const ch of text) shown = nextAmountText(shown, shown + ch);
+  return shown;
+}
+
+describe('nextAmountText: what an amount field shows after a change', () => {
   it.each([
     ['', ''],
     ['0', '0'],
@@ -9,7 +16,7 @@ describe('sanitizeAmountInput: what an amount field shows while it is typed', ()
     ['1500', '1500'],
     ['1234567890', '1234567890'],
   ])('keeps whole digits: %j -> %j', (raw, expected) => {
-    expect(sanitizeAmountInput(raw)).toBe(expected);
+    expect(nextAmountText('', raw)).toBe(expected);
   });
 
   it.each([
@@ -19,7 +26,7 @@ describe('sanitizeAmountInput: what an amount field shows while it is typed', ()
     ['0.99', '0.99'],
     ['1500.00', '1500.00'],
   ])('keeps one dot and up to two decimal places: %j -> %j', (raw, expected) => {
-    expect(sanitizeAmountInput(raw)).toBe(expected);
+    expect(nextAmountText('', raw)).toBe(expected);
   });
 
   it.each([
@@ -28,7 +35,7 @@ describe('sanitizeAmountInput: what an amount field shows while it is typed', ()
     ['0.999', '0.99'],
     ['1.2345678', '1.23'],
   ])('cuts a third decimal place instead of rounding it: %j -> %j', (raw, expected) => {
-    expect(sanitizeAmountInput(raw)).toBe(expected);
+    expect(nextAmountText('', raw)).toBe(expected);
   });
 
   it.each([
@@ -37,7 +44,7 @@ describe('sanitizeAmountInput: what an amount field shows while it is typed', ()
     ['..5', '0.5'],
     ['1.2.', '1.2'],
   ])('keeps only the first dot and carries on with the digits: %j -> %j', (raw, expected) => {
-    expect(sanitizeAmountInput(raw)).toBe(expected);
+    expect(nextAmountText('', raw)).toBe(expected);
   });
 
   it.each([
@@ -46,7 +53,7 @@ describe('sanitizeAmountInput: what an amount field shows while it is typed', ()
     ['.55', '0.55'],
     ['.555', '0.55'],
   ])('makes a leading dot read as 0.: %j -> %j', (raw, expected) => {
-    expect(sanitizeAmountInput(raw)).toBe(expected);
+    expect(nextAmountText('', raw)).toBe(expected);
   });
 
   it.each([
@@ -59,7 +66,7 @@ describe('sanitizeAmountInput: what an amount field shows while it is typed', ()
     ['00.5', '0.5'],
     ['010.10', '10.10'],
   ])('drops leading zeros but keeps one zero before a dot: %j -> %j', (raw, expected) => {
-    expect(sanitizeAmountInput(raw)).toBe(expected);
+    expect(nextAmountText('', raw)).toBe(expected);
   });
 
   it.each([
@@ -67,48 +74,53 @@ describe('sanitizeAmountInput: what an amount field shows while it is typed', ()
     ['1,000.50', '1000.50'],
     ['1,000,000', '1000000'],
   ])('drops thousands commas: %j -> %j', (raw, expected) => {
-    expect(sanitizeAmountInput(raw)).toBe(expected);
+    expect(nextAmountText('', raw)).toBe(expected);
   });
 
   it.each([
-    ['abc', ''],
-    ['a1b2', '12'],
-    ['1e5', '15'],
     ['1 000', '1000'],
     ['  12  ', '12'],
     ['\t7\n', '7'],
-  ])('drops letters and spaces: %j -> %j', (raw, expected) => {
-    expect(sanitizeAmountInput(raw)).toBe(expected);
+    ['₱500', '500'],
+    ['₱ 250', '250'],
+  ])('drops only spaces, line breaks and the peso sign: %j -> %j', (raw, expected) => {
+    expect(nextAmountText('', raw)).toBe(expected);
   });
 
   it.each([
-    ['₱500', '500'],
-    ['-5', '5'],
-    ['5-', '5'],
-    ['$1.00', '1.00'],
-    ['5%', '5'],
-    ['+5', '5'],
-    ['(5)', '5'],
-    ['5/5', '55'],
-    ['1_000', '1000'],
-  ])('drops symbols and signs: %j -> %j', (raw, expected) => {
-    expect(sanitizeAmountInput(raw)).toBe(expected);
-  });
-
-  it('drops digits written in other scripts, which the amount cannot use', () => {
-    expect(sanitizeAmountInput('١٢')).toBe('');
+    ['', 'abc'],
+    ['12', '12a'],
+    ['', 'a1b2'],
+    ['', '1e5'],
+    ['', '1e3'],
+    ['250', '1e3'],
+    ['', '-1000'],
+    ['250', '-1000'],
+    ['', '-5'],
+    ['', '5-'],
+    ['', '+5'],
+    ['', '$1.00'],
+    ['', '5%'],
+    ['', '(5)'],
+    ['', '5/5'],
+    ['', '1_000'],
+    ['', '١٢'],
+  ])('over %j, a change to %j is refused and the field keeps its value', (previous, incoming) => {
+    expect(nextAmountText(previous, incoming)).toBe(previous);
   });
 
   it('types one character at a time to the same result as the whole text', () => {
-    let shown = '';
-    for (const ch of '12.345') shown = sanitizeAmountInput(shown + ch);
-    expect(shown).toBe('12.34');
+    expect(typeOneByOne('12.345')).toBe('12.34');
   });
 
   it('turns a letter-only entry into an empty field', () => {
-    let shown = '';
-    for (const ch of 'hello') shown = sanitizeAmountInput(shown + ch);
-    expect(shown).toBe('');
+    expect(typeOneByOne('hello')).toBe('');
+  });
+
+  it('refuses a typed minus sign, and a second dot adds nothing to the amount', () => {
+    expect(typeOneByOne('-5')).toBe('5');
+    expect(typeOneByOne('5-')).toBe('5');
+    expect(typeOneByOne('5..')).toBe('5.');
   });
 });
 
@@ -219,7 +231,7 @@ describe('validateAmount: why an amount is refused', () => {
   });
 
   it('cuts 49.99999 to 49.99 while typing, which is then below the top-up minimum', () => {
-    expect(validateAmount(sanitizeAmountInput('49.99999'), topUp)).toBe('Minimum is ₱50');
+    expect(validateAmount(nextAmountText('', '49.99999'), topUp)).toBe('Minimum is ₱50');
   });
 
   it('accepts exactly the top-up maximum and refuses one centavo more', () => {

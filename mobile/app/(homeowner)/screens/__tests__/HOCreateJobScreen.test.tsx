@@ -342,6 +342,18 @@ describe('HOCreateJobScreen — fields are checked against the backend limits', 
     expect(budget().props.value).toBe('1500.99');
   });
 
+  it('a pasted 1e3 or -1000 leaves the budget as it was, instead of 13 or 1000', async () => {
+    await openBudgetStep();
+    const budget = () => screen.getByPlaceholderText('0.00');
+
+    fireEvent.changeText(budget(), '1500');
+    fireEvent.changeText(budget(), '1e3');
+    expect(budget().props.value).toBe('1500');
+
+    fireEvent.changeText(budget(), '-1000');
+    expect(budget().props.value).toBe('1500');
+  });
+
   it('refuses a budget above the ₱100,000 a card can pay once Next is pressed', async () => {
     await openBudgetStep();
     fireEvent.press(screen.getByText('Pick a date'));

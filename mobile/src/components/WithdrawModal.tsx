@@ -37,7 +37,7 @@ import TextField from './ui/TextField';
 import { showToast } from './Toast';
 import { api } from '../lib/api';
 import { peso } from '../lib/format';
-import { parseAmount, sanitizeAmountInput, validateAmount } from '../lib/amountRules';
+import { nextAmountText, parseAmount, validateAmount } from '../lib/amountRules';
 import { cleanText, validateAccountNumber } from '../lib/textRules';
 import { MIN_WITHDRAWAL_PHP } from '../lib/walletRules';
 
@@ -232,8 +232,8 @@ export function MoneyAmountField({
           keyboardAppearance={appearance}
           style={[styles.amountInput, { fontSize: amountFontSize(value) }]}
           value={value}
-          // Letters and symbols never reach the field: the text is cut to what an amount can hold while it is typed.
-          onChangeText={(text) => onChangeText(sanitizeAmountInput(text))}
+          // A change with a letter, a sign or a symbol is refused and the field keeps its value.
+          onChangeText={(text) => onChangeText(nextAmountText(value, text))}
           keyboardType="decimal-pad"
           placeholder="0.00"
           placeholderTextColor={V6Colors.ink500}
