@@ -472,6 +472,10 @@ function AppFlow() {
     if (!profileId) {
       setShowOnboarding(null);
       setTourOfferOpen(false);
+      // The session can end on its own (a rejected token, see AuthContext). Then the welcome ends with it, the
+      // same as a sign-out, so no tour is left up over Login.
+      stopTour();
+      setTourFlow(idleTourFlow);
       return;
     }
     let mounted = true;
