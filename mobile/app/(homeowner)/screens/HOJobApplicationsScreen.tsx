@@ -51,6 +51,7 @@ import { openRedirectSession } from '../../../src/lib/appRedirectSession';
 import HirePaymentModal from '../../../src/components/HirePaymentModal';
 import HiredView from '../../../src/components/HiredView';
 import ConfirmationModal from '../../../src/components/ConfirmationModal';
+import Banner from '../../../src/components/ui/Banner';
 import { showToast } from '../../../src/components/Toast';
 import HOProviderProfileScreen from './HOProviderProfileScreen';
 import { HOScreen } from '../../../src/types/navigation';
@@ -579,7 +580,11 @@ export default function HOJobApplicationsScreen({
       </View>
 
       {loading && <ContentSkeleton variant="list" />}
-      {!!error && !loading && <Text style={styles.stateText}>{error}</Text>}
+      {!!error && !loading && (
+        <View style={styles.loadError}>
+          <Banner tone="error" message={error} actionLabel="Try again" onAction={reload} />
+        </View>
+      )}
 
       {!loading && apps && (
         <ScrollView
@@ -758,7 +763,7 @@ function createThemedStyles(theme: ThemePalette) {
     errorBannerText: { color: V6Colors.dangerText, fontSize: 12.5, lineHeight: 17, fontFamily: 'Inter' },
 
     disabled: { opacity: 0.5 },
-    stateText: { color: C.ink500, fontSize: 16.5, fontFamily: 'Inter', textAlign: 'center', marginTop: 30 },
+    loadError: { paddingHorizontal: Spacing.screenH, paddingTop: 16 },
   });
   return { Colors, V6Colors, C, styles };
 }

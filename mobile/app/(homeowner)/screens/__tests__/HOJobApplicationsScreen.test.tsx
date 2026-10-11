@@ -806,6 +806,22 @@ describe('HOJobApplicationsScreen: a card payment the server has not confirmed y
   });
 });
 
+describe('HOJobApplicationsScreen: when the proposals cannot be loaded', () => {
+  it('shows the error with Try again, and Try again loads the proposals', async () => {
+    (api.jobApplications as jest.Mock)
+      .mockRejectedValueOnce(new Error('Could not reach TaskBuddy.'))
+      .mockResolvedValue([pendingApp]);
+    await renderScreen();
+
+    expect(await screen.findByText('Could not reach TaskBuddy.')).toBeTruthy();
+    fireEvent.press(screen.getByRole('button', { name: 'Try again' }));
+
+    expect(await screen.findByRole('button', { name: 'Hire Alex Reyes for this job' })).toBeTruthy();
+    expect(screen.queryByText('Could not reach TaskBuddy.')).toBeNull();
+    expect(api.jobApplications).toHaveBeenCalledTimes(2);
+  });
+});
+
 it('every control has an accessible name: back, the proposal card and its actions', async () => {
   mockJob(1500);
   (api.jobApplications as jest.Mock).mockResolvedValue([pendingApp]);
