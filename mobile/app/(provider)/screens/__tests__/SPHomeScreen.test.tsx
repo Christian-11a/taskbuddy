@@ -1,5 +1,5 @@
 import React from 'react';
-import { AppState, type AppStateStatus, StyleSheet } from 'react-native';
+import { AppState, type AppStateStatus, ScrollView, StyleSheet, TextInput } from 'react-native';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react-native';
 import SPHomeScreen from '../SPHomeScreen';
 import { api } from '../../../../src/lib/api';
@@ -7,6 +7,7 @@ import { useAuth } from '../../../../src/context/AuthContext';
 import { clearAsyncDataCache } from '../../../../src/hooks/useAsyncData';
 import { lightPalette } from '../../../../src/constants/palettes';
 import { findUnnamedControls } from '../../../../src/testing/a11yAudit';
+import KeyboardAwareScrollView from '../../../../src/components/ui/KeyboardAwareScrollView';
 
 jest.mock('../../../../src/context/NotificationsContext', () => ({
   useNotifications: () => ({ notifications: [], unreadCount: 0, loading: false, error: null, reload: jest.fn() }),
@@ -456,5 +457,62 @@ describe('SPHomeScreen — the feed shows open jobs posted since it was last rea
     expect(await screen.findByText('Mow the lawn')).toBeTruthy();
     expect(api.browseJobs).toHaveBeenCalledTimes(2);
     subscribe.mockRestore();
+  });
+});
+
+describe('SPHomeScreen — the feed search stays above the keyboard', () => {
+  type MeasureCallback = (x: number, y: number, width: number, height: number) => void;
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    clearAsyncDataCache();
+    (useAuth as jest.Mock).mockReturnValue({
+      profile: { full_name: 'Ana', city: 'Cebu', latitude: null, longitude: null },
+      providerProfile: { is_available: true, service_radius_km: 25 },
+      isVerified: true,
+      refreshProfile: jest.fn(),
+    });
+    (api.browseJobs as jest.Mock).mockResolvedValue({ jobs: [], summary: null });
+    (api.assignedJobs as jest.Mock).mockResolvedValue([]);
+    (api.myApplications as jest.Mock).mockResolvedValue([]);
+    // An earlier test in this file leaves AppState.addEventListener without a subscription, so this block supplies one.
+    jest.spyOn(AppState, 'addEventListener').mockReturnValue({ remove: jest.fn() } as never);
+  });
+  // The ScrollView and TextInput mocks share their methods across instances. Restore the spies between tests.
+  afterEach(() => {
+    jest.restoreAllMocks();
+  });
+
+  // Waits for the jobs to load, so the feed's state updates land inside act.
+  async function renderFeed() {
+    render(<SPHomeScreen onNavigate={jest.fn()} />);
+    await screen.findByText('No open jobs near you');
+  }
+
+  it('renders the feed inside a keyboard-aware scroll view', async () => {
+    await renderFeed();
+
+    expect(screen.UNSAFE_getByType(KeyboardAwareScrollView)).toBeTruthy();
+  });
+
+  it('scrolls the search box above the keyboard when it takes focus', async () => {
+    await renderFeed();
+    // The feed's outer ScrollView; the urgency pills have their own horizontal ScrollView.
+    const feed = screen.UNSAFE_getAllByType(ScrollView).find((node) => node.props.testID === 'feed-scroll');
+    if (!feed) throw new Error('The feed ScrollView is not rendered');
+    const scrollTo = jest.spyOn(feed.instance, 'scrollTo');
+    jest.spyOn(feed.instance, 'getNativeScrollRef').mockReturnValue({
+      measureInWindow: (callback: MeasureCallback) => callback(0, 100, 375, 400),
+    } as never);
+    act(() => {
+      feed.props.onLayout({ nativeEvent: { layout: { x: 0, y: 0, width: 375, height: 400 } } });
+    });
+    const field: { measureInWindow: (callback: MeasureCallback) => void } = screen.UNSAFE_getByType(TextInput).instance;
+    jest.spyOn(field, 'measureInWindow').mockImplementation((callback) => callback(0, 600, 375, 48));
+
+    fireEvent(screen.getByPlaceholderText('Search open jobs'), 'focus');
+
+    // The search box is 500 dp into a 400 dp view. Its bottom plus the 24 dp margin (572) is 172 past the view.
+    expect(scrollTo).toHaveBeenCalledWith({ y: 172, animated: true });
   });
 });

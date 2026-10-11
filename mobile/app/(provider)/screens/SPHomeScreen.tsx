@@ -22,7 +22,7 @@ import { useNotifications } from '../../../src/context/NotificationsContext';
  */
 
 import { StatusBar } from 'expo-status-bar';
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   RefreshControl,
   ScrollView,
@@ -68,6 +68,7 @@ import {
 } from '../../../src/lib/providerSetup';
 import OwnAvatar from '../../../src/components/OwnAvatar';
 import Tap from '../../../src/components/ui/Tap';
+import KeyboardAwareScrollView, { useRevealOnFocus } from '../../../src/components/ui/KeyboardAwareScrollView';
 import Pulse from '../../../src/components/ui/Pulse';
 import FilterPill from '../../../src/components/ui/FilterPill';
 import SectionHeader from '../../../src/components/ui/SectionHeader';
@@ -217,8 +218,31 @@ function SetupPanel({ steps, verifyState, categoryName, onStep }: {
   );
 }
 
+/**
+ * The feed search box. It renders inside the KeyboardAwareScrollView, and the reveal
+ * hook reads that view from context, so the hook is called here, not in the screen.
+ */
+function FeedSearchInput({ value, onChangeText }: { value: string; onChangeText: (text: string) => void }) {
+  const { C, styles, appearance } = useThemedStyles(createThemedStyles);
+  const inputRef = useRef<TextInput>(null);
+  const revealField = useRevealOnFocus(inputRef);
+  return (
+    <TextInput keyboardAppearance={appearance}
+      ref={inputRef}
+      style={styles.searchInput}
+      value={value}
+      onChangeText={onChangeText}
+      onFocus={revealField}
+      placeholder="Search open jobs"
+      placeholderTextColor={C.ink400}
+      maxLength={SEARCH_MAX_LENGTH}
+      returnKeyType="search"
+    />
+  );
+}
+
 export default function SPHomeScreen({ onNavigate, tourOffer }: SPHomeScreenProps) {
-  const { Colors, C, styles, appearance } = useThemedStyles(createThemedStyles);
+  const { Colors, C, styles } = useThemedStyles(createThemedStyles);
   const { dark } = useTheme();
   const headerTop = useHeaderTop();
   const { unreadCount } = useNotifications();
@@ -315,7 +339,7 @@ export default function SPHomeScreen({ onNavigate, tourOffer }: SPHomeScreenProp
   return (
     <View style={styles.screen}>
       <StatusBar style={dark ? 'light' : 'dark'} />
-      <ScrollView keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag"
+      <KeyboardAwareScrollView keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag"
         style={styles.body}
         showsVerticalScrollIndicator={false}
         testID="feed-scroll"
@@ -443,15 +467,7 @@ export default function SPHomeScreen({ onNavigate, tourOffer }: SPHomeScreenProp
 
               <View testID="feed-search" {...feedTour} style={styles.search}>
                 <Search size={20} color={C.ink400} />
-                <TextInput keyboardAppearance={appearance}
-                  style={styles.searchInput}
-                  value={search}
-                  onChangeText={setSearch}
-                  placeholder="Search open jobs"
-                  placeholderTextColor={C.ink400}
-                  maxLength={SEARCH_MAX_LENGTH}
-                  returnKeyType="search"
-                />
+                <FeedSearchInput value={search} onChangeText={setSearch} />
               </View>
 
               <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.pillScroll} contentContainerStyle={styles.pillRow}>
@@ -512,7 +528,7 @@ export default function SPHomeScreen({ onNavigate, tourOffer }: SPHomeScreenProp
 
           <View style={{ height: 24 }} />
         </View>
-      </ScrollView>
+      </KeyboardAwareScrollView>
     </View>
   );
 }

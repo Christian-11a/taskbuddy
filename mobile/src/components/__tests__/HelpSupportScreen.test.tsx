@@ -1,8 +1,9 @@
 import { findUnnamedControls } from '../../testing/a11yAudit';
 import React from 'react';
-import { Linking } from 'react-native';
-import { fireEvent, render, screen } from '@testing-library/react-native';
+import { Linking, ScrollView, TextInput } from 'react-native';
+import { act, fireEvent, render, screen } from '@testing-library/react-native';
 import HelpSupportScreen from '../HelpSupportScreen';
+import KeyboardAwareScrollView from '../ui/KeyboardAwareScrollView';
 
 describe('HelpSupportScreen — welcome tour replay entry point', () => {
   it('shows a "Replay the welcome tour" card and calls onReplayTour when pressed', () => {
@@ -139,5 +140,43 @@ describe('HelpSupportScreen — the search box', () => {
 
     expect(screen.getByText('How do payments work?')).toBeTruthy();
     expect(screen.getByText('How do I hire a provider?')).toBeTruthy();
+  });
+});
+
+describe('HelpSupportScreen — the search box stays above the keyboard', () => {
+  type MeasureCallback = (x: number, y: number, width: number, height: number) => void;
+
+  // The ScrollView and TextInput mocks keep scrollTo and measureInWindow on their prototypes,
+  // so the spies are shared across instances. Clear them between tests.
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+  afterEach(() => {
+    jest.restoreAllMocks();
+  });
+
+  it('renders the page inside a keyboard-aware scroll view', () => {
+    render(<HelpSupportScreen role="homeowner" onBack={jest.fn()} />);
+
+    expect(screen.UNSAFE_getByType(KeyboardAwareScrollView)).toBeTruthy();
+  });
+
+  it('scrolls the search box above the keyboard when it takes focus', () => {
+    render(<HelpSupportScreen role="homeowner" onBack={jest.fn()} />);
+    const scroll = screen.UNSAFE_getByType(ScrollView);
+    const scrollTo = jest.spyOn(scroll.instance, 'scrollTo');
+    jest.spyOn(scroll.instance, 'getNativeScrollRef').mockReturnValue({
+      measureInWindow: (callback: MeasureCallback) => callback(0, 100, 375, 400),
+    } as never);
+    act(() => {
+      scroll.props.onLayout({ nativeEvent: { layout: { x: 0, y: 0, width: 375, height: 400 } } });
+    });
+    const field: { measureInWindow: (callback: MeasureCallback) => void } = screen.UNSAFE_getByType(TextInput).instance;
+    jest.spyOn(field, 'measureInWindow').mockImplementation((callback) => callback(0, 600, 375, 48));
+
+    fireEvent(screen.getByLabelText('Search help'), 'focus');
+
+    // The search box is 500 dp into a 400 dp view. Its bottom plus the 24 dp margin (572) is 172 past the view.
+    expect(scrollTo).toHaveBeenCalledWith({ y: 172, animated: true });
   });
 });

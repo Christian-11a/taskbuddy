@@ -12,8 +12,9 @@
  */
 
 import { useThemedStyles, type Palette as ThemePalette } from '../context/ThemeContext';
-import React, { useState } from 'react';
-import { Linking, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import React, { useRef, useState } from 'react';
+import { Linking, StyleSheet, Text, TextInput, View } from 'react-native';
+import KeyboardAwareScrollView, { useRevealOnFocus } from './ui/KeyboardAwareScrollView';
 import Tap from './ui/Tap';
 import {
   ArrowLeft,
@@ -83,26 +84,13 @@ export default function HelpSupportScreen({ role, onBack, onReplayTour }: HelpSu
         <View style={styles.headerSpacer} />
       </View>
 
-      <ScrollView
+      <KeyboardAwareScrollView
         style={styles.body}
         contentContainerStyle={styles.bodyContent}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
-        <View style={styles.searchBox}>
-          <Search size={18} color={V6Colors.ink500} />
-          <TextInput
-            value={search}
-            onChangeText={setSearch}
-            placeholder="Search help"
-            placeholderTextColor={V6Colors.ink500}
-            accessibilityLabel="Search help"
-            maxLength={SEARCH_MAX_LENGTH}
-            autoCorrect={false}
-            returnKeyType="search"
-            style={styles.searchInput}
-          />
-        </View>
+        <HelpSearchBox value={search} onChangeText={setSearch} />
 
         {onReplayTour && (
           <Tap
@@ -187,13 +175,41 @@ export default function HelpSupportScreen({ role, onBack, onReplayTour }: HelpSu
         </View>
 
         <View style={{ height: 20 }} />
-      </ScrollView>
+      </KeyboardAwareScrollView>
     </View>
   );
 }
 
 // The header back button is 38 dp; the extra 5 dp on each side reaches 48.
 const BACK_HIT_SLOP = { top: 5, bottom: 5, left: 5, right: 5 } as const;
+
+/**
+ * The search box. It renders inside the KeyboardAwareScrollView, and the reveal hook
+ * reads that view from context, so the hook is called here, not in the screen.
+ */
+function HelpSearchBox({ value, onChangeText }: { value: string; onChangeText: (text: string) => void }) {
+  const { styles, V6Colors } = useThemedStyles(createThemedStyles);
+  const inputRef = useRef<TextInput>(null);
+  const revealField = useRevealOnFocus(inputRef);
+  return (
+    <View style={styles.searchBox}>
+      <Search size={18} color={V6Colors.ink500} />
+      <TextInput
+        ref={inputRef}
+        value={value}
+        onChangeText={onChangeText}
+        onFocus={revealField}
+        placeholder="Search help"
+        placeholderTextColor={V6Colors.ink500}
+        accessibilityLabel="Search help"
+        maxLength={SEARCH_MAX_LENGTH}
+        autoCorrect={false}
+        returnKeyType="search"
+        style={styles.searchInput}
+      />
+    </View>
+  );
+}
 
 function createThemedStyles(theme: ThemePalette) {
   const { Colors, V6Colors } = theme;
