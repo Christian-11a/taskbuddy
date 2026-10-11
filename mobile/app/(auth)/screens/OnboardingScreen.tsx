@@ -46,7 +46,7 @@ interface OnboardingScreenProps {
 }
 
 export default function OnboardingScreen({ role, firstName, replay = false, onFinish, onLogin }: OnboardingScreenProps) {
-  const { styles, Colors } = useThemedStyles(createThemedStyles);
+  const { styles } = useThemedStyles(createThemedStyles);
   const welcomeRole: WelcomeRole = role === 'provider' ? 'provider' : 'homeowner';
   const cards = introCards(welcomeRole, firstName);
   const layout = useAuthLayout();
