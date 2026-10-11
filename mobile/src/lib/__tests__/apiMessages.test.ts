@@ -1,7 +1,5 @@
 import { friendlyApiMessage } from '../apiMessages';
 
-const GENERIC = 'Please check your entries and try again.';
-
 describe('friendlyApiMessage: length rules', () => {
   it.each([
     ['full_name must be shorter than or equal to 120 characters', 'Full name must be 120 characters or fewer.'],
@@ -81,13 +79,14 @@ describe('friendlyApiMessage: field names', () => {
   });
 });
 
-describe('friendlyApiMessage: fallback for validator output it does not know', () => {
-  it('uses the generic sentence for a rule with no plain wording', () => {
-    expect(friendlyApiMessage('full_name must do something unusual')).toBe(GENERIC);
-  });
-
-  it('uses the generic sentence for a property the server does not accept', () => {
-    expect(friendlyApiMessage('property extra should not exist')).toBe(GENERIC);
+describe('friendlyApiMessage: validator output it does not know passes through unchanged', () => {
+  it.each([
+    'full_name must do something unusual',
+    'property extra should not exist',
+    'app_redirect is not an allowed URI',
+    'avatar_url must be an https URL',
+  ])('keeps %j as the server sent it', (raw) => {
+    expect(friendlyApiMessage(raw)).toBe(raw);
   });
 });
 

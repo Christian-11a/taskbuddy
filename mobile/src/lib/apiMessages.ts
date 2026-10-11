@@ -4,16 +4,14 @@
  * The server checks each request with class-validator, and its default messages
  * are technical: "full_name must be shorter than or equal to 120 characters".
  * friendlyApiMessage rewrites that output into the sentence a person would write,
- * naming the field the way its form labels it. Anything else passes through as it
- * was sent: a sentence the backend wrote itself ("Insufficient wallet balance") is
- * already plain, and a lower-case message that does not look like validator output
- * is not guessed at.
+ * naming the field the way its form labels it, but only for the rules listed in
+ * RULES. Anything else passes through as it was sent: a sentence the backend wrote
+ * itself ("Insufficient wallet balance") is already plain, and validator output with
+ * a rule that is not listed ("app_redirect is not an allowed URI") carries the
+ * server's own explanation, which a generic sentence would hide.
  *
  * Pure, with no network or React, so every pattern is tested on its own.
  */
-
-/** Used for validator output that has no plain wording of its own. */
-const GENERIC_MESSAGE = 'Please check your entries and try again.';
 
 /** The labels the forms use, keyed by the field name the API sends. */
 const FIELD_LABELS = new Map<string, string>([
@@ -60,9 +58,6 @@ function isSentence(text: string): boolean {
 
 /** class-validator's shape: a field name, then a rule phrase such as "must be" or "should not be". */
 const VALIDATOR_MESSAGE = /^(?:each value in )?([a-z_][\w.[\]]*)\s+((?:must|should|is|has|can|contains|needs)\b.*)$/;
-
-/** The message for a property the server does not accept at all. */
-const UNKNOWN_PROPERTY = /^property \S+ should not exist$/;
 
 /** The field's name, as its form labels it: the last name in a path, without list indexes. */
 function fieldKey(field: string): string {
@@ -147,15 +142,15 @@ function plainRule(field: string, rule: string): string | null {
 }
 
 /**
- * The message as a person should read it. Validator output is rewritten into a
- * plain sentence, or the generic one when its rule has no wording; the backend's
- * own sentences, and anything that is not validator output, come back as sent.
+ * The message as a person should read it. Validator output whose rule is listed in
+ * RULES is rewritten into a plain sentence. Everything else comes back exactly as the
+ * server sent it: the backend's own sentences, validator output with a rule this
+ * module has no wording for, and anything that is not validator output.
  */
 export function friendlyApiMessage(raw: string): string {
   if (raw === '' || isSentence(raw)) return raw;
-  if (UNKNOWN_PROPERTY.test(raw)) return GENERIC_MESSAGE;
   const match = VALIDATOR_MESSAGE.exec(raw);
   if (!match) return raw;
   const [, field, rule] = match;
-  return plainRule(field, rule) ?? GENERIC_MESSAGE;
+  return plainRule(field, rule) ?? raw;
 }
