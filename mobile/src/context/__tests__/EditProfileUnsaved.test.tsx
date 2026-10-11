@@ -286,6 +286,14 @@ it('counts a changed bio as unsaved for a provider', async () => {
   expect(screen.getByText('You changed your bio. If you leave now, that change is lost.')).toBeTruthy();
 });
 
+describe.each<Role>(['homeowner', 'provider'])('%s edit profile email', (role) => {
+  it('shows the locked email with no line limit, so a long one wraps instead of being cut off', async () => {
+    await renderEditor(role);
+
+    expect(screen.getByText('alex@example.com').props.numberOfLines).toBeUndefined();
+  });
+});
+
 describe.each<Role>(['homeowner', 'provider'])('%s edit profile accessibility', (role) => {
   it('every control has an accessible name: back, the fields and the save button', async () => {
     await renderEditor(role);

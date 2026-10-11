@@ -204,7 +204,7 @@ export default function SPProfileScreen({ onNavigate, onLogout, onBack }: SPProf
           <Text style={styles.sectionLabel} accessibilityRole="header">Account</Text>
           <View style={styles.card}>
             <InfoRow icon={Mail} label="Email">
-              <Text style={styles.infoValue} numberOfLines={1}>{profile?.email ?? '—'}</Text>
+              <Text style={styles.infoValue}>{profile?.email ?? '—'}</Text>
             </InfoRow>
             <View style={styles.divider} />
             <InfoRow icon={Phone} label="Phone">

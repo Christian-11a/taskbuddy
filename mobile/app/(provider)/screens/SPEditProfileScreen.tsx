@@ -187,7 +187,7 @@ export default function SPEditProfileScreen({ onBack, onSave, onManageServices }
           <View style={styles.lockedGroup}>
             <Text style={styles.label}>Email</Text>
             <View style={styles.lockedBox}>
-              <Text style={styles.lockedText} numberOfLines={1}>{email}</Text>
+              <Text style={styles.lockedText}>{email}</Text>
             </View>
           </View>
 

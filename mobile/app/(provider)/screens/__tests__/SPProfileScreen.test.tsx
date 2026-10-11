@@ -194,6 +194,14 @@ describe('SPProfileScreen — profile', () => {
     expect(onNavigate).toHaveBeenCalledWith('Edit Profile');
   });
 
+  it('shows a long email with no line limit, so it wraps instead of being cut off', () => {
+    const longEmail = 'testo.provider.long.surname@provider-business-mail.example.com';
+    mockAuthWith({ profile: { email: longEmail } });
+    render(<SPProfileScreen onNavigate={jest.fn()} onLogout={jest.fn()} />);
+
+    expect(screen.getByText(longEmail).props.numberOfLines).toBeUndefined();
+  });
+
   it('a saved phone number is shown, without the add link', () => {
     mockAuthWith({ profile: { phone: '0917 000 0000' } });
     render(<SPProfileScreen onNavigate={jest.fn()} onLogout={jest.fn()} />);

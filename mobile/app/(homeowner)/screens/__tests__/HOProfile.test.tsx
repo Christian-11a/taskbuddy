@@ -114,6 +114,14 @@ it('the Account card shows email and location, and an empty phone is an Add phon
   expect(onNavigate).toHaveBeenCalledWith('Edit Profile');
 });
 
+it('shows a long email with no line limit, so it wraps instead of being cut off', () => {
+  const longEmail = 'maria.theresa.delacruz-santos@family-mail.example.com';
+  (useAuth as jest.Mock).mockReturnValue({ profile: { ...homeownerProfile, email: longEmail } });
+  render(<Profile onNavigate={jest.fn()} onLogout={jest.fn()} />);
+
+  expect(screen.getByText(longEmail).props.numberOfLines).toBeUndefined();
+});
+
 it('shows the phone number, and no Add phone number link, once there is one', () => {
   render(<Profile onNavigate={jest.fn()} onLogout={jest.fn()} />);
 
