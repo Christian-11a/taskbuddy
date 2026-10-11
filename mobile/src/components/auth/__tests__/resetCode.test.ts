@@ -82,3 +82,10 @@ describe('formatCooldown', () => {
     expect(formatCooldown(0)).toBe('0:00');
   });
 });
+
+describe('applyCodeInput — a pasted code with separators', () => {
+  it('keeps the six digits of a code pasted with a space or a dash', () => {
+    expect(applyCodeInput('', '482 931')).toBe('482931');
+    expect(applyCodeInput('', '48-29-31')).toBe('482931');
+  });
+});

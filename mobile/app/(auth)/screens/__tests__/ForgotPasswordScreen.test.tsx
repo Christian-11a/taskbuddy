@@ -125,7 +125,7 @@ describe('ForgotPasswordScreen — the six code boxes', () => {
 
     await pressVerify();
 
-    expect(screen.getByText('Enter the 6-digit code from your email.')).toBeTruthy();
+    expect(screen.getByText('Enter the 6-digit code from your email')).toBeTruthy();
     expect(screen.queryByText('Choose a new password')).toBeNull();
   });
 });
@@ -196,5 +196,20 @@ describe('ForgotPasswordScreen — a spaces-only new password', () => {
 
     expect(screen.getByText("New password can't be only spaces.")).toBeTruthy();
     expect(resetPassword).not.toHaveBeenCalled();
+  });
+});
+
+describe('ForgotPasswordScreen — a code pasted with spaces', () => {
+  it('fills all six boxes from a code pasted with a space, and moves on to the new password', async () => {
+    render(<ForgotPasswordScreen onBackToLogin={jest.fn()} />);
+    await requestCode();
+
+    reportCodeText('482 931');
+
+    ['4', '8', '2', '9', '3', '1'].forEach((digit, i) => {
+      expect(within(boxAt(i)).getByText(digit)).toBeTruthy();
+    });
+    await pressVerify();
+    expect(screen.getByText('Choose a new password')).toBeTruthy();
   });
 });

@@ -41,11 +41,11 @@ import { AlertCircle, CheckCircle2, Circle, KeyRound, MailCheck } from 'lucide-r
 import AuthField from '../../../src/components/auth/AuthField';
 import AuthStepHeader from '../../../src/components/auth/AuthStepHeader';
 import CodeBoxes from '../../../src/components/auth/CodeBoxes';
-import { CODE_LENGTH, formatCooldown, maskEmail } from '../../../src/components/auth/resetCode';
+import { formatCooldown, maskEmail } from '../../../src/components/auth/resetCode';
 import { V6Radii, V6Shadows } from '../../../src/constants/theme';
 import { useAuth } from '../../../src/context/AuthContext';
 import { api } from '../../../src/lib/api';
-import { validateEmail, validatePasswordRules } from '../../../src/lib/inputRules';
+import { validateEmail, validateOtpCode, validatePasswordRules } from '../../../src/lib/inputRules';
 import { useAuthLayout } from '../../../src/hooks/useAuthLayout';
 
 const RESEND_COOLDOWN_S = 60;
@@ -116,8 +116,9 @@ export default function ForgotPasswordScreen({ onBackToLogin }: ForgotPasswordSc
   const verifyCode = () => {
     setError(null);
     setNotice(null);
-    if (code.length !== CODE_LENGTH) {
-      setError('Enter the 6-digit code from your email.');
+    const codeError = validateOtpCode(code);
+    if (codeError) {
+      setError(codeError);
       return;
     }
     setStage('password');
@@ -126,8 +127,9 @@ export default function ForgotPasswordScreen({ onBackToLogin }: ForgotPasswordSc
   const submitReset = async () => {
     setError(null);
     setNotice(null);
-    if (code.trim().length !== 6) {
-      setError('Enter the 6-digit code from your email.');
+    const codeError = validateOtpCode(code);
+    if (codeError) {
+      setError(codeError);
       return;
     }
     // Mirrors the backend's MinLength(8) on ResetPasswordDto.new_password.

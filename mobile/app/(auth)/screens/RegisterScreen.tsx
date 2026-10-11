@@ -50,7 +50,13 @@ import AuthField from '../../../src/components/auth/AuthField';
 import AuthStepHeader from '../../../src/components/auth/AuthStepHeader';
 import RoleChoiceCard from '../../../src/components/auth/RoleChoiceCard';
 import { useAuthLayout } from '../../../src/hooks/useAuthLayout';
-import { normalizeName, validateEmail, validateFullName, validatePasswordRules } from '../../../src/lib/inputRules';
+import {
+  normalizeName,
+  sanitizeOtp,
+  validateEmail,
+  validateFullName,
+  validatePasswordRules,
+} from '../../../src/lib/inputRules';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 /** Supabase issues 6-digit signup codes. */
@@ -415,13 +421,14 @@ export default function RegisterScreen({ onRegister, onLogin, onGoogleSignIn }: 
               style={styles.otpInput}
               value={otp}
               onChangeText={(text) => {
-                setOtp(text.replace(/\D/g, '').slice(0, OTP_LENGTH));
+                // No native maxLength here: it would cut a pasted "123 456" to "123 45"
+                // before the digits are kept. sanitizeOtp keeps the first six digits.
+                setOtp(sanitizeOtp(text));
                 setOtpError(null);
               }}
               keyboardType="number-pad"
               placeholder="000000"
               placeholderTextColor={C.slate}
-              maxLength={OTP_LENGTH}
               editable={!verifying}
               accessibilityLabel="Verification code"
               autoFocus

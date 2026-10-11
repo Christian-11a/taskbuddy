@@ -388,3 +388,34 @@ describe('RegisterScreen — passwords', () => {
     expect(screen.getByText('Password must be at least 8 characters.')).toBeTruthy();
   });
 });
+
+describe('RegisterScreen — the email code', () => {
+  it('keeps all six digits of a code pasted with a space in it', async () => {
+    const verifyEmailOtp = jest.fn().mockResolvedValue(undefined);
+    (useAuth as jest.Mock).mockReturnValue({ verifyEmailOtp });
+    const onRegister = jest.fn().mockResolvedValue({ needsEmailConfirmation: true });
+    render(<RegisterScreen {...baseProps} onRegister={onRegister} />);
+    fireEvent.press(screen.getByText('Continue'));
+    fireEvent.changeText(screen.getByTestId('input-name'), 'Test User');
+    fireEvent.changeText(screen.getByTestId('input-email'), 'test@example.test');
+    fireEvent.changeText(screen.getByTestId('input-password'), 'password123');
+    fireEvent.changeText(screen.getByTestId('input-confirm-password'), 'password123');
+    fireEvent.press(screen.getByTestId('chk-terms'));
+    fireEvent.press(screen.getByText('I agree to the Terms & Conditions'));
+    fireEvent.press(screen.getByTestId('chk-terms'));
+    fireEvent.press(screen.getByText('I agree to the Privacy Policy'));
+    fireEvent.press(screen.getByTestId('chk-data-collection'));
+    await act(async () => fireEvent.press(screen.getByTestId('btn-create-account')));
+
+    // A native length cap smaller than the pasted text would cut the code before the
+    // handler sees it, so the box must allow a formatted six-digit code to arrive whole.
+    const cap = screen.getByLabelText('Verification code').props.maxLength;
+    expect(cap === undefined || cap >= '123 456'.length).toBe(true);
+
+    fireEvent.changeText(screen.getByLabelText('Verification code'), '123 456');
+
+    expect(screen.getByLabelText('Verification code').props.value).toBe('123456');
+    await act(async () => fireEvent.press(screen.getByText('Verify Email')));
+    expect(verifyEmailOtp).toHaveBeenCalledWith({ email: 'test@example.test', token: '123456' });
+  });
+});
