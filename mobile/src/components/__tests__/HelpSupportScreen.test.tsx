@@ -122,3 +122,19 @@ it('every control has an accessible name: the back arrow, the questions and the 
 
   expect(findUnnamedControls(screen.UNSAFE_root)).toEqual([]);
 });
+
+describe('HelpSupportScreen — the search box', () => {
+  it('caps the search at 100 characters', () => {
+    render(<HelpSupportScreen role="homeowner" onBack={jest.fn()} />);
+
+    expect(screen.getByLabelText('Search help').props.maxLength).toBe(100);
+  });
+
+  it('keeps every question when the search is only spaces', () => {
+    render(<HelpSupportScreen role="homeowner" onBack={jest.fn()} />);
+    fireEvent.changeText(screen.getByLabelText('Search help'), '     ');
+
+    expect(screen.getByText('How do payments work?')).toBeTruthy();
+    expect(screen.getByText('How do I hire a provider?')).toBeTruthy();
+  });
+});

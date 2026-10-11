@@ -26,6 +26,7 @@ import {
 } from 'lucide-react-native';
 import { Sizes, Spacing, V6Radii } from '../constants/theme';
 import { filterHelpEntries } from '../lib/helpSearch';
+import { SEARCH_MAX_LENGTH } from '../lib/textRules';
 
 const SUPPORT_EMAIL = 'support@taskbuddy.ph';
 
@@ -94,6 +95,7 @@ export default function HelpSupportScreen({ role, onBack, onViewTutorial }: Help
             placeholder="Search help"
             placeholderTextColor={V6Colors.ink500}
             accessibilityLabel="Search help"
+            maxLength={SEARCH_MAX_LENGTH}
             autoCorrect={false}
             returnKeyType="search"
             style={styles.searchInput}

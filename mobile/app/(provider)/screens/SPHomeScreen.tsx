@@ -74,6 +74,7 @@ import EmptyRow from '../../../src/components/ui/EmptyRow';
 import { haptic } from '../../../src/components/ui/motion';
 import { useRetainedState } from '../../../src/hooks/useRetainedState';
 import { useRefreshOnForeground } from '../../../src/hooks/useRefreshOnForeground';
+import { SEARCH_MAX_LENGTH } from '../../../src/lib/textRules';
 
 const URGENCY_FILTERS: { key: FeedUrgency; label: string }[] = [
   { key: 'all', label: 'All' },
@@ -438,6 +439,7 @@ export default function SPHomeScreen({ onNavigate }: SPHomeScreenProps) {
                   onChangeText={setSearch}
                   placeholder="Search open jobs"
                   placeholderTextColor={C.ink400}
+                  maxLength={SEARCH_MAX_LENGTH}
                   returnKeyType="search"
                 />
               </View>

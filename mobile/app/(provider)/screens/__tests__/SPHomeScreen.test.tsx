@@ -130,6 +130,25 @@ describe('SPHomeScreen — hero header keeps the avatar reachable with a long na
     expect(screen.getByText('1.2 km away · Flexible')).toBeTruthy();
   });
 
+  it('caps the feed search at 100 characters, and a search of spaces alone keeps every job', async () => {
+    (api.browseJobs as jest.Mock).mockResolvedValue({
+      jobs: [
+        { id: 'job-2', title: 'Window cleaning', status: 'open', urgency: 'flexible', address: 'Lipa', budget: 800, scheduled_at: null, distance_km: 1.2 },
+        { id: 'job-3', title: 'Lawn mowing', status: 'open', urgency: 'normal', address: 'Lipa', budget: 500, scheduled_at: null, distance_km: 3.1 },
+      ],
+      summary: { open_count: 2, urgent_count: 0, potential_payout: 0 },
+    });
+    render(<SPHomeScreen onNavigate={jest.fn()} />);
+    expect(await screen.findByText('Window cleaning')).toBeTruthy();
+    const search = screen.getByPlaceholderText('Search open jobs');
+
+    expect(search.props.maxLength).toBe(100);
+    fireEvent.changeText(search, '     ');
+
+    expect(screen.getByText('Window cleaning')).toBeTruthy();
+    expect(screen.getByText('Lawn mowing')).toBeTruthy();
+  });
+
   it('every control has an accessible name: bell, avatar, availability switch, feed rows and urgency pills', async () => {
     (api.browseJobs as jest.Mock).mockResolvedValue({
       jobs: [
