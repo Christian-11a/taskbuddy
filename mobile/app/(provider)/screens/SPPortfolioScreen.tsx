@@ -11,6 +11,7 @@ import KeyboardAwareScrollView from '../../../src/components/ui/KeyboardAwareScr
 import ContentSkeleton from '../../../src/components/ui/ContentSkeleton';
 import Banner from '../../../src/components/ui/Banner';
 import BottomActionBar from '../../../src/components/ui/BottomActionBar';
+import LoadErrorCard from '../../../src/components/ui/LoadErrorCard';
 import TextField from '../../../src/components/ui/TextField';
 import * as ImagePicker from 'expo-image-picker';
 import { ArrowLeft, Check, ImagePlus } from 'lucide-react-native';
@@ -289,7 +290,7 @@ export default function SPPortfolioScreen({ onBack }: { onBack: () => void }) {
               })}
             </View>
             {!!categories.error && (
-              <Text style={styles.errorText} accessibilityLiveRegion="polite">{categories.error}</Text>
+              <Banner tone="error" message={categories.error} actionLabel="Try again" onAction={categories.reload} />
             )}
 
             <View style={styles.tips}>
@@ -310,17 +311,7 @@ export default function SPPortfolioScreen({ onBack }: { onBack: () => void }) {
         )}
         {portfolio.loading && <ContentSkeleton variant="list" />}
         {!!portfolio.error && (
-          <View>
-            <Text style={styles.errorText} accessibilityLiveRegion="polite">{portfolio.error}</Text>
-            <Tap
-              onPress={portfolio.reload}
-              style={styles.linkBtn}
-              accessibilityRole="button"
-              accessibilityLabel="Retry portfolio"
-            >
-              <Text style={styles.link}>Retry portfolio</Text>
-            </Tap>
-          </View>
+          <LoadErrorCard title="Couldn't load your portfolio" message={portfolio.error} onRetry={portfolio.reload} />
         )}
         {!portfolio.loading && !portfolio.error && (
           <PortfolioGallery

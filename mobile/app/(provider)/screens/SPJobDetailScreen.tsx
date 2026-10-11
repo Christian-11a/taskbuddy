@@ -21,7 +21,6 @@ import {
   FileWarning,
   Flag,
   ImageOff,
-  Lock,
   MapPin,
 } from 'lucide-react-native';
 import { useThemedStyles, type Palette as ThemePalette } from '../../../src/context/ThemeContext';
@@ -39,6 +38,7 @@ import StatusCard from '../../../src/components/ui/StatusCard';
 import Tap from '../../../src/components/ui/Tap';
 import EmptyCard from '../../../src/components/ui/EmptyCard';
 import EmptyRow from '../../../src/components/ui/EmptyRow';
+import LoadErrorCard from '../../../src/components/ui/LoadErrorCard';
 import { Spacing, V6Radii } from '../../../src/constants/theme';
 import { useAuth } from '../../../src/context/AuthContext';
 import { useAsyncData } from '../../../src/hooks/useAsyncData';
@@ -339,10 +339,8 @@ export default function SPJobDetailScreen({ jobId, onBack, onNavigate }: SPJobDe
       {/* F7: an unavailable job (e.g. hired by someone else) gets a real
           error card instead of a bare grey line on an empty page. */}
       {!!error && !loading && (
-        <View style={styles.errorCard}>
-          <View style={styles.errorIcon}><Lock size={24} color={V6Colors.ink700} /></View>
-          <Text style={styles.errorTitle}>This job isn't available</Text>
-          <Text style={styles.stateText}>{error}</Text>
+        <View style={styles.errorWrap}>
+          <LoadErrorCard title="This job isn't available" message={error} onRetry={reload} />
           <Text style={styles.errorHint}>It may have been filled by another provider or closed by the client.</Text>
           <Tap style={styles.errorBtn} onPress={onBack} activeOpacity={0.85} accessibilityRole="button">
             <Text style={styles.errorBtnText}>Go back</Text>
@@ -623,16 +621,7 @@ function createThemedStyles(theme: ThemePalette) {
       color: V6Colors.dangerText, fontSize: 13.5, fontFamily: 'Inter', textAlign: 'center',
       paddingHorizontal: Spacing.screenH, paddingTop: 10,
     },
-    stateText: { color: V6Colors.ink700, fontSize: 15, lineHeight: 22, fontFamily: 'Inter', textAlign: 'center' },
-    errorCard: {
-      margin: Spacing.screenH, marginTop: 32, padding: 24, alignItems: 'center', gap: 8,
-      backgroundColor: V6Colors.surface, borderRadius: V6Radii.card, borderWidth: 1, borderColor: V6Colors.line,
-    },
-    errorIcon: {
-      width: 56, height: 56, borderRadius: 28, backgroundColor: V6Colors.ink100,
-      alignItems: 'center', justifyContent: 'center', marginBottom: 4,
-    },
-    errorTitle: { color: V6Colors.ink900, fontSize: 18, fontWeight: '800', fontFamily: 'Inter', textAlign: 'center' },
+    errorWrap: { marginHorizontal: Spacing.screenH, marginTop: 16, gap: 12 },
     errorHint: { color: V6Colors.ink500, fontSize: 13.5, lineHeight: 20, fontFamily: 'Inter', textAlign: 'center' },
     errorBtn: {
       marginTop: 10, minHeight: 48, alignSelf: 'stretch', alignItems: 'center', justifyContent: 'center',

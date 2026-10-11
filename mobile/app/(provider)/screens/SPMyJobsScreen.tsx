@@ -25,7 +25,7 @@ import FilterPill from '../../../src/components/ui/FilterPill';
 import JobRow from '../../../src/components/ui/JobRow';
 import EmptyCard from '../../../src/components/ui/EmptyCard';
 import EmptyRow from '../../../src/components/ui/EmptyRow';
-import Banner from '../../../src/components/ui/Banner';
+import LoadErrorCard from '../../../src/components/ui/LoadErrorCard';
 import ContentSkeleton from '../../../src/components/ui/ContentSkeleton';
 import { useHeaderTop } from '../../../src/hooks/useHeaderTop';
 import { useRetainedScroll, useRetainedState } from '../../../src/hooks/useRetainedState';
@@ -151,7 +151,7 @@ export default function SPMyJobsScreen({ onNavigate, headerRight }: SPMyJobsScre
       >
         {loading && <ContentSkeleton variant="list" />}
         {!!error && !loading && (
-          <Banner tone="error" message={error} actionLabel="Try again" onAction={reload} />
+          <LoadErrorCard title="Couldn't load your jobs" message={error} onRetry={reload} />
         )}
 
         {settled && sections.length === 0 && (

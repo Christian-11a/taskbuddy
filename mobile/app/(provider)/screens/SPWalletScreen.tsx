@@ -18,6 +18,7 @@ import ContentSkeleton from '../../../src/components/ui/ContentSkeleton';
 import Banner from '../../../src/components/ui/Banner';
 import EmptyCard from '../../../src/components/ui/EmptyCard';
 import EmptyRow from '../../../src/components/ui/EmptyRow';
+import LoadErrorCard from '../../../src/components/ui/LoadErrorCard';
 import SectionHeader from '../../../src/components/ui/SectionHeader';
 import { ArrowDownLeft, Building2, Shield, Wallet, WalletCards, type LucideIcon } from 'lucide-react-native';
 import { Spacing } from '../../../src/constants/theme';
@@ -211,7 +212,12 @@ export default function SPWalletScreen({ onNavigate }: SPWalletScreenProps) {
         <View style={styles.history}>
           <SectionHeader title="Payouts" />
           {loading && <ContentSkeleton variant="list" />}
-          {!!error && !loading && <Banner tone="error" message={error} />}
+          {!!error && !loading && !data && (
+            <LoadErrorCard title="Couldn't load your wallet" message={error} onRetry={reload} />
+          )}
+          {!!error && !loading && !!data && (
+            <Banner tone="error" message={error} actionLabel="Try again" onAction={reload} />
+          )}
           {!loading && !error && transactions.length === 0 && (
             <EmptyCard>
               <EmptyRow

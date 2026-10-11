@@ -1,6 +1,6 @@
 import React from 'react';
 import { BrushCleaning, Wrench } from 'lucide-react-native';
-import { act, fireEvent, render, screen, within } from '@testing-library/react-native';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react-native';
 import SPSkillRequestScreen, {
   REASON_MAX,
   REASON_MIN,
@@ -234,6 +234,24 @@ it('an empty past-requests list says so inside the card', async () => {
   render(<SPSkillRequestScreen onBack={jest.fn()} />);
   expect(await screen.findByText('Past requests')).toBeTruthy();
   expect(within(screen.getByTestId('empty-card')).getByText('No past requests')).toBeTruthy();
+});
+
+it('a failed request list says so, and Try again loads it again without an empty past-requests card', async () => {
+  (api.mySkillRequests as jest.Mock).mockRejectedValueOnce(new Error('Requests unavailable'));
+  render(<SPSkillRequestScreen onBack={jest.fn()} />);
+  expect(await screen.findByText('Requests unavailable')).toBeTruthy();
+  expect(screen.queryByText('No past requests')).toBeNull();
+  fireEvent.press(screen.getByRole('button', { name: 'Try again' }));
+  expect(await screen.findByText('No past requests')).toBeTruthy();
+});
+
+it('a failed services load says so above the form, with Try again', async () => {
+  (api.categories as jest.Mock).mockRejectedValueOnce(new Error('Services unavailable')).mockResolvedValue(CATEGORIES);
+  render(<SPSkillRequestScreen onBack={jest.fn()} />);
+  expect(await screen.findByText('Services unavailable')).toBeTruthy();
+  fireEvent.press(screen.getByRole('button', { name: 'Try again' }));
+  await waitFor(() => expect(api.categories).toHaveBeenCalledTimes(2));
+  await waitFor(() => expect(screen.queryByText('Services unavailable')).toBeNull());
 });
 
 it('shows a pending request as under review, hides the form, and can cancel it', async () => {

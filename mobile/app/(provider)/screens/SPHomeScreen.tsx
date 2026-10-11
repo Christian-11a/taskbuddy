@@ -73,8 +73,10 @@ import Pulse from '../../../src/components/ui/Pulse';
 import FilterPill from '../../../src/components/ui/FilterPill';
 import SectionHeader from '../../../src/components/ui/SectionHeader';
 import JobRow from '../../../src/components/ui/JobRow';
+import Banner from '../../../src/components/ui/Banner';
 import EmptyCard from '../../../src/components/ui/EmptyCard';
 import EmptyRow from '../../../src/components/ui/EmptyRow';
+import LoadErrorCard from '../../../src/components/ui/LoadErrorCard';
 import { haptic } from '../../../src/components/ui/motion';
 import { useRetainedState } from '../../../src/hooks/useRetainedState';
 import { useRefreshOnForeground } from '../../../src/hooks/useRefreshOnForeground';
@@ -486,7 +488,7 @@ export default function SPHomeScreen({ onNavigate, tourOffer }: SPHomeScreenProp
 
               <SectionHeader title="Open jobs near you" count={data ? availableJobs.length : undefined} />
 
-              {!data && (
+              {!data && !feedError && (
                 <Pulse>
                   {[0, 1].map((i) => (
                     <View key={i} style={styles.skeletonCard} accessibilityLabel="Loading jobs">
@@ -496,6 +498,13 @@ export default function SPHomeScreen({ onNavigate, tourOffer }: SPHomeScreenProp
                     </View>
                   ))}
                 </Pulse>
+              )}
+
+              {!!feedError && !data && (
+                <LoadErrorCard title="Couldn't load open jobs" message={feedError} onRetry={reloadFeed} />
+              )}
+              {!!feedError && !!data && (
+                <Banner tone="error" message={feedError} actionLabel="Try again" onAction={reloadFeed} />
               )}
 
               {data && availableJobs.length === 0 && (

@@ -17,6 +17,7 @@ import Tap from '../../../src/components/ui/Tap';
 import JobRow from '../../../src/components/ui/JobRow';
 import EmptyCard from '../../../src/components/ui/EmptyCard';
 import EmptyRow from '../../../src/components/ui/EmptyRow';
+import LoadErrorCard from '../../../src/components/ui/LoadErrorCard';
 import ContentSkeleton from '../../../src/components/ui/ContentSkeleton';
 import { CalendarDay, CalendarWeekdays, type CalendarDayProps } from '../../../src/components/ui/MonthGrid';
 import { useAsyncData } from '../../../src/hooks/useAsyncData';
@@ -165,13 +166,7 @@ export default function SPCalendarScreen({ onNavigate, title = 'Calendar', heade
         {loading && <ContentSkeleton variant="list" />}
 
         {!loading && !!error && (
-          <EmptyRow
-            icon={CalendarDays}
-            title="Couldn't load your schedule"
-            body={error}
-            actionLabel="Retry"
-            onAction={reload}
-          />
+          <LoadErrorCard title="Couldn't load your schedule" message={error} onRetry={reload} />
         )}
 
         {settled && dayBookings.length === 0 && (

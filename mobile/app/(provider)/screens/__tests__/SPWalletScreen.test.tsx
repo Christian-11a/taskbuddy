@@ -50,6 +50,15 @@ it('an empty payout history says so inside the card', async () => {
   expect(await screen.findByText('No transactions yet')).toBeTruthy();
   expect(within(screen.getByTestId('empty-card')).getByText('No transactions yet')).toBeTruthy();
 });
+it('a failed wallet load shows the error in a card, and Try again loads the wallet', async () => {
+  (api.wallet as jest.Mock).mockRejectedValueOnce(new Error('Wallet unavailable')).mockResolvedValue(wallet([]));
+  render(<SPWalletScreen onNavigate={jest.fn()} />);
+  const card = await screen.findByTestId('error-card');
+  expect(within(card).getByText("Couldn't load your wallet")).toBeTruthy();
+  expect(within(card).getByText('Wallet unavailable')).toBeTruthy();
+  fireEvent.press(within(card).getByRole('button', { name: 'Try again' }));
+  expect(await screen.findByText('No transactions yet')).toBeTruthy();
+});
 it('reports load failure instead of claiming the account has no money', async () => {
   (api.wallet as jest.Mock).mockRejectedValue(new Error('Wallet unavailable'));
   render(<SPWalletScreen onNavigate={jest.fn()} />);

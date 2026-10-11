@@ -1,5 +1,5 @@
 import React from 'react';
-import { act, fireEvent, render, screen } from '@testing-library/react-native';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react-native';
 import HOProviderProfileScreen from '../HOProviderProfileScreen';
 import { api } from '../../../../src/lib/api';
 import { clearAsyncDataCache } from '../../../../src/hooks/useAsyncData';
@@ -79,6 +79,29 @@ describe('HOProviderProfileScreen: the public profile', () => {
 
     expect(await screen.findByText('Jobs done')).toBeTruthy();
     expect(screen.queryByText('Experience')).toBeNull();
+  });
+
+  it('a provider that fails to load shows the error in a card, and Try again loads the profile', async () => {
+    (api.getProvider as jest.Mock).mockRejectedValueOnce(new Error('Provider unavailable')).mockResolvedValue(provider);
+    await renderProfile();
+
+    const card = await screen.findByTestId('error-card');
+    expect(within(card).getByText("Couldn't load this provider")).toBeTruthy();
+    expect(within(card).getByText('Provider unavailable')).toBeTruthy();
+    fireEvent.press(within(card).getByRole('button', { name: 'Try again' }));
+
+    expect(await screen.findByText('Alex Reyes')).toBeTruthy();
+  });
+
+  it('a failed portfolio load shows the error in the Portfolio section, and Try again loads the photos', async () => {
+    (api.providerPortfolio as jest.Mock).mockRejectedValueOnce(new Error('Photos unavailable')).mockResolvedValue([]);
+    await renderProfile();
+
+    const card = await screen.findByTestId('error-card');
+    expect(within(card).getByText("Couldn't load the portfolio")).toBeTruthy();
+    fireEvent.press(within(card).getByRole('button', { name: 'Try again' }));
+
+    await waitFor(() => expect(api.providerPortfolio).toHaveBeenCalledTimes(2));
   });
 
   it('hides the sections that have nothing in them', async () => {

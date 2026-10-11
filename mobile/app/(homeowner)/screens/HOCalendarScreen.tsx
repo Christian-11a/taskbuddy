@@ -17,8 +17,8 @@ import Tap from '../../../src/components/ui/Tap';
 import JobRow from '../../../src/components/ui/JobRow';
 import EmptyCard from '../../../src/components/ui/EmptyCard';
 import EmptyRow from '../../../src/components/ui/EmptyRow';
+import LoadErrorCard from '../../../src/components/ui/LoadErrorCard';
 import SectionHeader from '../../../src/components/ui/SectionHeader';
-import Banner from '../../../src/components/ui/Banner';
 import { CalendarDay, CalendarWeekdays } from '../../../src/components/ui/MonthGrid';
 import ScreenSkeleton from '../../../src/components/ScreenSkeleton';
 import { HOScreen } from '../../../src/types/navigation';
@@ -155,8 +155,6 @@ export default function HOCalendarScreen({ onNavigate, title = 'Calendar', heade
           />
         </View>
 
-        {!!error && <Banner tone="error" message={error} actionLabel="Retry" onAction={reload} />}
-
         <View style={styles.dayHeader}>
           <Text style={styles.dayTitle} accessibilityRole="header">{dayHeading(selectedDate)}</Text>
           {!error && (
@@ -178,6 +176,8 @@ export default function HOCalendarScreen({ onNavigate, title = 'Calendar', heade
             </View>
           )}
         </View>
+
+        {!!error && <LoadErrorCard title="Couldn't load your schedule" message={error} onRetry={reload} />}
 
         {!error && dayJobs.length === 0 && (
           <EmptyCard>

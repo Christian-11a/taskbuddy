@@ -275,6 +275,7 @@ it('shows loading and errors, and retries', async () => {
   expect(screen.getByLabelText('Loading content')).toBeTruthy();
 
   await screen.findByText('Unable to load jobs');
+  expect(within(screen.getByTestId('error-card')).getByText("Couldn't load your jobs")).toBeTruthy();
   fireEvent.press(screen.getByText('Try again'));
 
   await screen.findByText('Cleaning: Window cleaning');

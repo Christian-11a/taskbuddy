@@ -12,7 +12,9 @@ import React, { useState } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import Tap from '../../../src/components/ui/Tap';
 import ContentSkeleton from '../../../src/components/ui/ContentSkeleton';
+import Banner from '../../../src/components/ui/Banner';
 import EmptyCard from '../../../src/components/ui/EmptyCard';
+import LoadErrorCard from '../../../src/components/ui/LoadErrorCard';
 import EmptyRow from '../../../src/components/ui/EmptyRow';
 import NotificationCard, { NOTIFICATION_ICONS } from '../../../src/components/ui/NotificationCard';
 import { ArrowLeft, BellRing } from 'lucide-react-native';
@@ -192,7 +194,12 @@ export default function HONotificationsScreen({ onBack, onOpenJob, onOpenProposa
           </View>
         )}
         {loading && <ContentSkeleton variant="list" />}
-        {!!error && !loading && <Text style={styles.stateText}>{error}</Text>}
+        {!!error && !loading && notifications.length === 0 && (
+          <LoadErrorCard title="Couldn't load notifications" message={error} onRetry={() => void reload()} />
+        )}
+        {!!error && !loading && notifications.length > 0 && (
+          <Banner tone="error" message={error} actionLabel="Try again" onAction={() => void reload()} />
+        )}
         {!loading && !error && visible.length === 0 && (
           <EmptyCard>
             <EmptyRow
@@ -244,7 +251,6 @@ function createThemedStyles(theme: ThemePalette) {
     },
     cards: { gap: 8, marginBottom: 16 },
 
-    stateText: { color: C.ink500, fontSize: 16.5, fontFamily: 'Inter', textAlign: 'center', marginTop: 30 },
     banner: {
       flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
       backgroundColor: V6Colors.dangerSurface, borderWidth: 1, borderColor: V6Colors.dangerBorder,

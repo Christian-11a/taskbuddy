@@ -483,4 +483,46 @@ describe('HOHomeScreen — hero placeholder holds the hero place while it may st
     expect(await screen.findByText("Couldn't load your jobs")).toBeTruthy();
     expect(screen.queryByTestId('home-hero-placeholder', HIDDEN_OK)).toBeNull();
   });
+
+  it('a failed jobs load shows the error in a card, and Try again loads the jobs', async () => {
+    (api.wallet as jest.Mock).mockResolvedValue({ balance: 0, available: 0, held: 0 });
+    (api.categories as jest.Mock).mockResolvedValue([]);
+    (api.notifications as jest.Mock).mockResolvedValue([]);
+    (api.myJobs as jest.Mock).mockRejectedValueOnce(new Error('offline')).mockResolvedValue([]);
+    render(<HOHomeScreen onNavigate={jest.fn()} />);
+
+    const card = await screen.findByTestId('error-card');
+    expect(within(card).getByText("Couldn't load your jobs")).toBeTruthy();
+    fireEvent.press(within(card).getByRole('button', { name: 'Try again' }));
+
+    expect(await screen.findByText('No active jobs')).toBeTruthy();
+    expect(screen.queryByTestId('error-card')).toBeNull();
+  });
+
+  it('a failed services load shows the error in a card, and Try again loads the services', async () => {
+    (api.wallet as jest.Mock).mockResolvedValue({ balance: 0, available: 0, held: 0 });
+    (api.myJobs as jest.Mock).mockResolvedValue([]);
+    (api.notifications as jest.Mock).mockResolvedValue([]);
+    (api.categories as jest.Mock).mockRejectedValueOnce(new Error('offline')).mockResolvedValue([{ id: 2, name: 'Cleaning' }]);
+    render(<HOHomeScreen onNavigate={jest.fn()} />);
+
+    const card = await screen.findByTestId('error-card');
+    expect(within(card).getByText("Couldn't load services")).toBeTruthy();
+    fireEvent.press(within(card).getByRole('button', { name: 'Try again' }));
+
+    expect(await screen.findByLabelText('Book Cleaning')).toBeTruthy();
+  });
+
+  it('a failed wallet load shows a notice with Try again, which reads the wallet again', async () => {
+    (api.myJobs as jest.Mock).mockResolvedValue([]);
+    (api.categories as jest.Mock).mockResolvedValue([]);
+    (api.notifications as jest.Mock).mockResolvedValue([]);
+    (api.wallet as jest.Mock).mockRejectedValueOnce(new Error('offline')).mockResolvedValue({ balance: 500, available: 500, held: 0 });
+    render(<HOHomeScreen onNavigate={jest.fn()} />);
+
+    expect(await screen.findByText("Couldn't load your wallet")).toBeTruthy();
+    fireEvent.press(screen.getByRole('button', { name: 'Try again' }));
+
+    await waitFor(() => expect(api.wallet).toHaveBeenCalledTimes(2));
+  });
 });

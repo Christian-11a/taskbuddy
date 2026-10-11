@@ -1246,6 +1246,7 @@ describe('HOJobApplicationsScreen: when the proposals cannot be loaded', () => {
     await renderScreen();
 
     expect(await screen.findByText('Could not reach TaskBuddy.')).toBeTruthy();
+    expect(within(screen.getByTestId('error-card')).getByText("Couldn't load the proposals")).toBeTruthy();
     fireEvent.press(screen.getByRole('button', { name: 'Try again' }));
 
     expect(await screen.findByRole('button', { name: 'Hire Alex Reyes for this job' })).toBeTruthy();

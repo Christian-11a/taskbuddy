@@ -42,6 +42,7 @@ import {
 import Tap from '../../../src/components/ui/Tap';
 import EmptyCard from '../../../src/components/ui/EmptyCard';
 import EmptyRow from '../../../src/components/ui/EmptyRow';
+import LoadErrorCard from '../../../src/components/ui/LoadErrorCard';
 import { dayLabel, peso, plural, timeAgo } from '../../../src/lib/format';
 import ContentSkeleton from '../../../src/components/ui/ContentSkeleton';
 import Silhouette from '../../../src/components/ui/Silhouette';
@@ -691,7 +692,11 @@ function JobProposals({
       {loading && <ContentSkeleton variant="list" />}
       {!!error && !loading && (
         <View style={styles.loadError}>
-          <Banner tone="error" message={error} actionLabel="Try again" onAction={reload} />
+          {apps ? (
+            <Banner tone="error" message={error} actionLabel="Try again" onAction={reload} />
+          ) : (
+            <LoadErrorCard title="Couldn't load the proposals" message={error} onRetry={reload} />
+          )}
         </View>
       )}
 

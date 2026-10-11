@@ -234,12 +234,13 @@ it('the chevrons move the month that is shown', async () => {
   expect(mockCalendar.props?.current).toBe(shiftMonth(todayKey, -1));
 });
 
-it('a failed load shows the error, and Retry loads again', async () => {
+it('a failed load shows the error in a card, and Try again loads again', async () => {
   (api.myJobs as jest.Mock).mockRejectedValueOnce(new Error('Unable to load jobs'));
   render(<HOCalendarScreen onNavigate={jest.fn()} />);
 
   expect(await screen.findByText('Unable to load jobs')).toBeTruthy();
-  fireEvent.press(screen.getByText('Retry'));
+  expect(within(screen.getByTestId('error-card')).getByText("Couldn't load your schedule")).toBeTruthy();
+  fireEvent.press(screen.getByText('Try again'));
 
   await waitFor(() => expect(api.myJobs).toHaveBeenCalledTimes(2));
   await waitFor(() => expect(screen.queryByText('Unable to load jobs')).toBeNull());

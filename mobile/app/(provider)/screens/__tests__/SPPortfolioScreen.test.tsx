@@ -62,6 +62,23 @@ it('an empty portfolio shows the card, with the hint to add a photo', async () =
   expect(within(card).getByText('No portfolio photos yet')).toBeTruthy();
   expect(within(card).getByText('Add a photo of finished work so clients can see what you do.')).toBeTruthy();
 });
+it('a failed portfolio load shows the error in a card, and Try again loads the gallery', async () => {
+  (api.myPortfolio as jest.Mock).mockRejectedValueOnce(new Error('Portfolio unavailable'));
+  render(<SPPortfolioScreen onBack={jest.fn()} />);
+  const card = await screen.findByTestId('error-card');
+  expect(within(card).getByText("Couldn't load your portfolio")).toBeTruthy();
+  expect(within(card).getByText('Portfolio unavailable')).toBeTruthy();
+  fireEvent.press(within(card).getByRole('button', { name: 'Try again' }));
+  expect(await screen.findByTestId('empty-card')).toBeTruthy();
+});
+it('a failed services load says so above the chips, with Try again', async () => {
+  (api.categories as jest.Mock).mockRejectedValueOnce(new Error('Services unavailable')).mockResolvedValue([]);
+  render(<SPPortfolioScreen onBack={jest.fn()} />);
+  expect(await screen.findByText('Services unavailable')).toBeTruthy();
+  fireEvent.press(screen.getByRole('button', { name: 'Try again' }));
+  await waitFor(() => expect(api.categories).toHaveBeenCalledTimes(2));
+  await waitFor(() => expect(screen.queryByText('Services unavailable')).toBeNull());
+});
 it('uploads an owned image, publishes details and refreshes the saved gallery', async () => {
   render(<SPPortfolioScreen onBack={jest.fn()} />);
   await screen.findByText('No portfolio photos yet');

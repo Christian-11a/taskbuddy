@@ -48,8 +48,10 @@ import Tap from '../../../src/components/ui/Tap';
 import ContentSkeleton from '../../../src/components/ui/ContentSkeleton';
 import SectionHeader from '../../../src/components/ui/SectionHeader';
 import JobRow from '../../../src/components/ui/JobRow';
+import Banner from '../../../src/components/ui/Banner';
 import EmptyCard from '../../../src/components/ui/EmptyCard';
 import EmptyRow from '../../../src/components/ui/EmptyRow';
+import LoadErrorCard from '../../../src/components/ui/LoadErrorCard';
 import { useTourAnchor } from '../../../src/components/tour';
 import TourOfferCard from '../../../src/components/tour/TourOfferCard';
 
@@ -98,18 +100,6 @@ interface HOHomeScreenProps {
   onNavigate: (screen: HOScreen, jobId?: string) => void;
   /** Shows the one-time "take a quick tour" card at the top of Home, when the App is offering it. */
   tourOffer?: { onStart: () => void; onDismiss: () => void };
-}
-
-function WidgetError({ message, onRetry }: { message: string; onRetry: () => void }) {
-  const { styles } = useThemedStyles(createThemedStyles);
-  return (
-    <View style={styles.widgetError}>
-      <Text style={styles.widgetErrorText}>{message}</Text>
-      <Tap onPress={onRetry} style={styles.retryBtn} hitSlop={8} accessibilityRole="button">
-        <Text style={styles.widgetRetry}>Retry</Text>
-      </Tap>
-    </View>
-  );
 }
 
 /** The one thing that needs the homeowner: proposals to review, or the next booking. */
@@ -304,7 +294,7 @@ export default function HOHomeScreen({ onNavigate, tourOffer }: HOHomeScreenProp
               </View>
             </View>
           </View>
-          {wallet.error && <WidgetError message="Couldn't load your wallet" onRetry={wallet.reload} />}
+          {wallet.error && <Banner tone="error" message="Couldn't load your wallet" actionLabel="Try again" onAction={wallet.reload} />}
         </View>
 
         {/* Body */}
@@ -341,7 +331,7 @@ export default function HOHomeScreen({ onNavigate, tourOffer }: HOHomeScreenProp
           {/* Book a service: each chip opens the job form with that category already picked. */}
           <SectionHeader title="Book a service" />
           {categories.error ? (
-            <WidgetError message="Couldn't load services" onRetry={categories.reload} />
+            <LoadErrorCard title="Couldn't load services" onRetry={categories.reload} />
           ) : (
             <ScrollView
               horizontal
@@ -378,7 +368,7 @@ export default function HOHomeScreen({ onNavigate, tourOffer }: HOHomeScreenProp
             onLinkPress={() => onNavigate('My Jobs')}
           />
 
-          {jobs.error && <WidgetError message="Couldn't load your jobs" onRetry={jobs.reload} />}
+          {jobs.error && <LoadErrorCard title="Couldn't load your jobs" onRetry={jobs.reload} />}
 
           {!jobs.loading && !jobs.error && activeJobs.length === 0 && (
             <EmptyCard>
@@ -452,10 +442,6 @@ function createThemedStyles(theme: ThemePalette) {
       color: Colors.onPrimary, fontSize: 10, fontWeight: '700', fontFamily: 'Inter',
       lineHeight: 12, letterSpacing: 0.5,
     },
-    widgetError: { flexDirection: 'row', alignItems: 'center', gap: 9, paddingVertical: 8 },
-    widgetErrorText: { color: C.ink500, fontSize: 13.5, fontFamily: 'Inter', flexShrink: 1 },
-    retryBtn: { paddingHorizontal: 8, paddingVertical: 6, borderRadius: 8, overflow: 'hidden' },
-    widgetRetry: { color: C.link, fontSize: 13.5, fontWeight: '800', fontFamily: 'Inter' },
 
     body: { paddingHorizontal: Spacing.screenH, paddingTop: 18, gap: 18 },
 

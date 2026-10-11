@@ -328,6 +328,19 @@ describe('HOJobDetailScreen — offers, the main action and the ⋮ menu', () =>
     expect(onNavigate).toHaveBeenCalledWith('Job Applications', 'job-1');
   });
 
+  it('a job that fails to load shows the error in a card, and Try again loads it again', async () => {
+    (api.getJob as jest.Mock).mockRejectedValueOnce(new Error('Could not reach TaskBuddy.')).mockResolvedValue(openJob);
+    renderJob();
+
+    const card = await screen.findByTestId('error-card');
+    expect(within(card).getByText("Couldn't load this job")).toBeTruthy();
+    expect(within(card).getByText('Could not reach TaskBuddy.')).toBeTruthy();
+    fireEvent.press(within(card).getByRole('button', { name: 'Try again' }));
+
+    expect(await screen.findByText('No offers yet')).toBeTruthy();
+    expect(screen.queryByTestId('error-card')).toBeNull();
+  });
+
   it('with no proposals yet, find providers is the main action and reports how many were invited', async () => {
     (api.getJob as jest.Mock).mockResolvedValue(openJob);
     (api.triggerRecommendations as jest.Mock).mockResolvedValue({ run_id: null, pool_size: 4, notified: 2 });

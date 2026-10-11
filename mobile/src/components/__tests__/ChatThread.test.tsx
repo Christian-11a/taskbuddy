@@ -209,6 +209,15 @@ describe('ChatThread bubbles and photos', () => {
     render(<ChatThread {...baseProps()} />);
     expect(within(screen.getByTestId('empty-card')).getByText('No messages yet')).toBeTruthy();
   });
+
+  it('a chat that fails to load shows the error in the card, with no Try again since the chat has nothing to re-run', () => {
+    render(<ChatThread {...baseProps({ error: 'Could not load chat.' })} />);
+    const card = screen.getByTestId('error-card');
+    expect(within(card).getByText("Couldn't load this chat")).toBeTruthy();
+    expect(within(card).getByText('Could not load chat.')).toBeTruthy();
+    expect(screen.queryByTestId('empty-card')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Try again' })).toBeNull();
+  });
 });
 
 describe('ChatThread payment safety note', () => {

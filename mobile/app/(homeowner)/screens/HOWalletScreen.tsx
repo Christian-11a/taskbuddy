@@ -24,6 +24,7 @@ import FilterPill from '../../../src/components/ui/FilterPill';
 import SectionHeader from '../../../src/components/ui/SectionHeader';
 import EmptyCard from '../../../src/components/ui/EmptyCard';
 import EmptyRow from '../../../src/components/ui/EmptyRow';
+import LoadErrorCard from '../../../src/components/ui/LoadErrorCard';
 import Banner from '../../../src/components/ui/Banner';
 import {
   ArrowDownLeft,
@@ -497,7 +498,12 @@ export default function HOWalletScreen() {
             ))}
           </ScrollView>
 
-          {!!error && <Banner tone="error" message={error} />}
+          {!!error && !data && (
+            <LoadErrorCard title="Couldn't load your wallet" message={error} onRetry={reload} />
+          )}
+          {!!error && !!data && (
+            <Banner tone="error" message={error} actionLabel="Try again" onAction={reload} />
+          )}
 
           {!error && filtered.length === 0 && (
             <EmptyCard>

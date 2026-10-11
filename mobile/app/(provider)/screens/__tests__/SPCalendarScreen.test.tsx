@@ -226,13 +226,13 @@ it('the chevrons move the month that is shown, and fetch its bookings', async ()
   await act(async () => {});
 });
 
-it('a failed load shows the error, and Retry loads again', async () => {
+it('a failed load shows the error in a card, and Try again loads again', async () => {
   (api.bookings as jest.Mock).mockRejectedValueOnce(new Error('Unable to load bookings'));
   render(<SPCalendarScreen onNavigate={jest.fn()} />);
 
   expect(await screen.findByText("Couldn't load your schedule")).toBeTruthy();
-  expect(screen.getByText('Unable to load bookings')).toBeTruthy();
-  fireEvent.press(screen.getByText('Retry'));
+  expect(within(screen.getByTestId('error-card')).getByText('Unable to load bookings')).toBeTruthy();
+  fireEvent.press(screen.getByText('Try again'));
 
   await waitFor(() => expect(api.bookings).toHaveBeenCalledTimes(2));
   await waitFor(() => expect(screen.queryByText("Couldn't load your schedule")).toBeNull());

@@ -1,5 +1,5 @@
 import React from 'react';
-import {act, fireEvent, render, screen, waitFor} from '@testing-library/react-native';
+import {act, fireEvent, render, screen, waitFor, within} from '@testing-library/react-native';
 import SPPayoutsScreen, {payoutsCopy} from '../SPPayoutsScreen';
 import {api} from '../../../../src/lib/api';
 import type {ConnectStatus} from '../../../../src/lib/api';
@@ -21,6 +21,15 @@ it.each(['not_started','onboarding','restricted','active'])('renders authoritati
   render(<SPPayoutsScreen onBack={jest.fn()} />);
   expect(await screen.findByTestId(`payouts-status-${state}`)).toBeTruthy();
   expect(screen.getAllByText(/three-day warranty/).length).toBeGreaterThan(0);
+});
+it('a failed status load shows the error in a card, and Try again loads the status', async () => {
+  (api.connectSync as jest.Mock).mockRejectedValueOnce(new Error('Payouts unavailable'));
+  render(<SPPayoutsScreen onBack={jest.fn()} />);
+  const card = await screen.findByTestId('error-card');
+  expect(within(card).getByText("Couldn't load payouts")).toBeTruthy();
+  expect(within(card).getByText('Payouts unavailable')).toBeTruthy();
+  fireEvent.press(within(card).getByRole('button', {name: 'Try again'}));
+  expect(await screen.findByTestId('payouts-status-not_started')).toBeTruthy();
 });
 it('syncs after returning from onboarding instead of treating the redirect as proof of readiness', async () => {
   (api.connectSync as jest.Mock).mockResolvedValueOnce(status('not_started')).mockResolvedValue(status('restricted'));

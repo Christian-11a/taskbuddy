@@ -26,6 +26,7 @@ import React, { useState } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import Tap from '../../../src/components/ui/Tap';
 import ContentSkeleton from '../../../src/components/ui/ContentSkeleton';
+import LoadErrorCard from '../../../src/components/ui/LoadErrorCard';
 import StatusCard, { type StatusCardTone } from '../../../src/components/ui/StatusCard';
 import BottomActionBar from '../../../src/components/ui/BottomActionBar';
 import * as AuthSession from 'expo-auth-session';
@@ -184,17 +185,8 @@ export default function SPPayoutsScreen({ onBack }: SPPayoutsScreenProps) {
 
       {loading && !current && <ContentSkeleton variant="list" />}
       {!!error && !current && (
-        <View style={styles.centered}>
-          <Text style={styles.stateText}>{error}</Text>
-          <Tap
-            onPress={reload}
-            activeOpacity={0.8}
-            hitSlop={{ top: 15, bottom: 15, left: 8, right: 8 }}
-            accessibilityRole="button"
-            accessibilityLabel="Try again"
-          >
-            <Text style={styles.link}>Try again</Text>
-          </Tap>
+        <View style={styles.errorWrap}>
+          <LoadErrorCard title="Couldn't load payouts" message={error} onRetry={reload} />
         </View>
       )}
 
@@ -327,8 +319,7 @@ function createThemedStyles(theme: ThemePalette) {
     headerTitle: { color: V6Colors.ink900, fontSize: 19.5, fontWeight: '800', fontFamily: 'Inter' },
     scroll: { flex: 1 },
     body: { paddingHorizontal: Spacing.screenH, paddingTop: 16, paddingBottom: 24 },
-    centered: { alignItems: 'center', marginTop: 30, gap: 10 },
-    stateText: { color: V6Colors.ink500, fontSize: 15, lineHeight: 20, fontFamily: 'Inter', textAlign: 'center' },
+    errorWrap: { paddingHorizontal: Spacing.screenH, paddingTop: 16 },
 
     requirements: { color: Colors.warningText, fontSize: 13, fontWeight: '600', lineHeight: 18, fontFamily: 'Inter' },
     note: { color: V6Colors.ink500, fontSize: 13, lineHeight: 18, fontFamily: 'Inter' },

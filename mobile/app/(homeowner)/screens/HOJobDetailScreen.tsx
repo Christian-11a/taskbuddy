@@ -27,6 +27,7 @@ import BottomActionBar from '../../../src/components/ui/BottomActionBar';
 import Banner from '../../../src/components/ui/Banner';
 import ContentSkeleton from '../../../src/components/ui/ContentSkeleton';
 import EmptyCard from '../../../src/components/ui/EmptyCard';
+import LoadErrorCard from '../../../src/components/ui/LoadErrorCard';
 import EmptyRow from '../../../src/components/ui/EmptyRow';
 import MenuSheet, { type MenuSheetItem } from '../../../src/components/ui/MenuSheet';
 import PersonCard from '../../../src/components/ui/PersonCard';
@@ -316,7 +317,11 @@ export default function HOJobDetailScreen({ jobId, onBack, onNavigate }: HOJobDe
       </View>
 
       {loading && <ContentSkeleton variant="detail" />}
-      {!!error && !loading && <Text style={styles.stateText}>{error}</Text>}
+      {!!error && !loading && (
+        <View style={styles.loadErrorWrap}>
+          <LoadErrorCard title="Couldn't load this job" message={error} onRetry={reload} />
+        </View>
+      )}
 
       {job && view && (
         <ScrollView
@@ -580,7 +585,7 @@ function createThemedStyles(theme: ThemePalette) {
 
     body: { flex: 1 },
     bodyContent: { paddingHorizontal: Spacing.screenH, paddingTop: 16, paddingBottom: 24, gap: 18 },
-    stateText: { color: C.ink500, fontSize: 16.5, fontFamily: 'Inter', textAlign: 'center', marginTop: 30, paddingHorizontal: Spacing.screenH },
+    loadErrorWrap: { paddingHorizontal: Spacing.screenH, paddingTop: 16 },
 
     titleBlock: { gap: 6 },
     kicker: {

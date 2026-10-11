@@ -502,6 +502,21 @@ describe('SPHomeScreen — the feed search stays above the keyboard', () => {
     expect(within(screen.getByTestId('empty-card')).getByText('No open jobs near you')).toBeTruthy();
   });
 
+  it('a failed feed load shows the error in a card, and Try again loads the feed', async () => {
+    (api.browseJobs as jest.Mock)
+      .mockRejectedValueOnce(new Error('Feed unavailable'))
+      .mockResolvedValue({ jobs: [], summary: null });
+    render(<SPHomeScreen onNavigate={jest.fn()} />);
+
+    const card = await screen.findByTestId('error-card');
+    expect(within(card).getByText("Couldn't load open jobs")).toBeTruthy();
+    expect(within(card).getByText('Feed unavailable')).toBeTruthy();
+    fireEvent.press(within(card).getByRole('button', { name: 'Try again' }));
+
+    expect(await screen.findByText('No open jobs near you')).toBeTruthy();
+    expect(screen.queryByTestId('error-card')).toBeNull();
+  });
+
   it('scrolls the search box above the keyboard when it takes focus', async () => {
     await renderFeed();
     // The feed's outer ScrollView; the urgency pills have their own horizontal ScrollView.

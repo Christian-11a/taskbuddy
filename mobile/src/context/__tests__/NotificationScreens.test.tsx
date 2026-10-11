@@ -145,6 +145,22 @@ describe('notification list layout', () => {
       expect(within(screen.getByTestId('empty-card')).getByText("You're all caught up")).toBeTruthy();
     },
   );
+
+  it.each([HONotificationsScreen, SPNotificationsScreen])(
+    'a failed load with nothing to show is a card whose Try again reloads the notifications',
+    (Screen) => {
+      const reload = jest.fn();
+      (useNotifications as jest.Mock).mockReturnValue({
+        notifications: [], unreadCount: 0, loading: false, error: 'Notifications unavailable', reload,
+      });
+      render(<Screen {...callbacks} />);
+      const card = screen.getByTestId('error-card');
+      expect(within(card).getByText("Couldn't load notifications")).toBeTruthy();
+      expect(within(card).getByText('Notifications unavailable')).toBeTruthy();
+      fireEvent.press(within(card).getByRole('button', { name: 'Try again' }));
+      expect(reload).toHaveBeenCalledTimes(1);
+    },
+  );
 });
 
 describe('deleting a notification', () => {

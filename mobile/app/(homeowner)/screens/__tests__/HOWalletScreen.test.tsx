@@ -852,7 +852,21 @@ describe('HOWalletScreen — balance card, tiles and history', () => {
     render(<HOWalletScreen />);
 
     expect(await screen.findByText('Network error')).toBeTruthy();
+    expect(within(screen.getByTestId('error-card')).getByText("Couldn't load your wallet")).toBeTruthy();
     expect(screen.queryByText('No transactions yet')).toBeNull();
+  });
+
+  it('a failed wallet request has Try again, which reads the wallet again', async () => {
+    (api.wallet as jest.Mock)
+      .mockRejectedValueOnce(new Error('Network error'))
+      .mockResolvedValue({ balance: 0, available: 0, in_escrow: 0, total_credited: 0, transactions: [] });
+    render(<HOWalletScreen />);
+
+    const card = await screen.findByTestId('error-card');
+    fireEvent.press(within(card).getByRole('button', { name: 'Try again' }));
+
+    expect(await screen.findByText('No transactions yet')).toBeTruthy();
+    expect(screen.queryByTestId('error-card')).toBeNull();
   });
 
   it('lists a pending withdrawal under Recent withdrawals, and Cancel withdraws it and reloads', async () => {

@@ -6,6 +6,7 @@ import KeyboardAwareScrollView from '../../../src/components/ui/KeyboardAwareScr
 import StatusCard from '../../../src/components/ui/StatusCard';
 import EmptyCard from '../../../src/components/ui/EmptyCard';
 import EmptyRow from '../../../src/components/ui/EmptyRow';
+import LoadErrorCard from '../../../src/components/ui/LoadErrorCard';
 import TextField from '../../../src/components/ui/TextField';
 import BottomActionBar from '../../../src/components/ui/BottomActionBar';
 import SheetFrame from '../../../src/components/ui/SheetFrame';
@@ -104,7 +105,11 @@ export default function HODisputeStatusScreen({ jobId, onBack, onMessage }: Prop
       <Text style={styles.title} numberOfLines={1}>{view?.heading ?? 'Report'}</Text>
     </View>
     {loading && <ActivityIndicator style={styles.loader} color={V6Colors.link} />}
-    {!!error && <Text style={styles.error} accessibilityLiveRegion="polite">{error}</Text>}
+    {!!error && (
+      <View style={styles.emptyPage}>
+        <LoadErrorCard title="Couldn't load this complaint" message={error} onRetry={reload} />
+      </View>
+    )}
     {!loading && !error && !dispute && (
       <View style={styles.emptyPage}>
         <EmptyCard>

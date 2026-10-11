@@ -139,6 +139,16 @@ describe('FullTest provider job details', () => {
     expect(screen.getByLabelText('Send proposal')).toBeTruthy();
   });
 
+  it('a job that cannot be loaded shows the error in a card, and Try again loads it again', async () => {
+    (api.getJob as jest.Mock).mockRejectedValueOnce(new Error('Job was filled')).mockResolvedValue(openJob);
+    render(<SPJobDetailScreen jobId={JOB_ID} onBack={jest.fn()} onNavigate={jest.fn()} />);
+    const card = await screen.findByTestId('error-card');
+    expect(within(card).getByText("This job isn't available")).toBeTruthy();
+    expect(within(card).getByText('Job was filled')).toBeTruthy();
+    fireEvent.press(within(card).getByRole('button', { name: 'Try again' }));
+    expect(await screen.findByLabelText('Send proposal')).toBeTruthy();
+  });
+
   it('a job with no photos says so inside the card', async () => {
     (api.getJob as jest.Mock).mockResolvedValue(openJob);
     render(<SPJobDetailScreen jobId={JOB_ID} onBack={jest.fn()} onNavigate={jest.fn()} />);

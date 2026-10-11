@@ -22,6 +22,7 @@ import TextField from '../../../src/components/ui/TextField';
 import StatusCard from '../../../src/components/ui/StatusCard';
 import BottomActionBar from '../../../src/components/ui/BottomActionBar';
 import EmptyCard from '../../../src/components/ui/EmptyCard';
+import Banner from '../../../src/components/ui/Banner';
 import EmptyRow from '../../../src/components/ui/EmptyRow';
 import { ArrowLeft, CircleCheck, CircleSlash, CircleX, Clock, FileText, ShieldCheck, type LucideIcon } from 'lucide-react-native';
 import { Spacing, V6Radii } from '../../../src/constants/theme';
@@ -230,6 +231,9 @@ export default function SPSkillRequestScreen({ onBack }: SPSkillRequestScreenPro
 
         {requests.loading && <ActivityIndicator color={Colors.link} style={styles.spinner} />}
         {!!error && <Text style={styles.error} accessibilityLiveRegion="polite">{error}</Text>}
+        {!!requests.error && !requests.loading && (
+          <Banner tone="error" message={requests.error} actionLabel="Try again" onAction={requests.reload} />
+        )}
 
         {pending && (
           <StatusCard
@@ -268,6 +272,9 @@ export default function SPSkillRequestScreen({ onBack }: SPSkillRequestScreenPro
               ))}
             </View>
 
+            {!!categories.error && (
+              <Banner tone="error" message={categories.error} actionLabel="Try again" onAction={categories.reload} />
+            )}
             <Text style={styles.fieldLabel}>Service</Text>
             <View style={styles.chipGrid}>
               {choices.map((cat) => {

@@ -194,6 +194,15 @@ it('hides the Message link when no chat handler is given', async () => {
   await screen.findByText('Add details or photos');
   expect(screen.queryByText('Message the client')).toBeNull();
 });
+it('a failed complaint load shows the error in a card, and Try again loads it again', async () => {
+  (api.jobDispute as jest.Mock).mockRejectedValueOnce(new Error('Complaint unavailable'));
+  show();
+  const card = await screen.findByTestId('error-card');
+  expect(within(card).getByText("Couldn't load this complaint")).toBeTruthy();
+  expect(within(card).getByText('Complaint unavailable')).toBeTruthy();
+  fireEvent.press(within(card).getByRole('button', { name: 'Try again' }));
+  expect(await screen.findByText('An admin is reviewing this report')).toBeTruthy();
+});
 it('a job with no complaint says so inside the card', async () => {
   (api.jobDispute as jest.Mock).mockResolvedValue(null);
   show();

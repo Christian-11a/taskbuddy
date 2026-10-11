@@ -21,6 +21,7 @@
 import { useThemedStyles, type Palette as ThemePalette } from '../../../src/context/ThemeContext';
 import React from 'react';
 import PortfolioGallery from '../../../src/components/PortfolioGallery';
+import LoadErrorCard from '../../../src/components/ui/LoadErrorCard';
 import { approvedServiceNames } from '../../../src/lib/providerServices';
 import { useRefreshOnForeground } from '../../../src/hooks/useRefreshOnForeground';
 import {
@@ -103,7 +104,11 @@ export default function HOProviderProfileScreen({
       </View>
 
       {loading && <ContentSkeleton variant="detail" />}
-      {!!error && !loading && <Text style={styles.stateText}>{error}</Text>}
+      {!!error && !loading && (
+        <View style={styles.errorWrap}>
+          <LoadErrorCard title="Couldn't load this provider" message={error} onRetry={reload} />
+        </View>
+      )}
 
       {!loading && provider && (
         <ScrollView style={styles.body} showsVerticalScrollIndicator={false}>
@@ -175,7 +180,9 @@ export default function HOProviderProfileScreen({
             <View style={styles.section}>
               <Text style={styles.sectionTitle} accessibilityRole="header">Portfolio</Text>
               {portfolio.loading && <ActivityIndicator color={V6Colors.link}/>}
-              {!!portfolio.error && <><Text style={styles.bio}>{portfolio.error}</Text><Tap onPress={portfolio.reload}><Text style={styles.serviceText}>Retry portfolio</Text></Tap></>}
+              {!!portfolio.error && (
+                <LoadErrorCard title="Couldn't load the portfolio" message={portfolio.error} onRetry={portfolio.reload} />
+              )}
               {!portfolio.loading && !portfolio.error && <PortfolioGallery entries={portfolioEntries}/>}
             </View>
           )}
@@ -319,7 +326,7 @@ function createThemedStyles(theme: ThemePalette) {
     reviewRating: { color: C.ink500, fontSize: 12.5, fontFamily: 'Inter' },
     reviewComment: { color: C.ink700, fontSize: 13.5, marginTop: 5, lineHeight: 18, fontFamily: 'Inter' },
 
-    stateText: { color: C.ink500, fontSize: 16.5, fontFamily: 'Inter', textAlign: 'center', marginTop: 30 },
+    errorWrap: { paddingHorizontal: Spacing.screenH, paddingTop: 16 },
 
     actionBar: { padding: Spacing.screenH, paddingTop: 16 },
     messageBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: C.cyan700, borderRadius: 13, paddingVertical: 14 },

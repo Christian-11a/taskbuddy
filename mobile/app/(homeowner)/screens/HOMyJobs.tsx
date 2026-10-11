@@ -26,7 +26,7 @@ import FilterPill from '../../../src/components/ui/FilterPill';
 import JobRow from '../../../src/components/ui/JobRow';
 import EmptyCard from '../../../src/components/ui/EmptyCard';
 import EmptyRow from '../../../src/components/ui/EmptyRow';
-import Banner from '../../../src/components/ui/Banner';
+import LoadErrorCard from '../../../src/components/ui/LoadErrorCard';
 import ScreenSkeleton from '../../../src/components/ScreenSkeleton';
 import { HOScreen } from '../../../src/types/navigation';
 import { useAsyncData } from '../../../src/hooks/useAsyncData';
@@ -152,7 +152,7 @@ export default function MyJobs({ onNavigate, headerRight }: MyJobsProps) {
       >
         {loading && <ScreenSkeleton variant="list" />}
         {!!error && !loading && (
-          <Banner tone="error" message={error} actionLabel="Try again" onAction={reload} />
+          <LoadErrorCard title="Couldn't load your jobs" message={error} onRetry={reload} />
         )}
 
         {settled && sections.length === 0 && (

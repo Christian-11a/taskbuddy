@@ -25,6 +25,7 @@ import {
 import { ArrowLeft, ArrowRight, Camera } from 'lucide-react-native';
 import Tap from './ui/Tap';
 import ContentSkeleton from './ui/ContentSkeleton';
+import LoadErrorCard from './ui/LoadErrorCard';
 import Silhouette from './ui/Silhouette';
 import PhotoViewer from './PhotoViewer';
 import ChatEmptyState from './ChatEmptyState';
@@ -158,7 +159,11 @@ export default function ChatThread({
         keyboardVerticalOffset={0}
       >
         {loading && <ContentSkeleton variant="chat" />}
-        {!!error && !loading && <Text style={styles.stateText}>{error}</Text>}
+        {!!error && !loading && (
+          <View style={styles.errorWrap}>
+            <LoadErrorCard title="Couldn't load this chat" message={error} />
+          </View>
+        )}
         {!loading && !error && messages.length === 0 && (
           <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
             <ChatEmptyState />
@@ -271,7 +276,7 @@ function createThemedStyles(theme: ThemePalette) {
     },
 
     chatContent: { paddingHorizontal: 16, paddingVertical: 16, gap: 10 },
-    stateText: { color: C.ink500, fontSize: 15.5, fontFamily: 'Inter', textAlign: 'center', marginTop: 20 },
+    errorWrap: { paddingHorizontal: 16, paddingTop: 16 },
 
     bubbleWrap: { maxWidth: '75%' },
     bubbleWrapSent: { alignSelf: 'flex-end' },

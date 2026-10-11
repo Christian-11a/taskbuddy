@@ -259,6 +259,7 @@ describe('SPMyJobsScreen — empty, error and title row', () => {
     render(<SPMyJobsScreen onNavigate={jest.fn()} />);
 
     expect(await screen.findByText('Unable to load jobs')).toBeTruthy();
+    expect(within(screen.getByTestId('error-card')).getByText("Couldn't load your jobs")).toBeTruthy();
     fireEvent.press(screen.getByText('Try again'));
 
     expect(await screen.findByText('Finished job')).toBeTruthy();
