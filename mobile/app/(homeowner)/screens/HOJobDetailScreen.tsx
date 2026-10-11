@@ -498,7 +498,7 @@ export default function HOJobDetailScreen({ jobId, onBack, onNavigate }: HOJobDe
           job?.status === 'in_progress' || dispute?.status === 'open'
             ? 'This cancels the job and preserves its history. Any held payment stays frozen for an admin to review before release or refund.'
             : job?.assigned_provider_id
-            ? 'This cancels the booking and holds any payment while the provider has 48 hours to agree or contest. Agreement or no response refunds the client; a contest goes to admin review.'
+            ? 'This cancels the booking and holds any payment while the provider has 48 hours to agree or contest. Agreement or no response refunds you; a contest goes to admin review.'
             : 'This takes the job down so providers can no longer apply. It cannot be undone.'
         }
         confirmLabel="Cancel Job"
