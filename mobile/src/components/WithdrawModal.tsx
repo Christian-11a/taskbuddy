@@ -58,7 +58,8 @@ export function readWithdrawal(amountText: string, destinationText: string, avai
   const destination = cleanText(destinationText);
   const amountError = validateAmount(amountText, {
     min: MIN_WITHDRAWAL_PHP,
-    max: available,
+    // A balance that did not load as a number cannot cover anything.
+    max: Number.isFinite(available) ? available : 0,
     label: 'an amount',
     overMessage: (limit) => `That's more than your ${peso(limit)} available.`,
   }) ?? undefined;

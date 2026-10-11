@@ -1,7 +1,7 @@
 import React from 'react';
 import { ActivityIndicator, Keyboard, Modal, StyleSheet } from 'react-native';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react-native';
-import WithdrawModal from '../WithdrawModal';
+import WithdrawModal, { readWithdrawal } from '../WithdrawModal';
 import { api } from '../../lib/api';
 import { lightPalette } from '../../constants/palettes';
 import { showToast } from '../Toast';
@@ -446,5 +446,14 @@ describe('WithdrawModal — the destination is one GCash or bank account number'
 
     await waitFor(() => expect(onFiled).toHaveBeenCalledTimes(1));
     expect(api.requestWithdrawal).toHaveBeenCalledWith({ amount: 400, destination: 'GCash 0917 123 4567' });
+  });
+});
+
+describe('readWithdrawal — a balance that did not load cannot be withdrawn from', () => {
+  it('refuses any amount when the available balance is not a number', () => {
+    const reading = readWithdrawal('5', 'GCash 0917 123 4567', Number.NaN);
+
+    expect(reading.amountValid).toBe(false);
+    expect(reading.amountError).toBe("That's more than your ₱0.00 available.");
   });
 });
