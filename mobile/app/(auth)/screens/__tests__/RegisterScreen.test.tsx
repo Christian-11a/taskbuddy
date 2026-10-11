@@ -339,6 +339,22 @@ describe('RegisterScreen — name and email are checked', () => {
     expect(screen.getByText('Enter a valid email address')).toBeTruthy();
   });
 
+  it('refuses to create the account for a malformed email, and says why', async () => {
+    const onRegister = jest.fn();
+    render(<RegisterScreen {...baseProps} onRegister={onRegister} />);
+    fireEvent.press(screen.getByText('Continue'));
+    fireEvent.changeText(screen.getByTestId('input-name'), 'Test User');
+    fireEvent.changeText(screen.getByTestId('input-email'), 'test@example');
+    fireEvent.changeText(screen.getByTestId('input-password'), 'password123');
+    fireEvent.changeText(screen.getByTestId('input-confirm-password'), 'password123');
+    tickConsents();
+
+    await act(async () => fireEvent.press(screen.getByTestId('btn-create-account')));
+
+    expect(screen.getByText('Enter a valid email address')).toBeTruthy();
+    expect(onRegister).not.toHaveBeenCalled();
+  });
+
   it('sends the trimmed email and the name with single spaces', async () => {
     const onRegister = jest.fn().mockResolvedValue({ needsEmailConfirmation: false });
     render(<RegisterScreen {...baseProps} onRegister={onRegister} />);

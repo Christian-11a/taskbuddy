@@ -14,7 +14,6 @@ jest.mock('../../lib/api', () => ({
   },
 }));
 jest.mock('../../components/AddressField', () => {
-  const React = require('react');
   const { Text, TextInput } = require('react-native');
   return ({
     value,
@@ -114,6 +113,15 @@ describe.each<Role>(ROLES)('%s edit profile phone', (role) => {
     fireEvent.changeText(phoneField(), '0917-abc 123 4567!');
 
     expect(phoneField().props.value).toBe('09171234567');
+  });
+
+  it('leaves an empty phone field empty when only letters are typed', async () => {
+    mockProfile({ phone: '' });
+    await renderEditor(role);
+
+    fireEvent.changeText(phoneField(), 'abc');
+
+    expect(phoneField().props.value).toBe('');
   });
 
   it('turns a pasted +63 number into the 09 form', async () => {
