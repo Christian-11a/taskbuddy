@@ -11,7 +11,7 @@
  */
 
 import { useThemedStyles, type Palette as ThemePalette } from '../../../src/context/ThemeContext';
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import Tap from '../../../src/components/ui/Tap';
 import ContentSkeleton from '../../../src/components/ui/ContentSkeleton';
@@ -50,6 +50,8 @@ export default function SPWalletScreen({ onNavigate }: SPWalletScreenProps) {
 
   const [showWithdraw, setShowWithdraw] = useState(false);
   const [cancelling, setCancelling] = useState<string | null>(null);
+  // Set before the first await, so a second tap in the same frame cannot send a second cancel.
+  const cancelInFlight = useRef(false);
 
   const pendingWithdrawals = transactions.filter(
     (t) => t.kind === 'withdrawal' && t.status === 'pending',
@@ -63,6 +65,11 @@ export default function SPWalletScreen({ onNavigate }: SPWalletScreenProps) {
   const groups = groupWalletByDay(transactions, new Date());
 
   const cancelWithdrawal = async (id: string) => {
+    if (cancelInFlight.current) {
+      showToast("We're already cancelling this withdrawal. Please wait.", 'info');
+      return;
+    }
+    cancelInFlight.current = true;
     setCancelling(id);
     try {
       await api.cancelWithdrawal(id);
@@ -70,6 +77,7 @@ export default function SPWalletScreen({ onNavigate }: SPWalletScreenProps) {
     } catch (e) {
       showToast(e instanceof Error ? e.message : 'Could not cancel the withdrawal.', 'error');
     } finally {
+      cancelInFlight.current = false;
       setCancelling(null);
     }
   };
@@ -160,10 +168,10 @@ export default function SPWalletScreen({ onNavigate }: SPWalletScreenProps) {
                 </View>
                 <Tap
                   onPress={() => cancelWithdrawal(w.id)}
-                  disabled={cancelling === w.id}
                   hitSlop={{ top: 12, bottom: 12, left: 8, right: 8 }}
                   accessibilityRole="button"
                   accessibilityLabel={`Cancel withdrawal of ${peso(w.amount)}`}
+                  accessibilityState={{ busy: cancelling === w.id }}
                 >
                   <Text style={styles.pendingCancel}>
                     {cancelling === w.id ? 'Cancelling…' : 'Cancel'}

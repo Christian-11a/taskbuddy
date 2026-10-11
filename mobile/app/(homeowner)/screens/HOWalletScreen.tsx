@@ -129,6 +129,8 @@ export default function HOWalletScreen() {
   // Set before the first await, so a second tap in the same frame cannot start a second Checkout or request.
   const addInFlight = useRef(false);
   const withdrawInFlight = useRef(false);
+  // Set before the first await, so a second tap in the same frame cannot send a second cancel.
+  const cancelInFlight = useRef(false);
 
   const [showWithdraw, setShowWithdraw] = useState(false);
   const [withdrawAmount, setWithdrawAmount] = useState('');
@@ -136,6 +138,8 @@ export default function HOWalletScreen() {
   const [withdrawing, setWithdrawing] = useState(false);
   const [withdrawError, setWithdrawError] = useState<string | null>(null);
   const [withdrawStep, setWithdrawStep] = useState<WithdrawStep>('form');
+  // The withdrawal whose Cancel is running, so its row can say so.
+  const [cancellingId, setCancellingId] = useState<string | null>(null);
 
   const parsedAmount = Number(amount.replace(/,/g, ''));
   const isValidAmount =
@@ -218,6 +222,12 @@ export default function HOWalletScreen() {
   };
 
   const cancelWithdrawal = async (id: string) => {
+    if (cancelInFlight.current) {
+      showToast("We're already cancelling this withdrawal. Please wait.", 'info');
+      return;
+    }
+    cancelInFlight.current = true;
+    setCancellingId(id);
     try {
       await api.cancelWithdrawal(id);
       reload();
@@ -225,6 +235,9 @@ export default function HOWalletScreen() {
     } catch (e) {
       setWithdrawError(e instanceof Error ? e.message : 'Could not cancel the withdrawal.');
       setShowWithdraw(true);
+    } finally {
+      cancelInFlight.current = false;
+      setCancellingId(null);
     }
   };
 
@@ -453,8 +466,9 @@ export default function HOWalletScreen() {
                       hitSlop={{ top: 12, bottom: 12, left: 8, right: 8 }}
                       accessibilityRole="button"
                       accessibilityLabel={`Cancel withdrawal, ${withdrawal.title}`}
+                      accessibilityState={{ busy: cancellingId === withdrawal.id }}
                     >
-                      <Text style={styles.cancelText}>Cancel</Text>
+                      <Text style={styles.cancelText}>{cancellingId === withdrawal.id ? 'Cancelling…' : 'Cancel'}</Text>
                     </Tap>
                   )}
                 </View>

@@ -61,6 +61,34 @@ it('reports cancellation failure and retains the pending request', async () => {
   expect(screen.getByText('Transaction: pending-request')).toBeTruthy();
   expect(api.wallet).toHaveBeenCalledTimes(1);
 });
+it('two taps on Cancel inside one act() send one cancel, and the second says why it was ignored', async () => {
+  (api.wallet as jest.Mock).mockResolvedValue(wallet([transaction('pending-request','pending')]));
+  let finish: (value: unknown) => void = () => {};
+  (api.cancelWithdrawal as jest.Mock).mockReturnValueOnce(new Promise((resolve) => { finish = resolve; }));
+  render(<SPWalletScreen onNavigate={jest.fn()} />);
+  await screen.findByText('Transaction: pending-request');
+  // Both taps land before React re-renders, so they reach the same handler.
+  act(() => {
+    fireEvent.press(screen.getByText('Cancel'));
+    fireEvent.press(screen.getByText('Cancel'));
+  });
+  expect(api.cancelWithdrawal).toHaveBeenCalledTimes(1);
+  expect(showToast).toHaveBeenCalledWith("We're already cancelling this withdrawal. Please wait.", 'info');
+  await act(async () => { finish({}); });
+});
+it('a Cancel tapped again after the first one failed is sent again', async () => {
+  (api.wallet as jest.Mock).mockResolvedValue(wallet([transaction('pending-request','pending')]));
+  (api.cancelWithdrawal as jest.Mock)
+    .mockRejectedValueOnce(new Error('Already being settled'))
+    .mockResolvedValueOnce({});
+  render(<SPWalletScreen onNavigate={jest.fn()} />);
+  await screen.findByText('Transaction: pending-request');
+  await act(async () => fireEvent.press(screen.getByText('Cancel')));
+  await waitFor(() => expect(showToast).toHaveBeenCalledWith('Already being settled','error'));
+  await act(async () => fireEvent.press(screen.getByText('Cancel')));
+  expect(api.cancelWithdrawal).toHaveBeenCalledTimes(2);
+  expect(showToast).not.toHaveBeenCalledWith(expect.stringMatching(/already cancelling/), 'info');
+});
 it('shows the escrow hold and the total earned, with the jobs done under it', async () => {
   (api.wallet as jest.Mock).mockResolvedValue({...wallet([]), in_escrow:120, total_credited:1000});
   render(<SPWalletScreen onNavigate={jest.fn()} />);

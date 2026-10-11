@@ -836,6 +836,76 @@ describe('HOWalletScreen — balance card, tiles and history', () => {
   });
 });
 
+describe('HOWalletScreen — cancelling a withdrawal', () => {
+  const cancelButton = () => screen.getByLabelText('Cancel withdrawal, Cash out to GCash');
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    clearAsyncDataCache();
+    (api.wallet as jest.Mock).mockResolvedValue({
+      balance: 1250, available: 1000, pending: 0, pending_withdrawals: 100,
+      total_credited: 1650, total_debited: 400, in_escrow: 300, transactions: [],
+    });
+    (api.withdrawals as jest.Mock).mockResolvedValue([
+      { id: 'w1', title: 'Cash out to GCash', status: 'pending', amount: 100, created_at: '2026-10-10T09:00:00Z', review_note: null },
+    ]);
+    (api.cancelWithdrawal as jest.Mock).mockResolvedValue({});
+  });
+
+  it('two taps on Cancel inside one act() send one cancel, and the second says why it was ignored', async () => {
+    let finish: (value: unknown) => void = () => {};
+    (api.cancelWithdrawal as jest.Mock).mockReturnValueOnce(new Promise((resolve) => { finish = resolve; }));
+    render(<HOWalletScreen />);
+    await screen.findByText('Cash out to GCash');
+
+    // Both taps land before React re-renders, so they reach the same handler.
+    act(() => {
+      fireEvent.press(cancelButton());
+      fireEvent.press(cancelButton());
+    });
+
+    expect(api.cancelWithdrawal).toHaveBeenCalledTimes(1);
+    expect(showToast).toHaveBeenCalledWith("We're already cancelling this withdrawal. Please wait.", 'info');
+
+    await act(async () => { finish({}); });
+  });
+
+  it('a Cancel tapped again after the first one succeeded is sent again, with no notice', async () => {
+    render(<HOWalletScreen />);
+    await screen.findByText('Cash out to GCash');
+
+    await act(async () => {
+      fireEvent.press(cancelButton());
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    await act(async () => {
+      fireEvent.press(cancelButton());
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+
+    expect(api.cancelWithdrawal).toHaveBeenCalledTimes(2);
+    expect(showToast).not.toHaveBeenCalledWith(expect.stringMatching(/already cancelling/), 'info');
+  });
+
+  it('a Cancel tapped again after the first one failed is sent again', async () => {
+    (api.cancelWithdrawal as jest.Mock).mockRejectedValueOnce(new Error('Already being settled'));
+    render(<HOWalletScreen />);
+    await screen.findByText('Cash out to GCash');
+
+    await act(async () => {
+      fireEvent.press(cancelButton());
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    await act(async () => {
+      fireEvent.press(cancelButton());
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+
+    expect(api.cancelWithdrawal).toHaveBeenCalledTimes(2);
+    expect(showToast).not.toHaveBeenCalledWith(expect.stringMatching(/already cancelling/), 'info');
+  });
+});
+
 describe('HOWalletScreen — every control has an accessible name', () => {
   beforeEach(() => {
     jest.clearAllMocks();
