@@ -49,7 +49,7 @@
  */
 
 import { useThemedStyles, type Palette as ThemePalette } from '../../../src/context/ThemeContext';
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   ScrollView,
   StyleSheet,
@@ -101,7 +101,6 @@ import PostFooter from '../../../src/components/post/PostFooter';
 import PostProgress from '../../../src/components/post/PostProgress';
 import ServiceTile from '../../../src/components/post/ServiceTile';
 import CalmNote from '../../../src/components/post/CalmNote';
-import MapPreview from '../../../src/components/post/MapPreview';
 import ReviewRow from '../../../src/components/post/ReviewRow';
 import BottomActionBar from '../../../src/components/ui/BottomActionBar';
 import PostingChecklist, { type PostingStep } from '../../../src/components/post/PostingChecklist';
@@ -225,16 +224,6 @@ export default function HOCreateJobScreen({
   const [descriptionHeight, setDescriptionHeight] = useState<number | null>(null);
   const [location, setLocation] = useState('');
   const [resolvedCoordinates, setResolvedCoordinates] = useState<{ latitude: number; longitude: number } | null>(null);
-  // The preview is decoration on top of verified coordinates: if it fails
-  // (backend 503, expired token, offline) the confirmed card stands alone.
-  const [mapPreviewFailed, setMapPreviewFailed] = useState(false);
-  const mapPreviewSource = useMemo(
-    () => (resolvedCoordinates
-      ? api.staticMapSource(resolvedCoordinates.latitude, resolvedCoordinates.longitude)
-      : null),
-    [resolvedCoordinates],
-  );
-  useEffect(() => setMapPreviewFailed(false), [mapPreviewSource]);
   // While typing, the Back/Next bar would ride up with the keyboard and cover
   // the address suggestions (I3); it comes back as soon as the keyboard closes.
   const [keyboardUp, setKeyboardUp] = useState(false);
@@ -776,15 +765,6 @@ export default function HOCreateJobScreen({
                 </View>
               )}
             </View>
-
-            {/* The map under the confirmed address: a placeholder while it loads, and gone only if the image really fails. */}
-            {mapPreviewSource && !mapPreviewFailed && (
-              <MapPreview
-                key={`${resolvedCoordinates?.latitude},${resolvedCoordinates?.longitude}`}
-                source={mapPreviewSource}
-                onError={() => setMapPreviewFailed(true)}
-              />
-            )}
 
             {/* The one place this step explains a location that is not confirmed yet. */}
             {!resolvedCoordinates && !fieldErrors.location && (
