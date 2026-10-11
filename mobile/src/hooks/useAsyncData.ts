@@ -4,6 +4,7 @@ import {
   isPersistable,
   readPersisted,
   writePersisted,
+  type SavedValue,
 } from '../lib/persistentCache';
 
 export interface AsyncState<T> {
@@ -101,8 +102,9 @@ function step<T>(state: Core<T>, action: Step<T>): Core<T> {
  *
  * With `options.persist`, the last successful result is also kept on the device for the signed-in
  * account (see persistentCache.ts). When nothing is in memory, the saved copy is shown first, marked
- * `stale`, and replaced once the fetch succeeds. A saved copy that arrives after the fetch has
- * finished, or after the key changed or the screen went, is ignored.
+ * `stale`, and replaced once the fetch succeeds. A saved copy that arrives after a successful fetch,
+ * or after the key changed or the screen went, is ignored. When the fetch fails first, the error
+ * waits for the saved read, so the saved copy is shown with the error (an offline launch).
  */
 export function useAsyncData<T>(
   fetcher: () => Promise<T>,
@@ -123,7 +125,8 @@ export function useAsyncData<T>(
 
   useEffect(() => {
     let active = true;
-    let settled = false;
+    // Set by a successful fetch only: a saved copy that lands after it is ignored.
+    let fetched = false;
     const account = getCacheAccount();
     const hadMemory = !!cacheKey && cache.has(cacheKey);
     // A saved copy is only kept for a key that may be saved, while an account is signed in.
@@ -132,32 +135,39 @@ export function useAsyncData<T>(
 
     dispatch({ type: 'start', showSkeleton: !hadMemory });
 
-    if (savedKey && !hadMemory) {
-      void readPersisted<T>(savedKey, maxAgeMs)
-        .then((saved) => {
-          if (active && !settled && saved && getCacheAccount() === account) {
-            dispatch({ type: 'saved', value: saved.value });
-          }
-        })
-        .catch(() => undefined);
-    }
+    // Read once per run. Resolves to null when nothing usable is saved, or when the read fails.
+    const savedRead: Promise<SavedValue<T> | null> | null =
+      savedKey && !hadMemory
+        ? readPersisted<T>(savedKey, maxAgeMs).catch(() => null)
+        : null;
+
+    const showSaved = (saved: SavedValue<T> | null) => {
+      if (active && !fetched && saved && getCacheAccount() === account) {
+        dispatch({ type: 'saved', value: saved.value });
+      }
+    };
+    if (savedRead) void savedRead.then(showSaved);
 
     fetcher()
       .then((result) => {
-        settled = true;
+        fetched = true;
         if (!active) return;
         if (cacheKey) cache.set(cacheKey, result);
         if (savedKey && getCacheAccount() === account) void writePersisted(savedKey, result);
         dispatch({ type: 'fetched', value: result });
       })
       .catch((e: unknown) => {
-        settled = true;
-        if (active) {
-          dispatch({
-            type: 'failed',
-            message: e instanceof Error ? e.message : 'Something went wrong.',
-          });
+        const message = e instanceof Error ? e.message : 'Something went wrong.';
+        if (!savedRead) {
+          if (active) dispatch({ type: 'failed', message });
+          return;
         }
+        // Wait for the saved read first: a saved copy shown with the error is what an offline launch needs.
+        void savedRead.then((saved) => {
+          if (!active) return;
+          showSaved(saved);
+          dispatch({ type: 'failed', message });
+        });
       });
     return () => {
       active = false;

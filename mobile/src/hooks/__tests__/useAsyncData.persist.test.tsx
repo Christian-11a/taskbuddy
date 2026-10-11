@@ -298,6 +298,108 @@ describe('with persist on, for a key that may be saved', () => {
   });
 });
 
+describe('when the first fetch fails before the saved copy has been read', () => {
+  it('waits for the saved read, then shows the saved copy together with the error', async () => {
+    const saved = deferred<SavedRead>();
+    readSaved.mockImplementationOnce(() => saved.promise);
+    render(
+      <Probe
+        cacheKey="ho-jobs"
+        fetcher={() => Promise.reject(new Error('Network request failed'))}
+        options={{ persist: true }}
+      />,
+    );
+
+    await settle();
+    // The error waits for the saved read, so an offline launch can still show what was saved.
+    expect(screen.queryByText('error:Network request failed')).toBeNull();
+    expect(screen.getByText('loading:true')).toBeTruthy();
+
+    await act(async () => saved.resolve({ value: 'saved jobs', savedAt: Date.now() - 1000 }));
+
+    expect(await screen.findByText('saved jobs')).toBeTruthy();
+    expect(screen.getByText('error:Network request failed')).toBeTruthy();
+    expect(screen.getByText('stale:true')).toBeTruthy();
+    expect(screen.getByText('loading:false')).toBeTruthy();
+    expect(screen.getByText('refreshing:false')).toBeTruthy();
+  });
+
+  it('shows the error alone when the saved read settles with nothing to show', async () => {
+    const saved = deferred<SavedRead>();
+    readSaved.mockImplementationOnce(() => saved.promise);
+    render(
+      <Probe
+        cacheKey="ho-jobs"
+        fetcher={() => Promise.reject(new Error('Network request failed'))}
+        options={{ persist: true }}
+      />,
+    );
+
+    await settle();
+    expect(screen.queryByText('error:Network request failed')).toBeNull();
+
+    await act(async () => saved.resolve(null));
+
+    expect(await screen.findByText('error:Network request failed')).toBeTruthy();
+    expect(screen.getByText('nothing yet')).toBeTruthy();
+    expect(screen.getByText('stale:false')).toBeTruthy();
+    expect(screen.getByText('loading:false')).toBeTruthy();
+  });
+
+  it.each<[string, () => Promise<void>, string, string]>([
+    ['a copy from this account', () => seed('ho-jobs', 'saved jobs'), 'saved jobs', 'stale:true'],
+    ['no copy at all', async () => undefined, 'nothing yet', 'stale:false'],
+    [
+      'a copy older than maxAgeMs',
+      () => seed('ho-jobs', 'old jobs', Date.now() - 2 * HOUR),
+      'nothing yet',
+      'stale:false',
+    ],
+    ['a copy from another account', () => seed('ho-jobs', 'bob jobs', Date.now(), 'acct-bob'), 'nothing yet', 'stale:false'],
+    [
+      'a copy that cannot be read',
+      async () => {
+        readSaved.mockImplementationOnce(() => Promise.reject(new Error('Storage unavailable')));
+      },
+      'nothing yet',
+      'stale:false',
+    ],
+  ])('with %s, the error shows next to whatever can be read', async (_name, setup, shown, staleText) => {
+    await setup();
+    render(
+      <Probe
+        cacheKey="ho-jobs"
+        fetcher={() => Promise.reject(new Error('Network request failed'))}
+        options={{ persist: true, maxAgeMs: HOUR }}
+      />,
+    );
+
+    expect(await screen.findByText('error:Network request failed')).toBeTruthy();
+    expect(screen.getByText(shown)).toBeTruthy();
+    expect(screen.getByText(staleText)).toBeTruthy();
+    expect(screen.getByText('loading:false')).toBeTruthy();
+  });
+
+  it('drops both the failure and a late saved copy once the screen has moved on to another key', async () => {
+    const saved = deferred<SavedRead>();
+    readSaved.mockImplementationOnce(() => saved.promise);
+    const failing = deferred<string>();
+    const view = render(<Probe cacheKey="ho-jobs" fetcher={() => failing.promise} options={{ persist: true }} />);
+    view.rerender(
+      <Probe cacheKey="ho-wallet" fetcher={() => Promise.resolve('wallet')} options={{ persist: true }} />,
+    );
+    expect(await screen.findByText('wallet')).toBeTruthy();
+
+    await act(async () => failing.reject(new Error('Network request failed')));
+    await act(async () => saved.resolve({ value: 'jobs saved', savedAt: Date.now() }));
+
+    expect(screen.getByText('wallet')).toBeTruthy();
+    expect(screen.queryByText('error:Network request failed')).toBeNull();
+    expect(screen.queryByText('jobs saved')).toBeNull();
+    expect(screen.getByText('stale:false')).toBeTruthy();
+  });
+});
+
 describe('without persist', () => {
   it('shows the loading state until the first fetch lands, as before, and touches no storage', async () => {
     await seed('ho-jobs', 'saved jobs');
