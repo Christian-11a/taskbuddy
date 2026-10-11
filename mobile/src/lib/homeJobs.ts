@@ -81,3 +81,20 @@ export function pickHomeHero(jobs: Job[], applicationsByJob: ApplicationsByJob, 
   }
   return null;
 }
+
+/**
+ * Whether Home's hero could still appear, so a placeholder can hold its place
+ * while the proposal lookups run. Once the lookups are ready the hero is known,
+ * so nothing is held. Before that, the hero may appear only if a job could give
+ * one: an open job Home checks for proposals, or a booking whose time is still
+ * ahead. These are the same jobs pickHomeHero considers.
+ */
+export function heroMayAppear(jobs: Job[], ready: boolean, now: Date): boolean {
+  if (ready) return false;
+  if (proposalCandidates(jobs).length > 0) return true;
+  const nowMs = now.getTime();
+  return jobs.some((job) => {
+    const at = scheduledAt(job);
+    return BOOKED_STATUSES.includes(job.status) && at !== null && at > nowMs;
+  });
+}

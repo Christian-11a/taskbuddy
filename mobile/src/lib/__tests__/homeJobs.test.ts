@@ -1,5 +1,5 @@
 import type { Job, JobApplication } from '../api';
-import { PROPOSAL_CHECK_LIMIT, pendingApplicants, pickHomeHero, proposalCandidates } from '../homeJobs';
+import { PROPOSAL_CHECK_LIMIT, heroMayAppear, pendingApplicants, pickHomeHero, proposalCandidates } from '../homeJobs';
 
 const NOW = new Date('2026-10-09T12:00:00+08:00');
 
@@ -159,5 +159,38 @@ describe('pickHomeHero', () => {
     );
     expect(hero).toMatchObject({ kind: 'booking', job: { id: 'soonest' }, providerName: null });
     expect(hero?.kind === 'booking' && hero.when.toISOString()).toBe('2026-10-10T06:00:00.000Z');
+  });
+});
+
+describe('heroMayAppear', () => {
+  const LATER = '2026-10-12T09:00:00+08:00';
+  const PAST = '2026-10-08T09:00:00+08:00';
+
+  it('holds no place once the proposal lookups are ready, whatever the jobs are', () => {
+    expect(heroMayAppear([job('open-1')], true, NOW)).toBe(false);
+    expect(heroMayAppear([job('booked', { status: 'confirmed', scheduled_at: LATER })], true, NOW)).toBe(false);
+  });
+
+  it.each([
+    ['an open job, whose proposals are not checked yet', [job('open-1')]],
+    ['a recommending job', [job('recommending', { status: 'recommending' })]],
+    ['a confirmed booking still ahead', [job('booked', { status: 'confirmed', scheduled_at: LATER })]],
+    ['an assigned booking still ahead', [job('assigned', { status: 'assigned', scheduled_at: LATER })]],
+    ['an in-progress job scheduled ahead', [job('progress', { status: 'in_progress', scheduled_at: LATER })]],
+  ])('may appear for %s', (_, jobs) => {
+    expect(heroMayAppear(jobs, false, NOW)).toBe(true);
+  });
+
+  it.each([
+    ['no jobs at all', []],
+    ['only finished or cancelled jobs', [job('done', { status: 'completed' }), job('off', { status: 'cancelled' })]],
+    ['an expired job with a future time', [job('expired', { status: 'expired', scheduled_at: LATER })]],
+    ['a booking whose time has passed', [job('past', { status: 'confirmed', scheduled_at: PAST })]],
+    ['an in-progress job whose time has passed', [job('progress', { status: 'in_progress', scheduled_at: PAST })]],
+    ['a booking at exactly this moment', [job('now', { status: 'confirmed', scheduled_at: NOW.toISOString() })]],
+    ['a booking with no time', [job('undated', { status: 'confirmed', scheduled_at: null })]],
+    ['a booking with a time that cannot be read', [job('bad', { status: 'confirmed', scheduled_at: 'not a date' })]],
+  ])('does not appear for %s', (_, jobs) => {
+    expect(heroMayAppear(jobs, false, NOW)).toBe(false);
   });
 });

@@ -1,11 +1,12 @@
 import React from 'react';
 import { StyleSheet } from 'react-native';
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react-native';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react-native';
 import HOHomeScreen from '../HOHomeScreen';
 import { api } from '../../../../src/lib/api';
 import { useAuth } from '../../../../src/context/AuthContext';
 import { lightPalette } from '../../../../src/constants/palettes';
 import { findUnnamedControls } from '../../../../src/testing/a11yAudit';
+import { clearAsyncDataCache } from '../../../../src/hooks/useAsyncData';
 
 jest.mock('../../../../src/context/NotificationsContext', () => ({
   useNotifications: () => ({ notifications: [], unreadCount: 0, loading: false, error: null, reload: jest.fn() }),
@@ -384,5 +385,79 @@ describe('HOHomeScreen — active jobs list shows every active job', () => {
     }
     fireEvent.press(screen.getByTestId('home-job-job-4'));
     expect(onNavigate).toHaveBeenCalledWith('Job Detail', 'job-4');
+  });
+});
+
+// While a hero may still appear, a placeholder holds its place so the page does
+// not move when the card arrives. It is absent when no job can make a hero, and
+// when the jobs request failed.
+describe('HOHomeScreen — hero placeholder holds the hero place while it may still appear', () => {
+  // The placeholder is hidden from screen readers, and RNTL's queries skip hidden
+  // elements by default. These queries ask for them, so "absent" really means absent.
+  const HIDDEN_OK = { includeHiddenElements: true };
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    clearAsyncDataCache();
+    (useAuth as jest.Mock).mockReturnValue({ profile: { full_name: 'Alex', city: null, address: null } });
+    (api.wallet as jest.Mock).mockResolvedValue({ balance: 0, available: 0, held: 0 });
+    (api.categories as jest.Mock).mockResolvedValue([]);
+    (api.notifications as jest.Mock).mockResolvedValue([]);
+    (api.unreadNotificationCount as jest.Mock).mockResolvedValue({ count: 0 });
+    (api.jobApplications as jest.Mock).mockResolvedValue([]);
+  });
+
+  it('shows the placeholder while the jobs load for the first time, hidden from screen readers', async () => {
+    (api.myJobs as jest.Mock).mockReturnValue(new Promise(() => {}));
+    render(<HOHomeScreen onNavigate={jest.fn()} />);
+
+    const placeholder = await screen.findByTestId('home-hero-placeholder', HIDDEN_OK);
+    expect(placeholder.props.accessibilityElementsHidden).toBe(true);
+    expect(placeholder.props.importantForAccessibility).toBe('no-hide-descendants');
+  });
+
+  it('shows a placeholder with no text while the proposals load, and the hero replaces it', async () => {
+    let answerProposals!: (applications: unknown[]) => void;
+    (api.myJobs as jest.Mock).mockResolvedValue([OPEN_JOB]);
+    (api.jobApplications as jest.Mock).mockReturnValue(new Promise((resolve) => { answerProposals = resolve; }));
+    render(<HOHomeScreen onNavigate={jest.fn()} />);
+
+    const placeholder = await screen.findByTestId('home-hero-placeholder', HIDDEN_OK);
+    expect(within(placeholder).queryByText(/./)).toBeNull();
+    expect(screen.queryByTestId('home-hero-proposals')).toBeNull();
+    expect(screen.queryByText(/proposals? waiting/)).toBeNull();
+
+    await act(async () => {
+      answerProposals([pendingApplication('a', 'Ana Reyes')]);
+    });
+
+    expect(await screen.findByTestId('home-hero-proposals')).toBeTruthy();
+    expect(screen.queryByTestId('home-hero-placeholder', HIDDEN_OK)).toBeNull();
+  });
+
+  it('is absent for an account with no job that can make a hero', async () => {
+    (api.myJobs as jest.Mock).mockResolvedValue([{ ...OPEN_JOB, status: 'completed' }]);
+    render(<HOHomeScreen onNavigate={jest.fn()} />);
+
+    expect(await screen.findByText('No active jobs')).toBeTruthy();
+    expect(screen.queryByTestId('home-hero-placeholder', HIDDEN_OK)).toBeNull();
+  });
+
+  it('is absent when the only job is already under way with its time passed and nothing is open', async () => {
+    (api.myJobs as jest.Mock).mockResolvedValue([
+      { ...OPEN_JOB, id: 'job-progress', title: 'Handyman: Hang shelf', status: 'in_progress', scheduled_at: '2020-01-05T09:00:00+08:00' },
+    ]);
+    render(<HOHomeScreen onNavigate={jest.fn()} />);
+
+    expect(await screen.findByTestId('home-job-job-progress')).toBeTruthy();
+    expect(screen.queryByTestId('home-hero-placeholder', HIDDEN_OK)).toBeNull();
+  });
+
+  it('is absent when the jobs request failed, and the error shows instead', async () => {
+    (api.myJobs as jest.Mock).mockRejectedValue(new Error('offline'));
+    render(<HOHomeScreen onNavigate={jest.fn()} />);
+
+    expect(await screen.findByText("Couldn't load your jobs")).toBeTruthy();
+    expect(screen.queryByTestId('home-hero-placeholder', HIDDEN_OK)).toBeNull();
   });
 });

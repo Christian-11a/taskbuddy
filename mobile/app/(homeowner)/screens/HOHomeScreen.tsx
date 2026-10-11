@@ -38,6 +38,7 @@ import { useHeaderTop } from '../../../src/hooks/useHeaderTop';
 import { api, type Job } from '../../../src/lib/api';
 import { formatPesoShort, initials, peso } from '../../../src/lib/format';
 import {
+  heroMayAppear,
   pendingApplicants,
   pickHomeHero,
   proposalCandidates,
@@ -48,6 +49,7 @@ import { jobRowStatus } from '../../../src/lib/jobRowStatus';
 import ScreenSkeleton from '../../../src/components/ScreenSkeleton';
 import OwnAvatar from '../../../src/components/OwnAvatar';
 import Tap from '../../../src/components/ui/Tap';
+import ContentSkeleton from '../../../src/components/ui/ContentSkeleton';
 import SectionHeader from '../../../src/components/ui/SectionHeader';
 import JobRow from '../../../src/components/ui/JobRow';
 import EmptyRow from '../../../src/components/ui/EmptyRow';
@@ -213,6 +215,9 @@ export default function HOHomeScreen({ onNavigate }: HOHomeScreenProps) {
   const hero = proposalsReady && jobs.data ? pickHomeHero(jobs.data, proposalLookup.byJob, new Date()) : null;
   const pendingCountFor = (jobId: string): number | undefined =>
     proposalsReady ? pendingApplicants(proposalLookup.byJob[jobId]).length : undefined;
+  // The placeholder holds the hero's place while the jobs load for the first time, or
+  // while a hero may still appear. A failed jobs request holds none, so nothing hangs.
+  const heroPending = !jobs.error && (jobs.data === null ? jobs.loading : heroMayAppear(jobs.data, proposalsReady, new Date()));
 
   const name = profile?.full_name ?? '';
   const activeJobs = (jobs.data ?? []).filter((j) => ACTIVE_STATUSES.includes(j.status));
@@ -321,7 +326,14 @@ export default function HOHomeScreen({ onNavigate }: HOHomeScreenProps) {
             <ChevronRight size={18} color={C.ink500} />
           </Tap>
 
-          {hero && <HomeHeroCard hero={hero} onNavigate={onNavigate} />}
+          {/* The hero's place: the card once it is known, else a placeholder while it may still appear, so the page does not move when it arrives. */}
+          {hero ? (
+            <HomeHeroCard hero={hero} onNavigate={onNavigate} />
+          ) : heroPending && (
+            <View testID="home-hero-placeholder" accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
+              <ContentSkeleton variant="hero" />
+            </View>
+          )}
 
           {/* Book a service: each chip opens the job form with that category already picked. */}
           <SectionHeader title="Book a service" />
