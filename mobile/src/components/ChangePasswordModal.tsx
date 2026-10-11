@@ -10,8 +10,9 @@ import {
 } from 'react-native';
 import Tap from './ui/Tap';
 import SheetFrame from './ui/SheetFrame';
-import { CheckCircle2, Circle, KeyRound, ShieldCheck } from 'lucide-react-native';
+import { CheckCircle2, Circle, CircleAlert, KeyRound, ShieldCheck } from 'lucide-react-native';
 import { api } from '../lib/api';
+import { validateNewPasswordDiffers, validatePasswordRules } from '../lib/inputRules';
 import PasswordInput from './PasswordInput';
 
 const MIN_LENGTH = 8;
@@ -22,17 +23,24 @@ interface ChangePasswordModalProps {
   onClose: () => void;
 }
 
+type Touched = { current: boolean; next: boolean; confirm: boolean };
+const NOT_TOUCHED: Touched = { current: false, next: false, confirm: false };
+const ALL_TOUCHED: Touched = { current: true, next: true, confirm: true };
+
 /**
  * Change password, as a bottom sheet from Settings. Labelled fields with
  * show/hide toggles and a live checklist of the rules, so the user sees what is
- * still missing before pressing Update password. Errors only appear after that
- * press, when the server has answered.
+ * still missing. Update password stays disabled until every rule passes. A
+ * field's message appears once that field is left, or once Done is pressed on
+ * the confirm field while the rules are not met. A server answer appears after
+ * Update password is sent.
  */
 export default function ChangePasswordModal({ visible, onClose }: ChangePasswordModalProps) {
   const { C, styles, V6Colors, Colors } = useThemedStyles(createThemedStyles);
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [touched, setTouched] = useState<Touched>(NOT_TOUCHED);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
@@ -46,17 +54,31 @@ export default function ChangePasswordModal({ visible, onClose }: ChangePassword
   ];
   const canSave = !!currentPassword && rules.every((r) => r.ok) && !saving;
 
+  // Each message is computed from the values now, and shown only for a field the user has left.
+  const currentError = touched.current && !currentPassword.trim() ? 'Enter your current password' : undefined;
+  const newError = touched.next
+    ? validatePasswordRules(newPassword, 'New password') ?? validateNewPasswordDiffers(currentPassword, newPassword) ?? undefined
+    : undefined;
+  const confirmError = touched.confirm
+    ? (!confirmPassword ? 'Type your new password again' : newPassword !== confirmPassword ? 'Passwords do not match.' : undefined)
+    : undefined;
+
   const close = () => {
     setCurrentPassword('');
     setNewPassword('');
     setConfirmPassword('');
+    setTouched(NOT_TOUCHED);
     setError(null);
     setSuccess(false);
     onClose();
   };
 
   const handleSave = async () => {
-    if (!canSave) return;
+    if (!canSave) {
+      // Pressed while the rules are not met: show every message, send nothing.
+      setTouched(ALL_TOUCHED);
+      return;
+    }
     Keyboard.dismiss();
     setError(null);
     setSaving(true);
@@ -92,50 +114,56 @@ export default function ChangePasswordModal({ visible, onClose }: ChangePassword
 
           <Text style={styles.label}>Current password</Text>
           <PasswordInput
-            containerStyle={styles.inputBox}
+            containerStyle={[styles.inputBox, !!currentError && styles.inputBoxError]}
             inputStyle={styles.input}
             placeholder="Current password"
             placeholderTextColor={C.ink400}
             value={currentPassword}
             onChangeText={setCurrentPassword}
+            onBlur={() => setTouched((t) => ({ ...t, current: true }))}
             editable={!saving}
             returnKeyType="next"
             onSubmitEditing={() => newRef.current?.focus()}
             accessibilityLabel="Current password"
             testID="input-current-password"
           />
+          {!!currentError && <FieldError text={currentError} />}
 
           <Text style={styles.label}>New password</Text>
           <PasswordInput
             ref={newRef}
-            containerStyle={styles.inputBox}
+            containerStyle={[styles.inputBox, !!newError && styles.inputBoxError]}
             inputStyle={styles.input}
             placeholder="New password"
             placeholderTextColor={C.ink400}
             value={newPassword}
             onChangeText={setNewPassword}
+            onBlur={() => setTouched((t) => ({ ...t, next: true }))}
             editable={!saving}
             returnKeyType="next"
             onSubmitEditing={() => confirmRef.current?.focus()}
             accessibilityLabel="New password"
             testID="input-new-password"
           />
+          {!!newError && <FieldError text={newError} />}
 
           <Text style={styles.label}>Confirm new password</Text>
           <PasswordInput
             ref={confirmRef}
-            containerStyle={styles.inputBox}
+            containerStyle={[styles.inputBox, !!confirmError && styles.inputBoxError]}
             inputStyle={styles.input}
             placeholder="Type it again"
             placeholderTextColor={C.ink400}
             value={confirmPassword}
             onChangeText={setConfirmPassword}
+            onBlur={() => setTouched((t) => ({ ...t, confirm: true }))}
             editable={!saving}
             returnKeyType="done"
             onSubmitEditing={handleSave}
             accessibilityLabel="Confirm new password"
             testID="input-confirm-password"
           />
+          {!!confirmError && <FieldError text={confirmError} />}
 
           <View style={styles.rules}>
             {rules.map((rule) => (
@@ -177,11 +205,25 @@ export default function ChangePasswordModal({ visible, onClose }: ChangePassword
   );
 }
 
+/** The message under a password field, styled like the shared TextField's helper row. */
+function FieldError({ text }: { text: string }) {
+  const { styles, V6Colors } = useThemedStyles(createThemedStyles);
+  return (
+    <View style={styles.fieldErrorRow}>
+      <CircleAlert size={14} color={V6Colors.dangerText} />
+      <Text style={styles.fieldError} accessibilityLiveRegion="polite">{text}</Text>
+    </View>
+  );
+}
+
 function createThemedStyles(theme: ThemePalette) {
   const { Colors, V6Colors } = theme;
   const C = V6Colors;
   const styles = StyleSheet.create({
     sheet: { backgroundColor: C.surface, paddingHorizontal: 22, paddingTop: 4 },
+    inputBoxError: { borderWidth: 1.5, borderColor: V6Colors.dangerText },
+    fieldErrorRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 6 },
+    fieldError: { flex: 1, color: V6Colors.dangerText, fontSize: 13, lineHeight: 18, fontFamily: 'Inter' },
     iconWell: {
       width: 48, height: 48, borderRadius: 14, backgroundColor: Colors.primaryTonal,
       alignItems: 'center', justifyContent: 'center', marginBottom: 12,

@@ -89,3 +89,69 @@ describe('ChangePasswordModal', () => {
     expect(api.changePassword).not.toHaveBeenCalled();
   });
 });
+
+const REUSED = "Choose a password you haven't used here";
+const MISMATCH = 'Passwords do not match.';
+const blurField = (label: string) => fireEvent(screen.getByLabelText(label), 'blur');
+
+describe('ChangePasswordModal — field messages', () => {
+  it('refuses a new password that is the same as the current one, once the new field is left', () => {
+    renderModal();
+    fill('samepassword1', 'samepassword1', 'samepassword1');
+
+    blurField('New password');
+
+    expect(screen.getByText(REUSED)).toBeTruthy();
+    expect(isDisabled()).toBe(true);
+  });
+
+  it('says why when Done is pressed on the confirm field with a reused password, and does not send', async () => {
+    renderModal();
+    fill('samepassword1', 'samepassword1', 'samepassword1');
+
+    await act(async () => {
+      fireEvent(screen.getByLabelText('Confirm new password'), 'submitEditing');
+    });
+
+    expect(screen.getByText(REUSED)).toBeTruthy();
+    expect(api.changePassword).not.toHaveBeenCalled();
+  });
+
+  it('does not say the new password is too short while it is still being typed', () => {
+    renderModal();
+    fireEvent.changeText(screen.getByLabelText('New password'), 'abc');
+
+    expect(screen.queryByText('New password must be at least 8 characters.')).toBeNull();
+
+    blurField('New password');
+
+    expect(screen.getByText('New password must be at least 8 characters.')).toBeTruthy();
+  });
+
+  it('says the two new passwords do not match once the confirm field is left', () => {
+    renderModal();
+    fill('oldpassword', 'newpassword1', 'newpassword2');
+
+    blurField('Confirm new password');
+
+    expect(screen.getByText(MISMATCH)).toBeTruthy();
+  });
+
+  it('asks for the current password once that field is left empty', () => {
+    renderModal();
+
+    blurField('Current password');
+
+    expect(screen.getByText('Enter your current password')).toBeTruthy();
+  });
+
+  it('does not show a reuse message when the new password differs from the current one', () => {
+    renderModal();
+    fill('oldpassword', 'newpassword1', 'newpassword1');
+
+    blurField('New password');
+
+    expect(screen.queryByText(REUSED)).toBeNull();
+    expect(isDisabled()).toBe(false);
+  });
+});
