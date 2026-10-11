@@ -107,6 +107,7 @@ import {
 import { api } from './src/lib/api';
 import { consumeLastNotificationTap, subscribeToNotificationTaps } from './src/lib/pushNotifications';
 import { resolveNotificationTarget } from './src/lib/notificationRouting';
+import { warmUpServer } from './src/lib/warmUp';
 
 export const HOMEOWNER_TABS: readonly BottomNavItem<HOScreen>[] = [
   { key: 'Home', label: 'Home', icon: Home },
@@ -1037,6 +1038,11 @@ function AppFlow() {
 
 /** Every route above is rendered inside the shared responsive root layout. */
 export default function App() {
+  // Wakes the API server while the person is still on the first screen, before they log in (see warmUp.ts).
+  useEffect(() => {
+    warmUpServer();
+  }, []);
+
   return (
     <GestureHandlerRootView style={rootStyles.fill}>
       <SafeAreaProvider>
