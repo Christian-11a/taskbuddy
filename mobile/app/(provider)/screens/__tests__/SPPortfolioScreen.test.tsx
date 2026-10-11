@@ -215,9 +215,9 @@ describe('caption rules', () => {
     );
   });
 
-  it('sends the caption cleaned: trimmed, with the extra blank lines inside it closed up', () => {
+  it('sends the caption trimmed, with the blank lines inside it kept as typed', () => {
     expect(portfolioDetails({ caption: '  Sink repair\n\n\n\nDone.  ', categoryId: 1, position: 0 })).toEqual({
-      caption: 'Sink repair\n\nDone.',
+      caption: 'Sink repair\n\n\n\nDone.',
       position: 0,
       category_id: 1,
     });

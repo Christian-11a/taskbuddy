@@ -27,9 +27,9 @@ describe('review tags and the comment they become', () => {
     expect(reviewCommentFor([], '\n\n\n\n')).toBeUndefined();
   });
 
-  it('cuts a run of blank lines inside the comment to one blank line', () => {
-    expect(reviewCommentFor([], 'Great\n\n\n\nwork')).toBe('Great\n\nwork');
-    expect(reviewCommentFor(['On time'], 'Great\r\n\r\n\r\nwork')).toBe('On time · Great\n\nwork');
+  it('keeps the blank lines inside the comment as typed, and only changes the line endings', () => {
+    expect(reviewCommentFor([], 'Great\n\n\n\nwork')).toBe('Great\n\n\n\nwork');
+    expect(reviewCommentFor(['On time'], 'Great\r\n\r\n\r\nwork')).toBe('On time · Great\n\n\nwork');
   });
 
   it('caps a comment sent without tags at the 500 characters the API accepts', () => {

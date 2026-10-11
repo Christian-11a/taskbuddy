@@ -197,7 +197,7 @@ it('shows the reason message once the box is left, not while typing', async () =
   expect(screen.getByText('Tell the admins a little more (at least 10 characters).')).toBeTruthy();
 });
 
-it('sends the reason cleaned: trimmed, with the extra blank lines inside it closed up', async () => {
+it('sends the reason trimmed, with the blank lines inside it kept as typed', async () => {
   render(<SPSkillRequestScreen onBack={jest.fn()} />);
   await screen.findByRole('radio', { name: 'Handyman' });
   fireEvent.press(screen.getByRole('radio', { name: 'Handyman' }));
@@ -209,7 +209,7 @@ it('sends the reason cleaned: trimmed, with the extra blank lines inside it clos
   expect(api.createSkillRequest).toHaveBeenLastCalledWith({
     type: 'change_primary',
     category_id: 3,
-    reason: 'Ten years of plumbing work.\n\nLicensed.',
+    reason: 'Ten years of plumbing work.\n\n\n\nLicensed.',
   });
 });
 

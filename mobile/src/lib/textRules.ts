@@ -26,14 +26,11 @@ export const BIO_MIN = 20;
 export const BIO_MAX = 400;
 
 /**
- * The text as it is sent: line endings become "\n", runs of blank lines are cut
- * to one blank line, and the ends are trimmed. Nothing else changes.
+ * The text as it is sent: line endings become "\n" and the ends are trimmed. Nothing inside the
+ * text changes, so the blank lines and spaces a person typed in the middle are sent as typed.
  */
 export function cleanText(raw: string): string {
-  return raw
-    .replace(/\r\n?/g, '\n')
-    .replace(/\n(?:[ \t]*\n){2,}/g, '\n\n')
-    .trim();
+  return raw.replace(/\r\n?/g, '\n').trim();
 }
 
 /** The cleaned text's length in characters, which is what the database CHECKs count. */

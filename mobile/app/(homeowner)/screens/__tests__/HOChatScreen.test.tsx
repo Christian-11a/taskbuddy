@@ -73,3 +73,14 @@ it('sends the typed text with the same call and clears the box', async () => {
   await waitFor(() => expect(api.sendMessage).toHaveBeenCalledWith('conversation-1', 'On my way'));
   await waitFor(() => expect(screen.getByPlaceholderText('Message…').props.value).toBe(''));
 });
+
+it('sends a message with the blank lines inside it as typed, trimming only its ends', async () => {
+  (api.sendMessage as jest.Mock).mockResolvedValue({ id: 'm3', conversation_id: 'conversation-1', sender_id: 'me', body: 'First\n\n\nSecond', attachment_path: null, attachment_url: null, read_at: null, created_at: '2026-10-11T09:00:00Z' });
+  renderChat();
+  await screen.findByText('Incoming message');
+
+  fireEvent.changeText(screen.getByPlaceholderText('Message…'), '  First\n\n\nSecond  ');
+  fireEvent.press(screen.getByRole('button', { name: 'Send message' }));
+
+  await waitFor(() => expect(api.sendMessage).toHaveBeenCalledWith('conversation-1', 'First\n\n\nSecond'));
+});

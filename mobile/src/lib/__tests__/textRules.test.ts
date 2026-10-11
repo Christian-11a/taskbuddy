@@ -37,12 +37,16 @@ describe('cleanText: the text as it is sent', () => {
 
   it.each([
     ['a\n\nb', 'a\n\nb'],
-    ['a\n\n\nb', 'a\n\nb'],
-    ['a\n\n\n\n\nb', 'a\n\nb'],
-    ['a\n \n \n b', 'a\n\n b'],
-    ['a\n\n\n\n\n\n\n\n\n\nb', 'a\n\nb'],
-  ])('cuts a run of blank lines to one blank line: %j -> %j', (raw, expected) => {
+    ['First\n\n\nSecond', 'First\n\n\nSecond'],
+    ['a\n\n\n\n\nb', 'a\n\n\n\n\nb'],
+    ['a\n \n \n b', 'a\n \n \n b'],
+    ['a\n\n\n\n\n\n\n\n\n\nb', 'a\n\n\n\n\n\n\n\n\n\nb'],
+  ])('keeps the blank lines inside the text as typed: %j -> %j', (raw, expected) => {
     expect(cleanText(raw)).toBe(expected);
+  });
+
+  it('keeps the spaces and tabs inside each line, so only the ends change', () => {
+    expect(cleanText('  Line one   \n\n  Line   two\t  \n  ')).toBe('Line one   \n\n  Line   two');
   });
 
   it.each([
@@ -59,7 +63,7 @@ describe('textLength and textUnits: how long the cleaned text is', () => {
     expect(textLength('  ab  ')).toBe(2);
     expect(textLength('   ')).toBe(0);
     expect(textLength('')).toBe(0);
-    expect(textLength('a\n\n\n\nb')).toBe(4);
+    expect(textLength('a\n\n\n\nb')).toBe(6);
   });
 
   it('counts one emoji as one character but two UTF-16 units', () => {

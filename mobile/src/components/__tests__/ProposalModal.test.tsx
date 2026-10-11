@@ -133,12 +133,12 @@ describe('ProposalModal — the message is checked once the field is left', () =
     expect(send().props.accessibilityState?.disabled).toBe(false);
   });
 
-  it('sends the message with the spaces and blank lines at its ends removed, and the lines inside cut to one', () => {
+  it('sends the message with the spaces and blank lines at its ends removed, and the blank lines inside kept as typed', () => {
     const { onSubmit } = renderOpen();
     fireEvent.changeText(message(), '\n\n  I can come Friday.\n\n\n\nBring tools.  \n');
 
     fireEvent.press(send());
 
-    expect(onSubmit).toHaveBeenCalledWith('I can come Friday.\n\nBring tools.');
+    expect(onSubmit).toHaveBeenCalledWith('I can come Friday.\n\n\n\nBring tools.');
   });
 });
