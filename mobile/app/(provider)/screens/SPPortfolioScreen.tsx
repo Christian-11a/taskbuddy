@@ -17,6 +17,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { ArrowLeft, Check, ImagePlus } from 'lucide-react-native';
 import { api, type PortfolioEntry } from '../../../src/lib/api';
 import { useAsyncData } from '../../../src/hooks/useAsyncData';
+import { SEVEN_DAYS_MS } from '../../../src/lib/persistentCache';
 import { useRefreshOnForeground } from '../../../src/hooks/useRefreshOnForeground';
 import { requestAppPermission } from '../../../src/lib/permissions';
 import { useHeaderTop } from '../../../src/hooks/useHeaderTop';
@@ -90,7 +91,10 @@ export default function SPPortfolioScreen({ onBack }: { onBack: () => void }) {
   const { styles, Colors, V6Colors, appearance } = useThemedStyles(createThemedStyles);
   const headerTop = useHeaderTop();
   const portfolio = useAsyncData(() => api.myPortfolio(), []);
-  const categories = useAsyncData(() => api.categories(), []);
+  const categories = useAsyncData(() => api.categories(), [], 'categories', {
+    persist: true,
+    maxAgeMs: SEVEN_DAYS_MS,
+  });
   useRefreshOnForeground(portfolio.reload, true);
   const [uri, setUri] = useState<string | null>(null);
   const [caption, setCaption] = useState('');

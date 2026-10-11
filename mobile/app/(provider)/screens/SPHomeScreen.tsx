@@ -289,7 +289,7 @@ export default function SPHomeScreen({ onNavigate, tourOffer }: SPHomeScreenProp
     ]);
     // `loaded` is the urgency the server filtered by, which the pill counts need.
     return { jobs: feed.jobs, summary: feed.summary, assigned, loaded: urgency };
-  }, [profile?.latitude, profile?.longitude, radiusKm, urgency, serviceKey], `sp-home-${profile?.id}-${serviceKey}-${profile?.latitude}-${profile?.longitude}-${radiusKm}-${urgency}`);
+  }, [profile?.latitude, profile?.longitude, radiusKm, urgency, serviceKey], `sp-feed-${profile?.id}-${serviceKey}-${profile?.latitude}-${profile?.longitude}-${radiusKm}-${urgency}`, { persist: true });
 
   // Open work changes on the server while the app is away, and nothing else asks for it again until the
   // tab is opened, so the feed is fetched again on a pull down and when the app comes back to the foreground.
@@ -305,7 +305,7 @@ export default function SPHomeScreen({ onNavigate, tourOffer }: SPHomeScreenProp
 
   // Pending applications only label feed rows "Applied · waiting". The feed
   // never waits for this lookup, and a failed one leaves every row unlabelled.
-  const { data: applications } = useAsyncData(async () => api.myApplications(), [], 'sp-applications');
+  const { data: applications } = useAsyncData(async () => api.myApplications(), [], 'sp-applications', { persist: true });
   const applied = appliedJobIds(applications);
 
   const [available, setAvailable] = useState(providerProfile?.is_available ?? true);

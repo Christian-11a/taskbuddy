@@ -16,6 +16,8 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 const VERSION = 1;
 const ROOT = 'taskbuddy.cache.v1.';
 const DEFAULT_MAX_AGE_MS = 24 * 60 * 60 * 1000;
+/** For data that changes rarely, such as the service categories: a saved copy stays usable for a week. */
+export const SEVEN_DAYS_MS = 7 * DEFAULT_MAX_AGE_MS;
 /** A single saved value may not take more than this many bytes of JSON. */
 const MAX_VALUE_BYTES = 200 * 1024;
 /** All of one account's saved values together. The oldest are dropped to stay under it. */

@@ -115,11 +115,18 @@ export default function HOWalletScreen() {
   const { C, Colors, styles } = useThemedStyles(createThemedStyles);
   const headerTop = useHeaderTop();
   const [filter, setFilter] = useState<WalletFilter>('all');
-  const { data, loading, error, reload } = useAsyncData(() => api.wallet(), [], 'ho-wallet');
+  const { data, loading, error, reload, savedOnly } = useAsyncData(
+    () => api.wallet(),
+    [],
+    'ho-wallet',
+    { persist: true },
+  );
   const {
     data: withdrawalData,
     reload: reloadWithdrawals,
   } = useAsyncData(() => api.withdrawals(), [], 'ho-withdrawals');
+  // The balance on screen is the saved copy and no fetch has confirmed it: Add money and Withdraw wait.
+  const awaitingFreshBalance = !!data && savedOnly;
 
   // Add Money: hiring holds the job budget in escrow, so a client needs a
   // funded wallet before they can accept an application.
@@ -169,8 +176,15 @@ export default function HOWalletScreen() {
   const isValidWithdrawal =
     withdrawal.amountValid && withdrawal.destinationValid && canWithdrawBalance(availableToWithdraw);
 
+  const openAddMoneySheet = () => {
+    if (awaitingFreshBalance) return;
+    setShowAddMoney(true);
+  };
+
   // No point opening a form that can't be submitted: say why instead.
   const openWithdraw = () => {
+    // Never on a saved balance: the button is off until a fresh one lands, and this repeats that check.
+    if (awaitingFreshBalance) return;
     // A never-loaded wallet reads as a 0 balance — don't tell the user they
     // have no funds when the truth is the app couldn't check (#19). This
     // checks `data` alone, not `error`: useAsyncData keeps the last-good
@@ -403,8 +417,9 @@ export default function HOWalletScreen() {
           </Text>
           <View style={styles.balanceActions}>
             <Tap
-              style={[styles.balanceButton, styles.balanceButtonPrimary]}
-              onPress={() => setShowAddMoney(true)}
+              style={[styles.balanceButton, styles.balanceButtonPrimary, awaitingFreshBalance && styles.balanceButtonWaiting]}
+              onPress={openAddMoneySheet}
+              disabled={awaitingFreshBalance}
               scale
               accessibilityRole="button"
               accessibilityLabel="Add money"
@@ -414,8 +429,9 @@ export default function HOWalletScreen() {
               </Text>
             </Tap>
             <Tap
-              style={styles.balanceButton}
+              style={[styles.balanceButton, awaitingFreshBalance && styles.balanceButtonWaiting]}
               onPress={openWithdraw}
+              disabled={awaitingFreshBalance}
               scale
               rippleColor={Colors.rippleOnHero}
               accessibilityRole="button"
@@ -648,6 +664,8 @@ function createThemedStyles(theme: ThemePalette) {
       alignItems: 'center', justifyContent: 'center', backgroundColor: Colors.heroCard,
     },
     balanceButtonPrimary: { backgroundColor: Colors.onPrimary },
+    // Faded while the balance is the saved copy: the button is there, but it cannot be used yet.
+    balanceButtonWaiting: { opacity: 0.5 },
     balanceButtonText: { color: Colors.onPrimary, fontSize: 15, fontWeight: '600', fontFamily: 'Inter', lineHeight: 20 },
     balanceButtonTextPrimary: { color: Colors.primary },
     balanceSub: { color: Colors.onHeroMuted, fontSize: 13, fontFamily: 'Inter', lineHeight: 18, marginTop: 12 },

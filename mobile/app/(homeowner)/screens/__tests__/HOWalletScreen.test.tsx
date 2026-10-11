@@ -8,6 +8,8 @@ import { showToast } from '../../../../src/components/Toast';
 import { clearAsyncDataCache } from '../../../../src/hooks/useAsyncData';
 import { openRedirectSession } from '../../../../src/lib/appRedirectSession';
 import { lightPalette } from '../../../../src/constants/palettes';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { setCacheAccount } from '../../../../src/lib/persistentCache';
 
 /** The popup that is open right now: each SheetFrame renders its own Modal, and only one is visible. */
 const visibleModal = () => screen.UNSAFE_getAllByType(Modal).find((modal) => modal.props.visible === true);
@@ -960,6 +962,82 @@ describe('HOWalletScreen — cancelling a withdrawal', () => {
 
     expect(api.cancelWithdrawal).toHaveBeenCalledTimes(2);
     expect(showToast).not.toHaveBeenCalledWith(expect.stringMatching(/already cancelling/), 'info');
+  });
+});
+
+describe('HOWalletScreen — money buttons wait for a fresh balance', () => {
+  const ACCOUNT = 'acct-alice';
+  const walletAt = (overrides: Record<string, unknown> = {}) => ({
+    balance: 1250,
+    available: 1000,
+    pending: 0,
+    pending_withdrawals: 0,
+    total_credited: 1250,
+    total_debited: 0,
+    in_escrow: 0,
+    transactions: [],
+    ...overrides,
+  });
+
+  beforeEach(async () => {
+    jest.clearAllMocks();
+    clearAsyncDataCache();
+    await AsyncStorage.clear();
+    setCacheAccount(ACCOUNT);
+    (api.withdrawals as jest.Mock).mockResolvedValue([]);
+  });
+
+  afterEach(() => {
+    setCacheAccount(null);
+  });
+
+  /** A balance saved by an earlier launch of this account, as the screen's persisted copy. */
+  const saveBalance = (value: unknown) =>
+    AsyncStorage.setItem(
+      `taskbuddy.cache.v1.${ACCOUNT}.ho-wallet`,
+      JSON.stringify({ v: 1, savedAt: Date.now(), value }),
+    );
+
+  it('keeps Add money and Withdraw disabled on the saved balance, and enables them once a fresh one lands', async () => {
+    await saveBalance(walletAt());
+    let landFresh!: (value: unknown) => void;
+    (api.wallet as jest.Mock).mockReturnValue(new Promise((resolve) => { landFresh = resolve; }));
+    render(<HOWalletScreen />);
+
+    // The saved balance is shown, but neither money button takes it until a fetch has confirmed it.
+    expect(await screen.findByText('₱1,250.00')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Add money' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Withdraw' })).toBeDisabled();
+    fireEvent.press(screen.getByRole('button', { name: 'Withdraw' }));
+    expect(isShown('withdraw-hw-dialog')).toBe(false);
+    expect(showToast).not.toHaveBeenCalledWith(expect.stringMatching(/no funds/i));
+
+    await act(async () => landFresh(walletAt({ balance: 1500, available: 1500 })));
+
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Withdraw' })).toBeEnabled());
+    expect(screen.getByRole('button', { name: 'Add money' })).toBeEnabled();
+    expect(screen.getByText('₱1,500.00')).toBeTruthy();
+    fireEvent.press(screen.getByRole('button', { name: 'Withdraw' }));
+    expect(await screen.findByTestId('withdraw-hw-dialog')).toBeTruthy();
+  });
+
+  it('a failed refresh of the saved balance keeps the money buttons off until Try again reads it', async () => {
+    await saveBalance(walletAt());
+    (api.wallet as jest.Mock)
+      .mockRejectedValueOnce(new Error('Network error'))
+      .mockResolvedValue(walletAt({ balance: 1500, available: 1500 }));
+    render(<HOWalletScreen />);
+
+    expect(await screen.findByRole('button', { name: 'Try again' })).toBeTruthy();
+    expect(screen.getByText('₱1,250.00')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Withdraw' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Add money' })).toBeDisabled();
+
+    fireEvent.press(screen.getByRole('button', { name: 'Try again' }));
+
+    expect(await screen.findByText('₱1,500.00')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Withdraw' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Add money' })).toBeEnabled();
   });
 });
 

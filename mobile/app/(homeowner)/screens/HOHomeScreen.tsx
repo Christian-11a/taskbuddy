@@ -30,6 +30,7 @@ import { HOScreen } from '../../../src/types/navigation';
 import { useAuth } from '../../../src/context/AuthContext';
 import { useAsyncData } from '../../../src/hooks/useAsyncData';
 import { useHeaderTop } from '../../../src/hooks/useHeaderTop';
+import { SEVEN_DAYS_MS } from '../../../src/lib/persistentCache';
 import { api, type Job } from '../../../src/lib/api';
 import { formatPesoShort, initials, peso } from '../../../src/lib/format';
 import {
@@ -172,9 +173,12 @@ export default function HOHomeScreen({ onNavigate, tourOffer }: HOHomeScreenProp
   const { dark } = useTheme();
   const headerTop = useHeaderTop();
   const { profile } = useAuth();
-  const wallet = useAsyncData(() => api.wallet(), [], 'ho-home-wallet');
-  const jobs = useAsyncData(() => api.myJobs(), [], 'ho-home-jobs');
-  const categories = useAsyncData(() => api.categories(), [], 'ho-home-categories');
+  const wallet = useAsyncData(() => api.wallet(), [], 'ho-home-wallet', { persist: true });
+  const jobs = useAsyncData(() => api.myJobs(), [], 'ho-home-jobs', { persist: true });
+  const categories = useAsyncData(() => api.categories(), [], 'categories', {
+    persist: true,
+    maxAgeMs: SEVEN_DAYS_MS,
+  });
   const notifications = useNotifications();
   // The welcome tour points at these three controls (the post field, the wallet chip and the bell).
   const postTour = useTourAnchor('home.post');

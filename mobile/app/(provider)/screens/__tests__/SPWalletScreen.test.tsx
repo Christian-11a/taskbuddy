@@ -7,9 +7,12 @@ import {lightPalette} from '../../../../src/constants/palettes';
 import {api} from '../../../../src/lib/api';
 import {showToast} from '../../../../src/components/Toast';
 import {clearAsyncDataCache} from '../../../../src/hooks/useAsyncData';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import {setCacheAccount} from '../../../../src/lib/persistentCache';
+import WithdrawModal from '../../../../src/components/WithdrawModal';
 jest.mock('../../../../src/lib/api', () => ({api:{wallet:jest.fn(),cancelWithdrawal:jest.fn(),connectStatus:jest.fn()}}));
 jest.mock('../../../../src/context/AuthContext', () => ({useAuth:() => ({providerProfile:{cached_completed_jobs:1}})}));
-jest.mock('../../../../src/components/WithdrawModal', () => () => null);
+jest.mock('../../../../src/components/WithdrawModal', () => jest.fn(() => null));
 jest.mock('../../../../src/components/Toast', () => ({showToast:jest.fn()}));
 const transaction = (id:string, status:'pending'|'completed'|'failed', kind = 'withdrawal') => ({
   id, profile_id:'p1',direction:'debit',status,kind,amount:350,title:id,job_id:null,created_at:'2026-10-04T00:00:00Z',
@@ -192,4 +195,43 @@ it('every control has an accessible name: header, pending withdrawal and its can
   render(<SPWalletScreen onNavigate={jest.fn()} />);
   await screen.findByText('Transaction: pending-request');
   expect(findUnnamedControls(screen.UNSAFE_root)).toEqual([]);
+});
+
+describe('SPWalletScreen — Withdraw waits for a fresh balance', () => {
+  const ACCOUNT = 'acct-sam';
+  /** The props the withdraw sheet was last rendered with. */
+  const lastWithdrawProps = () => (WithdrawModal as unknown as jest.Mock).mock.lastCall?.[0];
+
+  beforeEach(async () => {
+    jest.clearAllMocks();
+    clearAsyncDataCache();
+    await AsyncStorage.clear();
+    setCacheAccount(ACCOUNT);
+    (api.connectStatus as jest.Mock).mockResolvedValue(stripe(true));
+  });
+
+  afterEach(() => {
+    setCacheAccount(null);
+  });
+
+  it('keeps Withdraw disabled on the saved balance, and opens the sheet only once a fresh balance lands', async () => {
+    await AsyncStorage.setItem(
+      `taskbuddy.cache.v1.${ACCOUNT}.sp-wallet`,
+      JSON.stringify({ v: 1, savedAt: Date.now(), value: wallet([]) }),
+    );
+    let landFresh!: (value: unknown) => void;
+    (api.wallet as jest.Mock).mockReturnValue(new Promise((resolve) => { landFresh = resolve; }));
+    render(<SPWalletScreen onNavigate={jest.fn()} />);
+
+    expect(await screen.findByText('₱300.00')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Withdraw' })).toBeDisabled();
+    fireEvent.press(screen.getByRole('button', { name: 'Withdraw' }));
+    expect(lastWithdrawProps()).toMatchObject({ visible: false });
+
+    await act(async () => landFresh(wallet([])));
+
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Withdraw' })).toBeEnabled());
+    fireEvent.press(screen.getByRole('button', { name: 'Withdraw' }));
+    expect(lastWithdrawProps()).toMatchObject({ visible: true, available: 300 });
+  });
 });

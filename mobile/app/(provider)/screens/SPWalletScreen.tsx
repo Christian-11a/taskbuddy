@@ -41,7 +41,14 @@ export default function SPWalletScreen({ onNavigate }: SPWalletScreenProps) {
   const { Colors, styles } = useThemedStyles(createThemedStyles);
   const headerTop = useHeaderTop();
   const { providerProfile } = useAuth();
-  const { data, loading, error, reload } = useAsyncData(() => api.wallet(), [], 'sp-wallet');
+  const { data, loading, error, reload, savedOnly } = useAsyncData(
+    () => api.wallet(),
+    [],
+    'sp-wallet',
+    { persist: true },
+  );
+  // The balance on screen is the saved copy and no fetch has confirmed it: Withdraw waits.
+  const awaitingFreshBalance = !!data && savedOnly;
   // Whether card payments can reach the provider's bank yet. Only a status that has loaded and says
   // payouts are off shows the notice: while it loads, or if it fails, nothing shows, and the wallet
   // does not wait for it.
@@ -139,9 +146,11 @@ export default function SPWalletScreen({ onNavigate }: SPWalletScreenProps) {
           )}
           <Tap
             key={`withdraw-${withdrawDrawn}`}
-            style={[styles.withdrawButton, !canWithdraw && styles.withdrawButtonDisabled]}
-            // Kept tappable when empty so the tap explains itself.
+            style={[styles.withdrawButton, (!canWithdraw || awaitingFreshBalance) && styles.withdrawButtonDisabled]}
+            // Kept tappable when empty so the tap explains itself. Off while the balance is the saved copy.
+            disabled={awaitingFreshBalance}
             onPress={() => {
+              if (awaitingFreshBalance) return;
               if (!data) {
                 showToast('Could not load your wallet. Please try again.', 'error');
                 return;
@@ -153,7 +162,7 @@ export default function SPWalletScreen({ onNavigate }: SPWalletScreenProps) {
             accessibilityRole="button"
             accessibilityLabel="Withdraw"
           >
-            <Text key={`withdraw-label-${withdrawDrawn}`} style={[styles.withdrawText, !canWithdraw && styles.withdrawTextDisabled]} numberOfLines={1}>Withdraw</Text>
+            <Text key={`withdraw-label-${withdrawDrawn}`} style={[styles.withdrawText, (!canWithdraw || awaitingFreshBalance) && styles.withdrawTextDisabled]} numberOfLines={1}>Withdraw</Text>
           </Tap>
         </View>
 

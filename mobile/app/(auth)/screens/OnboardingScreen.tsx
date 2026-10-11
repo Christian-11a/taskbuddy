@@ -23,6 +23,7 @@ import {
 import Tap from '../../../src/components/ui/Tap';
 import IntroIllustration, { type IllustrationKind } from '../../../src/components/onboarding/IntroIllustrations';
 import { useAsyncData } from '../../../src/hooks/useAsyncData';
+import { SEVEN_DAYS_MS } from '../../../src/lib/persistentCache';
 import { useAuthLayout } from '../../../src/hooks/useAuthLayout';
 import { api, type Category } from '../../../src/lib/api';
 import { introCards, type IntroCard, type WelcomeRole } from '../../../src/lib/tourContent';
@@ -63,10 +64,13 @@ export default function OnboardingScreen({ role, firstName, replay = false, onFi
   const isLast = currentIndex === cards.length - 1;
 
   // The client's first card shows real service chips. Providers never see them, so their lookup is skipped.
+  // Only the client's list is the shared, saved 'categories'; the provider's empty list keeps its own key.
+  const isClient = welcomeRole === 'homeowner';
   const categories = useAsyncData(
-    () => (welcomeRole === 'homeowner' ? api.categories() : Promise.resolve<Category[]>([])),
+    () => (isClient ? api.categories() : Promise.resolve<Category[]>([])),
     [welcomeRole],
-    `onboarding-services-${welcomeRole}`,
+    isClient ? 'categories' : `onboarding-services-${welcomeRole}`,
+    isClient ? { persist: true, maxAgeMs: SEVEN_DAYS_MS } : undefined,
   );
   const services = categories.data ?? [];
 

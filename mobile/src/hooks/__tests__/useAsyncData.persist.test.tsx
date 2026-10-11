@@ -51,6 +51,7 @@ function Probe({
       <Text>{`loading:${state.loading}`}</Text>
       <Text>{`stale:${state.stale}`}</Text>
       <Text>{`refreshing:${state.refreshing}`}</Text>
+      <Text>{`savedOnly:${state.savedOnly}`}</Text>
       <Text>{`error:${state.error ?? 'none'}`}</Text>
     </>
   );
@@ -397,6 +398,55 @@ describe('when the first fetch fails before the saved copy has been read', () =>
     expect(screen.queryByText('error:Network request failed')).toBeNull();
     expect(screen.queryByText('jobs saved')).toBeNull();
     expect(screen.getByText('stale:false')).toBeTruthy();
+  });
+});
+
+describe('savedOnly: the data on screen is nothing but the saved copy', () => {
+  it('is true while the saved copy is the only data, and stays true when the refresh fails', async () => {
+    await seed('ho-wallet', 'saved wallet');
+    const fresh = deferred<string>();
+    render(<Probe cacheKey="ho-wallet" fetcher={() => fresh.promise} options={{ persist: true }} />);
+    expect(await screen.findByText('saved wallet')).toBeTruthy();
+    expect(screen.getByText('savedOnly:true')).toBeTruthy();
+
+    await act(async () => fresh.reject(new Error('Network request failed')));
+
+    expect(await screen.findByText('error:Network request failed')).toBeTruthy();
+    expect(screen.getByText('saved wallet')).toBeTruthy();
+    expect(screen.getByText('savedOnly:true')).toBeTruthy();
+  });
+
+  it('clears once a fetch lands', async () => {
+    await seed('ho-wallet', 'saved wallet');
+    const fresh = deferred<string>();
+    render(<Probe cacheKey="ho-wallet" fetcher={() => fresh.promise} options={{ persist: true }} />);
+    expect(await screen.findByText('saved wallet')).toBeTruthy();
+
+    await act(async () => fresh.resolve('fresh wallet'));
+
+    expect(await screen.findByText('fresh wallet')).toBeTruthy();
+    expect(screen.getByText('savedOnly:false')).toBeTruthy();
+  });
+
+  it('stays false for data that came from this session, even when a refresh then fails', async () => {
+    const first = render(
+      <Probe cacheKey="ho-wallet" fetcher={() => Promise.resolve('session wallet')} options={{ persist: true }} />,
+    );
+    expect(await screen.findByText('session wallet')).toBeTruthy();
+    first.unmount();
+
+    render(
+      <Probe
+        cacheKey="ho-wallet"
+        fetcher={() => Promise.reject(new Error('Network request failed'))}
+        options={{ persist: true }}
+      />,
+    );
+
+    expect(await screen.findByText('error:Network request failed')).toBeTruthy();
+    expect(screen.getByText('session wallet')).toBeTruthy();
+    expect(screen.getByText('stale:true')).toBeTruthy();
+    expect(screen.getByText('savedOnly:false')).toBeTruthy();
   });
 });
 

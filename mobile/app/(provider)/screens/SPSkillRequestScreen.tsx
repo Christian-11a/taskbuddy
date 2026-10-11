@@ -31,6 +31,7 @@ import { useNotifications } from '../../../src/context/NotificationsContext';
 import { useAuth } from '../../../src/context/AuthContext';
 import { useRefreshOnForeground } from '../../../src/hooks/useRefreshOnForeground';
 import { useAsyncData } from '../../../src/hooks/useAsyncData';
+import { SEVEN_DAYS_MS } from '../../../src/lib/persistentCache';
 import { api, type SkillRequest, type SkillRequestType } from '../../../src/lib/api';
 import { shortDate } from '../../../src/lib/format';
 import { categoryIcon } from '../../../src/lib/categoryIcon';
@@ -107,7 +108,10 @@ export default function SPSkillRequestScreen({ onBack }: SPSkillRequestScreenPro
   const { STATUS_META, styles, Colors, V6Colors, appearance } = useThemedStyles(createThemedStyles);
   const headerTop = useHeaderTop();
   const { providerProfile, refreshProfile } = useAuth();
-  const categories = useAsyncData(() => api.categories(), []);
+  const categories = useAsyncData(() => api.categories(), [], 'categories', {
+    persist: true,
+    maxAgeMs: SEVEN_DAYS_MS,
+  });
   const { notifications } = useNotifications();
   const serviceNoticeKey = notifications.filter((notice) => notice.data?.request_id).map((notice) => notice.id).join(',');
   const requests = useAsyncData(() => api.mySkillRequests(), [serviceNoticeKey]);

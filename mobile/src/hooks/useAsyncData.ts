@@ -20,6 +20,12 @@ export interface AsyncState<T> {
   stale: boolean;
   /** True while a fetch is in flight and data is already on screen. */
   refreshing: boolean;
+  /**
+   * True while the data on screen is the saved copy from an earlier launch and no fetch has succeeded
+   * since it was shown, even if a refresh has failed since. Money actions wait for this to clear.
+   * Data from this session's memory (a fetch that succeeded earlier) is not counted.
+   */
+  savedOnly: boolean;
 }
 
 export interface AsyncDataOptions {
@@ -54,6 +60,7 @@ interface Core<T> {
   error: string | null;
   stale: boolean;
   refreshing: boolean;
+  savedOnly: boolean;
 }
 
 type Step<T> =
@@ -75,9 +82,16 @@ function step<T>(state: Core<T>, action: Step<T>): Core<T> {
     case 'saved':
       // A saved copy only fills an empty screen. Anything already on it is newer.
       if (state.data !== null) return state;
-      return { ...state, data: action.value, loading: false, stale: true, refreshing: true };
+      return {
+        ...state,
+        data: action.value,
+        loading: false,
+        stale: true,
+        refreshing: true,
+        savedOnly: true,
+      };
     case 'fetched':
-      return { ...state, data: action.value, loading: false, stale: false, refreshing: false };
+      return { ...state, data: action.value, loading: false, stale: false, refreshing: false, savedOnly: false };
     case 'failed':
       // Data already on screen stays, so a failed refresh never blanks it.
       return {
@@ -116,7 +130,14 @@ export function useAsyncData<T>(
   const maxAgeMs = options?.maxAgeMs;
   const [state, setState] = useState<Core<T>>(() => {
     const cached = cacheKey && cache.has(cacheKey) ? (cache.get(cacheKey) as T) : null;
-    return { data: cached, loading: cached === null, error: null, stale: false, refreshing: false };
+    return {
+      data: cached,
+      loading: cached === null,
+      error: null,
+      stale: false,
+      refreshing: false,
+      savedOnly: false,
+    };
   });
   const [nonce, setNonce] = useState(0);
 
@@ -182,5 +203,6 @@ export function useAsyncData<T>(
     reload,
     stale: state.stale,
     refreshing: state.refreshing,
+    savedOnly: state.savedOnly,
   };
 }

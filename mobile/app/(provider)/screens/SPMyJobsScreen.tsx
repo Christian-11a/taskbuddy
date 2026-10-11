@@ -93,8 +93,9 @@ export default function SPMyJobsScreen({ onNavigate, headerRight }: SPMyJobsScre
     () => api.myApplications() as Promise<MyWorkApplication[]>,
     [],
     'sp-applications',
+    { persist: true },
   );
-  const assigned = useAsyncData(() => api.assignedJobs(), [], 'sp-assigned');
+  const assigned = useAsyncData(() => api.assignedJobs(), [], 'sp-assigned', { persist: true });
 
   const loading = applications.loading || assigned.loading;
   const error = applications.error ?? assigned.error;

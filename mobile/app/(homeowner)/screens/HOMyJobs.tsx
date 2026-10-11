@@ -65,7 +65,7 @@ export default function MyJobs({ onNavigate, headerRight }: MyJobsProps) {
   const headerTop = useHeaderTop();
   const [filter, setFilter] = useRetainedState<JobListFilter>('ho.myJobs.filter', 'all');
   const scroll = useRetainedScroll(`ho.myJobs.${filter}`);
-  const { data, loading, error, reload } = useAsyncData(() => api.myJobs(), [], 'ho-jobs');
+  const { data, loading, error, reload } = useAsyncData(() => api.myJobs(), [], 'ho-jobs', { persist: true });
   const [refreshing, setRefreshing] = useState(false);
   // useAsyncData's reload() is fire-and-forget; a new `data` or `error` means the fetch settled.
   useEffect(() => {

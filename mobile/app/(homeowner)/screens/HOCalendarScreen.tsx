@@ -61,7 +61,7 @@ export default function HOCalendarScreen({ onNavigate, title = 'Calendar', heade
   const todayKey = dateKey(new Date());
   const [selectedDate, setSelectedDate] = useState<string>(todayKey);
   const [visibleMonth, setVisibleMonth] = useState<string>(todayKey);
-  const { data, loading, error, reload } = useAsyncData(() => api.myJobs(), [], 'ho-jobs');
+  const { data, loading, error, reload } = useAsyncData(() => api.myJobs(), [], 'ho-jobs', { persist: true });
   const jobs = useMemo(() => data ?? [], [data]);
   const proposals = useProposalCounts(jobs);
 
