@@ -1,4 +1,6 @@
 import {
+  BIO_MAX,
+  BIO_MIN,
   SEARCH_MAX_LENGTH,
   TITLE_MAX,
   TITLE_MIN,
@@ -6,6 +8,7 @@ import {
   textLength,
   textUnits,
   validateAccountNumber,
+  validateBio,
   validateText,
   validateTitle,
 } from '../textRules';
@@ -232,5 +235,32 @@ describe('validateAccountNumber: the withdrawal destination', () => {
 describe('the search box', () => {
   it('caps a search at 100 characters', () => {
     expect(SEARCH_MAX_LENGTH).toBe(100);
+  });
+});
+
+describe('validateBio: the provider bio rule', () => {
+  it('takes the backend bounds, 20 to 400', () => {
+    expect(BIO_MIN).toBe(20);
+    expect(BIO_MAX).toBe(400);
+  });
+
+  it('needs 20 characters once cleaned, and empty or spaces-only is too short', () => {
+    expect(validateBio('')).toBe('Bio must be at least 20 characters.');
+    expect(validateBio(' '.repeat(40))).toBe('Bio must be at least 20 characters.');
+    expect(validateBio('x'.repeat(19))).toBe('Bio must be at least 20 characters.');
+    expect(validateBio(`${'x'.repeat(19)}\n\n\n\n\n`)).toBe('Bio must be at least 20 characters.');
+    expect(validateBio('x'.repeat(20))).toBeNull();
+    expect(validateBio('  Plumbing and drain.  ')).toBe('Bio must be at least 20 characters.');
+    expect(validateBio('  Plumbing and drains.  ')).toBeNull();
+  });
+
+  it('allows up to 400 characters and no more', () => {
+    expect(validateBio('x'.repeat(400))).toBeNull();
+    expect(validateBio('x'.repeat(401))).toBe('Bio cannot exceed 400 characters.');
+  });
+
+  it('counts an emoji as two units against the 400, the way the API does', () => {
+    expect(validateBio('😀'.repeat(200))).toBeNull();
+    expect(validateBio('😀'.repeat(201))).toBe('Bio cannot exceed 400 characters.');
   });
 });

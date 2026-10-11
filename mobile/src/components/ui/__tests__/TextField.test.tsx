@@ -95,3 +95,32 @@ describe('TextField', () => {
     expect(input.props.keyboardType).toBe('phone-pad');
   });
 });
+
+describe('TextField counter', () => {
+  it('shows the counter when one is passed, and not otherwise', () => {
+    const { rerender } = render(<TextField label="Bio" value="Hi" onChangeText={jest.fn()} />);
+    expect(screen.queryByText('2 / 400')).toBeNull();
+
+    rerender(<TextField label="Bio" value="Hi" onChangeText={jest.fn()} counter="2 / 400" />);
+
+    expect(screen.getByText('2 / 400')).toBeTruthy();
+  });
+
+  it('keeps the counter on screen while an error shows, where the helper would hide', () => {
+    render(
+      <TextField
+        label="Bio"
+        value="Too short"
+        onChangeText={jest.fn()}
+        helper="Tell clients what you do"
+        error="Bio must be at least 20 characters."
+        counter="9 / 400"
+        submitted
+      />,
+    );
+
+    expect(screen.getByText('9 / 400')).toBeTruthy();
+    expect(screen.getByText('Bio must be at least 20 characters.')).toBeTruthy();
+    expect(screen.queryByText('Tell clients what you do')).toBeNull();
+  });
+});

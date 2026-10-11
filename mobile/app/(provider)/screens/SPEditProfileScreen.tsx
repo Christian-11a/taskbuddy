@@ -50,6 +50,7 @@ import {
   validatePhone,
   validateServiceRadius,
 } from '../../../src/lib/inputRules';
+import { BIO_MAX, cleanText, validateBio } from '../../../src/lib/textRules';
 
 interface SPEditProfileScreenProps {
   onBack: () => void;
@@ -126,7 +127,8 @@ export default function SPEditProfileScreen({ onBack, onSave, onManageServices }
   // The backend keeps the radius between 0.5 and 1000 km. A stored radius left alone is not re-checked.
   const radiusError = changed.includes('radius') ? validateServiceRadius(radius) ?? undefined : undefined;
   const serviceError = categoryId ? undefined : 'Please select the service you offer.';
-  const bioError = bio.trim().length < 20 ? 'Bio must be at least 20 characters.' : undefined;
+  // Whitespace-only counts as empty; the bio is sent cleaned, the same text it was checked as.
+  const bioError = validateBio(bio) ?? undefined;
 
   // Moves the address to the top of the visible area as it takes focus, so the
   // suggestions it opens sit above the keyboard instead of under it.
@@ -157,7 +159,7 @@ export default function SPEditProfileScreen({ onBack, onSave, onManageServices }
       });
       await api.upsertProviderProfile({
         category_id: categoryId!,
-        bio: bio.trim(),
+        bio: cleanText(bio),
         years_experience: providerProfile?.years_experience,
         service_radius_km: radius.trim() ? Number(radius) : providerProfile?.service_radius_km,
       });
@@ -266,6 +268,8 @@ export default function SPEditProfileScreen({ onBack, onSave, onManageServices }
             onChangeText={setBio}
             placeholder="Describe your experience..."
             multiline
+            maxLength={BIO_MAX}
+            counter={`${bio.length} / ${BIO_MAX}`}
             keyboardAppearance={appearance}
             error={bioError}
             submitted={submitted}

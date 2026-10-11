@@ -402,3 +402,59 @@ describe('provider edit profile service radius', () => {
     expect(api.upsertProviderProfile).toHaveBeenCalledWith(expect.objectContaining({ service_radius_km: 25 }));
   });
 });
+
+const BIO_MIN_MESSAGE = 'Bio must be at least 20 characters.';
+const bioField = () => screen.getByLabelText('Bio (min 20 characters)');
+
+describe('provider edit profile bio', () => {
+  it('limits the bio to 400 characters and counts them as they are typed', async () => {
+    await renderEditor('provider');
+    const typed = 'Plumber for eight years';
+
+    fireEvent.changeText(bioField(), typed);
+
+    expect(bioField().props.maxLength).toBe(400);
+    expect(screen.getByText(`${typed.length} / 400`)).toBeTruthy();
+  });
+
+  it('says the bio is too short once it is left, and blocks Save', async () => {
+    await renderEditor('provider');
+    fireEvent.changeText(bioField(), 'Plumbing and drain.');
+
+    fireEvent(bioField(), 'blur');
+
+    expect(screen.getByText(BIO_MIN_MESSAGE)).toBeTruthy();
+    fireEvent.press(screen.getByLabelText('Save changes'));
+    expect(api.upsertProviderProfile).not.toHaveBeenCalled();
+  });
+
+  it('treats a bio of only spaces as empty: too short, and nothing is sent', async () => {
+    await renderEditor('provider');
+    fireEvent.changeText(bioField(), ' '.repeat(25));
+
+    fireEvent.press(screen.getByLabelText('Save changes'));
+
+    expect(screen.getByText(BIO_MIN_MESSAGE)).toBeTruthy();
+    expect(api.upsertProviderProfile).not.toHaveBeenCalled();
+  });
+
+  it('accepts a bio of exactly 20 characters', async () => {
+    await renderEditor('provider');
+    fireEvent.changeText(bioField(), 'Plumbing and drains.');
+
+    await saveAndConfirm();
+
+    expect(api.upsertProviderProfile).toHaveBeenCalledWith(expect.objectContaining({ bio: 'Plumbing and drains.' }));
+  });
+
+  it('sends the bio trimmed, with the extra blank lines inside it closed up', async () => {
+    await renderEditor('provider');
+    fireEvent.changeText(bioField(), '  Ten years of plumbing work.\n\n\n\nFully insured.  \n');
+
+    await saveAndConfirm();
+
+    expect(api.upsertProviderProfile).toHaveBeenCalledWith(
+      expect.objectContaining({ bio: 'Ten years of plumbing work.\n\nFully insured.' }),
+    );
+  });
+});

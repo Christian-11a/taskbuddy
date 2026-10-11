@@ -12,6 +12,8 @@ export type TextFieldProps = Omit<TextInputProps, 'value' | 'onChangeText'> & {
   error?: string;
   /** True after a submit attempt, so the error shows even if the field was never left. */
   submitted?: boolean;
+  /** A count such as "12 / 400", shown at the right of the footer. It stays up while an error shows. */
+  counter?: string;
 };
 
 /**
@@ -19,12 +21,21 @@ export type TextFieldProps = Omit<TextInputProps, 'value' | 'onChangeText'> & {
  * submits, and disappears as soon as the caller stops passing `error`.
  */
 export default function TextField({
-  label, value, onChangeText, helper, error, submitted = false, multiline = false, style, onBlur, onFocus, ...inputProps
+  label, value, onChangeText, helper, error, submitted = false, counter, multiline = false, style, onBlur, onFocus,
+  ...inputProps
 }: TextFieldProps) {
   const { styles, Colors, V6Colors } = useThemedStyles(createThemedStyles);
   const [focused, setFocused] = useState(false);
   const [touched, setTouched] = useState(false);
   const showError = !!error && (touched || submitted);
+  const footer = showError ? (
+    <View style={styles.helperRow}>
+      <CircleAlert size={14} color={Colors.dangerText} />
+      <Text style={styles.error} accessibilityLiveRegion="polite">{error}</Text>
+    </View>
+  ) : helper ? (
+    <Text style={styles.helper}>{helper}</Text>
+  ) : null;
 
   return (
     <View style={styles.wrap}>
@@ -50,14 +61,12 @@ export default function TextField({
           style={[styles.input, multiline && styles.multiline, style]}
         />
       </View>
-      {showError ? (
-        <View style={styles.helperRow}>
-          <CircleAlert size={14} color={Colors.dangerText} />
-          <Text style={styles.error} accessibilityLiveRegion="polite">{error}</Text>
+      {counter ? (
+        <View style={styles.footerRow}>
+          <View style={styles.footerMain}>{footer}</View>
+          <Text style={styles.counter}>{counter}</Text>
         </View>
-      ) : helper ? (
-        <Text style={styles.helper}>{helper}</Text>
-      ) : null}
+      ) : footer}
     </View>
   );
 }
@@ -85,6 +94,9 @@ function createThemedStyles(theme: Palette) {
     helperRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
     helper: { fontFamily: 'Inter', fontSize: 13, fontWeight: '400', lineHeight: 18, color: V6Colors.ink500 },
     error: { flex: 1, fontFamily: 'Inter', fontSize: 13, fontWeight: '400', lineHeight: 18, color: Colors.dangerText },
+    footerRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 8 },
+    footerMain: { flex: 1 },
+    counter: { fontFamily: 'Inter', fontSize: 13, fontWeight: '400', lineHeight: 18, color: V6Colors.ink500, textAlign: 'right' },
   });
   return { styles, Colors, V6Colors };
 }

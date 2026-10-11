@@ -21,6 +21,10 @@ export const SEARCH_MAX_LENGTH = 100;
 export const TITLE_MIN = 5;
 export const TITLE_MAX = 120;
 
+/** Provider bio bounds, from UpsertProviderProfileDto and the `bio` CHECK (20 to 400). */
+export const BIO_MIN = 20;
+export const BIO_MAX = 400;
+
 /**
  * The text as it is sent: line endings become "\n", runs of blank lines are cut
  * to one blank line, and the ends are trimmed. Nothing else changes.
@@ -74,6 +78,17 @@ export function validateText(value: string, limits: TextLimits = {}): string | n
 export function validateTitle(value: string): string | null {
   if (textLength(value) < TITLE_MIN) return `Title must be at least ${TITLE_MIN} characters.`;
   if (textUnits(value) > TITLE_MAX) return `Title cannot exceed ${TITLE_MAX} characters.`;
+  return null;
+}
+
+/**
+ * The provider bio's rule, worded like the title's: at least 20 characters once
+ * cleaned, so empty and spaces-only are too short; at most 400 units, the same
+ * count the API's @Length uses.
+ */
+export function validateBio(value: string): string | null {
+  if (textLength(value) < BIO_MIN) return `Bio must be at least ${BIO_MIN} characters.`;
+  if (textUnits(value) > BIO_MAX) return `Bio cannot exceed ${BIO_MAX} characters.`;
   return null;
 }
 
