@@ -169,17 +169,22 @@ describe('validateAccountNumber: the withdrawal destination', () => {
       ['GCash: 0917-123-4567'],
       ['Maya 0917 123 4567'],
       ['  09171234567  '],
+      ['GCash +63 917 123 4567'],
+      ['GCash +63 (917) 123-4567'],
+      ['GCash 63 917 123 4567'],
+      ['Maya 639171234567'],
     ])('accepts %j', (value) => {
       expect(validateAccountNumber(value)).toBeNull();
     });
 
     it.each([
-      ['0917123456', 'A GCash number is 09 followed by 9 digits.'],
-      ['091712345678', 'A GCash number is 09 followed by 9 digits.'],
-      ['0917 123 456', 'A GCash number is 09 followed by 9 digits.'],
       ['GCash 0917123456', 'A GCash number is 09 followed by 9 digits.'],
+      ['GCash 0912345678', 'A GCash number is 09 followed by 9 digits.'],
+      ['GCash 091712345678', 'A GCash number is 09 followed by 9 digits.'],
+      ['Maya 0917 123 456', 'A GCash number is 09 followed by 9 digits.'],
       ['GCash 12345678901', 'A GCash number is 09 followed by 9 digits.'],
       ['GCash 09XX XXX XXXX', 'A GCash number is 09 followed by 9 digits.'],
+      ['GCash +63 1234 5678', 'A GCash number is 09 followed by 9 digits.'],
     ])('refuses %j', (value, message) => {
       expect(validateAccountNumber(value)).toBe(message);
     });
@@ -200,6 +205,16 @@ describe('validateAccountNumber: the withdrawal destination', () => {
     });
 
     it.each([
+      ['0912345678'],
+      ['BDO 0912345678'],
+      ['091712345678'],
+      ['0917 123 456'],
+      ['639171234567'],
+    ])('accepts a bare number that is not an 11-digit mobile, as a bank account: %j', (value) => {
+      expect(validateAccountNumber(value)).toBeNull();
+    });
+
+    it.each([
       ['1234567', 'A bank account number is 8 to 20 digits.'],
       ['123456789012345678901', 'A bank account number is 8 to 20 digits.'],
       ['BDO 1234567', 'A bank account number is 8 to 20 digits.'],
@@ -208,9 +223,21 @@ describe('validateAccountNumber: the withdrawal destination', () => {
     });
   });
 
-  it('refuses a plus sign, so an international number is not taken for a bank account', () => {
-    expect(validateAccountNumber('+639171234567')).toBe('Use digits only, with no + sign.');
-    expect(validateAccountNumber('GCash +63 917 123 4567')).toBe('Use digits only, with no + sign.');
+  it('reads a +63 number as the mobile number it stands for, with or without a wallet name', () => {
+    expect(validateAccountNumber('+639171234567')).toBeNull();
+    expect(validateAccountNumber('+63 917 123 4567')).toBeNull();
+    expect(validateAccountNumber('BDO +63 917 123 4567')).toBeNull();
+  });
+
+  it('refuses a +63 number that is not a mobile, so it is not taken for a bank account', () => {
+    const message = 'A +63 number must be a mobile number, such as +63 917 123 4567.';
+    expect(validateAccountNumber('BDO +63 1234 5678')).toBe(message);
+    expect(validateAccountNumber('+63 1234567890')).toBe(message);
+  });
+
+  it('refuses any other plus sign', () => {
+    expect(validateAccountNumber('+1 917 123 4567')).toBe('Use digits only, with no + sign.');
+    expect(validateAccountNumber('0917 +123 4567')).toBe('Use digits only, with no + sign.');
   });
 
   it('refuses a destination with no number in it', () => {

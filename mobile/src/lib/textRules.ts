@@ -97,29 +97,38 @@ const NUMBER_RUN = /[0-9]+(?:[ .,()-]+[0-9]+)*/g;
 
 /**
  * A withdrawal destination. It is free text a person reads and pays from, so the
- * rule is about the one number in it, and the kind of number decides the length:
+ * rule is about the one number in it:
  *
- * - A GCash (or Maya) number is 09 followed by 9 digits. A bare number that starts
- *   with 09 and has no letters is treated as one.
- * - Any other number is a bank account number: 8 to 20 digits.
+ * - With a GCash or Maya name, the number is a mobile number: 09 followed by 9 digits.
+ * - A +63 before the number is the country code of a mobile number, read as the 0
+ *   that starts one, so "GCash +63 917 123 4567" is a GCash number. A +63 number is
+ *   a mobile number with or without a name, and 63 with no plus sign reads the same.
+ * - With no name, the number is a mobile number (as above) or a bank account number
+ *   of 8 to 20 digits. So 09171234567 is a mobile and 0912345678 a bank account.
  * - Spaces, dashes, dots, commas and brackets may separate the digits. A slash
  *   or any letter between two digit runs makes them two numbers.
- * - A plus sign is refused (so +63 numbers are not taken for bank accounts), and
- *   so is text with no number, or with two.
+ * - Any other plus sign is refused, and so is text with no number, or with two.
  *
  * Labels such as "BDO" or "Juan dela Cruz" are allowed; they are not checked.
  */
 export function validateAccountNumber(value: string): string | null {
   const text = value.replace(/\s+/g, ' ').trim();
   if (text === '') return 'Add where to send it.';
-  if (text.includes('+')) return 'Use digits only, with no + sign.';
-  const numbers = text.match(NUMBER_RUN) ?? [];
+  const local = text.replace(/\+63(?=[ .,()-]*[0-9])/g, '0');
+  if (local.includes('+')) return 'Use digits only, with no + sign.';
+  const numbers = local.match(NUMBER_RUN) ?? [];
   if (numbers.length === 0) return 'Add your GCash number or bank account number.';
   if (numbers.length > 1) return 'Keep it to one number: your GCash or bank account number.';
   const digits = (numbers[0] ?? '').replace(/[^0-9]/g, '');
-  const isWallet = /\b(gcash|maya)\b/i.test(text) || (!/[a-z]/i.test(text) && digits.startsWith('09'));
-  if (isWallet) {
-    return /^09[0-9]{9}$/.test(digits) ? null : 'A GCash number is 09 followed by 9 digits.';
+  // A mobile number written with the country code 63 (no plus sign) reads with the 0 instead.
+  const mobile = digits.length === 12 && digits.startsWith('63') ? `0${digits.slice(2)}` : digits;
+  const isMobile = /^09[0-9]{9}$/.test(mobile);
+  if (/\b(gcash|maya)\b/i.test(text)) {
+    return isMobile ? null : 'A GCash number is 09 followed by 9 digits.';
   }
-  return /^[0-9]{8,20}$/.test(digits) ? null : 'A bank account number is 8 to 20 digits.';
+  const hasCountryCode = local !== text;
+  if (hasCountryCode) {
+    return isMobile ? null : 'A +63 number must be a mobile number, such as +63 917 123 4567.';
+  }
+  return isMobile || /^[0-9]{8,20}$/.test(digits) ? null : 'A bank account number is 8 to 20 digits.';
 }

@@ -430,7 +430,7 @@ describe('WithdrawModal — the destination is one GCash or bank account number'
     ['GCash 0917123456', 'A GCash number is 09 followed by 9 digits.'],
     ['GCash 09XX XXX XXXX', 'A GCash number is 09 followed by 9 digits.'],
     ['BDO 1234567', 'A bank account number is 8 to 20 digits.'],
-    ['+639171234567', 'Use digits only, with no + sign.'],
+    ['+1 917 123 4567', 'Use digits only, with no + sign.'],
     ['GCash 0917 123 4567 BDO 12345678', 'Keep it to one number: your GCash or bank account number.'],
   ])('refuses %j once the field is left, with %j, and keeps Continue disabled', (destination, message) => {
     renderSheet();
@@ -447,6 +447,7 @@ describe('WithdrawModal — the destination is one GCash or bank account number'
     ['GCash 0917 123 4567'],
     ['BDO 1234 5678 9012'],
     ['Juan dela Cruz BPI 00123456789'],
+    ['GCash +63 917 123 4567'],
   ])('accepts %j and lets Continue through', (destination) => {
     renderSheet();
     fill('400', destination);
