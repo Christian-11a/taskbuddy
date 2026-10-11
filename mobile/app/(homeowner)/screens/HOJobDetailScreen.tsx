@@ -42,6 +42,7 @@ import { useHeaderTop } from '../../../src/hooks/useHeaderTop';
 import { useAsyncData } from '../../../src/hooks/useAsyncData';
 import { HOScreen } from '../../../src/types/navigation';
 import { api, ApiError, type Job, type JobApplication, type ProviderCard } from '../../../src/lib/api';
+import { findProvidersFailureMessage } from '../../../src/lib/findProvidersFailure';
 import { homeownerJobView, type Action, type JobView } from '../../../src/lib/jobDetailView';
 import { countPendingProposals, isOpenJob } from '../../../src/lib/proposalCounts';
 import {
@@ -69,6 +70,8 @@ function acceptedDistanceKm(job: Job): number | null {
 /** Shown under the cancel row: cancelling after a hire is not an instant refund. */
 const CANCEL_HINT = 'Cancelling after hiring asks the provider to agree. Your money comes back once they do.';
 const HIT_SLOP = { top: 2, bottom: 2, left: 2, right: 2 };
+/** Under the waiting card on an open job with no offers: the backend also invites matches on its own. */
+const AUTO_INVITE_HINT = 'We also invite matched providers automatically if nobody applies soon.';
 /** Said when a tap lands while the last action on this job is still running. */
 const BUSY_MESSAGE = 'Still working on your last request. Please wait.';
 
@@ -200,9 +203,7 @@ export default function HOJobDetailScreen({ jobId, onBack, onNavigate }: HOJobDe
       );
       reload();
     } catch (e) {
-      setActionError(
-        e instanceof ApiError ? e.message : 'Could not look for providers. Please try again.',
-      );
+      setActionError(findProvidersFailureMessage(e));
     } finally {
       inFlight.current = false;
       setBusy(false);
@@ -214,6 +215,9 @@ export default function HOJobDetailScreen({ jobId, onBack, onNavigate }: HOJobDe
     : null;
   const main = view?.main ?? null;
   const link = view?.link ?? null;
+  // Said only when the proposals have answered with none. While they load, or when the lookup failed, the offers are unknown.
+  const showAutoInviteHint = !!job && isOpenJob(job) && offerList !== null && pendingCount === 0
+    && main?.kind === 'findProviders';
   const urgency = job ? urgencyMeta(job.urgency, V6Colors) : null;
 
   const perform = (action: Action) => {
@@ -346,19 +350,22 @@ export default function HOJobDetailScreen({ jobId, onBack, onNavigate }: HOJobDe
             </View>
           </View>
 
-          <StatusCard
-            tone={view.card.tone}
-            overline={view.card.overline}
-            title={view.card.title}
-            body={view.card.body}
-          >
-            {job.has_review ? (
-              <View style={styles.reviewChip}>
-                <Check size={14} color={V6Colors.successText} strokeWidth={2.6} />
-                <Text style={styles.reviewChipText}>Review submitted</Text>
-              </View>
-            ) : undefined}
-          </StatusCard>
+          <View style={styles.statusBlock}>
+            <StatusCard
+              tone={view.card.tone}
+              overline={view.card.overline}
+              title={view.card.title}
+              body={view.card.body}
+            >
+              {job.has_review ? (
+                <View style={styles.reviewChip}>
+                  <Check size={14} color={V6Colors.successText} strokeWidth={2.6} />
+                  <Text style={styles.reviewChipText}>Review submitted</Text>
+                </View>
+              ) : undefined}
+            </StatusCard>
+            {showAutoInviteHint && <Text style={styles.muted}>{AUTO_INVITE_HINT}</Text>}
+          </View>
 
           {/* Open jobs: the offers, the best two first. */}
           {isOpenJob(job) && (
@@ -598,6 +605,7 @@ function createThemedStyles(theme: ThemePalette) {
     urgencyChip: { borderRadius: 999, paddingHorizontal: 10, paddingVertical: 4 },
     urgencyText: { fontFamily: 'Inter', fontSize: 12, fontWeight: '700' },
 
+    statusBlock: { gap: 8 },
     block: { gap: 10 },
     sectionTitle: { fontFamily: 'Inter', fontSize: 17, fontWeight: '600', color: C.ink900 },
     rowBetween: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },

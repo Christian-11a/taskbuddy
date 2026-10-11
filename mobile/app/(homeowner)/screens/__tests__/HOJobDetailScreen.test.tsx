@@ -2,7 +2,7 @@ import { findUnnamedControls } from '../../../../src/testing/a11yAudit';
 import React from 'react';
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react-native';
 import HOJobDetailScreen from '../HOJobDetailScreen';
-import { api } from '../../../../src/lib/api';
+import { ApiError, api } from '../../../../src/lib/api';
 import { showToast } from '../../../../src/components/Toast';
 
 jest.mock('../../../../src/components/Toast', () => ({ showToast: jest.fn() }));
@@ -673,5 +673,130 @@ describe('HOJobDetailScreen — every control has an accessible name', () => {
 
     expect(await screen.findByText('Fix the sink')).toBeTruthy();
     expect(findUnnamedControls(screen.UNSAFE_root)).toEqual([]);
+  });
+});
+
+describe('HOJobDetailScreen — Find providers says why it failed', () => {
+  const UNREACHABLE =
+    "We couldn't reach the matching service just now. Your job is still open and providers can see it. Try again in a few minutes.";
+  const GENERIC = 'Something went wrong on our side. Please try again in a moment.';
+  const openJob = { ...inProgressJob, status: 'open' as const, assigned_provider_id: null, job_tasks: [] };
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    (api.getJob as jest.Mock).mockResolvedValue(openJob);
+    (api.jobApplications as jest.Mock).mockResolvedValue([]);
+    (api.jobDispute as jest.Mock).mockResolvedValue(null);
+  });
+
+  it.each<[string, unknown]>([
+    ['a 500 from the server', new ApiError('Internal server error', 500)],
+    ['a 503 from the server', new ApiError('Service Unavailable', 503)],
+    ['a network failure', new TypeError('Network request failed')],
+  ])('after %s, the banner says the matching service could not be reached, not the generic message', async (_label, error) => {
+    (api.triggerRecommendations as jest.Mock).mockRejectedValue(error);
+    render(<HOJobDetailScreen jobId="job-1" onBack={jest.fn()} onNavigate={jest.fn()} />);
+
+    fireEvent.press(await screen.findByText('Find providers'));
+
+    expect(await screen.findByText(UNREACHABLE)).toBeTruthy();
+    expect(screen.queryByText(GENERIC)).toBeNull();
+  });
+
+  it('keeps Find providers usable, and a retry that succeeds clears the message', async () => {
+    (api.triggerRecommendations as jest.Mock)
+      .mockRejectedValueOnce(new ApiError('Internal server error', 500))
+      .mockResolvedValueOnce({ run_id: null, pool_size: 4, notified: 2 });
+    render(<HOJobDetailScreen jobId="job-1" onBack={jest.fn()} onNavigate={jest.fn()} />);
+
+    fireEvent.press(await screen.findByText('Find providers'));
+    expect(await screen.findByText(UNREACHABLE)).toBeTruthy();
+
+    fireEvent.press(screen.getByText('Find providers'));
+    expect(await screen.findByText('We invited 2 matched providers to apply.')).toBeTruthy();
+    expect(screen.queryByText(UNREACHABLE)).toBeNull();
+    expect(api.triggerRecommendations).toHaveBeenCalledTimes(2);
+  });
+
+  it('a 400 keeps the server explanation instead of the matching-service message', async () => {
+    (api.triggerRecommendations as jest.Mock).mockRejectedValue(
+      new ApiError('This job is no longer looking for providers', 400),
+    );
+    render(<HOJobDetailScreen jobId="job-1" onBack={jest.fn()} onNavigate={jest.fn()} />);
+
+    fireEvent.press(await screen.findByText('Find providers'));
+
+    expect(await screen.findByText('This job is no longer looking for providers')).toBeTruthy();
+    expect(screen.queryByText(UNREACHABLE)).toBeNull();
+  });
+});
+
+describe('HOJobDetailScreen — the automatic invite line on an open job', () => {
+  const AUTO_INVITE = 'We also invite matched providers automatically if nobody applies soon.';
+  const openJob = { ...inProgressJob, status: 'open' as const, assigned_provider_id: null, job_tasks: [] };
+  const pendingApplication = {
+    id: 'a1', job_id: 'job-1', provider_id: 'p-a1', status: 'pending', source: 'organic', cover_message: null,
+    applied_at: new Date().toISOString(), decided_at: null,
+    provider: {
+      id: 'p-a1', full_name: 'Ana Cruz', avatar_url: null, city: null,
+      provider_profiles: { is_verified: true, cached_avg_rating: 4, cached_completed_jobs: 2 },
+    },
+  };
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    (api.getProvider as jest.Mock).mockResolvedValue({ profile_id: 'provider-1', profiles: { full_name: 'Jane Provider' }, cached_completed_jobs: 1 });
+    (api.jobDispute as jest.Mock).mockResolvedValue(null);
+  });
+
+  it('shows under the waiting card when nobody has applied, while Find providers is offered', async () => {
+    (api.getJob as jest.Mock).mockResolvedValue(openJob);
+    (api.jobApplications as jest.Mock).mockResolvedValue([]);
+    render(<HOJobDetailScreen jobId="job-1" onBack={jest.fn()} onNavigate={jest.fn()} />);
+
+    expect(await screen.findByText(AUTO_INVITE)).toBeTruthy();
+    expect(screen.getByText('Waiting for offers')).toBeTruthy();
+    expect(screen.getByText('Find providers')).toBeTruthy();
+  });
+
+  it('waits for the proposals lookup before it says nobody has applied', async () => {
+    let answer!: (value: unknown[]) => void;
+    (api.getJob as jest.Mock).mockResolvedValue(openJob);
+    (api.jobApplications as jest.Mock).mockReturnValue(new Promise((resolve) => { answer = resolve; }));
+    render(<HOJobDetailScreen jobId="job-1" onBack={jest.fn()} onNavigate={jest.fn()} />);
+
+    await screen.findByText('Fix the sink');
+    expect(screen.queryByText(AUTO_INVITE)).toBeNull();
+
+    await act(async () => answer([]));
+    expect(await screen.findByText(AUTO_INVITE)).toBeTruthy();
+  });
+
+  it('is left out once a proposal is waiting, because the job already has offers', async () => {
+    (api.getJob as jest.Mock).mockResolvedValue(openJob);
+    (api.jobApplications as jest.Mock).mockResolvedValue([pendingApplication]);
+    render(<HOJobDetailScreen jobId="job-1" onBack={jest.fn()} onNavigate={jest.fn()} />);
+
+    expect(await screen.findByText('1 proposal waiting')).toBeTruthy();
+    expect(screen.queryByText(AUTO_INVITE)).toBeNull();
+  });
+
+  it('is left out when the proposals did not load, so the job is not claimed to have none', async () => {
+    (api.getJob as jest.Mock).mockResolvedValue(openJob);
+    (api.jobApplications as jest.Mock).mockRejectedValue(new Error('offline'));
+    render(<HOJobDetailScreen jobId="job-1" onBack={jest.fn()} onNavigate={jest.fn()} />);
+
+    expect(await screen.findByText('Open for offers')).toBeTruthy();
+    expect(screen.queryByText(AUTO_INVITE)).toBeNull();
+    expect(screen.getByText('Find providers')).toBeTruthy();
+  });
+
+  it('is left out once a provider is hired', async () => {
+    (api.getJob as jest.Mock).mockResolvedValue({ ...inProgressJob, status: 'confirmed', job_tasks: [] });
+    (api.jobApplications as jest.Mock).mockResolvedValue([]);
+    render(<HOJobDetailScreen jobId="job-1" onBack={jest.fn()} onNavigate={jest.fn()} />);
+
+    expect(await screen.findByText('Message Jane Provider')).toBeTruthy();
+    expect(screen.queryByText(AUTO_INVITE)).toBeNull();
   });
 });
