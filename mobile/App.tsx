@@ -100,7 +100,10 @@ import { HOScreen, SPScreen } from './src/types/navigation';
 import { AuthProvider, useAuth } from './src/context/AuthContext';
 import { hasCompletedOnboarding, markOnboardingCompleted } from './src/lib/onboarding';
 import { firstNameFrom, tourSteps, type FinishAction } from './src/lib/tourContent';
-import { idleTourFlow, nextTourFlow, shouldOfferTour, TOUR_START_DELAY_MS, tourIsOnScreen, type TourFlow } from './src/lib/tourFlow';
+import {
+  homeContentReady, idleTourFlow, nextTourFlow, shouldOfferTour, shouldStartTour, TOUR_CONTENT_POLL_MS,
+  tourIsOnScreen, type TourFlow,
+} from './src/lib/tourFlow';
 import { api } from './src/lib/api';
 import { consumeLastNotificationTap, subscribeToNotificationTaps } from './src/lib/pushNotifications';
 import { resolveNotificationTarget } from './src/lib/notificationRouting';
@@ -175,7 +178,7 @@ function AppFlow() {
   // The welcome flow after the intro cards (see tourFlow.ts), and whether the take-the-tour card is offered.
   const [tourFlow, setTourFlow] = useState<TourFlow>(idleTourFlow);
   const [tourOfferOpen, setTourOfferOpen] = useState(false);
-  const { startTour, stopTour } = useTour();
+  const { startTour, stopTour, anchorState } = useTour();
   const tourBusy = tourIsOnScreen(tourFlow);
   const firstName = firstNameFrom(profile?.full_name);
   // The splash plays for a minimum duration; we also wait for session restore.
@@ -545,12 +548,26 @@ function AppFlow() {
     if (action === 'getVerified' && role === 'provider') spNavigate('Verification');
   };
 
-  // Home is on screen: give its controls a moment to lay out, then the tour is due.
+  // Home is on screen: the tour is due once Home's real content is up (its controls rendered, not still behind the
+  // loading skeleton). The check is polled lightly, and the wait ends after TOUR_CONTENT_WAIT_MS whatever the state.
   const onHome = showOnboarding === false && !!role && (role === 'homeowner' ? hoScreen === 'Home' : spScreen === 'Dashboard');
   useEffect(() => {
-    if (tourFlow.phase !== 'waiting' || !onHome) return;
-    const timer = setTimeout(() => setTourFlow((flow) => nextTourFlow(flow, { type: 'homeReady' })), TOUR_START_DELAY_MS);
+    if (tourFlow.phase !== 'waiting' || !onHome || !role) return;
+    const steps = tourSteps(role);
+    const waitedFrom = Date.now();
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const check = () => {
+      const ready = homeContentReady(steps.map((step) => anchorState(step.anchorId)));
+      if (shouldStartTour(ready, Date.now() - waitedFrom)) {
+        setTourFlow((flow) => nextTourFlow(flow, { type: 'homeReady' }));
+      } else {
+        timer = setTimeout(check, TOUR_CONTENT_POLL_MS);
+      }
+    };
+    check();
     return () => clearTimeout(timer);
+    // Only the phase and Home's visibility matter here: the tour controls are rebuilt on every render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tourFlow.phase, onHome]);
 
   // The phase turns to touring once, so the tour starts once. Its own callbacks move the flow on.

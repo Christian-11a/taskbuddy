@@ -8,11 +8,14 @@ import React, { createContext, useCallback, useContext, useEffect, useMemo, useR
 import { useWindowDimensions, type View } from 'react-native';
 import TourOverlay from './TourOverlay';
 import { initialTourState, tourReducer, type TourAction, type TourState } from './tourReducer';
-import type { TourOptions, TourRect } from './types';
+import type { AnchorState, TourOptions, TourRect } from './types';
 
-/** A step's anchor is measured up to 6 times (1 try + 5 retries, 60 ms apart) before it is passed over. */
-const MEASURE_RETRIES = 5;
-const MEASURE_RETRY_MS = 60;
+/**
+ * A step's control gets about 3 s to mount and lay out: 1 try + 30 retries, 100 ms apart, before the step
+ * is passed over. A control no screen registers is passed over at once, since it will not appear.
+ */
+const MEASURE_RETRIES = 30;
+const MEASURE_RETRY_MS = 100;
 
 type AnchorRef = RefObject<View | null>;
 
@@ -23,6 +26,8 @@ export type TourControls = {
   /** Ends the tour quietly: neither onFinish nor onSkip runs. */
   stopTour: () => void;
   isTourActive: boolean;
+  /** How a step's control stands right now. Outside a TourProvider every control counts as rendered. */
+  anchorState: (anchorId: string) => AnchorState;
 };
 
 type AnchorRegistry = {
@@ -38,18 +43,26 @@ const TourContext = createContext<TourControls>({
   startTour: (options) => options.onFinish(),
   stopTour: () => {},
   isTourActive: false,
+  // Nothing is measured without a provider, so no control is waited for.
+  anchorState: () => 'rendered',
 });
 
 /**
- * Reads an anchor's rectangle. A view that is not laid out yet reports 0x0,
- * and a view that is not mounted yet is missing, so both are retried; after
- * the last retry the result is null and the step is passed over.
+ * Reads an anchor's rectangle. A control no screen registers is passed over at once. A registered
+ * control that is not mounted yet, or reports 0x0 before its layout settles, is retried until the
+ * retries run out; then the result is null and the step is passed over. Once `live` turns false
+ * (the step moved on or the tour ended) the measuring stops.
  */
-function measureAnchor(getView: () => View | null): Promise<TourRect | null> {
+function measureAnchor(getRef: () => AnchorRef | undefined, live: () => boolean): Promise<TourRect | null> {
   return new Promise((resolve) => {
     let retries = 0;
     const attempt = () => {
-      const view = getView();
+      const ref = getRef();
+      if (!ref || !live()) {
+        resolve(null);
+        return;
+      }
+      const view = ref.current;
       if (!view) {
         retry();
         return;
@@ -60,7 +73,7 @@ function measureAnchor(getView: () => View | null): Promise<TourRect | null> {
       });
     };
     const retry = () => {
-      if (retries >= MEASURE_RETRIES) {
+      if (retries >= MEASURE_RETRIES || !live()) {
         resolve(null);
         return;
       }
@@ -114,11 +127,23 @@ export function TourProvider({ children }: { children: React.ReactNode }) {
     if (!current) return;
     const token = ++tokenRef.current;
     const anchorId = current.steps[index].anchorId;
-    measureAnchor(() => anchors.get(anchorId)?.current ?? null).then((rect) => {
-      if (token !== tokenRef.current) return;
-      if (rect) setHole((previous) => (sameRect(previous, rect) ? previous : rect));
-      else moveOn('anchorMissing');
+    const live = () => token === tokenRef.current;
+    // The step is measured on the next frame, so the layout it points at has settled before the first read.
+    requestAnimationFrame(() => {
+      if (!live()) return;
+      measureAnchor(() => anchors.get(anchorId), live).then((rect) => {
+        if (!live()) return;
+        if (rect) setHole((previous) => (sameRect(previous, rect) ? previous : rect));
+        else moveOn('anchorMissing');
+      });
     });
+  };
+
+  // Whether a step's control is registered, mounted, or not registered at all (see AnchorState).
+  const anchorState = (anchorId: string): AnchorState => {
+    const ref = anchors.get(anchorId);
+    if (!ref) return 'absent';
+    return ref.current ? 'rendered' : 'pending';
   };
 
   // Next, or a step passed over, moves to the following step, or finishes after the last one.
@@ -180,7 +205,7 @@ export function TourProvider({ children }: { children: React.ReactNode }) {
   }));
 
   const isTourActive = tour.status === 'running';
-  const controls = useMemo<TourControls>(() => ({ startTour, stopTour, isTourActive }), [isTourActive]);
+  const controls = useMemo<TourControls>(() => ({ startTour, stopTour, isTourActive, anchorState }), [isTourActive]);
 
   const step = isTourActive ? options?.steps[tour.stepIndex] : undefined;
   return (
@@ -211,11 +236,13 @@ export function useTour(): TourControls {
  * Marks a control as a tour anchor. Spread the result on the control:
  * `<Tap {...anchor} />` or `<View ref={anchor.ref} onLayout={anchor.onLayout} />`.
  * Outside a TourProvider the ref is never registered and nothing changes.
+ * `enabled` false keeps the control out of the tour: a step on it is passed over at once. A screen passes
+ * it for a control that exists only in some states, such as a provider's availability row before verification.
  */
-export function useTourAnchor(anchorId: string): TourAnchor {
+export function useTourAnchor(anchorId: string, enabled = true): TourAnchor {
   const registry = useContext(AnchorContext);
   const ref = useRef<View | null>(null);
-  useEffect(() => (registry ? registry.register(anchorId, ref) : undefined), [registry, anchorId]);
+  useEffect(() => (registry && enabled ? registry.register(anchorId, ref) : undefined), [registry, anchorId, enabled]);
   const onLayout = useCallback(() => registry?.layout(anchorId), [registry, anchorId]);
   return useMemo(() => ({ ref, onLayout }), [onLayout]);
 }

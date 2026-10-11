@@ -247,9 +247,10 @@ export default function SPHomeScreen({ onNavigate, tourOffer }: SPHomeScreenProp
   const headerTop = useHeaderTop();
   const { unreadCount } = useNotifications();
   const { profile, providerProfile, isVerified, refreshProfile } = useAuth();
-  // The welcome tour points at the availability row and the feed search (both shown once verified).
-  const availabilityTour = useTourAnchor('home.availability');
-  const feedTour = useTourAnchor('home.feed');
+  // The welcome tour points at the availability row and the feed search. Both are on screen only once verified,
+  // so until then they are not registered and their tour steps are passed over at once.
+  const availabilityTour = useTourAnchor('home.availability', isVerified);
+  const feedTour = useTourAnchor('home.feed', isVerified);
   const radiusKm = providerProfile?.service_radius_km ?? DEFAULT_RADIUS_KM;
 
   // Verification is approved async by a webhook while the app may be

@@ -6,3 +6,10 @@ export type TourOptions = { steps: TourStep[]; onFinish: () => void; onSkip: () 
 
 /** A rectangle in window coordinates, as `measureInWindow` reports it. */
 export type TourRect = { x: number; y: number; width: number; height: number };
+
+/**
+ * How a step's control stands: `absent` when no screen registers it (a provider's controls before
+ * verification), `pending` when a screen registers it but has not rendered it yet (Home behind its
+ * skeleton), and `rendered` when it is on screen.
+ */
+export type AnchorState = 'absent' | 'pending' | 'rendered';

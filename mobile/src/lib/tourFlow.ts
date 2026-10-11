@@ -4,14 +4,18 @@
  * (navigation, saving the flags, starting the tour); this only answers which
  * phase the flow is in.
  *
- * Phases: idle; waiting (the intro cards are done, the tour starts once Home is
- * on screen); touring (the spotlight tour is up); finishing (the finish card is
- * up). A first run and a replay take the same path. `firstRun` only decides
- * whether the finish card celebrates.
+ * Phases: idle; waiting (the intro cards are done, the tour starts once Home's
+ * real content is up, or the wait runs out); touring (the spotlight tour is up);
+ * finishing (the finish card is up). A first run and a replay take the same path.
+ * `firstRun` only decides whether the finish card celebrates.
  */
 
-/** How long after Home appears the tour starts, so its controls have laid out. */
-export const TOUR_START_DELAY_MS = 400;
+import type { AnchorState } from '../components/tour/types';
+
+/** From Home appearing, how long the tour waits for Home's real content before it starts regardless. */
+export const TOUR_CONTENT_WAIT_MS = 4000;
+/** How often the wait looks at Home's controls again while it waits. */
+export const TOUR_CONTENT_POLL_MS = 200;
 
 export type TourPhase = 'idle' | 'waiting' | 'touring' | 'finishing';
 
@@ -20,7 +24,7 @@ export type TourFlow = { phase: TourPhase; firstRun: boolean };
 export type TourFlowEvent =
   /** The intro cards are done ("Show me around"). `firstRun` is false for a replay. */
   | { type: 'introDone'; firstRun: boolean }
-  /** Home is on screen and the start delay has passed. */
+  /** Home's real content is up, or the wait for it has run out. */
   | { type: 'homeReady' }
   /** The last spotlight step is done, or no step could be shown. */
   | { type: 'tourFinished' }
@@ -52,6 +56,20 @@ export function nextTourFlow(state: TourFlow, event: TourFlowEvent): TourFlow {
 /** True while the spotlight tour or its finish card is on screen. */
 export function tourIsOnScreen(state: TourFlow): boolean {
   return state.phase === 'touring' || state.phase === 'finishing';
+}
+
+/**
+ * Whether Home's real content is up, judged by the tour's steps in order: the first control that any
+ * screen registers must be rendered. A Home still behind its loading skeleton holds its controls pending,
+ * so the tour keeps waiting; controls no screen has are skipped, so an unverified provider is not held up.
+ */
+export function homeContentReady(states: readonly AnchorState[]): boolean {
+  return states.find((state) => state !== 'absent') === 'rendered';
+}
+
+/** Whether the tour starts now: Home's content is up, or the wait has run its course. */
+export function shouldStartTour(contentReady: boolean, waitedMs: number): boolean {
+  return contentReady || waitedMs >= TOUR_CONTENT_WAIT_MS;
 }
 
 /**

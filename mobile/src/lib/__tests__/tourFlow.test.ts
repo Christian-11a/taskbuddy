@@ -1,4 +1,8 @@
-import { idleTourFlow, nextTourFlow, shouldOfferTour, tourIsOnScreen, type TourFlow, type TourFlowEvent } from '../tourFlow';
+import {
+  homeContentReady, idleTourFlow, nextTourFlow, shouldOfferTour, shouldStartTour, TOUR_CONTENT_WAIT_MS,
+  tourIsOnScreen, type TourFlow, type TourFlowEvent,
+} from '../tourFlow';
+import type { AnchorState } from '../../components/tour/types';
 
 const idle: TourFlow = { phase: 'idle', firstRun: false };
 const waiting = (firstRun: boolean): TourFlow => ({ phase: 'waiting', firstRun });
@@ -69,6 +73,40 @@ describe('tourIsOnScreen', () => {
     ['finishing', finishing(false), true],
   ] as const)('is true only while the tour or its finish card is up (%s)', (_name, state, expected) => {
     expect(tourIsOnScreen(state)).toBe(expected);
+  });
+});
+
+describe('homeContentReady', () => {
+  it.each<[string, AnchorState[], boolean]>([
+    ['the first control is rendered', ['rendered', 'rendered', 'rendered'], true],
+    ['the first control is still behind the loading skeleton', ['pending', 'rendered'], false],
+    // The tab bar is rendered while Home is still on its skeleton, so it must not count as Home being up.
+    ['the first control is pending, though a later tab control is rendered', ['pending', 'rendered', 'rendered'], false],
+    // An unverified provider has no availability row or feed search, so the tab bar is the first control on screen.
+    ['controls no screen has are skipped, then the first one on screen is rendered', ['absent', 'absent', 'rendered', 'rendered'], true],
+    ['controls no screen has are skipped, then the first one on screen is still pending', ['absent', 'pending', 'rendered'], false],
+    ['no control is on any screen yet', ['absent', 'absent'], false],
+    ['there are no steps', [], false],
+  ])('%s', (_name, states, expected) => {
+    expect(homeContentReady(states)).toBe(expected);
+  });
+});
+
+describe('shouldStartTour', () => {
+  it('starts as soon as Home is ready, whatever the time waited', () => {
+    expect(shouldStartTour(true, 0)).toBe(true);
+    expect(shouldStartTour(true, 900)).toBe(true);
+  });
+
+  it('keeps waiting while Home is not ready and the wait is under the limit', () => {
+    expect(shouldStartTour(false, 0)).toBe(false);
+    expect(shouldStartTour(false, TOUR_CONTENT_WAIT_MS - 1)).toBe(false);
+  });
+
+  it('starts regardless once the wait reaches the limit, about 4 s', () => {
+    expect(TOUR_CONTENT_WAIT_MS).toBe(4000);
+    expect(shouldStartTour(false, TOUR_CONTENT_WAIT_MS)).toBe(true);
+    expect(shouldStartTour(false, TOUR_CONTENT_WAIT_MS + 1500)).toBe(true);
   });
 });
 

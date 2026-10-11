@@ -19,9 +19,15 @@ function Probe() {
   return null;
 }
 
-function Anchor({ id }: { id: string }) {
-  const anchor = useTourAnchor(id);
+function Anchor({ id, enabled }: { id: string; enabled?: boolean }) {
+  const anchor = useTourAnchor(id, enabled);
   return <View testID={`anchor-${id}`} ref={anchor.ref} onLayout={anchor.onLayout} />;
+}
+
+/** A control a screen has registered but has not rendered yet, like a Home still behind its skeleton. */
+function GatedAnchor({ id, shown }: { id: string; shown: boolean }) {
+  const anchor = useTourAnchor(id);
+  return shown ? <View testID={`anchor-${id}`} ref={anchor.ref} onLayout={anchor.onLayout} /> : null;
 }
 
 function renderTour(anchorIds: string[]) {
@@ -38,6 +44,13 @@ const step = (anchorId: string, title: string): TourStep => ({ anchorId, title, 
 /** Measurement calls made for one anchor, counted from the recorded `this` of each call. */
 const measuresOf = (id: string) => measureSpy.mock.contexts.filter((view: MeasuredView) => view.props.testID === `anchor-${id}`).length;
 
+/** Runs the fake timers for `ms`, so the frames and retries that fall in that span happen. Promise callbacks run in the same act. */
+async function pump(ms: number) {
+  await act(async () => {
+    jest.advanceTimersByTime(ms);
+  });
+}
+
 beforeEach(() => {
   rects = {};
   measureSpy.mockReset();
@@ -46,6 +59,10 @@ beforeEach(() => {
     if (rect) callback(rect.x, rect.y, rect.width, rect.height);
     else callback(0, 0, 0, 0);
   });
+});
+
+afterEach(() => {
+  jest.useRealTimers();
 });
 
 describe('TourProvider', () => {
@@ -117,7 +134,8 @@ describe('TourProvider', () => {
     expect(controls.isTourActive).toBe(false);
   });
 
-  it('passes over a step whose anchor is not on screen, after the retries', async () => {
+  it('passes over a step whose control no screen has, at once, without the 3 s wait', async () => {
+    jest.useFakeTimers();
     rects = { a: RECT_A, c: RECT_B };
     renderTour(['a', 'c']);
     const onFinish = jest.fn();
@@ -125,11 +143,117 @@ describe('TourProvider', () => {
     act(() => controls.startTour({
       steps: [step('a', 'First'), step('ghost', 'Hidden'), step('c', 'Third')], onFinish, onSkip: jest.fn(),
     }));
-    fireEvent.press(await screen.findByRole('button', { name: 'Next' }));
+    await pump(16);
+    expect(screen.getByText('First')).toBeTruthy();
 
-    expect(await screen.findByText('Third')).toBeTruthy();
+    fireEvent.press(screen.getByRole('button', { name: 'Next' }));
+    // The ghost is passed over on its frame and the third step is measured on the next one: 32 ms in all.
+    await pump(16);
+    await pump(16);
+
+    expect(screen.getByText('Third')).toBeTruthy();
     expect(screen.queryByText('Hidden')).toBeNull();
     expect(onFinish).not.toHaveBeenCalled();
+  });
+
+  it('passes over a control that is switched off at once, because no screen registers it', async () => {
+    jest.useFakeTimers();
+    rects = { a: RECT_A, c: RECT_B };
+    render(
+      <TourProvider>
+        <Probe />
+        <Anchor id="a" />
+        <Anchor id="off" enabled={false} />
+        <Anchor id="c" />
+      </TourProvider>,
+    );
+
+    act(() => controls.startTour({
+      steps: [step('a', 'First'), step('off', 'Hidden'), step('c', 'Third')], onFinish: jest.fn(), onSkip: jest.fn(),
+    }));
+    await pump(16);
+    fireEvent.press(screen.getByRole('button', { name: 'Next' }));
+    await pump(16);
+    await pump(16);
+
+    expect(screen.getByText('Third')).toBeTruthy();
+    expect(screen.queryByText('Hidden')).toBeNull();
+    expect(controls.anchorState('off')).toBe('absent');
+  });
+
+  it('keeps waiting for a control that is registered but not rendered yet, and shows it once it appears', async () => {
+    jest.useFakeTimers();
+    rects = { late: RECT_A };
+    const { rerender } = render(
+      <TourProvider>
+        <Probe />
+        <GatedAnchor id="late" shown={false} />
+      </TourProvider>,
+    );
+    const onFinish = jest.fn();
+
+    act(() => controls.startTour({ steps: [step('late', 'Late')], onFinish, onSkip: jest.fn() }));
+    await pump(1000);
+    expect(screen.queryByText('Late')).toBeNull();
+    expect(onFinish).not.toHaveBeenCalled();
+
+    rerender(
+      <TourProvider>
+        <Probe />
+        <GatedAnchor id="late" shown />
+      </TourProvider>,
+    );
+    await pump(200);
+
+    expect(screen.getByText('Late')).toBeTruthy();
+    expect(onFinish).not.toHaveBeenCalled();
+  });
+
+  it('shows a control that lays out after 1.5 s of waiting, and not before', async () => {
+    jest.useFakeTimers();
+    rects = {};
+    renderTour(['z']);
+
+    act(() => controls.startTour({ steps: [step('z', 'Late layout')], onFinish: jest.fn(), onSkip: jest.fn() }));
+    await pump(1500);
+    expect(screen.queryByText('Late layout')).toBeNull();
+
+    rects = { z: RECT_A };
+    await pump(200);
+    expect(screen.getByText('Late layout')).toBeTruthy();
+  });
+
+  it('measures the first control on the next frame, once the layout it points at has settled', async () => {
+    jest.useFakeTimers();
+    rects = { a: RECT_A };
+    renderTour(['a']);
+
+    act(() => controls.startTour({ steps: [step('a', 'First')], onFinish: jest.fn(), onSkip: jest.fn() }));
+    expect(measuresOf('a')).toBe(0);
+
+    await pump(16);
+    expect(measuresOf('a')).toBe(1);
+    expect(screen.getByText('First')).toBeTruthy();
+  });
+
+  it('tells a control no screen has (absent), one registered but not rendered (pending) and one rendered', () => {
+    rects = { gated: RECT_A };
+    const { rerender } = render(
+      <TourProvider>
+        <Probe />
+        <GatedAnchor id="gated" shown={false} />
+      </TourProvider>,
+    );
+    expect(controls.anchorState('gated')).toBe('pending');
+    expect(controls.anchorState('nowhere')).toBe('absent');
+
+    rerender(
+      <TourProvider>
+        <Probe />
+        <GatedAnchor id="gated" shown />
+      </TourProvider>,
+    );
+    expect(controls.anchorState('gated')).toBe('rendered');
   });
 
   it('finishes at once, with no card, when no step can be shown', async () => {
@@ -143,14 +267,22 @@ describe('TourProvider', () => {
     expect(controls.isTourActive).toBe(false);
   });
 
-  it('retries a zero-size anchor five times, 6 measurements in all, and then passes it over', async () => {
+  it('retries a zero-size anchor for 3 s (31 measurements in all), then passes it over', async () => {
+    jest.useFakeTimers();
     rects = { c: RECT_B };
     renderTour(['z', 'c']);
 
     act(() => controls.startTour({ steps: [step('z', 'Empty'), step('c', 'Shown')], onFinish: jest.fn(), onSkip: jest.fn() }));
+    await pump(2900);
+    expect(measuresOf('z')).toBe(30);
+    expect(screen.queryByText('Shown')).toBeNull();
 
-    expect(await screen.findByText('Shown')).toBeTruthy();
-    expect(measuresOf('z')).toBe(6);
+    // The 31st measurement lands at 3 s, finds it still 0x0, and the step is passed over.
+    await pump(100);
+    await pump(16);
+
+    expect(measuresOf('z')).toBe(31);
+    expect(screen.getByText('Shown')).toBeTruthy();
     expect(screen.queryByText('Empty')).toBeNull();
   });
 
@@ -166,7 +298,8 @@ describe('TourProvider', () => {
       fireEvent(screen.getByTestId('anchor-a'), 'layout', { nativeEvent: { layout: { x: 0, y: 0, width: 1, height: 1 } } });
     });
 
-    expect(measuresOf('a')).toBe(before + 1);
+    // The new measurement waits for the next frame, so it is awaited rather than read straight away.
+    await waitFor(() => expect(measuresOf('a')).toBe(before + 1));
   });
 
   it('stopTour ends the tour without calling onFinish or onSkip', async () => {
@@ -238,5 +371,11 @@ describe('useTour without a TourProvider', () => {
 
     expect(onFinish).toHaveBeenCalledTimes(1);
     expect(controls.isTourActive).toBe(false);
+  });
+
+  it('reports every control as rendered, because nothing is measured and so nothing is waited for', () => {
+    render(<Probe />);
+
+    expect(controls.anchorState('home.post')).toBe('rendered');
   });
 });
