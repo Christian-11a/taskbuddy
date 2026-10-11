@@ -126,7 +126,7 @@ describe('caseView: status card', () => {
       resolved_at: RESOLVED, escrow_transactions: { status: 'refunded', amount: 800 },
     };
     expect(caseView(decided, CLIENT, BEFORE_DEADLINE).status).toEqual({
-      tone: 'closed', overline: 'CLOSED · OCT 7', title: '₱800.00 refunded to the client', body: 'Refund approved after review',
+      tone: 'closed', overline: 'CLOSED · OCT 7', title: '₱800.00 refunded to you', body: 'Refund approved after review',
     });
   });
 
@@ -180,7 +180,7 @@ describe('caseView: status card', () => {
       cancellation_state: 'expired', cancellation_deadline: DEADLINE, escrow_transactions: { status: 'refunded', amount: 800 },
     };
     expect(caseView(expired, CLIENT, BEFORE_DEADLINE).status).toMatchObject({
-      tone: 'closed', title: 'Cancelled · ₱800.00 refunded to the client', body: 'No response in time, so the request closed automatically.',
+      tone: 'closed', title: 'Cancelled · ₱800.00 refunded to you', body: 'No response in time, so the request closed automatically.',
     });
   });
 
@@ -205,7 +205,7 @@ describe('caseView: status card', () => {
 
   it('drops the amount from a closed decision when it is unknown', () => {
     const refunded: CaseDispute = { ...base, status: 'resolved', resolution: 'refunded_to_client', resolved_at: RESOLVED, escrow_transactions: null };
-    expect(caseView(refunded, CLIENT, BEFORE_DEADLINE).status.title).toBe('Refunded to the client');
+    expect(caseView(refunded, CLIENT, BEFORE_DEADLINE).status.title).toBe('Refunded to you');
   });
 });
 
@@ -309,7 +309,7 @@ describe('caseView: timeline', () => {
     const view = caseView(decided, CLIENT, BEFORE_DEADLINE);
     expect(view.steps).toEqual([
       expect.objectContaining({ state: 'done', title: 'You reported: Work not completed' }),
-      expect.objectContaining({ state: 'done', title: 'Case closed · ₱800.00 refunded to the client', meta: 'Oct 7 · 4:33 AM' }),
+      expect.objectContaining({ state: 'done', title: 'Case closed · ₱800.00 refunded to you', meta: 'Oct 7 · 4:33 AM' }),
     ]);
     expect(view.steps[1].detail).toBeUndefined();
   });
@@ -350,7 +350,7 @@ describe('caseView: timeline', () => {
     expect(stepTitles(caseView(expired, CLIENT, BEFORE_DEADLINE))).toEqual([
       'You asked to cancel',
       'No provider response within 48 hours. Cancellation closed automatically.',
-      'Case closed · ₱800.00 refunded to the client',
+      'Case closed · ₱800.00 refunded to you',
     ]);
   });
 });
@@ -402,6 +402,65 @@ describe('caseView: actions copy', () => {
   });
 });
 
+describe('caseView: where the money goes, worded for each viewer', () => {
+  const closedRefund: CaseDispute = {
+    ...base, status: 'resolved', resolution: 'refunded_to_client', resolved_at: RESOLVED,
+    escrow_transactions: { status: 'refunded', amount: 800 },
+    entries: [entry({ id: 'res', kind: 'resolution', body: 'Refund approved after review', created_at: RESOLVED, author: adminAuthor })],
+  };
+
+  // The homeowner reads a refund of their own money as "you"; the provider and an admin keep "the client".
+  it.each([
+    { viewer: 'the homeowner', me: CLIENT, closed: '₱800.00 refunded to you', cancelled: 'Cancelled · ₱800.00 refunded to you', noAmount: 'Refunded to you' },
+    { viewer: 'the provider', me: PROVIDER, closed: '₱800.00 refunded to the client', cancelled: 'Cancelled · ₱800.00 refunded to the client', noAmount: 'Refunded to the client' },
+    { viewer: 'an admin', me: 'admin', closed: '₱800.00 refunded to the client', cancelled: 'Cancelled · ₱800.00 refunded to the client', noAmount: 'Refunded to the client' },
+  ])('words a refund for $viewer', ({ me, closed, cancelled, noAmount }) => {
+    expect(caseView(closedRefund, me, BEFORE_DEADLINE).status.title).toBe(closed);
+    expect(caseView({ ...closedRefund, cancellation_state: 'accepted' }, me, BEFORE_DEADLINE).status.title).toBe(cancelled);
+    expect(caseView({ ...closedRefund, cancellation_state: 'expired' }, me, BEFORE_DEADLINE).status.title).toBe(cancelled);
+    expect(caseView({ ...closedRefund, escrow_transactions: null }, me, BEFORE_DEADLINE).status.title).toBe(noAmount);
+  });
+
+  it.each([
+    { viewer: 'the homeowner', me: CLIENT, closing: 'Case closed · ₱800.00 refunded to you' },
+    { viewer: 'the provider', me: PROVIDER, closing: 'Case closed · ₱800.00 refunded to the client' },
+  ])('puts the same wording on the closing timeline line for $viewer', ({ me, closing }) => {
+    const view = caseView(closedRefund, me, BEFORE_DEADLINE);
+    expect(view.steps.find((step) => step.id === 'res')?.title).toBe(closing);
+  });
+
+  it.each([
+    { viewer: 'the homeowner', me: CLIENT, detail: 'Agreeing refunds you. Contesting sends it to an admin.' },
+    { viewer: 'the provider', me: PROVIDER, detail: 'Agreeing refunds the client. Contesting sends it to an admin.' },
+    { viewer: 'an admin', me: 'admin', detail: 'Agreeing refunds the client. Contesting sends it to an admin.' },
+  ])('explains the pending refund step for $viewer', ({ me, detail }) => {
+    const refund = caseView(pending, me, BEFORE_DEADLINE).steps.find((step) => step.id === 'refund');
+    expect(refund).toMatchObject({ title: 'Refund or admin review', detail });
+  });
+
+  it.each([
+    { viewer: 'the homeowner', me: CLIENT, money: "₱800.00 goes back to your wallet.", noMoney: 'The payment goes back to your wallet.' },
+    { viewer: 'the provider', me: PROVIDER, money: "₱800.00 goes back to the client's wallet.", noMoney: "The payment goes back to the client's wallet." },
+  ])('says where the held money goes for $viewer', ({ me, money, noMoney }) => {
+    expect(caseView(pending, me, BEFORE_DEADLINE).agree.message).toBe(
+      `${money}\nThe booking is removed from your schedule.\nThis can't be undone.`,
+    );
+    // An amount of zero is "no money to talk about", so the line drops the figure.
+    expect(caseView({ ...pending, escrow_transactions: { status: 'disputed', amount: 0 } }, me, BEFORE_DEADLINE).agree.message).toBe(
+      `${noMoney}\nThe booking is removed from your schedule.\nThis can't be undone.`,
+    );
+  });
+
+  it('says a released payment went to the provider for either viewer', () => {
+    const released: CaseDispute = {
+      ...base, status: 'resolved', resolution: 'released_to_provider', resolved_at: RESOLVED,
+      escrow_transactions: { status: 'released', amount: 800 },
+    };
+    expect(caseView(released, CLIENT, BEFORE_DEADLINE).status.title).toBe('₱800.00 released to the provider');
+    expect(caseView(released, PROVIDER, BEFORE_DEADLINE).status.title).toBe('₱800.00 released to the provider');
+  });
+});
+
 describe('caseView: plain words', () => {
   const RAW_CODES = [
     'refunded_to_client', 'released_to_provider', 'reviewed', 'statement', 'appeal', 'clarification', 'resolution',
@@ -447,6 +506,35 @@ describe('caseView: plain words', () => {
       for (const text of visibleStrings(view)) {
         expect(text).not.toMatch(/\b[a-z]+(?:_[a-z]+)+\b/);
         expect(RAW_CODES).not.toContain(text);
+      }
+    }
+  });
+
+  it('never calls the homeowner "the client" or "the homeowner" in their own case, in any state', () => {
+    const accepted: CaseDispute = {
+      ...base, status: 'resolved', resolution: 'refunded_to_client', resolved_at: RESOLVED, cancellation_state: 'accepted',
+      escrow_transactions: { status: 'refunded', amount: 800 },
+      entries: [
+        entry({ id: 'ack', kind: 'cancellation_response', body: 'Agreed', created_at: at(7, 4, 20), author: providerAuthor }),
+        entry({ id: 'res', kind: 'resolution', body: 'Done', created_at: RESOLVED, author: adminAuthor }),
+      ],
+    };
+    const homeownerViews = [
+      caseView(base, CLIENT, BEFORE_DEADLINE),
+      caseView(pending, CLIENT, BEFORE_DEADLINE),
+      caseView(pending, CLIENT, AFTER_DEADLINE),
+      caseView({
+        ...base, cancellation_state: 'contested', cancellation_deadline: DEADLINE,
+        entries: [entry({ id: 'r', kind: 'cancellation_response', body: 'I completed the work', created_at: at(7, 10, 0), author: providerAuthor })],
+      }, CLIENT, BEFORE_DEADLINE),
+      caseView(accepted, CLIENT, BEFORE_DEADLINE),
+      caseView({ ...accepted, cancellation_state: 'expired' }, CLIENT, BEFORE_DEADLINE),
+      caseView({ ...base, status: 'resolved', resolution: 'released_to_provider', resolved_at: RESOLVED }, CLIENT, BEFORE_DEADLINE),
+      caseView({ ...base, status: 'resolved', resolution: 'reviewed', resolved_at: RESOLVED }, CLIENT, BEFORE_DEADLINE),
+    ];
+    for (const view of homeownerViews) {
+      for (const text of visibleStrings(view)) {
+        expect(text).not.toMatch(/\bthe (client|homeowner)\b|\bclient's\b/i);
       }
     }
   });

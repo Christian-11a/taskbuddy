@@ -97,12 +97,15 @@ function heldAmount(dispute: CaseDispute): number | null {
   return escrow && Number.isFinite(amount) && amount > 0 ? amount : null;
 }
 
-/** The decision as a bare phrase (no prefix), or null when none was recorded. `amount` is formatted or null. */
-function decisionPhrase(dispute: CaseDispute, amount: string | null): string | null {
+/**
+ * The decision as a bare phrase (no prefix), or null when none was recorded. `amount` is formatted or null.
+ * A refund reads "you" to the homeowner and "the client" to the provider (and to an admin).
+ */
+function decisionPhrase(dispute: CaseDispute, amount: string | null, viewerIsClient: boolean): string | null {
   const money = amount ? `${amount} ` : '';
   switch (dispute.resolution) {
     case 'refunded_to_client':
-      return `${money}refunded to the client`;
+      return `${money}refunded to ${viewerIsClient ? 'you' : 'the client'}`;
     case 'released_to_provider':
       return `${money}released to the provider`;
     case 'reviewed':
@@ -116,8 +119,8 @@ function decisionPhrase(dispute: CaseDispute, amount: string | null): string | n
 }
 
 /** Status card title for a closed case. */
-function statusTitle(dispute: CaseDispute, amount: string | null, cancellation: boolean): string {
-  const phrase = decisionPhrase(dispute, amount);
+function statusTitle(dispute: CaseDispute, amount: string | null, cancellation: boolean, viewerIsClient: boolean): string {
+  const phrase = decisionPhrase(dispute, amount, viewerIsClient);
   if (phrase === null) return cancellation ? 'Cancelled' : 'Closed';
   if (phrase === 'cancelled') return 'Cancelled';
   if (phrase === 'reviewed by an admin') return 'Reviewed by an admin';
@@ -125,8 +128,8 @@ function statusTitle(dispute: CaseDispute, amount: string | null, cancellation: 
 }
 
 /** Timeline line for the moment a case closed. */
-function closingTitle(dispute: CaseDispute, amount: string | null): string {
-  const phrase = decisionPhrase(dispute, amount);
+function closingTitle(dispute: CaseDispute, amount: string | null, viewerIsClient: boolean): string {
+  const phrase = decisionPhrase(dispute, amount, viewerIsClient);
   return phrase ? `Case closed · ${phrase}` : 'Case closed';
 }
 
@@ -203,7 +206,7 @@ export function caseView(dispute: CaseDispute, me: string | null | undefined, no
     status = {
       tone: 'closed',
       overline: closedOn ? `CLOSED · ${closedOn.toUpperCase()}` : 'CLOSED',
-      title: statusTitle(dispute, amount, isCancellation),
+      title: statusTitle(dispute, amount, isCancellation, viewerIsClient),
       body: closedBody(),
     };
   } else if (pending) {
@@ -219,7 +222,7 @@ export function caseView(dispute: CaseDispute, me: string | null | undefined, no
     };
   }
 
-  const closing = closingTitle(dispute, amount);
+  const closing = closingTitle(dispute, amount, viewerIsClient);
   const lastResolution = [...entries].reverse().find((entry) => entry.kind === 'resolution');
   const closingEntryId = isOpen ? undefined : lastResolution?.id;
 
@@ -260,7 +263,10 @@ export function caseView(dispute: CaseDispute, me: string | null | undefined, no
   }
 
   const refundStep: CaseStep = {
-    id: 'refund', state: 'next', title: 'Refund or admin review', detail: 'Agreeing refunds the client. Contesting sends it to an admin.',
+    id: 'refund', state: 'next', title: 'Refund or admin review',
+    detail: viewerIsClient
+      ? 'Agreeing refunds you. Contesting sends it to an admin.'
+      : 'Agreeing refunds the client. Contesting sends it to an admin.',
   };
   const adminStep: CaseStep = { id: 'admin', state: 'next', title: 'Admin decides', detail: "You'll be notified" };
 
@@ -325,8 +331,10 @@ export function caseView(dispute: CaseDispute, me: string | null | undefined, no
     : (category || null);
   const jobChip = jobHead && amount ? `${jobHead} · ${amount}` : jobHead;
 
+  // The homeowner reads the money as their own wallet; the provider reads it as the client's.
+  const wallet = viewerIsClient ? 'your wallet' : "the client's wallet";
   const moneyLine = dispute.escrow_transactions
-    ? (amount ? `${amount} goes back to the client's wallet.` : "The payment goes back to the client's wallet.")
+    ? (amount ? `${amount} goes back to ${wallet}.` : `The payment goes back to ${wallet}.`)
     : null;
 
   return {
