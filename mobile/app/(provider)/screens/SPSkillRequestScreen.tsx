@@ -11,42 +11,109 @@ import { useThemedStyles, type Palette as ThemePalette } from '../../../src/cont
 import React, { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
-  ScrollView,
   StyleSheet,
   Text,
-  TextInput,
   View,
 } from 'react-native';
 import Tap from '../../../src/components/ui/Tap';
-import { ArrowLeft, BadgeCheck, Clock, XCircle } from 'lucide-react-native';
+import KeyboardAwareScrollView from '../../../src/components/ui/KeyboardAwareScrollView';
+import RadioRow from '../../../src/components/ui/RadioRow';
+import TextField from '../../../src/components/ui/TextField';
+import StatusCard from '../../../src/components/ui/StatusCard';
+import BottomActionBar from '../../../src/components/ui/BottomActionBar';
+import EmptyCard from '../../../src/components/ui/EmptyCard';
+import Banner from '../../../src/components/ui/Banner';
+import EmptyRow from '../../../src/components/ui/EmptyRow';
+import { ArrowLeft, CircleCheck, CircleSlash, CircleX, Clock, FileText, ShieldCheck, type LucideIcon } from 'lucide-react-native';
 import { Spacing, V6Radii } from '../../../src/constants/theme';
 import { useHeaderTop } from '../../../src/hooks/useHeaderTop';
 import { useNotifications } from '../../../src/context/NotificationsContext';
 import { useAuth } from '../../../src/context/AuthContext';
 import { useRefreshOnForeground } from '../../../src/hooks/useRefreshOnForeground';
 import { useAsyncData } from '../../../src/hooks/useAsyncData';
+import { isList } from '../../../src/lib/savedShapes';
+import { SEVEN_DAYS_MS } from '../../../src/lib/persistentCache';
 import { api, type SkillRequest, type SkillRequestType } from '../../../src/lib/api';
 import { shortDate } from '../../../src/lib/format';
+import { categoryIcon } from '../../../src/lib/categoryIcon';
 import { showToast } from '../../../src/components/Toast';
 import ConfirmationModal from '../../../src/components/ConfirmationModal';
+import { cleanText, textLength, textUnits } from '../../../src/lib/textRules';
 
-const REASON_MIN = 10;
-const REASON_MAX = 500;
+export const REASON_MIN = 10;
+export const REASON_MAX = 500;
 
 const TYPE_OPTIONS: { value: SkillRequestType; label: string; hint: string }[] = [
   { value: 'change_primary', label: 'Change my main service', hint: 'Replace the service clients see on your profile.' },
   { value: 'add_secondary', label: 'Add another service', hint: 'Offer a second service alongside your main one.' },
 ];
 
+/** The icon a past request shows: approved a check, pending a clock, rejected a cross, cancelled a slash. */
+export type RequestIconKind = 'check' | 'clock' | 'cross' | 'slash';
+
+export function requestIconKind(status: SkillRequest['status']): RequestIconKind {
+  switch (status) {
+    case 'approved': return 'check';
+    case 'pending': return 'clock';
+    case 'rejected': return 'cross';
+    case 'cancelled': return 'slash';
+  }
+}
+
+const REQUEST_ICON: Record<RequestIconKind, LucideIcon> = {
+  check: CircleCheck,
+  clock: Clock,
+  cross: CircleX,
+  slash: CircleSlash,
+};
+
+/** The line under the reason box: names the service asked for, or says "this service" until one is chosen. */
+export function requestCopy(serviceName: string | null): string {
+  return `Tell us about your experience with ${serviceName?.trim() || 'this service'}. Admins check this before approving. Clients only see approved services.`;
+}
+
+/**
+ * What is wrong with the reason, or undefined when it can be sent. The length
+ * is of the cleaned text, so spaces alone are no reason: at least REASON_MIN
+ * characters, and at most REASON_MAX UTF-16 units, the count the API uses.
+ */
+export function reasonProblem(reason: string): string | undefined {
+  if (textLength(reason) < REASON_MIN) return `Tell the admins a little more (at least ${REASON_MIN} characters).`;
+  if (textUnits(reason) > REASON_MAX) return `Keep it to ${REASON_MAX} characters or fewer.`;
+  return undefined;
+}
+
+/**
+ * Send is live only for a service the provider does not already offer, with a
+ * reason that passes reasonProblem, and while no send is in flight.
+ */
+export function canSendRequest(input: {
+  categoryId: number | null;
+  offeredIds: ReadonlySet<number>;
+  reason: string;
+  submitting: boolean;
+}): boolean {
+  return (
+    !!input.categoryId &&
+    !input.offeredIds.has(input.categoryId) &&
+    reasonProblem(input.reason) === undefined &&
+    !input.submitting
+  );
+}
+
 interface SPSkillRequestScreenProps {
   onBack: () => void;
 }
 
 export default function SPSkillRequestScreen({ onBack }: SPSkillRequestScreenProps) {
-  const { C, STATUS_META, styles, V6Colors, appearance } = useThemedStyles(createThemedStyles);
+  const { STATUS_META, styles, Colors, V6Colors, appearance } = useThemedStyles(createThemedStyles);
   const headerTop = useHeaderTop();
   const { providerProfile, refreshProfile } = useAuth();
-  const categories = useAsyncData(() => api.categories(), []);
+  const categories = useAsyncData(() => api.categories(), [], 'categories', {
+    persist: true,
+    maxAgeMs: SEVEN_DAYS_MS,
+    validate: isList,
+  });
   const { notifications } = useNotifications();
   const serviceNoticeKey = notifications.filter((notice) => notice.data?.request_id).map((notice) => notice.id).join(',');
   const requests = useAsyncData(() => api.mySkillRequests(), [serviceNoticeKey]);
@@ -65,25 +132,32 @@ export default function SPSkillRequestScreen({ onBack }: SPSkillRequestScreenPro
   useRefreshOnForeground(requests.reload, true);
   const secondaryServices = providerProfile?.approved_secondary_services ?? [];
   const mainService = providerProfile?.service_categories?.name ?? '—';
+  const verified = providerProfile?.is_verified === true;
   const pending = (requests.data ?? []).find((r) => r.status === 'pending') ?? null;
   const history = (requests.data ?? []).filter((r) => r.status !== 'pending');
-  const offeredIds = new Set([providerProfile?.category_id, ...secondaryServices.map((service) => service.category_id)]);
+  const offeredIds = new Set<number>(
+    [providerProfile?.category_id, ...secondaryServices.map((service) => service.category_id)].filter(
+      (id): id is number => typeof id === 'number',
+    ),
+  );
   const choices = (categories.data ?? []).filter((c) => !offeredIds.has(c.id));
-  const canSubmit = !!categoryId && !offeredIds.has(categoryId) && reason.trim().length >= REASON_MIN && !submitting;
+  const chosenName = (categories.data ?? []).find((c) => c.id === categoryId)?.name ?? null;
+  const canSubmit = canSendRequest({ categoryId, offeredIds, reason, submitting });
 
   const submit = async () => {
     if (!categoryId || offeredIds.has(categoryId)) {
       setError('Choose a service.');
       return;
     }
-    if (reason.trim().length < REASON_MIN) {
-      setError(`Tell the admins a little more (at least ${REASON_MIN} characters).`);
+    const problem = reasonProblem(reason);
+    if (problem) {
+      setError(problem);
       return;
     }
     setSubmitting(true);
     setError(null);
     try {
-      await api.createSkillRequest({ type, category_id: categoryId, reason: reason.trim() });
+      await api.createSkillRequest({ type, category_id: categoryId, reason: cleanText(reason) });
       setCategoryId(null);
       setReason('');
       showToast('Request sent to the admins', 'success');
@@ -108,16 +182,45 @@ export default function SPSkillRequestScreen({ onBack }: SPSkillRequestScreenPro
     }
   };
 
+  /** One service a client can see: the main one, or an approved extra. */
+  const renderService = (name: string, meta: string, showVerified = false) => {
+    const Icon = categoryIcon(name);
+    return (
+      <View key={`${meta}-${name}`} style={styles.serviceRow}>
+        <View style={styles.serviceTile}>
+          <Icon size={18} color={Colors.link} />
+        </View>
+        <View style={styles.serviceText}>
+          <Text style={styles.serviceName} numberOfLines={1}>{name}</Text>
+          <Text style={styles.serviceMeta}>{meta}</Text>
+        </View>
+        {showVerified && (
+          <View style={styles.verified}>
+            <ShieldCheck size={13} color={Colors.successText} />
+            <Text style={styles.verifiedText}>ID verified</Text>
+          </View>
+        )}
+      </View>
+    );
+  };
+
   return (
     <View style={styles.screen}>
       <View style={[styles.header, { paddingTop: headerTop }]}>
-        <Tap style={styles.backBtn} onPress={onBack} activeOpacity={0.8} accessibilityLabel="Back">
-          <ArrowLeft size={20} color={C.ink700} />
+        <Tap
+          style={styles.backBtn}
+          onPress={onBack}
+          activeOpacity={0.8}
+          hitSlop={{ top: 5, bottom: 5, left: 5, right: 5 }}
+          accessibilityRole="button"
+          accessibilityLabel="Back"
+        >
+          <ArrowLeft size={20} color={V6Colors.ink700} />
         </Tap>
-        <Text style={styles.headerTitle}>My Services</Text>
+        <Text style={styles.headerTitle} accessibilityRole="header">My Services</Text>
       </View>
 
-      <ScrollView
+      <KeyboardAwareScrollView
         style={styles.body}
         contentContainerStyle={styles.bodyContent}
         keyboardShouldPersistTaps="handled"
@@ -125,67 +228,59 @@ export default function SPSkillRequestScreen({ onBack }: SPSkillRequestScreenPro
         showsVerticalScrollIndicator={false}
       >
         <View style={styles.card}>
-          <Text style={styles.cardLabel}>MAIN SERVICE</Text>
-          <View style={styles.mainRow}>
-            <BadgeCheck size={18} color={V6Colors.link} />
-            <Text style={styles.mainService}>{mainService}</Text>
-          </View>
-          {secondaryServices.length > 0 && <>
-            <Text style={[styles.cardLabel, styles.cardLabelSpaced]}>APPROVED ADDITIONAL SERVICES</Text>
-            {secondaryServices.map((service) => <Text key={service.category_id} style={styles.mainService}>{service.service_categories.name}</Text>)}
-          </>}
-          <Text style={styles.cardNote}>
-            Changes to your services are reviewed by the TaskBuddy team, so clients can trust what
-            you're listed for.
-          </Text>
+          <Text style={styles.overline}>What clients see now</Text>
+          {renderService(mainService, 'Main service', verified)}
+          {secondaryServices.map((service) =>
+            renderService(service.service_categories.name, 'Approved additional service'),
+          )}
         </View>
 
-        {requests.loading && <ActivityIndicator color={V6Colors.link} style={{ marginTop: 16 }} />}
-        {!!error && <Text style={styles.error}>{error}</Text>}
+        {requests.loading && <ActivityIndicator color={Colors.link} style={styles.spinner} />}
+        {!!error && <Text style={styles.error} accessibilityLiveRegion="polite">{error}</Text>}
+        {!!requests.error && !requests.loading && (
+          <Banner tone="error" message={requests.error} actionLabel="Try again" onAction={requests.reload} />
+        )}
 
         {pending && (
-          <View style={styles.card}>
-            <View style={styles.pendingHead}>
-              <Clock size={16} color={V6Colors.warningText} />
-              <Text style={styles.pendingTitle}>Request under review</Text>
-            </View>
-            <Text style={styles.pendingBody}>
-              {pending.type === 'change_primary' ? 'Change main service to ' : 'Add '}
-              <Text style={styles.bold}>{pending.category?.name ?? 'a service'}</Text> · sent {shortDate(pending.created_at)}
-            </Text>
+          <StatusCard
+            tone="attention"
+            overline="Under review"
+            title={`${pending.type === 'change_primary' ? 'Change main service to ' : 'Add '}${pending.category?.name ?? 'a service'}`}
+            body={`Sent ${shortDate(pending.created_at)}`}
+          >
             <Text style={styles.reasonQuote}>“{pending.reason}”</Text>
-            <Tap onPress={() => setConfirmCancel(pending)} activeOpacity={0.8} style={styles.cancelLink}>
+            <Tap
+              onPress={() => setConfirmCancel(pending)}
+              activeOpacity={0.8}
+              hitSlop={{ top: 15, bottom: 15, left: 8, right: 8 }}
+              accessibilityRole="button"
+              accessibilityLabel="Cancel request"
+              style={styles.cancelLink}
+            >
               <Text style={styles.cancelLinkText}>Cancel request</Text>
             </Tap>
-          </View>
+          </StatusCard>
         )}
 
         {!pending && !requests.loading && (
-          <View style={styles.card}>
-            <Text style={styles.formTitle}>Request a change</Text>
+          <>
+            <Text style={styles.sectionTitle} accessibilityRole="header">Request a change</Text>
+            <View style={styles.typeGroup}>
+              {TYPE_OPTIONS.map((opt) => (
+                <View key={opt.value}>
+                  <RadioRow
+                    label={opt.label}
+                    selected={type === opt.value}
+                    onSelect={() => setType(opt.value)}
+                  />
+                  <Text style={styles.typeHint}>{opt.hint}</Text>
+                </View>
+              ))}
+            </View>
 
-            {TYPE_OPTIONS.map((opt) => {
-              const selected = type === opt.value;
-              return (
-                <Tap
-                  key={opt.value}
-                  style={[styles.option, selected && styles.optionOn]}
-                  onPress={() => setType(opt.value)}
-                  activeOpacity={0.85}
-                  accessibilityRole="radio"
-                  accessibilityState={{ selected }}
-                >
-                  <View style={[styles.radio, selected && styles.radioOn]}>
-                    {selected && <View style={styles.radioDot} />}
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.optionLabel}>{opt.label}</Text>
-                    <Text style={styles.optionHint}>{opt.hint}</Text>
-                  </View>
-                </Tap>
-              );
-            })}
-
+            {!!categories.error && (
+              <Banner tone="error" message={categories.error} actionLabel="Try again" onAction={categories.reload} />
+            )}
             <Text style={styles.fieldLabel}>Service</Text>
             <View style={styles.chipGrid}>
               {choices.map((cat) => {
@@ -193,50 +288,62 @@ export default function SPSkillRequestScreen({ onBack }: SPSkillRequestScreenPro
                 return (
                   <Tap
                     key={cat.id}
-                    style={[styles.chip, active && styles.chipActive]}
+                    style={[styles.chip, active && styles.chipOn]}
                     onPress={() => setCategoryId(cat.id)}
                     activeOpacity={0.8}
+                    hitSlop={{ top: 4, bottom: 4 }}
+                    accessibilityRole="radio"
+                    accessibilityLabel={cat.name}
+                    accessibilityState={{ selected: active }}
                   >
-                    <Text style={[styles.chipText, active && styles.chipTextActive]}>{cat.name}</Text>
+                    <Text style={[styles.chipText, active && styles.chipTextOn]}>{cat.name}</Text>
                   </Tap>
                 );
               })}
             </View>
 
-            <Text style={styles.fieldLabel}>Why are you qualified?</Text>
-            <TextInput keyboardAppearance={appearance}
-              style={styles.reasonInput}
+            <TextField
+              label="Why are you qualified?"
               value={reason}
               onChangeText={setReason}
               placeholder="Years of experience, licences or certificates, past jobs…"
-              placeholderTextColor={C.ink400}
               multiline
               maxLength={REASON_MAX}
-              textAlignVertical="top"
+              counter={`${reason.length} / ${REASON_MAX}`}
+              error={reasonProblem(reason)}
               editable={!submitting}
+              keyboardAppearance={appearance}
             />
-            <Text style={styles.counter}>{reason.length}/{REASON_MAX}</Text>
 
-            <Tap
-              style={[styles.submitBtn, !canSubmit && styles.disabled]}
-              onPress={() => void submit()}
-              disabled={!canSubmit}
-              activeOpacity={0.85}
-            >
-              {submitting ? <ActivityIndicator color={C.onPrimary} /> : <Text style={[styles.submitText, !canSubmit && styles.disabledText]}>Send to admins</Text>}
-            </Tap>
-          </View>
+            <View style={styles.infoBox}>
+              <ShieldCheck size={18} color={V6Colors.ink700} />
+              <Text style={styles.infoText}>{requestCopy(chosenName)}</Text>
+            </View>
+          </>
+        )}
+
+        {requests.data && !requests.loading && history.length === 0 && (
+          <>
+            <Text style={styles.sectionTitle} accessibilityRole="header">Past requests</Text>
+            <EmptyCard>
+              <EmptyRow icon={FileText} title="No past requests" body="Requests you send and their decisions show up here." />
+            </EmptyCard>
+          </>
         )}
 
         {history.length > 0 && (
           <>
-            <Text style={styles.sectionTitle}>Past requests</Text>
+            <Text style={styles.sectionTitle} accessibilityRole="header">Past requests</Text>
             {history.map((r) => {
               const meta = STATUS_META[r.status];
+              const kind = requestIconKind(r.status);
+              const Icon = REQUEST_ICON[kind];
               return (
                 <View key={r.id} style={styles.historyRow}>
-                  {r.status === 'rejected' ? <XCircle size={16} color={meta.color} /> : <Clock size={16} color={meta.color} />}
-                  <View style={{ flex: 1, minWidth: 0 }}>
+                  <View style={styles.historyIcon} testID={`request-icon-${kind}`}>
+                    <Icon size={18} color={meta.color} />
+                  </View>
+                  <View style={styles.historyText}>
                     <Text style={styles.historyTitle} numberOfLines={1}>
                       {r.type === 'change_primary' ? 'Change to ' : 'Add '}
                       {r.category?.name ?? 'a service'}
@@ -254,7 +361,16 @@ export default function SPSkillRequestScreen({ onBack }: SPSkillRequestScreenPro
             })}
           </>
         )}
-      </ScrollView>
+      </KeyboardAwareScrollView>
+
+      {!pending && !requests.loading && (
+        <BottomActionBar
+          primaryLabel="Send request"
+          onPrimary={() => void submit()}
+          primaryDisabled={!canSubmit}
+          busy={submitting}
+        />
+      )}
 
       <ConfirmationModal
         visible={!!confirmCancel}
@@ -273,10 +389,10 @@ function createThemedStyles(theme: ThemePalette) {
   const { Colors, V6Colors } = theme;
   const C = V6Colors;
   const STATUS_META: Record<SkillRequest['status'], { label: string; color: string; bg: string }> = {
-    pending: { label: 'Under review', color: V6Colors.warningText, bg: V6Colors.warningSurface },
-    approved: { label: 'Approved', color: V6Colors.successText, bg: V6Colors.successSurface },
-    rejected: { label: 'Not approved', color: V6Colors.dangerText, bg: V6Colors.dangerSurface },
-    cancelled: { label: 'Cancelled', color: V6Colors.ink500, bg: V6Colors.canvas },
+    pending: { label: 'Under review', color: Colors.warningText, bg: Colors.warningSurface },
+    approved: { label: 'Approved', color: Colors.successText, bg: Colors.successSurface },
+    rejected: { label: 'Not approved', color: Colors.dangerText, bg: Colors.dangerSurface },
+    cancelled: { label: 'Cancelled', color: C.ink500, bg: C.canvas },
   };
   const styles = StyleSheet.create({
     screen: { flex: 1, backgroundColor: C.canvas },
@@ -294,56 +410,66 @@ function createThemedStyles(theme: ThemePalette) {
     },
     headerTitle: { flex: 1, color: C.ink900, fontSize: 19.5, fontWeight: '800', fontFamily: 'Inter' },
     body: { flex: 1 },
-    bodyContent: { padding: Spacing.screenH, paddingBottom: 32 },
+    bodyContent: { padding: Spacing.screenH, paddingBottom: 24, gap: 14 },
+    spinner: { marginTop: 16 },
+    error: { color: Colors.dangerText, fontSize: 13.5, lineHeight: 19, fontFamily: 'Inter' },
 
-    card: { backgroundColor: C.surface, borderRadius: V6Radii.card, borderWidth: 1, borderColor: C.line, padding: 16, marginBottom: 14 },
-    cardLabel: { color: C.ink400, fontSize: 11.5, fontWeight: '800', letterSpacing: 0.6, fontFamily: 'Inter' },
-    cardLabelSpaced: { marginTop: 14 },
-    mainRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 6 },
-    mainService: { color: C.ink900, fontSize: 18, fontWeight: '800', fontFamily: 'Inter' },
-    cardNote: { color: C.ink500, fontSize: 13, fontFamily: 'Inter', lineHeight: 18, marginTop: 8 },
-
-    pendingHead: { flexDirection: 'row', alignItems: 'center', gap: 7 },
-    pendingTitle: { color: V6Colors.warningText, fontSize: 14.5, fontWeight: '800', fontFamily: 'Inter' },
-    pendingBody: { color: C.ink700, fontSize: 14, fontFamily: 'Inter', marginTop: 6 },
-    bold: { fontWeight: '800' },
-    reasonQuote: { color: C.ink500, fontSize: 13.5, fontStyle: 'italic', fontFamily: 'Inter', marginTop: 8, lineHeight: 19 },
-    cancelLink: { alignSelf: 'flex-start', marginTop: 10 },
-    cancelLinkText: { color: V6Colors.dangerText, fontSize: 13.5, fontWeight: '700', fontFamily: 'Inter' },
-
-    formTitle: { color: C.ink900, fontSize: 16, fontWeight: '800', fontFamily: 'Inter', marginBottom: 10 },
-    option: { flexDirection: 'row', alignItems: 'center', gap: 12, borderWidth: 1, borderColor: C.line, borderRadius: 12, padding: 12, marginBottom: 8 },
-    optionOn: { borderColor: C.cyan600, backgroundColor: C.cyan50 },
-    radio: { width: 18, height: 18, borderRadius: 9, borderWidth: 2, borderColor: C.ink300, alignItems: 'center', justifyContent: 'center' },
-    radioOn: { borderColor: C.cyan700 },
-    radioDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: C.cyan700 },
-    optionLabel: { color: C.ink900, fontSize: 14, fontWeight: '700', fontFamily: 'Inter' },
-    optionHint: { color: C.ink500, fontSize: 12.5, fontFamily: 'Inter', marginTop: 1 },
-
-    fieldLabel: { color: C.ink900, fontSize: 14, fontWeight: '700', fontFamily: 'Inter', marginTop: 10, marginBottom: 8 },
-    chipGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-    chip: { borderWidth: 1, borderColor: C.line, borderRadius: 999, paddingHorizontal: 13, paddingVertical: 7, backgroundColor: C.surface },
-    chipActive: { backgroundColor: C.cyan700, borderColor: C.cyan700 },
-    chipText: { color: C.ink700, fontSize: 13, fontWeight: '600', fontFamily: 'Inter' },
-    chipTextActive: { color: C.onPrimary, fontWeight: '700' },
-    reasonInput: {
-      minHeight: 96, borderWidth: 1, borderColor: V6Colors.fieldBorder, borderRadius: 12, backgroundColor: V6Colors.wellBg,
-      paddingHorizontal: 12, paddingTop: 10, paddingBottom: 10, fontSize: 14.5, color: C.ink900, fontFamily: 'Inter',
+    card: {
+      backgroundColor: C.surface, borderRadius: V6Radii.card, borderWidth: 1, borderColor: C.line,
+      padding: 16, gap: 12,
     },
-    counter: { alignSelf: 'flex-end', color: C.ink400, fontSize: 12, fontFamily: 'Inter', marginTop: 4 },
-    error: { color: V6Colors.dangerText, fontSize: 13.5, fontFamily: 'Inter', marginTop: 6 },
-    submitBtn: { backgroundColor: C.cyan700, borderRadius: 12, minHeight: 46, alignItems: 'center', justifyContent: 'center', marginTop: 12 },
-    submitText: { color: C.onPrimary, fontSize: 15, fontWeight: '700', fontFamily: 'Inter' },
-    // Readable disabled state: grey fill with dark text instead of a faded button.
-    disabled: { backgroundColor: V6Colors.ink100 },
-    disabledText: { color: V6Colors.ink700 },
+    overline: {
+      color: C.ink500, fontSize: 10, fontWeight: '700', lineHeight: 14, letterSpacing: 0.6,
+      textTransform: 'uppercase', fontFamily: 'Inter',
+    },
+    serviceRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+    serviceTile: {
+      width: 40, height: 40, borderRadius: 12, backgroundColor: Colors.primaryTonal,
+      alignItems: 'center', justifyContent: 'center',
+    },
+    serviceText: { flex: 1, minWidth: 0, gap: 2 },
+    serviceName: { color: C.ink900, fontSize: 15, fontWeight: '600', lineHeight: 20, fontFamily: 'Inter' },
+    serviceMeta: { color: C.ink500, fontSize: 13, lineHeight: 18, fontFamily: 'Inter' },
+    verified: {
+      flexDirection: 'row', alignItems: 'center', gap: 4,
+      paddingHorizontal: 8, paddingVertical: 4, borderRadius: 999,
+      backgroundColor: Colors.successSurface, borderWidth: 1, borderColor: Colors.successBorder,
+    },
+    verifiedText: { color: Colors.successText, fontSize: 12, fontWeight: '600', lineHeight: 16, fontFamily: 'Inter' },
 
-    sectionTitle: { color: C.ink400, fontSize: 12.5, fontWeight: '800', letterSpacing: 0.6, textTransform: 'uppercase', fontFamily: 'Inter', marginTop: 6, marginBottom: 8 },
-    historyRow: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: C.surface, borderWidth: 1, borderColor: C.line, borderRadius: 12, padding: 12, marginBottom: 8 },
-    historyTitle: { color: C.ink900, fontSize: 14, fontWeight: '700', fontFamily: 'Inter' },
-    historyMeta: { color: C.ink400, fontSize: 12.5, fontFamily: 'Inter', marginTop: 1 },
+    reasonQuote: { color: C.ink500, fontSize: 13.5, fontStyle: 'italic', lineHeight: 19, fontFamily: 'Inter', marginTop: 8 },
+    cancelLink: { alignSelf: 'flex-start', marginTop: 10, paddingVertical: 4 },
+    cancelLinkText: { color: Colors.dangerText, fontSize: 13.5, fontWeight: '700', fontFamily: 'Inter' },
+
+    sectionTitle: { color: C.ink900, fontSize: 17, fontWeight: '700', lineHeight: 22, fontFamily: 'Inter', marginTop: 6 },
+    typeGroup: { gap: 8 },
+    typeHint: { color: C.ink500, fontSize: 13, lineHeight: 18, fontFamily: 'Inter', paddingHorizontal: 14, paddingTop: 4 },
+    fieldLabel: { color: C.ink700, fontSize: 13, fontWeight: '600', lineHeight: 18, fontFamily: 'Inter', marginTop: 4 },
+    chipGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+    chip: {
+      minHeight: 40, paddingHorizontal: 14, borderRadius: 999, justifyContent: 'center',
+      borderWidth: 1, borderColor: C.line, backgroundColor: C.surface,
+    },
+    chipOn: { backgroundColor: Colors.primary, borderColor: Colors.primary },
+    chipText: { color: C.ink700, fontSize: 14, fontWeight: '600', lineHeight: 18, fontFamily: 'Inter' },
+    chipTextOn: { color: Colors.onPrimary, fontWeight: '700' },
+    infoBox: {
+      flexDirection: 'row', alignItems: 'flex-start', gap: 10,
+      padding: 14, borderRadius: 14, backgroundColor: Colors.primaryTonal,
+    },
+    infoText: { flex: 1, color: C.ink700, fontSize: 13, lineHeight: 18, fontFamily: 'Inter' },
+
+    historyRow: {
+      flexDirection: 'row', alignItems: 'center', gap: 10,
+      backgroundColor: C.surface, borderWidth: 1, borderColor: C.line, borderRadius: 14,
+      padding: 12, marginBottom: 8,
+    },
+    historyIcon: { width: 20, height: 20, alignItems: 'center', justifyContent: 'center' },
+    historyText: { flex: 1, minWidth: 0 },
+    historyTitle: { color: C.ink900, fontSize: 14.5, fontWeight: '600', lineHeight: 20, fontFamily: 'Inter' },
+    historyMeta: { color: C.ink500, fontSize: 12.5, lineHeight: 17, fontFamily: 'Inter', marginTop: 1 },
     pill: { borderRadius: 999, paddingHorizontal: 9, paddingVertical: 4 },
-    pillText: { fontSize: 11.5, fontWeight: '800', fontFamily: 'Inter' },
+    pillText: { fontSize: 11.5, fontWeight: '700', fontFamily: 'Inter' },
   });
   return { appearance: theme.appearance, Colors, V6Colors, C, STATUS_META, styles };
 }

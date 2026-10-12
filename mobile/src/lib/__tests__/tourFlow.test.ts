@@ -1,0 +1,171 @@
+import {
+  firstRunKind, homeContentReady, idleTourFlow, NEW_ACCOUNT_WINDOW_MS, nextTourFlow, shouldOfferTour, shouldStartTour,
+  TOUR_CONTENT_WAIT_MS, welcomeHoldsPushes, type FirstRunKind, type TourFlow, type TourFlowEvent,
+} from '../tourFlow';
+import type { AnchorState } from '../../components/tour/types';
+
+const idle: TourFlow = { phase: 'idle', firstRun: false };
+const waiting = (firstRun: boolean): TourFlow => ({ phase: 'waiting', firstRun });
+const touring = (firstRun: boolean): TourFlow => ({ phase: 'touring', firstRun });
+const finishing = (firstRun: boolean): TourFlow => ({ phase: 'finishing', firstRun });
+
+describe('nextTourFlow — the happy path', () => {
+  it('a finished intro waits for Home, remembering whether this is a first run', () => {
+    expect(nextTourFlow(idle, { type: 'introDone', firstRun: true })).toEqual(waiting(true));
+    expect(nextTourFlow(idle, { type: 'introDone', firstRun: false })).toEqual(waiting(false));
+  });
+
+  it('a waiting flow starts touring once Home is ready, keeping the first-run flag', () => {
+    expect(nextTourFlow(waiting(true), { type: 'homeReady' })).toEqual(touring(true));
+    expect(nextTourFlow(waiting(false), { type: 'homeReady' })).toEqual(touring(false));
+  });
+
+  it('a finished tour shows the finish card, keeping the first-run flag', () => {
+    expect(nextTourFlow(touring(true), { type: 'tourFinished' })).toEqual(finishing(true));
+    expect(nextTourFlow(touring(false), { type: 'tourFinished' })).toEqual(finishing(false));
+  });
+
+  it('closing the finish card returns the flow to idle', () => {
+    expect(nextTourFlow(finishing(true), { type: 'finishClosed' })).toEqual(idleTourFlow);
+    expect(nextTourFlow(finishing(false), { type: 'finishClosed' })).toEqual(idleTourFlow);
+  });
+});
+
+describe('nextTourFlow — leaving early', () => {
+  it.each([
+    ['waiting', waiting(true)],
+    ['touring', touring(true)],
+    ['finishing', finishing(false)],
+  ] as const)('ending the flow while %s returns to idle, with no finish card', (_name, state) => {
+    expect(nextTourFlow(state, { type: 'ended' })).toEqual(idleTourFlow);
+  });
+});
+
+describe('nextTourFlow — events that do not apply are no-ops', () => {
+  const cases: Array<[string, TourFlow, TourFlowEvent]> = [
+    ['homeReady while idle', idle, { type: 'homeReady' }],
+    ['homeReady while touring', touring(true), { type: 'homeReady' }],
+    ['tourFinished while idle', idle, { type: 'tourFinished' }],
+    ['tourFinished while waiting', waiting(true), { type: 'tourFinished' }],
+    ['finishClosed while idle', idle, { type: 'finishClosed' }],
+    ['finishClosed while touring', touring(true), { type: 'finishClosed' }],
+    ['ended while idle', idle, { type: 'ended' }],
+    ['introDone while touring', touring(false), { type: 'introDone', firstRun: true }],
+    ['introDone while finishing', finishing(false), { type: 'introDone', firstRun: true }],
+  ];
+
+  it.each(cases)('%s leaves the state as it was', (_name, state, event) => {
+    expect(nextTourFlow(state, event)).toBe(state);
+  });
+});
+
+describe('nextTourFlow — a replay after a stale wait', () => {
+  it('a replay intro starts a fresh run even when an earlier run was still waiting for Home', () => {
+    expect(nextTourFlow(waiting(true), { type: 'introDone', firstRun: false })).toEqual(waiting(false));
+  });
+});
+
+describe('welcomeHoldsPushes', () => {
+  // A tapped notification opens its own screen, which would take Home's tour anchors off the screen. So it waits
+  // from the end of the intro cards, through the wait for Home, the tour and the finish card, until the flow is idle.
+  it.each([
+    ['idle: a notification opens at once', idleTourFlow, false],
+    ['waiting for Home: the notification waits', waiting(true), true],
+    ['touring: the notification waits', touring(true), true],
+    ['finishing: the notification waits for the finish card to close', finishing(false), true],
+  ] as const)('%s', (_name, state, expected) => {
+    expect(welcomeHoldsPushes(state)).toBe(expected);
+  });
+});
+
+describe('homeContentReady', () => {
+  it.each<[string, AnchorState[], boolean]>([
+    ['the first control is rendered', ['rendered', 'rendered', 'rendered'], true],
+    ['the first control is still behind the loading skeleton', ['pending', 'rendered'], false],
+    // The tab bar is rendered while Home is still on its skeleton, so it must not count as Home being up.
+    ['the first control is pending, though a later tab control is rendered', ['pending', 'rendered', 'rendered'], false],
+    // An unverified provider has no availability row or feed search, so the tab bar is the first control on screen.
+    ['controls no screen has are skipped, then the first one on screen is rendered', ['absent', 'absent', 'rendered', 'rendered'], true],
+    ['controls no screen has are skipped, then the first one on screen is still pending', ['absent', 'pending', 'rendered'], false],
+    ['no control is on any screen yet', ['absent', 'absent'], false],
+    ['there are no steps', [], false],
+  ])('%s', (_name, states, expected) => {
+    expect(homeContentReady(states)).toBe(expected);
+  });
+});
+
+describe('shouldStartTour', () => {
+  it('starts as soon as Home is ready, whatever the time waited', () => {
+    expect(shouldStartTour(true, 0)).toBe(true);
+    expect(shouldStartTour(true, 900)).toBe(true);
+  });
+
+  it('keeps waiting while Home is not ready and the wait is under the limit', () => {
+    expect(shouldStartTour(false, 0)).toBe(false);
+    expect(shouldStartTour(false, TOUR_CONTENT_WAIT_MS - 1)).toBe(false);
+  });
+
+  it('starts regardless once the wait reaches the limit, about 4 s', () => {
+    expect(TOUR_CONTENT_WAIT_MS).toBe(4000);
+    expect(shouldStartTour(false, TOUR_CONTENT_WAIT_MS)).toBe(true);
+    expect(shouldStartTour(false, TOUR_CONTENT_WAIT_MS + 1500)).toBe(true);
+  });
+});
+
+describe('shouldOfferTour', () => {
+  it.each([
+    // onboarding done, tour not done, card not dismissed: an existing account gets the card once.
+    [true, false, false, true],
+    // A brand-new account has not finished onboarding yet, so the first run handles it instead.
+    [false, false, false, false],
+    // Already finished the tour: never offered again.
+    [true, true, false, false],
+    // Dismissed the card: never offered again.
+    [true, false, true, false],
+    [true, true, true, false],
+  ])('onboarding done %s, tour done %s, card dismissed %s → offered %s', (onboardingDone, tourDone, offerDismissed, expected) => {
+    expect(shouldOfferTour({ onboardingDone, tourDone, offerDismissed })).toBe(expected);
+  });
+});
+
+describe('firstRunKind', () => {
+  const DAY_MS = 24 * 60 * 60 * 1000;
+  const NOW = Date.parse('2026-10-12T12:00:00Z');
+  const createdAgo = (ageMs: number) => new Date(NOW - ageMs).toISOString();
+
+  it('an account counts as new for three days after it was created', () => {
+    expect(NEW_ACCOUNT_WINDOW_MS).toBe(3 * DAY_MS);
+  });
+
+  it.each<[string, Parameters<typeof firstRunKind>[0], FirstRunKind]>([
+    ['a new account just created gets the full first run', { onboardingDone: false, createdAt: createdAgo(0), now: NOW }, 'full'],
+    ['a new account created a day ago gets the full first run', { onboardingDone: false, createdAt: createdAgo(DAY_MS), now: NOW }, 'full'],
+    // Only an account older than the window is returning, so exactly three days is still new.
+    ['an account exactly three days old is still new', { onboardingDone: false, createdAt: createdAgo(3 * DAY_MS), now: NOW }, 'full'],
+    ['an account one millisecond past three days is returning', { onboardingDone: false, createdAt: createdAgo(3 * DAY_MS + 1), now: NOW }, 'offerOnly'],
+    ['an account created a month ago is returning', { onboardingDone: false, createdAt: createdAgo(30 * DAY_MS), now: NOW }, 'offerOnly'],
+    ['an account created a year ago is returning', { onboardingDone: false, createdAt: createdAgo(365 * DAY_MS), now: NOW }, 'offerOnly'],
+    // Clock skew: a creation date ahead of this device's clock counts as new.
+    ['a creation date a day ahead of this device counts as new', { onboardingDone: false, createdAt: new Date(NOW + DAY_MS).toISOString(), now: NOW }, 'full'],
+    ['a creation date one millisecond ahead counts as new', { onboardingDone: false, createdAt: new Date(NOW + 1).toISOString(), now: NOW }, 'full'],
+    // No readable creation date: treated as new, as the first run was before this check existed.
+    ['a missing (null) creation date counts as new', { onboardingDone: false, createdAt: null, now: NOW }, 'full'],
+    ['a missing (undefined) creation date counts as new', { onboardingDone: false, createdAt: undefined, now: NOW }, 'full'],
+    ['an empty creation date counts as new', { onboardingDone: false, createdAt: '', now: NOW }, 'full'],
+    ['an unreadable creation date counts as new', { onboardingDone: false, createdAt: 'not a date', now: NOW }, 'full'],
+    // Already finished or skipped on this device: nothing replays, whatever the account's age.
+    ['an old account already done on this device is done', { onboardingDone: true, createdAt: createdAgo(30 * DAY_MS), now: NOW }, 'none'],
+    ['a new account already done on this device is done', { onboardingDone: true, createdAt: createdAgo(0), now: NOW }, 'none'],
+    ['an account with no creation date, already done on this device, is done', { onboardingDone: true, createdAt: null, now: NOW }, 'none'],
+  ])('%s', (_name, input, expected) => {
+    expect(firstRunKind(input)).toBe(expected);
+  });
+
+  // The onboarding gate opens only for a 'full' first run, so an old account on a device with no flags never sees the intro.
+  it.each([3 * DAY_MS + 1, 4 * DAY_MS, 90 * DAY_MS])(
+    'an account %d ms old on a device with no flags never opens the intro gate',
+    (ageMs) => {
+      expect(firstRunKind({ onboardingDone: false, createdAt: createdAgo(ageMs), now: NOW })).toBe('offerOnly');
+    },
+  );
+});

@@ -36,5 +36,5 @@ appId: com.taskbuddy.app
 # 60s rather than 30s: the first API call of a session wakes a sleeping
 # Render dyno, and the splash holds until auth state resolves.
 - extendedWaitUntil:
-    visible: "Welcome!"
+    visible: "Welcome back"
     timeout: 60000

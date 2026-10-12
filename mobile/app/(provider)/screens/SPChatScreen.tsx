@@ -1,48 +1,20 @@
 /**
  * SPChatScreen.tsx
  *
- * v6 design: matches taskbuddy_UI_update.html's #sp-chat screen — a flat
- * white .topbar (avatar + name + status inline, not a colored hero), plain
- * message bubbles (sent: solid cyan-600 with one flattened corner, received:
- * white bordered with one flattened corner), and a bordered .chat-composer.
- * Same pattern as HOChatScreen.tsx.
+ * Provider side of a job chat. The view lives in ChatThread (shared with the homeowner chat):
+ * header with the client and the job, a pinned system line, day-grouped bubbles and the composer.
  *
- * Deviations from the mockup: kept the "View Job" link (mockup's back button
- * always returns to Job Detail directly; this app's back button returns to
- * whichever tab was active before Chat was opened, so a same-tap way back to
- * the job would otherwise be lost) and used the real job status text instead
- * of the mockup's hardcoded "● Online" (this app has no presence/online
- * concept). Also dropped the decorative call button, which has no real
- * functionality behind it.
+ * Deviation from the mockup: kept the "View job" link (the mockup's back button always returns to
+ * Job Detail directly; this app's back button returns to whichever tab was active before Chat was
+ * opened, so a same-tap way back to the job would otherwise be lost).
  */
 
-import { useThemedStyles, type Palette as ThemePalette } from '../../../src/context/ThemeContext';
-import React, { useEffect, useState, useRef } from 'react';
-import {
-  ActivityIndicator,
-  FlatList,
-  Image,
-  Keyboard,
-  KeyboardAvoidingView,
-  Platform,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableWithoutFeedback,
-  View,
-} from 'react-native';
-import Tap from '../../../src/components/ui/Tap';
-import ContentSkeleton from '../../../src/components/ui/ContentSkeleton';
-import Silhouette from '../../../src/components/ui/Silhouette';
-import {
-  ArrowLeft,
-  ArrowRight,
-  Paperclip,
-} from 'lucide-react-native';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { FlatList } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
+import ChatThread from '../../../src/components/ChatThread';
 import { requestAppPermission } from '../../../src/lib/permissions';
-import { Spacing } from '../../../src/constants/theme';
-import { useHeaderTop } from '../../../src/hooks/useHeaderTop';
+import { useChatJob } from '../../../src/hooks/useChatJob';
 
 import { useAuth } from '../../../src/context/AuthContext';
 import {
@@ -51,8 +23,9 @@ import {
   type Conversation,
   type Message,
 } from '../../../src/lib/api';
-import { jobStatusMeta, timeOfDay } from '../../../src/lib/format';
-import ChatEmptyState from '../../../src/components/ChatEmptyState';
+import { jobStatusMeta } from '../../../src/lib/format';
+import { chatSubtitle, chatSystemLine, dayHeadLabels } from '../../../src/lib/chatView';
+import { cleanText } from '../../../src/lib/textRules';
 
 interface SPChatScreenProps {
   jobId: string | null;
@@ -61,9 +34,8 @@ interface SPChatScreenProps {
 }
 
 export default function SPChatScreen({ jobId, onBack, onViewJob }: SPChatScreenProps) {
-  const { C, styles, V6Colors, appearance } = useThemedStyles(createThemedStyles);
-  const headerTop = useHeaderTop();
   const { profile } = useAuth();
+  const job = useChatJob(jobId);
   const [conversation, setConversation] = useState<Conversation | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [loading, setLoading] = useState(true);
@@ -71,7 +43,7 @@ export default function SPChatScreen({ jobId, onBack, onViewJob }: SPChatScreenP
   const [text, setText] = useState('');
   const [sending, setSending] = useState(false);
   const [attaching, setAttaching] = useState(false);
-  const listRef = useRef<FlatList>(null);
+  const listRef = useRef<FlatList<Message>>(null);
 
   useEffect(() => {
     let active = true;
@@ -109,7 +81,7 @@ export default function SPChatScreen({ jobId, onBack, onViewJob }: SPChatScreenP
   }, [jobId]);
 
   const handleSend = async () => {
-    const body = text.trim();
+    const body = cleanText(text);
     if (!body || !conversation || sending || attaching) return;
     setSending(true);
     try {
@@ -145,175 +117,33 @@ export default function SPChatScreen({ jobId, onBack, onViewJob }: SPChatScreenP
     }
   };
 
-  const renderBubble = ({ item }: { item: Message }) => {
-    const sent = item.sender_id === profile?.id;
-    return (
-      <View style={[styles.bubbleWrap, sent ? styles.bubbleWrapSent : styles.bubbleWrapReceived]}>
-        <View style={[styles.bubble, sent ? styles.bubbleSent : styles.bubbleReceived]}>
-          {!!item.attachment_url && (
-            <Image source={{ uri: item.attachment_url }} style={styles.bubbleImage} resizeMode="contain" />
-          )}
-          {!!item.body && (
-            <Text style={[styles.bubbleText, sent && styles.bubbleTextSent]}>{item.body}</Text>
-          )}
-        </View>
-        <Text style={[styles.bubbleTime, sent && styles.bubbleTimeSent]}>{timeOfDay(item.created_at)}</Text>
-      </View>
-    );
-  };
+  const now = new Date();
+  const dayHeads = useMemo(() => dayHeadLabels(messages, now), [messages]);
+  const statusLabel = conversation?.job_status ? jobStatusMeta(conversation.job_status).label : null;
 
   return (
-    <View style={styles.screen}>
-      {/* Header — matches .topbar (flat white, not a colored hero) */}
-      <View style={[styles.header, { paddingTop: headerTop }]}>
-        <Tap style={styles.backBtn} onPress={onBack} activeOpacity={0.8}>
-          <ArrowLeft size={20} color={C.ink700} />
-        </Tap>
-        <View style={styles.headerAvatar}>
-          <Silhouette name={conversation?.counterpart_name} textStyle={styles.headerAvatarText} />
-        </View>
-        <View style={styles.headerInfo}>
-          <Text style={styles.headerName}>{conversation?.counterpart_name ?? 'Chat'}</Text>
-          {!!conversation?.job_status && (
-            <Text style={styles.headerStatus}>{jobStatusMeta(conversation.job_status, V6Colors).label}</Text>
-          )}
-        </View>
-        <Tap onPress={onViewJob} activeOpacity={0.8}>
-          <Text style={styles.viewJobLink}>View Job</Text>
-        </Tap>
-      </View>
-
-      <KeyboardAvoidingView
-        style={styles.flex}
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        keyboardVerticalOffset={0}
-      >
-        {loading && <ContentSkeleton variant="chat" />}
-        {!!error && !loading && <Text style={styles.stateText}>{error}</Text>}
-        {!loading && !error && messages.length === 0 && (
-          <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
-            <ChatEmptyState />
-          </TouchableWithoutFeedback>
-        )}
-        <FlatList keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag"
-          ref={listRef}
-          inverted
-          data={[...messages].reverse()}
-          renderItem={renderBubble}
-          keyExtractor={(item) => item.id}
-          contentContainerStyle={styles.chatContent}
-          showsVerticalScrollIndicator={false}
-          onLayout={() => listRef.current?.scrollToOffset({ offset: 0, animated: false })}
-        />
-
-        {/* Composer — matches .chat-composer */}
-        <View style={styles.composer}>
-          <Tap
-            style={styles.attachBtn}
-            activeOpacity={0.8}
-            onPress={() => void handleAttach()}
-            disabled={attaching}
-          >
-            {attaching ? (
-              <ActivityIndicator size="small" color={C.ink500} />
-            ) : (
-              <Paperclip size={20} color={C.ink500} />
-            )}
-          </Tap>
-          <TextInput keyboardAppearance={appearance}
-            style={styles.chatInput}
-            placeholder="Message…"
-            placeholderTextColor={C.ink400}
-            value={text}
-            onChangeText={setText}
-            multiline
-            maxLength={500}
-          />
-          <Tap
-            style={[styles.sendBtn, !text.trim() && styles.sendBtnDisabled]}
-            onPress={handleSend}
-            activeOpacity={0.85}
-            disabled={!text.trim()}
-          >
-            <ArrowRight size={18} color={C.onPrimary} />
-          </Tap>
-        </View>
-      </KeyboardAvoidingView>
-    </View>
+    <ChatThread
+      counterpartName={conversation?.counterpart_name}
+      subtitle={chatSubtitle(conversation?.job_title ?? job?.title, statusLabel)}
+      systemLine={chatSystemLine({
+        role: 'provider',
+        counterpartName: conversation?.counterpart_name,
+        job,
+        now,
+      })}
+      dayHeads={dayHeads}
+      messages={messages}
+      profileId={profile?.id}
+      loading={loading}
+      error={error}
+      listRef={listRef}
+      text={text}
+      onChangeText={setText}
+      onSend={handleSend}
+      attaching={attaching}
+      onAttach={() => void handleAttach()}
+      onBack={onBack}
+      onViewJob={onViewJob}
+    />
   );
-}
-
-function createThemedStyles(theme: ThemePalette) {
-  const { Colors, V6Colors } = theme;
-  const C = V6Colors;
-  const styles = StyleSheet.create({
-    flex: { flex: 1 },
-    screen: { flex: 1, backgroundColor: C.canvas },
-
-    header: {
-      flexDirection: 'row', alignItems: 'center', gap: 10,
-      backgroundColor: C.surface,
-      paddingHorizontal: Spacing.screenH,
-      paddingBottom: 12,
-      borderBottomWidth: 1, borderBottomColor: V6Colors.line,
-    },
-    backBtn: {
-      width: 38, height: 38, borderRadius: 12,
-      backgroundColor: C.surface, borderWidth: 1, borderColor: V6Colors.line,
-      alignItems: 'center', justifyContent: 'center',
-    },
-    headerAvatar: {
-      width: 40, height: 40, borderRadius: 20, overflow: 'hidden',
-      backgroundColor: C.primaryTonalStrong, alignItems: 'center', justifyContent: 'center',
-    },
-    headerAvatarText: { color: C.primaryDeep, fontSize: 14, fontWeight: '800', fontFamily: 'Inter' },
-    headerInfo: { flex: 1 },
-    headerName: { color: C.ink900, fontSize: 16, fontWeight: '800', fontFamily: 'Inter' },
-    headerStatus: { color: V6Colors.successText, fontSize: 12, fontWeight: '600', fontFamily: 'Inter', marginTop: 1 },
-    viewJobLink: { color: V6Colors.link, fontSize: 14, fontWeight: '700', fontFamily: 'Inter' },
-
-    chatContent: { paddingHorizontal: 16, paddingVertical: 16, gap: 10 },
-    stateText: { color: C.ink500, fontSize: 15.5, fontFamily: 'Inter', textAlign: 'center', marginTop: 20 },
-
-    bubbleWrap: { maxWidth: '75%' },
-    bubbleWrapSent: { alignSelf: 'flex-end' },
-    bubbleWrapReceived: { alignSelf: 'flex-start' },
-    bubble: { paddingHorizontal: 14, paddingVertical: 10 },
-    bubbleSent: {
-      backgroundColor: C.cyan700, borderColor: 'transparent',
-      borderTopLeftRadius: 16, borderTopRightRadius: 4, borderBottomLeftRadius: 16, borderBottomRightRadius: 16,
-    },
-    bubbleReceived: {
-      backgroundColor: C.surface, borderWidth: 1, borderColor: C.ink100,
-      borderTopLeftRadius: 4, borderTopRightRadius: 16, borderBottomLeftRadius: 16, borderBottomRightRadius: 16,
-    },
-    bubbleText: { fontFamily: 'Inter', fontSize: 14.5, color: C.ink900, lineHeight: 18 },
-    bubbleTextSent: { color: C.onPrimary },
-    bubbleImage: {
-      width: 200, height: 150, borderRadius: 10, marginBottom: 6,
-    },
-    bubbleTime: { fontFamily: 'Inter', fontSize: 11, color: C.ink300, marginTop: 4 },
-    bubbleTimeSent: { textAlign: 'right' },
-
-    composer: {
-      flexDirection: 'row', alignItems: 'center', gap: 8,
-      paddingHorizontal: 14, paddingTop: 10, paddingBottom: 24,
-      backgroundColor: C.surface, borderTopWidth: 1, borderTopColor: C.line,
-    },
-    attachBtn: {
-      width: 40, height: 40, borderRadius: 12,
-      backgroundColor: V6Colors.wellBg, alignItems: 'center', justifyContent: 'center',
-    },
-    chatInput: {
-      flex: 1, minWidth: 0, borderWidth: 1, borderColor: V6Colors.fieldBorder, borderRadius: 14,
-      paddingHorizontal: 13, paddingVertical: 11, maxHeight: 100,
-      fontFamily: 'Inter', fontSize: 14.5, color: C.ink900,
-    },
-    sendBtn: {
-      width: 42, height: 42, borderRadius: 12,
-      backgroundColor: C.cyan700, alignItems: 'center', justifyContent: 'center',
-    },
-    sendBtnDisabled: { opacity: 0.4 },
-  });
-  return { appearance: theme.appearance, Colors, V6Colors, C, styles };
 }

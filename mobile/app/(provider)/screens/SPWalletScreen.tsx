@@ -1,14 +1,9 @@
 /**
  * SPWalletScreen.tsx
  *
- * v6 design: matches taskbuddy_UI_update.html's #sp-wallet screen — a flat
- * white .topbar, a small dark gradient "wallet-hero" balance card (not a
- * full-bleed header) with a single Withdraw action, a 2-stat row (Pending,
- * Jobs Done), a trust-note pointing to Profile for payout methods, and a
- * "Payout History" list.
- *
- * The mockup only shows one action (Withdraw) here — unlike the homeowner
- * wallet, which keeps 3 actions per an explicit product decision.
+ * Figma "Wallet · provider" (79:2794): the title on the canvas, a navy balance
+ * card with one Withdraw action, two tiles (On hold, Earned so far), a payouts
+ * notice while Stripe payouts are not set up, and the payout history grouped by day.
  *
  * Withdraw files a request against `POST /wallet/withdrawals` that an admin
  * settles by hand; there is still no automated payout rail, which is why the
@@ -16,38 +11,84 @@
  */
 
 import { useThemedStyles, type Palette as ThemePalette } from '../../../src/context/ThemeContext';
-import React, { useState } from 'react';
-import { ActivityIndicator, ScrollView, StyleSheet, Text, View } from 'react-native';
+import React, { useRef, useState } from 'react';
+import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import Tap from '../../../src/components/ui/Tap';
 import ContentSkeleton from '../../../src/components/ui/ContentSkeleton';
-import { Banknote, Building2, Sparkles, WalletCards } from 'lucide-react-native';
-import { Spacing, V6Radii, V6Shadows } from '../../../src/constants/theme';
+import Banner from '../../../src/components/ui/Banner';
+import EmptyCard from '../../../src/components/ui/EmptyCard';
+import EmptyRow from '../../../src/components/ui/EmptyRow';
+import LoadErrorCard from '../../../src/components/ui/LoadErrorCard';
+import SectionHeader from '../../../src/components/ui/SectionHeader';
+import StaleHint from '../../../src/components/ui/StaleHint';
+import SlowLoadNote from '../../../src/components/ui/SlowLoadNote';
+import { ArrowDownLeft, Building2, Shield, Wallet, WalletCards, type LucideIcon } from 'lucide-react-native';
+import { Spacing } from '../../../src/constants/theme';
 import { useHeaderTop } from '../../../src/hooks/useHeaderTop';
 
 import { useAuth } from '../../../src/context/AuthContext';
 import { useAsyncData } from '../../../src/hooks/useAsyncData';
-import { api } from '../../../src/lib/api';
-import { peso, shortDate } from '../../../src/lib/format';
+import { isWallet } from '../../../src/lib/savedShapes';
+import { useSlowLoad } from '../../../src/hooks/useSlowLoad';
+import { api, type WalletTransaction } from '../../../src/lib/api';
+import { peso, plural, shortDate } from '../../../src/lib/format';
+import { groupWalletByDay } from '../../../src/lib/walletHistory';
 import WithdrawModal from '../../../src/components/WithdrawModal';
 import { showToast } from '../../../src/components/Toast';
+import { SPScreen } from '../../../src/types/navigation';
 
-export default function SPWalletScreen() {
-  const { C, styles, V6Colors } = useThemedStyles(createThemedStyles);
+interface SPWalletScreenProps {
+  onNavigate: (screen: SPScreen, jobId?: string) => void;
+}
+
+export default function SPWalletScreen({ onNavigate }: SPWalletScreenProps) {
+  const { Colors, styles } = useThemedStyles(createThemedStyles);
   const headerTop = useHeaderTop();
   const { providerProfile } = useAuth();
-  const { data, loading, error, reload } = useAsyncData(() => api.wallet(), [], 'sp-wallet');
+  const { data, loading, error, reload, savedOnly, stale, refreshing } = useAsyncData(
+    () => api.wallet(),
+    [],
+    'sp-wallet',
+    { persist: true, validate: isWallet },
+  );
+  // The balance on screen is the saved copy and no fetch has confirmed it: Withdraw waits.
+  const awaitingFreshBalance = !!data && savedOnly;
+  // Cancelling a pending withdrawal waits on the same freshness: a saved copy, or one a failed refresh left, is not acted on.
+  const cancelWaits = !!data && (savedOnly || stale);
+  // A failed refresh with a saved balance keeps the payouts on screen, so only a wallet with no data is a failure.
+  const walletFailed = !!error && !data;
+  const walletSlow = useSlowLoad(loading, data !== null);
+  // Whether card payments can reach the provider's bank yet. Only a status that has loaded and says
+  // payouts are off shows the notice: while it loads, or if it fails, nothing shows, and the wallet
+  // does not wait for it.
+  const { data: payouts } = useAsyncData(() => api.connectStatus(), []);
+  const payoutsOff = payouts !== null && !payouts.payouts_enabled;
   const transactions = data?.transactions ?? [];
   const jobsDone = providerProfile?.cached_completed_jobs ?? 0;
 
   const [showWithdraw, setShowWithdraw] = useState(false);
   const [cancelling, setCancelling] = useState<string | null>(null);
+  // Set before the first await, so a second tap in the same frame cannot send a second cancel.
+  const cancelInFlight = useRef(false);
 
   const pendingWithdrawals = transactions.filter(
     (t) => t.kind === 'withdrawal' && t.status === 'pending',
   );
   const canWithdraw = (data?.available ?? 0) > 0;
+  // Keyed on whether funds are available, so the button and its label are recreated when that
+  // changes: Android keeps the old fill and label colour when the same view re-renders (see
+  // FilterPill). Until the balance loads the label is white on the translucent button; after
+  // that it is primary on white.
+  const withdrawDrawn = canWithdraw ? 'on' : 'off';
+  const groups = groupWalletByDay(transactions, new Date());
 
   const cancelWithdrawal = async (id: string) => {
+    if (cancelWaits) return;
+    if (cancelInFlight.current) {
+      showToast("We're already cancelling this withdrawal. Please wait.", 'info');
+      return;
+    }
+    cancelInFlight.current = true;
     setCancelling(id);
     try {
       await api.cancelWithdrawal(id);
@@ -55,31 +96,79 @@ export default function SPWalletScreen() {
     } catch (e) {
       showToast(e instanceof Error ? e.message : 'Could not cancel the withdrawal.', 'error');
     } finally {
+      cancelInFlight.current = false;
       setCancelling(null);
     }
   };
 
+  /** One payout row: a tonal icon, the title, its status and any reference lines, and the signed amount. */
+  const renderTransaction = (txn: WalletTransaction) => {
+    const incoming = txn.direction === 'credit';
+    const Icon: LucideIcon = incoming ? ArrowDownLeft : Building2;
+    const statusLabel =
+      txn.kind === 'connect_transfer'
+        ? CONNECT_TRANSFER_STATUS[txn.status]
+        : txn.status.charAt(0).toUpperCase() + txn.status.slice(1);
+    const amountText = `${txn.status === 'failed' ? '' : incoming ? '+' : '-'}${peso(txn.amount)}`;
+    return (
+      <View
+        key={txn.id}
+        style={styles.txnRow}
+        accessible
+        accessibilityLabel={`${txn.title}. ${statusLabel}. ${amountText}`}
+      >
+        <View style={[styles.txnIcon, incoming ? styles.txnIconIn : styles.txnIconOut]}>
+          <Icon size={18} color={incoming ? Colors.successText : Colors.link} strokeWidth={2.2} />
+        </View>
+        <View style={styles.txnCopy}>
+          <Text style={styles.txnTitle} numberOfLines={2}>{txn.title}</Text>
+          <Text style={styles.txnDetail} numberOfLines={1}>{statusLabel}</Text>
+          <Text style={styles.txnRef} numberOfLines={1}>Transaction: {txn.id}</Text>
+          {!!txn.stripe_transfer_id && <Text style={styles.txnRef} numberOfLines={1}>Stripe transfer: {txn.stripe_transfer_id}</Text>}
+          {!!txn.review_note && <Text style={styles.txnRef} numberOfLines={2}>
+            {txn.status === 'completed' ? 'Settlement reference' : 'Review note'}: {txn.review_note}
+          </Text>}
+        </View>
+        <Text style={[styles.txnAmount, incoming ? styles.txnAmountIn : styles.txnAmountOut]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>
+          {amountText}
+        </Text>
+      </View>
+    );
+  };
+
   return (
     <View style={styles.screen}>
-      {/* Header — matches .topbar (flat white) */}
       <View style={[styles.header, { paddingTop: headerTop }]}>
-        <Text style={styles.headerTitle}>Wallet</Text>
+        <Text style={styles.headerTitle} accessibilityRole="header">Wallet</Text>
       </View>
 
       <ScrollView style={styles.body} contentContainerStyle={styles.bodyContent} showsVerticalScrollIndicator={false}>
-        {/* wallet-hero: linear-gradient(145deg,#111827,#0c4a6e) */}
-        <View style={[styles.heroCard, { backgroundColor: C.providerHero }]}>
+        <StaleHint
+          stale={stale}
+          refreshing={refreshing}
+          error={error}
+          onRetry={reload}
+          updatingLabel="Updating balance…"
+        />
+
+        {/* Balance: the navy card, with the one Withdraw action. */}
+        <View style={styles.balanceCard}>
           <Text style={styles.balanceLabel}>Available to withdraw</Text>
-          <Text style={styles.balanceAmount}>{data ? peso(data.available) : '—'}</Text>
+          <Text style={styles.balanceAmount} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>
+            {data ? peso(data.available) : '—'}
+          </Text>
           {!!data && data.pending_withdrawals > 0 && (
-            <Text style={styles.balanceSubnote}>
-              {peso(data.pending_withdrawals)} awaiting withdrawal · {peso(data.balance)} total
+            <Text style={styles.balanceSub}>
+              {`${peso(data.pending_withdrawals)} awaiting withdrawal · ${peso(data.balance)} total`}
             </Text>
           )}
           <Tap
-            style={[styles.withdrawBtn, !canWithdraw && styles.withdrawBtnDisabled]}
-            // Kept tappable when empty so the tap explains itself.
+            key={`withdraw-${withdrawDrawn}`}
+            style={[styles.withdrawButton, (!canWithdraw || awaitingFreshBalance) && styles.withdrawButtonDisabled]}
+            // Kept tappable when empty so the tap explains itself. Off while the balance is the saved copy.
+            disabled={awaitingFreshBalance}
             onPress={() => {
+              if (awaitingFreshBalance) return;
               if (!data) {
                 showToast('Could not load your wallet. Please try again.', 'error');
                 return;
@@ -87,11 +176,11 @@ export default function SPWalletScreen() {
               if (canWithdraw) setShowWithdraw(true);
               else showToast('You have no funds available to withdraw.');
             }}
-            activeOpacity={0.85}
+            scale
             accessibilityRole="button"
+            accessibilityLabel="Withdraw"
           >
-            <Banknote size={18} color={canWithdraw ? '#13283c' : C.onPrimary} />
-            <Text style={[styles.withdrawBtnText, !canWithdraw && styles.withdrawBtnTextDisabled]}>Withdraw</Text>
+            <Text key={`withdraw-label-${withdrawDrawn}`} style={[styles.withdrawText, (!canWithdraw || awaitingFreshBalance) && styles.withdrawTextDisabled]} numberOfLines={1}>Withdraw</Text>
           </Tap>
         </View>
 
@@ -101,99 +190,81 @@ export default function SPWalletScreen() {
             {pendingWithdrawals.map((w) => (
               <View key={w.id} style={styles.pendingRow}>
                 <View style={styles.pendingInfo}>
-                  <Text style={styles.pendingAmount}>{peso(w.amount)}</Text>
+                  <Text style={styles.pendingAmount} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>{peso(w.amount)}</Text>
                   <Text style={styles.pendingDate}>
                     Requested {shortDate(w.created_at)} · Pending
                   </Text>
                 </View>
                 <Tap
                   onPress={() => cancelWithdrawal(w.id)}
-                  disabled={cancelling === w.id}
-                  activeOpacity={0.7}
+                  // Off, not hidden, while the balance is not confirmed: the reason is said under the rows.
+                  disabled={cancelWaits}
+                  hitSlop={{ top: 12, bottom: 12, left: 8, right: 8 }}
                   accessibilityRole="button"
                   accessibilityLabel={`Cancel withdrawal of ${peso(w.amount)}`}
+                  accessibilityState={{ busy: cancelling === w.id }}
                 >
-                  <Text style={styles.pendingCancel}>
+                  <Text style={[styles.pendingCancel, cancelWaits && styles.pendingCancelWaiting]}>
                     {cancelling === w.id ? 'Cancelling…' : 'Cancel'}
                   </Text>
                 </Tap>
               </View>
             ))}
+            {cancelWaits && <Text style={styles.pendingHold}>Updating… try again in a moment</Text>}
           </View>
         )}
 
-        <View style={styles.statsRow}>
-          <View style={styles.statCard}>
-            <Text style={styles.statValue}>{data ? peso(data.pending) : '—'}</Text>
-            <Text style={styles.statLabel}>Pending</Text>
-          </View>
-          <View style={styles.statCard}>
-            <Text style={styles.statValue}>{jobsDone}</Text>
-            <Text style={styles.statLabel}>Jobs Done</Text>
-          </View>
+        {/* On hold: money held in escrow for this provider's jobs. Earned so far: the total credited so far. */}
+        <View style={styles.tiles}>
+          <WalletTile
+            icon={Shield}
+            label="On hold"
+            amount={data ? peso(data.in_escrow) : '—'}
+            note="Released after the 3-day warranty"
+          />
+          <WalletTile
+            icon={Wallet}
+            label="Earned so far"
+            amount={data ? peso(data.total_credited) : '—'}
+            note={`${plural(jobsDone, 'job')} done`}
+          />
         </View>
 
-        {/* Total earned / withdrawn — same total_credited/total_debited stats
-            the homeowner wallet shows, relabelled for a provider's ledger. */}
-        <View style={styles.statsRow}>
-          <View style={styles.statCard}>
-            <Text style={[styles.statValue, { color: V6Colors.successText }]}>{peso(data?.total_credited ?? 0)}</Text>
-            <Text style={styles.statLabel}>Total Earned</Text>
-          </View>
-          <View style={styles.statCard}>
-            <Text style={styles.statValue}>{peso(data?.total_debited ?? 0)}</Text>
-            <Text style={styles.statLabel}>Total Withdrawn</Text>
-          </View>
-        </View>
-
-        <View style={styles.trustNote}>
-          <WalletCards size={18} color={V6Colors.link} />
-          <Text style={styles.trustNoteText}>
-            Card-paid earnings become eligible for Stripe transfer after the three-day warranty ends without an open complaint, once payouts are set up (Profile → Payouts). Everything else lands here — withdraw it with the button above.
-          </Text>
-        </View>
-
-        <Text style={styles.sectionTitle}>Payout History</Text>
-        {loading && <ContentSkeleton variant="list" />}
-        {!!error && !loading && <Text style={styles.stateText}>{error}</Text>}
-        {!loading && !error && transactions.length === 0 && (
-          <View style={styles.emptyState}>
-            <WalletCards size={30} color={C.ink300} />
-            <Text style={styles.emptyTitle}>No transactions yet</Text>
-            <Text style={styles.emptyText}>Your payouts and job earnings will appear here.</Text>
-          </View>
+        {payoutsOff && (
+          <Banner
+            tone="info"
+            message="Card payments need Payouts set up."
+            actionLabel="Set up"
+            onAction={() => onNavigate('Payouts')}
+          />
         )}
 
-        {transactions.length > 0 && (
-          <View style={styles.txnList}>
-            {transactions.map((txn, i) => {
-              const Icon = txn.direction === 'credit' ? Sparkles : Building2;
-              const statusLabel =
-                txn.kind === 'connect_transfer'
-                  ? CONNECT_TRANSFER_STATUS[txn.status]
-                  : txn.status.charAt(0).toUpperCase() + txn.status.slice(1);
-              return (
-                <View key={txn.id} style={[styles.txnRow, i < transactions.length - 1 && styles.txnRowBorder]}>
-                  <View style={styles.txnIcon}><Icon size={19} color={V6Colors.link} /></View>
-                  <View style={styles.txnInfo}>
-                    <Text style={styles.txnTitle} numberOfLines={2}>{txn.title}</Text>
-                    <Text style={styles.txnDate}>{shortDate(txn.created_at)} · {statusLabel}</Text>
-                    <Text style={styles.txnDate}>Transaction: {txn.id}</Text>
-                    {!!txn.stripe_transfer_id && <Text style={styles.txnDate}>Stripe transfer: {txn.stripe_transfer_id}</Text>}
-                    {!!txn.review_note && <Text style={styles.txnDate}>
-                      {txn.status === 'completed' ? 'Settlement reference' : 'Review note'}: {txn.review_note}
-                    </Text>}
-                  </View>
-                  <Text style={[styles.txnAmount, txn.direction === 'credit' ? styles.txnCredit : styles.txnDebit]}>
-                    {txn.status === 'failed' ? '' : txn.direction === 'debit' ? '-' : '+'}{peso(txn.amount)}
-                  </Text>
-                </View>
-              );
-            })}
-          </View>
-        )}
+        <View style={styles.history}>
+          <SectionHeader title="Payouts" />
+          {walletSlow && <SlowLoadNote />}
+          {loading && <ContentSkeleton variant="list" />}
+          {!!error && !loading && !data && (
+            <LoadErrorCard title="Couldn't load your wallet" message={error} onRetry={reload} />
+          )}
+          {!loading && !walletFailed && transactions.length === 0 && (
+            <EmptyCard>
+              <EmptyRow
+                icon={WalletCards}
+                title="No transactions yet"
+                body="Your payouts and job earnings will appear here."
+              />
+            </EmptyCard>
+          )}
 
-        <View style={{ height: 20 }} />
+          {groups.map((group) => (
+            <View key={group.key} style={styles.group}>
+              <Text style={styles.dayLabel} accessibilityRole="header">{group.label}</Text>
+              <View style={styles.rows}>
+                {group.transactions.map((txn) => renderTransaction(txn))}
+              </View>
+            </View>
+          ))}
+        </View>
       </ScrollView>
 
       <WithdrawModal
@@ -217,46 +288,55 @@ const CONNECT_TRANSFER_STATUS: Record<'pending' | 'completed' | 'failed', string
   failed: 'Not sent — kept in wallet',
 };
 
+/** One of the two tiles under the balance: a tonal icon, a label, the amount, and a note. */
+function WalletTile({ icon: Icon, label, amount, note }: {
+  icon: LucideIcon; label: string; amount: string; note: string;
+}) {
+  const { Colors, styles } = useThemedStyles(createThemedStyles);
+  return (
+    <View style={styles.tile} accessible accessibilityLabel={`${label}. ${amount}. ${note}`}>
+      <View style={styles.tileIcon}>
+        <Icon size={17} color={Colors.link} strokeWidth={2.2} />
+      </View>
+      <Text style={styles.tileLabel}>{label}</Text>
+      <Text style={styles.tileAmount} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>{amount}</Text>
+      <Text style={styles.tileNote}>{note}</Text>
+    </View>
+  );
+}
+
 function createThemedStyles(theme: ThemePalette) {
   const { Colors, V6Colors } = theme;
   const C = V6Colors;
   const styles = StyleSheet.create({
     screen: { flex: 1, backgroundColor: C.canvas },
 
-    header: {
-      backgroundColor: C.surface,
-      paddingHorizontal: Spacing.screenH,
-      paddingBottom: 12,
-      borderBottomWidth: 1, borderBottomColor: V6Colors.line,
-    },
+    header: { paddingHorizontal: Spacing.screenH, paddingBottom: 12 },
     headerTitle: { color: C.ink900, fontSize: 21.5, fontWeight: '800', fontFamily: 'Inter', letterSpacing: -0.3 },
 
     body: { flex: 1 },
-    bodyContent: { paddingHorizontal: Spacing.screenH, paddingTop: 16, paddingBottom: 20 },
+    bodyContent: { paddingHorizontal: Spacing.screenH, paddingTop: 4, paddingBottom: 20, gap: 18 },
 
-    heroCard: { borderRadius: 18, padding: 20, marginBottom: 16 },
-    balanceLabel: { color: C.onHeroMuted, fontSize: 14, fontFamily: 'Inter', marginBottom: 4 },
-    balanceAmount: { color: C.onPrimary, fontSize: 32.5, fontWeight: '800', fontFamily: 'Inter', marginBottom: 14 },
-    withdrawBtn: {
-      flexDirection: 'row', alignSelf: 'flex-start', alignItems: 'center', gap: 8,
-      // White pill on the navy card, same as the homeowner wallet action.
-      backgroundColor: '#ffffff', borderRadius: 999, paddingHorizontal: 18, minHeight: 44,
+    // Balance card: navy, white text, one white Withdraw pill.
+    balanceCard: { backgroundColor: Colors.hero, borderRadius: 20, padding: 18 },
+    balanceLabel: { color: Colors.onHeroMuted, fontSize: 14, fontWeight: '400', fontFamily: 'Inter', lineHeight: 18 },
+    balanceAmount: {
+      color: Colors.onPrimary, fontSize: 34, fontWeight: '800', fontFamily: 'Inter', lineHeight: 40, marginTop: 4,
     },
-    // Nothing to withdraw: a translucent outline pill with light text, so it
-    // reads as unavailable without turning into low-contrast grey.
-    withdrawBtnDisabled: {
-      backgroundColor: 'rgba(255,255,255,0.12)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.28)',
+    balanceSub: { color: Colors.onHeroMuted, fontSize: 13, fontFamily: 'Inter', lineHeight: 18, marginTop: 8 },
+    withdrawButton: {
+      marginTop: 16, minHeight: 48, borderRadius: 999, paddingHorizontal: 16,
+      alignItems: 'center', justifyContent: 'center', backgroundColor: Colors.onPrimary,
     },
-    withdrawBtnText: { color: '#13283c', fontSize: 15, fontWeight: '700', fontFamily: 'Inter' },
-    withdrawBtnTextDisabled: { color: C.onPrimary },
-    balanceSubnote: {
-      color: 'rgba(255,255,255,0.75)', fontSize: 12.5, fontFamily: 'Inter',
-      marginTop: -10, marginBottom: 12,
-    },
+    // Nothing to withdraw: a translucent outline pill with light text, so it reads as unavailable.
+    withdrawButtonDisabled: { backgroundColor: Colors.heroCard, borderWidth: 1, borderColor: Colors.heroCardBorder },
+    withdrawText: { color: Colors.primary, fontSize: 15, fontWeight: '700', fontFamily: 'Inter', lineHeight: 20 },
+    withdrawTextDisabled: { color: Colors.onPrimary },
 
+    // Withdrawal requests still waiting for an admin (cancellable).
     pendingCard: {
       backgroundColor: V6Colors.warningSurface, borderWidth: 1, borderColor: V6Colors.warningBorder,
-      borderRadius: 15, padding: 14, marginBottom: 16,
+      borderRadius: 15, padding: 14,
     },
     pendingHeader: {
       color: V6Colors.warningText, fontSize: 13.5, fontWeight: '800', fontFamily: 'Inter', marginBottom: 8,
@@ -269,38 +349,47 @@ function createThemedStyles(theme: ThemePalette) {
     pendingAmount: { color: C.ink900, fontSize: 15, fontWeight: '700', fontFamily: 'Inter' },
     pendingDate: { color: V6Colors.warningText, fontSize: 11.5, fontFamily: 'Inter', marginTop: 1 },
     pendingCancel: { color: V6Colors.warningText, fontSize: 13.5, fontWeight: '700', fontFamily: 'Inter' },
+    pendingCancelWaiting: { color: C.ink500 },
+    pendingHold: { color: V6Colors.warningText, fontSize: 12, fontFamily: 'Inter', lineHeight: 16, marginTop: 6 },
 
-    statsRow: { flexDirection: 'row', gap: 12, marginBottom: 20 },
-    statCard: {
-      flex: 1, backgroundColor: C.surface, borderWidth: 1, borderColor: C.line,
-      borderRadius: V6Radii.card, padding: 14, alignItems: 'center', ...V6Shadows.sm,
+    // On hold and Earned so far: two equal tiles.
+    tiles: { flexDirection: 'row', gap: 10 },
+    tile: {
+      flex: 1, minWidth: 0, gap: 4, padding: 14, borderRadius: 16,
+      backgroundColor: C.surface, borderWidth: 1, borderColor: C.line,
     },
-    statValue: { color: C.ink900, fontSize: 19.5, fontWeight: '800', fontFamily: 'Inter', marginBottom: 2 },
-    statLabel: { color: C.ink400, fontSize: 12, fontFamily: 'Inter' },
-
-    trustNote: {
-      flexDirection: 'row', gap: 9, alignItems: 'flex-start',
-      backgroundColor: V6Colors.infoSurface, borderWidth: 1, borderColor: V6Colors.infoSurface,
-      borderRadius: 13, padding: 12, marginBottom: 18,
+    tileIcon: {
+      width: 34, height: 34, borderRadius: 11, marginBottom: 6,
+      backgroundColor: Colors.primaryTonal, alignItems: 'center', justifyContent: 'center',
     },
-    trustNoteText: { flex: 1, color: V6Colors.link, fontSize: 12, lineHeight: 16, fontFamily: 'Inter' },
+    tileLabel: { color: C.ink700, fontSize: 13, fontWeight: '600', fontFamily: 'Inter', lineHeight: 18 },
+    tileAmount: { color: C.ink900, fontSize: 18, fontWeight: '700', fontFamily: 'Inter', lineHeight: 24 },
+    tileNote: { color: C.ink500, fontSize: 12, fontFamily: 'Inter', lineHeight: 16 },
 
-    sectionTitle: { color: C.ink900, fontSize: 16, fontWeight: '800', fontFamily: 'Inter', marginBottom: 12 },
-    stateText: { color: C.ink500, fontSize: 16.5, fontFamily: 'Inter', textAlign: 'center', marginTop: 20 },
-    emptyState: { alignItems: 'center', paddingVertical: 44, paddingHorizontal: 24 },
-    emptyTitle: { color: C.ink800, fontSize: 16, fontWeight: '700', fontFamily: 'Inter', marginTop: 10, marginBottom: 4 },
-    emptyText: { color: C.ink400, fontSize: 14, fontFamily: 'Inter', textAlign: 'center', lineHeight: 17 },
+    // Payouts: the section header, then day groups of rows.
+    history: { gap: 12 },
+    group: { gap: 8 },
+    dayLabel: {
+      color: C.ink500, fontSize: 12, fontWeight: '700', fontFamily: 'Inter', letterSpacing: 0.6,
+      textTransform: 'uppercase',
+    },
+    rows: { gap: 8 },
 
-    txnList: { backgroundColor: C.surface, borderRadius: 16, borderWidth: 1, borderColor: C.line, overflow: 'hidden' },
-    txnRow: { flexDirection: 'row', alignItems: 'center', padding: 14 },
-    txnRowBorder: { borderBottomWidth: 1, borderBottomColor: V6Colors.wellBg },
-    txnIcon: { width: 34, height: 34, borderRadius: 12, backgroundColor: V6Colors.canvas, alignItems: 'center', justifyContent: 'center', marginRight: 12 },
-    txnInfo: { flex: 1, marginRight: 12 },
-    txnTitle: { color: C.ink900, fontSize: 14.5, fontWeight: '600', fontFamily: 'Inter', marginBottom: 2 },
-    txnDate: { color: C.ink400, fontSize: 12.5, fontFamily: 'Inter' },
-    txnAmount: { flexShrink: 0, fontSize: 14.5, fontWeight: '800', fontFamily: 'Inter' },
-    txnCredit: { color: V6Colors.successText },
-    txnDebit: { color: C.ink900 },
+    txnRow: {
+      flexDirection: 'row', alignItems: 'center', gap: 12,
+      paddingHorizontal: 14, paddingVertical: 12, borderRadius: 16,
+      backgroundColor: C.surface, elevation: 2,
+    },
+    txnIcon: { width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
+    txnIconIn: { backgroundColor: C.successSurface },
+    txnIconOut: { backgroundColor: Colors.primaryTonal },
+    txnCopy: { flex: 1, minWidth: 0, gap: 2 },
+    txnTitle: { color: C.ink900, fontSize: 15, fontWeight: '600', fontFamily: 'Inter', lineHeight: 20 },
+    txnDetail: { color: C.ink500, fontSize: 13, fontFamily: 'Inter', lineHeight: 18 },
+    txnRef: { color: C.ink500, fontSize: 12, fontFamily: 'Inter', lineHeight: 16 },
+    txnAmount: { flexShrink: 0, fontSize: 15, fontWeight: '700', fontFamily: 'Inter' },
+    txnAmountIn: { color: Colors.successText },
+    txnAmountOut: { color: C.ink900 },
   });
   return { Colors, V6Colors, C, styles };
 }

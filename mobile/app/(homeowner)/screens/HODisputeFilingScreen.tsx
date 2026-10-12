@@ -1,21 +1,20 @@
 /**
  * HODisputeFilingScreen.tsx
  *
- * v6 design: matches taskbuddy_UI_update.html's #ho-dispute screen — a flat
- * white .topbar (not a colored hero), flat .field-style inputs with no card
- * wrapping, and a single flat cyan-700 "Submit Complaint" button (the mockup
- * does not use a red/danger button here).
- *
- * Deviation: kept the reason list as tappable radio rows rather than the
- * mockup's HTML <select>, since that's the standard RN pattern for this kind
- * of choice; kept the header subtitle (job title + provider) since it's
- * real, useful context the mockup's generic demo copy doesn't need.
+ * "Report a problem" (was "File a Complaint"). The homeowner and the provider both file here.
+ * The form sends the same raiseDispute call as before: the same reason values and the same
+ * description limit. Nothing is pre-selected, so a reason must be chosen. Photos are not part of this
+ * form; the screen says they can be added from the job chat after the report is sent.
  */
 
 import { useThemedStyles, type Palette as ThemePalette } from '../../../src/context/ThemeContext';
+import { useAuth } from '../../../src/context/AuthContext';
 import React, { useCallback, useState } from 'react';
-import { ActivityIndicator, KeyboardAvoidingView, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, KeyboardAvoidingView, StyleSheet, Text, View } from 'react-native';
 import Tap from '../../../src/components/ui/Tap';
+import KeyboardAwareScrollView from '../../../src/components/ui/KeyboardAwareScrollView';
+import RadioRow from '../../../src/components/ui/RadioRow';
+import TextField from '../../../src/components/ui/TextField';
 import { ArrowLeft } from 'lucide-react-native';
 import ConfirmationModal from '../../../src/components/ConfirmationModal';
 import { Spacing, V6Radii, V6Shadows } from '../../../src/constants/theme';
@@ -23,6 +22,18 @@ import { Spacing, V6Radii, V6Shadows } from '../../../src/constants/theme';
 import { api } from '../../../src/lib/api';
 import { useAsyncData } from '../../../src/hooks/useAsyncData';
 import { useHeaderTop } from '../../../src/hooks/useHeaderTop';
+import { heldAmount } from '../../../src/lib/heldMoney';
+import { cleanText } from '../../../src/lib/textRules';
+import {
+  REPORT_REASONS,
+  reasonLabel,
+  reportChipText,
+  reportConfirmMessage,
+  reportOtherParty,
+} from '../../../src/lib/reportView';
+
+/** The backend accepts a description of up to 1000 characters and no minimum. */
+const DETAILS_MAX = 1000;
 
 interface HODisputeFilingScreenProps {
   jobId: string | null;
@@ -30,14 +41,13 @@ interface HODisputeFilingScreenProps {
   onSubmitted: () => void;
 }
 
-const REASONS = ['Payment or cancellation issue', 'Work not completed', 'Work quality issue', 'Participant did not arrive', 'Conduct issue', 'Other'];
-
 export default function HODisputeFilingScreen({ jobId, onBack, onSubmitted }: HODisputeFilingScreenProps) {
   const { C, styles, V6Colors, appearance } = useThemedStyles(createThemedStyles);
   const headerTop = useHeaderTop();
-  const [reason, setReason] = useState(REASONS[0]);
+  const { role } = useAuth();
+  const isProvider = role === 'provider';
+  const [reason, setReason] = useState<string | null>(null);
   const [details, setDetails] = useState('');
-  const [detailsFocused, setDetailsFocused] = useState(false);
   const [showConfirmation, setShowConfirmation] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -49,97 +59,107 @@ export default function HODisputeFilingScreen({ jobId, onBack, onSubmitted }: HO
     ),
   );
 
-  // Falls back to the plain title until the job loads; never a placeholder name.
-  const subtitle = job
-    ? [job.title, job.assigned_provider?.full_name].filter(Boolean).join(' · ')
-    : 'Loading job…';
-
   const submitDispute = async () => {
-    if (!jobId) return;
+    if (!jobId || !reason) return;
     setSubmitting(true);
     setError(null);
     try {
       await api.raiseDispute(jobId, {
         reason,
-        details: details.trim() || undefined,
+        // Optional: spaces alone are no details, so nothing is sent for them.
+        details: cleanText(details) || undefined,
       });
       onSubmitted();
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Could not file the complaint.');
+      setError(e instanceof Error ? e.message : 'Could not send the report.');
     } finally {
       setSubmitting(false);
     }
   };
 
+  const chip = reportChipText(job, isProvider) ?? 'Loading job…';
+  const canSend = !!reason && !!jobId && !submitting;
+
   return (
     <View style={styles.screen}>
-      {/* Header — matches .topbar (flat white, not a colored hero) */}
       <View style={[styles.header, { paddingTop: headerTop }]}>
-        <Tap style={styles.backButton} onPress={onBack} activeOpacity={0.8}>
+        <Tap
+          style={styles.backButton}
+          onPress={onBack}
+          activeOpacity={0.8}
+          hitSlop={5}
+          accessibilityRole="button"
+          accessibilityLabel="Back"
+        >
           <ArrowLeft size={20} color={C.ink700} />
         </Tap>
-        <View style={{ flex: 1 }}>
-          <Text style={styles.headerTitle}>File a Complaint</Text>
-          <Text style={styles.headerSubtitle} numberOfLines={1}>{subtitle}</Text>
-        </View>
+        <Text style={styles.headerTitle}>Report a problem</Text>
       </View>
 
-      {/* Keeps the description box and Submit above the keyboard (K2). */}
+      {/* Keeps the description box and Send report above the keyboard (K2). */}
       <KeyboardAvoidingView style={styles.flex} behavior="padding">
-      <ScrollView keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag" contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-        <View style={styles.fieldGroup}>
-          <Text style={styles.label}>Issue</Text>
-          <View style={styles.reasonList}>
-            {REASONS.map((item) => {
-              const selected = item === reason;
-              return (
-                <Tap key={item} style={styles.reasonRow} onPress={() => setReason(item)} activeOpacity={0.8}>
-                  <View style={[styles.radio, selected && styles.radioSelected]}>{selected && <View style={styles.radioDot} />}</View>
-                  <Text style={styles.reasonText}>{item}</Text>
-                </Tap>
-              );
-            })}
+        <KeyboardAwareScrollView keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag" contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+          <View style={styles.chip}>
+            <Text style={styles.chipText} numberOfLines={2}>{chip}</Text>
           </View>
-        </View>
 
-        <View style={styles.fieldGroup}>
-          <Text style={styles.label}>Describe what happened</Text>
-          <TextInput keyboardAppearance={appearance}
-            style={[styles.detailsInput, detailsFocused && styles.detailsInputFocused]}
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle} accessibilityRole="header">What went wrong?</Text>
+            <View style={styles.reasonList}>
+              {REPORT_REASONS.map((value) => (
+                <RadioRow
+                  key={value}
+                  label={reasonLabel(value, isProvider)}
+                  selected={reason === value}
+                  onSelect={() => setReason(value)}
+                />
+              ))}
+            </View>
+          </View>
+
+          <TextField
+            label="Tell us what happened"
             value={details}
             onChangeText={setDetails}
+            helper={`Optional · ${details.length} / ${DETAILS_MAX}`}
             multiline
-            maxLength={1000}
+            maxLength={DETAILS_MAX}
             textAlignVertical="top"
             placeholder="Give support enough detail to review the issue…"
-            placeholderTextColor={C.ink400}
-            onFocus={() => setDetailsFocused(true)}
-            onBlur={() => setDetailsFocused(false)}
+            keyboardAppearance={appearance}
+            style={styles.detailsInput}
           />
-        </View>
 
-        {error && <Text style={styles.errorText}>{error}</Text>}
+          <Text style={styles.photoNote}>You can add photos from the job chat after you send this.</Text>
 
-        <Tap
-          style={[styles.submitButton, (submitting || !jobId) && styles.submitButtonDisabled]}
-          onPress={() => setShowConfirmation(true)}
-          disabled={submitting || !jobId}
-          activeOpacity={0.85}
-        >
-          {submitting ? (
-            <ActivityIndicator color={C.onPrimary} />
-          ) : (
-            <Text style={styles.submitText}>Submit Complaint</Text>
-          )}
-        </Tap>
-      </ScrollView>
+          {error && <Text style={styles.errorText} accessibilityLiveRegion="polite">{error}</Text>}
+
+          <Tap
+            style={[styles.submitButton, !canSend && styles.submitButtonDisabled]}
+            onPress={() => setShowConfirmation(true)}
+            disabled={!canSend}
+            scale
+            accessibilityRole="button"
+            accessibilityLabel="Send report"
+          >
+            {submitting ? (
+              <ActivityIndicator color={V6Colors.onPrimary} />
+            ) : (
+              <Text style={styles.submitText}>Send report</Text>
+            )}
+          </Tap>
+        </KeyboardAwareScrollView>
       </KeyboardAvoidingView>
 
       <ConfirmationModal
         visible={showConfirmation}
-        title="Submit complaint report?"
-        message="You are about to file this complaint for review. Both participants can add statements and job chat evidence in Complaint Status."
-        confirmLabel="Submit Report"
+        title="Send this report?"
+        message={reportConfirmMessage({
+          held: heldAmount(job, new Date()),
+          otherParty: reportOtherParty(job, isProvider),
+        })}
+        confirmLabel="Send report"
+        cancelLabel="Keep editing"
         onCancel={() => setShowConfirmation(false)}
         onConfirm={() => { setShowConfirmation(false); void submitDispute(); }}
       />
@@ -165,34 +185,30 @@ function createThemedStyles(theme: ThemePalette) {
       backgroundColor: C.surface, borderWidth: 1, borderColor: V6Colors.line,
       alignItems: 'center', justifyContent: 'center',
     },
-    headerTitle: { color: C.ink900, fontSize: 19.5, fontWeight: '800', fontFamily: 'Inter' },
-    headerSubtitle: { color: C.ink500, fontSize: 13.5, fontFamily: 'Inter', marginTop: 1 },
+    headerTitle: { flex: 1, color: C.ink900, fontSize: 19.5, fontWeight: '800', fontFamily: 'Inter' },
 
-    content: { padding: Spacing.screenH, paddingTop: 18, gap: 16 },
+    content: { padding: Spacing.screenH, paddingTop: 16, gap: 18 },
 
-    fieldGroup: { marginBottom: 2 },
-    label: { color: C.ink900, fontSize: 14, fontWeight: '700', fontFamily: 'Inter', marginBottom: 10 },
-    reasonList: { gap: 14 },
-    reasonRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-    radio: { width: 20, height: 20, borderRadius: 10, borderWidth: 1.5, borderColor: C.ink300, alignItems: 'center', justifyContent: 'center' },
-    radioSelected: { borderColor: C.cyan700 },
-    radioDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: C.cyan700 },
-    reasonText: { color: C.ink700, fontSize: 15.5, fontFamily: 'Inter' },
-
-    detailsInput: {
-      minHeight: 120, borderRadius: 12, backgroundColor: C.surface,
-      borderWidth: 1, borderColor: V6Colors.fieldBorder,
-      padding: 14, color: C.ink900, fontFamily: 'Inter', fontSize: 15,
+    chip: {
+      backgroundColor: Colors.primaryTonal, borderRadius: 12,
+      paddingHorizontal: 14, paddingVertical: 10,
     },
-    detailsInputFocused: { borderColor: C.cyan700, borderWidth: 2 },
+    chipText: { color: Colors.primaryDeep, fontSize: 13.5, fontWeight: '600', fontFamily: 'Inter' },
+
+    section: { gap: 10 },
+    sectionTitle: { color: C.ink900, fontSize: 14, fontWeight: '700', fontFamily: 'Inter' },
+    reasonList: { gap: 10 },
+
+    detailsInput: { minHeight: 120 },
+    photoNote: { color: C.ink500, fontSize: 13, fontFamily: 'Inter', lineHeight: 18 },
 
     submitButton: {
       alignItems: 'center', justifyContent: 'center',
-      backgroundColor: C.cyan700, borderRadius: V6Radii.btn, paddingVertical: 14, marginTop: 4,
+      backgroundColor: Colors.primary, borderRadius: V6Radii.btn, paddingVertical: 14, marginTop: 4,
       ...V6Shadows.primaryButton,
     },
     submitButtonDisabled: { opacity: 0.6 },
-    submitText: { color: C.onPrimary, fontSize: 16.5, fontWeight: '700', fontFamily: 'Inter' },
+    submitText: { color: Colors.onPrimary, fontSize: 16.5, fontWeight: '700', fontFamily: 'Inter' },
     errorText: { color: V6Colors.dangerText, fontFamily: 'Inter', fontSize: 15, textAlign: 'center' },
   });
   return { appearance: theme.appearance, Colors, V6Colors, C, styles };

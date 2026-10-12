@@ -16,6 +16,19 @@ describe('AcceptBookingModal — starts empty, no address prefill (P12)', () => 
     expect(screen.getByTestId('accept-location-input').props.value).toBe('');
   });
 
+  it('stops the where-are-you address at 300 characters, the most the accept call takes', () => {
+    render(
+      <AcceptBookingModal
+        visible
+        jobTitle="Fix the sink"
+        onConfirm={jest.fn()}
+        onCancel={jest.fn()}
+      />,
+    );
+
+    expect(screen.getByTestId('accept-location-input').props.maxLength).toBe(300);
+  });
+
   it('shows a validation message and does not confirm when submitted empty', () => {
     const onConfirm = jest.fn();
 

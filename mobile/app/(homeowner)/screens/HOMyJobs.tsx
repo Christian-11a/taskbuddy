@@ -1,166 +1,208 @@
 /**
- * HOMyJobs.tsx (HO - My Jobs List)
+ * HOMyJobs.tsx (HO - My Jobs list)
  *
- * v6 design: matches taskbuddy_UI_update.html's #ho-myjobs screen — white
- * topbar with a "+ New" action, underline-style .job-tabs, and .clean-job-card
- * rows. The calendar that used to be embedded here (before this screen
- * existed in the mockup as its own tab) now lives in HOCalendarScreen.tsx.
- *
- * Filters are All / Active / Completed / Cancelled (QA asked for fewer). The
- * card's status pill carries the fine-grained state (Open, Awaiting
- * Provider, Confirmed, In Progress).
- *
- * Each card carries the seven things a homeowner needs to tell one job from
- * another without opening it: name, location, status, urgency, price, how
- * long it has been up, and who is doing it.
+ * Figma "My Jobs · List": the title row (+ New, and the List/Calendar switch
+ * that App passes in), one row of filter pills with counts, and the jobs under
+ * date headings. Every job is a JobRow. All of the homeowner's jobs load once;
+ * the filters, counts and groups are worked out on the device.
  */
 
-import { useThemedStyles, type Palette as ThemePalette } from '../../../src/context/ThemeContext';
-import React from 'react';
-import { useRetainedScroll, useRetainedState } from '../../../src/hooks/useRetainedState';
+import React, { ReactNode, useEffect, useMemo, useState } from 'react';
+import { RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import {
-  ScrollView,
-  StyleSheet,
-  Text,
-  View,
-} from 'react-native';
-import Tap from '../../../src/components/ui/Tap';
-import { ClipboardList, Clock, Plus, User } from 'lucide-react-native';
+  CalendarCheck,
+  CircleCheck,
+  CircleX,
+  ClipboardList,
+  Hourglass,
+  Inbox,
+  Plus,
+  type LucideIcon,
+} from 'lucide-react-native';
+import { useThemedStyles, type Palette as ThemePalette } from '../../../src/context/ThemeContext';
 import { Spacing } from '../../../src/constants/theme';
-import { useHeaderTop } from '../../../src/hooks/useHeaderTop';
+import Tap from '../../../src/components/ui/Tap';
+import FilterPill from '../../../src/components/ui/FilterPill';
+import JobRow from '../../../src/components/ui/JobRow';
+import EmptyCard from '../../../src/components/ui/EmptyCard';
+import EmptyRow from '../../../src/components/ui/EmptyRow';
+import LoadErrorCard from '../../../src/components/ui/LoadErrorCard';
+import StaleHint from '../../../src/components/ui/StaleHint';
+import SlowLoadNote from '../../../src/components/ui/SlowLoadNote';
+import ScreenSkeleton from '../../../src/components/ScreenSkeleton';
 import { HOScreen } from '../../../src/types/navigation';
 import { useAsyncData } from '../../../src/hooks/useAsyncData';
+import { useRetainedScroll, useRetainedState } from '../../../src/hooks/useRetainedState';
+import { isList } from '../../../src/lib/savedShapes';
+import { useSlowLoad } from '../../../src/hooks/useSlowLoad';
+import { useHeaderTop } from '../../../src/hooks/useHeaderTop';
+import { useProposalCountsStatus } from '../../../src/hooks/useProposalCounts';
 import { api } from '../../../src/lib/api';
-import { useAuth } from '../../../src/context/AuthContext';
-import { jobStatusMeta, timeAgo } from '../../../src/lib/format';
-import JobCard from '../../../src/components/JobCard';
-import ScreenSkeleton from '../../../src/components/ScreenSkeleton';
+import { peso } from '../../../src/lib/format';
+import { jobRowStatus } from '../../../src/lib/jobRowStatus';
+import {
+  JOB_LIST_FILTERS,
+  countJobsByFilter,
+  filterPillCount,
+  jobListSections,
+  type JobListFilter,
+} from '../../../src/lib/myJobsList';
 
-// Grouped filters, not one per status: the status pill on each card already
-// says exactly where a job is, so the tabs only need to split live work from
-// finished work.
-const FILTER_TABS = ['All', 'Active', 'Ongoing', 'Completed', 'Cancelled'] as const;
-type FilterTab = (typeof FILTER_TABS)[number];
+/** What an empty filter says, and the icon for it. */
+const EMPTY_COPY: Record<JobListFilter, { icon: LucideIcon; title: string; body: string }> = {
+  all: { icon: ClipboardList, title: 'No jobs yet', body: 'Post a job when you need help.' },
+  needs: { icon: Inbox, title: 'Nothing needs you', body: 'Open jobs with new proposals show up here.' },
+  booked: { icon: CalendarCheck, title: 'No booked jobs', body: 'Jobs with a confirmed provider show up here.' },
+  waiting: { icon: Hourglass, title: 'Nothing waiting', body: 'Open jobs that have no proposals yet show up here.' },
+  done: { icon: CircleCheck, title: 'No completed jobs', body: 'Jobs you finish show up here.' },
+  closed: { icon: CircleX, title: 'No cancelled or expired jobs', body: 'Jobs you cancel, or that expire, show up here.' },
+};
 
 interface MyJobsProps {
   onNavigate: (screen: HOScreen, jobId?: string) => void;
+  /** Rendered at the right end of the title row (App puts the List/Calendar switch here). */
+  headerRight?: ReactNode;
 }
 
-export default function MyJobs({ onNavigate }: MyJobsProps) {
-  const { C, styles, V6Colors } = useThemedStyles(createThemedStyles);
+export default function MyJobs({ onNavigate, headerRight }: MyJobsProps) {
+  const { Colors, V6Colors, styles } = useThemedStyles(createThemedStyles);
   const headerTop = useHeaderTop();
-  const [activeFilter, setActiveFilter] = useRetainedState<FilterTab>('ho.myJobs.filter', 'All');
-  const [categoryId, setCategoryId] = useRetainedState<number | null>('ho.myJobs.category', null);
-  const { profile } = useAuth();
-  const categories = useAsyncData(() => api.categories(), []);
-  const scroll = useRetainedScroll(`ho.myJobs.${activeFilter}.${categoryId ?? 'all'}`);
-  const { data, loading, error, reload } = useAsyncData(() => api.myJobs({
-    category_id: categoryId ?? undefined,
-    status_group: activeFilter === 'All' ? undefined : activeFilter.toLowerCase() as 'active' | 'ongoing' | 'completed' | 'cancelled',
-  }), [activeFilter, categoryId], `ho-jobs:${profile?.id}:${activeFilter}:${categoryId ?? 'all'}`);
-  const jobs = data ?? [];
-  const hasFilter = activeFilter !== 'All' || categoryId !== null;
+  const [filter, setFilter] = useRetainedState<JobListFilter>('ho.myJobs.filter', 'all');
+  const scroll = useRetainedScroll(`ho.myJobs.${filter}`);
+  const { data, loading, error, reload, stale, refreshing: fetching } = useAsyncData(
+    () => api.myJobs(),
+    [],
+    'ho-jobs',
+    { persist: true, validate: isList },
+  );
+  const [refreshing, setRefreshing] = useState(false);
+  // useAsyncData's reload() is fire-and-forget; a new `data` or `error` means the fetch settled.
+  useEffect(() => {
+    setRefreshing(false);
+  }, [data, error]);
+
+  const jobs = useMemo(() => data ?? [], [data]);
+  const { counts: proposals, loading: proposalsLoading } = useProposalCountsStatus(jobs);
+  const counts = useMemo(() => countJobsByFilter(jobs, proposals), [jobs, proposals]);
+  const sections = useMemo(
+    () => jobListSections(jobs, filter, proposals, new Date()),
+    [jobs, filter, proposals],
+  );
+  // Each job's position in the list, for the my-jobs-card-N test ids the maestro flows use.
+  const positions = useMemo(
+    () => new Map(sections.flatMap((section) => section.jobs).map((job, index): [string, number] => [job.id, index])),
+    [sections],
+  );
+  // Rows show whenever there is data, even when a refresh failed: the hint says it is saved data.
+  const settled = !loading && data !== null;
+  const slow = useSlowLoad(loading, data !== null);
+  const empty = EMPTY_COPY[filter];
+
+  const onRefresh = () => {
+    setRefreshing(true);
+    reload();
+  };
 
   return (
     <View style={styles.screen}>
-      {/* Header — matches .topbar */}
-      <View style={[styles.header, { paddingTop: headerTop }]}>
-        <View style={styles.headerTopRow}>
-          <Text style={styles.headerTitle}>My Jobs</Text>
-          <Tap
-            style={styles.newBtn}
-            onPress={() => onNavigate('Create Job')}
-            activeOpacity={0.8}
-          >
-            <Plus size={15} color={V6Colors.link} strokeWidth={2.5} />
-            <Text style={styles.newBtnText}>New</Text>
-          </Tap>
+      <View style={[styles.topBar, { paddingTop: headerTop }]}>
+        <View style={styles.titleRow}>
+          <Text style={styles.title} numberOfLines={1}>My Jobs</Text>
+          <View style={styles.titleActions}>
+            <Tap
+              style={styles.newButton}
+              onPress={() => onNavigate('Create Job')}
+              accessibilityRole="button"
+              accessibilityLabel="New job"
+              hitSlop={{ top: 12, bottom: 12, left: 8, right: 8 }}
+            >
+              <Plus size={16} color={Colors.link} strokeWidth={2.5} />
+              <Text style={styles.newText}>New</Text>
+            </Tap>
+            {headerRight}
+          </View>
         </View>
       </View>
 
-      {/* Filter tabs — matches .job-tabs (underline style) */}
-      <View style={styles.tabsWrap}>
+      <View style={styles.filterBar}>
         <ScrollView
-          testID="my-jobs-tabs"
           horizontal
-          alwaysBounceHorizontal
+          testID="my-jobs-filters"
           showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.tabsContent}
+          style={styles.filterScroll}
+          contentContainerStyle={styles.filterRow}
         >
-          {FILTER_TABS.map((tab) => (
-            <Tap
-              key={tab}
-              style={styles.jobTab}
-              onPress={() => setActiveFilter(tab)}
-              activeOpacity={0.7}
-            >
-              <Text style={[styles.jobTabText, activeFilter === tab && styles.jobTabTextActive]}>
-                {tab}
-              </Text>
-              {activeFilter === tab && <View style={styles.jobTabUnderline} />}
-            </Tap>
+          {JOB_LIST_FILTERS.map(({ key, label }) => (
+            <FilterPill
+              key={key}
+              label={label}
+              count={settled ? filterPillCount(key, counts, proposalsLoading) : undefined}
+              selected={filter === key}
+              onPress={() => setFilter(key)}
+            />
           ))}
         </ScrollView>
       </View>
 
-      <View style={styles.categoriesWrap}>
-        <Text style={styles.categoryLabel}>Service category</Text>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.categoryChips}>
-          {[{ id: null, name: 'All services' }, ...(categories.data ?? [])].map((category) => (
-            <Tap key={category.id ?? 'all'} accessibilityRole="radio"
-              accessibilityState={{ selected: categoryId === category.id }}
-              onPress={() => setCategoryId(category.id)}
-              style={[styles.categoryChip, categoryId === category.id && styles.categoryChipActive]}>
-              <Text style={[styles.categoryText, categoryId === category.id && styles.categoryTextActive]}>{category.name}</Text>
-            </Tap>
-          ))}
-        </ScrollView>
-        {!!categories.error && <Text style={styles.stateText}>{categories.error}</Text>}
-        {hasFilter && <Tap onPress={() => { setActiveFilter('All'); setCategoryId(null); }}><Text style={styles.reset}>Clear filters</Text></Tap>}
-      </View>
-
-      {/* Job list */}
       <ScrollView
-        key={`${activeFilter}:${categoryId ?? 'all'}`}
+        key={filter}
         testID="my-jobs-list"
         {...scroll}
         style={styles.body}
         contentContainerStyle={styles.bodyContent}
         contentInsetAdjustmentBehavior="automatic"
         showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor={V6Colors.link}
+            colors={[V6Colors.link]}
+          />
+        }
       >
+        <StaleHint stale={stale} refreshing={fetching} error={error} onRetry={reload} />
+        {slow && <SlowLoadNote />}
         {loading && <ScreenSkeleton variant="list" />}
-        {!!error && !loading && <View><Text style={styles.stateText}>{error}</Text><Tap onPress={reload}><Text style={styles.reset}>Try again</Text></Tap></View>}
-
-        {!loading && !error && jobs.length === 0 && (
-          <View style={styles.emptyState}>
-            <ClipboardList size={30} color={C.ink300} />
-            <Text style={styles.emptyTitle}>{hasFilter ? 'No matching jobs' : 'No jobs here yet'}</Text>
-            <Text style={styles.emptyText}>
-              {hasFilter ? 'Choose another status or service category, or clear the filters.' : 'Post a new job when you need help.'}
-            </Text>
-          </View>
+        {!!error && !loading && data === null && (
+          <LoadErrorCard title="Couldn't load your jobs" message={error} onRetry={reload} />
         )}
 
-        {!loading && !error && jobs.map((job, index) => (
-          <JobCard
-            key={job.id}
-            testID={`my-jobs-card-${index}`}
-            title={job.title}
-            budget={job.budget}
-            address={job.address}
-            status={jobStatusMeta(job.status, V6Colors)}
-            urgency={job.urgency}
-            footer={[
-              {
-                icon: <User size={13} color={C.ink400} />,
-                text: job.assigned_provider?.full_name ?? 'No provider yet',
-              },
-              // Elapsed since posting — how long this has been waiting.
-              { icon: <Clock size={13} color={C.ink400} />, text: timeAgo(job.posted_at) },
-            ]}
-            onPress={() => onNavigate('Job Detail', job.id)}
-          />
+        {settled && sections.length === 0 && (
+          <EmptyCard>
+            <EmptyRow
+              icon={empty.icon}
+              title={empty.title}
+              body={empty.body}
+              actionLabel={filter === 'all' ? 'Post a job' : undefined}
+              onAction={filter === 'all' ? () => onNavigate('Create Job') : undefined}
+            />
+          </EmptyCard>
+        )}
+
+        {settled && sections.map((section) => (
+          <View key={section.key} style={styles.section}>
+            {!!section.label && (
+              <Text style={styles.sectionLabel} accessibilityRole="header">{section.label}</Text>
+            )}
+            <View style={styles.rows}>
+              {section.jobs.map((job) => {
+                const status = jobRowStatus(job, proposals[job.id]);
+                return (
+                  <JobRow
+                    key={job.id}
+                    testID={`my-jobs-card-${positions.get(job.id)}`}
+                    title={job.title}
+                    meta={status.meta}
+                    tone={status.tone}
+                    amount={job.budget != null ? peso(job.budget) : ''}
+                    date={job.scheduled_at}
+                    onPress={() => onNavigate('Job Detail', job.id)}
+                  />
+                );
+              })}
+            </View>
+          </View>
         ))}
 
         <View style={{ height: 20 }} />
@@ -171,51 +213,30 @@ export default function MyJobs({ onNavigate }: MyJobsProps) {
 
 function createThemedStyles(theme: ThemePalette) {
   const { Colors, V6Colors } = theme;
-  const C = V6Colors;
   const styles = StyleSheet.create({
-    screen: { flex: 1, backgroundColor: C.canvas },
+    screen: { flex: 1, backgroundColor: V6Colors.canvas },
 
-    header: {
-      backgroundColor: C.surface,
-      paddingHorizontal: Spacing.screenH,
-      paddingBottom: 12,
-      borderBottomWidth: 1,
-      borderBottomColor: V6Colors.line,
+    topBar: { backgroundColor: V6Colors.surface, paddingHorizontal: Spacing.screenH, paddingBottom: 12 },
+    titleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
+    title: {
+      flexShrink: 1, color: V6Colors.ink900, fontFamily: 'Inter', fontSize: 21.5, fontWeight: '800', letterSpacing: -0.3,
     },
-    headerTopRow: {
-      flexDirection: 'row',
-      justifyContent: 'space-between',
-      alignItems: 'center',
-    },
-    headerTitle: { color: C.ink900, fontSize: 21.5, fontWeight: '800', fontFamily: 'Inter', letterSpacing: -0.3 },
-    newBtn: {
-      flexDirection: 'row', alignItems: 'center', gap: 4,
-      paddingVertical: 6, paddingHorizontal: 4,
-    },
-    newBtnText: { color: V6Colors.link, fontWeight: '700', fontSize: 14.5, fontFamily: 'Inter' },
+    titleActions: { flexDirection: 'row', alignItems: 'center', gap: 12, flexShrink: 0 },
+    newButton: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingVertical: 6, paddingHorizontal: 4 },
+    newText: { color: Colors.link, fontFamily: 'Inter', fontSize: 14.5, fontWeight: '700' },
 
-    tabsWrap: { backgroundColor: C.surface, borderBottomWidth: 1, borderBottomColor: C.line, paddingHorizontal: Spacing.screenH },
-    tabsContent: { gap: 24, paddingRight: Spacing.screenH },
-    jobTab: { paddingVertical: 13, alignItems: 'center' },
-    jobTabText: { color: C.ink400, fontSize: 13.5, fontWeight: '600', fontFamily: 'Inter' },
-    jobTabTextActive: { color: C.ink900, fontWeight: '800' },
-    jobTabUnderline: { position: 'absolute', left: 0, right: 0, bottom: 0, height: 2.5, backgroundColor: C.cyan700, borderRadius: 999 },
+    filterBar: { backgroundColor: V6Colors.surface, borderBottomWidth: 1, borderBottomColor: V6Colors.line },
+    filterScroll: { flexGrow: 0 },
+    filterRow: { gap: 8, paddingHorizontal: Spacing.screenH, paddingVertical: 12 },
 
-    categoriesWrap: { paddingHorizontal: Spacing.screenH, paddingVertical: 12, backgroundColor: C.surface },
-    categoryLabel: { color: C.ink500, fontSize: 12, marginBottom: 8 },
-    categoryChips: { gap: 8 },
-    categoryChip: { borderWidth: 1, borderColor: C.line, borderRadius: 999, paddingHorizontal: 14, paddingVertical: 9 },
-    categoryChipActive: { backgroundColor: C.cyan700, borderColor: C.cyan700 },
-    categoryText: { color: C.ink700, fontSize: 13 },
-    categoryTextActive: { color: C.onPrimary },
-    reset: { color: V6Colors.link, paddingVertical: 10, textAlign: 'center', fontWeight: '600' },
     body: { flex: 1 },
     bodyContent: { paddingHorizontal: Spacing.screenH, paddingTop: 16, paddingBottom: 20 },
-
-    stateText: { color: C.ink500, fontSize: 16.5, fontFamily: 'Inter', textAlign: 'center', marginTop: 30 },
-    emptyState: { alignItems: 'center', paddingVertical: 48, paddingHorizontal: 24 },
-    emptyTitle: { color: C.ink800, fontSize: 16, fontWeight: '700', fontFamily: 'Inter', marginTop: 10, marginBottom: 4 },
-    emptyText: { color: C.ink400, fontSize: 14, fontFamily: 'Inter', textAlign: 'center', lineHeight: 17 },
+    section: { marginBottom: 18 },
+    sectionLabel: {
+      color: V6Colors.ink500, fontFamily: 'Inter', fontSize: 12, fontWeight: '700', letterSpacing: 0.6,
+      textTransform: 'uppercase', marginBottom: 8,
+    },
+    rows: { gap: 8 },
   });
-  return { Colors, V6Colors, C, styles };
+  return { Colors, V6Colors, styles };
 }

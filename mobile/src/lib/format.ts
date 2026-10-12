@@ -10,6 +10,21 @@ export function peso(amount: number | string | null | undefined): string {
   })}`;
 }
 
+/**
+ * A short ₱ amount for small spaces (the Home wallet chip). Below ₱100,000 it is
+ * the full peso() amount; from there it is K ("₱125.5K") and then M
+ * ("₱1.25M"), with M taking over where K would round up to 1000K.
+ */
+export function formatPesoShort(amount: number | string | null | undefined): string {
+  const n = Number(amount ?? 0);
+  if (!Number.isFinite(n) || Math.abs(n) < 100000) return peso(n);
+  const sign = n < 0 ? '-' : '';
+  const abs = Math.abs(n);
+  const trimmed = (value: number) => String(Number(value.toFixed(2)));
+  if (abs < 999950) return `₱${sign}${trimmed(Math.round(abs / 100) / 10)}K`;
+  return `₱${sign}${trimmed(Math.round(abs / 10000) / 100)}M`;
+}
+
 /** Initials from a full name, e.g. "Alex Chen" → "AC". */
 export function initials(name: string | null | undefined): string {
   if (!name) return '?';
@@ -38,6 +53,22 @@ export function timeOfDay(iso: string | null | undefined): string {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return '';
   return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+}
+
+/** "Fri, Oct 10", or '' when the date can't be read. */
+export function dayLabel(iso: string | null | undefined): string {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  return d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+}
+
+/** "7:10 PM", or '' when the time can't be read. */
+export function clockLabel(iso: string | null | undefined): string {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  return d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
 }
 
 /** "just now" / "10 mins ago" / "3 hours ago" / "May 13" */
@@ -155,6 +186,17 @@ export function monthYear(iso: string | null | undefined): string {
 export function plural(count: number | null | undefined, singular: string, pluralForm = `${singular}s`): string {
   const n = count ?? 0;
   return `${n} ${n === 1 ? singular : pluralForm}`;
+}
+
+/**
+ * "2 yrs" for a provider who has set their years of experience. Null when it was
+ * never set (the API stores 0 until the provider saves one), so the screen hides
+ * the chip rather than tell a client the provider has no experience.
+ */
+export function experienceLabel(years: number | null | undefined): string | null {
+  if (years == null) return null;
+  const n = Number(years);
+  return Number.isFinite(n) && n > 0 ? plural(n, 'yr') : null;
 }
 
 /** Display text for an error shown to users. A bare server failure message

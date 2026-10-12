@@ -74,7 +74,7 @@ export default function JobCard({
         <View style={styles.pillRow}>
           {allPills.map((pill) => (
             <View key={pill.label} style={[styles.pill, { backgroundColor: pill.bg }]}>
-              {pill.dot && <View style={[styles.dot, { backgroundColor: pill.color }]} />}
+              {pill.dot && <View accessible={false} style={[styles.dot, { backgroundColor: pill.color }]} />}
               <Text style={[styles.pillText, { color: pill.color }]}>{pill.label}</Text>
             </View>
           ))}

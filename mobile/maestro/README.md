@@ -293,7 +293,7 @@ Deliberately untested here. Do not re-discover these as bugs:
 - `smoke_login_both_roles` — harness proof: launches clean, logs in as the
   client and the provider, asserts each role's home screen.
 - `nav_bottombar_client` — regression cover for BUG-002: asserts the homeowner
-  bottom-nav routes (a regular tab, Home, and the Create-job FAB) each navigate.
+  bottom-nav tabs (Wallet, Home, My Jobs and Profile) each navigate.
   Taps by `nav-tab-*` testID, since the label "Home" collides with the OS
   launcher's own Home button in the accessibility tree.
 - `auth_wrong_password` — wrong password on a real account shows an inline

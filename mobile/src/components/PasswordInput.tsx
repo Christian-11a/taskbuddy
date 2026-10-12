@@ -1,5 +1,5 @@
 import { useThemedStyles, type Palette as ThemePalette } from '../context/ThemeContext';
-import React, { forwardRef, useState } from 'react';
+import React, { forwardRef, useImperativeHandle, useRef, useState } from 'react';
 import {
   StyleProp,
   StyleSheet,
@@ -10,6 +10,7 @@ import {
   ViewStyle,
 } from 'react-native';
 import Tap from './ui/Tap';
+import { useRevealOnFocus } from './ui/KeyboardAwareScrollView';
 import { Eye, EyeOff } from 'lucide-react-native';
 
 interface PasswordInputProps extends Omit<TextInputProps, 'secureTextEntry' | 'style'> {
@@ -24,18 +25,26 @@ interface PasswordInputProps extends Omit<TextInputProps, 'secureTextEntry' | 's
  * it drops into any form; this only owns the secure-entry state and the eye.
  */
 const PasswordInput = forwardRef<TextInput, PasswordInputProps>(function PasswordInput(
-  { containerStyle, inputStyle, iconColor, ...inputProps },
+  { containerStyle, inputStyle, iconColor, onFocus, ...inputProps },
   ref,
 ) {
   const { V6Colors, styles, appearance } = useThemedStyles(createThemedStyles);
   const [visible, setVisible] = useState(false);
+  // The field keeps its own handle so it can be scrolled into view; the caller's ref still gets the TextInput.
+  const inputRef = useRef<TextInput>(null);
+  const revealField = useRevealOnFocus(inputRef);
+  useImperativeHandle(ref, () => inputRef.current as TextInput, [ref]);
   return (
     <View style={[styles.row, containerStyle]}>
       <TextInput keyboardAppearance={appearance}
-        ref={ref}
+        ref={inputRef}
         autoCapitalize="none"
         autoCorrect={false}
         {...inputProps}
+        onFocus={(e) => {
+          revealField();
+          onFocus?.(e);
+        }}
         secureTextEntry={!visible}
         style={[styles.input, inputStyle]}
       />

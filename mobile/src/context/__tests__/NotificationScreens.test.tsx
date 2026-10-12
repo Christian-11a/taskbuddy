@@ -1,5 +1,7 @@
+import { findUnnamedControls } from '../../testing/a11yAudit';
 import React from 'react';
-import { render, screen, fireEvent, act } from '@testing-library/react-native';
+import { Ban, ShieldAlert, UserPlus } from 'lucide-react-native';
+import { render, screen, fireEvent, act, within } from '@testing-library/react-native';
 import HONotificationsScreen from '../../../app/(homeowner)/screens/HONotificationsScreen';
 import SPNotificationsScreen from '../../../app/(provider)/screens/SPNotificationsScreen';
 import { api } from '../../lib/api';
@@ -32,19 +34,40 @@ const row = {
   created_at: new Date().toISOString(),
   data: { job_id: 'j1', conversation_id: 'c1' },
 };
-beforeEach(() => {
-  jest.clearAllMocks();
+const older = {
+  ...row,
+  id: 'n2',
+  type: 'job_update',
+  title: 'Old offer',
+  body: 'From last week',
+  read_at: '2026-10-01T00:00:00.000Z',
+  // 26 hours ago is always on an earlier calendar day than today.
+  created_at: new Date(Date.now() - 26 * 60 * 60 * 1000).toISOString(),
+  data: { job_id: 'j2' },
+};
+type TestRow = Omit<typeof row, 'read_at' | 'data'> & {
+  read_at: string | null;
+  data: Record<string, string> | null;
+};
+
+function setNotifications(notifications: TestRow[], unreadCount = notifications.filter((n) => !n.read_at).length) {
   (useNotifications as jest.Mock).mockReturnValue({
-    notifications: [row],
-    unreadCount: 1,
+    notifications,
+    unreadCount,
     loading: false,
     error: null,
     reload: jest.fn(),
   });
+}
+
+beforeEach(() => {
+  jest.clearAllMocks();
+  setNotifications([row]);
   (api.markNotificationRead as jest.Mock).mockResolvedValue({ success: true });
   (api.markAllNotificationsRead as jest.Mock).mockResolvedValue({
     success: true,
   });
+  (api.deleteNotification as jest.Mock).mockResolvedValue(undefined);
 });
 it.each([HONotificationsScreen, SPNotificationsScreen])(
   'opens chat for message rows in either role',
@@ -81,3 +104,163 @@ it('shows provider read failures instead of leaving an unhandled rejection', asy
   });
   expect(showToast).toHaveBeenCalledWith('Write failed', 'error');
 });
+
+describe('notification list layout', () => {
+  it.each([HONotificationsScreen, SPNotificationsScreen])(
+    'splits the rows into Today and Earlier',
+    (Screen) => {
+      setNotifications([row, older]);
+      render(<Screen {...callbacks} />);
+      expect(screen.getByText('Today')).toBeTruthy();
+      expect(screen.getByText('Earlier')).toBeTruthy();
+      expect(screen.getByText('Old offer')).toBeTruthy();
+    },
+  );
+
+  it.each([HONotificationsScreen, SPNotificationsScreen])(
+    'shows the unread count beside Mark all read',
+    (Screen) => {
+      setNotifications([row, older]);
+      render(<Screen {...callbacks} />);
+      expect(screen.getByText('1 unread')).toBeTruthy();
+      expect(screen.getByText('Mark all read')).toBeTruthy();
+    },
+  );
+
+  it.each<[React.ComponentType<any>, string]>([
+    [HONotificationsScreen, 'New proposals, bookings and messages will show up here.'],
+    [SPNotificationsScreen, 'Job invites, proposal updates, bookings and messages will show up here.'],
+  ])('says what will show up when there is nothing yet', (Screen, body) => {
+    setNotifications([]);
+    render(<Screen {...callbacks} />);
+    expect(screen.getByText("You're all caught up")).toBeTruthy();
+    expect(screen.getByText(body)).toBeTruthy();
+  });
+
+  it.each([HONotificationsScreen, SPNotificationsScreen])(
+    'puts the caught-up state inside the card, like the other empty states',
+    (Screen) => {
+      setNotifications([]);
+      render(<Screen {...callbacks} />);
+      expect(within(screen.getByTestId('empty-card')).getByText("You're all caught up")).toBeTruthy();
+    },
+  );
+
+  it.each([HONotificationsScreen, SPNotificationsScreen])(
+    'a failed load with nothing to show is a card whose Try again reloads the notifications',
+    (Screen) => {
+      const reload = jest.fn();
+      (useNotifications as jest.Mock).mockReturnValue({
+        notifications: [], unreadCount: 0, loading: false, error: 'Notifications unavailable', reload,
+      });
+      render(<Screen {...callbacks} />);
+      const card = screen.getByTestId('error-card');
+      expect(within(card).getByText("Couldn't load notifications")).toBeTruthy();
+      expect(within(card).getByText('Notifications unavailable')).toBeTruthy();
+      fireEvent.press(within(card).getByRole('button', { name: 'Try again' }));
+      expect(reload).toHaveBeenCalledTimes(1);
+    },
+  );
+});
+
+describe('deleting a notification', () => {
+  beforeEach(() => {
+    jest.useFakeTimers();
+  });
+  afterEach(async () => {
+    // Commit anything still waiting out its Undo window so the next test starts clean.
+    await act(async () => {
+      jest.runOnlyPendingTimers();
+    });
+    jest.useRealTimers();
+  });
+
+  const undoAction = () => {
+    const call = (showToast as jest.Mock).mock.calls.filter((c) => c[0] === 'Notification deleted').at(-1);
+    return call?.[2]?.onPress as (() => void) | undefined;
+  };
+
+  it.each([HONotificationsScreen, SPNotificationsScreen])(
+    'hides the row, offers Undo and sends the delete only after the window',
+    async (Screen) => {
+      render(<Screen {...callbacks} />);
+      fireEvent.press(screen.getByLabelText('Delete notification: New message'));
+
+      expect(screen.queryByText('Delete notification?')).toBeNull();
+      expect(screen.queryByText('New message')).toBeNull();
+      expect(showToast).toHaveBeenCalledWith('Notification deleted', 'info', expect.objectContaining({ label: 'Undo' }));
+      expect(api.deleteNotification).not.toHaveBeenCalled();
+
+      await act(async () => {
+        jest.advanceTimersByTime(4999);
+      });
+      expect(api.deleteNotification).not.toHaveBeenCalled();
+      await act(async () => {
+        jest.advanceTimersByTime(1);
+      });
+      expect(api.deleteNotification).toHaveBeenCalledTimes(1);
+      expect(api.deleteNotification).toHaveBeenCalledWith('n1');
+    },
+  );
+
+  it.each([HONotificationsScreen, SPNotificationsScreen])(
+    'Undo brings the row back and never sends the delete',
+    async (Screen) => {
+      render(<Screen {...callbacks} />);
+      fireEvent.press(screen.getByLabelText('Delete notification: New message'));
+
+      const undo = undoAction();
+      expect(undo).toBeDefined();
+      act(() => undo?.());
+
+      expect(screen.getByText('New message')).toBeTruthy();
+      await act(async () => {
+        jest.advanceTimersByTime(10000);
+      });
+      expect(api.deleteNotification).not.toHaveBeenCalled();
+    },
+  );
+
+  it('keeps the row back and reports the error when the delete fails', async () => {
+    (api.deleteNotification as jest.Mock).mockRejectedValueOnce(new Error('Server said no'));
+    render(<HONotificationsScreen {...callbacks} />);
+    fireEvent.press(screen.getByLabelText('Delete notification: New message'));
+
+    await act(async () => {
+      jest.advanceTimersByTime(5000);
+    });
+
+    expect(showToast).toHaveBeenCalledWith('Could not delete that notification.', 'error');
+    expect(screen.getByText('New message')).toBeTruthy();
+  });
+});
+
+it.each([HONotificationsScreen, SPNotificationsScreen])(
+  'every control has an accessible name: back, the notification rows and their delete buttons',
+  async (Screen) => {
+    render(<Screen {...callbacks} />);
+    expect(await screen.findByText('New message')).toBeTruthy();
+    expect(findUnnamedControls(screen.UNSAFE_root)).toEqual([]);
+  },
+);
+
+it.each([HONotificationsScreen, SPNotificationsScreen])(
+  'shows the icon for what happened: an applicant for a new application, a ban for a cancellation, never the alert shield',
+  (Screen) => {
+    setNotifications([
+      { ...row, id: 'n3', type: 'application_update', title: 'New application', body: 'Ana applied to "Fix sink".', data: { job_id: 'j1' } },
+      {
+        ...row,
+        id: 'n4',
+        type: 'dispute_update',
+        title: 'Cancellation agreed',
+        body: 'Cancellation agreed. Any unsettled escrow was refunded to the client.',
+        data: { job_id: 'j1', dispute_id: 'd1' },
+      },
+    ]);
+    render(<Screen {...callbacks} />);
+    expect(screen.UNSAFE_getByType(UserPlus)).toBeTruthy();
+    expect(screen.UNSAFE_getByType(Ban)).toBeTruthy();
+    expect(screen.UNSAFE_queryByType(ShieldAlert)).toBeNull();
+  },
+);

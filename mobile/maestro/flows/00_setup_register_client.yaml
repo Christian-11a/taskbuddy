@@ -6,11 +6,11 @@ appId: com.taskbuddy.app
 # Stops at the OTP screen deliberately: the account already exists by then, and
 # the emailed code is unreadable to Maestro. The SQL confirms it instead.
 #
-# Register's selectors: FormInput now ships testIDs (input-name, input-email,
-# input-password, input-confirm-password) because positional selection on the
-# two secure fields is unreliable — a filled secure field stops exposing its
-# value to accessibility, so the number of matches for `••••••••` changes
-# mid-form and both entries land in the first box. Do not go back to
+# Register's selectors: the four form fields ship testIDs (input-name,
+# input-email, input-password, input-confirm-password) because positional
+# selection on the two secure fields is unreliable — a filled secure field stops
+# exposing its value to accessibility, so the number of matches for `••••••••`
+# changes mid-form and both entries land in the first box. Do not go back to
 # placeholder+index here.
 - runFlow: _helpers/launch_fresh.yaml
 # The Login screen paints before React attaches its press handlers on a cold
@@ -19,31 +19,31 @@ appId: com.taskbuddy.app
 # are still on Login.
 - waitForAnimationToEnd:
     timeout: 10000
-# Tapped by TEXT, not id. `btn-signup` is a bare `Pressable`, which React
-# Native does not mark accessible by default, so `tapOn: { id: btn-signup }`
-# reports COMPLETED and does nothing at all. See maestro/README.md.
-- tapOn: "Sign Up"
+# Tapped by TEXT: the sign-up link is a Pressable with its own accessibilityLabel
+# "Create an account", and the label is the reliable hook. See maestro/README.md.
+- tapOn: "Create an account"
 - runFlow:
     when:
-      visible: "Welcome!"
+      visible: "Welcome back"
     commands:
       # Race guard (see profile_edit_client.yaml / bug-log.md session note,
       # 2026-09-13): this retry can run after the first tap's own navigation
-      # already left "Sign Up" behind, where it isn't visible text yet —
+      # already left "Create an account" behind, where it isn't visible text yet —
       # optional so that case is a no-op instead of a hard failure.
       - tapOn:
-          text: "Sign Up"
+          text: "Create an account"
           optional: true
 - extendedWaitUntil:
     visible: "Create account"
     timeout: 30000
-# Role defaults to homeowner (RegisterScreen.tsx:211), so no role tap here.
-# All four by testID. The two password fields share the placeholder
-# `••••••••`, and a secure field stops exposing its value to accessibility
-# once filled — so the number of elements matching that placeholder *changes*
-# as the form is filled, and any positional selector silently lands on the
-# wrong field. Both entries end up in the first box and registration fails on
-# "Passwords do not match." testIDs were added to FormInput for this.
+# Sign-up starts with the role step. Homeowner is the "I need help at home"
+# card, then Continue opens the details form.
+- tapOn: "I need help at home"
+- tapOn: "Continue"
+- extendedWaitUntil:
+    visible:
+      id: "input-name"
+    timeout: 20000
 - tapOn:
     id: "input-name"
 - inputText: "Maestro Client"
@@ -65,9 +65,10 @@ appId: com.taskbuddy.app
     id: "input-confirm-password"
 - inputText: "TestPass123!"
 - hideKeyboard
-# The three consents do NOT behave alike. Terms and Privacy each open a full
-# screen that has to be accepted; only data-collection is a plain toggle.
-# Tapping all three and expecting three ticks silently leaves two unchecked.
+# The consents do NOT behave alike. The Terms and Privacy row opens a full
+# document that has to be accepted, and only data-collection is a plain toggle.
+# The row opens Terms first; once Terms is accepted, the next tap opens Privacy.
+# Tapping the row once and expecting both ticks silently leaves one unchecked.
 - scrollUntilVisible:
     element:
       id: "chk-terms"
@@ -75,7 +76,7 @@ appId: com.taskbuddy.app
     timeout: 20000
 - tapOn:
     id: "chk-terms"
-# Each consent screen's accept button sits at the end of the copy. Terms is
+# Each consent document's accept button sits at the end of its copy. Terms is
 # short enough to fit on one screen; Privacy is not, so scroll rather than
 # assume — the difference is only content length and will move as copy changes.
 - extendedWaitUntil:
@@ -87,14 +88,8 @@ appId: com.taskbuddy.app
     direction: DOWN
     timeout: 20000
 - tapOn: "I agree to the Terms & Conditions"
-
-- scrollUntilVisible:
-    element:
-      id: "chk-privacy"
-    direction: DOWN
-    timeout: 20000
 - tapOn:
-    id: "chk-privacy"
+    id: "chk-terms"
 - extendedWaitUntil:
     visible: "Privacy Policy"
     timeout: 20000
@@ -116,10 +111,11 @@ appId: com.taskbuddy.app
 
 - scrollUntilVisible:
     element:
-      text: "Sign Up"
+      id: "btn-create-account"
     direction: DOWN
     timeout: 20000
-- tapOn: "Sign Up"
+- tapOn:
+    id: "btn-create-account"
 - extendedWaitUntil:
     visible: "Check your email"
     timeout: 60000

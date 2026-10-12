@@ -116,7 +116,7 @@ export default function TermsAndConditions({
           <ScrollView style={styles.body} contentContainerStyle={styles.bodyContent} showsVerticalScrollIndicator>
             {content.sections.map((section) => (
               <View key={section.heading} style={styles.section}>
-                <Text style={styles.sectionTitle}>{section.heading}</Text>
+                <Text style={styles.sectionTitle} accessibilityRole="header">{section.heading}</Text>
                 <Text style={styles.bodyText}>{section.body}</Text>
               </View>
             ))}

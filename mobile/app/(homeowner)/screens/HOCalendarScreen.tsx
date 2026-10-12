@@ -1,171 +1,213 @@
 /**
  * HOCalendarScreen.tsx
  *
- * v6 design: matches taskbuddy_UI_update.html's #ho-calendar screen — flat
- * white topbar + a month calendar + the selected day's jobs below. Extracted
- * out of HOMyJobs.tsx (which used to embed this inline, from before this
- * screen existed in the mockup as its own bottom-nav tab).
+ * Figma "My Jobs · Calendar", the calendar view of My Jobs: a month card with
+ * round chevrons, a dot on each day with jobs, today ringed and the picked day
+ * filled. Below it the picked day's jobs, then the jobs not scheduled yet, all
+ * as JobRows. App.tsx passes the title and the List/Calendar switch.
  */
 
-import { useThemedStyles, type Palette as ThemePalette } from '../../../src/context/ThemeContext';
-import React, { useMemo, useState } from 'react';
+import React, { ReactNode, useMemo, useState } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
-import Tap from '../../../src/components/ui/Tap';
 import { Calendar } from 'react-native-calendars';
-import {
-  CalendarDays,
-  ChevronLeft,
-  ChevronRight,
-  User,
-} from 'lucide-react-native';
-import { Spacing, V6Radii, V6Shadows } from '../../../src/constants/theme';
+import { CalendarDays, ChevronLeft, ChevronRight } from 'lucide-react-native';
+import { useThemedStyles, type Palette as ThemePalette } from '../../../src/context/ThemeContext';
+import { Spacing, V6Shadows } from '../../../src/constants/theme';
+import Tap from '../../../src/components/ui/Tap';
+import JobRow from '../../../src/components/ui/JobRow';
+import EmptyCard from '../../../src/components/ui/EmptyCard';
+import EmptyRow from '../../../src/components/ui/EmptyRow';
+import LoadErrorCard from '../../../src/components/ui/LoadErrorCard';
+import SectionHeader from '../../../src/components/ui/SectionHeader';
+import StaleHint from '../../../src/components/ui/StaleHint';
+import { CalendarDay, CalendarWeekdays } from '../../../src/components/ui/MonthGrid';
+import ScreenSkeleton from '../../../src/components/ScreenSkeleton';
 import { HOScreen } from '../../../src/types/navigation';
 import { useAsyncData } from '../../../src/hooks/useAsyncData';
-import { api } from '../../../src/lib/api';
-import { jobStatusMeta } from '../../../src/lib/format';
-import ScreenSkeleton from '../../../src/components/ScreenSkeleton';
-import JobCard from '../../../src/components/JobCard';
 import { useHeaderTop } from '../../../src/hooks/useHeaderTop';
+import { isList } from '../../../src/lib/savedShapes';
+import { useProposalCounts } from '../../../src/hooks/useProposalCounts';
+import { api, type Job } from '../../../src/lib/api';
+import { peso, plural } from '../../../src/lib/format';
+import { jobRowStatus } from '../../../src/lib/jobRowStatus';
+import {
+  calendarMarks,
+  dayHeading,
+  jobsOnDay,
+  monthTitle,
+  shiftMonth,
+  unscheduledJobs,
+} from '../../../src/lib/jobCalendar';
+import { dateKey } from '../../../src/lib/localDate';
 
 interface HOCalendarScreenProps {
   onNavigate: (screen: HOScreen, jobId?: string) => void;
+  /** Screen title. My Jobs passes its own title so it doesn't change when the view switches. */
+  title?: string;
+  /** Rendered at the right end of the title row (App puts the List/Calendar switch here). */
+  headerRight?: ReactNode;
 }
 
-export default function HOCalendarScreen({ onNavigate }: HOCalendarScreenProps) {
-  const { C, styles, V6Colors, appearance } = useThemedStyles(createThemedStyles);
+/**
+ * The calendar's own header (its title, arrows and weekday names) is hidden: the
+ * month row and the weekday row above the grid replace it.
+ */
+const NoCalendarHeader = () => null;
+
+const NAV_HIT_SLOP = { top: 6, bottom: 6, left: 6, right: 6 };
+const LINK_HIT_SLOP = { top: 15, bottom: 15, left: 8, right: 8 };
+
+export default function HOCalendarScreen({ onNavigate, title = 'Calendar', headerRight }: HOCalendarScreenProps) {
+  const { styles, V6Colors, appearance } = useThemedStyles(createThemedStyles);
   const headerTop = useHeaderTop();
-  const todayKey = (() => {
-    const d = new Date();
-    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-  })();
+  const todayKey = dateKey(new Date());
   const [selectedDate, setSelectedDate] = useState<string>(todayKey);
-  const [visibleMonth, setVisibleMonth] = useState(selectedDate);
-  const { data, loading, error, reload } = useAsyncData(() => api.myJobs(), [], 'ho-jobs');
-  const jobs = data ?? [];
+  const [visibleMonth, setVisibleMonth] = useState<string>(todayKey);
+  const { data, loading, error, reload, stale, refreshing } = useAsyncData(
+    () => api.myJobs(),
+    [],
+    'ho-jobs',
+    { persist: true, validate: isList },
+  );
+  // A failed refresh with saved jobs keeps the jobs on screen; the hint says so. The error card is for no data.
+  const failedWithoutData = !!error && data === null;
+  const jobs = useMemo(() => data ?? [], [data]);
+  const proposals = useProposalCounts(jobs);
 
-  // A job belongs on the calendar only while it can still happen: not once
-  // it's cancelled or expired, and not an unfilled job whose date has passed.
-  const isOnCalendar = (job: (typeof jobs)[number]) => {
-    if (!job.scheduled_at) return false;
-    if (job.status === 'cancelled' || job.status === 'expired') return false;
-    const d = new Date(job.scheduled_at);
-    if (Number.isNaN(d.getTime())) return false;
-    const unfilled = job.status === 'open' || job.status === 'recommending';
-    if (unfilled && d.getTime() < Date.now()) return false;
-    return true;
+  const dayJobs = useMemo(() => jobsOnDay(jobs, selectedDate, new Date()), [jobs, selectedDate]);
+  const unscheduled = useMemo(() => unscheduledJobs(jobs), [jobs]);
+  const marks = useMemo(() => calendarMarks(jobs, new Date(), selectedDate), [jobs, selectedDate]);
+
+  // The title row stays up while jobs load, so switching views from the list
+  // doesn't blank the header or the List/Calendar switch.
+  const header = (
+    <View style={[styles.header, { paddingTop: headerTop }]}>
+      <View style={styles.headerRow}>
+        <Text style={styles.headerTitle} numberOfLines={1}>{title}</Text>
+        {headerRight}
+      </View>
+    </View>
+  );
+
+  if (loading) {
+    return (
+      <View style={styles.screen}>
+        {header}
+        <ScreenSkeleton variant="list" />
+      </View>
+    );
+  }
+
+  const renderJob = (job: Job) => {
+    const status = jobRowStatus(job, proposals[job.id]);
+    return (
+      <JobRow
+        key={job.id}
+        title={job.title}
+        meta={status.meta}
+        tone={status.tone}
+        amount={job.budget != null ? peso(job.budget) : ''}
+        date={job.scheduled_at}
+        onPress={() => onNavigate('Job Detail', job.id)}
+      />
+    );
   };
-
-  const markedDates = useMemo(() => {
-    const m: Record<string, any> = {};
-    jobs.forEach((job) => {
-      if (!isOnCalendar(job)) return;
-      const d = new Date(job.scheduled_at!);
-      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-      m[key] = { ...(m[key] || {}), marked: true, dotColor: C.cyan700 };
-    });
-    if (selectedDate) {
-      m[selectedDate] = { ...(m[selectedDate] || {}), selected: true, selectedColor: C.cyan700 };
-    }
-    return m;
-  }, [jobs, selectedDate]);
-
-  const jobsForSelectedDate = useMemo(() => {
-    return jobs.filter((job) => {
-      if (!isOnCalendar(job)) return false;
-      const d = new Date(job.scheduled_at!);
-      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-      return key === selectedDate;
-    });
-  }, [jobs, selectedDate]);
-
-  if (loading) return <ScreenSkeleton variant="list" />;
 
   return (
     <View style={styles.screen}>
-      {/* Header — matches .topbar */}
-      <View style={[styles.header, { paddingTop: headerTop }]}>
-        <Text style={styles.headerTitle}>Calendar</Text>
-      </View>
+      {header}
 
       <ScrollView
         style={styles.body}
         contentContainerStyle={styles.bodyContent}
         showsVerticalScrollIndicator={false}
       >
+        <StaleHint stale={stale} refreshing={refreshing} error={error} onRetry={reload} />
         <View style={styles.calendarCard}>
-          <Calendar key={appearance}
+          <View style={styles.monthRow}>
+            <Text style={styles.monthTitle} accessibilityRole="header">{monthTitle(visibleMonth)}</Text>
+            <View style={styles.monthNav}>
+              <Tap
+                style={styles.navButton}
+                hitSlop={NAV_HIT_SLOP}
+                onPress={() => setVisibleMonth((month) => shiftMonth(month, -1))}
+                accessibilityRole="button"
+                accessibilityLabel="Previous month"
+              >
+                <ChevronLeft size={18} color={V6Colors.ink700} />
+              </Tap>
+              <Tap
+                style={styles.navButton}
+                hitSlop={NAV_HIT_SLOP}
+                onPress={() => setVisibleMonth((month) => shiftMonth(month, 1))}
+                accessibilityRole="button"
+                accessibilityLabel="Next month"
+              >
+                <ChevronRight size={18} color={V6Colors.ink700} />
+              </Tap>
+            </View>
+          </View>
+          <CalendarWeekdays />
+          <Calendar
+            key={appearance}
             current={visibleMonth}
+            customHeader={NoCalendarHeader}
+            hideExtraDays
+            firstDay={0}
             onMonthChange={(month) => setVisibleMonth(month.dateString)}
             onDayPress={(day) => setSelectedDate(day.dateString)}
-            markedDates={markedDates}
-            renderArrow={(direction: 'left' | 'right') => (direction === 'left'
-              ? <ChevronLeft size={22} color={V6Colors.link} />
-              : <ChevronRight size={22} color={V6Colors.link} />)}
+            markedDates={marks}
+            dayComponent={CalendarDay}
             theme={{
               calendarBackground: V6Colors.surface,
               backgroundColor: V6Colors.surface,
-              dayTextColor: V6Colors.ink900,
-              textDisabledColor: V6Colors.ink400,
-              monthTextColor: V6Colors.ink900,
-              textSectionTitleColor: V6Colors.ink700,
-              textDayFontFamily: 'Inter',
-              textMonthFontFamily: 'Inter',
-              textDayHeaderFontFamily: 'Inter',
-              textMonthFontWeight: '700',
-              textDayHeaderFontWeight: '600',
-              textMonthFontSize: 17,
-              textDayFontSize: 15,
-              arrowStyle: { padding: 12 },
-              todayTextColor: V6Colors.link,
-              arrowColor: V6Colors.link,
-              selectedDayBackgroundColor: C.cyan700,
             }}
           />
         </View>
 
-        <View style={styles.selectedDateHeader}>
-          <Text style={styles.selectedDateTitle}>
-            {new Date(selectedDate).toLocaleDateString(undefined, { month: 'long', day: 'numeric' })}
-          </Text>
-          <Tap onPress={() => setSelectedDate(todayKey)}>
-            <Text style={styles.textLink}>Today</Text>
-          </Tap>
+        <View style={styles.dayHeader}>
+          <Text style={styles.dayTitle} accessibilityRole="header">{dayHeading(selectedDate)}</Text>
+          {!failedWithoutData && (
+            <View style={styles.dayMeta}>
+              <Text style={styles.dayCount}>{plural(dayJobs.length, 'job')}</Text>
+              {selectedDate !== todayKey && (
+                <Tap
+                  onPress={() => {
+                    setSelectedDate(todayKey);
+                    setVisibleMonth(todayKey);
+                  }}
+                  hitSlop={LINK_HIT_SLOP}
+                  accessibilityRole="button"
+                  accessibilityLabel="Go to today"
+                >
+                  <Text style={styles.textLink}>Today</Text>
+                </Tap>
+              )}
+            </View>
+          )}
         </View>
 
-        {!!error && (
-          <View style={styles.emptyState}>
-            <CalendarDays size={30} color={C.ink300} />
-            <Text style={styles.emptyTitle}>Couldn't load your jobs</Text>
-            <Text style={styles.emptyText}>{error}</Text>
-            <Tap onPress={reload} activeOpacity={0.8}>
-              <Text style={[styles.textLink, { marginTop: 10 }]}>Retry</Text>
-            </Tap>
-          </View>
-        )}
+        {failedWithoutData && <LoadErrorCard title="Couldn't load your schedule" message={error} onRetry={reload} />}
 
-        {!error && jobsForSelectedDate.length === 0 && (
-          <View style={styles.emptyState}>
-            <CalendarDays size={30} color={C.ink300} />
-            <Text style={styles.emptyTitle}>No jobs on this day</Text>
-            <Text style={styles.emptyText}>Jobs with a scheduled date will show up here.</Text>
-          </View>
+        {!failedWithoutData && dayJobs.length === 0 && (
+          <EmptyCard>
+            <EmptyRow
+              icon={CalendarDays}
+              title="No jobs on this day"
+              body="Jobs with a scheduled date will show up here."
+            />
+          </EmptyCard>
         )}
+        {!failedWithoutData && dayJobs.length > 0 && <View style={styles.rows}>{dayJobs.map(renderJob)}</View>}
 
-        {!error && jobsForSelectedDate.map((job) => (
-          <JobCard
-            key={job.id}
-            title={job.title}
-            budget={job.budget}
-            address={job.address}
-            status={jobStatusMeta(job.status, V6Colors)}
-            urgency={job.urgency}
-            footer={[{
-              icon: <User size={13} color={C.ink400} />,
-              text: job.assigned_provider?.full_name ?? 'Waiting for a provider',
-            }]}
-            onPress={() => onNavigate('Job Detail', job.id)}
-          />
-        ))}
+        {!failedWithoutData && unscheduled.length > 0 && (
+          <>
+            <View style={styles.notScheduled}>
+              <SectionHeader title="Not scheduled yet" count={unscheduled.length} />
+            </View>
+            <View style={styles.rows}>{unscheduled.map(renderJob)}</View>
+          </>
+        )}
 
         <View style={{ height: 20 }} />
       </ScrollView>
@@ -175,35 +217,52 @@ export default function HOCalendarScreen({ onNavigate }: HOCalendarScreenProps) 
 
 function createThemedStyles(theme: ThemePalette) {
   const { Colors, V6Colors } = theme;
-  const C = V6Colors;
   const styles = StyleSheet.create({
-    screen: { flex: 1, backgroundColor: C.canvas },
+    screen: { flex: 1, backgroundColor: V6Colors.canvas },
 
     header: {
-      backgroundColor: C.surface,
+      backgroundColor: V6Colors.surface,
       paddingHorizontal: Spacing.screenH,
       paddingBottom: 12,
       borderBottomWidth: 1,
       borderBottomColor: V6Colors.line,
     },
-    headerTitle: { color: C.ink900, fontSize: 21.5, fontWeight: '800', fontFamily: 'Inter', letterSpacing: -0.3 },
+    headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 12 },
+    headerTitle: {
+      flexShrink: 1, color: V6Colors.ink900, fontSize: 21.5, fontWeight: '800', fontFamily: 'Inter', letterSpacing: -0.3,
+    },
 
     body: { flex: 1 },
     bodyContent: { paddingHorizontal: Spacing.screenH, paddingTop: 16, paddingBottom: 20 },
 
     calendarCard: {
-      backgroundColor: C.surface, borderRadius: V6Radii.card, padding: 4,
-      borderWidth: 1, borderColor: C.line, marginBottom: 20,
+      backgroundColor: V6Colors.surface,
+      borderRadius: 20,
+      borderWidth: 1,
+      borderColor: V6Colors.line,
+      paddingHorizontal: 10,
+      paddingTop: 12,
+      paddingBottom: 8,
       ...V6Shadows.sm,
     },
-    selectedDateHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 11 },
-    selectedDateTitle: { color: C.ink900, fontSize: 16, fontWeight: '800', fontFamily: 'Inter' },
-    textLink: { color: V6Colors.link, fontSize: 14.5, fontWeight: '700', fontFamily: 'Inter' },
+    monthRow: {
+      flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 4, marginBottom: 8,
+    },
+    monthTitle: { color: V6Colors.ink900, fontSize: 17, fontWeight: '700', fontFamily: 'Inter' },
+    monthNav: { flexDirection: 'row', gap: 8 },
+    navButton: {
+      width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center',
+      borderWidth: 1, borderColor: V6Colors.line, backgroundColor: V6Colors.surface,
+    },
 
-    emptyState: { alignItems: 'center', paddingVertical: 44, paddingHorizontal: 22 },
-    emptyTitle: { color: C.ink800, fontSize: 16, fontWeight: '700', fontFamily: 'Inter', marginTop: 10, marginBottom: 4 },
-    emptyText: { color: C.ink400, fontSize: 14, fontFamily: 'Inter', textAlign: 'center', lineHeight: 17 },
+    dayHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 20, marginBottom: 10 },
+    dayTitle: { color: V6Colors.ink900, fontSize: 16, fontWeight: '700', fontFamily: 'Inter' },
+    dayMeta: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+    dayCount: { color: V6Colors.ink500, fontSize: 13, fontWeight: '500', fontFamily: 'Inter' },
+    textLink: { color: Colors.link, fontSize: 14, fontWeight: '600', fontFamily: 'Inter' },
 
+    notScheduled: { marginTop: 20, marginBottom: 10 },
+    rows: { gap: 8 },
   });
-  return { appearance: theme.appearance, Colors, V6Colors, C, styles };
+  return { appearance: theme.appearance, Colors, V6Colors, styles };
 }

@@ -1,15 +1,17 @@
 /**
  * LoginScreen.tsx
  *
- * v6 design: matches taskbuddy_UI_update.html's #login screen (background
- * gradient #cdeef7 -> white, cyan wordmark, cyan-700 primary button).
+ * Sign-in: the logo, "Welcome back", email and password in the shared
+ * AuthField, "Forgot password?" under the password, the Sign in button, an
+ * "or" divider, Continue with Google (same height and shape as Sign in), and
+ * "New here? Create an account" at the bottom.
  *
  * Sign In authenticates against the backend; the account's role determines
  * which experience (homeowner / provider) is shown.
  */
 
 import { useThemedStyles, type Palette as ThemePalette } from '../../../src/context/ThemeContext';
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Image,
@@ -17,17 +19,18 @@ import {
   KeyboardAvoidingView,
   Platform,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   TextInput,
   View,
 } from 'react-native';
 import Tap from '../../../src/components/ui/Tap';
+import KeyboardAwareScrollView from '../../../src/components/ui/KeyboardAwareScrollView';
 import GoogleGlyph from '../../../src/components/GoogleGlyph';
-import { Eye, EyeOff } from 'lucide-react-native';
+import AuthField from '../../../src/components/auth/AuthField';
 import { V6Radii, V6Shadows } from '../../../src/constants/theme';
 import { useAuthLayout } from '../../../src/hooks/useAuthLayout';
+import { EMAIL_MAX, validateEmail } from '../../../src/lib/inputRules';
 
 // ─── Props ────────────────────────────────────────────────────────────────────
 interface LoginScreenProps {
@@ -45,65 +48,6 @@ interface LoginScreenProps {
   onClearSignInError?: () => void;
 }
 
-// ─── InputField sub-component ─────────────────────────────────────────────────
-interface InputFieldProps {
-  label: string;
-  placeholder: string;
-  value: string;
-  onChangeText: (v: string) => void;
-  secureTextEntry?: boolean;
-  keyboardType?: 'default' | 'email-address';
-  error?: string;
-  hasError?: boolean;
-  rightElement?: React.ReactNode;
-  testID?: string;
-}
-
-function InputField({
-  label, placeholder, value, onChangeText,
-  secureTextEntry = false, keyboardType = 'default',
-  error, rightElement, testID,
-}: InputFieldProps) {
-  const { C, styles, V6Colors, appearance } = useThemedStyles(createThemedStyles);
-  const [focused, setFocused] = useState(false);
-
-  // NOTE: previously there was a `keyboardDidShow` listener here that called
-  // `inputRef.current.focus()` again once the keyboard finished animating in.
-  // That forced a *second* focus/measure pass on top of the one RN already
-  // does automatically, which is what produced the "jump to the top, then
-  // slide back down" animation on iOS. Removed — RN handles this on its own.
-
-  return (
-    <View style={styles.inputGroup}>
-      {label ? <Text style={styles.inputLabel}>{label}</Text> : null}
-      <View style={[
-        styles.inputBox,
-        focused && styles.inputBoxFocused,
-        !!error && styles.inputBoxError,
-      ]}>
-        <TextInput keyboardAppearance={appearance}
-          testID={testID}
-          style={styles.inputText}
-          placeholder={placeholder}
-          placeholderTextColor={C.ink400}
-          value={value}
-          onChangeText={onChangeText}
-          secureTextEntry={secureTextEntry}
-          keyboardType={keyboardType}
-          autoCapitalize="none"
-          autoCorrect={false}
-          onFocus={() => setFocused(true)}
-          onBlur={() => setFocused(false)}
-          onSubmitEditing={Keyboard.dismiss}
-          enablesReturnKeyAutomatically
-        />
-        {rightElement}
-      </View>
-      {!!error && <Text style={styles.inputError}>{error}</Text>}
-    </View>
-  );
-}
-
 // ─── Main screen ──────────────────────────────────────────────────────────────
 export default function LoginScreen({
   onLogin,
@@ -113,14 +57,14 @@ export default function LoginScreen({
   signInError,
   onClearSignInError,
 }: LoginScreenProps) {
-  const { C, styles, compactStyles, V6Colors, appearance } = useThemedStyles(createThemedStyles);
+  const { styles, compactStyles, Colors, V6Colors } = useThemedStyles(createThemedStyles);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [showPassword, setShowPassword] = useState(false);
   const [fieldErrors, setFieldErrors] = useState<{ email?: string; password?: string }>({});
   const [submitting, setSubmitting] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const passwordRef = useRef<TextInput>(null);
   const layout = useAuthLayout();
   const cs = layout.compact ? compactStyles : null;
 
@@ -131,16 +75,12 @@ export default function LoginScreen({
 
   const validateFields = () => {
     const errors: { email?: string; password?: string } = {};
-    const trimmedEmail = email.trim();
-    const validEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmedEmail);
+    const emailError = validateEmail(email);
+    if (emailError) errors.email = emailError;
 
-    if (!trimmedEmail) {
-      errors.email = 'Please enter your email address.';
-    } else if (!validEmail) {
-      errors.email = 'Please enter a valid email address.';
-    }
-
-    if (!password) {
+    // Presence only: whether the password is right is for the server to say.
+    // Spaces alone are no password.
+    if (!password.trim()) {
       errors.password = 'Please enter your password.';
     }
 
@@ -160,7 +100,7 @@ export default function LoginScreen({
     setFieldErrors({});
     setSubmitting(true);
     try {
-      await onLogin(email, password);
+      await onLogin(email.trim(), password);
       // On success the root navigator swaps to the authenticated experience.
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Unable to sign in.');
@@ -184,7 +124,7 @@ export default function LoginScreen({
   };
 
   const scrollContent = (
-    <ScrollView
+    <KeyboardAwareScrollView
       style={styles.flex}
       contentContainerStyle={[
         styles.loginContent,
@@ -204,45 +144,38 @@ export default function LoginScreen({
       {/* Logo */}
       <View style={styles.logoSection}>
         <Image source={require('../../../assets/taskbuddy-logo.png')} style={[styles.logoMark, cs?.logoMark]} resizeMode="contain" />
-        <Text style={[styles.logoText, cs?.logoText]}>TaskBuddy</Text>
-        <Text style={styles.tagline}>Hire with confidence, pay with ease.</Text>
       </View>
 
       {/* Heading */}
       <View style={[styles.headingSection, cs?.headingSection]}>
-        <Text style={styles.welcomeText}>Welcome!</Text>
-        <Text style={styles.subtitleText}>Sign in to your account</Text>
+        <Text style={styles.welcomeText} accessibilityRole="header">Welcome back</Text>
+        <Text style={styles.subtitleText}>Sign in to your TaskBuddy account</Text>
       </View>
 
-      <InputField
+      <AuthField
         label="Email"
         placeholder="sample@mail.com"
         testID="input-email"
         value={email}
         onChangeText={(value) => {
           setEmail(value);
-          if (fieldErrors.email) {
-            const trimmed = value.trim();
-            const validEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed);
-            if (trimmed && validEmail) {
-              setFieldErrors((prev) => ({ ...prev, email: undefined }));
-            }
+          if (fieldErrors.email && validateEmail(value) === null) {
+            setFieldErrors((prev) => ({ ...prev, email: undefined }));
           }
         }}
+        onBlur={() => setFieldErrors((prev) => ({ ...prev, email: validateEmail(email) ?? undefined }))}
         keyboardType="email-address"
+        maxLength={EMAIL_MAX}
+        returnKeyType="next"
+        onSubmitEditing={() => passwordRef.current?.focus()}
         error={fieldErrors.email}
       />
 
       <View style={styles.passwordSection}>
-        <View style={styles.passwordLabelRow}>
-          <Text style={styles.inputLabel}>Password</Text>
-          <Tap onPress={onForgotPassword}>
-            <Text style={styles.forgotText}>Forgot Password?</Text>
-          </Tap>
-        </View>
-
-        <InputField
-          label=""
+        <AuthField
+          ref={passwordRef}
+          secure
+          label="Password"
           placeholder="Password"
           testID="input-password"
           value={password}
@@ -250,23 +183,25 @@ export default function LoginScreen({
             setPassword(value);
             if (fieldErrors.password) setFieldErrors((prev) => ({ ...prev, password: undefined }));
           }}
-          secureTextEntry={!showPassword}
+          returnKeyType="done"
+          onSubmitEditing={Keyboard.dismiss}
           error={fieldErrors.password}
-          rightElement={
-            <Tap
-              onPress={() => setShowPassword((s) => !s)}
-              style={styles.eyeBtn}
-              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-            >
-              {showPassword ? <EyeOff size={20} color={C.ink400} /> : <Eye size={20} color={C.ink400} />}
-            </Tap>
-          }
         />
+        <View style={[styles.forgotRow, cs?.forgotRow]}>
+          <Tap
+            onPress={onForgotPassword}
+            hitSlop={{ top: 12, bottom: 12, left: 12, right: 0 }}
+            accessibilityRole="button"
+            accessibilityLabel="Forgot password"
+          >
+            <Text style={styles.forgotText}>Forgot password?</Text>
+          </Tap>
+        </View>
       </View>
 
       {/* Error */}
       {!!shownError && (
-        <Text testID="login-error" style={styles.errorBanner}>
+        <Text testID="login-error" style={styles.errorBanner} accessibilityRole="alert">
           {shownError}
         </Text>
       )}
@@ -274,15 +209,17 @@ export default function LoginScreen({
       {/* Sign In */}
       <Tap
         testID="btn-sign-in"
-        style={[styles.primaryBtn, cs?.primaryBtn, submitting && styles.primaryBtnDisabled]}
+        style={[styles.primaryBtn, submitting && styles.primaryBtnDisabled]}
         activeOpacity={0.85}
         onPress={handleSignIn}
         disabled={submitting}
+        accessibilityRole="button"
+        accessibilityLabel="Sign in"
       >
         {submitting ? (
-          <ActivityIndicator color={C.onPrimary} />
+          <ActivityIndicator color={Colors.onPrimary} />
         ) : (
-          <Text style={styles.primaryBtnText}>Sign In</Text>
+          <Text style={styles.primaryBtnText}>Sign in</Text>
         )}
       </Tap>
 
@@ -296,10 +233,12 @@ export default function LoginScreen({
       {/* Google */}
       <Tap
         testID="btn-google"
-        style={[styles.googleBtn, cs?.googleBtn, googleLoading && styles.primaryBtnDisabled]}
+        style={[styles.googleBtn, googleLoading && styles.primaryBtnDisabled]}
         activeOpacity={0.85}
         onPress={handleGoogleSignIn}
         disabled={googleLoading || submitting}
+        accessibilityRole="button"
+        accessibilityLabel="Continue with Google"
       >
         {googleLoading ? (
           <ActivityIndicator color="#ffffff" />
@@ -311,34 +250,27 @@ export default function LoginScreen({
         )}
       </Tap>
 
-      {/* Sign Up */}
-      <View style={styles.signUpRow}>
-        <Text style={styles.signUpPrompt}>Don't have an account? </Text>
-        <Pressable onPress={onSignUp} testID="btn-signup">
-          <Text style={styles.signUpLink}>Sign Up</Text>
+      {/* Create account */}
+      <View style={[styles.signUpRow, cs?.signUpRow]}>
+        <Text style={styles.signUpPrompt}>New here? </Text>
+        <Pressable
+          onPress={onSignUp}
+          testID="btn-signup"
+          hitSlop={12}
+          accessibilityRole="button"
+          accessibilityLabel="Create an account"
+        >
+          <Text style={styles.signUpLink}>Create an account</Text>
         </Pressable>
       </View>
-    </ScrollView>
+    </KeyboardAwareScrollView>
   );
 
   return (
-    // LinearGradient is the actual container here (not an absolute-fill
-    // overlay sibling with pointerEvents="none") specifically so touches
-    // reach the inputs below it unambiguously — a decorative overlay sibling
-    // has caused touch-passthrough issues on some Android/library versions
-    // even with pointerEvents set, and this sidesteps that class of bug
-    // entirely: children of a normal View-like container always receive
-    // touches, no workaround needed.
+    // The Android KeyboardAvoidingView keeps the focused field and Sign in above
+    // the keyboard; the focus bug this screen once had came from an elevation
+    // change on the field wrapper, which AuthField deliberately never sets.
     <View style={[styles.screen, { backgroundColor: V6Colors.surface }]}>
-      {/* Keyboard handling: the ScrollView's keyboardShouldPersistTaps +
-          keyboardDismissMode handle taps/dismissal; KeyboardAvoidingView on
-          Android resizes the form so the focused field/Sign In button scrolls
-          above the keyboard instead of being hidden behind it (matches this
-          screen's original working pattern — behavior="height" on Android).
-
-          The focus/keyboard bug that plagued this screen was NOT caused by
-          this wrapper — it was `inputBoxFocused` adding an Android
-          `elevation` on focus. See the note on that style below. */}
       {Platform.OS === 'android' ? (
         <KeyboardAvoidingView style={styles.flex} behavior="height" keyboardVerticalOffset={0}>
           {scrollContent}
@@ -357,123 +289,74 @@ export default function LoginScreen({
 
 function createThemedStyles(theme: ThemePalette) {
   const { Colors, V6Colors } = theme;
-  const C = V6Colors;
   const styles = StyleSheet.create({
     flex: { flex: 1 },
-    screen: { flex: 1, backgroundColor: C.surface },
+    screen: { flex: 1, backgroundColor: V6Colors.surface },
 
-    // Scroll
     loginContent: {
       flexGrow: 1,
       justifyContent: 'center',
-      paddingHorizontal: 30,
+      paddingHorizontal: 24,
     },
 
-    // Logo — matches .logo-mark (46x52)
-    logoSection: { marginBottom: 12, alignItems: 'center' },
-    logoMark: { width: 104, height: 117, alignSelf: 'center' },
-    logoText: {
-      fontFamily: 'Inter', fontSize: 31.5, fontWeight: '800',
-      color: V6Colors.ink900, textAlign: 'center', marginTop: 12, marginBottom: 2,
-    },
-    tagline: {
-      fontFamily: 'Inter', fontSize: 18.5, fontWeight: '800',
+    logoSection: { alignItems: 'center' },
+    logoMark: { width: 88, height: 98, alignSelf: 'center' },
+
+    headingSection: { alignItems: 'center', marginTop: 16, marginBottom: 28 },
+    welcomeText: {
+      fontFamily: 'Inter', fontSize: 26, fontWeight: '800', lineHeight: 32,
       color: V6Colors.ink900, textAlign: 'center',
     },
-
-    // Heading
-    headingSection: { marginTop: 28, marginBottom: 6 },
-    welcomeText: {
-      fontFamily: 'Inter', fontSize: 23, fontWeight: '800', color: C.ink900,
-    },
     subtitleText: {
-      fontFamily: 'Inter', fontSize: 15.5, fontWeight: '400', color: C.ink400, marginTop: 2,
+      fontFamily: 'Inter', fontSize: 15, lineHeight: 20, color: V6Colors.ink500,
+      marginTop: 4, textAlign: 'center',
     },
 
-    // Inputs — matches .field input (v3 cascaded-final)
-    inputGroup: { marginBottom: 16 },
-    inputLabel: {
-      fontFamily: 'Inter', fontSize: 15.5, fontWeight: '700', color: C.ink900, marginBottom: 6,
-    },
-    inputBox: {
-      flexDirection: 'row', alignItems: 'center',
-      backgroundColor: C.surface, borderRadius: V6Radii.input,
-      paddingHorizontal: 14, minHeight: 46, borderWidth: 1,
-      borderColor: V6Colors.fieldBorder,
-    },
-    // Border-colour ONLY — never add a shadow/elevation here.
-    //
-    // The mockup's focus ring is `box-shadow:0 0 0 3px rgba(6,182,212,.12)`, and
-    // porting that as `...V6Shadows.sm` (which carries `elevation: 1`) broke text
-    // entry app-wide on Android: changing `elevation` on the View that *wraps* a
-    // focused TextInput makes Android re-create that view, so the EditText loses
-    // focus and the keyboard closes the instant it opens. Symptom was focus
-    // visibly jumping between fields and the keyboard flashing shut.
-    //
-    // Verified on-device (Pixel emulator, Expo Go): with elevation, tapping Email
-    // left focused=false / mInputShown=false / mServedView=null; without it,
-    // focused=true / mInputShown=true and typing lands in the right field.
-    inputBoxFocused: {
-      borderColor: C.cyan500,
-    },
-    inputBoxError: { borderColor: V6Colors.dangerBorder },
-    inputText: {
-      flex: 1, fontFamily: 'Inter', fontSize: 16.5, fontWeight: '400',
-      color: C.ink900, padding: 0, margin: 0,
-    },
-    inputError: {
-      fontFamily: 'Inter', fontSize: 14.5, color: V6Colors.dangerText, marginTop: 4,
+    passwordSection: { gap: 0 },
+    forgotRow: { alignItems: 'flex-end', marginTop: 8, marginBottom: 20 },
+    forgotText: { fontFamily: 'Inter', fontSize: 14, fontWeight: '700', color: V6Colors.link },
+
+    errorBanner: {
+      fontFamily: 'Inter', fontSize: 14, lineHeight: 19, color: V6Colors.dangerText, marginBottom: 12,
     },
 
-    // Password
-    passwordSection: {},
-    passwordLabelRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 },
-    forgotText: { fontFamily: 'Inter', fontSize: 15.5, fontWeight: '700', color: V6Colors.link },
-    eyeBtn: { paddingLeft: 8 },
-
-    // Primary button — matches .btn-primary (solid cyan700, v3 cascaded-final)
+    // Sign in and Google share one height, radius and padding (see googleBtn).
     primaryBtn: {
-      backgroundColor: C.cyan700, borderRadius: V6Radii.btn,
-      paddingVertical: 14, alignItems: 'center', marginTop: 8, marginBottom: 20, minHeight: 46,
+      backgroundColor: Colors.primary, borderRadius: V6Radii.btn,
+      paddingVertical: 14, paddingHorizontal: 24, minHeight: 48,
+      alignItems: 'center', justifyContent: 'center',
       ...V6Shadows.primaryButton,
     },
     primaryBtnDisabled: { opacity: 0.7 },
     primaryBtnText: {
-      fontFamily: 'Inter', fontSize: 18.5, fontWeight: '700', color: C.onPrimary,
-    },
-    errorBanner: {
-      fontFamily: 'Inter', fontSize: 15.5, color: V6Colors.dangerText, marginBottom: 12, lineHeight: 18,
+      fontFamily: 'Inter', fontSize: 17, fontWeight: '700', color: Colors.onPrimary,
     },
 
-    // Divider
-    dividerRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 20, gap: 12 },
-    dividerLine: { flex: 1, height: 1, backgroundColor: C.ink100 },
-    dividerText: { fontFamily: 'Inter', fontSize: 15.5, color: C.ink300 },
+    dividerRow: { flexDirection: 'row', alignItems: 'center', marginVertical: 18, gap: 12 },
+    dividerLine: { flex: 1, height: 1, backgroundColor: V6Colors.line },
+    dividerText: { fontFamily: 'Inter', fontSize: 14, color: V6Colors.ink500 },
 
-    // Google — matches .btn-outline
     // Google's dark sign-in button: #131314, light text, four-colour G; same
     // shape and height as the primary button above it.
     // The light border only shows in dark mode, where the page is near-black.
     googleBtn: {
       flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10,
-      backgroundColor: '#131314', borderRadius: V6Radii.btn, paddingVertical: 14, minHeight: 46, paddingHorizontal: 24,
+      backgroundColor: '#131314', borderRadius: V6Radii.btn,
+      paddingVertical: 14, paddingHorizontal: 24, minHeight: 48,
       borderWidth: 1, borderColor: theme.appearance === 'dark' ? '#8E918F' : '#131314',
-      marginBottom: 28,
     },
     googleBtnText: { fontFamily: 'Inter', fontSize: 16, fontWeight: '700', color: '#ffffff' },
 
-    // Sign Up
-    signUpRow: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center' },
-    signUpPrompt: { fontFamily: 'Inter', fontSize: 15.5, fontWeight: '400', color: C.ink400 },
-    signUpLink: { fontFamily: 'Inter', fontSize: 15.5, fontWeight: '700', color: V6Colors.link },
+    signUpRow: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', alignItems: 'center', marginTop: 24 },
+    signUpPrompt: { fontFamily: 'Inter', fontSize: 15, fontWeight: '400', color: V6Colors.ink500 },
+    signUpLink: { fontFamily: 'Inter', fontSize: 15, fontWeight: '700', color: V6Colors.link },
   });
   const compactStyles = StyleSheet.create({
     logoMark: { width: 64, height: 72 },
-    logoText: { fontSize: 26, marginTop: 6 },
-    headingSection: { marginTop: 14 },
-    primaryBtn: { marginBottom: 12 },
-    dividerRow: { marginBottom: 12 },
-    googleBtn: { marginBottom: 16 },
+    headingSection: { marginTop: 8, marginBottom: 16 },
+    forgotRow: { marginBottom: 12 },
+    dividerRow: { marginVertical: 12 },
+    signUpRow: { marginTop: 12 },
   });
-  return { appearance: theme.appearance, Colors, V6Colors, C, styles, compactStyles };
+  return { appearance: theme.appearance, Colors, V6Colors, styles, compactStyles };
 }

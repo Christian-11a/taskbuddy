@@ -4,23 +4,20 @@ import { StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LucideIcon } from 'lucide-react-native';
 import Tap from './ui/Tap';
+import { useTourAnchor } from './tour';
 
 export type BottomNavItem<T extends string> = {
   key: T;
   label: string;
   icon: LucideIcon;
-  /** Renders this item as the floating primary action above the bar. */
-  primary?: boolean;
-  /** Visible text when it differs from the accessibility label. */
-  title?: string;
+  /** Name the guided tour uses for this tab's anchor, `tab.<tourId>`. Defaults to the key. */
+  tourId?: string;
 };
 
 type BottomNavBarProps<T extends string> = {
   activeTab: T;
   tabs: readonly BottomNavItem<T>[];
   onTabPress: (tab: T) => void;
-  /** Hide the floating primary action on tabs that already offer it. */
-  hidePrimary?: boolean;
 };
 
 /** Height of the bar above the system inset; screens pad their lists by it. */
@@ -28,82 +25,83 @@ export const NAV_BAR_HEIGHT = 72;
 
 /**
  * Shared Material 3 style bottom navigation for both roles: a tonal pill marks
- * the active tab (no animation between tabs, they are peers). A `primary` item
- * is shown as an extended floating button above the bar instead of a tab.
+ * the active tab (no animation between tabs, they are peers).
  */
 export default function BottomNavBar<T extends string>({
   activeTab,
   tabs,
   onTabPress,
-  hidePrimary = false,
 }: BottomNavBarProps<T>) {
-  const { Colors, styles } = useThemedStyles(createThemedStyles);
+  const theme = useThemedStyles(createThemedStyles);
+  const { styles } = theme;
   // The app is edge-to-edge (enforced on targetSdk 36), so without the real
   // bottom inset the bar renders under the system navigation bar and the OS
   // eats every tap (BUG-002). Drive the bottom padding + height from the inset.
   const insets = useSafeAreaInsets();
-  const primary = tabs.find((tab) => tab.primary);
-  const PrimaryIcon = primary?.icon;
 
   return (
     <View>
-      {primary && PrimaryIcon && !hidePrimary && (
-        <View pointerEvents="box-none" style={styles.fabLayer}>
-          <View style={styles.fabShadow}>
-            <Tap
-              testID={`nav-tab-${primary.key}`}
-              accessibilityLabel={primary.label}
-              accessibilityRole="button"
-              style={styles.fab}
-              rippleColor={Colors.rippleOnHero}
-              scale
-              onPress={() => onTabPress(primary.key)}
-            >
-              <PrimaryIcon size={20} color={Colors.onPrimary} strokeWidth={2.5} />
-              <Text style={styles.fabLabel}>{primary.title ?? primary.label}</Text>
-            </Tap>
-          </View>
-        </View>
-      )}
       <View
         style={[
           styles.container,
           { height: NAV_BAR_HEIGHT + insets.bottom, paddingBottom: insets.bottom },
         ]}
       >
-        {tabs.filter((tab) => !tab.primary).map((tab) => {
-          const Icon = tab.icon;
-          const isActive = tab.key === activeTab;
-          return (
-            <Tap
-              key={tab.key}
-              testID={`nav-tab-${tab.key}`}
-              accessibilityLabel={tab.label}
-              accessibilityRole="tab"
-              accessibilityState={{ selected: isActive }}
-              style={styles.tabButton}
-              onPress={() => onTabPress(tab.key)}
-            >
-              {/* Keyed so the pill remounts when it turns on: Android drops the
-                  rounded corners if the background is applied on a re-render. */}
-              <View key={isActive ? 'on' : 'off'} style={[styles.indicator, isActive && styles.indicatorActive]}>
-                <Icon
-                  size={22}
-                  color={isActive ? Colors.activeIcon : Colors.navInactive}
-                  strokeWidth={isActive ? 2.4 : 2}
-                />
-              </View>
-              <Text
-                numberOfLines={1}
-                style={[styles.tabLabel, isActive && styles.tabLabelActive]}
-              >
-                {tab.label}
-              </Text>
-            </Tap>
-          );
-        })}
+        {tabs.map((tab) => (
+          <NavTab
+            key={tab.key}
+            tab={tab}
+            isActive={tab.key === activeTab}
+            theme={theme}
+            onPress={() => onTabPress(tab.key)}
+          />
+        ))}
       </View>
     </View>
+  );
+}
+
+type NavTheme = ReturnType<typeof createThemedStyles>;
+
+/**
+ * One tab. It is also a tour anchor, `tab.<tourId>` (or `tab.<key>`), so the
+ * guided tour can point at it. Look, layout, labels and presses are unchanged.
+ */
+function NavTab<T extends string>({ tab, isActive, theme, onPress }: {
+  tab: BottomNavItem<T>;
+  isActive: boolean;
+  theme: NavTheme;
+  onPress: () => void;
+}) {
+  const { Colors, styles } = theme;
+  const anchor = useTourAnchor(`tab.${tab.tourId ?? tab.key}`);
+  const Icon = tab.icon;
+  return (
+    <Tap
+      {...anchor}
+      testID={`nav-tab-${tab.key}`}
+      accessibilityLabel={tab.label}
+      accessibilityRole="tab"
+      accessibilityState={{ selected: isActive }}
+      style={styles.tabButton}
+      onPress={onPress}
+    >
+      {/* Keyed so the pill remounts when it turns on: Android drops the
+          rounded corners if the background is applied on a re-render. */}
+      <View key={isActive ? 'on' : 'off'} style={[styles.indicator, isActive && styles.indicatorActive]}>
+        <Icon
+          size={22}
+          color={isActive ? Colors.activeIcon : Colors.navInactive}
+          strokeWidth={isActive ? 2.4 : 2}
+        />
+      </View>
+      <Text
+        numberOfLines={1}
+        style={[styles.tabLabel, isActive && styles.tabLabelActive]}
+      >
+        {tab.label}
+      </Text>
+    </Tap>
   );
 }
 
@@ -152,38 +150,6 @@ function createThemedStyles(theme: ThemePalette) {
     tabLabelActive: {
       color: Colors.activeLabel,
       fontWeight: '700',
-    },
-    fabLayer: {
-      position: 'absolute',
-      right: 16,
-      bottom: '100%',
-      marginBottom: 16,
-    },
-    fabShadow: {
-      borderRadius: 18,
-      elevation: 6,
-      shadowColor: '#0c4a6e',
-      shadowOffset: { width: 0, height: 6 },
-      shadowOpacity: 0.25,
-      shadowRadius: 14,
-      backgroundColor: V6Colors.primary,
-    },
-    fab: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 8,
-      height: 56,
-      paddingLeft: 18,
-      paddingRight: 22,
-      borderRadius: 18,
-      overflow: 'hidden',
-      backgroundColor: V6Colors.primary,
-    },
-    fabLabel: {
-      color: V6Colors.onPrimary,
-      fontSize: 16,
-      fontWeight: '700',
-      fontFamily: 'Inter',
     },
   });
   return { Colors, V6Colors, styles };

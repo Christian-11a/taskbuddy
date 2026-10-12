@@ -1,46 +1,60 @@
 /**
  * HOJobDetailScreen.tsx
  *
- * v6 design: matches taskbuddy_UI_update.html's #ho-job-detail screen — a
- * flat white .topbar (not a colored hero), then a borderless "hero" block
- * with kicker/title/price/facts separated by hairline dividers (not a
- * card-per-section stack), a horizontal step timeline, and a sticky bottom
- * action bar.
+ * One job from the homeowner's side. The status card says what is happening
+ * now, the progress step shows how far the job got, and one main button does
+ * the next thing. Rare or risky actions (report a problem, cancel) sit in the ⋮
+ * menu. Which card, step and buttons show is decided in src/lib/jobDetailView.ts.
  */
 
-import { useThemedStyles, type Palette as ThemePalette } from '../../../src/context/ThemeContext';
-import React, { useState } from 'react';
-import PhotoViewer from '../../../src/components/PhotoViewer';
-import {
-  ActivityIndicator,
-  Image,
-  ScrollView,
-  StyleSheet,
-  Text,
-  View,
-} from 'react-native';
-import Tap from '../../../src/components/ui/Tap';
-import ContentSkeleton from '../../../src/components/ui/ContentSkeleton';
-import Silhouette from '../../../src/components/ui/Silhouette';
+import React, { useEffect, useRef, useState } from 'react';
+import { Image, ScrollView, StyleSheet, Text, View } from 'react-native';
 import {
   ArrowLeft,
   CalendarDays,
   Check,
-  CircleAlert,
-  ListChecks,
+  CircleX,
+  ClipboardList,
+  EllipsisVertical,
+  FileText,
   MapPin,
-  MessageCircle,
-  Star,
   TriangleAlert,
-  Wrench,
+  type LucideIcon,
 } from 'lucide-react-native';
+import PhotoViewer from '../../../src/components/PhotoViewer';
+import ConfirmationModal from '../../../src/components/ConfirmationModal';
+import BottomActionBar from '../../../src/components/ui/BottomActionBar';
+import Banner from '../../../src/components/ui/Banner';
+import ContentSkeleton from '../../../src/components/ui/ContentSkeleton';
+import EmptyCard from '../../../src/components/ui/EmptyCard';
+import LoadErrorCard from '../../../src/components/ui/LoadErrorCard';
+import EmptyRow from '../../../src/components/ui/EmptyRow';
+import MenuSheet, { type MenuSheetItem } from '../../../src/components/ui/MenuSheet';
+import PersonCard from '../../../src/components/ui/PersonCard';
+import ProgressStepper from '../../../src/components/ui/ProgressStepper';
+import SectionHeader from '../../../src/components/ui/SectionHeader';
+import StatusCard from '../../../src/components/ui/StatusCard';
+import Tap from '../../../src/components/ui/Tap';
+import { showToast } from '../../../src/components/Toast';
+import { useThemedStyles, type Palette as ThemePalette } from '../../../src/context/ThemeContext';
 import { Spacing } from '../../../src/constants/theme';
 import { useHeaderTop } from '../../../src/hooks/useHeaderTop';
-import { HOScreen } from '../../../src/types/navigation';
 import { useAsyncData } from '../../../src/hooks/useAsyncData';
-import { api, ApiError, type Job } from '../../../src/lib/api';
-import { distanceLabel, friendlyError, jobStatusMeta, peso, plural, shortDate, timeAgo, timeOfDay, urgencyMeta } from '../../../src/lib/format';
-import ConfirmationModal from '../../../src/components/ConfirmationModal';
+import { HOScreen } from '../../../src/types/navigation';
+import { api, ApiError, type Job, type JobApplication, type ProviderCard } from '../../../src/lib/api';
+import { findProvidersFailureMessage } from '../../../src/lib/findProvidersFailure';
+import { homeownerJobView, type Action, type JobView } from '../../../src/lib/jobDetailView';
+import { countPendingProposals, isOpenJob } from '../../../src/lib/proposalCounts';
+import {
+  distanceLabel,
+  friendlyError,
+  peso,
+  plural,
+  shortDate,
+  timeAgo,
+  timeOfDay,
+  urgencyMeta,
+} from '../../../src/lib/format';
 
 function acceptedDistanceKm(job: Job): number | null {
   if (job.provider_accept_latitude == null || job.provider_accept_longitude == null) return null;
@@ -53,29 +67,34 @@ function acceptedDistanceKm(job: Job): number | null {
   return 6371 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
-/**
- * The real lifecycle, in the homeowner's words. The mockup's "Review" stage
- * is dropped — there is no such state in the backend; a job goes from work in
- * progress straight to the homeowner marking it complete.
- */
-const JOB_STAGES = ['Posted', 'Hired', 'Confirmed', 'In Progress', 'Done'];
+/** Shown under the cancel row: cancelling after a hire is not an instant refund. */
+const CANCEL_HINT = 'Cancelling after hiring asks the provider to agree. Your money comes back once they do.';
+const HIT_SLOP = { top: 2, bottom: 2, left: 2, right: 2 };
+/** Under the waiting card on an open job with no offers: the backend also invites matches on its own. */
+const AUTO_INVITE_HINT = 'We also invite matched providers automatically if nobody applies soon.';
+/** Said when a tap lands while the last action on this job is still running. */
+const BUSY_MESSAGE = 'Still working on your last request. Please wait.';
 
-function stageIndex(status: string): number {
-  switch (status) {
-    case 'open':
-    case 'recommending':
-      return 0;
-    case 'assigned':
-      return 1;
-    case 'confirmed':
-      return 2;
-    case 'in_progress':
-      return 3;
-    case 'completed':
-      return 4;
-    default:
-      return 0;
+/** Button text for an action, in the main slot or as the link under it. */
+function actionLabel(action: Action, slot: 'main' | 'link'): string {
+  switch (action.kind) {
+    case 'reviewProposals': return `Review proposals (${action.count})`;
+    case 'findProviders': return slot === 'link' ? 'Find providers near you' : 'Find providers';
+    case 'viewOffers': return 'View offers';
+    case 'message': return `Message ${action.name}`;
+    case 'confirmDone': return 'Confirm job is done';
+    case 'reportProblem': return 'Report a problem';
+    case 'viewCase': return 'View case';
+    case 'leaveReview': return 'Leave a review';
+    case 'postAgain': return 'Post again';
+    case 'cancelJob': return 'Cancel job';
+    default: return '';
   }
+}
+
+/** "4.0 · 2 jobs done", or "New · 0 jobs done" before any rating. */
+function ratingText(rating: number | null | undefined, jobsDone: number | null | undefined): string {
+  return `${rating != null ? Number(rating).toFixed(1) : 'New'} · ${plural(jobsDone, 'job')} done`;
 }
 
 interface HOJobDetailScreenProps {
@@ -103,17 +122,53 @@ export default function HOJobDetailScreen({ jobId, onBack, onNavigate }: HOJobDe
   const [confirmCancel, setConfirmCancel] = useState(false);
   const [confirmComplete, setConfirmComplete] = useState(false);
   const [photoIndex, setPhotoIndex] = useState<number | null>(null);
+  const [menuOpen, setMenuOpen] = useState(false);
+  // list is null when the lookup failed, so the count of pending offers is unknown.
+  const [offers, setOffers] = useState<{ jobId: string; list: JobApplication[] | null } | null>(null);
+  // Checked and set synchronously, so two taps before React re-renders cannot start two actions.
+  const inFlight = useRef(false);
 
   const job = data?.job;
+  const provider: ProviderCard | null = data?.provider ?? null;
+  const dispute = data?.dispute ?? null;
   const acceptedDistance = job ? acceptedDistanceKm(job) : null;
-  const provider = data?.provider;
-  const dispute = data?.dispute;
-  const meta = job ? jobStatusMeta(job.status, V6Colors) : null;
-  const stage = job ? stageIndex(job.status) : 0;
+  // "0 m away" (the provider accepted from the job itself) and an unknown distance add nothing, so the line is left out.
+  const acceptedAway = acceptedDistance != null && Math.round(acceptedDistance * 1000) > 0 ? acceptedDistance : null;
   const tasks = [...(job?.job_tasks ?? [])].sort((a, b) => a.position - b.position);
   const doneCount = tasks.filter((t) => t.is_done).length;
 
+  // Proposals on an open job. Loaded after the job and never blocks the screen:
+  // until they arrive the job reads as having none. A failed lookup is kept as
+  // unknown (list null), so the card offers the list without claiming a count.
+  useEffect(() => {
+    const current = data?.job;
+    if (!current || !isOpenJob(current)) return;
+    let active = true;
+    Promise.resolve()
+      .then(() => api.jobApplications(current.id))
+      .then((list) => {
+        if (active) setOffers({ jobId: current.id, list });
+      })
+      .catch(() => {
+        if (active) setOffers({ jobId: current.id, list: null });
+      });
+    return () => {
+      active = false;
+    };
+  }, [data]);
+
+  const offerEntry = offers && job && offers.jobId === job.id ? offers : null;
+  const offerList = offerEntry?.list ?? null;
+  const pendingOffers = offerList ? offerList.filter((application) => application.status === 'pending') : [];
+  // 0 until the lookup answers; null when it failed, so the count is unknown and no number is shown.
+  const pendingCount = offerEntry ? (offerList ? countPendingProposals(offerList) : null) : 0;
+
   const runAction = async (fn: () => Promise<unknown>) => {
+    if (inFlight.current) {
+      showToast(BUSY_MESSAGE, 'info');
+      return;
+    }
+    inFlight.current = true;
     setBusy(true);
     setActionError(null);
     try {
@@ -124,12 +179,18 @@ export default function HOJobDetailScreen({ jobId, onBack, onNavigate }: HOJobDe
         e instanceof ApiError ? e.message : 'Something went wrong. Please try again.',
       );
     } finally {
+      inFlight.current = false;
       setBusy(false);
     }
   };
 
   const findProviders = async () => {
     if (!job) return;
+    if (inFlight.current) {
+      showToast(BUSY_MESSAGE, 'info');
+      return;
+    }
+    inFlight.current = true;
     setBusy(true);
     setActionError(null);
     setMatchingMessage(null);
@@ -142,308 +203,304 @@ export default function HOJobDetailScreen({ jobId, onBack, onNavigate }: HOJobDe
       );
       reload();
     } catch (e) {
-      setActionError(
-        e instanceof ApiError ? e.message : 'Could not look for providers. Please try again.',
-      );
+      setActionError(findProvidersFailureMessage(e));
     } finally {
+      inFlight.current = false;
       setBusy(false);
     }
   };
 
-  // Once the provider has ticked every task the work is done: the next step
-  // is Confirm Completion, and a problem goes through File a Complaint rather
-  // than a cancellation.
-  const allTasksDone = tasks.length > 0 && tasks.every((task) => task.is_done);
-  const canCancel =
-    job &&
-    ['open', 'recommending', 'assigned', 'confirmed', 'in_progress'].includes(job.status) &&
-    !(job.status === 'in_progress' && allTasksDone);
-  const canDispute = job && !!job.assigned_provider_id && (
-    ['assigned', 'confirmed', 'in_progress', 'cancelled'].includes(job.status) ||
-    (job.status === 'completed' && job.warranty_expires_at && Date.now() < new Date(job.warranty_expires_at).getTime())
-  );
-  const canComplete = job?.status === 'in_progress' && tasks.every((task) => task.is_done);
-  const canReview =
-    job?.status === 'completed' &&
-    !!job.assigned_provider_id &&
-    !job.has_review;
-  const canFindProviders = job && ['open', 'recommending'].includes(job.status);
+  const view: JobView | null = job
+    ? homeownerJobView({ job, dispute, pendingCount, tasks, provider, now: Date.now() })
+    : null;
+  const main = view?.main ?? null;
+  const link = view?.link ?? null;
+  // Said only when the proposals have answered with none. While they load, or when the lookup failed, the offers are unknown.
+  const showAutoInviteHint = !!job && isOpenJob(job) && offerList !== null && pendingCount === 0
+    && main?.kind === 'findProviders';
+  const urgency = job ? urgencyMeta(job.urgency, V6Colors) : null;
+
+  const perform = (action: Action) => {
+    if (!job) return;
+    // While an action is running, a tap that gets here is a repeat, so say why it did nothing.
+    // The ⋮ menu rows are disabled instead, so they stay silent.
+    if (inFlight.current) {
+      showToast(BUSY_MESSAGE, 'info');
+      return;
+    }
+    switch (action.kind) {
+      case 'reviewProposals':
+        onNavigate('Job Applications', job.id);
+        return;
+      case 'findProviders':
+        void findProviders();
+        return;
+      case 'viewOffers':
+        onNavigate('Job Applications', job.id);
+        return;
+      case 'message':
+        onNavigate('Chat', job.id);
+        return;
+      case 'confirmDone':
+        setConfirmComplete(true);
+        return;
+      case 'reportProblem':
+        onNavigate('Dispute Filing', job.id);
+        return;
+      case 'viewCase':
+        onNavigate('Dispute Status', job.id);
+        return;
+      case 'leaveReview':
+        onNavigate('Leave Review', job.id);
+        return;
+      case 'postAgain':
+        onNavigate('Create Job', String(action.categoryId));
+        return;
+      case 'cancelJob':
+        setConfirmCancel(true);
+        return;
+      default:
+        // Provider actions never reach this screen.
+        return;
+    }
+  };
+
+  const menuItems: MenuSheetItem[] = (view?.menu ?? []).flatMap((action): MenuSheetItem[] => {
+    switch (action.kind) {
+      case 'reportProblem':
+        return [{ label: 'Report a problem', icon: TriangleAlert, disabled: busy, onPress: () => perform(action) }];
+      case 'viewCase':
+        return [{ label: 'View case', icon: FileText, disabled: busy, onPress: () => perform(action) }];
+      case 'cancelJob':
+        return [{
+          label: 'Cancel job',
+          icon: CircleX,
+          tone: 'danger',
+          hint: job?.assigned_provider_id ? CANCEL_HINT : undefined,
+          disabled: busy,
+          onPress: () => perform(action),
+        }];
+      default:
+        return [];
+    }
+  });
+
+  const hasProvider = !!job?.assigned_provider_id;
+  const providerHeading = job?.status === 'completed'
+    ? 'Done by'
+    : job?.status === 'cancelled' ? 'Provider' : 'Your provider';
 
   return (
     <View style={styles.screen}>
-      {/* Header — matches .topbar (flat white, not a colored hero) */}
       <View style={[styles.header, { paddingTop: headerTop }]}>
-        <Tap style={styles.backBtn} onPress={onBack} activeOpacity={0.8}>
+        <Tap
+          style={styles.iconBtn}
+          onPress={onBack}
+          activeOpacity={0.8}
+          hitSlop={HIT_SLOP}
+          accessibilityRole="button"
+          accessibilityLabel="Back"
+        >
           <ArrowLeft size={20} color={C.ink700} />
         </Tap>
-        <Text style={styles.headerTitle}>Job Details</Text>
-        <View style={{ width: 38 }} />
+        <Text style={styles.headerTitle} numberOfLines={1}>Job details</Text>
+        {menuItems.length > 0 ? (
+          <Tap
+            style={styles.iconBtn}
+            onPress={() => setMenuOpen(true)}
+            activeOpacity={0.8}
+            hitSlop={HIT_SLOP}
+            accessibilityRole="button"
+            accessibilityLabel="More job actions"
+          >
+            <EllipsisVertical size={20} color={C.ink700} />
+          </Tap>
+        ) : (
+          <View style={styles.iconSpacer} />
+        )}
       </View>
 
       {loading && <ContentSkeleton variant="detail" />}
-      {!!error && !loading && <Text style={styles.stateText}>{error}</Text>}
+      {!!error && !loading && (
+        <View style={styles.loadErrorWrap}>
+          <LoadErrorCard title="Couldn't load this job" message={error} onRetry={reload} />
+        </View>
+      )}
 
-      {job && (
+      {job && view && (
         <ScrollView
           style={styles.body}
           contentContainerStyle={styles.bodyContent}
           showsVerticalScrollIndicator={false}
         >
-          {/* Hero — matches .detail-hero (borderless, bottom-divider only) */}
-          <View style={styles.hero}>
+          <View style={styles.titleBlock}>
             <Text style={styles.kicker}>
               {(job.service_categories?.name ?? 'Service').toUpperCase()}
             </Text>
-            <View style={styles.heroTitleRow}>
-              <Text style={styles.heroTitle}>{job.title}</Text>
-              {meta && (
-                <View style={[styles.statusBadge, { backgroundColor: meta.bg }]}>
-                  <Text style={[styles.statusBadgeText, { color: meta.color }]}>{meta.label}</Text>
+            <Text style={styles.title}>{job.title}</Text>
+            <View style={styles.priceRow}>
+              {job.budget != null && (
+                <Text style={styles.price}>{peso(job.budget)}</Text>
+              )}
+              {urgency && (
+                <View style={[styles.urgencyChip, { backgroundColor: urgency.bg }]}>
+                  <Text style={[styles.urgencyText, { color: urgency.color }]}>{urgency.label}</Text>
                 </View>
               )}
             </View>
-            {job.budget != null && (
-              <Text style={styles.heroPrice}>₱{Number(job.budget).toLocaleString()}</Text>
-            )}
           </View>
 
-          {/* Details — kept together as the first information grid after the hero. */}
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Details</Text>
-            <View style={styles.detailsGrid}>
-              {[
-                {
-                  icon: CalendarDays,
-                  label: 'Schedule',
-                  value: job.scheduled_at
-                    ? `${shortDate(job.scheduled_at)} · ${timeOfDay(job.scheduled_at)}`
-                    : 'Flexible',
-                  wide: false,
-                },
-                {
-                  icon: TriangleAlert,
-                  label: 'Urgency',
-                  value: urgencyMeta(job.urgency, V6Colors).label,
-                  color: urgencyMeta(job.urgency, V6Colors).color,
-                  wide: false,
-                },
-                { icon: MapPin, label: 'Location', value: job.address, wide: true },
-                { icon: Wrench, label: 'Service', value: job.service_categories?.name ?? '—', wide: false },
-                { icon: CalendarDays, label: 'Posted', value: timeAgo(job.posted_at), wide: false },
-              ].map((item) => (
-                <View key={item.label} style={[styles.detailRow, item.wide && styles.detailRowWide]}>
-                  <View style={styles.detailIcon}>
-                    <item.icon size={17} color={item.color ?? C.ink500} />
-                  </View>
-                  <View style={styles.detailText}>
-                    <Text style={styles.detailLabel}>{item.label}</Text>
-                    <Text style={[styles.detailValue, item.color && { color: item.color }]} numberOfLines={item.wide ? 3 : 4}>
-                      {item.value}
-                    </Text>
-                  </View>
+          <View style={styles.statusBlock}>
+            <StatusCard
+              tone={view.card.tone}
+              overline={view.card.overline}
+              title={view.card.title}
+              body={view.card.body}
+            >
+              {job.has_review ? (
+                <View style={styles.reviewChip}>
+                  <Check size={14} color={V6Colors.successText} strokeWidth={2.6} />
+                  <Text style={styles.reviewChipText}>Review submitted</Text>
                 </View>
+              ) : undefined}
+            </StatusCard>
+            {showAutoInviteHint && <Text style={styles.muted}>{AUTO_INVITE_HINT}</Text>}
+          </View>
+
+          {/* Open jobs: the offers, the best two first. */}
+          {isOpenJob(job) && (
+            <View style={styles.block}>
+              <SectionHeader
+                title="Offers"
+                count={pendingCount ? pendingCount : undefined}
+                linkLabel="See all"
+                onLinkPress={() => onNavigate('Job Applications', job.id)}
+              />
+              {!!matchingMessage && <Text style={styles.matchingMessage}>{matchingMessage}</Text>}
+              {pendingOffers.slice(0, 2).map((application) => (
+                <PersonCard
+                  key={application.id}
+                  name={application.provider?.full_name ?? 'Provider'}
+                  avatarUrl={application.provider?.avatar_url}
+                  subtitle={ratingText(
+                    application.provider?.provider_profiles?.cached_avg_rating,
+                    application.provider?.provider_profiles?.cached_completed_jobs,
+                  )}
+                  rating
+                  onPress={() => onNavigate('Job Applications', job.id)}
+                />
               ))}
+              {offerList !== null && pendingOffers.length === 0 && (
+                <EmptyCard>
+                  <EmptyRow
+                    icon={ClipboardList}
+                    title="No offers yet"
+                    body="Providers who apply show up here."
+                  />
+                </EmptyCard>
+              )}
             </View>
-          </View>
+          )}
 
-          {/* Job progress — this stays in the document while the action bar is docked below. */}
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Job Progress</Text>
-            <View style={styles.timeline}>
-              <View style={styles.timelineLine} />
-              {JOB_STAGES.map((label, i) => (
-                <View key={label} style={styles.timelineStep}>
-                  <View style={[
-                    styles.timelineDot,
-                    // The last step is "Done": once reached it is complete, not "current".
-                    (i < stage || (i === stage && i === JOB_STAGES.length - 1)) && styles.timelineDotDone,
-                    i === stage && i < JOB_STAGES.length - 1 && styles.timelineDotCurrent,
-                  ]} />
-                  {/* Five steps share one row: on 360 dp phones even 1.1x broke
-                      "Confirmed" mid-word, so these short labels stay at 1x
-                      (the status pill above repeats the current stage). */}
-                  <Text
-                    style={[styles.timelineLabel, i <= stage && styles.timelineLabelDone]}
-                    maxFontSizeMultiplier={1}
-                    numberOfLines={2}
-                  >
-                    {label}
-                  </Text>
-                </View>
-              ))}
+          {view.step && <ProgressStepper step={view.step} />}
+
+          {hasProvider && (
+            <View style={styles.block}>
+              <SectionHeader title={providerHeading} />
+              <PersonCard
+                name={provider?.profiles?.full_name?.trim() || 'Your provider'}
+                avatarUrl={provider?.profiles?.avatar_url}
+                subtitle={provider ? ratingText(provider.cached_avg_rating, provider.cached_completed_jobs) : undefined}
+                rating
+                onMessage={() => onNavigate('Chat', job.id)}
+              />
+              {!!job.provider_accept_address && acceptedAway != null && (
+                <Text style={styles.acceptedFrom}>
+                  Accepted from {job.provider_accept_address}
+                  {` · ${distanceLabel(acceptedAway)} from your job`}
+                </Text>
+              )}
             </View>
+          )}
+
+          <View style={styles.infoCard}>
+            <InfoRow
+              icon={CalendarDays}
+              label="When"
+              value={job.scheduled_at ? `${shortDate(job.scheduled_at)} · ${timeOfDay(job.scheduled_at)}` : 'Flexible'}
+            />
+            <View style={styles.divider} />
+            <InfoRow icon={MapPin} label="Where" value={job.address} />
           </View>
 
-          {/* Description */}
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Job Description</Text>
-            <Text style={styles.descText}>{job.description || 'No description provided.'}</Text>
+          <View style={styles.block}>
+            <Text style={styles.sectionTitle} accessibilityRole="header">Job Description</Text>
+            <Text style={styles.description}>{job.description || 'No description provided.'}</Text>
+            <Text style={styles.muted}>Posted {timeAgo(job.posted_at)}</Text>
           </View>
 
-          {/* Task list — what was asked for, and how much of it the provider
-              has ticked off. Read-only here: only the provider can change it. */}
+          {/* Read-only for the homeowner: only the provider ticks tasks off. */}
           {tasks.length > 0 && (
-            <View style={styles.section}>
-              <View style={styles.sectionTitleRow}>
-                <ListChecks size={16} color={C.ink900} />
-                <Text style={styles.sectionTitleInline}>Tasks</Text>
-                <Text style={styles.taskCounter}>{doneCount}/{tasks.length} done</Text>
+            <View style={styles.block}>
+              <View style={styles.rowBetween}>
+                <Text style={styles.sectionTitle} accessibilityRole="header">Tasks</Text>
+                <Text style={styles.counter}>{doneCount}/{tasks.length} done</Text>
               </View>
               {tasks.map((task) => (
                 <View key={task.id} style={styles.taskRow}>
                   <View style={[styles.taskBox, task.is_done && styles.taskBoxDone]}>
                     {task.is_done && <Check size={13} color={C.onPrimary} strokeWidth={3} />}
                   </View>
-                  <Text style={[styles.taskLabel, task.is_done && styles.taskLabelDone]}>
-                    {task.label}
-                  </Text>
+                  <Text style={[styles.taskLabel, task.is_done && styles.taskLabelDone]}>{task.label}</Text>
                 </View>
               ))}
             </View>
           )}
 
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Job Photos</Text>
-            {job.photo_urls?.length > 0 ? (
+          {/* No photos: no heading and no empty block. */}
+          {job.photo_urls?.length > 0 && (
+            <View style={styles.block}>
+              <Text style={styles.sectionTitle} accessibilityRole="header">Job Photos</Text>
               <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.attachmentList}>
                 {job.photo_urls.map((url, index) => (
-                  <Tap key={url} onPress={() => setPhotoIndex(index)} accessibilityLabel={`Open job photo ${index + 1}`} activeOpacity={0.85}>
+                  <Tap
+                    key={url}
+                    onPress={() => setPhotoIndex(index)}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Open job photo ${index + 1}`}
+                    activeOpacity={0.85}
+                  >
                     <Image source={{ uri: url }} style={styles.attachmentImage} />
                   </Tap>
                 ))}
               </ScrollView>
-            ) : (
-              <Text style={styles.emptyAttachmentText}>No photos were added to this job.</Text>
-            )}
-          </View>
-
-          {/* Hired provider */}
-          {provider ? (
-            <View style={styles.section}>
-              <Text style={styles.sectionTitle}>Service Provider</Text>
-              <View style={styles.providerCard}>
-                <View style={styles.providerAvatar}>
-                  <Silhouette name={provider.profiles?.full_name} textStyle={styles.providerAvatarText} />
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.providerName} numberOfLines={1}>{provider.profiles?.full_name ?? 'Provider'}</Text>
-                  <View style={styles.providerRatingRow}>
-                    <Star size={12} color={C.ink400} fill={C.ink400} />
-                    <Text style={styles.providerRating}>
-                      {provider.cached_avg_rating != null
-                        ? `${Number(provider.cached_avg_rating).toFixed(1)} · `
-                        : 'New · '}
-                      {plural(provider.cached_completed_jobs, 'job')} completed
-                    </Text>
-                  </View>
-                </View>
-                <Tap
-                  style={styles.messageBtn}
-                  onPress={() => onNavigate('Chat', job.id)}
-                  activeOpacity={0.8}
-                >
-                  <MessageCircle size={15} color={C.ink700} />
-                  <Text style={styles.messageBtnText}>Message</Text>
-                </Tap>
-              </View>
-
-              {job.provider_accept_address && (
-                <Text style={styles.acceptedFrom}>
-                  Accepted from {job.provider_accept_address}
-                  {acceptedDistance != null ? ` · ${distanceLabel(acceptedDistance)} from your job` : ''}
-                </Text>
-              )}
-
-            </View>
-          ) : (
-            <View style={styles.section}>
-              <Text style={styles.sectionTitle}>Service Provider</Text>
-              <Text style={[styles.detailValue, styles.providerNotice]}>
-                No provider assigned yet. You'll be notified when someone is matched.
-              </Text>
-              {!!matchingMessage && <Text style={styles.matchingMessage}>{matchingMessage}</Text>}
-              {['open', 'recommending'].includes(job.status) && (
-              <Tap
-                style={styles.outlineBtn}
-                onPress={() => onNavigate('Job Applications', job.id)}
-                activeOpacity={0.85}
-                testID="job-detail-view-offers"
-              >
-                <Text style={styles.outlineBtnText}>View Offers</Text>
-              </Tap>
-              )}
             </View>
           )}
-
-          {/* Related links — real app functionality, kept as flat rows */}
-          {(canReview || job.has_review) && (
-            <View style={styles.section}>
-              {/* Only offered once there is something to review. The row used to
-                  show on every job, including ones with no provider yet, where
-                  POST /jobs/:id/review can only come back as an error. */}
-              {canReview && (
-                <Tap
-                  style={styles.reviewBtn}
-                  onPress={() => onNavigate('Leave Review', job.id)}
-                  activeOpacity={0.7}
-                  accessibilityRole="button"
-                  scale
-                >
-                  <Star size={18} color={C.onPrimary} fill={C.onPrimary} />
-                  <Text style={styles.reviewBtnText}>Leave Review</Text>
-                </Tap>
-              )}
-              {job.has_review && (
-                <View style={styles.reviewDone}>
-                  <Check size={18} color={V6Colors.successText} strokeWidth={2.5} />
-                  <Text style={styles.reviewDoneText}>Review submitted</Text>
-                </View>
-              )}
-            </View>
-          )}
-
-          <View style={{ height: 18 }} />
         </ScrollView>
       )}
 
-      {job && (
-        <View style={styles.actionBar}>
-          {!!actionError && <Text style={styles.actionError}>{friendlyError(actionError)}</Text>}
-          {canComplete && (
-            <Tap style={styles.primaryBtn} onPress={() => setConfirmComplete(true)} activeOpacity={0.85} disabled={busy}>
-              <Text style={styles.primaryBtnText}>{busy ? 'Working…' : 'Confirm Completion'}</Text>
-            </Tap>
-          )}
-          {canFindProviders && (
-            <Tap style={styles.primaryBtn} onPress={() => void findProviders()} activeOpacity={0.85} disabled={busy}>
-              <Text style={styles.primaryBtnText}>{busy ? 'Looking…' : 'Find Providers'}</Text>
-            </Tap>
-          )}
-          {job.status === 'completed' && job.warranty_expires_at && (
-            <Text style={styles.barNote}>Warranty ends {shortDate(job.warranty_expires_at)}, {timeOfDay(job.warranty_expires_at)}.</Text>
-          )}
-          {dispute?.status === 'open' && <Text style={styles.barNote}>{dispute.cancellation_state === 'pending' ? 'Cancellation awaiting provider response' : dispute.escrow_transactions?.status === 'disputed' ? 'Payment under admin review' : 'Complaint awaiting admin review'}</Text>}
-          {/* Secondary actions share one row so the primary action stays the
-              clear first choice; only cancelling is styled as destructive. */}
-          {(canCancel || dispute || canDispute) && (
-            <View style={styles.secondaryRow}>
-              {canCancel && (
-                <Tap style={[styles.outlineDangerBtn, styles.secondaryBtn]} onPress={() => setConfirmCancel(true)} activeOpacity={0.85} disabled={busy}>
-                  <View style={styles.outlineBtnContent}>
-                    <CircleAlert size={17} color={V6Colors.dangerText} />
-                    <Text style={styles.outlineDangerBtnText} numberOfLines={1}>Cancel Job</Text>
-                  </View>
-                </Tap>
-              )}
-              {(dispute || canDispute) && (
-                <Tap style={[styles.outlineBtn, styles.secondaryBtn]} onPress={() => onNavigate(dispute ? 'Dispute Status' : 'Dispute Filing', job.id)} activeOpacity={0.85}>
-                  <Text style={[styles.outlineBtnText, { textAlign: 'center' }]} numberOfLines={2} maxFontSizeMultiplier={1.15}>{dispute ? 'View Complaint Status' : 'File a Complaint'}</Text>
-                </Tap>
-              )}
-            </View>
-          )}
+      {!!job && !!actionError && (
+        <View style={styles.errorWrap}>
+          <Banner tone="error" message={friendlyError(actionError)} />
         </View>
       )}
+
+      {!!job && !!main && (
+        <BottomActionBar
+          primaryLabel={actionLabel(main, 'main')}
+          onPrimary={() => perform(main)}
+          busy={busy}
+          secondaryLabel={link ? actionLabel(link, 'link') : undefined}
+          onSecondary={link ? () => perform(link) : undefined}
+        />
+      )}
+
+      <MenuSheet
+        visible={menuOpen}
+        title={job?.title ?? ''}
+        items={menuItems}
+        onClose={() => setMenuOpen(false)}
+      />
 
       <PhotoViewer photos={(job?.photo_urls ?? []).map(uri => ({ uri }))}
         index={photoIndex} onIndexChange={setPhotoIndex} onClose={() => setPhotoIndex(null)} />
@@ -456,7 +513,7 @@ export default function HOJobDetailScreen({ jobId, onBack, onNavigate }: HOJobDe
           job?.status === 'in_progress' || dispute?.status === 'open'
             ? 'This cancels the job and preserves its history. Any held payment stays frozen for an admin to review before release or refund.'
             : job?.assigned_provider_id
-            ? 'This cancels the booking and holds any payment while the provider has 48 hours to agree or contest. Agreement or no response refunds the client; a contest goes to admin review.'
+            ? 'This cancels the booking and holds any payment while the provider has 48 hours to agree or contest. Agreement or no response refunds you; a contest goes to admin review.'
             : 'This takes the job down so providers can no longer apply. It cannot be undone.'
         }
         confirmLabel="Cancel Job"
@@ -498,6 +555,20 @@ export default function HOJobDetailScreen({ jobId, onBack, onNavigate }: HOJobDe
   );
 }
 
+/** One labelled fact in the When / Where card. */
+function InfoRow({ icon: Icon, label, value }: { icon: LucideIcon; label: string; value: string }) {
+  const { C, styles } = useThemedStyles(createThemedStyles);
+  return (
+    <View style={styles.infoRow}>
+      <Icon size={18} color={C.ink500} />
+      <View style={styles.infoText}>
+        <Text style={styles.infoLabel}>{label}</Text>
+        <Text style={styles.infoValue}>{value}</Text>
+      </View>
+    </View>
+  );
+}
+
 function createThemedStyles(theme: ThemePalette) {
   const { Colors, V6Colors } = theme;
   const C = V6Colors;
@@ -509,114 +580,67 @@ function createThemedStyles(theme: ThemePalette) {
       backgroundColor: C.surface,
       paddingHorizontal: Spacing.screenH,
       paddingBottom: 12,
-      borderBottomWidth: 1, borderBottomColor: V6Colors.line,
+      borderBottomWidth: 1, borderBottomColor: C.line,
     },
-    backBtn: {
+    iconBtn: {
       width: 44, height: 44, borderRadius: 22,
-      backgroundColor: C.surface, borderWidth: 1, borderColor: V6Colors.line,
+      backgroundColor: C.surface, borderWidth: 1, borderColor: C.line,
       alignItems: 'center', justifyContent: 'center',
     },
+    iconSpacer: { width: 44, height: 44 },
     headerTitle: { flex: 1, color: C.ink900, fontSize: 19.5, fontWeight: '800', fontFamily: 'Inter' },
 
     body: { flex: 1 },
-    bodyContent: { paddingHorizontal: Spacing.screenH, paddingTop: 4, paddingBottom: 12 },
-    stateText: { color: C.ink500, fontSize: 16.5, fontFamily: 'Inter', textAlign: 'center', marginTop: 30, paddingHorizontal: Spacing.screenH },
+    bodyContent: { paddingHorizontal: Spacing.screenH, paddingTop: 16, paddingBottom: 24, gap: 18 },
+    loadErrorWrap: { paddingHorizontal: Spacing.screenH, paddingTop: 16 },
 
-    // Hero
-    hero: { paddingVertical: 18, borderBottomWidth: 1, borderBottomColor: C.line },
-    kicker: { fontSize: 11.5, textTransform: 'uppercase', letterSpacing: 0.9, fontWeight: '800', color: V6Colors.link, marginBottom: 8, fontFamily: 'Inter' },
-    heroTitleRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 },
-    heroTitle: { flex: 1, fontSize: 21.5, lineHeight: 25, letterSpacing: -0.5, color: C.ink900, fontWeight: '700', fontFamily: 'Inter' },
-    statusBadge: { borderRadius: 999, paddingHorizontal: 10, paddingVertical: 5 },
-    statusBadgeText: { fontSize: 12.5, fontWeight: '700', fontFamily: 'Inter' },
-    heroPrice: { fontSize: 26, fontWeight: '800', letterSpacing: -0.7, color: C.ink900, marginTop: 16, fontFamily: 'Inter' },
-    factsGrid: { flexDirection: 'row', gap: 8, marginTop: 14 },
-    fact: { flex: 1, flexDirection: 'row', alignItems: 'flex-start', gap: 8, padding: 10, backgroundColor: V6Colors.wellBg, borderRadius: 12 },
-    factLabel: { fontSize: 11.5, color: C.ink400, fontFamily: 'Inter' },
-    factValue: { fontSize: 13.5, color: C.ink800, fontWeight: '700', fontFamily: 'Inter', marginTop: 1 },
+    titleBlock: { gap: 6 },
+    kicker: {
+      fontFamily: 'Inter', fontSize: 11.5, fontWeight: '800', letterSpacing: 0.9,
+      textTransform: 'uppercase', color: Colors.link,
+    },
+    title: { fontFamily: 'Inter', fontSize: 20, fontWeight: '700', lineHeight: 26, letterSpacing: -0.3, color: C.ink900 },
+    priceRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+    price: { fontFamily: 'Inter', fontSize: 18, fontWeight: '700', color: C.ink900 },
+    urgencyChip: { borderRadius: 999, paddingHorizontal: 10, paddingVertical: 4 },
+    urgencyText: { fontFamily: 'Inter', fontSize: 12, fontWeight: '700' },
 
-    // Sections — borderless, bottom-divider only
-    section: { paddingVertical: 18, borderBottomWidth: 1, borderBottomColor: C.line },
-    sectionTitle: { fontSize: 16, color: C.ink900, fontWeight: '800', fontFamily: 'Inter', marginBottom: 12 },
-    sectionTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 7, marginBottom: 12 },
-    sectionTitleInline: { flex: 1, fontSize: 16, color: C.ink900, fontWeight: '800', fontFamily: 'Inter' },
-    taskCounter: { fontSize: 12, color: C.ink400, fontWeight: '700', fontFamily: 'Inter' },
-    taskRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 7 },
+    statusBlock: { gap: 8 },
+    block: { gap: 10 },
+    sectionTitle: { fontFamily: 'Inter', fontSize: 17, fontWeight: '600', color: C.ink900 },
+    rowBetween: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+    counter: { fontFamily: 'Inter', fontSize: 13, fontWeight: '600', color: C.ink500 },
+    matchingMessage: { fontFamily: 'Inter', fontSize: 13.5, lineHeight: 18, color: Colors.link },
+    acceptedFrom: { fontFamily: 'Inter', fontSize: 13, lineHeight: 18, color: C.ink500 },
+    muted: { fontFamily: 'Inter', fontSize: 13, lineHeight: 18, color: C.ink500 },
+    description: { fontFamily: 'Inter', fontSize: 15, lineHeight: 22, color: C.ink700 },
+
+    reviewChip: {
+      flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start', gap: 6, marginTop: 4,
+      paddingHorizontal: 10, paddingVertical: 5, borderRadius: 999, backgroundColor: C.surface,
+    },
+    reviewChipText: { fontFamily: 'Inter', fontSize: 12.5, fontWeight: '700', color: C.successText },
+
+    infoCard: { gap: 12, padding: 14, borderRadius: 18, borderWidth: 1, borderColor: C.line, backgroundColor: C.surface },
+    infoRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 12 },
+    infoText: { flex: 1, gap: 2 },
+    infoLabel: { fontFamily: 'Inter', fontSize: 12, fontWeight: '500', color: C.ink500 },
+    infoValue: { fontFamily: 'Inter', fontSize: 15, fontWeight: '600', lineHeight: 20, color: C.ink900 },
+    divider: { height: 1, backgroundColor: C.line },
+
+    taskRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 8 },
     taskBox: {
-      width: 20, height: 20, borderRadius: 6,
-      borderWidth: 1.5, borderColor: V6Colors.ink200,
+      width: 22, height: 22, borderRadius: 6, borderWidth: 1.5, borderColor: C.line,
       alignItems: 'center', justifyContent: 'center',
     },
-    taskBoxDone: { backgroundColor: C.cyan700, borderColor: C.cyan700 },
-    taskLabel: { flex: 1, fontSize: 13.5, lineHeight: 18, color: C.ink800, fontFamily: 'Inter' },
-    taskLabelDone: { color: C.ink400, textDecorationLine: 'line-through' },
-    actionError: { color: V6Colors.dangerText, fontSize: 13.5, fontFamily: 'Inter', textAlign: 'center' },
-    matchingMessage: { color: V6Colors.link, fontSize: 13.5, fontFamily: 'Inter', textAlign: 'center', lineHeight: 18, marginBottom: 16 },
-    descText: { fontSize: 15, lineHeight: 22, color: C.ink700, fontFamily: 'Inter' },
+    taskBoxDone: { backgroundColor: Colors.primary, borderColor: Colors.primary },
+    taskLabel: { flex: 1, fontFamily: 'Inter', fontSize: 15, fontWeight: '500', lineHeight: 20, color: C.ink900 },
+    taskLabelDone: { color: C.ink500, textDecorationLine: 'line-through' },
+
     attachmentList: { gap: 10 },
-    attachmentImage: { width: 92, height: 92, borderRadius: 10, backgroundColor: C.ink100 },
-    emptyAttachmentText: { color: C.ink500, fontSize: 13.5, fontFamily: 'Inter' },
+    attachmentImage: { width: 92, height: 92, borderRadius: 12, backgroundColor: C.ink100 },
 
-    // Horizontal timeline
-    timeline: { flexDirection: 'row', justifyContent: 'space-between', position: 'relative', marginTop: 4 },
-    timelineLine: { position: 'absolute', left: '10%', right: '10%', top: 7, height: 2, backgroundColor: V6Colors.line },
-    timelineStep: { width: '20%', alignItems: 'center' },
-    timelineDot: { width: 15, height: 15, borderRadius: 8, borderWidth: 2, borderColor: V6Colors.line, backgroundColor: C.surface, marginBottom: 6 },
-    timelineDotDone: { backgroundColor: C.cyan700, borderColor: C.cyan700 },
-    timelineDotCurrent: { borderColor: C.cyan700 },
-    timelineLabel: { fontSize: 11, lineHeight: 14, color: C.ink400, fontFamily: 'Inter', textAlign: 'center' },
-    timelineLabelDone: { color: C.ink700, fontWeight: '700' },
-
-    // Detail rows
-    detailsGrid: { flexDirection: 'row', flexWrap: 'wrap', rowGap: 14 },
-    detailRow: { width: '50%', flexDirection: 'row', alignItems: 'flex-start', gap: 10, paddingRight: 8 },
-    detailRowWide: { width: '100%' },
-    detailText: { flex: 1, minWidth: 0 },
-    detailIcon: { width: 30, height: 30, borderRadius: 9, backgroundColor: V6Colors.wellBg, alignItems: 'center', justifyContent: 'center' },
-    detailLabel: { fontSize: 12.5, color: C.ink500, fontFamily: 'Inter', marginBottom: 2 },
-    detailValue: { fontSize: 14.5, color: C.ink800, fontWeight: '600', fontFamily: 'Inter', lineHeight: 20, flexShrink: 1 },
-    providerNotice: { marginBottom: 16 },
-    acceptedFrom: { fontSize: 13.5, color: C.ink500, fontFamily: 'Inter', lineHeight: 19, marginTop: 12 },
-
-    // Provider card
-    providerCard: { flexDirection: 'row', alignItems: 'center', gap: 11 },
-    providerAvatar: { width: 48, height: 48, borderRadius: 24, backgroundColor: C.primaryTonalStrong, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
-    providerAvatarText: { color: C.primaryDeep, fontSize: 16, fontWeight: '800', fontFamily: 'Inter' },
-    providerName: { fontSize: 14.5, fontWeight: '700', color: C.ink900, fontFamily: 'Inter' },
-    providerRatingRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 3 },
-    providerRating: { fontSize: 11.5, color: C.ink400, fontFamily: 'Inter' },
-    messageBtn: { flexDirection: 'row', alignItems: 'center', gap: 5, borderWidth: 1, borderColor: C.line, borderRadius: 999, paddingHorizontal: 12, paddingVertical: 8 },
-    messageBtnText: { color: C.ink700, fontSize: 13, fontWeight: '700', fontFamily: 'Inter' },
-
-    // Link rows
-    linkRow: { paddingVertical: 12 },
-    detailRowBorder: { borderTopWidth: 1, borderTopColor: V6Colors.wellBg },
-    linkRowText: { color: V6Colors.link, fontSize: 14.5, fontWeight: '700', fontFamily: 'Inter' },
-    reviewBtn: {
-      flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
-      backgroundColor: C.primary, borderRadius: 16, minHeight: 52,
-    },
-    reviewBtnText: { color: C.onPrimary, fontSize: 16, fontWeight: '700', fontFamily: 'Inter' },
-    reviewDone: {
-      flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
-      backgroundColor: V6Colors.successSurface, borderRadius: 16, minHeight: 48,
-    },
-    reviewDoneText: { color: V6Colors.successText, fontSize: 15, fontWeight: '700', fontFamily: 'Inter' },
-
-    // Action bar
-    actionBar: { paddingHorizontal: Spacing.screenH, paddingTop: 12, paddingBottom: 12, gap: 10, backgroundColor: C.surface, borderTopWidth: 1, borderTopColor: C.line },
-    previewBackdrop: { flex: 1, backgroundColor: 'rgba(15,23,42,0.9)', alignItems: 'center', justifyContent: 'center', padding: 20 },
-    previewImage: { width: '100%', height: '80%' },
-    primaryBtn: { backgroundColor: C.cyan700, borderRadius: 16, minHeight: 52, justifyContent: 'center', alignItems: 'center' },
-    primaryBtnText: { color: C.onPrimary, fontSize: 16.5, fontWeight: '700', fontFamily: 'Inter' },
-    outlineBtn: { borderWidth: 1, borderColor: V6Colors.fieldBorder, borderRadius: 16, minHeight: 52, justifyContent: 'center', alignItems: 'center' },
-    secondaryRow: { flexDirection: 'row', gap: 10 },
-    secondaryBtn: { flex: 1, paddingHorizontal: 10 },
-    barNote: { fontSize: 13, color: C.ink500, fontFamily: 'Inter', textAlign: 'center' },
-    outlineBtnText: { color: C.ink800, fontSize: 15.5, fontWeight: '700', fontFamily: 'Inter' },
-    outlineDangerBtn: { borderWidth: 1, borderColor: V6Colors.dangerBorder, backgroundColor: V6Colors.dangerSurface, borderRadius: 16, minHeight: 52, justifyContent: 'center', alignItems: 'center' },
-    outlineBtnContent: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-    outlineDangerBtnText: { color: V6Colors.dangerText, fontSize: 15.5, fontWeight: '700', fontFamily: 'Inter' },
+    errorWrap: { paddingHorizontal: Spacing.screenH, paddingTop: 10, backgroundColor: C.canvas },
   });
   return { Colors, V6Colors, C, styles };
 }

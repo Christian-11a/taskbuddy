@@ -1,177 +1,201 @@
 /**
- * SPMyJobsScreen.tsx ("My Work" tab)
+ * SPMyJobsScreen.tsx ("My Work" tab, list view)
  *
- * v6 design: matches taskbuddy_UI_update.html's #sp-myjobs screen — a flat
- * white .topbar (not a colored hero), .job-tabs underline-style filter tabs,
- * and individual `.card` rows (not a single merged list surface).
- *
- * Four tabs, and a job is only ever in one of them:
- *   Applications — proposals still in play or turned down (pending, not
- *     selected, withdrawn). Once a client hires this provider the job moves
- *     to Active, so it no longer shows here as "Hired" at the same time.
- *   Active — hired work: awaiting this provider's confirmation, confirmed,
- *     or in progress, labelled from the provider's side.
- *   Completed.
- *   Cancelled — a booking this provider declined, or the client cancelled
- *     (indistinguishable in the data today), plus jobs that expired.
+ * Figma "My Work · list" (79:2636): the title row with the List/Calendar switch
+ * that App passes in, one row of filter pills with counts, and the jobs under
+ * status headings. Every job is a JobRow. The hired jobs and the proposals each
+ * load once; the rows, counts and groups are worked out on the device
+ * (src/lib/myWork.ts).
  */
 
-import { useThemedStyles, type Palette as ThemePalette } from '../../../src/context/ThemeContext';
-import React from 'react';
-import { useRetainedScroll, useRetainedState } from '../../../src/hooks/useRetainedState';
+import React, { ReactNode, useMemo } from 'react';
+import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import {
-  ActivityIndicator,
-  ScrollView,
-  StyleSheet,
-  Text,
-  View,
-} from 'react-native';
-import Tap from '../../../src/components/ui/Tap';
-import ContentSkeleton from '../../../src/components/ui/ContentSkeleton';
-import { Briefcase, CalendarDays, FileText } from 'lucide-react-native';
+  Briefcase,
+  CalendarCheck,
+  CircleCheck,
+  CircleX,
+  FileText,
+  Hammer,
+  type LucideIcon,
+} from 'lucide-react-native';
+import { useThemedStyles, type Palette as ThemePalette } from '../../../src/context/ThemeContext';
 import { Spacing } from '../../../src/constants/theme';
+import FilterPill from '../../../src/components/ui/FilterPill';
+import JobRow from '../../../src/components/ui/JobRow';
+import EmptyCard from '../../../src/components/ui/EmptyCard';
+import EmptyRow from '../../../src/components/ui/EmptyRow';
+import LoadErrorCard from '../../../src/components/ui/LoadErrorCard';
+import StaleHint from '../../../src/components/ui/StaleHint';
+import SlowLoadNote from '../../../src/components/ui/SlowLoadNote';
+import ContentSkeleton from '../../../src/components/ui/ContentSkeleton';
 import { useHeaderTop } from '../../../src/hooks/useHeaderTop';
-import JobCard from '../../../src/components/JobCard';
-
-import { SPScreen } from '../../../src/types/navigation';
+import { useRetainedScroll, useRetainedState } from '../../../src/hooks/useRetainedState';
 import { useAsyncData } from '../../../src/hooks/useAsyncData';
+import { isList } from '../../../src/lib/savedShapes';
+import { useSlowLoad } from '../../../src/hooks/useSlowLoad';
 import { api } from '../../../src/lib/api';
-import { providerJobStatusMeta, shortDate } from '../../../src/lib/format';
+import { peso } from '../../../src/lib/format';
+import { SPScreen } from '../../../src/types/navigation';
+import {
+  MY_WORK_FILTERS,
+  buildMyWorkRows,
+  countMyWork,
+  myWorkSections,
+  type MyWorkApplication,
+  type MyWorkFilter,
+} from '../../../src/lib/myWork';
 
-const TABS = ['Applications', 'Active', 'Completed', 'Cancelled'] as const;
-type Tab = (typeof TABS)[number];
-
-interface ApplicationRow {
-  id: string;
-  status: 'pending' | 'accepted' | 'rejected' | 'withdrawn';
-  jobs: {
-    id: string;
-    title: string;
-    status: string;
-    urgency: string;
-    address: string;
-    budget?: number | null;
-    service_categories?: { name: string } | null;
-  };
-}
+/** What an empty filter says, and the icon for it. */
+const EMPTY_COPY: Record<MyWorkFilter, { icon: LucideIcon; title: string; body: string }> = {
+  all: {
+    icon: Briefcase,
+    title: 'No jobs yet',
+    body: 'Send a proposal on an open job. Jobs you are hired for show up here.',
+  },
+  applied: {
+    icon: FileText,
+    title: 'No open proposals',
+    body: 'Find an open job and submit a proposal. Jobs you are hired for move to Booked.',
+  },
+  booked: {
+    icon: CalendarCheck,
+    title: 'No booked jobs',
+    body: 'Jobs will move here after a client hires you.',
+  },
+  working: {
+    icon: Hammer,
+    title: 'Nothing in progress',
+    body: 'Jobs you have started show up here.',
+  },
+  done: {
+    icon: CircleCheck,
+    title: 'No completed jobs',
+    body: 'Jobs you finish show up here.',
+  },
+  closed: {
+    icon: CircleX,
+    title: 'Nothing closed',
+    body: 'Cancelled and expired jobs, and proposals that were not picked, show up here.',
+  },
+};
 
 interface SPMyJobsScreenProps {
   onNavigate: (screen: SPScreen, jobId?: string) => void;
+  /** Rendered at the right end of the title row (App puts the List/Calendar switch here). */
+  headerRight?: ReactNode;
 }
 
-export default function SPMyJobsScreen({ onNavigate }: SPMyJobsScreenProps) {
-  const { C, APP_STATUS, styles, V6Colors } = useThemedStyles(createThemedStyles);
+export default function SPMyJobsScreen({ onNavigate, headerRight }: SPMyJobsScreenProps) {
+  const { styles } = useThemedStyles(createThemedStyles);
   const headerTop = useHeaderTop();
   // Retained so going back from a job lands on the filter it was opened from.
-  const [tab, setTab] = useRetainedState<Tab>('sp.myWork.tab', 'Applications');
-  const scroll = useRetainedScroll(`sp.myWork.${tab}`);
+  const [filter, setFilter] = useRetainedState<MyWorkFilter>('sp.myWork.filter', 'all');
+  const scroll = useRetainedScroll(`sp.myWork.${filter}`);
 
-  const { data: applications, loading: loadingApps } = useAsyncData(
-    () => api.myApplications() as Promise<ApplicationRow[]>,
+  const applications = useAsyncData(
+    () => api.myApplications() as Promise<MyWorkApplication[]>,
     [],
     'sp-applications',
+    { persist: true, validate: isList },
   );
-  const { data: assigned, loading: loadingAssigned } = useAsyncData(
-    () => api.assignedJobs(),
-    [],
-    'sp-assigned',
-  );
+  const assigned = useAsyncData(() => api.assignedJobs(), [], 'sp-assigned', { persist: true, validate: isList });
 
-  // Confirmed bookings and started work belong in Active. Legacy assigned
-  // records remain visible until migration 0039 promotes them to confirmed.
-  const activeJobs = (assigned ?? []).filter((j) =>
-    ['assigned', 'confirmed', 'in_progress'].includes(j.status),
-  );
-  const completedJobs = (assigned ?? []).filter((j) => j.status === 'completed');
-  const cancelledJobs = (assigned ?? []).filter(
-    (j) => j.status === 'cancelled' || j.status === 'expired',
-  );
-  // Hired proposals live under Active from here on (see header comment).
-  const openApplications = (applications ?? []).filter((a) => a.status !== 'accepted');
-  const loading = tab === 'Applications' ? loadingApps : loadingAssigned;
-
-  const jobsForTab: Record<Exclude<Tab, 'Applications'>, typeof activeJobs> = {
-    Active: activeJobs,
-    Completed: completedJobs,
-    Cancelled: cancelledJobs,
+  const loading = applications.loading || assigned.loading;
+  const error = applications.error ?? assigned.error;
+  // The rows need both lists. With both on screen (saved or fetched) the rows stay up through a failed refresh,
+  // and the hint says the data is saved.
+  const hasData = applications.data !== null && assigned.data !== null;
+  const settled = !loading && hasData;
+  const slow = useSlowLoad(loading, hasData);
+  const reload = () => {
+    applications.reload();
+    assigned.reload();
   };
+
+  const rows = useMemo(
+    () => buildMyWorkRows(applications.data ?? [], assigned.data ?? []),
+    [applications.data, assigned.data],
+  );
+  const counts = useMemo(() => countMyWork(rows), [rows]);
+  const sections = useMemo(() => myWorkSections(rows, filter), [rows, filter]);
+  const empty = EMPTY_COPY[filter];
 
   return (
     <View style={styles.screen}>
-      {/* Header — matches .topbar (flat white) */}
-      <View style={[styles.header, { paddingTop: headerTop }]}>
-        <Text style={styles.headerTitle}>My Work</Text>
+      <View style={[styles.topBar, { paddingTop: headerTop }]}>
+        <View style={styles.titleRow}>
+          <Text style={styles.title} numberOfLines={1}>My Work</Text>
+          {headerRight}
+        </View>
       </View>
 
-      {/* Filter tabs — matches .job-tabs (underline style) */}
-      <View style={styles.tabsWrap}>
-        {TABS.map((t) => (
-          <Tap key={t} style={styles.jobTab} onPress={() => setTab(t)} activeOpacity={0.7}>
-            <Text style={[styles.jobTabText, tab === t && styles.jobTabTextActive]}>{t}</Text>
-            {tab === t && <View style={styles.jobTabUnderline} />}
-          </Tap>
-        ))}
+      <View style={styles.filterBar}>
+        <ScrollView
+          horizontal
+          testID="my-work-filters"
+          showsHorizontalScrollIndicator={false}
+          style={styles.filterScroll}
+          contentContainerStyle={styles.filterRow}
+        >
+          {MY_WORK_FILTERS.map(({ key, label }) => (
+            <FilterPill
+              key={key}
+              label={label}
+              count={settled ? counts[key] : undefined}
+              selected={filter === key}
+              onPress={() => setFilter(key)}
+            />
+          ))}
+        </ScrollView>
       </View>
 
-      <ScrollView key={tab} {...scroll} style={styles.body} contentContainerStyle={styles.bodyContent} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        key={filter}
+        testID="my-work-list"
+        {...scroll}
+        style={styles.body}
+        contentContainerStyle={styles.bodyContent}
+        showsVerticalScrollIndicator={false}
+      >
+        <StaleHint
+          stale={hasData && (applications.stale || assigned.stale)}
+          refreshing={applications.refreshing || assigned.refreshing}
+          error={hasData ? error : null}
+          onRetry={reload}
+        />
+        {slow && <SlowLoadNote />}
         {loading && <ContentSkeleton variant="list" />}
-
-        {tab === 'Applications' && !loading && (
-          openApplications.length === 0 ? (
-            <View style={styles.emptyState}>
-              <FileText size={30} color={C.ink300} />
-              <Text style={styles.emptyTitle}>No open proposals</Text>
-              <Text style={styles.emptyText}>
-                Find an open job and submit a proposal. Jobs you're hired for appear under Active.
-              </Text>
-            </View>
-          ) : (
-            openApplications.map((app) => (
-              <JobCard
-                key={app.id}
-                title={app.jobs.title}
-                budget={app.jobs.budget}
-                address={app.jobs.address}
-                status={APP_STATUS[app.status]}
-                urgency={app.jobs.urgency}
-                pills={app.jobs.service_categories?.name
-                  ? [{ label: app.jobs.service_categories.name, color: C.ink700, bg: C.ink50 }]
-                  : []}
-                onPress={() => onNavigate('Job Detail', app.jobs.id)}
-              />
-            ))
-          )
+        {!!error && !loading && !hasData && (
+          <LoadErrorCard title="Couldn't load your jobs" message={error} onRetry={reload} />
         )}
 
-        {tab !== 'Applications' && !loading && (
-          jobsForTab[tab].length === 0 ? (
-            <View style={styles.emptyState}>
-              <Briefcase size={30} color={C.ink300} />
-              <Text style={styles.emptyTitle}>No {tab.toLowerCase()} jobs</Text>
-              <Text style={styles.emptyText}>
-                {tab === 'Cancelled'
-                  ? 'Bookings you decline or that get cancelled will appear here.'
-                  : 'Jobs will move here after a client hires you.'}
-              </Text>
-            </View>
-          ) : (
-            jobsForTab[tab].map((job) => (
-              <JobCard
-                key={job.id}
-                title={job.title}
-                budget={job.budget}
-                address={job.address}
-                status={providerJobStatusMeta(job.status, V6Colors)}
-                urgency={job.urgency}
-                footer={[{
-                  icon: <CalendarDays size={13} color={C.ink400} />,
-                  text: job.scheduled_at ? shortDate(job.scheduled_at) : 'Flexible schedule',
-                }]}
-                onPress={() => onNavigate('Job Detail', job.id)}
-              />
-            ))
-          )
+        {settled && sections.length === 0 && (
+          <EmptyCard>
+            <EmptyRow icon={empty.icon} title={empty.title} body={empty.body} />
+          </EmptyCard>
         )}
+
+        {settled && sections.map((section) => (
+          <View key={section.group} style={styles.section}>
+            {!!section.label && (
+              <Text style={styles.sectionLabel} accessibilityRole="header">{section.label}</Text>
+            )}
+            <View style={styles.rows}>
+              {section.rows.map((row) => (
+                <JobRow
+                  key={row.key}
+                  title={row.title}
+                  meta={row.meta}
+                  tone={row.tone}
+                  amount={row.budget != null ? peso(row.budget) : ''}
+                  date={row.scheduledAt}
+                  onPress={() => onNavigate('Job Detail', row.jobId)}
+                />
+              ))}
+            </View>
+          </View>
+        ))}
 
         <View style={{ height: 20 }} />
       </ScrollView>
@@ -180,38 +204,28 @@ export default function SPMyJobsScreen({ onNavigate }: SPMyJobsScreenProps) {
 }
 
 function createThemedStyles(theme: ThemePalette) {
-  const { Colors, V6Colors } = theme;
-  const C = V6Colors;
-  const APP_STATUS: Record<ApplicationRow['status'], { label: string; color: string; bg: string }> = {
-    pending: { label: 'Proposal sent', color: V6Colors.warningText, bg: V6Colors.warningSurface },
-    accepted: { label: 'Hired', color: V6Colors.successText, bg: V6Colors.successSurface },
-    rejected: { label: 'Not selected', color: V6Colors.ink500, bg: V6Colors.canvas },
-    withdrawn: { label: 'Withdrawn', color: V6Colors.ink500, bg: V6Colors.canvas },
-  };
+  const { V6Colors } = theme;
   const styles = StyleSheet.create({
-    screen: { flex: 1, backgroundColor: C.canvas },
+    screen: { flex: 1, backgroundColor: V6Colors.canvas },
 
-    header: {
-      backgroundColor: C.surface,
-      paddingHorizontal: Spacing.screenH,
-      paddingBottom: 12,
-      borderBottomWidth: 1, borderBottomColor: V6Colors.line,
+    topBar: { backgroundColor: V6Colors.surface, paddingHorizontal: Spacing.screenH, paddingBottom: 12 },
+    titleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
+    title: {
+      flexShrink: 1, color: V6Colors.ink900, fontFamily: 'Inter', fontSize: 21.5, fontWeight: '800', letterSpacing: -0.3,
     },
-    headerTitle: { color: C.ink900, fontSize: 21.5, fontWeight: '800', fontFamily: 'Inter', letterSpacing: -0.3 },
 
-    tabsWrap: { flexDirection: 'row', gap: 24, backgroundColor: C.surface, borderBottomWidth: 1, borderBottomColor: C.line, paddingHorizontal: Spacing.screenH },
-    jobTab: { paddingVertical: 13, alignItems: 'center' },
-    jobTabText: { color: C.ink400, fontSize: 13.5, fontWeight: '600', fontFamily: 'Inter' },
-    jobTabTextActive: { color: C.ink900, fontWeight: '800' },
-    jobTabUnderline: { position: 'absolute', left: 0, right: 0, bottom: 0, height: 2.5, backgroundColor: C.cyan700, borderRadius: 999 },
+    filterBar: { backgroundColor: V6Colors.surface, borderBottomWidth: 1, borderBottomColor: V6Colors.line },
+    filterScroll: { flexGrow: 0 },
+    filterRow: { gap: 8, paddingHorizontal: Spacing.screenH, paddingVertical: 12 },
 
     body: { flex: 1 },
     bodyContent: { paddingHorizontal: Spacing.screenH, paddingTop: 16, paddingBottom: 20 },
-
-    emptyState: { alignItems: 'center', paddingVertical: 48, paddingHorizontal: 24 },
-    emptyTitle: { color: C.ink800, fontSize: 16, fontWeight: '700', fontFamily: 'Inter', marginTop: 10, marginBottom: 4 },
-    emptyText: { color: C.ink400, fontSize: 14, fontFamily: 'Inter', textAlign: 'center', lineHeight: 17 },
-
+    section: { marginBottom: 18 },
+    sectionLabel: {
+      color: V6Colors.ink500, fontFamily: 'Inter', fontSize: 12, fontWeight: '700', letterSpacing: 0.6,
+      textTransform: 'uppercase', marginBottom: 8,
+    },
+    rows: { gap: 8 },
   });
-  return { Colors, V6Colors, C, APP_STATUS, styles };
+  return { V6Colors, styles };
 }

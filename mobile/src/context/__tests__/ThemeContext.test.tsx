@@ -33,14 +33,16 @@ it('updates mounted signup inputs, shared dialog, gallery and frame and preserve
     <ConfirmationModal visible title="Shared dialog" message="Confirm something" onCancel={jest.fn()} onConfirm={jest.fn()} />
   </ScreenFrame></ThemeProvider>);
   await waitFor(() => expect(AsyncStorage.setItem).toHaveBeenCalled());
-  const caption = () => StyleSheet.flatten(screen.getByText('No portfolio photos yet.').props.style).color;
-  expect(caption()).toBe(lightPalette.V6Colors.ink500);
+  // Sign-up starts on the role step; the email field lives on the details step.
+  fireEvent.press(screen.getByText('Continue'));
+  const caption = () => StyleSheet.flatten(screen.getByText('No portfolio photos yet').props.style).color;
+  expect(caption()).toBe(lightPalette.V6Colors.ink900);
   fireEvent.press(screen.getByText('Switch theme'));
-  expect(caption()).toBe(darkPalette.V6Colors.ink500);
+  expect(caption()).toBe(darkPalette.V6Colors.ink900);
   expect(screen.getByTestId('input-email').props.keyboardAppearance).toBe('dark');
   expect(StyleSheet.flatten(screen.getByText('Shared dialog').props.style).color).toBe(darkPalette.V6Colors.ink900);
   fireEvent.press(screen.getByText('Switch theme'));
-  expect(caption()).toBe(lightPalette.V6Colors.ink500);
+  expect(caption()).toBe(lightPalette.V6Colors.ink900);
   expect(screen.getByTestId('input-email').props.keyboardAppearance).toBe('light');
 });
 it('restores signed-out appearance on restart and persists toggles', async () => {

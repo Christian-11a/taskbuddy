@@ -41,8 +41,10 @@ export type Palette = {
 };
 export const lightPalette: Palette = {
   appearance: 'light',
-  Colors: { ...Colors, ...lightSemantic, muted: '#64748b', slateLight: '#64748b', surface: Colors.cardBg, onPrimary: '#ffffff', link: Colors.brandTeal },
-  V6Colors: { ...V6Colors, ...lightSemantic, ink300: '#64748b', ink400: '#64748b', onPrimary: '#ffffff', link: V6Colors.cyan700 },
+  // Muted text is #526073 (not slate-500 #64748b) so it keeps 4.5:1 on the
+  // canvas and on grey chips, not just on white cards.
+  Colors: { ...Colors, ...lightSemantic, muted: '#526073', slateLight: '#526073', surface: Colors.cardBg, onPrimary: '#ffffff', link: Colors.brandTeal },
+  V6Colors: { ...V6Colors, ...lightSemantic, ink300: '#526073', ink400: '#526073', ink500: '#526073', onPrimary: '#ffffff', link: V6Colors.cyan700 },
 };
 // Neutral graphite surfaces (no blue cast) so the sky accent carries the
 // brand; the primary fill stays #0369a1 so white button text keeps 5.9:1.
@@ -69,3 +71,37 @@ export const darkPalette: Palette = {
     link: '#38bdf8',
   },
 };
+
+type NavyRoles = {
+  primary: string; tonal: string; tonalStrong: string; deep: string; link: string;
+  hero: string; ripple: string; brandDark?: string;
+};
+/** Navy accents for provider accounts (Figma "Provider Light/Dark" modes).
+ * Only brand roles change; neutrals and status colors stay shared, so the two
+ * roles never look alike but read the same way. */
+function withNavy(base: Palette, v: NavyRoles): Palette {
+  const roles = {
+    primary: v.primary, primaryTonal: v.tonal, primaryTonalStrong: v.tonalStrong,
+    primaryDeep: v.deep, link: v.link, hero: v.hero, providerHero: v.hero, ripple: v.ripple,
+  };
+  return {
+    ...base,
+    Colors: {
+      ...base.Colors, ...roles, brandTeal: v.link, brandCyan: v.link, brandCyanLight: v.tonalStrong,
+      ...(v.brandDark ? { brandDark: v.brandDark } : {}),
+    },
+    V6Colors: {
+      ...base.V6Colors, ...roles,
+      cyan50: v.tonal, cyan100: v.tonal, cyan200: v.tonalStrong, cyan500: v.link, cyan600: v.link,
+      cyan700: v.primary, cyan800: v.primary, cyan900: v.deep,
+    },
+  };
+}
+export const providerLightPalette = withNavy(lightPalette, {
+  primary: '#13283c', tonal: '#e8edf3', tonalStrong: '#d0dae5', deep: '#13283c', link: '#2d4a68',
+  hero: '#13283c', ripple: 'rgba(19, 40, 60, 0.12)', brandDark: '#13283c',
+});
+export const providerDarkPalette = withNavy(darkPalette, {
+  primary: '#3b5b7d', tonal: '#1a2633', tonalStrong: '#2d4a68', deep: '#9db4cc', link: '#9db4cc',
+  hero: '#0f2233', ripple: 'rgba(157, 180, 204, 0.16)',
+});

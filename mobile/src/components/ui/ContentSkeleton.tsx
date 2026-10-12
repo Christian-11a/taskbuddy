@@ -3,7 +3,7 @@ import { StyleSheet, View } from 'react-native';
 import { useTheme } from '../../context/ThemeContext';
 import Pulse from './Pulse';
 
-type Variant = 'detail' | 'list' | 'chat';
+type Variant = 'detail' | 'list' | 'chat' | 'hero';
 
 /**
  * In-place loading placeholder shaped like the content that is coming, so
@@ -48,6 +48,20 @@ export default function ContentSkeleton({ variant = 'list' }: { variant?: Varian
     );
   }
 
+  if (variant === 'hero') {
+    // The Home hero card: same sky blue, radius and padding, with bars where its chip, title, line and button sit.
+    return (
+      <Pulse style={[styles.hero, { backgroundColor: palette.Colors.hero }]}>
+        <View style={[styles.heroChip, block]} />
+        <View style={[styles.heroTitle, block]} />
+        <View style={[styles.heroLine, block]} />
+        <View style={styles.heroFooter}>
+          <View style={[styles.heroButton, block]} />
+        </View>
+      </Pulse>
+    );
+  }
+
   return (
     <Pulse style={styles.list}>
       {[0, 1, 2].map((i) => (
@@ -71,4 +85,11 @@ const styles = StyleSheet.create({
   line: { height: 14, borderRadius: 7, marginBottom: 8 },
   chat: { padding: 16, gap: 12 },
   bubble: { height: 40, borderRadius: 18 },
+  // Heights match the hero's lines: chip 24, title 26, line 18, and a 38 button under 8 of padding.
+  hero: { borderRadius: 20, padding: 18, gap: 8 },
+  heroChip: { width: 112, height: 24, borderRadius: 12 },
+  heroTitle: { width: '70%', height: 26, borderRadius: 13 },
+  heroLine: { width: '50%', height: 18, borderRadius: 9 },
+  heroFooter: { flexDirection: 'row', justifyContent: 'flex-end', paddingTop: 8 },
+  heroButton: { width: 96, height: 38, borderRadius: 19 },
 });

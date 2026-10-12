@@ -1,108 +1,79 @@
 /**
  * OnboardingScreen.tsx
  *
- * v6 design: matches taskbuddy_UI_update.html's #onboarding screen — 3 slides
- * (icon well + title + subtitle + body), dots progress, "Skip" ghost button,
- * "Continue" / "Get Started" primary button. The slides differ by role.
+ * Three story cards per role (copy from tourContent.introCards). Each card has
+ * a small picture made of the app's own parts (IntroIllustrations), the
+ * greeting uses the person's first name, and the cards set expectations only:
+ * the spotlight tour on Home teaches the controls. Skip is always on screen and
+ * a dot marks each card. The last card's button, "Show me around", starts the
+ * tour. On a replay (from Help or the Home card) Skip reads "Close".
  */
 
 import { useThemedStyles, type Palette as ThemePalette } from '../../../src/context/ThemeContext';
 import React, { useRef, useState } from 'react';
 import {
-  Dimensions,
   FlatList,
+  ScrollView,
   StyleSheet,
   Text,
+  useWindowDimensions,
   View,
   ViewToken,
 } from 'react-native';
 import Tap from '../../../src/components/ui/Tap';
-import { BadgeCheck, CalendarCheck, Search, Shield, Sparkles, Users } from 'lucide-react-native';
-import { V6Radii, V6Shadows } from '../../../src/constants/theme';
+import IntroIllustration, { type IllustrationKind } from '../../../src/components/onboarding/IntroIllustrations';
+import { useAsyncData } from '../../../src/hooks/useAsyncData';
+import { isList } from '../../../src/lib/savedShapes';
+import { SEVEN_DAYS_MS } from '../../../src/lib/persistentCache';
 import { useAuthLayout } from '../../../src/hooks/useAuthLayout';
+import { api, type Category } from '../../../src/lib/api';
+import { introCards, type IntroCard, type WelcomeRole } from '../../../src/lib/tourContent';
+import { V6Shadows } from '../../../src/constants/theme';
 
-const { width: W } = Dimensions.get('window');
+/** The picture on each card, in order, per role. */
+const ILLUSTRATIONS: Record<WelcomeRole, readonly IllustrationKind[]> = {
+  homeowner: ['services', 'proposals', 'heldMoney'],
+  provider: ['feed', 'proposalToBooking', 'incoming'],
+};
 
-interface Slide {
-  id: string;
-  Icon: typeof Sparkles;
-  title: string;
-  titleAccent: string;
-  subtitle: string;
-  body: string;
-}
-
-/**
- * Each role gets its own walkthrough: what to do first, and where in the app
- * to do it. Doubles as the first-run tutorial — the slides name the actual
- * tabs and buttons the user is about to see.
- */
-const CLIENT_SLIDES: Slide[] = [
-  {
-    id: 'c1',
-    Icon: Sparkles,
-    title: 'Post a job in',
-    titleAccent: 'minutes',
-    subtitle: 'Tap the + button at the bottom of the screen.',
-    body: 'Describe the task, add photos, choose a schedule and budget. Verified providers nearby are notified right away.',
-  },
-  {
-    id: 'c2',
-    Icon: Users,
-    title: 'Pick the',
-    titleAccent: 'right provider',
-    subtitle: 'Compare proposals from My Jobs.',
-    body: 'Open a job to see who applied. Check each provider’s rating, reviews and past work before you hire.',
-  },
-  {
-    id: 'c3',
-    Icon: Shield,
-    title: 'Pay with',
-    titleAccent: 'peace of mind',
-    subtitle: 'Your payment is held until the job is done.',
-    body: 'Top up your Wallet, hire, then confirm completion to release payment. Something wrong? File a complaint from the job.',
-  },
-];
-
-const PROVIDER_SLIDES: Slide[] = [
-  {
-    id: 'p1',
-    Icon: BadgeCheck,
-    title: 'Get',
-    titleAccent: 'verified first',
-    subtitle: 'Profile → Get Verified.',
-    body: 'Upload a government ID and a quick face scan. Verified providers are trusted more and hired sooner.',
-  },
-  {
-    id: 'p2',
-    Icon: Search,
-    title: 'Find jobs',
-    titleAccent: 'near you',
-    subtitle: 'Your Feed lists open jobs in your service area.',
-    body: 'Open a job and tap Submit Proposal with a short message. Track your applications under My Work.',
-  },
-  {
-    id: 'p3',
-    Icon: CalendarCheck,
-    title: 'Confirm and',
-    titleAccent: 'get paid',
-    subtitle: 'Accept bookings, then do great work.',
-    body: 'When a client hires you, confirm the booking. It appears in your Calendar, and payment lands in your Wallet once the job is complete.',
-  },
-];
+/** The picture tile takes about a third of the screen height, kept between these heights in dp. */
+const TILE_MIN_HEIGHT = 210;
+const TILE_MAX_HEIGHT = 280;
+const TILE_SHARE_OF_SCREEN = 0.34;
 
 interface OnboardingScreenProps {
   role: 'homeowner' | 'provider' | null;
+  /** The name to greet on the first card. Missing means "there". */
+  firstName?: string;
+  /** Opened from Help or the Home card, not on first sign-in: Skip reads "Close". */
+  replay?: boolean;
+  /** The last card's button: starts the spotlight tour on Home. */
   onFinish: () => void;
+  /** Skip, or Close on a replay. Kept under this name for the existing callers. */
   onLogin: () => void;
 }
 
-export default function OnboardingScreen({ role, onFinish, onLogin }: OnboardingScreenProps) {
-  const { C, styles, V6Colors } = useThemedStyles(createThemedStyles);
-  const slides = role === 'provider' ? PROVIDER_SLIDES : CLIENT_SLIDES;
+export default function OnboardingScreen({ role, firstName, replay = false, onFinish, onLogin }: OnboardingScreenProps) {
+  const { styles } = useThemedStyles(createThemedStyles);
+  const welcomeRole: WelcomeRole = role === 'provider' ? 'provider' : 'homeowner';
+  const cards = introCards(welcomeRole, firstName);
   const layout = useAuthLayout();
+  const { width, height } = useWindowDimensions();
+  const tileHeight = Math.max(TILE_MIN_HEIGHT, Math.min(TILE_MAX_HEIGHT, height * TILE_SHARE_OF_SCREEN));
   const [currentIndex, setCurrentIndex] = useState(0);
   const flatListRef = useRef<FlatList>(null);
+  const isLast = currentIndex === cards.length - 1;
+
+  // The client's first card shows real service chips. Providers never see them, so their lookup is skipped.
+  // Only the client's list is the shared, saved 'categories'; the provider's empty list keeps its own key.
+  const isClient = welcomeRole === 'homeowner';
+  const categories = useAsyncData(
+    () => (isClient ? api.categories() : Promise.resolve<Category[]>([])),
+    [welcomeRole],
+    isClient ? 'categories' : `onboarding-services-${welcomeRole}`,
+    isClient ? { persist: true, maxAgeMs: SEVEN_DAYS_MS, validate: isList } : undefined,
+  );
+  const services = categories.data ?? [];
 
   const handleViewableItemsChanged = useRef(
     ({ viewableItems }: { viewableItems: ViewToken[] }) => {
@@ -113,43 +84,60 @@ export default function OnboardingScreen({ role, onFinish, onLogin }: Onboarding
   ).current;
 
   const handleNext = () => {
-    if (currentIndex < slides.length - 1) {
-      flatListRef.current?.scrollToIndex({ index: currentIndex + 1 });
-    } else {
+    if (isLast) {
       onFinish();
+    } else {
+      flatListRef.current?.scrollToIndex({ index: currentIndex + 1 });
     }
   };
 
-  const handleSkip = () => {
-    onLogin();
+  // The card's content is centred in the space above the dots. A screen too small for it scrolls instead.
+  const renderCard = ({ item, index }: { item: IntroCard; index: number }) => {
+    const active = index === currentIndex;
+    return (
+      <ScrollView
+        testID="intro-card"
+        style={{ width }}
+        contentContainerStyle={styles.slide}
+        showsVerticalScrollIndicator={false}
+      >
+        <View testID="intro-illustration" style={[styles.illustration, { minHeight: tileHeight }]}>
+          {/* Keyed by `active`, so a card's parts ease in each time it comes on screen. */}
+          <IntroIllustration
+            key={active ? 'on' : 'off'}
+            kind={ILLUSTRATIONS[welcomeRole][index]}
+            active={active}
+            services={services}
+          />
+        </View>
+        {/* Balanced breaks (Android) keep one word off a line of its own. */}
+        <Text style={styles.title} accessibilityRole="header" textBreakStrategy="balanced">{item.title}</Text>
+        <Text style={styles.body}>{item.body}</Text>
+      </ScrollView>
+    );
   };
-
-  const renderSlide = ({ item }: { item: Slide }) => (
-    <View style={styles.slide}>
-      <View style={styles.iconWell}>
-        <item.Icon size={42} color={V6Colors.link} strokeWidth={1.7} />
-      </View>
-      <Text style={styles.title}>
-        {item.title} <Text style={styles.titleAccent}>{item.titleAccent}</Text>
-      </Text>
-      <Text style={styles.subtitle}>{item.subtitle}</Text>
-      <Text style={styles.body}>{item.body}</Text>
-    </View>
-  );
 
   return (
     <View style={[styles.screen, { paddingTop: layout.paddingTop, paddingBottom: layout.paddingBottom }]}>
       <View style={styles.skipRow}>
-        <Tap style={styles.skipBtn} onPress={handleSkip} activeOpacity={0.8}>
-          <Text style={styles.skipText}>Skip</Text>
+        <Tap
+          style={styles.skipBtn}
+          onPress={onLogin}
+          activeOpacity={0.8}
+          hitSlop={8}
+          accessibilityRole="button"
+          accessibilityLabel={replay ? 'Close' : 'Skip'}
+        >
+          <Text style={styles.skipText}>{replay ? 'Close' : 'Skip'}</Text>
         </Tap>
       </View>
 
       <FlatList
         ref={flatListRef}
-        data={slides}
-        renderItem={renderSlide}
-        keyExtractor={(item) => item.id}
+        data={cards}
+        renderItem={renderCard}
+        extraData={`${currentIndex}-${services.length}`}
+        keyExtractor={(_, index) => String(index)}
         horizontal
         pagingEnabled
         showsHorizontalScrollIndicator={false}
@@ -158,8 +146,13 @@ export default function OnboardingScreen({ role, onFinish, onLogin }: Onboarding
       />
 
       <View style={styles.bottomBar}>
-        <View style={styles.dots}>
-          {slides.map((_, i) => (
+        <View
+          style={styles.dots}
+          accessible
+          accessibilityRole="progressbar"
+          accessibilityLabel={`Slide ${currentIndex + 1} of ${cards.length}`}
+        >
+          {cards.map((_, i) => (
             <View
               key={i}
               style={[styles.dotIndicator, i === currentIndex && styles.dotIndicatorActive]}
@@ -167,10 +160,14 @@ export default function OnboardingScreen({ role, onFinish, onLogin }: Onboarding
           ))}
         </View>
 
-        <Tap style={styles.nextBtn} onPress={handleNext} activeOpacity={0.85}>
-          <Text style={styles.nextBtnText}>
-            {currentIndex === slides.length - 1 ? 'Get Started' : 'Continue'}
-          </Text>
+        <Tap
+          style={styles.nextBtn}
+          onPress={handleNext}
+          activeOpacity={0.85}
+          accessibilityRole="button"
+          accessibilityLabel={isLast ? 'Show me around' : 'Next'}
+        >
+          <Text style={styles.nextBtnText}>{isLast ? 'Show me around' : 'Next'}</Text>
         </Tap>
       </View>
     </View>
@@ -183,7 +180,7 @@ function createThemedStyles(theme: ThemePalette) {
   const styles = StyleSheet.create({
     screen: {
       flex: 1,
-      backgroundColor: C.surface,
+      backgroundColor: Colors.surface,
     },
     skipRow: {
       flexDirection: 'row',
@@ -194,7 +191,7 @@ function createThemedStyles(theme: ThemePalette) {
       backgroundColor: C.ink50,
       paddingHorizontal: 14,
       paddingVertical: 8,
-      borderRadius: V6Radii.pill,
+      borderRadius: 9999,
     },
     skipText: {
       color: C.ink700,
@@ -203,57 +200,49 @@ function createThemedStyles(theme: ThemePalette) {
       fontFamily: 'Inter',
     },
 
+    // The card's block grows to fill the space above the dots and centres its content there.
     slide: {
-      width: W,
+      flexGrow: 1,
+      justifyContent: 'center',
       paddingHorizontal: 24,
-      paddingTop: 40,
+      paddingVertical: 24,
       alignItems: 'center',
     },
 
-    iconWell: {
-      width: 92,
-      height: 92,
-      borderRadius: 26,
-      backgroundColor: C.cyan50,
-      borderWidth: 1,
-      borderColor: C.cyan100,
+    // The picture well: the role's tint, holding the card's parts. Its height comes from the screen (see the
+    // tile height above) and it grows further to fit larger text.
+    illustration: {
+      width: '100%',
+      maxWidth: 360,
+      borderRadius: 28,
+      backgroundColor: Colors.primaryTonal,
       alignItems: 'center',
       justifyContent: 'center',
-      marginBottom: 26,
+      padding: 16,
+      marginBottom: 28,
+      overflow: 'hidden',
     },
 
     title: {
       fontFamily: 'Inter',
-      fontSize: 32.5,
+      fontSize: 26,
       fontWeight: '800',
       // A line height near the font size made Android clip the second line
-      // of two-line titles ("Confirm and get / paid").
-      letterSpacing: -0.5,
+      // of two-line titles, so the line height stays well above the size.
+      letterSpacing: -0.4,
       color: C.ink900,
       textAlign: 'center',
-      lineHeight: 40,
-    },
-    titleAccent: {
-      color: C.cyan600,
-    },
-    subtitle: {
-      fontFamily: 'Inter',
-      fontSize: 19,
-      fontWeight: '700',
-      color: V6Colors.ink900,
-      lineHeight: 22,
-      textAlign: 'center',
-      marginTop: 9,
+      lineHeight: 33,
     },
     body: {
       fontFamily: 'Inter',
-      fontSize: 16.5,
+      fontSize: 16,
       fontWeight: '400',
       color: C.ink500,
       textAlign: 'center',
-      lineHeight: 22,
+      lineHeight: 23,
       marginTop: 12,
-      maxWidth: 300,
+      maxWidth: 320,
     },
 
     bottomBar: {
@@ -274,20 +263,22 @@ function createThemedStyles(theme: ThemePalette) {
     },
     dotIndicatorActive: {
       width: 24,
-      backgroundColor: C.cyan700,
+      backgroundColor: Colors.primary,
       borderRadius: 4,
     },
     nextBtn: {
       width: '100%',
-      backgroundColor: C.cyan700,
-      borderRadius: V6Radii.btn,
+      minHeight: 48,
+      backgroundColor: Colors.primary,
+      borderRadius: 13,
       paddingVertical: 14,
       alignItems: 'center',
+      justifyContent: 'center',
       ...V6Shadows.primaryButton,
     },
     nextBtnText: {
-      color: C.onPrimary,
-      fontSize: 18.5,
+      color: Colors.onPrimary,
+      fontSize: 17,
       fontWeight: '700',
       fontFamily: 'Inter',
     },

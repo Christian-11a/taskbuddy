@@ -1,20 +1,17 @@
 /**
- * Profile.tsx (HO - My Profile)
+ * HOProfile.tsx (HO - My Profile)
  *
- * v6 design: matches taskbuddy_UI_update.html's #ho-profile screen — teal
- * gradient hero (same gradient as Home) with a squircle avatar and a back
- * button, a 2-stat row, and a .navrow-style menu list. Not a bottom-nav tab
- * (matches the mockup — reached via Home's avatar button instead).
+ * Figma "Profile · new" (74:1545): the Profile bottom tab on the canvas. A
+ * centred avatar with a camera badge (it opens Edit Profile, where the photo is
+ * changed), the name, an Edit profile button, a stats card, the Account card,
+ * the Settings and Help rows, and Log Out on its own card.
  *
- * Deviation: dropped "Payment Methods" (there's no stored-card backend yet,
- * and it previously just pointed at Wallet, duplicating the bottom tab) and
- * "Notifications" (duplicated Home's bell icon). Added "Help & Support".
+ * It is the Profile tab, which has no back button; the back button appears only
+ * when onBack is passed.
  */
 
 import { useThemedStyles, type Palette as ThemePalette } from '../../../src/context/ThemeContext';
-import { StatusBar } from 'expo-status-bar';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import React, { useState } from 'react';
+import React, { useState, type ReactNode } from 'react';
 import { useRetainedScroll } from '../../../src/hooks/useRetainedState';
 import {
   ScrollView,
@@ -25,48 +22,60 @@ import {
 import Tap from '../../../src/components/ui/Tap';
 import {
   ArrowLeft,
+  Camera,
   ChevronRight,
   CircleHelp,
   LogOut,
-  Pencil,
+  Mail,
+  MapPin,
+  Phone,
   Settings,
+  type LucideIcon,
 } from 'lucide-react-native';
 import ConfirmationModal from '../../../src/components/ConfirmationModal';
-import { Spacing, V6Radii, V6Shadows } from '../../../src/constants/theme';
+import { Spacing } from '../../../src/constants/theme';
 import { useHeaderTop } from '../../../src/hooks/useHeaderTop';
 
 import { HOScreen } from '../../../src/types/navigation';
 import { useAuth } from '../../../src/context/AuthContext';
 import { useAsyncData } from '../../../src/hooks/useAsyncData';
 import { api } from '../../../src/lib/api';
-import { monthYear, peso } from '../../../src/lib/format';
+import { initials } from '../../../src/lib/format';
 import OwnAvatar from '../../../src/components/OwnAvatar';
 
-const MENU_ITEMS: { label: string; icon: typeof Pencil; screen: HOScreen | null }[] = [
-  { label: 'Edit Profile', icon: Pencil, screen: 'Edit Profile' },
-  { label: 'Settings', icon: Settings, screen: 'Settings' },
-  { label: 'Help & Support', icon: CircleHelp, screen: 'Help & Support' },
-];
+/** The statuses Home counts as "Active jobs"; "Active now" counts the same jobs. */
+const ACTIVE_STATUSES: readonly string[] = ['open', 'recommending', 'assigned', 'confirmed', 'in_progress'];
 
 interface ProfileProps {
   onNavigate: (screen: HOScreen) => void;
   onLogout: () => void;
-  onBack: () => void;
+  /** Omit on the Profile tab, which has no back arrow. */
+  onBack?: () => void;
+}
+
+/** "Sep 2026" */
+function shortMonthYear(iso: string | null | undefined): string {
+  if (!iso) return '';
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return '';
+  return date.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
 }
 
 export default function Profile({ onNavigate, onLogout, onBack }: ProfileProps) {
-  const { C, styles, V6Colors } = useThemedStyles(createThemedStyles);
+  const { Colors, V6Colors, styles } = useThemedStyles(createThemedStyles);
   const headerTop = useHeaderTop(4);
-  const insets = useSafeAreaInsets();
   // Coming back from Settings/Edit Profile keeps the list where it was.
   const scroll = useRetainedScroll('ho.profile');
   const { profile } = useAuth();
   const [confirmLogoutVisible, setConfirmLogoutVisible] = useState(false);
 
-  // Live stats: jobs posted (own jobs) + wallet balance.
+  // Jobs posted: every job the homeowner has. Active now: the jobs Home counts as active.
   const stats = useAsyncData(async () => {
-    const [jobs, wallet] = await Promise.all([api.myJobs(), api.wallet()]);
-    return { jobsPosted: jobs.length, balance: wallet.balance };
+    const jobs = await api.myJobs();
+    return {
+      jobsPosted: jobs.length,
+      activeNow: jobs.filter((job) => ACTIVE_STATUSES.includes(job.status)).length,
+    };
   }, [], 'ho-profile-stats');
 
   const name = profile?.full_name ?? '';
@@ -75,104 +84,129 @@ export default function Profile({ onNavigate, onLogout, onBack }: ProfileProps) 
     (profile?.address && profile?.city && profile.address.includes(profile.city)
       ? profile.address
       : [profile?.city, profile?.address].filter(Boolean).join(', ')) || null;
-  const memberSince = monthYear(profile?.created_at) || null;
-  const subtitle = [memberSince ? `Member since ${memberSince}` : null, location]
+  const memberSince = shortMonthYear(profile?.created_at);
+  const subtitle = ['Client', memberSince ? `Member since ${memberSince}` : null]
     .filter(Boolean)
     .join(' · ');
+  const phone = profile?.phone?.trim() || '';
 
   return (
     <View style={styles.screen}>
-      <StatusBar style="light" />
-
       <ScrollView
         {...scroll}
         style={styles.body}
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
-        {/* Hero — matches .profile-hero (same gradient as Home) */}
-        <View style={[styles.hero, { paddingTop: headerTop }, { backgroundColor: C.hero }]}>
-          <Tap
-            style={[styles.backBtn, { top: headerTop }]}
-            onPress={onBack}
-            activeOpacity={0.8}
-            accessibilityLabel="Back to Home"
-          >
-            <ArrowLeft size={20} color={C.onPrimary} />
-          </Tap>
+        <View style={[styles.top, { paddingTop: headerTop }]}>
+          {onBack && (
+            <Tap
+              style={[styles.backBtn, { top: headerTop }]}
+              onPress={onBack}
+              hitSlop={4}
+              accessibilityRole="button"
+              accessibilityLabel="Back to Home"
+            >
+              <ArrowLeft size={20} color={V6Colors.ink900} />
+            </Tap>
+          )}
 
-          <View style={styles.avatarCircle}>
-            <OwnAvatar name={name} textStyle={styles.avatarText} />
+          {/* The camera badge opens Edit Profile, where the photo is changed. */}
+          <View style={styles.avatarWrap}>
+            <View style={styles.avatar}>
+              {profile?.avatar_url || !name ? (
+                <OwnAvatar name={name} textStyle={styles.avatarText} />
+              ) : (
+                <Text style={styles.avatarText}>{initials(name)}</Text>
+              )}
+            </View>
+            <Tap
+              testID="profile-camera-badge"
+              style={styles.cameraBadge}
+              hitSlop={10}
+              accessibilityRole="button"
+              accessibilityLabel="Change photo"
+              accessibilityHint="Opens Edit Profile"
+              onPress={() => onNavigate('Edit Profile')}
+            >
+              <Camera size={14} color={Colors.onPrimary} strokeWidth={2.4} />
+            </Tap>
           </View>
-          <Text style={styles.profileName}>{name || 'Your Profile'}</Text>
-          {!!subtitle && <Text style={styles.profileSubtitle}>{subtitle}</Text>}
+
+          <Text style={styles.name}>{name || 'Your Profile'}</Text>
+          <Text style={styles.subtitle} numberOfLines={2}>{subtitle}</Text>
+          <Tap
+            style={styles.editButton}
+            hitSlop={{ top: 4, bottom: 4 }}
+            accessibilityRole="button"
+            accessibilityLabel="Edit profile"
+            onPress={() => onNavigate('Edit Profile')}
+          >
+            <Text style={styles.editText}>Edit profile</Text>
+          </Tap>
         </View>
 
-        {/* Stats */}
-        <View style={styles.statsRow}>
-          <View style={styles.statCard}>
-            <Text style={styles.statValue}>
-              {stats.data ? stats.data.jobsPosted : '—'}
-            </Text>
-            <Text style={styles.statLabel}>Jobs Posted</Text>
+        <View style={styles.statsCard}>
+          <View style={styles.stat}>
+            <Text style={styles.statValue}>{stats.data ? stats.data.jobsPosted : '—'}</Text>
+            <Text style={styles.statLabel}>Jobs posted</Text>
           </View>
           <View style={styles.statDivider} />
-          <View style={styles.statCard}>
-            <Text style={styles.statValue}>
-              {stats.data ? peso(stats.data.balance) : '—'}
-            </Text>
-            <Text style={styles.statLabel}>Balance</Text>
+          <View style={styles.stat}>
+            <Text style={styles.statValue}>{stats.data ? stats.data.activeNow : '—'}</Text>
+            <Text style={styles.statLabel}>Active now</Text>
           </View>
         </View>
 
-        <View style={styles.bodyContent}>
-        {/* Account Info */}
-        <View style={styles.card}>
-          <Text style={styles.cardTitle}>Account Info</Text>
-          {[
-            { label: 'Email', value: profile?.email ?? '—' },
-            { label: 'Phone', value: profile?.phone?.trim() || '—' },
-            { label: 'Location', value: location ?? '—' },
-          ].map((item) => (
-            <View key={item.label} style={styles.infoRow}>
-              <Text style={styles.infoLabel}>{item.label}</Text>
-              <Text style={styles.infoValue}>{item.value}</Text>
-            </View>
-          ))}
+        <View>
+          <Text style={styles.sectionLabel} accessibilityRole="header">Account</Text>
+          <View style={styles.card}>
+            <InfoRow icon={Mail} label="Email">
+              <Text style={styles.infoValue}>{profile?.email ?? '—'}</Text>
+            </InfoRow>
+            <View style={styles.divider} />
+            <InfoRow icon={Phone} label="Phone">
+              {phone ? (
+                <Text style={styles.infoValue} numberOfLines={1}>{phone}</Text>
+              ) : (
+                <Tap
+                  style={styles.linkTap}
+                  hitSlop={{ top: 12, bottom: 12 }}
+                  accessibilityRole="button"
+                  accessibilityLabel="Add phone number"
+                  onPress={() => onNavigate('Edit Profile')}
+                >
+                  <Text style={styles.linkText}>Add phone number</Text>
+                </Tap>
+              )}
+            </InfoRow>
+            <View style={styles.divider} />
+            <InfoRow icon={MapPin} label="Location">
+              <Text style={styles.infoValue}>{location ?? '—'}</Text>
+            </InfoRow>
+          </View>
         </View>
 
-        {/* Menu — matches .navrow */}
         <View style={styles.card}>
-          {MENU_ITEMS.map((item) => (
-            <Tap
-              key={item.label}
-              style={styles.navrow}
-              onPress={() => onNavigate(item.screen!)}
-              activeOpacity={0.7}
-            >
-              <View style={styles.rowIcon}>
-                <item.icon size={19} color={C.ink700} />
-              </View>
-              <Text style={styles.rowLabel}>{item.label}</Text>
-              <ChevronRight size={20} color={C.ink300} />
-            </Tap>
-          ))}
+          <MenuRow icon={Settings} label="Settings" onPress={() => onNavigate('Settings')} />
+          <View style={styles.divider} />
+          <MenuRow icon={CircleHelp} label="Help & support" onPress={() => onNavigate('Help & Support')} />
         </View>
 
         {/* Log Out sits on its own, without a chevron, so it isn't tapped by
             accident while moving down the menu. */}
         <View style={styles.card}>
           <Tap
-            style={styles.navrow}
+            style={styles.menuRow}
             onPress={() => setConfirmLogoutVisible(true)}
-            activeOpacity={0.7}
+            accessibilityRole="button"
+            accessibilityLabel="Log Out"
           >
-            <View style={[styles.rowIcon, styles.rowIconDanger]}>
-              <LogOut size={19} color={V6Colors.dangerText} />
+            <View style={[styles.menuIcon, styles.menuIconDanger]}>
+              <LogOut size={18} color={V6Colors.dangerText} />
             </View>
-            <Text style={[styles.rowLabel, styles.rowLabelDanger]}>Log Out</Text>
+            <Text style={[styles.menuLabel, styles.dangerText]}>Log Out</Text>
           </Tap>
-        </View>
         </View>
 
         <ConfirmationModal
@@ -181,6 +215,8 @@ export default function Profile({ onNavigate, onLogout, onBack }: ProfileProps) 
           message="Are you sure you want to log out?"
           confirmLabel="Log Out"
           cancelLabel="Cancel"
+          destructive
+          icon={LogOut}
           onConfirm={() => {
             setConfirmLogoutVisible(false);
             onLogout();
@@ -188,12 +224,39 @@ export default function Profile({ onNavigate, onLogout, onBack }: ProfileProps) 
           onCancel={() => setConfirmLogoutVisible(false)}
         />
 
-        <View style={{ height: 20 }} />
+        <View style={styles.bottomGap} />
       </ScrollView>
-      {/* Keeps the status bar on the header colour once the header scrolls
-          away, so the light status icons never sit on the white page. */}
-      <View pointerEvents="none" style={[styles.statusStrip, { height: insets.top, backgroundColor: C.hero }]} />
     </View>
+  );
+}
+
+/** One line of the Account card: an icon, a small label, and the value (or a link) under it. */
+function InfoRow({ icon: Icon, label, children }: { icon: LucideIcon; label: string; children: ReactNode }) {
+  const { V6Colors, styles } = useThemedStyles(createThemedStyles);
+  return (
+    <View style={styles.infoRow}>
+      <View style={styles.infoIcon}>
+        <Icon size={19} color={V6Colors.ink700} />
+      </View>
+      <View style={styles.infoCopy}>
+        <Text style={styles.infoLabel}>{label}</Text>
+        {children}
+      </View>
+    </View>
+  );
+}
+
+/** A tappable row of the menu card: an icon tile, the label, and a chevron. */
+function MenuRow({ icon: Icon, label, onPress }: { icon: LucideIcon; label: string; onPress: () => void }) {
+  const { V6Colors, styles } = useThemedStyles(createThemedStyles);
+  return (
+    <Tap style={styles.menuRow} onPress={onPress} accessibilityRole="button" accessibilityLabel={label}>
+      <View style={styles.menuIcon}>
+        <Icon size={18} color={V6Colors.ink700} />
+      </View>
+      <Text style={styles.menuLabel}>{label}</Text>
+      <ChevronRight size={18} color={V6Colors.ink500} />
+    </Tap>
   );
 }
 
@@ -202,66 +265,80 @@ function createThemedStyles(theme: ThemePalette) {
   const C = V6Colors;
   const styles = StyleSheet.create({
     screen: { flex: 1, backgroundColor: C.canvas },
-    statusStrip: { position: 'absolute', top: 0, left: 0, right: 0 },
+    body: { flex: 1 },
+    scrollContent: { paddingHorizontal: Spacing.screenH, paddingBottom: 20 },
+    bottomGap: { height: 20 },
 
-    hero: {
-      paddingHorizontal: Spacing.screenH,
-      paddingBottom: 26,
-      borderBottomLeftRadius: 26,
-      borderBottomRightRadius: 26,
-      alignItems: 'center',
-      position: 'relative',
-    },
+    top: { alignItems: 'center', paddingBottom: 4 },
     backBtn: {
-      position: 'absolute', left: Spacing.screenH,
-      width: 38, height: 38, borderRadius: 12,
-      backgroundColor: 'rgba(255,255,255,0.12)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.14)',
+      position: 'absolute', left: 0, width: 40, height: 40, borderRadius: 12,
+      backgroundColor: C.surface, borderWidth: 1, borderColor: C.line,
       alignItems: 'center', justifyContent: 'center',
     },
 
-    avatarCircle: {
-      width: 80, height: 80, borderRadius: 40,
-      backgroundColor: C.primaryTonalStrong, borderWidth: 3, borderColor: 'rgba(255,255,255,0.85)',
-      alignItems: 'center', justifyContent: 'center', marginBottom: 10, overflow: 'hidden',
+    avatarWrap: { width: 96, height: 96 },
+    avatar: {
+      width: 96, height: 96, borderRadius: 48, overflow: 'hidden',
+      backgroundColor: Colors.primaryTonal, alignItems: 'center', justifyContent: 'center',
     },
-    avatarText: { color: C.primaryDeep, fontWeight: '800', fontSize: 24, fontFamily: 'Inter' },
-    profileName: { color: C.onPrimary, fontSize: 19.5, fontWeight: '800', fontFamily: 'Inter' },
-    profileSubtitle: { color: C.onHeroMuted, fontSize: 14, fontFamily: 'Inter', marginTop: 2 },
-
-    statsRow: {
-      flexDirection: 'row', backgroundColor: C.surface, paddingVertical: 15, paddingHorizontal: Spacing.screenH,
-      borderBottomWidth: 1, borderBottomColor: V6Colors.line,
+    avatarText: { color: Colors.primaryDeep, fontSize: 34, fontWeight: '700', fontFamily: 'Inter' },
+    cameraBadge: {
+      position: 'absolute', right: 0, bottom: 2, width: 30, height: 30, borderRadius: 15,
+      backgroundColor: Colors.primary, borderWidth: 2, borderColor: C.canvas,
+      alignItems: 'center', justifyContent: 'center',
     },
-    statCard: { flex: 1, alignItems: 'center', paddingHorizontal: 8 },
-    statDivider: { width: 1, backgroundColor: V6Colors.line },
-    statValue: { color: C.ink900, fontSize: 17.5, fontWeight: '800', fontFamily: 'Inter', marginBottom: 2 },
-    statLabel: { color: C.ink400, fontSize: 11.5, fontFamily: 'Inter', textAlign: 'center' },
+    name: {
+      color: C.ink900, fontSize: 20, fontWeight: '700', fontFamily: 'Inter', lineHeight: 26,
+      textAlign: 'center', marginTop: 12,
+    },
+    subtitle: {
+      color: C.ink500, fontSize: 14, fontFamily: 'Inter', lineHeight: 20,
+      textAlign: 'center', marginTop: 2, paddingHorizontal: 12,
+    },
+    editButton: {
+      marginTop: 14, minHeight: 40, paddingHorizontal: 18, borderRadius: 999,
+      backgroundColor: Colors.primaryTonal, alignItems: 'center', justifyContent: 'center',
+    },
+    editText: { color: Colors.primaryDeep, fontSize: 14, fontWeight: '600', fontFamily: 'Inter', lineHeight: 18 },
 
-    body: { flex: 1 },
-    scrollContent: { paddingBottom: 20 },
-    bodyContent: { paddingHorizontal: Spacing.screenH, paddingTop: 18 },
+    statsCard: {
+      flexDirection: 'row', marginTop: 20, paddingVertical: 14,
+      backgroundColor: C.surface, borderRadius: 16, borderWidth: 1, borderColor: C.line,
+    },
+    stat: { flex: 1, alignItems: 'center', paddingHorizontal: 8, gap: 2 },
+    statValue: { color: C.ink900, fontSize: 20, fontWeight: '700', fontFamily: 'Inter', lineHeight: 26 },
+    statLabel: { color: C.ink500, fontSize: 13, fontFamily: 'Inter', lineHeight: 18, textAlign: 'center' },
+    statDivider: { width: 1, marginVertical: 4, backgroundColor: C.line },
 
+    sectionLabel: {
+      color: C.ink500, fontSize: 12, fontWeight: '700', fontFamily: 'Inter', letterSpacing: 0.6,
+      textTransform: 'uppercase', marginTop: 22, marginBottom: 8, paddingHorizontal: 4,
+    },
     card: {
-      backgroundColor: C.surface, borderRadius: V6Radii.card,
-      padding: 8, marginBottom: 16, overflow: 'hidden',
-      borderWidth: 1, borderColor: C.line,
-      ...V6Shadows.sm,
+      backgroundColor: C.surface, borderRadius: 16, borderWidth: 1, borderColor: C.line,
+      overflow: 'hidden', marginTop: 16,
     },
-    cardTitle: { color: C.ink900, fontSize: 16, fontWeight: '800', fontFamily: 'Inter', margin: 12, marginBottom: 4 },
+    divider: { height: 1, marginHorizontal: 14, backgroundColor: C.line },
 
-    infoRow: { paddingVertical: 9, paddingHorizontal: 12, gap: 2 },
-    infoLabel: { color: C.ink500, fontSize: 13, fontFamily: 'Inter' },
-    infoValue: { color: C.ink900, fontSize: 15, fontWeight: '600', fontFamily: 'Inter' },
+    infoRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 12, paddingVertical: 12, paddingHorizontal: 14 },
+    infoIcon: { width: 20, alignItems: 'center', marginTop: 2 },
+    infoCopy: { flex: 1, minWidth: 0, gap: 2 },
+    infoLabel: { color: C.ink500, fontSize: 12, fontFamily: 'Inter', lineHeight: 16 },
+    infoValue: { color: C.ink900, fontSize: 15, fontWeight: '600', fontFamily: 'Inter', lineHeight: 20 },
+    linkTap: { alignSelf: 'flex-start' },
+    linkText: { color: Colors.link, fontSize: 15, fontWeight: '600', fontFamily: 'Inter', lineHeight: 20 },
 
-    // .navrow
-    navrow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 14, paddingHorizontal: 12 },
-    rowIcon: {
-      width: 34, height: 34, borderRadius: 10,
-      backgroundColor: V6Colors.wellBg, alignItems: 'center', justifyContent: 'center',
+    menuRow: {
+      flexDirection: 'row', alignItems: 'center', gap: 12,
+      minHeight: 56, paddingVertical: 10, paddingHorizontal: 14,
     },
-    rowLabel: { flex: 1, color: C.ink900, fontSize: 14.5, fontWeight: '600', fontFamily: 'Inter' },
-    rowLabelDanger: { color: V6Colors.dangerText },
-    rowIconDanger: { backgroundColor: V6Colors.dangerSurface },
+    menuIcon: {
+      width: 36, height: 36, borderRadius: 10, borderWidth: 1, borderColor: C.line,
+      backgroundColor: C.surface, alignItems: 'center', justifyContent: 'center',
+    },
+    menuIconDanger: { borderColor: V6Colors.dangerBorder, backgroundColor: V6Colors.dangerSurface },
+    menuLabel: { flex: 1, color: C.ink900, fontSize: 15, fontWeight: '600', fontFamily: 'Inter', lineHeight: 20 },
+    dangerText: { color: V6Colors.dangerText },
   });
   return { Colors, V6Colors, C, styles };
 }

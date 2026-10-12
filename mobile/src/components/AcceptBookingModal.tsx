@@ -95,6 +95,7 @@ export default function AcceptBookingModal({
               starting from so they can see how far away you are.
             </Text>
 
+            {/* The accept call takes the address as typed, at most 300 characters (AcceptJobDto). */}
             <AddressField
               value={address}
               onChangeText={(v) => {
@@ -104,6 +105,7 @@ export default function AcceptBookingModal({
               onResolve={setResolved}
               placeholder="Where are you now?"
               testID="accept-location-input"
+              maxLength={300}
             />
 
             {!!shownError && <Text style={styles.error} accessibilityRole="alert">{shownError}</Text>}

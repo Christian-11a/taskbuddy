@@ -15,11 +15,11 @@ appId: com.taskbuddy.app
 - tapOn:
     id: "btn-sign-in"
 - extendedWaitUntil:
-    visible: ".*(Skip|Jobs Near You).*"
+    visible: ".*(Skip|Jobs near you).*"
     timeout: 60000
 - tapOn:
     text: "Skip"
     optional: true
 - extendedWaitUntil:
-    visible: "Jobs Near You"
+    visible: "Jobs near you"
     timeout: 60000

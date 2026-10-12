@@ -16,6 +16,7 @@ import { NotificationsProvider } from './src/context/NotificationsContext';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { BackHandler, LogBox, StyleSheet, View } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { isBackBlockedByScreen } from './src/hooks/useLeaveGuard';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { BottomSheetModalProvider } from '@gorhom/bottom-sheet';
 
@@ -32,7 +33,7 @@ if (__DEV__) {
 }
 import * as ExpoSplashScreen from 'expo-splash-screen';
 import * as WebBrowser from 'expo-web-browser';
-import { CalendarDays, ClipboardList, Home, Plus, Search, Wallet } from 'lucide-react-native';
+import { ClipboardList, Home, Search, User, Wallet } from 'lucide-react-native';
 import RootLayout from './app/layout';
 
 // ── Auth screens ──────────────────────────────────────────────────────────────
@@ -81,10 +82,15 @@ import SPSkillRequestScreen from './app/(provider)/screens/SPSkillRequestScreen'
 // ── Shared navigation components ──────────────────────────────────────────────
 import BottomNavBar, { BottomNavItem } from './src/components/BottomNavBar';
 import HelpSupportScreen from './src/components/HelpSupportScreen';
+import TourFinishCard from './src/components/tour/TourFinishCard';
+import {
+  TourProvider, useTour, hasCompletedTour, hasDismissedTourOffer, markTourCompleted, markTourOfferDismissed,
+} from './src/components/tour';
 import ScreenFrame from './src/components/ScreenFrame';
 
 import { ToastHost, showToast } from './src/components/Toast';
 import ScreenTransition, { useTransitionDirection } from './src/components/ui/ScreenTransition';
+import ViewSwitch from './src/components/ui/ViewSwitch';
 import { clearRetainedState } from './src/hooks/useRetainedState';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -93,27 +99,40 @@ import { HOScreen, SPScreen } from './src/types/navigation';
 // ── Auth ───────────────────────────────────────────────────────────────────────
 import { AuthProvider, useAuth } from './src/context/AuthContext';
 import { hasCompletedOnboarding, markOnboardingCompleted } from './src/lib/onboarding';
+import { firstNameFrom, tourSteps, type FinishAction } from './src/lib/tourContent';
+import {
+  firstRunKind, homeContentReady, idleTourFlow, nextTourFlow, shouldOfferTour, shouldStartTour, TOUR_CONTENT_POLL_MS,
+  welcomeHoldsPushes, type TourFlow,
+} from './src/lib/tourFlow';
 import { api } from './src/lib/api';
 import { consumeLastNotificationTap, subscribeToNotificationTaps } from './src/lib/pushNotifications';
 import { resolveNotificationTarget } from './src/lib/notificationRouting';
+import { warmUpServer } from './src/lib/warmUp';
 
-const HOMEOWNER_TABS: readonly BottomNavItem<HOScreen>[] = [
+export const HOMEOWNER_TABS: readonly BottomNavItem<HOScreen>[] = [
   { key: 'Home', label: 'Home', icon: Home },
-  { key: 'My Jobs', label: 'My Jobs', icon: ClipboardList },
-  { key: 'Create Job', label: 'Create job', title: 'Post a job', icon: Plus, primary: true },
-  { key: 'Calendar', label: 'Calendar', icon: CalendarDays },
+  { key: 'My Jobs', label: 'My Jobs', icon: ClipboardList, tourId: 'jobs' },
   { key: 'Wallet', label: 'Wallet', icon: Wallet },
+  { key: 'Profile', label: 'Profile', icon: User },
 ];
 
-// Matches the mockup's sp-dashboard nav exactly: 4 plain tabs, no FAB (providers
-// browse/claim jobs, they don't post them) and no Profile tab (reached via the
-// avatar button in Feed's header instead, same pattern as the homeowner side).
-const PROVIDER_TABS: readonly BottomNavItem<SPScreen>[] = [
+// Plain tabs and no floating button: providers browse and claim jobs, they
+// don't post them. Calendar is a view of My Work (see JobsView below).
+export const PROVIDER_TABS: readonly BottomNavItem<SPScreen>[] = [
   { key: 'Dashboard', label: 'Feed', icon: Search },
-  { key: 'My Jobs', label: 'My Work', icon: ClipboardList },
-  { key: 'Calendar', label: 'Calendar', icon: CalendarDays },
+  { key: 'My Jobs', label: 'My Work', icon: ClipboardList, tourId: 'work' },
   { key: 'Wallet', label: 'Wallet', icon: Wallet },
+  { key: 'Profile', label: 'Profile', icon: User },
 ];
+
+// My Jobs / My Work show the job list, or the calendar behind the List/Calendar
+// switch. Calendar is not a tab: navigating to 'Calendar' opens My Jobs / My
+// Work in calendar view. The view survives tab switches and resets on logout.
+type JobsView = 'list' | 'calendar';
+const JOBS_VIEW_OPTIONS = [
+  { key: 'list', label: 'List' },
+  { key: 'calendar', label: 'Calendar' },
+] as const;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Root app state
@@ -133,13 +152,22 @@ type PreAuthScreen = 'login' | 'forgotPassword' | 'register';
 interface HOStackEntry { screen: HOScreen; id: string | null }
 interface SPStackEntry { screen: SPScreen; id: string | null; urgent: boolean }
 
+/** The signed-in app and its welcome tour. TourProvider sits above every screen, so a tour can cover any of them. */
 function AppContent() {
+  return (
+    <TourProvider>
+      <AppFlow />
+    </TourProvider>
+  );
+}
+
+function AppFlow() {
   const { error: themeError } = useTheme();
   useEffect(() => { if (themeError) showToast(`Appearance: ${themeError}`, 'error'); }, [themeError]);
   const { V6Colors, styles } = useThemedStyles(createThemedStyles);
   const {
     initializing, isAuthenticated, isGoogleSignupPending,
-    role, profile,
+    role, profile, isVerified,
     signIn, signUp, signOut, signInWithGoogle, completeGoogleProfile,
     refreshProfile, authError, clearAuthError,
   } = useAuth();
@@ -148,6 +176,13 @@ function AppContent() {
   const [preAuth, setPreAuth] = useState<PreAuthScreen>('login');
   // null = still reading the flag for this account; true = show the slides.
   const [showOnboarding, setShowOnboarding] = useState<boolean | null>(null);
+  // The welcome flow after the intro cards (see tourFlow.ts), and whether the take-the-tour card is offered.
+  const [tourFlow, setTourFlow] = useState<TourFlow>(idleTourFlow);
+  const [tourOfferOpen, setTourOfferOpen] = useState(false);
+  const { startTour, stopTour, anchorState } = useTour();
+  // A tapped notification waits for the whole welcome (see welcomeHoldsPushes).
+  const pushHeld = welcomeHoldsPushes(tourFlow);
+  const firstName = firstNameFrom(profile?.full_name);
   // The splash plays for a minimum duration; we also wait for session restore.
   const [minSplashDone, setMinSplashDone] = useState(false);
   // Sub-screen within the Google signup pending gate (role → SP details)
@@ -156,14 +191,19 @@ function AppContent() {
   const handleLogout = () => {
     void signOut();
     clearRetainedState();
+    stopTour();
+    setTourFlow(idleTourFlow);
+    setTourOfferOpen(false);
     setPreAuth('login');
     setShowOnboarding(null);
     setHOTab('Home');
     setHOScreen('Home');
     setHOStack([]);
+    setHOJobsView('list');
     setSPTab('Dashboard');
     setSPScreen('Dashboard');
     setSPStack([]);
+    setSPJobsView('list');
   };
 
   // ── HO navigation state ───────────────────────────────────────────────────
@@ -171,6 +211,7 @@ function AppContent() {
   const [hoScreen, setHOScreen] = useState<HOScreen>('Home'); // for non-tab sub-screens
   const [hoSelectedId, setHOSelectedId] = useState<string | null>(null); // selected job/provider context
   const [hoStack, setHOStack] = useState<HOStackEntry[]>([]); // non-tab screens navigated away from
+  const [hoJobsView, setHOJobsView] = useState<JobsView>('list'); // My Jobs: list or calendar
 
   // ── SP navigation state ───────────────────────────────────────────────────
   const [spTab, setSPTab] = useState<SPScreen>('Dashboard');
@@ -178,9 +219,10 @@ function AppContent() {
   const [spUrgentJob, setSPUrgentJob] = useState(false);
   const [spJobId, setSPJobId] = useState<string | null>(null);
   const [spStack, setSPStack] = useState<SPStackEntry[]>([]); // non-tab screens navigated away from
+  const [spJobsView, setSPJobsView] = useState<JobsView>('list'); // My Work: list or calendar
 
-  const HO_TAB_SCREENS: HOScreen[] = ['Home', 'My Jobs', 'Calendar', 'Wallet'];
-  const SP_TAB_SCREENS: SPScreen[] = ['Dashboard', 'My Jobs', 'Calendar', 'Wallet'];
+  const HO_TAB_SCREENS: HOScreen[] = ['Home', 'My Jobs', 'Wallet', 'Profile'];
+  const SP_TAB_SCREENS: SPScreen[] = ['Dashboard', 'My Jobs', 'Wallet', 'Profile'];
 
   // ── HO helpers ────────────────────────────────────────────────────────────
   // Jumping to a tab is a "root" navigation — it clears the back stack rather
@@ -189,6 +231,12 @@ function AppContent() {
   // "My Jobs" → New → back returns to My Jobs, not Home), and its own
   // onBack/onSuccess handlers land it on the right tab when the flow ends.
   const hoNavigate = (screen: HOScreen, id?: string) => {
+    // Calendar is a view of My Jobs, not a tab of its own.
+    if (screen === 'Calendar') {
+      setHOJobsView('calendar');
+      hoNavigate('My Jobs', id);
+      return;
+    }
     if (HO_TAB_SCREENS.includes(screen)) {
       setHOStack([]);
       setHOTab(screen);
@@ -199,8 +247,9 @@ function AppContent() {
     if (screen === 'Create Job') {
       setHOStack((prev) => [...prev, { screen: hoScreen, id: hoSelectedId }]);
       // `id` here is a category id from Home's "Book a Job" strip. Always
-      // assign it — including clearing it when the flow is opened from the FAB
-      // — so a previous tile's category can't leak into the next job.
+      // assign it — including clearing it when the flow is opened without one
+      // (My Jobs' "New" button) — so a previous tile's category can't leak
+      // into the next job.
       setHOSelectedId(id ?? null);
       setHOScreen(screen);
       return;
@@ -225,6 +274,12 @@ function AppContent() {
 
   // ── SP helpers ────────────────────────────────────────────────────────────
   const spNavigate = (screen: SPScreen, jobId?: string) => {
+    // Calendar is a view of My Work, not a tab of its own.
+    if (screen === 'Calendar') {
+      setSPJobsView('calendar');
+      spNavigate('My Jobs', jobId);
+      return;
+    }
     if (SP_TAB_SCREENS.includes(screen)) {
       setSPStack([]);
       setSPUrgentJob(false);
@@ -263,6 +318,8 @@ function AppContent() {
   // screen) lets the OS's real exit happen where it should.
   useEffect(() => {
     const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+      // A form with unsaved changes is asking about leaving (useLeaveGuard). Step aside so its question wins.
+      if (isBackBlockedByScreen()) return false;
       if (!isAuthenticated) {
         if (preAuth !== 'login') {
           setPreAuth('login');
@@ -363,7 +420,8 @@ function AppContent() {
 
   useEffect(() => {
     if (!pendingPushTarget || pendingPushTarget.recipient_id !== profile?.id) return;
-    if (!isAuthenticated || isGoogleSignupPending || showOnboarding !== false || !role) return;
+    // The welcome holds the push until it is over, so its tour and finish card never sit over the screen the push opens.
+    if (!isAuthenticated || isGoogleSignupPending || showOnboarding !== false || !role || pushHeld) return;
 
     const target = resolveNotificationTarget(role, pendingPushTarget);
     if (target.kind === 'proposals') {
@@ -385,7 +443,7 @@ function AppContent() {
     const notificationId = pendingPushTarget.notification_id;
     if (notificationId) void api.markNotificationRead(notificationId).catch((err: Error) => showToast(err.message, 'error'));
     setPendingPushTarget(null);
-  }, [pendingPushTarget, isAuthenticated, isGoogleSignupPending, showOnboarding, role, profile?.id]);
+  }, [pendingPushTarget, isAuthenticated, isGoogleSignupPending, showOnboarding, role, profile?.id, pushHeld]);
 
   useEffect(() => {
     // Pre-warm the browser on Android so Google OAuth opens instantly.
@@ -405,27 +463,146 @@ function AppContent() {
   }, []);
 
   // Read the onboarding flag for whoever is signed in. Runs on every sign-in
-  // (and on restore of a persisted session), so the slides appear exactly once
-  // per account: right after the first successful login, never again.
+  // (and on restore of a persisted session). Only a new account gets the slides,
+  // right after its first login. An older account on a device with no flags (a new
+  // phone, a reinstall, Expo Go) is marked done here and sees only the tour offer
+  // (see firstRunKind in tourFlow.ts).
   const profileId = profile?.id ?? null;
+  const profileCreatedAt = profile?.created_at ?? null;
   useEffect(() => {
     if (!profileId) {
       setShowOnboarding(null);
+      setTourOfferOpen(false);
+      // The session can end on its own (a rejected token, see AuthContext). Then the welcome ends with it, the
+      // same as a sign-out, so no tour is left up over Login.
+      stopTour();
+      setTourFlow(idleTourFlow);
       return;
     }
     let mounted = true;
-    void hasCompletedOnboarding(profileId).then((done) => {
-      if (mounted) setShowOnboarding(!done);
+    // Read once per sign-in, so the take-the-tour card only ever means an existing account (not this session's first run).
+    void Promise.all([
+      hasCompletedOnboarding(profileId),
+      hasCompletedTour(profileId),
+      hasDismissedTourOffer(profileId),
+    ]).then(([done, toured, dismissed]) => {
+      if (!mounted) return;
+      const kind = firstRunKind({ onboardingDone: done, createdAt: profileCreatedAt, now: Date.now() });
+      if (kind === 'offerOnly') void markOnboardingCompleted(profileId);
+      setShowOnboarding(kind === 'full');
+      setTourOfferOpen(shouldOfferTour({ onboardingDone: kind !== 'full', tourDone: toured, offerDismissed: dismissed }));
     });
     return () => {
       mounted = false;
     };
-  }, [profileId]);
+  }, [profileId, profileCreatedAt]);
 
+  // ── Welcome flow: intro cards, then the spotlight tour, then the finish card (phases in tourFlow.ts) ──
+  // "Show me around" on the last intro card of a first run. The tour starts once Home is on screen.
   const finishOnboarding = () => {
     if (profileId) void markOnboardingCompleted(profileId);
     setShowOnboarding(false);
+    setTourFlow((flow) => nextTourFlow(flow, { type: 'introDone', firstRun: true }));
   };
+
+  // Ends the flow early (Skip, Android Back, sign-out): the tour counts as done for this account and no finish card follows.
+  const endTourFlow = () => {
+    if (profileId) void markTourCompleted(profileId);
+    setTourOfferOpen(false);
+    setTourFlow((flow) => nextTourFlow(flow, { type: 'ended' }));
+  };
+
+  // Skip on a first run's intro cards: the onboarding and the tour are both done for this account.
+  const skipOnboarding = () => {
+    if (profileId) void markOnboardingCompleted(profileId);
+    setShowOnboarding(false);
+    endTourFlow();
+  };
+
+  // Opens the welcome walkthrough again, from Help or the Home card: the intro cards first, then the tour.
+  const openTutorial = () => {
+    setTourOfferOpen(false);
+    setTourFlow(idleTourFlow);
+    if (role === 'homeowner') hoNavigate('Tutorial');
+    else spNavigate('Tutorial');
+  };
+
+  // The replay's intro cards are done: back to the first tab, where the tour starts. No confetti on a replay.
+  const finishReplay = () => {
+    if (role === 'homeowner') hoNavigate('Home');
+    else spNavigate('Dashboard');
+    setTourFlow((flow) => nextTourFlow(flow, { type: 'introDone', firstRun: false }));
+  };
+
+  // Skip (Close) on a replay: back to the first tab with no tour.
+  const skipReplay = () => {
+    endTourFlow();
+    if (role === 'homeowner') hoNavigate('Home');
+    else spNavigate('Dashboard');
+  };
+
+  // The take-the-tour card: taking it counts as dismissing it, so it never comes back.
+  const startTourFromOffer = () => {
+    if (profileId) void markTourOfferDismissed(profileId);
+    openTutorial();
+  };
+  const dismissTourOffer = () => {
+    if (profileId) void markTourOfferDismissed(profileId);
+    setTourOfferOpen(false);
+  };
+  const tourOffer = tourOfferOpen ? { onStart: startTourFromOffer, onDismiss: dismissTourOffer } : undefined;
+
+  // The finish card's buttons close it for good, then go where the button points.
+  const handleFinishAction = (action: FinishAction) => {
+    endTourFlow();
+    if (action === 'postJob' && role === 'homeowner') hoNavigate('Create Job');
+    if (action === 'getVerified' && role === 'provider') spNavigate('Verification');
+  };
+
+  // Home is on screen: the tour is due once Home's real content is up (its controls rendered, not still behind the
+  // loading skeleton). The check is polled lightly, and the wait ends after TOUR_CONTENT_WAIT_MS whatever the state.
+  const onHome = showOnboarding === false && !!role && (role === 'homeowner' ? hoScreen === 'Home' : spScreen === 'Dashboard');
+  useEffect(() => {
+    if (tourFlow.phase !== 'waiting' || !onHome || !role) return;
+    const steps = tourSteps(role);
+    const waitedFrom = Date.now();
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const check = () => {
+      const ready = homeContentReady(steps.map((step) => anchorState(step.anchorId)));
+      if (shouldStartTour(ready, Date.now() - waitedFrom)) {
+        setTourFlow((flow) => nextTourFlow(flow, { type: 'homeReady' }));
+      } else {
+        timer = setTimeout(check, TOUR_CONTENT_POLL_MS);
+      }
+    };
+    check();
+    return () => clearTimeout(timer);
+    // Only the phase and Home's visibility matter here: the tour controls are rebuilt on every render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tourFlow.phase, onHome]);
+
+  // The phase turns to touring once, so the tour starts once. Its own callbacks move the flow on.
+  useEffect(() => {
+    if (tourFlow.phase !== 'touring' || !role) return;
+    startTour({
+      steps: tourSteps(role),
+      onFinish: () => setTourFlow((flow) => nextTourFlow(flow, { type: 'tourFinished' })),
+      onSkip: endTourFlow,
+    });
+    // Only the phase matters here: startTour and endTourFlow are rebuilt on every render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tourFlow.phase]);
+
+  // The finish card, once the tour is over. It is drawn beside whichever screen is up (see wrap).
+  const tourFinish = tourFlow.phase === 'finishing' && isAuthenticated && role ? (
+    <TourFinishCard
+      role={role}
+      verified={isVerified}
+      firstName={firstName}
+      firstRun={tourFlow.firstRun}
+      onAction={handleFinishAction}
+    />
+  ) : null;
 
   // ─────────────────────────────────────────────────────────────────────────
   // Auth flow
@@ -450,8 +627,12 @@ function AppContent() {
       : role === 'homeowner' ? (HO_TAB_SCREENS.includes(hoScreen) ? 0 : hoStack.length + 1)
       : (SP_TAB_SCREENS.includes(spScreen) ? 0 : spStack.length + 1);
   const transitionDirection = useTransitionDirection(transitionKey, transitionDepth);
+  // Every screen goes through here, with the finish card beside it, so the card shows whichever screen the tour ends on.
   const wrap = (screen: React.ReactElement) => (
-    <ScreenTransition screenKey={transitionKey} direction={transitionDirection}>{screen}</ScreenTransition>
+    <>
+      <ScreenTransition screenKey={transitionKey} direction={transitionDirection}>{screen}</ScreenTransition>
+      {tourFinish}
+    </>
   );
 
   // Hold on the splash until the minimum time has elapsed AND any persisted
@@ -547,9 +728,9 @@ function AppContent() {
     return wrap(<SplashScreenComponent />);
   }
   if (showOnboarding) {
-    // Post-login there is nowhere to "skip to" but the dashboard, so Skip and
-    // Get Started do the same thing — both count as having seen them.
-    return wrap(<OnboardingScreen role={role} onFinish={finishOnboarding} onLogin={finishOnboarding} />);
+    // "Show me around" starts the spotlight tour on Home. Skip leaves the welcome
+    // for good: no tour and no finish card.
+    return wrap(<OnboardingScreen role={role} firstName={firstName} onFinish={finishOnboarding} onLogin={skipOnboarding} />);
   }
 
   // ─────────────────────────────────────────────────────────────────────────
@@ -610,7 +791,7 @@ function AppContent() {
     if (hoScreen === 'Dispute Status') {
       return wrap(
         <ScreenFrame>
-          <HODisputeStatusScreen jobId={hoSelectedId} onBack={hoBack} />
+          <HODisputeStatusScreen jobId={hoSelectedId} onBack={hoBack} onMessage={() => hoNavigate('Chat', hoSelectedId ?? undefined)} />
         </ScreenFrame>
       );
     }
@@ -647,13 +828,15 @@ function AppContent() {
           <HelpSupportScreen
             role="homeowner"
             onBack={hoBack}
-            onViewTutorial={() => hoNavigate('Tutorial')}
+            onReplayTour={openTutorial}
           />
         </ScreenFrame>
       );
     }
     if (hoScreen === 'Tutorial') {
-      return wrap(<OnboardingScreen role="homeowner" onFinish={hoBack} onLogin={hoBack} />);
+      return wrap(
+        <OnboardingScreen role="homeowner" firstName={firstName} replay onFinish={finishReplay} onLogin={skipReplay} />,
+      );
     }
     if (hoScreen === 'Create Job') {
       return wrap(
@@ -670,29 +853,28 @@ function AppContent() {
         </View>
       );
     }
-    if (hoScreen === 'Profile') {
-      // Not a bottom-nav tab (matches the mockup — Profile is reached via
-      // Home's avatar button, see hero avatarCircle in HOHomeScreen).
-      return wrap(
-        <ScreenFrame>
-          <Profile onNavigate={hoNavigate} onLogout={handleLogout} onBack={hoBack} />
-        </ScreenFrame>
-      );
-    }
+    // The List/Calendar switch sits at the right end of the My Jobs title row.
+    const hoJobsSwitch = (
+      <ViewSwitch options={JOBS_VIEW_OPTIONS} value={hoJobsView} onChange={setHOJobsView} />
+    );
 
     // Tab screens (with bottom nav)
     const renderHOTabContent = () => {
       switch (hoTab) {
         case 'Home':
-          return <HOHomeScreen onNavigate={hoNavigate} />;
+          return <HOHomeScreen onNavigate={hoNavigate} tourOffer={tourOffer} />;
         case 'My Jobs':
-          return <MyJobs onNavigate={hoNavigate} />;
-        case 'Calendar':
-          return <HOCalendarScreen onNavigate={hoNavigate} />;
+          return hoJobsView === 'calendar'
+            ? <HOCalendarScreen title="My Jobs" headerRight={hoJobsSwitch} onNavigate={hoNavigate} />
+            : <MyJobs headerRight={hoJobsSwitch} onNavigate={hoNavigate} />;
         case 'Wallet':
           return <HOWalletScreen />;
+        case 'Profile':
+          // No onBack: the Profile tab has no back arrow. Edit Profile and the
+          // other pushed screens still return here through the back stack.
+          return <Profile onNavigate={hoNavigate} onLogout={handleLogout} />;
         default:
-          return <HOHomeScreen onNavigate={hoNavigate} />;
+          return <HOHomeScreen onNavigate={hoNavigate} tourOffer={tourOffer} />;
       }
     };
 
@@ -706,8 +888,6 @@ function AppContent() {
           activeTab={hoTab}
           tabs={HOMEOWNER_TABS}
           onTabPress={hoNavigate}
-          // My Jobs has its own "+ New" button, so no second one there.
-          hidePrimary={hoTab === 'My Jobs'}
         />
       </View>
     );
@@ -734,7 +914,7 @@ function AppContent() {
     return wrap(<ScreenFrame bottomColor={V6Colors.surface}><HODisputeFilingScreen jobId={spJobId} onBack={spBack} onSubmitted={spBack} /></ScreenFrame>);
   }
   if (spScreen === 'Dispute Status') {
-    return wrap(<ScreenFrame bottomColor={V6Colors.surface}><HODisputeStatusScreen jobId={spJobId} onBack={spBack} /></ScreenFrame>);
+    return wrap(<ScreenFrame bottomColor={V6Colors.surface}><HODisputeStatusScreen jobId={spJobId} onBack={spBack} onMessage={() => spNavigate('Chat', spJobId ?? undefined)} /></ScreenFrame>);
   }
   if (spScreen === 'Chat') {
     return wrap(
@@ -787,13 +967,15 @@ function AppContent() {
         <HelpSupportScreen
           role="provider"
           onBack={spBack}
-          onViewTutorial={() => spNavigate('Tutorial')}
+          onReplayTour={openTutorial}
         />
       </ScreenFrame>
     );
   }
   if (spScreen === 'Tutorial') {
-    return wrap(<OnboardingScreen role="provider" onFinish={spBack} onLogin={spBack} />);
+    return wrap(
+      <OnboardingScreen role="provider" firstName={firstName} replay onFinish={finishReplay} onLogin={skipReplay} />,
+    );
   }
   if (spScreen === 'Verification') {
     return wrap(
@@ -813,44 +995,43 @@ function AppContent() {
       </ScreenFrame>
     );
   }
-  if (spScreen === 'Portfolio') return wrap(<ScreenFrame><SPPortfolioScreen onBack={spBack}/></ScreenFrame>);
+  if (spScreen === 'Portfolio') return wrap(<ScreenFrame bottomColor={V6Colors.surface}><SPPortfolioScreen onBack={spBack}/></ScreenFrame>);
   if (spScreen === 'My Services') {
     return wrap(
-      <ScreenFrame>
+      <ScreenFrame bottomColor={V6Colors.surface}>
         <SPSkillRequestScreen onBack={spBack} />
       </ScreenFrame>
     );
   }
   if (spScreen === 'Payouts') {
     return wrap(
-      <ScreenFrame>
+      <ScreenFrame bottomColor={V6Colors.surface}>
         <SPPayoutsScreen onBack={spBack} />
       </ScreenFrame>
     );
   }
-  if (spScreen === 'Profile') {
-    // Not a bottom-nav tab (matches the mockup — Profile is reached via
-    // Feed's avatar button, see hero avatar in SPHomeScreen).
-    return wrap(
-      <ScreenFrame>
-        <SPProfileScreen onNavigate={spNavigate} onLogout={handleLogout} onBack={spBack} />
-      </ScreenFrame>
-    );
-  }
+  // The List/Calendar switch sits at the right end of the My Work title row.
+  const spJobsSwitch = (
+    <ViewSwitch options={JOBS_VIEW_OPTIONS} value={spJobsView} onChange={setSPJobsView} />
+  );
 
   // Tab screens (with bottom nav)
   const renderSPTabContent = () => {
     switch (spTab) {
       case 'Dashboard':
-        return <SPHomeScreen onNavigate={spNavigate} />;
+        return <SPHomeScreen onNavigate={spNavigate} tourOffer={tourOffer} />;
       case 'My Jobs':
-        return <SPMyJobsScreen onNavigate={spNavigate} />;
-      case 'Calendar':
-        return <SPCalendarScreen onNavigate={spNavigate} />;
+        return spJobsView === 'calendar'
+          ? <SPCalendarScreen title="My Work" headerRight={spJobsSwitch} onNavigate={spNavigate} />
+          : <SPMyJobsScreen headerRight={spJobsSwitch} onNavigate={spNavigate} />;
       case 'Wallet':
-        return <SPWalletScreen />;
+        return <SPWalletScreen onNavigate={spNavigate} />;
+      case 'Profile':
+        // No onBack: the Profile tab has no back arrow. Edit Profile and the
+        // other pushed screens still return here through the back stack.
+        return <SPProfileScreen onNavigate={spNavigate} onLogout={handleLogout} />;
       default:
-        return <SPHomeScreen onNavigate={spNavigate} />;
+        return <SPHomeScreen onNavigate={spNavigate} tourOffer={tourOffer} />;
     }
   };
 
@@ -864,6 +1045,11 @@ function AppContent() {
 
 /** Every route above is rendered inside the shared responsive root layout. */
 export default function App() {
+  // Wakes the API server while the person is still on the first screen, before they log in (see warmUp.ts).
+  useEffect(() => {
+    warmUpServer();
+  }, []);
+
   return (
     <GestureHandlerRootView style={rootStyles.fill}>
       <SafeAreaProvider>

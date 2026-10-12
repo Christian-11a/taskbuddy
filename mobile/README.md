@@ -141,13 +141,22 @@ per role, plus a selected `jobId` threaded through
 initializing         → SplashScreen
 not authenticated    → Login / Register / Forgot Password
 first login, once    → Onboarding
-role 'homeowner'     → HO tab bar (Home, My Jobs, Create, Calendar, Wallet)
-role 'provider'      → SP tab bar (Feed, My Work, Calendar, Wallet)
+role 'homeowner'     → HO tab bar (Home, My Jobs, Wallet, Profile)
+role 'provider'      → SP tab bar (Feed, My Work, Wallet, Profile)
 ```
 
-Neither tab bar has a Profile tab — Profile is reached via the avatar button
-in Home's/Feed's header, matching the design mockup rather than the app's
-earlier Figma-era layout.
+Each bar has four tabs and no floating button. Profile is a tab on both sides,
+and the avatar button in Home's/Feed's header switches to it. The Profile tab
+has no back arrow (`onBack` is optional on both profile screens); Edit Profile,
+Settings and the other screens pushed from it still return to it through the
+back stack.
+
+Calendar is not a tab. My Jobs (homeowner) and My Work (provider) show the job
+list, or the calendar behind a List/Calendar switch at the right of the title
+row. The choice survives tab switches and resets to the list on logout.
+Navigating to `'Calendar'` (`hoNavigate` / `spNavigate`) opens My Jobs or My
+Work in calendar view. Post a job has no floating button: start it from Home's
+Post field or service chips, or from the New button on My Jobs.
 
 Non-tab screens (Job Detail, Chat, Edit Profile, Settings, Help & Support,
 …) are tracked on a small back-stack (`hoStack`/`spStack` in `App.tsx`), not
@@ -297,7 +306,7 @@ sign-in, and notification rows remain available in the in-app list either way.
 |--------|--------------|
 | `HOHomeScreen` | `GET /wallet`, `GET /jobs/mine`, `GET /categories`, unread notification count |
 | `HOMyJobs` | `GET /jobs/mine`, filtered client-side by status (All / Open / Awaiting / Confirmed / In Progress / Completed / Cancelled) |
-| `HOCreateJobScreen` | `GET /categories`, `GET /jobs/geocode` + `GET /jobs/static-map` (location preview), image upload, `POST /jobs`. The guided 5-step flow: service → location → tasks → urgency → review |
+| `HOCreateJobScreen` | `GET /categories`, `GET /jobs/geocode`, image upload, `POST /jobs`. The guided 5-step flow: service → location → tasks → urgency → review |
 | `HOJobDetailScreen` | `GET /jobs/:id`, `GET /providers/:id`, `POST /jobs/:id/recommendations/trigger`; complete / cancel / chat, review-state gating, manual provider-matching retry, and read-only task checklist |
 | `HOChatScreen` | `POST /conversations` then message listing |
 | `HOJobApplicationsScreen` | `GET /jobs/:id/applications`; Accept opens `HirePaymentModal` — `POST /applications/:id/accept` (wallet) or `POST /payments/hire-checkout-session` (card, then polls for `accepted`); Reject |
@@ -581,10 +590,9 @@ needed access this repo's code can't grant:
 | 3 | `recommendation_deadline` SQL nudge (per test job) | Nothing blocked. The workaround is waiting 5–15 real minutes |
 | — | Backend address geocoding (`GET /jobs/geocode`, Geoapify, `backend/BACKEND_SCHEMA.md` §31), tracked alongside | **Done.** `GEOAPIFY_API_KEY` is set on the deployed API; verified 2026-09-18 with a 200 for a Quezon City street address |
 
-The Geoapify key stays on the backend. Never put it in the mobile bundle. That also rules out the
-map preview's image URL, which the API renders and proxies instead (`GET /jobs/static-map`). The
-mobile client stores the latitude/longitude the geocode route returns with the job, and refuses to
-use the profile address or a Metro Manila fallback when the lookup fails.
+The Geoapify key stays on the backend. Never put it in the mobile bundle. The mobile client stores
+the latitude/longitude the geocode route returns with the job, and refuses to use the profile
+address or a Metro Manila fallback when the lookup fails.
 
 ### 6. [`docs/backend-handoff-stripe-identity-config.md`](../docs/backend-handoff-stripe-identity-config.md)
 
@@ -730,10 +738,8 @@ homeowner-facing recommendations do not map directly to the current product.
 - The job-creation Location step no longer renders a native `react-native-maps`
   map (that dependency was removed 2026-09-18 — it crashed the app on a missing
   Google Maps Android SDK key; see `HANDOFF.md` §8). Since the backend already
-  geocodes the address via Geoapify, the step shows a "Location confirmed" card,
-  with a map preview rendered by the API (`GET /jobs/static-map`; the key stays
-  server-side). The preview hides itself on any error, so it needs the API
-  deploy that carries that route before it appears.
+  geocodes the address via Geoapify, the step shows a "Location confirmed" card and
+  no map preview.
 - Dark Mode now applies persisted shared palettes. Language, wallet transfer,
   and chat calls remain unwired.
 

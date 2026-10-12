@@ -1,20 +1,19 @@
 /**
  * HOSettingsScreen.tsx
  *
- * v6 design: matches taskbuddy_UI_update.html's #ho-settings screen — a flat
- * white .topbar (not a colored hero), a Notifications toggle card (3 native
- * switches, no per-row description text) and an Account .navrow card.
+ * Settings for the homeowner, grouped by topic: Appearance (dark mode),
+ * Notifications (push), Account (change password, language), then a lone red
+ * Delete account row and the app version.
  *
- * Log Out lives on the Profile screen only; it used to be repeated here too.
- *
- * All five switches persist for real, through `useSettings` → GET/PATCH
- * /settings → the `user_settings` row from migration 0011. They used to be
- * plain `useState` that reset on every mount.
+ * Every switch persists for real, through `useSettings` → GET/PATCH /settings.
+ * Only Push is offered among the notification switches: the server reads
+ * push_enabled when it sends pushes, but nothing reads email_enabled or
+ * sms_enabled, so those two switches would promise alerts that are never sent.
  *
  * Dark Mode applies the shared palette and persists through settings.
  *
  * Change Password is shown only for accounts with a password. Language has no
- * i18n backing, so its modal states English is the only option for now.
+ * i18n backing, so its sheet states English is the only option for now.
  */
 
 import { useThemedStyles, type Palette as ThemePalette } from '../../../src/context/ThemeContext';
@@ -30,6 +29,7 @@ import Tap from '../../../src/components/ui/Tap';
 import SheetFrame from '../../../src/components/ui/SheetFrame';
 import {
   ArrowLeft,
+  Bell,
   ChevronRight,
   Globe,
   Lock,
@@ -39,11 +39,15 @@ import {
 import { Spacing } from '../../../src/constants/theme';
 import { useHeaderTop } from '../../../src/hooks/useHeaderTop';
 
-import ConfirmationModal from '../../../src/components/ConfirmationModal';
+import DeleteAccountModal from '../../../src/components/DeleteAccountModal';
 import ChangePasswordModal from '../../../src/components/ChangePasswordModal';
 import { useSettings } from '../../../src/hooks/useSettings';
 import { useAuth } from '../../../src/context/AuthContext';
-import { api, ApiError } from '../../../src/lib/api';
+import { appVersion } from '../../../src/lib/appVersion';
+
+// The header back button is 38 dp; the extra 5 dp on each side reaches 48.
+const BACK_HIT_SLOP = { top: 5, bottom: 5, left: 5, right: 5 } as const;
+const LINK_HIT_SLOP = { top: 15, bottom: 15, left: 8, right: 8 } as const;
 
 interface HOSettingsScreenProps {
   onBack: () => void;
@@ -54,57 +58,22 @@ export default function HOSettingsScreen({ onBack, onLogout }: HOSettingsScreenP
   const { C, styles, V6Colors } = useThemedStyles(createThemedStyles);
   const headerTop = useHeaderTop();
   const { flags, setFlag, loading: settingsLoading, error: settingsError, reload: reloadSettings } = useSettings();
+  const { profile } = useAuth();
+  const version = appVersion();
 
   const [showPasswordModal, setShowPasswordModal] = useState(false);
   const [showLanguageModal, setShowLanguageModal] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
-  const [deleting, setDeleting] = useState(false);
-  const [deleteError, setDeleteError] = useState<string | null>(null);
-
-  const handleDelete = async () => {
-    setDeleting(true);
-    setDeleteError(null);
-    try {
-      await api.deleteAccount();
-      setShowDeleteModal(false);
-      onLogout();
-    } catch (e) {
-      if (e instanceof ApiError && e.status === 409) {
-        const blockers = (e.details as { blockers?: { message?: string }[] } | undefined)?.blockers;
-        if (blockers?.length) {
-          setDeleteError(blockers.map((blocker) => blocker.message).filter(Boolean).join('\n'));
-        } else {
-          setDeleteError(e.message);
-        }
-      } else {
-        setDeleteError(e instanceof Error ? e.message : 'Could not delete your account. Please try again.');
-      }
-    } finally {
-      setDeleting(false);
-    }
-  };
-
-  const toggles = [
-    { key: 'push_enabled' as const, label: 'Push Notifications' },
-    { key: 'email_enabled' as const, label: 'Email Updates' },
-    { key: 'sms_enabled' as const, label: 'SMS Alerts' },
-  ];
-
-  const { profile } = useAuth();
-  const accountItems = [
-    ...(profile?.has_password ? [{ label: 'Change Password', icon: Lock, onPress: () => setShowPasswordModal(true) }] : []),
-    { label: 'Language', icon: Globe, onPress: () => setShowLanguageModal(true) },
-  ];
 
   return (
     <View style={styles.screen}>
       {/* Header — matches .topbar (flat white, not a colored hero) */}
       <View style={[styles.header, { paddingTop: headerTop }]}>
-        <Tap style={styles.backBtn} onPress={onBack} activeOpacity={0.8}>
+        <Tap style={styles.backBtn} onPress={onBack} activeOpacity={0.8} hitSlop={BACK_HIT_SLOP} accessibilityRole="button" accessibilityLabel="Back">
           <ArrowLeft size={20} color={C.ink700} />
         </Tap>
-        <Text style={styles.headerTitle}>Settings</Text>
-        <View style={{ width: 38 }} />
+        <Text style={styles.headerTitle} accessibilityRole="header">Settings</Text>
+        <View style={styles.headerSpacer} />
       </View>
 
       <ScrollView keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag"
@@ -112,12 +81,15 @@ export default function HOSettingsScreen({ onBack, onLogout }: HOSettingsScreenP
         contentContainerStyle={styles.bodyContent}
         showsVerticalScrollIndicator={false}
       >
-        <Text style={styles.sectionTitle}>Appearance</Text>
+        <Text style={styles.sectionTitle} accessibilityRole="header">Appearance</Text>
         <View style={styles.card}>
-          <View style={styles.toggleRow}>
-            <View style={styles.toggleLabelRow}>
-              <Moon size={17} color={C.ink700} />
-              <Text style={styles.toggleLabel}>Dark Mode</Text>
+          <View style={styles.row}>
+            <View style={styles.rowIcon}>
+              <Moon size={18} color={V6Colors.ink700} />
+            </View>
+            <View style={styles.rowText}>
+              <Text style={styles.rowLabel}>Dark mode</Text>
+              <Text style={styles.rowHint}>Easier on the eyes at night</Text>
             </View>
             <Switch
               testID="toggle-dark-mode"
@@ -130,66 +102,89 @@ export default function HOSettingsScreen({ onBack, onLogout }: HOSettingsScreenP
               ios_backgroundColor={C.ink200}
             />
           </View>
-          <Text style={styles.rowNote}>
-            Applies to all screens and is saved to your account.
-          </Text>
         </View>
 
-        <Text style={styles.sectionTitle}>Notifications</Text>
+        <Text style={styles.sectionTitle} accessibilityRole="header">Notifications</Text>
         <View style={styles.card}>
-          {toggles.map((toggle, i) => (
-            <View key={toggle.key} style={[styles.toggleRow, i < toggles.length - 1 && styles.rowBorder]}>
-              <Text style={styles.toggleLabel}>{toggle.label}</Text>
-              <Switch
-                testID={`toggle-${toggle.key}`}
-                value={flags[toggle.key]}
-                onValueChange={(v) => void setFlag(toggle.key, v)}
-                disabled={settingsLoading}
-                trackColor={{ false: C.ink200, true: C.cyan600 }}
-                thumbColor={C.white}
-                ios_backgroundColor={C.ink200}
-              />
+          <View style={styles.row}>
+            <View style={styles.rowIcon}>
+              <Bell size={18} color={V6Colors.ink700} />
             </View>
-          ))}
+            <View style={styles.rowText}>
+              <Text style={styles.rowLabel}>Push notifications</Text>
+              <Text style={styles.rowHint}>Proposals, bookings and messages</Text>
+            </View>
+            <Switch
+              testID="toggle-push_enabled"
+              value={flags.push_enabled}
+              disabled={settingsLoading}
+              onValueChange={(v) => void setFlag('push_enabled', v)}
+              accessibilityLabel="Push notifications"
+              trackColor={{ false: C.ink200, true: C.cyan600 }}
+              thumbColor={C.white}
+              ios_backgroundColor={C.ink200}
+            />
+          </View>
         </View>
-        {!!settingsError && <View>
-          <Text style={styles.settingsError}>{settingsError}</Text>
-          <Tap onPress={reloadSettings} accessibilityLabel="Retry settings">
-            <Text style={{color: V6Colors.link, paddingBottom: 16}}>Retry settings</Text>
-          </Tap>
-        </View>}
+        {!!settingsError && (
+          <View>
+            <Text style={styles.settingsError} accessibilityLiveRegion="polite">{settingsError}</Text>
+            <Tap onPress={reloadSettings} activeOpacity={0.8} hitSlop={LINK_HIT_SLOP} accessibilityRole="button" accessibilityLabel="Retry settings">
+              <Text style={styles.retryText}>Retry settings</Text>
+            </Tap>
+          </View>
+        )}
 
-        <Text style={styles.sectionTitle}>Account</Text>
+        <Text style={styles.sectionTitle} accessibilityRole="header">Account</Text>
         <View style={styles.card}>
-          {accountItems.map((item, i) => (
+          {!!profile?.has_password && (
             <Tap
-              key={item.label}
-              style={[styles.navrow, i < accountItems.length - 1 && styles.rowBorder]}
+              style={[styles.row, styles.rowBorder]}
               activeOpacity={0.7}
-              onPress={item.onPress}
+              onPress={() => setShowPasswordModal(true)}
+              accessibilityRole="button"
+              accessibilityLabel="Change password"
             >
               <View style={styles.rowIcon}>
-                <item.icon size={17} color={C.ink700} />
+                <Lock size={18} color={V6Colors.ink700} />
               </View>
-              <Text style={styles.rowLabel}>{item.label}</Text>
-              <ChevronRight size={20} color={C.ink300} />
+              <Text style={styles.rowLabel}>Change password</Text>
+              <ChevronRight size={20} color={V6Colors.ink500} />
             </Tap>
-          ))}
+          )}
           <Tap
-            style={styles.navrow}
+            style={styles.row}
+            activeOpacity={0.7}
+            onPress={() => setShowLanguageModal(true)}
+            accessibilityRole="button"
+            accessibilityLabel="Language, English"
+          >
+            <View style={styles.rowIcon}>
+              <Globe size={18} color={V6Colors.ink700} />
+            </View>
+            <Text style={styles.rowLabel}>Language</Text>
+            <Text style={styles.rowValue}>English</Text>
+            <ChevronRight size={20} color={V6Colors.ink500} />
+          </Tap>
+        </View>
+
+        <View style={styles.card}>
+          <Tap
+            style={styles.row}
             activeOpacity={0.7}
             onPress={() => setShowDeleteModal(true)}
             testID="settings-delete-account-row"
+            accessibilityRole="button"
+            accessibilityLabel="Delete account"
           >
             <View style={styles.rowIcon}>
-              <Trash2 size={17} color={V6Colors.dangerText} />
+              <Trash2 size={18} color={V6Colors.dangerText} />
             </View>
-            <Text style={[styles.rowLabel, styles.rowLabelDanger]}>Delete Account</Text>
-            <ChevronRight size={20} color={C.ink300} />
+            <Text style={[styles.rowLabel, styles.rowLabelDanger]}>Delete account</Text>
           </Tap>
         </View>
 
-        <View style={{ height: 20 }} />
+        {!!version && <Text style={styles.footer}>{`TaskBuddy · version ${version}`}</Text>}
       </ScrollView>
 
       <ChangePasswordModal visible={showPasswordModal} onClose={() => setShowPasswordModal(false)} />
@@ -212,20 +207,10 @@ export default function HOSettingsScreen({ onBack, onLogout }: HOSettingsScreenP
             </Tap>
     </SheetFrame>
 
-      <ConfirmationModal
+      <DeleteAccountModal
         visible={showDeleteModal}
-        title="Delete your account?"
-        message={deleteError ?? 'This permanently removes your personal details and signs you out. You must first clear any wallet balance, pending withdrawal, active job, escrow hold, or dispute.'}
-        confirmLabel={deleting ? 'Deleting…' : deleteError ? 'Try Again' : 'Delete Account'}
-        cancelLabel="Cancel"
-        destructive
-        onConfirm={() => void handleDelete()}
-        onCancel={() => {
-          if (deleting) return;
-          setDeleteError(null);
-          setShowDeleteModal(false);
-        }}
-        busy={deleting}
+        onClose={() => setShowDeleteModal(false)}
+        onDeleted={onLogout}
       />
     </View>
   );
@@ -250,27 +235,34 @@ function createThemedStyles(theme: ThemePalette) {
       alignItems: 'center', justifyContent: 'center',
     },
     headerTitle: { flex: 1, color: C.ink900, fontSize: 19.5, fontWeight: '800', fontFamily: 'Inter' },
+    headerSpacer: { width: 38 },
 
     body: { flex: 1 },
-    bodyContent: { paddingHorizontal: Spacing.screenH, paddingTop: 20, paddingBottom: 20 },
+    bodyContent: { paddingHorizontal: Spacing.screenH, paddingTop: 20, paddingBottom: 28 },
 
-    sectionTitle: { fontSize: 13, fontWeight: '700', color: C.ink400, textTransform: 'uppercase', letterSpacing: 0.6, marginBottom: 10, fontFamily: 'Inter' },
-    card: { backgroundColor: C.surface, borderRadius: 16, borderWidth: 1, borderColor: C.line, overflow: 'hidden', marginBottom: 20 },
-    rowBorder: { borderBottomWidth: 1, borderBottomColor: C.ink50 },
+    sectionTitle: {
+      color: V6Colors.ink500, fontSize: 13, fontWeight: '700', fontFamily: 'Inter',
+      letterSpacing: 0.6, textTransform: 'uppercase', marginBottom: 8,
+    },
+    card: { backgroundColor: C.surface, borderRadius: 16, borderWidth: 1, borderColor: V6Colors.line, overflow: 'hidden', marginBottom: 20 },
+    rowBorder: { borderBottomWidth: 1, borderBottomColor: V6Colors.line },
 
-    toggleRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 14 },
-    toggleLabelRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-    toggleLabel: { fontSize: 14.5, color: C.ink900, fontWeight: '600', fontFamily: 'Inter' },
-    rowNote: { fontSize: 12.5, color: C.ink400, fontFamily: 'Inter', lineHeight: 17, paddingHorizontal: 16, paddingBottom: 13, marginTop: -4 },
-    settingsError: { color: V6Colors.dangerText, fontSize: 13, fontFamily: 'Inter', marginTop: -12, marginBottom: 18 },
-
-    navrow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 14, paddingHorizontal: 15 },
-    rowIcon: { width: 34, height: 34, borderRadius: 10, backgroundColor: V6Colors.wellBg, alignItems: 'center', justifyContent: 'center' },
-    rowLabel: { flex: 1, color: C.ink900, fontSize: 14.5, fontWeight: '600', fontFamily: 'Inter' },
+    row: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 16, paddingVertical: 14 },
+    rowIcon: {
+      width: 34, height: 34, borderRadius: 10, backgroundColor: V6Colors.wellBg,
+      alignItems: 'center', justifyContent: 'center',
+    },
+    rowText: { flex: 1 },
+    rowLabel: { color: C.ink900, fontSize: 15, fontWeight: '600', fontFamily: 'Inter' },
     rowLabelDanger: { color: V6Colors.dangerText },
+    rowHint: { color: V6Colors.ink500, fontSize: 13, fontFamily: 'Inter', lineHeight: 18, marginTop: 2 },
+    rowValue: { color: V6Colors.ink500, fontSize: 14, fontFamily: 'Inter' },
+
+    settingsError: { color: V6Colors.dangerText, fontSize: 13, fontFamily: 'Inter', marginTop: -12, marginBottom: 18 },
+    retryText: { color: Colors.link, fontSize: 14, fontWeight: '600', fontFamily: 'Inter', paddingBottom: 16 },
+    footer: { color: V6Colors.ink500, fontSize: 12.5, fontFamily: 'Inter', textAlign: 'center', marginTop: 4 },
 
     // Language dialog
-    overlay: { flex: 1, justifyContent: 'center', padding: 24, backgroundColor: 'rgba(6, 61, 77, 0.5)' },
     dialog: { backgroundColor: C.surface, borderRadius: 20, padding: 22 },
     dialogTitle: { color: C.ink900, fontSize: 19, fontWeight: '800', fontFamily: 'Inter', marginBottom: 14 },
     dialogBody: { color: C.ink500, fontSize: 14, fontFamily: 'Inter', lineHeight: 19, marginTop: 4, marginBottom: 16 },
@@ -279,7 +271,7 @@ function createThemedStyles(theme: ThemePalette) {
 
     langRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: V6Colors.wellBg, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12 },
     langLabel: { color: C.ink900, fontSize: 15, fontWeight: '600', fontFamily: 'Inter' },
-    langBadge: { color: V6Colors.link, fontSize: 12, fontWeight: '700', fontFamily: 'Inter' },
+    langBadge: { color: Colors.link, fontSize: 12, fontWeight: '700', fontFamily: 'Inter' },
 
   });
   return { Colors, V6Colors, C, styles };

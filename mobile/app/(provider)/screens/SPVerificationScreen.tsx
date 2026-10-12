@@ -39,47 +39,85 @@ import {
   View,
 } from 'react-native';
 import Tap from '../../../src/components/ui/Tap';
+import BottomActionBar from '../../../src/components/ui/BottomActionBar';
+import CheckRow from '../../../src/components/ui/CheckRow';
+import PaymentOption from '../../../src/components/ui/PaymentOption';
+import StatusCard from '../../../src/components/ui/StatusCard';
+import SuccessMark from '../../../src/components/ui/SuccessMark';
+import PostProgress from '../../../src/components/post/PostProgress';
+import CalmNote from '../../../src/components/post/CalmNote';
+import VerifyAppBar from '../../../src/components/verify/VerifyAppBar';
+import PrepCard from '../../../src/components/verify/PrepCard';
+import ProtectSheet from '../../../src/components/verify/ProtectSheet';
+import CheckList from '../../../src/components/verify/CheckList';
+import IdExamples from '../../../src/components/verify/IdExamples';
+import PhotoCard from '../../../src/components/verify/PhotoCard';
+import SendingChecklist from '../../../src/components/verify/SendingChecklist';
+import PendingTimeline from '../../../src/components/verify/PendingTimeline';
 import * as ImagePicker from 'expo-image-picker';
 import * as WebBrowser from 'expo-web-browser';
-import {
-  ArrowLeft,
-  BadgeCheck,
-  Camera,
-  Check,
-  CircleAlert,
-  Clock,
-  IdCard,
-  ImageIcon,
-  Lock,
-  ScanFace,
-  ShieldCheck,
-} from 'lucide-react-native';
+import { IdCard, Lock, ScanFace, ShieldCheck } from 'lucide-react-native';
 import { api, ApiError } from '../../../src/lib/api';
 import { useAsyncData } from '../../../src/hooks/useAsyncData';
 import { shortDate } from '../../../src/lib/format';
-import { Spacing, V6Radii, V6Shadows } from '../../../src/constants/theme';
+import { Spacing } from '../../../src/constants/theme';
 import { useAuth } from '../../../src/context/AuthContext';
 import { useHeaderTop } from '../../../src/hooks/useHeaderTop';
 import { requestAppPermission } from '../../../src/lib/permissions';
-
-/** The IDs we accept, in the order most providers are likely to have them. */
-const DOCUMENT_TYPES = [
-  { value: 'philsys', label: 'PhilSys (National ID)' },
-  { value: 'drivers_license', label: "Driver's licence" },
-  { value: 'umid', label: 'UMID' },
-  { value: 'passport', label: 'Passport' },
-  { value: 'postal_id', label: 'Postal ID' },
-] as const;
-type DocumentType = (typeof DOCUMENT_TYPES)[number]['value'];
-
-const Radii = { card: V6Radii.card };
-const Shadows = { card: V6Shadows.sm };
+import {
+  SESSION_STAGE,
+  UPLOAD_STAGE,
+  VERIFY_ID_TYPES,
+  pendingRows,
+  pickVerifyView,
+  profileChecks,
+  rejectionNote,
+  sendingRows,
+  takePhotoLabel,
+  wizardProgress,
+  type IdPhase,
+  type VerifyDocumentType,
+} from '../../../src/lib/verifyFlow';
 
 /** Stripe's decision comes by webhook; poll for it, but not forever. */
 const POLL_INTERVAL_MS = 4000;
 const POLL_ATTEMPTS = 8;
 
-const STEPS = ['Government ID', 'Face Scan', 'Automated Check'];
+/** The "Before you start" card: the four things the provider will do, in order. */
+const PREP_STEPS = [
+  { title: 'Choose your ID', detail: "PhilSys, driver's licence, UMID, passport or postal ID" },
+  { title: 'Photo of your ID', detail: 'A clear, full photo of your ID' },
+  { title: 'Selfie', detail: 'To match you with your ID' },
+  { title: 'Review and send', detail: 'Then a short secure check with Stripe' },
+];
+
+/** Tips shown before the ID photo is taken. */
+const PHOTO_TIPS = [
+  'Place it on a flat, dark surface',
+  'Use good light, and turn off the flash',
+  'Keep all 4 corners inside the frame',
+];
+
+/** Reminders on the photo check. The app cannot verify these itself, so they are not ticked. */
+const PHOTO_CHECKS = ['Name and photo are sharp', 'All 4 corners are visible', 'No glare or shadows on the text'];
+
+/** The consent the provider ticks before anything is sent. Only a UI gate: what is sent does not change. */
+const CONSENT_TEXT = 'This is my own valid ID, and I agree to TaskBuddy using these photos to verify me.';
+
+/** Tips shown before the selfie. The selfie is taken with the front camera only. */
+const SELFIE_TIPS = [
+  'Take off glasses, hat and face mask',
+  'Face a window or a bright light',
+  'Hold the phone at eye level',
+  'Only you in the photo',
+];
+
+/** Generic tips for a rejection. The app does not know which part failed, so these cover the usual causes. */
+const HOW_TO_FIX = [
+  'Retake the ID photo in good, even light',
+  'Make sure your name and photo are sharp',
+  'Take the selfie without glasses, a hat or a face mask',
+];
 
 interface SPVerificationScreenProps {
   onBack: () => void;
@@ -91,17 +129,24 @@ interface SPVerificationScreenProps {
   onVerified?: () => Promise<void>;
 }
 
-type Slot = 'id' | 'selfie';
-
 export default function SPVerificationScreen({ onBack, onVerified }: SPVerificationScreenProps) {
-  const { Colors, styles, V6Colors } = useThemedStyles(createThemedStyles);
+  const { Colors, V6Colors, styles } = useThemedStyles(createThemedStyles);
   const headerTop = useHeaderTop();
   // The API refuses a verification without a service profile; say so up
   // front instead of after all three steps.
   const { providerProfile } = useAuth();
   const profileIncomplete = !providerProfile;
   const [step, setStep] = useState(1);
-  const [documentType, setDocumentType] = useState<DocumentType | null>(null);
+  /** False until the provider taps Start on the intro (or Try again after a rejection). */
+  const [started, setStarted] = useState(false);
+  const [protectOpen, setProtectOpen] = useState(false);
+  /** Inside step 1: choosing the ID, then the photo tips, then the photo check. */
+  const [idPhase, setIdPhase] = useState<IdPhase>('choose');
+  const [documentType, setDocumentType] = useState<VerifyDocumentType | null>(null);
+  /** The consent checkbox on the review step. */
+  const [consented, setConsented] = useState(false);
+  /** Set when a submission has finished and the reload has not yet brought the new status. */
+  const [awaitingReload, setAwaitingReload] = useState(false);
   const [idAsset, setIdAsset] = useState<ImagePicker.ImagePickerAsset | null>(null);
   const [selfieAsset, setSelfieAsset] = useState<ImagePicker.ImagePickerAsset | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -117,6 +162,19 @@ export default function SPVerificationScreen({ onBack, onVerified }: SPVerificat
     reload,
   } = useAsyncData(useCallback(() => api.myVerification(), []));
 
+  // After a submission the old status stays loaded until the reload has run.
+  // Keep the loader up until then, so that old status never shows again.
+  const sawLoading = useRef(false);
+  useEffect(() => {
+    if (!awaitingReload) return;
+    if (loading) {
+      sawLoading.current = true;
+    } else if (sawLoading.current) {
+      sawLoading.current = false;
+      setAwaitingReload(false);
+    }
+  }, [awaitingReload, loading]);
+
   // Any timer still running when the screen goes away must not call setState.
   const pollTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(
@@ -126,7 +184,8 @@ export default function SPVerificationScreen({ onBack, onVerified }: SPVerificat
     [],
   );
 
-  const pick = async (slot: Slot) => {
+  /** The gallery is offered for the ID photo only. The selfie is always a live camera shot. */
+  const pickIdPhoto = async () => {
     if (!(await requestAppPermission('gallery'))) return;
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ['images'],
@@ -142,8 +201,8 @@ export default function SPVerificationScreen({ onBack, onVerified }: SPVerificat
     }
 
     setError(null);
-    if (slot === 'id') setIdAsset(asset);
-    else setSelfieAsset(asset);
+    setIdAsset(asset);
+    setIdPhase('check');
   };
 
   /** Camera capture — the selfie should be a live shot, not a saved photo. */
@@ -166,6 +225,26 @@ export default function SPVerificationScreen({ onBack, onVerified }: SPVerificat
     setSelfieAsset(asset);
   };
 
+  /** Camera capture for the ID photo. The back camera is the default, as in the system camera. */
+  const takeIdPhoto = async () => {
+    if (!(await requestAppPermission('camera'))) return;
+    const result = await ImagePicker.launchCameraAsync({
+      mediaTypes: ['images'],
+      quality: 0.85,
+    });
+    if (result.canceled) return;
+    const asset = result.assets[0];
+
+    if (asset.fileSize && asset.fileSize > 5 * 1024 * 1024) {
+      setError('Photo is too large. Please retake under 5 MB.');
+      return;
+    }
+
+    setError(null);
+    setIdAsset(asset);
+    setIdPhase('check');
+  };
+
   /** Re-checks the submission a few times, since the verdict lands by webhook. */
   const pollForResult = (attemptsLeft: number) => {
     if (attemptsLeft <= 0) return;
@@ -181,13 +260,13 @@ export default function SPVerificationScreen({ onBack, onVerified }: SPVerificat
     setError(null);
     setFellBackToManual(false);
     try {
-      setSubmitStage('Uploading your documents…');
+      setSubmitStage(UPLOAD_STAGE);
       const [id_document_path, selfie_path] = await Promise.all([
         api.uploadImage('verification-docs', idAsset.uri),
         api.uploadImage('verification-docs', selfieAsset.uri),
       ]);
 
-      setSubmitStage('Opening the automated check…');
+      setSubmitStage(SESSION_STAGE);
       try {
         const session = await api.startIdentitySession({
           id_document_path,
@@ -222,6 +301,9 @@ export default function SPVerificationScreen({ onBack, onVerified }: SPVerificat
       setSelfieAsset(null);
       setDocumentType(null);
       setStep(1);
+      setIdPhase('choose');
+      setConsented(false);
+      setAwaitingReload(true);
       reload();
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not submit your documents.');
@@ -231,476 +313,426 @@ export default function SPVerificationScreen({ onBack, onVerified }: SPVerificat
     }
   };
 
-  // A pending submission is terminal for the UI — only one review may be open.
-  const isPending = verification?.status === 'pending';
-  const isApproved = verification?.status === 'approved';
+  /** Which view is on screen; the rules live in src/lib/verifyFlow.ts. */
+  const view = pickVerifyView({
+    loading,
+    status: verification?.status ?? null,
+    submitting,
+    started,
+    settling: awaitingReload,
+  });
+  // A rejected provider who has not yet tapped Try again still needs the wizard's photo hint.
   const isRejected = verification?.status === 'rejected';
-  const inWizard = !isPending && !isApproved;
 
-  const canAdvance =
-    (step === 1 && !!documentType && !!idAsset) || (step === 2 && !!selfieAsset) || step === 3;
-
-  const renderStatus = () => {
-    if (!verification) return null;
-    if (isApproved) {
-      return (
-        <View style={[styles.status, styles.statusApproved]}>
-          <BadgeCheck size={22} color={Colors.success} />
-          <View style={styles.statusTextBox}>
-            <Text style={styles.statusTitle}>You&apos;re verified</Text>
-            <Text style={styles.statusBody}>
-              Approved on {shortDate(verification.reviewed_at ?? verification.submitted_at)}.
-            </Text>
-          </View>
-        </View>
-      );
+  /**
+   * One screen back inside the wizard: selfie to ID photo, ID photo to ID
+   * choice, ID choice to the intro. Anywhere else the arrow leaves the screen.
+   */
+  const goBack = () => {
+    if (submitting) return;
+    if (view !== 'wizard') {
+      onBack();
+      return;
     }
-    if (isPending) {
-      return (
-        <View style={[styles.status, styles.statusPending]}>
-          <Clock size={22} color={Colors.warning} />
-          <View style={styles.statusTextBox}>
-            <Text style={styles.statusTitle}>Pending verification</Text>
-            <Text style={styles.statusBody}>
-              Submitted {shortDate(verification.submitted_at)}.{' '}
-              {verification.method === 'stripe_identity' && !fellBackToManual
-                ? 'The automated check is running — this usually takes a couple of minutes. You can leave this screen; we’ll notify you when it finishes.'
-                : 'A TaskBuddy admin is reviewing your documents. We’ll notify you when it’s done.'}
-            </Text>
-            <Tap onPress={reload} activeOpacity={0.8}>
-              <Text style={styles.statusAction}>Check again</Text>
-            </Tap>
-          </View>
-        </View>
-      );
+    if (step > 1) {
+      if (step === 2) setIdPhase(idAsset ? 'check' : 'tips');
+      setStep(step - 1);
+      return;
     }
-    return (
-      <View style={[styles.status, styles.statusRejected]}>
-        <CircleAlert size={22} color={Colors.error} />
-        <View style={styles.statusTextBox}>
-          <Text style={styles.statusTitle}>Not approved</Text>
-          <Text style={styles.statusBody}>
-            {verification.rejection_reason ?? 'Your documents were rejected.'} You can
-            start again below.
-          </Text>
-        </View>
-      </View>
-    );
+    if (idPhase === 'choose') setStarted(false);
+    else setIdPhase('choose');
   };
 
-  const renderApprovedContinue = () => {
-    if (!isApproved || !onVerified) return null;
-    const goToDashboard = async () => {
-      setContinuing(true);
-      setError(null);
-      try {
-        await onVerified();
-      } catch (e) {
-        setError(e instanceof Error ? e.message : 'Could not refresh your profile. Try again.');
-      } finally {
-        setContinuing(false);
-      }
-    };
-    return (
-      <Tap
-        style={styles.submitButton}
-        onPress={goToDashboard}
-        disabled={continuing}
-        activeOpacity={0.85}
-      >
-        {continuing ? (
-          <ActivityIndicator color={Colors.onPrimary} />
-        ) : (
-          <Text style={styles.submitText}>Go to Dashboard</Text>
-        )}
-      </Tap>
-    );
+  /** Try again after a rejection: the wizard opens at the ID choice. */
+  const tryAgain = () => {
+    setStarted(true);
+    setStep(1);
+    setIdPhase('choose');
   };
+
+  /** Approved: refresh the profile and go to the feed, as the Go to Dashboard button always did. */
+  const continueToFeed = async () => {
+    if (!onVerified) return;
+    setContinuing(true);
+    setError(null);
+    try {
+      await onVerified();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not refresh your profile. Try again.');
+    } finally {
+      setContinuing(false);
+    }
+  };
+
+  const onChoosingId = step === 1 && idPhase === 'choose';
+  const chosenIdLabel = VERIFY_ID_TYPES.find((type) => type.value === documentType)?.label ?? 'ID';
+  /** A passport's photo is of its photo page, not its front. */
+  const idSideName = documentType === 'passport' ? 'Photo page' : 'Front';
+
+  const headerTitle = view === 'pending' || view === 'rejected' ? 'Verification' : 'Get verified';
 
   return (
     <View style={styles.screen}>
-      <View style={[styles.header, { paddingTop: headerTop }]}>
-        <Tap style={styles.backButton} onPress={onBack} activeOpacity={0.8}>
-          <ArrowLeft size={20} color={Colors.ink700} />
-        </Tap>
-        <Text style={styles.headerTitle}>Get Verified</Text>
-        <View style={{ width: 38 }} />
-      </View>
-
-      {/* Stepper — only while there is something to step through. */}
-      {inWizard && !loading && (
-        <View style={styles.stepperWrap}>
-          <View style={styles.stepper}>
-            {STEPS.map((label, i) => (
-              <View key={label} style={[styles.stepPill, i < step && styles.stepPillDone]} />
-            ))}
-          </View>
-          <Text style={styles.stepperLabel}>
-            Step {step} of {STEPS.length} · {STEPS[step - 1]}
-          </Text>
-        </View>
+      {view !== 'approved' && (
+        <VerifyAppBar
+          title={headerTitle}
+          onBack={goBack}
+          backLabel={
+            view !== 'wizard'
+              ? 'Leave verification'
+              : onChoosingId
+                ? 'Back to the start'
+                : 'Back to the previous step'
+          }
+          topInset={headerTop}
+        />
       )}
 
-      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-        {loading ? (
-          <ActivityIndicator color={V6Colors.link} style={styles.loader} />
-        ) : (
-          <>
-            {renderStatus()}
+      {/* Progress: only while the wizard is on screen. */}
+      {view === 'wizard' && <PostProgress {...wizardProgress(step, idPhase)} />}
 
-            {isApproved && (
-              <View style={styles.notice}>
-                <ShieldCheck size={22} color={V6Colors.link} />
-                <Text style={styles.noticeText}>
-                  Your documents are stored privately and are only visible to TaskBuddy
-                  admins reviewing your account.
+      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+        {view === 'loading' && <ActivityIndicator color={V6Colors.link} style={styles.loader} />}
+
+        {view === 'pending' && verification && (
+          <>
+            <StatusCard
+              tone="attention"
+              overline={`In review · sent ${shortDate(verification.submitted_at)}`}
+              title="We're checking your documents"
+              body={
+                verification.method === 'stripe_identity' && !fellBackToManual
+                  ? 'The automated check is running — this usually takes a couple of minutes. You can leave this screen; we’ll notify you when it finishes.'
+                  : "An admin is reviewing them. We'll notify you as soon as there's a decision."
+              }
+            >
+              <Tap onPress={reload} hitSlop={8} accessibilityRole="button" accessibilityLabel="Check again">
+                <Text style={styles.checkAgain}>Check again</Text>
+              </Tap>
+            </StatusCard>
+            <Text style={styles.sectionTitle} accessibilityRole="header">Progress</Text>
+            <PendingTimeline rows={pendingRows({ method: verification.method, fellBackToManual })} />
+          </>
+        )}
+
+        {view === 'rejected' && verification && (
+          <>
+            <StatusCard
+              tone="closed"
+              overline={`Not approved · ${shortDate(verification.reviewed_at ?? verification.submitted_at)}`}
+              title="Your documents were rejected."
+              body={rejectionNote(verification.rejection_reason) ?? undefined}
+            />
+            <Text style={styles.sectionTitle} accessibilityRole="header">How to fix it</Text>
+            <CheckList items={HOW_TO_FIX} />
+          </>
+        )}
+
+        {view === 'approved' && (
+          <View style={styles.celebrate}>
+            <SuccessMark
+              size={96}
+              fallback={
+                <View style={styles.badge}>
+                  <ShieldCheck size={44} color={Colors.successText} />
+                </View>
+              }
+            />
+            <Text style={styles.approvedTitle} accessibilityRole="header">
+              {"You're verified!"}
+            </Text>
+            <Text style={styles.approvedBody}>
+              Clients can now see you, and jobs near you are open. Your profile shows the Verified badge.
+            </Text>
+            <CalmNote
+              icon={ShieldCheck}
+              text="Your documents are stored privately and are only visible to TaskBuddy admins reviewing your account."
+            />
+            {!!error && <Text style={styles.errorText} accessibilityLiveRegion="polite">{error}</Text>}
+          </View>
+        )}
+
+        {view === 'intro' && (
+          <>
+            <Text style={styles.introTitle} accessibilityRole="header">
+              Get verified to start getting jobs
+            </Text>
+            <Text style={styles.introBody}>
+              Clients only see and hire verified providers. It takes about 3 minutes.
+            </Text>
+            {profileIncomplete && (
+              <View style={styles.profileNotice}>
+                <Text style={styles.profileNoticeTitle}>Finish your profile first</Text>
+                <Text style={styles.profileNoticeBody}>
+                  Pick your service and add a bio in Profile → Edit Profile. Verification can't be sent until they're saved.
                 </Text>
               </View>
             )}
+            <PrepCard steps={PREP_STEPS} profileItems={profileChecks(providerProfile)} />
+            <Tap
+              style={styles.protectLink}
+              onPress={() => setProtectOpen(true)}
+              hitSlop={{ top: 12, bottom: 12 }}
+              accessibilityRole="button"
+              accessibilityLabel="How we protect your ID"
+            >
+              <ShieldCheck size={16} color={Colors.link} />
+              <Text style={styles.protectLinkText}>How we protect your ID</Text>
+            </Tap>
+          </>
+        )}
 
-            {renderApprovedContinue()}
-            {isApproved && error && <Text style={styles.errorText}>{error}</Text>}
+        {view === 'sending' && (
+          <>
+            <Text style={styles.stepTitle} accessibilityRole="header">
+              Sending your documents…
+            </Text>
+            <Text style={styles.stepHint}>Please keep the app open. This takes a few seconds.</Text>
+            <SendingChecklist rows={sendingRows(submitStage)} />
+          </>
+        )}
 
-            {inWizard && (
+        {view === 'wizard' && (
+          <>
+            {/* ── Step 1 · Government ID ─────────────────────────── */}
+            {step === 1 && profileIncomplete && (
+              <View style={styles.profileNotice}>
+                <Text style={styles.profileNoticeTitle}>Finish your profile first</Text>
+                <Text style={styles.profileNoticeBody}>
+                  Pick your service and add a bio in Profile → Edit Profile. Verification can't be sent until they're saved.
+                </Text>
+              </View>
+            )}
+            {step === 1 && idPhase === 'choose' && (
               <>
-                {/* ── Step 1 · Government ID ─────────────────────────── */}
-                {step === 1 && profileIncomplete && (
-                  <View style={styles.profileNotice}>
-                    <Text style={styles.profileNoticeTitle}>Finish your profile first</Text>
-                    <Text style={styles.profileNoticeBody}>
-                      Pick your service and add a bio in Profile → Edit Profile. Verification can't be sent until they're saved.
-                    </Text>
-                  </View>
-                )}
-                {step === 1 && (
-                  <View style={styles.card}>
-                    <Text style={styles.label}>Government ID</Text>
-                    <Text style={styles.hint}>
-                      Choose the ID you'll upload, then add a clear photo showing your
-                      full name and picture.
-                    </Text>
-                    <Text style={styles.docTypeLabel}>ID type</Text>
-                    <View style={styles.docTypeRow} accessibilityRole="radiogroup">
-                      {DOCUMENT_TYPES.map((doc) => {
-                        const selected = documentType === doc.value;
-                        return (
-                          <Tap
-                            key={doc.value}
-                            style={[styles.docTypeChip, selected && styles.docTypeChipOn]}
-                            onPress={() => setDocumentType(doc.value)}
-                            activeOpacity={0.8}
-                            accessibilityRole="radio"
-                            accessibilityState={{ selected }}
-                            testID={`verify-doc-${doc.value}`}
-                          >
-                            <Text style={[styles.docTypeText, selected && styles.docTypeTextOn]}>{doc.label}</Text>
-                          </Tap>
-                        );
-                      })}
-                    </View>
-                    <Tap
-                      style={styles.dropzone}
-                      onPress={() => void pick('id')}
-                      activeOpacity={0.8}
-                    >
-                      {idAsset ? (
-                        <Image source={{ uri: idAsset.uri }} style={styles.preview} resizeMode="cover" />
-                      ) : (
-                        <>
-                          <IdCard size={29} color={V6Colors.link} />
-                          <Text style={styles.dropzoneText}>Tap to choose a photo</Text>
-                          <Text style={styles.dropzoneSubtext}>Max 5 MB · JPG, PNG</Text>
-                        </>
-                      )}
-                    </Tap>
-                    {!!idAsset && (
-                      <Tap
-                        style={styles.galleryBtn}
-                        onPress={() => void pick('id')}
-                        activeOpacity={0.8}
-                      >
-                        <ImageIcon size={18} color={V6Colors.link} />
-                        <Text style={styles.galleryBtnText}>Choose a different photo</Text>
-                      </Tap>
-                    )}
-                  </View>
-                )}
-
-                {/* ── Step 2 · Face scan ─────────────────────────────── */}
-                {step === 2 && (
-                  <View style={styles.card}>
-                    <Text style={styles.label}>Face Scan</Text>
-                    <Text style={styles.hint}>
-                      Take a selfie holding the same ID. Good light, no hat or sunglasses
-                      — this is matched against the ID photo.
-                    </Text>
-                    <Tap
-                      style={[styles.dropzone, styles.selfieDropzonePrimary]}
-                      onPress={() => void takeSelfie()}
-                      activeOpacity={0.8}
-                    >
-                      {selfieAsset ? (
-                        <Image source={{ uri: selfieAsset.uri }} style={styles.preview} resizeMode="cover" />
-                      ) : (
-                        <>
-                          <ScanFace size={30} color={V6Colors.link} />
-                          <Text style={styles.dropzoneText}>Take a selfie</Text>
-                        </>
-                      )}
-                    </Tap>
-                    <Tap
-                      style={styles.galleryBtn}
-                      onPress={() => (selfieAsset ? void takeSelfie() : void pick('selfie'))}
-                      activeOpacity={0.8}
-                    >
-                      {selfieAsset ? <Camera size={18} color={V6Colors.link} /> : <ImageIcon size={18} color={V6Colors.link} />}
-                      <Text style={styles.galleryBtnText}>
-                        {selfieAsset ? 'Retake' : 'Choose from gallery'}
-                      </Text>
-                    </Tap>
-                  </View>
-                )}
-
-                {/* ── Step 3 · Automated check ───────────────────────── */}
-                {step === 3 && (
-                  <View style={styles.card}>
-                    <Text style={styles.label}>Automated Check</Text>
-                    <Text style={styles.hint}>
-                      Stripe Identity checks your ID and selfie automatically. It opens in
-                      a secure browser window and takes about a minute.
-                    </Text>
-
-                    <View style={styles.summaryRow}>
-                      <View style={[styles.summaryCheck, idAsset && styles.summaryCheckDone]}>
-                        {!!idAsset && <Check size={13} color={Colors.onPrimary} strokeWidth={3} />}
-                      </View>
-                      <Text style={styles.summaryText}>Government ID ready</Text>
-                    </View>
-                    <View style={styles.summaryRow}>
-                      <View style={[styles.summaryCheck, selfieAsset && styles.summaryCheckDone]}>
-                        {!!selfieAsset && <Check size={13} color={Colors.onPrimary} strokeWidth={3} />}
-                      </View>
-                      <Text style={styles.summaryText}>Face scan ready</Text>
-                    </View>
-
-                    <View style={styles.privacyNote}>
-                      <Lock size={18} color={V6Colors.link} />
-                      <Text style={styles.privacyText}>
-                        Your ID and selfie are uploaded to a private storage bucket that
-                        only TaskBuddy admins can open, and are kept as a fallback in case
-                        the automated check cannot decide.
-                      </Text>
-                    </View>
-
-                    {!!submitStage && <Text style={styles.stageText}>{submitStage}</Text>}
-                  </View>
-                )}
-
-                {!!error && <Text style={styles.errorText}>{error}</Text>}
-
-                <View style={styles.wizardActions}>
-                  {step > 1 && (
-                    <Tap
-                      style={styles.backStepBtn}
-                      onPress={() => setStep((s) => s - 1)}
-                      activeOpacity={0.85}
-                      disabled={submitting}
-                    >
-                      <Text style={styles.backStepText}>Back</Text>
-                    </Tap>
-                  )}
-                  <Tap
-                    style={[
-                      styles.submitButton,
-                      styles.wizardPrimary,
-                      step === 1 && styles.wizardPrimaryFull,
-                      !canAdvance && styles.submitButtonDisabled,
-                    ]}
-                    onPress={() => (step === 3 ? void startVerification() : setStep((s) => s + 1))}
-                    activeOpacity={0.85}
-                    disabled={!canAdvance || submitting}
-                  >
-                    {submitting ? (
-                      <ActivityIndicator color={Colors.onPrimary} />
-                    ) : (
-                      <Text style={[styles.submitText, !canAdvance && styles.submitTextDisabled]}>
-                        {step === 3 ? 'Start Verification' : 'Next'}
-                      </Text>
-                    )}
-                  </Tap>
+                <Text style={styles.stepTitle} accessibilityRole="header">
+                  Which ID will you use?
+                </Text>
+                <View style={styles.optionList} accessibilityRole="radiogroup">
+                  {VERIFY_ID_TYPES.map((doc) => (
+                    <PaymentOption
+                      key={doc.value}
+                      title={doc.label}
+                      meta={doc.side}
+                      icon={IdCard}
+                      selected={documentType === doc.value}
+                      onSelect={() => setDocumentType(doc.value)}
+                    />
+                  ))}
                 </View>
-
-                {isRejected && step === 1 && (
-                  <Text style={styles.retryHint}>
-                    Upload fresh photos — the previous ones were not accepted.
-                  </Text>
-                )}
+                <CalmNote
+                  icon={ShieldCheck}
+                  text="Use your original, valid ID. Photocopies, screenshots and expired IDs can't be accepted."
+                />
               </>
+            )}
+            {step === 1 && idPhase === 'tips' && (
+              <>
+                <Text style={styles.stepTitle} accessibilityRole="header">
+                  {`Get a clear photo of your ${chosenIdLabel}`}
+                </Text>
+                <IdExamples />
+                <CheckList items={PHOTO_TIPS} />
+              </>
+            )}
+
+            {step === 1 && idPhase === 'check' && (
+              <>
+                <Text style={styles.stepTitle} accessibilityRole="header">
+                  Is everything readable?
+                </Text>
+                {!!idAsset && (
+                  <View style={styles.previewFrame}>
+                    <Image source={{ uri: idAsset.uri }} style={styles.preview} resizeMode="cover" />
+                  </View>
+                )}
+                <View style={styles.checkBox}>
+                  <CheckList items={PHOTO_CHECKS} muted />
+                </View>
+              </>
+            )}
+
+            {/* ── Step 2 · Selfie: live camera only ─────────────── */}
+            {step === 2 && (
+              <>
+                <Text style={styles.stepTitle} accessibilityRole="header">
+                  Now a quick selfie
+                </Text>
+                <Text style={styles.stepHint}>We match your face with the photo on your ID.</Text>
+                <View style={styles.faceFrame}>
+                  {selfieAsset ? (
+                    <Image source={{ uri: selfieAsset.uri }} style={styles.preview} resizeMode="cover" />
+                  ) : (
+                    <ScanFace size={56} color={V6Colors.link} />
+                  )}
+                </View>
+                <CheckList items={SELFIE_TIPS} />
+              </>
+            )}
+
+            {/* ── Step 3 · Review and send ───────────────────────── */}
+            {step === 3 && (
+              <>
+                <Text style={styles.stepTitle} accessibilityRole="header">
+                  Ready to send
+                </Text>
+                <View style={styles.photoRow}>
+                  {!!idAsset && (
+                    <PhotoCard
+                      title={idSideName}
+                      uri={idAsset.uri}
+                      retakeLabel="Retake ID photo"
+                      onRetake={() => {
+                        setIdPhase('tips');
+                        setStep(1);
+                      }}
+                    />
+                  )}
+                  {!!selfieAsset && (
+                    <PhotoCard
+                      title="Selfie"
+                      uri={selfieAsset.uri}
+                      retakeLabel="Retake selfie"
+                      onRetake={() => setStep(2)}
+                    />
+                  )}
+                </View>
+                <CheckRow
+                  label={CONSENT_TEXT}
+                  checked={consented}
+                  onToggle={() => setConsented((value) => !value)}
+                />
+                <CalmNote
+                  icon={Lock}
+                  text="Next, Stripe opens a secure page and asks you to scan your ID and face once more to confirm it's you. Only TaskBuddy admins can see the photos you took here."
+                />
+                <Text style={styles.stepHint}>
+                  If Stripe isn't available, your photos go to a TaskBuddy admin for manual review.
+                </Text>
+              </>
+            )}
+
+            {!!error && <Text style={styles.errorText} accessibilityLiveRegion="polite">{error}</Text>}
+
+            {isRejected && step === 1 && (
+              <Text style={styles.retryHint}>
+                Upload fresh photos — the previous ones were not accepted.
+              </Text>
             )}
           </>
         )}
         <View style={{ height: 24 }} />
       </ScrollView>
+
+      {view === 'intro' && (
+        <BottomActionBar
+          primaryLabel="Start"
+          onPrimary={() => setStarted(true)}
+          primaryDisabled={profileIncomplete}
+        />
+      )}
+
+      {view === 'pending' && <BottomActionBar primaryLabel="Back to Feed" onPrimary={onBack} />}
+
+      {view === 'rejected' && <BottomActionBar primaryLabel="Try again" onPrimary={tryAgain} />}
+
+      {view === 'approved' && onVerified && (
+        <BottomActionBar
+          primaryLabel="See jobs near you"
+          onPrimary={() => void continueToFeed()}
+          busy={continuing}
+        />
+      )}
+
+      {view === 'wizard' && onChoosingId && (
+        <BottomActionBar
+          primaryLabel="Continue"
+          onPrimary={() => setIdPhase('tips')}
+          primaryDisabled={!documentType || profileIncomplete}
+        />
+      )}
+
+      {view === 'wizard' && step === 1 && idPhase === 'tips' && (
+        <BottomActionBar
+          primaryLabel={takePhotoLabel(documentType)}
+          onPrimary={() => void takeIdPhoto()}
+          secondaryLabel="Upload from gallery"
+          onSecondary={() => void pickIdPhoto()}
+        />
+      )}
+
+      {view === 'wizard' && step === 1 && idPhase === 'check' && (
+        <BottomActionBar
+          primaryLabel="Use this photo"
+          onPrimary={() => setStep(2)}
+          secondaryLabel="Retake"
+          onSecondary={() => setIdPhase('tips')}
+        />
+      )}
+
+      {view === 'wizard' && step === 2 && (
+        <BottomActionBar
+          primaryLabel={selfieAsset ? 'Continue' : 'Take selfie'}
+          onPrimary={() => (selfieAsset ? setStep(3) : void takeSelfie())}
+          secondaryLabel={selfieAsset ? 'Retake' : undefined}
+          onSecondary={selfieAsset ? () => void takeSelfie() : undefined}
+        />
+      )}
+
+      {view === 'wizard' && step === 3 && (
+        <BottomActionBar
+          primaryLabel="Continue to secure check"
+          onPrimary={() => void startVerification()}
+          primaryDisabled={!consented || profileIncomplete}
+        />
+      )}
+
+      <ProtectSheet visible={protectOpen} onClose={() => setProtectOpen(false)} />
     </View>
   );
 }
 
 function createThemedStyles(theme: ThemePalette) {
-  const { V6Colors } = theme;
-  const Colors = {
-    ...V6Colors,
-    background: V6Colors.canvas,
-    backgroundAlt: V6Colors.ink50,
-    brandDark: V6Colors.ink900,
-    brandTeal: V6Colors.cyan700,
-    slate: V6Colors.ink500,
-    muted: V6Colors.ink400,
-    error: '#ef4444',
-    success: '#22c55e',
-    warning: '#f59e0b',
-  } as const;
+  const { Colors, V6Colors } = theme;
   const styles = StyleSheet.create({
-    screen: { flex: 1, backgroundColor: Colors.background },
-    header: {
-      flexDirection: 'row', alignItems: 'center', gap: 12,
-      backgroundColor: Colors.surface,
-      paddingHorizontal: Spacing.screenH,
-      paddingBottom: 12,
-      borderBottomWidth: 1, borderBottomColor: V6Colors.line,
-    },
-    backButton: {
-      width: 38, height: 38, borderRadius: 12,
-      backgroundColor: Colors.surface, borderWidth: 1, borderColor: V6Colors.line,
-      alignItems: 'center', justifyContent: 'center',
-    },
-    headerTitle: { flex: 1, color: Colors.ink900, fontSize: 19.5, fontWeight: '800', fontFamily: 'Inter' },
-
-    stepperWrap: { backgroundColor: Colors.surface, paddingHorizontal: Spacing.screenH, paddingBottom: 14 },
-    stepper: { flexDirection: 'row', gap: 5 },
-    stepPill: { flex: 1, height: 5, borderRadius: 3, backgroundColor: Colors.ink100 },
-    stepPillDone: { backgroundColor: Colors.cyan700 },
-    stepperLabel: { color: Colors.muted, fontSize: 12.5, fontFamily: 'Inter', marginTop: 8 },
-
-    content: { padding: Spacing.screenH, gap: 16 },
+    screen: { flex: 1, backgroundColor: V6Colors.canvas },
     loader: { marginTop: 40 },
-    status: {
-      flexDirection: 'row',
-      gap: 10,
-      borderRadius: 14,
-      padding: 14,
-      borderWidth: 1,
+    content: { padding: Spacing.screenH, gap: 16 },
+    introTitle: { color: V6Colors.ink900, fontFamily: 'Inter', fontSize: 24, fontWeight: '700', lineHeight: 30 },
+    introBody: { color: V6Colors.ink700, fontFamily: 'Inter', fontSize: 15, lineHeight: 21, marginTop: -8 },
+    protectLink: { flexDirection: 'row', alignItems: 'center', gap: 6, alignSelf: 'flex-start', minHeight: 40 },
+    protectLinkText: { color: Colors.link, fontFamily: 'Inter', fontSize: 14, fontWeight: '600', lineHeight: 18 },
+    sectionTitle: { color: V6Colors.ink900, fontFamily: 'Inter', fontSize: 16, fontWeight: '700', lineHeight: 22, marginTop: 4 },
+    checkAgain: { color: Colors.link, fontFamily: 'Inter', fontSize: 15, fontWeight: '700', lineHeight: 20, marginTop: 8 },
+    celebrate: { alignItems: 'center', gap: 14, paddingTop: 24 },
+    badge: {
+      width: 96, height: 96, borderRadius: 48, alignItems: 'center', justifyContent: 'center',
+      backgroundColor: Colors.successSurface,
     },
-    statusApproved: { backgroundColor: V6Colors.successSurface, borderColor: V6Colors.successBorder },
-    statusPending: { backgroundColor: V6Colors.warningSurface, borderColor: V6Colors.warningBorder },
-    statusRejected: { backgroundColor: V6Colors.dangerSurface, borderColor: V6Colors.dangerBorder },
-    statusTextBox: { flex: 1, gap: 3 },
-    statusTitle: {
-      color: V6Colors.ink900,
-      fontFamily: 'Inter',
-      fontSize: 16.5,
-      fontWeight: '800',
+    approvedTitle: { color: V6Colors.ink900, fontFamily: 'Inter', fontSize: 24, fontWeight: '700', lineHeight: 30, textAlign: 'center' },
+    approvedBody: { color: V6Colors.ink700, fontFamily: 'Inter', fontSize: 15, lineHeight: 21, textAlign: 'center' },
+    stepTitle: { color: V6Colors.ink900, fontFamily: 'Inter', fontSize: 22, fontWeight: '700', lineHeight: 28 },
+    stepHint: { color: V6Colors.ink700, fontFamily: 'Inter', fontSize: 15.5, lineHeight: 21 },
+    optionList: { gap: 8 },
+    previewFrame: { height: 280, borderRadius: 14, overflow: 'hidden', backgroundColor: V6Colors.ink50 },
+    checkBox: {
+      backgroundColor: V6Colors.surface, borderRadius: 14, borderWidth: 1, borderColor: V6Colors.line, padding: 14,
     },
-    statusBody: { color: Colors.slate, fontFamily: 'Inter', fontSize: 15.5, lineHeight: 19 },
-    statusAction: { color: V6Colors.link, fontFamily: 'Inter', fontSize: 15, fontWeight: '700', marginTop: 6 },
-    notice: {
-      flexDirection: 'row',
-      gap: 10,
-      backgroundColor: Colors.backgroundAlt,
-      borderRadius: 14,
-      padding: 14,
-    },
-    noticeText: { flex: 1, color: Colors.slate, fontFamily: 'Inter', fontSize: 15.5, lineHeight: 19 },
-    card: { backgroundColor: Colors.surface, borderRadius: Radii.card, padding: 18, ...Shadows.card },
-    label: { color: V6Colors.ink900, fontFamily: 'Inter', fontSize: 18.5, fontWeight: '800' },
-    hint: { color: Colors.muted, fontFamily: 'Inter', fontSize: 15.5, marginTop: 4, marginBottom: 14, lineHeight: 20 },
-    docTypeLabel: { color: V6Colors.ink900, fontFamily: 'Inter', fontSize: 14, fontWeight: '700', marginBottom: 8 },
-    docTypeRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 16 },
-    docTypeChip: { borderWidth: 1, borderColor: V6Colors.fieldBorder, borderRadius: 999, paddingHorizontal: 12, paddingVertical: 7, backgroundColor: Colors.surface },
-    docTypeChipOn: { borderColor: Colors.brandTeal, backgroundColor: V6Colors.cyan50 },
-    docTypeText: { color: V6Colors.ink700, fontFamily: 'Inter', fontSize: 13.5, fontWeight: '600' },
-    docTypeTextOn: { color: V6Colors.link, fontWeight: '700' },
-    dropzone: {
-      height: 150,
-      borderRadius: 12,
-      borderWidth: 1.5,
-      borderStyle: 'dashed',
-      borderColor: 'rgba(144,153,184,0.5)',
-      backgroundColor: Colors.backgroundAlt,
-      alignItems: 'center',
-      justifyContent: 'center',
-      gap: 8,
-      overflow: 'hidden',
-    },
-    dropzoneText: { color: Colors.muted, fontFamily: 'Inter', fontSize: 15.5 },
-    dropzoneSubtext: { color: Colors.muted, fontFamily: 'Inter', fontSize: 13.5, marginTop: 2 },
     preview: { width: '100%', height: '100%' },
-    selfieDropzonePrimary: { height: 190 },
-
-    summaryRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 6 },
-    summaryCheck: {
-      width: 21, height: 21, borderRadius: 7,
-      borderWidth: 1.5, borderColor: V6Colors.ink200,
-      alignItems: 'center', justifyContent: 'center',
+    faceFrame: {
+      width: 200, height: 200, borderRadius: 100, alignSelf: 'center', overflow: 'hidden',
+      alignItems: 'center', justifyContent: 'center', backgroundColor: V6Colors.ink50,
+      borderWidth: 1.5, borderStyle: 'dashed', borderColor: V6Colors.fieldBorder,
     },
-    summaryCheckDone: { backgroundColor: Colors.brandTeal, borderColor: Colors.brandTeal },
-    summaryText: { color: Colors.ink800, fontFamily: 'Inter', fontSize: 15.5 },
-    privacyNote: {
-      flexDirection: 'row', gap: 10,
-      backgroundColor: Colors.backgroundAlt, borderRadius: 12, padding: 13, marginTop: 12,
-    },
-    privacyText: { flex: 1, color: Colors.slate, fontFamily: 'Inter', fontSize: 14, lineHeight: 19 },
-    stageText: { color: V6Colors.link, fontFamily: 'Inter', fontSize: 14.5, marginTop: 12, textAlign: 'center' },
-
-    wizardActions: { flexDirection: 'row', gap: 10 },
-    wizardPrimary: { flex: 1, marginTop: 0 },
-    wizardPrimaryFull: { width: '100%' },
-    backStepBtn: {
-      paddingHorizontal: 22, borderRadius: 24, borderWidth: 1, borderColor: V6Colors.fieldBorder,
-      alignItems: 'center', justifyContent: 'center',
-    },
-    backStepText: { color: Colors.ink700, fontFamily: 'Inter', fontSize: 16.5, fontWeight: '700' },
-    submitButton: {
-      alignItems: 'center',
-      justifyContent: 'center',
-      backgroundColor: Colors.brandTeal,
-      borderRadius: 24,
-      paddingVertical: 15,
-      marginTop: 4,
-    },
-    // Readable disabled state: grey fill with dark text instead of a faded button.
-    submitButtonDisabled: { backgroundColor: V6Colors.ink100 },
-    submitTextDisabled: { color: V6Colors.ink700 },
-    submitText: { color: Colors.onPrimary, fontSize: 18.5, fontWeight: '700', fontFamily: 'Inter' },
+    photoRow: { flexDirection: 'row', gap: 12 },
     profileNotice: {
       backgroundColor: V6Colors.warningSurface, borderWidth: 1, borderColor: V6Colors.warningBorder,
-      borderRadius: 14, padding: 14, gap: 4, marginBottom: 14,
+      borderRadius: 14, padding: 14, gap: 4,
     },
     profileNoticeTitle: { color: V6Colors.warningText, fontFamily: 'Inter', fontSize: 15, fontWeight: '700' },
     profileNoticeBody: { color: V6Colors.ink700, fontFamily: 'Inter', fontSize: 14, lineHeight: 20 },
-    errorText: { color: Colors.error, fontFamily: 'Inter', fontSize: 15.5, textAlign: 'center' },
-    retryHint: { color: Colors.muted, fontFamily: 'Inter', fontSize: 14, textAlign: 'center' },
-
-    galleryBtn: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'center',
-      gap: 6,
-      minHeight: 44,
-      paddingVertical: 10,
-      borderRadius: 12,
-      borderWidth: 1,
-      borderColor: V6Colors.fieldBorder,
-      backgroundColor: V6Colors.surface,
-      marginTop: 8,
-    },
-    // Secondary action: dark label and a brand icon so it reads as a
-    // button, not as disabled text.
-    galleryBtnText: {
-      color: V6Colors.ink800,
-      fontFamily: 'Inter',
-      fontSize: 15.5,
-      fontWeight: '600',
-    },
+    errorText: { color: Colors.dangerText, fontFamily: 'Inter', fontSize: 15.5, textAlign: 'center' },
+    retryHint: { color: V6Colors.ink500, fontFamily: 'Inter', fontSize: 14, textAlign: 'center' },
   });
   return { Colors, V6Colors, styles };
 }

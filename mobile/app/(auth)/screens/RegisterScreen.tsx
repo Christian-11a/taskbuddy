@@ -8,8 +8,8 @@
  * - "Create account" — Roboto 700 30px #1E1E1E
  * - "Let's get started!" — Roboto 400 13px #757575
  * - Name, Email, Password, Confirm Password inputs
- * - Role selector: Homeowner / Service Provider
- * - Homeowner: T&C + Privacy Policy + Data Collection consent checkboxes
+ * - Role selector: Client / Service Provider
+ * - Client: T&C + Privacy Policy + Data Collection consent checkboxes
  * - Provider: above + Skill category picker
  * - "Sign Up" primary button (teal, radius 24)
  * - "or" divider
@@ -39,15 +39,27 @@ import {
   type LayoutChangeEvent,
 } from 'react-native';
 import Tap from '../../../src/components/ui/Tap';
-import { AlertCircle, ArrowLeft, Check, ChevronDown, MailCheck } from 'lucide-react-native';
+import KeyboardAwareScrollView from '../../../src/components/ui/KeyboardAwareScrollView';
+import { AlertCircle, Check, CheckCircle2, ChevronDown, Circle, MailCheck } from 'lucide-react-native';
 import { V6Radii, V6Shadows } from '../../../src/constants/theme';
 import TermsAndConditions from './TermsAndConditions';
 import { ApiError, api } from '../../../src/lib/api';
 import type { MobileRole } from '../../../src/lib/api';
 import { useAuth } from '../../../src/context/AuthContext';
 import GoogleGlyph from '../../../src/components/GoogleGlyph';
-import PasswordInput from '../../../src/components/PasswordInput';
+import AuthField from '../../../src/components/auth/AuthField';
+import AuthStepHeader from '../../../src/components/auth/AuthStepHeader';
+import RoleChoiceCard from '../../../src/components/auth/RoleChoiceCard';
 import { useAuthLayout } from '../../../src/hooks/useAuthLayout';
+import {
+  EMAIL_MAX,
+  FULL_NAME_MAX,
+  normalizeName,
+  sanitizeOtp,
+  validateEmail,
+  validateFullName,
+  validatePasswordRules,
+} from '../../../src/lib/inputRules';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 /** Supabase issues 6-digit signup codes. */
@@ -95,6 +107,8 @@ interface InputProps {
   onChangeText: (v: string) => void;
   secureTextEntry?: boolean;
   keyboardType?: 'default' | 'email-address';
+  /** The most characters the field takes; the limit the rule checks against. */
+  maxLength?: number;
   error?: string;
   /**
    * Test hook only — inert, same as ConsentCheckbox's. Needed because the two
@@ -104,54 +118,33 @@ interface InputProps {
    * the wrong field and both entries end up in the first one.
    */
   testID?: string;
+  /** Runs when the field is left, so its message shows without waiting for Create account. */
+  onBlur?: () => void;
+  autoCapitalize?: 'words' | 'none';
 }
 
+/** One form field in the shared AuthField style; `onLayout` keeps the scroll-to-error position. */
 function FormInput({
   label, required, placeholder, value, onChangeText,
-  secureTextEntry, keyboardType, error, testID, onLayout,
+  secureTextEntry, keyboardType, maxLength, error, testID, onLayout, onBlur, autoCapitalize = 'none',
 }: InputProps) {
-  const { C, styles, V6Colors, appearance } = useThemedStyles(createThemedStyles);
-  const [focused, setFocused] = useState(false);
   return (
-    <View onLayout={onLayout} style={styles.inputGroup}>
-      <Text style={styles.inputLabel}>
-        {label}
-        {required && <Text style={styles.requiredAsterisk}> *</Text>}
-      </Text>
-      {secureTextEntry ? (
-        <PasswordInput
-          containerStyle={[styles.inputBox, focused && styles.inputBoxFocused, error ? styles.inputBoxError : undefined]}
-          inputStyle={styles.inputText}
-          testID={testID}
-          placeholder={placeholder}
-          placeholderTextColor={C.muted}
-          value={value}
-          onChangeText={onChangeText}
-          onFocus={() => setFocused(true)}
-          onBlur={() => setFocused(false)}
-          onSubmitEditing={Keyboard.dismiss}
-          enablesReturnKeyAutomatically
-        />
-      ) : (
-        <View style={[styles.inputBox, focused && styles.inputBoxFocused, error ? styles.inputBoxError : undefined]}>
-          <TextInput keyboardAppearance={appearance}
-            style={styles.inputText}
-            testID={testID}
-            placeholder={placeholder}
-            placeholderTextColor={C.muted}
-            value={value}
-            onChangeText={onChangeText}
-            keyboardType={keyboardType}
-            autoCapitalize="none"
-            autoCorrect={false}
-            onFocus={() => setFocused(true)}
-            onBlur={() => setFocused(false)}
-            onSubmitEditing={Keyboard.dismiss}
-            enablesReturnKeyAutomatically
-          />
-        </View>
-      )}
-      {!!error && <Text style={styles.inputErrorText}>{error}</Text>}
+    <View onLayout={onLayout} style={{ marginBottom: 16 }}>
+      <AuthField
+        label={label}
+        required={required}
+        placeholder={placeholder}
+        testID={testID}
+        value={value}
+        onChangeText={onChangeText}
+        secure={secureTextEntry}
+        keyboardType={keyboardType}
+        maxLength={maxLength}
+        autoCapitalize={autoCapitalize}
+        onBlur={onBlur}
+        onSubmitEditing={Keyboard.dismiss}
+        error={error}
+      />
     </View>
   );
 }
@@ -162,24 +155,30 @@ interface ConsentCheckboxProps {
   label: React.ReactNode;
   error?: string;
   testID?: string;
+  /** Plain-text name for screen readers, because the label above holds links. */
+  accessibilityLabel?: string;
 }
 
-function ConsentCheckbox({ checked, onPress, label, error, testID }: ConsentCheckboxProps) {
-  const { C, styles, V6Colors, appearance } = useThemedStyles(createThemedStyles);
+function ConsentCheckbox({ checked, onPress, label, error, testID, accessibilityLabel }: ConsentCheckboxProps) {
+  const { C, styles } = useThemedStyles(createThemedStyles);
   return (
-    <View style={styles.consentItem}>
+    <View style={[styles.consentItem, checked && styles.consentItemChecked, !!error && styles.consentItemError]}>
       <View style={styles.consentRow}>
         <Tap
           testID={testID}
           style={[styles.checkbox, checked && styles.checkboxChecked]}
           onPress={onPress}
           activeOpacity={0.7}
+          hitSlop={13}
+          accessibilityRole="checkbox"
+          accessibilityState={{ checked }}
+          accessibilityLabel={accessibilityLabel}
         >
           {checked ? <Check size={14} color={C.onPrimary} /> : null}
         </Tap>
         <Text style={styles.termsText}>{label}</Text>
       </View>
-      {!!error && <Text style={styles.inputErrorText}>{error}</Text>}
+      {!!error && <Text style={styles.inputErrorText} accessibilityLiveRegion="polite">{error}</Text>}
     </View>
   );
 }
@@ -211,7 +210,7 @@ export default function RegisterScreen({ onRegister, onLogin, onGoogleSignIn }: 
   const locateField = (field: string) => (event: LayoutChangeEvent) => {
     fieldPositions.current[field] = event.nativeEvent.layout.y;
   };
-  const { width, fontScale } = useWindowDimensions();
+  const { width } = useWindowDimensions();
   const { verifyEmailOtp } = useAuth();
   // Entrance transition — matches the mockup's `.screen{animation:fadeIn .22s ease}`
   // (fade in + slide up 6px). Runs once on mount, when this screen first opens.
@@ -245,6 +244,8 @@ export default function RegisterScreen({ onRegister, onLogin, onGoogleSignIn }: 
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [role, setRole] = useState<MobileRole>('homeowner');
+  // Step 1 picks the role; step 2 is the details form. Both submit together.
+  const [step, setStep] = useState<'role' | 'details'>('role');
 
   // SP-only: category
   const [categoryId, setCategoryId] = useState<number | null>(null);
@@ -320,15 +321,13 @@ export default function RegisterScreen({ onRegister, onLogin, onGoogleSignIn }: 
 
   const validate = (): FieldErrors => {
     const errors: FieldErrors = {};
-    const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-    if (!name.trim()) errors.name = 'Please enter your full name.';
-    if (!email.trim()) {
-      errors.email = 'Please enter your email address.';
-    } else if (!emailPattern.test(email.trim())) {
-      errors.email = 'Please enter a valid email address.';
-    }
-    if (password.length < 8) errors.password = 'Password must be at least 8 characters.';
+    const nameError = validateFullName(name);
+    if (nameError) errors.name = nameError;
+    const emailError = validateEmail(email);
+    if (emailError) errors.email = emailError;
+    const passwordError = validatePasswordRules(password);
+    if (passwordError) errors.password = passwordError;
     if (password !== confirmPassword) errors.confirmPassword = 'Passwords do not match.';
 
     if (role === 'provider' && !categoryId) {
@@ -365,9 +364,9 @@ export default function RegisterScreen({ onRegister, onLogin, onGoogleSignIn }: 
     setSubmitting(true);
     try {
       const { needsEmailConfirmation } = await onRegister({
-        email,
+        email: email.trim(),
         password,
-        fullName: name,
+        fullName: normalizeName(name),
         role,
         categoryId: role === 'provider' ? (categoryId ?? undefined) : undefined,
         consentedTerms: termsAccepted,
@@ -428,19 +427,20 @@ export default function RegisterScreen({ onRegister, onLogin, onGoogleSignIn }: 
               style={styles.otpInput}
               value={otp}
               onChangeText={(text) => {
-                setOtp(text.replace(/\D/g, '').slice(0, OTP_LENGTH));
+                // No native maxLength here: it would cut a pasted "123 456" to "123 45"
+                // before the digits are kept. sanitizeOtp keeps the first six digits.
+                setOtp(sanitizeOtp(text));
                 setOtpError(null);
               }}
               keyboardType="number-pad"
               placeholder="000000"
               placeholderTextColor={C.slate}
-              maxLength={OTP_LENGTH}
               editable={!verifying}
               accessibilityLabel="Verification code"
               autoFocus
             />
 
-            {!!otpError && <Text style={styles.otpError}>{otpError}</Text>}
+            {!!otpError && <Text style={styles.otpError} accessibilityLiveRegion="polite">{otpError}</Text>}
             {!!resendNote && <Text style={styles.otpNote}>{resendNote}</Text>}
 
             <Tap
@@ -482,8 +482,56 @@ export default function RegisterScreen({ onRegister, onLogin, onGoogleSignIn }: 
 
   const selectedCategory = categories.find((c) => c.id === categoryId);
 
+  // ── Step 1: how will you use TaskBuddy? ────────────────────────────────────
+  // Same two role values as before. Continue opens the details form; the back
+  // arrow here returns to sign in, as it always did.
+  const roleContent = (
+    <View style={styles.flex}>
+      <ScrollView
+        style={styles.flex}
+        contentContainerStyle={[styles.roleContent, { paddingTop: layout.paddingTop }]}
+        showsVerticalScrollIndicator={false}
+      >
+        <AuthStepHeader
+          title="Create account"
+          onBack={onLogin}
+          backLabel="Back to sign in"
+          progress={{ step: 1, total: 2, label: 'Role' }}
+        />
+        <Text style={styles.roleTitle} accessibilityRole="header">How will you use TaskBuddy?</Text>
+        <Text style={styles.roleSubtitle}>You can't switch later, so pick the one that fits.</Text>
+        <View accessibilityRole="radiogroup" style={styles.roleCards}>
+          <RoleChoiceCard
+            role="homeowner"
+            selected={role === 'homeowner'}
+            onSelect={() => setRole('homeowner')}
+            testID="role-homeowner"
+          />
+          <RoleChoiceCard
+            role="provider"
+            selected={role === 'provider'}
+            onSelect={() => setRole('provider')}
+            testID="role-provider"
+          />
+        </View>
+      </ScrollView>
+      <View style={[styles.roleFooter, { paddingBottom: layout.paddingBottom }]}>
+        <Tap
+          testID="btn-role-continue"
+          style={styles.primaryBtn}
+          onPress={() => setStep('details')}
+          activeOpacity={0.85}
+          accessibilityRole="button"
+          accessibilityLabel="Continue"
+        >
+          <Text style={styles.primaryBtnText}>Continue</Text>
+        </Tap>
+      </View>
+    </View>
+  );
+
   const scrollContent = (
-    <ScrollView
+    <KeyboardAwareScrollView
       ref={scrollRef}
       style={styles.flex}
       contentContainerStyle={[styles.scrollContent, { paddingTop: layout.paddingTop, paddingBottom: layout.paddingBottom }]}
@@ -507,33 +555,18 @@ export default function RegisterScreen({ onRegister, onLogin, onGoogleSignIn }: 
           else if (termsMode === 'privacy') setPrivacyAccepted(true);
         }}
       />
-          {/* Top section */}
-          <View style={styles.topSection}>
-            <Tap style={styles.backBtn} onPress={onLogin} activeOpacity={0.8}>
-              <ArrowLeft size={21} color={C.ink700} />
-            </Tap>
-          </View>
+          {/* Top bar: back returns to the role step */}
+          <AuthStepHeader
+            title="Create account"
+            onBack={() => setStep('role')}
+            backLabel="Back to role choice"
+            progress={{ step: 2, total: 2, label: 'Details' }}
+          />
 
           {/* Form card */}
           <View onLayout={(event) => { cardTop.current = event.nativeEvent.layout.y; }} style={[styles.card, { padding: width < 380 ? 16 : 24 }]}>
-            <Text style={styles.title}>Create account</Text>
+            <Text style={styles.title}>Create your account</Text>
             <Text style={styles.subtitle}>Let's get started!</Text>
-
-            {/* Role toggle */}
-            <View style={[styles.roleRow, fontScale > 1.2 && { flexDirection: 'column' }]}>
-              {(['homeowner', 'provider'] as const).map((r) => (
-                <Tap
-                  key={r}
-                  style={[styles.roleBtn, role === r && styles.roleBtnActive]}
-                  onPress={() => setRole(r)}
-                  activeOpacity={0.8}
-                >
-                  <Text style={[styles.roleBtnText, role === r && styles.roleBtnTextActive]}>
-                    {r === 'homeowner' ? 'Client' : 'Service Provider'}
-                  </Text>
-                </Tap>
-              ))}
-            </View>
 
             {/* Shared fields */}
             <FormInput
@@ -543,6 +576,9 @@ export default function RegisterScreen({ onRegister, onLogin, onGoogleSignIn }: 
               testID="input-name"
               value={name}
               onChangeText={(v) => { setName(v); clearError('name'); }}
+              autoCapitalize="words"
+              maxLength={FULL_NAME_MAX}
+              onBlur={() => setFieldErrors((prev) => ({ ...prev, name: validateFullName(name) ?? undefined }))}
               onLayout={locateField('name')}
               error={fieldErrors.name}
             />
@@ -554,6 +590,10 @@ export default function RegisterScreen({ onRegister, onLogin, onGoogleSignIn }: 
               value={email}
               onChangeText={(v) => { setEmail(v); clearError('email'); setEmailTaken(false); }}
               keyboardType="email-address"
+              maxLength={EMAIL_MAX}
+              onBlur={() => {
+                if (!emailTaken) setFieldErrors((prev) => ({ ...prev, email: validateEmail(email) ?? undefined }));
+              }}
               onLayout={locateField('email')}
               error={fieldErrors.email}
             />
@@ -564,10 +604,25 @@ export default function RegisterScreen({ onRegister, onLogin, onGoogleSignIn }: 
               testID="input-password"
               value={password}
               onChangeText={(v) => { setPassword(v); clearError('password'); }}
+              onBlur={() => setFieldErrors((prev) => ({ ...prev, password: validatePasswordRules(password) ?? undefined }))}
               secureTextEntry
               onLayout={locateField('password')}
               error={fieldErrors.password}
             />
+            {/* Live password rule. Only the rule the sign-up check enforces (8+). */}
+            <View style={styles.rules}>
+              <View
+                style={styles.ruleRow}
+                accessible
+                accessibilityLabel={password.length >= 8 ? '8+ characters: met' : '8+ characters: not yet'}
+              >
+                {password.length >= 8
+                  ? <CheckCircle2 size={15} color={V6Colors.successText} />
+                  : <Circle size={15} color={V6Colors.ink300} />}
+                <Text style={[styles.ruleText, password.length >= 8 && styles.ruleTextOk]}>8+ characters</Text>
+              </View>
+            </View>
+
             <FormInput
               label="Confirm Password"
               required
@@ -635,7 +690,7 @@ export default function RegisterScreen({ onRegister, onLogin, onGoogleSignIn }: 
                   </View>
                 )}
                 {!!fieldErrors.category && (
-                  <Text style={styles.inputErrorText}>{fieldErrors.category}</Text>
+                  <Text style={styles.inputErrorText} accessibilityLiveRegion="polite">{fieldErrors.category}</Text>
                 )}
               </View>
             )}
@@ -644,49 +699,43 @@ export default function RegisterScreen({ onRegister, onLogin, onGoogleSignIn }: 
             <View onLayout={locateField('consents')} style={styles.consentSection}>
               <Text style={styles.consentSectionTitle}>Consents & Agreements</Text>
 
-              {/* T&C */}
+              {/* Terms + Privacy: one row. Ticking it opens the first document
+                  that is not accepted yet; each document still needs its own
+                  "I agree" at the bottom. Unticking clears both. */}
               <ConsentCheckbox
                 testID="chk-terms"
-                checked={termsAccepted}
+                accessibilityLabel="I agree to the Terms and Privacy Policy"
+                checked={termsAccepted && privacyAccepted}
                 onPress={() => {
-                  if (!termsAccepted) setTermsMode('terms');
-                  else setTermsAccepted(false);
+                  if (termsAccepted && privacyAccepted) {
+                    setTermsAccepted(false);
+                    setPrivacyAccepted(false);
+                  } else if (!termsAccepted) {
+                    setTermsMode('terms');
+                  } else {
+                    setTermsMode('privacy');
+                  }
                 }}
                 label={
                   <Text style={styles.termsText}>
-                    I have read and agree to the{' '}
+                    I agree to the{' '}
                     <Text style={styles.termsLink} onPress={() => setTermsMode('terms')}>
                       Terms & Conditions
                     </Text>
-                    <Text style={styles.requiredAsterisk}>*</Text>
-                  </Text>
-                }
-                error={fieldErrors.terms}
-              />
-
-              {/* Privacy Policy */}
-              <ConsentCheckbox
-                testID="chk-privacy"
-                checked={privacyAccepted}
-                onPress={() => {
-                  if (!privacyAccepted) setTermsMode('privacy');
-                  else setPrivacyAccepted(false);
-                }}
-                label={
-                  <Text style={styles.termsText}>
-                    I have read and agree to the{' '}
+                    {' and '}
                     <Text style={styles.termsLink} onPress={() => setTermsMode('privacy')}>
                       Privacy Policy
                     </Text>
                     <Text style={styles.requiredAsterisk}>*</Text>
                   </Text>
                 }
-                error={fieldErrors.privacy}
+                error={fieldErrors.terms ?? fieldErrors.privacy}
               />
 
               {/* Data Collection */}
               <ConsentCheckbox
                 testID="chk-data-collection"
+                accessibilityLabel="I consent to the collection and use of my personal data"
                 checked={dataCollectionAccepted}
                 onPress={() => setDataCollectionAccepted((v) => !v)}
                 label={
@@ -724,17 +773,20 @@ export default function RegisterScreen({ onRegister, onLogin, onGoogleSignIn }: 
               </View>
             )}
 
-            {/* Sign Up */}
+            {/* Create account */}
             <Tap
+              testID="btn-create-account"
               style={[styles.primaryBtn, submitting && styles.primaryBtnDisabled]}
               onPress={handleSignUp}
               activeOpacity={0.85}
               disabled={submitting}
+              accessibilityRole="button"
+              accessibilityLabel="Create account"
             >
               {submitting ? (
                 <ActivityIndicator color={C.onPrimary} />
               ) : (
-                <Text style={styles.primaryBtnText}>Sign Up</Text>
+                <Text style={styles.primaryBtnText}>Create account</Text>
               )}
             </Tap>
 
@@ -770,7 +822,7 @@ export default function RegisterScreen({ onRegister, onLogin, onGoogleSignIn }: 
               <Text style={styles.signInLink}>Sign In</Text>
             </Pressable>
           </View>
-    </ScrollView>
+    </KeyboardAwareScrollView>
   );
 
   return (
@@ -790,7 +842,7 @@ export default function RegisterScreen({ onRegister, onLogin, onGoogleSignIn }: 
         style={styles.flex}
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       >
-        {scrollContent}
+        {step === 'role' ? roleContent : scrollContent}
       </KeyboardAvoidingView>
       {/* The form scrolls under a transparent status bar; this strip keeps
           the clock from sitting on top of the fields. */}
@@ -807,7 +859,7 @@ function createThemedStyles(theme: ThemePalette) {
     dark: V6Colors.ink900,
     slate: V6Colors.ink500,
     muted: V6Colors.ink400,
-    mutedBorder: '#dce3e9',
+    mutedBorder: V6Colors.fieldBorder,
     brandDark: V6Colors.cyan900,
     brandTeal: V6Colors.cyan700,
     brandRed: V6Colors.dangerText,
@@ -819,12 +871,11 @@ function createThemedStyles(theme: ThemePalette) {
 
     scrollContent: { width: '100%', maxWidth: 600, alignSelf: 'center', paddingTop: 56, paddingHorizontal: 16, paddingBottom: 40 },
 
-    topSection: { marginBottom: 20, flexDirection: 'row' },
-    backBtn: {
-      width: 38, height: 38, borderRadius: 12,
-      backgroundColor: C.surface, borderWidth: 1, borderColor: V6Colors.line,
-      alignItems: 'center', justifyContent: 'center',
-    },
+    roleContent: { width: '100%', maxWidth: 600, alignSelf: 'center', paddingHorizontal: 20, paddingBottom: 16 },
+    roleTitle: { color: V6Colors.ink900, fontSize: 26, fontWeight: '800', fontFamily: 'Inter', lineHeight: 32, marginBottom: 6 },
+    roleSubtitle: { color: V6Colors.ink500, fontSize: 15, fontFamily: 'Inter', lineHeight: 20, marginBottom: 20 },
+    roleCards: { gap: 12 },
+    roleFooter: { paddingHorizontal: 20, paddingTop: 12 },
 
     card: {
       backgroundColor: C.surface,
@@ -841,25 +892,17 @@ function createThemedStyles(theme: ThemePalette) {
     title: { color: C.dark, fontSize: 31.5, fontWeight: '700', fontFamily: 'Inter', marginBottom: 4 },
     subtitle: { color: C.slate, fontSize: 15.5, fontFamily: 'Inter', marginBottom: 20 },
 
-    roleRow: { flexDirection: 'row', gap: 10, marginBottom: 20 },
-    roleBtn: {
-      flex: 1, paddingVertical: 12, borderRadius: V6Radii.btn,
-      borderWidth: 1, borderColor: V6Colors.fieldBorder,
-      alignItems: 'center', backgroundColor: C.surface,
-    },
-    roleBtnActive: { backgroundColor: V6Colors.hero, borderColor: C.ink900 },
-    roleBtnText: { fontFamily: 'Inter', fontSize: 15.5, fontWeight: '600', color: C.muted },
-    roleBtnTextActive: { color: C.onPrimary },
 
     inputGroup: { marginBottom: 16 },
     inputLabel: { fontFamily: 'Inter', fontSize: 15.5, fontWeight: '600', color: V6Colors.ink900, marginBottom: 6 },
+    // Same box as AuthField (used here by the skill category picker).
     inputBox: {
-      backgroundColor: V6Colors.wellBg, borderRadius: 12, paddingHorizontal: 16, paddingVertical: 13,
-      borderWidth: 1, borderColor: C.mutedBorder,
+      backgroundColor: V6Colors.surface, borderRadius: 14, paddingHorizontal: 14, paddingVertical: 10,
+      minHeight: 48, borderWidth: 1, borderColor: V6Colors.line,
     },
-    inputBoxFocused: { borderColor: C.brandTeal },
-    inputBoxError: { borderColor: C.brandRed },
-    inputText: { fontFamily: 'Inter', fontSize: 18.5, color: V6Colors.ink900, padding: 0 },
+    inputBoxFocused: { borderWidth: 1.5, borderColor: Colors.link },
+    inputBoxError: { borderWidth: 1.5, borderColor: V6Colors.dangerText },
+    inputText: { fontFamily: 'Inter', fontSize: 16, fontWeight: '500', color: V6Colors.ink900, padding: 0 },
     inputErrorText: {
       fontFamily: 'Inter', fontSize: 14.5, color: C.brandRed,
       marginTop: 5, marginLeft: 2, lineHeight: 17,
@@ -869,7 +912,7 @@ function createThemedStyles(theme: ThemePalette) {
     categoryPicker: {
       flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
     },
-    categoryPlaceholder: { fontFamily: 'Inter', fontSize: 18.5, color: C.muted, padding: 0 },
+    categoryPlaceholder: { fontFamily: 'Inter', fontSize: 16, color: C.muted, padding: 0 },
     categoryDropdown: {
       marginTop: 8,
       borderRadius: 12, borderWidth: 1, borderColor: C.mutedBorder,
@@ -880,7 +923,7 @@ function createThemedStyles(theme: ThemePalette) {
       paddingHorizontal: 16, paddingVertical: 13,
       borderBottomWidth: 1, borderBottomColor: V6Colors.canvas,
     },
-    categoryOptionActive: { backgroundColor: 'rgba(9,110,139,0.06)' },
+    categoryOptionActive: { backgroundColor: Colors.primaryTonal },
     categoryOptionText: { fontFamily: 'Inter', fontSize: 16.5, color: C.dark },
     categoryOptionTextActive: { color: V6Colors.link, fontWeight: '700' },
 
@@ -902,7 +945,16 @@ function createThemedStyles(theme: ThemePalette) {
       letterSpacing: 0.5,
       marginBottom: 10,
     },
-    consentItem: { marginBottom: 10 },
+    consentItem: {
+      marginBottom: 10, padding: 12, borderRadius: 14, borderWidth: 1,
+      borderColor: V6Colors.line, backgroundColor: V6Colors.surface,
+    },
+    consentItemChecked: { borderColor: Colors.link, backgroundColor: Colors.primaryTonal },
+    consentItemError: { borderColor: V6Colors.dangerBorder },
+    rules: { gap: 6, marginTop: -8, marginBottom: 16 },
+    ruleRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+    ruleText: { color: V6Colors.ink500, fontSize: 13.5, fontFamily: 'Inter' },
+    ruleTextOk: { color: V6Colors.successText },
     consentRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 10 },
     checkbox: {
       width: 22, height: 22, borderRadius: 6, borderWidth: 1.5,
@@ -944,7 +996,7 @@ function createThemedStyles(theme: ThemePalette) {
     },
     confirmIcon: {
       width: 64, height: 64, borderRadius: 32, marginBottom: 16,
-      backgroundColor: 'rgba(9,110,139,0.10)', alignItems: 'center', justifyContent: 'center',
+      backgroundColor: Colors.primaryTonal, alignItems: 'center', justifyContent: 'center',
     },
     confirmText: {
       fontFamily: 'Inter', fontSize: 16.5, color: C.slate, textAlign: 'center',
@@ -979,7 +1031,7 @@ function createThemedStyles(theme: ThemePalette) {
 
     dividerRow: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 16 },
     dividerLine: { flex: 1, height: 1, backgroundColor: V6Colors.ink100 },
-    dividerText: { color: '#B3B3B3', fontSize: 15.5, fontFamily: 'Roboto' },
+    dividerText: { color: V6Colors.ink500, fontSize: 15.5, fontFamily: 'Inter' },
 
     // Google's dark sign-in button: #131314, light text, four-colour G; same
     // shape and height as the primary button above it.
@@ -994,7 +1046,7 @@ function createThemedStyles(theme: ThemePalette) {
 
     signInRow: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', marginTop: 4 },
     signInPrompt: { fontFamily: 'Inter', fontSize: 16.5, color: C.muted },
-    signInLink: { fontFamily: 'Roboto', fontSize: 16.5, fontWeight: '700', color: V6Colors.link },
+    signInLink: { fontFamily: 'Inter', fontSize: 16.5, fontWeight: '700', color: V6Colors.link },
   });
   return { appearance: theme.appearance, Colors, V6Colors, C, styles };
 }

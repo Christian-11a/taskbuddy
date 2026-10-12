@@ -1,21 +1,16 @@
 appId: com.taskbuddy.app
 ---
-# Phase 2: Settings, homeowner role — notification toggles + Change Password
-# validation. Uses the persistent maestro.client account; every toggle this
+# Phase 2: Settings, homeowner role — dark mode toggle + Change password
+# validation. Uses the persistent maestro.client account; the one toggle this
 # flow flips is flipped back before the flow ends, so repeat runs and other
 # flows see the account in its original state.
 #
-# Selectors: the three notification Switches (Dark Mode is excluded here —
-# see below) are structurally identical to accessibility (no distinguishing
-# text of their own), and `rightOf`/`below` positional selectors picked the
-# wrong switch once during exploration this session. `toggle-dark-mode`/
-# `toggle-push_enabled`/`toggle-email_enabled`/`toggle-sms_enabled` testIDs
-# were added to HOSettingsScreen.tsx/SPSettingsScreen.tsx this session
-# (inert) specifically to fix that. This flow only exercises SMS Alerts —
-# Dark Mode and the other two toggles are the identical component with a
-# different key, not worth repeating three times over.
+# Selectors: Settings has two switches with their own testIDs. Dark mode is the
+# one flipped here because it is local to the device; Push notifications would
+# also ask the OS for permission. The SMS and email switches are gone from
+# Settings, so their old testIDs are no longer used.
 #
-# Change Password shows its rules as a live checklist and keeps
+# Change password shows its rules as a live checklist and keeps
 # "Update password" disabled until they all pass, so the client-side rounds
 # assert the checklist rather than an error after Save. The fields keep their
 # text until the modal is closed, so each round closes with Cancel first.
@@ -26,31 +21,31 @@ appId: com.taskbuddy.app
 - tapOn: "Settings"
 - assertVisible: "Notifications"
 
-# --- Toggle: SMS Alerts flips on, then back off ---
+# --- Toggle: Dark mode flips on, then back off ---
 - tapOn:
-    id: "toggle-sms_enabled"
+    id: "toggle-dark-mode"
 - extendedWaitUntil:
     visible:
-      id: "toggle-sms_enabled"
+      id: "toggle-dark-mode"
       checked: true
     timeout: 5000
 - tapOn:
-    id: "toggle-sms_enabled"
+    id: "toggle-dark-mode"
 - extendedWaitUntil:
     visible:
-      id: "toggle-sms_enabled"
+      id: "toggle-dark-mode"
       checked: false
     timeout: 5000
 
-# --- Change Password: empty fields keep Update disabled ---
-- tapOn: "Change Password"
+# --- Change password: empty fields keep Update disabled ---
+- tapOn: "Change password"
 - assertVisible:
     id: "btn-update-password"
     enabled: false
 - tapOn: "Cancel"
 
-# --- Change Password: new password too short ---
-- tapOn: "Change Password"
+# --- Change password: new password too short ---
+- tapOn: "Change password"
 - tapOn:
     id: "input-current-password"
 - inputText: "WrongPassLogin1!"
@@ -67,8 +62,8 @@ appId: com.taskbuddy.app
     enabled: false
 - tapOn: "Cancel"
 
-# --- Change Password: wrong current password (real API round trip) ---
-- tapOn: "Change Password"
+# --- Change password: wrong current password (real API round trip) ---
+- tapOn: "Change password"
 - tapOn:
     id: "input-current-password"
 - inputText: "WrongPassLogin1!"

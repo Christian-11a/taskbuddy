@@ -17,6 +17,7 @@ import { notifyNotificationChange } from './notificationEvents';
  */
 
 import EventSource from 'react-native-sse';
+import { friendlyApiMessage } from './apiMessages';
 
 const PRIMARY_API_URL =
   process.env.EXPO_PUBLIC_API_URL ?? 'https://taskbuddy-kpek.onrender.com';
@@ -147,7 +148,7 @@ export async function ensureApiBaseUrl(): Promise<string> {
 }
 
 // ── Backend role vocabulary ↔ mobile role vocabulary ───────────────────────────
-// The backend calls homeowners "client"; the mobile UI calls them "homeowner".
+// The backend calls homeowners "client"; the mobile role value stays "homeowner", and the UI says "Client".
 export type BackendRole = 'client' | 'provider' | 'admin';
 export type MobileRole = 'homeowner' | 'provider';
 
@@ -547,11 +548,8 @@ export interface CheckoutSession {
   amount: number;
 }
 
-/** TaskBuddy's card/top-up floor; matches the backend's PHP50 bound. */
-export const MIN_TOPUP_PHP = 50;
-
-/** The most a single card payment may be — the backend's top-up/hire ceiling. */
-export const MAX_CARD_PHP = 100_000;
+/** The card limits live in cardLimits.ts, with no network code; re-exported here for the screens. */
+export { MAX_CARD_PHP, MIN_TOPUP_PHP } from './cardLimits';
 
 export interface Conversation {
   id: string;
@@ -785,9 +783,11 @@ async function rawRequest<T>(
         wait,
       );
     }
-    const message =
+    const serverMessage =
       (data && (Array.isArray(data.message) ? data.message[0] : data.message)) ||
       'Something went wrong. Please try again.';
+    // Validation output is technical ("full_name must be ..."); say it in plain words.
+    const message = typeof serverMessage === 'string' ? friendlyApiMessage(serverMessage) : serverMessage;
     throw new ApiError(message, response.status, data);
   }
 
@@ -1121,20 +1121,6 @@ export const api = {
     return authRequest<GeocodedAddress>(
       `/geocoding/reverse?lat=${latitude}&lon=${longitude}`,
     );
-  },
-
-  /**
-   * `<Image>` source for the job form's map preview (`GET /jobs/static-map`).
-   * The backend renders it so the Geoapify key never ships in the app. The
-   * image loader can't go through `authRequest`, so the token rides as a
-   * header and a 401 is not refreshed — callers hide the image on error.
-   */
-  staticMapSource(latitude: number, longitude: number) {
-    const token = getAccessToken();
-    return {
-      uri: `${activeBaseUrl}/jobs/static-map?lat=${latitude}&lon=${longitude}`,
-      headers: token ? { Authorization: `Bearer ${token}` } : undefined,
-    };
   },
 
   // ── Jobs ────────────────────────────────────────────────────────────────────

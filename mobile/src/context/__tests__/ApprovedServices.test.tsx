@@ -62,7 +62,7 @@ beforeEach(() => {
 it('shows approved services while offering only categories the provider does not already offer', async () => {
   render(<SPSkillRequestScreen onBack={jest.fn()} />);
   await screen.findByText('Cleaning');
-  expect(screen.getByText('APPROVED ADDITIONAL SERVICES')).toBeTruthy();
+  expect(screen.getByText('Approved additional service')).toBeTruthy();
   // Each offered service occurs only in the approved list, not again as a request chip.
   expect(screen.getAllByText('Plumbing')).toHaveLength(1);
   expect(screen.getAllByText('Pedicure')).toHaveLength(1);
@@ -85,7 +85,7 @@ it('keeps a rejected service in history without presenting it as approved', asyn
   ]);
   render(<SPSkillRequestScreen onBack={jest.fn()} />);
   await screen.findByText('Not approved');
-  expect(screen.queryByText('APPROVED ADDITIONAL SERVICES')).toBeNull();
+  expect(screen.queryByText('Approved additional service')).toBeNull();
   expect(screen.getByText('Plumbing')).toBeTruthy();
 });
 it('renders every approved service on the provider own profile', async () => {
@@ -98,7 +98,7 @@ it('renders every approved service on the provider own profile', async () => {
   );
   await act(async () => {});
   expect(
-    screen.getByText('Plumbing · Pedicure · Provider profile'),
+    screen.getByText('Plumbing · Pedicure'),
   ).toBeTruthy();
 });
 it('renders approved services on a public profile and obtains current data when reopened', async () => {
@@ -130,7 +130,7 @@ it('loads and opens the portfolio from the client proposal profile', async () =>
   ]);
   render(<HOProviderProfileScreen id="provider" />);
   fireEvent.press(
-    await screen.findByLabelText('View portfolio photo: Published sink repair'),
+    await screen.findByLabelText('Photo 1 of 1: Published sink repair'),
   );
   expect(api.providerPortfolio).toHaveBeenCalledWith('provider');
   expect(screen.getByTestId('full-photo').props.source.uri).toBe(

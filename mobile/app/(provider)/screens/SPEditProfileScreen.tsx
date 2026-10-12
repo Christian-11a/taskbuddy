@@ -1,10 +1,12 @@
 /**
  * SPEditProfileScreen.tsx
  *
- * v6 design: matches taskbuddy_UI_update.html's #sp-edit-profile screen — a
- * flat white .topbar (not a colored hero), a circular avatar with a plain
- * "Change Photo" text link (not a pill button), and a flat flowing list of
- * .field inputs (no card grouping) ending in one full-width Save button.
+ * Edit profile for the provider. Fields use the shared TextField. The address
+ * keeps its suggestions and GPS (AddressField), scrolled above the keyboard when
+ * it takes focus, and "Save changes" is the one pinned action. Leaving with
+ * unsaved changes asks first, from the back arrow or Android back. Saving is
+ * unchanged: the same confirmation, then the same updateProfile and
+ * upsertProviderProfile calls.
  *
  * Deviation: the mockup's "Hourly rate" and "Portfolio" fields have no
  * backing columns in the real backend (ProviderProfile has no hourly_rate
@@ -14,27 +16,47 @@
  */
 
 import { useThemedStyles, type Palette as ThemePalette } from '../../../src/context/ThemeContext';
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import {
   KeyboardAvoidingView,
   Platform,
   ScrollView,
   StyleSheet,
   Text,
-  TextInput,
   View,
 } from 'react-native';
 import Tap from '../../../src/components/ui/Tap';
-import { ArrowLeft } from 'lucide-react-native';
+import KeyboardAwareScrollView from '../../../src/components/ui/KeyboardAwareScrollView';
+import TextField from '../../../src/components/ui/TextField';
+import BottomActionBar from '../../../src/components/ui/BottomActionBar';
+import { ArrowLeft, CircleAlert, Save } from 'lucide-react-native';
 import AvatarPicker from '../../../src/components/AvatarPicker';
 import ConfirmationModal from '../../../src/components/ConfirmationModal';
 import AddressField from '../../../src/components/AddressField';
-import { Spacing, V6Radii, V6Shadows } from '../../../src/constants/theme';
+import { Spacing } from '../../../src/constants/theme';
 import { useHeaderTop } from '../../../src/hooks/useHeaderTop';
+import { useLeaveGuard } from '../../../src/hooks/useLeaveGuard';
 
 import { useAuth } from '../../../src/context/AuthContext';
 import { useAsyncData } from '../../../src/hooks/useAsyncData';
+import { isList } from '../../../src/lib/savedShapes';
+import { SEVEN_DAYS_MS } from '../../../src/lib/persistentCache';
 import { api, type GeocodedAddress } from '../../../src/lib/api';
+import { changedFields, leaveMessageFor } from '../../../src/lib/editProfileChanges';
+import {
+  ADDRESS_MAX,
+  CITY_MAX,
+  FULL_NAME_MAX,
+  nextPhoneText,
+  normalizeName,
+  sanitizePhone,
+  validateAddress,
+  validateCity,
+  validateFullName,
+  validatePhone,
+  validateServiceRadius,
+} from '../../../src/lib/inputRules';
+import { BIO_MAX, cleanText, validateBio } from '../../../src/lib/textRules';
 
 interface SPEditProfileScreenProps {
   onBack: () => void;
@@ -43,87 +65,93 @@ interface SPEditProfileScreenProps {
   onManageServices: () => void;
 }
 
-function FormField({
-  label,
-  value,
-  onChangeText,
-  placeholder,
-  multiline,
-  keyboardType,
-  editable = true,
-  required = false,
-}: {
-  label: string;
-  /** Shows a red asterisk. Only on fields the Save button actually checks. */
-  required?: boolean;
-  value: string;
-  onChangeText?: (v: string) => void;
-  placeholder?: string;
-  multiline?: boolean;
-  keyboardType?: 'default' | 'email-address' | 'phone-pad' | 'number-pad';
-  editable?: boolean;
-}) {
-  const { C, styles, V6Colors, appearance } = useThemedStyles(createThemedStyles);
-  const [focused, setFocused] = useState(false);
-  return (
-    <View style={styles.fieldGroup}>
-      <Text style={styles.fieldLabel}>
-        {label}
-        {required && <Text style={styles.requiredAsterisk}> *</Text>}
-      </Text>
-      <TextInput keyboardAppearance={appearance}
-        style={[
-          styles.fieldInput,
-          multiline && styles.fieldInputMultiline,
-          focused && styles.fieldInputFocused,
-          !editable && styles.fieldInputDisabled,
-        ]}
-        value={value}
-        onChangeText={onChangeText}
-        placeholder={placeholder}
-        placeholderTextColor={C.ink400}
-        multiline={multiline}
-        keyboardType={keyboardType}
-        editable={editable}
-        // Locked fields (email) show the start of the value, not the end.
-        selection={editable === false ? { start: 0, end: 0 } : undefined}
-        autoCapitalize={keyboardType === 'email-address' ? 'none' : 'words'}
-        onFocus={() => setFocused(true)}
-        onBlur={() => setFocused(false)}
-      />
-    </View>
-  );
-}
-
 export default function SPEditProfileScreen({ onBack, onSave, onManageServices }: SPEditProfileScreenProps) {
-  const { C, styles, V6Colors, appearance } = useThemedStyles(createThemedStyles);
+  const { C, styles, appearance } = useThemedStyles(createThemedStyles);
   const headerTop = useHeaderTop();
   const { profile, providerProfile, refreshProfile } = useAuth();
-  const categories = useAsyncData(() => api.categories(), []);
+  const categories = useAsyncData(() => api.categories(), [], 'categories', {
+    persist: true,
+    maxAgeMs: SEVEN_DAYS_MS,
+    validate: isList,
+  });
 
-  const [name, setName] = useState(profile?.full_name ?? '');
-  const [phone, setPhone] = useState(profile?.phone ?? '');
-  const [location, setLocation] = useState(profile?.address ?? '');
-  const [city, setCity] = useState(profile?.city ?? '');
+  // What the screen loaded. Anything that differs from it is unsaved.
+  const [loaded] = useState(() => ({
+    name: profile?.full_name ?? '',
+    phone: profile?.phone ?? '',
+    address: profile?.address ?? '',
+    city: profile?.city ?? '',
+    pickedAddress: false,
+    bio: providerProfile?.bio ?? '',
+    radius: String(providerProfile?.service_radius_km ?? ''),
+    service: providerProfile?.category_id ?? null,
+  }));
+  const [name, setName] = useState(loaded.name);
+  const [phone, setPhone] = useState(loaded.phone);
+  const [location, setLocation] = useState(loaded.address);
+  const [city, setCity] = useState(loaded.city);
   const [resolvedLocation, setResolvedLocation] = useState<GeocodedAddress | null>(null);
-  const [bio, setBio] = useState(providerProfile?.bio ?? '');
-  const [radius, setRadius] = useState(String(providerProfile?.service_radius_km ?? ''));
-  const [categoryId, setCategoryId] = useState<number | null>(providerProfile?.category_id ?? null);
+  const [bio, setBio] = useState(loaded.bio);
+  const [radius, setRadius] = useState(loaded.radius);
+  const [categoryId, setCategoryId] = useState<number | null>(loaded.service);
+  const [submitted, setSubmitted] = useState(false);
+  const [addressTouched, setAddressTouched] = useState(false);
   const [showSaveConfirmation, setShowSaveConfirmation] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const scrollRef = useRef<ScrollView>(null);
+  const addressTop = useRef(0);
   const email = profile?.email ?? '';
+
+  const changed = changedFields(loaded, {
+    name,
+    phone,
+    address: location,
+    city,
+    pickedAddress: resolvedLocation !== null,
+    bio,
+    radius,
+    service: categoryId,
+  });
+  const { asking, requestLeave, keepEditing, leave } = useLeaveGuard(changed.length > 0, onBack);
+
+  // An older phone format the user did not touch is not re-checked, so it cannot
+  // block saving other fields. A phone the user changed must be a 09 number (or empty).
+  const phoneChanged = changed.includes('phone');
+  const phoneError = phoneChanged ? validatePhone(phone) ?? undefined : undefined;
+
+  // Same rules and messages as before. Each one now shows under its own field
+  // once the user has tried to save (or has left the field). A name the user did
+  // not change is only refused when it is empty (see the phone rule above).
+  const nameError = (changed.includes('name') || !name.trim()) ? validateFullName(name) ?? undefined : undefined;
+  // Recommendations match providers to jobs within their service radius of
+  // this address; without one a provider is never invited to anything. The city
+  // is optional, so it is only checked when it was typed.
+  const addressError = (changed.includes('address') || !location.trim())
+    ? validateAddress(location, {
+      required: true,
+      requiredMessage: 'Enter your address so nearby jobs can be matched to you.',
+    }) ?? undefined
+    : undefined;
+  const cityError = changed.includes('city') ? validateCity(city) ?? undefined : undefined;
+  // The backend keeps the radius between 0.5 and 1000 km. A stored radius left alone is not re-checked.
+  const radiusError = changed.includes('radius') ? validateServiceRadius(radius) ?? undefined : undefined;
+  const serviceError = categoryId ? undefined : 'Please select the service you offer.';
+  // Whitespace-only counts as empty; the bio is sent cleaned, the same text it was checked as.
+  const bioError = validateBio(bio) ?? undefined;
+
+  // Moves the address to the top of the visible area as it takes focus, so the
+  // suggestions it opens sit above the keyboard instead of under it.
+  const keepAddressAboveKeyboard = () => {
+    setTimeout(() => {
+      scrollRef.current?.scrollTo({ y: Math.max(0, addressTop.current - 12), animated: true });
+    }, 120);
+  };
 
   const requestSave = () => {
     setError(null);
-    if (!name.trim()) return setError('Full name cannot be empty.');
-    // Recommendations match providers to jobs within their service radius of
-    // this address; without one a provider is never invited to anything.
-    if (!location.trim()) {
-      return setError('Enter your address so nearby jobs can be matched to you.');
-    }
-    if (!categoryId) return setError('Please select the service you offer.');
-    if (bio.trim().length < 20) return setError('Bio must be at least 20 characters.');
+    setSubmitted(true);
+    if (nameError || phoneError || addressError || cityError || radiusError || serviceError || bioError) return;
     setShowSaveConfirmation(true);
   };
 
@@ -133,15 +161,15 @@ export default function SPEditProfileScreen({ onBack, onSave, onManageServices }
     setError(null);
     try {
       await api.updateProfile({
-        full_name: name.trim(),
-        phone: phone.trim(),
+        full_name: normalizeName(name),
+        phone: phoneChanged ? sanitizePhone(phone) : phone.trim(),
         address: location.trim(),
-        city: city.trim(),
+        city: normalizeName(city),
         location_reference: resolvedLocation?.location_reference,
       });
       await api.upsertProviderProfile({
         category_id: categoryId!,
-        bio: bio.trim(),
+        bio: cleanText(bio),
         years_experience: providerProfile?.years_experience,
         service_radius_km: radius.trim() ? Number(radius) : providerProfile?.service_radius_km,
       });
@@ -156,17 +184,25 @@ export default function SPEditProfileScreen({ onBack, onSave, onManageServices }
 
   return (
     <View style={styles.screen}>
-      {/* Header — matches .topbar (flat white, not a colored hero) */}
       <View style={[styles.header, { paddingTop: headerTop }]}>
-        <Tap style={styles.backBtn} onPress={onBack} activeOpacity={0.8}>
+        <Tap
+          style={styles.backBtn}
+          onPress={requestLeave}
+          activeOpacity={0.8}
+          hitSlop={5}
+          accessibilityRole="button"
+          accessibilityLabel="Back"
+        >
           <ArrowLeft size={20} color={C.ink700} />
         </Tap>
-        <Text style={styles.headerTitle}>Edit Profile</Text>
-        <View style={{ width: 38 }} />
+        <Text style={styles.headerTitle} accessibilityRole="header">Edit profile</Text>
+        <View style={styles.headerSpacer} />
       </View>
 
       <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
-        <ScrollView keyboardDismissMode="on-drag"
+        <KeyboardAwareScrollView
+          ref={scrollRef}
+          keyboardDismissMode="on-drag"
           style={styles.body}
           contentContainerStyle={styles.bodyContent}
           showsVerticalScrollIndicator={false}
@@ -175,26 +211,95 @@ export default function SPEditProfileScreen({ onBack, onSave, onManageServices }
           {/* Avatar — uploads on its own, independent of the Save button */}
           <AvatarPicker name={name} />
 
-          <FormField required label="Full name" value={name} onChangeText={setName} placeholder="Your full name" />
-          <FormField label="Email" value={email} placeholder="email@example.com" keyboardType="email-address" editable={false} />
-          <FormField label="Phone" value={phone} onChangeText={setPhone} placeholder="+63 9XX XXX XXXX" keyboardType="phone-pad" />
+          <TextField
+            label="Full name"
+            value={name}
+            onChangeText={setName}
+            placeholder="Your full name"
+            autoCapitalize="words"
+            maxLength={FULL_NAME_MAX}
+            keyboardAppearance={appearance}
+            error={nameError}
+            submitted={submitted}
+          />
+
+          <View style={styles.lockedGroup}>
+            <Text style={styles.label}>Email</Text>
+            <View style={styles.lockedBox}>
+              <Text style={styles.lockedText}>{email}</Text>
+            </View>
+          </View>
+
+          <TextField
+            label="Phone (optional)"
+            value={phone}
+            onChangeText={(value) => setPhone((previous) => nextPhoneText(previous, value))}
+            placeholder="09XX XXX XXXX"
+            helper="11 digits, starts with 09"
+            keyboardType="number-pad"
+            keyboardAppearance={appearance}
+            error={phoneError}
+            submitted={submitted}
+          />
+
           {/* The address a provider is matched from — same suggestions + GPS
               as the job form, so "nearby" means a place the geocoder knows. */}
-          <View style={styles.fieldGroup}>
-            <Text style={styles.fieldLabel}>Address<Text style={styles.requiredAsterisk}> *</Text></Text>
+          <View
+            style={styles.addressGroup}
+            onLayout={(e) => { addressTop.current = e.nativeEvent.layout.y; }}
+          >
+            <Text style={styles.label}>Address</Text>
             <AddressField
               value={location}
               onChangeText={(value) => { setLocation(value); setResolvedLocation(null); }}
               onResolve={(resolved) => { setResolvedLocation(resolved); if (resolved?.city) setCity(resolved.city); }}
+              onFocus={keepAddressAboveKeyboard}
+              onBlur={() => setAddressTouched(true)}
               placeholder="House no., Barangay, Street"
+              maxLength={ADDRESS_MAX}
+              error={addressTouched || submitted ? addressError : undefined}
+              inputStyle={styles.addressInput}
             />
           </View>
-          <FormField label="City" value={city} onChangeText={(value) => { setCity(value); setResolvedLocation(null); }} placeholder="City / Municipality" />
-          <FormField required label="Bio (min 20 characters)" value={bio} onChangeText={setBio} multiline placeholder="Describe your experience..." />
-          <FormField label="Service radius (km)" value={radius} onChangeText={setRadius} keyboardType="number-pad" placeholder="8" />
 
-          <View style={styles.fieldGroup}>
-            <Text style={styles.fieldLabel}>Service offered<Text style={styles.requiredAsterisk}> *</Text></Text>
+          <TextField
+            label="City"
+            value={city}
+            onChangeText={(value) => { setCity(value); setResolvedLocation(null); }}
+            placeholder="City / Municipality"
+            autoCapitalize="words"
+            maxLength={CITY_MAX}
+            keyboardAppearance={appearance}
+            error={cityError}
+            submitted={submitted}
+          />
+
+          <TextField
+            label="Bio (min 20 characters)"
+            value={bio}
+            onChangeText={setBio}
+            placeholder="Describe your experience..."
+            multiline
+            maxLength={BIO_MAX}
+            counter={`${bio.length} / ${BIO_MAX}`}
+            keyboardAppearance={appearance}
+            error={bioError}
+            submitted={submitted}
+          />
+
+          <TextField
+            label="Service radius (km)"
+            value={radius}
+            onChangeText={setRadius}
+            placeholder="8"
+            keyboardType="number-pad"
+            keyboardAppearance={appearance}
+            error={radiusError}
+            submitted={submitted}
+          />
+
+          <View style={styles.serviceGroup}>
+            <Text style={styles.label}>Service offered</Text>
             {/* Once set, a service only changes through an admin-approved
                 request (My Services); the first one is still picked here. */}
             {providerProfile?.category_id ? (
@@ -225,36 +330,47 @@ export default function SPEditProfileScreen({ onBack, onSave, onManageServices }
                 })}
               </View>
             )}
+            {submitted && serviceError ? (
+              <View style={styles.helperRow}>
+                <CircleAlert size={14} color={C.dangerText} />
+                <Text style={styles.errorHelper} accessibilityLiveRegion="polite">{serviceError}</Text>
+              </View>
+            ) : null}
           </View>
 
-          {!!error && <Text style={styles.errorText}>{error}</Text>}
+          {!!error && <Text style={styles.errorText} accessibilityLiveRegion="polite">{error}</Text>}
+        </KeyboardAwareScrollView>
 
-          <Tap
-            style={[styles.saveBtn, saving && styles.saveBtnDisabled]}
-            onPress={requestSave}
-            activeOpacity={0.85}
-            disabled={saving}
-          >
-            <Text style={styles.saveBtnText}>{saving ? 'Saving…' : 'Save Changes'}</Text>
-          </Tap>
-
-          <View style={{ height: 20 }} />
-        </ScrollView>
+        <BottomActionBar primaryLabel="Save changes" busy={saving} onPrimary={requestSave} />
       </KeyboardAvoidingView>
+
       <ConfirmationModal
         visible={showSaveConfirmation}
         title="Save profile changes?"
         message="Your updated professional details and services will be saved to your profile."
-        confirmLabel="Save Changes"
+        confirmLabel="Save changes"
         onCancel={() => setShowSaveConfirmation(false)}
         onConfirm={performSave}
+      />
+
+      <ConfirmationModal
+        visible={asking}
+        icon={Save}
+        title="Leave without saving?"
+        message={leaveMessageFor(changed)}
+        confirmLabel="Keep editing"
+        cancelLabel="Discard changes"
+        cancelTone="danger"
+        onConfirm={keepEditing}
+        onDismiss={keepEditing}
+        onCancel={leave}
       />
     </View>
   );
 }
 
 function createThemedStyles(theme: ThemePalette) {
-  const { Colors, V6Colors } = theme;
+  const { V6Colors } = theme;
   const C = V6Colors;
   const styles = StyleSheet.create({
     flex: { flex: 1 },
@@ -273,22 +389,27 @@ function createThemedStyles(theme: ThemePalette) {
       alignItems: 'center', justifyContent: 'center',
     },
     headerTitle: { flex: 1, color: C.ink900, fontSize: 19.5, fontWeight: '800', fontFamily: 'Inter' },
+    headerSpacer: { width: 38 },
 
     body: { flex: 1 },
-    bodyContent: { paddingHorizontal: Spacing.screenH, paddingTop: 20, paddingBottom: 20 },
+    bodyContent: { paddingHorizontal: Spacing.screenH, paddingTop: 20, paddingBottom: 24, gap: 16 },
 
-    fieldGroup: { marginBottom: 16 },
-    fieldLabel: { color: C.ink900, fontSize: 14, fontWeight: '700', fontFamily: 'Inter', marginBottom: 6 },
-    requiredAsterisk: { color: V6Colors.dangerText, fontWeight: '700' },
-    fieldInput: {
-      backgroundColor: C.surface, borderRadius: 12, paddingHorizontal: 14, minHeight: 46,
-      borderWidth: 1, borderColor: V6Colors.fieldBorder,
-      fontFamily: 'Inter', fontSize: 16.5, color: C.ink900,
+    // Same label as the shared TextField, for the rows that are not a TextField.
+    label: { fontFamily: 'Inter', fontSize: 13, fontWeight: '600', lineHeight: 18, color: C.ink700 },
+    addressGroup: { gap: 6 },
+    addressInput: {
+      minHeight: 48, borderRadius: 14, borderColor: V6Colors.line, backgroundColor: C.surface,
+      paddingHorizontal: 14, paddingTop: 13, paddingBottom: 13,
+      fontFamily: 'Inter', fontSize: 15, fontWeight: '500', lineHeight: 20, color: C.ink900,
     },
-    fieldInputMultiline: { height: 90, textAlignVertical: 'top', paddingTop: 12 },
-    fieldInputFocused: { borderColor: C.cyan500 },
-    fieldInputDisabled: { color: C.ink500, backgroundColor: C.ink50 },
+    lockedGroup: { gap: 6 },
+    lockedBox: {
+      borderRadius: 14, borderWidth: 1, borderColor: V6Colors.line, backgroundColor: V6Colors.wellBg,
+      paddingHorizontal: 14, paddingVertical: 13,
+    },
+    lockedText: { fontFamily: 'Inter', fontSize: 15, fontWeight: '500', lineHeight: 20, color: C.ink500 },
 
+    serviceGroup: { gap: 6 },
     chipGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
     serviceLocked: {
       flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10,
@@ -300,16 +421,10 @@ function createThemedStyles(theme: ThemePalette) {
     chipActive: { backgroundColor: V6Colors.hero, borderColor: C.ink900 },
     chipText: { color: C.ink500, fontSize: 14.5, fontWeight: '600', fontFamily: 'Inter' },
     chipTextActive: { color: C.onPrimary },
+    helperRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+    errorHelper: { flex: 1, color: V6Colors.dangerText, fontSize: 13, lineHeight: 18, fontFamily: 'Inter' },
 
-    errorText: { color: V6Colors.dangerText, fontSize: 15.5, fontFamily: 'Inter', marginBottom: 12, textAlign: 'center' },
-
-    saveBtn: {
-      backgroundColor: C.cyan700, borderRadius: V6Radii.btn, paddingVertical: 14,
-      alignItems: 'center', marginTop: 4,
-      ...V6Shadows.primaryButton,
-    },
-    saveBtnDisabled: { opacity: 0.7 },
-    saveBtnText: { color: C.onPrimary, fontSize: 16.5, fontWeight: '700', fontFamily: 'Inter' },
+    errorText: { color: V6Colors.dangerText, fontSize: 15.5, fontFamily: 'Inter', textAlign: 'center' },
   });
-  return { appearance: theme.appearance, Colors, V6Colors, C, styles };
+  return { appearance: theme.appearance, Colors: theme.Colors, V6Colors, C, styles };
 }

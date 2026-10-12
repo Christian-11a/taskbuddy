@@ -49,12 +49,11 @@
  */
 
 import { useThemedStyles, type Palette as ThemePalette } from '../../../src/context/ThemeContext';
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   ScrollView,
   StyleSheet,
   Text,
-  TextInput,
   View,
   Platform,
   Modal,
@@ -64,13 +63,14 @@ import {
   KeyboardAvoidingView,
 } from 'react-native';
 import Tap from '../../../src/components/ui/Tap';
+import KeyboardAwareScrollView from '../../../src/components/ui/KeyboardAwareScrollView';
 import SheetFrame from '../../../src/components/ui/SheetFrame';
 import SuccessMark from '../../../src/components/ui/SuccessMark';
 import {
-  ArrowLeft,
   BrushCleaning,
+  CalendarDays,
+  Camera,
   Check,
-  CheckCircle2,
   ChevronLeft,
   ChevronRight,
   Clock,
@@ -78,7 +78,6 @@ import {
   Hammer,
   Hand,
   MapPin,
-  Plus,
   Sparkles,
   Wrench,
   Zap,
@@ -92,12 +91,44 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Spacing, V6Shadows } from '../../../src/constants/theme';
 import { useAuth } from '../../../src/context/AuthContext';
 import { useAsyncData } from '../../../src/hooks/useAsyncData';
+import { isList } from '../../../src/lib/savedShapes';
+import { SEVEN_DAYS_MS } from '../../../src/lib/persistentCache';
+import { useScreenBackHandler } from '../../../src/hooks/useLeaveGuard';
 import { api, type GeocodedAddress } from '../../../src/lib/api';
 import { peso } from '../../../src/lib/format';
 import PhotoViewer from '../../../src/components/PhotoViewer';
 import ConfirmationModal from '../../../src/components/ConfirmationModal';
 import AddressField from '../../../src/components/AddressField';
+import PostAppBar from '../../../src/components/post/PostAppBar';
+import PostFooter from '../../../src/components/post/PostFooter';
+import PostProgress from '../../../src/components/post/PostProgress';
+import ServiceTile from '../../../src/components/post/ServiceTile';
+import CalmNote from '../../../src/components/post/CalmNote';
+import ReviewRow from '../../../src/components/post/ReviewRow';
+import BottomActionBar from '../../../src/components/ui/BottomActionBar';
+import PostingChecklist, { type PostingStep } from '../../../src/components/post/PostingChecklist';
+import Banner from '../../../src/components/ui/Banner';
+import AddTaskRow from '../../../src/components/post/AddTaskRow';
+import UrgencyRow from '../../../src/components/post/UrgencyRow';
+import BudgetField from '../../../src/components/post/BudgetField';
+import {
+  DESCRIPTION_MAX,
+  LOCATION_MAX,
+  TASKS_MAX,
+  TASK_MAX,
+  combineDateAndTime,
+  isValidBudget,
+  reviseStepErrors,
+  stepErrors,
+  type PostFieldErrors,
+  type PostFormValues,
+} from '../../../src/lib/postJobRules';
+import { nextAmountText } from '../../../src/lib/amountRules';
+import { TITLE_MAX, cleanText } from '../../../src/lib/textRules';
+import CheckRow from '../../../src/components/ui/CheckRow';
+import TextField from '../../../src/components/ui/TextField';
 import { requestAppPermission } from '../../../src/lib/permissions';
+import { showToast } from '../../../src/components/Toast';
 
 const Shadows = { card: V6Shadows.sm, input: V6Shadows.sm };
 
@@ -109,6 +140,13 @@ const CATEGORY_META: Record<string, { icon: typeof Wrench; desc: string }> = {
   Manicure: { icon: Sparkles, desc: 'Nail care & manicure' },
   Pedicure: { icon: Footprints, desc: 'Foot care & pedicure' },
 };
+
+/** What the job posted screen says happens next, in order. */
+const NEXT_STEPS = [
+  'Compare proposals on the job page',
+  'Hire one; your money is held safely',
+  'Pay only when the work is done',
+];
 
 /**
  * Suggested tasks per category. Deliberately client-side: these are a starting
@@ -160,14 +198,7 @@ const TASK_PRESETS: Record<string, string[]> = {
 
 /** The three real `job_urgency` values, with what each one actually does. */
 
-const MAX_TASKS = 20;
-
-type FieldErrors = Partial<
-  Record<
-    'title' | 'description' | 'location' | 'tasks' | 'date' | 'time' | 'budget',
-    string
-  >
->;
+type FieldErrors = PostFieldErrors;
 
 interface HOCreateJobScreenProps {
   onBack: () => void;
@@ -188,7 +219,11 @@ export default function HOCreateJobScreen({
 }: HOCreateJobScreenProps) {
   const { Colors, URGENCY_OPTIONS, styles, V6Colors, appearance } = useThemedStyles(createThemedStyles);
   const { profile } = useAuth();
-  const categories = useAsyncData(() => api.categories(), []);
+  const categories = useAsyncData(() => api.categories(), [], 'categories', {
+    persist: true,
+    maxAgeMs: SEVEN_DAYS_MS,
+    validate: isList,
+  });
   const insets = useSafeAreaInsets();
   const headerTop = insets.top + 28;
 
@@ -202,16 +237,6 @@ export default function HOCreateJobScreen({
   const [descriptionHeight, setDescriptionHeight] = useState<number | null>(null);
   const [location, setLocation] = useState('');
   const [resolvedCoordinates, setResolvedCoordinates] = useState<{ latitude: number; longitude: number } | null>(null);
-  // The preview is decoration on top of verified coordinates: if it fails
-  // (backend 503, expired token, offline) the confirmed card stands alone.
-  const [mapPreviewFailed, setMapPreviewFailed] = useState(false);
-  const mapPreviewSource = useMemo(
-    () => (resolvedCoordinates
-      ? api.staticMapSource(resolvedCoordinates.latitude, resolvedCoordinates.longitude)
-      : null),
-    [resolvedCoordinates],
-  );
-  useEffect(() => setMapPreviewFailed(false), [mapPreviewSource]);
   // While typing, the Back/Next bar would ride up with the keyboard and cover
   // the address suggestions (I3); it comes back as soon as the keyboard closes.
   const [keyboardUp, setKeyboardUp] = useState(false);
@@ -222,9 +247,10 @@ export default function HOCreateJobScreen({
   }, []);
   const [geocodedAddress, setGeocodedAddress] = useState('');
   const [geocoding, setGeocoding] = useState(false);
-  const [useProfileLocation, setUseProfileLocation] = useState(true);
   const [tasks, setTasks] = useState<string[]>([]);
   const [customTask, setCustomTask] = useState('');
+  // Why a task was not added (the list is full, or it is already there), said under the list.
+  const [taskNotice, setTaskNotice] = useState<string | null>(null);
   const [date, setDate] = useState<Date | null>(null);
   const [time, setTime] = useState<Date | null>(null);
   const [tempTime, setTempTime] = useState<Date | null>(null);
@@ -236,7 +262,6 @@ export default function HOCreateJobScreen({
   const [calendarMonth, setCalendarMonth] = useState<string | undefined>(undefined);
   const [photoIndex, setPhotoIndex] = useState<number | null>(null);
   const [showExitConfirmation, setShowExitConfirmation] = useState(false);
-  const [focusedField, setFocusedField] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
   const [submitting, setSubmitting] = useState(false);
   const [pickingPhotos, setPickingPhotos] = useState(false);
@@ -245,45 +270,23 @@ export default function HOCreateJobScreen({
   // wait, so saying so beats a single undifferentiated "Posting…".
   const [submitPhase, setSubmitPhase] = useState<'uploading' | 'posting' | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // Set before the first await, so a second tap in the same frame cannot post the job twice.
+  const postInFlight = useRef(false);
 
   const totalSteps = 5;
-  const STEP_LABELS = ['Service', 'Location', 'Tasks', 'Urgency', 'Review'];
+  const STEP_LABELS = ['Service', 'Where', 'Tasks', 'When & budget', 'Review'];
   const dateLabel = date?.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) ?? '';
   const timeLabel = time?.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' }) ?? '';
   const dateKey = (value: Date) => `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, '0')}-${String(value.getDate()).padStart(2, '0')}`;
   const clearError = (field: keyof FieldErrors) =>
     setFieldErrors((prev) => (prev[field] ? { ...prev, [field]: undefined } : prev));
+  const formValues = (): PostFormValues => ({
+    categoryId, location, tasks, title, description, date, time, budget,
+  });
 
   const presets = TASK_PRESETS[categoryName] ?? [];
 
-  /**
-   * The picker collects a date and a time as two separate Date objects; the
-   * backend stores one `timestamptz`. Combine them in the device's own time
-   * zone so "9:00 AM" means 9:00 AM where the client is.
-   */
-  const combineDateAndTime = (day: Date, clock: Date) =>
-    new Date(
-      day.getFullYear(),
-      day.getMonth(),
-      day.getDate(),
-      clock.getHours(),
-      clock.getMinutes(),
-      0,
-      0,
-    );
-
   const scheduledAt = date && time ? combineDateAndTime(date, time) : null;
-
-  const isValidBudget = (value: string) => {
-    const normalized = value.trim().replace(/,/g, '');
-    if (normalized === '') return false;
-    const n = Number(normalized);
-    if (!Number.isFinite(n) || n <= 0) return false;
-    // allow at most 2 decimal places
-    const parts = normalized.split('.');
-    if (parts[1] && parts[1].length > 2) return false;
-    return true;
-  };
 
   const formatBudget = () => {
     if (!isValidBudget(budget)) return;
@@ -315,6 +318,12 @@ export default function HOCreateJobScreen({
   useEffect(() => {
     scrollRef.current?.scrollTo({ y: 0, animated: false });
   }, [step]);
+  // An error stays only while it is still true (see reviseStepErrors), so a field
+  // that has become valid loses its message the moment it changes. Nothing new
+  // appears here: errors come from Next alone.
+  useEffect(() => {
+    setFieldErrors((prev) => reviseStepErrors(prev, step, formValues(), new Date()));
+  }, [step, categoryId, location, tasks, title, description, date, time, budget]);
   useEffect(() => {
     // Once only: "Post another job" clears the form back to step 1, and it
     // would be wrong for the tile tapped on Home three screens ago to reappear.
@@ -393,86 +402,61 @@ export default function HOCreateJobScreen({
    */
   useEffect(() => {
     if (!categoryName) return;
+    // A draft is cut to the limit it has to meet, so it never fails the check it was written for.
     if (!titleTouched) {
-      setTitle(tasks.length ? `${categoryName}: ${tasks[0]}` : `${categoryName} service`);
+      setTitle((tasks.length ? `${categoryName}: ${tasks[0]}` : `${categoryName} service`).slice(0, TITLE_MAX));
     }
     if (!descriptionTouched) {
       setDescription(
         tasks.length
-          ? `${categoryName} service needed. Tasks: ${tasks.join(', ')}.`
+          ? `${categoryName} service needed. Tasks: ${tasks.join(', ')}.`.slice(0, DESCRIPTION_MAX)
           : '',
       );
     }
   }, [categoryName, tasks, titleTouched, descriptionTouched]);
 
+  const taskLimitNotice = `You can add up to ${TASKS_MAX} tasks.`;
+
   const toggleTask = (label: string) => {
-    clearError('tasks');
+    if (!tasks.includes(label) && tasks.length >= TASKS_MAX) {
+      setTaskNotice(taskLimitNotice);
+      return;
+    }
+    setTaskNotice(null);
     setTasks((current) =>
       current.includes(label)
         ? current.filter((t) => t !== label)
-        : current.length >= MAX_TASKS
-          ? current
-          : [...current, label],
+        : [...current, label],
     );
   };
 
   const addCustomTask = () => {
     const label = customTask.trim();
-    if (!label || tasks.includes(label) || tasks.length >= MAX_TASKS) return;
-    clearError('tasks');
-    setTasks((current) => [...current, label.slice(0, 120)]);
+    if (!label) return;
+    if (tasks.includes(label)) {
+      setTaskNotice('That task is already on your list.');
+      return;
+    }
+    if (tasks.length >= TASKS_MAX) {
+      setTaskNotice(taskLimitNotice);
+      return;
+    }
+    setTasks((current) => [...current, label.slice(0, TASK_MAX)]);
     setCustomTask('');
+    setTaskNotice(null);
   };
 
+  /**
+   * Checks the step on screen. Errors appear only here, after Next, each under
+   * the field that caused it; the first one scrolls into view. There is no
+   * separate banner: a message above the buttons would say the same thing twice.
+   */
   const validateStep = (): boolean => {
-    const errors: FieldErrors = {};
-
-    if (step === 1 && !categoryId) {
-      setFieldErrors({});
-      setError('Please select a service.');
-      return false;
-    }
-
-    if (step === 2 && !location.trim()) errors.location = 'Please enter where the job is.';
-
-    if (step === 3) {
-      if (tasks.length === 0) {
-        errors.tasks = 'Pick at least one task so providers know what the job involves.';
-      }
-      const t = title.trim();
-      if (t.length < 5) errors.title = 'Title must be at least 5 characters.';
-      else if (t.length > 120) errors.title = 'Title cannot exceed 120 characters.';
-
-      const d = description.trim();
-      if (d.length < 20) errors.description = 'Description must be at least 20 characters.';
-      else if (d.length > 750) errors.description = 'Description cannot exceed 750 characters.';
-    }
-
-    if (step === 4) {
-      if (!date) errors.date = 'Please select a preferred date.';
-      if (!time) errors.time = 'Please select a preferred time.';
-      // A booking in the past is the one thing the API will refuse outright,
-      // so it is caught here against the field that caused it.
-      if (date && time && combineDateAndTime(date, time).getTime() < Date.now()) {
-        const startOfToday = new Date();
-        startOfToday.setHours(0, 0, 0, 0);
-        if (date < startOfToday) {
-          errors.date = 'That date has already passed. Choose today or later.';
-        } else {
-          errors.time = 'That time has already passed today. Choose a later time.';
-        }
-      }
-      if (!budget.trim()) errors.budget = 'Please set a budget for this job.';
-      else if (!isValidBudget(budget)) {
-        errors.budget = 'Enter a valid amount greater than 0, up to 2 decimal places.';
-      }
-    }
-
+    const errors = stepErrors(step, formValues(), new Date());
     setFieldErrors(errors);
-    if (Object.keys(errors).length > 0) {
-      const first = Object.keys(errors)[0] as keyof FieldErrors;
+    const first = Object.keys(errors)[0] as keyof FieldErrors | undefined;
+    if (first) {
       scrollRef.current?.scrollTo({ y: Math.max(0, (fieldPositions.current[first] ?? 0) - 12), animated: true });
-      setError(errors[first] ?? null);
       return false;
     }
     return true;
@@ -527,6 +511,7 @@ export default function HOCreateJobScreen({
   }, [step]);
 
   const submitJob = async () => {
+    postInFlight.current = true;
     setSubmitting(true);
     setError(null);
     try {
@@ -539,8 +524,8 @@ export default function HOCreateJobScreen({
       setSubmitPhase('posting');
       await api.createJob({
         category_id: categoryId!,
-        title: title.trim(),
-        description: description.trim(),
+        title: cleanText(title),
+        description: cleanText(description),
         urgency,
         address: location.trim(),
         latitude: resolvedCoordinates!.latitude,
@@ -554,6 +539,7 @@ export default function HOCreateJobScreen({
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not post the job.');
     } finally {
+      postInFlight.current = false;
       setSubmitting(false);
       setSubmitPhase(null);
     }
@@ -570,6 +556,10 @@ export default function HOCreateJobScreen({
     (step === 1 && categories.loading) || (step === 3 && pickingPhotos);
 
   const handleNext = async () => {
+    if (postInFlight.current) {
+      showToast("We're already posting your job. Please wait.", 'info');
+      return;
+    }
     if (!validateStep()) return;
     if (step === 2 && !(await resolveAddress())) return;
     setError(null);
@@ -580,14 +570,24 @@ export default function HOCreateJobScreen({
     }
   };
 
+  // The saved address is filled in up front, so it only counts once the homeowner types over it.
+  const typedLocation = location.trim() !== '' && location.trim() !== (profile?.address ?? '').trim();
   const hasProgress = Boolean(
-    categoryId || titleTouched || descriptionTouched || location.trim() || tasks.length ||
+    categoryId || titleTouched || descriptionTouched || typedLocation || tasks.length || customTask.trim() ||
     date || time || budget.trim() || photos.length,
   );
 
   const handleStepBack = () => {
     setError(null);
+    setFieldErrors({});
     if (step > 1 && step <= totalSteps) setStep((s) => s - 1);
+  };
+
+  /** The review's Edit links jump straight to a step. Next and Back still walk the flow in order. */
+  const goToStep = (target: number) => {
+    setError(null);
+    setFieldErrors({});
+    setStep(target);
   };
 
   /**
@@ -619,13 +619,29 @@ export default function HOCreateJobScreen({
     setStep(1);
   };
 
-  const handleExit = () => {
+  /**
+   * The header arrow and Android back do the same thing: one step back, and on the
+   * first step leave, asking first if anything was entered. Nothing happens while
+   * a post is in flight, and once the job is posted there is nothing to ask about.
+   */
+  const handleBack = () => {
+    if (postInFlight.current) return;
+    if (step === 6) {
+      onBack();
+      return;
+    }
+    if (step > 1) {
+      handleStepBack();
+      return;
+    }
     if (hasProgress) {
       setShowExitConfirmation(true);
       return;
     }
     onBack();
   };
+  // Android back comes here, not to App's handler, so each press steps back a step.
+  useScreenBackHandler(handleBack);
 
   const openTimePicker = () => {
     setShowDatePicker(false);
@@ -644,7 +660,6 @@ export default function HOCreateJobScreen({
       setShowTimePicker(false);
       if (event.type === 'set' && selectedTime) {
         setTime(selectedTime);
-        clearError('time');
       }
       // event.type === 'dismissed' -> user tapped Cancel/back; keep old time.
       return;
@@ -653,10 +668,23 @@ export default function HOCreateJobScreen({
     if (selectedTime) setTempTime(selectedTime);
   };
 
+  const urgencyLabel = URGENCY_OPTIONS.find((o) => o.value === urgency)?.label ?? '';
+  const whenLine = [dateLabel, timeLabel, urgencyLabel].filter(Boolean).join(' · ') || 'Not set';
+  // Only the steps the submit really runs: photos go up first, but only when there are any.
+  const providersLine = categoryName ? `Nearby ${categoryName} providers` : 'Nearby providers';
+  const photoStep: PostingStep = {
+    key: 'photos',
+    label: 'Uploading photos',
+    state: submitPhase === 'posting' ? 'done' : 'active',
+  };
+  const postingSteps: PostingStep[] = [
+    ...(photos.length > 0 ? [photoStep] : []),
+    { key: 'post', label: 'Posting your job', state: 'active' },
+  ];
+
   if (step === 6) {
-    // Success screen. Scrolls rather than a fixed centered View — a long
-    // job title or address (QA #3) used to push the buttons off-screen on a
-    // short phone with nothing to scroll to reach them.
+    // Scrolls rather than a fixed centred view, so a long job title or address
+    // can never push the buttons off a short phone.
     return (
       <View style={styles.screen}>
         <ScrollView contentContainerStyle={styles.successScreen}>
@@ -665,136 +693,97 @@ export default function HOCreateJobScreen({
               size={112}
               fallback={(
                 <View style={styles.successIcon}>
-                  <CheckCircle2 size={48} color={V6Colors.link} />
+                  <Check size={48} color={Colors.onPrimary} strokeWidth={2.5} />
                 </View>
               )}
             />
           </View>
-          <Text style={styles.successTitle}>Job Posted!</Text>
+          <Text style={styles.successTitle}>Job posted!</Text>
           <Text style={styles.successSubtitle}>
-            Your job "{title || categoryName}" has been posted successfully. Service providers in your area will be notified.
+            {providersLine} can now send you proposals. We'll notify you when the first one arrives.
           </Text>
           <View style={styles.successCard}>
-            <View style={styles.successRow}>
-              <Text style={styles.successLabel}>Service</Text>
-              <Text style={styles.successValue}>{categoryName}</Text>
-            </View>
-            <View style={styles.successRow}>
-              <Text style={styles.successLabel}>Location</Text>
-              <Text style={styles.successValue} numberOfLines={3}>{location}</Text>
-            </View>
-            <View style={styles.successRow}>
-              <Text style={styles.successLabel}>Tasks</Text>
-              <Text style={styles.successValue}>{tasks.length}</Text>
-            </View>
-            <View style={styles.successRow}>
-              <Text style={styles.successLabel}>Urgency</Text>
-              <Text style={styles.successValue}>
-                {URGENCY_OPTIONS.find((o) => o.value === urgency)?.label}
-              </Text>
-            </View>
+            {NEXT_STEPS.map((line) => (
+              <View key={line} style={styles.nextRow}>
+                <Check size={16} color={V6Colors.link} strokeWidth={3} />
+                <Text style={styles.nextText}>{line}</Text>
+              </View>
+            ))}
           </View>
-          <Tap style={[styles.primaryBtn, styles.primaryBtnFullWidth]} onPress={onSuccess} activeOpacity={0.85}>
-            <Text style={styles.primaryBtnText}>View My Jobs</Text>
-          </Tap>
-          <Tap style={styles.secondaryBtn} onPress={startAnother} activeOpacity={0.8}>
-            <Text style={styles.secondaryBtnText}>Post Another Job</Text>
-          </Tap>
         </ScrollView>
+        <BottomActionBar
+          primaryLabel="View my jobs"
+          onPrimary={onSuccess}
+          secondaryLabel="Post another job"
+          onSecondary={startAnother}
+        />
       </View>
     );
   }
 
   return (
     <View style={styles.screen}>
-      {/* Header — matches .topbar (flat white, not a dark hero) */}
       <PhotoViewer photos={photos} index={photoIndex} onIndexChange={setPhotoIndex}
         onClose={() => setPhotoIndex(null)} />
-      <View style={[styles.header, { paddingTop: headerTop }]}>
-        <Tap style={styles.backBtn} onPress={handleExit} activeOpacity={0.8}>
-          <ArrowLeft size={22} color={Colors.ink700} />
-        </Tap>
-        <Text style={styles.headerTitle}>Post a Job</Text>
-        <View style={{ width: 38 }} />
-      </View>
-
-      {/* Stepper — matches .stepper/.step: 5 equal pills, filled for done/current */}
-      <View style={styles.stepperWrap}>
-        <View style={styles.stepper}>
-          {Array.from({ length: totalSteps }).map((_, i) => (
-            <View key={i} style={[styles.step, i < step && styles.stepDone]} />
-          ))}
-        </View>
-        <Text style={styles.stepperLabel}>
-          Step {step} of {totalSteps} · {STEP_LABELS[step - 1]}
-        </Text>
-      </View>
+      <PostAppBar
+        title="Post a job"
+        onBack={handleBack}
+        backLabel={step > 1 ? 'Previous step' : undefined}
+        topInset={headerTop}
+      />
+      {!submitting && <PostProgress step={step} total={totalSteps} label={STEP_LABELS[step - 1]} />}
 
       <KeyboardAvoidingView
         style={styles.body}
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         keyboardVerticalOffset={24}
       >
-        <ScrollView keyboardDismissMode="on-drag"
+        <KeyboardAwareScrollView keyboardDismissMode="on-drag"
           ref={scrollRef}
           testID="create-job-form-scroll"
           style={styles.body}
-          contentContainerStyle={[styles.bodyContent, { paddingBottom: 140 + insets.bottom }]}
+          contentContainerStyle={styles.bodyContent}
           contentInsetAdjustmentBehavior="automatic"
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
         >
         {/* ── Step 1 · Service ─────────────────────────────────────────── */}
-        {step === 1 && (
+        {/* ── Posting · the submit, shown as the steps that really happen ──── */}
+        {submitting && (
           <View>
-            <Text style={styles.stepTitle}>Select a Service<Text style={styles.requiredAsterisk}> *</Text></Text>
-            <Text style={styles.stepSubtitle}>What service do you need?</Text>
-            {!!profile?.address && (
-              <View style={styles.locationPrompt}>
-                <Text style={styles.locationPromptTitle}>Use your default location?</Text>
-                <Text style={styles.locationPromptText}>{profile.address}</Text>
-                <View style={styles.locationPromptActions}>
-                  <Tap
-                    style={[styles.locationChoice, useProfileLocation && styles.locationChoiceActive]}
-                    onPress={() => {
-                      setUseProfileLocation(true);
-                      setLocation(profile.address ?? '');
-                    }}
-                  >
-                    <Text style={styles.locationChoiceText}>Use default</Text>
-                  </Tap>
-                  <Tap
-                    style={[styles.locationChoice, !useProfileLocation && styles.locationChoiceActive]}
-                    onPress={() => {
-                      setUseProfileLocation(false);
-                      setLocation('');
-                    }}
-                  >
-                    <Text style={styles.locationChoiceText}>Enter custom</Text>
-                  </Tap>
-                </View>
-              </View>
-            )}
+            <Text style={styles.stepTitle}>Posting your job...</Text>
+            <Text style={styles.stepSubtitle}>This usually takes a few seconds. Please keep the app open.</Text>
+            <PostingChecklist steps={postingSteps} />
+          </View>
+        )}
+
+        {!submitting && step === 1 && (
+          <View>
+            <Text style={styles.stepTitle}>What do you need help with?</Text>
             {/* Skeleton tiles in the grid's own shape, so the step doesn't
                 jump from a line of text to a two-column grid on arrival. */}
             {categories.loading && (
               <View style={styles.serviceGrid} accessibilityLabel="Loading services">
                 {Array.from({ length: 4 }).map((_, i) => (
-                  <View key={i} style={[styles.serviceCard, styles.serviceCardSkeleton]} />
+                  <View key={i} style={styles.serviceSkeleton} />
                 ))}
               </View>
             )}
-            {!!categories.error && <Text style={styles.errorText}>{categories.error}</Text>}
-            <View style={styles.serviceGrid}>
+            {!!categories.error && <Text style={styles.errorText} accessibilityLiveRegion="polite">{categories.error}</Text>}
+            <View
+              style={styles.serviceGrid}
+              onLayout={(event) => { fieldPositions.current.service = event.nativeEvent.layout.y; }}
+            >
               {(categories.data ?? []).map((cat) => {
                 const meta = CATEGORY_META[cat.name] ?? { icon: Hand, desc: '' };
-                const Icon = meta.icon;
-                const active = categoryId === cat.id;
                 return (
-                  <Tap
+                  <ServiceTile
                     key={cat.id}
-                    style={[styles.serviceCard, active && styles.serviceCardActive]}
-                    onPress={() => {
+                    name={cat.name}
+                    detail={meta.desc || undefined}
+                    icon={meta.icon}
+                    selected={categoryId === cat.id}
+                    onSelect={() => {
                       if (cat.id !== categoryId) {
                         // Tasks belong to the category they were picked from.
                         setTasks([]);
@@ -803,70 +792,45 @@ export default function HOCreateJobScreen({
                       setCategoryName(cat.name);
                       setError(null);
                     }}
-                    activeOpacity={0.85}
-                  >
-                    <Icon size={31} color={active ? Colors.brandTeal : Colors.brandDark} />
-                    <Text style={[styles.serviceLabel, active && styles.serviceLabelActive]}>
-                      {cat.name}
-                    </Text>
-                    <Text style={styles.serviceDesc}>{meta.desc}</Text>
-                  </Tap>
+                  />
                 );
               })}
             </View>
+            {!!fieldErrors.service && <Text style={styles.inputErrorText} accessibilityLiveRegion="polite">{fieldErrors.service}</Text>}
           </View>
         )}
 
         {/* ── Step 2 · Location ────────────────────────────────────────── */}
-        {step === 2 && (
+        {!submitting && step === 2 && (
           <View>
-            <Text style={styles.stepTitle}>Location</Text>
-            <Text style={styles.stepSubtitle}>Where does the work need to happen?</Text>
+            <Text style={styles.stepTitle}>Where is the job?</Text>
+            <Text style={styles.stepSubtitle}>Providers see this on the job.</Text>
 
             <View onLayout={(event) => { fieldPositions.current.location = event.nativeEvent.layout.y; }} style={styles.inputGroup}>
-              <Text style={styles.inputLabel}>Address<Text style={styles.requiredAsterisk}> *</Text></Text>
+              <Text style={styles.inputLabel}>Address</Text>
               <AddressField
                 testID="create-job-address"
-                actionVariant="primary"
                 value={location}
-                onChangeText={(value) => {
-                  setLocation(value);
-                  clearError('location');
-                }}
+                maxLength={LOCATION_MAX}
+                onChangeText={setLocation}
                 onResolve={handleResolvedAddress}
                 onFocus={() => { addressFocused.current = true; }}
                 onBlur={() => { addressFocused.current = false; }}
                 error={fieldErrors.location}
                 hint={geocoding ? 'Verifying address…' : undefined}
               />
+              {!!resolvedCoordinates && (
+                <View style={styles.confirmedRow}>
+                  <Check size={14} color={Colors.successText} strokeWidth={3} />
+                  <Text style={styles.confirmedText}>Location confirmed</Text>
+                </View>
+              )}
             </View>
 
-            {mapPreviewSource && !mapPreviewFailed && (
-              <View style={styles.mapPreview}>
-                <Image
-                  source={mapPreviewSource}
-                  style={styles.mapPreviewImage}
-                  resizeMode="cover"
-                  onError={() => setMapPreviewFailed(true)}
-                  accessibilityLabel="Map of the confirmed job location"
-                />
-              </View>
-            )}
-
-            {resolvedCoordinates ? (
-              <View style={styles.mapConfirmed}>
-                <MapPin size={20} color={V6Colors.link} />
-                <View style={styles.mapConfirmedBody}>
-                  <Text style={styles.mapConfirmedTitle}>Location confirmed</Text>
-                  <Text style={styles.mapConfirmedText} numberOfLines={2}>
-                    {geocodedAddress || location.trim()}
-                  </Text>
-                </View>
-              </View>
-            ) : (
-              <View style={styles.mapPlaceholder}>
-                <MapPin size={20} color={Colors.muted} />
-                <Text style={styles.mapPlaceholderText}>Verify the address to preview its location.</Text>
+            {/* The one place this step explains a location that is not confirmed yet. */}
+            {!resolvedCoordinates && !fieldErrors.location && (
+              <View style={styles.calmWrap}>
+                <CalmNote text="Location is off, so we couldn't find you. Typing the address works just as well." />
               </View>
             )}
 
@@ -892,178 +856,111 @@ export default function HOCreateJobScreen({
               </Tap>
             )}
 
-            <View style={styles.noteCard}>
-              <Text style={styles.noteText}>
-                Providers see this address and its verified coordinates on the job.
-                A job cannot be posted until the address is resolved precisely.
-              </Text>
-            </View>
           </View>
         )}
 
         {/* ── Step 3 · Tasks ───────────────────────────────────────────── */}
-        {step === 3 && (
+        {!submitting && step === 3 && (
           <View>
-            <Text style={styles.stepTitle}>What Needs Doing<Text style={styles.requiredAsterisk}> *</Text></Text>
+            <Text style={styles.stepTitle}>What needs doing?</Text>
             <Text style={styles.stepSubtitle}>
               Pick the tasks for this job. Your provider ticks these off as they work.
             </Text>
 
             <View style={styles.taskList}>
-              {presets.map((preset) => {
-                const selected = tasks.includes(preset);
-                return (
-                  <Tap
-                    key={preset}
-                    style={[styles.taskChip, selected && styles.taskChipActive]}
-                    onPress={() => toggleTask(preset)}
-                    activeOpacity={0.85}
-                    accessibilityRole="checkbox"
-                    accessibilityState={{ checked: selected }}
-                  >
-                    <View style={[styles.taskCheck, selected && styles.taskCheckActive]}>
-                      {selected && <Check size={13} color={Colors.onPrimary} strokeWidth={3} />}
-                    </View>
-                    <Text style={[styles.taskChipText, selected && styles.taskChipTextActive]}>
-                      {preset}
-                    </Text>
-                  </Tap>
-                );
-              })}
+              {presets.map((preset) => (
+                <CheckRow
+                  key={preset}
+                  label={preset}
+                  checked={tasks.includes(preset)}
+                  onToggle={() => toggleTask(preset)}
+                />
+              ))}
+              {/* Tasks the homeowner added themselves: checked, so tapping one takes it off. */}
+              {tasks.filter((t) => !presets.includes(t)).map((t) => (
+                <CheckRow key={`custom-${t}`} label={t} checked onToggle={() => toggleTask(t)} />
+              ))}
             </View>
-
-            {/* Tasks the homeowner added themselves — shown apart so they can
-                be removed even though they are not in the preset list. */}
-            {tasks.filter((t) => !presets.includes(t)).length > 0 && (
-              <View style={styles.customList}>
-                {tasks
-                  .filter((t) => !presets.includes(t))
-                  .map((t) => (
-                    <View key={t} style={styles.customTaskRow}>
-                      <View style={[styles.taskCheck, styles.taskCheckActive]}>
-                        <Check size={13} color={Colors.onPrimary} strokeWidth={3} />
-                      </View>
-                      <Text style={styles.customTaskText}>{t}</Text>
-                      <Tap onPress={() => toggleTask(t)} hitSlop={10}>
-                        <Text style={styles.removeTaskText}>Remove</Text>
-                      </Tap>
-                    </View>
-                  ))}
-              </View>
-            )}
 
             <View style={styles.addTaskRow}>
-              <TextInput keyboardAppearance={appearance}
-                style={[styles.input, styles.addTaskInput, focusedField === 'customTask' && styles.inputFocused]}
-                placeholder="Add your own task"
-                placeholderTextColor={Colors.muted}
+              <AddTaskRow
                 value={customTask}
-                onChangeText={setCustomTask}
-                onFocus={() => setFocusedField('customTask')}
-                onBlur={() => setFocusedField(null)}
-                onSubmitEditing={addCustomTask}
-                returnKeyType="done"
-                maxLength={120}
+                onChangeText={(text) => { setCustomTask(text); setTaskNotice(null); }}
+                onSubmit={addCustomTask}
               />
-              <Tap
-                style={[styles.addTaskBtn, !customTask.trim() && styles.addTaskBtnDisabled]}
-                onPress={addCustomTask}
-                activeOpacity={0.85}
-                disabled={!customTask.trim()}
-              >
-                <Plus size={20} color={Colors.onPrimary} />
-              </Tap>
             </View>
             <Text style={styles.taskCount}>
-              {tasks.length}/{MAX_TASKS} tasks selected
+              {tasks.length}/{TASKS_MAX} tasks selected
             </Text>
-            {!!fieldErrors.tasks && <Text style={styles.inputErrorText}>{fieldErrors.tasks}</Text>}
+            {!!taskNotice && <Text style={styles.inputErrorText} accessibilityLiveRegion="polite">{taskNotice}</Text>}
+            {!!fieldErrors.tasks && <Text style={styles.inputErrorText} accessibilityLiveRegion="polite">{fieldErrors.tasks}</Text>}
 
             <View style={styles.divider} />
 
             <View onLayout={(event) => { fieldPositions.current.title = event.nativeEvent.layout.y; }} style={styles.inputGroup}>
-              <Text style={styles.inputLabel}>Job Title<Text style={styles.requiredAsterisk}> *</Text></Text>
-              <TextInput keyboardAppearance={appearance}
-                style={[styles.input, focusedField === 'title' && styles.inputFocused, fieldErrors.title && styles.inputError]}
+              <TextField
+                label="Job title"
                 placeholder="e.g. 3-bedroom apartment deep clean"
-                placeholderTextColor={Colors.muted}
                 value={title}
                 onChangeText={(value) => {
                   setTitle(value);
                   setTitleTouched(true);
-                  clearError('title');
                 }}
-                onFocus={() => {
-                  setFocusedField('title');
-                  clearError('title');
-                }}
-                onBlur={() => setFocusedField(null)}
-                maxLength={120}
+                helper="Written for you from the tasks; edit if you like"
+                error={fieldErrors.title}
+                submitted
+                maxLength={TITLE_MAX}
               />
-              {!!fieldErrors.title && <Text style={styles.inputErrorText}>{fieldErrors.title}</Text>}
             </View>
 
             <KeyboardAvoidingView onLayout={(event) => { fieldPositions.current.description = event.nativeEvent.layout.y; }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
             <View style={styles.inputGroup}>
-              <Text style={styles.inputLabel}>Description<Text style={styles.requiredAsterisk}> *</Text></Text>
-              <View style={styles.textAreaWrap}>
-                <TextInput keyboardAppearance={appearance}
-                  style={[
-                    styles.input,
-                    styles.textArea,
-                    focusedField === 'description' && styles.inputFocused,
-                    fieldErrors.description && styles.inputError,
-                    descriptionHeight ? { height: descriptionHeight } : {},
-                  ]}
-                  placeholder="Describe the job in detail..."
-                  placeholderTextColor={Colors.muted}
-                  value={description}
-                  onChangeText={(value) => {
-                    setDescription(value);
-                    setDescriptionTouched(true);
-                    clearError('description');
-                  }}
-                  onFocus={() => {
-                    setFocusedField('description');
-                    clearError('description');
-                  }}
-                  onBlur={() => setFocusedField(null)}
-                  multiline
-                  numberOfLines={3}
-                  onContentSizeChange={(e) => {
-                    const h = e.nativeEvent.contentSize.height;
-                    const minH = 20 * 3; // approx lineHeight 20
-                    setDescriptionHeight(Math.max(h, minH));
-                  }}
-                  maxLength={750}
-                />
-                <Text style={styles.charCount}>{description.length}/750</Text>
-              </View>
-              {!!fieldErrors.description && <Text style={styles.inputErrorText}>{fieldErrors.description}</Text>}
+              <TextField
+                label="Description"
+                placeholder="Describe the job in detail..."
+                value={description}
+                onChangeText={(value) => {
+                  setDescription(value);
+                  setDescriptionTouched(true);
+                }}
+                error={fieldErrors.description}
+                submitted
+                multiline
+                numberOfLines={3}
+                style={descriptionHeight ? { height: descriptionHeight } : undefined}
+                onContentSizeChange={(e) => {
+                  const h = e.nativeEvent.contentSize.height;
+                  const minH = 20 * 3; // approx lineHeight 20
+                  setDescriptionHeight(Math.max(h, minH));
+                }}
+                maxLength={DESCRIPTION_MAX}
+              />
+              <Text style={styles.charCount}>{description.length}/{DESCRIPTION_MAX}</Text>
             </View>
             </KeyboardAvoidingView>
 
             <View style={styles.inputGroup}>
-              <Text style={styles.inputLabel}>Photos (optional)</Text>
               <Tap
                 style={styles.photoPicker}
                 onPress={() => void pickPhotos()}
                 activeOpacity={0.8}
                 disabled={pickingPhotos}
+                accessibilityRole="button"
+                accessibilityLabel="Add photos (optional)"
               >
-                {pickingPhotos ? (
-                  <>
-                    <ActivityIndicator size="small" color={V6Colors.link} />
-                    <Text style={styles.photoPickerHint}>Opening your photo library…</Text>
-                  </>
-                ) : (
-                  <>
-                    <Text style={styles.photoPickerTitle}>Add photos</Text>
-                    <Text style={styles.photoPickerHint}>Up to 6 images to help providers understand the job.</Text>
-                  </>
-                )}
+                <View style={styles.photoWell}>
+                  {pickingPhotos
+                    ? <ActivityIndicator size="small" color={V6Colors.link} />
+                    : <Camera size={22} color={V6Colors.link} />}
+                </View>
+                <View style={styles.photoText}>
+                  <Text style={styles.photoPickerTitle}>
+                    {pickingPhotos ? 'Opening your photo library…' : 'Add photos (optional)'}
+                  </Text>
+                  <Text style={styles.photoPickerHint}>Helps providers understand the job</Text>
+                </View>
               </Tap>
-              {!!photoMessage && <Text style={styles.inputErrorText}>{photoMessage}</Text>}
+              {!!photoMessage && <Text style={styles.inputErrorText} accessibilityLiveRegion="polite">{photoMessage}</Text>}
               {photos.length > 0 && (
                 <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.photoList}>
                   {photos.map((photo, index) => (
@@ -1088,191 +985,138 @@ export default function HOCreateJobScreen({
         )}
 
         {/* ── Step 4 · Urgency, schedule & budget ──────────────────────── */}
-        {step === 4 && (
+        {!submitting && step === 4 && (
           <View>
-            <Text style={styles.stepTitle}>How Soon?</Text>
-            <Text style={styles.stepSubtitle}>
-              Urgency decides how long providers get to apply before we match you
-              automatically.
-            </Text>
+            <Text style={styles.stepTitle}>When, and how much?</Text>
+            <Text style={styles.sectionLabel}>How soon?</Text>
 
-            {URGENCY_OPTIONS.map((option) => {
-              const active = urgency === option.value;
-              const Icon = option.icon;
-              return (
+            {URGENCY_OPTIONS.map((option) => (
+              <UrgencyRow
+                key={option.value}
+                label={option.label}
+                blurb={option.blurb}
+                icon={option.icon}
+                selected={urgency === option.value}
+                onSelect={() => setUrgency(option.value)}
+              />
+            ))}
+
+            <View
+              style={styles.dateTimeRow}
+              onLayout={(event) => {
+                // Both pickers share this row, so both scroll to its top edge.
+                fieldPositions.current.date = event.nativeEvent.layout.y;
+                fieldPositions.current.time = event.nativeEvent.layout.y;
+              }}
+            >
+              <View style={styles.dateTimeCol}>
+                <Text style={styles.inputLabel}>Date</Text>
                 <Tap
-                  key={option.value}
-                  style={[styles.urgencyCard, active && { borderColor: option.accent, backgroundColor: V6Colors.infoSurface }]}
-                  onPress={() => setUrgency(option.value)}
-                  activeOpacity={0.85}
-                  accessibilityRole="radio"
-                  accessibilityState={{ selected: active }}
+                  style={[styles.input, styles.pickerInput, showDatePicker && styles.inputFocused, fieldErrors.date && styles.inputError]}
+                  onPress={() => { setShowTimePicker(false); setShowDatePicker(true); }}
+                  activeOpacity={0.8}
+                  accessibilityRole="button"
+                  accessibilityLabel="Date"
                 >
-                  <Icon size={22} color={active ? option.accent : Colors.slate} />
-                  <View style={styles.urgencyInfo}>
-                    <Text style={[styles.urgencyLabel, active && { color: option.accent }]}>
-                      {option.label}
-                    </Text>
-                    <Text style={styles.urgencyBlurb}>{option.blurb}</Text>
-                  </View>
-                  <View style={[styles.radio, active && { borderColor: option.accent }]}>
-                    {active && <View style={[styles.radioDot, { backgroundColor: option.accent }]} />}
-                  </View>
+                  <Text style={[styles.pickerText, !date && styles.pickerPlaceholder]}>{dateLabel || 'Pick a date'}</Text>
                 </Tap>
-              );
-            })}
-
-            <View style={styles.divider} />
-
-            <View onLayout={(event) => { fieldPositions.current.date = event.nativeEvent.layout.y; }} style={styles.inputGroup}>
-              <Text style={styles.inputLabel}>Preferred Date<Text style={styles.requiredAsterisk}> *</Text></Text>
-              <Tap
-                style={[styles.input, styles.pickerInput, showDatePicker && styles.inputFocused, fieldErrors.date && styles.inputError]}
-                onPress={() => { setShowTimePicker(false); setShowDatePicker(true); clearError('date'); }}
-                activeOpacity={0.8}
-              >
-                <Text style={[styles.pickerText, !date && styles.pickerPlaceholder]}>{dateLabel || 'Select a date'}</Text>
-              </Tap>
-              {!!fieldErrors.date && <Text style={styles.inputErrorText}>{fieldErrors.date}</Text>}
-            </View>
-
-            <View onLayout={(event) => { fieldPositions.current.time = event.nativeEvent.layout.y; }} style={styles.inputGroup}>
-              <Text style={styles.inputLabel}>Preferred Time<Text style={styles.requiredAsterisk}> *</Text></Text>
-              <Tap
-                style={[styles.input, styles.pickerInput, showTimePicker && styles.inputFocused, fieldErrors.time && styles.inputError]}
-                onPress={() => { openTimePicker(); clearError('time'); }}
-                activeOpacity={0.8}
-              >
-                <Text style={[styles.pickerText, !time && styles.pickerPlaceholder]}>{timeLabel || 'Select a time'}</Text>
-              </Tap>
-              {!!fieldErrors.time && <Text style={styles.inputErrorText}>{fieldErrors.time}</Text>}
+                {!!fieldErrors.date && <Text style={styles.inputErrorText} accessibilityLiveRegion="polite">{fieldErrors.date}</Text>}
+              </View>
+              <View style={styles.dateTimeCol}>
+                <Text style={styles.inputLabel}>Time</Text>
+                <Tap
+                  style={[styles.input, styles.pickerInput, showTimePicker && styles.inputFocused, fieldErrors.time && styles.inputError]}
+                  onPress={openTimePicker}
+                  activeOpacity={0.8}
+                  accessibilityRole="button"
+                  accessibilityLabel="Time"
+                >
+                  <Text style={[styles.pickerText, !time && styles.pickerPlaceholder]}>{timeLabel || 'Pick a time'}</Text>
+                </Tap>
+                {!!fieldErrors.time && <Text style={styles.inputErrorText} accessibilityLiveRegion="polite">{fieldErrors.time}</Text>}
+              </View>
             </View>
 
             <View onLayout={(event) => { fieldPositions.current.budget = event.nativeEvent.layout.y; }} style={styles.inputGroup}>
-              <Text style={styles.inputLabel}>Budget<Text style={styles.requiredAsterisk}> *</Text></Text>
-              <View style={[styles.budgetCard, focusedField === 'budget' && styles.budgetCardFocused, !!fieldErrors.budget && styles.inputError]}>
-                <Text style={styles.budgetCurrency}>₱</Text>
-                <TextInput keyboardAppearance={appearance}
-                  style={styles.budgetInput}
-                  placeholder="0.00"
-                  placeholderTextColor={Colors.muted}
-                  value={budget}
-                  onChangeText={(value) => {
-                    setBudget(value);
-                    clearError('budget');
-                  }}
-                  onFocus={() => {
-                    setFocusedField('budget');
-                    clearError('budget');
-                  }}
-                  onBlur={() => { setFocusedField(null); formatBudget(); }}
-                  keyboardType="decimal-pad"
-                />
-              </View>
-              {!!fieldErrors.budget && <Text style={styles.inputErrorText}>{fieldErrors.budget}</Text>}
-              <Text style={styles.budgetHint}>
-                Held in escrow when you hire someone, then released after the three-day warranty unless a complaint is open.
-              </Text>
+              <Text style={styles.inputLabel}>Budget</Text>
+              {/* Its own component, so the reveal finds the scroll view around it (see BudgetField). */}
+              <BudgetField
+                value={budget}
+                invalid={!!fieldErrors.budget}
+                onChangeText={(text) => setBudget((previous) => nextAmountText(previous, text))}
+                onBlur={formatBudget}
+              />
+              {!!fieldErrors.budget && <Text style={styles.inputErrorText} accessibilityLiveRegion="polite">{fieldErrors.budget}</Text>}
+              <Text style={styles.budgetHint}>You only pay when you hire. It's held safely until the job is done.</Text>
             </View>
           </View>
         )}
 
         {/* ── Step 5 · Review ──────────────────────────────────────────── */}
-        {step === 5 && (
+        {!submitting && step === 5 && (
           <View testID="create-job-review">
-            <Text testID="create-job-review-title" style={styles.stepTitle}>Review & Post</Text>
-            <Text style={styles.stepSubtitle}>Check everything before posting</Text>
+            <Text testID="create-job-review-title" style={styles.stepTitle}>Check your job</Text>
 
+            {/* Everything entered, one answer per row. Each Edit goes back to the step that holds it. */}
             <View style={styles.reviewCard}>
-              {[
-                { label: 'Service', value: categoryName || 'Not selected' },
-                { label: 'Title', value: title || 'Untitled' },
-                { label: 'Location', value: location || 'Not set' },
-                { label: 'Date', value: dateLabel || 'Not set' },
-                { label: 'Time', value: timeLabel || 'Not set' },
-                { label: 'Urgency', value: URGENCY_OPTIONS.find((o) => o.value === urgency)?.label ?? '' },
-                { label: 'Budget', value: budget ? peso(budget) : 'Not set' },
-              ].map((item) => (
-                <View key={item.label} style={styles.reviewRow}>
-                  <Text style={styles.reviewLabel}>{item.label}</Text>
-                  <Text style={styles.reviewValue}>{item.value}</Text>
-                </View>
-              ))}
+              <ReviewRow first label="Service" value={categoryName || 'Not selected'} onEdit={() => goToStep(1)} />
+              <ReviewRow label="Title" value={title || 'Untitled'} onEdit={() => goToStep(3)} />
+              <ReviewRow label="Where" value={location || 'Not set'} onEdit={() => goToStep(2)} />
+              <ReviewRow
+                label="Tasks"
+                value={tasks.length ? tasks.join(' · ') : 'Not set'}
+                onEdit={() => goToStep(3)}
+              />
+              <ReviewRow label="Description" value={description || 'Not set'} onEdit={() => goToStep(3)} />
+              <ReviewRow label="When" value={whenLine} onEdit={() => goToStep(4)} />
+              <ReviewRow
+                label="Budget"
+                value={budget ? peso(budget) : 'Not set'}
+                strong
+                onEdit={() => goToStep(4)}
+              />
+              {photos.length > 0 && (
+                <ReviewRow label={`Photos (${photos.length})`} onEdit={() => goToStep(3)}>
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.photoList}>
+                    {photos.map((photo, index) => (
+                      <Tap key={photo.uri} onPress={() => setPhotoIndex(index)}
+                        accessibilityLabel={`Open selected photo ${index + 1}`}>
+                        <Image source={{ uri: photo.uri }} style={styles.photoImage}
+                          resizeMode="contain" />
+                      </Tap>
+                    ))}
+                  </ScrollView>
+                </ReviewRow>
+              )}
             </View>
 
-            {photos.length > 0 && (
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.photoList}>
-                {photos.map((photo, index) => (
-                  <Tap key={photo.uri} onPress={() => setPhotoIndex(index)}
-                    accessibilityLabel={`Open selected photo ${index + 1}`}>
-                    <Image source={{ uri: photo.uri }} style={styles.photoImage}
-                      resizeMode="contain" />
-                  </Tap>
-                ))}
-              </ScrollView>
-            )}
-
-            <Text style={styles.reviewSectionTitle}>Tasks ({tasks.length})</Text>
-            <View style={styles.reviewCard}>
-              {tasks.map((t) => (
-                <View key={t} style={styles.reviewTaskRow}>
-                  <Check size={15} color={V6Colors.link} strokeWidth={3} />
-                  <Text style={styles.reviewTaskText}>{t}</Text>
-                </View>
-              ))}
-            </View>
+            <Banner tone="info" message="You only pay when you hire. You can cancel for free until then." />
+            {/* A failed post comes back here, with the Post job button still available. */}
+            {!!error && <View style={styles.reviewError}><Banner tone="error" message={error} /></View>}
 
           </View>
         )}
 
         <View style={{ height: 20 }} />
-        </ScrollView>
+        </KeyboardAwareScrollView>
+        {/* The bar lives inside the keyboard-avoiding view, so it rises above the keyboard
+            instead of hiding under it. BUG-005: the bar keeps clear of the system nav bar. */}
+        {!submitting && (
+          <PostFooter
+            onBack={step > 1 ? handleStepBack : undefined}
+            onNext={handleNext}
+            nextLabel={step === totalSteps ? 'Post job' : 'Next'}
+            busy={stepBusy}
+          />
+        )}
       </KeyboardAvoidingView>
-
-      {/* Footer */}
-      {/* BUG-005: same edge-to-edge safe-area gap as BUG-002's bottom nav — pad
-          for the system nav bar so the Back/Next buttons aren't under it. */}
-      <View style={[styles.footer, { paddingBottom: 14 + insets.bottom }, keyboardUp && styles.footerHidden]}>
-        {!!error && <Text style={styles.errorText}>{error}</Text>}
-        <View style={styles.footerActions}>
-          {step > 1 && (
-            <Tap style={styles.previousBtn} onPress={handleStepBack} activeOpacity={0.85} disabled={submitting}>
-              <Text style={styles.previousBtnText}>Back</Text>
-            </Tap>
-          )}
-          <Tap
-            style={[
-              styles.primaryBtn,
-              step === 1 && styles.primaryBtnFullWidth,
-              step > 1 && styles.primaryBtnWithBack,
-              (submitting || stepBusy) && styles.primaryBtnDisabled,
-            ]}
-            onPress={handleNext}
-            activeOpacity={0.85}
-            disabled={submitting || stepBusy}
-          >
-            <View style={styles.primaryBtnInner}>
-              {(submitting || stepBusy) && <ActivityIndicator size="small" color={Colors.onPrimary} />}
-              <Text style={styles.primaryBtnText}>
-                {submitPhase === 'uploading'
-                  ? 'Uploading photos…'
-                  : submitPhase === 'posting'
-                    ? 'Posting…'
-                    : step === totalSteps
-                      ? 'Post Job'
-                      : 'Next'}
-              </Text>
-            </View>
-          </Tap>
-        </View>
-      </View>
 
       <ConfirmationModal
         visible={showExitConfirmation}
-        title="Discard job draft?"
-        message="Leaving now will delete the job details you have entered."
-        confirmLabel="Discard & Exit"
-        cancelLabel="Keep Editing"
+        title="Discard this job?"
+        message="Your answers will be lost."
+        confirmLabel="Discard"
+        cancelLabel="Keep editing"
         destructive
         onCancel={() => setShowExitConfirmation(false)}
         onConfirm={() => {
@@ -1303,7 +1147,6 @@ export default function HOCreateJobScreen({
               onDayPress={(day) => {
                 const [year, month, dayOfMonth] = day.dateString.split('-').map(Number);
                 setDate(new Date(year, month - 1, dayOfMonth));
-                clearError('date');
                 setShowDatePicker(false);
               }}
               markedDates={date ? { [dateKey(date)]: { selected: true, selectedColor: Colors.brandTeal } } : undefined}
@@ -1366,7 +1209,6 @@ export default function HOCreateJobScreen({
                 onPress={() => {
                   if (tempTime) {
                     setTime(tempTime);
-                    clearError('time');
                   }
                   setShowTimePicker(false);
                 }}
@@ -1392,264 +1234,114 @@ function createThemedStyles(theme: ThemePalette) {
     brandCyan: V6Colors.cyan600,
     slate: V6Colors.ink500,
     muted: V6Colors.ink400,
-    error: '#ef4444',
   } as const;
+  // What each urgency means, in plain words. The backend's matching windows
+  // (see the note at the top of this file) still apply; they are not repeated here.
   const URGENCY_OPTIONS = [
-    {
-      value: 'urgent' as const,
-      label: 'Urgent',
-      blurb: 'Needed right away — providers are matched after 5 minutes.',
-      icon: Zap,
-      accent: '#ef4444',
-    },
-    {
-      value: 'normal' as const,
-      label: 'Normal',
-      blurb: 'Within the next few days — matched after 10 minutes.',
-      icon: Clock,
-      accent: V6Colors.cyan700,
-    },
-    {
-      value: 'flexible' as const,
-      label: 'Flexible',
-      blurb: 'No rush — the widest choice of providers, matched after 15 minutes.',
-      icon: CheckCircle2,
-      accent: '#0f766e',
-    },
+    { value: 'flexible' as const, label: 'Flexible', blurb: 'Any day that works for you', icon: CalendarDays },
+    { value: 'normal' as const, label: 'Normal', blurb: 'Within a few days', icon: Clock },
+    { value: 'urgent' as const, label: 'Urgent', blurb: 'You need someone today', icon: Zap },
   ];
   const styles = StyleSheet.create({
     screen: { flex: 1, backgroundColor: Colors.background },
 
-    header: {
-      backgroundColor: Colors.surface,
-      flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
-      paddingHorizontal: Spacing.screenH,
-      paddingBottom: 12,
-      borderBottomWidth: 1, borderBottomColor: V6Colors.line,
-    },
-    headerTitle: { color: Colors.ink900, fontSize: 18.5, fontWeight: '800', fontFamily: 'Inter' },
-    backBtn: {
-      width: 38, height: 38, borderRadius: 12,
-      backgroundColor: Colors.surface, borderWidth: 1, borderColor: V6Colors.line,
-      alignItems: 'center', justifyContent: 'center',
-    },
-
-    // Stepper — matches .stepper/.step (5 equal pills)
-    stepperWrap: { backgroundColor: Colors.surface, paddingHorizontal: Spacing.screenH, paddingVertical: 14 },
-    stepper: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-    step: { flex: 1, height: 5, borderRadius: 3, backgroundColor: Colors.ink100 },
-    stepDone: { backgroundColor: Colors.cyan700 },
-    stepperLabel: { color: Colors.muted, fontSize: 12.5, fontFamily: 'Inter', marginTop: 8 },
 
     body: { flex: 1 },
     bodyContent: { paddingHorizontal: Spacing.screenH, paddingTop: 24, paddingBottom: 20 },
 
     stepTitle: { color: V6Colors.ink900, fontSize: 23, fontWeight: '800', fontFamily: 'Inter', marginBottom: 4 },
     stepSubtitle: { color: Colors.muted, fontSize: 16.5, fontFamily: 'Inter', marginBottom: 20, lineHeight: 21 },
-    locationPrompt: { backgroundColor: Colors.surface, borderWidth: 1, borderColor: Colors.line, borderRadius: 14, padding: 14, marginBottom: 16 },
-    locationPromptTitle: { color: Colors.ink900, fontSize: 14.5, fontWeight: '800', fontFamily: 'Inter' },
-    locationPromptText: { color: Colors.muted, fontSize: 13, fontFamily: 'Inter', marginTop: 4 },
-    locationPromptActions: { flexDirection: 'row', gap: 8, marginTop: 12 },
-    locationChoice: { flex: 1, alignItems: 'center', borderWidth: 1, borderColor: Colors.line, borderRadius: 10, paddingVertical: 9 },
-    locationChoiceActive: { backgroundColor: V6Colors.infoSurface, borderColor: Colors.brandTeal },
-    locationChoiceDisabled: { opacity: 0.55 },
-    locationChoiceText: { color: V6Colors.ink900, fontSize: 13, fontWeight: '700', fontFamily: 'Inter' },
-    locationChoiceTextDisabled: { color: Colors.muted },
-
     serviceGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },
-    serviceCard: {
-      width: '47%', backgroundColor: Colors.surface, borderRadius: 16,
-      padding: 16, borderWidth: 2, borderColor: 'transparent',
-      ...Shadows.card,
-    },
-    serviceCardActive: { borderColor: Colors.brandTeal, backgroundColor: V6Colors.infoSurface },
-    // Same footprint as a real service card so the grid doesn't reflow on load.
-    serviceCardSkeleton: { height: 118, backgroundColor: Colors.ink100 },
-    serviceLabel: { color: V6Colors.ink900, fontSize: 16.5, fontWeight: '700', fontFamily: 'Inter', marginBottom: 4 },
-    serviceLabelActive: { color: V6Colors.link },
-    serviceDesc: { color: Colors.slate, fontSize: 14.5, fontFamily: 'Inter' },
+    // Same footprint as a real service tile so the grid doesn't reflow on load.
+    serviceSkeleton: { width: '48%', height: 124, borderRadius: 16, backgroundColor: Colors.ink100 },
 
     inputGroup: { marginBottom: 16 },
-    inputLabel: { color: V6Colors.ink900, fontSize: 16.5, fontWeight: '600', fontFamily: 'Inter', marginBottom: 8 },
+    inputLabel: { color: V6Colors.ink700, fontSize: 14, fontWeight: '600', fontFamily: 'Inter', marginBottom: 6 },
     input: {
       backgroundColor: Colors.surface, borderRadius: 12, paddingHorizontal: 14, minHeight: 46,
       borderWidth: 1, borderColor: V6Colors.fieldBorder,
       fontFamily: 'Inter', fontSize: 16.5, color: Colors.ink900,
     },
-    addressInput: { minHeight: 70, paddingTop: 12, textAlignVertical: 'top' },
     inputFocused: { borderColor: Colors.brandTeal, borderWidth: 2 },
-    inputError: { borderColor: Colors.error, borderWidth: 2 },
-    inputErrorText: { color: Colors.error, fontSize: 15.5, marginTop: 8, fontFamily: 'Inter' },
-    inputHint: { color: Colors.slate, fontSize: 13.5, marginTop: 8, fontFamily: 'Inter' },
-    requiredAsterisk: { color: Colors.error, fontWeight: '800' },
+    inputError: { borderColor: Colors.dangerText, borderWidth: 1.5 },
+    inputErrorText: { color: Colors.dangerText, fontSize: 13.5, lineHeight: 18, marginTop: 6, fontFamily: 'Inter' },
     pickerInput: { justifyContent: 'center', minHeight: 48 },
     pickerText: { color: V6Colors.ink900, fontFamily: 'Inter', fontSize: 18.5 },
     pickerPlaceholder: { color: Colors.muted },
 
-    savedAddressBtn: {
-      flexDirection: 'row', alignItems: 'center', gap: 8,
-      borderWidth: 1, borderColor: Colors.cyan100, backgroundColor: V6Colors.infoSurface,
-      borderRadius: 12, padding: 12, marginBottom: 16,
-    },
-    savedAddressText: { flex: 1, color: V6Colors.link, fontSize: 14, fontWeight: '600', fontFamily: 'Inter' },
-    noteCard: { backgroundColor: Colors.ink50, borderRadius: 14, padding: 14 },
-    mapPlaceholder: { height: 120, borderRadius: 14, marginBottom: 16, backgroundColor: Colors.ink50, alignItems: 'center', justifyContent: 'center', gap: 8, padding: 20 },
-    mapPlaceholderText: { color: Colors.muted, fontSize: 14, fontFamily: 'Inter', textAlign: 'center' },
-    mapPreview: { borderRadius: 14, overflow: 'hidden', marginBottom: 8, backgroundColor: Colors.ink50 },
-    // Matches the 2:1 image the backend renders (600×300). `cover` at that ratio
-    // never crops, which keeps Geoapify's attribution line in its bottom corner.
-    mapPreviewImage: { width: '100%', aspectRatio: 2 },
-    mapConfirmed: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 12,
-      borderRadius: 14,
-      marginBottom: 16,
-      padding: 16,
-      backgroundColor: Colors.ink50,
-      borderWidth: 1,
-      borderColor: Colors.brandTeal,
-    },
-    mapConfirmedBody: { flex: 1, gap: 2 },
-    mapConfirmedTitle: { color: V6Colors.link, fontSize: 14, fontWeight: '700', fontFamily: 'Inter' },
-    mapConfirmedText: { color: Colors.ink900, fontSize: 14, fontFamily: 'Inter' },
-    noteText: { color: Colors.slate, fontSize: 14, lineHeight: 19, fontFamily: 'Inter' },
+    // A text action, styled like the locate link under the field.
+    savedAddressBtn: { flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: 48, marginTop: 8 },
+    savedAddressText: { flex: 1, color: V6Colors.link, fontSize: 15, fontWeight: '600', fontFamily: 'Inter' },
+    confirmedRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 8 },
+    confirmedText: { color: V6Colors.ink700, fontSize: 14, fontWeight: '600', fontFamily: 'Inter' },
+    calmWrap: { marginTop: 16 },
 
-    calendarOverlay: { flex: 1, backgroundColor: 'rgba(15,23,42,0.45)', justifyContent: 'center', padding: 20 },
+    calendarOverlay: { flex: 1, backgroundColor: Colors.scrim, justifyContent: 'center', padding: 20 },
     calendarModal: { backgroundColor: Colors.surface, borderRadius: 24, padding: 20, ...Shadows.card },
     calendarHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 },
     calendarTitle: { color: V6Colors.ink900, fontSize: 21.5, fontWeight: '800', fontFamily: 'Inter' },
     calendarClose: { color: V6Colors.link, fontSize: 16.5, fontWeight: '700', fontFamily: 'Inter' },
 
-    // Room for a few lines plus the counter in the corner (I9).
-    textArea: { textAlignVertical: 'top', minHeight: 128, paddingTop: 12, paddingBottom: 28 },
-    textAreaWrap: { position: 'relative' },
-    charCount: { position: 'absolute', right: 12, bottom: 8, color: Colors.muted, fontSize: 14.5 },
+    charCount: { alignSelf: 'flex-end', color: V6Colors.ink500, fontSize: 13, fontFamily: 'Inter', marginTop: 6 },
 
-    // Task selection
-    taskList: { gap: 9 },
-    taskChip: {
-      flexDirection: 'row', alignItems: 'center', gap: 11,
-      backgroundColor: Colors.surface, borderRadius: 14, padding: 14,
-      borderWidth: 1.5, borderColor: V6Colors.line,
-    },
-    taskChipActive: { borderColor: Colors.brandTeal, backgroundColor: V6Colors.infoSurface },
-    taskCheck: {
-      width: 21, height: 21, borderRadius: 7,
-      borderWidth: 1.5, borderColor: V6Colors.ink200,
-      alignItems: 'center', justifyContent: 'center',
-    },
-    taskCheckActive: { backgroundColor: Colors.brandTeal, borderColor: Colors.brandTeal },
-    taskChipText: { flex: 1, color: Colors.ink800, fontSize: 15.5, fontFamily: 'Inter' },
-    taskChipTextActive: { color: V6Colors.ink900, fontWeight: '700' },
-
-    customList: { marginTop: 9, gap: 9 },
-    customTaskRow: {
-      flexDirection: 'row', alignItems: 'center', gap: 11,
-      backgroundColor: V6Colors.infoSurface, borderRadius: 14, padding: 14,
-      borderWidth: 1.5, borderColor: Colors.brandTeal,
-    },
-    customTaskText: { flex: 1, color: V6Colors.ink900, fontSize: 15.5, fontWeight: '700', fontFamily: 'Inter' },
-    removeTaskText: { color: Colors.error, fontSize: 13.5, fontWeight: '700', fontFamily: 'Inter' },
-
-    addTaskRow: { flexDirection: 'row', gap: 9, marginTop: 12 },
-    addTaskInput: { flex: 1 },
-    addTaskBtn: {
-      width: 48, borderRadius: 12, backgroundColor: Colors.brandTeal,
-      alignItems: 'center', justifyContent: 'center',
-    },
-    addTaskBtnDisabled: { opacity: 0.4 },
-    taskCount: { color: Colors.muted, fontSize: 13.5, fontFamily: 'Inter', marginTop: 8 },
+    // Task selection: whole-row CheckRows, then the add row
+    taskList: { gap: 8 },
+    addTaskRow: { marginTop: 12 },
+    taskCount: { color: V6Colors.ink500, fontSize: 13, fontFamily: 'Inter', marginTop: 10 },
 
     divider: { height: 1, backgroundColor: V6Colors.line, marginVertical: 22 },
 
     photoPicker: {
-      backgroundColor: Colors.surface, borderRadius: 12, padding: 16,
-      borderWidth: 1, borderStyle: 'dashed', borderColor: Colors.brandTeal,
+      flexDirection: 'row', alignItems: 'center', gap: 14, minHeight: 72, padding: 14, borderRadius: 16,
+      backgroundColor: Colors.surface, borderWidth: 1.5, borderStyle: 'dashed', borderColor: Colors.primary,
     },
-    photoPickerTitle: { color: V6Colors.link, fontSize: 18.5, fontWeight: '700', fontFamily: 'Inter', marginBottom: 4 },
-    photoPickerHint: { color: Colors.slate, fontSize: 14.5, fontFamily: 'Inter', lineHeight: 18 },
+    photoWell: {
+      width: 48, height: 48, borderRadius: 12, alignItems: 'center', justifyContent: 'center',
+      backgroundColor: Colors.primaryTonal,
+    },
+    photoText: { flex: 1 },
+    photoPickerTitle: { color: V6Colors.ink900, fontSize: 15, fontWeight: '700', fontFamily: 'Inter' },
+    photoPickerHint: { color: V6Colors.ink500, fontSize: 13.5, fontFamily: 'Inter', lineHeight: 18, marginTop: 2 },
     photoList: { gap: 10, paddingTop: 12 },
     photoPreview: { width: 72, height: 72, borderRadius: 10, overflow: 'visible' },
     photoImage: { width: 72, height: 72, borderRadius: 10, backgroundColor: V6Colors.ink100 },
-    removePhoto: { position: 'absolute', top: -6, right: -6, width: 22, height: 22, borderRadius: 11, backgroundColor: Colors.error, alignItems: 'center', justifyContent: 'center' },
+    removePhoto: { position: 'absolute', top: -6, right: -6, width: 22, height: 22, borderRadius: 11, backgroundColor: Colors.dangerSolid, alignItems: 'center', justifyContent: 'center' },
     removePhotoText: { color: Colors.onPrimary, fontSize: 21.5, lineHeight: 20, fontWeight: '700' },
 
-    // Urgency
-    urgencyCard: {
-      flexDirection: 'row', alignItems: 'center', gap: 12,
-      backgroundColor: Colors.surface, borderRadius: 16, padding: 16,
-      borderWidth: 2, borderColor: 'transparent', marginBottom: 10,
-      ...Shadows.card,
-    },
-    urgencyInfo: { flex: 1 },
-    urgencyLabel: { color: V6Colors.ink900, fontSize: 16.5, fontWeight: '700', fontFamily: 'Inter', marginBottom: 2 },
-    urgencyBlurb: { color: Colors.slate, fontSize: 14, fontFamily: 'Inter', lineHeight: 18 },
-    radio: {
-      width: 22, height: 22, borderRadius: 11,
-      borderWidth: 2, borderColor: V6Colors.ink200,
-      alignItems: 'center', justifyContent: 'center',
-    },
-    radioDot: { width: 11, height: 11, borderRadius: 6 },
+    dateTimeRow: { flexDirection: 'row', gap: 12, marginTop: 8, marginBottom: 16 },
+    dateTimeCol: { flex: 1 },
+    sectionLabel: { color: V6Colors.ink900, fontSize: 16, fontWeight: '700', fontFamily: 'Inter', marginBottom: 10 },
 
-    budgetCard: {
-      backgroundColor: Colors.surface, borderRadius: 20, padding: 24,
-      flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-      borderWidth: 1, borderColor: 'transparent', ...Shadows.card,
-    },
-    budgetCardFocused: { borderColor: Colors.brandTeal, borderWidth: 2 },
-    budgetCurrency: { color: V6Colors.ink900, fontSize: 39, fontWeight: '800', fontFamily: 'Inter', marginRight: 4 },
-    budgetInput: { fontSize: 40, fontWeight: '800', fontFamily: 'Inter', color: V6Colors.ink900, minWidth: 120 },
-    budgetHint: { color: Colors.muted, fontSize: 14, fontFamily: 'Inter', textAlign: 'center', marginTop: 12, lineHeight: 19 },
+    budgetHint: { color: V6Colors.ink500, fontSize: 13.5, fontFamily: 'Inter', lineHeight: 18, marginTop: 8 },
 
-    reviewCard: { backgroundColor: Colors.surface, borderRadius: 20, padding: 20, marginBottom: 16, ...Shadows.card },
-    reviewSectionTitle: { color: V6Colors.ink900, fontSize: 16.5, fontWeight: '800', fontFamily: 'Inter', marginBottom: 10 },
-    reviewRow: {
-      flexDirection: 'row', justifyContent: 'space-between',
-      paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: 'rgba(144,153,184,0.15)',
+    reviewCard: {
+      backgroundColor: Colors.surface, borderRadius: 18, borderWidth: 1, borderColor: V6Colors.line,
+      paddingHorizontal: 16, paddingBottom: 4, marginBottom: 16,
     },
-    reviewLabel: { color: Colors.slate, fontSize: 16.5, fontFamily: 'Inter' },
-    reviewValue: { color: V6Colors.ink900, fontSize: 16.5, fontWeight: '700', fontFamily: 'Inter', maxWidth: '55%', textAlign: 'right' },
-    reviewTaskRow: { flexDirection: 'row', alignItems: 'center', gap: 9, paddingVertical: 7 },
-    reviewTaskText: { flex: 1, color: V6Colors.ink900, fontSize: 15.5, fontFamily: 'Inter' },
+    reviewError: { marginTop: 12 },
 
-    footerHidden: { display: 'none' },
-    footer: { paddingHorizontal: Spacing.screenH, paddingVertical: 12, backgroundColor: Colors.surface, borderTopWidth: 1, borderTopColor: Colors.ink100 },
-    footerActions: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'stretch' },
-    previousBtn: { width: '48%', height: 44, borderWidth: 1, borderColor: V6Colors.fieldBorder, borderRadius: 12, backgroundColor: Colors.surface, alignItems: 'center', justifyContent: 'center' },
-    previousBtnText: { color: Colors.ink700, fontSize: 15, fontWeight: '700', fontFamily: 'Inter' },
     primaryBtn: {
-      backgroundColor: Colors.cyan700, borderRadius: 12, paddingVertical: 12, minHeight: 44, justifyContent: 'center',
+      backgroundColor: Colors.primary, borderRadius: 12, paddingVertical: 12, minHeight: 44, justifyContent: 'center',
       alignItems: 'center',
-      shadowColor: '#0891b2', shadowOffset: { width: 0, height: 5 },
+      shadowColor: Colors.primary, shadowOffset: { width: 0, height: 5 },
       shadowOpacity: 0.16, shadowRadius: 14, elevation: 4,
     },
-    primaryBtnFullWidth: { width: '100%' },
-    primaryBtnWithBack: { width: '48%', height: 44, paddingVertical: 0, justifyContent: 'center' },
-    primaryBtnInner: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
     primaryBtnText: { color: Colors.onPrimary, fontSize: 15, fontWeight: '700', fontFamily: 'Inter', letterSpacing: -0.005 },
-    primaryBtnDisabled: { opacity: 0.7 },
-    errorText: { color: Colors.error, fontSize: 15.5, fontFamily: 'Inter', marginBottom: 10, textAlign: 'center' },
+    errorText: { color: Colors.dangerText, fontSize: 15, lineHeight: 20, fontFamily: 'Inter', marginBottom: 10, textAlign: 'center' },
 
     // Success
     successScreen: { flexGrow: 1, alignItems: 'center', justifyContent: 'center', padding: 32 },
-    successMarkWrap: { alignItems: 'center', marginBottom: 12 },
-    successIcon: {
-      width: 100, height: 100, borderRadius: 50,
-      backgroundColor: V6Colors.successSurface, alignItems: 'center', justifyContent: 'center', marginBottom: 24,
-    },
+    successMarkWrap: { alignItems: 'center', marginBottom: 20 },
+    // The static fallback for reduced motion: the same solid green disc the animation draws.
+    successIcon: { width: 100, height: 100, borderRadius: 50, backgroundColor: Colors.successSolid, alignItems: 'center', justifyContent: 'center' },
     successTitle: { color: V6Colors.ink900, fontSize: 28, fontWeight: '800', fontFamily: 'Inter', marginBottom: 12, textAlign: 'center' },
-    successSubtitle: { color: Colors.slate, fontSize: 16.5, fontFamily: 'Inter', lineHeight: 22, textAlign: 'center', marginBottom: 28 },
-    successCard: { backgroundColor: Colors.surface, borderRadius: 20, padding: 20, width: '100%', marginBottom: 28, ...Shadows.card },
-    successRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: 'rgba(144,153,184,0.15)' },
-    successLabel: { color: Colors.slate, fontSize: 15, fontFamily: 'Inter' },
-    // flexShrink + a width cap: a long address used to run past the card edge.
-    successValue: { color: V6Colors.ink900, fontSize: 15, fontWeight: '700', fontFamily: 'Inter', flexShrink: 1, maxWidth: '65%', textAlign: 'right' },
-    secondaryBtn: {
-      marginTop: 12, paddingVertical: 12, minHeight: 44, justifyContent: 'center', alignItems: 'center', borderRadius: 13,
-      borderWidth: 1, borderColor: Colors.brandTeal, width: '100%',
+    successSubtitle: { color: V6Colors.ink700, fontSize: 16, fontFamily: 'Inter', lineHeight: 22, textAlign: 'center', marginBottom: 24 },
+    successCard: {
+      backgroundColor: Colors.surface, borderRadius: 18, borderWidth: 1, borderColor: V6Colors.line,
+      padding: 18, width: '100%', gap: 12,
     },
-    secondaryBtnText: { color: V6Colors.link, fontSize: 15, fontWeight: '700', fontFamily: 'Inter' },
+    nextRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 10 },
+    nextText: { flex: 1, color: V6Colors.ink900, fontSize: 15, lineHeight: 21, fontFamily: 'Inter' },
   });
   return { appearance: theme.appearance, Colors, V6Colors, URGENCY_OPTIONS, styles };
 }

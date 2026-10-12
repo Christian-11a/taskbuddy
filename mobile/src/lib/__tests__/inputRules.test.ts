@@ -1,0 +1,497 @@
+import {
+  ADDRESS_MAX,
+  CITY_MAX,
+  EMAIL_MAX,
+  FULL_NAME_MAX,
+  OTP_LENGTH,
+  PASSWORD_MIN_LENGTH,
+  normalizeEmail,
+  normalizeName,
+  nextPhoneText,
+  sanitizeOtp,
+  sanitizePhone,
+  validateAddress,
+  validateCity,
+  validateEmail,
+  validateFullName,
+  validateNewPasswordDiffers,
+  validateOtpCode,
+  validatePasswordRules,
+  validatePhone,
+  validateServiceRadius,
+} from '../inputRules';
+
+const PHONE_FORMAT = 'Enter an 11-digit mobile number starting with 09, e.g. 09171234567';
+const NAME_CHARACTERS = 'Full name can only use letters, spaces, hyphens, apostrophes and periods';
+
+/** The limits the fields hold as maxLength, and the rules check against the same numbers. */
+describe('the field limits', () => {
+  it('are the backend limits: email 254, full name 120, city 80, address 200', () => {
+    expect(EMAIL_MAX).toBe(254);
+    expect(FULL_NAME_MAX).toBe(120);
+    expect(CITY_MAX).toBe(80);
+    expect(ADDRESS_MAX).toBe(200);
+  });
+
+  it('give the same messages as the rules at the limit and one past it', () => {
+    expect(validateFullName('a'.repeat(FULL_NAME_MAX))).toBeNull();
+    expect(validateFullName('a'.repeat(FULL_NAME_MAX + 1))).toBe('Full name must be 120 characters or fewer');
+    expect(validateCity('a'.repeat(CITY_MAX))).toBeNull();
+    expect(validateCity('a'.repeat(CITY_MAX + 1))).toBe('City must be 80 characters or fewer');
+    expect(validateAddress('a'.repeat(ADDRESS_MAX))).toBeNull();
+    expect(validateAddress('a'.repeat(ADDRESS_MAX + 1))).toBe('Address must be 200 characters or fewer');
+    expect(validateEmail(`${'a'.repeat(64)}@example.com`)).toBeNull();
+    expect(validateEmail(`${'a'.repeat(250)}@x.co`)).toBe('Enter a valid email address');
+  });
+});
+
+describe('sanitizePhone', () => {
+  it.each([
+    ['', ''],
+    ['   ', ''],
+    ['abc', ''],
+    ['+', ''],
+    ['09171234567', '09171234567'],
+    ['0917 123 4567', '09171234567'],
+    ['0917-123-4567', '09171234567'],
+    ['(0917) 123 4567', '09171234567'],
+    ['0917123456a', '0917123456'],
+  ])('keeps only the digits of %j, giving %j', (raw, expected) => {
+    expect(sanitizePhone(raw)).toBe(expected);
+  });
+
+  it.each([
+    ['+63 917 123 4567', '09171234567'],
+    ['63 917 123 4567', '09171234567'],
+    ['+639171234567', '09171234567'],
+    ['+63-917-123-4567', '09171234567'],
+    ['+63 0917 123 4567', '09171234567'],
+    ['(+63) 917 123 4567', '09171234567'],
+  ])('turns the country-code form %j into the 09 form', (raw, expected) => {
+    expect(sanitizePhone(raw)).toBe(expected);
+  });
+
+  it('leaves a short country-code prefix alone while it is still being typed', () => {
+    expect(sanitizePhone('+63')).toBe('63');
+    expect(sanitizePhone('6391712345')).toBe('6391712345');
+  });
+
+  it('keeps at most eleven digits', () => {
+    expect(sanitizePhone('09171234567890')).toBe('09171234567');
+    expect(sanitizePhone('0917123456789')).toBe('09171234567');
+  });
+
+});
+
+/** Types `text` one character at a time after `start` (an empty field by default), the way a keyboard does. */
+function typePhone(text: string, start = ''): string {
+  let shown = start;
+  for (const ch of text) shown = nextPhoneText(shown, shown + ch);
+  return shown;
+}
+
+describe('nextPhoneText: what the phone field shows after a change', () => {
+  it('types a 09 number as it is typed, with its spaces and dashes left out', () => {
+    expect(typePhone('09171234567')).toBe('09171234567');
+    expect(typePhone('0917 123 4567')).toBe('09171234567');
+    expect(typePhone('0917-123-4567')).toBe('09171234567');
+  });
+
+  it('ignores a 12th typed digit, so a typed number stops at eleven', () => {
+    expect(nextPhoneText('09171234567', '091712345678')).toBe('09171234567');
+    expect(typePhone('0917123456789')).toBe('09171234567');
+  });
+
+  it('reads a +63 number typed digit by digit as its 09 form', () => {
+    expect(typePhone('+63 917 123 4567')).toBe('09171234567');
+  });
+
+  it('keeps every digit of a pasted 21-character +63 number, so it reads as the 09 form', () => {
+    expect(nextPhoneText('', '+63 (0917) 123 - 4567')).toBe('09171234567');
+  });
+
+  it('keeps all 12 digits of a pasted 12-digit number, so the validator can refuse it', () => {
+    expect(nextPhoneText('', '091712345678')).toBe('091712345678');
+  });
+
+  it('reads 12 pasted digits that start with 63 as the 09 form', () => {
+    expect(nextPhoneText('', '639171234567')).toBe('09171234567');
+  });
+
+  it('caps a paste at 15 digits', () => {
+    expect(nextPhoneText('', '0917123456789012345')).toBe('091712345678901');
+  });
+
+  it('refuses a change with a letter or another symbol, and the field keeps its value', () => {
+    expect(nextPhoneText('', 'abc')).toBe('');
+    expect(nextPhoneText('0917', '0917a')).toBe('0917');
+    expect(nextPhoneText('09171234567', '0917-abc 123 4567!')).toBe('09171234567');
+    expect(nextPhoneText('09171234567', '09171234567@')).toBe('09171234567');
+  });
+
+  it('lets a number that was pasted too long be shortened by deleting digits', () => {
+    expect(nextPhoneText('091712345678', '09171234567')).toBe('09171234567');
+    expect(nextPhoneText('091712345678901', '09171234567890')).toBe('09171234567890');
+  });
+});
+
+/** A value saved before validation existed can hold letters; the field must still let it be cleared and typed over. */
+describe('nextPhoneText: a stored value that still has letters', () => {
+  it.each([
+    ['Backspace on the stored asdsad clears it', 'asdsad', 'asdsa', ''],
+    ['Backspace on the stored 0917a keeps its digits', '0917a', '0917', '0917'],
+    ['typing 0 after asdsad shows the 0, and the letters go', 'asdsad', 'asdsad0', '0'],
+    ['typing 5 after 0917a keeps the digits and drops the letters', '0917a', '0917a5', '09175'],
+    ['typing a letter after asdsad, which has no digits to keep, leaves the field empty', 'asdsad', 'asdsadx', ''],
+    ['pasting +63 917 123 4567 after asdsad gives the 09 form', 'asdsad', 'asdsad+63 917 123 4567', '09171234567'],
+    ['pasting digits with letters after asdsad keeps the digits', 'asdsad', 'asdsadabc0917', '0917'],
+  ])('%s', (_label, previous, incoming, expected) => {
+    expect(nextPhoneText(previous, incoming)).toBe(expected);
+  });
+
+  it('types 0917 after asdsad as 0917', () => {
+    expect(typePhone('0917', 'asdsad')).toBe('0917');
+  });
+});
+
+/** The edits that already worked, and the paste rules, which must not change. */
+describe('nextPhoneText: normal typing, Backspace and paste', () => {
+  it.each([
+    ['typing 1 after 0917', '0917', '09171', '09171'],
+    ['typing a space after 0917 adds nothing', '0917', '0917 ', '0917'],
+    ['a 12th typed digit is ignored', '09171234567', '091712345678', '09171234567'],
+    ['typing a letter after 0917 is refused', '0917', '0917a', '0917'],
+    ['Backspace on 09171234567', '09171234567', '0917123456', '0917123456'],
+    ['Backspace on 0917', '0917', '091', '091'],
+    ['Backspace on a stored +63 917 123 4567 leaves its digits', '+63 917 123 4567', '+63 917 123 456', '63917123456'],
+    ['pasting +63 (0917) 123 - 4567 into an empty field', '', '+63 (0917) 123 - 4567', '09171234567'],
+    ['pasting 12 digits keeps all of them', '', '091712345678', '091712345678'],
+    ['pasting 639171234567 gives the 09 form', '', '639171234567', '09171234567'],
+    ['pasting 19 digits is cut at 15', '', '0917123456789012345', '091712345678901'],
+    ['pasting letters into an empty field is refused', '', 'abc', ''],
+    ['pasting letters after a number is refused', '09171234567', '09171234567abc', '09171234567'],
+    ['pasting a full number over 0917 replaces it', '0917', '09171234567', '09171234567'],
+  ])('%s', (_label, previous, incoming, expected) => {
+    expect(nextPhoneText(previous, incoming)).toBe(expected);
+  });
+});
+
+describe('validatePhone', () => {
+  it.each(['09171234567', '09990000000', '09000000000', '09999999999'])('accepts %s', (phone) => {
+    expect(validatePhone(phone)).toBeNull();
+  });
+
+  it('accepts a stored value with surrounding spaces, because saving trims it', () => {
+    expect(validatePhone(' 09171234567 ')).toBeNull();
+  });
+
+  it.each([
+    ['0917123456', 'ten digits'],
+    ['091712345678', 'twelve digits'],
+    ['9171234567', 'missing the leading 0'],
+    ['19171234567', 'not starting with 09'],
+    ['08171234567', 'starting with 08'],
+    ['+639171234567', 'the +63 form is not stored'],
+    ['0917 123 4567', 'spaces are not stored'],
+    ['0917123456a', 'a letter'],
+    ['09171234567\n5', 'a line break'],
+  ])('refuses %s (%s) with the format message', (phone) => {
+    expect(validatePhone(phone)).toBe(PHONE_FORMAT);
+  });
+
+  it('allows an empty phone when it is optional', () => {
+    expect(validatePhone('')).toBeNull();
+    expect(validatePhone('   ')).toBeNull();
+    expect(validatePhone(undefined)).toBeNull();
+    expect(validatePhone(null)).toBeNull();
+  });
+
+  it('asks for a phone when it is required, including when only spaces were typed', () => {
+    expect(validatePhone('', { required: true })).toBe('Phone number is required');
+    expect(validatePhone('   ', { required: true })).toBe('Phone number is required');
+  });
+});
+
+describe('normalizeName', () => {
+  it.each([
+    ['  Ana   Reyes  ', 'Ana Reyes'],
+    ['Juan\tDela\nCruz', 'Juan Dela Cruz'],
+    ['   ', ''],
+    ['', ''],
+    ['José', 'José'],
+    [undefined, ''],
+  ])('turns %j into %j', (raw, expected) => {
+    expect(normalizeName(raw as string)).toBe(expected);
+  });
+});
+
+describe('validateFullName', () => {
+  it.each([
+    'Ana',
+    'Jo',
+    'José María',
+    'Ñoel Peña',
+    "O'Brien",
+    'D’Angelo',
+    'Mary-Jane Smith',
+    'Juan Santos Jr.',
+    'Ángel Núñez',
+    'Ana\tReyes',
+    'a'.repeat(120),
+  ])('accepts %j', (name) => {
+    expect(validateFullName(name)).toBeNull();
+  });
+
+  it.each(['', '   ', '\t\n'])('asks for a name when only spaces or nothing is typed (%j)', (name) => {
+    expect(validateFullName(name)).toBe('Enter your full name');
+  });
+
+  it('needs at least two characters', () => {
+    expect(validateFullName('A')).toBe('Full name must be at least 2 characters');
+    expect(validateFullName(' A ')).toBe('Full name must be at least 2 characters');
+  });
+
+  it('caps the name at 120 characters after trimming', () => {
+    expect(validateFullName('a'.repeat(121))).toBe('Full name must be 120 characters or fewer');
+    expect(validateFullName(`  ${'a'.repeat(120)}  `)).toBeNull();
+  });
+
+  it.each([
+    'Ana (Nena) Santos',
+    'Ana Reyes, Jr.',
+    '李明',
+    'さくら',
+    '김철수',
+  ])('accepts %j: parentheses, commas and Chinese, Japanese and Korean letters are names too', (name) => {
+    expect(validateFullName(name)).toBeNull();
+  });
+
+  it.each([
+    ['Juan123', "Full name can't include numbers"],
+    ['Ana 😀', NAME_CHARACTERS],
+    ['<b>x</b>', NAME_CHARACTERS],
+    ['@@', NAME_CHARACTERS],
+  ])('still refuses %j', (name, message) => {
+    expect(validateFullName(name)).toBe(message);
+  });
+
+  it.each(['Ana1', 'Ana 2', '2024', 'Test User 02'])('refuses digits in %j', (name) => {
+    expect(validateFullName(name)).toBe("Full name can't include numbers");
+  });
+
+  it.each(['Ana@Reyes', 'Ana_Reyes', 'Ana #', 'Ana/Reyes', 'Ana😀', '😀', 'Ana!'])(
+    'refuses symbols and emoji in %j',
+    (name) => {
+      expect(validateFullName(name)).toBe(NAME_CHARACTERS);
+    },
+  );
+
+  it('refuses a name with no letter in it', () => {
+    expect(validateFullName('-')).toBe('Full name must include a letter');
+    expect(validateFullName('. .')).toBe('Full name must include a letter');
+    expect(validateFullName("''")).toBe('Full name must include a letter');
+    expect(validateFullName('()')).toBe('Full name must include a letter');
+  });
+
+  it('counts a Chinese, Japanese or Korean character as a letter, so two of them make a name', () => {
+    expect(validateFullName('李')).toBe('Full name must be at least 2 characters');
+    expect(validateFullName('李明')).toBeNull();
+  });
+
+  it('refuses scripts outside Latin, Chinese, Japanese and Korean letters, which the rule does not cover', () => {
+    expect(validateFullName('Иван Петров')).toBe(NAME_CHARACTERS);
+  });
+});
+
+describe('validateCity', () => {
+  it.each(['Cebu', 'Lipa', 'Quezon City', 'Quezon City (QC)', 'Lapu-Lapu City', 'Dela Paz', 'Ñaga', 'Batangas'])(
+    'accepts %j, including short Philippine city names',
+    (city) => {
+      expect(validateCity(city)).toBeNull();
+    },
+  );
+
+  it('allows an empty city when it is optional', () => {
+    expect(validateCity('')).toBeNull();
+    expect(validateCity('   ')).toBeNull();
+  });
+
+  it('asks for a city when it is required', () => {
+    expect(validateCity('', { required: true })).toBe('Enter your city');
+    expect(validateCity('  ', { required: true })).toBe('Enter your city');
+  });
+
+  it('refuses one letter, digits, symbols and a value over 80 characters', () => {
+    expect(validateCity('C')).toBe('City must be at least 2 characters');
+    expect(validateCity('Lipa 2')).toBe("City can't include numbers");
+    expect(validateCity('Makati!')).toBe('City can only use letters, spaces, hyphens, apostrophes and periods');
+    expect(validateCity('a'.repeat(81))).toBe('City must be 80 characters or fewer');
+  });
+});
+
+describe('normalizeEmail', () => {
+  it('trims and lower-cases for comparison', () => {
+    expect(normalizeEmail('  Ana@Example.COM ')).toBe('ana@example.com');
+    expect(normalizeEmail(undefined)).toBe('');
+  });
+});
+
+describe('validateEmail', () => {
+  it.each([
+    'ana@example.com',
+    'ANA@EXAMPLE.COM',
+    '  ana@example.com  ',
+    'ana.reyes+tag@mail.example.ph',
+    "o'brien@example.test",
+    'a@b.co',
+    'user_1@sub-domain.example.org',
+    `${'a'.repeat(64)}@example.com`,
+  ])('accepts %j', (email) => {
+    expect(validateEmail(email)).toBeNull();
+  });
+
+  it.each(['', '   ', '\t'])('asks for an email when only spaces or nothing is typed (%j)', (email) => {
+    expect(validateEmail(email)).toBe('Enter your email address');
+  });
+
+  it.each([
+    'ana',
+    'ana@',
+    '@example.com',
+    'ana@example',
+    'ana@example.c',
+    'ana example@x.com',
+    'ana@@example.com',
+    'ana..reyes@example.com',
+    '.ana@example.com',
+    'ana.@example.com',
+    'ana@-example.com',
+    'ana@example-.com',
+    'ana@exa_mple.com',
+    'ana@example.com.',
+    'ñana@example.com',
+    `${'a'.repeat(65)}@example.com`,
+    `a@${'b'.repeat(250)}.com`,
+  ])('refuses %j with the invalid message', (email) => {
+    expect(validateEmail(email)).toBe('Enter a valid email address');
+  });
+});
+
+describe('validateAddress', () => {
+  it.each([
+    'Blk 5 Lot 3, Sampaguita St.',
+    'Lipa City',
+    '12345',
+    'HSSi Building, Lipa',
+    '  Brgy. San Jose  ',
+    'a'.repeat(200),
+  ])('accepts %j', (address) => {
+    expect(validateAddress(address)).toBeNull();
+  });
+
+  it('allows an empty address when it is optional, and asks for one when it is required', () => {
+    expect(validateAddress('')).toBeNull();
+    expect(validateAddress('   ', { required: true })).toBe('Enter your address');
+  });
+
+  it('uses the caller message when a required address is empty', () => {
+    expect(validateAddress('  ', {
+      required: true,
+      requiredMessage: 'Enter your address so nearby jobs can be matched to you.',
+    })).toBe('Enter your address so nearby jobs can be matched to you.');
+  });
+
+  it('needs five characters after trimming', () => {
+    expect(validateAddress('Lipa')).toBe('Address must be at least 5 characters');
+    expect(validateAddress('  Lipa  ')).toBe('Address must be at least 5 characters');
+  });
+
+  it('caps the address at 200 characters', () => {
+    expect(validateAddress('a'.repeat(201))).toBe('Address must be 200 characters or fewer');
+  });
+
+  it('needs a letter or a number', () => {
+    expect(validateAddress('.....')).toBe('Address must include a letter or number');
+  });
+});
+
+describe('validatePasswordRules', () => {
+  it('keeps the eight-character minimum', () => {
+    expect(PASSWORD_MIN_LENGTH).toBe(8);
+    expect(validatePasswordRules('1234567')).toBe('Password must be at least 8 characters.');
+    expect(validatePasswordRules('')).toBe('Password must be at least 8 characters.');
+    expect(validatePasswordRules('12345678')).toBeNull();
+  });
+
+  it('labels the message for the field it is checking', () => {
+    expect(validatePasswordRules('short', 'New password')).toBe('New password must be at least 8 characters.');
+  });
+
+  it('refuses a password made only of spaces, even when it is long enough', () => {
+    expect(validatePasswordRules('        ')).toBe("Password can't be only spaces.");
+    expect(validatePasswordRules('        ', 'New password')).toBe("New password can't be only spaces.");
+  });
+
+  it('accepts spaces inside a password that also has other characters', () => {
+    expect(validatePasswordRules('abc      ')).toBeNull();
+    expect(validatePasswordRules(' correct horse ')).toBeNull();
+  });
+});
+
+describe('validateNewPasswordDiffers', () => {
+  it('refuses a new password that is the same as the current one', () => {
+    expect(validateNewPasswordDiffers('oldpassword1', 'oldpassword1')).toBe(
+      "Choose a password you haven't used here",
+    );
+  });
+
+  it('compares exactly, so a changed capital letter counts as different', () => {
+    expect(validateNewPasswordDiffers('password1', 'Password1')).toBeNull();
+    expect(validateNewPasswordDiffers('password1', 'password1 ')).toBeNull();
+  });
+
+  it('does not decide anything while one of the two is still empty', () => {
+    expect(validateNewPasswordDiffers('', 'newpassword1')).toBeNull();
+    expect(validateNewPasswordDiffers('oldpassword1', '')).toBeNull();
+  });
+});
+
+describe('sanitizeOtp and validateOtpCode', () => {
+  it('is six digits', () => {
+    expect(OTP_LENGTH).toBe(6);
+  });
+
+  it.each([
+    ['482 931', '482931'],
+    ['48-29-31-99', '482931'],
+    ['', ''],
+    ['abc', ''],
+    ['12345678', '123456'],
+  ])('sanitizes %j to %j', (raw, expected) => {
+    expect(sanitizeOtp(raw)).toBe(expected);
+  });
+
+  it('accepts exactly six digits', () => {
+    expect(validateOtpCode('482931')).toBeNull();
+    expect(validateOtpCode(' 482931 ')).toBeNull();
+  });
+
+  it.each(['', '   ', '48293', '4829311', '48a931', '482 931'])('refuses %j', (code) => {
+    expect(validateOtpCode(code)).toBe('Enter the 6-digit code from your email');
+  });
+});
+
+describe('validateServiceRadius', () => {
+  it('leaves an empty radius alone, so the stored value is kept', () => {
+    expect(validateServiceRadius('')).toBeNull();
+    expect(validateServiceRadius('   ')).toBeNull();
+  });
+
+  it.each(['0.5', '1', '8', '25', '1000'])('accepts %s km', (km) => {
+    expect(validateServiceRadius(km)).toBeNull();
+  });
+
+  it.each(['0', '0.4', '1000.1', '1001', '5.', 'abc', '-3'])('refuses %s km', (km) => {
+    expect(validateServiceRadius(km)).toBe('Enter a service radius from 0.5 to 1000 km');
+  });
+});

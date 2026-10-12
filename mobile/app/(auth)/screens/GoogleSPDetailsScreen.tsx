@@ -55,11 +55,13 @@ interface ConsentCheckboxProps {
   checked: boolean;
   onPress: () => void;
   label: React.ReactNode;
+  /** The plain sentence the checkbox is read as, since the label above has links in it. */
+  accessibilityName: string;
   error?: string;
   testID?: string;
 }
 
-function ConsentCheckbox({ checked, onPress, label, error, testID }: ConsentCheckboxProps) {
+function ConsentCheckbox({ checked, onPress, label, accessibilityName, error, testID }: ConsentCheckboxProps) {
   const { C, styles, V6Colors } = useThemedStyles(createThemedStyles);
   return (
     <View style={styles.consentItem}>
@@ -69,12 +71,15 @@ function ConsentCheckbox({ checked, onPress, label, error, testID }: ConsentChec
           style={[styles.checkbox, checked && styles.checkboxChecked]}
           onPress={onPress}
           activeOpacity={0.7}
+          accessibilityRole="checkbox"
+          accessibilityLabel={accessibilityName}
+          accessibilityState={{ checked }}
         >
           {checked ? <Check size={14} color={C.onPrimary} /> : null}
         </Tap>
         <Text style={styles.consentText}>{label}</Text>
       </View>
-      {!!error && <Text style={styles.fieldError}>{error}</Text>}
+      {!!error && <Text style={styles.fieldError} accessibilityLiveRegion="polite">{error}</Text>}
     </View>
   );
 }
@@ -173,7 +178,7 @@ export default function GoogleSPDetailsScreen({
         >
           {/* Back button */}
           <View style={styles.topRow}>
-            <Tap style={styles.backBtn} onPress={onBack} activeOpacity={0.8}>
+            <Tap style={styles.backBtn} onPress={onBack} hitSlop={4} activeOpacity={0.8} accessibilityRole="button" accessibilityLabel="Back">
               <ArrowLeft size={22} color={C.onPrimary} />
             </Tap>
           </View>
@@ -235,7 +240,7 @@ export default function GoogleSPDetailsScreen({
                 </View>
               )}
               {!!fieldErrors.category && (
-                <Text style={styles.fieldError}>{fieldErrors.category}</Text>
+                <Text style={styles.fieldError} accessibilityLiveRegion="polite">{fieldErrors.category}</Text>
               )}
             </View>
 
@@ -244,7 +249,7 @@ export default function GoogleSPDetailsScreen({
               <Text style={styles.consentSectionTitle}>Consents & Agreements</Text>
 
               <ConsentCheckbox
-                testID="chk-gsp-terms"
+                testID="chk-gsp-terms" accessibilityName="I have read and agree to the Terms and Conditions"
                 checked={termsAccepted}
                 onPress={() => {
                   if (!termsAccepted) setTermsMode('terms');
@@ -263,7 +268,7 @@ export default function GoogleSPDetailsScreen({
               />
 
               <ConsentCheckbox
-                testID="chk-gsp-privacy"
+                testID="chk-gsp-privacy" accessibilityName="I have read and agree to the Privacy Policy"
                 checked={privacyAccepted}
                 onPress={() => {
                   if (!privacyAccepted) setTermsMode('privacy');
@@ -282,7 +287,7 @@ export default function GoogleSPDetailsScreen({
               />
 
               <ConsentCheckbox
-                testID="chk-gsp-data"
+                testID="chk-gsp-data" accessibilityName="I consent to the collection and use of my personal data"
                 checked={dataCollectionAccepted}
                 onPress={() => setDataCollectionAccepted((v) => !v)}
                 label={
