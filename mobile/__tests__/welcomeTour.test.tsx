@@ -88,13 +88,22 @@ jest.mock('../app/(homeowner)/screens/HOHomeScreen', () => {
   };
 });
 
-// A provider's Home, reduced to a line of text. The tour's tabs come from the App's own tab bar.
+// A provider's Home, reduced to a line of text. The tour's tabs come from the App's own tab bar. Its setup card
+// is the tour's first step for an unverified provider, so the card registers the home.setup anchor, as the real one does.
 jest.mock('../app/(provider)/screens/SPHomeScreen', () => {
   const React = require('react');
   const { Text, View: RNView } = require('react-native');
   return {
     __esModule: true,
-    default: () => React.createElement(RNView, { testID: 'provider-home-stand-in' }, React.createElement(Text, null, 'Provider home')),
+    default: () => {
+      const { useTourAnchor } = require('../src/components/tour');
+      const setupTour = useTourAnchor('home.setup', true);
+      return React.createElement(
+        RNView,
+        { testID: 'provider-home-stand-in', ...setupTour },
+        React.createElement(Text, null, 'Provider home'),
+      );
+    },
   };
 });
 
