@@ -81,12 +81,12 @@ describe('tourSteps', () => {
     expect(tourSteps('provider', true).map((step) => step.anchorId)).toEqual(tourSteps('provider').map((step) => step.anchorId));
   });
 
-  it('starts an unverified provider at the setup step on the Feed tab, then the work, wallet and profile tabs', () => {
+  it('starts an unverified provider at the setup panel on Home, then the work, wallet and profile tabs', () => {
     const steps = tourSteps('provider', false);
 
-    expect(steps.map((step) => step.anchorId)).toEqual(['tab.Dashboard', 'tab.work', 'tab.Wallet', 'tab.Profile']);
+    expect(steps.map((step) => step.anchorId)).toEqual(['home.setup', 'tab.work', 'tab.Wallet', 'tab.Profile']);
     expect(steps[0]).toEqual({
-      anchorId: 'tab.Dashboard',
+      anchorId: 'home.setup',
       title: 'Finish setting up',
       body: 'Add your details and ID so clients can find you.',
     });
@@ -97,7 +97,7 @@ describe('tourSteps', () => {
   it('never points an unverified provider at a Home control that only a verified provider has', () => {
     const anchors = tourSteps('provider', false).map((step) => step.anchorId);
 
-    expect(anchors.filter((anchorId) => anchorId.startsWith('home.'))).toEqual([]);
+    expect(anchors.filter((anchorId) => anchorId.startsWith('home.'))).toEqual(['home.setup']);
   });
 
   it('describes withdrawals only as GCash or bank, the two rails the app offers', () => {

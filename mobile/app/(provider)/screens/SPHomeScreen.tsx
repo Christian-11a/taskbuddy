@@ -45,7 +45,7 @@ import { useHeaderTop } from '../../../src/hooks/useHeaderTop';
 import { SPScreen } from '../../../src/types/navigation';
 
 import { useAuth } from '../../../src/context/AuthContext';
-import { useTourAnchor } from '../../../src/components/tour';
+import { useTourAnchor, type TourAnchor } from '../../../src/components/tour';
 import TourOfferCard from '../../../src/components/tour/TourOfferCard';
 import { useAsyncData } from '../../../src/hooks/useAsyncData';
 import { api, type Job } from '../../../src/lib/api';
@@ -133,11 +133,12 @@ function heroLine(job: Job, when: Date | null): string {
  * segments, one per step), the checklist with its next-step button, and the
  * note on where jobs will appear.
  */
-function SetupPanel({ steps, verifyState, categoryName, onStep }: {
+function SetupPanel({ steps, verifyState, categoryName, onStep, setupTour }: {
   steps: SetupStep[];
   verifyState: VerifyState;
   categoryName: string | null;
   onStep: (id: SetupStepId) => void;
+  setupTour: TourAnchor;
 }) {
   const { Colors, styles } = useThemedStyles(createThemedStyles);
   const { done, total } = setupProgress(steps);
@@ -145,7 +146,7 @@ function SetupPanel({ steps, verifyState, categoryName, onStep }: {
   const copy = VERIFY_HERO[verifyState];
   return (
     <>
-      <View testID="setup-hero" style={styles.heroCard}>
+      <View testID="setup-hero" {...setupTour} style={styles.heroCard}>
         <View style={styles.heroChip}>
           <Text style={styles.heroChipText}>{`Finish setting up · ${done} of ${total}`}</Text>
         </View>
@@ -257,6 +258,7 @@ export default function SPHomeScreen({ onNavigate, tourOffer }: SPHomeScreenProp
   // so until then they are not registered and their tour steps are passed over at once.
   const availabilityTour = useTourAnchor('home.availability', isVerified);
   const feedTour = useTourAnchor('home.feed', isVerified);
+  const setupTour = useTourAnchor('home.setup', !isVerified);
   const radiusKm = providerProfile?.service_radius_km ?? DEFAULT_RADIUS_KM;
 
   // Verification is approved async by a webhook while the app may be
@@ -420,6 +422,7 @@ export default function SPHomeScreen({ onNavigate, tourOffer }: SPHomeScreenProp
               verifyState={verifyState}
               categoryName={providerProfile?.service_categories?.name ?? null}
               onStep={(id) => onNavigate(id === 'verify' ? 'Verification' : 'Edit Profile')}
+              setupTour={setupTour}
             />
           ) : (
             <>
