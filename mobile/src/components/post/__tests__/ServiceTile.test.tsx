@@ -2,6 +2,7 @@ import React from 'react';
 import { Wrench } from 'lucide-react-native';
 import { fireEvent, render, screen } from '@testing-library/react-native';
 import ServiceTile from '../ServiceTile';
+import NailPolishIcon from '../../ui/icons/NailPolishIcon';
 
 it('is one choice that reports its name and whether it is picked', () => {
   const { rerender } = render(
@@ -25,6 +26,11 @@ it('shows the short line under the name when the category has one', () => {
     <ServiceTile name="Plumbing" detail="Pipes, fixtures & repairs" icon={Wrench} selected={false} onSelect={jest.fn()} />,
   );
   expect(screen.getByText('Pipes, fixtures & repairs')).toBeTruthy();
+});
+
+it('draws a custom icon the same way as a Lucide one', () => {
+  render(<ServiceTile name="Manicure" icon={NailPolishIcon} selected={false} onSelect={jest.fn()} />);
+  expect(screen.UNSAFE_getByProps({ viewBox: '0 0 24 24' })).toBeTruthy();
 });
 
 it('shows only the name when there is no short line', () => {

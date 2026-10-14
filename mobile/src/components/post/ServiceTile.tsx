@@ -1,14 +1,15 @@
 import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
-import { Check, type LucideIcon } from 'lucide-react-native';
+import { Check } from 'lucide-react-native';
 import { useThemedStyles, type Palette } from '../../context/ThemeContext';
 import Tap from '../ui/Tap';
+import type { IconComponent } from '../ui/icons/types';
 
 export type ServiceTileProps = {
   name: string;
   /** A short line under the name, shown only when the category has one. */
   detail?: string;
-  icon: LucideIcon;
+  icon: IconComponent;
   selected: boolean;
   onSelect: () => void;
 };
