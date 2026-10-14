@@ -23,6 +23,14 @@ function chooseRole(card: typeof HOMEOWNER_CARD | typeof PROVIDER_CARD) {
   fireEvent.press(screen.getByText('Continue'));
 }
 
+/** Scrolls the open document to its end (400 dp viewport over 1400 dp of text), then taps its I agree. */
+function agreeTo(doc: 'Terms & Conditions' | 'Privacy Policy') {
+  fireEvent.scroll(screen.getByTestId('terms-body'), {
+    nativeEvent: { contentOffset: { y: 1000 }, layoutMeasurement: { height: 400 }, contentSize: { height: 1400 } },
+  });
+  fireEvent.press(screen.getByText(`I agree to the ${doc}`));
+}
+
 describe('RegisterScreen — role step', () => {
   beforeEach(() => {
     (useAuth as jest.Mock).mockReturnValue({ verifyEmailOtp: jest.fn() });
@@ -192,10 +200,8 @@ it.each([
   fireEvent.changeText(screen.getByTestId('input-password'), 'password123');
   fireEvent.changeText(screen.getByTestId('input-confirm-password'), 'password123');
   fireEvent.press(screen.getByTestId('chk-terms'));
-  fireEvent.press(screen.getByText('I agree to the Terms & Conditions'));
-  fireEvent.press(screen.getByTestId('chk-terms'));
-  expect(screen.getByText('Your Rights (RA 10173)')).toBeTruthy();
-  fireEvent.press(screen.getByText('I agree to the Privacy Policy'));
+  agreeTo('Terms & Conditions');
+  agreeTo('Privacy Policy');
   fireEvent.press(screen.getByTestId('chk-data-collection'));
   expect(screen.queryByTestId('chk-biometric')).toBeNull();
   await act(async () => fireEvent.press(screen.getByTestId('btn-create-account')));
@@ -239,15 +245,32 @@ describe('RegisterScreen — create account', () => {
     expect(termsRow().props.accessibilityState).toMatchObject({ checked: false });
 
     fireEvent.press(screen.getByTestId('chk-terms'));
-    fireEvent.press(screen.getByText('I agree to the Terms & Conditions'));
+    expect(screen.getByRole('tab', { name: 'Terms' }).props.accessibilityState).toMatchObject({ selected: true });
+    agreeTo('Terms & Conditions');
+    expect(screen.getByRole('tab', { name: 'Terms ✓' })).toBeTruthy();
+    expect(screen.getByRole('tab', { name: 'Privacy' }).props.accessibilityState).toMatchObject({ selected: true });
     expect(termsRow().props.accessibilityState).toMatchObject({ checked: false });
 
-    fireEvent.press(screen.getByTestId('chk-terms'));
-    fireEvent.press(screen.getByText('I agree to the Privacy Policy'));
+    agreeTo('Privacy Policy');
     expect(termsRow().props.accessibilityState).toMatchObject({ checked: true });
 
     fireEvent.press(screen.getByTestId('chk-terms'));
     expect(termsRow().props.accessibilityState).toMatchObject({ checked: false });
+  });
+
+  it('a close after accepting one document keeps it, and the next tick opens on the other', () => {
+    render(<RegisterScreen {...baseProps} />);
+    fireEvent.press(screen.getByText('Continue'));
+
+    fireEvent.press(screen.getByTestId('chk-terms'));
+    agreeTo('Terms & Conditions');
+    fireEvent.press(screen.getByRole('button', { name: 'Close' }));
+    expect(screen.getByRole('checkbox', { name: 'I agree to the Terms and Privacy Policy' }).props.accessibilityState)
+      .toMatchObject({ checked: false });
+
+    fireEvent.press(screen.getByTestId('chk-terms'));
+    expect(screen.getByRole('tab', { name: 'Privacy' }).props.accessibilityState).toMatchObject({ selected: true });
+    expect(screen.getByRole('tab', { name: 'Terms ✓' })).toBeTruthy();
   });
 
   it('will not create the account until the consents are ticked', async () => {
@@ -295,9 +318,8 @@ describe('RegisterScreen — name and email are checked', () => {
   /** Ticks the three consents the same way the registration test does. */
   function tickConsents() {
     fireEvent.press(screen.getByTestId('chk-terms'));
-    fireEvent.press(screen.getByText('I agree to the Terms & Conditions'));
-    fireEvent.press(screen.getByTestId('chk-terms'));
-    fireEvent.press(screen.getByText('I agree to the Privacy Policy'));
+    agreeTo('Terms & Conditions');
+    agreeTo('Privacy Policy');
     fireEvent.press(screen.getByTestId('chk-data-collection'));
   }
 
@@ -427,9 +449,8 @@ describe('RegisterScreen — the email code', () => {
     fireEvent.changeText(screen.getByTestId('input-password'), 'password123');
     fireEvent.changeText(screen.getByTestId('input-confirm-password'), 'password123');
     fireEvent.press(screen.getByTestId('chk-terms'));
-    fireEvent.press(screen.getByText('I agree to the Terms & Conditions'));
-    fireEvent.press(screen.getByTestId('chk-terms'));
-    fireEvent.press(screen.getByText('I agree to the Privacy Policy'));
+    agreeTo('Terms & Conditions');
+    agreeTo('Privacy Policy');
     fireEvent.press(screen.getByTestId('chk-data-collection'));
     await act(async () => fireEvent.press(screen.getByTestId('btn-create-account')));
 

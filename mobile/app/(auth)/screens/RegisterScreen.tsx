@@ -549,10 +549,11 @@ export default function RegisterScreen({ onRegister, onLogin, onGoogleSignIn }: 
       <TermsAndConditions
         visible={termsMode !== null}
         mode={termsMode ?? 'terms'}
+        accepted={{ terms: termsAccepted, privacy: privacyAccepted }}
         onBack={() => setTermsMode(null)}
-        onAccept={() => {
-          if (termsMode === 'terms') setTermsAccepted(true);
-          else if (termsMode === 'privacy') setPrivacyAccepted(true);
+        onAccept={(doc) => {
+          if (doc === 'terms') setTermsAccepted(true);
+          else setPrivacyAccepted(true);
         }}
       />
           {/* Top bar: back returns to the role step */}
@@ -699,9 +700,9 @@ export default function RegisterScreen({ onRegister, onLogin, onGoogleSignIn }: 
             <View onLayout={locateField('consents')} style={styles.consentSection}>
               <Text style={styles.consentSectionTitle}>Consents & Agreements</Text>
 
-              {/* Terms + Privacy: one row. Ticking it opens the first document
-                  that is not accepted yet; each document still needs its own
-                  "I agree" at the bottom. Unticking clears both. */}
+              {/* Terms + Privacy: one row. Ticking it opens the pop-up on the first
+                  document that is not accepted yet; both are accepted in the pop-up,
+                  and the row ticks once both are. Unticking clears both. */}
               <ConsentCheckbox
                 testID="chk-terms"
                 accessibilityLabel="I agree to the Terms and Privacy Policy"
@@ -710,10 +711,8 @@ export default function RegisterScreen({ onRegister, onLogin, onGoogleSignIn }: 
                   if (termsAccepted && privacyAccepted) {
                     setTermsAccepted(false);
                     setPrivacyAccepted(false);
-                  } else if (!termsAccepted) {
-                    setTermsMode('terms');
                   } else {
-                    setTermsMode('privacy');
+                    setTermsMode(termsAccepted ? 'privacy' : 'terms');
                   }
                 }}
                 label={

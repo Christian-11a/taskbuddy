@@ -6,11 +6,15 @@ it('completes Google provider onboarding with the same three signup consents', a
   render(<GoogleSPDetailsScreen onBack={jest.fn()} onComplete={complete} />);
   fireEvent.press(screen.getByText('Select your skill…'));
   fireEvent.press(screen.getByText('Plumbing'));
-  fireEvent.press(screen.getByTestId('chk-gsp-terms'));
-  fireEvent.press(screen.getByText('I agree to the Terms & Conditions'));
-  fireEvent.press(screen.getByTestId('chk-gsp-privacy'));
-  expect(screen.getByText('Your Rights (RA 10173)')).toBeTruthy();
-  fireEvent.press(screen.getByText('I agree to the Privacy Policy'));
+  fireEvent.press(screen.getByTestId('chk-gsp-terms-privacy'));
+  for (const doc of ['Terms & Conditions', 'Privacy Policy']) {
+    fireEvent.scroll(screen.getByTestId('terms-body'), {
+      nativeEvent: { contentOffset: { y: 1000 }, layoutMeasurement: { height: 400 }, contentSize: { height: 1400 } },
+    });
+    fireEvent.press(screen.getByText(`I agree to the ${doc}`));
+  }
+  expect(screen.getByRole('checkbox', { name: /Terms and Conditions and the Privacy Policy/ }).props.accessibilityState)
+    .toMatchObject({ checked: true });
   fireEvent.press(screen.getByTestId('chk-gsp-data'));
   expect(screen.queryByTestId('chk-gsp-biometric')).toBeNull();
   await act(async () => fireEvent.press(screen.getByText('Complete Registration')));
