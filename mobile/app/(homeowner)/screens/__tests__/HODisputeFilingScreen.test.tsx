@@ -156,3 +156,22 @@ it('sends no details when they are only spaces, since the details are optional',
 
   await waitFor(() => expect(api.raiseDispute).toHaveBeenCalledWith('job-1', { reason: 'Work quality issue', details: undefined }));
 });
+
+describe('HODisputeFilingScreen — the job failing to load', () => {
+  it('a job that fails to load shows Try again, keeps Send report disabled, and Try again loads the job', async () => {
+    (api.getJob as jest.Mock).mockRejectedValueOnce(new Error('Job unavailable')).mockResolvedValue(job);
+    renderFiling();
+
+    const card = await screen.findByTestId('error-card');
+    expect(within(card).getByText("Couldn't load this job")).toBeTruthy();
+    expect(screen.queryByText('Loading job…')).toBeNull();
+    fireEvent.press(screen.getByRole('radio', { name: 'Work not completed' }));
+    expect(sendButton().props.accessibilityState?.disabled).toBe(true);
+
+    fireEvent.press(within(card).getByRole('button', { name: 'Try again' }));
+
+    expect(await screen.findByText('Plumbing: Fix leaking faucet · TaskBuddyProvider')).toBeTruthy();
+    expect(screen.queryByTestId('error-card')).toBeNull();
+    expect(sendButton().props.accessibilityState?.disabled).toBe(false);
+  });
+});

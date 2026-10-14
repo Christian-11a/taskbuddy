@@ -17,6 +17,7 @@ import RadioRow from '../../../src/components/ui/RadioRow';
 import TextField from '../../../src/components/ui/TextField';
 import { ArrowLeft } from 'lucide-react-native';
 import ConfirmationModal from '../../../src/components/ConfirmationModal';
+import LoadErrorCard from '../../../src/components/ui/LoadErrorCard';
 import { Spacing, V6Radii, V6Shadows } from '../../../src/constants/theme';
 
 import { api } from '../../../src/lib/api';
@@ -52,12 +53,14 @@ export default function HODisputeFilingScreen({ jobId, onBack, onSubmitted }: HO
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const { data: job } = useAsyncData(
+  const { data: job, error: jobError, reload: reloadJob } = useAsyncData(
     useCallback(
       () => (jobId ? api.getJob(jobId) : Promise.resolve(null)),
       [jobId],
     ),
   );
+  // A job that failed to load says so, with Try again, and the report cannot be sent until it has loaded.
+  const jobFailed = !!jobError && !job;
 
   const submitDispute = async () => {
     if (!jobId || !reason) return;
@@ -78,7 +81,7 @@ export default function HODisputeFilingScreen({ jobId, onBack, onSubmitted }: HO
   };
 
   const chip = reportChipText(job, isProvider) ?? 'Loading job…';
-  const canSend = !!reason && !!jobId && !submitting;
+  const canSend = !!reason && !!jobId && !!job && !submitting;
 
   return (
     <View style={styles.screen}>
@@ -99,9 +102,13 @@ export default function HODisputeFilingScreen({ jobId, onBack, onSubmitted }: HO
       {/* Keeps the description box and Send report above the keyboard (K2). */}
       <KeyboardAvoidingView style={styles.flex} behavior="padding">
         <KeyboardAwareScrollView keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag" contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-          <View style={styles.chip}>
-            <Text style={styles.chipText} numberOfLines={2}>{chip}</Text>
-          </View>
+          {jobFailed ? (
+            <LoadErrorCard title="Couldn't load this job" message={jobError} onRetry={reloadJob} />
+          ) : (
+            <View style={styles.chip}>
+              <Text style={styles.chipText} numberOfLines={2}>{chip}</Text>
+            </View>
+          )}
 
           <View style={styles.section}>
             <Text style={styles.sectionTitle} accessibilityRole="header">What went wrong?</Text>

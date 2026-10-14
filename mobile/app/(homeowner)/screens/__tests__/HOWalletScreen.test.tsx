@@ -1072,3 +1072,42 @@ it('a saved wallet of the wrong shape is ignored, and the screen loads as it doe
 
   await expectSavedCopyIgnored('ho-wallet', {}, () => render(<HOWalletScreen />));
 });
+
+describe('HOWalletScreen — withdrawals that fail to load', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    clearAsyncDataCache();
+    (api.wallet as jest.Mock).mockResolvedValue({ balance: 500, available: 500, held: 0 });
+  });
+
+  it('a failed withdrawals request says so under the history, and Try again asks for them again', async () => {
+    (api.withdrawals as jest.Mock).mockRejectedValueOnce(new Error('Server down')).mockResolvedValue([]);
+    render(<HOWalletScreen />);
+
+    expect(await screen.findByText("Couldn't load your withdrawals")).toBeTruthy();
+    expect(screen.queryByText('Recent withdrawals')).toBeNull();
+
+    fireEvent.press(within(screen.getByTestId('error-card')).getByRole('button', { name: 'Try again' }));
+
+    await waitFor(() => expect(api.withdrawals).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(screen.queryByText("Couldn't load your withdrawals")).toBeNull());
+  });
+
+  it('a refresh that fails keeps the withdrawals already on screen, with no error card', async () => {
+    (api.withdrawals as jest.Mock)
+      .mockResolvedValueOnce([
+        { id: 'w1', title: 'Cash out to GCash', status: 'completed', amount: 100, created_at: '2026-10-01T00:00:00Z', review_note: null },
+      ])
+      .mockRejectedValue(new Error('Server down'));
+    render(<HOWalletScreen />);
+    expect(await screen.findByText('Cash out to GCash')).toBeTruthy();
+
+    await act(async () => {
+      screen.getByTestId('wallet-scroll').props.refreshControl.props.onRefresh();
+    });
+
+    await waitFor(() => expect(api.withdrawals).toHaveBeenCalledTimes(2));
+    expect(screen.getByText('Cash out to GCash')).toBeTruthy();
+    expect(screen.queryByText("Couldn't load your withdrawals")).toBeNull();
+  });
+});
