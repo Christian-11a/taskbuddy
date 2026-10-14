@@ -46,6 +46,7 @@ jest.mock('expo-web-browser', () => ({
 }));
 
 const PROVIDER_PROFILE = { category_id: 3, bio: 'Plumber, eight years', is_verified: false };
+const ACCOUNT_PROFILE = { address: 'Arturo Tanco Drive, Lipa' };
 
 const PENDING = {
   id: 'v1',
@@ -66,7 +67,7 @@ function renderScreen(props: { onBack?: () => void; onVerified?: () => Promise<v
 beforeEach(() => {
   jest.clearAllMocks();
   clearAsyncDataCache();
-  (useAuth as jest.Mock).mockReturnValue({ providerProfile: PROVIDER_PROFILE });
+  (useAuth as jest.Mock).mockReturnValue({ profile: ACCOUNT_PROFILE, providerProfile: PROVIDER_PROFILE });
   (api.myVerification as jest.Mock).mockResolvedValue(null);
   (requestAppPermission as jest.Mock).mockResolvedValue(true);
 });
@@ -85,16 +86,37 @@ describe('SPVerificationScreen — before you start', () => {
     expect(screen.getByLabelText('Step 4, Review and send. Then a short secure check with Stripe')).toBeTruthy();
     expect(screen.getByLabelText('Service picked: done')).toBeTruthy();
     expect(screen.getByLabelText('Bio added: done')).toBeTruthy();
+    expect(screen.getByLabelText('Address added: done')).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Start' })).not.toBeDisabled();
   });
 
   it('will not start while the service profile is missing, and says why', async () => {
-    (useAuth as jest.Mock).mockReturnValue({ providerProfile: null });
+    (useAuth as jest.Mock).mockReturnValue({ profile: ACCOUNT_PROFILE, providerProfile: null });
     renderScreen();
 
-    expect(await screen.findByText('Finish your profile first')).toBeTruthy();
+    expect(await screen.findByText('Add your bio first')).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Start' })).toBeDisabled();
     expect(screen.getByLabelText('Service picked: not done yet')).toBeTruthy();
+    expect(screen.getByLabelText('Bio added: not done yet')).toBeTruthy();
+  });
+
+  it('will not start without an address, and says so, even with a service profile and bio', async () => {
+    (useAuth as jest.Mock).mockReturnValue({ profile: { address: '  ' }, providerProfile: PROVIDER_PROFILE });
+    renderScreen();
+
+    expect(await screen.findByText('Add your address first')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Start' })).toBeDisabled();
+    expect(screen.getByLabelText('Address added: not done yet')).toBeTruthy();
+    expect(screen.getByLabelText('Bio added: done')).toBeTruthy();
+    expect(screen.getByText('Clients find you by your address, and your bio tells them what you do best.')).toBeTruthy();
+  });
+
+  it('asks for the address and the bio together when both are missing', async () => {
+    (useAuth as jest.Mock).mockReturnValue({ profile: { address: null }, providerProfile: { ...PROVIDER_PROFILE, bio: '' } });
+    renderScreen();
+
+    expect(await screen.findByText('Add your address and bio first')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Start' })).toBeDisabled();
   });
 
   it('explains how the ID photos are protected in a sheet', async () => {

@@ -84,14 +84,30 @@ describe('SPProfileScreen — verification status', () => {
     expect(screen.getByText('Not verified')).toBeTruthy();
   });
 
-  it('Get verified opens Verification while unverified', () => {
-    mockAuth(false);
+  it('Get verified opens Verification once the address and bio are saved', () => {
+    mockAuthWith({
+      profile: { address: 'Arturo Tanco Drive, Lipa' },
+      providerProfile: { is_verified: false, bio: 'Plumber for eight years' },
+    });
     const onNavigate = jest.fn();
     render(<SPProfileScreen onNavigate={onNavigate} onLogout={jest.fn()} />);
 
     fireEvent.press(screen.getByRole('button', { name: 'Get verified' }));
 
     expect(onNavigate).toHaveBeenCalledWith('Verification');
+  });
+
+  it.each([
+    ['the address', { address: null }, { bio: 'Plumber for eight years' }],
+    ['the bio', { address: 'Arturo Tanco Drive, Lipa' }, { bio: '   ' }],
+  ])('Get verified opens Edit Profile while %s is missing', (_, profile, providerProfile) => {
+    mockAuthWith({ profile, providerProfile: { is_verified: false, ...providerProfile } });
+    const onNavigate = jest.fn();
+    render(<SPProfileScreen onNavigate={onNavigate} onLogout={jest.fn()} />);
+
+    fireEvent.press(screen.getByRole('button', { name: 'Get verified' }));
+
+    expect(onNavigate).toHaveBeenCalledWith('Edit Profile');
   });
 
   it('Get verified opens Edit Profile when there is no service profile yet, as verification cannot start without one', () => {

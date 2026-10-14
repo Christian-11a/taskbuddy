@@ -65,6 +65,7 @@ import { Spacing } from '../../../src/constants/theme';
 import { useAuth } from '../../../src/context/AuthContext';
 import { useHeaderTop } from '../../../src/hooks/useHeaderTop';
 import { requestAppPermission } from '../../../src/lib/permissions';
+import { missingProfileSteps, profileReadyToVerify, type MissingProfileStep } from '../../../src/lib/verifyReady';
 import {
   SESSION_STAGE,
   UPLOAD_STAGE,
@@ -120,6 +121,12 @@ const HOW_TO_FIX = [
   'Take the selfie without glasses, a hat or a face mask',
 ];
 
+/** The notice's title, worded for the profile steps still missing. */
+function profileNoticeTitleFor(missing: readonly MissingProfileStep[]): string {
+  if (missing.length > 1) return 'Add your address and bio first';
+  return missing[0] === 'address' ? 'Add your address first' : 'Add your bio first';
+}
+
 interface SPVerificationScreenProps {
   onBack: () => void;
   /**
@@ -133,10 +140,15 @@ interface SPVerificationScreenProps {
 export default function SPVerificationScreen({ onBack, onVerified }: SPVerificationScreenProps) {
   const { Colors, V6Colors, styles } = useThemedStyles(createThemedStyles);
   const headerTop = useHeaderTop();
-  // The API refuses a verification without a service profile; say so up
-  // front instead of after all three steps.
-  const { providerProfile } = useAuth();
-  const profileIncomplete = !providerProfile;
+  // The API refuses a verification without a service profile, an address or
+  // a bio; say so up front instead of after all three steps.
+  const { profile, providerProfile } = useAuth();
+  const profileIncomplete = !profileReadyToVerify(profile, providerProfile);
+  const profileNoticeTitle = profileNoticeTitleFor(missingProfileSteps(profile, providerProfile));
+  const profileItems = [
+    ...profileChecks(providerProfile),
+    { label: 'Address added', done: (profile?.address ?? '').trim() !== '' },
+  ];
   const [step, setStep] = useState(1);
   /** False until the provider taps Start on the intro (or Try again after a rejection). */
   const [started, setStarted] = useState(false);
@@ -469,13 +481,13 @@ export default function SPVerificationScreen({ onBack, onVerified }: SPVerificat
             </Text>
             {profileIncomplete && (
               <View style={styles.profileNotice}>
-                <Text style={styles.profileNoticeTitle}>Finish your profile first</Text>
+                <Text style={styles.profileNoticeTitle}>{profileNoticeTitle}</Text>
                 <Text style={styles.profileNoticeBody}>
-                  Pick your service and add a bio in Profile → Edit Profile. Verification can't be sent until they're saved.
+                  Clients find you by your address, and your bio tells them what you do best.
                 </Text>
               </View>
             )}
-            <PrepCard steps={PREP_STEPS} profileItems={profileChecks(providerProfile)} />
+            <PrepCard steps={PREP_STEPS} profileItems={profileItems} />
             <Tap
               style={styles.protectLink}
               onPress={() => setProtectOpen(true)}
@@ -504,9 +516,9 @@ export default function SPVerificationScreen({ onBack, onVerified }: SPVerificat
             {/* ── Step 1 · Government ID ─────────────────────────── */}
             {step === 1 && profileIncomplete && (
               <View style={styles.profileNotice}>
-                <Text style={styles.profileNoticeTitle}>Finish your profile first</Text>
+                <Text style={styles.profileNoticeTitle}>{profileNoticeTitle}</Text>
                 <Text style={styles.profileNoticeBody}>
-                  Pick your service and add a bio in Profile → Edit Profile. Verification can't be sent until they're saved.
+                  Clients find you by your address, and your bio tells them what you do best.
                 </Text>
               </View>
             )}
