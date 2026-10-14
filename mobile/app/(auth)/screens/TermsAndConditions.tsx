@@ -119,7 +119,6 @@ export default function TermsAndConditions({
   }, [visible, mode]);
 
   const settle = (doc: Doc, offset: number, layout: number, contentHeight: number) => {
-    console.log('[terms-scroll]', doc, 'offset', offset, 'layout', layout, 'content', contentHeight, 'read', offset + layout >= contentHeight - END_SLOP);
     if (layout <= 0 || contentHeight <= 0) return;
     if (offset + layout < contentHeight - END_SLOP) return;
     setRead((r) => (r[doc] ? r : { ...r, [doc]: true }));
