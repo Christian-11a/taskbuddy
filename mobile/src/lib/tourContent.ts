@@ -100,14 +100,14 @@ export function tourSteps(role: WelcomeRole, verified = true): TourStep[] {
 
 /**
  * The finish card's title, checklist and buttons. A provider's checklist and
- * main action follow their real verification status and whether they have a
- * service profile yet; nothing here is a number.
+ * main action follow their real verification status and whether their profile
+ * is ready to verify (address and bio); nothing here is a number.
  */
 export function finishCard({ role, verified, firstName, hasServiceProfile = true }: {
   role: WelcomeRole;
   verified: boolean;
   firstName: string | null | undefined;
-  /** A provider's service profile exists. Without one, verification cannot be sent, so the first step is the profile. */
+  /** The profile is ready to verify (address and bio). Until it is, verification waits, so the first step is the profile. */
   hasServiceProfile?: boolean;
 }): FinishCard {
   const title = `You're all set, ${firstNameFrom(firstName)}`;
@@ -131,10 +131,10 @@ export function finishCard({ role, verified, firstName, hasServiceProfile = true
       title,
       checklist: [
         { label: 'Account created', state: 'done' },
-        { label: 'Set up your profile', state: 'next' },
+        { label: 'Add your address and bio', state: 'next' },
         { label: 'Get verified', state: 'later' },
       ],
-      primary: { label: 'Set up my profile', action: 'setupProfile' },
+      primary: { label: 'Finish my profile', action: 'setupProfile' },
       secondary: lookAround,
     };
   }

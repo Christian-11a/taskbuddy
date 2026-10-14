@@ -26,7 +26,7 @@ type TourFinishCardProps = {
   role: WelcomeRole;
   /** A provider's real verification status; the client ignores it. */
   verified: boolean;
-  /** Whether a provider has a service profile yet; the client ignores it. */
+  /** Whether a provider's profile is ready to verify (address and bio); the client ignores it. */
   hasServiceProfile?: boolean;
   firstName: string;
   /** A brand-new account's first walkthrough: confetti and one light tap. Never on a replay. */

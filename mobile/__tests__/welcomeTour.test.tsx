@@ -107,7 +107,7 @@ jest.mock('../app/(provider)/screens/SPHomeScreen', () => {
   };
 });
 
-// A provider's profile setup, reduced to a line of text: the finish card's "Set up my profile" opens it.
+// A provider's profile setup, reduced to a line of text: the finish card's "Finish my profile" opens it.
 jest.mock('../app/(provider)/screens/SPEditProfileScreen', () => {
   const React = require('react');
   const { Text, View: RNView } = require('react-native');
@@ -263,11 +263,27 @@ describe('welcome tour — an unverified provider', () => {
     await tapThroughTour();
 
     expect(await screen.findByTestId('tour-finish')).toBeTruthy();
-    expect(screen.getByText('Set up your profile')).toBeTruthy();
+    expect(screen.getByText('Add your address and bio')).toBeTruthy();
     fireEvent.press(screen.getByTestId('tour-finish-primary'));
 
     expect(await screen.findByTestId('edit-profile-stand-in')).toBeTruthy();
     expect(screen.queryByTestId('tour-finish')).toBeNull();
+  }, 15000);
+
+  it('offers the Get verified step once the address and bio are saved', async () => {
+    Object.assign(mockAuthState, {
+      ...signedInProvider(),
+      profile: { ...PROFILE, address: 'Arturo Tanco Drive, Lipa' },
+      providerProfile: { bio: 'Plumber for eight years', is_verified: false },
+    });
+    render(<App />);
+    fireEvent.press(await screen.findByRole('button', { name: 'Show me around' }));
+    expect(await screen.findByText('Finish setting up')).toBeTruthy();
+    await tapThroughTour();
+
+    expect(await screen.findByTestId('tour-finish')).toBeTruthy();
+    expect(screen.queryByText('Add your address and bio')).toBeNull();
+    expect(screen.getByRole('button', { name: 'Get verified' })).toBeTruthy();
   }, 15000);
 });
 

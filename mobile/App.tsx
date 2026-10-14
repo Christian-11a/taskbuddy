@@ -108,6 +108,7 @@ import { api } from './src/lib/api';
 import { consumeLastNotificationTap, subscribeToNotificationTaps } from './src/lib/pushNotifications';
 import { resolveNotificationTarget } from './src/lib/notificationRouting';
 import { warmUpServer } from './src/lib/warmUp';
+import { profileReadyToVerify } from './src/lib/verifyReady';
 
 export const HOMEOWNER_TABS: readonly BottomNavItem<HOScreen>[] = [
   { key: 'Home', label: 'Home', icon: Home },
@@ -599,7 +600,7 @@ function AppFlow() {
     <TourFinishCard
       role={role}
       verified={isVerified}
-      hasServiceProfile={!!providerProfile}
+      hasServiceProfile={profileReadyToVerify(profile, providerProfile)}
       firstName={firstName}
       firstRun={tourFlow.firstRun}
       onAction={handleFinishAction}

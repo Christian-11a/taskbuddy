@@ -148,20 +148,20 @@ describe('finishCard', () => {
     });
   });
 
-  it('sends an unverified provider with no service profile to set the profile up first', () => {
+  it('sends an unverified provider whose profile is not ready to add the address and bio first', () => {
     expect(finishCard({ role: 'provider', verified: false, firstName: 'Ana', hasServiceProfile: false })).toEqual({
       title: "You're all set, Ana",
       checklist: [
         { label: 'Account created', state: 'done' },
-        { label: 'Set up your profile', state: 'next' },
+        { label: 'Add your address and bio', state: 'next' },
         { label: 'Get verified', state: 'later' },
       ],
-      primary: { label: 'Set up my profile', action: 'setupProfile' },
+      primary: { label: 'Finish my profile', action: 'setupProfile' },
       secondary: { label: 'Look around first', action: 'close' },
     });
   });
 
-  it('treats a provider with a service profile as before: verification comes first', () => {
+  it('treats a provider whose profile is ready as before: verification comes first', () => {
     expect(finishCard({ role: 'provider', verified: false, firstName: 'Ana', hasServiceProfile: true }).primary)
       .toEqual({ label: 'Get verified', action: 'getVerified' });
     expect(finishCard({ role: 'provider', verified: false, firstName: 'Ana' }).primary)
@@ -180,7 +180,7 @@ describe('finishCard', () => {
     });
   });
 
-  it('ignores the service profile for a verified provider and for a client', () => {
+  it('ignores the profile readiness for a verified provider and for a client', () => {
     expect(finishCard({ role: 'provider', verified: true, firstName: 'Ana', hasServiceProfile: false }).primary.action)
       .toBe('close');
     expect(finishCard({ role: 'homeowner', verified: false, firstName: 'Juan', hasServiceProfile: false }).primary.action)
