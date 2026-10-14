@@ -67,10 +67,22 @@ export function introCards(role: WelcomeRole, firstName: string | null | undefin
 /**
  * The four spotlight steps on the first screen of each role. The provider's
  * availability toggle and feed search exist only once the provider is
- * verified; a step whose control is not on screen is passed over.
+ * verified. Until then the setup panel on Home has no tour anchor, so an
+ * unverified provider's steps point at the tabs, which every provider has,
+ * starting with the Feed tab that holds the setup. A step whose control is not
+ * on screen is passed over.
  */
-export function tourSteps(role: WelcomeRole): TourStep[] {
+export function tourSteps(role: WelcomeRole, verified = true): TourStep[] {
   if (role === 'provider') {
+    if (!verified) {
+      return [
+        { anchorId: 'tab.Dashboard', title: 'Finish setting up', body: 'Add your details and ID so clients can find you.' },
+        { anchorId: 'tab.work', title: 'Your work', body: 'Offers, bookings and jobs in progress, all in one place.' },
+        // Withdrawals go to a GCash or bank account (the Withdraw sheet); no other payout rail is offered.
+        { anchorId: 'tab.Wallet', title: 'Your earnings', body: 'Withdraw to your GCash or bank account once money is released.' },
+        { anchorId: 'tab.Profile', title: 'Your profile', body: 'Keep your details, photo and services up to date.' },
+      ];
+    }
     return [
       { anchorId: 'home.availability', title: 'Be seen', body: 'Turn this on to get invited to jobs near you.' },
       { anchorId: 'home.feed', title: 'Open jobs near you', body: 'Open one and send a short, friendly offer.' },

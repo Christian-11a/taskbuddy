@@ -564,7 +564,7 @@ function AppFlow() {
   const onHome = showOnboarding === false && !!role && (role === 'homeowner' ? hoScreen === 'Home' : spScreen === 'Dashboard');
   useEffect(() => {
     if (tourFlow.phase !== 'waiting' || !onHome || !role) return;
-    const steps = tourSteps(role);
+    const steps = tourSteps(role, isVerified);
     const waitedFrom = Date.now();
     let timer: ReturnType<typeof setTimeout> | undefined;
     const check = () => {
@@ -585,7 +585,7 @@ function AppFlow() {
   useEffect(() => {
     if (tourFlow.phase !== 'touring' || !role) return;
     startTour({
-      steps: tourSteps(role),
+      steps: tourSteps(role, isVerified),
       onFinish: () => setTourFlow((flow) => nextTourFlow(flow, { type: 'tourFinished' })),
       onSkip: endTourFlow,
     });

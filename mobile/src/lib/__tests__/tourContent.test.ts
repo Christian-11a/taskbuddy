@@ -77,19 +77,46 @@ describe('tourSteps', () => {
     expect(steps[0]).toEqual({ anchorId: 'home.availability', title: 'Be seen', body: 'Turn this on to get invited to jobs near you.' });
   });
 
+  it('keeps the four Home steps for a verified provider, whether or not the flag is passed', () => {
+    expect(tourSteps('provider', true).map((step) => step.anchorId)).toEqual(tourSteps('provider').map((step) => step.anchorId));
+  });
+
+  it('starts an unverified provider at the setup step on the Feed tab, then the work, wallet and profile tabs', () => {
+    const steps = tourSteps('provider', false);
+
+    expect(steps.map((step) => step.anchorId)).toEqual(['tab.Dashboard', 'tab.work', 'tab.Wallet', 'tab.Profile']);
+    expect(steps[0]).toEqual({
+      anchorId: 'tab.Dashboard',
+      title: 'Finish setting up',
+      body: 'Add your details and ID so clients can find you.',
+    });
+    expect(steps[1].title).toBe('Your work');
+    expect(steps[2].title).toBe('Your earnings');
+  });
+
+  it('never points an unverified provider at a Home control that only a verified provider has', () => {
+    const anchors = tourSteps('provider', false).map((step) => step.anchorId);
+
+    expect(anchors.filter((anchorId) => anchorId.startsWith('home.'))).toEqual([]);
+  });
+
   it('describes withdrawals only as GCash or bank, the two rails the app offers', () => {
     const wallet = tourSteps('provider')[3];
 
     expect(wallet.body).toBe('Withdraw to your GCash or bank account once money is released.');
     expect(wallet.body).not.toMatch(/Maya/);
+    expect(tourSteps('provider', false)[2].body).toBe('Withdraw to your GCash or bank account once money is released.');
   });
 
   it('gives every step a title and a body', () => {
-    for (const role of ['homeowner', 'provider'] as const) {
-      for (const step of tourSteps(role)) {
-        expect(step.title.trim()).not.toBe('');
-        expect(step.body.trim()).not.toBe('');
-      }
+    const all = [
+      ...tourSteps('homeowner'),
+      ...tourSteps('provider'),
+      ...tourSteps('provider', false),
+    ];
+    for (const step of all) {
+      expect(step.title.trim()).not.toBe('');
+      expect(step.body.trim()).not.toBe('');
     }
   });
 });
