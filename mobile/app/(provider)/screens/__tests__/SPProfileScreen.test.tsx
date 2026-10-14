@@ -228,6 +228,24 @@ describe('SPProfileScreen — profile', () => {
     expect(screen.queryByRole('button', { name: 'Add phone number' })).toBeNull();
   });
 
+  it('a missing location shows an Add location link to Edit Profile, not a dash', () => {
+    mockAuthWith({ profile: { phone: '0917 000 0000', address: null, city: null } });
+    const onNavigate = jest.fn();
+    render(<SPProfileScreen onNavigate={onNavigate} onLogout={jest.fn()} />);
+
+    fireEvent.press(screen.getByRole('button', { name: 'Add location' }));
+
+    expect(onNavigate).toHaveBeenCalledWith('Edit Profile');
+  });
+
+  it('a saved location is shown, without the add link', () => {
+    mockAuthWith({ profile: { phone: '0917 000 0000', address: '12 Rizal St, Lipa City', city: 'Lipa City' } });
+    render(<SPProfileScreen onNavigate={jest.fn()} onLogout={jest.fn()} />);
+
+    expect(screen.getByText('12 Rizal St, Lipa City')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Add location' })).toBeNull();
+  });
+
   it('Settings and Help & support open their screens', () => {
     mockAuthWith({});
     const onNavigate = jest.fn();

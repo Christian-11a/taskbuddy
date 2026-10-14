@@ -225,7 +225,19 @@ export default function SPProfileScreen({ onNavigate, onLogout, onBack }: SPProf
             </InfoRow>
             <View style={styles.divider} />
             <InfoRow icon={MapPin} label="Location">
-              <Text style={styles.infoValue}>{location ?? '—'}</Text>
+              {location ? (
+                <Text style={styles.infoValue}>{location}</Text>
+              ) : (
+                <Tap
+                  style={styles.linkTap}
+                  hitSlop={{ top: 12, bottom: 12 }}
+                  accessibilityRole="button"
+                  accessibilityLabel="Add location"
+                  onPress={() => onNavigate('Edit Profile')}
+                >
+                  <Text style={styles.linkText}>Add location</Text>
+                </Tap>
+              )}
             </InfoRow>
           </View>
         </View>
