@@ -9,7 +9,11 @@ describe('providerSetupSteps', () => {
     expect(cityOnly[0]).toMatchObject({ done: true, subtitle: 'Lipa' });
 
     const empty = providerSetupSteps({ address: null, city: null }, null, 'none');
-    expect(empty[0]).toMatchObject({ done: false, state: 'next', subtitle: 'Used to show jobs near you' });
+    expect(empty[0]).toMatchObject({
+      done: false,
+      state: 'next',
+      subtitle: 'House number and street, used to show jobs near you',
+    });
   });
 
   it('marks the bio done only when it has text', () => {

@@ -216,6 +216,9 @@ export default function HOEditProfileScreen({ onBack, onSave }: HOEditProfileScr
               error={addressTouched || submitted ? addressError : undefined}
               inputStyle={styles.addressInput}
             />
+            {resolvedLocation === null && !(addressTouched || submitted ? addressError : undefined) && (
+              <Text style={styles.addressHelper}>Include a house number and street. Pick a suggestion from the list.</Text>
+            )}
           </View>
 
           <TextField
@@ -289,6 +292,7 @@ function createThemedStyles(theme: ThemePalette) {
     // Same label as the shared TextField, for the rows that are not a TextField.
     label: { fontFamily: 'Inter', fontSize: 13, fontWeight: '600', lineHeight: 18, color: C.ink700 },
     addressGroup: { gap: 6 },
+    addressHelper: { fontFamily: 'Inter', fontSize: 13, fontWeight: '400', lineHeight: 18, color: C.ink500 },
     addressInput: {
       minHeight: 48, borderRadius: 14, borderColor: V6Colors.line, backgroundColor: C.surface,
       paddingHorizontal: 14, paddingTop: 13, paddingBottom: 13,

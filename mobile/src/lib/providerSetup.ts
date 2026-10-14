@@ -58,7 +58,7 @@ export function providerSetupSteps(
       id: 'address',
       title: 'Add your address',
       done: addressDone,
-      subtitle: addressDone ? address || city : 'Used to show jobs near you',
+      subtitle: addressDone ? address || city : 'House number and street, used to show jobs near you',
       actionLabel: 'Add your address',
     },
     {

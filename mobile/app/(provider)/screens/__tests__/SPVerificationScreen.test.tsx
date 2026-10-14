@@ -138,7 +138,7 @@ describe('SPVerificationScreen — before you start', () => {
     expect(screen.getByRole('button', { name: 'Start' })).toBeDisabled();
     expect(screen.getByLabelText('Address added: not done yet')).toBeTruthy();
     expect(screen.getByLabelText('Bio added: done')).toBeTruthy();
-    expect(screen.getByText('Clients find you by your address, and your bio tells them what you do best.')).toBeTruthy();
+    expect(screen.getByText('Clients find you by your address. Include a house number and street, and a short bio tells them what you do best.')).toBeTruthy();
   });
 
   it('asks for the address and the bio together when both are missing', async () => {

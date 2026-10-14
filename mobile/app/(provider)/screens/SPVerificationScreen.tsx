@@ -146,10 +146,13 @@ export default function SPVerificationScreen({ onBack, onEditProfile, onVerified
   // a bio; say so up front instead of after all three steps.
   const { profile, providerProfile } = useAuth();
   const profileIncomplete = !profileReadyToVerify(profile, providerProfile);
+  const missingSteps = providerProfile ? missingProfileSteps(profile, providerProfile) : [];
   const profileNotice = providerProfile
     ? {
-      title: profileNoticeTitleFor(missingProfileSteps(profile, providerProfile)),
-      body: 'Clients find you by your address, and your bio tells them what you do best.',
+      title: profileNoticeTitleFor(missingSteps),
+      body: missingSteps.includes('address')
+        ? 'Clients find you by your address. Include a house number and street, and a short bio tells them what you do best.'
+        : 'Clients find you by your address, and your bio tells them what you do best.',
     }
     : {
       title: 'Finish your profile first',
