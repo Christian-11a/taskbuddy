@@ -1,12 +1,9 @@
-import React, { useEffect, useRef } from 'react';
+import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { Check } from 'lucide-react-native';
 import { useThemedStyles, type Palette } from '../context/ThemeContext';
 import Tap from './ui/Tap';
 import NotificationCard, { type NotificationCardProps } from './ui/NotificationCard';
-
-/** How long a row is held before it starts select mode. */
-const LONG_PRESS_MS = 500;
 
 interface NotificationSelectRowProps {
   selecting: boolean;
@@ -20,39 +17,15 @@ interface NotificationSelectRowProps {
 }
 
 /**
- * One notification row that can be selected. A long press (held LONG_PRESS_MS, without moving) starts select
- * mode; while selecting, a checkbox shows and a tap toggles the row, and the card is hidden from touch and
- * screen readers so its own delete button cannot fire.
+ * One notification row that can be selected. A long press starts select mode; while selecting, a checkbox
+ * shows and a tap toggles the row, and the card is hidden from touch and screen readers so its own delete
+ * button cannot fire.
  */
 export function NotificationSelectRow({ selecting, selected, onStartSelect, onToggle, card }: NotificationSelectRowProps) {
   const { s, Colors } = useThemedStyles(createStyles);
-  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  // Set when a long press fires, so the release that ends it does not also open the notification.
-  const longPressed = useRef(false);
-
-  const cancelTimer = () => {
-    if (timer.current) clearTimeout(timer.current);
-    timer.current = null;
-  };
-  useEffect(() => cancelTimer, []);
 
   return (
-    <View
-      style={s.row}
-      onTouchStart={() => {
-        longPressed.current = false;
-        if (selecting) return;
-        cancelTimer();
-        timer.current = setTimeout(() => {
-          timer.current = null;
-          longPressed.current = true;
-          onStartSelect();
-        }, LONG_PRESS_MS);
-      }}
-      onTouchMove={cancelTimer}
-      onTouchEnd={cancelTimer}
-      onTouchCancel={cancelTimer}
-    >
+    <View style={s.row}>
       {selecting && (
         <View accessible={false} style={[s.check, selected && s.checkOn]}>
           {selected && <Check size={14} color={Colors.onPrimary} strokeWidth={3} />}
@@ -65,13 +38,8 @@ export function NotificationSelectRow({ selecting, selected, onStartSelect, onTo
       >
         <NotificationCard
           {...card}
-          onPress={() => {
-            if (longPressed.current) {
-              longPressed.current = false;
-              return;
-            }
-            card.onPress();
-          }}
+          selecting={selecting}
+          onLongPress={selecting ? undefined : onStartSelect}
         />
       </View>
       {selecting && (

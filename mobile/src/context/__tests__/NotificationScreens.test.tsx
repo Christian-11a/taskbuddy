@@ -300,29 +300,23 @@ describe('notification select and delete', () => {
   const second = { ...row, id: 'n3', title: 'Second message', body: 'Again', read_at: '2026-10-01T00:00:00.000Z' };
   const third = { ...older, id: 'n4', title: 'Third message' };
 
-  beforeEach(() => {
-    jest.useFakeTimers();
-  });
-  afterEach(() => {
-    jest.useRealTimers();
-  });
+  /** The row's card button: the press opens the notification, the long press starts select mode. */
+  const rowCard = (title: string) => screen.getByRole('button', { name: new RegExp(`^${title}\\. `) });
 
-  /** Holds a row long enough to start select mode, as a finger does on a device. */
+  /** Long-presses a row, as the platform does on a device. */
   function longPress(title: string) {
-    fireEvent(screen.getByText(title), 'touchStart');
-    act(() => {
-      jest.advanceTimersByTime(600);
-    });
+    fireEvent(rowCard(title), 'longPress');
   }
 
   it.each([HONotificationsScreen, SPNotificationsScreen])(
-    'a long press starts select mode with that row chosen, and taps toggle the other rows',
+    'a long press starts select mode with that row chosen, without opening it, and taps toggle the other rows',
     (Screen) => {
       setNotifications([row, second]);
       render(<Screen {...callbacks} />);
       longPress('New message');
 
       expect(screen.getByText('1 selected')).toBeTruthy();
+      expect(callbacks.onOpenChat).not.toHaveBeenCalled();
       expect(screen.queryByRole('button', { name: 'Mark all read' })).toBeNull();
       fireEvent.press(screen.getByRole('checkbox', { name: 'Second message' }));
       expect(screen.getByText('2 selected')).toBeTruthy();
@@ -332,29 +326,31 @@ describe('notification select and delete', () => {
   );
 
   it.each([HONotificationsScreen, SPNotificationsScreen])(
-    'a release after a long press does not open the notification',
+    'a normal press still opens the notification and does not enter select mode',
     (Screen) => {
       setNotifications([row]);
       render(<Screen {...callbacks} />);
-      longPress('New message');
-      fireEvent.press(screen.getByText('New message', { includeHiddenElements: true }));
+      fireEvent.press(rowCard('New message'));
 
-      expect(callbacks.onOpenChat).not.toHaveBeenCalled();
+      expect(callbacks.onOpenChat).toHaveBeenCalledWith('j1');
+      expect(screen.queryByText(/selected$/)).toBeNull();
     },
   );
 
   it.each([HONotificationsScreen, SPNotificationsScreen])(
-    'a finger that moves before the hold ends does not start select mode',
+    'in select mode the row has no trash button, and a long press there keeps the chosen rows',
     (Screen) => {
-      setNotifications([row]);
+      setNotifications([row, second]);
       render(<Screen {...callbacks} />);
-      fireEvent(screen.getByText('New message'), 'touchStart');
-      fireEvent(screen.getByText('New message'), 'touchMove');
-      act(() => {
-        jest.advanceTimersByTime(600);
-      });
+      expect(screen.getByLabelText('Delete notification: New message')).toBeTruthy();
 
-      expect(screen.queryByText(/selected$/)).toBeNull();
+      longPress('New message');
+      fireEvent.press(screen.getByRole('checkbox', { name: 'Second message' }));
+      expect(screen.queryByLabelText('Delete notification: New message', { includeHiddenElements: true })).toBeNull();
+      expect(screen.queryByLabelText('Delete notification: Second message', { includeHiddenElements: true })).toBeNull();
+
+      fireEvent(screen.getByText('Second message', { includeHiddenElements: true }), 'longPress');
+      expect(screen.getByText('2 selected')).toBeTruthy();
     },
   );
 

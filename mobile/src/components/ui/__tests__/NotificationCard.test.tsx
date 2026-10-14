@@ -90,4 +90,17 @@ describe('the rest of the card', () => {
     fireEvent.press(screen.getByLabelText('Application accepted. Juan accepted your offer. 2h ago'));
     expect(onPress).toHaveBeenCalledTimes(1);
   });
+
+  it('a long press calls onLongPress and does not open, and select mode hides the trash button', () => {
+    const onPress = jest.fn();
+    const onLongPress = jest.fn();
+    const { rerender } = render(<NotificationCard {...card({ onPress, onLongPress })} />);
+    fireEvent(screen.getByLabelText('Application accepted. Juan accepted your offer. 2h ago'), 'longPress');
+    expect(onLongPress).toHaveBeenCalledTimes(1);
+    expect(onPress).not.toHaveBeenCalled();
+    expect(screen.getByLabelText('Delete notification: Application accepted')).toBeTruthy();
+
+    rerender(<NotificationCard {...card({ onPress, onLongPress, selecting: true })} />);
+    expect(screen.queryByLabelText('Delete notification: Application accepted', { includeHiddenElements: true })).toBeNull();
+  });
 });
