@@ -408,6 +408,82 @@ describe('SPHomeScreen — hero header keeps the avatar reachable with a long na
   });
 });
 
+// A verified provider's hero: the next booking, a job in progress, or an invitation to find work.
+describe('SPHomeScreen — hero card for a verified provider', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    clearAsyncDataCache();
+    (useAuth as jest.Mock).mockReturnValue({
+      profile: { id: 'provider', full_name: 'Alex', city: 'Lipa', latitude: 13.9, longitude: 121.1 },
+      providerProfile: { category_id: 1, is_available: true, service_radius_km: 25, approved_secondary_services: [] },
+      isVerified: true,
+      refreshProfile: jest.fn(),
+    });
+    (api.browseJobs as jest.Mock).mockResolvedValue({ jobs: [], summary: null });
+    (api.myApplications as jest.Mock).mockResolvedValue([]);
+  });
+
+  it('shows a job in progress as In progress, with Open to go back to the work', async () => {
+    (api.assignedJobs as jest.Mock).mockResolvedValue([
+      { id: 'started', title: 'Pipe repair', status: 'in_progress', address: 'Lipa', urgency: 'normal', budget: 500, scheduled_at: inDays(-2) },
+    ]);
+    const onNavigate = jest.fn();
+    render(<SPHomeScreen onNavigate={onNavigate} />);
+
+    const hero = await screen.findByTestId('feed-hero');
+    expect(within(hero).getByText('In progress')).toBeTruthy();
+    expect(within(hero).getByText('Pipe repair')).toBeTruthy();
+    fireEvent.press(within(hero).getByLabelText('Open Pipe repair'));
+    expect(onNavigate).toHaveBeenCalledWith('Job Detail', 'started');
+  });
+
+  it('invites a verified provider with nothing booked to find jobs, and leaves out finished jobs', async () => {
+    (api.assignedJobs as jest.Mock).mockResolvedValue([
+      { id: 'done', title: 'Old job', status: 'completed', address: 'Lipa', urgency: 'normal', budget: 500, scheduled_at: null },
+    ]);
+    render(<SPHomeScreen onNavigate={jest.fn()} />);
+
+    const hero = await screen.findByTestId('feed-hero');
+    expect(within(hero).getByText('No booking yet')).toBeTruthy();
+    expect(within(hero).getByText('Find your next job')).toBeTruthy();
+    expect(within(hero).getByText('Browse open jobs near you.')).toBeTruthy();
+    expect(within(hero).getByLabelText('Find jobs')).toBeTruthy();
+    expect(within(hero).queryByText('Old job')).toBeNull();
+  });
+
+  it('shows the invitation for a provider with no jobs at all', async () => {
+    (api.assignedJobs as jest.Mock).mockResolvedValue([]);
+    render(<SPHomeScreen onNavigate={jest.fn()} />);
+
+    expect(await screen.findByText('Find your next job')).toBeTruthy();
+  });
+
+  it('does not show the invitation while the feed is still loading', () => {
+    (api.assignedJobs as jest.Mock).mockReturnValue(new Promise(() => {}));
+    render(<SPHomeScreen onNavigate={jest.fn()} />);
+
+    expect(screen.queryByTestId('feed-hero')).toBeNull();
+    expect(screen.queryByText('Find your next job')).toBeNull();
+  });
+
+  it('Find jobs scrolls down to the feed search, below the body top and the search box offset', async () => {
+    (api.assignedJobs as jest.Mock).mockResolvedValue([]);
+    render(<SPHomeScreen onNavigate={jest.fn()} />);
+    const hero = await screen.findByTestId('feed-hero');
+    const feed = screen.UNSAFE_getAllByType(ScrollView).find((node) => node.props.testID === 'feed-scroll');
+    if (!feed) throw new Error('The feed ScrollView is not rendered');
+    const scrollTo = jest.spyOn(feed.instance, 'scrollTo');
+
+    // The body starts 120 dp into the scroll content, and the search box 300 dp into the body.
+    fireEvent(hero, 'layout', { nativeEvent: { layout: { x: 0, y: 120, width: 375, height: 200 } } });
+    fireEvent(screen.getByTestId('feed-section'), 'layout', { nativeEvent: { layout: { x: 0, y: 300, width: 375, height: 48 } } });
+    fireEvent.press(within(hero).getByLabelText('Find jobs'));
+
+    expect(scrollTo).toHaveBeenCalledWith({ y: 408, animated: true });
+    scrollTo.mockRestore();
+  });
+});
+
 describe('SPHomeScreen — the feed shows open jobs posted since it was last read', () => {
   const feedJob = (id: string, title: string) => (
     { id, title, status: 'open', urgency: 'normal', address: 'Lipa', budget: 500, scheduled_at: null, distance_km: 1.0 }

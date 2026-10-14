@@ -23,10 +23,37 @@ function job(id: string, overrides: Partial<Job> = {}): Job {
 }
 
 describe('pickProviderHero', () => {
-  it('is null when no booking is still ahead', () => {
-    expect(pickProviderHero([], NOW)).toBeNull();
-    expect(pickProviderHero([job('done', { status: 'completed', scheduled_at: at(DAY_MS) })], NOW)).toBeNull();
-    expect(pickProviderHero([job('started', { status: 'in_progress', scheduled_at: at(-DAY_MS) })], NOW)).toBeNull();
+  it('is none when nothing is booked: no jobs, or only finished, cancelled or expired ones', () => {
+    expect(pickProviderHero([], NOW)).toEqual({ kind: 'none' });
+    expect(pickProviderHero([job('done', { status: 'completed', scheduled_at: at(DAY_MS) })], NOW)).toEqual({ kind: 'none' });
+    expect(pickProviderHero([job('off', { status: 'cancelled' }), job('lapsed', { status: 'expired' })], NOW)).toEqual({
+      kind: 'none',
+    });
+  });
+
+  it('is working on a job in progress whose time has passed, with its date', () => {
+    const hero = pickProviderHero([job('started', { status: 'in_progress', scheduled_at: at(-DAY_MS) })], NOW);
+    expect(hero).toEqual({
+      kind: 'working',
+      job: expect.objectContaining({ id: 'started' }),
+      when: new Date(NOW.getTime() - DAY_MS),
+    });
+  });
+
+  it('is working on a job in progress with no date, with no date', () => {
+    expect(pickProviderHero([job('started', { status: 'in_progress', scheduled_at: null })], NOW)).toEqual({
+      kind: 'working',
+      job: expect.objectContaining({ id: 'started' }),
+      when: null,
+    });
+  });
+
+  it('shows the booking ahead before a job in progress whose time has passed', () => {
+    const hero = pickProviderHero([
+      job('started', { status: 'in_progress', scheduled_at: at(-DAY_MS) }),
+      job('ahead', { status: 'confirmed', scheduled_at: at(DAY_MS) }),
+    ], NOW);
+    expect(hero).toMatchObject({ kind: 'booking', job: { id: 'ahead' } });
   });
 
   it('leads with the soonest hired job, and a dated one beats an undated one', () => {
@@ -34,18 +61,18 @@ describe('pickProviderHero', () => {
       job('undated', { status: 'assigned', scheduled_at: null }),
       job('dated', { status: 'confirmed', scheduled_at: at(2 * DAY_MS) }),
     ], NOW);
-    expect(hero?.job.id).toBe('dated');
-    expect(hero?.when?.getTime()).toBe(NOW.getTime() + 2 * DAY_MS);
+    expect(hero).toMatchObject({ kind: 'booking', job: { id: 'dated' } });
+    expect(hero.kind === 'booking' && hero.when?.getTime()).toBe(NOW.getTime() + 2 * DAY_MS);
   });
 
   it('keeps a hired job with no date as the hero, so its Open call-to-action stays reachable', () => {
     const hero = pickProviderHero([job('undated', { status: 'confirmed', scheduled_at: null })], NOW);
-    expect(hero).toEqual({ job: expect.objectContaining({ id: 'undated' }), when: null, moreThisWeek: 0 });
+    expect(hero).toEqual({ kind: 'booking', job: expect.objectContaining({ id: 'undated' }), when: null, moreThisWeek: 0 });
   });
 
   it('keeps a hired job whose date has passed as the hero', () => {
     const hero = pickProviderHero([job('overdue', { status: 'assigned', scheduled_at: at(-DAY_MS) })], NOW);
-    expect(hero?.job.id).toBe('overdue');
+    expect(hero).toMatchObject({ kind: 'booking', job: { id: 'overdue' } });
   });
 
   it('without a hired job, picks the soonest booking still ahead, started or not', () => {
@@ -53,7 +80,7 @@ describe('pickProviderHero', () => {
       job('later', { status: 'in_progress', scheduled_at: at(3 * DAY_MS) }),
       job('sooner', { status: 'in_progress', scheduled_at: at(DAY_MS) }),
     ], NOW);
-    expect(hero?.job.id).toBe('sooner');
+    expect(hero).toMatchObject({ kind: 'booking', job: { id: 'sooner' } });
   });
 
   it('counts the other bookings starting in the next seven days', () => {
@@ -65,8 +92,8 @@ describe('pickProviderHero', () => {
       job('no-date', { status: 'confirmed', scheduled_at: null }),
       job('finished', { status: 'completed', scheduled_at: at(2 * DAY_MS) }),
     ], NOW);
-    expect(hero?.job.id).toBe('hero');
-    expect(hero?.moreThisWeek).toBe(2);
+    expect(hero).toMatchObject({ kind: 'booking', job: { id: 'hero' } });
+    expect(hero.kind === 'booking' && hero.moreThisWeek).toBe(2);
   });
 });
 

@@ -10,13 +10,19 @@ export const PROPOSAL_CHECK_LIMIT = 5;
 export type ApplicationsByJob = Record<string, JobApplication[] | undefined>;
 
 /**
- * What Home's hero card shows: proposals to review, or the next booking.
- * `pending` is the only applicant list the hero uses: its length is both the
- * "N proposals waiting" title and the "N applied" label, so they never disagree.
+ * What Home's hero card shows. Every loaded Home has one kind:
+ * - proposals: open jobs with proposals to review (`pending` is the only applicant list the hero uses, so "N applied" and "N proposals waiting" always agree);
+ * - working: a job under way, which may need the client's confirmation;
+ * - booking: the next booking, or a booked job whose time has passed or was never set;
+ * - searching: an open job with no proposals yet;
+ * - empty: no job that needs the client; `hasPastJobs` says whether they have finished or cancelled jobs.
  */
 export type HomeHero =
   | { kind: 'proposals'; job: Job; pending: JobApplication[] }
-  | { kind: 'booking'; job: Job; when: Date; providerName: string | null };
+  | { kind: 'working'; job: Job; needsConfirmation: boolean; providerName: string | null }
+  | { kind: 'booking'; job: Job; when: Date | null; upcoming: boolean; providerName: string | null }
+  | { kind: 'searching'; job: Job }
+  | { kind: 'empty'; hasPastJobs: boolean };
 
 function postedAt(job: Job): number {
   const posted = Date.parse(job.posted_at);
@@ -44,15 +50,19 @@ export function pendingApplicants(applications: JobApplication[] | undefined): J
 }
 
 /**
- * The one thing that needs the homeowner, or null when nothing does.
+ * The one thing that needs the homeowner. Always a kind, once the jobs have loaded.
  * 1. Proposals: the checked open job with the most pending proposals. Ties go
  *    to the newest job, because proposalCandidates is newest first and only a
  *    strictly larger count replaces the current pick.
- * 2. Next booking: the soonest confirmed, assigned or in-progress job that is
- *    still in the future.
- * A failed or missing lookup counts as no proposals, so rule 2 applies.
+ * 2. Working: the first job in progress. It needs the client's confirmation
+ *    when its checklist is all done (the same rule as the job screen).
+ * 3. Booking: the soonest booking still ahead. Failing that, a booked job whose
+ *    time has passed or was never set.
+ * 4. Searching: the newest open job, which has no proposals yet.
+ * 5. Empty: nothing above applies.
+ * A failed or missing proposal lookup counts as no proposals.
  */
-export function pickHomeHero(jobs: Job[], applicationsByJob: ApplicationsByJob, now: Date): HomeHero | null {
+export function pickHomeHero(jobs: Job[], applicationsByJob: ApplicationsByJob, now: Date): HomeHero {
   let proposal: { job: Job; pending: JobApplication[] } | null = null;
   for (const job of proposalCandidates(jobs)) {
     const pending = pendingApplicants(applicationsByJob[job.id]);
@@ -62,6 +72,18 @@ export function pickHomeHero(jobs: Job[], applicationsByJob: ApplicationsByJob, 
   }
   if (proposal !== null) {
     return { kind: 'proposals', job: proposal.job, pending: proposal.pending };
+  }
+
+  const working = jobs.find((job) => job.status === 'in_progress');
+  if (working !== undefined) {
+    // A job list without its checklist does not claim the work is done.
+    const tasks = working.job_tasks;
+    return {
+      kind: 'working',
+      job: working,
+      needsConfirmation: tasks !== undefined && tasks.every((task) => task.is_done),
+      providerName: working.assigned_provider?.full_name || null,
+    };
   }
 
   const nowMs = now.getTime();
@@ -76,25 +98,25 @@ export function pickHomeHero(jobs: Job[], applicationsByJob: ApplicationsByJob, 
       kind: 'booking',
       job: booking.job,
       when: new Date(booking.at),
+      upcoming: true,
       providerName: booking.job.assigned_provider?.full_name || null,
     };
   }
-  return null;
-}
+  const booked = jobs.find((job) => BOOKED_STATUSES.includes(job.status));
+  if (booked !== undefined) {
+    const at = scheduledAt(booked);
+    return {
+      kind: 'booking',
+      job: booked,
+      when: at === null ? null : new Date(at),
+      upcoming: false,
+      providerName: booked.assigned_provider?.full_name || null,
+    };
+  }
 
-/**
- * Whether Home's hero could still appear, so a placeholder can hold its place
- * while the proposal lookups run. Once the lookups are ready the hero is known,
- * so nothing is held. Before that, the hero may appear only if a job could give
- * one: an open job Home checks for proposals, or a booking whose time is still
- * ahead. These are the same jobs pickHomeHero considers.
- */
-export function heroMayAppear(jobs: Job[], ready: boolean, now: Date): boolean {
-  if (ready) return false;
-  if (proposalCandidates(jobs).length > 0) return true;
-  const nowMs = now.getTime();
-  return jobs.some((job) => {
-    const at = scheduledAt(job);
-    return BOOKED_STATUSES.includes(job.status) && at !== null && at > nowMs;
-  });
+  const open = proposalCandidates(jobs)[0];
+  if (open !== undefined) {
+    return { kind: 'searching', job: open };
+  }
+  return { kind: 'empty', hasPastJobs: jobs.length > 0 };
 }

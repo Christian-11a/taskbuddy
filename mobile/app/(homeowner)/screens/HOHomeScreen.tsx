@@ -36,7 +36,6 @@ import { useSlowLoad } from '../../../src/hooks/useSlowLoad';
 import { api, type Job } from '../../../src/lib/api';
 import { formatPesoShort, initials, peso } from '../../../src/lib/format';
 import {
-  heroMayAppear,
   pendingApplicants,
   pickHomeHero,
   proposalCandidates,
@@ -95,8 +94,9 @@ function shortMonthDay(value: string | Date): string {
   return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 }
 
-/** "Oct 12 · 9:00 AM · Juan Dela Cruz" */
-function bookingLine(when: Date, providerName: string | null): string {
+/** "Oct 12 · 9:00 AM · Juan Dela Cruz". A booking with no time shows only the provider. */
+function bookingLine(when: Date | null, providerName: string | null): string {
+  if (when === null) return providerName ?? '';
   const time = when.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
   return [shortMonthDay(when), time, ...(providerName ? [providerName] : [])].join(' · ');
 }
@@ -107,27 +107,84 @@ interface HOHomeScreenProps {
   tourOffer?: { onStart: () => void; onDismiss: () => void };
 }
 
-/** The one thing that needs the homeowner: proposals to review, or the next booking. */
+interface SimpleHeroCopy {
+  chip: string;
+  title: string;
+  line: string;
+  button: string;
+  label: string;
+  onPress: () => void;
+}
+
+/** The chip, text and button of every hero kind except proposals. */
+function simpleHeroCopy(hero: Exclude<HomeHero, { kind: 'proposals' }>, onNavigate: HOHomeScreenProps['onNavigate']): SimpleHeroCopy {
+  if (hero.kind === 'empty') {
+    return {
+      chip: 'Ready when you are',
+      title: hero.hasPastJobs ? 'Need something done?' : 'Post your first job',
+      line: 'It takes about a minute.',
+      button: 'Post a job',
+      label: 'Post a job',
+      onPress: () => onNavigate('Create Job'),
+    };
+  }
+  const { job } = hero;
+  const button = 'View';
+  const label = `View ${job.title}`;
+  const onPress = () => onNavigate('Job Detail', job.id);
+  switch (hero.kind) {
+    case 'working':
+      return {
+        chip: hero.needsConfirmation ? 'Needs your confirmation' : 'In progress',
+        title: job.title,
+        line: hero.needsConfirmation ? 'Check the work, then confirm.' : `${hero.providerName ?? 'Your provider'} is working on it`,
+        button,
+        label,
+        onPress,
+      };
+    case 'booking':
+      return {
+        chip: hero.upcoming ? 'Next booking' : 'Booked',
+        title: job.title,
+        line: bookingLine(hero.when, hero.providerName),
+        button,
+        label,
+        onPress,
+      };
+    case 'searching':
+      return {
+        chip: 'Waiting for offers',
+        title: "We're finding providers",
+        line: `${job.title} · posted ${shortMonthDay(job.posted_at)}`,
+        button,
+        label,
+        onPress,
+      };
+  }
+}
+
+/** The one thing that needs the homeowner. Proposals keep their own layout; the other kinds share the booking's. */
 function HomeHeroCard({ hero, onNavigate }: { hero: HomeHero; onNavigate: HOHomeScreenProps['onNavigate'] }) {
   const { Colors, styles } = useThemedStyles(createThemedStyles);
-  // The hero is always sky blue: the proposals and the booking cards share one layout.
-  if (hero.kind === 'booking') {
+  // The hero is always sky blue: every kind shares one layout.
+  if (hero.kind !== 'proposals') {
+    const copy = simpleHeroCopy(hero, onNavigate);
     return (
-      <View testID="home-hero-booking" style={styles.attentionCard}>
+      <View testID={`home-hero-${hero.kind}`} style={styles.attentionCard}>
         <View style={styles.attentionChip}>
-          <Text style={styles.attentionChipText}>Next booking</Text>
+          <Text style={styles.attentionChipText}>{copy.chip}</Text>
         </View>
-        <Text style={styles.attentionTitle} numberOfLines={2}>{hero.job.title}</Text>
-        <Text style={styles.attentionLine} numberOfLines={1}>{bookingLine(hero.when, hero.providerName)}</Text>
+        <Text style={styles.attentionTitle} numberOfLines={2}>{copy.title}</Text>
+        {copy.line !== '' && <Text style={styles.attentionLine} numberOfLines={1}>{copy.line}</Text>}
         <View style={[styles.attentionFooter, styles.attentionFooterEnd]}>
           <Tap
             style={styles.attentionButton}
             hitSlop={5}
             accessibilityRole="button"
-            accessibilityLabel={`View ${hero.job.title}`}
-            onPress={() => onNavigate('Job Detail', hero.job.id)}
+            accessibilityLabel={copy.label}
+            onPress={copy.onPress}
           >
-            <Text style={styles.attentionButtonText}>View</Text>
+            <Text style={styles.attentionButtonText}>{copy.button}</Text>
           </Tap>
         </View>
       </View>
@@ -211,9 +268,10 @@ export default function HOHomeScreen({ onNavigate, tourOffer }: HOHomeScreenProp
   const hero = proposalsReady && jobs.data ? pickHomeHero(jobs.data, proposalLookup.byJob, new Date()) : null;
   const pendingCountFor = (jobId: string): number | undefined =>
     proposalsReady ? pendingApplicants(proposalLookup.byJob[jobId]).length : undefined;
-  // The placeholder holds the hero's place while the jobs load for the first time, or
-  // while a hero may still appear. A failed jobs request holds none, so nothing hangs.
-  const heroPending = !jobs.error && (jobs.data === null ? jobs.loading : heroMayAppear(jobs.data, proposalsReady, new Date()));
+  // The placeholder holds the hero's place while the jobs load for the first time, and until the
+  // proposal lookups for the loaded jobs are in, since the hero can change kind on their answer.
+  // A failed jobs request holds none, so nothing hangs and no card claims anything.
+  const heroPending = !jobs.error && (jobs.data === null ? jobs.loading : !proposalsReady);
 
   const name = profile?.full_name ?? '';
   const activeJobs = (jobs.data ?? []).filter((j) => ACTIVE_STATUSES.includes(j.status));
