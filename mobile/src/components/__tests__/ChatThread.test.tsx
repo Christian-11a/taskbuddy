@@ -38,6 +38,8 @@ const baseProps = (overrides: Partial<ChatThreadProps> = {}): ChatThreadProps =>
   profileId: 'me',
   loading: false,
   error: null,
+  conversationReady: true,
+  onRetry: jest.fn(),
   listRef: React.createRef<FlatList<Message>>(),
   text: '',
   onChangeText: jest.fn(),
@@ -47,6 +49,34 @@ const baseProps = (overrides: Partial<ChatThreadProps> = {}): ChatThreadProps =>
   onBack: jest.fn(),
   onViewJob: jest.fn(),
   ...overrides,
+});
+
+describe('ChatThread when the conversation fails to load', () => {
+  it('shows the error with Try again, and pressing it asks for the load again', () => {
+    const onRetry = jest.fn();
+    render(<ChatThread {...baseProps({ error: 'Network down', conversationReady: false, onRetry })} />);
+
+    expect(screen.getByText("Couldn't load this chat")).toBeTruthy();
+    fireEvent.press(screen.getByRole('button', { name: 'Try again' }));
+    expect(onRetry).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps the composer off while there is no conversation, and on once it is open', () => {
+    const onSend = jest.fn();
+    const { rerender } = render(
+      <ChatThread {...baseProps({ error: 'Network down', conversationReady: false, text: 'Hello', onSend })} />,
+    );
+
+    expect(screen.getByRole('button', { name: 'Send message' }).props.accessibilityState).toMatchObject({ disabled: true });
+    expect(screen.getByRole('button', { name: 'Attach a photo' }).props.accessibilityState).toMatchObject({ disabled: true });
+    expect(screen.getByPlaceholderText('Message…').props.editable).toBe(false);
+    fireEvent.press(screen.getByRole('button', { name: 'Send message' }));
+    expect(onSend).not.toHaveBeenCalled();
+
+    rerender(<ChatThread {...baseProps({ text: 'Hello', onSend })} />);
+    expect(screen.getByRole('button', { name: 'Send message' }).props.accessibilityState).toMatchObject({ disabled: false });
+    expect(screen.getByPlaceholderText('Message…').props.editable).toBe(true);
+  });
 });
 
 describe('ChatThread header and system line', () => {
@@ -210,13 +240,13 @@ describe('ChatThread bubbles and photos', () => {
     expect(within(screen.getByTestId('empty-card')).getByText('No messages yet')).toBeTruthy();
   });
 
-  it('a chat that fails to load shows the error in the card, with no Try again since the chat has nothing to re-run', () => {
-    render(<ChatThread {...baseProps({ error: 'Could not load chat.' })} />);
+  it('a chat that fails to load shows the error in the card, with Try again', () => {
+    render(<ChatThread {...baseProps({ error: 'Could not load chat.', conversationReady: false })} />);
     const card = screen.getByTestId('error-card');
     expect(within(card).getByText("Couldn't load this chat")).toBeTruthy();
     expect(within(card).getByText('Could not load chat.')).toBeTruthy();
     expect(screen.queryByTestId('empty-card')).toBeNull();
-    expect(screen.queryByRole('button', { name: 'Try again' })).toBeNull();
+    expect(within(card).getByRole('button', { name: 'Try again' })).toBeTruthy();
   });
 });
 
