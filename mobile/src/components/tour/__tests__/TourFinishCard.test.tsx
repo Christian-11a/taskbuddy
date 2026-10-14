@@ -1,8 +1,15 @@
 import React from 'react';
-import { Modal } from 'react-native';
+import { Modal, StyleSheet } from 'react-native';
 import { fireEvent, render, screen } from '@testing-library/react-native';
 import * as Haptics from 'expo-haptics';
 import TourFinishCard from '../TourFinishCard';
+
+// The sheet reads the bottom inset from the safe area; the spacing tests set it per case.
+const mockInsets = { top: 0, right: 0, bottom: 0, left: 0 };
+jest.mock('react-native-safe-area-context', () => {
+  const actual = jest.requireActual('react-native-safe-area-context');
+  return { ...actual, useSafeAreaInsets: () => mockInsets };
+});
 
 // Confetti's props are recorded (which bursts were asked for), and the real layer is drawn, so its touch setting can be checked.
 const mockConfettiActive: boolean[] = [];
@@ -30,6 +37,10 @@ function renderCard(props: Props = {}) {
 beforeEach(() => {
   jest.clearAllMocks();
   mockConfettiActive.length = 0;
+});
+
+afterEach(() => {
+  mockInsets.bottom = 0;
 });
 
 describe('TourFinishCard — the client', () => {
@@ -139,6 +150,20 @@ describe('TourFinishCard — first run only', () => {
     rerender(<TourFinishCard role="homeowner" verified={false} firstName="Juan" firstRun onAction={onAction} />);
 
     expect(Haptics.impactAsync).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('TourFinishCard — the bottom space', () => {
+  // The sheet ends at the window's bottom edge, so it clears the navigation bar's inset and keeps 16 dp under the link.
+  it.each([
+    [0, 16],
+    [24, 40],
+    [48, 64],
+  ])('under a %i dp navigation bar, pads the sheet by %i dp', (bottom, padding) => {
+    mockInsets.bottom = bottom;
+    renderCard();
+
+    expect(StyleSheet.flatten(screen.getByTestId('tour-finish').props.style).paddingBottom).toBe(padding);
   });
 });
 

@@ -1,7 +1,14 @@
 import { useThemedStyles, type Palette as ThemePalette } from '../context/ThemeContext';
-import React, { ReactNode, useEffect, useState } from 'react';
+import React, { ReactNode, createContext, useEffect, useState } from 'react';
 import { Keyboard, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+
+/**
+ * True inside a ScreenFrame, which already leaves the navigation bar's space
+ * under its content. A bottom bar in there pads only its own edge, so the
+ * inset is not counted twice (see BottomActionBar).
+ */
+export const InsideScreenFrame = createContext(false);
 
 interface ScreenFrameProps {
   children: ReactNode;
@@ -22,7 +29,8 @@ interface ScreenFrameProps {
  * The app is edge-to-edge on Android, so without this the last row of a
  * screen — often its primary action — renders underneath the system
  * navigation buttons and can't be tapped. Tab screens don't need it:
- * BottomNavBar already pads for the same inset.
+ * BottomNavBar already pads for the same inset. The frame owns the inset under
+ * its content, so a BottomActionBar inside it does not add the inset again.
  */
 export default function ScreenFrame({
   children,
@@ -47,9 +55,11 @@ export default function ScreenFrame({
 
   return (
     <View style={[styles.frame, { backgroundColor: pageColor }]}>
-      <View style={styles.content}>{children}</View>
+      <InsideScreenFrame.Provider value={true}>
+        <View style={styles.content}>{children}</View>
+      </InsideScreenFrame.Provider>
       {insets.bottom > 0 && !keyboardUp && (
-        <View style={{ height: insets.bottom, backgroundColor: footerColor }} />
+        <View testID="screen-frame-inset" style={{ height: insets.bottom, backgroundColor: footerColor }} />
       )}
     </View>
   );

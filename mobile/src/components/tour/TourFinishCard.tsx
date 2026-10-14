@@ -39,6 +39,8 @@ const STATE_WORD: Record<ChecklistState, string> = { done: 'done', next: 'next s
 
 /** The card takes the presses that are not on a button, so they do not fall through to the backdrop. */
 const noop = () => {};
+/** The 18 dp link plus 15 dp above and below makes the 48 dp target. The gap above the link is 16 dp, so the slop never reaches the main button. */
+const SECONDARY_HIT_SLOP = { top: 15, bottom: 15, left: 12, right: 12 } as const;
 
 export default function TourFinishCard({ role, verified, hasServiceProfile = true, firstName, firstRun, onAction }: TourFinishCardProps) {
   const { Colors, C, styles } = useThemedStyles(createThemedStyles);
@@ -80,7 +82,8 @@ export default function TourFinishCard({ role, verified, hasServiceProfile = tru
               accessible={false}
               accessibilityViewIsModal
               onPress={noop}
-              style={[styles.sheet, { paddingBottom: Math.max(insets.bottom, 12) + 12 }]}
+              // The Modal is drawn under the navigation bar, so the sheet clears its inset; 16 dp sits under the link.
+              style={[styles.sheet, { paddingBottom: insets.bottom + 16 }]}
             >
               <View style={styles.grip}>
                 <View style={[styles.gripBar, { backgroundColor: C.ink200 }]} />
@@ -127,6 +130,7 @@ export default function TourFinishCard({ role, verified, hasServiceProfile = tru
                   accessibilityRole="button"
                   accessibilityLabel={secondary.label}
                   style={styles.secondary}
+                  hitSlop={SECONDARY_HIT_SLOP}
                   onPress={() => onAction(secondary.action)}
                 >
                   <Text style={styles.secondaryText}>{secondary.label}</Text>
@@ -207,7 +211,7 @@ function createThemedStyles(theme: ThemePalette) {
       ...V6Shadows.primaryButton,
     },
     primaryText: { color: Colors.onPrimary, fontSize: 16, fontWeight: '700', fontFamily: 'Inter' },
-    secondary: { minHeight: 48, alignItems: 'center', justifyContent: 'center' },
+    secondary: { alignItems: 'center', justifyContent: 'center' },
     secondaryText: { color: Colors.link, fontSize: 15, fontWeight: '600', fontFamily: 'Inter' },
   });
   return { Colors, V6Colors, C, styles };

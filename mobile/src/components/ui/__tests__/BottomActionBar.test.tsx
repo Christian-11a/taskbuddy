@@ -1,7 +1,19 @@
 import React from 'react';
-import { ActivityIndicator } from 'react-native';
+import { ActivityIndicator, StyleSheet } from 'react-native';
 import { fireEvent, render, screen } from '@testing-library/react-native';
 import BottomActionBar from '../BottomActionBar';
+import ScreenFrame from '../../ScreenFrame';
+
+// The bar reads the bottom inset from the safe area; the inset tests set it per case.
+const mockInsets = { top: 0, right: 0, bottom: 0, left: 0 };
+jest.mock('react-native-safe-area-context', () => {
+  const actual = jest.requireActual('react-native-safe-area-context');
+  return { ...actual, useSafeAreaInsets: () => mockInsets };
+});
+
+afterEach(() => {
+  mockInsets.bottom = 0;
+});
 
 it('calls onPrimary when the primary button is pressed', () => {
   const onPrimary = jest.fn();
@@ -56,4 +68,33 @@ it('renders the danger tone with the same behaviour', () => {
   render(<BottomActionBar primaryLabel="Cancel job" onPrimary={onPrimary} tone="danger" />);
   fireEvent.press(screen.getByRole('button', { name: 'Cancel job' }));
   expect(onPrimary).toHaveBeenCalledTimes(1);
+});
+
+describe('BottomActionBar — the bottom inset is owned once', () => {
+  const paddingOf = () => StyleSheet.flatten(screen.getByTestId('bottom-action-bar').props.style).paddingBottom;
+
+  // Outside a ScreenFrame nothing else clears the navigation bar, so the bar does, with at least 16 dp.
+  it.each([
+    [0, 16],
+    [24, 24],
+    [48, 48],
+  ])('outside a frame, under a %i dp navigation bar, pads the bar by %i dp', (bottom, padding) => {
+    mockInsets.bottom = bottom;
+    render(<BottomActionBar primaryLabel="Save" onPrimary={jest.fn()} />);
+
+    expect(paddingOf()).toBe(padding);
+  });
+
+  // Inside a ScreenFrame the frame's strip takes the inset, so the bar adds only its own 16 dp: the total is not doubled.
+  it.each([
+    [0, 16],
+    [24, 40],
+    [48, 64],
+  ])('inside a frame, under a %i dp navigation bar, leaves %i dp under the button in all', (bottom, total) => {
+    mockInsets.bottom = bottom;
+    render(<ScreenFrame><BottomActionBar primaryLabel="Save" onPrimary={jest.fn()} /></ScreenFrame>);
+
+    const strip = screen.queryByTestId('screen-frame-inset');
+    expect(paddingOf() + (strip ? strip.props.style.height : 0)).toBe(total);
+  });
 });
