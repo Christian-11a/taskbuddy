@@ -159,10 +159,11 @@ export default function GoogleSPDetailsScreen({
       <TermsAndConditions
         visible={termsMode !== null}
         mode={termsMode ?? 'terms'}
+        accepted={{ terms: termsAccepted, privacy: privacyAccepted }}
         onBack={() => setTermsMode(null)}
-        onAccept={() => {
-          if (termsMode === 'terms') setTermsAccepted(true);
-          else if (termsMode === 'privacy') setPrivacyAccepted(true);
+        onAccept={(doc) => {
+          if (doc === 'terms') setTermsAccepted(true);
+          else setPrivacyAccepted(true);
         }}
       />
 
@@ -248,12 +249,18 @@ export default function GoogleSPDetailsScreen({
             <View style={styles.consentSection}>
               <Text style={styles.consentSectionTitle}>Consents & Agreements</Text>
 
+              {/* Terms + Privacy: one row, as on sign-up. Ticking it opens the pop-up on the first
+                  document not accepted yet; unticking clears both. */}
               <ConsentCheckbox
-                testID="chk-gsp-terms" accessibilityName="I have read and agree to the Terms and Conditions"
-                checked={termsAccepted}
+                testID="chk-gsp-terms-privacy" accessibilityName="I have read and agree to the Terms and Conditions and the Privacy Policy"
+                checked={termsAccepted && privacyAccepted}
                 onPress={() => {
-                  if (!termsAccepted) setTermsMode('terms');
-                  else setTermsAccepted(false);
+                  if (termsAccepted && privacyAccepted) {
+                    setTermsAccepted(false);
+                    setPrivacyAccepted(false);
+                  } else {
+                    setTermsMode(termsAccepted ? 'privacy' : 'terms');
+                  }
                 }}
                 label={
                   <Text style={styles.consentText}>
@@ -261,29 +268,14 @@ export default function GoogleSPDetailsScreen({
                     <Text style={styles.link} onPress={() => setTermsMode('terms')}>
                       Terms & Conditions
                     </Text>
-                    <Text style={styles.asterisk}>*</Text>
-                  </Text>
-                }
-                error={fieldErrors.terms}
-              />
-
-              <ConsentCheckbox
-                testID="chk-gsp-privacy" accessibilityName="I have read and agree to the Privacy Policy"
-                checked={privacyAccepted}
-                onPress={() => {
-                  if (!privacyAccepted) setTermsMode('privacy');
-                  else setPrivacyAccepted(false);
-                }}
-                label={
-                  <Text style={styles.consentText}>
-                    I have read and agree to the{' '}
+                    {' and '}
                     <Text style={styles.link} onPress={() => setTermsMode('privacy')}>
                       Privacy Policy
                     </Text>
                     <Text style={styles.asterisk}>*</Text>
                   </Text>
                 }
-                error={fieldErrors.privacy}
+                error={fieldErrors.terms ?? fieldErrors.privacy}
               />
 
               <ConsentCheckbox

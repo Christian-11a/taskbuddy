@@ -1,6 +1,6 @@
 import { findUnnamedControls } from '../../../../src/testing/a11yAudit';
 import React from 'react';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react-native';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react-native';
 import HOLeaveReviewScreen from '../HOLeaveReviewScreen';
 import { api } from '../../../../src/lib/api';
 
@@ -205,4 +205,22 @@ it('trims the comment it sends when no tag is chosen', async () => {
 
   await waitFor(() => expect(onSubmitted).toHaveBeenCalledTimes(1));
   expect(api.reviewJob).toHaveBeenCalledWith(JOB_ID, { rating: 4, comment: 'Fixed it fast' });
+});
+
+describe('HOLeaveReviewScreen — the job failing to load', () => {
+  it('a job that fails to load shows Try again, keeps Submit review disabled, and Try again loads the job', async () => {
+    (api.getJob as jest.Mock).mockRejectedValueOnce(new Error('Job unavailable')).mockResolvedValue(job);
+    renderScreen();
+
+    const card = await screen.findByTestId('error-card');
+    expect(within(card).getByText("Couldn't load this job")).toBeTruthy();
+    fireEvent.press(star(4));
+    expect(submit().props.accessibilityState?.disabled).toBe(true);
+
+    fireEvent.press(within(card).getByRole('button', { name: 'Try again' }));
+
+    await waitFor(() => expect(screen.queryByTestId('error-card')).toBeNull());
+    expect(await screen.findByText('TaskBuddyProvider')).toBeTruthy();
+    expect(submit().props.accessibilityState?.disabled).toBe(false);
+  });
 });

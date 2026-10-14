@@ -25,12 +25,13 @@ export function takePhotoLabel(documentType: VerifyDocumentType | null): string 
 
 export type VerifyStatus = 'pending' | 'approved' | 'rejected';
 
-export type VerifyView = 'loading' | 'intro' | 'wizard' | 'sending' | 'pending' | 'rejected' | 'approved';
+export type VerifyView = 'loading' | 'error' | 'intro' | 'wizard' | 'sending' | 'pending' | 'rejected' | 'approved';
 
 /**
  * Which view the screen shows. The sending view wins while submitting. A
  * pending review or an approval always wins over the wizard. A rejection
- * shows first and opens the wizard only after "Try again".
+ * shows first and opens the wizard only after "Try again". A status that could
+ * not be loaded is an error, never a brand-new application.
  */
 export function pickVerifyView(input: {
   loading: boolean;
@@ -39,6 +40,8 @@ export function pickVerifyView(input: {
   started: boolean;
   /** True from a finished submission until the reload brings the new status. */
   settling?: boolean;
+  /** True when the status request failed. */
+  failed?: boolean;
 }): VerifyView {
   if (input.submitting) return 'sending';
   // The old status is still loaded at this point; show the loader rather than a stale screen.
@@ -47,6 +50,7 @@ export function pickVerifyView(input: {
   if (input.status === 'pending') return 'pending';
   // The loader is for the first load only; a reload keeps what is on screen.
   if (input.loading && input.status === null) return 'loading';
+  if (input.status === null && input.failed) return 'error';
   if (input.status === 'rejected' && !input.started) return 'rejected';
   return input.started ? 'wizard' : 'intro';
 }
@@ -69,13 +73,26 @@ export function wizardProgress(
 }
 
 /**
- * The two profile items the verification depends on. "Service picked" is
- * ticked when a provider profile exists, because the API needs one.
+ * The address rule the Home setup card and the verification gate share: a
+ * saved street address, or a saved city when there is no street address.
+ */
+export function addressSaved(
+  profile: { address?: string | null; city?: string | null } | null | undefined,
+): boolean {
+  return (profile?.address ?? '').trim() !== '' || (profile?.city ?? '').trim() !== '';
+}
+
+/**
+ * The three profile items the verification depends on, in the Home card's
+ * order: address, service, bio. "Service picked" is ticked when a provider
+ * profile exists, because the API needs one.
  */
 export function profileChecks(
+  profile: { address?: string | null; city?: string | null } | null | undefined,
   providerProfile: { bio?: string | null } | null | undefined,
 ): { label: string; done: boolean }[] {
   return [
+    { label: 'Address added', done: addressSaved(profile) },
     { label: 'Service picked', done: providerProfile != null },
     { label: 'Bio added', done: (providerProfile?.bio ?? '').trim() !== '' },
   ];

@@ -1,5 +1,5 @@
 import type { Job, JobApplication } from '../api';
-import { PROPOSAL_CHECK_LIMIT, heroMayAppear, pendingApplicants, pickHomeHero, proposalCandidates } from '../homeJobs';
+import { PROPOSAL_CHECK_LIMIT, pendingApplicants, pickHomeHero, proposalCandidates } from '../homeJobs';
 
 const NOW = new Date('2026-10-09T12:00:00+08:00');
 
@@ -56,18 +56,7 @@ describe('pendingApplicants', () => {
   });
 });
 
-describe('pickHomeHero', () => {
-  it('is null when nothing needs the homeowner', () => {
-    expect(pickHomeHero([], {}, NOW)).toBeNull();
-    expect(
-      pickHomeHero(
-        [job('done', { status: 'completed' }), job('future-open', { scheduled_at: '2026-10-12T09:00:00+08:00' })],
-        {},
-        NOW,
-      ),
-    ).toBeNull();
-  });
-
+describe('pickHomeHero — proposals', () => {
   it('picks the open job with the most pending proposals and lists only its pending applicants', () => {
     const hero = pickHomeHero(
       [
@@ -109,9 +98,13 @@ describe('pickHomeHero', () => {
     expect(hero).toMatchObject({ kind: 'proposals', job: { id: 'new' } });
   });
 
-  it('shows proposals before a next booking', () => {
+  it('shows proposals before a next booking or a job in progress', () => {
     const hero = pickHomeHero(
-      [job('open-1'), job('booked', { status: 'confirmed', scheduled_at: '2026-10-10T09:00:00+08:00' })],
+      [
+        job('open-1'),
+        job('progress', { status: 'in_progress' }),
+        job('booked', { status: 'confirmed', scheduled_at: '2026-10-10T09:00:00+08:00' }),
+      ],
       { 'open-1': [application('pending', 'a')] },
       NOW,
     );
@@ -120,8 +113,11 @@ describe('pickHomeHero', () => {
 
   it('checks only the five newest open jobs for proposals', () => {
     const jobs = Array.from({ length: 6 }, (_, i) => job(`j${i}`, { posted_at: `2026-10-0${i + 1}T09:00:00+08:00` }));
-    // j0 is the oldest of six, so it falls outside the checked five.
-    expect(pickHomeHero(jobs, { j0: [application('pending', 'a')] }, NOW)).toBeNull();
+    // j0 is the oldest of six, so it falls outside the checked five and its proposals are not seen.
+    expect(pickHomeHero(jobs, { j0: [application('pending', 'a')] }, NOW)).toMatchObject({
+      kind: 'searching',
+      job: { id: 'j5' },
+    });
     expect(pickHomeHero(jobs, { j1: [application('pending', 'a')] }, NOW)).toMatchObject({
       kind: 'proposals',
       job: { id: 'j1' },
@@ -143,54 +139,115 @@ describe('pickHomeHero', () => {
     );
     expect(hero).toMatchObject({ kind: 'booking', job: { id: 'booked' }, providerName: 'Juan Dela Cruz' });
   });
+});
 
-  it('shows the soonest future booking, ignoring past, undated, unbooked and finished jobs', () => {
+describe('pickHomeHero — booking', () => {
+  it('shows the soonest future booking, ignoring past, open and finished jobs', () => {
     const hero = pickHomeHero(
       [
         job('past', { status: 'confirmed', scheduled_at: '2026-10-08T09:00:00+08:00' }),
         job('undated', { status: 'confirmed', scheduled_at: null }),
         job('open-future', { status: 'open', scheduled_at: '2026-10-09T18:00:00+08:00' }),
-        job('later', { status: 'in_progress', scheduled_at: '2026-10-15T09:00:00+08:00' }),
         job('finished', { status: 'completed', scheduled_at: '2026-10-10T09:00:00+08:00' }),
+        job('later', { status: 'assigned', scheduled_at: '2026-10-15T09:00:00+08:00' }),
         job('soonest', { status: 'confirmed', scheduled_at: '2026-10-10T14:00:00+08:00' }),
       ],
       {},
       NOW,
     );
-    expect(hero).toMatchObject({ kind: 'booking', job: { id: 'soonest' }, providerName: null });
-    expect(hero?.kind === 'booking' && hero.when.toISOString()).toBe('2026-10-10T06:00:00.000Z');
+    expect(hero).toMatchObject({ kind: 'booking', job: { id: 'soonest' }, providerName: null, upcoming: true });
+    expect(hero.kind === 'booking' && hero.when?.toISOString()).toBe('2026-10-10T06:00:00.000Z');
+  });
+
+  it('chips a booking whose time is still ahead as upcoming, and a booking whose time has passed as not', () => {
+    const upcoming = pickHomeHero([job('a', { status: 'confirmed', scheduled_at: '2026-10-12T09:00:00+08:00' })], {}, NOW);
+    expect(upcoming).toMatchObject({ kind: 'booking', upcoming: true });
+
+    const passed = pickHomeHero([job('p', { status: 'confirmed', scheduled_at: '2026-10-08T09:00:00+08:00' })], {}, NOW);
+    expect(passed).toMatchObject({ kind: 'booking', job: { id: 'p' }, upcoming: false });
+    expect(passed.kind === 'booking' && passed.when?.toISOString()).toBe('2026-10-08T01:00:00.000Z');
+  });
+
+  it('keeps a booked job with no time as a booking, with no date', () => {
+    const hero = pickHomeHero(
+      [job('undated', { status: 'confirmed', scheduled_at: null, assigned_provider: { full_name: 'Juan Dela Cruz' } })],
+      {},
+      NOW,
+    );
+    expect(hero).toEqual({
+      kind: 'booking',
+      job: expect.objectContaining({ id: 'undated' }),
+      when: null,
+      upcoming: false,
+      providerName: 'Juan Dela Cruz',
+    });
   });
 });
 
-describe('heroMayAppear', () => {
-  const LATER = '2026-10-12T09:00:00+08:00';
-  const PAST = '2026-10-08T09:00:00+08:00';
-
-  it('holds no place once the proposal lookups are ready, whatever the jobs are', () => {
-    expect(heroMayAppear([job('open-1')], true, NOW)).toBe(false);
-    expect(heroMayAppear([job('booked', { status: 'confirmed', scheduled_at: LATER })], true, NOW)).toBe(false);
+describe('pickHomeHero — working', () => {
+  it('shows a job in progress ahead of a next booking', () => {
+    const hero = pickHomeHero(
+      [
+        job('booked', { status: 'confirmed', scheduled_at: '2026-10-12T09:00:00+08:00' }),
+        job('progress', { status: 'in_progress', scheduled_at: '2026-10-08T09:00:00+08:00', assigned_provider: { full_name: 'Juan Dela Cruz' } }),
+      ],
+      {},
+      NOW,
+    );
+    expect(hero).toEqual({
+      kind: 'working',
+      job: expect.objectContaining({ id: 'progress' }),
+      needsConfirmation: false,
+      providerName: 'Juan Dela Cruz',
+    });
   });
 
-  it.each([
-    ['an open job, whose proposals are not checked yet', [job('open-1')]],
-    ['a recommending job', [job('recommending', { status: 'recommending' })]],
-    ['a confirmed booking still ahead', [job('booked', { status: 'confirmed', scheduled_at: LATER })]],
-    ['an assigned booking still ahead', [job('assigned', { status: 'assigned', scheduled_at: LATER })]],
-    ['an in-progress job scheduled ahead', [job('progress', { status: 'in_progress', scheduled_at: LATER })]],
-  ])('may appear for %s', (_, jobs) => {
-    expect(heroMayAppear(jobs, false, NOW)).toBe(true);
+  it('needs the client to confirm once every task of the job is done', () => {
+    const done = [{ id: 't1', label: 'Fix', position: 1, is_done: true, completed_at: null }];
+    const hero = pickHomeHero([job('progress', { status: 'in_progress', job_tasks: done })], {}, NOW);
+    expect(hero).toMatchObject({ kind: 'working', needsConfirmation: true });
   });
 
-  it.each([
-    ['no jobs at all', []],
-    ['only finished or cancelled jobs', [job('done', { status: 'completed' }), job('off', { status: 'cancelled' })]],
-    ['an expired job with a future time', [job('expired', { status: 'expired', scheduled_at: LATER })]],
-    ['a booking whose time has passed', [job('past', { status: 'confirmed', scheduled_at: PAST })]],
-    ['an in-progress job whose time has passed', [job('progress', { status: 'in_progress', scheduled_at: PAST })]],
-    ['a booking at exactly this moment', [job('now', { status: 'confirmed', scheduled_at: NOW.toISOString() })]],
-    ['a booking with no time', [job('undated', { status: 'confirmed', scheduled_at: null })]],
-    ['a booking with a time that cannot be read', [job('bad', { status: 'confirmed', scheduled_at: 'not a date' })]],
-  ])('does not appear for %s', (_, jobs) => {
-    expect(heroMayAppear(jobs, false, NOW)).toBe(false);
+  it('does not need confirmation while a task is still open, or when the task list is not loaded', () => {
+    const open = [
+      { id: 't1', label: 'Fix', position: 1, is_done: true, completed_at: null },
+      { id: 't2', label: 'Paint', position: 2, is_done: false, completed_at: null },
+    ];
+    expect(pickHomeHero([job('p', { status: 'in_progress', job_tasks: open })], {}, NOW)).toMatchObject({
+      kind: 'working',
+      needsConfirmation: false,
+    });
+    expect(pickHomeHero([job('p', { status: 'in_progress' })], {}, NOW)).toMatchObject({
+      kind: 'working',
+      needsConfirmation: false,
+    });
+  });
+});
+
+describe('pickHomeHero — searching and empty', () => {
+  it('says an open job with no proposals is being searched for, and names the newest such job', () => {
+    const hero = pickHomeHero(
+      [
+        job('older', { posted_at: '2026-10-01T09:00:00+08:00' }),
+        job('newer', { status: 'recommending', posted_at: '2026-10-07T09:00:00+08:00' }),
+      ],
+      { older: [], newer: [application('rejected', 'a')] },
+      NOW,
+    );
+    expect(hero).toEqual({ kind: 'searching', job: expect.objectContaining({ id: 'newer' }) });
+  });
+
+  it('is empty with no past jobs when the account has no jobs at all', () => {
+    expect(pickHomeHero([], {}, NOW)).toEqual({ kind: 'empty', hasPastJobs: false });
+  });
+
+  it('is empty with past jobs when the only jobs are finished, cancelled or expired', () => {
+    expect(
+      pickHomeHero(
+        [job('done', { status: 'completed' }), job('off', { status: 'cancelled' }), job('lapsed', { status: 'expired' })],
+        {},
+        NOW,
+      ),
+    ).toEqual({ kind: 'empty', hasPastJobs: true });
   });
 });

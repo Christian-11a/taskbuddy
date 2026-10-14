@@ -108,6 +108,7 @@ import { api } from './src/lib/api';
 import { consumeLastNotificationTap, subscribeToNotificationTaps } from './src/lib/pushNotifications';
 import { resolveNotificationTarget } from './src/lib/notificationRouting';
 import { warmUpServer } from './src/lib/warmUp';
+import { profileReadyToVerify } from './src/lib/verifyReady';
 
 export const HOMEOWNER_TABS: readonly BottomNavItem<HOScreen>[] = [
   { key: 'Home', label: 'Home', icon: Home },
@@ -167,7 +168,7 @@ function AppFlow() {
   const { V6Colors, styles } = useThemedStyles(createThemedStyles);
   const {
     initializing, isAuthenticated, isGoogleSignupPending,
-    role, profile, isVerified,
+    role, profile, providerProfile, isVerified,
     signIn, signUp, signOut, signInWithGoogle, completeGoogleProfile,
     refreshProfile, authError, clearAuthError,
   } = useAuth();
@@ -557,6 +558,7 @@ function AppFlow() {
     endTourFlow();
     if (action === 'postJob' && role === 'homeowner') hoNavigate('Create Job');
     if (action === 'getVerified' && role === 'provider') spNavigate('Verification');
+    if (action === 'setupProfile' && role === 'provider') spNavigate('Edit Profile');
   };
 
   // Home is on screen: the tour is due once Home's real content is up (its controls rendered, not still behind the
@@ -564,7 +566,7 @@ function AppFlow() {
   const onHome = showOnboarding === false && !!role && (role === 'homeowner' ? hoScreen === 'Home' : spScreen === 'Dashboard');
   useEffect(() => {
     if (tourFlow.phase !== 'waiting' || !onHome || !role) return;
-    const steps = tourSteps(role);
+    const steps = tourSteps(role, isVerified);
     const waitedFrom = Date.now();
     let timer: ReturnType<typeof setTimeout> | undefined;
     const check = () => {
@@ -585,7 +587,7 @@ function AppFlow() {
   useEffect(() => {
     if (tourFlow.phase !== 'touring' || !role) return;
     startTour({
-      steps: tourSteps(role),
+      steps: tourSteps(role, isVerified),
       onFinish: () => setTourFlow((flow) => nextTourFlow(flow, { type: 'tourFinished' })),
       onSkip: endTourFlow,
     });
@@ -598,6 +600,7 @@ function AppFlow() {
     <TourFinishCard
       role={role}
       verified={isVerified}
+      hasServiceProfile={profileReadyToVerify(profile, providerProfile)}
       firstName={firstName}
       firstRun={tourFlow.firstRun}
       onAction={handleFinishAction}
@@ -987,6 +990,8 @@ function AppFlow() {
             void refreshProfile();
             spBack();
           }}
+          // The same destination as the finish card's "Finish my profile" (setupProfile).
+          onEditProfile={() => spNavigate('Edit Profile')}
           onVerified={async () => {
             await refreshProfile();
             spBack();

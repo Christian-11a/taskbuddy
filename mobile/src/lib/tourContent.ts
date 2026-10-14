@@ -12,7 +12,7 @@ export type WelcomeRole = 'homeowner' | 'provider';
 
 export type IntroCard = { title: string; body: string };
 
-export type FinishAction = 'postJob' | 'getVerified' | 'close';
+export type FinishAction = 'postJob' | 'getVerified' | 'setupProfile' | 'close';
 export type ChecklistState = 'done' | 'next' | 'later';
 export type ChecklistItem = { label: string; state: ChecklistState };
 export type FinishButton = { label: string; action: FinishAction };
@@ -67,10 +67,21 @@ export function introCards(role: WelcomeRole, firstName: string | null | undefin
 /**
  * The four spotlight steps on the first screen of each role. The provider's
  * availability toggle and feed search exist only once the provider is
- * verified; a step whose control is not on screen is passed over.
+ * verified. Until then the setup panel on Home is the anchor for an unverified
+ * provider's first step, and the rest point at the tabs, which every provider
+ * has. A step whose control is not on screen is passed over.
  */
-export function tourSteps(role: WelcomeRole): TourStep[] {
+export function tourSteps(role: WelcomeRole, verified = true): TourStep[] {
   if (role === 'provider') {
+    if (!verified) {
+      return [
+        { anchorId: 'home.setup', title: 'Finish setting up', body: 'Add your details and ID so clients can find you.' },
+        { anchorId: 'tab.work', title: 'Your work', body: 'Offers, bookings and jobs in progress, all in one place.' },
+        // Withdrawals go to a GCash or bank account (the Withdraw sheet); no other payout rail is offered.
+        { anchorId: 'tab.Wallet', title: 'Your earnings', body: 'Withdraw to your GCash or bank account once money is released.' },
+        { anchorId: 'tab.Profile', title: 'Your profile', body: 'Keep your details, photo and services up to date.' },
+      ];
+    }
     return [
       { anchorId: 'home.availability', title: 'Be seen', body: 'Turn this on to get invited to jobs near you.' },
       { anchorId: 'home.feed', title: 'Open jobs near you', body: 'Open one and send a short, friendly offer.' },
@@ -89,12 +100,15 @@ export function tourSteps(role: WelcomeRole): TourStep[] {
 
 /**
  * The finish card's title, checklist and buttons. A provider's checklist and
- * main action follow their real verification status; nothing here is a number.
+ * main action follow their real verification status and whether their profile
+ * is ready to verify (address and bio); nothing here is a number.
  */
-export function finishCard({ role, verified, firstName }: {
+export function finishCard({ role, verified, firstName, hasServiceProfile = true }: {
   role: WelcomeRole;
   verified: boolean;
   firstName: string | null | undefined;
+  /** The profile is ready to verify (address and bio). Until it is, verification waits, so the first step is the profile. */
+  hasServiceProfile?: boolean;
 }): FinishCard {
   const title = `You're all set, ${firstNameFrom(firstName)}`;
   const lookAround: FinishButton = { label: 'Look around first', action: 'close' };
@@ -108,6 +122,19 @@ export function finishCard({ role, verified, firstName }: {
         { label: 'Hire a pro', state: 'later' },
       ],
       primary: { label: 'Post my first job', action: 'postJob' },
+      secondary: lookAround,
+    };
+  }
+
+  if (!verified && !hasServiceProfile) {
+    return {
+      title,
+      checklist: [
+        { label: 'Account created', state: 'done' },
+        { label: 'Add your address and bio', state: 'next' },
+        { label: 'Get verified', state: 'later' },
+      ],
+      primary: { label: 'Finish my profile', action: 'setupProfile' },
       secondary: lookAround,
     };
   }

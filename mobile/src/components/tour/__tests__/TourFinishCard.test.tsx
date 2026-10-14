@@ -1,18 +1,29 @@
 import React from 'react';
-import { Modal } from 'react-native';
+import { Modal, StyleSheet } from 'react-native';
 import { fireEvent, render, screen } from '@testing-library/react-native';
 import * as Haptics from 'expo-haptics';
 import TourFinishCard from '../TourFinishCard';
 
-// Confetti is checked through its props: which bursts were asked for, not what they look like.
+// The sheet reads the bottom inset from the safe area; the spacing tests set it per case.
+const mockInsets = { top: 0, right: 0, bottom: 0, left: 0 };
+jest.mock('react-native-safe-area-context', () => {
+  const actual = jest.requireActual('react-native-safe-area-context');
+  return { ...actual, useSafeAreaInsets: () => mockInsets };
+});
+
+// Confetti's props are recorded (which bursts were asked for), and the real layer is drawn, so its touch setting can be checked.
 const mockConfettiActive: boolean[] = [];
-jest.mock('../Confetti', () => ({
-  __esModule: true,
-  default: ({ active }: { active: boolean }) => {
-    mockConfettiActive.push(active);
-    return null;
-  },
-}));
+jest.mock('../Confetti', () => {
+  const React = require('react');
+  const Actual = jest.requireActual('../Confetti').default;
+  return {
+    __esModule: true,
+    default: (props: { active: boolean }) => {
+      mockConfettiActive.push(props.active);
+      return React.createElement(Actual, props);
+    },
+  };
+});
 
 type Props = Partial<React.ComponentProps<typeof TourFinishCard>>;
 
@@ -28,6 +39,10 @@ beforeEach(() => {
   mockConfettiActive.length = 0;
 });
 
+afterEach(() => {
+  mockInsets.bottom = 0;
+});
+
 describe('TourFinishCard — the client', () => {
   it('says you are all set by first name, with the checklist and both buttons', () => {
     renderCard();
@@ -40,7 +55,7 @@ describe('TourFinishCard — the client', () => {
     expect(screen.getByRole('button', { name: 'Look around first' })).toBeTruthy();
   });
 
-  it('"Post my first job" asks for the postJob action', () => {
+  it('"Post my first job" asks for the postJob action, once', () => {
     const { onAction } = renderCard();
 
     fireEvent.press(screen.getByRole('button', { name: 'Post my first job' }));
@@ -49,12 +64,27 @@ describe('TourFinishCard — the client', () => {
     expect(onAction).toHaveBeenCalledWith('postJob');
   });
 
-  it('"Look around first" asks for the close action', () => {
+  it('"Look around first" asks for the close action, once', () => {
     const { onAction } = renderCard();
 
     fireEvent.press(screen.getByRole('button', { name: 'Look around first' }));
 
+    expect(onAction).toHaveBeenCalledTimes(1);
     expect(onAction).toHaveBeenCalledWith('close');
+  });
+
+  it('a press on the card, away from its buttons, does nothing and does not close the card', () => {
+    const { onAction } = renderCard();
+
+    fireEvent.press(screen.getByTestId('tour-finish', { includeHiddenElements: true }));
+
+    expect(onAction).not.toHaveBeenCalled();
+  });
+
+  it('the confetti layer ignores touches, so it cannot take a press from the buttons', () => {
+    renderCard({ firstRun: true });
+
+    expect(screen.getByTestId('confetti-layer').props.pointerEvents).toBe('none');
   });
 
   it('names each checklist step with its state for screen readers', () => {
@@ -75,6 +105,17 @@ describe('TourFinishCard — the provider', () => {
     fireEvent.press(screen.getByRole('button', { name: 'Get verified' }));
 
     expect(onAction).toHaveBeenCalledWith('getVerified');
+  });
+
+  it('an unverified provider whose profile is not ready is asked to add the address and bio first', () => {
+    const { onAction } = renderCard({ role: 'provider', verified: false, hasServiceProfile: false, firstName: 'Ana' });
+
+    expect(screen.getByText('Add your address and bio')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Get verified' })).toBeNull();
+    fireEvent.press(screen.getByRole('button', { name: 'Finish my profile' }));
+
+    expect(onAction).toHaveBeenCalledTimes(1);
+    expect(onAction).toHaveBeenCalledWith('setupProfile');
   });
 
   it('a verified provider has one main action, which just closes the card', () => {
@@ -109,6 +150,20 @@ describe('TourFinishCard — first run only', () => {
     rerender(<TourFinishCard role="homeowner" verified={false} firstName="Juan" firstRun onAction={onAction} />);
 
     expect(Haptics.impactAsync).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('TourFinishCard — the bottom space', () => {
+  // The sheet ends at the window's bottom edge, so it clears the navigation bar's inset and keeps 16 dp under the link.
+  it.each([
+    [0, 16],
+    [24, 40],
+    [48, 64],
+  ])('under a %i dp navigation bar, pads the sheet by %i dp', (bottom, padding) => {
+    mockInsets.bottom = bottom;
+    renderCard();
+
+    expect(StyleSheet.flatten(screen.getByTestId('tour-finish').props.style).paddingBottom).toBe(padding);
   });
 });
 

@@ -60,15 +60,20 @@ it('reports refresh failure while retaining the last known snapshot', async () =
   expect(screen.getByTestId('payouts-status-active')).toBeTruthy();
 });
 
-it('shows actionable setup failure instead of Stripe platform-administration instructions', async () => {
+it('shows a neutral not-available card instead of a red error when Stripe will not open accounts here', async () => {
   (api.connectOnboardingLink as jest.Mock).mockRejectedValueOnce(new Error("You can only create new accounts if you've signed up for Connect, which you can do at https://stripe.com/connect."));
   render(<SPPayoutsScreen onBack={jest.fn()} />);
   await screen.findByTestId('payouts-status-not_started');
   await waitFor(() => expect(screen.getByRole('button', {name: 'Set up payouts'})).toBeEnabled());
   await act(async () => fireEvent.press(screen.getByRole('button', {name: 'Set up payouts'})));
-  expect(await screen.findByText('Card payout setup is unavailable for this platform. Contact TaskBuddy support.')).toBeTruthy();
-  expect(screen.getByTestId('payouts-status-not_started')).toBeTruthy();
-  expect(screen.getByRole('button', {name: 'Set up payouts'})).toBeEnabled();
+
+  await screen.findByText("Bank payouts aren't available yet");
+  expect(within(screen.getByTestId('payouts-status-not_started')).getByText('NOT AVAILABLE YET')).toBeTruthy();
+  expect(screen.getByText('Your earnings are safe in your TaskBuddy wallet. Withdraw to GCash or your bank from the Wallet tab.')).toBeTruthy();
+  expect(screen.queryByText(/Card payout setup is unavailable/)).toBeNull();
+  expect(screen.queryByText(/You can only create new accounts/)).toBeNull();
+  expect(screen.queryByRole('button', {name: 'Set up payouts'})).toBeNull();
+  expect(screen.queryByText("You'll need")).toBeNull();
   expect(openRedirectSession).not.toHaveBeenCalled();
 });
 

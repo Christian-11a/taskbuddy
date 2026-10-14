@@ -125,6 +125,24 @@ it('shows a long email with no line limit, so it wraps instead of being cut off'
   expect(screen.getByText(longEmail).props.numberOfLines).toBeUndefined();
 });
 
+it('an empty location is an Add location link to Edit Profile, not a dash', () => {
+  (useAuth as jest.Mock).mockReturnValue({ profile: { ...homeownerProfile, address: null, city: null } });
+  const onNavigate = jest.fn();
+  render(<Profile onNavigate={onNavigate} onLogout={jest.fn()} />);
+
+  fireEvent.press(screen.getByRole('button', { name: 'Add location' }));
+
+  expect(onNavigate).toHaveBeenCalledWith('Edit Profile');
+});
+
+it('shows the location, and no Add location link, once there is one', () => {
+  (useAuth as jest.Mock).mockReturnValue({ profile: { ...homeownerProfile, address: 'Arturo Tanco Drive, Lipa', city: 'Lipa' } });
+  render(<Profile onNavigate={jest.fn()} onLogout={jest.fn()} />);
+
+  expect(screen.getByText('Arturo Tanco Drive, Lipa')).toBeTruthy();
+  expect(screen.queryByText('Add location')).toBeNull();
+});
+
 it('shows the phone number, and no Add phone number link, once there is one', () => {
   render(<Profile onNavigate={jest.fn()} onLogout={jest.fn()} />);
 

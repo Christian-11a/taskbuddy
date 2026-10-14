@@ -34,6 +34,7 @@ import {
 import Tap from '../../../src/components/ui/Tap';
 import BottomActionBar from '../../../src/components/ui/BottomActionBar';
 import ContentSkeleton from '../../../src/components/ui/ContentSkeleton';
+import RefreshBar from '../../../src/components/ui/RefreshBar';
 import Silhouette from '../../../src/components/ui/Silhouette';
 import { ArrowLeft, BadgeCheck, CheckCircle2, MessageCircle, ShieldAlert, Star } from 'lucide-react-native';
 import { Spacing } from '../../../src/constants/theme';
@@ -103,14 +104,16 @@ export default function HOProviderProfileScreen({
         <Text style={styles.headerTitle}>Provider Profile</Text>
       </View>
 
-      {loading && <ContentSkeleton variant="detail" />}
+      {/* The skeleton only stands in for a profile not loaded yet; a reload keeps the profile and shows the bar. */}
+      {loading && !data && <ContentSkeleton variant="detail" />}
+      {loading && !!data && <RefreshBar />}
       {!!error && !loading && (
         <View style={styles.errorWrap}>
           <LoadErrorCard title="Couldn't load this provider" message={error} onRetry={reload} />
         </View>
       )}
 
-      {!loading && provider && (
+      {provider && (
         <ScrollView style={styles.body} showsVerticalScrollIndicator={false}>
           {/* Hero — matches .public-hero */}
           <View style={styles.hero}>

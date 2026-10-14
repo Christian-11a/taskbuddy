@@ -43,12 +43,15 @@ export default function HOChatScreen({ jobId, onBack, onViewJob }: HOChatScreenP
   const [text, setText] = useState('');
   const [sending, setSending] = useState(false);
   const [attaching, setAttaching] = useState(false);
+  // Bumped by Try again, so the load runs once more.
+  const [attempt, setAttempt] = useState(0);
   const listRef = useRef<FlatList<Message>>(null);
 
   useEffect(() => {
     let active = true;
     let stopStream: (() => void) | undefined;
     (async () => {
+      setConversation(null);
       setMessages([]);
       setLoading(true);
       setError(null);
@@ -78,7 +81,7 @@ export default function HOChatScreen({ jobId, onBack, onViewJob }: HOChatScreenP
       active = false;
       stopStream?.();
     };
-  }, [jobId]);
+  }, [jobId, attempt]);
 
   const handleSend = async () => {
     const body = cleanText(text);
@@ -136,6 +139,8 @@ export default function HOChatScreen({ jobId, onBack, onViewJob }: HOChatScreenP
       profileId={profile?.id}
       loading={loading}
       error={error}
+      conversationReady={conversation !== null}
+      onRetry={() => setAttempt((n) => n + 1)}
       listRef={listRef}
       text={text}
       onChangeText={setText}

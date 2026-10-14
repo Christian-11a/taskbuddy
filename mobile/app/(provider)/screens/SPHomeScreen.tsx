@@ -45,10 +45,10 @@ import { useHeaderTop } from '../../../src/hooks/useHeaderTop';
 import { SPScreen } from '../../../src/types/navigation';
 
 import { useAuth } from '../../../src/context/AuthContext';
-import { useTourAnchor } from '../../../src/components/tour';
+import { useTourAnchor, type TourAnchor } from '../../../src/components/tour';
 import TourOfferCard from '../../../src/components/tour/TourOfferCard';
 import { useAsyncData } from '../../../src/hooks/useAsyncData';
-import { api } from '../../../src/lib/api';
+import { api, type Job } from '../../../src/lib/api';
 import { isFeed, isList } from '../../../src/lib/savedShapes';
 import { peso } from '../../../src/lib/format';
 import {
@@ -118,14 +118,14 @@ interface SPHomeScreenProps {
 }
 
 /** "Wed, Oct 15 · 12:22 AM · Arturo Tanco Drive, Lipa"; without a date, "No date yet · address". */
-function heroLine(hero: ProviderHero): string {
-  const when = hero.when
+function heroLine(job: Job, when: Date | null): string {
+  const parts = when
     ? [
-        hero.when.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }),
-        hero.when.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }),
+        when.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }),
+        when.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }),
       ]
     : ['No date yet'];
-  return [...when, hero.job.address].filter(Boolean).join(' · ');
+  return [...parts, job.address].filter(Boolean).join(' · ');
 }
 
 /**
@@ -133,11 +133,12 @@ function heroLine(hero: ProviderHero): string {
  * segments, one per step), the checklist with its next-step button, and the
  * note on where jobs will appear.
  */
-function SetupPanel({ steps, verifyState, categoryName, onStep }: {
+function SetupPanel({ steps, verifyState, categoryName, onStep, setupTour }: {
   steps: SetupStep[];
   verifyState: VerifyState;
   categoryName: string | null;
   onStep: (id: SetupStepId) => void;
+  setupTour: TourAnchor;
 }) {
   const { Colors, styles } = useThemedStyles(createThemedStyles);
   const { done, total } = setupProgress(steps);
@@ -145,7 +146,7 @@ function SetupPanel({ steps, verifyState, categoryName, onStep }: {
   const copy = VERIFY_HERO[verifyState];
   return (
     <>
-      <View testID="setup-hero" style={styles.heroCard}>
+      <View testID="setup-hero" {...setupTour} style={styles.heroCard}>
         <View style={styles.heroChip}>
           <Text style={styles.heroChipText}>{`Finish setting up · ${done} of ${total}`}</Text>
         </View>
@@ -257,6 +258,7 @@ export default function SPHomeScreen({ onNavigate, tourOffer }: SPHomeScreenProp
   // so until then they are not registered and their tour steps are passed over at once.
   const availabilityTour = useTourAnchor('home.availability', isVerified);
   const feedTour = useTourAnchor('home.feed', isVerified);
+  const setupTour = useTourAnchor('home.setup', !isVerified);
   const radiusKm = providerProfile?.service_radius_km ?? DEFAULT_RADIUS_KM;
 
   // Verification is approved async by a webhook while the app may be
@@ -336,7 +338,15 @@ export default function SPHomeScreen({ onNavigate, tourOffer }: SPHomeScreenProp
 
   const name = profile?.full_name ?? '';
   const setupSteps = providerSetupSteps(profile, providerProfile, verifyState);
-  const hero = pickProviderHero(data?.assigned ?? [], new Date());
+  // The hero waits for the feed's load, so "Find your next job" is never shown before the bookings are known.
+  const hero = data ? pickProviderHero(data.assigned, new Date()) : null;
+  const feedRef = useRef<ScrollView>(null);
+  const bodyTop = useRef(0);
+  const searchTop = useRef(0);
+  // "Find jobs" scrolls down to the feed, which starts at the search box.
+  const findJobs = () => {
+    feedRef.current?.scrollTo({ y: Math.max(0, bodyTop.current + searchTop.current - 12), animated: true });
+  };
   const q = search.trim().toLowerCase();
   const availableJobs = (data?.jobs ?? []).filter(
     (job) =>
@@ -348,7 +358,7 @@ export default function SPHomeScreen({ onNavigate, tourOffer }: SPHomeScreenProp
   return (
     <View style={styles.screen}>
       <StatusBar style={dark ? 'light' : 'dark'} />
-      <KeyboardAwareScrollView keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag"
+      <KeyboardAwareScrollView ref={feedRef} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag"
         style={styles.body}
         showsVerticalScrollIndicator={false}
         testID="feed-scroll"
@@ -404,7 +414,7 @@ export default function SPHomeScreen({ onNavigate, tourOffer }: SPHomeScreenProp
           </View>
         </View>
 
-        <View style={styles.bodyContent}>
+        <View style={styles.bodyContent} onLayout={(e) => { bodyTop.current = e.nativeEvent.layout.y; }}>
           {tourOffer && <TourOfferCard onStart={tourOffer.onStart} onDismiss={tourOffer.onDismiss} />}
           {!isVerified ? (
             <SetupPanel
@@ -412,31 +422,51 @@ export default function SPHomeScreen({ onNavigate, tourOffer }: SPHomeScreenProp
               verifyState={verifyState}
               categoryName={providerProfile?.service_categories?.name ?? null}
               onStep={(id) => onNavigate(id === 'verify' ? 'Verification' : 'Edit Profile')}
+              setupTour={setupTour}
             />
           ) : (
             <>
-              {/* The next booking: the hired job to start, or the soonest one still ahead. */}
+              {/* The hero: the next booking (the hired job to start, or the soonest one still ahead), a job in progress, or an invitation to find work. */}
               {hero && (
                 <View testID="feed-hero" style={styles.heroCard}>
                   <View style={styles.heroChip}>
-                    <Text style={styles.heroChipText}>Next booking</Text>
+                    <Text style={styles.heroChipText}>
+                      {hero.kind === 'booking' ? 'Next booking' : hero.kind === 'working' ? 'In progress' : 'No booking yet'}
+                    </Text>
                   </View>
-                  <Text style={styles.heroTitle} numberOfLines={2}>{hero.job.title}</Text>
-                  <Text style={styles.heroLine} numberOfLines={2}>{heroLine(hero)}</Text>
+                  <Text style={styles.heroTitle} numberOfLines={2}>
+                    {hero.kind === 'none' ? 'Find your next job' : hero.job.title}
+                  </Text>
+                  <Text style={styles.heroLine} numberOfLines={2}>
+                    {hero.kind === 'none' ? 'Browse open jobs near you.' : heroLine(hero.job, hero.when)}
+                  </Text>
                   <View style={styles.heroFooter}>
-                    {hero.moreThisWeek > 0 && (
+                    {hero.kind === 'booking' && hero.moreThisWeek > 0 && (
                       <Text style={styles.heroMore} numberOfLines={1}>{`+${hero.moreThisWeek} more this week`}</Text>
                     )}
-                    <Tap
-                      style={styles.heroButton}
-                      hitSlop={5}
-                      accessibilityRole="button"
-                      accessibilityLabel={`Open ${hero.job.title}`}
-                      onPress={() => onNavigate('Job Detail', hero.job.id)}
-                    >
-                      <Text style={styles.heroButtonText}>Open</Text>
-                      <ArrowRight size={16} color={Colors.primary} strokeWidth={2.4} />
-                    </Tap>
+                    {hero.kind === 'none' ? (
+                      <Tap
+                        style={styles.heroButton}
+                        hitSlop={5}
+                        accessibilityRole="button"
+                        accessibilityLabel="Find jobs"
+                        onPress={findJobs}
+                      >
+                        <Text style={styles.heroButtonText}>Find jobs</Text>
+                        <ArrowRight size={16} color={Colors.primary} strokeWidth={2.4} />
+                      </Tap>
+                    ) : (
+                      <Tap
+                        style={styles.heroButton}
+                        hitSlop={5}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Open ${hero.job.title}`}
+                        onPress={() => onNavigate('Job Detail', hero.job.id)}
+                      >
+                        <Text style={styles.heroButtonText}>Open</Text>
+                        <ArrowRight size={16} color={Colors.primary} strokeWidth={2.4} />
+                      </Tap>
+                    )}
                   </View>
                 </View>
               )}
@@ -474,9 +504,11 @@ export default function SPHomeScreen({ onNavigate, tourOffer }: SPHomeScreenProp
                 </View>
               </Tap>
 
-              <View testID="feed-search" {...feedTour} style={styles.search}>
-                <Search size={20} color={C.ink400} />
-                <FeedSearchInput value={search} onChangeText={setSearch} />
+              <View testID="feed-section" onLayout={(e) => { searchTop.current = e.nativeEvent.layout.y; }}>
+                <View testID="feed-search" {...feedTour} style={styles.search}>
+                  <Search size={20} color={C.ink400} />
+                  <FeedSearchInput value={search} onChangeText={setSearch} />
+                </View>
               </View>
 
               <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.pillScroll} contentContainerStyle={styles.pillRow}>

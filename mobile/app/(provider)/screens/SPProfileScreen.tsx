@@ -44,6 +44,7 @@ import { useAsyncData } from '../../../src/hooks/useAsyncData';
 import { api } from '../../../src/lib/api';
 import { initials } from '../../../src/lib/format';
 import { approvedServiceNames } from '../../../src/lib/providerServices';
+import { profileReadyToVerify } from '../../../src/lib/verifyReady';
 
 interface SPProfileScreenProps {
   onNavigate: (screen: SPScreen) => void;
@@ -97,9 +98,15 @@ export default function SPProfileScreen({ onNavigate, onLogout, onBack }: SPProf
       : [profile?.city, profile?.address].filter(Boolean).join(', ')) || null;
 
   const workItems: MenuItem[] = [
+    // Verification needs a service profile, an address and a bio, so a provider without them is sent to Edit Profile first.
     ...(isVerified
       ? []
-      : [{ key: 'verify', icon: ShieldCheck, label: 'Get verified', onPress: () => onNavigate('Verification') }]),
+      : [{
+        key: 'verify',
+        icon: ShieldCheck,
+        label: 'Get verified',
+        onPress: () => onNavigate(profileReadyToVerify(profile, providerProfile) ? 'Verification' : 'Edit Profile'),
+      }]),
     { key: 'services', icon: Wrench, label: 'My services', onPress: () => onNavigate('My Services') },
     { key: 'portfolio', icon: Camera, label: 'Portfolio', onPress: () => onNavigate('Portfolio') },
     { key: 'payouts', icon: Wallet, label: 'Payouts', onPress: () => onNavigate('Payouts') },
@@ -224,7 +231,19 @@ export default function SPProfileScreen({ onNavigate, onLogout, onBack }: SPProf
             </InfoRow>
             <View style={styles.divider} />
             <InfoRow icon={MapPin} label="Location">
-              <Text style={styles.infoValue}>{location ?? '—'}</Text>
+              {location ? (
+                <Text style={styles.infoValue}>{location}</Text>
+              ) : (
+                <Tap
+                  style={styles.linkTap}
+                  hitSlop={{ top: 12, bottom: 12 }}
+                  accessibilityRole="button"
+                  accessibilityLabel="Add location"
+                  onPress={() => onNavigate('Edit Profile')}
+                >
+                  <Text style={styles.linkText}>Add location</Text>
+                </Tap>
+              )}
             </InfoRow>
           </View>
         </View>

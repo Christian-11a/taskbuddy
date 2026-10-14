@@ -55,6 +55,10 @@ export interface ChatThreadProps {
   profileId: string | undefined;
   loading: boolean;
   error: string | null;
+  /** The conversation has loaded. Until it has, the composer is off. */
+  conversationReady: boolean;
+  /** Runs the load again after it failed. */
+  onRetry: () => void;
   listRef: React.RefObject<FlatList<Message> | null>;
   text: string;
   onChangeText: (text: string) => void;
@@ -66,7 +70,7 @@ export interface ChatThreadProps {
 }
 
 export default function ChatThread({
-  counterpartName, subtitle, systemLine, dayHeads, messages, profileId, loading, error, listRef,
+  counterpartName, subtitle, systemLine, dayHeads, messages, profileId, loading, error, conversationReady, onRetry, listRef,
   text, onChangeText, onSend, attaching, onAttach, onBack, onViewJob,
 }: ChatThreadProps) {
   const { C, styles, V6Colors, appearance } = useThemedStyles(createThemedStyles);
@@ -77,7 +81,7 @@ export default function ChatThread({
   const [viewerIndex, setViewerIndex] = useState<number | null>(null);
   // What is sent is the cleaned text: a message of spaces alone cannot be sent.
   const body = cleanText(text);
-  const canSend = body.length > 0 && body.length <= CHAT_MESSAGE_MAX;
+  const canSend = conversationReady && body.length > 0 && body.length <= CHAT_MESSAGE_MAX;
 
   const photoMessages = messages.filter((message): message is Message & { attachment_url: string } => !!message.attachment_url);
   const photos = photoMessages.map((message) => ({ uri: message.attachment_url }));
@@ -161,7 +165,7 @@ export default function ChatThread({
         {loading && <ContentSkeleton variant="chat" />}
         {!!error && !loading && (
           <View style={styles.errorWrap}>
-            <LoadErrorCard title="Couldn't load this chat" message={error} />
+            <LoadErrorCard title="Couldn't load this chat" message={error} onRetry={onRetry} />
           </View>
         )}
         {!loading && !error && messages.length === 0 && (
@@ -184,12 +188,13 @@ export default function ChatThread({
           <Text style={styles.counter}>{`${text.length}/${CHAT_MESSAGE_MAX}`}</Text>
         )}
 
-        <View style={styles.composer}>
+        {/* Off, and dimmed, until the conversation is open: there is nowhere to send to yet. */}
+        <View style={[styles.composer, !conversationReady && styles.composerOff]}>
           <Tap
             style={styles.attachBtn}
             activeOpacity={0.8}
             onPress={onAttach}
-            disabled={attaching}
+            disabled={attaching || !conversationReady}
             hitSlop={4}
             accessibilityRole="button"
             accessibilityLabel="Attach a photo"
@@ -206,6 +211,7 @@ export default function ChatThread({
             placeholderTextColor={C.ink400}
             value={text}
             onChangeText={onChangeText}
+            editable={conversationReady}
             multiline
             maxLength={CHAT_MESSAGE_MAX}
           />
@@ -305,6 +311,7 @@ function createThemedStyles(theme: ThemePalette) {
       paddingHorizontal: 14, paddingTop: 10, paddingBottom: 24,
       backgroundColor: C.surface, borderTopWidth: 1, borderTopColor: C.line,
     },
+    composerOff: { opacity: 0.5 },
     attachBtn: {
       width: 40, height: 40, borderRadius: 20,
       backgroundColor: Colors.primaryTonal, alignItems: 'center', justifyContent: 'center',

@@ -1,6 +1,6 @@
 import { findUnnamedControls } from '../../../../src/testing/a11yAudit';
-import { expectSavedCopyIgnored } from '../../../../src/testing/savedCopy';
 import React from 'react';
+import { AppState, type AppStateStatus } from 'react-native';
 import {
   act,
   fireEvent,
@@ -9,6 +9,7 @@ import {
   waitFor,
   within,
 } from '@testing-library/react-native';
+import ContentSkeleton from '../../../../src/components/ui/ContentSkeleton';
 import SPPortfolioScreen, {
   PHOTO_MAX_BYTES,
   PORTFOLIO_LIMIT,
@@ -22,10 +23,13 @@ import SPPortfolioScreen, {
 import { api } from '../../../../src/lib/api';
 import * as ImagePicker from 'expo-image-picker';
 import { requestAppPermission } from '../../../../src/lib/permissions';
+import { useAuth } from '../../../../src/context/AuthContext';
+jest.mock('../../../../src/context/AuthContext', () => ({
+  useAuth: jest.fn(),
+}));
 jest.mock('../../../../src/lib/api', () => ({
   api: {
     myPortfolio: jest.fn(),
-    categories: jest.fn(),
     uploadImage: jest.fn(),
     createPortfolio: jest.fn(),
     updatePortfolio: jest.fn(),
@@ -45,8 +49,8 @@ const entry = {
 };
 beforeEach(() => {
   jest.clearAllMocks();
+  (useAuth as jest.Mock).mockReturnValue({ providerProfile: null });
   (api.myPortfolio as jest.Mock).mockResolvedValue([]);
-  (api.categories as jest.Mock).mockResolvedValue([]);
   (api.uploadImage as jest.Mock).mockResolvedValue('owner/photo.jpg');
   (api.createPortfolio as jest.Mock).mockResolvedValue({ id: 'photo' });
   (api.updatePortfolio as jest.Mock).mockResolvedValue({ id: 'photo' });
@@ -71,14 +75,6 @@ it('a failed portfolio load shows the error in a card, and Try again loads the g
   expect(within(card).getByText('Portfolio unavailable')).toBeTruthy();
   fireEvent.press(within(card).getByRole('button', { name: 'Try again' }));
   expect(await screen.findByTestId('empty-card')).toBeTruthy();
-});
-it('a failed services load says so above the chips, with Try again', async () => {
-  (api.categories as jest.Mock).mockRejectedValueOnce(new Error('Services unavailable')).mockResolvedValue([]);
-  render(<SPPortfolioScreen onBack={jest.fn()} />);
-  expect(await screen.findByText('Services unavailable')).toBeTruthy();
-  fireEvent.press(screen.getByRole('button', { name: 'Try again' }));
-  await waitFor(() => expect(api.categories).toHaveBeenCalledTimes(2));
-  await waitFor(() => expect(screen.queryByText('Services unavailable')).toBeNull());
 });
 it('uploads an owned image, publishes details and refreshes the saved gallery', async () => {
   render(<SPPortfolioScreen onBack={jest.fn()} />);
@@ -325,8 +321,160 @@ it('every control has an accessible name: photo thumbnails, edit and remove', as
   expect(findUnnamedControls(screen.UNSAFE_root)).toEqual([]);
 });
 
-it('a saved service list of the wrong shape is ignored, and the screen loads as it does with nothing saved', async () => {
-  (api.categories as jest.Mock).mockReturnValue(new Promise(() => {}));
+describe('SPPortfolioScreen — a refresh keeps the gallery on screen', () => {
+  /** Captures the app-state listener, so a test can bring the app back to the foreground. */
+  function captureAppState() {
+    const listeners: ((state: AppStateStatus) => void)[] = [];
+    const spy = jest.spyOn(AppState, 'addEventListener').mockImplementation((_type, listener) => {
+      listeners.push(listener as (state: AppStateStatus) => void);
+      return { remove: jest.fn() } as never;
+    });
+    const comeToForeground = () => {
+      act(() => listeners.forEach((listener) => listener('background')));
+      act(() => listeners.forEach((listener) => listener('active')));
+    };
+    return { spy, comeToForeground };
+  }
 
-  await expectSavedCopyIgnored('categories', {}, () => render(<SPPortfolioScreen onBack={jest.fn()} />));
+  it('shows skeletons only while no portfolio has loaded yet', () => {
+    // The app-state subscription is given back, so the screen can unmount cleanly.
+    const { spy } = captureAppState();
+    (api.myPortfolio as jest.Mock).mockReturnValue(new Promise(() => {}));
+    render(<SPPortfolioScreen onBack={jest.fn()} />);
+
+    expect(screen.UNSAFE_queryByType(ContentSkeleton)).toBeTruthy();
+    expect(screen.queryByTestId('refresh-bar')).toBeNull();
+    spy.mockRestore();
+  });
+
+  it('keeps the gallery under a thin progress line while it refreshes, with no skeleton', async () => {
+    (api.myPortfolio as jest.Mock).mockResolvedValue([entry]);
+    const { spy, comeToForeground } = captureAppState();
+    render(<SPPortfolioScreen onBack={jest.fn()} />);
+    await screen.findByText('Old caption');
+
+    (api.myPortfolio as jest.Mock).mockReturnValue(new Promise(() => {}));
+    comeToForeground();
+
+    expect(screen.getByText('Old caption')).toBeTruthy();
+    expect(screen.getByTestId('refresh-bar')).toBeTruthy();
+    expect(screen.UNSAFE_queryByType(ContentSkeleton)).toBeNull();
+    spy.mockRestore();
+  });
+
+  it('keeps the gallery when a refresh fails, and shows the error above it with Try again', async () => {
+    (api.myPortfolio as jest.Mock).mockResolvedValue([entry]);
+    const { spy, comeToForeground } = captureAppState();
+    render(<SPPortfolioScreen onBack={jest.fn()} />);
+    await screen.findByText('Old caption');
+
+    (api.myPortfolio as jest.Mock).mockRejectedValueOnce(new Error('Network request failed'));
+    comeToForeground();
+
+    const card = await screen.findByTestId('error-card');
+    expect(within(card).getByText("Couldn't load your portfolio")).toBeTruthy();
+    expect(screen.getByText('Old caption')).toBeTruthy();
+
+    (api.myPortfolio as jest.Mock).mockResolvedValue([{ ...entry, caption: 'Fresh caption' }]);
+    fireEvent.press(within(card).getByRole('button', { name: 'Try again' }));
+
+    expect(await screen.findByText('Fresh caption')).toBeTruthy();
+    expect(screen.queryByTestId('error-card')).toBeNull();
+    spy.mockRestore();
+  });
+});
+
+describe('SPPortfolioScreen — a photo is filed under the provider\'s own services', () => {
+  // The screen gives its app-state subscription back when it unmounts, so this block supplies one.
+  beforeEach(() => {
+    jest.spyOn(AppState, 'addEventListener').mockReturnValue({ remove: jest.fn() } as never);
+  });
+  afterEach(() => {
+    jest.restoreAllMocks();
+  });
+
+  const ONE_SERVICE = {
+    category_id: 1,
+    service_categories: { name: 'Plumbing' },
+    approved_secondary_services: [],
+  };
+  const TWO_SERVICES = {
+    category_id: 1,
+    service_categories: { name: 'Plumbing' },
+    approved_secondary_services: [{ category_id: 2, service_categories: { id: 2, name: 'Cleaning' } }],
+  };
+
+  /** Publishes a new photo with this caption, as the provider would. */
+  async function publishNewPhoto(caption: string) {
+    await act(async () => fireEvent.press(screen.getByText('Choose portfolio photo')));
+    fireEvent.changeText(screen.getByLabelText('Caption'), caption);
+    await act(async () => fireEvent.press(screen.getByText('Publish photo')));
+  }
+
+  it('with one service, names it in words, offers no chips, and files the photo under it', async () => {
+    (useAuth as jest.Mock).mockReturnValue({ providerProfile: ONE_SERVICE });
+    render(<SPPortfolioScreen onBack={jest.fn()} />);
+    await screen.findByText('No portfolio photos yet');
+
+    expect(screen.getByText('Service: Plumbing')).toBeTruthy();
+    expect(screen.queryByRole('radio')).toBeNull();
+    expect(screen.queryByText('No service category')).toBeNull();
+    expect(screen.queryByText(/optional/)).toBeNull();
+
+    await publishNewPhoto('Sink repair');
+    expect(api.createPortfolio).toHaveBeenCalledWith(expect.objectContaining({ category_id: 1 }));
+  });
+
+  it('with two services, offers only those two as chips, with the first picked, and no "No service" choice', async () => {
+    (useAuth as jest.Mock).mockReturnValue({ providerProfile: TWO_SERVICES });
+    render(<SPPortfolioScreen onBack={jest.fn()} />);
+    await screen.findByText('No portfolio photos yet');
+
+    const radios = screen.getAllByRole('radio');
+    expect(radios.map((radio) => radio.props.accessibilityLabel)).toEqual(['Plumbing', 'Cleaning']);
+    expect(radios[0].props.accessibilityState.selected).toBe(true);
+    expect(radios[1].props.accessibilityState.selected).toBe(false);
+    expect(screen.queryByText('No service category')).toBeNull();
+    expect(screen.queryByText(/optional/)).toBeNull();
+
+    await publishNewPhoto('Sink repair');
+    expect(api.createPortfolio).toHaveBeenCalledWith(expect.objectContaining({ category_id: 1 }));
+  });
+
+  it('with two services, files the photo under the one the provider picks', async () => {
+    (useAuth as jest.Mock).mockReturnValue({ providerProfile: TWO_SERVICES });
+    render(<SPPortfolioScreen onBack={jest.fn()} />);
+    await screen.findByText('No portfolio photos yet');
+
+    fireEvent.press(screen.getByRole('radio', { name: 'Cleaning' }));
+    await publishNewPhoto('Sink repair');
+
+    expect(api.createPortfolio).toHaveBeenCalledWith(expect.objectContaining({ category_id: 2 }));
+  });
+
+  it('editing keeps the photo\'s own category, and shows that service picked', async () => {
+    (useAuth as jest.Mock).mockReturnValue({ providerProfile: TWO_SERVICES });
+    (api.myPortfolio as jest.Mock).mockResolvedValue([{ ...entry, category_id: 2 }]);
+    render(<SPPortfolioScreen onBack={jest.fn()} />);
+    fireEvent.press(await screen.findByText('Edit photo details'));
+
+    expect(screen.getByRole('radio', { name: 'Cleaning' }).props.accessibilityState.selected).toBe(true);
+    fireEvent.changeText(screen.getByLabelText('Caption'), 'New caption');
+    await act(async () => fireEvent.press(screen.getByText('Save photo details')));
+
+    expect(api.updatePortfolio).toHaveBeenCalledWith('photo', expect.objectContaining({ caption: 'New caption', category_id: 2 }));
+  });
+
+  it('editing a photo filed under a service the provider no longer lists keeps that category when saved', async () => {
+    (useAuth as jest.Mock).mockReturnValue({ providerProfile: TWO_SERVICES });
+    (api.myPortfolio as jest.Mock).mockResolvedValue([{ ...entry, category_id: 9 }]);
+    render(<SPPortfolioScreen onBack={jest.fn()} />);
+    fireEvent.press(await screen.findByText('Edit photo details'));
+
+    expect(screen.getAllByRole('radio').map((radio) => radio.props.accessibilityState.selected)).toEqual([false, false]);
+    fireEvent.changeText(screen.getByLabelText('Caption'), 'New caption');
+    await act(async () => fireEvent.press(screen.getByText('Save photo details')));
+
+    expect(api.updatePortfolio).toHaveBeenCalledWith('photo', expect.objectContaining({ category_id: 9 }));
+  });
 });

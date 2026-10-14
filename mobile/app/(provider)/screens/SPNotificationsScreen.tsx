@@ -4,22 +4,25 @@
  * Notifications for the provider, grouped Today / Earlier, in the same card
  * layout as the homeowner's (HONotificationsScreen.tsx). A service request
  * opens My services; any other row opens its job, chat or dispute. The trash
- * button hides the row and offers Undo before the delete is sent.
+ * button hides the row and offers Undo before the delete is sent. Long-press a
+ * row to pick several and delete them together (see useNotificationSelection).
  */
 
 import { useThemedStyles, type Palette as ThemePalette } from '../../../src/context/ThemeContext';
-import React, { useState } from 'react';
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import Tap from '../../../src/components/ui/Tap';
 import ContentSkeleton from '../../../src/components/ui/ContentSkeleton';
 import Banner from '../../../src/components/ui/Banner';
 import EmptyCard from '../../../src/components/ui/EmptyCard';
 import LoadErrorCard from '../../../src/components/ui/LoadErrorCard';
 import EmptyRow from '../../../src/components/ui/EmptyRow';
-import NotificationCard, { NOTIFICATION_ICONS } from '../../../src/components/ui/NotificationCard';
+import { NOTIFICATION_ICONS } from '../../../src/components/ui/NotificationCard';
+import { NotificationSelectBar, NotificationSelectRow } from '../../../src/components/NotificationSelection';
 import { ArrowLeft, BellRing } from 'lucide-react-native';
 import ConfirmationModal from '../../../src/components/ConfirmationModal';
 import { useNotificationDeletion } from '../../../src/hooks/useNotificationDeletion';
+import { deleteTitle, useNotificationSelection } from '../../../src/hooks/useNotificationSelection';
 import { Spacing } from '../../../src/constants/theme';
 import { useHeaderTop } from '../../../src/hooks/useHeaderTop';
 
@@ -55,11 +58,21 @@ interface SPNotificationsScreenProps {
 }
 
 export default function SPNotificationsScreen({ onBack, onOpenJob, onOpenChat, onOpenDispute, onOpenServices }: SPNotificationsScreenProps) {
-  const { C, styles, V6Colors } = useThemedStyles(createThemedStyles);
+  const { C, Colors, styles, V6Colors } = useThemedStyles(createThemedStyles);
   const headerTop = useHeaderTop();
   const { notifications, loading, error, reload, unreadCount } = useNotifications();
+  const [refreshing, setRefreshing] = useState(false);
+  // The notifications reload is fire-and-forget; a new list or error means the fetch settled, so the spinner can stop.
+  useEffect(() => {
+    setRefreshing(false);
+  }, [notifications, error]);
+  const onRefresh = () => {
+    setRefreshing(true);
+    reload();
+  };
   const deletion = useNotificationDeletion();
   const [confirmClear, setConfirmClear] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
 
   // Rows waiting out their Undo window are hidden; their unread count leaves the header too.
   const waiting = deletion.pendingIds;
@@ -67,6 +80,7 @@ export default function SPNotificationsScreen({ onBack, onOpenJob, onOpenChat, o
   const hiddenUnread = notifications.filter((n) => waiting.has(n.id) && !n.read_at).length;
   const shownUnread = Math.max(0, unreadCount - hiddenUnread);
   const groups = groupNotificationsByDay(visible);
+  const selection = useNotificationSelection(visible.map((n) => n.id));
 
   const markAllRead = async () => {
     try { await api.markAllNotificationsRead(); }
@@ -89,16 +103,22 @@ export default function SPNotificationsScreen({ onBack, onOpenJob, onOpenChat, o
     const tone = notificationTone({ title: notif.title, body: notif.body, type: notif.type });
     const icon = NOTIFICATION_ICONS[notificationIconName({ type: notif.type, title: notif.title, body: notif.body, kind, tone })];
     return (
-      <NotificationCard
+      <NotificationSelectRow
         key={notif.id}
-        title={notif.title}
-        body={notif.body}
-        time={timeAgo(notif.created_at)}
-        tone={tone}
-        icon={icon}
-        unread={!notif.read_at}
-        onPress={() => openNotification(notif)}
-        onDelete={() => deletion.removeWithUndo(notif.id)}
+        selecting={selection.selecting}
+        selected={selection.selected.has(notif.id)}
+        onStartSelect={() => selection.start(notif.id)}
+        onToggle={() => selection.toggle(notif.id)}
+        card={{
+          title: notif.title,
+          body: notif.body,
+          time: timeAgo(notif.created_at),
+          tone,
+          icon,
+          unread: !notif.read_at,
+          onPress: () => openNotification(notif),
+          onDelete: () => deletion.removeWithUndo(notif.id),
+        }}
       />
     );
   };
@@ -134,12 +154,37 @@ export default function SPNotificationsScreen({ onBack, onOpenJob, onOpenChat, o
         onCancel={() => setConfirmClear(false)}
       />
 
+      <ConfirmationModal
+        visible={confirmDelete}
+        title={deleteTitle(selection.selected.size)}
+        message="The chosen notifications are removed from your list. This can't be undone."
+        confirmLabel="Delete"
+        destructive
+        onConfirm={() => {
+          setConfirmDelete(false);
+          void selection.deleteSelected();
+        }}
+        onCancel={() => setConfirmDelete(false)}
+      />
+
       <ScrollView
         style={styles.body}
         contentContainerStyle={styles.bodyContent}
         showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Colors.link} colors={[Colors.link]} />
+        }
       >
-        {notifications.length > 0 && (
+        {selection.selecting && (
+          <NotificationSelectBar
+            count={selection.selected.size}
+            deleting={selection.deleting}
+            onSelectAll={selection.selectAll}
+            onCancel={selection.cancel}
+            onDelete={() => setConfirmDelete(true)}
+          />
+        )}
+        {!selection.selecting && notifications.length > 0 && (
           <View style={styles.summaryRow}>
             <Text style={styles.summaryText} numberOfLines={1}>
               {shownUnread > 0 ? `${shownUnread} unread` : ''}

@@ -84,3 +84,19 @@ it('sends a message with the blank lines inside it as typed, trimming only its e
 
   await waitFor(() => expect(api.sendMessage).toHaveBeenCalledWith('conversation-1', 'First\n\n\nSecond'));
 });
+
+it('a conversation that fails to open shows Try again, the composer stays off, and Try again opens it', async () => {
+  (api.openConversation as jest.Mock).mockRejectedValueOnce(new Error('Network down')).mockResolvedValue(conversation);
+  renderChat();
+
+  expect(await screen.findByText("Couldn't load this chat")).toBeTruthy();
+  expect(screen.getByRole('button', { name: 'Send message' }).props.accessibilityState).toMatchObject({ disabled: true });
+
+  fireEvent.press(screen.getByRole('button', { name: 'Try again' }));
+
+  expect(await screen.findByText('Incoming message')).toBeTruthy();
+  expect(api.openConversation).toHaveBeenCalledTimes(2);
+  expect(screen.queryByText("Couldn't load this chat")).toBeNull();
+  fireEvent.changeText(screen.getByPlaceholderText('Message…'), 'Hi');
+  expect(screen.getByRole('button', { name: 'Send message' }).props.accessibilityState).toMatchObject({ disabled: false });
+});

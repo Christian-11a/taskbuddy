@@ -47,3 +47,17 @@ it('View job opens the job from the provider chat', async () => {
 
   expect(onViewJob).toHaveBeenCalledTimes(1);
 });
+
+it('a conversation that fails to open shows Try again, which opens it', async () => {
+  (api.openConversation as jest.Mock).mockRejectedValueOnce(new Error('Network down')).mockResolvedValue(conversation);
+  render(<SPChatScreen jobId="job-2" onBack={jest.fn()} onViewJob={jest.fn()} />);
+
+  expect(await screen.findByText("Couldn't load this chat")).toBeTruthy();
+  expect(screen.getByRole('button', { name: 'Send message' }).props.accessibilityState).toMatchObject({ disabled: true });
+
+  fireEvent.press(screen.getByRole('button', { name: 'Try again' }));
+
+  expect(await screen.findByText('Ana Cruz')).toBeTruthy();
+  expect(api.openConversation).toHaveBeenCalledTimes(2);
+  expect(screen.queryByText("Couldn't load this chat")).toBeNull();
+});

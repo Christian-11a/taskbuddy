@@ -1,5 +1,5 @@
 import React from 'react';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react-native';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react-native';
 import SPVerificationScreen from '../SPVerificationScreen';
 import { api, ApiError } from '../../../../src/lib/api';
 import * as WebBrowser from 'expo-web-browser';
@@ -46,6 +46,7 @@ jest.mock('expo-web-browser', () => ({
 }));
 
 const PROVIDER_PROFILE = { category_id: 3, bio: 'Plumber, eight years', is_verified: false };
+const ACCOUNT_PROFILE = { address: 'Arturo Tanco Drive, Lipa' };
 
 const PENDING = {
   id: 'v1',
@@ -57,16 +58,22 @@ const PENDING = {
   rejection_reason: null,
 };
 
-function renderScreen(props: { onBack?: () => void; onVerified?: () => Promise<void> } = {}) {
+function renderScreen(
+  props: { onBack?: () => void; onEditProfile?: () => void; onVerified?: () => Promise<void> } = {},
+) {
   return render(
-    <SPVerificationScreen onBack={props.onBack ?? jest.fn()} onVerified={props.onVerified} />,
+    <SPVerificationScreen
+      onBack={props.onBack ?? jest.fn()}
+      onEditProfile={props.onEditProfile ?? jest.fn()}
+      onVerified={props.onVerified}
+    />,
   );
 }
 
 beforeEach(() => {
   jest.clearAllMocks();
   clearAsyncDataCache();
-  (useAuth as jest.Mock).mockReturnValue({ providerProfile: PROVIDER_PROFILE });
+  (useAuth as jest.Mock).mockReturnValue({ profile: ACCOUNT_PROFILE, providerProfile: PROVIDER_PROFILE });
   (api.myVerification as jest.Mock).mockResolvedValue(null);
   (requestAppPermission as jest.Mock).mockResolvedValue(true);
 });
@@ -85,16 +92,61 @@ describe('SPVerificationScreen — before you start', () => {
     expect(screen.getByLabelText('Step 4, Review and send. Then a short secure check with Stripe')).toBeTruthy();
     expect(screen.getByLabelText('Service picked: done')).toBeTruthy();
     expect(screen.getByLabelText('Bio added: done')).toBeTruthy();
+    expect(screen.getByLabelText('Address added: done')).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Start' })).not.toBeDisabled();
   });
 
   it('will not start while the service profile is missing, and says why', async () => {
-    (useAuth as jest.Mock).mockReturnValue({ providerProfile: null });
+    (useAuth as jest.Mock).mockReturnValue({ profile: ACCOUNT_PROFILE, providerProfile: null });
     renderScreen();
 
     expect(await screen.findByText('Finish your profile first')).toBeTruthy();
+    expect(
+      screen.getByText('Pick your service, add your address and a short bio in Edit Profile.'),
+    ).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Start' })).toBeDisabled();
+    expect(screen.getByLabelText('Address added: done')).toBeTruthy();
     expect(screen.getByLabelText('Service picked: not done yet')).toBeTruthy();
+    expect(screen.getByLabelText('Bio added: not done yet')).toBeTruthy();
+  });
+
+  it('counts a city alone as the address, as the Home card does, so Start is open', async () => {
+    (useAuth as jest.Mock).mockReturnValue({ profile: { address: null, city: 'Lipa' }, providerProfile: PROVIDER_PROFILE });
+    renderScreen();
+
+    expect(await screen.findByLabelText('Address added: done')).toBeTruthy();
+    expect(screen.queryByText('Add your address first')).toBeNull();
+    expect(screen.getByRole('button', { name: 'Start' })).not.toBeDisabled();
+  });
+
+  it('its Go to Edit Profile button calls onEditProfile, and Start stays disabled until the profile is saved', async () => {
+    (useAuth as jest.Mock).mockReturnValue({ profile: { address: null }, providerProfile: PROVIDER_PROFILE });
+    const onEditProfile = jest.fn();
+    renderScreen({ onEditProfile });
+
+    fireEvent.press(await screen.findByRole('button', { name: 'Go to Edit Profile' }));
+
+    expect(onEditProfile).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole('button', { name: 'Start' })).toBeDisabled();
+  });
+
+  it('will not start without an address, and says so, even with a service profile and bio', async () => {
+    (useAuth as jest.Mock).mockReturnValue({ profile: { address: '  ' }, providerProfile: PROVIDER_PROFILE });
+    renderScreen();
+
+    expect(await screen.findByText('Add your address first')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Start' })).toBeDisabled();
+    expect(screen.getByLabelText('Address added: not done yet')).toBeTruthy();
+    expect(screen.getByLabelText('Bio added: done')).toBeTruthy();
+    expect(screen.getByText('Clients find you by your address. Include a house number and street, and a short bio tells them what you do best.')).toBeTruthy();
+  });
+
+  it('asks for the address and the bio together when both are missing', async () => {
+    (useAuth as jest.Mock).mockReturnValue({ profile: { address: null }, providerProfile: { ...PROVIDER_PROFILE, bio: '' } });
+    renderScreen();
+
+    expect(await screen.findByText('Add your address and bio first')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Start' })).toBeDisabled();
   });
 
   it('explains how the ID photos are protected in a sheet', async () => {
@@ -545,7 +597,9 @@ describe('SPVerificationScreen — the status after a review', () => {
     expect(screen.getByLabelText('Admin review, now. An admin is reviewing your documents now.')).toBeTruthy();
     expect(screen.queryByText(/jobs? (are )?open/i)).toBeNull();
 
-    fireEvent.press(screen.getByRole('button', { name: 'Back to Feed' }));
+    // The header arrow is the one way back: the pending view has no bar of its own.
+    expect(screen.queryByRole('button', { name: 'Back to Feed' })).toBeNull();
+    fireEvent.press(screen.getByLabelText('Leave verification'));
     expect(onBack).toHaveBeenCalledTimes(1);
   });
 
@@ -613,5 +667,23 @@ describe('SPVerificationScreen — the status after a review', () => {
     fireEvent.press(screen.getByRole('button', { name: 'See jobs near you' }));
 
     await waitFor(() => expect(onVerified).toHaveBeenCalledTimes(1));
+  });
+});
+
+describe('SPVerificationScreen — a status that cannot be checked', () => {
+  it('says the check failed, offers no start, and Try again checks the status again', async () => {
+    (api.myVerification as jest.Mock).mockRejectedValueOnce(new Error('Network request failed')).mockResolvedValue(PENDING);
+    renderScreen();
+
+    const card = await screen.findByTestId('error-card');
+    expect(within(card).getByText("Couldn't check your verification")).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Start' })).toBeNull();
+    expect(screen.queryByText('Get verified')).toBeTruthy();
+
+    fireEvent.press(within(card).getByRole('button', { name: 'Try again' }));
+
+    expect(await screen.findByText("We're checking your documents")).toBeTruthy();
+    expect(screen.queryByTestId('error-card')).toBeNull();
+    expect(api.myVerification).toHaveBeenCalledTimes(2);
   });
 });

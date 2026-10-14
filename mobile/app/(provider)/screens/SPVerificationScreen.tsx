@@ -54,6 +54,7 @@ import IdExamples from '../../../src/components/verify/IdExamples';
 import PhotoCard from '../../../src/components/verify/PhotoCard';
 import SendingChecklist from '../../../src/components/verify/SendingChecklist';
 import PendingTimeline from '../../../src/components/verify/PendingTimeline';
+import LoadErrorCard from '../../../src/components/ui/LoadErrorCard';
 import * as ImagePicker from 'expo-image-picker';
 import * as WebBrowser from 'expo-web-browser';
 import { IdCard, Lock, ScanFace, ShieldCheck } from 'lucide-react-native';
@@ -64,6 +65,7 @@ import { Spacing } from '../../../src/constants/theme';
 import { useAuth } from '../../../src/context/AuthContext';
 import { useHeaderTop } from '../../../src/hooks/useHeaderTop';
 import { requestAppPermission } from '../../../src/lib/permissions';
+import { missingProfileSteps, profileReadyToVerify, type MissingProfileStep } from '../../../src/lib/verifyReady';
 import {
   SESSION_STAGE,
   UPLOAD_STAGE,
@@ -119,8 +121,16 @@ const HOW_TO_FIX = [
   'Take the selfie without glasses, a hat or a face mask',
 ];
 
+/** The notice's title, worded for the profile steps still missing. */
+function profileNoticeTitleFor(missing: readonly MissingProfileStep[]): string {
+  if (missing.length > 1) return 'Add your address and bio first';
+  return missing[0] === 'address' ? 'Add your address first' : 'Add your bio first';
+}
+
 interface SPVerificationScreenProps {
   onBack: () => void;
+  /** Opens Edit Profile, where the provider adds the address and bio that verification waits for. */
+  onEditProfile: () => void;
   /**
    * Called when the provider taps through after being approved — refreshes the
    * auth profile (so the dashboard's "Get Verified" banner disappears) and
@@ -129,13 +139,41 @@ interface SPVerificationScreenProps {
   onVerified?: () => Promise<void>;
 }
 
-export default function SPVerificationScreen({ onBack, onVerified }: SPVerificationScreenProps) {
+export default function SPVerificationScreen({ onBack, onEditProfile, onVerified }: SPVerificationScreenProps) {
   const { Colors, V6Colors, styles } = useThemedStyles(createThemedStyles);
   const headerTop = useHeaderTop();
-  // The API refuses a verification without a service profile; say so up
-  // front instead of after all three steps.
-  const { providerProfile } = useAuth();
-  const profileIncomplete = !providerProfile;
+  // The API refuses a verification without a service profile, an address or
+  // a bio; say so up front instead of after all three steps.
+  const { profile, providerProfile } = useAuth();
+  const profileIncomplete = !profileReadyToVerify(profile, providerProfile);
+  const missingSteps = providerProfile ? missingProfileSteps(profile, providerProfile) : [];
+  const profileNotice = providerProfile
+    ? {
+      title: profileNoticeTitleFor(missingSteps),
+      body: missingSteps.includes('address')
+        ? 'Clients find you by your address. Include a house number and street, and a short bio tells them what you do best.'
+        : 'Clients find you by your address, and your bio tells them what you do best.',
+    }
+    : {
+      title: 'Finish your profile first',
+      body: 'Pick your service, add your address and a short bio in Edit Profile.',
+    };
+  // The blocking card: what is missing, and a button to Edit Profile. Start and Continue stay disabled until it is fixed.
+  const profileNoticeView = (
+    <View style={styles.profileNotice}>
+      <Text style={styles.profileNoticeTitle}>{profileNotice.title}</Text>
+      <Text style={styles.profileNoticeBody}>{profileNotice.body}</Text>
+      <Tap
+        style={styles.profileNoticeButton}
+        hitSlop={8}
+        accessibilityRole="button"
+        accessibilityLabel="Go to Edit Profile"
+        onPress={onEditProfile}
+      >
+        <Text style={styles.profileNoticeButtonText}>Go to Edit Profile</Text>
+      </Tap>
+    </View>
+  );
   const [step, setStep] = useState(1);
   /** False until the provider taps Start on the intro (or Try again after a rejection). */
   const [started, setStarted] = useState(false);
@@ -159,6 +197,7 @@ export default function SPVerificationScreen({ onBack, onVerified }: SPVerificat
   const {
     data: verification,
     loading,
+    error: verificationError,
     reload,
   } = useAsyncData(useCallback(() => api.myVerification(), []));
 
@@ -320,6 +359,7 @@ export default function SPVerificationScreen({ onBack, onVerified }: SPVerificat
     submitting,
     started,
     settling: awaitingReload,
+    failed: verificationError !== null,
   });
   // A rejected provider who has not yet tapped Try again still needs the wizard's photo hint.
   const isRejected = verification?.status === 'rejected';
@@ -393,6 +433,10 @@ export default function SPVerificationScreen({ onBack, onVerified }: SPVerificat
 
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
         {view === 'loading' && <ActivityIndicator color={V6Colors.link} style={styles.loader} />}
+        {/* Not knowing the status is not a new application: say so, and offer no start. */}
+        {view === 'error' && (
+          <LoadErrorCard title="Couldn't check your verification" message={verificationError} onRetry={reload} />
+        )}
 
         {view === 'pending' && verification && (
           <>
@@ -460,15 +504,8 @@ export default function SPVerificationScreen({ onBack, onVerified }: SPVerificat
             <Text style={styles.introBody}>
               Clients only see and hire verified providers. It takes about 3 minutes.
             </Text>
-            {profileIncomplete && (
-              <View style={styles.profileNotice}>
-                <Text style={styles.profileNoticeTitle}>Finish your profile first</Text>
-                <Text style={styles.profileNoticeBody}>
-                  Pick your service and add a bio in Profile → Edit Profile. Verification can't be sent until they're saved.
-                </Text>
-              </View>
-            )}
-            <PrepCard steps={PREP_STEPS} profileItems={profileChecks(providerProfile)} />
+            {profileIncomplete && profileNoticeView}
+            <PrepCard steps={PREP_STEPS} profileItems={profileChecks(profile, providerProfile)} />
             <Tap
               style={styles.protectLink}
               onPress={() => setProtectOpen(true)}
@@ -495,14 +532,7 @@ export default function SPVerificationScreen({ onBack, onVerified }: SPVerificat
         {view === 'wizard' && (
           <>
             {/* ── Step 1 · Government ID ─────────────────────────── */}
-            {step === 1 && profileIncomplete && (
-              <View style={styles.profileNotice}>
-                <Text style={styles.profileNoticeTitle}>Finish your profile first</Text>
-                <Text style={styles.profileNoticeBody}>
-                  Pick your service and add a bio in Profile → Edit Profile. Verification can't be sent until they're saved.
-                </Text>
-              </View>
-            )}
+            {step === 1 && profileIncomplete && profileNoticeView}
             {step === 1 && idPhase === 'choose' && (
               <>
                 <Text style={styles.stepTitle} accessibilityRole="header">
@@ -632,8 +662,6 @@ export default function SPVerificationScreen({ onBack, onVerified }: SPVerificat
         />
       )}
 
-      {view === 'pending' && <BottomActionBar primaryLabel="Back to Feed" onPrimary={onBack} />}
-
       {view === 'rejected' && <BottomActionBar primaryLabel="Try again" onPrimary={tryAgain} />}
 
       {view === 'approved' && onVerified && (
@@ -731,6 +759,11 @@ function createThemedStyles(theme: ThemePalette) {
     },
     profileNoticeTitle: { color: V6Colors.warningText, fontFamily: 'Inter', fontSize: 15, fontWeight: '700' },
     profileNoticeBody: { color: V6Colors.ink700, fontFamily: 'Inter', fontSize: 14, lineHeight: 20 },
+    profileNoticeButton: {
+      minHeight: 48, borderRadius: 14, marginTop: 6, backgroundColor: Colors.primary,
+      alignItems: 'center', justifyContent: 'center',
+    },
+    profileNoticeButtonText: { color: Colors.onPrimary, fontFamily: 'Inter', fontSize: 15, fontWeight: '700' },
     errorText: { color: Colors.dangerText, fontFamily: 'Inter', fontSize: 15.5, textAlign: 'center' },
     retryHint: { color: V6Colors.ink500, fontFamily: 'Inter', fontSize: 14, textAlign: 'center' },
   });

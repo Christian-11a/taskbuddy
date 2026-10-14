@@ -88,6 +88,35 @@ jest.mock('../app/(homeowner)/screens/HOHomeScreen', () => {
   };
 });
 
+// A provider's Home, reduced to a line of text. The tour's tabs come from the App's own tab bar. Its setup card
+// is the tour's first step for an unverified provider, so the card registers the home.setup anchor, as the real one does.
+jest.mock('../app/(provider)/screens/SPHomeScreen', () => {
+  const React = require('react');
+  const { Text, View: RNView } = require('react-native');
+  return {
+    __esModule: true,
+    default: () => {
+      const { useTourAnchor } = require('../src/components/tour');
+      const setupTour = useTourAnchor('home.setup', true);
+      return React.createElement(
+        RNView,
+        { testID: 'provider-home-stand-in', ...setupTour },
+        React.createElement(Text, null, 'Provider home'),
+      );
+    },
+  };
+});
+
+// A provider's profile setup, reduced to a line of text: the finish card's "Finish my profile" opens it.
+jest.mock('../app/(provider)/screens/SPEditProfileScreen', () => {
+  const React = require('react');
+  const { Text, View: RNView } = require('react-native');
+  return {
+    __esModule: true,
+    default: () => React.createElement(RNView, { testID: 'edit-profile-stand-in' }, React.createElement(Text, null, 'Profile setup')),
+  };
+});
+
 // A pushed screen with no tab bar, the one a tapped job proposal opens.
 jest.mock('../app/(homeowner)/screens/HOJobApplicationsScreen', () => {
   const React = require('react');
@@ -148,6 +177,11 @@ function signedOut() {
   return { ...signedIn(), session: null, profile: null, role: null, isAuthenticated: false };
 }
 
+/** A provider with no service profile yet: unverified, so Home has no availability toggle or feed search. */
+function signedInProvider() {
+  return { ...signedIn(), role: 'provider', providerProfile: null, isVerified: false };
+}
+
 beforeEach(async () => {
   jest.clearAllMocks();
   // Each launch starts with no flags: a finished intro or tour from an earlier test would skip the welcome.
@@ -205,6 +239,51 @@ describe('welcome tour — a session that ends on its own', () => {
     expect(screen.queryByText('Start here')).toBeNull();
     tapNotification();
     expect(await screen.findByTestId('job-applications-stand-in')).toBeTruthy();
+  }, 15000);
+});
+
+describe('welcome tour — an unverified provider', () => {
+  it('starts on the setup step on the Feed tab, not at the work tab', async () => {
+    Object.assign(mockAuthState, signedInProvider());
+    render(<App />);
+    fireEvent.press(await screen.findByRole('button', { name: 'Show me around' }));
+
+    expect(await screen.findByText('Finish setting up')).toBeTruthy();
+    expect(screen.queryByText('Your work')).toBeNull();
+
+    fireEvent.press(screen.getByTestId('tour-next'));
+    expect(await screen.findByText('Your work')).toBeTruthy();
+  }, 15000);
+
+  it('ends on the finish card, whose main button opens the profile setup', async () => {
+    Object.assign(mockAuthState, signedInProvider());
+    render(<App />);
+    fireEvent.press(await screen.findByRole('button', { name: 'Show me around' }));
+    expect(await screen.findByText('Finish setting up')).toBeTruthy();
+    await tapThroughTour();
+
+    expect(await screen.findByTestId('tour-finish')).toBeTruthy();
+    expect(screen.getByText('Add your address and bio')).toBeTruthy();
+    fireEvent.press(screen.getByTestId('tour-finish-primary'));
+
+    expect(await screen.findByTestId('edit-profile-stand-in')).toBeTruthy();
+    expect(screen.queryByTestId('tour-finish')).toBeNull();
+  }, 15000);
+
+  it('offers the Get verified step once the address and bio are saved', async () => {
+    Object.assign(mockAuthState, {
+      ...signedInProvider(),
+      profile: { ...PROFILE, address: 'Arturo Tanco Drive, Lipa' },
+      providerProfile: { bio: 'Plumber for eight years', is_verified: false },
+    });
+    render(<App />);
+    fireEvent.press(await screen.findByRole('button', { name: 'Show me around' }));
+    expect(await screen.findByText('Finish setting up')).toBeTruthy();
+    await tapThroughTour();
+
+    expect(await screen.findByTestId('tour-finish')).toBeTruthy();
+    expect(screen.queryByText('Add your address and bio')).toBeNull();
+    expect(screen.getByRole('button', { name: 'Get verified' })).toBeTruthy();
   }, 15000);
 });
 

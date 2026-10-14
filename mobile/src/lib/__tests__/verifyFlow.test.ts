@@ -2,6 +2,7 @@ import {
   SESSION_STAGE,
   UPLOAD_STAGE,
   VERIFY_ID_TYPES,
+  addressSaved,
   pendingRows,
   pickVerifyView,
   profileChecks,
@@ -104,6 +105,19 @@ describe('pickVerifyView', () => {
     expect(pickVerifyView({ ...base, submitting: true, started: true, status: 'rejected' })).toBe('sending');
   });
 
+  it('says the status could not be checked, and never shows the intro, when the lookup failed', () => {
+    expect(pickVerifyView({ ...base, failed: true })).toBe('error');
+    expect(pickVerifyView({ ...base, failed: true, started: true })).toBe('error');
+    // A lookup still running is the loader, not the error.
+    expect(pickVerifyView({ ...base, failed: true, loading: true })).toBe('loading');
+    // A status already on screen stays, even when a refresh failed.
+    expect(pickVerifyView({ ...base, failed: true, status: 'pending' })).toBe('pending');
+    // A submission in progress wins over the error.
+    expect(pickVerifyView({ ...base, failed: true, submitting: true })).toBe('sending');
+    // No failure: a provider with no verification yet starts at the intro.
+    expect(pickVerifyView({ ...base, failed: false })).toBe('intro');
+  });
+
   it('keeps the loader up after a submission until the new status arrives', () => {
     // The old "rejected" status is still loaded here; it must not flash back on screen.
     expect(pickVerifyView({ ...base, status: 'rejected', started: true, settling: true })).toBe('loading');
@@ -120,15 +134,40 @@ describe('wizardProgress', () => {
   });
 });
 
+describe('addressSaved', () => {
+  it('is saved by a street address, or by a city when there is no street address', () => {
+    expect(addressSaved({ address: 'Arturo Tanco Drive, Lipa', city: null })).toBe(true);
+    expect(addressSaved({ address: null, city: 'Lipa' })).toBe(true);
+    expect(addressSaved({ address: '  ', city: ' Lipa ' })).toBe(true);
+  });
+
+  it('is not saved when both are empty, blank or missing', () => {
+    expect(addressSaved(null)).toBe(false);
+    expect(addressSaved(undefined)).toBe(false);
+    expect(addressSaved({ address: null, city: null })).toBe(false);
+    expect(addressSaved({ address: '   ', city: '\n' })).toBe(false);
+  });
+});
+
 describe('profileChecks', () => {
+  it('lists the address first, then the service, then the bio, as the Home card does', () => {
+    expect(profileChecks(null, null).map((item) => item.label)).toEqual(['Address added', 'Service picked', 'Bio added']);
+  });
+
+  it('ticks the address by the same rule as the Home card, so a city alone counts', () => {
+    expect(profileChecks({ address: null }, null)[0]).toEqual({ label: 'Address added', done: false });
+    expect(profileChecks({ address: null, city: 'Lipa' }, null)[0]).toEqual({ label: 'Address added', done: true });
+    expect(profileChecks({ address: 'Arturo Tanco Drive, Lipa' }, null)[0]).toEqual({ label: 'Address added', done: true });
+  });
+
   it('ticks the service only once a provider profile exists', () => {
-    expect(profileChecks(null)[0]).toEqual({ label: 'Service picked', done: false });
-    expect(profileChecks({ bio: null })[0]).toEqual({ label: 'Service picked', done: true });
+    expect(profileChecks(null, null)[1]).toEqual({ label: 'Service picked', done: false });
+    expect(profileChecks(null, { bio: null })[1]).toEqual({ label: 'Service picked', done: true });
   });
 
   it('ticks the bio only when it has text', () => {
-    expect(profileChecks({ bio: '   ' })[1]).toEqual({ label: 'Bio added', done: false });
-    expect(profileChecks({ bio: 'Plumber, 8 years' })[1]).toEqual({ label: 'Bio added', done: true });
+    expect(profileChecks(null, { bio: '   ' })[2]).toEqual({ label: 'Bio added', done: false });
+    expect(profileChecks(null, { bio: 'Plumber, 8 years' })[2]).toEqual({ label: 'Bio added', done: true });
   });
 });
 

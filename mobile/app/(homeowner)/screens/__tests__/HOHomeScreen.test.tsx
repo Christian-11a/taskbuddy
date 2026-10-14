@@ -1,5 +1,5 @@
 import React from 'react';
-import { StyleSheet } from 'react-native';
+import { ScrollView, StyleSheet } from 'react-native';
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react-native';
 import HOHomeScreen from '../HOHomeScreen';
 import { api } from '../../../../src/lib/api';
@@ -295,6 +295,110 @@ describe('HOHomeScreen — hero card shows the one job that needs you', () => {
   });
 });
 
+// Home always shows a hero once the jobs have loaded: a job that needs the client,
+// a job being searched for, or a call to post the first one.
+describe('HOHomeScreen — hero card is always there once Home has loaded', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    clearAsyncDataCache();
+    (useAuth as jest.Mock).mockReturnValue({ profile: { full_name: 'Alex', city: null, address: null } });
+    (api.wallet as jest.Mock).mockResolvedValue({ balance: 0, available: 0, held: 0 });
+    (api.categories as jest.Mock).mockResolvedValue([]);
+    (api.notifications as jest.Mock).mockResolvedValue([]);
+    (api.unreadNotificationCount as jest.Mock).mockResolvedValue({ count: 0 });
+    (api.jobApplications as jest.Mock).mockResolvedValue([]);
+  });
+
+  it('asks the client to post a first job when the account has no jobs, and opens the job form', async () => {
+    (api.myJobs as jest.Mock).mockResolvedValue([]);
+    const onNavigate = jest.fn();
+    render(<HOHomeScreen onNavigate={onNavigate} />);
+
+    const hero = await screen.findByTestId('home-hero-empty');
+    expect(within(hero).getByText('Ready when you are')).toBeTruthy();
+    expect(within(hero).getByText('Post your first job')).toBeTruthy();
+    expect(within(hero).getByText('It takes about a minute.')).toBeTruthy();
+    fireEvent.press(within(hero).getByLabelText('Post a job'));
+    expect(onNavigate).toHaveBeenCalledWith('Create Job');
+  });
+
+  it('asks "Need something done?" when the client has only finished or cancelled jobs', async () => {
+    (api.myJobs as jest.Mock).mockResolvedValue([{ ...OPEN_JOB, status: 'cancelled' }]);
+    render(<HOHomeScreen onNavigate={jest.fn()} />);
+
+    const hero = await screen.findByTestId('home-hero-empty');
+    expect(within(hero).getByText('Need something done?')).toBeTruthy();
+    expect(within(hero).queryByText('Post your first job')).toBeNull();
+  });
+
+  it('says the newest open job is being searched for, in the same sky-blue hero, and opens that job', async () => {
+    (api.myJobs as jest.Mock).mockResolvedValue([OPEN_JOB]);
+    const onNavigate = jest.fn();
+    render(<HOHomeScreen onNavigate={onNavigate} />);
+
+    const hero = await screen.findByTestId('home-hero-searching');
+    expect(StyleSheet.flatten(hero.props.style).backgroundColor).toBe(lightPalette.Colors.hero);
+    expect(within(hero).getByText('Waiting for offers')).toBeTruthy();
+    expect(within(hero).getByText("We're finding providers")).toBeTruthy();
+    expect(within(hero).getByText('Cleaning: Window cleaning · posted May 6')).toBeTruthy();
+    fireEvent.press(within(hero).getByLabelText('View Cleaning: Window cleaning'));
+    expect(onNavigate).toHaveBeenCalledWith('Job Detail', 'job-open');
+  });
+
+  it('shows a job in progress in the hero, with its provider', async () => {
+    (api.myJobs as jest.Mock).mockResolvedValue([
+      { ...OPEN_JOB, id: 'job-progress', title: 'Handyman: Hang shelf', status: 'in_progress', assigned_provider: { full_name: 'Juan Dela Cruz' } },
+    ]);
+    const onNavigate = jest.fn();
+    render(<HOHomeScreen onNavigate={onNavigate} />);
+
+    const hero = await screen.findByTestId('home-hero-working');
+    expect(within(hero).getByText('In progress')).toBeTruthy();
+    expect(within(hero).getByText('Handyman: Hang shelf')).toBeTruthy();
+    expect(within(hero).getByText('Juan Dela Cruz is working on it')).toBeTruthy();
+    fireEvent.press(within(hero).getByLabelText('View Handyman: Hang shelf'));
+    expect(onNavigate).toHaveBeenCalledWith('Job Detail', 'job-progress');
+  });
+
+  it('says the client needs to confirm once every task of the job in progress is done', async () => {
+    (api.myJobs as jest.Mock).mockResolvedValue([
+      {
+        ...OPEN_JOB,
+        id: 'job-progress',
+        title: 'Handyman: Hang shelf',
+        status: 'in_progress',
+        job_tasks: [{ id: 't1', label: 'Hang', position: 1, is_done: true, completed_at: null }],
+      },
+    ]);
+    render(<HOHomeScreen onNavigate={jest.fn()} />);
+
+    const hero = await screen.findByTestId('home-hero-working');
+    expect(within(hero).getByText('Needs your confirmation')).toBeTruthy();
+    expect(within(hero).getByText('Check the work, then confirm.')).toBeTruthy();
+  });
+
+  it('shows a booked job whose time has passed as Booked, not as a next booking', async () => {
+    (api.myJobs as jest.Mock).mockResolvedValue([
+      { ...OPEN_JOB, id: 'job-booked', title: 'Plumbing: Fix toilet', status: 'confirmed', scheduled_at: '2020-01-05T09:00:00+08:00' },
+    ]);
+    render(<HOHomeScreen onNavigate={jest.fn()} />);
+
+    const hero = await screen.findByTestId('home-hero-booking');
+    expect(within(hero).getByText('Booked')).toBeTruthy();
+    expect(within(hero).queryByText('Next booking')).toBeNull();
+  });
+
+  it('shows no hero claim when the jobs request failed with nothing saved', async () => {
+    (api.myJobs as jest.Mock).mockRejectedValue(new Error('offline'));
+    render(<HOHomeScreen onNavigate={jest.fn()} />);
+
+    expect(await screen.findByText("Couldn't load your jobs")).toBeTruthy();
+    expect(screen.queryByText('Post your first job')).toBeNull();
+    expect(screen.queryByText('Need something done?')).toBeNull();
+    expect(screen.queryByText("We're finding providers")).toBeNull();
+  });
+});
+
 describe('HOHomeScreen — field, service chips, active jobs and wallet chip', () => {
   beforeEach(() => {
     jest.clearAllMocks();
@@ -332,9 +436,10 @@ describe('HOHomeScreen — field, service chips, active jobs and wallet chip', (
     const onNavigate = jest.fn();
     render(<HOHomeScreen onNavigate={onNavigate} />);
 
-    expect(await screen.findByText('Plumbing: Fix toilet')).toBeTruthy();
+    expect(await screen.findByTestId('home-job-job-booked')).toBeTruthy();
+    expect(within(screen.getByTestId('home-job-job-booked')).getByText('Plumbing: Fix toilet')).toBeTruthy();
     expect(screen.getByText('Confirmed')).toBeTruthy();
-    expect(screen.getByText('In progress')).toBeTruthy();
+    expect(within(screen.getByTestId('home-job-job-progress')).getByText('In progress')).toBeTruthy();
     expect(screen.getByText('₱1,200.00')).toBeTruthy();
     fireEvent.press(screen.getByTestId('home-job-job-booked'));
     expect(onNavigate).toHaveBeenCalledWith('Job Detail', 'job-booked');
@@ -571,12 +676,12 @@ describe('HOHomeScreen — saved data shows first, and says when it is being upd
     (api.myJobs as jest.Mock).mockReturnValue(new Promise((resolve) => { landJobs = resolve; }));
     render(<HOHomeScreen onNavigate={jest.fn()} />);
 
-    expect(await screen.findByText('Plumbing: Fix toilet')).toBeTruthy();
+    expect(await screen.findByTestId('home-job-job-saved')).toBeTruthy();
     expect(within(screen.getByTestId('stale-hint')).getByText('Updating…')).toBeTruthy();
 
     await act(async () => landJobs([{ ...SAVED_JOB, title: 'Plumbing: Fix sink' }]));
 
-    expect(await screen.findByText('Plumbing: Fix sink')).toBeTruthy();
+    expect(await within(screen.getByTestId('home-job-job-saved')).findByText('Plumbing: Fix sink')).toBeTruthy();
     expect(screen.queryByTestId('stale-hint')).toBeNull();
   });
 
@@ -589,14 +694,14 @@ describe('HOHomeScreen — saved data shows first, and says when it is being upd
 
     const hint = await screen.findByTestId('stale-hint');
     expect(within(hint).getByText("Showing saved data. Couldn't refresh.")).toBeTruthy();
-    expect(screen.getByText('Plumbing: Fix toilet')).toBeTruthy();
+    expect(within(screen.getByTestId('home-job-job-saved')).getByText('Plumbing: Fix toilet')).toBeTruthy();
     expect(screen.queryByText("Couldn't load your jobs")).toBeNull();
 
     fireEvent.press(within(hint).getByRole('button', { name: 'Try again' }));
 
     await waitFor(() => expect(screen.queryByTestId('stale-hint')).toBeNull());
     expect(api.myJobs).toHaveBeenCalledTimes(2);
-    expect(screen.getByText('Plumbing: Fix toilet')).toBeTruthy();
+    expect(within(screen.getByTestId('home-job-job-saved')).getByText('Plumbing: Fix toilet')).toBeTruthy();
   });
 });
 
@@ -653,5 +758,45 @@ describe('HOHomeScreen — saved copies of the wrong shape', () => {
 
   it('a saved service list of the wrong shape is ignored, and the screen loads as it does with nothing saved', async () => {
     await expectSavedCopyIgnored('categories', {}, () => render(<HOHomeScreen onNavigate={jest.fn()} />));
+  });
+});
+
+describe('HOHomeScreen — pull to refresh reloads what Home loads', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    clearAsyncDataCache();
+    (useAuth as jest.Mock).mockReturnValue({ profile: { full_name: 'Alex', city: null, address: null } });
+    (api.wallet as jest.Mock).mockResolvedValue({ balance: 0, available: 0, held: 0 });
+    (api.categories as jest.Mock).mockResolvedValue([{ id: 2, name: 'Cleaning' }]);
+    (api.notifications as jest.Mock).mockResolvedValue([]);
+    (api.unreadNotificationCount as jest.Mock).mockResolvedValue({ count: 0 });
+  });
+
+  /** The Home scroll view's pull to refresh, as the platform calls it. */
+  function pullToRefresh() {
+    const home = screen.UNSAFE_getAllByType(ScrollView)[0];
+    return home.props.refreshControl;
+  }
+
+  it('reloads the wallet, the jobs, the services and the proposal lookups, and stops the spinner when the jobs settle', async () => {
+    (api.myJobs as jest.Mock).mockResolvedValue([OPEN_JOB]);
+    (api.jobApplications as jest.Mock).mockResolvedValue([pendingApplication('a', 'Ana Reyes')]);
+    render(<HOHomeScreen onNavigate={jest.fn()} />);
+    await screen.findByTestId('home-hero-proposals');
+    jest.clearAllMocks();
+
+    let answerJobs!: (jobs: unknown[]) => void;
+    (api.myJobs as jest.Mock).mockReturnValue(new Promise((resolve) => { answerJobs = resolve; }));
+    act(() => pullToRefresh().props.onRefresh());
+
+    expect(pullToRefresh().props.refreshing).toBe(true);
+    await waitFor(() => expect(api.myJobs).toHaveBeenCalledTimes(1));
+    expect(api.wallet).toHaveBeenCalledTimes(1);
+    expect(api.categories).toHaveBeenCalledTimes(1);
+    expect(api.jobApplications).toHaveBeenCalledWith('job-open');
+
+    await act(async () => answerJobs([OPEN_JOB]));
+
+    expect(pullToRefresh().props.refreshing).toBe(false);
   });
 });

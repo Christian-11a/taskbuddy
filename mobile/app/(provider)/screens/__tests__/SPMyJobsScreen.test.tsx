@@ -1,7 +1,7 @@
 import { findUnnamedControls } from '../../../../src/testing/a11yAudit';
 import React from 'react';
 import { Text } from 'react-native';
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react-native';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react-native';
 import SPMyJobsScreen from '../SPMyJobsScreen';
 import { api } from '../../../../src/lib/api';
 import { clearAsyncDataCache } from '../../../../src/hooks/useAsyncData';
@@ -307,4 +307,36 @@ it('a saved assigned list of the wrong shape is ignored, and the screen loads as
   (api.assignedJobs as jest.Mock).mockReturnValue(new Promise(() => {}));
 
   await expectSavedCopyIgnored('sp-assigned', {}, () => render(<SPMyJobsScreen onNavigate={jest.fn()} />));
+});
+
+describe('SPMyJobsScreen — pull to refresh', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    clearAsyncDataCache();
+    clearRetainedState();
+    (api.myApplications as jest.Mock).mockResolvedValue([]);
+    (api.assignedJobs as jest.Mock).mockResolvedValue([activeJob]);
+  });
+
+  it('pulling reloads both lists and spins until both have settled', async () => {
+    render(<SPMyJobsScreen onNavigate={jest.fn()} />);
+    await screen.findByRole('button', { name: 'Booked, 1' });
+
+    let resolveAssigned: (value: unknown) => void = () => {};
+    (api.assignedJobs as jest.Mock).mockImplementationOnce(
+      () => new Promise((resolve) => { resolveAssigned = resolve; }),
+    );
+    await act(async () => {
+      screen.getByTestId('my-work-list').props.refreshControl.props.onRefresh();
+    });
+
+    expect(api.myApplications).toHaveBeenCalledTimes(2);
+    expect(api.assignedJobs).toHaveBeenCalledTimes(2);
+    expect(screen.getByTestId('my-work-list').props.refreshControl.props.refreshing).toBe(true);
+
+    await act(async () => {
+      resolveAssigned([activeJob]);
+    });
+    expect(screen.getByTestId('my-work-list').props.refreshControl.props.refreshing).toBe(false);
+  });
 });

@@ -129,6 +129,7 @@ export default function HOWalletScreen() {
   const walletSlow = useSlowLoad(loading, data !== null);
   const {
     data: withdrawalData,
+    error: withdrawalError,
     reload: reloadWithdrawals,
   } = useAsyncData(() => api.withdrawals(), [], 'ho-withdrawals');
   // The balance on screen is the saved copy and no fetch has confirmed it: Add money and Withdraw wait.
@@ -353,6 +354,8 @@ export default function HOWalletScreen() {
   const vouchers = transactions.filter((t) => t.kind === 'recovery_credit');
   const rewardsTotal = vouchers.reduce((total, voucher) => total + Number(voucher.amount), 0);
   const withdrawals = withdrawalData ?? [];
+  // Rows show whenever there are some; a failed request with nothing to show says so, with Try again.
+  const withdrawalsFailed = !!withdrawalError && withdrawalData === null;
 
   if (loading) {
     return (
@@ -513,6 +516,9 @@ export default function HOWalletScreen() {
               </View>
             ))}
           </View>
+        )}
+        {withdrawalsFailed && (
+          <LoadErrorCard title="Couldn't load your withdrawals" message={withdrawalError} onRetry={reloadWithdrawals} />
         )}
 
         <View style={styles.history}>

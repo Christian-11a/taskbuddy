@@ -3,7 +3,10 @@ import React from 'react';
 import { BackHandler, ScrollView, TextInput } from 'react-native';
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react-native';
 import * as ImagePicker from 'expo-image-picker';
+import { BrushCleaning, Footprints, Hammer, Wrench } from 'lucide-react-native';
 import HOCreateJobScreen from '../HOCreateJobScreen';
+import ServiceTile from '../../../../src/components/post/ServiceTile';
+import NailPolishIcon from '../../../../src/components/ui/icons/NailPolishIcon';
 import { api } from '../../../../src/lib/api';
 import { showToast } from '../../../../src/components/Toast';
 import { isBackBlockedByScreen } from '../../../../src/hooks/useLeaveGuard';
@@ -309,6 +312,22 @@ it('every control has an accessible name on the first step: back, the service an
   expect(findUnnamedControls(screen.UNSAFE_root)).toEqual([]);
 });
 
+it('the Manicure tile shows the nail polish icon, and the other service tiles keep theirs', async () => {
+  (api.categories as jest.Mock).mockResolvedValue([
+    { id: 1, name: 'Plumbing' }, { id: 2, name: 'Cleaning' }, { id: 3, name: 'Handyman' },
+    { id: 4, name: 'Manicure' }, { id: 5, name: 'Pedicure' },
+  ]);
+  render(<HOCreateJobScreen onBack={jest.fn()} onSuccess={jest.fn()} />);
+  await screen.findByRole('radio', { name: 'Manicure' });
+
+  const iconFor = (name: string) => screen.UNSAFE_getAllByType(ServiceTile).find((tile) => tile.props.name === name)?.props.icon;
+  expect(iconFor('Manicure')).toBe(NailPolishIcon);
+  expect(iconFor('Plumbing')).toBe(Wrench);
+  expect(iconFor('Cleaning')).toBe(BrushCleaning);
+  expect(iconFor('Handyman')).toBe(Hammer);
+  expect(iconFor('Pedicure')).toBe(Footprints);
+});
+
 describe('HOCreateJobScreen — fields are checked against the backend limits', () => {
   beforeEach(() => {
     (api.createJob as jest.Mock).mockClear();
@@ -506,6 +525,18 @@ describe('HOCreateJobScreen — back and exit', () => {
 
     expect(screen.getByText('What needs doing?')).toBeTruthy();
     expect(onBack).not.toHaveBeenCalled();
+  });
+
+  it('after the first step the footer has Next alone: the header arrow is the one way back', async () => {
+    render(<HOCreateJobScreen initialCategoryId={1} onBack={jest.fn()} onSuccess={jest.fn()} />);
+    await screen.findByText('Location confirmed');
+    fireEvent.press(screen.getByText('Next'));
+    await screen.findByText('Fix leaking faucet');
+
+    expect(screen.queryByText('Back')).toBeNull();
+    expect(screen.queryByLabelText('Back to the previous step')).toBeNull();
+    expect(screen.getByRole('button', { name: 'Previous step' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Next' })).toBeTruthy();
   });
 
   it('the header arrow goes back a step too, and is announced as going back', async () => {

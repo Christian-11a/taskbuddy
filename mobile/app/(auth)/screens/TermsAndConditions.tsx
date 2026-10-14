@@ -1,7 +1,9 @@
 import { useThemedStyles, type Palette as ThemePalette } from '../../../src/context/ThemeContext';
-import React from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   Modal,
+  NativeScrollEvent,
+  NativeSyntheticEvent,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -10,22 +12,28 @@ import {
   useWindowDimensions,
 } from 'react-native';
 import Tap from '../../../src/components/ui/Tap';
+import ViewSwitch from '../../../src/components/ui/ViewSwitch';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { X } from 'lucide-react-native';
 import { V6Radii, V6Shadows } from '../../../src/constants/theme';
 
+type Doc = 'terms' | 'privacy';
+
 interface TermsAndConditionsProps {
   visible: boolean;
-  /** Close without accepting. */
+  /** Close. Whatever was already accepted stays accepted. */
   onBack: () => void;
-  onAccept: () => void;
-  /**
-   * Which document to display.
-   * - 'terms'   → Terms & Conditions (default)
-   * - 'privacy' → Privacy Policy
-   */
-  mode?: 'terms' | 'privacy';
+  /** Called with the document whose "I agree" was tapped. */
+  onAccept: (doc: Doc) => void;
+  /** The tab the pop-up opens on. Default 'terms'. */
+  mode?: Doc;
+  /** Documents accepted so far. Their tabs show a check mark, and the pop-up closes once both are accepted. */
+  accepted?: Record<Doc, boolean>;
 }
+
+/** A document counts as read when its text is within this many dp of the end, or fits the viewport. */
+const END_SLOP = 48;
+const NOT_ACCEPTED: Record<Doc, boolean> = { terms: false, privacy: false };
 
 const TERMS_CONTENT = {
   title: 'Terms & Conditions',
@@ -78,19 +86,61 @@ const PRIVACY_CONTENT = {
 };
 
 /**
- * Terms / Privacy shown as a popup over the form that linked to it, so the
- * user reads it without leaving (and losing their place in) sign-up.
+ * Terms and Privacy in one pop-up over the form that linked to it, with a tab for each document, so the
+ * user reads it without leaving (and losing their place in) sign-up. "I agree" is enabled once that tab's
+ * text has been scrolled to the end. Accepting one document moves on to the other until both are accepted.
  */
 export default function TermsAndConditions({
   visible,
   onBack,
   onAccept,
   mode = 'terms',
+  accepted = NOT_ACCEPTED,
 }: TermsAndConditionsProps) {
-  const { C, styles, V6Colors } = useThemedStyles(createThemedStyles);
+  const { C, styles } = useThemedStyles(createThemedStyles);
   const { height } = useWindowDimensions();
   const insets = useSafeAreaInsets();
-  const content = mode === 'privacy' ? PRIVACY_CONTENT : TERMS_CONTENT;
+  const [tab, setTab] = useState<Doc>(mode);
+  // Documents whose text has been read to the end. An accepted document counts as read too.
+  const [read, setRead] = useState<Record<Doc, boolean>>(NOT_ACCEPTED);
+  // Measurements of the tab on screen. Reset with each tab, so the previous tab's text never counts.
+  const measured = useRef({ layout: 0, content: 0 });
+  const content = tab === 'privacy' ? PRIVACY_CONTENT : TERMS_CONTENT;
+  const isRead = read[tab] || accepted[tab];
+
+  const showTab = (doc: Doc) => {
+    measured.current = { layout: 0, content: 0 };
+    setTab(doc);
+  };
+
+  // Each time the pop-up opens, it starts on the document it was asked for.
+  useEffect(() => {
+    if (visible) showTab(mode);
+  }, [visible, mode]);
+
+  const settle = (doc: Doc, offset: number, layout: number, contentHeight: number) => {
+    if (layout <= 0 || contentHeight <= 0) return;
+    if (offset + layout < contentHeight - END_SLOP) return;
+    setRead((r) => (r[doc] ? r : { ...r, [doc]: true }));
+  };
+
+  // Android throttles onScroll and can drop the report of the resting position, so the drag-end and
+  // momentum-end reports check the same position too.
+  const onScrollReport = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
+    const { contentOffset, layoutMeasurement, contentSize } = e.nativeEvent;
+    settle(tab, contentOffset.y, layoutMeasurement.height, contentSize.height);
+  };
+
+  const agree = () => {
+    onAccept(tab);
+    const other: Doc = tab === 'terms' ? 'privacy' : 'terms';
+    // Both accepted once this one is: close. Otherwise carry on to the other document.
+    if (accepted[other]) {
+      onBack();
+      return;
+    }
+    showTab(other);
+  };
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onBack} statusBarTranslucent>
@@ -101,7 +151,16 @@ export default function TermsAndConditions({
           accessibilityViewIsModal
         >
           <View style={styles.header}>
-            <Text style={styles.title} accessibilityRole="header">{content.title}</Text>
+            <View style={styles.tabs}>
+              <ViewSwitch<Doc>
+                options={[
+                  { key: 'terms', label: accepted.terms ? 'Terms ✓' : 'Terms' },
+                  { key: 'privacy', label: accepted.privacy ? 'Privacy ✓' : 'Privacy' },
+                ]}
+                value={tab}
+                onChange={showTab}
+              />
+            </View>
             <Tap
               onPress={onBack}
               style={styles.closeBtn}
@@ -113,7 +172,30 @@ export default function TermsAndConditions({
             </Tap>
           </View>
 
-          <ScrollView style={styles.body} contentContainerStyle={styles.bodyContent} showsVerticalScrollIndicator>
+          <ScrollView
+            key={tab}
+            testID="terms-body"
+            style={styles.body}
+            contentContainerStyle={styles.bodyContent}
+            showsVerticalScrollIndicator
+            scrollEventThrottle={16}
+            onLayout={(e) => {
+              measured.current.layout = e.nativeEvent.layout.height;
+              settle(tab, 0, measured.current.layout, measured.current.content);
+            }}
+            onContentSizeChange={(_width, contentHeight) => {
+              measured.current.content = contentHeight;
+              settle(tab, 0, measured.current.layout, contentHeight);
+            }}
+            onScroll={onScrollReport}
+            onScrollEndDrag={onScrollReport}
+            onMomentumScrollEnd={onScrollReport}
+            // Screen readers can mark the text as read without scrolling to its end.
+            accessibilityActions={isRead ? undefined : [{ name: 'markAsRead', label: 'Mark as read' }]}
+            onAccessibilityAction={(e) => {
+              if (e.nativeEvent.actionName === 'markAsRead') setRead((r) => ({ ...r, [tab]: true }));
+            }}
+          >
             {content.sections.map((section) => (
               <View key={section.heading} style={styles.section}>
                 <Text style={styles.sectionTitle} accessibilityRole="header">{section.heading}</Text>
@@ -122,16 +204,16 @@ export default function TermsAndConditions({
             ))}
           </ScrollView>
 
+          {!isRead && <Text style={styles.hint}>Scroll to the end to continue</Text>}
           <Tap
-            style={styles.primaryBtn}
-            onPress={() => {
-              onAccept();
-              onBack();
-            }}
+            style={[styles.primaryBtn, !isRead && styles.primaryBtnOff]}
+            onPress={agree}
+            disabled={!isRead}
             activeOpacity={0.85}
             accessibilityRole="button"
+            accessibilityState={{ disabled: !isRead }}
           >
-            <Text style={styles.primaryBtnText}>{content.acceptLabel}</Text>
+            <Text style={[styles.primaryBtnText, !isRead && styles.primaryBtnTextOff]}>{content.acceptLabel}</Text>
           </Tap>
         </View>
       </View>
@@ -167,7 +249,7 @@ function createThemedStyles(theme: ThemePalette) {
       alignSelf: 'center',
     },
     header: { flexDirection: 'row', alignItems: 'center', marginBottom: 12, gap: 12 },
-    title: { color: V6Colors.ink900, fontSize: 19, fontWeight: '800', fontFamily: 'Inter', flex: 1 },
+    tabs: { flex: 1, alignItems: 'flex-start' },
     closeBtn: { padding: 2 },
 
     body: { flex: 1, minHeight: 0 },
@@ -176,16 +258,19 @@ function createThemedStyles(theme: ThemePalette) {
     sectionTitle: { color: C.dark, fontSize: 15.5, fontWeight: '700', fontFamily: 'Inter', marginBottom: 4 },
     bodyText: { color: C.slate, fontSize: 14.5, fontFamily: 'Inter', lineHeight: 20 },
 
+    hint: { color: C.slate, fontSize: 12.5, fontFamily: 'Inter', textAlign: 'center', marginTop: 10 },
     primaryBtn: {
       backgroundColor: C.brandTeal,
       borderRadius: V6Radii.btn,
       paddingVertical: 12,
       paddingHorizontal: 12,
       alignItems: 'center',
-      marginTop: 12,
+      marginTop: 8,
       ...V6Shadows.primaryButton,
     },
+    primaryBtnOff: { backgroundColor: V6Colors.line, elevation: 0, shadowOpacity: 0 },
     primaryBtnText: { color: C.onPrimary, fontFamily: 'Inter', fontSize: 15, fontWeight: '700', textAlign: 'center' },
+    primaryBtnTextOff: { color: C.slate },
   });
   return { Colors, V6Colors, C, styles };
 }

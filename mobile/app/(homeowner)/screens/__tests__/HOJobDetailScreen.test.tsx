@@ -4,6 +4,7 @@ import { act, fireEvent, render, screen, waitFor, within } from '@testing-librar
 import HOJobDetailScreen from '../HOJobDetailScreen';
 import { ApiError, api } from '../../../../src/lib/api';
 import { showToast } from '../../../../src/components/Toast';
+import ContentSkeleton from '../../../../src/components/ui/ContentSkeleton';
 
 jest.mock('../../../../src/components/Toast', () => ({ showToast: jest.fn() }));
 
@@ -798,5 +799,34 @@ describe('HOJobDetailScreen — the automatic invite line on an open job', () =>
 
     expect(await screen.findByText('Message Jane Provider')).toBeTruthy();
     expect(screen.queryByText(AUTO_INVITE)).toBeNull();
+  });
+});
+
+describe('HOJobDetailScreen — a reload keeps the job on screen', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    (api.getJob as jest.Mock).mockResolvedValue(inProgressJob);
+    (api.getProvider as jest.Mock).mockResolvedValue({ profile_id: 'provider-1', profiles: { full_name: 'Jane Provider' }, cached_completed_jobs: 1 });
+    (api.jobDispute as jest.Mock).mockResolvedValue(null);
+  });
+
+  it('shows the skeleton only while no job has loaded yet', () => {
+    (api.getJob as jest.Mock).mockReturnValue(new Promise(() => {}));
+    render(<HOJobDetailScreen jobId="job-1" onBack={jest.fn()} onNavigate={jest.fn()} />);
+
+    expect(screen.UNSAFE_queryByType(ContentSkeleton)).toBeTruthy();
+    expect(screen.queryByTestId('refresh-bar')).toBeNull();
+  });
+
+  it('keeps the job under a thin progress line while it reloads, with no skeleton', async () => {
+    const { rerender } = render(<HOJobDetailScreen jobId="job-1" onBack={jest.fn()} onNavigate={jest.fn()} />);
+    await waitFor(() => expect(screen.getByText('Fix the sink')).toBeTruthy());
+
+    (api.getJob as jest.Mock).mockReturnValue(new Promise(() => {}));
+    rerender(<HOJobDetailScreen jobId="job-2" onBack={jest.fn()} onNavigate={jest.fn()} />);
+
+    expect(screen.getByText('Fix the sink')).toBeTruthy();
+    expect(screen.getByTestId('refresh-bar')).toBeTruthy();
+    expect(screen.UNSAFE_queryByType(ContentSkeleton)).toBeNull();
   });
 });

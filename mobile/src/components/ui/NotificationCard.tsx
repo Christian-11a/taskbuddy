@@ -17,6 +17,10 @@ export type NotificationCardProps = {
   unread: boolean;
   /** Marking read is in flight: the card dims and cannot be tapped. */
   pending?: boolean;
+  /** Held for a long press: the platform's own gesture, so a finger that moves a pixel still counts. */
+  onLongPress?: () => void;
+  /** In select mode the select bar owns delete, so the trash button is not rendered. */
+  selecting?: boolean;
   onPress: () => void;
   onDelete: () => void;
 };
@@ -33,7 +37,7 @@ export const NOTIFICATION_ICONS: Record<NotificationIconName, LucideIcon> = {
  * it happened, and a delete button. Tapping the card opens what it is about.
  */
 export default function NotificationCard({
-  title, body, time, tone, icon: Icon, unread, pending = false, onPress, onDelete,
+  title, body, time, tone, icon: Icon, unread, pending = false, onLongPress, selecting = false, onPress, onDelete,
 }: NotificationCardProps) {
   const { s, tones, dot, deleteIcon } = useThemedStyles(createStyles);
   const colors = tones[tone];
@@ -41,6 +45,8 @@ export default function NotificationCard({
     <Tap
       style={[s.card, pending && s.pending]}
       onPress={onPress}
+      onLongPress={onLongPress}
+      delayLongPress={450}
       disabled={pending}
       activeOpacity={0.85}
       scale
@@ -58,15 +64,17 @@ export default function NotificationCard({
         <Text style={s.body} numberOfLines={1}>{body}</Text>
         <Text style={s.time}>{time}</Text>
       </View>
-      <Tap
-        onPress={onDelete}
-        hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-        accessibilityRole="button"
-        accessibilityLabel={`Delete notification: ${title}`}
-        style={s.delete}
-      >
-        <Trash2 size={16} color={deleteIcon} />
-      </Tap>
+      {!selecting && (
+        <Tap
+          onPress={onDelete}
+          hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+          accessibilityRole="button"
+          accessibilityLabel={`Delete notification: ${title}`}
+          style={s.delete}
+        >
+          <Trash2 size={16} color={deleteIcon} />
+        </Tap>
+      )}
     </Tap>
   );
 }

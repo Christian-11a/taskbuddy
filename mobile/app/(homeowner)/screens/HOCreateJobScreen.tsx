@@ -63,6 +63,8 @@ import {
   KeyboardAvoidingView,
 } from 'react-native';
 import Tap from '../../../src/components/ui/Tap';
+import NailPolishIcon from '../../../src/components/ui/icons/NailPolishIcon';
+import type { IconComponent } from '../../../src/components/ui/icons/types';
 import KeyboardAwareScrollView from '../../../src/components/ui/KeyboardAwareScrollView';
 import SheetFrame from '../../../src/components/ui/SheetFrame';
 import SuccessMark from '../../../src/components/ui/SuccessMark';
@@ -78,7 +80,6 @@ import {
   Hammer,
   Hand,
   MapPin,
-  Sparkles,
   Wrench,
   Zap,
 } from 'lucide-react-native';
@@ -133,11 +134,11 @@ import { showToast } from '../../../src/components/Toast';
 const Shadows = { card: V6Shadows.sm, input: V6Shadows.sm };
 
 // Icon + blurb per real service category (the 5 seeded in the DB).
-const CATEGORY_META: Record<string, { icon: typeof Wrench; desc: string }> = {
+const CATEGORY_META: Record<string, { icon: IconComponent; desc: string }> = {
   Plumbing: { icon: Wrench, desc: 'Pipes, fixtures & repairs' },
   Cleaning: { icon: BrushCleaning, desc: 'Home & deep cleaning' },
   Handyman: { icon: Hammer, desc: 'Repairs & odd jobs' },
-  Manicure: { icon: Sparkles, desc: 'Nail care & manicure' },
+  Manicure: { icon: NailPolishIcon, desc: 'Nail care & manicure' },
   Pedicure: { icon: Footprints, desc: 'Foot care & pedicure' },
 };
 
@@ -1101,9 +1102,9 @@ export default function HOCreateJobScreen({
         </KeyboardAwareScrollView>
         {/* The bar lives inside the keyboard-avoiding view, so it rises above the keyboard
             instead of hiding under it. BUG-005: the bar keeps clear of the system nav bar. */}
+        {/* No Back here: the header arrow already goes back one step, so Next takes the full width. */}
         {!submitting && (
           <PostFooter
-            onBack={step > 1 ? handleStepBack : undefined}
             onNext={handleNext}
             nextLabel={step === totalSteps ? 'Post job' : 'Next'}
             busy={stepBusy}

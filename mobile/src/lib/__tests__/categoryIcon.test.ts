@@ -1,13 +1,17 @@
-import { BrushCleaning, Footprints, Hammer, Hand, Sparkles, Wrench } from 'lucide-react-native';
+import { BrushCleaning, Footprints, Hammer, Hand, Wrench } from 'lucide-react-native';
 import { categoryIcon } from '../categoryIcon';
+import NailPolishIcon from '../../components/ui/icons/NailPolishIcon';
 
 describe('categoryIcon', () => {
   it('gives each known service category its own icon, with the wrench for plumbing', () => {
     expect(categoryIcon('Plumbing')).toBe(Wrench);
     expect(categoryIcon('Cleaning')).toBe(BrushCleaning);
     expect(categoryIcon('Handyman')).toBe(Hammer);
-    expect(categoryIcon('Manicure')).toBe(Sparkles);
     expect(categoryIcon('Pedicure')).toBe(Footprints);
+  });
+
+  it('gives manicure the nail-polish bottle', () => {
+    expect(categoryIcon('Manicure')).toBe(NailPolishIcon);
   });
 
   it('falls back to the wrench for a name it does not know, or for no name', () => {

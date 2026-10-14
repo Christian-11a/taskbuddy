@@ -9,16 +9,16 @@ import {
 import Tap from '../../../src/components/ui/Tap';
 import KeyboardAwareScrollView from '../../../src/components/ui/KeyboardAwareScrollView';
 import ContentSkeleton from '../../../src/components/ui/ContentSkeleton';
+import RefreshBar from '../../../src/components/ui/RefreshBar';
 import Banner from '../../../src/components/ui/Banner';
 import BottomActionBar from '../../../src/components/ui/BottomActionBar';
 import LoadErrorCard from '../../../src/components/ui/LoadErrorCard';
 import TextField from '../../../src/components/ui/TextField';
 import * as ImagePicker from 'expo-image-picker';
 import { ArrowLeft, Check, ImagePlus } from 'lucide-react-native';
-import { api, type PortfolioEntry } from '../../../src/lib/api';
+import { api, type PortfolioEntry, type ProviderProfile } from '../../../src/lib/api';
+import { useAuth } from '../../../src/context/AuthContext';
 import { useAsyncData } from '../../../src/hooks/useAsyncData';
-import { isList } from '../../../src/lib/savedShapes';
-import { SEVEN_DAYS_MS } from '../../../src/lib/persistentCache';
 import { useRefreshOnForeground } from '../../../src/hooks/useRefreshOnForeground';
 import { requestAppPermission } from '../../../src/lib/permissions';
 import { useHeaderTop } from '../../../src/hooks/useHeaderTop';
@@ -53,6 +53,22 @@ export function nextPortfolioPosition(entries: ReadonlyArray<{ position: number 
   if (entries.length === 0) return 0;
   const highest = Math.max(...entries.map((entry) => entry.position));
   return Math.min(highest + 1, PORTFOLIO_POSITION_MAX);
+}
+
+/**
+ * The services a provider may file a photo under: the main one, then each approved
+ * secondary service, with no service listed twice. Nothing else is offered.
+ */
+export function portfolioServices(
+  provider: Pick<ProviderProfile, 'category_id' | 'service_categories' | 'approved_secondary_services'> | null | undefined,
+): { id: number; name: string }[] {
+  if (!provider) return [];
+  const services: { id: number; name: string }[] = [];
+  if (provider.service_categories) services.push({ id: provider.category_id, name: provider.service_categories.name });
+  for (const service of provider.approved_secondary_services ?? []) {
+    services.push({ id: service.category_id, name: service.service_categories.name });
+  }
+  return services.filter((service, index) => services.findIndex((other) => other.id === service.id) === index);
 }
 
 /** The details sent with a photo: caption, position and service, in the shape the API takes. */
@@ -92,16 +108,15 @@ export default function SPPortfolioScreen({ onBack }: { onBack: () => void }) {
   const { styles, Colors, V6Colors, appearance } = useThemedStyles(createThemedStyles);
   const headerTop = useHeaderTop();
   const portfolio = useAsyncData(() => api.myPortfolio(), []);
-  const categories = useAsyncData(() => api.categories(), [], 'categories', {
-    persist: true,
-    maxAgeMs: SEVEN_DAYS_MS,
-    validate: isList,
-  });
+  const { providerProfile } = useAuth();
+  const services = portfolioServices(providerProfile);
   useRefreshOnForeground(portfolio.reload, true);
   const [uri, setUri] = useState<string | null>(null);
   const [caption, setCaption] = useState('');
   const [category, setCategory] = useState<number | null>(null);
   const [editing, setEditing] = useState<PortfolioEntry | null>(null);
+  // A new photo starts on the provider's first service; an edit keeps the entry's own category, even one not listed.
+  const selectedCategory = editing ? category : (category ?? services[0]?.id ?? null);
   const [removing, setRemoving] = useState<PortfolioEntry | null>(null);
   const [stage, setStage] = useState<PublishStage | null>(null);
   const [busy, setBusy] = useState(false);
@@ -151,7 +166,7 @@ export default function SPPortfolioScreen({ onBack }: { onBack: () => void }) {
     try {
       const details = portfolioDetails({
         caption,
-        categoryId: category,
+        categoryId: selectedCategory,
         position: editing ? editing.position : nextPortfolioPosition(portfolio.data ?? []),
       });
       if (editing) {
@@ -270,33 +285,33 @@ export default function SPPortfolioScreen({ onBack }: { onBack: () => void }) {
               keyboardAppearance={appearance}
             />
 
-            <Text style={styles.label}>Service (optional)</Text>
-            <View style={styles.chips}>
-              {[
-                { id: null, name: 'No service category' },
-                ...(categories.data ?? []),
-              ].map((item) => {
-                const selected = category === item.id;
-                return (
-                  <Tap
-                    disabled={busy}
-                    key={item.id ?? 'none'}
-                    accessibilityRole="radio"
-                    accessibilityLabel={item.name}
-                    accessibilityState={{ selected, disabled: busy }}
-                    hitSlop={{ top: 4, bottom: 4 }}
-                    onPress={() => setCategory(item.id)}
-                    style={[styles.chip, selected && styles.chipOn]}
-                  >
-                    <Text style={[styles.chipText, selected && styles.chipTextOn]}>
-                      {item.name}
-                    </Text>
-                  </Tap>
-                );
-              })}
-            </View>
-            {!!categories.error && (
-              <Banner tone="error" message={categories.error} actionLabel="Try again" onAction={categories.reload} />
+            {/* One service is said in words; several are picked from, and only the provider's own are offered. */}
+            {services.length === 1 && <Text style={styles.label}>{`Service: ${services[0].name}`}</Text>}
+            {services.length > 1 && (
+              <>
+                <Text style={styles.label}>Service</Text>
+                <View style={styles.chips}>
+                  {services.map((item) => {
+                    const selected = selectedCategory === item.id;
+                    return (
+                      <Tap
+                        disabled={busy}
+                        key={item.id}
+                        accessibilityRole="radio"
+                        accessibilityLabel={item.name}
+                        accessibilityState={{ selected, disabled: busy }}
+                        hitSlop={{ top: 4, bottom: 4 }}
+                        onPress={() => setCategory(item.id)}
+                        style={[styles.chip, selected && styles.chipOn]}
+                      >
+                        <Text style={[styles.chipText, selected && styles.chipTextOn]}>
+                          {item.name}
+                        </Text>
+                      </Tap>
+                    );
+                  })}
+                </View>
+              </>
             )}
 
             <View style={styles.tips}>
@@ -315,11 +330,13 @@ export default function SPPortfolioScreen({ onBack }: { onBack: () => void }) {
             {error}
           </Text>
         )}
-        {portfolio.loading && <ContentSkeleton variant="list" />}
+        {/* Skeletons stand in only for a portfolio not loaded yet. A refresh keeps the gallery under a bar, and a failed one keeps it under the error. */}
+        {portfolio.loading && !portfolio.data && <ContentSkeleton variant="list" />}
+        {portfolio.loading && !!portfolio.data && <RefreshBar />}
         {!!portfolio.error && (
           <LoadErrorCard title="Couldn't load your portfolio" message={portfolio.error} onRetry={portfolio.reload} />
         )}
-        {!portfolio.loading && !portfolio.error && (
+        {portfolio.data !== null && (
           <PortfolioGallery
             entries={portfolio.data ?? []}
             busy={busy}

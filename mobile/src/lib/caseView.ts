@@ -48,7 +48,6 @@ export type CaseView = {
   steps: CaseStep[];
   theirReason: string;
   counterpartName: string;
-  closedBackLabel: string;
   agree: { title: string; message: string; confirmLabel: string };
   contest: { title: string; message: string; confirmLabel: string };
   sheetTitle: string;
@@ -346,7 +345,6 @@ export function caseView(dispute: CaseDispute, me: string | null | undefined, no
       ? 'No reason given'
       : [dispute.reason.trim(), dispute.details?.trim()].filter(Boolean).join('\n'),
     counterpartName,
-    closedBackLabel: `Back to ${viewerIsProvider ? 'My Work' : 'My Jobs'}`,
     agree: {
       title: 'Agree to cancel?',
       message: [moneyLine, 'The booking is removed from your schedule.', "This can't be undone."]

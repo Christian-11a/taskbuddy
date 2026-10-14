@@ -90,6 +90,21 @@ export function payoutsCopy(state: ConnectStatus['state']): PayoutsCopy {
   }
 }
 
+/**
+ * The card once Stripe refuses new accounts on this platform. The provider cannot
+ * fix that here, so the card is neutral and there is no action; the wallet still works.
+ */
+export const PAYOUTS_UNAVAILABLE_COPY: PayoutsCopy = {
+  tone: 'closed',
+  overline: 'NOT AVAILABLE YET',
+  title: "Bank payouts aren't available yet",
+  body: 'Your earnings are safe in your TaskBuddy wallet. Withdraw to GCash or your bank from the Wallet tab.',
+  action: null,
+};
+
+/** Stripe's answer when the platform is not signed up for Connect. */
+const CONNECT_NOT_ENABLED = "You can only create new accounts if you've signed up for Connect";
+
 /** What a provider needs ready before Stripe's form. Stripe asks for both on its own pages. */
 const NEEDED = ['A valid ID', 'Your bank account details'];
 
@@ -102,6 +117,7 @@ export default function SPPayoutsScreen({ onBack }: SPPayoutsScreenProps) {
   );
   const [working, setWorking] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [unavailable, setUnavailable] = useState(false);
   useRefreshOnForeground(reload, !working);
 
   /**
@@ -138,9 +154,8 @@ export default function SPPayoutsScreen({ onBack }: SPPayoutsScreenProps) {
       await openOnboarding();
     } catch (e) {
       const message = e instanceof Error ? e.message : 'Could not open Stripe.';
-      setActionError(message.includes("You can only create new accounts if you've signed up for Connect")
-        ? 'Card payout setup is unavailable for this platform. Contact TaskBuddy support.'
-        : message);
+      if (message.includes(CONNECT_NOT_ENABLED)) setUnavailable(true);
+      else setActionError(message);
     } finally {
       setWorking(false);
     }
@@ -165,7 +180,7 @@ export default function SPPayoutsScreen({ onBack }: SPPayoutsScreenProps) {
     reload();
   };
 
-  const copy = current ? payoutsCopy(current.state) : null;
+  const copy = unavailable ? PAYOUTS_UNAVAILABLE_COPY : current ? payoutsCopy(current.state) : null;
 
   return (
     <View style={styles.screen}>
@@ -263,7 +278,7 @@ export default function SPPayoutsScreen({ onBack }: SPPayoutsScreenProps) {
               </View>
             </View>
 
-            {current.state !== 'active' && (
+            {current.state !== 'active' && !unavailable && (
               <>
                 <Text style={styles.sectionTitle} accessibilityRole="header">You'll need</Text>
                 <View style={styles.card}>

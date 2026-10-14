@@ -41,6 +41,9 @@ jest.mock('../../components/AddressField', () => {
       >
         Pick suggestion
       </Text>
+      <Text onPress={() => onResolve({ formatted_address: 'Old address', latitude: 14.1, longitude: 121.1, city: 'Quezon City', precise: true })}>
+        Resolve suggestion
+      </Text>
     </>
   );
 });
@@ -314,8 +317,28 @@ const ADDRESS_SHORT = 'Address must be at least 5 characters';
 const CITY_SHORT = 'City must be at least 2 characters';
 const SP_ADDRESS_REQUIRED = 'Enter your address so nearby jobs can be matched to you.';
 const cityField = () => screen.getByPlaceholderText('City / Municipality');
+const ADDRESS_HELPER = 'Include a house number and street. Pick a suggestion from the list.';
 
 describe.each<Role>(ROLES)('%s edit profile address and city', (role) => {
+  it('shows the house number and street helper until a suggestion is picked', async () => {
+    await renderEditor(role);
+
+    expect(screen.getByText(ADDRESS_HELPER)).toBeTruthy();
+
+    fireEvent.press(screen.getByText('Resolve suggestion'));
+    expect(screen.queryByText(ADDRESS_HELPER)).toBeNull();
+  });
+
+  it('hides the helper while the address error shows', async () => {
+    await renderEditor(role);
+
+    fireEvent.changeText(screen.getByTestId('address'), 'Lipa');
+    fireEvent(screen.getByTestId('address'), 'blur');
+
+    expect(screen.getByText(ADDRESS_SHORT)).toBeTruthy();
+    expect(screen.queryByText(ADDRESS_HELPER)).toBeNull();
+  });
+
   it('shows the address message once the address is left, not while typing', async () => {
     await renderEditor(role);
 

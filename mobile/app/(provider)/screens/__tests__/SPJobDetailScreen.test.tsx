@@ -2,6 +2,7 @@ import { findUnnamedControls } from '../../../../src/testing/a11yAudit';
 import React from 'react';
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react-native';
 import SPJobDetailScreen from '../SPJobDetailScreen';
+import ContentSkeleton from '../../../../src/components/ui/ContentSkeleton';
 import { api } from '../../../../src/lib/api';
 import { useAuth } from '../../../../src/context/AuthContext';
 import { clearAsyncDataCache } from '../../../../src/hooks/useAsyncData';
@@ -486,5 +487,91 @@ describe('SPJobDetailScreen — every control has an accessible name', () => {
 
     expect(await screen.findByText('Fix the sink')).toBeTruthy();
     expect(findUnnamedControls(screen.UNSAFE_root)).toEqual([]);
+  });
+});
+
+describe('SPJobDetailScreen — a reload keeps the job on screen', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    clearAsyncDataCache();
+    (useAuth as jest.Mock).mockReturnValue({
+      profile: { id: PROVIDER_ID },
+      isVerified: true,
+      refreshProfile: jest.fn(),
+    });
+    (api.getJob as jest.Mock).mockResolvedValue(openJob);
+    (api.myApplications as jest.Mock).mockResolvedValue([]);
+  });
+
+  it('shows the skeleton only while no job has loaded yet', () => {
+    (api.getJob as jest.Mock).mockReturnValue(new Promise(() => {}));
+    render(<SPJobDetailScreen jobId={JOB_ID} onBack={jest.fn()} onNavigate={jest.fn()} />);
+
+    expect(screen.UNSAFE_queryByType(ContentSkeleton)).toBeTruthy();
+    expect(screen.queryByTestId('refresh-bar')).toBeNull();
+  });
+
+  it('keeps the job under a thin progress line while it reloads, with no skeleton', async () => {
+    const { rerender } = render(<SPJobDetailScreen jobId={JOB_ID} onBack={jest.fn()} onNavigate={jest.fn()} />);
+    await waitFor(() => expect(screen.getByText('Fix the sink')).toBeTruthy());
+
+    (api.getJob as jest.Mock).mockReturnValue(new Promise(() => {}));
+    rerender(<SPJobDetailScreen jobId="job-2" onBack={jest.fn()} onNavigate={jest.fn()} />);
+
+    expect(screen.getByText('Fix the sink')).toBeTruthy();
+    expect(screen.getByTestId('refresh-bar')).toBeTruthy();
+    expect(screen.UNSAFE_queryByType(ContentSkeleton)).toBeNull();
+  });
+});
+
+describe('SPJobDetailScreen — the Start job dialog says when the job was booked for', () => {
+  const HOUR_MS = 60 * 60 * 1000;
+  const DAY_MS = 24 * HOUR_MS;
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    clearAsyncDataCache();
+    (useAuth as jest.Mock).mockReturnValue({
+      profile: { id: PROVIDER_ID },
+      isVerified: true,
+      refreshProfile: jest.fn(),
+    });
+  });
+
+  /** Opens the Start job dialog for a confirmed job booked at `scheduledAt`. */
+  async function openStartDialog(scheduledAt: string | null) {
+    (api.getJob as jest.Mock).mockResolvedValue({
+      ...openJob,
+      status: 'confirmed',
+      assigned_provider_id: PROVIDER_ID,
+      scheduled_at: scheduledAt,
+    });
+    render(<SPJobDetailScreen jobId={JOB_ID} onBack={jest.fn()} onNavigate={jest.fn()} />);
+    fireEvent.press(await screen.findByText('Start job'));
+    expect(screen.getByText('Start the job now?')).toBeTruthy();
+  }
+
+  it('keeps the dialog as it was for a job booked within 24 hours, with the same button', async () => {
+    await openStartDialog(new Date(Date.now() + 3 * HOUR_MS).toISOString());
+
+    expect(screen.getByText("Do this when you're at 123 Main St. The client gets a notification that you've started.")).toBeTruthy();
+    expect(screen.getByLabelText("I'm here, start job")).toBeTruthy();
+    expect(screen.queryByLabelText('Start now')).toBeNull();
+  });
+
+  it('says a job booked more than a day ago was booked for that day, and the button reads Start now', async () => {
+    await openStartDialog(new Date(Date.now() - 4 * DAY_MS).toISOString());
+
+    expect(screen.getByText(/This job was booked for .+ \(4 days ago\)\. Start it now\?/)).toBeTruthy();
+    expect(screen.getByText(/Do this when you're at 123 Main St\./)).toBeTruthy();
+    expect(screen.getByLabelText('Start now')).toBeTruthy();
+    expect(api.startJob).not.toHaveBeenCalled();
+  });
+
+  it('says a job booked more than a day ahead is booked for that day, and the button reads Start now', async () => {
+    await openStartDialog(new Date(Date.now() + 2 * DAY_MS).toISOString());
+
+    expect(screen.getByText(/This job is booked for .+ \(in 2 days\)\. Start it now\?/)).toBeTruthy();
+    expect(screen.getByLabelText('Start now')).toBeTruthy();
   });
 });

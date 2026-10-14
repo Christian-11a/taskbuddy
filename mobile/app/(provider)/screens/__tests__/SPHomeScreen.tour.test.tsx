@@ -31,6 +31,7 @@ jest.mock('../../../../src/context/AuthContext', () => ({
 const RECTS: Record<string, TourRect> = {
   'home-availability': { x: 16, y: 210, width: 343, height: 64 },
   'feed-search': { x: 16, y: 290, width: 343, height: 48 },
+  'setup-hero': { x: 16, y: 120, width: 343, height: 160 },
 };
 
 const measureSpy = (View.prototype as unknown as { measureInWindow: jest.Mock }).measureInWindow;
@@ -90,6 +91,30 @@ describe('SPHomeScreen — welcome tour anchors', () => {
 
     // The card reads "Step 1 of 1. {title}. {body}", which only the tour card has, unlike the title alone.
     await waitFor(() => expect(screen.getByLabelText(`Step 1 of 1. ${title}. Body copy`)).toBeTruthy());
+  });
+
+  it('home.setup is a spotlight target for an unverified provider, on the setup card', async () => {
+    (useAuth as jest.Mock).mockReturnValue({
+      profile: { full_name: 'Ana', city: 'Cebu', latitude: null, longitude: null },
+      providerProfile: { is_available: false, service_radius_km: 25, is_verified: false },
+      isVerified: false,
+      refreshProfile: jest.fn(),
+    });
+    (api.myVerification as jest.Mock).mockResolvedValue(null);
+    render(
+      <TourProvider>
+        <Probe />
+        <SPHomeScreen onNavigate={jest.fn()} />
+      </TourProvider>,
+    );
+    expect(await screen.findByText('Get verified to see jobs near you')).toBeTruthy();
+    await settle();
+
+    act(() => {
+      controls.startTour({ steps: [{ anchorId: 'home.setup', title: 'Finish setting up', body: 'Body copy' }], onFinish: jest.fn(), onSkip: jest.fn() });
+    });
+
+    await waitFor(() => expect(screen.getByLabelText('Step 1 of 1. Finish setting up. Body copy')).toBeTruthy());
   });
 });
 

@@ -20,6 +20,7 @@ import Tap from '../../../src/components/ui/Tap';
 import KeyboardAwareScrollView from '../../../src/components/ui/KeyboardAwareScrollView';
 import Silhouette from '../../../src/components/ui/Silhouette';
 import Banner from '../../../src/components/ui/Banner';
+import LoadErrorCard from '../../../src/components/ui/LoadErrorCard';
 import FilterPill from '../../../src/components/ui/FilterPill';
 import TextField from '../../../src/components/ui/TextField';
 import BottomActionBar from '../../../src/components/ui/BottomActionBar';
@@ -55,9 +56,11 @@ export default function HOLeaveReviewScreen({ jobId, onSubmitted, onBack }: HOLe
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const { data: job } = useAsyncData(
+  const { data: job, error: jobError, reload: reloadJob } = useAsyncData(
     useCallback(() => api.getJob(jobId), [jobId]),
   );
+  // A job that failed to load says so, with Try again. The review cannot be submitted until the job has loaded.
+  const jobFailed = !!jobError && !job;
   const providerName = job?.assigned_provider?.full_name ?? 'Provider';
   const jobLine = [job?.service_categories?.name, job?.title].filter(Boolean).join(': ');
   const alreadyReviewed = job?.has_review === true;
@@ -113,6 +116,7 @@ export default function HOLeaveReviewScreen({ jobId, onSubmitted, onBack }: HOLe
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       >
         <KeyboardAwareScrollView keyboardDismissMode="on-drag" contentContainerStyle={styles.bodyContent} keyboardShouldPersistTaps="handled">
+          {jobFailed && <LoadErrorCard title="Couldn't load this job" message={jobError} onRetry={reloadJob} />}
           <View style={styles.avatar}>
             <Silhouette name={providerName} textStyle={styles.avatarText} />
           </View>
@@ -180,7 +184,7 @@ export default function HOLeaveReviewScreen({ jobId, onSubmitted, onBack }: HOLe
         <BottomActionBar
           primaryLabel="Submit review"
           onPrimary={() => void submit()}
-          primaryDisabled={rating === 0 || alreadyReviewed || overBy > 0}
+          primaryDisabled={rating === 0 || !job || alreadyReviewed || overBy > 0}
           busy={busy}
         />
       </KeyboardAvoidingView>
