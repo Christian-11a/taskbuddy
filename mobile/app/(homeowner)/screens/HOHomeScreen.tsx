@@ -11,6 +11,7 @@ import { useNotifications } from '../../../src/context/NotificationsContext';
 import { StatusBar } from 'expo-status-bar';
 import React, { useEffect, useState } from 'react';
 import {
+  RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
@@ -250,6 +251,8 @@ export default function HOHomeScreen({ onNavigate, tourOffer }: HOHomeScreenProp
     jobs: null,
     byJob: {},
   });
+  // A pull to refresh asks for the proposal lookups again, even when the jobs list comes back unchanged.
+  const [proposalRound, setProposalRound] = useState(0);
 
   useEffect(() => {
     const list = jobs.data;
@@ -259,7 +262,21 @@ export default function HOHomeScreen({ onNavigate, tourOffer }: HOHomeScreenProp
       if (active) setProposalLookup({ jobs: list, byJob });
     });
     return () => { active = false; };
-  }, [jobs.data]);
+  }, [jobs.data, proposalRound]);
+
+  // Pull to refresh reloads what Home loads: the wallet, the jobs, the services and, after the jobs, the proposal lookups.
+  // The spinner stops when the jobs request settles, the one Home's content is built from.
+  const [pulling, setPulling] = useState(false);
+  useEffect(() => {
+    if (!jobs.loading && !jobs.refreshing) setPulling(false);
+  }, [jobs.loading, jobs.refreshing]);
+  const onRefresh = () => {
+    setPulling(true);
+    wallet.reload();
+    categories.reload();
+    jobs.reload();
+    setProposalRound((round) => round + 1);
+  };
 
   // The hero and the proposal counts on job rows wait for the lookups made for
   // the jobs they are computed from, so nothing flips from "waiting" to "to
@@ -309,6 +326,9 @@ export default function HOHomeScreen({ onNavigate, tourOffer }: HOHomeScreenProp
       <ScrollView
         style={styles.flex}
         showsVerticalScrollIndicator={false}
+        refreshControl={(
+          <RefreshControl refreshing={pulling} onRefresh={onRefresh} tintColor={Colors.primary} colors={[Colors.primary]} />
+        )}
       >
         {/* Header: the avatar opens Profile, the wallet chip opens Wallet, the bell opens Notifications. */}
         <View style={[styles.header, { paddingTop: headerTop }]}>

@@ -1,5 +1,5 @@
 import React from 'react';
-import { StyleSheet } from 'react-native';
+import { ScrollView, StyleSheet } from 'react-native';
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react-native';
 import HOHomeScreen from '../HOHomeScreen';
 import { api } from '../../../../src/lib/api';
@@ -758,5 +758,45 @@ describe('HOHomeScreen — saved copies of the wrong shape', () => {
 
   it('a saved service list of the wrong shape is ignored, and the screen loads as it does with nothing saved', async () => {
     await expectSavedCopyIgnored('categories', {}, () => render(<HOHomeScreen onNavigate={jest.fn()} />));
+  });
+});
+
+describe('HOHomeScreen — pull to refresh reloads what Home loads', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    clearAsyncDataCache();
+    (useAuth as jest.Mock).mockReturnValue({ profile: { full_name: 'Alex', city: null, address: null } });
+    (api.wallet as jest.Mock).mockResolvedValue({ balance: 0, available: 0, held: 0 });
+    (api.categories as jest.Mock).mockResolvedValue([{ id: 2, name: 'Cleaning' }]);
+    (api.notifications as jest.Mock).mockResolvedValue([]);
+    (api.unreadNotificationCount as jest.Mock).mockResolvedValue({ count: 0 });
+  });
+
+  /** The Home scroll view's pull to refresh, as the platform calls it. */
+  function pullToRefresh() {
+    const home = screen.UNSAFE_getAllByType(ScrollView)[0];
+    return home.props.refreshControl;
+  }
+
+  it('reloads the wallet, the jobs, the services and the proposal lookups, and stops the spinner when the jobs settle', async () => {
+    (api.myJobs as jest.Mock).mockResolvedValue([OPEN_JOB]);
+    (api.jobApplications as jest.Mock).mockResolvedValue([pendingApplication('a', 'Ana Reyes')]);
+    render(<HOHomeScreen onNavigate={jest.fn()} />);
+    await screen.findByTestId('home-hero-proposals');
+    jest.clearAllMocks();
+
+    let answerJobs!: (jobs: unknown[]) => void;
+    (api.myJobs as jest.Mock).mockReturnValue(new Promise((resolve) => { answerJobs = resolve; }));
+    act(() => pullToRefresh().props.onRefresh());
+
+    expect(pullToRefresh().props.refreshing).toBe(true);
+    await waitFor(() => expect(api.myJobs).toHaveBeenCalledTimes(1));
+    expect(api.wallet).toHaveBeenCalledTimes(1);
+    expect(api.categories).toHaveBeenCalledTimes(1);
+    expect(api.jobApplications).toHaveBeenCalledWith('job-open');
+
+    await act(async () => answerJobs([OPEN_JOB]));
+
+    expect(pullToRefresh().props.refreshing).toBe(false);
   });
 });
