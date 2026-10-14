@@ -392,8 +392,6 @@ describe('caseView: actions copy', () => {
   it('names the other party in the back label and the message link', () => {
     expect(caseView(base, CLIENT, BEFORE_DEADLINE).counterpartName).toBe('TaskBuddyProvider');
     expect(caseView(base, PROVIDER, BEFORE_DEADLINE).counterpartName).toBe('Maria Client');
-    expect(caseView({ ...base, status: 'resolved', resolved_at: RESOLVED, resolution: 'reviewed' }, PROVIDER, BEFORE_DEADLINE).closedBackLabel).toBe('Back to My Work');
-    expect(caseView({ ...base, status: 'resolved', resolved_at: RESOLVED, resolution: 'reviewed' }, CLIENT, BEFORE_DEADLINE).closedBackLabel).toBe('Back to My Jobs');
   });
 
   it('gives the provider the reason as "No reason given" for a cancellation, and the reason for a complaint', () => {
@@ -470,7 +468,7 @@ describe('caseView: plain words', () => {
   function visibleStrings(view: CaseView): string[] {
     return [
       view.heading, view.jobChip, view.status.overline, view.status.title, view.status.body, view.theirReason,
-      view.counterpartName, view.closedBackLabel, view.agree.title, view.agree.message, view.agree.confirmLabel,
+      view.counterpartName, view.agree.title, view.agree.message, view.agree.confirmLabel,
       view.contest.title, view.contest.message, view.contest.confirmLabel, view.sheetTitle, view.sheetIntro,
       ...view.steps.flatMap((step) => [step.title, step.detail, step.meta, step.chatNote]),
     ].filter((text): text is string => typeof text === 'string');
