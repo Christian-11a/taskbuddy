@@ -5,6 +5,10 @@ import { useThemedStyles, type Palette } from '../context/ThemeContext';
 import Tap from './ui/Tap';
 import NotificationCard, { type NotificationCardProps } from './ui/NotificationCard';
 
+// The card's long press stays defined while selecting. Dropping it mid-hold would stop the release from
+// being treated as a long press, so the notification would open.
+const noop = () => {};
+
 interface NotificationSelectRowProps {
   selecting: boolean;
   selected: boolean;
@@ -39,7 +43,7 @@ export function NotificationSelectRow({ selecting, selected, onStartSelect, onTo
         <NotificationCard
           {...card}
           selecting={selecting}
-          onLongPress={selecting ? undefined : onStartSelect}
+          onLongPress={selecting ? noop : onStartSelect}
         />
       </View>
       {selecting && (

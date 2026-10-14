@@ -5,6 +5,7 @@ import { ScrollView } from 'react-native';
 import { render, screen, fireEvent, act, within } from '@testing-library/react-native';
 import HONotificationsScreen from '../../../app/(homeowner)/screens/HONotificationsScreen';
 import SPNotificationsScreen from '../../../app/(provider)/screens/SPNotificationsScreen';
+import NotificationCard from '../../components/ui/NotificationCard';
 import { api } from '../../lib/api';
 import { useNotifications } from '../NotificationsContext';
 import { showToast } from '../../components/Toast';
@@ -346,6 +347,9 @@ describe('notification select and delete', () => {
 
       longPress('New message');
       fireEvent.press(screen.getByRole('checkbox', { name: 'Second message' }));
+      // The long press stays wired while selecting, so the release of a hold that started select mode does not open the row.
+      const cards = screen.UNSAFE_getAllByType(NotificationCard);
+      expect(cards.map((c) => c.props.onLongPress)).toEqual([expect.any(Function), expect.any(Function)]);
       expect(screen.queryByLabelText('Delete notification: New message', { includeHiddenElements: true })).toBeNull();
       expect(screen.queryByLabelText('Delete notification: Second message', { includeHiddenElements: true })).toBeNull();
 
