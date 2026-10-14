@@ -25,12 +25,13 @@ export function takePhotoLabel(documentType: VerifyDocumentType | null): string 
 
 export type VerifyStatus = 'pending' | 'approved' | 'rejected';
 
-export type VerifyView = 'loading' | 'intro' | 'wizard' | 'sending' | 'pending' | 'rejected' | 'approved';
+export type VerifyView = 'loading' | 'error' | 'intro' | 'wizard' | 'sending' | 'pending' | 'rejected' | 'approved';
 
 /**
  * Which view the screen shows. The sending view wins while submitting. A
  * pending review or an approval always wins over the wizard. A rejection
- * shows first and opens the wizard only after "Try again".
+ * shows first and opens the wizard only after "Try again". A status that could
+ * not be loaded is an error, never a brand-new application.
  */
 export function pickVerifyView(input: {
   loading: boolean;
@@ -39,6 +40,8 @@ export function pickVerifyView(input: {
   started: boolean;
   /** True from a finished submission until the reload brings the new status. */
   settling?: boolean;
+  /** True when the status request failed. */
+  failed?: boolean;
 }): VerifyView {
   if (input.submitting) return 'sending';
   // The old status is still loaded at this point; show the loader rather than a stale screen.
@@ -47,6 +50,7 @@ export function pickVerifyView(input: {
   if (input.status === 'pending') return 'pending';
   // The loader is for the first load only; a reload keeps what is on screen.
   if (input.loading && input.status === null) return 'loading';
+  if (input.status === null && input.failed) return 'error';
   if (input.status === 'rejected' && !input.started) return 'rejected';
   return input.started ? 'wizard' : 'intro';
 }

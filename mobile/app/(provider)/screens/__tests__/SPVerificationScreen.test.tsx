@@ -1,5 +1,5 @@
 import React from 'react';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react-native';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react-native';
 import SPVerificationScreen from '../SPVerificationScreen';
 import { api, ApiError } from '../../../../src/lib/api';
 import * as WebBrowser from 'expo-web-browser';
@@ -615,5 +615,23 @@ describe('SPVerificationScreen — the status after a review', () => {
     fireEvent.press(screen.getByRole('button', { name: 'See jobs near you' }));
 
     await waitFor(() => expect(onVerified).toHaveBeenCalledTimes(1));
+  });
+});
+
+describe('SPVerificationScreen — a status that cannot be checked', () => {
+  it('says the check failed, offers no start, and Try again checks the status again', async () => {
+    (api.myVerification as jest.Mock).mockRejectedValueOnce(new Error('Network request failed')).mockResolvedValue(PENDING);
+    renderScreen();
+
+    const card = await screen.findByTestId('error-card');
+    expect(within(card).getByText("Couldn't check your verification")).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Start' })).toBeNull();
+    expect(screen.queryByText('Get verified')).toBeTruthy();
+
+    fireEvent.press(within(card).getByRole('button', { name: 'Try again' }));
+
+    expect(await screen.findByText("We're checking your documents")).toBeTruthy();
+    expect(screen.queryByTestId('error-card')).toBeNull();
+    expect(api.myVerification).toHaveBeenCalledTimes(2);
   });
 });

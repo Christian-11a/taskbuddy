@@ -104,6 +104,19 @@ describe('pickVerifyView', () => {
     expect(pickVerifyView({ ...base, submitting: true, started: true, status: 'rejected' })).toBe('sending');
   });
 
+  it('says the status could not be checked, and never shows the intro, when the lookup failed', () => {
+    expect(pickVerifyView({ ...base, failed: true })).toBe('error');
+    expect(pickVerifyView({ ...base, failed: true, started: true })).toBe('error');
+    // A lookup still running is the loader, not the error.
+    expect(pickVerifyView({ ...base, failed: true, loading: true })).toBe('loading');
+    // A status already on screen stays, even when a refresh failed.
+    expect(pickVerifyView({ ...base, failed: true, status: 'pending' })).toBe('pending');
+    // A submission in progress wins over the error.
+    expect(pickVerifyView({ ...base, failed: true, submitting: true })).toBe('sending');
+    // No failure: a provider with no verification yet starts at the intro.
+    expect(pickVerifyView({ ...base, failed: false })).toBe('intro');
+  });
+
   it('keeps the loader up after a submission until the new status arrives', () => {
     // The old "rejected" status is still loaded here; it must not flash back on screen.
     expect(pickVerifyView({ ...base, status: 'rejected', started: true, settling: true })).toBe('loading');

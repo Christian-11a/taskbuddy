@@ -54,6 +54,7 @@ import IdExamples from '../../../src/components/verify/IdExamples';
 import PhotoCard from '../../../src/components/verify/PhotoCard';
 import SendingChecklist from '../../../src/components/verify/SendingChecklist';
 import PendingTimeline from '../../../src/components/verify/PendingTimeline';
+import LoadErrorCard from '../../../src/components/ui/LoadErrorCard';
 import * as ImagePicker from 'expo-image-picker';
 import * as WebBrowser from 'expo-web-browser';
 import { IdCard, Lock, ScanFace, ShieldCheck } from 'lucide-react-native';
@@ -159,6 +160,7 @@ export default function SPVerificationScreen({ onBack, onVerified }: SPVerificat
   const {
     data: verification,
     loading,
+    error: verificationError,
     reload,
   } = useAsyncData(useCallback(() => api.myVerification(), []));
 
@@ -320,6 +322,7 @@ export default function SPVerificationScreen({ onBack, onVerified }: SPVerificat
     submitting,
     started,
     settling: awaitingReload,
+    failed: verificationError !== null,
   });
   // A rejected provider who has not yet tapped Try again still needs the wizard's photo hint.
   const isRejected = verification?.status === 'rejected';
@@ -393,6 +396,10 @@ export default function SPVerificationScreen({ onBack, onVerified }: SPVerificat
 
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
         {view === 'loading' && <ActivityIndicator color={V6Colors.link} style={styles.loader} />}
+        {/* Not knowing the status is not a new application: say so, and offer no start. */}
+        {view === 'error' && (
+          <LoadErrorCard title="Couldn't check your verification" message={verificationError} onRetry={reload} />
+        )}
 
         {view === 'pending' && verification && (
           <>
