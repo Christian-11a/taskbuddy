@@ -61,12 +61,46 @@ it('keeps the button disabled until the text has been scrolled to the end', () =
   expect(screen.queryByText('Scroll to the end to continue')).toBeNull();
 });
 
-it('treats text within 24 dp of its end as read', () => {
-  renderPopup();
-  fireEvent.scroll(body(), {
-    nativeEvent: { contentOffset: { y: 977 }, layoutMeasurement: { height: 400 }, contentSize: { height: 1400 } },
+/** A long text in a 400 dp viewport, reported at the given offset by the given scroll event. */
+function reportAt(eventName: 'scroll' | 'scrollEndDrag' | 'momentumScrollEnd', y: number) {
+  fireEvent(body(), eventName, {
+    nativeEvent: { contentOffset: { y }, layoutMeasurement: { height: 400 }, contentSize: { height: 1400 } },
   });
+}
+
+it('treats text within 48 dp of its end as read', () => {
+  renderPopup();
+  reportAt('scroll', 960);
   expect(agreeButton('Terms & Conditions').props.accessibilityState).toMatchObject({ disabled: false });
+});
+
+it('does not treat text 100 dp short of its end as read', () => {
+  renderPopup();
+  reportAt('scroll', 900);
+  expect(agreeButton('Terms & Conditions').props.accessibilityState).toMatchObject({ disabled: true });
+});
+
+it('reads to the end when the resting position is only reported at momentum end', () => {
+  renderPopup();
+  fireEvent(body(), 'layout', { nativeEvent: { layout: { height: 400 } } });
+  fireEvent(body(), 'contentSizeChange', 300, 1400);
+  reportAt('momentumScrollEnd', 1000);
+  expect(agreeButton('Terms & Conditions').props.accessibilityState).toMatchObject({ disabled: false });
+});
+
+it('reads to the end when the resting position is only reported at the end of a drag', () => {
+  renderPopup();
+  fireEvent(body(), 'layout', { nativeEvent: { layout: { height: 400 } } });
+  fireEvent(body(), 'contentSizeChange', 300, 1400);
+  reportAt('scrollEndDrag', 1000);
+  expect(agreeButton('Terms & Conditions').props.accessibilityState).toMatchObject({ disabled: false });
+});
+
+it('does not read a long text from its layout alone, before any scroll', () => {
+  renderPopup();
+  fireEvent(body(), 'layout', { nativeEvent: { layout: { height: 400 } } });
+  fireEvent(body(), 'contentSizeChange', 300, 1400);
+  expect(agreeButton('Terms & Conditions').props.accessibilityState).toMatchObject({ disabled: true });
 });
 
 it('enables a short text at once, because it fits the viewport', () => {

@@ -2,6 +2,8 @@ import { useThemedStyles, type Palette as ThemePalette } from '../../../src/cont
 import React, { useEffect, useRef, useState } from 'react';
 import {
   Modal,
+  NativeScrollEvent,
+  NativeSyntheticEvent,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -30,7 +32,7 @@ interface TermsAndConditionsProps {
 }
 
 /** A document counts as read when its text is within this many dp of the end, or fits the viewport. */
-const END_SLOP = 24;
+const END_SLOP = 48;
 const NOT_ACCEPTED: Record<Doc, boolean> = { terms: false, privacy: false };
 
 const TERMS_CONTENT = {
@@ -122,6 +124,13 @@ export default function TermsAndConditions({
     setRead((r) => (r[doc] ? r : { ...r, [doc]: true }));
   };
 
+  // Android throttles onScroll and can drop the report of the resting position, so the drag-end and
+  // momentum-end reports check the same position too.
+  const onScrollReport = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
+    const { contentOffset, layoutMeasurement, contentSize } = e.nativeEvent;
+    settle(tab, contentOffset.y, layoutMeasurement.height, contentSize.height);
+  };
+
   const agree = () => {
     onAccept(tab);
     const other: Doc = tab === 'terms' ? 'privacy' : 'terms';
@@ -169,7 +178,7 @@ export default function TermsAndConditions({
             style={styles.body}
             contentContainerStyle={styles.bodyContent}
             showsVerticalScrollIndicator
-            scrollEventThrottle={100}
+            scrollEventThrottle={16}
             onLayout={(e) => {
               measured.current.layout = e.nativeEvent.layout.height;
               settle(tab, 0, measured.current.layout, measured.current.content);
@@ -178,10 +187,9 @@ export default function TermsAndConditions({
               measured.current.content = contentHeight;
               settle(tab, 0, measured.current.layout, contentHeight);
             }}
-            onScroll={(e) => {
-              const { contentOffset, layoutMeasurement, contentSize } = e.nativeEvent;
-              settle(tab, contentOffset.y, layoutMeasurement.height, contentSize.height);
-            }}
+            onScroll={onScrollReport}
+            onScrollEndDrag={onScrollReport}
+            onMomentumScrollEnd={onScrollReport}
             // Screen readers can mark the text as read without scrolling to its end.
             accessibilityActions={isRead ? undefined : [{ name: 'markAsRead', label: 'Mark as read' }]}
             onAccessibilityAction={(e) => {
