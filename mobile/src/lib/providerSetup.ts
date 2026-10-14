@@ -1,4 +1,5 @@
 import type { Profile, ProviderProfile } from './api';
+import { addressSaved } from './verifyFlow';
 
 /** Where the provider's identity check stands, as the Feed reads `api.myVerification`. */
 export type VerifyState = 'none' | 'pending' | 'rejected';
@@ -50,7 +51,7 @@ export function providerSetupSteps(
   const city = trimmed(profile?.city);
   const bio = trimmed(providerProfile?.bio);
   const verified = providerProfile?.is_verified === true;
-  const addressDone = address !== '' || city !== '';
+  const addressDone = addressSaved(profile);
 
   const steps: Omit<SetupStep, 'state'>[] = [
     {

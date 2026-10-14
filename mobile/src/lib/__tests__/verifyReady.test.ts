@@ -37,11 +37,18 @@ describe('profileReadyToVerify', () => {
   it('counts an address or bio with surrounding spaces as filled', () => {
     expect(profileReadyToVerify({ address: '  Lipa  ' }, { bio: '  Plumber  ' })).toBe(true);
   });
+
+  it('counts a city alone as the address, the same rule as the Home setup card', () => {
+    expect(profileReadyToVerify({ address: null, city: 'Lipa' }, WITH_BIO)).toBe(true);
+    expect(profileReadyToVerify({ address: '  ', city: 'Lipa' }, WITH_BIO)).toBe(true);
+    expect(profileReadyToVerify({ address: null, city: '  ' }, WITH_BIO)).toBe(false);
+  });
 });
 
 describe('missingProfileSteps', () => {
   it('lists nothing when the address and bio are both saved', () => {
     expect(missingProfileSteps(WITH_ADDRESS, WITH_BIO)).toEqual([]);
+    expect(missingProfileSteps({ address: null, city: 'Lipa' }, WITH_BIO)).toEqual([]);
   });
 
   it('lists the address when only the address is missing', () => {

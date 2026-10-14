@@ -73,13 +73,26 @@ export function wizardProgress(
 }
 
 /**
- * The two profile items the verification depends on. "Service picked" is
- * ticked when a provider profile exists, because the API needs one.
+ * The address rule the Home setup card and the verification gate share: a
+ * saved street address, or a saved city when there is no street address.
+ */
+export function addressSaved(
+  profile: { address?: string | null; city?: string | null } | null | undefined,
+): boolean {
+  return (profile?.address ?? '').trim() !== '' || (profile?.city ?? '').trim() !== '';
+}
+
+/**
+ * The three profile items the verification depends on, in the Home card's
+ * order: address, service, bio. "Service picked" is ticked when a provider
+ * profile exists, because the API needs one.
  */
 export function profileChecks(
+  profile: { address?: string | null; city?: string | null } | null | undefined,
   providerProfile: { bio?: string | null } | null | undefined,
 ): { label: string; done: boolean }[] {
   return [
+    { label: 'Address added', done: addressSaved(profile) },
     { label: 'Service picked', done: providerProfile != null },
     { label: 'Bio added', done: (providerProfile?.bio ?? '').trim() !== '' },
   ];

@@ -129,6 +129,8 @@ function profileNoticeTitleFor(missing: readonly MissingProfileStep[]): string {
 
 interface SPVerificationScreenProps {
   onBack: () => void;
+  /** Opens Edit Profile, where the provider adds the address and bio that verification waits for. */
+  onEditProfile: () => void;
   /**
    * Called when the provider taps through after being approved — refreshes the
    * auth profile (so the dashboard's "Get Verified" banner disappears) and
@@ -137,18 +139,38 @@ interface SPVerificationScreenProps {
   onVerified?: () => Promise<void>;
 }
 
-export default function SPVerificationScreen({ onBack, onVerified }: SPVerificationScreenProps) {
+export default function SPVerificationScreen({ onBack, onEditProfile, onVerified }: SPVerificationScreenProps) {
   const { Colors, V6Colors, styles } = useThemedStyles(createThemedStyles);
   const headerTop = useHeaderTop();
   // The API refuses a verification without a service profile, an address or
   // a bio; say so up front instead of after all three steps.
   const { profile, providerProfile } = useAuth();
   const profileIncomplete = !profileReadyToVerify(profile, providerProfile);
-  const profileNoticeTitle = profileNoticeTitleFor(missingProfileSteps(profile, providerProfile));
-  const profileItems = [
-    ...profileChecks(providerProfile),
-    { label: 'Address added', done: (profile?.address ?? '').trim() !== '' },
-  ];
+  const profileNotice = providerProfile
+    ? {
+      title: profileNoticeTitleFor(missingProfileSteps(profile, providerProfile)),
+      body: 'Clients find you by your address, and your bio tells them what you do best.',
+    }
+    : {
+      title: 'Finish your profile first',
+      body: 'Pick your service, add your address and a short bio in Edit Profile.',
+    };
+  // The blocking card: what is missing, and a button to Edit Profile. Start and Continue stay disabled until it is fixed.
+  const profileNoticeView = (
+    <View style={styles.profileNotice}>
+      <Text style={styles.profileNoticeTitle}>{profileNotice.title}</Text>
+      <Text style={styles.profileNoticeBody}>{profileNotice.body}</Text>
+      <Tap
+        style={styles.profileNoticeButton}
+        hitSlop={8}
+        accessibilityRole="button"
+        accessibilityLabel="Go to Edit Profile"
+        onPress={onEditProfile}
+      >
+        <Text style={styles.profileNoticeButtonText}>Go to Edit Profile</Text>
+      </Tap>
+    </View>
+  );
   const [step, setStep] = useState(1);
   /** False until the provider taps Start on the intro (or Try again after a rejection). */
   const [started, setStarted] = useState(false);
@@ -479,15 +501,8 @@ export default function SPVerificationScreen({ onBack, onVerified }: SPVerificat
             <Text style={styles.introBody}>
               Clients only see and hire verified providers. It takes about 3 minutes.
             </Text>
-            {profileIncomplete && (
-              <View style={styles.profileNotice}>
-                <Text style={styles.profileNoticeTitle}>{profileNoticeTitle}</Text>
-                <Text style={styles.profileNoticeBody}>
-                  Clients find you by your address, and your bio tells them what you do best.
-                </Text>
-              </View>
-            )}
-            <PrepCard steps={PREP_STEPS} profileItems={profileItems} />
+            {profileIncomplete && profileNoticeView}
+            <PrepCard steps={PREP_STEPS} profileItems={profileChecks(profile, providerProfile)} />
             <Tap
               style={styles.protectLink}
               onPress={() => setProtectOpen(true)}
@@ -514,14 +529,7 @@ export default function SPVerificationScreen({ onBack, onVerified }: SPVerificat
         {view === 'wizard' && (
           <>
             {/* ── Step 1 · Government ID ─────────────────────────── */}
-            {step === 1 && profileIncomplete && (
-              <View style={styles.profileNotice}>
-                <Text style={styles.profileNoticeTitle}>{profileNoticeTitle}</Text>
-                <Text style={styles.profileNoticeBody}>
-                  Clients find you by your address, and your bio tells them what you do best.
-                </Text>
-              </View>
-            )}
+            {step === 1 && profileIncomplete && profileNoticeView}
             {step === 1 && idPhase === 'choose' && (
               <>
                 <Text style={styles.stepTitle} accessibilityRole="header">
@@ -748,6 +756,11 @@ function createThemedStyles(theme: ThemePalette) {
     },
     profileNoticeTitle: { color: V6Colors.warningText, fontFamily: 'Inter', fontSize: 15, fontWeight: '700' },
     profileNoticeBody: { color: V6Colors.ink700, fontFamily: 'Inter', fontSize: 14, lineHeight: 20 },
+    profileNoticeButton: {
+      minHeight: 48, borderRadius: 14, marginTop: 6, backgroundColor: Colors.primary,
+      alignItems: 'center', justifyContent: 'center',
+    },
+    profileNoticeButtonText: { color: Colors.onPrimary, fontFamily: 'Inter', fontSize: 15, fontWeight: '700' },
     errorText: { color: Colors.dangerText, fontFamily: 'Inter', fontSize: 15.5, textAlign: 'center' },
     retryHint: { color: V6Colors.ink500, fontFamily: 'Inter', fontSize: 14, textAlign: 'center' },
   });

@@ -58,9 +58,15 @@ const PENDING = {
   rejection_reason: null,
 };
 
-function renderScreen(props: { onBack?: () => void; onVerified?: () => Promise<void> } = {}) {
+function renderScreen(
+  props: { onBack?: () => void; onEditProfile?: () => void; onVerified?: () => Promise<void> } = {},
+) {
   return render(
-    <SPVerificationScreen onBack={props.onBack ?? jest.fn()} onVerified={props.onVerified} />,
+    <SPVerificationScreen
+      onBack={props.onBack ?? jest.fn()}
+      onEditProfile={props.onEditProfile ?? jest.fn()}
+      onVerified={props.onVerified}
+    />,
   );
 }
 
@@ -94,10 +100,34 @@ describe('SPVerificationScreen — before you start', () => {
     (useAuth as jest.Mock).mockReturnValue({ profile: ACCOUNT_PROFILE, providerProfile: null });
     renderScreen();
 
-    expect(await screen.findByText('Add your bio first')).toBeTruthy();
+    expect(await screen.findByText('Finish your profile first')).toBeTruthy();
+    expect(
+      screen.getByText('Pick your service, add your address and a short bio in Edit Profile.'),
+    ).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Start' })).toBeDisabled();
+    expect(screen.getByLabelText('Address added: done')).toBeTruthy();
     expect(screen.getByLabelText('Service picked: not done yet')).toBeTruthy();
     expect(screen.getByLabelText('Bio added: not done yet')).toBeTruthy();
+  });
+
+  it('counts a city alone as the address, as the Home card does, so Start is open', async () => {
+    (useAuth as jest.Mock).mockReturnValue({ profile: { address: null, city: 'Lipa' }, providerProfile: PROVIDER_PROFILE });
+    renderScreen();
+
+    expect(await screen.findByLabelText('Address added: done')).toBeTruthy();
+    expect(screen.queryByText('Add your address first')).toBeNull();
+    expect(screen.getByRole('button', { name: 'Start' })).not.toBeDisabled();
+  });
+
+  it('its Go to Edit Profile button calls onEditProfile, and Start stays disabled until the profile is saved', async () => {
+    (useAuth as jest.Mock).mockReturnValue({ profile: { address: null }, providerProfile: PROVIDER_PROFILE });
+    const onEditProfile = jest.fn();
+    renderScreen({ onEditProfile });
+
+    fireEvent.press(await screen.findByRole('button', { name: 'Go to Edit Profile' }));
+
+    expect(onEditProfile).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole('button', { name: 'Start' })).toBeDisabled();
   });
 
   it('will not start without an address, and says so, even with a service profile and bio', async () => {

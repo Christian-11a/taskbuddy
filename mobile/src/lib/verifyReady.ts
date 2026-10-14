@@ -5,8 +5,9 @@
  * do best) before they can be sent to verify, in that order.
  */
 import type { Profile, ProviderProfile } from './api';
+import { addressSaved } from './verifyFlow';
 
-type ProfileFields = Partial<Pick<Profile, 'address'>> | null | undefined;
+type ProfileFields = Partial<Pick<Profile, 'address' | 'city'>> | null | undefined;
 type ProviderFields = Partial<Pick<ProviderProfile, 'bio'>> | null | undefined;
 
 export type MissingProfileStep = 'address' | 'bio';
@@ -15,10 +16,10 @@ function filled(value: string | null | undefined): boolean {
   return typeof value === 'string' && value.trim() !== '';
 }
 
-/** The profile steps still to do, in the order the Home setup card shows them. */
+/** The profile steps still to do, in the order the Home setup card shows them. The address rule is the Home card's. */
 export function missingProfileSteps(profile: ProfileFields, providerProfile: ProviderFields): MissingProfileStep[] {
   const missing: MissingProfileStep[] = [];
-  if (!filled(profile?.address)) missing.push('address');
+  if (!addressSaved(profile)) missing.push('address');
   if (!filled(providerProfile?.bio)) missing.push('bio');
   return missing;
 }

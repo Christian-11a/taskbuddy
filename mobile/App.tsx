@@ -990,6 +990,8 @@ function AppFlow() {
             void refreshProfile();
             spBack();
           }}
+          // The same destination as the finish card's "Finish my profile" (setupProfile).
+          onEditProfile={() => spNavigate('Edit Profile')}
           onVerified={async () => {
             await refreshProfile();
             spBack();
