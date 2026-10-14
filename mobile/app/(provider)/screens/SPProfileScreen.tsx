@@ -97,9 +97,10 @@ export default function SPProfileScreen({ onNavigate, onLogout, onBack }: SPProf
       : [profile?.city, profile?.address].filter(Boolean).join(', ')) || null;
 
   const workItems: MenuItem[] = [
+    // Verification cannot start without a service profile, so a provider without one is sent to Edit Profile first.
     ...(isVerified
       ? []
-      : [{ key: 'verify', icon: ShieldCheck, label: 'Get verified', onPress: () => onNavigate('Verification') }]),
+      : [{ key: 'verify', icon: ShieldCheck, label: 'Get verified', onPress: () => onNavigate(providerProfile ? 'Verification' : 'Edit Profile') }]),
     { key: 'services', icon: Wrench, label: 'My services', onPress: () => onNavigate('My Services') },
     { key: 'portfolio', icon: Camera, label: 'Portfolio', onPress: () => onNavigate('Portfolio') },
     { key: 'payouts', icon: Wallet, label: 'Payouts', onPress: () => onNavigate('Payouts') },

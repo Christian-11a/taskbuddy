@@ -148,6 +148,26 @@ describe('finishCard', () => {
     });
   });
 
+  it('sends an unverified provider with no service profile to set the profile up first', () => {
+    expect(finishCard({ role: 'provider', verified: false, firstName: 'Ana', hasServiceProfile: false })).toEqual({
+      title: "You're all set, Ana",
+      checklist: [
+        { label: 'Account created', state: 'done' },
+        { label: 'Set up your profile', state: 'next' },
+        { label: 'Get verified', state: 'later' },
+      ],
+      primary: { label: 'Set up my profile', action: 'setupProfile' },
+      secondary: { label: 'Look around first', action: 'close' },
+    });
+  });
+
+  it('treats a provider with a service profile as before: verification comes first', () => {
+    expect(finishCard({ role: 'provider', verified: false, firstName: 'Ana', hasServiceProfile: true }).primary)
+      .toEqual({ label: 'Get verified', action: 'getVerified' });
+    expect(finishCard({ role: 'provider', verified: false, firstName: 'Ana' }).primary)
+      .toEqual({ label: 'Get verified', action: 'getVerified' });
+  });
+
   it('sends a verified provider to their first job, with no second button', () => {
     expect(finishCard({ role: 'provider', verified: true, firstName: 'Ana' })).toEqual({
       title: "You're all set, Ana",
@@ -158,6 +178,13 @@ describe('finishCard', () => {
       ],
       primary: { label: 'Find my first job', action: 'close' },
     });
+  });
+
+  it('ignores the service profile for a verified provider and for a client', () => {
+    expect(finishCard({ role: 'provider', verified: true, firstName: 'Ana', hasServiceProfile: false }).primary.action)
+      .toBe('close');
+    expect(finishCard({ role: 'homeowner', verified: false, firstName: 'Juan', hasServiceProfile: false }).primary.action)
+      .toBe('postJob');
   });
 
   it('greets "there" when the name is missing', () => {

@@ -26,6 +26,8 @@ type TourFinishCardProps = {
   role: WelcomeRole;
   /** A provider's real verification status; the client ignores it. */
   verified: boolean;
+  /** Whether a provider has a service profile yet; the client ignores it. */
+  hasServiceProfile?: boolean;
   firstName: string;
   /** A brand-new account's first walkthrough: confetti and one light tap. Never on a replay. */
   firstRun: boolean;
@@ -38,12 +40,12 @@ const STATE_WORD: Record<ChecklistState, string> = { done: 'done', next: 'next s
 /** The card takes the presses that are not on a button, so they do not fall through to the backdrop. */
 const noop = () => {};
 
-export default function TourFinishCard({ role, verified, firstName, firstRun, onAction }: TourFinishCardProps) {
+export default function TourFinishCard({ role, verified, hasServiceProfile = true, firstName, firstRun, onAction }: TourFinishCardProps) {
   const { Colors, C, styles } = useThemedStyles(createThemedStyles);
   const insets = useSafeAreaInsets();
   const { height: windowHeight } = useWindowDimensions();
   const reduced = useReducedMotion();
-  const content = finishCard({ role, verified, firstName });
+  const content = finishCard({ role, verified, hasServiceProfile, firstName });
   const { secondary } = content;
 
   // One light tap when a first run's card appears, and none on a replay.

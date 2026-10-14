@@ -96,6 +96,17 @@ describe('TourFinishCard — the provider', () => {
     expect(onAction).toHaveBeenCalledWith('getVerified');
   });
 
+  it('an unverified provider with no service profile is asked to set it up first', () => {
+    const { onAction } = renderCard({ role: 'provider', verified: false, hasServiceProfile: false, firstName: 'Ana' });
+
+    expect(screen.getByText('Set up your profile')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Get verified' })).toBeNull();
+    fireEvent.press(screen.getByRole('button', { name: 'Set up my profile' }));
+
+    expect(onAction).toHaveBeenCalledTimes(1);
+    expect(onAction).toHaveBeenCalledWith('setupProfile');
+  });
+
   it('a verified provider has one main action, which just closes the card', () => {
     const { onAction } = renderCard({ role: 'provider', verified: true, firstName: 'Ana' });
 

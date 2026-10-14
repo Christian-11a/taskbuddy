@@ -98,6 +98,16 @@ jest.mock('../app/(provider)/screens/SPHomeScreen', () => {
   };
 });
 
+// A provider's profile setup, reduced to a line of text: the finish card's "Set up my profile" opens it.
+jest.mock('../app/(provider)/screens/SPEditProfileScreen', () => {
+  const React = require('react');
+  const { Text, View: RNView } = require('react-native');
+  return {
+    __esModule: true,
+    default: () => React.createElement(RNView, { testID: 'edit-profile-stand-in' }, React.createElement(Text, null, 'Profile setup')),
+  };
+});
+
 // A pushed screen with no tab bar, the one a tapped job proposal opens.
 jest.mock('../app/(homeowner)/screens/HOJobApplicationsScreen', () => {
   const React = require('react');
@@ -234,6 +244,21 @@ describe('welcome tour — an unverified provider', () => {
 
     fireEvent.press(screen.getByTestId('tour-next'));
     expect(await screen.findByText('Your work')).toBeTruthy();
+  }, 15000);
+
+  it('ends on the finish card, whose main button opens the profile setup', async () => {
+    Object.assign(mockAuthState, signedInProvider());
+    render(<App />);
+    fireEvent.press(await screen.findByRole('button', { name: 'Show me around' }));
+    expect(await screen.findByText('Finish setting up')).toBeTruthy();
+    await tapThroughTour();
+
+    expect(await screen.findByTestId('tour-finish')).toBeTruthy();
+    expect(screen.getByText('Set up your profile')).toBeTruthy();
+    fireEvent.press(screen.getByTestId('tour-finish-primary'));
+
+    expect(await screen.findByTestId('edit-profile-stand-in')).toBeTruthy();
+    expect(screen.queryByTestId('tour-finish')).toBeNull();
   }, 15000);
 });
 

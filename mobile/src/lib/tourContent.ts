@@ -12,7 +12,7 @@ export type WelcomeRole = 'homeowner' | 'provider';
 
 export type IntroCard = { title: string; body: string };
 
-export type FinishAction = 'postJob' | 'getVerified' | 'close';
+export type FinishAction = 'postJob' | 'getVerified' | 'setupProfile' | 'close';
 export type ChecklistState = 'done' | 'next' | 'later';
 export type ChecklistItem = { label: string; state: ChecklistState };
 export type FinishButton = { label: string; action: FinishAction };
@@ -101,12 +101,15 @@ export function tourSteps(role: WelcomeRole, verified = true): TourStep[] {
 
 /**
  * The finish card's title, checklist and buttons. A provider's checklist and
- * main action follow their real verification status; nothing here is a number.
+ * main action follow their real verification status and whether they have a
+ * service profile yet; nothing here is a number.
  */
-export function finishCard({ role, verified, firstName }: {
+export function finishCard({ role, verified, firstName, hasServiceProfile = true }: {
   role: WelcomeRole;
   verified: boolean;
   firstName: string | null | undefined;
+  /** A provider's service profile exists. Without one, verification cannot be sent, so the first step is the profile. */
+  hasServiceProfile?: boolean;
 }): FinishCard {
   const title = `You're all set, ${firstNameFrom(firstName)}`;
   const lookAround: FinishButton = { label: 'Look around first', action: 'close' };
@@ -120,6 +123,19 @@ export function finishCard({ role, verified, firstName }: {
         { label: 'Hire a pro', state: 'later' },
       ],
       primary: { label: 'Post my first job', action: 'postJob' },
+      secondary: lookAround,
+    };
+  }
+
+  if (!verified && !hasServiceProfile) {
+    return {
+      title,
+      checklist: [
+        { label: 'Account created', state: 'done' },
+        { label: 'Set up your profile', state: 'next' },
+        { label: 'Get verified', state: 'later' },
+      ],
+      primary: { label: 'Set up my profile', action: 'setupProfile' },
       secondary: lookAround,
     };
   }

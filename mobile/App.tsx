@@ -167,7 +167,7 @@ function AppFlow() {
   const { V6Colors, styles } = useThemedStyles(createThemedStyles);
   const {
     initializing, isAuthenticated, isGoogleSignupPending,
-    role, profile, isVerified,
+    role, profile, providerProfile, isVerified,
     signIn, signUp, signOut, signInWithGoogle, completeGoogleProfile,
     refreshProfile, authError, clearAuthError,
   } = useAuth();
@@ -557,6 +557,7 @@ function AppFlow() {
     endTourFlow();
     if (action === 'postJob' && role === 'homeowner') hoNavigate('Create Job');
     if (action === 'getVerified' && role === 'provider') spNavigate('Verification');
+    if (action === 'setupProfile' && role === 'provider') spNavigate('Edit Profile');
   };
 
   // Home is on screen: the tour is due once Home's real content is up (its controls rendered, not still behind the
@@ -598,6 +599,7 @@ function AppFlow() {
     <TourFinishCard
       role={role}
       verified={isVerified}
+      hasServiceProfile={!!providerProfile}
       firstName={firstName}
       firstRun={tourFlow.firstRun}
       onAction={handleFinishAction}

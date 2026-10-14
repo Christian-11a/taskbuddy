@@ -93,6 +93,21 @@ describe('SPProfileScreen — verification status', () => {
 
     expect(onNavigate).toHaveBeenCalledWith('Verification');
   });
+
+  it('Get verified opens Edit Profile when there is no service profile yet, as verification cannot start without one', () => {
+    (useAuth as jest.Mock).mockReturnValue({
+      profile: { full_name: 'Testo Provider' },
+      providerProfile: null,
+      refreshProfile: jest.fn().mockResolvedValue(undefined),
+    });
+    const onNavigate = jest.fn();
+    render(<SPProfileScreen onNavigate={onNavigate} onLogout={jest.fn()} />);
+
+    fireEvent.press(screen.getByRole('button', { name: 'Get verified' }));
+
+    expect(onNavigate).toHaveBeenCalledTimes(1);
+    expect(onNavigate).toHaveBeenCalledWith('Edit Profile');
+  });
 });
 
 describe('SPProfileScreen — back arrow', () => {
