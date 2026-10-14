@@ -4,15 +4,19 @@ import { fireEvent, render, screen } from '@testing-library/react-native';
 import * as Haptics from 'expo-haptics';
 import TourFinishCard from '../TourFinishCard';
 
-// Confetti is checked through its props: which bursts were asked for, not what they look like.
+// Confetti's props are recorded (which bursts were asked for), and the real layer is drawn, so its touch setting can be checked.
 const mockConfettiActive: boolean[] = [];
-jest.mock('../Confetti', () => ({
-  __esModule: true,
-  default: ({ active }: { active: boolean }) => {
-    mockConfettiActive.push(active);
-    return null;
-  },
-}));
+jest.mock('../Confetti', () => {
+  const React = require('react');
+  const Actual = jest.requireActual('../Confetti').default;
+  return {
+    __esModule: true,
+    default: (props: { active: boolean }) => {
+      mockConfettiActive.push(props.active);
+      return React.createElement(Actual, props);
+    },
+  };
+});
 
 type Props = Partial<React.ComponentProps<typeof TourFinishCard>>;
 
@@ -40,7 +44,7 @@ describe('TourFinishCard — the client', () => {
     expect(screen.getByRole('button', { name: 'Look around first' })).toBeTruthy();
   });
 
-  it('"Post my first job" asks for the postJob action', () => {
+  it('"Post my first job" asks for the postJob action, once', () => {
     const { onAction } = renderCard();
 
     fireEvent.press(screen.getByRole('button', { name: 'Post my first job' }));
@@ -49,12 +53,27 @@ describe('TourFinishCard — the client', () => {
     expect(onAction).toHaveBeenCalledWith('postJob');
   });
 
-  it('"Look around first" asks for the close action', () => {
+  it('"Look around first" asks for the close action, once', () => {
     const { onAction } = renderCard();
 
     fireEvent.press(screen.getByRole('button', { name: 'Look around first' }));
 
+    expect(onAction).toHaveBeenCalledTimes(1);
     expect(onAction).toHaveBeenCalledWith('close');
+  });
+
+  it('a press on the card, away from its buttons, does nothing and does not close the card', () => {
+    const { onAction } = renderCard();
+
+    fireEvent.press(screen.getByTestId('tour-finish', { includeHiddenElements: true }));
+
+    expect(onAction).not.toHaveBeenCalled();
+  });
+
+  it('the confetti layer ignores touches, so it cannot take a press from the buttons', () => {
+    renderCard({ firstRun: true });
+
+    expect(screen.getByTestId('confetti-layer').props.pointerEvents).toBe('none');
   });
 
   it('names each checklist step with its state for screen readers', () => {

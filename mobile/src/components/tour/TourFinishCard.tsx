@@ -2,12 +2,16 @@
  * TourFinishCard.tsx: the last card of the welcome flow, shown once the
  * spotlight tour ends. A bottom sheet with a checklist from the account's real
  * status and one main action. Confetti and one light tap play only on a first
- * run, never on a replay. It is its own full-screen modal, not SheetFrame,
- * because the confetti has to sit above the sheet and SheetFrame only holds its
- * children inside the card.
+ * run, never on a replay. It is its own modal, not SheetFrame, because the
+ * confetti has to sit above the sheet and SheetFrame only holds its children
+ * inside the card. Its layout follows SheetFrame's, the one that takes presses
+ * on a phone: a full-window backdrop wraps the sheet, the sheet takes presses
+ * that are not on a button, and the entrance animation sits on a wrapper rather
+ * than on the element that holds the buttons.
  */
 import React, { useEffect } from 'react';
-import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Modal, Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import Animated, { FadeIn, SlideInDown, useReducedMotion } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ArrowRight, Check } from 'lucide-react-native';
@@ -31,9 +35,13 @@ type TourFinishCardProps = {
 /** How each checklist step reads to a screen reader, after its name. */
 const STATE_WORD: Record<ChecklistState, string> = { done: 'done', next: 'next step', later: 'to do' };
 
+/** The card takes the presses that are not on a button, so they do not fall through to the backdrop. */
+const noop = () => {};
+
 export default function TourFinishCard({ role, verified, firstName, firstRun, onAction }: TourFinishCardProps) {
   const { Colors, C, styles } = useThemedStyles(createThemedStyles);
   const insets = useSafeAreaInsets();
+  const { height: windowHeight } = useWindowDimensions();
   const reduced = useReducedMotion();
   const content = finishCard({ role, verified, firstName });
   const { secondary } = content;
@@ -47,82 +55,88 @@ export default function TourFinishCard({ role, verified, firstName, firstRun, on
     <Modal
       visible
       transparent
-      animationType="none"
+      animationType="fade"
       statusBarTranslucent
       navigationBarTranslucent
       onRequestClose={() => onAction('close')}
     >
-      <View style={styles.root}>
-        <Animated.View entering={FadeIn.duration(180)} style={[StyleSheet.absoluteFill, { backgroundColor: Colors.scrim }]}>
-          <Pressable
-            testID="tour-finish-scrim"
-            accessible={false}
-            style={StyleSheet.absoluteFill}
-            onPress={() => onAction('close')}
-          />
-        </Animated.View>
-
-        <Animated.View
-          testID="tour-finish"
-          accessibilityViewIsModal
-          entering={reduced ? FadeIn.duration(150) : SlideInDown.duration(280)}
-          style={[styles.sheet, { paddingBottom: Math.max(insets.bottom, 12) + 12 }]}
+      <GestureHandlerRootView style={styles.root}>
+        {/* A tap on the dimmed area closes the card. The full-window height is explicit, as in SheetFrame, so the sheet reaches the bottom edge. */}
+        <Pressable
+          testID="tour-finish-scrim"
+          accessible={false}
+          style={[styles.backdrop, { backgroundColor: Colors.scrim, height: windowHeight }]}
+          onPress={() => onAction('close')}
         >
-          <View style={styles.grip}>
-            <View style={[styles.gripBar, { backgroundColor: C.ink200 }]} />
-          </View>
-
-          <Text accessibilityRole="header" style={styles.title}>{content.title}</Text>
-
-          <View style={styles.checklist}>
-            {content.checklist.map((item) => (
-              <View
-                key={item.label}
-                accessible
-                accessibilityLabel={`${item.label}, ${STATE_WORD[item.state]}`}
-                style={[styles.row, item.state === 'next' && styles.rowNext]}
-              >
-                <Mark state={item.state} />
-                <Text
-                  style={[
-                    styles.rowText,
-                    item.state === 'next' && styles.rowTextNext,
-                    item.state === 'later' && styles.rowTextLater,
-                  ]}
-                >
-                  {item.label}
-                </Text>
-              </View>
-            ))}
-          </View>
-
-          <Tap
-            testID="tour-finish-primary"
-            scale
-            accessibilityRole="button"
-            accessibilityLabel={content.primary.label}
-            style={styles.primary}
-            onPress={() => onAction(content.primary.action)}
+          {/* The entrance moves this wrapper, which holds no buttons itself; the buttons sit inside the card. */}
+          <Animated.View
+            entering={reduced ? FadeIn.duration(150) : SlideInDown.duration(280)}
+            style={styles.sheetWrap}
           >
-            <Text style={styles.primaryText}>{content.primary.label}</Text>
-          </Tap>
-
-          {secondary && (
-            <Tap
-              testID="tour-finish-secondary"
-              accessibilityRole="button"
-              accessibilityLabel={secondary.label}
-              style={styles.secondary}
-              onPress={() => onAction(secondary.action)}
+            <Pressable
+              testID="tour-finish"
+              accessible={false}
+              accessibilityViewIsModal
+              onPress={noop}
+              style={[styles.sheet, { paddingBottom: Math.max(insets.bottom, 12) + 12 }]}
             >
-              <Text style={styles.secondaryText}>{secondary.label}</Text>
-            </Tap>
-          )}
-        </Animated.View>
+              <View style={styles.grip}>
+                <View style={[styles.gripBar, { backgroundColor: C.ink200 }]} />
+              </View>
 
-        {/* Above the sheet, and it ignores touches, so the buttons work while it plays. */}
+              <Text accessibilityRole="header" style={styles.title}>{content.title}</Text>
+
+              <View style={styles.checklist}>
+                {content.checklist.map((item) => (
+                  <View
+                    key={item.label}
+                    accessible
+                    accessibilityLabel={`${item.label}, ${STATE_WORD[item.state]}`}
+                    style={[styles.row, item.state === 'next' && styles.rowNext]}
+                  >
+                    <Mark state={item.state} />
+                    <Text
+                      style={[
+                        styles.rowText,
+                        item.state === 'next' && styles.rowTextNext,
+                        item.state === 'later' && styles.rowTextLater,
+                      ]}
+                    >
+                      {item.label}
+                    </Text>
+                  </View>
+                ))}
+              </View>
+
+              <Tap
+                testID="tour-finish-primary"
+                scale
+                accessibilityRole="button"
+                accessibilityLabel={content.primary.label}
+                style={styles.primary}
+                onPress={() => onAction(content.primary.action)}
+              >
+                <Text style={styles.primaryText}>{content.primary.label}</Text>
+              </Tap>
+
+              {secondary && (
+                <Tap
+                  testID="tour-finish-secondary"
+                  accessibilityRole="button"
+                  accessibilityLabel={secondary.label}
+                  style={styles.secondary}
+                  onPress={() => onAction(secondary.action)}
+                >
+                  <Text style={styles.secondaryText}>{secondary.label}</Text>
+                </Tap>
+              )}
+            </Pressable>
+          </Animated.View>
+        </Pressable>
+
+        {/* Above the backdrop and the sheet. Its layer ignores touches (pointerEvents none), so the buttons work while it plays. */}
         <Confetti active={firstRun} />
-      </View>
+      </GestureHandlerRootView>
     </Modal>
   );
 }
@@ -152,11 +166,10 @@ function createThemedStyles(theme: ThemePalette) {
   const C = V6Colors;
   const styles = StyleSheet.create({
     root: { flex: 1 },
+    backdrop: { position: 'absolute', top: 0, left: 0, right: 0, justifyContent: 'flex-end' },
+    // Centred and capped on wide screens, as SheetFrame's sheet is.
+    sheetWrap: { width: '100%', maxWidth: 600, alignSelf: 'center' },
     sheet: {
-      position: 'absolute',
-      left: 0,
-      right: 0,
-      bottom: 0,
       paddingHorizontal: 24,
       paddingTop: 8,
       gap: 16,
