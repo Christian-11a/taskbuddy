@@ -2,6 +2,7 @@ import { findUnnamedControls } from '../../../../src/testing/a11yAudit';
 import React from 'react';
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react-native';
 import SPJobDetailScreen from '../SPJobDetailScreen';
+import ContentSkeleton from '../../../../src/components/ui/ContentSkeleton';
 import { api } from '../../../../src/lib/api';
 import { useAuth } from '../../../../src/context/AuthContext';
 import { clearAsyncDataCache } from '../../../../src/hooks/useAsyncData';
@@ -486,5 +487,39 @@ describe('SPJobDetailScreen — every control has an accessible name', () => {
 
     expect(await screen.findByText('Fix the sink')).toBeTruthy();
     expect(findUnnamedControls(screen.UNSAFE_root)).toEqual([]);
+  });
+});
+
+describe('SPJobDetailScreen — a reload keeps the job on screen', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    clearAsyncDataCache();
+    (useAuth as jest.Mock).mockReturnValue({
+      profile: { id: PROVIDER_ID },
+      isVerified: true,
+      refreshProfile: jest.fn(),
+    });
+    (api.getJob as jest.Mock).mockResolvedValue(openJob);
+    (api.myApplications as jest.Mock).mockResolvedValue([]);
+  });
+
+  it('shows the skeleton only while no job has loaded yet', () => {
+    (api.getJob as jest.Mock).mockReturnValue(new Promise(() => {}));
+    render(<SPJobDetailScreen jobId={JOB_ID} onBack={jest.fn()} onNavigate={jest.fn()} />);
+
+    expect(screen.UNSAFE_queryByType(ContentSkeleton)).toBeTruthy();
+    expect(screen.queryByTestId('refresh-bar')).toBeNull();
+  });
+
+  it('keeps the job under a thin progress line while it reloads, with no skeleton', async () => {
+    const { rerender } = render(<SPJobDetailScreen jobId={JOB_ID} onBack={jest.fn()} onNavigate={jest.fn()} />);
+    await waitFor(() => expect(screen.getByText('Fix the sink')).toBeTruthy());
+
+    (api.getJob as jest.Mock).mockReturnValue(new Promise(() => {}));
+    rerender(<SPJobDetailScreen jobId="job-2" onBack={jest.fn()} onNavigate={jest.fn()} />);
+
+    expect(screen.getByText('Fix the sink')).toBeTruthy();
+    expect(screen.getByTestId('refresh-bar')).toBeTruthy();
+    expect(screen.UNSAFE_queryByType(ContentSkeleton)).toBeNull();
   });
 });

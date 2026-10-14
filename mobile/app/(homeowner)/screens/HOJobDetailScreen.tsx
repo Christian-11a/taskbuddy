@@ -26,6 +26,7 @@ import ConfirmationModal from '../../../src/components/ConfirmationModal';
 import BottomActionBar from '../../../src/components/ui/BottomActionBar';
 import Banner from '../../../src/components/ui/Banner';
 import ContentSkeleton from '../../../src/components/ui/ContentSkeleton';
+import RefreshBar from '../../../src/components/ui/RefreshBar';
 import EmptyCard from '../../../src/components/ui/EmptyCard';
 import LoadErrorCard from '../../../src/components/ui/LoadErrorCard';
 import EmptyRow from '../../../src/components/ui/EmptyRow';
@@ -320,7 +321,9 @@ export default function HOJobDetailScreen({ jobId, onBack, onNavigate }: HOJobDe
         )}
       </View>
 
-      {loading && <ContentSkeleton variant="detail" />}
+      {/* The skeleton only stands in for a job not loaded yet; a reload keeps the job and shows the bar. */}
+      {loading && !data && <ContentSkeleton variant="detail" />}
+      {loading && !!data && <RefreshBar />}
       {!!error && !loading && (
         <View style={styles.loadErrorWrap}>
           <LoadErrorCard title="Couldn't load this job" message={error} onRetry={reload} />

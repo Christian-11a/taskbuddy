@@ -1,6 +1,7 @@
 import { findUnnamedControls } from '../../../../src/testing/a11yAudit';
 import { expectSavedCopyIgnored } from '../../../../src/testing/savedCopy';
 import React from 'react';
+import { AppState, type AppStateStatus } from 'react-native';
 import {
   act,
   fireEvent,
@@ -9,6 +10,7 @@ import {
   waitFor,
   within,
 } from '@testing-library/react-native';
+import ContentSkeleton from '../../../../src/components/ui/ContentSkeleton';
 import SPPortfolioScreen, {
   PHOTO_MAX_BYTES,
   PORTFOLIO_LIMIT,
@@ -329,4 +331,64 @@ it('a saved service list of the wrong shape is ignored, and the screen loads as 
   (api.categories as jest.Mock).mockReturnValue(new Promise(() => {}));
 
   await expectSavedCopyIgnored('categories', {}, () => render(<SPPortfolioScreen onBack={jest.fn()} />));
+});
+
+describe('SPPortfolioScreen — a refresh keeps the gallery on screen', () => {
+  /** Captures the app-state listener, so a test can bring the app back to the foreground. */
+  function captureAppState() {
+    const listeners: ((state: AppStateStatus) => void)[] = [];
+    const spy = jest.spyOn(AppState, 'addEventListener').mockImplementation((_type, listener) => {
+      listeners.push(listener as (state: AppStateStatus) => void);
+      return { remove: jest.fn() } as never;
+    });
+    const comeToForeground = () => {
+      act(() => listeners.forEach((listener) => listener('background')));
+      act(() => listeners.forEach((listener) => listener('active')));
+    };
+    return { spy, comeToForeground };
+  }
+
+  it('shows skeletons only while no portfolio has loaded yet', () => {
+    (api.myPortfolio as jest.Mock).mockReturnValue(new Promise(() => {}));
+    render(<SPPortfolioScreen onBack={jest.fn()} />);
+
+    expect(screen.UNSAFE_queryByType(ContentSkeleton)).toBeTruthy();
+    expect(screen.queryByTestId('refresh-bar')).toBeNull();
+  });
+
+  it('keeps the gallery under a thin progress line while it refreshes, with no skeleton', async () => {
+    (api.myPortfolio as jest.Mock).mockResolvedValue([entry]);
+    const { spy, comeToForeground } = captureAppState();
+    render(<SPPortfolioScreen onBack={jest.fn()} />);
+    await screen.findByText('Old caption');
+
+    (api.myPortfolio as jest.Mock).mockReturnValue(new Promise(() => {}));
+    comeToForeground();
+
+    expect(screen.getByText('Old caption')).toBeTruthy();
+    expect(screen.getByTestId('refresh-bar')).toBeTruthy();
+    expect(screen.UNSAFE_queryByType(ContentSkeleton)).toBeNull();
+    spy.mockRestore();
+  });
+
+  it('keeps the gallery when a refresh fails, and shows the error above it with Try again', async () => {
+    (api.myPortfolio as jest.Mock).mockResolvedValue([entry]);
+    const { spy, comeToForeground } = captureAppState();
+    render(<SPPortfolioScreen onBack={jest.fn()} />);
+    await screen.findByText('Old caption');
+
+    (api.myPortfolio as jest.Mock).mockRejectedValueOnce(new Error('Network request failed'));
+    comeToForeground();
+
+    const card = await screen.findByTestId('error-card');
+    expect(within(card).getByText("Couldn't load your portfolio")).toBeTruthy();
+    expect(screen.getByText('Old caption')).toBeTruthy();
+
+    (api.myPortfolio as jest.Mock).mockResolvedValue([{ ...entry, caption: 'Fresh caption' }]);
+    fireEvent.press(within(card).getByRole('button', { name: 'Try again' }));
+
+    expect(await screen.findByText('Fresh caption')).toBeTruthy();
+    expect(screen.queryByTestId('error-card')).toBeNull();
+    spy.mockRestore();
+  });
 });

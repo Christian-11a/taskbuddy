@@ -9,6 +9,7 @@ import {
 import Tap from '../../../src/components/ui/Tap';
 import KeyboardAwareScrollView from '../../../src/components/ui/KeyboardAwareScrollView';
 import ContentSkeleton from '../../../src/components/ui/ContentSkeleton';
+import RefreshBar from '../../../src/components/ui/RefreshBar';
 import Banner from '../../../src/components/ui/Banner';
 import BottomActionBar from '../../../src/components/ui/BottomActionBar';
 import LoadErrorCard from '../../../src/components/ui/LoadErrorCard';
@@ -315,11 +316,13 @@ export default function SPPortfolioScreen({ onBack }: { onBack: () => void }) {
             {error}
           </Text>
         )}
-        {portfolio.loading && <ContentSkeleton variant="list" />}
+        {/* Skeletons stand in only for a portfolio not loaded yet. A refresh keeps the gallery under a bar, and a failed one keeps it under the error. */}
+        {portfolio.loading && !portfolio.data && <ContentSkeleton variant="list" />}
+        {portfolio.loading && !!portfolio.data && <RefreshBar />}
         {!!portfolio.error && (
           <LoadErrorCard title="Couldn't load your portfolio" message={portfolio.error} onRetry={portfolio.reload} />
         )}
-        {!portfolio.loading && !portfolio.error && (
+        {portfolio.data !== null && (
           <PortfolioGallery
             entries={portfolio.data ?? []}
             busy={busy}
