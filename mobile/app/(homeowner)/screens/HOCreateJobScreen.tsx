@@ -1101,9 +1101,9 @@ export default function HOCreateJobScreen({
         </KeyboardAwareScrollView>
         {/* The bar lives inside the keyboard-avoiding view, so it rises above the keyboard
             instead of hiding under it. BUG-005: the bar keeps clear of the system nav bar. */}
+        {/* No Back here: the header arrow already goes back one step, so Next takes the full width. */}
         {!submitting && (
           <PostFooter
-            onBack={step > 1 ? handleStepBack : undefined}
             onNext={handleNext}
             nextLabel={step === totalSteps ? 'Post job' : 'Next'}
             busy={stepBusy}

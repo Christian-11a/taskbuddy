@@ -508,6 +508,18 @@ describe('HOCreateJobScreen — back and exit', () => {
     expect(onBack).not.toHaveBeenCalled();
   });
 
+  it('after the first step the footer has Next alone: the header arrow is the one way back', async () => {
+    render(<HOCreateJobScreen initialCategoryId={1} onBack={jest.fn()} onSuccess={jest.fn()} />);
+    await screen.findByText('Location confirmed');
+    fireEvent.press(screen.getByText('Next'));
+    await screen.findByText('Fix leaking faucet');
+
+    expect(screen.queryByText('Back')).toBeNull();
+    expect(screen.queryByLabelText('Back to the previous step')).toBeNull();
+    expect(screen.getByRole('button', { name: 'Previous step' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Next' })).toBeTruthy();
+  });
+
   it('the header arrow goes back a step too, and is announced as going back', async () => {
     const onBack = jest.fn();
     render(<HOCreateJobScreen initialCategoryId={1} onBack={onBack} onSuccess={jest.fn()} />);

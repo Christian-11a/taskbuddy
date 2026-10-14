@@ -632,8 +632,6 @@ export default function SPVerificationScreen({ onBack, onVerified }: SPVerificat
         />
       )}
 
-      {view === 'pending' && <BottomActionBar primaryLabel="Back to Feed" onPrimary={onBack} />}
-
       {view === 'rejected' && <BottomActionBar primaryLabel="Try again" onPrimary={tryAgain} />}
 
       {view === 'approved' && onVerified && (

@@ -175,8 +175,8 @@ export default function HODisputeStatusScreen({ jobId, onBack, onMessage }: Prop
         : open
           ? <BottomActionBar primaryLabel="Add details or photos" onPrimary={openSheet}
             secondaryLabel={onMessage ? `Message ${view.counterpartName}` : undefined} onSecondary={onMessage} />
-          : <BottomActionBar primaryLabel={view.closedBackLabel} onPrimary={onBack}
-            secondaryLabel="Disagree? Appeal this decision" onSecondary={openSheet} />}
+          // A closed case has no back action here: the header arrow already goes back, so the appeal is the one action.
+          : <BottomActionBar primaryLabel="Appeal this decision" onPrimary={openSheet} />}
     </KeyboardAvoidingView>}
 
     {canRespond && view && <>

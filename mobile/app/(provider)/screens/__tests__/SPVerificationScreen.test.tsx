@@ -545,7 +545,9 @@ describe('SPVerificationScreen — the status after a review', () => {
     expect(screen.getByLabelText('Admin review, now. An admin is reviewing your documents now.')).toBeTruthy();
     expect(screen.queryByText(/jobs? (are )?open/i)).toBeNull();
 
-    fireEvent.press(screen.getByRole('button', { name: 'Back to Feed' }));
+    // The header arrow is the one way back: the pending view has no bar of its own.
+    expect(screen.queryByRole('button', { name: 'Back to Feed' })).toBeNull();
+    fireEvent.press(screen.getByLabelText('Leave verification'));
     expect(onBack).toHaveBeenCalledTimes(1);
   });
 
