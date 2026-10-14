@@ -523,3 +523,55 @@ describe('SPJobDetailScreen — a reload keeps the job on screen', () => {
     expect(screen.UNSAFE_queryByType(ContentSkeleton)).toBeNull();
   });
 });
+
+describe('SPJobDetailScreen — the Start job dialog says when the job was booked for', () => {
+  const HOUR_MS = 60 * 60 * 1000;
+  const DAY_MS = 24 * HOUR_MS;
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    clearAsyncDataCache();
+    (useAuth as jest.Mock).mockReturnValue({
+      profile: { id: PROVIDER_ID },
+      isVerified: true,
+      refreshProfile: jest.fn(),
+    });
+  });
+
+  /** Opens the Start job dialog for a confirmed job booked at `scheduledAt`. */
+  async function openStartDialog(scheduledAt: string | null) {
+    (api.getJob as jest.Mock).mockResolvedValue({
+      ...openJob,
+      status: 'confirmed',
+      assigned_provider_id: PROVIDER_ID,
+      scheduled_at: scheduledAt,
+    });
+    render(<SPJobDetailScreen jobId={JOB_ID} onBack={jest.fn()} onNavigate={jest.fn()} />);
+    fireEvent.press(await screen.findByText('Start job'));
+    expect(screen.getByText('Start the job now?')).toBeTruthy();
+  }
+
+  it('keeps the dialog as it was for a job booked within 24 hours, with the same button', async () => {
+    await openStartDialog(new Date(Date.now() + 3 * HOUR_MS).toISOString());
+
+    expect(screen.getByText("Do this when you're at 123 Main St. The client gets a notification that you've started.")).toBeTruthy();
+    expect(screen.getByLabelText("I'm here, start job")).toBeTruthy();
+    expect(screen.queryByLabelText('Start now')).toBeNull();
+  });
+
+  it('says a job booked more than a day ago was booked for that day, and the button reads Start now', async () => {
+    await openStartDialog(new Date(Date.now() - 4 * DAY_MS).toISOString());
+
+    expect(screen.getByText(/This job was booked for .+ \(4 days ago\)\. Start it now\?/)).toBeTruthy();
+    expect(screen.getByText(/Do this when you're at 123 Main St\./)).toBeTruthy();
+    expect(screen.getByLabelText('Start now')).toBeTruthy();
+    expect(api.startJob).not.toHaveBeenCalled();
+  });
+
+  it('says a job booked more than a day ahead is booked for that day, and the button reads Start now', async () => {
+    await openStartDialog(new Date(Date.now() + 2 * DAY_MS).toISOString());
+
+    expect(screen.getByText(/This job is booked for .+ \(in 2 days\)\. Start it now\?/)).toBeTruthy();
+    expect(screen.getByLabelText('Start now')).toBeTruthy();
+  });
+});
