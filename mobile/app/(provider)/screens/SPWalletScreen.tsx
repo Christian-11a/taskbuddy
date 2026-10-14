@@ -12,7 +12,7 @@
 
 import { useThemedStyles, type Palette as ThemePalette } from '../../../src/context/ThemeContext';
 import React, { useRef, useState } from 'react';
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import Tap from '../../../src/components/ui/Tap';
 import ContentSkeleton from '../../../src/components/ui/ContentSkeleton';
 import Banner from '../../../src/components/ui/Banner';
@@ -61,8 +61,14 @@ export default function SPWalletScreen({ onNavigate }: SPWalletScreenProps) {
   // Whether card payments can reach the provider's bank yet. Only a status that has loaded and says
   // payouts are off shows the notice: while it loads, or if it fails, nothing shows, and the wallet
   // does not wait for it.
-  const { data: payouts } = useAsyncData(() => api.connectStatus(), []);
+  const { data: payouts, reload: reloadPayouts, refreshing: payoutsRefreshing } = useAsyncData(() => api.connectStatus(), []);
   const payoutsOff = payouts !== null && !payouts.payouts_enabled;
+  // Pull-to-refresh reloads the balance and the payout status, and spins until both have settled.
+  const refreshAll = () => {
+    reload();
+    reloadPayouts();
+  };
+  const pulling = refreshing || payoutsRefreshing;
   const transactions = data?.transactions ?? [];
   const jobsDone = providerProfile?.cached_completed_jobs ?? 0;
 
@@ -142,7 +148,15 @@ export default function SPWalletScreen({ onNavigate }: SPWalletScreenProps) {
         <Text style={styles.headerTitle} accessibilityRole="header">Wallet</Text>
       </View>
 
-      <ScrollView style={styles.body} contentContainerStyle={styles.bodyContent} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        testID="wallet-scroll"
+        style={styles.body}
+        contentContainerStyle={styles.bodyContent}
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl refreshing={pulling} onRefresh={refreshAll} tintColor={Colors.primary} colors={[Colors.primary]} />
+        }
+      >
         <StaleHint
           stale={stale}
           refreshing={refreshing}

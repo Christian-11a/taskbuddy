@@ -8,8 +8,8 @@
  */
 
 import { useThemedStyles, type Palette as ThemePalette } from '../../../src/context/ThemeContext';
-import React, { useState } from 'react';
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import Tap from '../../../src/components/ui/Tap';
 import ContentSkeleton from '../../../src/components/ui/ContentSkeleton';
 import Banner from '../../../src/components/ui/Banner';
@@ -55,9 +55,18 @@ interface SPNotificationsScreenProps {
 }
 
 export default function SPNotificationsScreen({ onBack, onOpenJob, onOpenChat, onOpenDispute, onOpenServices }: SPNotificationsScreenProps) {
-  const { C, styles, V6Colors } = useThemedStyles(createThemedStyles);
+  const { C, Colors, styles, V6Colors } = useThemedStyles(createThemedStyles);
   const headerTop = useHeaderTop();
   const { notifications, loading, error, reload, unreadCount } = useNotifications();
+  const [refreshing, setRefreshing] = useState(false);
+  // The notifications reload is fire-and-forget; a new list or error means the fetch settled, so the spinner can stop.
+  useEffect(() => {
+    setRefreshing(false);
+  }, [notifications, error]);
+  const onRefresh = () => {
+    setRefreshing(true);
+    reload();
+  };
   const deletion = useNotificationDeletion();
   const [confirmClear, setConfirmClear] = useState(false);
 
@@ -138,6 +147,9 @@ export default function SPNotificationsScreen({ onBack, onOpenJob, onOpenChat, o
         style={styles.body}
         contentContainerStyle={styles.bodyContent}
         showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Colors.link} colors={[Colors.link]} />
+        }
       >
         {notifications.length > 0 && (
           <View style={styles.summaryRow}>

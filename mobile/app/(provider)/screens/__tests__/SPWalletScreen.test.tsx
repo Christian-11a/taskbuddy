@@ -303,3 +303,16 @@ it('a saved wallet of the wrong shape is ignored, and the screen loads as it doe
 
   await expectSavedCopyIgnored('sp-wallet', {}, () => render(<SPWalletScreen onNavigate={jest.fn()} />));
 });
+
+it('pulling to refresh reloads the wallet and the payout status', async () => {
+  (api.wallet as jest.Mock).mockResolvedValue(wallet([]));
+  render(<SPWalletScreen onNavigate={jest.fn()} />);
+  await screen.findByText('No transactions yet');
+
+  await act(async () => {
+    screen.getByTestId('wallet-scroll').props.refreshControl.props.onRefresh();
+  });
+
+  await waitFor(() => expect(api.wallet).toHaveBeenCalledTimes(2));
+  expect(api.connectStatus).toHaveBeenCalledTimes(2);
+});

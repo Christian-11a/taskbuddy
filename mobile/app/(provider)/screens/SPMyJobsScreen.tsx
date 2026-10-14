@@ -9,7 +9,7 @@
  */
 
 import React, { ReactNode, useMemo } from 'react';
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import {
   Briefcase,
   CalendarCheck,
@@ -87,7 +87,7 @@ interface SPMyJobsScreenProps {
 }
 
 export default function SPMyJobsScreen({ onNavigate, headerRight }: SPMyJobsScreenProps) {
-  const { styles } = useThemedStyles(createThemedStyles);
+  const { styles, V6Colors } = useThemedStyles(createThemedStyles);
   const headerTop = useHeaderTop();
   // Retained so going back from a job lands on the filter it was opened from.
   const [filter, setFilter] = useRetainedState<MyWorkFilter>('sp.myWork.filter', 'all');
@@ -112,6 +112,8 @@ export default function SPMyJobsScreen({ onNavigate, headerRight }: SPMyJobsScre
     applications.reload();
     assigned.reload();
   };
+  // Pull-to-refresh spins until both lists have settled.
+  const refreshing = applications.refreshing || assigned.refreshing;
 
   const rows = useMemo(
     () => buildMyWorkRows(applications.data ?? [], assigned.data ?? []),
@@ -157,10 +159,13 @@ export default function SPMyJobsScreen({ onNavigate, headerRight }: SPMyJobsScre
         style={styles.body}
         contentContainerStyle={styles.bodyContent}
         showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={reload} tintColor={V6Colors.link} colors={[V6Colors.link]} />
+        }
       >
         <StaleHint
           stale={hasData && (applications.stale || assigned.stale)}
-          refreshing={applications.refreshing || assigned.refreshing}
+          refreshing={refreshing}
           error={hasData ? error : null}
           onRetry={reload}
         />

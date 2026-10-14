@@ -1,6 +1,7 @@
 import { findUnnamedControls } from '../../testing/a11yAudit';
 import React from 'react';
 import { Ban, ShieldAlert, UserPlus } from 'lucide-react-native';
+import { ScrollView } from 'react-native';
 import { render, screen, fireEvent, act, within } from '@testing-library/react-native';
 import HONotificationsScreen from '../../../app/(homeowner)/screens/HONotificationsScreen';
 import SPNotificationsScreen from '../../../app/(provider)/screens/SPNotificationsScreen';
@@ -264,3 +265,29 @@ it.each([HONotificationsScreen, SPNotificationsScreen])(
     expect(screen.UNSAFE_queryByType(ShieldAlert)).toBeNull();
   },
 );
+
+describe('notification pull to refresh', () => {
+  it.each([HONotificationsScreen, SPNotificationsScreen])(
+    'pulling reloads the list and spins until a fresh list arrives',
+    (Screen) => {
+      const reload = jest.fn();
+      (useNotifications as jest.Mock).mockReturnValue({
+        notifications: [row], unreadCount: 1, loading: false, error: null, reload,
+      });
+      const view = render(<Screen {...callbacks} />);
+      const scroll = screen.UNSAFE_getByType(ScrollView);
+
+      act(() => {
+        scroll.props.refreshControl.props.onRefresh();
+      });
+      expect(reload).toHaveBeenCalledTimes(1);
+      expect(screen.UNSAFE_getByType(ScrollView).props.refreshControl.props.refreshing).toBe(true);
+
+      (useNotifications as jest.Mock).mockReturnValue({
+        notifications: [{ ...row }], unreadCount: 1, loading: false, error: null, reload,
+      });
+      view.rerender(<Screen {...callbacks} />);
+      expect(screen.UNSAFE_getByType(ScrollView).props.refreshControl.props.refreshing).toBe(false);
+    },
+  );
+});
