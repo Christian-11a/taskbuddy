@@ -129,6 +129,8 @@ const chatProps = (overrides: Partial<ChatThreadProps> = {}): ChatThreadProps =>
   profileId: 'me',
   loading: false,
   error: null,
+  conversationReady: true,
+  onRetry: noop,
   listRef: React.createRef(),
   text: '',
   onChangeText: noop,
