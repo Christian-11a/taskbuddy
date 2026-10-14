@@ -291,3 +291,138 @@ describe('notification pull to refresh', () => {
     },
   );
 });
+
+describe('notification select and delete', () => {
+  /** The confirm button of the delete dialog (the header's Delete button is also named Delete). */
+  const confirmButton = () =>
+    screen.getAllByRole('button', { name: 'Delete' }).find((el) => el.props.accessibilityLabel === 'Delete')!;
+
+  const second = { ...row, id: 'n3', title: 'Second message', body: 'Again', read_at: '2026-10-01T00:00:00.000Z' };
+  const third = { ...older, id: 'n4', title: 'Third message' };
+
+  beforeEach(() => {
+    jest.useFakeTimers();
+  });
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  /** Holds a row long enough to start select mode, as a finger does on a device. */
+  function longPress(title: string) {
+    fireEvent(screen.getByText(title), 'touchStart');
+    act(() => {
+      jest.advanceTimersByTime(600);
+    });
+  }
+
+  it.each([HONotificationsScreen, SPNotificationsScreen])(
+    'a long press starts select mode with that row chosen, and taps toggle the other rows',
+    (Screen) => {
+      setNotifications([row, second]);
+      render(<Screen {...callbacks} />);
+      longPress('New message');
+
+      expect(screen.getByText('1 selected')).toBeTruthy();
+      expect(screen.queryByRole('button', { name: 'Mark all read' })).toBeNull();
+      fireEvent.press(screen.getByRole('checkbox', { name: 'Second message' }));
+      expect(screen.getByText('2 selected')).toBeTruthy();
+      fireEvent.press(screen.getByRole('checkbox', { name: 'New message' }));
+      expect(screen.getByText('1 selected')).toBeTruthy();
+    },
+  );
+
+  it.each([HONotificationsScreen, SPNotificationsScreen])(
+    'a release after a long press does not open the notification',
+    (Screen) => {
+      setNotifications([row]);
+      render(<Screen {...callbacks} />);
+      longPress('New message');
+      fireEvent.press(screen.getByText('New message', { includeHiddenElements: true }));
+
+      expect(callbacks.onOpenChat).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each([HONotificationsScreen, SPNotificationsScreen])(
+    'a finger that moves before the hold ends does not start select mode',
+    (Screen) => {
+      setNotifications([row]);
+      render(<Screen {...callbacks} />);
+      fireEvent(screen.getByText('New message'), 'touchStart');
+      fireEvent(screen.getByText('New message'), 'touchMove');
+      act(() => {
+        jest.advanceTimersByTime(600);
+      });
+
+      expect(screen.queryByText(/selected$/)).toBeNull();
+    },
+  );
+
+  it.each([HONotificationsScreen, SPNotificationsScreen])(
+    'Select all chooses every row, and Cancel or clearing the last tick leaves select mode',
+    (Screen) => {
+      setNotifications([row, second, older]);
+      render(<Screen {...callbacks} />);
+      longPress('New message');
+
+      fireEvent.press(screen.getByRole('button', { name: 'Select all' }));
+      expect(screen.getByText('3 selected')).toBeTruthy();
+
+      fireEvent.press(screen.getByRole('button', { name: 'Cancel selection' }));
+      expect(screen.queryByText(/selected$/)).toBeNull();
+      expect(screen.getByRole('button', { name: 'Mark all read' })).toBeTruthy();
+
+      longPress('New message');
+      fireEvent.press(screen.getByRole('checkbox', { name: 'New message' }));
+      expect(screen.queryByText(/selected$/)).toBeNull();
+      expect(screen.getByRole('button', { name: 'Mark all read' })).toBeTruthy();
+    },
+  );
+
+  it.each([HONotificationsScreen, SPNotificationsScreen])(
+    'Delete asks first, then deletes each chosen notification and says how many went',
+    async (Screen) => {
+      setNotifications([row, second]);
+      render(<Screen {...callbacks} />);
+      longPress('New message');
+      fireEvent.press(screen.getByRole('checkbox', { name: 'Second message' }));
+
+      fireEvent.press(screen.getByRole('button', { name: 'Delete selected notifications' }));
+      expect(screen.getByText('Delete 2 notifications?')).toBeTruthy();
+      expect(api.deleteNotification).not.toHaveBeenCalled();
+
+      await act(async () => {
+        fireEvent.press(confirmButton());
+      });
+
+      expect(api.deleteNotification).toHaveBeenCalledWith('n1');
+      expect(api.deleteNotification).toHaveBeenCalledWith('n3');
+      expect(showToast).toHaveBeenCalledWith('Deleted 2 notifications', 'success');
+      expect(screen.getByRole('button', { name: 'Mark all read' })).toBeTruthy();
+    },
+  );
+
+  it.each([HONotificationsScreen, SPNotificationsScreen])(
+    'when one delete fails the rest still go, and the toast says how many could not be removed',
+    async (Screen) => {
+      (api.deleteNotification as jest.Mock)
+        .mockResolvedValueOnce(undefined)
+        .mockRejectedValueOnce(new Error('Server error'))
+        .mockResolvedValueOnce(undefined);
+      setNotifications([row, second, third]);
+      render(<Screen {...callbacks} />);
+      longPress('New message');
+      fireEvent.press(screen.getByRole('button', { name: 'Select all' }));
+
+      fireEvent.press(screen.getByRole('button', { name: 'Delete selected notifications' }));
+      expect(screen.getByText('Delete 3 notifications?')).toBeTruthy();
+      await act(async () => {
+        fireEvent.press(confirmButton());
+      });
+
+      expect(api.deleteNotification).toHaveBeenCalledTimes(3);
+      expect(showToast).toHaveBeenCalledWith("Deleted 2 of 3 — 1 couldn't be removed", 'error');
+      expect(screen.queryByText(/selected$/)).toBeNull();
+    },
+  );
+});
