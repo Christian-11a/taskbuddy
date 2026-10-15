@@ -90,13 +90,16 @@ export function CaseTimeline({
   entries,
   clientName,
   providerName,
+  emptyText = "No case activity yet.",
 }: {
   entries: CaseEntry[];
   clientName: string;
   providerName: string;
+  /** What is missing when there are no entries, so an empty case says what to do next. */
+  emptyText?: string;
 }) {
   if (entries.length === 0) {
-    return <p className="text-[12.5px] text-muted-foreground">No case activity yet.</p>;
+    return <p className="text-[12.5px] text-muted-foreground">{emptyText}</p>;
   }
 
   const ordered = [...entries].sort((a, b) => timeOrder(a) - timeOrder(b));

@@ -511,6 +511,8 @@ textarea {
   --ui-shadow-lg: 0 16px 40px rgb(16 24 40 / 0.12), 0 4px 10px rgb(16 24 40 / 0.06);
   --ui-overlay: rgb(15 23 42 / 0.28);
   --ui-danger-solid: #dc2626;
+  /* Solid success fill for the primary "release / record" action. White text on it passes 4.5:1. */
+  --ui-ok-solid: #15803d;
   --ui-radius: 10px;
 }
 
@@ -548,6 +550,7 @@ textarea {
   --ui-shadow-lg: 0 16px 40px rgb(0 0 0 / 0.5);
   --ui-overlay: rgb(0 0 0 / 0.5);
   --ui-danger-solid: #d64545;
+  --ui-ok-solid: #1f7a48;
 }
 
 @theme inline {
@@ -580,6 +583,7 @@ textarea {
   --color-warn: var(--ui-warn);       --color-warn-soft: var(--ui-warn-soft);
   --color-danger: var(--ui-danger);   --color-danger-soft: var(--ui-danger-soft);
   --color-danger-solid: var(--ui-danger-solid);
+  --color-ok-solid: var(--ui-ok-solid);
   /* White text on solid fills. Not `text-white`: the legacy light-theme
      remap above recolours .text-white inside the shell. */
   --color-on-solid: #ffffff;

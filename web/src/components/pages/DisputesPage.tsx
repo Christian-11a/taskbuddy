@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, type ComponentType } from "react";
-import { ArrowRight, Check, Clock, Gavel, MessagesSquare, RefreshCw, RotateCcw, Scale, ShieldAlert } from "lucide-react";
+import { useEffect, useMemo, useRef, useState, type ComponentType, type ReactNode } from "react";
+import { motion } from "motion/react";
+import { Check, Clock, FileText, Gavel, History, MessagesSquare, RefreshCw, RotateCcw, Scale, ShieldAlert } from "lucide-react";
 import { useApp } from "@/context/AppContext";
 import * as services from "@/lib/services";
 import type { ConversationMessage } from "@/lib/domain";
@@ -15,11 +16,11 @@ import { ReasonField, inputClass } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { PageHeader } from "@/components/admin/Panel";
 import { CaseTimeline, CLARIFICATION_PREFIX, type ClarificationAudience } from "@/components/admin/CaseTimeline";
+import { CaseCard, TWO_COLUMN_MIN_WIDTH, useWidthAtLeast } from "@/components/admin/caseLayout";
+import { caseNextStep, durationText, type NextStepTone } from "@/components/admin/caseNextStep";
 import {
   Avatar,
-  DetailCard,
   DetailEmpty,
-  DetailSection,
   Field,
   FieldGrid,
   FilterTabs,
@@ -112,13 +113,36 @@ function statusTone(d: DisputeRow) {
   return "neutral" as const;
 }
 
-/** "under 1 h", "3 h", "2 d", "2 d 4 h": how long a stretch of time is, for "overdue by". */
-function durationText(hours: number): string {
-  if (hours < 1) return "under 1 h";
-  if (hours < 24) return `${Math.floor(hours)} h`;
-  const days = Math.floor(hours / 24);
-  const rest = Math.floor(hours % 24);
-  return rest === 0 ? `${days} d` : `${days} d ${rest} h`;
+/** Plain-words names for a recorded decision. Anything unknown is shown as stored. */
+const RESOLUTION_LABEL: Record<Resolution, string> = {
+  RELEASED_TO_PROVIDER: "Released to provider",
+  REFUNDED_TO_CLIENT: "Refunded to client",
+  REVIEWED: "Decision recorded",
+};
+const NEXT_STEP_COLOUR: Record<NextStepTone, string> = {
+  danger: "text-danger",
+  warn: "text-warn",
+  info: "text-info",
+  accent: "text-primary",
+  neutral: "text-muted-foreground",
+};
+
+function resolutionLabel(resolution: string): string {
+  return Object.prototype.hasOwnProperty.call(RESOLUTION_LABEL, resolution) ? RESOLUTION_LABEL[resolution as Resolution] : resolution;
+}
+
+/** What the amount in the case header is: held, settled, not payable, or released from escrow. */
+function escrowCaption(d: DisputeRow): string {
+  if (d.hasPayment === false) return "No payment to settle";
+  if (d.paymentSettled) return "Payment already settled";
+  return d.isOpen ? "Held in escrow" : "Escrow closed";
+}
+
+/** Urgent rows are tinted so an overdue or due-soon case stands out in the list. */
+function rowTone(signals: CaseSignals): "danger" | "warn" | undefined {
+  if (signals.urgency === "overdue") return "danger";
+  if (signals.urgency === "soon") return "warn";
+  return undefined;
 }
 
 function dueLabel(hours: number | null): string {
@@ -134,6 +158,9 @@ export function DisputesPage() {
   const { disputes, resolveDispute, refreshData, refreshCounts, loading } = useApp();
   const { showToast } = useToast();
   const isWide = useIsWide();
+  // The detail pane decides its own layout: two columns with the decision beside the evidence, or one column with the buttons in a bottom bar.
+  const paneRef = useRef<HTMLDivElement>(null);
+  const twoColumns = useWidthAtLeast(paneRef, TWO_COLUMN_MIN_WIDTH);
   const [filter, setFilter] = useState<Filter>("needs-decision");
   const [search, setSearch] = useState("");
   // Held in state and refreshed on the live tick, so "overdue" turns on without a reload.
@@ -233,6 +260,10 @@ export function DisputesPage() {
   const bookingJobId = selected && selected.hasPayment !== false ? selected.jobId : undefined;
   const booking = useBookingDetailCache(bookingJobId);
   const warranty = booking && booking !== "error" ? warrantyStatus(booking.completedAt, now) : null;
+  // The evidence cards' counts: the case facts the summary lists, and the chat's message count once it has loaded.
+  const summaryCount = 1 + (signals?.kind === "cancellation" ? 2 : 0) + (warranty && warranty.state !== "none" ? 1 : 0);
+  const chat = selected ? conversations[selected.jobId] : undefined;
+  const chatCount = Array.isArray(chat) ? chat.length : undefined;
 
   async function handleResolve(id: string, resolution: Resolution) {
     setResolvingId(id);
@@ -281,6 +312,21 @@ export function DisputesPage() {
   // The clarification is sent with its addressing prefix, and the backend limits the whole text to 1000 characters.
   const clarifyOverBy = Math.max(0, CLARIFICATION_PREFIX[askAudience].length + note.trim().length - NOTE_MAX_LENGTH);
   const canClarify = canDecide && clarifyOverBy === 0;
+
+  // Each decision button is built once and placed once: in the decision card when the pane is wide, in the bottom bar when it is narrow.
+  const releaseLabel = noPayment ? "Record decision" : selected?.paymentSettled ? "Record admin decision" : "Release to provider";
+  const refundButton =
+    selected?.isOpen && !recordOnly ? (
+      <Button variant="destructive-outline" onClick={() => setConfirming({ id: selected.id, resolution: "REFUNDED_TO_CLIENT" })} disabled={!canDecide}>
+        <RotateCcw /> Refund client
+      </Button>
+    ) : null;
+  const decideButton =
+    selected?.isOpen ? (
+      <Button variant="success" onClick={() => setConfirming({ id: selected.id, resolution: recordOnly ? "REVIEWED" : "RELEASED_TO_PROVIDER" })} disabled={!canDecide}>
+        <Check /> {releaseLabel}
+      </Button>
+    ) : null;
 
   useQueueKeys({
     ids,
@@ -331,6 +377,9 @@ export function DisputesPage() {
       <QueueShell
         showDetailOnNarrow={!!selectedId && !!selected}
         onBack={() => setSelectedId(null)}
+        storageKey="admin.queue.disputes"
+        railCount={rows.length}
+        railLabel="cases"
         toolbar={
           <>
             <FilterTabs
@@ -360,213 +409,254 @@ export function DisputesPage() {
               emptyState
             ) : (
               <QueueList label="Disputes">
-                {rows.map(({ row: d, signals: s }) => (
-                  <QueueItem
-                    key={d.id}
-                    id={d.id}
-                    selected={d.id === effectiveId}
-                    onSelect={setSelectedId}
-                    leading={
-                      <span className={cn("grid size-9 place-items-center rounded-full", d.isOpen ? "bg-danger-soft text-danger" : "bg-surface-2 text-muted-foreground")}>
-                        <ShieldAlert className="size-4" />
-                      </span>
-                    }
-                    title={d.jobTitle}
-                    trailing={d.hasPayment !== false ? <span className="tabular text-[12px] font-semibold">{d.amount}</span> : undefined}
-                    meta={`${d.clientName} vs ${d.providerName}`}
-                    aside={
-                      <span className="flex flex-col gap-1.5">
-                        <span className="flex flex-wrap items-center gap-1.5">
-                          <Badge tone={KIND_TONE[s.kind]}>{KIND_LABEL[s.kind]}</Badge>
-                          <UrgencyChip signals={s} />
-                          <Badge tone={statusTone(d)} dot>{d.status}</Badge>
+                {rows.map(({ row: d, signals: s }) => {
+                  const next = caseNextStep({ isOpen: d.isOpen, cancellationState: d.cancellationState, entries: d.entries ?? [] }, s);
+                  return (
+                    <QueueItem
+                      key={d.id}
+                      id={d.id}
+                      selected={d.id === effectiveId}
+                      onSelect={setSelectedId}
+                      tone={rowTone(s)}
+                      footnote={<span className={cn("font-medium", NEXT_STEP_COLOUR[next.tone])}>{next.text}</span>}
+                      leading={
+                        <span className={cn("grid size-9 place-items-center rounded-full", d.isOpen ? "bg-danger-soft text-danger" : "bg-surface-2 text-muted-foreground")}>
+                          <ShieldAlert className="size-4" />
                         </span>
-                        <span className="truncate text-[11.5px] text-muted-foreground">{d.reason} · {d.createdAt}</span>
-                      </span>
-                    }
-                  />
-                ))}
+                      }
+                      title={d.jobTitle}
+                      trailing={d.hasPayment !== false ? <span className="tabular text-[12px] font-semibold">{d.amount}</span> : undefined}
+                      meta={`${d.clientName} vs ${d.providerName}`}
+                      aside={
+                        <span className="flex flex-col gap-1.5">
+                          <span className="flex flex-wrap items-center gap-1.5">
+                            <Badge tone={KIND_TONE[s.kind]}>{KIND_LABEL[s.kind]}</Badge>
+                            <UrgencyChip signals={s} />
+                            <Badge tone={statusTone(d)} dot>{d.status}</Badge>
+                          </span>
+                          <span className="truncate text-[11.5px] text-muted-foreground">{d.reason} · {d.createdAt}</span>
+                        </span>
+                      }
+                    />
+                  );
+                })}
               </QueueList>
             )}
             <KeyHints approve={recordOnly ? "record" : "release"} reject={recordOnly ? undefined : "refund"} />
           </>
         }
         detail={
-          selected && signals ? (
-            <DetailCard
-              key={selected.id}
-              header={
-                <div>
+          <div ref={paneRef}>
+            {selected && signals ? (
+              <motion.div
+                key={selected.id}
+                initial={{ opacity: 0, y: 6 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
+                className={cn("grid gap-4", twoColumns && "grid-cols-[minmax(0,1fr)_minmax(280px,320px)]")}
+              >
+                {/* The case header: what the case is, who is on each side, and the money held. */}
+                <section aria-label="Case header" className="col-span-full min-w-0 rounded-[12px] border border-border bg-surface px-5 py-4 shadow-ui-sm sm:px-6">
                   <div className="flex flex-wrap items-center gap-2">
-                    <h2 className="text-[17px] font-semibold tracking-tight">{selected.jobTitle}</h2>
+                    <h2 className="text-[18px] font-semibold tracking-tight">{selected.jobTitle}</h2>
                     <Badge tone={KIND_TONE[signals.kind]}>{KIND_LABEL[signals.kind]}</Badge>
                     <Badge tone={statusTone(selected)} dot>{selected.status}</Badge>
+                    <UrgencyChip signals={signals} />
                   </div>
-                  <p className="mt-0.5 text-[12.5px] text-muted-foreground">
+                  <p className="mt-1 text-[12.5px] text-muted-foreground">
                     {selected.service} · Opened {selected.createdAt}
                   </p>
-                </div>
-              }
-              footer={
-                selected.isOpen ? (
-                  <>
-                    {!recordOnly && <Button
-                      variant="outline"
-                      className="border-warn/40 text-warn hover:bg-warn-soft"
-                      onClick={() => setConfirming({ id: selected.id, resolution: "REFUNDED_TO_CLIENT" })}
-                      disabled={!canDecide}
-                    >
-                      <RotateCcw /> Refund client
-                    </Button>}
-                    <Button
-                      onClick={() => setConfirming({ id: selected.id, resolution: recordOnly ? "REVIEWED" : "RELEASED_TO_PROVIDER" })}
-                      disabled={!canDecide}
-                    >
-                      <Check /> {noPayment ? "Record decision" : selected.paymentSettled ? "Record admin decision" : "Release to provider"}
-                    </Button>
-                  </>
-                ) : undefined
-              }
-            >
-              {/* Deadline urgency first, so an overdue or due-soon case is the first thing read. */}
-              <UrgencyBanner signals={signals} />
-
-              {/* Who's on each side, with the money in the middle. */}
-              <div className="mb-6 grid grid-cols-[1fr_auto_1fr] items-center gap-3 rounded-[12px] border border-border bg-surface-2/60 p-4">
-                <Party label="Client" name={selected.clientName} />
-                <div className="flex flex-col items-center gap-1 text-center">
-                  <span className="text-[11px] text-subtle">{selected.hasPayment === false ? "No payment to settle" : selected.paymentSettled ? "Payment already settled" : "Payment under review"}</span>
-                  {selected.hasPayment !== false && <span className="tabular text-[18px] font-semibold tracking-tight">{selected.amount}</span>}
-                  <ArrowRight className="size-3.5 text-subtle" aria-hidden />
-                </div>
-                <Party label="Provider" name={selected.providerName} align="right" />
-              </div>
-
-              <DetailSection title="Reason for dispute">
-                <p className="text-[13.5px] font-medium">{selected.reason}</p>
-                {selected.details && <p className="mt-1.5 text-[13px] leading-relaxed text-muted-foreground">{selected.details}</p>}
-              </DetailSection>
-
-              {signals.kind === "cancellation" && (
-                <DetailSection title="Cancellation request">
-                  <FieldGrid>
-                    <Field label="State">{cancellationStateLabel(selected.cancellationState ?? "")}</Field>
-                    <Field label="Deadline">
-                      <DeadlineValue iso={selected.cancellationDeadline} hoursToDeadline={signals.hoursToDeadline} open={selected.isOpen} />
-                    </Field>
-                  </FieldGrid>
-                </DetailSection>
-              )}
-
-              {warranty && warranty.state !== "none" && (
-                <DetailSection title="Payment protection">
-                  {warranty.state === "open" ? (
-                    <div className="rounded-[10px] border border-border bg-surface-2 px-3.5 py-3 text-[13px]">
-                      <p className="font-medium">Warranty open · {formatHoursLeft(warranty.hoursLeft)}</p>
-                      <p className="mt-0.5 text-muted-foreground">A timely complaint blocks the release.</p>
+                  {/* Deadline urgency first, so an overdue or due-soon case is the first thing read. */}
+                  <UrgencyBanner signals={signals} />
+                  {/* Phones stack the money above the two parties; wider panes put the money between them. */}
+                  <div className="mt-4 grid grid-cols-2 items-center gap-3 rounded-[12px] border border-border bg-surface-2/60 p-4 sm:grid-cols-[1fr_auto_1fr]">
+                    <Party label="Client" name={selected.clientName} />
+                    <div className="order-first col-span-2 flex min-w-0 flex-col items-center gap-0.5 text-center sm:order-none sm:col-span-1">
+                      <span className="text-[11px] text-subtle">{escrowCaption(selected)}</span>
+                      {selected.hasPayment !== false && <span className="tabular text-[22px] font-semibold tracking-tight">{selected.amount}</span>}
                     </div>
-                  ) : (
-                    <p className="text-[13px] text-muted-foreground">Warranty window closed</p>
-                  )}
-                </DetailSection>
-              )}
+                    <Party label="Provider" name={selected.providerName} align="right" />
+                  </div>
+                </section>
 
-              {selected.resolution && (
-                <DetailSection title="Resolution">
-                  <div className="flex items-start gap-2.5 rounded-[10px] bg-ok-soft px-3.5 py-3 text-[13px]">
-                    <Gavel className="mt-0.5 size-4 shrink-0 text-ok" />
-                    <div>
-                      <div className="font-medium">
-                        {selected.resolution} · {selected.resolvedAt}
+                {/* Evidence: what was said, what happened, and the chat. */}
+                <div className="flex min-w-0 flex-col gap-4">
+                  <CaseCard title="Summary" icon={FileText} count={summaryCount}>
+                    <FieldGrid>
+                      <Field label="Reason">
+                        {selected.reason}
+                        {selected.details && <span className="mt-1 block text-[13px] font-normal leading-relaxed text-muted-foreground">{selected.details}</span>}
+                      </Field>
+                      {signals.kind === "cancellation" && (
+                        <>
+                          <Field label="Cancellation request">{cancellationStateLabel(selected.cancellationState ?? "")}</Field>
+                          <Field label="Response deadline">
+                            <DeadlineValue iso={selected.cancellationDeadline} hoursToDeadline={signals.hoursToDeadline} open={selected.isOpen} />
+                          </Field>
+                        </>
+                      )}
+                      {warranty && warranty.state !== "none" && (
+                        <Field label="72 h warranty">
+                          {warranty.state === "open" ? (
+                            <>
+                              <span>{`Warranty open · ${formatHoursLeft(warranty.hoursLeft)}`}</span>
+                              <span className="mt-1 block font-normal text-muted-foreground">A timely complaint blocks the release.</span>
+                            </>
+                          ) : (
+                            <span>Warranty window closed</span>
+                          )}
+                        </Field>
+                      )}
+                    </FieldGrid>
+                  </CaseCard>
+
+                  <CaseCard title="Activity" icon={History} count={(selected.entries ?? []).length}>
+                    <CaseTimeline
+                      entries={selected.entries ?? []}
+                      clientName={selected.clientName}
+                      providerName={selected.providerName}
+                      emptyText="No statements yet. Ask a party for one."
+                    />
+                  </CaseCard>
+
+                  <CaseCard title="Conversation" icon={MessagesSquare} count={chatCount}>
+                    <Conversation
+                      state={chat}
+                      parties={{ clientId: selected.clientId ?? null, providerId: selected.providerId ?? null, clientName: selected.clientName, providerName: selected.providerName }}
+                      refreshing={refreshingJobId === selected.jobId}
+                      onRetry={() => retryConversation(selected.jobId)}
+                      onRefresh={() => void refreshConversation(selected.jobId)}
+                    />
+                  </CaseCard>
+                </div>
+
+                {/* The decision: beside the evidence when the pane is wide, below it otherwise. */}
+                <div className="min-w-0">
+                  {selected.isOpen ? (
+                    <aside
+                      aria-label="Your decision"
+                      className={cn("overflow-hidden rounded-[12px] border border-primary/40 bg-surface shadow-ui-sm", twoColumns && "sticky top-4")}
+                    >
+                      <header className="flex items-center gap-2 border-b border-primary/25 bg-primary-soft/60 px-4 py-3">
+                        <Gavel className="size-4 text-primary" aria-hidden />
+                        <h3 className="text-[13.5px] font-semibold tracking-tight">Your decision</h3>
+                      </header>
+                      <div className="space-y-5 p-4">
+                        <section aria-labelledby="decision-step-clarify" className="space-y-3">
+                          <StepTitle id="decision-step-clarify" number={1} title="Need more info?" />
+                          <label className="flex items-center justify-between gap-2 text-[12px] text-muted-foreground">
+                            <span>Ask</span>
+                            <select
+                              aria-label="Ask"
+                              value={askAudience}
+                              onChange={(e) => setAskAudience(e.target.value as ClarificationAudience)}
+                              className={cn(inputClass, "h-8 w-auto pr-7 text-[12.5px]")}
+                            >
+                              {ASK_OPTIONS.map((option) => (
+                                <option key={option.value} value={option.value}>{option.label}</option>
+                              ))}
+                            </select>
+                          </label>
+
+                          <div role="group" aria-label="Quick templates" className="flex flex-wrap gap-1.5">
+                            {QUICK_TEMPLATES.map((text) => (
+                              <Button
+                                key={text}
+                                type="button"
+                                size="sm"
+                                variant="outline"
+                                className="h-auto whitespace-normal py-1.5 text-left text-[12px]"
+                                onClick={() => insertTemplate(selected.id, text)}
+                              >
+                                {text}
+                              </Button>
+                            ))}
+                          </div>
+
+                          <p className="text-[12px] leading-relaxed text-muted-foreground">
+                            The note is visible to both parties on this case, whichever side it names. Photo requests are sent as a text request. Participants attach evidence from their own job chat.
+                          </p>
+
+                          {note.trim() && (
+                            <p className={cn("text-[12px]", clarifyOverBy > 0 ? "text-danger" : "text-muted-foreground")}>
+                              {clarifyOverBy > 0 ? (
+                                `Too long to post once addressed: shorten by ${clarifyOverBy} characters.`
+                              ) : (
+                                <>Posted as: <span className="font-medium text-foreground">{CLARIFICATION_PREFIX[askAudience]}{note.trim()}</span></>
+                              )}
+                            </p>
+                          )}
+
+                          <div className="flex justify-end">
+                            <Button variant="outline" disabled={!canClarify} onClick={() => void requestClarification(selected.id)}>Request clarification</Button>
+                          </div>
+                        </section>
+
+                        <section aria-labelledby="decision-step-decide" className="space-y-3 border-t border-border pt-5">
+                          <StepTitle id="decision-step-decide" number={2} title="Decide" />
+                          {selected.paymentSettled && (
+                            <p className="text-[12.5px] text-muted-foreground">Payment already settled. Record your decision here; use Transactions → Issue Credit if compensation is approved.</p>
+                          )}
+                          <ReasonField
+                            value={note}
+                            onChange={(value) => setNotes((prev) => ({ ...prev, [selected.id]: value }))}
+                            max={NOTE_MAX_LENGTH}
+                            label="Resolution or clarification note (required)"
+                            placeholder="Document the reason for the final decision…"
+                          />
+                          <div className="space-y-3">
+                            <OutcomeRow
+                              tone="ok"
+                              text={recordOnly ? "Saves the decision and note. No money moves." : `Pays ${selected.amount} to ${selected.providerName}. This can't be undone.`}
+                              button={twoColumns ? decideButton : undefined}
+                            />
+                            {!recordOnly && (
+                              <OutcomeRow
+                                tone="danger"
+                                text={`Returns ${selected.amount} to ${selected.clientName}. This can't be undone.`}
+                                button={twoColumns ? refundButton : undefined}
+                              />
+                            )}
+                          </div>
+                        </section>
                       </div>
-                      {selected.resolutionNote && <div className="mt-0.5 text-muted-foreground">{selected.resolutionNote}</div>}
-                    </div>
-                  </div>
-                </DetailSection>
-              )}
-
-              <DetailSection title="Statements, appeals and case activity">
-                <CaseTimeline entries={selected.entries ?? []} clientName={selected.clientName} providerName={selected.providerName} />
-              </DetailSection>
-
-              <DetailSection title="Job conversation">
-                <Conversation
-                  state={conversations[selected.jobId]}
-                  parties={{ clientId: selected.clientId ?? null, providerId: selected.providerId ?? null, clientName: selected.clientName, providerName: selected.providerName }}
-                  refreshing={refreshingJobId === selected.jobId}
-                  onRetry={() => retryConversation(selected.jobId)}
-                  onRefresh={() => void refreshConversation(selected.jobId)}
-                />
-              </DetailSection>
-
-              {selected.isOpen && (
-                <DetailSection title="Admin resolution note">
-                  {selected.paymentSettled && <p>Payment already settled. Record your decision here; use Transactions → Issue Credit if compensation is approved.</p>}
-                  <ReasonField
-                    value={note}
-                    onChange={(value) => setNotes((prev) => ({ ...prev, [selected.id]: value }))}
-                    max={NOTE_MAX_LENGTH}
-                    label="Resolution or clarification note (required)"
-                    placeholder="Document the reason for the final decision…"
-                  />
-
-                  <div className="mt-4 rounded-[10px] border border-border bg-surface-2/60 p-3.5">
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <p className="text-[13px] font-medium">Request clarification</p>
-                      <label className="flex items-center gap-2 text-[12px] text-muted-foreground">
-                        <span>Ask</span>
-                        <select
-                          aria-label="Ask"
-                          value={askAudience}
-                          onChange={(e) => setAskAudience(e.target.value as ClarificationAudience)}
-                          className={cn(inputClass, "h-8 w-auto pr-7 text-[12.5px]")}
-                        >
-                          {ASK_OPTIONS.map((option) => (
-                            <option key={option.value} value={option.value}>{option.label}</option>
-                          ))}
-                        </select>
-                      </label>
-                    </div>
-
-                    <div role="group" aria-label="Quick templates" className="mt-3 flex flex-wrap gap-1.5">
-                      {QUICK_TEMPLATES.map((text) => (
-                        <Button
-                          key={text}
-                          type="button"
-                          size="sm"
-                          variant="outline"
-                          className="h-auto whitespace-normal py-1.5 text-left text-[12px]"
-                          onClick={() => insertTemplate(selected.id, text)}
-                        >
-                          {text}
-                        </Button>
-                      ))}
-                    </div>
-
-                    <p className="mt-3 text-[12px] leading-relaxed text-muted-foreground">
-                      The note is visible to both parties on this case, whichever side it names. Photo requests are sent as a text request. Participants attach evidence from their own job chat.
-                    </p>
-
-                    {note.trim() && (
-                      <p className={cn("mt-2 text-[12px]", clarifyOverBy > 0 ? "text-danger" : "text-muted-foreground")}>
-                        {clarifyOverBy > 0 ? (
-                          `Too long to post once addressed: shorten by ${clarifyOverBy} characters.`
+                    </aside>
+                  ) : (
+                    <aside aria-label="Decision" className="rounded-[12px] border border-border bg-surface shadow-ui-sm">
+                      <header className="flex items-center gap-2 border-b border-border px-4 py-3">
+                        <Gavel className="size-4 text-ok" aria-hidden />
+                        <h3 className="text-[13.5px] font-semibold tracking-tight">Decision</h3>
+                      </header>
+                      <div className="space-y-2 p-4 text-[13px]">
+                        {selected.resolution ? (
+                          <>
+                            <p className="font-medium">{[resolutionLabel(selected.resolution), selected.resolvedAt].filter(Boolean).join(" · ")}</p>
+                            {selected.resolutionNote && <p className="leading-relaxed text-muted-foreground">{selected.resolutionNote}</p>}
+                          </>
                         ) : (
-                          <>Posted as: <span className="font-medium text-foreground">{CLARIFICATION_PREFIX[askAudience]}{note.trim()}</span></>
+                          <p className="text-muted-foreground">Closed without a recorded decision.</p>
                         )}
-                      </p>
-                    )}
+                      </div>
+                    </aside>
+                  )}
+                </div>
 
-                    <div className="mt-3 flex justify-end">
-                      <Button variant="outline" disabled={!canClarify} onClick={() => void requestClarification(selected.id)}>Request clarification</Button>
-                    </div>
+                {/* Narrow panes keep the decision one tap away at the bottom of the screen. */}
+                {!twoColumns && selected.isOpen && (
+                  <div
+                    role="group"
+                    aria-label="Decision actions"
+                    className="sticky bottom-3 z-10 flex flex-wrap items-center justify-end gap-2 rounded-[12px] border border-border bg-surface/95 p-3 shadow-ui-md backdrop-blur"
+                  >
+                    {refundButton}
+                    {decideButton}
                   </div>
-                </DetailSection>
-              )}
-            </DetailCard>
-          ) : (
-            <DetailEmpty queueEmpty={rows.length === 0} title="Pick a case" description="Select a dispute on the left to read both sides and decide." />
-          )
+                )}
+              </motion.div>
+            ) : (
+              <DetailEmpty queueEmpty={rows.length === 0} title="Pick a case" description="Select a dispute on the left to read both sides and decide." />
+            )}
+          </div>
         }
       />
 
@@ -609,7 +699,7 @@ function UrgencyBanner({ signals }: { signals: CaseSignals }) {
   if (hours === null) return null;
   if (signals.urgency === "overdue") {
     return (
-      <div className="mb-6 flex items-start gap-2.5 rounded-[10px] border border-danger/25 bg-danger-soft px-3.5 py-3 text-[13px] text-danger">
+      <div className="mt-3 flex items-start gap-2.5 rounded-[10px] border border-danger/25 bg-danger-soft px-3.5 py-3 text-[13px] text-danger">
         <Clock className="mt-0.5 size-4 shrink-0" aria-hidden />
         <p className="font-medium">Provider response deadline passed {durationText(-hours)} ago. No answer yet.</p>
       </div>
@@ -617,7 +707,7 @@ function UrgencyBanner({ signals }: { signals: CaseSignals }) {
   }
   if (signals.urgency === "soon") {
     return (
-      <div className="mb-6 flex items-start gap-2.5 rounded-[10px] border border-warn/30 bg-warn-soft px-3.5 py-3 text-[13px] text-warn">
+      <div className="mt-3 flex items-start gap-2.5 rounded-[10px] border border-warn/30 bg-warn-soft px-3.5 py-3 text-[13px] text-warn">
         <Clock className="mt-0.5 size-4 shrink-0" aria-hidden />
         <p className="font-medium">Provider response due in {hours < 1 ? "under 1 h" : `${Math.floor(hours)} h`}. No answer yet.</p>
       </div>
@@ -648,6 +738,28 @@ function omit<T>(record: Record<string, T>, key: string): Record<string, T> {
   const next = { ...record };
   delete next[key];
   return next;
+}
+
+/** A numbered step heading inside the decision card. */
+function StepTitle({ id, number, title }: { id: string; number: number; title: string }) {
+  return (
+    <h4 id={id} className="flex items-center gap-2 text-[13px] font-semibold tracking-tight">
+      <span aria-hidden className="grid size-5 shrink-0 place-items-center rounded-full bg-primary text-[11px] font-semibold text-primary-foreground">
+        {number}
+      </span>
+      {title}
+    </h4>
+  );
+}
+
+/** A plain-words line saying what a decision does. In the decision card the button sits above it, full width; in the bottom bar the line is only text. */
+function OutcomeRow({ tone, text, button }: { tone: "ok" | "danger"; text: string; button?: ReactNode }) {
+  return (
+    <div className="flex flex-col gap-2 [&>button]:w-full">
+      {button}
+      <p className={cn("text-[12.5px] leading-relaxed", tone === "danger" ? "text-danger" : "text-muted-foreground")}>{text}</p>
+    </div>
+  );
 }
 
 function Party({ label, name, align = "left" }: { label: string; name: string; align?: "left" | "right" }) {

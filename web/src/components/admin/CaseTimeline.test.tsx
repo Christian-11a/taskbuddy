@@ -124,6 +124,12 @@ describe("CaseTimeline", () => {
     expect(screen.getByText("No case activity yet.")).toBeInTheDocument();
     expect(screen.queryByRole("list")).not.toBeInTheDocument();
   });
+
+  it("says what is missing when the caller gives an empty-state text", () => {
+    render(<CaseTimeline {...names} entries={[]} emptyText="No statements yet. Ask a party for one." />);
+    expect(screen.getByText("No statements yet. Ask a party for one.")).toBeInTheDocument();
+    expect(screen.queryByText("No case activity yet.")).not.toBeInTheDocument();
+  });
 });
 
 describe("clarification addressing", () => {

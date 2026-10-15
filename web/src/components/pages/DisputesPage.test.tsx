@@ -463,3 +463,134 @@ describe("clarification form", () => {
     expect(screen.getByText(/shorten by 7 characters/)).toBeInTheDocument();
   });
 });
+
+describe("case sections and decision card", () => {
+  afterEach(() => {
+    delete (globalThis as { ResizeObserver?: unknown }).ResizeObserver;
+    window.localStorage.clear();
+  });
+
+  /** Makes the detail pane report `width`, as the browser's ResizeObserver would. */
+  function paneWidth(width: number) {
+    class PaneObserver {
+      constructor(private readonly onResize: ResizeObserverCallback) {}
+      observe(target: Element) {
+        this.onResize([{ target, contentRect: { width } } as unknown as ResizeObserverEntry], this as unknown as ResizeObserver);
+      }
+      unobserve() {}
+      disconnect() {}
+    }
+    (globalThis as { ResizeObserver?: unknown }).ResizeObserver = PaneObserver;
+  }
+
+  it("shows the case header with the client, the amount held and the provider", () => {
+    setup(false, { clientName: "Ana Cruz", providerName: "Rico Lim" });
+    const header = screen.getByRole("region", { name: "Case header" });
+    expect(within(header).getByRole("heading", { level: 2, name: "Repair tap" })).toBeInTheDocument();
+    expect(within(header).getByText("Held in escrow")).toBeInTheDocument();
+    expect(within(header).getByText("₱500.00")).toBeInTheDocument();
+    expect(within(header).getByText("Client", { exact: true })).toBeInTheDocument();
+    expect(within(header).getByText("Ana Cruz")).toBeInTheDocument();
+    expect(within(header).getByText("Rico Lim")).toBeInTheDocument();
+  });
+
+  it("names each evidence card and counts what is inside it", () => {
+    setup(false, { entries: [
+      entry("statement", "2026-10-10T00:00:00Z"),
+      entry("appeal", "2026-10-11T00:00:00Z"),
+    ] });
+    expect(screen.getByRole("region", { name: "Summary" })).toBeInTheDocument();
+    expect(within(screen.getByRole("region", { name: "Activity" })).getByText("2")).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Conversation" })).toBeInTheDocument();
+  });
+
+  it("says what is missing when a case has no statements yet", () => {
+    setup(false);
+    expect(within(screen.getByRole("region", { name: "Activity" })).getByText("No statements yet. Ask a party for one.")).toBeInTheDocument();
+  });
+
+  it("puts the clarification step and the decision step in the decision card", () => {
+    setup(false);
+    const decision = screen.getByRole("complementary", { name: "Your decision" });
+    expect(within(decision).getByRole("heading", { name: /Need more info\?/ })).toBeInTheDocument();
+    expect(within(decision).getByRole("heading", { name: /Decide/ })).toBeInTheDocument();
+    expect(within(decision).getByRole("button", { name: "Request clarification" })).toBeInTheDocument();
+  });
+
+  it("says in plain words what each decision does, beside its button", () => {
+    setup(false, { amount: "₱500.00", clientName: "Ana Cruz", providerName: "Rico Lim" });
+    expect(screen.getByText("Pays ₱500.00 to Rico Lim. This can't be undone.")).toBeInTheDocument();
+    expect(screen.getByText("Returns ₱500.00 to Ana Cruz. This can't be undone.")).toBeInTheDocument();
+  });
+
+  it("says a recorded decision moves no money", () => {
+    setup(true);
+    expect(screen.getByText("Saves the decision and note. No money moves.")).toBeInTheDocument();
+  });
+
+  it("colour-codes release green and refund red", () => {
+    setup(false);
+    expect(screen.getByRole("button", { name: /Release to provider/ })).toHaveClass("bg-ok-solid");
+    expect(screen.getByRole("button", { name: /Refund client/ })).toHaveClass("text-danger");
+  });
+
+  it("renders each decision button once, inside the decision card, when the pane is wide", () => {
+    paneWidth(900);
+    setup(false);
+    const decision = screen.getByRole("complementary", { name: "Your decision" });
+    expect(within(decision).getByRole("button", { name: /Release to provider/ })).toBeInTheDocument();
+    expect(within(decision).getByRole("button", { name: /Refund client/ })).toBeInTheDocument();
+    expect(decision).toHaveClass("sticky");
+    expect(screen.queryByRole("group", { name: "Decision actions" })).not.toBeInTheDocument();
+  });
+
+  it("moves the decision buttons into one sticky bottom bar when the pane is narrow", () => {
+    paneWidth(480);
+    setup(false);
+    const bar = screen.getByRole("group", { name: "Decision actions" });
+    expect(within(bar).getByRole("button", { name: /Release to provider/ })).toBeInTheDocument();
+    expect(within(bar).getByRole("button", { name: /Refund client/ })).toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: /Release to provider/ })).toHaveLength(1);
+    const decision = screen.getByRole("complementary", { name: "Your decision" });
+    expect(within(decision).queryByRole("button", { name: /Release to provider/ })).not.toBeInTheDocument();
+    expect(within(decision).getByText("Pays ₱500.00 to Provider. This can't be undone.")).toBeInTheDocument();
+    expect(decision).not.toHaveClass("sticky");
+  });
+
+  it("keeps the bottom bar's buttons behind the confirmation dialog", async () => {
+    paneWidth(480);
+    const user = userEvent.setup();
+    setup(false);
+    await user.type(screen.getByLabelText(/Resolution or clarification note/i), "Both sides reviewed.");
+    await user.click(within(screen.getByRole("group", { name: "Decision actions" })).getByRole("button", { name: /Refund client/ }));
+    expect(within(screen.getByRole("alertdialog")).getByText("Refund escrow to the client?")).toBeInTheDocument();
+    expect(resolveDispute).not.toHaveBeenCalled();
+  });
+
+  it("shows a closed case's decision in plain words, with no decision buttons", async () => {
+    const user = userEvent.setup();
+    setup(true, {
+      isOpen: false, status: "Resolved", resolution: "RELEASED_TO_PROVIDER", resolvedAt: "Oct 3, 2026", resolutionNote: "Checked the chat.",
+    });
+    await user.click(screen.getByRole("button", { name: /Resolved/ }));
+    const decision = screen.getByRole("complementary", { name: "Decision" });
+    expect(within(decision).getByText("Released to provider · Oct 3, 2026")).toBeInTheDocument();
+    expect(within(decision).getByText("Checked the chat.")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Release to provider|Refund client|Record/ })).not.toBeInTheDocument();
+  });
+
+  it("shows the next step under each case row", () => {
+    vi.setSystemTime(new Date("2026-10-15T12:00:00Z"));
+    renderDisputes([row({ id: "c1", jobTitle: "Move sofa", cancellationState: "pending", cancellationDeadline: "2026-10-15T16:00:00Z" })]);
+    const list = screen.getByRole("list", { name: "Disputes" });
+    expect(within(list).getByText("Waiting for provider · due in 4 h")).toBeInTheDocument();
+  });
+
+  it("remembers a collapsed case list under the disputes page's own key", async () => {
+    const user = userEvent.setup();
+    setup(false);
+    await user.click(screen.getByRole("button", { name: "Collapse list" }));
+    expect(window.localStorage.getItem("admin.queue.disputes")).toBe("1");
+    expect(screen.getByRole("button", { name: "Expand list" })).toBeInTheDocument();
+  });
+});
