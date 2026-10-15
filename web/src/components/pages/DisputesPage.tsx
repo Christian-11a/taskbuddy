@@ -155,7 +155,7 @@ function cancellationStateLabel(state: string): string {
 }
 
 export function DisputesPage() {
-  const { disputes, resolveDispute, refreshData, refreshCounts, loading } = useApp();
+  const { disputes, resolveDispute, refreshData, refreshCounts, disputesLoading } = useApp();
   const { showToast } = useToast();
   const isWide = useIsWide();
   // The detail pane decides its own layout: two columns with the decision beside the evidence, or one column with the buttons in a bottom bar.
@@ -356,7 +356,7 @@ export function DisputesPage() {
   }, [staleCount, showToast]);
 
   const emptyCopy = FILTER_EMPTY[filter];
-  const emptyState = loading ? (
+  const emptyState = disputesLoading ? (
     <QueueListSkeleton />
   ) : disputes.length === 0 ? (
     <QueueListState icon={Scale} title="No disputes raised yet" description="Client complaints and provider appeals land here for review." />

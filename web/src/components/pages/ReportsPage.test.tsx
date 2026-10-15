@@ -56,7 +56,7 @@ function setReportState(opts: { stats?: DashboardStats; providers?: TopProvider[
       { name: "Pat Cruz", jobs: 21, rating: 4.9 },
       { name: "Lee Tan", jobs: 9, rating: 0 },
     ],
-    loading: false,
+    analyticsLoading: false,
     analyticsUnavailable: false,
     analyticsInBrowser: false,
     retryLoad: vi.fn(),
@@ -169,5 +169,45 @@ describe("ReportsPage — chart loading", () => {
     // recharts loads on its own chunk; until then each chart keeps its slot.
     expect(container.querySelector('[style*="height: 260px"]')).not.toBeNull();
     expect(container.querySelector('[style*="height: 240px"]')).not.toBeNull();
+  });
+});
+
+describe("ReportsPage — console parts", () => {
+  it("shows the report placeholder while the analytics are still loading, even when the console lists are ready", () => {
+    mockedUseApp.mockReturnValue({
+      dashboardStats: null,
+      revenueSeries: [],
+      bookingsSeries: [],
+      bookingsByCategory: [],
+      topProviders: [],
+      loading: false,
+      analyticsLoading: true,
+      analyticsUnavailable: false,
+      analyticsInBrowser: false,
+      retryLoad: vi.fn(),
+      settings: { anonymizeExports: false },
+    } as unknown as ReturnType<typeof useApp>);
+    render(<ReportsPage />);
+    expect(screen.getByLabelText("Loading reports…")).toBeInTheDocument();
+    expect(screen.queryByText(/could not be loaded/)).not.toBeInTheDocument();
+  });
+
+  it("shows the report while the rest of the console is still loading", () => {
+    mockedUseApp.mockReturnValue({
+      dashboardStats: makeStats(),
+      revenueSeries: [{ month: "Jan", value: 1000 }],
+      bookingsSeries: [{ month: "Jan", value: 5 }],
+      bookingsByCategory: [{ label: "Plumbing", value: 100 }],
+      topProviders: [],
+      loading: true,
+      analyticsLoading: false,
+      analyticsUnavailable: false,
+      analyticsInBrowser: false,
+      retryLoad: vi.fn(),
+      settings: { anonymizeExports: false },
+    } as unknown as ReturnType<typeof useApp>);
+    render(<ReportsPage />);
+    expect(screen.queryByLabelText("Loading reports…")).not.toBeInTheDocument();
+    expect(screen.getAllByText("Reports").length).toBeGreaterThan(0);
   });
 });

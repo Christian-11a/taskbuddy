@@ -58,7 +58,7 @@ describe("UsersPage — rating display", () => {
       bulkSetUserStatus: vi.fn(),
       sendPasswordReset: vi.fn(),
       refreshUsers: vi.fn(),
-      loading: false,
+      usersLoading: false,
     } as unknown as ReturnType<typeof useApp>);
     renderWithToast(<UsersPage />);
     expect(screen.getByText("4.08")).toBeInTheDocument();
@@ -80,7 +80,7 @@ describe("UsersPage — suspend flow", () => {
       bulkSetUserStatus,
       sendPasswordReset,
       refreshUsers,
-      loading: false,
+      usersLoading: false,
     } as unknown as ReturnType<typeof useApp>);
   });
 
@@ -165,7 +165,7 @@ describe("UsersPage — suspend flow", () => {
       bulkSetUserStatus,
       sendPasswordReset,
       refreshUsers,
-      loading: false,
+      usersLoading: false,
     } as unknown as ReturnType<typeof useApp>);
     const user = userEvent.setup();
     renderWithToast(<UsersPage />);
@@ -189,7 +189,7 @@ describe("UsersPage — suspend flow", () => {
       bulkSetUserStatus,
       sendPasswordReset,
       refreshUsers,
-      loading: false,
+      usersLoading: false,
     } as unknown as ReturnType<typeof useApp>);
     const user = userEvent.setup();
     renderWithToast(<UsersPage />);
@@ -209,7 +209,7 @@ describe("UsersPage — suspend flow", () => {
       bulkSetUserStatus,
       sendPasswordReset,
       refreshUsers,
-      loading: false,
+      usersLoading: false,
     } as unknown as ReturnType<typeof useApp>);
     const user = userEvent.setup();
     renderWithToast(<UsersPage />);
@@ -238,7 +238,7 @@ describe("UsersPage — suspend flow", () => {
       bulkSetUserStatus,
       sendPasswordReset,
       refreshUsers,
-      loading: false,
+      usersLoading: false,
     } as unknown as ReturnType<typeof useApp>);
     bulkSetUserStatus
       .mockResolvedValueOnce({
@@ -277,7 +277,7 @@ describe("UsersPage — suspend flow", () => {
       bulkSetUserStatus,
       sendPasswordReset,
       refreshUsers,
-      loading: false,
+      usersLoading: false,
     } as unknown as ReturnType<typeof useApp>);
     bulkSetUserStatus.mockResolvedValueOnce({ succeeded: 1, failed: 0, errors: [], refreshFailed: true });
     refreshUsers.mockResolvedValueOnce(undefined);
@@ -303,7 +303,7 @@ describe("UsersPage — suspend flow", () => {
       bulkSetUserStatus,
       sendPasswordReset,
       refreshUsers,
-      loading: false,
+      usersLoading: false,
     } as unknown as ReturnType<typeof useApp>);
     bulkSetUserStatus.mockResolvedValueOnce({
       succeeded: 0,
@@ -365,7 +365,7 @@ describe("UsersPage — CSV export anonymization", () => {
       bulkSetUserStatus: vi.fn(),
       sendPasswordReset: vi.fn(),
       refreshUsers: vi.fn(),
-      loading: false,
+      usersLoading: false,
       settings: { anonymizeExports },
     } as unknown as ReturnType<typeof useApp>);
   }
@@ -397,5 +397,39 @@ describe("UsersPage — CSV export anonymization", () => {
     const csv = await exportCsv();
 
     expect(csv).toContain("Morgan Lee,morgan@example.com,0917 555 0101,Provider");
+  });
+});
+
+describe("UsersPage — users list loading", () => {
+  function renderWithState(state: Record<string, unknown>) {
+    mockedUseApp.mockReturnValue({
+      ensureUsers: vi.fn(),
+      users: [],
+      setUserStatus: vi.fn(),
+      bulkSetUserStatus: vi.fn(),
+      sendPasswordReset: vi.fn(),
+      refreshUsers: vi.fn(),
+      usersLoading: false,
+      loading: false,
+      settings: { anonymizeExports: false },
+      ...state,
+    } as unknown as ReturnType<typeof useApp>);
+    return renderWithToast(<UsersPage />);
+  }
+
+  it("says the list is loading while the Users read is out, even when the console is ready", () => {
+    renderWithState({ usersLoading: true });
+    expect(screen.getByText("Loading users…")).toBeInTheDocument();
+  });
+
+  it("lists its users without waiting for the rest of the console", () => {
+    renderWithState({ users: [makeUser()], usersLoading: false, loading: true });
+    expect(screen.getAllByText("Morgan Lee").length).toBeGreaterThan(0);
+  });
+
+  it("does not say the list is loading just because the rest of the console still is", () => {
+    renderWithState({ users: [], usersLoading: false, loading: true });
+    expect(screen.getByText("No users yet.")).toBeInTheDocument();
+    expect(screen.queryByText("Loading users…")).not.toBeInTheDocument();
   });
 });

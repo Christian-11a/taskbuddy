@@ -39,7 +39,7 @@ export function ReportsPage() {
     bookingsSeries,
     bookingsByCategory,
     topProviders,
-    loading,
+    analyticsLoading,
     analyticsUnavailable,
     analyticsInBrowser,
     retryLoad,
@@ -58,7 +58,7 @@ export function ReportsPage() {
     />
   );
 
-  if (loading) {
+  if (analyticsLoading) {
     return (
       <div aria-busy="true" aria-label="Loading reports…">
         {header()}

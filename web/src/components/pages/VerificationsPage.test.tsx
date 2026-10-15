@@ -29,7 +29,7 @@ function renderPage(rows: VerificationRow[]) {
     verifications: rows,
     approveVerification: vi.fn(),
     rejectVerification: vi.fn(),
-    loading: false,
+    verificationsLoading: false,
     settings: { anonymizeExports: false },
   } as unknown as ReturnType<typeof useApp>);
   return render(
@@ -99,5 +99,39 @@ describe("VerificationsPage — verification method", () => {
     expect(screen.getAllByText("ID + selfie review").length).toBeGreaterThanOrEqual(2);
     expect(screen.queryByText("Stripe Identity")).not.toBeInTheDocument();
     expect(screen.queryByText("Checked by Stripe Identity — no documents to review")).not.toBeInTheDocument();
+  });
+});
+
+describe("VerificationsPage — console parts", () => {
+  beforeEach(() => {
+    vi.stubGlobal("matchMedia", vi.fn(() => ({ matches: true, addEventListener: vi.fn(), removeEventListener: vi.fn() })));
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  function renderParts(parts: Record<string, unknown>) {
+    vi.mocked(useApp).mockReturnValue({
+      verifications: [],
+      approveVerification: vi.fn(),
+      rejectVerification: vi.fn(),
+      refreshCounts: vi.fn(),
+      loading: false,
+      verificationsLoading: false,
+      settings: { anonymizeExports: false },
+      ...parts,
+    } as unknown as ReturnType<typeof useApp>);
+    return render(<ToastProvider><VerificationsPage /></ToastProvider>);
+  }
+
+  it("shows the queue placeholder, not the empty state, while the verifications are still loading", () => {
+    renderParts({ verificationsLoading: true });
+    expect(screen.queryByText("No verifications submitted yet")).not.toBeInTheDocument();
+  });
+
+  it("lists the verifications as soon as they arrive, while the rest of the console is still loading", () => {
+    renderParts({ verifications: [makeRow()], loading: true, verificationsLoading: false });
+    expect(screen.getAllByText("Rico Lim").length).toBeGreaterThan(0);
   });
 });

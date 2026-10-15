@@ -60,7 +60,7 @@ function MethodBadge({ method }: { method: VerificationRow["method"] }) {
  * made. See docs/TaskBuddyCompleteRefinement.md §28.
  */
 export function VerificationsPage() {
-  const { verifications, approveVerification, rejectVerification, refreshCounts, loading, settings } = useApp();
+  const { verifications, approveVerification, rejectVerification, refreshCounts, verificationsLoading, settings } = useApp();
   const { showToast } = useToast();
   const isWide = useIsWide();
   const [filter, setFilter] = useState<Filter>("pending");
@@ -162,7 +162,7 @@ export function VerificationsPage() {
   const rejectReasonTooLong = rejectReason.length > REASON_MAX_LENGTH;
   const approveTarget = verifications.find((v) => v.id === confirmApproveId);
 
-  const emptyState = loading ? (
+  const emptyState = verificationsLoading ? (
     <QueueListSkeleton />
   ) : verifications.length === 0 ? (
     <QueueListState icon={ShieldCheck} title="No verifications submitted yet" description="New provider submissions will appear here." />

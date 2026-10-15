@@ -39,10 +39,14 @@ const stats: DashboardStats = {
 
 const allZeroQueues: QueueCounts = { verifications: 0, disputes: 0, withdrawals: 0, "skill-requests": 0 };
 
+/** Per-part readiness the Dashboard reads. Everything has answered unless a test says otherwise. */
+type PartFlags = Partial<Record<"analyticsLoading" | "disputesLoading" | "verificationsLoading" | "activityLoading" | "countsLoading", boolean>>;
+
 function setDashboardState(
   dashboardStats: DashboardStats | null = stats,
   queueCounts: QueueCounts = allZeroQueues,
   revenueSeries: { month: string; value: number }[] = [],
+  parts: PartFlags = {},
 ) {
   mockedUseApp.mockReturnValue({
     ensureUsers: vi.fn(),
@@ -53,9 +57,14 @@ function setDashboardState(
     users: [],
     revenueSeries,
     bookingsSeries: [],
-    loading: false,
     analyticsUnavailable: false,
     analyticsInBrowser: false,
+    analyticsLoading: false,
+    disputesLoading: false,
+    verificationsLoading: false,
+    activityLoading: false,
+    countsLoading: false,
+    ...parts,
     retryLoad: vi.fn(),
     lastUpdated: 1,
     queueCounts,
@@ -170,5 +179,37 @@ describe("DashboardPage chart loading", () => {
     expect(screen.getByText("Registered providers")).toBeInTheDocument();
     // recharts loads on its own chunk; until then the trend keeps its 220px slot.
     expect(container.querySelector('[style*="height: 220px"]')).not.toBeNull();
+  });
+});
+
+describe("DashboardPage console parts", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockedGetEscrowHeld.mockResolvedValue({ count: 2, total: 500 });
+    mockedGetBookingStatusCounts.mockResolvedValue({ open: 3, recommending: 4 } as Awaited<ReturnType<typeof services.getBookingStatusCounts>>);
+  });
+
+  it("shows the queues, and placeholders for the analytics, while the analytics are still loading", () => {
+    setDashboardState(null, { ...allZeroQueues, withdrawals: 3 }, [], { analyticsLoading: true });
+    render(<DashboardPage />);
+
+    expect(within(screen.getByRole("link", { name: /payout requests/ })).getByText("3")).toBeInTheDocument();
+    expect(screen.getByLabelText("Loading key metrics")).toBeInTheDocument();
+    expect(screen.getByText("Payout trend")).toBeInTheDocument();
+    expect(screen.queryByText("No payouts yet")).not.toBeInTheDocument();
+    expect(screen.queryByText(/temporarily unavailable/)).not.toBeInTheDocument();
+  });
+
+  it("keeps the activity panel from claiming there is no activity while the activity is still loading", () => {
+    setDashboardState(stats, allZeroQueues, [], { activityLoading: true });
+    render(<DashboardPage />);
+    expect(screen.queryByText("No recent activity")).not.toBeInTheDocument();
+  });
+
+  it("shows the queues as being checked, not as all clear, while a queue's list is still loading", () => {
+    setDashboardState(stats, allZeroQueues, [], { disputesLoading: true });
+    render(<DashboardPage />);
+    expect(screen.getByText("Checking queues…")).toBeInTheDocument();
+    expect(screen.queryByText("All clear: nothing is waiting for review.")).not.toBeInTheDocument();
   });
 });

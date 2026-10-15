@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import Link from "next/link";
 import dynamic from "next/dynamic";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
@@ -80,7 +80,7 @@ function useLiveExtras(lastUpdated: number | null, stats: DashboardStats | null)
   return extras;
 }
 
-function AttentionTile({ href, icon: Icon, count, one, many, tone, index }: {
+function AttentionTile({ href, icon: Icon, count, one, many, tone, index, loading = false }: {
   href: string;
   icon: typeof ShieldCheck;
   count: number | null;
@@ -88,11 +88,13 @@ function AttentionTile({ href, icon: Icon, count, one, many, tone, index }: {
   many: string;
   tone: "danger" | "warn" | "info" | "accent";
   index: number;
+  /** The list or count behind this tile is still on its way: a placeholder, not a zero. */
+  loading?: boolean;
 }) {
   const reduce = useReducedMotion();
-  // null = the count could not be loaded: neither a real zero nor the green "clear" check.
-  const unknown = count === null;
-  const clear = count === 0;
+  // null = the count could not be loaded: neither a real zero nor the green "clear" check. A count still loading is neither.
+  const unknown = !loading && count === null;
+  const clear = !loading && count === 0;
   const toneClass = {
     danger: "bg-danger-soft text-danger",
     warn: "bg-warn-soft text-warn",
@@ -112,12 +114,12 @@ function AttentionTile({ href, icon: Icon, count, one, many, tone, index }: {
           unknown ? "border-dashed border-border-strong" : clear ? "border-border" : "border-border-strong",
         )}
       >
-        <span className={cn("grid size-9 shrink-0 place-items-center rounded-[9px] [&_svg]:size-4", clear || unknown ? "bg-surface-2 text-subtle" : toneClass)}>
+        <span className={cn("grid size-9 shrink-0 place-items-center rounded-[9px] [&_svg]:size-4", clear || unknown || loading ? "bg-surface-2 text-subtle" : toneClass)}>
           {clear ? <CheckCircle2 aria-hidden="true" /> : <Icon aria-hidden="true" />}
         </span>
         <span className="min-w-0 flex-1">
           <span className={cn("block text-[20px] font-semibold leading-none tracking-tight", (clear || unknown) && "text-subtle")}>
-            {count === null ? "—" : <AnimatedNumber value={count} />}
+            {loading ? <Skeleton className="h-5 w-8" /> : count === null ? "—" : <AnimatedNumber value={count} />}
           </span>
           <span className="mt-1 block truncate text-[12px] text-muted-foreground">
             {unknown ? `${many} · could not be checked` : count === 1 ? one : many}
@@ -129,8 +131,29 @@ function AttentionTile({ href, icon: Icon, count, one, many, tone, index }: {
   );
 }
 
-function ActivityFeed({ items }: { items: ActivityEvent[] }) {
+/** A headline metric whose figure is still loading: its label and icon are known, the figure is not. */
+function KpiPlaceholder({ label, icon }: { label: string; icon: ReactNode }) {
+  return (
+    <div className="flex min-w-0 flex-col rounded-[12px] border border-border bg-surface p-4 shadow-ui-sm">
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-[12.5px] font-medium text-muted-foreground">{label}</span>
+        <span className="grid size-7 place-items-center rounded-[8px] bg-primary-soft text-primary [&_svg]:size-3.5" aria-hidden="true">{icon}</span>
+      </div>
+      <Skeleton className="mt-3 h-7 w-28" />
+      <Skeleton className="mt-4 h-3.5 w-36" />
+    </div>
+  );
+}
+
+function ActivityFeed({ items, loading = false }: { items: ActivityEvent[]; loading?: boolean }) {
   const reduce = useReducedMotion();
+  if (loading) {
+    return (
+      <div aria-busy="true" aria-label="Loading recent activity" className="space-y-3 px-2 py-1">
+        {Array.from({ length: 4 }, (_, i) => <Skeleton key={i} className="h-7 w-full" />)}
+      </div>
+    );
+  }
   if (items.length === 0) {
     return <EmptyState icon={<Clock />} title="No recent activity" description="New bookings, payments and signups will appear here." />;
   }
@@ -162,30 +185,11 @@ function ActivityFeed({ items }: { items: ActivityEvent[] }) {
   );
 }
 
-function DashboardSkeleton() {
-  return (
-    <div aria-busy="true" aria-label="Loading dashboard">
-      <Skeleton className="mb-2 h-4 w-40" />
-      <Skeleton className="mb-7 h-8 w-72" />
-      <div className="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-5">
-        {Array.from({ length: 5 }, (_, i) => <Skeleton key={i} className="h-[70px] rounded-[12px]" />)}
-      </div>
-      <div className="mb-6 grid grid-cols-2 gap-3 xl:grid-cols-4">
-        {Array.from({ length: 4 }, (_, i) => <Skeleton key={i} className="h-[150px] rounded-[12px]" />)}
-      </div>
-      <div className="mb-6 grid gap-3 lg:grid-cols-3">
-        <Skeleton className="h-[300px] rounded-[12px] lg:col-span-2" />
-        <Skeleton className="h-[300px] rounded-[12px]" />
-      </div>
-      <Skeleton className="h-[280px] rounded-[12px]" />
-    </div>
-  );
-}
-
 export function DashboardPage() {
   const {
     adminProfile, dashboardStats, recentActivity, disputes, users, usersLoading, ensureUsers, revenueSeries, bookingsSeries,
-    loading, analyticsUnavailable, analyticsInBrowser, retryLoad, lastUpdated, queueCounts,
+    analyticsUnavailable, analyticsInBrowser, analyticsLoading, disputesLoading, verificationsLoading, activityLoading,
+    countsLoading, retryLoad, lastUpdated, queueCounts,
   } = useApp();
   // The new-signups tile counts the Users list, which loads behind the console. Read it here if it is more than 5 minutes old.
   useEffect(() => {
@@ -214,10 +218,8 @@ export function DashboardPage() {
     />
   );
 
-  if (loading) return <DashboardSkeleton />;
-
-  // Analytics down (or not loaded): keep the console useful with what we have.
-  if (analyticsUnavailable || !dashboardStats) {
+  // Analytics down (not merely loading): keep the console useful with what we have. While they load, the page shows placeholders.
+  if (!analyticsLoading && (analyticsUnavailable || !dashboardStats)) {
     return (
       <div>
         {header}
@@ -241,7 +243,7 @@ export function DashboardPage() {
             description="Latest marketplace and administrative events."
             action={<Button asChild variant="outline" size="sm"><Link href={pageToPath("activity-log")}>View activity</Link></Button>}
           >
-            <ActivityFeed items={recentActivity.slice(0, 7)} />
+            <ActivityFeed items={recentActivity.slice(0, 7)} loading={activityLoading} />
           </Panel>
         )}
       </div>
@@ -252,22 +254,26 @@ export function DashboardPage() {
   // older month. Count it only if it really is this month.
   const currentMonthLabel = now.toLocaleDateString("en-US", { month: "short" });
   const lastPoint = bookingsSeries[bookingsSeries.length - 1];
+  // While the analytics load, their figures are placeholders, whatever the last load left behind.
+  const stats = analyticsLoading ? null : dashboardStats;
   const bookingsThisMonth = lastPoint && lastPoint.month === currentMonthLabel ? lastPoint.value : 0;
-  const activeProviderShare = dashboardStats.totalUsers > 0
-    ? Math.round((dashboardStats.activeProviders / dashboardStats.totalUsers) * 1000) / 10
+  const activeProviderShare = stats && stats.totalUsers > 0
+    ? Math.round((stats.activeProviders / stats.totalUsers) * 1000) / 10
     : 0;
-  const disputeRate = dashboardStats.totalBookings > 0 ? (disputes.length / dashboardStats.totalBookings) * 100 : 0;
+  const disputeRate = stats && stats.totalBookings > 0 ? (disputes.length / stats.totalBookings) * 100 : 0;
   const escrowHeld = extras?.escrowHeld ?? null;
   const dash = (v: number | null | undefined, fmt: (n: number) => string = String) => (v === null || v === undefined ? "—" : fmt(v));
 
-  const queues: { key: string; page: Page; icon: typeof ShieldCheck; count: number | null; one: string; many: string; tone: "danger" | "warn" | "info" | "accent" }[] = [
-    { key: "disputes", page: "disputes", icon: AlertTriangle, count: openDisputes, one: "open dispute", many: "open disputes", tone: "danger" },
+  // Each queue is read from one part of the console, so it shows a placeholder until that part answers.
+  const attentionLoading = disputesLoading || verificationsLoading || countsLoading;
+  const queues: { key: string; page: Page; icon: typeof ShieldCheck; count: number | null; loading: boolean; one: string; many: string; tone: "danger" | "warn" | "info" | "accent" }[] = [
+    { key: "disputes", page: "disputes", icon: AlertTriangle, count: openDisputes, loading: disputesLoading, one: "open dispute", many: "open disputes", tone: "danger" },
     // Same per-queue counts the bell and sidebar use. The summary's totals can be
     // a stand-in 0 when a request failed, so they are not read here.
-    { key: "withdrawals", page: "withdrawals", icon: WalletCards, count: queueCounts.withdrawals, one: "payout request", many: "payout requests", tone: "warn" },
-    { key: "verifications", page: "verifications", icon: ShieldCheck, count: queueCounts.verifications, one: "provider to verify", many: "providers to verify", tone: "warn" },
-    { key: "skills", page: "skill-requests", icon: Wrench, count: queueCounts["skill-requests"], one: "service request", many: "service requests", tone: "info" },
-    { key: "escrow", page: "transactions", icon: CreditCard, count: extras?.escrowCount ?? null, one: "escrow hold", many: "escrow holds", tone: "accent" },
+    { key: "withdrawals", page: "withdrawals", icon: WalletCards, count: queueCounts.withdrawals, loading: countsLoading, one: "payout request", many: "payout requests", tone: "warn" },
+    { key: "verifications", page: "verifications", icon: ShieldCheck, count: queueCounts.verifications, loading: verificationsLoading, one: "provider to verify", many: "providers to verify", tone: "warn" },
+    { key: "skills", page: "skill-requests", icon: Wrench, count: queueCounts["skill-requests"], loading: countsLoading, one: "service request", many: "service requests", tone: "info" },
+    { key: "escrow", page: "transactions", icon: CreditCard, count: extras?.escrowCount ?? null, loading: false, one: "escrow hold", many: "escrow holds", tone: "accent" },
   ];
   const openQueues = queues.filter((q) => q.count !== null && q.count > 0).length;
   const unknownQueues = queues.some((q) => q.count === null);
@@ -282,46 +288,55 @@ export function DashboardPage() {
         <div className="mb-2.5 flex items-baseline justify-between gap-3">
           <h2 id="attention-title" className="text-[14px] font-semibold tracking-tight">Needs your attention</h2>
           <span className="text-[12px] text-muted-foreground">
-            {unknownQueues ? "Some queue counts are unavailable." : openQueues === 0 ? "All clear: nothing is waiting for review." : `${openQueues} ${openQueues === 1 ? "queue has" : "queues have"} work waiting`}
+            {attentionLoading ? "Checking queues…" : unknownQueues ? "Some queue counts are unavailable." : openQueues === 0 ? "All clear: nothing is waiting for review." : `${openQueues} ${openQueues === 1 ? "queue has" : "queues have"} work waiting`}
           </span>
         </div>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
           {queues.map((q, i) => (
-            <AttentionTile key={q.key} href={pageToPath(q.page)} icon={q.icon} count={q.count} one={q.one} many={q.many} tone={q.tone} index={i} />
+            <AttentionTile key={q.key} href={pageToPath(q.page)} icon={q.icon} count={q.count} loading={q.loading} one={q.one} many={q.many} tone={q.tone} index={i} />
           ))}
         </div>
       </section>
 
       {/* Headline metrics */}
-      <section aria-label="Key metrics" className="mb-7 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <KpiCard
-          label="Total users"
-          icon={<Users />}
-          value={dashboardStats.totalUsers}
-          footer={<span className="text-[12px] text-muted-foreground">{usersLoading && users.length === 0 ? "Counting new signups…" : newUsersThisMonth > 0 ? <><span className="font-semibold text-ok">+{newUsersThisMonth}</span> joined this month</> : "No new signups this month"}</span>}
-        />
-        <KpiCard
-          label="Registered providers"
-          icon={<ShieldCheck />}
-          value={dashboardStats.activeProviders}
-          footer={<span className="text-[12px] text-muted-foreground"><span className="font-semibold text-foreground tabular">{activeProviderShare}%</span> of registered users</span>}
-        />
-        <KpiCard
-          label="Bookings this month"
-          icon={<CalendarDays />}
-          value={bookingsThisMonth}
-          trend={bookingsSeries.map((p) => p.value)}
-          footer={<Delta value={monthOverMonth(bookingsSeries)} />}
-        />
-        <KpiCard
-          label="Provider payouts"
-          icon={<CreditCard />}
-          value={dashboardStats.monthlyRevenue}
-          format={formatCurrency}
-          trend={revenueSeries.map((p) => p.value)}
-          footer={<Delta value={monthOverMonth(revenueSeries)} />}
-        />
-      </section>
+      {stats ? (
+        <section aria-label="Key metrics" className="mb-7 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <KpiCard
+            label="Total users"
+            icon={<Users />}
+            value={stats.totalUsers}
+            footer={<span className="text-[12px] text-muted-foreground">{usersLoading && users.length === 0 ? "Counting new signups…" : newUsersThisMonth > 0 ? <><span className="font-semibold text-ok">+{newUsersThisMonth}</span> joined this month</> : "No new signups this month"}</span>}
+          />
+          <KpiCard
+            label="Registered providers"
+            icon={<ShieldCheck />}
+            value={stats.activeProviders}
+            footer={<span className="text-[12px] text-muted-foreground"><span className="font-semibold text-foreground tabular">{activeProviderShare}%</span> of registered users</span>}
+          />
+          <KpiCard
+            label="Bookings this month"
+            icon={<CalendarDays />}
+            value={bookingsThisMonth}
+            trend={bookingsSeries.map((p) => p.value)}
+            footer={<Delta value={monthOverMonth(bookingsSeries)} />}
+          />
+          <KpiCard
+            label="Provider payouts"
+            icon={<CreditCard />}
+            value={stats.monthlyRevenue}
+            format={formatCurrency}
+            trend={revenueSeries.map((p) => p.value)}
+            footer={<Delta value={monthOverMonth(revenueSeries)} />}
+          />
+        </section>
+      ) : (
+        <section aria-busy="true" aria-label="Loading key metrics" className="mb-7 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <KpiPlaceholder label="Total users" icon={<Users />} />
+          <KpiPlaceholder label="Registered providers" icon={<ShieldCheck />} />
+          <KpiPlaceholder label="Bookings this month" icon={<CalendarDays />} />
+          <KpiPlaceholder label="Provider payouts" icon={<CreditCard />} />
+        </section>
+      )}
 
       {/* What's happening now, beside the money in motion. Deeper analysis
           (categories, top providers, ratings, completion) lives on Reports. */}
@@ -333,7 +348,7 @@ export function DashboardPage() {
           action={<Button asChild variant="outline" size="sm"><Link href={pageToPath("activity-log")}>View all</Link></Button>}
         >
           {/* A preview, not the full log — the Activity page is the complete history. */}
-          <ActivityFeed items={recentActivity.slice(0, 7)} />
+          <ActivityFeed items={recentActivity.slice(0, 7)} loading={activityLoading} />
         </Panel>
 
         <Panel title="Marketplace pulse" description="Money held and jobs in motion">
@@ -348,12 +363,12 @@ export function DashboardPage() {
               {
                 label: "Commission this month",
                 icon: Percent,
-                value: formatCurrency(dashboardStats.monthlyCommission),
-                hint: `${formatCurrency(dashboardStats.totalCommission)} all time`,
+                value: stats ? formatCurrency(stats.monthlyCommission) : "…",
+                hint: stats ? `${formatCurrency(stats.totalCommission)} all time` : undefined,
               },
               { label: "Open jobs", icon: CalendarDays, value: extras ? dash(extras.openJobs) : "…" },
               { label: "Jobs matching", icon: Users, value: extras ? dash(extras.matchingJobs) : "…" },
-              { label: "Dispute rate", icon: AlertTriangle, value: `${disputeRate.toFixed(1)}%` },
+              { label: "Dispute rate", icon: AlertTriangle, value: stats && !disputesLoading ? `${disputeRate.toFixed(1)}%` : "…" },
             ].map(({ label, icon: Icon, value, hint }) => (
               <div key={label} className="flex items-center gap-3 py-2.5 first:pt-0 last:pb-0">
                 <Icon className="size-3.5 shrink-0 text-subtle" aria-hidden="true" />
@@ -379,7 +394,9 @@ export function DashboardPage() {
           </Button>
         }
       >
-        {revenueSeries.length > 0 ? (
+        {analyticsLoading ? (
+          <Skeleton className="w-full" style={{ height: 220 }} />
+        ) : revenueSeries.length > 0 ? (
           <TrendChart data={revenueSeries} format={formatCurrency} yFormat={formatCurrencyCompact} height={220} />
         ) : (
           <EmptyState icon={<CreditCard />} title="No payouts yet" description="Completed, paid jobs will build this chart." />

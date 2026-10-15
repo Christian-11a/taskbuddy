@@ -74,7 +74,7 @@ const VERIFICATION_TONE: Record<string, "ok" | "warn" | "danger" | "neutral"> = 
 };
 
 export function UsersPage() {
-  const { users, setUserStatus, bulkSetUserStatus, sendPasswordReset, refreshUsers, ensureUsers, usersLoading, loading, settings } = useApp();
+  const { users, setUserStatus, bulkSetUserStatus, sendPasswordReset, refreshUsers, ensureUsers, usersLoading, settings } = useApp();
   const { showToast } = useToast();
   // The list is read once the console is up, then re-read here only when it is more than 5 minutes old.
   useEffect(() => {
@@ -620,7 +620,7 @@ export function UsersPage() {
               {/* Three distinct states — saying "No users yet" while the initial
                   load is still in flight (up to a 60s Render cold start) would
                   be a confident lie. */}
-              {loading || usersLoading ? "Loading users…" : users.length === 0 ? "No users yet." : "No users match this search or filter."}
+              {usersLoading ? "Loading users…" : users.length === 0 ? "No users yet." : "No users match this search or filter."}
             </TableEmpty>
           }
         />
