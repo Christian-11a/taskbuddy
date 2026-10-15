@@ -324,6 +324,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const usersFetching = useRef(false);
   /** When the Users list last loaded (epoch ms); null until it has. */
   const usersLoadedAt = useRef<number | null>(null);
+  /** Counts each time the Users list takes fresh rows (a read or a write). A full load compares it to skip a second read. */
+  const usersRevision = useRef(0);
   const [lastUpdated, setLastUpdated] = useState<number | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [refreshFailed, setRefreshFailed] = useState(false);
@@ -333,6 +335,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
     usersSeq.current += 1;
     usersFetching.current = false;
     setUsersLoading(false);
+  }, []);
+
+  const markUsersFresh = useCallback(() => {
+    usersLoadedAt.current = Date.now();
+    usersRevision.current += 1;
   }, []);
 
   /**
@@ -355,7 +362,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       ]);
       if (seq !== usersSeq.current) return;
       setDomainUsers((prev) => [...rows, ...(deletedRows ?? prev.filter((user) => user.status === "DELETED"))]);
-      usersLoadedAt.current = Date.now();
+      markUsersFresh();
     } catch (err) {
       if (seq !== usersSeq.current) return;
       if (err instanceof services.ApiError && (err.status === 401 || err.status === 403)) {
@@ -378,13 +385,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
         setUsersLoading(false);
       }
     }
-  }, []);
+  }, [markUsersFresh]);
 
   /** Replaces the active and suspended rows after a write, keeping the deleted accounts already loaded. */
   const applyUserRows = useCallback((rows: AdminUser[]) => {
     setDomainUsers((prev) => [...rows, ...prev.filter((user) => user.status === "DELETED")]);
-    usersLoadedAt.current = Date.now();
-  }, []);
+    markUsersFresh();
+  }, [markUsersFresh]);
 
   const loadConsoleData = useCallback(async (silent: boolean) => {
     if (silent && fullLoadInFlight.current) return;
@@ -392,11 +399,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const seq = ++loadSeq.current;
     const stale = () => seq !== loadSeq.current;
     const maintenanceWritesAtStart = maintenanceWrites.current;
+    const usersRevisionAtStart = usersRevision.current;
     if (silent) {
       setRefreshing(true);
     } else {
-      // A full load supersedes any Users read still running. The one it starts once the console is on screen replaces it.
-      dropInFlightUsers();
+      // A Users read still running is kept, not dropped: a write or a teardown has already dropped any read it
+      // overtook, so what is left is current. The full load then shares it instead of making a second copy.
       setLoading(true);
       setLoadError(null);
       setAnalyticsUnavailable(false);
@@ -492,8 +500,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setRefreshFailed(silent && analyticsResult.status === "rejected");
       if (!silent) {
         setLoading(false);
-        // The console is on screen. Read the Users list behind it.
-        void fetchUsers();
+        // The console is on screen. Read the Users list behind it, unless this load already has one:
+        // a read still running, or one that a page asked for during this load and that has finished.
+        if (!usersFetching.current && usersRevision.current === usersRevisionAtStart) void fetchUsers();
       } else if (usersLoadedAt.current === null && !usersFetching.current) {
         // The list never loaded (its first read failed). The live tick retries it, since it clears the banner below.
         void fetchUsers();
@@ -525,7 +534,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       if (silent) setRefreshing(false);
       else if (!stale()) fullLoadInFlight.current = false;
     }
-  }, [fetchUsers, dropInFlightUsers]);
+  }, [fetchUsers]);
 
   /* eslint-disable react-hooks/set-state-in-effect --
      Fetching on mount is the other documented exception: the backend is an
@@ -719,8 +728,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       services.getUsers("deleted"),
     ]);
     setDomainUsers([...rows, ...deletedRows]);
-    usersLoadedAt.current = Date.now();
-  }, [dropInFlightRefresh, dropInFlightUsers]);
+    markUsersFresh();
+  }, [dropInFlightRefresh, dropInFlightUsers, markUsersFresh]);
 
   const sendPasswordReset = useCallback((id: string) => services.sendPasswordReset(id), []);
 

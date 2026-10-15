@@ -398,6 +398,31 @@ describe("AppContext — moderation refresh results", () => {
       expect(context.usersLoading).toBe(false);
     });
 
+    it("reads the users list once on a cold start, when a page asks for it as the console loads", async () => {
+      // Like the Dashboard: a page that asks for the list on mount. It mounts inside the signed-in layout,
+      // so it runs in the same commit that starts the console load.
+      function AsksForUsers() {
+        const { ensureUsers } = useApp();
+        useEffect(() => { ensureUsers({ maxAgeMs: FIVE_MINUTES }); }, [ensureUsers]);
+        return null;
+      }
+      function WhenSignedIn() {
+        const { isLoggedIn } = useApp();
+        return isLoggedIn ? <AsksForUsers /> : null;
+      }
+      render(<AppProvider><Probe /><WhenSignedIn /></AppProvider>);
+
+      await waitFor(() => expect(context.lastUpdated).not.toBeNull());
+      await waitFor(() => expect(context.usersLoading).toBe(false));
+      const deletedReads = vi.mocked(services.getUsers).mock.calls.filter(([status]) => status === "deleted").length;
+      expect(userReads()).toBe(1);
+      expect(deletedReads).toBe(1);
+      // The console load itself is not repeated either.
+      expect(services.getVerifications).toHaveBeenCalledTimes(1);
+      expect(services.getDisputes).toHaveBeenCalledTimes(1);
+      expect(services.getMaintenanceStatus).toHaveBeenCalledTimes(1);
+    });
+
     it("leaves a users list younger than the max age alone", async () => {
       await mountLoaded();
       const before = userReads();
