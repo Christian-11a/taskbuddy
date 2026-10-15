@@ -1157,6 +1157,120 @@ describe("list paging", () => {
   });
 });
 
+describe("fetchAllRows paging", () => {
+  interface ListServer {
+    /** Milliseconds a reply waits, per offset, so later pages can answer first. */
+    delayMs?: (offset: number) => number;
+    /** Offsets that answer 500 with a message. */
+    failAt?: (offset: number) => boolean;
+  }
+
+  /** A fake list endpoint: `total` rows under `key`, paged by limit/offset. */
+  function serveList(key: string, total: number, row: (i: number) => Record<string, unknown>, server: ListServer = {}) {
+    return vi.fn(async (url: string) => {
+      const params = new URL(url).searchParams;
+      const offset = Number(params.get("offset"));
+      const limit = Number(params.get("limit"));
+      const wait = server.delayMs?.(offset) ?? 0;
+      if (wait > 0) await new Promise((resolve) => setTimeout(resolve, wait));
+      if (server.failAt?.(offset)) return jsonResponse({ message: "database unavailable" }, 500);
+      const count = Math.max(0, Math.min(limit, total - offset));
+      const rows = Array.from({ length: count }, (_, i) => row(offset + i));
+      return jsonResponse({ [key]: rows, total });
+    });
+  }
+
+  const userRow = (i: number) => ({
+    id: `u${i}`, email: `u${i}@x.test`, full_name: `U${i}`, role: "client", deactivated_at: null, created_at: "2026-01-01",
+    cached_avg_rating: null, cached_completed_jobs: null, phone: null, city: null, category_name: null,
+    suspended_until: null, suspension_reason: null,
+  });
+
+  it("returns rows in offset order even when later pages answer first", async () => {
+    global.fetch = serveList("users", 1000, userRow, {
+      delayMs: (offset) => Math.max(0, 40 - offset / 25),
+    }) as unknown as typeof fetch;
+
+    const users = await services.getUsers();
+
+    expect(users.map((u) => u.id)).toEqual(Array.from({ length: 1000 }, (_, i) => `u${i}`));
+  });
+
+  it("keeps at most six page requests in flight at once", async () => {
+    let inFlight = 0;
+    let maxInFlight = 0;
+    const serve = serveList("users", 3000, userRow, { delayMs: () => 5 });
+    global.fetch = vi.fn(async (url: string) => {
+      inFlight += 1;
+      maxInFlight = Math.max(maxInFlight, inFlight);
+      try {
+        return await serve(url);
+      } finally {
+        inFlight -= 1;
+      }
+    }) as unknown as typeof fetch;
+
+    const users = await services.getUsers();
+
+    expect(users).toHaveLength(3000);
+    expect(global.fetch).toHaveBeenCalledTimes(15);
+    expect(maxInFlight).toBe(6);
+  });
+
+  it("reads a list shorter than one page with a single request", async () => {
+    global.fetch = serveList("users", 3, userRow) as unknown as typeof fetch;
+
+    await expect(services.getUsers()).resolves.toHaveLength(3);
+    expect(global.fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("returns an empty list from a single request when the table is empty", async () => {
+    global.fetch = serveList("users", 0, userRow) as unknown as typeof fetch;
+
+    await expect(services.getUsers()).resolves.toEqual([]);
+    expect(global.fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("rejects the whole list when one page fails, rather than returning a partial list", async () => {
+    global.fetch = serveList("users", 1000, userRow, { failAt: (offset) => offset === 400 }) as unknown as typeof fetch;
+
+    await expect(services.getUsers()).rejects.toThrow("database unavailable");
+  });
+
+  it("reports a short page in the middle of the walk as an incomplete list", async () => {
+    global.fetch = vi.fn(async (url: string) => {
+      const offset = Number(new URL(url).searchParams.get("offset"));
+      // The page at offset 200 comes back with 150 of its 200 rows.
+      const count = offset === 200 ? 150 : Math.min(200, 1000 - offset);
+      return jsonResponse({ users: Array.from({ length: count }, (_, i) => userRow(offset + i)), total: 1000 });
+    }) as unknown as typeof fetch;
+
+    await expect(services.getUsers()).rejects.toThrow("Incomplete list response");
+  });
+
+  it("warns and returns the first 5,000 rows when a list is larger than the page cap", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    global.fetch = serveList("users", 6000, userRow) as unknown as typeof fetch;
+
+    const users = await services.getUsers();
+
+    expect(users).toHaveLength(5000);
+    expect(users[4999].id).toBe("u4999");
+    expect(global.fetch).toHaveBeenCalledTimes(25);
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining("6000 rows"));
+    warn.mockRestore();
+  });
+
+  it("refuses to total a list that is larger than the page cap, so a sum is never partial", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    global.fetch = serveList("transactions", 6000, (i) => ({ id: `t${i}`, amount: "10" })) as unknown as typeof fetch;
+
+    await expect(services.getEscrowHeld()).rejects.toThrow("exceeds 5000 rows");
+    expect(warn).not.toHaveBeenCalled();
+    warn.mockRestore();
+  });
+});
+
 describe("queue counts", () => {
   it("counts pending withdrawals with a one-row request", async () => {
     const fetchMock = vi.fn(() => Promise.resolve(jsonResponse({ withdrawals: [], total: 7 })));

@@ -90,31 +90,102 @@ export type { AdminProfile };
 const LIST_PAGE_SIZE = 200;
 /** Safety stop: 25 × 200 = 5,000 rows per list. */
 const MAX_LIST_PAGES = 25;
+/**
+ * Pages requested at once after the first one (the first reports `total`, which
+ * sizes the rest). Six keeps a full 5,000-row list to about five round trips
+ * instead of 25, and stays well inside the API's per-IP limit (BULK_CONCURRENCY).
+ */
+const LIST_CONCURRENCY = 6;
 
 /**
- * Loads every row of a list endpoint by walking `limit`/`offset` until
- * `total` is reached (or a short page comes back). Every admin list endpoint
- * accepts both and reports `total`; asking for one big page used to stop
- * silently at 100–200 rows.
+ * What fetchAllRows does with a list longer than MAX_LIST_PAGES covers:
+ * - "warn": return the rows that fit and log a warning. The console keeps
+ *   working, but any count or total computed from the list is then partial.
+ * - "throw": reject. Used where a partial list would print a wrong total or
+ *   sum (money, row counts), so the caller shows "unknown" instead.
  */
-async function fetchAllRows<T>(path: string, key: string, pageSize = LIST_PAGE_SIZE): Promise<T[]> {
+type OverCapPolicy = "warn" | "throw";
+
+interface ListPage<T> {
+  rows: T[];
+  total: number;
+}
+
+async function fetchListPage<T>(path: string, key: string, pageSize: number, offset: number): Promise<ListPage<T>> {
   const sep = path.includes("?") ? "&" : "?";
-  const rows: T[] = [];
-  for (let page = 0; page < MAX_LIST_PAGES; page++) {
-    const res = await client.get<Record<string, unknown>>(`${path}${sep}limit=${pageSize}&offset=${page * pageSize}`);
-    const batch = res[key];
-    if (!Array.isArray(batch) || !Number.isSafeInteger(res.total) || (res.total as number) < 0) {
-      throw new Error(`Invalid list response from ${path}`);
-    }
-    rows.push(...batch);
-    const total = res.total as number;
-    if (rows.length > total || batch.length > pageSize) {
-      throw new Error(`Invalid list response from ${path}`);
-    }
-    if (rows.length >= total) return rows;
-    if (batch.length < pageSize) throw new Error(`Incomplete list response from ${path}`);
+  const res = await client.get<Record<string, unknown>>(`${path}${sep}limit=${pageSize}&offset=${offset}`);
+  const batch = res[key];
+  if (!Array.isArray(batch) || !Number.isSafeInteger(res.total) || (res.total as number) < 0) {
+    throw new Error(`Invalid list response from ${path}`);
   }
-  throw new Error(`List from ${path} exceeds ${MAX_LIST_PAGES * pageSize} rows`);
+  return { rows: batch as T[], total: res.total as number };
+}
+
+/** Checks one page against the total it reports, at the offset it was asked for. */
+function checkListPage<T>(path: string, page: ListPage<T>, pageSize: number, offset: number): void {
+  if (page.rows.length > pageSize || offset + page.rows.length > page.total) {
+    throw new Error(`Invalid list response from ${path}`);
+  }
+  // A short page is only the end of the list when it reaches the total.
+  if (page.rows.length < pageSize && offset + page.rows.length < page.total) {
+    throw new Error(`Incomplete list response from ${path}`);
+  }
+}
+
+/** Runs `task` over `items` with at most `limit` in flight. Results keep the order of `items`. */
+async function mapInOrder<I, O>(items: readonly I[], limit: number, task: (item: I) => Promise<O>): Promise<O[]> {
+  const results: O[] = new Array(items.length);
+  let next = 0;
+  let failed = false;
+  const worker = async () => {
+    while (!failed && next < items.length) {
+      const index = next++;
+      try {
+        results[index] = await task(items[index]);
+      } catch (err) {
+        failed = true; // stop the other workers from starting more pages
+        throw err;
+      }
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
+  return results;
+}
+
+/**
+ * Loads every row of a list endpoint by walking `limit`/`offset` up to the
+ * reported `total`. The first page says how many more there are; the rest are
+ * requested LIST_CONCURRENCY at a time and reassembled in offset order. Every
+ * admin list endpoint accepts both and reports `total`; asking for one big page
+ * used to stop silently at 100–200 rows.
+ */
+async function fetchAllRows<T>(
+  path: string,
+  key: string,
+  pageSize = LIST_PAGE_SIZE,
+  overCap: OverCapPolicy = "warn",
+): Promise<T[]> {
+  const first = await fetchListPage<T>(path, key, pageSize, 0);
+  checkListPage(path, first, pageSize, 0);
+  const total = first.total;
+  if (first.rows.length >= total) return first.rows;
+
+  const pageCount = Math.min(Math.ceil(total / pageSize), MAX_LIST_PAGES);
+  const offsets = Array.from({ length: pageCount - 1 }, (_, i) => (i + 1) * pageSize);
+  const pages = await mapInOrder(offsets, LIST_CONCURRENCY, (offset) =>
+    fetchListPage<T>(path, key, pageSize, offset),
+  );
+  const rows = [...first.rows];
+  pages.forEach((page, i) => {
+    checkListPage(path, page, pageSize, offsets[i]);
+    rows.push(...page.rows);
+  });
+
+  if (rows.length < total) {
+    if (overCap === "throw") throw new Error(`List from ${path} exceeds ${MAX_LIST_PAGES * pageSize} rows`);
+    console.warn(`List from ${path} has ${total} rows; the console loaded the first ${rows.length}.`);
+  }
+  return rows;
 }
 
 /** A list's `total` for one filter, without its rows (`limit=1`). */
@@ -638,7 +709,8 @@ export async function issueRecoveryCredit(input: {
 }
 
 export async function getWithdrawals(status: "pending" | "completed" | "failed" = "pending"): Promise<{ items: AdminWithdrawal[]; total: number }> {
-  const rows = await fetchAllRows<AdminWithdrawalApiRow>(`/admin/withdrawals?status=${status}`, "withdrawals", 100);
+  // The count below is rows.length, so a capped list would print a wrong total.
+  const rows = await fetchAllRows<AdminWithdrawalApiRow>(`/admin/withdrawals?status=${status}`, "withdrawals", 100, "throw");
   return { items: rows.map(mapWithdrawalRow), total: rows.length };
 }
 
@@ -814,7 +886,8 @@ export async function getPendingServiceRequestCount(): Promise<number> {
 
 /** Money currently held in escrow, across every held row (not just a first page). */
 export async function getEscrowHeld(): Promise<{ count: number; total: number }> {
-  const rows = await fetchAllRows<AdminTransactionApiRow>("/admin/transactions?status=held", "transactions");
+  // Money: a capped list would under-state the total, so over the cap this throws instead.
+  const rows = await fetchAllRows<AdminTransactionApiRow>("/admin/transactions?status=held", "transactions", LIST_PAGE_SIZE, "throw");
   return { count: rows.length, total: rows.reduce((sum, r) => sum + Number(r.amount), 0) };
 }
 
@@ -856,12 +929,13 @@ export function invalidateBrowserAnalytics(): void {
 
 /** GET /admin/analytics/summary rebuilt from list endpoints (see browserAnalytics.ts). */
 export async function computeAnalyticsSummaryInBrowser(): Promise<AnalyticsSummaryApiResponse> {
+  // Every list here feeds a total or a sum, so an over-cap list throws rather than under-counting.
   const [users, deletedUsers, jobs, payouts, releasedEscrow, pendingVerifications, pendingWithdrawals] = await Promise.all([
-    fetchAllRows<AdminUserApiRow>("/admin/users", "users"),
-    fetchAllRows<AdminUserApiRow>("/admin/users?status=deleted", "users").catch(() => []),
-    fetchAllRows<AdminBookingApiRow>("/admin/bookings", "bookings"),
-    fetchAllRows<AdminWalletTxnApiRow>("/admin/wallet-transactions?kind=payout&status=completed", "transactions"),
-    fetchAllRows<EscrowRowWithCommission>("/admin/transactions?status=released", "transactions"),
+    fetchAllRows<AdminUserApiRow>("/admin/users", "users", LIST_PAGE_SIZE, "throw"),
+    fetchAllRows<AdminUserApiRow>("/admin/users?status=deleted", "users", LIST_PAGE_SIZE, "throw").catch(() => []),
+    fetchAllRows<AdminBookingApiRow>("/admin/bookings", "bookings", LIST_PAGE_SIZE, "throw"),
+    fetchAllRows<AdminWalletTxnApiRow>("/admin/wallet-transactions?kind=payout&status=completed", "transactions", LIST_PAGE_SIZE, "throw"),
+    fetchAllRows<EscrowRowWithCommission>("/admin/transactions?status=released", "transactions", LIST_PAGE_SIZE, "throw"),
     countRows("/admin/verifications?status=pending"),
     // A failed count reads as 0 here only for the summary totals; the Dashboard's
     // queue tiles use the separate queueCounts (null when unknown), not this value.
