@@ -1,10 +1,11 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { BookingsPage } from "./BookingsPage";
 import { ToastProvider } from "@/components/ui/Toast";
 import { useApp } from "@/context/AppContext";
 import * as services from "@/lib/services";
+import type { AdminBookingDetail } from "@/lib/domain";
 
 vi.mock("@/context/AppContext", () => ({
   useApp: vi.fn(),
@@ -17,6 +18,7 @@ vi.mock("@/lib/services", () => ({
 
 const mockedUseApp = vi.mocked(useApp);
 const mockedSearchBookings = vi.mocked(services.searchBookings);
+const mockedGetBookingDetail = vi.mocked(services.getBookingDetail);
 
 function renderBookings() {
   return render(
@@ -53,6 +55,7 @@ describe("BookingsPage status counts", () => {
     vi.clearAllMocks();
     mockedUseApp.mockReturnValue({
       cancelBooking: vi.fn(),
+      refreshCounts: vi.fn().mockResolvedValue(undefined),
       lastUpdated: null,
     } as unknown as ReturnType<typeof useApp>);
   });
@@ -107,5 +110,146 @@ describe("BookingsPage status counts", () => {
     });
     expect(screen.getByRole("option", { name: "All statuses (1)" })).toBeInTheDocument();
     expect(screen.queryByRole("option", { name: "All statuses (90)" })).not.toBeInTheDocument();
+  });
+});
+
+describe("BookingsPage warranty line", () => {
+  const booking = {
+    id: "b-1234567890",
+    customerName: "Ava Cruz",
+    providerName: "Rico Lim",
+    service: "Aircon cleaning",
+    status: "completed" as const,
+    scheduledDate: "2026-10-10T08:00:00Z",
+    amount: 1200,
+  };
+
+  function bookingDetail(overrides: Partial<AdminBookingDetail> = {}): AdminBookingDetail {
+    return {
+      description: "Clean two units",
+      address: "Quezon City",
+      scheduledAt: null,
+      photoUrls: [],
+      escrowStatus: "IN_ESCROW",
+      escrowAmount: 1200,
+      completedAt: "2026-10-15T02:00:00Z",
+      status: "completed",
+      ...overrides,
+    };
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-10-15T12:00:00Z"));
+    mockedUseApp.mockReturnValue({
+      cancelBooking: vi.fn(),
+      lastUpdated: null,
+    } as unknown as ReturnType<typeof useApp>);
+    mockedSearchBookings.mockResolvedValue({ items: [booking], total: 1, statusCounts: counts({ completed: 1 }) });
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("shows the warranty and held payment for a completed job", async () => {
+    mockedGetBookingDetail.mockResolvedValue(bookingDetail());
+    const user = userEvent.setup();
+    renderBookings();
+
+    await user.click(await screen.findByText("Ava Cruz"));
+
+    expect(await screen.findByText("Warranty open · 2 d 14 h left")).toBeInTheDocument();
+    expect(screen.getByText("Payment is held until the warranty ends")).toBeInTheDocument();
+    expect(mockedGetBookingDetail).toHaveBeenCalledWith("b-1234567890");
+  });
+
+  it("shows no warranty line for a booking that is not completed", async () => {
+    mockedSearchBookings.mockResolvedValue({
+      items: [{ ...booking, status: "in_progress" }],
+      total: 1,
+      statusCounts: counts({ in_progress: 1 }),
+    });
+    mockedGetBookingDetail.mockResolvedValue(bookingDetail({ status: "in_progress", completedAt: null }));
+    const user = userEvent.setup();
+    renderBookings();
+
+    await user.click(await screen.findByText("Ava Cruz"));
+
+    expect(await screen.findByText("Clean two units")).toBeInTheDocument();
+    expect(screen.queryByText(/Warranty/)).not.toBeInTheDocument();
+  });
+});
+
+describe("BookingsPage load failures", () => {
+  const booking = {
+    id: "b-1234567890",
+    customerName: "Ava Cruz",
+    providerName: "Rico Lim",
+    service: "Aircon cleaning",
+    status: "open" as const,
+    scheduledDate: "2026-10-10T08:00:00Z",
+    amount: 1200,
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockedSearchBookings.mockReset();
+    mockedUseApp.mockReturnValue({
+      cancelBooking: vi.fn(),
+      refreshCounts: vi.fn().mockResolvedValue(undefined),
+      lastUpdated: null,
+    } as unknown as ReturnType<typeof useApp>);
+  });
+
+  it("shows an error state, not 'No bookings yet.', when the first load fails", async () => {
+    mockedSearchBookings.mockRejectedValue(new Error("down"));
+    renderBookings();
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Could not load bookings.");
+    expect(screen.queryByText("No bookings yet.")).not.toBeInTheDocument();
+  });
+
+  it("keeps the last good rows and offers Retry when a refresh fails", async () => {
+    mockedSearchBookings.mockResolvedValueOnce({ items: [booking], total: 1, statusCounts: counts({ open: 1 }) });
+    const user = userEvent.setup();
+    renderBookings();
+    expect(await screen.findByText("Ava Cruz")).toBeInTheDocument();
+
+    mockedSearchBookings.mockRejectedValueOnce(new Error("down"));
+    await user.selectOptions(screen.getByRole("combobox", { name: "Filter bookings by status" }), "Open");
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Couldn't refresh bookings.");
+    expect(screen.getByText("Ava Cruz")).toBeInTheDocument();
+    expect(screen.queryByText("No bookings match this search or filter.")).not.toBeInTheDocument();
+
+    mockedSearchBookings.mockResolvedValueOnce({ items: [booking], total: 1, statusCounts: counts({ open: 1 }) });
+    await user.click(screen.getByRole("button", { name: "Retry" }));
+    await waitFor(() => expect(screen.queryByRole("alert")).not.toBeInTheDocument());
+    expect(mockedSearchBookings).toHaveBeenLastCalledWith({ search: "", status: "open", page: 1, pageSize: 12 });
+  });
+});
+
+describe("BookingsPage cancel confirmation", () => {
+  it("says what happens to held payment before a booking is cancelled", async () => {
+    mockedUseApp.mockReturnValue({
+      cancelBooking: vi.fn(),
+      refreshCounts: vi.fn().mockResolvedValue(undefined),
+      lastUpdated: null,
+    } as unknown as ReturnType<typeof useApp>);
+    mockedSearchBookings.mockResolvedValue({
+      items: [{ id: "b-1234567890", customerName: "Ava Cruz", providerName: "Rico Lim", service: "Aircon cleaning", status: "open", scheduledDate: "2026-10-10T08:00:00Z", amount: 1200 }],
+      total: 1,
+      statusCounts: counts({ open: 1 }),
+    });
+    const user = userEvent.setup();
+    renderBookings();
+
+    await user.click(await screen.findByRole("button", { name: "Cancel" }));
+
+    expect(await screen.findByText(/not refunded automatically/)).toBeInTheDocument();
+    expect(screen.getByText(/frozen in a cancellation review/)).toBeInTheDocument();
+    expect(screen.getByText(/A booking with no payment is simply closed/)).toBeInTheDocument();
   });
 });

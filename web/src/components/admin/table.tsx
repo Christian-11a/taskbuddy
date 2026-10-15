@@ -3,8 +3,9 @@
 import * as React from "react";
 import { useMemo, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
-import { ArrowDown, ArrowUp, ChevronsUpDown, X } from "lucide-react";
+import { ArrowDown, ArrowUp, ChevronsUpDown, ShieldAlert, X } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
 
 /* ─────────────────────────── sorting ─────────────────────────── */
 
@@ -299,6 +300,33 @@ export function TableCard({ toolbar, children, className }: { toolbar?: React.Re
 
 export function TableEmpty({ children }: { children: React.ReactNode }) {
   return <div className="px-6 py-14 text-center text-[13px] text-muted-foreground">{children}</div>;
+}
+
+/** A refresh failed, but the rows under it are the last good ones: say so, and offer a retry. */
+export function RefreshFailedBanner({ noun, onRetry }: { noun: string; onRetry: () => void }) {
+  return (
+    <div role="alert" className="flex flex-wrap items-center gap-3 border-b border-border bg-danger-soft px-5 py-2.5 text-[12.5px] text-danger">
+      <ShieldAlert className="size-4 shrink-0" aria-hidden />
+      <span className="min-w-0 flex-1">{`Couldn't refresh ${noun}. Showing the last loaded rows.`}</span>
+      <Button size="sm" variant="outline" onClick={onRetry}>
+        Retry
+      </Button>
+    </div>
+  );
+}
+
+/** The first load of a list failed. An explicit error, never the "no data yet" message. */
+export function LoadFailedState({ noun, onRetry }: { noun: string; onRetry: () => void }) {
+  return (
+    <div role="alert" className="flex flex-col items-center gap-3 px-6 py-14 text-center text-[13px] text-danger">
+      <span className="flex items-center gap-2">
+        <ShieldAlert className="size-4" aria-hidden /> {`Could not load ${noun}.`}
+      </span>
+      <Button size="sm" variant="outline" onClick={onRetry}>
+        Try again
+      </Button>
+    </div>
+  );
 }
 
 /** Floating bar that slides up while rows are selected. */

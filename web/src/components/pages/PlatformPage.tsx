@@ -16,14 +16,55 @@ import {
   revokeAdmin, updateCategory, updateCommission,
 } from "@/lib/services";
 import type { AdminAccount, CommissionSettings, ServiceCategory } from "@/lib/domain";
+import type { BroadcastApiResponse } from "@/lib/api/types";
 import { formatCurrency, formatDate } from "@/lib/adapters";
 import { cn } from "@/lib/utils";
+import { JobCapacityCard, PlatformIdentityCard } from "./PlatformSettingsCards";
 
-type Tab = "commission" | "categories" | "admins" | "broadcast";
+type Tab = "commission" | "identity" | "limits" | "categories" | "admins" | "broadcast";
 type Audience = "all" | "clients" | "providers";
 
 const AUDIENCE_LABEL: Record<Audience, string> = { all: "all users", clients: "clients", providers: "providers" };
 const labelClass = "mb-1.5 block text-[12px] font-medium text-foreground";
+/** Mirrors BroadcastNotificationDto (backend/src/admin/dto/admin.dto.ts): title at most 120, body at most 500 characters. */
+const BROADCAST_TITLE_MAX = 120;
+const BROADCAST_BODY_MAX = 500;
+/** Within this many characters of the limit the counter turns amber. */
+const COUNTER_WARN_WITHIN = 10;
+
+/** Live length against the limit. Turns amber close to the limit; the input itself stops at the limit. */
+function CharacterCount({ id, length, max }: { id: string; length: number; max: number }) {
+  return (
+    <span id={id} className={cn("mt-1 block text-right text-[11px] tabular", max - length <= COUNTER_WARN_WITHIN ? "text-warn" : "text-subtle")}>
+      {`${length}/${max}`}
+    </span>
+  );
+}
+
+/** What a finished send reports, as the admin sees it. */
+function BroadcastReceipt({ result }: { result: Pick<BroadcastApiResponse, "sent" | "failed"> }) {
+  const none = result.sent === 0;
+  const headline = none
+    ? "No active accounts are in that audience, so nothing was added."
+    : `Added to ${result.sent} ${result.sent === 1 ? "inbox" : "inboxes"}.${result.failed ? ` ${result.failed} could not be added.` : ""}`;
+  return (
+    <div
+      role="status"
+      className={cn(
+        "flex items-start gap-2.5 rounded-[10px] border px-3.5 py-3 text-[13px]",
+        none || result.failed ? "border-warn/30 bg-warn-soft text-warn" : "border-ok/25 bg-ok-soft text-ok",
+      )}
+    >
+      <CheckCircle2 className="mt-0.5 size-4 shrink-0" aria-hidden />
+      <div className="space-y-0.5">
+        <p className="font-medium">{headline}</p>
+        {!none && (
+          <p className="text-[12.5px] text-foreground">Push delivery is best-effort, and email is not sent.</p>
+        )}
+      </div>
+    </div>
+  );
+}
 
 export function PlatformPage() {
   const { showToast } = useToast();
@@ -46,6 +87,9 @@ export function PlatformPage() {
   const [busy, setBusy] = useState(false);
   const [revoking, setRevoking] = useState<AdminAccount | null>(null);
   const [confirmingBroadcast, setConfirmingBroadcast] = useState(false);
+  // The last send's outcome stays on screen until the next send, so a count is not lost to a toast timing out.
+  const [broadcastResult, setBroadcastResult] = useState<BroadcastApiResponse | null>(null);
+  const [broadcastError, setBroadcastError] = useState("");
 
   const load = useCallback(async (quiet = false) => {
     if (!quiet) setLoading(true);
@@ -172,17 +216,20 @@ export function PlatformPage() {
 
   async function sendBroadcast() {
     setBusy(true);
+    setBroadcastError("");
+    setBroadcastResult(null);
     try {
       const result = await broadcastNotification(title, body, audience);
-      showToast(
-        `Announcement sent to ${result.sent} user${result.sent === 1 ? "" : "s"}${result.failed ? `; ${result.failed} failed` : ""}.`,
-        result.failed ? "error" : "success",
-      );
+      setBroadcastResult(result);
       setTitle("");
       setBody("");
       setConfirmingBroadcast(false);
-    } catch {
-      showToast("Could not send announcement.", "error");
+      showToast(result.sent > 0 ? "Announcement sent." : "Nothing was sent.", result.sent > 0 && result.failed === 0 ? "success" : "error");
+    } catch (error) {
+      // The API's own reason, not a generic line. The text stays in the form so it can be sent again.
+      setBroadcastError(error instanceof Error && error.message ? error.message : "Could not send announcement.");
+      setConfirmingBroadcast(false);
+      showToast("Announcement not sent.", "error");
     } finally {
       setBusy(false);
     }
@@ -222,6 +269,8 @@ export function PlatformPage() {
           onChange={setTab}
           options={[
             { value: "commission", label: "Commission" },
+            { value: "identity", label: "Identity" },
+            { value: "limits", label: "Job limits" },
             { value: "categories", label: "Categories", count: loading ? undefined : categories.length },
             { value: "admins", label: "Admin accounts", count: loading ? undefined : activeAdmins },
             { value: "broadcast", label: "Broadcast" },
@@ -289,6 +338,10 @@ export function PlatformPage() {
               </Panel>
             </div>
           )}
+
+          {tab === "identity" && <PlatformIdentityCard />}
+
+          {tab === "limits" && <JobCapacityCard />}
 
           {tab === "categories" && (
             <Panel
@@ -391,7 +444,7 @@ export function PlatformPage() {
             <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_360px]">
               <Panel
                 title={<span className="flex items-center gap-2"><BellRing className="size-4 text-primary" /> Broadcast announcement</span>}
-                description="Send an in-app notification to active users. Admins, suspended and deleted accounts are left out automatically."
+                description="Adds an in-app notification to each active user's inbox. Admins, suspended and deleted accounts are left out. Push delivery is best-effort, and no email is sent."
               >
                 <form onSubmit={requestBroadcast} className="space-y-4">
                   <label className="block">
@@ -402,19 +455,41 @@ export function PlatformPage() {
                       <option value="providers">Providers only</option>
                     </SelectFilter>
                   </label>
-                  <label className="block">
-                    <span className={labelClass}>Title</span>
-                    <Input value={title} onChange={(e) => setTitle(e.target.value)} maxLength={120} placeholder="Short announcement title" />
-                    <span className="mt-1 block text-right text-[11px] tabular text-subtle">{title.length}/120</span>
-                  </label>
-                  <label className="block">
-                    <span className={labelClass}>Message</span>
-                    <Textarea value={body} onChange={(e) => setBody(e.target.value)} maxLength={500} rows={6} placeholder="What should users know?" />
-                    <span className="mt-1 block text-right text-[11px] tabular text-subtle">{body.length}/500</span>
-                  </label>
+                  <div>
+                    <label htmlFor="broadcast-title" className={labelClass}>Title</label>
+                    <Input
+                      id="broadcast-title"
+                      value={title}
+                      onChange={(e) => setTitle(e.target.value)}
+                      maxLength={BROADCAST_TITLE_MAX}
+                      placeholder="Short announcement title"
+                      aria-describedby="broadcast-title-count"
+                    />
+                    <CharacterCount id="broadcast-title-count" length={title.length} max={BROADCAST_TITLE_MAX} />
+                  </div>
+                  <div>
+                    <label htmlFor="broadcast-message" className={labelClass}>Message</label>
+                    <Textarea
+                      id="broadcast-message"
+                      value={body}
+                      onChange={(e) => setBody(e.target.value)}
+                      maxLength={BROADCAST_BODY_MAX}
+                      rows={6}
+                      placeholder="What should users know?"
+                      aria-describedby="broadcast-message-count"
+                    />
+                    <CharacterCount id="broadcast-message-count" length={body.length} max={BROADCAST_BODY_MAX} />
+                  </div>
                   <Button type="submit" disabled={busy || !title.trim() || !body.trim()}>
                     <BellRing /> {busy ? "Sending…" : "Send announcement"}
                   </Button>
+                  {broadcastError && (
+                    <div role="alert" className="flex items-start gap-2 rounded-[10px] border border-danger/25 bg-danger-soft px-3.5 py-2.5 text-[12.5px] text-danger">
+                      <XCircle className="mt-0.5 size-4 shrink-0" aria-hidden />
+                      <span>{broadcastError}</span>
+                    </div>
+                  )}
+                  {broadcastResult && <BroadcastReceipt result={broadcastResult} />}
                 </form>
               </Panel>
               <Panel title="Preview" description="How it appears in the TaskBuddy app">
@@ -453,7 +528,7 @@ export function PlatformPage() {
         open={confirmingBroadcast}
         danger={false}
         title={`Send to ${AUDIENCE_LABEL[audience]}?`}
-        message="Everyone in this audience gets the notification right away. It can't be recalled once sent."
+        message="Everyone in this audience gets it in their in-app inbox right away, and it can't be recalled. Push delivery is best-effort, and no email is sent."
         confirmLabel="Send announcement"
         cancelLabel="Keep editing"
         onConfirm={() => void sendBroadcast()}

@@ -1,7 +1,7 @@
 "use client";
 
 import { useId, useState } from "react";
-import { AlertCircle, Bell, Check, Construction, Database, Globe, Moon, Palette, Save, Sun, UserRound } from "lucide-react";
+import { AlertCircle, Bell, BellRing, Check, Construction, Database, Globe, Moon, Palette, Save, Sun, UserRound } from "lucide-react";
 import { useApp, type ConsoleSettings } from "@/context/AppContext";
 import { validateName, validatePasswordChange } from "@/lib/validation";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
@@ -23,6 +23,7 @@ interface FieldErrors {
 const SECTIONS = [
   { id: "account", label: "Account", icon: UserRound },
   { id: "appearance", label: "Appearance", icon: Palette },
+  { id: "alerts", label: "Alerts", icon: BellRing },
   { id: "notifications", label: "Notifications", icon: Bell },
   { id: "platform", label: "Platform", icon: Globe },
   { id: "maintenance", label: "Maintenance", icon: Construction },
@@ -314,7 +315,16 @@ export function SettingsPage() {
               <ThemeCard dark selected={darkMode} onSelect={() => setDarkMode(true)} />
             </div>
             <Toggle label="Compact sidebar" sub="Collapse the sidebar to icons only" value={sidebarCollapsed} onChange={setSidebarCollapsed} />
-            <Toggle label="Show activity badge" sub="Pending counts on the Verifications and Disputes nav items" value={settings.activityBadge} onChange={setToggle("activityBadge")} />
+            <Toggle label="Show activity badge" sub="Pending counts on the Verifications, Disputes, Withdrawals and Service Requests nav items" value={settings.activityBadge} onChange={setToggle("activityBadge")} />
+          </Section>
+
+          <Section id="alerts" title="Alerts" description="Saved on this device." icon={BellRing}>
+            <Toggle
+              label="Alert me when new work arrives"
+              sub="A small message while the console is open. Saved on this device."
+              value={settings.arrivalAlerts}
+              onChange={setToggle("arrivalAlerts")}
+            />
           </Section>
 
           <Section id="notifications" title="Notifications" description="Not available yet. Notification settings are not connected to a delivery service." icon={Bell}>

@@ -31,6 +31,7 @@ import {
   useQueueKeys,
 } from "@/components/admin/queue";
 import { useLiveTick } from "@/hooks/useLiveTick";
+import { useApp } from "@/context/AppContext";
 import { getWithdrawals, rejectWithdrawal, settleWithdrawal } from "@/lib/services";
 import type { AdminWithdrawal } from "@/lib/domain";
 import { formatCurrency, formatDate } from "@/lib/adapters";
@@ -46,6 +47,7 @@ const STATUS_META: Record<string, { label: string; tone: "warn" | "ok" | "danger
 
 export function WithdrawalsPage() {
   const { showToast } = useToast();
+  const { refreshCounts } = useApp();
   const isWide = useIsWide();
   const [status, setStatus] = useState<QueueStatus>("pending");
   const [items, setItems] = useState<AdminWithdrawal[]>([]);
@@ -122,6 +124,7 @@ export function WithdrawalsPage() {
       setSettling(null);
       setReference("");
       afterDecision(id);
+      void refreshCounts();
       await load(true);
     } catch {
       showToast("Could not settle this withdrawal. Check the balance and try again.", "error");
@@ -138,6 +141,7 @@ export function WithdrawalsPage() {
       setRejecting(null);
       setReason("");
       afterDecision(id);
+      void refreshCounts();
       await load(true);
     } catch {
       showToast("Could not reject this withdrawal. Please try again.", "error");
@@ -220,6 +224,9 @@ export function WithdrawalsPage() {
       <QueueShell
         showDetailOnNarrow={!!selectedId && !!selected}
         onBack={() => setSelectedId(null)}
+        storageKey="admin.queue.withdrawals"
+        railCount={filtered.length}
+        railLabel="withdrawals"
         toolbar={
           <>
             <FilterTabs

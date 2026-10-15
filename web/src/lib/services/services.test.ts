@@ -158,6 +158,65 @@ describe("restoreSession", () => {
   });
 });
 
+describe("loginDetailed cookie check", () => {
+  const adminUser = { id: "u1", email: "admin@taskbuddy.io", full_name: "Ana Cruz", role: "admin" };
+
+  /** Answers by endpoint, so the order the client calls them in does not matter. */
+  function serve(routes: Record<string, () => Promise<Response>>) {
+    return vi.fn((url: string) => {
+      const match = Object.keys(routes).find((path) => url.endsWith(path));
+      if (!match) return Promise.reject(new Error(`unexpected request ${url}`));
+      return routes[match]();
+    }) as unknown as typeof fetch;
+  }
+
+  it("reports 'cookies_blocked' when the browser does not keep the session cookie", async () => {
+    // The sign-in POST succeeds and returns a CSRF token, but the cookie never
+    // comes back on the next request (mobile third-party cookie blocking).
+    global.fetch = serve({
+      "/auth/admin/login": () => Promise.resolve(jsonResponse({ user: adminUser, csrf_token: "csrf-1" })),
+      "/auth/admin/session": () => Promise.resolve(jsonResponse({ message: "Unauthorized" }, 401)),
+      "/auth/admin/refresh": () => Promise.resolve(jsonResponse({ message: "Missing refresh token" }, 401)),
+    });
+
+    await expect(services.loginDetailed("admin@taskbuddy.io", "pw")).resolves.toEqual({
+      ok: false,
+      reason: "cookies_blocked",
+    });
+    expect(getAdminSession()).toBeNull();
+  });
+
+  it("signs in only after the session check returns, using the CSRF token the cookie holds", async () => {
+    global.fetch = serve({
+      "/auth/admin/login": () => Promise.resolve(jsonResponse({ user: adminUser, csrf_token: "csrf-login" })),
+      "/auth/admin/session": () => Promise.resolve(jsonResponse({ user: adminUser, csrf_token: "csrf-session" })),
+    });
+
+    await expect(services.loginDetailed("admin@taskbuddy.io", "pw")).resolves.toEqual({
+      ok: true,
+      profile: { id: "u1", name: "Ana Cruz", email: "admin@taskbuddy.io" },
+    });
+    expect(getAdminSession()?.csrfToken).toBe("csrf-session");
+    expect(global.fetch).toHaveBeenCalledWith(
+      expect.stringContaining("/auth/admin/session"),
+      expect.objectContaining({ credentials: "include" }),
+    );
+  });
+
+  it("reports an unreachable API during the session check as 'network', and keeps no session", async () => {
+    global.fetch = serve({
+      "/auth/admin/login": () => Promise.resolve(jsonResponse({ user: adminUser, csrf_token: "csrf-1" })),
+      "/auth/admin/session": () => Promise.reject(new TypeError("Failed to fetch")),
+    });
+
+    await expect(services.loginDetailed("admin@taskbuddy.io", "pw")).resolves.toEqual({
+      ok: false,
+      reason: "network",
+    });
+    expect(getAdminSession()).toBeNull();
+  });
+});
+
 describe("logout", () => {
   it("calls the admin cookie logout endpoint", async () => {
     global.fetch = vi.fn(() => Promise.reject(new Error("network down"))) as unknown as typeof fetch;
@@ -366,6 +425,27 @@ describe("getRecentActivity", () => {
   });
 });
 
+describe("getPendingVerifications", () => {
+  it("asks the server for the pending queue only, and keeps only pending rows", async () => {
+    const fetchMock = vi.fn((url: string) => {
+      expect(new URL(url).searchParams.get("status")).toBe("pending");
+      return Promise.resolve(jsonResponse({
+        verifications: [
+          { id: "v1", provider_id: "p1", full_name: "Juan Cruz", email: "juan@test.com", status: "pending", submitted_at: "2026-08-01", documents: [] },
+          { id: "v0", provider_id: "p0", full_name: "Old Case", email: "old@test.com", status: "approved", submitted_at: "2026-07-01", documents: [] },
+        ],
+        total: 2,
+      }));
+    });
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    const pending = await services.getPendingVerifications();
+
+    expect(pending.map((v) => [v.id, v.status])).toEqual([["v1", "PENDING"]]);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe("getVerifications", () => {
   it("maps rows and uppercases the backend's lowercase status", async () => {
     global.fetch = vi.fn(() =>
@@ -401,6 +481,7 @@ describe("getVerifications", () => {
         status: "PENDING",
         documents: ["https://signed/id", "https://signed/selfie"],
         documentType: null,
+        method: "manual",
       },
     ]);
   });
@@ -631,57 +712,39 @@ describe("updateDisplayName", () => {
 });
 
 describe("getDisputes", () => {
-  it("cross-references Transactions by job id to fill in the provider name", async () => {
-    const fetchMock = vi
-      .fn()
-      .mockImplementationOnce(() =>
-        Promise.resolve(
-          jsonResponse({
-            disputes: [
-              {
-                id: "d1",
-                job_id: "job-1",
-                reason: "Never showed up",
-                details: "Waited 2 hours.",
-                status: "open",
-                resolution: null,
-                resolution_note: null,
-                created_at: "2026-08-01",
-                resolved_at: null,
-                jobs: { title: "Fix sink", service_categories: { name: "Plumbing" } },
-                escrow_transactions: { amount: "500.00", status: "disputed" },
-                raised_by_profile: { id: "c1", full_name: "Alice" },
-              },
-            ],
-            total: 1,
-          }),
-        ),
-      )
-      .mockImplementationOnce(() =>
-        Promise.resolve(
-          jsonResponse({
-            transactions: [
-              {
-                id: "t1",
-                job_id: "job-1",
-                amount: "500.00",
-                status: "disputed",
-                held_at: "2026-08-01",
-                jobs: { title: "Fix sink", service_categories: { name: "Plumbing" } },
-                client: { id: "c1", full_name: "Alice" },
-                provider: { id: "p1", full_name: "Bob" },
-              },
-            ],
-            total: 1,
-          }),
-        ),
-      );
+  const disputeRow = (over: Record<string, unknown> = {}) => ({
+    id: "d1",
+    job_id: "job-1",
+    escrow_id: "e1",
+    reason: "Never showed up",
+    details: "Waited 2 hours.",
+    status: "open",
+    resolution: null,
+    resolution_note: null,
+    created_at: "2026-08-01",
+    resolved_at: null,
+    jobs: {
+      title: "Fix sink",
+      service_categories: { name: "Plumbing" },
+      client: { full_name: "Alice" },
+      provider: { full_name: "Bob" },
+    },
+    escrow_transactions: { amount: "500.00", status: "disputed" },
+    raised_by_profile: { id: "c1", full_name: "Alice" },
+    ...over,
+  });
+
+  it("reads the job, provider, client and amount from the disputes query alone", async () => {
+    const fetchMock = vi.fn((url: string) => {
+      expect(url).toContain("/admin/disputes");
+      return Promise.resolve(jsonResponse({ disputes: [disputeRow()], total: 1 }));
+    });
     global.fetch = fetchMock as unknown as typeof fetch;
 
     const disputes = await services.getDisputes();
 
     expect(disputes).toEqual([
-      {
+      expect.objectContaining({
         id: "d1",
         jobId: "job-1",
         jobTitle: "Fix sink",
@@ -689,16 +752,35 @@ describe("getDisputes", () => {
         clientName: "Alice",
         providerName: "Bob",
         amount: 500,
-        reason: "Never showed up",
-        details: "Waited 2 hours.",
+        hasPayment: true,
         status: "OPEN",
-        resolution: null,
-        resolutionNote: null,
         paymentSettled: false,
-        createdAt: "2026-08-01",
-        resolvedAt: null,
-      },
+      }),
     ]);
+    // Only the disputes list is read: no transaction list is downloaded to name a party or a sum.
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("shows explicit unknowns for parties and service the job does not join, never another job's", async () => {
+    const unjoined = disputeRow({
+      jobs: { title: "Fix sink", service_categories: null, client: undefined, provider: undefined },
+    });
+    global.fetch = vi.fn(() => Promise.resolve(jsonResponse({ disputes: [unjoined], total: 1 }))) as unknown as typeof fetch;
+
+    const [dispute] = await services.getDisputes();
+
+    expect(dispute).toMatchObject({ clientName: "Unknown client", providerName: "Unknown provider", service: "Uncategorized" });
+  });
+
+  it("reports an unknown amount, not 0, when the dispute has an escrow whose amount did not join", async () => {
+    global.fetch = vi.fn(() =>
+      Promise.resolve(jsonResponse({ disputes: [disputeRow({ escrow_transactions: null })], total: 1 })),
+    ) as unknown as typeof fetch;
+
+    const [dispute] = await services.getDisputes();
+
+    expect(dispute.hasPayment).toBe(true);
+    expect(Number.isNaN(dispute.amount)).toBe(true);
   });
 });
 
@@ -884,6 +966,22 @@ describe("bulk actions", () => {
 
     const [, init] = fetchMock.mock.calls[0];
     expect(init.body).toBeUndefined();
+  });
+});
+
+describe("write-then-read helpers", () => {
+  it("counts pending payouts from the total alone", async () => {
+    global.fetch = vi.fn(() => Promise.resolve(jsonResponse({ items: [], total: 3 }))) as unknown as typeof fetch;
+    expect(await services.getPendingWithdrawalCount()).toBe(3);
+    expect(global.fetch).toHaveBeenCalledWith(expect.stringContaining("/admin/withdrawals?status=pending&limit=1&offset=0"), expect.anything());
+  });
+
+  it("posts a verification approval with no follow-up read", async () => {
+    const fetchMock = vi.fn(() => Promise.resolve(jsonResponse({ id: "v1" })));
+    global.fetch = fetchMock as unknown as typeof fetch;
+    await services.postApproveVerification("v1");
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledWith(expect.stringContaining("/admin/verifications/v1/approve"), expect.objectContaining({ method: "POST" }));
   });
 });
 
@@ -1079,6 +1177,251 @@ describe("list paging", () => {
   });
 });
 
+describe("fetchAllRows paging", () => {
+  interface ListServer {
+    /** Milliseconds a reply waits, per offset, so later pages can answer first. */
+    delayMs?: (offset: number) => number;
+    /** Offsets that answer 500 with a message. */
+    failAt?: (offset: number) => boolean;
+  }
+
+  /** A fake list endpoint: `total` rows under `key`, paged by limit/offset. */
+  function serveList(key: string, total: number, row: (i: number) => Record<string, unknown>, server: ListServer = {}) {
+    return vi.fn(async (url: string) => {
+      const params = new URL(url).searchParams;
+      const offset = Number(params.get("offset"));
+      const limit = Number(params.get("limit"));
+      const wait = server.delayMs?.(offset) ?? 0;
+      if (wait > 0) await new Promise((resolve) => setTimeout(resolve, wait));
+      if (server.failAt?.(offset)) return jsonResponse({ message: "database unavailable" }, 500);
+      const count = Math.max(0, Math.min(limit, total - offset));
+      const rows = Array.from({ length: count }, (_, i) => row(offset + i));
+      return jsonResponse({ [key]: rows, total });
+    });
+  }
+
+  const userRow = (i: number) => ({
+    id: `u${i}`, email: `u${i}@x.test`, full_name: `U${i}`, role: "client", deactivated_at: null, created_at: "2026-01-01",
+    cached_avg_rating: null, cached_completed_jobs: null, phone: null, city: null, category_name: null,
+    suspended_until: null, suspension_reason: null,
+  });
+
+  it("returns rows in offset order even when later pages answer first", async () => {
+    global.fetch = serveList("users", 1000, userRow, {
+      delayMs: (offset) => Math.max(0, 40 - offset / 25),
+    }) as unknown as typeof fetch;
+
+    const users = await services.getUsers();
+
+    expect(users.map((u) => u.id)).toEqual(Array.from({ length: 1000 }, (_, i) => `u${i}`));
+  });
+
+  it("keeps at most six page requests in flight at once", async () => {
+    let inFlight = 0;
+    let maxInFlight = 0;
+    const serve = serveList("users", 3000, userRow, { delayMs: () => 5 });
+    global.fetch = vi.fn(async (url: string) => {
+      inFlight += 1;
+      maxInFlight = Math.max(maxInFlight, inFlight);
+      try {
+        return await serve(url);
+      } finally {
+        inFlight -= 1;
+      }
+    }) as unknown as typeof fetch;
+
+    const users = await services.getUsers();
+
+    expect(users).toHaveLength(3000);
+    expect(global.fetch).toHaveBeenCalledTimes(15);
+    expect(maxInFlight).toBe(6);
+  });
+
+  it("reads a list shorter than one page with a single request", async () => {
+    global.fetch = serveList("users", 3, userRow) as unknown as typeof fetch;
+
+    await expect(services.getUsers()).resolves.toHaveLength(3);
+    expect(global.fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("returns an empty list from a single request when the table is empty", async () => {
+    global.fetch = serveList("users", 0, userRow) as unknown as typeof fetch;
+
+    await expect(services.getUsers()).resolves.toEqual([]);
+    expect(global.fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("rejects the whole list when one page fails, rather than returning a partial list", async () => {
+    global.fetch = serveList("users", 1000, userRow, { failAt: (offset) => offset === 400 }) as unknown as typeof fetch;
+
+    await expect(services.getUsers()).rejects.toThrow("database unavailable");
+  });
+
+  it("reports a short page in the middle of the walk as an incomplete list", async () => {
+    global.fetch = vi.fn(async (url: string) => {
+      const offset = Number(new URL(url).searchParams.get("offset"));
+      // The page at offset 200 comes back with 150 of its 200 rows.
+      const count = offset === 200 ? 150 : Math.min(200, 1000 - offset);
+      return jsonResponse({ users: Array.from({ length: count }, (_, i) => userRow(offset + i)), total: 1000 });
+    }) as unknown as typeof fetch;
+
+    await expect(services.getUsers()).rejects.toThrow("Incomplete list response");
+  });
+
+  it("warns and returns the first 5,000 rows when a list is larger than the page cap", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    global.fetch = serveList("users", 6000, userRow) as unknown as typeof fetch;
+
+    const users = await services.getUsers();
+
+    expect(users).toHaveLength(5000);
+    expect(users[4999].id).toBe("u4999");
+    expect(global.fetch).toHaveBeenCalledTimes(25);
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining("6000 rows"));
+    warn.mockRestore();
+  });
+
+  it("refuses to total a list that is larger than the page cap, so a sum is never partial", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    global.fetch = serveList("transactions", 6000, (i) => ({ id: `t${i}`, amount: "10" })) as unknown as typeof fetch;
+
+    await expect(services.getEscrowHeld()).rejects.toThrow("exceeds 5000 rows");
+    expect(warn).not.toHaveBeenCalled();
+    warn.mockRestore();
+  });
+});
+
+describe("queue counts", () => {
+  it("counts pending withdrawals with a one-row request", async () => {
+    const fetchMock = vi.fn(() => Promise.resolve(jsonResponse({ withdrawals: [], total: 7 })));
+    global.fetch = fetchMock as unknown as typeof fetch;
+    await expect(services.getPendingWithdrawalCount()).resolves.toBe(7);
+    expect(fetchMock).toHaveBeenCalledWith(expect.stringContaining("/admin/withdrawals?status=pending&limit=1&offset=0"), expect.anything());
+  });
+
+  it("counts pending service requests with a one-row request and the exact total", async () => {
+    const fetchMock = vi.fn(() => Promise.resolve(jsonResponse({
+      items: [{ id: "s1", status: "pending" }],
+      total: 250,
+    })));
+    global.fetch = fetchMock as unknown as typeof fetch;
+    await expect(services.getPendingServiceRequestCount()).resolves.toBe(250);
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining("/admin/skill-requests?status=pending&limit=1&offset=0"),
+      expect.anything(),
+    );
+  });
+});
+
+describe("cancellation and warranty fields", () => {
+  const txnResponse = () => Promise.resolve(jsonResponse({ transactions: [], total: 0 }));
+  const disputeRow = (extra: Record<string, unknown>) => ({
+    id: "d-c1",
+    job_id: "job-c1",
+    escrow_id: "esc-1",
+    reason: "Cancelled late",
+    details: null,
+    status: "open",
+    resolution: null,
+    resolution_note: null,
+    created_at: "2026-10-14",
+    resolved_at: null,
+    jobs: { title: "Paint fence", service_categories: { name: "Painting" }, client: { full_name: "Ana" }, provider: { full_name: "Rico" } },
+    escrow_transactions: { amount: "300.00", status: "held" },
+    raised_by_profile: { id: "c1", full_name: "Ana" },
+    ...extra,
+  });
+
+  it("maps the cancellation state and deadline of a dispute", async () => {
+    global.fetch = vi.fn()
+      .mockResolvedValueOnce(jsonResponse({
+        disputes: [disputeRow({ cancellation_state: "pending", cancellation_deadline: "2026-10-16T00:00:00Z" })],
+        total: 1,
+      }))
+      .mockResolvedValueOnce(txnResponse()) as unknown as typeof fetch;
+
+    const [d] = await services.getDisputes();
+    expect(d.cancellationState).toBe("pending");
+    expect(d.cancellationDeadline).toBe("2026-10-16T00:00:00Z");
+  });
+
+  it("maps an unknown cancellation state through unchanged", async () => {
+    global.fetch = vi.fn()
+      .mockResolvedValueOnce(jsonResponse({
+        disputes: [disputeRow({ cancellation_state: "escalated", cancellation_deadline: null })],
+        total: 1,
+      }))
+      .mockResolvedValueOnce(txnResponse()) as unknown as typeof fetch;
+
+    const [d] = await services.getDisputes();
+    expect(d.cancellationState).toBe("escalated");
+    expect(d.cancellationDeadline).toBeNull();
+  });
+
+  it("sets cancellation fields to null when the API omits them", async () => {
+    global.fetch = vi.fn()
+      .mockResolvedValueOnce(jsonResponse({ disputes: [disputeRow({})], total: 1 }))
+      .mockResolvedValueOnce(txnResponse()) as unknown as typeof fetch;
+
+    const [d] = await services.getDisputes();
+    expect(d.cancellationState).toBeNull();
+    expect(d.cancellationDeadline).toBeNull();
+  });
+
+  it("maps completed_at and status on the booking detail", async () => {
+    global.fetch = vi.fn(() => Promise.resolve(jsonResponse({
+      id: "job-9",
+      status: "completed",
+      completed_at: "2026-10-14T12:00:00Z",
+      description: null,
+      address: null,
+      scheduled_at: null,
+      photo_urls: null,
+      escrow: null,
+    }))) as unknown as typeof fetch;
+
+    const detail = await services.getBookingDetail("job-9");
+    expect(detail.completedAt).toBe("2026-10-14T12:00:00Z");
+    expect(detail.status).toBe("completed");
+  });
+
+  it("sets completedAt to null on a booking that has not completed", async () => {
+    global.fetch = vi.fn(() => Promise.resolve(jsonResponse({
+      id: "job-10",
+      status: "posted",
+      description: null,
+      address: null,
+      scheduled_at: null,
+      photo_urls: null,
+      escrow: null,
+    }))) as unknown as typeof fetch;
+
+    const detail = await services.getBookingDetail("job-10");
+    expect(detail.completedAt).toBeNull();
+    expect(detail.status).toBe("posted");
+  });
+
+  it("maps the verification method and defaults it to manual", async () => {
+    global.fetch = vi.fn(() => Promise.resolve(jsonResponse({
+      verifications: [
+        {
+          id: "v-s", provider_id: "p-s", full_name: "Lia", email: "lia@test.com", status: "pending",
+          submitted_at: "2026-10-10", reviewed_at: null, rejection_reason: null, documents: [], method: "stripe_identity",
+        },
+        {
+          id: "v-m", provider_id: "p-m", full_name: "Mo", email: "mo@test.com", status: "pending",
+          submitted_at: "2026-10-10", reviewed_at: null, rejection_reason: null, documents: [],
+        },
+      ],
+      total: 2,
+    }))) as unknown as typeof fetch;
+
+    const [stripe, manual] = await services.getVerifications();
+    expect(stripe.method).toBe("stripe_identity");
+    expect(manual.method).toBe("manual");
+  });
+});
+
 describe("analytics summary stand-in", () => {
   it("rebuilds the summary from list endpoints when /admin/analytics/summary fails", async () => {
     const fetchMock = vi.fn((url: string) => {
@@ -1127,5 +1470,146 @@ describe("analytics summary stand-in", () => {
   it("does not hide a signed-out session behind the stand-in", async () => {
     global.fetch = vi.fn(() => Promise.resolve(jsonResponse({ message: "Unauthorized" }, 401))) as unknown as typeof fetch;
     await expect(services.getDashboardStats()).rejects.toMatchObject({ status: 401 });
+  });
+});
+
+describe("dispute case parties", () => {
+  it("carries the job's client and assigned provider ids when the API sends them", async () => {
+    global.fetch = vi.fn()
+      .mockResolvedValueOnce(jsonResponse({
+        disputes: [{
+          id: "d-parties", job_id: "j-parties", escrow_id: null, reason: "Work quality", details: null, status: "open", resolution: null,
+          resolution_note: null, resolved_at: null, created_at: "2026-10-04", escrow_transactions: null,
+          jobs: { title: "Repair", service_categories: null, client_id: "c-1", assigned_provider_id: "p-1", client: { full_name: "Ana" }, provider: { full_name: "Rico" } },
+        }],
+        total: 1,
+      }))
+      .mockResolvedValueOnce(jsonResponse({ transactions: [], total: 0 })) as unknown as typeof fetch;
+    const [d] = await services.getDisputes();
+    expect(d.clientId).toBe("c-1");
+    expect(d.providerId).toBe("p-1");
+  });
+});
+
+describe("getJobConversation", () => {
+  it("maps each message's sender id, body and signed attachment url", async () => {
+    global.fetch = vi.fn(() => Promise.resolve(jsonResponse({
+      messages: [
+        { id: "m1", sender_id: "c-1", sender_name: "Ana", body: "Here is the leak", attachment_path: "j/leak.jpg", attachment_url: "https://signed.test/leak.jpg", read_at: null, created_at: "2026-10-04T10:00:00Z" },
+        { id: "m2", sender_id: "p-1", sender_name: "Rico", body: "", attachment_path: null, attachment_url: null, read_at: null, created_at: "2026-10-04T10:05:00Z" },
+      ],
+    }))) as unknown as typeof fetch;
+    const messages = await services.getJobConversation("j-1");
+    expect(messages[0]).toMatchObject({ id: "m1", senderId: "c-1", senderName: "Ana", body: "Here is the leak", attachmentUrl: "https://signed.test/leak.jpg" });
+    expect(messages[1]).toMatchObject({ id: "m2", senderId: "p-1", senderName: "Rico" });
+    expect(messages[1].attachmentUrl).toBeNull();
+  });
+});
+
+describe("platform identity (migration 0047)", () => {
+  const row = { platform_name: "TaskBuddy", support_email: "help@taskbuddy.test", identity_version: 4 };
+
+  it("maps the settings row and sends the expected version on save", async () => {
+    const fetchMock = vi.fn<(url: string, init?: RequestInit) => Promise<Response>>(() =>
+      Promise.resolve(jsonResponse({ ...row, platform_name: "TaskBuddy PH", identity_version: 5 })),
+    );
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    const saved = await services.updatePlatformIdentity({ platformName: " TaskBuddy PH ", supportEmail: "help@taskbuddy.test", expectedVersion: 4 });
+
+    expect(saved).toEqual({ platformName: "TaskBuddy PH", supportEmail: "help@taskbuddy.test", identityVersion: 5 });
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(url).toMatch(/\/admin\/platform-identity$/);
+    expect(init?.method).toBe("PATCH");
+    expect(JSON.parse(init?.body as string)).toEqual({ expected_version: 4, platform_name: "TaskBuddy PH", support_email: "help@taskbuddy.test" });
+  });
+
+  it("sends a cleared support email as null so the backend clears it", async () => {
+    const fetchMock = vi.fn<(url: string, init?: RequestInit) => Promise<Response>>(() =>
+      Promise.resolve(jsonResponse({ ...row, support_email: null, identity_version: 5 })),
+    );
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    await services.updatePlatformIdentity({ platformName: "TaskBuddy", supportEmail: null, expectedVersion: 4 });
+
+    expect(JSON.parse(fetchMock.mock.calls[0][1]?.body as string)).toMatchObject({ support_email: null });
+  });
+
+  it("reads the current identity", async () => {
+    global.fetch = vi.fn(() => Promise.resolve(jsonResponse(row))) as unknown as typeof fetch;
+    await expect(services.getPlatformIdentity()).resolves.toEqual({
+      platformName: "TaskBuddy",
+      supportEmail: "help@taskbuddy.test",
+      identityVersion: 4,
+    });
+  });
+
+  it("returns null when the endpoint is not deployed yet (404)", async () => {
+    global.fetch = vi.fn(() => Promise.resolve(jsonResponse({ message: "Cannot GET /admin/platform-identity" }, 404))) as unknown as typeof fetch;
+    await expect(services.getPlatformIdentity()).resolves.toBeNull();
+  });
+
+  it("returns null when the settings table is missing (the backend's error names it)", async () => {
+    global.fetch = vi.fn(() =>
+      Promise.resolve(jsonResponse({ message: 'relation "public.platform_settings" does not exist' }, 500)),
+    ) as unknown as typeof fetch;
+    await expect(services.getPlatformIdentity()).resolves.toBeNull();
+  });
+
+  it("still throws other read failures", async () => {
+    global.fetch = vi.fn(() => Promise.resolve(jsonResponse({ message: "Database unavailable" }, 500))) as unknown as typeof fetch;
+    await expect(services.getPlatformIdentity()).rejects.toMatchObject({ status: 500, message: "Database unavailable" });
+  });
+
+  it("surfaces a 409 conflict from a stale save", async () => {
+    global.fetch = vi.fn(() =>
+      Promise.resolve(jsonResponse({ message: "Platform settings changed; reload and try again" }, 409)),
+    ) as unknown as typeof fetch;
+    await expect(
+      services.updatePlatformIdentity({ platformName: "TaskBuddy", supportEmail: null, expectedVersion: 4 }),
+    ).rejects.toMatchObject({ status: 409, message: "Platform settings changed; reload and try again" });
+  });
+});
+
+describe("job capacity (migration 0048)", () => {
+  const row = {
+    client_active_max: 3, provider_active_max: 3, provider_pending_max: 3,
+    daily_hours_max: "8", rest_hours: "1", travel_kmh: 20,
+  };
+  const limits = {
+    clientActiveMax: 3, providerActiveMax: 3, providerPendingMax: 3,
+    dailyHoursMax: 8, restHours: 1, travelKmh: 20,
+  };
+
+  it("reads the limits, converting numeric strings", async () => {
+    global.fetch = vi.fn(() => Promise.resolve(jsonResponse(row))) as unknown as typeof fetch;
+    await expect(services.getJobCapacity()).resolves.toEqual(limits);
+  });
+
+  it("returns null when the endpoint or table is not deployed yet", async () => {
+    global.fetch = vi.fn(() => Promise.resolve(jsonResponse({ message: "Not Found" }, 404))) as unknown as typeof fetch;
+    await expect(services.getJobCapacity()).resolves.toBeNull();
+    global.fetch = vi.fn(() =>
+      Promise.resolve(jsonResponse({ message: 'Could not find the table \'public.job_capacity_settings\' in the schema cache' }, 500)),
+    ) as unknown as typeof fetch;
+    await expect(services.getJobCapacity()).resolves.toBeNull();
+  });
+
+  it("PATCHes all six limits in snake_case and returns the saved row", async () => {
+    const fetchMock = vi.fn<(url: string, init?: RequestInit) => Promise<Response>>(() =>
+      Promise.resolve(jsonResponse({ ...row, client_active_max: 5 })),
+    );
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    const saved = await services.updateJobCapacity({ ...limits, clientActiveMax: 5 });
+
+    expect(saved).toEqual({ ...limits, clientActiveMax: 5 });
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(url).toMatch(/\/admin\/job-capacity$/);
+    expect(init?.method).toBe("PATCH");
+    expect(JSON.parse(init?.body as string)).toEqual({
+      client_active_max: 5, provider_active_max: 3, provider_pending_max: 3,
+      daily_hours_max: 8, rest_hours: 1, travel_kmh: 20,
+    });
   });
 });

@@ -42,16 +42,19 @@ function isUnsafeMethod(method?: string): boolean {
 
 async function send(path: string, init?: RequestInit): Promise<Response> {
   const csrfToken = getCsrfToken();
+  // Only a request with a body declares JSON. A GET with no custom headers is a
+  // "simple" cross-origin request, so the browser sends no OPTIONS preflight
+  // before it (the console makes dozens of reads on every load).
+  const hasBody = init?.body !== undefined && init?.body !== null;
   return fetch(`${API_URL}${path}`, {
     ...init,
     credentials: "include",
     headers: {
-      "Content-Type": "application/json",
+      ...(hasBody ? { "Content-Type": "application/json" } : {}),
       ...(isUnsafeMethod(init?.method) && csrfToken ? { "X-CSRF-Token": csrfToken } : {}),
       ...init?.headers,
     },
   });
-
 }
 
 let refreshInFlight: Promise<boolean> | null = null;

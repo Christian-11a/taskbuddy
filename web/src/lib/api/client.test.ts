@@ -42,6 +42,34 @@ describe("client", () => {
     expect((init.headers as Record<string, string>).Authorization).toBeUndefined();
   });
 
+  it("sends a GET with no custom headers, so a cross-origin read needs no preflight", async () => {
+    setAdminSession({
+      csrfToken: "csrf-123",
+      adminProfile: { id: "admin-1", name: "Ana", email: "ana@taskbuddy.io" },
+    });
+    const fetchMock = vi.fn(() => Promise.resolve(jsonResponse({ ok: true })));
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    await client.get("/admin/users");
+
+    const [, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+    expect(init.headers).toEqual({});
+  });
+
+  it("declares a JSON Content-Type only when the request has a body", async () => {
+    const fetchMock = vi.fn(() => Promise.resolve(jsonResponse({ ok: true })));
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    await client.post("/admin/users/u1/suspend", { reason: "Fraud" });
+    await client.patch("/settings", { dark_mode: true });
+    await client.post("/auth/admin/logout");
+
+    const headersOf = (i: number) => (fetchMock.mock.calls[i] as unknown as [string, RequestInit])[1].headers as Record<string, string>;
+    expect(headersOf(0)["Content-Type"]).toBe("application/json");
+    expect(headersOf(1)["Content-Type"]).toBe("application/json");
+    expect(headersOf(2)["Content-Type"]).toBeUndefined();
+  });
+
   it("attaches the in-memory CSRF token to unsafe requests", async () => {
     setAdminSession({
       csrfToken: "csrf-123",
@@ -207,5 +235,40 @@ describe("client rate-limit handling", () => {
     await client.get("/admin/users").catch(() => undefined);
 
     expect(getAdminSession()).not.toBeNull();
+  });
+});
+
+describe("client base URL", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.resetModules();
+  });
+
+  it("calls a same-origin relative API base, so the browser sends the admin cookies first-party", async () => {
+    vi.stubEnv("NEXT_PUBLIC_API_URL", "/backend");
+    vi.resetModules();
+    const fresh = await import("./client");
+    const fetchMock = vi.fn(() => Promise.resolve(jsonResponse({ ok: true })));
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    expect(fresh.API_URL).toBe("/backend");
+    await fresh.client.get("/admin/users");
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/backend/admin/users",
+      expect.objectContaining({ credentials: "include" }),
+    );
+  });
+
+  it("keeps the local API default when NEXT_PUBLIC_API_URL is unset", async () => {
+    const saved = process.env.NEXT_PUBLIC_API_URL;
+    delete process.env.NEXT_PUBLIC_API_URL;
+    try {
+      vi.resetModules();
+      const fresh = await import("./client");
+      expect(fresh.API_URL).toBe("http://localhost:3001");
+    } finally {
+      if (saved !== undefined) process.env.NEXT_PUBLIC_API_URL = saved;
+    }
   });
 });

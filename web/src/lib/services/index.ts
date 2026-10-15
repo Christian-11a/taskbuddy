@@ -10,6 +10,7 @@ import {
   getAdminSession,
   setAdminSession,
   type AdminProfile,
+  type AdminSession,
 } from "@/lib/api/session";
 import {
   mapActivity,
@@ -44,6 +45,8 @@ import type {
   ListTransactionsApiResponse,
   CommissionApiResponse,
   BroadcastApiResponse,
+  PlatformIdentityApiResponse,
+  JobCapacityApiResponse,
   LoginApiResponse,
   MaintenanceApiResponse,
   UserSettingsApiResponse,
@@ -75,6 +78,8 @@ import type {
   AdminAccount,
   ServiceCategory,
   CommissionSettings,
+  PlatformIdentity,
+  JobCapacityLimits,
 } from "@/lib/domain";
 
 export { ApiError };
@@ -85,31 +90,102 @@ export type { AdminProfile };
 const LIST_PAGE_SIZE = 200;
 /** Safety stop: 25 × 200 = 5,000 rows per list. */
 const MAX_LIST_PAGES = 25;
+/**
+ * Pages requested at once after the first one (the first reports `total`, which
+ * sizes the rest). Six keeps a full 5,000-row list to about five round trips
+ * instead of 25, and stays well inside the API's per-IP limit (BULK_CONCURRENCY).
+ */
+const LIST_CONCURRENCY = 6;
 
 /**
- * Loads every row of a list endpoint by walking `limit`/`offset` until
- * `total` is reached (or a short page comes back). Every admin list endpoint
- * accepts both and reports `total`; asking for one big page used to stop
- * silently at 100–200 rows.
+ * What fetchAllRows does with a list longer than MAX_LIST_PAGES covers:
+ * - "warn": return the rows that fit and log a warning. The console keeps
+ *   working, but any count or total computed from the list is then partial.
+ * - "throw": reject. Used where a partial list would print a wrong total or
+ *   sum (money, row counts), so the caller shows "unknown" instead.
  */
-async function fetchAllRows<T>(path: string, key: string, pageSize = LIST_PAGE_SIZE): Promise<T[]> {
+type OverCapPolicy = "warn" | "throw";
+
+interface ListPage<T> {
+  rows: T[];
+  total: number;
+}
+
+async function fetchListPage<T>(path: string, key: string, pageSize: number, offset: number): Promise<ListPage<T>> {
   const sep = path.includes("?") ? "&" : "?";
-  const rows: T[] = [];
-  for (let page = 0; page < MAX_LIST_PAGES; page++) {
-    const res = await client.get<Record<string, unknown>>(`${path}${sep}limit=${pageSize}&offset=${page * pageSize}`);
-    const batch = res[key];
-    if (!Array.isArray(batch) || !Number.isSafeInteger(res.total) || (res.total as number) < 0) {
-      throw new Error(`Invalid list response from ${path}`);
-    }
-    rows.push(...batch);
-    const total = res.total as number;
-    if (rows.length > total || batch.length > pageSize) {
-      throw new Error(`Invalid list response from ${path}`);
-    }
-    if (rows.length >= total) return rows;
-    if (batch.length < pageSize) throw new Error(`Incomplete list response from ${path}`);
+  const res = await client.get<Record<string, unknown>>(`${path}${sep}limit=${pageSize}&offset=${offset}`);
+  const batch = res[key];
+  if (!Array.isArray(batch) || !Number.isSafeInteger(res.total) || (res.total as number) < 0) {
+    throw new Error(`Invalid list response from ${path}`);
   }
-  throw new Error(`List from ${path} exceeds ${MAX_LIST_PAGES * pageSize} rows`);
+  return { rows: batch as T[], total: res.total as number };
+}
+
+/** Checks one page against the total it reports, at the offset it was asked for. */
+function checkListPage<T>(path: string, page: ListPage<T>, pageSize: number, offset: number): void {
+  if (page.rows.length > pageSize || offset + page.rows.length > page.total) {
+    throw new Error(`Invalid list response from ${path}`);
+  }
+  // A short page is only the end of the list when it reaches the total.
+  if (page.rows.length < pageSize && offset + page.rows.length < page.total) {
+    throw new Error(`Incomplete list response from ${path}`);
+  }
+}
+
+/** Runs `task` over `items` with at most `limit` in flight. Results keep the order of `items`. */
+async function mapInOrder<I, O>(items: readonly I[], limit: number, task: (item: I) => Promise<O>): Promise<O[]> {
+  const results: O[] = new Array(items.length);
+  let next = 0;
+  let failed = false;
+  const worker = async () => {
+    while (!failed && next < items.length) {
+      const index = next++;
+      try {
+        results[index] = await task(items[index]);
+      } catch (err) {
+        failed = true; // stop the other workers from starting more pages
+        throw err;
+      }
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
+  return results;
+}
+
+/**
+ * Loads every row of a list endpoint by walking `limit`/`offset` up to the
+ * reported `total`. The first page says how many more there are; the rest are
+ * requested LIST_CONCURRENCY at a time and reassembled in offset order. Every
+ * admin list endpoint accepts both and reports `total`; asking for one big page
+ * used to stop silently at 100–200 rows.
+ */
+async function fetchAllRows<T>(
+  path: string,
+  key: string,
+  pageSize = LIST_PAGE_SIZE,
+  overCap: OverCapPolicy = "warn",
+): Promise<T[]> {
+  const first = await fetchListPage<T>(path, key, pageSize, 0);
+  checkListPage(path, first, pageSize, 0);
+  const total = first.total;
+  if (first.rows.length >= total) return first.rows;
+
+  const pageCount = Math.min(Math.ceil(total / pageSize), MAX_LIST_PAGES);
+  const offsets = Array.from({ length: pageCount - 1 }, (_, i) => (i + 1) * pageSize);
+  const pages = await mapInOrder(offsets, LIST_CONCURRENCY, (offset) =>
+    fetchListPage<T>(path, key, pageSize, offset),
+  );
+  const rows = [...first.rows];
+  pages.forEach((page, i) => {
+    checkListPage(path, page, pageSize, offsets[i]);
+    rows.push(...page.rows);
+  });
+
+  if (rows.length < total) {
+    if (overCap === "throw") throw new Error(`List from ${path} exceeds ${MAX_LIST_PAGES * pageSize} rows`);
+    console.warn(`List from ${path} has ${total} rows; the console loaded the first ${rows.length}.`);
+  }
+  return rows;
 }
 
 /** A list's `total` for one filter, without its rows (`limit=1`). */
@@ -154,7 +230,7 @@ function verificationState(row: AdminUserApiRow): AdminUser["verification"] {
 function mapBookingRow(row: AdminBookingApiRow): AdminBooking {
   return {
     id: row.id,
-    customerName: row.client?.full_name ?? "Unknown homeowner",
+    customerName: row.client?.full_name ?? "Unknown client",
     providerName: row.provider?.full_name ?? "Unassigned",
     service: row.service_categories?.name ?? "Uncategorized",
     status: row.status,
@@ -174,6 +250,7 @@ function mapVerificationRow(row: AdminVerificationApiRow): Verification {
     status: row.status.toUpperCase() as VerificationStatus,
     documents: row.documents,
     documentType: row.document_type ?? null,
+    method: row.method ?? "manual",
   };
 }
 
@@ -191,7 +268,7 @@ function mapTransactionRow(row: AdminTransactionApiRow): Transaction {
   return {
     id: row.id,
     jobId: row.job_id,
-    customerName: row.client?.full_name ?? "Unknown homeowner",
+    customerName: row.client?.full_name ?? "Unknown client",
     providerName: row.provider?.full_name ?? "Unassigned",
     service: row.jobs?.service_categories?.name ?? row.jobs?.title ?? "Uncategorized",
     amount: Number(row.amount),
@@ -217,25 +294,26 @@ const DISPUTE_RESOLUTION: Record<DisputeResolutionApi, DisputeResolution> = {
 };
 
 /**
- * The disputes endpoint doesn't join the provider's name (only the client who
- * raised it, via `raised_by_profile`) — so we cross-reference the already-loaded
- * Transactions list by job id to fill in the provider and a client fallback.
+ * Every party, service and sum on a dispute comes from the disputes query
+ * itself (DISPUTE_SELECT on the backend): the job's title, category, client and
+ * assigned provider, and the escrow it refers to. Nothing is cross-referenced
+ * from other lists. A job-id match could pick another escrow's amount, and a
+ * dispute with no joined value shows an explicit unknown instead.
  */
-function mapDisputeRow(
-  row: AdminDisputeApiRow,
-  txnByJob: Map<string, Transaction>,
-): Dispute {
-  const linked = txnByJob.get(row.job_id);
+function mapDisputeRow(row: AdminDisputeApiRow): Dispute {
   return {
     ...(row.entries && { entries: row.entries }),
     ...(row.escrow_id !== undefined && { hasPayment: row.escrow_id !== null }),
     id: row.id,
     jobId: row.job_id,
-    jobTitle: row.jobs?.title ?? linked?.service ?? "Unknown job",
-    service: row.jobs?.service_categories?.name ?? linked?.service ?? "Uncategorized",
-    clientName: row.jobs?.client?.full_name ?? linked?.customerName ?? "Unknown homeowner",
-    providerName: row.jobs?.provider?.full_name ?? linked?.providerName ?? "Unknown provider",
-    amount: Number(row.escrow_transactions?.amount ?? linked?.amount ?? 0),
+    jobTitle: row.jobs?.title ?? "Unknown job",
+    service: row.jobs?.service_categories?.name ?? "Uncategorized",
+    clientName: row.jobs?.client?.full_name ?? "Unknown client",
+    providerName: row.jobs?.provider?.full_name ?? "Unknown provider",
+    // No escrow at all is a true zero (the page hides the amount). An escrow whose amount did not join is unknown (NaN).
+    amount: row.escrow_transactions
+      ? Number(row.escrow_transactions.amount)
+      : row.escrow_id === null ? 0 : Number.NaN,
     reason: row.reason,
     details: row.details,
     status: DISPUTE_STATUS[row.status] ?? "OPEN",
@@ -244,6 +322,11 @@ function mapDisputeRow(
     paymentSettled: row.escrow_id === null || ["released", "refunded", "cancelled"].includes(row.escrow_transactions?.status ?? ""),
     createdAt: row.created_at,
     resolvedAt: row.resolved_at,
+    cancellationState: row.cancellation_state ?? null,
+    cancellationDeadline: row.cancellation_deadline ?? null,
+    // Only when the API sent the job's participant ids (the disputes query selects them).
+    ...(row.jobs?.client_id !== undefined && { clientId: row.jobs.client_id }),
+    ...(row.jobs?.assigned_provider_id !== undefined && { providerId: row.jobs.assigned_provider_id }),
   };
 }
 
@@ -306,6 +389,8 @@ function mapMessageRow(row: AdminMessageApiRow): ConversationMessage {
   return {
     ...(row.attachment_url !== undefined && { attachmentUrl: row.attachment_url }),
     id: row.id,
+    // Absent when the response has no sender_id; null only for a message with no author.
+    ...(row.sender_id !== undefined && { senderId: row.sender_id }),
     senderName: row.sender_name ?? "Unknown",
     body: row.body,
     createdAt: row.created_at,
@@ -326,11 +411,28 @@ function toAdminProfile(
  * Why a sign-in failed, so the login screen can say something true. Wrong
  * credentials and "not an admin" deliberately share one reason: telling them
  * apart would reveal which emails belong to admins.
+ *
+ * `cookies_blocked` is different: the API accepted the password, but the browser
+ * did not keep the session cookies it set (common on phones that block
+ * cross-site cookies). Signing in would only bounce back to the form, so it is
+ * reported as a failure with its own explanation.
  */
-export type LoginFailure = "credentials" | "rate_limited" | "network" | "server";
+export type LoginFailure = "credentials" | "rate_limited" | "network" | "server" | "cookies_blocked";
 export type LoginResult =
   | { ok: true; profile: AdminProfile }
   | { ok: false; reason: LoginFailure; retryAfterSeconds?: number };
+
+/**
+ * Reads the admin identity and CSRF token that the browser's session cookies
+ * hold. Resolves to null when the cookies do not describe an admin session.
+ * Throws (an ApiError on a rejected request) when the request itself fails.
+ */
+async function readAdminSession(): Promise<AdminSession | null> {
+  const res = await client.get<AdminSessionApiResponse>("/auth/admin/session");
+  const profile = toAdminProfile(res.user, res.user.email);
+  if (!profile || !res.csrf_token) return null;
+  return { csrfToken: res.csrf_token, adminProfile: profile };
+}
 
 export async function loginDetailed(email: string, password: string): Promise<LoginResult> {
   let res: LoginApiResponse;
@@ -344,8 +446,25 @@ export async function loginDetailed(email: string, password: string): Promise<Lo
   }
   const profile = toAdminProfile(res.user, email);
   if (!profile || !res.csrf_token) return { ok: false, reason: "credentials" };
-  setAdminSession({ csrfToken: res.csrf_token, adminProfile: profile });
-  return { ok: true, profile };
+
+  // The sign-in is only real once the cookies it set come back on a request.
+  // Check that before reporting success, so a blocked cookie is named here
+  // instead of showing up later as a dashboard that bounces to the login form.
+  try {
+    const session = await readAdminSession();
+    if (!session) {
+      clearAdminSession();
+      return { ok: false, reason: "cookies_blocked" };
+    }
+    setAdminSession(session);
+    return { ok: true, profile: session.adminProfile };
+  } catch (err) {
+    clearAdminSession();
+    if (!(err instanceof ApiError)) return { ok: false, reason: "network" };
+    if (err.status === 429) return { ok: false, reason: "rate_limited", retryAfterSeconds: err.retryAfterSeconds };
+    if (err.status === 401 || err.status === 403) return { ok: false, reason: "cookies_blocked" };
+    return { ok: false, reason: "server" };
+  }
 }
 
 export async function login(email: string, password: string): Promise<AdminProfile | null> {
@@ -356,11 +475,10 @@ export async function login(email: string, password: string): Promise<AdminProfi
 /** Re-establishes in-memory identity from the browser's cookie session. */
 export async function restoreSession(): Promise<AdminProfile | null> {
   try {
-    const res = await client.get<AdminSessionApiResponse>("/auth/admin/session");
-    const profile = toAdminProfile(res.user, res.user.email);
-    if (!profile || !res.csrf_token) return null;
-    setAdminSession({ csrfToken: res.csrf_token, adminProfile: profile });
-    return profile;
+    const session = await readAdminSession();
+    if (!session) return null;
+    setAdminSession(session);
+    return session.adminProfile;
   } catch {
     return null;
   }
@@ -480,14 +598,20 @@ export async function getVerifications(): Promise<Verification[]> {
 }
 
 /**
+ * Only the pending queue: what the live tick needs (AppContext's
+ * readVerificationsForTick merges it with the decided rows it already has).
+ * The status filter is also applied here, so a server that ignored it could
+ * not put decided rows into the queue.
+ */
+export async function getPendingVerifications(): Promise<Verification[]> {
+  const rows = await fetchAllRows<AdminVerificationApiRow>("/admin/verifications?status=pending", "verifications");
+  return rows.map(mapVerificationRow).filter((v) => v.status === "PENDING");
+}
+
+/**
  * Escrow transactions, with overlapping callers sharing one request — same
  * in-flight dedup as getAnalyticsSummary below, and for the same reason.
- *
- * AppContext's initial load calls `getTransactions()` and `getDisputes()` in
- * the same Promise.all, and `getDisputes()` needs this list too (to fill in
- * provider names the disputes endpoint doesn't join). Without dedup that's two
- * identical `/admin/transactions?limit=200` round trips on every login and
- * every hard refresh — confirmed in a network capture before this was added.
+ * (The disputes list no longer reads this; it carries its own names and amounts.)
  *
  * In-flight only, no TTL: once the batch settles the next call fetches fresh,
  * so a resolved dispute or released escrow never renders from a stale cache.
@@ -592,7 +716,8 @@ export async function issueRecoveryCredit(input: {
 }
 
 export async function getWithdrawals(status: "pending" | "completed" | "failed" = "pending"): Promise<{ items: AdminWithdrawal[]; total: number }> {
-  const rows = await fetchAllRows<AdminWithdrawalApiRow>(`/admin/withdrawals?status=${status}`, "withdrawals", 100);
+  // The count below is rows.length, so a capped list would print a wrong total.
+  const rows = await fetchAllRows<AdminWithdrawalApiRow>(`/admin/withdrawals?status=${status}`, "withdrawals", 100, "throw");
   return { items: rows.map(mapWithdrawalRow), total: rows.length };
 }
 
@@ -650,14 +775,87 @@ export async function broadcastNotification(
   return client.post<BroadcastApiResponse>("/admin/notifications/broadcast", { title: title.trim(), body: body.trim(), audience });
 }
 
-/** Cross-references Transactions (for provider name + amount fallback) — see mapDisputeRow. */
+// ─── Platform identity and job capacity (migrations 0047, 0048) ──────────────
+// The reads return null, not an error, when the backend has not been deployed
+// with these routes yet: the 404 for the route, or a 500/400 whose message names
+// the missing table or function. The page shows "not available yet" for that.
+
+/** True when the route, table or RPC is missing on the backend, not when a request was refused. */
+function isNotDeployed(err: unknown): boolean {
+  if (!(err instanceof ApiError)) return false;
+  if (err.status === 404) return true;
+  return /platform_settings|job_capacity_settings|admin_update_(platform_identity|job_capacity)|does not exist|schema cache/i.test(err.message);
+}
+
+function mapPlatformIdentity(row: PlatformIdentityApiResponse): PlatformIdentity {
+  return {
+    platformName: row.platform_name,
+    supportEmail: row.support_email ?? null,
+    identityVersion: Number(row.identity_version),
+  };
+}
+
+export async function getPlatformIdentity(): Promise<PlatformIdentity | null> {
+  try {
+    return mapPlatformIdentity(await client.get<PlatformIdentityApiResponse>("/admin/platform-identity"));
+  } catch (err) {
+    if (isNotDeployed(err)) return null;
+    throw err;
+  }
+}
+
+/** Saves against `expectedVersion`. A 409 (ApiError) means someone else saved first; nothing is overwritten. */
+export async function updatePlatformIdentity(input: {
+  platformName: string;
+  supportEmail: string | null;
+  expectedVersion: number;
+}): Promise<PlatformIdentity> {
+  return mapPlatformIdentity(
+    await client.patch<PlatformIdentityApiResponse>("/admin/platform-identity", {
+      expected_version: input.expectedVersion,
+      platform_name: input.platformName.trim(),
+      support_email: input.supportEmail?.trim() || null,
+    }),
+  );
+}
+
+function mapJobCapacity(row: JobCapacityApiResponse): JobCapacityLimits {
+  return {
+    clientActiveMax: Number(row.client_active_max),
+    providerActiveMax: Number(row.provider_active_max),
+    providerPendingMax: Number(row.provider_pending_max),
+    dailyHoursMax: Number(row.daily_hours_max),
+    restHours: Number(row.rest_hours),
+    travelKmh: Number(row.travel_kmh),
+  };
+}
+
+export async function getJobCapacity(): Promise<JobCapacityLimits | null> {
+  try {
+    return mapJobCapacity(await client.get<JobCapacityApiResponse>("/admin/job-capacity"));
+  } catch (err) {
+    if (isNotDeployed(err)) return null;
+    throw err;
+  }
+}
+
+export async function updateJobCapacity(limits: JobCapacityLimits): Promise<JobCapacityLimits> {
+  return mapJobCapacity(
+    await client.patch<JobCapacityApiResponse>("/admin/job-capacity", {
+      client_active_max: limits.clientActiveMax,
+      provider_active_max: limits.providerActiveMax,
+      provider_pending_max: limits.providerPendingMax,
+      daily_hours_max: limits.dailyHoursMax,
+      rest_hours: limits.restHours,
+      travel_kmh: limits.travelKmh,
+    }),
+  );
+}
+
+/** One request: the disputes query already carries every name and amount (see mapDisputeRow). */
 export async function getDisputes(): Promise<Dispute[]> {
-  const [rows, txns] = await Promise.all([
-    fetchAllRows<AdminDisputeApiRow>("/admin/disputes", "disputes"),
-    getTransactions(),
-  ]);
-  const txnByJob = new Map(txns.map((t) => [t.jobId, t] as const));
-  return rows.map((row) => mapDisputeRow(row, txnByJob));
+  const rows = await fetchAllRows<AdminDisputeApiRow>("/admin/disputes", "disputes");
+  return rows.map(mapDisputeRow);
 }
 
 export async function getBookings(): Promise<AdminBooking[]> {
@@ -679,9 +877,20 @@ export async function getBookingStatusCounts(): Promise<Record<(typeof BOOKING_S
   return Object.fromEntries(BOOKING_STATUSES_API.map((st, i) => [st, totals[i]])) as Record<(typeof BOOKING_STATUSES_API)[number], number>;
 }
 
+/** Withdrawal requests waiting for an admin (one-row request; only `total` is read). */
+export async function getPendingWithdrawalCount(): Promise<number> {
+  return countRows("/admin/withdrawals?status=pending");
+}
+
+/** Service requests waiting for an admin: the exact total, not capped at a page size. */
+export async function getPendingServiceRequestCount(): Promise<number> {
+  return getSkillRequestCount("pending");
+}
+
 /** Money currently held in escrow, across every held row (not just a first page). */
 export async function getEscrowHeld(): Promise<{ count: number; total: number }> {
-  const rows = await fetchAllRows<AdminTransactionApiRow>("/admin/transactions?status=held", "transactions");
+  // Money: a capped list would under-state the total, so over the cap this throws instead.
+  const rows = await fetchAllRows<AdminTransactionApiRow>("/admin/transactions?status=held", "transactions", LIST_PAGE_SIZE, "throw");
   return { count: rows.length, total: rows.reduce((sum, r) => sum + Number(r.amount), 0) };
 }
 
@@ -723,13 +932,16 @@ export function invalidateBrowserAnalytics(): void {
 
 /** GET /admin/analytics/summary rebuilt from list endpoints (see browserAnalytics.ts). */
 export async function computeAnalyticsSummaryInBrowser(): Promise<AnalyticsSummaryApiResponse> {
+  // Every list here feeds a total or a sum, so an over-cap list throws rather than under-counting.
   const [users, deletedUsers, jobs, payouts, releasedEscrow, pendingVerifications, pendingWithdrawals] = await Promise.all([
-    fetchAllRows<AdminUserApiRow>("/admin/users", "users"),
-    fetchAllRows<AdminUserApiRow>("/admin/users?status=deleted", "users").catch(() => []),
-    fetchAllRows<AdminBookingApiRow>("/admin/bookings", "bookings"),
-    fetchAllRows<AdminWalletTxnApiRow>("/admin/wallet-transactions?kind=payout&status=completed", "transactions"),
-    fetchAllRows<EscrowRowWithCommission>("/admin/transactions?status=released", "transactions"),
+    fetchAllRows<AdminUserApiRow>("/admin/users", "users", LIST_PAGE_SIZE, "throw"),
+    fetchAllRows<AdminUserApiRow>("/admin/users?status=deleted", "users", LIST_PAGE_SIZE, "throw").catch(() => []),
+    fetchAllRows<AdminBookingApiRow>("/admin/bookings", "bookings", LIST_PAGE_SIZE, "throw"),
+    fetchAllRows<AdminWalletTxnApiRow>("/admin/wallet-transactions?kind=payout&status=completed", "transactions", LIST_PAGE_SIZE, "throw"),
+    fetchAllRows<EscrowRowWithCommission>("/admin/transactions?status=released", "transactions", LIST_PAGE_SIZE, "throw"),
     countRows("/admin/verifications?status=pending"),
+    // A failed count reads as 0 here only for the summary totals; the Dashboard's
+    // queue tiles use the separate queueCounts (null when unknown), not this value.
     countRows("/admin/withdrawals?status=pending").catch(() => 0),
   ]);
   return summarizeAnalytics({ users: [...users, ...deletedUsers], jobs, payouts, releasedEscrow, pendingVerifications, pendingWithdrawals });
@@ -838,13 +1050,25 @@ export async function getJobConversation(jobId: string): Promise<ConversationMes
 
 // ─── Mutations ────────────────────────────────────────────────────────────────
 
-export async function approveVerification(id: string): Promise<Verification[]> {
+/**
+ * The write alone, for callers that must not report a successful write as
+ * failed when the follow-up list read then fails (see AppContext).
+ */
+export async function postApproveVerification(id: string): Promise<void> {
   await client.post(`/admin/verifications/${id}/approve`);
+}
+
+export async function postRejectVerification(id: string, reason?: string): Promise<void> {
+  await client.post(`/admin/verifications/${id}/reject`, reason ? { reason } : undefined);
+}
+
+export async function approveVerification(id: string): Promise<Verification[]> {
+  await postApproveVerification(id);
   return getVerifications();
 }
 
 export async function rejectVerification(id: string, reason?: string): Promise<Verification[]> {
-  await client.post(`/admin/verifications/${id}/reject`, reason ? { reason } : undefined);
+  await postRejectVerification(id, reason);
   return getVerifications();
 }
 
@@ -996,8 +1220,13 @@ export async function sendPasswordReset(id: string): Promise<boolean> {
   }
 }
 
-export async function cancelBooking(id: string): Promise<AdminBooking[]> {
+/** The cancel write alone (see postApproveVerification for why it is split out). */
+export async function postCancelBooking(id: string): Promise<void> {
   await client.post(`/admin/bookings/${id}/cancel`);
+}
+
+export async function cancelBooking(id: string): Promise<AdminBooking[]> {
+  await postCancelBooking(id);
   return getBookings();
 }
 
@@ -1012,7 +1241,21 @@ export async function getBookingDetail(id: string): Promise<AdminBookingDetail> 
     photoUrls: row.photo_urls ?? [],
     escrowStatus: row.escrow ? TRANSACTION_STATUS[row.escrow.status] : null,
     escrowAmount: row.escrow ? Number(row.escrow.amount) : null,
+    completedAt: row.completed_at ?? null,
+    status: row.status,
   };
+}
+
+/** The resolve write alone (see postApproveVerification for why it is split out). */
+export async function postResolveDispute(
+  id: string,
+  resolution: DisputeResolution,
+  note?: string,
+): Promise<void> {
+  await client.post(`/admin/disputes/${id}/resolve`, {
+    resolution: resolution === "REVIEWED" ? "reviewed" : resolution === "RELEASED_TO_PROVIDER" ? "released_to_provider" : "refunded_to_client",
+    note,
+  });
 }
 
 export async function resolveDispute(
@@ -1020,10 +1263,7 @@ export async function resolveDispute(
   resolution: DisputeResolution,
   note?: string,
 ): Promise<Dispute[]> {
-  await client.post(`/admin/disputes/${id}/resolve`, {
-    resolution: resolution === "REVIEWED" ? "reviewed" : resolution === "RELEASED_TO_PROVIDER" ? "released_to_provider" : "refunded_to_client",
-    note,
-  });
+  await postResolveDispute(id, resolution, note);
   return getDisputes();
 }
 

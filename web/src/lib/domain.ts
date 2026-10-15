@@ -69,6 +69,8 @@ export interface Verification {
   documents: string[];
   /** e.g. "philsys"; null on submissions from before migration 0034. */
   documentType?: string | null;
+  /** "stripe_identity" when Stripe checked the ID; otherwise a manual review. */
+  method: "manual" | "stripe_identity";
 }
 
 // ─── Transactions ─────────────────────────────────────────────────────────────
@@ -132,6 +134,13 @@ export interface Dispute {
   paymentSettled: boolean;
   createdAt: string; // ISO date
   resolvedAt: string | null;
+  /** Set only for cancellation reviews: pending, contested, accepted, expired, or a value this build does not know. */
+  cancellationState: string | null;
+  /** ISO timestamp by which the other side must answer; null when none. */
+  cancellationDeadline: string | null;
+  /** The job's client and assigned provider ids, so chat senders can be told apart. Absent on older API responses. */
+  clientId?: string | null;
+  providerId?: string | null;
 }
 
 // ─── Bookings ─────────────────────────────────────────────────────────────────
@@ -174,6 +183,10 @@ export interface AdminBookingDetail {
   photoUrls: string[];
   escrowStatus: TransactionStatus | null;
   escrowAmount: number | null;
+  /** ISO timestamp of completion; null until the job is completed. */
+  completedAt: string | null;
+  /** Raw job status from the backend (job_status enum). */
+  status: string;
 }
 
 // ─── Platform maintenance mode (migration 0017) ───────────────────────────────
@@ -245,6 +258,24 @@ export interface CommissionSettings {
   updatedAt: string;
 }
 
+/** The platform's public name and support address (migration 0047). */
+export interface PlatformIdentity {
+  platformName: string;
+  supportEmail: string | null;
+  /** Bumped on every save; a save must send the version it read, or the server refuses it. */
+  identityVersion: number;
+}
+
+/** The server-enforced job and booking limits (migration 0048). */
+export interface JobCapacityLimits {
+  clientActiveMax: number;
+  providerActiveMax: number;
+  providerPendingMax: number;
+  dailyHoursMax: number;
+  restHours: number;
+  travelKmh: number;
+}
+
 export interface DashboardPlatformStats {
   totalCommission: number;
   monthlyCommission: number;
@@ -267,6 +298,8 @@ export interface AuditAction {
 
 export interface ConversationMessage {
   id: string;
+  /** The sender's profile id; null for a system message with no author. */
+  senderId?: string | null;
   senderName: string;
   attachmentUrl?: string | null;
   body: string;

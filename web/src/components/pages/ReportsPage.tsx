@@ -1,9 +1,10 @@
 "use client";
 
 import { useState } from "react";
+import dynamic from "next/dynamic";
 import { AlertTriangle, CalendarRange, CheckCircle2, Download, Star, TrendingUp, Wallet } from "lucide-react";
 import { useApp } from "@/context/AppContext";
-import { formatCurrency, formatCurrencyCompact } from "@/lib/adapters";
+import { formatCurrency, formatCurrencyCompact, formatRating, ratingForCsv } from "@/lib/adapters";
 import { exportMasks } from "@/lib/export/anonymize";
 import { datedFilename, downloadCsv, toCsv } from "@/lib/export/csv";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
@@ -11,9 +12,23 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { PageHeader, Panel } from "@/components/admin/Panel";
 import { Avatar, FilterTabs, initialsOf } from "@/components/admin/queue";
-import { BarList, BarTrend, DonutChart, ProgressRing, TrendChart } from "@/components/admin/charts";
+import { BarList, ProgressRing } from "@/components/admin/meters";
 import { Delta, KpiCard, monthOverMonth } from "@/components/admin/KpiCard";
 import { AnalyticsSourceNote } from "@/components/admin/AnalyticsSourceNote";
+
+// Recharts loads after the page's text and tiles. Each skeleton keeps its chart's height (see the height props below).
+const TrendChart = dynamic(() => import("@/components/admin/charts").then((m) => m.TrendChart), {
+  ssr: false,
+  loading: () => <Skeleton className="w-full" style={{ height: 260 }} />,
+});
+const BarTrend = dynamic(() => import("@/components/admin/charts").then((m) => m.BarTrend), {
+  ssr: false,
+  loading: () => <Skeleton className="w-full" style={{ height: 240 }} />,
+});
+const DonutChart = dynamic(() => import("@/components/admin/charts").then((m) => m.DonutChart), {
+  ssr: false,
+  loading: () => <Skeleton className="h-[168px] w-full" />,
+});
 
 type Range = "3" | "6" | "12";
 
@@ -24,7 +39,7 @@ export function ReportsPage() {
     bookingsSeries,
     bookingsByCategory,
     topProviders,
-    loading,
+    analyticsLoading,
     analyticsUnavailable,
     analyticsInBrowser,
     retryLoad,
@@ -43,7 +58,7 @@ export function ReportsPage() {
     />
   );
 
-  if (loading) {
+  if (analyticsLoading) {
     return (
       <div aria-busy="true" aria-label="Loading reports…">
         {header()}
@@ -94,18 +109,18 @@ export function ReportsPage() {
     const mask = exportMasks(settings.anonymizeExports);
     const blocks = [
       toCsv(["Metric", "Value"], [
-        ["Total revenue", stats.totalRevenue],
-        ["Revenue this month", stats.monthlyRevenue],
-        ["Completion rate (%)", stats.completionRate],
-        ["Average provider rating", stats.avgRating],
+        ["Total provider payouts", stats.totalRevenue],
+        ["Provider payouts this month", stats.monthlyRevenue],
+        ["Completed jobs (% of posted)", stats.completionRate],
+        ["Average provider rating", ratingForCsv(stats.avgRating)],
         ["Total users", stats.totalUsers],
-        ["Active providers", stats.activeProviders],
+        ["Registered providers", stats.activeProviders],
         ["Total bookings", stats.totalBookings],
       ]),
-      toCsv(["Month", "Revenue"], revenueSeries.map((r) => [r.month, r.value])),
+      toCsv(["Month", "Provider payouts"], revenueSeries.map((r) => [r.month, r.value])),
       toCsv(["Month", "Bookings"], bookingsSeries.map((b) => [b.month, b.value])),
       toCsv(["Category", "Share (%)"], bookingsByCategory.map((c) => [c.label, c.value])),
-      toCsv(["Provider", "Completed jobs", "Rating"], topProviders.map((p) => [mask.name(p.name), p.jobs, p.rating])),
+      toCsv(["Provider", "Completed jobs", "Rating"], topProviders.map((p) => [mask.name(p.name), p.jobs, ratingForCsv(p.rating)])),
     ];
     const labels = ["SUMMARY", "REVENUE TREND", "MONTHLY BOOKINGS", "BOOKINGS BY CATEGORY", "TOP PROVIDERS"];
     const csv = blocks.map((b, i) => `${labels[i]}\r\n${b}`).join("\r\n\r\n");
@@ -135,9 +150,9 @@ export function ReportsPage() {
 
       {analyticsInBrowser && <AnalyticsSourceNote />}
       <div className="mb-4 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <KpiCard label="Total revenue" icon={<Wallet />} value={stats.totalRevenue} format={formatCurrencyCompact} footer={<span className="text-muted-foreground">All-time gross merchandise value</span>} />
+        <KpiCard label="Total provider payouts" icon={<Wallet />} value={stats.totalRevenue} format={formatCurrencyCompact} footer={<span className="text-muted-foreground">All-time, after commission</span>} />
         <KpiCard
-          label="Revenue this month"
+          label="Provider payouts this month"
           icon={<TrendingUp />}
           value={stats.monthlyRevenue}
           format={formatCurrency}
@@ -148,9 +163,9 @@ export function ReportsPage() {
           <ProgressRing value={stats.completionRate} size={64} stroke={7} label={`${stats.completionRate}%`} />
           <div>
             <div className="flex items-center gap-1.5 text-[12.5px] text-muted-foreground">
-              <CheckCircle2 className="size-3.5" /> Completion rate
+              <CheckCircle2 className="size-3.5" /> Completed jobs
             </div>
-            <div className="mt-1 text-[12px] text-subtle">Share of accepted jobs that finished</div>
+            <div className="mt-1 text-[12px] text-subtle">Share of all posted jobs that finished</div>
           </div>
         </Panel>
         <Panel bodyClassName="pt-4">
@@ -158,26 +173,26 @@ export function ReportsPage() {
             <Star className="size-3.5" /> Avg provider rating
           </div>
           <div className="mt-2 flex items-end gap-2">
-            <span className="tabular text-[28px] font-semibold leading-none tracking-tight">{stats.avgRating}</span>
+            <span className="tabular text-[28px] font-semibold leading-none tracking-tight">{formatRating(stats.avgRating)}</span>
             <span className="mb-0.5 flex text-warn" aria-hidden>
               {Array.from({ length: 5 }, (_, i) => (
-                <Star key={i} className={i < Math.round(stats.avgRating) ? "size-3.5 fill-current" : "size-3.5 opacity-25"} />
+                <Star key={i} className={stats.avgRating > 0 && i < Math.round(stats.avgRating) ? "size-3.5 fill-current" : "size-3.5 opacity-25"} />
               ))}
             </span>
           </div>
-          <div className="mt-2 text-[12px] text-subtle">Across {stats.activeProviders.toLocaleString()} active providers</div>
+          <div className="mt-2 text-[12px] text-subtle">Across {stats.activeProviders.toLocaleString()} registered providers</div>
         </Panel>
       </div>
 
       <div className="mb-4 grid gap-4 xl:grid-cols-[minmax(0,1.65fr)_minmax(300px,1fr)]">
         <Panel
-          title="Revenue trend"
-          description={`Gross merchandise value per month · ${formatCurrency(revenueTotalInRange)} over ${months} months`}
+          title="Payout trend"
+          description={`Provider payouts released per month, after commission · ${formatCurrency(revenueTotalInRange)} over ${months} months`}
           action={<CalendarRange className="size-4 text-subtle" />}
         >
           {revenueInRange.length === 0 ? (
             <div className="grid h-[260px] place-items-center text-center text-[12.5px] text-muted-foreground">
-              No revenue yet — this fills in once a job&apos;s escrow is released to a provider.
+              No payouts yet — this fills in once a job&apos;s escrow is released to a provider.
             </div>
           ) : (
             <TrendChart data={revenueInRange} format={formatCurrency} yFormat={formatCurrencyCompact} height={260} />
@@ -213,11 +228,14 @@ export function ReportsPage() {
                   </span>
                 ),
                 value: p.jobs,
-                hint: (
-                  <span className="inline-flex items-center gap-0.5">
-                    {p.rating} <Star className="size-3 fill-current text-warn" />
-                  </span>
-                ),
+                hint:
+                  p.rating > 0 ? (
+                    <span className="inline-flex items-center gap-0.5">
+                      {`${p.jobs} jobs · ${formatRating(p.rating)}`} <Star className="size-3 fill-current text-warn" />
+                    </span>
+                  ) : (
+                    <span>{`${p.jobs} jobs · — unrated`}</span>
+                  ),
               }))}
               format={(n) => `${n} jobs`}
             />
@@ -229,7 +247,7 @@ export function ReportsPage() {
         open={confirmingExport}
         danger={false}
         title="Export to CSV?"
-        message="This downloads every section on this page — summary, revenue trend, monthly bookings, categories, and top providers — as one .csv file to your device."
+        message="This downloads every section on this page — summary, payout trend, monthly bookings, categories, and top providers — as one .csv file to your device."
         confirmLabel="Export"
         onConfirm={() => {
           setConfirmingExport(false);

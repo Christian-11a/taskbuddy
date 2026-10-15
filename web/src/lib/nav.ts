@@ -39,7 +39,7 @@ export const ADMIN_NAV: NavItem[] = [
   { id: "transactions", label: "Transactions", group: "operations", icon: CreditCard, description: "Escrow payments and wallet activity", keywords: ["payments", "escrow", "wallet", "credit"] },
   { id: "withdrawals", label: "Withdrawals", group: "operations", icon: WalletCards, description: "Pay out provider withdrawal requests", keywords: ["payout", "gcash", "bank"] },
   { id: "skill-requests", label: "Service Requests", group: "operations", icon: Wrench, description: "Approve providers' new service categories", keywords: ["skills", "category"] },
-  { id: "users", label: "Users", group: "operations", icon: Users, description: "Client and provider accounts", keywords: ["suspend", "accounts", "providers", "clients", "homeowners"] },
+  { id: "users", label: "Users", group: "operations", icon: Users, description: "Client and provider accounts", keywords: ["suspend", "accounts", "providers", "clients"] },
   { id: "activity-log", label: "Activity", group: "records", icon: History, description: "Marketplace activity by job", keywords: ["log", "events"] },
   { id: "audit-log", label: "Audit Log", group: "records", icon: ScrollText, description: "Every admin action, recorded", keywords: ["audit", "history"] },
   { id: "reports", label: "Reports", group: "records", icon: BarChart3, description: "Platform performance and analytics", keywords: ["analytics", "revenue", "charts"] },

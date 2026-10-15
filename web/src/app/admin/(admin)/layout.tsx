@@ -6,6 +6,8 @@ import { motion, useReducedMotion } from "motion/react";
 import { AlertTriangle, RotateCw } from "lucide-react";
 import { useApp } from "@/context/AppContext";
 import { useLiveRefresh } from "@/hooks/useLiveRefresh";
+import { useArrivalAlerts } from "@/hooks/useArrivalAlerts";
+import { useDocumentTitleCount } from "@/hooks/useDocumentTitleCount";
 import { Sidebar, SIDEBAR_WIDTH } from "@/components/layout/Sidebar";
 import { Header } from "@/components/layout/Header";
 import { Button } from "@/components/ui/button";
@@ -20,14 +22,16 @@ import { LOGIN_PATH, pathToPage } from "@/lib/routes";
  * legacy light-theme overrides.
  */
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
-  const { isLoggedIn, sessionRestored, logout, sidebarCollapsed, setSidebarCollapsed, loadError, retryLoad, refreshData } = useApp();
+  const { isLoggedIn, sessionRestored, logout, sidebarCollapsed, setSidebarCollapsed, loadError, retryLoad, refreshLive } = useApp();
   const [drawerOpen, setDrawerOpen] = useState(false);
   const pathname = usePathname();
   const router = useRouter();
   const activePage = pathToPage(pathname);
   const reduce = useReducedMotion();
 
-  useLiveRefresh(refreshData, { enabled: isLoggedIn });
+  useLiveRefresh(refreshLive, { enabled: isLoggedIn });
+  useArrivalAlerts();
+  useDocumentTitleCount();
 
   // Gated on sessionRestored: isLoggedIn is false on the server and on the
   // client's first render, so redirecting without this check would bounce a

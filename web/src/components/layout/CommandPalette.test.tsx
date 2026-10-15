@@ -15,6 +15,7 @@ vi.mock("@/context/AppContext", () => ({
     setDarkMode,
     refreshData: vi.fn(),
     logout: vi.fn(),
+    ensureUsers: vi.fn(),
   }),
 }));
 import { CommandPalette } from "./CommandPalette";

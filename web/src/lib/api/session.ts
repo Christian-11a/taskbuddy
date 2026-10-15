@@ -4,7 +4,7 @@ export interface AdminProfile {
   email: string;
 }
 
-interface AdminSession {
+export interface AdminSession {
   csrfToken: string;
   adminProfile: AdminProfile;
 }

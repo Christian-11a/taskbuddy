@@ -21,6 +21,7 @@ function makeAppState() {
     setSidebarCollapsed: vi.fn(),
     settings: {
       activityBadge: true,
+      arrivalAlerts: true,
       anonymizeExports: true,
       platformName: "",
     },
@@ -88,6 +89,18 @@ describe("SettingsPage", () => {
 
     expect(app.setDarkMode).toHaveBeenCalledWith(true);
     expect(app.updateSettings).toHaveBeenCalledWith({ activityBadge: false });
+  });
+
+  it("lets the admin turn arrival alerts off, saved on this device", async () => {
+    const user = userEvent.setup();
+    render(<SettingsPage />);
+
+    const toggle = screen.getByRole("switch", { name: "Alert me when new work arrives" });
+    expect(toggle).toHaveAttribute("aria-checked", "true");
+    expect(screen.getByText("A small message while the console is open. Saved on this device.")).toBeInTheDocument();
+
+    await user.click(toggle);
+    expect(app.updateSettings).toHaveBeenCalledWith({ arrivalAlerts: false });
   });
 
   it("lets the admin turn export anonymization on and off", async () => {

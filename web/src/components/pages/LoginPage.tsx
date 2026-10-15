@@ -3,7 +3,7 @@
 import { useId, useRef, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
-import { AlertCircle, ArrowLeft, Eye, EyeOff, Loader2, Lock, Mail, ShieldCheck } from "lucide-react";
+import { AlertCircle, ArrowLeft, Eye, EyeOff, Info, Loader2, Lock, Mail, ShieldCheck } from "lucide-react";
 import { useApp } from "@/context/AppContext";
 import type { LoginFailure } from "@/lib/services";
 import { validateEmail, validateRequired } from "@/lib/validation";
@@ -25,13 +25,15 @@ function failureMessage(reason: LoginFailure, retryAfterSeconds?: number): strin
       return "Can't reach the TaskBuddy server. Check your connection (or that the API is running), then try again.";
     case "server":
       return "The server had a problem signing you in. Try again in a moment.";
+    case "cookies_blocked":
+      return "Your browser blocked the sign-in cookie. Open the console in a regular (non-private) browser window, allow cookies for this site, or ask for the proxy setup.";
     default:
       return "Invalid email or password. Check your credentials and try again.";
   }
 }
 
 export function LoginPage() {
-  const { login } = useApp();
+  const { login, sessionEnded } = useApp();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -112,6 +114,17 @@ export function LoginPage() {
           <p className="mt-1.5 text-[13.5px] leading-relaxed text-muted-foreground">
             Restricted to authorized TaskBuddy administrators.
           </p>
+
+          {/* The console signed the admin out (its data reads were refused), so
+              say so rather than leaving them staring at a blank form. */}
+          {sessionEnded && !error && (
+            <div
+              role="status"
+              className="mt-5 flex items-start gap-2.5 rounded-[10px] border border-info/25 bg-info-soft px-3.5 py-3 text-[13px] leading-snug text-info"
+            >
+              <Info className="mt-px size-4 shrink-0" aria-hidden="true" /> Your session ended. Please sign in again.
+            </div>
+          )}
 
           {error && (
             <div

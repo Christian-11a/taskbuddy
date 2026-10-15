@@ -55,7 +55,9 @@ cd ../backend && PORT=3001 npm run start:dev
 For an externally hosted console, set `NEXT_PUBLIC_API_URL` to the API HTTPS
 origin and set that exact console origin in the API's comma-separated
 `WEB_CORS_ORIGINS`. The API enables credentialed CORS only for that allowlist;
-wildcard origins cannot be used with the admin cookies.
+wildcard origins cannot be used with the admin cookies. Phones often refuse
+cookies sent this way; for those, use the first-party proxy in
+[Deployment: first-party API proxy](#deployment-first-party-api-proxy).
 
 | Script | What it does |
 |---|---|
@@ -64,6 +66,35 @@ wildcard origins cannot be used with the admin cookies.
 | `npm start` | Serve the production build |
 | `npm run lint` | ESLint |
 | `npm test` | Vitest unit tests |
+
+---
+
+## Deployment: first-party API proxy
+
+The admin session lives in cookies that the API sets. Phone browsers (iOS
+Safari, in-app browsers, and Chrome, Brave or Firefox with third-party cookies
+blocked) refuse cookies that a page gets from another site, so a console that
+calls the API directly can sign in and then bounce back to the sign-in form.
+To avoid this, the console sends its API calls through its own origin, and
+Next.js forwards them to the API.
+
+Set these on the Vercel project (Production and Preview), then redeploy:
+
+| Variable | Value | What it does |
+|---|---|---|
+| `NEXT_PUBLIC_API_URL` | `/backend` | The browser calls `/backend/...` on the console's own origin. |
+| `ADMIN_API_PROXY_TARGET` | The API's HTTPS origin, with no trailing slash, e.g. `https://taskbuddy-kpek.onrender.com` | A rewrite forwards `/backend/*` to it. The server routes under `/api/auth/*` call it directly. |
+
+Notes:
+
+- `NEXT_PUBLIC_API_URL` is compiled into the build, so changing it needs a redeploy.
+- `ADMIN_API_PROXY_TARGET` is read on the server only and is never sent to the browser.
+- With `NEXT_PUBLIC_API_URL=/backend` and no proxy target, the build fails and names both variables.
+- Leave both unset for local development. The console then calls `http://localhost:3001` directly.
+- The console's origin must still be in the API's `WEB_CORS_ORIGINS` list, as before.
+- If the browser still refuses the cookie, sign-in shows "Your browser blocked the sign-in cookie" and the console does not sign in.
+
+To verify, sign in on a phone (or a private window). The dashboard should open and stay open. In DevTools, Application, Cookies, the console's own host should list `tb_admin_access`, `tb_admin_refresh` and `tb_admin_csrf`. Network requests should go to `https://<console-host>/backend/...`.
 
 ---
 
@@ -133,6 +164,17 @@ admin pages → context/AppContext → lib/services → lib/api/client → backe
   Transactions, Activity) reload on the same tick via `hooks/useLiveTick`. A
   silent refresh never starts while the first load is still running, and a
   moderation action discards any refresh that was already in flight.
+- **Attention counts.** `AppContext.queueCounts` holds one count per queue:
+  verifications and disputes are counted from the lists already loaded;
+  withdrawals and service requests are count-only requests (`GET
+  /admin/withdrawals?status=pending`, and the exact total from
+  `/admin/skill-requests`). The counts refresh on the same 30 s tick. A queue
+  that fails to load is `null` and shows as "unknown" (never as zero). The bell,
+  the sidebar badges and the browser-tab title `(N) …` all read these counts
+  (`lib/attention.ts`). `hooks/useArrivalAlerts` shows a pop-up when a count rises
+  while the console is open; it never fires for work already waiting at load and
+  can be turned off in Settings ("Alert me when new work arrives", saved on this
+  device, on by default).
 - **Lists use the backend's paging contracts.** Bookings, Activity, Audit,
   Wallet and Service Requests load server-filtered pages. Other queues load
   their complete lists for local filtering. If
@@ -178,9 +220,13 @@ src/
 │                             # plus ConfirmDialog, Toast, ReviewDrawer, Pagination
 ├── styles/promo.css          # Scoped under `.promo-site` — doesn't affect /admin
 ├── context/AppContext.tsx    # Session, data, mutations, preferences (admin only)
-├── hooks/                    # useLiveRefresh, useLiveTick, useDebouncedValue
+├── hooks/                    # useLiveRefresh, useLiveTick, useDebouncedValue,
+│                             # useArrivalAlerts, useDocumentTitleCount
 └── lib/
     ├── domain.ts             # Backend-shaped domain types
+    ├── attention.ts          # Queue counts, "unknown" handling, arrival detection
+    ├── caseSignals.ts        # Dispute kind (complaint/appeal/cancellation) and urgency
+    ├── warranty.ts           # 72-hour warranty window from a job's completed_at
     ├── routes.ts             # Page id ↔ /admin/<page> URL + page titles
     ├── validation.ts         # Shared rules, mirroring backend DTO limits
     ├── services/             # THE DATA SEAM (admin)
@@ -234,18 +280,18 @@ the backend and convert its JSON tokens into httpOnly cookies):
 | Page | Endpoint(s) |
 |---|---|
 | Login | `POST /auth/admin/login` |
-| Dashboard | `GET /admin/analytics/summary` (includes held escrow and job totals; browser fallback retained), `GET /admin/activity`, `GET /admin/skill-requests?status=pending&limit=1&offset=0` (exact queue total). Separate escrow/booking reads are used only if summary fields are absent. |
-| Verifications | `GET /admin/verifications`, `POST .../approve` · `/reject` (accepts a reason) |
+| Dashboard | `GET /admin/analytics/summary` (includes held escrow and job totals; browser fallback retained), `GET /admin/activity`, `GET /admin/skill-requests?status=pending&limit=1&offset=0` (exact queue total). Every page's sidebar badges and bell also use the withdrawals count, `GET /admin/withdrawals?status=pending`, loaded on the same refresh. The Service Requests badge uses the same exact total. Separate escrow/booking reads are used only if summary fields are absent. |
+| Verifications | `GET /admin/verifications` (`method` gives the "ID + selfie review" or "Stripe Identity" badge; Stripe Identity rows have no documents), `POST .../approve` · `/reject` (accepts a reason) |
 | Users | `GET /admin/users`, `POST .../suspend` (reason + optional duration) · `/reinstate` · `/send-password-reset` |
-| Transactions | **Escrow:** `GET /admin/transactions`, `POST /admin/escrow/:id/retry-transfer` (card-funded payouts) · **Wallet:** `GET /admin/wallet-transactions?search=…&limit=…&offset=…` (fetched when the tab opens), `POST /admin/wallet-transactions/recovery-credit` |
-| Disputes | `GET /admin/disputes`, `POST .../resolve` (accepts a note), `GET /admin/jobs/:jobId/conversation` (on demand) |
-| Bookings | `GET /admin/bookings` (page, total and search-filtered `status_counts` together), `POST .../cancel`, `GET /admin/bookings/:id` (detail drawer) |
+| Transactions | **Escrow:** `GET /admin/transactions`, `POST /admin/escrow/:id/retry-transfer` (card-funded payouts), `GET /admin/bookings/:id` (drawer warranty line from `completed_at`) · **Wallet:** `GET /admin/wallet-transactions?search=…&limit=…&offset=…` (fetched when the tab opens), `POST /admin/wallet-transactions/recovery-credit` |
+| Disputes | `GET /admin/disputes` (also `cancellation_state`, `cancellation_deadline` and `entries` for the case timeline), `POST .../resolve` (accepts a note), `GET /admin/bookings/:id` (job `completed_at` for the Payment protection warranty), `GET /admin/jobs/:jobId/conversation` (on demand) |
+| Bookings | `GET /admin/bookings` (page, total and search-filtered `status_counts` together), `POST .../cancel`, `GET /admin/bookings/:id` (detail drawer; `completed_at` gives the warranty line for completed jobs) |
 | Activity Log | `GET /admin/activity` |
 | Audit Log | `GET /admin/audit?search=…&action=…&limit=…&offset=…` (server-filtered pages and total) |
 | Reports | `GET /admin/analytics/summary` (same browser fallback as the Dashboard) |
 | Withdrawals | `GET /admin/withdrawals`, `POST .../:id/settle` · `POST .../:id/reject` |
-| Platform | `GET`/`PATCH /admin/commission`, category CRUD, admin accounts, notification broadcast |
-| Settings | `PATCH /profiles/me`, `POST /auth/change-password`, `GET`/`PATCH /settings` (account dark mode), `GET`/`PATCH /admin/maintenance`. The platform-identity API is committed on an undeployed feature branch; Settings and the footer do not consume it yet. Admin verification email delivery is pending a verified domain. The Data & Privacy export-anonymization switch is local to the browser. |
+| Platform | `GET`/`PATCH /admin/commission`, category CRUD, admin accounts, notification broadcast, `GET`/`PATCH /admin/platform-identity` and `GET`/`PATCH /admin/job-capacity` (shown as "Not available yet" until the backend serves them) |
+| Settings | `PATCH /profiles/me`, `POST /auth/change-password`, `GET`/`PATCH /settings` (account dark mode), `GET`/`PATCH /admin/maintenance`. The platform-identity API is committed but not deployed; the Platform page has an Identity tab for it (shown as "Not available yet" until it is served), while Settings and the footer do not consume it yet. Admin verification email delivery is pending a verified domain. The Data & Privacy export-anonymization switch is local to the browser. |
 
 The Platform page consumes the commission, category, admin-account, and
 notification endpoints. The Withdrawals page consumes the settlement queue.
@@ -271,8 +317,14 @@ are checked. Written UTF-8 with a BOM so Excel doesn't mangle the peso sign.
   `cancelled` hold also reads as `REFUNDED` — there's no separate UI state.
 - **Bookings amount** is the real `jobs.budget`. Jobs posted before pricing
   existed (migration 0007) have none and show ₱0.
-- **The notification bell** derives from the Verifications and Disputes lists.
-  It never needed a backend of its own.
+- **The notification bell is an inbox.** New work creates entries (`lib/inbox.ts`,
+  `hooks/useAdminInbox.ts`, stored in this browser, capped at 100). The badge
+  counts unread entries; clicking one marks it read and opens its queue. Entries
+  can be deleted singly or in a selection, "Mark all as read" clears the badge
+  and "Delete all" only works once everything is read. Entries for a queue leave
+  on their own when its count reaches 0. A "Pending work" list under the entries
+  shows the real counts from `queueCounts` (see Architecture), which are also what
+  the sidebar badges and the tab title show. It never needed a backend of its own.
 - **Escrow ≠ wallet.** Escrow is money held for one job; the wallet ledger is a
   user's running balance (top-ups, withdrawals, payouts, refunds). Separate
   tables, separate tabs.
@@ -489,6 +541,11 @@ Completed checks are recorded in [CHANGELOG.md](./CHANGELOG.md).
   release/refund a dispute, settle/reject a withdrawal, reject a service
   request, cancel a booking with held escrow, Retry transfer, Issue Credit, Platform
   edits and a broadcast, Maintenance Mode on/off, and a password change.
+- **Not yet exercised against the live backend** (admin sync with the mobile
+  app, 2026-10-15): the new complaint actions; Release, Refund and Record decision
+  on cancellation reviews; arrival alerts over a real 30 s poll; and the warranty
+  line against real `completed_at` values. Local tests and the dev preview cover
+  these with sample data only.
 
 ## Build and tests
 
@@ -510,7 +567,7 @@ by web; admin verification email delivery has not been implemented.
 | Need | Backend work | Web follow-up |
 |---|---|---|
 | **Email admins on new provider verification** | Send one email to every active admin when a provider submits for verification. Always on, no duplicates, and a failed send must not block the submission. | Replace the disabled Notifications switch with a note once it works. |
-| **Platform name and support email** | The shared backend contract is committed in migration 0047, but not deployed. **The support mailbox is not created yet**, so the email starts empty and the footer and emails show no contact line until it is set. | Connect Settings fields and the footer after deployment; show the email as "Not set yet" while empty. |
+| **Platform name and support email** | The shared backend contract is committed in migration 0047, but not deployed. **The support mailbox is not created yet**, so the email starts empty and the footer and emails show no contact line until it is set. | The Platform page Identity tab is built and starts working once this is deployed. Connect the Settings fields and the footer after deployment; show the email as "Not set yet" while empty. |
 
 The shared-settings backend contract is implemented locally in migration 0047:
 `GET /platform/identity` is public; `GET /admin/platform-identity` and

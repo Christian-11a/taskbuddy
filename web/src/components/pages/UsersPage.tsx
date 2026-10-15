@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { AlertTriangle, CheckCircle, Download, Home, KeyRound, MailCheck, MoreHorizontal, PauseCircle, RefreshCw, Star, Users, Wrench } from "lucide-react";
 import { useApp } from "@/context/AppContext";
 import { exportMasks } from "@/lib/export/anonymize";
@@ -29,7 +29,7 @@ import {
 } from "@/components/admin/table";
 import { cn } from "@/lib/utils";
 import type { BulkCounts } from "@/lib/services";
-import type { UserRow } from "@/lib/adapters";
+import { formatRating, ratingForCsv, type UserRow } from "@/lib/adapters";
 
 const PAGE_SIZE = 12;
 
@@ -74,8 +74,12 @@ const VERIFICATION_TONE: Record<string, "ok" | "warn" | "danger" | "neutral"> = 
 };
 
 export function UsersPage() {
-  const { users, setUserStatus, bulkSetUserStatus, sendPasswordReset, refreshUsers, loading, settings } = useApp();
+  const { users, setUserStatus, bulkSetUserStatus, sendPasswordReset, refreshUsers, ensureUsers, usersLoading, settings } = useApp();
   const { showToast } = useToast();
+  // The list is read once the console is up, then re-read here only when it is more than 5 minutes old.
+  useEffect(() => {
+    ensureUsers({ maxAgeMs: 5 * 60_000 });
+  }, [ensureUsers]);
   const [search, setSearch] = useState("");
   const [roleFilter, setRoleFilter] = useState<RoleFilter>("all");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
@@ -216,7 +220,7 @@ export function UsersPage() {
             {u.ratingValue ? (
               <span className="inline-flex items-center gap-0.5 text-[12px] text-warn">
                 <Star className="size-3 fill-current" />
-                {u.ratingValue.toFixed(1)}
+                {formatRating(u.ratingValue)}
               </span>
             ) : null}
           </span>
@@ -398,7 +402,7 @@ export function UsersPage() {
     const mask = exportMasks(settings.anonymizeExports);
     const csv = toCsv(
       ["Name", "Email", "Phone", "Role", "Category", "City", "Status", "Verification", "Joined", "Jobs completed", "Rating"],
-      exportScope.map((u) => [mask.name(u.name), mask.email(u.email), mask.phone(u.phone), u.rolePlain, u.category, u.city, u.status, u.verification, u.joined, u.jobsCompleted, u.ratingValue]),
+      exportScope.map((u) => [mask.name(u.name), mask.email(u.email), mask.phone(u.phone), u.rolePlain, u.category, u.city, u.status, u.verification, u.joined, u.jobsCompleted, ratingForCsv(u.ratingValue)]),
     );
     downloadCsv(datedFilename("taskbuddy-users"), csv);
   }
@@ -616,7 +620,7 @@ export function UsersPage() {
               {/* Three distinct states — saying "No users yet" while the initial
                   load is still in flight (up to a 60s Render cold start) would
                   be a confident lie. */}
-              {loading ? "Loading users…" : users.length === 0 ? "No users yet." : "No users match this search or filter."}
+              {usersLoading ? "Loading users…" : users.length === 0 ? "No users yet." : "No users match this search or filter."}
             </TableEmpty>
           }
         />

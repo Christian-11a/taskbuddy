@@ -32,6 +32,9 @@ order, newest first.
 
 | Date | Entry | Category |
 |---|---|---|
+| 2026-10-15 | Faster console, sectioned dispute case view, collapsible lists | Improvement, Feature |
+| 2026-10-15 | Notification inbox, mobile sign-in fix, case chat, trust fixes | Feature, Fix, Improvement, Backend integration |
+| 2026-10-15 | Admin synced with the mobile app | Feature, Improvement, Backend integration |
 | 2026-10-03 | Export anonymization is real; Settings trimmed to what exists | Feature, Improvement |
 | 2026-10-03 | Server-filtered Service Requests and booking-title search, verified live | Backend integration, Verification |
 | 2026-10-01 | Admin regression suite after moderation recovery | Verification |
@@ -52,6 +55,178 @@ order, newest first.
 | undated | Visual/UX port from the design mockup | Improvement |
 | undated | Hardening passes | Security, Fix, Accessibility |
 | undated | Backend follow-ups (migrations 0014, 0017) | Backend integration |
+
+---
+
+### 2026-10-15 · Faster console, sectioned dispute case view, collapsible lists
+
+**Category:** Improvement · Feature
+
+- **Speed.** Measured on a production build against a fake API with 5,000 users and
+  5,000 transactions (details and how to rerun in `web/scripts/perf/`). A cold start
+  went from 63 requests / 5.26 MB / about 2.9 s of data loading to 36 requests /
+  2.62 MB / about 0.6 s, with no OPTIONS preflights (there were 61). Each 30 s live
+  refresh went from 60 requests / 5.08 MB to 7 requests / 0.43 MB. JavaScript parsed
+  before the dashboard starts went from 1,309 KB to 867 KB.
+  What changed: list pages are fetched six at a time instead of one after another;
+  GET requests send no custom headers (so cross-origin reads skip the preflight);
+  the users list is not re-read on the 30 s tick and loads once behind the console
+  (`ensureUsers`, re-read after 5 minutes or after a user action); the charts library
+  loads after the page text and tiles; disputes no longer download every transaction
+  (names and amounts come from the dispute query's own join, and an unknown amount
+  shows "Unknown"); the tick reads only pending verifications;
+  automatic refreshes are skipped while one is in flight or finished less than 5 s ago (a
+  tab returning to view no longer fires two in a row), while Refresh data now, the Live
+  indicator retry and refreshes after a write always run.
+  On a full page load each part now appears as its own data arrives (Disputes no longer
+  waits for verifications or analytics; Users load in parallel from the start). On the live
+  backend a hard load of Disputes showed its cases at about 3.7 s (when its own request
+  answered) instead of about 5.8 s (when the slowest request answered). A failed part shows
+  the error banner with Retry at once without discarding the parts that did answer.
+  Behavior changes to know about: the Users list can lag other admins' changes by up
+  to 5 minutes; a list over 5,000 rows now warns and shows the first 5,000 instead of
+  failing the whole load (money totals still fail loudly).
+- **Dispute case view.** The case detail is sectioned: a header card (title, status,
+  urgency, client, amount held, provider), Summary, Activity and Conversation cards, and
+  a "Your decision" card (step 1 "Need more info?", step 2 "Decide") that stays on
+  screen beside the evidence. Narrow panes stack it with a bottom action bar. List rows
+  show a next-step line such as "Waiting for provider · due in 4 h".
+- **Collapsible list.** Disputes, Verifications, Withdrawals and Service Requests can
+  collapse their list into a slim rail (remembered per page, desktop only); the detail
+  takes the full width, which is also what shows the two-column case view on a laptop.
+
+---
+
+### 2026-10-15 · Notification inbox, mobile sign-in fix, case chat, trust fixes
+
+**Category:** Feature · Fix · Improvement · Backend integration
+
+Follow-up to "Admin synced with the mobile app", from the first round of review.
+Frontend only.
+
+- **Notification inbox.** The bell is an inbox. New work creates an entry ("3 new
+  provider verifications"); the badge counts unread entries. Clicking an entry
+  marks it read and opens its queue. Entries can be deleted one by one or in a
+  selection, "Mark all as read" clears the badge, and "Delete all" is available
+  only once everything is read. When a queue's count reaches 0 its entries leave
+  on their own. The sidebar badges and the tab title still show the real pending
+  work; a "Pending work" list under the entries shows the same numbers. Entries
+  live in this browser only (capped at 100).
+- **Counts update right after an action.** `refreshCounts()` runs after verification,
+  dispute, withdrawal, service-request, booking-cancel and recovery-credit
+  actions. A write that succeeded is no longer shown as failed when only the
+  follow-up read fails.
+- **Mobile sign-in loop.** On phones the console could sign in and then bounce back
+  to the login page. The session cookies are set by the API on another site and
+  phone browsers often block them. Sign-in now checks that the session cookie
+  actually stuck and says so if it did not, and an expired session explains
+  itself on the login page. The API can be reached through the console's own
+  domain with a proxy (`ADMIN_API_PROXY_TARGET` and `NEXT_PUBLIC_API_URL=/backend`;
+  see the README), which makes the cookies first-party.
+- **Disputes.** The job conversation is a fixed-height scrollable box with a refresh
+  button, role badges and photo thumbnails that open an enlargeable viewer. The
+  clarification form can address both parties, the client or the provider
+  (written into the note, since the API has no recipient field) and has quick
+  templates. An urgency banner shows overdue and due-soon cases.
+- **Broadcast.** After sending it says "Added to N inboxes" and notes that push is
+  best-effort and email is not sent. Title and body limits (120 and 500) match
+  the API.
+- **Numbers and labels.** Ratings show at most two decimals and "—" when unrated;
+  Top providers shows job counts. "Gross merchandise value" is now "Provider
+  payouts", "Active providers" is "Registered providers" and "Completion rate"
+  is "Completed jobs", to match what the numbers measure. Cancelling a booking
+  explains that held money goes to a cancellation review.
+- **Failures are visible.** Bookings, Transactions, Activity and Audit Log keep the
+  last rows and show a Retry banner when a load fails. The Live indicator turns
+  amber ("Update failed, retry") when a background refresh fails. CSV exports
+  neutralise cells that start with `=`, `+`, `-` or `@`. Audit Log refreshes on
+  the live tick.
+- **Ready for the backend update.** Platform identity (name and support email, with
+  a version check) and job limits (active jobs, daily hours, rest, travel speed)
+  are editable on the Platform page. Until the endpoints are deployed they show
+  "Not available yet".
+- **Other fixes.** A failed refresh no longer drops known deleted accounts; a
+  refresh can no longer overwrite a maintenance-mode toggle; a media-query hook
+  that re-subscribed on every render (and made a Disputes test flaky) is stable.
+- **Dev preview.** Sample chats carry sender ids and one photo; `?inbox=1` seeds
+  the inbox.
+
+---
+
+### 2026-10-15 · Admin synced with the mobile app
+
+**Category:** Feature · Improvement · Backend integration
+
+The admin console now shows the same work the mobile app does. This is frontend
+only: the same endpoints are used, and the API already returned these fields
+(the web used to drop them).
+
+- **Attention everywhere.** One count per queue (verifications, disputes,
+  withdrawals, service requests) lives in `AppContext.queueCounts` and refreshes
+  on the 30 s live tick. A queue that fails to load is "unknown", never "all
+  caught up": the bell says "Couldn't check withdrawals. Retrying…". The bell,
+  the sidebar number badges (now on Verifications, Disputes, Withdrawals and
+  Service Requests) and the browser-tab title `(N) …` all read the same counts.
+  The service-request count is the backend's exact total, because that endpoint
+  is paged now and is no longer capped at 100.
+- **Arrival alerts.** A small pop-up appears when a count rises while the console
+  is open. Work already waiting at load never triggers one. Settings has an
+  "Alert me when new work arrives" switch, saved on this device and on by default.
+- **Complaint handling (Disputes).** Each case is a Complaint, an Appeal or a
+  Cancellation review, from `cancellation_state` (pending, contested, accepted,
+  expired; unknown values are shown as-is). Cancellation reviews show the
+  deadline as "overdue" or "due in N h". After an admin asks for clarification the
+  case reads "Waiting on a party". Filters: Needs decision (default), Waiting on a
+  party, Cancellations, Appeals, Resolved, All, each with a count. Open cases are
+  ordered overdue, due soon, needs decision, then waiting. A readable timeline
+  shows statements, appeals, clarifications, decisions, cancellation responses,
+  system events and photo and chat evidence.
+- **Payment protection.** A section shows the 72-hour warranty counted from the
+  job's `completed_at`. Money actions follow the payment state, not the case type.
+  Held funds get Release or Refund. Cases where the payment is already settled, or
+  there is no payment, get only "Record decision" (or "Record admin decision" when
+  settled), because the backend schema says a contested or post-start cancellation
+  with held funds still needs an admin release or refund.
+- **Warranty line in drawers.** The Bookings and Transactions drawers show
+  "Warranty open · 2 d 13 h left", "Payment is held until the warranty ends", or
+  "Warranty closed", from the booking detail's `completed_at`.
+- **Verification method.** A badge shows whether a provider verified with
+  "ID + selfie review" or "Stripe Identity". Stripe Identity rows have no documents
+  and say so.
+- **Wording.** "Client" everywhere in the admin ("Unknown client", "Refunded to
+  client").
+- **Dev preview.** `/dev/admin-preview/<page>` has sample data for every new state:
+  ten sample cases, a Stripe Identity verification and warranty examples.
+  `?bump=1` raises the withdrawals count after 8 s to demo the arrival pop-up.
+  It still returns 404 in production.
+- **Fixed after code review.** A failed withdrawal count could show as 0 or "All
+  clear" on the Dashboard (its tiles now read the same nullable queue counts as the
+  bell and show "—"); arrival alerts could fire for work already waiting after
+  signing back in; an older load that was superseded could still mark the new
+  session as loaded; a Release/Refund confirmation stayed open (and could return)
+  after another admin resolved the case, and now closes with a message; warranty
+  details were cached forever, including after a failed request, and are now
+  refetched when stale, failed or not yet completed; the tab-title count is
+  re-applied if the page title changes after it.
+- **Tests.** 352 passing (227 on main before this work), type-check and lint clean.
+  New coverage: queue counts, new-work detection, complaint urgency, the warranty
+  window and its cache, the case timeline, the bell, sidebar badges, tab title,
+  arrival alerts, the Stripe Identity rows and the review fixes above.
+
+**Not done (needs the backend):**
+
+- **Provider portfolios.** No admin endpoint exposes them, so admins cannot view
+  them.
+- **Admin submission email.** The backend has per-user notifications only. The
+  "email admins when a provider submits for verification" request in
+  `docs/backend-handoff-web-admin.md` is still open, so arrival alerts work only
+  while the console is open.
+- **Job change requests** (date, time and price agreement) are backend feature
+  request #10 in `docs/backend-requests.md`. Not built.
+
+**Not yet exercised against the live backend:** the new complaint actions;
+Release, Refund and Record decision on cancellation reviews; arrival alerts over
+a real poll; and the warranty line against real `completed_at` values.
 
 ---
 

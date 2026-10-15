@@ -147,6 +147,8 @@ export interface AdminVerificationApiRow {
   document_type?: string | null;
   /** Short-lived signed URLs — the documents bucket is private. */
   documents: string[];
+  /** How the verification was checked; absent on older rows (treated as manual). */
+  method?: "manual" | "stripe_identity";
 }
 
 export interface ListVerificationsApiResponse {
@@ -214,11 +216,22 @@ export interface AdminDisputeApiRow {
   resolution_note: string | null;
   created_at: string;
   resolved_at: string | null;
-  jobs: { title: string; service_categories: { name: string } | null; client?: { full_name: string }; provider?: { full_name: string } } | null;
+  jobs: {
+    title: string;
+    service_categories: { name: string } | null;
+    client?: { full_name: string };
+    provider?: { full_name: string };
+    /** Selected by the disputes query (backend DISPUTE_SELECT); used to tell chat senders apart. */
+    client_id?: string | null;
+    assigned_provider_id?: string | null;
+  } | null;
   /** Postgres numeric arrives as a string over PostgREST. */
   escrow_transactions: { amount: number | string; status: EscrowStatusApi } | null;
   /** The client or assigned provider who requested admin review. */
   raised_by_profile: { id: string; full_name: string } | null;
+  /** Set only for cancellation reviews; an unknown value is passed through. */
+  cancellation_state?: string | null;
+  cancellation_deadline?: string | null;
 }
 
 export interface ListDisputesApiResponse {
@@ -256,6 +269,8 @@ export interface AdminBookingDetailApiResponse extends AdminBookingApiRow {
   scheduled_at: string | null;
   photo_urls: string[] | null;
   escrow: { amount: number | string; status: EscrowStatusApi } | null;
+  /** When the job was completed; starts the 72-hour warranty window. */
+  completed_at?: string | null;
 }
 
 export interface AdminActionApiRow {
@@ -349,6 +364,23 @@ export interface BroadcastApiResponse {
   sent: number;
   failed: number;
   audience: "all" | "clients" | "providers";
+}
+
+/** GET/PATCH /admin/platform-identity (migration 0047). */
+export interface PlatformIdentityApiResponse {
+  platform_name: string;
+  support_email: string | null;
+  identity_version: number | string;
+}
+
+/** GET/PATCH /admin/job-capacity (migration 0048). Numeric columns may arrive as strings. */
+export interface JobCapacityApiResponse {
+  client_active_max: number | string;
+  provider_active_max: number | string;
+  provider_pending_max: number | string;
+  daily_hours_max: number | string;
+  rest_hours: number | string;
+  travel_kmh: number | string;
 }
 
 export interface AdminMessageApiRow {

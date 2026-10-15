@@ -50,6 +50,22 @@ function renderWithToast(ui: React.ReactElement) {
   return render(<ToastProvider>{ui}</ToastProvider>);
 }
 
+describe("UsersPage — rating display", () => {
+  it("shows a provider's rating rounded to at most two decimals", () => {
+    mockedUseApp.mockReturnValue({ ensureUsers: vi.fn(),
+      users: [makeUser({ ratingValue: 4.08333, rating: "4.08 rating" })],
+      setUserStatus: vi.fn(),
+      bulkSetUserStatus: vi.fn(),
+      sendPasswordReset: vi.fn(),
+      refreshUsers: vi.fn(),
+      usersLoading: false,
+    } as unknown as ReturnType<typeof useApp>);
+    renderWithToast(<UsersPage />);
+    expect(screen.getByText("4.08")).toBeInTheDocument();
+    expect(screen.queryByText(/4\.08333/)).not.toBeInTheDocument();
+  });
+});
+
 describe("UsersPage — suspend flow", () => {
   const setUserStatus = vi.fn();
   const bulkSetUserStatus = vi.fn();
@@ -58,13 +74,13 @@ describe("UsersPage — suspend flow", () => {
 
   beforeEach(() => {
     vi.resetAllMocks();
-    mockedUseApp.mockReturnValue({
+    mockedUseApp.mockReturnValue({ ensureUsers: vi.fn(),
       users: [makeUser()],
       setUserStatus,
       bulkSetUserStatus,
       sendPasswordReset,
       refreshUsers,
-      loading: false,
+      usersLoading: false,
     } as unknown as ReturnType<typeof useApp>);
   });
 
@@ -143,13 +159,13 @@ describe("UsersPage — suspend flow", () => {
   });
 
   it("filters the table by search text", async () => {
-    mockedUseApp.mockReturnValue({
+    mockedUseApp.mockReturnValue({ ensureUsers: vi.fn(),
       users: [makeUser(), makeUser({ id: "u-2", name: "Jamie Kim", email: "jamie@example.com", isProvider: false, rolePlain: "Client" })],
       setUserStatus,
       bulkSetUserStatus,
       sendPasswordReset,
       refreshUsers,
-      loading: false,
+      usersLoading: false,
     } as unknown as ReturnType<typeof useApp>);
     const user = userEvent.setup();
     renderWithToast(<UsersPage />);
@@ -164,7 +180,7 @@ describe("UsersPage — suspend flow", () => {
 
   it("filters to new users by join date", async () => {
     const recent = new Date(Date.now() - 2 * 86_400_000).toISOString();
-    mockedUseApp.mockReturnValue({
+    mockedUseApp.mockReturnValue({ ensureUsers: vi.fn(),
       users: [
         makeUser({ createdAt: "2024-03-10" }),
         makeUser({ id: "u-2", name: "Nina New", email: "nina@example.com", createdAt: recent }),
@@ -173,7 +189,7 @@ describe("UsersPage — suspend flow", () => {
       bulkSetUserStatus,
       sendPasswordReset,
       refreshUsers,
-      loading: false,
+      usersLoading: false,
     } as unknown as ReturnType<typeof useApp>);
     const user = userEvent.setup();
     renderWithToast(<UsersPage />);
@@ -184,7 +200,7 @@ describe("UsersPage — suspend flow", () => {
   });
 
   it("filters providers by verification status", async () => {
-    mockedUseApp.mockReturnValue({
+    mockedUseApp.mockReturnValue({ ensureUsers: vi.fn(),
       users: [
         makeUser(),
         makeUser({ id: "u-3", name: "Paula Pending", email: "paula@example.com", verification: "Pending review", verificationClass: "badge-pending" }),
@@ -193,7 +209,7 @@ describe("UsersPage — suspend flow", () => {
       bulkSetUserStatus,
       sendPasswordReset,
       refreshUsers,
-      loading: false,
+      usersLoading: false,
     } as unknown as ReturnType<typeof useApp>);
     const user = userEvent.setup();
     renderWithToast(<UsersPage />);
@@ -216,13 +232,13 @@ describe("UsersPage — suspend flow", () => {
       makeUser({ id: "u-2", name: "Jamie Kim", email: "jamie@example.com" }),
       makeUser({ id: "u-3", name: "Paula Pending", email: "paula@example.com" }),
     ];
-    mockedUseApp.mockReturnValue({
+    mockedUseApp.mockReturnValue({ ensureUsers: vi.fn(),
       users,
       setUserStatus,
       bulkSetUserStatus,
       sendPasswordReset,
       refreshUsers,
-      loading: false,
+      usersLoading: false,
     } as unknown as ReturnType<typeof useApp>);
     bulkSetUserStatus
       .mockResolvedValueOnce({
@@ -255,13 +271,13 @@ describe("UsersPage — suspend flow", () => {
   });
 
   it("shows a bulk action success with a separate refresh warning and clears it after refresh", async () => {
-    mockedUseApp.mockReturnValue({
+    mockedUseApp.mockReturnValue({ ensureUsers: vi.fn(),
       users: [makeUser()],
       setUserStatus,
       bulkSetUserStatus,
       sendPasswordReset,
       refreshUsers,
-      loading: false,
+      usersLoading: false,
     } as unknown as ReturnType<typeof useApp>);
     bulkSetUserStatus.mockResolvedValueOnce({ succeeded: 1, failed: 0, errors: [], refreshFailed: true });
     refreshUsers.mockResolvedValueOnce(undefined);
@@ -281,13 +297,13 @@ describe("UsersPage — suspend flow", () => {
   });
 
   it("requires a list refresh and deselects accounts when a bulk request outcome is unconfirmed", async () => {
-    mockedUseApp.mockReturnValue({
+    mockedUseApp.mockReturnValue({ ensureUsers: vi.fn(),
       users: [makeUser()],
       setUserStatus,
       bulkSetUserStatus,
       sendPasswordReset,
       refreshUsers,
-      loading: false,
+      usersLoading: false,
     } as unknown as ReturnType<typeof useApp>);
     bulkSetUserStatus.mockResolvedValueOnce({
       succeeded: 0,
@@ -343,13 +359,13 @@ describe("bulkMessage", () => {
 
 describe("UsersPage — CSV export anonymization", () => {
   function setup(anonymizeExports: boolean) {
-    mockedUseApp.mockReturnValue({
+    mockedUseApp.mockReturnValue({ ensureUsers: vi.fn(),
       users: [makeUser()],
       setUserStatus: vi.fn(),
       bulkSetUserStatus: vi.fn(),
       sendPasswordReset: vi.fn(),
       refreshUsers: vi.fn(),
-      loading: false,
+      usersLoading: false,
       settings: { anonymizeExports },
     } as unknown as ReturnType<typeof useApp>);
   }
@@ -381,5 +397,39 @@ describe("UsersPage — CSV export anonymization", () => {
     const csv = await exportCsv();
 
     expect(csv).toContain("Morgan Lee,morgan@example.com,0917 555 0101,Provider");
+  });
+});
+
+describe("UsersPage — users list loading", () => {
+  function renderWithState(state: Record<string, unknown>) {
+    mockedUseApp.mockReturnValue({
+      ensureUsers: vi.fn(),
+      users: [],
+      setUserStatus: vi.fn(),
+      bulkSetUserStatus: vi.fn(),
+      sendPasswordReset: vi.fn(),
+      refreshUsers: vi.fn(),
+      usersLoading: false,
+      loading: false,
+      settings: { anonymizeExports: false },
+      ...state,
+    } as unknown as ReturnType<typeof useApp>);
+    return renderWithToast(<UsersPage />);
+  }
+
+  it("says the list is loading while the Users read is out, even when the console is ready", () => {
+    renderWithState({ usersLoading: true });
+    expect(screen.getByText("Loading users…")).toBeInTheDocument();
+  });
+
+  it("lists its users without waiting for the rest of the console", () => {
+    renderWithState({ users: [makeUser()], usersLoading: false, loading: true });
+    expect(screen.getAllByText("Morgan Lee").length).toBeGreaterThan(0);
+  });
+
+  it("does not say the list is loading just because the rest of the console still is", () => {
+    renderWithState({ users: [], usersLoading: false, loading: true });
+    expect(screen.getByText("No users yet.")).toBeInTheDocument();
+    expect(screen.queryByText("Loading users…")).not.toBeInTheDocument();
   });
 });

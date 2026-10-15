@@ -1,16 +1,17 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Ban, CheckCircle2, Gavel, RefreshCw, RotateCcw, ScrollText, ShieldAlert, ShieldCheck, XCircle } from "lucide-react";
+import { Ban, CheckCircle2, Gavel, RefreshCw, RotateCcw, ScrollText, ShieldCheck, XCircle } from "lucide-react";
 import * as services from "@/lib/services";
 import { Pagination } from "@/components/ui/Pagination";
 import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/components/admin/Panel";
 import { SearchField } from "@/components/admin/queue";
-import { SelectFilter, TableCard, TableEmpty } from "@/components/admin/table";
+import { LoadFailedState, RefreshFailedBanner, SelectFilter, TableCard, TableEmpty } from "@/components/admin/table";
 import type { AuditAction } from "@/lib/domain";
 import { cn } from "@/lib/utils";
 import { useDebouncedValue } from "@/hooks/useDebouncedValue";
+import { useLiveTick } from "@/hooks/useLiveTick";
 
 const PAGE_SIZE = 20;
 
@@ -121,6 +122,11 @@ export function AuditLogPage() {
     [actions, observedActions],
   );
 
+  useLiveTick(() => setReloadKey((key) => key + 1));
+  const retryLoad = () => setReloadKey((key) => key + 1);
+  // A failed refresh keeps the rows already loaded; only a failed first load has none.
+  const hasRows = actions.length > 0;
+
   const visible = actions;
   const groups = useMemo(() => {
     const out: { day: string; items: AuditAction[] }[] = [];
@@ -173,7 +179,7 @@ export function AuditLogPage() {
                 </option>
               ))}
             </SelectFilter>
-            {!loading && !error && (
+            {!loading && (!error || hasRows) && (
               <span className="ml-auto tabular text-[12px] text-muted-foreground">
                 {total.toLocaleString()} {total === 1 ? "action" : "actions"}
               </span>
@@ -181,25 +187,22 @@ export function AuditLogPage() {
           </>
         }
       >
-        {loading ? (
+        {!hasRows && loading ? (
           <div role="status" aria-live="polite">
             <TableEmpty>Loading audit log…</TableEmpty>
           </div>
-        ) : error ? (
-          <div role="alert" className="flex flex-col items-center gap-3 px-6 py-14 text-[13px] text-danger">
-            <span className="flex items-center gap-2">
-              <ShieldAlert className="size-4" /> Could not load the audit log.
-            </span>
-            <Button size="sm" variant="outline" onClick={() => setReloadKey((key) => key + 1)}>
-              Try again
-            </Button>
-          </div>
-        ) : total === 0 && !debouncedSearch.trim() && actionFilter === "all" ? (
-          <TableEmpty>No admin actions recorded yet.</TableEmpty>
-        ) : total === 0 ? (
-          <TableEmpty>No actions match this search or filter.</TableEmpty>
+        ) : !hasRows && error ? (
+          <LoadFailedState noun="the audit log" onRetry={retryLoad} />
+        ) : !hasRows ? (
+          total === 0 && !debouncedSearch.trim() && actionFilter === "all" ? (
+            <TableEmpty>No admin actions recorded yet.</TableEmpty>
+          ) : (
+            <TableEmpty>No actions match this search or filter.</TableEmpty>
+          )
         ) : (
-          <div className="px-5 py-3">
+          <>
+            {error && <RefreshFailedBanner noun="the audit log" onRetry={retryLoad} />}
+            <div className={cn("px-5 py-3 transition-opacity", loading && "opacity-60")}>
             {groups.map((g) => (
               <section key={g.day} className="py-2">
                 <h3 className="sticky top-0 z-[1] -mx-5 mb-1 bg-surface/90 px-5 py-1.5 text-[11px] font-semibold uppercase tracking-[0.07em] text-subtle backdrop-blur">
@@ -237,9 +240,10 @@ export function AuditLogPage() {
                 </ol>
               </section>
             ))}
-          </div>
+            </div>
+          </>
         )}
-        {!loading && !error && <Pagination page={page} pageSize={PAGE_SIZE} total={total} onPageChange={setPage} itemLabel="actions" />}
+        {!loading && (!error || hasRows) && <Pagination page={page} pageSize={PAGE_SIZE} total={total} onPageChange={setPage} itemLabel="actions" />}
       </TableCard>
     </div>
   );

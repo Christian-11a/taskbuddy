@@ -4,6 +4,7 @@ import { DashboardPage } from "./DashboardPage";
 import { useApp } from "@/context/AppContext";
 import * as services from "@/lib/services";
 import type { DashboardStats } from "@/lib/domain";
+import type { QueueCounts } from "@/lib/attention";
 
 vi.mock("@/context/AppContext", () => ({
   useApp: vi.fn(),
@@ -12,13 +13,11 @@ vi.mock("@/context/AppContext", () => ({
 vi.mock("@/lib/services", () => ({
   getEscrowHeld: vi.fn(),
   getBookingStatusCounts: vi.fn(),
-  getSkillRequestCount: vi.fn(),
 }));
 
 const mockedUseApp = vi.mocked(useApp);
 const mockedGetEscrowHeld = vi.mocked(services.getEscrowHeld);
 const mockedGetBookingStatusCounts = vi.mocked(services.getBookingStatusCounts);
-const mockedGetSkillRequestCount = vi.mocked(services.getSkillRequestCount);
 
 const stats: DashboardStats = {
   totalUsers: 20,
@@ -38,20 +37,37 @@ const stats: DashboardStats = {
   matchingJobs: 4,
 };
 
-function setDashboardState(dashboardStats: DashboardStats | null = stats) {
+const allZeroQueues: QueueCounts = { verifications: 0, disputes: 0, withdrawals: 0, "skill-requests": 0 };
+
+/** Per-part readiness the Dashboard reads. Everything has answered unless a test says otherwise. */
+type PartFlags = Partial<Record<"analyticsLoading" | "disputesLoading" | "verificationsLoading" | "activityLoading" | "countsLoading", boolean>>;
+
+function setDashboardState(
+  dashboardStats: DashboardStats | null = stats,
+  queueCounts: QueueCounts = allZeroQueues,
+  revenueSeries: { month: string; value: number }[] = [],
+  parts: PartFlags = {},
+) {
   mockedUseApp.mockReturnValue({
+    ensureUsers: vi.fn(),
     adminProfile: { name: "Morgan Lee" },
     dashboardStats,
     recentActivity: [],
     disputes: [],
     users: [],
-    revenueSeries: [],
+    revenueSeries,
     bookingsSeries: [],
-    loading: false,
     analyticsUnavailable: false,
     analyticsInBrowser: false,
+    analyticsLoading: false,
+    disputesLoading: false,
+    verificationsLoading: false,
+    activityLoading: false,
+    countsLoading: false,
+    ...parts,
     retryLoad: vi.fn(),
     lastUpdated: 1,
+    queueCounts,
   } as unknown as ReturnType<typeof useApp>);
 }
 
@@ -61,15 +77,54 @@ describe("DashboardPage queue counts", () => {
     setDashboardState();
     mockedGetEscrowHeld.mockResolvedValue({ count: 2, total: 500 });
     mockedGetBookingStatusCounts.mockResolvedValue({ open: 3, recommending: 4 } as Awaited<ReturnType<typeof services.getBookingStatusCounts>>);
-    mockedGetSkillRequestCount.mockResolvedValue(23);
+  });
+
+  it("reads the payout and verification tiles from the live queue counts, not the summary", async () => {
+    setDashboardState(
+      { ...stats, pendingWithdrawals: 0, pendingVerifications: 0 },
+      { ...allZeroQueues, withdrawals: 3, verifications: 2 },
+    );
+    render(<DashboardPage />);
+
+    const payoutQueue = screen.getByRole("link", { name: /payout requests/ });
+    expect(within(payoutQueue).getByText("3")).toBeInTheDocument();
+    const verifyQueue = screen.getByRole("link", { name: /providers to verify/ });
+    expect(within(verifyQueue).getByText("2")).toBeInTheDocument();
+  });
+
+  it("shows a failed payout count as unavailable, never zero or all clear, even when the summary says 0", async () => {
+    // The browser analytics fallback reports 0 when the withdrawal request fails.
+    setDashboardState(
+      { ...stats, pendingWithdrawals: 0, escrowCount: 0, openJobs: 0, matchingJobs: 0 },
+      { ...allZeroQueues, withdrawals: null },
+    );
+    mockedGetEscrowHeld.mockResolvedValue({ count: 0, total: 0 });
+    render(<DashboardPage />);
+
+    const payoutQueue = screen.getByRole("link", { name: /payout requests/ });
+    expect(within(payoutQueue).getByText("—")).toBeInTheDocument();
+    expect(within(payoutQueue).queryByText("0")).not.toBeInTheDocument();
+    expect(screen.getByText("Some queue counts are unavailable.")).toBeInTheDocument();
+    await screen.findByRole("link", { name: /service requests/ });
+    expect(screen.queryByText("All clear: nothing is waiting for review.")).not.toBeInTheDocument();
+    expect(screen.getByText("Some queue counts are unavailable.")).toBeInTheDocument();
+  });
+
+  it("shows the all-clear sentence only when every queue is known and empty", async () => {
+    setDashboardState({ ...stats, escrowCount: 0, openJobs: 0, matchingJobs: 0 }, allZeroQueues);
+    mockedGetEscrowHeld.mockResolvedValue({ count: 0, total: 0 });
+    render(<DashboardPage />);
+
+    expect(await screen.findByText("All clear: nothing is waiting for review.")).toBeInTheDocument();
+    expect(screen.getAllByText("0").length).toBeGreaterThan(0);
   });
 
   it("uses summary totals and the exact pending service-request count without list fallbacks", async () => {
+    setDashboardState(stats, { ...allZeroQueues, "skill-requests": 23 });
     render(<DashboardPage />);
 
     const skillQueue = await screen.findByRole("link", { name: /service requests/ });
     expect(within(skillQueue).getByText("23")).toBeInTheDocument();
-    expect(mockedGetSkillRequestCount).toHaveBeenCalledWith("pending");
     expect(mockedGetEscrowHeld).not.toHaveBeenCalled();
     expect(mockedGetBookingStatusCounts).not.toHaveBeenCalled();
   });
@@ -81,7 +136,7 @@ describe("DashboardPage queue counts", () => {
       escrowCount: undefined,
       openJobs: undefined,
       matchingJobs: undefined,
-    });
+    }, { ...allZeroQueues, "skill-requests": 23 });
     render(<DashboardPage />);
 
     const skillQueue = await screen.findByRole("link", { name: /service requests/ });
@@ -90,16 +145,8 @@ describe("DashboardPage queue counts", () => {
     expect(mockedGetBookingStatusCounts).toHaveBeenCalledTimes(1);
   });
 
-  it("shows a missing payout count as unavailable instead of zero", async () => {
-    setDashboardState({ ...stats, pendingWithdrawals: null });
-    render(<DashboardPage />);
-    const payoutQueue = screen.getByRole("link", { name: /payout requests/ });
-    expect(within(payoutQueue).getByText("—")).toBeInTheDocument();
-    expect(screen.getByText("Some queue counts are unavailable.")).toBeInTheDocument();
-  });
-
   it("shows a failed queue count as unavailable instead of zero or all clear", async () => {
-    mockedGetSkillRequestCount.mockRejectedValueOnce(new Error("queue unavailable"));
+    setDashboardState(stats, { ...allZeroQueues, "skill-requests": null });
     render(<DashboardPage />);
 
     const escrowQueue = screen.getByRole("link", { name: /escrow holds/ });
@@ -107,6 +154,62 @@ describe("DashboardPage queue counts", () => {
     const skillQueue = await screen.findByRole("link", { name: /service requests/ });
     expect(within(skillQueue).getByText("—")).toBeInTheDocument();
     expect(screen.getByText("Some queue counts are unavailable.")).toBeInTheDocument();
+    expect(screen.queryByText("All clear: nothing is waiting for review.")).not.toBeInTheDocument();
+  });
+});
+
+describe("DashboardPage metric labels", () => {
+  it("names each headline number for what the backend value measures", () => {
+    setDashboardState(stats, allZeroQueues);
+    render(<DashboardPage />);
+
+    expect(screen.getByText("Registered providers")).toBeInTheDocument();
+    expect(screen.getByText("Provider payouts")).toBeInTheDocument();
+    expect(screen.getByText("Payout trend")).toBeInTheDocument();
+    expect(screen.queryByText("Active providers")).not.toBeInTheDocument();
+    expect(screen.queryByText("Gross merchandise value")).not.toBeInTheDocument();
+  });
+});
+
+describe("DashboardPage chart loading", () => {
+  it("shows the tiles and a chart-height placeholder before the chart code arrives", () => {
+    setDashboardState(stats, allZeroQueues, [{ month: "Aug", value: 1200 }, { month: "Sep", value: 1800 }]);
+    const { container } = render(<DashboardPage />);
+
+    expect(screen.getByText("Registered providers")).toBeInTheDocument();
+    // recharts loads on its own chunk; until then the trend keeps its 220px slot.
+    expect(container.querySelector('[style*="height: 220px"]')).not.toBeNull();
+  });
+});
+
+describe("DashboardPage console parts", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockedGetEscrowHeld.mockResolvedValue({ count: 2, total: 500 });
+    mockedGetBookingStatusCounts.mockResolvedValue({ open: 3, recommending: 4 } as Awaited<ReturnType<typeof services.getBookingStatusCounts>>);
+  });
+
+  it("shows the queues, and placeholders for the analytics, while the analytics are still loading", () => {
+    setDashboardState(null, { ...allZeroQueues, withdrawals: 3 }, [], { analyticsLoading: true });
+    render(<DashboardPage />);
+
+    expect(within(screen.getByRole("link", { name: /payout requests/ })).getByText("3")).toBeInTheDocument();
+    expect(screen.getByLabelText("Loading key metrics")).toBeInTheDocument();
+    expect(screen.getByText("Payout trend")).toBeInTheDocument();
+    expect(screen.queryByText("No payouts yet")).not.toBeInTheDocument();
+    expect(screen.queryByText(/temporarily unavailable/)).not.toBeInTheDocument();
+  });
+
+  it("keeps the activity panel from claiming there is no activity while the activity is still loading", () => {
+    setDashboardState(stats, allZeroQueues, [], { activityLoading: true });
+    render(<DashboardPage />);
+    expect(screen.queryByText("No recent activity")).not.toBeInTheDocument();
+  });
+
+  it("shows the queues as being checked, not as all clear, while a queue's list is still loading", () => {
+    setDashboardState(stats, allZeroQueues, [], { disputesLoading: true });
+    render(<DashboardPage />);
+    expect(screen.getByText("Checking queues…")).toBeInTheDocument();
     expect(screen.queryByText("All clear: nothing is waiting for review.")).not.toBeInTheDocument();
   });
 });

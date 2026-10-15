@@ -5,6 +5,8 @@ import {WithdrawalsPage} from "./WithdrawalsPage";
 import {ToastProvider} from "@/components/ui/Toast";
 import * as services from "@/lib/services";
 vi.mock("@/lib/services", () => ({getWithdrawals:vi.fn(),settleWithdrawal:vi.fn(),rejectWithdrawal:vi.fn()}));
+const { refreshCounts } = vi.hoisted(() => ({ refreshCounts: vi.fn().mockResolvedValue(undefined) }));
+vi.mock("@/context/AppContext", () => ({ useApp: () => ({ refreshCounts }) }));
 vi.mock("@/hooks/useLiveTick", () => ({useLiveTick:() => 0}));
 beforeEach(() => {
   vi.clearAllMocks();
@@ -30,4 +32,15 @@ it("requires a payout reference before marking money as sent", async () => {
   expect(confirm).toBeEnabled();
   await user.click(confirm);
   await waitFor(() => expect(services.settleWithdrawal).toHaveBeenCalledWith("w1","   GC-001"));
+});
+
+it("refreshes the queue counts once a payout is marked as paid", async () => {
+  const user = userEvent.setup();
+  render(<ToastProvider><WithdrawalsPage /></ToastProvider>);
+  await user.click(await screen.findByText("Test Provider"));
+  await user.click(await screen.findByRole("button",{name:"Mark as paid"}));
+  const dialog = screen.getByRole("alertdialog");
+  await user.type(within(dialog).getByPlaceholderText("GCash / bank reference"),"GC-002");
+  await user.click(within(dialog).getByRole("button",{name:"Mark as paid"}));
+  await waitFor(() => expect(refreshCounts).toHaveBeenCalledTimes(1));
 });

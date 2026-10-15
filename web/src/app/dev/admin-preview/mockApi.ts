@@ -20,10 +20,45 @@ const skillRequests = [
   { id: "s3", provider_id: "u2", provider: { full_name: "Mark Santos" }, type: "add_secondary", category_id: 3, category: { id: 3, name: "Handyman" }, reason: "General repairs alongside plumbing.", status: "approved", review_note: "Welcome aboard.", created_at: daysAgo(12) },
 ];
 
+/**
+ * The parties on the sample dispute case with a photo (job j1057, "Aircon cleaning" in mockApp).
+ * mockApp gives that case these same ids, so the chat roles resolve from ids the way the API's do.
+ */
+export const SAMPLE_CASE_PARTIES = {
+  clientId: "c-jessa",
+  clientName: "Jessa Ramos",
+  providerId: "p-liza",
+  providerName: "Liza Mercado",
+} as const;
+
+/** An offline picture for the chat photo viewer: an inline SVG, so no request leaves the page. */
+const FILTER_PHOTO_SVG = [
+  '<svg xmlns="http://www.w3.org/2000/svg" width="640" height="420" viewBox="0 0 640 420">',
+  '<rect width="640" height="420" fill="#dbeafe"/>',
+  '<rect x="40" y="40" width="560" height="340" rx="18" fill="#f8fafc" stroke="#93c5fd" stroke-width="6"/>',
+  '<rect x="120" y="110" width="400" height="200" rx="10" fill="#e2e8f0"/>',
+  '<path d="M140 290 L260 200 L340 250 L430 190 L500 290 Z" fill="#94a3b8"/>',
+  '<circle cx="470" cy="150" r="26" fill="#fde68a"/>',
+  '<text x="320" y="370" text-anchor="middle" font-family="sans-serif" font-size="26" fill="#1e3a8a">Aircon filter, after cleaning</text>',
+  "</svg>",
+].join("");
+const FILTER_PHOTO_URL = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(FILTER_PHOTO_SVG)}`;
+
+const SAMPLE_CLIENT = { id: SAMPLE_CASE_PARTIES.clientId, name: SAMPLE_CASE_PARTIES.clientName };
+const SAMPLE_PROVIDER = { id: SAMPLE_CASE_PARTIES.providerId, name: SAMPLE_CASE_PARTIES.providerName };
+
+/** Chat for the sample case j1057: the client sends the photo, the provider answers. */
+const sampleCaseConversation = [
+  { id: "sc1", sender_id: SAMPLE_CLIENT.id, sender_name: SAMPLE_CLIENT.name, body: "The unit still smells after the cleaning. I sent a photo of the filter.", attachment_url: FILTER_PHOTO_URL, read_at: null, created_at: daysAgo(0, 6) },
+  { id: "sc2", sender_id: SAMPLE_PROVIDER.id, sender_name: SAMPLE_PROVIDER.name, body: "I washed the filter and the coils on site. The smell can come from the drain pan.", attachment_url: null, read_at: null, created_at: daysAgo(0, 5) },
+  { id: "sc3", sender_id: SAMPLE_CLIENT.id, sender_name: SAMPLE_CLIENT.name, body: "Can you come back on Friday to check the drain pan?", attachment_url: null, read_at: null, created_at: daysAgo(0, 4) },
+];
+
+/** Chat for the other sample cases, between Ana Reyes (client) and Rico Bautista (provider). */
 const conversation = [
-  { id: "m1", sender_name: "Ana Reyes", body: "Hi! The sink is leaking under the cabinet. Can you come tomorrow morning?", created_at: daysAgo(4, 2) },
-  { id: "m2", sender_name: "Rico Bautista", body: "Yes, I'll be there at 9. I'll bring a new P-trap.", created_at: daysAgo(4, 1) },
-  { id: "m3", sender_name: "Ana Reyes", body: "It started leaking again tonight. Can you come back?", created_at: daysAgo(3, 20) },
+  { id: "m1", sender_id: "c-ana", sender_name: "Ana Reyes", body: "Hi! The sink is leaking under the cabinet. Can you come tomorrow morning?", attachment_url: null, read_at: null, created_at: daysAgo(4, 2) },
+  { id: "m2", sender_id: "p-rico", sender_name: "Rico Bautista", body: "Yes, I'll be there at 9. I'll bring a new P-trap.", attachment_url: null, read_at: null, created_at: daysAgo(4, 1) },
+  { id: "m3", sender_id: "c-ana", sender_name: "Ana Reyes", body: "It started leaking again tonight. Can you come back?", attachment_url: null, read_at: null, created_at: daysAgo(3, 20) },
 ];
 
 const person = (id: string, full_name: string) => ({ id, full_name });
@@ -97,6 +132,28 @@ const audit = Array.from({ length: 26 }, (_, i) => ({
   actor: person("admin-1", i % 4 ? "Ana Cruz" : "Platform Owner"),
 }));
 
+// Job detail for the dispute and cancellation sample cases (Disputes and Transactions read the warranty from here).
+const disputeJobs: Record<string, { status: string; completed_at: string | null; escrow: { amount: number; status: string } | null }> = {
+  j1057: { status: "completed", completed_at: daysAgo(0, 10), escrow: { amount: 850, status: "held" } },
+  j1066: { status: "completed", completed_at: daysAgo(0, 10), escrow: { amount: 3100, status: "held" } },
+  j1049: { status: "completed", completed_at: daysAgo(5, 0), escrow: { amount: 1200, status: "released" } },
+  j1019: { status: "completed", completed_at: daysAgo(5, 0), escrow: { amount: 950, status: "released" } },
+  j0988: { status: "completed", completed_at: daysAgo(5, 0), escrow: { amount: 2000, status: "released" } },
+  j1061: { status: "cancelled", completed_at: null, escrow: { amount: 1800, status: "held" } },
+  j1063: { status: "cancelled", completed_at: null, escrow: { amount: 2400, status: "held" } },
+  j1074: { status: "cancelled", completed_at: null, escrow: { amount: 1100, status: "held" } },
+};
+
+function jobDetail(id: string, job: { status: string; completed_at: string | null; escrow: { amount: number; status: string } | null }) {
+  return {
+    id, ...job,
+    description: "Sample job for the admin preview.",
+    address: "Brgy. Sabang, Lipa City, Batangas",
+    scheduled_at: daysAgo(1),
+    photo_urls: [],
+  };
+}
+
 function paged<T>(rows: T[], u: URL) {
   const offset = Number(u.searchParams.get("offset") ?? 0);
   const limit = Number(u.searchParams.get("limit") ?? 20);
@@ -112,7 +169,17 @@ const routes: [RegExp, string, Handler][] = [
     const rows = bookings.filter((b) => (!status || b.status === status) && matches(q, b.id, b.client?.full_name, b.service_categories.name));
     return { bookings: paged(rows, u), total: rows.length };
   }],
-  [/^\/admin\/bookings\/[^/]+$/, "GET", (u) => bookings.find((b) => b.id === u.pathname.split("/")[3])],
+  [/^\/admin\/bookings\/[^/]+$/, "GET", (u) => {
+    const id = u.pathname.split("/")[3];
+    const index = bookings.findIndex((b) => b.id === id);
+    if (index === -1) return jobDetail(id, disputeJobs[id] ?? { status: "in_progress", completed_at: null, escrow: { amount: 1450, status: "held" } });
+    const booking = bookings[index];
+    // Every third job is completed 10 h ago with the escrow still held (inside the warranty window);
+    // the second is completed 5 days ago (warranty closed) with the escrow released.
+    if (index % 3 === 0) return { ...booking, status: "completed", completed_at: daysAgo(0, 10), escrow: { amount: 1450, status: "held" } };
+    if (index === 1) return { ...booking, status: "completed", completed_at: daysAgo(5, 0), escrow: { amount: 900, status: "released" } };
+    return booking;
+  }],
   [/^\/admin\/transactions$/, "GET", (u) => {
     const status = u.searchParams.get("status");
     const q = u.searchParams.get("search");
@@ -157,7 +224,10 @@ const routes: [RegExp, string, Handler][] = [
     row.status = action === "approve" ? "approved" : "rejected";
     return {};
   }],
-  [/^\/admin\/jobs\/[^/]+\/conversation$/, "GET", () => ({ messages: conversation })],
+  [/^\/admin\/jobs\/[^/]+\/conversation$/, "GET", (u) => {
+    const jobId = u.pathname.split("/")[3];
+    return { messages: jobId === "j1057" ? sampleCaseConversation : conversation };
+  }],
 ];
 
 export function installMockApi() {

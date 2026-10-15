@@ -1,9 +1,9 @@
 "use client";
 
 import * as React from "react";
-import { useEffect, useRef, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useId, useRef, useState, useSyncExternalStore } from "react";
 import { motion } from "motion/react";
-import { ArrowLeft, CheckCircle2, Inbox, Search, X } from "lucide-react";
+import { ArrowLeft, CheckCircle2, ChevronLeft, ChevronRight, Inbox, Search, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Kbd } from "@/components/ui/kbd";
 
@@ -28,21 +28,20 @@ export function neighborAfterRemoval(ids: string[], id: string): string | null {
 
 /* ─────────────────────────── hooks ─────────────────────────── */
 
-function subscribeMedia(query: string) {
-  return (onChange: () => void) => {
-    const mql = window.matchMedia(query);
-    mql.addEventListener("change", onChange);
-    return () => mql.removeEventListener("change", onChange);
-  };
-}
-
 /** True at the `lg` breakpoint and up, where queues show list + detail side by side. */
 export function useIsWide(query = "(min-width: 1024px)") {
-  return useSyncExternalStore(
-    subscribeMedia(query),
-    () => window.matchMedia(query).matches,
-    () => true,
+  // useSyncExternalStore re-subscribes whenever the subscribe function changes identity.
+  // Memoising both callbacks on `query` keeps a single listener for the component's lifetime.
+  const subscribe = useCallback(
+    (onChange: () => void) => {
+      const mql = window.matchMedia(query);
+      mql.addEventListener("change", onChange);
+      return () => mql.removeEventListener("change", onChange);
+    },
+    [query],
   );
+  const getSnapshot = useCallback(() => window.matchMedia(query).matches, [query]);
+  return useSyncExternalStore(subscribe, getSnapshot, () => true);
 }
 
 function isTypingTarget(el: EventTarget | null) {
@@ -216,9 +215,36 @@ export function SearchField({
   );
 }
 
+/** localStorage value meaning "collapsed". Anything else (or no value) means expanded. */
+const COLLAPSED = "1";
+
+/** The saved collapse state for a page. Storage can be blocked, so any failure reads as expanded. */
+function readCollapsed(key: string | undefined): boolean {
+  if (!key || typeof window === "undefined") return false;
+  try {
+    return window.localStorage.getItem(key) === COLLAPSED;
+  } catch {
+    return false;
+  }
+}
+
+/** Saves the collapse state for a page. A failed write only means the choice is not remembered. */
+function writeCollapsed(key: string | undefined, collapsed: boolean) {
+  if (!key || typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(key, collapsed ? COLLAPSED : "0");
+  } catch {
+    // Storage blocked or full: the choice still applies for this visit.
+  }
+}
+
 /**
  * Inbox layout: list on the left, detail on the right (sticky). Below `lg`
  * it becomes one column — the list, or the detail with a back button.
+ *
+ * From `lg` up the list can be collapsed to a slim rail, so the detail takes
+ * the full width. The choice is remembered per page under `storageKey`.
+ * Collapsing never changes the narrow layout.
  */
 export function QueueShell({
   toolbar,
@@ -227,6 +253,9 @@ export function QueueShell({
   showDetailOnNarrow,
   onBack,
   backLabel = "Back to queue",
+  storageKey,
+  railCount,
+  railLabel,
 }: {
   toolbar: React.ReactNode;
   list: React.ReactNode;
@@ -234,18 +263,88 @@ export function QueueShell({
   showDetailOnNarrow: boolean;
   onBack: () => void;
   backLabel?: string;
+  /** Unique per page. Holds the list's collapsed state in localStorage. */
+  storageKey?: string;
+  /** How many items the list holds, shown on the collapsed rail. */
+  railCount?: number;
+  /** A short noun for the items, shown under the count on the rail, such as "cases". */
+  railLabel?: string;
 }) {
+  const listId = useId();
+  const [collapsed, setCollapsed] = useState(() => readCollapsed(storageKey));
+  const collapseButton = useRef<HTMLButtonElement>(null);
+  const expandButton = useRef<HTMLButtonElement>(null);
+  // Collapsing hides the button that was focused, so focus moves to the button that replaces it.
+  const focusAfterToggle = useRef<"expand" | "collapse" | null>(null);
+
+  useEffect(() => {
+    const target = focusAfterToggle.current;
+    focusAfterToggle.current = null;
+    if (target === "expand") expandButton.current?.focus();
+    if (target === "collapse") collapseButton.current?.focus();
+  }, [collapsed]);
+
+  function setListCollapsed(next: boolean) {
+    focusAfterToggle.current = next ? "expand" : "collapse";
+    setCollapsed(next);
+    writeCollapsed(storageKey, next);
+  }
+
+  // The list hides at lg only while collapsed. Below lg, the list and the detail
+  // keep the same visibility rules they had before the collapse existed.
+  const listVisibility = collapsed
+    ? showDetailOnNarrow ? "hidden" : "flex lg:hidden"
+    : showDetailOnNarrow ? "hidden lg:flex" : "flex";
+
   return (
-    <div className="grid items-start gap-4 lg:grid-cols-[minmax(320px,400px)_minmax(0,1fr)] xl:grid-cols-[minmax(340px,440px)_minmax(0,1fr)]">
+    <div
+      className={cn(
+        "grid items-start gap-4",
+        collapsed
+          ? "lg:grid-cols-[60px_minmax(0,1fr)]"
+          : "lg:grid-cols-[minmax(320px,400px)_minmax(0,1fr)] xl:grid-cols-[minmax(340px,440px)_minmax(0,1fr)]",
+      )}
+    >
       <section
+        id={listId}
         className={cn(
-          "flex min-w-0 flex-col overflow-hidden rounded-[12px] border border-border bg-surface shadow-ui-sm",
-          showDetailOnNarrow && "hidden lg:flex",
+          "min-w-0 flex-col overflow-hidden rounded-[12px] border border-border bg-surface shadow-ui-sm",
+          listVisibility,
         )}
       >
+        <div className="hidden justify-end border-b border-border px-3 py-1.5 lg:flex">
+          <button
+            ref={collapseButton}
+            type="button"
+            aria-label="Collapse list"
+            aria-expanded={true}
+            aria-controls={listId}
+            onClick={() => setListCollapsed(true)}
+            className="inline-flex h-7 items-center gap-1 rounded-[7px] px-2 text-[12px] font-medium text-muted-foreground hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            Collapse <ChevronLeft className="size-3.5" aria-hidden />
+          </button>
+        </div>
         <div className="flex flex-col gap-2.5 border-b border-border p-3">{toolbar}</div>
         {list}
       </section>
+      {collapsed && (
+        <div className="hidden flex-col items-center gap-3 rounded-[12px] border border-border bg-surface py-3 shadow-ui-sm lg:sticky lg:top-0 lg:flex">
+          <button
+            ref={expandButton}
+            type="button"
+            aria-label="Expand list"
+            aria-expanded={false}
+            aria-controls={listId}
+            onClick={() => setListCollapsed(false)}
+            className="grid size-8 place-items-center rounded-[8px] text-muted-foreground hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            <ChevronRight className="size-4" aria-hidden />
+          </button>
+          {railCount !== undefined && <span className="tabular text-[13px] font-semibold text-foreground">{railCount}</span>}
+          {railLabel && <span className="text-[11.5px] text-muted-foreground [writing-mode:vertical-rl]">{railLabel}</span>}
+        </div>
+      )}
       <section className={cn("min-w-0 lg:sticky lg:top-0", !showDetailOnNarrow && "hidden lg:block")}>
         <button
           onClick={onBack}
@@ -259,7 +358,7 @@ export function QueueShell({
   );
 }
 
-/** A selectable row in a queue list. */
+/** A selectable row in a queue list. `tone` tints an urgent row; `footnote` is a one-line status under it. */
 export function QueueItem({
   id,
   selected,
@@ -269,6 +368,8 @@ export function QueueItem({
   meta,
   trailing,
   aside,
+  footnote,
+  tone,
 }: {
   id: string;
   selected: boolean;
@@ -278,6 +379,8 @@ export function QueueItem({
   meta?: React.ReactNode;
   trailing?: React.ReactNode;
   aside?: React.ReactNode;
+  footnote?: React.ReactNode;
+  tone?: "danger" | "warn";
 }) {
   return (
     <li className="relative">
@@ -287,7 +390,13 @@ export function QueueItem({
         onClick={() => onSelect(id)}
         className={cn(
           "group relative flex w-full items-start gap-3 px-3.5 py-3 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
-          selected ? "bg-primary-soft/70" : "hover:bg-accent",
+          selected
+            ? "bg-primary-soft/70"
+            : tone === "danger"
+              ? "bg-danger-soft/40 hover:bg-danger-soft/70"
+              : tone === "warn"
+                ? "bg-warn-soft/40 hover:bg-warn-soft/70"
+                : "hover:bg-accent",
         )}
       >
         {selected && (
@@ -305,6 +414,7 @@ export function QueueItem({
           </span>
           {meta && <span className="mt-0.5 block truncate text-[12px] text-muted-foreground">{meta}</span>}
           {aside && <span className="mt-1.5 block">{aside}</span>}
+          {footnote && <span className="mt-1.5 block truncate text-[12px]">{footnote}</span>}
         </span>
       </button>
     </li>

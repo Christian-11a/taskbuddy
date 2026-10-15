@@ -33,7 +33,7 @@ import {
 import { REASON_MAX_LENGTH } from "@/lib/validation";
 import { exportMasks } from "@/lib/export/anonymize";
 import { datedFilename, downloadCsv, toCsv } from "@/lib/export/csv";
-import type { VerificationRow } from "@/lib/adapters";
+import { verificationMethodLabel, type VerificationRow } from "@/lib/adapters";
 
 type Filter = "all" | "pending" | "approved" | "rejected";
 
@@ -48,6 +48,11 @@ function StatusBadge({ status }: { status: VerificationRow["status"] }) {
   );
 }
 
+/** Whether Stripe checked the ID or an admin reviews the uploaded documents. */
+function MethodBadge({ method }: { method: VerificationRow["method"] }) {
+  return <Badge tone={method === "stripe_identity" ? "info" : "neutral"}>{verificationMethodLabel(method)}</Badge>;
+}
+
 /**
  * Provider verification is a trust-and-safety decision, not a bulk
  * housekeeping task — no "select all pending" / "approve selected" here on
@@ -55,7 +60,7 @@ function StatusBadge({ status }: { status: VerificationRow["status"] }) {
  * made. See docs/TaskBuddyCompleteRefinement.md §28.
  */
 export function VerificationsPage() {
-  const { verifications, approveVerification, rejectVerification, loading, settings } = useApp();
+  const { verifications, approveVerification, rejectVerification, refreshCounts, verificationsLoading, settings } = useApp();
   const { showToast } = useToast();
   const isWide = useIsWide();
   const [filter, setFilter] = useState<Filter>("pending");
@@ -114,6 +119,7 @@ export function VerificationsPage() {
       await approveVerification(id);
       showToast("Verification approved.");
       setDoneThisSession((n) => n + 1);
+      void refreshCounts();
       advanceFrom(id);
     } catch {
       showToast("Could not approve that verification. Please try again.", "error");
@@ -136,6 +142,7 @@ export function VerificationsPage() {
       showToast("Verification rejected.");
       setRejectTargetId(null);
       setDoneThisSession((n) => n + 1);
+      void refreshCounts();
       advanceFrom(id);
     } catch {
       showToast("Could not reject. Please try again.", "error");
@@ -155,7 +162,7 @@ export function VerificationsPage() {
   const rejectReasonTooLong = rejectReason.length > REASON_MAX_LENGTH;
   const approveTarget = verifications.find((v) => v.id === confirmApproveId);
 
-  const emptyState = loading ? (
+  const emptyState = verificationsLoading ? (
     <QueueListSkeleton />
   ) : verifications.length === 0 ? (
     <QueueListState icon={ShieldCheck} title="No verifications submitted yet" description="New provider submissions will appear here." />
@@ -181,6 +188,9 @@ export function VerificationsPage() {
       <QueueShell
         showDetailOnNarrow={!!selectedId && !!selected}
         onBack={() => setSelectedId(null)}
+        storageKey="admin.queue.verifications"
+        railCount={filtered.length}
+        railLabel="submissions"
         toolbar={
           <>
             <div className="flex items-center justify-between gap-2">
@@ -223,8 +233,11 @@ export function VerificationsPage() {
                     aside={
                       <span className="flex items-center gap-2">
                         <StatusBadge status={v.status} />
+                        <MethodBadge method={v.method} />
                         <span className="text-[11.5px] text-muted-foreground">
-                          {v.documentType} · {v.documents.length} file{v.documents.length === 1 ? "" : "s"}
+                          {v.method === "stripe_identity"
+                            ? "Checked by Stripe Identity"
+                            : `${v.documentType} · ${v.documents.length} file${v.documents.length === 1 ? "" : "s"}`}
                         </span>
                       </span>
                     }
@@ -246,6 +259,7 @@ export function VerificationsPage() {
                     <div className="flex flex-wrap items-center gap-2">
                       <h2 className="truncate text-[17px] font-semibold tracking-tight">{selected.name}</h2>
                       <StatusBadge status={selected.status} />
+                      <MethodBadge method={selected.method} />
                     </div>
                     <p className="mt-0.5 text-[12.5px] text-muted-foreground">Provider verification · Submitted {selected.date}</p>
                   </div>
@@ -267,7 +281,7 @@ export function VerificationsPage() {
               <DetailSection title="Applicant">
                 <FieldGrid>
                   <Field label="Email">{selected.email}</Field>
-                  <Field label="ID type">{selected.documentType}</Field>
+                  {selected.method !== "stripe_identity" && <Field label="ID type">{selected.documentType}</Field>}
                   <Field label="Submitted">{selected.date}</Field>
                   <Field label="Documents">{selected.documents.length} submitted</Field>
                 </FieldGrid>
@@ -275,7 +289,7 @@ export function VerificationsPage() {
               <DetailSection title="Submitted documents">
                 {selected.documents.length === 0 ? (
                   <p className="rounded-[10px] border border-dashed border-border-strong px-4 py-6 text-center text-[12.5px] text-muted-foreground">
-                    No documents available
+                    {selected.method === "stripe_identity" ? "Checked by Stripe Identity — no documents to review" : "No documents available"}
                   </p>
                 ) : (
                   <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -299,7 +313,9 @@ export function VerificationsPage() {
               </DetailSection>
               {selected.status === "pending" && (
                 <p className="rounded-[10px] bg-surface-2 px-3.5 py-2.5 text-[12px] leading-relaxed text-muted-foreground">
-                  Check that the name matches the account and the selfie matches the ID photo. Rejections ask the provider to resubmit.
+                  {selected.method === "stripe_identity"
+                    ? "Stripe checks this ID and decides automatically. Review it by hand only if no result arrives."
+                    : "Check that the name matches the account and the selfie matches the ID photo. Rejections ask the provider to resubmit."}
                 </p>
               )}
             </DetailCard>

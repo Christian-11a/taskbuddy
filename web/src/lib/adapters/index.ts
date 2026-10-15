@@ -43,6 +43,23 @@ export function formatCurrencyCompact(amount: number): string {
   return formatCurrency(amount);
 }
 
+/** 4.08333 → 4.08. Ratings are averages, so they are rounded for display and export. */
+export function roundRating(rating: number): number {
+  return Math.round(rating * 100) / 100;
+}
+
+/** 4.08333 → "4.08", 4.9 → "4.9", and "—" for unrated (null, undefined, or 0). */
+export function formatRating(rating: number | null | undefined): string {
+  if (rating === null || rating === undefined || !Number.isFinite(rating) || rating <= 0) return "—";
+  return String(roundRating(rating));
+}
+
+/** Rounded rating for a CSV cell; blank for unrated so the column stays numeric. */
+export function ratingForCsv(rating: number | null | undefined): number | "" {
+  if (rating === null || rating === undefined || !Number.isFinite(rating) || rating <= 0) return "";
+  return roundRating(rating);
+}
+
 /** ISO "2026-04-10" → "Apr 10, 2026". Parsed as local date to avoid TZ drift. */
 export function formatDate(iso: string): string {
   const [y, m, d] = iso.split("T")[0].split("-").map(Number);
@@ -101,7 +118,7 @@ export const DISPUTE_STATUS_DISPLAY: Record<DisputeStatus, { label: string; badg
 
 export const DISPUTE_RESOLUTION_LABEL: Record<DisputeResolution, string> = {
   RELEASED_TO_PROVIDER: "Released to provider",
-  REFUNDED_TO_CLIENT: "Refunded to homeowner",
+  REFUNDED_TO_CLIENT: "Refunded to client",
   REVIEWED: "Reviewed by admin",
 };
 
@@ -185,6 +202,7 @@ export interface VerificationRow {
   documents: VerificationDocument[];
   /** Display name of the ID type, or "Not specified" for older submissions. */
   documentType: string;
+  method: Verification["method"];
 }
 
 export interface DisputeRow {
@@ -207,6 +225,10 @@ export interface DisputeRow {
   createdAt: string;
   resolvedAt: string | null;
   isOpen: boolean;
+  cancellationState: string | null;
+  cancellationDeadline: string | null;
+  clientId?: string | null;
+  providerId?: string | null;
 }
 
 export interface TransactionRow {
@@ -273,13 +295,13 @@ export function toUserRow(u: AdminUser): UserRow {
     statusClass: display.badgeClass,
     joined: formatDate(u.createdAt),
     createdAt: u.createdAt,
-    activity: `${u.jobsCompleted} job${u.jobsCompleted === 1 ? "" : "s"}${u.rating ? ` · ${u.rating} rating` : ""}`,
+    activity: `${u.jobsCompleted} job${u.jobsCompleted === 1 ? "" : "s"}${u.rating ? ` · ${formatRating(u.rating)} rating` : ""}`,
     phone: u.phone ?? "—",
     city: u.city ?? "—",
     category: u.categoryName ?? "—",
     jobsCompleted: u.jobsCompleted,
-    rating: u.rating ? `${u.rating} rating` : "Not yet rated",
-    ratingValue: u.rating,
+    rating: u.rating ? `${formatRating(u.rating)} rating` : "Not yet rated",
+    ratingValue: u.rating ? roundRating(u.rating) : null,
     suspendedUntil: u.suspendedUntil ? formatDate(u.suspendedUntil) : "—",
     suspensionReason: u.suspensionReason ?? "—",
     deletedAt: u.deletedAt ? formatDate(u.deletedAt) : null,
@@ -309,7 +331,13 @@ export function toVerificationRow(v: Verification): VerificationRow {
     status: v.status.toLowerCase() as VerificationRow["status"],
     documents: v.documents.map((url, i) => ({ label: DOCUMENT_LABELS[i] ?? `Document ${i + 1}`, url })),
     documentType: (v.documentType && DOCUMENT_TYPE_LABELS[v.documentType]) ?? "Not specified",
+    method: v.method,
   };
+}
+
+/** How a provider's ID was checked, as shown to admins. */
+export function verificationMethodLabel(method: Verification["method"]): string {
+  return method === "stripe_identity" ? "Stripe Identity" : "ID + selfie review";
 }
 
 /** Mirrors the mobile picker and the CHECK in migration 0034. */
@@ -365,7 +393,8 @@ export function toDisputeRow(d: Dispute): DisputeRow {
     service: d.service,
     clientName: d.clientName,
     providerName: d.providerName,
-    amount: formatCurrency(d.amount),
+    // NaN means the escrow's amount did not come back: say so, never print a peso figure for it.
+    amount: Number.isFinite(d.amount) ? formatCurrency(d.amount) : "Unknown",
     reason: d.reason,
     details: d.details,
     status: display.label,
@@ -376,6 +405,10 @@ export function toDisputeRow(d: Dispute): DisputeRow {
     createdAt: formatDate(d.createdAt),
     resolvedAt: d.resolvedAt ? formatDate(d.resolvedAt) : null,
     isOpen: d.status === "OPEN",
+    cancellationState: d.cancellationState,
+    cancellationDeadline: d.cancellationDeadline,
+    clientId: d.clientId,
+    providerId: d.providerId,
   };
 }
 

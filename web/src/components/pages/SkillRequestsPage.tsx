@@ -32,6 +32,7 @@ import {
 import { useLiveTick } from "@/hooks/useLiveTick";
 import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 import { Pagination } from "@/components/ui/Pagination";
+import { useApp } from "@/context/AppContext";
 import { approveSkillRequest, getSkillRequests, rejectSkillRequest } from "@/lib/services";
 import type { SkillRequest, SkillRequestStatus } from "@/lib/domain";
 import { formatDate } from "@/lib/adapters";
@@ -60,6 +61,7 @@ const STATUS_META: Record<QueueStatus, { label: string; tone: "warn" | "ok" | "d
  */
 export function SkillRequestsPage() {
   const { showToast } = useToast();
+  const { refreshCounts } = useApp();
   const isWide = useIsWide();
   const [status, setStatus] = useState<QueueStatus>("pending");
   const [items, setItems] = useState<SkillRequest[]>([]);
@@ -133,6 +135,7 @@ export function SkillRequestsPage() {
       setSelectedId(neighborAfterRemoval(ids, target.id));
       setItems((prev) => prev.filter((i) => i.id !== target.id));
       setDoneThisSession((n) => n + 1);
+      void refreshCounts();
       await load(true);
     } catch {
       showToast("Could not update this request. It may already have been decided.", "error");
@@ -203,6 +206,9 @@ export function SkillRequestsPage() {
       <QueueShell
         showDetailOnNarrow={!!selectedId && !!selected}
         onBack={() => setSelectedId(null)}
+        storageKey="admin.queue.skill-requests"
+        railCount={total}
+        railLabel="requests"
         toolbar={
           <>
             <FilterTabs
