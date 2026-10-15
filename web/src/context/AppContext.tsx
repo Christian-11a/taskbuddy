@@ -111,6 +111,10 @@ interface AppState {
   retryLoad: () => void;
   /** Quietly re-fetches console data (no loading state) — the live refresh. */
   refreshData: () => Promise<void>;
+  /** Re-reads only the payout and service-request counts (two small requests).
+   *  Never rejects: a failed read keeps the last good value. Call it after an
+   *  admin action that changes a queue, fire-and-forget. */
+  refreshCounts: () => Promise<void>;
   /** Reloads the Users list; rejects on failure so retries cannot imply success. */
   refreshUsers: () => Promise<void>;
   /** When console data last loaded successfully (epoch ms), for "updated Ns ago". */
@@ -175,6 +179,34 @@ const STATUS_TO_DOMAIN: Record<"Active" | "Suspended", UserStatus> = {
   Active: "ACTIVE",
   Suspended: "SUSPENDED",
 };
+
+/**
+ * Reads the two count-only queues. Each side succeeds or fails on its own, and
+ * a failed side comes back `undefined` so the caller keeps what it had. Never
+ * rejects.
+ */
+async function readCountOnlyQueues(): Promise<{ withdrawals?: number; "skill-requests"?: number }> {
+  const [withdrawals, requests] = await Promise.allSettled([
+    services.getPendingWithdrawalCount(),
+    services.getPendingServiceRequestCount(),
+  ]);
+  return {
+    withdrawals: withdrawals.status === "fulfilled" && typeof withdrawals.value === "number" ? withdrawals.value : undefined,
+    "skill-requests": requests.status === "fulfilled" && typeof requests.value === "number" ? requests.value : undefined,
+  };
+}
+
+/**
+ * Follow-up reads after a write that already succeeded. A failure here is
+ * logged and otherwise ignored: the write did happen, so the admin must not be
+ * told it failed.
+ */
+async function settleFollowUpReads(what: string, reads: Promise<unknown>[]): Promise<void> {
+  const results = await Promise.allSettled(reads);
+  for (const result of results) {
+    if (result.status === "rejected") console.warn(`Refreshing after ${what} failed; the change itself was saved.`, result.reason);
+  }
+}
 
 export function AppProvider({ children }: { children: ReactNode }) {
   // session — unlike loadStoredPrefs() below (which only ever affects
@@ -415,6 +447,26 @@ export function AppProvider({ children }: { children: ReactNode }) {
     [isLoggedIn, loadConsoleData],
   );
 
+  /** Newest count read wins; an older read that finishes later is dropped. */
+  const countsSeq = useRef(0);
+  /**
+   * Cheap follow-up to an admin action: re-reads only the payout and
+   * service-request counts. It reads `loadSeq` but never bumps it, so it cannot
+   * cancel an in-flight console load. A read that started before any later load
+   * or mutation (which bumps `loadSeq`) is dropped, since that snapshot is fresher.
+   */
+  const refreshCounts = useCallback(async () => {
+    if (!isLoggedIn) return;
+    const loadAtStart = loadSeq.current;
+    const mine = ++countsSeq.current;
+    const reads = await readCountOnlyQueues();
+    if (loadAtStart !== loadSeq.current || mine !== countsSeq.current) return;
+    setExtraCounts((prev) => ({
+      withdrawals: reads.withdrawals ?? prev.withdrawals,
+      "skill-requests": reads["skill-requests"] ?? prev["skill-requests"],
+    }));
+  }, [isLoggedIn]);
+
   // ── preferences: persist on change ──
   useEffect(() => {
     const prefs: StoredPrefs = { darkMode, sidebarCollapsed, settings };
@@ -490,22 +542,28 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
+  // Only the write decides success. The list and summary reads that follow it
+  // are best-effort: if they fail, the decision still stands.
   const approveVerification = useCallback(
     async (id: string) => {
-      const rows = await services.approveVerification(id);
+      await services.postApproveVerification(id);
       dropInFlightRefresh();
-      setDomainVerifications(rows);
-      await refreshStats();
+      await settleFollowUpReads("verification approval", [
+        services.getVerifications().then(setDomainVerifications),
+        refreshStats(),
+      ]);
     },
     [refreshStats, dropInFlightRefresh],
   );
 
   const rejectVerification = useCallback(
     async (id: string, reason?: string) => {
-      const rows = await services.rejectVerification(id, reason);
+      await services.postRejectVerification(id, reason);
       dropInFlightRefresh();
-      setDomainVerifications(rows);
-      await refreshStats();
+      await settleFollowUpReads("verification rejection", [
+        services.getVerifications().then(setDomainVerifications),
+        refreshStats(),
+      ]);
     },
     [refreshStats, dropInFlightRefresh],
   );
@@ -542,15 +600,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const sendPasswordReset = useCallback((id: string) => services.sendPasswordReset(id), []);
 
+  // The bookings list is not held in this context (its pages query directly),
+  // so a cancel has no list to re-read here.
   const cancelBooking = useCallback(async (id: string) => {
-    await services.cancelBooking(id);
+    await services.postCancelBooking(id);
   }, []);
 
   const resolveDispute = useCallback(
     async (id: string, resolution: DisputeResolution, note?: string) => {
-      const rows = await services.resolveDispute(id, resolution, note);
+      await services.postResolveDispute(id, resolution, note);
       dropInFlightRefresh();
-      setDomainDisputes(rows);
+      await settleFollowUpReads("dispute decision", [services.getDisputes().then(setDomainDisputes)]);
     },
     [dropInFlightRefresh],
   );
@@ -611,7 +671,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       isLoggedIn, sessionRestored, adminProfile,
       login, logout, updateDisplayName, changePassword,
       loading, loadError, retryLoad, analyticsUnavailable, analyticsInBrowser,
-      refreshData, refreshUsers, lastUpdated, refreshing,
+      refreshData, refreshCounts, refreshUsers, lastUpdated, refreshing,
        verifications, users, transactions, disputes, bookings,
       dashboardStats, revenueSeries, bookingsSeries, bookingsByCategory,
       recentActivity, topProviders, queueCounts,
@@ -626,7 +686,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       isLoggedIn, sessionRestored, adminProfile,
       login, logout, updateDisplayName, changePassword,
       loading, loadError, retryLoad, analyticsUnavailable, analyticsInBrowser,
-      refreshData, refreshUsers, lastUpdated, refreshing,
+      refreshData, refreshCounts, refreshUsers, lastUpdated, refreshing,
        verifications, users, transactions, disputes, bookings,
       dashboardStats, revenueSeries, bookingsSeries, bookingsByCategory,
       recentActivity, topProviders, queueCounts,

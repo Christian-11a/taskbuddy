@@ -112,7 +112,7 @@ function cancellationStateLabel(state: string): string {
 }
 
 export function DisputesPage() {
-  const { disputes, resolveDispute, refreshData, loading } = useApp();
+  const { disputes, resolveDispute, refreshData, refreshCounts, loading } = useApp();
   const { showToast } = useToast();
   const isWide = useIsWide();
   const [filter, setFilter] = useState<Filter>("needs-decision");
@@ -206,6 +206,7 @@ export function DisputesPage() {
       await resolveDispute(id, resolution, notes[id]?.trim() || undefined);
       setNotes((prev) => omit(prev, id));
       setDoneThisSession((n) => n + 1);
+      void refreshCounts();
       setSelectedId(neighborAfterRemoval(ids, id));
       showToast(
         resolution === "REVIEWED" ? "Admin decision recorded. No money was moved." : resolution === "RELEASED_TO_PROVIDER" ? "Escrow released to the provider." : "Escrow refunded to the client.",
@@ -221,6 +222,7 @@ export function DisputesPage() {
     setResolvingId(id);
     try {
       await services.requestDisputeClarification(id, notes[id].trim());
+      void refreshCounts();
       await refreshData();
       setNotes((prev) => omit(prev, id));
       showToast("Clarification requested from both participants.");

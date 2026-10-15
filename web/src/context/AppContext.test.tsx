@@ -16,8 +16,15 @@ vi.mock("@/lib/services", async (importOriginal) => {
     getBookingsByCategory: vi.fn(), getTopProviders: vi.fn(),
     setUserStatus: vi.fn(), bulkSetUserStatus: vi.fn(),
     getPendingWithdrawalCount: vi.fn(), getPendingServiceRequestCount: vi.fn(),
+    postApproveVerification: vi.fn(), postRejectVerification: vi.fn(),
   };
 });
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((res) => { resolve = res; });
+  return { promise, resolve };
+}
 
 const account: AdminUser = {
   id: "test-provider", name: "Test Provider", email: "test@example.com",
@@ -52,6 +59,104 @@ describe("AppContext — moderation refresh results", () => {
     vi.mocked(services.getTopProviders).mockResolvedValue([]);
     vi.mocked(services.getPendingWithdrawalCount).mockResolvedValue(0);
     vi.mocked(services.getPendingServiceRequestCount).mockResolvedValue(0);
+  });
+
+  describe("queue counts and follow-up reads", () => {
+    beforeEach(() => {
+      vi.mocked(services.getPendingWithdrawalCount).mockResolvedValue(2);
+      vi.mocked(services.getPendingServiceRequestCount).mockResolvedValue(5);
+    });
+
+    it("loads the payout and service-request counts with the console", async () => {
+      await mount();
+      expect(context.queueCounts).toMatchObject({ withdrawals: 2, "skill-requests": 5 });
+    });
+
+    it("derives pending verifications and open disputes from the loaded lists", async () => {
+      const verification = (id: string, status: Verification["status"]): Verification => ({
+        id, providerId: "p1", name: "Test Provider", email: "test@example.com",
+        submittedAt: "2026-10-01T00:00:00Z", status, method: "manual", documents: [],
+      });
+      const dispute = (id: string, status: Dispute["status"]) => ({
+        id, jobId: "j1", jobTitle: "Repair", service: "Plumbing", clientName: "Client",
+        providerName: "Provider", amount: 500, reason: "Quality", details: null, status,
+        resolution: null, resolutionNote: null, paymentSettled: false,
+        createdAt: "2026-10-01T00:00:00Z", resolvedAt: null,
+      }) as Dispute;
+      vi.mocked(services.getVerifications).mockResolvedValue([verification("v1", "PENDING"), verification("v2", "APPROVED")]);
+      vi.mocked(services.getDisputes).mockResolvedValue([dispute("d1", "OPEN"), dispute("d2", "RESOLVED")]);
+      await mount();
+      expect(context.queueCounts).toMatchObject({ verifications: 1, disputes: 1 });
+    });
+
+    it("keeps the last good count when a re-read fails, and still updates the other queue", async () => {
+      await mount();
+      vi.mocked(services.getPendingWithdrawalCount).mockRejectedValueOnce(new Error("Offline"));
+      vi.mocked(services.getPendingServiceRequestCount).mockResolvedValueOnce(7);
+      await act(async () => { await context.refreshCounts(); });
+      expect(context.queueCounts).toMatchObject({ withdrawals: 2, "skill-requests": 7 });
+    });
+
+    it("leaves an unknown count unknown when every read keeps failing", async () => {
+      vi.mocked(services.getPendingWithdrawalCount).mockRejectedValue(new Error("Offline"));
+      await mount();
+      expect(context.queueCounts.withdrawals).toBeNull();
+      await act(async () => { await context.refreshCounts(); });
+      expect(context.queueCounts.withdrawals).toBeNull();
+    });
+
+    it("ignores a count read that finishes after a newer full load started", async () => {
+      await mount();
+      const slow = deferred<number>();
+      vi.mocked(services.getPendingWithdrawalCount)
+        .mockReturnValueOnce(slow.promise)
+        .mockResolvedValueOnce(4);
+      let refreshing!: Promise<void>;
+      await act(async () => { refreshing = context.refreshCounts(); });
+      await act(async () => { context.retryLoad(); });
+      await waitFor(() => expect(context.queueCounts.withdrawals).toBe(4));
+      await act(async () => { slow.resolve(99); await refreshing; });
+      expect(context.queueCounts.withdrawals).toBe(4);
+    });
+
+    it("a newer count refresh supersedes an older one that finishes later", async () => {
+      await mount();
+      const first = deferred<number>();
+      const second = deferred<number>();
+      vi.mocked(services.getPendingWithdrawalCount)
+        .mockReturnValueOnce(first.promise)
+        .mockReturnValueOnce(second.promise);
+      let older!: Promise<void>;
+      let newer!: Promise<void>;
+      await act(async () => {
+        older = context.refreshCounts();
+        newer = context.refreshCounts();
+      });
+      await act(async () => { second.resolve(3); await newer; });
+      await act(async () => { first.resolve(1); await older; });
+      expect(context.queueCounts.withdrawals).toBe(3);
+    });
+
+    it("treats a successful approval as success when the follow-up list read fails", async () => {
+      await mount();
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+      vi.mocked(services.postApproveVerification).mockResolvedValue(undefined);
+      vi.mocked(services.getVerifications).mockRejectedValue(new Error("Offline"));
+      await act(async () => {
+        await expect(context.approveVerification("v1")).resolves.toBeUndefined();
+      });
+      expect(services.postApproveVerification).toHaveBeenCalledWith("v1");
+      expect(warn).toHaveBeenCalled();
+      warn.mockRestore();
+    });
+
+    it("still reports a failed approval as a failure", async () => {
+      await mount();
+      vi.mocked(services.postApproveVerification).mockRejectedValue(new Error("Already decided"));
+      await act(async () => {
+        await expect(context.approveVerification("v1")).rejects.toThrow("Already decided");
+      });
+    });
   });
 
   it("keeps existing rows and returns the warning after a confirmed single action", async () => {
@@ -159,12 +264,6 @@ describe("AppContext — moderation refresh results", () => {
     expect(context.queueCounts.withdrawals).toBe(1);
   });
 });
-
-function deferred<T>() {
-  let resolve!: (value: T) => void;
-  const promise = new Promise<T>((r) => { resolve = r; });
-  return { promise, resolve };
-}
 
 const verification = (over: Partial<Verification>): Verification => ({
   id: "v1", providerId: "p1", name: "Liza Mercado", email: "liza@example.com", submittedAt: "2026-10-01",

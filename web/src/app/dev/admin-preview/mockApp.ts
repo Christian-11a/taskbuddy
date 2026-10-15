@@ -154,6 +154,7 @@ export const MOCK_APP: AppState = {
   loadError: null,
   retryLoad: noop,
   refreshData: asyncNoop,
+  refreshCounts: asyncNoop,
   refreshUsers: asyncNoop,
   lastUpdated: Date.now() - 8000,
   refreshing: false,

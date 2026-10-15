@@ -72,7 +72,7 @@ const withCount = (label: string, count: number | undefined) => (count === undef
 type DetailState = AdminBookingDetail | "loading" | "error";
 
 export function BookingsPage() {
-  const { cancelBooking, settings } = useApp();
+  const { cancelBooking, refreshCounts, settings } = useApp();
   const { showToast } = useToast();
   const [search, setSearch] = useState("");
   const debouncedSearch = useDebouncedValue(search, 250);
@@ -145,6 +145,7 @@ export function BookingsPage() {
     setCancelingId(cancelTarget.id);
     try {
       await cancelBooking(cancelTarget.id);
+      void refreshCounts();
       setReloadNonce((value) => value + 1);
       setDetails((prev) => {
         const next = { ...prev };

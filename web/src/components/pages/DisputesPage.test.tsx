@@ -37,7 +37,7 @@ function booking(completedAt: string | null): AdminBookingDetail {
 }
 
 function renderDisputes(disputes: DisputeRow[]) {
-  vi.mocked(useApp).mockReturnValue({ disputes, resolveDispute, refreshData: vi.fn().mockResolvedValue(undefined), loading: false } as unknown as ReturnType<typeof useApp>);
+  vi.mocked(useApp).mockReturnValue({ disputes, resolveDispute, refreshData: vi.fn().mockResolvedValue(undefined), refreshCounts: vi.fn().mockResolvedValue(undefined), loading: false } as unknown as ReturnType<typeof useApp>);
   return render(<ToastProvider><DisputesPage /></ToastProvider>);
 }
 
@@ -48,7 +48,7 @@ function setup(paymentSettled: boolean, extra: Partial<DisputeRow> = {}) {
 /** The console's live refresh lands: new disputes data and a new lastUpdated stamp. */
 function liveRefresh(rerender: (ui: React.ReactElement) => void, disputes: DisputeRow[], lastUpdated: number) {
   vi.mocked(useApp).mockReturnValue({
-    disputes, resolveDispute, refreshData: vi.fn().mockResolvedValue(undefined), loading: false, lastUpdated,
+    disputes, resolveDispute, refreshData: vi.fn().mockResolvedValue(undefined), refreshCounts: vi.fn().mockResolvedValue(undefined), loading: false, lastUpdated,
   } as unknown as ReturnType<typeof useApp>);
   rerender(<ToastProvider><DisputesPage /></ToastProvider>);
 }
@@ -127,7 +127,7 @@ describe("admin review of settled disputes", () => {
     // Another admin resolved the case while this dialog was open.
     vi.mocked(useApp).mockReturnValue({
       disputes: [row({ isOpen: false, status: "Resolved", resolution: "REFUNDED_TO_CLIENT", resolvedAt: "Oct 3, 2026", paymentSettled: true })],
-      resolveDispute, refreshData: vi.fn().mockResolvedValue(undefined), loading: false,
+      resolveDispute, refreshData: vi.fn().mockResolvedValue(undefined), refreshCounts: vi.fn().mockResolvedValue(undefined), loading: false,
     } as unknown as ReturnType<typeof useApp>);
     rerender(<ToastProvider><DisputesPage /></ToastProvider>);
 

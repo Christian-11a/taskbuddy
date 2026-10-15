@@ -55,6 +55,7 @@ describe("BookingsPage status counts", () => {
     vi.clearAllMocks();
     mockedUseApp.mockReturnValue({
       cancelBooking: vi.fn(),
+      refreshCounts: vi.fn().mockResolvedValue(undefined),
       lastUpdated: null,
     } as unknown as ReturnType<typeof useApp>);
   });

@@ -890,6 +890,22 @@ describe("bulk actions", () => {
   });
 });
 
+describe("write-then-read helpers", () => {
+  it("counts pending payouts from the total alone", async () => {
+    global.fetch = vi.fn(() => Promise.resolve(jsonResponse({ items: [], total: 3 }))) as unknown as typeof fetch;
+    expect(await services.getPendingWithdrawalCount()).toBe(3);
+    expect(global.fetch).toHaveBeenCalledWith(expect.stringContaining("/admin/withdrawals?status=pending&limit=1&offset=0"), expect.anything());
+  });
+
+  it("posts a verification approval with no follow-up read", async () => {
+    const fetchMock = vi.fn(() => Promise.resolve(jsonResponse({ id: "v1" })));
+    global.fetch = fetchMock as unknown as typeof fetch;
+    await services.postApproveVerification("v1");
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledWith(expect.stringContaining("/admin/verifications/v1/approve"), expect.objectContaining({ method: "POST" }));
+  });
+});
+
 describe("cancelBooking", () => {
   it("posts the cancel action then refetches bookings", async () => {
     const fetchMock = vi

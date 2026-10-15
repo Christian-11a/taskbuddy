@@ -60,7 +60,7 @@ function MethodBadge({ method }: { method: VerificationRow["method"] }) {
  * made. See docs/TaskBuddyCompleteRefinement.md §28.
  */
 export function VerificationsPage() {
-  const { verifications, approveVerification, rejectVerification, loading, settings } = useApp();
+  const { verifications, approveVerification, rejectVerification, refreshCounts, loading, settings } = useApp();
   const { showToast } = useToast();
   const isWide = useIsWide();
   const [filter, setFilter] = useState<Filter>("pending");
@@ -119,6 +119,7 @@ export function VerificationsPage() {
       await approveVerification(id);
       showToast("Verification approved.");
       setDoneThisSession((n) => n + 1);
+      void refreshCounts();
       advanceFrom(id);
     } catch {
       showToast("Could not approve that verification. Please try again.", "error");
@@ -141,6 +142,7 @@ export function VerificationsPage() {
       showToast("Verification rejected.");
       setRejectTargetId(null);
       setDoneThisSession((n) => n + 1);
+      void refreshCounts();
       advanceFrom(id);
     } catch {
       showToast("Could not reject. Please try again.", "error");

@@ -13,13 +13,11 @@ vi.mock("@/context/AppContext", () => ({
 vi.mock("@/lib/services", () => ({
   getEscrowHeld: vi.fn(),
   getBookingStatusCounts: vi.fn(),
-  getSkillRequestCount: vi.fn(),
 }));
 
 const mockedUseApp = vi.mocked(useApp);
 const mockedGetEscrowHeld = vi.mocked(services.getEscrowHeld);
 const mockedGetBookingStatusCounts = vi.mocked(services.getBookingStatusCounts);
-const mockedGetSkillRequestCount = vi.mocked(services.getSkillRequestCount);
 
 const stats: DashboardStats = {
   totalUsers: 20,
@@ -68,7 +66,6 @@ describe("DashboardPage queue counts", () => {
     setDashboardState();
     mockedGetEscrowHeld.mockResolvedValue({ count: 2, total: 500 });
     mockedGetBookingStatusCounts.mockResolvedValue({ open: 3, recommending: 4 } as Awaited<ReturnType<typeof services.getBookingStatusCounts>>);
-    mockedGetSkillRequestCount.mockResolvedValue(23);
   });
 
   it("reads the payout and verification tiles from the live queue counts, not the summary", async () => {
@@ -90,7 +87,6 @@ describe("DashboardPage queue counts", () => {
       { ...stats, pendingWithdrawals: 0, escrowCount: 0, openJobs: 0, matchingJobs: 0 },
       { ...allZeroQueues, withdrawals: null },
     );
-    mockedGetSkillRequestCount.mockResolvedValue(0);
     mockedGetEscrowHeld.mockResolvedValue({ count: 0, total: 0 });
     render(<DashboardPage />);
 
@@ -105,7 +101,6 @@ describe("DashboardPage queue counts", () => {
 
   it("shows the all-clear sentence only when every queue is known and empty", async () => {
     setDashboardState({ ...stats, escrowCount: 0, openJobs: 0, matchingJobs: 0 }, allZeroQueues);
-    mockedGetSkillRequestCount.mockResolvedValue(0);
     mockedGetEscrowHeld.mockResolvedValue({ count: 0, total: 0 });
     render(<DashboardPage />);
 
@@ -114,11 +109,11 @@ describe("DashboardPage queue counts", () => {
   });
 
   it("uses summary totals and the exact pending service-request count without list fallbacks", async () => {
+    setDashboardState(stats, { ...allZeroQueues, "skill-requests": 23 });
     render(<DashboardPage />);
 
     const skillQueue = await screen.findByRole("link", { name: /service requests/ });
     expect(within(skillQueue).getByText("23")).toBeInTheDocument();
-    expect(mockedGetSkillRequestCount).toHaveBeenCalledWith("pending");
     expect(mockedGetEscrowHeld).not.toHaveBeenCalled();
     expect(mockedGetBookingStatusCounts).not.toHaveBeenCalled();
   });
@@ -130,7 +125,7 @@ describe("DashboardPage queue counts", () => {
       escrowCount: undefined,
       openJobs: undefined,
       matchingJobs: undefined,
-    });
+    }, { ...allZeroQueues, "skill-requests": 23 });
     render(<DashboardPage />);
 
     const skillQueue = await screen.findByRole("link", { name: /service requests/ });
@@ -140,7 +135,7 @@ describe("DashboardPage queue counts", () => {
   });
 
   it("shows a failed queue count as unavailable instead of zero or all clear", async () => {
-    mockedGetSkillRequestCount.mockRejectedValueOnce(new Error("queue unavailable"));
+    setDashboardState(stats, { ...allZeroQueues, "skill-requests": null });
     render(<DashboardPage />);
 
     const escrowQueue = screen.getByRole("link", { name: /escrow holds/ });

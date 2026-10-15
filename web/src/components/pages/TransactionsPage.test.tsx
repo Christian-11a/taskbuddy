@@ -90,6 +90,7 @@ describe("TransactionsPage — Issue Credit (Wallet tab)", () => {
     mockedUseApp.mockReturnValue({
       users: [makeUser()],
       settings: { anonymizeExports: false },
+      refreshCounts: vi.fn().mockResolvedValue(undefined),
     } as unknown as ReturnType<typeof useApp>);
   });
 

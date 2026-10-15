@@ -29,7 +29,6 @@ interface LiveExtras {
   escrowHeld: number | null;
   openJobs: number | null;
   matchingJobs: number | null;
-  pendingServiceRequests: number | null;
 }
 
 function greeting(date: Date): string {
@@ -58,15 +57,13 @@ function useLiveExtras(lastUpdated: number | null, stats: DashboardStats | null)
         ? Promise.resolve({ count: escrowCount, total: escrowHeld }) : services.getEscrowHeld(),
       openJobs !== undefined && matchingJobs !== undefined
         ? Promise.resolve({ open: openJobs, recommending: matchingJobs }) : services.getBookingStatusCounts(),
-      services.getSkillRequestCount("pending"),
-    ]).then(([escrow, counts, sr]) => {
+    ]).then(([escrow, counts]) => {
       if (cancelled) return;
       setExtras({
         escrowCount: escrow.status === "fulfilled" ? escrow.value.count : null,
         escrowHeld: escrow.status === "fulfilled" ? escrow.value.total : null,
         openJobs: counts.status === "fulfilled" ? counts.value.open : null,
         matchingJobs: counts.status === "fulfilled" ? counts.value.recommending : null,
-        pendingServiceRequests: sr.status === "fulfilled" ? sr.value : null,
       });
     });
     return () => {
@@ -259,7 +256,7 @@ export function DashboardPage() {
     // a stand-in 0 when a request failed, so they are not read here.
     { key: "withdrawals", page: "withdrawals", icon: WalletCards, count: queueCounts.withdrawals, one: "payout request", many: "payout requests", tone: "warn" },
     { key: "verifications", page: "verifications", icon: ShieldCheck, count: queueCounts.verifications, one: "provider to verify", many: "providers to verify", tone: "warn" },
-    { key: "skills", page: "skill-requests", icon: Wrench, count: extras?.pendingServiceRequests ?? null, one: "service request", many: "service requests", tone: "info" },
+    { key: "skills", page: "skill-requests", icon: Wrench, count: queueCounts["skill-requests"], one: "service request", many: "service requests", tone: "info" },
     { key: "escrow", page: "transactions", icon: CreditCard, count: extras?.escrowCount ?? null, one: "escrow hold", many: "escrow holds", tone: "accent" },
   ];
   const openQueues = queues.filter((q) => q.count !== null && q.count > 0).length;

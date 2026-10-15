@@ -391,7 +391,7 @@ const EscrowTab = forwardRef<ExportHandle, TabProps>(function EscrowTab({ onExpo
  * held for one job, this is a user's running balance.
  */
 const WalletTab = forwardRef<ExportHandle, TabProps>(function WalletTab({ onExportCountChange, onRequestExport }, ref) {
-  const { users, settings } = useApp();
+  const { users, settings, refreshCounts } = useApp();
   const anonymizeExports = settings.anonymizeExports;
   const { showToast } = useToast();
   const [rows, setRows] = useState<WalletTxnRow[]>([]);
@@ -527,6 +527,7 @@ const WalletTab = forwardRef<ExportHandle, TabProps>(function WalletTab({ onExpo
         title: creditTitle,
         jobId: creditJobId,
       });
+      void refreshCounts();
       sel.clear();
       setReloadKey((key) => key + 1);
       showToast("Recovery credit issued.");

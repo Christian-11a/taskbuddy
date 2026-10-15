@@ -853,13 +853,25 @@ export async function getJobConversation(jobId: string): Promise<ConversationMes
 
 // ─── Mutations ────────────────────────────────────────────────────────────────
 
-export async function approveVerification(id: string): Promise<Verification[]> {
+/**
+ * The write alone, for callers that must not report a successful write as
+ * failed when the follow-up list read then fails (see AppContext).
+ */
+export async function postApproveVerification(id: string): Promise<void> {
   await client.post(`/admin/verifications/${id}/approve`);
+}
+
+export async function postRejectVerification(id: string, reason?: string): Promise<void> {
+  await client.post(`/admin/verifications/${id}/reject`, reason ? { reason } : undefined);
+}
+
+export async function approveVerification(id: string): Promise<Verification[]> {
+  await postApproveVerification(id);
   return getVerifications();
 }
 
 export async function rejectVerification(id: string, reason?: string): Promise<Verification[]> {
-  await client.post(`/admin/verifications/${id}/reject`, reason ? { reason } : undefined);
+  await postRejectVerification(id, reason);
   return getVerifications();
 }
 
@@ -1011,8 +1023,13 @@ export async function sendPasswordReset(id: string): Promise<boolean> {
   }
 }
 
-export async function cancelBooking(id: string): Promise<AdminBooking[]> {
+/** The cancel write alone (see postApproveVerification for why it is split out). */
+export async function postCancelBooking(id: string): Promise<void> {
   await client.post(`/admin/bookings/${id}/cancel`);
+}
+
+export async function cancelBooking(id: string): Promise<AdminBooking[]> {
+  await postCancelBooking(id);
   return getBookings();
 }
 
@@ -1032,15 +1049,24 @@ export async function getBookingDetail(id: string): Promise<AdminBookingDetail> 
   };
 }
 
+/** The resolve write alone (see postApproveVerification for why it is split out). */
+export async function postResolveDispute(
+  id: string,
+  resolution: DisputeResolution,
+  note?: string,
+): Promise<void> {
+  await client.post(`/admin/disputes/${id}/resolve`, {
+    resolution: resolution === "REVIEWED" ? "reviewed" : resolution === "RELEASED_TO_PROVIDER" ? "released_to_provider" : "refunded_to_client",
+    note,
+  });
+}
+
 export async function resolveDispute(
   id: string,
   resolution: DisputeResolution,
   note?: string,
 ): Promise<Dispute[]> {
-  await client.post(`/admin/disputes/${id}/resolve`, {
-    resolution: resolution === "REVIEWED" ? "reviewed" : resolution === "RELEASED_TO_PROVIDER" ? "released_to_provider" : "refunded_to_client",
-    note,
-  });
+  await postResolveDispute(id, resolution, note);
   return getDisputes();
 }
 
