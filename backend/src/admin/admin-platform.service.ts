@@ -14,6 +14,8 @@ import {
   CreateCategoryDto,
   UpdateCategoryDto,
   UpdateCommissionDto,
+  UpdatePlatformIdentityDto,
+  UpdateJobCapacityDto,
 } from './dto/admin.dto';
 import type { Profile, UserRole } from '../common/types';
 
@@ -42,6 +44,58 @@ export class AdminPlatformService {
     private readonly supabase: SupabaseService,
     private readonly adminActions: AdminActionsService,
   ) {}
+
+  async getPlatformIdentity() {
+    const { data, error } = await this.supabase.admin
+      .from('platform_settings')
+      .select('platform_name, support_email, identity_version')
+      .eq('id', true)
+      .single();
+    if (error) throw new BadRequestException(error.message);
+    return data;
+  }
+
+  async updatePlatformIdentity(admin: Profile, dto: UpdatePlatformIdentityDto) {
+    const { data, error } = await this.supabase.admin.rpc(
+      'admin_update_platform_identity',
+      {
+        p_actor: admin.id,
+        p_expected_version: dto.expected_version,
+        p_name: dto.platform_name,
+        p_email: dto.support_email ?? '',
+      },
+    );
+    if (error?.code === 'TB409') throw new ConflictException(error.message);
+    if (error) throw new BadRequestException(error.message);
+    return data;
+  }
+
+  async getJobCapacity() {
+    const { data, error } = await this.supabase.admin
+      .from('job_capacity_settings')
+      .select('*')
+      .eq('id', true)
+      .single();
+    if (error) throw new BadRequestException(error.message);
+    return data;
+  }
+
+  async updateJobCapacity(admin: Profile, dto: UpdateJobCapacityDto) {
+    const { data, error } = await this.supabase.admin.rpc(
+      'admin_update_job_capacity',
+      {
+        p_actor: admin.id,
+        p_client_max: dto.client_active_max,
+        p_provider_max: dto.provider_active_max,
+        p_pending_max: dto.provider_pending_max,
+        p_daily_hours: dto.daily_hours_max,
+        p_rest_hours: dto.rest_hours,
+        p_travel_kmh: dto.travel_kmh,
+      },
+    );
+    if (error) throw new BadRequestException(error.message);
+    return data;
+  }
 
   // ── Service categories ────────────────────────────────────────────────────
 

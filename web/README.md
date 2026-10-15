@@ -511,6 +511,14 @@ features that are disabled today.
 | **Email admins on new provider verification** | Send one email to every active admin when a provider submits for verification. Always on, no duplicates, and a failed send must not block the submission. | Replace the disabled Notifications switch with a note once it works. |
 | **Platform name and support email** | Store both once on the server (public read, admin-only update, stale edits rejected, changes audited). Used in the website footer and outgoing emails. **The support mailbox is not created yet**, so the email starts empty and the footer and emails show no contact line until it is set. | Settings shows the email as "Not set yet". Connect the fields and the footer. |
 
+The shared-settings backend contract is implemented locally in migration 0047:
+`GET /platform/identity` is public; `GET /admin/platform-identity` and
+`PATCH /admin/platform-identity` are admin-only. The PATCH body contains
+`expected_version`, `platform_name`, and an optional `support_email`; stale
+versions return 409. This migration and API are not deployed by this README
+update. Admin email delivery remains pending a verified sender domain and
+email-provider configuration, so the notification switch remains disabled.
+
 ## October 4 review and withdrawal contracts
 
 The dispute page supports participant complaints, cancellation statements and

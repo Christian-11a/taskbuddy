@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { AdminController } from './admin.controller';
+import { PlatformIdentityController } from './platform-identity.controller';
 import { AdminService } from './admin.service';
 import { AdminPlatformService } from './admin-platform.service';
 import { AdminActionsModule } from './admin-actions.module';
@@ -20,7 +21,7 @@ import { ConnectModule } from '../payments/connect/connect.module';
     WalletModule,
     ConnectModule,
   ],
-  controllers: [AdminController],
+  controllers: [AdminController, PlatformIdentityController],
   providers: [AdminService, AdminPlatformService],
 })
 export class AdminModule {}

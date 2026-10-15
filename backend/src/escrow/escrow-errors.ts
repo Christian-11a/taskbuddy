@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   ConflictException,
+  ForbiddenException,
   HttpException,
   NotFoundException,
 } from '@nestjs/common';
@@ -59,6 +60,8 @@ export function moneyError(error: SqlError): HttpException {
     }
     case 'TB409':
       return new EscrowConflictError(error.message);
+    case 'TB403':
+      return new ForbiddenException(error.message);
     case 'TB404':
       return new NotFoundException(error.message);
     default:

@@ -1,5 +1,6 @@
 import {
   IsBoolean,
+  Equals,
   IsEmail,
   IsIn,
   IsInt,
@@ -9,6 +10,9 @@ import {
   Length,
   Min,
   MinLength,
+  MaxLength,
+  Matches,
+  ValidateIf,
 } from 'class-validator';
 import type { UserRole } from '../../common/types';
 
@@ -17,7 +21,11 @@ export class RegisterDto {
   email!: string;
 
   @IsString()
-  @MinLength(8)
+  @MinLength(8, { message: 'Password must be 8–72 characters.' })
+  @MaxLength(72, { message: 'Password must be 8–72 characters.' })
+  @Matches(/(?=.*[A-Za-z])(?=.*\d)/, {
+    message: 'Password must contain at least one letter and one number.',
+  })
   password!: string;
 
   @IsIn(['client', 'provider'])
@@ -35,27 +43,24 @@ export class RegisterDto {
    * Skill category chosen by the provider at signup.
    * Ignored for client (homeowner) registrations.
    */
-  @IsOptional()
-  @IsInt()
-  @Min(1)
+  @ValidateIf((dto: RegisterDto) => dto.role === 'provider')
+  @IsInt({ message: 'Choose a service category to register as a provider.' })
+  @Min(1, { message: 'Choose a service category to register as a provider.' })
   category_id?: number;
 
   // ── Consent flags (mobile sends booleans; backend converts to timestamps) ──
 
   /** User accepted the Terms & Conditions. */
-  @IsOptional()
-  @IsBoolean()
-  consented_terms?: boolean;
+  @Equals(true, { message: 'Accept the Terms and Conditions to continue.' })
+  consented_terms!: boolean;
 
   /** User accepted the Privacy Policy. */
-  @IsOptional()
-  @IsBoolean()
-  consented_privacy?: boolean;
+  @Equals(true, { message: 'Accept the Privacy Policy to continue.' })
+  consented_privacy!: boolean;
 
   /** User accepted the general Data Collection consent. */
-  @IsOptional()
-  @IsBoolean()
-  consented_data_collection?: boolean;
+  @Equals(true, { message: 'Accept the Data Collection consent to continue.' })
+  consented_data_collection!: boolean;
 
   /**
    * Provider accepted the RA 10173 biometric / govt-ID processing consent.
@@ -87,7 +92,11 @@ export class ChangePasswordDto {
   current_password!: string;
 
   @IsString()
-  @MinLength(8)
+  @MinLength(8, { message: 'New password must be 8–72 characters.' })
+  @MaxLength(72, { message: 'New password must be 8–72 characters.' })
+  @Matches(/(?=.*[A-Za-z])(?=.*\d)/, {
+    message: 'New password must contain at least one letter and one number.',
+  })
   new_password!: string;
 }
 
@@ -106,7 +115,11 @@ export class ResetPasswordDto {
   token!: string;
 
   @IsString()
-  @MinLength(8)
+  @MinLength(8, { message: 'New password must be 8–72 characters.' })
+  @MaxLength(72, { message: 'New password must be 8–72 characters.' })
+  @Matches(/(?=.*[A-Za-z])(?=.*\d)/, {
+    message: 'New password must contain at least one letter and one number.',
+  })
   new_password!: string;
 }
 
@@ -137,24 +150,21 @@ export class CompleteGoogleProfileDto {
    * Skill category chosen by the provider.
    * Required when role='provider'; ignored for 'client'.
    */
-  @IsOptional()
-  @IsInt()
-  @Min(1)
+  @ValidateIf((dto: CompleteGoogleProfileDto) => dto.role === 'provider')
+  @IsInt({ message: 'Choose a service category to register as a provider.' })
+  @Min(1, { message: 'Choose a service category to register as a provider.' })
   category_id?: number;
 
   // ── Consent flags ──────────────────────────────────────────────────────────
 
-  @IsOptional()
-  @IsBoolean()
-  consented_terms?: boolean;
+  @Equals(true, { message: 'Accept the Terms and Conditions to continue.' })
+  consented_terms!: boolean;
 
-  @IsOptional()
-  @IsBoolean()
-  consented_privacy?: boolean;
+  @Equals(true, { message: 'Accept the Privacy Policy to continue.' })
+  consented_privacy!: boolean;
 
-  @IsOptional()
-  @IsBoolean()
-  consented_data_collection?: boolean;
+  @Equals(true, { message: 'Accept the Data Collection consent to continue.' })
+  consented_data_collection!: boolean;
 
   /** Optional legacy identity-processing consent. */
   @IsOptional()

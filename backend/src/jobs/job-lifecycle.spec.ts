@@ -851,7 +851,11 @@ function buildWorld(
   );
   const wallet = new WalletService(supabase, adminActions);
   const escrow = new EscrowService(supabase, payouts);
-  const jobs = new JobsService(supabase, uploads, escrow);
+  const jobs = new JobsService(supabase, uploads, escrow, {
+    geocode: jest
+      .fn()
+      .mockResolvedValue({ latitude: 14.676, longitude: 121.0437 }),
+  } as never);
   const applications = new ApplicationsService(supabase, escrow);
   const reviews = new ReviewsService(supabase);
   const disputes = new DisputesService(supabase, payouts);

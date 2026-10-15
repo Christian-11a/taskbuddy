@@ -79,5 +79,11 @@ export async function migratedDatabase() {
       throw new Error(`${file}: ${err.message}`);
     }
   }
+  // Legacy fixtures create many simultaneous jobs under one account. Tests
+  // dedicated to capacity rules set the production limits explicitly.
+  await db.exec(`update public.job_capacity_settings set client_active_max = 100000,
+    provider_active_max = 100000, provider_pending_max = 100000,
+    daily_hours_max = 100000, rest_hours = 0, travel_kmh = 100000;
+    alter table public.jobs disable trigger guard_provider_booking_capacity;`);
   return db;
 }

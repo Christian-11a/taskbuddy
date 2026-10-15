@@ -2,6 +2,16 @@
 
 **Last updated: 2026-10-14.** Items 1 to 12 are the agreed requests from the mobile app. Items 9 to 12 are features: the app side will be built after the server side exists (the new screens stay behind an off switch until then).
 
+**Local implementation update (2026-10-15):** Backend changes for items 1–6 and
+9–11 are in this checkout; migrations 0046–0050 and the matching API are **not
+deployed or verified on a physical device**. Item 7 remains an optional security
+change awaiting a fresh-sign-in flow in both clients. Item 8 now has specific
+server messages for the new signup, profile, job-budget and withdrawal rules.
+Job changes expire on the five-minute payments tick, and provider release
+requests report `next_allowed_at`. Item 12 requires Firebase/Expo credentials
+and a native rebuild. For item 10, price changes currently support wallet-funded
+holds; card-funded changes require a separate payment authorization design.
+
 For the teammate who owns the backend. The mobile app already blocks all of these in the UI, so normal users are protected.
 Someone calling the API directly (curl, Postman, a modified app) can still skip the app's checks, so these are the server-side
 counterparts. Items 1 to 8 are small DTO or service changes, and none is needed for the app to work. Found while auditing the mobile app's input validation.

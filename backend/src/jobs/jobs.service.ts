@@ -9,12 +9,15 @@ import {
 import { SupabaseService } from '../supabase/supabase.service';
 import { UploadsService } from '../uploads/uploads.service';
 import { EscrowService, WARRANTY_DURATION_MS } from '../escrow/escrow.service';
+import { GeocodingService } from '../geocoding/geocoding.service';
 import {
   AcceptJobDto,
   BrowseJobsQueryDto,
   MineJobsQueryDto,
   CreateJobDto,
   DeclineJobDto,
+  ProposeJobChangeDto,
+  DecideJobChangeDto,
   UpdateJobTaskDto,
 } from './dto/jobs.dto';
 import type { Profile } from '../common/types';
@@ -90,9 +93,11 @@ export class JobsService {
     private readonly supabase: SupabaseService,
     private readonly uploads: UploadsService,
     private readonly escrow: EscrowService,
+    private readonly geocoding: GeocodingService,
   ) {}
 
   async create(user: Profile, dto: CreateJobDto) {
+    const location = await this.geocoding.geocode(dto.address);
     if (dto.photo_urls?.length) {
       this.uploads.assertOwnedPaths(user, dto.photo_urls);
     }
@@ -105,8 +110,8 @@ export class JobsService {
         description: dto.description,
         urgency: dto.urgency ?? 'normal',
         address: dto.address,
-        latitude: dto.latitude,
-        longitude: dto.longitude,
+        latitude: location.latitude,
+        longitude: location.longitude,
         budget: dto.budget ?? null,
         scheduled_at: dto.scheduled_at ?? null,
         photo_urls: dto.photo_urls ?? [],
@@ -418,6 +423,96 @@ export class JobsService {
     // The AFTER UPDATE trigger stamps completed_at in a second update, which
     // is not included in the original UPDATE RETURNING row.
     return this.findJob(jobId);
+  }
+
+  async releasePayment(user: Profile, jobId: string) {
+    const escrow = await this.escrow.releaseEarly(jobId, user.id);
+    const job = await this.findJob(jobId);
+    return { job, escrow };
+  }
+
+  async requestPaymentRelease(user: Profile, jobId: string) {
+    const { data, error } = await this.supabase.admin.rpc(
+      'request_early_payment_release',
+      { p_job_id: jobId, p_provider_id: user.id },
+    );
+    if (error?.code === 'TB409')
+      throw new ConflictException({
+        message: error.message,
+        next_allowed_at: error.details || null,
+      });
+    if (error?.code === 'TB403') throw new ForbiddenException(error.message);
+    if (error) throw new BadRequestException(error.message);
+    return data;
+  }
+
+  async listPaymentReleaseRequests(user: Profile, jobId: string) {
+    const job = await this.findJob(jobId);
+    if (user.id !== job.client_id && user.id !== job.assigned_provider_id)
+      throw new ForbiddenException('Not a participant in this job');
+    const { data, error } = await this.supabase.admin
+      .from('provider_release_requests')
+      .select('*')
+      .eq('job_id', jobId)
+      .order('created_at', { ascending: false });
+    if (error) throw new BadRequestException(error.message);
+    return data;
+  }
+
+  async listChanges(user: Profile, jobId: string) {
+    const job = await this.findJob(jobId);
+    if (user.id !== job.client_id && user.id !== job.assigned_provider_id)
+      throw new ForbiddenException('Not a participant in this job');
+    const { error: expiryError } = await this.supabase.admin.rpc(
+      'job_change_expire',
+      {
+        p_job_id: jobId,
+      },
+    );
+    if (expiryError) throw new BadRequestException(expiryError.message);
+    const { data, error } = await this.supabase.admin
+      .from('job_change_requests')
+      .select('*')
+      .eq('job_id', jobId)
+      .order('created_at', { ascending: false });
+    if (error) throw new BadRequestException(error.message);
+    return data;
+  }
+
+  async proposeChange(user: Profile, jobId: string, dto: ProposeJobChangeDto) {
+    const { data, error } = await this.supabase.admin.rpc(
+      'job_change_propose',
+      {
+        p_job_id: jobId,
+        p_actor: user.id,
+        p_type: dto.type,
+        p_schedule: dto.new_scheduled_at ?? null,
+        p_budget: dto.new_budget ?? null,
+        p_reason: dto.reason,
+      },
+    );
+    if (error?.code === 'TB409' || error?.code === '23505')
+      throw new ConflictException(error.message);
+    if (error?.code === 'TB403') throw new ForbiddenException(error.message);
+    if (error) throw new BadRequestException(error.message);
+    return data;
+  }
+
+  async decideChange(
+    user: Profile,
+    requestId: string,
+    dto: DecideJobChangeDto,
+  ) {
+    const { data, error } = await this.supabase.admin.rpc('job_change_decide', {
+      p_request_id: requestId,
+      p_actor: user.id,
+      p_decision: dto.decision,
+    });
+    if (error?.code === 'TB409') throw new ConflictException(error.message);
+    if (error?.code === 'TB403') throw new ForbiddenException(error.message);
+    if (error?.code === 'TB404') throw new NotFoundException(error.message);
+    if (error) throw new BadRequestException(error.message);
+    return data;
   }
 
   /**

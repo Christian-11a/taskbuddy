@@ -1,7 +1,7 @@
 /** Stripe's full name for the version the mobile ephemeral keys are pinned to. */
 export const DEFAULT_MOBILE_API_VERSION = '2025-01-27.acacia';
 
-const VERSION_RE = /^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])(\.[a-z]+)?$/;
+const VERSION_RE = /^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])\.[a-z]+$/;
 
 /**
  * Resolves STRIPE_MOBILE_API_VERSION. A typo in that env var (it once held

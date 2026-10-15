@@ -69,7 +69,7 @@ Job lifecycle: `open → recommending → assigned → in_progress → completed
 
 1. Create a project at [supabase.com](https://supabase.com).
 2. Apply **every** migration in [`supabase/migrations/`](./supabase/migrations) **in order**
-   (0001 → 0038), either by pasting each file into the SQL Editor or with the CLI:
+   (0001 → 0050), either by pasting each file into the SQL Editor or with the CLI:
 
    ```bash
    supabase link --project-ref <your-project-ref>
@@ -121,6 +121,12 @@ Job lifecycle: `open → recommending → assigned → in_progress → completed
    | `0036_admin_handover_queries.sql` | Service-role-only audit/wallet search and exact dashboard/booking counts. **Apply before deploying the updated API.** |
    | `0037_fulltest_remediation.sql` | Approved-skill eligibility, job-task and dispute safeguards, chat notifications, and escrow protection. Applied to the linked project on 2026-10-02; see `HANDOFF.md` for the remote history mismatch. |
    | `0038_admin_queue_search.sql` | Service-request search with matching pagination totals, booking-title search/counts, and a service-role-only password-presence check for Google-only mobile accounts. Applied to the linked project; apply before deploying this API to another project. |
+   | `0039`–`0045` | Dispute, warranty, portfolio, and wallet safeguards; see the migration files for order and effects. |
+   | `0046_early_payment_release.sql` | Atomic client-authorized release of a completed job's held payment. |
+   | `0047_shared_platform_identity.sql` | Shared platform name/support email with versioned admin updates and audit. |
+   | `0048_job_capacity.sql` | Server-enforced active-job, pending-application and booking limits. |
+   | `0049_job_change_requests.sql` | Participant-approved schedule and wallet-funded price changes. |
+   | `0050_provider_release_requests.sql` | Rate-limited provider requests for early payment release. |
 
    The linked project's older migration-history mismatch still prevents a clean
    `supabase db push --dry-run`, even though 0038 is recorded as applied. Check
@@ -680,11 +686,23 @@ curl -X POST $API/jobs -H "Authorization: Bearer $TOKEN" -H "Content-Type: appli
 
 ## Pending handoffs
 
-- [`docs/backend-handoff-mobile-e2e-test-environment.md`](../docs/backend-handoff-mobile-e2e-test-environment.md) —
-  **open, blocking**: the mobile e2e sweep needs a Google Maps API key (job creation crashes
-  without one), a wallet balance seed for the test client account, and per-job
-  `recommendation_deadline` SQL nudges. Needs Google Cloud Console + Supabase dashboard access,
-  not a code change here beyond the one-line `app.json` config once a key exists.
+- The post-UAT server requests are in [`docs/backend-requests.md`](../docs/backend-requests.md).
+  Validation and the new API/database contracts are implemented locally in migrations
+  0046–0050. **They are not deployed by this README update**; deploy migrations before
+  the matching API, then run funded-job and booking acceptance checks.
+- [`docs/backend-handoff-mobile-e2e-test-environment.md`](../docs/backend-handoff-mobile-e2e-test-environment.md)
+  still requires a test wallet balance when the Maestro account runs low. Its Google
+  Maps key request is obsolete because the app no longer uses `react-native-maps`.
+- Android push delivery still needs Firebase credentials and a new native build.
+  Admin verification emails need a verified sending domain and email API configuration.
+- The Stripe sandbox webhook has a confirmed completed wallet top-up from a recent
+  `payment_intent.succeeded` event. Two card-at-hire PaymentIntents also have
+  matching card-funded escrow rows. Those escrows are now disputed, so onward
+  payout is not established. Recent Identity sessions were canceled; successful
+  Identity completion and physical-device flows still need separate checks.
+  The local `STRIPE_MOBILE_API_VERSION` omits the release suffix; this checkout
+  now treats that form as invalid and uses the full default
+  `2025-01-27.acacia`. The Render value still needs checking.
 
 ## Project layout
 
@@ -749,6 +767,35 @@ Withdrawal settlement requires a nonblank reference (1–500 characters). The
 admin records an actual external payment; this endpoint does not send money.
 Migration 0045 enforces debit affordability under the existing wallet advisory lock
 for direct ledger inserts/updates as well as escrow/Connect RPC paths.
+
+## Post-UAT backend contracts (local; not deployed)
+
+Migrations 0046–0050 add early payment release, shared platform identity,
+capacity limits, participant-approved job changes, and provider release requests.
+Apply them in order before deploying an API built from this checkout. The
+server now geocodes each posted job address and ignores client-supplied
+coordinates; new passwords require 8–72 characters with a letter and digit,
+while existing passwords remain valid for login. New provider signups require a
+category and the three general consents.
+
+| Route | Caller | Purpose |
+|---|---|---|
+| `POST /jobs/:id/release` | Client | Release a completed job's held payment once, if there is no open complaint. |
+| `POST /jobs/:id/release-request` | Assigned provider | Ask the client to release held payment, subject to per-job limits; the response includes `next_allowed_at`, and a rate-limit 409 includes the same field. |
+| `GET /jobs/:id/release-requests` | Participants | Read those requests. |
+| `GET/POST /jobs/:id/change-requests` | Participants | Read or propose schedule/price changes. |
+| `POST /jobs/change-requests/:requestId/decide` | Other participant or proposer | Accept, decline or withdraw a request. |
+| `GET /platform/identity` | Public | Read the shared name, support email and version. |
+| `GET/PATCH /admin/platform-identity` | Admin | Read/update those fields with `expected_version`; stale writes return 409. |
+| `GET/PATCH /admin/job-capacity` | Admin | Read/update active-job, pending-application and booking limits. |
+
+Price changes require wallet-funded held escrow and happen before work starts.
+The job and escrow update in one database transaction; a raised price debits
+the client wallet and a lowered price refunds the difference. Card-funded price
+changes need a separate payment authorization flow and are rejected. Request
+expiry is reconciled on the five-minute payments tick and when requests are
+read or acted on. The mobile UI for these contracts and live migration/API
+verification remain outstanding.
 
 For a disposable receiving-ledger demonstration, run from repository root:
 

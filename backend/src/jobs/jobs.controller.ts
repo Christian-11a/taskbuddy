@@ -24,6 +24,8 @@ import {
   DeclineJobDto,
   StaticMapQueryDto,
   UpdateJobTaskDto,
+  ProposeJobChangeDto,
+  DecideJobChangeDto,
 } from './dto/jobs.dto';
 import { GeocodingService } from '../geocoding/geocoding.service';
 import { ThrottleGeocode, ThrottleStaticMap } from '../common/throttle';
@@ -103,6 +105,58 @@ export class JobsController {
   @Roles('client')
   cancel(@CurrentUser() user: Profile, @Param('id', ParseUUIDPipe) id: string) {
     return this.jobsService.cancel(user, id);
+  }
+
+  @Post(':id/release')
+  @Roles('client')
+  releasePayment(
+    @CurrentUser() user: Profile,
+    @Param('id', ParseUUIDPipe) id: string,
+  ) {
+    return this.jobsService.releasePayment(user, id);
+  }
+
+  @Post(':id/release-request')
+  @Roles('provider')
+  requestPaymentRelease(
+    @CurrentUser() user: Profile,
+    @Param('id', ParseUUIDPipe) id: string,
+  ) {
+    return this.jobsService.requestPaymentRelease(user, id);
+  }
+
+  @Get(':id/release-requests')
+  listPaymentReleaseRequests(
+    @CurrentUser() user: Profile,
+    @Param('id', ParseUUIDPipe) id: string,
+  ) {
+    return this.jobsService.listPaymentReleaseRequests(user, id);
+  }
+
+  @Get(':id/change-requests')
+  listChanges(
+    @CurrentUser() user: Profile,
+    @Param('id', ParseUUIDPipe) id: string,
+  ) {
+    return this.jobsService.listChanges(user, id);
+  }
+
+  @Post(':id/change-requests')
+  proposeChange(
+    @CurrentUser() user: Profile,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: ProposeJobChangeDto,
+  ) {
+    return this.jobsService.proposeChange(user, id, dto);
+  }
+
+  @Post('change-requests/:requestId/decide')
+  decideChange(
+    @CurrentUser() user: Profile,
+    @Param('requestId', ParseUUIDPipe) requestId: string,
+    @Body() dto: DecideJobChangeDto,
+  ) {
+    return this.jobsService.decideChange(user, requestId, dto);
   }
 
   /** Provider accepts an incoming booking request → 'confirmed'. */
