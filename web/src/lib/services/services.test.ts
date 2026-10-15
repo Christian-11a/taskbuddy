@@ -401,6 +401,7 @@ describe("getVerifications", () => {
         status: "PENDING",
         documents: ["https://signed/id", "https://signed/selfie"],
         documentType: null,
+        method: "manual",
       },
     ]);
   });
@@ -697,6 +698,8 @@ describe("getDisputes", () => {
         paymentSettled: false,
         createdAt: "2026-08-01",
         resolvedAt: null,
+        cancellationState: null,
+        cancellationDeadline: null,
       },
     ]);
   });
@@ -1076,6 +1079,137 @@ describe("list paging", () => {
     expect(users).toHaveLength(250);
     expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(fetchMock.mock.calls[1][0]).toContain("offset=200");
+  });
+});
+
+describe("queue counts", () => {
+  it("counts pending withdrawals with a one-row request", async () => {
+    const fetchMock = vi.fn(() => Promise.resolve(jsonResponse({ withdrawals: [], total: 7 })));
+    global.fetch = fetchMock as unknown as typeof fetch;
+    await expect(services.getPendingWithdrawalCount()).resolves.toBe(7);
+    expect(fetchMock).toHaveBeenCalledWith(expect.stringContaining("/admin/withdrawals?status=pending&limit=1&offset=0"), expect.anything());
+  });
+
+  it("counts pending service requests with a one-row request and the exact total", async () => {
+    const fetchMock = vi.fn(() => Promise.resolve(jsonResponse({
+      items: [{ id: "s1", status: "pending" }],
+      total: 250,
+    })));
+    global.fetch = fetchMock as unknown as typeof fetch;
+    await expect(services.getPendingServiceRequestCount()).resolves.toBe(250);
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining("/admin/skill-requests?status=pending&limit=1&offset=0"),
+      expect.anything(),
+    );
+  });
+});
+
+describe("cancellation and warranty fields", () => {
+  const txnResponse = () => Promise.resolve(jsonResponse({ transactions: [], total: 0 }));
+  const disputeRow = (extra: Record<string, unknown>) => ({
+    id: "d-c1",
+    job_id: "job-c1",
+    escrow_id: "esc-1",
+    reason: "Cancelled late",
+    details: null,
+    status: "open",
+    resolution: null,
+    resolution_note: null,
+    created_at: "2026-10-14",
+    resolved_at: null,
+    jobs: { title: "Paint fence", service_categories: { name: "Painting" }, client: { full_name: "Ana" }, provider: { full_name: "Rico" } },
+    escrow_transactions: { amount: "300.00", status: "held" },
+    raised_by_profile: { id: "c1", full_name: "Ana" },
+    ...extra,
+  });
+
+  it("maps the cancellation state and deadline of a dispute", async () => {
+    global.fetch = vi.fn()
+      .mockResolvedValueOnce(jsonResponse({
+        disputes: [disputeRow({ cancellation_state: "pending", cancellation_deadline: "2026-10-16T00:00:00Z" })],
+        total: 1,
+      }))
+      .mockResolvedValueOnce(txnResponse()) as unknown as typeof fetch;
+
+    const [d] = await services.getDisputes();
+    expect(d.cancellationState).toBe("pending");
+    expect(d.cancellationDeadline).toBe("2026-10-16T00:00:00Z");
+  });
+
+  it("maps an unknown cancellation state through unchanged", async () => {
+    global.fetch = vi.fn()
+      .mockResolvedValueOnce(jsonResponse({
+        disputes: [disputeRow({ cancellation_state: "escalated", cancellation_deadline: null })],
+        total: 1,
+      }))
+      .mockResolvedValueOnce(txnResponse()) as unknown as typeof fetch;
+
+    const [d] = await services.getDisputes();
+    expect(d.cancellationState).toBe("escalated");
+    expect(d.cancellationDeadline).toBeNull();
+  });
+
+  it("sets cancellation fields to null when the API omits them", async () => {
+    global.fetch = vi.fn()
+      .mockResolvedValueOnce(jsonResponse({ disputes: [disputeRow({})], total: 1 }))
+      .mockResolvedValueOnce(txnResponse()) as unknown as typeof fetch;
+
+    const [d] = await services.getDisputes();
+    expect(d.cancellationState).toBeNull();
+    expect(d.cancellationDeadline).toBeNull();
+  });
+
+  it("maps completed_at and status on the booking detail", async () => {
+    global.fetch = vi.fn(() => Promise.resolve(jsonResponse({
+      id: "job-9",
+      status: "completed",
+      completed_at: "2026-10-14T12:00:00Z",
+      description: null,
+      address: null,
+      scheduled_at: null,
+      photo_urls: null,
+      escrow: null,
+    }))) as unknown as typeof fetch;
+
+    const detail = await services.getBookingDetail("job-9");
+    expect(detail.completedAt).toBe("2026-10-14T12:00:00Z");
+    expect(detail.status).toBe("completed");
+  });
+
+  it("sets completedAt to null on a booking that has not completed", async () => {
+    global.fetch = vi.fn(() => Promise.resolve(jsonResponse({
+      id: "job-10",
+      status: "posted",
+      description: null,
+      address: null,
+      scheduled_at: null,
+      photo_urls: null,
+      escrow: null,
+    }))) as unknown as typeof fetch;
+
+    const detail = await services.getBookingDetail("job-10");
+    expect(detail.completedAt).toBeNull();
+    expect(detail.status).toBe("posted");
+  });
+
+  it("maps the verification method and defaults it to manual", async () => {
+    global.fetch = vi.fn(() => Promise.resolve(jsonResponse({
+      verifications: [
+        {
+          id: "v-s", provider_id: "p-s", full_name: "Lia", email: "lia@test.com", status: "pending",
+          submitted_at: "2026-10-10", reviewed_at: null, rejection_reason: null, documents: [], method: "stripe_identity",
+        },
+        {
+          id: "v-m", provider_id: "p-m", full_name: "Mo", email: "mo@test.com", status: "pending",
+          submitted_at: "2026-10-10", reviewed_at: null, rejection_reason: null, documents: [],
+        },
+      ],
+      total: 2,
+    }))) as unknown as typeof fetch;
+
+    const [stripe, manual] = await services.getVerifications();
+    expect(stripe.method).toBe("stripe_identity");
+    expect(manual.method).toBe("manual");
   });
 });
 

@@ -154,7 +154,7 @@ function verificationState(row: AdminUserApiRow): AdminUser["verification"] {
 function mapBookingRow(row: AdminBookingApiRow): AdminBooking {
   return {
     id: row.id,
-    customerName: row.client?.full_name ?? "Unknown homeowner",
+    customerName: row.client?.full_name ?? "Unknown client",
     providerName: row.provider?.full_name ?? "Unassigned",
     service: row.service_categories?.name ?? "Uncategorized",
     status: row.status,
@@ -174,6 +174,7 @@ function mapVerificationRow(row: AdminVerificationApiRow): Verification {
     status: row.status.toUpperCase() as VerificationStatus,
     documents: row.documents,
     documentType: row.document_type ?? null,
+    method: row.method ?? "manual",
   };
 }
 
@@ -191,7 +192,7 @@ function mapTransactionRow(row: AdminTransactionApiRow): Transaction {
   return {
     id: row.id,
     jobId: row.job_id,
-    customerName: row.client?.full_name ?? "Unknown homeowner",
+    customerName: row.client?.full_name ?? "Unknown client",
     providerName: row.provider?.full_name ?? "Unassigned",
     service: row.jobs?.service_categories?.name ?? row.jobs?.title ?? "Uncategorized",
     amount: Number(row.amount),
@@ -233,7 +234,7 @@ function mapDisputeRow(
     jobId: row.job_id,
     jobTitle: row.jobs?.title ?? linked?.service ?? "Unknown job",
     service: row.jobs?.service_categories?.name ?? linked?.service ?? "Uncategorized",
-    clientName: row.jobs?.client?.full_name ?? linked?.customerName ?? "Unknown homeowner",
+    clientName: row.jobs?.client?.full_name ?? linked?.customerName ?? "Unknown client",
     providerName: row.jobs?.provider?.full_name ?? linked?.providerName ?? "Unknown provider",
     amount: Number(row.escrow_transactions?.amount ?? linked?.amount ?? 0),
     reason: row.reason,
@@ -244,6 +245,8 @@ function mapDisputeRow(
     paymentSettled: row.escrow_id === null || ["released", "refunded", "cancelled"].includes(row.escrow_transactions?.status ?? ""),
     createdAt: row.created_at,
     resolvedAt: row.resolved_at,
+    cancellationState: row.cancellation_state ?? null,
+    cancellationDeadline: row.cancellation_deadline ?? null,
   };
 }
 
@@ -679,6 +682,16 @@ export async function getBookingStatusCounts(): Promise<Record<(typeof BOOKING_S
   return Object.fromEntries(BOOKING_STATUSES_API.map((st, i) => [st, totals[i]])) as Record<(typeof BOOKING_STATUSES_API)[number], number>;
 }
 
+/** Withdrawal requests waiting for an admin (one-row request; only `total` is read). */
+export async function getPendingWithdrawalCount(): Promise<number> {
+  return countRows("/admin/withdrawals?status=pending");
+}
+
+/** Service requests waiting for an admin: the exact total, not capped at a page size. */
+export async function getPendingServiceRequestCount(): Promise<number> {
+  return getSkillRequestCount("pending");
+}
+
 /** Money currently held in escrow, across every held row (not just a first page). */
 export async function getEscrowHeld(): Promise<{ count: number; total: number }> {
   const rows = await fetchAllRows<AdminTransactionApiRow>("/admin/transactions?status=held", "transactions");
@@ -730,6 +743,8 @@ export async function computeAnalyticsSummaryInBrowser(): Promise<AnalyticsSumma
     fetchAllRows<AdminWalletTxnApiRow>("/admin/wallet-transactions?kind=payout&status=completed", "transactions"),
     fetchAllRows<EscrowRowWithCommission>("/admin/transactions?status=released", "transactions"),
     countRows("/admin/verifications?status=pending"),
+    // A failed count reads as 0 here only for the summary totals; the Dashboard's
+    // queue tiles use the separate queueCounts (null when unknown), not this value.
     countRows("/admin/withdrawals?status=pending").catch(() => 0),
   ]);
   return summarizeAnalytics({ users: [...users, ...deletedUsers], jobs, payouts, releasedEscrow, pendingVerifications, pendingWithdrawals });
@@ -1012,6 +1027,8 @@ export async function getBookingDetail(id: string): Promise<AdminBookingDetail> 
     photoUrls: row.photo_urls ?? [],
     escrowStatus: row.escrow ? TRANSACTION_STATUS[row.escrow.status] : null,
     escrowAmount: row.escrow ? Number(row.escrow.amount) : null,
+    completedAt: row.completed_at ?? null,
+    status: row.status,
   };
 }
 

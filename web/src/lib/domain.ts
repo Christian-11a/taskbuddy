@@ -69,6 +69,8 @@ export interface Verification {
   documents: string[];
   /** e.g. "philsys"; null on submissions from before migration 0034. */
   documentType?: string | null;
+  /** "stripe_identity" when Stripe checked the ID; otherwise a manual review. */
+  method: "manual" | "stripe_identity";
 }
 
 // ─── Transactions ─────────────────────────────────────────────────────────────
@@ -132,6 +134,10 @@ export interface Dispute {
   paymentSettled: boolean;
   createdAt: string; // ISO date
   resolvedAt: string | null;
+  /** Set only for cancellation reviews: pending, contested, accepted, expired, or a value this build does not know. */
+  cancellationState: string | null;
+  /** ISO timestamp by which the other side must answer; null when none. */
+  cancellationDeadline: string | null;
 }
 
 // ─── Bookings ─────────────────────────────────────────────────────────────────
@@ -174,6 +180,10 @@ export interface AdminBookingDetail {
   photoUrls: string[];
   escrowStatus: TransactionStatus | null;
   escrowAmount: number | null;
+  /** ISO timestamp of completion; null until the job is completed. */
+  completedAt: string | null;
+  /** Raw job status from the backend (job_status enum). */
+  status: string;
 }
 
 // ─── Platform maintenance mode (migration 0017) ───────────────────────────────

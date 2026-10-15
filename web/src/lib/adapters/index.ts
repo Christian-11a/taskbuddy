@@ -101,7 +101,7 @@ export const DISPUTE_STATUS_DISPLAY: Record<DisputeStatus, { label: string; badg
 
 export const DISPUTE_RESOLUTION_LABEL: Record<DisputeResolution, string> = {
   RELEASED_TO_PROVIDER: "Released to provider",
-  REFUNDED_TO_CLIENT: "Refunded to homeowner",
+  REFUNDED_TO_CLIENT: "Refunded to client",
   REVIEWED: "Reviewed by admin",
 };
 
@@ -185,6 +185,7 @@ export interface VerificationRow {
   documents: VerificationDocument[];
   /** Display name of the ID type, or "Not specified" for older submissions. */
   documentType: string;
+  method: Verification["method"];
 }
 
 export interface DisputeRow {
@@ -207,6 +208,8 @@ export interface DisputeRow {
   createdAt: string;
   resolvedAt: string | null;
   isOpen: boolean;
+  cancellationState: string | null;
+  cancellationDeadline: string | null;
 }
 
 export interface TransactionRow {
@@ -309,7 +312,13 @@ export function toVerificationRow(v: Verification): VerificationRow {
     status: v.status.toLowerCase() as VerificationRow["status"],
     documents: v.documents.map((url, i) => ({ label: DOCUMENT_LABELS[i] ?? `Document ${i + 1}`, url })),
     documentType: (v.documentType && DOCUMENT_TYPE_LABELS[v.documentType]) ?? "Not specified",
+    method: v.method,
   };
+}
+
+/** How a provider's ID was checked, as shown to admins. */
+export function verificationMethodLabel(method: Verification["method"]): string {
+  return method === "stripe_identity" ? "Stripe Identity" : "ID + selfie review";
 }
 
 /** Mirrors the mobile picker and the CHECK in migration 0034. */
@@ -376,6 +385,8 @@ export function toDisputeRow(d: Dispute): DisputeRow {
     createdAt: formatDate(d.createdAt),
     resolvedAt: d.resolvedAt ? formatDate(d.resolvedAt) : null,
     isOpen: d.status === "OPEN",
+    cancellationState: d.cancellationState,
+    cancellationDeadline: d.cancellationDeadline,
   };
 }
 

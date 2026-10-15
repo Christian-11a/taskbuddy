@@ -147,6 +147,8 @@ export interface AdminVerificationApiRow {
   document_type?: string | null;
   /** Short-lived signed URLs — the documents bucket is private. */
   documents: string[];
+  /** How the verification was checked; absent on older rows (treated as manual). */
+  method?: "manual" | "stripe_identity";
 }
 
 export interface ListVerificationsApiResponse {
@@ -219,6 +221,9 @@ export interface AdminDisputeApiRow {
   escrow_transactions: { amount: number | string; status: EscrowStatusApi } | null;
   /** The client or assigned provider who requested admin review. */
   raised_by_profile: { id: string; full_name: string } | null;
+  /** Set only for cancellation reviews; an unknown value is passed through. */
+  cancellation_state?: string | null;
+  cancellation_deadline?: string | null;
 }
 
 export interface ListDisputesApiResponse {
@@ -256,6 +261,8 @@ export interface AdminBookingDetailApiResponse extends AdminBookingApiRow {
   scheduled_at: string | null;
   photo_urls: string[] | null;
   escrow: { amount: number | string; status: EscrowStatusApi } | null;
+  /** When the job was completed; starts the 72-hour warranty window. */
+  completed_at?: string | null;
 }
 
 export interface AdminActionApiRow {

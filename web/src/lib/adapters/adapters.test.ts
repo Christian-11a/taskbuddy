@@ -13,6 +13,7 @@ import {
   toUserRow,
   toVerificationRow,
   toWalletTxnRow,
+  verificationMethodLabel,
 } from "./index";
 import type { AdminBooking, AdminUser, Dispute, Transaction, Verification, WalletTransaction } from "@/lib/domain";
 
@@ -144,7 +145,7 @@ describe("row adapters", () => {
     const v: Verification = {
       id: "vr-001", providerId: "u-001", name: "Morgan Lee",
       email: "morgan@example.com", submittedAt: "2026-05-02",
-      status: "PENDING", documents: ["https://example.com/id.jpg", "https://example.com/selfie.jpg"],
+      status: "PENDING", documents: ["https://example.com/id.jpg", "https://example.com/selfie.jpg"], method: "manual",
     };
     const row = toVerificationRow(v);
     expect(row.status).toBe("pending");
@@ -159,7 +160,7 @@ describe("row adapters", () => {
     const v: Verification = {
       id: "vr-002", providerId: "u-002", name: "Pat Morgan",
       email: "pat@example.com", submittedAt: "2026-05-03",
-      status: "PENDING", documents: ["https://example.com/id.jpg"],
+      status: "PENDING", documents: ["https://example.com/id.jpg"], method: "manual",
     };
     expect(toVerificationRow(v).documents).toEqual([{ label: "Government ID", url: "https://example.com/id.jpg" }]);
   });
@@ -212,7 +213,7 @@ describe("row adapters", () => {
       clientName: "Jamie Kim", providerName: "Pat Morgan", amount: 500,
       reason: "Job not completed", details: "Provider never showed up.",
       status: "OPEN", resolution: null, resolutionNote: null, paymentSettled: false,
-      createdAt: "2026-05-01", resolvedAt: null,
+      createdAt: "2026-05-01", resolvedAt: null, cancellationState: null, cancellationDeadline: null,
     };
     const row = toDisputeRow(d);
     expect(row.status).toBe(DISPUTE_STATUS_DISPLAY.OPEN.label);
@@ -228,11 +229,11 @@ describe("row adapters", () => {
       clientName: "Jamie Kim", providerName: "Pat Morgan", amount: 1200,
       reason: "Poor quality", details: null,
       status: "RESOLVED", resolution: "REFUNDED_TO_CLIENT", resolutionNote: "Verified with photos.", paymentSettled: true,
-      createdAt: "2026-05-01", resolvedAt: "2026-05-03",
+      createdAt: "2026-05-01", resolvedAt: "2026-05-03", cancellationState: null, cancellationDeadline: null,
     };
     const row = toDisputeRow(d);
     expect(row.isOpen).toBe(false);
-    expect(row.resolution).toBe("Refunded to homeowner");
+    expect(row.resolution).toBe("Refunded to client");
     expect(row.resolvedAt).toBe("May 3, 2026");
   });
 
@@ -268,5 +269,35 @@ describe("row adapters", () => {
     expect(row.status).toBe("Awaiting Provider");
     expect(row.cancellable).toBe(true);
     expect(toBookingRow({ ...b, status: "completed" }).cancellable).toBe(false);
+  });
+});
+
+describe("cancellation, warranty and verification method in adapters", () => {
+  it("keeps the cancellation state and deadline on a dispute row", () => {
+    const d: Dispute = {
+      id: "DSP-010", jobId: "job-010", jobTitle: "Paint fence", service: "Painting",
+      clientName: "Ana", providerName: "Rico", amount: 300,
+      reason: "Cancelled late", details: null,
+      status: "OPEN", resolution: null, resolutionNote: null, paymentSettled: false,
+      createdAt: "2026-10-14", resolvedAt: null,
+      cancellationState: "pending", cancellationDeadline: "2026-10-16T00:00:00Z",
+    };
+    const row = toDisputeRow(d);
+    expect(row.cancellationState).toBe("pending");
+    expect(row.cancellationDeadline).toBe("2026-10-16T00:00:00Z");
+  });
+
+  it("exposes the verification method on a verification row", () => {
+    const v: Verification = {
+      id: "v-1", providerId: "p-1", name: "Lia Cruz", email: "lia@test.com",
+      submittedAt: "2026-10-10", status: "PENDING", documents: [], documentType: null,
+      method: "stripe_identity",
+    };
+    expect(toVerificationRow(v).method).toBe("stripe_identity");
+  });
+
+  it("labels each verification method for display", () => {
+    expect(verificationMethodLabel("manual")).toBe("ID + selfie review");
+    expect(verificationMethodLabel("stripe_identity")).toBe("Stripe Identity");
   });
 });
