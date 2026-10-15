@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { useEffect, useRef, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useRef, useSyncExternalStore } from "react";
 import { motion } from "motion/react";
 import { ArrowLeft, CheckCircle2, Inbox, Search, X } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -28,21 +28,20 @@ export function neighborAfterRemoval(ids: string[], id: string): string | null {
 
 /* ─────────────────────────── hooks ─────────────────────────── */
 
-function subscribeMedia(query: string) {
-  return (onChange: () => void) => {
-    const mql = window.matchMedia(query);
-    mql.addEventListener("change", onChange);
-    return () => mql.removeEventListener("change", onChange);
-  };
-}
-
 /** True at the `lg` breakpoint and up, where queues show list + detail side by side. */
 export function useIsWide(query = "(min-width: 1024px)") {
-  return useSyncExternalStore(
-    subscribeMedia(query),
-    () => window.matchMedia(query).matches,
-    () => true,
+  // useSyncExternalStore re-subscribes whenever the subscribe function changes identity.
+  // Memoising both callbacks on `query` keeps a single listener for the component's lifetime.
+  const subscribe = useCallback(
+    (onChange: () => void) => {
+      const mql = window.matchMedia(query);
+      mql.addEventListener("change", onChange);
+      return () => mql.removeEventListener("change", onChange);
+    },
+    [query],
   );
+  const getSnapshot = useCallback(() => window.matchMedia(query).matches, [query]);
+  return useSyncExternalStore(subscribe, getSnapshot, () => true);
 }
 
 function isTypingTarget(el: EventTarget | null) {

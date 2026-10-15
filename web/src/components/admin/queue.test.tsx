@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { fireEvent, render } from "@testing-library/react";
-import { neighborAfterRemoval, stepInList, useQueueKeys, type QueueKeyHandlers } from "./queue";
+import { neighborAfterRemoval, stepInList, useIsWide, useQueueKeys, type QueueKeyHandlers } from "./queue";
 
 describe("stepInList", () => {
   const ids = ["a", "b", "c"];
@@ -53,5 +53,28 @@ describe("useQueueKeys", () => {
     fireEvent.keyDown(getByLabelText("note"), { key: "a" });
     fireEvent.keyDown(document, { key: "a", ctrlKey: true });
     expect(onApprove).not.toHaveBeenCalled();
+  });
+});
+
+describe("useIsWide", () => {
+  function WideProbe() {
+    return <span data-testid="wide">{String(useIsWide())}</span>;
+  }
+
+  it("subscribes once and keeps the subscription across re-renders", () => {
+    const addEventListener = vi.fn();
+    const removeEventListener = vi.fn();
+    vi.stubGlobal("matchMedia", vi.fn(() => ({ matches: true, addEventListener, removeEventListener })));
+    try {
+      const { rerender, unmount } = render(<WideProbe />);
+      rerender(<WideProbe />);
+      rerender(<WideProbe />);
+      expect(addEventListener).toHaveBeenCalledTimes(1);
+      expect(removeEventListener).toHaveBeenCalledTimes(0);
+      unmount();
+      expect(removeEventListener).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 });

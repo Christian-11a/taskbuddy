@@ -64,8 +64,8 @@ function queueIds(): string[] {
   return Array.from(list.querySelectorAll("[data-queue-item]")).map((el) => el.getAttribute("data-queue-item") ?? "");
 }
 
-// Stubbed once for the whole file. queue.tsx re-subscribes to matchMedia on every render, so a render
-// that lands after a per-test stub has been removed would throw; one stub for the file avoids that.
+// Stubbed once for the whole file. useIsWide keeps a single matchMedia listener, but it still reads
+// matchMedia on every render, so a render that lands after a per-test stub has been removed would throw.
 beforeAll(() => {
   vi.stubGlobal("matchMedia", vi.fn(() => ({ matches: true, addEventListener: vi.fn(), removeEventListener: vi.fn() })));
 });
