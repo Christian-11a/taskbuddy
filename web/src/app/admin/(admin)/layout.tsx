@@ -22,14 +22,14 @@ import { LOGIN_PATH, pathToPage } from "@/lib/routes";
  * legacy light-theme overrides.
  */
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
-  const { isLoggedIn, sessionRestored, logout, sidebarCollapsed, setSidebarCollapsed, loadError, retryLoad, refreshData } = useApp();
+  const { isLoggedIn, sessionRestored, logout, sidebarCollapsed, setSidebarCollapsed, loadError, retryLoad, refreshLive } = useApp();
   const [drawerOpen, setDrawerOpen] = useState(false);
   const pathname = usePathname();
   const router = useRouter();
   const activePage = pathToPage(pathname);
   const reduce = useReducedMotion();
 
-  useLiveRefresh(refreshData, { enabled: isLoggedIn });
+  useLiveRefresh(refreshLive, { enabled: isLoggedIn });
   useArrivalAlerts();
   useDocumentTitleCount();
 

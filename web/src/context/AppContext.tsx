@@ -55,6 +55,10 @@ const DEFAULT_SETTINGS: ConsoleSettings = {
 };
 
 const PREFS_KEY = "tb-admin-prefs";
+/** The automatic refresh waits this long after any load finished (the tick and a tab return can fire together). */
+const LIVE_QUIET_MS = 5_000;
+/** An automatic refresh is not held back by a silent refresh still running after this long: a request that never answers must not stop the live feed. */
+const LIVE_STUCK_MS = 30_000;
 
 interface StoredPrefs {
   darkMode: boolean;
@@ -116,8 +120,11 @@ interface AppState {
   loadError: string | null;
   /** Re-runs the initial data load — wired to the error banner's Retry. */
   retryLoad: () => void;
-  /** Quietly re-fetches console data (no loading state) — the live refresh. */
+  /** Quietly re-fetches console data (no loading state). Always runs: explicit callers (Refresh now, the Live retry, after a write) use it. */
   refreshData: () => Promise<void>;
+  /** The automatic live refresh (the tick and the return-to-tab refresh). Skips while a silent refresh is still
+   *  running and for a few seconds after a load finished, so the two triggers never stack up. */
+  refreshLive: () => Promise<void>;
   /** Re-reads only the payout and service-request counts (two small requests).
    *  Never rejects: a failed read keeps the last good value. Call it after an
    *  admin action that changes a queue, fire-and-forget. */
@@ -335,6 +342,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
   // starts then: it would supersede the full load, which alone clears
   // `loading` (a Render cold start easily outlasts the 30s refresh interval).
   const fullLoadInFlight = useRef(false);
+  /** The newest silent refresh that has started and not yet finished, with its start time (see refreshLive). */
+  const liveRefreshPending = useRef<{ seq: number; startedAt: number } | null>(null);
+  /** When the last console load of any kind finished (epoch ms; 0 before the first). See refreshLive. */
+  const lastLoadEndedAt = useRef(0);
   /** Called when a mutation writes fresh rows: any refresh already in flight
    *  fetched before the change landed, so its snapshot must not win. */
   const dropInFlightRefresh = useCallback(() => {
@@ -423,6 +434,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const maintenanceWritesAtStart = maintenanceWrites.current;
     const usersRevisionAtStart = usersRevision.current;
     if (silent) {
+      liveRefreshPending.current = { seq, startedAt: Date.now() };
       setRefreshing(true);
     } else {
       // A Users read still running is kept, not dropped: a write or a teardown has already dropped any read it
@@ -554,8 +566,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
       }
       if (!silent) setLoading(false);
     } finally {
-      if (silent) setRefreshing(false);
-      else if (!stale()) fullLoadInFlight.current = false;
+      lastLoadEndedAt.current = Date.now();
+      if (silent) {
+        // Only the newest silent refresh owns the indicator: an older one that finishes later must not clear it.
+        if (liveRefreshPending.current?.seq === seq) {
+          liveRefreshPending.current = null;
+          setRefreshing(false);
+        }
+      } else if (!stale()) fullLoadInFlight.current = false;
     }
   }, [fetchUsers, applyVerifications]);
 
@@ -591,11 +609,21 @@ export function AppProvider({ children }: { children: ReactNode }) {
   );
   /* eslint-enable react-hooks/set-state-in-effect */
 
-  /** Background refresh for the live indicator (see useLiveRefresh). */
+  /** Explicit background refresh: the Live indicator's click, the palette command, and reads after a write. Never skipped. */
   const refreshData = useCallback(
     () => (isLoggedIn ? loadConsoleData(true) : Promise.resolve()),
     [isLoggedIn, loadConsoleData],
   );
+
+  /** Automatic refresh for the live tick and the return-to-tab trigger (see useLiveRefresh). */
+  const refreshLive = useCallback(() => {
+    if (!isLoggedIn) return Promise.resolve();
+    const now = Date.now();
+    const pending = liveRefreshPending.current;
+    if (pending && now - pending.startedAt < LIVE_STUCK_MS) return Promise.resolve();
+    if (now - lastLoadEndedAt.current < LIVE_QUIET_MS) return Promise.resolve();
+    return loadConsoleData(true);
+  }, [isLoggedIn, loadConsoleData]);
 
   /** Newest count read wins; an older read that finishes later is dropped. */
   const countsSeq = useRef(0);
@@ -828,7 +856,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       isLoggedIn, sessionRestored, sessionEnded, adminProfile,
       login, logout, updateDisplayName, changePassword,
       loading, loadError, retryLoad, analyticsUnavailable, analyticsInBrowser,
-      refreshData, refreshCounts, refreshUsers, ensureUsers, usersLoading, lastUpdated, refreshing, refreshFailed,
+      refreshData, refreshLive, refreshCounts, refreshUsers, ensureUsers, usersLoading, lastUpdated, refreshing, refreshFailed,
        verifications, users, transactions, disputes, bookings,
       dashboardStats, revenueSeries, bookingsSeries, bookingsByCategory,
       recentActivity, topProviders, queueCounts,
@@ -843,7 +871,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       isLoggedIn, sessionRestored, sessionEnded, adminProfile,
       login, logout, updateDisplayName, changePassword,
       loading, loadError, retryLoad, analyticsUnavailable, analyticsInBrowser,
-      refreshData, refreshCounts, refreshUsers, ensureUsers, usersLoading, lastUpdated, refreshing, refreshFailed,
+      refreshData, refreshLive, refreshCounts, refreshUsers, ensureUsers, usersLoading, lastUpdated, refreshing, refreshFailed,
        verifications, users, transactions, disputes, bookings,
       dashboardStats, revenueSeries, bookingsSeries, bookingsByCategory,
       recentActivity, topProviders, queueCounts,

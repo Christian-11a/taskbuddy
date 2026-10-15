@@ -1,5 +1,5 @@
 import { act, render, waitFor } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AppProvider, useApp } from "./AppContext";
 import * as services from "@/lib/services";
 import type { AdminUser, Dispute, Verification } from "@/lib/domain";
@@ -562,9 +562,111 @@ describe("AppContext — moderation refresh results", () => {
       expect(context.users.map((row) => row.status)).toEqual(["Suspended", "Deleted"]);
     });
   });
+
+  describe("live refresh guard", () => {
+    // Time is frozen and moved by hand, so the quiet period and the stuck-refresh limit are exact.
+    let clock = 0;
+    let restoreNow: () => void = () => {};
+    beforeEach(() => {
+      clock = 1_000_000;
+      const spy = vi.spyOn(Date, "now").mockImplementation(() => clock);
+      restoreNow = () => spy.mockRestore();
+    });
+    afterEach(() => restoreNow());
+
+    const disputeReads = () => vi.mocked(services.getDisputes).mock.calls.length;
+
+    it("two automatic triggers inside one second produce one refresh", async () => {
+      await mountLoaded();
+      clock += 6_000;
+      const before = disputeReads();
+      await act(async () => {
+        await Promise.all([context.refreshLive(), context.refreshLive()]);
+      });
+      expect(disputeReads() - before).toBe(1);
+    });
+
+    it("an automatic trigger during an in-flight silent refresh is skipped", async () => {
+      await mountLoaded();
+      clock += 6_000;
+      const slow = deferred<Dispute[]>();
+      vi.mocked(services.getDisputes).mockReturnValueOnce(slow.promise);
+      const before = disputeReads();
+      let inFlight!: Promise<void>;
+      await act(async () => { inFlight = context.refreshLive(); });
+      expect(context.refreshing).toBe(true);
+
+      await act(async () => { await context.refreshLive(); });
+      expect(disputeReads() - before).toBe(1);
+
+      await act(async () => { slow.resolve([]); await inFlight; });
+      expect(context.refreshing).toBe(false);
+    });
+
+    it("an explicit refreshData() during an in-flight silent refresh is not lost", async () => {
+      await mountLoaded();
+      clock += 6_000;
+      const stale = deferred<Dispute[]>();
+      const fresh = deferred<Dispute[]>();
+      vi.mocked(services.getDisputes).mockReturnValueOnce(stale.promise).mockReturnValueOnce(fresh.promise);
+      let automatic!: Promise<void>;
+      let explicit!: Promise<void>;
+      await act(async () => { automatic = context.refreshLive(); });
+      // A dispute is resolved while the automatic read is still out, and the page refreshes after the write.
+      await act(async () => { explicit = context.refreshData(); });
+      await act(async () => { fresh.resolve([dispute({ id: "d-new", status: "RESOLVED" })]); await explicit; });
+      // The older read answers last with the pre-write state. It must not overwrite the fresh rows.
+      await act(async () => { stale.resolve([dispute({ id: "d-old", status: "OPEN" })]); await automatic; });
+      expect(context.disputes.map((row) => row.id)).toEqual(["d-new"]);
+    });
+
+    it("keeps the live indicator on until the newest silent refresh finishes", async () => {
+      await mountLoaded();
+      const older = deferred<Dispute[]>();
+      const newer = deferred<Dispute[]>();
+      vi.mocked(services.getDisputes).mockReturnValueOnce(older.promise).mockReturnValueOnce(newer.promise);
+      let first!: Promise<void>;
+      let second!: Promise<void>;
+      await act(async () => { first = context.refreshData(); second = context.refreshData(); });
+      await act(async () => { older.resolve([]); await first; });
+      expect(context.refreshing).toBe(true);
+      await act(async () => { newer.resolve([]); await second; });
+      expect(context.refreshing).toBe(false);
+    });
+
+    it("an explicit refresh still runs inside the quiet period after a refresh", async () => {
+      await mountLoaded();
+      const before = disputeReads();
+      await act(async () => { await context.refreshData(); });
+      expect(disputeReads() - before).toBe(1);
+    });
+
+    it("skips an automatic trigger within 5 s of the last refresh, and runs again after 5 s", async () => {
+      await mountLoaded();
+      const before = disputeReads();
+      clock += 1_000;
+      await act(async () => { await context.refreshLive(); });
+      expect(disputeReads() - before).toBe(0);
+
+      clock += 5_000;
+      await act(async () => { await context.refreshLive(); });
+      expect(disputeReads() - before).toBe(1);
+    });
+
+    it("a silent refresh that never answers does not block automatic refreshes forever", async () => {
+      await mountLoaded();
+      clock += 6_000;
+      vi.mocked(services.getDisputes).mockReturnValueOnce(new Promise<Dispute[]>(() => {}));
+      await act(async () => { void context.refreshLive(); });
+      clock += 31_000;
+      const before = disputeReads();
+      await act(async () => { await context.refreshLive(); });
+      expect(disputeReads() - before).toBe(1);
+    });
+  });
 });
 
-const verification = (over: Partial<Verification>): Verification => ({
+const verification =(over: Partial<Verification>): Verification => ({
   id: "v1", providerId: "p1", name: "Liza Mercado", email: "liza@example.com", submittedAt: "2026-10-01",
   status: "PENDING", documents: [], method: "manual", ...over,
 });
