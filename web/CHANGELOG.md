@@ -32,6 +32,7 @@ order, newest first.
 
 | Date | Entry | Category |
 |---|---|---|
+| 2026-10-15 | Notification inbox, mobile sign-in fix, case chat, trust fixes | Feature, Fix, Improvement, Backend integration |
 | 2026-10-15 | Admin synced with the mobile app | Feature, Improvement, Backend integration |
 | 2026-10-03 | Export anonymization is real; Settings trimmed to what exists | Feature, Improvement |
 | 2026-10-03 | Server-filtered Service Requests and booking-title search, verified live | Backend integration, Verification |
@@ -53,6 +54,62 @@ order, newest first.
 | undated | Visual/UX port from the design mockup | Improvement |
 | undated | Hardening passes | Security, Fix, Accessibility |
 | undated | Backend follow-ups (migrations 0014, 0017) | Backend integration |
+
+---
+
+### 2026-10-15 · Notification inbox, mobile sign-in fix, case chat, trust fixes
+
+**Category:** Feature · Fix · Improvement · Backend integration
+
+Follow-up to "Admin synced with the mobile app", from the first round of review.
+Frontend only.
+
+- **Notification inbox.** The bell is an inbox. New work creates an entry ("3 new
+  provider verifications"); the badge counts unread entries. Clicking an entry
+  marks it read and opens its queue. Entries can be deleted one by one or in a
+  selection, "Mark all as read" clears the badge, and "Delete all" is available
+  only once everything is read. When a queue's count reaches 0 its entries leave
+  on their own. The sidebar badges and the tab title still show the real pending
+  work; a "Pending work" list under the entries shows the same numbers. Entries
+  live in this browser only (capped at 100).
+- **Counts update right after an action.** `refreshCounts()` runs after verification,
+  dispute, withdrawal, service-request, booking-cancel and recovery-credit
+  actions. A write that succeeded is no longer shown as failed when only the
+  follow-up read fails.
+- **Mobile sign-in loop.** On phones the console could sign in and then bounce back
+  to the login page. The session cookies are set by the API on another site and
+  phone browsers often block them. Sign-in now checks that the session cookie
+  actually stuck and says so if it did not, and an expired session explains
+  itself on the login page. The API can be reached through the console's own
+  domain with a proxy (`ADMIN_API_PROXY_TARGET` and `NEXT_PUBLIC_API_URL=/backend`;
+  see the README), which makes the cookies first-party.
+- **Disputes.** The job conversation is a fixed-height scrollable box with a refresh
+  button, role badges and photo thumbnails that open an enlargeable viewer. The
+  clarification form can address both parties, the client or the provider
+  (written into the note, since the API has no recipient field) and has quick
+  templates. An urgency banner shows overdue and due-soon cases.
+- **Broadcast.** After sending it says "Added to N inboxes" and notes that push is
+  best-effort and email is not sent. Title and body limits (120 and 500) match
+  the API.
+- **Numbers and labels.** Ratings show at most two decimals and "—" when unrated;
+  Top providers shows job counts. "Gross merchandise value" is now "Provider
+  payouts", "Active providers" is "Registered providers" and "Completion rate"
+  is "Completed jobs", to match what the numbers measure. Cancelling a booking
+  explains that held money goes to a cancellation review.
+- **Failures are visible.** Bookings, Transactions, Activity and Audit Log keep the
+  last rows and show a Retry banner when a load fails. The Live indicator turns
+  amber ("Update failed, retry") when a background refresh fails. CSV exports
+  neutralise cells that start with `=`, `+`, `-` or `@`. Audit Log refreshes on
+  the live tick.
+- **Ready for the backend update.** Platform identity (name and support email, with
+  a version check) and job limits (active jobs, daily hours, rest, travel speed)
+  are editable on the Platform page. Until the endpoints are deployed they show
+  "Not available yet".
+- **Other fixes.** A failed refresh no longer drops known deleted accounts; a
+  refresh can no longer overwrite a maintenance-mode toggle; a media-query hook
+  that re-subscribed on every render (and made a Disputes test flaky) is stable.
+- **Dev preview.** Sample chats carry sender ids and one photo; `?inbox=1` seeds
+  the inbox.
 
 ---
 

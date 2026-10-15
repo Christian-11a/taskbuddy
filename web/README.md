@@ -55,7 +55,9 @@ cd ../backend && PORT=3001 npm run start:dev
 For an externally hosted console, set `NEXT_PUBLIC_API_URL` to the API HTTPS
 origin and set that exact console origin in the API's comma-separated
 `WEB_CORS_ORIGINS`. The API enables credentialed CORS only for that allowlist;
-wildcard origins cannot be used with the admin cookies.
+wildcard origins cannot be used with the admin cookies. Phones often refuse
+cookies sent this way; for those, use the first-party proxy in
+[Deployment: first-party API proxy](#deployment-first-party-api-proxy).
 
 | Script | What it does |
 |---|---|
@@ -64,6 +66,35 @@ wildcard origins cannot be used with the admin cookies.
 | `npm start` | Serve the production build |
 | `npm run lint` | ESLint |
 | `npm test` | Vitest unit tests |
+
+---
+
+## Deployment: first-party API proxy
+
+The admin session lives in cookies that the API sets. Phone browsers (iOS
+Safari, in-app browsers, and Chrome, Brave or Firefox with third-party cookies
+blocked) refuse cookies that a page gets from another site, so a console that
+calls the API directly can sign in and then bounce back to the sign-in form.
+To avoid this, the console sends its API calls through its own origin, and
+Next.js forwards them to the API.
+
+Set these on the Vercel project (Production and Preview), then redeploy:
+
+| Variable | Value | What it does |
+|---|---|---|
+| `NEXT_PUBLIC_API_URL` | `/backend` | The browser calls `/backend/...` on the console's own origin. |
+| `ADMIN_API_PROXY_TARGET` | The API's HTTPS origin, with no trailing slash, e.g. `https://taskbuddy-kpek.onrender.com` | A rewrite forwards `/backend/*` to it. The server routes under `/api/auth/*` call it directly. |
+
+Notes:
+
+- `NEXT_PUBLIC_API_URL` is compiled into the build, so changing it needs a redeploy.
+- `ADMIN_API_PROXY_TARGET` is read on the server only and is never sent to the browser.
+- With `NEXT_PUBLIC_API_URL=/backend` and no proxy target, the build fails and names both variables.
+- Leave both unset for local development. The console then calls `http://localhost:3001` directly.
+- The console's origin must still be in the API's `WEB_CORS_ORIGINS` list, as before.
+- If the browser still refuses the cookie, sign-in shows "Your browser blocked the sign-in cookie" and the console does not sign in.
+
+To verify, sign in on a phone (or a private window). The dashboard should open and stay open. In DevTools, Application, Cookies, the console's own host should list `tb_admin_access`, `tb_admin_refresh` and `tb_admin_csrf`. Network requests should go to `https://<console-host>/backend/...`.
 
 ---
 
@@ -259,7 +290,7 @@ the backend and convert its JSON tokens into httpOnly cookies):
 | Audit Log | `GET /admin/audit?search=…&action=…&limit=…&offset=…` (server-filtered pages and total) |
 | Reports | `GET /admin/analytics/summary` (same browser fallback as the Dashboard) |
 | Withdrawals | `GET /admin/withdrawals`, `POST .../:id/settle` · `POST .../:id/reject` |
-| Platform | `GET`/`PATCH /admin/commission`, category CRUD, admin accounts, notification broadcast |
+| Platform | `GET`/`PATCH /admin/commission`, category CRUD, admin accounts, notification broadcast, `GET`/`PATCH /admin/platform-identity` and `GET`/`PATCH /admin/job-capacity` (shown as "Not available yet" until the backend serves them) |
 | Settings | `PATCH /profiles/me`, `POST /auth/change-password`, `GET`/`PATCH /settings` (account dark mode), `GET`/`PATCH /admin/maintenance`. The verification email alert and Platform name/support email are unavailable pending backend work. The Data & Privacy export-anonymization switch is local to the browser. |
 
 The Platform page consumes the commission, category, admin-account, and
@@ -286,10 +317,14 @@ are checked. Written UTF-8 with a BOM so Excel doesn't mangle the peso sign.
   `cancelled` hold also reads as `REFUNDED` — there's no separate UI state.
 - **Bookings amount** is the real `jobs.budget`. Jobs posted before pricing
   existed (migration 0007) have none and show ₱0.
-- **The notification bell** shows the four queue counts in `queueCounts` (see
-  Architecture). Verifications and disputes come from the lists already loaded;
-  withdrawals and service requests come from count-only requests. It never
-  needed a backend of its own.
+- **The notification bell is an inbox.** New work creates entries (`lib/inbox.ts`,
+  `hooks/useAdminInbox.ts`, stored in this browser, capped at 100). The badge
+  counts unread entries; clicking one marks it read and opens its queue. Entries
+  can be deleted singly or in a selection, "Mark all as read" clears the badge
+  and "Delete all" only works once everything is read. Entries for a queue leave
+  on their own when its count reaches 0. A "Pending work" list under the entries
+  shows the real counts from `queueCounts` (see Architecture), which are also what
+  the sidebar badges and the tab title show. It never needed a backend of its own.
 - **Escrow ≠ wallet.** Escrow is money held for one job; the wallet ledger is a
   user's running balance (top-ups, withdrawals, payouts, refunds). Separate
   tables, separate tabs.
