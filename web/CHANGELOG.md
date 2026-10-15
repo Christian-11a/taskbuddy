@@ -74,7 +74,10 @@ order, newest first.
   (`ensureUsers`, re-read after 5 minutes or after a user action); the charts library
   loads after the page text and tiles; disputes no longer download every transaction
   (names and amounts come from the dispute query's own join, and an unknown amount
-  shows "Unknown"); the tick reads only pending verifications.
+  shows "Unknown"); the tick reads only pending verifications;
+  automatic refreshes are skipped while one is in flight or finished less than 5 s ago (a
+  tab returning to view no longer fires two in a row), while Refresh data now, the Live
+  indicator retry and refreshes after a write always run.
   Behavior changes to know about: the Users list can lag other admins' changes by up
   to 5 minutes; a list over 5,000 rows now warns and shows the first 5,000 instead of
   failing the whole load (money totals still fail loudly).
