@@ -50,6 +50,22 @@ function renderWithToast(ui: React.ReactElement) {
   return render(<ToastProvider>{ui}</ToastProvider>);
 }
 
+describe("UsersPage — rating display", () => {
+  it("shows a provider's rating rounded to at most two decimals", () => {
+    mockedUseApp.mockReturnValue({
+      users: [makeUser({ ratingValue: 4.08333, rating: "4.08 rating" })],
+      setUserStatus: vi.fn(),
+      bulkSetUserStatus: vi.fn(),
+      sendPasswordReset: vi.fn(),
+      refreshUsers: vi.fn(),
+      loading: false,
+    } as unknown as ReturnType<typeof useApp>);
+    renderWithToast(<UsersPage />);
+    expect(screen.getByText("4.08")).toBeInTheDocument();
+    expect(screen.queryByText(/4\.08333/)).not.toBeInTheDocument();
+  });
+});
+
 describe("UsersPage — suspend flow", () => {
   const setUserStatus = vi.fn();
   const bulkSetUserStatus = vi.fn();

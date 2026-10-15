@@ -29,7 +29,7 @@ import {
 } from "@/components/admin/table";
 import { cn } from "@/lib/utils";
 import type { BulkCounts } from "@/lib/services";
-import type { UserRow } from "@/lib/adapters";
+import { formatRating, ratingForCsv, type UserRow } from "@/lib/adapters";
 
 const PAGE_SIZE = 12;
 
@@ -216,7 +216,7 @@ export function UsersPage() {
             {u.ratingValue ? (
               <span className="inline-flex items-center gap-0.5 text-[12px] text-warn">
                 <Star className="size-3 fill-current" />
-                {u.ratingValue.toFixed(1)}
+                {formatRating(u.ratingValue)}
               </span>
             ) : null}
           </span>
@@ -398,7 +398,7 @@ export function UsersPage() {
     const mask = exportMasks(settings.anonymizeExports);
     const csv = toCsv(
       ["Name", "Email", "Phone", "Role", "Category", "City", "Status", "Verification", "Joined", "Jobs completed", "Rating"],
-      exportScope.map((u) => [mask.name(u.name), mask.email(u.email), mask.phone(u.phone), u.rolePlain, u.category, u.city, u.status, u.verification, u.joined, u.jobsCompleted, u.ratingValue]),
+      exportScope.map((u) => [mask.name(u.name), mask.email(u.email), mask.phone(u.phone), u.rolePlain, u.category, u.city, u.status, u.verification, u.joined, u.jobsCompleted, ratingForCsv(u.ratingValue)]),
     );
     downloadCsv(datedFilename("taskbuddy-users"), csv);
   }

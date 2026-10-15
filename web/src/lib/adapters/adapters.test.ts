@@ -5,7 +5,10 @@ import {
   formatCurrency,
   formatCurrencyCompact,
   formatDate,
+  formatRating,
   initials,
+  ratingForCsv,
+  roundRating,
   isCancellableBooking,
   toBookingRow,
   toDisputeRow,
@@ -299,5 +302,42 @@ describe("cancellation, warranty and verification method in adapters", () => {
   it("labels each verification method for display", () => {
     expect(verificationMethodLabel("manual")).toBe("ID + selfie review");
     expect(verificationMethodLabel("stripe_identity")).toBe("Stripe Identity");
+  });
+});
+
+describe("rating formatting", () => {
+  it("rounds to at most two decimals without trailing zeros", () => {
+    expect(formatRating(4.0833)).toBe("4.08");
+    expect(formatRating(4.9)).toBe("4.9");
+    expect(formatRating(5)).toBe("5");
+    expect(roundRating(4.0833)).toBe(4.08);
+    expect(roundRating(4.999)).toBe(5);
+  });
+
+  it("shows an em dash when there is no rating (null, undefined, or 0)", () => {
+    expect(formatRating(null)).toBe("—");
+    expect(formatRating(undefined)).toBe("—");
+    expect(formatRating(0)).toBe("—");
+    expect(formatRating(Number.NaN)).toBe("—");
+  });
+
+  it("gives CSV a rounded number, and blank for unrated", () => {
+    expect(ratingForCsv(4.0833)).toBe(4.08);
+    expect(ratingForCsv(0)).toBe("");
+    expect(ratingForCsv(null)).toBe("");
+  });
+
+  it("rounds the activity and rating text of user rows", () => {
+    const u: AdminUser = {
+      id: "u-010", email: "pat@example.com", role: "provider",
+      createdAt: "2024-03-10", name: "Pat Cruz", status: "ACTIVE",
+      jobsCompleted: 12, rating: 4.08333,
+      phone: null, city: null, categoryName: null,
+      suspendedUntil: null, suspensionReason: null,
+    };
+    const row = toUserRow(u);
+    expect(row.activity).toBe("12 jobs · 4.08 rating");
+    expect(row.rating).toBe("4.08 rating");
+    expect(row.ratingValue).toBe(4.08);
   });
 });

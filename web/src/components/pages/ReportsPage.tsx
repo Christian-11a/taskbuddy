@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { AlertTriangle, CalendarRange, CheckCircle2, Download, Star, TrendingUp, Wallet } from "lucide-react";
 import { useApp } from "@/context/AppContext";
-import { formatCurrency, formatCurrencyCompact } from "@/lib/adapters";
+import { formatCurrency, formatCurrencyCompact, formatRating, ratingForCsv } from "@/lib/adapters";
 import { exportMasks } from "@/lib/export/anonymize";
 import { datedFilename, downloadCsv, toCsv } from "@/lib/export/csv";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
@@ -97,7 +97,7 @@ export function ReportsPage() {
         ["Total revenue", stats.totalRevenue],
         ["Revenue this month", stats.monthlyRevenue],
         ["Completion rate (%)", stats.completionRate],
-        ["Average provider rating", stats.avgRating],
+        ["Average provider rating", ratingForCsv(stats.avgRating)],
         ["Total users", stats.totalUsers],
         ["Active providers", stats.activeProviders],
         ["Total bookings", stats.totalBookings],
@@ -105,7 +105,7 @@ export function ReportsPage() {
       toCsv(["Month", "Revenue"], revenueSeries.map((r) => [r.month, r.value])),
       toCsv(["Month", "Bookings"], bookingsSeries.map((b) => [b.month, b.value])),
       toCsv(["Category", "Share (%)"], bookingsByCategory.map((c) => [c.label, c.value])),
-      toCsv(["Provider", "Completed jobs", "Rating"], topProviders.map((p) => [mask.name(p.name), p.jobs, p.rating])),
+      toCsv(["Provider", "Completed jobs", "Rating"], topProviders.map((p) => [mask.name(p.name), p.jobs, ratingForCsv(p.rating)])),
     ];
     const labels = ["SUMMARY", "REVENUE TREND", "MONTHLY BOOKINGS", "BOOKINGS BY CATEGORY", "TOP PROVIDERS"];
     const csv = blocks.map((b, i) => `${labels[i]}\r\n${b}`).join("\r\n\r\n");
@@ -158,10 +158,10 @@ export function ReportsPage() {
             <Star className="size-3.5" /> Avg provider rating
           </div>
           <div className="mt-2 flex items-end gap-2">
-            <span className="tabular text-[28px] font-semibold leading-none tracking-tight">{stats.avgRating}</span>
+            <span className="tabular text-[28px] font-semibold leading-none tracking-tight">{formatRating(stats.avgRating)}</span>
             <span className="mb-0.5 flex text-warn" aria-hidden>
               {Array.from({ length: 5 }, (_, i) => (
-                <Star key={i} className={i < Math.round(stats.avgRating) ? "size-3.5 fill-current" : "size-3.5 opacity-25"} />
+                <Star key={i} className={stats.avgRating > 0 && i < Math.round(stats.avgRating) ? "size-3.5 fill-current" : "size-3.5 opacity-25"} />
               ))}
             </span>
           </div>
@@ -213,11 +213,14 @@ export function ReportsPage() {
                   </span>
                 ),
                 value: p.jobs,
-                hint: (
-                  <span className="inline-flex items-center gap-0.5">
-                    {p.rating} <Star className="size-3 fill-current text-warn" />
-                  </span>
-                ),
+                hint:
+                  p.rating > 0 ? (
+                    <span className="inline-flex items-center gap-0.5">
+                      {`${p.jobs} jobs · ${formatRating(p.rating)}`} <Star className="size-3 fill-current text-warn" />
+                    </span>
+                  ) : (
+                    <span>{`${p.jobs} jobs · — unrated`}</span>
+                  ),
               }))}
               format={(n) => `${n} jobs`}
             />
