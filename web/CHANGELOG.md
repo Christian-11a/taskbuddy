@@ -32,6 +32,7 @@ order, newest first.
 
 | Date | Entry | Category |
 |---|---|---|
+| 2026-10-15 | Faster console, sectioned dispute case view, collapsible lists | Improvement, Feature |
 | 2026-10-15 | Notification inbox, mobile sign-in fix, case chat, trust fixes | Feature, Fix, Improvement, Backend integration |
 | 2026-10-15 | Admin synced with the mobile app | Feature, Improvement, Backend integration |
 | 2026-10-03 | Export anonymization is real; Settings trimmed to what exists | Feature, Improvement |
@@ -54,6 +55,37 @@ order, newest first.
 | undated | Visual/UX port from the design mockup | Improvement |
 | undated | Hardening passes | Security, Fix, Accessibility |
 | undated | Backend follow-ups (migrations 0014, 0017) | Backend integration |
+
+---
+
+### 2026-10-15 · Faster console, sectioned dispute case view, collapsible lists
+
+**Category:** Improvement · Feature
+
+- **Speed.** Measured on a production build against a fake API with 5,000 users and
+  5,000 transactions (details and how to rerun in `web/scripts/perf/`). A cold start
+  went from 63 requests / 5.26 MB / about 2.9 s of data loading to 36 requests /
+  2.62 MB / about 0.6 s, with no OPTIONS preflights (there were 61). Each 30 s live
+  refresh went from 60 requests / 5.08 MB to 7 requests / 0.43 MB. JavaScript parsed
+  before the dashboard starts went from 1,309 KB to 867 KB.
+  What changed: list pages are fetched six at a time instead of one after another;
+  GET requests send no custom headers (so cross-origin reads skip the preflight);
+  the users list is not re-read on the 30 s tick and loads once behind the console
+  (`ensureUsers`, re-read after 5 minutes or after a user action); the charts library
+  loads after the page text and tiles; disputes no longer download every transaction
+  (names and amounts come from the dispute query's own join, and an unknown amount
+  shows "Unknown"); the tick reads only pending verifications.
+  Behavior changes to know about: the Users list can lag other admins' changes by up
+  to 5 minutes; a list over 5,000 rows now warns and shows the first 5,000 instead of
+  failing the whole load (money totals still fail loudly).
+- **Dispute case view.** The case detail is sectioned: a header card (title, status,
+  urgency, client, amount held, provider), Summary, Activity and Conversation cards, and
+  a "Your decision" card (step 1 "Need more info?", step 2 "Decide") that stays on
+  screen beside the evidence. Narrow panes stack it with a bottom action bar. List rows
+  show a next-step line such as "Waiting for provider · due in 4 h".
+- **Collapsible list.** Disputes, Verifications, Withdrawals and Service Requests can
+  collapse their list into a slim rail (remembered per page, desktop only); the detail
+  takes the full width, which is also what shows the two-column case view on a laptop.
 
 ---
 
