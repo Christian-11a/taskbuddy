@@ -263,6 +263,36 @@ describe("AppContext — moderation refresh results", () => {
     expect(context.lastUpdated).not.toBeNull();
     expect(context.queueCounts.withdrawals).toBe(1);
   });
+
+  describe("background refresh status", () => {
+    it("flags a failed silent refresh, keeps the last rows, and clears the flag on the next success", async () => {
+      await mountLoaded();
+      expect(context.refreshFailed).toBe(false);
+
+      vi.mocked(services.getUsers).mockRejectedValueOnce(new Error("down"));
+      await act(async () => { await context.refreshData(); });
+      expect(context.refreshFailed).toBe(true);
+      expect(context.loadError).toBeNull();
+      expect(context.users).toHaveLength(1);
+
+      await act(async () => { await context.refreshData(); });
+      expect(context.refreshFailed).toBe(false);
+    });
+
+    it("flags a silent refresh whose analytics read failed", async () => {
+      await mountLoaded();
+      vi.mocked(services.getTopProviders).mockRejectedValueOnce(new Error("down"));
+      await act(async () => { await context.refreshData(); });
+      expect(context.refreshFailed).toBe(true);
+    });
+
+    it("does not flag a failed full load as a background refresh failure", async () => {
+      vi.mocked(services.getUsers).mockRejectedValueOnce(new Error("down"));
+      render(<AppProvider><Probe /></AppProvider>);
+      await waitFor(() => expect(context.loadError).not.toBeNull());
+      expect(context.refreshFailed).toBe(false);
+    });
+  });
 });
 
 const verification = (over: Partial<Verification>): Verification => ({

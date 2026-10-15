@@ -3,6 +3,7 @@
 import type { AppState } from "@/context/AppContext";
 import type { DisputeRow, UserRow, VerificationRow } from "@/lib/adapters";
 import type { CaseEntry } from "@/lib/domain";
+import { arrivalTitle, type InboxEntry } from "@/lib/inbox";
 
 const noop = () => {};
 const asyncNoop = async () => {};
@@ -142,6 +143,18 @@ const disputes: DisputeRow[] = [
   },
 ];
 
+/** Sample notification-inbox entries: two unread, two already read. Times are relative to now. */
+export function sampleInboxEntries(now: number = Date.now()): InboxEntry[] {
+  const MIN = 60_000;
+  const HOUR = 60 * MIN;
+  return [
+    { id: "sample-v", queue: "verifications", title: arrivalTitle("verifications", 3), count: 3, createdAt: now - 4 * MIN, read: false },
+    { id: "sample-w", queue: "withdrawals", title: arrivalTitle("withdrawals", 2), count: 2, createdAt: now - 25 * MIN, read: false },
+    { id: "sample-d", queue: "disputes", title: arrivalTitle("disputes", 1), count: 1, createdAt: now - 3 * HOUR, read: true },
+    { id: "sample-s", queue: "skill-requests", title: arrivalTitle("skill-requests", 1), count: 1, createdAt: now - 6 * HOUR, read: true },
+  ];
+}
+
 export const MOCK_APP: AppState = {
   isLoggedIn: true,
   sessionRestored: true,
@@ -158,6 +171,7 @@ export const MOCK_APP: AppState = {
   refreshUsers: asyncNoop,
   lastUpdated: Date.now() - 8000,
   refreshing: false,
+  refreshFailed: false,
   analyticsUnavailable: false,
   analyticsInBrowser: false,
   verifications,

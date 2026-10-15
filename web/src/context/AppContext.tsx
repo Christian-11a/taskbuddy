@@ -121,6 +121,9 @@ interface AppState {
   lastUpdated: number | null;
   /** True while a silent refresh is in flight. */
   refreshing: boolean;
+  /** True when the last silent refresh failed (the rows on screen are the last good ones).
+   *  Cleared by the next successful load. Shown by the Live indicator. */
+  refreshFailed: boolean;
   /** True when the analytics endpoint failed while the rest of the console loaded. */
   analyticsUnavailable: boolean;
   /** True while analytics are rebuilt in the browser because
@@ -298,6 +301,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, []);
   const [lastUpdated, setLastUpdated] = useState<number | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [refreshFailed, setRefreshFailed] = useState(false);
 
   const loadConsoleData = useCallback(async (silent: boolean) => {
     if (silent && fullLoadInFlight.current) return;
@@ -398,6 +402,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
         "skill-requests": skillCount.status === "fulfilled" ? skillCount.value : prev["skill-requests"],
       }));
       setLastUpdated(Date.now());
+      // A silent refresh whose analytics read failed kept old figures, so it is not a clean success.
+      setRefreshFailed(silent && analyticsResult.status === "rejected");
       if (!silent) setLoading(false);
     } catch (err) {
       if (stale()) return;
@@ -405,7 +411,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
       // to the login screen instead of showing an empty dashboard.
       if (err instanceof services.ApiError && (err.status === 401 || err.status === 403)) {
         setIsLoggedIn(false);
-      } else if (!silent) {
+      } else if (silent) {
+        // A background blip keeps the last good rows; the Live indicator says so.
+        setRefreshFailed(true);
+      } else {
         // Anything else (backend down, Render cold-start timeout, a 500)
         // used to be swallowed here: loading simply stopped and every page
         // rendered empty, indistinguishable from "the platform has no data".
@@ -671,7 +680,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       isLoggedIn, sessionRestored, adminProfile,
       login, logout, updateDisplayName, changePassword,
       loading, loadError, retryLoad, analyticsUnavailable, analyticsInBrowser,
-      refreshData, refreshCounts, refreshUsers, lastUpdated, refreshing,
+      refreshData, refreshCounts, refreshUsers, lastUpdated, refreshing, refreshFailed,
        verifications, users, transactions, disputes, bookings,
       dashboardStats, revenueSeries, bookingsSeries, bookingsByCategory,
       recentActivity, topProviders, queueCounts,
@@ -686,7 +695,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       isLoggedIn, sessionRestored, adminProfile,
       login, logout, updateDisplayName, changePassword,
       loading, loadError, retryLoad, analyticsUnavailable, analyticsInBrowser,
-      refreshData, refreshCounts, refreshUsers, lastUpdated, refreshing,
+      refreshData, refreshCounts, refreshUsers, lastUpdated, refreshing, refreshFailed,
        verifications, users, transactions, disputes, bookings,
       dashboardStats, revenueSeries, bookingsSeries, bookingsByCategory,
       recentActivity, topProviders, queueCounts,

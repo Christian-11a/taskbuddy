@@ -23,16 +23,22 @@ function ago(seconds: number): string {
 
 /**
  * "Live · updated 12s ago". The data behind it refreshes in the background
- * (useLiveRefresh); clicking forces a refresh now. Turns red while the last
- * load failed, so a stale console never passes for a live one.
+ * (useLiveRefresh); clicking forces a refresh now. Turns red while the initial
+ * load failed, and amber when a background refresh failed, so a stale console
+ * never passes for a live one.
  */
 export function LiveIndicator() {
-  const { lastUpdated, refreshing, refreshData, loadError } = useApp();
+  const { lastUpdated, refreshing, refreshData, loadError, refreshFailed } = useApp();
   const now = useNow(5000);
   const seconds = lastUpdated ? Math.max(0, Math.round((now - lastUpdated) / 1000)) : null;
   const offline = Boolean(loadError);
-  const label = offline ? "Offline" : "Live";
-  const detail = offline ? "Couldn't reach the server" : seconds === null ? "Connecting…" : `Updated ${ago(seconds)}`;
+  const stale = !offline && refreshFailed;
+  const label = offline ? "Offline" : stale ? "Update failed — retry" : "Live";
+  const detail = offline
+    ? "Couldn't reach the server"
+    : stale
+      ? seconds === null ? "Showing last loaded data" : `Last updated ${ago(seconds)}`
+      : seconds === null ? "Connecting…" : `Updated ${ago(seconds)}`;
 
   return (
     <Tooltip>
@@ -47,14 +53,15 @@ export function LiveIndicator() {
             {!offline && (
               <span
                 className={cn(
-                  "absolute inline-flex size-full rounded-full bg-ok opacity-60",
+                  "absolute inline-flex size-full rounded-full opacity-60",
+                  stale ? "bg-warn" : "bg-ok",
                   refreshing ? "motion-safe:animate-ping" : "motion-safe:animate-[ping_2.4s_cubic-bezier(0,0,0.2,1)_infinite] opacity-30",
                 )}
               />
             )}
-            <span className={cn("relative inline-flex size-2 rounded-full", offline ? "bg-danger" : "bg-ok")} />
+            <span className={cn("relative inline-flex size-2 rounded-full", offline ? "bg-danger" : stale ? "bg-warn" : "bg-ok")} />
           </span>
-          <span className="text-foreground">{label}</span>
+          <span className={stale ? "font-semibold text-warn" : "text-foreground"}>{label}</span>
           <span className="hidden tabular text-subtle xl:inline">· {detail}</span>
         </button>
       </TooltipTrigger>
