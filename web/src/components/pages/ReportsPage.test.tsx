@@ -6,6 +6,10 @@ import { useApp } from "@/context/AppContext";
 import { downloadCsv } from "@/lib/export/csv";
 import type { DashboardStats, TopProvider } from "@/lib/domain";
 
+// The first render in this file loads the charts library cold (it is code-split), which
+// can take longer than the 5 s default when the whole suite runs in parallel.
+vi.setConfig({ testTimeout: 20_000 });
+
 vi.mock("@/context/AppContext", () => ({
   useApp: vi.fn(),
 }));
