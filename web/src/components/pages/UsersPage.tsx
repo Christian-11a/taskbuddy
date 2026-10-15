@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { AlertTriangle, CheckCircle, Download, Home, KeyRound, MailCheck, MoreHorizontal, PauseCircle, RefreshCw, Star, Users, Wrench } from "lucide-react";
 import { useApp } from "@/context/AppContext";
 import { exportMasks } from "@/lib/export/anonymize";
@@ -74,8 +74,12 @@ const VERIFICATION_TONE: Record<string, "ok" | "warn" | "danger" | "neutral"> = 
 };
 
 export function UsersPage() {
-  const { users, setUserStatus, bulkSetUserStatus, sendPasswordReset, refreshUsers, loading, settings } = useApp();
+  const { users, setUserStatus, bulkSetUserStatus, sendPasswordReset, refreshUsers, ensureUsers, usersLoading, loading, settings } = useApp();
   const { showToast } = useToast();
+  // The list is read once the console is up, then re-read here only when it is more than 5 minutes old.
+  useEffect(() => {
+    ensureUsers({ maxAgeMs: 5 * 60_000 });
+  }, [ensureUsers]);
   const [search, setSearch] = useState("");
   const [roleFilter, setRoleFilter] = useState<RoleFilter>("all");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
@@ -616,7 +620,7 @@ export function UsersPage() {
               {/* Three distinct states — saying "No users yet" while the initial
                   load is still in flight (up to a 60s Render cold start) would
                   be a confident lie. */}
-              {loading ? "Loading users…" : users.length === 0 ? "No users yet." : "No users match this search or filter."}
+              {loading || usersLoading ? "Loading users…" : users.length === 0 ? "No users yet." : "No users match this search or filter."}
             </TableEmpty>
           }
         />

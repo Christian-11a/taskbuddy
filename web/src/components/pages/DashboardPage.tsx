@@ -178,9 +178,13 @@ function DashboardSkeleton() {
 
 export function DashboardPage() {
   const {
-    adminProfile, dashboardStats, recentActivity, disputes, users, revenueSeries, bookingsSeries,
+    adminProfile, dashboardStats, recentActivity, disputes, users, usersLoading, ensureUsers, revenueSeries, bookingsSeries,
     loading, analyticsUnavailable, analyticsInBrowser, retryLoad, lastUpdated, queueCounts,
   } = useApp();
+  // The new-signups tile counts the Users list, which loads behind the console. Read it here if it is more than 5 minutes old.
+  useEffect(() => {
+    ensureUsers({ maxAgeMs: 5 * 60_000 });
+  }, [ensureUsers]);
   const extras = useLiveExtras(lastUpdated, dashboardStats);
   const now = new Date();
   const firstName = adminProfile.name.split(" ")[0] || "there";
@@ -288,7 +292,7 @@ export function DashboardPage() {
           label="Total users"
           icon={<Users />}
           value={dashboardStats.totalUsers}
-          footer={<span className="text-[12px] text-muted-foreground">{newUsersThisMonth > 0 ? <><span className="font-semibold text-ok">+{newUsersThisMonth}</span> joined this month</> : "No new signups this month"}</span>}
+          footer={<span className="text-[12px] text-muted-foreground">{usersLoading && users.length === 0 ? "Counting new signups…" : newUsersThisMonth > 0 ? <><span className="font-semibold text-ok">+{newUsersThisMonth}</span> joined this month</> : "No new signups this month"}</span>}
         />
         <KpiCard
           label="Registered providers"

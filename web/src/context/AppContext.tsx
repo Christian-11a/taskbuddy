@@ -124,6 +124,14 @@ interface AppState {
   refreshCounts: () => Promise<void>;
   /** Reloads the Users list; rejects on failure so retries cannot imply success. */
   refreshUsers: () => Promise<void>;
+  /**
+   * Makes sure the Users list is loaded and no older than `maxAgeMs`. Returns at
+   * once: a fresh list is left alone, while a missing or older one is re-read in
+   * the background. Pages show their loading state from `usersLoading`.
+   */
+  ensureUsers: (options?: { maxAgeMs?: number }) => void;
+  /** True while the Users list is being read. It loads after the console, not with it. */
+  usersLoading: boolean;
   /** When console data last loaded successfully (epoch ms), for "updated Ns ago". */
   lastUpdated: number | null;
   /** True while a silent refresh is in flight. */
@@ -255,6 +263,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   /** Bumped by retryLoad() to re-run the initial-load effect. */
   const [reloadNonce, setReloadNonce] = useState(0);
   const [domainUsers, setDomainUsers] = useState<AdminUser[]>([]);
+  const [usersLoading, setUsersLoading] = useState(false);
   const [domainVerifications, setDomainVerifications] = useState<Verification[]>([]);
   const [domainDisputes, setDomainDisputes] = useState<Dispute[]>([]);
   const [dashboardStats, setDashboardStats] = useState<DashboardStats | null>(null);
@@ -309,9 +318,73 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const dropInFlightRefresh = useCallback(() => {
     if (!fullLoadInFlight.current) loadSeq.current += 1;
   }, []);
+  // The Users list is read apart from the console load (see fetchUsers below).
+  // usersSeq drops a read that a newer read or a write to the list has overtaken.
+  const usersSeq = useRef(0);
+  const usersFetching = useRef(false);
+  /** When the Users list last loaded (epoch ms); null until it has. */
+  const usersLoadedAt = useRef<number | null>(null);
   const [lastUpdated, setLastUpdated] = useState<number | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [refreshFailed, setRefreshFailed] = useState(false);
+
+  /** A Users read that started before a write to the list must not land after it. */
+  const dropInFlightUsers = useCallback(() => {
+    usersSeq.current += 1;
+    usersFetching.current = false;
+    setUsersLoading(false);
+  }, []);
+
+  /**
+   * Reads the Users list: active and suspended accounts, plus the deleted ones
+   * when the deployed API supports that filter. It is the largest read the
+   * console makes, so it stays off the 30 s live tick: it runs once the console
+   * has loaded, and again whenever a page asks for it (see ensureUsers).
+   */
+  const fetchUsers = useCallback(async (): Promise<void> => {
+    const seq = ++usersSeq.current;
+    usersFetching.current = true;
+    setUsersLoading(true);
+    try {
+      const [rows, deletedRows] = await Promise.all([
+        services.getUsers(),
+        // Deleted accounts are an opt-in enhancement. If the deployed API
+        // predates the status filter, keep the rest of the console usable.
+        // null (not []) marks a failed read, so the deleted rows already shown survive it.
+        services.getUsers("deleted").catch(() => null),
+      ]);
+      if (seq !== usersSeq.current) return;
+      setDomainUsers((prev) => [...rows, ...(deletedRows ?? prev.filter((user) => user.status === "DELETED"))]);
+      usersLoadedAt.current = Date.now();
+    } catch (err) {
+      if (seq !== usersSeq.current) return;
+      if (err instanceof services.ApiError && (err.status === 401 || err.status === 403)) {
+        setIsLoggedIn(false);
+        setSessionEnded(true);
+      } else if (usersLoadedAt.current === null) {
+        // Nothing is on screen to keep, so say so, as a failed console load does.
+        setLoadError(
+          err instanceof services.ApiError
+            ? `Could not load console data (${err.status}).`
+            : "Could not reach the backend.",
+        );
+      } else {
+        // A failed re-read keeps the last good list, and the Live indicator says so.
+        setRefreshFailed(true);
+      }
+    } finally {
+      if (seq === usersSeq.current) {
+        usersFetching.current = false;
+        setUsersLoading(false);
+      }
+    }
+  }, []);
+
+  /** Replaces the active and suspended rows after a write, keeping the deleted accounts already loaded. */
+  const applyUserRows = useCallback((rows: AdminUser[]) => {
+    setDomainUsers((prev) => [...rows, ...prev.filter((user) => user.status === "DELETED")]);
+    usersLoadedAt.current = Date.now();
+  }, []);
 
   const loadConsoleData = useCallback(async (silent: boolean) => {
     if (silent && fullLoadInFlight.current) return;
@@ -322,22 +395,21 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (silent) {
       setRefreshing(true);
     } else {
+      // A full load supersedes any Users read still running. The one it starts once the console is on screen replaces it.
+      dropInFlightUsers();
       setLoading(true);
       setLoadError(null);
       setAnalyticsUnavailable(false);
     }
     try {
+      // The Users list is not part of the console load, so a page does not wait on it (see fetchUsers).
+      // The live tick skips the saved dark-mode preference too: it is applied on the real load only.
       const coreRequest = Promise.all([
-        services.getUsers(),
-        // Deleted accounts are an opt-in enhancement. If the deployed API
-        // predates the status filter, keep the rest of the console usable.
-        // null (not []) marks a failed read, so the deleted rows already shown survive it.
-        services.getUsers("deleted").catch(() => null),
         services.getVerifications(),
         services.getDisputes(),
         services.getRecentActivity(),
-        services.getDarkModePreference(),
         services.getMaintenanceStatus(),
+        silent ? Promise.resolve(null) : services.getDarkModePreference(),
       ]);
       // These values all depend on /admin/analytics/summary. Keep a failure
       // there from discarding the independent console lists and preferences.
@@ -372,12 +444,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         return;
       }
 
-      const [users, deletedUsers, verifs, disputes, activity, serverDarkMode, maintenance] =
-        coreResult.value;
-      setDomainUsers((prev) => [
-        ...users,
-        ...(deletedUsers ?? prev.filter((user) => user.status === "DELETED")),
-      ]);
+      const [verifs, disputes, activity, maintenance, serverDarkMode] = coreResult.value;
       setDomainVerifications(verifs);
       setDomainDisputes(disputes);
       setRecentActivity(activity);
@@ -423,7 +490,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setLastUpdated(Date.now());
       // A silent refresh whose analytics read failed kept old figures, so it is not a clean success.
       setRefreshFailed(silent && analyticsResult.status === "rejected");
-      if (!silent) setLoading(false);
+      if (!silent) {
+        setLoading(false);
+        // The console is on screen. Read the Users list behind it.
+        void fetchUsers();
+      } else if (usersLoadedAt.current === null && !usersFetching.current) {
+        // The list never loaded (its first read failed). The live tick retries it, since it clears the banner below.
+        void fetchUsers();
+      }
     } catch (err) {
       if (stale()) return;
       // An expired/invalid token surfaces here as a 401/403 — force back
@@ -451,7 +525,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       if (silent) setRefreshing(false);
       else if (!stale()) fullLoadInFlight.current = false;
     }
-  }, []);
+  }, [fetchUsers, dropInFlightUsers]);
 
   /* eslint-disable react-hooks/set-state-in-effect --
      Fetching on mount is the other documented exception: the backend is an
@@ -461,13 +535,28 @@ export function AppProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!isLoggedIn) {
       setLoading(false);
+      dropInFlightUsers();
+      usersLoadedAt.current = null; // the next sign-in reads its own list
       return;
     }
     void loadConsoleData(false);
     return () => {
       loadSeq.current += 1; // drop the in-flight load's results
+      usersSeq.current += 1; // and any Users read it started
+      usersFetching.current = false;
     };
-  }, [isLoggedIn, reloadNonce, loadConsoleData]);
+  }, [isLoggedIn, reloadNonce, loadConsoleData, dropInFlightUsers]);
+
+  /** Starts a Users read unless one is already running or the cached list is younger than `maxAgeMs`. */
+  const ensureUsers = useCallback(
+    (options: { maxAgeMs?: number } = {}) => {
+      if (!isLoggedIn || usersFetching.current) return;
+      const loadedAt = usersLoadedAt.current;
+      if (loadedAt !== null && Date.now() - loadedAt < (options.maxAgeMs ?? 0)) return;
+      void fetchUsers();
+    },
+    [isLoggedIn, fetchUsers],
+  );
   /* eslint-enable react-hooks/set-state-in-effect */
 
   /** Background refresh for the live indicator (see useLiveRefresh). */
@@ -603,31 +692,35 @@ export function AppProvider({ children }: { children: ReactNode }) {
     async (id: string, status: "Active" | "Suspended", suspend?: services.SuspendOptions) => {
       const { rows, refreshFailed } = await services.setUserStatus(id, STATUS_TO_DOMAIN[status], suspend);
       dropInFlightRefresh();
-      if (rows !== null) setDomainUsers(rows);
+      dropInFlightUsers();
+      if (rows !== null) applyUserRows(rows);
       return { refreshFailed };
     },
-    [dropInFlightRefresh],
+    [dropInFlightRefresh, dropInFlightUsers, applyUserRows],
   );
 
   const bulkSetUserStatus = useCallback(
     async (ids: string[], status: "Active" | "Suspended", suspend?: services.SuspendOptions) => {
       const { rows, ...counts } = await services.bulkSetUserStatus(ids, STATUS_TO_DOMAIN[status], suspend);
       dropInFlightRefresh();
-      if (rows !== null) setDomainUsers(rows);
+      dropInFlightUsers();
+      if (rows !== null) applyUserRows(rows);
       return counts;
     },
-    [dropInFlightRefresh],
+    [dropInFlightRefresh, dropInFlightUsers, applyUserRows],
   );
 
   const refreshUsers = useCallback(async () => {
     // Drop earlier console snapshots before requesting the authoritative list.
     dropInFlightRefresh();
+    dropInFlightUsers();
     const [rows, deletedRows] = await Promise.all([
       services.getUsers(),
       services.getUsers("deleted"),
     ]);
     setDomainUsers([...rows, ...deletedRows]);
-  }, [dropInFlightRefresh]);
+    usersLoadedAt.current = Date.now();
+  }, [dropInFlightRefresh, dropInFlightUsers]);
 
   const sendPasswordReset = useCallback((id: string) => services.sendPasswordReset(id), []);
 
@@ -703,7 +796,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       isLoggedIn, sessionRestored, sessionEnded, adminProfile,
       login, logout, updateDisplayName, changePassword,
       loading, loadError, retryLoad, analyticsUnavailable, analyticsInBrowser,
-      refreshData, refreshCounts, refreshUsers, lastUpdated, refreshing, refreshFailed,
+      refreshData, refreshCounts, refreshUsers, ensureUsers, usersLoading, lastUpdated, refreshing, refreshFailed,
        verifications, users, transactions, disputes, bookings,
       dashboardStats, revenueSeries, bookingsSeries, bookingsByCategory,
       recentActivity, topProviders, queueCounts,
@@ -718,7 +811,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       isLoggedIn, sessionRestored, sessionEnded, adminProfile,
       login, logout, updateDisplayName, changePassword,
       loading, loadError, retryLoad, analyticsUnavailable, analyticsInBrowser,
-      refreshData, refreshCounts, refreshUsers, lastUpdated, refreshing, refreshFailed,
+      refreshData, refreshCounts, refreshUsers, ensureUsers, usersLoading, lastUpdated, refreshing, refreshFailed,
        verifications, users, transactions, disputes, bookings,
       dashboardStats, revenueSeries, bookingsSeries, bookingsByCategory,
       recentActivity, topProviders, queueCounts,

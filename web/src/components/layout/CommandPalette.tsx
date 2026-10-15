@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { AlertTriangle, CalendarDays, CreditCard, LogOut, Moon, RefreshCw, Sun, User } from "lucide-react";
 import { useApp } from "@/context/AppContext";
@@ -33,8 +33,12 @@ interface CommandPaletteProps {
  */
 export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
   const router = useRouter();
-  const { users, bookings, transactions, disputes, darkMode, setDarkMode, refreshData, logout } = useApp();
+  const { users, bookings, transactions, disputes, darkMode, setDarkMode, refreshData, logout, ensureUsers } = useApp();
   const [query, setQuery] = useState("");
+  // Searching people needs the Users list. Read it when the palette opens, if it is more than 5 minutes old.
+  useEffect(() => {
+    if (open) ensureUsers({ maxAgeMs: 5 * 60_000 });
+  }, [open, ensureUsers]);
 
   const records = useMemo<RecordResult[]>(() => {
     const q = query.trim().toLowerCase();

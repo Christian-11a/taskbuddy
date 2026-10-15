@@ -44,6 +44,7 @@ function setDashboardState(
   queueCounts: QueueCounts = allZeroQueues,
 ) {
   mockedUseApp.mockReturnValue({
+    ensureUsers: vi.fn(),
     adminProfile: { name: "Morgan Lee" },
     dashboardStats,
     recentActivity: [],

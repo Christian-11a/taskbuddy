@@ -62,7 +62,7 @@ function renderWithToast(ui: React.ReactElement) {
 
 /** The shared app state the page reads; lastUpdated changes when the live refresh lands. */
 function appState(lastUpdated: number) {
-  return { users: [], settings: { anonymizeExports: false }, lastUpdated } as unknown as ReturnType<typeof useApp>;
+  return { users: [], ensureUsers: vi.fn(), settings: { anonymizeExports: false }, lastUpdated } as unknown as ReturnType<typeof useApp>;
 }
 
 function liveRefresh(rerender: (ui: React.ReactElement) => void, lastUpdated: number) {
@@ -87,7 +87,7 @@ describe("TransactionsPage — Issue Credit (Wallet tab)", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockedSearchWalletTransactions.mockResolvedValue({ items: [], total: 0 });
-    mockedUseApp.mockReturnValue({
+    mockedUseApp.mockReturnValue({ ensureUsers: vi.fn(),
       users: [makeUser()],
       settings: { anonymizeExports: false },
       refreshCounts: vi.fn().mockResolvedValue(undefined),
@@ -187,7 +187,7 @@ describe("TransactionsPage — Issue Credit (Wallet tab)", () => {
 
 describe("TransactionsPage — card-funded payouts (Escrow tab)", () => {
   beforeEach(() => {
-    mockedUseApp.mockReturnValue({ users: [], settings: { anonymizeExports: false } } as unknown as ReturnType<typeof useApp>);
+    mockedUseApp.mockReturnValue({ ensureUsers: vi.fn(), users: [], settings: { anonymizeExports: false } } as unknown as ReturnType<typeof useApp>);
     mockedSearchTransactions.mockResolvedValue({
       items: [
         {
@@ -291,7 +291,7 @@ describe("TransactionsPage — card-funded payouts (Escrow tab)", () => {
 describe("TransactionsPage — server-paged Wallet tab", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockedUseApp.mockReturnValue({ users: [], settings: { anonymizeExports: false } } as unknown as ReturnType<typeof useApp>);
+    mockedUseApp.mockReturnValue({ ensureUsers: vi.fn(), users: [], settings: { anonymizeExports: false } } as unknown as ReturnType<typeof useApp>);
     mockedSearchWalletTransactions.mockResolvedValue({
       items: [
         {
@@ -380,7 +380,7 @@ describe("TransactionsPage — load failures", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    mockedUseApp.mockReturnValue({ users: [], settings: { anonymizeExports: false } } as unknown as ReturnType<typeof useApp>);
+    mockedUseApp.mockReturnValue({ ensureUsers: vi.fn(), users: [], settings: { anonymizeExports: false } } as unknown as ReturnType<typeof useApp>);
     mockedSearchTransactions.mockReset();
     mockedSearchWalletTransactions.mockReset();
     mockedSearchTransactions.mockResolvedValue({ items: [], total: 0 });

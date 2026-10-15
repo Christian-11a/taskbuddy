@@ -400,9 +400,13 @@ const EscrowTab = forwardRef<ExportHandle, TabProps>(function EscrowTab({ onExpo
  * held for one job, this is a user's running balance.
  */
 const WalletTab = forwardRef<ExportHandle, TabProps>(function WalletTab({ onExportCountChange, onRequestExport }, ref) {
-  const { users, settings, refreshCounts } = useApp();
+  const { users, usersLoading, ensureUsers, settings, refreshCounts } = useApp();
   const anonymizeExports = settings.anonymizeExports;
   const { showToast } = useToast();
+  // The credit form searches the loaded users. Read the list here if it is more than 5 minutes old.
+  useEffect(() => {
+    ensureUsers({ maxAgeMs: 5 * 60_000 });
+  }, [ensureUsers]);
   const [rows, setRows] = useState<WalletTxnRow[]>([]);
   const [totalCount, setTotalCount] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -703,6 +707,9 @@ const WalletTab = forwardRef<ExportHandle, TabProps>(function WalletTab({ onExpo
                   </button>
                 ))}
               </div>
+            )}
+            {recipientMatches.length === 0 && usersLoading && !selectedRecipient && creditRecipientQuery.trim().length > 0 && (
+              <p className="mt-1 text-[12px] text-muted-foreground">Loading users…</p>
             )}
           </div>
 

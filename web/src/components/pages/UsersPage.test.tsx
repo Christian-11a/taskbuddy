@@ -52,7 +52,7 @@ function renderWithToast(ui: React.ReactElement) {
 
 describe("UsersPage — rating display", () => {
   it("shows a provider's rating rounded to at most two decimals", () => {
-    mockedUseApp.mockReturnValue({
+    mockedUseApp.mockReturnValue({ ensureUsers: vi.fn(),
       users: [makeUser({ ratingValue: 4.08333, rating: "4.08 rating" })],
       setUserStatus: vi.fn(),
       bulkSetUserStatus: vi.fn(),
@@ -74,7 +74,7 @@ describe("UsersPage — suspend flow", () => {
 
   beforeEach(() => {
     vi.resetAllMocks();
-    mockedUseApp.mockReturnValue({
+    mockedUseApp.mockReturnValue({ ensureUsers: vi.fn(),
       users: [makeUser()],
       setUserStatus,
       bulkSetUserStatus,
@@ -159,7 +159,7 @@ describe("UsersPage — suspend flow", () => {
   });
 
   it("filters the table by search text", async () => {
-    mockedUseApp.mockReturnValue({
+    mockedUseApp.mockReturnValue({ ensureUsers: vi.fn(),
       users: [makeUser(), makeUser({ id: "u-2", name: "Jamie Kim", email: "jamie@example.com", isProvider: false, rolePlain: "Client" })],
       setUserStatus,
       bulkSetUserStatus,
@@ -180,7 +180,7 @@ describe("UsersPage — suspend flow", () => {
 
   it("filters to new users by join date", async () => {
     const recent = new Date(Date.now() - 2 * 86_400_000).toISOString();
-    mockedUseApp.mockReturnValue({
+    mockedUseApp.mockReturnValue({ ensureUsers: vi.fn(),
       users: [
         makeUser({ createdAt: "2024-03-10" }),
         makeUser({ id: "u-2", name: "Nina New", email: "nina@example.com", createdAt: recent }),
@@ -200,7 +200,7 @@ describe("UsersPage — suspend flow", () => {
   });
 
   it("filters providers by verification status", async () => {
-    mockedUseApp.mockReturnValue({
+    mockedUseApp.mockReturnValue({ ensureUsers: vi.fn(),
       users: [
         makeUser(),
         makeUser({ id: "u-3", name: "Paula Pending", email: "paula@example.com", verification: "Pending review", verificationClass: "badge-pending" }),
@@ -232,7 +232,7 @@ describe("UsersPage — suspend flow", () => {
       makeUser({ id: "u-2", name: "Jamie Kim", email: "jamie@example.com" }),
       makeUser({ id: "u-3", name: "Paula Pending", email: "paula@example.com" }),
     ];
-    mockedUseApp.mockReturnValue({
+    mockedUseApp.mockReturnValue({ ensureUsers: vi.fn(),
       users,
       setUserStatus,
       bulkSetUserStatus,
@@ -271,7 +271,7 @@ describe("UsersPage — suspend flow", () => {
   });
 
   it("shows a bulk action success with a separate refresh warning and clears it after refresh", async () => {
-    mockedUseApp.mockReturnValue({
+    mockedUseApp.mockReturnValue({ ensureUsers: vi.fn(),
       users: [makeUser()],
       setUserStatus,
       bulkSetUserStatus,
@@ -297,7 +297,7 @@ describe("UsersPage — suspend flow", () => {
   });
 
   it("requires a list refresh and deselects accounts when a bulk request outcome is unconfirmed", async () => {
-    mockedUseApp.mockReturnValue({
+    mockedUseApp.mockReturnValue({ ensureUsers: vi.fn(),
       users: [makeUser()],
       setUserStatus,
       bulkSetUserStatus,
@@ -359,7 +359,7 @@ describe("bulkMessage", () => {
 
 describe("UsersPage — CSV export anonymization", () => {
   function setup(anonymizeExports: boolean) {
-    mockedUseApp.mockReturnValue({
+    mockedUseApp.mockReturnValue({ ensureUsers: vi.fn(),
       users: [makeUser()],
       setUserStatus: vi.fn(),
       bulkSetUserStatus: vi.fn(),

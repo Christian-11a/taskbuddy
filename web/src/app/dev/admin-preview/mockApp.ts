@@ -171,6 +171,8 @@ export const MOCK_APP: AppState = {
   refreshData: asyncNoop,
   refreshCounts: asyncNoop,
   refreshUsers: asyncNoop,
+  ensureUsers: noop,
+  usersLoading: false,
   lastUpdated: Date.now() - 8000,
   refreshing: false,
   refreshFailed: false,

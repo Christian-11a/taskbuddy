@@ -325,7 +325,8 @@ describe("AppContext — moderation refresh results", () => {
       await mountLoaded();
       expect(context.refreshFailed).toBe(false);
 
-      vi.mocked(services.getUsers).mockRejectedValueOnce(new Error("down"));
+      // The silent refresh reads verifications (it no longer reads users), so a failure there is the signal.
+      vi.mocked(services.getVerifications).mockRejectedValueOnce(new Error("down"));
       await act(async () => { await context.refreshData(); });
       expect(context.refreshFailed).toBe(true);
       expect(context.loadError).toBeNull();
@@ -342,17 +343,13 @@ describe("AppContext — moderation refresh results", () => {
       expect(context.refreshFailed).toBe(true);
     });
 
-    it("keeps previously known deleted accounts when a silent refresh cannot read them", async () => {
+    it("keeps previously known deleted accounts across silent refreshes", async () => {
       vi.mocked(services.getUsers).mockImplementation(async (status) => status === "deleted"
         ? [{ ...account, id: "gone", status: "DELETED" }]
         : [account]);
       await mountLoaded();
       expect(context.users.map((row) => row.status)).toEqual(["Active", "Deleted"]);
 
-      vi.mocked(services.getUsers).mockImplementation(async (status) => {
-        if (status === "deleted") throw new Error("deleted list unavailable");
-        return [account];
-      });
       await act(async () => { await context.refreshData(); });
       expect(context.refreshFailed).toBe(false);
       expect(context.users.map((row) => row.status)).toEqual(["Active", "Deleted"]);
@@ -363,6 +360,121 @@ describe("AppContext — moderation refresh results", () => {
       render(<AppProvider><Probe /></AppProvider>);
       await waitFor(() => expect(context.loadError).not.toBeNull());
       expect(context.refreshFailed).toBe(false);
+    });
+  });
+
+  describe("users list loading", () => {
+    const FIVE_MINUTES = 5 * 60_000;
+    /** Non-deleted users reads so far (the deleted-list read is separate). */
+    const userReads = () => vi.mocked(services.getUsers).mock.calls.filter(([status]) => status !== "deleted").length;
+    /** Makes the next Date.now() read FIVE_MINUTES + 1s later, so the cached list counts as old. */
+    function ageCachedUsers() {
+      return vi.spyOn(Date, "now").mockReturnValue(Date.now() + FIVE_MINUTES + 1000);
+    }
+
+    it("the silent refresh does not re-read users or dark mode", async () => {
+      await mountLoaded();
+      vi.mocked(services.getUsers).mockClear();
+      vi.mocked(services.getDarkModePreference).mockClear();
+
+      await act(async () => { await context.refreshData(); });
+
+      expect(services.getUsers).not.toHaveBeenCalled();
+      expect(services.getDarkModePreference).not.toHaveBeenCalled();
+    });
+
+    it("loads the console without waiting for the users list", async () => {
+      const users = deferred<AdminUser[]>();
+      vi.mocked(services.getUsers).mockImplementation(async (status) => (status === "deleted" ? [] : users.promise));
+      render(<AppProvider><Probe /></AppProvider>);
+
+      await waitFor(() => expect(context.lastUpdated).not.toBeNull());
+      expect(context.loading).toBe(false);
+      expect(context.users).toHaveLength(0);
+      expect(context.usersLoading).toBe(true);
+
+      await act(async () => { users.resolve([account]); });
+      await waitFor(() => expect(context.users).toHaveLength(1));
+      expect(context.usersLoading).toBe(false);
+    });
+
+    it("leaves a users list younger than the max age alone", async () => {
+      await mountLoaded();
+      const before = userReads();
+
+      await act(async () => { context.ensureUsers({ maxAgeMs: FIVE_MINUTES }); });
+
+      expect(userReads()).toBe(before);
+    });
+
+    it("re-reads an older users list in the background once it is asked for", async () => {
+      await mountLoaded();
+      const before = userReads();
+      const clock = ageCachedUsers();
+
+      await act(async () => { context.ensureUsers({ maxAgeMs: FIVE_MINUTES }); });
+      clock.mockRestore();
+
+      await waitFor(() => expect(userReads()).toBe(before + 1));
+      await waitFor(() => expect(context.usersLoading).toBe(false));
+    });
+
+    it("shares one users read between callers that ask while it is in flight", async () => {
+      await mountLoaded();
+      const pending = deferred<AdminUser[]>();
+      vi.mocked(services.getUsers).mockImplementation(async (status) => (status === "deleted" ? [] : pending.promise));
+      const before = userReads();
+      const clock = ageCachedUsers();
+
+      await act(async () => {
+        context.ensureUsers({ maxAgeMs: FIVE_MINUTES });
+        context.ensureUsers({ maxAgeMs: FIVE_MINUTES });
+      });
+      clock.mockRestore();
+      expect(userReads()).toBe(before + 1);
+
+      await act(async () => { pending.resolve([account]); });
+      await waitFor(() => expect(context.usersLoading).toBe(false));
+    });
+
+    it("keeps a user action's result when a background read that started before it answers later", async () => {
+      await mountLoaded();
+      const stale = deferred<AdminUser[]>();
+      vi.mocked(services.getUsers).mockImplementation(async (status) => (status === "deleted" ? [] : stale.promise));
+      const clock = ageCachedUsers();
+      await act(async () => { context.ensureUsers({ maxAgeMs: FIVE_MINUTES }); });
+      clock.mockRestore();
+
+      vi.mocked(services.setUserStatus).mockResolvedValue({ rows: [{ ...account, status: "SUSPENDED" }] });
+      await act(async () => { await context.setUserStatus(account.id, "Suspended", { reason: "Test" }); });
+      await act(async () => { stale.resolve([account]); });
+
+      expect(context.users[0].status).toBe("Suspended");
+    });
+
+    it("the live tick reads a users list whose first read failed, and clears the banner once it has", async () => {
+      vi.mocked(services.getUsers).mockRejectedValueOnce(new Error("down"));
+      render(<AppProvider><Probe /></AppProvider>);
+      await waitFor(() => expect(context.loadError).not.toBeNull());
+      expect(context.users).toHaveLength(0);
+
+      await act(async () => { await context.refreshData(); });
+
+      await waitFor(() => expect(context.users).toHaveLength(1));
+      expect(context.loadError).toBeNull();
+    });
+
+    it("keeps deleted accounts when a single action replaces the active list", async () => {
+      vi.mocked(services.getUsers).mockImplementation(async (status) => (status === "deleted"
+        ? [{ ...account, id: "gone", status: "DELETED" }]
+        : [account]));
+      await mountLoaded();
+      await waitFor(() => expect(context.users).toHaveLength(2));
+      vi.mocked(services.setUserStatus).mockResolvedValue({ rows: [{ ...account, status: "SUSPENDED" }] });
+
+      await act(async () => { await context.setUserStatus(account.id, "Suspended", { reason: "Test" }); });
+
+      expect(context.users.map((row) => row.status)).toEqual(["Suspended", "Deleted"]);
     });
   });
 });
