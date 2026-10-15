@@ -16,6 +16,7 @@ vi.mock("@/lib/services", async (importOriginal) => {
     getBookingsByCategory: vi.fn(), getTopProviders: vi.fn(),
     setUserStatus: vi.fn(), bulkSetUserStatus: vi.fn(),
     getPendingWithdrawalCount: vi.fn(), getPendingServiceRequestCount: vi.fn(),
+    setMaintenanceStatus: vi.fn(),
     postApproveVerification: vi.fn(), postRejectVerification: vi.fn(),
   };
 });
@@ -264,6 +265,37 @@ describe("AppContext — moderation refresh results", () => {
     expect(context.queueCounts.withdrawals).toBe(1);
   });
 
+  describe("maintenance mode", () => {
+    it("keeps a toggle that landed while a background refresh was reading the old value", async () => {
+      await mountLoaded();
+      const staleRead = deferred<{ enabled: boolean; message: string | null; updatedAt: string | null }>();
+      vi.mocked(services.getMaintenanceStatus).mockReturnValueOnce(staleRead.promise);
+      let refreshing!: Promise<void>;
+      await act(async () => { refreshing = context.refreshData(); });
+
+      vi.mocked(services.setMaintenanceStatus).mockResolvedValueOnce({ enabled: true, message: "Back soon", updatedAt: null });
+      await act(async () => { await context.setMaintenanceMode(true, "Back soon"); });
+      expect(context.maintenanceMode).toBe(true);
+
+      // The refresh's GET was answered before the PATCH landed, so it still says "off".
+      await act(async () => { staleRead.resolve({ enabled: false, message: null, updatedAt: null }); await refreshing; });
+      expect(context.maintenanceMode).toBe(true);
+      expect(context.maintenanceMessage).toBe("Back soon");
+    });
+
+    it("keeps a toggle that landed while the first full load was still reading the old value", async () => {
+      const firstRead = deferred<{ enabled: boolean; message: string | null; updatedAt: string | null }>();
+      vi.mocked(services.getMaintenanceStatus).mockReturnValueOnce(firstRead.promise);
+      vi.mocked(services.setMaintenanceStatus).mockResolvedValueOnce({ enabled: true, message: null, updatedAt: null });
+      render(<AppProvider><Probe /></AppProvider>);
+      await waitFor(() => expect(context).toBeDefined());
+      await act(async () => { await context.setMaintenanceMode(true); });
+      await act(async () => { firstRead.resolve({ enabled: false, message: null, updatedAt: null }); });
+      await waitFor(() => expect(context.lastUpdated).not.toBeNull());
+      expect(context.maintenanceMode).toBe(true);
+    });
+  });
+
   describe("background refresh status", () => {
     it("flags a failed silent refresh, keeps the last rows, and clears the flag on the next success", async () => {
       await mountLoaded();
@@ -284,6 +316,22 @@ describe("AppContext — moderation refresh results", () => {
       vi.mocked(services.getTopProviders).mockRejectedValueOnce(new Error("down"));
       await act(async () => { await context.refreshData(); });
       expect(context.refreshFailed).toBe(true);
+    });
+
+    it("keeps previously known deleted accounts when a silent refresh cannot read them", async () => {
+      vi.mocked(services.getUsers).mockImplementation(async (status) => status === "deleted"
+        ? [{ ...account, id: "gone", status: "DELETED" }]
+        : [account]);
+      await mountLoaded();
+      expect(context.users.map((row) => row.status)).toEqual(["Active", "Deleted"]);
+
+      vi.mocked(services.getUsers).mockImplementation(async (status) => {
+        if (status === "deleted") throw new Error("deleted list unavailable");
+        return [account];
+      });
+      await act(async () => { await context.refreshData(); });
+      expect(context.refreshFailed).toBe(false);
+      expect(context.users.map((row) => row.status)).toEqual(["Active", "Deleted"]);
     });
 
     it("does not flag a failed full load as a background refresh failure", async () => {

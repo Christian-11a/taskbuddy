@@ -290,6 +290,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
    * just toggled. Only the newest call may write state (`loadSeq`).
    */
   const loadSeq = useRef(0);
+  // Counts successful maintenance toggles, so a load can tell its maintenance read predates one.
+  const maintenanceWrites = useRef(0);
   // True while a full (non-silent) load is running. A silent refresh never
   // starts then: it would supersede the full load, which alone clears
   // `loading` (a Render cold start easily outlasts the 30s refresh interval).
@@ -308,6 +310,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (!silent) fullLoadInFlight.current = true;
     const seq = ++loadSeq.current;
     const stale = () => seq !== loadSeq.current;
+    const maintenanceWritesAtStart = maintenanceWrites.current;
     if (silent) {
       setRefreshing(true);
     } else {
@@ -320,7 +323,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
         services.getUsers(),
         // Deleted accounts are an opt-in enhancement. If the deployed API
         // predates the status filter, keep the rest of the console usable.
-        services.getUsers("deleted").catch(() => []),
+        // null (not []) marks a failed read, so the deleted rows already shown survive it.
+        services.getUsers("deleted").catch(() => null),
         services.getVerifications(),
         services.getDisputes(),
         services.getRecentActivity(),
@@ -361,7 +365,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
       const [users, deletedUsers, verifs, disputes, activity, serverDarkMode, maintenance] =
         coreResult.value;
-      setDomainUsers([...users, ...deletedUsers]);
+      setDomainUsers((prev) => [
+        ...users,
+        ...(deletedUsers ?? prev.filter((user) => user.status === "DELETED")),
+      ]);
       setDomainVerifications(verifs);
       setDomainDisputes(disputes);
       setRecentActivity(activity);
@@ -390,8 +397,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
       // cached, so dark mode follows the admin across devices. Applied on the
       // real load only, so a background refresh cannot undo a fresh toggle.
       if (!silent && serverDarkMode !== null) setDarkModeState(serverDarkMode);
-      setMaintenanceModeState(maintenance.enabled);
-      setMaintenanceMessageState(maintenance.message);
+      // A toggle that landed after this load started wins over its read, which may predate the write.
+      if (maintenanceWrites.current === maintenanceWritesAtStart) {
+        setMaintenanceModeState(maintenance.enabled);
+        setMaintenanceMessageState(maintenance.message);
+      }
       setLoadError(null);
       const [withdrawalCount, skillCount] = await queueRequest;
       // A newer load may have started while these counts were pending. Stop before
@@ -640,6 +650,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const setMaintenanceMode = useCallback(async (enabled: boolean, message?: string) => {
     try {
       const result = await services.setMaintenanceStatus(enabled, message);
+      maintenanceWrites.current += 1;
       setMaintenanceModeState(result.enabled);
       setMaintenanceMessageState(result.message);
       return true;
