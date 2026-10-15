@@ -87,6 +87,8 @@ function AttentionTile({ href, icon: Icon, count, one, many, tone, index }: {
   index: number;
 }) {
   const reduce = useReducedMotion();
+  // null = the count could not be loaded: neither a real zero nor the green "clear" check.
+  const unknown = count === null;
   const clear = count === 0;
   const toneClass = {
     danger: "bg-danger-soft text-danger",
@@ -104,17 +106,19 @@ function AttentionTile({ href, icon: Icon, count, one, many, tone, index }: {
         href={href}
         className={cn(
           "group flex h-full items-center gap-3 rounded-[12px] border bg-surface p-3.5 shadow-ui-sm outline-none transition-[border-color,box-shadow,transform] duration-150 hover:-translate-y-px hover:shadow-ui-md focus-visible:ring-2 focus-visible:ring-ring",
-          clear ? "border-border" : "border-border-strong",
+          unknown ? "border-dashed border-border-strong" : clear ? "border-border" : "border-border-strong",
         )}
       >
-        <span className={cn("grid size-9 shrink-0 place-items-center rounded-[9px] [&_svg]:size-4", clear ? "bg-surface-2 text-subtle" : toneClass)}>
+        <span className={cn("grid size-9 shrink-0 place-items-center rounded-[9px] [&_svg]:size-4", clear || unknown ? "bg-surface-2 text-subtle" : toneClass)}>
           {clear ? <CheckCircle2 aria-hidden="true" /> : <Icon aria-hidden="true" />}
         </span>
         <span className="min-w-0 flex-1">
-          <span className={cn("block text-[20px] font-semibold leading-none tracking-tight", clear && "text-subtle")}>
+          <span className={cn("block text-[20px] font-semibold leading-none tracking-tight", (clear || unknown) && "text-subtle")}>
             {count === null ? "—" : <AnimatedNumber value={count} />}
           </span>
-          <span className="mt-1 block truncate text-[12px] text-muted-foreground">{count === 1 ? one : many}</span>
+          <span className="mt-1 block truncate text-[12px] text-muted-foreground">
+            {unknown ? `${many} · could not be checked` : count === 1 ? one : many}
+          </span>
         </span>
         <ArrowRight className="size-4 shrink-0 text-subtle transition-transform group-hover:translate-x-0.5 group-hover:text-foreground" aria-hidden="true" />
       </Link>
@@ -178,7 +182,7 @@ function DashboardSkeleton() {
 export function DashboardPage() {
   const {
     adminProfile, dashboardStats, recentActivity, disputes, users, revenueSeries, bookingsSeries,
-    loading, analyticsUnavailable, analyticsInBrowser, retryLoad, lastUpdated,
+    loading, analyticsUnavailable, analyticsInBrowser, retryLoad, lastUpdated, queueCounts,
   } = useApp();
   const extras = useLiveExtras(lastUpdated, dashboardStats);
   const now = new Date();
@@ -251,8 +255,10 @@ export function DashboardPage() {
 
   const queues: { key: string; page: Page; icon: typeof ShieldCheck; count: number | null; one: string; many: string; tone: "danger" | "warn" | "info" | "accent" }[] = [
     { key: "disputes", page: "disputes", icon: AlertTriangle, count: openDisputes, one: "open dispute", many: "open disputes", tone: "danger" },
-    { key: "withdrawals", page: "withdrawals", icon: WalletCards, count: dashboardStats.pendingWithdrawals, one: "payout request", many: "payout requests", tone: "warn" },
-    { key: "verifications", page: "verifications", icon: ShieldCheck, count: dashboardStats.pendingVerifications, one: "provider to verify", many: "providers to verify", tone: "warn" },
+    // Same per-queue counts the bell and sidebar use. The summary's totals can be
+    // a stand-in 0 when a request failed, so they are not read here.
+    { key: "withdrawals", page: "withdrawals", icon: WalletCards, count: queueCounts.withdrawals, one: "payout request", many: "payout requests", tone: "warn" },
+    { key: "verifications", page: "verifications", icon: ShieldCheck, count: queueCounts.verifications, one: "provider to verify", many: "providers to verify", tone: "warn" },
     { key: "skills", page: "skill-requests", icon: Wrench, count: extras?.pendingServiceRequests ?? null, one: "service request", many: "service requests", tone: "info" },
     { key: "escrow", page: "transactions", icon: CreditCard, count: extras?.escrowCount ?? null, one: "escrow hold", many: "escrow holds", tone: "accent" },
   ];
