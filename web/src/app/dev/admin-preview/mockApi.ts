@@ -97,6 +97,28 @@ const audit = Array.from({ length: 26 }, (_, i) => ({
   actor: person("admin-1", i % 4 ? "Ana Cruz" : "Platform Owner"),
 }));
 
+// Job detail for the dispute and cancellation sample cases (Disputes and Transactions read the warranty from here).
+const disputeJobs: Record<string, { status: string; completed_at: string | null; escrow: { amount: number; status: string } | null }> = {
+  j1057: { status: "completed", completed_at: daysAgo(0, 10), escrow: { amount: 850, status: "held" } },
+  j1066: { status: "completed", completed_at: daysAgo(0, 10), escrow: { amount: 3100, status: "held" } },
+  j1049: { status: "completed", completed_at: daysAgo(5, 0), escrow: { amount: 1200, status: "released" } },
+  j1019: { status: "completed", completed_at: daysAgo(5, 0), escrow: { amount: 950, status: "released" } },
+  j0988: { status: "completed", completed_at: daysAgo(5, 0), escrow: { amount: 2000, status: "released" } },
+  j1061: { status: "cancelled", completed_at: null, escrow: { amount: 1800, status: "held" } },
+  j1063: { status: "cancelled", completed_at: null, escrow: { amount: 2400, status: "held" } },
+  j1074: { status: "cancelled", completed_at: null, escrow: { amount: 1100, status: "held" } },
+};
+
+function jobDetail(id: string, job: { status: string; completed_at: string | null; escrow: { amount: number; status: string } | null }) {
+  return {
+    id, ...job,
+    description: "Sample job for the admin preview.",
+    address: "Brgy. Sabang, Lipa City, Batangas",
+    scheduled_at: daysAgo(1),
+    photo_urls: [],
+  };
+}
+
 function paged<T>(rows: T[], u: URL) {
   const offset = Number(u.searchParams.get("offset") ?? 0);
   const limit = Number(u.searchParams.get("limit") ?? 20);
@@ -112,7 +134,17 @@ const routes: [RegExp, string, Handler][] = [
     const rows = bookings.filter((b) => (!status || b.status === status) && matches(q, b.id, b.client?.full_name, b.service_categories.name));
     return { bookings: paged(rows, u), total: rows.length };
   }],
-  [/^\/admin\/bookings\/[^/]+$/, "GET", (u) => bookings.find((b) => b.id === u.pathname.split("/")[3])],
+  [/^\/admin\/bookings\/[^/]+$/, "GET", (u) => {
+    const id = u.pathname.split("/")[3];
+    const index = bookings.findIndex((b) => b.id === id);
+    if (index === -1) return jobDetail(id, disputeJobs[id] ?? { status: "in_progress", completed_at: null, escrow: { amount: 1450, status: "held" } });
+    const booking = bookings[index];
+    // Every third job is completed 10 h ago with the escrow still held (inside the warranty window);
+    // the second is completed 5 days ago (warranty closed) with the escrow released.
+    if (index % 3 === 0) return { ...booking, status: "completed", completed_at: daysAgo(0, 10), escrow: { amount: 1450, status: "held" } };
+    if (index === 1) return { ...booking, status: "completed", completed_at: daysAgo(5, 0), escrow: { amount: 900, status: "released" } };
+    return booking;
+  }],
   [/^\/admin\/transactions$/, "GET", (u) => {
     const status = u.searchParams.get("status");
     const q = u.searchParams.get("search");

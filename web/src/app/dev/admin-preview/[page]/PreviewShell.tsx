@@ -29,16 +29,29 @@ const PAGES: Record<string, React.ComponentType> = {
   "activity-log": ActivityLogPage, "audit-log": AuditLogPage, reports: ReportsPage, platform: PlatformPage, settings: SettingsPage,
 };
 
-/** Real shell + page, fed sample data. `?theme=dark` and `?collapsed=1` preview those states. */
-export function PreviewShell({ page, dark, collapsed }: { page: string; dark: boolean; collapsed: boolean }) {
+/**
+ * Real shell + page, fed sample data. `?theme=dark` and `?collapsed=1` preview those states.
+ * `?bump=1` adds one pending withdrawal 8 s after load, so the arrival alert can be seen.
+ */
+export function PreviewShell({ page, dark, collapsed, bump }: { page: string; dark: boolean; collapsed: boolean; bump: boolean }) {
   const [darkMode, setDarkMode] = useState(dark);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(collapsed);
+  const [queueCounts, setQueueCounts] = useState(MOCK_APP.queueCounts);
+  const [lastUpdated, setLastUpdated] = useState(MOCK_APP.lastUpdated);
   useEffect(() => {
     document.documentElement.setAttribute("data-theme", darkMode ? "dark" : "light");
   }, [darkMode]);
+  useEffect(() => {
+    if (!bump) return;
+    const timer = setTimeout(() => {
+      setQueueCounts((prev) => ({ ...prev, withdrawals: (prev.withdrawals ?? 0) + 1 }));
+      setLastUpdated(Date.now());
+    }, 8000);
+    return () => clearTimeout(timer);
+  }, [bump]);
   const value = useMemo<AppState>(
-    () => ({ ...MOCK_APP, darkMode, setDarkMode, sidebarCollapsed, setSidebarCollapsed }),
-    [darkMode, sidebarCollapsed],
+    () => ({ ...MOCK_APP, darkMode, setDarkMode, sidebarCollapsed, setSidebarCollapsed, queueCounts, lastUpdated }),
+    [darkMode, sidebarCollapsed, queueCounts, lastUpdated],
   );
   // Mirror the real console, which only renders after the client-side session
   // check — never on the server — so motion/reduced-motion state can't mismatch.

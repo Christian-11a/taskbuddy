@@ -2,6 +2,7 @@
 // Shapes match AppContext's display rows; names and amounts are illustrative.
 import type { AppState } from "@/context/AppContext";
 import type { DisputeRow, UserRow, VerificationRow } from "@/lib/adapters";
+import type { CaseEntry } from "@/lib/domain";
 
 const noop = () => {};
 const asyncNoop = async () => {};
@@ -41,11 +42,104 @@ const verifications: VerificationRow[] = [
   { id: "v2", initials: "DT", name: "Daniel Torres", email: "daniel.t@example.com", date: "Sep 25, 2026", status: "pending", documentType: "Driver's License", documents: [{ label: "Government ID", url: "/promo/taskbuddy-mascot.webp" }] },
   { id: "v3", initials: "PN", name: "Paolo Navarro", email: "paolo.n@example.com", date: "Sep 27, 2026", status: "pending", documentType: "UMID", documents: [{ label: "Government ID", url: "/promo/taskbuddy-mascot.webp" }, { label: "Selfie", url: "/promo/taskbuddy-mascot.webp" }] },
   { id: "v4", initials: "MS", name: "Mark Santos", email: "mark.santos@example.com", date: "Feb 12, 2026", status: "approved", documentType: "PhilSys (National ID)", documents: [] },
+  { id: "v5", initials: "CR", name: "Carmen Reyes", email: "carmen.r@example.com", date: "Oct 13, 2026", status: "pending", documentType: "Not specified", documents: [] },
 ] as VerificationRow[];
 
+// Verification method per row: v5 is checked by Stripe Identity, so it has no uploaded documents.
+for (const v of verifications) v.method = v.id === "v5" ? "stripe_identity" : "manual";
+
+// Case times are relative to now, so deadlines look right whenever the preview is opened.
+const HOUR = 3_600_000;
+const hoursFromNow = (h: number) => new Date(Date.now() + h * HOUR).toISOString();
+let entrySeq = 0;
+function entry(kind: string, body: string, hoursAgo: number, author: { id: string; full_name: string; role: string } | null, extra: Partial<CaseEntry> = {}): CaseEntry {
+  entrySeq += 1;
+  return {
+    id: `e${entrySeq}`, kind, body, created_at: hoursFromNow(-hoursAgo), author,
+    message: null, attachment_url: null, ...extra,
+  };
+}
+const CLIENT = { id: "u1", full_name: "Ana Reyes", role: "client" };
+const PROVIDER = { id: "u2", full_name: "Mark Santos", role: "provider" };
+const ADMIN = { id: "admin-1", full_name: "Ana Cruz", role: "admin" };
+
 const disputes: DisputeRow[] = [
-  { id: "d1", jobId: "j1042", jobTitle: "Fix leaking kitchen sink", service: "Plumbing", clientName: "Ana Reyes", providerName: "Rico Bautista", amount: "₱1,450.00", reason: "Work not completed", details: "The leak came back the same evening and the provider stopped replying.", status: "Open", statusClass: "badge-pending", resolution: null, resolutionNote: null, paymentSettled: false, createdAt: "Sep 26, 2026", resolvedAt: null, isOpen: true },
-  { id: "d2", jobId: "j0988", jobTitle: "Deep clean 2BR condo", service: "Cleaning", clientName: "Jessa Ramos", providerName: "Liza Mercado", amount: "₱2,000.00", reason: "Quality issue", details: "Bathroom was skipped.", status: "Resolved", statusClass: "badge-completed", resolution: "Partial refund", resolutionNote: "Provider agreed to a 50% refund.", paymentSettled: true, createdAt: "Sep 12, 2026", resolvedAt: "Sep 14, 2026", isOpen: false },
+  { id: "d1", jobId: "j1042", jobTitle: "Fix leaking kitchen sink", service: "Plumbing", clientName: "Ana Reyes", providerName: "Rico Bautista", amount: "₱1,450.00", reason: "Work not completed", details: "The leak came back the same evening and the provider stopped replying.", status: "Open", statusClass: "badge-pending", resolution: null, resolutionNote: null, paymentSettled: false, createdAt: "Sep 26, 2026", resolvedAt: null, isOpen: true, cancellationState: null, cancellationDeadline: null },
+  { id: "d2", jobId: "j0988", jobTitle: "Deep clean 2BR condo", service: "Cleaning", clientName: "Jessa Ramos", providerName: "Liza Mercado", amount: "₱2,000.00", reason: "Quality issue", details: "Bathroom was skipped.", status: "Resolved", statusClass: "badge-completed", resolution: "Partial refund", resolutionNote: "Provider agreed to a 50% refund.", paymentSettled: true, createdAt: "Sep 12, 2026", resolvedAt: "Sep 14, 2026", isOpen: false, cancellationState: null, cancellationDeadline: null },
+  // (a) Open complaint with the client's statement; a photo is attached to it.
+  {
+    id: "d3", jobId: "j1057", jobTitle: "Aircon cleaning", service: "Cleaning", clientName: "Jessa Ramos", providerName: "Liza Mercado", amount: "₱850.00",
+    reason: "Quality issue", details: "The unit still smells after the cleaning.", status: "Open", statusClass: "badge-pending", resolution: null, resolutionNote: null,
+    paymentSettled: false, createdAt: "Oct 14, 2026", resolvedAt: null, isOpen: true, cancellationState: null, cancellationDeadline: null, hasPayment: true,
+    entries: [
+      entry("statement", "The unit still smells after the cleaning. I sent a photo of the filter.", 5, CLIENT, { attachment_url: "/promo/taskbuddy-mascot.webp" }),
+    ],
+  },
+  // (b) Open appeal: statement, then the admin's decision, then the provider's appeal.
+  {
+    id: "d4", jobId: "j1049", jobTitle: "Install ceiling fan", service: "Handyman", clientName: "Carlo Villanueva", providerName: "Juan Dela Cruz", amount: "₱1,200.00",
+    reason: "Work not completed", details: "The fan wobbles and one screw is missing.", status: "Open", statusClass: "badge-pending", resolution: null, resolutionNote: null,
+    paymentSettled: false, createdAt: "Oct 10, 2026", resolvedAt: null, isOpen: true, cancellationState: null, cancellationDeadline: null, hasPayment: true,
+    entries: [
+      entry("statement", "The fan wobbles and a screw is missing from the bracket.", 60, CLIENT),
+      entry("resolution", "Partial refund of 30% for the missing parts.", 30, ADMIN),
+      entry("appeal", "I returned the same day and tightened every screw. I would like this reviewed.", 4, PROVIDER),
+    ],
+  },
+  // (c) Cancellation review, pending, deadline 5 hours ahead.
+  {
+    id: "d5", jobId: "j1061", jobTitle: "Water heater repair", service: "Plumbing", clientName: "Ana Reyes", providerName: "Rico Bautista", amount: "₱1,800.00",
+    reason: "Late cancellation", details: null, status: "Open", statusClass: "badge-pending", resolution: null, resolutionNote: null,
+    paymentSettled: false, createdAt: "Oct 14, 2026", resolvedAt: null, isOpen: true, cancellationState: "pending", cancellationDeadline: hoursFromNow(5), hasPayment: true,
+    entries: [
+      entry("cancellation_response", "I cancelled because a parts delivery did not arrive.", 2, PROVIDER),
+    ],
+  },
+  // (d) Cancellation review, pending, deadline 3 hours in the past (overdue).
+  {
+    id: "d6", jobId: "j1063", jobTitle: "Move-out cleaning", service: "Cleaning", clientName: "Maria Garcia", providerName: "Liza Mercado", amount: "₱2,400.00",
+    reason: "Late cancellation", details: null, status: "Open", statusClass: "badge-pending", resolution: null, resolutionNote: null,
+    paymentSettled: false, createdAt: "Oct 13, 2026", resolvedAt: null, isOpen: true, cancellationState: "pending", cancellationDeadline: hoursFromNow(-3), hasPayment: true,
+    entries: [],
+  },
+  // (e) Open complaint awaiting a party: the admin's last entry asks for clarification.
+  {
+    id: "d7", jobId: "j1066", jobTitle: "Deep clean 3BR house", service: "Cleaning", clientName: "Jessa Ramos", providerName: "Maria Garcia", amount: "₱3,100.00",
+    reason: "Quality issue", details: "The kitchen tiles were not mopped.", status: "Open", statusClass: "badge-pending", resolution: null, resolutionNote: null,
+    paymentSettled: false, createdAt: "Oct 12, 2026", resolvedAt: null, isOpen: true, cancellationState: null, cancellationDeadline: null, hasPayment: true,
+    entries: [
+      entry("statement", "The kitchen tiles were not mopped and the bins were not emptied.", 50, CLIENT),
+      entry("clarification", "Could you share a photo of the kitchen floor and say what time the job ended?", 6, ADMIN),
+    ],
+  },
+  // (f) Complaint without a payment (no escrow was ever held).
+  {
+    id: "d8", jobId: "j1070", jobTitle: "Pedicure at home", service: "Manicure", clientName: "Carlo Villanueva", providerName: "Maria Garcia", amount: "₱0.00",
+    reason: "No-show", details: "The provider did not arrive and did not message.", status: "Open", statusClass: "badge-pending", resolution: null, resolutionNote: null,
+    paymentSettled: false, createdAt: "Oct 14, 2026", resolvedAt: null, isOpen: true, cancellationState: null, cancellationDeadline: null, hasPayment: false,
+    entries: [
+      entry("statement", "I waited an hour and nobody came. The booking was never paid.", 8, CLIENT, {
+        message: { id: "m1", body: "Are you still coming? I am at the gate.", attachment_path: null },
+      }),
+    ],
+  },
+  // (g) Resolved case with a decision and the payment released.
+  {
+    id: "d9", jobId: "j1019", jobTitle: "Garage door service", service: "Handyman", clientName: "Ana Reyes", providerName: "Juan Dela Cruz", amount: "₱950.00",
+    reason: "Work not completed", details: "The door still gets stuck.", status: "Resolved", statusClass: "badge-completed", resolution: "Released to provider", resolutionNote: "Photos show the job was finished.", paymentSettled: true,
+    createdAt: "Oct 3, 2026", resolvedAt: "Oct 5, 2026", isOpen: false, cancellationState: null, cancellationDeadline: null, hasPayment: true,
+    entries: [
+      entry("statement", "The door still gets stuck when it rains.", 300, CLIENT),
+      entry("resolution", "Photos show the door was adjusted and tested on site. Payment released.", 240, ADMIN),
+    ],
+  },
+  // (h) Open case with a cancellation state this build does not know.
+  {
+    id: "d10", jobId: "j1074", jobTitle: "Gutter cleaning", service: "Handyman", clientName: "Jessa Ramos", providerName: "Juan Dela Cruz", amount: "₱1,100.00",
+    reason: "Late cancellation", details: null, status: "Open", statusClass: "badge-pending", resolution: null, resolutionNote: null,
+    paymentSettled: false, createdAt: "Oct 14, 2026", resolvedAt: null, isOpen: true, cancellationState: "escalated", cancellationDeadline: hoursFromNow(2), hasPayment: true,
+    entries: [],
+  },
 ];
 
 export const MOCK_APP: AppState = {
@@ -97,6 +191,12 @@ export const MOCK_APP: AppState = {
     { name: "Juan Dela Cruz", jobs: 21, rating: 4.6 },
     { name: "Liza Mercado", jobs: 12, rating: 4.5 },
   ],
+  queueCounts: {
+    verifications: verifications.filter((v) => v.status === "pending").length,
+    disputes: disputes.filter((d) => d.isOpen).length,
+    withdrawals: 2,
+    "skill-requests": 2,
+  },
   approveVerification: asyncNoop,
   rejectVerification: asyncNoop,
   setUserStatus: async () => ({}),
@@ -109,7 +209,7 @@ export const MOCK_APP: AppState = {
   sidebarCollapsed: false,
   setSidebarCollapsed: noop,
   settings: {
-    activityBadge: true, anonymizeExports: true, platformName: "TaskBuddy",
+    activityBadge: true, arrivalAlerts: true, anonymizeExports: true, platformName: "TaskBuddy",
   },
   updateSettings: noop,
   maintenanceMode: false,
