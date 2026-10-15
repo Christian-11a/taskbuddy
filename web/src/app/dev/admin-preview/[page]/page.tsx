@@ -16,15 +16,15 @@ export default async function Page({
   searchParams,
 }: {
   params: Promise<{ page: string }>;
-  searchParams: Promise<{ theme?: string; collapsed?: string; bump?: string }>;
+  searchParams: Promise<{ theme?: string; collapsed?: string; bump?: string; inbox?: string }>;
 }) {
   if (process.env.NODE_ENV === "production") notFound();
   const { page } = await params;
-  const { theme, collapsed, bump } = await searchParams;
+  const { theme, collapsed, bump, inbox } = await searchParams;
   return (
     <div className={inter.variable}>
       <BodyClass className={inter.variable} />
-      <PreviewShell page={page} dark={theme === "dark"} collapsed={collapsed === "1"} bump={bump === "1"} />
+      <PreviewShell page={page} dark={theme === "dark"} collapsed={collapsed === "1"} bump={bump === "1"} inbox={inbox === "1"} />
     </div>
   );
 }

@@ -18,7 +18,8 @@ import { ReportsPage } from "@/components/pages/ReportsPage";
 import { PlatformPage } from "@/components/pages/PlatformPage";
 import { SettingsPage } from "@/components/pages/SettingsPage";
 import { LoginPage } from "@/components/pages/LoginPage";
-import { MOCK_APP } from "../mockApp";
+import { saveInbox } from "@/lib/inbox";
+import { MOCK_APP, sampleInboxEntries } from "../mockApp";
 import { installMockApi } from "../mockApi";
 
 installMockApi();
@@ -32,12 +33,18 @@ const PAGES: Record<string, React.ComponentType> = {
 /**
  * Real shell + page, fed sample data. `?theme=dark` and `?collapsed=1` preview those states.
  * `?bump=1` adds one pending withdrawal 8 s after load, so the arrival alert can be seen.
+ * `?inbox=1` starts the bell's inbox with sample entries (two unread) instead of an empty one.
  */
-export function PreviewShell({ page, dark, collapsed, bump }: { page: string; dark: boolean; collapsed: boolean; bump: boolean }) {
+export function PreviewShell({ page, dark, collapsed, bump, inbox }: { page: string; dark: boolean; collapsed: boolean; bump: boolean; inbox: boolean }) {
   const [darkMode, setDarkMode] = useState(dark);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(collapsed);
   const [queueCounts, setQueueCounts] = useState(MOCK_APP.queueCounts);
   const [lastUpdated, setLastUpdated] = useState(MOCK_APP.lastUpdated);
+  // The bell reads its inbox from storage when it mounts, which happens after this
+  // render, so the sample is written here. Writing the same sample again is harmless.
+  useState(() => {
+    if (inbox && typeof window !== "undefined") saveInbox(sampleInboxEntries());
+  });
   useEffect(() => {
     document.documentElement.setAttribute("data-theme", darkMode ? "dark" : "light");
   }, [darkMode]);
