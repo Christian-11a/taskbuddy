@@ -3,10 +3,21 @@
 // the browser, so exporting needs no backend endpoint and no extra request —
 // it serialises the rows already on screen.
 
-/** RFC 4180 quoting: wrap in quotes when the value contains a comma, quote, or newline. */
+/** Text starting with one of these can be run as a formula by Excel / Sheets. */
+const FORMULA_TRIGGER = /^[=+\-@\t\r]/;
+/** A plain number (e.g. "-500", "+3.5") cannot carry a formula, so it is left alone. */
+const PLAIN_NUMBER = /^[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?$/;
+
+/**
+ * RFC 4180 quoting: wrap in quotes when the value contains a comma, quote, or newline.
+ * Text cells that start with a formula trigger get a leading single quote so
+ * spreadsheet apps show them as text (CSV formula injection). Numbers are never prefixed.
+ */
 function escapeCell(value: unknown): string {
   if (value === null || value === undefined) return "";
-  const s = String(value);
+  if (typeof value === "number") return String(value);
+  let s = String(value);
+  if (FORMULA_TRIGGER.test(s) && !PLAIN_NUMBER.test(s)) s = `'${s}`;
   return /[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 }
 
