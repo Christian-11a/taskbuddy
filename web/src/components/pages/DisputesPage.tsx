@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ComponentType } from "react";
 import { ArrowRight, Check, Gavel, MessagesSquare, RotateCcw, Scale, ShieldAlert } from "lucide-react";
 import { useApp } from "@/context/AppContext";
 import * as services from "@/lib/services";
@@ -13,11 +13,14 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ReasonField } from "@/components/ui/input";
 import { PageHeader } from "@/components/admin/Panel";
+import { CaseTimeline } from "@/components/admin/CaseTimeline";
 import {
   Avatar,
   DetailCard,
   DetailEmpty,
   DetailSection,
+  Field,
+  FieldGrid,
   FilterTabs,
   KeyHints,
   QueueItem,
@@ -32,11 +35,57 @@ import {
   useIsWide,
   useQueueKeys,
 } from "@/components/admin/queue";
+import { useLiveTick } from "@/hooks/useLiveTick";
+import { useBookingDetailCache } from "@/hooks/useBookingDetailCache";
+import { byUrgency, caseSignals, type CaseKind, type CaseSignals } from "@/lib/caseSignals";
+import { formatHoursLeft, warrantyStatus } from "@/lib/warranty";
 import { cn } from "@/lib/utils";
 
-type Filter = "all" | "open" | "resolved" | "cancelled";
+type Filter = "needs-decision" | "waiting" | "cancellations" | "appeals" | "resolved" | "all";
 type Resolution = "RELEASED_TO_PROVIDER" | "REFUNDED_TO_CLIENT" | "REVIEWED";
 type ConversationState = ConversationMessage[] | "error";
+type Signalled = { row: DisputeRow; signals: CaseSignals };
+
+const KIND_LABEL: Record<CaseKind, string> = {
+  complaint: "Complaint",
+  appeal: "Appeal",
+  cancellation: "Cancellation review",
+};
+const KIND_TONE: Record<CaseKind, "neutral" | "accent" | "info"> = {
+  complaint: "neutral",
+  appeal: "accent",
+  cancellation: "info",
+};
+const CANCELLATION_STATE_LABEL: Record<string, string> = {
+  pending: "Waiting for the other side",
+  contested: "Contested",
+  accepted: "Accepted",
+  expired: "Expired",
+};
+const FILTER_EMPTY: Partial<Record<Filter, { title: string; description: string; tone?: "ok"; icon?: ComponentType<{ className?: string }> }>> = {
+  "needs-decision": { title: "No cases need a decision", description: "Every open case is waiting on someone or already decided.", tone: "ok", icon: Check },
+  waiting: { title: "Nobody is being waited on", description: "No case is waiting for a client or provider to answer a clarification request." },
+  cancellations: { title: "No cancellation reviews open", description: "Cancellation reviews appear here when a job cancellation needs an admin decision." },
+  appeals: { title: "No appeals open", description: "Provider appeals appear here when a complaint is answered and reopened." },
+  resolved: { title: "Nothing resolved yet", description: "Decided and cancelled cases collect here." },
+};
+
+function matchesFilter(filter: Filter, { row, signals }: Signalled): boolean {
+  switch (filter) {
+    case "needs-decision":
+      return row.isOpen && !signals.awaitingParty;
+    case "waiting":
+      return row.isOpen && signals.awaitingParty;
+    case "cancellations":
+      return row.isOpen && signals.kind === "cancellation";
+    case "appeals":
+      return row.isOpen && signals.kind === "appeal";
+    case "resolved":
+      return !row.isOpen;
+    case "all":
+      return true;
+  }
+}
 
 function statusTone(d: DisputeRow) {
   if (d.isOpen) return "warn" as const;
@@ -44,14 +93,37 @@ function statusTone(d: DisputeRow) {
   return "neutral" as const;
 }
 
+/** "under 1 h", "3 h", "2 d", "2 d 4 h": how long a stretch of time is, for "overdue by". */
+function durationText(hours: number): string {
+  if (hours < 1) return "under 1 h";
+  if (hours < 24) return `${Math.floor(hours)} h`;
+  const days = Math.floor(hours / 24);
+  const rest = Math.floor(hours % 24);
+  return rest === 0 ? `${days} d` : `${days} d ${rest} h`;
+}
+
+function dueLabel(hours: number | null): string {
+  if (hours === null) return "Due soon";
+  return hours < 1 ? "Due in under 1 h" : `Due in ${Math.floor(hours)} h`;
+}
+
+function cancellationStateLabel(state: string): string {
+  return Object.prototype.hasOwnProperty.call(CANCELLATION_STATE_LABEL, state) ? CANCELLATION_STATE_LABEL[state] : state;
+}
+
 export function DisputesPage() {
   const { disputes, resolveDispute, refreshData, loading } = useApp();
   const { showToast } = useToast();
   const isWide = useIsWide();
-  const [filter, setFilter] = useState<Filter>("open");
+  const [filter, setFilter] = useState<Filter>("needs-decision");
   const [search, setSearch] = useState("");
+  // Held in state and refreshed on the live tick, so "overdue" turns on without a reload.
+  const [now, setNow] = useState(() => new Date());
+  useLiveTick(() => setNow(new Date()));
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [confirming, setConfirming] = useState<{ id: string; resolution: Resolution } | null>(null);
+  // Counts each time a open confirmation went stale; the toast effect keys off it so it fires once per transition.
+  const [staleCount, setStaleCount] = useState(0);
   // Notes are kept per dispute, so moving between cases never loses a draft
   // and opening the confirm step never wipes what was typed.
   const [notes, setNotes] = useState<Record<string, string>>({});
@@ -61,30 +133,46 @@ export function DisputesPage() {
   // when a case is opened and cached by job id.
   const [conversations, setConversations] = useState<Record<string, ConversationState>>({});
 
-  const filtered = useMemo(() => {
+  const signalled = useMemo<Signalled[]>(
+    () =>
+      disputes.map((row) => ({
+        row,
+        signals: caseSignals(
+          { isOpen: row.isOpen, cancellationState: row.cancellationState, cancellationDeadline: row.cancellationDeadline, entries: row.entries ?? [] },
+          now,
+        ),
+      })),
+    [disputes, now],
+  );
+
+  const rows = useMemo(() => {
     const q = search.trim().toLowerCase();
-    return disputes.filter((d) => {
-      const matchFilter = filter === "all" || d.status.toLowerCase() === filter;
-      const matchSearch =
-        !q ||
-        d.jobTitle.toLowerCase().includes(q) ||
-        d.clientName.toLowerCase().includes(q) ||
-        d.providerName.toLowerCase().includes(q);
-      return matchFilter && matchSearch;
-    });
-  }, [disputes, filter, search]);
-  const ids = useMemo(() => filtered.map((d) => d.id), [filtered]);
+    return signalled
+      .filter((item) => {
+        const { row } = item;
+        const matchSearch =
+          !q ||
+          row.jobTitle.toLowerCase().includes(q) ||
+          row.clientName.toLowerCase().includes(q) ||
+          row.providerName.toLowerCase().includes(q);
+        return matchesFilter(filter, item) && matchSearch;
+      })
+      // Open cases first, most urgent first. The sort is stable, so ties keep the API order.
+      .sort((a, b) => Number(b.row.isOpen) - Number(a.row.isOpen) || byUrgency(a, b));
+  }, [signalled, filter, search]);
+  const ids = useMemo(() => rows.map((item) => item.row.id), [rows]);
 
-  const counts = {
-    all: disputes.length,
-    open: disputes.filter((d) => d.isOpen).length,
-    resolved: disputes.filter((d) => d.status === "Resolved").length,
-    cancelled: disputes.filter((d) => d.status === "Cancelled").length,
-  };
+  const count = (f: Filter) => signalled.filter((item) => matchesFilter(f, item)).length;
+  const openCount = disputes.filter((d) => d.isOpen).length;
 
-  const selected = filtered.find((d) => d.id === selectedId) ?? (isWide ? filtered[0] : undefined);
+  const selectedItem = rows.find((item) => item.row.id === selectedId) ?? (isWide ? rows[0] : undefined);
+  const selected = selectedItem?.row;
+  const signals = selectedItem?.signals;
   const effectiveId = selected?.id ?? null;
   const note = selected ? (notes[selected.id] ?? "") : "";
+  const noPayment = selected?.hasPayment === false;
+  // Settled and no-payment cases only take a recorded decision; held escrow takes release or refund.
+  const recordOnly = !!selected && (noPayment || selected.paymentSettled);
 
   // Each job's chat is requested once; undefined in the cache means "loading".
   const requested = useRef(new Set<string>());
@@ -104,6 +192,12 @@ export function DisputesPage() {
     setConversations((prev) => omit(prev, jobId));
     setRetryTick((n) => n + 1);
   }
+
+  // Payment protection only applies where there is a payment to hold. Job detail
+  // (for the warranty window) is refreshed on live ticks; see useBookingDetailCache.
+  const bookingJobId = selected && selected.hasPayment !== false ? selected.jobId : undefined;
+  const booking = useBookingDetailCache(bookingJobId);
+  const warranty = booking && booking !== "error" ? warrantyStatus(booking.completedAt, now) : null;
 
   async function handleResolve(id: string, resolution: Resolution) {
     setResolvingId(id);
@@ -142,18 +236,36 @@ export function DisputesPage() {
     ids,
     selectedId: effectiveId,
     onSelect: setSelectedId,
-    onApprove: canDecide ? () => setConfirming({ id: selected!.id, resolution: selected!.paymentSettled ? "REVIEWED" : "RELEASED_TO_PROVIDER" }) : undefined,
-    onReject: canDecide && !selected?.paymentSettled ? () => setConfirming({ id: selected!.id, resolution: "REFUNDED_TO_CLIENT" }) : undefined,
+    onApprove: canDecide ? () => setConfirming({ id: selected!.id, resolution: recordOnly ? "REVIEWED" : "RELEASED_TO_PROVIDER" }) : undefined,
+    onReject: canDecide && !recordOnly ? () => setConfirming({ id: selected!.id, resolution: "REFUNDED_TO_CLIENT" }) : undefined,
   });
 
   const confirmTarget = disputes.find((row) => row.id === confirming?.id);
+  // Re-checked on every live refresh: release/refund only while a payment is held, a recorded decision only while open.
+  const confirmValid =
+    !!confirmTarget &&
+    confirmTarget.isOpen &&
+    (confirming?.resolution === "REVIEWED" || (confirmTarget.hasPayment !== false && !confirmTarget.paymentSettled));
+  // A decision that is already in flight is never interrupted by a refresh.
+  const confirmOpen = confirming !== null && (confirmValid || resolvingId !== null);
+  const confirmStale = confirming !== null && !confirmValid && resolvingId === null;
+  // A stale confirmation is dropped while rendering (React's "adjust state" pattern), so a
+  // case that is reopened later never brings the old money dialog back.
+  if (confirmStale) {
+    setConfirming(null);
+    setStaleCount((n) => n + 1);
+  }
+  useEffect(() => {
+    if (staleCount > 0) showToast("This case was already resolved.", "error");
+  }, [staleCount, showToast]);
 
+  const emptyCopy = FILTER_EMPTY[filter];
   const emptyState = loading ? (
     <QueueListSkeleton />
   ) : disputes.length === 0 ? (
     <QueueListState icon={Scale} title="No disputes raised yet" description="Client complaints and provider appeals land here for review." />
-  ) : filter === "open" && counts.open === 0 && !search ? (
-    <QueueListState icon={Check} tone="ok" title="No open disputes" description="Every case has been decided." />
+  ) : emptyCopy && !search.trim() ? (
+    <QueueListState icon={emptyCopy.icon} tone={emptyCopy.tone} title={emptyCopy.title} description={emptyCopy.description} />
   ) : (
     <QueueListState title="Nothing matches" description="Try a different search or filter." />
   );
@@ -173,30 +285,32 @@ export function DisputesPage() {
           <>
             <FilterTabs
               id="disputes"
-              label="Filter disputes by status"
+              label="Filter disputes by queue"
               value={filter}
               onChange={(f) => {
                 setFilter(f);
                 setSelectedId(null);
               }}
               options={[
-                { value: "open", label: "Open", count: counts.open },
-                { value: "resolved", label: "Resolved", count: counts.resolved },
-                { value: "cancelled", label: "Cancelled", count: counts.cancelled },
-                { value: "all", label: "All", count: counts.all },
+                { value: "needs-decision", label: "Needs decision", count: count("needs-decision") },
+                { value: "waiting", label: "Waiting on a party", count: count("waiting") },
+                { value: "cancellations", label: "Cancellations", count: count("cancellations") },
+                { value: "appeals", label: "Appeals", count: count("appeals") },
+                { value: "resolved", label: "Resolved", count: count("resolved") },
+                { value: "all", label: "All", count: count("all") },
               ]}
             />
             <SearchField value={search} onChange={setSearch} placeholder="Search by job, client, or provider…" label="Search disputes" />
-            <QueueProgress remaining={counts.open} done={doneThisSession} noun={counts.open === 1 ? "case" : "cases"} />
+            <QueueProgress remaining={openCount} done={doneThisSession} noun={openCount === 1 ? "case" : "cases"} />
           </>
         }
         list={
           <>
-            {filtered.length === 0 ? (
+            {rows.length === 0 ? (
               emptyState
             ) : (
               <QueueList label="Disputes">
-                {filtered.map((d) => (
+                {rows.map(({ row: d, signals: s }) => (
                   <QueueItem
                     key={d.id}
                     id={d.id}
@@ -208,11 +322,15 @@ export function DisputesPage() {
                       </span>
                     }
                     title={d.jobTitle}
-                    trailing={<span className="tabular text-[12px] font-semibold">{d.amount}</span>}
+                    trailing={d.hasPayment !== false ? <span className="tabular text-[12px] font-semibold">{d.amount}</span> : undefined}
                     meta={`${d.clientName} vs ${d.providerName}`}
                     aside={
-                      <span className="flex items-center gap-2">
-                        <Badge tone={statusTone(d)} dot>{d.status}</Badge>
+                      <span className="flex flex-col gap-1.5">
+                        <span className="flex flex-wrap items-center gap-1.5">
+                          <Badge tone={KIND_TONE[s.kind]}>{KIND_LABEL[s.kind]}</Badge>
+                          <UrgencyChip signals={s} />
+                          <Badge tone={statusTone(d)} dot>{d.status}</Badge>
+                        </span>
                         <span className="truncate text-[11.5px] text-muted-foreground">{d.reason} · {d.createdAt}</span>
                       </span>
                     }
@@ -220,17 +338,18 @@ export function DisputesPage() {
                 ))}
               </QueueList>
             )}
-            <KeyHints approve="release" reject="refund" />
+            <KeyHints approve={recordOnly ? "record" : "release"} reject={recordOnly ? undefined : "refund"} />
           </>
         }
         detail={
-          selected ? (
+          selected && signals ? (
             <DetailCard
               key={selected.id}
               header={
                 <div>
                   <div className="flex flex-wrap items-center gap-2">
                     <h2 className="text-[17px] font-semibold tracking-tight">{selected.jobTitle}</h2>
+                    <Badge tone={KIND_TONE[signals.kind]}>{KIND_LABEL[signals.kind]}</Badge>
                     <Badge tone={statusTone(selected)} dot>{selected.status}</Badge>
                   </div>
                   <p className="mt-0.5 text-[12.5px] text-muted-foreground">
@@ -241,7 +360,7 @@ export function DisputesPage() {
               footer={
                 selected.isOpen ? (
                   <>
-                    {!selected.paymentSettled && <Button
+                    {!recordOnly && <Button
                       variant="outline"
                       className="border-warn/40 text-warn hover:bg-warn-soft"
                       onClick={() => setConfirming({ id: selected.id, resolution: "REFUNDED_TO_CLIENT" })}
@@ -250,10 +369,10 @@ export function DisputesPage() {
                       <RotateCcw /> Refund client
                     </Button>}
                     <Button
-                      onClick={() => setConfirming({ id: selected.id, resolution: selected.paymentSettled ? "REVIEWED" : "RELEASED_TO_PROVIDER" })}
+                      onClick={() => setConfirming({ id: selected.id, resolution: recordOnly ? "REVIEWED" : "RELEASED_TO_PROVIDER" })}
                       disabled={!canDecide}
                     >
-                      <Check /> {selected.paymentSettled ? "Record admin decision" : "Release to provider"}
+                      <Check /> {noPayment ? "Record decision" : selected.paymentSettled ? "Record admin decision" : "Release to provider"}
                     </Button>
                   </>
                 ) : undefined
@@ -264,7 +383,7 @@ export function DisputesPage() {
                 <Party label="Client" name={selected.clientName} />
                 <div className="flex flex-col items-center gap-1 text-center">
                   <span className="text-[11px] text-subtle">{selected.hasPayment === false ? "No payment to settle" : selected.paymentSettled ? "Payment already settled" : "Payment under review"}</span>
-                  <span className="tabular text-[18px] font-semibold tracking-tight">{selected.amount}</span>
+                  {selected.hasPayment !== false && <span className="tabular text-[18px] font-semibold tracking-tight">{selected.amount}</span>}
                   <ArrowRight className="size-3.5 text-subtle" aria-hidden />
                 </div>
                 <Party label="Provider" name={selected.providerName} align="right" />
@@ -274,6 +393,30 @@ export function DisputesPage() {
                 <p className="text-[13.5px] font-medium">{selected.reason}</p>
                 {selected.details && <p className="mt-1.5 text-[13px] leading-relaxed text-muted-foreground">{selected.details}</p>}
               </DetailSection>
+
+              {signals.kind === "cancellation" && (
+                <DetailSection title="Cancellation request">
+                  <FieldGrid>
+                    <Field label="State">{cancellationStateLabel(selected.cancellationState ?? "")}</Field>
+                    <Field label="Deadline">
+                      <DeadlineValue iso={selected.cancellationDeadline} hoursToDeadline={signals.hoursToDeadline} open={selected.isOpen} />
+                    </Field>
+                  </FieldGrid>
+                </DetailSection>
+              )}
+
+              {warranty && warranty.state !== "none" && (
+                <DetailSection title="Payment protection">
+                  {warranty.state === "open" ? (
+                    <div className="rounded-[10px] border border-border bg-surface-2 px-3.5 py-3 text-[13px]">
+                      <p className="font-medium">Warranty open · {formatHoursLeft(warranty.hoursLeft)}</p>
+                      <p className="mt-0.5 text-muted-foreground">A timely complaint blocks the release.</p>
+                    </div>
+                  ) : (
+                    <p className="text-[13px] text-muted-foreground">Warranty window closed</p>
+                  )}
+                </DetailSection>
+              )}
 
               {selected.resolution && (
                 <DetailSection title="Resolution">
@@ -290,16 +433,7 @@ export function DisputesPage() {
               )}
 
               <DetailSection title="Statements, appeals and case activity">
-                <ol className="space-y-3">
-                  {(selected.entries ?? []).map((entry) => <li key={entry.id} className="rounded border border-border p-3">
-                    <p className="text-sm font-medium">{entry.author?.full_name ?? "System"} · {entry.kind}</p>
-                    <p className="whitespace-pre-wrap text-sm">{entry.body}</p>
-                    <p className="text-xs text-muted-foreground">{new Date(entry.created_at).toLocaleString()}</p>
-                    {entry.message?.body && <p className="text-sm">Job chat evidence: {entry.message.body}</p>}
-                    {entry.attachment_url && <a href={entry.attachment_url} target="_blank" rel="noreferrer">View photo evidence</a>}
-                  </li>)}
-                </ol>
-                {!selected.entries?.length && <p className="text-sm text-muted-foreground">No additional case activity recorded.</p>}
+                <CaseTimeline entries={selected.entries ?? []} clientName={selected.clientName} providerName={selected.providerName} />
               </DetailSection>
 
               <DetailSection title="Job conversation">
@@ -325,13 +459,13 @@ export function DisputesPage() {
               )}
             </DetailCard>
           ) : (
-            <DetailEmpty queueEmpty={filtered.length === 0} title="Pick a case" description="Select a dispute on the left to read both sides and decide." />
+            <DetailEmpty queueEmpty={rows.length === 0} title="Pick a case" description="Select a dispute on the left to read both sides and decide." />
           )
         }
       />
 
       <ConfirmDialog
-        open={confirming !== null}
+        open={confirmOpen}
         title={confirming?.resolution === "REVIEWED" ? "Record the admin decision?" : confirming?.resolution === "RELEASED_TO_PROVIDER" ? "Release escrow to the provider?" : "Refund escrow to the client?"}
         message={
           !confirmTarget || !confirming
@@ -353,6 +487,31 @@ export function DisputesPage() {
         )}
       </ConfirmDialog>
     </div>
+  );
+}
+
+function UrgencyChip({ signals }: { signals: CaseSignals }) {
+  if (signals.urgency === "overdue") return <Badge tone="danger">Overdue</Badge>;
+  if (signals.urgency === "soon") return <Badge tone="warn">{dueLabel(signals.hoursToDeadline)}</Badge>;
+  if (signals.urgency === "waiting") return <Badge tone="neutral">Waiting on a party</Badge>;
+  return null;
+}
+
+/** The deadline's date, with how long is left or how long it is overdue while the case is open. */
+function DeadlineValue({ iso, hoursToDeadline, open }: { iso: string | null; hoursToDeadline: number | null; open: boolean }) {
+  if (!iso) return <span>No deadline set</span>;
+  const when = new Date(iso);
+  if (Number.isNaN(when.getTime())) return <span>Unknown deadline</span>;
+  const countdown = open && hoursToDeadline !== null ? hoursToDeadline : null;
+  return (
+    <>
+      <span>{when.toLocaleString(undefined, { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}</span>
+      {countdown !== null && (
+        <span className={cn("ml-2", countdown < 0 ? "text-danger" : "text-muted-foreground")}>
+          {countdown < 0 ? `overdue by ${durationText(-countdown)}` : formatHoursLeft(countdown)}
+        </span>
+      )}
+    </>
   );
 }
 
