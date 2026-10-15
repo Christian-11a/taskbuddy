@@ -4,6 +4,7 @@ import type { AppState } from "@/context/AppContext";
 import type { DisputeRow, UserRow, VerificationRow } from "@/lib/adapters";
 import type { CaseEntry } from "@/lib/domain";
 import { arrivalTitle, type InboxEntry } from "@/lib/inbox";
+import { SAMPLE_CASE_PARTIES } from "./mockApi";
 
 const noop = () => {};
 const asyncNoop = async () => {};
@@ -69,11 +70,12 @@ const disputes: DisputeRow[] = [
   { id: "d2", jobId: "j0988", jobTitle: "Deep clean 2BR condo", service: "Cleaning", clientName: "Jessa Ramos", providerName: "Liza Mercado", amount: "₱2,000.00", reason: "Quality issue", details: "Bathroom was skipped.", status: "Resolved", statusClass: "badge-completed", resolution: "Partial refund", resolutionNote: "Provider agreed to a 50% refund.", paymentSettled: true, createdAt: "Sep 12, 2026", resolvedAt: "Sep 14, 2026", isOpen: false, cancellationState: null, cancellationDeadline: null },
   // (a) Open complaint with the client's statement; a photo is attached to it.
   {
-    id: "d3", jobId: "j1057", jobTitle: "Aircon cleaning", service: "Cleaning", clientName: "Jessa Ramos", providerName: "Liza Mercado", amount: "₱850.00",
+    id: "d3", jobId: "j1057", jobTitle: "Aircon cleaning", service: "Cleaning", clientName: SAMPLE_CASE_PARTIES.clientName, providerName: SAMPLE_CASE_PARTIES.providerName, amount: "₱850.00",
     reason: "Quality issue", details: "The unit still smells after the cleaning.", status: "Open", statusClass: "badge-pending", resolution: null, resolutionNote: null,
     paymentSettled: false, createdAt: "Oct 14, 2026", resolvedAt: null, isOpen: true, cancellationState: null, cancellationDeadline: null, hasPayment: true,
+    clientId: SAMPLE_CASE_PARTIES.clientId, providerId: SAMPLE_CASE_PARTIES.providerId,
     entries: [
-      entry("statement", "The unit still smells after the cleaning. I sent a photo of the filter.", 5, CLIENT, { attachment_url: "/promo/taskbuddy-mascot.webp" }),
+      entry("statement", "The unit still smells after the cleaning. I sent a photo of the filter.", 5, { id: SAMPLE_CASE_PARTIES.clientId, full_name: SAMPLE_CASE_PARTIES.clientName, role: "client" }, { attachment_url: "/promo/taskbuddy-mascot.webp" }),
     ],
   },
   // (b) Open appeal: statement, then the admin's decision, then the provider's appeal.
