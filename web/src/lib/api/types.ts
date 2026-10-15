@@ -366,6 +366,23 @@ export interface BroadcastApiResponse {
   audience: "all" | "clients" | "providers";
 }
 
+/** GET/PATCH /admin/platform-identity (migration 0047). */
+export interface PlatformIdentityApiResponse {
+  platform_name: string;
+  support_email: string | null;
+  identity_version: number | string;
+}
+
+/** GET/PATCH /admin/job-capacity (migration 0048). Numeric columns may arrive as strings. */
+export interface JobCapacityApiResponse {
+  client_active_max: number | string;
+  provider_active_max: number | string;
+  provider_pending_max: number | string;
+  daily_hours_max: number | string;
+  rest_hours: number | string;
+  travel_kmh: number | string;
+}
+
 export interface AdminMessageApiRow {
   attachment_url?: string | null;
   id: string;

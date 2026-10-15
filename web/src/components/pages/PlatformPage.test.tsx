@@ -10,6 +10,10 @@ vi.mock("@/lib/services", () => ({
   getCategories: vi.fn().mockResolvedValue([]),
   getAdmins: vi.fn().mockResolvedValue([]),
   getCommission: vi.fn().mockResolvedValue({ rate: 0.15, updatedAt: "2026-10-01T00:00:00Z" }),
+  getPlatformIdentity: vi.fn().mockResolvedValue(null),
+  updatePlatformIdentity: vi.fn(),
+  getJobCapacity: vi.fn().mockResolvedValue(null),
+  updateJobCapacity: vi.fn(),
   broadcastNotification: vi.fn(),
   createAdmin: vi.fn(),
   createCategory: vi.fn(),
@@ -89,5 +93,23 @@ describe("broadcast announcement", () => {
     await fillAndSend(user, "Hello", "World");
     expect(await screen.findByText("Notifications are paused for maintenance.")).toBeInTheDocument();
     expect(screen.getByPlaceholderText(TITLE)).toHaveValue("Hello");
+  });
+});
+
+describe("platform identity and job limits tabs", () => {
+  it("opens the identity tab, showing 'not available yet' when the backend update is not deployed", async () => {
+    const user = userEvent.setup();
+    render(<ToastProvider><PlatformPage /></ToastProvider>);
+    await user.click(await screen.findByRole("button", { name: /^Identity/ }));
+    expect(await screen.findByText("Not available yet — the backend update has not been deployed.")).toBeInTheDocument();
+    expect(services.getPlatformIdentity).toHaveBeenCalledTimes(1);
+  });
+
+  it("opens the job limits tab with its own read, separate from the other platform settings", async () => {
+    const user = userEvent.setup();
+    render(<ToastProvider><PlatformPage /></ToastProvider>);
+    await user.click(await screen.findByRole("button", { name: /^Job limits/ }));
+    expect(await screen.findByText("Not available yet — the backend update has not been deployed.")).toBeInTheDocument();
+    expect(services.getJobCapacity).toHaveBeenCalledTimes(1);
   });
 });

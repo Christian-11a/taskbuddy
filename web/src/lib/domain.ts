@@ -258,6 +258,24 @@ export interface CommissionSettings {
   updatedAt: string;
 }
 
+/** The platform's public name and support address (migration 0047). */
+export interface PlatformIdentity {
+  platformName: string;
+  supportEmail: string | null;
+  /** Bumped on every save; a save must send the version it read, or the server refuses it. */
+  identityVersion: number;
+}
+
+/** The server-enforced job and booking limits (migration 0048). */
+export interface JobCapacityLimits {
+  clientActiveMax: number;
+  providerActiveMax: number;
+  providerPendingMax: number;
+  dailyHoursMax: number;
+  restHours: number;
+  travelKmh: number;
+}
+
 export interface DashboardPlatformStats {
   totalCommission: number;
   monthlyCommission: number;

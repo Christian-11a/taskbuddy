@@ -44,6 +44,8 @@ import type {
   ListTransactionsApiResponse,
   CommissionApiResponse,
   BroadcastApiResponse,
+  PlatformIdentityApiResponse,
+  JobCapacityApiResponse,
   LoginApiResponse,
   MaintenanceApiResponse,
   UserSettingsApiResponse,
@@ -75,6 +77,8 @@ import type {
   AdminAccount,
   ServiceCategory,
   CommissionSettings,
+  PlatformIdentity,
+  JobCapacityLimits,
 } from "@/lib/domain";
 
 export { ApiError };
@@ -656,6 +660,83 @@ export async function broadcastNotification(
   audience: "all" | "clients" | "providers",
 ): Promise<BroadcastApiResponse> {
   return client.post<BroadcastApiResponse>("/admin/notifications/broadcast", { title: title.trim(), body: body.trim(), audience });
+}
+
+// ─── Platform identity and job capacity (migrations 0047, 0048) ──────────────
+// The reads return null, not an error, when the backend has not been deployed
+// with these routes yet: the 404 for the route, or a 500/400 whose message names
+// the missing table or function. The page shows "not available yet" for that.
+
+/** True when the route, table or RPC is missing on the backend, not when a request was refused. */
+function isNotDeployed(err: unknown): boolean {
+  if (!(err instanceof ApiError)) return false;
+  if (err.status === 404) return true;
+  return /platform_settings|job_capacity_settings|admin_update_(platform_identity|job_capacity)|does not exist|schema cache/i.test(err.message);
+}
+
+function mapPlatformIdentity(row: PlatformIdentityApiResponse): PlatformIdentity {
+  return {
+    platformName: row.platform_name,
+    supportEmail: row.support_email ?? null,
+    identityVersion: Number(row.identity_version),
+  };
+}
+
+export async function getPlatformIdentity(): Promise<PlatformIdentity | null> {
+  try {
+    return mapPlatformIdentity(await client.get<PlatformIdentityApiResponse>("/admin/platform-identity"));
+  } catch (err) {
+    if (isNotDeployed(err)) return null;
+    throw err;
+  }
+}
+
+/** Saves against `expectedVersion`. A 409 (ApiError) means someone else saved first; nothing is overwritten. */
+export async function updatePlatformIdentity(input: {
+  platformName: string;
+  supportEmail: string | null;
+  expectedVersion: number;
+}): Promise<PlatformIdentity> {
+  return mapPlatformIdentity(
+    await client.patch<PlatformIdentityApiResponse>("/admin/platform-identity", {
+      expected_version: input.expectedVersion,
+      platform_name: input.platformName.trim(),
+      support_email: input.supportEmail?.trim() || null,
+    }),
+  );
+}
+
+function mapJobCapacity(row: JobCapacityApiResponse): JobCapacityLimits {
+  return {
+    clientActiveMax: Number(row.client_active_max),
+    providerActiveMax: Number(row.provider_active_max),
+    providerPendingMax: Number(row.provider_pending_max),
+    dailyHoursMax: Number(row.daily_hours_max),
+    restHours: Number(row.rest_hours),
+    travelKmh: Number(row.travel_kmh),
+  };
+}
+
+export async function getJobCapacity(): Promise<JobCapacityLimits | null> {
+  try {
+    return mapJobCapacity(await client.get<JobCapacityApiResponse>("/admin/job-capacity"));
+  } catch (err) {
+    if (isNotDeployed(err)) return null;
+    throw err;
+  }
+}
+
+export async function updateJobCapacity(limits: JobCapacityLimits): Promise<JobCapacityLimits> {
+  return mapJobCapacity(
+    await client.patch<JobCapacityApiResponse>("/admin/job-capacity", {
+      client_active_max: limits.clientActiveMax,
+      provider_active_max: limits.providerActiveMax,
+      provider_pending_max: limits.providerPendingMax,
+      daily_hours_max: limits.dailyHoursMax,
+      rest_hours: limits.restHours,
+      travel_kmh: limits.travelKmh,
+    }),
+  );
 }
 
 /** Cross-references Transactions (for provider name + amount fallback) — see mapDisputeRow. */

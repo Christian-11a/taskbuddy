@@ -19,8 +19,9 @@ import type { AdminAccount, CommissionSettings, ServiceCategory } from "@/lib/do
 import type { BroadcastApiResponse } from "@/lib/api/types";
 import { formatCurrency, formatDate } from "@/lib/adapters";
 import { cn } from "@/lib/utils";
+import { JobCapacityCard, PlatformIdentityCard } from "./PlatformSettingsCards";
 
-type Tab = "commission" | "categories" | "admins" | "broadcast";
+type Tab = "commission" | "identity" | "limits" | "categories" | "admins" | "broadcast";
 type Audience = "all" | "clients" | "providers";
 
 const AUDIENCE_LABEL: Record<Audience, string> = { all: "all users", clients: "clients", providers: "providers" };
@@ -268,6 +269,8 @@ export function PlatformPage() {
           onChange={setTab}
           options={[
             { value: "commission", label: "Commission" },
+            { value: "identity", label: "Identity" },
+            { value: "limits", label: "Job limits" },
             { value: "categories", label: "Categories", count: loading ? undefined : categories.length },
             { value: "admins", label: "Admin accounts", count: loading ? undefined : activeAdmins },
             { value: "broadcast", label: "Broadcast" },
@@ -335,6 +338,10 @@ export function PlatformPage() {
               </Panel>
             </div>
           )}
+
+          {tab === "identity" && <PlatformIdentityCard />}
+
+          {tab === "limits" && <JobCapacityCard />}
 
           {tab === "categories" && (
             <Panel

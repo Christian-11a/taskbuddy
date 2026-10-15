@@ -1312,3 +1312,111 @@ describe("getJobConversation", () => {
     expect(messages[1].attachmentUrl).toBeNull();
   });
 });
+
+describe("platform identity (migration 0047)", () => {
+  const row = { platform_name: "TaskBuddy", support_email: "help@taskbuddy.test", identity_version: 4 };
+
+  it("maps the settings row and sends the expected version on save", async () => {
+    const fetchMock = vi.fn<(url: string, init?: RequestInit) => Promise<Response>>(() =>
+      Promise.resolve(jsonResponse({ ...row, platform_name: "TaskBuddy PH", identity_version: 5 })),
+    );
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    const saved = await services.updatePlatformIdentity({ platformName: " TaskBuddy PH ", supportEmail: "help@taskbuddy.test", expectedVersion: 4 });
+
+    expect(saved).toEqual({ platformName: "TaskBuddy PH", supportEmail: "help@taskbuddy.test", identityVersion: 5 });
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(url).toMatch(/\/admin\/platform-identity$/);
+    expect(init?.method).toBe("PATCH");
+    expect(JSON.parse(init?.body as string)).toEqual({ expected_version: 4, platform_name: "TaskBuddy PH", support_email: "help@taskbuddy.test" });
+  });
+
+  it("sends a cleared support email as null so the backend clears it", async () => {
+    const fetchMock = vi.fn<(url: string, init?: RequestInit) => Promise<Response>>(() =>
+      Promise.resolve(jsonResponse({ ...row, support_email: null, identity_version: 5 })),
+    );
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    await services.updatePlatformIdentity({ platformName: "TaskBuddy", supportEmail: null, expectedVersion: 4 });
+
+    expect(JSON.parse(fetchMock.mock.calls[0][1]?.body as string)).toMatchObject({ support_email: null });
+  });
+
+  it("reads the current identity", async () => {
+    global.fetch = vi.fn(() => Promise.resolve(jsonResponse(row))) as unknown as typeof fetch;
+    await expect(services.getPlatformIdentity()).resolves.toEqual({
+      platformName: "TaskBuddy",
+      supportEmail: "help@taskbuddy.test",
+      identityVersion: 4,
+    });
+  });
+
+  it("returns null when the endpoint is not deployed yet (404)", async () => {
+    global.fetch = vi.fn(() => Promise.resolve(jsonResponse({ message: "Cannot GET /admin/platform-identity" }, 404))) as unknown as typeof fetch;
+    await expect(services.getPlatformIdentity()).resolves.toBeNull();
+  });
+
+  it("returns null when the settings table is missing (the backend's error names it)", async () => {
+    global.fetch = vi.fn(() =>
+      Promise.resolve(jsonResponse({ message: 'relation "public.platform_settings" does not exist' }, 500)),
+    ) as unknown as typeof fetch;
+    await expect(services.getPlatformIdentity()).resolves.toBeNull();
+  });
+
+  it("still throws other read failures", async () => {
+    global.fetch = vi.fn(() => Promise.resolve(jsonResponse({ message: "Database unavailable" }, 500))) as unknown as typeof fetch;
+    await expect(services.getPlatformIdentity()).rejects.toMatchObject({ status: 500, message: "Database unavailable" });
+  });
+
+  it("surfaces a 409 conflict from a stale save", async () => {
+    global.fetch = vi.fn(() =>
+      Promise.resolve(jsonResponse({ message: "Platform settings changed; reload and try again" }, 409)),
+    ) as unknown as typeof fetch;
+    await expect(
+      services.updatePlatformIdentity({ platformName: "TaskBuddy", supportEmail: null, expectedVersion: 4 }),
+    ).rejects.toMatchObject({ status: 409, message: "Platform settings changed; reload and try again" });
+  });
+});
+
+describe("job capacity (migration 0048)", () => {
+  const row = {
+    client_active_max: 3, provider_active_max: 3, provider_pending_max: 3,
+    daily_hours_max: "8", rest_hours: "1", travel_kmh: 20,
+  };
+  const limits = {
+    clientActiveMax: 3, providerActiveMax: 3, providerPendingMax: 3,
+    dailyHoursMax: 8, restHours: 1, travelKmh: 20,
+  };
+
+  it("reads the limits, converting numeric strings", async () => {
+    global.fetch = vi.fn(() => Promise.resolve(jsonResponse(row))) as unknown as typeof fetch;
+    await expect(services.getJobCapacity()).resolves.toEqual(limits);
+  });
+
+  it("returns null when the endpoint or table is not deployed yet", async () => {
+    global.fetch = vi.fn(() => Promise.resolve(jsonResponse({ message: "Not Found" }, 404))) as unknown as typeof fetch;
+    await expect(services.getJobCapacity()).resolves.toBeNull();
+    global.fetch = vi.fn(() =>
+      Promise.resolve(jsonResponse({ message: 'Could not find the table \'public.job_capacity_settings\' in the schema cache' }, 500)),
+    ) as unknown as typeof fetch;
+    await expect(services.getJobCapacity()).resolves.toBeNull();
+  });
+
+  it("PATCHes all six limits in snake_case and returns the saved row", async () => {
+    const fetchMock = vi.fn<(url: string, init?: RequestInit) => Promise<Response>>(() =>
+      Promise.resolve(jsonResponse({ ...row, client_active_max: 5 })),
+    );
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    const saved = await services.updateJobCapacity({ ...limits, clientActiveMax: 5 });
+
+    expect(saved).toEqual({ ...limits, clientActiveMax: 5 });
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(url).toMatch(/\/admin\/job-capacity$/);
+    expect(init?.method).toBe("PATCH");
+    expect(JSON.parse(init?.body as string)).toEqual({
+      client_active_max: 5, provider_active_max: 3, provider_pending_max: 3,
+      daily_hours_max: 8, rest_hours: 1, travel_kmh: 20,
+    });
+  });
+});
