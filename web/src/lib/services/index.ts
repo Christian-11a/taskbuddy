@@ -598,6 +598,17 @@ export async function getVerifications(): Promise<Verification[]> {
 }
 
 /**
+ * Only the pending queue: what the live tick needs (AppContext's
+ * readVerificationsForTick merges it with the decided rows it already has).
+ * The status filter is also applied here, so a server that ignored it could
+ * not put decided rows into the queue.
+ */
+export async function getPendingVerifications(): Promise<Verification[]> {
+  const rows = await fetchAllRows<AdminVerificationApiRow>("/admin/verifications?status=pending", "verifications");
+  return rows.map(mapVerificationRow).filter((v) => v.status === "PENDING");
+}
+
+/**
  * Escrow transactions, with overlapping callers sharing one request — same
  * in-flight dedup as getAnalyticsSummary below, and for the same reason.
  * (The disputes list no longer reads this; it carries its own names and amounts.)

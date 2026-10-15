@@ -425,6 +425,27 @@ describe("getRecentActivity", () => {
   });
 });
 
+describe("getPendingVerifications", () => {
+  it("asks the server for the pending queue only, and keeps only pending rows", async () => {
+    const fetchMock = vi.fn((url: string) => {
+      expect(new URL(url).searchParams.get("status")).toBe("pending");
+      return Promise.resolve(jsonResponse({
+        verifications: [
+          { id: "v1", provider_id: "p1", full_name: "Juan Cruz", email: "juan@test.com", status: "pending", submitted_at: "2026-08-01", documents: [] },
+          { id: "v0", provider_id: "p0", full_name: "Old Case", email: "old@test.com", status: "approved", submitted_at: "2026-07-01", documents: [] },
+        ],
+        total: 2,
+      }));
+    });
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    const pending = await services.getPendingVerifications();
+
+    expect(pending.map((v) => [v.id, v.status])).toEqual([["v1", "PENDING"]]);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe("getVerifications", () => {
   it("maps rows and uppercases the backend's lowercase status", async () => {
     global.fetch = vi.fn(() =>

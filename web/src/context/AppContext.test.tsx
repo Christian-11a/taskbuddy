@@ -18,6 +18,7 @@ vi.mock("@/lib/services", async (importOriginal) => {
     getPendingWithdrawalCount: vi.fn(), getPendingServiceRequestCount: vi.fn(),
     setMaintenanceStatus: vi.fn(),
     postApproveVerification: vi.fn(), postRejectVerification: vi.fn(),
+    getPendingVerifications: vi.fn(),
   };
 });
 
@@ -50,6 +51,7 @@ describe("AppContext — moderation refresh results", () => {
     vi.mocked(services.restoreSession).mockResolvedValue({ id: "admin", name: "Admin", email: "admin@example.com" });
     vi.mocked(services.getUsers).mockImplementation(async (status) => status === "deleted" ? [] : [account]);
     vi.mocked(services.getVerifications).mockResolvedValue([]);
+    vi.mocked(services.getPendingVerifications).mockResolvedValue([]);
     vi.mocked(services.getDisputes).mockResolvedValue([]);
     vi.mocked(services.getRecentActivity).mockResolvedValue([]);
     vi.mocked(services.getDarkModePreference).mockResolvedValue(null);
@@ -325,8 +327,8 @@ describe("AppContext — moderation refresh results", () => {
       await mountLoaded();
       expect(context.refreshFailed).toBe(false);
 
-      // The silent refresh reads verifications (it no longer reads users), so a failure there is the signal.
-      vi.mocked(services.getVerifications).mockRejectedValueOnce(new Error("down"));
+      // The silent refresh reads the pending verifications (it no longer reads users), so a failure there is the signal.
+      vi.mocked(services.getPendingVerifications).mockRejectedValueOnce(new Error("down"));
       await act(async () => { await context.refreshData(); });
       expect(context.refreshFailed).toBe(true);
       expect(context.loadError).toBeNull();
@@ -360,6 +362,64 @@ describe("AppContext — moderation refresh results", () => {
       render(<AppProvider><Probe /></AppProvider>);
       await waitFor(() => expect(context.loadError).not.toBeNull());
       expect(context.refreshFailed).toBe(false);
+    });
+  });
+
+  describe("live tick and verifications", () => {
+    it("the tick reads the pending queue, not the whole verifications list", async () => {
+      await mountLoaded();
+      vi.mocked(services.getVerifications).mockClear();
+      vi.mocked(services.getPendingVerifications).mockClear();
+
+      await act(async () => { await context.refreshData(); });
+
+      expect(services.getPendingVerifications).toHaveBeenCalledTimes(1);
+      expect(services.getVerifications).not.toHaveBeenCalled();
+    });
+
+    it("shows a new pending verification on the tick and keeps the decided ones, without a full read", async () => {
+      vi.mocked(services.getVerifications).mockResolvedValue([verification({ id: "v2", status: "APPROVED" })]);
+      await mountLoaded();
+      vi.mocked(services.getVerifications).mockClear();
+      vi.mocked(services.getPendingVerifications).mockResolvedValue([verification({ id: "v3", status: "PENDING" })]);
+
+      await act(async () => { await context.refreshData(); });
+
+      expect(context.verifications.map((row) => row.id).sort()).toEqual(["v2", "v3"]);
+      expect(context.queueCounts.verifications).toBe(1);
+      expect(services.getVerifications).not.toHaveBeenCalled();
+    });
+
+    it("reads the full list on the tick when a pending verification was decided elsewhere", async () => {
+      vi.mocked(services.getVerifications).mockResolvedValue([
+        verification({ id: "v1", status: "PENDING" }),
+        verification({ id: "v2", status: "APPROVED" }),
+      ]);
+      await mountLoaded();
+      expect(context.queueCounts.verifications).toBe(1);
+
+      // Another admin approved v1: the pending queue no longer has it, so its new status comes from the full list.
+      vi.mocked(services.getPendingVerifications).mockResolvedValue([]);
+      vi.mocked(services.getVerifications).mockResolvedValue([
+        verification({ id: "v1", status: "APPROVED" }),
+        verification({ id: "v2", status: "APPROVED" }),
+      ]);
+      await act(async () => { await context.refreshData(); });
+
+      expect(context.verifications.map((row) => row.id).sort()).toEqual(["v1", "v2"]);
+      expect(context.queueCounts.verifications).toBe(0);
+    });
+
+    it("reads the full list on the tick when the first verifications read never succeeded", async () => {
+      vi.mocked(services.getVerifications).mockRejectedValueOnce(new Error("down"));
+      render(<AppProvider><Probe /></AppProvider>);
+      await waitFor(() => expect(context.loadError).not.toBeNull());
+      vi.mocked(services.getVerifications).mockResolvedValue([verification({ id: "v1", status: "APPROVED" })]);
+
+      await act(async () => { await context.refreshData(); });
+
+      await waitFor(() => expect(context.verifications.map((row) => row.id)).toEqual(["v1"]));
+      expect(services.getVerifications).toHaveBeenCalled();
     });
   });
 

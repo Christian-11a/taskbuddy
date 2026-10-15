@@ -215,6 +215,22 @@ async function readCountOnlyQueues(): Promise<{ withdrawals?: number; "skill-req
 }
 
 /**
+ * The live tick reads only the pending verifications. A decided row never goes
+ * back to pending on the server, so the decided rows already held stay exact.
+ * A row that was pending here but has left the queue was decided elsewhere, and
+ * only the full list carries its new status, so that case reads the full list.
+ * So does a console that never read the full list (`cached` is null).
+ */
+async function readVerificationsForTick(cached: Verification[] | null): Promise<Verification[]> {
+  if (cached === null) return services.getVerifications();
+  const pending = [...new Map((await services.getPendingVerifications()).map((v) => [v.id, v] as const)).values()];
+  const pendingIds = new Set(pending.map((v) => v.id));
+  if (cached.some((v) => v.status === "PENDING" && !pendingIds.has(v.id))) return services.getVerifications();
+  const decided = cached.filter((v) => v.status !== "PENDING" && !pendingIds.has(v.id));
+  return [...pending, ...decided].sort((a, b) => Date.parse(b.submittedAt) - Date.parse(a.submittedAt));
+}
+
+/**
  * Follow-up reads after a write that already succeeded. A failure here is
  * logged and otherwise ignored: the write did happen, so the admin must not be
  * told it failed.
@@ -265,6 +281,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [domainUsers, setDomainUsers] = useState<AdminUser[]>([]);
   const [usersLoading, setUsersLoading] = useState(false);
   const [domainVerifications, setDomainVerifications] = useState<Verification[]>([]);
+  /** The full verifications list as last applied; null until a full read has succeeded. The live tick merges against it. */
+  const verificationsRef = useRef<Verification[] | null>(null);
+  const applyVerifications = useCallback((rows: Verification[]) => {
+    verificationsRef.current = rows;
+    setDomainVerifications(rows);
+  }, []);
   const [domainDisputes, setDomainDisputes] = useState<Dispute[]>([]);
   const [dashboardStats, setDashboardStats] = useState<DashboardStats | null>(null);
   const [revenueSeries, setRevenueSeries] = useState<MonthlyPoint[]>([]);
@@ -413,7 +435,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       // The Users list is not part of the console load, so a page does not wait on it (see fetchUsers).
       // The live tick skips the saved dark-mode preference too: it is applied on the real load only.
       const coreRequest = Promise.all([
-        services.getVerifications(),
+        // The live tick reads only the pending queue and merges it with what it already holds (see readVerificationsForTick).
+        silent ? readVerificationsForTick(verificationsRef.current) : services.getVerifications(),
         services.getDisputes(),
         services.getRecentActivity(),
         services.getMaintenanceStatus(),
@@ -453,7 +476,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       }
 
       const [verifs, disputes, activity, maintenance, serverDarkMode] = coreResult.value;
-      setDomainVerifications(verifs);
+      applyVerifications(verifs);
       setDomainDisputes(disputes);
       setRecentActivity(activity);
 
@@ -534,7 +557,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       if (silent) setRefreshing(false);
       else if (!stale()) fullLoadInFlight.current = false;
     }
-  }, [fetchUsers]);
+  }, [fetchUsers, applyVerifications]);
 
   /* eslint-disable react-hooks/set-state-in-effect --
      Fetching on mount is the other documented exception: the backend is an
@@ -678,11 +701,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
       await services.postApproveVerification(id);
       dropInFlightRefresh();
       await settleFollowUpReads("verification approval", [
-        services.getVerifications().then(setDomainVerifications),
+        services.getVerifications().then(applyVerifications),
         refreshStats(),
       ]);
     },
-    [refreshStats, dropInFlightRefresh],
+    [refreshStats, dropInFlightRefresh, applyVerifications],
   );
 
   const rejectVerification = useCallback(
@@ -690,11 +713,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
       await services.postRejectVerification(id, reason);
       dropInFlightRefresh();
       await settleFollowUpReads("verification rejection", [
-        services.getVerifications().then(setDomainVerifications),
+        services.getVerifications().then(applyVerifications),
         refreshStats(),
       ]);
     },
-    [refreshStats, dropInFlightRefresh],
+    [refreshStats, dropInFlightRefresh, applyVerifications],
   );
 
   const setUserStatus = useCallback(
