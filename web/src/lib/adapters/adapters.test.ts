@@ -240,6 +240,17 @@ describe("row adapters", () => {
     expect(row.resolvedAt).toBe("May 3, 2026");
   });
 
+  it("shows an unknown amount rather than a peso figure when the payment amount is unknown", () => {
+    const d: Dispute = {
+      id: "DSP-003", jobId: "job-005", jobTitle: "Re-tile bathroom", service: "Renovation",
+      clientName: "Jamie Kim", providerName: "Pat Morgan", amount: Number.NaN, hasPayment: true,
+      reason: "Poor quality", details: null,
+      status: "OPEN", resolution: null, resolutionNote: null, paymentSettled: false,
+      createdAt: "2026-05-01", resolvedAt: null, cancellationState: null, cancellationDeadline: null,
+    };
+    expect(toDisputeRow(d).amount).toBe("Unknown");
+  });
+
   it("maps a wallet top-up with a + sign", () => {
     const t: WalletTransaction = {
       id: "wt-1", profileName: "Eduard", direction: "credit", kind: "topup",

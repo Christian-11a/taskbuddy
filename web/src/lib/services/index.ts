@@ -294,25 +294,26 @@ const DISPUTE_RESOLUTION: Record<DisputeResolutionApi, DisputeResolution> = {
 };
 
 /**
- * The disputes endpoint doesn't join the provider's name (only the client who
- * raised it, via `raised_by_profile`) — so we cross-reference the already-loaded
- * Transactions list by job id to fill in the provider and a client fallback.
+ * Every party, service and sum on a dispute comes from the disputes query
+ * itself (DISPUTE_SELECT on the backend): the job's title, category, client and
+ * assigned provider, and the escrow it refers to. Nothing is cross-referenced
+ * from other lists. A job-id match could pick another escrow's amount, and a
+ * dispute with no joined value shows an explicit unknown instead.
  */
-function mapDisputeRow(
-  row: AdminDisputeApiRow,
-  txnByJob: Map<string, Transaction>,
-): Dispute {
-  const linked = txnByJob.get(row.job_id);
+function mapDisputeRow(row: AdminDisputeApiRow): Dispute {
   return {
     ...(row.entries && { entries: row.entries }),
     ...(row.escrow_id !== undefined && { hasPayment: row.escrow_id !== null }),
     id: row.id,
     jobId: row.job_id,
-    jobTitle: row.jobs?.title ?? linked?.service ?? "Unknown job",
-    service: row.jobs?.service_categories?.name ?? linked?.service ?? "Uncategorized",
-    clientName: row.jobs?.client?.full_name ?? linked?.customerName ?? "Unknown client",
-    providerName: row.jobs?.provider?.full_name ?? linked?.providerName ?? "Unknown provider",
-    amount: Number(row.escrow_transactions?.amount ?? linked?.amount ?? 0),
+    jobTitle: row.jobs?.title ?? "Unknown job",
+    service: row.jobs?.service_categories?.name ?? "Uncategorized",
+    clientName: row.jobs?.client?.full_name ?? "Unknown client",
+    providerName: row.jobs?.provider?.full_name ?? "Unknown provider",
+    // No escrow at all is a true zero (the page hides the amount). An escrow whose amount did not join is unknown (NaN).
+    amount: row.escrow_transactions
+      ? Number(row.escrow_transactions.amount)
+      : row.escrow_id === null ? 0 : Number.NaN,
     reason: row.reason,
     details: row.details,
     status: DISPUTE_STATUS[row.status] ?? "OPEN",
@@ -599,12 +600,7 @@ export async function getVerifications(): Promise<Verification[]> {
 /**
  * Escrow transactions, with overlapping callers sharing one request — same
  * in-flight dedup as getAnalyticsSummary below, and for the same reason.
- *
- * AppContext's initial load calls `getTransactions()` and `getDisputes()` in
- * the same Promise.all, and `getDisputes()` needs this list too (to fill in
- * provider names the disputes endpoint doesn't join). Without dedup that's two
- * identical `/admin/transactions?limit=200` round trips on every login and
- * every hard refresh — confirmed in a network capture before this was added.
+ * (The disputes list no longer reads this; it carries its own names and amounts.)
  *
  * In-flight only, no TTL: once the batch settles the next call fetches fresh,
  * so a resolved dispute or released escrow never renders from a stale cache.
@@ -845,14 +841,10 @@ export async function updateJobCapacity(limits: JobCapacityLimits): Promise<JobC
   );
 }
 
-/** Cross-references Transactions (for provider name + amount fallback) — see mapDisputeRow. */
+/** One request: the disputes query already carries every name and amount (see mapDisputeRow). */
 export async function getDisputes(): Promise<Dispute[]> {
-  const [rows, txns] = await Promise.all([
-    fetchAllRows<AdminDisputeApiRow>("/admin/disputes", "disputes"),
-    getTransactions(),
-  ]);
-  const txnByJob = new Map(txns.map((t) => [t.jobId, t] as const));
-  return rows.map((row) => mapDisputeRow(row, txnByJob));
+  const rows = await fetchAllRows<AdminDisputeApiRow>("/admin/disputes", "disputes");
+  return rows.map(mapDisputeRow);
 }
 
 export async function getBookings(): Promise<AdminBooking[]> {

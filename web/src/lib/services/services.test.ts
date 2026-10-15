@@ -691,57 +691,39 @@ describe("updateDisplayName", () => {
 });
 
 describe("getDisputes", () => {
-  it("cross-references Transactions by job id to fill in the provider name", async () => {
-    const fetchMock = vi
-      .fn()
-      .mockImplementationOnce(() =>
-        Promise.resolve(
-          jsonResponse({
-            disputes: [
-              {
-                id: "d1",
-                job_id: "job-1",
-                reason: "Never showed up",
-                details: "Waited 2 hours.",
-                status: "open",
-                resolution: null,
-                resolution_note: null,
-                created_at: "2026-08-01",
-                resolved_at: null,
-                jobs: { title: "Fix sink", service_categories: { name: "Plumbing" } },
-                escrow_transactions: { amount: "500.00", status: "disputed" },
-                raised_by_profile: { id: "c1", full_name: "Alice" },
-              },
-            ],
-            total: 1,
-          }),
-        ),
-      )
-      .mockImplementationOnce(() =>
-        Promise.resolve(
-          jsonResponse({
-            transactions: [
-              {
-                id: "t1",
-                job_id: "job-1",
-                amount: "500.00",
-                status: "disputed",
-                held_at: "2026-08-01",
-                jobs: { title: "Fix sink", service_categories: { name: "Plumbing" } },
-                client: { id: "c1", full_name: "Alice" },
-                provider: { id: "p1", full_name: "Bob" },
-              },
-            ],
-            total: 1,
-          }),
-        ),
-      );
+  const disputeRow = (over: Record<string, unknown> = {}) => ({
+    id: "d1",
+    job_id: "job-1",
+    escrow_id: "e1",
+    reason: "Never showed up",
+    details: "Waited 2 hours.",
+    status: "open",
+    resolution: null,
+    resolution_note: null,
+    created_at: "2026-08-01",
+    resolved_at: null,
+    jobs: {
+      title: "Fix sink",
+      service_categories: { name: "Plumbing" },
+      client: { full_name: "Alice" },
+      provider: { full_name: "Bob" },
+    },
+    escrow_transactions: { amount: "500.00", status: "disputed" },
+    raised_by_profile: { id: "c1", full_name: "Alice" },
+    ...over,
+  });
+
+  it("reads the job, provider, client and amount from the disputes query alone", async () => {
+    const fetchMock = vi.fn((url: string) => {
+      expect(url).toContain("/admin/disputes");
+      return Promise.resolve(jsonResponse({ disputes: [disputeRow()], total: 1 }));
+    });
     global.fetch = fetchMock as unknown as typeof fetch;
 
     const disputes = await services.getDisputes();
 
     expect(disputes).toEqual([
-      {
+      expect.objectContaining({
         id: "d1",
         jobId: "job-1",
         jobTitle: "Fix sink",
@@ -749,18 +731,35 @@ describe("getDisputes", () => {
         clientName: "Alice",
         providerName: "Bob",
         amount: 500,
-        reason: "Never showed up",
-        details: "Waited 2 hours.",
+        hasPayment: true,
         status: "OPEN",
-        resolution: null,
-        resolutionNote: null,
         paymentSettled: false,
-        createdAt: "2026-08-01",
-        resolvedAt: null,
-        cancellationState: null,
-        cancellationDeadline: null,
-      },
+      }),
     ]);
+    // Only the disputes list is read: no transaction list is downloaded to name a party or a sum.
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("shows explicit unknowns for parties and service the job does not join, never another job's", async () => {
+    const unjoined = disputeRow({
+      jobs: { title: "Fix sink", service_categories: null, client: undefined, provider: undefined },
+    });
+    global.fetch = vi.fn(() => Promise.resolve(jsonResponse({ disputes: [unjoined], total: 1 }))) as unknown as typeof fetch;
+
+    const [dispute] = await services.getDisputes();
+
+    expect(dispute).toMatchObject({ clientName: "Unknown client", providerName: "Unknown provider", service: "Uncategorized" });
+  });
+
+  it("reports an unknown amount, not 0, when the dispute has an escrow whose amount did not join", async () => {
+    global.fetch = vi.fn(() =>
+      Promise.resolve(jsonResponse({ disputes: [disputeRow({ escrow_transactions: null })], total: 1 })),
+    ) as unknown as typeof fetch;
+
+    const [dispute] = await services.getDisputes();
+
+    expect(dispute.hasPayment).toBe(true);
+    expect(Number.isNaN(dispute.amount)).toBe(true);
   });
 });
 

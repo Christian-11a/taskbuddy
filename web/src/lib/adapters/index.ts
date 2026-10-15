@@ -393,7 +393,8 @@ export function toDisputeRow(d: Dispute): DisputeRow {
     service: d.service,
     clientName: d.clientName,
     providerName: d.providerName,
-    amount: formatCurrency(d.amount),
+    // NaN means the escrow's amount did not come back: say so, never print a peso figure for it.
+    amount: Number.isFinite(d.amount) ? formatCurrency(d.amount) : "Unknown",
     reason: d.reason,
     details: d.details,
     status: display.label,
