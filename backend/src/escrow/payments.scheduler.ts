@@ -38,11 +38,21 @@ export class PaymentsScheduler {
       );
       if (error)
         throw new Error(`Cancellation expiry failed: ${error.message}`);
+      const { data: expiredChanges, error: changeError } =
+        await this.supabase.admin.rpc('job_change_expire_all');
+      if (changeError)
+        throw new Error(`Job change expiry failed: ${changeError.message}`);
       const reconciled = await this.reconcileSettledJobs();
       const transfers = await this.payouts.sweep();
-      if (expired || reconciled || transfers.transferred || transfers.failed) {
+      if (
+        expired ||
+        expiredChanges ||
+        reconciled ||
+        transfers.transferred ||
+        transfers.failed
+      ) {
         this.logger.log(
-          `Payments tick: ${expired} cancellation(s) expired, ${reconciled} escrow(s) reconciled, ` +
+          `Payments tick: ${expired} cancellation(s) expired, ${expiredChanges} job change(s) expired, ${reconciled} escrow(s) reconciled, ` +
             `${transfers.transferred} transfer(s) sent, ${transfers.failed} failed`,
         );
       }

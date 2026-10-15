@@ -19,7 +19,14 @@ describe('resolveMobileApiVersion', () => {
     },
   );
 
-  it.each(['2025-21-27', '2025-01-32', '2025-00-10', 'garbage', '2025-1-27'])(
+  it.each([
+    '2025-21-27',
+    '2025-01-32',
+    '2025-00-10',
+    'garbage',
+    '2025-1-27',
+    '2025-01-27',
+  ])(
     'rejects malformed %p, warns once naming it, and uses the default',
     (raw) => {
       const warn = jest.fn();
@@ -31,7 +38,7 @@ describe('resolveMobileApiVersion', () => {
     },
   );
 
-  it.each(['2025-01-27', '2025-01-27.acacia', '2024-06-20'])(
+  it.each(['2025-01-27.acacia', '2024-06-20.acacia'])(
     'accepts well-formed %p unchanged',
     (raw) => {
       const warn = jest.fn();

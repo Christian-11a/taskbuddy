@@ -50,10 +50,10 @@ the model service directly.
    ┌──────────────┐        ┌──────────────┐
    │  mobile/     │        │  web/        │
    │  Expo · RN   │        │  Next.js     │
-   │  clients +   │        │  admin only  │
-   │  providers   │        │              │
+   │  clients +   │        │  public site │
+   │  providers   │        │  + admin     │
    └──────┬───────┘        └──────┬───────┘
-          │      HTTPS · JWT      │
+          │     HTTPS · auth      │
           └───────────┬───────────┘
                       ▼
              ┌──────────────────┐         ┌────────────────────┐
@@ -63,9 +63,9 @@ the model service directly.
                       │                   └────────────────────┘
                       ▼
              ┌──────────────────┐         ┌────────────────────┐
-             │    Supabase      │         │  Stripe · Brevo    │
-             │  Postgres · Auth │         │  Expo Push         │
-             │  Storage · RLS   │         └────────────────────┘
+             │    Supabase      │         │  Stripe · Expo Push │
+             │  Postgres · Auth │         └─────────────────────┘
+             │  Storage · RLS   │
              └──────────────────┘
 ```
 
@@ -81,7 +81,7 @@ URLs and submit the resulting object path.
 | [`backend/`](./backend) | **NestJS REST API + Supabase schema** — the active focus. Start here: [`backend/README.md`](./backend/README.md) |
 | [`ml-service/`](./ml-service) | **Python FastAPI recommendation scorer** serving the trained `rf-a-v1` Random Forest: [`ml-service/README.md`](./ml-service/README.md) |
 | [`mobile/`](./mobile) | **Expo / React Native app** — the marketplace itself (clients + providers): [`mobile/README.md`](./mobile/README.md) |
-| [`web/`](./web) | **Next.js admin console** — back-office only, no client/provider surface: [`web/README.md`](./web/README.md) |
+| [`web/`](./web) | **Next.js public promo/auth site and admin console** — marketplace jobs remain in mobile: [`web/README.md`](./web/README.md) |
 
 The authoritative data-schema and product spec is
 [`backend/BACKEND_SCHEMA.md`](./backend/BACKEND_SCHEMA.md). Treat it as the
@@ -105,20 +105,23 @@ outcome, so production data accumulates as future retraining rows. Details in
 ## Money
 
 The wallet ledger is the **only account of record** — balances are derived from
-it, never stored. Hiring holds the job budget in escrow, so a client whose
-balance can't cover it is refused at the point of accepting an application.
+it, never stored. A wallet-funded hire holds the job budget in escrow, so a
+client whose wallet balance cannot cover it is refused when accepting an
+application. Card-funded hires use a separate payment before escrow is held.
 
 Clients fund their wallet through Stripe (test mode), or pay a hire by card at
-the moment they accept. Either way **the wallet is credited by Stripe's webhook,
-never by the app reporting its own success**. Balance buys labour, so a client
-able to mint it could hire for free, and for a card hire it is the webhook that
-places the escrow hold. Balance can appear one other way: an admin issuing a
-recovery credit after a dispute, which is a separate audited route for that
+the moment they accept. A successful top-up is credited to the wallet by
+Stripe's webhook, never by the app reporting its own success. A card-funded
+hire instead places its payment into escrow when the webhook confirms it.
+Balance can appear one other way: an admin issuing a recovery credit after a
+dispute, which is a separate audited route for that
 reason ([§28.1](./backend/BACKEND_SCHEMA.md)).
 
-Providers can connect a Stripe Connect Express account. A card-paid job's
-payout is then sent to it automatically when the job completes, and everything
-else is withdrawn by request. Full rules in
+Providers can connect a Stripe Connect Express account. A card-funded job's
+payout becomes eligible for transfer after the warranty period, provided no
+open dispute blocks release. The undeployed post-UAT backend branch adds
+client-authorized early release. Other wallet funds are withdrawn by request
+and settled manually by an admin. Full rules in
 [`BACKEND_SCHEMA.md` §18, §21 and §29](./backend/BACKEND_SCHEMA.md).
 
 Stripe is not available to Philippine businesses, and cannot hold pesos, which
@@ -134,7 +137,7 @@ frontends depend on it:
 ```bash
 # each from the repository root, in its own terminal
 (cd backend && npm install && npm run start:dev)   # API on :3000
-(cd mobile  && npm install && npm start)           # Expo — press a / i / scan QR
+(cd mobile  && npm install && npm run android)     # Android development build
 (cd web     && npm install && npm run dev)         # admin console
 ```
 
@@ -162,9 +165,11 @@ been completed.
 
 | Priority | Ask | Needs | Details |
 |---|---|---|---|
-| High | Verify a fresh sandbox wallet top-up credits the wallet exactly once, then test card-at-hire and Stripe Identity on a device. A resent `payment_intent.succeeded` returned HTTP 200 after the signing-secret change, but this does not prove the full flows | Stripe + Render + mobile | [`docs/backend-handoff-stripe-webhook-secret.md`](./docs/backend-handoff-stripe-webhook-secret.md) |
+| High | Sandbox top-ups now have matching completed wallet credits, and two card-funded hires have escrow rows. Test card-funded release/Connect transfer and Identity completion on a device; neither is proven | Stripe + Render + mobile | [`docs/backend-handoff-stripe-webhook-secret.md`](./docs/backend-handoff-stripe-webhook-secret.md) |
 | High | Check the current Render `STRIPE_MOBILE_API_VERSION` and exercise Identity/top-up creation; an earlier Identity request failed with `Invalid Stripe API version: 2025-21-27` | Render + Stripe | [`docs/backend-handoff-stripe-identity-config.md`](./docs/backend-handoff-stripe-identity-config.md) |
 | High | Migration 0038 is applied to the linked Supabase project. Verify the restarted Render API serves the new admin search and `has_password` contracts; the health check does not identify the deployed commit. Deploy the web/mobile clients separately | Render + Vercel + EAS | [`backend/README.md`](./backend/README.md) |
+| High | Post-UAT migrations 0046–0050 and API contracts are committed on `origin/feat/backend-handoff-contracts`, but not deployed. Apply migrations before that API; mobile screens and web Settings integration remain pending | Supabase + Render + mobile + web | [`backend/README.md`](./backend/README.md) |
+| Medium | Admin verification emails need a verified sending domain and provider configuration; the shared platform-identity API exists only on the feature branch | Domain + backend + web | [`docs/backend-handoff-web-admin.md`](./docs/backend-handoff-web-admin.md) |
 | Medium | Investigate the ML service's HTTP 429 before claiming recommendations work end to end | Render + ML service | [`HANDOFF.md`](./HANDOFF.md) |
 | Medium | Push notifications: add Firebase `google-services.json` + FCM credentials, then rebuild | Firebase + EAS | `HANDOFF.md` §4 |
 | Low | Run the k6 money-path load test (it writes to prod, so it needs a go-ahead) | Render/Supabase tier visibility | `HANDOFF.md` §3, [`backend/load/README.md`](./backend/load/README.md) |

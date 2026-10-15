@@ -121,6 +121,9 @@ export class WalletService {
    * the only thing that can create a payout.
    */
   async requestWithdrawal(user: Profile, dto: RequestWithdrawalDto) {
+    if (dto.amount < 1) {
+      throw new BadRequestException('Minimum withdrawal is ₱1');
+    }
     const available = await this.availableBalanceFor(user.id);
     if (available < dto.amount) {
       throw new BadRequestException(

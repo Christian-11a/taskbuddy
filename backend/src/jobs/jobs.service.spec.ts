@@ -9,6 +9,7 @@ import { IsNotPastInstantConstraint, MineJobsQueryDto } from './dto/jobs.dto';
 import type { SupabaseService } from '../supabase/supabase.service';
 import type { UploadsService } from '../uploads/uploads.service';
 import type { EscrowService } from '../escrow/escrow.service';
+import type { GeocodingService } from '../geocoding/geocoding.service';
 import type { Profile } from '../common/types';
 
 type QueryResult = {
@@ -94,8 +95,13 @@ function createService(resultsByTable: Record<string, QueryResult[]>) {
   const cancelForJob = jest.fn().mockResolvedValue(undefined);
   const releaseIfHeld = jest.fn().mockResolvedValue(undefined);
   const escrow = { cancelForJob, releaseIfHeld } as unknown as EscrowService;
+  const geocoding = {
+    geocode: jest
+      .fn()
+      .mockResolvedValue({ latitude: 14.676, longitude: 121.0437 }),
+  } as unknown as GeocodingService;
   return {
-    service: new JobsService(supabase, uploads, escrow),
+    service: new JobsService(supabase, uploads, escrow, geocoding),
     calls,
     cancelForJob,
     releaseIfHeld,
@@ -349,6 +355,13 @@ describe('JobsService.create', () => {
       { job_id: 'j1', label: 'Sweep', position: 0 },
       { job_id: 'j1', label: 'Mop', position: 1 },
     ]);
+    const jobInsert = calls.find(
+      (c) => c.table === 'jobs' && c.method === 'insert',
+    );
+    expect(jobInsert?.args[0]).toMatchObject({
+      latitude: 14.676,
+      longitude: 121.0437,
+    });
   });
 
   it('still returns the job when the checklist write fails', async () => {

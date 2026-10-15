@@ -291,7 +291,7 @@ the backend and convert its JSON tokens into httpOnly cookies):
 | Reports | `GET /admin/analytics/summary` (same browser fallback as the Dashboard) |
 | Withdrawals | `GET /admin/withdrawals`, `POST .../:id/settle` · `POST .../:id/reject` |
 | Platform | `GET`/`PATCH /admin/commission`, category CRUD, admin accounts, notification broadcast, `GET`/`PATCH /admin/platform-identity` and `GET`/`PATCH /admin/job-capacity` (shown as "Not available yet" until the backend serves them) |
-| Settings | `PATCH /profiles/me`, `POST /auth/change-password`, `GET`/`PATCH /settings` (account dark mode), `GET`/`PATCH /admin/maintenance`. The verification email alert and Platform name/support email are unavailable pending backend work. The Data & Privacy export-anonymization switch is local to the browser. |
+| Settings | `PATCH /profiles/me`, `POST /auth/change-password`, `GET`/`PATCH /settings` (account dark mode), `GET`/`PATCH /admin/maintenance`. The platform-identity API is committed but not deployed; the Platform page has an Identity tab for it (shown as "Not available yet" until it is served), while Settings and the footer do not consume it yet. Admin verification email delivery is pending a verified domain. The Data & Privacy export-anonymization switch is local to the browser. |
 
 The Platform page consumes the commission, category, admin-account, and
 notification endpoints. The Withdrawals page consumes the settlement queue.
@@ -560,16 +560,22 @@ pending action tests stay in [Manual Verification](#manual-verification).
 ## Needed Backend Work
 
 **Detailed handoff:** [Web admin backend requirements](../docs/backend-handoff-web-admin.md).
-Four things are needed. None blocks the working console. The first two enable
-Settings features that are disabled today; the last two are not built and need
-the backend first.
+Two Settings features remain unavailable in the deployed console. The backend
+contract for shared platform identity is committed but not deployed or consumed
+by web; admin verification email delivery has not been implemented.
 
 | Need | Backend work | Web follow-up |
 |---|---|---|
-| **Email admins on new provider verification** | Send one email to every active admin when a provider submits for verification. Always on, no duplicates, and a failed send must not block the submission. Until this exists, arrival alerts work only while the console is open. | Replace the disabled Notifications switch with a note once it works. |
-| **Platform name and support email** | Store both once on the server (public read, admin-only update, stale edits rejected, changes audited). Used in the website footer and outgoing emails. **The support mailbox is not created yet**, so the email starts empty and the footer and emails show no contact line until it is set. | Settings shows the email as "Not set yet". Connect the fields and the footer. |
-| **Provider portfolios** | An admin endpoint that returns a provider's portfolio. No admin endpoint exposes them today, so admins cannot view them. | Show portfolios in Verifications once the endpoint exists. |
-| **Job change requests** (date, time and price agreement) | Backend feature request #10 in [`docs/backend-requests.md`](../docs/backend-requests.md). | Not built on the web. Starts after the backend exists. |
+| **Email admins on new provider verification** | Send one email to every active admin when a provider submits for verification. Always on, no duplicates, and a failed send must not block the submission. | Replace the disabled Notifications switch with a note once it works. |
+| **Platform name and support email** | The shared backend contract is committed in migration 0047, but not deployed. **The support mailbox is not created yet**, so the email starts empty and the footer and emails show no contact line until it is set. | The Platform page Identity tab is built and starts working once this is deployed. Connect the Settings fields and the footer after deployment; show the email as "Not set yet" while empty. |
+
+The shared-settings backend contract is implemented locally in migration 0047:
+`GET /platform/identity` is public; `GET /admin/platform-identity` and
+`PATCH /admin/platform-identity` are admin-only. The PATCH body contains
+`expected_version`, `platform_name`, and an optional `support_email`; stale
+versions return 409. This migration and API are not deployed by this README
+update. Admin email delivery remains pending a verified sender domain and
+email-provider configuration, so the notification switch remains disabled.
 
 ## October 4 review and withdrawal contracts
 

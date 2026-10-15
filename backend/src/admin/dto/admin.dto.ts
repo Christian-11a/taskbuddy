@@ -255,3 +255,27 @@ export class UpdateCommissionDto {
   @Type(() => Number)
   commission_rate!: number;
 }
+
+export class UpdatePlatformIdentityDto {
+  @IsInt()
+  @Min(1)
+  expected_version!: number;
+
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(120)
+  platform_name!: string;
+
+  @IsOptional()
+  @IsEmail()
+  support_email?: string;
+}
+
+export class UpdateJobCapacityDto {
+  @IsInt() @Min(1) client_active_max!: number;
+  @IsInt() @Min(1) provider_active_max!: number;
+  @IsInt() @Min(1) provider_pending_max!: number;
+  @IsNumber() @Min(1) daily_hours_max!: number;
+  @IsNumber() @Min(0) rest_hours!: number;
+  @IsNumber() @Min(1) travel_kmh!: number;
+}

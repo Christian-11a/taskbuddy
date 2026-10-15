@@ -17,6 +17,7 @@ import {
   Max,
   Min,
   Validate,
+  ValidateIf,
   ValidatorConstraint,
 } from 'class-validator';
 import type { ValidatorConstraintInterface } from 'class-validator';
@@ -81,6 +82,8 @@ export class CreateJobDto {
   @IsOptional()
   @IsNumber({ maxDecimalPlaces: 2 })
   @IsPositive()
+  @Min(1, { message: 'Budget must be between ₱1 and ₱100,000.' })
+  @Max(100_000, { message: 'Budget must be between ₱1 and ₱100,000.' })
   @Type(() => Number)
   budget?: number;
 
@@ -212,6 +215,30 @@ export class DeclineJobDto {
   @IsString()
   @Length(1, 200)
   reason!: string;
+}
+
+export class ProposeJobChangeDto {
+  @IsIn(['schedule', 'price'])
+  type!: 'schedule' | 'price';
+
+  @ValidateIf((dto: ProposeJobChangeDto) => dto.type === 'schedule')
+  @IsISO8601()
+  new_scheduled_at?: string;
+
+  @ValidateIf((dto: ProposeJobChangeDto) => dto.type === 'price')
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(1)
+  @Max(100_000)
+  new_budget?: number;
+
+  @IsString()
+  @Length(1, 300)
+  reason!: string;
+}
+
+export class DecideJobChangeDto {
+  @IsIn(['accepted', 'declined', 'withdrawn'])
+  decision!: 'accepted' | 'declined' | 'withdrawn';
 }
 
 /**

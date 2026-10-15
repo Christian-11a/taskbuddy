@@ -95,6 +95,13 @@ describe('PaymentsScheduler.reconcileSettledJobs', () => {
 });
 
 describe('PaymentsScheduler.tick', () => {
+  it('expires pending job changes on the payments tick', async () => {
+    const { scheduler } = build([]);
+    await scheduler.tick();
+    const rpcCalls = (scheduler['supabase'].admin.rpc as jest.Mock).mock.calls;
+    expect(rpcCalls).toContainEqual(['job_change_expire_all']);
+  });
+
   it('reconciles, then sweeps transfers, and survives a failing read', async () => {
     const { scheduler, payouts } = build([], { message: 'db down' });
 
