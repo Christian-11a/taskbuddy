@@ -224,6 +224,9 @@ export function WithdrawalsPage() {
       <QueueShell
         showDetailOnNarrow={!!selectedId && !!selected}
         onBack={() => setSelectedId(null)}
+        storageKey="admin.queue.withdrawals"
+        railCount={filtered.length}
+        railLabel="withdrawals"
         toolbar={
           <>
             <FilterTabs

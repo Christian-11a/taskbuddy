@@ -206,6 +206,9 @@ export function SkillRequestsPage() {
       <QueueShell
         showDetailOnNarrow={!!selectedId && !!selected}
         onBack={() => setSelectedId(null)}
+        storageKey="admin.queue.skill-requests"
+        railCount={total}
+        railLabel="requests"
         toolbar={
           <>
             <FilterTabs

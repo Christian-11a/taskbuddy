@@ -188,6 +188,9 @@ export function VerificationsPage() {
       <QueueShell
         showDetailOnNarrow={!!selectedId && !!selected}
         onBack={() => setSelectedId(null)}
+        storageKey="admin.queue.verifications"
+        railCount={filtered.length}
+        railLabel="submissions"
         toolbar={
           <>
             <div className="flex items-center justify-between gap-2">
