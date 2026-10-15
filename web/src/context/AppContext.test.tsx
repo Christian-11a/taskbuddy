@@ -288,7 +288,8 @@ describe("AppContext — moderation refresh results", () => {
       vi.mocked(services.getMaintenanceStatus).mockReturnValueOnce(firstRead.promise);
       vi.mocked(services.setMaintenanceStatus).mockResolvedValueOnce({ enabled: true, message: null, updatedAt: null });
       render(<AppProvider><Probe /></AppProvider>);
-      await waitFor(() => expect(context).toBeDefined());
+      // `context` still holds the previous test's provider until this one renders, so wait for its load to start.
+      await waitFor(() => expect(services.getMaintenanceStatus).toHaveBeenCalled());
       await act(async () => { await context.setMaintenanceMode(true); });
       await act(async () => { firstRead.resolve({ enabled: false, message: null, updatedAt: null }); });
       await waitFor(() => expect(context.lastUpdated).not.toBeNull());
