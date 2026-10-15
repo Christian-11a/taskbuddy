@@ -366,3 +366,73 @@ describe("TransactionsPage — server-paged Wallet tab", () => {
   });
 });
 
+
+describe("TransactionsPage — load failures", () => {
+  const escrowRow = {
+    id: "esc-1", jobId: "job-1", customerName: "Jamie Kim", providerName: "Pat Morgan",
+    service: "Plumbing", amount: 1500, status: "COMPLETED", date: "2026-09-16",
+    fundingMethod: "card", transferStatus: "none", stripeTransferId: null, transferError: null,
+  } as const;
+  const walletRow = {
+    id: "wallet-1", profileName: "Morgan Lee", direction: "credit", kind: "topup",
+    status: "completed", amount: 125, title: "Wallet funding", createdAt: "2026-09-18T10:00:00.000Z",
+  } as const;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockedUseApp.mockReturnValue({ users: [], settings: { anonymizeExports: false } } as unknown as ReturnType<typeof useApp>);
+    mockedSearchTransactions.mockReset();
+    mockedSearchWalletTransactions.mockReset();
+    mockedSearchTransactions.mockResolvedValue({ items: [], total: 0 });
+    mockedSearchWalletTransactions.mockResolvedValue({ items: [], total: 0 });
+  });
+
+  it("shows an error state, not 'No escrow transactions yet.', when the first escrow load fails", async () => {
+    mockedSearchTransactions.mockRejectedValue(new Error("down"));
+    renderWithToast(<TransactionsPage />);
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Could not load escrow transactions.");
+    expect(screen.queryByText("No escrow transactions yet.")).not.toBeInTheDocument();
+  });
+
+  it("keeps the last good escrow rows and offers Retry when an escrow refresh fails", async () => {
+    mockedSearchTransactions.mockResolvedValueOnce({ items: [escrowRow], total: 1 });
+    const user = userEvent.setup();
+    renderWithToast(<TransactionsPage />);
+    expect(await screen.findByText("Jamie Kim")).toBeInTheDocument();
+
+    mockedSearchTransactions.mockRejectedValueOnce(new Error("down"));
+    await user.type(screen.getByLabelText("Search escrow transactions"), "Jam");
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Couldn't refresh escrow transactions.");
+    expect(screen.getByText("Jamie Kim")).toBeInTheDocument();
+
+    mockedSearchTransactions.mockResolvedValueOnce({ items: [escrowRow], total: 1 });
+    await user.click(screen.getByRole("button", { name: "Retry" }));
+    await waitFor(() => expect(screen.queryByRole("alert")).not.toBeInTheDocument());
+  });
+
+  it("keeps the last good wallet rows and offers Retry when a wallet refresh fails", async () => {
+    mockedSearchWalletTransactions.mockResolvedValueOnce({ items: [walletRow], total: 1 });
+    const user = userEvent.setup();
+    renderWithToast(<TransactionsPage />);
+    await user.click(screen.getByRole("button", { name: "Wallet" }));
+    expect(await screen.findByText("Morgan Lee")).toBeInTheDocument();
+
+    mockedSearchWalletTransactions.mockRejectedValueOnce(new Error("down"));
+    await user.type(screen.getByLabelText("Search wallet activity"), "Mor");
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Couldn't refresh wallet activity.");
+    expect(screen.getByText("Morgan Lee")).toBeInTheDocument();
+  });
+
+  it("shows the wallet error state with a retry when the first wallet load fails", async () => {
+    mockedSearchWalletTransactions.mockRejectedValue(new Error("down"));
+    const user = userEvent.setup();
+    renderWithToast(<TransactionsPage />);
+    await user.click(screen.getByRole("button", { name: "Wallet" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Could not load wallet activity.");
+    expect(screen.queryByText("No wallet activity found.")).not.toBeInTheDocument();
+  });
+});

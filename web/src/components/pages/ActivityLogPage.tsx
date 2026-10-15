@@ -9,7 +9,7 @@ import { Pagination } from "@/components/ui/Pagination";
 import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/components/admin/Panel";
 import { SearchField } from "@/components/admin/queue";
-import { TableCard, TableEmpty } from "@/components/admin/table";
+import { LoadFailedState, RefreshFailedBanner, TableCard, TableEmpty } from "@/components/admin/table";
 import { useLiveTick } from "@/hooks/useLiveTick";
 import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 import * as services from "@/lib/services";
@@ -32,6 +32,8 @@ export function ActivityLogPage() {
   const [recentActivity, setRecentActivity] = useState<ActivityEvent[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
+  /** The last load failed. Events stay on screen when there are any (see the banner). */
+  const [error, setError] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
   // Events that arrived since the previous load get a brief highlight.
   const seen = useRef<Set<string> | null>(null);
@@ -50,12 +52,13 @@ export function ActivityLogPage() {
         seen.current = new Set(keys);
         setRecentActivity(result.items);
         setTotal(result.total);
+        setError(false);
         setLoading(false);
       })
       .catch(() => {
+        // Keep the last good events and total; the banner says they may be stale.
         if (!cancelled) {
-          setRecentActivity([]);
-          setTotal(0);
+          setError(true);
           setLoading(false);
         }
       });
@@ -66,6 +69,7 @@ export function ActivityLogPage() {
   }, [debouncedSearch, page, reloadKey]);
 
   useLiveTick(() => setReloadKey((k) => k + 1));
+  const retryLoad = () => setReloadKey((k) => k + 1);
 
   function exportCsv() {
     const csv = toCsv(["Event", "When"], recentActivity.map((a) => [a.text, a.time]));
@@ -100,12 +104,18 @@ export function ActivityLogPage() {
         }
       >
         {recentActivity.length === 0 ? (
-          <div role="status" aria-live="polite">
-            <TableEmpty>
-              {loading ? "Loading activity…" : total === 0 && !search.trim() ? "No platform activity yet." : "No events match this search."}
-            </TableEmpty>
-          </div>
+          error && !loading ? (
+            <LoadFailedState noun="platform activity" onRetry={retryLoad} />
+          ) : (
+            <div role="status" aria-live="polite">
+              <TableEmpty>
+                {loading ? "Loading activity…" : total === 0 && !search.trim() ? "No platform activity yet." : "No events match this search."}
+              </TableEmpty>
+            </div>
+          )
         ) : (
+          <>
+          {error && <RefreshFailedBanner noun="platform activity" onRetry={retryLoad} />}
           <ol className={cn("relative px-5 py-4 transition-opacity", loading && "opacity-60")}>
             <span aria-hidden className="absolute bottom-6 left-[34px] top-6 w-px bg-border" />
             {recentActivity.map((a, i) => {
@@ -125,6 +135,7 @@ export function ActivityLogPage() {
               );
             })}
           </ol>
+          </>
         )}
         <Pagination page={page} pageSize={PAGE_SIZE} total={total} onPageChange={setPage} itemLabel="events" />
       </TableCard>

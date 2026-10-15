@@ -7,6 +7,12 @@ import type { AuditAction } from "@/lib/domain";
 
 vi.mock("@/lib/services", () => ({ searchAuditLog: vi.fn() }));
 
+// The page reads the shared live timestamp (useLiveTick) from AppContext.
+const liveState = vi.hoisted(() => ({ lastUpdated: null as number | null }));
+vi.mock("@/context/AppContext", () => ({
+  useApp: () => ({ lastUpdated: liveState.lastUpdated }),
+}));
+
 const mockedSearchAuditLog = vi.mocked(services.searchAuditLog);
 
 function makeAction(id: string, action: string, actorName = "Morgan Lee"): AuditAction {
@@ -84,5 +90,41 @@ describe("AuditLogPage server search and pagination", () => {
 
     expect(await screen.findByRole("alert")).toBeInTheDocument();
     expect(screen.getByLabelText("Search the audit log")).toBeInTheDocument();
+  });
+
+  it("shows an error state, not 'No admin actions recorded yet.', when the first load fails", async () => {
+    mockedSearchAuditLog.mockRejectedValueOnce(new Error("network error"));
+    render(<AuditLogPage />);
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Could not load the audit log.");
+    expect(screen.queryByText("No admin actions recorded yet.")).not.toBeInTheDocument();
+  });
+
+  it("keeps the last good rows and offers Retry when a refresh fails", async () => {
+    const user = userEvent.setup();
+    mockedSearchAuditLog.mockResolvedValueOnce({ items: [makeAction("a1", "user.suspend", "Keep Me")], total: 1 });
+    render(<AuditLogPage />);
+    expect(await screen.findByText("Keep Me")).toBeInTheDocument();
+
+    mockedSearchAuditLog.mockRejectedValueOnce(new Error("network error"));
+    await user.type(screen.getByLabelText("Search the audit log"), "x");
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Couldn't refresh the audit log.");
+    expect(screen.getByText("Keep Me")).toBeInTheDocument();
+
+    mockedSearchAuditLog.mockResolvedValueOnce({ items: [makeAction("a1", "user.suspend")], total: 41 });
+    await user.click(screen.getByRole("button", { name: "Retry" }));
+    await waitFor(() => expect(screen.queryByRole("alert")).not.toBeInTheDocument());
+  });
+
+  it("reloads when the live console refresh lands", async () => {
+    liveState.lastUpdated = null;
+    const { rerender } = render(<AuditLogPage />);
+    expect(await screen.findByText("user → suspend")).toBeInTheDocument();
+    expect(mockedSearchAuditLog).toHaveBeenCalledTimes(1);
+
+    liveState.lastUpdated = Date.now();
+    rerender(<AuditLogPage />);
+    await waitFor(() => expect(mockedSearchAuditLog).toHaveBeenCalledTimes(2));
   });
 });

@@ -18,7 +18,7 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { PageHeader } from "@/components/admin/Panel";
 import { FilterTabs, SearchField } from "@/components/admin/queue";
-import { BulkBar, DataTable, SummaryStrip, TableCard, TableEmpty, type Column } from "@/components/admin/table";
+import { BulkBar, DataTable, LoadFailedState, RefreshFailedBanner, SummaryStrip, TableCard, TableEmpty, type Column } from "@/components/admin/table";
 import { WarrantyLine } from "@/components/admin/WarrantyLine";
 import { toneFromBadgeClass } from "@/components/admin/tones";
 import { useLiveTick } from "@/hooks/useLiveTick";
@@ -90,6 +90,8 @@ const EscrowTab = forwardRef<ExportHandle, TabProps>(function EscrowTab({ onExpo
   const [transactions, setTransactions] = useState<TransactionRow[]>([]);
   const [totalCount, setTotalCount] = useState(0);
   const [loading, setLoading] = useState(true);
+  /** The last load failed. Rows stay on screen when there are any (see the banner). */
+  const [loadFailed, setLoadFailed] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
   const [retryingId, setRetryingId] = useState<string | null>(null);
   const { showToast } = useToast();
@@ -131,13 +133,14 @@ const EscrowTab = forwardRef<ExportHandle, TabProps>(function EscrowTab({ onExpo
         if (!cancelled) {
           setTransactions(result.items.map(toTransactionRow));
           setTotalCount(result.total);
+          setLoadFailed(false);
           setLoading(false);
         }
       })
       .catch(() => {
+        // Keep the last good rows and total; the banner says they may be stale.
         if (!cancelled) {
-          setTransactions([]);
-          setTotalCount(0);
+          setLoadFailed(true);
           setLoading(false);
         }
       });
@@ -148,6 +151,7 @@ const EscrowTab = forwardRef<ExportHandle, TabProps>(function EscrowTab({ onExpo
   }, [debouncedSearch, statusFilter, page, reloadKey]);
 
   useLiveTick(() => setReloadKey((k) => k + 1));
+  const retryLoad = () => setReloadKey((k) => k + 1);
 
   const volume = transactions.reduce((s, t) => s + t.amountValue, 0);
   const disputedCount = transactions.filter((t) => t.status === "Disputed").length;
@@ -275,6 +279,7 @@ const EscrowTab = forwardRef<ExportHandle, TabProps>(function EscrowTab({ onExpo
           </>
         }
       >
+        {loadFailed && transactions.length > 0 && <RefreshFailedBanner noun="escrow transactions" onRetry={retryLoad} />}
         <DataTable
           label="Escrow transactions table"
           columns={columns}
@@ -294,13 +299,17 @@ const EscrowTab = forwardRef<ExportHandle, TabProps>(function EscrowTab({ onExpo
             disabledAll: transactions.length === 0,
           }}
           empty={
-            <TableEmpty>
-              {loading
-                ? "Loading transactions…"
-                : totalCount === 0 && statusFilter === "all" && !search.trim()
-                  ? "No escrow transactions yet."
-                  : "No transactions match this search or filter."}
-            </TableEmpty>
+            loadFailed && !loading ? (
+              <LoadFailedState noun="escrow transactions" onRetry={retryLoad} />
+            ) : (
+              <TableEmpty>
+                {loading
+                  ? "Loading transactions…"
+                  : totalCount === 0 && statusFilter === "all" && !search.trim()
+                    ? "No escrow transactions yet."
+                    : "No transactions match this search or filter."}
+              </TableEmpty>
+            )
           }
         />
         <Pagination
@@ -439,9 +448,8 @@ const WalletTab = forwardRef<ExportHandle, TabProps>(function WalletTab({ onExpo
         }
       })
       .catch(() => {
+        // Keep the last good rows and total; the banner says they may be stale.
         if (!cancelled) {
-          setRows([]);
-          setTotalCount(0);
           setError(true);
           setLoading(false);
         }
@@ -454,7 +462,7 @@ const WalletTab = forwardRef<ExportHandle, TabProps>(function WalletTab({ onExpo
 
   const searchPending = search !== debouncedSearch;
   const walletBusy = loading || searchPending;
-  const visibleRows = walletBusy || error ? [] : rows;
+  const visibleRows = walletBusy ? [] : rows;
   const sel = useSelection(visibleRows.map((r) => r.id));
 
   function clearSelectionOnScopeChange() {
@@ -594,6 +602,9 @@ const WalletTab = forwardRef<ExportHandle, TabProps>(function WalletTab({ onExpo
           />
         }
       >
+        {error && !walletBusy && visibleRows.length > 0 && (
+          <RefreshFailedBanner noun="wallet activity" onRetry={() => setReloadKey((key) => key + 1)} />
+        )}
         <DataTable
           label="Wallet activity table"
           columns={columns}
@@ -609,9 +620,17 @@ const WalletTab = forwardRef<ExportHandle, TabProps>(function WalletTab({ onExpo
             allLabel: "Select all wallet rows on this page",
             disabledAll: totalCount === 0,
           }}
-          empty={walletBusy ? <TableEmpty>Loading wallet activity…</TableEmpty> : error ? <TableEmpty><span className="text-danger">Could not load wallet activity.</span> <Button size="sm" variant="outline" onClick={() => setReloadKey((key) => key + 1)}>Try again</Button></TableEmpty> : <TableEmpty>No wallet activity found.</TableEmpty>}
+          empty={
+            walletBusy ? (
+              <TableEmpty>Loading wallet activity…</TableEmpty>
+            ) : error ? (
+              <LoadFailedState noun="wallet activity" onRetry={() => setReloadKey((key) => key + 1)} />
+            ) : (
+              <TableEmpty>No wallet activity found.</TableEmpty>
+            )
+          }
         />
-        {!walletBusy && !error && <Pagination
+        {!walletBusy && (!error || visibleRows.length > 0) && <Pagination
           page={page}
           pageSize={PAGE_SIZE}
           total={totalCount}
