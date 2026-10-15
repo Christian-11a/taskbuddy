@@ -28,6 +28,11 @@ function deferred<T>() {
   return { promise, resolve };
 }
 
+/** A read that never answers (for asserting what was requested, not what came back). */
+function neverAnswers<T>(): Promise<T> {
+  return new Promise<T>(() => {});
+}
+
 const account: AdminUser = {
   id: "test-provider", name: "Test Provider", email: "test@example.com",
   role: "provider", status: "ACTIVE", createdAt: "2026-09-01",
@@ -40,9 +45,11 @@ function Probe() {
   useEffect(() => { context = state; }, [state]);
   return null;
 }
+/** Waits for the console load and the Users list, so every read has been applied. */
 async function mount() {
   render(<AppProvider><Probe /></AppProvider>);
   await waitFor(() => expect(context.users).toHaveLength(1));
+  await waitFor(() => expect(context.lastUpdated).not.toBeNull());
 }
 
 describe("AppContext — moderation refresh results", () => {
@@ -240,7 +247,7 @@ describe("AppContext — moderation refresh results", () => {
     expect(context.queueCounts.withdrawals).toBe(3);
   });
 
-  it("a superseded load does not clear the newer load's loading state or stamp lastUpdated", async () => {
+  it("a superseded load does not clear the newer load's counts flag or stamp lastUpdated", async () => {
     const oldCount = deferred<number>();
     const newCount = deferred<number>();
     vi.mocked(services.getPendingWithdrawalCount)
@@ -253,18 +260,102 @@ describe("AppContext — moderation refresh results", () => {
     // Retry supersedes it; the newer load is also waiting on its own count.
     await act(async () => { context.retryLoad(); });
     await waitFor(() => expect(services.getPendingWithdrawalCount).toHaveBeenCalledTimes(2));
-    expect(context.loading).toBe(true);
+    expect(context.countsLoading).toBe(true);
 
     // The superseded request answers last. It must not finish the newer load.
     await act(async () => { oldCount.resolve(5); });
-    expect(context.loading).toBe(true);
+    expect(context.countsLoading).toBe(true);
     expect(context.lastUpdated).toBeNull();
 
     // The newer load completes normally, and only its count is applied.
     await act(async () => { newCount.resolve(1); });
-    await waitFor(() => expect(context.loading).toBe(false));
+    await waitFor(() => expect(context.countsLoading).toBe(false));
     expect(context.lastUpdated).not.toBeNull();
     expect(context.queueCounts.withdrawals).toBe(1);
+  });
+
+  describe("independently applied console parts", () => {
+    it("applies the disputes list as soon as it answers, while verifications and analytics are still out", async () => {
+      vi.mocked(services.getVerifications).mockReturnValueOnce(neverAnswers());
+      vi.mocked(services.getDashboardStats).mockReturnValueOnce(neverAnswers());
+      vi.mocked(services.getDisputes).mockResolvedValueOnce([dispute({ id: "d-first", status: "OPEN" })]);
+      render(<AppProvider><Probe /></AppProvider>);
+
+      await waitFor(() => expect(context.disputes.map((row) => row.id)).toEqual(["d-first"]));
+      expect(context.disputesLoading).toBe(false);
+      expect(context.verificationsLoading).toBe(true);
+      expect(context.analyticsLoading).toBe(true);
+      expect(context.loading).toBe(true);
+      expect(context.lastUpdated).toBeNull();
+    });
+
+    it("starts the Users read in the same pass as the console reads, not after them", async () => {
+      vi.mocked(services.getUsers).mockReturnValue(neverAnswers());
+      vi.mocked(services.getVerifications).mockReturnValue(neverAnswers());
+      render(<AppProvider><Probe /></AppProvider>);
+
+      await waitFor(() => expect(services.getVerifications).toHaveBeenCalled());
+      expect(services.getUsers).toHaveBeenCalledWith();
+      expect(services.getDisputes).toHaveBeenCalled();
+      expect(services.getRecentActivity).toHaveBeenCalled();
+      expect(services.getMaintenanceStatus).toHaveBeenCalled();
+      expect(services.getDashboardStats).toHaveBeenCalled();
+      expect(services.getPendingWithdrawalCount).toHaveBeenCalled();
+      expect(context.usersLoading).toBe(true);
+    });
+
+    it("keeps the parts that answered when another part fails, and reports the failure as a load error", async () => {
+      vi.mocked(services.getRecentActivity).mockRejectedValueOnce(new Error("down"));
+      vi.mocked(services.getVerifications).mockResolvedValueOnce([verification({ id: "v-ok", status: "PENDING" })]);
+      render(<AppProvider><Probe /></AppProvider>);
+
+      await waitFor(() => expect(context.loadError).toBe("Could not reach the backend."));
+      await waitFor(() => expect(context.verifications.map((row) => row.id)).toEqual(["v-ok"]));
+      expect(context.activityLoading).toBe(false);
+      expect(context.lastUpdated).toBeNull();
+    });
+
+    it("reports a failed analytics read as unavailable analytics, not as a load error", async () => {
+      vi.mocked(services.getTopProviders).mockRejectedValueOnce(new Error("down"));
+      await mountLoaded();
+      expect(context.analyticsUnavailable).toBe(true);
+      expect(context.analyticsLoading).toBe(false);
+      expect(context.dashboardStats).toBeNull();
+      expect(context.loadError).toBeNull();
+    });
+
+    it("a failed Users read leaves the console loaded and shows the load error", async () => {
+      vi.mocked(services.getUsers).mockRejectedValueOnce(new Error("down"));
+      render(<AppProvider><Probe /></AppProvider>);
+
+      await waitFor(() => expect(context.loadError).toBe("Could not reach the backend."));
+      await waitFor(() => expect(context.lastUpdated).not.toBeNull());
+      expect(context.loading).toBe(false);
+    });
+
+    it("a late part from an earlier load is dropped after a retry", async () => {
+      const late = deferred<Dispute[]>();
+      vi.mocked(services.getDisputes).mockReturnValueOnce(late.promise);
+      render(<AppProvider><Probe /></AppProvider>);
+      await waitFor(() => expect(services.getDisputes).toHaveBeenCalledTimes(1));
+
+      vi.mocked(services.getDisputes).mockResolvedValueOnce([dispute({ id: "d-new", status: "RESOLVED" })]);
+      await act(async () => { context.retryLoad(); });
+      await waitFor(() => expect(context.disputes.map((row) => row.id)).toEqual(["d-new"]));
+
+      await act(async () => { late.resolve([dispute({ id: "d-old", status: "OPEN" })]); });
+      expect(context.disputes.map((row) => row.id)).toEqual(["d-new"]);
+    });
+
+    it("clears a core load error once a later refresh reads every core part", async () => {
+      vi.mocked(services.getDisputes).mockRejectedValueOnce(new Error("down"));
+      render(<AppProvider><Probe /></AppProvider>);
+      await waitFor(() => expect(context.loadError).not.toBeNull());
+
+      await act(async () => { await context.refreshData(); });
+      expect(context.loadError).toBeNull();
+      expect(context.lastUpdated).not.toBeNull();
+    });
   });
 
   describe("maintenance mode", () => {
