@@ -158,6 +158,65 @@ describe("restoreSession", () => {
   });
 });
 
+describe("loginDetailed cookie check", () => {
+  const adminUser = { id: "u1", email: "admin@taskbuddy.io", full_name: "Ana Cruz", role: "admin" };
+
+  /** Answers by endpoint, so the order the client calls them in does not matter. */
+  function serve(routes: Record<string, () => Promise<Response>>) {
+    return vi.fn((url: string) => {
+      const match = Object.keys(routes).find((path) => url.endsWith(path));
+      if (!match) return Promise.reject(new Error(`unexpected request ${url}`));
+      return routes[match]();
+    }) as unknown as typeof fetch;
+  }
+
+  it("reports 'cookies_blocked' when the browser does not keep the session cookie", async () => {
+    // The sign-in POST succeeds and returns a CSRF token, but the cookie never
+    // comes back on the next request (mobile third-party cookie blocking).
+    global.fetch = serve({
+      "/auth/admin/login": () => Promise.resolve(jsonResponse({ user: adminUser, csrf_token: "csrf-1" })),
+      "/auth/admin/session": () => Promise.resolve(jsonResponse({ message: "Unauthorized" }, 401)),
+      "/auth/admin/refresh": () => Promise.resolve(jsonResponse({ message: "Missing refresh token" }, 401)),
+    });
+
+    await expect(services.loginDetailed("admin@taskbuddy.io", "pw")).resolves.toEqual({
+      ok: false,
+      reason: "cookies_blocked",
+    });
+    expect(getAdminSession()).toBeNull();
+  });
+
+  it("signs in only after the session check returns, using the CSRF token the cookie holds", async () => {
+    global.fetch = serve({
+      "/auth/admin/login": () => Promise.resolve(jsonResponse({ user: adminUser, csrf_token: "csrf-login" })),
+      "/auth/admin/session": () => Promise.resolve(jsonResponse({ user: adminUser, csrf_token: "csrf-session" })),
+    });
+
+    await expect(services.loginDetailed("admin@taskbuddy.io", "pw")).resolves.toEqual({
+      ok: true,
+      profile: { id: "u1", name: "Ana Cruz", email: "admin@taskbuddy.io" },
+    });
+    expect(getAdminSession()?.csrfToken).toBe("csrf-session");
+    expect(global.fetch).toHaveBeenCalledWith(
+      expect.stringContaining("/auth/admin/session"),
+      expect.objectContaining({ credentials: "include" }),
+    );
+  });
+
+  it("reports an unreachable API during the session check as 'network', and keeps no session", async () => {
+    global.fetch = serve({
+      "/auth/admin/login": () => Promise.resolve(jsonResponse({ user: adminUser, csrf_token: "csrf-1" })),
+      "/auth/admin/session": () => Promise.reject(new TypeError("Failed to fetch")),
+    });
+
+    await expect(services.loginDetailed("admin@taskbuddy.io", "pw")).resolves.toEqual({
+      ok: false,
+      reason: "network",
+    });
+    expect(getAdminSession()).toBeNull();
+  });
+});
+
 describe("logout", () => {
   it("calls the admin cookie logout endpoint", async () => {
     global.fetch = vi.fn(() => Promise.reject(new Error("network down"))) as unknown as typeof fetch;

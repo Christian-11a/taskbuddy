@@ -96,6 +96,13 @@ interface AppState {
    * false on the server and stays false until the effect below runs.
    */
   sessionRestored: boolean;
+  /**
+   * True when the server ended a signed-in session (a 401/403 on the console's
+   * own reads), as opposed to an explicit sign-out. The login page explains it.
+   * Cleared by the next sign-in or sign-out. Optional so that hand-built
+   * fixtures (the dev preview) need not set it.
+   */
+  sessionEnded?: boolean;
   adminProfile: AdminProfile;
   login: (email: string, password: string) => Promise<services.LoginResult>;
   logout: () => void;
@@ -223,6 +230,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   // strength of a not-yet-restored session.
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [sessionRestored, setSessionRestored] = useState(false);
+  const [sessionEnded, setSessionEnded] = useState(false);
   const [adminProfile, setAdminProfile] = useState<AdminProfile>({
     id: "",
     name: "Super Admin",
@@ -359,6 +367,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         (analyticsResult.reason.status === 401 || analyticsResult.reason.status === 403)
       ) {
         setIsLoggedIn(false);
+        setSessionEnded(true);
         setLoading(false);
         return;
       }
@@ -421,6 +430,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       // to the login screen instead of showing an empty dashboard.
       if (err instanceof services.ApiError && (err.status === 401 || err.status === 403)) {
         setIsLoggedIn(false);
+        setSessionEnded(true);
       } else if (silent) {
         // A background blip keeps the last good rows; the Live indicator says so.
         setRefreshFailed(true);
@@ -502,6 +512,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const result = await services.loginDetailed(email, password);
     if (result.ok) {
       setAdminProfile(result.profile);
+      setSessionEnded(false);
       setIsLoggedIn(true);
     }
     return result;
@@ -510,6 +521,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   /** The admin layout's auth gate sends the browser to /login once this flips. */
   const logout = useCallback(() => {
     void services.logout();
+    setSessionEnded(false);
     setIsLoggedIn(false);
   }, []);
 
@@ -688,7 +700,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
    */
   const value = useMemo<AppState>(
     () => ({
-      isLoggedIn, sessionRestored, adminProfile,
+      isLoggedIn, sessionRestored, sessionEnded, adminProfile,
       login, logout, updateDisplayName, changePassword,
       loading, loadError, retryLoad, analyticsUnavailable, analyticsInBrowser,
       refreshData, refreshCounts, refreshUsers, lastUpdated, refreshing, refreshFailed,
@@ -703,7 +715,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       maintenanceMode, maintenanceMessage, setMaintenanceMode,
     }),
     [
-      isLoggedIn, sessionRestored, adminProfile,
+      isLoggedIn, sessionRestored, sessionEnded, adminProfile,
       login, logout, updateDisplayName, changePassword,
       loading, loadError, retryLoad, analyticsUnavailable, analyticsInBrowser,
       refreshData, refreshCounts, refreshUsers, lastUpdated, refreshing, refreshFailed,

@@ -1,4 +1,5 @@
 import type { NextConfig } from "next";
+import { adminApiRewrites } from "./src/lib/api/apiBase";
 
 /**
  * Security headers. Sent on every response — Next.js applies these at the edge,
@@ -53,6 +54,15 @@ const nextConfig: NextConfig = {
   },
   async headers() {
     return [{ source: "/:path*", headers: securityHeaders }];
+  },
+  // First-party API proxy (see README, "Deployment: first-party API proxy").
+  // Only added when ADMIN_API_PROXY_TARGET is set; otherwise the console calls
+  // the API directly, as before.
+  async rewrites() {
+    return adminApiRewrites({
+      publicApiUrl: process.env.NEXT_PUBLIC_API_URL,
+      proxyTarget: process.env.ADMIN_API_PROXY_TARGET,
+    });
   },
 };
 

@@ -1,11 +1,14 @@
 import { randomBytes, timingSafeEqual } from "crypto";
 import { cookies } from "next/headers";
 import type { NextRequest } from "next/server";
+import { serverApiUrl } from "@/lib/api/apiBase";
 
 // Shared with web/src/lib/api/client.ts's admin auth — same backend, same env
 // var. Named distinctly from the admin's own cookies (tb_admin_*) so the two
 // sessions never collide in the same browser.
-export const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
+// Server fetch() cannot use the same-origin "/backend" path, so when that is
+// configured these routes call the API at ADMIN_API_PROXY_TARGET instead.
+export const API_URL = serverApiUrl(process.env.NEXT_PUBLIC_API_URL, process.env.ADMIN_API_PROXY_TARGET);
 
 export const ACCESS_COOKIE = "tb_account_access";
 export const REFRESH_COOKIE = "tb_account_refresh";

@@ -296,6 +296,29 @@ describe("AppContext — moderation refresh results", () => {
     });
   });
 
+  describe("session end", () => {
+    it("flags the session as ended when the console is refused right after the admin was restored", async () => {
+      vi.mocked(services.getUsers).mockRejectedValue(new services.ApiError(401, "Unauthorized"));
+      render(<AppProvider><Probe /></AppProvider>);
+      await waitFor(() => expect(context.sessionEnded).toBe(true));
+      expect(context.isLoggedIn).toBe(false);
+    });
+
+    it("flags the session as ended when only the analytics read is refused", async () => {
+      vi.mocked(services.getDashboardStats).mockRejectedValue(new services.ApiError(403, "Forbidden"));
+      render(<AppProvider><Probe /></AppProvider>);
+      await waitFor(() => expect(context.sessionEnded).toBe(true));
+      expect(context.isLoggedIn).toBe(false);
+    });
+
+    it("does not flag a visit that never had a session", async () => {
+      vi.mocked(services.restoreSession).mockResolvedValue(null);
+      render(<AppProvider><Probe /></AppProvider>);
+      await waitFor(() => expect(context.sessionRestored).toBe(true));
+      expect(context.sessionEnded).toBe(false);
+    });
+  });
+
   describe("background refresh status", () => {
     it("flags a failed silent refresh, keeps the last rows, and clears the flag on the next success", async () => {
       await mountLoaded();

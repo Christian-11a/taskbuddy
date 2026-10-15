@@ -10,6 +10,7 @@ import {
   getAdminSession,
   setAdminSession,
   type AdminProfile,
+  type AdminSession,
 } from "@/lib/api/session";
 import {
   mapActivity,
@@ -338,11 +339,28 @@ function toAdminProfile(
  * Why a sign-in failed, so the login screen can say something true. Wrong
  * credentials and "not an admin" deliberately share one reason: telling them
  * apart would reveal which emails belong to admins.
+ *
+ * `cookies_blocked` is different: the API accepted the password, but the browser
+ * did not keep the session cookies it set (common on phones that block
+ * cross-site cookies). Signing in would only bounce back to the form, so it is
+ * reported as a failure with its own explanation.
  */
-export type LoginFailure = "credentials" | "rate_limited" | "network" | "server";
+export type LoginFailure = "credentials" | "rate_limited" | "network" | "server" | "cookies_blocked";
 export type LoginResult =
   | { ok: true; profile: AdminProfile }
   | { ok: false; reason: LoginFailure; retryAfterSeconds?: number };
+
+/**
+ * Reads the admin identity and CSRF token that the browser's session cookies
+ * hold. Resolves to null when the cookies do not describe an admin session.
+ * Throws (an ApiError on a rejected request) when the request itself fails.
+ */
+async function readAdminSession(): Promise<AdminSession | null> {
+  const res = await client.get<AdminSessionApiResponse>("/auth/admin/session");
+  const profile = toAdminProfile(res.user, res.user.email);
+  if (!profile || !res.csrf_token) return null;
+  return { csrfToken: res.csrf_token, adminProfile: profile };
+}
 
 export async function loginDetailed(email: string, password: string): Promise<LoginResult> {
   let res: LoginApiResponse;
@@ -356,8 +374,25 @@ export async function loginDetailed(email: string, password: string): Promise<Lo
   }
   const profile = toAdminProfile(res.user, email);
   if (!profile || !res.csrf_token) return { ok: false, reason: "credentials" };
-  setAdminSession({ csrfToken: res.csrf_token, adminProfile: profile });
-  return { ok: true, profile };
+
+  // The sign-in is only real once the cookies it set come back on a request.
+  // Check that before reporting success, so a blocked cookie is named here
+  // instead of showing up later as a dashboard that bounces to the login form.
+  try {
+    const session = await readAdminSession();
+    if (!session) {
+      clearAdminSession();
+      return { ok: false, reason: "cookies_blocked" };
+    }
+    setAdminSession(session);
+    return { ok: true, profile: session.adminProfile };
+  } catch (err) {
+    clearAdminSession();
+    if (!(err instanceof ApiError)) return { ok: false, reason: "network" };
+    if (err.status === 429) return { ok: false, reason: "rate_limited", retryAfterSeconds: err.retryAfterSeconds };
+    if (err.status === 401 || err.status === 403) return { ok: false, reason: "cookies_blocked" };
+    return { ok: false, reason: "server" };
+  }
 }
 
 export async function login(email: string, password: string): Promise<AdminProfile | null> {
@@ -368,11 +403,10 @@ export async function login(email: string, password: string): Promise<AdminProfi
 /** Re-establishes in-memory identity from the browser's cookie session. */
 export async function restoreSession(): Promise<AdminProfile | null> {
   try {
-    const res = await client.get<AdminSessionApiResponse>("/auth/admin/session");
-    const profile = toAdminProfile(res.user, res.user.email);
-    if (!profile || !res.csrf_token) return null;
-    setAdminSession({ csrfToken: res.csrf_token, adminProfile: profile });
-    return profile;
+    const session = await readAdminSession();
+    if (!session) return null;
+    setAdminSession(session);
+    return session.adminProfile;
   } catch {
     return null;
   }

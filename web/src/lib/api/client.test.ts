@@ -209,3 +209,38 @@ describe("client rate-limit handling", () => {
     expect(getAdminSession()).not.toBeNull();
   });
 });
+
+describe("client base URL", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.resetModules();
+  });
+
+  it("calls a same-origin relative API base, so the browser sends the admin cookies first-party", async () => {
+    vi.stubEnv("NEXT_PUBLIC_API_URL", "/backend");
+    vi.resetModules();
+    const fresh = await import("./client");
+    const fetchMock = vi.fn(() => Promise.resolve(jsonResponse({ ok: true })));
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    expect(fresh.API_URL).toBe("/backend");
+    await fresh.client.get("/admin/users");
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/backend/admin/users",
+      expect.objectContaining({ credentials: "include" }),
+    );
+  });
+
+  it("keeps the local API default when NEXT_PUBLIC_API_URL is unset", async () => {
+    const saved = process.env.NEXT_PUBLIC_API_URL;
+    delete process.env.NEXT_PUBLIC_API_URL;
+    try {
+      vi.resetModules();
+      const fresh = await import("./client");
+      expect(fresh.API_URL).toBe("http://localhost:3001");
+    } finally {
+      if (saved !== undefined) process.env.NEXT_PUBLIC_API_URL = saved;
+    }
+  });
+});
