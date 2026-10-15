@@ -5,7 +5,7 @@
 **Scope:** the web admin console. Mobile appears only where a shared endpoint or
 row changes what mobile sees.
 
-**Basis:** the backend as it stands on this branch (migrations through 0045). Each
+**Basis:** the backend as it stands on this branch (migrations through 0050, including PR #81). Each
 item says what exists today, so nothing here asks for something already served.
 
 **Priority:** High means the console is wrong or slow today. Medium means a
@@ -229,3 +229,30 @@ the first request after idle is slowed by a cold start on the hosting side. A pe
 verifications read without document URLs would help most.
 
 **Priority.** Medium.
+
+## (i) A "changed since" read for lists
+
+**Today.** Every list (users, verifications, disputes, transactions, bookings) can only be
+read in full, in pages of 200. The web console reads them in full when it starts and, for
+disputes and pending verifications, on every 30 s refresh. Cost grows with the data: at
+5,000 users a full read is about 2 MB in 26 requests. A list over 5,000 rows is cut at
+5,000 by the console (with a console warning).
+
+**Ask.** An optional `updated_since=<timestamp>` filter (and a `deleted_ids` or `deleted_since`
+signal) on the admin list endpoints, so the console can ask only for rows changed since its
+last read.
+
+**Priority.** Medium. Not urgent at today's data size.
+
+## (j) Decision needed: what an admin cancel does to held money
+
+**Today.** `POST /admin/bookings/:id/cancel` (`AdminService.cancelBooking`) only sets the job
+to `cancelled`. It does not call the escrow cancel path. If money is held, the database trigger
+from migration 0041 opens a cancellation review and freezes the funds; nothing is refunded
+until an admin resolves it. The web console's cancel confirmation now says exactly this.
+
+**Ask.** Please decide whether an admin cancel should refund the client straight away when
+funds are held (the web copy would then say so), or keep the review step. No web change is
+needed beyond the confirmation text.
+
+**Priority.** Low, a product decision.
