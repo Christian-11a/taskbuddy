@@ -202,3 +202,30 @@ withdrawals, activity, audit, skill requests and wallet transactions. Two do not
 paging).
 
 **Priority.** High for the admin lists. Medium for notifications.
+
+## (h) Slow admin reads (measured from the live console)
+
+**Today.** Measured in the browser on 2026-10-15 against the live API, reloading the admin
+console with a small data set (a handful of disputes, one page of users). Response times
+for a single request, first load after being idle:
+
+| Request | First load | Warm (30 s refresh) |
+|---|---|---|
+| `GET /admin/verifications` (one page) | 3.2 s and 4.6 s | about 1.2 s (pending only) |
+| `GET /admin/analytics/summary` | 3.6 s and 4.6 s | 1.7 s |
+| `GET /admin/users` | 2.7 s | not re-read |
+| `GET /admin/withdrawals?status=pending&limit=1` | 2.7 s | 0.9 s |
+| `GET /settings` | 2.1 s | not re-read |
+| `GET /admin/disputes` | 2.1 s | 0.9 s |
+| `GET /auth/admin/session` | 0.7 to 2.2 s | not re-read |
+
+The web console now shows each part as soon as its own data arrives, but the slowest reads
+still decide how long the Dashboard and Verifications wait.
+
+**Ask.** Please check why the verifications list and the analytics summary take 3 to 5 s on
+a small data set (for example whether verifications builds signed URLs for every document row
+on the list, or whether the analytics summary runs several full-table counts), and whether
+the first request after idle is slowed by a cold start on the hosting side. A pending-only
+verifications read without document URLs would help most.
+
+**Priority.** Medium.
