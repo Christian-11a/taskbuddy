@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import dynamic from "next/dynamic";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import {
   AlertTriangle, ArrowRight, CalendarDays, CheckCircle2, Clock, CreditCard, Percent, RotateCw, ShieldCheck,
@@ -17,9 +18,14 @@ import { cn } from "@/lib/utils";
 import { AnimatedNumber } from "@/components/admin/AnimatedNumber";
 import { Delta, KpiCard, monthOverMonth } from "@/components/admin/KpiCard";
 import { EmptyState, PageHeader, Panel } from "@/components/admin/Panel";
-import { TrendChart } from "@/components/admin/charts";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+
+// Recharts (~110 KB gzipped) loads after the tiles and text. The skeleton keeps the 220px chart height (see the TrendChart height below).
+const TrendChart = dynamic(() => import("@/components/admin/charts").then((m) => m.TrendChart), {
+  ssr: false,
+  loading: () => <Skeleton className="w-full" style={{ height: 220 }} />,
+});
 
 /** Figures the shared context doesn't carry (its bookings/transactions are
  *  empty by design), loaded from the same endpoints their own pages use. */

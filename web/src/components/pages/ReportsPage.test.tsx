@@ -155,3 +155,19 @@ describe("ReportsPage — metric labels", () => {
     expect(screen.queryByText(/active providers/i)).not.toBeInTheDocument();
   });
 });
+
+describe("ReportsPage — chart loading", () => {
+  beforeEach(() => {
+    vi.resetAllMocks();
+  });
+
+  it("shows the figures and chart-height placeholders before the chart code arrives", () => {
+    setReportState({ stats: makeStats() });
+    const { container } = render(<ReportsPage />);
+
+    expect(screen.getByText("Total provider payouts")).toBeInTheDocument();
+    // recharts loads on its own chunk; until then each chart keeps its slot.
+    expect(container.querySelector('[style*="height: 260px"]')).not.toBeNull();
+    expect(container.querySelector('[style*="height: 240px"]')).not.toBeNull();
+  });
+});

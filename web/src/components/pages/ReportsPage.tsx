@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import dynamic from "next/dynamic";
 import { AlertTriangle, CalendarRange, CheckCircle2, Download, Star, TrendingUp, Wallet } from "lucide-react";
 import { useApp } from "@/context/AppContext";
 import { formatCurrency, formatCurrencyCompact, formatRating, ratingForCsv } from "@/lib/adapters";
@@ -11,9 +12,23 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { PageHeader, Panel } from "@/components/admin/Panel";
 import { Avatar, FilterTabs, initialsOf } from "@/components/admin/queue";
-import { BarList, BarTrend, DonutChart, ProgressRing, TrendChart } from "@/components/admin/charts";
+import { BarList, ProgressRing } from "@/components/admin/meters";
 import { Delta, KpiCard, monthOverMonth } from "@/components/admin/KpiCard";
 import { AnalyticsSourceNote } from "@/components/admin/AnalyticsSourceNote";
+
+// Recharts loads after the page's text and tiles. Each skeleton keeps its chart's height (see the height props below).
+const TrendChart = dynamic(() => import("@/components/admin/charts").then((m) => m.TrendChart), {
+  ssr: false,
+  loading: () => <Skeleton className="w-full" style={{ height: 260 }} />,
+});
+const BarTrend = dynamic(() => import("@/components/admin/charts").then((m) => m.BarTrend), {
+  ssr: false,
+  loading: () => <Skeleton className="w-full" style={{ height: 240 }} />,
+});
+const DonutChart = dynamic(() => import("@/components/admin/charts").then((m) => m.DonutChart), {
+  ssr: false,
+  loading: () => <Skeleton className="h-[168px] w-full" />,
+});
 
 type Range = "3" | "6" | "12";
 

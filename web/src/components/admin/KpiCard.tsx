@@ -1,10 +1,17 @@
 "use client";
 
 import * as React from "react";
+import dynamic from "next/dynamic";
 import { ArrowDownRight, ArrowUpRight, Minus } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { Skeleton } from "@/components/ui/skeleton";
 import { AnimatedNumber } from "./AnimatedNumber";
-import { Sparkline } from "./charts";
+
+// Recharts loads after the card's figures are on screen. The skeleton has the sparkline's height (h-10).
+const Sparkline = dynamic(() => import("./charts").then((m) => m.Sparkline), {
+  ssr: false,
+  loading: () => <Skeleton className="-mx-1 mt-2 h-10" />,
+});
 
 /** Percent change between the last two points of a series, or null when there
  *  is no previous month to compare with (or it was zero). */

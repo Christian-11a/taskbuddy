@@ -42,6 +42,7 @@ const allZeroQueues: QueueCounts = { verifications: 0, disputes: 0, withdrawals:
 function setDashboardState(
   dashboardStats: DashboardStats | null = stats,
   queueCounts: QueueCounts = allZeroQueues,
+  revenueSeries: { month: string; value: number }[] = [],
 ) {
   mockedUseApp.mockReturnValue({
     ensureUsers: vi.fn(),
@@ -50,7 +51,7 @@ function setDashboardState(
     recentActivity: [],
     disputes: [],
     users: [],
-    revenueSeries: [],
+    revenueSeries,
     bookingsSeries: [],
     loading: false,
     analyticsUnavailable: false,
@@ -158,5 +159,16 @@ describe("DashboardPage metric labels", () => {
     expect(screen.getByText("Payout trend")).toBeInTheDocument();
     expect(screen.queryByText("Active providers")).not.toBeInTheDocument();
     expect(screen.queryByText("Gross merchandise value")).not.toBeInTheDocument();
+  });
+});
+
+describe("DashboardPage chart loading", () => {
+  it("shows the tiles and a chart-height placeholder before the chart code arrives", () => {
+    setDashboardState(stats, allZeroQueues, [{ month: "Aug", value: 1200 }, { month: "Sep", value: 1800 }]);
+    const { container } = render(<DashboardPage />);
+
+    expect(screen.getByText("Registered providers")).toBeInTheDocument();
+    // recharts loads on its own chunk; until then the trend keeps its 220px slot.
+    expect(container.querySelector('[style*="height: 220px"]')).not.toBeNull();
   });
 });
