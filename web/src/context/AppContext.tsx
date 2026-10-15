@@ -372,15 +372,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, []);
 
   // preferences — lazily hydrated from localStorage on the client
-  // First run follows the OS setting (light if it has none). A saved
-  // preference still wins, and the account's server preference is applied
-  // after the admin session/data restore.
-  const [darkMode, setDarkModeState] = useState(() =>
-    resolveInitialTheme(
-      loadStoredPrefs()?.darkMode,
-      typeof window !== "undefined" && window.matchMedia?.("(prefers-color-scheme: dark)").matches === true,
-    ),
-  );
+  // First run is light, whatever the OS prefers. A saved preference still wins,
+  // and the account's server preference is applied after the admin session/data
+  // restore.
+  const [darkMode, setDarkModeState] = useState(() => resolveInitialTheme(loadStoredPrefs()?.darkMode));
   const [sidebarCollapsed, setSidebarCollapsedState] = useState(
     () => loadStoredPrefs()?.sidebarCollapsed ?? false,
   );
