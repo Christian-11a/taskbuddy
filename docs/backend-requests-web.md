@@ -11,6 +11,19 @@ item says what exists today, so nothing here asks for something already served.
 **Priority:** High means the console is wrong or slow today. Medium means a
 workaround exists and the console works without the change.
 
+## Deployment request: PR #81 (migrations 0046 to 0050)
+
+The web admin is ready to use two endpoints from PR #81, but they cannot work until both
+of these are done on the live environment:
+
+1. Run migrations 0046 to 0050 on the Supabase project (early payment release, shared
+   platform identity, job capacity settings, job change requests, provider release requests).
+2. Deploy the backend server code from PR #81, which adds `GET/PATCH /admin/platform-identity`
+   (with `expected_version`, 409 on a stale version) and `GET/PATCH /admin/job-capacity`.
+
+Please tell us when both are live. Until then the web admin will show these settings as
+"not available yet" instead of failing.
+
 | # | Request | Priority | Who benefits |
 |---|---|---|---|
 | a | Clarification `recipient` (client, provider, both) | Medium | Web, mobile, admins |
