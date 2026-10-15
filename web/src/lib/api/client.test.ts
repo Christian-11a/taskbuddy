@@ -42,6 +42,34 @@ describe("client", () => {
     expect((init.headers as Record<string, string>).Authorization).toBeUndefined();
   });
 
+  it("sends a GET with no custom headers, so a cross-origin read needs no preflight", async () => {
+    setAdminSession({
+      csrfToken: "csrf-123",
+      adminProfile: { id: "admin-1", name: "Ana", email: "ana@taskbuddy.io" },
+    });
+    const fetchMock = vi.fn(() => Promise.resolve(jsonResponse({ ok: true })));
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    await client.get("/admin/users");
+
+    const [, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+    expect(init.headers).toEqual({});
+  });
+
+  it("declares a JSON Content-Type only when the request has a body", async () => {
+    const fetchMock = vi.fn(() => Promise.resolve(jsonResponse({ ok: true })));
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    await client.post("/admin/users/u1/suspend", { reason: "Fraud" });
+    await client.patch("/settings", { dark_mode: true });
+    await client.post("/auth/admin/logout");
+
+    const headersOf = (i: number) => (fetchMock.mock.calls[i] as unknown as [string, RequestInit])[1].headers as Record<string, string>;
+    expect(headersOf(0)["Content-Type"]).toBe("application/json");
+    expect(headersOf(1)["Content-Type"]).toBe("application/json");
+    expect(headersOf(2)["Content-Type"]).toBeUndefined();
+  });
+
   it("attaches the in-memory CSRF token to unsafe requests", async () => {
     setAdminSession({
       csrfToken: "csrf-123",
