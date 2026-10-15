@@ -35,6 +35,8 @@ import {
   UpdateCategoryDto,
   UpdateCommissionDto,
   UpdateMaintenanceDto,
+  UpdatePlatformIdentityDto,
+  UpdateJobCapacityDto,
 } from './dto/admin.dto';
 import {
   ListVerificationsQueryDto,
@@ -150,6 +152,32 @@ export class AdminController {
   @Get('maintenance')
   getMaintenance() {
     return this.adminService.getMaintenance();
+  }
+
+  @Get('platform-identity')
+  getPlatformIdentity() {
+    return this.adminPlatformService.getPlatformIdentity();
+  }
+
+  @Patch('platform-identity')
+  updatePlatformIdentity(
+    @CurrentUser() admin: Profile,
+    @Body() dto: UpdatePlatformIdentityDto,
+  ) {
+    return this.adminPlatformService.updatePlatformIdentity(admin, dto);
+  }
+
+  @Get('job-capacity')
+  getJobCapacity() {
+    return this.adminPlatformService.getJobCapacity();
+  }
+
+  @Patch('job-capacity')
+  updateJobCapacity(
+    @CurrentUser() admin: Profile,
+    @Body() dto: UpdateJobCapacityDto,
+  ) {
+    return this.adminPlatformService.updateJobCapacity(admin, dto);
   }
 
   @Patch('maintenance')

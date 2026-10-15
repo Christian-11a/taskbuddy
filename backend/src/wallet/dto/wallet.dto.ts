@@ -5,6 +5,7 @@ import {
   IsNumber,
   IsOptional,
   IsPositive,
+  Min,
   IsString,
   IsUUID,
   Length,
@@ -25,6 +26,7 @@ import type { WalletTxnDirection } from '../../common/types';
 export class RequestWithdrawalDto {
   @IsNumber({ maxDecimalPlaces: 2 })
   @IsPositive()
+  @Min(1, { message: 'Withdrawal amount must be at least ₱1.' })
   @Type(() => Number)
   amount!: number;
 
@@ -34,7 +36,11 @@ export class RequestWithdrawalDto {
    * disbursement rail to validate against yet.
    */
   @IsString()
-  @Length(1, 200)
+  @Length(5, 200, { message: 'Destination must be 5–200 characters.' })
+  @Matches(/^[\p{L}\p{N}][\p{L}\p{N} .,'#()/-]*$/u, {
+    message:
+      'Destination may contain letters, numbers, spaces, and supported account punctuation only.',
+  })
   destination!: string;
 
   /** What the row is called in the ledger. Defaults to 'Withdrawal'. */

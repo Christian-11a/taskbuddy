@@ -160,6 +160,22 @@ export class EscrowService {
     return this.payOut(escrow);
   }
 
+  async releaseEarly(jobId: string, clientId: string): Promise<EscrowRow> {
+    const { data, error } = await this.supabase.admin.rpc(
+      'escrow_release_early',
+      {
+        p_job_id: jobId,
+        p_client_id: clientId,
+      },
+    );
+    if (error) throw moneyError(error);
+    const released = data as EscrowRow;
+    if (released.transfer_status === 'pending') {
+      void this.connectPayouts.processEscrow(released.id);
+    }
+    return released;
+  }
+
   /**
    * `release`, but tolerant of the two states warranty reconciliation legitimately
    * reaches it in: a job posted without a budget (no escrow row at all), and a

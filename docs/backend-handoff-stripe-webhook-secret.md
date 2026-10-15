@@ -1,6 +1,14 @@
 # Backend/infra handoff — Stripe webhook deliveries all failing (wallet never credited)
 
-**Status: open, blocking (2026-10-01).** Needs someone with **Render dashboard** access for the backend
+**Status update (2026-10-15):** A recent sandbox `payment_intent.succeeded`
+event has `pending_webhooks = 0`, and the corresponding PaymentIntent has one
+completed `topup` row in the linked wallet ledger. This directly verifies one
+wallet credit. Two `hire_funding` PaymentIntents also have matching card-funded
+escrow rows; those escrows are now disputed, so payout is not proven. Recent
+Stripe Identity sessions were canceled, with no successful completion shown
+in this check. The earlier blanket failure claim below is historical.
+
+**Historical status: open, blocking (2026-10-01).** Needs someone with **Render dashboard** access for the backend
 service (`taskbuddy-kpek`) and the **Stripe Dashboard (sandbox)**. No code change is expected.
 
 **Who this is for:** whoever holds Render and Stripe. The mobile developer has neither.
