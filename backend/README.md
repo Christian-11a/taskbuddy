@@ -165,11 +165,11 @@ Job lifecycle: `open → recommending → assigned → in_progress → completed
    > 0023 and 0024 before deploying the API**. 0024's default commission rate is
    > 0, so applying it changes no payout until an admin sets a rate.
 
-   The two Storage buckets are created by the migrations themselves
+   The Storage buckets are created by the migrations themselves
    (`insert into storage.buckets ... on conflict do nothing`), so there is no
-   separate dashboard step. `job-photos` is public-read; `verification-docs`
-   is private and is only ever read through short-lived signed URLs the API
-   generates for admins.
+   separate dashboard step. `job-photos` and `avatars` are public-read;
+   `verification-docs` is private and is only ever read through short-lived
+   signed URLs the API generates for admins.
 
 3. (Development) In Authentication → Providers → Email, consider disabling
    "Confirm email" so `POST /auth/register` returns a session immediately.
@@ -687,9 +687,10 @@ curl -X POST $API/jobs -H "Authorization: Bearer $TOKEN" -H "Content-Type: appli
 ## Pending handoffs
 
 - The post-UAT server requests are in [`docs/backend-requests.md`](../docs/backend-requests.md).
-  Validation and the new API/database contracts are implemented locally in migrations
-  0046–0050. **They are not deployed by this README update**; deploy migrations before
-  the matching API, then run funded-job and booking acceptance checks.
+  Validation and the new API/database contracts are committed on
+  `origin/feat/backend-handoff-contracts` in migrations 0046–0050. **They are not
+  deployed**; apply migrations before deploying the matching API, then run
+  funded-job and booking acceptance checks.
 - [`docs/backend-handoff-mobile-e2e-test-environment.md`](../docs/backend-handoff-mobile-e2e-test-environment.md)
   still requires a test wallet balance when the Maestro account runs low. Its Google
   Maps key request is obsolete because the app no longer uses `react-native-maps`.

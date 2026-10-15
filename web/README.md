@@ -245,7 +245,7 @@ the backend and convert its JSON tokens into httpOnly cookies):
 | Reports | `GET /admin/analytics/summary` (same browser fallback as the Dashboard) |
 | Withdrawals | `GET /admin/withdrawals`, `POST .../:id/settle` · `POST .../:id/reject` |
 | Platform | `GET`/`PATCH /admin/commission`, category CRUD, admin accounts, notification broadcast |
-| Settings | `PATCH /profiles/me`, `POST /auth/change-password`, `GET`/`PATCH /settings` (account dark mode), `GET`/`PATCH /admin/maintenance`. The verification email alert and Platform name/support email are unavailable pending backend work. The Data & Privacy export-anonymization switch is local to the browser. |
+| Settings | `PATCH /profiles/me`, `POST /auth/change-password`, `GET`/`PATCH /settings` (account dark mode), `GET`/`PATCH /admin/maintenance`. The platform-identity API is committed on an undeployed feature branch; Settings and the footer do not consume it yet. Admin verification email delivery is pending a verified domain. The Data & Privacy export-anonymization switch is local to the browser. |
 
 The Platform page consumes the commission, category, admin-account, and
 notification endpoints. The Withdrawals page consumes the settlement queue.
@@ -503,13 +503,14 @@ pending action tests stay in [Manual Verification](#manual-verification).
 ## Needed Backend Work
 
 **Detailed handoff:** [Web admin backend requirements](../docs/backend-handoff-web-admin.md).
-Two things are needed. Neither blocks the working console; both enable Settings
-features that are disabled today.
+Two Settings features remain unavailable in the deployed console. The backend
+contract for shared platform identity is committed but not deployed or consumed
+by web; admin verification email delivery has not been implemented.
 
 | Need | Backend work | Web follow-up |
 |---|---|---|
 | **Email admins on new provider verification** | Send one email to every active admin when a provider submits for verification. Always on, no duplicates, and a failed send must not block the submission. | Replace the disabled Notifications switch with a note once it works. |
-| **Platform name and support email** | Store both once on the server (public read, admin-only update, stale edits rejected, changes audited). Used in the website footer and outgoing emails. **The support mailbox is not created yet**, so the email starts empty and the footer and emails show no contact line until it is set. | Settings shows the email as "Not set yet". Connect the fields and the footer. |
+| **Platform name and support email** | The shared backend contract is committed in migration 0047, but not deployed. **The support mailbox is not created yet**, so the email starts empty and the footer and emails show no contact line until it is set. | Connect Settings fields and the footer after deployment; show the email as "Not set yet" while empty. |
 
 The shared-settings backend contract is implemented locally in migration 0047:
 `GET /platform/identity` is public; `GET /admin/platform-identity` and

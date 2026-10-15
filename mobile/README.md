@@ -12,7 +12,8 @@ contracts and run the Android device flows before releasing this app. See
 
 The Expo / React Native app for **TaskBuddy**, a Philippine home-services
 marketplace. Clients post jobs, providers apply and complete them.
-(The `web/` app is an admin console only; it has no client or provider surface.)
+(The `web/` app has a public promo/auth site and an admin console; marketplace
+jobs remain in mobile.)
 
 Everything on screen reads from the real NestJS API — there is no mock data
 layer. See [What's not wired yet](#whats-not-wired-yet) for the honest list of
@@ -486,9 +487,9 @@ after QA round 2, all shipped on the same branch:
 The current release and operations checklist is [`HANDOFF.md`](../HANDOFF.md)
 at the repo root. The older guides in [`docs/`](../docs/) explain the original
 requests and contracts; use the dated checks here and in `HANDOFF.md` for their
-current status. Stripe Identity configuration still needs a Render check, and
-the recovered webhook delivery still needs fresh wallet, hire and Identity
-end-to-end checks.
+current status. A 2026-10-15 sandbox check found completed wallet credits for
+successful top-ups and card-funded escrow rows for two hires. Card-funded release,
+Connect transfer, Identity completion, and device flows remain unverified.
 
 ### 1. [`docs/backend-handoff-booking-tasks-verification.md`](../docs/backend-handoff-booking-tasks-verification.md)
 
@@ -612,19 +613,20 @@ when the API answers 5xx.
 
 ### 7. [`docs/backend-handoff-stripe-webhook-secret.md`](../docs/backend-handoff-stripe-webhook-secret.md)
 
-**Partial recovery (2026-10-02):** earlier `payment_intent.succeeded`
-deliveries returned HTTP 400 because signature verification failed. After the
+**2026-10-15 update:** sandbox PaymentIntents for top-ups have matching completed
+wallet credits, and two card-funded hires have matching escrow rows. The
+earlier **partial recovery (2026-10-02)** followed failed
+`payment_intent.succeeded` deliveries caused by signature verification. After the
 Render signing-secret change, one manual resend returned HTTP 200 with
-`{ "received": true }`. That confirms receipt of that event, not a fresh
-top-up's wallet credit or card-at-hire/Identity completion.
+`{ "received": true }`. That historical resend alone did not prove a credit.
 
 | # | Item | Needs | Status |
 |---|---|---|---|
-| 1 | Verify a fresh sandbox top-up produces a successful delivery and one wallet credit | Stripe Dashboard + mobile | **Pending** |
-| 2 | Verify card-at-hire and Identity webhook outcomes on a development build | Stripe Dashboard + mobile | **Pending** |
+| 1 | Verify a sandbox top-up produces a successful delivery and one wallet credit | Stripe + wallet ledger | **Verified in sandbox**; device flow still pending |
+| 2 | Verify card-at-hire and Identity outcomes on a development build | Stripe Dashboard + mobile | **Card-funded escrow recorded**; release, Identity completion, and device flow pending |
 | 3 | Review any remaining failed historical deliveries before resending them | Stripe Dashboard | **Pending** |
 
-The mobile side is done. After Stripe returns, Add Money shows "Money added" or "Payment received" with a single
+The wallet top-up UI is done. After Stripe returns, Add Money shows "Money added" or "Payment received" with a single
 Done button, so it can no longer start a second charge. The wallet also supports pull-to-refresh.
 
 ---
@@ -638,7 +640,8 @@ open: the Stripe Connect escrow, card-at-hire, and verification as a gate
 (§29, §17). The migration list, including which ones must be applied before an
 API deploy and which must run alone (0022, 0027), is kept in one place:
 `backend/README.md`. Local migration files now run through **0050**; migrations
-0046–0050 and their matching API have not been deployed by this documentation change.
+0046–0050 and their matching API are committed on
+`origin/feat/backend-handoff-contracts`, not deployed.
 
 The post-UAT backend request list is [`docs/backend-requests.md`](../docs/backend-requests.md).
 Local API contracts now cover early release, provider release requests, schedule and
@@ -902,11 +905,11 @@ and restart checks separate.
 
 The selected current-stack behavior is in-app notifications: a stored notice
 for each received message, a live unread bell/list through Render SSE, and
-refresh on app return. The PDF does not request Android OS alerts while closed
-or backgrounded; the user declined adding Firebase. Earlier FCM setup/new-build
-requirements apply only to the optional legacy system-push feature, not this
-implementation's completion gates. No Firebase project or credentials will be
-created. Native bell/list/navigation and app-return checks remain pending.
+refresh on app return. That October 4 PDF scope did not include Android OS
+alerts while closed or backgrounded. The newer post-UAT request in
+[`docs/backend-requests.md`](../docs/backend-requests.md) separately asks for
+Android sound and system push; it needs Firebase credentials and a new native
+build. Native bell/list/navigation and app-return checks remain pending.
 
 
 ### Native emulator verification (October 4, 2026)
