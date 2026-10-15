@@ -135,3 +135,23 @@ describe("ReportsPage — CSV export", () => {
     expect(csv).toMatch(/\r\nLee Tan,9,(\r\n|$)/);
   });
 });
+
+describe("ReportsPage — metric labels", () => {
+  beforeEach(() => {
+    vi.resetAllMocks();
+  });
+
+  it("names each figure for what the backend value measures", () => {
+    setReportState({ stats: makeStats({ completionRate: 40, activeProviders: 7 }) });
+    render(<ReportsPage />);
+
+    expect(screen.getByText("Total provider payouts")).toBeInTheDocument();
+    expect(screen.getByText("Provider payouts this month")).toBeInTheDocument();
+    expect(screen.getByText("Completed jobs")).toBeInTheDocument();
+    expect(screen.getByText("Share of all posted jobs that finished")).toBeInTheDocument();
+    expect(screen.getByText("Across 7 registered providers")).toBeInTheDocument();
+    expect(screen.queryByText(/gross merchandise/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/accepted jobs/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/active providers/i)).not.toBeInTheDocument();
+  });
+});

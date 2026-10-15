@@ -146,3 +146,16 @@ describe("DashboardPage queue counts", () => {
     expect(screen.queryByText("All clear: nothing is waiting for review.")).not.toBeInTheDocument();
   });
 });
+
+describe("DashboardPage metric labels", () => {
+  it("names each headline number for what the backend value measures", () => {
+    setDashboardState(stats, allZeroQueues);
+    render(<DashboardPage />);
+
+    expect(screen.getByText("Registered providers")).toBeInTheDocument();
+    expect(screen.getByText("Provider payouts")).toBeInTheDocument();
+    expect(screen.getByText("Payout trend")).toBeInTheDocument();
+    expect(screen.queryByText("Active providers")).not.toBeInTheDocument();
+    expect(screen.queryByText("Gross merchandise value")).not.toBeInTheDocument();
+  });
+});

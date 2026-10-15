@@ -291,7 +291,7 @@ export function DashboardPage() {
           footer={<span className="text-[12px] text-muted-foreground">{newUsersThisMonth > 0 ? <><span className="font-semibold text-ok">+{newUsersThisMonth}</span> joined this month</> : "No new signups this month"}</span>}
         />
         <KpiCard
-          label="Active providers"
+          label="Registered providers"
           icon={<ShieldCheck />}
           value={dashboardStats.activeProviders}
           footer={<span className="text-[12px] text-muted-foreground"><span className="font-semibold text-foreground tabular">{activeProviderShare}%</span> of registered users</span>}
@@ -304,7 +304,7 @@ export function DashboardPage() {
           footer={<Delta value={monthOverMonth(bookingsSeries)} />}
         />
         <KpiCard
-          label="Gross merchandise value"
+          label="Provider payouts"
           icon={<CreditCard />}
           value={dashboardStats.monthlyRevenue}
           format={formatCurrency}
@@ -359,8 +359,8 @@ export function DashboardPage() {
       </div>
 
       <Panel
-        title="Revenue trend"
-        description="Gross merchandise value per month"
+        title="Payout trend"
+        description="Provider payouts released per month, after commission"
         action={
           <Button asChild variant="ghost" size="sm">
             <Link href={pageToPath("reports")}>
@@ -372,7 +372,7 @@ export function DashboardPage() {
         {revenueSeries.length > 0 ? (
           <TrendChart data={revenueSeries} format={formatCurrency} yFormat={formatCurrencyCompact} height={220} />
         ) : (
-          <EmptyState icon={<CreditCard />} title="No revenue yet" description="Completed, paid jobs will build this chart." />
+          <EmptyState icon={<CreditCard />} title="No payouts yet" description="Completed, paid jobs will build this chart." />
         )}
       </Panel>
     </div>

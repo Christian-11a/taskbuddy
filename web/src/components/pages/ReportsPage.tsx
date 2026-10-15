@@ -94,15 +94,15 @@ export function ReportsPage() {
     const mask = exportMasks(settings.anonymizeExports);
     const blocks = [
       toCsv(["Metric", "Value"], [
-        ["Total revenue", stats.totalRevenue],
-        ["Revenue this month", stats.monthlyRevenue],
-        ["Completion rate (%)", stats.completionRate],
+        ["Total provider payouts", stats.totalRevenue],
+        ["Provider payouts this month", stats.monthlyRevenue],
+        ["Completed jobs (% of posted)", stats.completionRate],
         ["Average provider rating", ratingForCsv(stats.avgRating)],
         ["Total users", stats.totalUsers],
-        ["Active providers", stats.activeProviders],
+        ["Registered providers", stats.activeProviders],
         ["Total bookings", stats.totalBookings],
       ]),
-      toCsv(["Month", "Revenue"], revenueSeries.map((r) => [r.month, r.value])),
+      toCsv(["Month", "Provider payouts"], revenueSeries.map((r) => [r.month, r.value])),
       toCsv(["Month", "Bookings"], bookingsSeries.map((b) => [b.month, b.value])),
       toCsv(["Category", "Share (%)"], bookingsByCategory.map((c) => [c.label, c.value])),
       toCsv(["Provider", "Completed jobs", "Rating"], topProviders.map((p) => [mask.name(p.name), p.jobs, ratingForCsv(p.rating)])),
@@ -135,9 +135,9 @@ export function ReportsPage() {
 
       {analyticsInBrowser && <AnalyticsSourceNote />}
       <div className="mb-4 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <KpiCard label="Total revenue" icon={<Wallet />} value={stats.totalRevenue} format={formatCurrencyCompact} footer={<span className="text-muted-foreground">All-time gross merchandise value</span>} />
+        <KpiCard label="Total provider payouts" icon={<Wallet />} value={stats.totalRevenue} format={formatCurrencyCompact} footer={<span className="text-muted-foreground">All-time, after commission</span>} />
         <KpiCard
-          label="Revenue this month"
+          label="Provider payouts this month"
           icon={<TrendingUp />}
           value={stats.monthlyRevenue}
           format={formatCurrency}
@@ -148,9 +148,9 @@ export function ReportsPage() {
           <ProgressRing value={stats.completionRate} size={64} stroke={7} label={`${stats.completionRate}%`} />
           <div>
             <div className="flex items-center gap-1.5 text-[12.5px] text-muted-foreground">
-              <CheckCircle2 className="size-3.5" /> Completion rate
+              <CheckCircle2 className="size-3.5" /> Completed jobs
             </div>
-            <div className="mt-1 text-[12px] text-subtle">Share of accepted jobs that finished</div>
+            <div className="mt-1 text-[12px] text-subtle">Share of all posted jobs that finished</div>
           </div>
         </Panel>
         <Panel bodyClassName="pt-4">
@@ -165,19 +165,19 @@ export function ReportsPage() {
               ))}
             </span>
           </div>
-          <div className="mt-2 text-[12px] text-subtle">Across {stats.activeProviders.toLocaleString()} active providers</div>
+          <div className="mt-2 text-[12px] text-subtle">Across {stats.activeProviders.toLocaleString()} registered providers</div>
         </Panel>
       </div>
 
       <div className="mb-4 grid gap-4 xl:grid-cols-[minmax(0,1.65fr)_minmax(300px,1fr)]">
         <Panel
-          title="Revenue trend"
-          description={`Gross merchandise value per month · ${formatCurrency(revenueTotalInRange)} over ${months} months`}
+          title="Payout trend"
+          description={`Provider payouts released per month, after commission · ${formatCurrency(revenueTotalInRange)} over ${months} months`}
           action={<CalendarRange className="size-4 text-subtle" />}
         >
           {revenueInRange.length === 0 ? (
             <div className="grid h-[260px] place-items-center text-center text-[12.5px] text-muted-foreground">
-              No revenue yet — this fills in once a job&apos;s escrow is released to a provider.
+              No payouts yet — this fills in once a job&apos;s escrow is released to a provider.
             </div>
           ) : (
             <TrendChart data={revenueInRange} format={formatCurrency} yFormat={formatCurrencyCompact} height={260} />
@@ -232,7 +232,7 @@ export function ReportsPage() {
         open={confirmingExport}
         danger={false}
         title="Export to CSV?"
-        message="This downloads every section on this page — summary, revenue trend, monthly bookings, categories, and top providers — as one .csv file to your device."
+        message="This downloads every section on this page — summary, payout trend, monthly bookings, categories, and top providers — as one .csv file to your device."
         confirmLabel="Export"
         onConfirm={() => {
           setConfirmingExport(false);

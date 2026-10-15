@@ -17,7 +17,7 @@ import { Badge } from "@/components/ui/badge";
 import { PageHeader } from "@/components/admin/Panel";
 import { SearchField } from "@/components/admin/queue";
 import { WarrantyLine } from "@/components/admin/WarrantyLine";
-import { BulkBar, DataTable, SelectFilter, TableCard, TableEmpty, type Column } from "@/components/admin/table";
+import { BulkBar, DataTable, LoadFailedState, RefreshFailedBanner, SelectFilter, TableCard, TableEmpty, type Column } from "@/components/admin/table";
 import { useLiveTick } from "@/hooks/useLiveTick";
 import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 
@@ -67,6 +67,21 @@ const STATUS_GROUPS: { label: string; statuses: Exclude<StatusFilter, "all">[] }
   { label: "Finished", statuses: ["Completed", "Cancelled", "Expired"] },
 ];
 
+/**
+ * What cancelling does to money, per the backend: the job status trigger
+ * (migration 0041, review_work_cancellation) freezes held escrow in a
+ * cancellation review. It is not refunded here. A provider has 48 hours to
+ * respond before work starts (no response refunds the client); an admin decides after.
+ */
+function cancelBookingMessage(id: string) {
+  return (
+    `Booking ${id} will be marked cancelled, and this can't be undone from here. ` +
+    "Held payment is not refunded automatically: it is frozen in a cancellation review. " +
+    "Before work starts, the provider has 48 hours to respond, and no response refunds the client. " +
+    "After work starts, an admin decides. A booking with no payment is simply closed."
+  );
+}
+
 const withCount = (label: string, count: number | undefined) => (count === undefined ? label : `${label} (${count})`);
 
 type DetailState = AdminBookingDetail | "loading" | "error";
@@ -88,6 +103,8 @@ export function BookingsPage() {
   const [bookings, setBookings] = useState<BookingRow[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
+  /** The last load failed. Rows stay on screen when there are any (see the banner). */
+  const [loadFailed, setLoadFailed] = useState(false);
   const [reloadNonce, setReloadNonce] = useState(0);
   const [statusCounts, setStatusCounts] = useState<Record<string, number> | null>(null);
 
@@ -113,14 +130,14 @@ export function BookingsPage() {
           setBookings(result.items.map(toBookingRow));
           setTotal(result.total);
           setStatusCounts(result.statusCounts ?? null);
+          setLoadFailed(false);
           setLoading(false);
         }
       })
       .catch(() => {
+        // Keep the last good rows, counts and total; the banner says they may be stale.
         if (!cancelled) {
-          setBookings([]);
-          setTotal(0);
-          setStatusCounts(null);
+          setLoadFailed(true);
           setLoading(false);
         }
       });
@@ -131,6 +148,7 @@ export function BookingsPage() {
   }, [debouncedSearch, statusFilter, page, reloadNonce]);
 
   useLiveTick(() => setReloadNonce((n) => n + 1));
+  const retryLoad = () => setReloadNonce((n) => n + 1);
 
   function countFor(s: StatusFilter): number | undefined {
     // Server counts follow search/category but ignore the selected status.
@@ -328,6 +346,7 @@ export function BookingsPage() {
           </>
         }
       >
+        {loadFailed && bookings.length > 0 && <RefreshFailedBanner noun="bookings" onRetry={retryLoad} />}
         <DataTable
           label="Bookings table"
           columns={columns}
@@ -347,15 +366,19 @@ export function BookingsPage() {
             disabledAll: bookings.length === 0,
           }}
           empty={
-            <TableEmpty>
-              {/* `total` is the count for the *current* query, so narrowing the
-                  scope is the real signal for which message is true. */}
-              {loading
-                ? "Loading bookings…"
-                : statusFilter !== "all" || search.trim()
-                  ? "No bookings match this search or filter."
-                  : "No bookings yet."}
-            </TableEmpty>
+            loadFailed && !loading ? (
+              <LoadFailedState noun="bookings" onRetry={retryLoad} />
+            ) : (
+              <TableEmpty>
+                {/* `total` is the count for the *current* query, so narrowing the
+                    scope is the real signal for which message is true. */}
+                {loading
+                  ? "Loading bookings…"
+                  : statusFilter !== "all" || search.trim()
+                    ? "No bookings match this search or filter."
+                    : "No bookings yet."}
+              </TableEmpty>
+            )
           }
         />
         <Pagination
@@ -463,7 +486,7 @@ export function BookingsPage() {
       <ConfirmDialog
         open={cancelTarget !== null}
         title="Cancel this booking?"
-        message={cancelTarget ? `Booking ${cancelTarget.id} will be marked cancelled. This can't be undone from here.` : ""}
+        message={cancelTarget ? cancelBookingMessage(cancelTarget.id) : ""}
         confirmLabel="Cancel booking"
         cancelLabel="Keep booking"
         busy={cancelingId !== null}

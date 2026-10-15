@@ -181,3 +181,75 @@ describe("BookingsPage warranty line", () => {
     expect(screen.queryByText(/Warranty/)).not.toBeInTheDocument();
   });
 });
+
+describe("BookingsPage load failures", () => {
+  const booking = {
+    id: "b-1234567890",
+    customerName: "Ava Cruz",
+    providerName: "Rico Lim",
+    service: "Aircon cleaning",
+    status: "open" as const,
+    scheduledDate: "2026-10-10T08:00:00Z",
+    amount: 1200,
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockedSearchBookings.mockReset();
+    mockedUseApp.mockReturnValue({
+      cancelBooking: vi.fn(),
+      refreshCounts: vi.fn().mockResolvedValue(undefined),
+      lastUpdated: null,
+    } as unknown as ReturnType<typeof useApp>);
+  });
+
+  it("shows an error state, not 'No bookings yet.', when the first load fails", async () => {
+    mockedSearchBookings.mockRejectedValue(new Error("down"));
+    renderBookings();
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Could not load bookings.");
+    expect(screen.queryByText("No bookings yet.")).not.toBeInTheDocument();
+  });
+
+  it("keeps the last good rows and offers Retry when a refresh fails", async () => {
+    mockedSearchBookings.mockResolvedValueOnce({ items: [booking], total: 1, statusCounts: counts({ open: 1 }) });
+    const user = userEvent.setup();
+    renderBookings();
+    expect(await screen.findByText("Ava Cruz")).toBeInTheDocument();
+
+    mockedSearchBookings.mockRejectedValueOnce(new Error("down"));
+    await user.selectOptions(screen.getByRole("combobox", { name: "Filter bookings by status" }), "Open");
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Couldn't refresh bookings.");
+    expect(screen.getByText("Ava Cruz")).toBeInTheDocument();
+    expect(screen.queryByText("No bookings match this search or filter.")).not.toBeInTheDocument();
+
+    mockedSearchBookings.mockResolvedValueOnce({ items: [booking], total: 1, statusCounts: counts({ open: 1 }) });
+    await user.click(screen.getByRole("button", { name: "Retry" }));
+    await waitFor(() => expect(screen.queryByRole("alert")).not.toBeInTheDocument());
+    expect(mockedSearchBookings).toHaveBeenLastCalledWith({ search: "", status: "open", page: 1, pageSize: 12 });
+  });
+});
+
+describe("BookingsPage cancel confirmation", () => {
+  it("says what happens to held payment before a booking is cancelled", async () => {
+    mockedUseApp.mockReturnValue({
+      cancelBooking: vi.fn(),
+      refreshCounts: vi.fn().mockResolvedValue(undefined),
+      lastUpdated: null,
+    } as unknown as ReturnType<typeof useApp>);
+    mockedSearchBookings.mockResolvedValue({
+      items: [{ id: "b-1234567890", customerName: "Ava Cruz", providerName: "Rico Lim", service: "Aircon cleaning", status: "open", scheduledDate: "2026-10-10T08:00:00Z", amount: 1200 }],
+      total: 1,
+      statusCounts: counts({ open: 1 }),
+    });
+    const user = userEvent.setup();
+    renderBookings();
+
+    await user.click(await screen.findByRole("button", { name: "Cancel" }));
+
+    expect(await screen.findByText(/not refunded automatically/)).toBeInTheDocument();
+    expect(screen.getByText(/frozen in a cancellation review/)).toBeInTheDocument();
+    expect(screen.getByText(/A booking with no payment is simply closed/)).toBeInTheDocument();
+  });
+});
