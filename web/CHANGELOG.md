@@ -32,6 +32,7 @@ order, newest first.
 
 | Date | Entry | Category |
 |---|---|---|
+| 2026-10-15 | Admin synced with the mobile app | Feature, Improvement, Backend integration |
 | 2026-10-03 | Export anonymization is real; Settings trimmed to what exists | Feature, Improvement |
 | 2026-10-03 | Server-filtered Service Requests and booking-title search, verified live | Backend integration, Verification |
 | 2026-10-01 | Admin regression suite after moderation recovery | Verification |
@@ -52,6 +53,83 @@ order, newest first.
 | undated | Visual/UX port from the design mockup | Improvement |
 | undated | Hardening passes | Security, Fix, Accessibility |
 | undated | Backend follow-ups (migrations 0014, 0017) | Backend integration |
+
+---
+
+### 2026-10-15 · Admin synced with the mobile app
+
+**Category:** Feature · Improvement · Backend integration
+
+The admin console now shows the same work the mobile app does. This is frontend
+only: the same endpoints are used, and the API already returned these fields
+(the web used to drop them).
+
+- **Attention everywhere.** One count per queue (verifications, disputes,
+  withdrawals, service requests) lives in `AppContext.queueCounts` and refreshes
+  on the 30 s live tick. A queue that fails to load is "unknown", never "all
+  caught up": the bell says "Couldn't check withdrawals. Retrying…". The bell,
+  the sidebar number badges (now on Verifications, Disputes, Withdrawals and
+  Service Requests) and the browser-tab title `(N) …` all read the same counts.
+  The service-request count is the backend's exact total, because that endpoint
+  is paged now and is no longer capped at 100.
+- **Arrival alerts.** A small pop-up appears when a count rises while the console
+  is open. Work already waiting at load never triggers one. Settings has an
+  "Alert me when new work arrives" switch, saved on this device and on by default.
+- **Complaint handling (Disputes).** Each case is a Complaint, an Appeal or a
+  Cancellation review, from `cancellation_state` (pending, contested, accepted,
+  expired; unknown values are shown as-is). Cancellation reviews show the
+  deadline as "overdue" or "due in N h". After an admin asks for clarification the
+  case reads "Waiting on a party". Filters: Needs decision (default), Waiting on a
+  party, Cancellations, Appeals, Resolved, All, each with a count. Open cases are
+  ordered overdue, due soon, needs decision, then waiting. A readable timeline
+  shows statements, appeals, clarifications, decisions, cancellation responses,
+  system events and photo and chat evidence.
+- **Payment protection.** A section shows the 72-hour warranty counted from the
+  job's `completed_at`. Money actions follow the payment state, not the case type.
+  Held funds get Release or Refund. Cases where the payment is already settled, or
+  there is no payment, get only "Record decision" (or "Record admin decision" when
+  settled), because the backend schema says a contested or post-start cancellation
+  with held funds still needs an admin release or refund.
+- **Warranty line in drawers.** The Bookings and Transactions drawers show
+  "Warranty open · 2 d 13 h left", "Payment is held until the warranty ends", or
+  "Warranty closed", from the booking detail's `completed_at`.
+- **Verification method.** A badge shows whether a provider verified with
+  "ID + selfie review" or "Stripe Identity". Stripe Identity rows have no documents
+  and say so.
+- **Wording.** "Client" everywhere in the admin ("Unknown client", "Refunded to
+  client").
+- **Dev preview.** `/dev/admin-preview/<page>` has sample data for every new state:
+  ten sample cases, a Stripe Identity verification and warranty examples.
+  `?bump=1` raises the withdrawals count after 8 s to demo the arrival pop-up.
+  It still returns 404 in production.
+- **Fixed after code review.** A failed withdrawal count could show as 0 or "All
+  clear" on the Dashboard (its tiles now read the same nullable queue counts as the
+  bell and show "—"); arrival alerts could fire for work already waiting after
+  signing back in; an older load that was superseded could still mark the new
+  session as loaded; a Release/Refund confirmation stayed open (and could return)
+  after another admin resolved the case, and now closes with a message; warranty
+  details were cached forever, including after a failed request, and are now
+  refetched when stale, failed or not yet completed; the tab-title count is
+  re-applied if the page title changes after it.
+- **Tests.** 352 passing (227 on main before this work), type-check and lint clean.
+  New coverage: queue counts, new-work detection, complaint urgency, the warranty
+  window and its cache, the case timeline, the bell, sidebar badges, tab title,
+  arrival alerts, the Stripe Identity rows and the review fixes above.
+
+**Not done (needs the backend):**
+
+- **Provider portfolios.** No admin endpoint exposes them, so admins cannot view
+  them.
+- **Admin submission email.** The backend has per-user notifications only. The
+  "email admins when a provider submits for verification" request in
+  `docs/backend-handoff-web-admin.md` is still open, so arrival alerts work only
+  while the console is open.
+- **Job change requests** (date, time and price agreement) are backend feature
+  request #10 in `docs/backend-requests.md`. Not built.
+
+**Not yet exercised against the live backend:** the new complaint actions;
+Release, Refund and Record decision on cancellation reviews; arrival alerts over
+a real poll; and the warranty line against real `completed_at` values.
 
 ---
 
