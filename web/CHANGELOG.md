@@ -78,6 +78,11 @@ order, newest first.
   automatic refreshes are skipped while one is in flight or finished less than 5 s ago (a
   tab returning to view no longer fires two in a row), while Refresh data now, the Live
   indicator retry and refreshes after a write always run.
+  On a full page load each part now appears as its own data arrives (Disputes no longer
+  waits for verifications or analytics; Users load in parallel from the start). On the live
+  backend a hard load of Disputes showed its cases at about 3.7 s (when its own request
+  answered) instead of about 5.8 s (when the slowest request answered). A failed part shows
+  the error banner with Retry at once without discarding the parts that did answer.
   Behavior changes to know about: the Users list can lag other admins' changes by up
   to 5 minutes; a list over 5,000 rows now warns and shows the first 5,000 instead of
   failing the whole load (money totals still fail loudly).
