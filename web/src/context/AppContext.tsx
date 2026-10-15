@@ -11,6 +11,7 @@ import {
   ReactNode,
 } from "react";
 import * as services from "@/lib/services";
+import type { QueueCounts } from "@/lib/attention";
 import { resolveInitialTheme } from "@/lib/theme";
 import {
   toDisputeRow,
@@ -39,6 +40,8 @@ import type {
 
 export interface ConsoleSettings {
   activityBadge: boolean;
+  /** A small toast when new work arrives while the console is open (this device only). */
+  arrivalAlerts: boolean;
   /** Masks names, emails and phone numbers in CSV exports (this device only). */
   anonymizeExports: boolean;
   platformName: string;
@@ -46,6 +49,7 @@ export interface ConsoleSettings {
 
 const DEFAULT_SETTINGS: ConsoleSettings = {
   activityBadge: true,
+  arrivalAlerts: true,
   anonymizeExports: true,
   platformName: "TaskBuddy",
 };
@@ -130,6 +134,9 @@ interface AppState {
   bookingsByCategory: CategoryShare[];
   recentActivity: ActivityEvent[];
   topProviders: TopProvider[];
+  /** Pending items per work queue (the bell, sidebar badges and tab title use these).
+   *  A queue whose count failed to load keeps its last good value, or is null. */
+  queueCounts: QueueCounts;
 
   // mutations
   approveVerification: (id: string) => Promise<void>;
@@ -213,6 +220,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [bookingsByCategory, setBookingsByCategory] = useState<CategoryShare[]>([]);
   const [recentActivity, setRecentActivity] = useState<ActivityEvent[]>([]);
   const [topProviders, setTopProviders] = useState<TopProvider[]>([]);
+  /** Withdrawal and service-request counts; the other two queues derive from the lists above. */
+  const [extraCounts, setExtraCounts] = useState<Pick<QueueCounts, "withdrawals" | "skill-requests">>({
+    withdrawals: null,
+    "skill-requests": null,
+  });
   const [maintenanceMode, setMaintenanceModeState] = useState(false);
   const [maintenanceMessage, setMaintenanceMessageState] = useState<string | null>(null);
 
@@ -288,6 +300,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
         services.getBookingsByCategory(),
         services.getTopProviders(),
       ]);
+      // Started alongside the others so the two extra counts add no round trip.
+      // Settled one by one below, so a failed count never discards the other.
+      const queueRequest = Promise.allSettled([
+        services.getPendingWithdrawalCount(),
+        services.getPendingServiceRequestCount(),
+      ]);
       const [coreResult, analyticsResult] = await Promise.allSettled([
         coreRequest,
         analyticsRequest,
@@ -339,6 +357,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setMaintenanceModeState(maintenance.enabled);
       setMaintenanceMessageState(maintenance.message);
       setLoadError(null);
+      const [withdrawalCount, skillCount] = await queueRequest;
+      // A newer load may have started while these counts were pending. Stop before
+      // touching any state, so this older load cannot clear its loading flag or stamp lastUpdated.
+      if (stale()) return;
+      setExtraCounts((prev) => ({
+        withdrawals: withdrawalCount.status === "fulfilled" ? withdrawalCount.value : prev.withdrawals,
+        "skill-requests": skillCount.status === "fulfilled" ? skillCount.value : prev["skill-requests"],
+      }));
       setLastUpdated(Date.now());
       if (!silent) setLoading(false);
     } catch (err) {
@@ -559,6 +585,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const disputes = useMemo(() => domainDisputes.map(toDisputeRow), [domainDisputes]);
   const transactions = useMemo<TransactionRow[]>(() => [], []);
   const bookings = useMemo<BookingRow[]>(() => [], []);
+  const queueCounts = useMemo<QueueCounts>(
+    () => ({
+      verifications: verifications.filter((v) => v.status === "pending").length,
+      disputes: disputes.filter((d) => d.isOpen).length,
+      ...extraCounts,
+    }),
+    [verifications, disputes, extraCounts],
+  );
 
   /**
    * Memoised so the context value isn't a brand-new object on every render.
@@ -580,7 +614,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       refreshData, refreshUsers, lastUpdated, refreshing,
        verifications, users, transactions, disputes, bookings,
       dashboardStats, revenueSeries, bookingsSeries, bookingsByCategory,
-      recentActivity, topProviders,
+      recentActivity, topProviders, queueCounts,
       approveVerification, rejectVerification,
       setUserStatus, bulkSetUserStatus, sendPasswordReset, cancelBooking, resolveDispute,
       darkMode, setDarkMode,
@@ -595,7 +629,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       refreshData, refreshUsers, lastUpdated, refreshing,
        verifications, users, transactions, disputes, bookings,
       dashboardStats, revenueSeries, bookingsSeries, bookingsByCategory,
-      recentActivity, topProviders,
+      recentActivity, topProviders, queueCounts,
       approveVerification, rejectVerification,
       setUserStatus, bulkSetUserStatus, sendPasswordReset, cancelBooking, resolveDispute,
       darkMode, setDarkMode,

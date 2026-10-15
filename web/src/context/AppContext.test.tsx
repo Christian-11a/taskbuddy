@@ -2,7 +2,7 @@ import { act, render, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { AppProvider, useApp } from "./AppContext";
 import * as services from "@/lib/services";
-import type { AdminUser } from "@/lib/domain";
+import type { AdminUser, Dispute, Verification } from "@/lib/domain";
 import { useEffect } from "react";
 
 vi.mock("@/lib/services", async (importOriginal) => {
@@ -15,6 +15,7 @@ vi.mock("@/lib/services", async (importOriginal) => {
     getRevenueSeries: vi.fn(), getBookingsSeries: vi.fn(),
     getBookingsByCategory: vi.fn(), getTopProviders: vi.fn(),
     setUserStatus: vi.fn(), bulkSetUserStatus: vi.fn(),
+    getPendingWithdrawalCount: vi.fn(), getPendingServiceRequestCount: vi.fn(),
   };
 });
 
@@ -49,6 +50,8 @@ describe("AppContext — moderation refresh results", () => {
     vi.mocked(services.getBookingsSeries).mockResolvedValue([]);
     vi.mocked(services.getBookingsByCategory).mockResolvedValue([]);
     vi.mocked(services.getTopProviders).mockResolvedValue([]);
+    vi.mocked(services.getPendingWithdrawalCount).mockResolvedValue(0);
+    vi.mocked(services.getPendingServiceRequestCount).mockResolvedValue(0);
   });
 
   it("keeps existing rows and returns the warning after a confirmed single action", async () => {
@@ -101,4 +104,82 @@ describe("AppContext — moderation refresh results", () => {
     await act(async () => { await context.refreshUsers(); });
     expect(context.users.map((row) => row.status)).toEqual(["Suspended", "Deleted"]);
   });
+
+  it("exposes queue counts: lists from loaded data, the two extra queues from their own requests", async () => {
+    vi.mocked(services.getVerifications).mockResolvedValue([
+      verification({ id: "v1", status: "PENDING" }),
+      verification({ id: "v2", status: "APPROVED" }),
+    ]);
+    vi.mocked(services.getDisputes).mockResolvedValue([dispute({ id: "d1", status: "OPEN" }), dispute({ id: "d2", status: "RESOLVED" })]);
+    vi.mocked(services.getPendingWithdrawalCount).mockResolvedValue(3);
+    vi.mocked(services.getPendingServiceRequestCount).mockResolvedValue(2);
+    await mountLoaded();
+    expect(context.queueCounts).toEqual({ verifications: 1, disputes: 1, withdrawals: 3, "skill-requests": 2 });
+  });
+
+  it("keeps a queue's last good count and never reports 0 when its request fails", async () => {
+    vi.mocked(services.getPendingWithdrawalCount).mockRejectedValue(new Error("down"));
+    await mountLoaded();
+    expect(context.queueCounts.withdrawals).toBeNull();
+    expect(context.queueCounts["skill-requests"]).toBe(0);
+
+    vi.mocked(services.getPendingWithdrawalCount).mockResolvedValue(3);
+    await act(async () => { await context.refreshData(); });
+    expect(context.queueCounts.withdrawals).toBe(3);
+
+    vi.mocked(services.getPendingWithdrawalCount).mockRejectedValue(new Error("down again"));
+    await act(async () => { await context.refreshData(); });
+    expect(context.queueCounts.withdrawals).toBe(3);
+  });
+
+  it("a superseded load does not clear the newer load's loading state or stamp lastUpdated", async () => {
+    const oldCount = deferred<number>();
+    const newCount = deferred<number>();
+    vi.mocked(services.getPendingWithdrawalCount)
+      .mockReturnValueOnce(oldCount.promise)
+      .mockReturnValueOnce(newCount.promise);
+    render(<AppProvider><Probe /></AppProvider>);
+
+    // The first load is waiting on its withdrawal count.
+    await waitFor(() => expect(services.getPendingWithdrawalCount).toHaveBeenCalledTimes(1));
+    // Retry supersedes it; the newer load is also waiting on its own count.
+    await act(async () => { context.retryLoad(); });
+    await waitFor(() => expect(services.getPendingWithdrawalCount).toHaveBeenCalledTimes(2));
+    expect(context.loading).toBe(true);
+
+    // The superseded request answers last. It must not finish the newer load.
+    await act(async () => { oldCount.resolve(5); });
+    expect(context.loading).toBe(true);
+    expect(context.lastUpdated).toBeNull();
+
+    // The newer load completes normally, and only its count is applied.
+    await act(async () => { newCount.resolve(1); });
+    await waitFor(() => expect(context.loading).toBe(false));
+    expect(context.lastUpdated).not.toBeNull();
+    expect(context.queueCounts.withdrawals).toBe(1);
+  });
 });
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((r) => { resolve = r; });
+  return { promise, resolve };
+}
+
+const verification = (over: Partial<Verification>): Verification => ({
+  id: "v1", providerId: "p1", name: "Liza Mercado", email: "liza@example.com", submittedAt: "2026-10-01",
+  status: "PENDING", documents: [], method: "manual", ...over,
+});
+
+const dispute = (over: Partial<Dispute>): Dispute => ({
+  id: "d1", jobId: "j1", jobTitle: "Fix sink", service: "Plumbing", clientName: "Ana", providerName: "Rico",
+  amount: 1450, reason: "Work not completed", details: null, status: "OPEN", resolution: null, resolutionNote: null,
+  paymentSettled: false, createdAt: "2026-10-01", resolvedAt: null, cancellationState: null, cancellationDeadline: null,
+  ...over,
+});
+
+/** Like mount(), but waits for the first full load to finish (lastUpdated is set last). */
+async function mountLoaded() {
+  render(<AppProvider><Probe /></AppProvider>);
+  await waitFor(() => expect(context.lastUpdated).not.toBeNull());
+}

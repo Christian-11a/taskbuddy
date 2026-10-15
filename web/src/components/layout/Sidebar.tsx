@@ -7,6 +7,7 @@ import { motion, useReducedMotion } from "motion/react";
 import { ChevronsLeft, ChevronsRight, LogOut, Settings } from "lucide-react";
 import type { Page } from "@/lib/domain";
 import { useApp } from "@/context/AppContext";
+import { displayCount } from "@/lib/attention";
 import { initials } from "@/lib/adapters";
 import { ADMIN_NAV, NAV_GROUPS, type NavItem } from "@/lib/nav";
 import { pageToPath } from "@/lib/routes";
@@ -28,14 +29,17 @@ interface SidebarProps {
 export const SIDEBAR_WIDTH = { expanded: 248, collapsed: 68 } as const;
 
 export function Sidebar({ activePage, onNavigate, onLogout, collapsed, onToggleCollapse, drawerOpen }: SidebarProps) {
-  const { verifications, disputes, adminProfile, settings } = useApp();
+  const { queueCounts, adminProfile, settings } = useApp();
   const [confirmingLogout, setConfirmingLogout] = useState(false);
   const reduce = useReducedMotion();
 
-  const badges: Partial<Record<Page, number>> = settings.activityBadge
+  // A queue that failed to load (null) gets no badge rather than a misleading 0.
+  const badges: Partial<Record<Page, string | undefined>> = settings.activityBadge
     ? {
-        verifications: verifications.filter((v) => v.status === "pending").length,
-        disputes: disputes.filter((d) => d.isOpen).length,
+        verifications: displayCount(queueCounts.verifications),
+        disputes: displayCount(queueCounts.disputes),
+        withdrawals: displayCount(queueCounts.withdrawals),
+        "skill-requests": displayCount(queueCounts["skill-requests"]),
       }
     : {};
 
@@ -45,7 +49,7 @@ export function Sidebar({ activePage, onNavigate, onLogout, collapsed, onToggleC
     items: ADMIN_NAV.filter((n) => n.group === g.id && n.id !== "settings"),
   })).filter((g) => g.items.length > 0);
 
-  const renderLink = (item: Pick<NavItem, "id" | "label" | "icon">, badge?: number) => {
+  const renderLink = (item: Pick<NavItem, "id" | "label" | "icon">, badge?: string) => {
     const active = activePage === item.id;
     const Icon = item.icon;
     const link = (
