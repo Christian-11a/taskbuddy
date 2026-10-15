@@ -19,8 +19,10 @@ import { Input } from "@/components/ui/input";
 import { PageHeader } from "@/components/admin/Panel";
 import { FilterTabs, SearchField } from "@/components/admin/queue";
 import { BulkBar, DataTable, SummaryStrip, TableCard, TableEmpty, type Column } from "@/components/admin/table";
+import { WarrantyLine } from "@/components/admin/WarrantyLine";
 import { toneFromBadgeClass } from "@/components/admin/tones";
 import { useLiveTick } from "@/hooks/useLiveTick";
+import { useBookingDetailCache } from "@/hooks/useBookingDetailCache";
 import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 import { cn } from "@/lib/utils";
 
@@ -225,6 +227,12 @@ const EscrowTab = forwardRef<ExportHandle, TabProps>(function EscrowTab({ onExpo
   ];
 
   const open = transactions.find((t) => t.id === openId) ?? null;
+  const openJobId = open?.jobId ?? null;
+
+  // Job detail gives the warranty window. Requested when the drawer opens and
+  // refreshed on live ticks while it stays open (see useBookingDetailCache); a
+  // failed request shows nothing extra and no toast.
+  const warranty = useBookingDetailCache(openJobId);
 
   return (
     <div>
@@ -359,6 +367,11 @@ const EscrowTab = forwardRef<ExportHandle, TabProps>(function EscrowTab({ onExpo
                 />
                 {open.payoutDetail && <DrawerField label="Stripe" value={<span className="break-all">{open.payoutDetail}</span>} />}
               </div>
+              {warranty && warranty !== "error" && (
+                <div className="mt-4">
+                  <WarrantyLine completedAt={warranty.completedAt} escrowStatus={warranty.escrowStatus} />
+                </div>
+              )}
             </DrawerSection>
             {open.canRetryTransfer && (
               <p className="rounded-[10px] bg-warn-soft px-3.5 py-2.5 text-[12.5px] leading-relaxed text-warn">

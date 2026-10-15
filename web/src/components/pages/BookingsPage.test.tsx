@@ -1,10 +1,11 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { BookingsPage } from "./BookingsPage";
 import { ToastProvider } from "@/components/ui/Toast";
 import { useApp } from "@/context/AppContext";
 import * as services from "@/lib/services";
+import type { AdminBookingDetail } from "@/lib/domain";
 
 vi.mock("@/context/AppContext", () => ({
   useApp: vi.fn(),
@@ -17,6 +18,7 @@ vi.mock("@/lib/services", () => ({
 
 const mockedUseApp = vi.mocked(useApp);
 const mockedSearchBookings = vi.mocked(services.searchBookings);
+const mockedGetBookingDetail = vi.mocked(services.getBookingDetail);
 
 function renderBookings() {
   return render(
@@ -107,5 +109,74 @@ describe("BookingsPage status counts", () => {
     });
     expect(screen.getByRole("option", { name: "All statuses (1)" })).toBeInTheDocument();
     expect(screen.queryByRole("option", { name: "All statuses (90)" })).not.toBeInTheDocument();
+  });
+});
+
+describe("BookingsPage warranty line", () => {
+  const booking = {
+    id: "b-1234567890",
+    customerName: "Ava Cruz",
+    providerName: "Rico Lim",
+    service: "Aircon cleaning",
+    status: "completed" as const,
+    scheduledDate: "2026-10-10T08:00:00Z",
+    amount: 1200,
+  };
+
+  function bookingDetail(overrides: Partial<AdminBookingDetail> = {}): AdminBookingDetail {
+    return {
+      description: "Clean two units",
+      address: "Quezon City",
+      scheduledAt: null,
+      photoUrls: [],
+      escrowStatus: "IN_ESCROW",
+      escrowAmount: 1200,
+      completedAt: "2026-10-15T02:00:00Z",
+      status: "completed",
+      ...overrides,
+    };
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-10-15T12:00:00Z"));
+    mockedUseApp.mockReturnValue({
+      cancelBooking: vi.fn(),
+      lastUpdated: null,
+    } as unknown as ReturnType<typeof useApp>);
+    mockedSearchBookings.mockResolvedValue({ items: [booking], total: 1, statusCounts: counts({ completed: 1 }) });
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("shows the warranty and held payment for a completed job", async () => {
+    mockedGetBookingDetail.mockResolvedValue(bookingDetail());
+    const user = userEvent.setup();
+    renderBookings();
+
+    await user.click(await screen.findByText("Ava Cruz"));
+
+    expect(await screen.findByText("Warranty open · 2 d 14 h left")).toBeInTheDocument();
+    expect(screen.getByText("Payment is held until the warranty ends")).toBeInTheDocument();
+    expect(mockedGetBookingDetail).toHaveBeenCalledWith("b-1234567890");
+  });
+
+  it("shows no warranty line for a booking that is not completed", async () => {
+    mockedSearchBookings.mockResolvedValue({
+      items: [{ ...booking, status: "in_progress" }],
+      total: 1,
+      statusCounts: counts({ in_progress: 1 }),
+    });
+    mockedGetBookingDetail.mockResolvedValue(bookingDetail({ status: "in_progress", completedAt: null }));
+    const user = userEvent.setup();
+    renderBookings();
+
+    await user.click(await screen.findByText("Ava Cruz"));
+
+    expect(await screen.findByText("Clean two units")).toBeInTheDocument();
+    expect(screen.queryByText(/Warranty/)).not.toBeInTheDocument();
   });
 });

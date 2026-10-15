@@ -16,6 +16,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { PageHeader } from "@/components/admin/Panel";
 import { SearchField } from "@/components/admin/queue";
+import { WarrantyLine } from "@/components/admin/WarrantyLine";
 import { BulkBar, DataTable, SelectFilter, TableCard, TableEmpty, type Column } from "@/components/admin/table";
 import { useLiveTick } from "@/hooks/useLiveTick";
 import { useDebouncedValue } from "@/hooks/useDebouncedValue";
@@ -435,6 +436,7 @@ export function BookingsPage() {
                       {detail.escrowStatus ? `Escrow: ${escrowLabel(detail.escrowStatus)} · ${formatCurrency(detail.escrowAmount ?? 0)}` : "No escrow hold"}
                     </li>
                   </ul>
+                  {detail.status === "completed" && <WarrantyLine completedAt={detail.completedAt} escrowStatus={detail.escrowStatus} />}
                   {detail.photoUrls.length > 0 && (
                     <div>
                       <div className="mb-2 flex items-center gap-1.5 text-[11.5px] text-muted-foreground">

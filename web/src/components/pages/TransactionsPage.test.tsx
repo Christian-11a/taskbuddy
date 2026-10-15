@@ -7,6 +7,7 @@ import { useApp } from "@/context/AppContext";
 import * as services from "@/lib/services";
 import { ApiError } from "@/lib/api/client";
 import type { UserRow } from "@/lib/adapters";
+import type { AdminBookingDetail } from "@/lib/domain";
 
 vi.mock("@/context/AppContext", () => ({
   useApp: vi.fn(),
@@ -17,9 +18,11 @@ vi.mock("@/lib/services", () => ({
   searchWalletTransactions: vi.fn().mockResolvedValue({ items: [], total: 0 }),
   issueRecoveryCredit: vi.fn(),
   retryEscrowTransfer: vi.fn(),
+  getBookingDetail: vi.fn().mockRejectedValue(new Error("offline")),
 }));
 
 const mockedUseApp = vi.mocked(useApp);
+const mockedGetBookingDetail = vi.mocked(services.getBookingDetail);
 const mockedSearchWalletTransactions = vi.mocked(services.searchWalletTransactions);
 const mockedIssueRecoveryCredit = vi.mocked(services.issueRecoveryCredit);
 const mockedSearchTransactions = vi.mocked(services.searchTransactions);
@@ -55,6 +58,29 @@ function makeUser(overrides: Partial<UserRow> = {}): UserRow {
 
 function renderWithToast(ui: React.ReactElement) {
   return render(<ToastProvider>{ui}</ToastProvider>);
+}
+
+/** The shared app state the page reads; lastUpdated changes when the live refresh lands. */
+function appState(lastUpdated: number) {
+  return { users: [], settings: { anonymizeExports: false }, lastUpdated } as unknown as ReturnType<typeof useApp>;
+}
+
+function liveRefresh(rerender: (ui: React.ReactElement) => void, lastUpdated: number) {
+  mockedUseApp.mockReturnValue(appState(lastUpdated));
+  rerender(<ToastProvider><TransactionsPage /></ToastProvider>);
+}
+
+function jobDetail(completedAt: string | null): AdminBookingDetail {
+  return { description: null, address: null, scheduledAt: null, photoUrls: [], escrowStatus: "IN_ESCROW", escrowAmount: 1500, completedAt, status: "completed" };
+}
+
+function hoursAgo(hours: number): string {
+  return new Date(Date.now() - hours * 3_600_000).toISOString();
+}
+
+/** Lets already-resolved mock requests settle inside the test. */
+async function flushRequests() {
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
 }
 
 describe("TransactionsPage — Issue Credit (Wallet tab)", () => {
@@ -188,6 +214,76 @@ describe("TransactionsPage — card-funded payouts (Escrow tab)", () => {
     expect(await screen.findByText("Payout sent to the provider's Stripe account.")).toBeInTheDocument();
     // Reloaded so the row shows the new state.
     expect(mockedSearchTransactions.mock.calls.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it("shows the job's warranty window in the escrow drawer", async () => {
+    mockedGetBookingDetail.mockResolvedValue({
+      description: null,
+      address: null,
+      scheduledAt: null,
+      photoUrls: [],
+      escrowStatus: "IN_ESCROW",
+      escrowAmount: 1500,
+      completedAt: new Date(Date.now() - 10 * 3_600_000).toISOString(),
+      status: "completed",
+    });
+    const user = userEvent.setup();
+    renderWithToast(<TransactionsPage />);
+
+    await user.click(await screen.findByRole("button", { name: /show details for esc-1/i }));
+
+    expect(mockedGetBookingDetail).toHaveBeenCalledWith("job-1");
+    expect(await screen.findByText(/Warranty open · 2 d 1[34] h left/)).toBeInTheDocument();
+    expect(screen.getByText("Payment is held until the warranty ends")).toBeInTheDocument();
+  });
+
+  it("shows no warranty line and no error when the job detail fails to load", async () => {
+    mockedGetBookingDetail.mockRejectedValue(new Error("offline"));
+    const user = userEvent.setup();
+    renderWithToast(<TransactionsPage />);
+
+    await user.click(await screen.findByRole("button", { name: /show details for esc-1/i }));
+
+    await waitFor(() => expect(mockedGetBookingDetail).toHaveBeenCalledWith("job-1"));
+    expect(screen.queryByText(/Warranty/)).not.toBeInTheDocument();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  it("shows the warranty window once a job that was not completed yet is completed", async () => {
+    mockedGetBookingDetail.mockClear();
+    mockedGetBookingDetail
+      .mockResolvedValueOnce(jobDetail(null))
+      .mockResolvedValueOnce(jobDetail(hoursAgo(10)));
+    const user = userEvent.setup();
+    mockedUseApp.mockReturnValue(appState(1));
+    const { rerender } = renderWithToast(<TransactionsPage />);
+
+    await user.click(await screen.findByRole("button", { name: /show details for esc-1/i }));
+    await flushRequests();
+    expect(screen.queryByText(/Warranty/)).not.toBeInTheDocument();
+
+    liveRefresh(rerender, 2);
+    expect(await screen.findByText(/Warranty open · 2 d 1[34] h left/)).toBeInTheDocument();
+    expect(mockedGetBookingDetail).toHaveBeenCalledTimes(2);
+  });
+
+  it("recovers the warranty window after a failed job-detail request, on a later live refresh", async () => {
+    mockedGetBookingDetail.mockClear();
+    mockedGetBookingDetail
+      .mockRejectedValueOnce(new Error("offline"))
+      .mockResolvedValueOnce(jobDetail(hoursAgo(10)));
+    const user = userEvent.setup();
+    mockedUseApp.mockReturnValue(appState(1));
+    const { rerender } = renderWithToast(<TransactionsPage />);
+
+    await user.click(await screen.findByRole("button", { name: /show details for esc-1/i }));
+    await flushRequests();
+    expect(screen.queryByText(/Warranty/)).not.toBeInTheDocument();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+
+    liveRefresh(rerender, 2);
+    expect(await screen.findByText(/Warranty open · 2 d 1[34] h left/)).toBeInTheDocument();
+    expect(mockedGetBookingDetail).toHaveBeenCalledTimes(2);
   });
 });
 
