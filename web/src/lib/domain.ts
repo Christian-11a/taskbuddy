@@ -138,6 +138,9 @@ export interface Dispute {
   cancellationState: string | null;
   /** ISO timestamp by which the other side must answer; null when none. */
   cancellationDeadline: string | null;
+  /** The job's client and assigned provider ids, so chat senders can be told apart. Absent on older API responses. */
+  clientId?: string | null;
+  providerId?: string | null;
 }
 
 // ─── Bookings ─────────────────────────────────────────────────────────────────
@@ -277,6 +280,8 @@ export interface AuditAction {
 
 export interface ConversationMessage {
   id: string;
+  /** The sender's profile id; null for a system message with no author. */
+  senderId?: string | null;
   senderName: string;
   attachmentUrl?: string | null;
   body: string;

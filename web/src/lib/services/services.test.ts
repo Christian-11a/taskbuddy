@@ -1279,3 +1279,36 @@ describe("analytics summary stand-in", () => {
     await expect(services.getDashboardStats()).rejects.toMatchObject({ status: 401 });
   });
 });
+
+describe("dispute case parties", () => {
+  it("carries the job's client and assigned provider ids when the API sends them", async () => {
+    global.fetch = vi.fn()
+      .mockResolvedValueOnce(jsonResponse({
+        disputes: [{
+          id: "d-parties", job_id: "j-parties", escrow_id: null, reason: "Work quality", details: null, status: "open", resolution: null,
+          resolution_note: null, resolved_at: null, created_at: "2026-10-04", escrow_transactions: null,
+          jobs: { title: "Repair", service_categories: null, client_id: "c-1", assigned_provider_id: "p-1", client: { full_name: "Ana" }, provider: { full_name: "Rico" } },
+        }],
+        total: 1,
+      }))
+      .mockResolvedValueOnce(jsonResponse({ transactions: [], total: 0 })) as unknown as typeof fetch;
+    const [d] = await services.getDisputes();
+    expect(d.clientId).toBe("c-1");
+    expect(d.providerId).toBe("p-1");
+  });
+});
+
+describe("getJobConversation", () => {
+  it("maps each message's sender id, body and signed attachment url", async () => {
+    global.fetch = vi.fn(() => Promise.resolve(jsonResponse({
+      messages: [
+        { id: "m1", sender_id: "c-1", sender_name: "Ana", body: "Here is the leak", attachment_path: "j/leak.jpg", attachment_url: "https://signed.test/leak.jpg", read_at: null, created_at: "2026-10-04T10:00:00Z" },
+        { id: "m2", sender_id: "p-1", sender_name: "Rico", body: "", attachment_path: null, attachment_url: null, read_at: null, created_at: "2026-10-04T10:05:00Z" },
+      ],
+    }))) as unknown as typeof fetch;
+    const messages = await services.getJobConversation("j-1");
+    expect(messages[0]).toMatchObject({ id: "m1", senderId: "c-1", senderName: "Ana", body: "Here is the leak", attachmentUrl: "https://signed.test/leak.jpg" });
+    expect(messages[1]).toMatchObject({ id: "m2", senderId: "p-1", senderName: "Rico" });
+    expect(messages[1].attachmentUrl).toBeNull();
+  });
+});

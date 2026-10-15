@@ -1,12 +1,12 @@
-import { beforeEach, afterEach, describe, expect, it, vi } from "vitest";
-import { act, render, screen, within, waitFor } from "@testing-library/react";
+import { beforeAll, afterAll, beforeEach, afterEach, describe, expect, it, vi } from "vitest";
+import { act, fireEvent, render, screen, within, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { DisputesPage } from "./DisputesPage";
 import { ToastProvider } from "@/components/ui/Toast";
 import * as services from "@/lib/services";
 import { useApp } from "@/context/AppContext";
 import type { DisputeRow } from "@/lib/adapters";
-import type { AdminBookingDetail, CaseEntry } from "@/lib/domain";
+import type { AdminBookingDetail, CaseEntry, ConversationMessage } from "@/lib/domain";
 
 vi.mock("@/context/AppContext", () => ({ useApp: vi.fn() }));
 vi.mock("@/lib/services", () => ({
@@ -64,12 +64,18 @@ function queueIds(): string[] {
   return Array.from(list.querySelectorAll("[data-queue-item]")).map((el) => el.getAttribute("data-queue-item") ?? "");
 }
 
+// Stubbed once for the whole file. queue.tsx re-subscribes to matchMedia on every render, so a render
+// that lands after a per-test stub has been removed would throw; one stub for the file avoids that.
+beforeAll(() => {
+  vi.stubGlobal("matchMedia", vi.fn(() => ({ matches: true, addEventListener: vi.fn(), removeEventListener: vi.fn() })));
+});
 beforeEach(() => {
   vi.clearAllMocks();
-  vi.stubGlobal("matchMedia", vi.fn(() => ({ matches: true, addEventListener: vi.fn(), removeEventListener: vi.fn() })));
 });
 afterEach(() => {
   vi.useRealTimers();
+});
+afterAll(() => {
   vi.unstubAllGlobals();
 });
 
@@ -107,7 +113,7 @@ describe("admin review of settled disputes", () => {
     expect(screen.getByRole("link", { name: "View photo evidence" })).toHaveAttribute("href", "https://storage.test/photo");
     await user.type(screen.getByLabelText(/Resolution or clarification note/i), "Explain the missing task.");
     await user.click(screen.getByRole("button", { name: "Request clarification" }));
-    await waitFor(() => expect(services.requestDisputeClarification).toHaveBeenCalledWith("d1", "Explain the missing task."));
+    await waitFor(() => expect(services.requestDisputeClarification).toHaveBeenCalledWith("d1", "To both parties: Explain the missing task."));
     await waitFor(() => expect(useApp().refreshData).toHaveBeenCalled());
   });
   it("does not offer financial actions for a zero-budget case", () => {
@@ -305,5 +311,155 @@ describe("complaint queue", () => {
     setup(false);
     await user.click(screen.getByRole("button", { name: /Waiting on a party/ }));
     expect(screen.getByText("Nobody is being waited on")).toBeInTheDocument();
+  });
+});
+
+const chat: ConversationMessage[] = [
+  { id: "m1", senderId: "c1", senderName: "Ana", body: "The tap still leaks", createdAt: "2026-10-04T09:00:00Z" },
+  { id: "m2", senderId: "p1", senderName: "Rico", body: "I will return Monday", createdAt: "2026-10-04T10:00:00Z", attachmentUrl: "https://signed.test/leak.jpg" },
+  { id: "m3", senderId: null, senderName: "Unknown", body: "Job marked complete", createdAt: "2026-10-04T11:00:00Z" },
+];
+
+function restoreProperty(name: "scrollHeight" | "scrollTop", original: PropertyDescriptor | undefined) {
+  if (original) Object.defineProperty(HTMLElement.prototype, name, original);
+  else delete (HTMLElement.prototype as unknown as Record<string, unknown>)[name];
+}
+
+describe("job conversation panel", () => {
+  it("shows a fixed-height scrolling log with a message count and each sender's role", async () => {
+    vi.mocked(services.getJobConversation).mockResolvedValueOnce(chat);
+    renderDisputes([row({ clientId: "c1", providerId: "p1", entries: [] })]);
+    const log = await screen.findByRole("log", { name: "Job conversation" });
+    expect(log).toHaveClass("max-h-[320px]", "overflow-y-auto");
+    expect(screen.getByText("3 messages")).toBeInTheDocument();
+    const [client, provider, system] = within(log).getAllByRole("listitem");
+    expect(within(client).getByText("Client")).toBeInTheDocument();
+    expect(client).toHaveTextContent("The tap still leaks");
+    expect(within(provider).getByText("Provider")).toBeInTheDocument();
+    expect(within(system).getByText("System")).toBeInTheDocument();
+    expect(system).not.toHaveTextContent("Unknown");
+  });
+
+  it("starts the conversation scrolled to the newest message", async () => {
+    const heightBefore = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "scrollHeight");
+    const topBefore = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "scrollTop");
+    const setTop = vi.fn();
+    Object.defineProperty(HTMLElement.prototype, "scrollHeight", { configurable: true, get: () => 640 });
+    Object.defineProperty(HTMLElement.prototype, "scrollTop", { configurable: true, get: () => 0, set: setTop });
+    try {
+      vi.mocked(services.getJobConversation).mockResolvedValueOnce(chat);
+      renderDisputes([row({ clientId: "c1", providerId: "p1" })]);
+      await screen.findByRole("log", { name: "Job conversation" });
+      await waitFor(() => expect(setTop).toHaveBeenLastCalledWith(640));
+    } finally {
+      restoreProperty("scrollHeight", heightBefore);
+      restoreProperty("scrollTop", topBefore);
+    }
+  });
+
+  it("refreshes the job chat on request", async () => {
+    const user = userEvent.setup();
+    vi.mocked(services.getJobConversation)
+      .mockResolvedValueOnce(chat)
+      .mockResolvedValueOnce([...chat, { id: "m4", senderId: "c1", senderName: "Ana", body: "Photo sent in chat", createdAt: "2026-10-04T12:00:00Z" }]);
+    renderDisputes([row({ clientId: "c1", providerId: "p1" })]);
+    await screen.findByText("The tap still leaks");
+    await user.click(screen.getByRole("button", { name: "Refresh conversation" }));
+    expect(await screen.findByText("Photo sent in chat")).toBeInTheDocument();
+    expect(screen.getByText("4 messages")).toBeInTheDocument();
+    expect(services.getJobConversation).toHaveBeenCalledTimes(2);
+  });
+
+  it("keeps the last copy on screen and says so when a refresh fails", async () => {
+    const user = userEvent.setup();
+    vi.mocked(services.getJobConversation).mockResolvedValueOnce(chat).mockRejectedValueOnce(new Error("offline"));
+    renderDisputes([row({ clientId: "c1", providerId: "p1" })]);
+    await screen.findByText("The tap still leaks");
+    await user.click(screen.getByRole("button", { name: "Refresh conversation" }));
+    expect(await screen.findByText("Could not refresh the conversation. The last copy is still shown.")).toBeInTheDocument();
+    expect(screen.getByText("The tap still leaks")).toBeInTheDocument();
+  });
+
+  it("opens a chat photo in a dialog that Escape closes, handing focus back to the thumbnail", async () => {
+    const user = userEvent.setup();
+    vi.mocked(services.getJobConversation).mockResolvedValueOnce(chat);
+    renderDisputes([row({ clientId: "c1", providerId: "p1" })]);
+    const thumbnail = await screen.findByRole("button", { name: "Chat photo from Rico, Provider" });
+    await user.click(thumbnail);
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByRole("img", { name: "Chat photo from Rico, Provider" })).toHaveAttribute("src", "https://signed.test/leak.jpg");
+    await user.keyboard("{Escape}");
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    // Radix hands focus back on a later tick, so wait for it.
+    await waitFor(() => expect(thumbnail).toHaveFocus());
+  });
+
+  it("tells senders apart by name when the API sends no sender ids", async () => {
+    vi.mocked(services.getJobConversation).mockResolvedValueOnce([
+      { id: "n1", senderName: "Ana", body: "Client here", createdAt: "2026-10-04T09:00:00Z" },
+      { id: "n2", senderName: "Rico", body: "Provider here", createdAt: "2026-10-04T10:00:00Z" },
+    ] as ConversationMessage[]);
+    renderDisputes([row({ clientName: "Ana", providerName: "Rico", entries: [] })]);
+    const log = await screen.findByRole("log", { name: "Job conversation" });
+    const [client, provider] = within(log).getAllByRole("listitem");
+    expect(client).toHaveAttribute("data-role", "client");
+    expect(provider).toHaveAttribute("data-role", "provider");
+  });
+
+  it("does not let Escape in the photo dialog reach the queue's page shortcuts", async () => {
+    const user = userEvent.setup();
+    vi.mocked(services.getJobConversation).mockResolvedValueOnce(chat);
+    renderDisputes([row({ clientId: "c1", providerId: "p1" })]);
+    await user.click(await screen.findByRole("button", { name: "Chat photo from Rico, Provider" }));
+    await screen.findByRole("dialog");
+    const pageListener = vi.fn();
+    document.addEventListener("keydown", pageListener);
+    try {
+      await user.keyboard("{Escape}");
+      await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+      expect(pageListener).not.toHaveBeenCalled();
+    } finally {
+      document.removeEventListener("keydown", pageListener);
+    }
+  });
+});
+
+describe("case layout", () => {
+  it("keeps the response deadline above the case parties", () => {
+    vi.setSystemTime(new Date("2026-10-15T12:00:00Z"));
+    renderDisputes([row({ id: "c1", jobTitle: "Move sofa", clientName: "Ana", clientId: "c1", providerId: "p1", cancellationState: "pending", cancellationDeadline: "2026-10-15T09:00:00Z" })]);
+    const banner = screen.getByText(/Provider response deadline passed 3 h ago/);
+    const clientLabel = screen.getByText("Client", { exact: true });
+    expect(banner.compareDocumentPosition(clientLabel) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+});
+
+describe("clarification form", () => {
+  it("addresses the clarification to the party chosen in Ask", async () => {
+    const user = userEvent.setup();
+    setup(false);
+    await user.type(screen.getByLabelText(/Resolution or clarification note/i), "Share the agreement chat.");
+    await user.selectOptions(screen.getByRole("combobox", { name: "Ask" }), "client");
+    await user.click(screen.getByRole("button", { name: "Request clarification" }));
+    await waitFor(() => expect(services.requestDisputeClarification).toHaveBeenCalledWith("d1", "To the client: Share the agreement chat."));
+  });
+
+  it("fills a quick template into the note and says who can see it", async () => {
+    const user = userEvent.setup();
+    setup(false);
+    await user.click(screen.getByRole("button", { name: "Please share a photo of the finished work" }));
+    expect(screen.getByLabelText(/Resolution or clarification note/i)).toHaveValue("Please share a photo of the finished work");
+    expect(screen.getByText(/visible to both parties on this case/)).toBeInTheDocument();
+    expect(screen.getByText(/attach evidence from their own job chat/)).toBeInTheDocument();
+  });
+
+  it("will not send a clarification that is too long once the address is added", () => {
+    setup(false);
+    const note = screen.getByLabelText(/Resolution or clarification note/i);
+    fireEvent.change(note, { target: { value: "x".repeat(983) } });
+    expect(screen.getByRole("button", { name: "Request clarification" })).toBeEnabled();
+    fireEvent.change(note, { target: { value: "x".repeat(990) } });
+    expect(screen.getByRole("button", { name: "Request clarification" })).toBeDisabled();
+    expect(screen.getByText(/shorten by 7 characters/)).toBeInTheDocument();
   });
 });

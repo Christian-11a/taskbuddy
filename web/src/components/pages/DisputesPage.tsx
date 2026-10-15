@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState, type ComponentType } from "react";
-import { ArrowRight, Check, Gavel, MessagesSquare, RotateCcw, Scale, ShieldAlert } from "lucide-react";
+import { ArrowRight, Check, Clock, Gavel, MessagesSquare, RefreshCw, RotateCcw, Scale, ShieldAlert } from "lucide-react";
 import { useApp } from "@/context/AppContext";
 import * as services from "@/lib/services";
 import type { ConversationMessage } from "@/lib/domain";
@@ -11,9 +11,10 @@ import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { useToast } from "@/components/ui/Toast";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { ReasonField } from "@/components/ui/input";
+import { ReasonField, inputClass } from "@/components/ui/input";
+import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { PageHeader } from "@/components/admin/Panel";
-import { CaseTimeline } from "@/components/admin/CaseTimeline";
+import { CaseTimeline, CLARIFICATION_PREFIX, type ClarificationAudience } from "@/components/admin/CaseTimeline";
 import {
   Avatar,
   DetailCard,
@@ -45,6 +46,9 @@ type Filter = "needs-decision" | "waiting" | "cancellations" | "appeals" | "reso
 type Resolution = "RELEASED_TO_PROVIDER" | "REFUNDED_TO_CLIENT" | "REVIEWED";
 type ConversationState = ConversationMessage[] | "error";
 type Signalled = { row: DisputeRow; signals: CaseSignals };
+type SenderRole = "client" | "provider" | "system" | "unknown";
+/** The two sides of a job, as the chat and the case show them. */
+type Parties = { clientId: string | null; providerId: string | null; clientName: string; providerName: string };
 
 const KIND_LABEL: Record<CaseKind, string> = {
   complaint: "Complaint",
@@ -69,6 +73,21 @@ const FILTER_EMPTY: Partial<Record<Filter, { title: string; description: string;
   appeals: { title: "No appeals open", description: "Provider appeals appear here when a complaint is answered and reopened." },
   resolved: { title: "Nothing resolved yet", description: "Decided and cancelled cases collect here." },
 };
+
+/** Clarification templates. Each one is plain text: a photo request is sent as text, and participants attach the photo from their own job chat. */
+const QUICK_TEMPLATES = [
+  "Please share a photo of the finished work",
+  "Please send the chat message that shows the agreement",
+  "Please confirm whether the job was completed",
+  "Please explain the outstanding issue in one or two sentences",
+];
+const ASK_OPTIONS: { value: ClarificationAudience; label: string; toast: string }[] = [
+  { value: "both", label: "Both parties", toast: "both parties" },
+  { value: "client", label: "Client only", toast: "the client" },
+  { value: "provider", label: "Provider only", toast: "the provider" },
+];
+const SENDER_LABEL: Record<SenderRole, string> = { client: "Client", provider: "Provider", system: "System", unknown: "Unknown" };
+const SENDER_TONE: Record<SenderRole, "neutral" | "accent" | "info" | "warn"> = { client: "neutral", provider: "accent", system: "info", unknown: "warn" };
 
 function matchesFilter(filter: Filter, { row, signals }: Signalled): boolean {
   switch (filter) {
@@ -129,9 +148,12 @@ export function DisputesPage() {
   const [notes, setNotes] = useState<Record<string, string>>({});
   const [resolvingId, setResolvingId] = useState<string | null>(null);
   const [doneThisSession, setDoneThisSession] = useState(0);
+  // Who the next clarification asks. The backend has no recipient, so this only sets the text.
+  const [askAudience, setAskAudience] = useState<ClarificationAudience>("both");
   // GET /admin/jobs/:jobId/conversation (migration 0014) — read-only, fetched
   // when a case is opened and cached by job id.
   const [conversations, setConversations] = useState<Record<string, ConversationState>>({});
+  const [refreshingJobId, setRefreshingJobId] = useState<string | null>(null);
 
   const signalled = useMemo<Signalled[]>(
     () =>
@@ -193,6 +215,19 @@ export function DisputesPage() {
     setRetryTick((n) => n + 1);
   }
 
+  /** The "Refresh conversation" button: fetches the chat again and keeps the last copy if that fails. */
+  async function refreshConversation(jobId: string) {
+    setRefreshingJobId(jobId);
+    try {
+      const messages = await services.getJobConversation(jobId);
+      setConversations((prev) => ({ ...prev, [jobId]: messages }));
+    } catch {
+      showToast("Could not refresh the conversation. The last copy is still shown.", "error");
+    } finally {
+      setRefreshingJobId(null);
+    }
+  }
+
   // Payment protection only applies where there is a payment to hold. Job detail
   // (for the warranty window) is refreshed on live ticks; see useBookingDetailCache.
   const bookingJobId = selected && selected.hasPayment !== false ? selected.jobId : undefined;
@@ -219,20 +254,33 @@ export function DisputesPage() {
   }
 
   async function requestClarification(id: string) {
+    const body = `${CLARIFICATION_PREFIX[askAudience]}${(notes[id] ?? "").trim()}`;
     setResolvingId(id);
     try {
-      await services.requestDisputeClarification(id, notes[id].trim());
+      await services.requestDisputeClarification(id, body);
       void refreshCounts();
       await refreshData();
       setNotes((prev) => omit(prev, id));
-      showToast("Clarification requested from both participants.");
+      const asked = ASK_OPTIONS.find((option) => option.value === askAudience)?.toast ?? "both parties";
+      showToast(`Clarification posted to the case. Both parties can see it. It asks ${asked}.`);
     } catch (error) {
       showToast(error instanceof Error ? error.message : "Could not request clarification.", "error");
     } finally { setResolvingId(null); }
   }
 
+  /** Puts a template into the note. It is added after any draft, so nothing already typed is lost. */
+  function insertTemplate(id: string, text: string) {
+    setNotes((prev) => {
+      const current = prev[id] ?? "";
+      return { ...prev, [id]: current.trim() ? `${current.trimEnd()}\n${text}` : text };
+    });
+  }
+
   const noteTooLong = note.length > NOTE_MAX_LENGTH;
   const canDecide = !!selected?.isOpen && resolvingId === null && !noteTooLong && !!note.trim();
+  // The clarification is sent with its addressing prefix, and the backend limits the whole text to 1000 characters.
+  const clarifyOverBy = Math.max(0, CLARIFICATION_PREFIX[askAudience].length + note.trim().length - NOTE_MAX_LENGTH);
+  const canClarify = canDecide && clarifyOverBy === 0;
 
   useQueueKeys({
     ids,
@@ -380,6 +428,9 @@ export function DisputesPage() {
                 ) : undefined
               }
             >
+              {/* Deadline urgency first, so an overdue or due-soon case is the first thing read. */}
+              <UrgencyBanner signals={signals} />
+
               {/* Who's on each side, with the money in the middle. */}
               <div className="mb-6 grid grid-cols-[1fr_auto_1fr] items-center gap-3 rounded-[12px] border border-border bg-surface-2/60 p-4">
                 <Party label="Client" name={selected.clientName} />
@@ -441,8 +492,10 @@ export function DisputesPage() {
               <DetailSection title="Job conversation">
                 <Conversation
                   state={conversations[selected.jobId]}
-                  providerName={selected.providerName}
+                  parties={{ clientId: selected.clientId ?? null, providerId: selected.providerId ?? null, clientName: selected.clientName, providerName: selected.providerName }}
+                  refreshing={refreshingJobId === selected.jobId}
                   onRetry={() => retryConversation(selected.jobId)}
+                  onRefresh={() => void refreshConversation(selected.jobId)}
                 />
               </DetailSection>
 
@@ -456,7 +509,58 @@ export function DisputesPage() {
                     label="Resolution or clarification note (required)"
                     placeholder="Document the reason for the final decision…"
                   />
-                  <Button variant="outline" disabled={!canDecide} onClick={() => void requestClarification(selected.id)}>Request clarification</Button>
+
+                  <div className="mt-4 rounded-[10px] border border-border bg-surface-2/60 p-3.5">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <p className="text-[13px] font-medium">Request clarification</p>
+                      <label className="flex items-center gap-2 text-[12px] text-muted-foreground">
+                        <span>Ask</span>
+                        <select
+                          aria-label="Ask"
+                          value={askAudience}
+                          onChange={(e) => setAskAudience(e.target.value as ClarificationAudience)}
+                          className={cn(inputClass, "h-8 w-auto pr-7 text-[12.5px]")}
+                        >
+                          {ASK_OPTIONS.map((option) => (
+                            <option key={option.value} value={option.value}>{option.label}</option>
+                          ))}
+                        </select>
+                      </label>
+                    </div>
+
+                    <div role="group" aria-label="Quick templates" className="mt-3 flex flex-wrap gap-1.5">
+                      {QUICK_TEMPLATES.map((text) => (
+                        <Button
+                          key={text}
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          className="h-auto whitespace-normal py-1.5 text-left text-[12px]"
+                          onClick={() => insertTemplate(selected.id, text)}
+                        >
+                          {text}
+                        </Button>
+                      ))}
+                    </div>
+
+                    <p className="mt-3 text-[12px] leading-relaxed text-muted-foreground">
+                      The note is visible to both parties on this case, whichever side it names. Photo requests are sent as a text request. Participants attach evidence from their own job chat.
+                    </p>
+
+                    {note.trim() && (
+                      <p className={cn("mt-2 text-[12px]", clarifyOverBy > 0 ? "text-danger" : "text-muted-foreground")}>
+                        {clarifyOverBy > 0 ? (
+                          `Too long to post once addressed: shorten by ${clarifyOverBy} characters.`
+                        ) : (
+                          <>Posted as: <span className="font-medium text-foreground">{CLARIFICATION_PREFIX[askAudience]}{note.trim()}</span></>
+                        )}
+                      </p>
+                    )}
+
+                    <div className="mt-3 flex justify-end">
+                      <Button variant="outline" disabled={!canClarify} onClick={() => void requestClarification(selected.id)}>Request clarification</Button>
+                    </div>
+                  </div>
                 </DetailSection>
               )}
             </DetailCard>
@@ -499,6 +603,29 @@ function UrgencyChip({ signals }: { signals: CaseSignals }) {
   return null;
 }
 
+/** A pending cancellation's response deadline, at the top of the case while it is overdue or due soon. */
+function UrgencyBanner({ signals }: { signals: CaseSignals }) {
+  const hours = signals.hoursToDeadline;
+  if (hours === null) return null;
+  if (signals.urgency === "overdue") {
+    return (
+      <div className="mb-6 flex items-start gap-2.5 rounded-[10px] border border-danger/25 bg-danger-soft px-3.5 py-3 text-[13px] text-danger">
+        <Clock className="mt-0.5 size-4 shrink-0" aria-hidden />
+        <p className="font-medium">Provider response deadline passed {durationText(-hours)} ago. No answer yet.</p>
+      </div>
+    );
+  }
+  if (signals.urgency === "soon") {
+    return (
+      <div className="mb-6 flex items-start gap-2.5 rounded-[10px] border border-warn/30 bg-warn-soft px-3.5 py-3 text-[13px] text-warn">
+        <Clock className="mt-0.5 size-4 shrink-0" aria-hidden />
+        <p className="font-medium">Provider response due in {hours < 1 ? "under 1 h" : `${Math.floor(hours)} h`}. No answer yet.</p>
+      </div>
+    );
+  }
+  return null;
+}
+
 /** The deadline's date, with how long is left or how long it is overdue while the case is open. */
 function DeadlineValue({ iso, hoursToDeadline, open }: { iso: string | null; hoursToDeadline: number | null; open: boolean }) {
   if (!iso) return <span>No deadline set</span>;
@@ -535,15 +662,47 @@ function Party({ label, name, align = "left" }: { label: string; name: string; a
   );
 }
 
+/**
+ * Which side sent a chat message. The job's client and provider ids decide it;
+ * names only stand in when the API did not send ids.
+ */
+function senderRole(message: ConversationMessage, parties: Parties): SenderRole {
+  // An explicit null sender is a system message. A missing sender id is not the same thing.
+  if (message.senderId === null) return "system";
+  if (message.senderId && (parties.clientId || parties.providerId)) {
+    if (message.senderId === parties.clientId) return "client";
+    if (message.senderId === parties.providerId) return "provider";
+    return "unknown";
+  }
+  // No ids to compare with (an older API, or a response without sender_id): match on names.
+  if (message.senderName === parties.clientName) return "client";
+  if (message.senderName === parties.providerName) return "provider";
+  return "unknown";
+}
+
 function Conversation({
   state,
-  providerName,
+  parties,
+  refreshing,
   onRetry,
+  onRefresh,
 }: {
   state: ConversationState | undefined;
-  providerName: string;
+  parties: Parties;
+  refreshing: boolean;
   onRetry: () => void;
+  onRefresh: () => void;
 }) {
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const count = Array.isArray(state) ? state.length : 0;
+  const lastId = Array.isArray(state) && state.length > 0 ? state[state.length - 1].id : "";
+  // Opens at the newest message, and moves there again when a new one arrives.
+  // A refresh that brings nothing new leaves the reader where they were.
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  }, [count, lastId]);
+
   if (state === undefined) {
     return (
       <div className="space-y-2" aria-label="Loading conversation">
@@ -563,34 +722,118 @@ function Conversation({
       </div>
     );
   }
-  if (state.length === 0) {
-    return (
-      <div className="flex items-center gap-2 rounded-[10px] border border-dashed border-border-strong px-3.5 py-3 text-[12.5px] text-muted-foreground">
-        <MessagesSquare className="size-4" /> No messages in this job&apos;s chat.
+  return (
+    <div className="space-y-2.5">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <span className="tabular text-[12px] text-muted-foreground">
+          {state.length} {state.length === 1 ? "message" : "messages"}
+        </span>
+        <Button size="sm" variant="outline" onClick={onRefresh} disabled={refreshing}>
+          <RefreshCw className={cn(refreshing && "motion-safe:animate-spin")} aria-hidden /> Refresh conversation
+        </Button>
       </div>
+      {state.length === 0 ? (
+        <div className="flex items-center gap-2 rounded-[10px] border border-dashed border-border-strong px-3.5 py-3 text-[12.5px] text-muted-foreground">
+          <MessagesSquare className="size-4" /> No messages in this job&apos;s chat.
+        </div>
+      ) : (
+        // A fixed-height box: a long chat scrolls inside it and never grows the page.
+        <div
+          ref={scrollRef}
+          role="log"
+          aria-label="Job conversation"
+          tabIndex={0}
+          className="max-h-[320px] overflow-y-auto overscroll-contain rounded-[10px] border border-border bg-surface-2/50 p-3"
+        >
+          <ol className="space-y-3">
+            {state.map((m) => (
+              <ChatMessage key={m.id} message={m} parties={parties} />
+            ))}
+          </ol>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ChatMessage({ message, parties }: { message: ConversationMessage; parties: Parties }) {
+  const role = senderRole(message, parties);
+  const when = new Date(message.createdAt);
+  const sent = Number.isNaN(when.getTime()) ? null : when.toLocaleString();
+  const who = role === "system" ? null : message.senderName;
+  const placement = role === "provider" ? "items-end" : role === "system" ? "items-center" : "items-start";
+  const bubble =
+    role === "provider"
+      ? "rounded-br-[4px] bg-primary-soft text-foreground"
+      : role === "system"
+        ? "bg-surface text-muted-foreground"
+        : "rounded-bl-[4px] border border-border bg-surface";
+  const photoLabel = `Chat photo from ${who ?? SENDER_LABEL[role]}, ${SENDER_LABEL[role]}`;
+
+  return (
+    <li className={cn("flex flex-col gap-1", placement)} data-role={role}>
+      <div className="flex flex-wrap items-center gap-1.5 px-1 text-[11px] text-subtle">
+        <Badge tone={SENDER_TONE[role]}>{SENDER_LABEL[role]}</Badge>
+        {who && <span className="text-muted-foreground">{who}</span>}
+        {sent && <time dateTime={message.createdAt}>{sent}</time>}
+      </div>
+      {(message.body || message.attachmentUrl) && (
+        <div className={cn("max-w-[85%] rounded-[12px] px-3 py-2 text-[13px] leading-relaxed", bubble)}>
+          {message.body && <p className="whitespace-pre-wrap break-words">{message.body}</p>}
+          {message.attachmentUrl && (
+            <div className={cn(message.body && "mt-2")}>
+              <ChatAttachment url={message.attachmentUrl} label={photoLabel} />
+            </div>
+          )}
+        </div>
+      )}
+    </li>
+  );
+}
+
+/** A chat photo as a small thumbnail that opens full size in a dialog. Escape closes it and focus goes back to the thumbnail. */
+function ChatAttachment({ url, label }: { url: string; label: string }) {
+  const [enlarged, setEnlarged] = useState(false);
+  const [broken, setBroken] = useState(false);
+  const thumbnailRef = useRef<HTMLButtonElement>(null);
+  if (broken) {
+    return (
+      <a href={url} target="_blank" rel="noreferrer" className="text-[12.5px] font-medium text-primary underline-offset-2 hover:underline">
+        Open attachment
+      </a>
     );
   }
   return (
-    <ol className="max-h-[320px] space-y-2.5 overflow-y-auto rounded-[10px] border border-border bg-surface-2/50 p-3">
-      {state.map((m) => {
-        const fromProvider = m.senderName === providerName;
-        return (
-          <li key={m.id} className={cn("flex flex-col", fromProvider ? "items-end" : "items-start")}>
-            <div
-              className={cn(
-                "max-w-[85%] rounded-[12px] px-3 py-2 text-[13px] leading-relaxed",
-                fromProvider ? "rounded-br-[4px] bg-primary-soft text-foreground" : "rounded-bl-[4px] border border-border bg-surface",
-              )}
-            >
-              {m.body}
-              {m.attachmentUrl && <a href={m.attachmentUrl} target="_blank" rel="noreferrer" className="block underline">View job photo</a>}
-            </div>
-            <span className="mt-0.5 px-1 text-[11px] text-subtle">
-              {m.senderName} · {new Date(m.createdAt).toLocaleString()}
-            </span>
-          </li>
-        );
-      })}
-    </ol>
+    <>
+      <button
+        ref={thumbnailRef}
+        type="button"
+        onClick={() => setEnlarged(true)}
+        className="block overflow-hidden rounded-[8px] border border-border bg-surface focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/30"
+      >
+        {/* eslint-disable-next-line @next/next/no-img-element -- signed storage URL, not a Next image source */}
+        <img src={url} alt={label} loading="lazy" onError={() => setBroken(true)} className="size-20 object-cover" />
+      </button>
+      <Dialog open={enlarged} onOpenChange={setEnlarged}>
+        {/* Escape closes only this dialog: stopped here so the queue's page shortcuts never see it and deselect the case. */}
+        {/* Radix returns focus to a DialogTrigger, and this thumbnail is not one, so focus goes back to it explicitly. */}
+        <DialogContent
+          className="max-w-[min(94vw,880px)] p-4"
+          onEscapeKeyDown={(event) => event.stopPropagation()}
+          onCloseAutoFocus={(event) => {
+            event.preventDefault();
+            thumbnailRef.current?.focus();
+          }}
+        >
+          <DialogTitle className="text-[14px]">{label}</DialogTitle>
+          <DialogDescription className="sr-only">Enlarged chat photo. Press Escape to close.</DialogDescription>
+          {/* eslint-disable-next-line @next/next/no-img-element -- signed storage URL, not a Next image source */}
+          <img src={url} alt={label} className="mt-3 max-h-[72vh] w-full object-contain" />
+          <a href={url} target="_blank" rel="noreferrer" className="mt-3 inline-block text-[12.5px] font-medium text-primary underline-offset-2 hover:underline">
+            Open full size in a new tab
+          </a>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }

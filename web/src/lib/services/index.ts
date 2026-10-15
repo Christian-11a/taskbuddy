@@ -247,6 +247,9 @@ function mapDisputeRow(
     resolvedAt: row.resolved_at,
     cancellationState: row.cancellation_state ?? null,
     cancellationDeadline: row.cancellation_deadline ?? null,
+    // Only when the API sent the job's participant ids (the disputes query selects them).
+    ...(row.jobs?.client_id !== undefined && { clientId: row.jobs.client_id }),
+    ...(row.jobs?.assigned_provider_id !== undefined && { providerId: row.jobs.assigned_provider_id }),
   };
 }
 
@@ -309,6 +312,8 @@ function mapMessageRow(row: AdminMessageApiRow): ConversationMessage {
   return {
     ...(row.attachment_url !== undefined && { attachmentUrl: row.attachment_url }),
     id: row.id,
+    // Absent when the response has no sender_id; null only for a message with no author.
+    ...(row.sender_id !== undefined && { senderId: row.sender_id }),
     senderName: row.sender_name ?? "Unknown",
     body: row.body,
     createdAt: row.created_at,

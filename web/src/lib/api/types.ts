@@ -216,7 +216,15 @@ export interface AdminDisputeApiRow {
   resolution_note: string | null;
   created_at: string;
   resolved_at: string | null;
-  jobs: { title: string; service_categories: { name: string } | null; client?: { full_name: string }; provider?: { full_name: string } } | null;
+  jobs: {
+    title: string;
+    service_categories: { name: string } | null;
+    client?: { full_name: string };
+    provider?: { full_name: string };
+    /** Selected by the disputes query (backend DISPUTE_SELECT); used to tell chat senders apart. */
+    client_id?: string | null;
+    assigned_provider_id?: string | null;
+  } | null;
   /** Postgres numeric arrives as a string over PostgREST. */
   escrow_transactions: { amount: number | string; status: EscrowStatusApi } | null;
   /** The client or assigned provider who requested admin review. */

@@ -227,6 +227,8 @@ export interface DisputeRow {
   isOpen: boolean;
   cancellationState: string | null;
   cancellationDeadline: string | null;
+  clientId?: string | null;
+  providerId?: string | null;
 }
 
 export interface TransactionRow {
@@ -404,6 +406,8 @@ export function toDisputeRow(d: Dispute): DisputeRow {
     isOpen: d.status === "OPEN",
     cancellationState: d.cancellationState,
     cancellationDeadline: d.cancellationDeadline,
+    clientId: d.clientId,
+    providerId: d.providerId,
   };
 }
 
