@@ -318,7 +318,7 @@ All bodies are JSON. 🔒 = requires auth; (client) / (provider) = role-restrict
 | `GET /jobs/static-map?lat=&lon=` 🔒 (client) | `image/png` 600×300 map of a geocoded point, rendered by Geoapify server-side so the key never reaches the app. Coordinates must fall in the Philippines box (`400` otherwise); `503` when Geoapify fails or `GEOAPIFY_API_KEY` is unset. 20/min per IP. `BACKEND_SCHEMA.md` §31.1 |
 | `GET /jobs/mine` 🔒 (client) | own jobs |
 | `GET /jobs/assigned` 🔒 (provider) | jobs assigned to me |
-| `GET /jobs/:id` 🔒 | job detail |
+| `GET /jobs/:id` 🔒 | job detail; for the job's client and assigned provider it includes `escrow: { status, funding_method } \| null` (null = no payment record yet) |
 | `POST /jobs/:id/cancel` 🔒 (client) | any pre-completion state → `cancelled` |
 | `POST /jobs/:id/accept` 🔒 (provider) | accept an incoming booking request; `assigned` → `confirmed`, notifies the client (migration 0018) |
 | `POST /jobs/:id/start` 🔒 (provider) | `assigned`/`confirmed` → `in_progress` |
@@ -805,7 +805,9 @@ the client wallet and a lowered price refunds the difference. Card-funded price
 changes need a separate payment authorization flow and are rejected. Request
 expiry is reconciled on the five-minute payments tick and when requests are
 read or acted on. Live API checks passed on 2026-10-16 ([evidence](../test-docs/DEPLOYED_POST_UAT_ACCEPTANCE_EVIDENCE.json));
-the mobile UI for these contracts remains outstanding.
+the mobile UI for these contracts remains outstanding. `GET /jobs/:id` also
+includes `escrow: { status, funding_method }` (or `null`) for the job's client
+and assigned provider.
 
 For a disposable receiving-ledger demonstration, run from repository root:
 

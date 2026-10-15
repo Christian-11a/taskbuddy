@@ -284,7 +284,9 @@ export class JobsService {
     if (!isOwner && !isAssigned && !isBrowsable) {
       throw new ForbiddenException('You do not have access to this job');
     }
-    return job;
+    // Only the job's own two people learn about its money.
+    if (!isOwner && !isAssigned) return job;
+    return { ...job, escrow: await this.escrowSummary(jobId) };
   }
 
   /** Client cancels from any pre-completion state. */
@@ -597,6 +599,27 @@ export class JobsService {
 
   private withReviews<T>(jobs: T[]): T[] {
     return jobs.map((job) => this.withReview(job));
+  }
+
+  /**
+   * Is a payment held for this job, and was it paid from the wallet or by card?
+   * Job Details needs both: early release is offered only while money is held,
+   * and price changes only for wallet-funded jobs. A failed lookup reads as
+   * unknown (null) rather than failing the whole job read.
+   */
+  private async escrowSummary(
+    jobId: string,
+  ): Promise<{ status: string; funding_method: 'wallet' | 'card' } | null> {
+    const { data, error } = await this.supabase.admin
+      .from('escrow_transactions')
+      .select('status, funding_method')
+      .eq('job_id', jobId)
+      .maybeSingle();
+    if (error) {
+      this.logger.warn(`escrow summary for job ${jobId}: ${error.message}`);
+      return null;
+    }
+    return (data as { status: string; funding_method: 'wallet' | 'card' } | null) ?? null;
   }
 
   private async findJob(jobId: string) {
