@@ -230,43 +230,133 @@ export class ChatService {
    * only a participant opening it via openForJob does that, so a job with no
    * chat yet (unassigned, or never opened) just returns no messages.
    */
-  async adminConversationForJob(jobId: string) {
+  async adminConversationForJob(
+    jobId: string,
+    query: { limit?: number; before?: string } = {},
+  ) {
     const { data: conversation, error } = await this.supabase.admin
       .from('conversations')
       .select('id')
       .eq('job_id', jobId)
       .maybeSingle();
     if (error) throw new BadRequestException(error.message);
-    if (!conversation) return { messages: [] };
+    if (!conversation) return { messages: [], total: 0, has_more: false };
 
-    const { data, error: messagesError } = await this.supabase.admin
+    const limit = query.limit ?? 50;
+    let beforeTimestamp: string | undefined;
+    let beforeId: string | undefined;
+    if (query.before) {
+      if (
+        /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+          query.before,
+        )
+      ) {
+        const { data: cursor, error: cursorError } = await this.supabase.admin
+          .from('messages')
+          .select('id, created_at')
+          .eq('id', query.before)
+          .eq('conversation_id', conversation.id)
+          .maybeSingle();
+        if (cursorError) throw new BadRequestException(cursorError.message);
+        if (!cursor)
+          throw new BadRequestException('Unknown conversation cursor');
+        beforeTimestamp = cursor.created_at;
+        beforeId = cursor.id;
+      } else {
+        const timestamp = new Date(query.before);
+        if (Number.isNaN(timestamp.getTime())) {
+          throw new BadRequestException(
+            'before must be a message id or timestamp',
+          );
+        }
+        beforeTimestamp = timestamp.toISOString();
+      }
+    }
+    let pageQuery = this.supabase.admin
       .from('messages')
       .select('*, sender:profiles!messages_sender_id_fkey(full_name)')
       .eq('conversation_id', conversation.id)
-      .order('created_at', { ascending: true });
-    if (messagesError) throw new BadRequestException(messagesError.message);
+      .order('created_at', { ascending: false })
+      .order('id', { ascending: false })
+      .limit(limit + 1);
+    if (beforeTimestamp && beforeId) {
+      pageQuery = pageQuery.or(
+        `created_at.lt.${beforeTimestamp},and(created_at.eq.${beforeTimestamp},id.lt.${beforeId})`,
+      );
+    } else if (beforeTimestamp) {
+      pageQuery = pageQuery.lt('created_at', beforeTimestamp);
+    }
+    const [page, totalResult] = await Promise.all([
+      pageQuery,
+      this.supabase.admin
+        .from('messages')
+        .select('id', { count: 'exact', head: true })
+        .eq('conversation_id', conversation.id),
+    ]);
+    if (page.error) throw new BadRequestException(page.error.message);
+    if (totalResult.error)
+      throw new BadRequestException(totalResult.error.message);
+    const rows = page.data ?? [];
+    const has_more = rows.length > limit;
 
     const messages = await Promise.all(
-      (data ?? []).map(async (m) => {
-        const { attachment_url } = await this.withAttachmentUrl(
-          m as MessageRow,
-        );
-        return {
-          id: m.id,
-          sender_id: m.sender_id,
-          sender_name:
-            (m.sender as unknown as { full_name: string } | null)?.full_name ??
-            null,
-          body: m.body,
-          attachment_path: m.attachment_path,
-          attachment_url,
-          read_at: m.read_at,
-          created_at: m.created_at,
-        };
-      }),
+      rows
+        .slice(0, limit)
+        .reverse()
+        .map(async (m) => {
+          const { attachment_url } = await this.withAttachmentUrl(
+            m as MessageRow,
+          );
+          return {
+            id: m.id,
+            sender_id: m.sender_id,
+            sender_name:
+              (m.sender as unknown as { full_name: string } | null)
+                ?.full_name ?? null,
+            body: m.body,
+            attachment_path: m.attachment_path,
+            attachment_url,
+            read_at: m.read_at,
+            created_at: m.created_at,
+          };
+        }),
     );
 
-    return { messages };
+    return { messages, total: totalResult.count ?? 0, has_more };
+  }
+
+  async adminSignAttachments(paths: string[]) {
+    if (new Set(paths).size !== paths.length) {
+      throw new BadRequestException('Attachment paths must be unique');
+    }
+    const { data: rows, error } = await this.supabase.admin
+      .from('messages')
+      .select('attachment_path')
+      .in('attachment_path', paths);
+    if (error) throw new BadRequestException(error.message);
+    const allowed = new Set(
+      (rows ?? [])
+        .map((row) => row.attachment_path as string | null)
+        .filter((path): path is string => path !== null),
+    );
+    if (paths.some((path) => !allowed.has(path))) {
+      throw new BadRequestException(
+        'Each attachment must belong to a job conversation',
+      );
+    }
+    const expires_at = new Date(
+      Date.now() + CHAT_ATTACHMENT_TTL_SECONDS * 1000,
+    ).toISOString();
+    const urls = await Promise.all(
+      paths.map(async (path) => {
+        const { data, error: signError } = await this.supabase.admin.storage
+          .from(CHAT_ATTACHMENTS_BUCKET)
+          .createSignedUrl(path, CHAT_ATTACHMENT_TTL_SECONDS);
+        if (signError) throw new BadRequestException(signError.message);
+        return { path, url: data.signedUrl, expires_at };
+      }),
+    );
+    return { urls };
   }
 
   /** Marks messages sent by the other participant as read. */

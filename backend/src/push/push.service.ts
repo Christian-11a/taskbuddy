@@ -13,6 +13,12 @@ export interface PushMessage {
   title: string;
   body: string;
   data?: Record<string, unknown>;
+  notification_id?: string;
+}
+
+interface PushDeliveryResult {
+  notification_id: string;
+  sent: boolean;
 }
 
 /** The subset of Expo's per-message result this code acts on. */
@@ -113,6 +119,41 @@ export class PushService {
    * it, and a push outage must not stop the tick from claiming the next batch.
    */
   async send(messages: PushMessage[]): Promise<void> {
+    const results = await this.sendWithResults(messages);
+    const byNotification = new Map<
+      string,
+      { attempted: number; sent: number }
+    >();
+    for (const result of results) {
+      const counts = byNotification.get(result.notification_id) ?? {
+        attempted: 0,
+        sent: 0,
+      };
+      counts.attempted += 1;
+      if (result.sent) counts.sent += 1;
+      byNotification.set(result.notification_id, counts);
+    }
+    for (const [id, counts] of byNotification) {
+      const { error } = await this.supabase.admin
+        .from('notifications')
+        .update({
+          push_attempted_count: counts.attempted,
+          push_sent_count: counts.sent,
+          push_failed_count: counts.attempted - counts.sent,
+        })
+        .eq('id', id);
+      if (error) {
+        this.logger.error(
+          `Could not save push delivery status for notification ${id}: ${error.message}`,
+        );
+      }
+    }
+  }
+
+  private async sendWithResults(
+    messages: PushMessage[],
+  ): Promise<PushDeliveryResult[]> {
+    const results: PushDeliveryResult[] = [];
     for (let i = 0; i < messages.length; i += EXPO_BATCH_SIZE) {
       const batch = messages.slice(i, i + EXPO_BATCH_SIZE);
       try {
@@ -125,14 +166,43 @@ export class PushService {
           this.logger.warn(
             `Expo push rejected a batch of ${batch.length}: HTTP ${res.status}`,
           );
+          results.push(
+            ...batch
+              .filter((message) => message.notification_id)
+              .map((message) => ({
+                notification_id: message.notification_id!,
+                sent: false,
+              })),
+          );
           continue;
         }
         const body = (await res.json()) as { data?: ExpoTicket[] };
-        await this.pruneDeadTokens(batch, body.data ?? []);
+        const tickets = body.data ?? [];
+        results.push(
+          ...batch
+            .filter((message) => message.notification_id)
+            .map((message) => {
+              const index = batch.indexOf(message);
+              return {
+                notification_id: message.notification_id!,
+                sent: tickets[index]?.status === 'ok',
+              };
+            }),
+        );
+        await this.pruneDeadTokens(batch, tickets);
       } catch (err) {
         this.logger.warn(`Expo push batch failed: ${(err as Error).message}`);
+        results.push(
+          ...batch
+            .filter((message) => message.notification_id)
+            .map((message) => ({
+              notification_id: message.notification_id!,
+              sent: false,
+            })),
+        );
       }
     }
+    return results;
   }
 
   private headers(): Record<string, string> {

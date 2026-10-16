@@ -9,6 +9,8 @@ import { SupabaseService } from '../supabase/supabase.service';
 import {
   AddDisputeEntryDto,
   CancellationResponseDto,
+  ClarificationDto,
+  EvidenceRequestDto,
   ListDisputesQueryDto,
   RaiseDisputeDto,
   ResolveDisputeDto,
@@ -99,13 +101,27 @@ export class DisputesService {
     return data;
   }
 
-  async clarify(admin: Profile, id: string, body: string) {
+  async clarify(admin: Profile, id: string, dto: ClarificationDto) {
     const { data, error } = await this.supabase.admin.rpc('add_dispute_entry', {
       p_dispute_id: id,
       p_actor_id: admin.id,
       p_kind: 'clarification',
-      p_body: body,
+      p_body: dto.body,
       p_message_id: null,
+      p_recipient: dto.recipient ?? 'both',
+    });
+    if (error) throw new BadRequestException(error.message);
+    return data;
+  }
+
+  async requestEvidence(admin: Profile, id: string, dto: EvidenceRequestDto) {
+    const { data, error } = await this.supabase.admin.rpc('add_dispute_entry', {
+      p_dispute_id: id,
+      p_actor_id: admin.id,
+      p_kind: 'request_evidence',
+      p_body: dto.body,
+      p_message_id: null,
+      p_recipient: dto.recipient ?? 'both',
     });
     if (error) throw new BadRequestException(error.message);
     return data;

@@ -331,10 +331,24 @@ export class VerificationsService {
 
     const rows = (data ?? []) as VerificationRow[];
     const emails = await this.emailsFor(rows.map((r) => r.provider_id));
+    const includeDocuments = query.include_documents !== 'false';
     const verifications = await Promise.all(
-      rows.map((row) => this.shape(row, emails)),
+      rows.map((row) => this.shape(row, emails, includeDocuments)),
     );
     return { verifications, total: count ?? 0 };
+  }
+
+  async getForAdmin(id: string) {
+    const { data, error } = await this.supabase.admin
+      .from('provider_verifications')
+      .select('*, profiles!provider_verifications_provider_id_fkey(full_name)')
+      .eq('id', id)
+      .maybeSingle();
+    if (error) throw new BadRequestException(error.message);
+    if (!data) throw new NotFoundException('Verification not found');
+    const row = data as VerificationRow;
+    const emails = await this.emailsFor([row.provider_id]);
+    return this.shape(row, emails, true);
   }
 
   async approve(admin: Profile, id: string) {
@@ -493,6 +507,7 @@ export class VerificationsService {
   private async shape(
     row: VerificationRow,
     emails: Map<string, string | null>,
+    includeDocuments: boolean,
   ) {
     // Stripe Identity rows carry no paths — their documents were collected and
     // retained by Stripe — so `documents` is legitimately empty for them and
@@ -500,13 +515,15 @@ export class VerificationsService {
     const paths = [row.id_document_path, row.selfie_path].filter(
       (p): p is string => p !== null,
     );
-    const documents = (
-      await Promise.all(
-        paths.map((p) =>
-          this.uploads.signedDownloadUrl(VERIFICATION_DOCS_BUCKET, p),
-        ),
-      )
-    ).filter((url): url is string => url !== null);
+    const documents = !includeDocuments
+      ? []
+      : (
+          await Promise.all(
+            paths.map((p) =>
+              this.uploads.signedDownloadUrl(VERIFICATION_DOCS_BUCKET, p),
+            ),
+          )
+        ).filter((url): url is string => url !== null);
 
     return {
       id: row.id,

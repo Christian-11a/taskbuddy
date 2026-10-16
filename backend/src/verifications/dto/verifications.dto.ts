@@ -76,6 +76,11 @@ export class ListVerificationsQueryDto {
   @IsInt()
   @Type(() => Number)
   offset?: number;
+
+  /** Skip signing private files when a console page only needs queue rows. */
+  @IsOptional()
+  @IsIn(['true', 'false'])
+  include_documents?: 'true' | 'false';
 }
 
 export class RejectVerificationDto {

@@ -14,7 +14,7 @@ function createSupabaseMock(results: QueryResult[]) {
         calls.push({ method, args });
         return builder;
       });
-    for (const method of ['select', 'upsert', 'delete', 'eq', 'in']) {
+    for (const method of ['select', 'upsert', 'delete', 'update', 'eq', 'in']) {
       builder[method] = chain(method);
     }
     builder.single = jest.fn(() => Promise.resolve(result));
@@ -36,6 +36,27 @@ describe('PushService', () => {
   afterEach(() => jest.restoreAllMocks());
 
   describe('send', () => {
+    it('records mixed Expo ticket outcomes for all devices on a notification', async () => {
+      const { supabase, calls } = createSupabaseMock([
+        { data: null, error: null },
+      ]);
+      jest.spyOn(global, 'fetch').mockResolvedValue({
+        ok: true,
+        json: () =>
+          Promise.resolve({ data: [{ status: 'ok' }, { status: 'error' }] }),
+      } as unknown as Response);
+      await new PushService(supabase).send([
+        { ...message('ExponentPushToken[first]'), notification_id: 'n1' },
+        { ...message('ExponentPushToken[second]'), notification_id: 'n1' },
+      ]);
+      expect(calls.find((call) => call.method === 'update')?.args[0]).toEqual({
+        push_attempted_count: 2,
+        push_sent_count: 1,
+        push_failed_count: 1,
+      });
+      expect(calls).toContainEqual({ method: 'eq', args: ['id', 'n1'] });
+    });
+
     it('deletes only the tokens Expo reports as unregistered', async () => {
       // Tickets come back positionally aligned with the batch. Getting this
       // wrong deletes a live device and leaves a dead one in place.

@@ -2,6 +2,7 @@ import {
   BadRequestException,
   ForbiddenException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { SupabaseService } from '../supabase/supabase.service';
@@ -27,10 +28,53 @@ const BOOKING_SELECT =
 
 @Injectable()
 export class AdminService {
+  private readonly logger = new Logger(AdminService.name);
   constructor(
     private readonly supabase: SupabaseService,
     private readonly adminActions: AdminActionsService,
   ) {}
+
+  async queueCounts() {
+    const [verifications, disputes, withdrawals, serviceRequests] =
+      await Promise.all([
+        this.supabase.admin
+          .from('provider_verifications')
+          .select('id', { count: 'exact', head: true })
+          .eq('status', 'pending'),
+        this.supabase.admin
+          .from('disputes')
+          .select('id', { count: 'exact', head: true })
+          .eq('status', 'open'),
+        this.supabase.admin
+          .from('wallet_transactions')
+          .select('id', { count: 'exact', head: true })
+          .eq('kind', 'withdrawal')
+          .eq('status', 'pending'),
+        this.supabase.admin
+          .from('skill_change_requests')
+          .select('id', { count: 'exact', head: true })
+          .eq('status', 'pending'),
+      ]);
+    const count = (
+      name: string,
+      result: { count: number | null; error: { message: string } | null },
+    ) => {
+      if (result.error) {
+        this.logger.error(
+          `Admin queue count failed for ${name}: ${result.error.message}`,
+        );
+        return null;
+      }
+      return result.count ?? 0;
+    };
+    return {
+      verifications: count('verifications', verifications),
+      disputes: count('disputes', disputes),
+      withdrawals: count('withdrawals', withdrawals),
+      service_requests: count('service requests', serviceRequests),
+      as_of: new Date().toISOString(),
+    };
+  }
 
   async listUsers(query: ListUsersQueryDto) {
     const offset = query.offset ?? 0;

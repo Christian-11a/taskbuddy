@@ -198,7 +198,8 @@ it('case notifications target both participants and carry the case ID; admin cla
 
 it('migration is repeatable and only the service role can write case activity', async () => {
   await db.exec(readMigration('0041_complaints_and_cancellation_review.sql'));
-  for (const fn of ['add_dispute_entry(uuid,uuid,text,text,uuid)', 'respond_job_cancellation(uuid,uuid,boolean,text,uuid)', 'expire_job_cancellations()', 'resolve_job_dispute(uuid,uuid,text,text)']) {
+  await db.exec(readMigration('0052_web_admin_handoffs.sql'));
+  for (const fn of ['add_dispute_entry(uuid,uuid,text,text,uuid,text)', 'respond_job_cancellation(uuid,uuid,boolean,text,uuid)', 'expire_job_cancellations()', 'resolve_job_dispute(uuid,uuid,text,text)']) {
     for (const role of ['anon', 'authenticated']) assert.equal(await rpc("has_function_privilege($1,$2,'EXECUTE')", [role, fn]), false);
     assert.equal(await rpc("has_function_privilege('service_role',$1,'EXECUTE')", [fn]), true);
   }
@@ -224,4 +225,34 @@ it('contesting cancellation preserves the complete reason and details', async ()
   await rpc('raise_job_dispute($1,$2,$3,$4)', [id, provider, reason, details]);
   const entries = await query('select kind, body from dispute_entries where dispute_id = $1 order by kind', [c.id]);
   assert.deepEqual(entries, [{ kind: 'appeal', body: reason }, { kind: 'statement', body: details }]);
+});
+
+it('admin evidence requests address one participant without hiding the case from the other', async () => {
+  const id = await job('in_progress', false);
+  const c = await complaint(id);
+  const requested = await rpc('add_dispute_entry($1,$2,$3,$4,null,$5)', [c.id, admin, 'request_evidence', 'Please attach the repair photo.', 'provider']);
+  assert.equal(requested.kind, 'request_evidence');
+  assert.equal(requested.recipient, 'provider');
+  const notices = await query("select recipient_id, title from notifications where type = 'dispute_update' and data->>'entry_id' = $1 order by recipient_id", [requested.id]);
+  assert.deepEqual(notices, [
+    { recipient_id: client, title: 'More information requested' },
+    { recipient_id: provider, title: 'Asked of you' },
+  ]);
+  await assert.rejects(rpc('add_dispute_entry($1,$2,$3,$4,null,$5)', [c.id, client, 'request_evidence', 'Send evidence', 'provider']), /Invalid participant statement/);
+  await assert.rejects(rpc('add_dispute_entry($1,$2,$3,$4,null,$5)', [c.id, admin, 'clarification', 'Send evidence', 'outsider']), /Recipient must be/);
+  const response = await entry(c.id, provider);
+  assert.equal(response.recipient, null);
+});
+
+it('admin alerts are deduplicated and dismissed alerts stay out of snapshots', async () => {
+  const key = 'test-admin-alert';
+  await rpc('write_admin_alert($1,$2,$3,$4)', [key, 'Review needed', 'A case needs review', JSON.stringify({ target: 'disputes' })]);
+  await rpc('write_admin_alert($1,$2,$3,$4)', [key, 'Review needed', 'A case needs review', JSON.stringify({ target: 'disputes' })]);
+  const rows = await query("select id from notifications where recipient_id = $1 and data->>'event_key' = $2", [admin, key]);
+  assert.equal(rows.length, 1);
+  await query('update notifications set dismissed_at = now() where id = $1', [rows[0].id]);
+  const snapshot = await rpc('notification_snapshot($1)', [admin]);
+  assert.equal(snapshot.notifications.some((n) => n.id === rows[0].id), false);
+  const [{ unread }] = await query('select count(*)::int as unread from notifications where recipient_id = $1 and read_at is null and dismissed_at is null', [admin]);
+  assert.equal(snapshot.unreadCount, unread);
 });

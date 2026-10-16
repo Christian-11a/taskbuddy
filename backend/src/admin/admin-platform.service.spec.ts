@@ -253,6 +253,10 @@ describe('AdminPlatformService', () => {
     it('writes one row per recipient and reports what landed', async () => {
       const recipients = [{ id: 'u1' }, { id: 'u2' }, { id: 'u3' }];
       const { supabase, calls } = createSupabaseMock({
+        notification_broadcasts: [
+          { data: { id: 'b1' }, error: null },
+          { data: null, error: null },
+        ],
         profiles: [{ data: recipients, error: null }],
         notifications: [{ data: null, error: null }],
       });
@@ -267,20 +271,34 @@ describe('AdminPlatformService', () => {
           body: 'The app will be unavailable on Sunday.',
           audience: 'all',
         }),
-      ).resolves.toEqual({ sent: 3, failed: 0, audience: 'all' });
+      ).resolves.toEqual({
+        broadcast_id: 'b1',
+        sent: 3,
+        sent_to: 3,
+        push_queued: 3,
+        failed: 0,
+        audience: 'all',
+      });
 
-      const insert = calls.find((c) => c.method === 'insert');
+      const insert = calls.find(
+        (c) => c.table === 'notifications' && c.method === 'insert',
+      );
       const rows = insert?.args[0] as Record<string, unknown>[];
       expect(rows).toHaveLength(3);
       // Not 'job_update' — nothing about a broadcast is about a job.
       expect(rows[0]).toMatchObject({
         recipient_id: 'u1',
         type: 'announcement',
+        broadcast_id: 'b1',
       });
     });
 
     it('excludes admins, suspended and deleted accounts', async () => {
       const { supabase, calls } = createSupabaseMock({
+        notification_broadcasts: [
+          { data: { id: 'b1' }, error: null },
+          { data: null, error: null },
+        ],
         profiles: [{ data: [], error: null }],
       });
       const service = new AdminPlatformService(
@@ -317,6 +335,10 @@ describe('AdminPlatformService', () => {
       // A broadcast that reached most of the platform and says so beats one
       // that stops at the first problem and reports nothing.
       const { supabase } = createSupabaseMock({
+        notification_broadcasts: [
+          { data: { id: 'b1' }, error: null },
+          { data: null, error: null },
+        ],
         profiles: [{ data: [{ id: 'u1' }], error: null }],
         notifications: [{ data: null, error: { message: 'boom' } }],
       });
@@ -327,7 +349,14 @@ describe('AdminPlatformService', () => {
 
       await expect(
         service.broadcast(admin, { title: 'x', body: 'y', audience: 'all' }),
-      ).resolves.toEqual({ sent: 0, failed: 1, audience: 'all' });
+      ).resolves.toEqual({
+        broadcast_id: 'b1',
+        sent: 0,
+        sent_to: 0,
+        push_queued: 0,
+        failed: 1,
+        audience: 'all',
+      });
     });
   });
 
