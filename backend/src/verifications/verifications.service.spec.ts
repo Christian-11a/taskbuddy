@@ -4,7 +4,7 @@ import {
   NotFoundException,
   ServiceUnavailableException,
 } from '@nestjs/common';
-import { VerificationsService } from './verifications.service';
+import { VerificationsService, namesMatch } from './verifications.service';
 import type { SupabaseService } from '../supabase/supabase.service';
 import type { UploadsService } from '../uploads/uploads.service';
 import type { StripeService } from '../payments/stripe.service';
@@ -84,19 +84,24 @@ function createIdentityStripeMock() {
     .mockResolvedValue({ id: 'vs_1', url: 'https://verify.stripe.com/s/vs_1' });
   const sessionsCancel = jest.fn().mockResolvedValue({ id: 'vs_1' });
   const keysCreate = jest.fn().mockResolvedValue({ secret: 'ek_secret' });
+  const sessionsRetrieve = jest.fn().mockResolvedValue({
+    id: 'vs_1',
+    verified_outputs: { first_name: 'Maria', last_name: 'Santos' },
+  });
   const service = {
     stripe: {
       identity: {
         verificationSessions: {
           create: sessionsCreate,
           cancel: sessionsCancel,
+          retrieve: sessionsRetrieve,
         },
       },
       ephemeralKeys: { create: keysCreate },
     },
     publishableKey: 'pk_test_stub',
   } as unknown as StripeService;
-  return { service, sessionsCreate, sessionsCancel, keysCreate };
+  return { service, sessionsCreate, sessionsCancel, sessionsRetrieve, keysCreate };
 }
 
 /** Shaped like a stripe-node error: a `type` and Stripe's own statusCode. */
@@ -409,12 +414,13 @@ describe('VerificationsService', () => {
           HAS_PROFILE,
           { data: [{ profile_id: 'p1' }], error: null },
         ],
+        profiles: [{ data: { full_name: 'Maria Clara Santos' }, error: null }],
         notifications: [{ data: null, error: null }],
       });
       const service = new VerificationsService(
         supabase,
         createUploadsMock(),
-        createStripeMock(),
+        createIdentityStripeMock().service,
         createAdminActionsMock().mock,
       );
 
@@ -424,6 +430,24 @@ describe('VerificationsService', () => {
         (c) => c.table === 'provider_profiles' && c.method === 'update',
       );
       expect(verifiedUpdate?.args[0]).toEqual({ is_verified: true });
+    });
+
+    it('leaves a verified document pending when it names someone else', async () => {
+      const { supabase, calls } = createSupabaseMock({
+        provider_verifications: [{ data: pendingIdentity, error: null }],
+        provider_profiles: [HAS_PROFILE],
+        profiles: [{ data: { full_name: 'Juan Dela Cruz' }, error: null }],
+      });
+      const service = new VerificationsService(
+        supabase,
+        createUploadsMock(),
+        createIdentityStripeMock().service,
+        createAdminActionsMock().mock,
+      );
+
+      await service.applyIdentityResult('vs_1', 'verified');
+
+      expect(calls.some((c) => c.method === 'update')).toBe(false);
     });
 
     it('still records a rejection without needing the row', async () => {
@@ -691,5 +715,17 @@ describe('VerificationsService', () => {
       ).rejects.toThrow(BadRequestException);
       expect(stripe.sessionsCancel).toHaveBeenCalledWith('vs_1');
     });
+  });
+});
+
+describe('namesMatch', () => {
+  it('ignores case, accents, punctuation and middle names', () => {
+    expect(namesMatch('MARIA SANTOS', 'María Clara Santos')).toBe(true);
+    expect(namesMatch('Jose Dela-Cruz', 'José dela Cruz')).toBe(true);
+  });
+
+  it('refuses a different or missing name', () => {
+    expect(namesMatch('Maria Santos', 'Maria Reyes')).toBe(false);
+    expect(namesMatch(' ', 'Maria Reyes')).toBe(false);
   });
 });
