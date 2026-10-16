@@ -828,3 +828,53 @@ describe('owned-job query validation', () => {
     });
   });
 });
+
+describe('JobsService.getById escrow summary', () => {
+  const client = { id: 'c1', role: 'client' } as Profile;
+
+  it('adds the held escrow and its funding method for the client', async () => {
+    const { service } = createService({
+      jobs: [ok(job({ status: 'completed' }))],
+      escrow_transactions: [ok({ status: 'held', funding_method: 'wallet' })],
+    });
+    const result = (await service.getById(client, 'j1')) as Record<string, unknown>;
+    expect(result.escrow).toEqual({ status: 'held', funding_method: 'wallet' });
+  });
+
+  it('adds it for the assigned provider', async () => {
+    const { service } = createService({
+      jobs: [ok(job({ status: 'completed' }))],
+      escrow_transactions: [ok({ status: 'held', funding_method: 'card' })],
+    });
+    const result = (await service.getById(provider, 'j1')) as Record<string, unknown>;
+    expect(result.escrow).toEqual({ status: 'held', funding_method: 'card' });
+  });
+
+  it('reports null when the job has no escrow row', async () => {
+    const { service } = createService({
+      jobs: [ok(job({ status: 'open', assigned_provider_id: null }))],
+      escrow_transactions: [ok(null)],
+    });
+    const result = (await service.getById(client, 'j1')) as Record<string, unknown>;
+    expect(result.escrow).toBeNull();
+  });
+
+  it('reports null instead of failing when the lookup errors', async () => {
+    const { service } = createService({
+      jobs: [ok(job({ status: 'completed' }))],
+      escrow_transactions: [{ data: null, error: { message: 'boom' } }],
+    });
+    const result = (await service.getById(client, 'j1')) as Record<string, unknown>;
+    expect(result.escrow).toBeNull();
+  });
+
+  it('never looks up escrow for a provider browsing an open job', async () => {
+    const browsing = { id: 'p9', role: 'provider' } as Profile;
+    const { service, calls } = createService({
+      jobs: [ok(job({ status: 'open', assigned_provider_id: null }))],
+    });
+    const result = (await service.getById(browsing, 'j1')) as Record<string, unknown>;
+    expect(result.escrow).toBeUndefined();
+    expect(calls.some((c) => c.table === 'escrow_transactions')).toBe(false);
+  });
+});
