@@ -15,6 +15,10 @@ import {
 import type { SupabaseService } from '../supabase/supabase.service';
 import type { ConnectPayoutsService } from '../payments/connect/connect-payouts.service';
 import type { Profile } from '../common/types';
+import type { XenditService } from '../payments/xendit.service';
+
+/** Xendit not configured: payouts fall back to simulated pass-through. */
+const NO_XENDIT = { configured: false } as unknown as XenditService;
 
 /**
  * Since migration 0028 every escrow move is one SQL function that changes the
@@ -134,7 +138,7 @@ describe('EscrowService', () => {
         {},
         { admin_list_transactions: [ok([{ rows, total: 51 }])] },
       );
-      const service = new EscrowService(supabase, payouts);
+      const service = new EscrowService(supabase, payouts, NO_XENDIT);
 
       await expect(
         service.listForAdmin({
@@ -158,7 +162,7 @@ describe('EscrowService', () => {
         {},
         { admin_list_transactions: [ok([{ rows: [], total: 51 }])] },
       );
-      const service = new EscrowService(supabase, payouts);
+      const service = new EscrowService(supabase, payouts, NO_XENDIT);
 
       await expect(
         service.listForAdmin({ limit: 25, offset: 100 }),
@@ -172,7 +176,7 @@ describe('EscrowService', () => {
         {},
         { escrow_place_hold: [ok({ escrow: heldEscrow, placed: true })] },
       );
-      const service = new EscrowService(supabase, payouts);
+      const service = new EscrowService(supabase, payouts, NO_XENDIT);
 
       const result = await service.hold('j1', 'p1');
 
@@ -196,7 +200,7 @@ describe('EscrowService', () => {
         {},
         { escrow_place_hold: [ok({ escrow: heldEscrow, placed: true })] },
       );
-      const service = new EscrowService(supabase, payouts);
+      const service = new EscrowService(supabase, payouts, NO_XENDIT);
 
       await service.hold('j1', 'p1', {
         paymentIntentId: 'pi_1',
@@ -217,7 +221,7 @@ describe('EscrowService', () => {
         {},
         { escrow_place_hold: [ok({ escrow: heldEscrow, placed: false })] },
       );
-      const service = new EscrowService(supabase, payouts);
+      const service = new EscrowService(supabase, payouts, NO_XENDIT);
 
       expect((await service.hold('j1', 'p1')).placed).toBe(false);
     });
@@ -227,7 +231,7 @@ describe('EscrowService', () => {
         {},
         { escrow_place_hold: [ok({ escrow: null, placed: false })] },
       );
-      const service = new EscrowService(supabase, payouts);
+      const service = new EscrowService(supabase, payouts, NO_XENDIT);
 
       expect(await service.hold('j1', 'p1')).toEqual({
         escrow: null,
@@ -251,7 +255,7 @@ describe('EscrowService', () => {
           ],
         },
       );
-      const service = new EscrowService(supabase, payouts);
+      const service = new EscrowService(supabase, payouts, NO_XENDIT);
 
       const err: unknown = await service
         .hold('j1', 'p1')
@@ -284,7 +288,7 @@ describe('EscrowService', () => {
           ],
         },
       );
-      const service = new EscrowService(supabase, payouts);
+      const service = new EscrowService(supabase, payouts, NO_XENDIT);
 
       await expect(service.hold('j1', 'p2')).rejects.toThrow(
         EscrowConflictError,
@@ -308,7 +312,7 @@ describe('EscrowService', () => {
       // The default, and the point of the default: applying 0024 changes no
       // figure anywhere until an admin deliberately sets a rate.
       const { supabase, rpc } = releaseWith(0);
-      await new EscrowService(supabase, payouts).release('j1');
+      await new EscrowService(supabase, payouts, NO_XENDIT).release('j1');
 
       expect(rpcArgs(rpc, 'escrow_settle')[0]).toMatchObject({
         p_next: 'released',
@@ -319,7 +323,7 @@ describe('EscrowService', () => {
 
     it('freezes the configured cut onto the release and says so on the payout line', async () => {
       const { supabase, rpc } = releaseWith(0.15);
-      await new EscrowService(supabase, payouts).release('j1');
+      await new EscrowService(supabase, payouts, NO_XENDIT).release('j1');
 
       expect(rpcArgs(rpc, 'escrow_settle')[0]).toMatchObject({
         p_commission: 225,
@@ -330,7 +334,7 @@ describe('EscrowService', () => {
     it('rounds to centavos rather than carrying float noise into the ledger', async () => {
       // 1000.05 * 0.075 = 75.00375 — not an amount anyone can be charged.
       const { supabase, rpc } = releaseWith(0.075, 1000.05);
-      await new EscrowService(supabase, payouts).release('j1');
+      await new EscrowService(supabase, payouts, NO_XENDIT).release('j1');
 
       expect(rpcArgs(rpc, 'escrow_settle')[0]).toMatchObject({
         p_commission: 75,
@@ -347,7 +351,7 @@ describe('EscrowService', () => {
         },
         { escrow_settle: [ok({ ...heldEscrow, status: 'released' })] },
       );
-      await new EscrowService(supabase, payouts).release('j1');
+      await new EscrowService(supabase, payouts, NO_XENDIT).release('j1');
 
       expect(rpcArgs(rpc, 'escrow_settle')[0]).toMatchObject({
         p_commission: 0,
@@ -373,7 +377,7 @@ describe('EscrowService', () => {
       );
 
       await expect(
-        new EscrowService(supabase, payouts).release('j1'),
+        new EscrowService(supabase, payouts, NO_XENDIT).release('j1'),
       ).resolves.toMatchObject({ status: 'released' });
       expect(processEscrow).toHaveBeenCalledWith('e1');
     });
@@ -388,7 +392,7 @@ describe('EscrowService', () => {
         },
       );
 
-      await new EscrowService(supabase, payouts).release('j1');
+      await new EscrowService(supabase, payouts, NO_XENDIT).release('j1');
 
       expect(processEscrow).not.toHaveBeenCalled();
     });
@@ -401,7 +405,11 @@ describe('EscrowService', () => {
         { escrow_settle: [ok({ ...heldEscrow, status: 'released' })] },
       );
 
-      const result = await new EscrowService(supabase, payouts).release('j1');
+      const result = await new EscrowService(
+        supabase,
+        payouts,
+        NO_XENDIT,
+      ).release('j1');
 
       expect(result).toMatchObject({ status: 'released' });
       expect(rpcArgs(rpc, 'escrow_settle')[0]).toMatchObject({
@@ -418,7 +426,7 @@ describe('EscrowService', () => {
       );
 
       await expect(
-        new EscrowService(supabase, payouts).release('j1'),
+        new EscrowService(supabase, payouts, NO_XENDIT).release('j1'),
       ).rejects.toThrow(ConflictException);
     });
 
@@ -431,7 +439,7 @@ describe('EscrowService', () => {
       });
 
       await expect(
-        new EscrowService(supabase, payouts).release('j1'),
+        new EscrowService(supabase, payouts, NO_XENDIT).release('j1'),
       ).rejects.toThrow(ConflictException);
       expect(rpc).not.toHaveBeenCalled();
     });
@@ -442,7 +450,7 @@ describe('EscrowService', () => {
       });
 
       await expect(
-        new EscrowService(supabase, payouts).release('j1'),
+        new EscrowService(supabase, payouts, NO_XENDIT).release('j1'),
       ).rejects.toThrow(BadRequestException);
     });
   });
@@ -455,7 +463,9 @@ describe('EscrowService', () => {
       );
 
       expect(
-        await new EscrowService(supabase, payouts).releaseIfHeld('j1'),
+        await new EscrowService(supabase, payouts, NO_XENDIT).releaseIfHeld(
+          'j1',
+        ),
       ).toMatchObject({ status: 'released' });
     });
 
@@ -465,7 +475,9 @@ describe('EscrowService', () => {
       });
 
       expect(
-        await new EscrowService(supabase, payouts).releaseIfHeld('j1'),
+        await new EscrowService(supabase, payouts, NO_XENDIT).releaseIfHeld(
+          'j1',
+        ),
       ).toBeNull();
       expect(rpc).not.toHaveBeenCalled();
     });
@@ -476,7 +488,9 @@ describe('EscrowService', () => {
       });
 
       expect(
-        await new EscrowService(supabase, payouts).releaseIfHeld('j1'),
+        await new EscrowService(supabase, payouts, NO_XENDIT).releaseIfHeld(
+          'j1',
+        ),
       ).toBeNull();
     });
 
@@ -486,7 +500,7 @@ describe('EscrowService', () => {
       });
 
       await expect(
-        new EscrowService(supabase, payouts).releaseIfHeld('j1'),
+        new EscrowService(supabase, payouts, NO_XENDIT).releaseIfHeld('j1'),
       ).rejects.toThrow(ConflictException);
     });
   });
@@ -498,7 +512,11 @@ describe('EscrowService', () => {
         { escrow_settle: [ok({ ...heldEscrow, status: 'cancelled' })] },
       );
 
-      await new EscrowService(supabase, payouts).releaseHoldForFailedHire('j1');
+      await new EscrowService(
+        supabase,
+        payouts,
+        NO_XENDIT,
+      ).releaseHoldForFailedHire('j1');
 
       expect(rpcArgs(rpc, 'escrow_settle')[0]).toMatchObject({
         p_expected: 'held',
@@ -514,7 +532,11 @@ describe('EscrowService', () => {
       );
 
       await expect(
-        new EscrowService(supabase, payouts).releaseHoldForFailedHire('j1'),
+        new EscrowService(
+          supabase,
+          payouts,
+          NO_XENDIT,
+        ).releaseHoldForFailedHire('j1'),
       ).resolves.toBeUndefined();
     });
 
@@ -523,7 +545,11 @@ describe('EscrowService', () => {
         escrow_transactions: [ok(null)],
       });
 
-      await new EscrowService(supabase, payouts).releaseHoldForFailedHire('j1');
+      await new EscrowService(
+        supabase,
+        payouts,
+        NO_XENDIT,
+      ).releaseHoldForFailedHire('j1');
 
       expect(rpc).not.toHaveBeenCalled();
     });
@@ -536,9 +562,11 @@ describe('EscrowService', () => {
         { escrow_settle: [ok({ ...heldEscrow, status: 'cancelled' })] },
       );
 
-      const result = await new EscrowService(supabase, payouts).cancelForJob(
-        'j1',
-      );
+      const result = await new EscrowService(
+        supabase,
+        payouts,
+        NO_XENDIT,
+      ).cancelForJob('j1');
 
       expect(result).toMatchObject({ status: 'cancelled' });
       expect(rpcArgs(rpc, 'escrow_settle')[0]).toMatchObject({
@@ -557,7 +585,9 @@ describe('EscrowService', () => {
       );
 
       expect(
-        await new EscrowService(supabase, payouts).cancelForJob('j1'),
+        await new EscrowService(supabase, payouts, NO_XENDIT).cancelForJob(
+          'j1',
+        ),
       ).toBeNull();
     });
 
@@ -567,7 +597,9 @@ describe('EscrowService', () => {
       });
 
       expect(
-        await new EscrowService(supabase, payouts).cancelForJob('j1'),
+        await new EscrowService(supabase, payouts, NO_XENDIT).cancelForJob(
+          'j1',
+        ),
       ).toBeNull();
       expect(rpc).not.toHaveBeenCalled();
     });
@@ -581,7 +613,7 @@ describe('EscrowService', () => {
         { escrow_settle: [ok({ ...disputed, status: 'refunded' })] },
       );
 
-      await new EscrowService(supabase, payouts).refund(disputed);
+      await new EscrowService(supabase, payouts, NO_XENDIT).refund(disputed);
 
       expect(rpcArgs(rpc, 'escrow_settle')[0]).toMatchObject({
         p_expected: 'disputed',
@@ -594,7 +626,7 @@ describe('EscrowService', () => {
       const { supabase, rpc } = createSupabaseMock({});
 
       await expect(
-        new EscrowService(supabase, payouts).refund({
+        new EscrowService(supabase, payouts, NO_XENDIT).refund({
           ...heldEscrow,
           status: 'refunded',
         }),

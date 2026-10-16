@@ -15,6 +15,10 @@ import type { SupabaseService } from '../supabase/supabase.service';
 import type { UploadsService } from '../uploads/uploads.service';
 import type { AdminActionsService } from '../admin/admin-actions.service';
 import type { Profile } from '../common/types';
+import type { XenditService } from '../payments/xendit.service';
+
+/** Xendit not configured: payouts fall back to simulated pass-through. */
+const NO_XENDIT = { configured: false } as unknown as XenditService;
 
 /**
  * The end-to-end job lifecycle: post → apply → accept → escrow hold → start →
@@ -852,7 +856,7 @@ function buildWorld(
     adminActions,
   );
   const wallet = new WalletService(supabase, adminActions);
-  const escrow = new EscrowService(supabase, payouts);
+  const escrow = new EscrowService(supabase, payouts, NO_XENDIT);
   const jobs = new JobsService(supabase, uploads, escrow, {
     geocode: jest
       .fn()
@@ -868,6 +872,7 @@ function buildWorld(
     {} as StripeCustomersService,
     applications,
     escrow,
+    NO_XENDIT,
   );
 
   return {

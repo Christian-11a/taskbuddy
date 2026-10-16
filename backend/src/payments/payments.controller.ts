@@ -26,7 +26,7 @@ import {
   CreatePriceChangeCheckoutDto,
 } from './dto/payments.dto';
 import { HireFundingService } from './hire-funding.service';
-import { PaymongoService } from './paymongo.service';
+import { XenditService } from './xendit.service';
 import { Roles } from '../auth/roles.decorator';
 import {
   appendRedirectParams,
@@ -44,7 +44,7 @@ export class PaymentsController {
     private readonly payments: PaymentsService,
     private readonly stripe: StripeService,
     private readonly hireFunding: HireFundingService,
-    private readonly paymongo: PaymongoService,
+    private readonly xendit: XenditService,
   ) {}
 
   /** Publishable key, so the app doesn't have to ship a build per environment. */
@@ -57,7 +57,7 @@ export class PaymentsController {
 
   /**
    * Pay-at-hire: opens a checkout for the job's full price, to hire the
-   * provider behind `application_id` — PayMongo test mode (GCash, Maya, card,
+   * provider behind `application_id` — Xendit test mode (GCash, Maya, card,
    * online banking) when configured, Stripe card Checkout otherwise. Nothing
    * is hired here: the webhook holds the payment in escrow and accepts the
    * application once the payment is confirmed. The app polls the application
@@ -78,7 +78,7 @@ export class PaymentsController {
 
   /**
    * Pays the difference on an agreed price increase (migration 0057): a
-   * PayMongo test-mode checkout. The webhook applies the new price.
+   * Xendit test-mode checkout. The webhook applies the new price.
    */
   @Post('price-change-checkout-session')
   @HttpCode(200)
@@ -140,6 +140,26 @@ export class PaymentsController {
   }
 
   /**
+   * Xendit's invoice callback (test mode). Authenticated by the
+   * `x-callback-token` header, which must equal the dashboard's verification
+   * token. Only a PAID/SETTLED invoice acts; anything else is acknowledged.
+   */
+  @Post('xendit/webhook')
+  @HttpCode(200)
+  @SkipThrottle()
+  async xenditWebhook(
+    @Req() req: Request,
+    @Headers('x-callback-token') token: string | undefined,
+  ) {
+    if (!this.xendit.verifyCallback(token)) {
+      throw new BadRequestException('Invalid Xendit callback token');
+    }
+    const paid = this.xendit.paidInvoice(req.body);
+    if (paid) await this.hireFunding.completeFromXendit(paid);
+    return { received: true };
+  }
+
+  /**
    * Stripe's webhook. Deliberately unauthenticated in the JWT sense — Stripe
    * has no session — and authenticated instead by the signature over the raw
    * request body, which is why `rawBody: true` is set in main.ts. A parsed and
@@ -149,27 +169,6 @@ export class PaymentsController {
    * only when a retry could still help: Stripe backs off and re-delivers for up
    * to three days, and every retry of an event we cannot process is noise.
    */
-  /**
-   * PayMongo's webhook (test mode). Authenticated by the `Paymongo-Signature`
-   * HMAC over the raw body, like Stripe's. Only `checkout_session.payment.paid`
-   * acts; every other event is acknowledged and ignored.
-   */
-  @Post('paymongo/webhook')
-  @HttpCode(200)
-  @SkipThrottle()
-  async paymongoWebhook(
-    @Req() req: RawBodyRequest<Request>,
-    @Headers('paymongo-signature') signature: string | undefined,
-  ) {
-    if (!req.rawBody) throw new BadRequestException('Raw body unavailable');
-    if (!this.paymongo.verifySignature(req.rawBody, signature)) {
-      throw new BadRequestException('Invalid PayMongo signature');
-    }
-    const paid = this.paymongo.paidSession(req.body);
-    if (paid) await this.hireFunding.completeFromPaymongo(paid);
-    return { received: true };
-  }
-
   @Post('webhook')
   @HttpCode(200)
   // Exempt from the rate limit. The caller is Stripe, already authenticated by

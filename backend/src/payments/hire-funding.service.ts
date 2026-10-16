@@ -10,7 +10,13 @@ import type Stripe from 'stripe';
 import { SupabaseService } from '../supabase/supabase.service';
 import { StripeService } from './stripe.service';
 import { StripeCustomersService } from './stripe-customers.service';
-import { PaymongoService, type PaymongoPaidSession } from './paymongo.service';
+import { randomUUID } from 'node:crypto';
+import {
+  HIRE_PREFIX,
+  PRICE_CHANGE_PREFIX,
+  XenditService,
+  type XenditPaidInvoice,
+} from './xendit.service';
 import { ApplicationsService } from '../applications/applications.service';
 import { EscrowService } from '../escrow/escrow.service';
 import { isMoneyRefusal, peso } from '../escrow/escrow-errors';
@@ -30,14 +36,22 @@ export const PRICE_CHANGE_PURPOSE = 'price_change';
 
 const CURRENCY = 'php';
 
-/** How PayMongo's payment source types read in messages. */
+/** How Xendit's payment channels read in messages. */
 const METHOD_LABELS: Record<string, string> = {
-  gcash: 'GCash',
-  paymaya: 'Maya',
-  card: 'card',
-  dob: 'online banking',
-  grab_pay: 'GrabPay',
+  GCASH: 'GCash',
+  PAYMAYA: 'Maya',
+  GRABPAY: 'GrabPay',
+  CREDIT_CARD: 'card',
+  DD_BPI: 'online banking',
+  DD_UBP: 'online banking',
 };
+
+const methodLabel = (channel: string) =>
+  METHOD_LABELS[channel.toUpperCase()] ?? 'online payment';
+
+/** `hire_<application id>_<nonce>`: unique per checkout, decodable on return. */
+const externalId = (prefix: string, id: string) =>
+  `${prefix}_${id}_${randomUUID().slice(0, 8)}`;
 
 /** Stripe's minimum lifetime for a Checkout Session. */
 const CHECKOUT_TTL_SECONDS = 30 * 60;
@@ -91,7 +105,7 @@ export class HireFundingService {
     private readonly customers: StripeCustomersService,
     private readonly applications: ApplicationsService,
     private readonly escrow: EscrowService,
-    private readonly paymongo: PaymongoService,
+    private readonly xendit: XenditService,
   ) {}
 
   /**
@@ -136,25 +150,15 @@ export class HireFundingService {
       `${returnBase}/payments/return?flow=hire&status=${status}` +
       `&app_redirect=${encodeURIComponent(dto.app_redirect)}`;
 
-    const metadata = {
-      purpose: HIRE_FUNDING_PURPOSE,
-      profile_id: user.id,
-      application_id: application.id,
-      job_id: job.id,
-      provider_id: application.provider_id,
-    };
-
-    // PayMongo (test mode) when configured: GCash, Maya, card and online
-    // banking, with no wallet in between (migration 0056).
-    if (this.paymongo.configured) {
-      const checkout = await this.paymongo.createCheckout({
-        amountCentavos: Math.round(budget * 100),
-        name: `Hire — ${job.title}`.slice(0, 120),
-        description: `TaskBuddy hire — ${job.title}`.slice(0, 255),
-        reference: application.id,
+    // Xendit (test mode) when configured: GCash, Maya, GrabPay, card and
+    // online banking, with no wallet in between (migration 0056).
+    if (this.xendit.configured) {
+      const checkout = await this.xendit.createCheckout({
+        externalId: externalId(HIRE_PREFIX, application.id),
+        amount: budget,
+        description: `TaskBuddy hire — ${job.title}`,
         successUrl: returnUrl('success'),
-        cancelUrl: returnUrl('cancelled'),
-        metadata,
+        failureUrl: returnUrl('cancelled'),
       });
       return { url: checkout.url, session_id: checkout.id, amount: budget };
     }
@@ -255,7 +259,7 @@ export class HireFundingService {
     if (!isAllowedAppRedirect(appRedirect)) {
       throw new BadRequestException('app_redirect is not an allowed URI');
     }
-    if (!this.paymongo.configured) {
+    if (!this.xendit.configured) {
       throw new ServiceUnavailableException('Payments are not configured');
     }
     const { data, error } = await this.supabase.admin
@@ -289,41 +293,48 @@ export class HireFundingService {
     const returnUrl = (status: 'success' | 'cancelled') =>
       `${returnBase}/payments/return?flow=hire&status=${status}` +
       `&app_redirect=${encodeURIComponent(appRedirect)}`;
-    const checkout = await this.paymongo.createCheckout({
-      amountCentavos: Math.round(difference * 100),
-      name: `Price change — ${request.jobs.title}`.slice(0, 120),
-      description: `TaskBuddy price change — ${request.jobs.title}`.slice(
-        0,
-        255,
-      ),
-      reference: request.id,
+    const checkout = await this.xendit.createCheckout({
+      externalId: externalId(PRICE_CHANGE_PREFIX, request.id),
+      amount: difference,
+      description: `TaskBuddy price change — ${request.jobs.title}`,
       successUrl: returnUrl('success'),
-      cancelUrl: returnUrl('cancelled'),
-      metadata: {
-        purpose: PRICE_CHANGE_PURPOSE,
-        profile_id: user.id,
-        job_id: request.job_id,
-        change_request_id: request.id,
-      },
+      failureUrl: returnUrl('cancelled'),
     });
     return { url: checkout.url, session_id: checkout.id, amount: difference };
   }
 
-  /** `checkout_session.payment.paid` from PayMongo (test mode). */
-  async completeFromPaymongo(paid: PaymongoPaidSession): Promise<void> {
-    if (paid.metadata.purpose === PRICE_CHANGE_PURPOSE) {
+  /**
+   * A paid invoice from Xendit (test mode). The external id says what it was
+   * for; everything else is read back from the database, so a callback can
+   * never name a different payer, job or provider than the checkout had.
+   */
+  async completeFromXendit(paid: XenditPaidInvoice): Promise<void> {
+    if (paid.purpose === PRICE_CHANGE_PREFIX) {
       return this.completePriceChange(paid);
     }
-    if (paid.metadata.purpose !== HIRE_FUNDING_PURPOSE) return;
+    if (paid.purpose !== HIRE_PREFIX) return;
+    const application = await this.load(paid.subjectId);
+    if (!application?.jobs) {
+      this.logger.error(
+        `Xendit invoice ${paid.invoiceId} names no known proposal`,
+      );
+      return;
+    }
     await this.completeHire({
-      ref: paid.paymentId,
+      ref: paid.invoiceId,
       amountCentavos: paid.amountCentavos,
       currency: paid.currency,
-      metadata: paid.metadata,
-      // Held without Stripe funding: the payout is passed through to the
-      // provider's linked account instead of a Connect transfer.
+      metadata: {
+        purpose: HIRE_FUNDING_PURPOSE,
+        profile_id: application.jobs.client_id,
+        application_id: application.id,
+        job_id: application.job_id,
+        provider_id: application.provider_id,
+      },
+      // Held without Stripe funding: the payout is sent to the provider's
+      // linked account instead of a Connect transfer.
       funding: undefined,
-      methodLabel: METHOD_LABELS[paid.method] ?? 'online payment',
+      methodLabel: methodLabel(paid.channel),
     });
   }
 
@@ -453,18 +464,32 @@ export class HireFundingService {
    * on the payment id), then held and applied by job_change_apply_payment. If
    * the request can no longer take it, the payment is refunded instead.
    */
-  private async completePriceChange(paid: PaymongoPaidSession): Promise<void> {
-    const { profile_id, job_id, change_request_id } = paid.metadata;
-    if (!profile_id || !job_id || !change_request_id) {
+  private async completePriceChange(paid: XenditPaidInvoice): Promise<void> {
+    const { data: request, error: readError } = await this.supabase.admin
+      .from('job_change_requests')
+      .select('id, job_id, jobs(client_id)')
+      .eq('id', paid.subjectId)
+      .maybeSingle();
+    if (readError)
+      throw new Error(`Could not read change request: ${readError.message}`);
+    const row = request as {
+      id: string;
+      job_id: string;
+      jobs: { client_id: string } | null;
+    } | null;
+    if (!row?.jobs) {
       this.logger.error(
-        `Price change payment ${paid.paymentId} is missing metadata`,
+        `Xendit invoice ${paid.invoiceId} names no known change request`,
       );
       return;
     }
+    const profile_id = row.jobs.client_id;
+    const job_id = row.job_id;
+    const change_request_id = row.id;
     const amount = paid.amountCentavos / 100;
-    const method = METHOD_LABELS[paid.method] ?? 'online payment';
+    const method = methodLabel(paid.channel);
     const fresh = await this.credit(
-      paid.paymentId,
+      paid.invoiceId,
       profile_id,
       amount,
       job_id,
@@ -480,11 +505,11 @@ export class HireFundingService {
     );
     if (!error) return;
     if (error.code !== 'TB409' && error.code !== 'TB404') {
-      // A fault, not a refusal: fail the webhook so PayMongo retries.
+      // A fault, not a refusal: fail the webhook so Xendit retries.
       throw new Error(`Could not apply price change: ${error.message}`);
     }
     this.logger.warn(
-      `Price change payment ${paid.paymentId} not applied: ${error.message}`,
+      `Price change payment ${paid.invoiceId} not applied: ${error.message}`,
     );
     await this.escrow.passThrough([profile_id]);
     if (fresh) {
@@ -549,7 +574,7 @@ export class HireFundingService {
         amount,
         title: `Payment (${methodLabel}) — ${jobTitle ?? 'hire'}`.slice(0, 120),
         status: 'completed',
-        // Unique: the idempotency key for Stripe and PayMongo payment ids alike.
+        // Unique: the idempotency key for Stripe and Xendit payment ids alike.
         stripe_payment_intent_id: ref,
         job_id: jobId,
       });

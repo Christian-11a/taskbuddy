@@ -10,7 +10,7 @@ import type { SupabaseService } from '../supabase/supabase.service';
 import type { StripeService } from './stripe.service';
 import type { StripeCustomersService } from './stripe-customers.service';
 import type { ApplicationsService } from '../applications/applications.service';
-import type { PaymongoService } from './paymongo.service';
+import type { XenditService } from './xendit.service';
 import type { EscrowService } from '../escrow/escrow.service';
 import type { Profile } from '../common/types';
 
@@ -100,7 +100,7 @@ function build(
     statusOf?: jest.Mock;
     findByJob?: jest.Mock;
     assertHireable?: jest.Mock;
-    paymongo?: { configured: boolean; createCheckout?: jest.Mock };
+    xendit?: { configured: boolean; createCheckout?: jest.Mock };
   } = {},
 ) {
   const { supabase, calls } = createSupabaseMock(tables);
@@ -134,7 +134,7 @@ function build(
     customers,
     applicationsMock as unknown as ApplicationsService,
     escrowMock as unknown as EscrowService,
-    (overrides.paymongo ?? { configured: false }) as unknown as PaymongoService,
+    (overrides.xendit ?? { configured: false }) as unknown as XenditService,
   );
   jest.spyOn(service['logger'], 'warn').mockImplementation(() => {});
   jest.spyOn(service['logger'], 'error').mockImplementation(() => {});
@@ -524,17 +524,26 @@ describe('HireFundingService.completeFromIntent', () => {
   });
 });
 
-describe('HireFundingService with PayMongo (test mode)', () => {
-  it('opens a PayMongo checkout for the full price when configured', async () => {
+describe('HireFundingService with Xendit (test mode)', () => {
+  const changeRequest = (clientId = 'c1') =>
+    ok({
+      id: 'r1',
+      status: 'awaiting_payment',
+      new_budget: 1200,
+      job_id: 'j1',
+      jobs: { id: 'j1', title: 'Fix sink', client_id: clientId },
+    });
+
+  it('opens a Xendit invoice for the full price when configured', async () => {
     const createCheckout = jest.fn(() =>
       Promise.resolve({
-        id: 'cs_pm',
-        url: 'https://checkout.paymongo.com/cs_pm',
+        id: 'inv_1',
+        url: 'https://checkout-staging.xendit.co/inv_1',
       }),
     );
     const { service, create } = build(
       { job_applications: [ok(application())] },
-      { paymongo: { configured: true, createCheckout } },
+      { xendit: { configured: true, createCheckout } },
     );
 
     const result = await service.createCheckout(
@@ -544,157 +553,126 @@ describe('HireFundingService with PayMongo (test mode)', () => {
     );
 
     expect(result).toEqual({
-      url: 'https://checkout.paymongo.com/cs_pm',
-      session_id: 'cs_pm',
+      url: 'https://checkout-staging.xendit.co/inv_1',
+      session_id: 'inv_1',
       amount: 1500,
     });
     expect(create).not.toHaveBeenCalled();
     expect(createCheckout).toHaveBeenCalledWith(
       expect.objectContaining({
-        amountCentavos: 150000,
-        metadata: expect.objectContaining({
-          purpose: 'hire_funding',
-          application_id: 'app1',
-        }),
+        amount: 1500,
+        externalId: expect.stringMatching(/^hire_app1_[0-9a-f]{8}$/),
       }),
     );
   });
 
-  it('turns a paid GCash checkout into a hold without Stripe funding', async () => {
+  it('turns a paid GCash invoice into a hold, reading payer and provider from the proposal', async () => {
     const { service, escrow, applications } = build({
-      job_applications: [ok(application())],
+      // Read once to learn who paid, and again by the shared hire path.
+      job_applications: [ok(application()), ok(application())],
       wallet_transactions: [ok(null)],
       provider_profiles: [ok({ is_verified: true })],
       notifications: [ok(null)],
     });
 
-    await service.completeFromPaymongo({
-      sessionId: 'cs_pm',
-      paymentId: 'pay_1',
+    await service.completeFromXendit({
+      invoiceId: 'inv_1',
+      externalId: 'hire_app1_abcd1234',
+      purpose: 'hire',
+      subjectId: 'app1',
       amountCentavos: 150000,
       currency: 'php',
-      method: 'gcash',
-      metadata: {
-        purpose: 'hire_funding',
-        profile_id: 'c1',
-        application_id: 'app1',
-        job_id: 'j1',
-        provider_id: 'p1',
-      },
+      channel: 'GCASH',
     });
 
     expect(escrow.hold).toHaveBeenCalledWith('j1', 'p1', undefined);
     expect(applications.acceptFunded).toHaveBeenCalled();
   });
-});
 
-describe('HireFundingService: paying for a price increase', () => {
-  const paid = {
-    sessionId: 'cs_pc',
-    paymentId: 'pay_pc',
-    amountCentavos: 20000,
-    currency: 'php',
-    method: 'gcash',
-    metadata: {
-      purpose: 'price_change',
-      profile_id: 'c1',
-      job_id: 'j1',
-      change_request_id: 'r1',
-    },
-  };
+  describe('paying for a price increase', () => {
+    const paid = {
+      invoiceId: 'inv_pc',
+      externalId: 'pchg_r1_abcd1234',
+      purpose: 'pchg',
+      subjectId: 'r1',
+      amountCentavos: 20000,
+      currency: 'php',
+      channel: 'PAYMAYA',
+    };
 
-  it('opens a checkout for the difference only', async () => {
-    const createCheckout = jest.fn(() =>
-      Promise.resolve({
-        id: 'cs_pc',
-        url: 'https://checkout.paymongo.com/cs_pc',
-      }),
-    );
-    const { service } = build(
-      {
-        job_change_requests: [
-          ok({
-            id: 'r1',
-            status: 'awaiting_payment',
-            new_budget: 1200,
-            job_id: 'j1',
-            jobs: { id: 'j1', title: 'Fix sink', client_id: 'c1' },
-          }),
-        ],
-      },
-      {
-        paymongo: { configured: true, createCheckout },
-        findByJob: jest.fn(() =>
-          Promise.resolve({ id: 'e1', status: 'held', amount: 1000 }),
-        ),
-      },
-    );
-
-    const result = await service.createPriceChangeCheckout(
-      client,
-      'r1',
-      APP,
-      BASE,
-    );
-
-    expect(result.amount).toBe(200);
-    expect(createCheckout).toHaveBeenCalledWith(
-      expect.objectContaining({
-        amountCentavos: 20000,
-        metadata: expect.objectContaining({
-          purpose: 'price_change',
-          change_request_id: 'r1',
+    it('opens an invoice for the difference only', async () => {
+      const createCheckout = jest.fn(() =>
+        Promise.resolve({
+          id: 'inv_pc',
+          url: 'https://checkout-staging.xendit.co/inv_pc',
         }),
-      }),
-    );
-  });
+      );
+      const { service } = build(
+        { job_change_requests: [changeRequest()] },
+        {
+          xendit: { configured: true, createCheckout },
+          findByJob: jest.fn(() =>
+            Promise.resolve({ id: 'e1', status: 'held', amount: 1000 }),
+          ),
+        },
+      );
 
-  it('refuses anyone but the client', async () => {
-    const { service } = build(
-      {
-        job_change_requests: [
-          ok({
-            id: 'r1',
-            status: 'awaiting_payment',
-            new_budget: 1200,
-            job_id: 'j1',
-            jobs: { id: 'j1', title: 'Fix sink', client_id: 'someone-else' },
-          }),
-        ],
-      },
-      { paymongo: { configured: true } },
-    );
-    await expect(
-      service.createPriceChangeCheckout(client, 'r1', APP, BASE),
-    ).rejects.toThrow('Only the client');
-  });
+      const result = await service.createPriceChangeCheckout(
+        client,
+        'r1',
+        APP,
+        BASE,
+      );
 
-  it('applies a paid difference to the job', async () => {
-    const { service, calls, escrow } = build({});
-
-    await service.completeFromPaymongo(paid);
-
-    expect(calls).toContainEqual(
-      expect.objectContaining({
-        table: 'rpc:job_change_apply_payment',
-        args: [{ p_request_id: 'r1', p_amount: 200 }],
-      }),
-    );
-    expect(escrow.passThrough).not.toHaveBeenCalled();
-  });
-
-  it('refunds a payment the request can no longer take', async () => {
-    const { service, calls, escrow } = build({
-      'rpc:job_change_apply_payment': [
-        { data: null, error: { message: 'expired', code: 'TB409' } },
-      ],
+      expect(result.amount).toBe(200);
+      expect(createCheckout).toHaveBeenCalledWith(
+        expect.objectContaining({
+          amount: 200,
+          externalId: expect.stringMatching(/^pchg_r1_/),
+        }),
+      );
     });
 
-    await service.completeFromPaymongo(paid);
+    it('refuses anyone but the client', async () => {
+      const { service } = build(
+        { job_change_requests: [changeRequest('someone-else')] },
+        { xendit: { configured: true } },
+      );
+      await expect(
+        service.createPriceChangeCheckout(client, 'r1', APP, BASE),
+      ).rejects.toThrow('Only the client');
+    });
 
-    expect(escrow.passThrough).toHaveBeenCalledWith(['c1']);
-    expect(writes(calls, 'notifications')).toEqual([
-      expect.objectContaining({ title: 'Payment refunded' }),
-    ]);
+    it('applies a paid difference to the job', async () => {
+      const { service, calls, escrow } = build({
+        job_change_requests: [changeRequest()],
+      });
+
+      await service.completeFromXendit(paid);
+
+      expect(calls).toContainEqual(
+        expect.objectContaining({
+          table: 'rpc:job_change_apply_payment',
+          args: [{ p_request_id: 'r1', p_amount: 200 }],
+        }),
+      );
+      expect(escrow.passThrough).not.toHaveBeenCalled();
+    });
+
+    it('refunds a payment the request can no longer take', async () => {
+      const { service, calls, escrow } = build({
+        job_change_requests: [changeRequest()],
+        'rpc:job_change_apply_payment': [
+          { data: null, error: { message: 'expired', code: 'TB409' } },
+        ],
+      });
+
+      await service.completeFromXendit(paid);
+
+      expect(escrow.passThrough).toHaveBeenCalledWith(['c1']);
+      expect(writes(calls, 'notifications')).toEqual([
+        expect.objectContaining({ title: 'Payment refunded' }),
+      ]);
+    });
   });
 });

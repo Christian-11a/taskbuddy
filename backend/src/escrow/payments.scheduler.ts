@@ -4,6 +4,7 @@ import { isExternallyScheduled } from '../common/cron-driver';
 import { SupabaseService } from '../supabase/supabase.service';
 import { EscrowService, WARRANTY_DURATION_MS } from './escrow.service';
 import { ConnectPayoutsService } from '../payments/connect/connect-payouts.service';
+import { XenditService } from '../payments/xendit.service';
 
 /** Cancelled jobs retain their existing two-minute reconciliation delay. */
 const CANCEL_RECONCILE_AFTER_MS = 2 * 60 * 1000;
@@ -20,6 +21,7 @@ export class PaymentsScheduler {
     private readonly supabase: SupabaseService,
     private readonly escrow: EscrowService,
     private readonly payouts: ConnectPayoutsService,
+    private readonly xendit: XenditService,
   ) {}
 
   @Cron(CronExpression.EVERY_5_MINUTES)
@@ -49,9 +51,11 @@ export class PaymentsScheduler {
       const { data: passedThrough, error: passError } =
         await this.supabase.admin.rpc('pass_through_balances', {
           p_profile_id: null,
+          p_queue_provider_payouts: this.xendit.configured,
         });
       if (passError)
         this.logger.error(`Pass-through failed: ${passError.message}`);
+      await this.escrow.sendQueuedPayouts();
       if (
         expired ||
         expiredChanges ||

@@ -49,8 +49,8 @@ it('holds a provider payout until an account is linked, then sends it there', as
   assert.equal(await balance(PROVIDER), 1200);
 
   await q(
-    `insert into linked_payout_accounts (profile_id, method, account_name, account_number)
-     values ($1, 'gcash', 'Boy Plumber', '09171234567')`,
+    `insert into linked_payout_accounts (profile_id, method, channel_code, account_name, account_number)
+     values ($1, 'gcash', 'PH_GCASH', 'Boy Plumber', '09171234567')`,
     [PROVIDER],
   );
   await q('select pass_through_balances($1)', [PROVIDER]);
@@ -66,8 +66,38 @@ it('holds a provider payout until an account is linked, then sends it there', as
 it('requires a bank name for bank accounts only', async () => {
   await assert.rejects(
     q(
-      `insert into linked_payout_accounts (profile_id, method, account_name, account_number)
-       values ($1, 'bank', 'Boy Plumber', '1234567890')`,
+      `insert into linked_payout_accounts (profile_id, method, channel_code, account_name, account_number)
+       values ($1, 'bank', 'PH_BPI', 'Boy Plumber', '1234567890')`,
+      [PROVIDER],
+    ),
+  );
+});
+
+it('queues a provider payout for Xendit instead of marking it sent (0058)', async () => {
+  await credit(PROVIDER, 900);
+  await q(
+    `insert into linked_payout_accounts (profile_id, method, channel_code, account_name, account_number)
+     values ($1, 'maya', 'PH_PAYMAYA', 'Boy Plumber', '09181234567')`,
+    [PROVIDER],
+  );
+  await q('select pass_through_balances($1, true)', [PROVIDER]);
+  const [row] = await q(
+    `select status, review_note, withdrawal_destination from wallet_transactions
+      where profile_id = $1 and direction = 'debit'`,
+    [PROVIDER],
+  );
+  assert.equal(row.status, 'pending');
+  assert.equal(row.review_note, 'Sending via Xendit');
+  assert.equal(row.withdrawal_destination, 'Maya ••••4567');
+  // The pending debit reserves the money: a second pass sends nothing more.
+  assert.equal((await q('select pass_through_balances($1, true) as n', [PROVIDER]))[0].n, 0);
+});
+
+it('refuses a channel code that does not match the method', async () => {
+  await assert.rejects(
+    q(
+      `insert into linked_payout_accounts (profile_id, method, channel_code, account_name, account_number)
+       values ($1, 'gcash', 'PH_PAYMAYA', 'Boy Plumber', '09171234567')`,
       [PROVIDER],
     ),
   );

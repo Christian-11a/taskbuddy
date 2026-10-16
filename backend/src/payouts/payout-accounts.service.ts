@@ -2,12 +2,16 @@ import { BadRequestException, Injectable } from '@nestjs/common';
 import { SupabaseService } from '../supabase/supabase.service';
 import { EscrowService } from '../escrow/escrow.service';
 import type { Profile } from '../common/types';
-import type { LinkPayoutAccountDto } from './payout-account.dto';
+import {
+  PAYOUT_BANKS,
+  WALLET_CHANNELS,
+  type LinkPayoutAccountDto,
+} from './payout-account.dto';
 
 /**
  * The GCash, Maya or bank account a provider's payouts are sent to
- * (migration 0056). This is a prototype: a payout is recorded as sent to
- * this account with a simulated reference, and no money moves.
+ * (migrations 0056, 0058). Payouts go out through Xendit's sandbox (simulated
+ * when Xendit is not configured), so no real money moves.
  */
 @Injectable()
 export class PayoutAccountsService {
@@ -32,7 +36,9 @@ export class PayoutAccountsService {
       .upsert({
         profile_id: user.id,
         method: dto.method,
-        bank_name: dto.method === 'bank' ? dto.bank_name!.trim() : null,
+        bank_name: dto.method === 'bank' ? PAYOUT_BANKS[dto.bank_code!] : null,
+        channel_code:
+          dto.method === 'bank' ? dto.bank_code! : WALLET_CHANNELS[dto.method],
         account_name: dto.account_name.trim(),
         account_number: dto.account_number,
         updated_at: new Date().toISOString(),
@@ -43,6 +49,11 @@ export class PayoutAccountsService {
     // Payouts that were waiting for an account go out now.
     await this.escrow.passThrough([user.id]);
     return masked(data);
+  }
+
+  /** The banks a payout can go to, for the app's picker. */
+  banks() {
+    return Object.entries(PAYOUT_BANKS).map(([code, name]) => ({ code, name }));
   }
 
   async unlink(user: Profile) {

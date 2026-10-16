@@ -17,6 +17,11 @@ export class PayoutsController {
     return this.accounts.get(user);
   }
 
+  @Get('banks')
+  banks() {
+    return this.accounts.banks();
+  }
+
   @Put('account')
   @Roles('provider')
   link(@CurrentUser() user: Profile, @Body() dto: LinkPayoutAccountDto) {

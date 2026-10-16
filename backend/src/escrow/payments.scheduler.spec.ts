@@ -2,6 +2,7 @@ import { PaymentsScheduler } from './payments.scheduler';
 import type { EscrowService } from './escrow.service';
 import type { ConnectPayoutsService } from '../payments/connect/connect-payouts.service';
 import type { SupabaseService } from '../supabase/supabase.service';
+import type { XenditService } from '../payments/xendit.service';
 
 function build(rows: unknown[], error: { message: string } | null = null) {
   const calls: { method: string; args: unknown[] }[] = [];
@@ -49,6 +50,7 @@ function build(rows: unknown[], error: { message: string } | null = null) {
     supabase,
     escrow as unknown as EscrowService,
     payouts as unknown as ConnectPayoutsService,
+    { configured: false } as unknown as XenditService,
   );
   jest.spyOn(scheduler['logger'], 'warn').mockImplementation(() => {});
   jest.spyOn(scheduler['logger'], 'error').mockImplementation(() => {});
