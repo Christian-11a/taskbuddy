@@ -18,9 +18,10 @@ The full data-schema and product spec lives in [`BACKEND_SCHEMA.md`](./BACKEND_S
 > **Release check (2026-10-16):** every migration through 0052 is recorded in
 > the linked Supabase project's migration history, and the tables, columns,
 > indexes, functions and enum values added by 0039–0052 were confirmed present.
-> The API matching migrations 0046–0052 is **not yet deployed** to Render.
-> `/health` does not identify the deployed commit, so verify the new contracts
-> directly after deploying. The last ML check returned HTTP 429.
+> The Render API serves the 0046–0052 contracts, and 62 deployed acceptance
+> checks passed the same day ([evidence](../test-docs/DEPLOYED_POST_UAT_ACCEPTANCE_EVIDENCE.json)). `/health` does not identify
+> the deployed commit yet; it was confirmed by probing the new routes. The last
+> ML check returned HTTP 429.
 
 ## Architecture
 
@@ -133,7 +134,7 @@ Job lifecycle: `open → recommending → assigned → in_progress → completed
    The linked project's migration history has been reconciled after checking
    the existing schema. Migrations 0046–0052 were applied in order, and their
    history entries and database objects were verified. Vault synchronization
-   was skipped. The matching backend API deployment remains pending.
+   was skipped. The matching backend API is deployed (verified 2026-10-16).
 
    > Migrations 0008 and 0009 each run `alter type notification_type add value`.
    > Postgres allows this inside a transaction as long as the new value isn't
@@ -692,8 +693,11 @@ curl -X POST $API/jobs -H "Authorization: Bearer $TOKEN" -H "Content-Type: appli
   Migrations 0046–0050 and their API were merged into `upstream/main` by PR #81,
   and the web handoff contracts in migrations 0051–0052 by PR #84.
   Migrations 0046–0052 are applied to the linked Supabase project (verified
-  2026-10-16); **backend API deployment remains pending**. Deploy the matching API and run funded-job,
-  booking, and admin queue acceptance checks.
+  2026-10-16). The matching API is deployed, and the funded-job, booking and
+  admin-queue acceptance checks passed on 2026-10-16 ([evidence](../test-docs/DEPLOYED_POST_UAT_ACCEPTANCE_EVIDENCE.json)). Not
+  covered: notification broadcast, card-at-hire, the scheduler's 72-hour
+  release and physical devices. Capacity refusals on job posting and applying
+  return HTTP 400 although the database raises a conflict (`TB409`).
 - [`docs/backend-handoff-mobile-e2e-test-environment.md`](../docs/backend-handoff-mobile-e2e-test-environment.md)
   still requires a test wallet balance when the Maestro account runs low. Its Google
   Maps key request is obsolete because the app no longer uses `react-native-maps`.
@@ -706,7 +710,8 @@ curl -X POST $API/jobs -H "Authorization: Bearer $TOKEN" -H "Content-Type: appli
   Identity completion and physical-device flows still need separate checks.
   The local `STRIPE_MOBILE_API_VERSION` omits the release suffix; this checkout
   now treats that form as invalid and uses the full default
-  `2025-01-27.acacia`. The Render value still needs checking.
+  `2025-01-27.acacia`. Render is set to `2025-01-27.acacia`; a sandbox
+  PaymentSheet top-up returned its client secret and ephemeral key on 2026-10-16.
 
 ## Project layout
 
@@ -778,7 +783,7 @@ Migrations 0046–0050 add early payment release, shared platform identity,
 capacity limits, participant-approved job changes, and provider release requests.
 They were merged into `upstream/main` by PR #81, and migrations 0051–0052 for
 the remaining web admin contracts by PR #84. Migrations 0046–0052 are applied
-to the linked Supabase project; deployment of the matching API remains pending. The server now geocodes each posted job address and ignores client-supplied
+to the linked Supabase project, and the matching API is deployed. The server now geocodes each posted job address and ignores client-supplied
 coordinates; new passwords require 8–72 characters with a letter and digit,
 while existing passwords remain valid for login. New provider signups require a
 category and the three general consents.
@@ -799,8 +804,8 @@ The job and escrow update in one database transaction; a raised price debits
 the client wallet and a lowered price refunds the difference. Card-funded price
 changes need a separate payment authorization flow and are rejected. Request
 expiry is reconciled on the five-minute payments tick and when requests are
-read or acted on. The mobile UI for these contracts and live migration/API
-verification remain outstanding.
+read or acted on. Live API checks passed on 2026-10-16 ([evidence](../test-docs/DEPLOYED_POST_UAT_ACCEPTANCE_EVIDENCE.json));
+the mobile UI for these contracts remains outstanding.
 
 For a disposable receiving-ledger demonstration, run from repository root:
 

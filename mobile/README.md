@@ -5,9 +5,9 @@
 Bug fixes cover approved skill filtering, job photos and lifecycle, escrow totals, cancellation/warranty dispute access, notification creation, and responsive auth/privacy/job forms. The October 4 follow-up implements shared light/dark palettes and provider photo portfolios; see the current implementation section below.
 
 All migrations through **0052** are applied to the linked Supabase project
-(verified 2026-10-16). The API matching 0046–0052 is not yet deployed, and
-`/health` does not identify the deployed commit. Verify the new API contracts
-and run the Android device flows before releasing this app. See
+(verified 2026-10-16), and the matching API is deployed with its contracts
+checked live ([evidence](../test-docs/DEPLOYED_POST_UAT_ACCEPTANCE_EVIDENCE.json)).
+Run the Android device flows before releasing this app. See
 [backend handover](../HANDOFF.md) for remaining checks.
 
 The Expo / React Native app for **TaskBuddy**, a Philippine home-services
@@ -597,13 +597,14 @@ address or a Metro Manila fallback when the lookup fails.
 
 ### 6. [`docs/backend-handoff-stripe-identity-config.md`](../docs/backend-handoff-stripe-identity-config.md)
 
-**Last observed failure (2026-09-29):** Get Verified step 3 returned `Invalid
-Stripe API version: 2025-21-27`. Check the current Render value of
-`STRIPE_MOBILE_API_VERSION` and retry before assuming the failure persists.
+**2026-10-16 update:** Render's `STRIPE_MOBILE_API_VERSION` is
+`2025-01-27.acacia`, and a sandbox PaymentSheet top-up returned its client
+secret and ephemeral key. The earlier failure (2026-09-29, `Invalid Stripe API
+version: 2025-21-27`) should not recur; retest Get Verified step 3 on a device.
 
 | # | Item | Needs | Status |
 |---|---|---|---|
-| 1 | Check `STRIPE_MOBILE_API_VERSION`; if it still has the invalid value, set it to `2025-01-27.acacia` or remove it | Render dashboard | **Current value unverified** |
+| 1 | Check `STRIPE_MOBILE_API_VERSION`; if it still has the invalid value, set it to `2025-01-27.acacia` or remove it | Render dashboard | **Done** — set to `2025-01-27.acacia` (2026-10-16) |
 | 2 | Confirm the version validation and 503 manual-review fallback on the deployed API | Render | **Deployed behavior unverified** |
 | 3 | Confirm Stripe Identity is activated on the account | Stripe Dashboard | **Open** |
 
@@ -642,7 +643,7 @@ API deploy and which must run alone (0022, 0027), is kept in one place:
 `backend/README.md`. Migrations 0046–0050 and their matching API are merged into
 `upstream/main` by PR #81, and migrations 0051–0052 for web admin APIs by
 PR #84. Migrations 0046–0052 are applied to the linked
-Supabase project; deployment of the matching backend API remains pending. The mobile UI for
+Supabase project, and the matching backend API is deployed. The mobile UI for
 the post-UAT release, change-request, and capacity contracts still needs
 implementation and device verification. Card-funded price changes remain
 unsupported until a separate payment authorization flow exists.
