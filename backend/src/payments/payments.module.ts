@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { PaymentsController } from './payments.controller';
 import { PaymentsService } from './payments.service';
 import { HireFundingService } from './hire-funding.service';
+import { PaymongoService } from './paymongo.service';
 import { StripeModule } from './stripe.module';
 import { VerificationsModule } from '../verifications/verifications.module';
 import { ApplicationsModule } from '../applications/applications.module';
@@ -19,6 +20,6 @@ import { EscrowModule } from '../escrow/escrow.module';
     EscrowModule,
   ],
   controllers: [PaymentsController],
-  providers: [PaymentsService, HireFundingService],
+  providers: [PaymentsService, HireFundingService, PaymongoService],
 })
 export class PaymentsModule {}

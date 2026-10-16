@@ -21,12 +21,9 @@ import { CurrentUser } from '../auth/current-user.decorator';
 import { PaymentsService } from './payments.service';
 import { StripeService } from './stripe.service';
 import { publicOrigin } from './public-origin';
-import {
-  CreateCheckoutSessionDto,
-  CreateHireCheckoutDto,
-  CreateTopupDto,
-} from './dto/payments.dto';
+import { CreateHireCheckoutDto } from './dto/payments.dto';
 import { HireFundingService } from './hire-funding.service';
+import { PaymongoService } from './paymongo.service';
 import { Roles } from '../auth/roles.decorator';
 import {
   appendRedirectParams,
@@ -44,6 +41,7 @@ export class PaymentsController {
     private readonly payments: PaymentsService,
     private readonly stripe: StripeService,
     private readonly hireFunding: HireFundingService,
+    private readonly paymongo: PaymongoService,
   ) {}
 
   /** Publishable key, so the app doesn't have to ship a build per environment. */
@@ -55,40 +53,12 @@ export class PaymentsController {
   }
 
   /**
-   * Opens a wallet top-up. Returns the PaymentSheet parameters; the wallet is
-   * credited by the webhook once Stripe confirms the charge, never here.
-   */
-  @Post('topup')
-  @HttpCode(200)
-  @ThrottlePayments()
-  @UseGuards(JwtAuthGuard)
-  topup(@CurrentUser() user: Profile, @Body() dto: CreateTopupDto) {
-    return this.payments.createTopupIntent(user, dto);
-  }
-
-  /**
-   * Opens a wallet top-up on Stripe's hosted Checkout page and returns its URL
-   * for the app to open in a browser. Use this where PaymentSheet is not
-   * available — notably Expo Go, which cannot load native modules.
-   */
-  @Post('checkout-session')
-  @HttpCode(200)
-  @ThrottlePayments()
-  @UseGuards(JwtAuthGuard)
-  checkoutSession(
-    @CurrentUser() user: Profile,
-    @Body() dto: CreateCheckoutSessionDto,
-    @Req() req: Request,
-  ) {
-    return this.payments.createCheckoutSession(user, dto, publicOrigin(req));
-  }
-
-  /**
-   * Card-at-hire: opens Stripe Checkout for the job's full budget, to hire
-   * the provider behind `application_id`. Nothing is hired here — the webhook
-   * credits the payment, holds it in escrow and accepts the application once
-   * Stripe confirms the charge (§29.4). The app polls the application after
-   * the browser closes.
+   * Pay-at-hire: opens a checkout for the job's full price, to hire the
+   * provider behind `application_id` — PayMongo test mode (GCash, Maya, card,
+   * online banking) when configured, Stripe card Checkout otherwise. Nothing
+   * is hired here: the webhook holds the payment in escrow and accepts the
+   * application once the payment is confirmed. The app polls the application
+   * after the browser closes. Wallet top-ups were retired in migration 0056.
    */
   @Post('hire-checkout-session')
   @HttpCode(200)
@@ -154,6 +124,27 @@ export class PaymentsController {
    * only when a retry could still help: Stripe backs off and re-delivers for up
    * to three days, and every retry of an event we cannot process is noise.
    */
+  /**
+   * PayMongo's webhook (test mode). Authenticated by the `Paymongo-Signature`
+   * HMAC over the raw body, like Stripe's. Only `checkout_session.payment.paid`
+   * acts; every other event is acknowledged and ignored.
+   */
+  @Post('paymongo/webhook')
+  @HttpCode(200)
+  @SkipThrottle()
+  async paymongoWebhook(
+    @Req() req: RawBodyRequest<Request>,
+    @Headers('paymongo-signature') signature: string | undefined,
+  ) {
+    if (!req.rawBody) throw new BadRequestException('Raw body unavailable');
+    if (!this.paymongo.verifySignature(req.rawBody, signature)) {
+      throw new BadRequestException('Invalid PayMongo signature');
+    }
+    const paid = this.paymongo.paidSession(req.body);
+    if (paid) await this.hireFunding.completeFromPaymongo(paid);
+    return { received: true };
+  }
+
   @Post('webhook')
   @HttpCode(200)
   // Exempt from the rate limit. The caller is Stripe, already authenticated by

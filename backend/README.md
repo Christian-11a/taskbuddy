@@ -132,6 +132,8 @@ Job lifecycle: `open → recommending → assigned → in_progress → completed
    | `0052_web_admin_handoffs.sql` | Structured case recipients/evidence requests, admin inbox events, notification broadcast delivery counters, and dismissal state. |
    | `0053_price_tiers.sql` | Category base prices, urgency price multipliers, per-task effort and the job's chosen price tier. **Apply before deploying the updated API.** |
    | `0054_provider_credentials.sql` | Provider skill credentials and the private `provider-credentials` bucket. |
+   | `0055_terms_versions.sql` | Which Terms & Conditions version each account accepted. |
+   | `0056_retire_wallet.sql` | Retires the in-app wallet: linked GCash/Maya/bank payout accounts, `pass_through_balances()` (simulated payouts and refunds, so no balance is ever kept), and a cut-over that removes existing balances. **Apply before deploying the updated API.** |
 
    The linked project's migration history has been reconciled after checking
    the existing schema. Migrations 0046–0052 were applied in order, and their
@@ -355,7 +357,11 @@ All bodies are JSON. 🔒 = requires auth; (client) / (provider) = role-restrict
 
 | Method & path | Description |
 |---|---|
-| `GET /wallet` 🔒 | `{ balance, available, total_credited, total_debited, pending, pending_withdrawals, transactions[] }` — all derived from the ledger. `available` is `balance` less anything already promised to a pending withdrawal; that is the figure escrow checks before a hire |
+| ~~`/wallet/*`~~ | **Retired in migration 0056.** There is no user-facing wallet: see *Payments without a wallet* below |
+| `GET /payouts/history` 🔒 | every payment in, payout and refund on the account, newest first (the ledger rows, read-only) |
+| `GET /payouts/account` 🔒 (provider) | the linked payout account, masked: `{ method, bank_name, account_name, account_last4 }` or `null` |
+| `PUT /payouts/account` 🔒 (provider) | `{ method: gcash\|maya\|bank, bank_name? (bank only), account_name, account_number (6–20 digits) }` — also sends any payout that was waiting for an account |
+| `DELETE /payouts/account` 🔒 (provider) | unlink |
 | `POST /wallet/withdrawals` 🔒 | `{ amount, destination, title? }` → a **pending** ledger row. Nothing moves until an admin settles it — there is no payout rail, so the admin queue *is* the disbursement mechanism (migration 0024, `BACKEND_SCHEMA.md` §27.2) |
 | `GET /wallet/withdrawals` 🔒 | the caller's own requests, newest first |
 | `POST /wallet/withdrawals/:id/cancel` 🔒 | retract a request an admin has not acted on |
@@ -448,9 +454,8 @@ record. Tokens Expo rejects as `DeviceNotRegistered` are deleted.
 | Method & path | Description |
 |---|---|
 | `POST /payments/config` 🔒 | `{ publishable_key }` — served rather than compiled in, so test↔live is a backend env change |
-| `POST /payments/topup` 🔒 | `{ amount }` (₱50–₱100,000) → PaymentSheet parameters: `{ payment_intent_client_secret, ephemeral_key_secret, customer_id, publishable_key, amount, currency }` |
-| `POST /payments/checkout-session` 🔒 | `{ amount, app_redirect }` → `{ url, session_id, amount }`. Hosted Checkout, for clients that cannot load a native SDK — **this is what the Expo Go app uses** |
-| `POST /payments/hire-checkout-session` 🔒 (client) | `{ application_id, app_redirect }` → `{ url, session_id, amount }`. **Card-at-hire**: Checkout for the job's full budget. The hire itself is made by the webhook (credit → hold → accept), not by this call — poll the application afterwards. Same hireability checks as a wallet accept; 400 `card_amount_out_of_range` outside ₱50–₱100,000. `BACKEND_SCHEMA.md` §29.4 |
+| `POST /payments/paymongo/webhook` | PayMongo (test mode) webhook, verified by the `Paymongo-Signature` HMAC; `checkout_session.payment.paid` completes the hire |
+| `POST /payments/hire-checkout-session` 🔒 (client) | `{ application_id, app_redirect }` → `{ url, session_id, amount }`. **Pay-at-hire**: a PayMongo test-mode checkout (GCash, Maya, card, online banking) when `PAYMONGO_SECRET_KEY` is set, otherwise Stripe card Checkout; Checkout for the job's full budget. The hire itself is made by the webhook (credit → hold → accept), not by this call — poll the application afterwards. Same hireability checks as a wallet accept; 400 `card_amount_out_of_range` outside ₱50–₱100,000. `BACKEND_SCHEMA.md` §29.4 |
 | `GET /payments/return?status=&app_redirect=&flow=` | Where Stripe returns the browser. Redirects to the app deep link with `?topup=success\|cancelled`, or `?hire=…` when `flow=hire`. No JWT — it is a plain browser navigation that reveals and changes nothing |
 | `POST /payments/webhook` | Stripe only. No JWT — authenticated by the signature over the **raw** body |
 
@@ -629,7 +634,7 @@ each route counts separately and there is no aggregate cap across the API.
 | Scope | Limit (per endpoint, per IP) |
 |---|---|
 | Everything | 240 / minute |
-| `POST /payments/topup`, `POST /payments/checkout-session`, `POST /payments/hire-checkout-session` | 5 / minute |
+| `POST /payments/hire-checkout-session` | 5 / minute |
 | `POST /auth/{register,login,admin/login,forgot-password,reset-password,send-email-otp,verify-email-otp,change-password}` | 10 / minute **each** |
 | `POST /payments/connect/{onboarding-link,sync,dashboard-link}` | 5 / minute each |
 | `GET /jobs/geocode` | 10 / minute — every call spends a Geoapify daily credit |
@@ -696,6 +701,26 @@ curl -X POST $API/jobs -H "Authorization: Bearer $TOKEN" -H "Content-Type: appli
   Export query: see `BACKEND_SCHEMA.md` §13 — **exclude `model_version = 'stub-v0'`
   rows** (produced by the early placeholder scorer). Retraining/versioning guide:
   [`../ml-service/README.md`](../ml-service/README.md).
+
+## Payments without a wallet
+
+Migration 0056 retired the in-app wallet so the app never holds its own
+currency. This is a prototype: no real money moves.
+
+- **In:** the client pays each hire at a PayMongo test-mode checkout (GCash,
+  Maya, card or online banking). The webhook records the payment, holds it in
+  escrow and accepts the proposal. `POST /applications/:id/accept` refuses a
+  priced job with `payment_required`.
+- **Out:** a release pays the provider's linked GCash/Maya/bank account, and a
+  refund goes back to the client's original payment method. Both are recorded
+  as `withdrawal` debits with a simulated `SIM-…` reference by
+  `pass_through_balances()`, which runs after every settlement and on each
+  payments tick. A provider without a linked account keeps the payout pending
+  until they link one.
+- `wallet_transactions` remains the internal ledger the escrow functions write
+  to; balances only exist between a settlement and its pass-through.
+- Not changed yet: the web admin's withdrawal queue and recovery credits (now
+  unused), and price change requests, which still assume a wallet top-up.
 
 ## Pending handoffs
 

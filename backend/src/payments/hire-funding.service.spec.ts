@@ -10,6 +10,7 @@ import type { SupabaseService } from '../supabase/supabase.service';
 import type { StripeService } from './stripe.service';
 import type { StripeCustomersService } from './stripe-customers.service';
 import type { ApplicationsService } from '../applications/applications.service';
+import type { PaymongoService } from './paymongo.service';
 import type { EscrowService } from '../escrow/escrow.service';
 import type { Profile } from '../common/types';
 
@@ -90,6 +91,7 @@ function build(
     statusOf?: jest.Mock;
     findByJob?: jest.Mock;
     assertHireable?: jest.Mock;
+    paymongo?: { configured: boolean; createCheckout?: jest.Mock };
   } = {},
 ) {
   const { supabase, calls } = createSupabaseMock(tables);
@@ -108,6 +110,7 @@ function build(
       jest.fn(() => Promise.resolve({ escrow: { id: 'e1' }, placed: true })),
     findByJob: overrides.findByJob ?? jest.fn(() => Promise.resolve(null)),
     releaseHoldForFailedHire: jest.fn(() => Promise.resolve()),
+    passThrough: jest.fn(() => Promise.resolve()),
   };
   const applicationsMock = {
     assertHireable:
@@ -122,6 +125,7 @@ function build(
     customers,
     applicationsMock as unknown as ApplicationsService,
     escrowMock as unknown as EscrowService,
+    (overrides.paymongo ?? { configured: false }) as unknown as PaymongoService,
   );
   jest.spyOn(service['logger'], 'warn').mockImplementation(() => {});
   jest.spyOn(service['logger'], 'error').mockImplementation(() => {});
@@ -311,7 +315,7 @@ describe('HireFundingService.completeFromIntent', () => {
       },
       {
         findByJob: jest.fn(() =>
-          Promise.resolve({ id: 'e1', funding_payment_intent_id: 'pi_1' }),
+          Promise.resolve({ id: 'e1', status: 'held', provider_id: 'p1' }),
         ),
       },
     );
@@ -322,7 +326,7 @@ describe('HireFundingService.completeFromIntent', () => {
     expect(applications.acceptFunded).not.toHaveBeenCalled();
   });
 
-  it('leaves the money in the wallet, and says so once, when the proposal was already decided', async () => {
+  it('refunds the payment, and says so once, when the proposal was already decided', async () => {
     const { service, calls, escrow } = build({
       job_applications: [ok(application({ status: 'withdrawn' }))],
     });
@@ -330,10 +334,11 @@ describe('HireFundingService.completeFromIntent', () => {
     await service.completeFromIntent(intent());
 
     expect(escrow.hold).not.toHaveBeenCalled();
+    expect(escrow.passThrough).toHaveBeenCalledWith(['c1']);
     expect(writes(calls, 'wallet_transactions')).toHaveLength(1);
     expect(writes(calls, 'notifications')).toEqual([
       expect.objectContaining({
-        title: 'Payment added to your wallet',
+        title: 'Payment refunded',
         body: expect.stringContaining('the proposal was withdrawn'),
       }),
     ]);
@@ -466,6 +471,7 @@ describe('HireFundingService.completeFromIntent', () => {
       .mockResolvedValueOnce({
         id: 'e1',
         status: 'held',
+        provider_id: 'p1',
         funding_payment_intent_id: 'pi_1',
       });
     const { service, escrow } = build(
@@ -506,5 +512,69 @@ describe('HireFundingService.completeFromIntent', () => {
     );
 
     expect(calls).toEqual([]);
+  });
+});
+
+describe('HireFundingService with PayMongo (test mode)', () => {
+  it('opens a PayMongo checkout for the full price when configured', async () => {
+    const createCheckout = jest.fn(() =>
+      Promise.resolve({
+        id: 'cs_pm',
+        url: 'https://checkout.paymongo.com/cs_pm',
+      }),
+    );
+    const { service, create } = build(
+      { job_applications: [ok(application())] },
+      { paymongo: { configured: true, createCheckout } },
+    );
+
+    const result = await service.createCheckout(
+      client,
+      { application_id: 'app1', app_redirect: APP },
+      BASE,
+    );
+
+    expect(result).toEqual({
+      url: 'https://checkout.paymongo.com/cs_pm',
+      session_id: 'cs_pm',
+      amount: 1500,
+    });
+    expect(create).not.toHaveBeenCalled();
+    expect(createCheckout).toHaveBeenCalledWith(
+      expect.objectContaining({
+        amountCentavos: 150000,
+        metadata: expect.objectContaining({
+          purpose: 'hire_funding',
+          application_id: 'app1',
+        }),
+      }),
+    );
+  });
+
+  it('turns a paid GCash checkout into a hold without Stripe funding', async () => {
+    const { service, escrow, applications } = build({
+      job_applications: [ok(application())],
+      wallet_transactions: [ok(null)],
+      provider_profiles: [ok({ is_verified: true })],
+      notifications: [ok(null)],
+    });
+
+    await service.completeFromPaymongo({
+      sessionId: 'cs_pm',
+      paymentId: 'pay_1',
+      amountCentavos: 150000,
+      currency: 'php',
+      method: 'gcash',
+      metadata: {
+        purpose: 'hire_funding',
+        profile_id: 'c1',
+        application_id: 'app1',
+        job_id: 'j1',
+        provider_id: 'p1',
+      },
+    });
+
+    expect(escrow.hold).toHaveBeenCalledWith('j1', 'p1', undefined);
+    expect(applications.acceptFunded).toHaveBeenCalled();
   });
 });

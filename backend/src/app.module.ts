@@ -19,6 +19,7 @@ import { ApplicationsModule } from './applications/applications.module';
 import { ReviewsModule } from './reviews/reviews.module';
 import { ProvidersModule } from './providers/providers.module';
 import { CredentialsModule } from './credentials/credentials.module';
+import { PayoutsModule } from './payouts/payouts.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { RecommendationsModule } from './recommendations/recommendations.module';
 import { AdminModule } from './admin/admin.module';
@@ -76,6 +77,7 @@ import { InternalModule } from './internal/internal.module';
     ReviewsModule,
     ProvidersModule,
     CredentialsModule,
+    PayoutsModule,
     NotificationsModule,
     RecommendationsModule,
     AdminModule,

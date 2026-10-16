@@ -909,7 +909,7 @@ async function postJob(
 
 describe('job lifecycle, end to end', () => {
   it('carries a job from posting to payout and review', async () => {
-    const world = buildWorld({ topUp: 5000 });
+    const world = buildWorld();
     const { db, jobs, applications, escrow, wallet, reviews } = world;
 
     // 1. The client posts a job with a budget and a checklist.
@@ -925,7 +925,7 @@ describe('job lifecycle, end to end', () => {
     await applications.apply(rival, posted.id, {});
 
     // 3. Accepting hires the provider and holds the budget in one step.
-    await applications.accept(client, application.id);
+    await world.hireFunding.completeFromIntent(hirePayment(application));
 
     const held = await escrow.findByJob(posted.id);
     expect(held).toMatchObject({
@@ -937,7 +937,7 @@ describe('job lifecycle, end to end', () => {
     expect(
       db.rows('job_applications').find((a) => a.provider_id === 'p2')?.status,
     ).toBe('rejected');
-    expect(await wallet.balanceFor('c1')).toBe(5000 - BUDGET);
+    expect(await wallet.balanceFor('c1')).toBe(0);
 
     // 4. Hiring confirmed the booking; the provider starts work later.
     expect(db.rows('jobs')[0].status).toBe('confirmed');
@@ -1006,7 +1006,7 @@ describe('job lifecycle, end to end', () => {
   });
 
   it('withholds the configured commission at release, and nowhere else', async () => {
-    const world = buildWorld({ topUp: 5000, commissionRate: 0.15 });
+    const world = buildWorld({ commissionRate: 0.15 });
     const { db, jobs, applications, escrow, wallet } = world;
 
     const posted = await postJob(world);
@@ -1015,7 +1015,7 @@ describe('job lifecycle, end to end', () => {
       posted.id,
       {},
     )) as Record<string, any>;
-    await applications.accept(client, application.id);
+    await world.hireFunding.completeFromIntent(hirePayment(application));
     await jobs.start(provider, posted.id);
     for (const task of world.db
       .rows('job_tasks')
@@ -1032,20 +1032,21 @@ describe('job lifecycle, end to end', () => {
     await escrow.releaseIfHeld(posted.id);
 
     // The client paid the full budget; the provider received it less the cut.
-    expect(await wallet.balanceFor('c1')).toBe(5000 - BUDGET);
+    expect(await wallet.balanceFor('c1')).toBe(0);
     expect(await wallet.balanceFor('p1')).toBe(1275);
     expect(await escrow.findByJob(posted.id)).toMatchObject({
       commission_amount: 225,
     });
     // The commission has no ledger row of its own — the platform is not a
-    // profile — so the ledger deliberately does not net to zero here.
+    // profile — so the ledger deliberately does not net to zero here: the
+    // payment in, its hold, and the provider's payout less the cut.
     expect(
       db.rows('wallet_transactions').filter((t) => t.job_id === posted.id),
-    ).toHaveLength(2);
+    ).toHaveLength(3);
   });
 
-  it('refuses the hire and leaves the job open when the wallet is short', async () => {
-    const world = buildWorld({ topUp: 100 });
+  it('refuses a hire from the wallet: a priced job is paid at checkout', async () => {
+    const world = buildWorld();
     const { db, applications } = world;
 
     const posted = await postJob(world);
@@ -1056,21 +1057,16 @@ describe('job lifecycle, end to end', () => {
     )) as Record<string, any>;
 
     await expect(applications.accept(client, application.id)).rejects.toThrow(
-      /Insufficient wallet balance/,
+      /Pay for this hire at checkout/,
     );
 
-    // The whole point: no hire, no assignment, no rejected rivals, no debit.
     expect(db.rows('jobs')[0].status).toBe('open');
-    expect(db.rows('jobs')[0].assigned_provider_id).toBeNull();
     expect(db.rows('job_applications')[0].status).toBe('pending');
     expect(db.rows('escrow_transactions')).toEqual([]);
-    expect(db.ledgerFor('c1')).toEqual([
-      { direction: 'credit', kind: 'topup', amount: 100 },
-    ]);
   });
 
   it('holds a client cancellation until the provider agrees to refund', async () => {
-    const world = buildWorld({ topUp: 5000 });
+    const world = buildWorld();
     const { db, jobs, applications, escrow, wallet } = world;
 
     const posted = await postJob(world);
@@ -1079,7 +1075,7 @@ describe('job lifecycle, end to end', () => {
       posted.id,
       {},
     )) as Record<string, any>;
-    await applications.accept(client, application.id);
+    await world.hireFunding.completeFromIntent(hirePayment(application));
     await jobs.cancel(client, posted.id);
     expect(db.rows('escrow_transactions')[0].status).toBe('disputed');
     await world.disputes.respond(provider, db.rows('disputes')[0].id, {
@@ -1091,19 +1087,21 @@ describe('job lifecycle, end to end', () => {
     expect(await escrow.findByJob(posted.id)).toMatchObject({
       status: 'refunded',
     });
-    expect(await wallet.balanceFor('c1')).toBe(5000);
+    // Refunded onto the ledger; pass_through_balances (0056, SQL) sends it back
+    // to the payment method, which this fake database does not run.
+    expect(await wallet.balanceFor('c1')).toBe(BUDGET);
     expect(await wallet.balanceFor('p1')).toBe(0);
     // Tagged `refund`, not `payout` — counting it as revenue would inflate the
     // dashboard by the value of every cancelled job.
     expect(db.ledgerFor('c1')).toEqual([
-      { direction: 'credit', kind: 'topup', amount: 5000 },
+      { direction: 'credit', kind: 'topup', amount: BUDGET },
       { direction: 'debit', kind: 'escrow_hold', amount: BUDGET },
       { direction: 'credit', kind: 'refund', amount: BUDGET },
     ]);
   });
 
   it('freezes the money on a dispute and pays whoever the admin decides', async () => {
-    const world = buildWorld({ topUp: 5000 });
+    const world = buildWorld();
     const { db, jobs, applications, escrow, wallet, disputes } = world;
 
     const posted = await postJob(world);
@@ -1112,7 +1110,7 @@ describe('job lifecycle, end to end', () => {
       posted.id,
       {},
     )) as Record<string, any>;
-    await applications.accept(client, application.id);
+    await world.hireFunding.completeFromIntent(hirePayment(application));
     await jobs.start(provider, posted.id);
 
     await disputes.raise(client, posted.id, { reason: 'Hindi natapos' });
@@ -1142,7 +1140,9 @@ describe('job lifecycle, end to end', () => {
     expect(await escrow.findByJob(posted.id)).toMatchObject({
       status: 'refunded',
     });
-    expect(await wallet.balanceFor('c1')).toBe(5000);
+    // Refunded onto the ledger; pass_through_balances (0056, SQL) sends it back
+    // to the payment method, which this fake database does not run.
+    expect(await wallet.balanceFor('c1')).toBe(BUDGET);
     expect(await wallet.balanceFor('p1')).toBe(0);
   });
 
@@ -1175,7 +1175,7 @@ describe('job lifecycle, end to end', () => {
   });
 
   it('refunds the client when the assigned provider backs out', async () => {
-    const world = buildWorld({ topUp: 5000 });
+    const world = buildWorld();
     const { db, jobs, applications, wallet } = world;
 
     const posted = await postJob(world);
@@ -1184,11 +1184,13 @@ describe('job lifecycle, end to end', () => {
       posted.id,
       {},
     )) as Record<string, any>;
-    await applications.accept(client, application.id);
+    await world.hireFunding.completeFromIntent(hirePayment(application));
     await jobs.decline(provider, posted.id, { reason: 'May emergency po' });
 
     expect(db.rows('jobs')[0].status).toBe('cancelled');
-    expect(await wallet.balanceFor('c1')).toBe(5000);
+    // Refunded onto the ledger; pass_through_balances (0056, SQL) sends it back
+    // to the payment method, which this fake database does not run.
+    expect(await wallet.balanceFor('c1')).toBe(BUDGET);
   });
 });
 
@@ -1306,25 +1308,6 @@ describe('job lifecycle, paid by card at hire (§29.4)', () => {
 
     // Back in the wallet — spendable on another hire, or withdrawable.
     expect(await wallet.balanceFor('c1')).toBe(BUDGET);
-  });
-
-  it('keeps the money in the wallet when a wallet accept won the race', async () => {
-    const world = buildWorld({ topUp: 5000 });
-    const { db, applications, wallet, hireFunding } = world;
-    const posted = await postJob(world);
-    const application = (await applications.apply(
-      provider,
-      posted.id,
-      {},
-    )) as Record<string, any>;
-
-    await applications.accept(client, application.id); // from the wallet
-    await hireFunding.completeFromIntent(hirePayment(application));
-
-    expect(db.rows('escrow_transactions')).toHaveLength(1);
-    expect(db.rows('escrow_transactions')[0].funding_method).toBe('wallet');
-    // 5000 − 1500 held + 1500 card payment, nothing lost and nothing doubled.
-    expect(await wallet.balanceFor('c1')).toBe(5000);
   });
 });
 

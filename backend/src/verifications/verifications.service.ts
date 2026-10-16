@@ -328,7 +328,10 @@ export class VerificationsService {
     sessionId: string,
     providerId: string,
   ): Promise<boolean> {
-    let outputs: { first_name?: string | null; last_name?: string | null } | null;
+    let outputs: {
+      first_name?: string | null;
+      last_name?: string | null;
+    } | null;
     try {
       const session =
         await this.stripe.stripe.identity.verificationSessions.retrieve(

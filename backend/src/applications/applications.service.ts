@@ -172,8 +172,18 @@ export class ApplicationsService {
       throw new ForbiddenException('Not your job');
     await this.assertHireable(application);
 
+    // There is no wallet to pay from (migration 0056): a job with a price is
+    // hired by paying at checkout, and the payment webhook accepts it.
+    if (Number(application.jobs.budget ?? 0) > 0) {
+      throw new BadRequestException({
+        code: 'payment_required',
+        message:
+          'Pay for this hire at checkout (GCash, Maya, card or online banking).',
+      });
+    }
+
     // No-ops for jobs posted without a budget (everything before migration
-    // 0007); throws, before anything is accepted, when the wallet is short.
+    // 0007).
     const { placed } = await this.escrow.hold(
       application.job_id,
       application.provider_id,
@@ -341,7 +351,7 @@ export class ApplicationsService {
   async findWithJob(applicationId: string) {
     const { data, error } = await this.supabase.admin
       .from('job_applications')
-      .select('*, jobs(id, title, status, client_id)')
+      .select('*, jobs(id, title, status, client_id, budget)')
       .eq('id', applicationId)
       .maybeSingle();
     if (error) throw new BadRequestException(error.message);

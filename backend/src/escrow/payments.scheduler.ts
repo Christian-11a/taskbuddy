@@ -44,16 +44,25 @@ export class PaymentsScheduler {
         throw new Error(`Job change expiry failed: ${changeError.message}`);
       const reconciled = await this.reconcileSettledJobs();
       const transfers = await this.payouts.sweep();
+      // Anything a settlement left on the ledger (a dispute resolved in SQL,
+      // a payout waiting for a linked account) is sent on here (0056).
+      const { data: passedThrough, error: passError } =
+        await this.supabase.admin.rpc('pass_through_balances', {
+          p_profile_id: null,
+        });
+      if (passError)
+        this.logger.error(`Pass-through failed: ${passError.message}`);
       if (
         expired ||
         expiredChanges ||
         reconciled ||
+        passedThrough ||
         transfers.transferred ||
         transfers.failed
       ) {
         this.logger.log(
           `Payments tick: ${expired} cancellation(s) expired, ${expiredChanges} job change(s) expired, ${reconciled} escrow(s) reconciled, ` +
-            `${transfers.transferred} transfer(s) sent, ${transfers.failed} failed`,
+            `${transfers.transferred} transfer(s) sent, ${transfers.failed} failed, ${passedThrough ?? 0} payout(s)/refund(s) passed through`,
         );
       }
     } catch (err) {

@@ -9,6 +9,7 @@ import type Stripe from 'stripe';
 import { SupabaseService } from '../supabase/supabase.service';
 import { StripeService } from './stripe.service';
 import { StripeCustomersService } from './stripe-customers.service';
+import { PaymongoService, type PaymongoPaidSession } from './paymongo.service';
 import { ApplicationsService } from '../applications/applications.service';
 import { EscrowService } from '../escrow/escrow.service';
 import { isMoneyRefusal, peso } from '../escrow/escrow-errors';
@@ -24,6 +25,15 @@ import type { Profile } from '../common/types';
 export const HIRE_FUNDING_PURPOSE = 'hire_funding';
 
 const CURRENCY = 'php';
+
+/** How PayMongo's payment source types read in messages. */
+const METHOD_LABELS: Record<string, string> = {
+  gcash: 'GCash',
+  paymaya: 'Maya',
+  card: 'card',
+  dob: 'online banking',
+  grab_pay: 'GrabPay',
+};
 
 /** Stripe's minimum lifetime for a Checkout Session. */
 const CHECKOUT_TTL_SECONDS = 30 * 60;
@@ -77,6 +87,7 @@ export class HireFundingService {
     private readonly customers: StripeCustomersService,
     private readonly applications: ApplicationsService,
     private readonly escrow: EscrowService,
+    private readonly paymongo: PaymongoService,
   ) {}
 
   /**
@@ -106,7 +117,7 @@ export class HireFundingService {
 
     if (job.budget == null) {
       throw new BadRequestException(
-        'This job has no budget to pay — accept it from your wallet instead',
+        'This job has no price to pay — hire the provider without payment instead',
       );
     }
     const budget = Number(job.budget);
@@ -120,6 +131,29 @@ export class HireFundingService {
     const returnUrl = (status: 'success' | 'cancelled') =>
       `${returnBase}/payments/return?flow=hire&status=${status}` +
       `&app_redirect=${encodeURIComponent(dto.app_redirect)}`;
+
+    const metadata = {
+      purpose: HIRE_FUNDING_PURPOSE,
+      profile_id: user.id,
+      application_id: application.id,
+      job_id: job.id,
+      provider_id: application.provider_id,
+    };
+
+    // PayMongo (test mode) when configured: GCash, Maya, card and online
+    // banking, with no wallet in between (migration 0056).
+    if (this.paymongo.configured) {
+      const checkout = await this.paymongo.createCheckout({
+        amountCentavos: Math.round(budget * 100),
+        name: `Hire — ${job.title}`.slice(0, 120),
+        description: `TaskBuddy hire — ${job.title}`.slice(0, 255),
+        reference: application.id,
+        successUrl: returnUrl('success'),
+        cancelUrl: returnUrl('cancelled'),
+        metadata,
+      });
+      return { url: checkout.url, session_id: checkout.id, amount: budget };
+    }
 
     const session = await this.stripeService.stripe.checkout.sessions.create({
       mode: 'payment',
@@ -183,31 +217,84 @@ export class HireFundingService {
    * database blip.
    */
   async completeFromIntent(intent: Stripe.PaymentIntent): Promise<void> {
-    const meta = intent.metadata ?? {};
-    const { profile_id, application_id, job_id, provider_id } = meta;
+    const chargeId =
+      typeof intent.latest_charge === 'string'
+        ? intent.latest_charge
+        : (intent.latest_charge?.id ?? null);
+    if (!chargeId) {
+      // Not expected for a succeeded card payment. Without a charge the
+      // payout cannot be sent on to Stripe, so the hold is recorded as
+      // wallet-funded, which is the safe way to be wrong.
+      this.logger.error(`Hire PaymentIntent ${intent.id} has no charge`);
+    }
+    await this.completeHire({
+      ref: intent.id,
+      amountCentavos: intent.amount_received,
+      currency: intent.currency,
+      metadata: intent.metadata ?? {},
+      funding: chargeId ? { paymentIntentId: intent.id, chargeId } : undefined,
+      methodLabel: 'card',
+    });
+  }
+
+  /** `checkout_session.payment.paid` from PayMongo (test mode). */
+  async completeFromPaymongo(paid: PaymongoPaidSession): Promise<void> {
+    if (paid.metadata.purpose !== HIRE_FUNDING_PURPOSE) return;
+    await this.completeHire({
+      ref: paid.paymentId,
+      amountCentavos: paid.amountCentavos,
+      currency: paid.currency,
+      metadata: paid.metadata,
+      // Held without Stripe funding: the payout is passed through to the
+      // provider's linked account instead of a Connect transfer.
+      funding: undefined,
+      methodLabel: METHOD_LABELS[paid.method] ?? 'online payment',
+    });
+  }
+
+  private async completeHire(payment: {
+    ref: string;
+    amountCentavos: number;
+    currency: string;
+    metadata: Record<string, string>;
+    funding: { paymentIntentId: string; chargeId: string } | undefined;
+    methodLabel: string;
+  }): Promise<void> {
+    const { profile_id, application_id, job_id, provider_id } =
+      payment.metadata;
     if (!profile_id || !application_id || !job_id || !provider_id) {
       this.logger.error(
-        `Hire PaymentIntent ${intent.id} is missing metadata — cannot act on it`,
+        `Hire payment ${payment.ref} is missing metadata — cannot act on it`,
       );
       return;
     }
 
     const application = await this.load(application_id);
     const job = application?.jobs ?? null;
-    const amount = intent.amount_received / 100;
+    const amount = payment.amountCentavos / 100;
 
-    const fresh = await this.credit(intent, profile_id, amount, job?.title);
+    const fresh = await this.credit(
+      payment.ref,
+      profile_id,
+      amount,
+      job_id,
+      job?.title,
+      payment.methodLabel,
+    );
 
+    // A payment that cannot become a hire goes straight back to where it
+    // came from: there is no wallet to leave it in (migration 0056).
     const refuse = async (reason: string) => {
       this.logger.warn(
-        `Hire PaymentIntent ${intent.id} not turned into a hire: ${reason}`,
+        `Hire payment ${payment.ref} not turned into a hire: ${reason}`,
       );
+      await this.escrow.passThrough([profile_id]);
       if (fresh) {
         await this.notify(
           profile_id,
           'payment_update',
-          'Payment added to your wallet',
-          `Your card payment of ${peso(amount)} is in your wallet, but the hire could not be completed: ${reason}. You can use it for another hire or withdraw it.`,
+          'Payment refunded',
+          `Your ${payment.methodLabel} payment of ${peso(amount)} could not complete the hire: ${reason}. It has been refunded to your payment method.`,
           job_id,
         );
       }
@@ -215,7 +302,8 @@ export class HireFundingService {
 
     const existing = await this.escrow.findByJob(job_id);
     if (
-      existing?.funding_payment_intent_id === intent.id &&
+      existing?.status === 'held' &&
+      existing.provider_id === provider_id &&
       application?.status === 'accepted'
     ) {
       return;
@@ -240,9 +328,9 @@ export class HireFundingService {
       return refuse('the job is no longer open');
     }
     if (
-      intent.currency !== CURRENCY ||
+      payment.currency !== CURRENCY ||
       job.budget == null ||
-      intent.amount_received !== Math.round(Number(job.budget) * 100)
+      payment.amountCentavos !== Math.round(Number(job.budget) * 100)
     ) {
       return refuse('the amount paid does not match the job budget');
     }
@@ -251,23 +339,8 @@ export class HireFundingService {
     }
 
     // ── 4. Hold ────────────────────────────────────────────────────────────
-    const chargeId =
-      typeof intent.latest_charge === 'string'
-        ? intent.latest_charge
-        : (intent.latest_charge?.id ?? null);
-    if (!chargeId) {
-      // Not expected for a succeeded card payment. Without a charge the
-      // payout cannot be sent on to Stripe, so the hold is recorded as
-      // wallet-funded: the provider's payout then stays in their wallet,
-      // which is the safe way to be wrong.
-      this.logger.error(`Hire PaymentIntent ${intent.id} has no charge`);
-    }
     try {
-      await this.escrow.hold(
-        job_id,
-        provider_id,
-        chargeId ? { paymentIntentId: intent.id, chargeId } : undefined,
-      );
+      await this.escrow.hold(job_id, provider_id, payment.funding);
     } catch (err) {
       if (isMoneyRefusal(err)) return refuse((err as Error).message);
       throw err;
@@ -281,10 +354,7 @@ export class HireFundingService {
       if (now === 'accepted') return;
       if (now === 'pending' || now === 'unknown') throw err;
       const held = await this.escrow.findByJob(job_id);
-      if (
-        held?.status === 'held' &&
-        held.funding_payment_intent_id === intent.id
-      ) {
+      if (held?.status === 'held' && held.provider_id === provider_id) {
         await this.escrow.releaseHoldForFailedHire(job_id);
       }
       return refuse(`the proposal was ${now}`);
@@ -295,11 +365,11 @@ export class HireFundingService {
       profile_id,
       'payment_update',
       'Hire confirmed',
-      `You paid ${peso(amount)} by card for "${job.title}". It is held in escrow until you confirm the job is done.`,
+      `You paid ${peso(amount)} by ${payment.methodLabel} for "${job.title}". It is held in escrow until you confirm the job is done.`,
       job_id,
     );
     this.logger.log(
-      `Hired ${provider_id} for job ${job_id} on card payment ${intent.id}`,
+      `Hired ${provider_id} for job ${job_id} on ${payment.methodLabel} payment ${payment.ref}`,
     );
   }
 
@@ -338,10 +408,12 @@ export class HireFundingService {
    * exactly as for ordinary top-ups (§21).
    */
   private async credit(
-    intent: Stripe.PaymentIntent,
+    ref: string,
     profileId: string,
     amount: number,
+    jobId: string,
     jobTitle: string | undefined,
+    methodLabel: string,
   ): Promise<boolean> {
     const { error } = await this.supabase.admin
       .from('wallet_transactions')
@@ -350,15 +422,15 @@ export class HireFundingService {
         direction: 'credit',
         kind: 'topup',
         amount,
-        title: `Card payment — ${jobTitle ?? 'hire'}`.slice(0, 120),
+        title: `Payment (${methodLabel}) — ${jobTitle ?? 'hire'}`.slice(0, 120),
         status: 'completed',
-        stripe_payment_intent_id: intent.id,
-        job_id: intent.metadata?.job_id ?? null,
+        // Unique: the idempotency key for Stripe and PayMongo payment ids alike.
+        stripe_payment_intent_id: ref,
+        job_id: jobId,
       });
     if (error?.code === '23505') return false;
     // Money reached us; the ledger row is not optional. Non-2xx → retry.
-    if (error)
-      throw new Error(`Could not credit ${intent.id}: ${error.message}`);
+    if (error) throw new Error(`Could not credit ${ref}: ${error.message}`);
     return true;
   }
 

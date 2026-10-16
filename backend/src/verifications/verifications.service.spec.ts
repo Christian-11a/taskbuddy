@@ -101,7 +101,13 @@ function createIdentityStripeMock() {
     },
     publishableKey: 'pk_test_stub',
   } as unknown as StripeService;
-  return { service, sessionsCreate, sessionsCancel, sessionsRetrieve, keysCreate };
+  return {
+    service,
+    sessionsCreate,
+    sessionsCancel,
+    sessionsRetrieve,
+    keysCreate,
+  };
 }
 
 /** Shaped like a stripe-node error: a `type` and Stripe's own statusCode. */

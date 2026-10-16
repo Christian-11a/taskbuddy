@@ -2,6 +2,7 @@ import {
   BadRequestException,
   ConflictException,
   Injectable,
+  Logger,
 } from '@nestjs/common';
 import { SupabaseService } from '../supabase/supabase.service';
 import { ListTransactionsQueryDto } from './dto/escrow.dto';
@@ -79,6 +80,8 @@ export interface CardFunding {
  */
 @Injectable()
 export class EscrowService {
+  private readonly logger = new Logger(EscrowService.name);
+
   constructor(
     private readonly supabase: SupabaseService,
     private readonly connectPayouts: ConnectPayoutsService,
@@ -173,7 +176,25 @@ export class EscrowService {
     if (released.transfer_status === 'pending') {
       void this.connectPayouts.processEscrow(released.id);
     }
+    await this.passThrough([released.provider_id]);
     return released;
+  }
+
+  /**
+   * Sends the money a settlement just put on the ledger straight back out:
+   * a payout to the provider's linked GCash/Maya/bank account, a refund to
+   * the client's original payment method (migration 0056). TaskBuddy keeps
+   * no balances. Never throws: the settlement is already committed, and the
+   * payments tick sends anything this misses.
+   */
+  async passThrough(profileIds: string[]): Promise<void> {
+    for (const id of new Set(profileIds)) {
+      const { error } = await this.supabase.admin.rpc('pass_through_balances', {
+        p_profile_id: id,
+      });
+      if (error)
+        this.logger.error(`Pass-through for ${id} failed: ${error.message}`);
+    }
   }
 
   /**
@@ -368,7 +389,10 @@ export class EscrowService {
       p_title: options.title ?? null,
     });
     if (error) throw moneyError(error);
-    return (data as EscrowRow | null) ?? null;
+    const settled = (data as EscrowRow | null) ?? null;
+    if (settled && next !== 'disputed')
+      await this.passThrough([settled.client_id, settled.provider_id]);
+    return settled;
   }
 
   /**
