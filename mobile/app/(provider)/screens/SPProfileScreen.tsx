@@ -17,6 +17,7 @@ import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import {
   ArrowLeft,
   BadgeCheck,
+  Award,
   Camera,
   ChevronRight,
   CircleHelp,
@@ -109,7 +110,8 @@ export default function SPProfileScreen({ onNavigate, onLogout, onBack }: SPProf
       }]),
     { key: 'services', icon: Wrench, label: 'My services', onPress: () => onNavigate('My Services') },
     { key: 'portfolio', icon: Camera, label: 'Portfolio', onPress: () => onNavigate('Portfolio') },
-    { key: 'payouts', icon: Wallet, label: 'Payouts', onPress: () => onNavigate('Payouts') },
+    { key: 'credentials', icon: Award, label: 'Certifications', onPress: () => onNavigate('Credentials') },
+    { key: 'payouts', icon: Wallet, label: 'Payout account', onPress: () => onNavigate('Payout Account') },
   ];
   const helpItems: MenuItem[] = [
     { key: 'settings', icon: Settings, label: 'Settings', onPress: () => onNavigate('Settings') },

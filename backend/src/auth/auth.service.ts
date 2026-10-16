@@ -11,6 +11,7 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { SupabaseService } from '../supabase/supabase.service';
+import { CURRENT_TERMS_VERSION } from './terms';
 import { isAllowedAppRedirect } from './google-redirect';
 import {
   ChangePasswordDto,
@@ -139,7 +140,10 @@ export class AuthService implements OnModuleInit {
     if (userId) {
       const now = new Date().toISOString();
       const consentPatch: Record<string, string | number | null> = {};
-      if (dto.consented_terms) consentPatch.consented_terms_at = now;
+      if (dto.consented_terms) {
+        consentPatch.consented_terms_at = now;
+        consentPatch.consented_terms_version = CURRENT_TERMS_VERSION;
+      }
       if (dto.consented_privacy) consentPatch.consented_privacy_at = now;
       if (dto.consented_data_collection)
         consentPatch.consented_data_collection_at = now;
@@ -800,6 +804,23 @@ export class AuthService implements OnModuleInit {
   }
 
   /** Profile plus the provider extension when the caller is a provider. */
+  /** Records acceptance of the current Terms & Conditions. */
+  async acceptTerms(user: Profile, version: number) {
+    if (version !== CURRENT_TERMS_VERSION)
+      throw new BadRequestException(
+        'These terms have been updated. Reload the app to read the latest version.',
+      );
+    const { error } = await this.supabase.admin
+      .from('profiles')
+      .update({
+        consented_terms_at: new Date().toISOString(),
+        consented_terms_version: version,
+      })
+      .eq('id', user.id);
+    if (error) throw new BadRequestException(error.message);
+    return { accepted_terms_version: version };
+  }
+
   async me(user: Profile) {
     // `profiles` has no email column (it lives in auth.users); attach it so the
     // frontends can display the account email without a second round-trip.
@@ -814,6 +835,9 @@ export class AuthService implements OnModuleInit {
     if (passwordError) throw new BadRequestException(passwordError.message);
     const profile = {
       ...user,
+      current_terms_version: CURRENT_TERMS_VERSION,
+      terms_update_required:
+        (user.consented_terms_version ?? 0) < CURRENT_TERMS_VERSION,
       email: authData.user.email ?? null,
       has_password: hasPassword,
     };
@@ -854,7 +878,10 @@ export class AuthService implements OnModuleInit {
       role: dto.role,
       google_signup_pending: false,
     };
-    if (dto.consented_terms) patch.consented_terms_at = now;
+    if (dto.consented_terms) {
+      patch.consented_terms_at = now;
+      patch.consented_terms_version = CURRENT_TERMS_VERSION;
+    }
     if (dto.consented_privacy) patch.consented_privacy_at = now;
     if (dto.consented_data_collection) patch.consented_data_collection_at = now;
     if (dto.consented_biometric) patch.consented_biometric_at = now;

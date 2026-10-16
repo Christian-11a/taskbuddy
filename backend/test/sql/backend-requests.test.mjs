@@ -40,15 +40,43 @@ it('audits an admin capacity change and rejects a non-admin',async()=>{
  assert.equal((await q(`select client_active_max from admin_update_job_capacity($1,4,3,3,8,1,20)`,[admin]))[0].client_active_max,4);
  assert.equal((await q(`select count(*)::int as n from admin_actions where actor_id=$1 and action='job_capacity.update'`,[admin]))[0].n,1);
 });
-it('accepts a wallet-funded price change atomically',async()=>{
+it('holds an agreed price increase until the client pays the difference',async()=>{
  const id=await job(1,'assigned');
  await q(`insert into escrow_transactions(job_id,client_id,provider_id,amount,status) values($1,$2,$3,1000,'held')`,[id,client,provider]);
- await q(`insert into wallet_transactions(profile_id,direction,kind,status,amount,title) values($1,'credit','topup','completed',500,'Test funds')`,[client]);
  const r=await q(`select id from job_change_propose($1,$2,'price',null,1200,'More materials needed')`,[id,provider]);
- await q(`select job_change_decide($1,$2,'accepted')`,[r[0].id,client]);
+ const decided=(await q(`select * from job_change_decide($1,$2,'accepted')`,[r[0].id,client]))[0];
+ assert.equal(decided.status,'awaiting_payment');
+ assert.equal(Number((await q(`select budget from jobs where id=$1`,[id]))[0].budget),1000);
+ // The payment webhook credits the difference, then applies it.
+ await q(`insert into wallet_transactions(profile_id,direction,kind,status,amount,title,job_id) values($1,'credit','topup','completed',200,'Payment',$2)`,[client,id]);
+ await refusal(`select job_change_apply_payment($1,150)`,[r[0].id],'TB409');
+ const applied=(await q(`select * from job_change_apply_payment($1,200)`,[r[0].id]))[0];
+ assert.equal(applied.status,'accepted');
  assert.equal(Number((await q(`select budget from jobs where id=$1`,[id]))[0].budget),1200);
  assert.equal(Number((await q(`select amount from escrow_transactions where job_id=$1`,[id]))[0].amount),1200);
- assert.equal((await q(`select count(*)::int as n from wallet_transactions where job_id=$1 and kind='escrow_hold'`,[id]))[0].n,1);
+ assert.equal(Number((await q(`select wallet_available_balance($1) as b`,[client]))[0].b),0);
+ // A redelivered payment changes nothing.
+ assert.equal((await q(`select * from job_change_apply_payment($1,200)`,[r[0].id]))[0].status,'accepted');
+});
+it('refunds a price decrease to the payment method',async()=>{
+ const id=await job(1,'assigned');
+ await q(`insert into escrow_transactions(job_id,client_id,provider_id,amount,status) values($1,$2,$3,1000,'held')`,[id,client,provider]);
+ const r=await q(`select id from job_change_propose($1,$2,'price',null,800,'Smaller job than expected')`,[id,client]);
+ assert.equal((await q(`select * from job_change_decide($1,$2,'accepted')`,[r[0].id,provider]))[0].status,'accepted');
+ assert.equal(Number((await q(`select amount from escrow_transactions where job_id=$1`,[id]))[0].amount),800);
+ await q(`select pass_through_balances($1)`,[client]);
+ assert.equal(Number((await q(`select wallet_available_balance($1) as b`,[client]))[0].b),0);
+ assert.equal((await q(`select withdrawal_destination from wallet_transactions where profile_id=$1 and kind='withdrawal'`,[client]))[0].withdrawal_destination,'Original payment method');
+});
+it('expires an unpaid price increase and keeps the old price',async()=>{
+ const id=await job(1,'assigned');
+ await q(`insert into escrow_transactions(job_id,client_id,provider_id,amount,status) values($1,$2,$3,1000,'held')`,[id,client,provider]);
+ const r=await q(`select id from job_change_propose($1,$2,'price',null,1200,'More materials needed')`,[id,provider]);
+ await q(`select job_change_decide($1,$2,'accepted')`,[r[0].id,client]);
+ await q(`update job_change_requests set expires_at=now()-interval '1 minute' where id=$1`,[r[0].id]);
+ assert.equal((await q(`select job_change_expire_all() as n`))[0].n,1);
+ await refusal(`select job_change_apply_payment($1,200)`,[r[0].id],'TB409');
+ assert.equal(Number((await q(`select budget from jobs where id=$1`,[id]))[0].budget),1000);
 });
 it('limits provider release requests and notifies the client',async()=>{
  const id=await job(1,'completed');

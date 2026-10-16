@@ -209,9 +209,9 @@ describe('SPProfileScreen — profile', () => {
 
     fireEvent.press(screen.getByRole('button', { name: 'My services' }));
     fireEvent.press(screen.getByRole('button', { name: 'Portfolio' }));
-    fireEvent.press(screen.getByRole('button', { name: 'Payouts' }));
+    fireEvent.press(screen.getByRole('button', { name: 'Payout account' }));
 
-    expect(onNavigate.mock.calls).toEqual([['My Services'], ['Portfolio'], ['Payouts']]);
+    expect(onNavigate.mock.calls).toEqual([['My Services'], ['Portfolio'], ['Payout Account']]);
   });
 
   it('the Account card shows the location without repeating the city, and an empty phone links to Edit Profile', () => {

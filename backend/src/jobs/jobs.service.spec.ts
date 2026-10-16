@@ -340,10 +340,33 @@ describe('JobsService.create', () => {
     address: 'Lipa City',
     latitude: 14,
     longitude: 121,
+    price_tier: 'standard' as const,
   };
+  const rates = () => ({
+    service_categories: [ok({ base_price: 800 })],
+    urgency_settings: [ok({ price_multiplier: 1 })],
+  });
+
+  it('prices the job from the chosen tier, never from the client', async () => {
+    const { service, calls } = createService({
+      ...rates(),
+      jobs: [ok({ id: 'j1' })],
+    });
+
+    await service.create(client, { ...dto, price_tier: 'premium' });
+
+    const jobInsert = calls.find(
+      (c) => c.table === 'jobs' && c.method === 'insert',
+    );
+    expect(jobInsert?.args[0]).toMatchObject({
+      budget: 1500,
+      price_tier: 'premium',
+    });
+  });
 
   it('writes the chosen checklist in the order the client arranged it', async () => {
     const { service, calls } = createService({
+      ...rates(),
       jobs: [ok({ id: 'j1' }), ok({ id: 'j1', job_tasks: [] })],
       job_tasks: [ok(null)],
     });
@@ -352,8 +375,8 @@ describe('JobsService.create', () => {
 
     const insert = calls.find((c) => c.table === 'job_tasks');
     expect(insert?.args[0]).toEqual([
-      { job_id: 'j1', label: 'Sweep', position: 0 },
-      { job_id: 'j1', label: 'Mop', position: 1 },
+      { job_id: 'j1', label: 'Sweep', position: 0, effort: 'moderate' },
+      { job_id: 'j1', label: 'Mop', position: 1, effort: 'moderate' },
     ]);
     const jobInsert = calls.find(
       (c) => c.table === 'jobs' && c.method === 'insert',
@@ -366,6 +389,7 @@ describe('JobsService.create', () => {
 
   it('still returns the job when the checklist write fails', async () => {
     const { service } = createService({
+      ...rates(),
       jobs: [ok({ id: 'j1' })],
       job_tasks: [{ data: null, error: { message: 'boom' } }],
     });
@@ -837,7 +861,10 @@ describe('JobsService.getById escrow summary', () => {
       jobs: [ok(job({ status: 'completed' }))],
       escrow_transactions: [ok({ status: 'held', funding_method: 'wallet' })],
     });
-    const result = (await service.getById(client, 'j1')) as Record<string, unknown>;
+    const result = (await service.getById(client, 'j1')) as Record<
+      string,
+      unknown
+    >;
     expect(result.escrow).toEqual({ status: 'held', funding_method: 'wallet' });
   });
 
@@ -846,7 +873,10 @@ describe('JobsService.getById escrow summary', () => {
       jobs: [ok(job({ status: 'completed' }))],
       escrow_transactions: [ok({ status: 'held', funding_method: 'card' })],
     });
-    const result = (await service.getById(provider, 'j1')) as Record<string, unknown>;
+    const result = (await service.getById(provider, 'j1')) as Record<
+      string,
+      unknown
+    >;
     expect(result.escrow).toEqual({ status: 'held', funding_method: 'card' });
   });
 
@@ -855,7 +885,10 @@ describe('JobsService.getById escrow summary', () => {
       jobs: [ok(job({ status: 'open', assigned_provider_id: null }))],
       escrow_transactions: [ok(null)],
     });
-    const result = (await service.getById(client, 'j1')) as Record<string, unknown>;
+    const result = (await service.getById(client, 'j1')) as Record<
+      string,
+      unknown
+    >;
     expect(result.escrow).toBeNull();
   });
 
@@ -864,7 +897,10 @@ describe('JobsService.getById escrow summary', () => {
       jobs: [ok(job({ status: 'completed' }))],
       escrow_transactions: [{ data: null, error: { message: 'boom' } }],
     });
-    const result = (await service.getById(client, 'j1')) as Record<string, unknown>;
+    const result = (await service.getById(client, 'j1')) as Record<
+      string,
+      unknown
+    >;
     expect(result.escrow).toBeNull();
   });
 
@@ -873,7 +909,10 @@ describe('JobsService.getById escrow summary', () => {
     const { service, calls } = createService({
       jobs: [ok(job({ status: 'open', assigned_provider_id: null }))],
     });
-    const result = (await service.getById(browsing, 'j1')) as Record<string, unknown>;
+    const result = (await service.getById(browsing, 'j1')) as Record<
+      string,
+      unknown
+    >;
     expect(result.escrow).toBeUndefined();
     expect(calls.some((c) => c.table === 'escrow_transactions')).toBe(false);
   });

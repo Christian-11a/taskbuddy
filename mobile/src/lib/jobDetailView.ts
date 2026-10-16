@@ -241,7 +241,7 @@ export function homeownerJobView(input: HomeownerJobInput): JobView {
                 ? 'Payment under admin review'
                 : 'Complaint under review',
             body: cancellationPending
-              ? `You asked to cancel after hiring. ${yourPayment} goes back to your wallet once they agree, or an admin decides.`
+              ? `You asked to cancel after hiring. ${yourPayment} goes back to your payment method once they agree, or an admin decides.`
               : escrowDisputed
                 ? 'The disputed payment stays frozen until an admin resolves it.'
                 : 'An admin is reviewing the complaint.',

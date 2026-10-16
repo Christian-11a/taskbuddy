@@ -80,7 +80,7 @@ it('asks before agreeing, and sends the answer only once the refund is confirmed
   fireEvent.changeText(screen.getByLabelText('Your note'), 'Agreed, sorry for the trouble');
   fireEvent.press(screen.getByText('Agree to cancel'));
   expect(await screen.findByText('Agree to cancel?')).toBeTruthy();
-  expect(screen.getByText(/₱800.00 goes back to the client's wallet/)).toBeTruthy();
+  expect(screen.getByText(/₱800.00 goes back to the client's payment method/)).toBeTruthy();
   expect(api.respondToCancellation).not.toHaveBeenCalled();
   fireEvent.press(screen.getByLabelText('Go back'));
   await waitFor(() => expect(screen.queryByText('Agree to cancel?')).toBeNull());

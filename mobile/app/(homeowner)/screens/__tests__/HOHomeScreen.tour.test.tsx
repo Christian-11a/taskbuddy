@@ -14,7 +14,6 @@ jest.mock('../../../../src/context/NotificationsContext', () => ({
 
 jest.mock('../../../../src/lib/api', () => ({
   api: {
-    wallet: jest.fn(),
     myJobs: jest.fn(),
     categories: jest.fn(),
     notifications: jest.fn(),
@@ -30,7 +29,6 @@ jest.mock('../../../../src/context/AuthContext', () => ({
 // Where each Home control sits, keyed by testID, as measureInWindow reports it.
 const RECTS: Record<string, TourRect> = {
   'home-post-job': { x: 16, y: 150, width: 340, height: 54 },
-  'home-wallet': { x: 230, y: 40, width: 90, height: 36 },
   'home-bell': { x: 330, y: 36, width: 44, height: 44 },
 };
 
@@ -46,7 +44,6 @@ beforeEach(() => {
   jest.clearAllMocks();
   clearAsyncDataCache();
   (useAuth as jest.Mock).mockReturnValue({ profile: { full_name: 'Alex', city: null, address: null } });
-  (api.wallet as jest.Mock).mockResolvedValue({ balance: 0, available: 0, held: 0 });
   (api.myJobs as jest.Mock).mockResolvedValue([]);
   (api.categories as jest.Mock).mockResolvedValue([]);
   (api.notifications as jest.Mock).mockResolvedValue([]);
@@ -71,7 +68,6 @@ describe('HOHomeScreen — welcome tour anchors', () => {
   // a missing anchor would pass the step over and the card would never appear.
   it.each([
     ['home.post', 'Start here'],
-    ['home.wallet', 'Your wallet'],
     ['home.bell', 'Never miss an offer'],
   ])('%s is a spotlight target, so its step is shown', async (anchorId, title) => {
     render(

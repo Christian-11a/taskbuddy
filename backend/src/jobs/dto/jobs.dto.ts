@@ -22,6 +22,8 @@ import {
 } from 'class-validator';
 import type { ValidatorConstraintInterface } from 'class-validator';
 import type { JobUrgency } from '../../common/types';
+import { PRICE_TIERS, TASK_EFFORTS } from '../pricing';
+import type { PriceTier, TaskEffort } from '../pricing';
 
 /**
  * Rejects a scheduled start that has already happened.
@@ -78,14 +80,10 @@ export class CreateJobDto {
   @Type(() => Number)
   longitude!: number;
 
-  // Client's budget in PHP. Optional — jobs posted without one behave as before.
-  @IsOptional()
-  @IsNumber({ maxDecimalPlaces: 2 })
-  @IsPositive()
-  @Min(1, { message: 'Budget must be between ₱1 and ₱100,000.' })
-  @Max(100_000, { message: 'Budget must be between ₱1 and ₱100,000.' })
-  @Type(() => Number)
-  budget?: number;
+  // Which of the three server-computed price options the client tapped
+  // (POST /jobs/price-estimate). The amount is never taken from the client.
+  @IsIn(PRICE_TIERS)
+  price_tier!: PriceTier;
 
   // Preferred start time. When set, accepting an application auto-creates the
   // provider's booking (trigger handle_application_accepted, migration 0007).
@@ -112,6 +110,30 @@ export class CreateJobDto {
   @IsString({ each: true })
   @Length(1, 120, { each: true })
   tasks?: string[];
+
+  /** How demanding each item in `tasks` is, same order. Missing = moderate. */
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(20)
+  @IsIn(TASK_EFFORTS, { each: true })
+  task_efforts?: TaskEffort[];
+}
+
+/** `POST /jobs/price-estimate` — what the client has picked so far. */
+export class PriceEstimateDto {
+  @IsInt()
+  @Type(() => Number)
+  category_id!: number;
+
+  @IsOptional()
+  @IsIn(['urgent', 'normal', 'flexible'])
+  urgency?: JobUrgency;
+
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(20)
+  @IsIn(TASK_EFFORTS, { each: true })
+  task_efforts?: TaskEffort[];
 }
 
 /** The assigned provider ticking one checklist item off, or back on. */
@@ -225,11 +247,10 @@ export class ProposeJobChangeDto {
   @IsISO8601()
   new_scheduled_at?: string;
 
+  // A price change picks another of the job's computed tiers.
   @ValidateIf((dto: ProposeJobChangeDto) => dto.type === 'price')
-  @IsNumber({ maxDecimalPlaces: 2 })
-  @Min(1)
-  @Max(100_000)
-  new_budget?: number;
+  @IsIn(PRICE_TIERS)
+  new_price_tier?: PriceTier;
 
   @IsString()
   @Length(1, 300)

@@ -18,6 +18,15 @@ import { notifyNotificationChange } from './notificationEvents';
 
 import EventSource from 'react-native-sse';
 import { friendlyApiMessage } from './apiMessages';
+import type { PriceTier, TaskEffort } from './taskEffort';
+
+/** One clickable price for a job, from `POST /jobs/price-estimate`. */
+export interface PriceOption {
+  tier: PriceTier;
+  amount: number;
+  min: number;
+  max: number;
+}
 
 const PRIMARY_API_URL =
   process.env.EXPO_PUBLIC_API_URL ?? 'https://taskbuddy-kpek.onrender.com';
@@ -210,7 +219,27 @@ export interface Profile {
   signup_category_id: number | null;
   // True for new Google OAuth users until they complete role selection
   google_signup_pending: boolean;
+  /** Set by /auth/me: the account accepted an older Terms version. */
+  terms_update_required?: boolean;
   [key: string]: unknown;
+}
+
+export type CredentialType = 'tesda_nc' | 'prc_license' | 'trade_certificate' | 'other';
+
+/** A skill credential (migration 0054). `document_url` is only on the owner's copy. */
+export interface Credential {
+  id: string;
+  category_id: number;
+  credential_type: CredentialType;
+  title: string;
+  issuer: string;
+  credential_number?: string | null;
+  issued_on: string | null;
+  expires_on: string | null;
+  status: 'pending' | 'approved' | 'rejected' | 'expired';
+  rejection_reason?: string | null;
+  document_url?: string | null;
+  service_categories: { id: number; name: string } | null;
 }
 
 export interface PortfolioEntry {
@@ -260,6 +289,8 @@ export interface JobApplication {
       'is_verified' | 'cached_avg_rating' | 'cached_completed_jobs'
     > | null;
   } | null;
+  /** Approved, unexpired skill credentials (TESDA, PRC…): the Certified badge. */
+  certifications?: { title: string; issuer: string }[];
 }
 
 export interface MeResponse {
@@ -551,6 +582,30 @@ export interface CheckoutSession {
 /** The card limits live in cardLimits.ts, with no network code; re-exported here for the screens. */
 export { MAX_CARD_PHP, MIN_TOPUP_PHP } from './cardLimits';
 
+export type PayoutMethod = 'gcash' | 'maya' | 'bank';
+
+/** Where a provider's payouts go. Only the last four digits come back. */
+export interface PayoutAccount {
+  method: PayoutMethod;
+  bank_name: string | null;
+  account_name: string;
+  account_last4: string;
+  updated_at: string;
+}
+
+export interface PaymentHistoryEntry {
+  id: string;
+  direction: 'credit' | 'debit';
+  kind: string;
+  amount: number | string;
+  title: string;
+  status: string;
+  withdrawal_destination: string | null;
+  review_note: string | null;
+  job_id: string | null;
+  created_at: string;
+}
+
 export interface Conversation {
   id: string;
   job_id: string;
@@ -837,6 +892,14 @@ export const api = {
     return request<RegisterResponse>('/auth/register', {
       method: 'POST',
       body: input,
+    });
+  },
+
+  /** Records that the signed-in user accepted this Terms version. */
+  acceptTerms(version: number) {
+    return authRequest<{ accepted_terms_version: number }>('/auth/accept-terms', {
+      method: 'POST',
+      body: { version },
     });
   },
 
@@ -1132,7 +1195,8 @@ export const api = {
     address: string;
     latitude: number;
     longitude: number;
-    budget?: number;
+    /** One of the options from `estimatePrice`; the server sets the amount. */
+    price_tier: PriceTier;
     /**
      * Single ISO instant. The form collects a date and a time separately and
      * combines them here — two fields for one instant is timezone-ambiguous,
@@ -1147,8 +1211,22 @@ export const api = {
      * rewriting jobs already posted.
      */
     tasks?: string[];
+    /** Effort of each task, same order, from `effortFor`. */
+    task_efforts?: TaskEffort[];
   }) {
     return authRequest<Job>('/jobs', { method: 'POST', body: input });
+  },
+
+  /** The three clickable price options for the job as described so far. */
+  estimatePrice(input: {
+    category_id: number;
+    urgency: 'urgent' | 'normal' | 'flexible';
+    task_efforts: TaskEffort[];
+  }) {
+    return authRequest<{ options: PriceOption[] }>('/jobs/price-estimate', {
+      method: 'POST',
+      body: input,
+    });
   },
 
   browseJobs(params: {
@@ -1354,7 +1432,7 @@ export const api = {
    * storage *path*, which is what job/verification payloads carry.
    */
   async uploadImage(
-    bucket: 'job-photos' | 'verification-docs' | 'avatars' | 'chat-attachments' | 'provider-portfolio',
+    bucket: 'job-photos' | 'verification-docs' | 'avatars' | 'chat-attachments' | 'provider-portfolio' | 'provider-credentials',
     uri: string,
   ): Promise<string> {
     const contentType = contentTypeFor(uri);
@@ -1381,6 +1459,22 @@ export const api = {
     return signed.path;
   },
 
+  myCredentials() { return authRequest<Credential[]>('/providers/me/credentials'); },
+  providerCredentials(id: string) { return authRequest<Credential[]>(`/providers/${id}/credentials`); },
+  createCredential(input: {
+    category_id: number;
+    credential_type: CredentialType;
+    title: string;
+    issuer: string;
+    credential_number?: string;
+    expires_on?: string;
+    document_path: string;
+  }) {
+    return authRequest<Credential>('/providers/me/credentials', { method: 'POST', body: input });
+  },
+  removeCredential(id: string) {
+    return authRequest<{ removed: boolean }>(`/providers/me/credentials/${id}`, { method: 'DELETE' });
+  },
   myPortfolio() { return authRequest<PortfolioEntry[]>('/providers/me/portfolio'); },
   providerPortfolio(id:string) { return authRequest<PortfolioEntry[]>(`/providers/${id}/portfolio`); },
   createPortfolio(input:{image_path:string;caption:string;position:number;category_id:number|null}) { return authRequest<{id:string}>('/providers/me/portfolio',{method:'POST',body:input}); },
@@ -1453,87 +1547,14 @@ export const api = {
     return authRequest<Dispute>(`/disputes/${id}/cancellation-response`, { method: 'POST', body: { accept, note, message_id } });
   },
 
-  // ── Wallet ──────────────────────────────────────────────────────────────────
-  wallet() {
-    return authRequest<WalletOverview>('/wallet');
-  },
-
+  // ── Hire payments ───────────────────────────────────────────────────────────
   /**
-   * Files a withdrawal request.
-   *
-   * The row comes back `pending`: the money has not moved and will not until
-   * an admin settles it from the console. There is no payout rail — settlement
-   * is a human sending money and recording the reference — so `destination` is
-   * free text a person reads, not a validated account identifier.
-   *
-   * Checked against the wallet's `available`, not `balance`, so two requests
-   * cannot both draw on the same funds.
-   */
-  requestWithdrawal(input: {
-    amount: number;
-    destination: string;
-    title?: string;
-  }) {
-    return authRequest<WalletTransaction>('/wallet/withdrawals', {
-      method: 'POST',
-      body: input,
-    });
-  },
-
-  /** The caller's own withdrawal requests, newest first. */
-  withdrawals() {
-    return authRequest<WalletTransaction[]>('/wallet/withdrawals');
-  },
-
-  /** Withdraws a request that has not been settled yet, returning the funds. */
-  cancelWithdrawal(id: string) {
-    return authRequest<WalletTransaction>(`/wallet/withdrawals/${id}/cancel`, {
-      method: 'POST',
-    });
-  },
-
-  /**
-   * @deprecated Superseded by `requestWithdrawal`. The backend keeps this route
-   * working but now files the same pending request rather than writing a
-   * completed debit.
-   */
-  createWalletTransaction(input: {
-    direction: 'debit';
-    amount: number;
-    title: string;
-    job_id?: string;
-  }) {
-    return authRequest<WalletTransaction>('/wallet/transactions', {
-      method: 'POST',
-      body: input,
-    });
-  },
-
-  /**
-   * Starts a wallet top-up and returns Stripe's hosted Checkout URL for the
-   * app to open in a browser.
-   *
-   * Checkout rather than the native PaymentSheet because the app runs in Expo
-   * Go, which cannot load native modules. Same reasoning as the Google flow:
-   * the browser does the work and comes back through `app_redirect`.
-   *
-   * The returned URL funds nothing on its own — the wallet is credited when
-   * Stripe's webhook reaches the backend, which may land a moment after the
-   * browser closes.
-   */
-  createCheckoutSession(input: { amount: number; app_redirect: string }) {
-    return authRequest<CheckoutSession>('/payments/checkout-session', {
-      method: 'POST',
-      body: input,
-    });
-  },
-
-  /**
-   * Card-at-hire: a hosted Checkout for the job's full budget. Open `url`
-   * with `openAuthSessionAsync`; the browser comes back to `app_redirect`
-   * with `?hire=success|cancelled`. **Nothing is hired by this call or by the
-   * redirect** — Stripe's webhook credits the payment, holds it and accepts
-   * the application, so poll `jobApplications` for `accepted` afterwards.
+   * Pay-at-hire: a hosted checkout for the job's full price (Xendit test
+   * mode: GCash, Maya, card, online banking). Open `url` with
+   * `openAuthSessionAsync`; the browser comes back to `app_redirect` with
+   * `?hire=success|cancelled`. **Nothing is hired by this call or by the
+   * redirect** — the payment webhook holds the money and accepts the
+   * application, so poll `jobApplications` for `accepted` afterwards.
    */
   createHireCheckoutSession(input: { application_id: string; app_redirect: string }) {
     return authRequest<CheckoutSession>('/payments/hire-checkout-session', {
@@ -1542,34 +1563,29 @@ export const api = {
     });
   },
 
-  // ── Stripe Connect payouts (providers) ─────────────────────────────────────
-  connectStatus() {
-    return authRequest<ConnectStatus>('/payments/connect');
+  // ── Payouts (migration 0056: no wallet) ─────────────────────────────────────
+  payoutAccount() {
+    return authRequest<PayoutAccount | null>('/payouts/account');
   },
-
-  /**
-   * A single-use Stripe onboarding URL. Open it with `openAuthSessionAsync`;
-   * the backend bounces the browser back to `app_redirect` with
-   * `?connect=return` (left the form — finished or not, so call
-   * `connectSync`) or `?connect=refresh` (the link expired; ask for another).
-   */
-  connectOnboardingLink(input: { app_redirect: string }) {
-    return authRequest<{ url: string; expires_at: number }>(
-      '/payments/connect/onboarding-link',
-      { method: 'POST', body: input },
-    );
+  /** Banks a payout can go to, by Xendit channel code. */
+  payoutBanks() {
+    return authRequest<{ code: string; name: string }[]>('/payouts/banks');
   },
-
-  /** Re-reads the payout account from Stripe. */
-  connectSync() {
-    return authRequest<ConnectStatus>('/payments/connect/sync', { method: 'POST' });
+  linkPayoutAccount(input: {
+    method: PayoutMethod;
+    /** Bank payouts only: a code from `payoutBanks()`. */
+    bank_code?: string;
+    account_name: string;
+    account_number: string;
+  }) {
+    return authRequest<PayoutAccount>('/payouts/account', { method: 'PUT', body: input });
   },
-
-  /** A one-time link into the provider's Stripe Express dashboard. */
-  connectDashboardLink() {
-    return authRequest<{ url: string }>('/payments/connect/dashboard-link', {
-      method: 'POST',
-    });
+  unlinkPayoutAccount() {
+    return authRequest<{ removed: boolean }>('/payouts/account', { method: 'DELETE' });
+  },
+  /** Payments in, payouts and refunds out, newest first. */
+  paymentHistory() {
+    return authRequest<PaymentHistoryEntry[]>('/payouts/history');
   },
 
   // ── Chat ────────────────────────────────────────────────────────────────────

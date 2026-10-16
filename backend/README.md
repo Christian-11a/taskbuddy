@@ -130,6 +130,12 @@ Job lifecycle: `open → recommending → assigned → in_progress → completed
    | `0050_provider_release_requests.sql` | Rate-limited provider requests for early payment release. |
    | `0051_admin_alert_notification_type.sql` | Adds the notification type for persistent admin inbox alerts. Apply before 0052. |
    | `0052_web_admin_handoffs.sql` | Structured case recipients/evidence requests, admin inbox events, notification broadcast delivery counters, and dismissal state. |
+   | `0053_price_tiers.sql` | Category base prices, urgency price multipliers, per-task effort and the job's chosen price tier. **Apply before deploying the updated API.** |
+   | `0054_provider_credentials.sql` | Provider skill credentials and the private `provider-credentials` bucket. |
+   | `0055_terms_versions.sql` | Which Terms & Conditions version each account accepted. |
+   | `0056_retire_wallet.sql` | Retires the in-app wallet: linked GCash/Maya/bank payout accounts, `pass_through_balances()` (simulated payouts and refunds, so no balance is ever kept), and a cut-over that removes existing balances. **Apply before deploying the updated API.** |
+   | `0057_price_change_payments.sql` | Price change requests without a wallet: decreases refunded, increases wait for the client to pay the difference (`awaiting_payment`, 24 h). |
+   | `0058_xendit_payouts.sql` | Xendit replaces PayMongo: payout accounts carry a Xendit channel code, and provider payouts can be queued for Xendit's sandbox Payouts API. **Apply before deploying the updated API.** |
 
    The linked project's migration history has been reconciled after checking
    the existing schema. Migrations 0046–0052 were applied in order, and their
@@ -312,7 +318,8 @@ All bodies are JSON. 🔒 = requires auth; (client) / (provider) = role-restrict
 
 | Method & path | Description |
 |---|---|
-| `POST /jobs` 🔒 (client) | `{ category_id, title (5–120), description (20–750), urgency?, address, latitude, longitude, budget?, scheduled_at?, photo_urls?, tasks? }` — `scheduled_at` in the past is a 400; `tasks` is up to 20 checklist labels (≤120 chars each) stored as `job_tasks` |
+| `POST /jobs/price-estimate` 🔒 (client) | `{ category_id, urgency?, task_efforts?[] }` → `{ options: [{ tier, amount, min, max }] }` — three options (`basic`, `standard`, `premium`): category base price × checklist workload (heaviest task in full, each other at 60%; `light` 1, `moderate` 1.5, `heavy` 2.25) × urgency multiplier, rounded to ₱50 and capped at ₱100,000 (migration 0053) |
+| `POST /jobs` 🔒 (client) | `{ category_id, title (5–120), description (20–750), urgency?, address, latitude, longitude, price_tier, scheduled_at?, photo_urls?, tasks?, task_efforts? }` — the server sets `budget` from `price_tier`; a client-sent `budget` is rejected. `scheduled_at` in the past is a 400; `tasks` is up to 20 checklist labels (≤120 chars each) stored as `job_tasks` with their effort (default `moderate`) |
 | `GET /jobs?category_id=&limit=&offset=&latitude=&longitude=&radius_km=` 🔒 (provider) | browse `open`/`recommending` jobs, sorted by urgency then distance/newest; `latitude`+`longitude` (both required together) filter to `radius_km` (default 50km) of the provider; returns `{ jobs, summary: { open_count, urgent_count, potential_payout } }` |
 | `GET /jobs/geocode?address=` 🔒 (client) | typed address → `{ latitude, longitude, formatted_address }` via Geoapify, Philippines only, street-level precision or better. `400` when not found, too general (a barangay/city centre), or a low-confidence match; `503` when Geoapify fails or `GEOAPIFY_API_KEY` is unset. 10/min per IP. `BACKEND_SCHEMA.md` §31 |
 | `GET /jobs/static-map?lat=&lon=` 🔒 (client) | `image/png` 600×300 map of a geocoded point, rendered by Geoapify server-side so the key never reaches the app. Coordinates must fall in the Philippines box (`400` otherwise); `503` when Geoapify fails or `GEOAPIFY_API_KEY` is unset. 20/min per IP. `BACKEND_SCHEMA.md` §31.1 |
@@ -352,7 +359,11 @@ All bodies are JSON. 🔒 = requires auth; (client) / (provider) = role-restrict
 
 | Method & path | Description |
 |---|---|
-| `GET /wallet` 🔒 | `{ balance, available, total_credited, total_debited, pending, pending_withdrawals, transactions[] }` — all derived from the ledger. `available` is `balance` less anything already promised to a pending withdrawal; that is the figure escrow checks before a hire |
+| ~~`/wallet/*`~~ | **Retired in migration 0056.** There is no user-facing wallet: see *Payments without a wallet* below |
+| `GET /payouts/history` 🔒 | every payment in, payout and refund on the account, newest first (the ledger rows, read-only) |
+| `GET /payouts/account` 🔒 (provider) | the linked payout account, masked: `{ method, bank_name, account_name, account_last4 }` or `null` |
+| `PUT /payouts/account` 🔒 (provider) | `{ method: gcash\|maya\|bank, bank_code? (bank only, from `GET /payouts/banks`), account_name, account_number (6–20 digits) }` — also sends any payout that was waiting for an account |
+| `DELETE /payouts/account` 🔒 (provider) | unlink |
 | `POST /wallet/withdrawals` 🔒 | `{ amount, destination, title? }` → a **pending** ledger row. Nothing moves until an admin settles it — there is no payout rail, so the admin queue *is* the disbursement mechanism (migration 0024, `BACKEND_SCHEMA.md` §27.2) |
 | `GET /wallet/withdrawals` 🔒 | the caller's own requests, newest first |
 | `POST /wallet/withdrawals/:id/cancel` 🔒 | retract a request an admin has not acted on |
@@ -386,6 +397,10 @@ have to buffer every image.
 | Method & path | Description |
 |---|---|
 | `POST /verifications` 🔒 (provider) | `{ id_document_path, selfie_path }` — 400 if one is already pending, or if either upload fails the pre-check (missing/zero-byte/non-image object; migration 0014) |
+| `GET /providers/me/credentials` 🔒 (provider) | own skill credentials (TESDA NC, PRC licence, trade certificate) with status `pending`/`approved`/`rejected`/`expired` and a signed document URL (migration 0054) |
+| `POST /providers/me/credentials` 🔒 (provider) | `{ category_id, credential_type, title, issuer, credential_number?, issued_on?, expires_on?, document_path }` — photo uploaded first to the private `provider-credentials` bucket; at most 20; an already-expired one is a 400 |
+| `DELETE /providers/me/credentials/:id` 🔒 (provider) | withdraw a credential that is not approved |
+| `GET /providers/:id/credentials` 🔒 | approved, unexpired credentials only, without the document — the "Certified" badge per service |
 | `POST /verifications/identity-session` 🔒 (provider) | starts a **Stripe Identity** session instead → `{ verification, session_id, ephemeral_key_secret, url, publishable_key }`. Documents go to Stripe and never reach this server; the result arrives by webhook, so poll `GET /verifications/me` |
 | `GET /verifications/me` 🔒 (provider) | latest submission + status |
 
@@ -441,9 +456,8 @@ record. Tokens Expo rejects as `DeviceNotRegistered` are deleted.
 | Method & path | Description |
 |---|---|
 | `POST /payments/config` 🔒 | `{ publishable_key }` — served rather than compiled in, so test↔live is a backend env change |
-| `POST /payments/topup` 🔒 | `{ amount }` (₱50–₱100,000) → PaymentSheet parameters: `{ payment_intent_client_secret, ephemeral_key_secret, customer_id, publishable_key, amount, currency }` |
-| `POST /payments/checkout-session` 🔒 | `{ amount, app_redirect }` → `{ url, session_id, amount }`. Hosted Checkout, for clients that cannot load a native SDK — **this is what the Expo Go app uses** |
-| `POST /payments/hire-checkout-session` 🔒 (client) | `{ application_id, app_redirect }` → `{ url, session_id, amount }`. **Card-at-hire**: Checkout for the job's full budget. The hire itself is made by the webhook (credit → hold → accept), not by this call — poll the application afterwards. Same hireability checks as a wallet accept; 400 `card_amount_out_of_range` outside ₱50–₱100,000. `BACKEND_SCHEMA.md` §29.4 |
+| `POST /payments/xendit/webhook` | Xendit (test mode) invoice callback, verified by the `x-callback-token` header; a `PAID` invoice completes the hire or price change named by its `external_id` (`hire_<application>_…` / `pchg_<request>_…`) |
+| `POST /payments/hire-checkout-session` 🔒 (client) | `{ application_id, app_redirect }` → `{ url, session_id, amount }`. **Pay-at-hire**: a Xendit test-mode invoice (GCash, Maya, GrabPay, card, online banking) when `XENDIT_SECRET_KEY` is set, otherwise Stripe card Checkout; Checkout for the job's full budget. The hire itself is made by the webhook (credit → hold → accept), not by this call — poll the application afterwards. Same hireability checks as a wallet accept; 400 `card_amount_out_of_range` outside ₱50–₱100,000. `BACKEND_SCHEMA.md` §29.4 |
 | `GET /payments/return?status=&app_redirect=&flow=` | Where Stripe returns the browser. Redirects to the app deep link with `?topup=success\|cancelled`, or `?hire=…` when `flow=hire`. No JWT — it is a plain browser navigation that reveals and changes nothing |
 | `POST /payments/webhook` | Stripe only. No JWT — authenticated by the signature over the **raw** body |
 
@@ -517,6 +531,9 @@ The three `POST` routes carry the payments rate limit. Connect is optional: with
 | `GET /admin/skill-requests?search=&status=&limit=&offset=` | provider service-change queue; migration 0038 filters provider/category search before pagination and returns the matching total |
 | `POST /admin/verifications/:id/approve` | approve → sets `provider_profiles.is_verified` |
 | `POST /admin/verifications/:id/reject` | `{ reason? }` |
+| `GET /admin/credentials?status=&limit=&offset=` | credential review queue, `pending` by default, oldest first, with signed document URLs |
+| `POST /admin/credentials/:id/approve` | approve a pending credential; audited, provider notified; a second decision is a 409 |
+| `POST /admin/credentials/:id/reject` | `{ reason }` (1–500) |
 | `GET /admin/transactions?search=&status=&limit=&offset=` | escrow records with both parties + service name; search matches transaction ID, client/provider name, or job title (story #17/#18) |
 | `GET /admin/disputes?status=&limit=&offset=` | dispute queue |
 | `POST /admin/disputes/:id/resolve` | `{ resolution: 'released_to_provider' \| 'refunded_to_client', note? }` (story #20) |
@@ -619,7 +636,7 @@ each route counts separately and there is no aggregate cap across the API.
 | Scope | Limit (per endpoint, per IP) |
 |---|---|
 | Everything | 240 / minute |
-| `POST /payments/topup`, `POST /payments/checkout-session`, `POST /payments/hire-checkout-session` | 5 / minute |
+| `POST /payments/hire-checkout-session` | 5 / minute |
 | `POST /auth/{register,login,admin/login,forgot-password,reset-password,send-email-otp,verify-email-otp,change-password}` | 10 / minute **each** |
 | `POST /payments/connect/{onboarding-link,sync,dashboard-link}` | 5 / minute each |
 | `GET /jobs/geocode` | 10 / minute — every call spends a Geoapify daily credit |
@@ -686,6 +703,38 @@ curl -X POST $API/jobs -H "Authorization: Bearer $TOKEN" -H "Content-Type: appli
   Export query: see `BACKEND_SCHEMA.md` §13 — **exclude `model_version = 'stub-v0'`
   rows** (produced by the early placeholder scorer). Retraining/versioning guide:
   [`../ml-service/README.md`](../ml-service/README.md).
+
+## Payments without a wallet
+
+Migration 0056 retired the in-app wallet so the app never holds its own
+currency. This is a prototype: no real money moves.
+
+- **In:** the client pays each hire on a Xendit test-mode invoice page (GCash,
+  Maya, GrabPay, card or online banking). The webhook records the payment, holds it in
+  escrow and accepts the proposal. `POST /applications/:id/accept` refuses a
+  priced job with `payment_required`.
+- **Out:** a release pays the provider's linked GCash/Maya/bank account
+  through Xendit's sandbox Payouts API (migration 0058): `pass_through_balances()`
+  queues a pending `withdrawal` debit, the API sends it (idempotent on the
+  ledger row id) and records `XENDIT-<payout id>`, or marks it failed so the
+  next payments tick retries. Without Xendit keys the payout is recorded with
+  a simulated `SIM-…` reference instead. A refund goes back to the client's
+  original payment method and is always simulated. This runs after every
+  settlement and on each payments tick. A provider without a linked account
+  keeps the payout pending until they link one.
+- `GET /payouts/banks` lists the banks a payout can go to (Xendit channel
+  codes; check new ones against Xendit's Philippine channel list).
+- `wallet_transactions` remains the internal ledger the escrow functions write
+  to; balances only exist between a settlement and its pass-through.
+- **Price changes (migration 0057):** a decrease is refunded to the client's
+  payment method as soon as it is accepted. An accepted increase waits in
+  `awaiting_payment` for up to 24 hours while the client pays the difference
+  (`POST /payments/price-change-checkout-session`
+  `{ change_request_id, app_redirect }`); the webhook then holds it and applies
+  the new price. Unpaid, it expires and the price stays. A payment that arrives
+  too late is refunded.
+- Not changed yet: the web admin's withdrawal queue and recovery credits (now
+  unused).
 
 ## Pending handoffs
 

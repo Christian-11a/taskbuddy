@@ -77,7 +77,7 @@ jest.mock('../app/(homeowner)/screens/HOHomeScreen', () => {
         RNView,
         { testID: 'home-stand-in' },
         mockHome.anchorsShown
-          ? ['home.post', 'home.wallet', 'home.bell'].map((id) => React.createElement(Anchor, { key: id, id }))
+          ? ['home.post', 'home.bell'].map((id) => React.createElement(Anchor, { key: id, id }))
           : null,
         React.createElement(
           Pressable,

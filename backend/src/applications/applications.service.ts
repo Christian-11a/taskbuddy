@@ -128,7 +128,50 @@ export class ApplicationsService {
       )
       .eq('job_id', jobId)
       .order('applied_at', { ascending: true });
-    return data ?? [];
+    const applications = (data ?? []) as {
+      provider_id: string;
+      [key: string]: unknown;
+    }[];
+    const certified = await this.certifiedProviders(
+      applications.map((a) => a.provider_id),
+    );
+    return applications.map((a) => ({
+      ...a,
+      certifications: certified.get(a.provider_id) ?? [],
+    }));
+  }
+
+  /**
+   * Approved, unexpired skill credentials per provider (migration 0054): the
+   * Certified badge on each proposal. A read failure only hides badges.
+   */
+  private async certifiedProviders(providerIds: string[]) {
+    const byProvider = new Map<string, { title: string; issuer: string }[]>();
+    if (!providerIds.length) return byProvider;
+    const today = new Date(Date.now() + 8 * 3600_000)
+      .toISOString()
+      .slice(0, 10);
+    const { data, error } = await this.supabase.admin
+      .from('provider_credentials')
+      .select('provider_id, title, issuer, expires_on')
+      .in('provider_id', providerIds)
+      .eq('status', 'approved');
+    if (error) {
+      this.logger.warn(`Credentials not read: ${error.message}`);
+      return byProvider;
+    }
+    for (const row of (data ?? []) as {
+      provider_id: string;
+      title: string;
+      issuer: string;
+      expires_on: string | null;
+    }[]) {
+      if (row.expires_on && row.expires_on < today) continue;
+      const list = byProvider.get(row.provider_id) ?? [];
+      list.push({ title: row.title, issuer: row.issuer });
+      byProvider.set(row.provider_id, list);
+    }
+    return byProvider;
   }
 
   async mine(user: Profile) {
@@ -173,8 +216,18 @@ export class ApplicationsService {
       throw new ForbiddenException('Not your job');
     await this.assertHireable(application);
 
+    // There is no wallet to pay from (migration 0056): a job with a price is
+    // hired by paying at checkout, and the payment webhook accepts it.
+    if (Number(application.jobs.budget ?? 0) > 0) {
+      throw new BadRequestException({
+        code: 'payment_required',
+        message:
+          'Pay for this hire at checkout (GCash, Maya, card or online banking).',
+      });
+    }
+
     // No-ops for jobs posted without a budget (everything before migration
-    // 0007); throws, before anything is accepted, when the wallet is short.
+    // 0007).
     const { placed } = await this.escrow.hold(
       application.job_id,
       application.provider_id,
@@ -342,7 +395,7 @@ export class ApplicationsService {
   async findWithJob(applicationId: string) {
     const { data, error } = await this.supabase.admin
       .from('job_applications')
-      .select('*, jobs(id, title, status, client_id)')
+      .select('*, jobs(id, title, status, client_id, budget)')
       .eq('id', applicationId)
       .maybeSingle();
     if (error) throw new BadRequestException(error.message);

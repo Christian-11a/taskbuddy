@@ -17,7 +17,6 @@ jest.mock('../../../../src/context/NotificationsContext', () => ({
 
 jest.mock('../../../../src/lib/api', () => ({
   api: {
-    wallet: jest.fn(),
     myJobs: jest.fn(),
     categories: jest.fn(),
     notifications: jest.fn(),
@@ -34,7 +33,6 @@ describe('HOHomeScreen — empty state does not flash while jobs are still loadi
   beforeEach(() => {
     jest.clearAllMocks();
     (useAuth as jest.Mock).mockReturnValue({ profile: { full_name: 'Alex', city: null, address: null } });
-    (api.wallet as jest.Mock).mockResolvedValue({ balance: 0, available: 0, held: 0 });
     (api.categories as jest.Mock).mockResolvedValue([]);
     (api.notifications as jest.Mock).mockResolvedValue([]);
     (api.unreadNotificationCount as jest.Mock).mockResolvedValue({ count: 0 });
@@ -72,7 +70,6 @@ describe('HOHomeScreen — hero header keeps the avatar reachable with a long na
   beforeEach(() => {
     jest.clearAllMocks();
     (useAuth as jest.Mock).mockReturnValue({ profile: { full_name: LONG_NAME, city: null, address: null } });
-    (api.wallet as jest.Mock).mockResolvedValue({ balance: 0, available: 0, held: 0 });
     (api.myJobs as jest.Mock).mockResolvedValue([]);
     (api.categories as jest.Mock).mockResolvedValue([]);
     (api.notifications as jest.Mock).mockResolvedValue([]);
@@ -133,14 +130,6 @@ describe('HOHomeScreen — hero header keeps the avatar reachable with a long na
     expect(name.props.ellipsizeMode).toBe('tail');
   });
 
-  it('caps the wallet amount at 1.2x text, so the wallet chip keeps its size', async () => {
-    render(<HOHomeScreen onNavigate={jest.fn()} />);
-
-    const amount = await screen.findByText('₱0.00');
-    expect(amount.props.maxFontSizeMultiplier).toBe(1.2);
-    expect(amount.props.numberOfLines).toBe(1);
-  });
-
   it('never lets the action buttons shrink away', async () => {
     render(<HOHomeScreen onNavigate={jest.fn()} />);
 
@@ -190,7 +179,6 @@ describe('HOHomeScreen — hero card shows the one job that needs you', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     (useAuth as jest.Mock).mockReturnValue({ profile: { full_name: 'Alex', city: null, address: null } });
-    (api.wallet as jest.Mock).mockResolvedValue({ balance: 0, available: 0, held: 0 });
     (api.categories as jest.Mock).mockResolvedValue([]);
     (api.notifications as jest.Mock).mockResolvedValue([]);
     (api.unreadNotificationCount as jest.Mock).mockResolvedValue({ count: 0 });
@@ -302,7 +290,6 @@ describe('HOHomeScreen — hero card is always there once Home has loaded', () =
     jest.clearAllMocks();
     clearAsyncDataCache();
     (useAuth as jest.Mock).mockReturnValue({ profile: { full_name: 'Alex', city: null, address: null } });
-    (api.wallet as jest.Mock).mockResolvedValue({ balance: 0, available: 0, held: 0 });
     (api.categories as jest.Mock).mockResolvedValue([]);
     (api.notifications as jest.Mock).mockResolvedValue([]);
     (api.unreadNotificationCount as jest.Mock).mockResolvedValue({ count: 0 });
@@ -399,11 +386,10 @@ describe('HOHomeScreen — hero card is always there once Home has loaded', () =
   });
 });
 
-describe('HOHomeScreen — field, service chips, active jobs and wallet chip', () => {
+describe('HOHomeScreen — field, service chips, and active jobs', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     (useAuth as jest.Mock).mockReturnValue({ profile: { full_name: 'Alex', city: null, address: null } });
-    (api.wallet as jest.Mock).mockResolvedValue({ balance: 8397, available: 8397, held: 0 });
     (api.categories as jest.Mock).mockResolvedValue([{ id: 2, name: 'Cleaning' }]);
     (api.notifications as jest.Mock).mockResolvedValue([]);
     (api.unreadNotificationCount as jest.Mock).mockResolvedValue({ count: 0 });
@@ -452,17 +438,7 @@ describe('HOHomeScreen — field, service chips, active jobs and wallet chip', (
     expect(await screen.findByText('Open · waiting for offers')).toBeTruthy();
   });
 
-  it('shows the wallet balance in the header and opens Wallet from the chip', async () => {
-    (api.myJobs as jest.Mock).mockResolvedValue([]);
-    const onNavigate = jest.fn();
-    render(<HOHomeScreen onNavigate={onNavigate} />);
-
-    expect(await screen.findByText('₱8,397.00')).toBeTruthy();
-    fireEvent.press(screen.getByTestId('home-wallet'));
-    expect(onNavigate).toHaveBeenCalledWith('Wallet');
-  });
-
-  it('every control has an accessible name: bell, avatar, wallet chip, field, service chips and job rows', async () => {
+  it('every control has an accessible name: bell, avatar, field, service chips and job rows', async () => {
     (api.myJobs as jest.Mock).mockResolvedValue([
       { ...OPEN_JOB, id: 'job-booked', title: 'Plumbing: Fix toilet', status: 'confirmed', budget: 1200, scheduled_at: '2020-01-05T09:00:00+08:00' },
     ]);
@@ -472,16 +448,6 @@ describe('HOHomeScreen — field, service chips, active jobs and wallet chip', (
     expect(findUnnamedControls(screen.UNSAFE_root)).toEqual([]);
   });
 
-  it('shows a short amount in the wallet chip from ₱100,000, and keeps the full amount for the label', async () => {
-    (api.wallet as jest.Mock).mockResolvedValue({ balance: 1248397, available: 1248397, held: 0 });
-    (api.myJobs as jest.Mock).mockResolvedValue([]);
-    render(<HOHomeScreen onNavigate={jest.fn()} />);
-
-    const chip = await screen.findByTestId('home-wallet');
-    expect(within(chip).getByText('₱1.25M')).toBeTruthy();
-    expect(within(chip).queryByText('₱1,248,397.00')).toBeNull();
-    expect(screen.getByLabelText(/₱1,248,397\.00/)).toBeTruthy();
-  });
 });
 
 // The Active jobs count covers every active job, so the list shows every one of
@@ -490,7 +456,6 @@ describe('HOHomeScreen — active jobs list shows every active job', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     (useAuth as jest.Mock).mockReturnValue({ profile: { full_name: 'Alex', city: null, address: null } });
-    (api.wallet as jest.Mock).mockResolvedValue({ balance: 0, available: 0, held: 0 });
     (api.categories as jest.Mock).mockResolvedValue([]);
     (api.notifications as jest.Mock).mockResolvedValue([]);
     (api.unreadNotificationCount as jest.Mock).mockResolvedValue({ count: 0 });
@@ -531,7 +496,6 @@ describe('HOHomeScreen — hero placeholder holds the hero place while it may st
     jest.clearAllMocks();
     clearAsyncDataCache();
     (useAuth as jest.Mock).mockReturnValue({ profile: { full_name: 'Alex', city: null, address: null } });
-    (api.wallet as jest.Mock).mockResolvedValue({ balance: 0, available: 0, held: 0 });
     (api.categories as jest.Mock).mockResolvedValue([]);
     (api.notifications as jest.Mock).mockResolvedValue([]);
     (api.unreadNotificationCount as jest.Mock).mockResolvedValue({ count: 0 });
@@ -593,7 +557,6 @@ describe('HOHomeScreen — hero placeholder holds the hero place while it may st
   });
 
   it('a failed jobs load shows the error in a card, and Try again loads the jobs', async () => {
-    (api.wallet as jest.Mock).mockResolvedValue({ balance: 0, available: 0, held: 0 });
     (api.categories as jest.Mock).mockResolvedValue([]);
     (api.notifications as jest.Mock).mockResolvedValue([]);
     (api.myJobs as jest.Mock).mockRejectedValueOnce(new Error('offline')).mockResolvedValue([]);
@@ -608,7 +571,6 @@ describe('HOHomeScreen — hero placeholder holds the hero place while it may st
   });
 
   it('a failed services load shows the error in a card, and Try again loads the services', async () => {
-    (api.wallet as jest.Mock).mockResolvedValue({ balance: 0, available: 0, held: 0 });
     (api.myJobs as jest.Mock).mockResolvedValue([]);
     (api.notifications as jest.Mock).mockResolvedValue([]);
     (api.categories as jest.Mock).mockRejectedValueOnce(new Error('offline')).mockResolvedValue([{ id: 2, name: 'Cleaning' }]);
@@ -621,18 +583,6 @@ describe('HOHomeScreen — hero placeholder holds the hero place while it may st
     expect(await screen.findByLabelText('Book Cleaning')).toBeTruthy();
   });
 
-  it('a failed wallet load shows a notice with Try again, which reads the wallet again', async () => {
-    (api.myJobs as jest.Mock).mockResolvedValue([]);
-    (api.categories as jest.Mock).mockResolvedValue([]);
-    (api.notifications as jest.Mock).mockResolvedValue([]);
-    (api.wallet as jest.Mock).mockRejectedValueOnce(new Error('offline')).mockResolvedValue({ balance: 500, available: 500, held: 0 });
-    render(<HOHomeScreen onNavigate={jest.fn()} />);
-
-    expect(await screen.findByText("Couldn't load your wallet")).toBeTruthy();
-    fireEvent.press(screen.getByRole('button', { name: 'Try again' }));
-
-    await waitFor(() => expect(api.wallet).toHaveBeenCalledTimes(2));
-  });
 });
 
 describe('HOHomeScreen — saved data shows first, and says when it is being updated', () => {
@@ -652,7 +602,6 @@ describe('HOHomeScreen — saved data shows first, and says when it is being upd
     await AsyncStorage.clear();
     setCacheAccount(ACCOUNT);
     (useAuth as jest.Mock).mockReturnValue({ profile: { full_name: 'Alex', city: null, address: null } });
-    (api.wallet as jest.Mock).mockResolvedValue({ balance: 8397, available: 8397, held: 0 });
     (api.categories as jest.Mock).mockResolvedValue([{ id: 2, name: 'Cleaning' }]);
     (api.notifications as jest.Mock).mockResolvedValue([]);
     (api.unreadNotificationCount as jest.Mock).mockResolvedValue({ count: 0 });
@@ -712,7 +661,6 @@ describe('HOHomeScreen — a slow first load says the server is waking up', () =
     jest.clearAllMocks();
     clearAsyncDataCache();
     (useAuth as jest.Mock).mockReturnValue({ profile: { full_name: 'Alex', city: null, address: null } });
-    (api.wallet as jest.Mock).mockReturnValue(new Promise(() => {}));
     (api.myJobs as jest.Mock).mockReturnValue(new Promise(() => {}));
     (api.categories as jest.Mock).mockReturnValue(new Promise(() => {}));
     (api.notifications as jest.Mock).mockResolvedValue([]);
@@ -743,13 +691,8 @@ describe('HOHomeScreen — a slow first load says the server is waking up', () =
 describe('HOHomeScreen — saved copies of the wrong shape', () => {
   // Every lookup stays pending, so only a saved copy could draw anything on the screen.
   beforeEach(() => {
-    (api.wallet as jest.Mock).mockReturnValue(new Promise(() => {}));
     (api.myJobs as jest.Mock).mockReturnValue(new Promise(() => {}));
     (api.categories as jest.Mock).mockReturnValue(new Promise(() => {}));
-  });
-
-  it('a saved wallet of the wrong shape is ignored, and the screen loads as it does with nothing saved', async () => {
-    await expectSavedCopyIgnored('ho-home-wallet', {}, () => render(<HOHomeScreen onNavigate={jest.fn()} />));
   });
 
   it('a saved job list of the wrong shape is ignored, and the screen loads as it does with nothing saved', async () => {
@@ -766,7 +709,6 @@ describe('HOHomeScreen — pull to refresh reloads what Home loads', () => {
     jest.clearAllMocks();
     clearAsyncDataCache();
     (useAuth as jest.Mock).mockReturnValue({ profile: { full_name: 'Alex', city: null, address: null } });
-    (api.wallet as jest.Mock).mockResolvedValue({ balance: 0, available: 0, held: 0 });
     (api.categories as jest.Mock).mockResolvedValue([{ id: 2, name: 'Cleaning' }]);
     (api.notifications as jest.Mock).mockResolvedValue([]);
     (api.unreadNotificationCount as jest.Mock).mockResolvedValue({ count: 0 });
@@ -778,7 +720,7 @@ describe('HOHomeScreen — pull to refresh reloads what Home loads', () => {
     return home.props.refreshControl;
   }
 
-  it('reloads the wallet, the jobs, the services and the proposal lookups, and stops the spinner when the jobs settle', async () => {
+  it('reloads the jobs, the services and the proposal lookups, and stops the spinner when the jobs settle', async () => {
     (api.myJobs as jest.Mock).mockResolvedValue([OPEN_JOB]);
     (api.jobApplications as jest.Mock).mockResolvedValue([pendingApplication('a', 'Ana Reyes')]);
     render(<HOHomeScreen onNavigate={jest.fn()} />);
@@ -791,7 +733,6 @@ describe('HOHomeScreen — pull to refresh reloads what Home loads', () => {
 
     expect(pullToRefresh().props.refreshing).toBe(true);
     await waitFor(() => expect(api.myJobs).toHaveBeenCalledTimes(1));
-    expect(api.wallet).toHaveBeenCalledTimes(1);
     expect(api.categories).toHaveBeenCalledTimes(1);
     expect(api.jobApplications).toHaveBeenCalledWith('job-open');
 

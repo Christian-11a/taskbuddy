@@ -1,14 +1,12 @@
 /**
  * HirePaymentModal.tsx
  *
- * How the homeowner pays for a hire (BACKEND_SCHEMA.md §29.4). Two ways, same
- * outcome — the job's budget held in escrow through the three-day completion warranty:
- *
- *   Pay from wallet — held from the balance they already have. Instant.
- *   Pay by card     — the full budget on Stripe's hosted Checkout. The hire
- *                     is made by Stripe's webhook once the charge settles,
- *                     not by the app, so the screen behind this waits for the
- *                     application to turn `accepted`.
+ * How the homeowner pays for a hire (BACKEND_SCHEMA.md §29.4): the job's price,
+ * paid online and held in escrow through the three-day completion warranty.
+ * There is no wallet (migration 0056). The client pays on a hosted checkout —
+ * Xendit test mode, with GCash, Maya, card or online banking — and the hire
+ * is made by the payment webhook, not by the app, so the screen behind this
+ * waits for the application to turn `accepted`.
  *
  * Two pages in one sheet. Page 1 is the choice: picking a payment option only
  * selects it, and Continue moves on. Page 2 is the one last check: what is paid,
@@ -22,10 +20,9 @@
  * Presentational: the caller owns the requests and passes their state in, so
  * the modal can stay open showing an error rather than disappearing on one.
  *
- * Card is offered only for budgets Stripe can charge (the same ₱50–₱100,000
- * bounds as a top-up). A job posted without a budget holds nothing, so it skips
- * the choice: "Hire" goes to the confirm page, and confirming pays from the wallet
- * path (the hire itself holds nothing).
+ * Online payment is offered for prices from ₱50 to ₱100,000. A job posted
+ * without a budget holds nothing, so it skips the choice: "Hire" goes to the
+ * confirm page, and confirming hires straight away.
  */
 
 import { useThemedStyles, type Palette as ThemePalette } from '../context/ThemeContext';
@@ -41,7 +38,7 @@ import SheetFrame from './ui/SheetFrame';
 import PaymentOption from './ui/PaymentOption';
 import Banner from './ui/Banner';
 import ConfirmationModal from './ConfirmationModal';
-import { CreditCard, ShieldCheck, Wallet } from 'lucide-react-native';
+import { CreditCard, ShieldCheck } from 'lucide-react-native';
 import { MAX_CARD_PHP, MIN_TOPUP_PHP } from '../lib/api';
 import { peso } from '../lib/format';
 
@@ -52,9 +49,7 @@ interface HirePaymentModalProps {
   jobTitle: string | null;
   /** The job's budget; null for a job posted before pricing existed. */
   budget: number | null;
-  /** The wallet's `available` balance, or null while it loads. */
-  available: number | null;
-  /** True while the job and wallet are still being read: nothing can be paid yet. */
+  /** True while the job is still being read: nothing can be paid yet. */
   loading?: boolean;
   /**
    * True when the job or wallet could not be read, so the budget is unknown. The
@@ -72,9 +67,10 @@ interface HirePaymentModalProps {
    * deliberate way to start over, which asks first.
    */
   awaiting?: { onCheckPayment: () => void; onStartNewPayment: () => void } | null;
+  /** Hires a job that has no budget, which holds nothing. */
   onPayWallet: () => void;
+  /** Opens the online checkout for the job's price. */
   onPayCard: () => void;
-  onAddMoney: () => void;
   onClose: () => void;
 }
 
@@ -88,7 +84,6 @@ export default function HirePaymentModal({
   providerName,
   jobTitle,
   budget,
-  available,
   loading = false,
   loadFailed = false,
   busy,
@@ -96,7 +91,6 @@ export default function HirePaymentModal({
   awaiting = null,
   onPayWallet,
   onPayCard,
-  onAddMoney,
   onClose,
 }: HirePaymentModalProps) {
   const { C, styles, V6Colors, Colors } = useThemedStyles(createThemedStyles);
@@ -114,13 +108,12 @@ export default function HirePaymentModal({
   }, [visible]);
 
   const hasBudget = budget != null && budget > 0;
-  const walletCovers = hasBudget && available != null && available >= budget;
   const cardAllowed = hasBudget && budget >= MIN_TOPUP_PHP && budget <= MAX_CARD_PHP;
   const locked = busy !== null;
 
   // With no budget the only way to hire is the wallet path, which holds nothing.
   const payingByCard = hasBudget && choice === 'card';
-  const usable = !loading && !loadFailed && (!hasBudget || (choice === 'wallet' ? walletCovers : choice === 'card' ? cardAllowed : false));
+  const usable = !loading && !loadFailed && (!hasBudget || (choice === 'card' && cardAllowed));
   // A failed load can't be a hire: the label says Continue, not a no-budget "Hire".
   const primaryLabel = hasBudget || loadFailed ? 'Continue' : `Hire ${providerName}`;
 
@@ -128,17 +121,11 @@ export default function HirePaymentModal({
     ? `${peso(budget)} is held in escrow and released to ${providerName} after the three-day warranty ends, unless a complaint is open.`
     : `This job has no budget, so nothing is held — ${providerName} is hired straight away.`;
 
-  const walletMeta = available == null
-    ? 'Checking your balance…'
-    : walletCovers
-      ? `${peso(available)} available`
-      : `You have ${peso(available)}, need ${peso(budget)}`;
-
   const cardMeta = cardAllowed
-    ? `${peso(budget)} on Stripe's secure page`
+    ? `${peso(budget)} on Xendit's secure page (test mode)`
     : budget != null && budget < MIN_TOPUP_PHP
-      ? `Cards need at least ${peso(MIN_TOPUP_PHP)}`
-      : `Cards can't take more than ${peso(MAX_CARD_PHP)}`;
+      ? `Online payments need at least ${peso(MIN_TOPUP_PHP)}`
+      : `Online payments can't take more than ${peso(MAX_CARD_PHP)}`;
 
   const messageView = message && (
     <Text
@@ -184,7 +171,7 @@ export default function HirePaymentModal({
       {loading && (
         <View style={styles.loadingRow}>
           <ActivityIndicator color={V6Colors.link} />
-          <Text style={styles.loadingText}>Checking your balance…</Text>
+          <Text style={styles.loadingText}>Loading…</Text>
         </View>
       )}
 
@@ -192,27 +179,7 @@ export default function HirePaymentModal({
         <>
           <Text style={styles.sectionLabel}>Pay with</Text>
           <PaymentOption
-            title="Wallet"
-            meta={walletMeta}
-            icon={Wallet}
-            selected={choice === 'wallet'}
-            disabled={!walletCovers || locked}
-            onSelect={() => setChoice('wallet')}
-          />
-          {available != null && !walletCovers && (
-            <Tap
-              style={[styles.addMoney, locked && styles.disabled]}
-              onPress={onAddMoney}
-              disabled={locked}
-              accessibilityRole="button"
-              accessibilityLabel="Add money to wallet"
-              accessibilityState={{ disabled: locked }}
-            >
-              <Text style={styles.addMoneyText}>Add money to wallet</Text>
-            </Tap>
-          )}
-          <PaymentOption
-            title="Card"
+            title="GCash, Maya, card or bank"
             meta={cardMeta}
             icon={CreditCard}
             selected={choice === 'card'}
@@ -270,13 +237,7 @@ export default function HirePaymentModal({
         {hasBudget && (
           <View style={styles.summaryRow}>
             <Text style={styles.summaryLabel}>From</Text>
-            <Text style={styles.summaryValue}>{payingByCard ? 'Card' : 'Wallet'}</Text>
-          </View>
-        )}
-        {hasBudget && !payingByCard && available != null && (
-          <View style={styles.summaryRow}>
-            <Text style={styles.summaryLabel}>Wallet after</Text>
-            <Text style={styles.summaryValue} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>{peso(available - budget)}</Text>
+            <Text style={styles.summaryValue}>GCash, Maya, card or bank</Text>
           </View>
         )}
         {!!jobTitle && (

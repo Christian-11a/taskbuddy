@@ -1,3 +1,4 @@
+import { CURRENT_TERMS_VERSION } from './terms';
 import {
   BadRequestException,
   ConflictException,
@@ -868,5 +869,38 @@ describe('AuthService handover fixes', () => {
     expect(builder.select).toHaveBeenCalledWith(
       '*, service_categories!category_id(id, name), approved_secondary_services:provider_secondary_categories(category_id, service_categories(id, name))',
     );
+  });
+});
+
+describe('AuthService.acceptTerms', () => {
+  const user = { id: 'u1' } as never;
+  const build = () => {
+    const eq = jest.fn().mockResolvedValue({ error: null });
+    const update = jest.fn(() => ({ eq }));
+    const supabase = {
+      admin: { from: jest.fn(() => ({ update })) },
+    } as unknown as SupabaseService;
+    return { service: new AuthService(supabase), update, eq };
+  };
+
+  it('records the current version', async () => {
+    const { service, update, eq } = build();
+    await expect(
+      service.acceptTerms(user, CURRENT_TERMS_VERSION),
+    ).resolves.toEqual({ accepted_terms_version: CURRENT_TERMS_VERSION });
+    expect(update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        consented_terms_version: CURRENT_TERMS_VERSION,
+      }),
+    );
+    expect(eq).toHaveBeenCalledWith('id', 'u1');
+  });
+
+  it('refuses a stale version', async () => {
+    const { service, update } = build();
+    await expect(
+      service.acceptTerms(user, CURRENT_TERMS_VERSION - 1),
+    ).rejects.toThrow('updated');
+    expect(update).not.toHaveBeenCalled();
   });
 });

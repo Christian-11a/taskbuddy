@@ -415,7 +415,7 @@ describe('SPJobDetailScreen — status card, one main action and the client card
     expect(screen.getAllByText('Client')).toHaveLength(1);
   });
 
-  it('a completed job shows the earnings and View in wallet opens the Wallet', async () => {
+  it('a completed job shows the earnings and View payouts opens the Payout Account', async () => {
     (api.getJob as jest.Mock).mockResolvedValue({
       ...hired,
       status: 'completed',
@@ -427,8 +427,8 @@ describe('SPJobDetailScreen — status card, one main action and the client card
 
     expect(await screen.findByText('Job price')).toBeTruthy();
     expect(screen.getByText('Released to you')).toBeTruthy();
-    fireEvent.press(screen.getByLabelText('View in wallet'));
-    expect(onNavigate).toHaveBeenCalledWith('Wallet');
+    fireEvent.press(screen.getByLabelText('View payouts'));
+    expect(onNavigate).toHaveBeenCalledWith('Payout Account');
   });
 
   it('an open complaint on a booked job says so and keeps Start job as the main action', async () => {

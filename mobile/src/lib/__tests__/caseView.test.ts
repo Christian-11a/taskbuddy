@@ -360,7 +360,7 @@ describe('caseView: actions copy', () => {
     const view = caseView(pending, PROVIDER, BEFORE_DEADLINE);
     expect(view.agree).toEqual({
       title: 'Agree to cancel?',
-      message: "₱800.00 goes back to the client's wallet.\nThe booking is removed from your schedule.\nThis can't be undone.",
+      message: "₱800.00 goes back to the client's payment method.\nThe booking is removed from your schedule.\nThis can't be undone.",
       confirmLabel: 'Agree and refund ₱800.00',
     });
   });
@@ -437,8 +437,8 @@ describe('caseView: where the money goes, worded for each viewer', () => {
   });
 
   it.each([
-    { viewer: 'the homeowner', me: CLIENT, money: "₱800.00 goes back to your wallet.", noMoney: 'The payment goes back to your wallet.' },
-    { viewer: 'the provider', me: PROVIDER, money: "₱800.00 goes back to the client's wallet.", noMoney: "The payment goes back to the client's wallet." },
+    { viewer: 'the homeowner', me: CLIENT, money: "₱800.00 goes back to your payment method.", noMoney: 'The payment goes back to your payment method.' },
+    { viewer: 'the provider', me: PROVIDER, money: "₱800.00 goes back to the client's payment method.", noMoney: "The payment goes back to the client's payment method." },
   ])('says where the held money goes for $viewer', ({ me, money, noMoney }) => {
     expect(caseView(pending, me, BEFORE_DEADLINE).agree.message).toBe(
       `${money}\nThe booking is removed from your schedule.\nThis can't be undone.`,

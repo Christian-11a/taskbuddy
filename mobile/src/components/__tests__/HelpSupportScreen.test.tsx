@@ -39,13 +39,13 @@ describe('HelpSupportScreen — report a problem wording', () => {
 describe('HelpSupportScreen — common questions', () => {
   it('shows an answer only while its question is open, and only one at a time', () => {
     render(<HelpSupportScreen role="homeowner" onBack={jest.fn()} />);
-    expect(screen.queryByText(/Add money to your Wallet/)).toBeNull();
+    expect(screen.queryByText(/You pay when you hire/)).toBeNull();
 
     fireEvent.press(screen.getByRole('button', { name: 'How do payments work?' }));
-    expect(screen.getByText(/Add money to your Wallet/)).toBeTruthy();
+    expect(screen.getByText(/You pay when you hire/)).toBeTruthy();
 
     fireEvent.press(screen.getByRole('button', { name: 'How do I hire a provider?' }));
-    expect(screen.queryByText(/Add money to your Wallet/)).toBeNull();
+    expect(screen.queryByText(/You pay when you hire/)).toBeNull();
     expect(screen.getByText(/Post a job, review proposals/)).toBeTruthy();
 
     fireEvent.press(screen.getByRole('button', { name: 'How do I hire a provider?' }));

@@ -4,11 +4,19 @@ import {
   Injectable,
   Logger,
   NotFoundException,
+  ServiceUnavailableException,
 } from '@nestjs/common';
 import type Stripe from 'stripe';
 import { SupabaseService } from '../supabase/supabase.service';
 import { StripeService } from './stripe.service';
 import { StripeCustomersService } from './stripe-customers.service';
+import { randomUUID } from 'node:crypto';
+import {
+  HIRE_PREFIX,
+  PRICE_CHANGE_PREFIX,
+  XenditService,
+  type XenditPaidInvoice,
+} from './xendit.service';
 import { ApplicationsService } from '../applications/applications.service';
 import { EscrowService } from '../escrow/escrow.service';
 import { isMoneyRefusal, peso } from '../escrow/escrow-errors';
@@ -23,7 +31,27 @@ import type { Profile } from '../common/types';
 /** Marks the PaymentIntents this service is responsible for, on the Stripe side. */
 export const HIRE_FUNDING_PURPOSE = 'hire_funding';
 
+/** Marks a payment of the difference for an agreed price increase (0057). */
+export const PRICE_CHANGE_PURPOSE = 'price_change';
+
 const CURRENCY = 'php';
+
+/** How Xendit's payment channels read in messages. */
+const METHOD_LABELS: Record<string, string> = {
+  GCASH: 'GCash',
+  PAYMAYA: 'Maya',
+  GRABPAY: 'GrabPay',
+  CREDIT_CARD: 'card',
+  DD_BPI: 'online banking',
+  DD_UBP: 'online banking',
+};
+
+const methodLabel = (channel: string) =>
+  METHOD_LABELS[channel.toUpperCase()] ?? 'online payment';
+
+/** `hire_<application id>_<nonce>`: unique per checkout, decodable on return. */
+const externalId = (prefix: string, id: string) =>
+  `${prefix}_${id}_${randomUUID().slice(0, 8)}`;
 
 /** Stripe's minimum lifetime for a Checkout Session. */
 const CHECKOUT_TTL_SECONDS = 30 * 60;
@@ -77,6 +105,7 @@ export class HireFundingService {
     private readonly customers: StripeCustomersService,
     private readonly applications: ApplicationsService,
     private readonly escrow: EscrowService,
+    private readonly xendit: XenditService,
   ) {}
 
   /**
@@ -106,7 +135,7 @@ export class HireFundingService {
 
     if (job.budget == null) {
       throw new BadRequestException(
-        'This job has no budget to pay — accept it from your wallet instead',
+        'This job has no price to pay — hire the provider without payment instead',
       );
     }
     const budget = Number(job.budget);
@@ -120,6 +149,19 @@ export class HireFundingService {
     const returnUrl = (status: 'success' | 'cancelled') =>
       `${returnBase}/payments/return?flow=hire&status=${status}` +
       `&app_redirect=${encodeURIComponent(dto.app_redirect)}`;
+
+    // Xendit (test mode) when configured: GCash, Maya, GrabPay, card and
+    // online banking, with no wallet in between (migration 0056).
+    if (this.xendit.configured) {
+      const checkout = await this.xendit.createCheckout({
+        externalId: externalId(HIRE_PREFIX, application.id),
+        amount: budget,
+        description: `TaskBuddy hire — ${job.title}`,
+        successUrl: returnUrl('success'),
+        failureUrl: returnUrl('cancelled'),
+      });
+      return { url: checkout.url, session_id: checkout.id, amount: budget };
+    }
 
     const session = await this.stripeService.stripe.checkout.sessions.create({
       mode: 'payment',
@@ -183,31 +225,162 @@ export class HireFundingService {
    * database blip.
    */
   async completeFromIntent(intent: Stripe.PaymentIntent): Promise<void> {
-    const meta = intent.metadata ?? {};
-    const { profile_id, application_id, job_id, provider_id } = meta;
+    const chargeId =
+      typeof intent.latest_charge === 'string'
+        ? intent.latest_charge
+        : (intent.latest_charge?.id ?? null);
+    if (!chargeId) {
+      // Not expected for a succeeded card payment. Without a charge the
+      // payout cannot be sent on to Stripe, so the hold is recorded as
+      // wallet-funded, which is the safe way to be wrong.
+      this.logger.error(`Hire PaymentIntent ${intent.id} has no charge`);
+    }
+    await this.completeHire({
+      ref: intent.id,
+      amountCentavos: intent.amount_received,
+      currency: intent.currency,
+      metadata: intent.metadata ?? {},
+      funding: chargeId ? { paymentIntentId: intent.id, chargeId } : undefined,
+      methodLabel: 'card',
+    });
+  }
+
+  /**
+   * Checkout for the difference on an agreed price increase (migration 0057).
+   * Only the client pays it, and only while the request is
+   * `awaiting_payment`. The webhook applies it; nothing changes here.
+   */
+  async createPriceChangeCheckout(
+    user: Profile,
+    requestId: string,
+    appRedirect: string,
+    returnBase: string,
+  ) {
+    if (!isAllowedAppRedirect(appRedirect)) {
+      throw new BadRequestException('app_redirect is not an allowed URI');
+    }
+    if (!this.xendit.configured) {
+      throw new ServiceUnavailableException('Payments are not configured');
+    }
+    const { data, error } = await this.supabase.admin
+      .from('job_change_requests')
+      .select('id, status, new_budget, job_id, jobs(id, title, client_id)')
+      .eq('id', requestId)
+      .maybeSingle();
+    if (error) throw new BadRequestException(error.message);
+    const request = data as {
+      id: string;
+      status: string;
+      new_budget: number | string;
+      job_id: string;
+      jobs: { id: string; title: string; client_id: string } | null;
+    } | null;
+    if (!request?.jobs) throw new NotFoundException('Change request not found');
+    if (request.jobs.client_id !== user.id)
+      throw new ForbiddenException('Only the client pays a price change');
+    if (request.status !== 'awaiting_payment')
+      throw new BadRequestException(
+        'This price change is not waiting for payment',
+      );
+    const escrow = await this.escrow.findByJob(request.job_id);
+    const difference =
+      Math.round(
+        (Number(request.new_budget) - Number(escrow?.amount ?? 0)) * 100,
+      ) / 100;
+    if (!escrow || escrow.status !== 'held' || difference <= 0)
+      throw new BadRequestException('There is no difference to pay');
+
+    const returnUrl = (status: 'success' | 'cancelled') =>
+      `${returnBase}/payments/return?flow=hire&status=${status}` +
+      `&app_redirect=${encodeURIComponent(appRedirect)}`;
+    const checkout = await this.xendit.createCheckout({
+      externalId: externalId(PRICE_CHANGE_PREFIX, request.id),
+      amount: difference,
+      description: `TaskBuddy price change — ${request.jobs.title}`,
+      successUrl: returnUrl('success'),
+      failureUrl: returnUrl('cancelled'),
+    });
+    return { url: checkout.url, session_id: checkout.id, amount: difference };
+  }
+
+  /**
+   * A paid invoice from Xendit (test mode). The external id says what it was
+   * for; everything else is read back from the database, so a callback can
+   * never name a different payer, job or provider than the checkout had.
+   */
+  async completeFromXendit(paid: XenditPaidInvoice): Promise<void> {
+    if (paid.purpose === PRICE_CHANGE_PREFIX) {
+      return this.completePriceChange(paid);
+    }
+    if (paid.purpose !== HIRE_PREFIX) return;
+    const application = await this.load(paid.subjectId);
+    if (!application?.jobs) {
+      this.logger.error(
+        `Xendit invoice ${paid.invoiceId} names no known proposal`,
+      );
+      return;
+    }
+    await this.completeHire({
+      ref: paid.invoiceId,
+      amountCentavos: paid.amountCentavos,
+      currency: paid.currency,
+      metadata: {
+        purpose: HIRE_FUNDING_PURPOSE,
+        profile_id: application.jobs.client_id,
+        application_id: application.id,
+        job_id: application.job_id,
+        provider_id: application.provider_id,
+      },
+      // Held without Stripe funding: the payout is sent to the provider's
+      // linked account instead of a Connect transfer.
+      funding: undefined,
+      methodLabel: methodLabel(paid.channel),
+    });
+  }
+
+  private async completeHire(payment: {
+    ref: string;
+    amountCentavos: number;
+    currency: string;
+    metadata: Record<string, string>;
+    funding: { paymentIntentId: string; chargeId: string } | undefined;
+    methodLabel: string;
+  }): Promise<void> {
+    const { profile_id, application_id, job_id, provider_id } =
+      payment.metadata;
     if (!profile_id || !application_id || !job_id || !provider_id) {
       this.logger.error(
-        `Hire PaymentIntent ${intent.id} is missing metadata — cannot act on it`,
+        `Hire payment ${payment.ref} is missing metadata — cannot act on it`,
       );
       return;
     }
 
     const application = await this.load(application_id);
     const job = application?.jobs ?? null;
-    const amount = intent.amount_received / 100;
+    const amount = payment.amountCentavos / 100;
 
-    const fresh = await this.credit(intent, profile_id, amount, job?.title);
+    const fresh = await this.credit(
+      payment.ref,
+      profile_id,
+      amount,
+      job_id,
+      job?.title,
+      payment.methodLabel,
+    );
 
+    // A payment that cannot become a hire goes straight back to where it
+    // came from: there is no wallet to leave it in (migration 0056).
     const refuse = async (reason: string) => {
       this.logger.warn(
-        `Hire PaymentIntent ${intent.id} not turned into a hire: ${reason}`,
+        `Hire payment ${payment.ref} not turned into a hire: ${reason}`,
       );
+      await this.escrow.passThrough([profile_id]);
       if (fresh) {
         await this.notify(
           profile_id,
           'payment_update',
-          'Payment added to your wallet',
-          `Your card payment of ${peso(amount)} is in your wallet, but the hire could not be completed: ${reason}. You can use it for another hire or withdraw it.`,
+          'Payment refunded',
+          `Your ${payment.methodLabel} payment of ${peso(amount)} could not complete the hire: ${reason}. It has been refunded to your payment method.`,
           job_id,
         );
       }
@@ -215,7 +388,8 @@ export class HireFundingService {
 
     const existing = await this.escrow.findByJob(job_id);
     if (
-      existing?.funding_payment_intent_id === intent.id &&
+      existing?.status === 'held' &&
+      existing.provider_id === provider_id &&
       application?.status === 'accepted'
     ) {
       return;
@@ -240,9 +414,9 @@ export class HireFundingService {
       return refuse('the job is no longer open');
     }
     if (
-      intent.currency !== CURRENCY ||
+      payment.currency !== CURRENCY ||
       job.budget == null ||
-      intent.amount_received !== Math.round(Number(job.budget) * 100)
+      payment.amountCentavos !== Math.round(Number(job.budget) * 100)
     ) {
       return refuse('the amount paid does not match the job budget');
     }
@@ -251,23 +425,8 @@ export class HireFundingService {
     }
 
     // ── 4. Hold ────────────────────────────────────────────────────────────
-    const chargeId =
-      typeof intent.latest_charge === 'string'
-        ? intent.latest_charge
-        : (intent.latest_charge?.id ?? null);
-    if (!chargeId) {
-      // Not expected for a succeeded card payment. Without a charge the
-      // payout cannot be sent on to Stripe, so the hold is recorded as
-      // wallet-funded: the provider's payout then stays in their wallet,
-      // which is the safe way to be wrong.
-      this.logger.error(`Hire PaymentIntent ${intent.id} has no charge`);
-    }
     try {
-      await this.escrow.hold(
-        job_id,
-        provider_id,
-        chargeId ? { paymentIntentId: intent.id, chargeId } : undefined,
-      );
+      await this.escrow.hold(job_id, provider_id, payment.funding);
     } catch (err) {
       if (isMoneyRefusal(err)) return refuse((err as Error).message);
       throw err;
@@ -281,10 +440,7 @@ export class HireFundingService {
       if (now === 'accepted') return;
       if (now === 'pending' || now === 'unknown') throw err;
       const held = await this.escrow.findByJob(job_id);
-      if (
-        held?.status === 'held' &&
-        held.funding_payment_intent_id === intent.id
-      ) {
+      if (held?.status === 'held' && held.provider_id === provider_id) {
         await this.escrow.releaseHoldForFailedHire(job_id);
       }
       return refuse(`the proposal was ${now}`);
@@ -295,12 +451,76 @@ export class HireFundingService {
       profile_id,
       'payment_update',
       'Hire confirmed',
-      `You paid ${peso(amount)} by card for "${job.title}". It is held in escrow until you confirm the job is done.`,
+      `You paid ${peso(amount)} by ${payment.methodLabel} for "${job.title}". It is held in escrow until you confirm the job is done.`,
       job_id,
     );
     this.logger.log(
-      `Hired ${provider_id} for job ${job_id} on card payment ${intent.id}`,
+      `Hired ${provider_id} for job ${job_id} on ${payment.methodLabel} payment ${payment.ref}`,
     );
+  }
+
+  /**
+   * The difference for a price increase arrived. Credited first (idempotent
+   * on the payment id), then held and applied by job_change_apply_payment. If
+   * the request can no longer take it, the payment is refunded instead.
+   */
+  private async completePriceChange(paid: XenditPaidInvoice): Promise<void> {
+    const { data: request, error: readError } = await this.supabase.admin
+      .from('job_change_requests')
+      .select('id, job_id, jobs(client_id)')
+      .eq('id', paid.subjectId)
+      .maybeSingle();
+    if (readError)
+      throw new Error(`Could not read change request: ${readError.message}`);
+    const row = request as {
+      id: string;
+      job_id: string;
+      jobs: { client_id: string } | null;
+    } | null;
+    if (!row?.jobs) {
+      this.logger.error(
+        `Xendit invoice ${paid.invoiceId} names no known change request`,
+      );
+      return;
+    }
+    const profile_id = row.jobs.client_id;
+    const job_id = row.job_id;
+    const change_request_id = row.id;
+    const amount = paid.amountCentavos / 100;
+    const method = methodLabel(paid.channel);
+    const fresh = await this.credit(
+      paid.invoiceId,
+      profile_id,
+      amount,
+      job_id,
+      'price change',
+      method,
+    );
+    const { error } = await this.supabase.admin.rpc(
+      'job_change_apply_payment',
+      {
+        p_request_id: change_request_id,
+        p_amount: amount,
+      },
+    );
+    if (!error) return;
+    if (error.code !== 'TB409' && error.code !== 'TB404') {
+      // A fault, not a refusal: fail the webhook so Xendit retries.
+      throw new Error(`Could not apply price change: ${error.message}`);
+    }
+    this.logger.warn(
+      `Price change payment ${paid.invoiceId} not applied: ${error.message}`,
+    );
+    await this.escrow.passThrough([profile_id]);
+    if (fresh) {
+      await this.notify(
+        profile_id,
+        'payment_update',
+        'Payment refunded',
+        `Your ${method} payment of ${peso(amount)} could not be applied: ${error.message}. It has been refunded to your payment method.`,
+        job_id,
+      );
+    }
   }
 
   // ── Internals ─────────────────────────────────────────────────────────────
@@ -338,10 +558,12 @@ export class HireFundingService {
    * exactly as for ordinary top-ups (§21).
    */
   private async credit(
-    intent: Stripe.PaymentIntent,
+    ref: string,
     profileId: string,
     amount: number,
+    jobId: string,
     jobTitle: string | undefined,
+    methodLabel: string,
   ): Promise<boolean> {
     const { error } = await this.supabase.admin
       .from('wallet_transactions')
@@ -350,15 +572,15 @@ export class HireFundingService {
         direction: 'credit',
         kind: 'topup',
         amount,
-        title: `Card payment — ${jobTitle ?? 'hire'}`.slice(0, 120),
+        title: `Payment (${methodLabel}) — ${jobTitle ?? 'hire'}`.slice(0, 120),
         status: 'completed',
-        stripe_payment_intent_id: intent.id,
-        job_id: intent.metadata?.job_id ?? null,
+        // Unique: the idempotency key for Stripe and Xendit payment ids alike.
+        stripe_payment_intent_id: ref,
+        job_id: jobId,
       });
     if (error?.code === '23505') return false;
     // Money reached us; the ledger row is not optional. Non-2xx → retry.
-    if (error)
-      throw new Error(`Could not credit ${intent.id}: ${error.message}`);
+    if (error) throw new Error(`Could not credit ${ref}: ${error.message}`);
     return true;
   }
 

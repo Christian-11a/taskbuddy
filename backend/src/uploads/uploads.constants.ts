@@ -7,6 +7,7 @@
  *   signed download URLs instead.
  * - `avatars`           — public read; referenced by profiles.avatar_url (migration 0011).
  * - chat-attachments — PRIVATE; referenced by messages.attachment_path (migration 0030).
+ * - provider-credentials — PRIVATE; certificate photos, provider_credentials.document_path (migration 0054).
  */
 export const UPLOAD_BUCKETS = [
   'job-photos',
@@ -14,6 +15,7 @@ export const UPLOAD_BUCKETS = [
   'avatars',
   'chat-attachments',
   'provider-portfolio',
+  'provider-credentials',
 ] as const;
 export type UploadBucket = (typeof UPLOAD_BUCKETS)[number];
 

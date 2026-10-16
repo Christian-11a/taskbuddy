@@ -37,7 +37,7 @@ describe('post-UAT server validation', () => {
       await errors(RegisterDto, { ...signup, password: '11111111' }),
     ).not.toHaveLength(0);
   });
-  it('caps job budgets and withdrawal amounts', async () => {
+  it('caps withdrawals and only accepts a computed job price tier', async () => {
     const withdrawalErrors = await errors(RequestWithdrawalDto, {
       amount: 0.5,
       destination: 'GCash 09123456789',
@@ -53,13 +53,13 @@ describe('post-UAT server validation', () => {
       address: 'De La Salle Lipa',
       latitude: 13.94,
       longitude: 121.14,
-      budget: 100001,
+      price_tier: 'luxury',
     };
     expect(
       (await errors(CreateJobDto, job)).find(
-        (error) => error.property === 'budget',
+        (error) => error.property === 'price_tier',
       )?.constraints,
-    ).toHaveProperty('max', 'Budget must be between ₱1 and ₱100,000.');
+    ).toHaveProperty('isIn');
   });
   it('returns field-specific messages for signup and profile input', async () => {
     const invalidSignup = await errors(RegisterDto, {

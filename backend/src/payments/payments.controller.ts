@@ -22,11 +22,11 @@ import { PaymentsService } from './payments.service';
 import { StripeService } from './stripe.service';
 import { publicOrigin } from './public-origin';
 import {
-  CreateCheckoutSessionDto,
   CreateHireCheckoutDto,
-  CreateTopupDto,
+  CreatePriceChangeCheckoutDto,
 } from './dto/payments.dto';
 import { HireFundingService } from './hire-funding.service';
+import { XenditService } from './xendit.service';
 import { Roles } from '../auth/roles.decorator';
 import {
   appendRedirectParams,
@@ -44,6 +44,7 @@ export class PaymentsController {
     private readonly payments: PaymentsService,
     private readonly stripe: StripeService,
     private readonly hireFunding: HireFundingService,
+    private readonly xendit: XenditService,
   ) {}
 
   /** Publishable key, so the app doesn't have to ship a build per environment. */
@@ -55,40 +56,12 @@ export class PaymentsController {
   }
 
   /**
-   * Opens a wallet top-up. Returns the PaymentSheet parameters; the wallet is
-   * credited by the webhook once Stripe confirms the charge, never here.
-   */
-  @Post('topup')
-  @HttpCode(200)
-  @ThrottlePayments()
-  @UseGuards(JwtAuthGuard)
-  topup(@CurrentUser() user: Profile, @Body() dto: CreateTopupDto) {
-    return this.payments.createTopupIntent(user, dto);
-  }
-
-  /**
-   * Opens a wallet top-up on Stripe's hosted Checkout page and returns its URL
-   * for the app to open in a browser. Use this where PaymentSheet is not
-   * available — notably Expo Go, which cannot load native modules.
-   */
-  @Post('checkout-session')
-  @HttpCode(200)
-  @ThrottlePayments()
-  @UseGuards(JwtAuthGuard)
-  checkoutSession(
-    @CurrentUser() user: Profile,
-    @Body() dto: CreateCheckoutSessionDto,
-    @Req() req: Request,
-  ) {
-    return this.payments.createCheckoutSession(user, dto, publicOrigin(req));
-  }
-
-  /**
-   * Card-at-hire: opens Stripe Checkout for the job's full budget, to hire
-   * the provider behind `application_id`. Nothing is hired here — the webhook
-   * credits the payment, holds it in escrow and accepts the application once
-   * Stripe confirms the charge (§29.4). The app polls the application after
-   * the browser closes.
+   * Pay-at-hire: opens a checkout for the job's full price, to hire the
+   * provider behind `application_id` — Xendit test mode (GCash, Maya, card,
+   * online banking) when configured, Stripe card Checkout otherwise. Nothing
+   * is hired here: the webhook holds the payment in escrow and accepts the
+   * application once the payment is confirmed. The app polls the application
+   * after the browser closes. Wallet top-ups were retired in migration 0056.
    */
   @Post('hire-checkout-session')
   @HttpCode(200)
@@ -101,6 +74,28 @@ export class PaymentsController {
     @Req() req: Request,
   ) {
     return this.hireFunding.createCheckout(user, dto, publicOrigin(req));
+  }
+
+  /**
+   * Pays the difference on an agreed price increase (migration 0057): a
+   * Xendit test-mode checkout. The webhook applies the new price.
+   */
+  @Post('price-change-checkout-session')
+  @HttpCode(200)
+  @ThrottlePayments()
+  @UseGuards(JwtAuthGuard)
+  @Roles('client')
+  priceChangeCheckoutSession(
+    @CurrentUser() user: Profile,
+    @Body() dto: CreatePriceChangeCheckoutDto,
+    @Req() req: Request,
+  ) {
+    return this.hireFunding.createPriceChangeCheckout(
+      user,
+      dto.change_request_id,
+      dto.app_redirect,
+      publicOrigin(req),
+    );
   }
 
   /**
@@ -142,6 +137,26 @@ export class PaymentsController {
     // sign-in had. App schemes get a page that asks for the link instead.
     if (!isAppSchemeRedirect(deepLink)) return res.redirect(deepLink);
     return res.type('html').send(renderAppRedirectPage(deepLink));
+  }
+
+  /**
+   * Xendit's invoice callback (test mode). Authenticated by the
+   * `x-callback-token` header, which must equal the dashboard's verification
+   * token. Only a PAID/SETTLED invoice acts; anything else is acknowledged.
+   */
+  @Post('xendit/webhook')
+  @HttpCode(200)
+  @SkipThrottle()
+  async xenditWebhook(
+    @Req() req: Request,
+    @Headers('x-callback-token') token: string | undefined,
+  ) {
+    if (!this.xendit.verifyCallback(token)) {
+      throw new BadRequestException('Invalid Xendit callback token');
+    }
+    const paid = this.xendit.paidInvoice(req.body);
+    if (paid) await this.hireFunding.completeFromXendit(paid);
+    return { received: true };
   }
 
   /**

@@ -77,8 +77,7 @@ export function tourSteps(role: WelcomeRole, verified = true): TourStep[] {
       return [
         { anchorId: 'home.setup', title: 'Finish setting up', body: 'Add your details and ID so clients can find you.' },
         { anchorId: 'tab.work', title: 'Your work', body: 'Offers, bookings and jobs in progress, all in one place.' },
-        // Withdrawals go to a GCash or bank account (the Withdraw sheet); no other payout rail is offered.
-        { anchorId: 'tab.Wallet', title: 'Your earnings', body: 'Withdraw to your GCash or bank account once money is released.' },
+        { anchorId: 'tab.Messages', title: 'Your messages', body: 'Chat with your clients about each job here.' },
         { anchorId: 'tab.Profile', title: 'Your profile', body: 'Keep your details, photo and services up to date.' },
       ];
     }
@@ -86,14 +85,12 @@ export function tourSteps(role: WelcomeRole, verified = true): TourStep[] {
       { anchorId: 'home.availability', title: 'Be seen', body: 'Turn this on to get invited to jobs near you.' },
       { anchorId: 'home.feed', title: 'Open jobs near you', body: 'Open one and send a short, friendly offer.' },
       { anchorId: 'tab.work', title: 'Your work', body: 'Offers, bookings and jobs in progress, all in one place.' },
-      // Withdrawals go to a GCash or bank account (the Withdraw sheet); no other payout rail is offered.
-      { anchorId: 'tab.Wallet', title: 'Your earnings', body: 'Withdraw to your GCash or bank account once money is released.' },
+      { anchorId: 'tab.Messages', title: 'Your messages', body: 'Chat with your clients about each job here.' },
     ];
   }
   return [
     { anchorId: 'home.post', title: 'Start here', body: 'Pick a service and describe the job. It takes about a minute.' },
     { anchorId: 'tab.jobs', title: 'Your jobs and offers', body: 'Offers, bookings and progress live here.' },
-    { anchorId: 'home.wallet', title: 'Your wallet', body: 'Add money before you hire. It stays held until the job is done.' },
     { anchorId: 'home.bell', title: 'Never miss an offer', body: "We'll tell you when someone applies or your booking changes." },
   ];
 }
