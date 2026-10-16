@@ -11,6 +11,7 @@ jest.mock('../../../../src/lib/api', () => ({
     getProviderReviews: jest.fn(),
     getProviderWork: jest.fn(),
     providerPortfolio: jest.fn(),
+    providerCredentials: jest.fn(),
   },
 }));
 
@@ -49,6 +50,7 @@ beforeEach(() => {
   (api.getProvider as jest.Mock).mockResolvedValue(provider);
   (api.getProviderReviews as jest.Mock).mockResolvedValue([]);
   (api.getProviderWork as jest.Mock).mockResolvedValue([]);
+  (api.providerCredentials as jest.Mock).mockResolvedValue([]);
   (api.providerPortfolio as jest.Mock).mockResolvedValue([]);
 });
 
@@ -201,4 +203,12 @@ describe('HOProviderProfileScreen — a reload keeps the profile on screen', () 
     expect(screen.getByTestId('refresh-bar')).toBeTruthy();
     expect(screen.UNSAFE_queryByType(ContentSkeleton)).toBeNull();
   });
+});
+
+it('lists approved credentials under Certified', async () => {
+  (api.providerCredentials as jest.Mock).mockResolvedValue([
+    { id: 'c1', title: 'Plumbing NC II', issuer: 'TESDA', service_categories: { id: 1, name: 'Plumbing' } },
+  ]);
+  render(<HOProviderProfileScreen id="prov-1" onBack={jest.fn()} />);
+  expect(await screen.findByText('Plumbing NC II · TESDA · Plumbing')).toBeTruthy();
 });

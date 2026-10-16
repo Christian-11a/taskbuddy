@@ -224,6 +224,24 @@ export interface Profile {
   [key: string]: unknown;
 }
 
+export type CredentialType = 'tesda_nc' | 'prc_license' | 'trade_certificate' | 'other';
+
+/** A skill credential (migration 0054). `document_url` is only on the owner's copy. */
+export interface Credential {
+  id: string;
+  category_id: number;
+  credential_type: CredentialType;
+  title: string;
+  issuer: string;
+  credential_number?: string | null;
+  issued_on: string | null;
+  expires_on: string | null;
+  status: 'pending' | 'approved' | 'rejected' | 'expired';
+  rejection_reason?: string | null;
+  document_url?: string | null;
+  service_categories: { id: number; name: string } | null;
+}
+
 export interface PortfolioEntry {
  id: string; provider_id: string; caption: string; position: number;
  category_id: number | null; created_at: string; image_url: string;
@@ -1388,7 +1406,7 @@ export const api = {
    * storage *path*, which is what job/verification payloads carry.
    */
   async uploadImage(
-    bucket: 'job-photos' | 'verification-docs' | 'avatars' | 'chat-attachments' | 'provider-portfolio',
+    bucket: 'job-photos' | 'verification-docs' | 'avatars' | 'chat-attachments' | 'provider-portfolio' | 'provider-credentials',
     uri: string,
   ): Promise<string> {
     const contentType = contentTypeFor(uri);
@@ -1415,6 +1433,22 @@ export const api = {
     return signed.path;
   },
 
+  myCredentials() { return authRequest<Credential[]>('/providers/me/credentials'); },
+  providerCredentials(id: string) { return authRequest<Credential[]>(`/providers/${id}/credentials`); },
+  createCredential(input: {
+    category_id: number;
+    credential_type: CredentialType;
+    title: string;
+    issuer: string;
+    credential_number?: string;
+    expires_on?: string;
+    document_path: string;
+  }) {
+    return authRequest<Credential>('/providers/me/credentials', { method: 'POST', body: input });
+  },
+  removeCredential(id: string) {
+    return authRequest<{ removed: boolean }>(`/providers/me/credentials/${id}`, { method: 'DELETE' });
+  },
   myPortfolio() { return authRequest<PortfolioEntry[]>('/providers/me/portfolio'); },
   providerPortfolio(id:string) { return authRequest<PortfolioEntry[]>(`/providers/${id}/portfolio`); },
   createPortfolio(input:{image_path:string;caption:string;position:number;category_id:number|null}) { return authRequest<{id:string}>('/providers/me/portfolio',{method:'POST',body:input}); },

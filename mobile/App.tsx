@@ -78,6 +78,7 @@ import SPVerificationScreen from './app/(provider)/screens/SPVerificationScreen'
 import SPPayoutsScreen from './app/(provider)/screens/SPPayoutsScreen';
 import SPSettingsScreen from './app/(provider)/screens/SPSettingsScreen';
 import SPPortfolioScreen from './app/(provider)/screens/SPPortfolioScreen';
+import SPCredentialsScreen from './app/(provider)/screens/SPCredentialsScreen';
 import SPSkillRequestScreen from './app/(provider)/screens/SPSkillRequestScreen';
 
 // ── Shared navigation components ──────────────────────────────────────────────
@@ -1002,6 +1003,7 @@ function AppFlow() {
     );
   }
   if (spScreen === 'Portfolio') return wrap(<ScreenFrame bottomColor={V6Colors.surface}><SPPortfolioScreen onBack={spBack}/></ScreenFrame>);
+  if (spScreen === 'Credentials') return wrap(<ScreenFrame bottomColor={V6Colors.surface}><SPCredentialsScreen onBack={spBack}/></ScreenFrame>);
   if (spScreen === 'My Services') {
     return wrap(
       <ScreenFrame bottomColor={V6Colors.surface}>

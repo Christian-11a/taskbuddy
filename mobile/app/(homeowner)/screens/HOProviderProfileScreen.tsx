@@ -83,6 +83,8 @@ export default function HOProviderProfileScreen({
   useRefreshOnForeground(reload, true);
   const portfolio=useAsyncData(()=>api.providerPortfolio(id),[id]);
   useRefreshOnForeground(portfolio.reload,true);
+  // Approved, unexpired credentials only; a failed load just hides the section.
+  const credentials = useAsyncData(() => api.providerCredentials(id).catch(() => []), [id]);
   const provider = data?.provider ?? null;
   const reviews: any[] = data?.reviews ?? [];
   const work = data?.work ?? [];
@@ -176,6 +178,17 @@ export default function HOProviderProfileScreen({
             <View style={styles.section}>
               <Text style={styles.sectionTitle} accessibilityRole="header">About</Text>
               <Text style={styles.bio}>{provider.bio}</Text>
+            </View>
+          )}
+
+          {(credentials.data?.length ?? 0) > 0 && (
+            <View style={styles.section} testID="provider-credentials">
+              <Text style={styles.sectionTitle} accessibilityRole="header">Certified</Text>
+              {credentials.data!.map((item) => (
+                <Text key={item.id} style={styles.bio}>
+                  {`${item.title} · ${item.issuer}${item.service_categories ? ` · ${item.service_categories.name}` : ''}`}
+                </Text>
+              ))}
             </View>
           )}
 
