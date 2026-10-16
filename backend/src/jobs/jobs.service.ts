@@ -121,6 +121,7 @@ export class JobsService {
       })
       .select(JOB_SELECT)
       .single();
+    if (error?.code === 'TB409') throw new ConflictException(error.message);
     if (error) throw new BadRequestException(error.message);
 
     if (dto.tasks?.length) {

@@ -697,7 +697,7 @@ curl -X POST $API/jobs -H "Authorization: Bearer $TOKEN" -H "Content-Type: appli
   admin-queue acceptance checks passed on 2026-10-16 ([evidence](../test-docs/DEPLOYED_POST_UAT_ACCEPTANCE_EVIDENCE.json)). Not
   covered: notification broadcast, card-at-hire, the scheduler's 72-hour
   release and physical devices. Capacity refusals on job posting and applying
-  return HTTP 400 although the database raises a conflict (`TB409`).
+  now return HTTP 409 for the database conflict (`TB409`); not yet deployed.
 - [`docs/backend-handoff-mobile-e2e-test-environment.md`](../docs/backend-handoff-mobile-e2e-test-environment.md)
   still requires a test wallet balance when the Maestro account runs low. Its Google
   Maps key request is obsolete because the app no longer uses `react-native-maps`.

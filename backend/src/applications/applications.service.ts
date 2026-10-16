@@ -78,6 +78,7 @@ export class ApplicationsService {
       if (error.code === '23505') {
         throw new BadRequestException('You already applied to this job');
       }
+      if (error.code === 'TB409') throw new ConflictException(error.message);
       throw new BadRequestException(error.message);
     }
 
