@@ -15,12 +15,12 @@ The full data-schema and product spec lives in [`BACKEND_SCHEMA.md`](./BACKEND_S
 > [Base URL](#base-url) below). Status page: <https://taskbuddy-kpek.onrender.com/> ·
 > JSON health: <https://taskbuddy-kpek.onrender.com/health>
 
-> **Release check:** migration 0038 is applied to the linked
-> Supabase project; its four functions and service-role restrictions were
-> checked. The Render API restarted after the fork's `main` push, and `/health`
-> returned HTTP 200 with database `up`. That response does not identify the
-> deployed commit, so verify the new contracts directly before treating the
-> release as complete. The ML check still returned HTTP 429.
+> **Release check (2026-10-16):** every migration through 0052 is recorded in
+> the linked Supabase project's migration history, and the tables, columns,
+> indexes, functions and enum values added by 0039–0052 were confirmed present.
+> The API matching migrations 0046–0052 is **not yet deployed** to Render.
+> `/health` does not identify the deployed commit, so verify the new contracts
+> directly after deploying. The last ML check returned HTTP 429.
 
 ## Architecture
 
@@ -119,7 +119,7 @@ Job lifecycle: `open → recommending → assigned → in_progress → completed
    | `0034_qa_provider_admin.sql` | Verification document types, provider acceptance location, secondary categories/service requests and admin verification fields. |
    | `0035_backfill_active_bookings.sql` | Repeatable historical booking backfill for confirmed/in-progress jobs without a calendar row. |
    | `0036_admin_handover_queries.sql` | Service-role-only audit/wallet search and exact dashboard/booking counts. **Apply before deploying the updated API.** |
-   | `0037_fulltest_remediation.sql` | Approved-skill eligibility, job-task and dispute safeguards, chat notifications, and escrow protection. Applied to the linked project on 2026-10-02; see `HANDOFF.md` for the remote history mismatch. |
+   | `0037_fulltest_remediation.sql` | Approved-skill eligibility, job-task and dispute safeguards, chat notifications, and escrow protection. Applied to the linked project on 2026-10-02; its earlier remote history mismatch has since been reconciled. |
    | `0038_admin_queue_search.sql` | Service-request search with matching pagination totals, booking-title search/counts, and a service-role-only password-presence check for Google-only mobile accounts. Applied to the linked project; apply before deploying this API to another project. |
    | `0039`–`0045` | Dispute, warranty, portfolio, and wallet safeguards; see the migration files for order and effects. |
    | `0046_early_payment_release.sql` | Atomic client-authorized release of a completed job's held payment. |
@@ -689,10 +689,10 @@ curl -X POST $API/jobs -H "Authorization: Bearer $TOKEN" -H "Content-Type: appli
 ## Pending handoffs
 
 - The post-UAT server requests are in [`docs/backend-requests.md`](../docs/backend-requests.md).
-  Migrations 0046–0050 and their API are merged into `upstream/main` by PR #81.
-  This branch adds the web handoff contracts in migrations 0051–0052.
-  Migrations 0046–0052 are applied to the linked Supabase project; **backend API
-  deployment remains pending**. Deploy the matching API and run funded-job,
+  Migrations 0046–0050 and their API were merged into `upstream/main` by PR #81,
+  and the web handoff contracts in migrations 0051–0052 by PR #84.
+  Migrations 0046–0052 are applied to the linked Supabase project (verified
+  2026-10-16); **backend API deployment remains pending**. Deploy the matching API and run funded-job,
   booking, and admin queue acceptance checks.
 - [`docs/backend-handoff-mobile-e2e-test-environment.md`](../docs/backend-handoff-mobile-e2e-test-environment.md)
   still requires a test wallet balance when the Maestro account runs low. Its Google
@@ -776,10 +776,9 @@ for direct ledger inserts/updates as well as escrow/Connect RPC paths.
 
 Migrations 0046–0050 add early payment release, shared platform identity,
 capacity limits, participant-approved job changes, and provider release requests.
-They are merged into `upstream/main` by PR #81. This branch adds migrations
-0051–0052 for the remaining web admin contracts. Migrations 0046–0052 are
-applied to the linked Supabase project; deployment of the matching API remains
-pending. The server now geocodes each posted job address and ignores client-supplied
+They were merged into `upstream/main` by PR #81, and migrations 0051–0052 for
+the remaining web admin contracts by PR #84. Migrations 0046–0052 are applied
+to the linked Supabase project; deployment of the matching API remains pending. The server now geocodes each posted job address and ignores client-supplied
 coordinates; new passwords require 8–72 characters with a letter and digit,
 while existing passwords remain valid for login. New provider signups require a
 category and the three general consents.
