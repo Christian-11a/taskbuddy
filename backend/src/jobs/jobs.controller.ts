@@ -26,6 +26,7 @@ import {
   UpdateJobTaskDto,
   ProposeJobChangeDto,
   DecideJobChangeDto,
+  PriceEstimateDto,
 } from './dto/jobs.dto';
 import { GeocodingService } from '../geocoding/geocoding.service';
 import { ThrottleGeocode, ThrottleStaticMap } from '../common/throttle';
@@ -43,6 +44,13 @@ export class JobsController {
   @Roles('client')
   create(@CurrentUser() user: Profile, @Body() dto: CreateJobDto) {
     return this.jobsService.create(user, dto);
+  }
+
+  /** The three price options a client can pick when posting a job. */
+  @Post('price-estimate')
+  @Roles('client')
+  estimatePrice(@Body() dto: PriceEstimateDto) {
+    return this.jobsService.estimatePrice(dto);
   }
 
   @Get()

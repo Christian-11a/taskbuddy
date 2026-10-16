@@ -130,6 +130,7 @@ Job lifecycle: `open → recommending → assigned → in_progress → completed
    | `0050_provider_release_requests.sql` | Rate-limited provider requests for early payment release. |
    | `0051_admin_alert_notification_type.sql` | Adds the notification type for persistent admin inbox alerts. Apply before 0052. |
    | `0052_web_admin_handoffs.sql` | Structured case recipients/evidence requests, admin inbox events, notification broadcast delivery counters, and dismissal state. |
+   | `0053_price_tiers.sql` | Category base prices, urgency price multipliers, per-task effort and the job's chosen price tier. **Apply before deploying the updated API.** |
 
    The linked project's migration history has been reconciled after checking
    the existing schema. Migrations 0046–0052 were applied in order, and their
@@ -312,7 +313,8 @@ All bodies are JSON. 🔒 = requires auth; (client) / (provider) = role-restrict
 
 | Method & path | Description |
 |---|---|
-| `POST /jobs` 🔒 (client) | `{ category_id, title (5–120), description (20–750), urgency?, address, latitude, longitude, budget?, scheduled_at?, photo_urls?, tasks? }` — `scheduled_at` in the past is a 400; `tasks` is up to 20 checklist labels (≤120 chars each) stored as `job_tasks` |
+| `POST /jobs/price-estimate` 🔒 (client) | `{ category_id, urgency?, task_efforts?[] }` → `{ options: [{ tier, amount, min, max }] }` — three options (`basic`, `standard`, `premium`): category base price × checklist workload (heaviest task in full, each other at 60%; `light` 1, `moderate` 1.5, `heavy` 2.25) × urgency multiplier, rounded to ₱50 and capped at ₱100,000 (migration 0053) |
+| `POST /jobs` 🔒 (client) | `{ category_id, title (5–120), description (20–750), urgency?, address, latitude, longitude, price_tier, scheduled_at?, photo_urls?, tasks?, task_efforts? }` — the server sets `budget` from `price_tier`; a client-sent `budget` is rejected. `scheduled_at` in the past is a 400; `tasks` is up to 20 checklist labels (≤120 chars each) stored as `job_tasks` with their effort (default `moderate`) |
 | `GET /jobs?category_id=&limit=&offset=&latitude=&longitude=&radius_km=` 🔒 (provider) | browse `open`/`recommending` jobs, sorted by urgency then distance/newest; `latitude`+`longitude` (both required together) filter to `radius_km` (default 50km) of the provider; returns `{ jobs, summary: { open_count, urgent_count, potential_payout } }` |
 | `GET /jobs/geocode?address=` 🔒 (client) | typed address → `{ latitude, longitude, formatted_address }` via Geoapify, Philippines only, street-level precision or better. `400` when not found, too general (a barangay/city centre), or a low-confidence match; `503` when Geoapify fails or `GEOAPIFY_API_KEY` is unset. 10/min per IP. `BACKEND_SCHEMA.md` §31 |
 | `GET /jobs/static-map?lat=&lon=` 🔒 (client) | `image/png` 600×300 map of a geocoded point, rendered by Geoapify server-side so the key never reaches the app. Coordinates must fall in the Philippines box (`400` otherwise); `503` when Geoapify fails or `GEOAPIFY_API_KEY` is unset. 20/min per IP. `BACKEND_SCHEMA.md` §31.1 |

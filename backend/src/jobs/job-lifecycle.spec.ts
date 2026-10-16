@@ -770,6 +770,8 @@ function buildWorld(
     id: 1,
     name: 'Plumbing',
     is_active: true,
+    // Two moderate tasks at the standard tier price this at exactly BUDGET.
+    base_price: 625,
   });
   db.rows('profiles').push(
     { id: 'c1', full_name: 'Ana Cruz', role: 'client', deleted_at: null },
@@ -886,16 +888,23 @@ async function postJob(
   world: ReturnType<typeof buildWorld>,
   budget: number | null = BUDGET,
 ) {
-  return world.jobs.create(client, {
+  const posted = (await world.jobs.create(client, {
     category_id: 1,
     title: 'Fix kitchen faucet',
     description: 'Tumutulo yung gripo sa kusina, need ayusin agad po.',
     address: 'Quezon City',
     latitude: 14.676,
     longitude: 121.0437,
-    budget: budget ?? undefined,
+    price_tier: 'standard',
     tasks: ['Check the seal', 'Replace the cartridge'],
-  });
+  })) as Record<string, any>;
+  expect(posted.budget).toBe(BUDGET);
+  // Jobs from before migration 0007 have no budget; new ones always do.
+  if (budget === null) {
+    world.db.rows('jobs').find((j) => j.id === posted.id)!.budget = null;
+    posted.budget = null;
+  }
+  return posted;
 }
 
 describe('job lifecycle, end to end', () => {
@@ -904,7 +913,7 @@ describe('job lifecycle, end to end', () => {
     const { db, jobs, applications, escrow, wallet, reviews } = world;
 
     // 1. The client posts a job with a budget and a checklist.
-    const posted = (await postJob(world)) as Record<string, any>;
+    const posted = await postJob(world);
     expect(posted.status).toBe('open');
     expect(posted.job_tasks).toHaveLength(2);
     expect(posted.has_review).toBe(false);
@@ -1000,7 +1009,7 @@ describe('job lifecycle, end to end', () => {
     const world = buildWorld({ topUp: 5000, commissionRate: 0.15 });
     const { db, jobs, applications, escrow, wallet } = world;
 
-    const posted = (await postJob(world)) as Record<string, any>;
+    const posted = await postJob(world);
     const application = (await applications.apply(
       provider,
       posted.id,
@@ -1039,7 +1048,7 @@ describe('job lifecycle, end to end', () => {
     const world = buildWorld({ topUp: 100 });
     const { db, applications } = world;
 
-    const posted = (await postJob(world)) as Record<string, any>;
+    const posted = await postJob(world);
     const application = (await applications.apply(
       provider,
       posted.id,
@@ -1064,7 +1073,7 @@ describe('job lifecycle, end to end', () => {
     const world = buildWorld({ topUp: 5000 });
     const { db, jobs, applications, escrow, wallet } = world;
 
-    const posted = (await postJob(world)) as Record<string, any>;
+    const posted = await postJob(world);
     const application = (await applications.apply(
       provider,
       posted.id,
@@ -1097,7 +1106,7 @@ describe('job lifecycle, end to end', () => {
     const world = buildWorld({ topUp: 5000 });
     const { db, jobs, applications, escrow, wallet, disputes } = world;
 
-    const posted = (await postJob(world)) as Record<string, any>;
+    const posted = await postJob(world);
     const application = (await applications.apply(
       provider,
       posted.id,
@@ -1143,7 +1152,7 @@ describe('job lifecycle, end to end', () => {
     const world = buildWorld();
     const { db, jobs, applications, escrow, wallet, reviews } = world;
 
-    const posted = (await postJob(world, null)) as Record<string, any>;
+    const posted = await postJob(world, null);
     const application = (await applications.apply(
       provider,
       posted.id,
@@ -1169,7 +1178,7 @@ describe('job lifecycle, end to end', () => {
     const world = buildWorld({ topUp: 5000 });
     const { db, jobs, applications, wallet } = world;
 
-    const posted = (await postJob(world)) as Record<string, any>;
+    const posted = await postJob(world);
     const application = (await applications.apply(
       provider,
       posted.id,
@@ -1208,7 +1217,7 @@ describe('job lifecycle, paid by card at hire (§29.4)', () => {
     // No top-up: the client's wallet is empty until Stripe says the card paid.
     const world = buildWorld();
     const { db, jobs, applications, escrow, wallet, hireFunding } = world;
-    const posted = (await postJob(world)) as Record<string, any>;
+    const posted = await postJob(world);
     const application = (await applications.apply(
       provider,
       posted.id,
@@ -1260,7 +1269,7 @@ describe('job lifecycle, paid by card at hire (§29.4)', () => {
   it('turns a redelivered payment into exactly one credit, one hold and one hire', async () => {
     const world = buildWorld();
     const { db, applications, hireFunding } = world;
-    const posted = (await postJob(world)) as Record<string, any>;
+    const posted = await postJob(world);
     const application = (await applications.apply(
       provider,
       posted.id,
@@ -1280,7 +1289,7 @@ describe('job lifecycle, paid by card at hire (§29.4)', () => {
   it('refunds a cancelled card-funded job to the wallet', async () => {
     const world = buildWorld();
     const { db, jobs, applications, wallet, hireFunding } = world;
-    const posted = (await postJob(world)) as Record<string, any>;
+    const posted = await postJob(world);
     const application = (await applications.apply(
       provider,
       posted.id,
@@ -1302,7 +1311,7 @@ describe('job lifecycle, paid by card at hire (§29.4)', () => {
   it('keeps the money in the wallet when a wallet accept won the race', async () => {
     const world = buildWorld({ topUp: 5000 });
     const { db, applications, wallet, hireFunding } = world;
-    const posted = (await postJob(world)) as Record<string, any>;
+    const posted = await postJob(world);
     const application = (await applications.apply(
       provider,
       posted.id,
@@ -1322,7 +1331,7 @@ describe('job lifecycle, paid by card at hire (§29.4)', () => {
 describe('card-funded payouts sent to Stripe Connect (§29.5)', () => {
   async function completedCardJob(world: ReturnType<typeof buildWorld>) {
     const { db, jobs, applications, escrow, wallet, hireFunding } = world;
-    const posted = (await postJob(world)) as Record<string, any>;
+    const posted = await postJob(world);
     const application = (await applications.apply(
       provider,
       posted.id,
@@ -1435,7 +1444,7 @@ describe('card-funded payouts sent to Stripe Connect (§29.5)', () => {
     const { db, escrow, jobs, applications, wallet, hireFunding, fakeStripe } =
       world;
     fakeStripe.refuse('Temporarily unavailable');
-    const posted = (await postJob(world)) as Record<string, any>;
+    const posted = await postJob(world);
     const application = (await applications.apply(
       provider,
       posted.id,
@@ -1480,7 +1489,7 @@ describe('card-funded payouts sent to Stripe Connect (§29.5)', () => {
   it('sends a dispute resolved for the provider on to Stripe as well', async () => {
     const world = buildWorld({ payable: true });
     const { db, jobs, applications, hireFunding, disputes, fakeStripe } = world;
-    const posted = (await postJob(world)) as Record<string, any>;
+    const posted = await postJob(world);
     const application = (await applications.apply(
       provider,
       posted.id,

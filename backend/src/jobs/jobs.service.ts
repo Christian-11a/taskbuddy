@@ -19,8 +19,11 @@ import {
   ProposeJobChangeDto,
   DecideJobChangeDto,
   UpdateJobTaskDto,
+  PriceEstimateDto,
 } from './dto/jobs.dto';
-import type { Profile } from '../common/types';
+import type { JobUrgency, Profile } from '../common/types';
+import { priceFor, priceOptions } from './pricing';
+import type { PriceTier, TaskEffort } from './pricing';
 
 const URGENCY_RANK: Record<string, number> = {
   urgent: 0,
@@ -96,7 +99,62 @@ export class JobsService {
     private readonly geocoding: GeocodingService,
   ) {}
 
+  /** Category base rate and urgency multiplier for the pricing formula. */
+  private async pricingRates(categoryId: number, urgency: JobUrgency) {
+    const [category, setting] = await Promise.all([
+      this.supabase.admin
+        .from('service_categories')
+        .select('base_price')
+        .eq('id', categoryId)
+        .maybeSingle(),
+      this.supabase.admin
+        .from('urgency_settings')
+        .select('price_multiplier')
+        .eq('urgency', urgency)
+        .maybeSingle(),
+    ]);
+    if (category.error) throw new BadRequestException(category.error.message);
+    if (!category.data) throw new BadRequestException('Unknown category');
+    return {
+      basePrice: Number(category.data.base_price),
+      urgencyMultiplier: Number(setting.data?.price_multiplier ?? 1),
+    };
+  }
+
+  /** What the job would cost at another tier, from its stored checklist. */
+  private async tierPriceForJob(jobId: string, tier: PriceTier) {
+    const { data: job, error } = await this.supabase.admin
+      .from('jobs')
+      .select('category_id, urgency, job_tasks(effort)')
+      .eq('id', jobId)
+      .maybeSingle();
+    if (error) throw new BadRequestException(error.message);
+    if (!job) throw new NotFoundException('Job not found');
+    const rates = await this.pricingRates(job.category_id, job.urgency);
+    const efforts = (job.job_tasks ?? []).map(
+      (t: { effort: TaskEffort }) => t.effort,
+    );
+    return priceFor({ ...rates, efforts }, tier);
+  }
+
+  async estimatePrice(dto: PriceEstimateDto) {
+    const rates = await this.pricingRates(
+      dto.category_id,
+      dto.urgency ?? 'normal',
+    );
+    return {
+      options: priceOptions({ ...rates, efforts: dto.task_efforts ?? [] }),
+    };
+  }
+
   async create(user: Profile, dto: CreateJobDto) {
+    const tasks = dto.tasks ?? [];
+    const efforts: TaskEffort[] = tasks.map(
+      (_, i) => dto.task_efforts?.[i] ?? 'moderate',
+    );
+    const urgency = dto.urgency ?? 'normal';
+    const rates = await this.pricingRates(dto.category_id, urgency);
+    const budget = priceFor({ ...rates, efforts }, dto.price_tier);
     const location = await this.geocoding.geocode(dto.address);
     if (dto.photo_urls?.length) {
       this.uploads.assertOwnedPaths(user, dto.photo_urls);
@@ -108,11 +166,12 @@ export class JobsService {
         category_id: dto.category_id,
         title: dto.title,
         description: dto.description,
-        urgency: dto.urgency ?? 'normal',
+        urgency,
         address: dto.address,
         latitude: location.latitude,
         longitude: location.longitude,
-        budget: dto.budget ?? null,
+        budget,
+        price_tier: dto.price_tier,
         scheduled_at: dto.scheduled_at ?? null,
         photo_urls: dto.photo_urls ?? [],
         // recommendation_deadline is filled in by the DB trigger; the column is
@@ -132,6 +191,7 @@ export class JobsService {
             job_id: jobId,
             label,
             position,
+            effort: efforts[position],
           })),
         );
       // The job itself posted fine. Failing the whole request now would leave
@@ -482,6 +542,10 @@ export class JobsService {
   }
 
   async proposeChange(user: Profile, jobId: string, dto: ProposeJobChangeDto) {
+    const newBudget =
+      dto.type === 'price' && dto.new_price_tier
+        ? await this.tierPriceForJob(jobId, dto.new_price_tier)
+        : null;
     const { data, error } = await this.supabase.admin.rpc(
       'job_change_propose',
       {
@@ -489,7 +553,7 @@ export class JobsService {
         p_actor: user.id,
         p_type: dto.type,
         p_schedule: dto.new_scheduled_at ?? null,
-        p_budget: dto.new_budget ?? null,
+        p_budget: newBudget,
         p_reason: dto.reason,
       },
     );
@@ -619,7 +683,7 @@ export class JobsService {
       this.logger.warn(`escrow summary for job ${jobId}: ${error.message}`);
       return null;
     }
-    return (data as { status: string; funding_method: 'wallet' | 'card' } | null) ?? null;
+    return data ?? null;
   }
 
   private async findJob(jobId: string) {
