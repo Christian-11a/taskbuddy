@@ -127,7 +127,50 @@ export class ApplicationsService {
       )
       .eq('job_id', jobId)
       .order('applied_at', { ascending: true });
-    return data ?? [];
+    const applications = (data ?? []) as {
+      provider_id: string;
+      [key: string]: unknown;
+    }[];
+    const certified = await this.certifiedProviders(
+      applications.map((a) => a.provider_id),
+    );
+    return applications.map((a) => ({
+      ...a,
+      certifications: certified.get(a.provider_id) ?? [],
+    }));
+  }
+
+  /**
+   * Approved, unexpired skill credentials per provider (migration 0054): the
+   * Certified badge on each proposal. A read failure only hides badges.
+   */
+  private async certifiedProviders(providerIds: string[]) {
+    const byProvider = new Map<string, { title: string; issuer: string }[]>();
+    if (!providerIds.length) return byProvider;
+    const today = new Date(Date.now() + 8 * 3600_000)
+      .toISOString()
+      .slice(0, 10);
+    const { data, error } = await this.supabase.admin
+      .from('provider_credentials')
+      .select('provider_id, title, issuer, expires_on')
+      .in('provider_id', providerIds)
+      .eq('status', 'approved');
+    if (error) {
+      this.logger.warn(`Credentials not read: ${error.message}`);
+      return byProvider;
+    }
+    for (const row of (data ?? []) as {
+      provider_id: string;
+      title: string;
+      issuer: string;
+      expires_on: string | null;
+    }[]) {
+      if (row.expires_on && row.expires_on < today) continue;
+      const list = byProvider.get(row.provider_id) ?? [];
+      list.push({ title: row.title, issuer: row.issuer });
+      byProvider.set(row.provider_id, list);
+    }
+    return byProvider;
   }
 
   async mine(user: Profile) {
