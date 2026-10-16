@@ -18,6 +18,15 @@ import { notifyNotificationChange } from './notificationEvents';
 
 import EventSource from 'react-native-sse';
 import { friendlyApiMessage } from './apiMessages';
+import type { PriceTier, TaskEffort } from './taskEffort';
+
+/** One clickable price for a job, from `POST /jobs/price-estimate`. */
+export interface PriceOption {
+  tier: PriceTier;
+  amount: number;
+  min: number;
+  max: number;
+}
 
 const PRIMARY_API_URL =
   process.env.EXPO_PUBLIC_API_URL ?? 'https://taskbuddy-kpek.onrender.com';
@@ -1132,7 +1141,8 @@ export const api = {
     address: string;
     latitude: number;
     longitude: number;
-    budget?: number;
+    /** One of the options from `estimatePrice`; the server sets the amount. */
+    price_tier: PriceTier;
     /**
      * Single ISO instant. The form collects a date and a time separately and
      * combines them here — two fields for one instant is timezone-ambiguous,
@@ -1147,8 +1157,22 @@ export const api = {
      * rewriting jobs already posted.
      */
     tasks?: string[];
+    /** Effort of each task, same order, from `effortFor`. */
+    task_efforts?: TaskEffort[];
   }) {
     return authRequest<Job>('/jobs', { method: 'POST', body: input });
+  },
+
+  /** The three clickable price options for the job as described so far. */
+  estimatePrice(input: {
+    category_id: number;
+    urgency: 'urgent' | 'normal' | 'flexible';
+    task_efforts: TaskEffort[];
+  }) {
+    return authRequest<{ options: PriceOption[] }>('/jobs/price-estimate', {
+      method: 'POST',
+      body: input,
+    });
   },
 
   browseJobs(params: {

@@ -6,7 +6,7 @@
  *   1. Service   — which of the seeded categories this job belongs to
  *   2. Location  — where the work happens (prefilled from the saved address)
  *   3. Tasks     — what needs doing, as a checklist, plus the details/photos
- *   4. Urgency   — how soon, plus the schedule and budget that go with it
+ *   4. Urgency   — how soon, plus the schedule and the estimated price that go with it
  *   5. Review    — everything above, then post
  *
  * The step names are the product's, not the backend's: the API takes one flat
@@ -95,7 +95,7 @@ import { useAsyncData } from '../../../src/hooks/useAsyncData';
 import { isList } from '../../../src/lib/savedShapes';
 import { SEVEN_DAYS_MS } from '../../../src/lib/persistentCache';
 import { useScreenBackHandler } from '../../../src/hooks/useLeaveGuard';
-import { api, type GeocodedAddress } from '../../../src/lib/api';
+import { api, type GeocodedAddress, type PriceOption } from '../../../src/lib/api';
 import { peso } from '../../../src/lib/format';
 import PhotoViewer from '../../../src/components/PhotoViewer';
 import ConfirmationModal from '../../../src/components/ConfirmationModal';
@@ -111,20 +111,19 @@ import PostingChecklist, { type PostingStep } from '../../../src/components/post
 import Banner from '../../../src/components/ui/Banner';
 import AddTaskRow from '../../../src/components/post/AddTaskRow';
 import UrgencyRow from '../../../src/components/post/UrgencyRow';
-import BudgetField from '../../../src/components/post/BudgetField';
+import PriceOptionRow from '../../../src/components/post/PriceOptionRow';
+import { effortFor, type PriceTier } from '../../../src/lib/taskEffort';
 import {
   DESCRIPTION_MAX,
   LOCATION_MAX,
   TASKS_MAX,
   TASK_MAX,
   combineDateAndTime,
-  isValidBudget,
   reviseStepErrors,
   stepErrors,
   type PostFieldErrors,
   type PostFormValues,
 } from '../../../src/lib/postJobRules';
-import { nextAmountText } from '../../../src/lib/amountRules';
 import { TITLE_MAX, cleanText } from '../../../src/lib/textRules';
 import CheckRow from '../../../src/components/ui/CheckRow';
 import TextField from '../../../src/components/ui/TextField';
@@ -257,7 +256,12 @@ export default function HOCreateJobScreen({
   const [tempTime, setTempTime] = useState<Date | null>(null);
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [showTimePicker, setShowTimePicker] = useState(false);
-  const [budget, setBudget] = useState('');
+  // The tier the client tapped, and its amount as the server last priced it.
+  // `budget` stays the form's amount so the review and rules read one value.
+  const [priceTier, setPriceTier] = useState<PriceTier | null>(null);
+  const [priceOptions, setPriceOptions] = useState<PriceOption[] | null>(null);
+  const [priceError, setPriceError] = useState(false);
+  const budget = priceOptions?.find((o) => o.tier === priceTier)?.amount.toString() ?? '';
   const [photos, setPhotos] = useState<ImagePicker.ImagePickerAsset[]>([]);
   const [urgency, setUrgency] = useState<'urgent' | 'normal' | 'flexible'>('normal');
   const [calendarMonth, setCalendarMonth] = useState<string | undefined>(undefined);
@@ -275,7 +279,7 @@ export default function HOCreateJobScreen({
   const postInFlight = useRef(false);
 
   const totalSteps = 5;
-  const STEP_LABELS = ['Service', 'Where', 'Tasks', 'When & budget', 'Review'];
+  const STEP_LABELS = ['Service', 'Where', 'Tasks', 'When & price', 'Review'];
   const dateLabel = date?.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) ?? '';
   const timeLabel = time?.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' }) ?? '';
   const dateKey = (value: Date) => `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, '0')}-${String(value.getDate()).padStart(2, '0')}`;
@@ -289,10 +293,20 @@ export default function HOCreateJobScreen({
 
   const scheduledAt = date && time ? combineDateAndTime(date, time) : null;
 
-  const formatBudget = () => {
-    if (!isValidBudget(budget)) return;
-    setBudget(Number(budget.replace(/,/g, '')).toFixed(2));
-  };
+  // Re-price whenever what drives the price changes: the service, the
+  // checklist (more and heavier tasks cost more) and the urgency.
+  const taskEfforts = tasks.map(effortFor);
+  const priceKey = `${categoryId}|${urgency}|${taskEfforts.join(',')}`;
+  useEffect(() => {
+    if (!categoryId) { setPriceOptions(null); return; }
+    let live = true;
+    setPriceError(false);
+    api.estimatePrice({ category_id: categoryId, urgency, task_efforts: taskEfforts })
+      .then((res) => { if (live) setPriceOptions(res.options); })
+      .catch(() => { if (live) { setPriceOptions(null); setPriceError(true); } });
+    return () => { live = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [priceKey]);
 
   /**
    * Resolve the category tapped on Home once the list arrives. The name (not
@@ -531,10 +545,11 @@ export default function HOCreateJobScreen({
         address: location.trim(),
         latitude: resolvedCoordinates!.latitude,
         longitude: resolvedCoordinates!.longitude,
-        budget: Number(budget.replace(/,/g, '')),
+        price_tier: priceTier!,
         scheduled_at: scheduledAt!.toISOString(),
         photo_urls,
         tasks,
+        task_efforts: taskEfforts,
       });
       setStep(6); // success
     } catch (e) {
@@ -575,7 +590,7 @@ export default function HOCreateJobScreen({
   const typedLocation = location.trim() !== '' && location.trim() !== (profile?.address ?? '').trim();
   const hasProgress = Boolean(
     categoryId || titleTouched || descriptionTouched || typedLocation || tasks.length || customTask.trim() ||
-    date || time || budget.trim() || photos.length,
+    date || time || priceTier || photos.length,
   );
 
   const handleStepBack = () => {
@@ -610,7 +625,7 @@ export default function HOCreateJobScreen({
     setCustomTask('');
     setDate(null);
     setTime(null);
-    setBudget('');
+    setPriceTier(null);
     setPhotos([]);
     setPhotoMessage(null);
     setUrgency('normal');
@@ -985,7 +1000,7 @@ export default function HOCreateJobScreen({
           </View>
         )}
 
-        {/* ── Step 4 · Urgency, schedule & budget ──────────────────────── */}
+        {/* ── Step 4 · Urgency, schedule & price ──────────────────────── */}
         {!submitting && step === 4 && (
           <View>
             <Text style={styles.stepTitle}>When, and how much?</Text>
@@ -1039,14 +1054,26 @@ export default function HOCreateJobScreen({
             </View>
 
             <View onLayout={(event) => { fieldPositions.current.budget = event.nativeEvent.layout.y; }} style={styles.inputGroup}>
-              <Text style={styles.inputLabel}>Budget</Text>
-              {/* Its own component, so the reveal finds the scroll view around it (see BudgetField). */}
-              <BudgetField
-                value={budget}
-                invalid={!!fieldErrors.budget}
-                onChangeText={(text) => setBudget((previous) => nextAmountText(previous, text))}
-                onBlur={formatBudget}
-              />
+              <Text style={styles.inputLabel}>Price</Text>
+              <Text style={styles.budgetHint}>
+                Estimated from your tasks and how soon you need it. Urgent and heavier jobs cost more.
+              </Text>
+              <View accessibilityRole="radiogroup" style={styles.priceOptions}>
+                {priceOptions?.map((option) => (
+                  <PriceOptionRow
+                    key={option.tier}
+                    option={option}
+                    selected={priceTier === option.tier}
+                    onSelect={() => setPriceTier(option.tier)}
+                  />
+                ))}
+                {!priceOptions && !priceError && <ActivityIndicator />}
+                {priceError && (
+                  <Text style={styles.inputErrorText} accessibilityLiveRegion="polite">
+                    Couldn't load prices. Check your connection and go back a step to retry.
+                  </Text>
+                )}
+              </View>
               {!!fieldErrors.budget && <Text style={styles.inputErrorText} accessibilityLiveRegion="polite">{fieldErrors.budget}</Text>}
               <Text style={styles.budgetHint}>You only pay when you hire. It's held safely until the job is done.</Text>
             </View>
@@ -1071,7 +1098,7 @@ export default function HOCreateJobScreen({
               <ReviewRow label="Description" value={description || 'Not set'} onEdit={() => goToStep(3)} />
               <ReviewRow label="When" value={whenLine} onEdit={() => goToStep(4)} />
               <ReviewRow
-                label="Budget"
+                label="Price"
                 value={budget ? peso(budget) : 'Not set'}
                 strong
                 onEdit={() => goToStep(4)}
@@ -1313,6 +1340,7 @@ function createThemedStyles(theme: ThemePalette) {
     dateTimeCol: { flex: 1 },
     sectionLabel: { color: V6Colors.ink900, fontSize: 16, fontWeight: '700', fontFamily: 'Inter', marginBottom: 10 },
 
+    priceOptions: { gap: 10, marginTop: 12 },
     budgetHint: { color: V6Colors.ink500, fontSize: 13.5, fontFamily: 'Inter', lineHeight: 18, marginTop: 8 },
 
     reviewCard: {

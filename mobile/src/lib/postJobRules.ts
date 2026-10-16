@@ -5,13 +5,10 @@
  *
  * The limits are the backend's: CreateJobDto and the `jobs` CHECKs for the title,
  * description and tasks, and GeocodeQueryDto for the address (it is geocoded by
- * the same text, so it must be a length the geocoder accepts). The budget has no
- * ceiling on the backend, so the app holds it to the card limit: a job is hired
- * by card or by wallet, and a card cannot pay more than MAX_CARD_PHP.
+ * the same text, so it must be a length the geocoder accepts). The price is not
+ * typed: the client picks one of the server's estimated options.
  */
 
-import { validateAmount, pesoWords } from './amountRules';
-import { MAX_CARD_PHP } from './cardLimits';
 import { textLength, textUnits, validateText, validateTitle } from './textRules';
 
 export const DESCRIPTION_MIN = 20;
@@ -20,14 +17,6 @@ export const LOCATION_MIN = 5;
 export const LOCATION_MAX = 300;
 export const TASKS_MAX = 20;
 export const TASK_MAX = 120;
-/** The most a job budget may be: the most a card can pay (₱100,000). */
-export const BUDGET_MAX_PHP = MAX_CARD_PHP;
-
-/** Why a budget above the card limit is refused, in the product's wording. */
-export function budgetOverMessage(max: number): string {
-  return `Budgets above ${pesoWords(max)} can't be paid by card. Keep it at ${pesoWords(max)} or less.`;
-}
-
 export type PostField = 'service' | 'location' | 'tasks' | 'title' | 'description' | 'date' | 'time' | 'budget';
 export type PostFieldErrors = Partial<Record<PostField, string>>;
 
@@ -69,17 +58,6 @@ export function combineDateAndTime(day: Date, clock: Date): Date {
     0,
     0,
   );
-}
-
-/** Greater than zero, at most two decimal places, commas allowed. */
-export function isValidBudget(value: string): boolean {
-  const normalized = value.trim().replace(/,/g, '');
-  if (normalized === '') return false;
-  const n = Number(normalized);
-  if (!Number.isFinite(n) || n <= 0) return false;
-  const parts = normalized.split('.');
-  if (parts[1] && parts[1].length > 2) return false;
-  return true;
 }
 
 function isBeforeToday(day: Date, now: Date): boolean {
@@ -131,9 +109,8 @@ export function fieldError(field: PostField, values: PostFormValues, now: Date):
       }
       return undefined;
     case 'budget':
-      if (!values.budget.trim()) return 'Please set a budget for this job.';
-      if (!isValidBudget(values.budget)) return 'Enter a valid amount greater than 0, up to 2 decimal places.';
-      return validateAmount(values.budget, { max: BUDGET_MAX_PHP, overMessage: budgetOverMessage }) ?? undefined;
+      // The amount comes from the server's price options; only the pick is checked here.
+      return values.budget.trim() ? undefined : 'Please pick a price for this job.';
   }
 }
 
