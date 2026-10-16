@@ -27,8 +27,8 @@ export function accountLabel(account: Pick<PayoutAccount, 'method' | 'bank_name'
 }
 
 /** The first thing wrong with the form, or null. */
-export function payoutProblem(input: { method: PayoutMethod; bankName: string; accountName: string; accountNumber: string }): string | null {
-  if (input.method === 'bank' && textLength(input.bankName) < 2) return 'Enter the bank name, e.g. BPI.';
+export function payoutProblem(input: { method: PayoutMethod; bankCode: string; accountName: string; accountNumber: string }): string | null {
+  if (input.method === 'bank' && !input.bankCode) return 'Choose your bank.';
   if (textLength(input.accountName) < 2) return 'Enter the account holder name.';
   const digits = input.accountNumber.replace(/\D/g, '');
   if (digits.length < 6 || digits.length > 20) return 'Enter a number of 6 to 20 digits.';
@@ -36,16 +36,17 @@ export function payoutProblem(input: { method: PayoutMethod; bankName: string; a
 }
 
 /**
- * Where a provider's payouts are sent: a GCash, Maya or bank account. This is
- * a prototype, so a payout is recorded as sent here and no money moves.
+ * Where a provider's payouts are sent: a GCash, Maya or bank account. Payouts
+ * go out through Xendit's sandbox, so no real money moves.
  */
 export default function SPPayoutAccountScreen({ onBack }: { onBack: () => void }) {
   const { styles, Colors, V6Colors, appearance } = useThemedStyles(createThemedStyles);
   const headerTop = useHeaderTop();
   const account = useAsyncData(() => api.payoutAccount(), []);
   const history = useAsyncData(() => api.paymentHistory(), []);
+  const banks = useAsyncData(() => api.payoutBanks(), []);
   const [method, setMethod] = useState<PayoutMethod>('gcash');
-  const [bankName, setBankName] = useState('');
+  const [bankCode, setBankCode] = useState('');
   const [accountName, setAccountName] = useState('');
   const [accountNumber, setAccountNumber] = useState('');
   const [busy, setBusy] = useState(false);
@@ -55,12 +56,11 @@ export default function SPPayoutAccountScreen({ onBack }: { onBack: () => void }
   useEffect(() => {
     if (!account.data) return;
     setMethod(account.data.method);
-    setBankName(account.data.bank_name ?? '');
     setAccountName(account.data.account_name);
   }, [account.data]);
 
   const save = async () => {
-    const problem = payoutProblem({ method, bankName, accountName, accountNumber });
+    const problem = payoutProblem({ method, bankCode, accountName, accountNumber });
     if (problem) {
       setError(problem);
       return;
@@ -71,7 +71,7 @@ export default function SPPayoutAccountScreen({ onBack }: { onBack: () => void }
     try {
       await api.linkPayoutAccount({
         method,
-        bank_name: method === 'bank' ? cleanText(bankName) : undefined,
+        bank_code: method === 'bank' ? bankCode : undefined,
         account_name: cleanText(accountName),
         account_number: accountNumber.replace(/\D/g, ''),
       });
@@ -100,7 +100,7 @@ export default function SPPayoutAccountScreen({ onBack }: { onBack: () => void }
       <KeyboardAwareScrollView style={styles.scroll} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
         <Text style={styles.intro}>
           When a client releases a payment, it is sent to this account, less the platform fee. TaskBuddy does not keep
-          a balance for you. Prototype: payouts are simulated and no real money moves.
+          a balance for you. Prototype: payouts go through Xendit's test mode and no real money moves.
         </Text>
 
         {account.loading && !account.data && <ContentSkeleton variant="list" />}
@@ -138,7 +138,28 @@ export default function SPPayoutAccountScreen({ onBack }: { onBack: () => void }
           })}
         </View>
         {method === 'bank' && (
-          <TextField label="Bank name" value={bankName} onChangeText={setBankName} maxLength={80} editable={!busy} keyboardAppearance={appearance} />
+          <>
+            <Text style={styles.label}>Bank</Text>
+            {!!banks.error && <LoadErrorCard title="Couldn't load the bank list" message={banks.error} onRetry={banks.reload} />}
+            <View style={styles.chips} accessibilityRole="radiogroup">
+              {(banks.data ?? []).map((bank) => {
+                const selected = bankCode === bank.code;
+                return (
+                  <Tap
+                    key={bank.code}
+                    disabled={busy}
+                    accessibilityRole="radio"
+                    accessibilityLabel={bank.name}
+                    accessibilityState={{ selected }}
+                    onPress={() => setBankCode(bank.code)}
+                    style={[styles.chip, selected && styles.chipOn]}
+                  >
+                    <Text style={[styles.chipText, selected && styles.chipTextOn]}>{bank.name}</Text>
+                  </Tap>
+                );
+              })}
+            </View>
+          </>
         )}
         <TextField label="Account holder name" value={accountName} onChangeText={setAccountName} maxLength={120} editable={!busy} keyboardAppearance={appearance} />
         <TextField

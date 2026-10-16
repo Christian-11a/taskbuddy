@@ -2,12 +2,13 @@
 
 ## October 2026 revisions (not yet deployed)
 
-- **No wallet.** Hires are paid at a PayMongo test-mode checkout (GCash, Maya,
+- **No wallet.** Hires are paid at a Xendit test-mode checkout (GCash, Maya,
   card, online banking). Payouts go to the provider's linked GCash/Maya/bank
-  account and refunds to the original payment method, as simulated payouts.
+  account through Xendit's sandbox, and refunds (simulated) to the original
+  payment method.
   The Wallet tab is now **Messages** (every job conversation). Older sections
   below that describe the wallet are history. Needs backend migrations
-  0053–0056 and `PAYMONGO_SECRET_KEY` / `PAYMONGO_WEBHOOK_SECRET` on the API.
+  0053–0058 and `XENDIT_SECRET_KEY` / `XENDIT_CALLBACK_TOKEN` on the API.
 - **Price options instead of a budget field.** Step 4 of posting a job shows
   three tappable prices (`POST /jobs/price-estimate`) based on the service,
   the tasks' effort and the urgency.
@@ -327,7 +328,7 @@ sign-in, and notification rows remain available in the in-app list either way.
 | `HOCreateJobScreen` | `GET /categories`, `GET /jobs/geocode`, image upload, `POST /jobs`. The guided 5-step flow: service → location → tasks → urgency → review |
 | `HOJobDetailScreen` | `GET /jobs/:id`, `GET /providers/:id`, `POST /jobs/:id/recommendations/trigger`; complete / cancel / chat, review-state gating, manual provider-matching retry, and read-only task checklist |
 | `HOChatScreen` | `POST /conversations` then message listing |
-| `HOJobApplicationsScreen` | `GET /jobs/:id/applications`; Accept opens `HirePaymentModal` — `POST /payments/hire-checkout-session` (PayMongo, then polls for `accepted`), or `POST /applications/:id/accept` for a job with no price; Reject |
+| `HOJobApplicationsScreen` | `GET /jobs/:id/applications`; Accept opens `HirePaymentModal` — `POST /payments/hire-checkout-session` (Xendit, then polls for `accepted`), or `POST /applications/:id/accept` for a job with no price; Reject |
 | `ConversationsScreen` | Messages tab (both roles): `GET /conversations`; tapping one opens that job's chat |
 | `HODisputeFilingScreen` | `POST /jobs/:jobId/disputes` |
 | `HOProfile` | Displays profile data; menu is Edit Profile / Settings / Help & Support |
@@ -360,7 +361,7 @@ sign-in, and notification rows remain available in the in-app list either way.
 Hiring holds the job's price in escrow. There is no wallet. Accept on a
 proposal (`HOJobApplicationsScreen`) opens `HirePaymentModal`:
 
-- **Pay online**: `POST /payments/hire-checkout-session` opens a PayMongo
+- **Pay online**: `POST /payments/hire-checkout-session` opens a Xendit
   test-mode checkout (GCash, Maya, card or online banking) for the full price.
   **The app does not do the hire.** The payment webhook holds the money in
   escrow and accepts the application, so after the browser closes the screen

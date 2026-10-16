@@ -9,6 +9,7 @@ jest.mock('../../../../src/lib/api', () => ({
     payoutAccount: jest.fn(),
     paymentHistory: jest.fn(),
     linkPayoutAccount: jest.fn(),
+    payoutBanks: jest.fn(),
   },
 }));
 
@@ -22,15 +23,15 @@ describe('accountLabel', () => {
 });
 
 describe('payoutProblem', () => {
-  const ok = { method: 'gcash' as const, bankName: '', accountName: 'Ana Reyes', accountNumber: '0917 123 4567' };
+  const ok = { method: 'gcash' as const, bankCode: '', accountName: 'Ana Reyes', accountNumber: '0917 123 4567' };
 
   it('accepts a complete form', () => {
     expect(payoutProblem(ok)).toBeNull();
   });
 
-  it('asks for the bank name only for a bank account', () => {
-    expect(payoutProblem({ ...ok, method: 'bank' })).toBe('Enter the bank name, e.g. BPI.');
-    expect(payoutProblem({ ...ok, method: 'bank', bankName: 'BPI' })).toBeNull();
+  it('asks for the bank only for a bank account', () => {
+    expect(payoutProblem({ ...ok, method: 'bank' })).toBe('Choose your bank.');
+    expect(payoutProblem({ ...ok, method: 'bank', bankCode: 'PH_BPI' })).toBeNull();
   });
 
   it('asks for the holder name and a 6 to 20 digit number', () => {
@@ -47,6 +48,10 @@ describe('SPPayoutAccountScreen', () => {
     (api.payoutAccount as jest.Mock).mockResolvedValue(null);
     (api.paymentHistory as jest.Mock).mockResolvedValue([]);
     (api.linkPayoutAccount as jest.Mock).mockResolvedValue({});
+    (api.payoutBanks as jest.Mock).mockResolvedValue([
+      { code: 'PH_BPI', name: 'BPI' },
+      { code: 'PH_BDO', name: 'BDO' },
+    ]);
   });
 
   it('saves a GCash account with the number as digits only', async () => {
@@ -60,11 +65,28 @@ describe('SPPayoutAccountScreen', () => {
     await waitFor(() => expect(api.linkPayoutAccount).toHaveBeenCalledTimes(1));
     expect(api.linkPayoutAccount).toHaveBeenCalledWith({
       method: 'gcash',
-      bank_name: undefined,
+      bank_code: undefined,
       account_name: 'Ana Reyes',
       account_number: '09171234567',
     });
     expect(await screen.findByText('Account saved.')).toBeTruthy();
+  });
+
+  it('sends the chosen bank by its Xendit channel code', async () => {
+    render(<SPPayoutAccountScreen onBack={jest.fn()} />);
+
+    await screen.findByTestId('no-account');
+    fireEvent.press(screen.getByRole('radio', { name: 'Bank' }));
+    fireEvent.press(await screen.findByRole('radio', { name: 'BDO' }));
+    fireEvent.changeText(screen.getByLabelText('Account holder name'), 'Ana Reyes');
+    fireEvent.changeText(screen.getByLabelText('Account number'), '001234567890');
+    fireEvent.press(screen.getByRole('button', { name: 'Save account' }));
+
+    await waitFor(() =>
+      expect(api.linkPayoutAccount).toHaveBeenCalledWith(
+        expect.objectContaining({ method: 'bank', bank_code: 'PH_BDO', account_number: '001234567890' }),
+      ),
+    );
   });
 
   it('does not save an incomplete form, and says what is missing', async () => {

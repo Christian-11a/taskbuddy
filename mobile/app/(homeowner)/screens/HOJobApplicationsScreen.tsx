@@ -10,7 +10,7 @@
  * prop (App.tsx passes it) but the old header never rendered a back button,
  * so there was no in-app way off this screen except the OS back gesture.
  *
- * Hire opens `HirePaymentModal`: pay online at a hosted checkout (PayMongo
+ * Hire opens `HirePaymentModal`: pay online at a hosted checkout (Xendit
  * test mode: GCash, Maya, card or online banking). There is no wallet
  * (migration 0056). Nothing is paid until the sheet's own "Confirm and hire"
  * is pressed. The hire is made by the payment webhook, not by this screen, so

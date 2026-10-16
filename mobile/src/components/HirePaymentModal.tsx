@@ -4,7 +4,7 @@
  * How the homeowner pays for a hire (BACKEND_SCHEMA.md §29.4): the job's price,
  * paid online and held in escrow through the three-day completion warranty.
  * There is no wallet (migration 0056). The client pays on a hosted checkout —
- * PayMongo test mode, with GCash, Maya, card or online banking — and the hire
+ * Xendit test mode, with GCash, Maya, card or online banking — and the hire
  * is made by the payment webhook, not by the app, so the screen behind this
  * waits for the application to turn `accepted`.
  *
@@ -122,7 +122,7 @@ export default function HirePaymentModal({
     : `This job has no budget, so nothing is held — ${providerName} is hired straight away.`;
 
   const cardMeta = cardAllowed
-    ? `${peso(budget)} on PayMongo's secure page (test mode)`
+    ? `${peso(budget)} on Xendit's secure page (test mode)`
     : budget != null && budget < MIN_TOPUP_PHP
       ? `Online payments need at least ${peso(MIN_TOPUP_PHP)}`
       : `Online payments can't take more than ${peso(MAX_CARD_PHP)}`;

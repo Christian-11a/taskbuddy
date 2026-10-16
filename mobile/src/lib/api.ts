@@ -1549,7 +1549,7 @@ export const api = {
 
   // ── Hire payments ───────────────────────────────────────────────────────────
   /**
-   * Pay-at-hire: a hosted checkout for the job's full price (PayMongo test
+   * Pay-at-hire: a hosted checkout for the job's full price (Xendit test
    * mode: GCash, Maya, card, online banking). Open `url` with
    * `openAuthSessionAsync`; the browser comes back to `app_redirect` with
    * `?hire=success|cancelled`. **Nothing is hired by this call or by the
@@ -1567,9 +1567,14 @@ export const api = {
   payoutAccount() {
     return authRequest<PayoutAccount | null>('/payouts/account');
   },
+  /** Banks a payout can go to, by Xendit channel code. */
+  payoutBanks() {
+    return authRequest<{ code: string; name: string }[]>('/payouts/banks');
+  },
   linkPayoutAccount(input: {
     method: PayoutMethod;
-    bank_name?: string;
+    /** Bank payouts only: a code from `payoutBanks()`. */
+    bank_code?: string;
     account_name: string;
     account_number: string;
   }) {

@@ -26,7 +26,7 @@ function renderSheet(overrides: Partial<Props> = {}) {
   return { props, view };
 }
 
-const ONLINE = "GCash, Maya, card or bank, ₱1,000.00 on PayMongo's secure page (test mode)";
+const ONLINE = "GCash, Maya, card or bank, ₱1,000.00 on Xendit's secure page (test mode)";
 const onlineRadio = () => screen.getByRole('radio', { name: ONLINE });
 
 describe('HirePaymentModal: paying online', () => {

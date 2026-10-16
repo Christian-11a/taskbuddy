@@ -42,7 +42,7 @@ jest.mock('../../../../src/components/Toast', () => ({
   showToast: jest.fn(),
 }));
 
-const ONLINE = "GCash, Maya, card or bank, ₱1,000.00 on PayMongo's secure page (test mode)";
+const ONLINE = "GCash, Maya, card or bank, ₱1,000.00 on Xendit's secure page (test mode)";
 
 const TWO_HOURS_AGO = new Date(Date.now() - 2 * 3600_000 - 1000).toISOString();
 
@@ -684,7 +684,7 @@ describe('HOJobApplicationsScreen: a card payment the server has not confirmed y
     expect(api.createHireCheckoutSession).toHaveBeenCalledTimes(1);
   });
 
-  it('a browser closed before PayMongo finished also waits for the server, and says no payment was confirmed yet', async () => {
+  it('a browser closed before Xendit finished also waits for the server, and says no payment was confirmed yet', async () => {
     (openRedirectSession as jest.Mock).mockResolvedValue({ type: 'cancel' });
     await renderScreen();
     await payByCard();
@@ -697,7 +697,7 @@ describe('HOJobApplicationsScreen: a card payment the server has not confirmed y
     expect(api.createHireCheckoutSession).toHaveBeenCalledTimes(1);
   });
 
-  it('a payment cancelled on PayMongo is not waiting: the pay buttons stay, and nothing is polled', async () => {
+  it('a payment cancelled on Xendit is not waiting: the pay buttons stay, and nothing is polled', async () => {
     (openRedirectSession as jest.Mock).mockResolvedValue({ type: 'success', url: 'taskbuddy://hire?hire=cancelled' });
     await renderScreen();
     await payByCard();
