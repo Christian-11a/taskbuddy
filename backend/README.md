@@ -131,6 +131,7 @@ Job lifecycle: `open → recommending → assigned → in_progress → completed
    | `0051_admin_alert_notification_type.sql` | Adds the notification type for persistent admin inbox alerts. Apply before 0052. |
    | `0052_web_admin_handoffs.sql` | Structured case recipients/evidence requests, admin inbox events, notification broadcast delivery counters, and dismissal state. |
    | `0053_price_tiers.sql` | Category base prices, urgency price multipliers, per-task effort and the job's chosen price tier. **Apply before deploying the updated API.** |
+   | `0054_provider_credentials.sql` | Provider skill credentials and the private `provider-credentials` bucket. |
 
    The linked project's migration history has been reconciled after checking
    the existing schema. Migrations 0046–0052 were applied in order, and their
@@ -388,6 +389,10 @@ have to buffer every image.
 | Method & path | Description |
 |---|---|
 | `POST /verifications` 🔒 (provider) | `{ id_document_path, selfie_path }` — 400 if one is already pending, or if either upload fails the pre-check (missing/zero-byte/non-image object; migration 0014) |
+| `GET /providers/me/credentials` 🔒 (provider) | own skill credentials (TESDA NC, PRC licence, trade certificate) with status `pending`/`approved`/`rejected`/`expired` and a signed document URL (migration 0054) |
+| `POST /providers/me/credentials` 🔒 (provider) | `{ category_id, credential_type, title, issuer, credential_number?, issued_on?, expires_on?, document_path }` — photo uploaded first to the private `provider-credentials` bucket; at most 20; an already-expired one is a 400 |
+| `DELETE /providers/me/credentials/:id` 🔒 (provider) | withdraw a credential that is not approved |
+| `GET /providers/:id/credentials` 🔒 | approved, unexpired credentials only, without the document — the "Certified" badge per service |
 | `POST /verifications/identity-session` 🔒 (provider) | starts a **Stripe Identity** session instead → `{ verification, session_id, ephemeral_key_secret, url, publishable_key }`. Documents go to Stripe and never reach this server; the result arrives by webhook, so poll `GET /verifications/me` |
 | `GET /verifications/me` 🔒 (provider) | latest submission + status |
 
@@ -519,6 +524,9 @@ The three `POST` routes carry the payments rate limit. Connect is optional: with
 | `GET /admin/skill-requests?search=&status=&limit=&offset=` | provider service-change queue; migration 0038 filters provider/category search before pagination and returns the matching total |
 | `POST /admin/verifications/:id/approve` | approve → sets `provider_profiles.is_verified` |
 | `POST /admin/verifications/:id/reject` | `{ reason? }` |
+| `GET /admin/credentials?status=&limit=&offset=` | credential review queue, `pending` by default, oldest first, with signed document URLs |
+| `POST /admin/credentials/:id/approve` | approve a pending credential; audited, provider notified; a second decision is a 409 |
+| `POST /admin/credentials/:id/reject` | `{ reason }` (1–500) |
 | `GET /admin/transactions?search=&status=&limit=&offset=` | escrow records with both parties + service name; search matches transaction ID, client/provider name, or job title (story #17/#18) |
 | `GET /admin/disputes?status=&limit=&offset=` | dispute queue |
 | `POST /admin/disputes/:id/resolve` | `{ resolution: 'released_to_provider' \| 'refunded_to_client', note? }` (story #20) |

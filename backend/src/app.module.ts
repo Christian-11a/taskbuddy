@@ -18,6 +18,7 @@ import { JobsModule } from './jobs/jobs.module';
 import { ApplicationsModule } from './applications/applications.module';
 import { ReviewsModule } from './reviews/reviews.module';
 import { ProvidersModule } from './providers/providers.module';
+import { CredentialsModule } from './credentials/credentials.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { RecommendationsModule } from './recommendations/recommendations.module';
 import { AdminModule } from './admin/admin.module';
@@ -74,6 +75,7 @@ import { InternalModule } from './internal/internal.module';
     ApplicationsModule,
     ReviewsModule,
     ProvidersModule,
+    CredentialsModule,
     NotificationsModule,
     RecommendationsModule,
     AdminModule,
