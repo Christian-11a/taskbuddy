@@ -21,6 +21,12 @@ type QueryResult = {
 
 function createSupabaseMock(resultsByTable: Record<string, QueryResult[]>) {
   const calls: { table: string; method: string; args: unknown[] }[] = [];
+  const rpc = jest.fn((name: string, args: unknown) => {
+    calls.push({ table: `rpc:${name}`, method: 'rpc', args: [args] });
+    return Promise.resolve(
+      resultsByTable[`rpc:${name}`]?.shift() ?? { data: null, error: null },
+    );
+  });
   const from = jest.fn((table: string) => {
     const result = resultsByTable[table]?.shift() ?? {
       data: null,
@@ -43,7 +49,10 @@ function createSupabaseMock(resultsByTable: Record<string, QueryResult[]>) {
     ) => Promise.resolve(result).then(resolve, reject);
     return builder;
   });
-  return { supabase: { admin: { from } } as unknown as SupabaseService, calls };
+  return {
+    supabase: { admin: { from, rpc } } as unknown as SupabaseService,
+    calls,
+  };
 }
 
 const ok = (data: unknown): QueryResult => ({ data, error: null });
@@ -576,5 +585,116 @@ describe('HireFundingService with PayMongo (test mode)', () => {
 
     expect(escrow.hold).toHaveBeenCalledWith('j1', 'p1', undefined);
     expect(applications.acceptFunded).toHaveBeenCalled();
+  });
+});
+
+describe('HireFundingService: paying for a price increase', () => {
+  const paid = {
+    sessionId: 'cs_pc',
+    paymentId: 'pay_pc',
+    amountCentavos: 20000,
+    currency: 'php',
+    method: 'gcash',
+    metadata: {
+      purpose: 'price_change',
+      profile_id: 'c1',
+      job_id: 'j1',
+      change_request_id: 'r1',
+    },
+  };
+
+  it('opens a checkout for the difference only', async () => {
+    const createCheckout = jest.fn(() =>
+      Promise.resolve({
+        id: 'cs_pc',
+        url: 'https://checkout.paymongo.com/cs_pc',
+      }),
+    );
+    const { service } = build(
+      {
+        job_change_requests: [
+          ok({
+            id: 'r1',
+            status: 'awaiting_payment',
+            new_budget: 1200,
+            job_id: 'j1',
+            jobs: { id: 'j1', title: 'Fix sink', client_id: 'c1' },
+          }),
+        ],
+      },
+      {
+        paymongo: { configured: true, createCheckout },
+        findByJob: jest.fn(() =>
+          Promise.resolve({ id: 'e1', status: 'held', amount: 1000 }),
+        ),
+      },
+    );
+
+    const result = await service.createPriceChangeCheckout(
+      client,
+      'r1',
+      APP,
+      BASE,
+    );
+
+    expect(result.amount).toBe(200);
+    expect(createCheckout).toHaveBeenCalledWith(
+      expect.objectContaining({
+        amountCentavos: 20000,
+        metadata: expect.objectContaining({
+          purpose: 'price_change',
+          change_request_id: 'r1',
+        }),
+      }),
+    );
+  });
+
+  it('refuses anyone but the client', async () => {
+    const { service } = build(
+      {
+        job_change_requests: [
+          ok({
+            id: 'r1',
+            status: 'awaiting_payment',
+            new_budget: 1200,
+            job_id: 'j1',
+            jobs: { id: 'j1', title: 'Fix sink', client_id: 'someone-else' },
+          }),
+        ],
+      },
+      { paymongo: { configured: true } },
+    );
+    await expect(
+      service.createPriceChangeCheckout(client, 'r1', APP, BASE),
+    ).rejects.toThrow('Only the client');
+  });
+
+  it('applies a paid difference to the job', async () => {
+    const { service, calls, escrow } = build({});
+
+    await service.completeFromPaymongo(paid);
+
+    expect(calls).toContainEqual(
+      expect.objectContaining({
+        table: 'rpc:job_change_apply_payment',
+        args: [{ p_request_id: 'r1', p_amount: 200 }],
+      }),
+    );
+    expect(escrow.passThrough).not.toHaveBeenCalled();
+  });
+
+  it('refunds a payment the request can no longer take', async () => {
+    const { service, calls, escrow } = build({
+      'rpc:job_change_apply_payment': [
+        { data: null, error: { message: 'expired', code: 'TB409' } },
+      ],
+    });
+
+    await service.completeFromPaymongo(paid);
+
+    expect(escrow.passThrough).toHaveBeenCalledWith(['c1']);
+    expect(writes(calls, 'notifications')).toEqual([
+      expect.objectContaining({ title: 'Payment refunded' }),
+    ]);
   });
 });

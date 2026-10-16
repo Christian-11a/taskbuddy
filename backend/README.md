@@ -134,6 +134,7 @@ Job lifecycle: `open → recommending → assigned → in_progress → completed
    | `0054_provider_credentials.sql` | Provider skill credentials and the private `provider-credentials` bucket. |
    | `0055_terms_versions.sql` | Which Terms & Conditions version each account accepted. |
    | `0056_retire_wallet.sql` | Retires the in-app wallet: linked GCash/Maya/bank payout accounts, `pass_through_balances()` (simulated payouts and refunds, so no balance is ever kept), and a cut-over that removes existing balances. **Apply before deploying the updated API.** |
+   | `0057_price_change_payments.sql` | Price change requests without a wallet: decreases refunded, increases wait for the client to pay the difference (`awaiting_payment`, 24 h). |
 
    The linked project's migration history has been reconciled after checking
    the existing schema. Migrations 0046–0052 were applied in order, and their
@@ -719,8 +720,15 @@ currency. This is a prototype: no real money moves.
   until they link one.
 - `wallet_transactions` remains the internal ledger the escrow functions write
   to; balances only exist between a settlement and its pass-through.
+- **Price changes (migration 0057):** a decrease is refunded to the client's
+  payment method as soon as it is accepted. An accepted increase waits in
+  `awaiting_payment` for up to 24 hours while the client pays the difference
+  (`POST /payments/price-change-checkout-session`
+  `{ change_request_id, app_redirect }`); the webhook then holds it and applies
+  the new price. Unpaid, it expires and the price stays. A payment that arrives
+  too late is refunded.
 - Not changed yet: the web admin's withdrawal queue and recovery credits (now
-  unused), and price change requests, which still assume a wallet top-up.
+  unused).
 
 ## Pending handoffs
 

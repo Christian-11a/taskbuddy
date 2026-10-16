@@ -56,3 +56,12 @@ export class CreateHireCheckoutDto {
   @IsString()
   app_redirect!: string;
 }
+
+/** `POST /payments/price-change-checkout-session` (migration 0057). */
+export class CreatePriceChangeCheckoutDto {
+  @IsUUID()
+  change_request_id!: string;
+
+  @IsString()
+  app_redirect!: string;
+}

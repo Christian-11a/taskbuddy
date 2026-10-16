@@ -21,7 +21,10 @@ import { CurrentUser } from '../auth/current-user.decorator';
 import { PaymentsService } from './payments.service';
 import { StripeService } from './stripe.service';
 import { publicOrigin } from './public-origin';
-import { CreateHireCheckoutDto } from './dto/payments.dto';
+import {
+  CreateHireCheckoutDto,
+  CreatePriceChangeCheckoutDto,
+} from './dto/payments.dto';
 import { HireFundingService } from './hire-funding.service';
 import { PaymongoService } from './paymongo.service';
 import { Roles } from '../auth/roles.decorator';
@@ -71,6 +74,28 @@ export class PaymentsController {
     @Req() req: Request,
   ) {
     return this.hireFunding.createCheckout(user, dto, publicOrigin(req));
+  }
+
+  /**
+   * Pays the difference on an agreed price increase (migration 0057): a
+   * PayMongo test-mode checkout. The webhook applies the new price.
+   */
+  @Post('price-change-checkout-session')
+  @HttpCode(200)
+  @ThrottlePayments()
+  @UseGuards(JwtAuthGuard)
+  @Roles('client')
+  priceChangeCheckoutSession(
+    @CurrentUser() user: Profile,
+    @Body() dto: CreatePriceChangeCheckoutDto,
+    @Req() req: Request,
+  ) {
+    return this.hireFunding.createPriceChangeCheckout(
+      user,
+      dto.change_request_id,
+      dto.app_redirect,
+      publicOrigin(req),
+    );
   }
 
   /**

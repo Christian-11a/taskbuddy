@@ -578,6 +578,16 @@ export class JobsService {
     if (error?.code === 'TB403') throw new ForbiddenException(error.message);
     if (error?.code === 'TB404') throw new NotFoundException(error.message);
     if (error) throw new BadRequestException(error.message);
+    // A price decrease credited the difference; send it back to the client's
+    // payment method now (migration 0057). A no-op for anything else.
+    const { data: job } = await this.supabase.admin
+      .from('job_change_requests')
+      .select('jobs(client_id)')
+      .eq('id', requestId)
+      .maybeSingle();
+    const clientId = (job as { jobs?: { client_id?: string } } | null)?.jobs
+      ?.client_id;
+    if (clientId) await this.escrow.passThrough([clientId]);
     return data;
   }
 
