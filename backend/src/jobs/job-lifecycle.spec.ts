@@ -828,6 +828,11 @@ function buildWorld(
   } as unknown as AdminActionsService;
   const uploads = {
     assertOwnedPaths: jest.fn(),
+    assertValidImage: jest.fn().mockResolvedValue(undefined),
+    signedDownloadUrl: jest.fn(() => Promise.resolve('https://signed/photo')),
+    publicUrl: jest.fn(
+      (_bucket: string, path: string) => `https://public/${path}`,
+    ),
   } as unknown as UploadsService;
 
   if (options.payable) {
@@ -864,7 +869,7 @@ function buildWorld(
   } as never);
   const applications = new ApplicationsService(supabase, escrow);
   const reviews = new ReviewsService(supabase);
-  const disputes = new DisputesService(supabase, payouts);
+  const disputes = new DisputesService(supabase, payouts, uploads);
   // Only the webhook half runs here; opening Checkout needs Stripe itself.
   const hireFunding = new HireFundingService(
     supabase,
@@ -951,6 +956,7 @@ describe('job lifecycle, end to end', () => {
     const taskId = db.rows('job_tasks')[0].id;
     const midway = (await jobs.updateTask(provider, posted.id, taskId, {
       is_done: true,
+      proof_photo_paths: ['p1/proof.jpg'],
     })) as Record<string, any>;
     expect(midway.job_tasks.find((t: Row) => t.id === taskId).is_done).toBe(
       true,
@@ -960,7 +966,10 @@ describe('job lifecycle, end to end', () => {
     for (const task of world.db
       .rows('job_tasks')
       .filter((task) => task.job_id === posted.id)) {
-      await jobs.updateTask(provider, posted.id, task.id, { is_done: true });
+      await jobs.updateTask(provider, posted.id, task.id, {
+        is_done: true,
+        proof_photo_paths: ['p1/proof.jpg'],
+      });
     }
     await jobs.complete(client, posted.id);
     expect(await escrow.findByJob(posted.id)).toMatchObject({ status: 'held' });
@@ -1025,7 +1034,10 @@ describe('job lifecycle, end to end', () => {
     for (const task of world.db
       .rows('job_tasks')
       .filter((task) => task.job_id === posted.id)) {
-      await jobs.updateTask(provider, posted.id, task.id, { is_done: true });
+      await jobs.updateTask(provider, posted.id, task.id, {
+        is_done: true,
+        proof_photo_paths: ['p1/proof.jpg'],
+      });
     }
     await jobs.complete(client, posted.id);
     expect(await escrow.findByJob(posted.id)).toMatchObject({ status: 'held' });
@@ -1128,7 +1140,10 @@ describe('job lifecycle, end to end', () => {
     for (const task of world.db
       .rows('job_tasks')
       .filter((task) => task.job_id === posted.id)) {
-      await jobs.updateTask(provider, posted.id, task.id, { is_done: true });
+      await jobs.updateTask(provider, posted.id, task.id, {
+        is_done: true,
+        proof_photo_paths: ['p1/proof.jpg'],
+      });
     }
     await jobs.complete(client, posted.id);
     expect(await wallet.balanceFor('p1')).toBe(0);
@@ -1168,7 +1183,10 @@ describe('job lifecycle, end to end', () => {
     for (const task of world.db
       .rows('job_tasks')
       .filter((task) => task.job_id === posted.id)) {
-      await jobs.updateTask(provider, posted.id, task.id, { is_done: true });
+      await jobs.updateTask(provider, posted.id, task.id, {
+        is_done: true,
+        proof_photo_paths: ['p1/proof.jpg'],
+      });
     }
     await jobs.complete(client, posted.id);
     await reviews.create(client, posted.id, { rating: 4 });
@@ -1252,7 +1270,10 @@ describe('job lifecycle, paid by card at hire (§29.4)', () => {
     for (const task of world.db
       .rows('job_tasks')
       .filter((task) => task.job_id === posted.id)) {
-      await jobs.updateTask(provider, posted.id, task.id, { is_done: true });
+      await jobs.updateTask(provider, posted.id, task.id, {
+        is_done: true,
+        proof_photo_paths: ['p1/proof.jpg'],
+      });
     }
     await jobs.complete(client, posted.id);
     expect(await escrow.findByJob(posted.id)).toMatchObject({ status: 'held' });
@@ -1330,7 +1351,10 @@ describe('card-funded payouts sent to Stripe Connect (§29.5)', () => {
     for (const task of world.db
       .rows('job_tasks')
       .filter((task) => task.job_id === posted.id)) {
-      await jobs.updateTask(provider, posted.id, task.id, { is_done: true });
+      await jobs.updateTask(provider, posted.id, task.id, {
+        is_done: true,
+        proof_photo_paths: ['p1/proof.jpg'],
+      });
     }
     await jobs.complete(client, posted.id);
     expect(await escrow.findByJob(posted.id)).toMatchObject({ status: 'held' });
@@ -1443,7 +1467,10 @@ describe('card-funded payouts sent to Stripe Connect (§29.5)', () => {
     for (const task of world.db
       .rows('job_tasks')
       .filter((task) => task.job_id === posted.id)) {
-      await jobs.updateTask(provider, posted.id, task.id, { is_done: true });
+      await jobs.updateTask(provider, posted.id, task.id, {
+        is_done: true,
+        proof_photo_paths: ['p1/proof.jpg'],
+      });
     }
     await jobs.complete(client, posted.id);
     expect(await escrow.findByJob(posted.id)).toMatchObject({ status: 'held' });

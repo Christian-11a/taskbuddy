@@ -136,6 +136,7 @@ Job lifecycle: `open → recommending → assigned → in_progress → completed
    | `0056_retire_wallet.sql` | Retires the in-app wallet: linked GCash/Maya/bank payout accounts, `pass_through_balances()` (simulated payouts and refunds, so no balance is ever kept), and a cut-over that removes existing balances. **Apply before deploying the updated API.** |
    | `0057_price_change_payments.sql` | Price change requests without a wallet: decreases refunded, increases wait for the client to pay the difference (`awaiting_payment`, 24 h). |
    | `0058_xendit_payouts.sql` | Xendit replaces PayMongo: payout accounts carry a Xendit channel code, and provider payouts can be queued for Xendit's sandbox Payouts API. **Apply before deploying the updated API.** |
+   | `0059_photo_evidence.sql` | Photo evidence: up to 6 photos on complaints and each statement/appeal (private `dispute-evidence` bucket), and 1–4 proof photos required to tick a checklist task done (`task-proof` bucket). |
 
    The linked project's migration history has been reconciled after checking
    the existing schema. Migrations 0046–0052 were applied in order, and their
@@ -330,7 +331,7 @@ All bodies are JSON. 🔒 = requires auth; (client) / (provider) = role-restrict
 | `POST /jobs/:id/accept` 🔒 (provider) | accept an incoming booking request; `assigned` → `confirmed`, notifies the client (migration 0018) |
 | `POST /jobs/:id/start` 🔒 (provider) | `assigned`/`confirmed` → `in_progress` |
 | `POST /jobs/:id/decline` 🔒 (provider) | `{ reason (1–200) }` — assigned provider declines before starting; `assigned`/`confirmed` → `cancelled`, refunds escrow, notifies client |
-| `PATCH /jobs/:id/tasks/:taskId` 🔒 (provider) | `{ is_done }` — assigned provider ticks a checklist item; allowed only while `in_progress`; returns the whole job (migration 0019) |
+| `PATCH /jobs/:id/tasks/:taskId` 🔒 (provider) | `{ is_done, proof_photo_paths? }` — assigned provider ticks a checklist item; allowed only while `in_progress`. Ticking done needs 1–4 proof photos uploaded to the `task-proof` bucket (migration 0059); un-ticking clears them. Returns the whole job; each task carries `proof_photo_urls` for both sides |
 | `POST /jobs/:id/complete` 🔒 (client) | `in_progress` → `completed` |
 | `POST /jobs/:id/recommendations/trigger` 🔒 (client) | manually re-run the recommendation engine |
 
@@ -426,7 +427,7 @@ the flag can only be set by an approval or a Stripe Identity webhook.
 
 | Method & path | Description |
 |---|---|
-| `POST /jobs/:jobId/disputes` 🔒 (client/provider) | `{ reason (1–200), details? (≤1000) }` — participants can raise active/cancelled-job disputes or complain before the 72-hour completion deadline; held escrow freezes, settled payments remain settled (0041) |
+| `POST /jobs/:jobId/disputes` 🔒 (client/provider) | `{ reason (1–200), details? (≤1000), photo_paths? (≤6, private `dispute-evidence` bucket, 0059) }` — participants can raise active/cancelled-job disputes or complain before the 72-hour completion deadline; held escrow freezes, settled payments remain settled (0041) |
 | `GET /jobs/:jobId/disputes` 🔒 | the job's latest dispute (client or assigned provider) |
 
 **Settings** (🔒 — migration 0011)

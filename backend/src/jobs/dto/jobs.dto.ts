@@ -1,6 +1,7 @@
 import { Type } from 'class-transformer';
 import {
   ArrayMaxSize,
+  ArrayMinSize,
   IsArray,
   IsBoolean,
   IsIn,
@@ -140,6 +141,20 @@ export class PriceEstimateDto {
 export class UpdateJobTaskDto {
   @IsBoolean()
   is_done!: boolean;
+
+  /**
+   * Proof the task is done: 1 to 4 storage paths in the `task-proof` bucket
+   * (migration 0059). Required when ticking a task done; ignored when
+   * un-ticking, which clears them.
+   */
+  @ValidateIf((dto: UpdateJobTaskDto) => dto.is_done === true)
+  @IsArray()
+  @ArrayMinSize(1, {
+    message: 'Add at least one photo as proof the task is done.',
+  })
+  @ArrayMaxSize(4)
+  @IsString({ each: true })
+  proof_photo_paths?: string[];
 }
 
 /** `GET /jobs/geocode` — the typed address the homeowner wants the job at. */

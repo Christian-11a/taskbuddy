@@ -89,6 +89,11 @@ function createService(resultsByTable: Record<string, QueryResult[]>) {
   const { supabase, calls } = createSupabaseMock(resultsByTable);
   const uploads = {
     assertOwnedPaths: jest.fn(),
+    assertValidImage: jest.fn().mockResolvedValue(undefined),
+    signedDownloadUrl: jest.fn(() => Promise.resolve('https://signed/photo')),
+    publicUrl: jest.fn(
+      (_bucket: string, path: string) => `https://public/${path}`,
+    ),
   } as unknown as UploadsService;
   // Held as standalone jest.fn()s (the escrow.service.spec.ts pattern) so
   // assertions read them directly rather than off the cast object.
@@ -292,13 +297,30 @@ describe('JobsService.updateTask', () => {
       job_tasks: [ok({ id: 't1' })],
     });
 
-    await service.updateTask(provider, 'j1', 't1', { is_done: true });
+    await service.updateTask(provider, 'j1', 't1', {
+      is_done: true,
+      proof_photo_paths: ['p1/proof.jpg'],
+    });
 
     const update = calls.find((c) => c.table === 'job_tasks');
-    expect(update?.args[0]).toMatchObject({ is_done: true });
+    expect(update?.args[0]).toMatchObject({
+      is_done: true,
+      proof_photo_paths: ['p1/proof.jpg'],
+    });
     expect(
       (update?.args[0] as { completed_at: string | null }).completed_at,
     ).toEqual(expect.any(String));
+  });
+
+  it('refuses to tick a task done without a proof photo', async () => {
+    const { service, calls } = createService({
+      jobs: [ok(job({ status: 'in_progress' }))],
+    });
+
+    await expect(
+      service.updateTask(provider, 'j1', 't1', { is_done: true }),
+    ).rejects.toThrow('Add at least one photo');
+    expect(calls.some((c) => c.table === 'job_tasks')).toBe(false);
   });
 
   it('clears completed_at when an item is un-ticked', async () => {
@@ -310,13 +332,20 @@ describe('JobsService.updateTask', () => {
     await service.updateTask(provider, 'j1', 't1', { is_done: false });
 
     const update = calls.find((c) => c.table === 'job_tasks');
-    expect(update?.args[0]).toEqual({ is_done: false, completed_at: null });
+    expect(update?.args[0]).toEqual({
+      is_done: false,
+      completed_at: null,
+      proof_photo_paths: [],
+    });
   });
 
   it('refuses before the provider has accepted the booking', async () => {
     const { service } = createService({ jobs: [ok(job())] });
     await expect(
-      service.updateTask(provider, 'j1', 't1', { is_done: true }),
+      service.updateTask(provider, 'j1', 't1', {
+        is_done: true,
+        proof_photo_paths: ['p1/proof.jpg'],
+      }),
     ).rejects.toBeInstanceOf(BadRequestException);
   });
 
@@ -326,7 +355,10 @@ describe('JobsService.updateTask', () => {
       job_tasks: [ok(null)],
     });
     await expect(
-      service.updateTask(provider, 'j1', 't2', { is_done: true }),
+      service.updateTask(provider, 'j1', 't2', {
+        is_done: true,
+        proof_photo_paths: ['p1/proof.jpg'],
+      }),
     ).rejects.toThrow('Task not found');
   });
 });

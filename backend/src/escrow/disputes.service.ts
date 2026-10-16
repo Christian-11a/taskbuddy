@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import { ConnectPayoutsService } from '../payments/connect/connect-payouts.service';
 import { SupabaseService } from '../supabase/supabase.service';
+import { UploadsService } from '../uploads/uploads.service';
 import {
   AddDisputeEntryDto,
   CancellationResponseDto,
@@ -24,13 +25,19 @@ export interface EntryRow {
   created_at: string;
   author: { id: string; full_name: string; role: string } | null;
   message: { id: string; body: string; attachment_path: string | null } | null;
+  photo_paths?: string[] | null;
 }
 interface CaseRow {
   id: string;
   job_id: string;
   status: string;
+  photo_paths?: string[] | null;
   dispute_entries: EntryRow[];
 }
+
+/** Private bucket for complaint photos (migration 0059). */
+const EVIDENCE_BUCKET = 'dispute-evidence';
+const MAX_CASE_PHOTOS = 6;
 const DISPUTE_SELECT =
   '*, jobs(title, client_id, assigned_provider_id, service_categories(name), client:profiles!jobs_client_id_fkey(full_name), provider:profiles!jobs_assigned_provider_id_fkey(full_name)), escrow_transactions(amount, status, client_id, provider_id), raised_by_profile:profiles!disputes_raised_by_fkey(id, full_name), dispute_entries(*, author:profiles!dispute_entries_author_id_fkey(id, full_name, role), message:messages!dispute_entries_message_id_fkey(id, body, attachment_path))';
 
@@ -39,10 +46,22 @@ export class DisputesService {
   constructor(
     private readonly supabase: SupabaseService,
     private readonly payouts: ConnectPayoutsService,
+    private readonly uploads: UploadsService,
   ) {}
+
+  /** The caller's own uploads, each a real image in the evidence bucket. */
+  private async assertPhotos(user: Profile, paths: string[] | undefined) {
+    if (!paths?.length) return [];
+    this.uploads.assertOwnedPaths(user, paths);
+    await Promise.all(
+      paths.map((path) => this.uploads.assertValidImage(EVIDENCE_BUCKET, path)),
+    );
+    return paths;
+  }
 
   async raise(user: Profile, jobId: string, dto: RaiseDisputeDto) {
     await this.assertParticipant(user, jobId);
+    const photos = await this.assertPhotos(user, dto.photo_paths);
     const { data, error } = await this.supabase.admin.rpc('raise_job_dispute', {
       p_job_id: jobId,
       p_actor_id: user.id,
@@ -54,6 +73,20 @@ export class DisputesService {
         'There is already an open complaint for this job',
       );
     if (error) throw new BadRequestException(error.message);
+    if (photos.length) {
+      // A contested cancellation returns the existing case: add to its photos.
+      const complaint = data as { id: string; photo_paths?: string[] | null };
+      const merged = [...(complaint.photo_paths ?? []), ...photos].slice(
+        0,
+        MAX_CASE_PHOTOS,
+      );
+      const { error: photoError } = await this.supabase.admin
+        .from('disputes')
+        .update({ photo_paths: merged })
+        .eq('id', complaint.id);
+      if (photoError) throw new BadRequestException(photoError.message);
+      return { ...complaint, photo_paths: merged };
+    }
     return data;
   }
 
@@ -90,6 +123,7 @@ export class DisputesService {
   }
 
   async addEntry(user: Profile, id: string, dto: AddDisputeEntryDto) {
+    const photos = await this.assertPhotos(user, dto.photo_paths);
     const { data, error } = await this.supabase.admin.rpc('add_dispute_entry', {
       p_dispute_id: id,
       p_actor_id: user.id,
@@ -98,6 +132,15 @@ export class DisputesService {
       p_message_id: dto.message_id ?? null,
     });
     if (error) throw new BadRequestException(error.message);
+    if (photos.length) {
+      const entry = data as { id: string };
+      const { error: photoError } = await this.supabase.admin
+        .from('dispute_entries')
+        .update({ photo_paths: photos })
+        .eq('id', entry.id);
+      if (photoError) throw new BadRequestException(photoError.message);
+      return { ...entry, photo_paths: photos };
+    }
     return data;
   }
 
@@ -186,13 +229,37 @@ export class DisputesService {
             );
           attachment_url = data.signedUrl;
         }
-        return { ...entry, attachment_url };
+        return {
+          ...entry,
+          attachment_url,
+          photo_urls: await this.signPhotos(entry.photo_paths),
+        };
       }),
     );
     entries.sort(
       (a, b) =>
         a.created_at.localeCompare(b.created_at) || a.id.localeCompare(b.id),
     );
-    return { ...row, entries };
+    return {
+      ...row,
+      photo_urls: await this.signPhotos(row.photo_paths),
+      entries,
+    };
+  }
+
+  /** Short-lived URLs for private complaint photos. */
+  private async signPhotos(paths: string[] | null | undefined) {
+    return Promise.all(
+      (paths ?? []).map(async (path) => {
+        const url = await this.uploads.signedDownloadUrl(
+          EVIDENCE_BUCKET,
+          path,
+          3600,
+        );
+        if (!url)
+          throw new BadRequestException('Could not load complaint photos');
+        return url;
+      }),
+    );
   }
 }
