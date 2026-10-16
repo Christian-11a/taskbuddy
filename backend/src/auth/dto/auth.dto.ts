@@ -196,3 +196,10 @@ export class VerifyEmailOtpDto {
   @IsNotEmpty()
   token!: string;
 }
+
+/** `POST /auth/accept-terms` — the version the user just read. */
+export class AcceptTermsDto {
+  @IsInt()
+  @Min(1)
+  version!: number;
+}

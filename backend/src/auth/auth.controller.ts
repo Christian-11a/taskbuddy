@@ -17,6 +17,7 @@ import {
 import type { Response } from 'express';
 import { AuthService } from './auth.service';
 import {
+  AcceptTermsDto,
   ChangePasswordDto,
   ClaimGoogleSessionDto,
   CompleteGoogleProfileDto,
@@ -293,6 +294,13 @@ export class AuthController {
   @UseGuards(JwtAuthGuard)
   me(@CurrentUser() user: Profile) {
     return this.authService.me(user);
+  }
+
+  @Post('accept-terms')
+  @HttpCode(200)
+  @UseGuards(JwtAuthGuard)
+  acceptTerms(@CurrentUser() user: Profile, @Body() dto: AcceptTermsDto) {
+    return this.authService.acceptTerms(user, dto.version);
   }
 
   @Post('change-password')

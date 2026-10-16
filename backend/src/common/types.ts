@@ -52,6 +52,7 @@ export interface Profile {
   updated_at: string;
   // Signup consents (nullable — NULL for accounts before migration 0015)
   consented_terms_at: string | null;
+  consented_terms_version?: number | null;
   consented_privacy_at: string | null;
   consented_data_collection_at: string | null;
   consented_biometric_at: string | null;
