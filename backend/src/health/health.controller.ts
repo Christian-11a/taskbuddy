@@ -66,7 +66,7 @@ function renderStatusPage(report: HealthReport): string {
 <body>
 <main>
   <h1>TaskBuddy API ${ok ? '· all systems go' : '· degraded'}</h1>
-  <p class="sub">uptime ${formatUptime(report.uptime_s)} · ${report.timestamp}</p>
+  <p class="sub">uptime ${formatUptime(report.uptime_s)} · ${report.timestamp}${report.commit ? ` · ${report.commit.slice(0, 7)}` : ''}</p>
   <div class="row">
     <span class="dot up"></span>
     <span class="name">api</span>
