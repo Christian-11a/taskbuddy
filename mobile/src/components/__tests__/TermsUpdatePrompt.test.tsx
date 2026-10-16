@@ -6,10 +6,10 @@ import { TERMS_VERSION } from '../../lib/legalText';
 
 jest.mock('../../lib/api', () => ({ api: { acceptTerms: jest.fn() } }));
 jest.mock('../Toast', () => ({ showToast: jest.fn() }));
-const refreshProfile = jest.fn().mockResolvedValue(undefined);
+const mockRefreshProfile = jest.fn().mockResolvedValue(undefined);
 let mockProfile: Record<string, unknown> | null = null;
 jest.mock('../../context/AuthContext', () => ({
-  useAuth: () => ({ profile: mockProfile, refreshProfile }),
+  useAuth: () => ({ profile: mockProfile, refreshProfile: mockRefreshProfile }),
 }));
 
 it('stays hidden for an account on the current terms', () => {
@@ -26,5 +26,5 @@ it('asks for the new terms and records the current version', async () => {
   fireEvent(screen.getByTestId('terms-body'), 'accessibilityAction', { nativeEvent: { actionName: 'markAsRead' } });
   await act(async () => fireEvent.press(screen.getByText('I agree to the Terms & Conditions')));
   expect(api.acceptTerms).toHaveBeenCalledWith(TERMS_VERSION);
-  expect(refreshProfile).toHaveBeenCalled();
+  expect(mockRefreshProfile).toHaveBeenCalled();
 });

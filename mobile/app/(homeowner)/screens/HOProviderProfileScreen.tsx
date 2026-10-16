@@ -84,7 +84,10 @@ export default function HOProviderProfileScreen({
   const portfolio=useAsyncData(()=>api.providerPortfolio(id),[id]);
   useRefreshOnForeground(portfolio.reload,true);
   // Approved, unexpired credentials only; a failed load just hides the section.
-  const credentials = useAsyncData(() => api.providerCredentials(id).catch(() => []), [id]);
+  const credentials = useAsyncData(
+    () => Promise.resolve().then(() => api.providerCredentials(id)).catch(() => []),
+    [id],
+  );
   const provider = data?.provider ?? null;
   const reviews: any[] = data?.reviews ?? [];
   const work = data?.work ?? [];
