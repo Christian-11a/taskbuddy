@@ -17,6 +17,8 @@ import { useAsyncData } from '../../../src/hooks/useAsyncData';
 import { useHeaderTop } from '../../../src/hooks/useHeaderTop';
 import { useAuth } from '../../../src/context/AuthContext';
 import { api, type Message } from '../../../src/lib/api';
+import EvidencePhotoPicker from '../../../src/components/EvidencePhotoPicker';
+import PhotoStrip from '../../../src/components/PhotoStrip';
 import { caseDate, caseView, type CaseStep } from '../../../src/lib/caseView';
 import { cleanText, validateText } from '../../../src/lib/textRules';
 
@@ -38,6 +40,8 @@ export default function HODisputeStatusScreen({ jobId, onBack, onMessage }: Prop
   const [evidenceLoaded, setEvidenceLoaded] = useState(false);
   const [evidenceLoading, setEvidenceLoading] = useState(false);
   const [messageId, setMessageId] = useState<string | undefined>();
+  // Photos for the next statement or appeal (device URIs, uploaded on send).
+  const [photos, setPhotos] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const [confirm, setConfirm] = useState<'agree' | 'contest' | null>(null);
@@ -48,6 +52,17 @@ export default function HODisputeStatusScreen({ jobId, onBack, onMessage }: Prop
   const canRespond = pending && dispute.jobs?.assigned_provider_id === profile?.id &&
     !!dispute.cancellation_deadline && Date.now() < new Date(dispute.cancellation_deadline).getTime();
   const view = dispute ? caseView(dispute, profile?.id) : null;
+  // Every photo on the case: the complaint's own, then each statement's, oldest first.
+  const evidencePhotos = dispute ? [
+    ...(dispute.photo_urls?.length ? [{ key: 'case', title: 'With the complaint', urls: dispute.photo_urls }] : []),
+    ...(dispute.entries ?? [])
+      .filter((entry) => entry.photo_urls?.length)
+      .map((entry) => ({
+        key: entry.id,
+        title: entry.author?.id === profile?.id ? 'From you' : `From ${entry.author?.full_name ?? 'the other party'}`,
+        urls: entry.photo_urls!,
+      })),
+  ] : [];
   // Statement or appeal: the segment only applies while the case is open and not awaiting a response.
   const entryKind = open ? kind : 'appeal';
   const sendLabel = entryKind === 'appeal' ? 'Send appeal' : 'Send details';
@@ -60,8 +75,14 @@ export default function HODisputeStatusScreen({ jobId, onBack, onMessage }: Prop
     inFlight.current = true; setBusy(true); setActionError(null);
     try {
       if (accept !== undefined) await api.respondToCancellation(dispute.id, accept, cleanText(body), messageId);
-      else await api.addDisputeEntry(dispute.id, { kind: dispute.status === 'open' ? kind : 'appeal', body: cleanText(body), message_id: messageId });
-      setBody(''); setMessageId(undefined); reload();
+      else {
+        const photo_paths = await Promise.all(photos.map((uri) => api.uploadImage('dispute-evidence', uri)));
+        await api.addDisputeEntry(dispute.id, {
+          kind: dispute.status === 'open' ? kind : 'appeal', body: cleanText(body), message_id: messageId,
+          photo_paths: photo_paths.length ? photo_paths : undefined,
+        });
+      }
+      setBody(''); setMessageId(undefined); setPhotos([]); reload();
       return true;
     } catch (e) { setActionError(e instanceof Error ? e.message : 'Could not update the complaint.'); return false; }
     finally { inFlight.current = false; setBusy(false); }
@@ -156,6 +177,16 @@ export default function HODisputeStatusScreen({ jobId, onBack, onMessage }: Prop
           })}
         </View>
 
+        {evidencePhotos.length > 0 && <>
+          <Text style={styles.sectionTitle} accessibilityRole="header">Photo evidence</Text>
+          {evidencePhotos.map((group) => (
+            <View key={group.key} style={styles.card} testID={`case-photos-${group.key}`}>
+              <Text style={styles.label}>{group.title}</Text>
+              <PhotoStrip urls={group.urls} label={`${group.title}, photo`} size={72} />
+            </View>
+          ))}
+        </>}
+
         {canRespond && <View style={styles.card}>
           <TextField
             label="Your note" value={body} onChangeText={setBody} helper="They'll see this with your answer." error={noteError}
@@ -200,6 +231,15 @@ export default function HODisputeStatusScreen({ jobId, onBack, onMessage }: Prop
       <TextField
         label="What else should the admin know?" value={body} onChangeText={setBody} helper={`${body.length} / 1000`} error={noteError}
         placeholder="Explain what happened…" multiline maxLength={1000} keyboardAppearance={appearance}
+      />
+      <EvidencePhotoPicker
+        testID="dispute-entry-photos"
+        photos={photos}
+        onChange={setPhotos}
+        max={6}
+        label="Photos (optional)"
+        helper="Only you, the other party and TaskBuddy admins can see them."
+        disabled={busy}
       />
       <Text style={styles.sectionTitle} accessibilityRole="header">From this job's chat</Text>
       <Text style={styles.text}>Pick one of your messages to attach it as evidence.</Text>

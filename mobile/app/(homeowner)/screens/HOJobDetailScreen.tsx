@@ -22,6 +22,7 @@ import {
   type LucideIcon,
 } from 'lucide-react-native';
 import PhotoViewer from '../../../src/components/PhotoViewer';
+import PhotoStrip from '../../../src/components/PhotoStrip';
 import ConfirmationModal from '../../../src/components/ConfirmationModal';
 import BottomActionBar from '../../../src/components/ui/BottomActionBar';
 import Banner from '../../../src/components/ui/Banner';
@@ -454,7 +455,10 @@ export default function HOJobDetailScreen({ jobId, onBack, onNavigate }: HOJobDe
                   <View style={[styles.taskBox, task.is_done && styles.taskBoxDone]}>
                     {task.is_done && <Check size={13} color={C.onPrimary} strokeWidth={3} />}
                   </View>
-                  <Text style={[styles.taskLabel, task.is_done && styles.taskLabelDone]}>{task.label}</Text>
+                  <View style={styles.taskText}>
+                    <Text style={[styles.taskLabel, task.is_done && styles.taskLabelDone]}>{task.label}</Text>
+                    <PhotoStrip urls={task.proof_photo_urls ?? []} label={`Proof for ${task.label}, photo`} testID={`task-proof-${task.id}`} />
+                  </View>
                 </View>
               ))}
             </View>
@@ -637,6 +641,7 @@ function createThemedStyles(theme: ThemePalette) {
       alignItems: 'center', justifyContent: 'center',
     },
     taskBoxDone: { backgroundColor: Colors.primary, borderColor: Colors.primary },
+    taskText: { flex: 1 },
     taskLabel: { flex: 1, fontFamily: 'Inter', fontSize: 15, fontWeight: '500', lineHeight: 20, color: C.ink900 },
     taskLabelDone: { color: C.ink500, textDecorationLine: 'line-through' },
 
