@@ -639,15 +639,18 @@ acceptance audit raised has since been done (full reasoning in
 open: the Stripe Connect escrow, card-at-hire, and verification as a gate
 (§29, §17). The migration list, including which ones must be applied before an
 API deploy and which must run alone (0022, 0027), is kept in one place:
-`backend/README.md`. Local migration files now run through **0050**; migrations
-0046–0050 and their matching API are committed on
-`origin/feat/backend-handoff-contracts`, not deployed.
+`backend/README.md`. Migrations 0046–0050 and their matching API are merged into
+`upstream/main` by PR #81. The current backend handoff branch adds migrations
+0051–0052 for web admin APIs. Migrations 0046–0052 are applied to the linked
+Supabase project; deployment of the matching backend API remains pending. The mobile UI for
+the post-UAT release, change-request, and capacity contracts still needs
+implementation and device verification. Card-funded price changes remain
+unsupported until a separate payment authorization flow exists.
 
 The post-UAT backend request list is [`docs/backend-requests.md`](../docs/backend-requests.md).
-Local API contracts now cover early release, provider release requests, schedule and
+The API contracts cover early release, provider release requests, schedule and
 wallet-funded price change requests, and server capacity rules. The mobile UI for
-these new contracts still needs implementation and device verification. Card-funded
-price changes remain unsupported until an additional payment authorization flow exists.
+these new contracts still needs implementation and device verification.
 
 **2026-10-02 follow-up:** `GET /auth/me` now reports `has_password` via
 the service-role-only migration 0038 RPC. Both roles hide Change Password for

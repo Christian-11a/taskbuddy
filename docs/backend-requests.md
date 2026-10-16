@@ -2,9 +2,12 @@
 
 **Last updated: 2026-10-14.** Items 1 to 12 are the agreed requests from the mobile app. Items 9 to 12 are features: the app side will be built after the server side exists (the new screens stay behind an off switch until then).
 
-**Local implementation update (2026-10-15):** Backend changes for items 1–6 and
-9–11 are in this checkout; migrations 0046–0050 and the matching API are **not
-deployed or verified on a physical device**. Item 7 remains an optional security
+**Implementation update (2026-10-15):** Backend changes for items 1–6 and
+9–11 are merged into `upstream/main` by PR #81; migrations 0046–0050 and the
+matching API are implemented. Migrations 0046–0052 have since been applied to
+the linked Supabase project. **Matching API deployment and physical-device
+verification remain pending**.
+Item 7 remains an optional security
 change awaiting a fresh-sign-in flow in both clients. Item 8 now has specific
 server messages for the new signup, profile, job-budget and withdrawal rules.
 Job changes expire on the five-minute payments tick, and provider release

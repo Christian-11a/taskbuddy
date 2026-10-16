@@ -560,22 +560,25 @@ pending action tests stay in [Manual Verification](#manual-verification).
 ## Needed Backend Work
 
 **Detailed handoff:** [Web admin backend requirements](../docs/backend-handoff-web-admin.md).
-Two Settings features remain unavailable in the deployed console. The backend
-contract for shared platform identity is committed but not deployed or consumed
-by web; admin verification email delivery has not been implemented.
+The shared platform-identity contract is merged into upstream main. Its migration
+is applied to the linked Supabase project; matching API deployment remains pending. Admin verification email delivery has not been
+implemented and still needs a verified sender domain and provider configuration.
 
 | Need | Backend work | Web follow-up |
 |---|---|---|
-| **Email admins on new provider verification** | Send one email to every active admin when a provider submits for verification. Always on, no duplicates, and a failed send must not block the submission. | Replace the disabled Notifications switch with a note once it works. |
-| **Platform name and support email** | The shared backend contract is committed in migration 0047, but not deployed. **The support mailbox is not created yet**, so the email starts empty and the footer and emails show no contact line until it is set. | The Platform page Identity tab is built and starts working once this is deployed. Connect the Settings fields and the footer after deployment; show the email as "Not set yet" while empty. |
+| **Email admins on new provider verification** | Admin inbox alerts are implemented; email delivery remains pending a verified sender domain and provider configuration. | Keep email delivery disabled until sender setup is available. |
+| **Platform name and support email** | Migration 0047 is applied to the linked Supabase project; matching API deployment remains pending. **The support mailbox is not created yet**, so the email starts empty and the footer and emails show no contact line until it is set. | The Platform page Identity tab is built. Connect Settings fields and footer after live deployment; show the email as "Not set yet" while empty. |
 
-The shared-settings backend contract is implemented locally in migration 0047:
+The shared-settings database contract is applied in migration 0047:
 `GET /platform/identity` is public; `GET /admin/platform-identity` and
 `PATCH /admin/platform-identity` are admin-only. The PATCH body contains
 `expected_version`, `platform_name`, and an optional `support_email`; stale
-versions return 409. This migration and API are not deployed by this README
-update. Admin email delivery remains pending a verified sender domain and
-email-provider configuration, so the notification switch remains disabled.
+versions return 409. Admin inbox alerts, structured dispute recipients/evidence,
+photo URL renewal, queue counts, notification paging, and broadcast delivery
+status are implemented in migrations 0051–0052 and the current backend branch;
+the database migrations are applied, while backend API deployment is pending.
+Admin email delivery remains pending sender-domain and
+email-provider configuration.
 
 ## October 4 review and withdrawal contracts
 

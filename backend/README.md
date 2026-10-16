@@ -127,11 +127,13 @@ Job lifecycle: `open → recommending → assigned → in_progress → completed
    | `0048_job_capacity.sql` | Server-enforced active-job, pending-application and booking limits. |
    | `0049_job_change_requests.sql` | Participant-approved schedule and wallet-funded price changes. |
    | `0050_provider_release_requests.sql` | Rate-limited provider requests for early payment release. |
+   | `0051_admin_alert_notification_type.sql` | Adds the notification type for persistent admin inbox alerts. Apply before 0052. |
+   | `0052_web_admin_handoffs.sql` | Structured case recipients/evidence requests, admin inbox events, notification broadcast delivery counters, and dismissal state. |
 
-   The linked project's older migration-history mismatch still prevents a clean
-   `supabase db push --dry-run`, even though 0038 is recorded as applied. Check
-   both local and remote migration lists before repairing history; a dry-run
-   error alone is not evidence that the remote schema needs a rollback.
+   The linked project's migration history has been reconciled after checking
+   the existing schema. Migrations 0046–0052 were applied in order, and their
+   history entries and database objects were verified. Vault synchronization
+   was skipped. The matching backend API deployment remains pending.
 
    > Migrations 0008 and 0009 each run `alter type notification_type add value`.
    > Postgres allows this inside a transaction as long as the new value isn't
@@ -687,10 +689,11 @@ curl -X POST $API/jobs -H "Authorization: Bearer $TOKEN" -H "Content-Type: appli
 ## Pending handoffs
 
 - The post-UAT server requests are in [`docs/backend-requests.md`](../docs/backend-requests.md).
-  Validation and the new API/database contracts are committed on
-  `origin/feat/backend-handoff-contracts` in migrations 0046–0050. **They are not
-  deployed**; apply migrations before deploying the matching API, then run
-  funded-job and booking acceptance checks.
+  Migrations 0046–0050 and their API are merged into `upstream/main` by PR #81.
+  This branch adds the web handoff contracts in migrations 0051–0052.
+  Migrations 0046–0052 are applied to the linked Supabase project; **backend API
+  deployment remains pending**. Deploy the matching API and run funded-job,
+  booking, and admin queue acceptance checks.
 - [`docs/backend-handoff-mobile-e2e-test-environment.md`](../docs/backend-handoff-mobile-e2e-test-environment.md)
   still requires a test wallet balance when the Maestro account runs low. Its Google
   Maps key request is obsolete because the app no longer uses `react-native-maps`.
@@ -769,12 +772,14 @@ admin records an actual external payment; this endpoint does not send money.
 Migration 0045 enforces debit affordability under the existing wallet advisory lock
 for direct ledger inserts/updates as well as escrow/Connect RPC paths.
 
-## Post-UAT backend contracts (local; not deployed)
+## Post-UAT backend contracts
 
 Migrations 0046–0050 add early payment release, shared platform identity,
 capacity limits, participant-approved job changes, and provider release requests.
-Apply them in order before deploying an API built from this checkout. The
-server now geocodes each posted job address and ignores client-supplied
+They are merged into `upstream/main` by PR #81. This branch adds migrations
+0051–0052 for the remaining web admin contracts. Migrations 0046–0052 are
+applied to the linked Supabase project; deployment of the matching API remains
+pending. The server now geocodes each posted job address and ignores client-supplied
 coordinates; new passwords require 8–72 characters with a letter and digit,
 while existing passwords remain valid for login. New provider signups require a
 category and the three general consents.
