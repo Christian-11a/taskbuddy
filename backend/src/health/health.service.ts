@@ -12,6 +12,8 @@ export interface HealthReport {
   status: 'ok' | 'degraded';
   uptime_s: number;
   timestamp: string;
+  /** Git commit of the running build, from Render's RENDER_GIT_COMMIT. */
+  commit: string | null;
   checks: {
     database: HealthCheck;
     ml_service: HealthCheck;
@@ -22,6 +24,7 @@ export interface HealthReport {
 export class HealthService {
   private readonly startedAt = Date.now();
   private readonly mlServiceUrl: string;
+  private readonly commit: string | null;
 
   constructor(
     private readonly supabase: SupabaseService,
@@ -31,6 +34,7 @@ export class HealthService {
       'ML_SERVICE_URL',
       'http://localhost:8000',
     );
+    this.commit = config.get<string>('RENDER_GIT_COMMIT') || null;
   }
 
   async report(): Promise<HealthReport> {
@@ -42,6 +46,7 @@ export class HealthService {
       status: database.status === 'up' ? 'ok' : 'degraded',
       uptime_s: Math.round((Date.now() - this.startedAt) / 1000),
       timestamp: new Date().toISOString(),
+      commit: this.commit,
       checks: { database, ml_service: mlService },
     };
   }
