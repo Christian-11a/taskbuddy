@@ -219,6 +219,8 @@ export interface Profile {
   signup_category_id: number | null;
   // True for new Google OAuth users until they complete role selection
   google_signup_pending: boolean;
+  /** Set by /auth/me: the account accepted an older Terms version. */
+  terms_update_required?: boolean;
   [key: string]: unknown;
 }
 
@@ -846,6 +848,14 @@ export const api = {
     return request<RegisterResponse>('/auth/register', {
       method: 'POST',
       body: input,
+    });
+  },
+
+  /** Records that the signed-in user accepted this Terms version. */
+  acceptTerms(version: number) {
+    return authRequest<{ accepted_terms_version: number }>('/auth/accept-terms', {
+      method: 'POST',
+      body: { version },
     });
   },
 

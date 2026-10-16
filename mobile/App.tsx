@@ -1,3 +1,4 @@
+import TermsUpdatePrompt from './src/components/TermsUpdatePrompt';
 import { ThemeProvider, useTheme, useThemedStyles, type Palette as ThemePalette } from './src/context/ThemeContext';
 import { NotificationsProvider } from './src/context/NotificationsContext';
 /**
@@ -1064,6 +1065,7 @@ export default function App() {
               <BottomSheetModalProvider>
                 <RootLayout>
                   <AppContent />
+                  <TermsUpdatePrompt />
                   <ToastHost />
                 </RootLayout>
               </BottomSheetModalProvider>
