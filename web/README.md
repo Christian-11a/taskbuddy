@@ -290,8 +290,8 @@ the backend and convert its JSON tokens into httpOnly cookies):
 | Audit Log | `GET /admin/audit?search=…&action=…&limit=…&offset=…` (server-filtered pages and total) |
 | Reports | `GET /admin/analytics/summary` (same browser fallback as the Dashboard) |
 | Withdrawals | `GET /admin/withdrawals`, `POST .../:id/settle` · `POST .../:id/reject` |
-| Platform | `GET`/`PATCH /admin/commission`, category CRUD, admin accounts, notification broadcast, `GET`/`PATCH /admin/platform-identity` and `GET`/`PATCH /admin/job-capacity` (shown as "Not available yet" until the backend serves them) |
-| Settings | `PATCH /profiles/me`, `POST /auth/change-password`, `GET`/`PATCH /settings` (account dark mode), `GET`/`PATCH /admin/maintenance`. The platform-identity API is committed but not deployed; the Platform page has an Identity tab for it (shown as "Not available yet" until it is served), while Settings and the footer do not consume it yet. Admin verification email delivery is pending a verified domain. The Data & Privacy export-anonymization switch is local to the browser. |
+| Platform | `GET`/`PATCH /admin/commission`, category CRUD, admin accounts, notification broadcast, `GET`/`PATCH /admin/platform-identity` and `GET`/`PATCH /admin/job-capacity` (served by the deployed API since 2026-10-16) |
+| Settings | `PATCH /profiles/me`, `POST /auth/change-password`, `GET`/`PATCH /settings` (account dark mode), `GET`/`PATCH /admin/maintenance`. The platform-identity API is deployed; the Platform page has an Identity tab for it, while Settings and the footer do not consume it yet. Admin verification email delivery is pending a verified domain. The Data & Privacy export-anonymization switch is local to the browser. |
 
 The Platform page consumes the commission, category, admin-account, and
 notification endpoints. The Withdrawals page consumes the settlement queue.
@@ -561,13 +561,13 @@ pending action tests stay in [Manual Verification](#manual-verification).
 
 **Detailed handoff:** [Web admin backend requirements](../docs/backend-handoff-web-admin.md).
 The shared platform-identity contract is merged into upstream main. Its migration
-is applied to the linked Supabase project; matching API deployment remains pending. Admin verification email delivery has not been
+is applied to the linked Supabase project, and the matching API is deployed. Admin verification email delivery has not been
 implemented and still needs a verified sender domain and provider configuration.
 
 | Need | Backend work | Web follow-up |
 |---|---|---|
 | **Email admins on new provider verification** | Admin inbox alerts are implemented; email delivery remains pending a verified sender domain and provider configuration. | Keep email delivery disabled until sender setup is available. |
-| **Platform name and support email** | Migration 0047 is applied to the linked Supabase project; matching API deployment remains pending. **The support mailbox is not created yet**, so the email starts empty and the footer and emails show no contact line until it is set. | The Platform page Identity tab is built. Connect Settings fields and footer after live deployment; show the email as "Not set yet" while empty. |
+| **Platform name and support email** | Migration 0047 and its API are live; a stale save returns 409 (checked 2026-10-16). **The support mailbox is not created yet**, so the email starts empty and the footer and emails show no contact line until it is set. | The Platform page Identity tab is built. Connect Settings fields and footer; show the email as "Not set yet" while empty. |
 
 The shared-settings database contract is applied in migration 0047:
 `GET /platform/identity` is public; `GET /admin/platform-identity` and
@@ -575,8 +575,8 @@ The shared-settings database contract is applied in migration 0047:
 `expected_version`, `platform_name`, and an optional `support_email`; stale
 versions return 409. Admin inbox alerts, structured dispute recipients/evidence,
 photo URL renewal, queue counts, notification paging, and broadcast delivery
-status are implemented in migrations 0051–0052 and the current backend branch;
-the database migrations are applied, while backend API deployment is pending.
+status are implemented in migrations 0051–0052 and the backend merged by PR #84;
+the database migrations and backend API are deployed (checked 2026-10-16).
 Admin email delivery remains pending sender-domain and
 email-provider configuration.
 

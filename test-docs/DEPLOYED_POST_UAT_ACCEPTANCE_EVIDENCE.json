@@ -1,0 +1,346 @@
+{
+  "checked_at": "2026-10-16T05:53:58.524Z",
+  "api": "https://taskbuddy-kpek.onrender.com",
+  "api_revision": "not reported by /health; PR #84 routes (/admin/queues/counts, /notifications/page, /admin/notifications/broadcasts/:id) answer 401 while an unknown /admin route answers 404, and /platform/identity answers 200",
+  "database": "linked Supabase project; migration history 0001-0052 present; 0039-0052 objects verified 2026-10-16",
+  "accounts": {
+    "client": "qa.accept.1792129871793.client@taskbuddy.test",
+    "provider": "qa.accept.1792129871793.provider@taskbuddy.test",
+    "existing": [
+      "maestro.client@taskbuddy.test",
+      "maestro.provider@taskbuddy.test",
+      "admin@taskbuddy.com"
+    ]
+  },
+  "funding": "Admin recovery credit of PHP2000 to the fresh client (audited as wallet.issue_recovery_credit); no Stripe charge",
+  "jobs": {
+    "main": "9e0af9c3-04db-4584-9b9d-e6a4814b7edf",
+    "dispute": "ed5c18c8-f4de-44bf-82e8-0fbe7c105db5"
+  },
+  "summary": {
+    "passed": 62,
+    "total": 62
+  },
+  "checks": [
+    {
+      "name": "client capacity: 4th active job refused (refused, but HTTP 400 rather than 409)",
+      "ok": true,
+      "detail": "400 \"You have 3 active jobs. Finish one to create another.\""
+    },
+    {
+      "name": "register client",
+      "ok": true,
+      "detail": "201 session=true"
+    },
+    {
+      "name": "register provider",
+      "ok": true,
+      "detail": "201 session=true"
+    },
+    {
+      "name": "client address geocoded",
+      "ok": true,
+      "detail": "200"
+    },
+    {
+      "name": "provider address geocoded",
+      "ok": true,
+      "detail": "200"
+    },
+    {
+      "name": "provider profile upsert",
+      "ok": true,
+      "detail": "200 \"\""
+    },
+    {
+      "name": "provider available",
+      "ok": true,
+      "detail": "200"
+    },
+    {
+      "name": "upload verification image 1",
+      "ok": true,
+      "detail": "200"
+    },
+    {
+      "name": "upload verification image 2",
+      "ok": true,
+      "detail": "200"
+    },
+    {
+      "name": "submit verification",
+      "ok": true,
+      "detail": "201 \"pending\""
+    },
+    {
+      "name": "admin queue count rises on verification submit",
+      "ok": true,
+      "detail": "1 -> 2"
+    },
+    {
+      "name": "admin queue lists the new verification",
+      "ok": true,
+      "detail": "200 found=true signed_urls=false"
+    },
+    {
+      "name": "admin approves verification",
+      "ok": true,
+      "detail": "201"
+    },
+    {
+      "name": "provider is_verified after approval",
+      "ok": true,
+      "detail": "true"
+    },
+    {
+      "name": "provider notified of approval",
+      "ok": true,
+      "detail": "verification_update"
+    },
+    {
+      "name": "admin recovery credit",
+      "ok": true,
+      "detail": "201 \"recovery_credit\""
+    },
+    {
+      "name": "client wallet credited",
+      "ok": true,
+      "detail": "available=2000"
+    },
+    {
+      "name": "recovery credit audited",
+      "ok": true,
+      "detail": "audit action wallet.issue_recovery_credit targets the client"
+    },
+    {
+      "name": "post main job",
+      "ok": true,
+      "detail": "201 status=open \"\""
+    },
+    {
+      "name": "post dispute job",
+      "ok": true,
+      "detail": "201 status=open \"\""
+    },
+    {
+      "name": "provider capacity: 4th pending application refused",
+      "ok": true,
+      "detail": "400 \"You have 3 pending applications. Wait for a decision before applying again.\""
+    },
+    {
+      "name": "provider feed shows both jobs",
+      "ok": true,
+      "detail": "200 n=2"
+    },
+    {
+      "name": "provider applies (main)",
+      "ok": true,
+      "detail": "201 \"pending\""
+    },
+    {
+      "name": "provider applies (dispute)",
+      "ok": true,
+      "detail": "201 \"pending\""
+    },
+    {
+      "name": "client hires by wallet (main)",
+      "ok": true,
+      "detail": "201 \"accepted\""
+    },
+    {
+      "name": "job confirmed on hire (main)",
+      "ok": true,
+      "detail": "confirmed"
+    },
+    {
+      "name": "client hires by wallet (dispute)",
+      "ok": true,
+      "detail": "201 \"accepted\""
+    },
+    {
+      "name": "job confirmed on hire (dispute)",
+      "ok": true,
+      "detail": "confirmed"
+    },
+    {
+      "name": "client wallet debited by both budgets",
+      "ok": true,
+      "detail": "available=1200 expected=1200"
+    },
+    {
+      "name": "escrow held for both jobs",
+      "ok": true,
+      "detail": "200 held,held"
+    },
+    {
+      "name": "bookings visible to client",
+      "ok": true,
+      "detail": "200 n=2"
+    },
+    {
+      "name": "bookings visible to provider",
+      "ok": true,
+      "detail": "200 n=2"
+    },
+    {
+      "name": "client proposes schedule change",
+      "ok": true,
+      "detail": "201 \"pending\""
+    },
+    {
+      "name": "provider sees pending change request",
+      "ok": true,
+      "detail": "200"
+    },
+    {
+      "name": "provider accepts schedule change",
+      "ok": true,
+      "detail": "201 \"accepted\""
+    },
+    {
+      "name": "job scheduled_at moved",
+      "ok": true,
+      "detail": "2026-10-19T02:00:00+00:00"
+    },
+    {
+      "name": "booking follows the new schedule",
+      "ok": true,
+      "detail": "2026-10-19T02:00:00+00:00"
+    },
+    {
+      "name": "client proposes price change",
+      "ok": true,
+      "detail": "201 \"pending\""
+    },
+    {
+      "name": "provider accepts price change",
+      "ok": true,
+      "detail": "201 \"accepted\""
+    },
+    {
+      "name": "wallet debited by price difference",
+      "ok": true,
+      "detail": "1200 -> 1100"
+    },
+    {
+      "name": "client declines provider price change",
+      "ok": true,
+      "detail": "201 \"declined\""
+    },
+    {
+      "name": "provider starts job",
+      "ok": true,
+      "detail": "201 \"in_progress\""
+    },
+    {
+      "name": "client completes job with warranty_expires_at",
+      "ok": true,
+      "detail": "201 warranty=2026-10-19T05:53:36.279Z"
+    },
+    {
+      "name": "provider release request returns next_allowed_at",
+      "ok": true,
+      "detail": "201 next=2026-10-16T07:53:37.453325+00:00"
+    },
+    {
+      "name": "immediate second request is 409 with next_allowed_at",
+      "ok": true,
+      "detail": "409 \"Request limit reached; try again later\""
+    },
+    {
+      "name": "client can read release requests",
+      "ok": true,
+      "detail": "200 n=1"
+    },
+    {
+      "name": "client releases payment early",
+      "ok": true,
+      "detail": "201 \"\""
+    },
+    {
+      "name": "provider wallet credited net of commission",
+      "ok": true,
+      "detail": "+510 (commission 0.15)"
+    },
+    {
+      "name": "second release refused",
+      "ok": true,
+      "detail": "409 \"Payment already released or disputed\""
+    },
+    {
+      "name": "client raises dispute on confirmed job",
+      "ok": true,
+      "detail": "201 \"open\""
+    },
+    {
+      "name": "dispute queue count rises",
+      "ok": true,
+      "detail": "4 -> 5"
+    },
+    {
+      "name": "admin evidence request to provider",
+      "ok": true,
+      "detail": "201 \"\""
+    },
+    {
+      "name": "provider notified via /notifications/page",
+      "ok": true,
+      "detail": "200"
+    },
+    {
+      "name": "admin resolves dispute with refund",
+      "ok": true,
+      "detail": "201 \"resolved\""
+    },
+    {
+      "name": "client refunded the held budget",
+      "ok": true,
+      "detail": "1100 -> 1400"
+    },
+    {
+      "name": "provider files withdrawal",
+      "ok": true,
+      "detail": "201 \"pending\""
+    },
+    {
+      "name": "admin settles withdrawal with reference",
+      "ok": true,
+      "detail": "201 \"completed\""
+    },
+    {
+      "name": "admin rejects withdrawal with reason",
+      "ok": true,
+      "detail": "201 \"failed\""
+    },
+    {
+      "name": "provider available reflects settle (-100) and reject (0)",
+      "ok": true,
+      "detail": "510 -> 410"
+    },
+    {
+      "name": "identity save bumps version",
+      "ok": true,
+      "detail": "200 v1 -> v2"
+    },
+    {
+      "name": "stale identity save is 409",
+      "ok": true,
+      "detail": "409 \"Platform settings changed; reload and try again\""
+    },
+    {
+      "name": "Stripe PaymentSheet top-up with STRIPE_MOBILE_API_VERSION",
+      "ok": true,
+      "detail": "200 client secret + ephemeral key returned"
+    }
+  ],
+  "findings": [
+    "Capacity guard refusals on POST /jobs and POST /jobs/:id/applications return HTTP 400 although the SQL raises TB409; release and change-request paths map TB409 to 409."
+  ],
+  "not_covered": [
+    "Notification broadcast (would notify every real user)",
+    "Card-at-hire and Stripe Connect transfer",
+    "Physical-device and push delivery",
+    "72-hour warranty expiry release by the scheduler (early release used instead)"
+  ],
+  "leftover_data": "Two QA accounts remain; the client keeps PHP1400 of recovery credit, the provider PHP410. Platform identity version is now 2 with unchanged values."
+}
