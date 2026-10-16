@@ -10,19 +10,19 @@
  * prop (App.tsx passes it) but the old header never rendered a back button,
  * so there was no in-app way off this screen except the OS back gesture.
  *
- * Hire opens `HirePaymentModal`: pay from the wallet (the accept call holds
- * the budget), or pay by card on Stripe Checkout (BACKEND_SCHEMA.md §29.4).
- * Nothing is paid until the sheet's own "Confirm and hire" is pressed.
- * A card hire is made by Stripe's webhook, not by this screen, so after the
- * browser closes the screen polls the application until it turns `accepted`
- * — the same "the server decides, the app waits" shape as Add Money.
+ * Hire opens `HirePaymentModal`: pay online at a hosted checkout (PayMongo
+ * test mode: GCash, Maya, card or online banking). There is no wallet
+ * (migration 0056). Nothing is paid until the sheet's own "Confirm and hire"
+ * is pressed. The hire is made by the payment webhook, not by this screen, so
+ * after the browser closes the screen polls the application until it turns
+ * `accepted`.
  * Until the server decides a card payment, that proposal waits: its pay
  * options are not offered, and only a status check or an explicit start-over
  * comes back. No other proposal can be paid for meanwhile. The wait is
  * remembered on this device (src/lib/pendingHirePayments), so leaving this
  * screen or restarting the app does not offer to pay again.
  *
- * Refusals still surface where they happen: an insufficient wallet (400), a
+ * Refusals still surface where they happen: a
  * provider who is not verified (409 `provider_not_verified`), or a rate limit
  * (429). Each shows in the payment sheet, or in the banner above the list for
  * Decline, rather than disappearing.
@@ -46,7 +46,7 @@ import LoadErrorCard from '../../../src/components/ui/LoadErrorCard';
 import { dayLabel, peso, plural, timeAgo } from '../../../src/lib/format';
 import ContentSkeleton from '../../../src/components/ui/ContentSkeleton';
 import Silhouette from '../../../src/components/ui/Silhouette';
-import { AlertCircle, ArrowLeft, BadgeCheck, CheckCircle2, Inbox, ShieldAlert, Star } from 'lucide-react-native';
+import { AlertCircle, ArrowLeft, Award, BadgeCheck, CheckCircle2, Inbox, ShieldAlert, Star } from 'lucide-react-native';
 import { Spacing } from '../../../src/constants/theme';
 import { useHeaderTop } from '../../../src/hooks/useHeaderTop';
 
@@ -179,11 +179,10 @@ function JobProposals({
   // ── Hiring: the payment choice ─────────────────────────────────────────────
   const [hireTarget, setHireTarget] = useState<JobApplication | null>(null);
   const [budget, setBudget] = useState<number | null>(null);
-  const [available, setAvailable] = useState<number | null>(null);
   const [jobTitle, setJobTitle] = useState<string | null>(null);
   const [hireScheduledAt, setHireScheduledAt] = useState<string | null>(null);
   const [hireLoading, setHireLoading] = useState(false);
-  // The job or wallet could not be read, so the budget is unknown: no hire is offered.
+  // The job could not be read, so the budget is unknown: no hire is offered.
   const [hireLoadFailed, setHireLoadFailed] = useState(false);
   const [hireBusy, setHireBusy] = useState<'wallet' | 'card' | 'check' | null>(null);
   const [hireMessage, setHireMessage] = useState<{ text: string; tone: 'error' | 'info' } | null>(null);
@@ -270,26 +269,24 @@ function JobProposals({
     setActionError(null);
     setHireMessage(null);
     setBudget(null);
-    setAvailable(null);
     setJobTitle(null);
     setHireScheduledAt(null);
-    // Until the job and wallet are read, the sheet cannot offer a payment: the
+    // Until the job is read, the sheet cannot offer a payment: the
     // budget decides what is charged, so no option is usable yet.
     setHireLoading(true);
     setHireLoadFailed(false);
     setHireTarget(app);
     try {
-      const [job, wallet] = await Promise.all([api.getJob(jobId), api.wallet()]);
+      const job = await api.getJob(jobId);
       setJobTitle(job.title);
       setHireScheduledAt(job.scheduled_at ?? null);
       setBudget(job.budget == null ? null : Number(job.budget));
-      setAvailable(wallet.available);
     } catch (e) {
       // A failed read leaves the budget unknown. It must not fall through to the
       // no-budget "hire straight away" path, so the sheet offers no hire.
       setHireLoadFailed(true);
       setHireMessage({
-        text: e instanceof Error ? e.message : 'Could not load your balance.',
+        text: e instanceof Error ? e.message : 'Could not load this job.',
         tone: 'error',
       });
     } finally {
@@ -369,7 +366,7 @@ function JobProposals({
     } else {
       void endWait(app.id);
       setHireMessage({
-        text: 'Your payment is in your wallet, but the hire could not be completed — this proposal is no longer available.',
+        text: 'The hire could not be completed — this proposal is no longer available. Your payment is being refunded to your payment method.',
         tone: 'error',
       });
     }
@@ -505,7 +502,22 @@ function JobProposals({
                   <Text style={styles.verifiedChipText}>Verified</Text>
                 </View>
               )}
+              {(app.certifications?.length ?? 0) > 0 && (
+                <View
+                  style={styles.verifiedChip}
+                  testID={`certified-${app.id}`}
+                  accessibilityLabel={`Certified: ${app.certifications!.map((c) => `${c.title}, ${c.issuer}`).join('; ')}`}
+                >
+                  <Award size={12} color={V6Colors.successText} />
+                  <Text style={styles.verifiedChipText}>Certified</Text>
+                </View>
+              )}
             </View>
+            {(app.certifications?.length ?? 0) > 0 && (
+              <Text style={styles.providerMeta} numberOfLines={1}>
+                {app.certifications!.map((c) => `${c.title} (${c.issuer})`).join(' · ')}
+              </Text>
+            )}
             <View style={styles.ratingRow}>
               <Star size={12} color={C.ink400} fill={C.ink400} />
               <Text style={styles.providerMeta}>
@@ -617,7 +629,6 @@ function JobProposals({
         providerName={hireTarget?.provider?.full_name ?? 'this provider'}
         jobTitle={jobTitle}
         budget={budget}
-        available={available}
         loading={hireLoading}
         loadFailed={hireLoadFailed}
         busy={hireBusy}
@@ -629,10 +640,6 @@ function JobProposals({
         }
         onPayWallet={payFromWallet}
         onPayCard={payByCard}
-        onAddMoney={() => {
-          closeHire();
-          onNavigate?.('Wallet');
-        }}
         onClose={closeHire}
       />
     </>

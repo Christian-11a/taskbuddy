@@ -10,7 +10,7 @@ import { useAuth } from '../../../../src/context/AuthContext';
 import { clearAsyncDataCache } from '../../../../src/hooks/useAsyncData';
 
 jest.mock('../../../../src/lib/api', () => ({
-  api: { myJobs: jest.fn(), wallet: jest.fn() },
+  api: { myJobs: jest.fn() },
 }));
 
 jest.mock('../../../../src/context/AuthContext', () => ({
@@ -38,7 +38,6 @@ beforeEach(() => {
   (useAuth as jest.Mock).mockReturnValue({ profile: homeownerProfile });
   // Left pending: the stats loader would otherwise update state after each test ends.
   (api.myJobs as jest.Mock).mockReturnValue(new Promise(() => {}));
-  (api.wallet as jest.Mock).mockReturnValue(new Promise(() => {}));
 });
 
 it('has no back arrow on the Profile tab, where onBack is not passed', () => {

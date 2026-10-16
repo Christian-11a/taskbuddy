@@ -424,7 +424,7 @@ describe('homeownerJobView: cancelled', () => {
         tone: 'closed',
         overline: 'CANCELLED · WAITING',
         title: 'Waiting for TaskBuddyProvider to agree',
-        body: 'You asked to cancel after hiring. Your ₱1,500.00 goes back to your wallet once they agree, or an admin decides.',
+        body: 'You asked to cancel after hiring. Your ₱1,500.00 goes back to your payment method once they agree, or an admin decides.',
       },
       step: 'cancelled',
       main: { kind: 'viewCase' },

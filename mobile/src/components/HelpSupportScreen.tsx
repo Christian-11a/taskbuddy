@@ -47,7 +47,7 @@ const ATTRIBUTIONS = [
 ];
 
 const HO_FAQS = [
-  { q: 'How do payments work?', a: 'Add money to your Wallet via Stripe Checkout. Funds are held in escrow once you hire a provider and released after the three-day completion warranty ends, unless a complaint is open.' },
+  { q: 'How do payments work?', a: 'You pay when you hire, with GCash, Maya, card or online banking. The money is held in escrow and released to the provider after the three-day completion warranty ends, unless a complaint is open.' },
   { q: 'How do I hire a provider?', a: 'Post a job, review proposals from providers, and tap Hire on the one you choose from the job’s Applications screen.' },
   { q: 'How do I leave a review?', a: 'Once a job is marked complete, open it from My Jobs and tap Leave Review.' },
   { q: 'How do I report a problem with a job?', a: 'Open the job and tap Report a problem. On a booked or in-progress job it is under the ⋮ menu, or it becomes a link once the provider has finished every task. A completed job can be reported during its three-day warranty. An admin will review it.' },
@@ -56,7 +56,7 @@ const HO_FAQS = [
 const SP_FAQS = [
   { q: 'How do I get verified?', a: 'Go to Profile → Get Verified and submit a government ID photo plus a selfie. An admin reviews it, usually within a few days.' },
   { q: 'How do I submit a proposal?', a: 'Browse open jobs on the Feed tab and tap into one to submit a proposal. You need to be verified before proposals can be submitted.' },
-  { q: 'How do I get paid?', a: 'Earnings appear in your Wallet after the three-day completion warranty ends, unless a complaint is open. Withdrawals are made from the Wallet tab.' },
+  { q: 'How do I get paid?', a: 'Payouts are sent to the GCash, Maya or bank account you link under Profile → Payout account, after the three-day completion warranty ends, unless a complaint is open.' },
   { q: 'How do I change the services I offer?', a: 'Go to Profile → My services and send the admins a request to change or add a service. Only one request can be open at a time.' },
   { q: 'How do I update my bio or service radius?', a: 'Go to Profile → Edit profile to update your bio and service radius.' },
 ];

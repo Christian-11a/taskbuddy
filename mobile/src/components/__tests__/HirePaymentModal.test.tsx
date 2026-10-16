@@ -15,12 +15,10 @@ function renderSheet(overrides: Partial<Props> = {}) {
     providerName: 'Alex Reyes',
     jobTitle: 'Window cleaning',
     budget: 1000,
-    available: 5000,
     busy: null,
     message: null,
     onPayWallet: jest.fn(),
     onPayCard: jest.fn(),
-    onAddMoney: jest.fn(),
     onClose: jest.fn(),
     ...overrides,
   };
@@ -28,185 +26,96 @@ function renderSheet(overrides: Partial<Props> = {}) {
   return { props, view };
 }
 
-const walletRadio = () => screen.getByRole('radio', { name: 'Wallet, ₱5,000.00 available' });
-const cardRadio = () => screen.getByRole('radio', { name: "Card, ₱1,000.00 on Stripe's secure page" });
+const ONLINE = "GCash, Maya, card or bank, ₱1,000.00 on PayMongo's secure page (test mode)";
+const onlineRadio = () => screen.getByRole('radio', { name: ONLINE });
 
-describe('HirePaymentModal: choosing how to pay', () => {
-  it('shows the job, the amount and the escrow promise before any payment choice', () => {
+describe('HirePaymentModal: paying online', () => {
+  it('shows the job, the amount and the escrow promise, and no wallet', () => {
     renderSheet();
 
     expect(screen.getByRole('header', { name: 'Hire Alex Reyes' })).toBeTruthy();
     expect(screen.getByText('Window cleaning')).toBeTruthy();
     expect(screen.getByLabelText('Amount ₱1,000.00')).toBeTruthy();
-    expect(
-      screen.getByText(
-        '₱1,000.00 is held in escrow and released to Alex Reyes after the three-day warranty ends, unless a complaint is open.',
-      ),
-    ).toBeTruthy();
+    expect(screen.getByText(/held in escrow/)).toBeTruthy();
+    expect(screen.queryByText(/Wallet/)).toBeNull();
+    expect(screen.getAllByRole('radio')).toHaveLength(1);
   });
 
-  it('selecting a payment option only selects it and never runs a pay handler', () => {
+  it('keeps Continue disabled until the online option is picked, and picking it pays nothing', () => {
     const { props } = renderSheet();
-
-    fireEvent.press(walletRadio());
-    expect(screen.getByRole('radio', { name: 'Wallet, ₱5,000.00 available', selected: true })).toBeTruthy();
-
-    fireEvent.press(cardRadio());
-    expect(screen.getByRole('radio', { name: "Card, ₱1,000.00 on Stripe's secure page", selected: true })).toBeTruthy();
-
-    expect(props.onPayWallet).not.toHaveBeenCalled();
-    expect(props.onPayCard).not.toHaveBeenCalled();
-  });
-
-  it('keeps Continue disabled until a usable option is picked', () => {
-    renderSheet();
 
     expect(screen.getByRole('button', { name: 'Continue', disabled: true })).toBeTruthy();
-
-    fireEvent.press(walletRadio());
-
+    fireEvent.press(onlineRadio());
     expect(screen.getByRole('button', { name: 'Continue', disabled: false })).toBeTruthy();
-  });
-
-  it('Continue opens the confirm page without paying; Confirm pays from the wallet exactly once', () => {
-    const { props } = renderSheet();
-
-    fireEvent.press(walletRadio());
-    fireEvent.press(screen.getByRole('button', { name: 'Continue' }));
-
-    expect(screen.getByText("You're paying")).toBeTruthy();
-    expect(screen.getByText('to hire Alex Reyes')).toBeTruthy();
-    expect(screen.getByText('From')).toBeTruthy();
-    expect(screen.getByText('Wallet after')).toBeTruthy();
-    expect(screen.getByText('₱4,000.00')).toBeTruthy();
-    expect(screen.getByText('Held for')).toBeTruthy();
-    expect(screen.getByText('If the job is cancelled, the money comes back as the cancellation rules say.')).toBeTruthy();
-    expect(props.onPayWallet).not.toHaveBeenCalled();
-
-    fireEvent.press(screen.getByRole('button', { name: 'Confirm and hire · ₱1,000.00' }));
-
-    expect(props.onPayWallet).toHaveBeenCalledTimes(1);
     expect(props.onPayCard).not.toHaveBeenCalled();
   });
 
-  it('the confirm page amount, the wallet-after figure and the confirm button shrink instead of being cut off', () => {
-    renderSheet();
-    fireEvent.press(walletRadio());
-    fireEvent.press(screen.getByRole('button', { name: 'Continue' }));
-
-    const fit = expect.objectContaining({ numberOfLines: 1, adjustsFontSizeToFit: true, minimumFontScale: 0.7 });
-    expect(screen.getByLabelText('Amount ₱1,000.00').props).toEqual(fit);
-    expect(screen.getByText('₱4,000.00').props).toEqual(fit);
-    expect(screen.getByText('Confirm and hire · ₱1,000.00').props).toEqual(fit);
-  });
-
-  it('Confirm pays by card exactly once when the card was chosen', () => {
+  it('Confirm opens the online checkout exactly once', () => {
     const { props } = renderSheet();
 
-    fireEvent.press(cardRadio());
+    fireEvent.press(onlineRadio());
     fireEvent.press(screen.getByRole('button', { name: 'Continue' }));
-
-    expect(screen.getByText('Card')).toBeTruthy();
-    expect(screen.queryByText('Wallet after')).toBeNull();
-
+    expect(screen.getByText('GCash, Maya, card or bank')).toBeTruthy();
     fireEvent.press(screen.getByRole('button', { name: 'Confirm and hire · ₱1,000.00' }));
 
     expect(props.onPayCard).toHaveBeenCalledTimes(1);
     expect(props.onPayWallet).not.toHaveBeenCalled();
   });
 
-  it('Back returns to the choice page with the chosen option still selected', () => {
-    const { props } = renderSheet();
+  it('Back returns to the choice page with the option still selected', () => {
+    renderSheet();
 
-    fireEvent.press(walletRadio());
+    fireEvent.press(onlineRadio());
     fireEvent.press(screen.getByRole('button', { name: 'Continue' }));
     fireEvent.press(screen.getByRole('button', { name: 'Back' }));
 
-    expect(screen.getByText('Pay with')).toBeTruthy();
-    expect(screen.getByRole('radio', { name: 'Wallet, ₱5,000.00 available', selected: true })).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Continue', disabled: false })).toBeTruthy();
-    expect(props.onPayWallet).not.toHaveBeenCalled();
+    expect(screen.getByRole('radio', { name: ONLINE, selected: true })).toBeTruthy();
   });
 
   it('Cancel closes the sheet and pays nothing', () => {
     const { props } = renderSheet();
 
-    fireEvent.press(walletRadio());
     fireEvent.press(screen.getByRole('button', { name: 'Cancel' }));
 
     expect(props.onClose).toHaveBeenCalledTimes(1);
-    expect(props.onPayWallet).not.toHaveBeenCalled();
     expect(props.onPayCard).not.toHaveBeenCalled();
   });
 
-  it('a short wallet disables the wallet option and offers add money', () => {
-    const { props } = renderSheet({ available: 500 });
+  it('explains why online payment is unavailable outside its limits', () => {
+    const { props, view } = renderSheet({ budget: 20 });
 
     expect(
-      screen.getByRole('radio', { name: 'Wallet, You have ₱500.00, need ₱1,000.00', disabled: true }),
+      screen.getByRole('radio', { name: 'GCash, Maya, card or bank, Online payments need at least ₱50.00', disabled: true }),
     ).toBeTruthy();
 
-    fireEvent.press(screen.getByRole('button', { name: 'Add money to wallet' }));
-
-    expect(props.onAddMoney).toHaveBeenCalledTimes(1);
-    expect(props.onPayWallet).not.toHaveBeenCalled();
-  });
-
-  it('a short wallet still lets the card be chosen', () => {
-    renderSheet({ available: 500 });
-
-    fireEvent.press(screen.getByRole('radio', { name: "Card, ₱1,000.00 on Stripe's secure page" }));
-
-    expect(screen.getByRole('button', { name: 'Continue', disabled: false })).toBeTruthy();
-  });
-
-  it('card explains why it is unavailable outside the card limits', () => {
-    const { view } = renderSheet({ budget: 20 });
-
-    expect(screen.getByRole('radio', { name: 'Card, Cards need at least ₱50.00', disabled: true })).toBeTruthy();
-
-    view.rerender(
-      <HirePaymentModal
-        visible
-        providerName="Alex Reyes"
-        jobTitle="Window cleaning"
-        budget={150000}
-        available={200000}
-        busy={null}
-        message={null}
-        onPayWallet={jest.fn()}
-        onPayCard={jest.fn()}
-        onAddMoney={jest.fn()}
-        onClose={jest.fn()}
-      />,
-    );
+    view.rerender(<HirePaymentModal {...props} budget={150000} />);
 
     expect(
-      screen.getByRole('radio', { name: "Card, Cards can't take more than ₱100,000.00", disabled: true }),
+      screen.getByRole('radio', {
+        name: "GCash, Maya, card or bank, Online payments can't take more than ₱100,000.00",
+        disabled: true,
+      }),
     ).toBeTruthy();
   });
 
   it('a job without a budget skips the choice: Hire goes straight to the confirm page', () => {
-    const { props } = renderSheet({ budget: null, available: null });
+    const { props } = renderSheet({ budget: null });
 
     expect(screen.queryByText('Pay with')).toBeNull();
     expect(screen.queryByRole('radio')).toBeNull();
 
     fireEvent.press(screen.getByRole('button', { name: 'Hire Alex Reyes' }));
-
     expect(screen.getByText("Nothing is held — they're hired straight away.")).toBeTruthy();
-    expect(props.onPayWallet).not.toHaveBeenCalled();
-
     fireEvent.press(screen.getByRole('button', { name: 'Confirm and hire' }));
 
     expect(props.onPayWallet).toHaveBeenCalledTimes(1);
     expect(props.onPayCard).not.toHaveBeenCalled();
   });
 
-  it('nothing can be chosen while the job and wallet are still loading', () => {
-    renderSheet({ loading: true, available: null });
+  it('nothing can be chosen while the job is still loading', () => {
+    renderSheet({ loading: true });
 
-    expect(screen.getByText('Checking your balance…')).toBeTruthy();
+    expect(screen.getByText('Loading…')).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Continue', disabled: true })).toBeTruthy();
   });
 
@@ -217,11 +126,11 @@ describe('HirePaymentModal: choosing how to pay', () => {
   });
 });
 
-describe('HirePaymentModal: when the job or wallet could not be loaded', () => {
+describe('HirePaymentModal: when the job could not be loaded', () => {
   const loadError = { text: 'Could not reach TaskBuddy.', tone: 'error' as const };
 
   it('offers no hire: no escrow or no-budget copy, no options, Continue disabled, Cancel still works', () => {
-    const { props } = renderSheet({ budget: null, available: null, jobTitle: null, loadFailed: true, message: loadError });
+    const { props } = renderSheet({ budget: null, jobTitle: null, loadFailed: true, message: loadError });
 
     expect(screen.getByTestId('hire-payment-message').props.children).toBe('Could not reach TaskBuddy.');
     expect(screen.queryByText(/Nothing is held/)).toBeNull();
@@ -239,7 +148,7 @@ describe('HirePaymentModal: when the job or wallet could not be loaded', () => {
   });
 
   it('Continue cannot reach the confirm page, so nothing is paid', () => {
-    const { props } = renderSheet({ budget: null, available: null, loadFailed: true, message: loadError });
+    const { props } = renderSheet({ budget: null, loadFailed: true, message: loadError });
 
     fireEvent.press(screen.getByRole('button', { name: 'Continue', disabled: true }));
 
@@ -248,7 +157,7 @@ describe('HirePaymentModal: when the job or wallet could not be loaded', () => {
   });
 
   it('a job that loaded with a zero budget still hires straight away, as a real no-budget job does', () => {
-    const { props } = renderSheet({ budget: 0, available: null });
+    const { props } = renderSheet({ budget: 0 });
 
     expect(screen.queryByText('Pay with')).toBeNull();
 
@@ -328,7 +237,7 @@ describe('HirePaymentModal: a card payment that is still being confirmed', () =>
     const { props, view } = renderSheet();
 
     // The payment was started from the confirm page, then the wait began.
-    fireEvent.press(walletRadio());
+    fireEvent.press(onlineRadio());
     fireEvent.press(screen.getByRole('button', { name: 'Continue' }));
     view.rerender(
       <HirePaymentModal {...props} awaiting={{ onCheckPayment: jest.fn(), onStartNewPayment }} />,
@@ -341,7 +250,7 @@ describe('HirePaymentModal: a card payment that is still being confirmed', () =>
 
     view.rerender(<HirePaymentModal {...props} awaiting={null} />);
     expect(screen.getByText('Pay with')).toBeTruthy();
-    expect(screen.getByRole('radio', { name: 'Wallet, ₱5,000.00 available', selected: false })).toBeTruthy();
+    expect(screen.getByRole('radio', { name: ONLINE, selected: false })).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Continue', disabled: true })).toBeTruthy();
   });
 });
@@ -350,7 +259,7 @@ describe('HirePaymentModal: the sheet stays locked while a payment is in flight'
   it('disables Cancel and Back, and keeps the confirm button labelled while busy', () => {
     const { props, view } = renderSheet({ busy: null });
 
-    fireEvent.press(walletRadio());
+    fireEvent.press(onlineRadio());
     fireEvent.press(screen.getByRole('button', { name: 'Continue' }));
 
     view.rerender(
@@ -359,12 +268,10 @@ describe('HirePaymentModal: the sheet stays locked while a payment is in flight'
         providerName="Alex Reyes"
         jobTitle="Window cleaning"
         budget={1000}
-        available={5000}
-        busy="wallet"
+        busy="card"
         message={null}
         onPayWallet={props.onPayWallet}
         onPayCard={props.onPayCard}
-        onAddMoney={props.onAddMoney}
         onClose={props.onClose}
       />,
     );
@@ -375,7 +282,7 @@ describe('HirePaymentModal: the sheet stays locked while a payment is in flight'
     fireEvent.press(screen.getByRole('button', { name: 'Confirm and hire · ₱1,000.00' }));
     fireEvent.press(screen.getByRole('button', { name: 'Back' }));
 
-    expect(props.onPayWallet).not.toHaveBeenCalled();
+    expect(props.onPayCard).not.toHaveBeenCalled();
     expect(props.onClose).not.toHaveBeenCalled();
   });
 });

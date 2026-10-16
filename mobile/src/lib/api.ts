@@ -289,6 +289,8 @@ export interface JobApplication {
       'is_verified' | 'cached_avg_rating' | 'cached_completed_jobs'
     > | null;
   } | null;
+  /** Approved, unexpired skill credentials (TESDA, PRC…): the Certified badge. */
+  certifications?: { title: string; issuer: string }[];
 }
 
 export interface MeResponse {
@@ -579,6 +581,30 @@ export interface CheckoutSession {
 
 /** The card limits live in cardLimits.ts, with no network code; re-exported here for the screens. */
 export { MAX_CARD_PHP, MIN_TOPUP_PHP } from './cardLimits';
+
+export type PayoutMethod = 'gcash' | 'maya' | 'bank';
+
+/** Where a provider's payouts go. Only the last four digits come back. */
+export interface PayoutAccount {
+  method: PayoutMethod;
+  bank_name: string | null;
+  account_name: string;
+  account_last4: string;
+  updated_at: string;
+}
+
+export interface PaymentHistoryEntry {
+  id: string;
+  direction: 'credit' | 'debit';
+  kind: string;
+  amount: number | string;
+  title: string;
+  status: string;
+  withdrawal_destination: string | null;
+  review_note: string | null;
+  job_id: string | null;
+  created_at: string;
+}
 
 export interface Conversation {
   id: string;
@@ -1521,87 +1547,14 @@ export const api = {
     return authRequest<Dispute>(`/disputes/${id}/cancellation-response`, { method: 'POST', body: { accept, note, message_id } });
   },
 
-  // ── Wallet ──────────────────────────────────────────────────────────────────
-  wallet() {
-    return authRequest<WalletOverview>('/wallet');
-  },
-
+  // ── Hire payments ───────────────────────────────────────────────────────────
   /**
-   * Files a withdrawal request.
-   *
-   * The row comes back `pending`: the money has not moved and will not until
-   * an admin settles it from the console. There is no payout rail — settlement
-   * is a human sending money and recording the reference — so `destination` is
-   * free text a person reads, not a validated account identifier.
-   *
-   * Checked against the wallet's `available`, not `balance`, so two requests
-   * cannot both draw on the same funds.
-   */
-  requestWithdrawal(input: {
-    amount: number;
-    destination: string;
-    title?: string;
-  }) {
-    return authRequest<WalletTransaction>('/wallet/withdrawals', {
-      method: 'POST',
-      body: input,
-    });
-  },
-
-  /** The caller's own withdrawal requests, newest first. */
-  withdrawals() {
-    return authRequest<WalletTransaction[]>('/wallet/withdrawals');
-  },
-
-  /** Withdraws a request that has not been settled yet, returning the funds. */
-  cancelWithdrawal(id: string) {
-    return authRequest<WalletTransaction>(`/wallet/withdrawals/${id}/cancel`, {
-      method: 'POST',
-    });
-  },
-
-  /**
-   * @deprecated Superseded by `requestWithdrawal`. The backend keeps this route
-   * working but now files the same pending request rather than writing a
-   * completed debit.
-   */
-  createWalletTransaction(input: {
-    direction: 'debit';
-    amount: number;
-    title: string;
-    job_id?: string;
-  }) {
-    return authRequest<WalletTransaction>('/wallet/transactions', {
-      method: 'POST',
-      body: input,
-    });
-  },
-
-  /**
-   * Starts a wallet top-up and returns Stripe's hosted Checkout URL for the
-   * app to open in a browser.
-   *
-   * Checkout rather than the native PaymentSheet because the app runs in Expo
-   * Go, which cannot load native modules. Same reasoning as the Google flow:
-   * the browser does the work and comes back through `app_redirect`.
-   *
-   * The returned URL funds nothing on its own — the wallet is credited when
-   * Stripe's webhook reaches the backend, which may land a moment after the
-   * browser closes.
-   */
-  createCheckoutSession(input: { amount: number; app_redirect: string }) {
-    return authRequest<CheckoutSession>('/payments/checkout-session', {
-      method: 'POST',
-      body: input,
-    });
-  },
-
-  /**
-   * Card-at-hire: a hosted Checkout for the job's full budget. Open `url`
-   * with `openAuthSessionAsync`; the browser comes back to `app_redirect`
-   * with `?hire=success|cancelled`. **Nothing is hired by this call or by the
-   * redirect** — Stripe's webhook credits the payment, holds it and accepts
-   * the application, so poll `jobApplications` for `accepted` afterwards.
+   * Pay-at-hire: a hosted checkout for the job's full price (PayMongo test
+   * mode: GCash, Maya, card, online banking). Open `url` with
+   * `openAuthSessionAsync`; the browser comes back to `app_redirect` with
+   * `?hire=success|cancelled`. **Nothing is hired by this call or by the
+   * redirect** — the payment webhook holds the money and accepts the
+   * application, so poll `jobApplications` for `accepted` afterwards.
    */
   createHireCheckoutSession(input: { application_id: string; app_redirect: string }) {
     return authRequest<CheckoutSession>('/payments/hire-checkout-session', {
@@ -1610,34 +1563,24 @@ export const api = {
     });
   },
 
-  // ── Stripe Connect payouts (providers) ─────────────────────────────────────
-  connectStatus() {
-    return authRequest<ConnectStatus>('/payments/connect');
+  // ── Payouts (migration 0056: no wallet) ─────────────────────────────────────
+  payoutAccount() {
+    return authRequest<PayoutAccount | null>('/payouts/account');
   },
-
-  /**
-   * A single-use Stripe onboarding URL. Open it with `openAuthSessionAsync`;
-   * the backend bounces the browser back to `app_redirect` with
-   * `?connect=return` (left the form — finished or not, so call
-   * `connectSync`) or `?connect=refresh` (the link expired; ask for another).
-   */
-  connectOnboardingLink(input: { app_redirect: string }) {
-    return authRequest<{ url: string; expires_at: number }>(
-      '/payments/connect/onboarding-link',
-      { method: 'POST', body: input },
-    );
+  linkPayoutAccount(input: {
+    method: PayoutMethod;
+    bank_name?: string;
+    account_name: string;
+    account_number: string;
+  }) {
+    return authRequest<PayoutAccount>('/payouts/account', { method: 'PUT', body: input });
   },
-
-  /** Re-reads the payout account from Stripe. */
-  connectSync() {
-    return authRequest<ConnectStatus>('/payments/connect/sync', { method: 'POST' });
+  unlinkPayoutAccount() {
+    return authRequest<{ removed: boolean }>('/payouts/account', { method: 'DELETE' });
   },
-
-  /** A one-time link into the provider's Stripe Express dashboard. */
-  connectDashboardLink() {
-    return authRequest<{ url: string }>('/payments/connect/dashboard-link', {
-      method: 'POST',
-    });
+  /** Payments in, payouts and refunds out, newest first. */
+  paymentHistory() {
+    return authRequest<PaymentHistoryEntry[]>('/payouts/history');
   },
 
   // ── Chat ────────────────────────────────────────────────────────────────────

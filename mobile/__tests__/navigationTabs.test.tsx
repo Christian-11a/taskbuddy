@@ -11,11 +11,11 @@ jest.mock('expo-splash-screen', () => ({
 }));
 
 it('gives the homeowner four tabs, with Profile last', () => {
-  expect(HOMEOWNER_TABS.map((tab) => tab.key)).toEqual(['Home', 'My Jobs', 'Wallet', 'Profile']);
+  expect(HOMEOWNER_TABS.map((tab) => tab.key)).toEqual(['Home', 'My Jobs', 'Messages', 'Profile']);
 });
 
 it('gives the provider four tabs, with Profile last', () => {
-  expect(PROVIDER_TABS.map((tab) => tab.label)).toEqual(['Feed', 'My Work', 'Wallet', 'Profile']);
+  expect(PROVIDER_TABS.map((tab) => tab.label)).toEqual(['Feed', 'My Work', 'Messages', 'Profile']);
 });
 
 it('renders the homeowner bar as four tabs with no floating action', () => {

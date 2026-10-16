@@ -82,7 +82,7 @@ function labelFor(action: Action, pending: boolean): string {
     case 'startJob': return 'Start job';
     case 'declineBooking': return "Can't make it? Decline booking";
     case 'message': return 'Message client';
-    case 'viewWallet': return 'View in wallet';
+    case 'viewWallet': return 'View payouts';
     case 'reportProblem': return 'Report a problem';
     case 'viewCase': return 'View Complaint Status';
     default: return '';
@@ -297,7 +297,7 @@ export default function SPJobDetailScreen({ jobId, onBack, onNavigate }: SPJobDe
         onNavigate('Chat', current.id);
         return;
       case 'viewWallet':
-        onNavigate('Wallet');
+        onNavigate('Payout Account');
         return;
       case 'reportProblem':
         onNavigate('Dispute Filing', current.id);
@@ -394,7 +394,7 @@ export default function SPJobDetailScreen({ jobId, onBack, onNavigate }: SPJobDe
                   <Text style={styles.earnValue}>{releaseDay}</Text>
                 </View>
               )}
-              <Text style={styles.footnote}>A platform fee is taken when it's paid out. The exact amount shows in your Wallet.</Text>
+              <Text style={styles.footnote}>A platform fee is taken when it's paid out to your linked GCash, Maya or bank account.</Text>
             </View>
           )}
 

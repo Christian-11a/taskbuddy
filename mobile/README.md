@@ -1,5 +1,22 @@
 # TaskBuddy Mobile
 
+## October 2026 revisions (not yet deployed)
+
+- **No wallet.** Hires are paid at a PayMongo test-mode checkout (GCash, Maya,
+  card, online banking). Payouts go to the provider's linked GCash/Maya/bank
+  account and refunds to the original payment method, as simulated payouts.
+  The Wallet tab is now **Messages** (every job conversation). Older sections
+  below that describe the wallet are history. Needs backend migrations
+  0053–0056 and `PAYMONGO_SECRET_KEY` / `PAYMONGO_WEBHOOK_SECRET` on the API.
+- **Price options instead of a budget field.** Step 4 of posting a job shows
+  three tappable prices (`POST /jobs/price-estimate`) based on the service,
+  the tasks' effort and the urgency.
+- **Certifications.** Providers upload TESDA, PRC or trade certificates under
+  Profile → Certifications; approved ones show as a Certified badge on
+  proposals and the provider profile.
+- **Terms v2** cover pricing, holding of funds and payment release; accounts
+  on older terms must accept again.
+
 ## FullTest remediation — 2026-10-02
 
 Bug fixes cover approved skill filtering, job photos and lifecycle, escrow totals, cancellation/warranty dispute access, notification creation, and responsive auth/privacy/job forms. The October 4 follow-up implements shared light/dark palettes and provider photo portfolios; see the current implementation section below.
@@ -142,8 +159,8 @@ per role, plus a selected `jobId` threaded through
 initializing         → SplashScreen
 not authenticated    → Login / Register / Forgot Password
 first login, once    → Onboarding
-role 'homeowner'     → HO tab bar (Home, My Jobs, Wallet, Profile)
-role 'provider'      → SP tab bar (Feed, My Work, Wallet, Profile)
+role 'homeowner'     → HO tab bar (Home, My Jobs, Messages, Profile)
+role 'provider'      → SP tab bar (Feed, My Work, Messages, Profile)
 ```
 
 Each bar has four tabs and no floating button. Profile is a tab on both sides,
@@ -305,13 +322,13 @@ sign-in, and notification rows remain available in the in-app list either way.
 
 | Screen | Key API calls |
 |--------|--------------|
-| `HOHomeScreen` | `GET /wallet`, `GET /jobs/mine`, `GET /categories`, unread notification count |
+| `HOHomeScreen` | `GET /jobs/mine`, `GET /categories`, unread notification count |
 | `HOMyJobs` | `GET /jobs/mine`, filtered client-side by status (All / Open / Awaiting / Confirmed / In Progress / Completed / Cancelled) |
 | `HOCreateJobScreen` | `GET /categories`, `GET /jobs/geocode`, image upload, `POST /jobs`. The guided 5-step flow: service → location → tasks → urgency → review |
 | `HOJobDetailScreen` | `GET /jobs/:id`, `GET /providers/:id`, `POST /jobs/:id/recommendations/trigger`; complete / cancel / chat, review-state gating, manual provider-matching retry, and read-only task checklist |
 | `HOChatScreen` | `POST /conversations` then message listing |
-| `HOJobApplicationsScreen` | `GET /jobs/:id/applications`; Accept opens `HirePaymentModal` — `POST /applications/:id/accept` (wallet) or `POST /payments/hire-checkout-session` (card, then polls for `accepted`); Reject |
-| `HOWalletScreen` | `GET /wallet` + `GET`/`POST /wallet/withdrawals`; Add Money opens Stripe Checkout, and Withdraw files/cancels manual payout requests |
+| `HOJobApplicationsScreen` | `GET /jobs/:id/applications`; Accept opens `HirePaymentModal` — `POST /payments/hire-checkout-session` (PayMongo, then polls for `accepted`), or `POST /applications/:id/accept` for a job with no price; Reject |
+| `ConversationsScreen` | Messages tab (both roles): `GET /conversations`; tapping one opens that job's chat |
 | `HODisputeFilingScreen` | `POST /jobs/:jobId/disputes` |
 | `HOProfile` | Displays profile data; menu is Edit Profile / Settings / Help & Support |
 | `HOEditProfileScreen` | `PATCH /profiles/me`, then `refreshProfile()`. The backend geocodes a changed address and rejects the save with a readable message if it can't verify it |
@@ -328,7 +345,8 @@ sign-in, and notification rows remain available in the in-app list either way.
 | `SPJobDetailScreen` | `GET /jobs/:id`; apply to an open job, or start confirmed work and tick off the task checklist once it's theirs |
 | `SPCalendarScreen` | `GET /calendar/bookings?from=&to=` for the current month |
 | `SPChatScreen` | Messaging (same flow as HO) |
-| `SPWalletScreen` | `GET /wallet` + `GET`/`POST /wallet/withdrawals` via `WithdrawModal`; Withdraw files/cancels manual payout requests, same as the homeowner wallet |
+| `SPPayoutAccountScreen` | Profile → Payout account: `GET`/`PUT /payouts/account` (GCash, Maya or bank) and the payouts sent (`GET /payouts/history`) |
+| `SPCredentialsScreen` | Profile → Certifications: `GET`/`POST`/`DELETE /providers/me/credentials` |
 | `SPNotificationsScreen` | `GET /notifications`; tapping one about a job (recommendation invite, application or job update) opens that job's detail screen |
 | `SPVerificationScreen` | 3-step flow — ID upload, face scan, then `POST /verifications/identity-session` (Stripe Identity, opened in a browser); falls back to `POST /verifications` for admin review if Stripe is unavailable |
 | `SPProfileScreen` | Displays profile + provider-specific data + a real verified/unverified badge (`providerProfile.is_verified`); menu is Edit Profile / Get Verified / Settings / Help & Support |
@@ -339,29 +357,24 @@ sign-in, and notification rows remain available in the in-app list either way.
 
 ## Money, Briefly
 
-Hiring holds the job budget in escrow. Accept on a proposal
-(`HOJobApplicationsScreen`) opens `HirePaymentModal`, which offers two ways to pay:
+Hiring holds the job's price in escrow. There is no wallet. Accept on a
+proposal (`HOJobApplicationsScreen`) opens `HirePaymentModal`:
 
-- **Pay from wallet**: `POST /applications/:id/accept` holds the budget from the
-  wallet. It is disabled, with an **add money** link, when the wallet is short.
-  The API refuses with `400 Insufficient wallet balance` anyway.
-- **Pay by card**: `POST /payments/hire-checkout-session` opens Stripe Checkout
-  for the full budget. **The app does not do the hire.** Stripe's webhook
-  credits the payment, holds it in escrow, and accepts the application, so
-  after the browser closes the screen polls the proposal until it reads
-  `accepted`. If the proposal was taken in the meantime, the payment stays in
-  the wallet and the screen says so.
+- **Pay online**: `POST /payments/hire-checkout-session` opens a PayMongo
+  test-mode checkout (GCash, Maya, card or online banking) for the full price.
+  **The app does not do the hire.** The payment webhook holds the money in
+  escrow and accepts the application, so after the browser closes the screen
+  polls the proposal until it reads `accepted`. If the proposal was taken in
+  the meantime, the payment is refunded to the payment method.
+- A job with no price (posted before pricing existed) is hired directly with
+  `POST /applications/:id/accept`.
 
 Client completion confirmation starts a **72-hour warranty hold**. Funds release
-after expiry without an open timely complaint. Hired-job cancellations retain
-funds during response/review; an approved refund returns to the **wallet**,
-including card-paid jobs.
-
-Providers who set up **Profile → Payouts** (Stripe Connect Express) have
-card-paid jobs eligible for transfer to their Stripe account after warranty expiry. Everything
-else stays in the TaskBuddy wallet and is withdrawn by request. The wallet ledger
-is the only account of record. Full rules: `backend/BACKEND_SCHEMA.md` §18
-and §29.
+after expiry without an open timely complaint, or earlier if the client
+releases them. A release is sent to the provider's linked account (Profile →
+Payout account; it waits if none is linked), and a refund goes back to the
+client's payment method. Both are simulated in this prototype: no real money
+moves. Full rules: `backend/README.md` → *Payments without a wallet*.
 
 ---
 

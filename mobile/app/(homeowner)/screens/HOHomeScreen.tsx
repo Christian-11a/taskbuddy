@@ -4,7 +4,7 @@ import { useNotifications } from '../../../src/context/NotificationsContext';
  * HOHomeScreen.tsx
  *
  * Figma "Home · final (Variation A)": a light header (avatar, greeting and
- * name, wallet chip, bell), a "What do you need done?" field, the hero card for
+ * name, bell), a "What do you need done?" field, the hero card for
  * the one thing that needs the homeowner, service chips, and every active job.
  */
 
@@ -24,18 +24,17 @@ import {
   ClipboardList,
   Hand,
   Plus,
-  Wallet,
 } from 'lucide-react-native';
 import { Spacing } from '../../../src/constants/theme';
 import { HOScreen } from '../../../src/types/navigation';
 import { useAuth } from '../../../src/context/AuthContext';
 import { useAsyncData } from '../../../src/hooks/useAsyncData';
 import { useHeaderTop } from '../../../src/hooks/useHeaderTop';
-import { isHomeWallet, isList } from '../../../src/lib/savedShapes';
+import { isList } from '../../../src/lib/savedShapes';
 import { SEVEN_DAYS_MS } from '../../../src/lib/persistentCache';
 import { useSlowLoad } from '../../../src/hooks/useSlowLoad';
 import { api, type Job } from '../../../src/lib/api';
-import { formatPesoShort, initials, peso } from '../../../src/lib/format';
+import { initials, peso } from '../../../src/lib/format';
 import {
   pendingApplicants,
   pickHomeHero,
@@ -53,7 +52,6 @@ import SectionHeader from '../../../src/components/ui/SectionHeader';
 import StaleHint from '../../../src/components/ui/StaleHint';
 import SlowLoadNote from '../../../src/components/ui/SlowLoadNote';
 import JobRow from '../../../src/components/ui/JobRow';
-import Banner from '../../../src/components/ui/Banner';
 import EmptyCard from '../../../src/components/ui/EmptyCard';
 import EmptyRow from '../../../src/components/ui/EmptyRow';
 import LoadErrorCard from '../../../src/components/ui/LoadErrorCard';
@@ -235,7 +233,6 @@ export default function HOHomeScreen({ onNavigate, tourOffer }: HOHomeScreenProp
   const { dark } = useTheme();
   const headerTop = useHeaderTop();
   const { profile } = useAuth();
-  const wallet = useAsyncData(() => api.wallet(), [], 'ho-home-wallet', { persist: true, validate: isHomeWallet });
   const jobs = useAsyncData(() => api.myJobs(), [], 'ho-home-jobs', { persist: true, validate: isList });
   const categories = useAsyncData(() => api.categories(), [], 'categories', {
     persist: true,
@@ -243,9 +240,8 @@ export default function HOHomeScreen({ onNavigate, tourOffer }: HOHomeScreenProp
     validate: isList,
   });
   const notifications = useNotifications();
-  // The welcome tour points at these three controls (the post field, the wallet chip and the bell).
+  // The welcome tour points at these controls (the post field and the bell).
   const postTour = useTourAnchor('home.post');
-  const walletTour = useTourAnchor('home.wallet');
   const bellTour = useTourAnchor('home.bell');
   const [proposalLookup, setProposalLookup] = useState<{ jobs: Job[] | null; byJob: ApplicationsByJob }>({
     jobs: null,
@@ -264,7 +260,7 @@ export default function HOHomeScreen({ onNavigate, tourOffer }: HOHomeScreenProp
     return () => { active = false; };
   }, [jobs.data, proposalRound]);
 
-  // Pull to refresh reloads what Home loads: the wallet, the jobs, the services and, after the jobs, the proposal lookups.
+  // Pull to refresh reloads what Home loads: the jobs, the services and, after the jobs, the proposal lookups.
   // The spinner stops when the jobs request settles, the one Home's content is built from.
   const [pulling, setPulling] = useState(false);
   useEffect(() => {
@@ -272,7 +268,6 @@ export default function HOHomeScreen({ onNavigate, tourOffer }: HOHomeScreenProp
   }, [jobs.loading, jobs.refreshing]);
   const onRefresh = () => {
     setPulling(true);
-    wallet.reload();
     categories.reload();
     jobs.reload();
     setProposalRound((round) => round + 1);
@@ -297,11 +292,11 @@ export default function HOHomeScreen({ onNavigate, tourOffer }: HOHomeScreenProp
   const greeting = hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening';
 
   // A first load with nothing to show yet: after a while, say the server is probably waking up.
-  const hasHomeData = wallet.data !== null || jobs.data !== null || categories.data !== null;
-  const homeSlow = useSlowLoad(wallet.loading || jobs.loading || categories.loading, hasHomeData);
+  const hasHomeData = jobs.data !== null || categories.data !== null;
+  const homeSlow = useSlowLoad(jobs.loading || categories.loading, hasHomeData);
 
   // One hint for the screen: a saved copy says it is being updated, and a failed refresh of one says so, with Try again.
-  const sources = [wallet, jobs, categories];
+  const sources = [jobs, categories];
   const hintStale = sources.some((source) => source.stale);
   const hintRefreshing = sources.some((source) => source.stale && source.refreshing);
   const hintError = sources.find((source) => source.stale && source.error)?.error ?? null;
@@ -311,7 +306,7 @@ export default function HOHomeScreen({ onNavigate, tourOffer }: HOHomeScreenProp
     }
   };
 
-  if (wallet.loading && jobs.loading && categories.loading && notifications.loading) {
+  if (jobs.loading && categories.loading && notifications.loading) {
     return (
       <View style={styles.screen}>
         {homeSlow && <SlowLoadNote />}
@@ -330,7 +325,7 @@ export default function HOHomeScreen({ onNavigate, tourOffer }: HOHomeScreenProp
           <RefreshControl refreshing={pulling} onRefresh={onRefresh} tintColor={Colors.primary} colors={[Colors.primary]} />
         )}
       >
-        {/* Header: the avatar opens Profile, the wallet chip opens Wallet, the bell opens Notifications. */}
+        {/* Header: the avatar opens Profile, the bell opens Notifications. */}
         <View style={[styles.header, { paddingTop: headerTop }]}>
           <View style={styles.headerRow}>
             <Tap
@@ -360,27 +355,6 @@ export default function HOHomeScreen({ onNavigate, tourOffer }: HOHomeScreenProp
               </Text>
             </View>
             <View testID="hero-actions" style={styles.headerActions}>
-              <Tap
-                testID="home-wallet"
-                {...walletTour}
-                style={styles.walletChip}
-                hitSlop={6}
-                accessibilityRole="button"
-                accessibilityLabel={wallet.data ? `Wallet balance ${peso(wallet.data.balance)}. Opens Wallet` : 'Wallet. Opens Wallet'}
-                onPress={() => onNavigate('Wallet')}
-              >
-                <Wallet size={16} color={Colors.link} strokeWidth={2.2} />
-                {/* A short form from ₱100,000, so the name keeps its room; the label above keeps the full amount. */}
-                <Text
-                  style={styles.walletAmount}
-                  numberOfLines={1}
-                  adjustsFontSizeToFit
-                  minimumFontScale={0.7}
-                  maxFontSizeMultiplier={1.2}
-                >
-                  {wallet.data ? formatPesoShort(wallet.data.balance) : '—'}
-                </Text>
-              </Tap>
               <View>
                 <Tap
                   testID="home-bell"
@@ -401,7 +375,6 @@ export default function HOHomeScreen({ onNavigate, tourOffer }: HOHomeScreenProp
               </View>
             </View>
           </View>
-          {wallet.error && !wallet.data && <Banner tone="error" message="Couldn't load your wallet" actionLabel="Try again" onAction={wallet.reload} />}
         </View>
 
         {/* Body */}
@@ -535,12 +508,6 @@ function createThemedStyles(theme: ThemePalette) {
     greeting: { color: C.ink500, fontSize: 13, fontWeight: '400', fontFamily: 'Inter', lineHeight: 18 },
     userName: { color: C.ink900, fontSize: 18, fontWeight: '700', fontFamily: 'Inter', lineHeight: 24 },
     headerActions: { flexDirection: 'row', alignItems: 'center', gap: 8, flexShrink: 0 },
-    walletChip: {
-      flexDirection: 'row', alignItems: 'center', gap: 6,
-      paddingLeft: 10, paddingRight: 12, paddingVertical: 8,
-      borderRadius: 999, backgroundColor: C.surface, borderWidth: 1, borderColor: C.line,
-    },
-    walletAmount: { color: C.ink900, fontSize: 14, fontWeight: '600', fontFamily: 'Inter', lineHeight: 18 },
     bell: {
       width: 44, height: 44, borderRadius: 22,
       backgroundColor: C.surface, borderWidth: 1, borderColor: C.line,
